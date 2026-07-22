@@ -127,6 +127,7 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     expect(out).toContain('function shouldUseStackedDeckStage');
     expect(out).toContain("data.type === 'od:preview-scroll-by'");
     expect(out).toContain("data.type === 'od:deck-pan-reset'");
+    expect(out).toContain('od:deck-host-viewport-request');
     expect(out).toContain('function deckPanBy');
   });
 });

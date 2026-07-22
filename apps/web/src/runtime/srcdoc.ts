@@ -22,11 +22,7 @@ import {
 } from '../edit-mode/bridge';
 import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
-<<<<<<< HEAD
-import { looksLikeCompactApiStackedDeck } from './compact-api-stacked-deck';
-=======
 import { looksLikeCompactApiStackedDeck, wrapPreviewHtmlShell } from './compact-api-stacked-deck';
->>>>>>> 2ebbbc2c3 (fix(teamver): harden compact deck detection and fix web build import)
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -1987,11 +1983,17 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
   margin: 0 !important;
   overflow: hidden !important;
 }
+html[data-od-stacked-deck] body {
+  position: relative !important;
+}
 #od-stacked-deck-stage {
-  position: relative;
+  position: absolute;
+  top: 50%;
+  left: 50%;
   width: 1920px;
   height: 1080px;
-  transform-origin: top left;
+  margin: 0;
+  transform-origin: center center;
 }
 #od-stacked-deck-stage > .slide {
   box-sizing: border-box !important;
@@ -2004,6 +2006,10 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
   top: 0 !important;
   left: 0 !important;
   overflow: hidden !important;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
 }
 </style>`
     : '';
@@ -2088,24 +2094,32 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
     document.documentElement.setAttribute('data-od-stacked-deck', '');
     return stage;
   }
-  function runStackedDeckFit() {
-    var stage = stackedDeckStage() || ensureStackedDeckStage();
-    if (!stage) return false;
-    var vp = frameworkDeckViewport();
-    var sw = vp.w;
-    var sh = vp.h;
-    if (sw <= 0 || sh <= 0) return false;
-    var pad = 32;
-    var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);
-    if (!isFinite(s) || s <= 0) s = 1;
-    var tx = (sw - 1920 * s) / 2 + deckPanX;
-    var ty = (sh - 1080 * s) / 2 + deckPanY;
-    stage.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';
-    return true;
-  }
-  function frameworkDeckViewport() {
+  function layoutViewportSize() {
+    var cw = Math.max(0, document.documentElement.clientWidth || 0);
+    var ch = Math.max(0, document.documentElement.clientHeight || 0);
+    var bw = 0;
+    var bh = 0;
+    try {
+      if (document.body) {
+        bw = Math.max(0, document.body.clientWidth || 0);
+        bh = Math.max(0, document.body.clientHeight || 0);
+      }
+    } catch (_) {}
+    var w = cw || bw;
+    var h = ch || bh;
     var iw = Math.max(0, window.innerWidth || 0);
     var ih = Math.max(0, window.innerHeight || 0);
+    if (w > 0 && h > 0) {
+      if (iw > w * 1.05) iw = w;
+      if (ih > h * 1.05) ih = h;
+      return { w: w, h: h };
+    }
+    return { w: iw, h: ih };
+  }
+  function frameworkDeckViewport() {
+    var layout = layoutViewportSize();
+    var iw = layout.w;
+    var ih = layout.h;
     var hw = Math.max(0, hostViewport.w || 0);
     var hh = Math.max(0, hostViewport.h || 0);
     var scale = hostViewport.scale > 0 ? hostViewport.scale : 1;
@@ -2120,6 +2134,23 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
       return { w: hw, h: hh };
     }
     return { w: iw || hw, h: ih || hh };
+  }
+  function applyStackedDeckTransform(stage, s, panX, panY) {
+    stage.style.transformOrigin = 'center center';
+    stage.style.transform = 'translate(calc(-50% + ' + panX + 'px), calc(-50% + ' + panY + 'px)) scale(' + s + ')';
+  }
+  function runStackedDeckFit() {
+    var stage = stackedDeckStage() || ensureStackedDeckStage();
+    if (!stage) return false;
+    var vp = frameworkDeckViewport();
+    var sw = vp.w;
+    var sh = vp.h;
+    if (sw <= 0 || sh <= 0) return false;
+    var pad = 32;
+    var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);
+    if (!isFinite(s) || s <= 0) s = 1;
+    applyStackedDeckTransform(stage, s, deckPanX, deckPanY);
+    return true;
   }
   function runFrameworkDeckFit() {
     var stage = frameworkDeckStage();
@@ -2401,6 +2432,11 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
     }
     el.style.display = visible ? '' : 'none';
   }
+  function requestHostDeckViewport() {
+    if (!compactStackedDeckEnabled) return;
+    try { window.parent.postMessage({ type: 'od:deck-host-viewport-request' }, '*'); }
+    catch (_) {}
+  }
   function setActive(i){
     var list = slides();
     if (!list.length) return false;
@@ -2603,6 +2639,7 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
     var attempts = 0;
     function tick(){
       attempts += 1;
+      if (compactStackedDeckEnabled) requestHostDeckViewport();
       var w = frameworkDeckViewport().w;
       nudgeDeckFit();
       if (w > 0 && attempts >= 2) return; // one extra nudge after first non-zero
@@ -2612,6 +2649,7 @@ html[data-od-stacked-deck], html[data-od-stacked-deck] body {
   }
   if (document.readyState === 'complete') chaseFirstLayout();
   else window.addEventListener('load', chaseFirstLayout);
+  if (compactStackedDeckEnabled) requestHostDeckViewport();
   // Re-nudge whenever the iframe itself is resized by the host (e.g.
   // user toggles zoom, resizes the chat sidebar, exits Present).
   if (typeof ResizeObserver !== 'undefined') {

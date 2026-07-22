@@ -123,7 +123,7 @@ import {
   canActivateSrcDocTransport,
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
-import { postDeckPreviewPanBy, resetDeckPreviewPan, scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
+import { postDeckHostViewportToIframe, postDeckPreviewPanBy, resetDeckPreviewPan, scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
 import { looksLikeCompactApiStackedDeckForPreview } from '../runtime/compact-api-stacked-deck';
 import {
   hasUrlModeBridge,
@@ -6122,6 +6122,25 @@ function HtmlViewer({
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [effectiveDeck, isActivePreviewIframeSource, isOurPreviewIframeSource, previewStateKey]);
+
+  useEffect(() => {
+    if (!needsDeckHostViewportFit || mode !== 'preview') return;
+    function onDeckViewportRequest(ev: MessageEvent) {
+      if (!isOurPreviewIframeSource(ev.source)) return;
+      if (!isActivePreviewIframeSource(ev.source)) return;
+      const data = ev.data as { type?: string } | null;
+      if (!data || data.type !== 'od:deck-host-viewport-request') return;
+      postDeckHostViewportToIframe(iframeRef.current, overlayPreviewScale);
+    }
+    window.addEventListener('message', onDeckViewportRequest);
+    return () => window.removeEventListener('message', onDeckViewportRequest);
+  }, [
+    needsDeckHostViewportFit,
+    mode,
+    isOurPreviewIframeSource,
+    isActivePreviewIframeSource,
+    overlayPreviewScale,
+  ]);
 
   useEffect(() => {
     if (!needsDeckHostViewportFit || mode !== 'preview') return;

@@ -267,6 +267,11 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(stage).toBeTruthy();
     expect(win.document.documentElement.getAttribute('data-od-stacked-deck')).toBe('');
     expect(stage?.style.transform).toMatch(/scale\(|translate\(/);
+    const scaleMatch = stage?.style.transform?.match(/scale\(([\d.]+)\)/);
+    expect(scaleMatch).toBeTruthy();
+    const fitScale = Number(scaleMatch?.[1] ?? 0);
+    expect(fitScale).toBeGreaterThan(0.35);
+    expect(fitScale).toBeLessThan(0.45);
     const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
     expect(slideEls).toHaveLength(2);
     expect(slideEls.filter((el) => el.style.display !== 'none')).toHaveLength(1);
