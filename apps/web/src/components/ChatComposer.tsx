@@ -1699,8 +1699,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             designSystemId: designSystemIdForRun,
             mergeContext: baseMeta?.context,
           });
+          const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
           sendComposedTurn(
-            canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
+            canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief),
             attachments,
             [],
             {
@@ -1713,7 +1714,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   || attachments[0]?.path
                   || null,
                 selectedCanvasSlideTemplate.title,
-                canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff),
+                sourceBrief,
               ),
               context: {
                 ...(baseMeta?.context ?? {}),

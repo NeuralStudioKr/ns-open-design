@@ -28,10 +28,15 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
 export const CANVAS_CREATE_SLIDES_PROMPT =
   "캔버스 내용을 바탕으로 슬라이드 덱을 만들어줘.";
 
-export function canvasCreateSlidesRunPrompt(templateTitle?: string | null): string {
+export function canvasCreateSlidesRunPrompt(
+  templateTitle?: string | null,
+  sourceBrief?: string | null,
+): string {
   const title = templateTitle?.trim();
   const templateHint = title ? `\nSelected slide template/style: ${title}.` : "";
-  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}`;
+  const brief = compactCanvasBriefValue(sourceBrief ?? "", 900);
+  const sourceHint = brief ? `\n\n[Source brief]\n${brief}` : "";
+  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${sourceHint}`;
 }
 
 /** Per-turn meta so API/daemon runs compose the selected deck template into the system prompt. */
@@ -94,7 +99,13 @@ export function canvasSlideTemplateOptions(
 }
 
 function compactCanvasBriefValue(value: string, max = 220): string {
-  const compact = value.replace(/\s+/g, " ").trim();
+  const compact = value
+    .replace(/<\s*(script|style|tools|tool|invoke|thinking|analysis|todo)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, " ")
+    .replace(/<\/?\s*(script|style|tools|tool|invoke|thinking|analysis|todo)[^>]*>/gi, " ")
+    .replace(/<[^>\n]{1,120}>/g, " ")
+    .replace(/[<>]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return compact.length > max ? `${compact.slice(0, max - 1).trimEnd()}…` : compact;
 }
 

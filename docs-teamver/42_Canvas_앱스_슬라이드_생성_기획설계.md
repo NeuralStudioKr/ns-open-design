@@ -380,6 +380,12 @@ Drive assetId query는 **사용하지 않는다.**
 
 one-confirm 후 프로젝트 생성은 **`example-simple-deck`** + `metadata.skipDiscoveryBrief: true` 로 고정한다.  
 `od-default` 를 넘기면 kind=`deck` 폴백이 막혀, import된 canvas HTML만 Design Files에 남고 덱 프레임 생성이 빠질 수 있다.
+
+2026-07-23 현재 구현 기준:
+- Canvas source의 `title`, `sectionCount`, `headings`, `preview`는 짧은 `sourceBrief`로 압축한다.
+- `sourceBrief`는 `pluginInputs`뿐 아니라 hidden run prompt의 `[Source brief]`에도 넣는다. API/BYOK 경로가 `pluginInputs`를 즉시 충분히 활용하지 못해도 Canvas 문맥과 deck 산출 계약이 유지되도록 하기 위함이다.
+- `sourceBrief` 생성 시 `<script>`, `<style>`, `<tools>`, `<invoke>`, `<thinking>` 등 내부/도구성 블록과 HTML 태그를 제거한다. 사용자 채팅에는 여전히 `캔버스 내용을 바탕으로 슬라이드 덱을 만들어줘.`만 노출되어야 한다.
+
 | **이후** | IR outline sidecar(작게) + 이미지 멀티파트. HTML 풀셀프컨테인드만 의존하지 않기. |
 | **하지 말 것** | 한도 초과를 Drive 업로드로 “우회” (이중 I/O 회귀). |
 

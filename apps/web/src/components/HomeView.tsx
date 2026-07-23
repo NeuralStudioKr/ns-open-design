@@ -1777,7 +1777,7 @@ export function HomeView({
         const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
         const submitResult = await Promise.resolve(
           onSubmit({
-            prompt: canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
+            prompt: canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief),
             pluginId: selectedCanvasSlideTemplate.id,
             pluginType: 'official',
             skillId: null,
