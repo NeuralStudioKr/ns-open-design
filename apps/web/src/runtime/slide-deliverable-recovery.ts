@@ -5,6 +5,7 @@ import {
   buildEmergencyArtifactFromMessages,
   EMERGENCY_DECK_FALLBACK_STATUS_CODE,
 } from '../artifacts/emergency-deck';
+import { recoverBestHtmlDocumentFromText } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
 import {
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
@@ -169,6 +170,18 @@ export async function verifySlideProducedHtmlDeliverable(
   return fileName;
 }
 
+/** Prefer verified disk HTML; trust a successful persist when read lags. */
+export async function resolveSlideProducedHtmlToOpen(
+  producedHtmlToOpen: string | null,
+  persistResult: ArtifactPersistResult | null | undefined,
+  readProjectHtml: (name: string) => Promise<string | null>,
+): Promise<string | null> {
+  if (!producedHtmlToOpen) return null;
+  const verified = await verifySlideProducedHtmlDeliverable(producedHtmlToOpen, readProjectHtml);
+  if (verified) return verified;
+  return isEmergencyArtifactPersistSuccess(persistResult) ? persistResult!.fileName : null;
+}
+
 export function isEmergencyArtifactPersistSuccess(
   result: ArtifactPersistResult | null | undefined,
 ): boolean {
@@ -242,10 +255,18 @@ export async function attemptEmergencySlideDeckRecovery(options: {
     return { recovered: false, produced: [], htmlToOpen: null };
   }
 
-  const emergencyArtifact = buildEmergencyArtifactFromMessages(
-    options.outlineMessages,
-    options.finalText,
-  );
+  const recoveredHtml = recoverBestHtmlDocumentFromText(options.finalText);
+  const emergencyArtifact = recoveredHtml
+    ? {
+        identifier: 'deck',
+        artifactType: 'deck',
+        title: 'deck',
+        html: recoveredHtml,
+      } satisfies Artifact
+    : buildEmergencyArtifactFromMessages(
+      options.outlineMessages,
+      options.finalText,
+    );
   if (!emergencyArtifact) {
     return { recovered: false, produced: [], htmlToOpen: null };
   }

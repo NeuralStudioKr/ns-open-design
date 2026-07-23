@@ -12,6 +12,7 @@ import {
   extractRequestedSlideCountHintFromMessages,
   findIncompleteSlideAssistantForRecovery,
   parseSlideCountPhrase,
+  resolveSlideProducedHtmlToOpen,
   syncAutoContinueCountFromMessages,
   verifySlideProducedHtmlDeliverable,
   attemptEmergencySlideDeckRecovery,
@@ -215,6 +216,28 @@ describe('verifySlideProducedHtmlDeliverable', () => {
   });
 });
 
+describe('resolveSlideProducedHtmlToOpen', () => {
+  it('trusts a successful persist when immediate read verification lags', async () => {
+    await expect(
+      resolveSlideProducedHtmlToOpen(
+        'deck.html',
+        { kind: 'persisted', fileName: 'deck.html' },
+        async () => null,
+      ),
+    ).resolves.toBe('deck.html');
+  });
+
+  it('returns null when neither verify nor persist succeeded', async () => {
+    await expect(
+      resolveSlideProducedHtmlToOpen(
+        'deck.html',
+        { kind: 'skipped-incomplete', fileName: 'deck.html' },
+        async () => null,
+      ),
+    ).resolves.toBeNull();
+  });
+});
+
 describe('attemptEmergencySlideDeckRecovery', () => {
   it('trusts a successful emergency persist even when immediate read verification lags', async () => {
     const result = await attemptEmergencySlideDeckRecovery({
@@ -237,6 +260,37 @@ describe('attemptEmergencySlideDeckRecovery', () => {
         },
       ],
       finalText: '슬라이드 구성을 바탕으로 덱을 준비했습니다.',
+      projectFiles: [],
+      beforeFileNames: [],
+      startedAt: 1,
+      persistArtifact: async () => ({ kind: 'persisted', fileName: 'deck.html' }),
+      refreshProjectFiles: async () => [],
+      readProjectHtml: async () => null,
+      computeProducedFiles: () => [],
+    });
+
+    expect(result.recovered).toBe(true);
+    expect(result.htmlToOpen).toBe('deck.html');
+  });
+
+  it('recovers a complete streamed deck artifact when outline synthesis would fail', async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide" style="min-height:100vh"><h1>2026 마케팅 전략</h1></section>',
+      '<section class="slide" style="min-height:100vh"><p>스택 통합 완료</p></section>',
+      '<style>.slide{min-width:100vw;min-height:100vh}</style>',
+      '</body></html>',
+    ].join('');
+    const finalText = `<artifact type="deck" identifier="deck">${html}</artifact>`;
+
+    const result = await attemptEmergencySlideDeckRecovery({
+      slideOnlyMvp: true,
+      producedHtmlToOpen: null,
+      outlineMessages: [
+        { id: 'u1', role: 'user', content: '마케팅 전략 슬라이드 만들어줘', createdAt: 1 },
+        { id: 'a1', role: 'assistant', content: finalText, createdAt: 2 },
+      ],
+      finalText,
       projectFiles: [],
       beforeFileNames: [],
       startedAt: 1,
