@@ -9,8 +9,9 @@
 //            windows, vault apps, etc.). No conversion is performed — the
 //            file content is the same source the Source view shows. See
 //            issue #279.
-// PPTX export is daemon-rendered for Teamver deck artifacts: each slide is
-// captured from the same preview HTML and packaged into a presentation.
+// PPTX export is daemon-rendered for Teamver deck artifacts. Teamver's default
+// path asks the daemon for editable PowerPoint objects; screenshot PPTX remains
+// an explicit daemon opt-out for fidelity investigations only.
 
 import { buildSrcdoc, type SrcdocOptions } from './srcdoc';
 import { buildReactComponentSrcdoc } from './react-component';
@@ -1057,6 +1058,7 @@ async function performPptxExportRequest(opts: {
     body: JSON.stringify({
       deck: true,
       delivery: 'ticket',
+      editable: true,
       fileName: opts.filePath,
       title: opts.title,
       ...inlineExportHtmlPayload(opts.htmlSnapshot),

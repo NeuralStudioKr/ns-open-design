@@ -262,11 +262,11 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 | `5a5431e3e` | `fix(daemon): recover PPTX export renderer failures` | PPTX route 도입 시 함께 검토. renderer 실패를 구조적으로 복구하는 후속 안정화 성격. |
 | `5b8e3a25f` | `fix(desktop): keep CJK typefaces intact in editable PPTX export` | editable PPTX까지 도입할 경우 CJK/한글 폰트 품질 때문에 필요. 단, 1차 screenshot PPTX에는 후순위. |
 
-**2026-07-16 적용 상태:** screenshot-based PPTX 최소 경로는 Teamver `staging`에 수동 반영 완료. 일반 `PPTX 다운로드`는 OD `main`과 동일하게 **미리보기 충실도 우선 screenshot PPTX**를 기본으로 사용한다. editable PPTX는 daemon hosted 환경용 실험 경로로 남겨두되, `editable:true`가 명시될 때만 사용한다. arbitrary HTML/CSS를 완전한 editable PPTX로 1:1 변환하는 것은 `dom-to-pptx` 한계가 있어 일반 다운로드 기본값으로 두지 않는다.
+**2026-07-23 적용 상태:** screenshot-based PPTX 최소 경로와 daemon hosted editable PPTX 경로가 모두 Teamver `staging`에 수동 반영되어 있다. 일반 `PPTX 다운로드`는 Teamver 요구사항에 맞춰 **editable PPTX(dom-to-pptx native shape/text)** 를 기본으로 사용한다. screenshot PPTX는 `editable:false`가 명시된 내부/조사 경로로만 유지한다. arbitrary HTML/CSS를 완전한 editable PPTX로 1:1 변환하는 데에는 `dom-to-pptx` 한계가 남을 수 있으므로, 실제 deck 샘플별 보정은 계속 축적한다.
 
 - ✅ daemon `buildScreenshotPptx` 최소 구현. 새 의존성 추가 없이 `JSZip` 기반 PPTX package 생성.
 - ✅ `/api/projects/:id/export/pptx` route 추가.
-- ✅ daemon `renderHeadlessEditablePptx` 추가. 단, 일반 PPTX 다운로드는 screenshot PPTX가 기본이며, `editable:true` 요청 시에만 native shape/text editable PPTX 경로를 사용한다.
+- ✅ daemon `renderHeadlessEditablePptx` 추가. 일반 PPTX 다운로드는 native shape/text editable PPTX가 기본이며, `editable:false` 요청 시에만 screenshot PPTX 경로를 사용한다.
 - ✅ `dom-to-pptx` v2.0.1 MIT browser bundle을 daemon vendor에 포함. npm package의 Puppeteer/Chromium dependency는 설치하지 않는다.
 - ✅ 기존 Teamver PDF/image export에서 보강한 inline HTML snapshot, S3/scratch sync 회피, auth gate, filename, export cache/ticket 흐름을 유지.
 - ✅ FE 다운로드 메뉴의 `PPTX로 다운로드`는 기존 agent prompt 요청 대신 daemon rendered download로 연결.
@@ -333,7 +333,7 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 5. ~~**P0-E:** `ace06eac1` — image export viewport (§0.2-5).~~ ✅ 루프 21
 6. ~~**P1:** `034c3895d`, `d3e091e15`~~ ✅ 루프 22. `068c9ae83` BYOK URL normalize는 조건부 후보. `4fb217c95`는 해당 없음.
 7. **기존 미완료:** `24c7876b3` in-place HTML edit delivery 보존(2026-07-20 부분 반영) 잔여, `04236af50` DB latch, `bc5b6f058` FE completion UI, `4b660237c` full slim charter — 각각 별도 루프.
-8. PPTX는 일반 다운로드 screenshot 기본 정책을 유지한다. editable PPTX는 별도 메뉴/고급 옵션을 만들기 전까지 일반 사용자 경로에 노출하지 않는다.
+8. PPTX는 일반 다운로드 editable 기본 정책을 유지한다. screenshot PPTX는 `editable:false`가 명시된 내부 조사/품질 비교 경로로만 사용한다.
 9. 모든 반영 후 `/api/version`, `/api/runs`, `auth/session`, `auth/refresh`, analytics config, message `PUT` 호출량이 회귀하지 않았는지 Network에서 확인한다.
 
 ---

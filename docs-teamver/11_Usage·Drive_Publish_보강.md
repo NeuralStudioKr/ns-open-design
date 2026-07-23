@@ -138,7 +138,7 @@ class UsageEventBody(BaseModel):
 | daemon export (ZIP archive) | `import-export-routes.ts` ✅ — 로컬 다운로드 전용, Drive publish 금지 |
 | daemon export (manifest) | `import-export-routes.ts` L487–509 ✅ |
 | daemon PDF | headless PDF export ✅ — Drive publish PDF + 로컬 다운로드 |
-| PPTX HTTP export | daemon `/api/projects/:id/export/pptx` ✅ — screenshot 기반 로컬 다운로드 |
+| PPTX HTTP export | daemon `/api/projects/:id/export/pptx` ✅ — 기본 editable PPTX 로컬 다운로드 (`editable:false`만 screenshot) |
 | SDK `upload_bytes_to_personal_drive` | Python `drive.py` L85–106, TS `drive.ts` L239–299 ✅ |
 | Main BE Drive | user JWT only (`router/drive.py` L1877–1916) |
 

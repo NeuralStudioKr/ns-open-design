@@ -1511,10 +1511,10 @@ describe('exportProjectAsPptx', () => {
     expect(requestBody).toMatchObject({
       deck: true,
       delivery: 'ticket',
+      editable: true,
       fileName: 'deck/index.html',
       title: 'Seed Deck',
     });
-    expect(requestBody).not.toHaveProperty('editable');
     expect(requestBody.html).toContain('<section class="slide">A</section>');
     expect(capturedBlob?.size).toBe(4);
     expect(capturedFilename).toBe('Seed-Deck.pptx');
