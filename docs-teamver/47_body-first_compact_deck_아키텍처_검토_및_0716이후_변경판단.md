@@ -155,6 +155,8 @@ use 6–8 slides only when none is specified.
 
 **주의:** Home footer의 `6-8 pages`는 **placeholder**일 뿐; 실제 생성은 brief/plugin/user 입력을 따른다 (`dfcc37805`, `fd56a5208`).
 
+**auto-continue recovery (2026-07-23):** `extractRequestedSlideCountHintFromMessages()`가 plugin inputs / form answers / 사용자 메시지에서 장수를 복구해 `buildAutoContinueIncompleteOutputPrompt()`에 `[이 대화의 슬라이드 분량 — 반드시 준수:]` 블록으로 주입한다 (`52942affa`). cap 소진 직전에도 brief에 `12장`이 있으면 generic 6–8로 덮어쓰지 않는다.
+
 ---
 
 ## 4. 0716 이후 변경 — 커밋 타임라인·판단 매트릭스
@@ -260,7 +262,7 @@ fd56a5208  auto-continue slide count aligns with COMPACT_DECK_SLIDE_COUNT_GUIDAN
 | `packages/contracts/src/prompts/deck-framework.ts` | `DECK_FRAMEWORK_DIRECTIVE` vs `_COMPACT`, `COMPACT_DECK_SLIDE_COUNT_GUIDANCE` |
 | `packages/contracts/src/prompts/system.ts` | `composeTeamverSlideApiPrompt`, streaming rules, skill 요약 |
 | `apps/web/src/components/ProjectView.tsx` | artifact persist, deliverable, recovery orchestration |
-| `apps/web/src/runtime/slide-deliverable-recovery.ts` | terminal/reload recovery SSOT |
+| `apps/web/src/runtime/slide-deliverable-recovery.ts` | terminal/reload recovery SSOT, reference·slideCount 복구 |
 | `apps/web/src/runtime/resume.ts` | auto-continue prompts (cap, sentinel) |
 | `apps/web/src/runtime/compact-api-stacked-deck.ts` | compact 덱 감지 (letterbox 대상 한정) |
 | `apps/web/src/runtime/srcdoc.ts` | deck bridge, `injectDeckBridge` |
