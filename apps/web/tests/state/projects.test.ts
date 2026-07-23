@@ -119,6 +119,32 @@ describe('listPlugins', () => {
     brandingSpy.mockRestore();
   });
 
+  it('uses the deck catalog instead of plugin detail in embed slide-only mode', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const branding = await import('../../src/teamver/branding/config');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const brandingSpy = vi.spyOn(branding, 'resolveTeamverBranding').mockReturnValue({ slideOnlyMvp: true } as never);
+    const plugin = {
+      id: 'example-simple-deck',
+      title: 'Simple Deck',
+      manifest: { od: { mode: 'deck' } },
+    };
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      expect(String(input)).not.toBe('/api/plugins/example-simple-deck');
+      return new Response(
+        JSON.stringify({ plugins: [plugin] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getInstalledPlugin('example-simple-deck', { includeHidden: true })).resolves.toEqual(plugin);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/plugins?mode=deck&limit=48');
+    embedSpy.mockRestore();
+    brandingSpy.mockRestore();
+  });
+
   it('hides plugins marked od.hidden from UI-facing lists', async () => {
     const visible = {
       id: 'od-new-generation',

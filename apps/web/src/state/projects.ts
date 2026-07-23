@@ -56,6 +56,7 @@ import {
 import { mapRegistryRowToProject, listEmbedProjectsFromRegistry, listEmbedProjectsPageFromRegistry, mergeDaemonFieldsOntoRegistryProjects } from '../teamver/embedRegistryProjectList';
 import { fetchTeamverProject } from '../teamver/projectRegistry';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
+import { normalizePluginApiId } from '../plugins/pluginIds';
 
 function sanitizeChatMessageForPersist(message: ChatMessage): ChatMessage {
   const hideInternal = resolveTeamverBranding().hideAssistantThinkingDetails;
@@ -1254,11 +1255,23 @@ export async function getInstalledPlugin(
 ): Promise<InstalledPluginRecord | null> {
   const id = pluginId.trim();
   if (!id) return null;
+  const slideOnly = isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp;
+  if (slideOnly) {
+    const listed = (await listPluginsPage({ mode: 'deck', limit: 48, includeHidden: true }))
+      .plugins
+      .find((plugin) => plugin.id === id || normalizePluginApiId(plugin.id) === id);
+    if (listed) {
+      const visible = pluginsForSlideOnlyMvp([listed], { slideOnlyMvp: true });
+      if (visible.length === 0) return null;
+      if (!options.includeHidden && !isVisiblePlugin(listed)) return null;
+      return listed;
+    }
+  }
   try {
     const resp = await fetch(`/api/plugins/${encodeURIComponent(id)}`);
     if (!resp.ok) return null;
     const plugin = (await resp.json()) as InstalledPluginRecord;
-    if (isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp) {
+    if (slideOnly) {
       const visible = pluginsForSlideOnlyMvp([plugin], { slideOnlyMvp: true });
       if (visible.length === 0) return null;
     }
