@@ -244,7 +244,7 @@ function renderTeamverTemplateVisualSignature(template: ProjectTemplate | undefi
   return renderTeamverVisualSignatureBlock({
     heading: 'Selected template visual signature',
     title: template.name,
-    description: template.description,
+    ...(template.description ? { description: template.description } : {}),
     fileNames: files.map((file) => file.name),
     body: files
       .map((file) => `${file.name}\n${file.content.slice(0, 6000)}`)
