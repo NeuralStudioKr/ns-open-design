@@ -121,6 +121,7 @@ import {
   resolveSkillId,
   splitDerivedSkillId,
 } from './skills.js';
+import { loadPluginLocalSkill } from './plugins/local-skill.js';
 import {
   filterSkillsForSlideOnlyCatalog,
   parseSkillsCatalogSlideOnlyQuery,
@@ -5270,14 +5271,25 @@ export async function startServer({
     }
     const skills = await listAllSkillLikeEntries();
     const resolved = findSkillById(skills, id);
-    if (!resolved) {
-      return {
-        ok: false,
-        code: 'SKILL_NOT_FOUND',
-        message: 'skill not found',
-      };
+    if (resolved) {
+      return { ok: true, id: resolved.id };
     }
-    return { ok: true, id: resolved.id };
+    // Teamver slide-only embed pins project.skillId to an explicitly picked
+    // deck community plugin id (e.g. huashu-slides). Those plugins ship a
+    // local SKILL.md but do not mirror into design-templates/, so the lookup
+    // above misses them and POST /api/projects returned SKILL_NOT_FOUND.
+    const plugin = getInstalledPlugin(db, id);
+    if (plugin) {
+      const local = await loadPluginLocalSkill(plugin);
+      if (local) {
+        return { ok: true, id };
+      }
+    }
+    return {
+      ok: false,
+      code: 'SKILL_NOT_FOUND',
+      message: 'skill not found',
+    };
   }
 
   function userDesignSystemWorkspaceProjectId(id) {

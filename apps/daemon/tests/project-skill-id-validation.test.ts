@@ -40,6 +40,19 @@ describe('project skillId validation', () => {
   }
 
   describe('POST /api/projects', () => {
+    it('accepts an installed deck plugin id with a local SKILL.md', async () => {
+      const id = uniqueId('p');
+      const resp = await createProject({
+        id,
+        name: 'Plugin-local deck template',
+        skillId: 'example-simple-deck',
+      });
+      expect(resp.status).toBe(200);
+      projectsToClean.push(id);
+      const body = (await resp.json()) as { project: { skillId: string } };
+      expect(body.project.skillId).toBe('example-simple-deck');
+    });
+
     it('rejects unknown skillId with 400 SKILL_NOT_FOUND', async () => {
       const id = uniqueId('p');
       const resp = await createProject({
