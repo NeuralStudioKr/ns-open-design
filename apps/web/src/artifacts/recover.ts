@@ -14,6 +14,8 @@ const DOCTYPE_HTML_BLOCK_RE = /<!doctype\s+html[\s\S]*?<\/html\s*>/gi;
 const STARTS_WITH_DOCUMENT_RE = /^(?:<!doctype\s+html\b|<html\b)/i;
 const STARTS_WITH_BODY_RE = /^<body\b/i;
 const STARTS_WITH_SLIDE_SECTION_RE = /^<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)/i;
+const BODY_TAG_RE = /<body\b/gi;
+const SLIDE_SECTION_TAG_RE = /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)/gi;
 const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
 const HAS_BODY_CLOSE_RE = /<\/body\s*>/i;
 const HAS_MEDIA_CONTENT_RE = /<(?:img|video|audio|canvas|svg|iframe|picture|object|embed)\b/i;
@@ -129,6 +131,9 @@ export function recoverBestHtmlDocumentFromText(
   const candidates: string[] = [];
   const bodyFirst = normalizeBodyFirstHtmlDocument(text);
   if (bodyFirst) candidates.push(bodyFirst);
+  for (const bodyFirstTail of recoverBodyFirstHtmlDocumentsFromText(text)) {
+    candidates.push(bodyFirstTail);
+  }
   const fenced = recoverHtmlDocumentFromMarkdownFence(text);
   if (fenced) candidates.push(fenced);
   const standalone = recoverStandaloneHtmlDocument(text);
@@ -147,6 +152,31 @@ export function recoverBestHtmlDocumentFromText(
 
   if (candidates.length === 0) return null;
   return candidates.reduce((best, cur) => (cur.length > best.length ? cur : best));
+}
+
+function recoverBodyFirstHtmlDocumentsFromText(sourceText: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const addTail = (index: number) => {
+    if (index < 0 || seen.has(String(index))) return;
+    seen.add(String(index));
+    const normalized = normalizeBodyFirstHtmlDocument(sourceText.slice(index));
+    if (normalized) out.push(normalized);
+  };
+
+  BODY_TAG_RE.lastIndex = 0;
+  let bodyMatch: RegExpExecArray | null;
+  while ((bodyMatch = BODY_TAG_RE.exec(sourceText)) !== null) {
+    addTail(bodyMatch.index);
+  }
+
+  SLIDE_SECTION_TAG_RE.lastIndex = 0;
+  let sectionMatch: RegExpExecArray | null;
+  while ((sectionMatch = SLIDE_SECTION_TAG_RE.exec(sourceText)) !== null) {
+    addTail(sectionMatch.index);
+  }
+
+  return out;
 }
 
 /**

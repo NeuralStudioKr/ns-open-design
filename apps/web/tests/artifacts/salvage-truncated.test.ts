@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   normalizeBodyFirstHtmlDocument,
+  recoverBestHtmlDocumentFromText,
   salvageTruncatedHtmlDocument,
 } from "../../src/artifacts/recover";
 import { isIncompleteHtmlDocumentShell } from "../../src/artifacts/validate";
@@ -74,5 +75,19 @@ describe("salvageTruncatedHtmlDocument", () => {
         + '<section class="slide"><!-- SLOT: slide 2 content --></section>',
       ),
     ).toBeNull();
+  });
+
+  it("recovers body-first deck tails after prose or an artifact wrapper", () => {
+    const text =
+      '온보딩 발표 흐름에 맞춰 덱을 작성하고 있습니다.\n'
+      + '<artifact type="deck" identifier="deck">'
+      + '<body style="margin:0">'
+      + '<section class="slide"><h1>신입사원 온보딩</h1><p>첫날 목표와 팀 문화를 설명합니다.</p></section>'
+      + '<section class="slide"><h2>업무 프로세스</h2><p>스프린트와 PR 흐름을 안내합니다.</p></section>';
+    const recovered = recoverBestHtmlDocumentFromText(text);
+    expect(recovered).toMatch(/^<!doctype html><html lang="ko"><body/i);
+    expect(recovered).toContain('<h1>신입사원 온보딩</h1>');
+    expect(recovered).toMatch(/<\/body><\/html>$/);
+    expect(isIncompleteHtmlDocumentShell(recovered!)).toBe(false);
   });
 });

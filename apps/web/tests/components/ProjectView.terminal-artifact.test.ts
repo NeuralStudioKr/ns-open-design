@@ -218,4 +218,23 @@ describe("resolveTerminalArtifactToPersist", () => {
     const resolved = resolveTerminalArtifactToPersist(null, finalText, () => null);
     expect(resolved).toBeNull();
   });
+
+  it("salvages body-first tails when the parser missed the artifact body", () => {
+    const finalText =
+      "신입사원 온보딩 흐름에 맞춰 덱을 작성하고 있습니다.\n"
+      + '<artifact type="deck" identifier="deck">'
+      + '<section class="slide"><h1>신입사원 온보딩</h1><p>첫날 목표와 협업 문화를 설명합니다.</p></section>'
+      + '<section class="slide"><h2>업무 프로세스</h2><p>스프린트와 PR 규칙을 안내합니다.</p></section>';
+
+    const resolved = resolveTerminalArtifactToPersist(null, finalText, (sourceText) => {
+      const html = sourceText.includes('<section class="slide"')
+        ? '<!doctype html><html lang="ko"><body>'
+          + sourceText.slice(sourceText.indexOf('<section class="slide"'))
+          + '</body></html>'
+        : null;
+      return html ? { identifier: 'response', artifactType: 'deck', title: 'Response', html } : null;
+    });
+    expect(resolved?.html).toContain("<h1>신입사원 온보딩</h1>");
+    expect(resolved?.html).toContain("</html>");
+  });
 });
