@@ -151,6 +151,25 @@ describe("shouldFailSlideRunForMissingHtmlDeliverable", () => {
     ).toBe(true);
   });
 
+  it("does not fail a valid streamed artifact when the file-list refresh lags", () => {
+    const completeDeck =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>2026년 상반기 마케팅 전략</h1>'
+      + '<p>월간 KPI 대시보드 셋업 완료</p></section>'
+      + '</body></html>';
+
+    expect(
+      shouldFailSlideRunForMissingHtmlDeliverable({
+        slideOnlyMvp: true,
+        producedHtmlToOpen: null,
+        parsedArtifact: { html: completeDeck },
+        liveHtml: completeDeck,
+        finalText: `<artifact type="deck" identifier="deck">${completeDeck}</artifact>`,
+        terminalArtifactPersistFailed: false,
+      }),
+    ).toBe(false);
+  });
+
   it("fails plan-only prose with no artifact and no HTML file", () => {
     expect(
       shouldFailSlideRunForMissingHtmlDeliverable({

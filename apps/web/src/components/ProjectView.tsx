@@ -9180,6 +9180,13 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
     if (isIncompleteHtmlDocumentShell(artifactHtml)) return true;
     const validation = validateHtmlArtifact(artifactHtml);
     if (!validation.ok) return true;
+    // A complete, valid artifact streamed in this turn is enough evidence
+    // that the run produced a deliverable. In S3/registry-backed Teamver
+    // deployments the immediate file-list refresh can lag a successful
+    // persist by a beat; falling through to the prose-only heuristic would
+    // misread raw `<artifact>...html...</artifact>` text as "plan-only" and
+    // mark a successful deck as incomplete_output.
+    return false;
   }
 
   return shouldFailSlideRunWithoutHtmlDeliverable(options.finalText, {
