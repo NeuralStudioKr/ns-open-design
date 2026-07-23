@@ -34,7 +34,7 @@ import type { MediaExecutionPolicy } from '../api/media.js';
 import type { ProjectMetadata, ProjectTemplate } from '../api/projects.js';
 import { OFFICIAL_DESIGNER_PROMPT } from './official-system.js';
 import { DISCOVERY_AND_PHILOSOPHY } from './discovery.js';
-import { DECK_FRAMEWORK_DIRECTIVE, DECK_FRAMEWORK_DIRECTIVE_COMPACT } from './deck-framework.js';
+import { DECK_FRAMEWORK_DIRECTIVE, DECK_FRAMEWORK_DIRECTIVE_COMPACT, COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from './deck-framework.js';
 import { MEDIA_GENERATION_CONTRACT } from './media-contract.js';
 
 export const BASE_SYSTEM_PROMPT = OFFICIAL_DESIGNER_PROMPT;
@@ -466,6 +466,7 @@ export function composeSystemPrompt({
       designSystemTitle,
       metadata,
       template,
+      pluginBlock,
       audioVoiceOptions,
       audioVoiceOptionsError,
       locale,
@@ -729,7 +730,7 @@ const TEAMVER_API_SKILL_SEED_OVERRIDE = `
 
 The active skill mentions \`assets/template.html\`. **In this API run that file is not readable** (no Read/Bash tools). Ignore every instruction to copy, Read, or paste the seed template verbatim.
 
-Instead: take only the skill's visual intent (palette, type scale, layout names) from the skill body text, then emit the compact filled HTML deck from the API compact contract above. Prefer 6–8 slides with real copy. Never leave \`<!-- SLOT -->\` placeholders. Do not start by writing a \`<head>\` block; start the visible \`<body><section class="slide">\` content immediately.
+Instead: take only the skill's visual intent (palette, type scale, layout names) from the skill body text, then emit the compact filled HTML deck from the API compact contract above. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Never leave \`<!-- SLOT -->\` placeholders. Do not start by writing a \`<head>\` block; start the visible \`<body><section class="slide">\` content immediately.
 `;
 
 const API_MODE_OVERRIDE = (options: { teamverSlideOnly?: boolean } = {}) => `# API mode — no tools available (read first — overrides every rule below)
@@ -871,7 +872,7 @@ function renderMetadataBlock(
   }
   if (metadata.kind === 'deck') {
     lines.push(
-      `- **slideCount**: ${metadata.slideCount ?? (skipDiscoveryBrief ? '(unknown — choose 6-8 slides by default)' : '(unknown — ask only if the Active plugin / Plugin inputs block does not already include slideCount)')}`,
+      `- **slideCount**: ${metadata.slideCount ?? (skipDiscoveryBrief ? '(unknown — use 6-8 slides only if no Plugin inputs / user brief specifies a count)' : '(unknown — ask only if the Active plugin / Plugin inputs block does not already include slideCount)')}`,
     );
     lines.push(
       `- **speakerNotes**: ${typeof metadata.speakerNotes === 'boolean' ? metadata.speakerNotes : (skipDiscoveryBrief ? '(unknown — omit unless requested)' : '(unknown — ask: include speaker notes?)')}`,
@@ -1180,7 +1181,7 @@ function deriveApiModePreflight(skillBody: string): string {
     + 'Do NOT Read or paste `assets/template.html` / `references/layouts.md` — '
     + 'no filesystem tools are available in this run. Infer layout intent from '
     + 'the skill body text only, then emit ONE compact filled HTML deck artifact '
-    + 'in this same response (prefer 6–8 slides, real copy in every '
+    + 'in this same response (' + COMPACT_DECK_SLIDE_COUNT_GUIDANCE.toLowerCase() + ', real copy in every '
     + '`<section class="slide">`, no SLOT comments, no verbatim skeleton paste, '
     + 'no `<head>`/`<style>`-first output).'
   );
@@ -1243,10 +1244,10 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — u
 **How to stream the deck (non-negotiable on turn 2+):**
 1. Open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
 2. First bytes inside artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
-3. Write 6–8 filled slides. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
+3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
 4. Close with \`</body></html></artifact>\` in this same turn.
 
-**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, or announcing completion without 6+ filled slides.
+**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, or announcing completion without the requested slide count (minimum 6 when unspecified).
 
 If you already started \`<head>\` by mistake, **abandon that output** and restart the artifact with \`<body><section class="slide">\` content immediately.`;
 
@@ -1256,6 +1257,7 @@ When the user's message starts with \`[form answers — discovery]\`, treat ever
 
 - **audience** — vocabulary, depth, and examples must match that audience (e.g. 신입사원 vs 경영진).
 - **tone** — visual and copy style: \`professional\` = restrained palette and formal copy; \`tech_modern\` = high contrast, crisp sans, product-demo feel; \`friendly\` = warm accents and plain language.
+- **scale** / **slideCount** — emit exactly the requested number of slides (parse ranges like "8~10장" or "10-15 pages" to the upper bound when a single target is needed).
 - **must_include** — each requested topic gets at least one dedicated slide or clearly labeled section; do not omit user-named items.
 
 If a field was skipped, choose a sensible default and proceed — do not emit another discovery form. Preserve the active template/design-system feel, and vary slide layouts per the compact inline vocabulary (split, stat, timeline, quote, column); do not output 6 identical white boxes.`;
@@ -1271,10 +1273,10 @@ Your successful response is **exactly one** streaming artifact in this same turn
 **How to stream the deck (non-negotiable):**
 1. Open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
 2. First bytes inside artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
-3. Write 6–8 filled slides. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
+3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
 4. Close with \`</body></html></artifact>\` in this same turn.
 
-**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing completion without 6+ filled slides, or repeating the same layout/background/composition on every slide. Preserve template/design-system feel and vary layouts per the compact inline layout vocabulary.`;
+**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing completion without the requested slide count (minimum 6 when unspecified), or repeating the same layout/background/composition on every slide. Preserve template/design-system feel and vary layouts per the compact inline layout vocabulary.`;
 
 /**
  * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.
@@ -1288,6 +1290,7 @@ export function composeTeamverSlideApiPrompt({
   designSystemTitle,
   metadata,
   template,
+  pluginBlock,
   audioVoiceOptions,
   audioVoiceOptionsError,
   locale,
@@ -1301,6 +1304,7 @@ export function composeTeamverSlideApiPrompt({
   | 'designSystemTitle'
   | 'metadata'
   | 'template'
+  | 'pluginBlock'
   | 'audioVoiceOptions'
   | 'audioVoiceOptionsError'
   | 'locale'
@@ -1349,6 +1353,10 @@ export function composeTeamverSlideApiPrompt({
     { skipDiscoveryBrief: directDeckGeneration },
   );
   if (metaBlock) parts.push(metaBlock);
+
+  if (pluginBlock?.trim()) {
+    parts.push(pluginBlock.trim());
+  }
 
   const templateVisualSignature = renderTeamverTemplateVisualSignature(template);
   if (templateVisualSignature) {

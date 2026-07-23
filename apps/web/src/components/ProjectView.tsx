@@ -84,8 +84,10 @@ import {
 import { useProjectFileEvents, type ProjectEvent } from '../providers/project-events';
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
+  COMPACT_DECK_SLIDE_COUNT_GUIDANCE,
   composeSystemPrompt,
   repairArtifactDocumentHead,
+  renderPluginBlock,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
@@ -769,7 +771,8 @@ function slideAttachmentDeliverableInstruction(attachments: ChatAttachment[]): s
     SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER,
     'The attached/uploaded files are reference material for this slide deck request.',
     'Read and use them as source content, but do not treat any attachment as the final deliverable.',
-    'Emit ONE complete Teamver compact deck artifact (`<artifact type="deck">`) with 6–8 filled `<section class="slide">` blocks, body-first inline styles, and no `<head>`, nav, or print scaffolding.',
+    'Emit ONE complete Teamver compact deck artifact (`<artifact type="deck">`) with one filled `<section class="slide">` per requested slide count '
+    + `(${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), body-first inline styles, and no \`<head>\`, nav, or print scaffolding.`,
     'Do not finish with prose only, do not stop after an outline, and do not stop before `</artifact>`.',
     fileList,
   ].filter(Boolean).join('\n');
@@ -3232,6 +3235,7 @@ export function ProjectView({
     designSystemIdOverride?: string | null,
     skillIdOverride?: string | null,
     pluginIdForLocalSkill?: string | null,
+    pluginBlock?: string | null,
   ): Promise<string> => {
     let skillBody: string | undefined;
     let skillName: string | undefined;
@@ -3350,6 +3354,7 @@ export function ProjectView({
       memoryBody,
       metadata: project.metadata,
       template,
+      pluginBlock: pluginBlock ?? undefined,
       audioVoiceOptions,
       audioVoiceOptionsError: audioVoiceOptionsLookupError,
       streamFormat: config.mode === 'api' ? 'plain' : undefined,
@@ -6422,15 +6427,21 @@ export function ProjectView({
           (Array.isArray(meta?.context?.pluginIds) ? meta.context.pluginIds[0] : null);
         let pluginIdForLocalSkill =
           (Array.isArray(meta?.context?.pluginIds) ? meta.context.pluginIds[0] : null) ?? null;
-        if (!pluginIdForLocalSkill && project.appliedPluginSnapshotId) {
+        let pluginBlock: string | undefined;
+        if (meta?.appliedPluginSnapshot) {
+          pluginBlock = renderPluginBlock(meta.appliedPluginSnapshot);
+          pluginIdForLocalSkill = pluginIdForLocalSkill ?? meta.appliedPluginSnapshot.pluginId;
+        } else if (project.appliedPluginSnapshotId) {
           const snap = await fetchAppliedPluginSnapshot(project.appliedPluginSnapshotId);
-          pluginIdForLocalSkill = snap?.pluginId ?? null;
+          pluginIdForLocalSkill = pluginIdForLocalSkill ?? snap?.pluginId ?? null;
+          if (snap) pluginBlock = renderPluginBlock(snap);
         }
         const systemPrompt = await composedSystemPrompt(
           runSessionMode,
           effectiveDesignSystemId,
           effectiveSkillId,
           pluginIdForLocalSkill,
+          pluginBlock ?? null,
         );
         const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);
         const apiHistory = await historyWithApiAttachmentContext(

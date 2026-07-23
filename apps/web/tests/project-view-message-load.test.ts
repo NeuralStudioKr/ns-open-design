@@ -143,7 +143,7 @@ describe("ProjectView message loading", () => {
 
     const callStart = source.indexOf("const effectiveSkillId =\n          (Array.isArray(meta?.skillIds)");
     expect(callStart).toBeGreaterThan(0);
-    const callBlock = source.slice(callStart, callStart + 700);
+    const callBlock = source.slice(callStart, callStart + 1100);
     expect(callBlock).toContain("meta.skillIds[0]");
     expect(callBlock).toContain("meta?.context?.pluginIds");
     expect(callBlock).toContain("pluginIdForLocalSkill");

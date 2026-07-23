@@ -30,13 +30,14 @@ describe("canvasSlideLaunch", () => {
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/presentation deck/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/source|not.*deliverable|do NOT use/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/artifact type="deck"|compact deck/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/slideCount|requested slide count/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).not.toMatch(/simple-deck|1920|nav, and print/i);
     expect(canvasCreateSlidesPluginInputs("canvas", "Template")).toMatchObject({
       topic: "canvas",
       designSystem: "Template",
-      slideCount: "6-8 pages",
       sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
     });
+    expect(canvasCreateSlidesPluginInputs("canvas", "Template")).not.toHaveProperty("slideCount");
   });
 
   it("builds a compact Canvas source brief for plugin inputs", () => {

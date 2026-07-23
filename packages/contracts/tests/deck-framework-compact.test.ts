@@ -9,7 +9,8 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
   it('embeds inline layout vocabulary and forbids head-first output', () => {
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('API compact contract');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY);
-    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('6–8 slides');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('Plugin inputs');
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('use 6–8 slides only when none is specified');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('do not repeat the same padding/background/composition');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('template/design-system feel');
     expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT).toContain('copy these two identical white slides literally');

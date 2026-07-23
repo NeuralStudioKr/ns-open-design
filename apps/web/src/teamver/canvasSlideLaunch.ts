@@ -1,4 +1,4 @@
-import { defaultScenarioPluginIdForKind, type InstalledPluginRecord } from "@open-design/contracts";
+import { defaultScenarioPluginIdForKind, COMPACT_DECK_SLIDE_COUNT_GUIDANCE, type InstalledPluginRecord } from "@open-design/contracts";
 import type { TeamverDriveImportAsset } from "./importDriveAssets";
 import type { TeamverDriveLaunchIntent } from "./driveLaunchHandoff";
 import type { TeamverCanvasLaunchHandoff } from "./canvasLaunchHandoff";
@@ -20,7 +20,8 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "Preserve the source structure, headings, callouts, tables, images, and smart blocks " +
   "(FAQ/KPI/timeline); prefer clear slide sectioning over literal page layout. " +
   "Emit ONE complete Teamver compact deck in this same response: " +
-  "`<artifact type=\"deck\">` with 6–8 filled `<section class=\"slide\">` blocks, " +
+  "`<artifact type=\"deck\">` with one filled `<section class=\"slide\">` per requested slide count " +
+  `(see Plugin inputs slideCount / user brief; ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), ` +
   "body-first inline styles, and no `<head>`, nav, or print scaffolding. " +
   "Do not finish with prose only and do not stop before `</artifact>`.";
 
@@ -140,7 +141,6 @@ export function canvasCreateSlidesPluginInputs(
     deckType: "presentation from canvas",
     topic,
     audience: "stakeholders",
-    slideCount: "6-8 pages",
     speakerNotes: "no speaker notes",
     designSystem: (templateTitle ?? "").trim() || "the active project design system",
     ...(brief ? { sourceBrief: brief } : {}),

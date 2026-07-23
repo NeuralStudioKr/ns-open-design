@@ -309,7 +309,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('# OD core directives');
       expect(prompt).not.toContain('Artifact handoff');
       expect(prompt).not.toContain('Read `assets/template.html`');
-      expect(prompt.length).toBeLessThan(18_000);
+      expect(prompt.length).toBeLessThan(19_000);
     });
 
     it('requires body-first streaming and forbids head-only shells', () => {
@@ -346,7 +346,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('<artifact type="deck" identifier="deck">');
       expect(prompt).toContain('Never `type="text/html"`');
       expect(prompt).toContain('choose reasonable defaults and proceed without asking a discovery form');
-      expect(prompt).toContain('choose 6-8 slides by default');
+      expect(prompt).toContain('use 6-8 slides only if no Plugin inputs / user brief specifies a count');
       expect(prompt).toContain('omit unless requested');
       expect(prompt).not.toContain('unified streaming rule');
       expect(prompt).not.toContain('Turn 1 (first user message, no prior form answers)');

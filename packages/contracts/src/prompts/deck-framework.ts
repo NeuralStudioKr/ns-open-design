@@ -523,8 +523,12 @@ Use a 56–72px blockquote/principle sentence with small attribution.
 **Closing** — recap CTA:
 \`<section class="slide" style="min-height:100vh;padding:96px 88px;box-sizing:border-box;background:#1e293b;color:#fff;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 20px;font:700 56px/1.1 sans-serif;max-width:16ch">다음 단계</h2><p style="margin:0;font:26px/1.5 sans-serif;max-width:40rem">행동을 유도하는 마무리 한두 문장.</p></section>\`
 
-Quality bar: 6–8 slides, each with a distinct layout role (cover → split/body/stat/timeline/quote/column mixes → closing). Bind active design-system colors into these inline styles when provided. Do not use the example colors literally when an active design system or selected template supplies a stronger visual direction.
+Quality bar: match the requested slide count (see slide-count rule below); each slide needs a distinct layout role (cover → split/body/stat/timeline/quote/column mixes → closing). Bind active design-system colors into these inline styles when provided. Do not use the example colors literally when an active design system or selected template supplies a stronger visual direction.
 `;
+
+/** Compact API decks: honor user/plugin/brief counts; 6–8 is only the unspecified default. */
+export const COMPACT_DECK_SLIDE_COUNT_GUIDANCE =
+  'Honor slideCount (Project metadata / Plugin inputs), quick-brief `scale`, or an explicit user count; use 6–8 slides only when none is specified.';
 
 export const DECK_FRAMEWORK_DIRECTIVE_COMPACT = `# Slide deck — API compact contract (overrides the long skeleton copy workflow)
 
@@ -532,14 +536,14 @@ You are in API mode. **Do NOT paste or recreate a large framework skeleton.** Do
 
 When the brief is ready and this is a deck-delivery turn, emit ONE \`<artifact type="deck" identifier="deck">\` whose body is a complete \`<!doctype html>…</html>\` document **in this same response**. The artifact type is always \`deck\` in Teamver; do not use \`text/html\`, \`html\`, \`prototype\`, or \`live-artifact\` as the artifact type. For Teamver API stability, prefer the no-head static shape below: start \`<body>\` immediately and write the visible slides first.
 
-Required wireframe only (structural — **do not** copy these two identical white slides literally; use the layout vocabulary below for 6–8 varied slides):
+Required wireframe only (structural — **do not** copy these two identical white slides literally; use the layout vocabulary below for varied slides):
 
 \`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0;font:24px/1.5 system-ui,sans-serif"><section class="slide" style="min-height:100vh;padding:80px 88px;box-sizing:border-box;background:#0f172a;color:#f8fafc;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px;font:700 64px/1.05 sans-serif">실제 제목</h1><p style="margin:0;font:400 26px/1.45 sans-serif;max-width:48rem">실제 본문.</p></section><section class="slide" style="min-height:100vh;padding:80px 88px;box-sizing:border-box;background:#fff;color:#111;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px;font:700 52px/1.1 sans-serif">실제 제목</h1><ul style="margin:0;padding-left:1.35rem;font:26px/1.55 sans-serif"><li>실제 불릿</li></ul></section></body></html></artifact>\`
 
 Rules:
 1. On deck-delivery turns, start the artifact as soon as you can — at most one short sentence of prose before it. On quick-brief/question-form turns, do not emit an artifact.
 2. Every \`<section class="slide">\` must contain real text (title + body or bullets). Empty sections or \`<!-- SLOT -->\` comments are failures.
-3. Prefer 6–8 slides over a giant framework. Do not add \`<head>\`, \`<style>\`, keyboard nav, transform scale scripts, or print CSS in API mode.
+3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete compact deck over a giant framework. Do not add \`<head>\`, \`<style>\`, keyboard nav, transform scale scripts, or print CSS in API mode.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. A short static deck is better than a beautiful truncated \`<head>\`.
 5. Vary slide layouts using the inline layout vocabulary below — do not repeat the same padding/background/composition on every slide.
 6. Preserve the selected template/design-system feel: palette, typography mood, density, accent treatment, and slide rhythm must be recognizable even in compact inline HTML.
