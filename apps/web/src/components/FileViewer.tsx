@@ -5712,7 +5712,10 @@ function HtmlViewer({
   );
   const needsDeckHostViewportFit = compactApiStackedDeck || frameworkDeckPreview;
   const deckPreviewUsesFixedStage = compactApiStackedDeck;
-  const deckPreviewFitScale = deckPreviewUsesFixedStage ? 1 : overlayPreviewScale;
+  // Host toolbar zoom is CSS transform-only. Posting overlayPreviewScale into the
+  // deck bridge refits slide layout (vw/vh, letterbox math) and makes elements
+  // appear to resize with zoom — apply to compact + framework decks alike.
+  const deckPreviewFitScale = needsDeckHostViewportFit ? 1 : overlayPreviewScale;
   const deckPreviewPanActive = deckPreviewUsesFixedStage
     && mode === 'preview'
     && !drawOverlayOpen
@@ -5720,7 +5723,7 @@ function HtmlViewer({
     && !manualEditMode
     && !inspectMode
     && !slideOnlyMvp;
-  const deckPreviewFitOptions = deckPreviewUsesFixedStage
+  const deckPreviewFitOptions = needsDeckHostViewportFit
     ? FIXED_STAGE_DECK_FIT_OPTIONS
     : undefined;
   const onDeckPreviewWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {

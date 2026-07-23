@@ -55,6 +55,80 @@ function completedMessage(content: string): ChatMessage {
 }
 
 describe('AssistantMessage Teamver streaming visibility', () => {
+  it('shows slide-edit progress copy while a deck-patch artifact streams', () => {
+    render(
+      <AssistantMessage
+        message={streamingMessage(
+          '<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="0"><h1>Hi',
+        )}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Applying slide updates. Please wait a moment.')).toBeTruthy();
+    expect(screen.queryByText('Creating the slide deck now. Please wait a moment.')).toBeNull();
+    expect(screen.queryByText('슬라이드 초안을 작성 중입니다. 잠시만 기다려 주세요.')).toBeNull();
+  });
+
+  it('keeps slide-edit completion copy after an in-place deck-patch turn without producedFiles', () => {
+    render(
+      <AssistantMessage
+        message={{
+          ...completedMessage(
+            '<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="0"><h1>Hi</h1></section></artifact>',
+          ),
+          producedFiles: [],
+          preTurnFileNames: ['deck.html'],
+        }}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Slide updates have been applied.')).toBeTruthy();
+    expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
+  });
+
+  it('does not show slide-edit completion copy when a deck-patch turn failed', () => {
+    render(
+      <AssistantMessage
+        message={{
+          ...completedMessage(
+            '<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="0"><h1>Hi</h1></section></artifact>',
+          ),
+          runStatus: 'failed',
+          producedFiles: [],
+          preTurnFileNames: ['deck.html'],
+        }}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.queryByText('Slide updates have been applied.')).toBeNull();
+    expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
+  });
+
+  it('keeps deck-creation copy when deck-patch appears only in a non-type attribute', () => {
+    render(
+      <AssistantMessage
+        message={streamingMessage(
+          '<artifact type="deck" identifier="deck-patch" title="slide-patch draft"><!doctype html><html><body><section class="slide"><h1>Draft',
+        )}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Creating the slide deck now. Please wait a moment.')).toBeTruthy();
+    expect(screen.queryByText('Applying slide updates. Please wait a moment.')).toBeNull();
+  });
+
   it('shows live artifact progress even when raw code/thinking details are hidden', () => {
     render(
       <AssistantMessage

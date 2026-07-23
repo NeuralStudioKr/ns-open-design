@@ -9,6 +9,17 @@ function readSource(relativePath: string): string {
 }
 
 describe("FileViewer streaming slide preview", () => {
+  it("keeps deck fit scale at 1 for compact and framework decks so host zoom does not reflow", () => {
+    const source = readSource("src/components/FileViewer.tsx");
+    expect(source).toContain("const needsDeckHostViewportFit = compactApiStackedDeck || frameworkDeckPreview");
+    expect(source).toMatch(
+      /const deckPreviewFitScale = needsDeckHostViewportFit \? 1 : overlayPreviewScale/,
+    );
+    expect(source).toMatch(
+      /const deckPreviewFitOptions = needsDeckHostViewportFit[\s\S]*FIXED_STAGE_DECK_FIT_OPTIONS/,
+    );
+  });
+
   it("gates live iframe updates on repaired html stability during streaming", () => {
     const source = readSource("src/components/FileViewer.tsx");
 

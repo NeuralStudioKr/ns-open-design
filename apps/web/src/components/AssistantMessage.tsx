@@ -49,6 +49,7 @@ import {
 import { useI18n } from "../i18n";
 import { parseSubmittedAnswers } from "./QuestionForm";
 import { splitStreamingArtifact, stripAllClosedArtifacts, stripRecoveredHtmlFallbackForDisplay } from "../artifacts/strip";
+import { isDeckPatchArtifactType } from "../artifacts/deck-patch";
 import {
   getPluginFolderCandidates,
   type PluginFolderCandidate,
@@ -86,6 +87,43 @@ type TranslateFn = (
   key: keyof Dict,
   vars?: Record<string, string | number>
 ) => string;
+
+function messageIndicatesDeckPatchArtifact(
+  content: string,
+  liveArtifactType?: string | null,
+): boolean {
+  if (isDeckPatchArtifactType(liveArtifactType)) return true;
+  if (/<artifact\b[^>]*\stype=["'](?:deck-patch|slide-patch)["']/i.test(content)) return true;
+  const openIdx = content.search(/<artifact\b/i);
+  if (openIdx === -1) return false;
+  const gt = content.indexOf(">", openIdx);
+  // Opening tag still streaming — only match an in-progress `type=` value, not
+  // unrelated attrs like identifier="deck-patch" on a full-deck artifact.
+  const partialTag = gt === -1 ? content.slice(openIdx) : content.slice(openIdx, gt + 1);
+  return /\btype\s*=\s*["']?(?:deck-patch|slide-patch)\b/i.test(partialTag);
+}
+
+function teamverLiveArtifactLeadCopy(locale: string, deckPatch: boolean): string {
+  if (locale.startsWith("ko")) {
+    return deckPatch
+      ? "슬라이드 수정을 반영하고 있습니다. 잠시만 기다려 주세요."
+      : "슬라이드 초안을 작성 중입니다. 잠시만 기다려 주세요.";
+  }
+  return deckPatch
+    ? "Applying slide updates. Please wait a moment."
+    : "Creating the slide deck now. Please wait a moment.";
+}
+
+function teamverCompletedArtifactLeadCopy(locale: string, deckPatch: boolean): string {
+  if (locale.startsWith("ko")) {
+    return deckPatch
+      ? "슬라이드 수정이 반영되었습니다."
+      : "슬라이드 초안이 생성되었습니다.";
+  }
+  return deckPatch
+    ? "Slide updates have been applied."
+    : "The slide deck draft is ready.";
+}
 
 export type QuestionFormOpenRequest = {
   form: QuestionForm;
@@ -729,21 +767,18 @@ function AssistantMessageImpl({
     || (!(hideAssistantThinkingDetails && streaming) && fileOps.length > 0)
     || streamingTodoProgress != null;
   const preparing = streaming && !hasContent;
+  const isDeckPatchArtifactTurn = messageIndicatesDeckPatchArtifact(message.content);
+  const teamverCompletedArtifactLead = teamverCompletedArtifactLeadCopy(
+    locale,
+    isDeckPatchArtifactTurn,
+  );
   const shouldShowTeamverCompletedArtifactLead =
     !streaming
+    && runSucceeded
     && !hasVisibleAssistantTextBlocks
     && (slideOnlyMvp || teamverEmbedEnabled)
     && /<artifact\b/i.test(message.content)
-    && displayedProduced.length > 0;
-  const isDeckPatchArtifactTurn =
-    /<artifact\b[^>]*\stype=["']deck-patch["']/i.test(message.content);
-  const teamverCompletedArtifactLead = locale.startsWith("ko")
-    ? isDeckPatchArtifactTurn
-      ? "슬라이드 수정이 반영되었습니다."
-      : "슬라이드 초안이 생성되었습니다."
-    : isDeckPatchArtifactTurn
-      ? "Slide updates have been applied."
-      : "The slide deck draft is ready.";
+    && (displayedProduced.length > 0 || isDeckPatchArtifactTurn);
 
   // Index of the trailing text block — the streaming caret rides the end of
   // the last prose block so it tracks the final character as tokens arrive.
@@ -2205,9 +2240,10 @@ function ProseBlock({
   );
   const shouldShowTeamverLiveArtifactLead =
     !!live && renderable.length === 0 && (slideOnlyMvp || teamverEmbedEnabled);
-  const teamverLiveArtifactLead = locale.startsWith("ko")
-    ? "슬라이드 초안을 작성 중입니다. 잠시만 기다려 주세요."
-    : "Creating the slide deck now. Please wait a moment.";
+  const teamverLiveArtifactLead = teamverLiveArtifactLeadCopy(
+    locale,
+    messageIndicatesDeckPatchArtifact(text, live?.artifactType),
+  );
   if (renderable.length === 0 && !live && !hadOpenForm) return null;
   return (
     <div className="prose-block" data-stream-cursor={showStreamCursor && !live ? "true" : undefined}>
