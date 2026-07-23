@@ -13,10 +13,10 @@ describe("driveImportedToChatAttachments", () => {
       },
       {
         assetId: "AST-2",
-        path: "refs/data.csv",
-        name: "data.csv",
+        path: "refs/drive/market research notes.md",
+        name: "market research notes.md",
         sizeBytes: 88,
-        mimeType: "text/csv",
+        mimeType: "text/markdown",
       },
     ]);
 
@@ -29,8 +29,8 @@ describe("driveImportedToChatAttachments", () => {
         source: { type: "teamver-drive", assetId: "AST-1" },
       },
       {
-        path: "refs/data.csv",
-        name: "data.csv",
+        path: "refs/drive/market research notes.md",
+        name: "market research notes.md",
         kind: "file",
         size: 88,
         source: { type: "teamver-drive", assetId: "AST-2" },

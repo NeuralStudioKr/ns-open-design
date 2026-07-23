@@ -76,6 +76,25 @@ describe('collectSlideReferencePathsFromMessages', () => {
       'refs/uploads/brief.pdf',
     ]);
   });
+
+  it('preserves Drive reference paths with spaces when only hidden text is available', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content:
+          '첨부한 발표 대본 참고해서 슬라이드 만들어줘\n\n[Deliverable instruction]\n'
+          + 'Reference files to read/use:\n'
+          + '- refs/drive/mrvw6xvt-앤트릴 현상 발표 대본.md',
+        createdAt: 1,
+      },
+      assistantMessage('a1'),
+    ];
+
+    expect(collectSlideReferencePathsFromMessages(messages)).toEqual([
+      'refs/drive/mrvw6xvt-앤트릴 현상 발표 대본.md',
+    ]);
+  });
 });
 
 describe('syncAutoContinueCountFromMessages', () => {

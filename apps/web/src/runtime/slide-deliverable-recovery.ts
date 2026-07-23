@@ -57,7 +57,17 @@ export function collectSlideReferencePathsFromMessages(
       add(attachment.path);
     }
     const content = message.content ?? '';
-    for (const match of content.matchAll(/\brefs\/[^\s`'")\]]+/g)) {
+    const looseRefLines: string[] = [];
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      const lineMatch = /^[-*]\s+(refs\/.+)$/.exec(trimmed);
+      if (lineMatch) {
+        add(lineMatch[1]);
+      } else {
+        looseRefLines.push(line);
+      }
+    }
+    for (const match of looseRefLines.join('\n').matchAll(/\brefs\/[^\s`'")\]]+/g)) {
       add(match[0]);
     }
     if (out.length >= max) break;
