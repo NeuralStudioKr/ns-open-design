@@ -7,6 +7,7 @@ import {
 } from '../../src/runtime/resume';
 import {
   canFireAutoContinueForConversation,
+  collectSlideReferencePathsFromMessages,
   countAutoContinueAttemptsInConversation,
   findIncompleteSlideAssistantForRecovery,
   syncAutoContinueCountFromMessages,
@@ -49,6 +50,31 @@ describe('countAutoContinueAttemptsInConversation', () => {
       { id: 'a2', role: 'assistant', content: 'still incomplete', createdAt: 3 },
     ];
     expect(countAutoContinueAttemptsInConversation(messages)).toBe(1);
+  });
+});
+
+describe('collectSlideReferencePathsFromMessages', () => {
+  it('collects uploaded reference paths from attachments and hidden prompt text', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content:
+          '발표 대본 참고해서 ppt 디자인 해줘\n\n[Deliverable instruction]\n'
+          + 'Reference files to read/use:\n- refs/drive/course-script.md',
+        createdAt: 1,
+        attachments: [
+          { path: 'refs/drive/course-script.md', name: 'course-script.md', kind: 'file' },
+          { path: 'refs/uploads/brief.pdf', name: 'brief.pdf', kind: 'file' },
+        ],
+      },
+      assistantMessage('a1'),
+    ];
+
+    expect(collectSlideReferencePathsFromMessages(messages)).toEqual([
+      'refs/drive/course-script.md',
+      'refs/uploads/brief.pdf',
+    ]);
   });
 });
 

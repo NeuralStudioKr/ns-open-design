@@ -78,6 +78,21 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('슬라이드 구성');
   });
 
+  it('threads original reference files into the auto-continue prompt', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      referenceFiles: [
+        'refs/drive/course-script.md',
+        'refs/drive/course-script.md',
+        'refs/uploads/brief.pdf',
+      ],
+    });
+    expect(prompt).toContain('첨부된 참고 파일');
+    expect(prompt).toContain('- refs/drive/course-script.md');
+    expect(prompt).toContain('- refs/uploads/brief.pdf');
+    expect(prompt.match(/refs\/drive\/course-script\.md/g)).toHaveLength(1);
+  });
+
   it('omits head-only partial shells from every automatic-continue attempt', () => {
     const shell = '\n<!doctype html>\n<html lang="ko">\n<head>';
     const first = buildAutoContinueIncompleteOutputPrompt({

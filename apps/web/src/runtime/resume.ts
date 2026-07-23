@@ -90,6 +90,7 @@ export type AutoContinuePromptContext = {
   attempt: number;
   partialHtml?: string | null;
   planOutline?: string | null;
+  referenceFiles?: readonly string[];
   /** Set when the prior turn ended with stop_reason=max_tokens. */
   truncatedByMaxTokens?: boolean;
 };
@@ -132,6 +133,16 @@ export function buildAutoContinueIncompleteOutputPrompt(
     parts.push(
       '\n\n[이 대화의 직전 응답 슬라이드 목차/방향 — 그대로 사용하고 다시 설명하지 마세요:]\n'
         + outline.slice(0, AUTO_CONTINUE_MAX_PLAN_OUTLINE_EXCERPT),
+    );
+  }
+
+  const referenceFiles = Array.from(
+    new Set((context.referenceFiles ?? []).map((path) => path.trim()).filter(Boolean)),
+  ).slice(0, 12);
+  if (referenceFiles.length > 0) {
+    parts.push(
+      '\n\n[이 대화에서 첨부된 참고 파일 — 필요하면 읽고 반영하되, 최종 산출물로 취급하지 마세요:]\n'
+        + referenceFiles.map((path) => `- ${path}`).join('\n'),
     );
   }
 

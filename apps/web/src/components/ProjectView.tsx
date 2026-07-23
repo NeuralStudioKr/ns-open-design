@@ -145,6 +145,7 @@ import {
 import {
   attemptEmergencySlideDeckRecovery,
   canFireAutoContinueForConversation,
+  collectSlideReferencePathsFromMessages,
   findIncompleteSlideAssistantForRecovery,
   syncAutoContinueCountFromMessages,
   verifySlideProducedHtmlDeliverable,
@@ -2246,6 +2247,7 @@ export function ProjectView({
                 extractAutoContinueContextFromAssistant(incompleteAssistant);
               const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
                 attempt,
+                referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
                 ...autoContinueCtx,
               });
               const started = sendNow(
@@ -4910,6 +4912,7 @@ export function ProjectView({
               extractAutoContinueContextFromAssistant(incompleteAssistant);
             const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
               attempt,
+              referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
               ...autoContinueCtx,
             });
             const started = sendNow(
@@ -5728,6 +5731,11 @@ export function ProjectView({
                   const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
                     attempt,
                     truncatedByMaxTokens: runStopReason === 'max_tokens',
+                    referenceFiles: collectSlideReferencePathsFromMessages(
+                      retryTarget
+                        ? [...historyBase, latestAssistantMsg]
+                        : [...historyBase, userMsg, latestAssistantMsg],
+                    ),
                     ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
                       partialHtml: partialHtmlForAutoContinue,
                       planOutline: finalText,

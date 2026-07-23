@@ -38,6 +38,34 @@ export function countAutoContinueAttemptsInConversation(
   }, 0);
 }
 
+export function collectSlideReferencePathsFromMessages(
+  messages: readonly ChatMessage[],
+  max = 12,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (value: string | null | undefined) => {
+    const path = (value ?? '').trim();
+    if (!path || seen.has(path)) return;
+    seen.add(path);
+    out.push(path);
+  };
+
+  for (const message of messages) {
+    if (message.role !== 'user') continue;
+    for (const attachment of message.attachments ?? []) {
+      add(attachment.path);
+    }
+    const content = message.content ?? '';
+    for (const match of content.matchAll(/\brefs\/[^\s`'")\]]+/g)) {
+      add(match[0]);
+    }
+    if (out.length >= max) break;
+  }
+
+  return out.slice(0, max);
+}
+
 /** Sync the in-memory cap tracker from persisted conversation history. */
 export function syncAutoContinueCountFromMessages(
   counts: Map<string, number>,
