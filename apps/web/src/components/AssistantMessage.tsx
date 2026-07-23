@@ -735,9 +735,15 @@ function AssistantMessageImpl({
     && (slideOnlyMvp || teamverEmbedEnabled)
     && /<artifact\b/i.test(message.content)
     && displayedProduced.length > 0;
+  const isDeckPatchArtifactTurn =
+    /<artifact\b[^>]*\stype=["']deck-patch["']/i.test(message.content);
   const teamverCompletedArtifactLead = locale.startsWith("ko")
-    ? "슬라이드 초안이 생성되었습니다."
-    : "The slide deck draft is ready.";
+    ? isDeckPatchArtifactTurn
+      ? "슬라이드 수정이 반영되었습니다."
+      : "슬라이드 초안이 생성되었습니다."
+    : isDeckPatchArtifactTurn
+      ? "Slide updates have been applied."
+      : "The slide deck draft is ready.";
 
   // Index of the trailing text block — the streaming caret rides the end of
   // the last prose block so it tracks the final character as tokens arrive.

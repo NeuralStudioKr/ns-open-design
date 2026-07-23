@@ -197,7 +197,13 @@ function artifactExtensionForAttrs(attrs: Record<string, string>): '.html' | '.j
 
 function isStreamingCodeArtifactType(type: string): boolean {
   if (!type) return true;
-  return type === 'deck' || /html|text\//i.test(type);
+  const normalized = type.trim().toLowerCase();
+  return (
+    normalized === 'deck'
+    || normalized === 'deck-patch'
+    || normalized === 'slide-patch'
+    || /html|text\//i.test(type)
+  );
 }
 
 // Mirrors ProjectView's artifactBaseNameFor: the slug the persist path derives

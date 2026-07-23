@@ -139,4 +139,20 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.getByText('The slide deck draft is ready.')).toBeTruthy();
     expect(screen.queryByText(/<!doctype html/)).toBeNull();
   });
+
+  it('uses slide-edit completion copy after a deck-patch artifact turn', () => {
+    render(
+      <AssistantMessage
+        message={completedMessage(
+          '<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="0"><h1>Hi</h1></section></artifact>',
+        )}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Slide updates have been applied.')).toBeTruthy();
+    expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
+  });
 });

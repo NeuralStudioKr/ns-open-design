@@ -15,6 +15,8 @@ import {
   overlayBoundsFromSnapshot,
   queuedSlideNavTarget,
   removeAttachedComment,
+  resolveCommentEditPersistTargetFileName,
+  stripUserVisibleUserMessageText,
   targetFromSnapshot,
 } from '../src/comments';
 import type { PreviewCommentSnapshot } from '../src/comments';
@@ -111,6 +113,19 @@ describe('preview comment attachment helpers', () => {
     // trip we're trying to remove.
     expect(context).toContain('slideIndex: 3');
     expect(context).toContain('file: deck.html');
+  });
+
+  it('resolves the preview deck basename for in-place comment-edit persist', () => {
+    expect(
+      resolveCommentEditPersistTargetFileName([
+        commentAttachment({ id: 'c1', filePath: 'deck.html', slideIndex: 1 }),
+      ]),
+    ).toBe('deck.html');
+    expect(
+      resolveCommentEditPersistTargetFileName([
+        commentAttachment({ id: 'c1', filePath: 'refs/deck.html', slideIndex: 1 }),
+      ]),
+    ).toBe('deck.html');
   });
 
   it('omits slideIndex when the comment has none (whole-file target)', () => {
@@ -558,6 +573,26 @@ describe('preview comment attachment helpers', () => {
     const again = historyWithCommentAttachmentContext(next);
     expect(again[0]?.content).toBe(next[0]?.content);
     expect(again[1]?.content).toBe(next[1]?.content);
+  });
+
+  it('strips hidden comment-edit protocol from user-visible chat text', () => {
+    const prompt = [
+      "이 텍스트를 '안녕'으로 바꿔줘",
+      '',
+      '[Comment-edit patch contract]',
+      'Preferred deliverable is a small patch',
+      '<artifact type="deck-patch" identifier="deck">',
+      '  <section class="slide" data-slide-index="0">',
+      '    …full replacement outer HTML…',
+      '  </section>',
+      '</artifact>',
+      '',
+      '<attached-preview-comments>',
+      'comment: Only shorten this title',
+      '</attached-preview-comments>',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe("이 텍스트를 '안녕'으로 바꿔줘");
   });
 });
 

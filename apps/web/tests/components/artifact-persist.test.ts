@@ -87,6 +87,20 @@ describe('resolveArtifactPersistFileName', () => {
     );
     expect(fileName).toBe('brand-new-2.html');
   });
+
+  it('prefers the preview-comment target file over minting deck-2 siblings', () => {
+    const fileName = resolveArtifactPersistFileName(
+      {
+        identifier: 'deck',
+        title: 'Deck',
+        artifactType: 'deck-patch',
+      },
+      [deck, { name: 'deck.html', mtime: 200 }],
+      null,
+      { preferredFileName: 'deck.html' },
+    );
+    expect(fileName).toBe('deck.html');
+  });
 });
 
 describe('artifact version tab helpers', () => {

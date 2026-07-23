@@ -16,8 +16,8 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("isArtifactHtmlStableForPreview(repaired)");
     expect(source).toContain("repairArtifactDocumentHead(liveHtml)");
     expect(source).toContain("scheduleDeckPreviewFitNudges");
-    expect(source).toContain("scheduleDeckPreviewFitNudges(frame, overlayPreviewScale)");
-    expect(source).toContain("scheduleDeckPreviewFitNudges(iframeRef.current, overlayPreviewScale)");
+    expect(source).toContain("scheduleDeckPreviewFitNudges(frame, deckPreviewFitScale");
+    expect(source).toContain("scheduleDeckPreviewFitNudges(iframeRef.current, deckPreviewFitScale");
     expect(source).toContain("artifact-preview-streaming-veil");
     expect(source).toContain("artifact-preview-streaming-veil__card");
     expect(source).toContain('name="spinner"');
@@ -129,7 +129,7 @@ describe("FileViewer streaming slide preview", () => {
     const projectView = readSource("src/components/ProjectView.tsx");
 
     expect(workspace).toContain("previewStreaming?: boolean");
-    expect(workspace).toContain("streaming={previewStreaming ?? streaming}");
+    expect(workspace).toContain("streaming={previewStreaming ?? false}");
     expect(projectView).toContain("streaming={currentConversationActionDisabled}");
     expect(projectView).toContain(
       "previewStreaming={currentConversationStreaming || currentConversationAwaitingActiveRunAttach}",

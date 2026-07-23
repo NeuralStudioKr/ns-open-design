@@ -12,6 +12,7 @@ import type {
   PreviewCommentTarget,
   PreviewVisualMarkKind,
 } from './types';
+import { stripUserVisibleQuestionFormProtocolText } from './artifacts/question-form';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 
 export interface PreviewCommentSnapshot {
@@ -129,6 +130,25 @@ export function commentVisibleOnDeckSlide(
   if (activeSlideIndex == null) return true;
   if (typeof comment.slideIndex !== 'number') return true;
   return comment.slideIndex === activeSlideIndex;
+}
+
+/** Basename of the deck HTML file a comment edit should update in place. */
+export function resolveCommentEditPersistTargetFileName(
+  commentAttachments: readonly ChatCommentAttachment[] | null | undefined,
+): string | null {
+  if (!commentAttachments?.length) return null;
+  for (const attachment of commentAttachments) {
+    const filePath = attachment.filePath?.trim();
+    if (!filePath) continue;
+    const baseName = filePath.split('/').filter(Boolean).pop() ?? filePath;
+    if (/\.html?$/i.test(baseName)) return baseName;
+  }
+  for (const attachment of commentAttachments) {
+    const filePath = attachment.filePath?.trim();
+    if (!filePath) continue;
+    return filePath.split('/').filter(Boolean).pop() ?? filePath;
+  }
+  return null;
 }
 
 // When a queued chat send starts processing, the deck preview should flip to
@@ -362,6 +382,21 @@ function sanitizeVisualAttachmentId(value: string): string {
 }
 
 export const COMMENT_ONLY_USER_PLACEHOLDER = '(No extra typed instruction.)';
+
+export const SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER = '[Comment-edit patch contract]';
+
+const COMMENT_EDIT_PATCH_DIRECTIVE_RE =
+  /\n*\[Comment-edit patch contract\][\s\S]*$/i;
+const ATTACHED_PREVIEW_COMMENTS_RE =
+  /\n*<attached-preview-comments>[\s\S]*?<\/attached-preview-comments>\s*/gi;
+
+/** Strip model-only suffixes from user messages before rendering in chat UI. */
+export function stripUserVisibleUserMessageText(content: string | null | undefined): string {
+  let text = String(content ?? '');
+  text = text.replace(ATTACHED_PREVIEW_COMMENTS_RE, '');
+  text = text.replace(COMMENT_EDIT_PATCH_DIRECTIVE_RE, '');
+  return stripUserVisibleQuestionFormProtocolText(text);
+}
 
 export function messageContentWithCommentAttachments(
   content: string,

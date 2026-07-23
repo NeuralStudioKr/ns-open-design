@@ -67,10 +67,24 @@ export function resolveArtifactPersistFileName(
   art: ArtifactPersistShape,
   projectFiles: readonly ProjectFile[],
   activeTabName: string | null | undefined,
+  options?: { preferredFileName?: string | null },
 ): string {
   const baseName = artifactBaseNameForPersist(art);
   const ext = artifactExtensionForPersist(art);
   const existing = new Set(projectFiles.map((file) => file.name));
+
+  const preferredRaw = options?.preferredFileName?.trim();
+  if (preferredRaw) {
+    const preferredBase = preferredRaw.split('/').filter(Boolean).pop() ?? preferredRaw;
+    const matched = projectFiles.find(
+      (file) => file.name === preferredBase || file.path === preferredRaw,
+    );
+    if (matched) return matched.name;
+    if (existing.has(preferredBase)) return preferredBase;
+    // Preview-comment edits target a concrete open deck even if the refreshed
+    // file list lags behind the tab the user is annotating.
+    return preferredBase;
+  }
 
   if (activeTabName && isArtifactVersionSiblingTab(activeTabName, baseName, ext)) {
     return activeTabName;

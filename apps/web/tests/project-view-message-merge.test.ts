@@ -136,6 +136,28 @@ describe("mergeServerMessagesIntoConversation", () => {
     expect(merged[0]?.runStatus).toBe("running");
   });
 
+  it("prefers local terminal runStatus when server row is still running without endedAt", () => {
+    const local: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "done",
+      createdAt: 1,
+      runStatus: "succeeded",
+      endedAt: 2,
+    };
+    const server: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "done",
+      createdAt: 1,
+      runStatus: "running",
+      runId: "run-1",
+    };
+    const merged = mergeServerMessagesIntoConversation([local], [server]);
+    expect(merged[0]?.runStatus).toBe("succeeded");
+    expect(merged[0]?.endedAt).toBe(2);
+  });
+
   it("keeps longer local content during an in-flight run when server persist lags", () => {
     const questionFormChunk =
       'Planning…\n<question-form>{"id":"discovery","questions":[{"id":"topic","label":"Topic?","type":"text"}';

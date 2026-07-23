@@ -2464,7 +2464,7 @@ export function FileWorkspace({
             filesRefreshKey={filesRefreshKey}
             isDeck={isDeck}
             onExportAsPptx={onExportAsPptx}
-            streaming={previewStreaming ?? streaming}
+            streaming={previewStreaming ?? false}
             commentQueueOnSend={commentQueueOnSend}
             commentSendDisabled={commentSendDisabled}
             previewComments={previewComments.filter((comment) => comment.filePath === resolvedPreviewFile.name)}

@@ -112,6 +112,20 @@ describe('conversation timestamps', () => {
     ).toBe(true);
   });
 
+  it('does not treat an ended assistant row as streaming when runStatus is stale running', () => {
+    const message: ChatMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'Done',
+      createdAt: 100,
+      startedAt: 100,
+      endedAt: 120,
+      runStatus: 'running',
+    };
+
+    expect(isAssistantMessageStreaming(message, true, 'assistant-1')).toBe(false);
+  });
+
   it('shows fixed latest run duration in the conversation menu instead of live relative age', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2025-01-15T14:00:00Z'));

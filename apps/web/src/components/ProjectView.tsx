@@ -230,6 +230,8 @@ import {
   mergePreviewCommentAttachments,
   queuedSlideNavTarget,
   removeAttachedComment,
+  resolveCommentEditPersistTargetFileName,
+  SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER,
 } from '../comments';
 import {
   computeProducedFiles,
@@ -416,7 +418,14 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
   if (!server.endedAt && local.endedAt) {
     merged.endedAt = local.endedAt;
   }
-  if (!server.runStatus && local.runStatus) {
+  if (
+    local.endedAt !== undefined
+    && isTerminalRunStatus(local.runStatus)
+    && (server.endedAt === undefined || !isTerminalRunStatus(server.runStatus))
+  ) {
+    merged.endedAt = local.endedAt;
+    merged.runStatus = local.runStatus;
+  } else if (!server.runStatus && local.runStatus) {
     merged.runStatus = local.runStatus;
   } else if (
     local.runStatus
@@ -811,8 +820,6 @@ export function promptWithSlideAttachmentDeliverableInstruction(
   const visiblePrompt = prompt.trim() || '첨부 파일을 참고해서 슬라이드 덱을 만들어줘.';
   return `${visiblePrompt}\n\n${slideAttachmentDeliverableInstruction(attachments)}`;
 }
-
-const SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER = '[Comment-edit patch contract]';
 
 /**
  * Nudges the model into emitting `<artifact type="deck-patch">` on comment
@@ -1645,6 +1652,10 @@ export function ProjectView({
   const htmlAutoOpenClaimedRef = useRef<Set<string>>(new Set());
   /** Last-wins generation per assistant row — early onRunStatus timers must not finalize before onDone flush. */
   const htmlAutoOpenGenerationRef = useRef<Map<string, number>>(new Map());
+  /** While terminal persist/auto-open runs, BYOK recovery must not re-arm streaming UI. */
+  const htmlAutoOpenFinalizeInProgressRef = useRef<Set<string>>(new Set());
+  /** Preview-comment edits must update the annotated deck file, not mint siblings. */
+  const runPersistTargetFileRef = useRef<string | null>(null);
   const htmlAutoOpenTimerRef = useRef<number | null>(null);
   /**
    * Gates the message-load auto-open recovery to the first load per
@@ -2806,6 +2817,7 @@ export function ProjectView({
           art,
           currentProjectFilesForPatch,
           openTabsStateRef.current.active,
+          { preferredFileName: runPersistTargetFileRef.current },
         );
         const mergedHtml = await tryApplyDeckPatchAgainstCurrentDeck({
           projectId: project.id,
@@ -2837,6 +2849,7 @@ export function ProjectView({
         artifactToPersist,
         currentProjectFiles,
         openTabsStateRef.current.active,
+        { preferredFileName: runPersistTargetFileRef.current },
       );
       if (ext === '.html') {
         const pointerTarget = resolveHtmlPointerArtifactTarget({
@@ -4806,12 +4819,25 @@ export function ProjectView({
     // Question-form turns idle on the server while waiting for answers — not a
     // background recovery scenario. Keep composer/form submit enabled.
     if (conversationAwaitingQuestionFormAnswer(messages)) return;
+    if (
+      initialInflightMessages.some((message) =>
+        htmlAutoOpenFinalizeInProgressRef.current.has(message.id),
+      )
+    ) {
+      return;
+    }
     // A live local stream already owns this conversation — do not compete.
-    if (streaming && abortRef.current) return;
+    if (
+      streamingConversationIdRef.current === activeConversationId
+      && abortRef.current
+    ) {
+      return;
+    }
 
     let cancelled = false;
     let pollTimer: number | null = null;
     let idlePollsWithoutProxy = 0;
+    let recoveryStreamingArmed = false;
     const recoveryConversationId = activeConversationId;
     const trackedAssistantIds = new Set(initialInflightMessages.map((message) => message.id));
     const activatedAssistantIds = new Set<string>();
@@ -4827,7 +4853,10 @@ export function ProjectView({
         assistantMessageIds: [...trackedAssistantIds],
       };
       apiBackgroundRecoveryRef.current = true;
-      markStreamingConversation(recoveryConversationId);
+      if (!recoveryStreamingArmed) {
+        markStreamingConversation(recoveryConversationId);
+        recoveryStreamingArmed = true;
+      }
       if (isTeamverEmbedMode()) {
         const inflight = findInFlightAssistantMessages(messagesSnapshot).filter((message) =>
           trackedAssistantIds.has(message.id),
@@ -5179,7 +5208,11 @@ export function ProjectView({
     return () => {
       cancelled = true;
       clearPollTimer();
+      if (recoveryStreamingArmed) {
+        clearStreamingMarker(recoveryConversationId);
+      }
       apiBackgroundRecoveryRef.current = false;
+      clearApiBackgroundRecoveryBanner();
       // Keep App-level background-run tracking when this route unmounts — the
       // upstream proxy/daemon run may still be draining while the user is on
       // home. finishRecovery() and explicit run completion clear active:false.
@@ -5188,7 +5221,6 @@ export function ProjectView({
     config.mode,
     daemonLive,
     activeConversationId,
-    streaming,
     inFlightAssistantSignature,
     project.id,
     markStreamingConversation,
@@ -5511,6 +5543,9 @@ export function ProjectView({
             commentAttachments: commentAttachments.length > 0 ? commentAttachments : undefined,
           };
       const runCommentAttachments = userMsg.commentAttachments ?? [];
+      runPersistTargetFileRef.current = resolveCommentEditPersistTargetFileName(
+        runCommentAttachments,
+      );
       const runAttachments = mergeChatAttachments(
         userMsg.attachments ?? [],
         ...runCommentAttachments.map((attachment) =>
@@ -5702,6 +5737,8 @@ export function ProjectView({
             htmlAutoOpenTimerRef.current = null;
           }
           void (async () => {
+            htmlAutoOpenFinalizeInProgressRef.current.add(assistantId);
+            try {
             if (!isLatestTerminalAutoOpen()) return;
             let nextFiles = await refreshProjectFiles();
             const rawFinalText = streamedText || fullText || latestAssistantMsg.content || '';
@@ -6034,6 +6071,19 @@ export function ProjectView({
               telemetryFinalized: true,
             });
             await auditDesignSystemWorkspaceAfterRun(assistantId);
+            } finally {
+              htmlAutoOpenFinalizeInProgressRef.current.delete(assistantId);
+              if (!isLatestTerminalAutoOpen()) return;
+              runPersistTargetFileRef.current = null;
+              clearStreamingMarker(runConversationId);
+              if (apiBackgroundRecoveryRef.current) {
+                apiBackgroundRecoveryRef.current = false;
+                clearApiBackgroundRecoveryBanner();
+              }
+              if (runIsVisible()) {
+                setArtifact(null);
+              }
+            }
           })();
         };
         if (delayMs > 0) {
@@ -6383,6 +6433,7 @@ export function ProjectView({
               cancelController,
             );
             if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
+            runPersistTargetFileRef.current = null;
             void refreshProjectFiles();
             onProjectsRefresh();
             releaseOwnedDaemonRun();
@@ -6449,6 +6500,7 @@ export function ProjectView({
             cancelController,
           );
           if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
+          runPersistTargetFileRef.current = null;
           void saveMessage(project.id, runConversationId, finalizedAssistant, {
             telemetryFinalized: true,
           });

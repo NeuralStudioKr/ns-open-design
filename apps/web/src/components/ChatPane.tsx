@@ -41,9 +41,8 @@ import {
 import { isTodoWriteToolName, latestTodoWriteInputForPinnedCard } from '../runtime/todos';
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, ChatMessage, ChatMessageFeedbackChange, Conversation, DesignSystemSummary, PreviewComment, Project, ProjectFile, ProjectMetadata, SkillSummary } from '../types';
 import { exactDateTime, messageTime, shortTime } from '../utils/chatTime';
-import { commentTargetDisplayName, commentsToAttachments, simplePositionLabel } from '../comments';
+import { commentTargetDisplayName, commentsToAttachments, COMMENT_ONLY_USER_PLACEHOLDER, simplePositionLabel, stripUserVisibleUserMessageText } from '../comments';
 import { AssistantMessage, type QuestionFormOpenRequest } from './AssistantMessage';
-import { stripUserVisibleQuestionFormProtocolText } from '../artifacts/question-form';
 import { AmrGuidance } from './AmrGuidance';
 import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-guidance';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
@@ -3175,11 +3174,11 @@ export function isAssistantMessageStreaming(
 ): boolean {
   if (message.role !== 'assistant') return false;
   if (forceStreamingMessageIds?.has(message.id)) return true;
+  if (message.endedAt !== undefined) return false;
+  if (isTerminalRunStatus(message.runStatus)) return false;
   if (isActiveRunStatus(message.runStatus)) return true;
   if (message.id !== lastAssistantId) return false;
   if (!paneStreaming) return false;
-  if (message.endedAt !== undefined) return false;
-  if (isTerminalRunStatus(message.runStatus)) return false;
   return true;
 }
 
@@ -3358,7 +3357,7 @@ function UserMessageImpl({
   }, []);
 
   async function handleCopy() {
-    const visibleContent = stripUserVisibleQuestionFormProtocolText(message.content);
+    const visibleContent = stripUserVisibleUserMessageText(message.content);
     if (!visibleContent) return;
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
     const ok = await copyToClipboard(visibleContent);
@@ -3371,7 +3370,11 @@ function UserMessageImpl({
   }
 
   const isDesignSystemWorkspaceRequest = isDesignSystemWorkspacePrompt(message.content);
-  const visibleUserContent = stripUserVisibleQuestionFormProtocolText(message.content);
+  const strippedUserContent = stripUserVisibleUserMessageText(message.content);
+  const visibleUserContent =
+    strippedUserContent === COMMENT_ONLY_USER_PLACEHOLDER && commentAttachments.length > 0
+      ? ''
+      : strippedUserContent;
   const ts = messageTime(message);
 
   return (

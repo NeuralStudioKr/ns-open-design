@@ -156,6 +156,18 @@ describe('splitStreamingArtifact', () => {
     });
   });
 
+  it('surfaces deck-patch artifact streams in the live preview box', () => {
+    const input =
+      'Patching\n<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="0"><h1>Hi';
+    const { head, live } = splitStreamingArtifact(input);
+    expect(head).toBe('Patching');
+    expect(live).toMatchObject({
+      artifactType: 'deck-patch',
+      identifier: 'deck',
+      content: '<section class="slide" data-slide-index="0"><h1>Hi',
+    });
+  });
+
   it('defers a completed artifact to stripArtifact (no live box)', () => {
     const input = 'Done.\n<artifact identifier="x" type="text/html" title="X">\n<h1>x</h1>\n</artifact>';
     const { head, live } = splitStreamingArtifact(input);
