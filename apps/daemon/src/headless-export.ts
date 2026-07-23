@@ -1368,6 +1368,52 @@ function runDomToPptxInPage(slideSelector: string): Promise<{ b64?: string; erro
     }
   }
 
+  function isShortNoWrapText(text: string): boolean {
+    if (!text || text.length > 80) return false;
+    if (/^\S+@\S+\.\S+$/.test(text)) return true;
+    if (/^(?:[A-Za-z0-9+#._/-]{1,24}|[가-힣A-Za-z0-9+#._/-]{1,18})$/.test(text)) return true;
+    if (/^[+\-]?\d+(?:[.,]\d+)?\s*(?:개|곳|년|%|x|×|to)?$/i.test(text)) return true;
+    return false;
+  }
+
+  function stabilizeShortNoWrapText(slides: HTMLElement[]): void {
+    for (const slide of slides) {
+      slide.querySelectorAll('*').forEach((el: HTMLElement) => {
+        const rawText = el.innerText || el.textContent || '';
+        const text = rawText.replace(/\s+/g, ' ').trim();
+        if (!isShortNoWrapText(text) || rawText.includes('\n')) return;
+        const onlyTinyChildren =
+          el.children.length > 0 &&
+          Array.from(el.children).every((child) => (child.textContent || '').trim().length <= 3);
+        if (el.children.length > 0 && !onlyTinyChildren) {
+          return;
+        }
+
+        const style = getComputedStyle(el);
+        const fontSizePx = Number.parseFloat(style.fontSize);
+        if (!Number.isFinite(fontSizePx) || fontSizePx < 8) return;
+
+        const rect = el.getBoundingClientRect();
+        if (rect.width <= 1 || rect.height <= 1) return;
+
+        const estimatedTextWidth = fontSizePx * Math.max(2, text.length * 0.72);
+        const paddingX =
+          Number.parseFloat(style.paddingLeft || '0') +
+          Number.parseFloat(style.paddingRight || '0');
+        const width = Math.ceil(Math.max(rect.width, el.scrollWidth || 0, estimatedTextWidth + paddingX + 4));
+
+        el.style.setProperty('width', `${width}px`, 'important');
+        el.style.setProperty('min-width', `${width}px`, 'important');
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('white-space', 'nowrap', 'important');
+        el.style.setProperty('word-break', 'keep-all', 'important');
+        el.style.setProperty('overflow-wrap', 'normal', 'important');
+        el.style.setProperty('hyphens', 'none', 'important');
+        el.style.setProperty('overflow', 'visible', 'important');
+      });
+    }
+  }
+
   function stabilizeLargeSingleLineText(slides: HTMLElement[]): void {
     for (const slide of slides) {
       slide.querySelectorAll('*').forEach((el: HTMLElement) => {
@@ -1419,6 +1465,7 @@ function runDomToPptxInPage(slideSelector: string): Promise<{ b64?: string; erro
       if (slides.length === 0) return { error: 'no slides to export' };
       ensureExplicitSlideBackgrounds(slides as HTMLElement[]);
       stabilizeCompactMetricText(slides as HTMLElement[]);
+      stabilizeShortNoWrapText(slides as HTMLElement[]);
       stabilizeLargeSingleLineText(slides as HTMLElement[]);
       document.querySelectorAll('*').forEach((el: HTMLElement) => {
         const cn = (el as { className?: unknown }).className;

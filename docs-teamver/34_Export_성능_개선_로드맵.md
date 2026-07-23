@@ -983,6 +983,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-23 | Editable PPTX 작은 텍스트 줄바꿈 보정 — dom-to-pptx 변환 후 작은 pill/tag/email/짧은 metric 텍스트가 한 글자씩 줄바꿈되는 케이스 확인. editable 변환 직전 short no-wrap 요소를 감지해 `white-space: nowrap`, `word-break: keep-all`, `hyphens: none`, 여유 width/min-width를 강제. cache namespace를 `pptx-editable-dom-v3`로 올려 기존 깨진 PPTX cache 재사용 방지 |
 | 2026-07-23 | Export 다운로드 파일명 프로젝트명 우선 복구 — FE `resolveExportDownloadTitle()`이 project title이 `Design` 같은 generic 값이면 artifact slug를 우선해 `ai-adoption-deck.pptx`처럼 저장될 수 있었다. 다운로드 title은 프로젝트명이 존재하면 항상 프로젝트명을 사용하도록 복원. export cache hit도 과거 meta filename을 재사용하지 않고 현재 descriptor filename(project title 기반)을 응답하도록 고정 |
 | 2026-07-16 | Export offload 한글 파일명 복구 — S3 SigV4 충돌을 피하려고 presign 쿼리에 ASCII `filename=`만 넣으면 프로젝트명이 `_`로 저장됨. PUT 시 객체에 RFC 5987 `Content-Disposition`(+`Content-Type`)을 저장하고 presign에서는 `response-content-disposition`을 제거. HEAD로 disposition 일치 시 PUT skip, 구 객체(메타 없음)는 다음 export에서 한 번 재업로드 |
 | 2026-07-16 | Export offload S3 key/HEAD 403 수정 — `OD_EXPORT_OFFLOAD_PREFIX=exports`와 offload key `exports/...`가 만나 `exports/exports/...`로 HEAD 하던 중복 prefix를 방지. S3 HEAD/stat가 403이어도 곧바로 실패하지 않고 PUT 업로드를 시도하도록 변경 |

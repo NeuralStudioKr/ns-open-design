@@ -587,8 +587,11 @@ describe('buildDeckPrintCss', () => {
     expect(source).toContain('w.domToPptx.exportToPptx');
     expect(source).toContain('svgAsVector: true');
     expect(source).toContain('stabilizeCompactMetricText');
+    expect(source).toContain('stabilizeShortNoWrapText');
+    expect(source).toContain('isShortNoWrapText(text)');
     expect(source).toContain('isCompactMetricText(text)');
     expect(source).toContain("el.style.setProperty('white-space', 'nowrap', 'important')");
+    expect(source).toContain("el.style.setProperty('hyphens', 'none', 'important')");
   });
 
   it('keeps PPTX downloads editable by default and screenshot-based only when opted out', () => {
@@ -602,7 +605,7 @@ describe('buildDeckPrintCss', () => {
     );
     expect(pptxBlock).toContain('renderHeadlessEditablePptx');
     expect(pptxBlock).toContain('req.body?.editable !== false');
-    expect(pptxBlock).toContain('pptx-editable-dom-v2');
+    expect(pptxBlock).toContain('pptx-editable-dom-v3');
     expect(pptxBlock).toContain('buildScreenshotPptx');
   });
 });
