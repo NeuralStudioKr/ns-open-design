@@ -18,9 +18,10 @@ export function wrapPreviewHtmlShell(html: string): string {
 }
 
 /**
- * Detect API compact stacked decks: no-head body-first slides the host
- * letterboxes to 1920×1080. Full framework, scroll-snap, and authored decks
- * with <style>/<script> must stay on their native layout path.
+ * Detect API compact stacked decks: body-first slides the host letterboxes to
+ * 1920×1080. Full framework / scroll-snap decks must stay on their native
+ * layout path, but generated body > .slide decks often include local
+ * <style>/<script> blocks and still need fixed slide framing.
  */
 export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (!html) return false;
@@ -28,7 +29,8 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (/<(?:div|section)[^>]*\bclass\s*=\s*['"][^'"]*\b(?:deck-shell|deck-stage)\b/i.test(html)) {
     return false;
   }
-  if (/<div[^>]*\bid\s*=\s*['"](?:deck-stage|deck)['"]/i.test(html)) return false;
+  if (/<(?:div|section)[^>]*\bclass\s*=\s*['"][^'"]*\bdeck-track\b/i.test(html)) return false;
+  if (/<div[^>]*\bid\s*=\s*['"](?:deck-stage|deck|deck-track)['"]/i.test(html)) return false;
   if (
     /<(?:div|section)[^>]*\bclass\s*=\s*['"][^'"]*\bstage\b[^'"]*['"][^>]*>[\s\S]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
       html,
@@ -36,7 +38,8 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   ) {
     return false;
   }
-  if (/<style\b/i.test(html) || /<script\b/i.test(html)) return false;
+  if (/scroll-snap-(?:type|align|stop)\s*:/i.test(html)) return false;
+  if (/overflow-x\s*:\s*(?:auto|scroll|overlay)\b/i.test(html)) return false;
   if (!/min-height\s*:\s*100(?:vh|dvh|svh|lvh)/i.test(html)) return false;
   if (
     /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*\bdeck\b/i.test(html)

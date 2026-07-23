@@ -4618,7 +4618,7 @@ function HtmlViewer({
   // template) and the Teamver Drive Publish menu item stay visible because
   // they either land on the user's machine or stay inside the Teamver
   // workspace tenant.
-  const { hideExternalShareSurfaces, hideUsefulTips } = useTeamverBranding();
+  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp } = useTeamverBranding();
   // Shared helper for the share menu: emit studio_click share_option on
   // entry and artifact_export_result on resolution. Sync exports report
   // success immediately after the call returns; async exports get .then
@@ -5689,12 +5689,14 @@ function HtmlViewer({
     [previewSource],
   );
   const needsDeckHostViewportFit = compactApiStackedDeck || frameworkDeckPreview;
-  const deckPreviewPanActive = compactApiStackedDeck
+  const deckPreviewUsesFixedStage = compactApiStackedDeck
     && mode === 'preview'
     && !drawOverlayOpen
     && !boardMode
     && !manualEditMode
     && !inspectMode;
+  const deckPreviewPanActive = deckPreviewUsesFixedStage
+    && !slideOnlyMvp;
   const onDeckPreviewWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     if (!deckPreviewPanActive) return;
     const frame = iframeRef.current;
@@ -9371,7 +9373,7 @@ function HtmlViewer({
                   style={
                     manualEditMode
                       ? manualEditPreviewShellStyle(previewViewport, previewScale, manualEditViewportWidth)
-                      : deckPreviewPanActive
+                      : deckPreviewUsesFixedStage
                         ? deckPreviewScaleShellStyle(previewViewport, previewScale)
                         : previewScaleShellStyle(previewViewport, previewScale)
                   }

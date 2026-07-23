@@ -51,10 +51,23 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
   });
 
-  it('rejects emergency fallback decks that ship stylesheet min-height rules', () => {
+  it('matches emergency fallback decks that ship stylesheet min-height rules', () => {
     const html = buildEmergencySlideDeckFromOutline('1. Intro\n2. Body\n3. Close', { lang: 'ko' });
     expect(html).toBeTruthy();
-    expect(looksLikeCompactApiStackedDeck(html!)).toBe(false);
+    expect(looksLikeCompactApiStackedDeck(html!)).toBe(true);
+  });
+
+  it('matches generated body-first slide decks that include local CSS and navigation script', () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head>',
+      '<style>body{margin:0}.slide{min-height:100vh;padding:96px;background:#0f172a;color:white}</style>',
+      '</head><body>',
+      '<section class="slide"><h1>김민준</h1><p>Full-Stack Developer</p></section>',
+      '<section class="slide"><h1>Projects</h1></section>',
+      '<script>document.addEventListener("keydown",function(e){ if(e.key==="ArrowRight"){} });</script>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
   });
 
   it('does not inject stacked letterbox CSS into framework or authored decks', () => {
@@ -68,5 +81,31 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(compactOut).toContain('data-od-deck-stacked-fix');
     expect(compactOut).toContain('var compactStackedDeckEnabled = true');
     expect(buildSrcdoc(simpleDeck, { deck: true })).not.toMatch(/html,\s*body\s*\{[^}]*overflow:\s*hidden\s*!important/);
+  });
+
+  it('keeps explicit horizontal scroll-snap decks on their native path', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      'body{overflow-x:auto;scroll-snap-type:x mandatory}.slide{min-height:100vh;scroll-snap-align:start}',
+      '</style></head><body>',
+      '<section class="slide">A</section><section class="slide">B</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
+    expect(buildSrcdoc(html, { deck: true })).not.toContain('data-od-deck-stacked-fix');
+  });
+
+  it('keeps transform-track decks on their native runtime path', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      '#deck{display:flex;width:300vw;transform:translateX(0)}.slide{flex:0 0 100vw;height:100vh}',
+      '</style></head><body>',
+      '<div id="deck">',
+      '<section class="slide">A</section><section class="slide">B</section>',
+      '</div>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
+    expect(buildSrcdoc(html, { deck: true })).not.toContain('data-od-deck-stacked-fix');
   });
 });
