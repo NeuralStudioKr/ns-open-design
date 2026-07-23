@@ -466,6 +466,7 @@ export function PreviewModal({
     () => Boolean(activeHtml && activeDeck && looksLikeCompactApiStackedDeckForPreview(activeHtml)),
     [activeHtml, activeDeck],
   );
+  const [compactStackedDeckLayoutReady, setCompactStackedDeckLayoutReady] = useState(false);
   const effectiveDesignWidth = activeCompactStackedDeck ? 1920 : designWidth;
   const isCustomView = activeCustom !== null && activeCustom !== undefined;
   const srcDoc = useMemo(
@@ -516,6 +517,14 @@ export function PreviewModal({
     } as const;
   }, [scale, stageSize.w, stageSize.h, effectiveDesignWidth]);
 
+  const stageIframeScalerStyle = useMemo(() => {
+    if (!activeCompactStackedDeck) return scalerStyle;
+    return {
+      ...scalerStyle,
+      opacity: compactStackedDeckLayoutReady ? 1 : 0,
+    } as const;
+  }, [activeCompactStackedDeck, compactStackedDeckLayoutReady, scalerStyle]);
+
   useEffect(() => {
     if (!activeDeck || !activeHtml) return;
     return scheduleDeckPreviewFitNudges(
@@ -536,6 +545,22 @@ export function PreviewModal({
     window.addEventListener('message', onDeckViewportRequest);
     return () => window.removeEventListener('message', onDeckViewportRequest);
   }, [activeCompactStackedDeck, activeHtml, scale, srcDoc, activeId]);
+
+  useEffect(() => {
+    setCompactStackedDeckLayoutReady(false);
+  }, [activeCompactStackedDeck, activeHtml, srcDoc, activeId]);
+
+  useEffect(() => {
+    if (!activeCompactStackedDeck || !activeHtml) return;
+    function onStackedDeckReady(ev: MessageEvent) {
+      if (ev.source !== previewIframeRef.current?.contentWindow) return;
+      const data = ev.data as { type?: string } | null;
+      if (data?.type !== 'od:stacked-deck-ready') return;
+      setCompactStackedDeckLayoutReady(true);
+    }
+    window.addEventListener('message', onStackedDeckReady);
+    return () => window.removeEventListener('message', onStackedDeckReady);
+  }, [activeCompactStackedDeck, activeHtml, srcDoc, activeId]);
 
   function openInNewTab() {
     if (!activeHtml) return;
@@ -1103,7 +1128,7 @@ export function PreviewModal({
                 })}
               </div>
             ) : (
-              <div className="ds-modal-stage-iframe-scaler" style={scalerStyle}>
+              <div className="ds-modal-stage-iframe-scaler" style={stageIframeScalerStyle}>
                 <iframe
                   key={activeView?.id ?? 'view'}
                   ref={previewIframeRef}
@@ -1112,6 +1137,9 @@ export function PreviewModal({
                   srcDoc={srcDoc}
                   onLoad={(event) => {
                     if (!activeDeck) return;
+                    if (activeCompactStackedDeck) {
+                      postDeckHostViewportToIframe(event.currentTarget, 1, { useLayoutBox: true });
+                    }
                     scheduleDeckPreviewFitNudges(
                       event.currentTarget,
                       activeCompactStackedDeck ? 1 : scale,

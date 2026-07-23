@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildEmergencySlideDeckFromOutline } from '../../src/artifacts/emergency-deck';
 import {
   injectStackedDeckViewport,
@@ -159,7 +159,9 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
     const srcdoc = buildSrcdoc(html, { deck: true });
     expect(srcdoc).toContain('overflow: hidden !important');
-    expect(srcdoc).toContain('var compactStackedDeckEnabled = true');
+    expect(srcdoc).toContain('bootstrapCompactStackedDeck');
+    expect(srcdoc).toContain('data-od-stacked-deck-ready');
+    expect(srcdoc).toContain('od:stacked-deck-ready');
 
     const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
     expect(match?.[1]).toBeTruthy();
@@ -169,20 +171,32 @@ describe('looksLikeCompactApiStackedDeck', () => {
       pretendToBeVisual: true,
     });
     const win = dom.window;
+    const parentPostMessage = vi.fn();
     Object.defineProperty(win, 'parent', {
       configurable: true,
-      value: { postMessage: () => {} },
+      value: { postMessage: parentPostMessage },
     });
     new win.Function(match![1]!).call(win);
     win.dispatchEvent(new win.Event('load'));
     await new Promise<void>((resolve) => win.setTimeout(resolve, 500));
 
     expect(win.document.documentElement.getAttribute('data-od-stacked-deck')).toBe('');
+    expect(win.document.documentElement.getAttribute('data-od-stacked-deck-ready')).toBeNull();
     const stage = win.document.getElementById('od-stacked-deck-stage');
     expect(stage).toBeTruthy();
     const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
     expect(slideEls).toHaveLength(2);
     expect(slideEls.filter((el) => el.style.display !== 'none')).toHaveLength(1);
+
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
+    expect(win.document.documentElement.getAttribute('data-od-stacked-deck-ready')).toBe('');
+    expect(parentPostMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'od:stacked-deck-ready' }),
+      '*',
+    );
 
     win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
     await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
@@ -199,7 +213,9 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(buildSrcdoc(simpleDeck, { deck: true })).not.toContain('data-od-deck-stacked-fix');
     const compactOut = buildSrcdoc(compact, { deck: true });
     expect(compactOut).toContain('data-od-deck-stacked-fix');
-    expect(compactOut).toContain('var compactStackedDeckEnabled = true');
+    expect(compactOut).toContain('data-od-stacked-boot');
+    expect(compactOut).toContain('data-od-compact-stacked');
+    expect(compactOut).toContain('data-od-stacked-deck-ready');
     expect(buildSrcdoc(simpleDeck, { deck: true })).not.toMatch(/html,\s*body\s*\{[^}]*overflow:\s*hidden\s*!important/);
   });
 });

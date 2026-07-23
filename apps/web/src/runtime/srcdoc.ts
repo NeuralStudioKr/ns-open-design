@@ -1982,10 +1982,13 @@ function injectDeckBridge(
     : `<style data-od-deck-fix>
 .stage, .deck-stage, .deck-shell { place-content: center !important; }
 </style>`;
+  const compactStackedBoot = isCompactStackedDeck
+    ? `<script data-od-stacked-boot>document.documentElement.setAttribute('data-od-compact-stacked','');document.documentElement.style.overflow='hidden';</script>`
+    : '';
   const compactStackedDeckFix = isCompactStackedDeck
     ? `<style data-od-deck-stacked-fix>
-html[data-od-stacked-deck]:has(#od-stacked-deck-stage),
-html[data-od-stacked-deck]:has(#od-stacked-deck-stage) body {
+html[data-od-compact-stacked],
+html[data-od-compact-stacked] body {
   width: 100% !important;
   height: 100% !important;
   background: #0b0c10 !important;
@@ -1994,8 +1997,20 @@ html[data-od-stacked-deck]:has(#od-stacked-deck-stage) body {
   overscroll-behavior: none !important;
   touch-action: none !important;
 }
-html[data-od-stacked-deck]:has(#od-stacked-deck-stage) body {
+html[data-od-compact-stacked] body {
   position: relative !important;
+}
+html[data-od-compact-stacked] .slide ~ .slide {
+  display: none !important;
+}
+html[data-od-compact-stacked]:not([data-od-stacked-deck]) body > .slide {
+  visibility: hidden !important;
+}
+html[data-od-compact-stacked]:not([data-od-stacked-deck-ready]) {
+  visibility: hidden;
+}
+html[data-od-compact-stacked][data-od-stacked-deck-ready] {
+  visibility: visible;
 }
 #od-stacked-deck-stage {
   position: absolute;
@@ -2024,7 +2039,7 @@ html[data-od-stacked-deck]:has(#od-stacked-deck-stage) body {
 }
 </style>`
     : '';
-  const styleFix = `${legacyDeckFix}${compactStackedDeckFix}`;
+  const styleFix = `${compactStackedBoot}${legacyDeckFix}${compactStackedDeckFix}`;
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
   var compactStackedDeckEnabled = ${isCompactStackedDeck ? 'true' : 'false'};
@@ -2192,6 +2207,7 @@ html[data-od-stacked-deck]:has(#od-stacked-deck-stage) body {
     var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);
     if (!isFinite(s) || s <= 0) s = 1;
     applyStackedDeckTransform(stage, s, deckPanX, deckPanY);
+    markStackedDeckReadyIfFit();
     return true;
   }
   function runFrameworkDeckFit() {
@@ -2680,6 +2696,39 @@ html[data-od-stacked-deck]:has(#od-stacked-deck-stage) body {
   }
   ownDeckButton('deck-prev', 'prev');
   ownDeckButton('deck-next', 'next');
+  function notifyStackedDeckReady() {
+    try { parent.postMessage({ type: 'od:stacked-deck-ready' }, '*'); }
+    catch (_) {}
+  }
+  function markStackedDeckReadyIfFit() {
+    if (!compactStackedDeckEnabled) return;
+    if (document.documentElement.hasAttribute('data-od-stacked-deck-ready')) return;
+    var stage = stackedDeckStage();
+    if (!stage) return;
+    var hw = Math.max(0, hostViewport.w || 0);
+    var hh = Math.max(0, hostViewport.h || 0);
+    if (hw < 64 || hh < 64) return;
+    var vp = frameworkDeckViewport();
+    if (vp.w < 64 || vp.h < 64) return;
+    var raw = stage.style.transform || '';
+    var scaleMatch = raw.match(/scale\\(([0-9.eE+-]+)\\)/);
+    if (!scaleMatch) return;
+    var s = parseFloat(scaleMatch[1]);
+    if (!isFinite(s) || s <= 0.001) return;
+    document.documentElement.setAttribute('data-od-stacked-deck-ready', '');
+    notifyStackedDeckReady();
+  }
+  function bootstrapCompactStackedDeck() {
+    if (!compactStackedDeckEnabled) return;
+    ensureStackedDeckStage();
+    var list = slides();
+    if (list.length) {
+      var target = Math.max(0, Math.min(list.length - 1, initialSlideIndex));
+      forceRevealSlide(target);
+    }
+    nudgeDeckFit();
+    markStackedDeckReadyIfFit();
+  }
   // Report once on load and on every scroll-end so the host stays in sync.
   window.addEventListener('load', function(){ setTimeout(restoreInitialSlide, 200); });
   document.addEventListener('scroll', function(){
@@ -2703,6 +2752,19 @@ html[data-od-stacked-deck]:has(#od-stacked-deck-stage) body {
       if (attempts < 30) setTimeout(tick, 50);
     }
     tick();
+  }
+  if (compactStackedDeckEnabled) {
+    bootstrapCompactStackedDeck();
+    setTimeout(function() {
+      if (document.documentElement.hasAttribute('data-od-stacked-deck-ready')) return;
+      bootstrapCompactStackedDeck();
+      requestHostDeckViewport();
+      markStackedDeckReadyIfFit();
+      if (!document.documentElement.hasAttribute('data-od-stacked-deck-ready') && stackedDeckStage()) {
+        document.documentElement.setAttribute('data-od-stacked-deck-ready', '');
+        notifyStackedDeckReady();
+      }
+    }, 1800);
   }
   if (document.readyState === 'complete') chaseFirstLayout();
   else window.addEventListener('load', chaseFirstLayout);

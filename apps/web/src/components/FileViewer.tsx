@@ -4965,6 +4965,7 @@ function HtmlViewer({
     lastY: number;
   }>({ active: false, pointerId: null, lastX: 0, lastY: 0 });
   const [deckPanning, setDeckPanning] = useState(false);
+  const [compactStackedDeckLayoutReady, setCompactStackedDeckLayoutReady] = useState(false);
   const urlPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const srcDocPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const activatedSrcDocTransportHtmlRef = useRef<string | null>(null);
@@ -6180,6 +6181,22 @@ function HtmlViewer({
     if (!compactApiStackedDeck || previewScale !== 1) return;
     resetDeckPreviewPan(iframeRef.current);
   }, [compactApiStackedDeck, previewScale, previewStateKey, srcDocTransportResetKey]);
+
+  useEffect(() => {
+    setCompactStackedDeckLayoutReady(false);
+  }, [compactApiStackedDeck, previewStateKey, srcDoc, srcDocTransportResetKey]);
+
+  useEffect(() => {
+    if (!compactApiStackedDeck || mode !== 'preview') return;
+    function onStackedDeckReady(ev: MessageEvent) {
+      if (!isOurPreviewIframeSource(ev.source)) return;
+      const data = ev.data as { type?: string } | null;
+      if (data?.type !== 'od:stacked-deck-ready') return;
+      setCompactStackedDeckLayoutReady(true);
+    }
+    window.addEventListener('message', onStackedDeckReady);
+    return () => window.removeEventListener('message', onStackedDeckReady);
+  }, [compactApiStackedDeck, mode, isOurPreviewIframeSource]);
 
   useEffect(() => {
     const win = iframeRef.current?.contentWindow;
@@ -9390,7 +9407,10 @@ function HtmlViewer({
                     manualEditMode
                       ? manualEditPreviewShellStyle(previewViewport, previewScale, manualEditViewportWidth)
                       : compactApiStackedDeck
-                        ? deckLetterboxPreviewScaleShellStyle(previewScale)
+                        ? {
+                            ...deckLetterboxPreviewScaleShellStyle(previewScale),
+                            opacity: compactStackedDeckLayoutReady ? 1 : 0,
+                          }
                         : needsDeckHostViewportFit
                           ? deckPreviewScaleShellStyle(previewViewport, previewScale)
                           : previewScaleShellStyle(previewViewport, previewScale)
@@ -9550,6 +9570,9 @@ function HtmlViewer({
                           syncBridgeModes(frame);
                           syncCachedSlideStateToIframe(frame);
                           if (effectiveDeck) {
+                            if (compactApiStackedDeck) {
+                              postDeckHostViewportToIframe(frame, compactDeckFitScale, compactDeckFitOptions);
+                            }
                             scheduleDeckPreviewFitNudges(frame, compactDeckFitScale, compactDeckFitOptions);
                           }
                           if (!useUrlLoadPreview) restorePreviewScrollPosition();
