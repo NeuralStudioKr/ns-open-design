@@ -233,6 +233,7 @@ function renderTeamverVisualSignatureBlock({
     classes.length > 0 ? `class/style cues: ${classes.join(', ')}` : '',
     layoutHints.length > 0 ? `layout cues: ${layoutHints.join(', ')}` : '',
     'Mandatory: slides must visibly match this template palette, typography, density, accents, and composition rhythm.',
+    'Template beats compact samples; never fall back to sample navy/white.',
     'Implement with inline styles or one short body `<style>` after slide 1. No `<head>`-first skeleton.',
     'Do not copy the full template skeleton or emit long CSS/head/script blocks.',
   ].filter(Boolean);
@@ -1200,13 +1201,13 @@ function summarizeApiModeSkillBody(skillBody: string): string {
     .filter(Boolean)
     .filter((line) => !workflowLine.test(line));
   const layoutPriority = (line: string) =>
-    /layout|theme rhythm|light|dark|hero|cover|stat|pipeline|quote|closing|typography|palette|eyebrow/i.test(
+    /layout|theme rhythm|light|dark|hero|cover|stat|pipeline|quote|closing|typography|type|font|palette|color|accent|density|spacing|grid|editorial|terminal|cyber|paper|serif|mono|eyebrow/i.test(
       line,
     );
   const prioritized = [
     ...lines.filter(layoutPriority),
     ...lines.filter((line) => !layoutPriority(line)),
-  ].slice(0, 16);
+  ].slice(0, 18);
   const summary = prioritized.join('\n');
   const layoutHint = /references\/layouts\.md|layout vocabulary|slide layouts/i.test(skillBody)
     ? 'The skill ships layout patterns in references/layouts.md — you cannot Read that file in API mode. Use the compact inline layout vocabulary from the deck contract instead (cover, body, big-stat, split thesis, timeline, quote, three-column, closing).'
@@ -1215,8 +1216,9 @@ function summarizeApiModeSkillBody(skillBody: string): string {
     'API-safe skill summary only. Ignore the seed/template copy workflow.',
     layoutHint,
     summary || 'Use the active deck skill only as broad visual inspiration.',
-    'Apply theme rhythm: alternate light/dark surfaces across slides; never repeat the same background/composition on 3+ slides in a row.',
-    'Hard requirement: preserve template/design-system palette, type mood, density, accents, and rhythm visibly.',
+    'Template is the visual contract; compact samples are only structure.',
+    'Alternate light/dark; never repeat one background/composition 3+ slides.',
+    'Preserve template/design-system palette, type mood, density, accents, and rhythm visibly.',
     'Implement with inline styles or one short body `<style>` after slide 1; never start with `<head>` or long CSS.',
     'Build a slide arc: cover, 4–6 varied evidence/story slides, closing; avoid generic title-plus-bullets.',
     'Output compact no-head deck HTML with varied inline layouts and visible content first.',

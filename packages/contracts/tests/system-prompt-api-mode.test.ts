@@ -328,7 +328,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('split thesis, timeline, quote');
       expect(prompt).toContain('template/design-system feel');
       expect(prompt).toContain('bind quick-brief answers');
-      expect(prompt).toContain('theme rhythm');
+      expect(prompt).toContain('Alternate light/dark');
       expect(prompt).not.toContain('assets/template.html');
     });
 
@@ -408,6 +408,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('class/style cues: slide, capsule, hero');
       expect(prompt).toContain('layout cues: display:grid, grid-template-columns, border-radius, letter-spacing');
       expect(prompt).toContain('Mandatory: slides must visibly match');
+      expect(prompt).toContain('Template beats compact samples');
       expect(prompt).toContain('Implement with inline styles');
       expect(prompt).toContain('Do not copy the full template skeleton');
       expect(prompt).not.toContain('Do not paste this exact headline');
@@ -434,6 +435,32 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Mandatory: slides must visibly match');
       expect(prompt).toContain('apply it with inline styles');
       expect(prompt).toContain('do not merely describe it');
+      expect(prompt).toContain('Template is the visual contract');
+      expect(prompt.length).toBeLessThan(18_000);
+    });
+
+    it('keeps richer visual template rules while stripping unavailable copy workflows', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillName: 'Html Ppt Zhangzara Editorial',
+        skillBody:
+          '# Html Ppt Zhangzara Editorial\n\n'
+          + 'Read assets/template.html and copy the skeleton.\n'
+          + 'Palette: warm paper background, black ink, coral accent chips.\n'
+          + 'Typography: elegant serif hero titles with small mono metadata labels.\n'
+          + 'Layout rhythm: editorial magazine spreads, high whitespace, asymmetric grid.\n'
+          + 'Density: restrained copy, oversized section numbers, thin rule lines.\n'
+          + 'Accent treatment: capsule labels, small corner notes, subtle paper grain.\n'
+          + 'Use references/layouts.md for exact slots.\n',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+
+      expect(prompt).toContain('Palette: warm paper background');
+      expect(prompt).toContain('Typography: elegant serif hero titles');
+      expect(prompt).toContain('Layout rhythm: editorial magazine spreads');
+      expect(prompt).toContain('Accent treatment: capsule labels');
+      expect(prompt).toContain('Template is the visual contract');
+      expect(prompt).not.toContain('Read assets/template.html and copy the skeleton');
+      expect(prompt).not.toContain('Use references/layouts.md for exact slots');
       expect(prompt.length).toBeLessThan(18_000);
     });
   });
