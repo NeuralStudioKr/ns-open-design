@@ -165,7 +165,9 @@ export function buildAutoContinueIncompleteOutputPrompt(
       parts.push(
         '\n\n[이전 HTML은 빈 document shell / 미완성 덱에 불과합니다 — 이어 쓰지 말고 버리세요:]\n'
           + partial.slice(0, 160)
-          + '\n\n위 shell을 복사하지 말고, 새 complete HTML deck artifact를 6~8장으로 즉시 작성하세요.',
+          + '\n\n위 shell을 복사하지 말고, 새 complete HTML deck artifact를 즉시 작성하세요. ('
+          + COMPACT_DECK_SLIDE_COUNT_GUIDANCE
+          + ')',
       );
     }
   } else if (partial && partial.length >= 128) {
@@ -179,7 +181,9 @@ export function buildAutoContinueIncompleteOutputPrompt(
     parts.push(
       '\n\n[이전 HTML은 빈 document shell에 불과합니다 — 이어 쓰지 말고 버리세요:]\n'
         + partial.slice(0, 160)
-        + '\n\n위 shell을 복사하지 말고, 새 complete HTML deck artifact를 6~8장으로 즉시 작성하세요.',
+        + '\n\n위 shell을 복사하지 말고, 새 complete HTML deck artifact를 즉시 작성하세요. ('
+        + COMPACT_DECK_SLIDE_COUNT_GUIDANCE
+        + ')',
     );
   }
 

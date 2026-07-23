@@ -2,7 +2,7 @@
 
 **작성:** 2026-07-22  
 **범위:** Teamver embed slide-only MVP (`staging`)  
-**관련 SSOT:** [40 OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md) · [13 embed 슬라이드 MVP 기능게이트](./13_embed_슬라이드_MVP_기능게이트.md) · [29 BYOK api mode vs runs 아키텍처](./29_BYOK_api_mode_vs_runs_아키텍처.md)
+**관련 SSOT:** [40 OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md) · [13 embed 슬라이드 MVP 기능게이트](./13_embed_슬라이드_MVP_기능게이트.md) · [29 BYOK api mode vs runs 아키텍처](./29_BYOK_api_mode_vs_runs_아키텍처.md) · **[47 body-first compact deck 검토·0716 이후 판단](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** (의사결정·유지/롤백 SSOT)
 
 ---
 
@@ -166,6 +166,7 @@ upstream 선별 반영 이력은 [40 OD upstream main 반영 검토](./40_OD_ups
 | 2026-07-22 | Phase 1 리뷰 — slideCount 6–8 정합, wireframe 예시·layout vocabulary 충돌 완화, deliverable directive 데드코드 제거, 회귀 테스트 추가 |
 | 2026-07-22 | 미리보기 UX — stacked deck pan(휠/드래그), center zoom origin, slide flex center, compact vocabulary 타이포 1920×1080 상향 |
 | 2026-07-22 | 렌더링 회귀 복구 — stacked letterbox/pan을 compact API 덱으로만 한정; build import·previewSource 감지 SSOT 정합 |
+| 2026-07-23 | [47](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md) — body-first 결정·0716 이후 변경 판단·유지/롤백 매트릭스 SSOT 추가 |
 
 ---
 

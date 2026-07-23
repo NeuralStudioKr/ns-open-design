@@ -37,6 +37,8 @@
 | [39 Design 이중화·HA](./39_0_Design_이중화_로드맵_개요.md) | **Phase 0~5 · userId hash · scratch/SQLite · [39_6 CTO](./39_6_라우팅_아키텍처_CTO_의사결정.md) · [39_7 저장층 FAQ](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md) · [39_10 BFF 쿠키 경합](./39_10_HA_세션쿠키_경합_해결.md)** |
 | **[40 OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md)** | **2026-07-23 현재 판단 · 공식 OD main 전체 merge 금지 · P0 run/artifact/security 수동 포팅 후보** |
 | **[42 Canvas Apps 슬라이드 생성](./42_Canvas_앱스_슬라이드_생성_기획설계.md)** | **캔버스 헤더 Apps · Design 슬라이드 · JSON/MD/HTML 비교 · Docs 자리(비활성)** |
+| **[46 embed 슬라이드 품질](./46_embed_슬라이드_품질_원인분석_개선로드맵.md)** | **품질 trade-off · Phase 1~3 로드맵** |
+| **[47 body-first compact deck 검토](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** | **body-first 결정 · 0716 이후 판단 · 유지/롤백 SSOT** |
 | **[17 Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** | **Step 0~6 체크리스트 · ACM→TF→DNS→EC2→e2e-strict** |
 | **[18 EC2 Instance Profile · S3](./18_EC2_IAM_Instance_Profile_S3_설정.md)** | **IAM role/profile · IMDS hop 2 · Docker S3 creds · 검증** |
 | **[00 구현 내역](./00_구현_내역_누적.md)** | **코드·연동 변경 누적 (날짜 역순)** |
@@ -71,6 +73,8 @@
 | 39 | **[Design 이중화·HA](./39_0_Design_이중화_로드맵_개요.md)** — [39_1](./39_1_이중화_Phase_로드맵.md) Phase · [39_2](./39_2_ALB_nginx_라우팅_설계.md) 라우팅 · [39_6](./39_6_라우팅_아키텍처_CTO_의사결정.md) CTO · [39_7](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md) scratch·DaemonDb · [39_3~5](./39_3_scratch_SQLite_SSE_제약.md) |
 | 40 | **[OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md)** — 2026-07-23 현재 판단, 전체 merge 금지, run lifecycle·artifact·security P0 수동 포팅 후보 |
 | 42 | **[Canvas Apps 슬라이드 생성 기획·설계](./42_Canvas_앱스_슬라이드_생성_기획설계.md)** — Apps 메뉴 · HTML handoff 유지 · Docs disabled |
+| 46 | **[embed 슬라이드 품질 원인분석·로드맵](./46_embed_슬라이드_품질_원인분석_개선로드맵.md)** — Phase 1~3 |
+| 47 | **[body-first compact deck 검토·0716 이후 판단](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** — 유지/롤백 SSOT |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |
 | 18 | **[EC2 Instance Profile · S3 설정](./18_EC2_IAM_Instance_Profile_S3_설정.md)** |
 | 05 | **[OD UI 재사용](./05_OD_UI_재사용_빠른출시.md)** |

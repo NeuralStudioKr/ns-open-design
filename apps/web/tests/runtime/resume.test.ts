@@ -108,6 +108,7 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     // Tiny / empty shells are never fenced as "continue this HTML".
     expect(first).not.toContain('```html');
     expect(first).toContain('빈 document shell');
+    expect(first).toContain('Plugin inputs');
     expect(second).not.toContain('```html');
     expect(second).toContain('빈 document shell');
   });
