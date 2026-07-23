@@ -2128,7 +2128,7 @@ html[data-od-stacked-deck] body {
     // Auto-fit modal scalers set layoutFit and pass scale = visual/designWidth;
     // reconstruct layout width so the deck still fills the iframe interior.
     if (hw > 0 && hh > 0) {
-      if (hostViewport.layoutFit && scale > 0 && scale < 0.999) {
+      if (hostViewport.layoutFit && scale > 0) {
         return { w: hw / scale, h: hh / scale };
       }
       return { w: hw, h: hh };

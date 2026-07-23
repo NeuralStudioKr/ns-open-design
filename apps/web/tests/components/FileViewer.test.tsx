@@ -41,6 +41,7 @@ import {
   appendSavedPreviewCommentOrder,
   applyInspectOverridesToSource,
   commentPreviewCanvasSize,
+  deckPreviewScaleShellStyle,
   effectivePreviewScale,
   parseInspectOverridesFromSource,
   previewOverlayTransform,
@@ -258,6 +259,21 @@ describe('FileViewer preview scale', () => {
 
   it('uses the requested zoom for desktop preview overlays', () => {
     expect(effectivePreviewScale('desktop', 1.5, { width: 320, height: 480 })).toBe(1.5);
+  });
+
+  it('keeps fixed-stage deck iframe layout size stable under desktop zoom', () => {
+    expect(deckPreviewScaleShellStyle('desktop', 0.75)).toMatchObject({
+      width: '100%',
+      height: '100%',
+      transform: 'scale(0.75)',
+      transformOrigin: 'center center',
+    });
+    expect(deckPreviewScaleShellStyle('desktop', 1.25)).toMatchObject({
+      width: '100%',
+      height: '100%',
+      transform: 'scale(1.25)',
+      transformOrigin: 'center center',
+    });
   });
 
   it('clamps mobile and tablet overlay scale to the iframe auto-fit scale', () => {

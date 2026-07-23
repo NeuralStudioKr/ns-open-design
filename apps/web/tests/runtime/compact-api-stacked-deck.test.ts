@@ -83,6 +83,14 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(buildSrcdoc(simpleDeck, { deck: true })).not.toMatch(/html,\s*body\s*\{[^}]*overflow:\s*hidden\s*!important/);
   });
 
+  it('reconstructs fixed-stage deck layout viewport from host zoom scale', () => {
+    const compact = '<!doctype html><html><body><section class="slide" style="min-height:100vh">A</section></body></html>';
+    const out = buildSrcdoc(compact, { deck: true });
+
+    expect(out).toContain('if (hostViewport.layoutFit && scale > 0)');
+    expect(out).toContain('return { w: hw / scale, h: hh / scale };');
+  });
+
   it('keeps explicit horizontal scroll-snap decks on their native path', () => {
     const html = [
       '<!doctype html><html><head><style>',

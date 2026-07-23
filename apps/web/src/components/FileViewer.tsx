@@ -123,7 +123,13 @@ import {
   canActivateSrcDocTransport,
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
-import { postDeckHostViewportToIframe, postDeckPreviewPanBy, resetDeckPreviewPan, scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
+import {
+  postDeckHostViewportToIframe,
+  postDeckPreviewPanBy,
+  resetDeckPreviewPan,
+  scheduleDeckPreviewFitNudges,
+  type DeckPreviewFitOptions,
+} from '../runtime/deckPreviewFit';
 import { looksLikeCompactApiStackedDeckForPreview } from '../runtime/compact-api-stacked-deck';
 import {
   hasUrlModeBridge,
@@ -303,6 +309,7 @@ const COMMENT_SIDE_DOCK_STACKED_HEIGHT_DEDUCTION =
   (COMMENT_SIDE_DOCK_PADDING * 2) + COMMENT_SIDE_DOCK_GAP + COMMENT_SIDE_DOCK_STACKED_PANEL_HEIGHT;
 const COMMENT_SIDE_DOCK_STACKED_COLLAPSED_HEIGHT_DEDUCTION =
   (COMMENT_SIDE_DOCK_PADDING * 2) + COMMENT_SIDE_DOCK_GAP + COMMENT_SIDE_DOCK_STACKED_RAIL_HEIGHT;
+const FIXED_STAGE_DECK_FIT_OPTIONS: DeckPreviewFitOptions = { layoutFit: true };
 
 // The five basic style facets the inspect panel exposes. Kept narrow on
 // purpose — open-slide's design tokens panel only edits global tokens, so
@@ -726,14 +733,14 @@ function previewScaleShellStyle(
   };
 }
 
-function deckPreviewScaleShellStyle(
+export function deckPreviewScaleShellStyle(
   viewport: PreviewViewportId,
   previewScale: number,
 ): CSSProperties & Record<string, string | number> {
   if (viewport === 'desktop') {
     return {
-      width: `${100 / previewScale}%`,
-      height: `${100 / previewScale}%`,
+      width: '100%',
+      height: '100%',
       transform: `scale(${previewScale})`,
       transformOrigin: 'center center',
     };
@@ -5697,6 +5704,9 @@ function HtmlViewer({
     && !inspectMode;
   const deckPreviewPanActive = deckPreviewUsesFixedStage
     && !slideOnlyMvp;
+  const deckPreviewFitOptions = deckPreviewUsesFixedStage
+    ? FIXED_STAGE_DECK_FIT_OPTIONS
+    : undefined;
   const onDeckPreviewWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     if (!deckPreviewPanActive) return;
     const frame = iframeRef.current;
@@ -6132,7 +6142,7 @@ function HtmlViewer({
       if (!isActivePreviewIframeSource(ev.source)) return;
       const data = ev.data as { type?: string } | null;
       if (!data || data.type !== 'od:deck-host-viewport-request') return;
-      postDeckHostViewportToIframe(iframeRef.current, overlayPreviewScale);
+      postDeckHostViewportToIframe(iframeRef.current, overlayPreviewScale, deckPreviewFitOptions);
     }
     window.addEventListener('message', onDeckViewportRequest);
     return () => window.removeEventListener('message', onDeckViewportRequest);
@@ -6142,16 +6152,18 @@ function HtmlViewer({
     isOurPreviewIframeSource,
     isActivePreviewIframeSource,
     overlayPreviewScale,
+    deckPreviewFitOptions,
   ]);
 
   useEffect(() => {
     if (!needsDeckHostViewportFit || mode !== 'preview') return;
-    return scheduleDeckPreviewFitNudges(iframeRef.current, overlayPreviewScale);
+    return scheduleDeckPreviewFitNudges(iframeRef.current, overlayPreviewScale, deckPreviewFitOptions);
   }, [
     needsDeckHostViewportFit,
     mode,
     zoom,
     overlayPreviewScale,
+    deckPreviewFitOptions,
     previewBodySize?.width,
     previewBodySize?.height,
     srcDoc,
@@ -9439,7 +9451,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
-                            if (needsDeckHostViewportFit) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
+                            if (needsDeckHostViewportFit) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale, deckPreviewFitOptions);
                           }}
                         />
                       ) : (
@@ -9465,7 +9477,7 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
-                            if (needsDeckHostViewportFit) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
+                            if (needsDeckHostViewportFit) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale, deckPreviewFitOptions);
                           }}
                         />
                       )}
@@ -9527,7 +9539,7 @@ function HtmlViewer({
                           replayInspectOverridesToIframe(frame);
                           syncBridgeModes(frame);
                           syncCachedSlideStateToIframe(frame);
-                          if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
+                          if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale, deckPreviewFitOptions);
                           if (!useUrlLoadPreview) restorePreviewScrollPosition();
                         }}
                       />
