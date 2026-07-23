@@ -34,6 +34,34 @@ export function canvasCreateSlidesRunPrompt(templateTitle?: string | null): stri
   return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}`;
 }
 
+/** Per-turn meta so API/daemon runs compose the selected deck template into the system prompt. */
+export function canvasCreateSlidesTurnMeta(
+  templateId: string,
+  options?: {
+    designSystemId?: string | null;
+    mergeContext?: {
+      pluginIds?: string[];
+      skillIds?: string[];
+    };
+  },
+): {
+  skillIds: string[];
+  designSystemId?: string | null;
+  context: { pluginIds: string[]; skillIds: string[] };
+} {
+  const id = templateId.trim();
+  const priorPluginIds = options?.mergeContext?.pluginIds ?? [];
+  const priorSkillIds = options?.mergeContext?.skillIds ?? [];
+  return {
+    skillIds: id ? [id] : [],
+    ...(options?.designSystemId != null ? { designSystemId: options.designSystemId } : {}),
+    context: {
+      pluginIds: id ? [id, ...priorPluginIds.filter((pluginId) => pluginId !== id)] : priorPluginIds,
+      skillIds: id ? [id, ...priorSkillIds.filter((skillId) => skillId !== id)] : priorSkillIds,
+    },
+  };
+}
+
 export type TeamverCanvasSlideTemplateOption = {
   id: string;
   title: string;

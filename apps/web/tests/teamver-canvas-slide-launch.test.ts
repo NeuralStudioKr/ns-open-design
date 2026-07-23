@@ -9,6 +9,7 @@ import {
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
+  canvasCreateSlidesTurnMeta,
   isCanvasSlideOneConfirmLaunch,
 } from "../src/teamver/canvasSlideLaunch";
 import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
@@ -61,6 +62,28 @@ describe("canvasSlideLaunch", () => {
     expect(runPrompt).toContain(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION);
     expect(runPrompt).toContain("Selected slide template/style: Hermes Cyber Terminal.");
     expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).toBe(CANVAS_CREATE_SLIDES_PROMPT);
+  });
+
+  it("binds selected deck template into per-turn skillIds for system prompt composition", () => {
+    expect(canvasCreateSlidesTurnMeta("example-simple-deck", { designSystemId: "ds-1" })).toEqual({
+      skillIds: ["example-simple-deck"],
+      designSystemId: "ds-1",
+      context: {
+        pluginIds: ["example-simple-deck"],
+        skillIds: ["example-simple-deck"],
+      },
+    });
+    expect(
+      canvasCreateSlidesTurnMeta("example-simple-deck", {
+        mergeContext: { pluginIds: ["other-plugin"], skillIds: ["staged-skill"] },
+      }),
+    ).toEqual({
+      skillIds: ["example-simple-deck"],
+      context: {
+        pluginIds: ["example-simple-deck", "other-plugin"],
+        skillIds: ["example-simple-deck", "staged-skill"],
+      },
+    });
   });
 
   it("binds create-slides to the deck scenario plugin", () => {

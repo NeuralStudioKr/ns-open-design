@@ -81,6 +81,7 @@ import {
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
+  canvasCreateSlidesTurnMeta,
   canvasSlideTemplateOptions,
 } from '../teamver/canvasSlideLaunch';
 import {
@@ -1694,12 +1695,17 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setCanvasSlideLaunch(null);
           setCanvasSlideLaunchError(null);
           const baseMeta = currentRunContextMeta();
+          const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
+            designSystemId: designSystemIdForRun,
+            mergeContext: baseMeta?.context,
+          });
           sendComposedTurn(
             canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
             attachments,
             [],
             {
               ...baseMeta,
+              ...canvasMeta,
               pluginInputs: canvasCreateSlidesPluginInputs(
                 canvasSlideLaunch.handoff.title?.trim()
                   || canvasSlideLaunch.handoff.threadTitle?.trim()
@@ -1709,15 +1715,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 selectedCanvasSlideTemplate.title,
                 canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff),
               ),
-              designSystemId: designSystemIdForRun,
               context: {
                 ...(baseMeta?.context ?? {}),
-                pluginIds: [
-                  selectedCanvasSlideTemplate.id,
-                  ...((baseMeta?.context?.pluginIds ?? []).filter(
-                    (id) => id !== selectedCanvasSlideTemplate.id,
-                  )),
-                ],
+                ...canvasMeta.context,
               },
             },
           );
@@ -1755,25 +1755,24 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         setCanvasSlideLaunchError(null);
         {
           const baseMeta = currentRunContextMeta();
+          const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
+            designSystemId: designSystemIdForRun,
+            mergeContext: baseMeta?.context,
+          });
           sendComposedTurn(
             canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
             attachments,
             [],
             {
               ...baseMeta,
+              ...canvasMeta,
               pluginInputs: canvasCreateSlidesPluginInputs(
                 asset.filename ?? asset.assetId,
                 selectedCanvasSlideTemplate.title,
               ),
-              designSystemId: designSystemIdForRun,
               context: {
                 ...(baseMeta?.context ?? {}),
-                pluginIds: [
-                  selectedCanvasSlideTemplate.id,
-                  ...((baseMeta?.context?.pluginIds ?? []).filter(
-                    (id) => id !== selectedCanvasSlideTemplate.id,
-                  )),
-                ],
+                ...canvasMeta.context,
               },
             },
           );

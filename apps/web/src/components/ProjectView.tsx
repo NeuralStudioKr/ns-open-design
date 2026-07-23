@@ -284,6 +284,7 @@ import {
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
+import { fetchPluginLocalSkill } from '../teamver/fetchPluginLocalSkill';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import { sanitizeAssistantProseForDisplay } from '../runtime/internalAgentMarkup';
@@ -1523,6 +1524,7 @@ export function ProjectView({
   const startingQueuedChatSendIdRef = useRef<string | null>(null);
   const [queuedAutoStartTick, setQueuedAutoStartTick] = useState(0);
   const skillCache = useRef<Map<string, string>>(new Map());
+  const pluginSkillCache = useRef<Map<string, string>>(new Map());
   const designCache = useRef<Map<string, string>>(new Map());
   const templateCache = useRef<Map<string, ProjectTemplate>>(new Map());
   // We auto-save the most recent artifact to the project folder. Track the
@@ -3227,6 +3229,7 @@ export function ProjectView({
     sessionModeOverride: ChatSessionMode = activeSessionMode,
     designSystemIdOverride?: string | null,
     skillIdOverride?: string | null,
+    pluginIdForLocalSkill?: string | null,
   ): Promise<string> => {
     let skillBody: string | undefined;
     let skillName: string | undefined;
@@ -3254,6 +3257,19 @@ export function ProjectView({
         if (detail) {
           skillBody = detail.body;
           skillCache.current.set(effectiveSkillId, detail.body);
+        }
+      }
+    }
+    if (!skillBody?.trim() && pluginIdForLocalSkill) {
+      const cached = pluginSkillCache.current.get(pluginIdForLocalSkill);
+      if (cached !== undefined) {
+        skillBody = cached;
+      } else {
+        const local = await fetchPluginLocalSkill(pluginIdForLocalSkill);
+        if (local) {
+          skillBody = local.body;
+          skillName = local.name;
+          pluginSkillCache.current.set(pluginIdForLocalSkill, local.body);
         }
       }
     }
@@ -6393,11 +6409,20 @@ export function ProjectView({
           }
         }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
-        const effectiveSkillId = Array.isArray(meta?.skillIds) ? meta.skillIds[0] ?? null : null;
+        const effectiveSkillId =
+          (Array.isArray(meta?.skillIds) ? meta.skillIds[0] : null) ??
+          (Array.isArray(meta?.context?.pluginIds) ? meta.context.pluginIds[0] : null);
+        let pluginIdForLocalSkill =
+          (Array.isArray(meta?.context?.pluginIds) ? meta.context.pluginIds[0] : null) ?? null;
+        if (!pluginIdForLocalSkill && project.appliedPluginSnapshotId) {
+          const snap = await fetchAppliedPluginSnapshot(project.appliedPluginSnapshotId);
+          pluginIdForLocalSkill = snap?.pluginId ?? null;
+        }
         const systemPrompt = await composedSystemPrompt(
           runSessionMode,
           effectiveDesignSystemId,
           effectiveSkillId,
+          pluginIdForLocalSkill,
         );
         const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);
         const apiHistory = await historyWithApiAttachmentContext(
