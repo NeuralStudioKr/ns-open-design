@@ -125,7 +125,10 @@ export function runEndedWithUnfinishedWork(events) {
 export function createChatRunService({
   createSseResponse,
   createSseErrorPayload,
-  maxEvents = 2_000,
+  maxEvents = (() => {
+    const raw = Number(process.env.OD_CHAT_RUN_MAX_EVENTS);
+    return Number.isFinite(raw) && raw > 0 ? raw : 2_000;
+  })(),
   ttlMs = 30 * 60 * 1000,
   shutdownGraceMs = 3_000,
   // Absolute directory under which per-run event JSONL logs are written

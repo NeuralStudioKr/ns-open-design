@@ -310,6 +310,11 @@ import { deriveRunErrorCode, runResultFromStatus } from './run-result.js';
 import { classifyRunFailure, isResumableFailure } from './run-failure-classification.js';
 import { decideSafeRunRetry } from './run-retry-policy.js';
 import {
+  extractPlainStreamArtifacts,
+  persistPlainStreamArtifactList,
+  plainStdoutFromRunEvents,
+} from './plain-stream.js';
+import {
   amrUserIdForRunAnalytics,
   hasExplicitRequestedModelForAnalytics,
   normalizeUsageTokenCounts,
@@ -12890,6 +12895,10 @@ export async function startServer({
     // `emittedRenderableQuestionForm`).
     const CLARIFYING_QUESTION_BUFFER_CAP = 256 * 1024;
     let clarifyingQuestionText = '';
+    // Upper bound for the truncation-proof plain-stream stdout accumulator used
+    // by the artifact finalizer. 8 MiB comfortably covers realistic
+    // artifact-bearing runs while bounding per-run memory.
+    const PLAIN_ARTIFACT_STDOUT_CAP = 8 * 1024 * 1024;
     const send = (event, data) => {
       if (
         event === 'agent' &&
@@ -12902,6 +12911,15 @@ export async function startServer({
           0,
           CLARIFYING_QUESTION_BUFFER_CAP,
         );
+      }
+      // Keep enough plain-stream stdout on the run so artifact extraction does
+      // not depend on the <artifact> tag surviving the 2000-event ring buffer.
+      if (event === 'stdout' && data && typeof data.chunk === 'string') {
+        run.plainStdoutTotalBytes = (run.plainStdoutTotalBytes ?? 0) + data.chunk.length;
+        if ((run.plainArtifactStdout?.length ?? 0) < PLAIN_ARTIFACT_STDOUT_CAP) {
+          run.plainArtifactStdout =
+            ((run.plainArtifactStdout ?? '') + data.chunk).slice(0, PLAIN_ARTIFACT_STDOUT_CAP);
+        }
       }
       persistRunEventToAssistantMessage(db, run, event, data);
       design.runs.emit(run, event, data);
@@ -15143,6 +15161,74 @@ export async function startServer({
       }
       plaintextStdoutBuffer.length = 0;
       flushRunProseGuard();
+      if (
+        status === 'succeeded' &&
+        (def.streamFormat ?? 'plain') === 'plain' &&
+        run.projectId
+      ) {
+        const head = run.plainArtifactStdout ?? '';
+        const tail = plainStdoutFromRunEvents(run.events);
+        const totalBytes = run.plainStdoutTotalBytes ?? head.length;
+        const tailStart = Math.max(0, totalBytes - tail.length);
+        let plainArtifacts: ReturnType<typeof extractPlainStreamArtifacts>;
+        if (head.length === 0) {
+          plainArtifacts = extractPlainStreamArtifacts(tail);
+        } else if (tailStart <= head.length) {
+          const stitched = head + tail.slice(head.length - tailStart);
+          plainArtifacts = extractPlainStreamArtifacts(stitched);
+        } else {
+          plainArtifacts = [
+            ...extractPlainStreamArtifacts(head),
+            ...extractPlainStreamArtifacts(tail),
+          ];
+        }
+        if (plainArtifacts.length > 0) {
+          try {
+            const project = getProject(db, run.projectId);
+            const persistedPlainArtifacts = await persistPlainStreamArtifactList({
+              projectsRoot: PROJECTS_DIR,
+              projectId: run.projectId,
+              artifacts: plainArtifacts,
+              metadata: project?.metadata,
+              writeProjectFile,
+            });
+            if (persistedPlainArtifacts.length > 0) {
+              for (const artifact of persistedPlainArtifacts) {
+                send('agent', {
+                  type: 'artifact',
+                  source: 'plain-stream',
+                  name: artifact.name,
+                  path: artifact.name,
+                  identifier: artifact.identifier,
+                  artifactType: artifact.artifactType,
+                });
+              }
+              send('agent', {
+                type: 'diagnostic',
+                name: 'plain_stream_artifacts_persisted',
+                source: 'daemon-run-finalize',
+                fileCount: persistedPlainArtifacts.length,
+                files: persistedPlainArtifacts.map((artifact) => artifact.name),
+              });
+            }
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            const failureMessage = `Failed to persist plain-stream artifact(s): ${message}`;
+            console.warn(`[plain-stream] failed to persist stdout artifact(s): ${message}`);
+            send('agent', {
+              type: 'diagnostic',
+              name: 'plain_stream_artifacts_persist_failed',
+              source: 'daemon-run-finalize',
+              message,
+            });
+            send('error', createSseErrorPayload(
+              'AGENT_EXECUTION_FAILED',
+              failureMessage,
+            ));
+            return finishWithRetryDecision('failed', 1, null);
+          }
+        }
+      }
       // Capture the pi session file path for conversational continuity.
       // The session path is discovered by attachPiRpcSession when it
       // processes agent_end; persist it under (conversationId, agentId) so

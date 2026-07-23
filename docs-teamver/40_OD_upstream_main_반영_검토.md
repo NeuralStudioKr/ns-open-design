@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-23 현재.
+**반영 갱신:** 2026-07-23 — 추가 포팅 루프 24. P0-B(`4054b5357` plain-stream artifact ring buffer)를 staging에 수동 포팅했다. `apps/daemon/src/plain-stream.ts` 신규, `server.ts`에 8MiB head-biased stdout accumulator + close-time stitch finalizer, `OD_CHAT_RUN_MAX_EVENTS` 테스트 오버라이드. 회귀: `plain-stream.test.ts`(3) + `plain-stream-artifact-event-truncation.test.ts`(5) passed.
 **반영 갱신:** 2026-07-23 — 검증 루프 23. 루프 22 변경분(P0-C·P1-A·P1-C)을 전체 회귀 검증했다. daemon `tsc -p tsconfig.json --noEmit` 통과(contracts 재빌드 후), web `tsc -b --noEmit`은 내 변경 파일에 새 에러 없음(pre-existing 파일만 실패). daemon 전체 vitest `418 pass / 8 fail`, 8개 실패는 모두 pre-existing(cloud-agent chokidar/health nodeId/preview cache-control/s3 export presigned URL). 신규 upstream 후보 재조사: `068c9ae83` BYOK URL normalize는 staging에 `byok-opencode.ts` 없어 해당 없음, `4054b5357` plain-stream은 staging에 `plain-stream.ts` 모듈 자체 없어 **보류 유지**, `50843ff14` unattributable client failures(2026-07-22, 509줄/8파일)는 대부분 packaged desktop app 특정 로직이라 embed 실용성 낮음 → **조건부 후보로만 등재**.
 **반영 갱신:** 2026-07-23 — 추가 포팅 루프 22. P0-C(`d1372da02` run terminal reconcile), P1-A(`034c3895d` empty tool status UI), P1-C(`d3e091e15` failure classification)를 staging에 수동 포팅했다. P0-B(`4054b5357` plain-stream accumulator)는 staging에 `plain-stream.ts` 모듈 자체가 없어 **별도 대형 루프 보류**. P1-B(`4fb217c95` config downgrade guard)는 staging `config.ts`에 bedrock protocol downgrade 경로가 없어 **해당 없음**.
 **반영 갱신:** 2026-07-23 — 추가 포팅 루프 21. P0-A(`7b27d4ba6`+`34a050737` run lifecycle), P0-D(security 묶음 `5c94dda27`·`cbc38a498`·`bb7a10d97`·`d997318f9`), P0-E(`ace06eac1` image export viewport)를 staging에 수동 포팅했다. P0-B(`4054b5357` plain-stream accumulator)와 P0-C(`d1372da02` run terminal reconcile)는 선행 모듈/구조 차이로 **별도 루프 보류**.
@@ -45,7 +46,7 @@
 |------|------|------|-------------------|-----------|
 | **P0** | `7b27d4ba6` | canceled run이 late agent error에 의해 `failed`로 뒤집히지 않게 보정 | **✅ 루프 21 반영.** | `runs.ts`·`server.ts`·`claude-stream.ts` + `run-cancel-late-error.test.ts`. |
 | **P0** | `d1372da02` | daemon 재시작 후 run terminal reconcile | **✅ 루프 22 반영.** | `run-terminal-reconciliation.ts` 신규 + `runs.ts` durable state + `server.ts` boot hook·`run_finished` await + `run-terminal-reconciliation.test.ts`. |
-| **P0** | `4054b5357` | plain-stream artifact가 event ring buffer(2000) 초과 시 유실 방지 | **보류.** staging에 `plain-stream.ts` 모듈 자체 없음. | 전체 모듈 이식 없이는 불가. artifact recovery 회귀와 함께 별도 대형 루프. |
+| **P0** | `4054b5357` | plain-stream artifact가 event ring buffer(2000) 초과 시 유실 방지 | **✅ 루프 24 반영.** | `plain-stream.ts` + `server.ts` accumulator/finalizer + 회귀 테스트 8건. |
 | **P0** | `34a050737` | recovered sub-agent in-stream error가 main run을 fail 처리하지 않음 | **✅ 루프 21 반영.** (P0-A와 동일 커밋 묶음) | `claude-stream.ts` + `structured-streams.test.ts`. |
 | **P0** | `5c94dda27` | 타 프로젝트 conversation으로 run 생성 거부 | **✅ 루프 21 반영.** | `server.ts` `POST /api/runs`·`POST /api/chat` ownership guard + `run-cross-project-conversation.test.ts`. |
 | **P0** | `cbc38a498` | plugin uninstall 시 plugin id path traversal 차단 | **✅ 루프 21 반영.** | `installer.ts` `isSafePluginId` + `server.ts` route 400 + `plugins-uninstall-traversal.test.ts`. |
@@ -73,10 +74,10 @@
 
 ### 0.2 2026-07-23 권장 포팅 순서 (기존 동작 보호 우선)
 
-**루프 22 완료:** P0-C, P1-A, P1-C. **다음 루프:** P0-B (대형·선행 모듈 필요) → P1 `068c9ae83` BYOK URL normalize.
+**루프 22 완료:** P0-C, P1-A, P1-C. **루프 24 완료:** P0-B. **다음 루프:** P1 `068c9ae83` BYOK URL normalize (해당 없음 여부 재확인) 또는 조건부 `50843ff14`.
 
 1. ~~**P0-A (run lifecycle):** `7b27d4ba6` → `34a050737`~~ ✅ 루프 21
-2. **P0-B (artifact durability):** `4054b5357` — plain-stream artifact ring buffer 유실. 검증: 8~12장 deck 생성 후 artifact·preview·S3 sync.
+2. ~~**P0-B (artifact durability):** `4054b5357` — plain-stream artifact ring buffer 유실~~ ✅ 루프 24
 3. ~~**P0-C (daemon restart / HA):** `d1372da02` — run terminal reconcile~~ ✅ 루프 22
 4. ~~**P0-D (security):** `5c94dda27` → `cbc38a498` → `bb7a10d97` → `d997318f9`~~ ✅ 루프 21
 5. ~~**P0-E (export):** `ace06eac1` — image export viewport~~ ✅ 루프 21
