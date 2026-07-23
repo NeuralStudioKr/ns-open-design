@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
-**판단 시점:** 2026-07-21 현재.
+**판단 시점:** 2026-07-23 현재.
+**반영 갱신:** 2026-07-23 — 추가 검토 루프 20. `origin/main` 최신 `034c3895d fix(web): hide empty tool_call/tool_call_update status rows (#4621)` 기준으로 `staging`과의 divergence(`700 / 998`)를 재확인했다. 2026-07-21 이후 main에 합쳐진 daemon run 안정화·보안·export·artifact recovery 커밋을 우선순위별로 분류했고, **코드 포팅은 이번 루프에서 수행하지 않았다.** 전체 merge/cherry-pick 금지 원칙은 유지한다.
 **반영 갱신:** 2026-07-21 — 추가 포팅 루프 19. `04236af50` intent signal latch는 전체 포팅하지 않았다. 현재 Teamver `composeSystemPrompt`는 upstream의 per-turn intent-gated stable blocks(`freeformDeckSignal` 등)를 쓰지 않고, `metadata.kind='deck'` + slide-only override + freeform conditional deck framework로 이미 다른 구조다. DB `intent_signals_json` migration/latch를 그대로 넣으면 background/session/cache 경로를 넓게 흔들 수 있어 보류했다. 대신 안전한 공통 부분인 `extractUserAuthoredSignalText`를 수동 포팅해, Research canonical query fallback이 packed transcript 전체(assistant discovery form/options/generated code)가 아니라 사용자 작성 텍스트만 사용하도록 좁혔다.
 **반영 갱신:** 2026-07-21 — 추가 포팅 루프 18. `b86537483` floating composer clamp는 현재 Teamver `PreviewDrawOverlay` 구조와 대조한 결과 직접 포팅하지 않았다. upstream의 `computePreviewDrawDockLayout` 기반 floating dock 함수가 staging에는 존재하지 않고, 현재 Teamver는 portal toolbar/inline overlay 구조로 이미 달라져 있어 cherry-pick/재구현 시 오히려 회귀 위험이 크다. 대신 직전 `ComposerPlusMenu` search flyout 보정이 Escape/outside-click 닫힘을 깨지 않는지 회귀 테스트를 추가했다.
 **반영 갱신:** 2026-07-21 — 추가 포팅 루프 17. `4d2fb936e` plugin flyout search 안정화 패치를 Teamver `ComposerPlusMenu` 구조에 맞춰 수동 포팅했다. 프로젝트 상세 composer의 `+ > 플러그인` 검색 중 목록 reflow가 synthetic `mouseleave`를 만들면 submenu close timer가 검색창과 preview column을 닫을 수 있었다. 이제 flyout 내부 search input이 focus를 가진 동안에는 hover-close를 무시하고, outside click/Escape/선택으로만 닫히도록 보정했다.
@@ -24,12 +25,81 @@
 **반영 갱신:** 2026-07-20 — 로컬 `upstream/main` 최신 `f13ed2cb7 landing-page: enrich and redesign the codex-design page (#5872)` 기준으로 prompt/cache·작업 속도 후보를 추가 재검토했다. `9b5cdd843`의 connected-MCP directive cache 분리는 Teamver run 구조에 맞춰 수동 포팅했다. `ed48a7d22` transient ACP persistence filter는 이미 Teamver `server.ts` 경로에 반영되어 있어 중복 적용하지 않았다.
 **반영 갱신:** 2026-07-20 — `origin/main` 최신 `3447f60a3 fix packaged payload desktop handoff (#5678)` 기준으로 속도·프롬프트 관련 후보를 재검토했다. 전체 merge 금지 원칙은 유지한다. 보류했던 `4b660237c`는 문구 단위로 다시 검토해 안전한 축약 문구만 수동 포팅했다.
 **반영 갱신:** 2026-07-16 — `git fetch origin main` 후 `origin/main` 최신 상태를 재확인했다. Teamver `staging`에는 Drive 인증/HA, S3/preview/cache, background run, 다운로드 안정화 패치가 계속 누적되어 있으므로 전체 merge 위험도는 여전히 높다.
-**비교 기준:** `staging` (`10b0ba491 fix(export): prefer screenshot pptx fidelity by default`) ↔ `origin/main` (`94a5bd2e0 fix BYOK OpenCode permission bypass (#5701)`).
+**비교 기준:** `staging` (`ad03c0931 test(contracts): harden slide template prompt contracts`) ↔ `origin/main` (`034c3895d fix(web): hide empty tool_call/tool_call_update status rows (#4621)`).
+**merge-base:** `f6ce40ead` (2026-06-15) — 이후 양쪽 모두 대규모 독립 변경.
+**divergence:** `git rev-list --left-right --count staging...origin/main` → **`700 / 998`** (main 700 ahead, staging 998 ahead).
 **결론:** 공식 OD 최신 `main` 전체를 Teamver `staging`에 merge하지 않는다. Teamver 기존 동작을 깨지 않도록, 필요한 커밋만 수동 포팅한다.
 
 ---
 
-## 0. 2026-07-16 현재 main 상태 요약
+## 0. 2026-07-23 현재 main 상태 요약 (루프 20)
+
+### 0.1 2026-07-21 이후 main 신규 커밋 (staging 미반영)
+
+`git log staging..origin/main --since=2026-07-21` 기준 **43개** non-merge 커밋. 아래는 Teamver AI Design(staging) 관점에서 **적용 가치·위험도**를 재분류한 목록이다.
+
+| 우선 | 커밋 | 내용 | Teamver 적용 판단 | 포팅 방안 |
+|------|------|------|-------------------|-----------|
+| **P0** | `7b27d4ba6` | canceled run이 late agent error에 의해 `failed`로 뒤집히지 않게 보정 | **강한 후보.** embed background run·명시적 Stop 후 상태 오인이 Teamver 이슈와 직결. | cherry-pick 금지. main은 `apps/daemon/src/runtimes/runs.ts` 구조인데 staging은 `apps/daemon/src/runs.ts` 단일 파일. `runtimeFailureObservedBeforeCancellation` 플래그·`waitForCanceledChildExit`·`server.ts` cancel/error 순서 보정만 수동 이식. |
+| **P0** | `d1372da02` | daemon 재시작 후 run terminal reconcile | **강한 후보.** 2노드 HA·daemon container restart 후 `running` 고착·telemetry 누락 방지. | `run-terminal-reconciliation.ts` 신규 모듈 + `server.ts` boot hook. Teamver `runs.ts` 경로에 맞춰 import 경로 조정. analytics/Langfuse 연동은 Teamver telemetry 정책과 대조 후 최소만 반영. |
+| **P0** | `4054b5357` | plain-stream artifact가 event ring buffer(2000) 초과 시 유실 방지 | **강한 후보.** 긴 plain-stream run에서 `<artifact>`가 ring에서 밀려 **결과물 미저장** 가능. slide 생성 실패·빈 preview와 연결. | `plain-stream.ts` + `server.ts` accumulator(8MiB head-biased) + ring fallback. Teamver artifact recovery·S3 sync 경로와 충돌 여부 확인. |
+| **P0** | `34a050737` | recovered sub-agent in-stream error가 main run을 fail 처리하지 않음 | **후보.** 2026-07-20에 `489fda899` Task sub-agent `turn_end` 오인 방지를 이미 포팅. 본 커밋은 **in-stream error** 케이스 보완. | `claude-stream.ts` 최소 diff만. 기존 false-success/false-failure 테스트와 함께 회귀 검증. |
+| **P0** | `5c94dda27` | 타 프로젝트 conversation으로 run 생성 거부 | **보안 후보.** multi-tenant·project hash 라우팅 환경에서 conversation/project 불일치 차단. | `routes/runs.ts`(staging 경로 확인)에 validation helper 추가. cross-project leak 테스트 이식. |
+| **P0** | `cbc38a498` | plugin uninstall 시 plugin id path traversal 차단 | **보안 후보.** daemon이 plugin registry를 `rm`할 때 id 검증. embed에서 marketplace UI는 숨겨도 HTTP route는 살아 있음. | `installer.ts`/`registry.ts` id validator만 수동 포팅. |
+| **P0** | `bb7a10d97` | imported folder가 home dotfiles 노출·`$HOME` import 차단 | **보안 후보.** folder import 경로가 Teamver에서 활성인지 확인 필요. 활성이면 P0. | `import-export-routes.ts` + `projects.ts` guard. Teamver S3 materialization과 충돌 없는지 확인. |
+| **P0** | `ace06eac1` | image export 시 preview viewport 반영 | **후보.** Teamver PNG/JPEG 다운로드 품질(크롭/빈 여백) 직결. | `FileViewer.tsx` + `exports.ts` viewport 전달만. PDF/PPTX/screenshot PPTX 기존 경로 회귀 테스트 필수. |
+| **P1** | `d997318f9` | marketplace add/refresh·plugin install fetch SSRF 차단 | **보안 후보.** staging `plugin-asset-cache.ts`에는 SSRF guard가 있으나 marketplace/installer fetch에는 **미적용**. | `plugin-asset-cache.ts`의 `assertSafePublicUrl` 재사용해 installer/marketplace fetch에 연결. embed UI 비노출과 무관하게 daemon SSRF 방어는 필요. |
+| **P1** | `068c9ae83` | Anthropic-compatible BYOK base URL 정규화 | **조건부.** embed managed key가 주력이나 BYOK proxy 경로 존재. | `byok-opencode.ts` helper만. Settings/BYOK UI 비노출 정책과 충돌 없음 확인. |
+| **P1** | `4fb217c95` | protocol downgrade 재저장 실패 시 loaded config 유지 | **후보.** embed `runtime-config`·protocol 설정 드리프트 시 UX 안정. | `apps/web/src/state/config.ts` 10줄 수준. typecheck + embed boot smoke. |
+| **P1** | `d3e091e15` | deterministic failure 분류·retry attribution 보존 | **후보.** background retry·run recovery 표시 정확도. | `run-failure-classification.ts` + `runs.ts` 최소. Teamver `endedWithUnfinishedWork` 신호와 정합성 확인. |
+| **P1** | `034c3895d` | 빈 `tool_call`/`tool_call_update` status row 숨김 | **후보.** 채팅 UI 노이즈 감소. 변경 2파일·저위험. | `AssistantMessage.tsx` filter 로직만. Teamver chat markup 정책과 충돌 없음. |
+| **P1** | `85ec1b624` | deck thumbnail markup DOMPurify sanitize | **조건부.** staging에 `deck-thumbnail-parser.ts` **없음**. Teamver는 `ProjectCardHtmlCover` + srcDoc iframe 경로. | upstream parser 포팅보다 Teamver cover XSS surface(`ProjectCardHtmlCover`, `authenticatedHtmlSrcDoc`) 별도 감사 우선. 필요 시 DOMPurify를 Teamver cover 경로에만 적용. |
+| **P1** | `7bc2b5948` | resumed run에 MCP prompt 전달 | **낮은 우선.** embed는 MCP UI 비노출(`embedDaemonFetchPolicy`). daemon route는 잔존. | MCP를 product scope에 다시 열 때 포팅. 현재는 보류 가능. |
+| **P2** | `91a3df9a3` | dark-first brand canvas derived theme 보존 | **후순위.** custom design system 추출 품질. slide MVP 핵심 아님. | brand extraction 사용 시에만 검토. |
+| **P2** | `40c394df0` | blocked preview asset error 표면화 | **UX 후보.** preview 실패 원인 가시성. | embed preview error copy 정책(`teamverEmbedVisuals`)과 통합 검토. |
+| **P2** | `421ac5ad5` | model picker viewport anchor | **후순위.** embed model picker 노출 범위 제한적. | 재현 시 Teamver composer에만 국소 수정. |
+| **P2** | `2fd9d8134` / `3a5c52931` | workspace tab label·home context picker token | **후순위.** embed home UX 미세 조정. | CSS/token 한정. 브랜딩 provider와 충돌 확인. |
+| **P3** | `233793271` | GPT-5.5 Fast service tier | **보류.** managed key 모델 목록은 Teamver BE/runtime-config가 통제. | 모델 tier를 product에 노출할 때만. |
+| **P3** | `df58a5f3d` / `4e8db9a9b` / `6fb644a57` | stable-prefix drift·retry provenance·turn index telemetry | **보류.** analytics/observability. 기능 회귀와 무관. | telemetry 요구 시 별도. |
+| **—** | `d8b6b797f` | chat execution disclosures 대형 리팩터 | **보류(고위험).** `AssistantMessage`/`ChatPane`/`ToolCard` 등 20+ 파일. Teamver chat markup·embed 정책과 충돌 가능성 큼. | 전체 cherry-pick **금지**. 개별 UX 버그 재현 시 국소 패치만. |
+| **—** | `2d1f25ac6` 계열 | message center 신규 기능 | **비적용.** Teamver embed에 message center 없음·노출 계획 없음. | 반영하지 않음. |
+| **—** | packaged/desktop/landing/updater 계열 | `dcdb0c420`, `4fe8bb1db`, `447b18b98`, `c401b99fa`, `888d35ce9` 등 | **비적용.** Teamver는 hosted web+daemon Docker. Electron/packaged 경로 없음. | 반영하지 않음. |
+| **—** | `1912c3ba9`, `5435274ab` | 신규 plugin (Atelier Zero, Humanize PPT) | **비적용.** embed slide MVP는 deck template gate·불필요 plugin 비노출. | marketplace 정책 변경 시 별도. |
+| **—** | `3162da5f2`, `910e5d338` | test·release notes | **비적용.** 문서/테스트만. | — |
+
+### 0.2 2026-07-23 권장 포팅 순서 (기존 동작 보호 우선)
+
+기존에 잘 동작하는 embed 인증·S3 sync·background run·export·Drive publish를 **절대 회귀시키지 않는 것**이 최우선이다. 아래 순서는 **한 루프에 하나의 P0 테마**만 다루고, 각 단계마다 회귀 테스트를 통과한 뒤 다음으로 넘긴다.
+
+1. **P0-A (run lifecycle):** `7b27d4ba6` → `34a050737` — cancel/false-failure/sub-agent error. 검증: 명시적 Stop, background reattach, `endedWithUnfinishedWork` 신호 유지.
+2. **P0-B (artifact durability):** `4054b5357` — plain-stream artifact ring buffer 유실. 검증: 8~12장 deck 생성 후 artifact·preview·S3 sync.
+3. **P0-C (daemon restart / HA):** `d1372da02` — run terminal reconcile. 검증: daemon container restart 후 `running` 고착 없음, 2노드 hash 라우팅.
+4. **P0-D (security):** `5c94dda27` → `cbc38a498` → `bb7a10d97` → `d997318f9` — cross-project·path traversal·SSRF. 검증: 악의적 plugin id·내부 URL fetch 거부.
+5. **P0-E (export):** `ace06eac1` — image export viewport. 검증: PNG/JPEG/PDF/PPTX 기존 다운로드 회귀 없음.
+6. **P1 (저위험 UX):** `034c3895d` → `4fb217c95` → `d3e091e15` — 채팅 UI·config·failure taxonomy.
+7. **보류 유지:** `d8b6b797f`, message center, packaged, `2192a7f6b` BYOK preflight, `4ddfc6e44` media retry.
+
+### 0.3 루프 20에서 **코드를 포팅하지 않은** 이유
+
+- divergence `700/998`로 structural drift가 크다(main은 `runtimes/runs.ts` 분리, staging은 `runs.ts` 단일).
+- 최근 staging 작업(slide template 검증, Drive import reference, background recovery)과 **동시에 daemon 대형 변경을 넣으면 회귀 원인 분리가 불가능**.
+- 본 루프는 **검토·우선순위·포팅 방안 문서화**만 수행. 실제 코드 반영은 위 0.2 순서의 **단일 P0 테마 단위**로 별도 루프에서 진행.
+
+### 0.4 루프 20 회귀 검증 체크리스트 (포팅 시 필수)
+
+| # | 시나리오 | 확인 |
+|---|----------|------|
+| 1 | embed 로그인 → 홈 → 프로젝트 생성 → 슬라이드 생성 | preview·artifact 정상 |
+| 2 | 생성 중 탭 이탈 → 재진입 | background run reattach, input 상태 |
+| 3 | 명시적 Stop | `canceled` 유지, late error로 `failed` 오인 없음 |
+| 4 | PNG/JPEG/PDF/PPTX 다운로드 | 기존 품질·파일명·auth gate |
+| 5 | Drive publish/import | 세션·workspace 정합 |
+| 6 | Network | `/api/version`, `/api/runs`, `auth/session`, message `PUT` 호출량 회귀 없음 |
+| 7 | 2노드(staging) | project hash 라우팅·daemon restart 후 run 상태 |
+
+---
+
+## 0-legacy. 2026-07-16 현재 main 상태 요약
 
 ### 2026-07-20 속도·프롬프트 후보 재검토
 
@@ -60,7 +130,7 @@
 | `bc5b6f058` FE 후속 | unfinished work background completion 표시 | **2026-07-20 부분 반영.** Teamver embed background toast/desktop notification이 `endedWithUnfinishedWork`를 `incomplete` notice로 매핑한다. 성공 preview 링크는 유지하되 완료 문구·성공음·성공 톤은 피한다. |
 | `04236af50` | `fix(daemon): scan user-authored text only and latch intent signals per conversation` | **2026-07-21 부분 반영.** DB latch/intent-gated stable block은 Teamver 구조와 맞지 않아 보류. 사용자 작성 텍스트 extractor만 포팅해 Research fallback query 오염을 차단했다. |
 
-`origin/main`은 현재 `94a5bd2e0 fix BYOK OpenCode permission bypass (#5701)`까지 반영되어 있다. `staging...origin/main` divergence는 `703 / 586`으로, 2026-07-15 기준 `665 / 410`보다 더 벌어졌다. 이 상태에서 전체 merge는 Teamver 전용 인증, S3/DB 저장, Drive, background run, export cache 정책을 회귀시킬 가능성이 높다.
+`origin/main`은 현재 `034c3895d`까지 반영되어 있다. `staging...origin/main` divergence는 **`700 / 998`**으로, 2026-07-21 기준 `703 / 586`보다 **staging 쪽 고유 커밋이 더 증가**했다(최근 slide template·Drive import·background recovery 작업). 이 상태에서 전체 merge는 Teamver 전용 인증, S3/DB 저장, Drive, background run, export cache 정책을 회귀시킬 가능성이 높다.
 
 최근 `origin/main`에서 Teamver AI Design에 바로 검토 가치가 있는 변경은 다음이다.
 
@@ -74,7 +144,7 @@
 | `05cb03c8a` | `fix(web): sandbox the speaker-notes presenter deck iframes` | **P2 보안/격리 후보.** presenter notes 경로를 Teamver가 노출하지 않는다면 후순위. |
 | `167db9de2` / `c67048516` | preview delivery status feedback/polish | **P2 UX 후보.** Teamver의 생성 중 이탈/재진입 UX와 맞닿지만, 먼저 background run 안정성 회귀 여부를 확인한 뒤 선별한다. |
 
-**현재 바로 추진 추천:** 전체 merge 대신 `24c7876b3` in-place HTML edit delivery 보존, Community preview runtime fallback 잔여, intent signal latch(`04236af50`)를 순서대로 검토한다. `4b660237c` slim prompt는 문구 축약만 반영했으므로, full slim charter 전환은 실제 슬라이드 품질/댓글 수정/background 재진입 회귀 샘플을 확보한 뒤 판단한다. AtomCode, SiliconFlow, Vela CLI bump, MiniMax/media provider 계열은 Teamver AI Design 핵심 경로가 아니므로 보류한다.
+**현재 바로 추진 추천 (2026-07-23):** 전체 merge 대신 **§0.2 권장 포팅 순서**를 따른다. 1순위는 run lifecycle(`7b27d4ba6`, `34a050737`)과 artifact durability(`4054b5357`). 2순위는 daemon restart reconcile(`d1372da02`)과 security 묶음. `d8b6b797f` chat disclosure 리팩터·message center·packaged 계열은 계속 보류. AtomCode, SiliconFlow, Vela CLI bump, MiniMax/media provider 계열은 Teamver AI Design 핵심 경로가 아니므로 보류한다.
 
 ---
 
@@ -234,11 +304,17 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 ## 4. 권장 작업 순서
 
-1. **P0:** `cdffb1b63`의 library ingest SSRF 차단을 Teamver daemon에 수동 포팅할 수 있는지 검토한다. URL 기반 분석/web-fetch/라이브러리 ingest는 외부 URL을 다루므로, 출시 전 보안 방어가 우선이다.
-2. **P1:** `24c7876b3` in-place HTML edit delivery 보존 로직을 댓글 수정/재진입/background run 패치와 대조한다. `ProjectView.tsx` 전체 cherry-pick은 금지하고, delivery 보존에 필요한 최소 변경만 검토한다.
-3. **P1/P2:** `4b660237c` slim system prompt/token 절약 패치는 전체 전환하지 않는다. 이미 안전한 문구 축약과 `9b5cdd843` prompt-cache 안정화는 반영했으므로, 남은 full slim charter 전환은 실제 슬라이드 생성 품질, 블록 비노출, Teamver managed key 흐름, 질문 form UX를 샘플로 검증한 뒤 별도 루프로 판단한다.
-4. PPTX는 일반 다운로드 screenshot 기본 정책을 유지한다. editable PPTX는 별도 메뉴/고급 옵션을 만들기 전까지 일반 사용자 경로에 노출하지 않는다.
-5. 모든 반영 후 `/api/version`, `/api/runs`, `auth/session`, `auth/refresh`, analytics config, message `PUT` 호출량이 회귀하지 않았는지 Network에서 확인한다.
+> **2026-07-23 갱신:** 상세 우선순위·포팅 방안은 **§0.1~0.2**를 SSOT로 한다. 아래는 요약.
+
+1. **P0-A:** `7b27d4ba6` + `34a050737` — cancel/sub-agent error run lifecycle (§0.2-1).
+2. **P0-B:** `4054b5357` — plain-stream artifact ring buffer 유실 (§0.2-2).
+3. **P0-C:** `d1372da02` — daemon restart run terminal reconcile (§0.2-3).
+4. **P0-D:** `5c94dda27` → `cbc38a498` → `bb7a10d97` → `d997318f9` — security (§0.2-4).
+5. **P0-E:** `ace06eac1` — image export viewport (§0.2-5).
+6. **P1:** `034c3895d`, `4fb217c95`, `d3e091e15`, `068c9ae83` — 저위험 UX·config (§0.2-6).
+7. **기존 미완료:** `24c7876b3` in-place HTML edit delivery 보존(2026-07-20 부분 반영) 잔여, `04236af50` DB latch, `bc5b6f058` FE completion UI, `4b660237c` full slim charter — 각각 별도 루프.
+8. PPTX는 일반 다운로드 screenshot 기본 정책을 유지한다. editable PPTX는 별도 메뉴/고급 옵션을 만들기 전까지 일반 사용자 경로에 노출하지 않는다.
+9. 모든 반영 후 `/api/version`, `/api/runs`, `auth/session`, `auth/refresh`, analytics config, message `PUT` 호출량이 회귀하지 않았는지 Network에서 확인한다.
 
 ---
 
@@ -254,8 +330,10 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 ## 6. 다음 추천 작업
 
-1. **P0:** `cdffb1b63` library ingest SSRF 차단을 먼저 검토한다. web-fetch/사이트 분석 기능을 출시하려면 외부 URL 접근 안전장치가 선행되어야 한다.
-2. **P1:** `24c7876b3` in-place HTML edit delivery 보존 로직을 댓글 수정 플로우에 맞춰 최소 포팅 가능 여부만 확인한다.
-3. **P1:** `04236af50` user-authored text only intent latch는 extractor만 적용했다. DB latch는 memory/run DB 경로 변경이 커서 바로 적용하지 말고, background/comment 재진입 회귀 테스트와 함께 별도 검토한다.
-4. **P1:** `bc5b6f058` unfinished work completion 표시 보정은 “작업 완료처럼 보이지만 결과가 없는” 불만과 연결되므로, run completeness contract를 Teamver background run과 대조한 뒤 최소 포팅 가능성을 확인한다.
-5. **P1/P2:** slim system prompt/token 절약 패치는 추가 문구 단위 포팅만 허용한다. 전체 slim charter 전환은 비용에는 유리하지만 Teamver slide 품질과 도구 호출 안정성을 동시에 흔들 수 있다.
+1. **P0-A (다음 루프):** `7b27d4ba6` canceled run late-error 보정을 `apps/daemon/src/runs.ts` + `server.ts`에 수동 포팅. `34a050737` sub-agent in-stream error는 같은 루프에서 연속 검토.
+2. **P0-B:** `4054b5357` plain-stream artifact accumulator. slide 생성 후 artifact/preview/S3 sync 회귀 테스트.
+3. **P0-C:** `d1372da02` run terminal reconcile — staging 2노드 HA에서 daemon restart 시나리오 포함.
+4. **P0-D:** security 묶음(`5c94dda27`, `cbc38a498`, `bb7a10d97`, `d997318f9`). marketplace UI 비노출과 무관하게 daemon SSRF/path traversal 방어.
+5. **P0-E:** `ace06eac1` image export viewport — PNG/JPEG/PDF/PPTX 다운로드 회귀 없이.
+6. **P1:** `034c3895d` 빈 tool status row 숨김 — 2파일 저위험 quick win.
+7. **보류 유지:** `d8b6b797f` chat disclosure 리팩터, message center, `2192a7f6b` BYOK preflight, `4b660237c` full slim charter, `04236af50` DB latch.
