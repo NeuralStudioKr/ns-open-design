@@ -22,7 +22,7 @@ import {
 } from '../edit-mode/bridge';
 import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
-import { looksLikeCompactApiStackedDeck, wrapPreviewHtmlShell } from './compact-api-stacked-deck';
+import { injectStackedDeckViewport, looksLikeCompactApiStackedDeck, wrapPreviewHtmlShell } from './compact-api-stacked-deck';
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -115,8 +115,11 @@ export function buildSrcdoc(
     return withArtifactGuard;
   }
   const compactStackedDeck = options.deck ? looksLikeCompactApiStackedDeck(wrapped) : false;
+  const withStackedViewport = compactStackedDeck
+    ? injectStackedDeckViewport(withArtifactGuard)
+    : withArtifactGuard;
   const withDeck = options.deck
-    ? injectDeckBridge(withArtifactGuard, options.initialSlideIndex, compactStackedDeck)
+    ? injectDeckBridge(withStackedViewport, options.initialSlideIndex, compactStackedDeck)
     : withArtifactGuard;
   // Comment + Inspect share an element-selection bridge: both pick a
   // [data-od-id] / [data-screen-label] node and route the host's reply
@@ -2053,8 +2056,12 @@ html[data-od-stacked-deck] body {
     if (!direct.length) return false;
     try {
       var bodyStyle = window.getComputedStyle(document.body);
-      if (/\\b(?:flex|grid)\\b/i.test(bodyStyle.display)) return false;
-      if (isScrollableOverflowMode(String(bodyStyle.overflowX || '').toLowerCase())) return false;
+      if (/\\bgrid\\b/i.test(bodyStyle.display)) return false;
+      if (/\\bflex\\b/i.test(bodyStyle.display)) {
+        var flexDir = String(bodyStyle.flexDirection || 'row').toLowerCase();
+        var rowish = flexDir === 'row' || flexDir === 'row-reverse';
+        if (rowish || isScrollableOverflowMode(String(bodyStyle.overflowX || '').toLowerCase())) return false;
+      }
     } catch (_) {}
     var list = [];
     for (var d = 0; d < direct.length; d++) list.push(direct[d]);

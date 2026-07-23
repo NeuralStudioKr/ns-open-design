@@ -5,6 +5,8 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildEmergencySlideDeckFromOutline } from '../../src/artifacts/emergency-deck';
 import {
+  injectStackedDeckViewport,
+  looksLikeAuthoredHorizontalSwipeDeck,
   looksLikeCompactApiStackedDeck,
   looksLikeCompactApiStackedDeckForPreview,
   wrapPreviewHtmlShell,
@@ -38,7 +40,33 @@ describe('looksLikeCompactApiStackedDeck', () => {
 
   it('rejects horizontal scroll-snap simple-deck templates', () => {
     const html = readFileSync(resolve(repoRoot, 'design-templates/simple-deck/assets/template.html'), 'utf8');
+    expect(looksLikeAuthoredHorizontalSwipeDeck(html)).toBe(true);
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
+  });
+
+  it('matches styled vertical creative decks with body > .slide and a <style> block', () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head>',
+      '<style>',
+      'body { margin: 0; display: flex; flex-direction: column; background: #faf8f2; }',
+      '.slide { min-height: 100vh; padding: clamp(48px, 6vw, 96px); position: relative; }',
+      'h1 { font-size: clamp(64px, 10vw, 120px); }',
+      '</style></head><body>',
+      '<section class="slide" data-screen-label="01 Cover"><h1>KIM SEUNGHYUN</h1></section>',
+      '<section class="slide" data-screen-label="02 Projects"><h2>Projects</h2></section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('width=1920, initial-scale=1');
+  });
+
+  it('locks the iframe viewport to 1920px for stacked letterbox decks', () => {
+    const html = '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1" /></head>'
+      + '<body><section class="slide" style="min-height:100vh">A</section></body></html>';
+    expect(injectStackedDeckViewport(html)).toContain('width=1920, initial-scale=1');
+    expect(injectStackedDeckViewport(html)).not.toContain('width=device-width');
   });
 
   it('rejects decks wrapped in a .deck container under body', () => {
@@ -51,10 +79,10 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
   });
 
-  it('rejects emergency fallback decks that ship stylesheet min-height rules', () => {
+  it('includes emergency fallback decks that stack body > .slide vertically', () => {
     const html = buildEmergencySlideDeckFromOutline('1. Intro\n2. Body\n3. Close', { lang: 'ko' });
     expect(html).toBeTruthy();
-    expect(looksLikeCompactApiStackedDeck(html!)).toBe(false);
+    expect(looksLikeCompactApiStackedDeck(html!)).toBe(true);
   });
 
   it('locks portfolio-style compact decks to overflow hidden and stacked prev/next', async () => {

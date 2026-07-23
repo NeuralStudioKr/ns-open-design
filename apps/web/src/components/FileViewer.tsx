@@ -9371,7 +9371,7 @@ function HtmlViewer({
                   style={
                     manualEditMode
                       ? manualEditPreviewShellStyle(previewViewport, previewScale, manualEditViewportWidth)
-                      : deckPreviewPanActive
+                      : effectiveDeck
                         ? deckPreviewScaleShellStyle(previewViewport, previewScale)
                         : previewScaleShellStyle(previewViewport, previewScale)
                   }
