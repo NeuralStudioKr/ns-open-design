@@ -767,9 +767,8 @@ function slideAttachmentDeliverableInstruction(attachments: ChatAttachment[]): s
     SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER,
     'The attached/uploaded files are reference material for this slide deck request.',
     'Read and use them as source content, but do not treat any attachment as the final deliverable.',
-    'You MUST create and write/save one complete .html slide deck file in the project.',
-    'Use a deck structure suitable for Teamver Design preview: 1920x1080 slides, section.slide pages, navigation, and print/export-friendly CSS.',
-    'Do not finish with prose only, do not stop after an outline, and do not stop before the closing </html>.',
+    'Emit ONE complete Teamver compact deck artifact (`<artifact type="deck">`) with 6–8 filled `<section class="slide">` blocks, body-first inline styles, and no `<head>`, nav, or print scaffolding.',
+    'Do not finish with prose only, do not stop after an outline, and do not stop before `</artifact>`.',
     fileList,
   ].filter(Boolean).join('\n');
 }

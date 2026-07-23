@@ -19,7 +19,9 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
 
     expect(prompt).toContain("[Deliverable instruction]");
     expect(prompt).toContain("refs/drive/deck-brief.md");
-    expect(prompt).toContain("write/save one complete .html slide deck file");
+    expect(prompt).toContain('`<artifact type="deck">`');
+    expect(prompt).toContain("6–8 filled");
+    expect(prompt).not.toMatch(/1920|nav, and print/i);
     expect(stripUserVisibleQuestionFormProtocolText(prompt)).toBe("발표 대본 참고해서 ppt 디자인 해줘");
   });
 
