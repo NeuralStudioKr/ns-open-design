@@ -34,13 +34,13 @@ describe('resolveExportDownloadTitle', () => {
     expect(resolveExportDownloadTitle('AI 도입 효과', 'ai-adoption-deck.html')).toBe('AI 도입 효과');
   });
 
-  it('falls back to the file basename when the project name is missing or generic', () => {
+  it('falls back to the file basename only when the project name is missing', () => {
     expect(resolveExportDownloadTitle(undefined, 'ai-adoption-deck.html')).toBe('ai-adoption-deck');
-    expect(resolveExportDownloadTitle('Design', 'ai-adoption-deck.html')).toBe('ai-adoption-deck');
   });
 
-  it('uses the project name when the artifact slug is generic', () => {
+  it('uses the project name even when it looks generic', () => {
     expect(resolveExportDownloadTitle('Design', 'design.html')).toBe('Design');
+    expect(resolveExportDownloadTitle('Design', 'ai-adoption-deck.html')).toBe('Design');
   });
 
   it('falls back to teamver_design when no usable title exists', () => {

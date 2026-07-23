@@ -89,6 +89,47 @@ describe('runCachedExport (memo only)', () => {
     expect(second.body.toString('utf8')).toBe('<html>fresh</html>');
   });
 
+  it('uses the current descriptor filename on cache hits', async () => {
+    const render = vi.fn(async () => ({
+      body: Buffer.from('<html>fresh</html>'),
+      filename: 'artifact-slug.pdf',
+      mime: 'application/pdf',
+    }));
+    const firstDescriptor = exportCacheDescriptor({
+      projectId: 'proj-a',
+      sourceRelPath: 'index.html',
+      sourceMtimeMs: 42,
+      format: 'pdf',
+      deck: true,
+      filename: 'artifact-slug.pdf',
+      mime: 'application/pdf',
+    });
+    const renamedDescriptor = exportCacheDescriptor({
+      projectId: 'proj-a',
+      sourceRelPath: 'index.html',
+      sourceMtimeMs: 42,
+      format: 'pdf',
+      deck: true,
+      filename: '프로젝트명.pdf',
+      mime: 'application/pdf',
+    });
+
+    await runCachedExport(
+      { format: 'pdf', deck: true, projectId: 'proj-a' },
+      firstDescriptor,
+      render,
+    );
+    const hit = await runCachedExport(
+      { format: 'pdf', deck: true, projectId: 'proj-a' },
+      renamedDescriptor,
+      render,
+    );
+
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(hit.cache).toBe('hit-memo');
+    expect(hit.filename).toBe('프로젝트명.pdf');
+  });
+
   it('fresh=true bypasses the memo cache and re-renders', async () => {
     let renderCount = 0;
     const render = vi.fn(async () => {

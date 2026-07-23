@@ -154,8 +154,11 @@ export async function runCachedExport(
         entry,
         ...(entry.buffer ? { body: entry.buffer } : {}),
         ...(entry.filePath ? { filePath: entry.filePath } : {}),
-        filename: entry.filename,
-        mime: entry.mime,
+        // The cached bytes are keyed by source/format, but download filename is
+        // request metadata derived from the current project title. Do not let a
+        // previous cache fill preserve an old artifact slug or pre-rename title.
+        filename: descriptor.filename,
+        mime: descriptor.mime,
         bytes: entry.bytes,
         ageMs,
       };

@@ -52,8 +52,7 @@ export function resolveExportDownloadTitle(
 ): string {
   const fromFile = (fileName.replace(/\.html?$/i, '') || fileName).trim();
   const fromProject = (projectDisplayName ?? '').trim();
-  if (fromProject && !isGenericExportLabel(fromProject)) return fromProject;
-  if (fromProject && isGenericExportLabel(fromFile)) return fromProject;
+  if (fromProject) return fromProject;
   if (fromFile && !isGenericExportLabel(fromFile)) return fromFile;
   return TEAMVER_DEFAULT_EXPORT_BASENAME;
 }

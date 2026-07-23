@@ -983,6 +983,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-23 | Export 다운로드 파일명 프로젝트명 우선 복구 — FE `resolveExportDownloadTitle()`이 project title이 `Design` 같은 generic 값이면 artifact slug를 우선해 `ai-adoption-deck.pptx`처럼 저장될 수 있었다. 다운로드 title은 프로젝트명이 존재하면 항상 프로젝트명을 사용하도록 복원. export cache hit도 과거 meta filename을 재사용하지 않고 현재 descriptor filename(project title 기반)을 응답하도록 고정 |
 | 2026-07-16 | Export offload 한글 파일명 복구 — S3 SigV4 충돌을 피하려고 presign 쿼리에 ASCII `filename=`만 넣으면 프로젝트명이 `_`로 저장됨. PUT 시 객체에 RFC 5987 `Content-Disposition`(+`Content-Type`)을 저장하고 presign에서는 `response-content-disposition`을 제거. HEAD로 disposition 일치 시 PUT skip, 구 객체(메타 없음)는 다음 export에서 한 번 재업로드 |
 | 2026-07-16 | Export offload S3 key/HEAD 403 수정 — `OD_EXPORT_OFFLOAD_PREFIX=exports`와 offload key `exports/...`가 만나 `exports/exports/...`로 HEAD 하던 중복 prefix를 방지. S3 HEAD/stat가 403이어도 곧바로 실패하지 않고 PUT 업로드를 시도하도록 변경 |
 | 2026-07-16 | Staging compose offload 검증 모드 고정 — 서버 `.env.staging`이 오래되어 `OD_EXPORT_OFFLOAD_REQUIRED`가 빠져도 200 stream fallback으로 숨지 않도록 `docker-compose.staging.yml`에서 `OD_EXPORT_OFFLOAD_ENABLED=1`, `OD_EXPORT_OFFLOAD_REQUIRED=1`을 직접 지정 |
