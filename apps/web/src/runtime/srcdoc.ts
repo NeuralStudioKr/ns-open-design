@@ -2017,6 +2017,9 @@ html[data-od-stacked-deck] body {
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
   var compactStackedDeckEnabled = ${isCompactStackedDeck ? 'true' : 'false'};
+  if (compactStackedDeckEnabled) {
+    document.documentElement.setAttribute('data-od-stacked-deck', '');
+  }
   var didRestoreInitialSlide = false;
   var hostViewport = { w: 0, h: 0, scale: 1, layoutFit: false };
   var deckPanX = 0;
@@ -2048,7 +2051,6 @@ html[data-od-stacked-deck] body {
     if (stackedDeckStage()) return true;
     var direct = document.querySelectorAll('body > .slide');
     if (!direct.length) return false;
-    if (isScrollDeck()) return false;
     try {
       var bodyStyle = window.getComputedStyle(document.body);
       if (/\\b(?:flex|grid)\\b/i.test(bodyStyle.display)) return false;
@@ -2293,6 +2295,11 @@ html[data-od-stacked-deck] body {
   }
   function activeIndex(list){
     if (!list || !list.length) return 0;
+    if (stackedDeckStage()) {
+      var stackedByVis = findActiveByVisibility(list);
+      if (stackedByVis >= 0) return stackedByVis;
+      return 0;
+    }
     if (isScrollDeck()) {
       var w = Math.max(1, window.innerWidth);
       return Math.max(0, Math.min(list.length - 1, Math.round(maxScrollLeft() / w)));
@@ -2515,6 +2522,9 @@ html[data-od-stacked-deck] body {
     if (!list.length) return;
     var target = Math.max(0, Math.min(list.length - 1, targetFor(action, list)));
     if (target !== activeIndex(list)) resetDeckPan();
+    if (compactStackedDeckEnabled && (stackedDeckStage() || ensureStackedDeckStage())) {
+      if (forceRevealSlide(target)) return;
+    }
     if (isScrollDeck()) {
       scrollGo(target);
       return;
@@ -2534,6 +2544,9 @@ html[data-od-stacked-deck] body {
     var target = Math.max(0, Math.min(list.length - 1, i));
     var prev = activeIndex(list);
     if (target !== prev) resetDeckPan();
+    if (compactStackedDeckEnabled && (stackedDeckStage() || ensureStackedDeckStage())) {
+      if (forceRevealSlide(target)) return;
+    }
     if (isScrollDeck()) { scrollGo(target); return; }
     if (canSetActive(list) && setActive(target)) return;
     if (transformGo(target)) return;
@@ -2639,7 +2652,10 @@ html[data-od-stacked-deck] body {
     var attempts = 0;
     function tick(){
       attempts += 1;
-      if (compactStackedDeckEnabled) requestHostDeckViewport();
+      if (compactStackedDeckEnabled) {
+        requestHostDeckViewport();
+        ensureStackedDeckStage();
+      }
       var w = frameworkDeckViewport().w;
       nudgeDeckFit();
       if (w > 0 && attempts >= 2) return; // one extra nudge after first non-zero

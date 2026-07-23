@@ -121,6 +121,7 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     `);
     const deck = win.document.getElementById('deck') as HTMLElement;
 
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
     postSlide(win, 'next');
     await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
 
@@ -155,6 +156,7 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     win.document.addEventListener('keydown', onKey, true);
     paint();
 
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
     postSlide(win, 'next');
     await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
 
@@ -192,6 +194,7 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     win.document.body.scrollTo = bodyScrollTo;
     win.document.documentElement.scrollTo = htmlScrollTo;
 
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
     postSlide(win, 'next');
     await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
 
@@ -228,6 +231,7 @@ describe('deck bridge — nested slide markup (#1530)', () => {
       win.document.documentElement.scrollLeft = left;
     });
 
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
     postSlide(win, 'next');
     await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
 

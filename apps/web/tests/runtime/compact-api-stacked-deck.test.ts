@@ -57,6 +57,50 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html!)).toBe(false);
   });
 
+  it('locks portfolio-style compact decks to overflow hidden and stacked prev/next', async () => {
+    const slides = [
+      '<section class="slide" data-screen-label="01 Cover" style="min-height:100vh">',
+      '<h1>김민준 <span>Frontend</span> Engineer</h1>',
+      '</section>',
+      '<section class="slide" data-screen-label="02 Projects" style="min-height:100vh">',
+      '<h2>무엇을 만들었나요</h2>',
+      '</section>',
+    ].join('');
+    const html = `<!doctype html><html lang="ko"><body style="margin:0;background:#0b0c10">${slides}</body></html>`;
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('overflow: hidden !important');
+    expect(srcdoc).toContain('var compactStackedDeckEnabled = true');
+
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(`<!doctype html><html><body>${slides}</body></html>`, {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: () => {} },
+    });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.Event('load'));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 500));
+
+    expect(win.document.documentElement.getAttribute('data-od-stacked-deck')).toBe('');
+    const stage = win.document.getElementById('od-stacked-deck-stage');
+    expect(stage).toBeTruthy();
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
+    expect(slideEls).toHaveLength(2);
+    expect(slideEls.filter((el) => el.style.display !== 'none')).toHaveLength(1);
+
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    expect(slideEls[0]?.style.display).toBe('none');
+    expect(slideEls[1]?.style.display).not.toBe('none');
+  });
+
   it('does not inject stacked letterbox CSS into framework or authored decks', () => {
     const framework = readFileSync(resolve(repoRoot, 'templates/deck-framework.html'), 'utf8');
     const simpleDeck = readFileSync(resolve(repoRoot, 'design-templates/simple-deck/assets/template.html'), 'utf8');
