@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type {
-  AnalyticsEvent,
+  AnalyticsEventPayload,
   DriveImportModalClickProps,
   DriveImportModalSurfaceViewProps,
   SurfaceViewProps,
@@ -15,7 +15,7 @@ describe("Drive import modal analytics contracts", () => {
       area: "drive_import_modal",
     };
     const union: SurfaceViewProps = props;
-    const event: AnalyticsEvent = { event: "surface_view", props: union };
+    const event: AnalyticsEventPayload = { event: "surface_view", props: union };
     expect(event.props.area).toBe("drive_import_modal");
   });
 
@@ -27,8 +27,8 @@ describe("Drive import modal analytics contracts", () => {
       asset_count: 3,
     };
     const union: UiClickProps = props;
-    const event: AnalyticsEvent = { event: "ui_click", props: union };
+    const event: AnalyticsEventPayload = { event: "ui_click", props: union };
     expect(event.props.element).toBe("drive_import_pick");
-    expect(event.props.asset_count).toBe(3);
+    expect(props.asset_count).toBe(3);
   });
 });

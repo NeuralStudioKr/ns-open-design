@@ -411,6 +411,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Template beats compact samples');
       expect(prompt).toContain('Implement with inline styles');
       expect(prompt).toContain('Do not copy the full template skeleton');
+      expect(prompt.indexOf('Selected template visual signature — Html Ppt Zhangzara Capsule')).toBeLessThan(
+        prompt.indexOf('Slide deck — API compact contract'),
+      );
       expect(prompt).not.toContain('Do not paste this exact headline');
       expect(prompt.length).toBeLessThan(18_000);
     });
@@ -436,6 +439,12 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('apply it with inline styles');
       expect(prompt).toContain('do not merely describe it');
       expect(prompt).toContain('Template is the visual contract');
+      expect(prompt.indexOf('Selected design template visual signature — Html Ppt Hermes Cyber Terminal')).toBeLessThan(
+        prompt.indexOf('Slide deck — API compact contract'),
+      );
+      expect(prompt.indexOf('Visual style reference — Html Ppt Hermes Cyber Terminal')).toBeLessThan(
+        prompt.indexOf('Slide deck — API compact contract'),
+      );
       expect(prompt.length).toBeLessThan(18_000);
     });
 
@@ -459,6 +468,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Layout rhythm: editorial magazine spreads');
       expect(prompt).toContain('Accent treatment: capsule labels');
       expect(prompt).toContain('Template is the visual contract');
+      expect(prompt.indexOf('Visual style reference — Html Ppt Zhangzara Editorial')).toBeLessThan(
+        prompt.indexOf('Slide deck — API compact contract'),
+      );
       expect(prompt).not.toContain('Read assets/template.html and copy the skeleton');
       expect(prompt).not.toContain('Use references/layouts.md for exact slots');
       expect(prompt.length).toBeLessThan(18_000);
