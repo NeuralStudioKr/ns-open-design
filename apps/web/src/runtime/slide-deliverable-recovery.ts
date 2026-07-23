@@ -1,5 +1,6 @@
 import type { Artifact, ChatMessage, ProjectFile } from '../types';
 import { selectAutoOpenProducedHtml } from '../components/auto-open-file';
+import type { computeProducedFiles as computeProducedFilesFn } from '../produced-files';
 import {
   buildEmergencyArtifactFromMessages,
   EMERGENCY_DECK_FALLBACK_STATUS_CODE,
@@ -121,7 +122,7 @@ export async function attemptEmergencySlideDeckRecovery(options: {
   outlineMessages: readonly ChatMessage[];
   finalText?: string | null;
   projectFiles: readonly ProjectFile[];
-  beforeFileNames: readonly string[];
+  beforeFileNames: ReadonlySet<string> | readonly string[];
   startedAt: number;
   persistArtifact: (
     artifact: Artifact,
@@ -131,10 +132,7 @@ export async function attemptEmergencySlideDeckRecovery(options: {
   ) => Promise<ArtifactPersistResult>;
   refreshProjectFiles: () => Promise<ProjectFile[]>;
   readProjectHtml: (name: string) => Promise<string | null>;
-  computeProducedFiles: (
-    before: readonly string[],
-    after: readonly ProjectFile[],
-  ) => ProjectFile[] | null;
+  computeProducedFiles: typeof computeProducedFilesFn;
 }): Promise<EmergencySlideDeckRecoveryResult> {
   if (!options.slideOnlyMvp || options.producedHtmlToOpen) {
     return { recovered: false, produced: [], htmlToOpen: null };
@@ -150,7 +148,7 @@ export async function attemptEmergencySlideDeckRecovery(options: {
 
   const emergencyPersist = await options.persistArtifact(
     emergencyArtifact,
-    options.projectFiles,
+    [...options.projectFiles],
     options.finalText ?? undefined,
     options.startedAt,
   );
@@ -160,7 +158,7 @@ export async function attemptEmergencySlideDeckRecovery(options: {
 
   const nextFiles = await options.refreshProjectFiles();
   const produced = options.computeProducedFiles(options.beforeFileNames, nextFiles) ?? [];
-  let htmlToOpen = selectAutoOpenProducedHtml(produced)
+  let htmlToOpen: string | null = selectAutoOpenProducedHtml(produced)
     ?? emergencyPersist?.fileName
     ?? null;
   htmlToOpen = await verifySlideProducedHtmlDeliverable(htmlToOpen, options.readProjectHtml);
