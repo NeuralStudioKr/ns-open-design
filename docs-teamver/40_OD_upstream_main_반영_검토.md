@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-23 현재.
+**반영 갱신:** 2026-07-23 — 검증 루프 23. 루프 22 변경분(P0-C·P1-A·P1-C)을 전체 회귀 검증했다. daemon `tsc -p tsconfig.json --noEmit` 통과(contracts 재빌드 후), web `tsc -b --noEmit`은 내 변경 파일에 새 에러 없음(pre-existing 파일만 실패). daemon 전체 vitest `418 pass / 8 fail`, 8개 실패는 모두 pre-existing(cloud-agent chokidar/health nodeId/preview cache-control/s3 export presigned URL). 신규 upstream 후보 재조사: `068c9ae83` BYOK URL normalize는 staging에 `byok-opencode.ts` 없어 해당 없음, `4054b5357` plain-stream은 staging에 `plain-stream.ts` 모듈 자체 없어 **보류 유지**, `50843ff14` unattributable client failures(2026-07-22, 509줄/8파일)는 대부분 packaged desktop app 특정 로직이라 embed 실용성 낮음 → **조건부 후보로만 등재**.
 **반영 갱신:** 2026-07-23 — 추가 포팅 루프 22. P0-C(`d1372da02` run terminal reconcile), P1-A(`034c3895d` empty tool status UI), P1-C(`d3e091e15` failure classification)를 staging에 수동 포팅했다. P0-B(`4054b5357` plain-stream accumulator)는 staging에 `plain-stream.ts` 모듈 자체가 없어 **별도 대형 루프 보류**. P1-B(`4fb217c95` config downgrade guard)는 staging `config.ts`에 bedrock protocol downgrade 경로가 없어 **해당 없음**.
 **반영 갱신:** 2026-07-23 — 추가 포팅 루프 21. P0-A(`7b27d4ba6`+`34a050737` run lifecycle), P0-D(security 묶음 `5c94dda27`·`cbc38a498`·`bb7a10d97`·`d997318f9`), P0-E(`ace06eac1` image export viewport)를 staging에 수동 포팅했다. P0-B(`4054b5357` plain-stream accumulator)와 P0-C(`d1372da02` run terminal reconcile)는 선행 모듈/구조 차이로 **별도 루프 보류**.
 **반영 갱신:** 2026-07-23 — 추가 검토 루프 20. `origin/main` 최신 `034c3895d fix(web): hide empty tool_call/tool_call_update status rows (#4621)` 기준으로 `staging`과의 divergence(`700 / 998`)를 재확인했다. 2026-07-21 이후 main에 합쳐진 daemon run 안정화·보안·export·artifact recovery 커밋을 우선순위별로 분류했고, **코드 포팅은 이번 루프에서 수행하지 않았다.** 전체 merge/cherry-pick 금지 원칙은 유지한다.
@@ -55,6 +56,7 @@
 | **P1** | `4fb217c95` | protocol downgrade 재저장 실패 시 loaded config 유지 | **해당 없음.** staging `config.ts`에 bedrock protocol downgrade 경로 없음 (`applyTeamverEmbedConfigLockIfNeeded` 구조). | — |
 | **P1** | `d3e091e15` | deterministic failure 분류·retry attribution 보존 | **✅ 루프 22 반영.** | `run-failure-classification.ts` + `packages/contracts/src/analytics/events.ts` enum 5종. |
 | **P1** | `034c3895d` | 빈 `tool_call`/`tool_call_update` status row 숨김 | **✅ 루프 22 반영.** | `AssistantMessage.tsx` `buildBlocks()` skip + `assistant-message-tool-status.test.tsx`. |
+| **P1** | `50843ff14` | unattributable client failures error code 세분화 (BYOK connection test·frontend exception·export failure) | **조건부/대부분 비적용.** 대형(509줄/8파일). packaged desktop app 특정 로직(`isPackagedFramePath`, `.app/Contents/Resources`, `od://`), BYOK connection test UI/export-error-code.ts 파일 staging에 없음. staging에 존재하는 것은 `error-tracking.ts`뿐이나 embed는 web-only라 대부분 no-op 경로. | 향후 embed exception 대시보드 품질 문제가 실제 발생하면 `FRAME_PLATFORM`/beacon `.catch`/`patchExceptionTrackingAppVersion` 3개 미세 개선만 국소 이식. |
 | **P1** | `85ec1b624` | deck thumbnail markup DOMPurify sanitize | **조건부.** staging에 `deck-thumbnail-parser.ts` **없음**. Teamver는 `ProjectCardHtmlCover` + srcDoc iframe 경로. | upstream parser 포팅보다 Teamver cover XSS surface(`ProjectCardHtmlCover`, `authenticatedHtmlSrcDoc`) 별도 감사 우선. 필요 시 DOMPurify를 Teamver cover 경로에만 적용. |
 | **P1** | `7bc2b5948` | resumed run에 MCP prompt 전달 | **낮은 우선.** embed는 MCP UI 비노출(`embedDaemonFetchPolicy`). daemon route는 잔존. | MCP를 product scope에 다시 열 때 포팅. 현재는 보류 가능. |
 | **P2** | `91a3df9a3` | dark-first brand canvas derived theme 보존 | **후순위.** custom design system 추출 품질. slide MVP 핵심 아님. | brand extraction 사용 시에만 검토. |
@@ -81,11 +83,26 @@
 6. ~~**P1 (저위험 UX):** `034c3895d` → `d3e091e15`~~ ✅ 루프 22. `4fb217c95`는 해당 없음. `068c9ae83` BYOK URL normalize는 조건부 후보.
 7. **보류 유지:** `d8b6b797f`, message center, packaged, `2192a7f6b` BYOK preflight, `4ddfc6e44` media retry.
 
-### 0.3 루프 20~22 요약
+### 0.3 루프 20~23 요약
 
 - **루프 20:** 검토·우선순위 문서화만 (코드 없음).
 - **루프 21:** P0-A·P0-D·P0-E 코드 포팅. P0-B/C는 선행 모듈 부재로 보류.
 - **루프 22:** P0-C·P1-A·P1-C 코드 포팅. P0-B는 plain-stream 모듈 부재로 보류. P1-B는 해당 없음.
+- **루프 23:** 검증 전용. 루프 22 변경분 typecheck/vitest 회귀 통과 확인 (contracts 재빌드 필요), pre-existing daemon 실패 8건 격리, upstream 신규 후보(`50843ff14`) 조사 후 embed 실용성 낮음으로 조건부 등재만.
+
+### 0.5 루프 23 검증 상세
+
+- **daemon typecheck (src):** `npx tsc -p apps/daemon/tsconfig.json --noEmit` — pass. `TrackingRunFailureDetail` enum 신규 값이 daemon에서 참조되므로 `pnpm --filter @open-design/contracts build`가 선행 필수.
+- **daemon typecheck (tests):** `tsconfig.tests.json` — 내 신규 파일(`run-terminal-reconciliation.test.ts`, `run-cancel-late-error.test.ts` 등) 에러 없음. pre-existing 실패는 `teamver-byok-usage-bridge.test.ts`·`teamver-project-daemon-state.test.ts`·`teamver-design-bff-proxy.test.ts`·`teamver-usage-bridge.test.ts`(exactOptionalPropertyTypes/express Request 시그니처).
+- **web typecheck:** `tsc -b --noEmit` — 내 신규 파일(`assistant-message-tool-status.test.tsx`) 에러 없음. pre-existing 실패는 `AssistantMessage.teamver-streaming.test.tsx`(PersistedAgentEvent index)·`teamver-project-registry.test.ts`·`teamver-sync-workspace.test.ts` 등.
+- **daemon vitest 전체:** 425 test files / 5048 tests → 418 pass · 8 fail · 3 skip. 실패:
+  - `export-ticket-download-route.test.ts` (S3 presigned URL — env),
+  - `project-preview-containment.test.ts` (`cache-control` 헤더 값 미스매치 — 기존 응답 정책 차이),
+  - `project-watchers.test.ts` × 5 (cloud-agent inotify 제한, chokidar `waitFor` timeout),
+  - `version-route.test.ts` (`nodeId` 필드 추가 반영 안 됨 — 기존 health 응답 확장).
+  - 모두 pre-existing이며 루프 21 이전(`e91e57f3a`) 체크아웃에서도 동일하게 재현 확인.
+- **web 관련 vitest:** `assistant-message-tool-status.test.tsx` — 1 file / 9 tests pass.
+- **daemon 관련 vitest:** `run-terminal-reconciliation.test.ts` + `run-failure-classification.test.ts` — 2 files / 42 tests pass.
 
 ### 0.4 루프 20 회귀 검증 체크리스트 (포팅 시 필수)
 
