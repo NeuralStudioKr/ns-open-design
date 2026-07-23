@@ -3289,6 +3289,19 @@ export function ProjectView({
         }
       }
     }
+    if (skillBody?.trim() && skillMode === 'deck') {
+      const title = skillName?.trim() || 'selected deck template';
+      skillBody = [
+        `# Teamver selected deck template guard`,
+        ``,
+        `Template: ${title}`,
+        `Treat this template as the primary visual contract for this run.`,
+        `Preserve its palette, typography, layout rhythm, spacing, motif language, and first-slide mood in the generated deck.`,
+        `If an active design system is also present, use it only as secondary brand context; do not replace the selected template's visual language with the design system default.`,
+        ``,
+        skillBody.trim(),
+      ].join('\n');
+    }
     if (designSystemIdOverride ?? project.designSystemId) {
       const effectiveDesignSystemId = designSystemIdOverride ?? project.designSystemId;
       const summary = designSystems.find((d) => d.id === effectiveDesignSystemId);

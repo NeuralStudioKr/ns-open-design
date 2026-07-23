@@ -2022,6 +2022,12 @@ export function HomeView({
         ? {
             ...defaultSlideOnlyDeckPluginInputs(trimmed),
             ...(submittedPluginInputs ?? {}),
+            ...(selectedDeckTemplateSkillId && submittedActive
+              ? {
+                  designSystem: localizePluginTitle(locale, submittedActive.record) || submittedActive.record.title,
+                  visualTemplate: localizePluginTitle(locale, submittedActive.record) || submittedActive.record.title,
+                }
+              : {}),
           }
         : submittedPluginInputs;
       const submitResult = await Promise.resolve(onSubmit({

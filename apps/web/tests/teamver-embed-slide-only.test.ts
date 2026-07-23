@@ -129,13 +129,26 @@ describe('Teamver embed slide-only MVP policy', () => {
     const homeView = readSource('src/components/HomeView.tsx');
     const start = homeView.indexOf('const selectedDeckTemplateSkillId = slideOnlyMvp');
     expect(start).toBeGreaterThan(0);
-    const block = homeView.slice(start, start + 1300);
+    const block = homeView.slice(start, start + 1700);
 
     expect(block).toContain('resolveSlideOnlyDeckTemplateSkillId');
     expect(block).toContain('const resolvedSkillId = submittedActive');
     expect(block).toContain('selectedDeckTemplateSkillId');
     expect(block).toContain('DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID');
     expect(block).toContain('skillId: resolvedSkillId');
+    expect(block).toContain('visualTemplate');
+    expect(block).toContain('localizePluginTitle(locale, submittedActive.record)');
+  });
+
+  it('guards selected deck template visual language above active design-system defaults', () => {
+    const projectView = readSource('src/components/ProjectView.tsx');
+    const start = projectView.indexOf("if (skillBody?.trim() && skillMode === 'deck')");
+    expect(start).toBeGreaterThan(0);
+    const block = projectView.slice(start, start + 900);
+
+    expect(block).toContain('Teamver selected deck template guard');
+    expect(block).toContain('primary visual contract');
+    expect(block).toContain("use it only as secondary brand context");
   });
 
   it('wires slide-only gates into entry and composer surfaces', () => {
