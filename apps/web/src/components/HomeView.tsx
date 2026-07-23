@@ -135,6 +135,7 @@ import {
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   canvasSlideTemplateOptions,
+  driveCreateSlidesSourceBrief,
 } from '../teamver/canvasSlideLaunch';
 import {
   consumeTeamverDriveLaunchHandoff,
@@ -1811,9 +1812,10 @@ export function HomeView({
       }
 
       const asset = canvasSlideLaunch.asset;
+      const sourceBrief = driveCreateSlidesSourceBrief(asset);
       const submitResult = await Promise.resolve(
         onSubmit({
-          prompt: canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
+          prompt: canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief),
           pluginId: selectedCanvasSlideTemplate.id,
           pluginType: 'official',
           skillId: null,
@@ -1823,6 +1825,7 @@ export function HomeView({
           pluginInputs: canvasCreateSlidesPluginInputs(
             asset.filename ?? asset.assetId,
             selectedCanvasSlideTemplate.title,
+            sourceBrief,
           ),
           projectKind: 'deck',
           projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },

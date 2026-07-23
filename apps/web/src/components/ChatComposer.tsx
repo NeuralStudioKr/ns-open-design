@@ -83,6 +83,7 @@ import {
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
   canvasSlideTemplateOptions,
+  driveCreateSlidesSourceBrief,
 } from '../teamver/canvasSlideLaunch';
 import {
   canvasImportedToChatAttachments,
@@ -1760,8 +1761,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             designSystemId: designSystemIdForRun,
             mergeContext: baseMeta?.context,
           });
+          const sourceBrief = driveCreateSlidesSourceBrief(asset);
           sendComposedTurn(
-            canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
+            canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief),
             attachments,
             [],
             {
@@ -1770,6 +1772,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               pluginInputs: canvasCreateSlidesPluginInputs(
                 asset.filename ?? asset.assetId,
                 selectedCanvasSlideTemplate.title,
+                sourceBrief,
               ),
               context: {
                 ...(baseMeta?.context ?? {}),

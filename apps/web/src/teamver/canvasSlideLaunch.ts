@@ -11,12 +11,13 @@ export const CANVAS_CREATE_SLIDES_PLUGIN_ID =
 
 /**
  * Slide-generation prompt paired with Canvas → Design handoff (`teamverDriveIntent=create-slides`).
- * The attached HTML is a **source document**, not the deliverable — the agent must build a new
+ * The attached file is a **source document**, not the deliverable — the agent must build a new
  * compact API deck artifact, not leave/copy the source HTML as the project output.
  */
 export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
-  "Build a new presentation deck from the attached canvas HTML source. " +
-  "The attachment is research/source material only — do NOT use that HTML file as the deliverable, " +
+  "Build a new presentation deck from the attached source material. " +
+  "The attachment may be a Canvas HTML export or a Drive file; treat it as research/source material only. " +
+  "Do NOT use the source file itself as the deliverable, " +
   "and do not merely rename or lightly restyle it. " +
   "Preserve the source structure, headings, callouts, tables, images, and smart blocks " +
   "(FAQ/KPI/timeline); prefer clear slide sectioning over literal page layout. " +
@@ -28,7 +29,7 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
 
 /** User-visible first message for Canvas / Drive → create-slides. */
 export const CANVAS_CREATE_SLIDES_PROMPT =
-  "캔버스 내용을 바탕으로 슬라이드 덱을 만들어줘.";
+  "첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.";
 
 export function canvasCreateSlidesRunPrompt(
   templateTitle?: string | null,
@@ -130,16 +131,29 @@ export function canvasCreateSlidesSourceBrief(
   return lines.length > 0 ? lines.join("\n") : null;
 }
 
+export function driveCreateSlidesSourceBrief(
+  asset: Pick<TeamverDriveImportAsset, "assetId" | "filename" | "mimeType">,
+): string | null {
+  const lines: string[] = [];
+  const filename = asset.filename?.trim();
+  if (filename) lines.push(`Drive source file: ${compactCanvasBriefValue(filename, 160)}`);
+  const mimeType = asset.mimeType?.trim();
+  if (mimeType) lines.push(`Drive source MIME: ${compactCanvasBriefValue(mimeType, 120)}`);
+  const assetId = asset.assetId?.trim();
+  if (assetId) lines.push(`Drive asset id: ${compactCanvasBriefValue(assetId, 120)}`);
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
 /** Plugin inputs for example-simple-deck on create-slides one-confirm. */
 export function canvasCreateSlidesPluginInputs(
   topicHint?: string | null,
   templateTitle?: string | null,
   sourceBrief?: string | null,
 ): Record<string, unknown> {
-  const topic = (topicHint ?? "").trim() || "the attached canvas document";
+  const topic = (topicHint ?? "").trim() || "the attached source document";
   const brief = sourceBrief?.trim();
   return {
-    deckType: "presentation from canvas",
+    deckType: "presentation from source material",
     topic,
     audience: "stakeholders",
     speakerNotes: "no speaker notes",

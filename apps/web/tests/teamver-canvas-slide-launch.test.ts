@@ -10,6 +10,7 @@ import {
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
+  driveCreateSlidesSourceBrief,
   isCanvasSlideOneConfirmLaunch,
 } from "../src/teamver/canvasSlideLaunch";
 import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
@@ -29,11 +30,13 @@ describe("canvasSlideLaunch", () => {
   it("keeps source handling rules in plugin inputs instead of the chat bubble", () => {
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/presentation deck/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/source|not.*deliverable|do NOT use/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/Canvas HTML export or a Drive file/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/artifact type="deck"|compact deck/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/slideCount|requested slide count/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).not.toMatch(/simple-deck|1920|nav, and print/i);
     expect(canvasCreateSlidesPluginInputs("canvas", "Template")).toMatchObject({
       topic: "canvas",
+      deckType: "presentation from source material",
       designSystem: "Template",
       sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
     });
@@ -70,6 +73,22 @@ describe("canvasSlideLaunch", () => {
     expect(brief).toContain("Overview");
     expect(brief).toContain("Customer wins");
     expect(brief).not.toMatch(/script|tools|invoke|thinking|secret|hidden work|<|>/i);
+  });
+
+  it("builds a Drive source brief for create-slides handoffs", () => {
+    const brief = driveCreateSlidesSourceBrief({
+      assetId: "AST-123",
+      filename: "<script>bad()</script>market research notes.md",
+      mimeType: "text/markdown",
+    });
+
+    expect(brief).toContain("Drive source file: market research notes.md");
+    expect(brief).toContain("Drive source MIME: text/markdown");
+    expect(brief).toContain("Drive asset id: AST-123");
+    expect(brief).not.toMatch(/script|<|>/i);
+    expect(canvasCreateSlidesPluginInputs("market research notes.md", "Template", brief)).toMatchObject({
+      sourceBrief: brief,
+    });
   });
 
   it("sends hidden deliverable instructions to the model while keeping user display clean", () => {
@@ -126,8 +145,10 @@ describe("canvasSlideLaunch", () => {
 
     expect(composer).toContain("pluginInputs: canvasCreateSlidesPluginInputs(");
     expect(composer).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff)");
+    expect(composer).toContain("const sourceBrief = driveCreateSlidesSourceBrief(asset)");
     expect(composer).toContain("canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief)");
     expect(home).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff)");
+    expect(home).toContain("const sourceBrief = driveCreateSlidesSourceBrief(asset)");
     expect(home).toContain("canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief)");
     expect(projectView).toContain("pluginInputs: meta?.pluginInputs");
     expect(daemon).toContain("pluginInputs?: Record<string, unknown>;");
