@@ -14634,6 +14634,7 @@ export async function startServer({
             flushVisibleAgentStderr();
             agentStreamError = String(payload?.message || 'Pi session error');
             agentStreamErrorObservedBeforeCancellation = true;
+            acpFatalErrorObservedBeforeCancellation = true;
             run.runtimeFailureObservedBeforeCancellation = true;
             const piErrorCode = typeof payload?.code === 'string' ? payload.code : null;
             if (piErrorCode) {

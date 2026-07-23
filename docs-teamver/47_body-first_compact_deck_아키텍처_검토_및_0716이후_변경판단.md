@@ -327,3 +327,4 @@ pnpm --filter @open-design/web exec vitest run -c vitest.config.ts \
 | 날짜 | 내용 |
 |------|------|
 | 2026-07-23 | 초판 — body-first 결정 배경, 0716 이후 타임라인·유지/롤백 매트릭스, 코드 인덱스, 검증·장기 로드맵 |
+| 2026-07-23 | auto-continue slideCount 복구 — `extractRequestedSlideCountHintFromMessages` + ProjectView 3경로 주입 (`52942affa`) |
