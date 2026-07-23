@@ -1384,7 +1384,9 @@ function runDomToPptxInPage(slideSelector: string): Promise<{ b64?: string; erro
         if (!isShortNoWrapText(text) || rawText.includes('\n')) return;
         const onlyTinyChildren =
           el.children.length > 0 &&
-          Array.from(el.children).every((child) => (child.textContent || '').trim().length <= 3);
+          Array.from(el.children as HTMLElement[]).every(
+            (child) => (child.textContent || '').trim().length <= 3,
+          );
         if (el.children.length > 0 && !onlyTinyChildren) {
           return;
         }
