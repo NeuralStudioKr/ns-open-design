@@ -22,7 +22,12 @@ import {
 } from '../edit-mode/bridge';
 import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
-import { injectStackedDeckViewport, looksLikeCompactApiStackedDeck, wrapPreviewHtmlShell } from './compact-api-stacked-deck';
+import {
+  injectStackedDeckViewport,
+  looksLikeCompactApiStackedDeck,
+  prepareCompactStackedDeckPreviewHtml,
+  wrapPreviewHtmlShell,
+} from './compact-api-stacked-deck';
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -1979,14 +1984,17 @@ function injectDeckBridge(
 </style>`;
   const compactStackedDeckFix = isCompactStackedDeck
     ? `<style data-od-deck-stacked-fix>
-html[data-od-stacked-deck], html[data-od-stacked-deck] body {
+html[data-od-stacked-deck]:has(#od-stacked-deck-stage),
+html[data-od-stacked-deck]:has(#od-stacked-deck-stage) body {
   width: 100% !important;
   height: 100% !important;
   background: #0b0c10 !important;
   margin: 0 !important;
   overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
 }
-html[data-od-stacked-deck] body {
+html[data-od-stacked-deck]:has(#od-stacked-deck-stage) body {
   position: relative !important;
 }
 #od-stacked-deck-stage {
@@ -2020,9 +2028,6 @@ html[data-od-stacked-deck] body {
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
   var compactStackedDeckEnabled = ${isCompactStackedDeck ? 'true' : 'false'};
-  if (compactStackedDeckEnabled) {
-    document.documentElement.setAttribute('data-od-stacked-deck', '');
-  }
   var didRestoreInitialSlide = false;
   var hostViewport = { w: 0, h: 0, scale: 1, layoutFit: false };
   var deckPanX = 0;
@@ -2069,7 +2074,8 @@ html[data-od-stacked-deck] body {
     var stackedViewport = false;
     for (var i = 0; i < direct.length; i++) {
       var inline = String(direct[i].getAttribute('style') || '');
-      if (/min-height\\s*:\\s*100(?:vh|dvh|svh|lvh)/i.test(inline)) {
+      if (/min-height\\s*:\\s*100(?:vh|dvh|svh|lvh)/i.test(inline)
+        || /(?:^|;)\\s*height\\s*:\\s*100(?:vh|dvh|svh|lvh)/i.test(inline)) {
         stackedViewport = true;
         break;
       }
@@ -2078,7 +2084,8 @@ html[data-od-stacked-deck] body {
       try {
         for (var j = 0; j < direct.length; j++) {
           var cs = window.getComputedStyle(direct[j]);
-          if (/100(?:vh|dvh|svh|lvh)/i.test(String(cs.minHeight || ''))) {
+          if (/100(?:vh|dvh|svh|lvh)/i.test(String(cs.minHeight || ''))
+            || /100(?:vh|dvh|svh|lvh)/i.test(String(cs.height || ''))) {
             stackedViewport = true;
             break;
           }
@@ -2303,6 +2310,8 @@ html[data-od-stacked-deck] body {
   function activeIndex(list){
     if (!list || !list.length) return 0;
     if (stackedDeckStage()) {
+      var stackedByClass = findActiveByClass(list);
+      if (stackedByClass >= 0) return stackedByClass;
       var stackedByVis = findActiveByVisibility(list);
       if (stackedByVis >= 0) return stackedByVis;
       return 0;
@@ -2622,8 +2631,7 @@ html[data-od-stacked-deck] body {
       if (Number.isFinite(w) && w > 0) hostViewport.w = w;
       if (Number.isFinite(h) && h > 0) hostViewport.h = h;
       if (Number.isFinite(scale) && scale > 0) hostViewport.scale = scale;
-      if (data.layoutFit === true) hostViewport.layoutFit = true;
-      else if (data.layoutFit === false) hostViewport.layoutFit = false;
+      hostViewport.layoutFit = data.layoutFit === true;
       nudgeDeckFit();
       return;
     }
@@ -2673,6 +2681,14 @@ html[data-od-stacked-deck] body {
   if (document.readyState === 'complete') chaseFirstLayout();
   else window.addEventListener('load', chaseFirstLayout);
   if (compactStackedDeckEnabled) requestHostDeckViewport();
+  if (compactStackedDeckEnabled) {
+    document.addEventListener('wheel', function(e) {
+      e.preventDefault();
+    }, { passive: false, capture: true });
+    document.addEventListener('touchmove', function(e) {
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false, capture: true });
+  }
   // Re-nudge whenever the iframe itself is resized by the host (e.g.
   // user toggles zoom, resizes the chat sidebar, exits Present).
   if (typeof ResizeObserver !== 'undefined') {

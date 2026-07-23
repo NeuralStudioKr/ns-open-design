@@ -17,6 +17,19 @@ export function wrapPreviewHtmlShell(html: string): string {
   return repairArtifactDocumentHead(wrapped);
 }
 
+/** Same repaired + wrapped HTML buildSrcdoc and the host preview use for detection. */
+export function prepareCompactStackedDeckPreviewHtml(html: string): string {
+  return wrapPreviewHtmlShell(repairArtifactDocumentHead(html));
+}
+
+function extractCssBlocks(html: string): string {
+  return [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]
+    .map((match) => match[1] ?? '')
+    .join('\n');
+}
+
+const SLIDE_VIEWPORT_RE = /100(?:vh|dvh|svh|lvh)/i;
+
 /**
  * Horizontal swipe decks (simple-deck, scroll-snap) must keep their native
  * scroll/transform navigation instead of stacked letterbox.
@@ -24,16 +37,56 @@ export function wrapPreviewHtmlShell(html: string): string {
 export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
   if (!html) return false;
   if (/scroll-snap-type\s*:\s*x\b/i.test(html)) return true;
-  if (/\bflex\s*:\s*0\s+0\s+100vw\b/i.test(html) && /overflow-x\s*:\s*auto/i.test(html)) {
+  if (/\bflex\s*:\s*0\s+0\s+100vw\b/i.test(html)) return true;
+
+  const css = extractCssBlocks(html);
+  if (css) {
+    if (/scroll-snap-type\s*:\s*x\b/i.test(css)) return true;
+    if (/\bflex\s*:\s*0\s+0\s+100vw\b/i.test(css)) return true;
+    if (/\.slide\b[^{]*\{[^}]*min-width\s*:\s*100vw\b/i.test(css)) return true;
+    const rowFlexWithHorizontalScroll =
+      /(?:html\s*,\s*body|body|html)\s*\{[^}]*\bdisplay\s*:\s*flex\b[^}]*\boverflow-x\s*:\s*(?:auto|scroll|overlay)\b/i.test(css)
+      || /(?:html\s*,\s*body|body|html)\s*\{[^}]*\boverflow-x\s*:\s*(?:auto|scroll|overlay)\b[^}]*\bdisplay\s*:\s*flex\b/i.test(css);
+    if (rowFlexWithHorizontalScroll && !/(?:html\s*,\s*body|body)\s*\{[^}]*flex-direction\s*:\s*column(?:-reverse)?\b/i.test(css)) {
+      return true;
+    }
+  }
+
+  const bodyOpenTag = html.match(/<body\b([^>]*)>/i)?.[1] ?? '';
+  if (
+    /\bstyle\s*=\s*['"][^'"]*\bdisplay\s*:\s*flex\b[^'"]*\boverflow-x\s*:\s*(?:auto|scroll|overlay)\b/i.test(bodyOpenTag)
+    && !/flex-direction\s*:\s*column(?:-reverse)?\b/i.test(bodyOpenTag)
+  ) {
     return true;
   }
-  const bodyRule = html.match(/body\s*\{[^}]*\}/i)?.[0] ?? '';
-  if (!bodyRule) return false;
-  const hasFlex = /\bdisplay\s*:\s*flex\b/i.test(bodyRule);
-  const hasRow =
-    !/flex-direction\s*:\s*column(?:-reverse)?\b/i.test(bodyRule);
-  const hasHorizontalScroll = /overflow-x\s*:\s*(?:auto|scroll|overlay)\b/i.test(bodyRule);
-  return hasFlex && hasRow && hasHorizontalScroll;
+  return false;
+}
+
+function looksLikeSlideViewportSized(html: string): boolean {
+  if (
+    /<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b[^'"]*['"][^>]*\bstyle\s*=\s*['"][^'"]*(?:min-)?height\s*:[^'"]*100(?:vh|dvh|svh|lvh)/i.test(
+      html,
+    )
+  ) {
+    return true;
+  }
+  const css = extractCssBlocks(html);
+  return /\.slide\b[^{]*\{[^}]*(?:min-)?height\s*:\s*100(?:vh|dvh|svh|lvh)/i.test(css);
+}
+
+function hasBodyFirstSlide(html: string): boolean {
+  return /<body\b[^>]*>(?:\s|<!--[\s\S]*?-->|<(?:header|nav)\b[^>]*>[\s\S]*?<\/(?:header|nav)>)*<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
+    html,
+  );
+}
+
+function looksLikeFrameworkDeckMarkup(html: string): boolean {
+  if (/\bid\s*=\s*["']deck-stage["']/i.test(html)) return true;
+  if (/<(?:div|section)[^>]*\bclass\s*=\s*['"][^'"]*\b(?:deck-shell|deck-stage)\b/i.test(html)) {
+    return true;
+  }
+  if (/<div[^>]*\bid\s*=\s*['"](?:deck-stage|deck)['"]/i.test(html)) return true;
+  return false;
 }
 
 /**
@@ -44,33 +97,20 @@ export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
  */
 export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (!html) return false;
-  if (/\bid\s*=\s*["']deck-stage["']/i.test(html)) return false;
-  if (/<(?:div|section)[^>]*\bclass\s*=\s*['"][^'"]*\b(?:deck-shell|deck-stage)\b/i.test(html)) {
-    return false;
-  }
-  if (/<div[^>]*\bid\s*=\s*['"](?:deck-stage|deck)['"]/i.test(html)) return false;
-  if (
-    /<(?:div|section)[^>]*\bclass\s*=\s*['"][^'"]*\bstage\b[^'"]*['"][^>]*>[\s\S]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
-      html,
-    )
-  ) {
-    return false;
-  }
+  if (looksLikeFrameworkDeckMarkup(html)) return false;
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
-  if (!/min-height\s*:\s*100(?:vh|dvh|svh|lvh)/i.test(html)) return false;
+  if (!looksLikeSlideViewportSized(html)) return false;
   if (
     /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*\bdeck\b/i.test(html)
   ) {
     return false;
   }
-  return /<body\b[^>]*>(?:\s|<!--[\s\S]*?-->)*<(?:section|div)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
-    html,
-  );
+  return hasBodyFirstSlide(html);
 }
 
 /** Host-side detection that matches buildSrcdoc's wrapped preview HTML. */
 export function looksLikeCompactApiStackedDeckForPreview(html: string): boolean {
-  return looksLikeCompactApiStackedDeck(wrapPreviewHtmlShell(html));
+  return looksLikeCompactApiStackedDeck(prepareCompactStackedDeckPreviewHtml(html));
 }
 
 /** Lock vw/vh math to the 1920×1080 letterbox canvas inside the iframe. */
@@ -84,3 +124,11 @@ export function injectStackedDeckViewport(html: string): string {
   }
   return html;
 }
+
+/** @internal test helper */
+export const compactStackedDeckTestHelpers = {
+  SLIDE_VIEWPORT_RE,
+  extractCssBlocks,
+  looksLikeSlideViewportSized,
+  hasBodyFirstSlide,
+};

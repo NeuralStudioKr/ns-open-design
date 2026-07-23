@@ -12,7 +12,8 @@ import {
   requestPreviewSnapshot,
 } from '../runtime/exports';
 import { buildSrcdoc } from '../runtime/srcdoc';
-import { scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
+import { looksLikeCompactApiStackedDeckForPreview } from '../runtime/compact-api-stacked-deck';
+import { postDeckHostViewportToIframe, scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
 import { Icon } from './Icon';
 
 export interface PreviewView {
@@ -461,6 +462,11 @@ export function PreviewModal({
   const activeError = activeView?.error ?? null;
   const activeUnavailable = activeView?.unavailable ?? null;
   const activeDeck = activeView?.deck ?? false;
+  const activeCompactStackedDeck = useMemo(
+    () => Boolean(activeHtml && activeDeck && looksLikeCompactApiStackedDeckForPreview(activeHtml)),
+    [activeHtml, activeDeck],
+  );
+  const effectiveDesignWidth = activeCompactStackedDeck ? 1920 : designWidth;
   const isCustomView = activeCustom !== null && activeCustom !== undefined;
   const srcDoc = useMemo(
     () => (activeHtml ? buildSrcdoc(activeHtml, { deck: activeDeck }) : ''),
@@ -494,7 +500,7 @@ export function PreviewModal({
   // Always fit the design viewport to the full stage width — scaling up
   // as well as down — so the preview fills the stage edge-to-edge with
   // no letterbox gutter when the sidebar collapses and the stage widens.
-  const scale = stageSize.w > 0 ? stageSize.w / designWidth : 1;
+  const scale = stageSize.w > 0 ? stageSize.w / effectiveDesignWidth : 1;
   const scalerStyle = useMemo(() => {
     if (stageSize.w === 0) {
       return {
@@ -504,16 +510,32 @@ export function PreviewModal({
       } as const;
     }
     return {
-      width: designWidth,
+      width: effectiveDesignWidth,
       height: stageSize.h / scale,
       transform: `scale(${scale})`,
     } as const;
-  }, [scale, stageSize.w, stageSize.h, designWidth]);
+  }, [scale, stageSize.w, stageSize.h, effectiveDesignWidth]);
 
   useEffect(() => {
     if (!activeDeck || !activeHtml) return;
-    return scheduleDeckPreviewFitNudges(previewIframeRef.current, scale, { layoutFit: true });
-  }, [activeDeck, activeHtml, activeId, scale, srcDoc, stageSize.w, stageSize.h]);
+    return scheduleDeckPreviewFitNudges(
+      previewIframeRef.current,
+      scale,
+      activeCompactStackedDeck ? undefined : { layoutFit: true },
+    );
+  }, [activeDeck, activeHtml, activeCompactStackedDeck, activeId, scale, srcDoc, stageSize.w, stageSize.h]);
+
+  useEffect(() => {
+    if (!activeCompactStackedDeck || !activeHtml) return;
+    function onDeckViewportRequest(ev: MessageEvent) {
+      if (ev.source !== previewIframeRef.current?.contentWindow) return;
+      const data = ev.data as { type?: string } | null;
+      if (!data || data.type !== 'od:deck-host-viewport-request') return;
+      postDeckHostViewportToIframe(previewIframeRef.current, scale);
+    }
+    window.addEventListener('message', onDeckViewportRequest);
+    return () => window.removeEventListener('message', onDeckViewportRequest);
+  }, [activeCompactStackedDeck, activeHtml, scale, srcDoc, activeId]);
 
   function openInNewTab() {
     if (!activeHtml) return;
@@ -1090,7 +1112,11 @@ export function PreviewModal({
                   srcDoc={srcDoc}
                   onLoad={(event) => {
                     if (!activeDeck) return;
-                    scheduleDeckPreviewFitNudges(event.currentTarget, scale, { layoutFit: true });
+                    scheduleDeckPreviewFitNudges(
+                      event.currentTarget,
+                      scale,
+                      activeCompactStackedDeck ? undefined : { layoutFit: true },
+                    );
                   }}
                 />
               </div>

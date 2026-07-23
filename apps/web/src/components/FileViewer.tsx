@@ -4990,6 +4990,7 @@ function HtmlViewer({
     canvasTop: number;
     expiresAt: number;
   } | null>(null);
+  const compactApiStackedDeckRef = useRef(false);
   const previewScrollPositionRef = useRef({
     frameLeft: 0,
     frameTop: 0,
@@ -5073,6 +5074,7 @@ function HtmlViewer({
     };
   }, []);
   const restorePreviewScrollPosition = useCallback(() => {
+    if (compactApiStackedDeckRef.current) return;
     const snapshot = previewScrollRestoreRef.current;
     if (!snapshot) return;
     if (Date.now() > snapshot.expiresAt) {
@@ -5684,6 +5686,7 @@ function HtmlViewer({
     () => (previewSource != null && looksLikeCompactApiStackedDeckForPreview(previewSource)),
     [previewSource],
   );
+  compactApiStackedDeckRef.current = compactApiStackedDeck;
   const frameworkDeckPreview = useMemo(
     () => (previewSource != null && /\bid\s*=\s*["']deck-stage["']/i.test(previewSource)),
     [previewSource],
@@ -9371,7 +9374,7 @@ function HtmlViewer({
                   style={
                     manualEditMode
                       ? manualEditPreviewShellStyle(previewViewport, previewScale, manualEditViewportWidth)
-                      : effectiveDeck
+                      : needsDeckHostViewportFit
                         ? deckPreviewScaleShellStyle(previewViewport, previewScale)
                         : previewScaleShellStyle(previewViewport, previewScale)
                   }

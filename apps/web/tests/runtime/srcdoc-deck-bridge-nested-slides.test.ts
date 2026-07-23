@@ -352,4 +352,17 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(win.getComputedStyle(slideEls[1]!).display).toBe('none');
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 3 });
   });
+
+  it('prevents wheel scrolling on compact stacked decks before navigation', async () => {
+    const slides = Array.from({ length: 2 }, (_, i) =>
+      `<section class="slide" style="min-height:100vh;padding:40px">Slide ${i + 1}</section>`,
+    ).join('');
+    const { win } = setupDeckBridge(slides);
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
+
+    const wheel = new win.WheelEvent('wheel', { deltaY: 120, cancelable: true });
+    const prevented = !win.document.dispatchEvent(wheel);
+    expect(prevented).toBe(true);
+    expect(win.document.documentElement.scrollTop).toBe(0);
+  });
 });

@@ -44,6 +44,56 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
   });
 
+  it('rejects marketing-style html,body horizontal flex decks without mistaking them for stacked', () => {
+    const html = [
+      '<!doctype html><html lang="ko"><body style="margin:0">',
+      '<section class="slide" style="min-height:100vh">Cover</section>',
+      '<section class="slide" style="min-height:100vh">Roadmap</section>',
+      '<style>',
+      'html,body{margin:0;scroll-snap-type:x mandatory;display:flex;overflow-x:auto;width:100vw}',
+      '.slide{min-width:100vw;scroll-snap-align:start;min-height:100vh}',
+      '</style>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeAuthoredHorizontalSwipeDeck(html)).toBe(true);
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
+    expect(buildSrcdoc(html, { deck: true })).not.toContain('data-od-deck-stacked-fix');
+  });
+
+  it('rejects html,body row-flex horizontal overflow even without scroll-snap', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      'html,body{margin:0;display:flex;overflow-x:auto;min-height:100vh}',
+      '.slide{flex:0 0 100vw;min-height:100vh}',
+      '</style></head><body>',
+      '<section class="slide">A</section><section class="slide">B</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
+  });
+
+  it('matches slides sized with height:100vh in stylesheet rules', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      'body{margin:0} .slide{height:100vh;padding:48px}',
+      '</style></head><body>',
+      '<section class="slide">A</section><section class="slide">B</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+  });
+
+  it('matches body-first slides after a header chrome element', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<header>PORTFOLIO</header>',
+      '<section class="slide" style="min-height:100vh">A</section>',
+      '<section class="slide" style="min-height:100vh">B</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+  });
+
   it('matches styled vertical creative decks with body > .slide and a <style> block', () => {
     const html = [
       '<!doctype html><html lang="ko"><head>',
