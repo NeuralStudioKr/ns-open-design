@@ -152,6 +152,12 @@ export interface ProjectMetadata {
   // New Project panel. Treated by the system-prompt composer as a stylistic
   // and structural reference for the generation request.
   promptTemplate?: PromptTemplateMetadata;
+  // Teamver deck-only MVP: community deck templates are plugin records, not
+  // daemon skill rows. Keep the selected visual template here so project
+  // creation does not fail skill validation while the run composer can still
+  // load and prioritize the template's local skill prompt.
+  selectedDeckTemplateId?: string;
+  selectedDeckTemplateTitle?: string;
   // Absolute paths to local code folders the agent can read via --add-dir.
   linkedDirs?: string[];
   // Batch/API-created projects can opt out of the initial discovery form so

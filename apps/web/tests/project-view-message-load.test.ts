@@ -133,7 +133,7 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const signature = source.indexOf("skillIdOverride?: string | null");
     expect(signature).toBeGreaterThan(0);
-    const composeBlock = source.slice(signature, signature + 1700);
+    const composeBlock = source.slice(signature, signature + 3200);
 
     expect(composeBlock).toContain("const effectiveSkillId = skillIdOverride ?? project.skillId");
     expect(composeBlock).toContain("skills.find((s) => s.id === effectiveSkillId)");

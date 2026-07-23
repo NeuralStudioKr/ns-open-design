@@ -1052,6 +1052,10 @@ export function ChatPane({
     () => currentSkillId ? skills.find((skill) => skill.id === currentSkillId) ?? null : null,
     [currentSkillId, skills],
   );
+  const activeTemplateTitle = useMemo(
+    () => projectMetadata?.selectedDeckTemplateTitle?.trim() || null,
+    [projectMetadata?.selectedDeckTemplateTitle],
+  );
   // Map each assistant message id to the user message that follows it (if any)
   // so the chat-side Questions banner can reopen that exact answered form in
   // the right-hand panel later.
@@ -2002,6 +2006,7 @@ export function ChatPane({
                 firstUserMessageId={firstUserMessageId}
                 activePluginSnapshot={activePluginSnapshot}
                 activeSkill={activeSkill}
+                activeTemplateTitle={activeTemplateTitle}
                 activeDesignSystem={activeDesignSystem}
                 hasActiveDesignSystem={hasActiveDesignSystem}
                 errorCardOwnerId={errorCardOwnerId}
@@ -2299,6 +2304,7 @@ function ChatRows({
   firstUserMessageId,
   activePluginSnapshot,
   activeSkill,
+  activeTemplateTitle,
   activeDesignSystem,
   hasActiveDesignSystem,
   errorCardOwnerId,
@@ -2340,6 +2346,7 @@ function ChatRows({
   firstUserMessageId: string | undefined;
   activePluginSnapshot?: AppliedPluginSnapshot | null;
   activeSkill?: SkillSummary | null;
+  activeTemplateTitle?: string | null;
   activeDesignSystem?: DesignSystemSummary | null;
   hasActiveDesignSystem: boolean;
   errorCardOwnerId: string | null;
@@ -2417,6 +2424,11 @@ function ChatRows({
           activeSkill={
             m.id === firstUserMessageId
               ? activeSkill ?? null
+              : null
+          }
+          activeTemplateTitle={
+            m.id === firstUserMessageId
+              ? activeTemplateTitle ?? null
               : null
           }
           activeDesignSystem={
@@ -3309,6 +3321,7 @@ function UserMessageImpl({
   t,
   activePluginSnapshot,
   activeSkill,
+  activeTemplateTitle,
   activeDesignSystem,
 }: {
   message: ChatMessage;
@@ -3320,6 +3333,7 @@ function UserMessageImpl({
   t: TranslateFn;
   activePluginSnapshot?: AppliedPluginSnapshot | null;
   activeSkill?: SkillSummary | null;
+  activeTemplateTitle?: string | null;
   activeDesignSystem?: DesignSystemSummary | null;
 }) {
   const attachments = sortChatAttachmentsForDisplay(message.attachments ?? []);
@@ -3331,6 +3345,7 @@ function UserMessageImpl({
       workspaceItems.length > 0 ||
       messagePluginSnapshot ||
       activeSkill ||
+      activeTemplateTitle ||
       activeDesignSystem,
   );
   const [copied, setCopied] = useState(false);
@@ -3385,6 +3400,8 @@ function UserMessageImpl({
           ) : null}
           {activeSkill ? (
             <ActiveSkillChip skill={activeSkill} />
+          ) : activeTemplateTitle ? (
+            <ActiveTemplateChip title={activeTemplateTitle} />
           ) : null}
           {activeDesignSystem ? (
             <ActiveDesignSystemChip
@@ -3585,6 +3602,19 @@ function ActiveSkillChip({ skill }: { skill: SkillSummary }) {
       {skill.mode ? (
         <span className="msg-plugin-chip__task">{skill.mode}</span>
       ) : null}
+    </div>
+  );
+}
+
+function ActiveTemplateChip({ title }: { title: string }) {
+  return (
+    <div className="msg-plugin-chip msg-plugin-chip--skill" data-testid="msg-template-chip" title={title}>
+      <Icon name="file" size={12} />
+      <span className="msg-plugin-chip__label">
+        <span className="msg-plugin-chip__kind">템플릿</span>
+        <span className="msg-plugin-chip__title">{title}</span>
+      </span>
+      <span className="msg-plugin-chip__task">deck</span>
     </div>
   );
 }

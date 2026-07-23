@@ -125,15 +125,19 @@ describe('Teamver embed slide-only MVP policy', () => {
     } as Parameters<typeof resolveSlideOnlyDeckTemplateSkillId>[0], { explicitPick: true })).toBeNull();
   });
 
-  it('routes picked deck templates as skillId while keeping the deck generator plugin', () => {
+  it('stores picked deck templates as metadata while keeping the deck generator plugin', () => {
     const homeView = readSource('src/components/HomeView.tsx');
     const start = homeView.indexOf('const selectedDeckTemplateSkillId = slideOnlyMvp');
     expect(start).toBeGreaterThan(0);
-    const block = homeView.slice(start, start + 1700);
+    const block = homeView.slice(start, start + 2300);
 
     expect(block).toContain('resolveSlideOnlyDeckTemplateSkillId');
     expect(block).toContain('const resolvedSkillId = submittedActive');
+    expect(block).toContain('? null');
     expect(block).toContain('selectedDeckTemplateSkillId');
+    expect(block).toContain('selectedDeckTemplateTitle');
+    expect(block).toContain('selectedDeckTemplateId: selectedDeckTemplateSkillId');
+    expect(block).toContain('selectedDeckTemplateTitle: selectedDeckTemplateTitle ?? undefined');
     expect(block).toContain('DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID');
     expect(block).toContain('skillId: resolvedSkillId');
     expect(block).toContain('visualTemplate');
@@ -149,6 +153,13 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(block).toContain('Teamver selected deck template guard');
     expect(block).toContain('primary visual contract');
     expect(block).toContain("use it only as secondary brand context");
+  });
+
+  it('loads selected deck template metadata when project skillId is intentionally empty', () => {
+    const projectView = readSource('src/components/ProjectView.tsx');
+    expect(projectView).toContain('selectedDeckTemplateMetadata(project.metadata)');
+    expect(projectView).toContain('fetchPluginLocalSkill(selectedTemplate.id)');
+    expect(projectView).toContain('Selected visual template');
   });
 
   it('wires slide-only gates into entry and composer surfaces', () => {

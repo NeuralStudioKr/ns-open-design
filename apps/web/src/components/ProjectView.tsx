@@ -1106,6 +1106,15 @@ function projectMediaVoiceSeed(
   return undefined;
 }
 
+function selectedDeckTemplateMetadata(
+  metadata: ProjectMetadata | null | undefined,
+): { id: string; title?: string } | null {
+  const id = metadata?.selectedDeckTemplateId?.trim();
+  if (!id) return null;
+  const title = metadata?.selectedDeckTemplateTitle?.trim() || undefined;
+  return { id, title };
+}
+
 // Carry the creation-time model pick into the conversation ONLY when it belongs
 // to the active BYOK provider. Guards against clobbering a user's Settings
 // default with a model from a different provider — e.g. a SenseAudio user whose
@@ -3273,6 +3282,16 @@ export function ProjectView({
         if (detail) {
           skillBody = detail.body;
           skillCache.current.set(effectiveSkillId, detail.body);
+        } else {
+          // Deck community plugins pin project.skillId to the plugin id
+          // (huashu-slides, etc.) — not a global skill/design-template row.
+          const local = await fetchPluginLocalSkill(effectiveSkillId);
+          if (local) {
+            skillBody = local.body;
+            skillName = local.name;
+            skillMode = skillMode ?? 'deck';
+            skillCache.current.set(effectiveSkillId, local.body);
+          }
         }
       }
     }
@@ -3288,6 +3307,41 @@ export function ProjectView({
           pluginSkillCache.current.set(pluginIdForLocalSkill, local.body);
         }
       }
+    }
+    const selectedTemplate = selectedDeckTemplateMetadata(project.metadata);
+    if (!skillBody?.trim() && selectedTemplate) {
+      const cached = pluginSkillCache.current.get(selectedTemplate.id);
+      if (cached !== undefined) {
+        skillBody = cached;
+        skillName = selectedTemplate.title ?? skillName;
+        skillMode = 'deck';
+      } else {
+        const detail = await fetchDesignTemplate(selectedTemplate.id);
+        if (detail) {
+          skillBody = detail.body;
+          skillName = selectedTemplate.title ?? detail.name;
+          skillMode = 'deck';
+          pluginSkillCache.current.set(selectedTemplate.id, detail.body);
+        } else {
+          const local = await fetchPluginLocalSkill(selectedTemplate.id);
+          if (local) {
+            skillBody = local.body;
+            skillName = selectedTemplate.title ?? local.name;
+            skillMode = 'deck';
+            pluginSkillCache.current.set(selectedTemplate.id, local.body);
+          }
+        }
+      }
+    }
+    if (!skillBody?.trim() && selectedTemplate?.title) {
+      skillBody = [
+        `# Selected visual template`,
+        ``,
+        `Template: ${selectedTemplate.title}`,
+        `Match this selected deck template's visible style as closely as possible.`,
+      ].join('\n');
+      skillName = selectedTemplate.title;
+      skillMode = 'deck';
     }
     if (skillBody?.trim() && skillMode === 'deck') {
       const title = skillName?.trim() || 'selected deck template';

@@ -2005,8 +2005,12 @@ export function HomeView({
             explicitPick: submittedActive?.explicitPick,
           })
         : null;
+      const selectedDeckTemplateTitle =
+        selectedDeckTemplateSkillId && submittedActive
+          ? localizePluginTitle(locale, submittedActive.record) || submittedActive.record.title
+          : null;
       const resolvedSkillId = submittedActive
-        ? selectedDeckTemplateSkillId
+        ? null
         : activeSkill?.id ?? null;
       const routedPluginId = slideOnlyMvp
         ? resolveSlideOnlyCreatePluginId(
@@ -2024,12 +2028,20 @@ export function HomeView({
             ...(submittedPluginInputs ?? {}),
             ...(selectedDeckTemplateSkillId && submittedActive
               ? {
-                  designSystem: localizePluginTitle(locale, submittedActive.record) || submittedActive.record.title,
-                  visualTemplate: localizePluginTitle(locale, submittedActive.record) || submittedActive.record.title,
+                  designSystem: selectedDeckTemplateTitle ?? submittedActive.record.title,
+                  visualTemplate: selectedDeckTemplateTitle ?? submittedActive.record.title,
                 }
               : {}),
           }
         : submittedPluginInputs;
+      const projectMetadataForCreate =
+        slideOnlyMvp && selectedDeckTemplateSkillId
+          ? {
+              ...(submittedProjectMetadata ?? { kind: 'deck' as const }),
+              selectedDeckTemplateId: selectedDeckTemplateSkillId,
+              selectedDeckTemplateTitle: selectedDeckTemplateTitle ?? undefined,
+            }
+          : submittedProjectMetadata;
       const submitResult = await Promise.resolve(onSubmit({
         prompt: trimmed,
         pluginId: routedPluginId,
@@ -2040,7 +2052,7 @@ export function HomeView({
         taskKind: submittedActive?.result?.appliedPlugin?.taskKind ?? null,
         pluginInputs: submittedPluginInputsForCreate,
         projectKind: submittedProjectKind,
-        projectMetadata: submittedProjectMetadata,
+        projectMetadata: projectMetadataForCreate,
         designSystemId: submittedDesignSystemId,
         contextPlugins,
         contextMcpServers,
