@@ -17,7 +17,7 @@
 // Teamver embed (or any auth-gated preview). Sandboxed iframes cannot
 // send identity cookies, so nginx returns `{"detail":"session_expired"}`
 // and Chrome paints that JSON as a black "pretty print" thumb. Parent
-// fetch (credentials + embed recovery) loads the HTML, then we inject a
+// fetch (same-origin credentials, no embed recovery ladder) loads the HTML, then we inject a
 // `<base href>` so public `/asset/` subresources still resolve.
 //
 // Reachability
@@ -92,6 +92,10 @@ async function loadPluginPreviewHtml(url: string, signal?: AbortSignal): Promise
     const res = await fetchTeamverDaemon(url, {
       method: 'GET',
       signal: signal ?? new AbortController().signal,
+      // Plugin preview thumbs are non-critical, retryable UI. Do not make a
+      // card fetch wake Teamver auth/session refresh or active-workspace reads.
+      skipEmbedAuthRecovery: true,
+      skipTeamverWorkspaceHeaders: true,
     });
     if (!res.ok) {
       // Only sticky-cache missing assets. Auth failures must remain retryable

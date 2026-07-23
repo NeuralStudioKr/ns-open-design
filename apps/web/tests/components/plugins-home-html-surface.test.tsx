@@ -9,6 +9,8 @@
 
 import { describe, expect, it, afterEach, beforeEach, vi } from 'vitest';
 import { cleanup, render, waitFor } from '@testing-library/react';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   HtmlSurface,
   __htmlSurfaceProbeCacheSizeForTests,
@@ -117,6 +119,19 @@ describe('plugin preview srcDoc helpers', () => {
 });
 
 describe('HtmlSurface authenticated srcDoc', () => {
+  it('keeps preview card fetches out of Teamver auth refresh recovery', async () => {
+    const source = await readFile(
+      join(process.cwd(), 'src/components/plugins-home/cards/HtmlSurface.tsx'),
+      'utf8',
+    );
+    const fetchBlock = source.slice(
+      source.indexOf('await fetchTeamverDaemon(url, {'),
+      source.indexOf('if (!res.ok)'),
+    );
+    expect(fetchBlock).toContain('skipEmbedAuthRecovery: true');
+    expect(fetchBlock).toContain('skipTeamverWorkspaceHeaders: true');
+  });
+
   it('renders an iframe with srcDoc once HTML loads (not bare src)', async () => {
     const fetchMock = vi.fn().mockResolvedValue(htmlResponse());
     vi.stubGlobal('fetch', fetchMock);
