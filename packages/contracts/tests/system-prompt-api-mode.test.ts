@@ -143,8 +143,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('include the complete HTML deck artifact in this same response');
       expect(prompt).toContain('Teamver slide-only API deliverable rule');
       expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="deck" identifier="...">...</artifact>` block');
-      expect(prompt).toContain('exactly one short user-visible Korean status sentence tailored to the brief');
-      expect(prompt).toContain('exactly one brief-specific Korean status sentence');
+      expect(prompt).toContain('exactly one short user-visible status sentence tailored to the brief in UI locale');
+      expect(prompt).toContain('exactly one brief-specific status sentence in UI locale');
       expect(prompt).toContain('Never start a Teamver deck with `<artifact type="text/html"`');
       expect(prompt).toContain('Teamver API — deck framework emission override');
       expect(prompt).toContain('API compact contract');
@@ -326,7 +326,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('never `<head>`');
       expect(prompt).toContain('abandon that output');
       expect(prompt).toContain('API compact contract');
-      expect(prompt).toContain('one short user-visible Korean status sentence tailored to the brief');
+      expect(prompt).toContain('one short user-visible status sentence tailored to the brief in UI locale');
       expect(prompt).toContain('inline layout vocabulary');
       expect(prompt).toContain('split thesis, timeline, quote');
       expect(prompt).toContain('template/design-system feel');
@@ -345,7 +345,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain(SKIP_DISCOVERY_BRIEF_OVERRIDE);
       expect(prompt).toContain('direct deck generation rule');
       expect(prompt).toContain('inline layout vocabulary');
-      expect(prompt).toContain('one short user-visible Korean status sentence tailored to the brief');
+      expect(prompt).toContain('one short user-visible status sentence tailored to the brief in UI locale');
       expect(prompt).not.toContain('bind quick-brief answers');
       expect(prompt).toContain('<artifact type="deck" identifier="deck">');
       expect(prompt).toContain('Never `type="text/html"`');
