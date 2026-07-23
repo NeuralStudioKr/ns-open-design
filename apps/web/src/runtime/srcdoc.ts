@@ -101,7 +101,7 @@ export function buildSrcdoc(
   html: string,
   options: SrcdocOptions = {}
 ): string {
-  const repaired = repairArtifactDocumentHead(html);
+  const repaired = stripConflictingSrcDocCspBaseUri(repairArtifactDocumentHead(html));
   const wrapped = wrapPreviewHtmlShell(repaired);
   const withOdIds = annotateMissingOdIds(wrapped);
   const withSourcePaths = options.editBridge ? annotateManualEditSourcePaths(withOdIds) : withOdIds;

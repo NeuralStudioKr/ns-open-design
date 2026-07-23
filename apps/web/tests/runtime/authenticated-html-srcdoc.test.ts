@@ -36,7 +36,7 @@ describe('authenticatedHtmlSrcDoc helpers', () => {
     const html = injectHtmlBaseHref(canvas, 'https://stg-design.teamver.com/api/projects/p1/raw/canvas.html');
     expect(html).toContain('<base href="https://stg-design.teamver.com/api/projects/p1/raw/canvas.html">');
     expect(html).toContain("default-src 'none'");
-    expect(html).toContain("script-src 'none'");
+    expect(html).toContain("script-src 'unsafe-inline'");
     expect(html).not.toMatch(/base-uri\s+'none'/i);
   });
 

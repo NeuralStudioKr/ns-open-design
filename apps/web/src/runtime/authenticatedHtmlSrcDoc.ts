@@ -57,8 +57,18 @@ export function resolvePluginPreviewBaseHref(previewSrc: string, origin?: string
  * Teamver canvas HTML embeds CSP meta with `base-uri 'none'` (download hardening).
  * srcDoc thumbs/previews must inject `<base href>` for relative assets; that
  * violates the meta and floods DevTools. Drop only the conflicting directive
- * (keep default-src / script-src / etc.).
+ * (keep default-src / img-src / etc.).
+ *
+ * Canvas export CSP also sets `script-src 'none'` for static downloads. Sandboxed
+ * preview iframes (`allow-scripts`) must run deck navigation and host bridges,
+ * so relax that directive to inline scripts only.
  */
+function relaxSrcDocPreviewCspContent(content: string): string {
+  return content
+    .replace(/\bscript-src\s+'none'\s*;?/gi, "script-src 'unsafe-inline'")
+    .replace(/\bscript-src\s+"none"\s*;?/gi, 'script-src "unsafe-inline"');
+}
+
 export function stripConflictingSrcDocCspBaseUri(html: string): string {
   return html.replace(/<meta\b[^>]*>/gi, (tag) => {
     if (!/\bhttp-equiv\s*=\s*(["']?)Content-Security-Policy\1/i.test(tag)
@@ -66,7 +76,7 @@ export function stripConflictingSrcDocCspBaseUri(html: string): string {
       return tag;
     }
     return tag.replace(/\bcontent\s*=\s*(["'])([\s\S]*?)\1/i, (_m, quote: string, content: string) => {
-      const next = content
+      const next = relaxSrcDocPreviewCspContent(content)
         .replace(/\bbase-uri\s+'none'\s*;?/gi, '')
         .replace(/\bbase-uri\s*"none"\s*;?/gi, '')
         .replace(/;\s*;+/g, ';')

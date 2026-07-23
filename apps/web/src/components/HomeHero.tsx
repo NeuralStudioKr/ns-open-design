@@ -2815,6 +2815,7 @@ function ShortcutsMenu({
     () => homeHeroChipsForGroup('migrate', { slideOnlyMvp }),
     [slideOnlyMvp],
   );
+  if (shortcuts.length === 0) return null;
   const disabled = pluginsLoading || pendingPluginId !== null;
   const hasActiveShortcut = shortcuts.some((chip) => chip.id === activeChipId);
   const hasPendingShortcut = shortcuts.some((chip) => chip.id === pendingChipId);

@@ -34,6 +34,7 @@ describe('Teamver embed slide-only MVP policy', () => {
   it('hides media and non-deck home hero chips in slide-only mode', () => {
     const createIds = homeHeroChipsForGroup('create', { slideOnlyMvp: true }).map((c) => c.id);
     expect(createIds).toEqual(['deck']);
+    expect(homeHeroChipsForGroup('migrate', { slideOnlyMvp: true })).toEqual([]);
     expect(TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS.has('image')).toBe(true);
     expect(TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS.has('video')).toBe(true);
     expect(TEAMVER_EMBED_HIDDEN_HOME_HERO_CHIP_IDS.has('audio')).toBe(true);
@@ -176,6 +177,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     const projectView = readSource('src/components/ProjectView.tsx');
 
     expect(homeHero).toContain('homeHeroChipsForGroup');
+    expect(homeHero).toContain('if (shortcuts.length === 0) return null');
     expect(homeHero).toContain('hideComposerIntegrations');
     expect(homeHero).toContain('!slideOnlyMvp');
     expect(newProject).toContain('visibleNewProjectTabs');

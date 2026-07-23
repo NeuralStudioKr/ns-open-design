@@ -21,6 +21,18 @@ describe('buildSrcdoc', () => {
     expect(doc).toContain('<section class="slide active">A</section>');
   });
 
+  it('relaxes canvas CSP script-src none so preview inline scripts can run', () => {
+    const canvasDeck = `<!doctype html><html><head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src 'self'; script-src 'none'; base-uri 'none'; form-action 'none'"/>
+<script>window.__deckNav = true;</script>
+</head><body><section class="slide active">One</section></body></html>`;
+    const doc = buildSrcdoc(canvasDeck, { deck: true });
+    expect(doc).toContain("script-src 'unsafe-inline'");
+    expect(doc).not.toMatch(/script-src\s+'none'/i);
+    expect(doc).toContain('window.__deckNav = true');
+    expect(doc).toContain('data-od-sandbox-shim');
+  });
+
   it('uses the shared artifact leak guard script', () => {
     const doc = buildSrcdoc('<main>Hero</main>');
     expect(doc).toContain('data-od-preview-artifact-guard');
