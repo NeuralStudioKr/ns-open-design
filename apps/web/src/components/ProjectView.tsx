@@ -6392,7 +6392,9 @@ export function ProjectView({
           }
         }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
-        const effectiveSkillId = Array.isArray(meta?.skillIds) ? meta.skillIds[0] ?? null : null;
+        const effectiveSkillId =
+          (Array.isArray(meta?.skillIds) ? meta.skillIds[0] : null) ??
+          (Array.isArray(meta?.context?.pluginIds) ? meta.context.pluginIds[0] : null);
         const systemPrompt = await composedSystemPrompt(
           runSessionMode,
           effectiveDesignSystemId,

@@ -139,10 +139,11 @@ describe("ProjectView message loading", () => {
     expect(composeBlock).toContain("skills.find((s) => s.id === effectiveSkillId)");
     expect(composeBlock).toContain("await fetchDesignTemplate(effectiveSkillId)");
 
-    const callStart = source.indexOf("const effectiveSkillId = Array.isArray(meta?.skillIds)");
+    const callStart = source.indexOf("const effectiveSkillId =\n          (Array.isArray(meta?.skillIds)");
     expect(callStart).toBeGreaterThan(0);
-    const callBlock = source.slice(callStart, callStart + 450);
-    expect(callBlock).toContain("meta.skillIds[0] ?? null");
+    const callBlock = source.slice(callStart, callStart + 550);
+    expect(callBlock).toContain("meta.skillIds[0]");
+    expect(callBlock).toContain("meta?.context?.pluginIds");
     expect(callBlock).toContain("composedSystemPrompt(");
     expect(callBlock).toContain("effectiveSkillId");
   });

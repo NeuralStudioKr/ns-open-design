@@ -79,6 +79,7 @@ import {
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   canvasCreateSlidesRunPrompt,
+  canvasCreateSlidesTurnMeta,
   canvasSlideTemplateOptions,
 } from '../teamver/canvasSlideLaunch';
 import {
@@ -1690,21 +1691,20 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setCanvasSlideLaunch(null);
           setCanvasSlideLaunchError(null);
           const baseMeta = currentRunContextMeta();
+          const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
+            designSystemId: designSystemIdForRun,
+            mergeContext: baseMeta?.context,
+          });
           sendComposedTurn(
             canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
             attachments,
             [],
             {
               ...baseMeta,
-              designSystemId: designSystemIdForRun,
+              ...canvasMeta,
               context: {
                 ...(baseMeta?.context ?? {}),
-                pluginIds: [
-                  selectedCanvasSlideTemplate.id,
-                  ...((baseMeta?.context?.pluginIds ?? []).filter(
-                    (id) => id !== selectedCanvasSlideTemplate.id,
-                  )),
-                ],
+                ...canvasMeta.context,
               },
             },
           );
@@ -1742,21 +1742,20 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         setCanvasSlideLaunchError(null);
         {
           const baseMeta = currentRunContextMeta();
+          const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
+            designSystemId: designSystemIdForRun,
+            mergeContext: baseMeta?.context,
+          });
           sendComposedTurn(
             canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
             attachments,
             [],
             {
               ...baseMeta,
-              designSystemId: designSystemIdForRun,
+              ...canvasMeta,
               context: {
                 ...(baseMeta?.context ?? {}),
-                pluginIds: [
-                  selectedCanvasSlideTemplate.id,
-                  ...((baseMeta?.context?.pluginIds ?? []).filter(
-                    (id) => id !== selectedCanvasSlideTemplate.id,
-                  )),
-                ],
+                ...canvasMeta.context,
               },
             },
           );
