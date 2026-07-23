@@ -14249,6 +14249,12 @@ export async function startServer({
     // plain streams (most other CLIs) we forward raw chunks unchanged so
     // the browser can append them to the assistant's text buffer.
     let agentStreamError = null;
+    // Preserve whether a latched error predates a later cancel request. The
+    // close handler runs after cancel() has already flipped cancelRequested,
+    // so consulting only the current flag loses the ordering of those events.
+    let agentStreamErrorObservedBeforeCancellation = false;
+    let acpFatalErrorObservedBeforeCancellation = false;
+    run.runtimeFailureObservedBeforeCancellation = false;
     // Holds buffered plain-text stdout chunks for agents (currently
     // antigravity) where we need to inspect the full output at close
     // time before deciding whether to forward it. The auth-prompt guard
@@ -14399,6 +14405,10 @@ export async function startServer({
 
     const sendAgentEvent = (ev) => {
       if (ev?.type === 'error') {
+        // Cancellation is the terminal user intent. Some CLIs flush a final
+        // error record while reacting to SIGTERM; treating that late frame as
+        // a run failure races the cancel route and can make it return failed.
+        if (run.cancelRequested) return;
         if (agentStreamError) return;
         flushVisibleAgentStderr();
         const failureText = [
@@ -14412,6 +14422,8 @@ export async function startServer({
           String(ev.message || 'Agent stream error'),
           failureText,
         );
+        agentStreamErrorObservedBeforeCancellation = true;
+        run.runtimeFailureObservedBeforeCancellation = true;
         clearInactivityWatchdog();
         const authFailure = classifyAgentAuthFailure(agentId, failureText);
         if (authFailure?.status === 'missing') {
@@ -14475,6 +14487,10 @@ export async function startServer({
     if (def.streamFormat === 'claude-stream-json') {
       const claude = createClaudeStreamHandler((ev) => {
         if (ev?.type === 'error') {
+          // Claude commonly reports its SIGTERM shutdown as an assistant or
+          // result error frame. Once cancellation has been requested, that
+          // frame is shutdown noise rather than a new user-visible failure.
+          if (run.cancelRequested) return;
           if (agentStreamError) return;
           flushVisibleAgentStderr();
           const message = String((ev as any).message || 'Claude Code stream error');
@@ -14503,6 +14519,8 @@ export async function startServer({
           const serviceCode = classifyAgentServiceFailure(failureText);
           agentStreamError = diagnostic?.message
             ?? rewriteKnownAgentStreamError(agentId, message, failureText);
+          agentStreamErrorObservedBeforeCancellation = true;
+          run.runtimeFailureObservedBeforeCancellation = true;
           send('error', createSseErrorPayload(
             diagnostic?.code ?? serviceCode ?? 'AGENT_EXECUTION_FAILED',
             agentStreamError,
@@ -14591,9 +14609,12 @@ export async function startServer({
           if (channel === 'agent') {
             sendAgentEvent(payload);
           } else if (channel === 'error') {
+            if (run.cancelRequested) return;
             if (agentStreamError) return;
             flushVisibleAgentStderr();
             agentStreamError = String(payload?.message || 'Pi session error');
+            agentStreamErrorObservedBeforeCancellation = true;
+            run.runtimeFailureObservedBeforeCancellation = true;
             const piErrorCode = typeof payload?.code === 'string' ? payload.code : null;
             if (piErrorCode) {
               run.errorCode = piErrorCode;
@@ -14627,6 +14648,11 @@ export async function startServer({
         envFormat: def.acpMcpEnvFormat ?? 'array',
         ...(def.id === 'amr' ? { modelUnavailableErrorCode: 'AMR_MODEL_UNAVAILABLE' } : {}),
         send: (event, data) => {
+          if (event === 'error') {
+            if (run.cancelRequested) return;
+            acpFatalErrorObservedBeforeCancellation = true;
+            run.runtimeFailureObservedBeforeCancellation = true;
+          }
           if (event === 'agent') {
             lastAgentEventPhase = summarizeAgentEventForInactivity(data);
           }
@@ -14713,12 +14739,25 @@ export async function startServer({
       emitVisibleAgentStderr(chunk);
     });
 
+    const finishCanceledIfRequested = (
+      code: number | null,
+      signal: NodeJS.Signals | null,
+    ): boolean => {
+      if (!run.cancelRequested) return false;
+      if (!design.runs.isTerminal(run.status)) {
+        markRpcCloseReason('cancel_requested');
+        finishWithRetryDecision('canceled', code, signal);
+      }
+      return true;
+    };
+
     child.on('error', (err) => {
       clearInactivityWatchdog();
       cleanupPromptFile();
       flushVisibleAgentStderr();
       revokeToolToken('child_exit');
       unregisterChatAgentEventSink();
+      if (finishCanceledIfRequested(1, null)) return;
       send('error', createSseErrorPayload('AGENT_EXECUTION_FAILED', err.message));
       finishWithRetryDecision('failed', 1, null);
     });
@@ -14741,12 +14780,12 @@ export async function startServer({
       }
       revokeToolToken('child_exit');
       unregisterChatAgentEventSink();
-      if (acpSession?.hasFatalError()) {
+      if (acpFatalErrorObservedBeforeCancellation && acpSession?.hasFatalError()) {
         markRpcCloseReason('fatal_rpc_error');
         return finishWithRetryDecision('failed', code ?? 1, signal ?? null);
       }
       parseBufferedAntigravityGeminiJsonEventStream();
-      if (agentStreamError) {
+      if (agentStreamErrorObservedBeforeCancellation && agentStreamError) {
         markRpcCloseReason('stream_error');
         return finishWithRetryDecision('failed', code === 0 ? 1 : (code ?? 1), signal ?? null);
       }

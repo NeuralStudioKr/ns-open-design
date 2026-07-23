@@ -1042,4 +1042,23 @@ describe('structured agent stream fixtures', () => {
     expect(events).toContainEqual({ type: 'text_delta', delta: 'sub-agent note' });
     expect(events).not.toContainEqual({ type: 'turn_end', stopReason: 'end_turn' });
   });
+
+  it('does not emit run-level error for sub-agent assistant error frames', () => {
+    const events: unknown[] = [];
+    const handler = createClaudeStreamHandler((event: unknown) => events.push(event));
+    handler.feed(`${JSON.stringify({
+      type: 'assistant',
+      parent_tool_use_id: 'toolu_parent',
+      error: 'unknown',
+      message: {
+        id: 'msg-subagent-error',
+        content: [{ type: 'text', text: 'sub-agent partial output' }],
+        stop_reason: null,
+      },
+    })}\n`);
+    handler.flush();
+
+    expect(events).toContainEqual({ type: 'text_delta', delta: 'sub-agent partial output' });
+    expect(events.some((event) => (event as { type?: string }).type === 'error')).toBe(false);
+  });
 });

@@ -482,7 +482,7 @@ export function createClaudeStreamHandler(
           wroteHtmlFileThisTurn = false;
         }
       }
-      if (typeof obj.error === 'string' && obj.error.trim()) {
+      if (typeof obj.error === 'string' && obj.error.trim() && obj.parent_tool_use_id == null) {
         onEvent({
           type: 'error',
           message: assistantText(obj.message.content) || obj.error,
