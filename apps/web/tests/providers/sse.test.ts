@@ -748,6 +748,38 @@ describe('streamViaDaemon', () => {
     expect(body.currentPrompt).toBe('继续');
   });
 
+  it('forwards per-turn plugin inputs to daemon runs', async () => {
+    const handlers = createDaemonHandlers();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/runs') return jsonResponse({ runId: 'run-plugin-inputs' });
+      if (url === '/api/runs/run-plugin-inputs/events') {
+        return sseResponse('event: end\ndata: {"code":0,"status":"succeeded"}\n\n');
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await streamViaDaemon({
+      agentId: 'mock',
+      history: [{ id: '1', role: 'user', content: 'Make slides from this source.' }],
+      systemPrompt: '',
+      signal: new AbortController().signal,
+      handlers,
+      pluginInputs: {
+        sourceHandlingInstruction: 'Write a complete deck file.',
+        designSystem: 'Hermes Cyber Terminal',
+      },
+    });
+
+    const [, createRunInit] = fetchMock.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit];
+    const body = JSON.parse(String(createRunInit.body));
+    expect(body.pluginInputs).toEqual({
+      sourceHandlingInstruction: 'Write a complete deck file.',
+      designSystem: 'Hermes Cyber Terminal',
+    });
+  });
+
   it('adds a compact context warning for high-usage agent-browser doc runs', () => {
     const transcript = buildDaemonTranscript([
       {

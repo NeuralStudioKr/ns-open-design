@@ -78,7 +78,9 @@ import {
 } from '../teamver/canvasLaunchHandoff';
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
+  canvasCreateSlidesSourceBrief,
   canvasSlideTemplateOptions,
 } from '../teamver/canvasSlideLaunch';
 import {
@@ -358,6 +360,8 @@ export interface ChatSendMeta {
   queueOnly?: boolean;
   research?: ResearchOptions;
   context?: RunContextSelection;
+  /** Per-turn plugin inputs for scenario runs started from composer actions. */
+  pluginInputs?: Record<string, unknown>;
   appliedPluginSnapshot?: AppliedPluginSnapshot;
   appliedPluginSnapshotId?: string;
   inlineAppliedPlugin?: {
@@ -1696,6 +1700,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             [],
             {
               ...baseMeta,
+              pluginInputs: canvasCreateSlidesPluginInputs(
+                canvasSlideLaunch.handoff.title?.trim()
+                  || canvasSlideLaunch.handoff.threadTitle?.trim()
+                  || attachments[0]?.name
+                  || attachments[0]?.path
+                  || null,
+                selectedCanvasSlideTemplate.title,
+                canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff),
+              ),
               designSystemId: designSystemIdForRun,
               context: {
                 ...(baseMeta?.context ?? {}),
@@ -1748,6 +1761,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             [],
             {
               ...baseMeta,
+              pluginInputs: canvasCreateSlidesPluginInputs(
+                asset.filename ?? asset.assetId,
+                selectedCanvasSlideTemplate.title,
+              ),
               designSystemId: designSystemIdForRun,
               context: {
                 ...(baseMeta?.context ?? {}),

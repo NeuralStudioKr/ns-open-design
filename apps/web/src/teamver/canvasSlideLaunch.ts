@@ -1,6 +1,7 @@
 import { defaultScenarioPluginIdForKind, type InstalledPluginRecord } from "@open-design/contracts";
 import type { TeamverDriveImportAsset } from "./importDriveAssets";
 import type { TeamverDriveLaunchIntent } from "./driveLaunchHandoff";
+import type { TeamverCanvasLaunchHandoff } from "./canvasLaunchHandoff";
 import { localizePluginTitle } from "../components/plugins-home/localization";
 
 /** Deck scenario for Canvas / Drive → create-slides (not od-default). */
@@ -64,12 +65,38 @@ export function canvasSlideTemplateOptions(
   return options;
 }
 
+function compactCanvasBriefValue(value: string, max = 220): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length > max ? `${compact.slice(0, max - 1).trimEnd()}…` : compact;
+}
+
+export function canvasCreateSlidesSourceBrief(
+  handoff: Pick<
+    TeamverCanvasLaunchHandoff,
+    "title" | "threadTitle" | "preview" | "sectionCount" | "headings"
+  >,
+): string | null {
+  const lines: string[] = [];
+  const title = handoff.title?.trim() || handoff.threadTitle?.trim();
+  if (title) lines.push(`Canvas title: ${compactCanvasBriefValue(title, 120)}`);
+  if (handoff.sectionCount != null && handoff.sectionCount > 0) {
+    lines.push(`Canvas sections: ${Math.min(Math.floor(handoff.sectionCount), 999)}`);
+  }
+  const headings = (handoff.headings ?? []).map((item) => compactCanvasBriefValue(item, 80)).filter(Boolean);
+  if (headings.length > 0) lines.push(`Visible headings: ${headings.slice(0, 6).join(" / ")}`);
+  const preview = handoff.preview?.trim();
+  if (preview) lines.push(`Source preview: ${compactCanvasBriefValue(preview, 320)}`);
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
 /** Plugin inputs for example-simple-deck on create-slides one-confirm. */
 export function canvasCreateSlidesPluginInputs(
   topicHint?: string | null,
   templateTitle?: string | null,
+  sourceBrief?: string | null,
 ): Record<string, unknown> {
   const topic = (topicHint ?? "").trim() || "the attached canvas document";
+  const brief = sourceBrief?.trim();
   return {
     deckType: "presentation from canvas",
     topic,
@@ -77,6 +104,7 @@ export function canvasCreateSlidesPluginInputs(
     slideCount: "6-8 pages",
     speakerNotes: "no speaker notes",
     designSystem: (templateTitle ?? "").trim() || "the active project design system",
+    ...(brief ? { sourceBrief: brief } : {}),
     sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   };
 }

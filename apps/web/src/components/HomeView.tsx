@@ -131,9 +131,10 @@ import {
 } from '../teamver/canvasLaunchHandoff';
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
-  canvasCreateSlidesRunPrompt,
-  canvasSlideTemplateOptions,
   canvasCreateSlidesPluginInputs,
+  canvasCreateSlidesRunPrompt,
+  canvasCreateSlidesSourceBrief,
+  canvasSlideTemplateOptions,
 } from '../teamver/canvasSlideLaunch';
 import {
   consumeTeamverDriveLaunchHandoff,
@@ -1773,6 +1774,7 @@ export function HomeView({
           canvasSlideLaunch.handoff.title?.trim() ||
           canvasSlideLaunch.handoff.threadTitle?.trim() ||
           null;
+        const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
         const submitResult = await Promise.resolve(
           onSubmit({
             prompt: canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title),
@@ -1782,7 +1784,11 @@ export function HomeView({
             appliedPluginSnapshotId: null,
             pluginTitle: selectedCanvasSlideTemplate.title,
             taskKind: null,
-            pluginInputs: canvasCreateSlidesPluginInputs(topicHint, selectedCanvasSlideTemplate.title),
+            pluginInputs: canvasCreateSlidesPluginInputs(
+              topicHint,
+              selectedCanvasSlideTemplate.title,
+              sourceBrief,
+            ),
             projectKind: 'deck',
             projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
             designSystemId: submittedDesignSystemId,

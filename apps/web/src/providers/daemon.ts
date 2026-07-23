@@ -294,6 +294,7 @@ export interface DaemonStreamOptions {
   reasoning?: string | null;
   research?: ResearchOptions;
   context?: RunContextSelection;
+  pluginInputs?: Record<string, unknown>;
   appliedPluginSnapshotId?: string | null;
   mediaExecution?: MediaExecutionPolicy;
   locale?: string;
@@ -587,6 +588,7 @@ export async function streamViaDaemon({
   reasoning,
   research,
   context,
+  pluginInputs,
   appliedPluginSnapshotId,
   mediaExecution,
   locale,
@@ -623,6 +625,7 @@ export async function streamViaDaemon({
     locale,
     ...(appliedPluginSnapshotId ? { appliedPluginSnapshotId } : {}),
     ...(context ? { context } : {}),
+    ...(pluginInputs && Object.keys(pluginInputs).length > 0 ? { pluginInputs } : {}),
     ...(research ? { research } : {}),
     ...(mediaExecution ? { mediaExecution } : {}),
     ...(analyticsHints ? { analyticsHints } : {}),

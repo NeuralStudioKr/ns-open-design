@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
   CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
@@ -6,9 +8,16 @@ import {
   CANVAS_CREATE_SLIDES_PROMPT,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
+  canvasCreateSlidesSourceBrief,
   isCanvasSlideOneConfirmLaunch,
 } from "../src/teamver/canvasSlideLaunch";
 import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
+
+const ROOT = resolve(__dirname, "..");
+
+function readWebSource(path: string): string {
+  return readFileSync(resolve(ROOT, path), "utf8");
+}
 
 describe("canvasSlideLaunch", () => {
   it("keeps the user-visible Canvas handoff prompt short", () => {
@@ -29,6 +38,23 @@ describe("canvasSlideLaunch", () => {
     });
   });
 
+  it("builds a compact Canvas source brief for plugin inputs", () => {
+    const brief = canvasCreateSlidesSourceBrief({
+      title: "Executive AI Adoption Canvas",
+      preview: "A research canvas with KPI cards, timeline blocks, and rollout risks.",
+      sectionCount: 6,
+      headings: ["Executive summary", "KPI impact", "Risk controls"],
+    });
+
+    expect(brief).toContain("Canvas title: Executive AI Adoption Canvas");
+    expect(brief).toContain("Canvas sections: 6");
+    expect(brief).toContain("Visible headings: Executive summary / KPI impact / Risk controls");
+    expect(brief).toContain("Source preview: A research canvas");
+    expect(canvasCreateSlidesPluginInputs("canvas", "Template", brief)).toMatchObject({
+      sourceBrief: brief,
+    });
+  });
+
   it("sends hidden deliverable instructions to the model while keeping user display clean", () => {
     const runPrompt = canvasCreateSlidesRunPrompt("Hermes Cyber Terminal");
     expect(runPrompt).toContain(CANVAS_CREATE_SLIDES_PROMPT);
@@ -46,5 +72,19 @@ describe("canvasSlideLaunch", () => {
     expect(isCanvasSlideOneConfirmLaunch("create-slides", asset)).toBe(true);
     expect(isCanvasSlideOneConfirmLaunch(null, asset)).toBe(false);
     expect(isCanvasSlideOneConfirmLaunch("create-slides", null)).toBe(false);
+  });
+
+  it("threads plugin inputs through the existing-project composer handoff", () => {
+    const composer = readWebSource("src/components/ChatComposer.tsx");
+    const home = readWebSource("src/components/HomeView.tsx");
+    const projectView = readWebSource("src/components/ProjectView.tsx");
+    const daemon = readWebSource("src/providers/daemon.ts");
+
+    expect(composer).toContain("pluginInputs: canvasCreateSlidesPluginInputs(");
+    expect(composer).toContain("canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff)");
+    expect(home).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff)");
+    expect(projectView).toContain("pluginInputs: meta?.pluginInputs");
+    expect(daemon).toContain("pluginInputs?: Record<string, unknown>;");
+    expect(daemon).toContain("{ pluginInputs }");
   });
 });

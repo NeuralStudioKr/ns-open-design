@@ -6237,6 +6237,7 @@ export function ProjectView({
           skillId: project.skillId ?? null,
           skillIds: Array.isArray(meta?.skillIds) ? meta.skillIds : [],
           context: runContext,
+          pluginInputs: meta?.pluginInputs,
           designSystemId: meta?.designSystemId ?? project.designSystemId ?? null,
           attachments: runAttachments.map((a) => a.path),
           commentAttachments: runCommentAttachments,
