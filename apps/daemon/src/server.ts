@@ -327,6 +327,7 @@ import {
   reportRunCompletedFromDaemon,
   reportRunFeedbackFromDaemon,
 } from './langfuse-bridge.js';
+import { reconcileDurableRunTerminals } from './run-terminal-reconciliation.js';
 import { reportTeamverUsageFromDaemon, finalizeTeamverUsageBillingFromDaemon } from './teamver-usage-bridge.js';
 import {
   reportByokTeamverUsageAndBillingFromDaemon,
@@ -3415,6 +3416,12 @@ export function createFinalizedMessageTelemetryReporter({
         skipReason: state.langfuse_expected === false ? 'not_expected' : undefined,
         status: saved.runStatus,
       });
+      if (
+        state.langfuse_expected === false
+        || state.langfuse_delivery_status === 'accepted'
+      ) {
+        design.runs.markLangfuseCompleted?.(run);
+      }
     })();
   };
 }
@@ -6473,6 +6480,14 @@ export async function startServer({
         dataRoot: RUNTIME_DATA_DIR,
         logger: console,
         namespace: process.env[SIDECAR_ENV.NAMESPACE] ?? SIDECAR_DEFAULTS.namespace,
+      });
+      await reconcileDurableRunTerminals({
+        analytics: analyticsService,
+        appVersion: cachedAppVersion?.version ?? '0.0.0',
+        appVersionInfo: cachedAppVersion,
+        db,
+        reportLangfuse: reportRunCompletedFromDaemon,
+        runsLogDir: path.join(RUNTIME_DATA_DIR, 'runs'),
       });
     } catch {
       // Telemetry is best-effort; appVersion is omitted when unavailable.
@@ -15895,6 +15910,11 @@ export async function startServer({
         skill_ids: runSkillIds,
         token_count_source: userQueryTokens > 0 ? 'estimated' : 'unknown',
       };
+      design.runs.setAnalyticsRecovery?.(run, {
+        context: analyticsContext,
+        properties: baseProps,
+        insertId: runInsertId,
+      });
       design.analytics.capture({
         eventName: 'run_created',
         context: analyticsContext,
@@ -15971,15 +15991,15 @@ export async function startServer({
           ? modelIdForTracking(reqBody.model)
           : modelIdForTracking(usageAnalytics.agent_reported_model);
         for (const [index, retryEvent] of runRetryEventsForAnalytics(run.events).entries()) {
-          design.analytics.capture({
+          await Promise.resolve(design.analytics.capture({
             eventName: retryEvent.event,
             context: analyticsContext,
             appVersion: design.getAppVersion(),
             properties: retryEvent.data,
             insertId: `${runInsertId}-${retryEvent.event}-${index}`,
-          });
+          }));
         }
-        design.analytics.capture({
+        await Promise.resolve(design.analytics.capture({
           eventName: 'run_finished',
           context: analyticsContext,
           appVersion: design.getAppVersion(),
@@ -16068,7 +16088,8 @@ export async function startServer({
             token_count_source: usageAnalytics.token_count_source,
           },
           insertId: `${runInsertId}-finish`,
-        });
+        }));
+        design.runs.markAnalyticsCompleted?.(run);
       }).catch(() => {
         // wait() can't reject in current runs.ts impl, but guard anyway.
       });
