@@ -1,4 +1,5 @@
-import { defaultScenarioPluginIdForKind, COMPACT_DECK_SLIDE_COUNT_GUIDANCE, type InstalledPluginRecord } from "@open-design/contracts";
+import { defaultScenarioPluginIdForKind, type InstalledPluginRecord } from "@open-design/contracts";
+import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from "../runtime/deckGuidance";
 import type { TeamverDriveImportAsset } from "./importDriveAssets";
 import type { TeamverDriveLaunchIntent } from "./driveLaunchHandoff";
 import type { TeamverCanvasLaunchHandoff } from "./canvasLaunchHandoff";

@@ -11,6 +11,7 @@ import litellmData from './litellm-models.json';
 // Anything LiteLLM doesn't track (or where its value is wrong for our
 // usage) goes in OVERRIDES; unknown models fall through to FALLBACK.
 export const FALLBACK_MAX_TOKENS = 8192;
+export const TEAMVER_DECK_MIN_MAX_TOKENS = 32000;
 
 // Bounds the user can express via the Settings override. Source of truth
 // for both the UI input attributes and runtime validation in
@@ -102,4 +103,14 @@ export function effectiveMaxTokens(cfg: Pick<AppConfig, 'maxTokens' | 'model'>):
   // than silently shipping an invalid `max_tokens` upstream.
   if (isValidOverride(cfg.maxTokens)) return cfg.maxTokens;
   return modelMaxTokensDefault(cfg.model);
+}
+
+export function effectiveMaxTokensWithFloor(
+  cfg: Pick<AppConfig, 'maxTokens' | 'model'>,
+  floor: number | null | undefined,
+): number {
+  const base = effectiveMaxTokens(cfg);
+  if (!Number.isFinite(floor) || floor == null) return base;
+  const normalizedFloor = Math.max(MIN_MAX_TOKENS, Math.min(MAX_MAX_TOKENS, Math.floor(floor)));
+  return Math.max(base, normalizedFloor);
 }

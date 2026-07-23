@@ -8,7 +8,7 @@
  * your own backend.
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { effectiveMaxTokens } from '../state/maxTokens';
+import { effectiveMaxTokensWithFloor } from '../state/maxTokens';
 import type { AppConfig, ChatMessage } from '../types';
 import { streamMessageAnthropicProxy } from './anthropic-compatible';
 import type { ProxyContext } from './api-proxy';
@@ -118,7 +118,7 @@ export async function streamMessage(
     stream = client.messages.stream(
       {
         model: cfg.model,
-        max_tokens: effectiveMaxTokens(cfg),
+        max_tokens: effectiveMaxTokensWithFloor(cfg, context?.minOutputTokens),
         system,
         messages: history.map((m) => ({ role: m.role, content: m.content })),
       },

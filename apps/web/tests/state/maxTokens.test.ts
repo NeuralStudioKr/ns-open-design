@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import litellmData from '../../src/state/litellm-models.json';
 import {
   effectiveMaxTokens,
+  effectiveMaxTokensWithFloor,
   FALLBACK_MAX_TOKENS,
   MAX_MAX_TOKENS,
   MIN_MAX_TOKENS,
   modelMaxTokensDefault,
+  TEAMVER_DECK_MIN_MAX_TOKENS,
 } from '../../src/state/maxTokens';
 
 describe('modelMaxTokensDefault', () => {
@@ -95,5 +97,33 @@ describe('effectiveMaxTokens override validation', () => {
   it('accepts the boundary values exactly', () => {
     expect(effectiveMaxTokens({ maxTokens: MIN_MAX_TOKENS, model: 'claude-sonnet-4-5' })).toBe(MIN_MAX_TOKENS);
     expect(effectiveMaxTokens({ maxTokens: MAX_MAX_TOKENS, model: 'claude-sonnet-4-5' })).toBe(MAX_MAX_TOKENS);
+  });
+});
+
+describe('effectiveMaxTokensWithFloor', () => {
+  it('raises stale low overrides for deck generation without changing the base helper', () => {
+    const cfg = { maxTokens: 8192, model: 'claude-sonnet-4-5' };
+    expect(effectiveMaxTokens(cfg)).toBe(8192);
+    expect(effectiveMaxTokensWithFloor(cfg, TEAMVER_DECK_MIN_MAX_TOKENS)).toBe(TEAMVER_DECK_MIN_MAX_TOKENS);
+  });
+
+  it('keeps higher model defaults or explicit overrides', () => {
+    expect(
+      effectiveMaxTokensWithFloor(
+        { model: 'claude-sonnet-4-5' },
+        TEAMVER_DECK_MIN_MAX_TOKENS,
+      ),
+    ).toBe(64000);
+    expect(
+      effectiveMaxTokensWithFloor(
+        { maxTokens: 64000, model: 'unknown-model' },
+        TEAMVER_DECK_MIN_MAX_TOKENS,
+      ),
+    ).toBe(64000);
+  });
+
+  it('ignores missing or invalid floors', () => {
+    expect(effectiveMaxTokensWithFloor({ maxTokens: 4096, model: 'unknown-model' }, undefined)).toBe(4096);
+    expect(effectiveMaxTokensWithFloor({ maxTokens: 4096, model: 'unknown-model' }, Number.NaN)).toBe(4096);
   });
 });

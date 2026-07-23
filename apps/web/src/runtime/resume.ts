@@ -1,7 +1,7 @@
-import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from '@open-design/contracts';
 import type { ChatMessage } from '../types';
 import { salvageTruncatedHtmlDocument } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell } from '../artifacts/validate';
+import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from './deckGuidance';
 
 // Canonical prompt sent by the "Continue the run" affordance on a resumable
 // failed run. The daemon resumes the persisted CLI session for this
@@ -40,7 +40,7 @@ export const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT =
   '다른 프로젝트·다른 대화의 슬라이드나 계획을 이어 쓰지 마세요. ' +
   '직전 응답이 완성된 HTML 슬라이드 덱을 남기지 못했습니다 (빈 뼈대만 있음). ' +
   '계획을 다시 설명하거나 사용자에게 재확인하지 말고, ' +
-  '이 대화에 이미 있는 요청·목차만 사용해 완성된 HTML 슬라이드 덱을 즉시 출력하세요. ' +
+  '이 대화에 이미 있는 요청·목차·Plugin inputs·quick-brief 답변만 사용해 완성된 HTML 슬라이드 덱을 즉시 출력하세요. ' +
   '출력 형식은 반드시 하나의 `<artifact type="deck" identifier="...">...</artifact>` ' +
   '블록이며, 그 내부에 `<!doctype html>`부터 `</html>`까지 자체 완결형(self-contained) HTML이 들어가야 합니다. ' +
   '외부 파일 참조, 프레임워크 스켈레톤 복사, SLOT 주석, 추가 툴 호출 없이 이 한 번의 응답에서 덱을 완결지어야 합니다. ' +
@@ -79,6 +79,7 @@ const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED =
   // deliverable-missing failure is worse than a static (non-navigable) deck.
   '실제 슬라이드는 6장 이상이면 되고, ' +
   '각 슬라이드에는 SLOT 주석이 아니라 실제 텍스트 콘텐츠(제목·본문·목록)가 반드시 들어가야 합니다. ' +
+  '이 대화의 Plugin inputs·quick-brief 답변·선택 템플릿 맥락을 유지하고, 새 질문으로 되돌아가지 마세요. ' +
   '인라인 CSS는 최소한만 쓰고, 필요하면 프레임워크 스크립트를 생략해도 좋습니다 — 빈 덱보다 스크롤로 넘기는 정적 덱이 낫습니다. ' +
   '`<!-- SLOT: ... -->` 형태의 주석 자리표시자를 그대로 남기는 것은 금지입니다. ' +
   '(English: Output ONE complete HTML deck artifact — no prose. ' +

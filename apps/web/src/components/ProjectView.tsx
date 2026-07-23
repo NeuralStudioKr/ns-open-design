@@ -84,7 +84,6 @@ import {
 import { useProjectFileEvents, type ProjectEvent } from '../providers/project-events';
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
-  COMPACT_DECK_SLIDE_COUNT_GUIDANCE,
   composeSystemPrompt,
   repairArtifactDocumentHead,
   renderPluginBlock,
@@ -92,6 +91,7 @@ import {
   type MemorySystemPromptResponse,
   type ResearchOptions,
 } from '@open-design/contracts';
+import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from '../runtime/deckGuidance';
 import {
   anonymizeArtifactId,
   artifactKindToTracking,
@@ -333,7 +333,7 @@ import { useTerminalLaunch } from '../hooks/useTerminalLaunch';
 import { buildContinueInCliToast } from '../lib/build-continue-in-cli-toast';
 import { buildClipboardPrompt } from '../lib/build-clipboard-prompt';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
-import { effectiveMaxTokens } from '../state/maxTokens';
+import { TEAMVER_DECK_MIN_MAX_TOKENS } from '../state/maxTokens';
 import { byokChatToolNamesForProtocol } from '../state/apiProtocols';
 import { effectiveAgentModelChoice } from './agentModelSelection';
 import { mediaExecutionPolicyForProjectMetadata } from '../media/execution-policy';
@@ -6531,6 +6531,7 @@ export function ProjectView({
           byokSpeechModel:
             byokSpeechModelOverride || config.byokSpeechModel || byokSpeechModelOptionsPV[0]?.id,
           byokSpeechVoice: byokSpeechVoiceOverride || config.byokSpeechVoice,
+          minOutputTokens: slideOnlyMvp ? TEAMVER_DECK_MIN_MAX_TOKENS : undefined,
         });
         return true;
       }

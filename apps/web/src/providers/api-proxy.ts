@@ -1,4 +1,4 @@
-import { effectiveMaxTokens } from '../state/maxTokens';
+import { effectiveMaxTokensWithFloor } from '../state/maxTokens';
 import type { AppConfig, ChatMessage } from '../types';
 import type {
   ProxyImageContentBlock,
@@ -41,6 +41,12 @@ export interface ProxyContext {
   byokVideoModel?: string;
   byokSpeechModel?: string;
   byokSpeechVoice?: string;
+  /**
+   * Optional per-run output-token floor. Teamver slide/deck generation needs
+   * enough room to finish a complete HTML artifact even when an old Settings
+   * maxTokens override is still saved in localStorage/runtime config.
+   */
+  minOutputTokens?: number;
 }
 
 /** Embed never ships browser secrets — always request daemon-managed BYOK. */
@@ -193,7 +199,7 @@ async function streamProxyEndpointOnce(
         model: cfg.model,
         systemPrompt: system,
         messages,
-        maxTokens: effectiveMaxTokens(cfg),
+        maxTokens: effectiveMaxTokensWithFloor(cfg, context?.minOutputTokens),
         apiVersion: cfg.apiVersion,
         ...(context?.projectId ? { projectId: context.projectId } : {}),
         ...(context?.conversationId ? { conversationId: context.conversationId } : {}),
