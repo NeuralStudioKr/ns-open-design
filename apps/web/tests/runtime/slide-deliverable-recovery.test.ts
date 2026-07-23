@@ -14,6 +14,7 @@ import {
   parseSlideCountPhrase,
   syncAutoContinueCountFromMessages,
   verifySlideProducedHtmlDeliverable,
+  attemptEmergencySlideDeckRecovery,
 } from '../../src/runtime/slide-deliverable-recovery';
 
 const INCOMPLETE_SHELL = '<!doctype html><html><head><meta charset="utf-8"></head><body></body>';
@@ -211,5 +212,41 @@ describe('verifySlideProducedHtmlDeliverable', () => {
     await expect(
       verifySlideProducedHtmlDeliverable('deck.html', async () => INCOMPLETE_SHELL),
     ).resolves.toBeNull();
+  });
+});
+
+describe('attemptEmergencySlideDeckRecovery', () => {
+  it('trusts a successful emergency persist even when immediate read verification lags', async () => {
+    const result = await attemptEmergencySlideDeckRecovery({
+      slideOnlyMvp: true,
+      producedHtmlToOpen: null,
+      outlineMessages: [
+        { id: 'u1', role: 'user', content: 'AI 도입 효과 발표 자료 만들어줘', createdAt: 1 },
+        {
+          id: 'a1',
+          role: 'assistant',
+          content:
+            '슬라이드 구성:\n'
+            + '01 표지\n'
+            + '02 배경\n'
+            + '03 생산성\n'
+            + '04 비용 절감\n'
+            + '05 실행 방안\n'
+            + '06 마무리',
+          createdAt: 2,
+        },
+      ],
+      finalText: '슬라이드 구성을 바탕으로 덱을 준비했습니다.',
+      projectFiles: [],
+      beforeFileNames: [],
+      startedAt: 1,
+      persistArtifact: async () => ({ kind: 'persisted', fileName: 'deck.html' }),
+      refreshProjectFiles: async () => [],
+      readProjectHtml: async () => null,
+      computeProducedFiles: () => [],
+    });
+
+    expect(result.recovered).toBe(true);
+    expect(result.htmlToOpen).toBe('deck.html');
   });
 });

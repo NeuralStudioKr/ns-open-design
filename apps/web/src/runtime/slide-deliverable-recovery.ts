@@ -265,7 +265,14 @@ export async function attemptEmergencySlideDeckRecovery(options: {
   let htmlToOpen: string | null = selectAutoOpenProducedHtml(produced)
     ?? emergencyPersist?.fileName
     ?? null;
-  htmlToOpen = await verifySlideProducedHtmlDeliverable(htmlToOpen, options.readProjectHtml);
+  const verifiedHtmlToOpen = await verifySlideProducedHtmlDeliverable(htmlToOpen, options.readProjectHtml);
+  // The emergency artifact is synthesized locally and already passed
+  // validateHtmlArtifact before persist. In S3 / registry-backed staging,
+  // refresh/read can lag the successful write by a beat; treating that as
+  // unrecovered drops the user into an incomplete_output error even though
+  // persistArtifact returned success. Prefer verified disk HTML when present,
+  // but trust the successful persist result as a preview target fallback.
+  htmlToOpen = verifiedHtmlToOpen ?? emergencyPersist?.fileName ?? null;
 
   return {
     recovered: Boolean(htmlToOpen),
