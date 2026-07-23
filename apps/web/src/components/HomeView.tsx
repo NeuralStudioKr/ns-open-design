@@ -97,6 +97,7 @@ import {
   defaultSlideOnlyDeckPluginInputs,
   homeHeroChipsForGroup,
   pluginsForSlideOnlyMvp,
+  resolveSlideOnlyDeckTemplateSkillId,
   resolveSlideOnlyCreatePluginId,
   shouldShowHomeCommunityGallery,
   SLIDE_ONLY_COMMUNITY_FACET_SELECTION,
@@ -1999,10 +2000,19 @@ export function HomeView({
             );
       // Scenario plugins (chips / preset cards) and explicit skill picks are
       // mutually exclusive routing sources — never send both (#2972).
-      const resolvedSkillId = submittedActive ? null : activeSkill?.id ?? null;
+      const selectedDeckTemplateSkillId = slideOnlyMvp
+        ? resolveSlideOnlyDeckTemplateSkillId(submittedActive?.record, {
+            explicitPick: submittedActive?.explicitPick,
+          })
+        : null;
+      const resolvedSkillId = submittedActive
+        ? selectedDeckTemplateSkillId
+        : activeSkill?.id ?? null;
       const routedPluginId = slideOnlyMvp
         ? resolveSlideOnlyCreatePluginId(
-            submittedActive?.record.id ?? DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
+            selectedDeckTemplateSkillId
+              ? DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID
+              : submittedActive?.record.id ?? DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
             { slideOnlyMvp: true },
           )
         : sessionMode === 'design'

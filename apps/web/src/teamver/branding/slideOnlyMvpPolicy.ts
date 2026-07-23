@@ -77,6 +77,18 @@ export function resolveSlideOnlyCreatePluginId(
   return trimmed;
 }
 
+export function resolveSlideOnlyDeckTemplateSkillId(
+  plugin: InstalledPluginRecord | null | undefined,
+  options: { explicitPick?: boolean | null },
+): string | null {
+  if (!options.explicitPick) return null;
+  const id = plugin?.id?.trim() ?? "";
+  if (!id) return null;
+  if (SLIDE_ONLY_COERCED_ROUTER_PLUGIN_IDS.has(id)) return null;
+  if (plugin?.manifest?.od?.mode !== "deck") return null;
+  return id;
+}
+
 export function defaultSlideOnlyDeckPluginInputs(topicHint?: string | null): Record<string, unknown> {
   const topic = (topicHint ?? "").trim() || "the user brief";
   return {

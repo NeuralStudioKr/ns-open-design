@@ -1048,6 +1048,10 @@ export function ChatPane({
       )?.id,
     [messages],
   );
+  const activeSkill = useMemo(
+    () => currentSkillId ? skills.find((skill) => skill.id === currentSkillId) ?? null : null,
+    [currentSkillId, skills],
+  );
   // Map each assistant message id to the user message that follows it (if any)
   // so the chat-side Questions banner can reopen that exact answered form in
   // the right-hand panel later.
@@ -1997,6 +2001,7 @@ export function ChatPane({
                 lastAssistantId={lastAssistantId}
                 firstUserMessageId={firstUserMessageId}
                 activePluginSnapshot={activePluginSnapshot}
+                activeSkill={activeSkill}
                 activeDesignSystem={activeDesignSystem}
                 hasActiveDesignSystem={hasActiveDesignSystem}
                 errorCardOwnerId={errorCardOwnerId}
@@ -2293,6 +2298,7 @@ function ChatRows({
   lastAssistantId,
   firstUserMessageId,
   activePluginSnapshot,
+  activeSkill,
   activeDesignSystem,
   hasActiveDesignSystem,
   errorCardOwnerId,
@@ -2333,6 +2339,7 @@ function ChatRows({
   lastAssistantId: string | undefined;
   firstUserMessageId: string | undefined;
   activePluginSnapshot?: AppliedPluginSnapshot | null;
+  activeSkill?: SkillSummary | null;
   activeDesignSystem?: DesignSystemSummary | null;
   hasActiveDesignSystem: boolean;
   errorCardOwnerId: string | null;
@@ -2405,6 +2412,11 @@ function ChatRows({
           activePluginSnapshot={
             m.id === firstUserMessageId
               ? activePluginSnapshot ?? null
+              : null
+          }
+          activeSkill={
+            m.id === firstUserMessageId
+              ? activeSkill ?? null
               : null
           }
           activeDesignSystem={
@@ -3296,6 +3308,7 @@ function UserMessageImpl({
   onRequestDesignSystemDetails,
   t,
   activePluginSnapshot,
+  activeSkill,
   activeDesignSystem,
 }: {
   message: ChatMessage;
@@ -3306,6 +3319,7 @@ function UserMessageImpl({
   onRequestDesignSystemDetails?: (system: DesignSystemSummary) => void;
   t: TranslateFn;
   activePluginSnapshot?: AppliedPluginSnapshot | null;
+  activeSkill?: SkillSummary | null;
   activeDesignSystem?: DesignSystemSummary | null;
 }) {
   const attachments = sortChatAttachmentsForDisplay(message.attachments ?? []);
@@ -3316,6 +3330,7 @@ function UserMessageImpl({
     message.sessionMode ||
       workspaceItems.length > 0 ||
       messagePluginSnapshot ||
+      activeSkill ||
       activeDesignSystem,
   );
   const [copied, setCopied] = useState(false);
@@ -3367,6 +3382,9 @@ function UserMessageImpl({
               t={t}
               onOpenDetails={onRequestPluginDetails}
             />
+          ) : null}
+          {activeSkill ? (
+            <ActiveSkillChip skill={activeSkill} />
           ) : null}
           {activeDesignSystem ? (
             <ActiveDesignSystemChip
@@ -3550,6 +3568,23 @@ function MessageSessionModeChip({
     >
       <Icon name={mode === 'chat' ? 'comment' : 'sparkles'} size={12} />
       <span>{label}</span>
+    </div>
+  );
+}
+
+function ActiveSkillChip({ skill }: { skill: SkillSummary }) {
+  const label = skill.mode === 'deck' ? '템플릿' : '스킬';
+  const title = skill.name;
+  return (
+    <div className="msg-plugin-chip msg-plugin-chip--skill" data-testid="msg-skill-chip" title={title}>
+      <Icon name={skill.mode === 'deck' ? 'file' : 'sparkles'} size={12} />
+      <span className="msg-plugin-chip__label">
+        <span className="msg-plugin-chip__kind">{label}</span>
+        <span className="msg-plugin-chip__title">{title}</span>
+      </span>
+      {skill.mode ? (
+        <span className="msg-plugin-chip__task">{skill.mode}</span>
+      ) : null}
     </div>
   );
 }

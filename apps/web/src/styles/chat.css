@@ -489,6 +489,10 @@
 .msg-plugin-chip--design-system .msg-plugin-chip__dot {
   background: #d76445;
 }
+.msg-plugin-chip--skill svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
 .msg-plugin-chip__icon {
   display: inline-flex;
   align-items: center;

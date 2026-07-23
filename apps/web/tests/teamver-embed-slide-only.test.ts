@@ -10,6 +10,7 @@ import {
   homeHeroChipsForGroup,
   visibleNewProjectTabs,
   defaultNewProjectTab,
+  resolveSlideOnlyDeckTemplateSkillId,
   resolveSlideOnlyCreatePluginId,
   visibleDesignToolboxActions,
 } from '../src/teamver/branding/slideOnlyMvpPolicy';
@@ -106,6 +107,35 @@ describe('Teamver embed slide-only MVP policy', () => {
       'community-deck-plugin',
     );
     expect(resolveSlideOnlyCreatePluginId('od-default', { slideOnlyMvp: false })).toBe('od-default');
+  });
+
+  it('keeps explicitly picked deck community cards as visual template skills', () => {
+    const creativeMode = {
+      id: 'html-ppt-zhangzara-creative-mode',
+      manifest: { od: { mode: 'deck' } },
+    } as Parameters<typeof resolveSlideOnlyDeckTemplateSkillId>[0];
+
+    expect(resolveSlideOnlyDeckTemplateSkillId(creativeMode, { explicitPick: true })).toBe(
+      'html-ppt-zhangzara-creative-mode',
+    );
+    expect(resolveSlideOnlyDeckTemplateSkillId(creativeMode, { explicitPick: false })).toBeNull();
+    expect(resolveSlideOnlyDeckTemplateSkillId({
+      id: 'od-new-generation',
+      manifest: { od: { mode: 'deck' } },
+    } as Parameters<typeof resolveSlideOnlyDeckTemplateSkillId>[0], { explicitPick: true })).toBeNull();
+  });
+
+  it('routes picked deck templates as skillId while keeping the deck generator plugin', () => {
+    const homeView = readSource('src/components/HomeView.tsx');
+    const start = homeView.indexOf('const selectedDeckTemplateSkillId = slideOnlyMvp');
+    expect(start).toBeGreaterThan(0);
+    const block = homeView.slice(start, start + 1300);
+
+    expect(block).toContain('resolveSlideOnlyDeckTemplateSkillId');
+    expect(block).toContain('const resolvedSkillId = submittedActive');
+    expect(block).toContain('selectedDeckTemplateSkillId');
+    expect(block).toContain('DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID');
+    expect(block).toContain('skillId: resolvedSkillId');
   });
 
   it('wires slide-only gates into entry and composer surfaces', () => {
@@ -206,7 +236,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(assistant).toContain("shouldMinimizeEmbedLiveToolCode");
     expect(assistant).toContain("filterEmbedDeliverableProducedFiles");
     expect(assistant).toContain("hideCodeBody");
-    expect(assistant).toContain("live && !hideAssistantThinkingDetails");
+    expect(assistant).toContain("hideAssistantThinkingDetails && streaming");
     expect(designFiles).toContain("partitionEmbedDesignFileSections");
     expect(designFiles).toContain("designFiles.sectionSupporting");
     expect(autoOpen).toContain("shouldDeclineEmbedAutoOpen");
