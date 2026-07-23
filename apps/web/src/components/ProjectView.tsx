@@ -148,6 +148,7 @@ import {
   attemptEmergencySlideDeckRecovery,
   canFireAutoContinueForConversation,
   collectSlideReferencePathsFromMessages,
+  extractRequestedSlideCountHintFromMessages,
   findIncompleteSlideAssistantForRecovery,
   syncAutoContinueCountFromMessages,
   verifySlideProducedHtmlDeliverable,
@@ -2251,6 +2252,7 @@ export function ProjectView({
               const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
                 attempt,
                 referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
+                slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
                 ...autoContinueCtx,
               });
               const started = sendNow(
@@ -4918,6 +4920,7 @@ export function ProjectView({
             const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
               attempt,
               referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
+              slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
               ...autoContinueCtx,
             });
             const started = sendNow(
@@ -5733,14 +5736,14 @@ export function ProjectView({
                       : parsedArtifact?.html)
                     ?? liveHtml
                     ?? null;
+                  const autoContinueMessages = retryTarget
+                    ? [...historyBase, latestAssistantMsg]
+                    : [...historyBase, userMsg, latestAssistantMsg];
                   const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
                     attempt,
                     truncatedByMaxTokens: runStopReason === 'max_tokens',
-                    referenceFiles: collectSlideReferencePathsFromMessages(
-                      retryTarget
-                        ? [...historyBase, latestAssistantMsg]
-                        : [...historyBase, userMsg, latestAssistantMsg],
-                    ),
+                    referenceFiles: collectSlideReferencePathsFromMessages(autoContinueMessages),
+                    slideCountHint: extractRequestedSlideCountHintFromMessages(autoContinueMessages),
                     ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
                       partialHtml: partialHtmlForAutoContinue,
                       planOutline: finalText,

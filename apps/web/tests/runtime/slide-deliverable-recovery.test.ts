@@ -9,7 +9,9 @@ import {
   canFireAutoContinueForConversation,
   collectSlideReferencePathsFromMessages,
   countAutoContinueAttemptsInConversation,
+  extractRequestedSlideCountHintFromMessages,
   findIncompleteSlideAssistantForRecovery,
+  parseSlideCountPhrase,
   syncAutoContinueCountFromMessages,
   verifySlideProducedHtmlDeliverable,
 } from '../../src/runtime/slide-deliverable-recovery';
@@ -94,6 +96,44 @@ describe('collectSlideReferencePathsFromMessages', () => {
     expect(collectSlideReferencePathsFromMessages(messages)).toEqual([
       'refs/drive/mrvw6xvt-앤트릴 현상 발표 대본.md',
     ]);
+  });
+});
+
+describe('parseSlideCountPhrase', () => {
+  it('parses single and ranged slide counts', () => {
+    expect(parseSlideCountPhrase('10장 슬라이드')).toContain('정확히 10장');
+    expect(parseSlideCountPhrase('8~10장')).toContain('정확히 10장');
+    expect(parseSlideCountPhrase('10-15 pages')).toContain('정확히 15장');
+  });
+});
+
+describe('extractRequestedSlideCountHintFromMessages', () => {
+  it('reads slideCount from plugin inputs and form answers', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: '신입사원 온보딩 슬라이드\n\n[Deliverable instruction]\nslideCount: "12장"',
+        createdAt: 1,
+      },
+      assistantMessage('a1'),
+    ];
+    expect(extractRequestedSlideCountHintFromMessages(messages)).toContain('정확히 12장');
+  });
+
+  it('prefers the latest non-auto-continue user turn', () => {
+    const messages: ChatMessage[] = [
+      { id: 'u1', role: 'user', content: '8장짜리 덱', createdAt: 1 },
+      {
+        id: 'u2',
+        role: 'user',
+        content: `${AUTO_CONTINUE_PROMPT_SENTINEL}\nretry`,
+        createdAt: 2,
+      },
+      { id: 'u3', role: 'user', content: '15 slides for executives', createdAt: 3 },
+      assistantMessage('a1'),
+    ];
+    expect(extractRequestedSlideCountHintFromMessages(messages)).toContain('정확히 15장');
   });
 });
 

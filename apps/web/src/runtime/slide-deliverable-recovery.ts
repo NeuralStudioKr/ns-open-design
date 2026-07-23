@@ -76,6 +76,72 @@ export function collectSlideReferencePathsFromMessages(
   return out.slice(0, max);
 }
 
+const SLIDE_COUNT_FORM_LABEL_RE =
+  /^\s*-\s*(?:슬라이드\s*분량|slide\s*count|Slide count|scale|slides?|pageCount)\s*:\s*(.+)$/i;
+const SLIDE_COUNT_PLUGIN_INPUT_RE =
+  /\b(?:slideCount|slides|pageCount)\s*:\s*["']?([^"'\n]+)["']?/i;
+
+/** Parse "10장", "8~10장", "10-15 pages" into an auto-continue slide-count hint. */
+export function parseSlideCountPhrase(text: string): string | null {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized || normalized === '(skipped)') return null;
+
+  const rangeMatch = normalized.match(/(\d{1,2})\s*[-~–]\s*(\d{1,2})\s*(?:장|pages?|slides?|페이지)/i);
+  if (rangeMatch) {
+    const lower = Number.parseInt(rangeMatch[1]!, 10);
+    const upper = Number.parseInt(rangeMatch[2]!, 10);
+    if (Number.isFinite(lower) && Number.isFinite(upper) && lower >= 1 && upper <= 50) {
+      const target = Math.max(lower, upper);
+      return `정확히 ${target}장의 슬라이드를 출력하세요 (사용자 요청 범위 ${lower}–${upper}, 상한 적용).`;
+    }
+  }
+
+  const singleMatch = normalized.match(/(\d{1,2})\s*(?:장|pages?|slides?|페이지)/i);
+  if (singleMatch) {
+    const count = Number.parseInt(singleMatch[1]!, 10);
+    if (Number.isFinite(count) && count >= 1 && count <= 50) {
+      return `정확히 ${count}장의 슬라이드를 출력하세요.`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Recover an explicit slide-count constraint from user turns so auto-continue
+ * does not fall back to generic 6–8 when the brief already named a count.
+ */
+export function extractRequestedSlideCountHintFromMessages(
+  messages: readonly ChatMessage[],
+): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== 'user') continue;
+    const content = message.content ?? '';
+    if (isAutoContinueIncompleteOutputPrompt(content)) continue;
+
+    const pluginMatch = content.match(SLIDE_COUNT_PLUGIN_INPUT_RE);
+    if (pluginMatch?.[1]) {
+      const parsed = parseSlideCountPhrase(pluginMatch[1]);
+      if (parsed) return parsed;
+    }
+
+    for (const line of content.split(/\r?\n/)) {
+      const formMatch = line.match(SLIDE_COUNT_FORM_LABEL_RE);
+      if (formMatch?.[1]) {
+        const parsed = parseSlideCountPhrase(formMatch[1]);
+        if (parsed) return parsed;
+      }
+    }
+
+    const visibleUserText = content.split(/\n\n\[Deliverable instruction\]/i)[0] ?? content;
+    const parsed = parseSlideCountPhrase(visibleUserText);
+    if (parsed) return parsed;
+  }
+
+  return null;
+}
+
 /** Sync the in-memory cap tracker from persisted conversation history. */
 export function syncAutoContinueCountFromMessages(
   counts: Map<string, number>,

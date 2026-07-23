@@ -95,6 +95,15 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt.match(/refs\/drive\/course-script\.md/g)).toHaveLength(1);
   });
 
+  it('includes an explicit slide-count hint when provided', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      slideCountHint: '정확히 12장의 슬라이드를 출력하세요.',
+    });
+    expect(prompt).toContain('[이 대화의 슬라이드 분량 — 반드시 준수:]');
+    expect(prompt).toContain('정확히 12장');
+  });
+
   it('omits head-only partial shells from every automatic-continue attempt', () => {
     const shell = '\n<!doctype html>\n<html lang="ko">\n<head>';
     const first = buildAutoContinueIncompleteOutputPrompt({

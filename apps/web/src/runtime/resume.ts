@@ -46,7 +46,8 @@ export const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT =
   '외부 파일 참조, 프레임워크 스켈레톤 복사, SLOT 주석, 추가 툴 호출 없이 이 한 번의 응답에서 덱을 완결지어야 합니다. ' +
   `길게 만들다가 끊기지 않도록 간결한 HTML 덱으로 작성하세요. (${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}) ` +
   '각 슬라이드는 제목과 2~4개의 실제 문장/불릿을 가져야 하며 빈 `<head>`나 빈 `<body>`로 끝내면 안 됩니다. ' +
-  '이 대화에 슬라이드 목차·분량이 없다면 임원 대상 6~8슬라이드 표준 구성으로 즉시 채워서 완성하세요. ' +
+  `이 대화에 슬라이드 분량이 없다면 ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE.toLowerCase()} ` +
+  '분량 미지정 시 임원 대상 6~8슬라이드 표준 구성으로 즉시 채워서 완성하세요. ' +
   '(English: Use ONLY this conversation in this project. Do not continue any other project. ' +
   'The previous turn in THIS chat produced no usable slide deck — emit one complete self-contained ' +
   `deck inside a single \`<artifact type="deck">...</artifact>\` block now (${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), ` +
@@ -93,6 +94,8 @@ export type AutoContinuePromptContext = {
   partialHtml?: string | null;
   planOutline?: string | null;
   referenceFiles?: readonly string[];
+  /** Parsed from prior user turns — e.g. "정확히 10장의 슬라이드를 출력하세요." */
+  slideCountHint?: string | null;
   /** Set when the prior turn ended with stop_reason=max_tokens. */
   truncatedByMaxTokens?: boolean;
 };
@@ -145,6 +148,14 @@ export function buildAutoContinueIncompleteOutputPrompt(
     parts.push(
       '\n\n[이 대화에서 첨부된 참고 파일 — 필요하면 읽고 반영하되, 최종 산출물로 취급하지 마세요:]\n'
         + referenceFiles.map((path) => `- ${path}`).join('\n'),
+    );
+  }
+
+  const slideCountHint = context.slideCountHint?.trim();
+  if (slideCountHint) {
+    parts.push(
+      '\n\n[이 대화의 슬라이드 분량 — 반드시 준수:]\n'
+        + slideCountHint,
     );
   }
 
