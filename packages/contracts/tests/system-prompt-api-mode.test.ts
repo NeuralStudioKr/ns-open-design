@@ -344,7 +344,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('inline layout vocabulary');
       expect(prompt).not.toContain('bind quick-brief answers');
       expect(prompt).toContain('<artifact type="deck" identifier="deck">');
-      expect(prompt).toContain('Do not use `type="text/html"`');
+      expect(prompt).toContain('Never `type="text/html"`');
       expect(prompt).toContain('choose reasonable defaults and proceed without asking a discovery form');
       expect(prompt).toContain('choose 6-8 slides by default');
       expect(prompt).toContain('omit unless requested');
@@ -371,7 +371,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Alternate light and dark slides');
       expect(prompt).toContain('compact inline layout vocabulary');
       expect(prompt).toContain('typography mood');
-      expect(prompt).toContain('avoid generic title-plus-bullets repetition');
+      expect(prompt).toContain('avoid generic title-plus-bullets');
       expect(prompt).not.toContain('Read assets/template.html');
       expect(prompt).not.toContain('See references/layouts.md for cover');
       expect(prompt).toContain('you cannot Read that file in API mode');
@@ -407,7 +407,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('font cues: "Pretendard", sans-serif');
       expect(prompt).toContain('class/style cues: slide, capsule, hero');
       expect(prompt).toContain('layout cues: display:grid, grid-template-columns, border-radius, letter-spacing');
-      expect(prompt).toContain('Mandatory: generated slides must visibly match');
+      expect(prompt).toContain('Mandatory: slides must visibly match');
+      expect(prompt).toContain('Implement with inline styles');
       expect(prompt).toContain('Do not copy the full template skeleton');
       expect(prompt).not.toContain('Do not paste this exact headline');
       expect(prompt.length).toBeLessThan(18_000);
@@ -430,7 +431,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('font cues: "JetBrains Mono", monospace');
       expect(prompt).toContain('class/style cues: slide, terminal, scanline');
       expect(prompt).toContain('layout cues: display:grid, letter-spacing, text-transform');
-      expect(prompt).toContain('Mandatory: generated slides must visibly match');
+      expect(prompt).toContain('Mandatory: slides must visibly match');
+      expect(prompt).toContain('apply it with inline styles');
+      expect(prompt).toContain('do not merely describe it');
       expect(prompt.length).toBeLessThan(18_000);
     });
   });

@@ -232,8 +232,9 @@ function renderTeamverVisualSignatureBlock({
     fonts.length > 0 ? `font cues: ${fonts.join(' | ')}` : '',
     classes.length > 0 ? `class/style cues: ${classes.join(', ')}` : '',
     layoutHints.length > 0 ? `layout cues: ${layoutHints.join(', ')}` : '',
-    'Mandatory: generated slides must visibly match this selected template\'s palette, typography mood, density, accent treatment, and composition rhythm.',
-    'Use these cues as the binding visual language. Do not copy the full template skeleton or emit long CSS/head/script blocks.',
+    'Mandatory: slides must visibly match this template palette, typography, density, accents, and composition rhythm.',
+    'Implement with inline styles or one short body `<style>` after slide 1. No `<head>`-first skeleton.',
+    'Do not copy the full template skeleton or emit long CSS/head/script blocks.',
   ].filter(Boolean);
   return lines.join('\n');
 }
@@ -1215,9 +1216,10 @@ function summarizeApiModeSkillBody(skillBody: string): string {
     layoutHint,
     summary || 'Use the active deck skill only as broad visual inspiration.',
     'Apply theme rhythm: alternate light/dark surfaces across slides; never repeat the same background/composition on 3+ slides in a row.',
-    'Preserve template/design-system feel: palette, typography mood, density, accent treatment, and slide rhythm.',
-    'Build a slide arc before emitting: cover, 4–6 varied evidence/story slides, closing; avoid generic title-plus-bullets repetition.',
-    'Output a compact no-head HTML deck artifact with varied inline layouts and visible slide content first.',
+    'Hard requirement: preserve template/design-system palette, type mood, density, accents, and rhythm visibly.',
+    'Implement with inline styles or one short body `<style>` after slide 1; never start with `<head>` or long CSS.',
+    'Build a slide arc: cover, 4–6 varied evidence/story slides, closing; avoid generic title-plus-bullets.',
+    'Output compact no-head deck HTML with varied inline layouts and visible content first.',
   ]
     .filter(Boolean)
     .join('\n');
@@ -1237,9 +1239,9 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — u
 \`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
 
 **How to stream the deck (non-negotiable on turn 2+):**
-1. You MAY open \`<artifact type="deck">\` at the very start (at most one short sentence before it). Do not use \`type="text/html"\`.
-2. The first bytes inside the artifact MUST be \`<!doctype html><html><body><section class="slide">\` with **real slide copy** — never \`<head>\`, never \`<style>\`, never empty scaffolding.
-3. Write 6–8 filled slides inline (title + bullets or paragraphs in every \`<section class="slide">\`).
+1. Open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
+2. First bytes inside artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
+3. Write 6–8 filled slides. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
 4. Close with \`</body></html></artifact>\` in this same turn.
 
 **Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, or announcing completion without 6+ filled slides.
@@ -1265,9 +1267,9 @@ Your successful response is **exactly one** streaming artifact in this same turn
 \`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
 
 **How to stream the deck (non-negotiable):**
-1. You MAY open \`<artifact type="deck">\` at the very start (at most one short sentence before it). Do not use \`type="text/html"\`.
-2. The first bytes inside the artifact MUST be \`<!doctype html><html><body><section class="slide">\` with **real slide copy** — never \`<head>\`, never \`<style>\`, never empty scaffolding.
-3. Write 6–8 filled slides inline (title + bullets or paragraphs in every \`<section class="slide">\`).
+1. Open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
+2. First bytes inside artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
+3. Write 6–8 filled slides. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
 4. Close with \`</body></html></artifact>\` in this same turn.
 
 **Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing completion without 6+ filled slides, or repeating the same layout/background/composition on every slide. Preserve template/design-system feel and vary layouts per the compact inline layout vocabulary.`;
