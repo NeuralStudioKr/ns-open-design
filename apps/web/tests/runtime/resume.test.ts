@@ -43,6 +43,8 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/artifact type="deck"/);
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/Never use `type="text\/html"`/);
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/Do not continue any other project/i);
+    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/Plugin inputs/);
+    expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT).toMatch(/quick-brief/);
   });
 
   it('detects auto-continue prompts so the chat UI can hide them', () => {

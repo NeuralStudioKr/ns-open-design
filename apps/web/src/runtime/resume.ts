@@ -1,3 +1,4 @@
+import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from '@open-design/contracts';
 import type { ChatMessage } from '../types';
 import { salvageTruncatedHtmlDocument } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell } from '../artifacts/validate';
@@ -43,12 +44,13 @@ export const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT =
   '출력 형식은 반드시 하나의 `<artifact type="deck" identifier="...">...</artifact>` ' +
   '블록이며, 그 내부에 `<!doctype html>`부터 `</html>`까지 자체 완결형(self-contained) HTML이 들어가야 합니다. ' +
   '외부 파일 참조, 프레임워크 스켈레톤 복사, SLOT 주석, 추가 툴 호출 없이 이 한 번의 응답에서 덱을 완결지어야 합니다. ' +
-  '길게 만들다가 끊기지 않도록 6~8장 사이의 간결한 HTML 덱으로 작성하세요. ' +
+  `길게 만들다가 끊기지 않도록 간결한 HTML 덱으로 작성하세요. (${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}) ` +
   '각 슬라이드는 제목과 2~4개의 실제 문장/불릿을 가져야 하며 빈 `<head>`나 빈 `<body>`로 끝내면 안 됩니다. ' +
-  '이 대화에 슬라이드 목차가 없다면 임원 대상 6슬라이드 표준 구성으로 즉시 채워서 완성하세요. ' +
+  '이 대화에 슬라이드 목차·분량이 없다면 임원 대상 6~8슬라이드 표준 구성으로 즉시 채워서 완성하세요. ' +
   '(English: Use ONLY this conversation in this project. Do not continue any other project. ' +
   'The previous turn in THIS chat produced no usable slide deck — emit one complete self-contained ' +
-  'deck of 6-8 concise slides inside a single `<artifact type="deck">...</artifact>` block now, with no planning, no framework skeleton, no SLOT comments, and no tool calls. Never use `type="text/html"`.)';
+  `deck inside a single \`<artifact type="deck">...</artifact>\` block now (${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), ` +
+  'with no planning, no framework skeleton, no SLOT comments, and no tool calls. Never use `type="text/html"`.)';
 
 /** True when a user-message body is the automatic-continue recovery prompt. */
 export function isAutoContinueIncompleteOutputPrompt(content: string | null | undefined): boolean {
