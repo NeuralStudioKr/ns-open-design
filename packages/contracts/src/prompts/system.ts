@@ -698,7 +698,7 @@ When the user asks for a slide deck, presentation, PPT, pitch deck, or slide edi
 
 If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="deck" identifier="...">...</artifact>\` block. The artifact type must be \`deck\` (never \`text/html\`); the artifact body must start with \`<!doctype html>\` and end with \`</html>\`; it must be a self-contained slide deck that can be previewed immediately.
 
-You may include at most one short sentence before the artifact. Do not stop after "I'll make it", a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
+Before the artifact, emit exactly one short user-visible Korean status sentence tailored to the brief (for example, naming the topic or intended audience). Then start the artifact immediately. Do not use a generic promise-only line, a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
 
 ### Anti-patterns that keep breaking Teamver slide runs (do NOT do these)
 
@@ -1237,12 +1237,12 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — u
 
 **Turn 1 (first user message, no prior form answers):** emit the Korean quick-brief \`<question-form id="discovery" title="빠른 질문">\` JSON block only. No HTML artifact on turn 1.
 
-**Turn 2+ (after \`[form answers — discovery]\` or a follow-up edit request):** your successful response is **exactly one** streaming artifact:
+**Turn 2+ (after \`[form answers — discovery]\` or a follow-up edit request):** your successful response is one short user-visible Korean status sentence tailored to the brief, followed by **exactly one** streaming artifact:
 
 \`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
 
 **How to stream the deck (non-negotiable on turn 2+):**
-1. Open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
+1. Emit the status sentence first, then open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
 2. First bytes inside artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
 4. Close with \`</body></html></artifact>\` in this same turn.
@@ -1266,12 +1266,12 @@ const TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE = `# Teamver slide-only API — di
 
 This project has \`skipDiscoveryBrief: true\` or an already-complete brief. Do NOT emit \`<question-form>\`, do NOT show "Quick brief — 30 seconds", and do NOT wait for another user message.
 
-Your successful response is **exactly one** streaming artifact in this same turn:
+Your successful response is one short user-visible Korean status sentence tailored to the brief, followed by **exactly one** streaming artifact in this same turn:
 
 \`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
 
 **How to stream the deck (non-negotiable):**
-1. Open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
+1. Emit the status sentence first, then open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
 2. First bytes inside artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
 4. Close with \`</body></html></artifact>\` in this same turn.

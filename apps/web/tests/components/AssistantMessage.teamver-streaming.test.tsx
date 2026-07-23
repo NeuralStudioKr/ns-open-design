@@ -74,6 +74,24 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.queryByText('Waiting for first output')).toBeNull();
   });
 
+  it('prefers model-authored natural prose over the fixed live-artifact fallback', () => {
+    render(
+      <AssistantMessage
+        message={streamingMessage(
+          '신입사원 온보딩 흐름에 맞춰 핵심 업무와 협업 문화를 담은 덱을 작성하고 있습니다.\n\n<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Draft',
+        )}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText(/신입사원 온보딩 흐름에 맞춰/)).toBeTruthy();
+    expect(screen.queryByText('Creating the slide deck now. Please wait a moment.')).toBeNull();
+    expect(screen.queryByText('슬라이드 초안을 작성 중입니다. 잠시만 기다려 주세요.')).toBeNull();
+    expect(screen.getByText('Write')).toBeTruthy();
+  });
+
   it('does not render an empty assistant row while a question form is still streaming', () => {
     render(
       <AssistantMessage
