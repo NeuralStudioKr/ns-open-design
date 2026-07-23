@@ -284,7 +284,7 @@ export async function attemptEmergencySlideDeckRecovery(options: {
   }
 
   const nextFiles = await options.refreshProjectFiles();
-  const produced = options.computeProducedFiles(options.beforeFileNames, nextFiles) ?? [];
+  let produced = options.computeProducedFiles(options.beforeFileNames, nextFiles) ?? [];
   let htmlToOpen: string | null = selectAutoOpenProducedHtml(produced)
     ?? emergencyPersist?.fileName
     ?? null;
@@ -296,6 +296,22 @@ export async function attemptEmergencySlideDeckRecovery(options: {
   // persistArtifact returned success. Prefer verified disk HTML when present,
   // but trust the successful persist result as a preview target fallback.
   htmlToOpen = verifiedHtmlToOpen ?? emergencyPersist?.fileName ?? null;
+  if (
+    htmlToOpen
+    && emergencyPersist?.fileName === htmlToOpen
+    && !produced.some((file) => file.name === htmlToOpen)
+  ) {
+    produced = [
+      ...produced,
+      {
+        name: htmlToOpen,
+        size: 0,
+        mtime: Date.now(),
+        kind: 'html',
+        mime: 'text/html',
+      },
+    ];
+  }
 
   return {
     recovered: Boolean(htmlToOpen),

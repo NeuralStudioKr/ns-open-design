@@ -283,6 +283,13 @@ describe('attemptEmergencySlideDeckRecovery', () => {
 
     expect(result.recovered).toBe(true);
     expect(result.htmlToOpen).toBe('deck.html');
+    expect(result.produced).toEqual([
+      expect.objectContaining({
+        name: 'deck.html',
+        kind: 'html',
+        mime: 'text/html',
+      }),
+    ]);
   });
 
   it('recovers a complete streamed deck artifact when outline synthesis would fail', async () => {
