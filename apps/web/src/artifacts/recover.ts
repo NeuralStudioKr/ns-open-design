@@ -12,6 +12,8 @@ const ADJACENT_DOCTYPE_RE = /<!doctype\s+html\b[^>]*>\s*$/i;
 const HTML_FENCE_RE = /```(?:html|HTML)\s*\n([\s\S]*?)\n```/g;
 const DOCTYPE_HTML_BLOCK_RE = /<!doctype\s+html[\s\S]*?<\/html\s*>/gi;
 const STARTS_WITH_DOCUMENT_RE = /^(?:<!doctype\s+html\b|<html\b)/i;
+const STARTS_WITH_BODY_RE = /^<body\b/i;
+const STARTS_WITH_SLIDE_SECTION_RE = /^<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)/i;
 const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
 const HAS_BODY_CLOSE_RE = /<\/body\s*>/i;
 const HAS_MEDIA_CONTENT_RE = /<(?:img|video|audio|canvas|svg|iframe|picture|object|embed)\b/i;
@@ -125,6 +127,8 @@ export function recoverBestHtmlDocumentFromText(
   if (!text.trim()) return null;
 
   const candidates: string[] = [];
+  const bodyFirst = normalizeBodyFirstHtmlDocument(text);
+  if (bodyFirst) candidates.push(bodyFirst);
   const fenced = recoverHtmlDocumentFromMarkdownFence(text);
   if (fenced) candidates.push(fenced);
   const standalone = recoverStandaloneHtmlDocument(text);
@@ -146,6 +150,29 @@ export function recoverBestHtmlDocumentFromText(
 }
 
 /**
+ * Teamver API deck prompts intentionally say "body-first" to avoid a huge
+ * head/CSS prelude. Some models interpret that literally and emit an artifact
+ * body that starts with `<body>` or the first `<section class="slide">`,
+ * without the outer `<!doctype html><html>`. Wrap only slide-looking content
+ * with real text/media so prose or empty SLOT skeletons still fail.
+ */
+export function normalizeBodyFirstHtmlDocument(content: string | null | undefined): string | null {
+  const trimmed = String(content ?? '').replace(/^﻿/, '').trim();
+  if (trimmed.length < 64) return null;
+  if (STARTS_WITH_DOCUMENT_RE.test(trimmed)) return null;
+  const startsWithBody = STARTS_WITH_BODY_RE.test(trimmed);
+  const startsWithSlide = STARTS_WITH_SLIDE_SECTION_RE.test(trimmed);
+  if (!startsWithBody && !startsWithSlide) return null;
+  if (!hasSalvageableSlideContent(trimmed)) return null;
+
+  const body = startsWithBody
+    ? `${trimmed.replace(/<\/html\s*>\s*$/i, '')}${HAS_BODY_CLOSE_RE.test(trimmed) ? '' : '</body>'}`
+    : `<body>${trimmed}${HAS_BODY_CLOSE_RE.test(trimmed) ? '' : '</body>'}`;
+  const html = `<!doctype html><html lang="ko">${body}${HAS_HTML_CLOSE_RE.test(body) ? '' : '</html>'}`;
+  return validateHtmlArtifact(html).ok && hasSalvageableSlideContent(html) ? html : null;
+}
+
+/**
  * Close a mid-stream truncated HTML deck that already has real body content
  * but never reached `</html>` (typical when the model hits max_tokens).
  *
@@ -154,6 +181,8 @@ export function recoverBestHtmlDocumentFromText(
  */
 export function salvageTruncatedHtmlDocument(content: string | null | undefined): string | null {
   const trimmed = String(content ?? '').replace(/^﻿/, '').trim();
+  const bodyFirst = normalizeBodyFirstHtmlDocument(trimmed);
+  if (bodyFirst) return bodyFirst;
   if (trimmed.length < 128) return null;
   if (!STARTS_WITH_DOCUMENT_RE.test(trimmed)) return null;
   if (HAS_HTML_CLOSE_RE.test(trimmed) && HAS_BODY_CLOSE_RE.test(trimmed)) return null;
