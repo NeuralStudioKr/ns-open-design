@@ -130,4 +130,44 @@ describe('recoverBestHtmlDocumentFromText', () => {
     expect(recoverBestHtmlDocumentFromText(source)).toBe(long);
     expect(recoverBestHtmlDocumentFromText(short)).toBe(short);
   });
+
+  it('recovers complete html inside an unclosed artifact wrapper', () => {
+    const html = [
+      '<!doctype html>',
+      '<html lang="ko">',
+      '<head><meta charset="utf-8"><title>Marketing Strategy</title></head>',
+      '<body>',
+      '<section class="slide">',
+      '<h1>2026 H1 Marketing Strategy Report</h1>',
+      '<p>월간 KPI 대시보드 셋업 완료</p>',
+      '</section>',
+      '</body></html>',
+    ].join('\n');
+    const source = [
+      '슬라이드 덱을 작성합니다.',
+      '<artifact type="deck" identifier="marketing-strategy">',
+      html,
+    ].join('\n');
+
+    expect(recoverBestHtmlDocumentFromText(source)).toBe(html);
+  });
+
+  it('recovers html-without-doctype inside an unclosed artifact wrapper', () => {
+    const html = [
+      '<html lang="ko">',
+      '<head><meta charset="utf-8"><title>Marketing Strategy</title></head>',
+      '<body>',
+      '<section class="slide">',
+      '<h1>2026 H1 Marketing Strategy Report</h1>',
+      '<p>월간 KPI 대시보드 셋업 완료</p>',
+      '</section>',
+      '</body></html>',
+    ].join('\n');
+    const source = [
+      '<artifact type="deck" identifier="marketing-strategy">',
+      html,
+    ].join('\n');
+
+    expect(recoverBestHtmlDocumentFromText(source)).toBe(html);
+  });
 });

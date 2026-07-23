@@ -11,6 +11,7 @@ const HTML_CLOSE_RE = /<\/html\s*>/gi;
 const ADJACENT_DOCTYPE_RE = /<!doctype\s+html\b[^>]*>\s*$/i;
 const HTML_FENCE_RE = /```(?:html|HTML)\s*\n([\s\S]*?)\n```/g;
 const DOCTYPE_HTML_BLOCK_RE = /<!doctype\s+html[\s\S]*?<\/html\s*>/gi;
+const HTML_DOCUMENT_BLOCK_RE = /<html\b[\s\S]*?<\/html\s*>/gi;
 const STARTS_WITH_DOCUMENT_RE = /^(?:<!doctype\s+html\b|<html\b)/i;
 const STARTS_WITH_BODY_RE = /^<body\b/i;
 const STARTS_WITH_SLIDE_SECTION_RE = /^<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)/i;
@@ -139,19 +140,39 @@ export function recoverBestHtmlDocumentFromText(
   const standalone = recoverStandaloneHtmlDocument(text);
   if (standalone) candidates.push(standalone);
 
+  collectCompleteHtmlDocumentsFromText(text, candidates);
+
   const withoutArtifacts = text
     .replace(/<artifact\b[\s\S]*?<\/artifact>/gi, '')
     .replace(/<artifact\b[\s\S]*$/i, '');
 
-  DOCTYPE_HTML_BLOCK_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = DOCTYPE_HTML_BLOCK_RE.exec(withoutArtifacts)) !== null) {
-    const candidate = (match[0] || '').replace(/^﻿/, '').trim();
-    if (validateHtmlArtifact(candidate).ok) candidates.push(candidate);
-  }
+  collectCompleteHtmlDocumentsFromText(withoutArtifacts, candidates);
 
   if (candidates.length === 0) return null;
   return candidates.reduce((best, cur) => (cur.length > best.length ? cur : best));
+}
+
+function collectCompleteHtmlDocumentsFromText(sourceText: string, candidates: string[]): void {
+  const addCandidate = (candidate: string) => {
+    const normalized = candidate.replace(/^﻿/, '').trim();
+    if (/<\/?artifact\b/i.test(normalized)) return;
+    if (validateHtmlArtifact(normalized).ok) candidates.push(normalized);
+  };
+
+  DOCTYPE_HTML_BLOCK_RE.lastIndex = 0;
+  let doctypeMatch: RegExpExecArray | null;
+  while ((doctypeMatch = DOCTYPE_HTML_BLOCK_RE.exec(sourceText)) !== null) {
+    addCandidate(doctypeMatch[0] || '');
+  }
+
+  HTML_DOCUMENT_BLOCK_RE.lastIndex = 0;
+  let htmlMatch: RegExpExecArray | null;
+  while ((htmlMatch = HTML_DOCUMENT_BLOCK_RE.exec(sourceText)) !== null) {
+    const html = htmlMatch[0] || '';
+    const beforeHtml = sourceText.slice(0, htmlMatch.index);
+    const adjacentDoctype = beforeHtml.match(ADJACENT_DOCTYPE_RE);
+    addCandidate(adjacentDoctype ? `${adjacentDoctype[0]}${html}` : html);
+  }
 }
 
 function recoverBodyFirstHtmlDocumentsFromText(sourceText: string): string[] {
