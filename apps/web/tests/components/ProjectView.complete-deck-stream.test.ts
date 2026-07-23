@@ -7,6 +7,7 @@ import {
   resolveTerminalArtifactToPersist,
   shouldFailSlideRunForMissingHtmlDeliverable,
 } from '../../src/components/ProjectView';
+import { shouldDeferSlideOnlyDiscoveryArtifactPersist } from '../../src/components/artifact-persist';
 
 /** Minimal slice of the user's complete marketing deck stream pattern. */
 function buildMarketingDeckHtml(): string {
@@ -41,6 +42,22 @@ function parseStreamedDeckArtifact(wrapped: string): string | null {
   return content;
 }
 
+function buildDeveloperPortfolioDeckHtml(): string {
+  return [
+    '<!doctype html><html lang="ko">',
+    '<body style="margin:0;padding:0;font-family:sans-serif;background:#FAFAFA">',
+    '<section class="slide" data-screen-label="01 Cover" style="min-height:100vh">',
+    '<h1>김민준 <span>Frontend</span> Engineer</h1>',
+    '<p>React · TypeScript · Node.js</p>',
+    '</section>',
+    '<section class="slide" data-screen-label="02 Projects & Skills" style="min-height:100vh">',
+    '<h2>무엇을 만들었나요</h2>',
+    '<p>완료 프로젝트 12개</p>',
+    '</section>',
+    '</body></html>',
+  ].join('');
+}
+
 describe('complete API deck stream (user reproduction)', () => {
   const html = buildMarketingDeckHtml();
   const wrapped = `<artifact type="deck" identifier="deck">${html}</artifact>`;
@@ -69,7 +86,7 @@ describe('complete API deck stream (user reproduction)', () => {
     expect(recoverBestHtmlDocumentFromText(wrapped)).toContain('마케팅 전략');
   });
 
-  it('does not fail when a valid streamed deck is present even if disk verify lags', () => {
+  it('fails when a valid streamed artifact has no previewable file on disk', () => {
     const parsed = parseStreamedDeckArtifact(wrapped)!;
     expect(
       shouldFailSlideRunForMissingHtmlDeliverable({
@@ -80,10 +97,10 @@ describe('complete API deck stream (user reproduction)', () => {
         finalText: wrapped,
         terminalArtifactPersistFailed: false,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it('does not fail when persist landed a previewable html file', () => {
+  it('does not fail when persist filename is already resolved despite file-list lag', () => {
     const parsed = parseStreamedDeckArtifact(wrapped)!;
     expect(
       shouldFailSlideRunForMissingHtmlDeliverable({
@@ -108,5 +125,29 @@ describe('complete API deck stream (user reproduction)', () => {
         terminalArtifactPersistFailed: false,
       }),
     ).toBe(true);
+  });
+});
+
+describe('developer portfolio deck stream (turn-1 complete artifact)', () => {
+  const html = buildDeveloperPortfolioDeckHtml();
+  const wrapped =
+    '개발자 포트폴리오 2장짜리 슬라이드를 만들어드릴게요.\n\n'
+    + `<artifact type="deck" identifier="deck-developer-portfolio">${html}</artifact>`;
+
+  it('parses and validates the streamed portfolio deck', () => {
+    const parsed = parseStreamedDeckArtifact(wrapped);
+    expect(parsed).toContain('김민준');
+    expect(validateHtmlArtifact(parsed!)).toEqual({ ok: true });
+    expect(isIncompleteHtmlDocumentShell(parsed!)).toBe(false);
+  });
+
+  it('does not defer discovery persist for a complete turn-1 streamed deck', () => {
+    const parsed = parseStreamedDeckArtifact(wrapped)!;
+    expect(
+      shouldDeferSlideOnlyDiscoveryArtifactPersist(
+        [{ id: 'u1', role: 'user', content: '개발자 포트폴리오 2장 만들어줘', createdAt: 1 }],
+        { slideOnlyMvp: true, hasCompleteHtmlArtifact: true },
+      ),
+    ).toBe(false);
   });
 });

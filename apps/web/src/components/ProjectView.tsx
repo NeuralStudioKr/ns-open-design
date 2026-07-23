@@ -150,6 +150,7 @@ import {
   collectSlideReferencePathsFromMessages,
   extractRequestedSlideCountHintFromMessages,
   findIncompleteSlideAssistantForRecovery,
+  isEmergencyArtifactPersistSuccess,
   resolveSlideProducedHtmlToOpen,
   syncAutoContinueCountFromMessages,
   verifySlideProducedHtmlDeliverable,
@@ -5556,7 +5557,12 @@ export function ProjectView({
             let producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
               ?? selectTouchedHtmlOutputFromEvents(latestAssistantMsg.events, nextFiles, {
                 branding: { slideOnlyMvp },
-              });
+              })
+              ?? (
+                isEmergencyArtifactPersistSuccess(terminalPersistResult)
+                  ? terminalPersistResult!.fileName
+                  : null
+              );
             if (slideOnlyMvp && producedHtmlToOpen) {
               producedHtmlToOpen = await resolveSlideProducedHtmlToOpen(
                 producedHtmlToOpen,
@@ -9190,14 +9196,10 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
     if (isIncompleteHtmlDocumentShell(artifactHtml)) return true;
     const validation = validateHtmlArtifact(artifactHtml);
     if (!validation.ok) return true;
-    // A complete, valid artifact streamed in this turn is enough evidence
-    // that the run produced a deliverable. Do not fall through to plan-only
-    // prose heuristics — slide copy often contains words like "완료", and
-    // raw `<artifact>...html...</artifact>` text can trip deck-intent regexes.
-    // Missing-on-disk after a successful persist is handled by
-    // resolveSlideProducedHtmlToOpen() trusting the persist filename when
-    // registry/S3 read verification races the write.
-    return false;
+    // Valid artifact streamed but nothing previewable on disk — fail so we
+    // never paint "완료됨" over an empty preview. Prose heuristics must not
+    // scan deck HTML for completion-claim words like "완료".
+    return true;
   }
 
   return shouldFailSlideRunWithoutHtmlDeliverable(options.finalText, {

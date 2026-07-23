@@ -183,4 +183,21 @@ describe('shouldDeferSlideOnlyDiscoveryArtifactPersist', () => {
       }),
     ).toBe(false);
   });
+
+  it('does not defer turn-1 persist when a complete deck artifact was streamed', () => {
+    const completeDeck =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide" style="min-height:100vh"><h1>Portfolio</h1></section>'
+      + '<section class="slide" style="min-height:100vh"><p>Projects</p></section>'
+      + '</body></html>';
+    const messages = [
+      { id: 'u1', role: 'user' as const, content: '개발자 포트폴리오 2장 만들어줘' },
+    ];
+    expect(
+      shouldDeferSlideOnlyDiscoveryArtifactPersist(messages, {
+        slideOnlyMvp: true,
+        hasCompleteHtmlArtifact: true,
+      }),
+    ).toBe(false);
+  });
 });

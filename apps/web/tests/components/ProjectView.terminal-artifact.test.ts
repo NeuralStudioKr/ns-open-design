@@ -151,7 +151,7 @@ describe("shouldFailSlideRunForMissingHtmlDeliverable", () => {
     ).toBe(true);
   });
 
-  it("does not fail a valid streamed artifact when the file-list refresh lags", () => {
+  it("fails when a valid streamed artifact has no previewable file on disk", () => {
     const completeDeck =
       '<!doctype html><html lang="ko"><body>'
       + '<section class="slide"><h1>2026년 상반기 마케팅 전략</h1>'
@@ -162,6 +162,25 @@ describe("shouldFailSlideRunForMissingHtmlDeliverable", () => {
       shouldFailSlideRunForMissingHtmlDeliverable({
         slideOnlyMvp: true,
         producedHtmlToOpen: null,
+        parsedArtifact: { html: completeDeck },
+        liveHtml: completeDeck,
+        finalText: `<artifact type="deck" identifier="deck">${completeDeck}</artifact>`,
+        terminalArtifactPersistFailed: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not fail when persist filename is already resolved despite file-list lag", () => {
+    const completeDeck =
+      '<!doctype html><html lang="ko"><body>'
+      + '<section class="slide"><h1>2026년 상반기 마케팅 전략</h1>'
+      + '<p>월간 KPI 대시보드 셋업 완료</p></section>'
+      + '</body></html>';
+
+    expect(
+      shouldFailSlideRunForMissingHtmlDeliverable({
+        slideOnlyMvp: true,
+        producedHtmlToOpen: 'deck.html',
         parsedArtifact: { html: completeDeck },
         liveHtml: completeDeck,
         finalText: `<artifact type="deck" identifier="deck">${completeDeck}</artifact>`,
