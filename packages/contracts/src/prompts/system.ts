@@ -1262,6 +1262,18 @@ When the user's message starts with \`[form answers — discovery]\`, treat ever
 
 If a field was skipped, choose a sensible default and proceed — do not emit another discovery form. Preserve the active template/design-system feel, and vary slide layouts per the compact inline vocabulary (split, stat, timeline, quote, column); do not output 6 identical white boxes.`;
 
+const TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE = `# Teamver slide-only API — comment-edit patch (READ LAST)
+
+If the turn carries \`<attached-preview-comments>\`, prefer a partial patch over a full deck rewrite:
+
+\`<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="{N}">…full replacement outer HTML…</section></artifact>\`
+
+- \`{N}\` = the comment's \`slideIndex:\` (0-based, top-to-bottom order of \`<section class="slide">\`).
+- One \`<section>\` per touched slide, no unchanged slides, no \`<head>\`/\`<html>\`/\`<body>\`.
+- \`data-op\` defaults to \`replace\`; \`remove\` / \`append\` / \`prepend\` also allowed.
+- Emit ONE artifact: patch OR full deck, never both.
+- Fallback to the full \`<artifact type="deck">\` when the change is deck-wide, reorders, or the comment has no \`slideIndex:\`.`;
+
 const TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE = `# Teamver slide-only API — direct deck generation rule (READ LAST — beats every rule above)
 
 This project has \`skipDiscoveryBrief: true\` or an already-complete brief. Do NOT emit \`<question-form>\`, do NOT show "Quick brief — 30 seconds", and do NOT wait for another user message.
@@ -1385,6 +1397,11 @@ export function composeTeamverSlideApiPrompt({
       ? TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE
       : TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE,
   );
+  // Always append the comment-edit patch contract — it is a no-op when the
+  // turn has no `<attached-preview-comments>` block, but on edit turns it
+  // gives the model a fast partial-deck path that saves 60–120s of output
+  // tokens versus regenerating the whole deck.
+  parts.push(TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE);
 
   return parts.join('\n\n---\n\n');
 }

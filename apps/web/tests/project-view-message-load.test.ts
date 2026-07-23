@@ -285,12 +285,19 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 5200);
+    // Bumped window from 5200 to 7000 chars when the deck-patch interceptor
+    // (isDeckPatchArtifactType + tryApplyDeckPatchAgainstCurrentDeck) added a
+    // ~1.5KB prelude at the top of persistArtifact.
+    const persistBlock = source.slice(persistStart, persistStart + 7000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
     expect(persistBlock).toContain("isIncompleteHtmlDocumentShell(artifactToPersist.html)");
     expect(persistBlock).toContain("kind: 'skipped-incomplete'");
+    // deck-patch interceptor must run BEFORE the incomplete-shell / validate
+    // gates so partial patches never get rejected as "not a full document".
+    expect(persistBlock).toContain("isDeckPatchArtifactType(art.artifactType)");
+    expect(persistBlock).toContain("tryApplyDeckPatchAgainstCurrentDeck(");
     // Validation refusals still surface a refusal banner; incomplete shells
     // must stay quiet so they do not contradict the automatic-continue notice.
     expect(persistBlock).toContain("formatProjectArtifactRejectedError(");
@@ -363,8 +370,16 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("handleSendRef.current = handleSend");
     const handleSendStart = source.indexOf("const handleSend = useCallback(");
     expect(handleSendStart).toBeGreaterThan(0);
-    const handleSendBlock = source.slice(handleSendStart, handleSendStart + 4200);
+    // Bumped window from 4200 to 6000 chars when the deck-patch prompt nudge
+    // (promptWithSlideCommentEditPatchInstruction + skipDeckHtml option on
+    // chatAttachmentsFromPreviewCommentFiles) added a small block before the
+    // auto-continue counter reset.
+    const handleSendBlock = source.slice(handleSendStart, handleSendStart + 6000);
     expect(handleSendBlock).toContain("isAutoContinueIncompleteOutputPrompt(prompt)");
     expect(handleSendBlock).toContain("conversationAutoContinueCountRef.current.set(runConversationId, 0)");
+    // Comment-edit path must plumb the deck-patch nudge + skipDeckHtml opt-in
+    // through so the fast path in persistArtifact can actually engage.
+    expect(handleSendBlock).toContain("promptWithSlideCommentEditPatchInstruction(");
+    expect(handleSendBlock).toContain("skipDeckHtml: slideOnlyMvp && commentAttachments.length > 0");
   });
 });

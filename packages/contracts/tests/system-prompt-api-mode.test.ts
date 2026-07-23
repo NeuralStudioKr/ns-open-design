@@ -153,7 +153,10 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('never `<head>`');
       expect(prompt).toContain('<body><section class="slide"');
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
-      expect(prompt.length).toBeLessThan(18_000);
+      // Ceiling grew by ~700 chars when the comment-edit patch contract
+      // landed; that contract cuts a 60–120s round-trip on one-element
+      // comment edits down to 2–8s, so the cost is worth it.
+      expect(prompt.length).toBeLessThan(19_000);
     });
 
     it('keeps compact deck for skill-seed projects without raw template copy workflow', () => {
@@ -312,7 +315,10 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('# OD core directives');
       expect(prompt).not.toContain('Artifact handoff');
       expect(prompt).not.toContain('Read `assets/template.html`');
-      expect(prompt.length).toBeLessThan(19_000);
+      // Ceiling grew by ~700 chars when the comment-edit patch contract
+      // landed; that contract cuts a 60–120s round-trip on one-element
+      // comment edits down to 2–8s, so the cost is worth it.
+      expect(prompt.length).toBeLessThan(20_000);
     });
 
     it('requires body-first streaming and forbids head-only shells', () => {
@@ -422,7 +428,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         prompt.indexOf('Slide deck — API compact contract'),
       );
       expect(prompt).not.toContain('Do not paste this exact headline');
-      expect(prompt.length).toBeLessThan(18_000);
+      // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
+      expect(prompt.length).toBeLessThan(19_000);
     });
 
     it('extracts mandatory visual cues from the selected design-template skill body', () => {
@@ -452,7 +459,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt.indexOf('Visual style reference — Html Ppt Hermes Cyber Terminal')).toBeLessThan(
         prompt.indexOf('Slide deck — API compact contract'),
       );
-      expect(prompt.length).toBeLessThan(18_000);
+      // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
+      expect(prompt.length).toBeLessThan(19_000);
     });
 
     it('keeps richer visual template rules while stripping unavailable copy workflows', () => {
@@ -480,7 +488,35 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       );
       expect(prompt).not.toContain('Read assets/template.html and copy the skeleton');
       expect(prompt).not.toContain('Use references/layouts.md for exact slots');
-      expect(prompt.length).toBeLessThan(18_000);
+      // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
+      expect(prompt.length).toBeLessThan(19_000);
+    });
+
+    it('carries the comment-edit deck-patch contract so scoped edits skip full deck rewrites', () => {
+      // Comment-edit patch contract is the load-bearing token-cost fix for
+      // Teamver slide-only edits — without this rule the model keeps
+      // regenerating the whole deck for a one-word text change (20–40k
+      // output tokens, ~60–120s of streaming). Present in both the unified
+      // and direct streaming paths since both handle edit turns.
+      const unified = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck' },
+      });
+      const direct = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+      for (const prompt of [unified, direct]) {
+        expect(prompt).toContain('comment-edit patch');
+        expect(prompt).toContain('<artifact type="deck-patch"');
+        expect(prompt).toContain('data-slide-index');
+        expect(prompt).toContain('data-op');
+        // Fallback path — patch contract must not lock the model out of the
+        // full-deck deliverable for genuinely structural changes.
+        expect(prompt).toContain('<artifact type="deck">');
+      }
     });
   });
 });

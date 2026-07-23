@@ -95,6 +95,31 @@ describe('preview comment attachment helpers', () => {
       .toContain('image.1: uploads/reference.png | reference.png');
   });
 
+  it('surfaces slideIndex in the rendered comment context so deck-patch can target the right slide', () => {
+    const context = messageContentWithCommentAttachments('', [
+      commentAttachment({
+        id: 'c1',
+        elementId: 'hero-title',
+        slideIndex: 3,
+        filePath: 'deck.html',
+      }),
+    ]);
+
+    // The deck-patch contract addresses slides via `data-slide-index="{N}"`.
+    // Without this line the model has no way to name the target slide and
+    // falls back to regenerating the whole deck — the exact 2+ minute round
+    // trip we're trying to remove.
+    expect(context).toContain('slideIndex: 3');
+    expect(context).toContain('file: deck.html');
+  });
+
+  it('omits slideIndex when the comment has none (whole-file target)', () => {
+    const context = messageContentWithCommentAttachments('', [
+      commentAttachment({ id: 'c1', elementId: 'hero-title' }),
+    ]);
+    expect(context).not.toContain('slideIndex:');
+  });
+
   it('keeps the task query out of context when a comment is promoted to message text', () => {
     const [attachment] = commentsToAttachments([
       comment({ id: 'c1', elementId: 'hero-title', note: 'Make the title factual' }),
@@ -147,6 +172,42 @@ describe('preview comment attachment helpers', () => {
         size: 1234,
       },
     ]);
+  });
+
+  it('skips deck HTML auto-attach on comment edits when the caller opts in', () => {
+    const attachments = chatAttachmentsFromPreviewCommentFiles(
+      [
+        commentAttachment({ id: 'c1', filePath: 'deck.html' }),
+        commentAttachment({ id: 'c2', filePath: 'notes.md' }),
+      ],
+      [
+        {
+          name: 'deck.html',
+          path: 'deck.html',
+          type: 'file',
+          size: 1234,
+          mtime: 1,
+          kind: 'html',
+          mime: 'text/html',
+        },
+        {
+          name: 'notes.md',
+          path: 'notes.md',
+          type: 'file',
+          size: 128,
+          mtime: 1,
+          kind: 'text',
+          mime: 'text/markdown',
+        },
+      ],
+      { skipDeckHtml: true },
+    );
+
+    // Deck HTML is already present as the last-assistant artifact in history —
+    // re-inlining it via `<attached-project-files>` on every one-element comment
+    // edit is redundant and inflates TTFT (and stops the model from taking the
+    // scoped-edit hint from `<attached-preview-comments>`).
+    expect(attachments.map((attachment) => attachment.path)).toEqual(['notes.md']);
   });
 
   it('merges saved preview comment image attachments without duplicates', () => {

@@ -5,6 +5,7 @@ import {
   mergeServerMessagesIntoConversation,
   orderConversationMessages,
   promptWithSlideAttachmentDeliverableInstruction,
+  promptWithSlideCommentEditPatchInstruction,
 } from "../src/components/ProjectView";
 import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
 import type { ChatMessage } from "../src/types";
@@ -40,6 +41,77 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
         { slideOnlyMvp: true },
       ).match(/\[Deliverable instruction\]/g),
     ).toHaveLength(1);
+  });
+
+  it("suppresses the hidden contract on comment-driven edits so the scope block wins", () => {
+    // Comment edits already carry `<attached-preview-comments>` telling the
+    // model to change ONLY the pinned elements; layering the "emit ONE
+    // complete deck" pressure on top forced full-deck regeneration on every
+    // one-element edit (2+ minute round-trips). See ProjectView.handleSend
+    // for the paired change that plumbs commentAttachments.length through.
+    const prompt = promptWithSlideAttachmentDeliverableInstruction(
+      "이 텍스트를 '안녕'으로 바꿔줘",
+      [
+        { path: "deck.html", name: "deck.html", kind: "file" },
+        { path: "uploads/ref.png", name: "ref.png", kind: "image" },
+      ],
+      { slideOnlyMvp: true, commentAttachmentCount: 1 },
+    );
+
+    expect(prompt).toBe("이 텍스트를 '안녕'으로 바꿔줘");
+    expect(prompt).not.toContain("[Deliverable instruction]");
+  });
+});
+
+describe("promptWithSlideCommentEditPatchInstruction", () => {
+  it("nudges the model into the deck-patch contract on comment edits", () => {
+    const prompt = promptWithSlideCommentEditPatchInstruction(
+      "이 텍스트를 '안녕'으로 바꿔줘",
+      { slideOnlyMvp: true, commentAttachmentCount: 1 },
+    );
+
+    expect(prompt).toContain("[Comment-edit patch contract]");
+    expect(prompt).toContain('<artifact type="deck-patch"');
+    expect(prompt).toContain('data-slide-index');
+    // The patch fallback path exists so a bad merge cleanly re-runs as a
+    // full deck; the prompt should surface that so the model does not treat
+    // deck-patch as the ONLY allowed output shape.
+    expect(prompt).toContain('<artifact type="deck">');
+  });
+
+  it("uses plural phrasing when multiple comments target the same turn", () => {
+    const prompt = promptWithSlideCommentEditPatchInstruction("변경 부탁", {
+      slideOnlyMvp: true,
+      commentAttachmentCount: 3,
+    });
+    expect(prompt).toContain('3 attached preview comments');
+  });
+
+  it("is a no-op outside slide-only mode or without comment attachments", () => {
+    expect(
+      promptWithSlideCommentEditPatchInstruction("hi", {
+        slideOnlyMvp: false,
+        commentAttachmentCount: 5,
+      }),
+    ).toBe("hi");
+    expect(
+      promptWithSlideCommentEditPatchInstruction("hi", {
+        slideOnlyMvp: true,
+        commentAttachmentCount: 0,
+      }),
+    ).toBe("hi");
+  });
+
+  it("is idempotent when the marker is already present (queue re-flush safety)", () => {
+    const first = promptWithSlideCommentEditPatchInstruction("bump", {
+      slideOnlyMvp: true,
+      commentAttachmentCount: 1,
+    });
+    const second = promptWithSlideCommentEditPatchInstruction(first, {
+      slideOnlyMvp: true,
+      commentAttachmentCount: 1,
+    });
+    expect(second).toBe(first);
   });
 });
 

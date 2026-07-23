@@ -17,6 +17,11 @@ import type { ArtifactManifest } from '../artifacts/types';
 import { resolveHtmlPointerArtifactTarget } from '../artifacts/pointer';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
 import {
+  applyDeckPatch,
+  isDeckPatchArtifactType,
+  parseDeckPatch,
+} from '../artifacts/deck-patch';
+import {
   clearPendingArtifactWrite,
   clearProjectPendingArtifactWrites,
   listPendingArtifactWrites,
@@ -74,6 +79,7 @@ import {
   fetchProjectDesignSystemPackageAudit,
   fetchLiveArtifacts,
   fetchProjectFiles,
+  fetchProjectFileText,
   fetchSkill,
   patchPreviewCommentStatus,
   projectRawUrl,
@@ -784,12 +790,99 @@ function slideAttachmentDeliverableInstruction(attachments: ChatAttachment[]): s
 export function promptWithSlideAttachmentDeliverableInstruction(
   prompt: string,
   attachments: ChatAttachment[],
-  options: { slideOnlyMvp: boolean },
+  options: {
+    slideOnlyMvp: boolean;
+    /**
+     * Comment-driven turns already have `<attached-preview-comments>` context
+     * telling the model to change ONLY the pinned elements. Reinjecting the
+     * "emit ONE complete deck" pressure here forces the model to regenerate
+     * every slide's HTML on a one-element edit, which is the primary cause of
+     * 2+ minute round-trips (see runtime/resume + system prompt in
+     * `packages/contracts/src/prompts/system.ts`). Suppress it for comment
+     * edits so the scope block wins; deck-only sends (uploads without any
+     * comment target) still get the full deliverable pressure.
+     */
+    commentAttachmentCount?: number;
+  },
 ): string {
   if (!options.slideOnlyMvp || attachments.length === 0) return prompt;
+  if ((options.commentAttachmentCount ?? 0) > 0) return prompt;
   if (prompt.includes(SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '첨부 파일을 참고해서 슬라이드 덱을 만들어줘.';
   return `${visiblePrompt}\n\n${slideAttachmentDeliverableInstruction(attachments)}`;
+}
+
+const SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER = '[Comment-edit patch contract]';
+
+/**
+ * Nudges the model into emitting `<artifact type="deck-patch">` on comment
+ * edits so it does not have to regenerate the whole deck for a one-word text
+ * change. Paired with `applyDeckPatch` inside `persistArtifact`: the client
+ * merges the patch into the current deck file. Failure modes (bad slide
+ * index, unreadable current deck, malformed patch) auto-continue into the
+ * normal full-deck path so the user always ends up with a valid deck.
+ */
+function slideCommentEditPatchInstruction(commentAttachmentCount: number): string {
+  return [
+    SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER,
+    `The ${commentAttachmentCount === 1 ? 'attached preview comment targets' : `${commentAttachmentCount} attached preview comments target`} specific slides in the current deck. Preferred deliverable is a small patch, not a full deck rewrite:`,
+    '',
+    '<artifact type="deck-patch" identifier="deck">',
+    '  <section class="slide" data-slide-index="{N}">',
+    '    …full replacement outer HTML for the touched slide…',
+    '  </section>',
+    '</artifact>',
+    '',
+    '- `data-slide-index="{N}"` uses the 0-based index the comment reports under `slideIndex:` in `<attached-preview-comments>` (top-to-bottom order of `<section class="slide">` in the current deck).',
+    '- Include ONE `<section class="slide">` per touched slide. Do NOT include unchanged slides, `<head>`, `<html>`, `<body>`, or global chrome.',
+    '- The replacement `<section>` is the full new slide markup — the client swaps it in.',
+    '- Fallback: if you must change deck-wide structure (add slide, reorder, restructure global CSS), emit the full `<artifact type="deck">` document instead.',
+  ].join('\n');
+}
+
+export function promptWithSlideCommentEditPatchInstruction(
+  prompt: string,
+  options: { slideOnlyMvp: boolean; commentAttachmentCount: number },
+): string {
+  if (!options.slideOnlyMvp || options.commentAttachmentCount <= 0) return prompt;
+  if (prompt.includes(SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER)) return prompt;
+  const visiblePrompt = prompt.trim() || '이 코멘트에 맞춰 슬라이드를 수정해줘.';
+  return `${visiblePrompt}\n\n${slideCommentEditPatchInstruction(options.commentAttachmentCount)}`;
+}
+
+/**
+ * Load the current deck file, parse the streamed `deck-patch` body, and
+ * merge. Returns the merged full-deck HTML on success, or null on ANY
+ * failure — the caller then returns `skipped-incomplete` so auto-continue
+ * can ask the model for a full-deck fallback rather than writing a mangled
+ * file.
+ */
+async function tryApplyDeckPatchAgainstCurrentDeck(input: {
+  projectId: string;
+  fileName: string;
+  patchBody: string;
+}): Promise<string | null> {
+  const parsed = parseDeckPatch(input.patchBody);
+  if (!parsed.ok) {
+    console.warn('[deck-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
+    return null;
+  }
+  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
+    cache: 'no-store',
+  });
+  if (!currentHtml) {
+    console.warn('[deck-patch] current deck file unreadable', {
+      projectId: input.projectId,
+      fileName: input.fileName,
+    });
+    return null;
+  }
+  const merged = applyDeckPatch({ currentHtml, patch: parsed.patch });
+  if (!merged.ok) {
+    console.warn('[deck-patch] merge failed', { fileName: input.fileName, reason: merged.reason });
+    return null;
+  }
+  return merged.html;
 }
 
 function historyWithWorkspaceContext(
@@ -2697,14 +2790,48 @@ export function ProjectView({
       ) {
         return { kind: 'skipped-discovery-turn', fileName: artifactBaseNameForPersist(art) };
       }
+      let effectiveArt = art;
+      // `deck-patch` short-circuits the full-deck emit path. Comment-driven
+      // edits carry `<artifact type="deck-patch">` bodies whose sections list
+      // ONLY the changed `<section class="slide">` blocks; we merge them into
+      // the current deck file here and then fall through to the normal
+      // full-deck write path with the merged HTML. See
+      // `apps/web/src/artifacts/deck-patch.ts` for the wire contract and the
+      // reasoning around output-token cost (a 10-slide deck at ~2–4KB per
+      // slide costs 60–120s of streaming for a one-word text change without
+      // this pipeline).
+      if (isDeckPatchArtifactType(art.artifactType)) {
+        const currentProjectFilesForPatch = projectFilesSnapshot ?? projectFilesRef.current;
+        const targetFileName = resolveArtifactPersistFileName(
+          art,
+          currentProjectFilesForPatch,
+          openTabsStateRef.current.active,
+        );
+        const mergedHtml = await tryApplyDeckPatchAgainstCurrentDeck({
+          projectId: project.id,
+          fileName: targetFileName,
+          patchBody: art.html,
+        });
+        if (!mergedHtml) {
+          // Patch either failed to parse, targeted a slide index outside the
+          // current deck bounds, or the deck file could not be read. Return
+          // `skipped-incomplete` so the terminal auto-continue path can ask
+          // the model for a full-deck fallback on the next turn.
+          return {
+            kind: 'skipped-incomplete',
+            fileName: targetFileName,
+          };
+        }
+        effectiveArt = { ...art, html: mergedHtml, artifactType: 'deck' };
+      }
       const recoveredHtml = recoverHtmlArtifactFromPrecedingDocument({
-        artifactHtml: art.html,
-        identifier: art.identifier,
+        artifactHtml: effectiveArt.html,
+        identifier: effectiveArt.identifier,
         sourceText,
       });
-      let artifactToPersist = recoveredHtml ? { ...art, html: recoveredHtml } : art;
-      const baseName = artifactBaseNameFor(art);
-      const ext = artifactExtensionFor(art);
+      let artifactToPersist = recoveredHtml ? { ...effectiveArt, html: recoveredHtml } : effectiveArt;
+      const baseName = artifactBaseNameFor(effectiveArt);
+      const ext = artifactExtensionFor(effectiveArt);
       const currentProjectFiles = projectFilesSnapshot ?? projectFilesRef.current;
       const fileName = resolveArtifactPersistFileName(
         artifactToPersist,
@@ -5289,7 +5416,15 @@ export function ProjectView({
       ) return false;
       const effectiveAttachments = mergeChatAttachments(
         attachments,
-        chatAttachmentsFromPreviewCommentFiles(commentAttachments, projectFiles),
+        chatAttachmentsFromPreviewCommentFiles(commentAttachments, projectFiles, {
+          // The deck HTML is the last-assistant artifact in conversation
+          // history for Teamver slide-only edits, so re-inlining it via
+          // <attached-project-files> is pure duplication that pushes TTFT out.
+          // The `<attached-preview-comments>` block still carries currentText,
+          // htmlHint, selector, and pod-member context for the target element,
+          // which is what the model actually needs to make a scoped edit.
+          skipDeckHtml: slideOnlyMvp && commentAttachments.length > 0,
+        }),
         ...commentAttachments.map((attachment) =>
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),
@@ -5297,11 +5432,23 @@ export function ProjectView({
       const instructionAttachments = retryTarget
         ? mergeChatAttachments(retryTarget.userMsg.attachments ?? [], effectiveAttachments)
         : effectiveAttachments;
-      const modelPrompt = promptWithSlideAttachmentDeliverableInstruction(
+      const modelPromptBase = promptWithSlideAttachmentDeliverableInstruction(
         retryTarget ? retryTarget.userMsg.content || prompt : prompt,
         instructionAttachments,
-        { slideOnlyMvp },
+        {
+          slideOnlyMvp,
+          commentAttachmentCount: commentAttachments.length,
+        },
       );
+      // On Teamver slide-only comment edits, nudge the model into the
+      // partial-deck `<artifact type="deck-patch">` contract instead of
+      // regenerating the whole deck. Merge / fallback live in `persistArtifact`
+      // + `applyDeckPatch` — a malformed patch, out-of-range slideIndex, or
+      // missing current deck cleanly falls through to auto-continue full-deck.
+      const modelPrompt = promptWithSlideCommentEditPatchInstruction(modelPromptBase, {
+        slideOnlyMvp,
+        commentAttachmentCount: commentAttachments.length,
+      });
       if (!retryTarget && meta?.queueOnly) {
         queueChatSendForCurrentConversation({
           conversationId: activeConversationId,

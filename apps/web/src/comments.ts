@@ -372,9 +372,24 @@ export function messageContentWithCommentAttachments(
   return `${visibleContent}${renderCommentAttachmentContext(commentAttachments)}`;
 }
 
+export interface ChatAttachmentsFromPreviewCommentFilesOptions {
+  /**
+   * Skip attaching HTML deck files as project-file context.
+   *
+   * Motivation: on Teamver slide-only comment edits the current deck HTML is
+   * already the last-assistant artifact in conversation history, so re-inlining
+   * it via `<attached-project-files>` (up to 24KB per file / 64KB total) is pure
+   * duplication that pushes TTFT out without giving the model any new info.
+   * The `<attached-preview-comments>` block still carries `currentText`,
+   * `htmlHint`, `selector`, and pod-member context for the target element.
+   */
+  skipDeckHtml?: boolean;
+}
+
 export function chatAttachmentsFromPreviewCommentFiles(
   commentAttachments: ChatCommentAttachment[],
   projectFiles: ProjectFile[],
+  options: ChatAttachmentsFromPreviewCommentFilesOptions = {},
 ): ChatAttachment[] {
   if (commentAttachments.length === 0 || projectFiles.length === 0) return [];
   const byPath = new Map<string, ProjectFile>();
@@ -399,6 +414,7 @@ export function chatAttachmentsFromPreviewCommentFiles(
     const path = file.path ?? file.name;
     if (seen.has(path)) continue;
     if (!canAttachCommentSourceFile(path)) continue;
+    if (options.skipDeckHtml && isDeckHtmlFile(file, path)) continue;
     seen.add(filePath);
     seen.add(path);
     out.push({
@@ -409,6 +425,12 @@ export function chatAttachmentsFromPreviewCommentFiles(
     });
   }
   return out;
+}
+
+function isDeckHtmlFile(file: ProjectFile, path: string): boolean {
+  if (file.kind === 'html') return true;
+  const lower = path.toLowerCase();
+  return lower.endsWith('.html') || lower.endsWith('.htm');
 }
 
 export function historyWithCommentAttachmentContext(
@@ -515,6 +537,15 @@ function renderCommentAttachmentContext(commentAttachments: ChatCommentAttachmen
       `htmlHint: ${trimHtmlHint(item.htmlHint || '') || '(none)'}`,
       `computedStyle: ${formatAnnotationStyle(item.style) || '(none)'}`,
     );
+    // The 0-based slide index inside the current deck. Required so the model
+    // can address the target slide via `<artifact type="deck-patch">` +
+    // `<section class="slide" data-slide-index="{N}">` on comment edits —
+    // without this line the patch contract has no way to name the target.
+    // Whole-file comments (no slide index at capture time) omit the line;
+    // the model falls back to the full-deck path for those.
+    if (typeof item.slideIndex === 'number' && Number.isFinite(item.slideIndex) && item.slideIndex >= 0) {
+      lines.push(`slideIndex: ${Math.floor(item.slideIndex)}`);
+    }
     if (item.comment && item.commentContext !== 'query') {
       lines.push(`comment: ${item.comment}`);
     }
