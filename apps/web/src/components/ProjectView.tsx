@@ -4360,18 +4360,26 @@ export function ProjectView({
                   }
                 }
                 const diff = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-                const produced = mergeRecoveredArtifact(diff, recoveredExistingArtifact);
+                let produced = mergeRecoveredArtifact(diff, recoveredExistingArtifact);
                 let producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
                   ?? selectTouchedHtmlOutputFromEvents(message.events, nextFiles, {
                     branding: { slideOnlyMvp },
                   });
-                if (slideOnlyMvp && producedHtmlToOpen) {
+                if (slideOnlyMvp) {
                   producedHtmlToOpen = await resolveSlideProducedHtmlToOpen(
                     producedHtmlToOpen,
                     replayPersistResult,
                     readProjectHtml,
                   );
                 }
+                produced = mergeRecoveredArtifact(
+                  produced,
+                  projectFileFromPersistedHtmlFallback(
+                    producedHtmlToOpen,
+                    replayPersistResult,
+                    Date.now(),
+                  ),
+                );
                 if (producedHtmlToOpen && claimHtmlAutoOpenForMessage()) {
                   maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
                   requestOpenFile(producedHtmlToOpen);
@@ -5553,23 +5561,26 @@ export function ProjectView({
 
             if (!isLatestTerminalAutoOpen()) return;
 
-            const produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
+            let produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
             let producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
               ?? selectTouchedHtmlOutputFromEvents(latestAssistantMsg.events, nextFiles, {
                 branding: { slideOnlyMvp },
-              })
-              ?? (
-                isEmergencyArtifactPersistSuccess(terminalPersistResult)
-                  ? terminalPersistResult!.fileName
-                  : null
-              );
-            if (slideOnlyMvp && producedHtmlToOpen) {
+              });
+            if (slideOnlyMvp) {
               producedHtmlToOpen = await resolveSlideProducedHtmlToOpen(
                 producedHtmlToOpen,
                 terminalPersistResult,
                 readProjectHtml,
               );
             }
+            produced = mergeRecoveredArtifact(
+              produced,
+              projectFileFromPersistedHtmlFallback(
+                producedHtmlToOpen,
+                terminalPersistResult,
+                Date.now(),
+              ),
+            );
             const shouldFailMissingSlideHtml = shouldFailSlideRunForMissingHtmlDeliverable({
               slideOnlyMvp,
               producedHtmlToOpen,
@@ -9297,6 +9308,23 @@ export function mergeRecoveredArtifact(
   if (!recovered) return [...diff];
   if (diff.some((f) => f.name === recovered.name)) return [...diff];
   return [...diff, recovered];
+}
+
+export function projectFileFromPersistedHtmlFallback(
+  fileName: string | null,
+  persistResult: ArtifactPersistResult | null | undefined,
+  mtime = Date.now(),
+): ProjectFile | null {
+  if (!fileName || !fileName.toLowerCase().endsWith('.html')) return null;
+  if (!isEmergencyArtifactPersistSuccess(persistResult)) return null;
+  if (persistResult?.fileName !== fileName) return null;
+  return {
+    name: fileName,
+    size: 0,
+    mtime,
+    kind: 'html',
+    mime: 'text/html',
+  };
 }
 
 export async function findSameTurnHtmlWriteForRecoveredArtifact({

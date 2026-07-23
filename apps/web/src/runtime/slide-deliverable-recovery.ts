@@ -176,7 +176,9 @@ export async function resolveSlideProducedHtmlToOpen(
   persistResult: ArtifactPersistResult | null | undefined,
   readProjectHtml: (name: string) => Promise<string | null>,
 ): Promise<string | null> {
-  if (!producedHtmlToOpen) return null;
+  if (!producedHtmlToOpen) {
+    return isEmergencyArtifactPersistSuccess(persistResult) ? persistResult!.fileName : null;
+  }
   const verified = await verifySlideProducedHtmlDeliverable(producedHtmlToOpen, readProjectHtml);
   if (verified) return verified;
   return isEmergencyArtifactPersistSuccess(persistResult) ? persistResult!.fileName : null;

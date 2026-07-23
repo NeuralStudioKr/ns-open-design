@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isQuestionFormTurnContent,
+  projectFileFromPersistedHtmlFallback,
   resolveTerminalArtifactToPersist,
   shouldFailSlideRunForMissingHtmlDeliverable,
   shouldFailSlideRunWithoutHtmlDeliverable,
@@ -274,5 +275,38 @@ describe("resolveTerminalArtifactToPersist", () => {
     });
     expect(resolved?.html).toContain("<h1>신입사원 온보딩</h1>");
     expect(resolved?.html).toContain("</html>");
+  });
+});
+
+describe("projectFileFromPersistedHtmlFallback", () => {
+  it("creates a minimal produced HTML file when persist succeeded before list refresh", () => {
+    expect(
+      projectFileFromPersistedHtmlFallback(
+        "deck.html",
+        { kind: "persisted", fileName: "deck.html" },
+        1234,
+      ),
+    ).toEqual({
+      name: "deck.html",
+      size: 0,
+      mtime: 1234,
+      kind: "html",
+      mime: "text/html",
+    });
+  });
+
+  it("does not synthesize files for failed or mismatched persist results", () => {
+    expect(
+      projectFileFromPersistedHtmlFallback(
+        "deck.html",
+        { kind: "save-failed", fileName: "deck.html" },
+      ),
+    ).toBeNull();
+    expect(
+      projectFileFromPersistedHtmlFallback(
+        "deck.html",
+        { kind: "persisted", fileName: "other.html" },
+      ),
+    ).toBeNull();
   });
 });

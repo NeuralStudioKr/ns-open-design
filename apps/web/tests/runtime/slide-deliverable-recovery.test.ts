@@ -217,6 +217,18 @@ describe('verifySlideProducedHtmlDeliverable', () => {
 });
 
 describe('resolveSlideProducedHtmlToOpen', () => {
+  it('trusts a successful persist when the file-list refresh has not surfaced the file yet', async () => {
+    await expect(
+      resolveSlideProducedHtmlToOpen(
+        null,
+        { kind: 'persisted', fileName: 'deck.html' },
+        async () => {
+          throw new Error('should not read without a produced file candidate');
+        },
+      ),
+    ).resolves.toBe('deck.html');
+  });
+
   it('trusts a successful persist when immediate read verification lags', async () => {
     await expect(
       resolveSlideProducedHtmlToOpen(
