@@ -121,6 +121,7 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     `);
     const deck = win.document.getElementById('deck') as HTMLElement;
 
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
     postSlide(win, 'next');
     await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
 
@@ -155,6 +156,7 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     win.document.addEventListener('keydown', onKey, true);
     paint();
 
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
     postSlide(win, 'next');
     await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
 
@@ -192,6 +194,7 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     win.document.body.scrollTo = bodyScrollTo;
     win.document.documentElement.scrollTo = htmlScrollTo;
 
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
     postSlide(win, 'next');
     await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
 
@@ -228,6 +231,7 @@ describe('deck bridge — nested slide markup (#1530)', () => {
       win.document.documentElement.scrollLeft = left;
     });
 
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
     postSlide(win, 'next');
     await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
 
@@ -258,6 +262,8 @@ describe('deck bridge — nested slide markup (#1530)', () => {
       `<section class="slide" style="min-height:100vh;background:#0ea5e9;padding:40px">Slide ${i + 1}</section>`,
     ).join('');
     const { win } = setupDeckBridge(slides);
+    Object.defineProperty(win.document.documentElement, 'clientWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win.document.documentElement, 'clientHeight', { configurable: true, value: 600 });
     win.dispatchEvent(new win.MessageEvent('message', {
       data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
     }));
@@ -266,6 +272,7 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     const stage = win.document.getElementById('od-stacked-deck-stage');
     expect(stage).toBeTruthy();
     expect(win.document.documentElement.getAttribute('data-od-stacked-deck')).toBe('');
+    expect(win.document.documentElement.getAttribute('data-od-stacked-deck-ready')).toBe('');
     expect(stage?.style.transform).toMatch(/scale\(|translate\(/);
     const scaleMatch = stage?.style.transform?.match(/scale\(([\d.]+)\)/);
     expect(scaleMatch).toBeTruthy();
@@ -347,5 +354,18 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(win.getComputedStyle(slideEls[0]!).display).not.toBe('none');
     expect(win.getComputedStyle(slideEls[1]!).display).toBe('none');
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 3 });
+  });
+
+  it('prevents wheel scrolling on compact stacked decks before navigation', async () => {
+    const slides = Array.from({ length: 2 }, (_, i) =>
+      `<section class="slide" style="min-height:100vh;padding:40px">Slide ${i + 1}</section>`,
+    ).join('');
+    const { win } = setupDeckBridge(slides);
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
+
+    const wheel = new win.WheelEvent('wheel', { deltaY: 120, cancelable: true });
+    const prevented = !win.document.dispatchEvent(wheel);
+    expect(prevented).toBe(true);
+    expect(win.document.documentElement.scrollTop).toBe(0);
   });
 });

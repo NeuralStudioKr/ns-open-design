@@ -22,7 +22,12 @@ import {
 } from '../edit-mode/bridge';
 import { buildArtifactPreviewDomLeakGuardScript, repairArtifactDocumentHead } from '@open-design/contracts';
 import { stripConflictingSrcDocCspBaseUri } from './authenticatedHtmlSrcDoc';
-import { looksLikeCompactApiStackedDeck, wrapPreviewHtmlShell } from './compact-api-stacked-deck';
+import {
+  injectStackedDeckViewport,
+  looksLikeCompactApiStackedDeck,
+  prepareCompactStackedDeckPreviewHtml,
+  wrapPreviewHtmlShell,
+} from './compact-api-stacked-deck';
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -115,8 +120,11 @@ export function buildSrcdoc(
     return withArtifactGuard;
   }
   const compactStackedDeck = options.deck ? looksLikeCompactApiStackedDeck(wrapped) : false;
+  const withStackedViewport = compactStackedDeck
+    ? injectStackedDeckViewport(withArtifactGuard)
+    : withArtifactGuard;
   const withDeck = options.deck
-    ? injectDeckBridge(withArtifactGuard, options.initialSlideIndex, compactStackedDeck)
+    ? injectDeckBridge(withStackedViewport, options.initialSlideIndex, compactStackedDeck)
     : withArtifactGuard;
   // Comment + Inspect share an element-selection bridge: both pick a
   // [data-od-id] / [data-screen-label] node and route the host's reply
@@ -1974,17 +1982,35 @@ function injectDeckBridge(
     : `<style data-od-deck-fix>
 .stage, .deck-stage, .deck-shell { place-content: center !important; }
 </style>`;
+  const compactStackedBoot = isCompactStackedDeck
+    ? `<script data-od-stacked-boot>document.documentElement.setAttribute('data-od-compact-stacked','');document.documentElement.style.overflow='hidden';</script>`
+    : '';
   const compactStackedDeckFix = isCompactStackedDeck
     ? `<style data-od-deck-stacked-fix>
-html[data-od-stacked-deck], html[data-od-stacked-deck] body {
+html[data-od-compact-stacked],
+html[data-od-compact-stacked] body {
   width: 100% !important;
   height: 100% !important;
   background: #0b0c10 !important;
   margin: 0 !important;
   overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
 }
-html[data-od-stacked-deck] body {
+html[data-od-compact-stacked] body {
   position: relative !important;
+}
+html[data-od-compact-stacked] .slide ~ .slide {
+  display: none !important;
+}
+html[data-od-compact-stacked]:not([data-od-stacked-deck]) body > .slide {
+  visibility: hidden !important;
+}
+html[data-od-compact-stacked]:not([data-od-stacked-deck-ready]) {
+  visibility: hidden;
+}
+html[data-od-compact-stacked][data-od-stacked-deck-ready] {
+  visibility: visible;
 }
 #od-stacked-deck-stage {
   position: absolute;
@@ -2013,7 +2039,7 @@ html[data-od-stacked-deck] body {
 }
 </style>`
     : '';
-  const styleFix = `${legacyDeckFix}${compactStackedDeckFix}`;
+  const styleFix = `${compactStackedBoot}${legacyDeckFix}${compactStackedDeckFix}`;
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
   var compactStackedDeckEnabled = ${isCompactStackedDeck ? 'true' : 'false'};
@@ -2042,17 +2068,41 @@ html[data-od-stacked-deck] body {
   function stackedDeckStage() {
     return document.getElementById('od-stacked-deck-stage');
   }
+  function stackedSlideNodes() {
+    var direct = document.querySelectorAll('body > .slide');
+    if (direct.length) return direct;
+    if (!document.body) return direct;
+    var children = document.body.children;
+    for (var i = 0; i < children.length; i++) {
+      var el = children[i];
+      if (!el || el.nodeType !== 1) continue;
+      if (el.id === 'od-stacked-deck-stage') continue;
+      var tag = String(el.tagName || '').toLowerCase();
+      if (tag === 'header' || tag === 'nav' || tag === 'style' || tag === 'script') continue;
+      if (el.classList && el.classList.contains('slide')) continue;
+      var wrapped = [];
+      for (var c = 0; c < el.children.length; c++) {
+        var child = el.children[c];
+        if (child.classList && child.classList.contains('slide')) wrapped.push(child);
+      }
+      if (wrapped.length >= 2) return wrapped;
+    }
+    return direct;
+  }
   function shouldUseStackedDeckStage() {
     if (!compactStackedDeckEnabled) return false;
     if (frameworkDeckStage()) return false;
     if (stackedDeckStage()) return true;
-    var direct = document.querySelectorAll('body > .slide');
+    var direct = stackedSlideNodes();
     if (!direct.length) return false;
-    if (isScrollDeck()) return false;
     try {
       var bodyStyle = window.getComputedStyle(document.body);
-      if (/\\b(?:flex|grid)\\b/i.test(bodyStyle.display)) return false;
-      if (isScrollableOverflowMode(String(bodyStyle.overflowX || '').toLowerCase())) return false;
+      if (/\\bgrid\\b/i.test(bodyStyle.display)) return false;
+      if (/\\bflex\\b/i.test(bodyStyle.display)) {
+        var flexDir = String(bodyStyle.flexDirection || 'row').toLowerCase();
+        var rowish = flexDir === 'row' || flexDir === 'row-reverse';
+        if (rowish || isScrollableOverflowMode(String(bodyStyle.overflowX || '').toLowerCase())) return false;
+      }
     } catch (_) {}
     var list = [];
     for (var d = 0; d < direct.length; d++) list.push(direct[d]);
@@ -2060,7 +2110,8 @@ html[data-od-stacked-deck] body {
     var stackedViewport = false;
     for (var i = 0; i < direct.length; i++) {
       var inline = String(direct[i].getAttribute('style') || '');
-      if (/min-height\\s*:\\s*100(?:vh|dvh|svh|lvh)/i.test(inline)) {
+      if (/min-height\\s*:\\s*100(?:vh|dvh|svh|lvh)/i.test(inline)
+        || /(?:^|;)\\s*height\\s*:\\s*100(?:vh|dvh|svh|lvh)/i.test(inline)) {
         stackedViewport = true;
         break;
       }
@@ -2069,7 +2120,8 @@ html[data-od-stacked-deck] body {
       try {
         for (var j = 0; j < direct.length; j++) {
           var cs = window.getComputedStyle(direct[j]);
-          if (/100(?:vh|dvh|svh|lvh)/i.test(String(cs.minHeight || ''))) {
+          if (/100(?:vh|dvh|svh|lvh)/i.test(String(cs.minHeight || ''))
+            || /100(?:vh|dvh|svh|lvh)/i.test(String(cs.height || ''))) {
             stackedViewport = true;
             break;
           }
@@ -2082,7 +2134,7 @@ html[data-od-stacked-deck] body {
     var existing = stackedDeckStage();
     if (existing) return existing;
     if (!shouldUseStackedDeckStage()) return null;
-    var direct = document.querySelectorAll('body > .slide');
+    var direct = stackedSlideNodes();
     if (!direct.length) return null;
     var stage = document.createElement('div');
     stage.id = 'od-stacked-deck-stage';
@@ -2127,6 +2179,11 @@ html[data-od-stacked-deck] body {
     // apply it via transform:scale(). Fit to the visual box so 75%/125% differ.
     // Auto-fit modal scalers set layoutFit and pass scale = visual/designWidth;
     // reconstruct layout width so the deck still fills the iframe interior.
+    // Compact stacked decks keep iframe layout width stable and zoom via shell
+    // transform only, so host posts layout box + scale 1 — prefer iframe layout.
+    if (compactStackedDeckEnabled && hw > 0 && hh > 0 && scale <= 1.001) {
+      return { w: iw || hw, h: ih || hh };
+    }
     if (hw > 0 && hh > 0) {
       if (hostViewport.layoutFit && scale > 0) {
         return { w: hw / scale, h: hh / scale };
@@ -2150,6 +2207,7 @@ html[data-od-stacked-deck] body {
     var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);
     if (!isFinite(s) || s <= 0) s = 1;
     applyStackedDeckTransform(stage, s, deckPanX, deckPanY);
+    markStackedDeckReadyIfFit();
     return true;
   }
   function runFrameworkDeckFit() {
@@ -2293,6 +2351,13 @@ html[data-od-stacked-deck] body {
   }
   function activeIndex(list){
     if (!list || !list.length) return 0;
+    if (stackedDeckStage()) {
+      var stackedByClass = findActiveByClass(list);
+      if (stackedByClass >= 0) return stackedByClass;
+      var stackedByVis = findActiveByVisibility(list);
+      if (stackedByVis >= 0) return stackedByVis;
+      return 0;
+    }
     if (isScrollDeck()) {
       var w = Math.max(1, window.innerWidth);
       return Math.max(0, Math.min(list.length - 1, Math.round(maxScrollLeft() / w)));
@@ -2515,6 +2580,9 @@ html[data-od-stacked-deck] body {
     if (!list.length) return;
     var target = Math.max(0, Math.min(list.length - 1, targetFor(action, list)));
     if (target !== activeIndex(list)) resetDeckPan();
+    if (compactStackedDeckEnabled && (stackedDeckStage() || ensureStackedDeckStage())) {
+      if (forceRevealSlide(target)) return;
+    }
     if (isScrollDeck()) {
       scrollGo(target);
       return;
@@ -2534,6 +2602,9 @@ html[data-od-stacked-deck] body {
     var target = Math.max(0, Math.min(list.length - 1, i));
     var prev = activeIndex(list);
     if (target !== prev) resetDeckPan();
+    if (compactStackedDeckEnabled && (stackedDeckStage() || ensureStackedDeckStage())) {
+      if (forceRevealSlide(target)) return;
+    }
     if (isScrollDeck()) { scrollGo(target); return; }
     if (canSetActive(list) && setActive(target)) return;
     if (transformGo(target)) return;
@@ -2602,8 +2673,7 @@ html[data-od-stacked-deck] body {
       if (Number.isFinite(w) && w > 0) hostViewport.w = w;
       if (Number.isFinite(h) && h > 0) hostViewport.h = h;
       if (Number.isFinite(scale) && scale > 0) hostViewport.scale = scale;
-      if (data.layoutFit === true) hostViewport.layoutFit = true;
-      else if (data.layoutFit === false) hostViewport.layoutFit = false;
+      hostViewport.layoutFit = data.layoutFit === true;
       nudgeDeckFit();
       return;
     }
@@ -2626,6 +2696,39 @@ html[data-od-stacked-deck] body {
   }
   ownDeckButton('deck-prev', 'prev');
   ownDeckButton('deck-next', 'next');
+  function notifyStackedDeckReady() {
+    try { parent.postMessage({ type: 'od:stacked-deck-ready' }, '*'); }
+    catch (_) {}
+  }
+  function markStackedDeckReadyIfFit() {
+    if (!compactStackedDeckEnabled) return;
+    if (document.documentElement.hasAttribute('data-od-stacked-deck-ready')) return;
+    var stage = stackedDeckStage();
+    if (!stage) return;
+    var hw = Math.max(0, hostViewport.w || 0);
+    var hh = Math.max(0, hostViewport.h || 0);
+    if (hw < 64 || hh < 64) return;
+    var vp = frameworkDeckViewport();
+    if (vp.w < 64 || vp.h < 64) return;
+    var raw = stage.style.transform || '';
+    var scaleMatch = raw.match(/scale\\(([0-9.eE+-]+)\\)/);
+    if (!scaleMatch) return;
+    var s = parseFloat(scaleMatch[1]);
+    if (!isFinite(s) || s <= 0.001) return;
+    document.documentElement.setAttribute('data-od-stacked-deck-ready', '');
+    notifyStackedDeckReady();
+  }
+  function bootstrapCompactStackedDeck() {
+    if (!compactStackedDeckEnabled) return;
+    ensureStackedDeckStage();
+    var list = slides();
+    if (list.length) {
+      var target = Math.max(0, Math.min(list.length - 1, initialSlideIndex));
+      forceRevealSlide(target);
+    }
+    nudgeDeckFit();
+    markStackedDeckReadyIfFit();
+  }
   // Report once on load and on every scroll-end so the host stays in sync.
   window.addEventListener('load', function(){ setTimeout(restoreInitialSlide, 200); });
   document.addEventListener('scroll', function(){
@@ -2639,7 +2742,10 @@ html[data-od-stacked-deck] body {
     var attempts = 0;
     function tick(){
       attempts += 1;
-      if (compactStackedDeckEnabled) requestHostDeckViewport();
+      if (compactStackedDeckEnabled) {
+        requestHostDeckViewport();
+        ensureStackedDeckStage();
+      }
       var w = frameworkDeckViewport().w;
       nudgeDeckFit();
       if (w > 0 && attempts >= 2) return; // one extra nudge after first non-zero
@@ -2647,9 +2753,30 @@ html[data-od-stacked-deck] body {
     }
     tick();
   }
+  if (compactStackedDeckEnabled) {
+    bootstrapCompactStackedDeck();
+    setTimeout(function() {
+      if (document.documentElement.hasAttribute('data-od-stacked-deck-ready')) return;
+      bootstrapCompactStackedDeck();
+      requestHostDeckViewport();
+      markStackedDeckReadyIfFit();
+      if (!document.documentElement.hasAttribute('data-od-stacked-deck-ready') && stackedDeckStage()) {
+        document.documentElement.setAttribute('data-od-stacked-deck-ready', '');
+        notifyStackedDeckReady();
+      }
+    }, 1800);
+  }
   if (document.readyState === 'complete') chaseFirstLayout();
   else window.addEventListener('load', chaseFirstLayout);
   if (compactStackedDeckEnabled) requestHostDeckViewport();
+  if (compactStackedDeckEnabled) {
+    document.addEventListener('wheel', function(e) {
+      e.preventDefault();
+    }, { passive: false, capture: true });
+    document.addEventListener('touchmove', function(e) {
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false, capture: true });
+  }
   // Re-nudge whenever the iframe itself is resized by the host (e.g.
   // user toggles zoom, resizes the chat sidebar, exits Present).
   if (typeof ResizeObserver !== 'undefined') {

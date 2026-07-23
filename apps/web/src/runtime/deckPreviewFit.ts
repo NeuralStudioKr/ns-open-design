@@ -1,12 +1,39 @@
 type DeckPreviewFitTarget = Pick<
   HTMLIFrameElement,
-  'contentWindow' | 'getBoundingClientRect'
+  'contentWindow' | 'getBoundingClientRect' | 'clientWidth' | 'clientHeight'
 > | null | undefined;
 
 export type DeckPreviewFitOptions = {
   /** Auto-fit modal scalers pass scale < 1 without user zoom — reconstruct layout width. */
   layoutFit?: boolean;
+  /**
+   * Letterboxed deck previews scale the iframe shell with CSS transform. Use the
+   * iframe layout box (clientWidth/Height) instead of getBoundingClientRect so
+   * host zoom does not reflow slide content or double-apply scale.
+   */
+  useLayoutBox?: boolean;
 };
+
+function readDeckHostViewportSize(
+  target: DeckPreviewFitTarget,
+  options?: Pick<DeckPreviewFitOptions, 'useLayoutBox'>,
+): { width: number; height: number } {
+  if (!target) return { width: 0, height: 0 };
+  if (options?.useLayoutBox) {
+    const width = Math.max(0, target.clientWidth || 0);
+    const height = Math.max(0, target.clientHeight || 0);
+    if (width > 0 && height > 0) return { width, height };
+  }
+  try {
+    const rect = target.getBoundingClientRect?.();
+    return {
+      width: Math.max(0, rect?.width ?? 0),
+      height: Math.max(0, rect?.height ?? 0),
+    };
+  } catch {
+    return { width: 0, height: 0 };
+  }
+}
 
 /** Post pan delta so the deck bridge can move the letterboxed stage. */
 export function postDeckPreviewPanBy(
@@ -35,15 +62,7 @@ export function postDeckHostViewportToIframe(
 ): void {
   const win = target?.contentWindow;
   if (!win) return;
-  let width = 0;
-  let height = 0;
-  try {
-    const rect = target?.getBoundingClientRect?.();
-    width = rect?.width ?? 0;
-    height = rect?.height ?? 0;
-  } catch {
-    return;
-  }
+  const { width, height } = readDeckHostViewportSize(target, options);
   if (width <= 0 || height <= 0) return;
   const scale = Number.isFinite(hostScale) && hostScale > 0 ? hostScale : 1;
   win.postMessage({
