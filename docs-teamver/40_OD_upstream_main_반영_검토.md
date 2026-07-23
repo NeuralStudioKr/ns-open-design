@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
 **판단 시점:** 2026-07-23 현재.
+**반영 갱신:** 2026-07-23 — 추가 포팅 루프 21. P0-A(`7b27d4ba6`+`34a050737` run lifecycle), P0-D(security 묶음 `5c94dda27`·`cbc38a498`·`bb7a10d97`·`d997318f9`), P0-E(`ace06eac1` image export viewport)를 staging에 수동 포팅했다. P0-B(`4054b5357` plain-stream accumulator)와 P0-C(`d1372da02` run terminal reconcile)는 선행 모듈/구조 차이로 **별도 루프 보류**.
 **반영 갱신:** 2026-07-23 — 추가 검토 루프 20. `origin/main` 최신 `034c3895d fix(web): hide empty tool_call/tool_call_update status rows (#4621)` 기준으로 `staging`과의 divergence(`700 / 998`)를 재확인했다. 2026-07-21 이후 main에 합쳐진 daemon run 안정화·보안·export·artifact recovery 커밋을 우선순위별로 분류했고, **코드 포팅은 이번 루프에서 수행하지 않았다.** 전체 merge/cherry-pick 금지 원칙은 유지한다.
 **반영 갱신:** 2026-07-21 — 추가 포팅 루프 19. `04236af50` intent signal latch는 전체 포팅하지 않았다. 현재 Teamver `composeSystemPrompt`는 upstream의 per-turn intent-gated stable blocks(`freeformDeckSignal` 등)를 쓰지 않고, `metadata.kind='deck'` + slide-only override + freeform conditional deck framework로 이미 다른 구조다. DB `intent_signals_json` migration/latch를 그대로 넣으면 background/session/cache 경로를 넓게 흔들 수 있어 보류했다. 대신 안전한 공통 부분인 `extractUserAuthoredSignalText`를 수동 포팅해, Research canonical query fallback이 packed transcript 전체(assistant discovery form/options/generated code)가 아니라 사용자 작성 텍스트만 사용하도록 좁혔다.
 **반영 갱신:** 2026-07-21 — 추가 포팅 루프 18. `b86537483` floating composer clamp는 현재 Teamver `PreviewDrawOverlay` 구조와 대조한 결과 직접 포팅하지 않았다. upstream의 `computePreviewDrawDockLayout` 기반 floating dock 함수가 staging에는 존재하지 않고, 현재 Teamver는 portal toolbar/inline overlay 구조로 이미 달라져 있어 cherry-pick/재구현 시 오히려 회귀 위험이 크다. 대신 직전 `ComposerPlusMenu` search flyout 보정이 Escape/outside-click 닫힘을 깨지 않는지 회귀 테스트를 추가했다.
@@ -40,15 +41,15 @@
 
 | 우선 | 커밋 | 내용 | Teamver 적용 판단 | 포팅 방안 |
 |------|------|------|-------------------|-----------|
-| **P0** | `7b27d4ba6` | canceled run이 late agent error에 의해 `failed`로 뒤집히지 않게 보정 | **강한 후보.** embed background run·명시적 Stop 후 상태 오인이 Teamver 이슈와 직결. | cherry-pick 금지. main은 `apps/daemon/src/runtimes/runs.ts` 구조인데 staging은 `apps/daemon/src/runs.ts` 단일 파일. `runtimeFailureObservedBeforeCancellation` 플래그·`waitForCanceledChildExit`·`server.ts` cancel/error 순서 보정만 수동 이식. |
-| **P0** | `d1372da02` | daemon 재시작 후 run terminal reconcile | **강한 후보.** 2노드 HA·daemon container restart 후 `running` 고착·telemetry 누락 방지. | `run-terminal-reconciliation.ts` 신규 모듈 + `server.ts` boot hook. Teamver `runs.ts` 경로에 맞춰 import 경로 조정. analytics/Langfuse 연동은 Teamver telemetry 정책과 대조 후 최소만 반영. |
-| **P0** | `4054b5357` | plain-stream artifact가 event ring buffer(2000) 초과 시 유실 방지 | **강한 후보.** 긴 plain-stream run에서 `<artifact>`가 ring에서 밀려 **결과물 미저장** 가능. slide 생성 실패·빈 preview와 연결. | `plain-stream.ts` + `server.ts` accumulator(8MiB head-biased) + ring fallback. Teamver artifact recovery·S3 sync 경로와 충돌 여부 확인. |
-| **P0** | `34a050737` | recovered sub-agent in-stream error가 main run을 fail 처리하지 않음 | **후보.** 2026-07-20에 `489fda899` Task sub-agent `turn_end` 오인 방지를 이미 포팅. 본 커밋은 **in-stream error** 케이스 보완. | `claude-stream.ts` 최소 diff만. 기존 false-success/false-failure 테스트와 함께 회귀 검증. |
-| **P0** | `5c94dda27` | 타 프로젝트 conversation으로 run 생성 거부 | **보안 후보.** multi-tenant·project hash 라우팅 환경에서 conversation/project 불일치 차단. | `routes/runs.ts`(staging 경로 확인)에 validation helper 추가. cross-project leak 테스트 이식. |
-| **P0** | `cbc38a498` | plugin uninstall 시 plugin id path traversal 차단 | **보안 후보.** daemon이 plugin registry를 `rm`할 때 id 검증. embed에서 marketplace UI는 숨겨도 HTTP route는 살아 있음. | `installer.ts`/`registry.ts` id validator만 수동 포팅. |
-| **P0** | `bb7a10d97` | imported folder가 home dotfiles 노출·`$HOME` import 차단 | **보안 후보.** folder import 경로가 Teamver에서 활성인지 확인 필요. 활성이면 P0. | `import-export-routes.ts` + `projects.ts` guard. Teamver S3 materialization과 충돌 없는지 확인. |
-| **P0** | `ace06eac1` | image export 시 preview viewport 반영 | **후보.** Teamver PNG/JPEG 다운로드 품질(크롭/빈 여백) 직결. | `FileViewer.tsx` + `exports.ts` viewport 전달만. PDF/PPTX/screenshot PPTX 기존 경로 회귀 테스트 필수. |
-| **P1** | `d997318f9` | marketplace add/refresh·plugin install fetch SSRF 차단 | **보안 후보.** staging `plugin-asset-cache.ts`에는 SSRF guard가 있으나 marketplace/installer fetch에는 **미적용**. | `plugin-asset-cache.ts`의 `assertSafePublicUrl` 재사용해 installer/marketplace fetch에 연결. embed UI 비노출과 무관하게 daemon SSRF 방어는 필요. |
+| **P0** | `7b27d4ba6` | canceled run이 late agent error에 의해 `failed`로 뒤집히지 않게 보정 | **✅ 루프 21 반영.** | `runs.ts`·`server.ts`·`claude-stream.ts` + `run-cancel-late-error.test.ts`. |
+| **P0** | `d1372da02` | daemon 재시작 후 run terminal reconcile | **보류.** `run-terminal-reconciliation.ts`(~862줄) 신규 + boot hook. main `runtimes/runs.ts` vs staging `runs.ts` 구조 차이. | 별도 루프에서 범위·HA 요구와 대조 후 진행. |
+| **P0** | `4054b5357` | plain-stream artifact가 event ring buffer(2000) 초과 시 유실 방지 | **보류.** staging에 `plain-stream.ts` 모듈 자체 없음. | 전체 모듈 이식 없이는 불가. artifact recovery 회귀와 함께 별도 루프. |
+| **P0** | `34a050737` | recovered sub-agent in-stream error가 main run을 fail 처리하지 않음 | **✅ 루프 21 반영.** (P0-A와 동일 커밋 묶음) | `claude-stream.ts` + `structured-streams.test.ts`. |
+| **P0** | `5c94dda27` | 타 프로젝트 conversation으로 run 생성 거부 | **✅ 루프 21 반영.** | `server.ts` `POST /api/runs`·`POST /api/chat` ownership guard + `run-cross-project-conversation.test.ts`. |
+| **P0** | `cbc38a498` | plugin uninstall 시 plugin id path traversal 차단 | **✅ 루프 21 반영.** | `installer.ts` `isSafePluginId` + `server.ts` route 400 + `plugins-uninstall-traversal.test.ts`. |
+| **P0** | `bb7a10d97` | imported folder가 home dotfiles 노출·`$HOME` import 차단 | **✅ 루프 21 반영.** | `projects.ts` `assertVisibleForImportedProject` + `import-export-routes.ts` `blockedProjectRootReason` + `security-import-folder-dotfiles.test.ts`. |
+| **P0** | `ace06eac1` | image export 시 preview viewport 반영 | **✅ 루프 21 반영.** | `FileViewer.tsx`·`exports.ts`·`import-export-routes.ts`·`headless-export.ts` width/height 전달. |
+| **P1** | `d997318f9` | marketplace add/refresh·plugin install fetch SSRF 차단 | **✅ 루프 21 반영.** (P0-D에 포함) | `plugin-asset-cache.ts` `safeExternalFetch` + installer/marketplaces/server marketplace fetch + `marketplace-install-ssrf.test.ts`. |
 | **P1** | `068c9ae83` | Anthropic-compatible BYOK base URL 정규화 | **조건부.** embed managed key가 주력이나 BYOK proxy 경로 존재. | `byok-opencode.ts` helper만. Settings/BYOK UI 비노출 정책과 충돌 없음 확인. |
 | **P1** | `4fb217c95` | protocol downgrade 재저장 실패 시 loaded config 유지 | **후보.** embed `runtime-config`·protocol 설정 드리프트 시 UX 안정. | `apps/web/src/state/config.ts` 10줄 수준. typecheck + embed boot smoke. |
 | **P1** | `d3e091e15` | deterministic failure 분류·retry attribution 보존 | **후보.** background retry·run recovery 표시 정확도. | `run-failure-classification.ts` + `runs.ts` 최소. Teamver `endedWithUnfinishedWork` 신호와 정합성 확인. |
@@ -69,21 +70,20 @@
 
 ### 0.2 2026-07-23 권장 포팅 순서 (기존 동작 보호 우선)
 
-기존에 잘 동작하는 embed 인증·S3 sync·background run·export·Drive publish를 **절대 회귀시키지 않는 것**이 최우선이다. 아래 순서는 **한 루프에 하나의 P0 테마**만 다루고, 각 단계마다 회귀 테스트를 통과한 뒤 다음으로 넘긴다.
+**루프 21 완료:** P0-A, P0-D, P0-E. **다음 루프:** P0-B → P0-C (대형·선행 모듈 필요) → P1.
 
-1. **P0-A (run lifecycle):** `7b27d4ba6` → `34a050737` — cancel/false-failure/sub-agent error. 검증: 명시적 Stop, background reattach, `endedWithUnfinishedWork` 신호 유지.
+1. ~~**P0-A (run lifecycle):** `7b27d4ba6` → `34a050737`~~ ✅ 루프 21
 2. **P0-B (artifact durability):** `4054b5357` — plain-stream artifact ring buffer 유실. 검증: 8~12장 deck 생성 후 artifact·preview·S3 sync.
 3. **P0-C (daemon restart / HA):** `d1372da02` — run terminal reconcile. 검증: daemon container restart 후 `running` 고착 없음, 2노드 hash 라우팅.
-4. **P0-D (security):** `5c94dda27` → `cbc38a498` → `bb7a10d97` → `d997318f9` — cross-project·path traversal·SSRF. 검증: 악의적 plugin id·내부 URL fetch 거부.
-5. **P0-E (export):** `ace06eac1` — image export viewport. 검증: PNG/JPEG/PDF/PPTX 기존 다운로드 회귀 없음.
+4. ~~**P0-D (security):** `5c94dda27` → `cbc38a498` → `bb7a10d97` → `d997318f9`~~ ✅ 루프 21
+5. ~~**P0-E (export):** `ace06eac1` — image export viewport~~ ✅ 루프 21
 6. **P1 (저위험 UX):** `034c3895d` → `4fb217c95` → `d3e091e15` — 채팅 UI·config·failure taxonomy.
 7. **보류 유지:** `d8b6b797f`, message center, packaged, `2192a7f6b` BYOK preflight, `4ddfc6e44` media retry.
 
-### 0.3 루프 20에서 **코드를 포팅하지 않은** 이유
+### 0.3 루프 20~21 요약
 
-- divergence `700/998`로 structural drift가 크다(main은 `runtimes/runs.ts` 분리, staging은 `runs.ts` 단일).
-- 최근 staging 작업(slide template 검증, Drive import reference, background recovery)과 **동시에 daemon 대형 변경을 넣으면 회귀 원인 분리가 불가능**.
-- 본 루프는 **검토·우선순위·포팅 방안 문서화**만 수행. 실제 코드 반영은 위 0.2 순서의 **단일 P0 테마 단위**로 별도 루프에서 진행.
+- **루프 20:** 검토·우선순위 문서화만 (코드 없음).
+- **루프 21:** P0-A·P0-D·P0-E 코드 포팅. P0-B/C는 선행 모듈 부재로 보류.
 
 ### 0.4 루프 20 회귀 검증 체크리스트 (포팅 시 필수)
 

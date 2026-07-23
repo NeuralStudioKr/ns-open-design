@@ -34,6 +34,8 @@ export interface HeadlessExportOptions {
   input: DesktopExportPdfInput;
   imageFormat?: HeadlessImageFormat;
   slideIndex?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface HeadlessDeckSlideImage {
@@ -927,8 +929,8 @@ async function preparePage(
 ): Promise<Page> {
   const page = await browser.newPage({
     viewport: {
-      width: options.input.deck ? DECK_WIDTH : 1440,
-      height: options.input.deck ? DECK_HEIGHT : 1200,
+      width: options.input.deck ? DECK_WIDTH : (options.width ?? 1440),
+      height: options.input.deck ? DECK_HEIGHT : (options.height ?? 1200),
     },
     deviceScaleFactor: pageOptions.deviceScaleFactor ?? 1,
   });

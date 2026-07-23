@@ -8177,6 +8177,9 @@ function HtmlViewer({
     // standalone OD can still fall back to the in-iframe snapshot bridge.
     let serverFailureReason: string | null = null;
     try {
+      const exportViewport = !effectiveDeck && previewViewport !== 'desktop'
+        ? PREVIEW_VIEWPORT_PRESETS.find((preset) => preset.id === previewViewport)
+        : null;
       const serverImage = await exportProjectImageBlob({
         deck: effectiveDeck,
         filePath: file.name,
@@ -8185,6 +8188,8 @@ function HtmlViewer({
         projectId,
         slideIndex: effectiveDeck ? slideState?.active : undefined,
         title: exportTitle,
+        ...(exportViewport?.width != null ? { width: exportViewport.width } : {}),
+        ...(exportViewport?.height != null ? { height: exportViewport.height } : {}),
       });
       if (serverImage.ok && serverImage.blob.size > 0) {
         imageExportSnapshotDataUrlRef.current = null;
@@ -8223,7 +8228,7 @@ function HtmlViewer({
         setImageExportPreparing(false);
       }
     }
-  }, [captureExportImageSnapshot, effectiveDeck, exportTitle, file.name, projectId, slideState?.active, t]);
+  }, [captureExportImageSnapshot, effectiveDeck, exportTitle, file.name, previewViewport, projectId, slideState?.active, t]);
 
   const openImageExportModal = async () => {
     flushSync(() => {

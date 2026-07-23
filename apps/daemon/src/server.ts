@@ -135,6 +135,7 @@ import {
   assetCacheRewriteUrl,
   createPluginAssetCache,
   isCacheableExternalUrl,
+  safeExternalFetch,
 } from './plugin-asset-cache.js';
 import { syncCommunityPets } from './community-pets-sync.js';
 import { defaultMediaExecutionPolicy, parseMediaExecutionPolicyInput } from './media-policy.js';
@@ -192,6 +193,7 @@ import {
   runPipelineForRun,
   runStageWithRegistry,
   startSnapshotGc,
+  isSafePluginId,
   uninstallPlugin,
   filterInstalledPluginsByCatalogMode,
   parsePluginCatalogModeFilter,
@@ -1644,7 +1646,7 @@ function createMarketplaceFetcher(seedId, bundledMarketplaceEntries) {
         };
       }
     }
-    const response = await fetch(url, { redirect: 'follow' });
+    const response = await safeExternalFetch(url);
     return {
       ok:     response.ok,
       status: response.status,
@@ -8084,6 +8086,9 @@ export async function startServer({
 
   app.post('/api/plugins/:id/uninstall', async (req, res) => {
     try {
+      if (!isSafePluginId(req.params.id)) {
+        return res.status(400).json({ error: 'invalid plugin id' });
+      }
       const result = await uninstallPlugin(db, req.params.id, PLUGIN_REGISTRY_ROOTS);
       if (!result.ok && !result.removedFolder) {
         return res.status(404).json({ error: 'plugin not found', warning: result.warning });
@@ -15555,6 +15560,17 @@ export async function startServer({
         console.warn('[runs] mcp conversation fallback failed', err);
       }
     }
+    if (
+      typeof meta.projectId === 'string' &&
+      meta.projectId &&
+      typeof meta.conversationId === 'string' &&
+      meta.conversationId
+    ) {
+      const runConversation = getConversation(db, meta.conversationId);
+      if (runConversation && runConversation.projectId !== meta.projectId) {
+        return sendApiError(res, 404, 'CONVERSATION_NOT_FOUND', 'conversation not found for project');
+      }
+    }
     const run = design.runs.create(withTeamverRunIdentity(req, meta));
     try {
       pinAssistantMessageOnRunCreate(db, run);
@@ -16174,6 +16190,15 @@ export async function startServer({
     );
     if (!toolBundleSupport.ok) {
       return sendApiError(res, 400, 'BAD_REQUEST', toolBundleSupport.message);
+    }
+    if (
+      typeof requestBody.projectId === 'string' && requestBody.projectId &&
+      typeof requestBody.conversationId === 'string' && requestBody.conversationId
+    ) {
+      const chatConversation = getConversation(db, requestBody.conversationId);
+      if (chatConversation && chatConversation.projectId !== requestBody.projectId) {
+        return sendApiError(res, 404, 'CONVERSATION_NOT_FOUND', 'conversation not found for project');
+      }
     }
     const meta = {
       ...requestBody,

@@ -35,7 +35,7 @@ import {
 import { isOrchestratorScratchWorkspace } from './workspace-contract.js';
 
 const FORBIDDEN_SEGMENT = /^$|^\.\.?$/;
-const RESERVED_PROJECT_FILE_SEGMENTS = new Set(['.live-artifacts']);
+const RESERVED_PROJECT_FILE_SEGMENTS = new Set(['.file-versions', '.live-artifacts']);
 const DESIGN_HANDOFF_FILENAME = 'DESIGN-HANDOFF.md';
 const DESIGN_MANIFEST_FILENAME = 'DESIGN-MANIFEST.json';
 export const RUN_ARTIFACT_RECONCILE_MTIME_GRACE_MS = 1000;
@@ -72,6 +72,14 @@ export class SandboxImportedProjectError extends Error {
 function hasExternalProjectRoot(metadata?) {
   if (typeof metadata?.baseDir !== 'string') return false;
   return path.isAbsolute(path.normalize(metadata.baseDir));
+}
+
+export function assertVisibleForImportedProject(name, metadata?) {
+  if (!hasExternalProjectRoot(metadata)) return;
+  const segments = String(name ?? '').replace(/\\/g, '/').split('/').filter(Boolean);
+  if (segments.some((segment) => segment.startsWith('.'))) {
+    throw new Error('hidden path segments are not accessible in imported folders');
+  }
 }
 
 export function assertSandboxProjectRootAvailable(metadata?) {
@@ -168,6 +176,7 @@ async function collectFolders(dir, relDir, out, shouldSkipDir?: (name: string) =
 }
 
 export async function createProjectFolder(projectsRoot, projectId, name, metadata?) {
+  assertVisibleForImportedProject(name, metadata);
   const dir = await ensureProject(projectsRoot, projectId, metadata);
   const safeName = sanitizePath(name);
   const target = await resolveSafeReal(dir, safeName);
@@ -206,6 +215,7 @@ export async function ensureProjectSubdir(projectsRoot, projectId, subdir, metad
 // sandbox. Refuses to delete the project root itself. resolveSafeReal confines
 // the target to the project tree even across descendant symlinks.
 export async function deleteProjectFolder(projectsRoot, projectId, name, metadata?) {
+  assertVisibleForImportedProject(name, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const safeName = sanitizePath(name);
   const target = await resolveSafeReal(dir, safeName);
@@ -717,6 +727,7 @@ ${list(assetFiles)}
 }
 
 export async function readProjectFile(projectsRoot, projectId, name, metadata?) {
+  assertVisibleForImportedProject(name, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const file = await resolveSafeReal(dir, name);
   const buf = await readFile(file);
@@ -740,6 +751,7 @@ export async function readProjectFile(projectsRoot, projectId, name, metadata?) 
 // Like readProjectFile but skips loading the file content into memory.
 // Used by the media streaming endpoint so large video files are never buffered.
 export async function resolveProjectFilePath(projectsRoot, projectId, name, metadata?) {
+  assertVisibleForImportedProject(name, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const file = await resolveSafeReal(dir, name);
   const st = await stat(file);
@@ -763,6 +775,7 @@ export async function writeProjectFile(
   { overwrite = true, artifactManifest = null } = {},
   metadata?,
 ) {
+  assertVisibleForImportedProject(name, metadata);
   const dir = await ensureProject(projectsRoot, projectId, metadata);
   const safeName = sanitizePath(name);
   const target = await resolveSafeReal(dir, safeName);
@@ -939,12 +952,15 @@ function parseManifest(raw) {
 }
 
 export async function deleteProjectFile(projectsRoot, projectId, name, metadata?) {
+  assertVisibleForImportedProject(name, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const file = await resolveSafeReal(dir, name);
   await unlink(file);
 }
 
 export async function renameProjectFile(projectsRoot, projectId, fromName, toName, metadata?) {
+  assertVisibleForImportedProject(fromName, metadata);
+  assertVisibleForImportedProject(toName, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const oldName = validateProjectPath(fromName);
   const newName = sanitizePath(toName);

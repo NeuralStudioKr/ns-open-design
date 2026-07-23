@@ -6,8 +6,10 @@ import {
 } from '@open-design/contracts';
 import fs from 'node:fs';
 import nodePath from 'node:path';
+import os from 'node:os';
 import JSZip from 'jszip';
 import type { RouteDeps } from './server-context.js';
+import { isBlocked as isBlockedSystemDir } from './linked-dirs.js';
 import {
   InlineAssetsLimitError,
   MAX_INLINE_OWNER_BYTES,
@@ -440,6 +442,22 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
   const { insertConversation } = ctx.conversations;
   const { setTabs } = ctx.projectFiles;
   const { validateProjectDesignSystemId } = ctx.validation;
+
+  async function blockedProjectRootReason(normalizedPath: string): Promise<string | null> {
+    let homeReal = os.homedir();
+    try { homeReal = await fs.promises.realpath(homeReal); } catch { /* keep as-is */ }
+    const credentialDirs = ['.ssh', '.aws', '.gnupg', '.kube', '.docker'].map((d) =>
+      path.join(homeReal, d),
+    );
+    const inCredentialDir = credentialDirs.some(
+      (dir) => normalizedPath === dir || normalizedPath.startsWith(dir + path.sep),
+    );
+    if (isBlockedSystemDir(normalizedPath) || normalizedPath === homeReal || inCredentialDir) {
+      return 'cannot use a system or credential directory as a project root';
+    }
+    return null;
+  }
+
   app.post(
     '/api/import/claude-design',
     importUpload.single('file'),
@@ -608,6 +626,10 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
       ) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'cannot point at the data directory');
       }
+      const workingDirBlockReason = await blockedProjectRootReason(normalizedPath);
+      if (workingDirBlockReason) {
+        return sendApiError(res, 400, 'BAD_REQUEST', workingDirBlockReason);
+      }
       const sandboxReason = normalizedOrchestratorWorkspace
         ? null
         : sandboxImportedProjectRootUnavailableReason(normalizedPath);
@@ -749,6 +771,10 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
         normalizedPath.startsWith(RUNTIME_DATA_DIR_CANONICAL + path.sep)
       ) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'cannot import the data directory');
+      }
+      const importBlockReason = await blockedProjectRootReason(normalizedPath);
+      if (importBlockReason) {
+        return sendApiError(res, 400, 'BAD_REQUEST', importBlockReason);
       }
       const sandboxReason = normalizedOrchestratorWorkspace
         ? null
@@ -1070,7 +1096,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
 
   app.post('/api/projects/:id/export/image', async (req, res) => {
     try {
-      const { fileName, title, deck, format, slideIndex } = req.body || {};
+      const { fileName, title, deck, format, slideIndex, width, height } = req.body || {};
       if (typeof fileName !== 'string' || fileName.length === 0) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
       }
@@ -1119,6 +1145,8 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
             input: built.input,
             imageFormat,
             ...(typeof slideIndex === 'number' ? { slideIndex } : {}),
+            ...(typeof width === 'number' ? { width } : {}),
+            ...(typeof height === 'number' ? { height } : {}),
           };
           const image = await renderHeadlessImage(imageOptions, { projectId: req.params.id });
           return { body: image, filename: `${base}.${extension}`, mime };

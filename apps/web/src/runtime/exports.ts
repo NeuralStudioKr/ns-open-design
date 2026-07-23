@@ -1330,6 +1330,8 @@ export async function exportProjectImageBlob(opts: {
    * body directly and skips the tenant-storage lookup.
    */
   htmlSnapshot?: string | null;
+  width?: number;
+  height?: number;
 }): Promise<ProjectImageBlobResult> {
   const format =
     opts.format === 'jpeg' ? 'jpeg' : opts.format === 'webp' ? 'webp' : 'png';
@@ -1343,6 +1345,8 @@ export async function exportProjectImageBlob(opts: {
         format,
         slideIndex: Number.isFinite(opts.slideIndex) ? opts.slideIndex : undefined,
         title: opts.title,
+        ...(typeof opts.width === 'number' ? { width: opts.width } : {}),
+        ...(typeof opts.height === 'number' ? { height: opts.height } : {}),
         ...inlineExportHtmlPayload(opts.htmlSnapshot),
       }),
       headers: { 'content-type': 'application/json' },
