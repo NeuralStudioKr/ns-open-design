@@ -179,10 +179,15 @@ export function collapseArtifactVersionOpenTabs(
 /** Block turn-1 deck writes while Quick brief is still outstanding. */
 export function shouldDeferSlideOnlyDiscoveryArtifactPersist(
   messages: readonly ChatMessage[],
-  options: { slideOnlyMvp: boolean; skipDiscoveryBrief?: boolean },
+  options: {
+    slideOnlyMvp: boolean;
+    skipDiscoveryBrief?: boolean;
+    hasCompleteHtmlArtifact?: boolean;
+  },
 ): boolean {
   if (!options.slideOnlyMvp) return false;
   if (options.skipDiscoveryBrief) return false;
+  if (options.hasCompleteHtmlArtifact) return false;
   const hasFormAnswers = messages.some(
     (message) =>
       message.role === 'user'

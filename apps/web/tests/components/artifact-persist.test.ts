@@ -149,6 +149,18 @@ describe('shouldDeferSlideOnlyDiscoveryArtifactPersist', () => {
     ).toBe(true);
   });
 
+  it('allows a complete HTML artifact even on turn 1', () => {
+    const messages = [
+      { id: 'u1', role: 'user' as const, content: '2026년 상반기 마케팅 전략 보고서 작성해줘' },
+    ];
+    expect(
+      shouldDeferSlideOnlyDiscoveryArtifactPersist(messages, {
+        slideOnlyMvp: true,
+        hasCompleteHtmlArtifact: true,
+      }),
+    ).toBe(false);
+  });
+
   it('allows persist after form answers arrive', () => {
     const messages = [
       { id: 'u1', role: 'user' as const, content: 'deck please' },

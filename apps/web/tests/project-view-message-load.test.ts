@@ -320,7 +320,7 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("htmlAutoOpenGenerationRef");
     expect(autoOpenBlock).toContain("isLatestTerminalAutoOpen");
     expect(autoOpenBlock).toContain("shouldFailSlideRunForMissingHtmlDeliverable(");
-    expect(autoOpenBlock).toContain("verifySlideProducedHtmlDeliverable(");
+    expect(autoOpenBlock).toContain("resolveSlideProducedHtmlToOpen(");
     expect(autoOpenBlock).toContain("runStatus: 'failed'");
     expect(autoOpenBlock).toContain("resumable: true");
     expect(autoOpenBlock).toContain("updateConversationLatestRun('failed'");

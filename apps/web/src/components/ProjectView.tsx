@@ -1163,7 +1163,8 @@ function shouldFailRunForArtifactPersistResult(result: ArtifactPersistResult | n
   // as succeeded visually because memory preview + replay own that case.
   return result?.kind === 'skipped-incomplete'
     || result?.kind === 'rejected'
-    || result?.kind === 'save-failed';
+    || result?.kind === 'save-failed'
+    || result?.kind === 'skipped-discovery-turn';
 }
 
 export function ProjectView({
@@ -2677,6 +2678,11 @@ export function ProjectView({
         shouldDeferSlideOnlyDiscoveryArtifactPersist(messagesRef.current, {
           slideOnlyMvp,
           skipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
+          hasCompleteHtmlArtifact: Boolean(
+            art.html
+              && !isIncompleteHtmlDocumentShell(art.html)
+              && validateHtmlArtifact(art.html).ok,
+          ),
         })
       ) {
         return { kind: 'skipped-discovery-turn', fileName: artifactBaseNameForPersist(art) };
