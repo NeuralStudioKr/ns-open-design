@@ -139,13 +139,15 @@ describe("ProjectView message loading", () => {
     expect(composeBlock).toContain("skills.find((s) => s.id === effectiveSkillId)");
     expect(composeBlock).toContain("await fetchDesignTemplate(effectiveSkillId)");
 
+    expect(composeBlock).toContain("await fetchPluginLocalSkill(pluginIdForLocalSkill)");
+
     const callStart = source.indexOf("const effectiveSkillId =\n          (Array.isArray(meta?.skillIds)");
     expect(callStart).toBeGreaterThan(0);
-    const callBlock = source.slice(callStart, callStart + 550);
+    const callBlock = source.slice(callStart, callStart + 700);
     expect(callBlock).toContain("meta.skillIds[0]");
     expect(callBlock).toContain("meta?.context?.pluginIds");
+    expect(callBlock).toContain("pluginIdForLocalSkill");
     expect(callBlock).toContain("composedSystemPrompt(");
-    expect(callBlock).toContain("effectiveSkillId");
   });
 
   it("passes design templates into the project chat composer skill picker", () => {
