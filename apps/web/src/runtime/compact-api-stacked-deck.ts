@@ -75,7 +75,14 @@ function looksLikeSlideViewportSized(html: string): boolean {
 }
 
 function hasBodyFirstSlide(html: string): boolean {
-  return /<body\b[^>]*>(?:\s|<!--[\s\S]*?-->|<(?:header|nav)\b[^>]*>[\s\S]*?<\/(?:header|nav)>)*<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
+  if (
+    /<body\b[^>]*>(?:\s|<!--[\s\S]*?-->|<(?:header|nav)\b[^>]*>[\s\S]*?<\/(?:header|nav)>)*<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
+      html,
+    )
+  ) {
+    return true;
+  }
+  return /<body\b[^>]*>[\s\S]*<(?:div|section|main)\b[^>]*>[\s\S]*<(?:section|div)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b[\s\S]*<(?:section|div)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b/i.test(
     html,
   );
 }
@@ -101,7 +108,9 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
   if (!looksLikeSlideViewportSized(html)) return false;
   if (
-    /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*\bdeck\b/i.test(html)
+    /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(
+      html,
+    )
   ) {
     return false;
   }
@@ -115,7 +124,7 @@ export function looksLikeCompactApiStackedDeckForPreview(html: string): boolean 
 
 /** Lock vw/vh math to the 1920×1080 letterbox canvas inside the iframe. */
 export function injectStackedDeckViewport(html: string): string {
-  const tag = '<meta name="viewport" content="width=1920, initial-scale=1" />';
+  const tag = '<meta name="viewport" content="width=1920, initial-scale=1, maximum-scale=1" />';
   if (/<meta[^>]+name=["']viewport["']/i.test(html)) {
     return html.replace(/<meta[^>]+name=["']viewport["'][^>]*>/i, tag);
   }

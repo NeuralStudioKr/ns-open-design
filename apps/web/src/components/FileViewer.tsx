@@ -726,6 +726,17 @@ function previewScaleShellStyle(
   };
 }
 
+function deckLetterboxPreviewScaleShellStyle(
+  previewScale: number,
+): CSSProperties & Record<string, string | number> {
+  return {
+    width: '100%',
+    height: '100%',
+    transform: `scale(${previewScale})`,
+    transformOrigin: 'center center',
+  };
+}
+
 function deckPreviewScaleShellStyle(
   viewport: PreviewViewportId,
   previewScale: number,
@@ -5692,6 +5703,8 @@ function HtmlViewer({
     [previewSource],
   );
   const needsDeckHostViewportFit = compactApiStackedDeck || frameworkDeckPreview;
+  const compactDeckFitOptions = compactApiStackedDeck ? { useLayoutBox: true as const } : undefined;
+  const compactDeckFitScale = compactApiStackedDeck ? 1 : overlayPreviewScale;
   const deckPreviewPanActive = compactApiStackedDeck
     && mode === 'preview'
     && !drawOverlayOpen
@@ -6133,7 +6146,7 @@ function HtmlViewer({
       if (!isActivePreviewIframeSource(ev.source)) return;
       const data = ev.data as { type?: string } | null;
       if (!data || data.type !== 'od:deck-host-viewport-request') return;
-      postDeckHostViewportToIframe(iframeRef.current, overlayPreviewScale);
+      postDeckHostViewportToIframe(iframeRef.current, compactDeckFitScale, compactDeckFitOptions);
     }
     window.addEventListener('message', onDeckViewportRequest);
     return () => window.removeEventListener('message', onDeckViewportRequest);
@@ -6142,17 +6155,19 @@ function HtmlViewer({
     mode,
     isOurPreviewIframeSource,
     isActivePreviewIframeSource,
-    overlayPreviewScale,
+    compactDeckFitScale,
+    compactDeckFitOptions,
   ]);
 
   useEffect(() => {
     if (!needsDeckHostViewportFit || mode !== 'preview') return;
-    return scheduleDeckPreviewFitNudges(iframeRef.current, overlayPreviewScale);
+    return scheduleDeckPreviewFitNudges(iframeRef.current, compactDeckFitScale, compactDeckFitOptions);
   }, [
     needsDeckHostViewportFit,
     mode,
     zoom,
-    overlayPreviewScale,
+    compactDeckFitScale,
+    compactDeckFitOptions,
     previewBodySize?.width,
     previewBodySize?.height,
     srcDoc,
@@ -9374,9 +9389,11 @@ function HtmlViewer({
                   style={
                     manualEditMode
                       ? manualEditPreviewShellStyle(previewViewport, previewScale, manualEditViewportWidth)
-                      : needsDeckHostViewportFit
-                        ? deckPreviewScaleShellStyle(previewViewport, previewScale)
-                        : previewScaleShellStyle(previewViewport, previewScale)
+                      : compactApiStackedDeck
+                        ? deckLetterboxPreviewScaleShellStyle(previewScale)
+                        : needsDeckHostViewportFit
+                          ? deckPreviewScaleShellStyle(previewViewport, previewScale)
+                          : previewScaleShellStyle(previewViewport, previewScale)
                   }
                 >
                   <PreviewDrawOverlay
@@ -9440,7 +9457,9 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
-                            if (needsDeckHostViewportFit) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
+                            if (needsDeckHostViewportFit) {
+                              scheduleDeckPreviewFitNudges(frame, compactDeckFitScale, compactDeckFitOptions);
+                            }
                           }}
                         />
                       ) : (
@@ -9466,7 +9485,9 @@ function HtmlViewer({
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
-                            if (needsDeckHostViewportFit) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
+                            if (needsDeckHostViewportFit) {
+                              scheduleDeckPreviewFitNudges(frame, compactDeckFitScale, compactDeckFitOptions);
+                            }
                           }}
                         />
                       )}
@@ -9528,7 +9549,9 @@ function HtmlViewer({
                           replayInspectOverridesToIframe(frame);
                           syncBridgeModes(frame);
                           syncCachedSlideStateToIframe(frame);
-                          if (effectiveDeck) scheduleDeckPreviewFitNudges(frame, overlayPreviewScale);
+                          if (effectiveDeck) {
+                            scheduleDeckPreviewFitNudges(frame, compactDeckFitScale, compactDeckFitOptions);
+                          }
                           if (!useUrlLoadPreview) restorePreviewScrollPosition();
                         }}
                       />

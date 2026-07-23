@@ -67,4 +67,19 @@ describe('deckPreviewFit', () => {
       '*',
     );
   });
+
+  it('uses iframe layout box for letterboxed compact decks so host zoom does not reflow', () => {
+    const postMessage = vi.fn();
+    const target = {
+      contentWindow: { postMessage } as unknown as Window,
+      clientWidth: 960,
+      clientHeight: 540,
+      getBoundingClientRect: () => ({ width: 1200, height: 675 } as DOMRect),
+    };
+    postDeckHostViewportToIframe(target, 1, { useLayoutBox: true });
+    expect(postMessage).toHaveBeenCalledWith(
+      { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1, layoutFit: false },
+      '*',
+    );
+  });
 });

@@ -112,10 +112,21 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(srcdoc).toContain('width=1920, initial-scale=1');
   });
 
+  it('matches slides wrapped in a single body child container', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<div class="slides-root">',
+      '<section class="slide" style="min-height:100vh">A</section>',
+      '<section class="slide" style="min-height:100vh">B</section>',
+      '</div></body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+  });
+
   it('locks the iframe viewport to 1920px for stacked letterbox decks', () => {
     const html = '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1" /></head>'
       + '<body><section class="slide" style="min-height:100vh">A</section></body></html>';
-    expect(injectStackedDeckViewport(html)).toContain('width=1920, initial-scale=1');
+    expect(injectStackedDeckViewport(html)).toContain('width=1920, initial-scale=1, maximum-scale=1');
     expect(injectStackedDeckViewport(html)).not.toContain('width=device-width');
   });
 

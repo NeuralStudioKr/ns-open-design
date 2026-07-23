@@ -520,8 +520,8 @@ export function PreviewModal({
     if (!activeDeck || !activeHtml) return;
     return scheduleDeckPreviewFitNudges(
       previewIframeRef.current,
-      scale,
-      activeCompactStackedDeck ? undefined : { layoutFit: true },
+      activeCompactStackedDeck ? 1 : scale,
+      activeCompactStackedDeck ? { useLayoutBox: true } : { layoutFit: true },
     );
   }, [activeDeck, activeHtml, activeCompactStackedDeck, activeId, scale, srcDoc, stageSize.w, stageSize.h]);
 
@@ -531,7 +531,7 @@ export function PreviewModal({
       if (ev.source !== previewIframeRef.current?.contentWindow) return;
       const data = ev.data as { type?: string } | null;
       if (!data || data.type !== 'od:deck-host-viewport-request') return;
-      postDeckHostViewportToIframe(previewIframeRef.current, scale);
+      postDeckHostViewportToIframe(previewIframeRef.current, 1, { useLayoutBox: true });
     }
     window.addEventListener('message', onDeckViewportRequest);
     return () => window.removeEventListener('message', onDeckViewportRequest);
@@ -1114,8 +1114,8 @@ export function PreviewModal({
                     if (!activeDeck) return;
                     scheduleDeckPreviewFitNudges(
                       event.currentTarget,
-                      scale,
-                      activeCompactStackedDeck ? undefined : { layoutFit: true },
+                      activeCompactStackedDeck ? 1 : scale,
+                      activeCompactStackedDeck ? { useLayoutBox: true } : { layoutFit: true },
                     );
                   }}
                 />

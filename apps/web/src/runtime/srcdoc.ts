@@ -2053,11 +2053,32 @@ html[data-od-stacked-deck]:has(#od-stacked-deck-stage) body {
   function stackedDeckStage() {
     return document.getElementById('od-stacked-deck-stage');
   }
+  function stackedSlideNodes() {
+    var direct = document.querySelectorAll('body > .slide');
+    if (direct.length) return direct;
+    if (!document.body) return direct;
+    var children = document.body.children;
+    for (var i = 0; i < children.length; i++) {
+      var el = children[i];
+      if (!el || el.nodeType !== 1) continue;
+      if (el.id === 'od-stacked-deck-stage') continue;
+      var tag = String(el.tagName || '').toLowerCase();
+      if (tag === 'header' || tag === 'nav' || tag === 'style' || tag === 'script') continue;
+      if (el.classList && el.classList.contains('slide')) continue;
+      var wrapped = [];
+      for (var c = 0; c < el.children.length; c++) {
+        var child = el.children[c];
+        if (child.classList && child.classList.contains('slide')) wrapped.push(child);
+      }
+      if (wrapped.length >= 2) return wrapped;
+    }
+    return direct;
+  }
   function shouldUseStackedDeckStage() {
     if (!compactStackedDeckEnabled) return false;
     if (frameworkDeckStage()) return false;
     if (stackedDeckStage()) return true;
-    var direct = document.querySelectorAll('body > .slide');
+    var direct = stackedSlideNodes();
     if (!direct.length) return false;
     try {
       var bodyStyle = window.getComputedStyle(document.body);
@@ -2098,7 +2119,7 @@ html[data-od-stacked-deck]:has(#od-stacked-deck-stage) body {
     var existing = stackedDeckStage();
     if (existing) return existing;
     if (!shouldUseStackedDeckStage()) return null;
-    var direct = document.querySelectorAll('body > .slide');
+    var direct = stackedSlideNodes();
     if (!direct.length) return null;
     var stage = document.createElement('div');
     stage.id = 'od-stacked-deck-stage';
@@ -2143,6 +2164,11 @@ html[data-od-stacked-deck]:has(#od-stacked-deck-stage) body {
     // apply it via transform:scale(). Fit to the visual box so 75%/125% differ.
     // Auto-fit modal scalers set layoutFit and pass scale = visual/designWidth;
     // reconstruct layout width so the deck still fills the iframe interior.
+    // Compact stacked decks keep iframe layout width stable and zoom via shell
+    // transform only, so host posts layout box + scale 1 — prefer iframe layout.
+    if (compactStackedDeckEnabled && hw > 0 && hh > 0 && scale <= 1.001) {
+      return { w: iw || hw, h: ih || hh };
+    }
     if (hw > 0 && hh > 0) {
       if (hostViewport.layoutFit && scale > 0 && scale < 0.999) {
         return { w: hw / scale, h: hh / scale };

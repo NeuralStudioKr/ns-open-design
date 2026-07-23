@@ -262,6 +262,8 @@ describe('deck bridge — nested slide markup (#1530)', () => {
       `<section class="slide" style="min-height:100vh;background:#0ea5e9;padding:40px">Slide ${i + 1}</section>`,
     ).join('');
     const { win } = setupDeckBridge(slides);
+    Object.defineProperty(win.document.documentElement, 'clientWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win.document.documentElement, 'clientHeight', { configurable: true, value: 600 });
     win.dispatchEvent(new win.MessageEvent('message', {
       data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
     }));
