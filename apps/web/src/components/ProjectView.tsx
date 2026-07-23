@@ -5472,9 +5472,10 @@ export function ProjectView({
           void (async () => {
             if (!isLatestTerminalAutoOpen()) return;
             let nextFiles = await refreshProjectFiles();
+            const rawFinalText = streamedText || fullText || latestAssistantMsg.content || '';
             const finalText = latestAssistantMsg.content?.trim()
               ? latestAssistantMsg.content
-              : (streamedText || fullText);
+              : rawFinalText;
             if (isQuestionFormTurnContent(finalText)) {
               await auditDesignSystemWorkspaceAfterRun(latestAssistantMsg.id);
               return;
@@ -5488,6 +5489,7 @@ export function ProjectView({
             // second identical deliverable that would fail to save the same
             // way — the retry belongs to the user in that case.
             let terminalPersistResultKind: ArtifactPersistResult['kind'] | null = null;
+            let terminalPersistResult: ArtifactPersistResult | null = null;
             const hadIncompleteParsedArtifact = Boolean(
               parsedArtifact?.html && isIncompleteHtmlDocumentShell(parsedArtifact.html),
             );
@@ -5508,7 +5510,7 @@ export function ProjectView({
 
             const artifactToPersist = resolveTerminalArtifactToPersist(
               effectiveParsedArtifact,
-              finalText,
+              rawFinalText,
               artifactFromStandaloneHtml,
             );
             if (artifactToPersist?.html) {
@@ -5529,11 +5531,12 @@ export function ProjectView({
                 const persistResult = await persistArtifact(
                   artifactToPersist,
                   nextFiles,
-                  finalText,
+                  rawFinalText,
                   startedAt,
                 );
                 terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult);
                 terminalPersistResultKind = persistResult?.kind ?? null;
+                terminalPersistResult = persistResult;
                 nextFiles = await refreshProjectFiles();
               }
             }
@@ -5556,7 +5559,7 @@ export function ProjectView({
               producedHtmlToOpen,
               parsedArtifact: effectiveParsedArtifact,
               liveHtml,
-              finalText,
+              finalText: rawFinalText,
               terminalArtifactPersistFailed,
             });
             if (shouldFailMissingSlideHtml) {
@@ -5572,7 +5575,14 @@ export function ProjectView({
 
             const endedAt = Date.now();
             if (terminalArtifactPersistFailed) {
-              const deliverableError = formatProjectRunDeliverableMissingError();
+              const deliverableError =
+                terminalPersistResult?.kind === 'save-failed'
+                  ? formatProjectArtifactSaveFailedError(terminalPersistResult.fileName, {
+                      status: terminalPersistResult.status,
+                      code: terminalPersistResult.code,
+                      message: terminalPersistResult.message,
+                    })
+                  : formatProjectRunDeliverableMissingError();
               const autoContinueCount = syncAutoContinueCountFromMessages(
                 conversationAutoContinueCountRef.current,
                 runConversationId,
@@ -5596,7 +5606,7 @@ export function ProjectView({
                   slideOnlyMvp,
                   producedHtmlToOpen,
                   outlineMessages,
-                  finalText,
+                  finalText: rawFinalText,
                   projectFiles: nextFiles,
                   beforeFileNames,
                   startedAt,
@@ -5746,7 +5756,7 @@ export function ProjectView({
                     slideCountHint: extractRequestedSlideCountHintFromMessages(autoContinueMessages),
                     ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
                       partialHtml: partialHtmlForAutoContinue,
-                      planOutline: finalText,
+                      planOutline: rawFinalText,
                     }),
                   });
                   const started = sendNow(

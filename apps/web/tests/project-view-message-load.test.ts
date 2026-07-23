@@ -308,10 +308,15 @@ describe("ProjectView message loading", () => {
     expect(autoOpenStart).toBeGreaterThan(0);
     const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 16000);
 
+    expect(autoOpenBlock).toContain("const rawFinalText = streamedText || fullText || latestAssistantMsg.content || ''");
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");
     expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult)");
     expect(autoOpenBlock).toContain("formatProjectRunDeliverableMissingError()");
     expect(autoOpenBlock).toContain("resolveTerminalArtifactToPersist(");
+    expect(autoOpenBlock).toContain("rawFinalText,\n              artifactFromStandaloneHtml");
+    expect(autoOpenBlock).toContain("finalText: rawFinalText");
+    expect(autoOpenBlock).toContain("terminalPersistResult = persistResult");
+    expect(autoOpenBlock).toContain("formatProjectArtifactSaveFailedError(terminalPersistResult.fileName");
     expect(autoOpenBlock).toContain("htmlAutoOpenGenerationRef");
     expect(autoOpenBlock).toContain("isLatestTerminalAutoOpen");
     expect(autoOpenBlock).toContain("shouldFailSlideRunForMissingHtmlDeliverable(");
