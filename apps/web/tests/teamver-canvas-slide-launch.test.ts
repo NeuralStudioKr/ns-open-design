@@ -10,9 +10,11 @@ import {
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
+  canvasSlideTemplateOptions,
   driveCreateSlidesSourceBrief,
   isCanvasSlideOneConfirmLaunch,
 } from "../src/teamver/canvasSlideLaunch";
+import type { InstalledPluginRecord } from "@open-design/contracts";
 import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
 
 const ROOT = resolve(__dirname, "..");
@@ -135,6 +137,39 @@ describe("canvasSlideLaunch", () => {
     expect(isCanvasSlideOneConfirmLaunch("create-slides", asset)).toBe(true);
     expect(isCanvasSlideOneConfirmLaunch(null, asset)).toBe(false);
     expect(isCanvasSlideOneConfirmLaunch("create-slides", null)).toBe(false);
+  });
+
+  it("exposes each deck plugin record alongside its title so the picker can render previews", () => {
+    // Minimal InstalledPluginRecord shapes — canvasSlideTemplateOptions only
+    // inspects id / title / manifest.od.mode + manifest.title_i18n (via
+    // localizePluginTitle), so we can keep the fixtures tiny.
+    const deckPlugin = {
+      id: "html-ppt-hermes",
+      title: "Hermes",
+      manifest: { title: "Hermes", od: { mode: "deck" } },
+      trust: "first-party",
+      installedAt: "2025-01-01T00:00:00Z",
+      source: { type: "official" },
+    } as unknown as InstalledPluginRecord;
+    const nonDeck = {
+      id: "some-image-tool",
+      title: "Image",
+      manifest: { title: "Image", od: { mode: "image" } },
+    } as unknown as InstalledPluginRecord;
+
+    const options = canvasSlideTemplateOptions([deckPlugin, nonDeck], "ko");
+
+    // Default option always leads the list; picker renders it as a fallback tile.
+    expect(options[0]).toMatchObject({
+      id: CANVAS_CREATE_SLIDES_PLUGIN_ID,
+      title: "기본 슬라이드 템플릿",
+      record: null,
+    });
+    const hermes = options.find((option) => option.id === "html-ppt-hermes");
+    expect(hermes).toBeDefined();
+    expect(hermes?.record).toBe(deckPlugin);
+    // Non-deck plugins never enter the picker.
+    expect(options.some((option) => option.id === "some-image-tool")).toBe(false);
   });
 
   it("threads plugin inputs through the existing-project composer handoff", () => {

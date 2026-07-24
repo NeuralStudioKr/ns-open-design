@@ -9,6 +9,7 @@ import {
 import { fetchTeamverCanvasPreview } from "../fetchCanvasPreview";
 import { driveImportAssetIconName } from "../driveFileVisual";
 import type { TeamverCanvasSlideTemplateOption } from "../canvasSlideLaunch";
+import { CanvasSlideTemplatePicker } from "./CanvasSlideTemplatePicker";
 
 export type TeamverCanvasSlideLaunchSource =
   | { kind: "drive"; asset: TeamverDriveImportAsset }
@@ -126,6 +127,9 @@ export function TeamverCanvasSlideLaunchModal({
   const showPreviewSkeleton = isCanvas && enriching && !preview;
   const selectedTemplate =
     templateOptions.find((option) => option.id === selectedTemplateId) ?? templateOptions[0] ?? null;
+  // Grid picker uses a widened modal so 3–4 preview cards fit at once; the
+  // legacy single-option layout keeps the compact 460px width.
+  const showTemplateGrid = templateOptions.length > 1;
 
   if (!open) return null;
 
@@ -138,7 +142,13 @@ export function TeamverCanvasSlideLaunchModal({
       }}
     >
       <section
-        className="teamver-drive-picker-modal teamver-canvas-slide-launch-modal"
+        className={[
+          "teamver-drive-picker-modal",
+          "teamver-canvas-slide-launch-modal",
+          showTemplateGrid ? "teamver-canvas-slide-launch-modal--wide" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
         role="dialog"
         aria-modal="true"
         aria-labelledby="teamver-canvas-slide-launch-title"
@@ -174,31 +184,12 @@ export function TeamverCanvasSlideLaunchModal({
           </p>
 
           {templateOptions.length > 0 ? (
-            <label className="teamver-canvas-slide-launch-template">
-              <span className="teamver-canvas-slide-launch-template-label">슬라이드 템플릿</span>
-              {templateOptions.length > 1 ? (
-                <select
-                  className="teamver-canvas-slide-launch-template-select"
-                  value={selectedTemplate?.id ?? ""}
-                  disabled={confirming}
-                  data-testid="teamver-canvas-slide-launch-template"
-                  onChange={(event) => onTemplateChange?.(event.currentTarget.value)}
-                >
-                  {templateOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.title}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <span
-                  className="teamver-canvas-slide-launch-template-static"
-                  data-testid="teamver-canvas-slide-launch-template"
-                >
-                  {selectedTemplate?.title}
-                </span>
-              )}
-            </label>
+            <CanvasSlideTemplatePicker
+              options={templateOptions}
+              selectedTemplateId={selectedTemplate?.id ?? ""}
+              disabled={confirming}
+              onSelect={(id) => onTemplateChange?.(id)}
+            />
           ) : null}
 
           <article

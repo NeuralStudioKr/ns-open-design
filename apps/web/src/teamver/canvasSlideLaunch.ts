@@ -70,9 +70,21 @@ export function canvasCreateSlidesTurnMeta(
   };
 }
 
+/**
+ * Slide-template option shown in the Canvas → Design one-confirm picker.
+ *
+ * `record` carries the full `InstalledPluginRecord` when available so the
+ * picker can render the plugin's live preview / pre-baked hover-pan clip
+ * (see `PluginCard layout="gallery"` in home). It is optional so:
+ *   - the always-present "기본 슬라이드 템플릿" fallback still works when
+ *     no matching plugin has been fetched yet (record: null)
+ *   - external callers that only need `{id, title}` (e.g. run-prompt
+ *     composition) keep working unchanged.
+ */
 export type TeamverCanvasSlideTemplateOption = {
   id: string;
   title: string;
+  record?: InstalledPluginRecord | null;
 };
 
 export function isCanvasSlideOneConfirmLaunch(
@@ -93,10 +105,16 @@ export function canvasSlideTemplateOptions(
     if (!id || seen.has(id)) continue;
     if (plugin.manifest?.od?.mode !== "deck") continue;
     seen.add(id);
-    options.push({ id, title: localizePluginTitle(locale, plugin) || id });
+    // Attach the record so the picker can render the plugin's example.html
+    // preview / pre-baked hover-pan clip (visual template selection, not a
+    // bare title dropdown).
+    options.push({ id, title: localizePluginTitle(locale, plugin) || id, record: plugin });
   }
   if (!seen.has(CANVAS_CREATE_SLIDES_PLUGIN_ID)) {
-    options.unshift({ id: CANVAS_CREATE_SLIDES_PLUGIN_ID, title: "기본 슬라이드 템플릿" });
+    // Default option never guarantees a preview — it renders a static "기본"
+    // tile in the picker. If the deck plugin list happens to include the
+    // simple-deck default we prefer that (with its preview) above.
+    options.unshift({ id: CANVAS_CREATE_SLIDES_PLUGIN_ID, title: "기본 슬라이드 템플릿", record: null });
   }
   return options;
 }

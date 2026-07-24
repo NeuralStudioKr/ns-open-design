@@ -106,7 +106,7 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
-  it("lets the user choose a slide template before confirming", () => {
+  it("lets the user choose a slide template via the visual card grid", () => {
     const onTemplateChange = vi.fn();
 
     render(
@@ -124,9 +124,36 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       />,
     );
 
-    fireEvent.change(screen.getByTestId("teamver-canvas-slide-launch-template"), {
-      target: { value: "html-ppt-hermes" },
-    });
+    const grid = screen.getByTestId("teamver-canvas-slide-launch-template");
+    expect(grid.getAttribute("role")).toBe("radiogroup");
+    const hermesCard = screen.getByTestId(
+      "teamver-canvas-slide-launch-template-card-html-ppt-hermes",
+    );
+    expect(hermesCard.getAttribute("role")).toBe("radio");
+    fireEvent.click(hermesCard);
     expect(onTemplateChange).toHaveBeenCalledWith("html-ppt-hermes");
+  });
+
+  it("renders a single-option picker as a static label (no grid)", () => {
+    render(
+      <TeamverCanvasSlideLaunchModal
+        open
+        source={{ kind: "drive", asset: { assetId: "AST-4", filename: "canvas.html" } }}
+        templateOptions={[{ id: "example-simple-deck", title: "기본 슬라이드 템플릿" }]}
+        selectedTemplateId="example-simple-deck"
+        onTemplateChange={vi.fn()}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const picker = screen.getByTestId("teamver-canvas-slide-launch-template");
+    expect(picker.getAttribute("role")).not.toBe("radiogroup");
+    expect(picker.textContent).toContain("기본 슬라이드 템플릿");
+    expect(
+      screen.queryByTestId(
+        "teamver-canvas-slide-launch-template-card-example-simple-deck",
+      ),
+    ).toBeNull();
   });
 });

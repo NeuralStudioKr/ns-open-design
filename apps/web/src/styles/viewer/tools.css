@@ -1961,6 +1961,15 @@
   width: min(460px, calc(100vw - 32px));
   overflow: hidden;
 }
+/* Picker grid needs enough room for 3–4 preview cards; single-option /
+   legacy dropdown launches keep the compact 460px width. */
+.teamver-canvas-slide-launch-modal--wide {
+  width: min(920px, calc(100vw - 32px));
+}
+.teamver-canvas-slide-launch-modal--wide .teamver-canvas-slide-launch-body {
+  max-height: min(78vh, 720px);
+  overflow-y: auto;
+}
 .teamver-canvas-slide-launch-head {
   display: flex;
   align-items: center;
@@ -2021,38 +2030,208 @@
   opacity: 0.92;
 }
 .teamver-canvas-slide-launch-template {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-subtle) 72%, transparent);
+}
+.teamver-canvas-slide-launch-template--static {
   display: grid;
   grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--border);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-subtle) 72%, transparent);
+}
+.teamver-canvas-slide-launch-template-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
 }
 .teamver-canvas-slide-launch-template-label {
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
 }
-.teamver-canvas-slide-launch-template-select,
+.teamver-canvas-slide-launch-template-count {
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  border: 1px solid var(--border);
+}
+.teamver-canvas-slide-launch-template-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-muted);
+  min-width: 180px;
+}
+.teamver-canvas-slide-launch-template-search input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: 12.5px;
+  outline: none;
+}
+.teamver-canvas-slide-launch-template-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
 .teamver-canvas-slide-launch-template-static {
   min-width: 0;
-  width: 100%;
   color: var(--text-strong);
   font-size: 13px;
-}
-.teamver-canvas-slide-launch-template-select {
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-}
-.teamver-canvas-slide-launch-template-static {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.teamver-canvas-slide-launch-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  /* Cap grid height so long lists scroll INSIDE the picker rather than
+     forcing the modal to grow past the viewport; the modal body itself
+     already has its own scroll fallback for very small screens. */
+  max-height: min(52vh, 460px);
+  overflow-y: auto;
+  padding: 2px;
+}
+@media (max-width: 640px) {
+  .teamver-canvas-slide-launch-template-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    max-height: none;
+  }
+}
+.teamver-canvas-slide-launch-template-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 24px 16px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-align: center;
+}
+.teamver-canvas-slide-launch-template-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+  appearance: none;
+}
+.teamver-canvas-slide-launch-template-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+.teamver-canvas-slide-launch-template-card:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.teamver-canvas-slide-launch-template-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.teamver-canvas-slide-launch-template-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.teamver-canvas-slide-launch-template-card-frame {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+/* PreviewSurface inside the picker card mirrors the home gallery framing
+   (deck templates are authored for desktop, so scale a wider virtual viewport
+   into the 16:9 card). Kept scoped so it does not affect the home galleries. */
+.teamver-canvas-slide-launch-template-card-frame .plugins-home__preview {
+  position: absolute;
+  inset: 0;
+  aspect-ratio: auto;
+  height: 100%;
+}
+.teamver-canvas-slide-launch-template-card-frame .plugins-home__html-iframe {
+  top: 0;
+  left: 0;
+  width: 360%;
+  height: 360%;
+  transform: scale(0.2777778);
+  transform-origin: 0 0;
+  transition: none;
+}
+.teamver-canvas-slide-launch-template-card-default {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--accent) 65%, var(--text-muted));
+  background:
+    radial-gradient(
+      circle at 30% 30%,
+      color-mix(in srgb, var(--accent) 18%, transparent),
+      transparent 60%
+    ),
+    linear-gradient(135deg, var(--bg-subtle), var(--bg-panel));
+}
+.teamver-canvas-slide-launch-template-card-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.teamver-canvas-slide-launch-template-card-title {
+  padding: 0 4px;
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+@media (prefers-reduced-motion: reduce) {
+  .teamver-canvas-slide-launch-template-card,
+  .teamver-canvas-slide-launch-template-card-frame .plugins-home__html-iframe {
+    transition: none;
+  }
 }
 .teamver-canvas-slide-launch-outline {
   margin: 0;
