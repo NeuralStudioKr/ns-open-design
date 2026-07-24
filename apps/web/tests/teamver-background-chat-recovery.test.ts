@@ -183,6 +183,17 @@ describe("backgroundChatRecovery", () => {
         lastRunEventId: "evt-42",
       }),
     ).toBe(false);
+    expect(
+      shouldFullReplayReattachedRun({
+        id: "a4",
+        role: "assistant",
+        content: "",
+        createdAt: 1,
+        runId: "run-1",
+        runStatus: "running",
+        events: [{ kind: "text", text: "Saved in events_json only" }],
+      }),
+    ).toBe(false);
   });
 
   it("merges BYOK active projects into daemon summaries", () => {

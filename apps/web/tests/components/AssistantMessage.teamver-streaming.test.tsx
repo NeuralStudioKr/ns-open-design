@@ -165,6 +165,55 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.getByText('Write')).toBeTruthy();
   });
 
+  it('keeps normal deck prose visible after the turn completes', () => {
+    render(
+      <AssistantMessage
+        message={completedMessage(
+          '슬라이드 구성을 설명드렸습니다. 표지 다음에 문제 정의를 두었어요.\n\n<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Done</h1></section></body></html></artifact>',
+        )}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText(/슬라이드 구성을 설명드렸습니다/)).toBeTruthy();
+    expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
+  });
+
+  it('renders assistant prose from message.content when text events were not persisted', () => {
+    render(
+      <AssistantMessage
+        message={{
+          id: 'assistant-1',
+          role: 'assistant',
+          content:
+            '슬라이드 구성을 설명드렸습니다. 표지 다음에 문제 정의를 두었어요.\n\n<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Done</h1></section></body></html></artifact>',
+          runStatus: 'succeeded',
+          startedAt: 1700000000,
+          endedAt: 1700000005,
+          events: [],
+          producedFiles: [
+            {
+              name: 'deck.html',
+              path: 'deck.html',
+              size: 1024,
+              mtime: 1700000005,
+              kind: 'html',
+              mime: 'text/html',
+            },
+          ],
+        }}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText(/슬라이드 구성을 설명드렸습니다/)).toBeTruthy();
+    expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
+  });
+
   it('prefers in-progress model prose over the fixed live-artifact fallback', () => {
     render(
       <AssistantMessage

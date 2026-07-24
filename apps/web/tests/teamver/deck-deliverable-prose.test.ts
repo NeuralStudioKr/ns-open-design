@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   looksLikeDeckDeliverablePromiseProse,
   looksLikePrematureDeckCompletionProse,
+  shouldHidePrematureDeckCompletionProse,
 } from '../../src/teamver/deckDeliverableProse';
 
 describe('deckDeliverableProse', () => {
@@ -44,14 +45,59 @@ describe('deckDeliverableProse', () => {
         '이 슬라이드는 ROI와 비용 절감 메시지를 한 장에 함께 보여주는 구조입니다.',
       ),
     ).toBe(false);
+    expect(
+      looksLikePrematureDeckCompletionProse(
+        '슬라이드 구성을 설명드렸습니다. 표지 다음에 문제 정의를 두었어요.',
+      ),
+    ).toBe(false);
+    expect(
+      looksLikePrematureDeckCompletionProse(
+        'The slide deck is already structured for onboarding.',
+      ),
+    ).toBe(false);
   });
 
   it('shares promise/completion detection with terminal slide-only gates', () => {
     expect(looksLikeDeckDeliverablePromiseProse('바로 만들어 드리겠습니다!')).toBe(true);
+    expect(looksLikeDeckDeliverablePromiseProse('슬라이드를 완성했습니다.')).toBe(true);
+    expect(
+      looksLikeDeckDeliverablePromiseProse(
+        '슬라이드 구성을 설명드렸습니다. 표지 다음에 문제 정의를 두었어요.',
+      ),
+    ).toBe(false);
     expect(
       looksLikeDeckDeliverablePromiseProse(
         '이 슬라이드는 ROI와 비용 절감 메시지를 한 장에 함께 보여주는 구조입니다.',
       ),
+    ).toBe(false);
+  });
+
+  it('shouldHidePrematureDeckCompletionProse is scoped to streaming + live artifact', () => {
+    const premature =
+      '친근한 톤의 개발자 포트폴리오 2슬라이드 덱을 만들었어요!';
+    expect(
+      shouldHidePrematureDeckCompletionProse({
+        text: premature,
+        streaming: true,
+        liveArtifactOpen: true,
+        teamverSlideUi: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldHidePrematureDeckCompletionProse({
+        text: premature,
+        streaming: false,
+        liveArtifactOpen: true,
+        teamverSlideUi: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldHidePrematureDeckCompletionProse({
+        text: premature,
+        streaming: true,
+        liveArtifactOpen: false,
+        teamverSlideUi: true,
+      }),
     ).toBe(false);
   });
 });

@@ -9485,7 +9485,9 @@ export function shouldFailSlideRunWithoutHtmlDeliverable(
   if (looksLikeSlideOutline(text)) return true;
 
   const looksLikeOutline =
-    /슬라이드\s*구성|목차\s*:|구성\s*:/.test(text)
+    /슬라이드\s*구성\s*:/.test(text)
+    || /목차\s*:/.test(text)
+    || /(?:^|\n)\s*구성\s*:/m.test(text)
     || /(?:^|\n)\s*(?:\d{1,2}|0\d)[\.\)\-]\s+\S+/m.test(text);
 
   return (

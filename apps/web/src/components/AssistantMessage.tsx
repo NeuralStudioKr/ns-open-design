@@ -50,7 +50,7 @@ import { useI18n } from "../i18n";
 import { parseSubmittedAnswers } from "./QuestionForm";
 import { splitStreamingArtifact, stripAllClosedArtifacts, stripRecoveredHtmlFallbackForDisplay } from "../artifacts/strip";
 import { isDeckPatchArtifactType } from "../artifacts/deck-patch";
-import { looksLikePrematureDeckCompletionProse } from "../teamver/deckDeliverableProse";
+import { shouldHidePrematureDeckCompletionProse } from "../teamver/deckDeliverableProse";
 import {
   getPluginFolderCandidates,
   type PluginFolderCandidate,
@@ -60,6 +60,7 @@ import { Icon } from "./Icon";
 import { NextStepActions } from "./NextStepActions";
 import type { DesignToolboxActionId } from "../runtime/design-toolbox";
 import { copyToClipboard } from "../lib/copy-to-clipboard";
+import { assistantEventsForDisplay, assistantMessageTextBody } from "../runtime/chat-events";
 import { useT } from "../i18n";
 import { deriveFileOps, type FileOpEntry } from "../runtime/file-ops";
 import {
@@ -474,11 +475,10 @@ function hasVisibleAssistantTextOutput(
     if (seg.kind === "form") return true;
     const visibleSegmentText = stripUserVisibleQuestionFormProtocolText(seg.text);
     if (visibleSegmentText.includes(INVALID_QUESTION_FORM_FALLBACK)) return false;
-    const trimmed = visibleSegmentText.trim();
-    if (!trimmed) return false;
-    if (slideOnlyGate && looksLikePrematureDeckCompletionProse(trimmed)) return false;
-    return true;
+    return visibleSegmentText.trim().length > 0;
   });
+  // Premature deck completion lines are hidden only in ProseBlock while streaming
+  // with an open artifact (`shouldHidePrematureDeckCompletionProse`) — not here.
   if (live) return true;
   return hasVisibleHead;
 }
@@ -530,7 +530,11 @@ function AssistantMessageImpl({
   const { locale } = useI18n();
   const { hideAssistantModelLabels, hideAssistantThinkingDetails, slideOnlyMvp, title: brandTitle, enabled: teamverEmbedEnabled } =
     useTeamverBranding();
-  const events = message.events ?? [];
+  const events = useMemo(() => assistantEventsForDisplay(message), [message.content, message.events]);
+  const assistantTextBody = useMemo(
+    () => assistantMessageTextBody(message),
+    [message.content, message.events],
+  );
   // ChatPane renders the canonical TodoWrite card as a standalone chat row, so
   // we strip TodoWrite tool-groups out of the per-message flow to avoid the
   // same task list rendering twice.
@@ -583,14 +587,15 @@ function AssistantMessageImpl({
     streaming,
   ]);
   const streamingDeckArtifactActive = useMemo(() => {
-    if (!streaming || !slideOnlyMvp) return false;
+    const teamverSlideUi = slideOnlyMvp || teamverEmbedEnabled;
+    if (!streaming || !teamverSlideUi) return false;
     for (let i = blocks.length - 1; i >= 0; i -= 1) {
       const block = blocks[i];
       if (block?.kind !== 'text' || !block.text.trim()) continue;
       return splitStreamingArtifact(block.text).live !== null;
     }
     return false;
-  }, [blocks, slideOnlyMvp, streaming]);
+  }, [blocks, slideOnlyMvp, teamverEmbedEnabled, streaming]);
   const fileOps = useMemo(() => deriveFileOps(events), [events]);
   // Streaming progress reads TodoWrite from events (not filtered blocks) so
   // Teamver embed can show N/M + current task while tool cards stay hidden.
@@ -772,7 +777,7 @@ function AssistantMessageImpl({
     || (!(hideAssistantThinkingDetails && streaming) && fileOps.length > 0)
     || streamingTodoProgress != null;
   const preparing = streaming && !hasContent;
-  const isDeckPatchArtifactTurn = messageIndicatesDeckPatchArtifact(message.content);
+  const isDeckPatchArtifactTurn = messageIndicatesDeckPatchArtifact(assistantTextBody);
   const teamverCompletedArtifactLead = teamverCompletedArtifactLeadCopy(
     locale,
     isDeckPatchArtifactTurn,
@@ -782,7 +787,7 @@ function AssistantMessageImpl({
     && runSucceeded
     && !hasVisibleAssistantTextBlocks
     && (slideOnlyMvp || teamverEmbedEnabled)
-    && /<artifact\b/i.test(message.content)
+    && /<artifact\b/i.test(assistantTextBody)
     && (displayedProduced.length > 0 || isDeckPatchArtifactTurn);
 
   // Index of the trailing text block — the streaming caret rides the end of
@@ -2244,10 +2249,16 @@ function ProseBlock({
     }
   );
   const visibleRenderable = useMemo(() => {
-    if (!streaming || !live || !(slideOnlyMvp || teamverEmbedEnabled)) return renderable;
+    const teamverSlideUi = slideOnlyMvp || teamverEmbedEnabled;
+    if (!teamverSlideUi) return renderable;
     return renderable.filter((seg) => {
       if (seg.kind !== "text") return true;
-      return !looksLikePrematureDeckCompletionProse(seg.text);
+      return !shouldHidePrematureDeckCompletionProse({
+        text: seg.text,
+        streaming,
+        liveArtifactOpen: !!live,
+        teamverSlideUi,
+      });
     });
   }, [renderable, streaming, live, slideOnlyMvp, teamverEmbedEnabled]);
   const hasVisibleProseWhileLive = visibleRenderable.some(

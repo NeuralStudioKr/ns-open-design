@@ -78,6 +78,12 @@ describe("shouldFailSlideRunWithoutHtmlDeliverable", () => {
         { slideOnlyMvp: true },
       ),
     ).toBe(false);
+    expect(
+      shouldFailSlideRunWithoutHtmlDeliverable(
+        "슬라이드 구성을 설명드렸습니다. 표지 다음에 문제 정의를 두었어요.",
+        { slideOnlyMvp: true },
+      ),
+    ).toBe(false);
   });
 
   it("does not apply outside Teamver slide-only mode", () => {

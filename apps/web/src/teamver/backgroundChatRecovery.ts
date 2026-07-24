@@ -5,7 +5,7 @@ import {
   hasBrokenQuestionFormMarkup,
   hasUnterminatedQuestionForm,
 } from "../artifacts/question-form";
-import { appendErrorStatusEvent } from "../runtime/chat-events";
+import { appendErrorStatusEvent, assistantMessageTextBody } from "../runtime/chat-events";
 
 export function isTerminalRunStatus(status: ChatMessage["runStatus"]): boolean {
   return status === "succeeded" || status === "failed" || status === "canceled";
@@ -52,7 +52,7 @@ export function isRecoverableDaemonRunMessage(message: ChatMessage): boolean {
  */
 export function shouldFullReplayReattachedRun(message: ChatMessage): boolean {
   if (message.lastRunEventId?.trim()) return false;
-  if ((message.content ?? "").trim().length > 0) return false;
+  if (assistantMessageTextBody(message).trim().length > 0) return false;
   if ((message.events?.length ?? 0) > 0) return false;
   return true;
 }
@@ -136,7 +136,7 @@ export function conversationAwaitingQuestionFormAnswer(
 ): boolean {
   const assistant = findLatestAssistantMessage(messages);
   if (!assistant) return false;
-  const content = assistant.content ?? "";
+  const content = assistantMessageTextBody(assistant);
   const parsed = findFirstQuestionForm(content);
   const form = parsed?.form;
   const hasFormIntent =
