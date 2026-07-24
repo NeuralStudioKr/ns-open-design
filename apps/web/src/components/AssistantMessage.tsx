@@ -460,7 +460,6 @@ function hasVisibleAssistantTextOutput(
     : { text: cleaned, hadOpenForm: false };
   if (hadOpenForm) return true;
   const { head, live } = streaming ? splitStreamingArtifact(visibleText) : { head: visibleText, live: null };
-  if (live) return true;
   const raw = splitOnQuestionForms(head);
   const slideOnlyGate = slideOnlyMvp || teamverEmbedEnabled;
   if (slideOnlyGate) {
@@ -471,12 +470,17 @@ function hasVisibleAssistantTextOutput(
     );
     if (resolved.usedFallback && resolved.form) return true;
   }
-  return raw.some((seg) => {
+  const hasVisibleHead = raw.some((seg) => {
     if (seg.kind === "form") return true;
     const visibleSegmentText = stripUserVisibleQuestionFormProtocolText(seg.text);
     if (visibleSegmentText.includes(INVALID_QUESTION_FORM_FALLBACK)) return false;
-    return visibleSegmentText.trim().length > 0;
+    const trimmed = visibleSegmentText.trim();
+    if (!trimmed) return false;
+    if (slideOnlyGate && looksLikePrematureDeckCompletionProse(trimmed)) return false;
+    return true;
   });
+  if (live) return true;
+  return hasVisibleHead;
 }
 
 /**

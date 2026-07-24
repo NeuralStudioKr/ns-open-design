@@ -382,4 +382,18 @@ describe("ProjectView message loading", () => {
     expect(handleSendBlock).toContain("promptWithSlideCommentEditPatchInstruction(");
     expect(handleSendBlock).toContain("skipDeckHtml: slideOnlyMvp && commentAttachments.length > 0");
   });
+
+  it("self-heals leaked composer streaming markers after terminal turns settle", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("shouldClearPhantomStreamingMarker({");
+    expect(source).toContain("if (apiBackgroundRecoveryRef.current) return;");
+    expect(source).toContain("backgroundRecoveryActive: apiBackgroundRecoveryRef.current");
+    expect(source).toContain("clearStreamingMarker(activeConversationId)");
+    const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen = (fullText: string, delayMs = 0) =>");
+    expect(autoOpenStart).toBeGreaterThan(0);
+    const finallyStart = source.indexOf("const noFinalizeInFlight = htmlAutoOpenFinalizeInProgressRef.current.size === 0");
+    expect(finallyStart).toBeGreaterThan(autoOpenStart);
+    expect(source).toContain("conversationStillMarked");
+    expect(source).toContain("clearStreamingMarker(runConversationId)");
+  });
 });

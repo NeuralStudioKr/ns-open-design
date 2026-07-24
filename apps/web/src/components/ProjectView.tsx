@@ -6110,7 +6110,15 @@ export function ProjectView({
             await auditDesignSystemWorkspaceAfterRun(assistantId);
             } finally {
               htmlAutoOpenFinalizeInProgressRef.current.delete(assistantId);
-              if (!isLatestTerminalAutoOpen()) return;
+              const latestGeneration = isLatestTerminalAutoOpen();
+              const noFinalizeInFlight = htmlAutoOpenFinalizeInProgressRef.current.size === 0;
+              const conversationStillMarked =
+                streamingConversationIdRef.current === runConversationId;
+              // Superseded finalize passes can still own the only leaked streaming
+              // marker when a newer generation bails before clearStreamingMarker.
+              if (!latestGeneration && !(noFinalizeInFlight && conversationStillMarked)) {
+                return;
+              }
               runPersistTargetFileRef.current = null;
               clearStreamingMarker(runConversationId);
               if (apiBackgroundRecoveryRef.current) {

@@ -2167,10 +2167,9 @@ html[data-od-compact-stacked] .slide ~ .slide {
     var hw = Math.max(0, hostViewport.w || 0);
     var hh = Math.max(0, hostViewport.h || 0);
     var scale = hostViewport.scale > 0 ? hostViewport.scale : 1;
-    // User-zoom preview shells (FileViewer toolbar) pass scale as zoom and
-    // apply it via transform:scale(). Fit to the visual box so 75%/125% differ.
-    // Auto-fit modal scalers set layoutFit and pass scale = visual/designWidth;
-    // reconstruct layout width so the deck still fills the iframe interior.
+    // Host toolbar zoom uses CSS transform on the iframe shell; FileViewer posts
+    // layout box dimensions (useLayoutBox) with scale 1 so fit math stays stable.
+    // Auto-fit modal scalers set layoutFit and pass scale < 1 to reconstruct width.
     // Compact stacked decks inject viewport width=1920 so slide vw math stays
     // fixed; that inflates documentElement.clientWidth inside the iframe. The
     // host posts the real iframe layout box via useLayoutBox — always prefer it.
@@ -2181,6 +2180,7 @@ html[data-od-compact-stacked] .slide ~ .slide {
       if (hostViewport.layoutFit && scale > 0) {
         return { w: hw / scale, h: hh / scale };
       }
+      // scale 1 + layout box from host (framework + compact deck previews)
       return { w: hw, h: hh };
     }
     return { w: iw || hw, h: ih || hh };
