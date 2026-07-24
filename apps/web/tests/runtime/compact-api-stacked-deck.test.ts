@@ -224,7 +224,37 @@ describe('looksLikeCompactApiStackedDeck', () => {
     win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
     await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
     expect(slideEls[0]?.style.display).toBe('none');
-    expect(slideEls[1]?.style.display).not.toBe('none');
+    expect(slideEls[1]?.style.display).toBe('flex');
+  });
+
+  it('reveals slide 2 for body-leading style portfolio decks on next navigation', async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><body style="margin:0">',
+      '<style>.slide{min-height:100vh;display:flex;flex-direction:column}</style>',
+      '<section class="slide" style="background:#111;color:#fff"><h1>김민준</h1></section>',
+      '<section class="slide" style="background:#fafafa;color:#111"><h2>Projects</h2></section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 100));
+
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
+    expect(slideEls).toHaveLength(2);
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
+    expect(slideEls[0]?.style.display).toBe('none');
+    expect(slideEls[1]?.style.display).toBe('flex');
+    expect(win.getComputedStyle(slideEls[1]!).display).toBe('flex');
   });
 
   it('does not inject stacked letterbox CSS into framework or authored decks', () => {

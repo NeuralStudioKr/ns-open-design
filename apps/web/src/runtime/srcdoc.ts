@@ -2000,7 +2000,7 @@ html[data-od-compact-stacked] body {
 html[data-od-compact-stacked] body {
   position: relative !important;
 }
-html[data-od-compact-stacked] .slide ~ .slide {
+html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   display: none !important;
 }
 #od-stacked-deck-stage {
@@ -2484,7 +2484,7 @@ html[data-od-compact-stacked] .slide ~ .slide {
     var parent = el.parentElement;
     var stacked = !!(parent && (parent.id === 'od-stacked-deck-stage' || parent.getAttribute('data-od-stacked-deck-stage') !== null));
     if (stacked) {
-      if (visible) el.style.removeProperty('display');
+      if (visible) el.style.setProperty('display', 'flex', 'important');
       else el.style.setProperty('display', 'none', 'important');
       return;
     }
