@@ -284,6 +284,26 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(slideEls.filter((el) => el.style.display !== 'none')).toHaveLength(1);
   });
 
+  it('prefers host layout box over inflated viewport=1920 clientWidth when fitting', async () => {
+    const slides = Array.from({ length: 2 }, (_, i) =>
+      `<section class="slide" style="min-height:100vh;background:#0ea5e9">Slide ${i + 1}</section>`,
+    ).join('');
+    const { win } = setupDeckBridge(slides);
+    Object.defineProperty(win.document.documentElement, 'clientWidth', { configurable: true, value: 1920 });
+    Object.defineProperty(win.document.documentElement, 'clientHeight', { configurable: true, value: 1080 });
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 100));
+
+    const stage = win.document.getElementById('od-stacked-deck-stage');
+    const scaleMatch = stage?.style.transform?.match(/scale\(([\d.]+)\)/);
+    const fitScale = Number(scaleMatch?.[1] ?? 0);
+    expect(fitScale).toBeGreaterThan(0.35);
+    expect(fitScale).toBeLessThan(0.45);
+    expect(fitScale).toBeLessThan(0.55);
+  });
+
   it('accumulates deck pan offsets via od:preview-scroll-by and resets on slide change', async () => {
     const slides = Array.from({ length: 2 }, (_, i) =>
       `<section class="slide" style="min-height:100vh;background:#0ea5e9">Slide ${i + 1}</section>`,

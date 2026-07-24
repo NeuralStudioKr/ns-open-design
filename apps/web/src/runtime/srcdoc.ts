@@ -2179,10 +2179,11 @@ html[data-od-compact-stacked][data-od-stacked-deck-ready] {
     // apply it via transform:scale(). Fit to the visual box so 75%/125% differ.
     // Auto-fit modal scalers set layoutFit and pass scale = visual/designWidth;
     // reconstruct layout width so the deck still fills the iframe interior.
-    // Compact stacked decks keep iframe layout width stable and zoom via shell
-    // transform only, so host posts layout box + scale 1 — prefer iframe layout.
+    // Compact stacked decks inject viewport width=1920 so slide vw math stays
+    // fixed; that inflates documentElement.clientWidth inside the iframe. The
+    // host posts the real iframe layout box via useLayoutBox — always prefer it.
     if (compactStackedDeckEnabled && hw > 0 && hh > 0 && scale <= 1.001) {
-      return { w: iw || hw, h: ih || hh };
+      return { w: hw, h: hh };
     }
     if (hw > 0 && hh > 0) {
       if (hostViewport.layoutFit && scale > 0) {
