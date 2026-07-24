@@ -63,10 +63,30 @@ export function resolvePluginPreviewBaseHref(previewSrc: string, origin?: string
  * preview iframes (`allow-scripts`) must run deck navigation and host bridges,
  * so relax that directive to inline scripts only.
  */
+function normalizeScriptSrcDirective(sourceList: string): string {
+  const tokens = sourceList
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.length > 0);
+  const withoutNone = tokens.filter(
+    (token) => token !== "'none'" && token !== '"none"' && token !== 'none',
+  );
+  if (withoutNone.length === 0) {
+    return "'unsafe-inline'";
+  }
+  const hasInline = withoutNone.some(
+    (token) => token === "'unsafe-inline'" || token === '"unsafe-inline"',
+  );
+  if (!hasInline) {
+    withoutNone.push("'unsafe-inline'");
+  }
+  return withoutNone.join(' ');
+}
+
 function relaxSrcDocPreviewCspContent(content: string): string {
-  return content
-    .replace(/\bscript-src\s+'none'\s*;?/gi, "script-src 'unsafe-inline'")
-    .replace(/\bscript-src\s+"none"\s*;?/gi, 'script-src "unsafe-inline"');
+  return content.replace(/\bscript-src\s+([^;]+)/gi, (_match, sourceList: string) => {
+    return `script-src ${normalizeScriptSrcDirective(sourceList)}`;
+  });
 }
 
 export function stripConflictingSrcDocCspBaseUri(html: string): string {

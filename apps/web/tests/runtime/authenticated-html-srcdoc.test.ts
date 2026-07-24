@@ -37,7 +37,17 @@ describe('authenticatedHtmlSrcDoc helpers', () => {
     expect(html).toContain('<base href="https://stg-design.teamver.com/api/projects/p1/raw/canvas.html">');
     expect(html).toContain("default-src 'none'");
     expect(html).toContain("script-src 'unsafe-inline'");
+    expect(html).not.toMatch(/script-src[^;]*'none'/i);
     expect(html).not.toMatch(/base-uri\s+'none'/i);
+  });
+
+  it('removes none from script-src when it appears alongside other script sources', () => {
+    const canvas = `<!DOCTYPE html><html><head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'none'; style-src 'unsafe-inline'"/>
+</head><body></body></html>`;
+    const html = injectHtmlBaseHref(canvas, 'https://example.com/deck/');
+    expect(html).toContain("script-src 'unsafe-inline'");
+    expect(html).not.toMatch(/script-src[^;]*'none'/i);
   });
 
   it('loads authenticated HTML as srcDoc and rejects JSON envelopes', async () => {

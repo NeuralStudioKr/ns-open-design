@@ -28,7 +28,7 @@ describe('buildSrcdoc', () => {
 </head><body><section class="slide active">One</section></body></html>`;
     const doc = buildSrcdoc(canvasDeck, { deck: true });
     expect(doc).toContain("script-src 'unsafe-inline'");
-    expect(doc).not.toMatch(/script-src\s+'none'/i);
+    expect(doc).not.toMatch(/script-src[^;]*'none'/i);
     expect(doc).toContain('window.__deckNav = true');
     expect(doc).toContain('data-od-sandbox-shim');
   });
