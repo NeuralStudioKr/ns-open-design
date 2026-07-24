@@ -91,6 +91,7 @@ import {
   resolveSlideOnlyCreatePluginId,
   defaultSlideOnlyDeckPluginInputs,
 } from '../teamver/branding/slideOnlyMvpPolicy';
+import { canvasCreateSlidesProjectName } from '../teamver/canvasSlideLaunch';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import {
   shouldFetchAutomationTaskApis,
@@ -653,10 +654,15 @@ export function EntryShell({
       payload.driveAttachments?.[0]?.assetId ??
       '';
     const fallbackName = head.length > 0 ? head : firstAttachmentName || 'Untitled';
-    const name =
-      payload.pluginTitle && payload.pluginTitle.trim().length > 0
-        ? payload.pluginTitle.trim()
-        : fallbackName;
+    const canvasProjectName = payload.canvasHandoff
+      ? canvasCreateSlidesProjectName(payload.canvasHandoff)
+      : null;
+    const name = canvasProjectName
+      ?? (payload.canvasHandoff
+        ? fallbackName
+        : payload.pluginTitle && payload.pluginTitle.trim().length > 0
+          ? payload.pluginTitle.trim()
+          : fallbackName);
     const metadata: ProjectMetadata = {
       ...(payload.projectMetadata ?? {}),
       // Teamver embed slide-only MVP locks the artifact to a deck. Free-form

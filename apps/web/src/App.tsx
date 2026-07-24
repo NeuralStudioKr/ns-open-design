@@ -118,6 +118,7 @@ import {
 } from './teamver/importCanvas';
 import type { TeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
 import { consumeTeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
+import { canvasCreateSlidesProjectName } from './teamver/canvasSlideLaunch';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds, noticeStatusForBackgroundRun } from './teamver/teamverEmbedRunTracking';
@@ -2287,6 +2288,26 @@ function AppInner() {
           { requestId: input.requestId },
         );
         return false;
+      }
+      if (input.pendingCanvasHandoff) {
+        const canvasProjectName = canvasCreateSlidesProjectName(input.pendingCanvasHandoff);
+        const currentName = result.project.name?.trim() ?? '';
+        if (canvasProjectName && currentName !== canvasProjectName) {
+          const updated = await patchProject(result.project.id, {
+            name: canvasProjectName,
+            ...(result.project.metadata
+              ? { metadata: { ...result.project.metadata, nameSource: 'prompt' as const } }
+              : {}),
+          });
+          if (updated) {
+            result = { ...result, project: updated };
+            try {
+              await registerTeamverProjectIfNeeded(updated);
+            } catch {
+              // Best-effort registry title refresh after daemon rename.
+            }
+          }
+        }
       }
       const pendingFiles = Array.isArray(input.pendingFiles)
         ? input.pendingFiles.filter((file): file is File => file instanceof File)

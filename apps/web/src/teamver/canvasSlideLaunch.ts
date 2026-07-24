@@ -5,7 +5,22 @@ import type { TeamverDriveLaunchIntent } from "./driveLaunchHandoff";
 import type { TeamverCanvasLaunchHandoff } from "./canvasLaunchHandoff";
 import { localizePluginTitle } from "../components/plugins-home/localization";
 
-/** Deck scenario for Canvas / Drive → create-slides (not od-default). */
+const MAX_CANVAS_PROJECT_NAME_LENGTH = 80;
+
+/** Display name for a new Design project created from Canvas → slides. */
+export function canvasCreateSlidesProjectName(
+  handoff: Pick<TeamverCanvasLaunchHandoff, "title" | "threadTitle">,
+): string | null {
+  for (const candidate of [handoff.title, handoff.threadTitle]) {
+    const trimmed = candidate?.trim();
+    if (!trimmed) continue;
+    const singleLine = trimmed.replace(/\s+/g, " ");
+    if (!singleLine) continue;
+    if (singleLine.length <= MAX_CANVAS_PROJECT_NAME_LENGTH) return singleLine;
+    return `${singleLine.slice(0, MAX_CANVAS_PROJECT_NAME_LENGTH - 1).trimEnd()}…`;
+  }
+  return null;
+}
 export const CANVAS_CREATE_SLIDES_PLUGIN_ID =
   defaultScenarioPluginIdForKind("deck") ?? "example-simple-deck";
 

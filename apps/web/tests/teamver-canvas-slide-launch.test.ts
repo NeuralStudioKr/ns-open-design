@@ -8,6 +8,7 @@ import {
   CANVAS_CREATE_SLIDES_PROMPT,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesProjectMetadata,
+  canvasCreateSlidesProjectName,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
@@ -108,6 +109,20 @@ describe("canvasSlideLaunch", () => {
       kind: "deck",
       skipDiscoveryBrief: true,
     });
+  });
+
+  it("derives project display name from canvas title or thread", () => {
+    expect(
+      canvasCreateSlidesProjectName({ title: "  Q4 AI 도입 계획  ", threadTitle: "스레드" }),
+    ).toBe("Q4 AI 도입 계획");
+    expect(canvasCreateSlidesProjectName({ threadTitle: "기획 스레드" })).toBe("기획 스레드");
+    expect(canvasCreateSlidesProjectName({})).toBeNull();
+  });
+
+  it("uses canvas title for project create instead of deck template plugin title", () => {
+    const entryShell = readWebSource("src/components/EntryShell.tsx");
+    expect(entryShell).toContain("canvasCreateSlidesProjectName(payload.canvasHandoff)");
+    expect(entryShell).toContain("const canvasProjectName = payload.canvasHandoff");
   });
 
   it("binds selected deck template into per-turn skillIds for system prompt composition", () => {
