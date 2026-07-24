@@ -30,15 +30,50 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
 export const CANVAS_CREATE_SLIDES_PROMPT =
   "캔버스 내용을 바탕으로 슬라이드 덱을 만들어줘.";
 
+/** Infer deck slide count from Canvas outline meta (sections beat heading count). */
+export function inferCanvasDeckSlideCount(
+  handoff: Pick<TeamverCanvasLaunchHandoff, "sectionCount" | "headings">,
+): number | null {
+  const sections =
+    handoff.sectionCount != null && handoff.sectionCount > 0
+      ? Math.min(Math.floor(handoff.sectionCount), 50)
+      : null;
+  const headingCount = (handoff.headings ?? []).map((item) => item.trim()).filter(Boolean).length;
+  const fromHeadings = headingCount > 0 ? Math.min(headingCount, 50) : null;
+  const count = sections ?? fromHeadings;
+  return count != null && count >= 1 ? count : null;
+}
+
+export function formatCanvasDeckSlideCountInput(count: number): string {
+  return `${count} slides`;
+}
+
+export function canvasCreateSlidesProjectMetadata(
+  handoff?: Pick<TeamverCanvasLaunchHandoff, "sectionCount" | "headings"> | null,
+): { kind: "deck"; skipDiscoveryBrief: true; slideCount?: string } {
+  const count = handoff ? inferCanvasDeckSlideCount(handoff) : null;
+  return {
+    kind: "deck",
+    skipDiscoveryBrief: true,
+    ...(count != null ? { slideCount: formatCanvasDeckSlideCountInput(count) } : {}),
+  };
+}
+
 export function canvasCreateSlidesRunPrompt(
   templateTitle?: string | null,
   sourceBrief?: string | null,
+  handoff?: Pick<TeamverCanvasLaunchHandoff, "sectionCount" | "headings"> | null,
 ): string {
   const title = templateTitle?.trim();
   const templateHint = title ? `\nSelected slide template/style: ${title}.` : "";
   const brief = compactCanvasBriefValue(sourceBrief ?? "", 900);
   const sourceHint = brief ? `\n\n[Source brief]\n${brief}` : "";
-  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${sourceHint}`;
+  const slideCount = handoff ? inferCanvasDeckSlideCount(handoff) : null;
+  const countHint =
+    slideCount != null
+      ? `\nTarget slide count from canvas structure: ${slideCount} slides.`
+      : "";
+  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${countHint}${sourceHint}`;
 }
 
 /** Per-turn meta so API/daemon runs compose the selected deck template into the system prompt. */
@@ -135,9 +170,11 @@ export function canvasCreateSlidesPluginInputs(
   topicHint?: string | null,
   templateTitle?: string | null,
   sourceBrief?: string | null,
+  handoff?: Pick<TeamverCanvasLaunchHandoff, "sectionCount" | "headings"> | null,
 ): Record<string, unknown> {
   const topic = (topicHint ?? "").trim() || "the attached canvas document";
   const brief = sourceBrief?.trim();
+  const slideCount = handoff ? inferCanvasDeckSlideCount(handoff) : null;
   return {
     deckType: "presentation from canvas",
     topic,
@@ -145,6 +182,7 @@ export function canvasCreateSlidesPluginInputs(
     speakerNotes: "no speaker notes",
     designSystem: (templateTitle ?? "").trim() || "the active project design system",
     ...(brief ? { sourceBrief: brief } : {}),
+    ...(slideCount != null ? { slideCount: formatCanvasDeckSlideCountInput(slideCount) } : {}),
     sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   };
 }

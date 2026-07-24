@@ -132,6 +132,7 @@ import {
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   canvasCreateSlidesPluginInputs,
+  canvasCreateSlidesProjectMetadata,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   canvasSlideTemplateOptions,
@@ -1777,7 +1778,11 @@ export function HomeView({
         const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
         const submitResult = await Promise.resolve(
           onSubmit({
-            prompt: canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief),
+            prompt: canvasCreateSlidesRunPrompt(
+              selectedCanvasSlideTemplate.title,
+              sourceBrief,
+              canvasSlideLaunch.handoff,
+            ),
             pluginId: selectedCanvasSlideTemplate.id,
             pluginType: 'official',
             skillId: null,
@@ -1788,9 +1793,10 @@ export function HomeView({
               topicHint,
               selectedCanvasSlideTemplate.title,
               sourceBrief,
+              canvasSlideLaunch.handoff,
             ),
             projectKind: 'deck',
-            projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
+            projectMetadata: canvasCreateSlidesProjectMetadata(canvasSlideLaunch.handoff),
             designSystemId: submittedDesignSystemId,
             contextPlugins: [],
             contextMcpServers: [],

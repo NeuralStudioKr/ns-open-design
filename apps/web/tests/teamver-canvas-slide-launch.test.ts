@@ -7,9 +7,12 @@ import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   CANVAS_CREATE_SLIDES_PROMPT,
   canvasCreateSlidesPluginInputs,
+  canvasCreateSlidesProjectMetadata,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
+  formatCanvasDeckSlideCountInput,
+  inferCanvasDeckSlideCount,
   isCanvasSlideOneConfirmLaunch,
 } from "../src/teamver/canvasSlideLaunch";
 import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
@@ -38,6 +41,13 @@ describe("canvasSlideLaunch", () => {
       sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
     });
     expect(canvasCreateSlidesPluginInputs("canvas", "Template")).not.toHaveProperty("slideCount");
+    expect(
+      canvasCreateSlidesPluginInputs("canvas", "Template", null, {
+        sectionCount: 12,
+        headings: ["A", "B"],
+      }),
+    ).toMatchObject({ slideCount: formatCanvasDeckSlideCountInput(12) });
+    expect(inferCanvasDeckSlideCount({ sectionCount: 0, headings: ["Only", "Two"] })).toBe(2);
   });
 
   it("builds a compact Canvas source brief for plugin inputs", () => {
@@ -73,16 +83,31 @@ describe("canvasSlideLaunch", () => {
   });
 
   it("sends hidden deliverable instructions to the model while keeping user display clean", () => {
+    const handoff = { sectionCount: 10, headings: ["Intro"] };
     const runPrompt = canvasCreateSlidesRunPrompt(
       "Hermes Cyber Terminal",
       "Canvas title: Onboarding\nSource preview: Keep onboarding sections.",
+      handoff,
     );
     expect(runPrompt).toContain(CANVAS_CREATE_SLIDES_PROMPT);
     expect(runPrompt).toContain(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION);
     expect(runPrompt).toContain("Selected slide template/style: Hermes Cyber Terminal.");
+    expect(runPrompt).toContain("Target slide count from canvas structure: 10 slides.");
     expect(runPrompt).toContain("[Source brief]");
     expect(runPrompt).toContain("Canvas title: Onboarding");
     expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).toBe(CANVAS_CREATE_SLIDES_PROMPT);
+  });
+
+  it("stamps slideCount on deck project metadata when canvas outline is known", () => {
+    expect(canvasCreateSlidesProjectMetadata({ sectionCount: 8, headings: [] })).toEqual({
+      kind: "deck",
+      skipDiscoveryBrief: true,
+      slideCount: "8 slides",
+    });
+    expect(canvasCreateSlidesProjectMetadata(null)).toEqual({
+      kind: "deck",
+      skipDiscoveryBrief: true,
+    });
   });
 
   it("binds selected deck template into per-turn skillIds for system prompt composition", () => {
@@ -126,9 +151,10 @@ describe("canvasSlideLaunch", () => {
 
     expect(composer).toContain("pluginInputs: canvasCreateSlidesPluginInputs(");
     expect(composer).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff)");
-    expect(composer).toContain("canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief)");
-    expect(home).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff)");
-    expect(home).toContain("canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief)");
+    expect(composer).toContain("canvasCreateSlidesRunPrompt(");
+    expect(composer).toContain("canvasSlideLaunch.handoff");
+    expect(home).toContain("canvasCreateSlidesRunPrompt(");
+    expect(home).toContain("canvasCreateSlidesProjectMetadata(canvasSlideLaunch.handoff)");
     expect(projectView).toContain("pluginInputs: meta?.pluginInputs");
     expect(daemon).toContain("pluginInputs?: Record<string, unknown>;");
     expect(daemon).toContain("{ pluginInputs }");
