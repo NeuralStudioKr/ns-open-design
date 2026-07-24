@@ -75,6 +75,85 @@ function dedupeCspSourceTokens(tokens: string[]): string[] {
   return out;
 }
 
+const KNOWN_CSP_DIRECTIVE_NAMES = new Set([
+  'default-src',
+  'script-src',
+  'style-src',
+  'img-src',
+  'font-src',
+  'connect-src',
+  'frame-src',
+  'worker-src',
+  'child-src',
+  'object-src',
+  'media-src',
+  'manifest-src',
+  'prefetch-src',
+  'navigate-to',
+  'base-uri',
+  'form-action',
+  'frame-ancestors',
+  'upgrade-insecure-requests',
+  'block-all-mixed-content',
+  'require-trusted-types-for',
+  'trusted-types',
+  'report-uri',
+  'report-to',
+  'sandbox',
+]);
+
+function isCspDirectiveName(token: string): boolean {
+  const lower = token.toLowerCase();
+  if (KNOWN_CSP_DIRECTIVE_NAMES.has(lower)) return true;
+  return lower.endsWith('-src');
+}
+
+function parseCspToDirectives(content: string): Array<{ name: string; value: string }> {
+  const chunks = content
+    .trim()
+    .split(';')
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length > 0);
+  const directives: Array<{ name: string; value: string }> = [];
+
+  for (const chunk of chunks) {
+    const tokens = chunk.split(/\s+/).filter(Boolean);
+    let index = 0;
+    while (index < tokens.length) {
+      const name = tokens[index]?.toLowerCase() ?? '';
+      if (!isCspDirectiveName(name)) {
+        index += 1;
+        continue;
+      }
+      index += 1;
+      const valueTokens: string[] = [];
+      while (index < tokens.length) {
+        const token = tokens[index] ?? '';
+        if (isCspDirectiveName(token.toLowerCase())) break;
+        valueTokens.push(token);
+        index += 1;
+      }
+      directives.push({ name, value: valueTokens.join(' ') });
+    }
+  }
+  return directives;
+}
+
+function serializeCspDirectives(directives: Array<{ name: string; value: string }>): string {
+  return directives
+    .map((directive) => {
+      const value = directive.value.trim();
+      return value ? `${directive.name} ${value}` : directive.name;
+    })
+    .join('; ');
+}
+
+function isBaseUriNoneDirective(directive: { name: string; value: string }): boolean {
+  if (directive.name !== 'base-uri') return false;
+  const value = directive.value.trim();
+  return value === "'none'" || value === '"none"' || value === 'none';
+}
+
 function normalizeScriptSrcDirective(sourceList: string): string {
   const tokens = dedupeCspSourceTokens(
     sourceList
@@ -97,10 +176,18 @@ function normalizeScriptSrcDirective(sourceList: string): string {
   return dedupeCspSourceTokens(withoutNone).join(' ');
 }
 
+/** Relax canvas export meta CSP for sandboxed srcDoc previews. */
 function relaxSrcDocPreviewCspContent(content: string): string {
-  return content.replace(/\bscript-src\s+([^;]+)/gi, (_match, sourceList: string) => {
-    return `script-src ${normalizeScriptSrcDirective(sourceList)}`;
-  });
+  const directives = parseCspToDirectives(content)
+    .filter((directive) => !isBaseUriNoneDirective(directive))
+    .map((directive) => {
+      if (directive.name !== 'script-src') return directive;
+      return {
+        ...directive,
+        value: normalizeScriptSrcDirective(directive.value),
+      };
+    });
+  return serializeCspDirectives(directives);
 }
 
 export function stripConflictingSrcDocCspBaseUri(html: string): string {
@@ -110,12 +197,7 @@ export function stripConflictingSrcDocCspBaseUri(html: string): string {
       return tag;
     }
     return tag.replace(/\bcontent\s*=\s*(["'])([\s\S]*?)\1/i, (_m, quote: string, content: string) => {
-      const next = relaxSrcDocPreviewCspContent(content)
-        .replace(/\bbase-uri\s+'none'\s*;?/gi, '')
-        .replace(/\bbase-uri\s*"none"\s*;?/gi, '')
-        .replace(/;\s*;+/g, ';')
-        .replace(/^(?:\s*;\s*)+|(?:\s*;\s*)+$/g, '')
-        .trim();
+      const next = relaxSrcDocPreviewCspContent(content);
       return `content=${quote}${next}${quote}`;
     });
   });

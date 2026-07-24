@@ -59,6 +59,18 @@ describe('authenticatedHtmlSrcDoc helpers', () => {
     expect(html).not.toMatch(/script-src[^;]*'none'/i);
   });
 
+  it('splits glued directives so form-action is not parsed as a script-src source', () => {
+    const canvas = `<!DOCTYPE html><html><head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src 'self'; script-src 'none' base-uri 'none' form-action 'none'"/>
+</head><body></body></html>`;
+    const html = injectHtmlBaseHref(canvas, 'https://example.com/deck/');
+    expect(html).toMatch(/script-src\s+'unsafe-inline'\s*;/i);
+    expect(html).toMatch(/form-action\s+'none'/i);
+    expect(html).not.toMatch(/script-src[^;]*form-action/i);
+    expect(html).not.toMatch(/script-src[^;]*'none'/i);
+    expect(html).not.toMatch(/base-uri/i);
+  });
+
   it('loads authenticated HTML as srcDoc and rejects JSON envelopes', async () => {
     const originalFetch = globalThis.fetch;
     try {
