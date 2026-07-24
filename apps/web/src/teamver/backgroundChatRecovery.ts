@@ -97,6 +97,25 @@ export function conversationHasRecoverableBackgroundChat(
   return isRecoverableBackgroundChatMessage(latest, mode);
 }
 
+/** Drop leaked `streaming` UI when the active conversation has no in-flight turn. */
+export function shouldClearPhantomStreamingMarker(input: {
+  streaming: boolean;
+  streamingConversationId: string | null;
+  activeConversationId: string | null;
+  loading: boolean;
+  awaitingQuestionFormAnswer: boolean;
+  hasActiveRun: boolean;
+  /** BYOK background recovery may keep streaming armed while the proxy still drains. */
+  backgroundRecoveryActive?: boolean;
+}): boolean {
+  if (!input.streaming) return false;
+  if (!input.activeConversationId) return false;
+  if (input.streamingConversationId !== input.activeConversationId) return false;
+  if (input.backgroundRecoveryActive) return false;
+  if (input.loading || input.awaitingQuestionFormAnswer || input.hasActiveRun) return false;
+  return true;
+}
+
 function findLatestAssistantMessage(
   messages: readonly ChatMessage[],
 ): ChatMessage | null {

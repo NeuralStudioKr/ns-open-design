@@ -285,6 +285,7 @@ import {
   shouldFullReplayReattachedRun,
   shouldPollStaleDaemonRun,
   shouldForceFailStaleDaemonRun,
+  shouldClearPhantomStreamingMarker,
   terminalAssistantPatchFromRunStatus,
   TEAMVER_STALE_RUN_POLL_MS,
   shouldShowRunRecoveryBannerInChat,
@@ -297,6 +298,10 @@ import {
 } from '../teamver/teamverEmbedActiveWork';
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { consumeTeamverPublishMenuArm, maybeArmTeamverPublishMenuAfterRunSuccess } from '../teamver/teamverPostRunNavigation';
+import {
+  looksLikeDeckDeliverablePromiseProse,
+  looksLikeDeckIntentProse,
+} from '../teamver/deckDeliverableProse';
 import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSystem';
 import { fetchPluginLocalSkill } from '../teamver/fetchPluginLocalSkill';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
@@ -3806,6 +3811,38 @@ export function ProjectView({
     clearStreamingMarker(conversationId);
     return true;
   }, [clearActiveRunRefs, clearStreamingMarker]);
+
+  useEffect(() => {
+    if (apiBackgroundRecoveryRef.current) return;
+    if (
+      !shouldClearPhantomStreamingMarker({
+        streaming,
+        streamingConversationId,
+        activeConversationId,
+        loading: currentConversationLoading,
+        awaitingQuestionFormAnswer,
+        hasActiveRun: currentConversationHasActiveRun,
+        backgroundRecoveryActive: apiBackgroundRecoveryRef.current,
+      })
+    ) {
+      return;
+    }
+    abortRef.current = null;
+    cancelRef.current = null;
+    apiBackgroundRecoveryRef.current = false;
+    clearApiBackgroundRecoveryBanner();
+    clearStreamingMarker(activeConversationId);
+  }, [
+    activeConversationId,
+    awaitingQuestionFormAnswer,
+    clearApiBackgroundRecoveryBanner,
+    clearStreamingMarker,
+    currentConversationHasActiveRun,
+    currentConversationLoading,
+    inFlightAssistantSignature,
+    streaming,
+    streamingConversationId,
+  ]);
 
   const handleAssistantFeedback = useCallback(
     (assistantMessage: ChatMessage, change: ChatMessageFeedbackChange) => {
@@ -9431,13 +9468,10 @@ export function shouldFailSlideRunWithoutHtmlDeliverable(
   const text = finalText.trim();
   if (!text) return false;
 
-  const promiseOnly =
-    /(created|generated|built|updated|edited|modified|completed|finished|done|wrote|saved|ready|here it is|will create|will build|I'll|I will)/i.test(text)
-    || /(바로\s*)?(만들어|만들겠|작성하겠|생성하겠|수정하겠|반영하겠|제작하|결정하겠|확정|채우|출력|완료|완성|마쳤|만들었|작성했|생성했|수정했|반영했|준비했|시작할게|진행하겠|올렸|넣었|드렸)/i.test(text);
+  const promiseOnly = looksLikeDeckDeliverablePromiseProse(text);
 
   const deckIntent =
-    /\b(deck|slide|slides|presentation|ppt|keynote|html)\b/i.test(text)
-    || /(슬라이드|발표\s*자료|프레젠테이션|피피티|덱|HTML)/i.test(text);
+    looksLikeDeckIntentProse(text);
   if (!deckIntent && !promiseOnly) return false;
 
   if (looksLikeSlideOutline(text)) return true;

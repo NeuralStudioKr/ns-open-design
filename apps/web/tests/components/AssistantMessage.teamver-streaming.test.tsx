@@ -148,7 +148,24 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.queryByText('Waiting for first output')).toBeNull();
   });
 
-  it('prefers model-authored natural prose over the fixed live-artifact fallback', () => {
+  it('hides premature past-tense deck completion prose while the artifact is still streaming', () => {
+    render(
+      <AssistantMessage
+        message={streamingMessage(
+          '친근한 톤의 개발자 포트폴리오 2슬라이드 덱을 만들었어요!\n\n<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Draft',
+        )}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Creating the slide deck now. Please wait a moment.')).toBeTruthy();
+    expect(screen.queryByText(/만들었어요/)).toBeNull();
+    expect(screen.getByText('Write')).toBeTruthy();
+  });
+
+  it('prefers in-progress model prose over the fixed live-artifact fallback', () => {
     render(
       <AssistantMessage
         message={streamingMessage(

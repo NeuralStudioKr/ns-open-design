@@ -9,6 +9,7 @@ import {
   mergeByokBackgroundRunSummaries,
   reconcileByokBackgroundChatsAfterPoll,
   resolveRunRecoveryBannerPhase,
+  shouldClearPhantomStreamingMarker,
   shouldFullReplayReattachedRun,
   shouldShowRunRecoveryBannerInChat,
   syntheticByokRunsForTaskCenter,
@@ -283,6 +284,50 @@ describe("backgroundChatRecovery", () => {
         banner,
         activeConversationId: "c2",
         conversationStreaming: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("clears phantom streaming markers once the active conversation turn settles", () => {
+    expect(
+      shouldClearPhantomStreamingMarker({
+        streaming: true,
+        streamingConversationId: "c1",
+        activeConversationId: "c1",
+        loading: false,
+        awaitingQuestionFormAnswer: false,
+        hasActiveRun: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldClearPhantomStreamingMarker({
+        streaming: true,
+        streamingConversationId: "c1",
+        activeConversationId: "c1",
+        loading: false,
+        awaitingQuestionFormAnswer: false,
+        hasActiveRun: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldClearPhantomStreamingMarker({
+        streaming: true,
+        streamingConversationId: "c1",
+        activeConversationId: "c1",
+        loading: false,
+        awaitingQuestionFormAnswer: true,
+        hasActiveRun: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldClearPhantomStreamingMarker({
+        streaming: true,
+        streamingConversationId: "c1",
+        activeConversationId: "c1",
+        loading: false,
+        awaitingQuestionFormAnswer: false,
+        hasActiveRun: false,
+        backgroundRecoveryActive: true,
       }),
     ).toBe(false);
   });

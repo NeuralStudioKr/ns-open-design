@@ -50,6 +50,7 @@ import { useI18n } from "../i18n";
 import { parseSubmittedAnswers } from "./QuestionForm";
 import { splitStreamingArtifact, stripAllClosedArtifacts, stripRecoveredHtmlFallbackForDisplay } from "../artifacts/strip";
 import { isDeckPatchArtifactType } from "../artifacts/deck-patch";
+import { looksLikePrematureDeckCompletionProse } from "../teamver/deckDeliverableProse";
 import {
   getPluginFolderCandidates,
   type PluginFolderCandidate,
@@ -2238,16 +2239,32 @@ function ProseBlock({
       }));
     }
   );
+  const visibleRenderable = useMemo(() => {
+    if (!streaming || !live || !(slideOnlyMvp || teamverEmbedEnabled)) return renderable;
+    return renderable.filter((seg) => {
+      if (seg.kind !== "text") return true;
+      return !looksLikePrematureDeckCompletionProse(seg.text);
+    });
+  }, [renderable, streaming, live, slideOnlyMvp, teamverEmbedEnabled]);
+  const hasVisibleProseWhileLive = visibleRenderable.some(
+    (seg) =>
+      (seg.kind === "text" && seg.text.trim().length > 0)
+      || seg.kind === "form"
+      || seg.kind === "reminder"
+      || seg.kind === "suppressed-direction",
+  );
   const shouldShowTeamverLiveArtifactLead =
-    !!live && renderable.length === 0 && (slideOnlyMvp || teamverEmbedEnabled);
+    !!live
+    && !hasVisibleProseWhileLive
+    && (slideOnlyMvp || teamverEmbedEnabled);
   const teamverLiveArtifactLead = teamverLiveArtifactLeadCopy(
     locale,
     messageIndicatesDeckPatchArtifact(text, live?.artifactType),
   );
-  if (renderable.length === 0 && !live && !hadOpenForm) return null;
+  if (visibleRenderable.length === 0 && !live && !hadOpenForm) return null;
   return (
     <div className="prose-block" data-stream-cursor={showStreamCursor && !live ? "true" : undefined}>
-      {renderable.map((seg) => {
+      {visibleRenderable.map((seg) => {
         if (seg.kind === "reminder") {
           return <SystemReminderBlock key={seg.key} text={seg.text} variant="injection" />;
         }
