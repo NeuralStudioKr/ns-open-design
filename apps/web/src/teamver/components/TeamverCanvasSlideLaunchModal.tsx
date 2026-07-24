@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { useTeamverT } from "../branding/useTeamverT";
 import type { TeamverDriveImportAsset } from "../importDriveAssets";
@@ -71,6 +71,7 @@ export function TeamverCanvasSlideLaunchModal({
     source.kind === "canvas" ? source.handoff : null,
   );
   const [enriching, setEnriching] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!open || source.kind !== "canvas") {
@@ -94,6 +95,32 @@ export function TeamverCanvasSlideLaunchModal({
       cancelled = true;
     };
   }, [open, source]);
+
+  // Escape closes the modal (unless a confirm is already in flight). Kept
+  // outside the JSX so the shortcut works even when focus lives on a nested
+  // control like the template search input.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !confirming) {
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [confirming, onClose, open]);
+
+  // On open, park initial focus on the close affordance. This gives keyboard
+  // users a stable, predictable Tab landing zone without stealing focus from
+  // the template picker's arrow-key navigation later.
+  useEffect(() => {
+    if (!open) return;
+    const el = closeButtonRef.current;
+    if (!el) return;
+    const id = requestAnimationFrame(() => el.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(id);
+  }, [open]);
 
   const untitled = t("teamver.canvasSlideLaunch.untitled");
   const handoff = source.kind === "canvas" ? liveHandoff ?? source.handoff : null;
@@ -162,10 +189,12 @@ export function TeamverCanvasSlideLaunchModal({
             <span>{t("teamver.canvasSlideLaunch.badge")}</span>
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             className="teamver-drive-picker-close"
             aria-label={t("teamver.canvasSlideLaunch.cancel")}
             disabled={confirming}
+            data-testid="teamver-canvas-slide-launch-close"
             onClick={onClose}
           >
             <Icon name="close" size={16} />

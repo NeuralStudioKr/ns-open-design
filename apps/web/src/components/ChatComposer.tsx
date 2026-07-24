@@ -82,9 +82,10 @@ import {
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
-  canvasSlideTemplateOptions,
   driveCreateSlidesSourceBrief,
+  resolveCanvasSlideTemplate,
 } from '../teamver/canvasSlideLaunch';
+import { useCanvasSlideLaunchTemplates } from '../teamver/hooks/useCanvasSlideLaunchTemplates';
 import {
   canvasImportedToChatAttachments,
   formatTeamverCanvasImportErrorMessage,
@@ -531,14 +532,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // the @-mention picker. Both surfaces share the same list so applying
     // a plugin from either path lands on the same project context.
     const [installedPlugins, setInstalledPlugins] = useState<InstalledPluginRecord[]>([]);
-    const canvasSlideTemplates = useMemo(
-      () => canvasSlideTemplateOptions(installedPlugins, locale),
-      [installedPlugins, locale],
+    // Hook merges the composer's own installedPlugins with the shared
+    // deck-plugin cache — so even if the Canvas handoff lands before the
+    // composer's own fetch settles, the picker still surfaces every deck
+    // template instead of only the fallback tile.
+    const canvasSlideTemplates = useCanvasSlideLaunchTemplates({
+      active: canvasSlideLaunch !== null,
+      callerPlugins: installedPlugins,
+      locale,
+    });
+    const selectedCanvasSlideTemplate = useMemo(
+      () => resolveCanvasSlideTemplate(canvasSlideTemplates, canvasSlideTemplateId),
+      [canvasSlideTemplates, canvasSlideTemplateId],
     );
-    const selectedCanvasSlideTemplate =
-      canvasSlideTemplates.find((option) => option.id === canvasSlideTemplateId)
-      ?? canvasSlideTemplates[0]
-      ?? { id: CANVAS_CREATE_SLIDES_PLUGIN_ID, title: '기본 슬라이드 템플릿' };
     // Detail modal — opened from a context chip click (kind === 'plugin')
     // or from the tools-menu "Details" affordance.
     const [detailsRecord, setDetailsRecord] = useState<InstalledPluginRecord | null>(null);

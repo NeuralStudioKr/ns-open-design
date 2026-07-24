@@ -135,9 +135,10 @@ import {
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
-  canvasSlideTemplateOptions,
+  resolveCanvasSlideTemplate,
   driveCreateSlidesSourceBrief,
 } from '../teamver/canvasSlideLaunch';
+import { useCanvasSlideLaunchTemplates } from '../teamver/hooks/useCanvasSlideLaunchTemplates';
 import {
   consumeTeamverDriveLaunchHandoff,
   readTeamverDriveLaunchHandoffAssets,
@@ -359,7 +360,6 @@ export function HomeView({
   const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
   const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
   const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
-  const [canvasSlideTemplatePlugins, setCanvasSlideTemplatePlugins] = useState<InstalledPluginRecord[]>([]);
   const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
   const teamverDriveImportAllowed = useMemo(
     () =>
@@ -370,14 +370,14 @@ export function HomeView({
       }),
     [designAccessTick, teamverDriveImportEnabled, teamverWorkspaceId],
   );
-  const canvasSlideTemplates = useMemo(
-    () => canvasSlideTemplateOptions(canvasSlideTemplatePlugins, locale),
-    [canvasSlideTemplatePlugins, locale],
+  const canvasSlideTemplates = useCanvasSlideLaunchTemplates({
+    active: canvasSlideLaunch !== null,
+    locale,
+  });
+  const selectedCanvasSlideTemplate = useMemo(
+    () => resolveCanvasSlideTemplate(canvasSlideTemplates, canvasSlideTemplateId),
+    [canvasSlideTemplates, canvasSlideTemplateId],
   );
-  const selectedCanvasSlideTemplate =
-    canvasSlideTemplates.find((option) => option.id === canvasSlideTemplateId)
-    ?? canvasSlideTemplates[0]
-    ?? { id: CANVAS_CREATE_SLIDES_PLUGIN_ID, title: '기본 슬라이드 템플릿' };
   useEffect(() => {
     if (!teamverDriveImportEnabled) return;
     let cancelled = false;
@@ -400,17 +400,6 @@ export function HomeView({
       unsubscribe();
     };
   }, [teamverDriveImportEnabled]);
-  useEffect(() => {
-    if (!canvasSlideLaunch) return;
-    let cancelled = false;
-    void listPluginsPage({ mode: 'deck', limit: HOME_COMMUNITY_PLUGIN_PAGE_SIZE }).then((page) => {
-      if (cancelled) return;
-      setCanvasSlideTemplatePlugins(page.plugins);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [canvasSlideLaunch]);
   useEffect(() => {
     if (!teamverDriveImportEnabled) return;
     return subscribeTeamverDesignAccessChanged(() => {

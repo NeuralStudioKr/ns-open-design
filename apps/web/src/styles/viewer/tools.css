@@ -2125,6 +2125,44 @@
   color: var(--text-muted);
   font-size: 12.5px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.teamver-canvas-slide-launch-template-empty > p {
+  margin: 0;
+}
+.teamver-canvas-slide-launch-template-empty-clear {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.teamver-canvas-slide-launch-template-empty-clear:hover,
+.teamver-canvas-slide-launch-template-empty-clear:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* Visually hidden live region: SR announces but sighted users do not
+   see a floating status line. Follows the standard sr-only recipe so we
+   don't pull in a global class. */
+.teamver-canvas-slide-launch-template-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 .teamver-canvas-slide-launch-template-card {
   position: relative;
@@ -2215,6 +2253,75 @@
   background: var(--accent);
   color: #fff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.teamver-canvas-slide-launch-template-card-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 92%, var(--text-strong));
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+}
+/* Hover reveals a bottom overlay with tags + short description so users can
+   distinguish templates whose names alone are ambiguous (e.g. "Cobalt Grid"
+   vs "Neo Grid"). The overlay is aria-hidden — the card's accessible name
+   still comes from the visible title below. */
+.teamver-canvas-slide-launch-template-card-overlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 10px 8px;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, #000 78%, transparent) 0%,
+    color-mix(in srgb, #000 55%, transparent) 55%,
+    color-mix(in srgb, #000 0%, transparent) 100%
+  );
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 140ms ease, transform 140ms ease;
+  pointer-events: none;
+}
+.teamver-canvas-slide-launch-template-card:hover .teamver-canvas-slide-launch-template-card-overlay,
+.teamver-canvas-slide-launch-template-card:focus-visible .teamver-canvas-slide-launch-template-card-overlay,
+.teamver-canvas-slide-launch-template-card.is-selected .teamver-canvas-slide-launch-template-card-overlay {
+  opacity: 1;
+  transform: translateY(0);
+}
+.teamver-canvas-slide-launch-template-card-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: #fff;
+}
+.teamver-canvas-slide-launch-template-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.teamver-canvas-slide-launch-template-card-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #fff 20%, transparent);
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: 0.02em;
 }
 .teamver-canvas-slide-launch-template-card-title {
   padding: 0 4px;

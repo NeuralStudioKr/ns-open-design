@@ -13,6 +13,7 @@ import {
   canvasSlideTemplateOptions,
   driveCreateSlidesSourceBrief,
   isCanvasSlideOneConfirmLaunch,
+  resolveCanvasSlideTemplate,
 } from "../src/teamver/canvasSlideLaunch";
 import type { InstalledPluginRecord } from "@open-design/contracts";
 import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
@@ -137,6 +138,25 @@ describe("canvasSlideLaunch", () => {
     expect(isCanvasSlideOneConfirmLaunch("create-slides", asset)).toBe(true);
     expect(isCanvasSlideOneConfirmLaunch(null, asset)).toBe(false);
     expect(isCanvasSlideOneConfirmLaunch("create-slides", null)).toBe(false);
+  });
+
+  it("resolves the effective slide template through the same 3-level ladder in both HomeView + ChatComposer", () => {
+    const options = [
+      { id: "example-simple-deck", title: "기본 슬라이드 템플릿", record: null },
+      { id: "html-ppt-hermes", title: "Hermes" },
+    ];
+
+    // (1) Explicit templateId maps to a visible option.
+    expect(resolveCanvasSlideTemplate(options, "html-ppt-hermes").id).toBe("html-ppt-hermes");
+    // (2) Unknown templateId falls back to the first option (the default fallback tile).
+    expect(resolveCanvasSlideTemplate(options, "html-ppt-does-not-exist").id).toBe(
+      CANVAS_CREATE_SLIDES_PLUGIN_ID,
+    );
+    // (3) Empty options list still yields the hard-coded default so callers never
+    //     have to null-check the return value.
+    const hardDefault = resolveCanvasSlideTemplate([], "html-ppt-hermes");
+    expect(hardDefault.id).toBe(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    expect(hardDefault.title).toBe("기본 슬라이드 템플릿");
   });
 
   it("exposes each deck plugin record alongside its title so the picker can render previews", () => {

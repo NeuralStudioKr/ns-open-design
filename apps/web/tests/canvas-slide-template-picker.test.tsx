@@ -134,6 +134,78 @@ describe("CanvasSlideTemplatePicker", () => {
     expect(onSelect).toHaveBeenCalledWith("html-ppt-cobalt-grid");
   });
 
+  it("announces the filtered count via a polite aria-live region", () => {
+    render(
+      <CanvasSlideTemplatePicker
+        options={makeOptions()}
+        selectedTemplateId="example-simple-deck"
+        onSelect={vi.fn()}
+        showSearch
+      />,
+    );
+
+    const live = screen.getByTestId("teamver-canvas-slide-launch-template-live");
+    expect(live.getAttribute("aria-live")).toBe("polite");
+    // No query → empty live region so SR is quiet on first mount.
+    expect(live.textContent).toBe("");
+
+    const search = screen.getByTestId("teamver-canvas-slide-launch-template-search");
+    fireEvent.change(search, { target: { value: "cobalt" } });
+    expect(live.textContent).toContain("1");
+
+    fireEvent.change(search, { target: { value: "zzz-no-match" } });
+    expect(live.textContent).toContain("검색 결과 없음");
+  });
+
+  it("clears the search when the user clicks the empty-state reset button", () => {
+    render(
+      <CanvasSlideTemplatePicker
+        options={makeOptions()}
+        selectedTemplateId="example-simple-deck"
+        onSelect={vi.fn()}
+        showSearch
+      />,
+    );
+
+    const search = screen.getByTestId("teamver-canvas-slide-launch-template-search") as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "zzz-no-match" } });
+    const empty = screen.getByTestId("teamver-canvas-slide-launch-template-empty");
+    expect(empty.textContent).toContain("검색어와 일치하는 템플릿이 없습니다.");
+
+    fireEvent.click(
+      screen.getByTestId("teamver-canvas-slide-launch-template-empty-clear"),
+    );
+    expect(search.value).toBe("");
+    // Grid re-renders every card once the filter is cleared.
+    expect(
+      screen.getByTestId("teamver-canvas-slide-launch-template-card-html-ppt-hermes"),
+    ).toBeTruthy();
+  });
+
+  it("scrolls the newly selected card into view after arrow-key navigation", () => {
+    const scrollIntoView = vi.fn();
+    // jsdom does not implement HTMLElement.prototype.scrollIntoView; provide it
+    // so the picker's block:'nearest' call has something to hit.
+    (HTMLElement.prototype as unknown as { scrollIntoView: typeof scrollIntoView }).scrollIntoView =
+      scrollIntoView;
+
+    const onSelect = vi.fn();
+    render(
+      <CanvasSlideTemplatePicker
+        options={makeOptions()}
+        selectedTemplateId="example-simple-deck"
+        onSelect={onSelect}
+      />,
+    );
+
+    const group = screen.getByTestId("teamver-canvas-slide-launch-template");
+    fireEvent.keyDown(group, { key: "ArrowRight" });
+    // queueMicrotask flushes after the current task; await a microtask tick.
+    return Promise.resolve().then(() => {
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+  });
+
   it("renders a static single-option label when only one template is available", () => {
     render(
       <CanvasSlideTemplatePicker

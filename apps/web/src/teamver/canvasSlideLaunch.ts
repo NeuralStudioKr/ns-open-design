@@ -1,5 +1,6 @@
 import { defaultScenarioPluginIdForKind, type InstalledPluginRecord } from "@open-design/contracts";
 import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from "../runtime/deckGuidance";
+import { listPluginsPage } from "../state/projects";
 import type { TeamverDriveImportAsset } from "./importDriveAssets";
 import type { TeamverDriveLaunchIntent } from "./driveLaunchHandoff";
 import type { TeamverCanvasLaunchHandoff } from "./canvasLaunchHandoff";
@@ -92,6 +93,97 @@ export function isCanvasSlideOneConfirmLaunch(
   asset: TeamverDriveImportAsset | null,
 ): asset is TeamverDriveImportAsset {
   return intent === "create-slides" && asset != null;
+}
+
+/**
+ * Deck-template plugin list cached in-memory so re-opening the Canvas / Drive
+ * → Design launch modal (or bouncing between Home and a project) does not
+ * re-hit `GET /api/plugins?mode=deck` every time. The list is trivially
+ * idempotent on the daemon side, and the modal never survives longer than
+ * a project run, so a short TTL is enough: fresh enough to notice newly
+ * installed community decks, cheap enough that repeat opens are instant.
+ *
+ * Callers that need bypass-the-cache semantics (e.g. after a publish flow
+ * that installs a new plugin) can pass `{ force: true }`.
+ */
+const DECK_TEMPLATE_CACHE_TTL_MS = 60_000;
+const DECK_TEMPLATE_CACHE_LIMIT = 24;
+
+type DeckTemplateCacheEntry = {
+  fetchedAt: number;
+  plugins: readonly InstalledPluginRecord[];
+};
+
+let deckTemplateCache: DeckTemplateCacheEntry | null = null;
+let deckTemplateInflight: Promise<readonly InstalledPluginRecord[]> | null = null;
+
+/**
+ * Fetches (or reuses) the deck-template plugin list used by the Canvas →
+ * Design slide-template picker. Multiple concurrent callers share the same
+ * in-flight promise so opening the modal 3 times in a row still fires one
+ * request.
+ */
+export async function fetchCanvasSlideTemplatePlugins(options?: {
+  force?: boolean;
+}): Promise<readonly InstalledPluginRecord[]> {
+  const now = Date.now();
+  if (
+    !options?.force
+    && deckTemplateCache
+    && now - deckTemplateCache.fetchedAt < DECK_TEMPLATE_CACHE_TTL_MS
+  ) {
+    return deckTemplateCache.plugins;
+  }
+  if (deckTemplateInflight) return deckTemplateInflight;
+  deckTemplateInflight = (async () => {
+    try {
+      const page = await listPluginsPage({
+        mode: "deck",
+        limit: DECK_TEMPLATE_CACHE_LIMIT,
+      });
+      deckTemplateCache = { fetchedAt: Date.now(), plugins: page.plugins };
+      return page.plugins;
+    } catch {
+      // `listPluginsPage` already swallows fetch errors and returns an empty
+      // page; guard anyway so the picker keeps working with just the
+      // built-in "기본 슬라이드 템플릿" fallback.
+      deckTemplateCache = { fetchedAt: Date.now(), plugins: [] };
+      return [];
+    } finally {
+      deckTemplateInflight = null;
+    }
+  })();
+  return deckTemplateInflight;
+}
+
+/** Test-only reset for the deck-template plugin cache. */
+export function __resetCanvasSlideTemplatePluginsCacheForTests(): void {
+  deckTemplateCache = null;
+  deckTemplateInflight = null;
+}
+
+/**
+ * Resolve the effective slide-template selection for the Canvas → Design
+ * launch flow. Falls through the same 3-level ladder the modal and composer
+ * previously duplicated:
+ *   1. explicit templateId if it maps to a visible option
+ *   2. first available option (already includes the "기본 슬라이드 템플릿"
+ *      fallback which `canvasSlideTemplateOptions` always prepends)
+ *   3. hard-coded default (empty options list — should never happen in
+ *      practice because `canvasSlideTemplateOptions` always yields ≥ 1)
+ *
+ * Kept as a plain function (not a hook) so HomeView / ChatComposer can call
+ * it from useMemo without pulling in extra React state.
+ */
+export function resolveCanvasSlideTemplate(
+  options: readonly TeamverCanvasSlideTemplateOption[],
+  templateId: string,
+): TeamverCanvasSlideTemplateOption {
+  const explicit = options.find((option) => option.id === templateId);
+  if (explicit) return explicit;
+  const first = options[0];
+  if (first) return first;
+  return { id: CANVAS_CREATE_SLIDES_PLUGIN_ID, title: "기본 슬라이드 템플릿", record: null };
 }
 
 export function canvasSlideTemplateOptions(
