@@ -140,6 +140,17 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
   });
 
+  it('matches body-first slides when a <style> block precedes them in body', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<style>.slide{min-height:100vh}body{display:flex;flex-direction:column}</style>',
+      '<section class="slide">A</section>',
+      '<section class="slide">B</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+  });
+
   it('includes emergency fallback decks that stack body > .slide vertically', () => {
     const html = buildEmergencySlideDeckFromOutline('1. Intro\n2. Body\n3. Close', { lang: 'ko' });
     expect(html).toBeTruthy();
@@ -194,7 +205,6 @@ describe('looksLikeCompactApiStackedDeck', () => {
     await new Promise<void>((resolve) => win.setTimeout(resolve, 500));
 
     expect(win.document.documentElement.getAttribute('data-od-stacked-deck')).toBe('');
-    expect(win.document.documentElement.getAttribute('data-od-stacked-deck-ready')).toBeNull();
     const stage = win.document.getElementById('od-stacked-deck-stage');
     expect(stage).toBeTruthy();
     const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];

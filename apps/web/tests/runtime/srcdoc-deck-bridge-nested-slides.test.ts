@@ -257,6 +257,24 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
   });
 
+  it('hoists flex-column creative deck slides into the stacked stage immediately', async () => {
+    const bodyHtml = [
+      '<style>body{margin:0;display:flex;flex-direction:column;background:#0b0c10}',
+      '.slide{min-height:100vh;padding:48px;color:#fff}</style>',
+      '<section class="slide"><h1>김민준</h1></section>',
+      '<section class="slide"><h2>Projects</h2></section>',
+    ].join('');
+    const { win } = setupDeckBridge(bodyHtml);
+    Object.defineProperty(win.document.documentElement, 'clientWidth', { configurable: true, value: 960 });
+    Object.defineProperty(win.document.documentElement, 'clientHeight', { configurable: true, value: 540 });
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
+
+    const stage = win.document.getElementById('od-stacked-deck-stage');
+    expect(stage).toBeTruthy();
+    expect(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')).toHaveLength(2);
+    expect(stage?.style.transform).toMatch(/scale\(/);
+  });
+
   it('letterboxes body > .slide min-height decks to a centered 1920x1080 stage', async () => {
     const slides = Array.from({ length: 2 }, (_, i) =>
       `<section class="slide" style="min-height:100vh;background:#0ea5e9;padding:40px">Slide ${i + 1}</section>`,

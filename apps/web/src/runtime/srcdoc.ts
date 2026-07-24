@@ -2003,15 +2003,6 @@ html[data-od-compact-stacked] body {
 html[data-od-compact-stacked] .slide ~ .slide {
   display: none !important;
 }
-html[data-od-compact-stacked]:not([data-od-stacked-deck]) body > .slide {
-  visibility: hidden !important;
-}
-html[data-od-compact-stacked]:not([data-od-stacked-deck-ready]) {
-  visibility: hidden;
-}
-html[data-od-compact-stacked][data-od-stacked-deck-ready] {
-  visibility: visible;
-}
 #od-stacked-deck-stage {
   position: absolute;
   top: 50%;
@@ -2133,7 +2124,8 @@ html[data-od-compact-stacked][data-od-stacked-deck-ready] {
   function ensureStackedDeckStage() {
     var existing = stackedDeckStage();
     if (existing) return existing;
-    if (!shouldUseStackedDeckStage()) return null;
+    if (!compactStackedDeckEnabled) return null;
+    if (frameworkDeckStage()) return null;
     var direct = stackedSlideNodes();
     if (!direct.length) return null;
     var stage = document.createElement('div');
@@ -2706,9 +2698,6 @@ html[data-od-compact-stacked][data-od-stacked-deck-ready] {
     if (document.documentElement.hasAttribute('data-od-stacked-deck-ready')) return;
     var stage = stackedDeckStage();
     if (!stage) return;
-    var hw = Math.max(0, hostViewport.w || 0);
-    var hh = Math.max(0, hostViewport.h || 0);
-    if (hw < 64 || hh < 64) return;
     var vp = frameworkDeckViewport();
     if (vp.w < 64 || vp.h < 64) return;
     var raw = stage.style.transform || '';
@@ -2761,11 +2750,7 @@ html[data-od-compact-stacked][data-od-stacked-deck-ready] {
       bootstrapCompactStackedDeck();
       requestHostDeckViewport();
       markStackedDeckReadyIfFit();
-      if (!document.documentElement.hasAttribute('data-od-stacked-deck-ready') && stackedDeckStage()) {
-        document.documentElement.setAttribute('data-od-stacked-deck-ready', '');
-        notifyStackedDeckReady();
-      }
-    }, 1800);
+    }, 400);
   }
   if (document.readyState === 'complete') chaseFirstLayout();
   else window.addEventListener('load', chaseFirstLayout);
