@@ -50,6 +50,15 @@ describe('authenticatedHtmlSrcDoc helpers', () => {
     expect(html).not.toMatch(/script-src[^;]*'none'/i);
   });
 
+  it('preserves script-src self while dropping none and ensuring inline for srcdoc', () => {
+    const canvas = `<!DOCTYPE html><html><head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'none'"/>
+</head><body></body></html>`;
+    const html = injectHtmlBaseHref(canvas, 'https://example.com/deck/');
+    expect(html).toMatch(/script-src\s+'self'\s+'unsafe-inline'/i);
+    expect(html).not.toMatch(/script-src[^;]*'none'/i);
+  });
+
   it('loads authenticated HTML as srcDoc and rejects JSON envelopes', async () => {
     const originalFetch = globalThis.fetch;
     try {

@@ -59,15 +59,29 @@ export function resolvePluginPreviewBaseHref(previewSrc: string, origin?: string
  * violates the meta and floods DevTools. Drop only the conflicting directive
  * (keep default-src / img-src / etc.).
  *
- * Canvas export CSP also sets `script-src 'none'` for static downloads. Sandboxed
- * preview iframes (`allow-scripts`) must run deck navigation and host bridges,
- * so relax that directive to inline scripts only.
+ * Canvas export CSP often sets `script-src 'none'` (or mixes `'none'` with other
+ * sources, which browsers reject). Sandboxed preview iframes (`allow-scripts`)
+ * must run deck navigation and host bridges, so drop `'none'` from `script-src`
+ * and ensure `'unsafe-inline'` is present (keeping `'self'` when listed).
  */
+function dedupeCspSourceTokens(tokens: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const token of tokens) {
+    if (seen.has(token)) continue;
+    seen.add(token);
+    out.push(token);
+  }
+  return out;
+}
+
 function normalizeScriptSrcDirective(sourceList: string): string {
-  const tokens = sourceList
-    .trim()
-    .split(/\s+/)
-    .filter((token) => token.length > 0);
+  const tokens = dedupeCspSourceTokens(
+    sourceList
+      .trim()
+      .split(/\s+/)
+      .filter((token) => token.length > 0),
+  );
   const withoutNone = tokens.filter(
     (token) => token !== "'none'" && token !== '"none"' && token !== 'none',
   );
@@ -80,7 +94,7 @@ function normalizeScriptSrcDirective(sourceList: string): string {
   if (!hasInline) {
     withoutNone.push("'unsafe-inline'");
   }
-  return withoutNone.join(' ');
+  return dedupeCspSourceTokens(withoutNone).join(' ');
 }
 
 function relaxSrcDocPreviewCspContent(content: string): string {
