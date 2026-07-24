@@ -78,6 +78,8 @@ function dedupeCspSourceTokens(tokens: string[]): string[] {
 const KNOWN_CSP_DIRECTIVE_NAMES = new Set([
   'default-src',
   'script-src',
+  'script-src-elem',
+  'script-src-attr',
   'style-src',
   'img-src',
   'font-src',
@@ -154,6 +156,10 @@ function isBaseUriNoneDirective(directive: { name: string; value: string }): boo
   return value === "'none'" || value === '"none"' || value === 'none';
 }
 
+function isScriptExecutionDirective(name: string): boolean {
+  return name === 'script-src' || name === 'script-src-elem' || name === 'script-src-attr';
+}
+
 function normalizeScriptSrcDirective(sourceList: string): string {
   const tokens = dedupeCspSourceTokens(
     sourceList
@@ -177,17 +183,21 @@ function normalizeScriptSrcDirective(sourceList: string): string {
 }
 
 /** Relax canvas export meta CSP for sandboxed srcDoc previews. */
-function relaxSrcDocPreviewCspContent(content: string): string {
+export function relaxCanvasMetaCspForSrcDocPreview(content: string): string {
   const directives = parseCspToDirectives(content)
     .filter((directive) => !isBaseUriNoneDirective(directive))
     .map((directive) => {
-      if (directive.name !== 'script-src') return directive;
+      if (!isScriptExecutionDirective(directive.name)) return directive;
       return {
         ...directive,
         value: normalizeScriptSrcDirective(directive.value),
       };
     });
   return serializeCspDirectives(directives);
+}
+
+function relaxSrcDocPreviewCspContent(content: string): string {
+  return relaxCanvasMetaCspForSrcDocPreview(content);
 }
 
 export function stripConflictingSrcDocCspBaseUri(html: string): string {

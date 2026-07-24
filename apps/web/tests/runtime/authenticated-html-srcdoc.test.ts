@@ -4,6 +4,7 @@ import {
   isUnauthorizedHtmlBody,
   loadAuthenticatedHtmlSrcDoc,
   looksLikeHtmlDocument,
+  relaxCanvasMetaCspForSrcDocPreview,
   resolvePluginPreviewBaseHref,
 } from '../../src/runtime/authenticatedHtmlSrcDoc';
 
@@ -69,6 +70,17 @@ describe('authenticatedHtmlSrcDoc helpers', () => {
     expect(html).not.toMatch(/script-src[^;]*form-action/i);
     expect(html).not.toMatch(/script-src[^;]*'none'/i);
     expect(html).not.toMatch(/base-uri/i);
+  });
+
+  it('relaxCanvasMetaCspForSrcDocPreview normalizes script-src-elem and keeps flag directives', () => {
+    const relaxed = relaxCanvasMetaCspForSrcDocPreview(
+      "default-src 'none'; upgrade-insecure-requests; script-src-elem 'none'; script-src 'none' 'unsafe-inline'",
+    );
+    expect(relaxed).toContain('upgrade-insecure-requests');
+    expect(relaxed).toMatch(/script-src-elem\s+'unsafe-inline'/i);
+    expect(relaxed).toMatch(/script-src\s+'unsafe-inline'/i);
+    expect(relaxed).not.toMatch(/script-src[^;]*'none'/i);
+    expect(relaxed).not.toMatch(/script-src-elem[^;]*'none'/i);
   });
 
   it('loads authenticated HTML as srcDoc and rejects JSON envelopes', async () => {
