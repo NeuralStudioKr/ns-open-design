@@ -7,10 +7,11 @@
 // Backends only ever see a SSRF-cleared, http(s) URL plus an
 // AbortSignal this file owns.
 //
-// Phase C is a pure refactor: the only backend registered is native
-// and the public API (`fetchUrlContent`) is byte-for-byte compatible
-// with the pre-refactor implementation exercised by
-// `apps/daemon/tests/byok-url-tools.test.ts`.
+// The public API (`fetchUrlContent`) is byte-for-byte compatible with
+// the pre-adapter implementation exercised by
+// `apps/daemon/tests/byok-url-tools.test.ts`. Env-driven selection
+// (WEB_FETCH_BACKEND, reader endpoint, optional fallback) lives in
+// select.ts; defaults keep the native backend as the only path.
 
 import { assertExternalAssetUrl } from '../connectionTest.js';
 import type {
@@ -18,7 +19,8 @@ import type {
   WebFetchBackendResult,
   WebFetchToolResult,
 } from './backend.js';
-import { nativeWebFetchBackend } from './native-backend.js';
+import { resolveWebFetchBackend } from './select.js';
+import type { WebFetchBackendPair } from './select.js';
 
 export const MAX_TEXT_BYTES = 100 * 1024; // 100 KB post-fetch cap
 export const FETCH_TIMEOUT_MS = 12_000; // 12s — one tool-loop round must not hang
@@ -78,15 +80,21 @@ function htmlToText(html: string): StrippedHtml {
   return { text, ...(title ? { title } : {}) };
 }
 
-/** Phase C: always native. Phase D wires env-driven selection + an
- *  optional 1x fallback to native (see 48-1 §3.5). The resolver stays
- *  inline here so the Phase C diff is a pure refactor — a dedicated
- *  select.ts arrives with the reader backend. */
-function resolveWebFetchBackend(): {
-  primary: WebFetchBackend;
-  fallback: WebFetchBackend | null;
-} {
-  return { primary: nativeWebFetchBackend, fallback: null };
+/** Lazy-memoised backend pair. Reading env once and caching means the
+ *  daemon does not re-parse configuration for every fetch. Tests use
+ *  `_resetWebFetchBackendCacheForTests` to swap env between cases. */
+let cachedBackends: WebFetchBackendPair | null = null;
+
+function getBackends(): WebFetchBackendPair {
+  if (!cachedBackends) {
+    cachedBackends = resolveWebFetchBackend(process.env);
+  }
+  return cachedBackends;
+}
+
+/** Test-only escape hatch — production code should never call this. */
+export function _resetWebFetchBackendCacheForTests(): void {
+  cachedBackends = null;
 }
 
 /**
@@ -114,13 +122,17 @@ export async function fetchUrlContent(
   const check = await assertExternalAssetUrl(url);
   if (!check.ok) return { ok: false, error: check.error };
 
-  const { primary, fallback } = resolveWebFetchBackend();
+  const { primary, fallback } = getBackends();
 
   const first = await runBackend(primary, url, requestInit);
   if (first.ok || !fallback) return first;
 
-  // Phase C: fallback is always null so this line is unreachable.
-  // Phase D wires reader → native retry here.
+  // Fallback path: only reachable when WEB_FETCH_BACKEND=reader AND
+  // WEB_FETCH_READER_FALLBACK_TO_NATIVE=1 AND the reader call errored.
+  // A single retry only — no chaining, no exponential backoff.
+  console.warn(
+    `web_fetch.reader_fallback primary=${primary.name} error=${first.error ?? 'unknown'}`,
+  );
   return runBackend(fallback, url, requestInit);
 }
 
