@@ -151,6 +151,7 @@ import {
   providerModelsCacheKey,
   type ProviderModelsCache,
 } from './providerModelsCache';
+import { deriveProjectNameForCreate } from '../utils/projectName';
 
 // Persist the entry nav-rail open/collapsed state so it survives both a
 // home -> project -> home navigation (EntryShell unmounts on the project
@@ -634,7 +635,7 @@ export function EntryShell({
   // Plan §3.F5 — the home prompt-loop submit path. The user picks a
   // plugin (which calls /api/plugins/:id/apply and binds a snapshot),
   // edits the rendered example query if any, then presses Enter. We
-  // derive a project name from the active plugin (or prompt head),
+  // derive a project name from the user prompt (and canvas/drive hints),
   // forward the pluginId so POST /api/projects pins the snapshot to
   // project + conversation, and request auto-send of the first
   // message so the user lands inside a running pipeline.
@@ -646,17 +647,21 @@ export function EntryShell({
   // projectKind='other', so the agent asks for the exact task type
   // before continuing.
   function handlePluginLoopSubmit(payload: PluginLoopSubmit) {
-    const head = payload.prompt.trim().split(/\s+/).slice(0, 8).join(' ');
     const firstAttachmentName =
       payload.attachments?.[0]?.name ??
       payload.driveAttachments?.[0]?.filename ??
       payload.driveAttachments?.[0]?.assetId ??
       '';
-    const fallbackName = head.length > 0 ? head : firstAttachmentName || 'Untitled';
-    const name =
-      payload.pluginTitle && payload.pluginTitle.trim().length > 0
-        ? payload.pluginTitle.trim()
-        : fallbackName;
+    const topicHint =
+      payload.canvasHandoff?.title?.trim() ||
+      payload.canvasHandoff?.threadTitle?.trim() ||
+      null;
+    const name = deriveProjectNameForCreate({
+      prompt: payload.prompt,
+      topicHint,
+      attachmentLabel: firstAttachmentName || null,
+      pluginTitle: payload.pluginTitle,
+    });
     const metadata: ProjectMetadata = {
       ...(payload.projectMetadata ?? {}),
       // Teamver embed slide-only MVP locks the artifact to a deck. Free-form

@@ -125,7 +125,9 @@ import { agentDisplayName, agentModelDisplayName } from '../utils/agentLabels';
 import { isMacPlatform } from '../utils/platform';
 import {
   canAutoRenameProjectFromPrompt,
-  summarizeProjectNameFromPrompt,
+  deriveProjectNameForCreate,
+  extractUserPromptForNaming,
+  summarizeProjectNameFromUserTurn,
 } from '../utils/projectName';
 import {
   apiProtocolAgentId,
@@ -243,6 +245,7 @@ import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { registerTeamverProjectIfNeeded } from '../teamver/projectRegistry';
 import {
   refreshDesignAuthCookie,
   refreshTeamverEmbedAuthBeforeMutating,
@@ -5711,7 +5714,9 @@ export function ProjectView({
       if (!retryTarget && historyBase.length === 0) {
         const title = isDesignSystemWorkspacePrompt(prompt)
           ? DESIGN_SYSTEM_WORKSPACE_DISPLAY_TITLE
-          : prompt.slice(0, 60).trim();
+          : summarizeProjectNameFromUserTurn(prompt)
+            || extractUserPromptForNaming(prompt).slice(0, 60).trim()
+            || prompt.slice(0, 60).trim();
         if (title) {
           setConversations((curr) =>
             curr.map((c) =>
@@ -5720,7 +5725,11 @@ export function ProjectView({
           );
           void patchConversation(project.id, runConversationId, { title });
         }
-        const projectName = summarizeProjectNameFromPrompt(prompt);
+        let projectName = summarizeProjectNameFromUserTurn(prompt);
+        if (!projectName && canAutoRenameProjectFromPrompt(project)) {
+          const fallback = deriveProjectNameForCreate({ prompt });
+          if (fallback && fallback !== 'Untitled') projectName = fallback;
+        }
         if (
           projectName &&
           projectName !== project.name &&
@@ -5739,6 +5748,12 @@ export function ProjectView({
           void patchProject(project.id, {
             name: projectName,
             ...(metadata ? { metadata } : {}),
+          }).then((patched) => {
+            if (patched && isTeamverEmbedMode()) {
+              void registerTeamverProjectIfNeeded(patched).catch((err) => {
+                console.warn('[teamver] registry sync after prompt rename failed', err);
+              });
+            }
           });
         }
       }

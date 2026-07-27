@@ -11,6 +11,7 @@
  */
 
 import type { Project } from "../types";
+import { isPlaceholderProjectName } from "../utils/projectName";
 import {
   listTeamverRegistryProjects,
   TeamverProjectRegistryError,
@@ -28,22 +29,6 @@ function readRegistryOdProjectId(project: TeamverRegisteredProject): string | un
   return id || undefined;
 }
 
-function isUuidLike(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-function isMachineSlugLike(value: string): boolean {
-  const normalized = value.trim();
-  if (!normalized) return false;
-  const lower = normalized.toLowerCase();
-  if (lower === "design" || lower === "untitled" || lower === "new-project") return true;
-  if (isUuidLike(normalized)) return true;
-  // Artifact basenames commonly arrive from daemon as lowercase slugs. Do not
-  // let those overwrite the registry title in embed lists, but keep human
-  // renames such as "Q4 Deck" or "landing page".
-  return /^[a-z0-9]+(?:[-_][a-z0-9]+){1,}$/.test(normalized);
-}
-
 /** Prefer registry title when daemon PG name is empty or still machine-derived. */
 export function resolveProjectDisplayName(
   project: Pick<Project, "id" | "name">,
@@ -51,7 +36,7 @@ export function resolveProjectDisplayName(
 ): string {
   const title = registryTitle?.trim();
   const name = project.name?.trim();
-  if (title && (!name || name === project.id || isMachineSlugLike(name))) return title;
+  if (title && (!name || isPlaceholderProjectName({ id: project.id, name }))) return title;
   return name || title || project.id || "Untitled";
 }
 
