@@ -55,6 +55,14 @@ vi.mock("@teamver/app-sdk", () => ({
 import { isTeamverEmbedSessionAuthenticated } from "../src/teamver/teamverEmbedSession";
 import { hasProbableTeamverAuthCookie } from "../src/teamver/teamverAuthCookieHints";
 
+function authRefreshPostCalls(fetchMock: ReturnType<typeof vi.fn>) {
+  return fetchMock.mock.calls.filter(([url]) => String(url).includes("/auth/refresh"));
+}
+
+function expectAuthRefreshPosts(fetchMock: ReturnType<typeof vi.fn>, count: number) {
+  expect(authRefreshPostCalls(fetchMock)).toHaveLength(count);
+}
+
 async function forceBareAuthCookieHints(): Promise<void> {
   document.cookie = "";
   vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(false);
@@ -114,10 +122,21 @@ describe("fetchDesignAuthSession", () => {
       });
 
     vi.useFakeTimers();
-    // Refresh 401 → session probe 401 → delay → probe again → decline, then soft-retry.
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ error: { code: "session_expired" } }), { status: 401 }),
-    );
+    // Refresh 401 → HA probe ladder → sibling session may revive before soft-decline.
+    let probeCalls = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes("/auth/refresh")) {
+        return new Response(JSON.stringify({ error: { code: "session_expired" } }), { status: 401 });
+      }
+      if (String(url).includes("/auth/session-probe")) {
+        probeCalls += 1;
+        if (probeCalls >= 2) {
+          return new Response(null, { status: 204 });
+        }
+        return new Response(null, { status: 401 });
+      }
+      return new Response(JSON.stringify({ authenticated: false }), { status: 401 });
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
@@ -127,7 +146,7 @@ describe("fetchDesignAuthSession", () => {
     await vi.advanceTimersByTimeAsync(1_200);
     const session = await pending;
 
-    expect(fetchMock).toHaveBeenCalled();
+    expect(authRefreshPostCalls(fetchMock).length).toBeGreaterThan(0);
     expect(getMock).toHaveBeenCalledTimes(2);
     expect(session?.authenticated).toBe(true);
     vi.useRealTimers();
@@ -148,7 +167,7 @@ describe("fetchDesignAuthSession", () => {
     const { fetchDesignAuthSession } = await import("../src/teamver/designBffClient");
     const session = await fetchDesignAuthSession({ force: true, resetRefreshState: true });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectAuthRefreshPosts(fetchMock, 1);
     expect(session?.authenticated).toBe(true);
   });
 
@@ -249,7 +268,7 @@ describe("fetchDesignAuthSession", () => {
     await fetchDesignAuthSession({ force: true });
     await fetchDesignAuthSession({ force: true });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectAuthRefreshPosts(fetchMock, 1);
   });
 
   it("resetRefreshState: true on an explicit retry sends a fresh refresh attempt", async () => {
@@ -263,11 +282,11 @@ describe("fetchDesignAuthSession", () => {
 
     await fetchDesignAuthSession({ force: true, resetRefreshState: true });
     await fetchDesignAuthSession({ force: true });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectAuthRefreshPosts(fetchMock, 1);
 
     // Banner "다시 시도" path — explicit decline reset.
     await fetchDesignAuthSession({ force: true, resetRefreshState: true });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expectAuthRefreshPosts(fetchMock, 2);
   });
 
   it("invalidateDesignAuthSessionCache preserves the refresh-decline guard", async () => {
@@ -282,11 +301,11 @@ describe("fetchDesignAuthSession", () => {
     );
 
     await fetchDesignAuthSession({ force: true, resetRefreshState: true });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectAuthRefreshPosts(fetchMock, 1);
 
     invalidateDesignAuthSessionCache();
     await fetchDesignAuthSession();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectAuthRefreshPosts(fetchMock, 1);
   });
 
   it("resetDesignAuthRefreshState releases the decline guard on next probe", async () => {
@@ -302,11 +321,11 @@ describe("fetchDesignAuthSession", () => {
 
     await fetchDesignAuthSession({ force: true, resetRefreshState: true });
     await fetchDesignAuthSession({ force: true });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectAuthRefreshPosts(fetchMock, 1);
 
     resetDesignAuthRefreshState();
     await fetchDesignAuthSession({ force: true });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectAuthRefreshPosts(fetchMock, 1);
   });
 
   it("resetDesignAuthBareRefreshAttempt re-enables HttpOnly-only refresh without clearing 400 decline", async () => {
@@ -324,12 +343,12 @@ describe("fetchDesignAuthSession", () => {
 
     await fetchDesignAuthSession({ force: true, resetRefreshState: true });
     expect(isDesignAuthRefreshDeclined()).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectAuthRefreshPosts(fetchMock, 1);
 
     resetDesignAuthBareRefreshAttempt();
     expect(isDesignAuthRefreshDeclined()).toBe(true);
     await fetchDesignAuthSession({ force: true });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectAuthRefreshPosts(fetchMock, 1);
   });
 
   it("resetDesignAuthBareRefreshAttempt allows another bare refresh when not declined", async () => {
@@ -345,14 +364,15 @@ describe("fetchDesignAuthSession", () => {
 
     await fetchDesignAuthSession({ force: true, resetRefreshState: true });
     await fetchDesignAuthSession();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectAuthRefreshPosts(fetchMock, 1);
 
     resetDesignAuthBareRefreshAttempt();
     await fetchDesignAuthSession({ force: true });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectAuthRefreshPosts(fetchMock, 1);
   });
 
   it("does not return 15m stale authenticated session on AuthenticationError 401", async () => {
+    vi.useFakeTimers();
     vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
     const { AuthenticationError } = await import("@teamver/app-sdk");
     getMock
@@ -361,7 +381,7 @@ describe("fetchDesignAuthSession", () => {
         user: { userId: "user-1" },
         workspaces: [],
       })
-      .mockRejectedValue(new AuthenticationError({ status: 401, message: "session_expired" }));
+      .mockRejectedValueOnce(new AuthenticationError({ status: 401, message: "session_expired" }));
 
     // Refresh ladder will also 401 — session must not fall back to stale cache.
     const fetchMock = vi.fn().mockResolvedValue(
@@ -380,9 +400,17 @@ describe("fetchDesignAuthSession", () => {
     const first = await fetchDesignAuthSession({ force: true });
     expect(first?.authenticated).toBe(true);
 
-    // force busts 60s cache; 401 must reject (not return 15m stale grace).
-    await expect(fetchDesignAuthSession({ force: true })).rejects.toMatchObject({
-      status: 401,
-    });
+    const second = fetchDesignAuthSession({ force: true });
+    await vi.runAllTimersAsync();
+    let rejected: unknown;
+    try {
+      await second;
+    } catch (err) {
+      rejected = err;
+    }
+    expect(rejected).toMatchObject({ status: 401 });
+    await Promise.resolve();
+    resetDesignAuthSessionCacheForTests();
+    vi.useRealTimers();
   });
 });

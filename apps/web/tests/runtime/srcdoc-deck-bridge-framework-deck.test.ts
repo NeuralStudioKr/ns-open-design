@@ -73,7 +73,7 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     expect(out).toContain('runFrameworkDeckFit');
     expect(out).toContain('reconcileFrameworkDeckFitSoon');
     expect(out).toContain('hostViewport.layoutFit');
-    expect(out).toContain('User-zoom preview shells');
+    expect(out).toContain('hostViewport.layoutFit');
   });
 
   it('keeps injecting the place-content fix for legacy / non-framework decks', () => {

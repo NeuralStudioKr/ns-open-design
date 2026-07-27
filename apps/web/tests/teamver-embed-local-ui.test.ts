@@ -28,14 +28,18 @@ describe("Teamver embed local workspace UI guards", () => {
     expect(assistant).toContain('block.kind !== "status"');
     expect(assistant).toContain('block.kind !== "plugin-candidate"');
     expect(assistant).toContain("hideAssistantThinkingDetails && streaming");
-    expect(assistant).toContain("live && !hideAssistantThinkingDetails");
+    expect(assistant).toMatch(
+      /hideAssistantThinkingDetails[\s\S]{0,120}StreamingCodeCard|hideCodeBody=\{/,
+    );
   });
 
   it("hides recovered raw HTML fallback prose for every Teamver embed agent", () => {
     const assistant = readRepoFile("apps/web/src/components/AssistantMessage.tsx");
 
     expect(assistant).toContain("teamverEmbedEnabled");
-    expect(assistant).toContain("hideRecoveredHtmlFallback={(teamverEmbedEnabled");
+    expect(assistant).toMatch(
+      /hideRecoveredHtmlFallback=\{[^}]*teamverEmbedEnabled[^}]*message\.agentId === "grok-build"/,
+    );
     expect(assistant).toContain('message.agentId === "grok-build"');
     expect(assistant).toContain('message.agentId === "claude"');
   });

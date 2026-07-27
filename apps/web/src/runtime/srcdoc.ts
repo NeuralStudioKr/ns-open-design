@@ -2035,6 +2035,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   var initialSlideIndex = ${safeInitialSlideIndex};
   var compactStackedDeckEnabled = ${isCompactStackedDeck ? 'true' : 'false'};
   var didRestoreInitialSlide = false;
+  var hostSlideNavigationSeen = false;
   var hostViewport = { w: 0, h: 0, scale: 1, layoutFit: false };
   var deckPanX = 0;
   var deckPanY = 0;
@@ -2316,6 +2317,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     return false;
   }
   function isScrollDeck(){
+    var list = slides();
+    if (transformTrack(list)) return false;
     var targets = scrollTargets();
     for (var i=0; i<targets.length; i++) {
       var candidate = targets[i];
@@ -2436,6 +2439,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         if (
           directSlides >= list.length &&
           (
+            node.id === 'deck-track' ||
+            (node.classList && node.classList.contains('deck-track')) ||
             node.style.transform ||
             style.transform !== 'none' ||
             /\\b(?:flex|grid)\\b/i.test(style.display)
@@ -2557,6 +2562,11 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       } catch (_) {
         try { targets[t].scrollLeft = left; } catch (__) {}
       }
+      try {
+        if (Math.abs(scrollLeftOf(targets[t]) - left) > 1) {
+          targets[t].scrollLeft = left;
+        }
+      } catch (__) {}
     }
     setTimeout(report, 380);
   }
@@ -2576,12 +2586,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (compactStackedDeckEnabled && (stackedDeckStage() || ensureStackedDeckStage())) {
       if (forceRevealSlide(target)) return;
     }
+    if (transformGo(target)) return;
     if (isScrollDeck()) {
       scrollGo(target);
       return;
     }
     if (canSetActive(list) && setActive(target)) return;
-    if (transformGo(target)) return;
     if (!transformTrack(list) && forceRevealSlide(target)) return;
     if (action === 'next') dispatchKey('ArrowRight');
     else if (action === 'prev') dispatchKey('ArrowLeft');
@@ -2598,9 +2608,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (compactStackedDeckEnabled && (stackedDeckStage() || ensureStackedDeckStage())) {
       if (forceRevealSlide(target)) return;
     }
+    if (transformGo(target)) return;
     if (isScrollDeck()) { scrollGo(target); return; }
     if (canSetActive(list) && setActive(target)) return;
-    if (transformGo(target)) return;
     if (!transformTrack(list) && forceRevealSlide(target)) return;
     var current = activeIndex(list);
     var diff = target - current;
@@ -2648,6 +2658,11 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var list = slides();
     if (!list.length) return;
     var target = Math.max(0, Math.min(list.length - 1, initialSlideIndex));
+    if (hostSlideNavigationSeen) {
+      didRestoreInitialSlide = true;
+      report();
+      return;
+    }
     if (didRestoreInitialSlide) {
       if (findActiveByVisibility(list) < 0) gotoIndex(target);
       report();
@@ -2674,6 +2689,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (data.type === 'od:preview-scroll-by') { deckPanBy(data.left, data.top); return; }
     if (data.type === 'od:deck-pan-reset') { resetDeckPan(); return; }
     if (data.type !== 'od:slide') return;
+    hostSlideNavigationSeen = true;
     if (data.action === 'go' && typeof data.index === 'number') gotoIndex(data.index);
     else go(data.action);
   });

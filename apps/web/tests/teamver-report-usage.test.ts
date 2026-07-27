@@ -8,6 +8,7 @@ import * as designBffClient from '../src/teamver/designBffClient';
 vi.mock('../src/teamver/designBffClient', () => ({
   getDesignBffClient: vi.fn(() => null),
   withDesignBffCookieAuthRecovery: vi.fn((request: () => Promise<unknown>) => request()),
+  shouldSkipTeamverBffAuthCalls: vi.fn(() => false),
   // Mirror the production constant so postUsageEvent options include
   // `skipAuthHeader: true` — required by design-api's cookie-only path.
   TEAMVER_BFF_REQUEST_OPTIONS: { skipAuthHeader: true },
