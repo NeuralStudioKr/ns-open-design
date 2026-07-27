@@ -356,9 +356,28 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     return stagedFiles.find((file, index) => homeFileKey(file, index) === previewHomeFileKey) ?? null;
   }, [previewHomeFileKey, stagedFiles]);
   const previewHomeFileUrl = previewHomeFileKey ? stagedFilePreviewUrls.get(previewHomeFileKey) ?? null : null;
-  const placeholder = activePluginTitle || activeSkillTitle
-    ? t('homeHero.placeholderActive')
-    : t('homeHero.placeholder');
+  const placeholder = useMemo(() => {
+    if (activePluginIsExplicit && activePluginTitle) {
+      return t('homeHero.placeholderTemplate', { title: activePluginTitle });
+    }
+    if (
+      selectedPromptExample?.promptText
+      && prompt.trim() === selectedPromptExample.promptText.trim()
+    ) {
+      return t('homeHero.placeholderActive');
+    }
+    if (activePluginTitle || activeSkillTitle) {
+      return t('homeHero.placeholderActive');
+    }
+    return t('homeHero.placeholder');
+  }, [
+    activePluginIsExplicit,
+    activePluginTitle,
+    activeSkillTitle,
+    prompt,
+    selectedPromptExample,
+    t,
+  ]);
   const mentionActive = Boolean(mentionTrigger);
   const mentionQuery = mentionTrigger?.query ?? '';
   const fileMatches = useMemo(
@@ -938,7 +957,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     }
   }
 
-  function pickExamplePluginPreset(record: InstalledPluginRecord, chipId: string, promptText: string) {
+  function pickExamplePluginPreset(record: InstalledPluginRecord, chipId: string, _promptText: string) {
     trackHomeChatComposerClick(analytics.track, {
       page_name: 'home',
       area: 'chat_composer',
@@ -947,16 +966,17 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
       plugin_id: record.sourceMarketplaceEntryName ?? record.id,
       plugin_type: record.marketplaceTrust ?? 'official',
     });
+    // Preset tiles bind the plugin only — the long seed stays out of the composer.
     setSelectedPromptExample({
       label: record.title,
-      promptText,
+      promptText: '',
     });
     onExamplePromptStatusChange?.({
       title: record.title,
       artifactType: chipId,
       brief: briefForPluginPreset(record, chipId),
     });
-    onPickExamplePlugin(record, chipId, promptText);
+    onPickExamplePlugin(record, chipId, _promptText);
   }
 
   // The task-type rail (原型 / 幻灯片 / HyperFrames / 视频 / …). Records which
@@ -1691,6 +1711,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
           chipId={activeChipId}
           plugins={filteredExamplePlugins}
           activePluginId={activePluginRecord?.id ?? null}
+          showSelectedHint={activePluginIsExplicit}
           pendingPluginId={pendingPluginId}
           locale={locale}
           onPick={pickExamplePluginPreset}
@@ -1766,6 +1787,7 @@ function PluginPromptPresets({
   pendingPluginId,
   plugins,
   pulseFirstPreset = false,
+  showSelectedHint = false,
 }: {
   activePluginId: string | null;
   chipId: string;
@@ -1773,10 +1795,16 @@ function PluginPromptPresets({
   onPick: (record: InstalledPluginRecord, chipId: string, promptText: string) => void;
   pendingPluginId: string | null;
   plugins: InstalledPluginRecord[];
-  // First-run guide: the first card carries the attention sheen.
   pulseFirstPreset?: boolean;
+  showSelectedHint?: boolean;
 }) {
   const { t } = useI18n();
+  const activePreset = activePluginId
+    ? plugins.find((plugin) => plugin.id === activePluginId) ?? null
+    : null;
+  const activePresetTitle = activePreset
+    ? localizePluginTitle(locale, activePreset)
+    : null;
   return (
     <div
       className="home-hero__prompt-examples home-hero__plugin-presets-wrap"
@@ -1785,6 +1813,14 @@ function PluginPromptPresets({
       <div className="home-hero__prompt-examples-title">
         {t('homeHero.promptExamples')}
       </div>
+      {showSelectedHint && activePresetTitle ? (
+        <p
+          className="home-hero__preset-selected-hint"
+          data-testid="home-hero-preset-selected-hint"
+        >
+          {t('homeHero.presetSelectedHint', { title: activePresetTitle })}
+        </p>
+      ) : null}
       <div className="home-hero__plugin-presets" role="list">
         {plugins.map((record, index) => (
           <PluginPromptPresetCard

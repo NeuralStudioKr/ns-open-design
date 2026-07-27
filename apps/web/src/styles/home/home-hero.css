@@ -1988,6 +1988,13 @@
   font-weight: 700;
   line-height: 1.3;
 }
+.home-hero__preset-selected-hint {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .home-hero__prompt-examples-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

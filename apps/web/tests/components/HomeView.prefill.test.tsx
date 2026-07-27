@@ -1381,6 +1381,8 @@ describe('HomeView prompt handoff', () => {
     expect(fetchMock.mock.calls.some(([url]) => (
       typeof url === 'string' && url.includes('/api/plugins/example-simple-deck/apply')
     ))).toBe(false);
+    expect(screen.getByTestId('home-hero-preset-selected-hint').textContent).toContain('Simple Deck');
+    expect(screen.getByTestId('home-hero-active-plugin').textContent).toContain('Simple Deck');
     await waitFor(() => {
       expect(homeHeroPromptValue()).toBe('');
     });

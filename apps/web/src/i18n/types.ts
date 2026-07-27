@@ -448,6 +448,9 @@ export interface Dict {
   'teamver.driveImport.selectedCount': string;
   'teamver.driveImport.pickHint': string;
   'teamver.driveImport.maxPickReached': string;
+  'teamver.driveImport.alreadyAttached': string;
+  'teamver.driveImport.unsupportedForSlide': string;
+  'teamver.driveImport.searchMayHaveMore': string;
   'teamver.driveImport.partialSuccess': string;
   'teamver.driveImport.partialFailedLead': string;
   'teamver.driveImport.done': string;
@@ -886,6 +889,8 @@ export interface Dict {
   'homeHero.subtitlePrefix': string;
   'homeHero.placeholder': string;
   'homeHero.placeholderActive': string;
+  'homeHero.placeholderTemplate': string;
+  'homeHero.presetSelectedHint': string;
   'homeHero.skills': string;
   'homeHero.addMenu': string;
   'homeHero.addPlugin': string;
