@@ -575,6 +575,12 @@ function dedupeImportRows(rows: TeamverDriveImportListRow[]): TeamverDriveImport
   return out;
 }
 
+export function dedupeTeamverDriveImportListRows(
+  rows: TeamverDriveImportListRow[],
+): TeamverDriveImportListRow[] {
+  return dedupeImportRows(rows);
+}
+
 /** Personal-drive root only — BE recent aggregates all drives; shared tab uses browse. */
 export async function listTeamverDriveImportRecent(params: {
   workspaceId: string;

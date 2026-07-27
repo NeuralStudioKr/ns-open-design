@@ -264,6 +264,7 @@ describe("TeamverDriveImportModal", () => {
       />,
     );
 
+    fireEvent.click(screen.getByTestId("teamver-drive-import-supported-filter"));
     fireEvent.mouseDown(await screen.findByTestId("teamver-drive-import-asset-AST-VIDEO"));
     expect(await screen.findByTestId("teamver-drive-import-action-hint")).toBeTruthy();
   });
@@ -292,7 +293,7 @@ describe("TeamverDriveImportModal", () => {
     );
 
     expect(await screen.findByTestId("teamver-drive-import-partial")).toBeTruthy();
-    expect(screen.getByText("clip.mp4")).toBeTruthy();
+    expect(screen.getByTitle("clip.mp4")).toBeTruthy();
     expect(screen.getByText("슬라이드 첨부에 지원하지 않는 파일 형식입니다.")).toBeTruthy();
     fireEvent.click(screen.getByTestId("teamver-drive-import-retry"));
     expect(onRetryFailed).toHaveBeenCalledTimes(1);
@@ -440,5 +441,71 @@ describe("TeamverDriveImportModal", () => {
       );
       expect(screen.getByTestId("teamver-drive-import-asset-AST-25")).toBeTruthy();
     });
+  });
+
+  it("does not show load more when hasMore is true but nextCursor is missing", async () => {
+    browsePageMock.mockResolvedValueOnce({
+      rows: [
+        {
+          kind: "asset" as const,
+          assetId: "AST-1",
+          name: "logo.svg",
+          mimeType: "image/svg+xml",
+        },
+      ],
+      hasMore: true,
+      nextCursor: null,
+    });
+    listRecentMock.mockResolvedValue([]);
+
+    render(
+      <TeamverDriveImportModal
+        open
+        workspaceId="ws-1"
+        onClose={() => undefined}
+        onConfirm={async () => undefined}
+      />,
+    );
+
+    await screen.findByTestId("teamver-drive-import-asset-AST-1");
+    expect(screen.queryByTestId("teamver-drive-import-load-more")).toBeNull();
+  });
+
+  it("hides unsupported assets when supported-only filter is on", async () => {
+    useTeamverBrandingMock.mockReturnValue({ slideOnlyMvp: true });
+    browsePageMock.mockResolvedValue({
+      rows: [
+        {
+          kind: "asset" as const,
+          assetId: "AST-OK",
+          name: "logo.png",
+          mimeType: "image/png",
+        },
+        {
+          kind: "asset" as const,
+          assetId: "AST-VIDEO",
+          name: "clip.mp4",
+          mimeType: "video/mp4",
+        },
+      ],
+      hasMore: false,
+      nextCursor: null,
+    });
+    listRecentMock.mockResolvedValue([]);
+
+    render(
+      <TeamverDriveImportModal
+        open
+        workspaceId="ws-1"
+        onClose={() => undefined}
+        onConfirm={async () => undefined}
+      />,
+    );
+
+    await screen.findByTestId("teamver-drive-import-asset-AST-OK");
+    expect(screen.queryByTestId("teamver-drive-import-asset-AST-VIDEO")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("teamver-drive-import-supported-filter"));
+    expect(await screen.findByTestId("teamver-drive-import-asset-AST-VIDEO")).toBeTruthy();
   });
 });

@@ -10,6 +10,7 @@ vi.mock("../src/teamver/designApiBase", async (importOriginal) => {
 
 import {
   browseTeamverDriveImportPage,
+  dedupeTeamverDriveImportListRows,
   filterTeamverDriveImportListRows,
   invalidateTeamverDriveImportCaches,
   listTeamverDriveImportRecent,
@@ -219,5 +220,17 @@ describe("driveImportList recent/search", () => {
     expect(second.rows).toEqual([
       expect.objectContaining({ kind: "asset", assetId: "AST-2", name: "b.png" }),
     ]);
+  });
+});
+
+describe("dedupeTeamverDriveImportListRows", () => {
+  it("merges browse pages without duplicate folder or asset keys", () => {
+    const merged = dedupeTeamverDriveImportListRows([
+      { kind: "folder", folderId: "F1", name: "A" },
+      { kind: "asset", assetId: "AST-1", name: "a.png", mimeType: "image/png" },
+      { kind: "asset", assetId: "AST-1", name: "a.png", mimeType: "image/png" },
+      { kind: "folder", folderId: "F1", name: "A" },
+    ]);
+    expect(merged).toHaveLength(2);
   });
 });

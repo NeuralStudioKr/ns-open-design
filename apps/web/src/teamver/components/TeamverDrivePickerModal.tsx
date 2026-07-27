@@ -25,6 +25,7 @@ import {
   formatDriveFileSize,
   isDriveImageAsset,
 } from "../driveFileVisual";
+import { TeamverDriveDisplayFileName } from "./TeamverDriveDisplayFileName";
 import { fetchTeamverDriveImportThumbnails } from "../driveImportThumbnails";
 import { TeamverDriveModalNav, TeamverDriveListSkeleton } from "./TeamverDriveModalNav";
 import { TeamverDriveScopeSidebar } from "./TeamverDriveScopeSidebar";
@@ -131,6 +132,34 @@ function matchesAssetQuery(row: TeamverDriveImportAssetRow, query: string): bool
   return driveSearchTextMatches(query, row.name, row.assetId);
 }
 
+function dedupePublishTargets(
+  current: TeamverDrivePublishTarget[],
+  next: TeamverDrivePublishTarget[],
+): TeamverDrivePublishTarget[] {
+  const seen = new Set(current.map((target) => target.id));
+  const out = [...current];
+  for (const target of next) {
+    if (seen.has(target.id)) continue;
+    seen.add(target.id);
+    out.push(target);
+  }
+  return out;
+}
+
+function dedupeBrowseAssetRows(
+  current: TeamverDriveImportAssetRow[],
+  next: TeamverDriveImportAssetRow[],
+): TeamverDriveImportAssetRow[] {
+  const seen = new Set(current.map((row) => row.assetId));
+  const out = [...current];
+  for (const row of next) {
+    if (seen.has(row.assetId)) continue;
+    seen.add(row.assetId);
+    out.push(row);
+  }
+  return out;
+}
+
 export function TeamverDrivePickerModal({
   open,
   workspaceId,
@@ -164,6 +193,7 @@ export function TeamverDrivePickerModal({
   const [browseAuthRequired, setBrowseAuthRequired] = useState(false);
   const [browseHasMore, setBrowseHasMore] = useState(false);
   const [browseNextCursor, setBrowseNextCursor] = useState<string | null>(null);
+  const [loadingMoreBrowse, setLoadingMoreBrowse] = useState(false);
   const [homeRecentTargets, setHomeRecentTargets] = useState<TeamverDrivePublishTarget[]>([]);
   const [homeRecentLoading, setHomeRecentLoading] = useState(false);
   const [homeRecentExpanded, setHomeRecentExpanded] = useState(false);
@@ -352,9 +382,7 @@ export function TeamverDrivePickerModal({
           )}
         </span>
         <span className="teamver-drive-import-card-copy">
-          <span className="teamver-drive-import-card-name" title={row.name}>
-            {row.name}
-          </span>
+          <TeamverDriveDisplayFileName name={row.name} className="teamver-drive-import-card-name" />
           <small>{meta}</small>
         </span>
       </button>
@@ -462,7 +490,8 @@ export function TeamverDrivePickerModal({
     async (options?: { append?: boolean; before?: string | null }) => {
       if (!open || !workspaceId?.trim() || !activeScope || searching) return;
       const append = options?.append ?? false;
-      const before = options?.before ?? null;
+      const before = options?.before?.trim() ?? null;
+      if (append && !before) return;
       const cacheKey = [
         workspaceId.trim(),
         activeScope.mode === "shared" ? activeScope.sharedDriveId : "personal",
@@ -482,7 +511,7 @@ export function TeamverDrivePickerModal({
           if (seq !== browseFetchSeqRef.current) return;
           setBrowseTargets(cached.targets);
           setBrowseAssetRows(cached.assets);
-          setBrowseHasMore(cached.hasMore);
+          setBrowseHasMore(Boolean(cached.hasMore && cached.nextCursor?.trim()));
           setBrowseNextCursor(cached.nextCursor);
           setBrowseError(null);
           if (wantRecent && cached.recentAssets.length > 0) {
@@ -520,6 +549,8 @@ export function TeamverDrivePickerModal({
       }
       try {
         if (append) {
+          setLoadingMoreBrowse(true);
+          try {
           const page = await browseTeamverDriveImportPage({
             workspaceId,
             scope: activeScope,
@@ -535,10 +566,13 @@ export function TeamverDrivePickerModal({
           const assets = page.rows.filter(
             (row): row is TeamverDriveImportAssetRow => row.kind === "asset",
           );
-          setBrowseTargets((current) => [...current, ...folders]);
-          setBrowseAssetRows((current) => [...current, ...assets]);
-          setBrowseHasMore(page.hasMore);
+          setBrowseTargets((current) => dedupePublishTargets(current, folders));
+          setBrowseAssetRows((current) => dedupeBrowseAssetRows(current, assets));
+          setBrowseHasMore(Boolean(page.hasMore && page.nextCursor?.trim()));
           setBrowseNextCursor(page.nextCursor);
+          } finally {
+            if (seq === browseFetchSeqRef.current) setLoadingMoreBrowse(false);
+          }
           return;
         }
 
@@ -587,7 +621,7 @@ export function TeamverDrivePickerModal({
         setBrowseAuthRequired(false);
         setBrowseTargets(entry.targets);
         setBrowseAssetRows(entry.assets);
-        setBrowseHasMore(entry.hasMore);
+        setBrowseHasMore(Boolean(entry.hasMore && entry.nextCursor?.trim()));
         setBrowseNextCursor(entry.nextCursor);
         setRecentAssetRows(recentAssets);
       } catch (err) {
@@ -1038,15 +1072,16 @@ export function TeamverDrivePickerModal({
                 : "하위 폴더가 없습니다. 아래에서 현재 폴더에 저장하세요."}
             </div>
           )}
-          {!searching && browseHasMore ? (
+          {!searching && browseHasMore && browseNextCursor?.trim() ? (
             <button
               type="button"
               className="teamver-drive-import-load-more"
-              disabled={browseLoading}
+              disabled={browseLoading || loadingMoreBrowse}
               data-testid="teamver-drive-picker-load-more"
+              aria-busy={loadingMoreBrowse}
               onClick={() => void refreshBrowse({ append: true, before: browseNextCursor })}
             >
-              더 보기
+              {loadingMoreBrowse ? "불러오는 중…" : "더 보기"}
             </button>
           ) : null}
         </div>
