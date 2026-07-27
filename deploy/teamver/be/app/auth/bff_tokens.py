@@ -337,6 +337,9 @@ def apply_exchange_to_bff_session(
     scope_raw = exchange_body.get("scope")
     scope = [str(s) for s in scope_raw] if isinstance(scope_raw, list) else []
     now = time.time()
+    from .main_sso import read_main_sso_user_id
+
+    pin_main_user_id = read_main_sso_user_id(request) or user_id
     save_bff_session(
         request,
         user_id=user_id,
@@ -351,6 +354,7 @@ def apply_exchange_to_bff_session(
             expires_in=expires_in,
             access_token=access,
         ),
+        pin_main_user_id=pin_main_user_id,
     )
     loaded = load_bff_session(request)
     if loaded is None:

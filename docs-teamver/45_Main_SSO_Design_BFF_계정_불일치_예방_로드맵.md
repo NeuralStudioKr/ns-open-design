@@ -288,6 +288,7 @@ Stage 0 코드베이스에서 **예방(“애초에 안 생기게”) 계층이 
 - 테스트: `apps/web/tests/teamver-main-sso-mismatch-recovery.test.ts` 등 위 §4.3
 
 **관련 문서:**
+- [45-1 구현설계 — Stage 1·2](./45-1-구현설계-Main_SSO_Design_계정_정합_Stage1-2.md) · [45-1 구현현황](./45-1-구현현황-Main_SSO_Design_계정_정합_Stage1-2.md)
 - [41 §6.3](./41_Design_Drive_인증_계약_권고.md#63-main-sso--design-계정-불일치-main_sso_user_mismatch) — 계약 SSOT
 - [39_10 §1 F행](./39_10_HA_세션쿠키_경합_해결.md) — HA 원인 분해에서 F열
 - [00 2026-07-21](./00_구현_내역_누적.md#2026-07-21--drive-main-sso--design-계정-불일치--opaque-403-제거) — 구현 내역

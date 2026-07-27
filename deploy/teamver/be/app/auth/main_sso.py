@@ -6,7 +6,17 @@ from starlette.requests import Request
 
 from ..config import settings
 from ..teamver_sdk import extract_request_access_token
+from .bff_session import load_bff_session
 from .bff_tokens import user_id_from_access_token_unverified
+from .main_sso_identity import main_sso_user_identity_hash
+
+__all__ = [
+    "hosted_requires_main_sso",
+    "main_sso_user_identity_hash",
+    "main_sso_user_mismatches_bff",
+    "read_main_sso_cookie",
+    "read_main_sso_user_id",
+]
 
 
 def hosted_requires_main_sso() -> bool:
@@ -48,8 +58,13 @@ def main_sso_user_mismatches_bff(request: Request, bff_user_id: str | None) -> b
     Drive forwards Main ``teamver_access_token`` + BFF ``X-Workspace-Id``. If
     another tab logged into Main as a different user, Main ACL returns opaque
     ``error.forbidden`` for the Design workspace. Detect before proxying.
+
+    When ``pin_main_user_id`` is set (exchange-time Main user), compare against
+    that pin so Apps refresh cannot mask a Main account switch.
     """
-    design_user = (bff_user_id or "").strip()
+    session = load_bff_session(request)
+    pin = session.pin_main_user_id if session is not None else None
+    design_user = (pin or bff_user_id or "").strip()
     if not design_user:
         return False
     main_user = read_main_sso_user_id(request)

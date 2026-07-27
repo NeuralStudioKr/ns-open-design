@@ -24,6 +24,7 @@ class BffSession:
     workspace_id: str | None
     aud: str | None
     scope: list[str]
+    pin_main_user_id: str | None = None
 
 
 def bff_enabled() -> bool:
@@ -40,6 +41,10 @@ def load_bff_session(request: Request) -> BffSession | None:
         return None
     scope_raw = raw.get("scope")
     scope = scope_raw if isinstance(scope_raw, list) else []
+    pin_raw = raw.get("pin_main_user_id")
+    pin_main_user_id = (
+        str(pin_raw).strip() if isinstance(pin_raw, str) and pin_raw.strip() else None
+    )
     return BffSession(
         user_id=user_id,
         access_token=access_token,
@@ -48,6 +53,7 @@ def load_bff_session(request: Request) -> BffSession | None:
         workspace_id=(str(raw["workspace_id"]).strip() if raw.get("workspace_id") else None),
         aud=(str(raw["aud"]).strip() if raw.get("aud") else None),
         scope=[str(s) for s in scope],
+        pin_main_user_id=pin_main_user_id,
     )
 
 
@@ -62,9 +68,10 @@ def save_bff_session(
     aud: str | None = None,
     scope: list[str] | None = None,
     access_expires_at: float | None = None,
+    pin_main_user_id: str | None = None,
 ) -> None:
     now = time.time()
-    request.session[_BFF_KEY] = {
+    payload: dict[str, Any] = {
         "user_id": user_id,
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -73,6 +80,10 @@ def save_bff_session(
         "aud": aud,
         "scope": scope or [],
     }
+    pin = (pin_main_user_id or "").strip()
+    if pin:
+        payload["pin_main_user_id"] = pin
+    request.session[_BFF_KEY] = payload
     # Successful token write owns this response's Set-Cookie. Clear any prior
     # HA-retain suppress so middleware can emit the rotated cookie.
     request.scope.pop(SUPPRESS_SESSION_COOKIE_SCOPE_KEY, None)
@@ -143,10 +154,16 @@ def suppress_session_cookie(request: Request) -> None:
 def bff_session_public_view(session: BffSession | None) -> dict[str, Any]:
     if session is None:
         return {"authenticated": False}
-    return {
+    from .main_sso_identity import main_sso_user_identity_hash
+
+    identity_user = (session.pin_main_user_id or session.user_id or "").strip()
+    view: dict[str, Any] = {
         "authenticated": True,
         "user_id": session.user_id,
         "workspace_id": session.workspace_id,
         "aud": session.aud,
         "access_expires_at": session.access_expires_at,
     }
+    if identity_user:
+        view["main_sso_identity_hash"] = main_sso_user_identity_hash(identity_user)
+    return view

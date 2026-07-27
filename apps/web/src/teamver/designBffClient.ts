@@ -51,6 +51,8 @@ export type DesignAuthSession = {
   user?: DesignAuthSessionUser | null;
   defaultWorkspaceId?: string | null;
   workspaces?: WorkspaceListItem[];
+  /** SHA-256 hex(casefold user id) — Main SSO pin at exchange (Stage 1). */
+  mainSsoIdentityHash?: string | null;
 };
 
 let cachedClient: TeamverClient | null = null;

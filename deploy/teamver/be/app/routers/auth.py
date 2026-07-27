@@ -16,6 +16,7 @@ from ..auth.bff_tokens import (
     probe_bff_session,
 )
 from ..auth.bff_session import (
+    BffSession,
     abandon_bff_session_keep_browser_cookie,
     bff_enabled,
     bff_session_public_view,
@@ -64,8 +65,9 @@ def _session_from_bootstrap_payload(
     payload: dict[str, Any],
     *,
     auth_source: str | None,
+    session: BffSession | None = None,
 ) -> dict[str, Any]:
-    return {
+    view: dict[str, Any] = {
         "authenticated": True,
         "auth_source": auth_source,
         "app_key": payload.get("app_key") or settings.teamver_app_key,
@@ -73,6 +75,11 @@ def _session_from_bootstrap_payload(
         "default_workspace_id": payload.get("default_workspace_id"),
         "workspaces": payload.get("workspaces") or [],
     }
+    if session is not None:
+        identity_hash = bff_session_public_view(session).get("main_sso_identity_hash")
+        if identity_hash:
+            view["main_sso_identity_hash"] = identity_hash
+    return view
 
 
 async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
@@ -106,7 +113,7 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                     # Serve the last-known-good bootstrap slice so the FE
                     # workspace switcher / user chip do not blank out during
                     # a Main hiccup while the BFF cookie is still usable.
-                    return _session_from_bootstrap_payload(stale, auth_source="bff")
+                    return _session_from_bootstrap_payload(stale, auth_source="bff", session=session)
                 view = bff_session_public_view(session)
                 view["user"] = {"user_id": session.user_id}
                 return view
@@ -118,7 +125,7 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                         user_id=refreshed.user_id,
                         workspace_id=refreshed.workspace_id,
                     )
-                    return _session_from_bootstrap_payload(bootstrap, auth_source="bff")
+                    return _session_from_bootstrap_payload(bootstrap, auth_source="bff", session=refreshed)
                 except TeamverBootstrapError as retry_exc:
                     if retry_exc.status_code != 401:
                         logger.warning(
@@ -131,7 +138,7 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                         )
                         if stale is not None:
                             return _session_from_bootstrap_payload(
-                                stale, auth_source="bff"
+                                stale, auth_source="bff", session=refreshed
                             )
                         view = bff_session_public_view(refreshed)
                         view["user"] = {"user_id": refreshed.user_id}
@@ -145,7 +152,7 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
                     workspace_id=remaining.workspace_id,
                 )
                 if stale is not None:
-                    return _session_from_bootstrap_payload(stale, auth_source="bff")
+                    return _session_from_bootstrap_payload(stale, auth_source="bff", session=remaining)
                 view = bff_session_public_view(remaining)
                 view["user"] = {"user_id": remaining.user_id}
                 return view
@@ -163,12 +170,12 @@ async def _bff_auth_session_response(request: Request) -> dict[str, Any]:
             workspace_id=session.workspace_id,
         )
         if stale is not None:
-            return _session_from_bootstrap_payload(stale, auth_source="bff")
+            return _session_from_bootstrap_payload(stale, auth_source="bff", session=session)
         view = bff_session_public_view(session)
         view["user"] = {"user_id": session.user_id}
         return view
 
-    return _session_from_bootstrap_payload(bootstrap, auth_source="bff")
+    return _session_from_bootstrap_payload(bootstrap, auth_source="bff", session=session)
 
 
 async def _legacy_plan_b_session_response(request: Request) -> Any:

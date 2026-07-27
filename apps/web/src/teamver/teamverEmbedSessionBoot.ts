@@ -36,6 +36,7 @@ import {
 } from "./embedAuthSnapshot";
 import { consumeTeamverAuthReturnPending } from "./teamverAuthReturn";
 import { shouldDeferEmbedLoginRedirect } from "./teamverEmbedAuthNavigation";
+import { maybeReconcileMainSsoWithDesignSession } from "./teamverMainSsoUserReconcile";
 
 export type TeamverEmbedSessionBootDeps = {
   isCancelled: () => boolean;
@@ -78,6 +79,10 @@ export async function runTeamverEmbedSessionBoot(
     const detailRoute = deps.readDetailRoute();
 
     if (session?.authenticated) {
+      if (await maybeReconcileMainSsoWithDesignSession(session)) {
+        unlockBootIfNeeded(deps.isCancelled);
+        return null;
+      }
       setTeamverEmbedSessionAuthenticated(true);
       const launchWorkspaceId = readLaunchWorkspaceIdFromBrowserUrl();
       let activeWorkspaceId: string | null = null;

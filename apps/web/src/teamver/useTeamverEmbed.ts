@@ -45,6 +45,7 @@ import {
 import { readUserImageUrl } from "./teamverEmbedVisuals";
 import { snapshotFromWorkspace } from "./teamverDesignAccess";
 import { syncAllDaemonProjectsToRegistry } from "./projectRegistry";
+import { maybeReconcileMainSsoWithDesignSession } from "./teamverMainSsoUserReconcile";
 import {
   redirectToDesignLoginIfBffMissing,
   shouldClearEmbedSessionOnUnauthenticated,
@@ -377,6 +378,11 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
           loading: false,
           error: "not_authenticated",
         });
+        return "not_authenticated";
+      }
+
+      if (await maybeReconcileMainSsoWithDesignSession(session)) {
+        setState((prev) => ({ ...prev, loading: false }));
         return "not_authenticated";
       }
 
