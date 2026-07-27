@@ -102,7 +102,7 @@ standalone OD는 영향 없음 — **embed 모드에서만** 플래그가 켜진
 **원칙:**
 1. **출처 단일화** — `TEAMVER_SLIDE_ONLY_SCOPE`가 `DISCOVERY_AND_PHILOSOPHY`보다 뒤(아래)에 합쳐지도록 composer 순서를 유지한다. locale override(`renderUiLocalePrompt`)보다도 뒤에 합쳐 zh-CN의 「单页网页原型 / 落地页」류 옵션도 함께 무력화한다.
 2. **FE/BE 이중 안전선** — FE는 metadata.kind를 deck로 고정(S-4b)·outbound guard로 미디어 키워드 차단; daemon 시스템 프롬프트는 위의 Q-1~Q-5 override로 모델 응답에서 비-deck 옵션을 제거. 둘 중 하나가 우회되어도 다른 한쪽이 잡는다.
-3. **템플릿 선택 ≠ 완성 brief** — 2026-07-27 기준, Home/커뮤니티 deck 템플릿 선택은 visual style·composition만 확정한다. audience/purpose/tone/count/topics가 비어 있고 `skipDiscoveryBrief`가 명시되지 않은 경우 빠른 질문을 먼저 띄운다. Canvas/Drive handoff처럼 source brief가 이미 충분하거나 example prompt/명시 skip 경로는 예외다.
+3. **템플릿 선택 ≠ 완성 brief** — 2026-07-27 기준, Home/커뮤니티 deck 템플릿 선택은 visual style·composition만 확정한다. audience/purpose/tone/count/topics가 비어 있고 `skipDiscoveryBrief`가 명시되지 않은 경우 빠른 질문을 먼저 띄운다. 템플릿/플러그인 bind-only 경로는 `examplePromptContext`를 지워야 하며, 실제 예제 프롬프트 chip처럼 완성 brief를 composer에 주입한 경우에만 `metadata.examplePrompt=true`를 허용한다. Canvas/Drive handoff처럼 source brief가 이미 충분하거나 명시 skip 경로는 예외다.
 4. **테스트 SSOT** — `apps/daemon/tests/prompts/system.test.ts` ▶ describe `slide-only discovery / question-form override` 7케이스(precedence × 2, task-type/output drop, banned 옵션 enumeration, platform whitelist, 비-deck 거부, 비-embed 미주입) + `apps/web/tests/teamver-embed-slide-only.test.ts` ▶ `forces home free-form submit metadata.kind to deck` 1케이스 + `packages/contracts/tests/system-prompt-api-mode.test.ts` ▶ selected-template visual-only quick brief 계약.
 
 ### 2.6 P1 — OD tip·starter 비노출 (loop 350–351)
@@ -225,6 +225,7 @@ bash scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-27 | 빠른 질문 생략 경로 추가 점검 — bind-only 템플릿/플러그인 선택이 stale `examplePromptContext`를 넘겨 quick brief를 우회하지 않도록 FE 상태 정리 + 회귀 테스트 추가 |
 | 2026-07-27 | 템플릿 선택 생성 시 visual style만으로 quick brief를 생략하지 않도록 계약 보강 — 내용 brief 부족 시 빠른 질문 유지 |
 | 2026-07-27 | API plain-stream deck 생성 첫 출력 지연 회귀 수정 — artifact를 완성까지 숨기지 않고 상태 문장 후 즉시 열어 slide-by-slide 스트리밍하도록 계약 정리 |
 | 2026-06-25 | loop 388 — §2.1 S-4b (`handlePluginLoopSubmit` 메타데이터 `kind` 정규화: `other` 포함 → `deck`) + §2.5b daemon 시스템 프롬프트 `<question-form>` 옵션 정제 표(Q-1~Q-5) 추가. 사용자가 "슬라이드 만들어줘"라고 요청해도 `<question-form>` 가 「단일 웹 프로토타입 / 랜딩」·「멀티스크린 앱」·「대시보드 / 툴 UI」·「에디토리얼 / 마케팅 페이지」·「iOS 앱」·「Android 앱」을 함께 제안하던 회귀를 차단. `TEAMVER_SLIDE_ONLY_SCOPE` 가 `DISCOVERY_AND_PHILOSOPHY` + `renderUiLocalePrompt` 보다 뒤에 합성되도록 precedence 보장 + 단위 테스트 추가 |

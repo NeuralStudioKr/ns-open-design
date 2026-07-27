@@ -966,16 +966,13 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
       plugin_id: record.sourceMarketplaceEntryName ?? record.id,
       plugin_type: record.marketplaceTrust ?? 'official',
     });
-    // Preset tiles bind the plugin only — the long seed stays out of the composer.
+    // Preset tiles bind the plugin only; they are visual templates, not complete
+    // example briefs. Keep discovery eligible unless the user supplied a brief.
     setSelectedPromptExample({
       label: record.title,
       promptText: '',
     });
-    onExamplePromptStatusChange?.({
-      title: record.title,
-      artifactType: chipId,
-      brief: briefForPluginPreset(record, chipId),
-    });
+    onExamplePromptStatusChange?.(null);
     onPickExamplePlugin(record, chipId, _promptText);
   }
 

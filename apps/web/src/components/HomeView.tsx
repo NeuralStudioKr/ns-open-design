@@ -1174,6 +1174,10 @@ export function HomeView({
     action: PluginUseAction = 'use',
     inputs?: Record<string, unknown>,
   ) {
+    // Community/plugin routing is template/context selection, not proof that a
+    // complete example brief was used. Drop stale example metadata so Quick
+    // brief can still run when the user's actual request is underspecified.
+    examplePromptInfoRef.current = null;
     trackCommunityGalleryClick(analytics.track, {
       page_name: 'home',
       area: 'community_gallery',
@@ -2077,6 +2081,7 @@ export function HomeView({
         })(),
       }));
       if (submitResult === false) return;
+      examplePromptInfoRef.current = null;
       setSelectedPluginContexts([]);
       setSelectedMcpContexts([]);
       setSelectedConnectorContexts([]);
