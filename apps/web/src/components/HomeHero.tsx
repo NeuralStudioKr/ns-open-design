@@ -927,11 +927,15 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
       artifactType: activeChipId ?? 'prototype',
       brief: briefForChipId(activeChipId ?? 'prototype'),
     });
-    onPromptChange(example);
-    editorRef.current?.setText(example);
+    if (!prompt.trim()) {
+      onPromptChange(example);
+      editorRef.current?.setText(example);
+    }
     setSelectedIndex(0);
     requestAnimationFrame(() => editorRef.current?.focus());
-    triggerSendAttention();
+    if (prompt.trim()) {
+      triggerSendAttention();
+    }
   }
 
   function pickExamplePluginPreset(record: InstalledPluginRecord, chipId: string, promptText: string) {

@@ -32,6 +32,7 @@ import { TeamverDriveScopeSidebar } from "./TeamverDriveScopeSidebar";
 import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
 import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
 import { useTeamverDriveModalFocusTrap } from "../useTeamverDriveModalFocusTrap";
+import { useTeamverDriveBrowseInfiniteScroll } from "../useTeamverDriveBrowseInfiniteScroll";
 import {
   getTeamverDriveBrowsePageCached,
   loadTeamverDriveBrowsePageCachedForSignal,
@@ -205,6 +206,7 @@ export function TeamverDrivePickerModal({
   const searchFetchSeqRef = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
   const modalRef = useRef<HTMLElement | null>(null);
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
   const trimmedQuery = query.trim();
   const searching = Boolean(onSearch && searchMode);
   const activeScope = scopes[scopeIndex] ?? null;
@@ -660,6 +662,22 @@ export function TeamverDrivePickerModal({
     [activeScope, browseAuthRequired, currentFolderId, open, searching, workspaceId],
   );
 
+  const canLoadMoreBrowse =
+    !searching && browseHasMore && Boolean(browseNextCursor?.trim());
+
+  const loadMoreBrowse = useCallback(() => {
+    if (!canLoadMoreBrowse || loadingMoreBrowse || browseLoading) return;
+    void refreshBrowse({ append: true, before: browseNextCursor });
+  }, [browseLoading, browseNextCursor, canLoadMoreBrowse, loadingMoreBrowse, refreshBrowse]);
+
+  const scrollSentinelRef = useTeamverDriveBrowseInfiniteScroll({
+    enabled: open && !searching,
+    hasMore: canLoadMoreBrowse,
+    loading: loadingMoreBrowse || browseLoading,
+    rootRef: listScrollRef,
+    onLoadMore: loadMoreBrowse,
+  });
+
   useEffect(() => {
     if (!open || !workspaceId?.trim() || !activeScope) return;
     if (searching) {
@@ -906,10 +924,11 @@ export function TeamverDrivePickerModal({
             />
 
         <div
+          ref={listScrollRef}
           className="teamver-drive-picker-list teamver-drive-import-list"
           role="listbox"
           aria-label="드라이브 폴더 목록"
-          aria-busy={showInitialLoading || browseLoading || searchLoading}
+          aria-busy={showInitialLoading || browseLoading || searchLoading || loadingMoreBrowse}
         >
           {showRecentSection ? (
             <div
@@ -1072,17 +1091,14 @@ export function TeamverDrivePickerModal({
                 : "하위 폴더가 없습니다. 아래에서 현재 폴더에 저장하세요."}
             </div>
           )}
-          {!searching && browseHasMore && browseNextCursor?.trim() ? (
-            <button
-              type="button"
-              className="teamver-drive-import-load-more"
-              disabled={browseLoading || loadingMoreBrowse}
-              data-testid="teamver-drive-picker-load-more"
-              aria-busy={loadingMoreBrowse}
-              onClick={() => void refreshBrowse({ append: true, before: browseNextCursor })}
-            >
-              {loadingMoreBrowse ? "불러오는 중…" : "더 보기"}
-            </button>
+          {loadingMoreBrowse ? <TeamverDriveListSkeleton rows={2} /> : null}
+          {canLoadMoreBrowse ? (
+            <div
+              ref={scrollSentinelRef}
+              className="teamver-drive-import-scroll-sentinel"
+              data-testid="teamver-drive-picker-scroll-sentinel"
+              aria-hidden
+            />
           ) : null}
         </div>
           </div>

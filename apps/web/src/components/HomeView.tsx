@@ -1310,25 +1310,25 @@ export function HomeView({
     focusPromptAtEnd();
   }
 
-  function useExamplePlugin(record: InstalledPluginRecord, chipId: string, promptText: string) {
+  function useExamplePlugin(record: InstalledPluginRecord, chipId: string, _promptText: string) {
     setError(null);
-    // Picking a preset card *binds* the plugin (not just a textarea fill):
-    // active switches to this exact preset so submit resolves its snapshot and
-    // injects the plugin's SKILL.md + example.html as generation context — the
-    // output faithfully recreates the reference. `promptText` is the short,
-    // editable seed; the full build spec rides along in the plugin context.
-    // deferApply mirrors the chip rail: bind now, resolve the snapshot on
-    // submit (submit() already re-resolves), so a preset click stays instant
-    // and doesn't fire an /apply roundtrip per card. The chip is already
-    // active when preset cards are visible, so reuse its project kind/metadata.
-    void usePlugin(record, promptText, {
+    // Preset tiles bind the plugin (SKILL + example artifact) for the next run.
+    // Do not inject the long generator-facing seed into the composer — users
+    // keep their draft; template/style context rides on the applied plugin.
+    void usePlugin(record, null, {
       chipId,
       projectKind: active?.projectKind ?? undefined,
       projectMetadata: active?.projectMetadata ?? null,
       deferApply: true,
       explicitPick: true,
+      suppressPromptUpdate: true,
     }).then((submittable) => {
-      if (submittable) inputRef.current?.pulseSend();
+      if (
+        submittable
+        && (prompt.trim().length > 0 || stagedFiles.length > 0 || stagedDriveAssets.length > 0)
+      ) {
+        inputRef.current?.pulseSend();
+      }
     });
     focusPromptAtEnd();
   }

@@ -1725,8 +1725,18 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 .teamver-drive-import-card.is-blocked {
-  opacity: 0.55;
+  opacity: 0.62;
   cursor: not-allowed;
+  filter: grayscale(0.25);
+}
+.teamver-drive-import-card.is-blocked:hover {
+  background: var(--bg-subtle);
+}
+.teamver-drive-import-scroll-sentinel {
+  width: 100%;
+  height: 1px;
+  flex-shrink: 0;
+  pointer-events: none;
 }
 .teamver-drive-import-card:disabled {
   opacity: 0.55;

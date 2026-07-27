@@ -35,12 +35,40 @@ vi.mock("../src/analytics/provider", () => ({
   useAnalytics: () => ({ track: trackMock }),
 }));
 
+class MockIntersectionObserver {
+  static instances: MockIntersectionObserver[] = [];
+  private readonly callback: IntersectionObserverCallback;
+
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback;
+    MockIntersectionObserver.instances.push(this);
+  }
+
+  observe() {
+    /* noop */
+  }
+
+  disconnect() {
+    /* noop */
+  }
+
+  triggerIntersecting() {
+    this.callback(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      this as unknown as IntersectionObserver,
+    );
+  }
+}
+
 describe("TeamverDriveImportModal", () => {
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   beforeEach(() => {
+    MockIntersectionObserver.instances = [];
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
     resetTeamverDriveBrowsePageCachesForTests();
     listScopesMock.mockReset();
     browsePageMock.mockReset();
@@ -264,7 +292,6 @@ describe("TeamverDriveImportModal", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("teamver-drive-import-supported-filter"));
     fireEvent.mouseDown(await screen.findByTestId("teamver-drive-import-asset-AST-VIDEO"));
     expect(await screen.findByTestId("teamver-drive-import-action-hint")).toBeTruthy();
   });
@@ -390,7 +417,7 @@ describe("TeamverDriveImportModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("loads more browse rows with cursor pagination", async () => {
+  it("loads more browse rows when scroll sentinel intersects", async () => {
     browsePageMock
       .mockResolvedValueOnce({
         rows: Array.from({ length: 24 }, (_, index) => ({
@@ -432,7 +459,8 @@ describe("TeamverDriveImportModal", () => {
         before: null,
       }),
     );
-    fireEvent.click(screen.getByTestId("teamver-drive-import-load-more"));
+    await screen.findByTestId("teamver-drive-import-scroll-sentinel");
+    MockIntersectionObserver.instances.at(-1)?.triggerIntersecting();
     await waitFor(() => {
       expect(browsePageMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -443,7 +471,7 @@ describe("TeamverDriveImportModal", () => {
     });
   });
 
-  it("does not show load more when hasMore is true but nextCursor is missing", async () => {
+  it("does not mount scroll sentinel when hasMore is true but nextCursor is missing", async () => {
     browsePageMock.mockResolvedValueOnce({
       rows: [
         {
@@ -468,10 +496,10 @@ describe("TeamverDriveImportModal", () => {
     );
 
     await screen.findByTestId("teamver-drive-import-asset-AST-1");
-    expect(screen.queryByTestId("teamver-drive-import-load-more")).toBeNull();
+    expect(screen.queryByTestId("teamver-drive-import-scroll-sentinel")).toBeNull();
   });
 
-  it("hides unsupported assets when supported-only filter is on", async () => {
+  it("shows unsupported assets as blocked cards instead of hiding them", async () => {
     useTeamverBrandingMock.mockReturnValue({ slideOnlyMvp: true });
     browsePageMock.mockResolvedValue({
       rows: [
@@ -502,10 +530,8 @@ describe("TeamverDriveImportModal", () => {
       />,
     );
 
-    await screen.findByTestId("teamver-drive-import-asset-AST-OK");
-    expect(screen.queryByTestId("teamver-drive-import-asset-AST-VIDEO")).toBeNull();
-
-    fireEvent.click(screen.getByTestId("teamver-drive-import-supported-filter"));
-    expect(await screen.findByTestId("teamver-drive-import-asset-AST-VIDEO")).toBeTruthy();
+    const videoCard = await screen.findByTestId("teamver-drive-import-asset-AST-VIDEO");
+    expect(videoCard.classList.contains("is-blocked")).toBe(true);
+    expect(screen.getByTestId("teamver-drive-import-asset-AST-OK")).toBeTruthy();
   });
 });

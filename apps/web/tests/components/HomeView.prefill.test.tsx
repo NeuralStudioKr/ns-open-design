@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from 'react';
+import { act, type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HomeView } from '../../src/components/HomeView';
@@ -18,6 +18,43 @@ import {
   homeHeroPromptText,
   setHomeHeroPrompt,
 } from '../helpers/home-hero-lexical';
+
+vi.mock('../../src/teamver/designApiBase', () => ({
+  isTeamverEmbedMode: () => false,
+}));
+
+vi.mock('../../src/teamver/branding/TeamverBrandingProvider', () => ({
+  useTeamverBranding: () => ({
+    enabled: false,
+    slideOnlyMvp: false,
+    hideCommunityGallery: false,
+    hidePluginRegistry: false,
+    hideNavViews: new Set<string>(),
+    hideTopbarExecutionSwitcher: false,
+    hideUseEverywhereChip: false,
+    hideSettingsDialogLink: false,
+    allowedSettingsSections: null,
+    hideStudioExecutionControls: false,
+    hideUsefulTips: false,
+    hideHandoffButton: false,
+    hideAssistantModelLabels: false,
+    hideAssistantThinkingDetails: false,
+    lockExecutionConfig: false,
+    hideLocalWorkspaceControls: false,
+    hideWorkspaceTabsBar: false,
+    hideComposerIntegrations: false,
+    hideExternalShareSurfaces: false,
+    title: 'Open Design',
+    subtitle: '',
+    heroTitle: 'Open Design',
+    heroSubtitle: 'Create with AI',
+  }),
+  TeamverBrandingProvider: ({ children }: { children: ReactNode }) => children,
+}));
+
+function isPluginsListRequest(url: unknown): boolean {
+  return typeof url === 'string' && (url === '/api/plugins' || url.startsWith('/api/plugins?'));
+}
 
 const AUTHORING_PLUGIN = {
   id: 'od-plugin-authoring',
@@ -434,7 +471,7 @@ describe('HomeView prompt handoff', () => {
     });
     const onSubmit = vi.fn(() => submitPromise);
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [HIDDEN_DEFAULT_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -483,7 +520,7 @@ describe('HomeView prompt handoff', () => {
       resolveApply = resolve;
     });
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [AUTHORING_PLUGIN, WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -545,7 +582,7 @@ describe('HomeView prompt handoff', () => {
 
   it('uses the same authoring prompt from the Home rail chip', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [AUTHORING_PLUGIN, WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -583,7 +620,7 @@ describe('HomeView prompt handoff', () => {
 
   it('routes a plugin-use handoff from the Plugins page as the active driver and submits it as the run driver', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -643,7 +680,7 @@ describe('HomeView prompt handoff', () => {
 
   it('routes free-form submits through the hidden default plugin without applying a visible chip', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [HIDDEN_DEFAULT_PLUGIN, DEFAULT_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -679,7 +716,7 @@ describe('HomeView prompt handoff', () => {
 
   it('falls back to od-new-generation when od-plugin-authoring is not registered yet', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [DEFAULT_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -743,7 +780,7 @@ describe('HomeView prompt handoff', () => {
 
   it('binds the Home rail Prototype chip locally and applies it on submit', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -839,7 +876,7 @@ describe('HomeView prompt handoff', () => {
 
   it('defaults to "No design system" (不指定) when the user has no personal default and submits a null designSystemId', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -902,7 +939,7 @@ describe('HomeView prompt handoff', () => {
 
   it('lets the user explicitly pick "No design system" to override a personal default and submit a null designSystemId', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -963,9 +1000,9 @@ describe('HomeView prompt handoff', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('uses example preset cards as plain-text prompt fillers while preserving selected chip inputs', async () => {
+  it('binds preset plugin on submit while keeping the composer user-authored', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -996,13 +1033,14 @@ describe('HomeView prompt handoff', () => {
 
     await clearActiveTypeChip();
     fireEvent.click(await screen.findByTestId('home-hero-rail-prototype'));
-    fireEvent.click(await screen.findByTestId('home-hero-plugin-preset'));
+    await waitFor(() => {
+      expect(screen.getAllByTestId('home-hero-plugin-preset').length).toBeGreaterThan(0);
+    });
+    fireEvent.click(screen.getAllByTestId('home-hero-plugin-preset')[0]!);
 
     screen.getByTestId('home-hero-input');
     await waitFor(() => {
-      expect(homeHeroPromptText()).toBe(
-        'Build a high-fidelity web prototype for product evaluators using the active project design system from the bundled web prototype seed.',
-      );
+      expect(homeHeroPromptValue()).toBe('');
     });
     expect(fetchMock.mock.calls.some(([url]) => (
       typeof url === 'string' && url.includes('/api/plugins/example-web-prototype/apply')
@@ -1018,12 +1056,11 @@ describe('HomeView prompt handoff', () => {
     expect(screen.queryByTestId('home-hero-prompt-slot-artifactKind')).toBeNull();
     expect(screen.queryByTestId('home-hero-prompt-slot-designSystem')).toBeNull();
     expect(screen.queryByTestId('home-hero-prompt-slot-template')).toBeNull();
-    // The inline plugin inputs form was removed from the Home composer; the
-    // preset card still seeds the prompt and keeps the chip's structured inputs
-    // in state (submitted below), but no inputs form renders. fidelity /
-    // designSystem stay in the footer options above.
+    // Preset pick binds the plugin; seed text stays off the composer.
     expect(screen.queryByTestId('plugin-inputs-form')).toBeNull();
 
+    const userBrief = 'Build a pricing-page prototype.';
+    await setPromptAndSettle(userBrief);
     fireEvent.click(screen.getByTestId('home-hero-submit'));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
@@ -1033,12 +1070,8 @@ describe('HomeView prompt handoff', () => {
     const applyCall = fetchMock.mock.calls.find(([url]) => (
       typeof url === 'string' && url.includes('/api/plugins/example-web-prototype/apply')
     ));
-    // The preset card seeds the prompt as plain text while preserving the
-    // chip's structured inputs (artifactKind / fidelity / audience /
-    // designSystem / template all round-trip). Seeding the editor does NOT
-    // re-run the host's prompt-extraction (HomeHero suppresses the seed echo
-    // in onChange), so designSystem keeps the chip/footer default rather than
-    // being re-read from the prompt text.
+    // Preset + chip footer defaults round-trip in apply inputs; the run prompt
+    // is whatever the user typed (not the generator-facing seed).
     expect(JSON.parse(String((applyCall?.[1] as RequestInit).body))).toMatchObject({
       inputs: {
         artifactKind: 'web prototype',
@@ -1050,7 +1083,7 @@ describe('HomeView prompt handoff', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
       pluginId: 'example-web-prototype',
       projectKind: 'prototype',
-      prompt: 'Build a high-fidelity web prototype for product evaluators using the active project design system from the bundled web prototype seed.',
+      prompt: userBrief,
       designSystemId: 'ds-refly',
       projectMetadata: expect.objectContaining({
         kind: 'prototype',
@@ -1060,7 +1093,7 @@ describe('HomeView prompt handoff', () => {
 
   it('binds the picked preset plugin on submit while preserving the chip metadata', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({
           plugins: [LIVE_ARTIFACT_PLUGIN, LIVE_ARTIFACT_IMAGE_TEMPLATE_PLUGIN],
         }), {
@@ -1103,11 +1136,9 @@ describe('HomeView prompt handoff', () => {
     fireEvent.click(liveArtifactTemplatePreset);
 
     screen.getByTestId('home-hero-input');
-    // The composer seed prefers the curated description over the query head
-    // (the query is generator-facing; it still reaches the agent as plugin
-    // context on apply).
+    // Preset pick binds the plugin; the composer stays empty until the user types.
     await waitFor(() => {
-      expect(homeHeroPromptText()).toBe('Create a live Notion dashboard artifact.');
+      expect(homeHeroPromptValue()).toBe('');
     });
     expect(fetchMock.mock.calls.some(([url]) => (
       typeof url === 'string' && url.includes('/apply')
@@ -1115,6 +1146,8 @@ describe('HomeView prompt handoff', () => {
     expect(screen.getByTestId('home-hero-active-type-chip').textContent).toContain('Live artifact');
     expect(screen.queryByTestId('plugin-inputs-form')).toBeNull();
 
+    const userBrief = 'Team dashboard for Q3 OKRs.';
+    await setPromptAndSettle(userBrief);
     fireEvent.click(screen.getByTestId('home-hero-submit'));
 
     // Picking a preset binds the preset's OWN plugin (so its SKILL.md /
@@ -1134,13 +1167,13 @@ describe('HomeView prompt handoff', () => {
         intent: 'live-artifact',
         fidelity: 'high-fidelity',
       }),
-      prompt: 'Create a live Notion dashboard artifact.',
+      prompt: userBrief,
     })));
   });
 
   it('binds the Home rail Live artifact chip with live-artifact metadata and applies it on submit', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN, LIVE_ARTIFACT_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -1208,7 +1241,7 @@ describe('HomeView prompt handoff', () => {
     // composer; the agent asks for them in the first-turn discovery flow. The
     // deck footer now mirrors the prototype footer — design system only.
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [SIMPLE_DECK_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -1261,7 +1294,7 @@ describe('HomeView prompt handoff', () => {
 
   it('switches output-type chips without replacing an existing prompt', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -1302,9 +1335,9 @@ describe('HomeView prompt handoff', () => {
     expect(screen.queryByRole('dialog', { name: /replace current prompt/i })).toBeNull();
   });
 
-  it('lets selected chips seed the hero through preset cards', async () => {
+  it('binds preset cards without prefilling the composer', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN, SIMPLE_DECK_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -1344,15 +1377,12 @@ describe('HomeView prompt handoff', () => {
       expect(screen.getByTestId('home-hero-active-type-chip').textContent).toContain('Slide deck');
     });
     expect(screen.getByTestId('home-hero-plugin-presets')).toBeTruthy();
-    expect(screen.getByTestId('home-hero-plugin-presets').textContent).toContain('Simple Deck');
     fireEvent.click(screen.getAllByTestId('home-hero-plugin-preset')[0]!);
     expect(fetchMock.mock.calls.some(([url]) => (
       typeof url === 'string' && url.includes('/api/plugins/example-simple-deck/apply')
     ))).toBe(false);
     await waitFor(() => {
-      expect(homeHeroPromptText()).toBe(
-        'Create a pitch deck for decision makers about the user brief with 10-15 pages. Speaker notes: include speaker notes. Use the active project design system.',
-      );
+      expect(homeHeroPromptValue()).toBe('');
     });
 
     await clearActiveTypeChip();
@@ -1365,15 +1395,45 @@ describe('HomeView prompt handoff', () => {
       typeof url === 'string' && url.includes('/api/plugins/example-web-prototype/apply')
     ))).toBe(false);
     await waitFor(() => {
-      expect(homeHeroPromptText()).toBe(
-        'Build a high-fidelity web prototype for product evaluators using the active project design system from the bundled web prototype seed.',
-      );
+      expect(homeHeroPromptValue()).toBe('');
     });
+  });
+
+  it('keeps a typed draft when a preset card is picked', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (url) => {
+      if (isPluginsListRequest(url)) {
+        return new Response(JSON.stringify({ plugins: [SIMPLE_DECK_PLUGIN] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    stubAnimationFrame();
+
+    render(
+      <HomeView
+        projects={[]}
+        onSubmit={() => undefined}
+        onOpenProject={() => undefined}
+        onViewAllProjects={() => undefined}
+      />,
+    );
+
+    await setPromptAndSettle('분기 실적 요약 덱 만들어줘');
+    await clearActiveTypeChip();
+    fireEvent.click(await screen.findByTestId('home-hero-rail-deck'));
+    await waitFor(() => {
+      expect(screen.getByTestId('home-hero-plugin-presets')).toBeTruthy();
+    });
+    fireEvent.click(screen.getAllByTestId('home-hero-plugin-preset')[0]!);
+    expect(homeHeroPromptText()).toBe('분기 실적 요약 덱 만들어줘');
   });
 
   it('appends a plugin-use query handoff without replacing an existing prompt', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -1443,7 +1503,7 @@ describe('HomeView prompt handoff', () => {
     // so editing a hydrated value in the composer flows back into pluginInputs
     // and submit resolves the snapshot from what the user sees.
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -1514,7 +1574,7 @@ describe('HomeView prompt handoff', () => {
     // query as a suffix after any prefix, so the placeholder edit still reaches
     // pluginInputs and submit resolves the snapshot from the visible prompt.
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -1587,7 +1647,7 @@ describe('HomeView prompt handoff', () => {
     // extractor matches the query as a suffix after the freshly-added prefix and
     // the placeholder edit still flows into pluginInputs.
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -1657,7 +1717,7 @@ describe('HomeView prompt handoff', () => {
     // "Replicate this content" (use-with-query) must do the same rather than
     // dumping the meta-instruction into the composer.
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [META_INSTRUCTION_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -1708,7 +1768,7 @@ describe('HomeView prompt handoff', () => {
 
   it('binds od-plugin-authoring before submitting the rail create-plugin prompt', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [AUTHORING_PLUGIN, WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -1764,7 +1824,7 @@ describe('HomeView prompt handoff', () => {
 
   it('keeps the authoring goal input linked to the prompt and submit payload', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [AUTHORING_PLUGIN, WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -1823,7 +1883,7 @@ describe('HomeView prompt handoff', () => {
       resolveApply = resolve;
     });
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/plugins') {
+      if (isPluginsListRequest(url)) {
         return new Response(JSON.stringify({ plugins: [AUTHORING_PLUGIN, WEB_PROTOTYPE_PLUGIN] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
