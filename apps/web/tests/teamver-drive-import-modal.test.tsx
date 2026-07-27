@@ -534,4 +534,35 @@ describe("TeamverDriveImportModal", () => {
     expect(videoCard.classList.contains("is-blocked")).toBe(true);
     expect(screen.getByTestId("teamver-drive-import-asset-AST-OK")).toBeTruthy();
   });
+
+  it("marks already-attached drive assets as non-selectable", async () => {
+    browsePageMock.mockResolvedValue({
+      rows: [
+        {
+          kind: "asset" as const,
+          assetId: "AST-1",
+          name: "logo.svg",
+          mimeType: "image/svg+xml",
+        },
+      ],
+      hasMore: false,
+      nextCursor: null,
+    });
+    listRecentMock.mockResolvedValue([]);
+
+    render(
+      <TeamverDriveImportModal
+        open
+        workspaceId="ws-1"
+        attachedDriveAssetIds={["AST-1"]}
+        onClose={() => undefined}
+        onConfirm={async () => undefined}
+      />,
+    );
+
+    const card = await screen.findByTestId("teamver-drive-import-asset-AST-1");
+    expect(card.classList.contains("is-already-attached")).toBe(true);
+    fireEvent.mouseDown(card);
+    expect(await screen.findByTestId("teamver-drive-import-action-hint")).toBeTruthy();
+  });
 });

@@ -65,6 +65,7 @@ import {
   type TeamverDriveImportPartialResult,
   type TeamverDriveImportAsset,
 } from '../teamver/importDriveAssets';
+import { teamverDriveAssetIdsFromChatAttachments } from '../teamver/driveImportAttachedIds';
 import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImportModal';
 import { TeamverCanvasSlideLaunchModal, type TeamverCanvasSlideLaunchSource } from '../teamver/components/TeamverCanvasSlideLaunchModal';
 import {
@@ -471,6 +472,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // entries rather than ChatComposer remounts. See PR #2285 review
     // 2026-05-20 04:08 for the rationale.
     const [staged, setStaged] = useState<ChatAttachment[]>([]);
+    const attachedDriveAssetIds = useMemo(
+      () => teamverDriveAssetIdsFromChatAttachments(staged),
+      [staged],
+    );
     const nextAttachmentOrderRef = useRef(0);
     const [stagedVisualComments, setStagedVisualComments] = useState<ChatCommentAttachment[]>([]);
     const streamingAnnotationSendPendingRef = useRef(false);
@@ -3037,6 +3042,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               }
             }}
             onConfirm={importDriveAttachments}
+            attachedDriveAssetIds={attachedDriveAssetIds}
           />
         ) : null}
       </div>

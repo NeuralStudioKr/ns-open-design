@@ -207,6 +207,8 @@ export function TeamverDrivePickerModal({
   const searchAbortRef = useRef<AbortController | null>(null);
   const modalRef = useRef<HTMLElement | null>(null);
   const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const emptyBrowseChaseRef = useRef(0);
+  const appendInFlightRef = useRef(false);
   const trimmedQuery = query.trim();
   const searching = Boolean(onSearch && searchMode);
   const activeScope = scopes[scopeIndex] ?? null;
@@ -494,6 +496,8 @@ export function TeamverDrivePickerModal({
       const append = options?.append ?? false;
       const before = options?.before?.trim() ?? null;
       if (append && !before) return;
+      if (append && appendInFlightRef.current) return;
+      if (append) appendInFlightRef.current = true;
       const cacheKey = [
         workspaceId.trim(),
         activeScope.mode === "shared" ? activeScope.sharedDriveId : "personal",
@@ -656,7 +660,13 @@ export function TeamverDrivePickerModal({
         setBrowseHasMore(false);
         setBrowseNextCursor(null);
       } finally {
-        if (seq === browseFetchSeqRef.current && !append) setBrowseLoading(false);
+        if (seq === browseFetchSeqRef.current) {
+          if (!append) setBrowseLoading(false);
+          if (append) {
+            appendInFlightRef.current = false;
+            setLoadingMoreBrowse(false);
+          }
+        }
       }
     },
     [activeScope, browseAuthRequired, currentFolderId, open, searching, workspaceId],
@@ -677,6 +687,28 @@ export function TeamverDrivePickerModal({
     rootRef: listScrollRef,
     onLoadMore: loadMoreBrowse,
   });
+
+  useEffect(() => {
+    emptyBrowseChaseRef.current = 0;
+  }, [activeScope, currentFolderId, scopeIndex]);
+
+  useEffect(() => {
+    if (searching || browseLoading || loadingMoreBrowse) return;
+    if (hasBrowseContent) {
+      emptyBrowseChaseRef.current = 0;
+      return;
+    }
+    if (!canLoadMoreBrowse || emptyBrowseChaseRef.current >= 3) return;
+    emptyBrowseChaseRef.current += 1;
+    loadMoreBrowse();
+  }, [
+    browseLoading,
+    canLoadMoreBrowse,
+    hasBrowseContent,
+    loadMoreBrowse,
+    loadingMoreBrowse,
+    searching,
+  ]);
 
   useEffect(() => {
     if (!open || !workspaceId?.trim() || !activeScope) return;

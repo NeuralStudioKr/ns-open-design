@@ -122,6 +122,7 @@ import type { TeamverDriveImportAsset } from '../teamver/importDriveAssets';
 import { formatDriveImportErrorForUser } from '../teamver/importDriveAssets';
 import { formatTeamverCanvasImportErrorMessage } from '../teamver/importCanvas';
 import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImportModal';
+import { teamverDriveAssetIdsFromImportAssets } from '../teamver/driveImportAttachedIds';
 import {
   TeamverCanvasSlideLaunchModal,
   type TeamverCanvasSlideLaunchSource,
@@ -353,6 +354,10 @@ export function HomeView({
   const [selectedConnectorContexts, setSelectedConnectorContexts] = useState<SelectedConnectorContext[]>([]);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [stagedDriveAssets, setStagedDriveAssets] = useState<TeamverDriveImportAsset[]>([]);
+  const homeAttachedDriveAssetIds = useMemo(
+    () => teamverDriveAssetIdsFromImportAssets(stagedDriveAssets),
+    [stagedDriveAssets],
+  );
   const [driveImportOpen, setDriveImportOpen] = useState(false);
   const [teamverWorkspaceId, setTeamverWorkspaceId] = useState<string | null>(null);
   const [designAccessTick, setDesignAccessTick] = useState(0);
@@ -2192,6 +2197,7 @@ export function HomeView({
             stageDriveAssets(assets);
             setDriveImportOpen(false);
           }}
+          attachedDriveAssetIds={homeAttachedDriveAssetIds}
         />
       ) : null}
       {teamverDriveImportAllowed && canvasSlideLaunch ? (
