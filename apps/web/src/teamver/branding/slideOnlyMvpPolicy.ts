@@ -89,15 +89,45 @@ export function resolveSlideOnlyDeckTemplateSkillId(
   return id;
 }
 
+export const TEAMVER_AUTO_DECK_VISUAL_TEMPLATE_LABEL =
+  "Auto-match a deck template from the user's brief";
+
+export function inferSlideOnlyDeckVisualTemplateHint(topicHint?: string | null): string {
+  const text = (topicHint ?? "").toLowerCase();
+  if (/(portfolio|developer|frontend|backend|full[-\s]?stack|resume|career|채용|포트폴리오|개발자|이력)/i.test(text)) {
+    return "developer portfolio deck: bold personal cover, strong typographic hierarchy, skill chips, project/case-study rhythm";
+  }
+  if (/(onboarding|orientation|employee|new hire|신입|온보딩|교육|입문)/i.test(text)) {
+    return "onboarding deck: friendly structured guide, warm welcome cover, process timelines, checklist sections";
+  }
+  if (/(marketing|campaign|market|strategy|go[-\s]?to[-\s]?market|마케팅|전략|시장|캠페인)/i.test(text)) {
+    return "marketing strategy deck: editorial report style, strong section openers, KPI cards, channel roadmap layouts";
+  }
+  if (/(ai|artificial intelligence|data|analytics|tech|saas|cloud|cyber|보안|인공지능|데이터|기술)/i.test(text)) {
+    return "modern tech deck: dark or high-contrast canvas, clean grid, neon/accent metrics, product-system diagrams";
+  }
+  if (/(finance|revenue|sales|kpi|roi|budget|투자|매출|재무|성과|지표)/i.test(text)) {
+    return "business report deck: executive summary, metric dashboard cards, comparison tables, restrained data visuals";
+  }
+  if (/(pitch|investor|startup|fundraising|IR|피치|투자자|스타트업)/i.test(text)) {
+    return "startup pitch deck: confident narrative arc, big claims, traction metrics, market/product/roadmap slides";
+  }
+  return TEAMVER_AUTO_DECK_VISUAL_TEMPLATE_LABEL;
+}
+
 export function defaultSlideOnlyDeckPluginInputs(topicHint?: string | null): Record<string, unknown> {
   const topic = (topicHint ?? "").trim() || "the user brief";
+  const visualTemplate = inferSlideOnlyDeckVisualTemplateHint(topic);
   return {
     deckType: "pitch deck",
     topic,
     audience: "decision makers",
     slideCount: "6-8 pages",
     speakerNotes: "no speaker notes",
-    designSystem: "the active project design system",
+    designSystem: "auto-match the visual direction from the user's brief unless a project design system is explicitly active",
+    visualTemplate,
+    visualTemplatePolicy:
+      "If the user did not explicitly pick a template, infer the best-fitting deck visual language from the brief; do not fall back to a generic default look.",
   };
 }
 

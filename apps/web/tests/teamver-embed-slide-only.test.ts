@@ -7,7 +7,9 @@ import {
   TEAMVER_EMBED_HIDDEN_NEW_PROJECT_TABS,
   TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS,
   TEAMVER_EMBED_SLIDE_SCENARIO_PLUGIN_ID,
+  defaultSlideOnlyDeckPluginInputs,
   homeHeroChipsForGroup,
+  inferSlideOnlyDeckVisualTemplateHint,
   visibleNewProjectTabs,
   defaultNewProjectTab,
   resolveSlideOnlyDeckTemplateSkillId,
@@ -108,6 +110,20 @@ describe('Teamver embed slide-only MVP policy', () => {
       'community-deck-plugin',
     );
     expect(resolveSlideOnlyCreatePluginId('od-default', { slideOnlyMvp: false })).toBe('od-default');
+  });
+
+  it('auto-matches a visual template hint when no deck template was explicitly picked', () => {
+    expect(inferSlideOnlyDeckVisualTemplateHint('개발자 포트폴리오 예시로 2장짜리 ppt')).toContain(
+      'developer portfolio deck',
+    );
+    expect(inferSlideOnlyDeckVisualTemplateHint('2026년 상반기 마케팅 전략 보고서')).toContain(
+      'marketing strategy deck',
+    );
+
+    const inputs = defaultSlideOnlyDeckPluginInputs('AI 도입 효과 발표 자료');
+    expect(inputs.visualTemplate).toContain('modern tech deck');
+    expect(inputs.visualTemplatePolicy).toContain('do not fall back to a generic default look');
+    expect(inputs.designSystem).toContain('auto-match the visual direction');
   });
 
   it('keeps explicitly picked deck community cards as visual template skills', () => {
