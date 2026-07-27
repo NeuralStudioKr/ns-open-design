@@ -11,7 +11,7 @@
  */
 
 import type { Project } from "../types";
-import { isPlaceholderProjectName } from "../utils/projectName";
+import { isPlaceholderProjectName, isRegistryPlaceholderTitle } from "../utils/projectName";
 import {
   listTeamverRegistryProjects,
   TeamverProjectRegistryError,
@@ -29,14 +29,16 @@ function readRegistryOdProjectId(project: TeamverRegisteredProject): string | un
   return id || undefined;
 }
 
-/** Prefer registry title when daemon PG name is empty or still machine-derived. */
+/** Prefer human daemon name; registry UUID/id titles must not beat a real name. */
 export function resolveProjectDisplayName(
   project: Pick<Project, "id" | "name">,
   registryTitle?: string | null,
 ): string {
   const title = registryTitle?.trim();
   const name = project.name?.trim();
-  if (title && (!name || isPlaceholderProjectName({ id: project.id, name }))) return title;
+  if (name && !isPlaceholderProjectName({ id: project.id, name })) return name;
+  if (title && !isRegistryPlaceholderTitle({ id: project.id, name: title })) return title;
+  if (name && !isRegistryPlaceholderTitle({ id: project.id, name })) return name;
   return name || title || project.id || "Untitled";
 }
 

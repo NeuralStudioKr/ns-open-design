@@ -80,6 +80,20 @@ export function isPlaceholderProjectName(project: Pick<Project, 'id' | 'name'>):
   return isMachineSlugLikeProjectName(name);
 }
 
+/**
+ * Registry RDS title — block id/uuid/plugin defaults only.
+ * User hyphenated renames (e.g. annual-report-2026) must sync to design-api.
+ */
+export function isRegistryPlaceholderTitle(project: Pick<Project, 'id' | 'name'>): boolean {
+  const name = project.name?.trim();
+  if (!name) return true;
+  if (name === project.id) return true;
+  if (isUuidLike(name)) return true;
+  const lower = name.toLowerCase();
+  if (GENERIC_PLUGIN_TITLES.has(lower) || GENERIC_PLUGIN_TITLES.has(name)) return true;
+  return false;
+}
+
 function cleanPrompt(prompt: string): string {
   return prompt
     .replace(/```[\s\S]*?```/g, ' ')

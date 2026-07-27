@@ -162,6 +162,16 @@ async def _resolve_existing_registry_row(
         if reactivated is None:
             raise NotFoundError("project_not_found")
         return reactivated, True
+    merged_title = design_project_crud.merge_registry_title_update(
+        od_project_id=od_project_id,
+        current_title=row.title,
+        incoming_title=title,
+    )
+    if merged_title is not None:
+        row.title = merged_title
+        await db.flush()
+        await db.refresh(row)
+        return row, True
     return row, False
 
 
