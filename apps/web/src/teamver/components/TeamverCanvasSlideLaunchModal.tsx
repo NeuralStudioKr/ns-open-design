@@ -8,7 +8,10 @@ import {
 } from "../canvasLaunchHandoff";
 import { fetchTeamverCanvasPreview } from "../fetchCanvasPreview";
 import { driveImportAssetIconName } from "../driveFileVisual";
-import type { TeamverCanvasSlideTemplateOption } from "../canvasSlideLaunch";
+import type {
+  TeamverCanvasSlideLaunchConfirmContext,
+  TeamverCanvasSlideTemplateOption,
+} from "../canvasSlideLaunch";
 
 export type TeamverCanvasSlideLaunchSource =
   | { kind: "drive"; asset: TeamverDriveImportAsset }
@@ -24,7 +27,7 @@ type Props = {
   templateOptions?: TeamverCanvasSlideTemplateOption[];
   selectedTemplateId?: string;
   onTemplateChange?: (templateId: string) => void;
-  onConfirm: () => void | Promise<void>;
+  onConfirm: (context?: TeamverCanvasSlideLaunchConfirmContext) => void | Promise<void>;
   onClose: () => void;
 };
 
@@ -50,7 +53,7 @@ function sourceHeadline(
   if (source.kind === "drive") {
     return source.asset.filename?.trim() || source.asset.assetId;
   }
-  return handoff?.title?.trim() || untitled;
+  return handoff?.title?.trim() || handoff?.threadTitle?.trim() || untitled;
 }
 
 export function TeamverCanvasSlideLaunchModal({
@@ -175,7 +178,9 @@ export function TeamverCanvasSlideLaunchModal({
 
           {templateOptions.length > 0 ? (
             <label className="teamver-canvas-slide-launch-template">
-              <span className="teamver-canvas-slide-launch-template-label">슬라이드 템플릿</span>
+              <span className="teamver-canvas-slide-launch-template-label">
+                {t("teamver.canvasSlideLaunch.templateLabel")}
+              </span>
               {templateOptions.length > 1 ? (
                 <select
                   className="teamver-canvas-slide-launch-template-select"
@@ -296,9 +301,15 @@ export function TeamverCanvasSlideLaunchModal({
           <button
             type="button"
             className="teamver-drive-import-attach teamver-canvas-slide-launch-confirm"
-            disabled={confirming}
+            disabled={confirming || (isCanvas && enriching)}
             data-testid="teamver-canvas-slide-launch-confirm"
-            onClick={() => void onConfirm()}
+            onClick={() => {
+              const context: TeamverCanvasSlideLaunchConfirmContext | undefined =
+                source.kind === "canvas"
+                  ? { canvasHandoff: liveHandoff ?? source.handoff }
+                  : undefined;
+              void onConfirm(context);
+            }}
           >
             {confirming
               ? t("teamver.canvasSlideLaunch.working")

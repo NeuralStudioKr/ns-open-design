@@ -1659,7 +1659,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       }
     }
 
-    async function confirmCanvasSlideLaunch() {
+    async function confirmCanvasSlideLaunch(
+      resolved?: import("../teamver/canvasSlideLaunch").TeamverCanvasSlideLaunchConfirmContext,
+    ) {
       if (!canvasSlideLaunch || canvasSlideLaunchBusy || streaming) return;
       if (!teamverDriveImportAllowed) {
         setCanvasSlideLaunchError(
@@ -1679,7 +1681,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       setUploadError(null);
       try {
         if (canvasSlideLaunch.kind === "canvas") {
-          const result = await importTeamverCanvas(id, canvasSlideLaunch.handoff);
+          const handoff = resolved?.canvasHandoff ?? canvasSlideLaunch.handoff;
+          const result = await importTeamverCanvas(id, handoff);
           const attachments = assignChatAttachmentOrders(
             canvasImportedToChatAttachments(result.imported),
             Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged)),
@@ -1699,12 +1702,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             designSystemId: designSystemIdForRun,
             mergeContext: baseMeta?.context,
           });
-          const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
+          const sourceBrief = canvasCreateSlidesSourceBrief(handoff);
           sendComposedTurn(
             canvasCreateSlidesRunPrompt(
               selectedCanvasSlideTemplate.title,
               sourceBrief,
-              canvasSlideLaunch.handoff,
+              handoff,
             ),
             attachments,
             [],
@@ -1712,14 +1715,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               ...baseMeta,
               ...canvasMeta,
               pluginInputs: canvasCreateSlidesPluginInputs(
-                canvasSlideLaunch.handoff.title?.trim()
-                  || canvasSlideLaunch.handoff.threadTitle?.trim()
+                handoff.title?.trim()
+                  || handoff.threadTitle?.trim()
                   || attachments[0]?.name
                   || attachments[0]?.path
                   || null,
                 selectedCanvasSlideTemplate.title,
                 sourceBrief,
-                canvasSlideLaunch.handoff,
+                handoff,
               ),
               context: {
                 ...(baseMeta?.context ?? {}),

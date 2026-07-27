@@ -91,7 +91,7 @@ import {
   resolveSlideOnlyCreatePluginId,
   defaultSlideOnlyDeckPluginInputs,
 } from '../teamver/branding/slideOnlyMvpPolicy';
-import { canvasCreateSlidesProjectName } from '../teamver/canvasSlideLaunch';
+import { canvasCreateSlidesProjectName, createSlidesProjectNameFromFilename } from '../teamver/canvasSlideLaunch';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import {
   shouldFetchAutomationTaskApis,
@@ -657,7 +657,16 @@ export function EntryShell({
     const canvasProjectName = payload.canvasHandoff
       ? canvasCreateSlidesProjectName(payload.canvasHandoff)
       : null;
+    const driveCreateSlidesName =
+      payload.driveAttachments?.length === 1 &&
+      payload.projectKind === 'deck' &&
+      payload.projectMetadata?.skipDiscoveryBrief
+        ? createSlidesProjectNameFromFilename(
+            payload.driveAttachments[0]!.filename ?? payload.driveAttachments[0]!.assetId,
+          )
+        : null;
     const name = canvasProjectName
+      ?? driveCreateSlidesName
       ?? (payload.canvasHandoff
         ? fallbackName
         : payload.pluginTitle && payload.pluginTitle.trim().length > 0

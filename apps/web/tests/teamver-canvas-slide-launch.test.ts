@@ -12,6 +12,7 @@ import {
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
+  createSlidesProjectNameFromFilename,
   formatCanvasDeckSlideCountInput,
   inferCanvasDeckSlideCount,
   isCanvasSlideOneConfirmLaunch,
@@ -119,9 +120,15 @@ describe("canvasSlideLaunch", () => {
     expect(canvasCreateSlidesProjectName({})).toBeNull();
   });
 
+  it("derives create-slides project name from drive source filename", () => {
+    expect(createSlidesProjectNameFromFilename("exports/Q4-plan.html")).toBe("Q4-plan");
+    expect(createSlidesProjectNameFromFilename("AST-9001")).toBeNull();
+  });
+
   it("uses canvas title for project create instead of deck template plugin title", () => {
     const entryShell = readWebSource("src/components/EntryShell.tsx");
     expect(entryShell).toContain("canvasCreateSlidesProjectName(payload.canvasHandoff)");
+    expect(entryShell).toContain("createSlidesProjectNameFromFilename");
     expect(entryShell).toContain("const canvasProjectName = payload.canvasHandoff");
   });
 
@@ -165,11 +172,11 @@ describe("canvasSlideLaunch", () => {
     const daemon = readWebSource("src/providers/daemon.ts");
 
     expect(composer).toContain("pluginInputs: canvasCreateSlidesPluginInputs(");
-    expect(composer).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff)");
+    expect(composer).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(handoff)");
     expect(composer).toContain("canvasCreateSlidesRunPrompt(");
     expect(composer).toContain("canvasSlideLaunch.handoff");
     expect(home).toContain("canvasCreateSlidesRunPrompt(");
-    expect(home).toContain("canvasCreateSlidesProjectMetadata(canvasSlideLaunch.handoff)");
+    expect(home).toContain("canvasCreateSlidesProjectMetadata(handoff)");
     expect(projectView).toContain("pluginInputs: meta?.pluginInputs");
     expect(daemon).toContain("pluginInputs?: Record<string, unknown>;");
     expect(daemon).toContain("{ pluginInputs }");

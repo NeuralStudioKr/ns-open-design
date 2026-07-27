@@ -88,6 +88,38 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     expect(screen.queryByText(/canvas\/artifact/)).toBeNull();
   });
 
+  it("passes BFF-enriched canvas handoff when confirming", async () => {
+    const onConfirm = vi.fn();
+
+    render(
+      <TeamverCanvasSlideLaunchModal
+        open
+        source={{
+          kind: "canvas",
+          handoff: {
+            sessionId: "s1",
+            artifactId: "artifact-12345678",
+            title: "URL 제목",
+          },
+        }}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Live 제목")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-confirm"));
+    expect(onConfirm).toHaveBeenCalledWith({
+      canvasHandoff: expect.objectContaining({
+        title: "Live 제목",
+        sectionCount: 3,
+        threadTitle: "기획 스레드",
+      }),
+    });
+  });
+
   it("closes from cancel without confirming", () => {
     const onConfirm = vi.fn();
     const onClose = vi.fn();

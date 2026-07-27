@@ -8,6 +8,10 @@ import { localizePluginTitle } from "../components/plugins-home/localization";
 const MAX_CANVAS_PROJECT_NAME_LENGTH = 80;
 
 /** Display name for a new Design project created from Canvas → slides. */
+export type TeamverCanvasSlideLaunchConfirmContext = {
+  canvasHandoff?: TeamverCanvasLaunchHandoff;
+};
+
 export function canvasCreateSlidesProjectName(
   handoff: Pick<TeamverCanvasLaunchHandoff, "title" | "threadTitle">,
 ): string | null {
@@ -21,6 +25,16 @@ export function canvasCreateSlidesProjectName(
   }
   return null;
 }
+
+/** Drive create-slides one-confirm: prefer source filename over deck template title. */
+export function createSlidesProjectNameFromFilename(filename: string): string | null {
+  const base = filename.trim().split(/[/\\]/).pop()?.trim() ?? "";
+  if (!base) return null;
+  const stem = base.replace(/\.(html?|md|markdown|pdf|docx?|txt)$/i, "").trim() || base;
+  if (!stem || stem === base && /^AST[-_]/i.test(stem)) return null;
+  return canvasCreateSlidesProjectName({ title: stem });
+}
+
 export const CANVAS_CREATE_SLIDES_PLUGIN_ID =
   defaultScenarioPluginIdForKind("deck") ?? "example-simple-deck";
 

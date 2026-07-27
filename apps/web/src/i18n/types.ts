@@ -469,6 +469,7 @@ export interface Dict {
   'teamver.canvasSlideLaunch.cancel': string;
   'teamver.canvasSlideLaunch.working': string;
   'teamver.canvasSlideLaunch.retry': string;
+  'teamver.canvasSlideLaunch.templateLabel': string;
   'teamver.about.panelHint': string;
   'teamver.about.openSourceTitle': string;
   'teamver.about.openSourceIntro': string;

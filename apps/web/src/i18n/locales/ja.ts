@@ -2676,6 +2676,7 @@ export const ja: Dict = {
   'teamver.canvasSlideLaunch.cancel': 'キャンセル',
   'teamver.canvasSlideLaunch.working': '開始中…',
   'teamver.canvasSlideLaunch.retry': '再試行',
+  'teamver.canvasSlideLaunch.templateLabel': 'スライドテンプレート',
   'teamver.about.panelHint': 'Licenses and version info',
   'teamver.about.openSourceTitle': 'Open source software',
   'teamver.about.openSourceIntro': 'teamver Design includes the following open source components.',

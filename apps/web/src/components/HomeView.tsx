@@ -1749,7 +1749,9 @@ export function HomeView({
     }
   }
 
-  async function confirmCanvasSlideLaunch() {
+  async function confirmCanvasSlideLaunch(
+    resolved?: import('../teamver/canvasSlideLaunch').TeamverCanvasSlideLaunchConfirmContext,
+  ) {
     if (!canvasSlideLaunch || canvasSlideLaunchBusy || submitPending) return;
     if (!teamverDriveImportAllowed) {
       setCanvasSlideLaunchError(
@@ -1764,6 +1766,7 @@ export function HomeView({
     setError(null);
     try {
       if (canvasSlideLaunch.kind === 'canvas') {
+        const handoff = resolved?.canvasHandoff ?? canvasSlideLaunch.handoff;
         const submittedDesignSystemId = slideOnlyMvp
           ? resolveEmbedSlideDesignSystemId({
               explicitId: null,
@@ -1772,16 +1775,16 @@ export function HomeView({
             })
           : null;
         const topicHint =
-          canvasSlideLaunch.handoff.title?.trim() ||
-          canvasSlideLaunch.handoff.threadTitle?.trim() ||
+          handoff.title?.trim() ||
+          handoff.threadTitle?.trim() ||
           null;
-        const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
+        const sourceBrief = canvasCreateSlidesSourceBrief(handoff);
         const submitResult = await Promise.resolve(
           onSubmit({
             prompt: canvasCreateSlidesRunPrompt(
               selectedCanvasSlideTemplate.title,
               sourceBrief,
-              canvasSlideLaunch.handoff,
+              handoff,
             ),
             pluginId: selectedCanvasSlideTemplate.id,
             pluginType: 'official',
@@ -1793,16 +1796,16 @@ export function HomeView({
               topicHint,
               selectedCanvasSlideTemplate.title,
               sourceBrief,
-              canvasSlideLaunch.handoff,
+              handoff,
             ),
             projectKind: 'deck',
-            projectMetadata: canvasCreateSlidesProjectMetadata(canvasSlideLaunch.handoff),
+            projectMetadata: canvasCreateSlidesProjectMetadata(handoff),
             designSystemId: submittedDesignSystemId,
             contextPlugins: [],
             contextMcpServers: [],
             contextConnectors: [],
             attachments: [],
-            canvasHandoff: canvasSlideLaunch.handoff,
+            canvasHandoff: handoff,
             conversationMode: 'design',
           }),
         );
@@ -2198,8 +2201,8 @@ export function HomeView({
               setCanvasSlideLaunchError(null);
             }
           }}
-          onConfirm={() => {
-            void confirmCanvasSlideLaunch();
+          onConfirm={(resolved) => {
+            void confirmCanvasSlideLaunch(resolved);
           }}
         />
       ) : null}
