@@ -19,6 +19,10 @@ vi.mock("../src/teamver/teamverEmbedSession", () => ({
   clearTeamverEmbedSessionState: () => clearEmbedSession(),
 }));
 
+vi.mock("../src/teamver/designBffClient", () => ({
+  pauseDesignBffAuthDuringTransition: vi.fn(),
+}));
+
 vi.mock("../src/teamver/teamverEmbedAuthNavigation", () => ({
   resolveEmbedAuthReturnPath: () => "/p/demo",
 }));
@@ -34,6 +38,7 @@ import {
   wasMainSsoMismatchRecoverAttemptedRecently,
 } from "../src/teamver/mainSsoMismatchRecovery";
 import { showTeamverUiToast } from "../src/teamver/teamverUiToast";
+import { pauseDesignBffAuthDuringTransition } from "../src/teamver/designBffClient";
 
 describe("mainSsoMismatchRecovery", () => {
   beforeEach(() => {
@@ -47,6 +52,8 @@ describe("mainSsoMismatchRecovery", () => {
 
   it("clears Main + Design sessions then redirects with returnTo", async () => {
     await beginMainSsoMismatchRecovery();
+    expect(pauseDesignBffAuthDuringTransition).toHaveBeenCalledTimes(1);
+    expect(clearEmbedSession).toHaveBeenCalledTimes(1);
     expect(showTeamverUiToast).toHaveBeenCalledWith(
       expect.objectContaining({
         message: MAIN_SSO_MISMATCH_RECOVERY_TOAST_MESSAGE,

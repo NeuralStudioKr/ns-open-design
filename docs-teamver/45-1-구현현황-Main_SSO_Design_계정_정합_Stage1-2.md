@@ -10,7 +10,9 @@
 | Main logout iframe bridge | ✅ (`ns-teamver-fe-v2` + Design `/auth/logout-bridge`) |
 | pytest `test_main_sso_identity_pin.py` | ✅ |
 | vitest `teamver-main-sso-user-probe.test.ts` | ✅ |
+| `/auth/session` bootstrap paths include `main_sso_identity_hash` | ✅ |
 | staging E2E (수동) | ☐ |
+| mismatch recovery 중 BFF probe/refresh 401 폭주 완화 | ✅ (`pauseDesignBffAuthDuringTransition`, embed 즉시 clear) |
 
 ## 체크리스트
 

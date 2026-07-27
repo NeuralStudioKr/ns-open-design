@@ -2,6 +2,7 @@ import {
   fetchDesignAuthSession,
   getDesignBffClient,
   isDesignAuthRefreshDeclined,
+  shouldSkipTeamverBffAuthCalls,
 } from "./designBffClient";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { syncTeamverWorkspaceFromSession } from "./syncTeamverWorkspace";
@@ -28,7 +29,7 @@ export async function resolveActiveTeamverWorkspaceId(): Promise<string | null> 
 
   // Soft/hard sticky: C1 owns recovery. Routine workspace resolve must not
   // re-hit `/auth/session` (ensure) and reset sticky cooldowns.
-  if (isDesignAuthRefreshDeclined()) return storeId;
+  if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) return storeId;
 
   let session;
   try {

@@ -248,22 +248,11 @@ function resolveDesignBffSessionProbeUrl(): string {
   return resolveDesignBffRefreshUrl().replace(/\/auth\/refresh\/?$/, "/auth/session-probe");
 }
 
-/**
- * Read-only session check for sticky-decline / re-login gates.
- * Uses `/auth/session-probe` ONLY (no ensure/refresh side effects).
- *
- * WARNING: When access is past absolute expiry, probe returns false even if
- * refresh_token can still revive the session. Soft-sticky recovery must escalate
- * to {@link ensureDesignBffSessionAuthenticated} / POST refresh — not probe alone.
- *
- * When the probe endpoint returns 404 (older/misconfigured nginx without the
- * public `session-probe` location) we deliberately return `false` instead of
- * falling back to `/auth/session`: that fallback triggers `ensure_bff_session`
- * on design-api, which can rotate cookies via a Main `/auth/refresh` call —
- * defeating the purpose of a read-only probe and causing cross-tab HA rotation
- * races when the caller was gating on "is the session still alive".
- */
-export async function probeDesignBffSessionAuthenticated(): Promise<boolean> {
+async function probeDesignBffSessionAlive(options?: {
+  /** Sticky recovery ladders may probe after soft decline. */
+  bypassDeclineGate?: boolean;
+}): Promise<boolean> {
+  if (!options?.bypassDeclineGate && authRefreshDeclinedForSession) return false;
   try {
     const probeResponse = await fetch(resolveDesignBffSessionProbeUrl(), {
       credentials: "include",
@@ -289,6 +278,25 @@ export async function probeDesignBffSessionAuthenticated(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Read-only session check for sticky-decline / re-login gates.
+ * Uses `/auth/session-probe` ONLY (no ensure/refresh side effects).
+ *
+ * WARNING: When access is past absolute expiry, probe returns false even if
+ * refresh_token can still revive the session. Soft-sticky recovery must escalate
+ * to {@link ensureDesignBffSessionAuthenticated} / POST refresh — not probe alone.
+ *
+ * When the probe endpoint returns 404 (older/misconfigured nginx without the
+ * public `session-probe` location) we deliberately return `false` instead of
+ * falling back to `/auth/session`: that fallback triggers `ensure_bff_session`
+ * on design-api, which can rotate cookies via a Main `/auth/refresh` call —
+ * defeating the purpose of a read-only probe and causing cross-tab HA rotation
+ * races when the caller was gating on "is the session still alive".
+ */
+export async function probeDesignBffSessionAuthenticated(): Promise<boolean> {
+  return probeDesignBffSessionAlive();
 }
 
 /**
@@ -395,6 +403,13 @@ function noteAuthRefreshPostSuppressed(): void {
   authRefreshPostSuppressedUntil = Date.now() + DESIGN_BFF_REFRESH_POST_SUPPRESS_MS;
 }
 
+function syncEmbedSessionFalseOnAuthDecline(): void {
+  if (typeof window === "undefined") return;
+  void import("./teamverEmbedSession").then(({ setTeamverEmbedSessionAuthenticated }) => {
+    setTeamverEmbedSessionAuthenticated(false);
+  });
+}
+
 function markAuthRefreshDeclined(kind: "soft" | "hard"): void {
   authRefreshDeclinedForSession = true;
   authRefreshDeclineKind = kind;
@@ -404,6 +419,7 @@ function markAuthRefreshDeclined(kind: "soft" | "hard"): void {
   // Drop warm /auth/session cache so focus force:false cannot keep serving
   // authenticated=true without a live cookie (DevTools 401 storms).
   cachedSession = null;
+  syncEmbedSessionFalseOnAuthDecline();
   if (kind === "soft") {
     // Soft 401 path already ran probe×2+ensure (+ the failing POST). Seed both
     // survival and force-POST cooldowns so the next soft recovery (daemon,
@@ -415,6 +431,21 @@ function markAuthRefreshDeclined(kind: "soft" | "hard"): void {
   }
   // Hard 400: no prior probe ladder — leave survival counters at 0 so the
   // first tryHardStickySurvival can still detect a sibling Set-Cookie.
+}
+
+/**
+ * Main SSO mismatch recovery / logout transition — stop parallel probe/refresh
+ * before navigation without waiting for the refresh ladder to 401 first.
+ */
+export function pauseDesignBffAuthDuringTransition(): void {
+  if (!authRefreshDeclinedForSession) {
+    markAuthRefreshDeclined("soft");
+  } else {
+    runtimeConfigAuthBlocked = true;
+    cachedSession = null;
+    syncEmbedSessionFalseOnAuthDecline();
+  }
+  invalidateDesignAuthSessionCache();
 }
 
 /** True when sticky decline or logged-out memory should skip BFF/daemon auth ladders. */
@@ -588,7 +619,7 @@ async function trySoftStickyRecovery(options?: {
     // runtime-config 401 + refresh/probe storm). Match quiet hydrate: probe
     // live + authenticated session JSON before clear.
     await ensureDesignBffSessionAuthenticated();
-    if (!(await probeDesignBffSessionAuthenticated())) return false;
+    if (!(await probeDesignBffSessionAlive({ bypassDeclineGate: true }))) return false;
     const client = getDesignBffClient();
     if (!client) return false;
     try {
@@ -606,11 +637,11 @@ async function trySoftStickyRecovery(options?: {
   if (!skipProbeLadder) {
     authRefreshStickySurvivalProbeAt = Date.now();
     // 1) Cheap read-only probe (sibling Set-Cookie may already be live).
-    if (await probeDesignBffSessionAuthenticated()) {
+    if (await probeDesignBffSessionAlive({ bypassDeclineGate: true })) {
       if (await clearSoftAfterConfirmedSession()) return true;
     } else {
       await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
-      if (await probeDesignBffSessionAuthenticated()) {
+      if (await probeDesignBffSessionAlive({ bypassDeclineGate: true })) {
         if (await clearSoftAfterConfirmedSession()) return true;
       }
     }
@@ -654,7 +685,7 @@ async function tryHardStickySurvival(): Promise<boolean> {
 
   authRefreshStickySurvivalProbeAt = Date.now();
   // Hard sticky: probe only — ensure /auth/session can re-hit Main refresh.
-  if (await probeDesignBffSessionAuthenticated()) {
+  if (await probeDesignBffSessionAlive({ bypassDeclineGate: true })) {
     authRefreshStickySurvivalLastOk = true;
     return true;
   }
@@ -722,12 +753,12 @@ export async function refreshDesignAuthCookie(
       // HA rotation race: losing node returns 401 while access is still usable
       // and a sibling may already have Set-Cookie'd a fresh session. Probe /
       // ensure before sticky-declining.
-      if (await probeDesignBffSessionAuthenticated()) {
+      if (await probeDesignBffSessionAlive({ bypassDeclineGate: true })) {
         noteAuthRefreshPostSuppressed();
         return true;
       }
       await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
-      if (await probeDesignBffSessionAuthenticated()) {
+      if (await probeDesignBffSessionAlive({ bypassDeclineGate: true })) {
         noteAuthRefreshPostSuppressed();
         return true;
       }
@@ -962,7 +993,7 @@ export async function fetchDesignAuthSession(
     }
     const runStickyQuiet = async (): Promise<DesignAuthSession | null> => {
       try {
-        if (!(await probeDesignBffSessionAuthenticated())) {
+        if (!(await probeDesignBffSessionAlive({ bypassDeclineGate: true }))) {
           cachedSession = null;
           return null;
         }
@@ -1081,6 +1112,7 @@ export function resetTeamverRuntimeConfigCacheForTests(): void {
 }
 
 async function confirmRuntimeConfigSessionAlive(): Promise<boolean> {
+  if (shouldSkipTeamverBffAuthCalls() || runtimeConfigAuthBlocked) return false;
   if (runtimeConfigSessionProbeInflight) return runtimeConfigSessionProbeInflight;
   runtimeConfigSessionProbeInflight = probeDesignBffSessionAuthenticated()
     .finally(() => {

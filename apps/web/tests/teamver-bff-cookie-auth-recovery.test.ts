@@ -562,6 +562,7 @@ describe("probeDesignBffSessionAuthenticated", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+    resetDesignAuthRefreshDeclinedForTests();
   });
 
   it("returns false when session-probe 404s without falling back to ensure /auth/session", async () => {
@@ -602,6 +603,31 @@ describe("probeDesignBffSessionAuthenticated", () => {
     );
     await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not hit the network after soft sticky decline", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValue(sessionProbe401());
+    vi.stubGlobal("fetch", fetchMock);
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    const { hasProbableTeamverAuthCookie } = await import("../src/teamver/teamverAuthCookieHints");
+    vi.mocked(hasProbableTeamverAuthCookie).mockReturnValue(true);
+
+    const { refreshDesignAuthCookie, probeDesignBffSessionAuthenticated } = await import(
+      "../src/teamver/designBffClient"
+    );
+    const refreshPromise = refreshDesignAuthCookie();
+    await vi.runAllTimersAsync();
+    await refreshPromise;
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+
+    fetchMock.mockClear();
+    await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });
 

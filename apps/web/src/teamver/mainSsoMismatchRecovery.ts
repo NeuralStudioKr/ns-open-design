@@ -15,6 +15,7 @@ import {
   redirectToTeamverLoginPreservingRoute,
 } from "./designAuthFlow";
 import { showTeamverUiToast } from "./teamverUiToast";
+import { pauseDesignBffAuthDuringTransition } from "./designBffClient";
 import { clearTeamverEmbedSessionState } from "./teamverEmbedSession";
 
 const RECOVER_FLAG = "teamver_main_sso_mismatch_recover";
@@ -64,6 +65,8 @@ export function beginMainSsoMismatchRecovery(): Promise<void> {
   if (recoverInflight) return recoverInflight;
 
   recoverInflight = (async () => {
+    pauseDesignBffAuthDuringTransition();
+    await clearTeamverEmbedSessionState();
     const alreadyAttempted = wasMainSsoMismatchRecoverAttemptedRecently();
     // Always explain the brief navigation — cooldown only skips cookie clear.
     showTeamverUiToast({
@@ -78,9 +81,6 @@ export function beginMainSsoMismatchRecovery(): Promise<void> {
       try {
         await clearOrphanTeamverAuthCookies();
         await clearDesignAuthSessionFull();
-        // Drop in-memory authenticated=true so pageshow/session-changed cannot
-        // keep probing /runtime-config while navigation to Main login runs.
-        await clearTeamverEmbedSessionState();
       } catch {
         // best-effort — redirect still rebinds via cold start
       }
