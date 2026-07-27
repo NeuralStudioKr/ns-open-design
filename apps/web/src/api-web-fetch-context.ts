@@ -84,12 +84,17 @@ export function historyWithApiWebFetchContext(
   messageId: string,
   contexts: ApiWebFetchContextItem[],
 ): ChatMessage[] {
-  if (contexts.length === 0) return history;
   const block = renderApiWebFetchContext(contexts);
-  if (!block) return history;
+  if (!block) {
+    return history.map((message) =>
+      message.id === messageId && message.role === 'user'
+        ? { ...message, content: neutralizeReservedWebFetchContextTags(message.content) }
+        : message,
+    );
+  }
   return history.map((message) =>
     message.id === messageId && message.role === 'user'
-      ? { ...message, content: `${message.content}${block}` }
+      ? { ...message, content: `${neutralizeReservedWebFetchContextTags(message.content)}${block}` }
       : message,
   );
 }
@@ -189,4 +194,10 @@ function clipLine(value: string, maxChars: number): string {
 
 function escapeMarkdownFence(text: string): string {
   return text.replace(/```/g, '`\u200b`\u200b`');
+}
+
+function neutralizeReservedWebFetchContextTags(text: string): string {
+  return String(text || '')
+    .replace(/<\s*web-fetch-context\s*>/gi, '[web-fetch-context]')
+    .replace(/<\s*\/\s*web-fetch-context\s*>/gi, '[/web-fetch-context]');
 }

@@ -38,6 +38,7 @@
 - prompt: API no-tools/BYOK 양쪽에서 `<web-fetch-context>`를 이미 fetch된 URL text로 인식하도록 명시한다. 이 block이 있으면 모델은 “웹 접근 불가”라고 답하지 말고 해당 text를 참조한다.
 - 2026-07-27 기준 보강: FE prefetch 호출은 참고자료 확보용 best-effort 작업이므로 active workspace header 조회와 embed auth refresh ladder를 타지 않는다(`skipTeamverWorkspaceHeaders`, `skipEmbedAuthRecovery`). 실제 채팅 요청의 인증·세션 처리는 기존 run 경로가 담당한다.
 - 2026-07-27 기준 보강: bare domain 추출은 `.com`/`.kr` 외에 `.studio`, `.cloud`, `.site`, `.page`, `.co` 등 제품 사이트에서 자주 쓰는 TLD를 포함한다. `deck.html` 같은 파일명은 URL로 취급하지 않는다.
+- 2026-07-27 기준 보강: `<web-fetch-context>`는 예약 태그다. 사용자가 같은 태그를 직접 입력해도 API 전송용 history 사본에서는 `[web-fetch-context]`로 중립화하고, 실제 fetch 결과 block만 XML-like 태그로 남긴다.
 - 실패 시: fetch 실패 사유만 컨텍스트로 전달하고, 채팅 요청 자체는 막지 않는다.
 - 기존 `web_fetch` tool loop는 `aihubmix`/`senseaudio` 경로에서 계속 유효하다.
 - Teamver managed Anthropic proxy(`/api/proxy/anthropic/stream`)에 native tool loop를 붙이는 작업은 장기 선택지로 남긴다.
