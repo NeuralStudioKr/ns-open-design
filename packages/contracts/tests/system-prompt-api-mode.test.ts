@@ -211,6 +211,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toMatch(/do NOT emit `?<question-form id="discovery">`?/i);
       expect(prompt).toContain('Do not emit any question form');
       expect(prompt).toContain('choose reasonable defaults for any missing details');
+      expect(prompt).toContain('Site-ref:');
+      expect(prompt).toContain('URL-only deck asks missing audience/purpose/tone/count/topics');
     });
   });
 
@@ -368,6 +370,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('<artifact type="deck" identifier="deck">');
       expect(prompt).toContain('Never `type="text/html"`');
       expect(prompt).toContain('choose reasonable defaults and proceed without asking a discovery form');
+      expect(prompt).toContain('URL-only deck asks missing audience/purpose/tone/count/topics');
       expect(prompt).toContain('use 6-8 slides only if no Plugin inputs / user brief specifies a count');
       expect(prompt).toContain('omit unless requested');
       expect(prompt).not.toContain('unified streaming rule');

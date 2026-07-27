@@ -79,5 +79,15 @@ describe('daemon composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('fetched URL text');
       expect(prompt).toContain("don't say URL inaccessible");
     });
+
+    it('does not treat a bare site URL as a complete skip-discovery brief', () => {
+      const prompt = composeSystemPrompt({
+        streamFormat: 'plain',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+      expect(prompt).toContain('Site-ref:');
+      expect(prompt).toContain('URL-only deck asks missing audience/purpose/tone/count/topics');
+      expect(prompt).toContain("don't re-ask URL");
+    });
   });
 });

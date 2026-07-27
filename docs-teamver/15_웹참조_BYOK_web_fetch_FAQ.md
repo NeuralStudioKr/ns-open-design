@@ -39,6 +39,7 @@
 - 2026-07-27 기준 보강: FE prefetch 호출은 참고자료 확보용 best-effort 작업이므로 active workspace header 조회와 embed auth refresh ladder를 타지 않는다(`skipTeamverWorkspaceHeaders`, `skipEmbedAuthRecovery`). 실제 채팅 요청의 인증·세션 처리는 기존 run 경로가 담당한다.
 - 2026-07-27 기준 보강: bare domain 추출은 `.com`/`.kr` 외에 `.studio`, `.cloud`, `.site`, `.page`, `.co` 등 제품 사이트에서 자주 쓰는 TLD를 포함한다. `deck.html` 같은 파일명은 URL로 취급하지 않는다.
 - 2026-07-27 기준 보강: `<web-fetch-context>`는 예약 태그다. 사용자가 같은 태그를 직접 입력해도 API 전송용 history 사본에서는 `[web-fetch-context]`로 중립화하고, 실제 fetch 결과 block만 XML-like 태그로 남긴다.
+- 2026-07-27 기준 보강: URL 자체는 참고자료일 뿐 완성된 발표 브리프가 아니다. `www.teamver.com 참고해서 슬라이드 만들어줘`처럼 사이트 URL + 일반 생성 요청만 있고 대상·목적·톤·장수·필수 포함 항목이 없으면, `skipDiscoveryBrief` 흐름이어도 빠른 질문 1개를 먼저 띄울 수 있다. 단, 사용자가 “질문 없이 바로 만들어줘”라고 했거나 Canvas/Drive handoff·plugin inputs·source brief가 이미 충분한 경우에는 바로 생성한다.
 - 실패 시: fetch 실패 사유만 컨텍스트로 전달하고, 채팅 요청 자체는 막지 않는다.
 - 기존 `web_fetch` tool loop는 `aihubmix`/`senseaudio` 경로에서 계속 유효하다.
 - Teamver managed Anthropic proxy(`/api/proxy/anthropic/stream`)에 native tool loop를 붙이는 작업은 장기 선택지로 남긴다.
