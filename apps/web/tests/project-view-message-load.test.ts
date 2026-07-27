@@ -75,7 +75,7 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("selectTouchedHtmlOutputFromEvents(latestAssistantMsg.events, nextFiles");
   });
 
-  it("routes BYOK memory extraction through daemon auth recovery without active workspace preflight", () => {
+  it("keeps BYOK memory extraction best-effort even when daemon auth is stale", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("fetchTeamverDaemon('/api/memory/extract'");
     expect(start).toBeGreaterThan(0);
@@ -83,14 +83,16 @@ describe("ProjectView message loading", () => {
 
     expect(block).toContain("teamverProjectId: project.id");
     expect(block).toContain("skipTeamverWorkspaceHeaders: true");
-    expect(block).toContain("preTurnMemoryDaemonUnauthorized = memoryResponse.status === 401");
-    expect(block).toContain("isDesignAuthRefreshDeclined()");
-    expect(block).toContain("handlers.onError(new TeamverDaemonUnauthorizedError())");
-    expect(block).toContain("return true");
+    expect(block).toContain("skipEmbedAuthRecovery: true");
+    expect(block).toContain("memoryResponse.status === 401");
+    expect(block).toContain("pre-turn memory extraction skipped after daemon 401");
+    expect(block).toContain("memory extraction must never block");
+    expect(block).not.toContain("handlers.onError(new TeamverDaemonUnauthorizedError())");
+    expect((source.match(/skipEmbedAuthRecovery: true/g) ?? []).length).toBeGreaterThanOrEqual(2);
     expect(source).not.toContain("fetch('/api/memory/extract'");
   });
 
-  it("preflights embed API runs through daemon project access before starting the model stream", () => {
+  it("keeps embed API project access preflight non-terminal before starting the model stream", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const memoryStart = source.indexOf("fetchTeamverDaemon('/api/memory/extract'");
     expect(memoryStart).toBeGreaterThan(0);
@@ -103,8 +105,9 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("cache: 'no-store'");
     expect(block).toContain("teamverProjectId: project.id");
     expect(block).toContain("accessResponse.status === 401");
-    expect(block).toContain("handlers.onError(new TeamverDaemonUnauthorizedError())");
-    expect(block).toContain("return true");
+    expect(block).toContain("project access preflight returned daemon 401; continuing to model stream");
+    expect(block).toContain("project access preflight skipped after daemon unauthorized; continuing to model stream");
+    expect(block).not.toContain("handlers.onError(new TeamverDaemonUnauthorizedError())");
   });
 
   it("passes Teamver slide-only media policy into API-mode system prompts", () => {

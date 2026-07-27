@@ -6720,7 +6720,6 @@ export function ProjectView({
                     : '',
               }
             : undefined;
-        let preTurnMemoryDaemonUnauthorized = false;
         if (userText.length > 0) {
           try {
             const memoryResponse = await fetchTeamverDaemon('/api/memory/extract', {
@@ -6728,6 +6727,7 @@ export function ProjectView({
               headers: { 'Content-Type': 'application/json' },
               teamverProjectId: project.id,
               skipTeamverWorkspaceHeaders: true,
+              skipEmbedAuthRecovery: true,
               body: JSON.stringify({
                 userMessage: userText,
                 projectId: project.id,
@@ -6735,19 +6735,13 @@ export function ProjectView({
                 chatProvider: byokChatProvider,
               }),
             });
-            preTurnMemoryDaemonUnauthorized = memoryResponse.status === 401;
+            if (memoryResponse.status === 401) {
+              console.debug('[teamver] pre-turn memory extraction skipped after daemon 401');
+            }
           } catch {
             // Best-effort: memory extraction must never block the
             // chat. The daemon's SSE bus will catch up the Memory tab
             // on the next event.
-          }
-          if (
-            preTurnMemoryDaemonUnauthorized
-            && isTeamverEmbedMode()
-            && isDesignAuthRefreshDeclined()
-          ) {
-            handlers.onError(new TeamverDaemonUnauthorizedError());
-            return true;
           }
         }
         if (isTeamverEmbedMode()) {
@@ -6760,13 +6754,11 @@ export function ProjectView({
               },
             );
             if (accessResponse.status === 401) {
-              handlers.onError(new TeamverDaemonUnauthorizedError());
-              return true;
+              console.debug('[teamver] project access preflight returned daemon 401; continuing to model stream');
             }
           } catch (err) {
             if (err instanceof TeamverDaemonUnauthorizedError) {
-              handlers.onError(err);
-              return true;
+              console.debug('[teamver] project access preflight skipped after daemon unauthorized; continuing to model stream');
             }
             // Non-auth preflight failures are not treated as terminal here.
             // The actual artifact write still reports the concrete cause.
@@ -6848,6 +6840,7 @@ export function ProjectView({
               headers: { 'Content-Type': 'application/json' },
               teamverProjectId: project.id,
               skipTeamverWorkspaceHeaders: true,
+              skipEmbedAuthRecovery: true,
               body: JSON.stringify({
                 userMessage: userText,
                 assistantMessage: accumulatedAssistantText,
