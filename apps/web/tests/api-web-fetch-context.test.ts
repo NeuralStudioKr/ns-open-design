@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import {
   extractPublicHttpUrls,
@@ -33,9 +34,9 @@ describe('api web fetch context', () => {
   it('normalizes bare domains without treating emails or html filenames as urls', () => {
     expect(
       extractPublicHttpUrls(
-        'teamver.com 사이트 분석하고 contact@example.com 메일과 ai-adoption-deck.html 파일명은 무시해줘.',
+        'teamver.com 사이트 분석하고 acme.studio 도 참고해줘. contact@example.com 메일과 ai-adoption-deck.html 파일명은 무시해줘.',
       ),
-    ).toEqual(['https://teamver.com/']);
+    ).toEqual(['https://teamver.com/', 'https://acme.studio/']);
   });
 
   it('renders fetched page text as untrusted context', () => {
@@ -50,9 +51,21 @@ describe('api web fetch context', () => {
     ]);
 
     expect(context).toContain('<web-fetch-context>');
-    expect(context).toContain('Teamver Design pre-fetched');
+    expect(context).toContain('Teamver Design already fetched');
+    expect(context).toContain('Do not say the URL is inaccessible unless its status is failed.');
     expect(context).toContain('Professional team profile builder');
     expect(context).toContain('</web-fetch-context>');
+  });
+
+  it('uses best-effort daemon fetch options without workspace or auth-refresh side effects', async () => {
+    const source = await readFile(
+      new URL('../src/api-web-fetch-context.ts', import.meta.url),
+      'utf8',
+    );
+
+    expect(source).toContain("fetchTeamverDaemon('/api/tools/web-fetch'");
+    expect(source).toContain('skipTeamverWorkspaceHeaders: true');
+    expect(source).toContain('skipEmbedAuthRecovery: true');
   });
 
   it('appends fetched context only to the current user turn', () => {
