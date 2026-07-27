@@ -43,7 +43,11 @@ export async function syncTeamverWorkspaceFromSession(
   const userId = readSessionUserId(session);
 
   const override = options?.preferredIdOverride?.trim() || null;
-  const stored = (await store.get())?.trim() || null;
+  const storedRaw = (await store.get())?.trim() || null;
+  const stored =
+    storedRaw && workspaces.some((workspace) => workspace.id === storedRaw)
+      ? storedRaw
+      : null;
 
   // Focus/idle refresh — honour the stored workspace whenever it still
   // exists on the session so tab-focus does not fake a workspace switch.

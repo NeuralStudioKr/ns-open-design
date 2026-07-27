@@ -4,6 +4,7 @@ import { TEAMVER_WORKSPACE_CHANGED_EVENT } from "../src/teamver/teamverWorkspace
 
 const storeSetMock = vi.fn(async () => undefined);
 const storeGetMock = vi.fn(async () => null);
+const storeGetPreferredMock = vi.fn(() => null as string | null);
 
 vi.mock("../src/teamver/designBffClient", () => ({
   getDesignBffClient: vi.fn(() => ({
@@ -11,6 +12,7 @@ vi.mock("../src/teamver/designBffClient", () => ({
       get: storeGetMock,
       set: storeSetMock,
       setLastForUser: vi.fn(),
+      getPreferredWorkspaceIdForBootstrap: storeGetPreferredMock,
     },
   })),
 }));
@@ -22,6 +24,8 @@ describe("syncTeamverWorkspaceFromSession", () => {
     storeSetMock.mockClear();
     storeGetMock.mockReset();
     storeGetMock.mockResolvedValue(null);
+    storeGetPreferredMock.mockReset();
+    storeGetPreferredMock.mockReturnValue(null);
   });
 
   it("dispatches workspace-changed when bootstrap resolves a new active id", async () => {
@@ -187,5 +191,29 @@ describe("syncTeamverWorkspaceFromSession", () => {
     expect(active).toBe("WS-current");
     expect(storeSetMock).toHaveBeenCalledWith("WS-current");
     expect(events).toContain("WS-current");
+  });
+
+  it("falls back to last-by-user when stored id is absent from the session list", async () => {
+    storeGetMock.mockResolvedValue("WS-gone");
+    storeGetPreferredMock.mockReturnValue("WS-last");
+
+    const active = await syncTeamverWorkspaceFromSession(
+      {
+        authenticated: true,
+        user: { userId: "user-1" },
+        defaultWorkspaceId: "WS-default",
+        workspaces: [
+          { id: "WS-last", name: "Last", role: "owner" },
+          { id: "WS-default", name: "Default", role: "owner" },
+        ],
+      },
+      [
+        { id: "WS-last", name: "Last", role: "owner" },
+        { id: "WS-default", name: "Default", role: "owner" },
+      ],
+    );
+
+    expect(active).toBe("WS-last");
+    expect(storeSetMock).toHaveBeenCalledWith("WS-last");
   });
 });
