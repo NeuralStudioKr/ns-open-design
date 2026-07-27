@@ -18,6 +18,7 @@ const ensureSessionMock = vi.fn(async () => false);
 const clearDeclineMock = vi.fn();
 const declinedMock = vi.fn(() => false);
 const hardDeclineMock = vi.fn(() => false);
+const blockedMock = vi.fn(() => false);
 vi.mock("../../src/teamver/designBffClient", () => ({
   refreshDesignAuthCookie: (...args: unknown[]) => refreshMock(...args),
   probeDesignBffSessionAuthenticated: (...args: unknown[]) => probeSessionMock(...args),
@@ -25,6 +26,7 @@ vi.mock("../../src/teamver/designBffClient", () => ({
   clearDesignAuthRefreshDecline: (...args: unknown[]) => clearDeclineMock(...args),
   isDesignAuthRefreshDeclined: (...args: unknown[]) => declinedMock(...args),
   isDesignAuthRefreshDeclineHard: (...args: unknown[]) => hardDeclineMock(...args),
+  isTeamverRuntimeConfigAuthBlocked: (...args: unknown[]) => blockedMock(...args),
 }));
 
 const passiveUnauthorizedMock = vi.fn();

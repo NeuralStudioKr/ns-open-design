@@ -4,6 +4,7 @@ import {
   type FetchDesignAuthSessionOptions,
   fetchTeamverRuntimeConfig,
   isDesignAuthRefreshDeclined,
+  isTeamverRuntimeConfigAuthBlocked,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
 } from "./designBffClient";
@@ -116,6 +117,9 @@ export async function runTeamverEmbedSessionBoot(
       // is already dead. Probe (and at most one refresh) before registry /
       // runtime-config so boot does not open:
       // GET /runtime-config 401 → POST /auth/refresh → session-probe×2.
+      if (isTeamverRuntimeConfigAuthBlocked()) {
+        return null;
+      }
       let nginxLive = await probeDesignBffSessionAuthenticated();
       if (!nginxLive && !isDesignAuthRefreshDeclined()) {
         nginxLive = await refreshDesignAuthCookie();

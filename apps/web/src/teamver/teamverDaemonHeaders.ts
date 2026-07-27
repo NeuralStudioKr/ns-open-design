@@ -4,6 +4,7 @@ import {
   clearDesignAuthRefreshDecline,
   ensureDesignBffSessionAuthenticated,
   isDesignAuthRefreshDeclined,
+  isTeamverRuntimeConfigAuthBlocked,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
 } from "./designBffClient";
@@ -221,6 +222,11 @@ async function fetchDaemonWithEmbedAuthRecovery(
   // Soft sticky may have been marked during refresh — stop here so we do not
   // stack ensure/probe on top of the ladder that just declined.
   if (isDesignAuthRefreshDeclined()) {
+    noteEmbedDaemonUnauthorized(input, resp);
+    return resp;
+  }
+
+  if (isTeamverRuntimeConfigAuthBlocked()) {
     noteEmbedDaemonUnauthorized(input, resp);
     return resp;
   }

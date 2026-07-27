@@ -20,7 +20,7 @@ import {
   isOrphanTeamverJwtAuthFailure,
 } from "./teamverAuthOrphanJwt";
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
-import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
+import { isTeamverEmbedSessionAuthenticated, setTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import {
   peekTeamverAuthReturnPending,
   isLikelyTeamverAuthReturnNavigation,
@@ -1205,6 +1205,9 @@ export async function fetchTeamverRuntimeConfig(
         const sessionAlive = await confirmRuntimeConfigSessionAlive();
         if (!sessionAlive) {
           noteRuntimeConfigUnauthorized();
+          if (isTeamverEmbedSessionAuthenticated()) {
+            setTeamverEmbedSessionAuthenticated(false);
+          }
           return cachedRuntimeConfig?.value ?? null;
         }
       }

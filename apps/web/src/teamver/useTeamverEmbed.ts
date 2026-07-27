@@ -5,6 +5,7 @@ import {
   fetchDesignAuthSession,
   isDesignAuthRefreshDeclineHard,
   isDesignAuthRefreshDeclined,
+  isTeamverRuntimeConfigAuthBlocked,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
   resetDesignAuthBareRefreshAttempt,
@@ -645,6 +646,12 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
       // Cookie hint alone must not bypass (Main visible cookie ≠ live BFF).
       if (
         isDesignAuthRefreshDeclined()
+        && !shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
+      ) {
+        return;
+      }
+      if (
+        isTeamverRuntimeConfigAuthBlocked()
         && !shouldResetEmbedRefreshDeclineOnFocus(focusSignals)
       ) {
         return;

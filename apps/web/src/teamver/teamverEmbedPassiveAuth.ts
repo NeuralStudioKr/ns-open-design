@@ -6,6 +6,7 @@ import { hasTeamverEmbedBackgroundRuns } from "./teamverEmbedSessionRuns";
 import {
   ensureDesignBffSessionAuthenticated,
   isDesignAuthRefreshDeclined,
+  isTeamverRuntimeConfigAuthBlocked,
   prepareDesignAuthSessionReload,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
@@ -115,6 +116,15 @@ function schedulePassiveLoginRedirect(): void {
         redirectToTeamverLoginPreservingRoute({ returnTo: readEmbedReturnTo() });
         return;
       }
+      if (isTeamverRuntimeConfigAuthBlocked()) {
+        if (isTeamverEmbedSessionAuthenticated()) {
+          dispatchPassiveAuthRequired("bff");
+          return;
+        }
+        prepareDesignAuthSessionReload();
+        redirectToTeamverLoginPreservingRoute({ returnTo: readEmbedReturnTo() });
+        return;
+      }
       if (await tryPassiveAuthRecovery()) {
         notePassiveRecoverySuccess();
         return;
@@ -157,6 +167,7 @@ function claimPassiveRecoveryFailure(): number | null {
 }
 
 async function tryPassiveAuthRecovery(): Promise<boolean> {
+  if (isTeamverRuntimeConfigAuthBlocked()) return false;
   if (!passiveAuthRecoveryInflight) {
     lastRecoveryFailureClaimed = false;
     passiveAuthRecoveryInflight = (async () => {
@@ -193,6 +204,10 @@ export function handleEmbedPassiveUnauthorized(reason: "daemon" | "bff"): void {
   // another refresh/probe burst from every parallel 401 waiter. Surface the
   // soft event so the banner can show "다시 시도".
   if (isDesignAuthRefreshDeclined()) {
+    dispatchPassiveAuthRequired(reason);
+    return;
+  }
+  if (isTeamverRuntimeConfigAuthBlocked()) {
     dispatchPassiveAuthRequired(reason);
     return;
   }
