@@ -83,6 +83,24 @@ describe('authenticatedHtmlSrcDoc helpers', () => {
     expect(relaxed).not.toMatch(/script-src-elem[^;]*'none'/i);
   });
 
+  it('never emits invalid script-src values for known canvas export shapes', () => {
+    const samples = [
+      "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src 'self'; script-src 'none'; base-uri 'none'; form-action 'none'",
+      "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src 'self'; script-src 'none' base-uri 'none' form-action 'none'",
+      "default-src 'none'; script-src 'unsafe-inline' 'none'; script-src-elem 'none' 'self'",
+    ];
+    for (const sample of samples) {
+      const relaxed = relaxCanvasMetaCspForSrcDocPreview(sample);
+      for (const match of relaxed.matchAll(/script-src(?:-elem|-attr)?\s+([^;]+)/gi)) {
+        const sources = match[1] ?? '';
+        expect(sources).not.toMatch(/\bform-action\b/i);
+        expect(sources).not.toMatch(/\bbase-uri\b/i);
+        expect(sources).not.toMatch(/'none'/);
+        expect(sources).not.toMatch(/"none"/);
+      }
+    }
+  });
+
   it('loads authenticated HTML as srcDoc and rejects JSON envelopes', async () => {
     const originalFetch = globalThis.fetch;
     try {
