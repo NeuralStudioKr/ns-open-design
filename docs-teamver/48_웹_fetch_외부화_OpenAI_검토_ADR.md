@@ -10,6 +10,7 @@
 | 일시 (KST) | 변경 내용 |
 |------------|-----------|
 | 2026-07-27 16:00 | v1.0 초안 — OpenAI web search 대체 검토, 현재 아키텍처, 비교표, ADR, Phase 로드맵 |
+| 2026-07-27 16:35 | v1.1 — Phase 2 POC 착수·병합 반영 (§8 체크리스트 상태 갱신, [48-1 설계](./48-1-구현설계-webfetch-adapter.md)/[48-1 현황](./48-1-구현현황-webfetch-adapter.md) 상호 링크) |
 
 **관련 SSOT**
 
@@ -315,11 +316,14 @@ Main 채팅 **`use_web_search`**, 또는 Design에서 **protocol=openai** + **�
 
 ## 8. 구현 체크리스트 (Phase 2 착수 시)
 
-- [ ] `WEB_FETCH_BACKEND` env + daemon 단일 진입점
-- [ ] Reader SaaS POC: teamver.com, SPA landing, bot-block 페이지 3종
-- [ ] SSRF regression — adapter URL도 `assertExternalAssetUrl` 통과
-- [ ] contracts test — `<web-fetch-context>` 규칙 unchanged
-- [ ] 비용 모니터링 — fetch당 outbound + SaaS billing
+**상태:** POC 코드 병합 완료 (`feat/web-fetch-adr` · 커밋 `465386ece`→`f373bebba`). staging 실 스위치 · SaaS 실계약은 별도 ops task. 자세한 설계·현황은 [48-1 구현설계](./48-1-구현설계-webfetch-adapter.md) · [48-1 구현현황](./48-1-구현현황-webfetch-adapter.md).
+
+- [x] `WEB_FETCH_BACKEND` env + daemon 단일 진입점 — `apps/daemon/src/web-fetch/{core,select,backend,native-backend,reader-backend}.ts`
+- [x] SSRF regression — 원본 URL 은 `assertExternalAssetUrl` 통과, reader endpoint 는 부트 시 https + 사설 IP literal 거부
+- [x] contracts test — `<web-fetch-context>` 규칙 unchanged (`apps/daemon/tests/byok-url-tools.test.ts` 무수정 통과)
+- [x] 신규 회귀 — `web-fetch-select.test.ts` (9) + `web-fetch-reader-backend.test.ts` (7) all green
+- [ ] Reader SaaS POC 실측: teamver.com, SPA landing, bot-block 페이지 3종 (ops smoke — staging enable 후)
+- [ ] 비용 모니터링 — fetch당 outbound + SaaS billing (ops task)
 - [ ] [04 구현 우선순위](./04_구현_우선순위.md) L-472/L-473과 **상태 동기화**
 
 ---

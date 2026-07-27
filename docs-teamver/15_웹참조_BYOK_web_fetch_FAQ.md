@@ -115,8 +115,23 @@
 | `runtime-config` web 플래그 | ❌ 없음 (선택) | `od_runtime_config.py` — protocol/model/baseUrl + apiKeyConfigured만 공개, apiKey는 비반환 |
 | FE `WebFetchCard` UI | ✅ 호출 경로 연결 | tool event + 기존 `ToolCard` |
 | minimax-byok 레퍼런스 | ✅ 포크 설계·이식 완료 | doc 07·08 |
+| **Web fetch backend adapter (native/reader)** | ✅ **PoC 완료** (Phase 2) — 기본 native, 런타임 env 스위치 | [48-1 구현설계](./48-1-구현설계-webfetch-adapter.md) · `apps/daemon/src/web-fetch/` |
 
 **staging 주의:** `TEAMVER_OD_API_PROTOCOL=anthropic` 단독 base stream은 **tool loop 없음**이다. 대신 FE 선-fetch 주입 경로로 URL 본문을 전달한다. 모델이 “API 모드라 URL을 읽을 수 없다”고 답하면 선-fetch 주입 경로가 깨진 것이다.
+
+### 5.1 web_fetch backend env (Phase 2 POC — daemon-only)
+
+기본값은 모두 미설정 → `native` 로 동작. reader SaaS 로 스위치하려면 [48-1 §4](./48-1-구현설계-webfetch-adapter.md) 스키마와 함께 아래를 설정한다. staging 실환경 스위치는 별도 ops task.
+
+| 키 | 기본 | 의미 |
+|----|------|------|
+| `WEB_FETCH_BACKEND` | `native` | `native` \| `reader` |
+| `WEB_FETCH_READER_URL` | — | reader base (`https://r.jina.ai/` 스타일; adapter 가 원본 URL 을 append) |
+| `WEB_FETCH_READER_API_KEY` | — | 있으면 `Authorization: Bearer <key>` |
+| `WEB_FETCH_READER_TIMEOUT_MS` | `12000` | reader 전용 timeout — core 12s 와 별개 |
+| `WEB_FETCH_READER_FALLBACK_TO_NATIVE` | `0` | `1` 이면 reader 실패 시 native 1회 재시도 |
+
+잘못된 값(예: reader 인데 URL 미설정, http/사설 IP endpoint) 은 부트에서 `console.warn` + native 로 안전 다운그레이드된다. `.env.staging.example` 에 주석 예시가 있다.
 
 ---
 
