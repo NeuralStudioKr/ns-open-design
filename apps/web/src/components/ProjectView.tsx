@@ -6759,26 +6759,6 @@ export function ProjectView({
             // on the next event.
           }
         }
-        if (isTeamverEmbedMode()) {
-          try {
-            const accessResponse = await fetchTeamverDaemon(
-              `/api/projects/${encodeURIComponent(project.id)}`,
-              {
-                cache: 'no-store',
-                teamverProjectId: project.id,
-              },
-            );
-            if (accessResponse.status === 401) {
-              console.debug('[teamver] project access preflight returned daemon 401; continuing to model stream');
-            }
-          } catch (err) {
-            if (err instanceof TeamverDaemonUnauthorizedError) {
-              console.debug('[teamver] project access preflight skipped after daemon unauthorized; continuing to model stream');
-            }
-            // Non-auth preflight failures are not treated as terminal here.
-            // The actual artifact write still reports the concrete cause.
-          }
-        }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
         const effectiveSkillId =
           (Array.isArray(meta?.skillIds) ? meta.skillIds[0] : null) ??
