@@ -350,6 +350,7 @@ Content-Type: application/json
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-27 | Drive import/publish browser 짧은 첫 페이지 자동 보충 UX 보강 및 0-height 레이아웃 선로드 방지 테스트 추가 |
 | 2026-06-22 | Canvas self-contained HTML → Drive asset → AI Design handoff (Main Web/Mobile), DOC/DOCX/ODT Drive import 정책 확장 |
 | 2026-06-19 | loop 169 — publish picker `Use this folder` 액션, D-6a fixture filename body + empty imported[] negative guard |
 | 2026-06-19 | loop 168 — Phase 1-2b Drive publish folder browser 구현: 공용 `driveApi.ts`, scope tab/breadcrumb/drill-down, D-6a filename env |

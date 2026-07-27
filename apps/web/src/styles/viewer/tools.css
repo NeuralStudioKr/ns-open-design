@@ -1740,6 +1740,9 @@
   color: var(--text-muted);
   font-weight: 550;
 }
+.teamver-drive-picker-row-copy .teamver-drive-picker-folder-name {
+  width: 100%;
+}
 .teamver-drive-import-scroll-sentinel {
   width: 100%;
   height: 1px;

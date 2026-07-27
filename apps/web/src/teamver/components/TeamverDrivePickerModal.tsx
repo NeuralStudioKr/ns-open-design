@@ -33,6 +33,7 @@ import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
 import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
 import { useTeamverDriveModalFocusTrap } from "../useTeamverDriveModalFocusTrap";
 import { useTeamverDriveBrowseInfiniteScroll } from "../useTeamverDriveBrowseInfiniteScroll";
+import { useTeamverDriveBrowseFillShortPage } from "../useTeamverDriveBrowseFillShortPage";
 import {
   getTeamverDriveBrowsePageCached,
   loadTeamverDriveBrowsePageCachedForSignal,
@@ -688,6 +689,18 @@ export function TeamverDrivePickerModal({
     onLoadMore: loadMoreBrowse,
   });
 
+  const pickerFillResetKey = `${scopeIndex}:${currentFolderId ?? "root"}:${searching ? "search" : "browse"}`;
+  const pickerContentKey = `${displayedTargets.length}:${displayedBrowseAssets.length}:${displayedRecentAssetRows.length}`;
+  useTeamverDriveBrowseFillShortPage({
+    enabled: open && !searching,
+    hasMore: canLoadMoreBrowse,
+    loading: loadingMoreBrowse || browseLoading || loading,
+    rootRef: listScrollRef,
+    contentKey: pickerContentKey,
+    resetKey: pickerFillResetKey,
+    onLoadMore: loadMoreBrowse,
+  });
+
   useEffect(() => {
     emptyBrowseChaseRef.current = 0;
   }, [activeScope, currentFolderId, scopeIndex]);
@@ -1105,7 +1118,10 @@ export function TeamverDrivePickerModal({
                       <Icon name={target.sharedDriveId ? "folder-filled" : "folder"} size={15} />
                     </span>
                     <span className="teamver-drive-picker-row-copy">
-                      <span>{target.label}</span>
+                      <TeamverDriveDisplayFileName
+                        name={target.label}
+                        className="teamver-drive-picker-folder-name"
+                      />
                       <small>{searching ? target.description : "폴더"}</small>
                     </span>
                     {selected ? <Icon name="check" size={15} /> : !searching && target.folderId ? <Icon name="chevron-right" size={14} /> : null}

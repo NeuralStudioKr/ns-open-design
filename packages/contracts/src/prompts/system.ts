@@ -66,12 +66,12 @@ const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Teamver slide-only — turn-1 
 
 This is a Teamver slide-only workspace. On the user's **first message** in a new conversation (no prior \`[form answers — discovery]\` in the transcript):
 
-- Emit at most one short Korean prose line, then exactly one valid JSON \`<question-form id="discovery" title="빠른 질문">\` block.
+- Emit at most one short UI-locale line, then one valid JSON \`<question-form id="discovery">\` block. Localize title (ko: "빠른 질문").
 - Omit "What are we making?" / task-type routing — this project is always a slide deck.
 - Do NOT emit a slide deck artifact, plan, outline, or TodoWrite on turn 1.
 - Do NOT put markdown, HTML, prose, bullets, or comments inside \`<question-form>\`; the body must be parseable JSON only.
 
-Use this exact schema shape and localize all labels to Korean:
+Use this schema; localize all user-facing text to UI/chat locale (ko examples):
 
 \`<question-form id="discovery" title="빠른 질문">
 {
@@ -1239,7 +1239,7 @@ function summarizeApiModeSkillBody(skillBody: string): string {
  */
 const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — unified streaming rule (READ LAST — beats every rule above)
 
-**Turn 1 (first user message, no prior form answers):** emit the Korean quick-brief \`<question-form id="discovery" title="빠른 질문">\` JSON block only. No HTML artifact on turn 1.
+**Turn 1 (first user message, no prior form answers):** emit a UI-locale quick-brief \`<question-form id="discovery">\` JSON block only. No HTML artifact on turn 1.
 
 **Turn 2+ (after \`[form answers — discovery]\` or a follow-up edit request):** your successful response is optional tiny UI-locale status sentence + **exactly one** streaming artifact. Artifact-only is OK for speed/tokens:
 

@@ -53,6 +53,7 @@ import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
 import { driveSearchTextMatches, useSubmittedDriveSearch } from "../useSubmittedDriveSearch";
 import { useTeamverDriveModalFocusTrap } from "../useTeamverDriveModalFocusTrap";
 import { useTeamverDriveBrowseInfiniteScroll } from "../useTeamverDriveBrowseInfiniteScroll";
+import { useTeamverDriveBrowseFillShortPage } from "../useTeamverDriveBrowseFillShortPage";
 import type { TeamverDrivePublishRecentAsset } from "../drivePublishRecentAssets";
 import type { TeamverDrivePublishTarget } from "../drivePublishTargets";
 
@@ -604,6 +605,18 @@ export function TeamverDriveImportModal({
     onLoadMore: loadMoreBrowse,
   });
 
+  const browseFillResetKey = `${scopeIndex}:${currentFolderId ?? "root"}:${submittedQuery}`;
+  const browseContentKey = `${recentRows.length}:${folderRows.length}:${browseAssetRows.length}:${rows.length}`;
+  useTeamverDriveBrowseFillShortPage({
+    enabled: open && !searchMode && !showFullLoader && !authRequired && !error,
+    hasMore: canLoadMoreBrowse,
+    loading: loadingMore || loading || refreshing || confirming,
+    rootRef: listScrollRef,
+    contentKey: browseContentKey,
+    resetKey: browseFillResetKey,
+    onLoadMore: loadMoreBrowse,
+  });
+
   useEffect(() => {
     emptyBrowseChaseRef.current = 0;
   }, [activeScope, currentFolderId, scopeIndex, submittedQuery]);
@@ -1072,7 +1085,10 @@ export function TeamverDriveImportModal({
                         <Icon name="folder" size={15} />
                       </span>
                       <span className="teamver-drive-picker-row-copy">
-                        <span>{row.name}</span>
+                        <TeamverDriveDisplayFileName
+                          name={row.name}
+                          className="teamver-drive-picker-folder-name"
+                        />
                         <small>폴더</small>
                       </span>
                       <Icon name="chevron-right" size={14} />

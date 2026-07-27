@@ -134,6 +134,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
 
       expect(prompt).toContain('Teamver embed — slide deck scope only');
       expect(prompt).toContain('turn-1 quick brief');
+      expect(prompt).toContain('UI-locale line');
+      expect(prompt).toContain('Localize title');
       expect(prompt).toContain('title="빠른 질문"');
       expect(prompt).toContain('"submitLabel": "이대로 만들기"');
       expect(prompt).not.toContain('# OD core directives');

@@ -40,6 +40,7 @@
 - 2026-07-27 기준 보강: bare domain 추출은 `.com`/`.kr` 외에 `.studio`, `.cloud`, `.site`, `.page`, `.co` 등 제품 사이트에서 자주 쓰는 TLD를 포함한다. `deck.html` 같은 파일명은 URL로 취급하지 않는다.
 - 2026-07-27 기준 보강: `<web-fetch-context>`는 예약 태그다. 사용자가 같은 태그를 직접 입력해도 API 전송용 history 사본에서는 `[web-fetch-context]`로 중립화하고, 실제 fetch 결과 block만 XML-like 태그로 남긴다.
 - 2026-07-27 기준 보강: URL 자체는 참고자료일 뿐 완성된 발표 브리프가 아니다. `www.teamver.com 참고해서 슬라이드 만들어줘`처럼 사이트 URL + 일반 생성 요청만 있고 대상·목적·톤·장수·필수 포함 항목이 없으면, `skipDiscoveryBrief` 흐름이어도 빠른 질문 1개를 먼저 띄울 수 있다. 단, 사용자가 “질문 없이 바로 만들어줘”라고 했거나 Canvas/Drive handoff·plugin inputs·source brief가 이미 충분한 경우에는 바로 생성한다.
+- 2026-07-27 기준 보강: 위 빠른 질문은 한국어 고정 문구가 아니라 UI/채팅 언어에 맞춰 노출해야 한다. 프롬프트의 `빠른 질문` JSON은 한국어 예시이며, 다국어 세션에서는 title/label/placeholder/submitLabel을 해당 언어로 로컬라이즈한다.
 - 실패 시: fetch 실패 사유만 컨텍스트로 전달하고, 채팅 요청 자체는 막지 않는다.
 - 기존 `web_fetch` tool loop는 `aihubmix`/`senseaudio` 경로에서 계속 유효하다.
 - Teamver managed Anthropic proxy(`/api/proxy/anthropic/stream`)에 native tool loop를 붙이는 작업은 장기 선택지로 남긴다.
@@ -303,5 +304,6 @@ Teamver embed 1차는 **managed BYOK(API) 고정**이라 CLI 패스와 무관하
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-27 | URL-only sparse brief 빠른 질문을 UI/채팅 언어 기준으로 로컬라이즈하도록 프롬프트·테스트 보강 |
 | 2026-06-22 | 초안 — embed URL 참조 FAQ, Main BE web search 대비, minimax-byok `web_fetch` 정리 |
 | 2026-06-19 | loop 184 — §5 코드 상태 ✅ 갱신, staging anthropic vs tool loop 주의 |
