@@ -439,10 +439,10 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         if (resetRefreshState) {
           // Explicit "다시 시도" — confirm session is gone before bouncing login.
           // Probe-confirmed dead allows re-login even if embed memory is stale.
-          let probeAlive = await probeDesignBffSessionAuthenticated();
+          let probeAlive = await probeDesignBffSessionAuthenticated({ bypassNegativeCache: true });
           if (!probeAlive) {
             await new Promise((resolve) => setTimeout(resolve, 500));
-            probeAlive = await probeDesignBffSessionAuthenticated();
+            probeAlive = await probeDesignBffSessionAuthenticated({ bypassNegativeCache: true });
           }
           // Probe cannot revive absolute-expired access; ensure /auth/session
           // runs ensure_bff_session which can Set-Cookie a fresh access token
