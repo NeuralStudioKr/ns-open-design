@@ -92,27 +92,118 @@ export function resolveSlideOnlyDeckTemplateSkillId(
 export const TEAMVER_AUTO_DECK_VISUAL_TEMPLATE_LABEL =
   "Auto-match a deck template from the user's brief";
 
+type SlideOnlyDeckVisualProfile = {
+  readonly id: string;
+  readonly label: string;
+  readonly hint: string;
+  readonly keywords: readonly RegExp[];
+};
+
+const SLIDE_ONLY_DECK_VISUAL_PROFILES: readonly SlideOnlyDeckVisualProfile[] = [
+  {
+    id: "developer-portfolio",
+    label: "Developer portfolio",
+    hint: "developer portfolio deck: bold personal cover, strong typographic hierarchy, skill chips, project/case-study rhythm",
+    keywords: [
+      /portfolio|포트폴리오|resume|career|이력|채용/i,
+      /developer|frontend|backend|full[-\s]?stack|engineer|개발자|프론트엔드|백엔드/i,
+    ],
+  },
+  {
+    id: "editorial-marketing",
+    label: "Editorial marketing strategy",
+    hint: "marketing strategy deck: editorial report style, strong section openers, KPI cards, channel roadmap layouts",
+    keywords: [
+      /marketing|campaign|go[-\s]?to[-\s]?market|마케팅|캠페인/i,
+      /market|strategy|positioning|persona|channel|전략|시장|페르소나|채널/i,
+    ],
+  },
+  {
+    id: "modern-tech",
+    label: "Modern technology",
+    hint: "modern tech deck: dark or high-contrast canvas, clean grid, neon/accent metrics, product-system diagrams",
+    keywords: [
+      /ai|artificial intelligence|인공지능|llm|agent|automation/i,
+      /adoption|transformation|도입|자동화|전환/i,
+      /data|analytics|tech|saas|cloud|cyber|security|데이터|기술|보안/i,
+    ],
+  },
+  {
+    id: "executive-report",
+    label: "Executive business report",
+    hint: "business report deck: executive summary, metric dashboard cards, comparison tables, restrained data visuals",
+    keywords: [
+      /finance|revenue|sales|budget|재무|매출|예산|영업/i,
+      /kpi|roi|metric|performance|성과|지표|효과|비용/i,
+    ],
+  },
+  {
+    id: "startup-pitch",
+    label: "Startup pitch",
+    hint: "startup pitch deck: confident narrative arc, big claims, traction metrics, market/product/roadmap slides",
+    keywords: [
+      /pitch|investor|fundraising|투자자|피치|IR/i,
+      /startup|product|roadmap|traction|스타트업|제품|로드맵/i,
+    ],
+  },
+  {
+    id: "onboarding-guide",
+    label: "Onboarding guide",
+    hint: "onboarding deck: friendly structured guide, warm welcome cover, process timelines, checklist sections",
+    keywords: [
+      /onboarding|orientation|new hire|온보딩|신입|입문/i,
+      /employee|training|guide|education|직원|교육|가이드|매뉴얼/i,
+    ],
+  },
+  {
+    id: "creative-editorial",
+    label: "Creative editorial",
+    hint: "creative editorial deck: expressive typography, warm paper or gallery-like canvas, asymmetrical layouts, memorable section moments",
+    keywords: [
+      /creative|brand|branding|design|브랜드|브랜딩|디자인|크리에이티브/i,
+      /story|culture|vision|identity|스토리|문화|비전|아이덴티티/i,
+    ],
+  },
+];
+
+function stableBriefHash(text: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function scoreSlideOnlyDeckVisualProfile(
+  profile: SlideOnlyDeckVisualProfile,
+  text: string,
+): number {
+  let score = 0;
+  for (const keyword of profile.keywords) {
+    if (keyword.test(text)) score += 2;
+  }
+  return score;
+}
+
 export function inferSlideOnlyDeckVisualTemplateHint(topicHint?: string | null): string {
-  const text = (topicHint ?? "").toLowerCase();
-  if (/(portfolio|developer|frontend|backend|full[-\s]?stack|resume|career|채용|포트폴리오|개발자|이력)/i.test(text)) {
-    return "developer portfolio deck: bold personal cover, strong typographic hierarchy, skill chips, project/case-study rhythm";
-  }
-  if (/(onboarding|orientation|employee|new hire|신입|온보딩|교육|입문)/i.test(text)) {
-    return "onboarding deck: friendly structured guide, warm welcome cover, process timelines, checklist sections";
-  }
-  if (/(marketing|campaign|market|strategy|go[-\s]?to[-\s]?market|마케팅|전략|시장|캠페인)/i.test(text)) {
-    return "marketing strategy deck: editorial report style, strong section openers, KPI cards, channel roadmap layouts";
-  }
-  if (/(ai|artificial intelligence|data|analytics|tech|saas|cloud|cyber|보안|인공지능|데이터|기술)/i.test(text)) {
-    return "modern tech deck: dark or high-contrast canvas, clean grid, neon/accent metrics, product-system diagrams";
-  }
-  if (/(finance|revenue|sales|kpi|roi|budget|투자|매출|재무|성과|지표)/i.test(text)) {
-    return "business report deck: executive summary, metric dashboard cards, comparison tables, restrained data visuals";
-  }
-  if (/(pitch|investor|startup|fundraising|IR|피치|투자자|스타트업)/i.test(text)) {
-    return "startup pitch deck: confident narrative arc, big claims, traction metrics, market/product/roadmap slides";
-  }
-  return TEAMVER_AUTO_DECK_VISUAL_TEMPLATE_LABEL;
+  const text = (topicHint ?? "").trim();
+  if (!text) return TEAMVER_AUTO_DECK_VISUAL_TEMPLATE_LABEL;
+  const lower = text.toLowerCase();
+  const scored = SLIDE_ONLY_DECK_VISUAL_PROFILES
+    .map((profile) => ({
+      profile,
+      score: scoreSlideOnlyDeckVisualProfile(profile, lower),
+    }))
+    .filter((item) => item.score > 0);
+  if (scored.length === 0) return TEAMVER_AUTO_DECK_VISUAL_TEMPLATE_LABEL;
+  const maxScore = Math.max(...scored.map((item) => item.score));
+  const tied = scored
+    .filter((item) => item.score === maxScore)
+    .map((item) => item.profile)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const picked = tied[stableBriefHash(lower) % tied.length]!;
+  return picked.hint;
 }
 
 export function defaultSlideOnlyDeckPluginInputs(topicHint?: string | null): Record<string, unknown> {

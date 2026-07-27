@@ -126,6 +126,24 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(inputs.designSystem).toContain('auto-match the visual direction');
   });
 
+  it('keeps auto visual matching deterministic and subordinate to explicit template picks', () => {
+    const mixedBrief = 'AI 스타트업 투자자 피치덱: 제품 로드맵, 성과 지표, 시장 전략';
+    expect(inferSlideOnlyDeckVisualTemplateHint(mixedBrief)).toBe(
+      inferSlideOnlyDeckVisualTemplateHint(mixedBrief),
+    );
+    expect(inferSlideOnlyDeckVisualTemplateHint('신입사원 교육과 온보딩 가이드')).toContain(
+      'onboarding deck',
+    );
+
+    const creativeMode = {
+      id: 'html-ppt-zhangzara-creative-mode',
+      manifest: { od: { mode: 'deck' } },
+    } as Parameters<typeof resolveSlideOnlyDeckTemplateSkillId>[0];
+    expect(resolveSlideOnlyDeckTemplateSkillId(creativeMode, { explicitPick: true })).toBe(
+      'html-ppt-zhangzara-creative-mode',
+    );
+  });
+
   it('keeps explicitly picked deck community cards as visual template skills', () => {
     const creativeMode = {
       id: 'html-ppt-zhangzara-creative-mode',
