@@ -1203,6 +1203,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                     aria-label={t('homeHero.clearActivePlugin')}
                     title={t('homeHero.clearActivePlugin')}
                     data-tooltip={t('homeHero.clearActivePlugin')}
+                    data-testid="home-hero-clear-active-plugin"
                   >
                     <Icon name="close" size={9} />
                   </button>

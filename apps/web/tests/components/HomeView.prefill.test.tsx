@@ -187,6 +187,49 @@ const WEB_PROTOTYPE_PLUGIN = {
   },
 };
 
+const FIGMA_MIGRATION_PLUGIN = {
+  ...DEFAULT_PLUGIN,
+  id: 'od-figma-migration',
+  title: 'Figma migration',
+  source: '/tmp/figma-migration',
+  fsPath: '/tmp/figma-migration',
+  manifest: {
+    ...DEFAULT_PLUGIN.manifest,
+    name: 'od-figma-migration',
+    title: 'Figma migration',
+    description: 'Migrate a Figma frame into the active design system.',
+    od: {
+      kind: 'scenario',
+      taskKind: 'figma-migration',
+      useCase: {
+        query: 'Migrate {{figmaUrl}} into {{targetStack}} for {{audience}}.',
+      },
+      inputs: [
+        {
+          name: 'figmaUrl',
+          type: 'string',
+          required: true,
+          default: 'the Figma file URL you provide',
+          label: 'Figma URL',
+        },
+        {
+          name: 'targetStack',
+          type: 'string',
+          required: true,
+          default: 'React 18 + Tailwind',
+          label: 'Target stack',
+        },
+        {
+          name: 'audience',
+          type: 'string',
+          default: 'engineers',
+          label: 'Audience',
+        },
+      ],
+    },
+  },
+};
+
 const SIMPLE_DECK_PLUGIN = {
   ...DEFAULT_PLUGIN,
   id: 'example-simple-deck',
@@ -1431,6 +1474,76 @@ describe('HomeView prompt handoff', () => {
     });
     fireEvent.click(screen.getAllByTestId('home-hero-plugin-preset')[0]!);
     expect(homeHeroPromptText()).toBe('분기 실적 요약 덱 만들어줘');
+  });
+
+  it('binds From Figma chip without prefilling the composer', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (url) => {
+      if (isPluginsListRequest(url)) {
+        return new Response(JSON.stringify({ plugins: [FIGMA_MIGRATION_PLUGIN] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    stubAnimationFrame();
+
+    render(
+      <HomeView
+        projects={[]}
+        onSubmit={() => undefined}
+        onOpenProject={() => undefined}
+        onViewAllProjects={() => undefined}
+      />,
+    );
+
+    await clickHomeShortcut('figma');
+    await waitFor(() => {
+      expect(homeHeroPromptValue()).toBe('');
+    });
+    expect(fetchMock.mock.calls.some(([url]) => (
+      typeof url === 'string' && url.includes('/apply')
+    ))).toBe(false);
+  });
+
+  it('keeps the user draft when clearing an explicit preset plugin', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (url) => {
+      if (isPluginsListRequest(url)) {
+        return new Response(JSON.stringify({ plugins: [SIMPLE_DECK_PLUGIN] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    stubAnimationFrame();
+
+    render(
+      <HomeView
+        projects={[]}
+        onSubmit={() => undefined}
+        onOpenProject={() => undefined}
+        onViewAllProjects={() => undefined}
+      />,
+    );
+
+    await setPromptAndSettle('내 브리프 유지');
+    await clearActiveTypeChip();
+    fireEvent.click(await screen.findByTestId('home-hero-rail-deck'));
+    await waitFor(() => {
+      expect(screen.getByTestId('home-hero-plugin-presets')).toBeTruthy();
+    });
+    fireEvent.click(screen.getAllByTestId('home-hero-plugin-preset')[0]!);
+    await waitFor(() => {
+      expect(screen.getByTestId('home-hero-active-plugin').textContent).toContain('Simple Deck');
+    });
+    fireEvent.click(screen.getByTestId('home-hero-clear-active-plugin'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('home-hero-active-plugin')).toBeNull();
+    });
+    expect(homeHeroPromptText()).toBe('내 브리프 유지');
   });
 
   it('appends a plugin-use query handoff without replacing an existing prompt', async () => {

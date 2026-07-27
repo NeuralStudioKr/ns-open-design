@@ -92,6 +92,7 @@ import { localizePluginDescription } from './plugins-home/localization';
 import { RecentProjectsStrip } from './RecentProjectsStrip';
 import { AnimatePresence } from 'motion/react';
 import { embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
+import { isRenderableDesignTemplate } from '../teamver/branding/designTemplateVisibility';
 import {
   communityGalleryFacetUi,
   defaultSlideOnlyDeckPluginInputs,
@@ -1491,13 +1492,21 @@ export function HomeView({
 
   function clearActivePlugin() {
     activePluginApplyRequestRef.current += 1;
+    const syncedPrompt = active?.lastRenderedPrompt ?? null;
+    const suppressSync = active?.suppressPromptSync === true;
     setActive(null);
     setFallbackProjectKind(null);
     setFallbackProjectMetadata(null);
     setPendingApplyId(null);
     setPendingChipId(null);
-    setPrompt('');
-    setPromptEditedByUser(false);
+    setError(null);
+    if (!suppressSync && syncedPrompt !== null && prompt === syncedPrompt) {
+      setPrompt('');
+      setPromptEditedByUser(false);
+    } else {
+      setPromptEditedByUser(prompt.trim().length > 0);
+    }
+    focusPromptAtEnd();
   }
 
   function clearActiveChipSelection() {
@@ -1521,7 +1530,17 @@ export function HomeView({
     setFallbackProjectMetadata(null);
     setActiveSkill(skill);
     setError(null);
-    const replacement = nextPrompt ?? localizeSkillPrompt(locale, skill) ?? '';
+    if (nextPrompt !== null) {
+      setPrompt(nextPrompt);
+      setPromptEditedByUser(false);
+      focusPromptAtEnd();
+      return;
+    }
+    if (isRenderableDesignTemplate(skill)) {
+      focusPromptAtEnd();
+      return;
+    }
+    const replacement = localizeSkillPrompt(locale, skill) ?? '';
     if (replacement.trim().length > 0) {
       setPrompt(replacement);
       setPromptEditedByUser(false);
@@ -1668,22 +1687,15 @@ export function HomeView({
       inputs: chip.action.inputs,
       projectMetadata: chip.action.projectMetadata ?? null,
     };
-    // Output-type tabs (create group) are mode-selection gestures:
-    // switching between them should never prompt for confirmation,
-    // and they should NOT pre-fill the textarea with the rendered
-    // useCase.query — the preset cards are the explicit opt-in
-    // for that. Migrate-group chips (From Figma, etc.) still carry
-    // a meaningful prompt the user wants dropped in, so they keep
-    // the historical behavior.
-    if (chip.group === 'create') {
-      void usePlugin(record, undefined, {
-        ...pluginOptions,
-        suppressPromptUpdate: true,
-        deferApply: true,
-      });
-    } else {
-      requestActivePlugin(record, undefined, pluginOptions);
-    }
+    // Type/migrate plugin chips bind scenario context only — the textarea
+    // stays for the user's brief. Example-prompt cards and "Replicate"
+    // (use-with-query) remain the explicit opt-in to seed the composer.
+    void usePlugin(record, undefined, {
+      ...pluginOptions,
+      suppressPromptUpdate: true,
+      deferApply: true,
+      replaceWithoutConfirmation: true,
+    });
   }
 
   function pickChip(chip: HomeHeroChip) {
