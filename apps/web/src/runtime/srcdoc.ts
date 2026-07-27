@@ -2127,15 +2127,64 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (existing) return existing;
     if (!compactStackedDeckEnabled) return null;
     if (frameworkDeckStage()) return null;
-    var direct = stackedSlideNodes();
-    if (!direct.length) return null;
+    var slideList = stackedSlideNodes();
+    if (!slideList.length) return null;
+    var first = slideList[0];
+    if (!first || !first.parentNode) return null;
+    var hostStage = first.closest ? first.closest('#od-stacked-deck-stage') : null;
+    if (hostStage) return hostStage;
+    existing = stackedDeckStage();
+    if (existing) return existing;
+
+    var body = document.body;
+    if (!body) return null;
+
     var stage = document.createElement('div');
     stage.id = 'od-stacked-deck-stage';
     stage.setAttribute('data-od-stacked-deck-stage', '');
-    document.body.insertBefore(stage, direct[0]);
-    for (var i = 0; i < direct.length; i++) {
-      stage.appendChild(direct[i]);
+
+    var insertParent = body;
+    var ref = first;
+    if (first.parentNode !== body) {
+      var wrap = first.parentNode;
+      if (wrap && wrap.parentNode === body) {
+        ref = wrap;
+      } else {
+        ref = null;
+      }
     }
+    try {
+      if (ref && ref.parentNode === insertParent) {
+        insertParent.insertBefore(stage, ref);
+      } else {
+        insertParent.appendChild(stage);
+      }
+    } catch (_) {
+      existing = stackedDeckStage();
+      if (existing) return existing;
+      insertParent.appendChild(stage);
+    }
+
+    for (var i = 0; i < slideList.length; i++) {
+      var slide = slideList[i];
+      if (!slide || !slide.parentNode) continue;
+      if (slide.parentNode === stage) continue;
+      stage.appendChild(slide);
+    }
+
+    if (ref && ref !== first && ref.parentNode === body && ref !== stage) {
+      var hasElementChild = false;
+      for (var j = 0; j < ref.childNodes.length; j++) {
+        if (ref.childNodes[j].nodeType === 1) {
+          hasElementChild = true;
+          break;
+        }
+      }
+      if (!hasElementChild) {
+        try { body.removeChild(ref); } catch (_) {}
+      }
+    }
+
     document.documentElement.setAttribute('data-od-stacked-deck', '');
     return stage;
   }
