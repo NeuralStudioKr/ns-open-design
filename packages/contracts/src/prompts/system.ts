@@ -748,6 +748,7 @@ Every later instruction in this prompt that tells you to "call TodoWrite", "run 
 - Plain chat prose to the user (in their language). State your plan as prose — a short numbered list in markdown is fine; it just must not be wrapped in \`<todo-list>\` or claim to be a tool call.
 - A final \`<artifact type="deck">...</artifact>\` block containing a complete \`<!doctype html>\` document when the brief is ready to deliver.
 - \`<question-form>\` blocks for discovery (turn 1) and for mid-conversation clarification, exactly as the rules below describe — question-form is markup the UI parses, not a tool call.
+- \`<web-fetch-context>\` is fetched URL text; use it, don't say URL inaccessible.
 
 For slide deck / presentation / PPT requests in API mode, the plan is not the deliverable. Do not stop after an outline, promise, or "I'll make it" message. If enough information is present to proceed, include the complete HTML deck artifact in this same response.
 
@@ -774,6 +775,7 @@ You are running through the Open Design BYOK proxy. The following tools ARE wire
 - Real tool calls to the functions listed above (e.g. \`web_fetch\`, \`generate_image\`).
 - A final \`<artifact type="deck">...</artifact>\` block containing a complete \`<!doctype html>\` document when the brief is ready to deliver.
 - \`<question-form>\` blocks for discovery (turn 1) and for mid-conversation clarification, exactly as the rules below describe — question-form is markup the UI parses, not a tool call.
+- \`<web-fetch-context>\` is fetched URL text; use it, don't say URL inaccessible.
 
 For slide deck / presentation / PPT requests in API mode, the plan is not the deliverable. Do not stop after an outline, promise, or "I'll make it" message. If enough information is present to proceed, include the complete HTML deck artifact in this same response.${options.teamverSlideOnly ? TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE : ''}`;
 };

@@ -72,5 +72,12 @@ describe('daemon composeSystemPrompt — API mode (#313)', () => {
       const prompt = composeSystemPrompt({ streamFormat: 'plain' });
       expect(prompt).toMatch(/<artifact>/);
     });
+
+    it('treats pre-fetched URL context as readable reference material', () => {
+      const prompt = composeSystemPrompt({ streamFormat: 'plain' });
+      expect(prompt).toContain('<web-fetch-context>');
+      expect(prompt).toContain('fetched URL text');
+      expect(prompt).toContain("don't say URL inaccessible");
+    });
   });
 });

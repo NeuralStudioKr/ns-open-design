@@ -35,6 +35,7 @@
 
 - daemon `POST /api/tools/web-fetch`: 기존 `fetchUrlContent()` 재사용(public http(s), SSRF guard, redirect 차단, timeout, size cap, HTML→text).
 - web API mode: URL 최대 3개를 사전 fetch, 총 컨텍스트 예산 내에서 user message에 주입.
+- prompt: API no-tools/BYOK 양쪽에서 `<web-fetch-context>`를 이미 fetch된 URL text로 인식하도록 명시한다. 이 block이 있으면 모델은 “웹 접근 불가”라고 답하지 말고 해당 text를 참조한다.
 - 실패 시: fetch 실패 사유만 컨텍스트로 전달하고, 채팅 요청 자체는 막지 않는다.
 - 기존 `web_fetch` tool loop는 `aihubmix`/`senseaudio` 경로에서 계속 유효하다.
 - Teamver managed Anthropic proxy(`/api/proxy/anthropic/stream`)에 native tool loop를 붙이는 작업은 장기 선택지로 남긴다.

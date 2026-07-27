@@ -192,6 +192,13 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('blocks for discovery on turn 1, exactly');
     });
 
+    it('treats pre-fetched URL context as readable reference material in no-tools API mode', () => {
+      const prompt = composeSystemPrompt({ streamFormat: 'plain' });
+      expect(prompt).toContain('<web-fetch-context>');
+      expect(prompt).toContain('fetched URL text');
+      expect(prompt).toContain("don't say URL inaccessible");
+    });
+
     it('honors metadata.skipDiscoveryBrief before the discovery rules', () => {
       const prompt = composeSystemPrompt({
         streamFormat: 'plain',
@@ -222,6 +229,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('`generate_image`');
       expect(prompt).toMatch(/call `web_fetch` with the absolute URL/i);
       expect(prompt).toMatch(/I can't read URLs/i);
+      expect(prompt).toContain('<web-fetch-context>');
+      expect(prompt).toContain('fetched URL text');
     });
 
     it('pins the BYOK override above the discovery layer', () => {
