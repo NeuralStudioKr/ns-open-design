@@ -2060,6 +2060,22 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   function stackedDeckStage() {
     return document.getElementById('od-stacked-deck-stage');
   }
+  function isStackedSlideCandidate(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.id === 'od-stacked-deck-stage') return false;
+    if (el.closest && el.closest('header, nav, #od-stacked-deck-stage')) return false;
+    if (el.closest && el.closest('.deck, .deck-shell, .deck-stage, #deck-stage, #deck, #deck-track')) return false;
+    return !!(el.classList && el.classList.contains('slide'));
+  }
+  function slidesFromElementChildren(container) {
+    var out = [];
+    if (!container || !container.children) return out;
+    for (var c = 0; c < container.children.length; c++) {
+      var child = container.children[c];
+      if (isStackedSlideCandidate(child)) out.push(child);
+    }
+    return out;
+  }
   function stackedSlideNodes() {
     var direct = document.querySelectorAll('body > .slide');
     if (direct.length) return direct;
@@ -2072,12 +2088,23 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       var tag = String(el.tagName || '').toLowerCase();
       if (tag === 'header' || tag === 'nav' || tag === 'style' || tag === 'script') continue;
       if (el.classList && el.classList.contains('slide')) continue;
-      var wrapped = [];
-      for (var c = 0; c < el.children.length; c++) {
-        var child = el.children[c];
-        if (child.classList && child.classList.contains('slide')) wrapped.push(child);
-      }
+      var wrapped = slidesFromElementChildren(el);
       if (wrapped.length >= 2) return wrapped;
+      if (wrapped.length === 0 && el.children.length === 1) {
+        var inner = el.children[0];
+        if (inner && inner.nodeType === 1) {
+          var deep = slidesFromElementChildren(inner);
+          if (deep.length >= 2) return deep;
+        }
+      }
+    }
+    if (!frameworkDeckStage()) {
+      var all = document.querySelectorAll('body .slide');
+      var list = [];
+      for (var a = 0; a < all.length; a++) {
+        if (isStackedSlideCandidate(all[a])) list.push(all[a]);
+      }
+      if (list.length >= 2) return list;
     }
     return direct;
   }
@@ -2122,71 +2149,152 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     }
     return stackedViewport;
   }
-  function ensureStackedDeckStage() {
-    var existing = stackedDeckStage();
-    if (existing) return existing;
-    if (!compactStackedDeckEnabled) return null;
-    if (frameworkDeckStage()) return null;
-    var slideList = stackedSlideNodes();
-    if (!slideList.length) return null;
-    var first = slideList[0];
-    if (!first || !first.parentNode) return null;
-    var hostStage = first.closest ? first.closest('#od-stacked-deck-stage') : null;
-    if (hostStage) return hostStage;
-    existing = stackedDeckStage();
-    if (existing) return existing;
-
-    var body = document.body;
-    if (!body) return null;
-
-    var stage = document.createElement('div');
-    stage.id = 'od-stacked-deck-stage';
-    stage.setAttribute('data-od-stacked-deck-stage', '');
-
-    var insertParent = body;
-    var ref = first;
-    if (first.parentNode !== body) {
-      var wrap = first.parentNode;
-      if (wrap && wrap.parentNode === body) {
-        ref = wrap;
-      } else {
-        ref = null;
-      }
-    }
-    try {
-      if (ref && ref.parentNode === insertParent) {
-        insertParent.insertBefore(stage, ref);
-      } else {
-        insertParent.appendChild(stage);
-      }
-    } catch (_) {
-      existing = stackedDeckStage();
-      if (existing) return existing;
-      insertParent.appendChild(stage);
-    }
-
+  var stackedDeckStageHoistInFlight = false;
+  function moveSlidesIntoStackedStage(stage, slideList) {
+    if (!stage || !slideList || !slideList.length) return;
     for (var i = 0; i < slideList.length; i++) {
       var slide = slideList[i];
       if (!slide || !slide.parentNode) continue;
       if (slide.parentNode === stage) continue;
-      stage.appendChild(slide);
+      try { stage.appendChild(slide); } catch (_) {}
     }
-
-    if (ref && ref !== first && ref.parentNode === body && ref !== stage) {
+  }
+  function bodyDirectChildAncestor(node, body) {
+    var cur = node;
+    while (cur && cur.parentNode && cur.parentNode !== body) cur = cur.parentNode;
+    if (cur && cur.parentNode === body) return cur;
+    return null;
+  }
+  function removeEmptyBodyDirectWrapper(body, wrap, stage) {
+    if (!wrap || !body || wrap === body || wrap === stage) return;
+    if (wrap.parentNode !== body) return;
+    var hasElementChild = false;
+    for (var j = 0; j < wrap.childNodes.length; j++) {
+      if (wrap.childNodes[j].nodeType === 1) {
+        hasElementChild = true;
+        break;
+      }
+    }
+    if (!hasElementChild) {
+      try { body.removeChild(wrap); } catch (_) {}
+    }
+  }
+  function pruneOrphanStackedDeckShells(body, stage) {
+    if (!body) return;
+    var children = body.children;
+    for (var i = children.length - 1; i >= 0; i--) {
+      var el = children[i];
+      if (!el || el === stage) continue;
+      if (el.id === 'od-stacked-deck-stage') continue;
+      var tag = String(el.tagName || '').toLowerCase();
+      if (tag === 'header' || tag === 'nav' || tag === 'style' || tag === 'script') continue;
+      if (el.querySelector && el.querySelector('.slide')) continue;
+      var peel = el;
+      while (peel && peel !== body && peel !== stage && peel.children && peel.children.length === 1) {
+        var only = peel.children[0];
+        if (!only || only.nodeType !== 1) break;
+        if (only.classList && only.classList.contains('slide')) break;
+        if (only.querySelector && only.querySelector('.slide')) break;
+        var onlyHasElement = false;
+        for (var k = 0; k < only.childNodes.length; k++) {
+          if (only.childNodes[k].nodeType === 1) { onlyHasElement = true; break; }
+        }
+        if (onlyHasElement) break;
+        try { peel.removeChild(only); } catch (_) { break; }
+      }
       var hasElementChild = false;
-      for (var j = 0; j < ref.childNodes.length; j++) {
-        if (ref.childNodes[j].nodeType === 1) {
+      for (var j = 0; j < el.childNodes.length; j++) {
+        if (el.childNodes[j].nodeType === 1) {
           hasElementChild = true;
           break;
         }
       }
       if (!hasElementChild) {
-        try { body.removeChild(ref); } catch (_) {}
+        try { body.removeChild(el); } catch (_) {}
       }
     }
+  }
+  function compactStackedDeckNavigationReady() {
+    if (!compactStackedDeckEnabled) return false;
+    if (stackedDeckStage()) return true;
+    if (!shouldUseStackedDeckStage()) return false;
+    return !!ensureStackedDeckStage();
+  }
+  function ensureStackedDeckStage() {
+    if (!compactStackedDeckEnabled) return null;
+    if (frameworkDeckStage()) return null;
 
-    document.documentElement.setAttribute('data-od-stacked-deck', '');
-    return stage;
+    var existing = stackedDeckStage();
+    var slideList = stackedSlideNodes();
+    if (existing) {
+      if (slideList.length) moveSlidesIntoStackedStage(existing, slideList);
+      return existing;
+    }
+    if (!slideList.length) return null;
+    if (!shouldUseStackedDeckStage()) return null;
+
+    var first = slideList[0];
+    if (!first || !first.parentNode) return null;
+    var hostStage = first.closest ? first.closest('#od-stacked-deck-stage') : null;
+    if (hostStage) {
+      moveSlidesIntoStackedStage(hostStage, slideList);
+      return hostStage;
+    }
+
+    if (stackedDeckStageHoistInFlight) return stackedDeckStage();
+    stackedDeckStageHoistInFlight = true;
+    try {
+      existing = stackedDeckStage();
+      if (existing) {
+        moveSlidesIntoStackedStage(existing, slideList);
+        return existing;
+      }
+
+      var body = document.body;
+      if (!body) return null;
+
+      var stage = document.createElement('div');
+      stage.id = 'od-stacked-deck-stage';
+      stage.setAttribute('data-od-stacked-deck-stage', '');
+
+      var insertParent = body;
+      var ref = bodyDirectChildAncestor(first, body) || first;
+      if (ref.parentNode !== body) ref = null;
+
+      try {
+        if (ref && ref.parentNode === insertParent) {
+          insertParent.insertBefore(stage, ref);
+        } else {
+          insertParent.appendChild(stage);
+        }
+      } catch (_) {
+        existing = stackedDeckStage();
+        if (existing) {
+          moveSlidesIntoStackedStage(existing, slideList);
+          return existing;
+        }
+        try { insertParent.appendChild(stage); } catch (__) { return stackedDeckStage(); }
+      }
+
+      moveSlidesIntoStackedStage(stage, slideList);
+
+      if (ref && ref !== stage && ref.parentNode === body) {
+        removeEmptyBodyDirectWrapper(body, ref, stage);
+      }
+      pruneOrphanStackedDeckShells(body, stage);
+
+      existing = stackedDeckStage();
+      if (existing && existing !== stage) {
+        moveSlidesIntoStackedStage(existing, slideList);
+        try { if (stage.parentNode) stage.parentNode.removeChild(stage); } catch (_) {}
+        return existing;
+      }
+
+      document.documentElement.setAttribute('data-od-stacked-deck', '');
+      return stage;
+    } finally {
+      stackedDeckStageHoistInFlight = false;
+    }
   }
   function layoutViewportSize() {
     var cw = Math.max(0, document.documentElement.clientWidth || 0);
@@ -2240,7 +2348,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     stage.style.transform = 'translate(calc(-50% + ' + panX + 'px), calc(-50% + ' + panY + 'px)) scale(' + s + ')';
   }
   function runStackedDeckFit() {
-    var stage = stackedDeckStage() || ensureStackedDeckStage();
+    var stage = stackedDeckStage();
+    if (!stage && shouldUseStackedDeckStage()) stage = ensureStackedDeckStage();
     if (!stage) return false;
     var vp = frameworkDeckViewport();
     var sw = vp.w;
@@ -2632,7 +2741,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!list.length) return;
     var target = Math.max(0, Math.min(list.length - 1, targetFor(action, list)));
     if (target !== activeIndex(list)) resetDeckPan();
-    if (compactStackedDeckEnabled && (stackedDeckStage() || ensureStackedDeckStage())) {
+    if (compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
     }
     if (transformGo(target)) return;
@@ -2654,7 +2763,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var target = Math.max(0, Math.min(list.length - 1, i));
     var prev = activeIndex(list);
     if (target !== prev) resetDeckPan();
-    if (compactStackedDeckEnabled && (stackedDeckStage() || ensureStackedDeckStage())) {
+    if (compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
     }
     if (transformGo(target)) return;

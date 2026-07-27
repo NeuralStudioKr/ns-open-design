@@ -427,9 +427,9 @@ describe('deck bridge — nested slide markup (#1530)', () => {
 
     expect(errors.some((msg) => msg.includes('insertBefore'))).toBe(false);
     const stage = win.document.getElementById('od-stacked-deck-stage');
-    if (stage) {
-      expect(win.document.querySelectorAll('#od-stacked-deck-stage > .slide').length).toBeGreaterThanOrEqual(2);
-    }
+    expect(stage).toBeTruthy();
+    expect(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')).toHaveLength(2);
+    expect(win.document.querySelector('.content-wrap')).toBeNull();
   });
 
   it('host next/prev changes computed visibility after stacked stage letterbox wraps slides', async () => {
