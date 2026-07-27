@@ -26,6 +26,7 @@
 |------|------|
 | `ns-teamver-be/docs/54_웹_참조_채팅_통합_기획.md` | GPT/Claude/Gemini **벤더 native web search** |
 | `ns-teamver-be/docs/모델별_web_search_비교.md` | 벤더별 search vs fetch 차이 |
+| [48 웹 fetch 외부화 OpenAI 검토 ADR](./48_웹_fetch_외부화_OpenAI_검토_ADR.md) | **OpenAI web search 전면 대체 검토** · O2 adapter 로드맵 |
 
 ---
 
@@ -304,6 +305,7 @@ Teamver embed 1차는 **managed BYOK(API) 고정**이라 CLI 패스와 무관하
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-27 | [48 ADR](./48_웹_fetch_외부화_OpenAI_검토_ADR.md) 링크 — OpenAI web search 전면 대체 vs adapter 로드맵 SSOT |
 | 2026-07-27 | URL-only sparse brief 빠른 질문을 UI/채팅 언어 기준으로 로컬라이즈하도록 프롬프트·테스트 보강 |
 | 2026-06-22 | 초안 — embed URL 참조 FAQ, Main BE web search 대비, minimax-byok `web_fetch` 정리 |
 | 2026-06-19 | loop 184 — §5 코드 상태 ✅ 갱신, staging anthropic vs tool loop 주의 |
