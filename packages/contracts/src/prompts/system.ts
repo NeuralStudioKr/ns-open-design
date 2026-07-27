@@ -232,10 +232,11 @@ function renderTeamverVisualSignatureBlock({
     fonts.length > 0 ? `font cues: ${fonts.join(' | ')}` : '',
     classes.length > 0 ? `class/style cues: ${classes.join(', ')}` : '',
     layoutHints.length > 0 ? `layout cues: ${layoutHints.join(', ')}` : '',
-    'Mandatory: slides must visibly match this template palette, typography, density, accents, and composition rhythm.',
-    'Template beats compact samples; never fall back to sample navy/white.',
-    'Implement with inline styles or one short body `<style>` after slide 1. No `<head>`-first skeleton.',
-    'Do not copy the full template skeleton or emit long CSS/head/script blocks.',
+    'Must match template palette, type, density, accents, rhythm.',
+    'Style only; if brief lacks audience/purpose/tone/count/topics and discovery not skipped, ask quick brief first.',
+    'Template beats samples; never fall back to navy/white.',
+    'Use inline styles or one short body `<style>` after slide 1. No `<head>` first.',
+    'Do not copy full skeleton or emit long CSS/head/script.',
   ].filter(Boolean);
   return lines.join('\n');
 }

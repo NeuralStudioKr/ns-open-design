@@ -437,16 +437,43 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('font cues: "Pretendard", sans-serif');
       expect(prompt).toContain('class/style cues: slide, capsule, hero');
       expect(prompt).toContain('layout cues: display:grid, grid-template-columns, border-radius, letter-spacing');
-      expect(prompt).toContain('Mandatory: slides must visibly match');
-      expect(prompt).toContain('Template beats compact samples');
-      expect(prompt).toContain('Implement with inline styles');
-      expect(prompt).toContain('Do not copy the full template skeleton');
+      expect(prompt).toContain('Must match template palette');
+      expect(prompt).toContain('Template beats samples');
+      expect(prompt).toContain('Use inline styles');
+      expect(prompt).toContain('Do not copy full skeleton');
       expect(prompt.indexOf('Selected template visual signature — Html Ppt Zhangzara Capsule')).toBeLessThan(
         prompt.indexOf('Slide deck — API compact contract'),
       );
       expect(prompt).not.toContain('Do not paste this exact headline');
       // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
       expect(prompt.length).toBeLessThan(19_000);
+    });
+
+    it('keeps quick brief available when a selected template supplies style but not content brief', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck' },
+        template: {
+          id: 'zhangzara-capsule',
+          name: 'Html Ppt Zhangzara Capsule',
+          description: 'Warm paper editorial deck.',
+          createdAt: 1,
+          files: [
+            {
+              name: 'example.html',
+              content: '<section class="slide capsule"><h1>Template title</h1></section>',
+            },
+          ],
+        },
+      });
+
+      expect(prompt).toContain('Selected template visual signature — Html Ppt Zhangzara Capsule');
+      expect(prompt).toContain('Style only');
+      expect(prompt).toContain('ask quick brief first');
+      expect(prompt).toContain('unified streaming rule');
+      expect(prompt).toContain('question-form id="discovery"');
+      expect(prompt).not.toContain('direct deck generation rule');
     });
 
     it('extracts mandatory visual cues from the selected design-template skill body', () => {
@@ -466,7 +493,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('font cues: "JetBrains Mono", monospace');
       expect(prompt).toContain('class/style cues: slide, terminal, scanline');
       expect(prompt).toContain('layout cues: display:grid, letter-spacing, text-transform');
-      expect(prompt).toContain('Mandatory: slides must visibly match');
+      expect(prompt).toContain('Must match template palette');
       expect(prompt).toContain('apply it with inline styles');
       expect(prompt).toContain('do not merely describe it');
       expect(prompt).toContain('Template is the visual contract');
