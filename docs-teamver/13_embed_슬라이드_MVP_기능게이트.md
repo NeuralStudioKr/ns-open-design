@@ -207,7 +207,7 @@ bash deploy/teamver/scripts/run_track_a_unit_tests.sh --skip-web
 - [ ] **PreviewModal Share popover** — 모달의 share popover가 PDF/ZIP/HTML/image **export 만** 보여주고, X/Reddit/FB/LinkedIn/Instagram/Xiaohongshu + Copy link/Copy share text **부재**
 - [ ] **AssistantMessage** — "Share to Open Design" 제출 버튼 미노출
 - [ ] Settings — language / appearance / design templates
-- [ ] **Deck 프로젝트 채팅** — API mode 고정, 프롬프트 전송 후 슬라이드 artifact 생성/수정
+- [ ] **Deck 프로젝트 채팅** — API mode 고정, 프롬프트 전송 후 슬라이드 artifact 생성/수정. 2026-07-27 기준: API plain-stream 프롬프트는 첫 출력 지연을 막기 위해 상태 문장 + `<artifact type="deck">`를 즉시 열고 slide-by-slide로 채우도록 한다. “완성 전 artifact를 열지 말라”는 과거 incomplete-output 방어 문구는 첫 토큰 대기 4분+ 회귀를 만들 수 있어 제거한다.
 - [ ] **runtime-config** — `GET /api/v1/runtime-config` (cookie) → `configured=true` + model (E2E `S-8c`)
 
 **staging automated (EC2)**
@@ -224,6 +224,7 @@ bash scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-27 | API plain-stream deck 생성 첫 출력 지연 회귀 수정 — artifact를 완성까지 숨기지 않고 상태 문장 후 즉시 열어 slide-by-slide 스트리밍하도록 계약 정리 |
 | 2026-06-25 | loop 388 — §2.1 S-4b (`handlePluginLoopSubmit` 메타데이터 `kind` 정규화: `other` 포함 → `deck`) + §2.5b daemon 시스템 프롬프트 `<question-form>` 옵션 정제 표(Q-1~Q-5) 추가. 사용자가 "슬라이드 만들어줘"라고 요청해도 `<question-form>` 가 「단일 웹 프로토타입 / 랜딩」·「멀티스크린 앱」·「대시보드 / 툴 UI」·「에디토리얼 / 마케팅 페이지」·「iOS 앱」·「Android 앱」을 함께 제안하던 회귀를 차단. `TEAMVER_SLIDE_ONLY_SCOPE` 가 `DISCOVERY_AND_PHILOSOPHY` + `renderUiLocalePrompt` 보다 뒤에 합성되도록 precedence 보장 + 단위 테스트 추가 |
 | 2026-06-24 | loop 350–351 — §2.6 `hideUsefulTips` tip/starter surface 표 + §3 플래그 행. empty chat 전면 hide, InspectPanel embed 한글 |
 | 2026-06-22 | loop 175 (docket) — PDF / PPTX Drive 발행 **별도 트랙 보류 결정**. 사용자 리포트 ("프레젠테이션인데 PDF/PPTX 불가능은 말이 안 된다") 후 옵션 7종 (OD 내 Playwright / 메인 BE internal endpoint / ECS·Fargate worker / Lambda + chromium-layer / 외부 SaaS / 클라이언트 측 / WeasyPrint·wkhtmltopdf) + 응답 모델 (sync vs async) 비교를 [00 §loop 175](./00_구현_내역_누적.md) 에 archive. 현재 HTML-only 발행 + 로컬 PDF 다운로드 안내가 그대로 유효. 재검토 트리거: AI 어시스턴트가 Drive PDF 인덱싱 use-case 우선순위 / 사내 PDF 인프라 가용성 결정 / 사용자 리포트 누적 / PPTX 트랙 정식 착수 |

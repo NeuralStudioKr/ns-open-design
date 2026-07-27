@@ -147,8 +147,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="deck" identifier="...">...</artifact>` block');
       expect(prompt).toContain('optional: one tiny user-visible UI-locale status sentence tailored to the brief');
       expect(prompt).toContain('optional: one tiny brief-specific UI-locale status sentence');
+      expect(prompt).toContain('Stream promptly');
+      expect(prompt).toContain('Do not wait silently');
       expect(prompt).toContain('Artifact-only is OK for speed/tokens');
       expect(prompt).toContain('Never start a Teamver deck with `<artifact type="text/html"`');
+      expect(prompt).not.toContain('Never open `<artifact type="deck">` until the complete deck is ready');
       expect(prompt).toContain('Teamver API — deck framework emission override');
       expect(prompt).toContain('API compact contract');
       expect(prompt).toContain('<artifact type="deck" identifier="deck">');
