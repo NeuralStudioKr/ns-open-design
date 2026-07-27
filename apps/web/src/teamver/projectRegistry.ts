@@ -23,6 +23,7 @@ import {
   readTeamverProjectS3Prefix,
   rememberTeamverProjectS3Prefix,
 } from "./teamverProjectS3PrefixCache";
+import { isTeamverProjectDeletedTombstoned } from "./deletedProjectTombstones";
 
 /** SDK maps 403→ForbiddenError, 404→NotFoundError (not NetworkError). */
 function httpStatusOf(err: unknown): number | null {
@@ -231,7 +232,7 @@ export function buildTeamverProjectRegistryPayload(
   return {
     odProjectId: project.id,
     ...(title ? { title } : {}),
-    ...(options?.reactivateIfDeleted === false ? { reactivateIfDeleted: false } : {}),
+    reactivateIfDeleted: options?.reactivateIfDeleted === true,
   };
 }
 
@@ -266,6 +267,7 @@ export async function registerTeamverProjectIfNeeded(
 ): Promise<void> {
   if (!isTeamverEmbedMode()) return;
   if (isTeamverProjectCollectionRouteSlug(project.id)) return;
+  if (isTeamverProjectDeletedTombstoned(project.id)) return;
   if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) {
     throw new TeamverProjectRegistryError("teamver_project_registry_unavailable");
   }
@@ -282,7 +284,7 @@ export async function registerTeamverProjectIfNeeded(
   const userId = await resolveRegistryUserId();
 
   const payload = buildTeamverProjectRegistryPayload(project, {
-    reactivateIfDeleted: options?.reactivateIfDeleted,
+    reactivateIfDeleted: options?.reactivateIfDeleted === true,
   });
   const retryDelaysMs = options?.retryDelaysMs ?? REGISTRY_CREATE_RETRY_DELAYS_MS;
 
@@ -305,7 +307,7 @@ export async function registerTeamverProjectIfNeeded(
       return;
     } catch (err) {
       if (httpStatusOf(err) === 409) {
-        if (options?.reactivateIfDeleted === false && isRegistryProjectDeletedConflict(err)) {
+        if (options?.reactivateIfDeleted !== true && isRegistryProjectDeletedConflict(err)) {
           return;
         }
         invalidateRegisteredIdsCache();
@@ -556,6 +558,7 @@ export async function filterProjectsByTeamverRegistryIfNeeded<T extends Pick<Pro
   }
   return projects
     .filter((project) => registeredIds.has(project.id))
+    .filter((project) => !isTeamverProjectDeletedTombstoned(project.id))
     .map((project) => {
       const title = titlesById.get(project.id);
       if (!title || !("name" in project)) return project;

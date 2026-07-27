@@ -74,6 +74,7 @@ import {
 import {
   clearTeamverProjectDeletedTombstone,
   markTeamverProjectDeletedTombstone,
+  mergeDeletedProjectIdSets,
   readTeamverDeletedProjectIds,
 } from './teamver/deletedProjectTombstones';
 import { resolveEmbedSlideDesignSystemId } from './teamver/embedSlideDesignSystem';
@@ -755,7 +756,7 @@ function AppInner() {
     const pendingLocalProjectIds = pendingLocalProjectIdsRef.current;
     const locallyDeletedProjectIds = locallyDeletedProjectIdsRef.current;
     for (const project of list) pendingLocalProjectIds.delete(project.id);
-    const activeDeletedProjectIds = new Set(locallyDeletedProjectIds.keys());
+    const activeDeletedProjectIds = mergeDeletedProjectIdSets(locallyDeletedProjectIds);
     const visibleList =
       activeDeletedProjectIds.size > 0
         ? list.filter((project) => !activeDeletedProjectIds.has(project.id))
@@ -774,9 +775,10 @@ function AppInner() {
     const locallyDeletedProjectIds = locallyDeletedProjectIdsRef.current;
     const fetchedIds = new Set(list.map((project) => project.id));
     if (request.generation < latestAppliedProjectListGenerationRef.current) {
+      const activeDeletedProjectIdsStale = mergeDeletedProjectIdSets(locallyDeletedProjectIds);
       const visibleList =
-        locallyDeletedProjectIds.size > 0
-          ? list.filter((project) => !locallyDeletedProjectIds.has(project.id))
+        activeDeletedProjectIdsStale.size > 0
+          ? list.filter((project) => !activeDeletedProjectIdsStale.has(project.id))
           : list;
       if (visibleList.length === 0) return false;
       const hydratableProjects = visibleList.filter(
@@ -820,7 +822,7 @@ function AppInner() {
         locallyDeletedProjectIds.delete(id);
       }
     }
-    const activeDeletedProjectIds = new Set(locallyDeletedProjectIds.keys());
+    const activeDeletedProjectIds = mergeDeletedProjectIdSets(locallyDeletedProjectIds);
     const visibleList =
       activeDeletedProjectIds.size > 0
         ? list.filter((project) => !activeDeletedProjectIds.has(project.id))
@@ -3142,7 +3144,7 @@ function AppInner() {
     }
     if (!isTeamverEmbedMode()) return;
     try {
-      await registerTeamverProjectIfNeeded(updated);
+      await registerTeamverProjectIfNeeded(updated, { reactivateIfDeleted: false });
     } catch (err) {
       console.warn('[teamver] registry sync after project rename failed', err);
     }

@@ -16,6 +16,7 @@ vi.mock("../src/teamver/projectRegistry", () => ({
 import {
   clearTeamverDeletedProjectTombstonesForTests,
   markTeamverProjectDeletedTombstone,
+  mergeDeletedProjectIdSets,
   readTeamverDeletedProjectIds,
 } from "../src/teamver/deletedProjectTombstones";
 import { listEmbedProjectsFromRegistry } from "../src/teamver/embedRegistryProjectList";
@@ -32,6 +33,15 @@ describe("Teamver deleted project tombstones", () => {
     markTeamverProjectDeletedTombstone("p-deleted");
 
     expect(readTeamverDeletedProjectIds()).toEqual(new Set(["p-deleted"]));
+  });
+
+  it("merges session tombstones with in-memory delete markers", () => {
+    markTeamverProjectDeletedTombstone("p-session");
+    const memory = new Map<string, number>([["p-memory", 1]]);
+
+    expect(mergeDeletedProjectIdSets(memory)).toEqual(
+      new Set(["p-session", "p-memory"]),
+    );
   });
 
   it("filters tombstoned projects from embed registry lists after refresh", async () => {

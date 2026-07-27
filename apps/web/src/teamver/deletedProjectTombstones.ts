@@ -62,6 +62,16 @@ export function isTeamverProjectDeletedTombstoned(projectId: string): boolean {
   return Boolean(id && readTombstones()[id] !== undefined);
 }
 
+/** Session tombstones plus in-memory delete markers (App list reconcile). */
+export function mergeDeletedProjectIdSets(
+  locallyDeleted?: ReadonlyMap<string, unknown>,
+): Set<string> {
+  const out = readTeamverDeletedProjectIds();
+  if (!locallyDeleted) return out;
+  for (const id of locallyDeleted.keys()) out.add(id);
+  return out;
+}
+
 /** @internal vitest */
 export function clearTeamverDeletedProjectTombstonesForTests(): void {
   if (typeof sessionStorage === "undefined") return;

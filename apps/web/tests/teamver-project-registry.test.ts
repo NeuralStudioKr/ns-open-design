@@ -122,6 +122,7 @@ describe('Teamver project registry payload', () => {
     ).toEqual({
       odProjectId: 'od-1',
       title: 'Landing page',
+      reactivateIfDeleted: false,
     });
   });
 
@@ -133,6 +134,7 @@ describe('Teamver project registry payload', () => {
       }),
     ).toEqual({
       odProjectId: 'od-2',
+      reactivateIfDeleted: false,
     });
   });
 });
@@ -305,7 +307,7 @@ describe('Teamver project registry register', () => {
 
     expect(post).toHaveBeenCalledWith(
       '/projects',
-      { odProjectId: 'p1', title: 'Demo' },
+      { odProjectId: 'p1', title: 'Demo', reactivateIfDeleted: false },
       expect.objectContaining({ workspaceId: 'ws-boot' }),
     );
     expect(readTeamverProjectS3Prefix('ws-boot', 'p1')).toBe(
@@ -350,7 +352,7 @@ describe('Teamver project registry register', () => {
     expect(post).toHaveBeenCalledTimes(2);
     expect(post).toHaveBeenLastCalledWith(
       '/projects',
-      { odProjectId: 'p1', title: 'Demo' },
+      { odProjectId: 'p1', title: 'Demo', reactivateIfDeleted: false },
       expect.objectContaining({ workspaceId: 'ws1' }),
     );
   });

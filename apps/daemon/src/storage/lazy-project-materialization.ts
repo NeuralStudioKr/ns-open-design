@@ -205,6 +205,17 @@ export function createProjectStorageAccessHooks(
   const storage: MaterializingProjectStorage = projectStorage;
   const lastSyncAt = new Map<string, number>();
   const inflight = new Map<string, Promise<void>>();
+  const persistInflight = new Map<string, Promise<void>>();
+
+  async function awaitPendingPersist(projectId: string): Promise<void> {
+    const pending = persistInflight.get(projectId);
+    if (!pending) return;
+    try {
+      await pending;
+    } catch {
+      // A failed background sync-up must not block later sync-down self-heal.
+    }
+  }
 
   async function resolveRemote(req: Request, projectId: string) {
     const identity = readTeamverIdentityFromRequest(req);
@@ -280,6 +291,8 @@ export function createProjectStorageAccessHooks(
       );
       return;
     }
+
+    await awaitPendingPersist(trimmedId);
 
     const ttl = lazySyncTtlMs();
     const now = Date.now();
@@ -399,6 +412,12 @@ export function createProjectStorageAccessHooks(
       return;
     }
 
+    const priorPersist = persistInflight.get(trimmedId);
+    if (priorPersist) {
+      await priorPersist.catch(() => {});
+    }
+
+    const task = (async (): Promise<void> => {
     const runPersist = async (): Promise<boolean> => {
       try {
         if (await maybeSyncBootOrphan(req, trimmedId)) {
@@ -498,6 +517,16 @@ export function createProjectStorageAccessHooks(
       }
     }
     if (options?.strict) throw lastErr;
+    })();
+
+    persistInflight.set(trimmedId, task);
+    try {
+      await task;
+    } finally {
+      if (persistInflight.get(trimmedId) === task) {
+        persistInflight.delete(trimmedId);
+      }
+    }
   }
 
   async function onProjectRemoved(req: Request, projectId: string): Promise<void> {
@@ -505,6 +534,7 @@ export function createProjectStorageAccessHooks(
     if (!trimmedId) return;
     lastSyncAt.delete(trimmedId);
     inflight.delete(trimmedId);
+    persistInflight.delete(trimmedId);
     // Sticky remote cache must drop deleted projects so the idle sweep does
     // not later attempt sync-up against a purged S3 prefix (and so the cache
     // does not leak entries forever in long-running daemons).
