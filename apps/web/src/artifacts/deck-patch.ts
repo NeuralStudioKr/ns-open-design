@@ -111,6 +111,11 @@ export function parseDeckPatch(body: string): ParseDeckPatchResult | ParseDeckPa
 export interface ApplyDeckPatchOptions {
   currentHtml: string;
   patch: DeckPatch;
+  /**
+   * Optional safety rail for comment-driven edits. When present, every op must
+   * be a same-slide replacement for one of these indexes.
+   */
+  allowedSlideIndexes?: readonly number[];
 }
 
 export interface ApplyDeckPatchSuccess {
@@ -120,6 +125,16 @@ export interface ApplyDeckPatchSuccess {
 }
 
 export interface ApplyDeckPatchFailure {
+  ok: false;
+  reason: string;
+}
+
+export interface DeckSlideDiffSuccess {
+  ok: true;
+  changedSlideIndexes: number[];
+}
+
+export interface DeckSlideDiffFailure {
   ok: false;
   reason: string;
 }
@@ -152,10 +167,25 @@ export function applyDeckPatch(options: ApplyDeckPatchOptions): ApplyDeckPatchSu
     start: slide.start,
     end: slide.end,
   }));
+  const allowedSlideIndexes = normalizeAllowedSlideIndexes(options.allowedSlideIndexes);
   let appliedOps = 0;
   for (const op of options.patch.ops) {
     if (!Number.isInteger(op.slideIndex) || op.slideIndex < 0) {
       return { ok: false, reason: `deck-patch op has non-integer slideIndex: ${op.slideIndex}` };
+    }
+    if (allowedSlideIndexes) {
+      if (!allowedSlideIndexes.has(op.slideIndex)) {
+        return {
+          ok: false,
+          reason: `deck-patch targets slideIndex ${op.slideIndex} outside attached comment scope`,
+        };
+      }
+      if (op.op !== 'replace') {
+        return {
+          ok: false,
+          reason: `deck-patch ${op.op} is not allowed for scoped comment edits`,
+        };
+      }
     }
     if (op.op === 'append' || op.op === 'prepend') {
       if (op.slideIndex > workingSlides.length) {
@@ -199,6 +229,43 @@ export function applyDeckPatch(options: ApplyDeckPatchOptions): ApplyDeckPatchSu
     rewrittenBody +
     options.currentHtml.slice(bodyRange.end);
   return { ok: true, html: mergedHtml, appliedOps };
+}
+
+function normalizeAllowedSlideIndexes(indexes: readonly number[] | undefined): Set<number> | null {
+  if (!indexes) return null;
+  const normalized = indexes
+    .filter((index) => Number.isInteger(index) && index >= 0)
+    .map((index) => Math.floor(index));
+  return normalized.length > 0 ? new Set(normalized) : new Set();
+}
+
+export function diffDeckSlideIndexes(
+  beforeHtml: string,
+  afterHtml: string,
+): DeckSlideDiffSuccess | DeckSlideDiffFailure {
+  const beforeBody = findBodyContentRange(beforeHtml);
+  const afterBody = findBodyContentRange(afterHtml);
+  if (!beforeBody || !afterBody) {
+    return { ok: false, reason: 'deck diff requires <body>…</body> in both documents' };
+  }
+  const beforeSlides = extractTopLevelSlideSections(beforeHtml.slice(beforeBody.start, beforeBody.end));
+  const afterSlides = extractTopLevelSlideSections(afterHtml.slice(afterBody.start, afterBody.end));
+  if (beforeSlides.length === 0 || afterSlides.length === 0) {
+    return { ok: false, reason: 'deck diff requires slide sections in both documents' };
+  }
+  if (beforeSlides.length !== afterSlides.length) {
+    return {
+      ok: false,
+      reason: `deck diff slide count changed from ${beforeSlides.length} to ${afterSlides.length}`,
+    };
+  }
+  const changedSlideIndexes: number[] = [];
+  for (let index = 0; index < beforeSlides.length; index += 1) {
+    if (beforeSlides[index]?.outerHtml !== afterSlides[index]?.outerHtml) {
+      changedSlideIndexes.push(index);
+    }
+  }
+  return { ok: true, changedSlideIndexes };
 }
 
 interface TopLevelSlideSection {

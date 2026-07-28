@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   applyDeckPatch,
+  diffDeckSlideIndexes,
   isDeckPatchArtifactType,
   parseDeckPatch,
 } from '../../src/artifacts/deck-patch';
@@ -183,6 +184,58 @@ describe('applyDeckPatch', () => {
     }
   });
 
+  it('rejects scoped comment patches that target a non-attached slide', () => {
+    const parsed = parseDeckPatch(
+      '<section class="slide" data-slide-index="2"><h2>Wrong slide</h2></section>',
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const merged = applyDeckPatch({
+      currentHtml: CURRENT_DECK,
+      patch: parsed.patch,
+      allowedSlideIndexes: [1],
+    });
+    expect(merged.ok).toBe(false);
+    if (!merged.ok) {
+      expect(merged.reason).toMatch(/outside attached comment scope/);
+    }
+  });
+
+  it('allows scoped comment patches to replace only the attached slide', () => {
+    const parsed = parseDeckPatch(
+      '<section class="slide" data-slide-index="1"><h2>Numbers scoped</h2></section>',
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const merged = applyDeckPatch({
+      currentHtml: CURRENT_DECK,
+      patch: parsed.patch,
+      allowedSlideIndexes: [1],
+    });
+    expect(merged.ok).toBe(true);
+    if (!merged.ok) return;
+    expect(merged.html).toContain('<h2>Numbers scoped</h2>');
+    expect(merged.html).toContain('<h1>Intro</h1>');
+    expect(merged.html).toContain('<h2>Wrap</h2>');
+  });
+
+  it('rejects structural ops for scoped comment patches', () => {
+    const parsed = parseDeckPatch(
+      '<section class="slide" data-slide-index="1" data-op="append"><h2>Extra</h2></section>',
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const merged = applyDeckPatch({
+      currentHtml: CURRENT_DECK,
+      patch: parsed.patch,
+      allowedSlideIndexes: [1],
+    });
+    expect(merged.ok).toBe(false);
+    if (!merged.ok) {
+      expect(merged.reason).toMatch(/not allowed for scoped comment edits/);
+    }
+  });
+
   it('fails when the current deck has no <body>…</body> to patch', () => {
     const parsed = parseDeckPatch(
       '<section class="slide" data-slide-index="0"></section>',
@@ -220,5 +273,27 @@ describe('applyDeckPatch', () => {
     expect(merged.html).toContain('<section aria-label="inner"><p>nested</p></section>');
     expect(merged.html).toContain('<h1>B v2</h1>');
     expect(merged.html).not.toContain('<h1>B</h1>');
+  });
+});
+
+describe('diffDeckSlideIndexes', () => {
+  it('reports only the changed slide indexes between two full deck documents', () => {
+    const next = CURRENT_DECK.replace('<h2>Numbers</h2>', '<h2>Numbers v2</h2>');
+    const diff = diffDeckSlideIndexes(CURRENT_DECK, next);
+    expect(diff.ok).toBe(true);
+    if (!diff.ok) return;
+    expect(diff.changedSlideIndexes).toEqual([1]);
+  });
+
+  it('fails when a full deck fallback changes the slide count', () => {
+    const next = CURRENT_DECK.replace(
+      '<script>/* deck runtime */</script>',
+      '<section class="slide" data-slide-index="3"><h2>Extra</h2></section>\n<script>/* deck runtime */</script>',
+    );
+    const diff = diffDeckSlideIndexes(CURRENT_DECK, next);
+    expect(diff.ok).toBe(false);
+    if (!diff.ok) {
+      expect(diff.reason).toMatch(/slide count changed/);
+    }
   });
 });

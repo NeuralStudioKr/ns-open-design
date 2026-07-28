@@ -18,6 +18,7 @@ import { resolveHtmlPointerArtifactTarget } from '../artifacts/pointer';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
 import {
   applyDeckPatch,
+  diffDeckSlideIndexes,
   isDeckPatchArtifactType,
   parseDeckPatch,
 } from '../artifacts/deck-patch';
@@ -876,6 +877,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   projectId: string;
   fileName: string;
   patchBody: string;
+  allowedSlideIndexes?: readonly number[];
 }): Promise<string | null> {
   const parsed = parseDeckPatch(input.patchBody);
   if (!parsed.ok) {
@@ -892,12 +894,66 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     });
     return null;
   }
-  const merged = applyDeckPatch({ currentHtml, patch: parsed.patch });
+  const merged = applyDeckPatch({
+    currentHtml,
+    patch: parsed.patch,
+    allowedSlideIndexes: input.allowedSlideIndexes,
+  });
   if (!merged.ok) {
     console.warn('[deck-patch] merge failed', { fileName: input.fileName, reason: merged.reason });
     return null;
   }
   return merged.html;
+}
+
+function scopedCommentSlideIndexes(
+  commentAttachments: readonly ChatCommentAttachment[],
+): number[] | undefined {
+  if (commentAttachments.length === 0) return undefined;
+  const indexes = commentAttachments
+    .map((attachment) => attachment.slideIndex)
+    .filter((slideIndex): slideIndex is number =>
+      typeof slideIndex === 'number' && Number.isInteger(slideIndex) && slideIndex >= 0,
+    );
+  return [...new Set(indexes)];
+}
+
+async function fullDeckEditStaysInsideCommentScope(input: {
+  projectId: string;
+  fileName: string;
+  nextHtml: string;
+  allowedSlideIndexes: readonly number[];
+}): Promise<boolean> {
+  if (input.allowedSlideIndexes.length === 0) return false;
+  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
+    cache: 'no-store',
+  });
+  if (!currentHtml) {
+    console.warn('[deck-patch] scoped full-deck guard could not read current deck', {
+      projectId: input.projectId,
+      fileName: input.fileName,
+    });
+    return false;
+  }
+  const diff = diffDeckSlideIndexes(currentHtml, input.nextHtml);
+  if (!diff.ok) {
+    console.warn('[deck-patch] scoped full-deck guard could not diff deck', {
+      fileName: input.fileName,
+      reason: diff.reason,
+    });
+    return false;
+  }
+  const allowed = new Set(input.allowedSlideIndexes);
+  const outsideScope = diff.changedSlideIndexes.filter((slideIndex) => !allowed.has(slideIndex));
+  if (outsideScope.length > 0) {
+    console.warn('[deck-patch] scoped full-deck guard rejected outside-scope changes', {
+      fileName: input.fileName,
+      changedSlideIndexes: diff.changedSlideIndexes,
+      allowedSlideIndexes: input.allowedSlideIndexes,
+    });
+    return false;
+  }
+  return true;
 }
 
 function historyWithWorkspaceContext(
@@ -1664,6 +1720,8 @@ export function ProjectView({
   const htmlAutoOpenFinalizeInProgressRef = useRef<Set<string>>(new Set());
   /** Preview-comment edits must update the annotated deck file, not mint siblings. */
   const runPersistTargetFileRef = useRef<string | null>(null);
+  /** Deck-patch from comment edits may only touch slides named by these attachments. */
+  const runCommentAttachmentsRef = useRef<ChatCommentAttachment[]>([]);
   const htmlAutoOpenTimerRef = useRef<number | null>(null);
   /**
    * Gates the message-load auto-open recovery to the first load per
@@ -1709,6 +1767,8 @@ export function ProjectView({
   useEffect(() => {
     htmlAutoOpenClaimedRef.current.clear();
     htmlAutoOpenGenerationRef.current.clear();
+    runCommentAttachmentsRef.current = [];
+    runPersistTargetFileRef.current = null;
     conversationRecoveryAttemptedRef.current.clear();
     conversationAutoContinueCountRef.current.clear();
     if (htmlAutoOpenTimerRef.current !== null) {
@@ -2810,6 +2870,7 @@ export function ProjectView({
         return { kind: 'skipped-discovery-turn', fileName: artifactBaseNameForPersist(art) };
       }
       let effectiveArt = art;
+      const scopedAllowedSlideIndexes = scopedCommentSlideIndexes(runCommentAttachmentsRef.current);
       // `deck-patch` short-circuits the full-deck emit path. Comment-driven
       // edits carry `<artifact type="deck-patch">` bodies whose sections list
       // ONLY the changed `<section class="slide">` blocks; we merge them into
@@ -2831,6 +2892,7 @@ export function ProjectView({
           projectId: project.id,
           fileName: targetFileName,
           patchBody: art.html,
+          allowedSlideIndexes: scopedAllowedSlideIndexes,
         });
         if (!mergedHtml) {
           // Patch either failed to parse, targeted a slide index outside the
@@ -2843,6 +2905,26 @@ export function ProjectView({
           };
         }
         effectiveArt = { ...art, html: mergedHtml, artifactType: 'deck' };
+      } else if (scopedAllowedSlideIndexes && effectiveArt.html) {
+        const currentProjectFilesForPatch = projectFilesSnapshot ?? projectFilesRef.current;
+        const targetFileName = resolveArtifactPersistFileName(
+          effectiveArt,
+          currentProjectFilesForPatch,
+          openTabsStateRef.current.active,
+          { preferredFileName: runPersistTargetFileRef.current },
+        );
+        const insideScope = await fullDeckEditStaysInsideCommentScope({
+          projectId: project.id,
+          fileName: targetFileName,
+          nextHtml: effectiveArt.html,
+          allowedSlideIndexes: scopedAllowedSlideIndexes,
+        });
+        if (!insideScope) {
+          return {
+            kind: 'skipped-incomplete',
+            fileName: targetFileName,
+          };
+        }
       }
       const recoveredHtml = recoverHtmlArtifactFromPrecedingDocument({
         artifactHtml: effectiveArt.html,
@@ -5583,6 +5665,7 @@ export function ProjectView({
             commentAttachments: commentAttachments.length > 0 ? commentAttachments : undefined,
           };
       const runCommentAttachments = userMsg.commentAttachments ?? [];
+      runCommentAttachmentsRef.current = runCommentAttachments;
       runPersistTargetFileRef.current = resolveCommentEditPersistTargetFileName(
         runCommentAttachments,
       );
@@ -6135,6 +6218,7 @@ export function ProjectView({
                 return;
               }
               runPersistTargetFileRef.current = null;
+              runCommentAttachmentsRef.current = [];
               clearStreamingMarker(runConversationId);
               if (apiBackgroundRecoveryRef.current) {
                 apiBackgroundRecoveryRef.current = false;
@@ -6494,6 +6578,7 @@ export function ProjectView({
             );
             if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
             runPersistTargetFileRef.current = null;
+            runCommentAttachmentsRef.current = [];
             void refreshProjectFiles();
             onProjectsRefresh();
             releaseOwnedDaemonRun();
@@ -6561,6 +6646,7 @@ export function ProjectView({
           );
           if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
           runPersistTargetFileRef.current = null;
+          runCommentAttachmentsRef.current = [];
           void saveMessage(project.id, runConversationId, finalizedAssistant, {
             telemetryFinalized: true,
           });
