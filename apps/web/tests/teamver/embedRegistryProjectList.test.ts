@@ -1,14 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
 
-import {
-  listEmbedProjectsFromRegistry,
-  listEmbedProjectsPageFromRegistry,
-  mapRegistryRowToProject,
-  mergeDaemonFieldsOntoRegistryProjects,
-  resolveProjectDisplayName,
-} from "../../src/teamver/embedRegistryProjectList";
-import * as projectRegistry from "../../src/teamver/projectRegistry";
-import type { TeamverRegisteredProject } from "../../src/teamver/projectRegistry";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/teamver/projectRegistry", () => ({
   listTeamverRegistryProjects: vi.fn(),
@@ -20,6 +12,20 @@ vi.mock("../../src/teamver/projectRegistry", () => ({
     }
   },
 }));
+
+vi.mock("../../src/teamver/activeTeamverWorkspace", () => ({
+  resolveActiveTeamverWorkspaceId: vi.fn(async () => "ws-1"),
+}));
+
+import {
+  listEmbedProjectsFromRegistry,
+  listEmbedProjectsPageFromRegistry,
+  mapRegistryRowToProject,
+  mergeDaemonFieldsOntoRegistryProjects,
+  resolveProjectDisplayName,
+} from "../../src/teamver/embedRegistryProjectList";
+import * as projectRegistry from "../../src/teamver/projectRegistry";
+import type { TeamverRegisteredProject } from "../../src/teamver/projectRegistry";
 
 describe("embedRegistryProjectList", () => {
   afterEach(() => {
@@ -282,5 +288,15 @@ describe("embedRegistryProjectList", () => {
       status: { value: "succeeded" },
       updatedAt: 25,
     });
+  });
+
+  it("excludes registry rows with deleted lifecycle status", async () => {
+    vi.mocked(projectRegistry.listTeamverRegistryProjects).mockResolvedValue([
+      { odProjectId: "p-live", title: "Live", updatedAt: 40 },
+      { odProjectId: "p-deleted", title: "Deleted", updatedAt: 50, status: "deleted" },
+    ] as TeamverRegisteredProject[]);
+
+    const projects = await listEmbedProjectsFromRegistry();
+    expect(projects.map((p) => p.id)).toEqual(["p-live"]);
   });
 });
