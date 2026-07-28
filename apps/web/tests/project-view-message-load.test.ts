@@ -430,9 +430,17 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("commentAttachments: runCommentAttachmentsRef.current");
     expect(source).toContain("instructionText: runVisiblePromptRef.current");
     expect(source).toContain("instructionText: [attachment.comment, input.instructionText].filter(Boolean).join");
-    expect(source).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(commentAttachments)");
+    expect(source).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)");
     expect(source).toContain("commentAttachmentCount: scopedCommentAttachments.length");
     expect(source).toContain("commentAttachments: scopedCommentAttachments");
+  });
+
+  it("hydrates missing deck comment slide indexes before scoped edit prompts", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("hydrateDeckCommentSlideIndexes");
+    expect(source).toContain("extractTopLevelSlideSections(html)");
+    expect(source).toContain("inferSlideIndexFromDeckHtml(html, attachment)");
+    expect(source).toContain(".filter((attachment) => !slideOnlyMvp || hasValidDeckSlideIndex(attachment))");
   });
 
   it("waits for embed boot and retries stuck message loads on re-entry", () => {

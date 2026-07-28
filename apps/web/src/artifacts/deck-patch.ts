@@ -268,7 +268,7 @@ export function diffDeckSlideIndexes(
   return { ok: true, changedSlideIndexes };
 }
 
-interface TopLevelSlideSection {
+export interface TopLevelSlideSection {
   openTag: string;
   outerHtml: string;
   /** Byte offset of the opening `<section` in the source string. */
@@ -286,7 +286,7 @@ interface TopLevelSlideSection {
  * (vitest runs `environment: 'node'`) and never mutates whitespace/comments.
  * Matches are case-insensitive and tolerate any attribute ordering.
  */
-function extractTopLevelSlideSections(html: string): TopLevelSlideSection[] {
+export function extractTopLevelSlideSections(html: string): TopLevelSlideSection[] {
   const results: TopLevelSlideSection[] = [];
   const openRe = /<section\b([^>]*)>/gi;
   const closeRe = /<\/section\s*>/gi;

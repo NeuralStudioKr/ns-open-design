@@ -56,6 +56,16 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).not.toContain("<section");
   });
 
+  it("strips assistant replies that expose missing internal slideIndex", () => {
+    const input = [
+      "댓글에 `slideIndex` 정보가 없어서 어느 슬라이드인지 확인이 안 돼요. 슬라이드 번호를 알려주시면 바로 패치할게요!",
+      "",
+      "예: \"1번 슬라이드\", \"3번 슬라이드\" 등",
+    ].join("\n");
+
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("");
+  });
+
   describe("system-reminder preservation for prompt-injection chip", () => {
     // Regression: `<system-reminder>` is a rendering element (AssistantMessage
     // turns it into the "Possible prompt injection" chip), not internal

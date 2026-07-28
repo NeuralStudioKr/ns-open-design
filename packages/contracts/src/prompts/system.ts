@@ -1277,7 +1277,7 @@ If the turn carries \`<attached-preview-comments>\`, prefer a partial patch over
 - One \`<section>\` per touched slide, no unchanged slides, no \`<head>\`/\`<html>\`/\`<body>\`.
 - \`data-op\` defaults to \`replace\`; \`remove\` / \`append\` / \`prepend\` also allowed.
 - Emit ONE artifact: patch OR full deck, never both.
-- Fallback to the full \`<artifact type="deck">\` when the change is deck-wide, reorders, or the comment has no \`slideIndex:\`.`;
+- Use full \`<artifact type="deck">\` for deck-wide/unclear scope. Never ask users for internal \`slideIndex\`.`;
 
 const TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE = `# Teamver slide-only API — direct deck generation rule (READ LAST — beats every rule above)
 

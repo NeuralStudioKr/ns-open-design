@@ -19,6 +19,7 @@ import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifact
 import {
   applyDeckPatch,
   diffDeckSlideIndexes,
+  extractTopLevelSlideSections,
   isDeckPatchArtifactType,
   parseDeckPatch,
 } from '../artifacts/deck-patch';
@@ -903,6 +904,87 @@ function resolvePrimaryDeckFilePath(
   const deck = resolvePrimaryDeckFile(files, entryFile);
   if (!deck) return null;
   return deck.path?.trim() || deck.name;
+}
+
+function hasValidDeckSlideIndex(attachment: ChatCommentAttachment): boolean {
+  return (
+    typeof attachment.slideIndex === 'number'
+    && Number.isInteger(attachment.slideIndex)
+    && attachment.slideIndex >= 0
+  );
+}
+
+function normalizeForSlideLookup(value: string | null | undefined): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function inferSlideIndexFromDeckHtml(
+  html: string,
+  attachment: ChatCommentAttachment,
+): number | null {
+  const sections = extractTopLevelSlideSections(html);
+  if (sections.length === 0) return null;
+  const elementId = normalizeForSlideLookup(attachment.elementId);
+  const selector = normalizeForSlideLookup(attachment.selector);
+  const currentText = normalizeForSlideLookup(attachment.currentText);
+  const htmlHint = normalizeForSlideLookup(attachment.htmlHint);
+  const candidates = sections.map((section, index) => ({
+    index,
+    text: normalizeForSlideLookup(section.outerHtml),
+  }));
+  const byNeedle = (needle: string): number | null => {
+    if (!needle) return null;
+    const matches = candidates.filter((candidate) => candidate.text.includes(needle));
+    return matches.length === 1 ? matches[0]!.index : null;
+  };
+  const byElementId =
+    byNeedle(`data-od-id="${elementId}"`)
+    ?? byNeedle(`data-od-id='${elementId}'`)
+    ?? byNeedle(`id="${elementId}"`)
+    ?? byNeedle(`id='${elementId}'`)
+    ?? byNeedle(elementId);
+  if (byElementId != null) return byElementId;
+  const selectorId = /\[data-od-id=(?:"([^"]+)"|'([^']+)')\]/.exec(selector);
+  const bySelectorId = selectorId
+    ? byNeedle(`data-od-id="${selectorId[1] ?? selectorId[2]}"`)
+      ?? byNeedle(`data-od-id='${selectorId[1] ?? selectorId[2]}'`)
+    : null;
+  if (bySelectorId != null) return bySelectorId;
+  return byNeedle(htmlHint) ?? byNeedle(currentText);
+}
+
+async function hydrateDeckCommentSlideIndexes(input: {
+  projectId: string;
+  attachments: readonly ChatCommentAttachment[];
+  projectFiles: readonly ProjectFile[];
+  entryFile?: string | null;
+}): Promise<ChatCommentAttachment[]> {
+  const primaryDeckPath = resolvePrimaryDeckFilePath(input.projectFiles, input.entryFile);
+  const htmlCache = new Map<string, string | null>();
+  const readDeckHtml = async (filePath: string): Promise<string | null> => {
+    const normalized = filePath.trim() || primaryDeckPath || '';
+    if (!normalized) return null;
+    if (htmlCache.has(normalized)) return htmlCache.get(normalized) ?? null;
+    const html = await fetchProjectFileText(input.projectId, normalized, { cache: 'no-store' });
+    htmlCache.set(normalized, html);
+    return html;
+  };
+  const out: ChatCommentAttachment[] = [];
+  for (const attachment of input.attachments) {
+    if (hasValidDeckSlideIndex(attachment)) {
+      out.push(attachment);
+      continue;
+    }
+    const filePath = String(attachment.filePath || primaryDeckPath || '').trim();
+    if (!filePath) {
+      out.push(attachment);
+      continue;
+    }
+    const html = await readDeckHtml(filePath);
+    const slideIndex = html ? inferSlideIndexFromDeckHtml(html, attachment) : null;
+    out.push(slideIndex == null ? attachment : { ...attachment, slideIndex });
+  }
+  return out;
 }
 
 const SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER = '[Deliverable instruction]';
@@ -6282,7 +6364,16 @@ export function ProjectView({
       const isAutoContinueSend =
         meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
         || isAutoContinueIncompleteOutputPrompt(prompt);
-      const scopedCommentAttachments = filterUsableCommentAttachments(commentAttachments);
+      const hydratedCommentAttachments = slideOnlyMvp && commentAttachments.length > 0
+        ? await hydrateDeckCommentSlideIndexes({
+          projectId: project.id,
+          attachments: commentAttachments,
+          projectFiles,
+          entryFile: project.metadata?.entryFile ?? null,
+        })
+        : commentAttachments;
+      const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)
+        .filter((attachment) => !slideOnlyMvp || hasValidDeckSlideIndex(attachment));
       let effectiveAttachments = mergeChatAttachments(
         attachments,
         chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, projectFiles, {

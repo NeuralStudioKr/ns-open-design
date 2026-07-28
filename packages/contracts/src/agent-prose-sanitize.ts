@@ -190,6 +190,8 @@ const ATTACHED_PREVIEW_COMMENTS_RE =
   /\n*<attached-preview-comments\b[^>]*>[\s\S]*?<\/attached-preview-comments>\s*/gi;
 const ATTACHED_PREVIEW_COMMENTS_EMPTY_FALLBACK_RE =
   /(?:^|\n)No comment location data provided\.\s*Apply the requested change to all slides\.\s*(?=\n|$)/gi;
+const COMMENT_SLIDE_INDEX_ASK_RE =
+  /(?:^|\n)댓글에\s*`?slideIndex`?\s*정보가\s*없어서[\s\S]*?(?:예:\s*["“][^"”]+["”][\s\S]*?(?=\n{2,}|$)|$)/gi;
 
 const CLOSED_ANTML_RE = /<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi;
 // Allow newlines inside attributes — agents sometimes break long antml tags
@@ -1224,7 +1226,8 @@ export function sanitizeAssistantProseForDisplay(
   const streaming = options.streaming ?? false;
   const withoutCommentProtocol = String(input || "")
     .replace(ATTACHED_PREVIEW_COMMENTS_RE, "\n")
-    .replace(ATTACHED_PREVIEW_COMMENTS_EMPTY_FALLBACK_RE, "\n");
+    .replace(ATTACHED_PREVIEW_COMMENTS_EMPTY_FALLBACK_RE, "\n")
+    .replace(COMMENT_SLIDE_INDEX_ASK_RE, "\n");
   const closed = sanitizeLeakedAgentProse(withoutCommentProtocol, {
     // Live HTML parser feeds onContentDelta from this sanitized stream — keep
     // closed artifacts until the turn settles (display strips via stripArtifact).
