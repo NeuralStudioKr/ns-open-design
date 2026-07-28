@@ -66,6 +66,11 @@ vi.mock('../../src/providers/byokProxyActive', () => ({
   shouldSkipByokProxyActivePoll: vi.fn(() => false),
 }));
 
+vi.mock('../../src/teamver/teamverEmbedBoot', () => ({
+  waitForTeamverEmbedBoot: vi.fn(() => Promise.resolve()),
+  isTeamverEmbedBootComplete: vi.fn(() => true),
+}));
+
 vi.mock('../../src/providers/registry', () => ({
   deletePreviewComment: vi.fn(),
   fetchPreviewComments: (...args: unknown[]) => fetchPreviewComments(...args),

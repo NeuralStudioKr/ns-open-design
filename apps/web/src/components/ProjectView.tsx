@@ -247,6 +247,7 @@ import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { waitForTeamverEmbedBoot } from '../teamver/teamverEmbedBoot';
 import { registerTeamverProjectIfNeeded } from '../teamver/projectRegistry';
 import {
   refreshDesignAuthCookie,
@@ -387,6 +388,8 @@ type ProjectChatSendMeta = ChatSendMeta & {
 const DAEMON_REATTACH_MISSING_RUN_GRACE_MS = 90_000;
 const DAEMON_REATTACH_MISSING_RUN_RETRY_MS = 2_000;
 const BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS = BYOK_PROXY_AUTH_BACKOFF_MS;
+/** Re-arm message load when conversation switch hangs (auth hang, aborted fetch). */
+const MESSAGE_LOAD_STUCK_RETRY_MS = 12_000;
 
 export function mergeSavedPreviewComment(current: PreviewComment[], saved: PreviewComment): PreviewComment[] {
   const existingIndex = current.findIndex((comment) => comment.id === saved.id);
@@ -887,6 +890,7 @@ type ScopedDeckPersistFailureCode =
   | 'full_deck_diff_failed'
   | 'full_deck_outside_slide_scope'
   | 'full_deck_outside_element_scope'
+  | 'full_deck_comment_target_unresolved'
   | 'comment_scope_missing_slide';
 
 type DeckPatchMergeResult =
@@ -992,8 +996,29 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       reason: `changed slides outside comment scope: ${outsideScope.join(', ')}`,
     };
   }
+  const hasElementScopedComment = input.commentAttachments.some((attachment) =>
+    scopedCommentElementIds(attachment).length > 0,
+  );
   const beforeMasked = maskScopedCommentTargets(currentHtml, input.commentAttachments);
   const afterMasked = maskScopedCommentTargets(input.nextHtml, input.commentAttachments);
+  if (hasElementScopedComment) {
+    const targetUnresolved = !beforeMasked.ok
+      || !afterMasked.ok
+      || beforeMasked.maskedCount === 0
+      || beforeMasked.maskedCount !== afterMasked.maskedCount;
+    if (targetUnresolved) {
+      console.warn('[deck-patch] scoped full-deck guard rejected unresolved comment target', {
+        fileName: input.fileName,
+        beforeMaskedCount: beforeMasked.ok ? beforeMasked.maskedCount : 0,
+        afterMaskedCount: afterMasked.ok ? afterMasked.maskedCount : 0,
+      });
+      return {
+        ok: false,
+        code: 'full_deck_comment_target_unresolved',
+        reason: 'comment target could not be resolved in the current and updated deck',
+      };
+    }
+  }
   if (
     beforeMasked.ok &&
     afterMasked.ok &&
@@ -1048,13 +1073,23 @@ function scopedCommentElementIds(attachment: ChatCommentAttachment): string[] {
   if (attachment.selectionKind === 'visual') return [];
   const ids = [
     attachment.elementId,
-    ...(attachment.podMembers ?? []).map((member) => member.elementId),
+    domSelectorCommentElementId(attachment.selector),
+    ...(attachment.podMembers ?? []).flatMap((member) => [
+      member.elementId,
+      domSelectorCommentElementId(member.selector),
+    ]),
   ];
   return [...new Set(
     ids
       .map((id) => String(id || '').trim())
       .filter((id) => id && !id.startsWith('pin-') && !id.startsWith('file-comment-')),
   )];
+}
+
+function domSelectorCommentElementId(selector: string | undefined): string {
+  const trimmed = String(selector || '').trim();
+  if (!trimmed.startsWith('body > ')) return '';
+  return `dom:${trimmed}`;
 }
 
 function historyWithWorkspaceContext(
@@ -1963,6 +1998,48 @@ export function ProjectView({
       && messagesConversationId !== activeConversationId
       && failedMessagesConversationId !== activeConversationId,
   );
+
+  // Auth blips or aborted fetches can leave the chat spinner up indefinitely
+  // without setting failedMessagesConversationId — re-arm load once per hang.
+  useEffect(() => {
+    if (!activeConversationId || !currentConversationLoading) return;
+    const conversationId = activeConversationId;
+    const timer = window.setTimeout(() => {
+      if (messagesConversationIdRef.current !== conversationId) {
+        if (!isDesignAuthRefreshDeclined()) {
+          setMessageLoadRetryNonce((nonce) => nonce + 1);
+        }
+      }
+    }, MESSAGE_LOAD_STUCK_RETRY_MS);
+    return () => window.clearTimeout(timer);
+  }, [activeConversationId, currentConversationLoading, messageLoadRetryNonce]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    let cancelled = false;
+    void waitForTeamverEmbedBoot().then(() => {
+      if (cancelled) return;
+      if (conversationLoadError) {
+        setConversationLoadRetryNonce((nonce) => nonce + 1);
+        return;
+      }
+      if (
+        activeConversationId
+        && failedMessagesConversationId === activeConversationId
+      ) {
+        setMessageLoadRetryNonce((nonce) => nonce + 1);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    project.id,
+    activeConversationId,
+    conversationLoadError,
+    failedMessagesConversationId,
+  ]);
+
   const currentConversationStreaming = streaming && streamingConversationId === activeConversationId;
   const currentConversationQueueDisabled = currentConversationLoading
     || failedMessagesConversationId === activeConversationId;
@@ -2173,6 +2250,9 @@ export function ProjectView({
     savedArtifactRef.current = null;
     pendingWritesRef.current.clear();
     const loadConversationsWithRetry = async () => {
+      if (isTeamverEmbedMode()) {
+        await waitForTeamverEmbedBoot();
+      }
       let lastError: unknown;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
@@ -2340,6 +2420,9 @@ export function ProjectView({
         }
       };
       const loadMessagesWithRetry = async () => {
+        if (isTeamverEmbedMode()) {
+          await waitForTeamverEmbedBoot();
+        }
         let lastError: unknown;
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
@@ -2588,6 +2671,7 @@ export function ProjectView({
         messagesConversationIdRef.current = null;
         setMessagesConversationId(null);
         setFailedMessagesConversationId(activeConversationId);
+        setMessagesInitialized(true);
       }
     })();
     return () => {
@@ -2890,6 +2974,9 @@ export function ProjectView({
   }, []);
 
   const refreshProjectFiles = useCallback(async (): Promise<ProjectFile[]> => {
+    if (isTeamverEmbedMode()) {
+      await waitForTeamverEmbedBoot();
+    }
     const next = await fetchProjectFiles(project.id);
     projectFilesRef.current = next;
     setProjectFiles(next);
@@ -5177,8 +5264,9 @@ export function ProjectView({
       // Soft/hard sticky / BYOK auth backoff: do not keep hitting proxy/active
       // + listMessages while C1 owns recovery.
       if (isDesignAuthRefreshDeclined() || shouldSkipByokProxyActivePoll()) {
-        // Pause until auth recovers — infinite auth-retry timers only burned
-        // CPU while C1 owned recovery. Session-changed / reattachNonce resume.
+        // Back off while C1 owns recovery, but keep the poll chain alive so
+        // re-entry after sticky does not strand in-flight BYOK turns.
+        scheduleNextPoll(BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS);
         return;
       }
       let activeStreams: Awaited<ReturnType<typeof listActiveByokProxyStreams>>;
@@ -5550,38 +5638,62 @@ export function ProjectView({
   // Re-entry / visibility: transient daemon 401 or soft-sticky can leave an
   // empty chat or failed conversation list until auth recovers. Retry loads
   // without waiting for manual conversation switches.
-  const retryStaleProjectConversationData = useCallback(() => {
-    if (isDesignAuthRefreshDeclined()) return;
-    if (conversationLoadError) {
-      setConversationLoadRetryNonce((nonce) => nonce + 1);
-    }
-    if (!activeConversationId) return;
-    if (failedMessagesConversationId === activeConversationId) {
-      setMessageLoadRetryNonce((nonce) => nonce + 1);
-    }
-  }, [
-    activeConversationId,
-    conversationLoadError,
-    failedMessagesConversationId,
-  ]);
+  const retryStaleProjectConversationData = useCallback(
+    (options?: { retryStuckMessageLoad?: boolean }) => {
+      if (isDesignAuthRefreshDeclined()) return;
+      let bumped = false;
+      if (conversationLoadError) {
+        setConversationLoadRetryNonce((nonce) => nonce + 1);
+        bumped = true;
+      }
+      if (activeConversationId) {
+        if (failedMessagesConversationId === activeConversationId) {
+          setMessageLoadRetryNonce((nonce) => nonce + 1);
+          bumped = true;
+        } else if (
+          options?.retryStuckMessageLoad
+          && messagesConversationId !== activeConversationId
+        ) {
+          setMessageLoadRetryNonce((nonce) => nonce + 1);
+          bumped = true;
+        }
+      }
+      if (bumped) {
+        setFilesRefresh((nonce) => nonce + 1);
+        setReattachNonce((value) => value + 1);
+      }
+    },
+    [
+      activeConversationId,
+      conversationLoadError,
+      failedMessagesConversationId,
+      messagesConversationId,
+    ],
+  );
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
-    const onAuthReady = () => retryStaleProjectConversationData();
+    const onAuthReady = () => {
+      retryStaleProjectConversationData({ retryStuckMessageLoad: true });
+    };
     window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onAuthReady);
     const unsubscribe = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
       if (authenticated) onAuthReady();
     });
     const onVisible = () => {
-      if (document.visibilityState === 'visible') onAuthReady();
+      if (document.visibilityState !== 'visible') return;
+      retryStaleProjectConversationData();
+    };
+    const onPageShow = () => {
+      retryStaleProjectConversationData({ retryStuckMessageLoad: true });
     };
     document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('pageshow', onAuthReady);
+    window.addEventListener('pageshow', onPageShow);
     return () => {
       window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onAuthReady);
       unsubscribe();
       document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('pageshow', onAuthReady);
+      window.removeEventListener('pageshow', onPageShow);
     };
   }, [retryStaleProjectConversationData]);
 

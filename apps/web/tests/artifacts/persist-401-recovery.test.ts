@@ -121,11 +121,16 @@ describe("ProjectView persist-401 recovery", () => {
     expect(source).toContain("retryStaleProjectConversationData");
     expect(source).toContain("readRememberedTeamverProjectConversation");
     expect(source).toContain("rememberTeamverProjectConversation");
+    expect(source).toContain("waitForTeamverEmbedBoot");
+    expect(source).toContain("MESSAGE_LOAD_STUCK_RETRY_MS");
     expect(source).toMatch(
       /failedMessagesConversationId === activeConversationId[\s\S]{0,120}setMessageLoadRetryNonce/,
     );
     expect(source).toMatch(
-      /window\.addEventListener\('pageshow', onAuthReady\)/,
+      /window\.addEventListener\('pageshow', onPageShow\)/,
+    );
+    expect(source).toMatch(
+      /scheduleNextPoll\(BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS\)/,
     );
   });
 });

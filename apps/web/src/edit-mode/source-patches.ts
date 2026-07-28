@@ -225,6 +225,8 @@ function findEditableElement(
   const root = findScopedRoot(doc, scope);
   if (!root) return null;
   if (id === '__body__') return root.nodeType === 9 ? (root as Document).body : root as Element;
+  const domFallback = findElementByDomSelector(doc, root, id);
+  if (domFallback) return domFallback;
   return (
     root.querySelector(`[data-od-id="${cssEscape(id)}"]`) ??
     root.querySelector(`[data-od-runtime-id="${cssEscape(id)}"]`) ??
@@ -239,8 +241,63 @@ function findScopedRoot(doc: Document, scope: ManualEditSourceScope): ManualEdit
   const index = Math.floor(slideIndex);
   const explicit = doc.querySelector(`[data-slide-index="${index}"]`);
   if (explicit) return explicit;
-  const slides = Array.from(doc.querySelectorAll('.slide, section[data-screen-label]'));
+  const slides = Array.from(doc.querySelectorAll('.slide, [data-slide], [data-screen-label], section'));
   return slides[index] ?? null;
+}
+
+function findElementByDomSelector(
+  doc: Document,
+  root: ManualEditLookupRoot,
+  id: string,
+): Element | null {
+  if (!id.startsWith('dom:')) return null;
+  const selector = id.slice('dom:'.length).trim();
+  if (!selector.startsWith('body > ') || /[<{}]/.test(selector)) return null;
+  const byPath = findElementByDomSelectorPath(doc, root, selector);
+  if (byPath) return byPath;
+  let el: Element | null = null;
+  try {
+    el = doc.querySelector(selector);
+  } catch {
+    return null;
+  }
+  if (!el || el === doc.body || el === doc.documentElement) return null;
+  if (root.nodeType === 9) return el;
+  return (root as Element).contains(el) ? el : null;
+}
+
+function findElementByDomSelectorPath(
+  doc: Document,
+  root: ManualEditLookupRoot,
+  selector: string,
+): Element | null {
+  const segments = selector
+    .slice('body > '.length)
+    .split(' > ')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (segments.length === 0) return null;
+  let current: Element | null = doc.body;
+  for (const segment of segments) {
+    const match = /^([a-z][a-z0-9-]*):nth-of-type\(([1-9][0-9]*)\)$/i.exec(segment);
+    if (!match || !current) return null;
+    const tag = match[1].toLowerCase();
+    const ordinal = Number(match[2]);
+    let seen = 0;
+    let next: Element | null = null;
+    for (const child of Array.from(current.children)) {
+      if (child.tagName.toLowerCase() !== tag) continue;
+      seen += 1;
+      if (seen === ordinal) {
+        next = child;
+        break;
+      }
+    }
+    current = next;
+  }
+  if (!current || current === doc.body || current === doc.documentElement) return null;
+  if (root.nodeType === 9) return current;
+  return (root as Element).contains(current) ? current : null;
 }
 
 function findElementByPath(root: ManualEditLookupRoot, id: string): Element | null {

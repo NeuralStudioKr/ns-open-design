@@ -205,6 +205,28 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('Path target');
   });
 
+  it('addresses unannotated comment targets with dom selector ids inside the selected slide', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><p>Slide one copy</p></section>',
+      '<section class="slide" data-slide-index="1"><p>Slide two copy</p></section>',
+      '</body></html>',
+    ].join('');
+    const id = 'dom:body > section:nth-of-type(2) > p:nth-of-type(1)';
+
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id, value: 'Scoped DOM target' },
+      { slideIndex: 1 },
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    expect(result.source).toContain('<p>Slide one copy</p>');
+    expect(result.source).toContain('<p>Scoped DOM target</p>');
+    expect(applyManualEditPatch(source, { kind: 'set-text', id, value: 'Wrong slide' }, { slideIndex: 0 }).ok)
+      .toBe(false);
+  });
+
   it('limits deck comment fast-path patches to the selected slide scope', () => {
     const source = [
       '<!doctype html><html><body>',
@@ -264,13 +286,37 @@ describe('manual edit source patches', () => {
     const targetMasked = maskManualEditTargets(targetOnly, ['headline'], { slideIndex: 1 });
     const siblingMasked = maskManualEditTargets(siblingChanged, ['headline'], { slideIndex: 1 });
 
-    expect(beforeMasked.ok).toBe(true);
-    expect(targetMasked.ok).toBe(true);
-    expect(siblingMasked.ok).toBe(true);
+    expect(beforeMasked.ok, JSON.stringify(beforeMasked)).toBe(true);
+    expect(targetMasked.ok, JSON.stringify(targetMasked)).toBe(true);
+    expect(siblingMasked.ok, JSON.stringify(siblingMasked)).toBe(true);
     if (!beforeMasked.ok || !targetMasked.ok || !siblingMasked.ok) return;
     expect(targetMasked.source).toBe(beforeMasked.source);
     expect(siblingMasked.source).not.toBe(beforeMasked.source);
     expect(maskManualEditTargets(source, ['headline'], { slideIndex: 4 }).ok).toBe(false);
+  });
+
+  it('masks dom selector comment targets so full-deck fallback guards stay element-scoped', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><p>Slide one copy</p></section>',
+      '<section class="slide" data-slide-index="1"><p>Slide two copy</p><small>Keep me</small></section>',
+      '</body></html>',
+    ].join('');
+    const targetOnly = source.replace('Slide two copy', 'Edited copy');
+    const siblingChanged = targetOnly.replace('Keep me', 'Changed sibling');
+    const id = 'dom:body > section:nth-of-type(2) > p:nth-of-type(1)';
+
+    const beforeMasked = maskManualEditTargets(source, [id], { slideIndex: 1 });
+    const targetMasked = maskManualEditTargets(targetOnly, [id], { slideIndex: 1 });
+    const siblingMasked = maskManualEditTargets(siblingChanged, [id], { slideIndex: 1 });
+
+    expect(beforeMasked.ok, JSON.stringify(beforeMasked)).toBe(true);
+    expect(targetMasked.ok, JSON.stringify(targetMasked)).toBe(true);
+    expect(siblingMasked.ok, JSON.stringify(siblingMasked)).toBe(true);
+    if (!beforeMasked.ok || !targetMasked.ok || !siblingMasked.ok) return;
+    expect(targetMasked.source).toBe(beforeMasked.source);
+    expect(siblingMasked.source).not.toBe(beforeMasked.source);
+    expect(maskManualEditTargets(source, [id], { slideIndex: 0 }).ok).toBe(false);
   });
 
   it('rejects text patches for nested markup', () => {

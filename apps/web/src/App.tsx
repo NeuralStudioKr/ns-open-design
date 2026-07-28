@@ -87,6 +87,7 @@ import {
   revealTeamverEmbedChrome,
   waitForTeamverEmbedBoot,
 } from './teamver/teamverEmbedBoot';
+import { readRememberedTeamverProjectConversation } from './teamver/teamverProjectConversationMemory';
 import { completeTeamverEmbedInitialUi } from './teamver/teamverEmbedInitialUi';
 import { installTeamverEmbedHistoryBoundary } from './teamver/teamverEmbedHistoryGuard';
 import { consumeEmbedLaunchPrefs } from './teamver/teamverEmbedAuthNavigation';
@@ -674,7 +675,7 @@ function AppInner() {
     if (!trimmed) return;
     pendingLocalProjectIdsRef.current.add(trimmed);
     locallyDeletedProjectIdsRef.current.delete(trimmed);
-    clearTeamverProjectDeletedTombstone(trimmed);
+    clearTeamverProjectDeletedTombstone(trimmed, embedActiveWorkspaceIdRef.current);
     projectListMutationVersionRef.current += 1;
   }, []);
 
@@ -690,7 +691,10 @@ function AppInner() {
     pendingLocalProjectIdsRef.current.delete(projectId);
     projectListMutationVersionRef.current += 1;
     if (options?.deleted) {
-      markTeamverProjectDeletedTombstone(projectId);
+      markTeamverProjectDeletedTombstone(
+        projectId,
+        embedActiveWorkspaceIdRef.current,
+      );
       locallyDeletedProjectIdsRef.current.set(
         projectId,
         projectListMutationVersionRef.current,
@@ -758,7 +762,10 @@ function AppInner() {
     const pendingLocalProjectIds = pendingLocalProjectIdsRef.current;
     const locallyDeletedProjectIds = locallyDeletedProjectIdsRef.current;
     for (const project of list) pendingLocalProjectIds.delete(project.id);
-    const activeDeletedProjectIds = mergeDeletedProjectIdSets(locallyDeletedProjectIds);
+    const activeDeletedProjectIds = mergeDeletedProjectIdSets(
+      locallyDeletedProjectIds,
+      embedActiveWorkspaceIdRef.current,
+    );
     const visibleList =
       activeDeletedProjectIds.size > 0
         ? list.filter((project) => !activeDeletedProjectIds.has(project.id))
@@ -777,7 +784,10 @@ function AppInner() {
     const locallyDeletedProjectIds = locallyDeletedProjectIdsRef.current;
     const fetchedIds = new Set(list.map((project) => project.id));
     if (request.generation < latestAppliedProjectListGenerationRef.current) {
-      const activeDeletedProjectIdsStale = mergeDeletedProjectIdSets(locallyDeletedProjectIds);
+      const activeDeletedProjectIdsStale = mergeDeletedProjectIdSets(
+        locallyDeletedProjectIds,
+        embedActiveWorkspaceIdRef.current,
+      );
       const visibleList =
         activeDeletedProjectIdsStale.size > 0
           ? list.filter((project) => !activeDeletedProjectIdsStale.has(project.id))
@@ -824,7 +834,10 @@ function AppInner() {
         locallyDeletedProjectIds.delete(id);
       }
     }
-    const activeDeletedProjectIds = mergeDeletedProjectIdSets(locallyDeletedProjectIds);
+    const activeDeletedProjectIds = mergeDeletedProjectIdSets(
+      locallyDeletedProjectIds,
+      embedActiveWorkspaceIdRef.current,
+    );
     const visibleList =
       activeDeletedProjectIds.size > 0
         ? list.filter((project) => !activeDeletedProjectIds.has(project.id))
@@ -2693,13 +2706,16 @@ function AppInner() {
       extras: { fileName?: string | null; conversationId?: string | null } = {},
     ) => {
       if (isSessionTrustedEmbedProject(projectId)) {
+        const rememberedConversationId = readRememberedTeamverProjectConversation(projectId);
+        const resolvedConversationId =
+          extras.conversationId != null && extras.conversationId !== ''
+            ? extras.conversationId
+            : rememberedConversationId;
         navigate({
           kind: 'project',
           projectId,
           fileName: extras.fileName ?? null,
-          ...(extras.conversationId !== undefined
-            ? { conversationId: extras.conversationId }
-            : {}),
+          conversationId: resolvedConversationId ?? null,
         });
         return;
       }
@@ -2716,13 +2732,16 @@ function AppInner() {
         }
         return;
       }
+      const rememberedConversationId = readRememberedTeamverProjectConversation(projectId);
+      const resolvedConversationId =
+        extras.conversationId != null && extras.conversationId !== ''
+          ? extras.conversationId
+          : rememberedConversationId;
       navigate({
         kind: 'project',
         projectId,
         fileName: extras.fileName ?? null,
-        ...(extras.conversationId !== undefined
-          ? { conversationId: extras.conversationId }
-          : {}),
+        conversationId: resolvedConversationId ?? null,
       });
     },
     [isSessionTrustedEmbedProject, projects],

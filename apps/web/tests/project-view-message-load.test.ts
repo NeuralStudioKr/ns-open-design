@@ -396,4 +396,35 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("conversationStillMarked");
     expect(source).toContain("clearStreamingMarker(runConversationId)");
   });
+
+  it("keeps scoped comment deck edits element-bound even when comments only have selectors", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+
+    expect(source).toContain("function domSelectorCommentElementId");
+    expect(source).toContain("return `dom:${trimmed}`");
+    expect(source).toContain("domSelectorCommentElementId(attachment.selector)");
+    expect(source).toContain("domSelectorCommentElementId(member.selector)");
+
+    const guardStart = source.indexOf("async function fullDeckEditStaysInsideCommentScope");
+    expect(guardStart).toBeGreaterThan(0);
+    const guardBlock = source.slice(guardStart, guardStart + 3600);
+    expect(guardBlock).toContain("const hasElementScopedComment");
+    expect(guardBlock).toContain("const targetUnresolved");
+    expect(guardBlock).toContain("beforeMasked.maskedCount !== afterMasked.maskedCount");
+    expect(guardBlock).toContain("code: 'full_deck_comment_target_unresolved'");
+    expect(guardBlock).toContain("scoped full-deck guard rejected unresolved comment target");
+  });
+
+  it("waits for embed boot and retries stuck message loads on re-entry", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("waitForTeamverEmbedBoot");
+    expect(source).toContain("MESSAGE_LOAD_STUCK_RETRY_MS");
+    expect(source).toContain("setMessagesInitialized(true)");
+    expect(source).toMatch(
+      /loadConversationsWithRetry[\s\S]{0,200}await waitForTeamverEmbedBoot\(\)/,
+    );
+    expect(source).toMatch(
+      /loadMessagesWithRetry[\s\S]{0,200}await waitForTeamverEmbedBoot\(\)/,
+    );
+  });
 });
