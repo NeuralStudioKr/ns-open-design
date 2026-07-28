@@ -1,5 +1,5 @@
 import type { ChatCommentAttachment } from '../types';
-import type { ManualEditPatch, ManualEditStyles } from '../edit-mode/types';
+import { MANUAL_EDIT_STYLE_PROPS, type ManualEditPatch, type ManualEditStyles } from '../edit-mode/types';
 
 export interface ManualEditCommentFastPathResult {
   patches: ManualEditPatch[];
@@ -47,9 +47,10 @@ function mergeStyleFallbacks(
 ): Partial<ManualEditStyles> {
   const out: Partial<ManualEditStyles> = { ...preferred };
   if (!fallback) return out;
-  for (const key of Object.keys(fallback) as Array<keyof ManualEditStyles>) {
+  const fallbackStyles = fallback as Partial<ManualEditStyles>;
+  for (const key of MANUAL_EDIT_STYLE_PROPS) {
     const preferredValue = out[key];
-    const fallbackValue = fallback[key];
+    const fallbackValue = fallbackStyles[key];
     if ((typeof preferredValue !== 'string' || preferredValue.trim() === '') && typeof fallbackValue === 'string' && fallbackValue.trim()) {
       out[key] = fallbackValue;
     }
