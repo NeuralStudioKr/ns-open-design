@@ -113,6 +113,10 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("retryUntil");
     expect(source).toContain("softRetryTimer");
     expect(source).toContain("abort.signal.aborted");
+    expect(source).toContain("liveHtmlPaintsPreviewRef");
+    expect(source).toContain(
+      "re-entry often sets streaming while disk/auth is still catching up",
+    );
   });
 
   it("gates empty unavailable on sourceLoadFailed only (not dead prefix check)", () => {
@@ -146,7 +150,8 @@ describe("FileViewer streaming slide preview", () => {
     expect(workspace).toContain("previewStreaming?: boolean");
     expect(workspace).toContain("streaming={previewStreaming ?? false}");
     expect(projectView).toContain("streaming={currentConversationActionDisabled}");
-    expect(projectView).toContain(
+    expect(projectView).toContain("previewStreaming={currentConversationStreaming}");
+    expect(projectView).not.toContain(
       "previewStreaming={currentConversationStreaming || currentConversationAwaitingActiveRunAttach}",
     );
   });
@@ -155,6 +160,7 @@ describe("FileViewer streaming slide preview", () => {
     const source = readSource("src/components/FileViewer.tsx");
     expect(source).toContain("previewSourceWallIdentityRef");
     expect(source).toContain("previewSourceWallTimerRef");
+    expect(source).toContain("liveHtmlPaintsPreviewRef");
     expect(source).toContain(
       "Intentionally leave previewSourceWallTimerRef armed across refresh churn",
     );

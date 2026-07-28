@@ -256,6 +256,10 @@ import {
 import { notifyTeamverEmbedAuthFailureIfNeeded } from '../teamver/teamverBffAuthError';
 import { fetchTeamverDaemon, TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
 import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../teamver/teamverEmbedPassiveAuth';
+import {
+  readRememberedTeamverProjectConversation,
+  rememberTeamverProjectConversation,
+} from '../teamver/teamverProjectConversationMemory';
 import { shouldInjectOdPersonalMemoryIntoPrompt } from '../teamver/odMemoryPromptPolicy';
 import { hasChatApiCredentials } from '../teamver/chatApiCredentials';
 import { shouldUseManagedProxyApiKey } from '../providers/api-proxy';
@@ -1546,6 +1550,7 @@ export function ProjectView({
   const [failedMessagesConversationId, setFailedMessagesConversationId] = useState<string | null>(null);
   const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
   const [messageLoadRetryNonce, setMessageLoadRetryNonce] = useState(0);
+  const [conversationLoadRetryNonce, setConversationLoadRetryNonce] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesRef = useRef<ChatMessage[]>([]);
   messagesRef.current = messages;
@@ -2217,7 +2222,17 @@ export function ProjectView({
           const routedMatch = routeConversationId
             ? list.find((c) => c.id === routeConversationId) ?? null
             : null;
-          setActiveConversationId(routedMatch ? routedMatch.id : list[0]!.id);
+          const rememberedId = readRememberedTeamverProjectConversation(project.id);
+          const rememberedMatch = rememberedId
+            ? list.find((c) => c.id === rememberedId) ?? null
+            : null;
+          const nextActiveId = routedMatch
+            ? routedMatch.id
+            : rememberedMatch
+              ? rememberedMatch.id
+              : list[0]!.id;
+          setActiveConversationId(nextActiveId);
+          rememberTeamverProjectConversation(project.id, nextActiveId);
         }
       } catch (err) {
         if (cancelled) return;
@@ -2231,7 +2246,12 @@ export function ProjectView({
     return () => {
       cancelled = true;
     };
-  }, [project.id]);
+  }, [project.id, conversationLoadRetryNonce]);
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+    rememberTeamverProjectConversation(project.id, activeConversationId);
+  }, [project.id, activeConversationId]);
 
   // Issue #1505: when the URL changes the routed conversation id while
   // we are already inside the project (e.g. the user clicks "Open
@@ -5527,6 +5547,44 @@ export function ProjectView({
     };
   }, []);
 
+  // Re-entry / visibility: transient daemon 401 or soft-sticky can leave an
+  // empty chat or failed conversation list until auth recovers. Retry loads
+  // without waiting for manual conversation switches.
+  const retryStaleProjectConversationData = useCallback(() => {
+    if (isDesignAuthRefreshDeclined()) return;
+    if (conversationLoadError) {
+      setConversationLoadRetryNonce((nonce) => nonce + 1);
+    }
+    if (!activeConversationId) return;
+    if (failedMessagesConversationId === activeConversationId) {
+      setMessageLoadRetryNonce((nonce) => nonce + 1);
+    }
+  }, [
+    activeConversationId,
+    conversationLoadError,
+    failedMessagesConversationId,
+  ]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    const onAuthReady = () => retryStaleProjectConversationData();
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onAuthReady);
+    const unsubscribe = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
+      if (authenticated) onAuthReady();
+    });
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') onAuthReady();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pageshow', onAuthReady);
+    return () => {
+      window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onAuthReady);
+      unsubscribe();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', onAuthReady);
+    };
+  }, [retryStaleProjectConversationData]);
+
   const enqueueChatSend = useCallback((item: QueuedChatSend) => {
     const next = [...queuedChatSendsRef.current, item];
     commitQueuedChatSends(next);
@@ -8171,6 +8229,21 @@ export function ProjectView({
     [project, onProjectChange],
   );
 
+  const projectTitleEditRef = useRef<HTMLSpanElement>(null);
+  const focusProjectTitleForRename = useCallback(() => {
+    const el = projectTitleEditRef.current;
+    if (!el) return;
+    el.focus();
+    requestAnimationFrame(() => {
+      const selection = window.getSelection();
+      if (!selection) return;
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+  }, []);
+
   const activeConversationChatState = useMemo(
     () =>
       activeConversationId
@@ -9080,11 +9153,13 @@ export function ProjectView({
                 hideStudioExecutionControls ? undefined : executionControls
               }
               projectHeader={(
-                <span className="chat-project-title-line">
+                <span className="chat-project-title-line chat-project-title-edit">
                   <span
+                    ref={projectTitleEditRef}
                     className="title editable"
                     data-testid="project-title"
                     title={project.name}
+                    aria-label={t('common.rename')}
                     tabIndex={0}
                     role="textbox"
                     suppressContentEditableWarning
@@ -9099,6 +9174,16 @@ export function ProjectView({
                   >
                     {project.name}
                   </span>
+                  <button
+                    type="button"
+                    className="chat-project-title-rename"
+                    data-testid="project-title-rename"
+                    aria-label={t('common.rename')}
+                    title={t('common.rename')}
+                    onClick={focusProjectTitleForRename}
+                  >
+                    <Icon name="pencil" size={13} />
+                  </button>
                   {projectMeta !== t('project.metaFreeform') ? (
                     <span className="meta" data-testid="project-meta">{projectMeta}</span>
                   ) : null}
@@ -9155,7 +9240,7 @@ export function ProjectView({
           isDeck={isDeck}
           onExportAsPptx={handleExportAsPptx}
           streaming={currentConversationActionDisabled}
-          previewStreaming={currentConversationStreaming || currentConversationAwaitingActiveRunAttach}
+          previewStreaming={currentConversationStreaming}
           commentQueueOnSend={commentQueueOnSend}
           commentSendDisabled={currentConversationQueueDisabled}
           openRequest={openRequest}

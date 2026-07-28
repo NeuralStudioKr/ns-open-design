@@ -4908,6 +4908,8 @@ function HtmlViewer({
   // stay correct without re-subscribing on every liveHtml token.
   const streamingRef = useRef(streaming);
   streamingRef.current = streaming;
+  const liveHtmlPaintsPreviewRef = useRef(liveHtmlPaintsPreview);
+  liveHtmlPaintsPreviewRef.current = liveHtmlPaintsPreview;
   const [inlinedSource, setInlinedSource] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const fileViewportKey = previewViewportStateKey(projectId, file);
@@ -5573,20 +5575,18 @@ function HtmlViewer({
         clearPreviewSourceWall();
         previewSourceWallIdentityRef.current = artifactIdentity;
       }
-      // Arm while empty and not mid-stream. Re-arm after soft-retry / late
-      // incomplete responses so wall→clear→loading cannot stick forever.
-      if (
-        streamingRef.current
-        || sourceRef.current != null
-        || previewSourceWallTimerRef.current != null
-      ) {
+      // Re-arm after soft-retry / late incomplete responses so wall→clear→loading
+      // cannot stick forever. Do not skip arming purely because `streaming` is
+      // true — re-entry often sets streaming while disk/auth is still catching up.
+      if (sourceRef.current != null || previewSourceWallTimerRef.current != null) {
         return;
       }
       previewSourceWallTimerRef.current = setTimeout(() => {
         previewSourceWallTimerRef.current = null;
-        if (sourceRef.current == null && !streamingRef.current) {
-          setSourceLoadFailed(true);
-        }
+        if (sourceRef.current != null) return;
+        // Live stream owns the empty-state veil only while stable live HTML paints.
+        if (streamingRef.current && liveHtmlPaintsPreviewRef.current) return;
+        setSourceLoadFailed(true);
       }, HTML_PREVIEW_SOURCE_WALL_MS);
     };
 
@@ -5603,8 +5603,11 @@ function HtmlViewer({
       // Clear sticky unavailable for this attempt so refresh shows loading.
       setSourceLoadFailed(false);
       const scheduleSoftRetry = () => {
-        if (streamingRef.current || Date.now() >= retryUntil) {
+        if (Date.now() >= retryUntil) {
           armPreviewSourceWall();
+          return false;
+        }
+        if (streamingRef.current && liveHtmlPaintsPreviewRef.current) {
           return false;
         }
         setSourceLoadFailed(false);

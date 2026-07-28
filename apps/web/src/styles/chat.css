@@ -92,6 +92,56 @@
   flex: 0 1 auto;
 }
 
+.chat-project-title-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chat-project-title-edit .chat-project-title-rename {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1),
+    background 120ms cubic-bezier(0.23, 1, 0.32, 1),
+    color 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.chat-project-title-edit:hover .chat-project-title-rename,
+.chat-project-title-edit:focus-within .chat-project-title-rename {
+  opacity: 1;
+}
+
+.chat-project-title-rename:hover {
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+
+.chat-project-title-rename:focus-visible {
+  opacity: 1;
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+@media (hover: none) {
+  .chat-project-title-edit .chat-project-title-rename {
+    opacity: 0.72;
+  }
+}
+
 .chat-inset-banner {
   flex: 0 0 auto;
   padding: 0 var(--chat-composer-inline-inset, 12px);

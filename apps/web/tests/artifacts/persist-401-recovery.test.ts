@@ -107,17 +107,25 @@ describe("ProjectView persist-401 recovery", () => {
   });
 
   it("also replays on SESSION_CHANGED transitions to authenticated=true (covers manual 다시 시도)", () => {
-    // The passive-auth-recovered event covers background 401 ladder success,
-    // but the manual retry button in TeamverSessionBanner only fires that
-    // event on the isSessionExpiredError branch — the sticky-true recovery
-    // path only flips SESSION_CHANGED. Subscribing to both keeps the replay
-    // robust regardless of which recovery path fires first.
     expect(source).toContain("subscribeTeamverEmbedSessionChanged");
     expect(source).toMatch(
       /subscribeTeamverEmbedSessionChanged\([\s\S]{0,300}if \(authenticated\) void replay\(\);/,
     );
     expect(source).toMatch(
       /unsubscribeSessionChanged\(\);\s*\};/,
+    );
+  });
+
+  it("retries failed conversation/message loads after auth recovers on re-entry", () => {
+    expect(source).toContain("conversationLoadRetryNonce");
+    expect(source).toContain("retryStaleProjectConversationData");
+    expect(source).toContain("readRememberedTeamverProjectConversation");
+    expect(source).toContain("rememberTeamverProjectConversation");
+    expect(source).toMatch(
+      /failedMessagesConversationId === activeConversationId[\s\S]{0,120}setMessageLoadRetryNonce/,
+    );
+    expect(source).toMatch(
+      /window\.addEventListener\('pageshow', onAuthReady\)/,
     );
   });
 });
