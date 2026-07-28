@@ -852,6 +852,7 @@ function slideCommentEditPatchInstruction(commentAttachmentCount: number): strin
     '',
     '- `data-slide-index="{N}"` uses the 0-based index the comment reports under `slideIndex:` in `<attached-preview-comments>` (top-to-bottom order of `<section class="slide">` in the current deck).',
     '- Include ONE `<section class="slide">` per touched slide. Do NOT include unchanged slides, `<head>`, `<html>`, `<body>`, or global chrome.',
+    '- Preserve existing `data-od-id`, `data-od-runtime-id`, `data-od-source-path`, `data-slide-index`, and comment target element identity unless the user explicitly asks to replace that element.',
     '- The replacement `<section>` is the full new slide markup — the client swaps it in.',
     '- Fallback: if you must change deck-wide structure (add slide, reorder, restructure global CSS), emit the full `<artifact type="deck">` document instead.',
   ].join('\n');
