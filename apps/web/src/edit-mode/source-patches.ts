@@ -317,7 +317,7 @@ function findEquivalentElementByScopedPosition(
   const path: number[] = [];
   let cursor: Element | null = currentTarget;
   while (cursor && cursor !== currentRootElement) {
-    const parent = cursor.parentElement;
+    const parent: Element | null = cursor.parentElement;
     if (!parent) return null;
     const index = Array.from(parent.children).indexOf(cursor);
     if (index < 0) return null;
@@ -326,7 +326,8 @@ function findEquivalentElementByScopedPosition(
   }
   let nextCursor: Element | null = nextRootElement;
   for (const index of path) {
-    nextCursor = nextCursor.children.item(index);
+    const child: Element | null = nextCursor.children.item(index);
+    nextCursor = child;
     if (!nextCursor) return null;
   }
   return nextCursor;
