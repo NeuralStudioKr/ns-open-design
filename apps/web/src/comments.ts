@@ -387,6 +387,8 @@ export const SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER = '[Comment-edit patch 
 
 const COMMENT_EDIT_PATCH_DIRECTIVE_RE =
   /\n*\[Comment-edit patch contract\][\s\S]*$/i;
+const EXISTING_DECK_EDIT_DIRECTIVE_RE =
+  /\n*\[Existing deck edit\][\s\S]*$/i;
 const ATTACHED_PREVIEW_COMMENTS_RE =
   /\n*<attached-preview-comments>[\s\S]*?<\/attached-preview-comments>\s*/gi;
 
@@ -395,6 +397,7 @@ export function stripUserVisibleUserMessageText(content: string | null | undefin
   let text = String(content ?? '');
   text = text.replace(ATTACHED_PREVIEW_COMMENTS_RE, '');
   text = text.replace(COMMENT_EDIT_PATCH_DIRECTIVE_RE, '');
+  text = text.replace(EXISTING_DECK_EDIT_DIRECTIVE_RE, '');
   return stripUserVisibleQuestionFormProtocolText(text);
 }
 
@@ -583,7 +586,7 @@ function renderCommentAttachmentContext(commentAttachments: ChatCommentAttachmen
     '',
     '',
     '<attached-preview-comments>',
-    "Hard scope: change ONLY the elements identified below by selector / position / pod members. Do NOT modify sibling sub-pages, parent layout, global CSS, design tokens, or unrelated rules even if you notice issues there — surface those as a follow-up note in your reply instead of editing them. If the user's request cannot be satisfied without touching outside this scope, ask the user before proceeding. For visual marks, inspect the screenshot and modify the marked region first.",
+    "Hard scope: change ONLY the elements identified below by selector / position / pod members. Treat currentText/htmlHint as authoritative even if you cannot find the text elsewhere in prior chat. Do NOT modify sibling sub-pages, parent layout, global CSS, design tokens, or unrelated rules even if you notice issues there — surface those as a follow-up note in your reply instead of editing them. If the user's request cannot be satisfied without touching outside this scope, ask the user before proceeding. For visual marks, inspect the screenshot and modify the marked region first.",
   ];
   commentAttachments.forEach((item) => {
     const position = normalizePosition(item.pagePosition);

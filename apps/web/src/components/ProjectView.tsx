@@ -6385,15 +6385,7 @@ export function ProjectView({
         .filter((attachment) => !slideOnlyMvp || hasValidDeckSlideIndex(attachment));
       let effectiveAttachments = mergeChatAttachments(
         attachments,
-        chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, projectFiles, {
-          // The deck HTML is the last-assistant artifact in conversation
-          // history for Teamver slide-only edits, so re-inlining it via
-          // <attached-project-files> is pure duplication that pushes TTFT out.
-          // The `<attached-preview-comments>` block still carries currentText,
-          // htmlHint, selector, and pod-member context for the target element,
-          // which is what the model actually needs to make a scoped edit.
-          skipDeckHtml: slideOnlyMvp && scopedCommentAttachments.length > 0,
-        }),
+        chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, projectFiles),
         ...scopedCommentAttachments.map((attachment) =>
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),

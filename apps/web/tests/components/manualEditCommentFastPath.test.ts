@@ -49,6 +49,20 @@ describe('buildManualEditCommentFastPath', () => {
     ]);
   });
 
+  it('uses computed comment styles for multiplier font-size requests', () => {
+    const result = buildManualEditCommentFastPath({
+      attachment: attachment({
+        comment: '폰트 사이즈 두배로 키워줘',
+        style: { fontSize: '18px' },
+      }),
+      currentStyles: { fontSize: '18px' },
+    });
+
+    expect(result?.patches).toEqual([
+      { id: 'el-1', kind: 'set-style', styles: { fontSize: '36px' } },
+    ]);
+  });
+
   it('does not fast-path image or multi-element comments', () => {
     expect(buildManualEditCommentFastPath({
       attachment: attachment({ imageAttachments: [{ name: 'mark.png', path: 'mark.png' }] }),

@@ -648,6 +648,18 @@ describe('preview comment attachment helpers', () => {
     expect(stripUserVisibleUserMessageText(prompt)).toBe("이 텍스트를 '안녕'으로 바꿔줘");
   });
 
+  it('strips hidden existing-deck edit directives from user-visible chat text', () => {
+    const prompt = [
+      '폰트 사이즈 두배로 키워줘',
+      '',
+      '[Existing deck edit]',
+      'This project already has a completed slide deck saved as `deck.html`.',
+      'Prefer `<artifact type="deck-patch">`.',
+    ].join('\n');
+
+    expect(stripUserVisibleUserMessageText(prompt)).toBe('폰트 사이즈 두배로 키워줘');
+  });
+
   it('does not render preview-comment context when target location data is missing', () => {
     const content = messageContentWithCommentAttachments('폰트 크기 2배로 키워줘', [
       commentAttachment({

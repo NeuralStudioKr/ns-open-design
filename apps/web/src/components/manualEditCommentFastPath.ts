@@ -24,6 +24,7 @@ export function buildManualEditCommentFastPath(input: {
   const note = attachment.comment.trim();
   if (!note) return null;
   if (!isElementLevelComment(attachment)) return null;
+  const effectiveStyles = mergeStyleFallbacks(attachment.style, currentStyles);
 
   const patches: ManualEditPatch[] = [];
   const text = parseTextReplacement(note);
@@ -31,13 +32,29 @@ export function buildManualEditCommentFastPath(input: {
     patches.push({ id: attachment.elementId, kind: 'set-text', value: text });
   }
 
-  const styles = parseStylePatch(note, currentStyles);
+  const styles = parseStylePatch(note, effectiveStyles);
   if (Object.keys(styles).length > 0) {
     patches.push({ id: attachment.elementId, kind: 'set-style', styles });
   }
 
   if (patches.length === 0) return null;
   return { patches, label: 'Comment quick edit' };
+}
+
+function mergeStyleFallbacks(
+  fallback: ChatCommentAttachment['style'] | undefined,
+  preferred: Partial<ManualEditStyles>,
+): Partial<ManualEditStyles> {
+  const out: Partial<ManualEditStyles> = { ...preferred };
+  if (!fallback) return out;
+  for (const key of Object.keys(fallback) as Array<keyof ManualEditStyles>) {
+    const preferredValue = out[key];
+    const fallbackValue = fallback[key];
+    if ((typeof preferredValue !== 'string' || preferredValue.trim() === '') && typeof fallbackValue === 'string' && fallbackValue.trim()) {
+      out[key] = fallbackValue;
+    }
+  }
+  return out;
 }
 
 function isElementLevelComment(attachment: ChatCommentAttachment): boolean {
@@ -87,12 +104,14 @@ function parseFontSize(note: string, currentFontSize?: string): string | null {
   const absolute = note.match(/(?:폰트\s*크기|폰트\s*사이즈|글자\s*크기|글씨\s*크기|font-size|font\s*size)[^\d]{0,12}(\d+(?:\.\d+)?)\s*(px|rem|em|%)\b/i);
   if (absolute) return `${absolute[1]}${absolute[2]}`;
 
-  const multiplier = note.match(/(?:폰트|글자|글씨|텍스트|font|text)[^\n]{0,20}?(\d+(?:\.\d+)?)\s*(?:배|x)\s*(?:키|크|확대|increase|larger|bigger)?/i)
-    ?? note.match(/(\d+(?:\.\d+)?)\s*(?:배|x)\s*(?:폰트|글자|글씨|텍스트|font|text)[^\n]{0,16}?(?:키|크|확대|increase|larger|bigger)?/i);
+  const multiplier = note.match(/(?:폰트|글자|글씨|텍스트|font|text)[^\n]{0,20}?(\d+(?:\.\d+)?|두|두\s*)\s*(?:배|x)\s*(?:키|크|확대|increase|larger|bigger)?/i)
+    ?? note.match(/(\d+(?:\.\d+)?|두|두\s*)\s*(?:배|x)\s*(?:폰트|글자|글씨|텍스트|font|text)[^\n]{0,16}?(?:키|크|확대|increase|larger|bigger)?/i);
   if (!multiplier) return null;
   const base = parsePx(currentFontSize);
   if (!base) return null;
-  const next = Math.max(1, Math.min(320, base * Number(multiplier[1])));
+  const factor = parseMultiplier(multiplier[1]);
+  if (!factor) return null;
+  const next = Math.max(1, Math.min(320, base * factor));
   return `${trimNumber(next)}px`;
 }
 
@@ -106,10 +125,7 @@ function parseColorForKind(note: string, kind: 'text' | 'background'): string | 
   const scope = match[0];
   const hex = scope.match(/#[0-9a-f]{3,8}\b/i)?.[0] ?? null;
   if (hex) return normalizeHexColor(hex);
-  for (const [re, value] of COLOR_KEYWORDS) {
-    if (re.test(scope)) return value;
-  }
-  return null;
+  return parseColorKeyword(scope);
 }
 
 function parseFontWeight(note: string): string | null {
@@ -140,6 +156,13 @@ function parsePx(value?: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function parseMultiplier(value: string | undefined): number | null {
+  const normalized = String(value ?? '').replace(/\s+/g, '').trim();
+  if (normalized === '두') return 2;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 function trimNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, '');
 }
@@ -148,4 +171,11 @@ function normalizeHexColor(value: string): string {
   return value.length === 4
     ? `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toLowerCase()
     : value.toLowerCase();
+}
+
+function parseColorKeyword(value: string): string | null {
+  for (const [re, color] of COLOR_KEYWORDS) {
+    if (re.test(value)) return color;
+  }
+  return null;
 }

@@ -388,10 +388,12 @@ describe("ProjectView message loading", () => {
     const handleSendBlock = source.slice(handleSendStart, handleSendStart + 7200);
     expect(handleSendBlock).toContain("isAutoContinueIncompleteOutputPrompt(prompt)");
     expect(handleSendBlock).toContain("conversationAutoContinueCountRef.current.set(runConversationId, 0)");
-    // Comment-edit path must plumb the deck-patch nudge + skipDeckHtml opt-in
-    // through so the fast path in persistArtifact can actually engage.
+    // Comment-edit path must plumb the deck-patch nudge, while keeping the
+    // current deck source attached. Prior assistant artifact history is not
+    // reliable after refresh/queue/background reattach; without deck.html the
+    // model can claim the selected text does not exist.
     expect(handleSendBlock).toContain("promptWithSlideCommentEditPatchInstruction(");
-    expect(handleSendBlock).toContain("skipDeckHtml: slideOnlyMvp && scopedCommentAttachments.length > 0");
+    expect(handleSendBlock).not.toContain("skipDeckHtml: slideOnlyMvp && scopedCommentAttachments.length > 0");
   });
 
   it("self-heals leaked composer streaming markers after terminal turns settle", () => {
