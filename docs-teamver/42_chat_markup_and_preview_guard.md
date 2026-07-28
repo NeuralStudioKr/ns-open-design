@@ -42,6 +42,7 @@
 - void 종료는 `ARTIFACT_CDN_ORPHAN_VOID_ENDING` — `/>` 또는 quoted `">`/`"/>`만. bare `host>` 자문 문구는 scrub하지 않는다.
 - full head tag scrub는 orphan attr 패턴 **앞**에서 실행한다 (`<link` 잔해 방지).
 - streaming 중 열린/닫힌 `<artifact>` 본문 stylesheet는 live panel용으로 보존하고, artifact 밖 prose의 CDN `<link|script>` / `@import` / open `<style|script>`는 제거·hold한다.
+- **Stop/취소·history**: open `<artifact>` tail의 `.slide {…}` / deck CSS는 chat prose로 승격하지 않는다 (`isLikelyInternalMarkupLine` + `stripTrailingDeckFrameworkCssLeak`). artifact 없이 prose 뒤에 붙은 deck CSS는 streaming에서도 chat에서 제거한다(열린 artifact 본문은 유지).
 - daemon `design.runs.finish` wrapper에서 turn-end rewrite로 append-only 잔여를 회수한다.
 - BYOK는 streaming guard + FE persist sanitize에 의존 (SSOT 회귀 = BYOK 회귀). daemon turn-end rewrite는 BYOK에 없다(의도).
 

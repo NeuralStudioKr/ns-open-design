@@ -5249,13 +5249,6 @@ export function ProjectView({
               }),
               false,
             );
-            if (isTerminalRunStatus(runStatus)) {
-              persistNow(
-                runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
-              );
-            } else {
-              persistSoon();
-            }
             if (runStatus === 'canceled') {
               textBuffer.flush();
               textBuffer.finalizeForHistoryDisplay?.();
@@ -5265,6 +5258,13 @@ export function ProjectView({
               reattachControllersRef.current.delete(runId);
               reattachCancelControllersRef.current.delete(runId);
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
+            }
+            if (isTerminalRunStatus(runStatus)) {
+              persistNow(
+                runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
+              );
+            } else {
+              persistSoon();
             }
             if (isTerminalRunStatus(runStatus)) {
               finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
@@ -7355,17 +7355,17 @@ export function ProjectView({
                   : prev.endedAt ?? endedAt,
               }),
             );
+            if (!runMayFinalize) return;
+            if (runStatus === 'canceled') {
+              textBuffer.flush();
+              textBuffer.finalizeForHistoryDisplay?.();
+            }
             if (isTerminalRunStatus(runStatus) && !deferredTerminalSuccess) {
               assistantPersist.persistNow(
                 runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
               );
             } else {
               assistantPersist.persistSoon();
-            }
-            if (!runMayFinalize) return;
-            if (runStatus === 'canceled') {
-              textBuffer.flush();
-              textBuffer.finalizeForHistoryDisplay?.();
             }
             if (!deferredTerminalSuccess) {
               updateConversationLatestRun(runStatus, endedAt);

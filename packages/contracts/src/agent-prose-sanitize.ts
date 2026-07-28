@@ -220,7 +220,13 @@ function isLikelyInternalMarkupLine(line: string): boolean {
   // Deck/HTML stylesheet bodies streamed inside an open artifact — not chat prose.
   if (/^\.slide\s*\{/.test(trimmed)) return true;
   if (/^\.grain::after\s*\{/.test(trimmed)) return true;
+  if (/^#deck-(?:stage|prev|next|idx)\b/i.test(trimmed)) return true;
   if (/^@(?:page|media|keyframes|import)\b/.test(trimmed)) return true;
+  if (/^\.[a-zA-Z0-9_-]+(\s*::(?:before|after))?\s*\{/.test(trimmed)) {
+    if (/1920px|1080px|box-sizing|overflow:\s*hidden|pointer-events:\s*none|grain/i.test(trimmed)) {
+      return true;
+    }
+  }
   // CDN / viewport / head-attr debris — never promote out of an open artifact
   // as "user-facing prose" (history stripTrailingOpenArtifact path).
   if (looksLikeHtmlDebrisLine(trimmed)) return true;
@@ -393,6 +399,20 @@ function looksLikeIncompleteHtmlDebrisLine(line: string): boolean {
   if (/^https?:\/\/(?:fonts\.|cdn\.|kit\.)?[a-z0-9.-]*$/i.test(lower)) return true;
 
   return false;
+}
+
+/** True when the last `<artifact …>` in `input` has no matching `</artifact>`. */
+function hasUnclosedTrailingArtifact(input: string): boolean {
+  if (!input) return false;
+  const re = new RegExp(OPEN_ARTIFACT_TAG_RE.source, "gi");
+  let lastOpen: RegExpExecArray | null = null;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(input)) !== null) {
+    lastOpen = match;
+  }
+  if (!lastOpen || lastOpen.index === undefined) return false;
+  const openEnd = lastOpen.index + lastOpen[0].length;
+  return findCloseTag(input, openEnd, "</artifact>") === -1;
 }
 
 /** Character index where trailing user-facing prose begins (inside an open artifact tail). */
@@ -1227,7 +1247,9 @@ export function sanitizeAssistantProseForDisplay(
   });
   // Debris scrub can leave a truncated tag name (`<link`); strip it now.
   text = stripIncompleteTrailingMarkupToken(text);
-  if (!streaming) {
+  const stripDeckCssTail =
+    !streaming || !hasUnclosedTrailingArtifact(text);
+  if (stripDeckCssTail) {
     text = stripTrailingDeckFrameworkCssLeak(text);
   }
   return text;
@@ -1239,13 +1261,10 @@ export function stripTrailingDeckFrameworkCssLeak(input: string): string {
   const match = /(?:^|\n\n|\n)(\.slide\s*\{[\s\S]*)$/.exec(input);
   if (!match || match.index === undefined) return input;
   const tail = match[1] ?? "";
-  if (
-    !/width:\s*1920px|height:\s*1080px|box-sizing:\s*border-box|\.grain::after/i.test(
-      tail,
-    )
-  ) {
-    return input;
-  }
+  const looksLikeDeckFramework =
+    /width:\s*1920px|height:\s*1080px|box-sizing:\s*border-box|\.grain::after/i.test(tail)
+    || /^\.slide\s*\{[\s\S]*/.test(tail.trim());
+  if (!looksLikeDeckFramework) return input;
   return input.slice(0, match.index).trimEnd();
 }
 

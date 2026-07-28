@@ -24,4 +24,12 @@ describe("stripLeakedPseudoToolXml (web)", () => {
     expect(out).not.toContain("Marking task");
     expect(out).toContain("슬라이드 구성 계획:");
   });
+
+  it("holds deck CSS tail out of live chat when not inside an open artifact", () => {
+    const input =
+      "덱 전체 재작성으로 전달할게요.\n\n.slide { width:1920px; height:1080px;";
+    expect(stripLeakedPseudoToolXml(input)).toBe("덱 전체 재작성으로 전달할게요.");
+    const openArtifact = 'Intro\n<artifact type="deck">\n.slide { width:1920px;';
+    expect(stripLeakedPseudoToolXml(openArtifact)).toBe(openArtifact);
+  });
 });

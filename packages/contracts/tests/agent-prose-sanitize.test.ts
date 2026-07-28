@@ -802,6 +802,15 @@ describe("agent-prose-sanitize SSOT", () => {
     const openArtifact =
       'Intro\n<artifact type="deck">\n.slide { width:1920px; height:1080px;';
     expect(sanitizeAssistantProseForDisplay(openArtifact)).toBe("Intro");
+    expect(
+      sanitizeAssistantProseForDisplay(
+        "덱 전체 재작성으로 전달할게요.\n\n.slide { width:1",
+        { streaming: true },
+      ),
+    ).toBe("덱 전체 재작성으로 전달할게요.");
+    expect(
+      sanitizeAssistantProseForDisplay(openArtifact, { streaming: true }),
+    ).toBe(openArtifact);
   });
 
   it("strips code fences when stripCodeFences is enabled", () => {

@@ -2,6 +2,15 @@ import type { AgentEvent, ChatMessage } from "../types";
 import { stripAllClosedArtifacts } from "../artifacts/strip";
 import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup";
 
+function hasNonProseStructureEvents(events: AgentEvent[]): boolean {
+  return events.some(
+    (event) =>
+      event.kind === "tool_use"
+      || event.kind === "tool_result"
+      || event.kind === "thinking",
+  );
+}
+
 function dropEmptyProseEvents(events: AgentEvent[]): AgentEvent[] {
   return events.filter((event) => {
     if (event.kind === "text" || event.kind === "thinking") {
@@ -57,6 +66,33 @@ export function sanitizeChatMessageLeakedPseudoTool(
     ) {
       changed = true;
       nextEvents = filtered;
+    }
+  }
+
+  // Text-only turns: if joining chunk events and re-sanitizing matches content
+  // (modulo trailing whitespace), collapse events onto content SSOT. Covers
+  // stop mid-deck where per-chunk sanitize left a trailing newline while
+  // content already dropped the CSS leak. Do not force-align when content and
+  // events intentionally differ (separate prose streams in tests/history).
+  if (nextEvents?.length && !hasNonProseStructureEvents(nextEvents)) {
+    const joinedText = nextEvents
+      .filter((event): event is Extract<AgentEvent, { kind: "text" }> => event.kind === "text")
+      .map((event) => event.text)
+      .join("");
+    if (joinedText !== nextContent) {
+      const sanitizedJoined = sanitizeAssistantProseForDisplay(stripAllClosedArtifacts(joinedText), {
+        stripCodeFences: options.stripCodeFences,
+      });
+      if (
+        sanitizedJoined === nextContent
+        || sanitizedJoined.trimEnd() === nextContent.trimEnd()
+      ) {
+        const nonText = nextEvents.filter((event) => event.kind !== "text");
+        nextEvents = nextContent.trim()
+          ? [{ kind: "text", text: nextContent }, ...nonText]
+          : nonText;
+        changed = true;
+      }
     }
   }
 

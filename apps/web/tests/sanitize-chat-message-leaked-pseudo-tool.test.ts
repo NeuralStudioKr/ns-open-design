@@ -272,4 +272,23 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
     const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
     expect(sanitized).toBe(message);
   });
+
+  it("reconciles split text events after stop mid-deck CSS leak", () => {
+    const intro = "덱 전체 재작성으로 전달할게요.";
+    const leak = "\n\n.slide { width:1920px; height:1080px; box-sizing:border-box; }";
+    const message: ChatMessage = {
+      id: "m-deck-css-chunks",
+      role: "assistant",
+      content: `${intro}${leak}`,
+      events: [
+        { kind: "text", text: `${intro}\n` },
+        { kind: "text", text: leak },
+      ],
+      runStatus: "canceled",
+    };
+
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.content).toBe(intro);
+    expect(sanitized.events).toEqual([{ kind: "text", text: intro }]);
+  });
 });
