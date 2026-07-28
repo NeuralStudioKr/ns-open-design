@@ -559,4 +559,24 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(prevented).toBe(true);
     expect(win.document.documentElement.scrollTop).toBe(0);
   });
+
+  it('advances compact stacked decks on ArrowRight inside the iframe', async () => {
+    const slides = Array.from({ length: 2 }, (_, i) =>
+      `<section class="slide" style="min-height:100vh;padding:40px">Slide ${i + 1}</section>`,
+    ).join('');
+    const { win, parentPostMessage } = setupDeckBridge(slides);
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
+
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 2 });
+
+    const keydown = new win.KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      bubbles: true,
+      cancelable: true,
+    });
+    win.document.dispatchEvent(keydown);
+
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 2 });
+  });
 });

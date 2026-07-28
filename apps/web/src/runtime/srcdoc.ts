@@ -3006,6 +3006,33 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     didRestoreInitialSlide = true;
     gotoIndex(target);
   }
+  function onDeckBridgeKeydown(e) {
+    if (!e || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    var target = e.target;
+    if (target) {
+      var tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return;
+    }
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+      e.preventDefault();
+      go('next');
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      e.preventDefault();
+      go('prev');
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      go('first');
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      go('last');
+    }
+  }
+  // Compact stacked decks have no in-artifact presenter keys. When the
+  // sandboxed iframe captures focus (e.g. after a click), the outer new-tab
+  // wrapper cannot post od:slide — handle navigation inside the bridge.
+  if (compactStackedDeckEnabled) {
+    document.addEventListener('keydown', onDeckBridgeKeydown, true);
+  }
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;
     if (!data) return;

@@ -1733,7 +1733,9 @@ describe('sandboxed preview Blob exports', () => {
     expect(wrapper).toContain("postSlide('next')");
     expect(wrapper).toContain("e.key === 'ArrowRight'");
     expect(wrapper).toContain("addEventListener('keydown', onKey, true)");
-    expect(wrapper).toContain('iframe.focus()');
+    expect(wrapper).toContain('tabindex="-1"');
+    expect(wrapper).toContain('document.body.focus');
+    expect(wrapper).not.toContain('iframe.focus()');
     expect(inner).toContain('<base href="/artifacts/project/assets/">');
     expect(inner).toContain('od:slide');
   });
