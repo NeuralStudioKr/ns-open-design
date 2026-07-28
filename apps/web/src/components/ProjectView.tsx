@@ -950,11 +950,20 @@ function inferSlideIndexFromDeckHtml(
     ?? byNeedle(`id='${elementId}'`)
     ?? byNeedle(elementId);
   if (byElementId != null) return byElementId;
-  const selectorId = /\[data-od-id=(?:"([^"]+)"|'([^']+)')\]/.exec(selector);
-  const bySelectorId = selectorId
-    ? byNeedle(`data-od-id="${selectorId[1] ?? selectorId[2]}"`)
-      ?? byNeedle(`data-od-id='${selectorId[1] ?? selectorId[2]}'`)
-    : null;
+  const selectorIds = selectorCommentElementIds(selector);
+  const bySelectorId = selectorIds.reduce<number | null>((found, selectorId) => {
+    if (found != null) return found;
+    return (
+      byNeedle(`data-od-id="${selectorId}"`)
+      ?? byNeedle(`data-od-id='${selectorId}'`)
+      ?? byNeedle(`data-od-source-path="${selectorId}"`)
+      ?? byNeedle(`data-od-source-path='${selectorId}'`)
+      ?? byNeedle(`data-od-runtime-id="${selectorId}"`)
+      ?? byNeedle(`data-od-runtime-id='${selectorId}'`)
+      ?? byNeedle(`data-screen-label="${selectorId}"`)
+      ?? byNeedle(`data-screen-label='${selectorId}'`)
+    );
+  }, null);
   if (bySelectorId != null) return bySelectorId;
   return byNeedle(htmlHint) ?? byNeedle(currentText);
 }
@@ -1063,6 +1072,7 @@ function slideCommentEditPatchInstruction(commentAttachmentCount: number): strin
     '</artifact>',
     '',
     '- `data-slide-index="{N}"` uses the 0-based index the comment reports under `slideIndex:` in `<attached-preview-comments>` (top-to-bottom order of `<section class="slide">` in the current deck).',
+    '- If a comment is missing `slideIndex`, infer the touched slide from the attached deck source using selector/currentText/htmlHint. Do NOT ask the user for the slide number when selector/currentText/htmlHint/file context is present.',
     '- Include ONE `<section class="slide">` per touched slide. Do NOT include unchanged slides, `<head>`, `<html>`, `<body>`, or global chrome.',
     '- Preserve existing `data-od-id`, `data-od-runtime-id`, `data-od-source-path`, `data-slide-index`, and comment target element identity unless the user explicitly asks to replace that element.',
     '- Apply element-local edits directly on the selected target element markup. For style-only requests, prefer inline `style` on that target element over changing global CSS, slide wrapper CSS, or sibling markup.',
@@ -6404,8 +6414,7 @@ export function ProjectView({
           entryFile: project.metadata?.entryFile ?? null,
         })
         : commentAttachments;
-      const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)
-        .filter((attachment) => !slideOnlyMvp || hasValidDeckSlideIndex(attachment));
+      const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments);
       let effectiveAttachments = mergeChatAttachments(
         attachments,
         chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, projectFiles),

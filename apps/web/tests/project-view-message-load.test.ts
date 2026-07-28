@@ -447,7 +447,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("extractTopLevelSlideSections(html)");
     expect(source).toContain("inferSlideIndexFromDeckHtml(html, attachment)");
     expect(source).toContain(":nth-of-type");
-    expect(source).toContain(".filter((attachment) => !slideOnlyMvp || hasValidDeckSlideIndex(attachment))");
+    expect(source).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)");
+    expect(source).not.toContain(".filter((attachment) => !slideOnlyMvp || hasValidDeckSlideIndex(attachment))");
   });
 
   it("does not replace a whole slide when element-scoped comment merge fails", () => {
