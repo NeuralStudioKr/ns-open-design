@@ -153,6 +153,65 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
   });
 
+  it('drives native deck controls and reports pagination state instead of forcing an incompatible transform', async () => {
+    const { win, parentPostMessage } = setupDeckBridge(`
+      <style>
+        html, body { margin: 0; overflow: hidden; }
+        #deck { display: flex; width: 2400px; transform: translate3d(0px, 0, 0); }
+        .slide { flex: 0 0 800px; width: 800px; height: 450px; }
+        .dot.active { background: blue; }
+      </style>
+      <div id="deck">
+        <section class="slide">One</section>
+        <section class="slide">Two</section>
+        <section class="slide">Three</section>
+      </div>
+      <div class="dots">
+        <button class="dot active" data-index="0">1</button>
+        <button class="dot" data-index="1">2</button>
+        <button class="dot" data-index="2">3</button>
+      </div>
+      <button id="deck-prev" aria-label="Previous">←</button>
+      <button id="deck-next" aria-label="Next">→</button>
+      <script>
+        var current = 0;
+        var track = document.getElementById('deck');
+        var dots = Array.prototype.slice.call(document.querySelectorAll('.dot'));
+        function paint() {
+          track.style.transform = 'translate3d(' + (-current * 800) + 'px, 0, 0)';
+          dots.forEach(function(dot, index) { dot.classList.toggle('active', index === current); });
+        }
+        document.getElementById('deck-next').addEventListener('click', function() {
+          current = Math.min(2, current + 1);
+          paint();
+        });
+        document.getElementById('deck-prev').addEventListener('click', function() {
+          current = Math.max(0, current - 1);
+          paint();
+        });
+        dots.forEach(function(dot, index) {
+          dot.addEventListener('click', function() {
+            current = index;
+            paint();
+          });
+        });
+      </script>
+    `);
+
+    const nativeScript = win.document.querySelector('script:not([data-od-deck-bridge])')?.textContent;
+    expect(nativeScript).toBeTruthy();
+    win.eval(nativeScript ?? '');
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+
+    postSlide(win, 'next');
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+
+    expect((win.document.getElementById('deck') as HTMLElement).style.transform)
+      .toBe('translate3d(-800px, 0, 0)');
+    expect(win.document.querySelectorAll('.dot').item(1).classList.contains('active')).toBe(true);
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
+  });
+
   it('does not double-advance decks that listen for keyboard navigation on both window and document', async () => {
     const { win, parentPostMessage } = setupDeckBridge(`
       <section class="slide active">One</section>

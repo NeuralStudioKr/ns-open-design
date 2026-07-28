@@ -225,6 +225,7 @@ bash scripts/run_staging_track_a_e2e.sh --staging
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-28 | Deck native pagination 동기화 보강 — 특정 생성 deck에서 중앙 dots/우측 native prev·next는 마지막 slide인데 패널 툴바가 1/8로 남거나 툴바 이동 시 빈 화면이 되는 회귀 대응. bridge active index가 pagination/dot active state와 px/translate3d transform을 읽고, host toolbar navigation은 강제 transform보다 deck 내부 native control click을 우선 사용 |
 | 2026-07-28 | Deck 미리보기 navigation/zoom 안정화 — 패널 툴바 prev/next를 srcdoc/url/present iframe 모두에 전달하고, iframe 내부 swipe/native 버튼/transition으로 바뀐 transform-track slide state를 부모 툴바에 재보고하도록 보강. deck preview는 toolbar 배율 변경 시에도 iframe layout viewport를 100%로 유지해 요소 크기 재계산을 방지 |
 | 2026-07-27 | 빠른 질문 생략 경로 추가 점검 — bind-only 템플릿/플러그인 선택이 stale `examplePromptContext`를 넘겨 quick brief를 우회하지 않도록 FE 상태 정리 + 회귀 테스트 추가 |
 | 2026-07-27 | 템플릿 선택 생성 시 visual style만으로 quick brief를 생략하지 않도록 계약 보강 — 내용 brief 부족 시 빠른 질문 유지 |

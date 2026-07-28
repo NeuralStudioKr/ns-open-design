@@ -2536,6 +2536,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       var w = Math.max(1, window.innerWidth);
       return Math.max(0, Math.min(list.length - 1, Math.round(maxScrollLeft() / w)));
     }
+    var byPagination = activeIndexFromPagination(list);
+    if (byPagination >= 0) return byPagination;
     var byTransform = activeIndexFromTransform(list);
     if (byTransform >= 0) return byTransform;
     var byClass = findActiveByClass(list);
@@ -2635,11 +2637,92 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var track = transformTrack(list);
     if (!track) return -1;
     var raw = track.style.transform || '';
-    var match = raw.match(/translateX\\(\\s*(-?[0-9.]+)\\s*(vw|%)\\s*\\)/i);
+    var match = raw.match(/translate(?:3d|X)?\\(\\s*(-?[0-9.]+)\\s*(vw|%|px)/i);
     if (!match) return -1;
     var value = parseFloat(match[1]);
     if (!Number.isFinite(value)) return -1;
-    return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(value) / 100)));
+    var unit = match[2];
+    var step = unit === 'px'
+      ? Math.max(1, track.clientWidth / list.length, window.innerWidth)
+      : 100;
+    return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(value) / step)));
+  }
+  function activeIndexFromPagination(list){
+    if (!list || !list.length) return -1;
+    var nodes;
+    try {
+      nodes = Array.prototype.slice.call(document.querySelectorAll(
+        'button,[role="button"],[aria-current],[data-slide-index],[data-slide],[data-index],.dot,.dots span,.pagination span,.indicator'
+      ));
+    } catch (_) {
+      return -1;
+    }
+    for (var i=0; i<nodes.length; i++) {
+      var node = nodes[i];
+      if (!node || (node.classList && node.classList.contains('slide'))) continue;
+      if (!looksActiveControl(node)) continue;
+      var direct = controlIndex(node, list.length);
+      if (direct >= 0) return direct;
+      var groupIndex = indexWithinControlGroup(node, list.length);
+      if (groupIndex >= 0) return groupIndex;
+    }
+    return -1;
+  }
+  function looksActiveControl(node){
+    try {
+      if (node.getAttribute('aria-current')) return true;
+      var active = String(node.getAttribute('data-active') || node.getAttribute('data-current') || '').toLowerCase();
+      if (active === 'true' || active === '1') return true;
+      var cl = node.classList;
+      return !!(cl && (
+        cl.contains('active') ||
+        cl.contains('is-active') ||
+        cl.contains('current') ||
+        cl.contains('selected') ||
+        cl.contains('is-selected')
+      ));
+    } catch (_) {
+      return false;
+    }
+  }
+  function controlIndex(node, count){
+    var attrs = ['data-slide-index', 'data-slide', 'data-index', 'aria-posinset'];
+    for (var i=0; i<attrs.length; i++) {
+      var raw = node.getAttribute && node.getAttribute(attrs[i]);
+      if (!raw) continue;
+      var n = parseInt(raw, 10);
+      if (!Number.isFinite(n)) continue;
+      var index = attrs[i] === 'aria-posinset' ? n - 1 : n;
+      if (index >= 0 && index < count) return index;
+    }
+    return -1;
+  }
+  function controlGroupNodes(parent){
+    if (!parent) return [];
+    var children = Array.prototype.slice.call(parent.children || []);
+    return children.filter(function(child){
+      if (!child) return false;
+      if (child.classList && child.classList.contains('slide')) return false;
+      var tag = String(child.tagName || '').toLowerCase();
+      var role = child.getAttribute && child.getAttribute('role');
+      return tag === 'button' ||
+        role === 'button' ||
+        !!(child.classList && child.classList.contains('dot')) ||
+        !!(child.getAttribute && child.getAttribute('data-slide-index') != null) ||
+        !!(child.getAttribute && child.getAttribute('data-index') != null);
+    });
+  }
+  function indexWithinControlGroup(node, count){
+    var parent = node.parentElement;
+    while (parent && parent !== document.body && parent !== document.documentElement) {
+      var group = controlGroupNodes(parent);
+      if (group.length >= count) {
+        var index = group.indexOf(node);
+        if (index >= 0) return Math.max(0, Math.min(count - 1, index));
+      }
+      parent = parent.parentElement;
+    }
+    return -1;
   }
   function transformGo(i){
     var list = slides();
@@ -2651,6 +2734,72 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     updateDeckChrome(target, list.length);
     report();
     return true;
+  }
+  var hostNativeClickInFlight = false;
+  function nativeControlMatches(node, action){
+    if (!node) return false;
+    var text = [
+      node.id,
+      node.className,
+      node.getAttribute && node.getAttribute('aria-label'),
+      node.getAttribute && node.getAttribute('title'),
+      node.textContent
+    ].join(' ').toLowerCase();
+    if (action === 'next') return /\\bnext\\b|다음|→|›|>|right|forward/.test(text);
+    if (action === 'prev') return /\\bprev\\b|\\bprevious\\b|이전|←|‹|<|left|back/.test(text);
+    return false;
+  }
+  function clickableControls(){
+    try {
+      return Array.prototype.slice.call(document.querySelectorAll('button,a,[role="button"]'));
+    } catch (_) {
+      return [];
+    }
+  }
+  function clickNativeControl(action, target){
+    var before = activeIndex(slides());
+    var controls = clickableControls();
+    var clicked = false;
+    if (action === 'go' || action === 'first' || action === 'last') {
+      var list = slides();
+      var index = action === 'first' ? 0 : action === 'last' ? list.length - 1 : target;
+      if (typeof index === 'number') {
+        for (var d=0; d<controls.length; d++) {
+          var nodeIndex = controlIndex(controls[d], list.length);
+          if (nodeIndex < 0) nodeIndex = indexWithinControlGroup(controls[d], list.length);
+          if (nodeIndex === index) {
+            clicked = dispatchNativeClick(controls[d]);
+            break;
+          }
+        }
+      }
+    } else {
+      for (var i=0; i<controls.length; i++) {
+        if (controls[i].disabled || (controls[i].getAttribute && controls[i].getAttribute('aria-disabled') === 'true')) continue;
+        if (nativeControlMatches(controls[i], action)) {
+          clicked = dispatchNativeClick(controls[i]);
+          break;
+        }
+      }
+    }
+    if (!clicked) return false;
+    setTimeout(report, 80);
+    setTimeout(report, 220);
+    setTimeout(function(){
+      if (activeIndex(slides()) === before) report();
+    }, 360);
+    return true;
+  }
+  function dispatchNativeClick(node){
+    try {
+      hostNativeClickInFlight = true;
+      node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
+      return true;
+    } catch (_) {
+      try { node.click(); return true; } catch (__) { return false; }
+    } finally {
+      setTimeout(function(){ hostNativeClickInFlight = false; }, 0);
+    }
   }
   function updateDeckChrome(i, count){
     var cur = document.getElementById('deck-cur');
@@ -2766,6 +2915,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
     }
+    if (clickNativeControl(action, target)) return;
     if (transformGo(target)) return;
     if (isScrollDeck()) {
       scrollGo(target);
@@ -2788,6 +2938,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (compactStackedDeckNavigationReady()) {
       if (forceRevealSlide(target)) return;
     }
+    if (clickNativeControl('go', target)) return;
     if (transformGo(target)) return;
     if (isScrollDeck()) { scrollGo(target); return; }
     if (canSetActive(list) && setActive(target)) return;
@@ -2882,6 +3033,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!btn || btn.__odDeckOwned) return;
     btn.__odDeckOwned = true;
     btn.addEventListener('click', function(e){
+      if (hostNativeClickInFlight) return;
       e.preventDefault();
       e.stopImmediatePropagation();
       go(action);
