@@ -133,6 +133,7 @@ import {
   scheduleDeckPreviewFitNudges,
   type DeckPreviewFitOptions,
 } from '../runtime/deckPreviewFit';
+import { withResolvedDeckSlideIndex } from '../runtime/deck-slide-index';
 import { looksLikeCompactApiStackedDeckForPreview } from '../runtime/compact-api-stacked-deck';
 import {
   hasUrlModeBridge,
@@ -6296,6 +6297,7 @@ function HtmlViewer({
     win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
     postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null, target);
     win.postMessage({ type: 'od:inspect-mode', enabled: inspectMode }, '*');
+    if (effectiveDeck && boardMode) requestSlideStateFromIframe(target);
   }
 
   useEffect(() => {
@@ -6315,6 +6317,11 @@ function HtmlViewer({
   // misfire (always firing in Inspect mode, even on annotated
   // artifacts) because the comment-mode listener short-circuits on
   // `!boardMode`. Issue #890.
+  useEffect(() => {
+    if (!effectiveDeck || !boardMode) return;
+    requestSlideStateFromIframe();
+  }, [effectiveDeck, boardMode, previewStateKey, srcDoc, useUrlLoadPreview]);
+
   useEffect(() => {
     if (!inspectMode && !boardMode) {
       setLiveCommentTargets((current) => (current.size > 0 ? new Map() : current));
@@ -6441,31 +6448,34 @@ function HtmlViewer({
       setStrokePoints((current) => (current.length > 0 ? [] : current));
       return;
     }
-    const snapshotFromData = (data: Partial<PreviewCommentSnapshot>): PreviewCommentSnapshot => ({
-      filePath: file.name,
-      elementId: String(data.elementId || ''),
-      selector: String(data.selector || ''),
-      label: String(data.label || ''),
-      text: String(data.text || ''),
-      position: {
-        x: clampBridgeCoordinate(data.position?.x),
-        y: clampBridgeCoordinate(data.position?.y),
-        width: clampBridgeCoordinate(data.position?.width),
-        height: clampBridgeCoordinate(data.position?.height),
-      },
-      hoverPoint: data.hoverPoint
-        ? {
-            x: clampBridgeCoordinate(data.hoverPoint.x),
-            y: clampBridgeCoordinate(data.hoverPoint.y),
-          }
-        : undefined,
-      htmlHint: String(data.htmlHint || ''),
-      style: normalizeAnnotationStyle(data.style),
-      selectionKind: data.selectionKind === 'pod' ? 'pod' : 'element',
-      memberCount: finiteBridgeInteger(data.memberCount),
-      podMembers: Array.isArray(data.podMembers) ? data.podMembers : undefined,
-      ...(typeof data.slideIndex === 'number' ? { slideIndex: data.slideIndex } : {}),
-    });
+    const snapshotFromData = (data: Partial<PreviewCommentSnapshot>): PreviewCommentSnapshot => {
+      const snapshot: PreviewCommentSnapshot = {
+        filePath: file.name,
+        elementId: String(data.elementId || ''),
+        selector: String(data.selector || ''),
+        label: String(data.label || ''),
+        text: String(data.text || ''),
+        position: {
+          x: clampBridgeCoordinate(data.position?.x),
+          y: clampBridgeCoordinate(data.position?.y),
+          width: clampBridgeCoordinate(data.position?.width),
+          height: clampBridgeCoordinate(data.position?.height),
+        },
+        hoverPoint: data.hoverPoint
+          ? {
+              x: clampBridgeCoordinate(data.hoverPoint.x),
+              y: clampBridgeCoordinate(data.hoverPoint.y),
+            }
+          : undefined,
+        htmlHint: String(data.htmlHint || ''),
+        style: normalizeAnnotationStyle(data.style),
+        selectionKind: data.selectionKind === 'pod' ? 'pod' : 'element',
+        memberCount: finiteBridgeInteger(data.memberCount),
+        podMembers: Array.isArray(data.podMembers) ? data.podMembers : undefined,
+        ...(typeof data.slideIndex === 'number' ? { slideIndex: data.slideIndex } : {}),
+      };
+      return enrichSnapshotWithDeckSlideIndex(snapshot);
+    };
     function onMessage(ev: MessageEvent) {
       if (!isOurPreviewIframeSource(ev.source)) return;
       const data = ev.data as (Partial<PreviewCommentSnapshot> & {
@@ -6557,6 +6567,9 @@ function HtmlViewer({
       if (data.type === 'od:comment-target') {
         const snapshot = snapshotFromData(data);
         if (!snapshot.elementId || !isValidCommentOverlayPosition(snapshot.position)) return;
+        if (effectiveDeck && typeof snapshot.slideIndex !== 'number') {
+          requestSlideStateFromIframe();
+        }
         const shouldOpenComposer = boardMode || commentCreateMode;
         cancelHoverCardDismiss();
         setActiveCommentTarget((current) => (shouldOpenComposer ? snapshot : current));
@@ -6613,7 +6626,7 @@ function HtmlViewer({
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [activeCommentTarget, boardMode, boardTool, cancelHoverCardDismiss, commentPortalHost, file.name, isOurPreviewIframeSource, previewComments, scheduleHoverCardDismiss]);
+  }, [activeCommentTarget, boardMode, boardTool, cancelHoverCardDismiss, commentPortalHost, effectiveDeck, file.name, isOurPreviewIframeSource, previewComments, previewStateKey, scheduleHoverCardDismiss, slideState?.active]);
 
   useEffect(() => {
     if (!boardMode || !activeCommentTarget || activeCommentTarget.selectionKind === 'pod') return;
@@ -7150,6 +7163,24 @@ function HtmlViewer({
     const win = target?.contentWindow;
     if (!win || typeof active !== 'number') return;
     win.postMessage({ type: 'od:slide', action: 'go', index: active }, '*');
+  }
+
+  function requestSlideStateFromIframe(target: HTMLIFrameElement | null = iframeRef.current) {
+    const win = target?.contentWindow;
+    if (!win || !effectiveDeck) return;
+    win.postMessage({ type: 'od:slide-state-request' }, '*');
+  }
+
+  function deckSlideIndexSource() {
+    return {
+      slideStateActive: slideState?.active,
+      cachedSlideActive: htmlPreviewSlideState.get(previewStateKey)?.active,
+    };
+  }
+
+  function enrichSnapshotWithDeckSlideIndex(snapshot: PreviewCommentSnapshot): PreviewCommentSnapshot {
+    if (!effectiveDeck) return snapshot;
+    return withResolvedDeckSlideIndex(snapshot, deckSlideIndexSource());
   }
 
   function postInspectSet(elementId: string, selector: string, prop: string, value: string) {
@@ -7846,23 +7877,19 @@ function HtmlViewer({
   }
 
   function withDeckSlideIndex(target: PreviewCommentTarget): PreviewCommentTarget {
-    if (!effectiveDeck || typeof slideState?.active !== 'number') return target;
-    if (typeof target.slideIndex === 'number') return target;
-    return { ...target, slideIndex: slideState.active };
+    if (!effectiveDeck) return target;
+    return withResolvedDeckSlideIndex(target, deckSlideIndexSource());
   }
 
   function withCurrentDeckSlideIndexAttachment(attachment: ChatCommentAttachment): ChatCommentAttachment {
-    if (!effectiveDeck || typeof slideState?.active !== 'number') return attachment;
-    if (typeof attachment.slideIndex === 'number' && Number.isFinite(attachment.slideIndex) && attachment.slideIndex >= 0) {
-      return attachment;
-    }
-    return { ...attachment, slideIndex: slideState.active };
+    if (!effectiveDeck) return attachment;
+    return withResolvedDeckSlideIndex(attachment, deckSlideIndexSource());
   }
 
   function withCurrentDeckSlideIndexAttachments(
     attachments: ChatCommentAttachment[],
   ): ChatCommentAttachment[] {
-    if (!effectiveDeck || typeof slideState?.active !== 'number') return attachments;
+    if (!effectiveDeck) return attachments;
     return attachments.map(withCurrentDeckSlideIndexAttachment);
   }
 

@@ -580,3 +580,23 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 2 });
   });
 });
+
+describe('deck bridge — slide-state-request', () => {
+  it('reposts the current slide state when the host asks for a snapshot', async () => {
+    const slides = Array.from({ length: 3 }, (_, i) =>
+      `<section class="slide">Slide ${i + 1}</section>`,
+    ).join('');
+    const { win, parentPostMessage } = setupDeckBridge(
+      `<div class="deck-stage">${slides}</div>`,
+    );
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    parentPostMessage.mockClear();
+
+    win.dispatchEvent(new win.window.MessageEvent('message', {
+      data: { type: 'od:slide-state-request' },
+    }));
+
+    const state = lastSlideState(parentPostMessage);
+    expect(state).toMatchObject({ active: 0, count: 3 });
+  });
+});

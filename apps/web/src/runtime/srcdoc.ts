@@ -13,6 +13,8 @@
  * and the iframe responds with:
  *   { type: 'od:slide-state', active: number, count: number }
  * after every navigation so the host can render its own counter / dots.
+ * The host can also request an immediate snapshot via:
+ *   { type: 'od:slide-state-request' }
  */
 import {
   buildManualEditBridge,
@@ -3116,6 +3118,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (data.type === 'od:deck-nudge-fit') { nudgeDeckFit(); return; }
     if (data.type === 'od:preview-scroll-by') { deckPanBy(data.left, data.top); return; }
     if (data.type === 'od:deck-pan-reset') { resetDeckPan(); return; }
+    if (data.type === 'od:slide-state-request') { report(); return; }
     if (data.type !== 'od:slide') return;
     hostSlideNavigationSeen = true;
     if (data.action === 'go' && typeof data.index === 'number') gotoIndex(data.index);

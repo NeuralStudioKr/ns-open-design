@@ -6455,7 +6455,7 @@ export function ProjectView({
       const isAutoContinueSend =
         meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
         || isAutoContinueIncompleteOutputPrompt(prompt);
-      const hydratedCommentAttachments = slideOnlyMvp && commentAttachments.length > 0
+      const hydratedCommentAttachments = commentAttachments.length > 0
         ? await hydrateDeckCommentSlideIndexes({
           projectId: project.id,
           attachments: commentAttachments,
