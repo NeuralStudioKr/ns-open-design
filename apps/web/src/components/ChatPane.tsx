@@ -2508,7 +2508,9 @@ function ChatRows({
         />
       );
     }
+    const pastRunErrorCard = pastRunErrorCards.get(m.id);
     return (
+      <>
       <AssistantMessage
         message={m}
         streaming={messageStreaming}
@@ -2534,7 +2536,7 @@ function ChatRows({
         }
         shareToOpenDesignBusy={shareToOpenDesignBusyMessageId === m.id}
         isLast={m.id === lastAssistantId}
-        errorCardOwnerId={errorCardOwnerId}
+        errorCardOwnerId={pastRunErrorCard ? m.id : errorCardOwnerId}
         nextUserContent={nextUserContentByAssistantId.get(m.id)}
         suppressDirectionForms={hasActiveDesignSystem}
         hasDesignSystemContext={hasActiveDesignSystem || !!activeDesignSystem}
@@ -2566,6 +2568,20 @@ function ChatRows({
         nextStepSkills={nextStepSkills}
         toolboxSkillNames={toolboxSkillNames}
       />
+      {pastRunErrorCard ? (
+        <RunErrorCard
+          message={pastRunErrorCard.message}
+          diagnosticText={pastRunErrorCard.diagnosticText}
+          copied={copiedPastRunErrorDiagnosticId === m.id}
+          onCopy={
+            pastRunErrorCard.diagnosticText
+              ? () => copyPastRunErrorDiagnostic(m.id, pastRunErrorCard.diagnosticText!)
+              : undefined
+          }
+          t={t}
+        />
+      ) : null}
+      </>
     );
   };
 
@@ -2597,6 +2613,39 @@ function ChatRows({
           {renderItem(row.item)}
         </VirtualChatRow>
       ))}
+    </div>
+  );
+}
+
+function RunErrorCard({
+  message,
+  diagnosticText,
+  copied,
+  onCopy,
+  t,
+}: {
+  message: string;
+  diagnosticText: string | null;
+  copied: boolean;
+  onCopy?: () => void;
+  t: TranslateFn;
+}) {
+  return (
+    <div className="msg error">
+      <span className="chat-error-text">{message}</span>
+      {diagnosticText && onCopy ? (
+        <div className="chat-error-actions">
+          <button
+            type="button"
+            className="ghost chat-error-copy"
+            onClick={onCopy}
+            aria-label={copied ? t('chat.copyDone') : t('chat.copyErrorDiagnostic')}
+            title={copied ? t('chat.copyDone') : t('chat.copyErrorDiagnostic')}
+          >
+            <Icon name={copied ? 'check' : 'copy'} size={13} />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
