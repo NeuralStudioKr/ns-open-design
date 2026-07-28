@@ -27,6 +27,7 @@
 | `ns-teamver-be/docs/54_웹_참조_채팅_통합_기획.md` | GPT/Claude/Gemini **벤더 native web search** |
 | `ns-teamver-be/docs/모델별_web_search_비교.md` | 벤더별 search vs fetch 차이 |
 | [48 웹 fetch 외부화 OpenAI 검토 ADR](./48_웹_fetch_외부화_OpenAI_검토_ADR.md) | **OpenAI web search 전면 대체 검토** · O2 adapter 로드맵 |
+| [48-2 apex→www redirect 이슈](./48-2-웹_fetch_native_redirect_apex_www_이슈.md) | **apex 도메인 fetch 실패 RCA · safe redirect fix · smoke** |
 
 ---
 
@@ -34,7 +35,7 @@
 
 > 1차 운영 해법은 **선-fetch 후 프롬프트 주입**이다. Teamver managed Anthropic API 모드는 아직 tool loop가 없으므로, FE가 사용자 프롬프트의 public URL을 감지해 daemon `POST /api/tools/web-fetch`로 SSRF-safe fetch를 수행하고, 결과를 `<web-fetch-context>`로 현재 user turn에만 첨부한다.
 
-- daemon `POST /api/tools/web-fetch`: 기존 `fetchUrlContent()` 재사용(public http(s), SSRF guard, redirect 차단, timeout, size cap, HTML→text).
+- daemon `POST /api/tools/web-fetch`: `fetchUrlContent()` 재사용(public http(s), SSRF guard, **safe redirect follow** — apex→www 등 정상 301/302 는 hop 마다 SSRF 재검증 후 follow, max 3 hops; [48-2](./48-2-웹_fetch_native_redirect_apex_www_이슈.md)), timeout, size cap, HTML→text).
 - web API mode: URL 최대 3개를 사전 fetch, 총 컨텍스트 예산 내에서 user message에 주입.
 - prompt: API no-tools/BYOK 양쪽에서 `<web-fetch-context>`를 이미 fetch된 URL text로 인식하도록 명시한다. 이 block이 있으면 모델은 “웹 접근 불가”라고 답하지 말고 해당 text를 참조한다.
 - 2026-07-27 기준 보강: FE prefetch 호출은 참고자료 확보용 best-effort 작업이므로 active workspace header 조회와 embed auth refresh ladder를 타지 않는다(`skipTeamverWorkspaceHeaders`, `skipEmbedAuthRecovery`). 실제 채팅 요청의 인증·세션 처리는 기존 run 경로가 담당한다.
@@ -146,6 +147,14 @@
 - `runtime-config`는 today **공개 가능한 LLM 실행 선호값만** 넘긴다 (`apiProtocol`, `baseUrl`, `model`, `apiKeyConfigured`). 실제 `apiKey`는 브라우저 Network 응답에 반환하지 않는다.
 - `enableWebFetch: true` 같은 플래그를 **나중에** 넣을 수는 있으나, **실행 코드 없이는 의미 없다**.
 - 순서: **daemon `web_fetch` 이식 → env/runtime으로 프로토콜·모델 맞춤 → (선택) API 게이트**.
+
+---
+
+### Q1b. `www.teamver.com` 은 되는데 `neuralstudio.kr` 만 web-fetch 가 실패한다
+
+**A:** 2026-07-28 fix 전에는 daemon 이 **`redirect: 'error'`** 로 설정되어 있어, apex → `www` **정상 301/302** 도 첫 hop 에서 실패했다. FE URL 추출은 apex 도 `https://neuralstudio.kr/` 로 정상화한다 — 실패는 **daemon GET** 단계.
+
+fix 후: `redirect: 'manual'` + **hop 마다 `assertExternalAssetUrl`** (SSRF 유지), max 3 hops. 상세 RCA·smoke: **[48-2](./48-2-웹_fetch_native_redirect_apex_www_이슈.md)**.
 
 ---
 
@@ -323,6 +332,7 @@ Teamver embed 1차는 **managed BYOK(API) 고정**이라 CLI 패스와 무관하
 | 일자 | 내용 |
 |------|------|
 | 2026-07-28 | [48 §5.1.1](./48_웹_fetch_외부화_OpenAI_검토_ADR.md#511-정책-갱신-v12--2026-07-28) v1.2 정책 갱신 반영 — reader-\* env 는 🚫 정책 pending 마킹, staging enable 금지, Phase 3 (vendor hosted `web_search`) 로 이관 |
+| 2026-07-28 | [48-2](./48-2-웹_fetch_native_redirect_apex_www_이슈.md) 신규 — apex 도메인 fetch 실패 RCA · safe redirect · smoke · ADR 영향 |
 | 2026-07-28 | [48-1 §3.3.1](./48-1-구현설계-webfetch-adapter.md#331-redirect-policy-2026-07-28-갱신) native safe redirect follow 도입 — `neuralstudio.kr` apex 도메인 이슈 해결. per-hop `assertExternalAssetUrl` 재검증으로 SSRF 방어 유지. 로그에 `hops=N` (>0 시만) · error codes `redirect_max/blocked/malformed` |
 | 2026-07-27 | [48 ADR](./48_웹_fetch_외부화_OpenAI_검토_ADR.md) 링크 — OpenAI web search 전면 대체 vs adapter 로드맵 SSOT |
 | 2026-07-27 | URL-only sparse brief 빠른 질문을 UI/채팅 언어 기준으로 로컬라이즈하도록 프롬프트·테스트 보강 |

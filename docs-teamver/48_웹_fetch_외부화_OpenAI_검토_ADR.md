@@ -19,6 +19,7 @@
 | 문서 | 역할 |
 |------|------|
 | [15 웹참조 BYOK web_fetch FAQ](./15_웹참조_BYOK_web_fetch_FAQ.md) | **현재 구현** · FAQ · 선-fetch 주입 · BYOK tool loop |
+| [48-2 apex→www redirect 이슈](./48-2-웹_fetch_native_redirect_apex_www_이슈.md) | **staging 실측 RCA** · `redirect: 'error'` 부작용 · safe redirect fix |
 | [29 BYOK api mode vs runs](./29_BYOK_api_mode_vs_runs_아키텍처.md) | API 모드 스트림 · tool loop 부재 |
 | [36 BFF auth refresh 401](./36_BFF_auth_refresh_401_정리.md) | prefetch와 auth refresh 엮임 이슈 맥락 |
 | `ns-teamver-be/docs/54_웹_참조_채팅_통합_기획.md` | Main 채팅 **벤더 native web search** |

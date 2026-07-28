@@ -35,7 +35,7 @@
 | I2 | BYOK tool loop `executeWebFetch(args, ctx)` public signature | `apps/daemon/src/byok-tools.ts:482-492` |
 | I3 | `<web-fetch-context>` XML shape · 삽입 위치 · truncation 표기 | chat-routes 프리페치 경로 (기존) |
 | I4 | **SSRF 는 항상 원본 URL 에 대해** `assertExternalAssetUrl` 통과 후에만 outbound 발생 | `byok-url-tools.ts:99` → 신규 `web-fetch/core.ts` 로 이동 |
-| I5 | 100KB post-fetch cap · 12s timeout · `redirect: 'error'` · UA `TeamverDesignBot/1.0` | core dispatcher (adapter 가 재구현하지 않음) |
+| I5 | 100KB post-fetch cap · 12s timeout · **safe redirect follow** (`redirect: 'manual'`, max 3 hops, per-hop SSRF — [48-2](./48-2-웹_fetch_native_redirect_apex_www_이슈.md)) · UA `TeamverDesignBot/1.0` | core dispatcher; hop logic in native backend |
 | I6 | 실패 시 예외를 던지지 않고 `{ ok: false, error }` 반환 | 모든 backend + core |
 | I7 | `apps/daemon/tests/byok-url-tools.test.ts` 무수정 통과 | Phase C 종료 조건 |
 
