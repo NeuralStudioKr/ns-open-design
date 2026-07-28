@@ -461,6 +461,22 @@ describe('preview comment agent payload', () => {
     expect(hint).toContain('ask the user before proceeding');
   });
 
+  it('preserves deck slideIndex and renders slide-scoped edit instructions', () => {
+    const normalized = normalizeCommentAttachments([
+      commentAttachment({
+        filePath: 'deck.html',
+        slideIndex: 4.9,
+        comment: 'Make only this KPI bigger',
+      }),
+    ]);
+
+    const hint = renderCommentAttachmentHint(normalized);
+
+    expect(normalized[0]?.slideIndex).toBe(4);
+    expect(hint).toContain('For deck comments that include slideIndex, edit ONLY that zero-based slide');
+    expect(hint).toContain('slideIndex: 4');
+  });
+
   it('keeps image attachments in saved comment payloads without requiring a note', () => {
     const normalized = normalizeCommentAttachments([
       commentAttachment({

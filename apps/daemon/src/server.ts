@@ -984,6 +984,10 @@ export function normalizeCommentAttachments(input) {
       const comment = commentContext === 'query'
         ? ''
         : cleanString(raw.comment) || intent || imageOnlyCommentFallback(imageAttachments.length);
+      const slideIndex =
+        Number.isFinite(raw.slideIndex) && raw.slideIndex >= 0
+          ? Math.floor(raw.slideIndex)
+          : undefined;
       const selectionKind =
         raw.selectionKind === 'visual' ? 'visual' : raw.selectionKind === 'pod' ? 'pod' : 'element';
       if (!filePath || !elementId) return null;
@@ -1022,6 +1026,7 @@ export function normalizeCommentAttachments(input) {
           : undefined,
         imageAttachments: imageAttachments.length > 0 ? imageAttachments : undefined,
         commentContext,
+        slideIndex,
         source: raw.source === 'board-batch' ? 'board-batch' : 'saved-comment',
       };
     })
@@ -1035,7 +1040,7 @@ export function renderCommentAttachmentHint(commentAttachments) {
     '',
     '',
     '<attached-preview-comments>',
-    "Hard scope: change ONLY the elements identified below by selector / position / pod members. Do NOT modify sibling sub-pages, parent layout, global CSS, design tokens, or unrelated rules even if you notice issues there — surface those as a follow-up note in your reply instead of editing them. If the user's request cannot be satisfied without touching outside this scope, ask the user before proceeding. For visual marks, inspect the screenshot and modify the marked region first.",
+    "Hard scope: change ONLY the elements identified below by selector / position / pod members. For deck comments that include slideIndex, edit ONLY that zero-based slide and do NOT modify other slides even when selectors, classes, or text repeat elsewhere. Do NOT modify sibling sub-pages, parent layout, global CSS, design tokens, or unrelated rules even if you notice issues there — surface those as a follow-up note in your reply instead of editing them. If the user's request cannot be satisfied without touching outside this scope, ask the user before proceeding. For visual marks, inspect the screenshot and modify the marked region first.",
   ];
   for (const item of commentAttachments) {
     const targetKind =
@@ -1051,6 +1056,9 @@ export function renderCommentAttachmentHint(commentAttachments) {
       `htmlHint: ${item.htmlHint || '(none)'}`,
       `computedStyle: ${formatAnnotationStyle(item.style) || '(none)'}`,
     );
+    if (Number.isFinite(item.slideIndex) && item.slideIndex >= 0) {
+      lines.push(`slideIndex: ${Math.floor(item.slideIndex)}`);
+    }
     if (item.comment && item.commentContext !== 'query') {
       lines.push(`comment: ${item.comment}`);
     }

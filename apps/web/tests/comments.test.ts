@@ -79,6 +79,24 @@ describe('preview comment attachment helpers', () => {
     ]);
   });
 
+  it('keeps deck slideIndex on saved comments sent back through chat', () => {
+    const [attachment] = commentsToAttachments([
+      comment({
+        id: 'c1',
+        filePath: 'deck.html',
+        elementId: 'hero-title',
+        note: 'Only revise this slide title',
+        slideIndex: 2,
+      }),
+    ]);
+
+    expect(attachment).toMatchObject({
+      filePath: 'deck.html',
+      elementId: 'hero-title',
+      slideIndex: 2,
+    });
+  });
+
   it('keeps saved comment images in send payloads even when the note is empty', () => {
     const [attachment] = commentsToAttachments([
       comment({

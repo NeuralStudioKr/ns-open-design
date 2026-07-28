@@ -7797,6 +7797,21 @@ function HtmlViewer({
     return { ...target, slideIndex: slideState.active };
   }
 
+  function withCurrentDeckSlideIndexAttachment(attachment: ChatCommentAttachment): ChatCommentAttachment {
+    if (!effectiveDeck || typeof slideState?.active !== 'number') return attachment;
+    if (typeof attachment.slideIndex === 'number' && Number.isFinite(attachment.slideIndex) && attachment.slideIndex >= 0) {
+      return attachment;
+    }
+    return { ...attachment, slideIndex: slideState.active };
+  }
+
+  function withCurrentDeckSlideIndexAttachments(
+    attachments: ChatCommentAttachment[],
+  ): ChatCommentAttachment[] {
+    if (!effectiveDeck || typeof slideState?.active !== 'number') return attachments;
+    return attachments.map(withCurrentDeckSlideIndexAttachment);
+  }
+
   async function applyManualEditCommentFastPathAttachments(
     attachments: ChatCommentAttachment[],
   ): Promise<{ appliedIds: Set<string>; remaining: ChatCommentAttachment[] }> {
@@ -7807,6 +7822,13 @@ function HtmlViewer({
     }
     for (const attachment of attachments) {
       if (attachment.filePath !== file.name) {
+        remaining.push(attachment);
+        continue;
+      }
+      if (
+        effectiveDeck &&
+        !(typeof attachment.slideIndex === 'number' && Number.isFinite(attachment.slideIndex) && attachment.slideIndex >= 0)
+      ) {
         remaining.push(attachment);
         continue;
       }
@@ -7862,7 +7884,7 @@ function HtmlViewer({
       if (existingComment) {
         setSendingBoardBatch(true);
         try {
-          const attachments = commentsToAttachments([existingComment]);
+          const attachments = withCurrentDeckSlideIndexAttachments(commentsToAttachments([existingComment]));
           const fastPath = await applyManualEditCommentFastPathAttachments(attachments);
           if (fastPath.remaining.length > 0) {
             await onSendBoardCommentAttachments(fastPath.remaining);
@@ -7879,7 +7901,7 @@ function HtmlViewer({
     setSendingBoardBatch(true);
     try {
       const existingAttachments = currentActiveComposerAttachments();
-      const attachments = buildBoardCommentAttachments({
+      const attachments = withCurrentDeckSlideIndexAttachments(buildBoardCommentAttachments({
         target: withDeckSlideIndex(targetFromSnapshot(activeCommentTarget)),
         notes: nextNotes,
         includeImageOnly: boardImages.length > 0,
@@ -7888,7 +7910,7 @@ function HtmlViewer({
         existingAttachments.length > 0
           ? { ...attachment, imageAttachments: existingAttachments }
           : attachment
-      ));
+      )));
       let attachmentsToSend = attachments;
       let fastPathApplied = false;
       if (boardImages.length === 0) {
