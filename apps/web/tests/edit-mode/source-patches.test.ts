@@ -379,6 +379,34 @@ describe('manual edit source patches', () => {
     expect(result.source).not.toContain('Unexpected sibling edit');
   });
 
+  it('merges selected targets by scoped position when model output drops edit ids', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><h1 data-od-id="title">Keep</h1></section>',
+      '<section class="slide" data-slide-index="1">',
+      '<h1 data-od-id="title" data-od-edit="text">강사 이름</h1><p data-od-id="body">본문</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><h1>Unexpected</h1></section>',
+      '<section class="slide" data-slide-index="1">',
+      '<h1>김이박</h1><p>Unexpected sibling edit</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetsFromSource(source, modelOutput, ['title'], { slideIndex: 1 });
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('<section class="slide" data-slide-index="0"><h1 data-od-id="title">Keep</h1></section>');
+    expect(result.source).toContain('<h1 data-od-id="title" data-od-edit="text">김이박</h1>');
+    expect(result.source).toContain('<p data-od-id="body">본문</p>');
+    expect(result.source).not.toContain('Unexpected sibling edit');
+  });
+
   it('rejects selected target merges when the model did not change the target', () => {
     const source = '<!doctype html><html><body><section class="slide"><h1 data-od-id="headline">Keep</h1></section></body></html>';
     const modelOutput = source.replace('</section>', '<p>Unscoped edit</p></section>');

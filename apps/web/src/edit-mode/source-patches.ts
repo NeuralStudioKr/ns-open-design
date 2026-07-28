@@ -202,11 +202,16 @@ export function mergeManualEditTargetsFromSource(
   let changedCount = 0;
   for (const id of normalizedIds) {
     const currentTarget = findEditableElement(currentDoc, id, scope);
-    const nextTarget = findEditableElement(nextDoc, id, scope);
+    const nextTarget = currentTarget
+      ? findEditableElement(nextDoc, id, scope)
+        ?? findEquivalentElementByScopedPosition(currentDoc, nextDoc, currentTarget, scope)
+      : null;
     if (!currentTarget || !nextTarget) continue;
     const currentOuter = currentTarget.outerHTML;
     const nextOuter = nextTarget.outerHTML;
-    currentTarget.replaceWith(currentDoc.importNode(nextTarget, true));
+    const replacement = currentDoc.importNode(nextTarget, true);
+    preserveManualEditIdentityAttributes(currentTarget, replacement);
+    currentTarget.replaceWith(replacement);
     replacedCount += 1;
     if (currentOuter !== nextOuter) changedCount += 1;
   }
@@ -294,6 +299,46 @@ function findScopedRoot(doc: Document, scope: ManualEditSourceScope): ManualEdit
   if (explicit) return explicit;
   const slides = Array.from(doc.querySelectorAll('.slide, [data-slide], [data-screen-label], section'));
   return slides[index] ?? null;
+}
+
+function findEquivalentElementByScopedPosition(
+  currentDoc: Document,
+  nextDoc: Document,
+  currentTarget: Element,
+  scope: ManualEditSourceScope,
+): Element | null {
+  const currentRoot = findScopedRoot(currentDoc, scope);
+  const nextRoot = findScopedRoot(nextDoc, scope);
+  if (!currentRoot || !nextRoot) return null;
+  const currentRootElement = currentRoot.nodeType === 9 ? currentDoc.body : currentRoot as Element;
+  const nextRootElement = nextRoot.nodeType === 9 ? nextDoc.body : nextRoot as Element;
+  if (!currentRootElement.contains(currentTarget)) return null;
+  if (currentTarget === currentRootElement) return nextRootElement;
+  const path: number[] = [];
+  let cursor: Element | null = currentTarget;
+  while (cursor && cursor !== currentRootElement) {
+    const parent = cursor.parentElement;
+    if (!parent) return null;
+    const index = Array.from(parent.children).indexOf(cursor);
+    if (index < 0) return null;
+    path.unshift(index);
+    cursor = parent;
+  }
+  let nextCursor: Element | null = nextRootElement;
+  for (const index of path) {
+    nextCursor = nextCursor.children.item(index);
+    if (!nextCursor) return null;
+  }
+  return nextCursor;
+}
+
+function preserveManualEditIdentityAttributes(currentTarget: Element, replacement: Element): void {
+  for (const attr of ['data-od-id', 'data-od-runtime-id', 'data-od-source-path', 'data-od-edit', 'data-od-label']) {
+    const currentValue = currentTarget.getAttribute(attr);
+    if (currentValue && !replacement.getAttribute(attr)) {
+      replacement.setAttribute(attr, currentValue);
+    }
+  }
 }
 
 function findElementByDomSelector(

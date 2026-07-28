@@ -236,6 +236,7 @@ import {
   removeAttachedComment,
   resolveCommentEditPersistTargetFileName,
   SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER,
+  stripUserVisibleUserMessageText,
 } from '../comments';
 import {
   computeProducedFiles,
@@ -7392,7 +7393,7 @@ export function ProjectView({
         // Without this, the Memory tab / model picker is a no-op for
         // BYOK users even though the UI saves model + index + entries
         // for that mode.
-        const userText = (userMsg.content ?? '').trim();
+        const userText = stripUserVisibleUserMessageText(prompt).trim();
         // Snapshot the live BYOK chat config so the daemon can run
         // "Same as chat" memory extraction against the same vendor /
         // key / baseUrl / apiVersion the user is chatting with. The
