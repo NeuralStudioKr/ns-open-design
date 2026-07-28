@@ -4224,7 +4224,9 @@ function ReactModulePointer({
  */
 const HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS = 200;
 /** Wall-clock deadline so hung GETs cannot leave "loading…" forever. */
-const HTML_PREVIEW_SOURCE_WALL_MS = 12_000;
+const HTML_PREVIEW_SOURCE_WALL_MS = 30_000;
+const HTML_PREVIEW_SOURCE_FIRST_RETRY_MS = 400;
+const HTML_PREVIEW_SOURCE_RETRY_MS = 1_200;
 
 function acceptPreviewHtmlCandidate(
   candidate: string | null,
@@ -5532,7 +5534,8 @@ function HtmlViewer({
     let softRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const requestGeneration = ++previewSourceFetchGenerationRef.current;
     const abort = new AbortController();
-    let softRetried = false;
+    const retryUntil = Date.now() + HTML_PREVIEW_SOURCE_WALL_MS;
+    let nextSoftRetryDelay = HTML_PREVIEW_SOURCE_FIRST_RETRY_MS;
 
     const clearPreviewSourceWall = () => {
       if (previewSourceWallTimerRef.current != null) {
@@ -5575,6 +5578,18 @@ function HtmlViewer({
       // url-load iframe takes over with its own ?v=mtime cache-bust.
       // Clear sticky unavailable for this attempt so refresh shows loading.
       setSourceLoadFailed(false);
+      const scheduleSoftRetry = () => {
+        if (streamingRef.current || Date.now() >= retryUntil) {
+          armPreviewSourceWall();
+          return false;
+        }
+        setSourceLoadFailed(false);
+        armPreviewSourceWall();
+        const delay = nextSoftRetryDelay;
+        nextSoftRetryDelay = HTML_PREVIEW_SOURCE_RETRY_MS;
+        softRetryTimer = setTimeout(runFetch, delay);
+        return true;
+      };
       void fetchProjectFileText(projectId, file.name, {
         cacheBustKey: `${file.mtime}-${reloadKey}-${filesRefreshKey}`,
         signal: abort.signal,
@@ -5592,30 +5607,21 @@ function HtmlViewer({
             setSourceLoadFailed(false);
             return;
           }
-          // Auth blip / soft-sticky / unlink race: one soft retry, then stay
-          // on loading — wall (non-streaming) owns unavailable escalation.
-          if (!softRetried && !streamingRef.current) {
-            softRetried = true;
-            setSourceLoadFailed(false);
-            armPreviewSourceWall();
-            softRetryTimer = setTimeout(runFetch, 400);
-            return;
-          }
+          // Auth blip / S3-read lag / unlink+add race: keep retrying for a
+          // bounded window. Canvas→Slide often opens the persisted file before
+          // registry/S3 read-after-write has settled; a single 400ms retry
+          // was too brittle and surfaced "preview unavailable" even though the
+          // deck arrived seconds later.
+          if (scheduleSoftRetry()) return;
           armPreviewSourceWall();
           return;
         }
         const accepted = acceptPreviewHtmlCandidate(text, lastStablePreviewSourceRef);
         if (accepted == null) {
-          // Incomplete/leaky disk with no stable frame. Soft-retry once after
-          // stream (turn-end scrub race), then keep loading — wall escalates.
+          // Incomplete/leaky disk with no stable frame. Retry briefly after
+          // stream (turn-end scrub / S3 sync race), then wall escalates.
           // Do NOT flip unavailable here.
-          if (!softRetried && !streamingRef.current) {
-            softRetried = true;
-            setSourceLoadFailed(false);
-            armPreviewSourceWall();
-            softRetryTimer = setTimeout(runFetch, 400);
-            return;
-          }
+          if (scheduleSoftRetry()) return;
           armPreviewSourceWall();
           return;
         }
