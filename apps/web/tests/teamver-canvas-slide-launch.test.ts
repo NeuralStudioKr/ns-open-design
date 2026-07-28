@@ -15,6 +15,7 @@ import {
   canvasSlideTemplateOptions,
   driveCreateSlidesSourceBrief,
   isCanvasSlideOneConfirmLaunch,
+  normalizeCanvasSlideQuickSettings,
   resolveCanvasSlideTemplate,
 } from "../src/teamver/canvasSlideLaunch";
 import type { InstalledPluginRecord } from "@open-design/contracts";
@@ -240,6 +241,25 @@ describe("canvasSlideLaunch", () => {
       quickSettings,
       quickSettingsInstruction: instruction,
     });
+  });
+
+  it("normalizes invalid quick settings before composing hidden model instructions", () => {
+    const invalidSettings = {
+      audience: "everyone",
+      length: "massive",
+      transformMode: "copy-page",
+      tone: "loud",
+    } as unknown as Parameters<typeof normalizeCanvasSlideQuickSettings>[0];
+
+    expect(normalizeCanvasSlideQuickSettings(invalidSettings)).toEqual(
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+    );
+    const instruction = canvasSlideQuickSettingsInstruction(invalidSettings);
+    expect(instruction).toContain("Audience: Infer audience from the source.");
+    expect(instruction).toContain("Length: Infer slide count from the source.");
+    expect(instruction).toContain("Transform mode: Rebuild as a presentation");
+    expect(instruction).toContain("Tone: Infer tone from the source/template.");
+    expect(instruction).not.toContain("undefined");
   });
 
   it("threads plugin inputs through the existing-project composer handoff", () => {

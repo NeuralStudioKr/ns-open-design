@@ -79,12 +79,39 @@ const QUICK_SETTING_PROMPT_LABELS = {
   },
 } as const;
 
+function normalizeQuickSettingValue<T extends string>(
+  value: T | undefined,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return value && allowed.includes(value) ? value : fallback;
+}
+
 export function normalizeCanvasSlideQuickSettings(
   settings?: Partial<CanvasSlideQuickSettings> | null,
 ): CanvasSlideQuickSettings {
+  const raw = settings ?? {};
   return {
-    ...DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
-    ...(settings ?? {}),
+    audience: normalizeQuickSettingValue(
+      raw.audience,
+      ["auto", "internal", "client", "education", "business"],
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS.audience,
+    ),
+    length: normalizeQuickSettingValue(
+      raw.length,
+      ["auto", "short", "standard", "detailed"],
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS.length,
+    ),
+    transformMode: normalizeQuickSettingValue(
+      raw.transformMode,
+      ["presentation", "faithful", "summary"],
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS.transformMode,
+    ),
+    tone: normalizeQuickSettingValue(
+      raw.tone,
+      ["auto", "professional", "modern", "friendly", "impact"],
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS.tone,
+    ),
   };
 }
 
