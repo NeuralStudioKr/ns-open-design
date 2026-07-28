@@ -166,6 +166,9 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     expect(triggers[0]?.textContent).toContain("teamver.canvasSlideLaunch.stepDocument");
     expect(triggers[1]?.textContent).toContain("teamver.canvasSlideLaunch.stepPrompt");
     expect(triggers[2]?.textContent).toContain("teamver.canvasSlideLaunch.stepTemplate");
+    expect(triggers[1]?.textContent).toContain("teamver.canvasSlideLaunch.stepOptionalBadge");
+    expect(triggers[2]?.textContent).toContain("teamver.canvasSlideLaunch.stepOptionalBadge");
+    expect(triggers[0]?.textContent).not.toContain("teamver.canvasSlideLaunch.stepOptionalBadge");
 
     expect(screen.getByText("lesson.html")).toBeTruthy();
 

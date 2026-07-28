@@ -466,6 +466,8 @@ export interface Dict {
   'teamver.canvasSlideLaunch.stepDocument': string;
   'teamver.canvasSlideLaunch.stepPrompt': string;
   'teamver.canvasSlideLaunch.stepTemplate': string;
+  'teamver.canvasSlideLaunch.stepOptionalBadge': string;
+  'teamver.canvasSlideLaunch.templateLead': string;
   'teamver.canvasSlideLaunch.promptLabel': string;
   'teamver.canvasSlideLaunch.promptLead': string;
   'teamver.canvasSlideLaunch.promptPlaceholder': string;

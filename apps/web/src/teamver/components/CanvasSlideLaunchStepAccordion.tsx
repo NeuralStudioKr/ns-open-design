@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Icon } from "../../components/Icon";
+import { CanvasSlideLaunchStepHeading } from "./CanvasSlideLaunchStepHeading";
 
 export type CanvasSlideLaunchStepId = "document" | "prompt" | "template";
 
@@ -7,6 +8,9 @@ type StepConfig = {
   id: CanvasSlideLaunchStepId;
   stepNumber: number;
   title: string;
+  optional?: boolean;
+  /** Accessible name when `optional` (includes badge text). */
+  triggerAriaLabel?: string;
   /** One-line preview when the panel is collapsed. */
   summary?: string | null;
   panel: ReactNode;
@@ -54,6 +58,9 @@ export function CanvasSlideLaunchStepAccordion({
               className="teamver-canvas-slide-launch-step-trigger"
               aria-expanded={expanded}
               aria-controls={`teamver-canvas-slide-launch-step-panel-${step.id}`}
+              {...(step.triggerAriaLabel
+                ? { "aria-label": step.triggerAriaLabel }
+                : {})}
               disabled={disabled}
               data-testid={`teamver-canvas-slide-launch-step-trigger-${step.id}`}
               onClick={() => onExpandedStepChange(step.id)}
@@ -62,7 +69,11 @@ export function CanvasSlideLaunchStepAccordion({
                 {step.stepNumber}
               </span>
               <span className="teamver-canvas-slide-launch-step-headings">
-                <span className="teamver-canvas-slide-launch-step-title">{step.title}</span>
+                <CanvasSlideLaunchStepHeading
+                  title={step.title}
+                  optional={step.optional}
+                  badgeAriaHidden={Boolean(step.triggerAriaLabel)}
+                />
                 {!expanded && step.summary?.trim() ? (
                   <span className="teamver-canvas-slide-launch-step-summary">{step.summary}</span>
                 ) : null}

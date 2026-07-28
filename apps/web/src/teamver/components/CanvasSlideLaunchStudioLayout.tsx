@@ -4,9 +4,9 @@ type Props = {
   documentPanel: ReactNode;
   promptPanel: ReactNode;
   templatePanel: ReactNode;
-  documentTitle: string;
-  promptTitle: string;
-  templateTitle: string;
+  documentTitle: ReactNode;
+  promptTitle: ReactNode;
+  templateTitle: ReactNode;
 };
 
 /**

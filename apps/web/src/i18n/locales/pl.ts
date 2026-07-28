@@ -2675,6 +2675,8 @@ export const pl: Dict = {
   'teamver.canvasSlideLaunch.stepDocument': 'Document to import',
   'teamver.canvasSlideLaunch.stepPrompt': 'Prompt',
   'teamver.canvasSlideLaunch.stepTemplate': 'Slide template',
+  'teamver.canvasSlideLaunch.stepOptionalBadge': 'Opcjonalnie',
+  'teamver.canvasSlideLaunch.templateLead': 'Keep the highlighted template to use the default, or pick another.',
   'teamver.canvasSlideLaunch.promptLabel': 'Slide generation instructions',
   'teamver.canvasSlideLaunch.promptLead': 'Describe goal, tone, sections to emphasize, or slide count. Leave blank to rely on the document alone.',
   'teamver.canvasSlideLaunch.promptPlaceholder': 'e.g. First-class deck, ~8 slides, friendly tone for students. Emphasize curriculum and assignments.',

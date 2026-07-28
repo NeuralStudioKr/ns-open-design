@@ -20,6 +20,10 @@ import {
 } from "./CanvasSlideLaunchStepAccordion";
 import { CanvasSlideLaunchStudioLayout } from "./CanvasSlideLaunchStudioLayout";
 import { useCanvasSlideLaunchWideLayout } from "../hooks/useCanvasSlideLaunchWideLayout";
+import {
+  CanvasSlideLaunchStepHeading,
+  canvasSlideLaunchStepAriaLabel,
+} from "./CanvasSlideLaunchStepHeading";
 
 export type TeamverCanvasSlideLaunchSource =
   | { kind: "drive"; asset: TeamverDriveImportAsset }
@@ -219,6 +223,10 @@ export function TeamverCanvasSlideLaunchModal({
     templateOptions.find((option) => option.id === selectedTemplateId) ?? templateOptions[0] ?? null;
   const showTemplateGrid = templateOptions.length > 1;
   const useStudioLayout = useCanvasSlideLaunchWideLayout(showTemplateGrid);
+  const optionalBadge = t("teamver.canvasSlideLaunch.stepOptionalBadge");
+  const stepDocumentTitle = t("teamver.canvasSlideLaunch.stepDocument");
+  const stepPromptTitle = t("teamver.canvasSlideLaunch.stepPrompt");
+  const stepTemplateTitle = t("teamver.canvasSlideLaunch.stepTemplate");
   const normalizedQuickSettings = {
     ...DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
     ...quickSettings,
@@ -382,7 +390,7 @@ export function TeamverCanvasSlideLaunchModal({
     </div>
   );
 
-  const templatePanel =
+  const templatePanelInner =
     templateOptions.length > 0 ? (
       <CanvasSlideTemplatePicker
         options={templateOptions}
@@ -396,25 +404,51 @@ export function TeamverCanvasSlideLaunchModal({
       </p>
     );
 
+  const templatePanel = (
+    <div className="teamver-canvas-slide-launch-template-section">
+      {showTemplateGrid ? (
+        <p
+          className="teamver-canvas-slide-launch-template-lead"
+          data-testid="teamver-canvas-slide-launch-template-lead"
+        >
+          {t("teamver.canvasSlideLaunch.templateLead")}
+        </p>
+      ) : null}
+      {templatePanelInner}
+    </div>
+  );
+
   const steps = [
     {
       id: "document" as const,
       stepNumber: 1,
-      title: t("teamver.canvasSlideLaunch.stepDocument"),
+      title: stepDocumentTitle,
       summary: headline,
       panel: renderDocumentPanel(true),
     },
     {
       id: "prompt" as const,
       stepNumber: 2,
-      title: t("teamver.canvasSlideLaunch.stepPrompt"),
+      title: stepPromptTitle,
+      optional: true,
+      triggerAriaLabel: canvasSlideLaunchStepAriaLabel(
+        stepPromptTitle,
+        true,
+        optionalBadge,
+      ),
       summary: promptStepSummary(userPrompt, t("teamver.canvasSlideLaunch.promptEmptySummary")),
       panel: renderPromptPanel(true),
     },
     {
       id: "template" as const,
       stepNumber: 3,
-      title: t("teamver.canvasSlideLaunch.stepTemplate"),
+      title: stepTemplateTitle,
+      optional: true,
+      triggerAriaLabel: canvasSlideLaunchStepAriaLabel(
+        stepTemplateTitle,
+        true,
+        optionalBadge,
+      ),
       summary: selectedTemplate?.title ?? t("teamver.canvasSlideLaunch.templateFallback"),
       panel: templatePanel,
     },
@@ -495,20 +529,20 @@ export function TeamverCanvasSlideLaunchModal({
             >
               <div className="teamver-canvas-slide-launch-compact-section">
                 <h3 className="teamver-canvas-slide-launch-compact-label">
-                  {t("teamver.canvasSlideLaunch.stepDocument")}
+                  <CanvasSlideLaunchStepHeading title={stepDocumentTitle} />
                 </h3>
                 {renderDocumentPanel(false)}
               </div>
               <div className="teamver-canvas-slide-launch-compact-section">
                 <h3 className="teamver-canvas-slide-launch-compact-label">
-                  {t("teamver.canvasSlideLaunch.stepPrompt")}
+                  <CanvasSlideLaunchStepHeading title={stepPromptTitle} optional />
                 </h3>
                 {renderPromptPanel(false)}
               </div>
               {templateOptions.length > 0 ? (
                 <div className="teamver-canvas-slide-launch-compact-section">
                   <h3 className="teamver-canvas-slide-launch-compact-label">
-                    {t("teamver.canvasSlideLaunch.stepTemplate")}
+                    <CanvasSlideLaunchStepHeading title={stepTemplateTitle} optional />
                   </h3>
                   {templatePanel}
                 </div>
@@ -517,9 +551,15 @@ export function TeamverCanvasSlideLaunchModal({
           ) : useStudioLayout ? (
             <div className="teamver-canvas-slide-launch-flow teamver-canvas-slide-launch-flow--studio">
               <CanvasSlideLaunchStudioLayout
-                documentTitle={t("teamver.canvasSlideLaunch.stepDocument")}
-                promptTitle={t("teamver.canvasSlideLaunch.stepPrompt")}
-                templateTitle={t("teamver.canvasSlideLaunch.stepTemplate")}
+                documentTitle={
+                  <CanvasSlideLaunchStepHeading title={stepDocumentTitle} />
+                }
+                promptTitle={
+                  <CanvasSlideLaunchStepHeading title={stepPromptTitle} optional />
+                }
+                templateTitle={
+                  <CanvasSlideLaunchStepHeading title={stepTemplateTitle} optional />
+                }
                 documentPanel={renderDocumentPanel(false)}
                 promptPanel={renderPromptPanel(false)}
                 templatePanel={templatePanel}

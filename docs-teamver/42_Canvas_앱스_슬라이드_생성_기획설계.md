@@ -6,6 +6,7 @@
 
 **관련 문서**
 
+- [49 Canvas→Design 런치 모달 UX 안 비교](./49_Canvas_Design_슬라이드_런치_모달_UX_안_비교.md) — 스텝 위저드·크롬·푸터 SSOT
 - [18 Canvas → Slide 연동 우선순위](./18_Canvas_Slide_연동_우선순위.md) — 기존 handoff·P0/P1 판단
 - [14 Design Drive 연동](./14_Design_Drive_연동_설계.md) §3.3 · §4.6 — `teamverDriveAsset*` · `create-slides`
 - [13 embed 슬라이드 MVP](./13_embed_슬라이드_MVP_기능게이트.md)
