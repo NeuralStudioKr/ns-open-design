@@ -60,6 +60,11 @@ import type { SettingsSection } from './SettingsDialog';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
+type RunErrorCardInfo = {
+  message: string;
+  diagnosticText: string | null;
+};
+
 // Featured starter prompts shown on the empty chat. Clicking one fills
 // the composer (does not auto-send) so users can tweak before sending.
 // Each prompt is intentionally dense — it should showcase ambitious
@@ -923,9 +928,9 @@ export function ChatPane({
     retryAssistant.agentId === config?.agentId &&
     !autoContinueScheduled;
   // Prefer a case-specific message (AMR auth / balance) over the raw upstream
-  // string; fall back to the live global error (also covers conversation-load
-  // / audio errors) then the persisted run error so a reload still shows it.
-  const rawError = error ?? failedRunErrorEvent?.detail ?? diagnosticRunErrorEvent?.detail ?? null;
+  // string. Historical persisted run errors render at their owning assistant
+  // turn inside ChatRows, so they must not also fall through to this tail card.
+  const rawError = error ?? failedRunErrorEvent?.detail ?? null;
   const displayError = runFailureUi?.messageKey ? t(runFailureUi.messageKey) : rawError;
   const errorDiagnosticText = displayError
     ? buildRunErrorDiagnosticText({
@@ -2377,6 +2382,71 @@ function ChatRows({
     () => buildChatRenderItems(messages),
     [messages],
   );
+  const pastRunErrorCards = useMemo(() => {
+    const cards = new Map<string, RunErrorCardInfo>();
+    for (const message of messages) {
+      if (message.role !== 'assistant' || message.runStatus !== 'failed') continue;
+      if (message.id === errorCardOwnerId) continue;
+      const evs = message.events ?? [];
+      let errorEvent: {
+        kind: 'status';
+        label: string;
+        detail?: string;
+        code?: string;
+      } | null = null;
+      for (let i = evs.length - 1; i >= 0; i -= 1) {
+        const ev = evs[i];
+        if (
+          ev?.kind === 'status'
+          && ev.label === 'error'
+          && ev.code !== AUTO_CONTINUE_STATUS_CODE
+        ) {
+          errorEvent = ev;
+          break;
+        }
+      }
+      if (!errorEvent?.detail) continue;
+      cards.set(message.id, {
+        message: errorEvent.detail,
+        diagnosticText: buildRunErrorDiagnosticText({
+          message: errorEvent.detail,
+          rawMessage: errorEvent.detail,
+          errorCode: errorEvent.code,
+          traceId: message.runId,
+          runId: message.runId,
+          projectId,
+          conversationId: activeConversationId,
+          assistantMessageId: message.id,
+          agentId: message.agentId,
+        }),
+      });
+    }
+    return cards;
+  }, [activeConversationId, errorCardOwnerId, messages, projectId]);
+  const [copiedPastRunErrorDiagnosticId, setCopiedPastRunErrorDiagnosticId] =
+    useState<string | null>(null);
+  const pastRunErrorCopyTimerRef = useRef<number | null>(null);
+  const copyPastRunErrorDiagnostic = useCallback(
+    async (assistantMessageId: string, diagnosticText: string) => {
+      const ok = await copyToClipboard(diagnosticText);
+      if (!ok) return;
+      if (pastRunErrorCopyTimerRef.current != null) {
+        window.clearTimeout(pastRunErrorCopyTimerRef.current);
+      }
+      setCopiedPastRunErrorDiagnosticId(assistantMessageId);
+      pastRunErrorCopyTimerRef.current = window.setTimeout(() => {
+        pastRunErrorCopyTimerRef.current = null;
+        setCopiedPastRunErrorDiagnosticId(null);
+      }, 1600);
+    },
+    [],
+  );
+  useEffect(() => () => {
+    if (pastRunErrorCopyTimerRef.current != null) {
+      window.clearTimeout(pastRunErrorCopyTimerRef.current);
+      pastRunErrorCopyTimerRef.current = null;
+    }
+  }, []);
   const virtualized = items.length > CHAT_MESSAGE_VIRTUALIZE_THRESHOLD;
   const virtualWindow = useMeasuredVirtualWindow(items, {
     enabled: virtualized,
