@@ -39,7 +39,8 @@ describe("canvasSlideLaunch", () => {
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/Canvas HTML export or a Drive file/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/artifact type="deck"|compact deck/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/slideCount|requested slide count/i);
-    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).not.toMatch(/simple-deck|1920|nav, and print/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/1920.*1080|fixed/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).not.toMatch(/simple-deck|nav, and print/i);
     expect(canvasCreateSlidesPluginInputs("canvas", "Template")).toMatchObject({
       topic: "canvas",
       deckType: "presentation from source material",

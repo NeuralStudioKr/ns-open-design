@@ -25,7 +25,9 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "Emit ONE complete Teamver compact deck in this same response: " +
   "`<artifact type=\"deck\">` with one filled `<section class=\"slide\">` per requested slide count " +
   `(see Plugin inputs slideCount / user brief; ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), ` +
-  "body-first inline styles, and no `<head>`, nav, or print scaffolding. " +
+  "body-first inline styles, and no `<head>`, nav, custom slide script, or print scaffolding. " +
+  "Each slide must be a fixed 1920×1080 canvas (`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden`) " +
+  "so Teamver can scale the whole slide; do not size core typography or layout with viewport units that reflow by panel size. " +
   "Do not finish with prose only and do not stop before `</artifact>`.";
 
 /** User-visible first message for Canvas / Drive → create-slides. */

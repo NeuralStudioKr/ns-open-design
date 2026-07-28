@@ -30,6 +30,13 @@ function extractCssBlocks(html: string): string {
 
 const SLIDE_VIEWPORT_RE = /100(?:vh|dvh|svh|lvh)/i;
 
+function hasFixedCanvasSizing(style: string): boolean {
+  if (!style) return false;
+  const has1920Width = /(?:^|[;{\s])width\s*:\s*1920px\b/i.test(style);
+  const has1080Height = /(?:^|[;{\s])(?:min-)?height\s*:\s*1080px\b/i.test(style);
+  return has1920Width && has1080Height;
+}
+
 /**
  * Horizontal swipe decks (simple-deck, scroll-snap) must keep their native
  * scroll/transform navigation instead of stacked letterbox.
@@ -70,8 +77,18 @@ function looksLikeSlideViewportSized(html: string): boolean {
   ) {
     return true;
   }
+  const inlineSlideStyles = html.matchAll(
+    /<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b[^'"]*['"][^>]*\bstyle\s*=\s*['"]([^'"]*)['"]/gi,
+  );
+  for (const match of inlineSlideStyles) {
+    if (hasFixedCanvasSizing(match[1] ?? '')) return true;
+  }
   const css = extractCssBlocks(html);
-  return /\.slide\b[^{]*\{[^}]*(?:min-)?height\s*:\s*100(?:vh|dvh|svh|lvh)/i.test(css);
+  if (/\.slide\b[^{]*\{[^}]*(?:min-)?height\s*:\s*100(?:vh|dvh|svh|lvh)/i.test(css)) return true;
+  for (const match of css.matchAll(/\.slide\b[^{]*\{([^}]*)\}/gi)) {
+    if (hasFixedCanvasSizing(match[1] ?? '')) return true;
+  }
+  return false;
 }
 
 function hasBodyFirstSlide(html: string): boolean {
@@ -138,6 +155,7 @@ export function injectStackedDeckViewport(html: string): string {
 export const compactStackedDeckTestHelpers = {
   SLIDE_VIEWPORT_RE,
   extractCssBlocks,
+  hasFixedCanvasSizing,
   looksLikeSlideViewportSized,
   hasBodyFirstSlide,
 };

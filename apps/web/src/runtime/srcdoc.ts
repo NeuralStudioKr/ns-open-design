@@ -2127,10 +2127,24 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     for (var d = 0; d < direct.length; d++) list.push(direct[d]);
     if (transformTrack(list)) return false;
     var stackedViewport = false;
+    function hasFixedCanvasSizingText(value) {
+      var text = String(value || '');
+      return /(?:^|;)\\s*width\\s*:\\s*1920px\\b/i.test(text)
+        && /(?:^|;)\\s*(?:min-)?height\\s*:\\s*1080px\\b/i.test(text);
+    }
+    function hasFixedCanvasComputedStyle(cs) {
+      if (!cs) return false;
+      var w = parseFloat(String(cs.width || ''));
+      var h = parseFloat(String(cs.height || cs.minHeight || ''));
+      if (!isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) return false;
+      var ratio = w / h;
+      return w >= 1200 && h >= 675 && Math.abs(ratio - (16 / 9)) < 0.08;
+    }
     for (var i = 0; i < direct.length; i++) {
       var inline = String(direct[i].getAttribute('style') || '');
       if (/min-height\\s*:\\s*100(?:vh|dvh|svh|lvh)/i.test(inline)
-        || /(?:^|;)\\s*height\\s*:\\s*100(?:vh|dvh|svh|lvh)/i.test(inline)) {
+        || /(?:^|;)\\s*height\\s*:\\s*100(?:vh|dvh|svh|lvh)/i.test(inline)
+        || hasFixedCanvasSizingText(inline)) {
         stackedViewport = true;
         break;
       }
@@ -2140,7 +2154,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         for (var j = 0; j < direct.length; j++) {
           var cs = window.getComputedStyle(direct[j]);
           if (/100(?:vh|dvh|svh|lvh)/i.test(String(cs.minHeight || ''))
-            || /100(?:vh|dvh|svh|lvh)/i.test(String(cs.height || ''))) {
+            || /100(?:vh|dvh|svh|lvh)/i.test(String(cs.height || ''))
+            || hasFixedCanvasComputedStyle(cs)) {
             stackedViewport = true;
             break;
           }
@@ -2663,6 +2678,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!list.length) return false;
     var target = Math.max(0, Math.min(list.length - 1, i));
     var activeClass = activeClassName(list);
+    var stackedStage = stackedDeckStage();
+    var isStackedDeckSlideList = !!(stackedStage && list[0] && list[0].parentElement === stackedStage);
     var usesInlineDisplay = false;
     var usesInlineVisibility = false;
     var usesHidden = false;
@@ -2680,7 +2697,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         if (k === target) list[k].removeAttribute('hidden');
         else list[k].setAttribute('hidden', '');
       }
-      if (usesInlineDisplay && list[k].style) {
+      if ((usesInlineDisplay || isStackedDeckSlideList) && list[k].style) {
         setSlideDisplayed(list[k], k === target);
       }
       if (usesInlineVisibility && list[k].style) {

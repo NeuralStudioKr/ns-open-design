@@ -83,6 +83,21 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
   });
 
+  it('matches fixed 1920x1080 body-first decks without viewport-height CSS', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      'body{margin:0;background:#0b0c10}.slide{width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden}',
+      '</style></head><body>',
+      '<section class="slide"><h1>Cover</h1></section>',
+      '<section class="slide"><h2>Agenda</h2></section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('width=1920, initial-scale=1');
+  });
+
   it('matches body-first slides after a header chrome element', () => {
     const html = [
       '<!doctype html><html><body>',
@@ -255,6 +270,43 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(slideEls[0]?.style.display).toBe('none');
     expect(slideEls[1]?.style.display).toBe('flex');
     expect(win.getComputedStyle(slideEls[1]!).display).toBe('flex');
+  });
+
+  it('keeps fixed-canvas decks visible on navigation even when authored CSS hides inactive slides', async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><head><style>',
+      'body{margin:0;background:#0b0c10}',
+      '.slide{width:1920px;height:1080px;box-sizing:border-box;display:none;position:relative;overflow:hidden;background:#10251a;color:#f5ead7}',
+      '.slide.active{display:flex;flex-direction:column}',
+      '</style></head><body>',
+      '<section class="slide active"><h1>토익 첫 수업</h1></section>',
+      '<section class="slide"><h2>커리큘럼 안내</h2></section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    expect(match?.[1]).toBeTruthy();
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', { configurable: true, value: { postMessage: () => {} } });
+    new win.Function(match![1]!).call(win);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1 },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 100));
+
+    const slideEls = Array.from(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')) as HTMLElement[];
+    expect(slideEls).toHaveLength(2);
+    expect(slideEls[0]?.style.display).toBe('flex');
+    expect(slideEls[1]?.style.display).toBe('none');
+
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'next' } }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 50));
+    expect(slideEls[0]?.style.display).toBe('none');
+    expect(slideEls[1]?.style.display).toBe('flex');
+    expect(slideEls[1]?.classList.contains('active')).toBe(true);
   });
 
   it('does not inject stacked letterbox CSS into framework or authored decks', () => {
