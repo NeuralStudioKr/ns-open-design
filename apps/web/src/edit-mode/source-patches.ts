@@ -209,10 +209,15 @@ export function mergeManualEditTargetsFromSource(
   let replacedCount = 0;
   let changedCount = 0;
   for (const id of normalizedIds) {
-    const currentTarget = findEditableElement(currentDoc, id, scope);
     const hint = hints.find((candidate) => String(candidate.id || '').trim() === id);
+    // Pass hint to BOTH lookups so a click id that misses the disk
+    // source's current structure (e.g. deck was resaved between click
+    // and merge, or the model dropped `data-od-id` on the last turn)
+    // still resolves via captured text / html hint. Symmetric with the
+    // nextDoc `findReplacementCandidateByTextHint` fallback below.
+    const currentTarget = findEditableElement(currentDoc, id, scope, hint);
     const nextTarget = currentTarget
-      ? findEditableElement(nextDoc, id, scope)
+      ? findEditableElement(nextDoc, id, scope, hint)
         ?? findEquivalentElementByScopedPosition(currentDoc, nextDoc, currentTarget, scope)
         ?? findReplacementCandidateByTextHint(nextDoc, currentTarget, scope, hint)
       : null;
@@ -287,26 +292,96 @@ function findEditableElement(
   doc: Document,
   id: string,
   scope: ManualEditSourceScope = {},
+  hint?: ManualEditMergeTargetHint,
 ): Element | null {
   const root = findScopedRoot(doc, scope);
   if (!root) return null;
   if (id === '__body__') return root.nodeType === 9 ? (root as Document).body : root as Element;
   const domFallback = findElementByDomSelector(doc, root, id);
   if (domFallback) return domFallback;
-  return (
+  const structural =
     root.querySelector(`[data-od-id="${cssEscape(id)}"]`) ??
     root.querySelector(`[data-od-runtime-id="${cssEscape(id)}"]`) ??
     root.querySelector(`[data-od-source-path="${cssEscape(id)}"]`) ??
-    findElementByScopedPath(doc, root, id)
-  );
+    findElementByScopedPath(doc, root, id);
+  if (structural) return structural;
+  return hint ? findElementByHint(doc, scope, hint) : null;
 }
 
+/**
+ * Locate an editable target by its captured text / html hint when
+ * structural queries (data-od-id, data-od-source-path, path-N) miss.
+ *
+ * The comment payload always carries `currentText` and `htmlHint` for
+ * the picked element. When the deck was resaved with a slightly
+ * different structure between click and merge (e.g. the model dropped
+ * `data-od-id` or rearranged children), that text signature is still a
+ * reliable way to find the same element inside the target slide. We
+ * score candidate elements by:
+ *   - textContent normalized equal to the hint text (+200)
+ *   - textContent includes the hint text as substring (+80)
+ *   - tag matches the hint's opening tag (+50)
+ * and require score ≥ 80 so a bare tag match alone does not steal the
+ * pick. The intent is a symmetric fallback to
+ * `findReplacementCandidateByTextHint` — same signal-driven matching,
+ * but scoped to the current-source lookup instead of the model output.
+ */
+function findElementByHint(
+  doc: Document,
+  scope: ManualEditSourceScope,
+  hint: ManualEditMergeTargetHint,
+): Element | null {
+  const root = findScopedRoot(doc, scope);
+  if (!root) return null;
+  const rootElement = root.nodeType === 9 ? doc.body : root as Element;
+  const hintText = normalizeTextForCandidate(hint.currentText || '');
+  const hintedTag = /^<\s*([a-z][a-z0-9-]*)\b/i.exec(hint.htmlHint ?? '')?.[1]?.toLowerCase();
+  if (!hintText && !hintedTag) return null;
+  const candidates = Array.from(rootElement.querySelectorAll('*'))
+    .filter((candidate) => isReasonableTextReplacementCandidate(candidate));
+  let best: { element: Element; score: number; length: number } | null = null;
+  for (const candidate of candidates) {
+    const text = normalizeTextForCandidate(candidate.textContent || '');
+    if (!text) continue;
+    let score = 0;
+    if (hintedTag && candidate.tagName.toLowerCase() === hintedTag) score += 50;
+    if (hintText && text === hintText) score += 200;
+    else if (hintText && text.includes(hintText)) score += 80;
+    if (score <= 0) continue;
+    const length = text.length;
+    if (!best || score > best.score || (score === best.score && length < best.length)) {
+      best = { element: candidate, score, length };
+    }
+  }
+  return best && best.score >= 80 ? best.element : null;
+}
+
+/**
+ * Resolve the DOM subtree that a `slideIndex`-scoped lookup should
+ * search within. Priority:
+ *   1. Explicit `[data-slide-index="N"]` — the compact-deck contract.
+ *   2. Top-level `<section class="slide">` children of `<body>` /
+ *      `.deck` / `.deck-stage` / `.deck-shell` /
+ *      `#od-stacked-deck-stage`, mirroring the preview iframe's
+ *      `slides()` selector so click-time slide index and disk-side
+ *      lookup agree even on decks nested under a wrapper `<div class="deck">`.
+ *   3. Legacy fallback: `.slide, [data-slide], [data-screen-label], section`
+ *      in document order — mixed selector, used only when nothing
+ *      structural matched. Nested `<section>` blocks inside slides
+ *      shift indices here (rare on our decks), so keep it last.
+ */
 function findScopedRoot(doc: Document, scope: ManualEditSourceScope): ManualEditLookupRoot | null {
   const slideIndex = scope.slideIndex;
   if (!(typeof slideIndex === 'number' && Number.isFinite(slideIndex) && slideIndex >= 0)) return doc;
   const index = Math.floor(slideIndex);
   const explicit = doc.querySelector(`[data-slide-index="${index}"]`);
   if (explicit) return explicit;
+  const structured = doc.querySelectorAll(
+    '.deck > .slide, .deck-stage > .slide, .deck-shell > .slide, #od-stacked-deck-stage > .slide, body > .slide, body > section.slide, body > section[class~="slide"]',
+  );
+  if (structured.length > 0) return structured.item(index) ?? null;
+  const anySlide = doc.querySelectorAll('.slide');
+  if (anySlide.length > 0) return anySlide.item(index) ?? null;
   const slides = Array.from(doc.querySelectorAll('.slide, [data-slide], [data-screen-label], section'));
   return slides[index] ?? null;
 }

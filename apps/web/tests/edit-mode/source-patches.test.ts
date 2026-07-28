@@ -539,4 +539,105 @@ describe('manual edit source patches', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain('nested markup');
   });
+
+  it('resolves scoped root for decks wrapped in .deck / .deck-stage containers', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<div class="deck">',
+      '<section class="slide"><h1 data-od-id="headline">Slide one</h1></section>',
+      '<section class="slide"><h1 data-od-id="headline">Slide two</h1></section>',
+      '</div>',
+      '</body></html>',
+    ].join('');
+
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'headline', value: 'Edited two' },
+      { slideIndex: 1 },
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    expect(result.source).toContain('<h1 data-od-id="headline">Slide one</h1>');
+    expect(result.source).toContain('<h1 data-od-id="headline">Edited two</h1>');
+  });
+
+  it('finds current target by captured text hint when structural id no longer resolves', () => {
+    // Reproduces the stale-click failure mode: the deck on disk was
+    // resaved with a structure that no longer carries a matching
+    // `data-od-id` for the click payload id, and its path-N-M address
+    // now walks to a different node. The hint carries the currentText
+    // the click captured, so hint-based lookup should still resolve
+    // the right element in current source and let the narrow merge
+    // ship the model's text change.
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h1>강의 안내</h1>',
+      '<p>강사 <strong>홍길동</strong></p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h1>강의 안내</h1>',
+      '<p>강사 <strong>김강사</strong></p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetsFromSource(
+      source,
+      modelOutput,
+      ['instructor-name'],
+      { slideIndex: 0 },
+      [{
+        id: 'instructor-name',
+        currentText: '홍길동',
+        instructionText: "강사 이름을 김강사로 바꿔",
+        htmlHint: '<strong>홍길동</strong>',
+      }],
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('<strong>김강사</strong>');
+    expect(result.source).toContain('<h1>강의 안내</h1>');
+    expect(result.source).not.toContain('홍길동');
+  });
+
+  it('rejects hint fallback safely when the hint text is ambiguous across candidates', () => {
+    // Two sibling candidates both match the hint text; the fallback
+    // deterministically picks the FIRST element in currentDoc. In this
+    // model output the FIRST `<p>알림</p>` is unchanged (still `알림`),
+    // so the narrow merge diagnoses "targets unchanged" instead of
+    // silently mis-patching the wrong sibling. This is the defensive
+    // outcome — no fuzzy guess wins when the hint has no discriminator.
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<p>알림</p>',
+      '<p>알림</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const modelOutput = source.replace('<p>알림</p><p>알림</p>', '<p>알림</p><p>공지</p>');
+
+    const result = mergeManualEditTargetsFromSource(
+      source,
+      modelOutput,
+      ['missing-id'],
+      { slideIndex: 0 },
+      [{
+        id: 'missing-id',
+        currentText: '알림',
+        instructionText: '공지로 바꿔줘',
+      }],
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain('unchanged');
+    // Original source is preserved — no partial write on ambiguous.
+    expect(result.source).toBe(source);
+  });
 });
