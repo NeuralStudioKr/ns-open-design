@@ -24,11 +24,17 @@ export function filePathExtension(path: string): string {
   return dot >= 0 ? base.slice(dot + 1).toLowerCase() : "";
 }
 
+export function isEmbedReferenceSourceFile(file: { name: string; path?: string }): boolean {
+  const rel = projectRelativePath(file).replace(/\\/g, "/").replace(/^\.\/+/, "");
+  return rel === "refs" || rel.startsWith("refs/");
+}
+
 /** Stylesheets and sibling JS modules — not end-user deliverables in embed MVP. */
 export function isEmbedSupportingProjectFile(file: {
   name: string;
   path?: string;
 }): boolean {
+  if (isEmbedReferenceSourceFile(file)) return true;
   return EMBED_SUPPORTING_EXTENSIONS.has(filePathExtension(projectRelativePath(file)));
 }
 

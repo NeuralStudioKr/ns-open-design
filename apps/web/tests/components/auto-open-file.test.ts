@@ -151,6 +151,15 @@ describe('decideAutoOpenAfterWrite', () => {
     expect(result).toEqual({ shouldOpen: false, fileName: null });
   });
 
+  it('declines to auto-open reference source files in slide-only embed', () => {
+    const result = decideAutoOpenAfterWrite(
+      'refs/drive/canvas.html',
+      [{ name: 'refs/drive/canvas.html', path: 'refs/drive/canvas.html', kind: 'html' }],
+      { branding: { slideOnlyMvp: true } },
+    );
+    expect(result).toEqual({ shouldOpen: false, fileName: null });
+  });
+
   it('still auto-opens html deliverables in slide-only embed', () => {
     const result = decideAutoOpenAfterWrite(
       'index.html',
@@ -178,6 +187,15 @@ describe('selectAutoOpenProducedHtml', () => {
     ]);
 
     expect(result).toBe('mutuals-v2.html');
+  });
+
+  it('skips reference source html when selecting the produced html fallback', () => {
+    const result = selectAutoOpenProducedHtml([
+      { name: 'deck.html', path: 'deck.html', kind: 'html', mtime: 10 },
+      { name: 'refs/drive/canvas.html', path: 'refs/drive/canvas.html', kind: 'html', mtime: 30 },
+    ]);
+
+    expect(result).toBe('deck.html');
   });
 
   it('returns null when the produced files are not html previews', () => {
