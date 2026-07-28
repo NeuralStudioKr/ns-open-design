@@ -38,6 +38,8 @@ import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrig
 import { isTeamverPptxExportEnabled } from '../teamver/pptxExportEnable';
 import { beginTeamverEmbedActiveWork, endTeamverEmbedActiveWork } from '../teamver/teamverEmbedActiveWork';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../teamver/teamverEmbedPassiveAuth';
+import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import {
   projectScopedPreviewUrl,
   resolveTeamverProjectPreviewPrefix,
@@ -4978,6 +4980,7 @@ function HtmlViewer({
   }, [closeDeployModal, deployModalOpen]);
   const [inTabPresent, setInTabPresent] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [embedAuthRecoveryNonce, setEmbedAuthRecoveryNonce] = useState(0);
   const [boardMode, setBoardMode] = useState(false);
   const [commentPanelOpen, setCommentPanelOpen] = useState(false);
   const [commentCreateMode, setCommentCreateMode] = useState(false);
@@ -5620,7 +5623,7 @@ function HtmlViewer({
         return true;
       };
       void fetchProjectFileText(projectId, file.name, {
-        cacheBustKey: `${file.mtime}-${reloadKey}-${filesRefreshKey}`,
+        cacheBustKey: `${file.mtime}-${reloadKey}-${filesRefreshKey}-${embedAuthRecoveryNonce}`,
         signal: abort.signal,
       }).then((text) => {
         if (cancelled || abort.signal.aborted) return;
@@ -5682,6 +5685,7 @@ function HtmlViewer({
     file.mtime,
     reloadKey,
     filesRefreshKey,
+    embedAuthRecoveryNonce,
   ]);
 
   useEffect(() => () => {
@@ -5709,6 +5713,19 @@ function HtmlViewer({
       cancelled = true;
     };
   }, [projectId, file.name, deployProviderId]);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    const bump = () => setEmbedAuthRecoveryNonce((value) => value + 1);
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, bump);
+    const unsubscribe = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
+      if (authenticated) bump();
+    });
+    return () => {
+      window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, bump);
+      unsubscribe();
+    };
+  }, []);
 
   // Detect deck-shaped HTML even when the project's skill didn't declare
   // `mode: deck`. Freeform projects often produce a deck because the user

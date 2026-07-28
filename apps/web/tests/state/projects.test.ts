@@ -739,6 +739,36 @@ describe('conversation daemon auth', () => {
     fetchDaemonSpy.mockRestore();
   });
 
+  it('saveMessage retries once on embed 401 after refreshing auth cookies', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const designBffClient = await import('../../src/teamver/designBffClient');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const refreshSpy = vi
+      .spyOn(designBffClient, 'refreshTeamverEmbedAuthBeforeMutating')
+      .mockResolvedValue(undefined);
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    )
+      .mockResolvedValueOnce(new Response('unauthorized', { status: 401 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+
+    const { saveMessage } = await import('../../src/state/projects');
+    await saveMessage('project-1', 'conv-1', {
+      id: 'msg-embed-401',
+      role: 'assistant',
+      content: 'hi',
+      createdAt: Date.now(),
+      startedAt: Date.now() - 5 * 60 * 1000,
+    });
+
+    expect(fetchDaemonSpy).toHaveBeenCalledTimes(2);
+    expect(refreshSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    embedSpy.mockRestore();
+    refreshSpy.mockRestore();
+    fetchDaemonSpy.mockRestore();
+  });
+
   it('getProjectFailSoft returns null on daemon 401', async () => {
     const fetchDaemonSpy = vi.spyOn(
       await import('../../src/teamver/teamverDaemonHeaders'),
