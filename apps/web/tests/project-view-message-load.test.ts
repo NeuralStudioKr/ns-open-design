@@ -498,6 +498,24 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason }");
   });
 
+  it("accepts a slide-level style-only diff when element merge said targets were unchanged", () => {
+    // Behavioral coverage: merge-scoped-comment-style-fallback.test.ts.
+    // This source-level pin ensures the narrow fallback code path
+    // remains wired up. Users typing "회사 이름 눈에 잘 띄게 수정" get a
+    // deck-patch that carries a slide-level <style> block; without
+    // this branch the target's own outerHTML is byte-identical to
+    // current source, mergeManualEditTargetsFromSource returns
+    // "Selected targets were unchanged.", and the whole scoped merge
+    // hard-rejects the model's legitimate style edit as
+    // "선택한 댓글 대상 밖의 변경".
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("slideDiffIsStyleOnly");
+    expect(source).toContain("extractSlideByIndex");
+    expect(source).toContain("normalizeSlideStructure");
+    expect(source).toContain("accepted slide-level style-only fallback");
+    expect(source).toContain("merged.reason === 'Selected targets were unchanged.'");
+  });
+
   it("waits for embed boot and retries stuck message loads on re-entry", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("waitForTeamverEmbedBoot");
