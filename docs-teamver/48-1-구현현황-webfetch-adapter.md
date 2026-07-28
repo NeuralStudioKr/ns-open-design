@@ -109,7 +109,7 @@
   - [x] native http 404 → `error_code=http_4xx`
   - [x] reader 503 → native fallback + 최종 line 에 `reader_fallback=1`, warn 스파이로 `web_fetch.reader_fallback` verify
   - [x] SSRF (`169.254.169.254`) → `backend=-`, `error_code=ssrf`
-- [x] 전체 회귀: `byok-url-tools`(3) + `web-fetch-select` + `web-fetch-reader-backend` + `web-fetch-log`(4) = **4 files / 24 tests green**
+- [x] 전체 회귀: `byok-url-tools`(3) + `web-fetch-select` + `web-fetch-reader-backend` + `web-fetch-log`(4) + `web-fetch-redirect`(10) = **5 files / 34 tests green**
 - [x] `pnpm --filter @open-design/daemon exec tsc -p tsconfig.json --noEmit` clean · test tsconfig 신규 error 0
 - [ ] commit `refactor(daemon/web-fetch): land 48-1 §5 log schema + regression` + push
 
@@ -124,7 +124,7 @@
 
 - [x] 모든 Phase (A~F) 완료 · `feat/web-fetch-adr` 원격 최신
 - [x] 기존 회귀 테스트 무수정 통과 (`byok-url-tools.test.ts` 3/3)
-- [x] 신규 테스트 3종 (select · reader-backend · log) all green — 회귀 포함 총 24/24
+- [x] 신규 테스트 4종 (select · reader-backend · log · redirect) all green — 회귀 포함 총 **34/34**
 - [x] daemon 은 기본 `native` 로 동작 (env 미설정), staging 실환경 스위치는 별도 ops task 로 이관
 
 ## Non-goals 재확인

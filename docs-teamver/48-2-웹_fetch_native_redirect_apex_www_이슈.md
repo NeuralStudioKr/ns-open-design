@@ -197,7 +197,7 @@ pnpm exec vitest run \
   tests/web-fetch-redirect.test.ts
 ```
 
-기대: **33/33 pass** (redirect suite 9).
+기대: **34/34 pass** (redirect suite 10).
 
 ### 5.2 Staging smoke (수동)
 

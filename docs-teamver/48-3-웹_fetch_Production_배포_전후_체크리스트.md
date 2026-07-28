@@ -14,7 +14,7 @@
 
 | 단계 | 시점 | 필수? | 한 줄 |
 |------|------|-------|--------|
-| **P0** | 배포 **전** (CI/로컬) | ✅ | daemon 33 + FE 8 tests green |
+| **P0** | 배포 **전** (CI/로컬) | ✅ | daemon **34** + FE **8** tests green |
 | **P1** | 배포 **전** (staging) | ✅ | apex + www URL smoke, env reader 금지 |
 | **P2** | 배포 **직전** (prod 준비) | ✅ | 배포 커밋·env·롤백 tag 확정 |
 | **P3** | 배포 **직후** 0~15분 | ✅ | prod 동일 smoke 2종 + SSRF sanity 1종 |
@@ -58,7 +58,7 @@ pnpm --filter @open-design/daemon exec vitest run \
 | 결과 | Pass |
 |------|------|
 | Test files | **5 passed** |
-| Tests | **33 passed** |
+| Tests | **34 passed** |
 
 **커버 의미 (요약):**
 
@@ -259,7 +259,7 @@ Production에서 아래는 **pass/fail 게이트 실패가 아님** — [48-2 §
 - 날짜 (KST):
 - Prod commit:
 - 이전 rollback tag:
-- P0 tests: daemon 33/33 · FE 8/8
+- P0 tests: daemon 34/34 · FE 8/8
 - Staging P1: S1 ☐ S2 ☐ S3 ☐ · SHA:
 - Prod P3: P-S1 ☐ P-S2 ☐ P-S3 ☐
 - P4 24h 메모:

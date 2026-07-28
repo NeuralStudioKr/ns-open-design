@@ -146,7 +146,7 @@ export interface WebFetchBackend {
 
 **Public API 영향:** 없음. `WebFetchToolResult` 에 `hops` 는 노출하지 않는다 (LLM/FE 는 볼 필요 없음). `<web-fetch-context>` 계약 무변.
 
-**회귀:** `apps/daemon/tests/web-fetch-redirect.test.ts` (9 케이스, 33/33 pass).
+**회귀:** `apps/daemon/tests/web-fetch-redirect.test.ts` (10 케이스, 5 files / 34 pass).
 
 ### 3.4 Reader backend (Phase D)
 
@@ -197,7 +197,8 @@ export function resolveWebFetchBackend(env: NodeJS.ProcessEnv): {
 | `status` | `ok` \| `error` | 요청 종료 |
 | `text_bytes` | number | `status=ok` 시 |
 | `truncated=1` | flag | 100KB cap 이 잘라낸 경우 |
-| `error_code` | `timeout` \| `http_4xx` \| `http_5xx` \| `http_other` \| `network` \| `read_failed` \| `ssrf` \| `backend_bug` \| `unknown` | `status=error` 시 |
+| `hops=N` | number | native backend 가 3xx 를 1회 이상 소비한 경우만 (`N > 0`) |
+| `error_code` | `timeout` \| `http_4xx` \| `http_5xx` \| `http_other` \| `network` \| `read_failed` \| `ssrf` \| `redirect_max` \| `redirect_blocked` \| `redirect_malformed` \| `backend_bug` \| `unknown` | `status=error` 시 |
 | `error` | backend 가 반환한 짧은 원문 (title/body 포함 없음) | `status=error` 시 |
 | `reader_fallback=1` | flag | reader → native fallback 발동 후 최종 line 에 append |
 
@@ -205,7 +206,9 @@ export function resolveWebFetchBackend(env: NodeJS.ProcessEnv): {
 
 ```
 web_fetch.backend=native url_host=example.com duration_ms=137 status=ok text_bytes=8213
+web_fetch.backend=native url_host=neuralstudio.kr duration_ms=420 hops=1 status=ok text_bytes=5120
 web_fetch.backend=native url_host=example.com duration_ms=42 status=error error_code=http_4xx error=http 404 Not Found
+web_fetch.backend=native url_host=example.com duration_ms=88 status=error error_code=redirect_blocked error=blocked redirect: ...
 web_fetch.backend=native url_host=example.com duration_ms=531 status=ok text_bytes=1024 reader_fallback=1
 web_fetch.backend=- url_host=169.254.169.254 duration_ms=1 status=error error_code=ssrf error=Internal IPs blocked
 ```
@@ -225,8 +228,11 @@ Fallback 은 `console.warn('web_fetch.reader_fallback primary=<name> url_host=<h
 | SSRF 실패 (loopback, private ip 등) | core 에서 즉시 `{ ok: false, error: <assertExternalAssetUrl 메시지> }` — backend 호출 없음 |
 | Native: DNS 실패 / connection reset | `{ ok: false, error: 'fetch failed: ...' }` |
 | Native: timeout(12s 초과) | `{ ok: false, error: 'request timed out after 12000ms' }` |
-| Native: HTTP 4xx/5xx | `{ ok: false, error: 'http <status> <statusText>' }` |
-| Native: redirect (redirect: 'error') | `{ ok: false, error: 'fetch failed: ...' }` (기존 동작 유지) |
+| Native: HTTP 4xx/5xx (terminal) | `{ ok: false, error: 'http <status> <statusText>' }` |
+| Native: 정상 301/302 apex→www 등 (≤3 hops, per-hop SSRF 통과) | `{ ok: true, text, ... }` · 로그 `hops=N` (N≥1) — [§3.3.1](./48-1-구현설계-webfetch-adapter.md#331-redirect-policy-2026-07-28-갱신) |
+| Native: redirect >3 hops | `{ ok: false, error: 'too many redirects...' }` · `error_code=redirect_max` |
+| Native: redirect → SSRF/downgrade/비-http(s) | `{ ok: false, error: 'blocked redirect: ...' }` · `error_code=redirect_blocked` |
+| Native: 3xx without Location | `{ ok: false, error: 'redirect without Location header' }` · `error_code=redirect_malformed` |
 | Native: body > 100KB | `truncated: true`, text 는 잘려서 반환 |
 | Reader: 4xx (unauthorized/paywall) | error 로 반환, fallback flag=1 이면 native 재시도, 아니면 그대로 실패 |
 | Reader: 5xx / timeout / network | error 로 반환, fallback flag=1 이면 native 재시도 |
@@ -254,6 +260,12 @@ Fallback 은 `console.warn('web_fetch.reader_fallback primary=<name> url_host=<h
   - fallback flag=1 + reader 5xx → 두 번째 호출이 원본 URL 로 native fetch (mocked) 를 태우고 성공.
   - Authorization 헤더가 API key 설정 시에만 붙는지 verify.
 - (선택, Phase D 마지막) 로그 필드 스냅샷: `console.log` 스파이로 `web_fetch.backend` / `web_fetch.reader_fallback` 문자열 존재 확인.
+
+### 7.3 Redirect policy (Phase F+ · [48-2](./48-2-웹_fetch_native_redirect_apex_www_이슈.md))
+
+- `apps/daemon/tests/web-fetch-log.test.ts` — per-call log line (ok/error/ssrf/fallback; 본문 미포함).
+- `apps/daemon/tests/web-fetch-redirect.test.ts` — safe redirect 9+ 케이스: apex→www, relative `Location`, hop cap, SSRF mid-chain, https→http downgrade.
+- **Production P0 묶음:** 위 + `byok-url-tools` + `web-fetch-select` + `web-fetch-reader-backend` = **5 files / 33 tests** ([48-3 §P0](./48-3-웹_fetch_Production_배포_전후_체크리스트.md#2-p0--배포-전-자동-검증-로컬--ci)).
 
 ---
 

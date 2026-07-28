@@ -1,7 +1,8 @@
 // Core dispatcher for the daemon `web_fetch` pipeline. Owns the
 // invariants that must survive backend swaps (see 48-1 §2):
 //   I4  SSRF (assertExternalAssetUrl) against the ORIGINAL URL, once
-//   I5  100KB post-fetch cap, 12s timeout, redirect: 'error', UA
+//   I5  100KB post-fetch cap, 12s timeout, safe redirect (native:
+//       redirect:'manual', max 3 hops, per-hop SSRF — 48-1 §3.3.1), UA
 //   I6  never throws — always {ok, ...} or {ok:false, error}
 //
 // Backends only ever see a SSRF-cleared, http(s) URL plus an

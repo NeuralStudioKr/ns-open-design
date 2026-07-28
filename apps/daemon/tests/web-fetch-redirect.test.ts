@@ -202,6 +202,27 @@ describe('native backend — safe redirect follow', () => {
     expect(result.error).toMatch(/non-http\(s\) scheme/);
   });
 
+  it('follows a relative Location path on the same host', async () => {
+    mockFetchChain([
+      {
+        match: (url) => url === 'https://example.com/marketing',
+        response: makeResponse(302, { location: '/landing' }),
+      },
+      {
+        match: (url) => url === 'https://example.com/landing',
+        response: new Response('landing copy', {
+          status: 200,
+          headers: { 'content-type': 'text/plain' },
+        }),
+      },
+    ]);
+    const result = await fetchUrlContent('https://example.com/marketing');
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe('landing copy');
+    const line = logs.find((l) => l.startsWith('web_fetch.backend=native'));
+    expect(line).toContain('hops=1');
+  });
+
   it('rejects a 3xx response that omits Location', async () => {
     mockFetchChain([
       {

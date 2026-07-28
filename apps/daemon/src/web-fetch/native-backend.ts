@@ -74,13 +74,13 @@ async function resolveSafeRedirect(
   currentUrl: string,
   location: string | null,
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
-  if (!location) {
+  if (!location?.trim()) {
     return { ok: false, error: 'redirect without Location header' };
   }
 
   let target: URL;
   try {
-    target = new URL(location, currentUrl);
+    target = new URL(location.trim(), currentUrl);
   } catch {
     return { ok: false, error: `invalid redirect Location: ${location.slice(0, 200)}` };
   }
