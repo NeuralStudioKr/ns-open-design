@@ -14,6 +14,7 @@
 |------------|------|
 | 2026-07-27 16:20 | 초안 — Phase A 완료 · Phase B 착수 |
 | 2026-07-27 16:40 | Phase B/C/D/E 완료 · 회귀 3/3 + 신규 16/16 green · staging enable 은 별도 ops task |
+| 2026-07-28 10:35 | 코드 리뷰 반영 (Phase F) — 48-1 §5 로그 필드 실 구현 + 신규 회귀 `web-fetch-log.test.ts` (4 케이스) · 총 24/24 green |
 
 ---
 
@@ -95,11 +96,33 @@
 
 ---
 
+## Phase F — 코드 리뷰 반영 (로그 필드 land, 완료 예정)
+
+**배경:** Phase D 종료 시점에 48-1 §5 의 per-call log 필드가 fallback `console.warn` 한 줄로만 부분 구현돼 있어 기획-구현 불일치가 있었다. 리뷰에서 발견 → 실 구현으로 마감.
+
+- [x] `core.ts` — `logWebFetchCall` + `classifyErrorCode` + `safeUrlHost` 추가, SSRF pre-guard / primary / fallback 3 경로에 log 삽입
+- [x] `48-1 §5` 로그 스키마 최종 확정 (backend, url_host, duration_ms, status, text_bytes, truncated, error_code, error, reader_fallback + 예시 4줄)
+- [x] 신규 `apps/daemon/tests/web-fetch-log.test.ts` (4 케이스)
+  - [x] native ok — url_host / duration_ms / text_bytes, body/title/path 미노출 검증
+  - [x] native http 404 → `error_code=http_4xx`
+  - [x] reader 503 → native fallback + 최종 line 에 `reader_fallback=1`, warn 스파이로 `web_fetch.reader_fallback` verify
+  - [x] SSRF (`169.254.169.254`) → `backend=-`, `error_code=ssrf`
+- [x] 전체 회귀: `byok-url-tools`(3) + `web-fetch-select` + `web-fetch-reader-backend` + `web-fetch-log`(4) = **4 files / 24 tests green**
+- [x] `pnpm --filter @open-design/daemon exec tsc -p tsconfig.json --noEmit` clean · test tsconfig 신규 error 0
+- [ ] commit `refactor(daemon/web-fetch): land 48-1 §5 log schema + regression` + push
+
+**주의사항 (리뷰에서 확인):**
+- 원본 `fetchUrlContent` 도 caller signal 을 timeout signal 로 override 했음 → user Stop 미반영은 pre-existing behavior, POC 밖.
+- Body streaming timeout 은 undici socket timeout 에 의존 (원본과 동일).
+- Loopback (127.0.0.1) 은 SSRF 가드에서 의도적으로 허용 (Ollama 등 local LLM), link-local (169.254.x.x) 은 block — 회귀 테스트에서 반영.
+
+---
+
 ## 종료 조건 (POC scope) — 최종
 
-- [x] 모든 Phase (A~E) 완료 · `feat/web-fetch-adr` 원격 최신
+- [x] 모든 Phase (A~F) 완료 · `feat/web-fetch-adr` 원격 최신
 - [x] 기존 회귀 테스트 무수정 통과 (`byok-url-tools.test.ts` 3/3)
-- [x] 신규 테스트 2종 (select · reader-backend) 16/16 pass
+- [x] 신규 테스트 3종 (select · reader-backend · log) all green — 회귀 포함 총 24/24
 - [x] daemon 은 기본 `native` 로 동작 (env 미설정), staging 실환경 스위치는 별도 ops task 로 이관
 
 ## Non-goals 재확인

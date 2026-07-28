@@ -97,6 +97,62 @@ export function _resetWebFetchBackendCacheForTests(): void {
   cachedBackends = null;
 }
 
+/** Best-effort URL → host for logs. Body / title / path are never
+ *  logged; only the network coordinate we already know from SSRF. */
+function safeUrlHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return 'invalid';
+  }
+}
+
+/** Classify an error message into a coarse bucket so ops dashboards
+ *  can group signals without regex-diving the free-form error. */
+function classifyErrorCode(error: string | undefined): string {
+  if (!error) return 'unknown';
+  if (error.startsWith('http ')) {
+    const status = Number(error.slice(5, 8));
+    if (Number.isFinite(status)) {
+      if (status >= 500) return 'http_5xx';
+      if (status >= 400) return 'http_4xx';
+    }
+    return 'http_other';
+  }
+  if (error.includes('timed out') || error === 'aborted') return 'timeout';
+  if (error.startsWith('read failed')) return 'read_failed';
+  if (error.startsWith('fetch failed') || error.startsWith('reader fetch failed')) return 'network';
+  if (error.startsWith('backend threw')) return 'backend_bug';
+  return 'unknown';
+}
+
+interface WebFetchCallLog {
+  backend: string;
+  urlHost: string;
+  durationMs: number;
+  readerFallback?: boolean;
+}
+
+/** Emit the per-call log line the 48-1 §5 log schema promises. Body,
+ *  title, path, and query string are all deliberately excluded. */
+function logWebFetchCall(ctx: WebFetchCallLog, result: WebFetchToolResult): void {
+  const base
+    = `web_fetch.backend=${ctx.backend}`
+    + ` url_host=${ctx.urlHost}`
+    + ` duration_ms=${ctx.durationMs}`;
+  const fallback = ctx.readerFallback ? ' reader_fallback=1' : '';
+  if (result.ok) {
+    const bytes = result.text?.length ?? 0;
+    const truncated = result.truncated ? ' truncated=1' : '';
+    console.log(`${base} status=ok text_bytes=${bytes}${truncated}${fallback}`);
+  } else {
+    const code = classifyErrorCode(result.error);
+    // Backend error strings are already short (no body/title). Safe to
+    // include verbatim — helpful when the ops bucket is 'unknown'.
+    console.log(`${base} status=error error_code=${code} error=${result.error ?? 'unknown'}${fallback}`);
+  }
+}
+
 /**
  * Fetch a public http(s) URL and return its content as plain text.
  * SSRF-guarded, size-capped, time-bounded. Never throws — all
@@ -110,6 +166,9 @@ export async function fetchUrlContent(
   rawUrl: unknown,
   requestInit?: Pick<RequestInit, 'dispatcher' | 'signal'>,
 ): Promise<WebFetchToolResult> {
+  // Input-validation failures are short-circuited without a log line —
+  // they never touch the network and would otherwise flood the log with
+  // malformed-tool-call noise. Callers still get the same error shape.
   if (typeof rawUrl !== 'string') return { ok: false, error: 'url is required' };
   const url = rawUrl.trim();
   if (!url) return { ok: false, error: 'url is required' };
@@ -119,21 +178,48 @@ export async function fetchUrlContent(
     return { ok: false, error: 'only http(s) URLs are supported' };
   }
 
+  const startedAt = Date.now();
+  const urlHost = safeUrlHost(url);
+
   const check = await assertExternalAssetUrl(url);
-  if (!check.ok) return { ok: false, error: check.error };
+  if (!check.ok) {
+    const ssrfResult: WebFetchToolResult = { ok: false, error: check.error };
+    // ssrf sits before backend selection — log with backend=- so ops
+    // dashboards can still count blocked outbound attempts by host.
+    console.log(
+      `web_fetch.backend=- url_host=${urlHost} duration_ms=${Date.now() - startedAt} status=error error_code=ssrf error=${check.error ?? 'ssrf'}`,
+    );
+    return ssrfResult;
+  }
 
   const { primary, fallback } = getBackends();
 
   const first = await runBackend(primary, url, requestInit);
-  if (first.ok || !fallback) return first;
+  if (first.ok || !fallback) {
+    logWebFetchCall(
+      { backend: primary.name, urlHost, durationMs: Date.now() - startedAt },
+      first,
+    );
+    return first;
+  }
 
   // Fallback path: only reachable when WEB_FETCH_BACKEND=reader AND
   // WEB_FETCH_READER_FALLBACK_TO_NATIVE=1 AND the reader call errored.
   // A single retry only — no chaining, no exponential backoff.
   console.warn(
-    `web_fetch.reader_fallback primary=${primary.name} error=${first.error ?? 'unknown'}`,
+    `web_fetch.reader_fallback primary=${primary.name} url_host=${urlHost} error=${first.error ?? 'unknown'}`,
   );
-  return runBackend(fallback, url, requestInit);
+  const second = await runBackend(fallback, url, requestInit);
+  logWebFetchCall(
+    {
+      backend: fallback.name,
+      urlHost,
+      durationMs: Date.now() - startedAt,
+      readerFallback: true,
+    },
+    second,
+  );
+  return second;
 }
 
 async function runBackend(

@@ -136,8 +136,8 @@ export function resolveWebFetchBackend(env: NodeJS.ProcessEnv): {
 };
 ```
 
-- 파싱 실패(예: `WEB_FETCH_BACKEND=reader` 인데 URL 미설정) 는 부트 타임에 **console.warn 후 native fallback** — daemon 이 뜨는 걸 막지 않되, `web_fetch.backend_bootstrap=fallback_native` 로그를 한 줄 남긴다.
-- 런타임 fallback 은 **최대 1회**, 최초 backend 가 `error` 를 반환한 경우에 한해서 발생. 성공하면 `web_fetch.reader_fallback=true` 로그.
+- 파싱 실패(예: `WEB_FETCH_BACKEND=reader` 인데 URL 미설정) 는 첫 `fetchUrlContent` 호출 시점(select 캐시 초기화 시)에 **`console.warn` 후 native fallback** — daemon 이 뜨는 걸 막지 않는다.
+- 런타임 fallback 은 **최대 1회**, 최초 backend 가 `error` 를 반환한 경우에 한해서 발생. `console.warn('web_fetch.reader_fallback primary=<name> url_host=<host> error=<msg>')` 로그 후 native 재시도. 성공하면 최종 log line 에 `reader_fallback=1` 이 함께 붙는다.
 
 ---
 
@@ -157,19 +157,32 @@ export function resolveWebFetchBackend(env: NodeJS.ProcessEnv): {
 
 ## 5. 로그 (본문 미로그, host 만)
 
-기존 daemon 로그 스타일(`console.log('web_fetch ...')`) 유지, 다음 키를 통일해서 찍는다:
+기존 daemon 로그 스타일(`console.log('web_fetch ...')`) 유지, 다음 키를 통일해서 찍는다. 실제 코드는 `apps/daemon/src/web-fetch/core.ts::logWebFetchCall`, 회귀는 `apps/daemon/tests/web-fetch-log.test.ts` 참조.
 
 | 필드 | 값 | 언제 |
 |------|----|------|
-| `web_fetch.backend` | `native` \| `reader` | 요청 시작 |
-| `web_fetch.url_host` | `new URL(url).host` (path/query 제외) | 요청 시작 |
-| `web_fetch.status` | `ok` \| `error` | 요청 종료 |
-| `web_fetch.error_code` | `timeout` \| `http_4xx` \| `http_5xx` \| `ssrf` \| `read_failed` \| `unknown` | error 시 |
-| `web_fetch.text_bytes` | number | ok 시 |
-| `web_fetch.duration_ms` | number | 요청 종료 |
-| `web_fetch.reader_fallback` | `true`/`false` (없으면 생략) | reader → native fallback 발동 시 |
+| `web_fetch.backend` | `native` \| `reader` \| `-` (SSRF pre-guard) | 요청 종료 |
+| `url_host` | `new URL(url).host` (path/query 제외) | 요청 종료 |
+| `duration_ms` | number | 요청 종료 |
+| `status` | `ok` \| `error` | 요청 종료 |
+| `text_bytes` | number | `status=ok` 시 |
+| `truncated=1` | flag | 100KB cap 이 잘라낸 경우 |
+| `error_code` | `timeout` \| `http_4xx` \| `http_5xx` \| `http_other` \| `network` \| `read_failed` \| `ssrf` \| `backend_bug` \| `unknown` | `status=error` 시 |
+| `error` | backend 가 반환한 짧은 원문 (title/body 포함 없음) | `status=error` 시 |
+| `reader_fallback=1` | flag | reader → native fallback 발동 후 최종 line 에 append |
 
-> 본문/title 은 절대 로그로 남기지 않음 (개인정보 · PII · 저작권 노출 방지). 기존 정책과 동일.
+예시:
+
+```
+web_fetch.backend=native url_host=example.com duration_ms=137 status=ok text_bytes=8213
+web_fetch.backend=native url_host=example.com duration_ms=42 status=error error_code=http_4xx error=http 404 Not Found
+web_fetch.backend=native url_host=example.com duration_ms=531 status=ok text_bytes=1024 reader_fallback=1
+web_fetch.backend=- url_host=169.254.169.254 duration_ms=1 status=error error_code=ssrf error=Internal IPs blocked
+```
+
+Fallback 은 `console.warn('web_fetch.reader_fallback primary=<name> url_host=<host> error=<msg>')` 로 별도 라인이 하나 더 남는다.
+
+> 본문/title/path/query 는 절대 로그로 남기지 않음 (개인정보 · PII · 저작권 노출 방지). backend 가 반환하는 error 문자열은 이미 짧고 body 를 포함하지 않는 계약이므로 verbatim 노출.
 
 ---
 
