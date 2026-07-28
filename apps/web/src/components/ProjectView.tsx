@@ -275,7 +275,7 @@ import {
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
 import { shouldSkipWorkspaceSwitchSideEffects } from '../teamver/workspaceSwitchGuards';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
-import { dispatchTeamverBackgroundChat } from '../teamver/teamverBackgroundChatEvents';
+import { dispatchTeamverBackgroundChat, dispatchTeamverBackgroundRunInactive } from '../teamver/teamverBackgroundChatEvents';
 import {
   BYOK_BACKGROUND_RECOVERY_POLL_MS,
   conversationAwaitingQuestionFormAnswer,
@@ -6989,14 +6989,28 @@ export function ProjectView({
     reattachControllersRef.current.clear();
     clearApiBackgroundRecoveryBanner();
     apiBackgroundRecoveryRef.current = false;
-    setStreaming(false);
-    streamingConversationIdRef.current = null;
-    setStreamingConversationId(null);
+    const stopConversationId = activeConversationId ?? streamingConversationIdRef.current;
     setMessages((curr) => {
       const { messages: next, finalized } = finalizeActiveAssistantMessagesOnStop(curr, stoppedAt);
+      if (config.mode === 'api' && stopConversationId) {
+        for (const message of finalized) {
+          dispatchTeamverBackgroundChat({
+            projectId: project.id,
+            conversationId: stopConversationId,
+            assistantMessageId: message.id,
+            active: false,
+          });
+        }
+      }
       for (const message of finalized) persistMessage(message, { telemetryFinalized: true });
       return next;
     });
+    if (config.mode === 'daemon' || config.mode === 'api') {
+      dispatchTeamverBackgroundRunInactive({ projectId: project.id });
+    }
+    setStreaming(false);
+    streamingConversationIdRef.current = null;
+    setStreamingConversationId(null);
   }, [activeConversationId, cancelSendTextBuffer, cancelReattachTextBuffers, clearApiBackgroundRecoveryBanner, config.mode, persistMessage, project.id]);
 
   // Flip the deck preview to the slide a queued send's marked element lives on

@@ -88,7 +88,8 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     expect(await fetchTeamverRuntimeConfig()).toBeNull();
     expect(httpGet).not.toHaveBeenCalled();
     expect(isTeamverRuntimeConfigAuthBlocked()).toBe(true);
-    expect(isTeamverEmbedSessionAuthenticated()).toBe(false);
+    // Probe-only gate must not wipe embed session (C1 owns logout).
+    expect(isTeamverEmbedSessionAuthenticated()).toBe(true);
     // Runtime-config miss must not soft-sticky (would seed force-POST cooldown).
     expect(isDesignAuthRefreshDeclined()).toBe(false);
     expect(
@@ -244,6 +245,45 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     ).toHaveLength(0);
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("escalates runtime-config gate to ensure when session-probe is 401", async () => {
+    const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =
+      await import("../src/teamver/teamverEmbedSession");
+    const {
+      fetchTeamverRuntimeConfig,
+      resetTeamverRuntimeConfigCacheForTests,
+      isTeamverRuntimeConfigAuthBlocked,
+    } = await import("../src/teamver/designBffClient");
+
+    resetTeamverEmbedSessionRelayForTests();
+    resetTeamverRuntimeConfigCacheForTests();
+    setTeamverEmbedSessionAuthenticated(true);
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/auth/session-probe")) {
+        return new Response(null, { status: 401 });
+      }
+      if (url.includes("/auth/session")) {
+        return Response.json({ authenticated: true });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    httpGet.mockResolvedValueOnce({
+      configured: true,
+      apiKeyConfigured: true,
+      model: "claude-sonnet-4-6",
+    });
+
+    const value = await fetchTeamverRuntimeConfig();
+    expect(value?.model).toBe("claude-sonnet-4-6");
+    expect(isTeamverRuntimeConfigAuthBlocked()).toBe(false);
+    expect(httpGet).toHaveBeenCalledTimes(1);
+    expect(
+      fetchMock.mock.calls.some((c) => String(c[0]).includes("/auth/session")),
+    ).toBe(true);
   });
 
   it("force cannot bypass the unauthenticated session gate", async () => {

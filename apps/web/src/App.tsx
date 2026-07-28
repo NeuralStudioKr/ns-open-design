@@ -137,7 +137,7 @@ import {
 import { isTeamverSessionTrustedProject } from './teamver/sessionTrustedProjects';
 import { navigateExtrasForBackgroundRun } from './teamver/backgroundRunNavigate';
 import { mergeByokBackgroundRunSummaries, reconcileByokBackgroundChatsAfterPoll, syntheticByokRunsForTaskCenter } from './teamver/backgroundChatRecovery';
-import { subscribeTeamverBackgroundChat } from './teamver/teamverBackgroundChatEvents';
+import { subscribeTeamverBackgroundChat, subscribeTeamverBackgroundRunInactive } from './teamver/teamverBackgroundChatEvents';
 import {
   ActiveByokProxyAuthTransientError,
   listActiveByokProxyStreams,
@@ -1703,6 +1703,21 @@ function AppInner() {
         activeRunSummariesEqual(prev, activeSummaries) ? prev : activeSummaries,
       );
       wasActiveRunRef.current = activeSummaries.length > 0;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isTeamverEmbedMode()) return;
+    return subscribeTeamverBackgroundRunInactive(({ projectId }) => {
+      byokBackgroundChatsRef.current.delete(projectId);
+      sessionActiveRunProjectIdsRef.current.delete(projectId);
+      byokProxyIdlePollsRef.current.delete(projectId);
+      publishTeamverSessionActiveRunProjectIds(sessionActiveRunProjectIdsRef.current);
+      setBackgroundRunSummaries((prev) => {
+        const next = prev.filter((summary) => summary.projectId !== projectId);
+        wasActiveRunRef.current = next.length > 0;
+        return next;
+      });
     });
   }, []);
 

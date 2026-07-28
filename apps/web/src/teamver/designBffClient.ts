@@ -1040,7 +1040,10 @@ export async function fetchDesignAuthSession(
     }
     const runStickyQuiet = async (): Promise<DesignAuthSession | null> => {
       try {
-        if (!(await probeDesignBffSessionAlive({ bypassDeclineGate: true }))) {
+        if (!(await probeDesignBffSessionAlive({
+          bypassDeclineGate: true,
+          bypassNegativeCache: true,
+        }))) {
           cachedSession = null;
           return null;
         }
@@ -1202,12 +1205,19 @@ export async function fetchTeamverRuntimeConfig(
   const run = (async (): Promise<TeamverRuntimeConfigResponse | null> => {
     try {
       if (isTeamverEmbedMode()) {
-        const sessionAlive = await confirmRuntimeConfigSessionAlive();
+        let sessionAlive = await confirmRuntimeConfigSessionAlive();
+        if (!sessionAlive) {
+          // Probe is read-only; near/past-skew access may still revive via ensure.
+          sessionAlive = await ensureDesignBffSessionAuthenticated();
+          if (sessionAlive) {
+            clearSessionProbeKnownDead();
+            runtimeConfigAuthBlocked = false;
+          }
+        }
         if (!sessionAlive) {
           noteRuntimeConfigUnauthorized();
-          if (isTeamverEmbedSessionAuthenticated()) {
-            setTeamverEmbedSessionAuthenticated(false);
-          }
+          // Keep embed session memory — C1/passive auth reconcile probe vs
+          // /auth/session. Clearing here wiped project lists (session-changed).
           return cachedRuntimeConfig?.value ?? null;
         }
       }
