@@ -58,6 +58,7 @@ import { isTeamverEmbedSessionAuthenticated } from './teamver/teamverEmbedSessio
 import {
   isDesignAuthRefreshDeclined,
   isTeamverRuntimeConfigAuthBlocked,
+  shouldPreserveEmbedCatalogOnAuthDecline,
 } from './teamver/designBffClient';
 import {
   shouldFetchAgentRegistryOnBoot,
@@ -1607,6 +1608,7 @@ function AppInner() {
     });
     const unsubscribeSession = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
       if (!authenticated) {
+        if (shouldPreserveEmbedCatalogOnAuthDecline()) return;
         setEmbedWorkspaceId(null);
         return;
       }
@@ -1887,6 +1889,11 @@ function AppInner() {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
       if (!authenticated) {
+        if (shouldPreserveEmbedCatalogOnAuthDecline()) {
+          setProjectsLoading(false);
+          setProjectsRefreshing(false);
+          return;
+        }
         pendingLocalProjectIdsRef.current.clear();
         locallyDeletedProjectIdsRef.current.clear();
         clearTeamverEmbedListCaches();

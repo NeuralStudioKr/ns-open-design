@@ -99,6 +99,9 @@ export function resolveEmbedFocusSessionOptions(
  * state in that window clears the workspace store, registry caches, and the
  * project list — the root cause of idle "access denied" / empty-list glips.
  *
+ * Soft decline = nginx/BFF cookie blip while Main SSO may still look signed-in.
+ * Keep embed session memory so App does not wipe project/template rails.
+ *
  * Definitive logout/redirect: cold boot without prior BFF UI session, or explicit
  * auth recovery (`resetRefreshState`).
  *

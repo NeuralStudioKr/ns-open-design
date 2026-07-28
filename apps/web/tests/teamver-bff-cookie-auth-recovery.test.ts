@@ -629,6 +629,32 @@ describe("probeDesignBffSessionAuthenticated", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
+
+  it("soft sticky decline preserves embed session memory (project list guard)", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(refresh401())
+      .mockResolvedValue(sessionProbe401());
+    vi.stubGlobal("fetch", fetchMock);
+    vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    const { hasProbableTeamverAuthCookie } = await import("../src/teamver/teamverAuthCookieHints");
+    vi.mocked(hasProbableTeamverAuthCookie).mockReturnValue(true);
+    const { setTeamverEmbedSessionAuthenticated } = await import("../src/teamver/teamverEmbedSession");
+    setTeamverEmbedSessionAuthenticated(true);
+
+    const { refreshDesignAuthCookie, shouldPreserveEmbedCatalogOnAuthDecline } = await import(
+      "../src/teamver/designBffClient"
+    );
+    const refreshPromise = refreshDesignAuthCookie();
+    await vi.runAllTimersAsync();
+    await refreshPromise;
+
+    expect(isDesignAuthRefreshDeclined()).toBe(true);
+    expect(shouldPreserveEmbedCatalogOnAuthDecline()).toBe(true);
+    expect(isTeamverEmbedSessionAuthenticated()).toBe(true);
+    vi.useRealTimers();
+  });
 });
 
 describe("refreshTeamverEmbedAuthBeforeMutating", () => {

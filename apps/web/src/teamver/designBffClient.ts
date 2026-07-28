@@ -462,7 +462,11 @@ function markAuthRefreshDeclined(kind: "soft" | "hard"): void {
   // Drop warm /auth/session cache so focus force:false cannot keep serving
   // authenticated=true without a live cookie (DevTools 401 storms).
   cachedSession = null;
-  syncEmbedSessionFalseOnAuthDecline();
+  if (kind === "hard") {
+    // Soft decline = nginx/BFF cookie blip while Main SSO may still look signed-in.
+    // Keep embed session memory so App does not wipe project/template rails.
+    syncEmbedSessionFalseOnAuthDecline();
+  }
   if (kind === "soft") {
     // Soft 401 path already ran probe×2+ensure (+ the failing POST). Seed both
     // survival and force-POST cooldowns so the next soft recovery (daemon,
@@ -510,6 +514,11 @@ export function clearDesignAuthRefreshDecline(): void {
 /** True when sticky decline is hard (400) — Drive must not resetRefreshState. */
 export function isDesignAuthRefreshDeclineHard(): boolean {
   return authRefreshDeclinedForSession && authRefreshDeclineKind === "hard";
+}
+
+/** Soft sticky after refresh/probe 401 — keep embed catalog UI until hard logout. */
+export function shouldPreserveEmbedCatalogOnAuthDecline(): boolean {
+  return authRefreshDeclinedForSession && authRefreshDeclineKind === "soft";
 }
 
 function shouldAttemptCookieRefresh(): boolean {
