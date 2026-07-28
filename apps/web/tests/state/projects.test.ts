@@ -628,6 +628,110 @@ describe('conversation daemon auth', () => {
     fetchDaemonSpy.mockRestore();
   });
 
+  it('listMessages returns raw server rows without destructive sanitize-on-read', async () => {
+    const rawMessage = {
+      id: 'msg-raw',
+      role: 'assistant' as const,
+      content: '슬라이드 설명입니다.\n<artifact type="deck"><html></html></artifact>',
+      createdAt: 1,
+      events: [
+        {
+          kind: 'text' as const,
+          text: '슬라이드 설명입니다.\n<artifact type="deck"><html></html></artifact>',
+        },
+      ],
+    };
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(
+      new Response(JSON.stringify({ messages: [rawMessage] }), { status: 200 }),
+    );
+    const { listMessages } = await import('../../src/state/projects');
+
+    const messages = await listMessages('project-1', 'conv-1');
+    expect(messages[0]?.content).toBe(rawMessage.content);
+    expect(messages[0]?.events).toEqual(rawMessage.events);
+    fetchDaemonSpy.mockRestore();
+  });
+
+  it('listMessages reconciles failed runStatus from persisted error status events', async () => {
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          messages: [
+            {
+              id: 'msg-failed',
+              role: 'assistant',
+              content: 'partial',
+              createdAt: 1,
+              runStatus: 'running',
+              events: [
+                { kind: 'status', label: 'error', detail: 'Provider timeout', code: 'timeout' },
+              ],
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const { listMessages } = await import('../../src/state/projects');
+
+    const messages = await listMessages('project-1', 'conv-1');
+    expect(messages[0]?.runStatus).toBe('failed');
+    fetchDaemonSpy.mockRestore();
+  });
+
+  it('saveMessage keepalive trims heavy fields but preserves error status events', async () => {
+    let capturedBody = '';
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockImplementation(async (_url, init) => {
+      capturedBody = String(init?.body ?? '');
+      return new Response('{}', { status: 200 });
+    });
+    const { saveMessage } = await import('../../src/state/projects');
+    const bulkyEvents = Array.from({ length: 2_500 }, (_, index) => ({
+      kind: 'text' as const,
+      text: `chunk-${index}-${'x'.repeat(24)}\n`,
+    }));
+
+    await saveMessage(
+      'project-1',
+      'conv-1',
+      {
+        id: 'msg-keepalive-error',
+        role: 'assistant',
+        content: 'partial answer',
+        createdAt: Date.now(),
+        runStatus: 'failed',
+        endedAt: Date.now(),
+        events: [
+          ...bulkyEvents,
+          { kind: 'status', label: 'error', detail: 'Provider timeout', code: 'timeout' },
+        ],
+        producedFiles: [{ name: 'deck.html', path: 'deck.html', mimeType: 'text/html', size: 1 }],
+      },
+      { keepalive: true },
+    );
+
+    const payload = JSON.parse(capturedBody) as {
+      events?: Array<{ kind: string; label?: string; detail?: string }>;
+      producedFiles?: unknown;
+      content?: string;
+    };
+    expect(payload.producedFiles).toBeUndefined();
+    expect(payload.content).toBe('partial answer');
+    expect(payload.events).toEqual([
+      { kind: 'status', label: 'error', detail: 'Provider timeout', code: 'timeout' },
+    ]);
+    fetchDaemonSpy.mockRestore();
+  });
+
   it('listConversations throws on non-OK responses instead of returning []', async () => {
     const fetchDaemonSpy = vi.spyOn(
       await import('../../src/teamver/teamverDaemonHeaders'),

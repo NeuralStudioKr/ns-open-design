@@ -1,4 +1,5 @@
 import type { AgentEvent, ChatMessage } from '../types';
+import { AUTO_CONTINUE_STATUS_CODE } from './resume';
 
 function joinedTextFromEvents(events: AgentEvent[]): string {
   let out = '';
@@ -56,6 +57,44 @@ export function assistantMessageTextBody(message: Pick<ChatMessage, 'content' | 
   if (!contentRaw.trim()) return fromEvents;
   if (!fromEvents.trim()) return contentRaw;
   return fromEvents.trim().length >= contentRaw.trim().length ? fromEvents : contentRaw;
+}
+
+export function messageHasVisibleProse(
+  message: Pick<ChatMessage, 'content' | 'events'>,
+): boolean {
+  if ((message.content ?? '').trim().length > 0) return true;
+  return (message.events ?? []).some(
+    (event) =>
+      (event.kind === 'text' || event.kind === 'thinking')
+      && typeof event.text === 'string'
+      && event.text.trim().length > 0,
+  );
+}
+
+function hasPersistedRunErrorEvent(events: AgentEvent[]): boolean {
+  return events.some(
+    (event) =>
+      event.kind === 'status'
+      && event.label === 'error'
+      && event.code !== AUTO_CONTINUE_STATUS_CODE
+      && Boolean(event.detail?.trim()),
+  );
+}
+
+/**
+ * Light-touch normalization after loading messages from the daemon.
+ * Display-time sanitization stays in AssistantMessage; this only repairs
+ * metadata gaps that would hide error cards after reload.
+ */
+export function reconcileChatMessageOnLoad(message: ChatMessage): ChatMessage {
+  const events = message.events ?? [];
+  if (!hasPersistedRunErrorEvent(events)) return message;
+  if (message.runStatus === 'failed' || message.runStatus === 'canceled') return message;
+  return {
+    ...message,
+    runStatus: 'failed',
+    endedAt: message.endedAt ?? Date.now(),
+  };
 }
 
 export function appendErrorStatusEvent(

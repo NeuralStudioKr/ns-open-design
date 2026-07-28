@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { assistantEventsForDisplay, assistantMessageTextBody } from '../../src/runtime/chat-events';
+import { assistantEventsForDisplay, assistantMessageTextBody, reconcileChatMessageOnLoad } from '../../src/runtime/chat-events';
 import type { ChatMessage } from '../../src/types';
 
 describe('assistantEventsForDisplay', () => {
@@ -81,5 +81,41 @@ describe('assistantEventsForDisplay', () => {
         events: [{ kind: 'text', text: 'Events only' }],
       }),
     ).toBe('Events only');
+  });
+});
+
+describe('reconcileChatMessageOnLoad', () => {
+  it('marks failed runStatus when persisted error status events survived without runStatus', () => {
+    const reconciled = reconcileChatMessageOnLoad({
+      id: 'a1',
+      role: 'assistant',
+      content: 'partial',
+      createdAt: 1,
+      runStatus: 'running',
+      events: [
+        { kind: 'status', label: 'error', detail: 'Provider timeout', code: 'timeout' },
+      ],
+    });
+    expect(reconciled.runStatus).toBe('failed');
+    expect(reconciled.endedAt).toEqual(expect.any(Number));
+  });
+
+  it('ignores auto-continue status events when reconciling runStatus', () => {
+    const message: ChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      content: 'still going',
+      createdAt: 1,
+      runStatus: 'running',
+      events: [
+        {
+          kind: 'status',
+          label: 'error',
+          detail: 'Continuing…',
+          code: 'auto_continue_incomplete_output',
+        },
+      ],
+    };
+    expect(reconcileChatMessageOnLoad(message)).toBe(message);
   });
 });

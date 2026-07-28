@@ -259,6 +259,30 @@ describe("mergeServerMessagesIntoConversation", () => {
     expect(merged[0]?.producedFiles?.[0]?.name).toBe("deck.html");
   });
 
+  it("preserves local prose when terminal server row lost content to sanitize-on-read", () => {
+    const local: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "슬라이드를 만들었습니다.",
+      events: [{ kind: "text", text: "슬라이드를 만들었습니다." }],
+      createdAt: 1,
+      runStatus: "succeeded",
+      endedAt: 2,
+    };
+    const server: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "",
+      events: [],
+      createdAt: 1,
+      runStatus: "succeeded",
+      endedAt: 2,
+    };
+    const merged = mergeServerMessagesIntoConversation([local], [server]);
+    expect(merged[0]?.content).toBe("슬라이드를 만들었습니다.");
+    expect(merged[0]?.events).toEqual([{ kind: "text", text: "슬라이드를 만들었습니다." }]);
+  });
+
   it("prefers shorter sanitized local content when terminal server row still has leak residue", () => {
     // FE streaming buffer can shrink after closed-tag strip; daemon append-only
     // persist cannot. On refresh, prefer the cleaned local when the server
