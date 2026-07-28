@@ -21,6 +21,7 @@ import { sanitizeProjectForEmbed } from "./embedLocalWorkspacePolicy";
 import { PROJECT_LIST_PAGE_SIZE } from "./projectListLimits";
 import type { ProjectsListPageResult } from "../state/projects";
 import { isTeamverProjectDeletedTombstoned } from "./deletedProjectTombstones";
+import { resolveActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 
 type ProjectListCursor = { updatedAt: number; id: string };
 
@@ -178,15 +179,22 @@ function sliceAfterCursor(
   return start < 0 ? [] : sorted.slice(start);
 }
 
+function isRegistryRowActive(row: TeamverRegisteredProject): boolean {
+  const status = row.status?.trim().toLowerCase();
+  return !status || status === "active";
+}
+
 async function loadSortedRegistryProjects(): Promise<Project[]> {
   const rows = await listTeamverRegistryProjects();
   if (rows === null) {
     throw new TeamverProjectRegistryError("teamver_project_registry_list_failed");
   }
+  const workspaceId = (await resolveActiveTeamverWorkspaceId())?.trim() ?? null;
   return sortRegistryProjects(
     rows
+      .filter(isRegistryRowActive)
       .map(mapRegistryRowToProject)
-      .filter((project) => !isTeamverProjectDeletedTombstoned(project.id)),
+      .filter((project) => !isTeamverProjectDeletedTombstoned(project.id, workspaceId)),
   );
 }
 

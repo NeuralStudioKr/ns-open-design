@@ -107,6 +107,7 @@ import {
   syncAllDaemonProjectsToRegistry,
   TeamverProjectRegistryError,
   unregisterTeamverProjectFromRegistryIfNeeded,
+  scheduleTeamverRegistryDeleteRetry,
 } from './teamver/projectRegistry';
 import {
   driveImportedToChatAttachments,
@@ -3150,13 +3151,8 @@ function AppInner() {
   }, [navigateToProject]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
-    const ok = await deleteProjectApi(id);
-    if (!ok) return false;
-    const registryOk = await unregisterTeamverProjectFromRegistryIfNeeded(id);
-    if (!registryOk) return false;
-    if (isTeamverEmbedMode()) {
-      clearTeamverEmbedProjectCaches(id);
-    }
+    const workspaceId = embedActiveWorkspaceIdRef.current;
+    markTeamverProjectDeletedTombstone(id, workspaceId);
     clearLocalProject(id, { deleted: true });
     iframeKeepAlivePool.evictProject(id, { includeActive: true });
     sessionActiveRunProjectIdsRef.current.delete(id);
@@ -3167,8 +3163,24 @@ function AppInner() {
     if (route.kind === 'project' && route.projectId === id) {
       navigate({ kind: 'home', view: 'home' });
     }
+
+    const daemonOk = await deleteProjectApi(id);
+    if (!daemonOk) {
+      clearTeamverProjectDeletedTombstone(id, workspaceId);
+      locallyDeletedProjectIdsRef.current.delete(id);
+      projectListMutationVersionRef.current += 1;
+      void refreshProjectsSurface();
+      return false;
+    }
+    if (isTeamverEmbedMode()) {
+      clearTeamverEmbedProjectCaches(id);
+    }
+    const registryOk = await unregisterTeamverProjectFromRegistryIfNeeded(id);
+    if (!registryOk) {
+      scheduleTeamverRegistryDeleteRetry(id);
+    }
     return true;
-  }, [clearLocalProject, iframeKeepAlivePool, route]);
+  }, [clearLocalProject, iframeKeepAlivePool, navigate, refreshProjectsSurface, route]);
 
   const handleRenameProject = useCallback(async (id: string, name: string) => {
     const trimmed = name.trim();
