@@ -8669,11 +8669,14 @@ function HtmlViewer({
     && liveHtml?.trim()
     && !isArtifactHtmlStableForPreview(repairArtifactDocumentHead(liveHtml)),
   );
+  const showStreamingAwaitingLiveHtml = Boolean(streaming && !liveHtml?.trim());
   // Empty branch used to never render the veil (it lived under source !== null).
   // Do not gate on !sourceLoadFailed — mid-stream incomplete disk used to flip
   // failed and replace the veil with "previewUnavailable".
-  const showStreamingEmptyVeil = liveHtmlUnstableForPreview && source == null;
-  const showStreamingPreviewVeil = liveHtmlUnstableForPreview && source != null;
+  const showStreamingEmptyVeil =
+    (liveHtmlUnstableForPreview || showStreamingAwaitingLiveHtml) && source == null;
+  const showStreamingPreviewVeil =
+    (liveHtmlUnstableForPreview || showStreamingAwaitingLiveHtml) && source != null;
   const commentPreviewLayoutClass = [
     'comment-preview-layer',
     localCommentSideDockActive ? 'comment-preview-layer-with-side-dock' : '',

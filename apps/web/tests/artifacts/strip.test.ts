@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { splitStreamingArtifact, stripArtifact, stripRecoveredHtmlFallbackForDisplay } from '../../src/artifacts/strip';
+import { splitStreamingArtifact, stripArtifact, stripRecoveredHtmlFallbackForDisplay, artifactPreviewFromInFlightContent } from '../../src/artifacts/strip';
 
 const completeHtml = '<!doctype html><html><head><title>X</title></head><body><h1>X</h1></body></html>';
 
@@ -214,6 +214,22 @@ describe('splitStreamingArtifact', () => {
     const { head, live } = splitStreamingArtifact(input);
     expect(head).toBe(input);
     expect(live).toBeNull();
+  });
+});
+
+describe('artifactPreviewFromInFlightContent', () => {
+  it('maps an open deck artifact stream into preview html', () => {
+    const content =
+      'Updating\n<artifact type="deck" identifier="deck"><section class="slide">Hi';
+    expect(artifactPreviewFromInFlightContent(content)).toMatchObject({
+      artifactType: 'deck',
+      identifier: 'deck',
+      html: '<section class="slide">Hi',
+    });
+  });
+
+  it('returns null when the assistant row has no open artifact', () => {
+    expect(artifactPreviewFromInFlightContent('Planning only.')).toBeNull();
   });
 });
 

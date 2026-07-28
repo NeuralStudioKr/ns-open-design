@@ -295,4 +295,23 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.getByText('Slide updates have been applied.')).toBeTruthy();
     expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
   });
+
+  it('does not render a header-only assistant row superseded by a later reply', () => {
+    const { container } = render(
+      <AssistantMessage
+        message={{
+          id: 'a-shell',
+          role: 'assistant',
+          content: '',
+          runStatus: 'succeeded',
+          endedAt: Date.now(),
+        }}
+        streaming={false}
+        isLast={false}
+        projectId="proj-1"
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
 });

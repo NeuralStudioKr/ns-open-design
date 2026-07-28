@@ -6,6 +6,10 @@ import {
   hasUnterminatedQuestionForm,
 } from "../artifacts/question-form";
 import { appendErrorStatusEvent, assistantMessageTextBody } from "../runtime/chat-events";
+import {
+  dedupeConversationAssistantRows,
+  patchInFlightAssistantForActiveRun,
+} from "../runtime/conversation-message-dedupe";
 
 export function isTerminalRunStatus(status: ChatMessage["runStatus"]): boolean {
   return status === "succeeded" || status === "failed" || status === "canceled";
@@ -282,15 +286,26 @@ export function mergeActiveRunsIntoMessages(
   activeRuns: readonly ChatRunStatusResponse[],
 ): ChatMessage[] {
   if (activeRuns.length === 0) return [...messages];
-  const merged = [...messages];
+  let merged = [...messages];
   const knownIds = new Set(merged.map((message) => message.id));
   for (const run of activeRuns) {
     const stub = syntheticAssistantFromActiveRun(run);
-    if (!stub || knownIds.has(stub.id)) continue;
+    if (!stub) continue;
+    if (knownIds.has(stub.id)) continue;
+    if (run.id?.trim() && merged.some((m) => m.role === "assistant" && m.runId === run.id)) {
+      continue;
+    }
+    const patched = patchInFlightAssistantForActiveRun(merged, run, activeRuns);
+    if (patched) {
+      merged = patched;
+      knownIds.clear();
+      for (const message of merged) knownIds.add(message.id);
+      continue;
+    }
     merged.push(stub);
     knownIds.add(stub.id);
   }
-  return merged;
+  return dedupeConversationAssistantRows(merged);
 }
 
 /** Embed safety net when SSE stalls but the daemon run has already finished. */

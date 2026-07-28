@@ -15,6 +15,7 @@ import {
 } from "../teamver/branding/embedDeliverableFilePolicy";
 import { fetchTeamverDaemon } from "../teamver/teamverDaemonHeaders";
 import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup";
+import { isEmptyAssistantShell } from "../runtime/conversation-message-dedupe";
 import {
   trackAssistantFeedbackButtonClick,
   trackAssistantFeedbackClick,
@@ -798,6 +799,10 @@ function AssistantMessageImpl({
       lastTextBlockIndex = i;
       break;
     }
+  }
+
+  if (!streaming && !isLast && isEmptyAssistantShell(message)) {
+    return null;
   }
 
   return (

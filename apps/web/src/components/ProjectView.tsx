@@ -34,6 +34,7 @@ import {
   recoverHtmlArtifactFromPrecedingDocument,
   salvageTruncatedHtmlDocument,
 } from '../artifacts/recover';
+import { artifactPreviewFromInFlightContent } from '../artifacts/strip';
 import {
   EMERGENCY_DECK_FALLBACK_STATUS_CODE,
   looksLikeSlideOutline,
@@ -318,6 +319,10 @@ import { fetchPluginLocalSkill } from '../teamver/fetchPluginLocalSkill';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
 import { sanitizeAssistantProseForDisplay } from '../runtime/internalAgentMarkup';
+import {
+  dedupeConversationAssistantRows,
+  patchInFlightAssistantForActiveRun,
+} from '../runtime/conversation-message-dedupe';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
 import { PluginDetailsModal } from './PluginDetailsModal';
@@ -334,6 +339,7 @@ import {
   decideAutoOpenAfterWrite,
   selectAutoOpenProducedHtml,
 } from './auto-open-file';
+import { selectInitialDesignPreviewFile } from './design-files/designArtifacts';
 import {
   artifactBaseNameForPersist,
   artifactVersionTabsToClose,
@@ -545,7 +551,7 @@ export function mergeServerMessagesIntoConversation(
   for (const message of current) {
     if (!serverIds.has(message.id)) merged.push(message);
   }
-  return orderConversationMessages(merged, current);
+  return dedupeConversationAssistantRows(orderConversationMessages(merged, current));
 }
 
 function synthesizeAssistantMessageForActiveRun(run: {
@@ -585,17 +591,30 @@ export function mergeMissingActiveRunAssistantMessages(
   }[],
 ): ChatMessage[] {
   if (runs.length === 0) return messages;
-  const seen = new Set(messages.map((message) => message.id));
+  let working = [...messages];
+  const seen = new Set(working.map((message) => message.id));
   const recovered: ChatMessage[] = [];
   for (const run of runs) {
     const assistantMessageId = run.assistantMessageId?.trim();
     if (!assistantMessageId || seen.has(assistantMessageId)) continue;
+    if (run.id?.trim() && working.some((m) => m.role === 'assistant' && m.runId === run.id)) {
+      continue;
+    }
+    const patched = patchInFlightAssistantForActiveRun(working, run, runs);
+    if (patched) {
+      working = patched;
+      seen.clear();
+      for (const message of working) seen.add(message.id);
+      continue;
+    }
     const message = synthesizeAssistantMessageForActiveRun(run);
     if (!message) continue;
     seen.add(assistantMessageId);
     recovered.push(message);
   }
-  return recovered.length > 0 ? [...messages, ...recovered] : messages;
+  const merged =
+    recovered.length > 0 ? [...working, ...recovered] : working;
+  return dedupeConversationAssistantRows(merged);
 }
 
 interface Props {
@@ -793,7 +812,41 @@ function mergeChatAttachments(...groups: ChatAttachment[][]): ChatAttachment[] {
   return out;
 }
 
+function attachmentsIncludeProjectFilePath(
+  attachments: readonly ChatAttachment[],
+  filePath: string,
+): boolean {
+  const normalized = filePath.trim();
+  if (!normalized) return false;
+  const base = normalized.split('/').pop() ?? normalized;
+  return attachments.some((attachment) => {
+    const path = attachment.path.trim();
+    const name = attachment.name.trim();
+    return path === normalized || name === normalized || path === base || name === base;
+  });
+}
+
+function chatAttachmentForProjectFile(file: ProjectFile): ChatAttachment {
+  const path = file.path?.trim() || file.name;
+  return {
+    path,
+    name: file.name,
+    kind: 'file',
+    ...(typeof file.size === 'number' ? { size: file.size } : {}),
+  };
+}
+
+function resolvePrimaryDeckFilePath(
+  files: readonly ProjectFile[],
+  entryFile?: string | null,
+): string | null {
+  const deck = selectInitialDesignPreviewFile([...files], entryFile ?? null);
+  if (!deck || deck.kind !== 'html') return null;
+  return deck.path?.trim() || deck.name;
+}
+
 const SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER = '[Deliverable instruction]';
+const EXISTING_DECK_EDIT_INSTRUCTION_MARKER = '[Existing deck edit]';
 
 function slideAttachmentDeliverableInstruction(attachments: ChatAttachment[]): string {
   const files = attachments
@@ -830,10 +883,13 @@ export function promptWithSlideAttachmentDeliverableInstruction(
      * comment target) still get the full deliverable pressure.
      */
     commentAttachmentCount?: number;
+    /** Follow-up edit with the current deck auto-attached — not a greenfield generate. */
+    existingDeckEdit?: boolean;
   },
 ): string {
   if (!options.slideOnlyMvp || attachments.length === 0) return prompt;
   if ((options.commentAttachmentCount ?? 0) > 0) return prompt;
+  if (options.existingDeckEdit) return prompt;
   if (prompt.includes(SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '첨부 파일을 참고해서 슬라이드 덱을 만들어줘.';
   return `${visiblePrompt}\n\n${slideAttachmentDeliverableInstruction(attachments)}`;
@@ -874,6 +930,30 @@ export function promptWithSlideCommentEditPatchInstruction(
   if (prompt.includes(SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '이 코멘트에 맞춰 슬라이드를 수정해줘.';
   return `${visiblePrompt}\n\n${slideCommentEditPatchInstruction(options.commentAttachmentCount)}`;
+}
+
+function slideExistingDeckEditInstruction(deckPath: string): string {
+  return [
+    EXISTING_DECK_EDIT_INSTRUCTION_MARKER,
+    `This project already has a completed slide deck saved as \`${deckPath}\` (see <attached-project-files> above).`,
+    'This turn is an edit to that deck — do NOT claim there is no completed deck in this conversation.',
+    'Read the attached deck HTML and apply the user request.',
+    'Prefer `<artifact type="deck-patch">` with one `<section class="slide" data-slide-index="{N}">` per touched slide for localized text/layout changes.',
+    'Use a full `<artifact type="deck">` only when the change is deck-wide (new slide, reorder, global CSS).',
+  ].join('\n');
+}
+
+/** Nudges follow-up text edits when the current deck file is auto-attached for API context. */
+export function promptWithExistingDeckEditInstruction(
+  prompt: string,
+  options: { slideOnlyMvp: boolean; deckPath: string },
+): string {
+  if (!options.slideOnlyMvp) return prompt;
+  const deckPath = options.deckPath.trim();
+  if (!deckPath) return prompt;
+  if (prompt.includes(EXISTING_DECK_EDIT_INSTRUCTION_MARKER)) return prompt;
+  const visiblePrompt = prompt.trim() || '슬라이드 덱을 수정해줘.';
+  return `${visiblePrompt}\n\n${slideExistingDeckEditInstruction(deckPath)}`;
 }
 
 /**
@@ -2103,6 +2183,44 @@ export function ProjectView({
     currentConversationHasActiveRun
     && !currentConversationStreaming
     && !awaitingQuestionFormAnswer;
+  const previewPanelStreaming =
+    currentConversationStreaming || currentConversationAwaitingActiveRunAttach;
+
+  // Re-entry / BYOK background recovery: paint partial streamed deck HTML on
+  // the preview panel before SSE deltas reconnect (artifact state is cleared on
+  // unmount).
+  useEffect(() => {
+    if (!activeConversationId) return;
+    if (!currentConversationHasActiveRun && !previewPanelStreaming) return;
+    const inflight = findInFlightAssistantMessages(messages)[0];
+    if (!inflight?.content?.trim()) return;
+    const preview = artifactPreviewFromInFlightContent(inflight.content);
+    if (!preview) return;
+    setArtifact((prev) => {
+      const nextHtml = preview.html;
+      if (prev?.html && prev.html.length > nextHtml.length) return prev;
+      if (
+        prev
+        && prev.html === nextHtml
+        && prev.identifier === preview.identifier
+        && prev.artifactType === preview.artifactType
+      ) {
+        return prev;
+      }
+      return {
+        identifier: preview.identifier,
+        artifactType: preview.artifactType,
+        title: preview.title,
+        html: nextHtml,
+      };
+    });
+  }, [
+    activeConversationId,
+    currentConversationHasActiveRun,
+    messages,
+    previewPanelStreaming,
+  ]);
+
   const currentConversationBusy = currentConversationLoading
     || currentConversationStreaming
     || currentConversationAwaitingActiveRunAttach;
@@ -2639,6 +2757,10 @@ export function ProjectView({
                 attempt,
                 referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
                 slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
+                existingDeckPath: resolvePrimaryDeckFilePath(
+                  filesForRecovery,
+                  project.metadata?.entryFile,
+                ),
                 ...autoContinueCtx,
               });
               const started = sendNow(
@@ -5838,7 +5960,10 @@ export function ProjectView({
         attachments.length === 0 &&
         commentAttachments.length === 0
       ) return false;
-      const effectiveAttachments = mergeChatAttachments(
+      const isAutoContinueSend =
+        meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
+        || isAutoContinueIncompleteOutputPrompt(prompt);
+      let effectiveAttachments = mergeChatAttachments(
         attachments,
         chatAttachmentsFromPreviewCommentFiles(commentAttachments, projectFiles, {
           // The deck HTML is the last-assistant artifact in conversation
@@ -5853,6 +5978,34 @@ export function ProjectView({
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),
       );
+      let autoAttachedDeckPath: string | null = null;
+      const hasPriorAssistantTurn = retryTarget
+        ? retryTarget.priorMessages.some((message) => message.role === 'assistant')
+        : historyBase.some((message) => message.role === 'assistant');
+      if (
+        slideOnlyMvp
+        && !isAutoContinueSend
+        && commentAttachments.length === 0
+        && hasPriorAssistantTurn
+      ) {
+        const existingDeck = selectInitialDesignPreviewFile(
+          projectFiles,
+          project.metadata?.entryFile ?? null,
+        );
+        if (existingDeck?.kind === 'html') {
+          const deckPath = existingDeck.path?.trim() || existingDeck.name;
+          if (
+            deckPath
+            && !attachmentsIncludeProjectFilePath(effectiveAttachments, deckPath)
+          ) {
+            effectiveAttachments = mergeChatAttachments(
+              effectiveAttachments,
+              [chatAttachmentForProjectFile(existingDeck)],
+            );
+            autoAttachedDeckPath = deckPath;
+          }
+        }
+      }
       const instructionAttachments = retryTarget
         ? mergeChatAttachments(retryTarget.userMsg.attachments ?? [], effectiveAttachments)
         : effectiveAttachments;
@@ -5862,6 +6015,7 @@ export function ProjectView({
         {
           slideOnlyMvp,
           commentAttachmentCount: commentAttachments.length,
+          existingDeckEdit: autoAttachedDeckPath != null,
         },
       );
       // On Teamver slide-only comment edits, nudge the model into the
@@ -5869,10 +6023,16 @@ export function ProjectView({
       // regenerating the whole deck. Merge / fallback live in `persistArtifact`
       // + `applyDeckPatch` — a malformed patch, out-of-range slideIndex, or
       // missing current deck cleanly falls through to auto-continue full-deck.
-      const modelPrompt = promptWithSlideCommentEditPatchInstruction(modelPromptBase, {
+      let modelPrompt = promptWithSlideCommentEditPatchInstruction(modelPromptBase, {
         slideOnlyMvp,
         commentAttachmentCount: commentAttachments.length,
       });
+      if (autoAttachedDeckPath) {
+        modelPrompt = promptWithExistingDeckEditInstruction(modelPrompt, {
+          slideOnlyMvp,
+          deckPath: autoAttachedDeckPath,
+        });
+      }
       if (!retryTarget && meta?.queueOnly) {
         queueChatSendForCurrentConversation({
           conversationId: activeConversationId,
@@ -5904,9 +6064,6 @@ export function ProjectView({
       // Manual retries and fresh user turns get a full auto-continue budget.
       // Without this reset, a conversation that exhausted the cap on earlier
       // incomplete_output rows would never auto-recover on the next real send.
-      const isAutoContinueSend =
-        meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
-        || isAutoContinueIncompleteOutputPrompt(prompt);
       if (!isAutoContinueSend) {
         conversationAutoContinueCountRef.current.set(runConversationId, 0);
       }
@@ -6018,7 +6175,7 @@ export function ProjectView({
       const nextVisibleMessages = retryTarget
         ? [...nextHistory, ...retryTarget.preservedAttempts, assistantMsg]
         : [...nextHistory, assistantMsg];
-      setMessages(nextVisibleMessages);
+      setMessages(dedupeConversationAssistantRows(nextVisibleMessages));
       markStreamingConversation(runConversationId);
       if (config.mode === 'api') {
         dispatchTeamverBackgroundChat({
@@ -9352,7 +9509,7 @@ export function ProjectView({
           isDeck={isDeck}
           onExportAsPptx={handleExportAsPptx}
           streaming={currentConversationActionDisabled}
-          previewStreaming={currentConversationStreaming}
+          previewStreaming={previewPanelStreaming}
           commentQueueOnSend={commentQueueOnSend}
           commentSendDisabled={currentConversationQueueDisabled}
           openRequest={openRequest}

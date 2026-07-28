@@ -4,6 +4,7 @@ import {
   mergeMissingActiveRunAssistantMessages,
   mergeServerMessagesIntoConversation,
   orderConversationMessages,
+  promptWithExistingDeckEditInstruction,
   promptWithSlideAttachmentDeliverableInstruction,
   promptWithSlideCommentEditPatchInstruction,
 } from "../src/components/ProjectView";
@@ -60,6 +61,29 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
 
     expect(prompt).toBe("이 텍스트를 '안녕'으로 바꿔줘");
     expect(prompt).not.toContain("[Deliverable instruction]");
+  });
+
+  it("suppresses full-deck deliverable pressure when editing an existing deck", () => {
+    const prompt = promptWithSlideAttachmentDeliverableInstruction(
+      "방가방가~ 를 앞에 추가",
+      [{ path: "deck.html", name: "deck.html", kind: "file" }],
+      { slideOnlyMvp: true, existingDeckEdit: true },
+    );
+    expect(prompt).toBe("방가방가~ 를 앞에 추가");
+    expect(prompt).not.toContain("[Deliverable instruction]");
+  });
+});
+
+describe("promptWithExistingDeckEditInstruction", () => {
+  it("tells the model the deck already exists and prefers deck-patch", () => {
+    const prompt = promptWithExistingDeckEditInstruction("인사 앞에 방가방가 추가", {
+      slideOnlyMvp: true,
+      deckPath: "deck.html",
+    });
+    expect(prompt).toContain("[Existing deck edit]");
+    expect(prompt).toContain("deck.html");
+    expect(prompt).toContain("do NOT claim there is no completed deck");
+    expect(prompt).toContain("deck-patch");
   });
 });
 
@@ -378,5 +402,39 @@ describe("mergeMissingActiveRunAssistantMessages", () => {
     ]);
 
     expect(merged).toEqual([assistant]);
+  });
+
+  it("pins an optimistic in-flight row instead of appending a second empty assistant", () => {
+    const user: ChatMessage = {
+      id: "u1",
+      role: "user",
+      content: "슬라이드 만들어줘",
+      createdAt: 10,
+    };
+    const optimistic: ChatMessage = {
+      id: "client-a",
+      role: "assistant",
+      content: "",
+      runStatus: "running",
+      startedAt: 15,
+      createdAt: 15,
+    };
+
+    const merged = mergeMissingActiveRunAssistantMessages([user, optimistic], [
+      {
+        id: "run-1",
+        assistantMessageId: "daemon-a",
+        agentId: "anthropic-api",
+        status: "running",
+        createdAt: 20,
+      },
+    ]);
+
+    expect(merged).toHaveLength(2);
+    expect(merged[1]).toMatchObject({
+      id: "client-a",
+      runId: "run-1",
+      runStatus: "running",
+    });
   });
 });

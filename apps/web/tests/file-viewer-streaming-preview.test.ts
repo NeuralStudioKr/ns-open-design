@@ -38,6 +38,7 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("fileViewer.updatingPreview");
     expect(source).toContain("showStreamingEmptyVeil");
     expect(source).toContain("showStreamingPreviewVeil");
+    expect(source).toContain("showStreamingAwaitingLiveHtml");
   });
 
   it("keeps last stable preview during disk refresh instead of blanking source", () => {
@@ -150,9 +151,9 @@ describe("FileViewer streaming slide preview", () => {
     expect(workspace).toContain("previewStreaming?: boolean");
     expect(workspace).toContain("streaming={previewStreaming ?? false}");
     expect(projectView).toContain("streaming={currentConversationActionDisabled}");
-    expect(projectView).toContain("previewStreaming={currentConversationStreaming}");
-    expect(projectView).not.toContain(
-      "previewStreaming={currentConversationStreaming || currentConversationAwaitingActiveRunAttach}",
+    expect(projectView).toContain("previewStreaming={previewPanelStreaming}");
+    expect(projectView).toContain(
+      "currentConversationStreaming || currentConversationAwaitingActiveRunAttach",
     );
   });
 

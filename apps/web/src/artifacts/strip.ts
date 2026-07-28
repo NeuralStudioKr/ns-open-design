@@ -389,3 +389,20 @@ export function splitStreamingArtifact(content: string): {
     },
   };
 }
+
+/** Open `<artifact>` body from a persisted in-flight assistant row (re-entry preview). */
+export function artifactPreviewFromInFlightContent(content: string): {
+  identifier: string;
+  artifactType: string;
+  title: string;
+  html: string;
+} | null {
+  const { live } = splitStreamingArtifact(content);
+  if (!live) return null;
+  return {
+    identifier: live.identifier.trim() || 'deck',
+    artifactType: live.artifactType.trim() || 'deck',
+    title: live.title.trim() || 'Deck',
+    html: live.content,
+  };
+}
