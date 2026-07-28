@@ -43,6 +43,7 @@ import {
   waitForTeamverRegistrySyncIfNeeded,
 } from '../teamver/projectRegistry';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
 import { resolveTeamverBranding } from '../teamver/branding/config';
 import { pluginsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
@@ -849,7 +850,11 @@ function projectKeepaliveEssentials(message: ChatMessage): ChatMessage {
 const MESSAGE_SAVE_RETRY_DELAY_MS = 350;
 
 function isTransientMessageSaveStatus(status: number): boolean {
-  return status >= 500 && status < 600;
+  if (status >= 500 && status < 600) return true;
+  // Embed daemon routes pass nginx auth_request; a long turn can expire the
+  // access cookie between the first PUT and our single retry after refresh.
+  if (isTeamverEmbedMode() && status === 401) return true;
+  return false;
 }
 
 export async function saveMessage(
@@ -900,6 +905,9 @@ export async function saveMessage(
   }
 
   const url = `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}`;
+  if (isTeamverEmbedMode() && !options.keepalive) {
+    await refreshTeamverEmbedAuthBeforeMutating({ activityStartedAt: message.startedAt });
+  }
   const putOnce = () =>
     fetchTeamverDaemon(url, {
       method: 'PUT',
@@ -929,6 +937,13 @@ export async function saveMessage(
   if (shouldRetry(outcome)) {
     // Soft sticky / HA cookie race / daemon storage blip — one retry
     // matches the conversation-list recovery path in ProjectView.
+    if (
+      outcome.kind === 'response'
+      && outcome.status === 401
+      && isTeamverEmbedMode()
+    ) {
+      await refreshTeamverEmbedAuthBeforeMutating();
+    }
     await new Promise((resolve) => setTimeout(resolve, MESSAGE_SAVE_RETRY_DELAY_MS));
     outcome = await attemptOnce();
   }

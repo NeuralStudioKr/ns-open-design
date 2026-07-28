@@ -6162,8 +6162,8 @@ export function ProjectView({
   // empty chat or failed conversation list until auth recovers. Retry loads
   // without waiting for manual conversation switches.
   const retryStaleProjectConversationData = useCallback(
-    (options?: { retryStuckMessageLoad?: boolean }) => {
-      if (isDesignAuthRefreshDeclined()) return;
+    (options?: { retryStuckMessageLoad?: boolean; forceAfterAuthRecovery?: boolean }) => {
+      if (!options?.forceAfterAuthRecovery && isDesignAuthRefreshDeclined()) return;
       let bumped = false;
       if (conversationLoadError) {
         setConversationLoadRetryNonce((nonce) => nonce + 1);
@@ -6197,7 +6197,10 @@ export function ProjectView({
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     const onAuthReady = () => {
-      retryStaleProjectConversationData({ retryStuckMessageLoad: true });
+      retryStaleProjectConversationData({
+        retryStuckMessageLoad: true,
+        forceAfterAuthRecovery: true,
+      });
     };
     window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onAuthReady);
     const unsubscribe = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
