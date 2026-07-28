@@ -15,6 +15,7 @@
 | 2026-07-27 16:20 | 초안 — Phase A 완료 · Phase B 착수 |
 | 2026-07-27 16:40 | Phase B/C/D/E 완료 · 회귀 3/3 + 신규 16/16 green · staging enable 은 별도 ops task |
 | 2026-07-28 10:35 | 코드 리뷰 반영 (Phase F) — 48-1 §5 로그 필드 실 구현 + 신규 회귀 `web-fetch-log.test.ts` (4 케이스) · 총 24/24 green |
+| 2026-07-28 13:35 | **조직 정책 갱신 (48 §5.1.1 v1.2):** 새 SaaS 구독 금지 → `WEB_FETCH_BACKEND=reader` 는 staging/prod enable **금지**. 코드는 dead-code 로 보존 (Phase 3 재활용 후보). 후속 인수인계 항목 재작성. |
 
 ---
 
@@ -131,8 +132,23 @@
 - managed vendor tool loop (Phase 3, 별 ADR)
 - Main BFF 통합 (Phase 4)
 
-## 후속 작업 (ops 인수인계)
+## 후속 작업 (v1.2 정책 갱신 반영)
 
-- staging `.env.staging` 에 `WEB_FETCH_BACKEND=reader` + `WEB_FETCH_READER_URL` 실값 세팅 → daemon 재기동 → smoke: teamver.com / SPA landing / bot-block URL 3종
-- 실측 결과 (bytes / duration / error rate) 를 [48 ADR §8](./48_웹_fetch_외부화_OpenAI_검토_ADR.md#8-구현-체크리스트-phase-2-착수-시) 마지막 open 항목 (Reader SaaS POC · 비용 모니터링) 에 기록
-- 필요 시 `WEB_FETCH_READER_FALLBACK_TO_NATIVE=1` 로 안전망 활성화 후 대시보드에서 fallback 빈도 관측
+### ops 인수인계 — **활성 계약**
+
+- staging/prod daemon 은 `WEB_FETCH_BACKEND` 미설정 상태 = **native 로 계속 동작**. 추가 조치 없음. 회귀 실패 발생 시 `.env` 에 실수로 `WEB_FETCH_BACKEND=reader` 가 들어갔는지 우선 확인.
+- daemon 로그 `web_fetch.backend=` 필드로 실행 backend 확인 가능. 만약 `native` 이외 값이 관측되면 즉시 조사 후 native 로 rollback.
+
+### 🚫 명시적 금지 (48 §5.1.1)
+
+- ~~staging `.env.staging` 에 `WEB_FETCH_BACKEND=reader` + `WEB_FETCH_READER_URL` 실값 세팅~~ → **금지 (조직 정책상 새 SaaS 구독 불가)**
+- ~~Jina Reader / Firecrawl / Browserless 등 reader-계열 벤더 계약~~ → **금지**
+- ~~Reader SaaS 비용 모니터링~~ → **불필요 (미활성)**
+
+### Phase 3 로 이월 (48-2 ADR 후속)
+
+- Teamver 이미 보유 key 인 **OpenAI Responses `web_search`** / **Anthropic hosted `web_search`** 를 활용해 크롤 품질 개선. 새 SaaS 구독 zero.
+- 통합 위치 두 갈래 결정: (가) `WebFetchBackend` 슬롯에 `openai-backend.ts` / `anthropic-backend.ts` 를 채워 fetcher 위임, (나) `TEAMVER_OD_API_PROTOCOL` 확장으로 답변 turn 안에서 vendor tool loop.
+- 원문 verbatim vs 요약 허용, vendor SSRF 신뢰 경계, 요금·usage bridge 재정합 — 48-2 ADR 로 별도 정리.
+
+이번 브랜치 (`feat/web-fetch-adr`) 는 **여기서 마감**. Phase 3 는 별 브랜치.

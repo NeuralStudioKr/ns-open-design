@@ -11,6 +11,7 @@
 |------------|-----------|
 | 2026-07-27 16:00 | v1.0 초안 — OpenAI web search 대체 검토, 현재 아키텍처, 비교표, ADR, Phase 로드맵 |
 | 2026-07-27 16:35 | v1.1 — Phase 2 POC 착수·병합 반영 (§8 체크리스트 상태 갱신, [48-1 설계](./48-1-구현설계-webfetch-adapter.md)/[48-1 현황](./48-1-구현현황-webfetch-adapter.md) 상호 링크) |
+| 2026-07-28 13:35 | **v1.2 — 조직 정책 갱신:** 새 SaaS 구독 금지 (Jina/Firecrawl/Browserless 등 reader-계열 벤더 계약 **불가**). §5 O2 코드 병합은 유지되지만 **staging enable 은 보류**. 크롤 품질 근본 개선은 **Phase 3 로 이관** (managed BYOK 답변 모델 자체를 OpenAI Responses `web_search` / Anthropic hosted `web_search` 로 확장 — Teamver 는 이미 두 vendor 의 API key 를 보유). §5.1 정책 note + §6 Phase 2/3 로드맵 재조정 + §8 체크리스트 재분류. |
 
 **관련 SSOT**
 
@@ -212,9 +213,21 @@ Responses API reference상 web search call은 대략:
 |------|------|
 | **OpenAI web_search로 자체 fetch 전면 대체** | **No** (O1 기각) |
 | **단기 SSOT** | **O0** — 선-fetch + prompt + auth prefetch 격리 ([15 §0](./15_웹참조_BYOK_web_fetch_FAQ.md)) |
-| **중기 (크롤 품질·운영)** | **O2** — `fetchUrlContent` **뒤에 adapter**; env로 `native` / `reader_saas` 선택 |
+| **중기 (크롤 품질·운영)** | **O2 — 코드 인터페이스만 병합, 실 backend enable 은 보류.** `fetchUrlContent` 뒤에 adapter interface (`WebFetchBackend`) 를 두는 리팩터는 [48-1](./48-1-구현설계-webfetch-adapter.md) 로 병합됨. 다만 **v1.2 정책 갱신 (§5.1.1)** 으로 reader-SaaS 벤더 (Jina/Firecrawl/Browserless 등) **enable 은 금지**. Interface 만 유지 → Phase 3 에서 재활용. |
 | **선택적** | **O3** — Main과 중복 투자 vs 통합 BFF는 **별 ADR** (조직·보안 경계 확인 후) |
-| **장기** | **O4** — managed Anthropic tool loop; 선-fetch와 **역할 분담** 재정의 |
+| **장기 (승격됨)** | **O4** — managed vendor tool loop (OpenAI Responses `web_search` · Anthropic hosted `web_search`). Teamver 는 두 vendor 의 API key 를 이미 보유 → **새 SaaS 구독 없이도** 크롤 품질 개선 경로 확보. v1.2 정책 갱신으로 Phase 3 로 승격. |
+
+### 5.1.1 정책 갱신 (v1.2 — 2026-07-28)
+
+**조직 정책:** Teamver Design 은 **새 SaaS 구독을 늘리지 않는다.** 이는 O2 의 "reader-SaaS adapter enable" 옵션 (Jina, Firecrawl, Browserless 등 신규 계약) 을 **정책적으로 차단**하는 결정이다.
+
+**영향:**
+
+- 이미 병합된 [48-1](./48-1-구현설계-webfetch-adapter.md) 의 `WebFetchBackend` interface · `core.ts` dispatcher · `native-backend.ts` 는 **유지**. daemon 은 기본 native 로 동작하므로 사용자 영향 zero.
+- `reader-backend.ts` · `select.ts` 의 reader 분기 · `WEB_FETCH_READER_*` env · reader 관련 회귀 테스트는 **코드로만 병합된 상태로 보존** (Phase 3 재활용 후보 · dead-code 태그). staging/prod 어느 곳에도 `WEB_FETCH_BACKEND=reader` 를 세팅하지 않는다.
+- 크롤 품질 근본 개선 (`teamver.com` SPA · bot-block 페이지 등) 은 **Phase 3 로 승격**. Teamver 가 이미 보유한 OpenAI/Anthropic key 를 재사용해서 vendor 의 hosted `web_search` tool 을 답변 turn 안에서 실행하는 접근이 정공법 — 별도 관측·설계 문서 (48-2) 로 진입.
+
+**추적:** [48-1 §4 env schema](./48-1-구현설계-webfetch-adapter.md#4-env-schema-신설-daemon-only) 의 reader-\* 행은 "🚫 정책 pending" 태그로 명시. [15 §5.1](./15_웹참조_BYOK_web_fetch_FAQ.md#51-web_fetch-backend-env-phase-2-poc--daemon-only) 도 동일. `.env.staging.example` 의 reader-\* 주석 블록에는 **강조 주석** 추가.
 
 ### 5.2 유지 불변식 (Invariants)
 
@@ -223,15 +236,17 @@ Responses API reference상 web search call은 대략:
 3. **프로토콜 정직성:** tool loop **없는** proxy에는 prompt가 **“web_fetch tool 호출 가능”** 이라고 말하지 않음 (`byokChatToolNamesForProtocol()` — [00 누적 2026-07-03](./00_구현_내역_누적.md)).
 4. **실패 허용:** fetch 실패가 **run 전체를 막지 않음**; failure reason만 context.
 
-### 5.3 OpenAI를 쓸 수 있는 **좁은** 자리 (Optional)
+### 5.3 OpenAI를 쓸 수 있는 자리 (v1.2 갱신)
 
-다음 **모두** 만족할 때만 `web_search` 검토:
+**v1.2 정책 갱신 (§5.1.1) 로 이 조항의 위상이 승격됨** — 새 SaaS 구독이 금지되면서 크롤 품질 개선 경로는 사실상 vendor hosted `web_search` (Teamver 이미 보유 key 재사용) 로 좁혀졌다. 자세한 통합 옵션은 [§6 Phase 3](#phase-3--vendor-hosted-web_search-통합-p1-승격--v12) 및 후속 별 ADR (48-2).
+
+과거 v1.1 까지의 서술 (아래) 은 히스토리 목적으로 유지:
 
 - runtime-config `protocol=openai` (또는 OpenAI Responses BYOK)
 - 니즈가 **검색·최신 정보** 위주 (URL 고정 슬라이드 1차 UX 아님)
 - 데이터 외부 전송·과금이 **고객 계약상 허용**
 
-구현 형태: daemon OpenAI Responses proxy path에 `tools: [{ type: "web_search" }]` — **선-fetch 주입과 병렬**이 아니라 **대체 경로**로 문서화.
+구현 형태: daemon OpenAI Responses proxy path 에 `tools: [{ type: "web_search" }]` — **선-fetch 주입과 병렬** 이 아니라 **대체 경로** 로 문서화 (Phase 3 에서 재정합).
 
 ---
 
@@ -256,32 +271,46 @@ Responses API reference상 web search call은 대략:
 - [15 §0](./15_웹참조_BYOK_web_fetch_FAQ.md) 항목 유지·회귀 테스트
 - staging smoke: `www.teamver.com 참고해서 슬라이드…` ([15 §0 “다음 추천 작업”](./15_웹참조_BYOK_web_fetch_FAQ.md))
 
-### Phase 2 — Fetch backend adapter (P1, O2)
+### Phase 2 — Fetch backend adapter (P1, O2) — **interface land, reader enable 보류**
 
-**설계 스케치 (구현 전)**
+**상태 (v1.2, 2026-07-28):** interface·dispatcher·native backend 는 [48-1](./48-1-구현설계-webfetch-adapter.md) 로 병합됨. reader-SaaS enable 은 **§5.1.1 정책 갱신으로 보류**.
+
+**병합된 것 (계속 유지 · staging default 는 native)**
 
 ```text
-fetchUrlContent(url, options)
-  → if WEB_FETCH_BACKEND=native: existing HTTP+HTML→text
-  → if WEB_FETCH_BACKEND=reader: POST Reader SaaS with url, map to { text, title, status }
-  → same SSRF gate before outbound
-  → same 100KB (or configured) cap at merge
+fetchUrlContent(url, options)  // POST /api/tools/web-fetch · executeWebFetch — 계약 무변
+  → SSRF (assertExternalAssetUrl on original URL)
+  → resolveWebFetchBackend()  // env 기반, 기본 native
+      ├─ native   : 기존 fetch + htmlToText  (staging/prod SSOT)
+      └─ reader   : Jina-style prefix reader  (🚫 정책 pending — enable 금지)
+  → 100KB cap + 12s timeout + never-throw contract
 ```
 
-| 항목 | 권장 |
+| 항목 | 상태 |
 |------|------|
-| Config | `WEB_FETCH_BACKEND`, `WEB_FETCH_READER_URL`, `WEB_FETCH_READER_API_KEY` |
-| Fallback | reader 실패 시 **native 1회** (optional flag) |
-| 로그 | `url`, `backend`, `duration_ms`, `bytes`, `status` — **본문 미로그** (PII) |
+| `WebFetchBackend` interface · core dispatcher · native backend | ✅ 병합 (활성) |
+| Config `WEB_FETCH_BACKEND=native` 이 실 기본값 | ✅ (env 미설정 시에도 native) |
+| Reader backend code (`reader-backend.ts`, `select.ts` reader 분기, `WEB_FETCH_READER_*` env) | ⚠️ 코드는 병합, **enable 금지** (§5.1.1) |
+| Reader-SaaS 벤더 계약 (Jina/Firecrawl/Browserless) | 🚫 **금지** (§5.1.1 정책) |
+| Fallback flag `WEB_FETCH_READER_FALLBACK_TO_NATIVE` | ⚠️ 코드 병합, 실 enable 없음 |
+| 로그 필드 (backend/url_host/status/duration_ms/text_bytes/error_code) | ✅ 병합 (`web-fetch-log.test.ts` 회귀) |
 
-**후보 SaaS (평가만, 벤더 lock-in 전 POC)**
+### Phase 3 — Vendor hosted `web_search` 통합 (P1, **승격** · v1.2)
 
-- Jina Reader, Firecrawl, Browserless 등 — **SPA·markdown 품질** POC로 비교
+**목표:** reader-SaaS 를 늘리지 않고, 이미 Teamver 가 key 를 보유한 **OpenAI Responses `web_search`** 및 **Anthropic messages hosted `web_search`** 를 활용해 크롤 품질을 근본 개선. 구독 zero.
 
-### Phase 3 — Vendor tool loop (P2, O4 / 선택 O1)
+**두 통합 위치 — 별 ADR (48-2) 로 상세 진입:**
 
-- managed Anthropic stream에 tool loop + (vendor가 제공하는) web tool
-- 또는 OpenAI Responses dedicated route for **search-heavy** SKUs only
+1. **답변 turn 자체에서 vendor tool loop 실행** (ChatGPT UX 그대로) — daemon `TEAMVER_OD_API_PROTOCOL` 을 `openai` (Responses API) 또는 `anthropic` (Messages tool loop) 로 확장, `tools: [{ type: "web_search_preview" | "web_search" }]` 를 채팅 요청에 첨부. `<web-fetch-context>` 프리페치는 여전히 병행 가능 (모델이 URL 을 직접 볼 수 있으므로 프리페치 실패 시에도 backup).
+2. **fetcher 위임** (48-1 `WebFetchBackend` 슬롯 재활용) — 새 `openai-backend.ts` / `anthropic-backend.ts` 를 등록하고, daemon 이 vendor Responses/Messages API 에게 "이 URL 원문 반환" 을 위임. 요약 스며듦 위험 · latency · cost 리스크 있음. Fallback 으로만 사용.
+
+**핵심 리스크:**
+
+- OpenAI/Anthropic hosted `web_search` 는 vendor-hosted 도구라 **outbound URL 이 vendor 도메인** — SSRF 는 daemon 이 자체 검증 불가 (vendor 정책 신뢰).
+- 요금 체계 재검증 필요 (search fee + token). usage bridge (`ns-teamver-be` 과금 파이프) 와 정합.
+- 프롬프트 시스템 SSOT 재정합 (모델이 web_search 를 자동 호출하지 않도록 vs 자동 호출 허용의 정책 결정).
+
+**후속:** 48-2 ADR (별 문서, 이번 PoC 밖) — 벤더 계약·프로토콜·비용·usage bridge 매트릭스.
 
 ### Phase 4 — Main BFF (optional O3)
 
@@ -314,17 +343,31 @@ Main 채팅 **`use_web_search`**, 또는 Design에서 **protocol=openai** + **�
 
 ---
 
-## 8. 구현 체크리스트 (Phase 2 착수 시)
+## 8. 구현 체크리스트
 
-**상태:** POC 코드 병합 완료 (`feat/web-fetch-adr` · 커밋 `465386ece`→`f373bebba`). staging 실 스위치 · SaaS 실계약은 별도 ops task. 자세한 설계·현황은 [48-1 구현설계](./48-1-구현설계-webfetch-adapter.md) · [48-1 구현현황](./48-1-구현현황-webfetch-adapter.md).
+**상태 (v1.2):** interface 병합 완료 (`feat/web-fetch-adr`). reader-SaaS 실 enable 은 **§5.1.1 조직 정책으로 금지 → Phase 3 로 이월**. 자세한 설계·현황은 [48-1 구현설계](./48-1-구현설계-webfetch-adapter.md) · [48-1 구현현황](./48-1-구현현황-webfetch-adapter.md).
 
-- [x] `WEB_FETCH_BACKEND` env + daemon 단일 진입점 — `apps/daemon/src/web-fetch/{core,select,backend,native-backend,reader-backend}.ts`
-- [x] SSRF regression — 원본 URL 은 `assertExternalAssetUrl` 통과, reader endpoint 는 부트 시 https + 사설 IP literal 거부
+### 8.1 병합·활성 항목
+
+- [x] `WEB_FETCH_BACKEND` env dispatcher + daemon 단일 진입점 — `apps/daemon/src/web-fetch/{core,select,backend,native-backend}.ts`
+- [x] SSRF regression — 원본 URL 은 `assertExternalAssetUrl` 통과 (link-local `169.254.169.254` 등 거부)
 - [x] contracts test — `<web-fetch-context>` 규칙 unchanged (`apps/daemon/tests/byok-url-tools.test.ts` 무수정 통과)
-- [x] 신규 회귀 — `web-fetch-select.test.ts` (9) + `web-fetch-reader-backend.test.ts` (7) all green
-- [ ] Reader SaaS POC 실측: teamver.com, SPA landing, bot-block 페이지 3종 (ops smoke — staging enable 후)
-- [ ] 비용 모니터링 — fetch당 outbound + SaaS billing (ops task)
-- [ ] [04 구현 우선순위](./04_구현_우선순위.md) L-472/L-473과 **상태 동기화**
+- [x] 신규 회귀 — `web-fetch-select.test.ts` + `web-fetch-reader-backend.test.ts` + `web-fetch-log.test.ts` 총 4 files / 24 tests green
+- [x] 로그 스키마 land — `web_fetch.backend / url_host / status / duration_ms / text_bytes / error_code / reader_fallback` (본문·title·path·query 미로그, 회귀로 pin)
+
+### 8.2 코드 병합 · **정책상 enable 금지** (§5.1.1)
+
+- [x] `reader-backend.ts` code — Jina-style prefix 구현 병합 (dead-code 태그)
+- [x] `select.ts` reader 분기 · `WEB_FETCH_READER_*` env parse
+- [x] `.env.staging.example` 주석 예시 — 정책 강조 주석 붙임 (`# 🚫 사용 금지 — 새 SaaS 구독 금지 (48 §5.1.1) · P3 재검토까지 native 유지`)
+- [ ] ~~Reader SaaS 실측 (teamver.com / SPA / bot-block)~~ → **금지 (§5.1.1)**, Phase 3 재검토
+- [ ] ~~Reader SaaS 비용 모니터링~~ → **금지 (§5.1.1)**, Phase 3 재검토
+
+### 8.3 후속 (Phase 3 로 이월)
+
+- [ ] **48-2 ADR 신규** — OpenAI Responses `web_search` + Anthropic hosted `web_search` 벤더 매트릭스, 답변 turn 통합 vs `WebFetchBackend` 슬롯 위임 트레이드오프, 요금·usage bridge 재정합
+- [ ] daemon `TEAMVER_OD_API_PROTOCOL` 확장 검토 (openai · anthropic tool loop)
+- [ ] [04 구현 우선순위](./04_구현_우선순위.md) L-472/L-473 상태 동기화 (v1.2 반영)
 
 ---
 

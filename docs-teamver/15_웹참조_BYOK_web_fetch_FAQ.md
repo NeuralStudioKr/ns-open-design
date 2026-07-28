@@ -115,23 +115,25 @@
 | `runtime-config` web 플래그 | ❌ 없음 (선택) | `od_runtime_config.py` — protocol/model/baseUrl + apiKeyConfigured만 공개, apiKey는 비반환 |
 | FE `WebFetchCard` UI | ✅ 호출 경로 연결 | tool event + 기존 `ToolCard` |
 | minimax-byok 레퍼런스 | ✅ 포크 설계·이식 완료 | doc 07·08 |
-| **Web fetch backend adapter (native/reader)** | ✅ **PoC 완료** (Phase 2) — 기본 native, 런타임 env 스위치 | [48-1 구현설계](./48-1-구현설계-webfetch-adapter.md) · `apps/daemon/src/web-fetch/` |
+| **Web fetch backend adapter (native/reader)** | ✅ **interface 병합** (Phase 2, POC) · reader enable **금지** (v1.2 정책) — 실 운영은 native 하나 | [48-1 구현설계](./48-1-구현설계-webfetch-adapter.md) · [48 §5.1.1](./48_웹_fetch_외부화_OpenAI_검토_ADR.md#511-정책-갱신-v12--2026-07-28) · `apps/daemon/src/web-fetch/` |
 
 **staging 주의:** `TEAMVER_OD_API_PROTOCOL=anthropic` 단독 base stream은 **tool loop 없음**이다. 대신 FE 선-fetch 주입 경로로 URL 본문을 전달한다. 모델이 “API 모드라 URL을 읽을 수 없다”고 답하면 선-fetch 주입 경로가 깨진 것이다.
 
 ### 5.1 web_fetch backend env (Phase 2 POC — daemon-only)
 
-기본값은 모두 미설정 → `native` 로 동작. reader SaaS 로 스위치하려면 [48-1 §4](./48-1-구현설계-webfetch-adapter.md) 스키마와 함께 아래를 설정한다. staging 실환경 스위치는 별도 ops task.
+기본값은 모두 미설정 → `native` 로 동작. 아래 reader-\* 계열은 **v1.2 조직 정책 갱신 ([48 §5.1.1](./48_웹_fetch_외부화_OpenAI_검토_ADR.md#511-정책-갱신-v12--2026-07-28)) 로 staging/prod enable 금지** — 코드는 dead-code 로 보존되어 Phase 3 (vendor hosted `web_search`) 재활용 후보로만 유지.
 
-| 키 | 기본 | 의미 |
-|----|------|------|
-| `WEB_FETCH_BACKEND` | `native` | `native` \| `reader` |
-| `WEB_FETCH_READER_URL` | — | reader base (`https://r.jina.ai/` 스타일; adapter 가 원본 URL 을 append) |
-| `WEB_FETCH_READER_API_KEY` | — | 있으면 `Authorization: Bearer <key>` |
-| `WEB_FETCH_READER_TIMEOUT_MS` | `12000` | reader 전용 timeout — core 12s 와 별개 |
-| `WEB_FETCH_READER_FALLBACK_TO_NATIVE` | `0` | `1` 이면 reader 실패 시 native 1회 재시도 |
+| 키 | 기본 | 상태 | 의미 |
+|----|------|------|------|
+| `WEB_FETCH_BACKEND` | `native` | ✅ 활성 | `native` \| `reader` — 실 운영 값은 `native` 하나 |
+| `WEB_FETCH_READER_URL` | — | 🚫 정책 pending | reader base (`https://r.jina.ai/` 스타일; adapter 가 원본 URL 을 append) |
+| `WEB_FETCH_READER_API_KEY` | — | 🚫 정책 pending | 있으면 `Authorization: Bearer <key>` |
+| `WEB_FETCH_READER_TIMEOUT_MS` | `12000` | 🚫 정책 pending | reader 전용 timeout — core 12s 와 별개 |
+| `WEB_FETCH_READER_FALLBACK_TO_NATIVE` | `0` | 🚫 정책 pending | `1` 이면 reader 실패 시 native 1회 재시도 |
 
-잘못된 값(예: reader 인데 URL 미설정, http/사설 IP endpoint) 은 부트에서 `console.warn` + native 로 안전 다운그레이드된다. `.env.staging.example` 에 주석 예시가 있다.
+잘못된 값(예: reader 인데 URL 미설정, http/사설 IP endpoint) 은 첫 호출 시 `console.warn` + native 로 안전 다운그레이드된다. `.env.staging.example` 에는 강조 주석과 함께 예시만 남겨져 있다 (실 세팅 금지).
+
+**크롤 품질 개선 계획:** 새 SaaS 구독 없이 이미 보유한 OpenAI/Anthropic key 를 재사용해 vendor hosted `web_search` 를 붙이는 것이 정공법 — Phase 3 (48-2 ADR) 로 이관.
 
 ---
 
@@ -320,6 +322,7 @@ Teamver embed 1차는 **managed BYOK(API) 고정**이라 CLI 패스와 무관하
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-28 | [48 §5.1.1](./48_웹_fetch_외부화_OpenAI_검토_ADR.md#511-정책-갱신-v12--2026-07-28) v1.2 정책 갱신 반영 — reader-\* env 는 🚫 정책 pending 마킹, staging enable 금지, Phase 3 (vendor hosted `web_search`) 로 이관 |
 | 2026-07-27 | [48 ADR](./48_웹_fetch_외부화_OpenAI_검토_ADR.md) 링크 — OpenAI web search 전면 대체 vs adapter 로드맵 SSOT |
 | 2026-07-27 | URL-only sparse brief 빠른 질문을 UI/채팅 언어 기준으로 로컬라이즈하도록 프롬프트·테스트 보강 |
 | 2026-06-22 | 초안 — embed URL 참조 FAQ, Main BE web search 대비, minimax-byok `web_fetch` 정리 |

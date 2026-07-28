@@ -143,15 +143,15 @@ export function resolveWebFetchBackend(env: NodeJS.ProcessEnv): {
 
 ## 4. Env schema (신설, daemon-only)
 
-| 키 | 기본 | 의미 |
-|----|------|------|
-| `WEB_FETCH_BACKEND` | `native` | `native` \| `reader` |
-| `WEB_FETCH_READER_URL` | — | reader base URL (`https://r.jina.ai/` 스타일; adapter 가 원본 URL 을 append) |
-| `WEB_FETCH_READER_API_KEY` | — | 있으면 `Authorization: Bearer <key>` |
-| `WEB_FETCH_READER_TIMEOUT_MS` | `12000` | reader 전용 timeout — core 의 12s 와 별개 |
-| `WEB_FETCH_READER_FALLBACK_TO_NATIVE` | `0` | `1` 이면 reader 실패(5xx / timeout / network) 시 native 1회 재시도 |
+| 키 | 기본 | 상태 | 의미 |
+|----|------|------|------|
+| `WEB_FETCH_BACKEND` | `native` | ✅ 활성 | `native` \| `reader` — 미설정 시 `native` |
+| `WEB_FETCH_READER_URL` | — | 🚫 정책 pending | reader base URL (Jina-style prefix; adapter 가 원본 URL 을 append) |
+| `WEB_FETCH_READER_API_KEY` | — | 🚫 정책 pending | 있으면 `Authorization: Bearer <key>` |
+| `WEB_FETCH_READER_TIMEOUT_MS` | `12000` | 🚫 정책 pending | reader 전용 timeout — core 의 12s 와 별개 |
+| `WEB_FETCH_READER_FALLBACK_TO_NATIVE` | `0` | 🚫 정책 pending | `1` 이면 reader 실패 시 native 1회 재시도 |
 
-**staging/prod 실환경 스위치는 이번 PoC 범위 밖.** `.env.staging.example` 에는 주석 예시만 추가 (Phase E).
+**🚫 정책 pending (v1.2 — 2026-07-28):** `WEB_FETCH_READER_*` 계열 env 는 **staging/prod 어느 곳에도 세팅 금지**. 조직 정책상 새 SaaS 구독 (Jina/Firecrawl/Browserless 등 reader-계열) 이 금지되었기 때문 ([48 §5.1.1](./48_웹_fetch_외부화_OpenAI_검토_ADR.md#511-정책-갱신-v12--2026-07-28)). 코드 (`reader-backend.ts`, `select.ts` reader 분기) 는 dead-code 로 보존해 Phase 3 (vendor hosted `web_search`) 에서 재활용 후보로 유지. `.env.staging.example` 에는 강조 주석과 함께 예시만 남김.
 
 ---
 
@@ -253,17 +253,30 @@ CI 관제: Design fork 는 `ns_cicd` 대상이 아님 → 별도 CICD subagent �
 
 ---
 
-## 10. 오픈 이슈 (Phase D 진행 중 확정)
+## 10. 오픈 이슈
+
+### 10.1 확정된 것 (Phase D)
 
 - reader backend 응답이 markdown 이 아닌 raw HTML 을 준다면? → `isHtml: true` 로 마킹해서 core 가 htmlToText 를 태우도록 함 (interface 가 이 케이스를 이미 지원).
 - reader endpoint 가 부분 실패(2xx 응답 body 안에 error json) 를 낸다면? → PoC 범위에서는 status code 만 신뢰. 추후 vendor-specific parsing 은 별 adapter 로 분리 (`jina-reader-backend.ts` 등).
 - streaming cap 을 backend 안에서 이중으로 돌릴지, core 만 돌릴지? → **1차 원칙: backend 가 스스로 스트리밍 캡을 적용, core 는 최종 fail-safe (`text.slice(0, MAX_TEXT_BYTES)`) 만 한 번 더 걸어 준다.** — 대용량 응답이 backend 를 통과해서 프로세스 heap 을 소모하는 최악의 경우 방지.
 
+### 10.2 v1.2 정책 갱신 이후 이월 (Phase 3 · 48-2 ADR 대상)
+
+reader-SaaS enable 이 정책상 금지되면서 (48 §5.1.1), 다음 결정들은 이 문서 밖에서 재정합한다:
+
+- **크롤 품질 근본 개선 경로:** OpenAI Responses `web_search` (Teamver 이미 OpenAI key 보유) vs Anthropic hosted `web_search` (Teamver 이미 Anthropic key 보유). 두 vendor 모두 새 SaaS 구독 필요 없음. 통합 위치 두 갈래 — (가) `WebFetchBackend` 슬롯에 `openai-backend.ts` 를 새로 채워 fetcher 위임, (나) `TEAMVER_OD_API_PROTOCOL` 을 확장해 답변 turn 안에서 vendor tool loop 실행 (ChatGPT UX 그대로).
+- **원문 verbatim 보장:** OpenAI/Anthropic 은 요약 개입 위험 있음. 프롬프트로 "원문만 반환" 강제 vs 요약 허용 정책.
+- **SSRF 경계:** vendor hosted tool 은 outbound URL 이 vendor 도메인 — daemon 이 원본 URL SSRF 를 여전히 통과시키더라도 vendor 가 리다이렉트해서 내부망 접근할 리스크는 vendor 정책 신뢰.
+- **비용·usage bridge:** vendor 요금(search fee + tokens) 을 `ns-teamver-be` usage/registry 파이프와 정합.
+
+**후속 문서:** 48-2 ADR (별 파일, 이번 브랜치 밖).
+
 ---
 
 ## 11. 관련 SSOT
 
-- 상위 결정: [48 ADR](./48_웹_fetch_외부화_OpenAI_검토_ADR.md) §5 (O2), §7 (Phase 로드맵)
+- 상위 결정: [48 ADR](./48_웹_fetch_외부화_OpenAI_검토_ADR.md) §5 (O2 · §5.1.1 정책 갱신), §7 (Phase 로드맵)
 - 현재 구현: [15 웹참조 BYOK web_fetch FAQ](./15_웹참조_BYOK_web_fetch_FAQ.md) §5
 - 우선순위: [04 구현 우선순위](./04_구현_우선순위.md) L-472 / L-473
 - 진행 상황: [48-1 구현현황](./48-1-구현현황-webfetch-adapter.md)
