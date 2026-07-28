@@ -1202,14 +1202,63 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       reason: 'current deck file unreadable',
     };
   }
+  // Three-layer defense against deck_patch_merge_failed on comment edits:
+  //   1. `coerceDeckPatchToAllowedScope` normalizes the model's
+  //      `data-slide-index` to the attachment's slideIndex when the
+  //      scope has exactly one allowed slide. Handles the common case
+  //      where the model got the slide label wrong on the way out
+  //      (e.g. wrote 1 when the attachment says 0) but the response
+  //      content is otherwise scoped correctly.
+  //   2. Strict scope apply runs on the coerced patch. If it still
+  //      rejects with a scope-shape mismatch (the model's op set has
+  //      indexes we couldn't safely coerce, or a non-replace op), we
+  //      retry once WITHOUT the scope guard.
+  //   3. When the relaxed retry lands, the scoped narrow merge below
+  //      still has to accept it via the target-text-preserved
+  //      fallback (or narrow diff). If narrow produces nothing, we
+  //      reject rather than silently persist a rogue slide swap.
   const patchForScope = coerceDeckPatchToAllowedScope(parsed.patch, input.allowedSlideIndexes);
-  const merged = applyDeckPatch({
+  const strictScopeApply = applyDeckPatch({
     currentHtml,
     patch: patchForScope,
     allowedSlideIndexes: input.allowedSlideIndexes,
   });
+  let merged = strictScopeApply;
+  let mergedScopeRelaxed = false;
+  if (
+    !strictScopeApply.ok &&
+    input.allowedSlideIndexes &&
+    input.commentAttachments?.length &&
+    scopeRejectionCanRetry(strictScopeApply.reason)
+  ) {
+    const relaxed = applyDeckPatch({
+      currentHtml,
+      // Relaxed retry keeps the ORIGINAL parsed patch (before
+      // coercion) so the model's own slideIndex choice is preserved.
+      // The mergeScoped step still has to accept the result via a
+      // per-attachment text-preserved check, so a rogue slideIndex
+      // change would be caught there instead of here.
+      patch: parsed.patch,
+    });
+    if (relaxed.ok) {
+      console.warn(
+        '[deck-patch] strict scope apply rejected — retrying without scope guard',
+        {
+          fileName: input.fileName,
+          strictReason: strictScopeApply.reason,
+          allowedSlideIndexes: input.allowedSlideIndexes,
+        },
+      );
+      merged = relaxed;
+      mergedScopeRelaxed = true;
+    }
+  }
   if (!merged.ok) {
-    console.warn('[deck-patch] merge failed', { fileName: input.fileName, reason: merged.reason });
+    console.warn('[deck-patch] merge failed', {
+      fileName: input.fileName,
+      reason: merged.reason,
+      allowedSlideIndexes: input.allowedSlideIndexes,
+    });
     return { ok: false, code: 'deck_patch_merge_failed', reason: merged.reason };
   }
   if (input.allowedSlideIndexes && input.commentAttachments?.length) {
@@ -1223,15 +1272,47 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       console.warn('[deck-patch] scoped element merge failed', {
         fileName: input.fileName,
         reason: scoped.reason,
+        scopeRelaxed: mergedScopeRelaxed,
       });
       return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason };
     }
     if (scoped.narrowed) return { ok: true, html: scoped.html };
+    // If we relaxed the scope guard but the narrow merge produced NO
+    // narrowing (target text absent from the model's chosen slide),
+    // the model wrote to a wholly-different slide with no visible
+    // relation to the user's attachment. Reject rather than silently
+    // save that as if it were a scoped edit.
+    if (mergedScopeRelaxed) {
+      console.warn('[deck-patch] scope-relaxed apply produced no narrowed match — rejecting', {
+        fileName: input.fileName,
+      });
+      return {
+        ok: false,
+        code: 'deck_patch_merge_failed',
+        reason: strictScopeApply.ok ? 'unexpected relaxed apply state' : strictScopeApply.reason,
+      };
+    }
   }
   return { ok: true, html: merged.html };
 }
 
-function mergeScopedCommentTargetsFromPatchedDeck(input: {
+/**
+ * True when the given applyDeckPatch failure reason is a scope-shape
+ * mismatch that could plausibly be recovered by relaxing the scope
+ * guard and letting the target-text-preserved narrow merge decide.
+ *
+ * Not every failure qualifies — a "no <body>…</body>" or "deck has
+ * 0 slides" failure means the source is unparseable, and no retry
+ * will help.
+ */
+function scopeRejectionCanRetry(reason: string): boolean {
+  return (
+    reason.includes('outside attached comment scope') ||
+    reason.includes('is not allowed for scoped comment edits')
+  );
+}
+
+export function mergeScopedCommentTargetsFromPatchedDeck(input: {
   currentHtml: string;
   patchedHtml: string;
   commentAttachments: readonly ChatCommentAttachment[];

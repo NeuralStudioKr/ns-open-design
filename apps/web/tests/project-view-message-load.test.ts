@@ -531,6 +531,24 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("fallback: kind");
   });
 
+  it("retries applyDeckPatch without the scope guard when the model targeted a plausible sibling slide", () => {
+    // Third-tier fallback (top layer): when the strict scope apply
+    // rejects because the model's data-slide-index differs from the
+    // captured attachment.slideIndex, we retry once WITHOUT the scope
+    // guard and rely on mergeScoped to verify the model's slide via
+    // targetTextPreservedInPatchedSlide. This unblocks the common
+    // case where the deck bridge captured a stale active slide index
+    // at click time. If the narrow merge produces no narrowing on
+    // the relaxed retry, we still reject — that's the safety rail
+    // against silently accepting a wholly-different slide.
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("scopeRejectionCanRetry");
+    expect(source).toContain("outside attached comment scope");
+    expect(source).toContain("is not allowed for scoped comment edits");
+    expect(source).toContain("mergedScopeRelaxed");
+    expect(source).toContain("scope-relaxed apply produced no narrowed match — rejecting");
+  });
+
   it("waits for embed boot and retries stuck message loads on re-entry", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("waitForTeamverEmbedBoot");
