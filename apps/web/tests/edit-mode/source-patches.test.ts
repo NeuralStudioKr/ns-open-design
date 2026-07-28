@@ -204,6 +204,47 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('Path target');
   });
 
+  it('limits deck comment fast-path patches to the selected slide scope', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h1 data-od-id="headline" style="font-size: 20px">Slide one</h1>',
+      '</section>',
+      '<section class="slide" data-slide-index="1">',
+      '<h1 data-od-id="headline" style="font-size: 24px">Slide two</h1>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-style', id: 'headline', styles: { color: '#facc15' } },
+      { slideIndex: 1 },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(readManualEditOuterHtml(result.source, 'headline', { slideIndex: 0 }))
+      .toContain('Slide one');
+    expect(readManualEditOuterHtml(result.source, 'headline', { slideIndex: 0 }))
+      .not.toContain('#facc15');
+    expect(readManualEditOuterHtml(result.source, 'headline', { slideIndex: 1 }))
+      .toContain('color: rgb(250, 204, 21)');
+    expect(readManualEditStyles(result.source, 'headline', { slideIndex: 1 }).color)
+      .toBe('rgb(250, 204, 21)');
+  });
+
+  it('rejects scoped deck patches when the target slide is missing', () => {
+    const source = '<section class="slide"><h1 data-od-id="headline">Only slide</h1></section>';
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'headline', value: 'Should not apply' },
+      { slideIndex: 3 },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.source).toBe(source);
+  });
+
   it('rejects text patches for nested markup', () => {
     const result = applyManualEditPatch(baseSource, { kind: 'set-text', id: 'nested', value: 'Flat text' });
 

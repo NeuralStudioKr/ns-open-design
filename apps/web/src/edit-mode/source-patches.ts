@@ -6,7 +6,18 @@ export interface ManualEditPatchResult {
   error?: string;
 }
 
-export function applyManualEditPatch(source: string, patch: ManualEditPatch): ManualEditPatchResult {
+export interface ManualEditSourceScope {
+  /** Zero-based deck slide index. When present, element lookup is limited to that slide. */
+  slideIndex?: number;
+}
+
+type ManualEditLookupRoot = (ParentNode & Element) | Document;
+
+export function applyManualEditPatch(
+  source: string,
+  patch: ManualEditPatch,
+  scope: ManualEditSourceScope = {},
+): ManualEditPatchResult {
   if (patch.kind === 'set-full-source') return { ok: true, source: patch.source };
 
   const doc = parseSource(source);
@@ -19,7 +30,7 @@ export function applyManualEditPatch(source: string, patch: ManualEditPatch): Ma
       : { ok: false, source, error: `Token not found: ${patch.token}` };
   }
 
-  const el = findEditableElement(doc, patch.id);
+  const el = findEditableElement(doc, patch.id, scope);
   if (!el) return { ok: false, source, error: `Target not found: ${patch.id}` };
 
   if (patch.kind === 'set-text') {
@@ -66,9 +77,13 @@ export function applyManualEditPatch(source: string, patch: ManualEditPatch): Ma
   return { ok: true, source: serializeSource(doc, source) };
 }
 
-export function readManualEditFields(source: string, id: string): ManualEditFields {
+export function readManualEditFields(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): ManualEditFields {
   const doc = parseSource(source);
-  const el = doc ? findEditableElement(doc, id) : null;
+  const el = doc ? findEditableElement(doc, id, scope) : null;
   if (!el) return {};
   const kind = inferKind(el);
   if (kind === 'link') {
@@ -86,9 +101,13 @@ export function readManualEditFields(source: string, id: string): ManualEditFiel
   return { text: el.textContent?.trim() ?? '' };
 }
 
-export function readManualEditStyles(source: string, id: string): ManualEditStyles {
+export function readManualEditStyles(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): ManualEditStyles {
   const doc = parseSource(source);
-  const el = doc ? findEditableElement(doc, id) : null;
+  const el = doc ? findEditableElement(doc, id, scope) : null;
   if (!el) return emptyManualEditStyles();
   const style = (el as HTMLElement).style;
   return MANUAL_EDIT_STYLE_PROPS.reduce<ManualEditStyles>((acc, key) => {
@@ -97,9 +116,13 @@ export function readManualEditStyles(source: string, id: string): ManualEditStyl
   }, {} as ManualEditStyles);
 }
 
-export function readManualEditAttributes(source: string, id: string): Record<string, string> {
+export function readManualEditAttributes(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): Record<string, string> {
   const doc = parseSource(source);
-  const el = doc ? findEditableElement(doc, id) : null;
+  const el = doc ? findEditableElement(doc, id, scope) : null;
   if (!el) return {};
   const attrs: Record<string, string> = {};
   Array.from(el.attributes).forEach((attr) => {
@@ -109,9 +132,13 @@ export function readManualEditAttributes(source: string, id: string): Record<str
   return attrs;
 }
 
-export function readManualEditOuterHtml(source: string, id: string): string {
+export function readManualEditOuterHtml(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): string {
   const doc = parseSource(source);
-  return (doc ? findEditableElement(doc, id)?.outerHTML : '') ?? '';
+  return (doc ? findEditableElement(doc, id, scope)?.outerHTML : '') ?? '';
 }
 
 function parseSource(source: string): Document | null {
@@ -157,24 +184,40 @@ function inferKind(el: Element): 'text' | 'link' | 'image' | 'container' {
   return 'text';
 }
 
-function findEditableElement(doc: Document, id: string): Element | null {
-  if (id === '__body__') return doc.body;
+function findEditableElement(
+  doc: Document,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): Element | null {
+  const root = findScopedRoot(doc, scope);
+  if (!root) return null;
+  if (id === '__body__') return root.nodeType === 9 ? (root as Document).body : root as Element;
   return (
-    doc.querySelector(`[data-od-id="${cssEscape(id)}"]`) ??
-    doc.querySelector(`[data-od-runtime-id="${cssEscape(id)}"]`) ??
-    doc.querySelector(`[data-od-source-path="${cssEscape(id)}"]`) ??
-    findElementByPath(doc, id)
+    root.querySelector(`[data-od-id="${cssEscape(id)}"]`) ??
+    root.querySelector(`[data-od-runtime-id="${cssEscape(id)}"]`) ??
+    root.querySelector(`[data-od-source-path="${cssEscape(id)}"]`) ??
+    findElementByPath(root, id)
   );
 }
 
-function findElementByPath(doc: Document, id: string): Element | null {
+function findScopedRoot(doc: Document, scope: ManualEditSourceScope): ManualEditLookupRoot | null {
+  const slideIndex = scope.slideIndex;
+  if (!(typeof slideIndex === 'number' && Number.isFinite(slideIndex) && slideIndex >= 0)) return doc;
+  const index = Math.floor(slideIndex);
+  const explicit = doc.querySelector(`[data-slide-index="${index}"]`);
+  if (explicit) return explicit;
+  const slides = Array.from(doc.querySelectorAll('.slide, section[data-screen-label]'));
+  return slides[index] ?? null;
+}
+
+function findElementByPath(root: ManualEditLookupRoot, id: string): Element | null {
   if (!id.startsWith('path-')) return null;
   const indexes = id
     .slice('path-'.length)
     .split('-')
     .map((part) => Number(part));
   if (indexes.some((index) => !Number.isInteger(index) || index < 0)) return null;
-  let current: Element | null = doc.body;
+  let current: Element | null = root.nodeType === 9 ? (root as Document).body : root as Element;
   for (const index of indexes) {
     current = current?.children.item(index) ?? null;
     if (!current) return null;

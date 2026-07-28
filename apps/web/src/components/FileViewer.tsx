@@ -6858,7 +6858,11 @@ function HtmlViewer({
     }
   }
 
-  async function applyManualEdit(patch: ManualEditPatch, label: string): Promise<boolean> {
+  async function applyManualEdit(
+    patch: ManualEditPatch,
+    label: string,
+    scope?: { slideIndex?: number },
+  ): Promise<boolean> {
     if (manualEditSavingRef.current) return false;
     if (sourceRef.current == null) return false;
     manualEditSavingRef.current = true;
@@ -6866,7 +6870,7 @@ function HtmlViewer({
     setManualEditError(null);
     try {
       const baseSource = sourceRef.current;
-      const result = applyManualEditPatch(baseSource, patch);
+      const result = applyManualEditPatch(baseSource, patch, scope);
       if (!result.ok) {
         setManualEditError(
           result.error ?? embedUiLabel('Could not apply edit.', '편집을 적용하지 못했습니다.'),
@@ -7860,7 +7864,10 @@ function HtmlViewer({
         remaining.push(attachment);
         continue;
       }
-      const currentStyles = readManualEditStyles(sourceRef.current ?? '', attachment.elementId);
+      const editScope = typeof attachment.slideIndex === 'number'
+        ? { slideIndex: attachment.slideIndex }
+        : undefined;
+      const currentStyles = readManualEditStyles(sourceRef.current ?? '', attachment.elementId, editScope);
       const fastPath = buildManualEditCommentFastPath({ attachment, currentStyles });
       if (!fastPath) {
         remaining.push(attachment);
@@ -7871,6 +7878,7 @@ function HtmlViewer({
         const ok = await applyManualEdit(
           patch,
           embedUiLabel(fastPath.label, '댓글 빠른 편집'),
+          editScope,
         );
         if (!ok) {
           applied = false;
