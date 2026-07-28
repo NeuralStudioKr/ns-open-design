@@ -4,6 +4,7 @@ import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
   maskManualEditTargets,
+  mergeManualEditTargetsFromSource,
   readManualEditAttributes,
   readManualEditFields,
   readManualEditOuterHtml,
@@ -317,6 +318,76 @@ describe('manual edit source patches', () => {
     expect(targetMasked.source).toBe(beforeMasked.source);
     expect(siblingMasked.source).not.toBe(beforeMasked.source);
     expect(maskManualEditTargets(source, [id], { slideIndex: 0 }).ok).toBe(false);
+  });
+
+  it('merges only selected comment targets from a model-produced full deck', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h1 data-od-id="headline">Slide one</h1><p data-od-id="body">Body one</p>',
+      '</section>',
+      '<section class="slide" data-slide-index="1">',
+      '<h1 data-od-id="headline">Slide two</h1><p data-od-id="body">Body two</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h1 data-od-id="headline">Unexpected slide one edit</h1><p data-od-id="body">Body one</p>',
+      '</section>',
+      '<section class="slide" data-slide-index="1">',
+      '<h1 data-od-id="headline">Slide two edited</h1><p data-od-id="body">Unexpected sibling edit</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetsFromSource(source, modelOutput, ['headline'], { slideIndex: 1 });
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.changedCount).toBe(1);
+    expect(result.source).toContain('<h1 data-od-id="headline">Slide one</h1>');
+    expect(result.source).toContain('<h1 data-od-id="headline">Slide two edited</h1>');
+    expect(result.source).toContain('<p data-od-id="body">Body two</p>');
+    expect(result.source).not.toContain('Unexpected slide one edit');
+    expect(result.source).not.toContain('Unexpected sibling edit');
+  });
+
+  it('merges selector-based comment targets inside the selected slide only', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><p>Slide one copy</p></section>',
+      '<section class="slide" data-slide-index="1"><p>Slide two copy</p><small>Keep me</small></section>',
+      '</body></html>',
+    ].join('');
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><p>Unexpected slide one edit</p></section>',
+      '<section class="slide" data-slide-index="1"><p>Edited copy</p><small>Unexpected sibling edit</small></section>',
+      '</body></html>',
+    ].join('');
+    const id = 'dom:body > section:nth-of-type(2) > p:nth-of-type(1)';
+
+    const result = mergeManualEditTargetsFromSource(source, modelOutput, [id], { slideIndex: 1 });
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('<section class="slide" data-slide-index="0"><p>Slide one copy</p></section>');
+    expect(result.source).toContain('<section class="slide" data-slide-index="1"><p>Edited copy</p><small>Keep me</small></section>');
+    expect(result.source).not.toContain('Unexpected slide one edit');
+    expect(result.source).not.toContain('Unexpected sibling edit');
+  });
+
+  it('rejects selected target merges when the model did not change the target', () => {
+    const source = '<!doctype html><html><body><section class="slide"><h1 data-od-id="headline">Keep</h1></section></body></html>';
+    const modelOutput = source.replace('</section>', '<p>Unscoped edit</p></section>');
+
+    const result = mergeManualEditTargetsFromSource(source, modelOutput, ['headline'], { slideIndex: 0 });
+
+    expect(result.ok).toBe(false);
+    expect(result.source).toBe(source);
+    if (!result.ok) expect(result.reason).toContain('unchanged');
   });
 
   it('rejects text patches for nested markup', () => {

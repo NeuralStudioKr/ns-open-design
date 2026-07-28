@@ -412,6 +412,10 @@ describe("ProjectView message loading", () => {
     expect(guardBlock).toContain("beforeMasked.maskedCount !== afterMasked.maskedCount");
     expect(guardBlock).toContain("code: 'full_deck_comment_target_unresolved'");
     expect(guardBlock).toContain("scoped full-deck guard rejected unresolved comment target");
+
+    expect(source).toContain("mergeManualEditTargetsFromSource");
+    expect(source).toContain("function mergeScopedCommentTargetsFromPatchedDeck");
+    expect(source).toContain("commentAttachments: runCommentAttachmentsRef.current");
   });
 
   it("waits for embed boot and retries stuck message loads on re-entry", () => {

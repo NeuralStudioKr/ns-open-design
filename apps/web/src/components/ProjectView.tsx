@@ -242,7 +242,10 @@ import {
   resolveTurnStartFileBaseline,
 } from '../produced-files';
 import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
-import { maskManualEditTargets } from '../edit-mode/source-patches';
+import {
+  maskManualEditTargets,
+  mergeManualEditTargetsFromSource,
+} from '../edit-mode/source-patches';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
@@ -1008,6 +1011,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   fileName: string;
   patchBody: string;
   allowedSlideIndexes?: readonly number[];
+  commentAttachments?: readonly ChatCommentAttachment[];
 }): Promise<DeckPatchMergeResult> {
   const parsed = parseDeckPatch(input.patchBody);
   if (!parsed.ok) {
@@ -1037,7 +1041,54 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     console.warn('[deck-patch] merge failed', { fileName: input.fileName, reason: merged.reason });
     return { ok: false, code: 'deck_patch_merge_failed', reason: merged.reason };
   }
+  if (input.allowedSlideIndexes && input.commentAttachments?.length) {
+    const scoped = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml,
+      patchedHtml: merged.html,
+      commentAttachments: input.commentAttachments,
+    });
+    if (!scoped.ok) {
+      console.warn('[deck-patch] scoped element merge failed', {
+        fileName: input.fileName,
+        reason: scoped.reason,
+      });
+      return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason };
+    }
+    if (scoped.narrowed) return { ok: true, html: scoped.html };
+  }
   return { ok: true, html: merged.html };
+}
+
+function mergeScopedCommentTargetsFromPatchedDeck(input: {
+  currentHtml: string;
+  patchedHtml: string;
+  commentAttachments: readonly ChatCommentAttachment[];
+}): { ok: true; html: string; narrowed: boolean } | { ok: false; reason: string } {
+  let nextHtml = input.currentHtml;
+  let narrowed = false;
+  for (const attachment of input.commentAttachments) {
+    if (
+      !(
+        typeof attachment.slideIndex === 'number' &&
+        Number.isInteger(attachment.slideIndex) &&
+        attachment.slideIndex >= 0
+      )
+    ) {
+      continue;
+    }
+    const ids = scopedCommentElementIds(attachment);
+    if (ids.length === 0) continue;
+    const merged = mergeManualEditTargetsFromSource(
+      nextHtml,
+      input.patchedHtml,
+      ids,
+      { slideIndex: Math.floor(attachment.slideIndex) },
+    );
+    if (!merged.ok) return { ok: false, reason: merged.reason };
+    nextHtml = merged.source;
+    narrowed = true;
+  }
+  return { ok: true, html: nextHtml, narrowed };
 }
 
 function scopedCommentSlideIndexes(
@@ -3247,6 +3298,7 @@ export function ProjectView({
           fileName: targetFileName,
           patchBody: art.html,
           allowedSlideIndexes: scopedAllowedSlideIndexes,
+          commentAttachments: runCommentAttachmentsRef.current,
         });
         if (!merged.ok) {
           return {

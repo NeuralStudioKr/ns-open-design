@@ -10,6 +10,10 @@ export type ManualEditMaskTargetsResult =
   | { ok: true; source: string; maskedCount: number }
   | { ok: false; source: string; reason: string };
 
+export type ManualEditMergeTargetsResult =
+  | { ok: true; source: string; replacedCount: number; changedCount: number }
+  | { ok: false; source: string; reason: string };
+
 export interface ManualEditSourceScope {
   /** Zero-based deck slide index. When present, element lookup is limited to that slide. */
   slideIndex?: number;
@@ -171,6 +175,53 @@ export function maskManualEditTargets(
     ok: true,
     source: serializeSource(doc, source),
     maskedCount: targets.size,
+  };
+}
+
+export function mergeManualEditTargetsFromSource(
+  currentSource: string,
+  nextSource: string,
+  ids: readonly string[],
+  scope: ManualEditSourceScope = {},
+): ManualEditMergeTargetsResult {
+  const currentDoc = parseSource(currentSource);
+  const nextDoc = parseSource(nextSource);
+  if (!currentDoc || !nextDoc) {
+    return { ok: false, source: currentSource, reason: 'Could not parse source.' };
+  }
+  const normalizedIds = [...new Set(
+    ids
+      .map((id) => String(id || '').trim())
+      .filter(Boolean),
+  )];
+  if (normalizedIds.length === 0) {
+    return { ok: false, source: currentSource, reason: 'No target ids supplied.' };
+  }
+
+  let replacedCount = 0;
+  let changedCount = 0;
+  for (const id of normalizedIds) {
+    const currentTarget = findEditableElement(currentDoc, id, scope);
+    const nextTarget = findEditableElement(nextDoc, id, scope);
+    if (!currentTarget || !nextTarget) continue;
+    const currentOuter = currentTarget.outerHTML;
+    const nextOuter = nextTarget.outerHTML;
+    currentTarget.replaceWith(currentDoc.importNode(nextTarget, true));
+    replacedCount += 1;
+    if (currentOuter !== nextOuter) changedCount += 1;
+  }
+
+  if (replacedCount === 0) {
+    return { ok: false, source: currentSource, reason: 'No matching targets found to merge.' };
+  }
+  if (changedCount === 0) {
+    return { ok: false, source: currentSource, reason: 'Selected targets were unchanged.' };
+  }
+  return {
+    ok: true,
+    source: serializeSource(currentDoc, currentSource),
+    replacedCount,
+    changedCount,
   };
 }
 
