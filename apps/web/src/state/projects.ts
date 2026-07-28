@@ -22,6 +22,7 @@ import type {
 } from '@open-design/contracts';
 import { randomUUID } from '../utils/uuid';
 import type {
+  AgentEvent,
   ChatMessage,
   Conversation,
   OpenTabsState,
@@ -56,6 +57,7 @@ import {
 } from '../teamver/projectListLimits';
 import { mapRegistryRowToProject, listEmbedProjectsFromRegistry, listEmbedProjectsPageFromRegistry, mergeDaemonFieldsOntoRegistryProjects } from '../teamver/embedRegistryProjectList';
 import { fetchTeamverProject } from '../teamver/projectRegistry';
+import { reconcileChatMessageOnLoad } from '../runtime/chat-events';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
 import { normalizePluginApiId } from '../plugins/pluginIds';
 
@@ -778,7 +780,10 @@ export async function listMessages(
     throw new Error(`Failed to list messages (${resp.status})`);
   }
   const json = (await resp.json()) as { messages: ChatMessage[] };
-  return (json.messages ?? []).map(sanitizeChatMessageForPersist);
+  // Sanitize on write (`saveMessage`) and at display time (AssistantMessage).
+  // Sanitizing on read destroyed assistant prose and error events after reload
+  // when history-mode artifact stripping emptied persisted rows.
+  return (json.messages ?? []).map(reconcileChatMessageOnLoad);
 }
 
 export interface SaveMessageOptions {
@@ -822,15 +827,28 @@ function byteLengthUtf8(value: string): number {
  * already has a running record of tool events from SSE and will
  * reconcile the missing enrichment on the next full save.
  */
+function keepaliveEssentialEvents(events: ChatMessage['events']): AgentEvent[] {
+  return (events ?? []).filter(
+    (event) =>
+      event.kind === 'status'
+      && event.label === 'error'
+      && Boolean(event.detail?.trim()),
+  );
+}
+
 function projectKeepaliveEssentials(message: ChatMessage): ChatMessage {
   const {
-    events: _events,
     producedFiles: _producedFiles,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } = message as unknown as Record<string, any>;
   const trimmed: ChatMessage = { ...message };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (trimmed as unknown as Record<string, any>).events;
+  const essentialEvents = keepaliveEssentialEvents(message.events);
+  if (essentialEvents.length > 0) {
+    trimmed.events = essentialEvents;
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (trimmed as unknown as Record<string, any>).events;
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (trimmed as unknown as Record<string, any>).producedFiles;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

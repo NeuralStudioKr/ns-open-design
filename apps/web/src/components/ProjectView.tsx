@@ -146,7 +146,7 @@ import { playSound, showCompletionNotification } from '../utils/notifications';
 import { randomUUID } from '../utils/uuid';
 import { DEFAULT_NOTIFICATIONS } from '../state/config';
 import type { TodoItem } from '../runtime/todos';
-import { appendErrorStatusEvent } from '../runtime/chat-events';
+import { appendErrorStatusEvent, messageHasVisibleProse } from '../runtime/chat-events';
 import {
   AUTO_CONTINUE_ENTRY_FROM,
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
@@ -523,6 +523,13 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
         if (local.events) merged.events = local.events;
       }
     }
+  } else if (
+    messageHasVisibleProse(local)
+    && !messageHasVisibleProse(server)
+    && (isTerminalRunStatus(server.runStatus) || isTerminalRunStatus(local.runStatus))
+  ) {
+    merged.content = localContent;
+    if (local.events?.length) merged.events = local.events;
   }
   return merged;
 }
