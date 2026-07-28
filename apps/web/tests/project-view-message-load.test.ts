@@ -512,8 +512,22 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("slideDiffIsStyleOnly");
     expect(source).toContain("extractSlideByIndex");
     expect(source).toContain("normalizeSlideStructure");
-    expect(source).toContain("accepted slide-level style-only fallback");
+    expect(source).toContain("accepted slide-level fallback");
     expect(source).toContain("merged.reason === 'Selected targets were unchanged.'");
+  });
+
+  it("also accepts a slide-level swap when the target text survives the model rewrite", () => {
+    // Second-tier fallback for cases where the model kept the
+    // captured target text (attachment.currentText) somewhere in the
+    // patched slide but dropped data-od-id / restructured the target
+    // element (common when the model wraps existing text in a new
+    // span for emphasis). Behavioral coverage:
+    // merge-scoped-comment-style-fallback.test.ts.
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("targetTextPreservedInPatchedSlide");
+    expect(source).toContain("collapseTargetTextForMatch");
+    expect(source).toContain("'No matching targets found to merge.'");
+    expect(source).toContain("fallback: kind");
   });
 
   it("waits for embed boot and retries stuck message loads on re-entry", () => {

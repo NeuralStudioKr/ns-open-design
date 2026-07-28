@@ -1255,44 +1255,127 @@ function mergeScopedCommentTargetsFromPatchedDeck(input: {
       narrowed = true;
       continue;
     }
-    // "Selected targets were unchanged" happens when the model
-    // expressed a style-only edit at the slide level (added a
-    // `<style>` block, class attribute, or inline style on an
-    // ancestor of the target) instead of mutating the target's own
-    // outerHTML. The element-level narrow merge can't see that
-    // change because it only diffs the target node. Fall back to a
-    // slide-level swap IFF the slide diff between nextHtml and
-    // patchedHtml is purely style-related — no text, tag structure,
-    // or identity attribute changes anywhere else in the slide. That
-    // keeps sibling copy safe while still shipping the requested
-    // visual change (see docs-teamver 2026-07-28 style-scope note).
-    if (merged.reason === 'Selected targets were unchanged.') {
+    // Narrow merge failed. Try progressively broader fallbacks before
+    // rejecting the model's response — the alternative is a
+    // "선택 대상 밖 변경" banner even when the model's edit was
+    // legitimate but our element-scoped diff couldn't see it.
+    //
+    // Fallback 1 — style-only slide diff:
+    //   "Selected targets were unchanged" happens when the model
+    //   expressed a style edit at the slide level (added a <style>
+    //   block, class attribute, or inline style on an ancestor of
+    //   the target). Element outerHTML doesn't change, so the narrow
+    //   diff misses it. Accept if the current-slide vs. patched-slide
+    //   diff is limited to <style> bodies / class / style attributes.
+    //
+    // Fallback 2 — target text preserved:
+    //   "No matching targets found to merge" or "Selected targets
+    //   were unchanged" can happen when the model kept the target's
+    //   identity text (attachment.currentText) somewhere in the
+    //   patched slide but restructured or dropped the identifiers we
+    //   used to locate it (typical when the model drops data-od-id
+    //   during a slide rewrite, or wraps existing text in a new
+    //   span for emphasis). If the semantic identity survives in the
+    //   patched slide, accept the slide-level swap. This is broader
+    //   than fallback 1 so we scope it: the target text must be
+    //   present verbatim in the patched slide, and the patched slide
+    //   must not have grown so large that it can't plausibly be a
+    //   scoped edit anymore.
+    //
+    // If none of the fallbacks apply, reject with the original reason
+    // — keeps the earlier 'do not silently replace whole slide when
+    // scope merge fails' safety rail intact for divergent responses.
+    if (
+      merged.reason === 'Selected targets were unchanged.' ||
+      merged.reason === 'No matching targets found to merge.'
+    ) {
       const nextSlide = extractSlideByIndex(nextHtml, slideIndex);
       const patchedSlide = extractSlideByIndex(input.patchedHtml, slideIndex);
-      if (
-        nextSlide &&
-        patchedSlide &&
-        slideDiffIsStyleOnly(nextSlide, patchedSlide)
-      ) {
-        const swapped = applyDeckPatch({
-          currentHtml: nextHtml,
-          patch: {
-            ops: [{ op: 'replace', slideIndex, html: patchedSlide }],
-          },
-        });
-        if (swapped.ok) {
-          console.info('[deck-patch] accepted slide-level style-only fallback', {
+      if (nextSlide && patchedSlide) {
+        const acceptSlideLevel = (kind: 'style-only' | 'text-preserved'): boolean => {
+          const swapped = applyDeckPatch({
+            currentHtml: nextHtml,
+            patch: {
+              ops: [{ op: 'replace', slideIndex, html: patchedSlide }],
+            },
+          });
+          if (!swapped.ok) return false;
+          console.info('[deck-patch] accepted slide-level fallback', {
             slideIndex,
+            fallback: kind,
+            reason: merged.reason,
           });
           nextHtml = swapped.html;
           narrowed = true;
+          return true;
+        };
+        if (
+          merged.reason === 'Selected targets were unchanged.' &&
+          slideDiffIsStyleOnly(nextSlide, patchedSlide) &&
+          acceptSlideLevel('style-only')
+        ) {
+          continue;
+        }
+        if (
+          targetTextPreservedInPatchedSlide(patchedSlide, attachment) &&
+          acceptSlideLevel('text-preserved')
+        ) {
           continue;
         }
       }
     }
+    console.warn('[deck-patch] scoped narrow merge failed', {
+      slideIndex,
+      ids,
+      reason: merged.reason,
+      currentText: attachment.currentText,
+      htmlHint: attachment.htmlHint?.slice(0, 120),
+    });
     return { ok: false, reason: merged.reason };
   }
   return { ok: true, html: nextHtml, narrowed };
+}
+
+/**
+ * True when the attachment's captured `currentText` still appears
+ * verbatim inside the model's patched slide HTML. This is the safety
+ * check gating the "text-preserved" slide-level fallback in
+ * `mergeScopedCommentTargetsFromPatchedDeck`.
+ *
+ * Anchoring on `currentText` means the target's identity (the visible
+ * copy the user clicked) survived the model's rewrite — the edit is
+ * still semantically about the same content even when the surrounding
+ * DOM structure or identifiers no longer align. If the text was
+ * removed or renamed, this returns false and the scoped merge stays
+ * in its default reject path so the response doesn't silently ship a
+ * wholly-different slide.
+ */
+export function targetTextPreservedInPatchedSlide(
+  patchedSlideOuter: string,
+  attachment: ChatCommentAttachment,
+): boolean {
+  const currentText = attachment.currentText || '';
+  const collapsedCurrent = collapseTargetTextForMatch(currentText);
+  // Guard against pathologically short signals — a 1–2 char string
+  // is likely to substring-match into unrelated slide content and
+  // greenlight a wholly-different slide as "text-preserved".
+  if (!collapsedCurrent || collapsedCurrent.length < 4) return false;
+  const collapsedSlide = collapseTargetTextForMatch(
+    patchedSlideOuter.replace(/<[^>]+>/g, ' '),
+  );
+  return collapsedSlide.includes(collapsedCurrent);
+}
+
+/**
+ * Whitespace-agnostic normalization for the "target text preserved"
+ * check. Text captured from `el.textContent` collapses inter-element
+ * whitespace, but the raw HTML source keeps newlines/indentation
+ * between siblings. Comparing after stripping ALL whitespace makes
+ * the check resilient to that formatting mismatch without letting
+ * unrelated words collide (min-length guard in caller).
+ */
+function collapseTargetTextForMatch(value: string): string {
+  return String(value ?? '').replace(/\s+/g, '').trim();
 }
 
 export function extractSlideByIndex(html: string, slideIndex: number): string | null {
