@@ -101,7 +101,7 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     expect(httpGet).not.toHaveBeenCalled();
     expect(
       fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
 
   it("caches session-probe 401 locally and skips repeat network probes for 60s", async () => {

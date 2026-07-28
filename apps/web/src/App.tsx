@@ -121,7 +121,7 @@ import type { TeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
 import { consumeTeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
-import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds, noticeStatusForBackgroundRun } from './teamver/teamverEmbedRunTracking';
+import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds, noticeStatusForBackgroundRun, markEmbedUserStoppedBackgroundProject, reconcileEmbedUserStoppedBackgroundProjects, filterBackgroundRunSummariesForUserStop } from './teamver/teamverEmbedRunTracking';
 import { publishTeamverSessionActiveRunProjectIds } from './teamver/teamverEmbedSessionRuns';
 import { loadProjectListPage, loadProjectListSafe, loadProjectsForWorkspaceSwitch, loadRecentProjectsForHome } from './teamver/loadProjectList';
 import { formatProjectGetErrorForUser } from './teamver/projectErrorMessages';
@@ -565,6 +565,7 @@ function AppInner() {
   const activeRunIdsRef = useRef<Set<string>>(new Set());
   const notifiedBackgroundRunIdsRef = useRef<Set<string>>(new Set());
   const sessionActiveRunProjectIdsRef = useRef<Set<string>>(new Set());
+  const userStoppedBackgroundProjectIdsRef = useRef<Set<string>>(new Set());
   const byokBackgroundChatsRef = useRef<
     Map<string, { conversationId: string; assistantMessageId: string }>
   >(new Map());
@@ -1694,10 +1695,13 @@ function AppInner() {
         mergedRuns,
         allowMissingProjectIds,
       );
-      const activeSummaries = mergeByokBackgroundRunSummaries(
-        daemonSummaries,
-        byokBackgroundChatsRef.current,
-        projectsById,
+      const activeSummaries = filterBackgroundRunSummariesForUserStop(
+        mergeByokBackgroundRunSummaries(
+          daemonSummaries,
+          byokBackgroundChatsRef.current,
+          projectsById,
+        ),
+        userStoppedBackgroundProjectIdsRef.current,
       );
       setBackgroundRunSummaries((prev) =>
         activeRunSummariesEqual(prev, activeSummaries) ? prev : activeSummaries,
@@ -1709,6 +1713,7 @@ function AppInner() {
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
     return subscribeTeamverBackgroundRunInactive(({ projectId }) => {
+      markEmbedUserStoppedBackgroundProject(userStoppedBackgroundProjectIdsRef.current, projectId);
       byokBackgroundChatsRef.current.delete(projectId);
       sessionActiveRunProjectIdsRef.current.delete(projectId);
       byokProxyIdlePollsRef.current.delete(projectId);
@@ -1775,6 +1780,7 @@ function AppInner() {
       setBackgroundRunNotice(null);
       byokBackgroundChatsRef.current.clear();
       byokProxyIdlePollsRef.current.clear();
+      userStoppedBackgroundProjectIdsRef.current.clear();
       resetEmbedRunTrackingRefs({
         activeRunIds: activeRunIdsRef,
         notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
@@ -1890,6 +1896,7 @@ function AppInner() {
         setProjectsRefreshing(false);
         setBackgroundRunSummaries([]);
         setBackgroundRunNotice(null);
+        userStoppedBackgroundProjectIdsRef.current.clear();
         resetEmbedRunTrackingRefs({
           activeRunIds: activeRunIdsRef,
           notifiedBackgroundRunIds: notifiedBackgroundRunIdsRef,
@@ -2864,9 +2871,18 @@ function AppInner() {
         if (run.status === 'queued' || run.status === 'running') {
           nextActiveRunIds.add(run.id);
           const projectId = run.projectId?.trim();
-          if (projectId) sessionActiveRunProjectIdsRef.current.add(projectId);
+          if (
+            projectId
+            && !userStoppedBackgroundProjectIdsRef.current.has(projectId)
+          ) {
+            sessionActiveRunProjectIdsRef.current.add(projectId);
+          }
         }
       }
+      reconcileEmbedUserStoppedBackgroundProjects(
+        userStoppedBackgroundProjectIdsRef.current,
+        trackedRuns,
+      );
       activeRunIdsRef.current = nextActiveRunIds;
       publishTeamverSessionActiveRunProjectIds(sessionActiveRunProjectIdsRef.current);
 
@@ -2988,10 +3004,13 @@ function AppInner() {
         allowMissingProjectIds,
       );
       const activeSummaries = isTeamverEmbedMode()
-        ? mergeByokBackgroundRunSummaries(
-            daemonSummaries,
-            byokBackgroundChatsRef.current,
-            projectNamesById,
+        ? filterBackgroundRunSummariesForUserStop(
+            mergeByokBackgroundRunSummaries(
+              daemonSummaries,
+              byokBackgroundChatsRef.current,
+              projectNamesById,
+            ),
+            userStoppedBackgroundProjectIdsRef.current,
           )
         : daemonSummaries;
       if (isTeamverEmbedMode()) {

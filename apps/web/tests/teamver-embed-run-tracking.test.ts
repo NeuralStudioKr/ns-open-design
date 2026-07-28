@@ -11,6 +11,9 @@ import {
   noticeStatusForBackgroundRun,
   pruneSessionActiveRunProjectIds,
   buildEmbedActiveRunAllowMissingIds,
+  markEmbedUserStoppedBackgroundProject,
+  reconcileEmbedUserStoppedBackgroundProjects,
+  filterBackgroundRunSummariesForUserStop,
 } from "../src/teamver/teamverEmbedRunTracking";
 import {
   hasTeamverEmbedBackgroundRuns,
@@ -247,5 +250,25 @@ describe("buildEmbedActiveRunAllowMissingIds", () => {
       locallyDeletedProjectIds: new Map([["p-deleted", 1]]),
     });
     expect(allow).toEqual(new Set(["p-in-flight", "p-new"]));
+  });
+});
+
+describe("user-stopped background run suppression", () => {
+  it("filters summaries while stop is pending daemon cancel", () => {
+    const stopped = new Set(["p1"]);
+    const summaries = [
+      { projectId: "p1", projectName: "A", status: "running" as const, count: 1 },
+      { projectId: "p2", projectName: "B", status: "running" as const, count: 1 },
+    ];
+    expect(filterBackgroundRunSummariesForUserStop(summaries, stopped)).toEqual([summaries[1]]);
+  });
+
+  it("clears stop mask once runs are terminal", () => {
+    const stopped = new Set(["p1"]);
+    markEmbedUserStoppedBackgroundProject(stopped, "p1");
+    reconcileEmbedUserStoppedBackgroundProjects(stopped, [
+      { projectId: "p1", status: "canceled" },
+    ]);
+    expect(stopped.size).toBe(0);
   });
 });

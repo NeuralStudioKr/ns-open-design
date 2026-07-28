@@ -183,6 +183,36 @@ export function processEmbedBackgroundRunCompletions(
   return toastRun;
 }
 
+/** User explicitly stopped — hide background chip until daemon reports no active run. */
+export function markEmbedUserStoppedBackgroundProject(
+  stoppedProjectIds: Set<string>,
+  projectId: string,
+): void {
+  const id = projectId.trim();
+  if (id) stoppedProjectIds.add(id);
+}
+
+export function reconcileEmbedUserStoppedBackgroundProjects(
+  stoppedProjectIds: Set<string>,
+  runs: readonly Pick<ChatRunStatusResponse, "projectId" | "status">[],
+): void {
+  for (const id of [...stoppedProjectIds]) {
+    const stillActive = runs.some((run) => {
+      const pid = run.projectId?.trim();
+      return pid === id && (run.status === "queued" || run.status === "running");
+    });
+    if (!stillActive) stoppedProjectIds.delete(id);
+  }
+}
+
+export function filterBackgroundRunSummariesForUserStop<T extends { projectId: string }>(
+  summaries: readonly T[],
+  stoppedProjectIds: ReadonlySet<string>,
+): T[] {
+  if (stoppedProjectIds.size === 0) return [...summaries];
+  return summaries.filter((summary) => !stoppedProjectIds.has(summary.projectId));
+}
+
 /** After workspace/session boundary — track in-flight runs; suppress replay toasts for terminal runs. */
 export function seedEmbedRunTrackingFromRuns(
   refs: EmbedRunTrackingRefs,

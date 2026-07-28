@@ -1215,7 +1215,12 @@ export async function fetchTeamverRuntimeConfig(
           }
         }
         if (!sessionAlive) {
-          noteRuntimeConfigUnauthorized();
+          const confirmedDead = !await probeDesignBffSessionAuthenticated({
+            bypassNegativeCache: true,
+          });
+          if (confirmedDead) {
+            noteRuntimeConfigUnauthorized();
+          }
           // Keep embed session memory — C1/passive auth reconcile probe vs
           // /auth/session. Clearing here wiped project lists (session-changed).
           return cachedRuntimeConfig?.value ?? null;

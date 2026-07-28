@@ -6,6 +6,7 @@ import {
   isDesignAuthRefreshDeclined,
   isTeamverRuntimeConfigAuthBlocked,
   probeDesignBffSessionAuthenticated,
+  ensureDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
 } from "./designBffClient";
 import { seedEmbedBootstrapSession } from "./embedBootstrapSession";
@@ -121,6 +122,9 @@ export async function runTeamverEmbedSessionBoot(
         return null;
       }
       let nginxLive = await probeDesignBffSessionAuthenticated();
+      if (!nginxLive && !isDesignAuthRefreshDeclined()) {
+        nginxLive = await ensureDesignBffSessionAuthenticated();
+      }
       if (!nginxLive && !isDesignAuthRefreshDeclined()) {
         nginxLive = await refreshDesignAuthCookie();
         if (!nginxLive) {

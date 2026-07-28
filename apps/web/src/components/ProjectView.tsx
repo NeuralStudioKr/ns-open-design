@@ -6993,7 +6993,10 @@ export function ProjectView({
     setMessages((curr) => {
       const { messages: next, finalized } = finalizeActiveAssistantMessagesOnStop(curr, stoppedAt);
       if (config.mode === 'api' && stopConversationId) {
-        for (const message of finalized) {
+        const cleared = finalized.length > 0
+          ? finalized
+          : curr.filter((message) => isStoppableAssistantMessage(message));
+        for (const message of cleared) {
           dispatchTeamverBackgroundChat({
             projectId: project.id,
             conversationId: stopConversationId,
