@@ -366,6 +366,7 @@ export function HomeView({
   const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
   const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
   const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+  const [canvasSlideUserPrompt, setCanvasSlideUserPrompt] = useState('');
   const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
   const teamverDriveImportAllowed = useMemo(
     () =>
@@ -1789,7 +1790,11 @@ export function HomeView({
         const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
         const submitResult = await Promise.resolve(
           onSubmit({
-            prompt: canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief),
+            prompt: canvasCreateSlidesRunPrompt(
+              selectedCanvasSlideTemplate.title,
+              sourceBrief,
+              canvasSlideUserPrompt,
+            ),
             pluginId: selectedCanvasSlideTemplate.id,
             pluginType: 'official',
             skillId: null,
@@ -1800,6 +1805,7 @@ export function HomeView({
               topicHint,
               selectedCanvasSlideTemplate.title,
               sourceBrief,
+              canvasSlideUserPrompt,
             ),
             projectKind: 'deck',
             projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
@@ -1819,6 +1825,7 @@ export function HomeView({
         consumeTeamverCanvasLaunchHandoff();
         setCanvasSlideLaunch(null);
         setCanvasSlideLaunchError(null);
+        setCanvasSlideUserPrompt('');
         return;
       }
 
@@ -1826,7 +1833,11 @@ export function HomeView({
       const sourceBrief = driveCreateSlidesSourceBrief(asset);
       const submitResult = await Promise.resolve(
         onSubmit({
-          prompt: canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief),
+          prompt: canvasCreateSlidesRunPrompt(
+            selectedCanvasSlideTemplate.title,
+            sourceBrief,
+            canvasSlideUserPrompt,
+          ),
           pluginId: selectedCanvasSlideTemplate.id,
           pluginType: 'official',
           skillId: null,
@@ -1837,6 +1848,7 @@ export function HomeView({
             asset.filename ?? asset.assetId,
             selectedCanvasSlideTemplate.title,
             sourceBrief,
+            canvasSlideUserPrompt,
           ),
           projectKind: 'deck',
           projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
@@ -1861,6 +1873,7 @@ export function HomeView({
       }
       setCanvasSlideLaunch(null);
       setCanvasSlideLaunchError(null);
+      setCanvasSlideUserPrompt('');
     } catch (err) {
       const message =
         canvasSlideLaunch.kind === 'canvas'
@@ -2226,6 +2239,8 @@ export function HomeView({
           templateOptions={canvasSlideTemplates}
           selectedTemplateId={selectedCanvasSlideTemplate.id}
           onTemplateChange={setCanvasSlideTemplateId}
+          userPrompt={canvasSlideUserPrompt}
+          onUserPromptChange={setCanvasSlideUserPrompt}
           onClose={() => {
             if (!canvasSlideLaunchBusy) {
               if (canvasSlideLaunch.kind === 'canvas') {
@@ -2233,6 +2248,7 @@ export function HomeView({
               }
               setCanvasSlideLaunch(null);
               setCanvasSlideLaunchError(null);
+              setCanvasSlideUserPrompt('');
             }
           }}
           onConfirm={() => {

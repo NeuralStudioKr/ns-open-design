@@ -35,12 +35,15 @@ export const CANVAS_CREATE_SLIDES_PROMPT =
 export function canvasCreateSlidesRunPrompt(
   templateTitle?: string | null,
   sourceBrief?: string | null,
+  userInstruction?: string | null,
 ): string {
   const title = templateTitle?.trim();
   const templateHint = title ? `\nSelected slide template/style: ${title}.` : "";
   const brief = compactCanvasBriefValue(sourceBrief ?? "", 900);
   const sourceHint = brief ? `\n\n[Source brief]\n${brief}` : "";
-  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${sourceHint}`;
+  const user = compactCanvasBriefValue(userInstruction ?? "", 600);
+  const userHint = user ? `\n\n[User instruction]\n${user}` : "";
+  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${sourceHint}${userHint}`;
 }
 
 /** Per-turn meta so API/daemon runs compose the selected deck template into the system prompt. */
@@ -259,9 +262,11 @@ export function canvasCreateSlidesPluginInputs(
   topicHint?: string | null,
   templateTitle?: string | null,
   sourceBrief?: string | null,
+  userInstruction?: string | null,
 ): Record<string, unknown> {
   const topic = (topicHint ?? "").trim() || "the attached source document";
   const brief = sourceBrief?.trim();
+  const user = userInstruction?.trim();
   return {
     deckType: "presentation from source material",
     topic,
@@ -269,6 +274,7 @@ export function canvasCreateSlidesPluginInputs(
     speakerNotes: "no speaker notes",
     designSystem: (templateTitle ?? "").trim() || "the active project design system",
     ...(brief ? { sourceBrief: brief } : {}),
+    ...(user ? { userInstruction: user } : {}),
     sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   };
 }

@@ -12,6 +12,9 @@ vi.mock("../src/teamver/branding/useTeamverT", () => ({
     if (key === "teamver.canvasSlideLaunch.updated" && vars?.when != null) {
       return `updated ${vars.when}`;
     }
+    if (key === "teamver.canvasSlideLaunch.footerTemplate" && vars?.name != null) {
+      return `template:${vars.name}`;
+    }
     if (key === "teamver.canvasSlideLaunch.untitled") return "Untitled document";
     return key;
   },
@@ -124,6 +127,8 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       />,
     );
 
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-step-trigger-template"));
+
     const grid = screen.getByTestId("teamver-canvas-slide-launch-template");
     expect(grid.getAttribute("role")).toBe("radiogroup");
     const hermesCard = screen.getByTestId(
@@ -132,6 +137,40 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     expect(hermesCard.getAttribute("role")).toBe("radio");
     fireEvent.click(hermesCard);
     expect(onTemplateChange).toHaveBeenCalledWith("html-ppt-hermes");
+  });
+
+  it("orders steps as document → prompt → template and accepts a user prompt", () => {
+    const onUserPromptChange = vi.fn();
+
+    render(
+      <TeamverCanvasSlideLaunchModal
+        open
+        source={{ kind: "drive", asset: { assetId: "AST-flow", filename: "lesson.html" } }}
+        templateOptions={[
+          { id: "example-simple-deck", title: "기본 슬라이드" },
+          { id: "html-ppt-hermes", title: "Hermes" },
+        ]}
+        selectedTemplateId="example-simple-deck"
+        userPrompt=""
+        onUserPromptChange={onUserPromptChange}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const steps = screen.getByTestId("teamver-canvas-slide-launch-steps");
+    const triggers = steps.querySelectorAll(".teamver-canvas-slide-launch-step-trigger");
+    expect(triggers.length).toBe(3);
+    expect(triggers[0]?.textContent).toContain("teamver.canvasSlideLaunch.stepDocument");
+    expect(triggers[1]?.textContent).toContain("teamver.canvasSlideLaunch.stepPrompt");
+    expect(triggers[2]?.textContent).toContain("teamver.canvasSlideLaunch.stepTemplate");
+
+    expect(screen.getByText("lesson.html")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-step-trigger-prompt"));
+    const input = screen.getByTestId("teamver-canvas-slide-launch-prompt-input") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "첫 수업용 8장" } });
+    expect(onUserPromptChange).toHaveBeenCalledWith("첫 수업용 8장");
   });
 
   it("closes on Escape and moves initial focus to the close affordance", async () => {
@@ -188,6 +227,8 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       />,
     );
 
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-step-trigger-template"));
+
     const badge = screen.getByTestId(
       "teamver-canvas-slide-launch-template-card-default-badge-example-simple-deck",
     );
@@ -213,6 +254,7 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       />,
     );
 
+    expect(screen.getByTestId("teamver-canvas-slide-launch-flow-compact")).toBeTruthy();
     const picker = screen.getByTestId("teamver-canvas-slide-launch-template");
     expect(picker.getAttribute("role")).not.toBe("radiogroup");
     expect(picker.textContent).toContain("기본 슬라이드 템플릿");
@@ -221,5 +263,43 @@ describe("TeamverCanvasSlideLaunchModal", () => {
         "teamver-canvas-slide-launch-template-card-example-simple-deck",
       ),
     ).toBeNull();
+  });
+
+  it("uses studio split on wide viewports so templates are visible without accordion", () => {
+    const matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes("720"),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    vi.stubGlobal("matchMedia", matchMedia);
+
+    render(
+      <TeamverCanvasSlideLaunchModal
+        open
+        source={{ kind: "drive", asset: { assetId: "AST-wide", filename: "lesson.html" } }}
+        templateOptions={[
+          { id: "example-simple-deck", title: "기본" },
+          { id: "html-ppt-hermes", title: "Hermes" },
+        ]}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={vi.fn()}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const modal = screen.getByTestId("teamver-canvas-slide-launch-modal");
+    expect(modal.getAttribute("data-layout")).toBe("studio");
+    expect(screen.getByTestId("teamver-canvas-slide-launch-studio")).toBeTruthy();
+    expect(
+      screen.getByTestId("teamver-canvas-slide-launch-template-card-html-ppt-hermes"),
+    ).toBeTruthy();
+    expect(screen.getByTestId("teamver-canvas-slide-launch-footer-template").textContent).toContain(
+      "Hermes",
+    );
+
+    vi.unstubAllGlobals();
   });
 });

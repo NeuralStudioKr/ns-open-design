@@ -463,6 +463,17 @@ export interface Dict {
   'teamver.canvasSlideLaunch.title': string;
   'teamver.canvasSlideLaunch.description': string;
   'teamver.canvasSlideLaunch.hint': string;
+  'teamver.canvasSlideLaunch.stepDocument': string;
+  'teamver.canvasSlideLaunch.stepPrompt': string;
+  'teamver.canvasSlideLaunch.stepTemplate': string;
+  'teamver.canvasSlideLaunch.promptLabel': string;
+  'teamver.canvasSlideLaunch.promptLead': string;
+  'teamver.canvasSlideLaunch.promptPlaceholder': string;
+  'teamver.canvasSlideLaunch.promptEmptySummary': string;
+  'teamver.canvasSlideLaunch.nextPrompt': string;
+  'teamver.canvasSlideLaunch.nextTemplate': string;
+  'teamver.canvasSlideLaunch.templateFallback': string;
+  'teamver.canvasSlideLaunch.footerTemplate': string;
   'teamver.canvasSlideLaunch.badge': string;
   'teamver.canvasSlideLaunch.sourceLabel': string;
   'teamver.canvasSlideLaunch.untitled': string;

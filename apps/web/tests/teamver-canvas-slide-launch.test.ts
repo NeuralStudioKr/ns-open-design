@@ -98,12 +98,15 @@ describe("canvasSlideLaunch", () => {
     const runPrompt = canvasCreateSlidesRunPrompt(
       "Hermes Cyber Terminal",
       "Canvas title: Onboarding\nSource preview: Keep onboarding sections.",
+      "8 slides, friendly tone for new hires.",
     );
     expect(runPrompt).toContain(CANVAS_CREATE_SLIDES_PROMPT);
     expect(runPrompt).toContain(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION);
     expect(runPrompt).toContain("Selected slide template/style: Hermes Cyber Terminal.");
     expect(runPrompt).toContain("[Source brief]");
     expect(runPrompt).toContain("Canvas title: Onboarding");
+    expect(runPrompt).toContain("[User instruction]");
+    expect(runPrompt).toContain("8 slides, friendly tone for new hires.");
     expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).toBe(CANVAS_CREATE_SLIDES_PROMPT);
   });
 
@@ -192,6 +195,19 @@ describe("canvasSlideLaunch", () => {
     expect(options.some((option) => option.id === "some-image-tool")).toBe(false);
   });
 
+  it("threads userInstruction through plugin inputs when provided", () => {
+    const inputs = canvasCreateSlidesPluginInputs(
+      "Topic",
+      "Hermes",
+      "brief",
+      "8 slides, friendly tone",
+    );
+    expect(inputs.userInstruction).toBe("8 slides, friendly tone");
+    expect(canvasCreateSlidesPluginInputs("Topic", "Hermes", "brief")).not.toHaveProperty(
+      "userInstruction",
+    );
+  });
+
   it("threads plugin inputs through the existing-project composer handoff", () => {
     const composer = readWebSource("src/components/ChatComposer.tsx");
     const home = readWebSource("src/components/HomeView.tsx");
@@ -199,12 +215,12 @@ describe("canvasSlideLaunch", () => {
     const daemon = readWebSource("src/providers/daemon.ts");
 
     expect(composer).toContain("pluginInputs: canvasCreateSlidesPluginInputs(");
-    expect(composer).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff)");
+    expect(composer).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(handoff)");
     expect(composer).toContain("const sourceBrief = driveCreateSlidesSourceBrief(asset)");
-    expect(composer).toContain("canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief)");
+    expect(composer).toContain("promptForRun");
     expect(home).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff)");
     expect(home).toContain("const sourceBrief = driveCreateSlidesSourceBrief(asset)");
-    expect(home).toContain("canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief)");
+    expect(home).toContain("canvasSlideUserPrompt");
     expect(projectView).toContain("pluginInputs: meta?.pluginInputs");
     expect(daemon).toContain("pluginInputs?: Record<string, unknown>;");
     expect(daemon).toContain("{ pluginInputs }");
