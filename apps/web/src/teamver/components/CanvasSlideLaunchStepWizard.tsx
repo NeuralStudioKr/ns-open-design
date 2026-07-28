@@ -21,7 +21,10 @@ type Props = {
  * Step indicator + single visible panel (안 A). Navigation is via footer prev/next.
  */
 export function CanvasSlideLaunchStepWizard({ steps, activeStepId, stepperAriaLabel }: Props) {
-  const activeIndex = steps.findIndex((step) => step.id === activeStepId);
+  const activeIndex = Math.max(
+    0,
+    steps.findIndex((step) => step.id === activeStepId),
+  );
   const activeStep = steps[activeIndex] ?? steps[0];
 
   return (

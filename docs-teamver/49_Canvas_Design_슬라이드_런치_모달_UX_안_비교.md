@@ -260,10 +260,10 @@
 
 | Phase | 작업 | 비고 |
 |-------|------|------|
-| **P0** | Studio 2열 제거, **step state** + 푸터 이전/다음 | `data-layout=wizard` |
-| **P0** | 푸터 **취소 제거**, 헤더 X SSOT | i18n `close` vs `cancel` 분리 |
-| **P1** | Stepper UI + step 1 preview **전체 높이** | studio mask CSS 삭제 |
-| **P1** | 템플릿 1개 → **A-1** (2-step) | |
+| **P0** | Studio 2열 제거, **step state** + 푸터 이전/다음 | `data-layout=wizard` — **완료 (2026-07-28)** |
+| **P0** | 푸터 **취소 제거**, 헤더 X SSOT | i18n `close` vs `cancel` — **완료** |
+| **P1** | Stepper UI + step 1 preview **전체 높이** | studio mask CSS 삭제 — **완료** |
+| **P1** | 템플릿 1개 → **A-1** (2-step) | **완료** |
 | **P2** | Usability: staging 실사용자 5명 | scroll depth·완료율 |
 
 **테스트:** modal test — step 전환, 푸터 버튼, X/Escape, confirming 시 X disabled; `취소` 버튼 query **없음** assert.
@@ -288,3 +288,4 @@
 | 2026-07-28 | 초안 — 5안 비교, A 추천, X-only·푸터 취소 제거, Studio deprecated |
 | 2026-07-28 | 파일 재생성 — 이전 턴에서 commit·push 되지 않아 디스크에 없었음 |
 | 2026-07-28 | **P0 안 A 위저드** — studio/accordion 제거, 푸터 prev/next, X-only (`CanvasSlideLaunchStepWizard`) |
+| 2026-07-28 | 위저드 리뷰 — `resolvedActiveStepId`, 포커스 effect 통합, dead accordion CSS 제거 |

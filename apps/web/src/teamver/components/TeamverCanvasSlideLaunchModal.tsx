@@ -154,6 +154,18 @@ export function TeamverCanvasSlideLaunchModal({
     [includeTemplateStep],
   );
 
+  const resolvedActiveStepId: CanvasSlideLaunchWizardStepId = wizardStepOrder.includes(
+    activeStepId,
+  )
+    ? activeStepId
+    : (wizardStepOrder[0] ?? "document");
+
+  useEffect(() => {
+    if (resolvedActiveStepId !== activeStepId) {
+      setActiveStepId(resolvedActiveStepId);
+    }
+  }, [activeStepId, resolvedActiveStepId]);
+
   useEffect(() => {
     if (!open || source.kind !== "canvas") {
       setLiveHandoff(null);
@@ -192,8 +204,8 @@ export function TeamverCanvasSlideLaunchModal({
       }
       if (confirming) return;
       const mod = event.metaKey || event.ctrlKey;
-      if (mod && event.key === "Enter" && activeStepId === "prompt") {
-        const idx = wizardStepOrder.indexOf(activeStepId);
+      if (mod && event.key === "Enter" && resolvedActiveStepId === "prompt") {
+        const idx = wizardStepOrder.indexOf(resolvedActiveStepId);
         if (idx >= 0 && idx < wizardStepOrder.length - 1) {
           event.preventDefault();
           setActiveStepId(wizardStepOrder[idx + 1]!);
@@ -202,7 +214,7 @@ export function TeamverCanvasSlideLaunchModal({
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [activeStepId, confirming, onClose, open, wizardStepOrder]);
+  }, [confirming, onClose, open, resolvedActiveStepId, wizardStepOrder]);
 
   const untitled = t("teamver.canvasSlideLaunch.untitled");
   const handoff = source.kind === "canvas" ? liveHandoff ?? source.handoff : null;
@@ -245,7 +257,7 @@ export function TeamverCanvasSlideLaunchModal({
     ...quickSettings,
   };
 
-  const activeStepIndex = wizardStepOrder.indexOf(activeStepId);
+  const activeStepIndex = wizardStepOrder.indexOf(resolvedActiveStepId);
   const isLastWizardStep =
     activeStepIndex >= 0 && activeStepIndex === wizardStepOrder.length - 1;
 
@@ -451,28 +463,15 @@ export function TeamverCanvasSlideLaunchModal({
 
   useEffect(() => {
     if (!open) return;
-    if (activeStepId === "prompt") {
-      const id = requestAnimationFrame(() => {
-        promptInputRef.current?.focus({ preventScroll: true });
-      });
-      return () => cancelAnimationFrame(id);
-    }
-    if (activeStepId === "document") {
-      const id = requestAnimationFrame(() => {
-        closeButtonRef.current?.focus({ preventScroll: true });
-      });
-      return () => cancelAnimationFrame(id);
-    }
-    return undefined;
-  }, [activeStepId, open]);
-
-  useEffect(() => {
-    if (!open) return;
     const id = requestAnimationFrame(() => {
-      closeButtonRef.current?.focus({ preventScroll: true });
+      if (resolvedActiveStepId === "prompt") {
+        promptInputRef.current?.focus({ preventScroll: true });
+      } else {
+        closeButtonRef.current?.focus({ preventScroll: true });
+      }
     });
     return () => cancelAnimationFrame(id);
-  }, [open]);
+  }, [open, resolvedActiveStepId]);
 
   const promptSummary = promptStepSummary(
     userPrompt,
@@ -480,9 +479,9 @@ export function TeamverCanvasSlideLaunchModal({
   );
 
   const footerContextLine =
-    activeStepId === "document"
+    resolvedActiveStepId === "document"
       ? headline
-      : activeStepId === "prompt"
+      : resolvedActiveStepId === "prompt"
         ? promptSummary
         : selectedTemplate
           ? t("teamver.canvasSlideLaunch.footerTemplate", { name: selectedTemplate.title })
@@ -544,7 +543,7 @@ export function TeamverCanvasSlideLaunchModal({
           <div className="teamver-canvas-slide-launch-flow teamver-canvas-slide-launch-flow--wizard">
             <CanvasSlideLaunchStepWizard
               steps={wizardSteps}
-              activeStepId={activeStepId}
+              activeStepId={resolvedActiveStepId}
               stepperAriaLabel={t("teamver.canvasSlideLaunch.stepperLabel")}
             />
           </div>
@@ -588,7 +587,7 @@ export function TeamverCanvasSlideLaunchModal({
                 {footerContextLine}
               </span>
             ) : null}
-            {selectedTemplate && (includeTemplateStep ? activeStepId !== "template" : true) ? (
+            {selectedTemplate && (includeTemplateStep ? resolvedActiveStepId !== "template" : true) ? (
               <span
                 className="teamver-canvas-slide-launch-footer-template"
                 data-testid="teamver-canvas-slide-launch-footer-template"
@@ -598,7 +597,7 @@ export function TeamverCanvasSlideLaunchModal({
               </span>
             ) : null}
             {!footerContextLine &&
-            !(selectedTemplate && (includeTemplateStep ? activeStepId !== "template" : true)) ? (
+            !(selectedTemplate && (includeTemplateStep ? resolvedActiveStepId !== "template" : true)) ? (
               <span className="teamver-canvas-slide-launch-footer-spacer" aria-hidden />
             ) : null}
           </div>

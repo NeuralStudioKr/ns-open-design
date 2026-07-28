@@ -241,6 +241,9 @@ describe("TeamverCanvasSlideLaunchModal", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
+    expect(
+      (screen.getByTestId("teamver-canvas-slide-launch-close") as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it("marks the default 기본 슬라이드 템플릿 card with a visible badge", () => {
