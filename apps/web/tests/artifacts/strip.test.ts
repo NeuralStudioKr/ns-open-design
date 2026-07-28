@@ -228,6 +228,33 @@ describe('artifactPreviewFromInFlightContent', () => {
     });
   });
 
+  it('recovers the last closed deck artifact for re-entry preview', () => {
+    const content = [
+      'Done.',
+      '<artifact type="deck" identifier="old"><section class="slide">Old</section></artifact>',
+      '<artifact type="deck" identifier="deck"><section class="slide">Latest</section></artifact>',
+    ].join('\n');
+    expect(artifactPreviewFromInFlightContent(content)).toMatchObject({
+      artifactType: 'deck',
+      identifier: 'deck',
+      html: '<section class="slide">Latest</section>',
+    });
+  });
+
+  it('does not treat a closed deck-patch artifact as a full re-entry preview', () => {
+    const content =
+      '<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="0">Patch</section></artifact>';
+    expect(artifactPreviewFromInFlightContent(content)).toBeNull();
+  });
+
+  it('recovers a standalone complete HTML document for re-entry preview', () => {
+    expect(artifactPreviewFromInFlightContent(completeHtml)).toMatchObject({
+      artifactType: 'deck',
+      identifier: 'deck',
+      html: completeHtml,
+    });
+  });
+
   it('returns null when the assistant row has no open artifact', () => {
     expect(artifactPreviewFromInFlightContent('Planning only.')).toBeNull();
   });

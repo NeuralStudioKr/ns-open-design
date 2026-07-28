@@ -155,6 +155,11 @@ describe("FileViewer streaming slide preview", () => {
     expect(projectView).toContain(
       "currentConversationStreaming || currentConversationAwaitingActiveRunAttach",
     );
+    expect(projectView).toContain("shouldCatchUpReattachTextFromSeed");
+    expect(projectView).toContain("reattachReplayRemainderAfterSeed");
+    expect(projectView).toContain("resolvePrimaryDeckFile");
+    expect(workspace).toContain("reason: 'streaming'");
+    expect(workspace).toContain("artifact-preview-streaming-veil");
   });
 
   it("arms disk wall once per artifact identity (not on refresh churn)", () => {

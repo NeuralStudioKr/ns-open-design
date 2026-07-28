@@ -206,6 +206,13 @@ function isStreamingCodeArtifactType(type: string): boolean {
   );
 }
 
+function isClosedPreviewArtifactType(type: string): boolean {
+  if (!type) return true;
+  const normalized = type.trim().toLowerCase();
+  if (normalized === 'deck-patch' || normalized === 'slide-patch') return false;
+  return isStreamingCodeArtifactType(type);
+}
+
 // Mirrors ProjectView's artifactBaseNameFor: the slug the persist path derives
 // the file name from.
 function artifactBaseNameForAttrs(attrs: Record<string, string>): string {
@@ -390,7 +397,52 @@ export function splitStreamingArtifact(content: string): {
   };
 }
 
-/** Open `<artifact>` body from a persisted in-flight assistant row (re-entry preview). */
+function extractClosedArtifactPreview(content: string): {
+  identifier: string;
+  artifactType: string;
+  title: string;
+  html: string;
+} | null {
+  const { ranges: baseRanges, unclosedFenceStart } = computeSkipRanges(content);
+  const ranges: Range[] =
+    unclosedFenceStart !== null ? [...baseRanges, [unclosedFenceStart, content.length]] : baseRanges;
+  let from = 0;
+  let best: {
+    identifier: string;
+    artifactType: string;
+    title: string;
+    html: string;
+  } | null = null;
+  while (from <= content.length) {
+    const open = findRealOpen(content, from, ranges);
+    if (open === -1) break;
+    const gt = content.indexOf('>', open);
+    if (gt === -1) break;
+    const end = findUnskipped(content, CLOSE, gt, ranges);
+    if (end === -1) break;
+    const attrs = parseArtifactAttrs(content.slice(open, gt));
+    const artifactType = attrs['type'] ?? '';
+    if (isClosedPreviewArtifactType(artifactType)) {
+      const html = content.slice(gt + 1, end);
+      if (html.trim()) {
+        best = {
+          identifier: (attrs['identifier'] ?? '').trim() || 'deck',
+          artifactType: artifactType.trim() || 'deck',
+          title: (attrs['title'] ?? '').trim() || 'Deck',
+          html,
+        };
+      }
+    }
+    from = end + CLOSE.length;
+  }
+  return best;
+}
+
+/**
+ * Preview HTML from a persisted in-flight assistant row (leave/re-entry).
+ * Prefers an open streaming artifact, then the last closed deck/html artifact,
+ * then a standalone recoverable HTML document in the message body.
+ */
 export function artifactPreviewFromInFlightContent(content: string): {
   identifier: string;
   artifactType: string;
@@ -398,11 +450,24 @@ export function artifactPreviewFromInFlightContent(content: string): {
   html: string;
 } | null {
   const { live } = splitStreamingArtifact(content);
-  if (!live) return null;
-  return {
-    identifier: live.identifier.trim() || 'deck',
-    artifactType: live.artifactType.trim() || 'deck',
-    title: live.title.trim() || 'Deck',
-    html: live.content,
-  };
+  if (live?.content?.trim()) {
+    return {
+      identifier: live.identifier.trim() || 'deck',
+      artifactType: live.artifactType.trim() || 'deck',
+      title: live.title.trim() || 'Deck',
+      html: live.content,
+    };
+  }
+  const closed = extractClosedArtifactPreview(content);
+  if (closed) return closed;
+  const standalone = recoverStandaloneHtmlDocument(content);
+  if (standalone?.trim()) {
+    return {
+      identifier: 'deck',
+      artifactType: 'deck',
+      title: 'Deck',
+      html: standalone,
+    };
+  }
+  return null;
 }

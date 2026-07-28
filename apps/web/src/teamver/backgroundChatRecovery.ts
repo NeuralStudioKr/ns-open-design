@@ -96,9 +96,53 @@ export function conversationHasRecoverableBackgroundChat(
   messages: readonly ChatMessage[],
   mode: "daemon" | "api",
 ): boolean {
+  // Daemon reattach eligibility is broader than "in-flight" (runId may exist
+  // without startedAt/runStatus). Align preview/busy UI with that set so
+  // leave/re-entry shows working state before markStreaming lands.
+  if (mode === "daemon") {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (message?.role !== "assistant") continue;
+      return isRecoverableDaemonRunMessage(message);
+    }
+    return false;
+  }
   const latest = findInFlightAssistantMessages(messages)[0];
   if (!latest) return false;
   return isRecoverableBackgroundChatMessage(latest, mode);
+}
+
+/**
+ * Checkpoint text exists but `lastRunEventId` was never persisted — SSE will
+ * replay from the start. Seed the UI from content, then catch up deltas
+ * without duplicating the seeded prefix.
+ */
+export function shouldCatchUpReattachTextFromSeed(
+  message: Pick<ChatMessage, "content" | "lastRunEventId" | "events">,
+): boolean {
+  if (message.lastRunEventId?.trim()) return false;
+  if (assistantMessageTextBody(message).trim().length > 0) return true;
+  return (message.events?.length ?? 0) > 0;
+}
+
+export function reattachReplayRemainderAfterSeed(
+  seed: string,
+  replayed: string,
+): { complete: boolean; remainder: string } {
+  if (!seed) return { complete: true, remainder: replayed };
+  if (!replayed) return { complete: false, remainder: "" };
+  if (seed.startsWith(replayed)) return { complete: false, remainder: "" };
+  if (replayed.startsWith(seed)) {
+    return { complete: true, remainder: replayed.slice(seed.length) };
+  }
+  let overlap = Math.min(seed.length, replayed.length);
+  while (overlap > 0) {
+    if (seed.slice(-overlap) === replayed.slice(0, overlap)) {
+      return { complete: true, remainder: replayed.slice(overlap) };
+    }
+    overlap -= 1;
+  }
+  return { complete: true, remainder: replayed };
 }
 
 /** Drop leaked `streaming` UI when the active conversation has no in-flight turn. */

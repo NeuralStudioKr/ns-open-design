@@ -122,6 +122,12 @@ vi.mock('../../src/providers/project-events', () => ({
   useProjectFileEvents: vi.fn(),
 }));
 
+vi.mock('../../src/teamver/teamverEmbedBoot', () => ({
+  waitForTeamverEmbedBoot: vi.fn(() => Promise.resolve()),
+  revealTeamverEmbedChrome: vi.fn(),
+  isTeamverEmbedChromeRevealed: vi.fn(() => true),
+}));
+
 vi.mock('../../src/router', () => ({
   navigate: vi.fn(),
 }));

@@ -293,7 +293,9 @@ import {
   isInFlightAssistantMessage,
   isRecoverableDaemonRunMessage,
   mergeActiveRunsIntoMessages,
+  reattachReplayRemainderAfterSeed,
   resolveRunRecoveryBannerPhase,
+  shouldCatchUpReattachTextFromSeed,
   shouldFullReplayReattachedRun,
   shouldPollStaleDaemonRun,
   shouldForceFailStaleDaemonRun,
@@ -340,6 +342,7 @@ import {
   selectAutoOpenProducedHtml,
 } from './auto-open-file';
 import { selectInitialDesignPreviewFile } from './design-files/designArtifacts';
+import { isEmbedSupportingProjectFile } from '../teamver/branding/embedDeliverableFilePolicy';
 import {
   artifactBaseNameForPersist,
   artifactVersionTabsToClose,
@@ -836,12 +839,35 @@ function chatAttachmentForProjectFile(file: ProjectFile): ChatAttachment {
   };
 }
 
+function resolvePrimaryDeckFile(
+  files: readonly ProjectFile[],
+  entryFile?: string | null,
+): ProjectFile | null {
+  const deliverables = files.filter(
+    (file) => file.kind === 'html' && !isEmbedSupportingProjectFile(file),
+  );
+  if (deliverables.length === 0) return null;
+  const preferred = entryFile?.trim();
+  if (preferred) {
+    const match = deliverables.find(
+      (file) => file.name === preferred || file.path === preferred,
+    );
+    if (match) return match;
+  }
+  const deckNamed = deliverables.find((file) => {
+    const base = (file.name.split('/').pop() ?? file.name).toLowerCase();
+    return /^deck(?:[-_.].*)?\.html?$/.test(base);
+  });
+  if (deckNamed) return deckNamed;
+  return selectInitialDesignPreviewFile(deliverables, entryFile ?? null);
+}
+
 function resolvePrimaryDeckFilePath(
   files: readonly ProjectFile[],
   entryFile?: string | null,
 ): string | null {
-  const deck = selectInitialDesignPreviewFile([...files], entryFile ?? null);
-  if (!deck || deck.kind !== 'html') return null;
+  const deck = resolvePrimaryDeckFile(files, entryFile);
+  if (!deck) return null;
   return deck.path?.trim() || deck.name;
 }
 
@@ -4810,7 +4836,15 @@ export function ProjectView({
         let parser = createArtifactParser();
         let parsedArtifact: Artifact | null = null;
         let liveHtml = '';
-        let replayedContent = needsFullReplay ? '' : message.content;
+        const seededContent = needsFullReplay ? '' : (message.content ?? '');
+        let replayedContent = seededContent;
+        // Content checkpoint without lastRunEventId → SSE starts at event 0.
+        // Catch up silently until the stream meets the seed, then append only
+        // the remainder so chat/preview are not duplicated.
+        const catchUpFromSeed =
+          !needsFullReplay && shouldCatchUpReattachTextFromSeed(message);
+        let sseCatchUpBuffer = '';
+        let catchUpComplete = !catchUpFromSeed;
         const applyContentDelta = (delta: string) => {
           for (const ev of parser.feed(delta)) {
             if (ev.type === 'artifact:start') {
@@ -4884,6 +4918,31 @@ export function ProjectView({
           initialLastEventId: needsFullReplay ? null : message.lastRunEventId ?? null,
           handlers: {
             onDelta: (delta) => {
+              if (!catchUpComplete) {
+                sseCatchUpBuffer += delta;
+                const catchUp = reattachReplayRemainderAfterSeed(seededContent, sseCatchUpBuffer);
+                if (!catchUp.complete) {
+                  return;
+                }
+                const remainder = catchUp.remainder;
+                catchUpComplete = true;
+                if (!remainder) return;
+                replayedContent += remainder;
+                if (isTeamverEmbedMode()) {
+                  const nextChars = replayedContent.trim().length;
+                  setRunRecoveryBanner((prev) => {
+                    if (!prev || prev.conversationId !== reattachConversationId) return prev;
+                    return {
+                      ...prev,
+                      phase: 'live',
+                      runStatus: 'running',
+                      savedChars: Math.max(prev.savedChars, nextChars),
+                    };
+                  });
+                }
+                textBuffer.appendContent(remainder);
+                return;
+              }
               replayedContent += delta;
               if (isTeamverEmbedMode()) {
                 const nextChars = replayedContent.trim().length;
@@ -5983,20 +6042,18 @@ export function ProjectView({
         ),
       );
       let autoAttachedDeckPath: string | null = null;
-      const hasPriorAssistantTurn = retryTarget
-        ? retryTarget.priorMessages.some((message) => message.role === 'assistant')
-        : historyBase.some((message) => message.role === 'assistant');
+      // Disk deck is enough — first-turn interrupt + retry often has no prior
+      // assistant in historyBase, but the project already has deck.html.
       if (
         slideOnlyMvp
         && !isAutoContinueSend
         && commentAttachments.length === 0
-        && hasPriorAssistantTurn
       ) {
-        const existingDeck = selectInitialDesignPreviewFile(
+        const existingDeck = resolvePrimaryDeckFile(
           projectFiles,
           project.metadata?.entryFile ?? null,
         );
-        if (existingDeck?.kind === 'html') {
+        if (existingDeck) {
           const deckPath = existingDeck.path?.trim() || existingDeck.name;
           if (
             deckPath

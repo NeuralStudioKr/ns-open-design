@@ -7,8 +7,10 @@ import {
   isRecoverableBackgroundChatMessage,
   isRecoverableDaemonRunMessage,
   mergeByokBackgroundRunSummaries,
+  reattachReplayRemainderAfterSeed,
   reconcileByokBackgroundChatsAfterPoll,
   resolveRunRecoveryBannerPhase,
+  shouldCatchUpReattachTextFromSeed,
   shouldClearPhantomStreamingMarker,
   shouldFullReplayReattachedRun,
   shouldShowRunRecoveryBannerInChat,
@@ -112,6 +114,26 @@ describe("backgroundChatRecovery", () => {
     expect(isRecoverableBackgroundChatMessage(message, "daemon")).toBe(true);
   });
 
+  it("treats daemon runId-only rows as recoverable for leave/re-entry busy UI", () => {
+    const message: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "partial",
+      createdAt: 1,
+      runId: "run-1",
+    };
+    expect(isInFlightAssistantMessage(message)).toBe(false);
+    expect(isRecoverableDaemonRunMessage(message)).toBe(true);
+    expect(conversationHasRecoverableBackgroundChat([message], "daemon")).toBe(true);
+    expect(shouldCatchUpReattachTextFromSeed(message)).toBe(true);
+    expect(
+      shouldCatchUpReattachTextFromSeed({
+        ...message,
+        lastRunEventId: "evt-9",
+      }),
+    ).toBe(false);
+  });
+
   it("ignores older stale daemon running rows after the latest assistant has completed", () => {
     const older: ChatMessage = {
       id: "a-old",
@@ -194,6 +216,25 @@ describe("backgroundChatRecovery", () => {
         events: [{ kind: "text", text: "Saved in events_json only" }],
       }),
     ).toBe(false);
+  });
+
+  it("catches up reattached SSE replay without duplicating the seeded prefix", () => {
+    expect(reattachReplayRemainderAfterSeed("안녕하세요", "안녕")).toEqual({
+      complete: false,
+      remainder: "",
+    });
+    expect(reattachReplayRemainderAfterSeed("안녕하세요", "안녕하세요. 계속")).toEqual({
+      complete: true,
+      remainder: ". 계속",
+    });
+    expect(reattachReplayRemainderAfterSeed("초안 작성 중", "작성 중입니다")).toEqual({
+      complete: true,
+      remainder: "입니다",
+    });
+    expect(reattachReplayRemainderAfterSeed("sanitized", "raw replay")).toEqual({
+      complete: true,
+      remainder: "raw replay",
+    });
   });
 
   it("merges BYOK active projects into daemon summaries", () => {

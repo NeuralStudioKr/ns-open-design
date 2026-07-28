@@ -26,6 +26,7 @@ function createBootPromise(): Promise<void> {
 }
 
 let bootPromise = createBootPromise();
+let bootFallbackPromise: Promise<void> | null = null;
 
 /** Marks that bootstrap shell may give way to themed app chrome. */
 export const TEAMVER_EMBED_BOOTED_CLASS = "teamver-embed-booted";
@@ -77,7 +78,13 @@ export function revealTeamverEmbedChrome(): void {
 
 /** Embed registry gates must not run before workspace id is seeded from session. */
 export function waitForTeamverEmbedBoot(): Promise<void> {
-  return bootPromise;
+  if (bootDone) return Promise.resolve();
+  if (!bootFallbackPromise) {
+    bootFallbackPromise = new Promise<void>((resolve) => {
+      globalThis.setTimeout(resolve, TEAMVER_EMBED_BOOT_FALLBACK_MS);
+    });
+  }
+  return Promise.race([bootPromise, bootFallbackPromise]);
 }
 
 export function waitForTeamverEmbedChrome(): Promise<void> {
@@ -97,6 +104,7 @@ export function resetTeamverEmbedBootForTests(): void {
   bootDone = !isTeamverEmbedMode();
   resolveBoot = null;
   bootPromise = createBootPromise();
+  bootFallbackPromise = null;
   chromeRevealed = !isTeamverEmbedMode();
   resolveChrome = null;
   chromePromise = createChromePromise();

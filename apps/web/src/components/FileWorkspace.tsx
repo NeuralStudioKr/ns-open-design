@@ -1585,38 +1585,46 @@ export function FileWorkspace({
 
   const resolvedPreviewFile = previewFile ?? stalePreviewBootstrapFile;
 
-  // Memory-only preview fallback for the daemon-401 recovery scenario.
-  //
-  // Only feeder is `pendingArtifactRecovery`, a sessionStorage-backed snapshot
-  // of a run whose write got 401'd (see ProjectView.persistArtifact 401 path).
-  // It survives a hard refresh, so a user who reloads mid-outage still sees
-  // the deck they just watched stream in.
-  //
-  // We intentionally do NOT use in-memory `artifactHtml` alone as a feeder:
-  // the streaming case is already handled by FileViewer.liveHtml when a file
-  // is present, and using it as a standalone fallback would risk painting an
-  // unrelated run's HTML on top of a deleted/differently-named tab. The stash
-  // has a concrete fileName tie-in via ProjectView.requestOpenFile, so we
-  // know the fallback is being shown on the right tab.
-  //
-  // isArtifactHtmlStableForPreview guards against a partial/streaming stash
-  // being surfaced — the persistArtifact path only stashes after the model's
-  // artifact block closes, but the defensive check catches edge cases like
-  // a mid-stream 401 rehearsal or a stash written by an older FE build.
+  // Memory-only preview fallback:
+  // 1) session stash after daemon-401 (stable HTML, survives hard refresh)
+  // 2) leave/re-entry streaming: in-memory artifactHtml when the deck file is
+  //    not on disk yet (scoped to previewStreaming so unrelated tabs stay empty)
   const memoryOnlyPreview = useMemo<{
     html: string;
     fileName: string | null;
-    reason: 'session';
+    reason: 'session' | 'streaming';
   } | null>(() => {
-    if (!pendingArtifactRecovery?.html) return null;
-    if (!previewFileMatchesTab({ name: pendingArtifactRecovery.fileName }, activeTab)) return null;
-    if (!isArtifactHtmlStableForPreview(pendingArtifactRecovery.html)) return null;
-    return {
-      html: pendingArtifactRecovery.html,
-      fileName: pendingArtifactRecovery.fileName,
-      reason: 'session',
-    };
-  }, [pendingArtifactRecovery, activeTab]);
+    if (
+      pendingArtifactRecovery?.html
+      && previewFileMatchesTab({ name: pendingArtifactRecovery.fileName }, activeTab)
+      && isArtifactHtmlStableForPreview(pendingArtifactRecovery.html)
+    ) {
+      return {
+        html: pendingArtifactRecovery.html,
+        fileName: pendingArtifactRecovery.fileName,
+        reason: 'session',
+      };
+    }
+    if (
+      !resolvedPreviewFile
+      && Boolean(previewStreaming)
+      && artifactHtml?.trim()
+    ) {
+      return {
+        html: artifactHtml,
+        fileName: preferredPreviewFile ?? (activeTab || 'deck.html'),
+        reason: 'streaming',
+      };
+    }
+    return null;
+  }, [
+    pendingArtifactRecovery,
+    activeTab,
+    resolvedPreviewFile,
+    previewStreaming,
+    artifactHtml,
+    preferredPreviewFile,
+  ]);
 
   // Bootstrap refresh once per unresolved tab — not on every filesRefreshKey
   // bump (chokidar bursts would otherwise remount FileViewer as "loading").
@@ -2493,35 +2501,76 @@ export function FileWorkspace({
             liveHtml={artifactHtml?.trim() ? artifactHtml : undefined}
           />
         ) : memoryOnlyPreview ? (
-          // Memory-only fallback for the daemon-401 recovery path. The run
-          // finished streaming and produced a stable HTML document, but the
-          // write returned 401 because the BFF cookie died mid-flight, so
-          // nothing landed on disk. Render the stashed bytes directly so the
-          // user is not staring at an empty panel after minutes of streaming;
-          // ProjectView's auth-recovery listener retries the write when the
-          // cookie recovers and this branch falls through to the FileViewer
-          // once the file lands.
+          // Memory-only fallback for daemon-401 recovery OR leave/re-entry
+          // streaming before the deck file lands on disk.
           <div className="viewer-memory-preview" data-testid="viewer-memory-preview">
-            <div
-              className="viewer-memory-preview__banner"
-              role="status"
-              data-testid="viewer-memory-preview-banner"
-            >
-              {t('workspace.memoryOnlyPreviewSessionBanner')}
+            {memoryOnlyPreview.reason === 'session' ? (
+              <div
+                className="viewer-memory-preview__banner"
+                role="status"
+                data-testid="viewer-memory-preview-banner"
+              >
+                {t('workspace.memoryOnlyPreviewSessionBanner')}
+              </div>
+            ) : null}
+            <div className="viewer-memory-preview__frame-host">
+              <iframe
+                key={memoryOnlyPreview.fileName ?? 'memory-preview'}
+                className="viewer-memory-preview__frame"
+                srcDoc={memoryOnlyPreview.html}
+                sandbox="allow-scripts"
+                title={memoryOnlyPreview.fileName ?? 'preview'}
+              />
+              {memoryOnlyPreview.reason === 'streaming' || Boolean(previewStreaming) ? (
+                <div
+                  className="artifact-preview-streaming-veil"
+                  role="status"
+                  aria-live="polite"
+                  data-testid="artifact-preview-streaming-veil"
+                >
+                  <div className="artifact-preview-streaming-veil__backdrop" aria-hidden />
+                  <div className="artifact-preview-streaming-veil__card">
+                    <Icon
+                      name="spinner"
+                      size={18}
+                      className="artifact-preview-streaming-veil__icon"
+                    />
+                    <span className="artifact-preview-streaming-veil__label">
+                      {t('fileViewer.updatingPreview')}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
             </div>
-            <iframe
-              key={memoryOnlyPreview.fileName ?? 'memory-preview'}
-              className="viewer-memory-preview__frame"
-              srcDoc={memoryOnlyPreview.html}
-              sandbox="allow-scripts"
-              title={memoryOnlyPreview.fileName ?? 'preview'}
-            />
           </div>
         ) : pendingPreviewTab ? (
-          <div className="viewer-empty">
-            {/* Keep loading until ghost resolve retargets/closes — never flash
-                embed previewUnavailable while the file list is still catching up. */}
-            {t('fileViewer.loading')}
+          <div
+            className={`viewer-empty${previewStreaming ? ' artifact-preview-streaming-veil-host' : ''}`}
+            role={previewStreaming ? 'status' : undefined}
+            aria-live={previewStreaming ? 'polite' : undefined}
+          >
+            {previewStreaming ? (
+              <div
+                className="artifact-preview-streaming-veil"
+                data-testid="artifact-preview-streaming-veil"
+              >
+                <div className="artifact-preview-streaming-veil__backdrop" aria-hidden />
+                <div className="artifact-preview-streaming-veil__card">
+                  <Icon
+                    name="spinner"
+                    size={18}
+                    className="artifact-preview-streaming-veil__icon"
+                  />
+                  <span className="artifact-preview-streaming-veil__label">
+                    {t('fileViewer.updatingPreview')}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              // Keep loading until ghost resolve retargets/closes — never flash
+              // embed previewUnavailable while the file list is still catching up.
+              t('fileViewer.loading')
+            )}
           </div>
         ) : (
           <div className="viewer-empty">
