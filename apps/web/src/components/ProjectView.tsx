@@ -17,18 +17,35 @@ import type { ArtifactManifest } from '../artifacts/types';
 import { resolveHtmlPointerArtifactTarget } from '../artifacts/pointer';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
 import {
-  applyDeckPatch,
   diffDeckSlideIndexes,
   extractTopLevelSlideSections,
   isDeckPatchArtifactType,
   parseDeckPatch,
-  type DeckPatch,
 } from '../artifacts/deck-patch';
 import {
   applyElementPatches,
   isElementPatchArtifactType,
   parseElementPatch,
 } from '../artifacts/element-patch';
+import {
+  applyScopedDeckPatchToHtml,
+  extractSlideByIndex,
+  mergeScopedCommentTargetsFromPatchedDeck,
+  scopedCommentElementIds,
+  selectorCommentElementIds,
+  targetTextPreservedInPatchedSlide,
+  type DeckPatchMergeResult,
+  type ScopedDeckPersistFailureCode,
+} from '../edit-mode/scoped-deck-patch';
+
+export {
+  applyScopedDeckPatchToHtml,
+  extractSlideByIndex,
+  mergeScopedCommentTargetsFromPatchedDeck,
+  resolveScopedCommentSlideCandidates,
+  slideDiffIsStyleOnly,
+  targetTextPreservedInPatchedSlide,
+} from '../edit-mode/scoped-deck-patch';
 import {
   clearPendingArtifactWrite,
   clearProjectPendingArtifactWrites,
@@ -257,8 +274,6 @@ import {
 import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import {
   maskManualEditTargets,
-  mergeManualEditTargetsFromSource,
-  graftPatchedTargetElementFromSource,
 } from '../edit-mode/source-patches';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
@@ -1149,58 +1164,6 @@ export function promptWithExistingDeckEditInstruction(
   return `${visiblePrompt}\n\n${slideExistingDeckEditInstruction(deckPath)}`;
 }
 
-/**
- * Load the current deck file, parse the streamed `deck-patch` body, and
- * merge. Returns the merged full-deck HTML on success, or a structured
- * failure so the UI can distinguish truncated output from a scoped comment
- * edit that correctly refused to touch unrelated elements.
- */
-type ScopedDeckPersistFailureCode =
-  | 'deck_patch_parse_failed'
-  | 'deck_patch_current_unreadable'
-  | 'deck_patch_merge_failed'
-  | 'full_deck_current_unreadable'
-  | 'full_deck_diff_failed'
-  | 'full_deck_outside_slide_scope'
-  | 'full_deck_outside_element_scope'
-  | 'full_deck_comment_target_unresolved'
-  | 'comment_scope_missing_slide';
-
-type DeckPatchMergeResult =
-  | { ok: true; html: string }
-  | { ok: false; code: ScopedDeckPersistFailureCode; reason: string };
-
-function coerceDeckPatchToAllowedScope(
-  patch: DeckPatch,
-  allowedSlideIndexes: readonly number[] | undefined,
-  currentHtml?: string,
-  commentAttachments?: readonly ChatCommentAttachment[],
-): DeckPatch {
-  if (!allowedSlideIndexes || allowedSlideIndexes.length !== 1) return patch;
-  const allowed = allowedSlideIndexes[0]!;
-  if (!patch.ops.some((op) => op.slideIndex !== allowed)) return patch;
-  // When the model targets a different slide but that's where the
-  // comment's captured text actually lives, do NOT rewrite the patch
-  // onto the attachment's (possibly stale) slideIndex — that would
-  // silently edit the wrong slide. Let the relaxed scope retry and
-  // slide-index discovery path accept the model's choice instead.
-  if (currentHtml && commentAttachments?.length) {
-    for (const op of patch.ops) {
-      if (op.slideIndex === allowed) continue;
-      const modelSlide = extractSlideByIndex(currentHtml, op.slideIndex);
-      if (!modelSlide) continue;
-      for (const attachment of commentAttachments) {
-        if (targetTextPreservedInPatchedSlide(modelSlide, attachment)) {
-          return patch;
-        }
-      }
-    }
-  }
-  return {
-    ops: patch.ops.map((op) => ({ ...op, slideIndex: allowed })),
-  };
-}
-
 async function tryApplyElementPatchesAgainstCurrentDeck(input: {
   projectId: string;
   fileName: string;
@@ -1224,82 +1187,44 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     };
   }
   const allowedTargetIds = input.commentAttachments?.flatMap((attachment) => scopedCommentElementIds(attachment));
-  const applied = applyElementPatches({
+  let allowedSlideIndexes = input.allowedSlideIndexes;
+  let patches = parsed.patches;
+  let applied = applyElementPatches({
     currentHtml,
-    patches: parsed.patches,
-    allowedSlideIndexes: input.allowedSlideIndexes,
+    patches,
+    allowedSlideIndexes,
     allowedTargetIds,
   });
+  if (
+    !applied.ok &&
+    allowedSlideIndexes?.length === 1 &&
+    input.commentAttachments?.length &&
+    applied.reason.includes('outside comment scope')
+  ) {
+    const discovered = new Set<number>();
+    for (const attachment of input.commentAttachments) {
+      for (const patch of patches) {
+        const modelSlide = extractSlideByIndex(currentHtml, patch.slideIndex);
+        if (modelSlide && targetTextPreservedInPatchedSlide(modelSlide, attachment)) {
+          discovered.add(patch.slideIndex);
+        }
+      }
+    }
+    if (discovered.size > 0) {
+      allowedSlideIndexes = [...discovered];
+      applied = applyElementPatches({
+        currentHtml,
+        patches,
+        allowedSlideIndexes,
+        allowedTargetIds,
+      });
+    }
+  }
   if (!applied.ok) {
     console.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
     return { ok: false, code: 'deck_patch_merge_failed', reason: applied.reason };
   }
   return { ok: true, html: applied.html };
-}
-
-export function applyScopedDeckPatchToHtml(input: {
-  currentHtml: string;
-  patchBody: string;
-  allowedSlideIndexes?: readonly number[];
-  commentAttachments?: readonly ChatCommentAttachment[];
-  instructionText?: string;
-}): DeckPatchMergeResult {
-  const parsed = parseDeckPatch(input.patchBody);
-  if (!parsed.ok) {
-    return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
-  }
-  const currentHtml = input.currentHtml;
-  const patchForScope = coerceDeckPatchToAllowedScope(
-    parsed.patch,
-    input.allowedSlideIndexes,
-    currentHtml,
-    input.commentAttachments,
-  );
-  const strictScopeApply = applyDeckPatch({
-    currentHtml,
-    patch: patchForScope,
-    allowedSlideIndexes: input.allowedSlideIndexes,
-  });
-  let merged = strictScopeApply;
-  let mergedScopeRelaxed = false;
-  if (
-    !strictScopeApply.ok &&
-    input.allowedSlideIndexes &&
-    input.commentAttachments?.length &&
-    scopeRejectionCanRetry(strictScopeApply.reason)
-  ) {
-    const relaxed = applyDeckPatch({
-      currentHtml,
-      patch: parsed.patch,
-    });
-    if (relaxed.ok) {
-      merged = relaxed;
-      mergedScopeRelaxed = true;
-    }
-  }
-  if (!merged.ok) {
-    return { ok: false, code: 'deck_patch_merge_failed', reason: merged.reason };
-  }
-  if (input.allowedSlideIndexes && input.commentAttachments?.length) {
-    const scoped = mergeScopedCommentTargetsFromPatchedDeck({
-      currentHtml,
-      patchedHtml: merged.html,
-      commentAttachments: input.commentAttachments,
-      instructionText: input.instructionText,
-    });
-    if (!scoped.ok) {
-      return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason };
-    }
-    if (scoped.narrowed) return { ok: true, html: scoped.html };
-    if (mergedScopeRelaxed) {
-      return {
-        ok: false,
-        code: 'deck_patch_merge_failed',
-        reason: strictScopeApply.ok ? 'unexpected relaxed apply state' : strictScopeApply.reason,
-      };
-    }
-  }
-  return { ok: true, html: merged.html };
 }
 
 async function tryApplyDeckPatchAgainstCurrentDeck(input: {
@@ -1331,7 +1256,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   }
   const result = applyScopedDeckPatchToHtml({
     currentHtml,
-    patchBody: input.patchBody,
+    patch: parsed.patch,
     allowedSlideIndexes: input.allowedSlideIndexes,
     commentAttachments: input.commentAttachments,
     instructionText: input.instructionText,
@@ -1345,351 +1270,6 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     });
   }
   return result;
-}
-
-/**
- * True when the given applyDeckPatch failure reason is a scope-shape
- * mismatch that could plausibly be recovered by relaxing the scope
- * guard and letting the target-text-preserved narrow merge decide.
- *
- * Recovered failures include:
- *   - "outside attached comment scope" — model picked a different
- *     slide than `attachment.slideIndex` (stale bridge state,
- *     re-used attachment from a previous turn, etc.).
- *   - "is not allowed for scoped comment edits" — model used a
- *     non-replace op the strict path forbids. The relaxed retry
- *     still delegates safety to mergeScoped's per-attachment
- *     narrow merge, so we don't silently accept arbitrary structural
- *     changes.
- *   - "targets slideIndex X but deck has N slides" — the coerced
- *     slideIndex fell out of bounds because `attachment.slideIndex`
- *     was stale. The relaxed retry uses the ORIGINAL parsed patch
- *     which likely has a valid in-bounds slideIndex.
- *
- * Not every failure qualifies — "no <body>…</body>" / "deck body
- * has no <section class=\"slide\">" / "non-integer slideIndex" mean
- * the source or patch is unparseable and no retry will help.
- */
-function scopeRejectionCanRetry(reason: string): boolean {
-  return (
-    reason.includes('outside attached comment scope') ||
-    reason.includes('is not allowed for scoped comment edits') ||
-    /targets slideIndex \d+ but deck has \d+ slides/.test(reason)
-  );
-}
-
-function listDeckSlideIndexes(html: string): number[] {
-  const bodyMatch = /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i.exec(html);
-  const scope = bodyMatch ? bodyMatch[1] ?? '' : html;
-  return extractTopLevelSlideSections(scope).map((_, index) => index);
-}
-
-/**
- * Candidate slide indexes for a scoped comment merge, ordered by
- * preference. Starts with the attachment's captured slideIndex (may
- * be stale), then scans the current and patched decks for slides that
- * still contain the attachment's identity text.
- */
-export function resolveScopedCommentSlideCandidates(input: {
-  attachment: ChatCommentAttachment;
-  currentHtml: string;
-  patchedHtml: string;
-}): number[] {
-  const candidates: number[] = [];
-  const pushUnique = (index: number) => {
-    if (Number.isInteger(index) && index >= 0 && !candidates.includes(index)) {
-      candidates.push(index);
-    }
-  };
-
-  if (
-    typeof input.attachment.slideIndex === 'number' &&
-    Number.isInteger(input.attachment.slideIndex) &&
-    input.attachment.slideIndex >= 0
-  ) {
-    pushUnique(Math.floor(input.attachment.slideIndex));
-  }
-
-  for (const slideIndex of listDeckSlideIndexes(input.currentHtml)) {
-    const slide = extractSlideByIndex(input.currentHtml, slideIndex);
-    if (slide && targetTextPreservedInPatchedSlide(slide, input.attachment)) {
-      pushUnique(slideIndex);
-    }
-  }
-
-  for (const slideIndex of listDeckSlideIndexes(input.patchedHtml)) {
-    const slide = extractSlideByIndex(input.patchedHtml, slideIndex);
-    if (slide && targetTextPreservedInPatchedSlide(slide, input.attachment)) {
-      pushUnique(slideIndex);
-    }
-  }
-
-  return candidates;
-}
-
-function tryMergeScopedCommentAttachmentAtSlide(input: {
-  nextHtml: string;
-  patchedHtml: string;
-  attachment: ChatCommentAttachment;
-  slideIndex: number;
-  instructionText?: string;
-}): { ok: true; html: string } | { ok: false; reason: string } {
-  const ids = scopedCommentElementIds(input.attachment);
-  const hints = ids.map((id) => ({
-    id,
-    currentText: input.attachment.currentText,
-    instructionText: [input.attachment.comment, input.instructionText].filter(Boolean).join('\n'),
-    htmlHint: input.attachment.htmlHint,
-  }));
-
-  const merged = mergeManualEditTargetsFromSource(
-    input.nextHtml,
-    input.patchedHtml,
-    ids,
-    { slideIndex: input.slideIndex },
-    hints,
-  );
-  if (merged.ok) {
-    return { ok: true, html: merged.source };
-  }
-
-  if (
-    merged.reason !== 'Selected targets were unchanged.' &&
-    merged.reason !== 'No matching targets found to merge.'
-  ) {
-    return { ok: false, reason: merged.reason };
-  }
-
-  const nextSlide = extractSlideByIndex(input.nextHtml, input.slideIndex);
-  const patchedSlide = extractSlideByIndex(input.patchedHtml, input.slideIndex);
-  if (!nextSlide || !patchedSlide) {
-    return { ok: false, reason: merged.reason };
-  }
-
-  const acceptSlideLevel = (kind: 'style-only' | 'text-preserved'): string | null => {
-    const swapped = applyDeckPatch({
-      currentHtml: input.nextHtml,
-      patch: {
-        ops: [{ op: 'replace', slideIndex: input.slideIndex, html: patchedSlide }],
-      },
-    });
-    if (!swapped.ok) return null;
-    console.info('[deck-patch] accepted slide-level fallback', {
-      slideIndex: input.slideIndex,
-      fallback: kind,
-      reason: merged.reason,
-    });
-    return swapped.html;
-  };
-
-  if (
-    merged.reason === 'Selected targets were unchanged.' &&
-    slideDiffIsStyleOnly(nextSlide, patchedSlide)
-  ) {
-    const html = acceptSlideLevel('style-only');
-    if (html) return { ok: true, html };
-  }
-
-  if (targetTextPreservedInPatchedSlide(patchedSlide, input.attachment)) {
-    const html = acceptSlideLevel('text-preserved');
-    if (html) return { ok: true, html };
-  }
-
-  for (const id of ids) {
-    const hint = hints.find((candidate) => candidate.id === id);
-    const graft = graftPatchedTargetElementFromSource(
-      input.nextHtml,
-      input.patchedHtml,
-      id,
-      { slideIndex: input.slideIndex },
-      hint,
-    );
-    if (graft.ok && graft.source !== input.nextHtml) {
-      console.info('[deck-patch] accepted grafted target fallback', {
-        slideIndex: input.slideIndex,
-        targetId: id,
-        reason: merged.reason,
-      });
-      return { ok: true, html: graft.source };
-    }
-  }
-
-  return { ok: false, reason: merged.reason };
-}
-
-export function mergeScopedCommentTargetsFromPatchedDeck(input: {
-  currentHtml: string;
-  patchedHtml: string;
-  commentAttachments: readonly ChatCommentAttachment[];
-  instructionText?: string;
-}): { ok: true; html: string; narrowed: boolean } | { ok: false; reason: string } {
-  let nextHtml = input.currentHtml;
-  let narrowed = false;
-  for (const attachment of input.commentAttachments) {
-    const ids = scopedCommentElementIds(attachment);
-    if (ids.length === 0) continue;
-
-    const slideCandidates = resolveScopedCommentSlideCandidates({
-      attachment,
-      currentHtml: nextHtml,
-      patchedHtml: input.patchedHtml,
-    });
-    if (slideCandidates.length === 0) continue;
-
-    let lastReason = 'No matching targets found to merge.';
-    let mergedForAttachment = false;
-    for (const slideIndex of slideCandidates) {
-      const attempt = tryMergeScopedCommentAttachmentAtSlide({
-        nextHtml,
-        patchedHtml: input.patchedHtml,
-        attachment,
-        slideIndex,
-        instructionText: input.instructionText,
-      });
-      if (attempt.ok) {
-        nextHtml = attempt.html;
-        narrowed = true;
-        mergedForAttachment = true;
-        break;
-      }
-      lastReason = attempt.reason;
-    }
-
-    if (!mergedForAttachment) {
-      console.warn('[deck-patch] scoped narrow merge failed', {
-        slideCandidates,
-        ids,
-        reason: lastReason,
-        currentText: attachment.currentText,
-        htmlHint: attachment.htmlHint?.slice(0, 120),
-      });
-      return { ok: false, reason: lastReason };
-    }
-  }
-  return { ok: true, html: nextHtml, narrowed };
-}
-
-/**
- * True when the attachment's captured `currentText` still appears
- * verbatim inside the model's patched slide HTML, OR the attachment's
- * `htmlHint`-extracted text is preserved (a shorter, more specific
- * fallback for elements with mostly-empty text). Both checks anchor
- * on the identity of the clicked target — if the visible copy the
- * user clicked survived the model's rewrite, the edit is still
- * semantically about the same content and the slide-level swap is
- * safe. Only when neither signal survives do we treat the model's
- * response as a wholly-different slide and reject.
- */
-export function targetTextPreservedInPatchedSlide(
-  patchedSlideOuter: string,
-  attachment: ChatCommentAttachment,
-): boolean {
-  const collapsedSlide = collapseTargetTextForMatch(
-    patchedSlideOuter.replace(/<[^>]+>/g, ' '),
-  );
-  for (const candidate of extractTargetIdentityAnchors(attachment)) {
-    // 2-char threshold: short Korean strings ("회사", "이름") are
-    // still distinctive enough as anchor tokens to greenlight a
-    // slide-level swap. Below 2 chars the substring collision risk
-    // dominates.
-    if (candidate.length < 2) continue;
-    if (collapsedSlide.includes(candidate)) return true;
-  }
-  return false;
-}
-
-/**
- * Collect every whitespace-stripped text signal the attachment
- * carries that could anchor a target-preserved check. We look at
- * `currentText`, `htmlHint` (rendered text after tag strip), and
- * the pod members' captured text (for pod selections). Any single
- * hit greenlights the slide-level fallback — the model just has to
- * keep ONE of the user's identity anchors intact.
- */
-function extractTargetIdentityAnchors(attachment: ChatCommentAttachment): string[] {
-  const seen = new Set<string>();
-  const anchors: string[] = [];
-  const push = (raw: string): void => {
-    const collapsed = collapseTargetTextForMatch(raw);
-    if (!collapsed || seen.has(collapsed)) return;
-    seen.add(collapsed);
-    anchors.push(collapsed);
-  };
-  push(attachment.currentText || '');
-  const hintText = (attachment.htmlHint || '').replace(/<[^>]+>/g, ' ');
-  push(hintText);
-  if (attachment.podMembers) {
-    for (const member of attachment.podMembers) {
-      push(member.text || '');
-    }
-  }
-  return anchors;
-}
-
-/**
- * Whitespace-agnostic normalization for the "target text preserved"
- * check. Text captured from `el.textContent` collapses inter-element
- * whitespace, but the raw HTML source keeps newlines/indentation
- * between siblings. Comparing after stripping ALL whitespace makes
- * the check resilient to that formatting mismatch without letting
- * unrelated words collide (min-length guard in caller).
- */
-function collapseTargetTextForMatch(value: string): string {
-  return String(value ?? '').replace(/\s+/g, '').trim();
-}
-
-export function extractSlideByIndex(html: string, slideIndex: number): string | null {
-  // Reuse the deck-patch section scanner so nested `<section>` blocks
-  // inside a slide (rare, but possible in feature-heavy decks) do not
-  // shift the top-level slide indexing.
-  const bodyMatch = /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i.exec(html);
-  const scope = bodyMatch ? bodyMatch[1] ?? '' : html;
-  const sections = extractTopLevelSlideSections(scope);
-  const section = sections[slideIndex];
-  return section ? section.outerHtml : null;
-}
-
-/**
- * Return `true` when the two slide-level HTML fragments differ only
- * in style-related surfaces:
- *   - `<style>` element content inside the slide,
- *   - `class` / `style` attributes on any element in the slide.
- *
- * Text content, tag structure, identity attributes (`data-od-id`,
- * `data-od-runtime-id`, `data-od-source-path`, `data-od-edit`,
- * `data-slide-index`, etc.) and all other markup MUST be
- * byte-identical after normalization for the two sides to be
- * classified as style-only. This is intentionally narrow: it exists
- * so a legitimate "make X stand out" edit that the model chose to
- * express via slide-level CSS still lands as a valid save, while a
- * sibling-text or structural rewrite is still rejected as
- * "outside comment scope".
- */
-export function slideDiffIsStyleOnly(currentSlide: string, patchedSlide: string): boolean {
-  return normalizeSlideStructure(currentSlide) === normalizeSlideStructure(patchedSlide);
-}
-
-function normalizeSlideStructure(slideHtml: string): string {
-  return slideHtml
-    // Drop <style> element bodies — style-only additions never appear
-    // in the structural signature.
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '')
-    // Drop HTML comments so trivial "generated by model" annotations
-    // do not cause a false structural mismatch.
-    .replace(/<!--[\s\S]*?-->/g, '')
-    // Strip `class` and `style` attributes anywhere in the fragment.
-    // Identity attributes (`data-od-*`, `id`, etc.) intentionally
-    // survive so a class-swap that also renamed the element is still
-    // classified as a structural change.
-    .replace(/\s(?:class|style)\s*=\s*("[^"]*"|'[^']*')/gi, '')
-    // Collapse inter-tag whitespace so pure reformatting does not
-    // fail the equality check (model output often uses different
-    // indentation between siblings).
-    .replace(/>\s+</g, '><')
-    // Collapse remaining runs of whitespace within text/attributes
-    // so tab-vs-space and newline-vs-space stop being visible.
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function scopedCommentSlideIndexes(
@@ -1848,51 +1428,6 @@ function maskScopedCommentTargets(
   return maskedCount > 0
     ? { ok: true, source: maskedSource, maskedCount }
     : { ok: false };
-}
-
-function scopedCommentElementIds(attachment: ChatCommentAttachment): string[] {
-  if (attachment.selectionKind === 'visual') return [];
-  const ids = [
-    attachment.elementId,
-    ...selectorCommentElementIds(attachment.selector),
-    domSelectorCommentElementId(attachment.selector),
-    ...(attachment.podMembers ?? []).flatMap((member) => [
-      member.elementId,
-      ...selectorCommentElementIds(member.selector),
-      domSelectorCommentElementId(member.selector),
-    ]),
-  ];
-  return [...new Set(
-    ids
-      .map((id) => String(id || '').trim())
-      .filter((id) => id && !id.startsWith('pin-') && !id.startsWith('file-comment-')),
-  )];
-}
-
-function selectorCommentElementIds(selector: string | undefined): string[] {
-  const trimmed = String(selector || '').trim();
-  if (!trimmed) return [];
-  const ids: string[] = [];
-  for (const attr of ['data-od-id', 'data-screen-label', 'data-od-source-path', 'data-od-runtime-id']) {
-    const re = new RegExp(`\\[${attr}=(?:"([^"]+)"|'([^']+)'|([^\\]\\s]+))\\]`, 'gi');
-    for (const match of trimmed.matchAll(re)) {
-      const value = match[1] || match[2] || match[3] || '';
-      if (value.trim()) ids.push(value.trim());
-    }
-  }
-  return ids;
-}
-
-function domSelectorCommentElementId(selector: string | undefined): string {
-  const trimmed = String(selector || '').trim();
-  if (!trimmed || /[<{}]/.test(trimmed)) return '';
-  if (
-    !trimmed.startsWith('body > ')
-    && !/^(?:[a-z][a-z0-9-]*|\.[a-z0-9_-]+|\[[a-z0-9_-]+=)/i.test(trimmed)
-  ) {
-    return '';
-  }
-  return `dom:${trimmed}`;
 }
 
 function historyWithWorkspaceContext(

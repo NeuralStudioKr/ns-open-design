@@ -413,41 +413,35 @@ describe("ProjectView message loading", () => {
   });
 
   it("keeps scoped comment deck edits element-bound even when comments only have selectors", () => {
-    const source = readSource("src/components/ProjectView.tsx");
+    const patchSource = readSource("src/edit-mode/scoped-deck-patch.ts");
+    const viewSource = readSource("src/components/ProjectView.tsx");
 
-    expect(source).toContain("function domSelectorCommentElementId");
-    expect(source).toContain("function selectorCommentElementIds");
-    expect(source).toContain("'data-od-id', 'data-screen-label', 'data-od-source-path', 'data-od-runtime-id'");
-    expect(source).toContain("...selectorCommentElementIds(attachment.selector)");
-    expect(source).toContain("return `dom:${trimmed}`");
-    expect(source).toContain("domSelectorCommentElementId(attachment.selector)");
-    expect(source).toContain("...selectorCommentElementIds(member.selector)");
-    expect(source).toContain("domSelectorCommentElementId(member.selector)");
+    expect(patchSource).toContain("function domSelectorCommentElementId");
+    expect(patchSource).toContain("function selectorCommentElementIds");
+    expect(patchSource).toContain("'data-od-id', 'data-screen-label', 'data-od-source-path', 'data-od-runtime-id'");
+    expect(patchSource).toContain("...selectorCommentElementIds(attachment.selector)");
+    expect(patchSource).toContain("return `dom:${trimmed}`");
+    expect(patchSource).toContain("domSelectorCommentElementId(attachment.selector)");
+    expect(patchSource).toContain("...selectorCommentElementIds(member.selector)");
+    expect(patchSource).toContain("domSelectorCommentElementId(member.selector)");
 
-    const guardStart = source.indexOf("async function fullDeckEditStaysInsideCommentScope");
+    const guardStart = viewSource.indexOf("async function fullDeckEditStaysInsideCommentScope");
     expect(guardStart).toBeGreaterThan(0);
-    const guardBlock = source.slice(guardStart, guardStart + 3600);
+    const guardBlock = viewSource.slice(guardStart, guardStart + 3600);
     expect(guardBlock).toContain("const hasElementScopedComment");
     expect(guardBlock).toContain("const targetUnresolved");
     expect(guardBlock).toContain("beforeMasked.maskedCount !== afterMasked.maskedCount");
     expect(guardBlock).toContain("code: 'full_deck_comment_target_unresolved'");
     expect(guardBlock).toContain("scoped full-deck guard rejected unresolved comment target");
 
-    expect(source).toContain("mergeManualEditTargetsFromSource");
-    expect(source).toContain("function mergeScopedCommentTargetsFromPatchedDeck");
-    expect(source).toContain("commentAttachments: runCommentAttachmentsRef.current");
-    expect(source).toContain("instructionText: runVisiblePromptRef.current");
-    // Wrapper structure evolved to nest attachment/instructionText
-    // inside a plain object — accept either the historical
-    // `attachment.comment` inline shape or the current `input.attachment.comment`
-    // wrapper shape so downstream refactors of the wrapper name do
-    // not silently rot this pin.
-    expect(source).toMatch(
-      /instructionText:\s*\[[^\]]*attachment\.comment[^\]]*instructionText[^\]]*\]\.filter\(Boolean\)\.join/,
-    );
-    expect(source).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)");
-    expect(source).toContain("commentAttachmentCount: scopedCommentAttachments.length");
-    expect(source).toContain("commentAttachments: scopedCommentAttachments");
+    expect(patchSource).toContain("mergeManualEditTargetsFromSource");
+    expect(patchSource).toContain("function mergeScopedCommentTargetsFromPatchedDeck");
+    expect(viewSource).toContain("commentAttachments: runCommentAttachmentsRef.current");
+    expect(viewSource).toContain("instructionText: runVisiblePromptRef.current");
+    expect(patchSource).toContain("scopedCommentInstructionText");
+    expect(viewSource).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)");
+    expect(viewSource).toContain("commentAttachmentCount: scopedCommentAttachments.length");
+    expect(viewSource).toContain("commentAttachments: scopedCommentAttachments");
   });
 
   it("hydrates missing deck comment slide indexes before scoped edit prompts", () => {
@@ -501,107 +495,55 @@ describe("ProjectView message loading", () => {
   });
 
   it("does not replace a whole slide when element-scoped comment merge fails", () => {
-    const source = readSource("src/components/ProjectView.tsx");
-    expect(source).not.toContain("function tryMergeSingleSlideScopedArtifact");
-    expect(source).not.toContain("isScopedVisualStyleInstruction");
-    expect(source).toContain("return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason }");
-    expect(source).toContain("function coerceDeckPatchToAllowedScope");
-    expect(source).toContain("isElementPatchArtifactType");
-    expect(source).toContain("graftPatchedTargetElementFromSource");
+    const viewSource = readSource("src/components/ProjectView.tsx");
+    const patchSource = readSource("src/edit-mode/scoped-deck-patch.ts");
+    expect(viewSource).not.toContain("function tryMergeSingleSlideScopedArtifact");
+    expect(viewSource).not.toContain("isScopedVisualStyleInstruction");
+    expect(patchSource).toContain("return { ok: false, reason: lastReason }");
+    expect(patchSource).toContain("function coerceDeckPatchToAllowedScope");
+    expect(viewSource).toContain("isElementPatchArtifactType");
+    expect(patchSource).toContain("graftPatchedTargetElementFromSource");
   });
 
   it("accepts a slide-level style-only diff when element merge said targets were unchanged", () => {
-    // Behavioral coverage: merge-scoped-comment-style-fallback.test.ts.
-    // This source-level pin ensures the narrow fallback code path
-    // remains wired up. Users typing "회사 이름 눈에 잘 띄게 수정" get a
-    // deck-patch that carries a slide-level <style> block; without
-    // this branch the target's own outerHTML is byte-identical to
-    // current source, mergeManualEditTargetsFromSource returns
-    // "Selected targets were unchanged.", and the whole scoped merge
-    // hard-rejects the model's legitimate style edit as
-    // "선택한 댓글 대상 밖의 변경".
-    const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("slideDiffIsStyleOnly");
-    expect(source).toContain("extractSlideByIndex");
-    expect(source).toContain("normalizeSlideStructure");
-    expect(source).toContain("accepted slide-level fallback");
-    expect(source).toContain("merged.reason === 'Selected targets were unchanged.'");
+    const patchSource = readSource("src/edit-mode/scoped-deck-patch.ts");
+    expect(patchSource).toContain("slideDiffIsStyleOnly");
+    expect(patchSource).toContain("extractSlideByIndex");
+    expect(patchSource).toContain("normalizeSlideStructure");
+    expect(patchSource).toContain("accepted slide-level fallback");
+    expect(patchSource).toContain("merged.reason === 'Selected targets were unchanged.'");
   });
 
   it("also accepts a slide-level swap when the target text survives the model rewrite", () => {
-    // Second-tier fallback for cases where the model kept the
-    // captured target text (attachment.currentText) somewhere in the
-    // patched slide but dropped data-od-id / restructured the target
-    // element (common when the model wraps existing text in a new
-    // span for emphasis). Behavioral coverage:
-    // merge-scoped-comment-style-fallback.test.ts.
-    const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("targetTextPreservedInPatchedSlide");
-    expect(source).toContain("collapseTargetTextForMatch");
-    expect(source).toContain("'No matching targets found to merge.'");
-    expect(source).toContain("fallback: kind");
+    const patchSource = readSource("src/edit-mode/scoped-deck-patch.ts");
+    expect(patchSource).toContain("targetTextPreservedInPatchedSlide");
+    expect(patchSource).toContain("collapseTargetTextForMatch");
+    expect(patchSource).toContain("'No matching targets found to merge.'");
+    expect(patchSource).toContain("fallback: kind");
   });
 
   it("retries applyDeckPatch without the scope guard when the model targeted a plausible sibling slide", () => {
-    // Third-tier fallback (top layer): when the strict scope apply
-    // rejects because the model's data-slide-index differs from the
-    // captured attachment.slideIndex, we retry once WITHOUT the scope
-    // guard and rely on mergeScoped to verify the model's slide via
-    // targetTextPreservedInPatchedSlide. This unblocks the common
-    // case where the deck bridge captured a stale active slide index
-    // at click time. If the narrow merge produces no narrowing on
-    // the relaxed retry, we still reject — that's the safety rail
-    // against silently accepting a wholly-different slide.
-    const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("scopeRejectionCanRetry");
-    expect(source).toContain("outside attached comment scope");
-    expect(source).toContain("is not allowed for scoped comment edits");
-    // Also retry when a coerced attachment.slideIndex fell out of
-    // deck bounds — the ORIGINAL patch's slideIndex is likely valid.
-    expect(source).toContain("targets slideIndex \\d+ but deck has \\d+ slides");
-    expect(source).toContain("mergedScopeRelaxed");
-    // The relaxed branch must still reject when the narrow merge
-    // could not verify the model's chosen slide via
-    // targetTextPreservedInPatchedSlide. Pin the structural shape of
-    // that reject path — the exact console message string was
-    // reorganized in a downstream refactor, so we assert on the
-    // `mergedScopeRelaxed`-guarded reject block instead of the log
-    // wording.
-    expect(source).toMatch(
-      /if \(mergedScopeRelaxed\)[\s\S]{0,200}deck_patch_merge_failed[\s\S]{0,200}strictScopeApply\.reason/,
-    );
+    const patchSource = readSource("src/edit-mode/scoped-deck-patch.ts");
+    expect(patchSource).toContain("scopeRejectionCanRetry");
+    expect(patchSource).toContain("outside attached comment scope");
+    expect(patchSource).toContain("is not allowed for scoped comment edits");
+    expect(patchSource).toContain("targets slideIndex \\d+ but deck has \\d+ slides");
+    expect(patchSource).toContain("mergedScopeRelaxed");
+    expect(patchSource).toContain("scope-relaxed apply produced no narrowed match — rejecting");
+    expect(patchSource).toContain("code: 'deck_patch_merge_failed'");
   });
 
   it("uses every identity anchor the attachment carries for the text-preserved fallback", () => {
-    // Behavioral coverage: merge-scoped-comment-style-fallback.test.ts.
-    // The check now looks at currentText, htmlHint-stripped text,
-    // AND pod members' captured text, and accepts a 2-char anchor
-    // (down from 4). That way short-but-distinctive Korean tokens
-    // like "회사" still greenlight a legitimate style edit that
-    // dropped identifiers but preserved the visible copy.
-    const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("extractTargetIdentityAnchors");
-    expect(source).toContain("podMembers");
-    expect(source).toContain("collapseTargetTextForMatch");
-    // 2-char threshold pin — anything higher blocks legitimate
-    // short-anchor edits.
-    expect(source).toContain("candidate.length < 2");
+    const patchSource = readSource("src/edit-mode/scoped-deck-patch.ts");
+    expect(patchSource).toContain("extractTargetIdentityAnchors");
+    expect(patchSource).toContain("podMembers");
+    expect(patchSource).toContain("collapseTargetTextForMatch");
+    expect(patchSource).toContain("candidate.length < 2");
   });
 
   it("surfaces the underlying scope-rejected reason in the user-facing banner", () => {
-    // "선택한 댓글 대상 밖의 변경이 감지되어 저장하지 않았습니다" alone
-    // did not tell the user (or ops looking at the bug report)
-    // WHICH layer rejected. formatProjectArtifactCommentScopeRejectedError
-    // now takes an optional detail string and appends it as a
-    // parenthesized reason so future failure reports include the
-    // concrete `code — reason` pair without needing browser console
-    // access.
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("formatProjectArtifactCommentScopeRejectedError(");
-    // The call site must wire code + reason through as detail. This
-    // stays a lightweight structural pin — the formatter's own
-    // append-detail behaviour is covered separately by
-    // teamver-project-error-messages.
     expect(source).toContain("[terminalPersistResult.code, terminalPersistResult.reason]");
   });
 

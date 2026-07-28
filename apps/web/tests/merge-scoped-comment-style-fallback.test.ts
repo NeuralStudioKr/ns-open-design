@@ -29,7 +29,7 @@ import {
   slideDiffIsStyleOnly,
   extractSlideByIndex,
   targetTextPreservedInPatchedSlide,
-} from '../src/components/ProjectView';
+} from '../src/edit-mode/scoped-deck-patch';
 import type { ChatCommentAttachment } from '../src/types';
 
 function makeAttachment(overrides: Partial<ChatCommentAttachment> = {}): ChatCommentAttachment {
