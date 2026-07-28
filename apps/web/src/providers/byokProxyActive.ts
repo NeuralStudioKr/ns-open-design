@@ -1,6 +1,12 @@
 import { fetchTeamverDaemon } from "../teamver/teamverDaemonHeaders";
 import { isDesignAuthRefreshDeclined } from "../teamver/designBffClient";
 import { isTeamverEmbedSessionAuthenticated } from "../teamver/teamverEmbedSession";
+import {
+  isLikelyFetchNetworkFailure,
+  noteTeamverNetworkBackoff,
+  shouldSkipTeamverNetworkCalls,
+  TeamverBrowserNetworkUnavailableError,
+} from "../teamver/teamverBrowserNetwork";
 
 export class ActiveByokProxyAuthTransientError extends Error {
   readonly code = "ACTIVE_BYOK_PROXY_AUTH_TRANSIENT";
@@ -36,6 +42,7 @@ export function resetByokProxyActiveAuthBackoffForTests(): void {
 }
 
 export function shouldSkipByokProxyActivePoll(): boolean {
+  if (shouldSkipTeamverNetworkCalls()) return true;
   if (Date.now() < byokProxyAuthBackoffUntil) return true;
   if (isDesignAuthRefreshDeclined()) return true;
   if (!isTeamverEmbedSessionAuthenticated()) return true;
@@ -57,11 +64,23 @@ export async function listActiveByokProxyStreams(
   }
 
   const qs = new URLSearchParams({ projectId });
-  const resp = await fetchTeamverDaemon(`/api/proxy/active?${qs.toString()}`, {
-    teamverProjectId: projectId,
-    // Never run soft-sticky ladder from this read-only poll.
-    skipEmbedAuthRecovery: true,
-  });
+  let resp: Response;
+  try {
+    resp = await fetchTeamverDaemon(`/api/proxy/active?${qs.toString()}`, {
+      teamverProjectId: projectId,
+      // Never run soft-sticky ladder from this read-only poll.
+      skipEmbedAuthRecovery: true,
+    });
+  } catch (err) {
+    if (
+      err instanceof TeamverBrowserNetworkUnavailableError
+      || isLikelyFetchNetworkFailure(err)
+    ) {
+      noteTeamverNetworkBackoff();
+      throw new ActiveByokProxyAuthTransientError();
+    }
+    throw err;
+  }
   if (resp.status === 404) {
     return [];
   }

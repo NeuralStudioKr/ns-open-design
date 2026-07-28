@@ -32,6 +32,11 @@ import {
   remainingBffRefreshLeaderLockMs,
 } from "./teamverBffRefreshLeader";
 import { isMainSsoGateError } from "./teamverMainSsoGate";
+import {
+  isLikelyFetchNetworkFailure,
+  noteTeamverNetworkBackoff,
+  shouldSkipTeamverNetworkCalls,
+} from "./teamverBrowserNetwork";
 
 /** Post–app-sdk shape (`snakeToCamelDeep` on `/auth/session`). */
 export type DesignAuthSessionUser = {
@@ -90,7 +95,17 @@ function fetchDesignBffSdk(input: Parameters<typeof fetch>[0], init?: RequestIni
       }),
     );
   }
-  return fetch(input, init);
+  if (shouldSkipTeamverNetworkCalls()) {
+    return Promise.reject(
+      new NetworkError({ status: 0, message: "teamver_browser_network_unavailable" }),
+    );
+  }
+  return fetch(input, init).catch((err) => {
+    if (isLikelyFetchNetworkFailure(err)) {
+      noteTeamverNetworkBackoff();
+    }
+    throw err;
+  });
 }
 
 export function getDesignBffClient(): TeamverClient | null {
@@ -495,8 +510,9 @@ export function pauseDesignBffAuthDuringTransition(): void {
   invalidateDesignAuthSessionCache();
 }
 
-/** True when sticky decline or logged-out memory should skip BFF/daemon auth ladders. */
+/** True when sticky decline, logged-out memory, or offline should skip BFF/daemon auth ladders. */
 export function shouldSkipTeamverBffAuthCalls(): boolean {
+  if (shouldSkipTeamverNetworkCalls()) return true;
   // Soft + hard sticky: C1 / 「다시 시도」 own recovery. Soft used to stay open
   // for S3-prefix BFF reads, but that re-opened withDesignBffCookieAuthRecovery
   // 401×2 storms (usage/publish/preview/billing). Prefix is cache-only while
@@ -914,6 +930,7 @@ function shouldUseDesignApiSessionFallback(err: unknown): boolean {
 async function fetchDesignAuthSessionCrossOriginFallback(): Promise<DesignAuthSession | null> {
   const origin = resolveTeamverDesignApiCrossOriginFallback();
   if (!origin) return null;
+  if (shouldSkipTeamverNetworkCalls()) return null;
   const url = `${origin.replace(/\/+$/, "")}/api/v1/auth/session`;
   try {
     const response = await fetch(url, {
@@ -923,7 +940,10 @@ async function fetchDesignAuthSessionCrossOriginFallback(): Promise<DesignAuthSe
     if (!response.ok) return null;
     const body = (await response.json()) as Record<string, unknown>;
     return normalizeDesignAuthSession(snakeToCamelDeep(body));
-  } catch {
+  } catch (err) {
+    if (isLikelyFetchNetworkFailure(err)) {
+      noteTeamverNetworkBackoff();
+    }
     return null;
   }
 }
@@ -1031,6 +1051,12 @@ export async function fetchDesignAuthSession(
 ): Promise<DesignAuthSession | null> {
   const force = options?.force ?? false;
   const recoveryLoad = resolveAuthRecoveryLoad(options);
+
+  if (shouldSkipTeamverNetworkCalls()) {
+    const stale = peekAuthenticatedSessionCache(STALE_SESSION_GRACE_MS);
+    if (stale) return stale;
+    return cachedSession?.value ?? null;
+  }
 
   if (options?.resetRefreshState) {
     resetDesignAuthRefreshState();

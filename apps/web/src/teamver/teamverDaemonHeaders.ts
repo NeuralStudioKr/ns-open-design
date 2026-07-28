@@ -11,6 +11,12 @@ import {
 import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
 import { readActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
 import { resolveTeamverProjectS3PrefixForDaemon } from "./teamverProjectS3PrefixResolve";
+import {
+  isLikelyFetchNetworkFailure,
+  noteTeamverNetworkBackoff,
+  shouldSkipTeamverNetworkCalls,
+  TeamverBrowserNetworkUnavailableError,
+} from "./teamverBrowserNetwork";
 
 /** HA sibling Set-Cookie race — mirror BFF/Drive soft retry delay (400ms). */
 const DAEMON_AUTH_RETRY_DELAY_MS = 400;
@@ -200,7 +206,19 @@ async function fetchDaemonWithEmbedAuthRecovery(
     return stickyDaemonUnauthorizedResponse();
   }
 
-  let resp = await fetch(input, init);
+  if (shouldSkipTeamverNetworkCalls()) {
+    throw new TeamverBrowserNetworkUnavailableError();
+  }
+
+  let resp: Response;
+  try {
+    resp = await fetch(input, init);
+  } catch (err) {
+    if (isLikelyFetchNetworkFailure(err)) {
+      noteTeamverNetworkBackoff();
+    }
+    throw err;
+  }
   if (options?.skipAuthRecovery || !shouldRecoverEmbedDaemonUnauthorized(input, resp, init)) {
     // Hard sticky / unauthenticated / explicit skip: surface banner without
     // probing. Background polls must take the skip path.
@@ -308,6 +326,9 @@ export async function fetchTeamverDaemon(
     skipTeamverWorkspaceHeaders,
     ...requestInit
   } = init;
+  if (shouldSkipTeamverNetworkCalls()) {
+    throw new TeamverBrowserNetworkUnavailableError();
+  }
   const projectId = teamverProjectId?.trim() || extractDaemonProjectId(input);
   const baseHeaders = headersInitToRecord(requestInit.headers);
   const headers = skipTeamverWorkspaceHeaders

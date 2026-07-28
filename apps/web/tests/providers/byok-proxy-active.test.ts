@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../src/teamver/teamverDaemonHeaders', () => ({
   fetchTeamverDaemon: vi.fn(),
@@ -21,13 +21,20 @@ import {
   resetByokProxyActiveAuthBackoffForTests,
   shouldSkipByokProxyActivePoll,
 } from '../../src/providers/byokProxyActive';
+import { resetTeamverNetworkBackoffForTests } from '../../src/teamver/teamverBrowserNetwork';
 
 describe('listActiveByokProxyStreams', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetByokProxyActiveAuthBackoffForTests();
+    resetTeamverNetworkBackoffForTests();
     vi.mocked(isDesignAuthRefreshDeclined).mockReturnValue(false);
     vi.mocked(isTeamverEmbedSessionAuthenticated).mockReturnValue(true);
+    vi.stubGlobal('navigator', { onLine: true });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('returns active proxy streams for the project', async () => {
@@ -96,6 +103,28 @@ describe('listActiveByokProxyStreams', () => {
     expect(fetchTeamverDaemon).not.toHaveBeenCalled();
   });
 
+  it('skips the network call while the browser is offline', async () => {
+    vi.stubGlobal('navigator', { onLine: false });
+
+    await expect(listActiveByokProxyStreams('project-1')).rejects.toBeInstanceOf(
+      ActiveByokProxyAuthTransientError,
+    );
+    expect(fetchTeamverDaemon).not.toHaveBeenCalled();
+  });
+
+  it('backs off after transport failures instead of hammering proxy/active', async () => {
+    vi.mocked(fetchTeamverDaemon).mockRejectedValue(new TypeError('Failed to fetch'));
+
+    await expect(listActiveByokProxyStreams('project-1')).rejects.toBeInstanceOf(
+      ActiveByokProxyAuthTransientError,
+    );
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+    await expect(listActiveByokProxyStreams('project-1')).rejects.toBeInstanceOf(
+      ActiveByokProxyAuthTransientError,
+    );
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+  });
+
   it('throws on transient failures so recovery callers do not treat them as drained', async () => {
     vi.mocked(fetchTeamverDaemon).mockResolvedValue(
       new Response(JSON.stringify({ error: 'bad gateway' }), {
@@ -110,8 +139,15 @@ describe('listActiveByokProxyStreams', () => {
   });
 
   it('throws network failures instead of returning an empty active stream list', async () => {
-    vi.mocked(fetchTeamverDaemon).mockRejectedValue(new TypeError('network down'));
+    vi.mocked(fetchTeamverDaemon).mockRejectedValue(new TypeError('Failed to fetch'));
 
-    await expect(listActiveByokProxyStreams('project-1')).rejects.toThrow('network down');
+    await expect(listActiveByokProxyStreams('project-1')).rejects.toBeInstanceOf(
+      ActiveByokProxyAuthTransientError,
+    );
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+    await expect(listActiveByokProxyStreams('project-1')).rejects.toBeInstanceOf(
+      ActiveByokProxyAuthTransientError,
+    );
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
   });
 });
