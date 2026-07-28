@@ -310,7 +310,13 @@ export const DECK_SKELETON_HTML = `<!doctype html>
       // Auto-focus body so arrow keys work without an initial click.
       document.body.setAttribute('tabindex', '-1');
       document.body.style.outline = 'none';
-      function focusDeck() { try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {} }
+      function focusDeck() {
+        if (
+          document.documentElement.hasAttribute('data-od-comment-mode')
+          || document.documentElement.hasAttribute('data-od-inspect-mode')
+        ) return;
+        try { window.focus(); document.body.focus({ preventScroll: true }); } catch (_) {}
+      }
       document.addEventListener('mousedown', focusDeck);
       window.addEventListener('load', focusDeck);
 

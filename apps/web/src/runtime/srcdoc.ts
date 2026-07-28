@@ -714,11 +714,20 @@ function annotateMissingOdIds(doc: string): string {
       '[id] > div[class]', '[id] > div[id]',
     ].join(', ');
     const skipTags = new Set(['script', 'style', 'template', 'noscript', 'iframe', 'object', 'embed']);
+    const skipDeckChrome = (el: Element): boolean => {
+      const tag = el.tagName.toLowerCase();
+      const id = el.id;
+      if (id === 'deck-stage' || id === 'od-stacked-deck-stage' || id === 'deck' || id === 'deck-track') {
+        return true;
+      }
+      return el.classList.contains('deck-shell') || el.classList.contains('deck-stage');
+    };
     let fallbackIndex = 0;
     parsed.body.querySelectorAll(selector).forEach((el) => {
       if (el.hasAttribute('data-od-id') || el.hasAttribute('data-screen-label')) return;
       const tag = el.tagName.toLowerCase();
       if (skipTags.has(tag)) return;
+      if (skipDeckChrome(el)) return;
       const path = sourcePathForElement(el);
       el.setAttribute('data-od-id', path || `od-${tag}-${fallbackIndex++}`);
     });
@@ -1596,6 +1605,19 @@ function meaningfulDomFallbackTarget(el) {
   function canUseDomFallback(){
     return commentEnabled && !inspectEnabled;
   }
+  function isDeckPickerChrome(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el === document.body || el === document.documentElement) return true;
+    var id = el.id || '';
+    if (id === 'deck-stage' || id === 'od-stacked-deck-stage' || id === 'deck' || id === 'deck-track') return true;
+    if (el.classList && (el.classList.contains('deck-shell') || el.classList.contains('deck-stage'))) return true;
+    return false;
+  }
+  function isSlideSectionContainer(el) {
+    if (!el || el.nodeType !== 1) return false;
+    var tag = el.tagName ? el.tagName.toLowerCase() : '';
+    return !!(el.classList && el.classList.contains('slide') && tag === 'section');
+  }
   function eventCandidateElements(event){
     var items = [];
     function push(node){
@@ -1603,13 +1625,6 @@ function meaningfulDomFallbackTarget(el) {
       if (items.indexOf(node) >= 0) return;
       items.push(node);
     }
-    try {
-      if (event && typeof event.composedPath === 'function') {
-        var path = event.composedPath();
-        for (var i = 0; i < path.length; i++) push(path[i]);
-      }
-    } catch (_) {}
-    push(event && event.target);
     try {
       if (
         event &&
@@ -1628,16 +1643,29 @@ function meaningfulDomFallbackTarget(el) {
         push(document.elementFromPoint(event.clientX, event.clientY));
       }
     } catch (_) {}
+    try {
+      if (event && typeof event.composedPath === 'function') {
+        var path = event.composedPath();
+        for (var i = 0; i < path.length; i++) push(path[i]);
+      }
+    } catch (_) {}
+    push(event && event.target);
     return items;
   }
   function closestTarget(event){
     var candidates = eventCandidateElements(event);
     var allowDomFallback = mode === 'picker' && canUseDomFallback();
     var annotatedFallback = null;
+    var slideSectionFallback = null;
     for (var i = 0; i < candidates.length; i++) {
       var clicked = candidates[i];
+      if (!clicked || clicked.nodeType !== 1 || isDeckPickerChrome(clicked)) continue;
       var el = clicked;
       while (el && el !== document.documentElement) {
+        if (isDeckPickerChrome(el)) {
+          el = el.parentElement;
+          continue;
+        }
         if (allowDomFallback && meaningfulDomFallbackTarget(el)) {
           return { target: el, clicked: clicked };
         }
@@ -1647,14 +1675,21 @@ function meaningfulDomFallbackTarget(el) {
             el = el.parentElement;
             continue;
           }
-          if (allowDomFallback && !annotatedFallback) annotatedFallback = { target: el, clicked: clicked };
-          if (allowDomFallback) break;
-          return { target: el, clicked: clicked };
+          if (isSlideSectionContainer(el)) {
+            if (!slideSectionFallback) slideSectionFallback = { target: el, clicked: clicked };
+            break;
+          }
+          if (!annotatedFallback) annotatedFallback = { target: el, clicked: clicked };
+          break;
         }
         el = el.parentElement;
       }
+      if (annotatedFallback && !isSlideSectionContainer(annotatedFallback.target)) {
+        return annotatedFallback;
+      }
     }
-    return annotatedFallback;
+    if (annotatedFallback) return annotatedFallback;
+    return slideSectionFallback;
   }
   function applyOverride(elementId, selector, prop, value){
     if (!elementId || !prop) return;
@@ -1778,6 +1813,20 @@ function meaningfulDomFallbackTarget(el) {
     }
   });
   function pickerActive(){ return inspectEnabled || (commentEnabled && mode === 'picker'); }
+  function restorePickerClickFocus(target) {
+    if (!pickerActive() || !target || target.nodeType !== 1) return;
+    if (target === document.body || target === document.documentElement) return;
+    setTimeout(function() {
+      try {
+        if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+        target.focus({ preventScroll: true });
+      } catch (_) {}
+    }, 0);
+  }
+  document.addEventListener('mousedown', function(ev) {
+    if (!pickerActive()) return;
+    restorePickerClickFocus(ev.target);
+  }, false);
   document.addEventListener('mouseover', function(ev){
     if (!pickerActive()) return;
     var result = closestTarget(ev);
@@ -2828,8 +2877,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var parent = el.parentElement;
     var stacked = !!(parent && (parent.id === 'od-stacked-deck-stage' || parent.getAttribute('data-od-stacked-deck-stage') !== null));
     if (stacked) {
-      if (visible) el.style.setProperty('display', 'flex', 'important');
-      else el.style.setProperty('display', 'none', 'important');
+      if (visible) {
+        el.style.setProperty('display', 'flex', 'important');
+        el.style.removeProperty('pointer-events');
+      } else {
+        el.style.setProperty('display', 'none', 'important');
+        el.style.setProperty('pointer-events', 'none', 'important');
+      }
       return;
     }
     el.style.display = visible ? '' : 'none';

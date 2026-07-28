@@ -487,6 +487,68 @@ describe('selection bridge — empty annotation surface (#890)', () => {
     expect(clickMessages[0].elementId).toBe('tablet-card');
   });
 
+  it('prefers a deeper annotated heading over an annotated section.slide ancestor', async () => {
+    const { win, parentPostMessage } = setupBridgeDom(
+      '<div class="deck-shell"><div id="deck-stage"><section class="slide active" data-od-id="slide-1"><h1 id="title" data-od-id="title">제목</h1><p>본문</p></section></div></div>',
+      'comment',
+      ['#title'],
+    );
+    const slide = win.document.querySelector('section.slide')!;
+    const title = win.document.getElementById('title')!;
+    markVisible(win, '#title');
+    win.document.elementsFromPoint = () => [title, slide, win.document.getElementById('deck-stage')!];
+
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 10));
+    parentPostMessage.mockClear();
+
+    slide.dispatchEvent(
+      new win.MouseEvent('click', { bubbles: true, cancelable: true, clientX: 50, clientY: 40 }),
+    );
+
+    const clickMessages = parentPostMessage.mock.calls
+      .map((call) => call[0])
+      .filter((message) => message?.type === 'od:comment-target');
+    expect(clickMessages).toHaveLength(1);
+    expect(clickMessages[0]).toMatchObject({
+      elementId: 'title',
+      label: 'h1',
+      text: '제목',
+    });
+  });
+
+  it('still selects section.slide when the slide background is the only hit target', async () => {
+    const { win, parentPostMessage } = setupBridgeDom(
+      '<section class="slide active" data-od-id="slide-1"><h1 id="title">제목</h1></section>',
+      'comment',
+      ['section.slide'],
+    );
+    const slide = win.document.querySelector('section.slide')!;
+    markVisible(win, 'section.slide');
+    win.document.elementsFromPoint = () => [slide];
+
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 10));
+    parentPostMessage.mockClear();
+
+    slide.dispatchEvent(
+      new win.MouseEvent('click', { bubbles: true, cancelable: true, clientX: 10, clientY: 20 }),
+    );
+
+    const clickMessages = parentPostMessage.mock.calls
+      .map((call) => call[0])
+      .filter((message) => message?.type === 'od:comment-target');
+    expect(clickMessages).toHaveLength(1);
+    expect(clickMessages[0]?.elementId).toBe('slide-1');
+  });
+
+  it('does not annotate deck-stage chrome as a comment target id', async () => {
+    const srcdoc = buildSrcdoc(
+      '<!doctype html><html><body><div class="deck-shell"><div id="deck-stage"><section class="slide"><h1>Title</h1></section></div></div></body></html>',
+      { commentBridge: true },
+    );
+    expect(srcdoc).not.toMatch(/id="deck-stage"[^>]*data-od-id=/);
+    expect(srcdoc).not.toMatch(/class="deck-shell"[^>]*data-od-id=/);
+  });
+
   it('emits slideIndex for single-slide decks too so deck-patch can name a target', async () => {
     // Regression coverage for the previous count>1 gate that hid the
     // slide index for single-slide decks. Without slideIndex on the
