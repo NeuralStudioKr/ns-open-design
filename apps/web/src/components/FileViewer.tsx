@@ -5914,7 +5914,15 @@ function HtmlViewer({
       paletteBridge: false,
       previewFocusGuard: true,
     }) : ''),
-    [redirectLoopBlocked, previewSource, effectiveDeck, projectId, file.name, previewStateKey, manualEditRequiresSrcDoc],
+    [
+      redirectLoopBlocked,
+      previewSource,
+      effectiveDeck,
+      projectPreviewAssetUrl,
+      file.name,
+      previewStateKey,
+      manualEditRequiresSrcDoc,
+    ],
   );
   const lazySrcDocTransport = useMemo(() => buildLazySrcdocTransport(), []);
   const [srcDocTransportResetKey, setSrcDocTransportResetKey] = useState(0);

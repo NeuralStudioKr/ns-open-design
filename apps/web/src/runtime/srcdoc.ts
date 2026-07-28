@@ -2135,7 +2135,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     function hasFixedCanvasComputedStyle(cs) {
       if (!cs) return false;
       var w = parseFloat(String(cs.width || ''));
-      var h = parseFloat(String(cs.height || cs.minHeight || ''));
+      var heightValue = parseFloat(String(cs.height || ''));
+      var minHeightValue = parseFloat(String(cs.minHeight || ''));
+      var h = isFinite(heightValue) && heightValue > 0 ? heightValue : minHeightValue;
       if (!isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) return false;
       var ratio = w / h;
       return w >= 1200 && h >= 675 && Math.abs(ratio - (16 / 9)) < 0.08;

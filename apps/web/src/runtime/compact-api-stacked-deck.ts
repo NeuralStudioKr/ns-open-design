@@ -37,6 +37,23 @@ function hasFixedCanvasSizing(style: string): boolean {
   return has1920Width && has1080Height;
 }
 
+function extractHtmlAttr(attrs: string, name: string): string {
+  const match = attrs.match(new RegExp(`\\b${name}\\s*=\\s*(['"])([\\s\\S]*?)\\1`, 'i'));
+  return match?.[2] ?? '';
+}
+
+function extractSlideInlineStyles(html: string): string[] {
+  const styles: string[] = [];
+  for (const match of html.matchAll(/<(?:section|div|main|article)\b([^>]*)>/gi)) {
+    const attrs = match[1] ?? '';
+    const className = extractHtmlAttr(attrs, 'class');
+    if (!/\bslide\b/i.test(className)) continue;
+    const style = extractHtmlAttr(attrs, 'style');
+    if (style) styles.push(style);
+  }
+  return styles;
+}
+
 /**
  * Horizontal swipe decks (simple-deck, scroll-snap) must keep their native
  * scroll/transform navigation instead of stacked letterbox.
@@ -70,18 +87,9 @@ export function looksLikeAuthoredHorizontalSwipeDeck(html: string): boolean {
 }
 
 function looksLikeSlideViewportSized(html: string): boolean {
-  if (
-    /<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b[^'"]*['"][^>]*\bstyle\s*=\s*['"][^'"]*(?:min-)?height\s*:[^'"]*100(?:vh|dvh|svh|lvh)/i.test(
-      html,
-    )
-  ) {
-    return true;
-  }
-  const inlineSlideStyles = html.matchAll(
-    /<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b[^'"]*['"][^>]*\bstyle\s*=\s*['"]([^'"]*)['"]/gi,
-  );
-  for (const match of inlineSlideStyles) {
-    if (hasFixedCanvasSizing(match[1] ?? '')) return true;
+  for (const style of extractSlideInlineStyles(html)) {
+    if (/(?:min-)?height\s*:[^;]*100(?:vh|dvh|svh|lvh)/i.test(style)) return true;
+    if (hasFixedCanvasSizing(style)) return true;
   }
   const css = extractCssBlocks(html);
   if (/\.slide\b[^{]*\{[^}]*(?:min-)?height\s*:\s*100(?:vh|dvh|svh|lvh)/i.test(css)) return true;
@@ -155,6 +163,7 @@ export function injectStackedDeckViewport(html: string): string {
 export const compactStackedDeckTestHelpers = {
   SLIDE_VIEWPORT_RE,
   extractCssBlocks,
+  extractSlideInlineStyles,
   hasFixedCanvasSizing,
   looksLikeSlideViewportSized,
   hasBodyFirstSlide,

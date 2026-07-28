@@ -98,6 +98,30 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(srcdoc).toContain('width=1920, initial-scale=1');
   });
 
+  it('matches inline fixed slide styles regardless of attribute order', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section style="width:1920px;height:1080px;position:relative;overflow:hidden" class="theme slide">Cover</section>',
+      '<section style="width:1920px;height:1080px;position:relative;overflow:hidden" class="theme slide">Agenda</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
+  });
+
+  it('matches fixed decks that use min-height instead of height', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      'body{margin:0}.slide{width:1920px;min-height:1080px;box-sizing:border-box;position:relative;overflow:hidden}',
+      '</style></head><body>',
+      '<section class="slide">Cover</section>',
+      '<section class="slide">Agenda</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
+  });
+
   it('matches body-first slides after a header chrome element', () => {
     const html = [
       '<!doctype html><html><body>',
