@@ -926,6 +926,12 @@ function inferSlideIndexFromDeckHtml(
   if (sections.length === 0) return null;
   const elementId = normalizeForSlideLookup(attachment.elementId);
   const selector = normalizeForSlideLookup(attachment.selector);
+  const slideNth = selector.match(/\b(?:section\s*)?\.?slide\b[^\n]*?:nth-of-type\((\d+)\)/i)
+    ?? selector.match(/\b(?:section\s*)?\.?slide\b[^\n]*?:nth-child\((\d+)\)/i);
+  if (slideNth?.[1]) {
+    const index = Number(slideNth[1]) - 1;
+    if (Number.isInteger(index) && index >= 0 && index < sections.length) return index;
+  }
   const currentText = normalizeForSlideLookup(attachment.currentText);
   const htmlHint = normalizeForSlideLookup(attachment.htmlHint);
   const candidates = sections.map((section, index) => ({

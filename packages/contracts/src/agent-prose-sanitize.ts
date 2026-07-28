@@ -193,7 +193,7 @@ const OPEN_ATTACHED_PREVIEW_COMMENTS_RE =
 const ATTACHED_PREVIEW_COMMENTS_EMPTY_FALLBACK_RE =
   /(?:^|\n)No comment location data provided\.\s*Apply the requested change to all slides\.\s*(?=\n|$)/gi;
 const COMMENT_SLIDE_INDEX_ASK_RE =
-  /(?:^|\n)댓글에\s*`?slideIndex`?\s*정보가\s*없어서[\s\S]*?(?:예:\s*["“][^"”]+["”][\s\S]*?(?=\n{2,}|$)|$)/gi;
+  /(?:^|\n)(?:댓글에\s*)?(?:어떤\s*슬라이드의[^\n]*?|[^.\n]*?)`?slideIndex`?\s*정보가\s*없(?:어서|어요)[\s\S]*?(?:예:\s*["“][^"”]+["”][\s\S]*?(?=\n{2,}|$)|$)/gi;
 
 const CLOSED_ANTML_RE = /<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi;
 // Allow newlines inside attributes — agents sometimes break long antml tags

@@ -66,6 +66,16 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(input)).toBe("");
   });
 
+  it("strips assistant replies asking users to provide a slideIndex", () => {
+    const input = [
+      "어떤 슬라이드의 폰트를 키울지 slideIndex 정보가 없어요. 프리뷰에서 수정할 슬라이드에 댓글 핀을 꽂아주시거나, 슬라이드 번호를 알려주세요!",
+      "",
+      "예: \"1번 슬라이드 폰트 두배로\"",
+    ].join("\n");
+
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("");
+  });
+
   it("strips truncated attached preview comment protocol from assistant prose", () => {
     const input = [
       "<attached-preview-comments>",

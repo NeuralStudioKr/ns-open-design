@@ -440,6 +440,7 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("hydrateDeckCommentSlideIndexes");
     expect(source).toContain("extractTopLevelSlideSections(html)");
     expect(source).toContain("inferSlideIndexFromDeckHtml(html, attachment)");
+    expect(source).toContain(":nth-of-type");
     expect(source).toContain(".filter((attachment) => !slideOnlyMvp || hasValidDeckSlideIndex(attachment))");
   });
 
