@@ -44,6 +44,7 @@ import {
   deckPreviewScaleShellStyle,
   effectivePreviewScale,
   parseInspectOverridesFromSource,
+  previewShellStyleForRenderedHtml,
   previewOverlayTransform,
   serializeInspectOverrides,
   updateInspectOverride,
@@ -273,6 +274,36 @@ describe('FileViewer preview scale', () => {
       height: '100%',
       transform: 'scale(1.25)',
       transformOrigin: 'center center',
+    });
+  });
+
+  it('keeps all deck preview iframe layout size stable under desktop zoom', () => {
+    expect(previewShellStyleForRenderedHtml({
+      manualEditMode: false,
+      previewViewport: 'desktop',
+      previewScale: 1.5,
+      manualEditViewportWidth: null,
+      deckPreviewUsesFixedStage: false,
+      effectiveDeck: true,
+    })).toMatchObject({
+      width: '100%',
+      height: '100%',
+      transform: 'scale(1.5)',
+      transformOrigin: 'center center',
+    });
+
+    expect(previewShellStyleForRenderedHtml({
+      manualEditMode: false,
+      previewViewport: 'desktop',
+      previewScale: 1.5,
+      manualEditViewportWidth: null,
+      deckPreviewUsesFixedStage: false,
+      effectiveDeck: false,
+    })).toMatchObject({
+      width: `${100 / 1.5}%`,
+      height: `${100 / 1.5}%`,
+      transform: 'scale(1.5)',
+      transformOrigin: '0 0',
     });
   });
 

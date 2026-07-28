@@ -2830,6 +2830,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       }
     } catch (e) {}
   }
+  function scheduleReport(delay){
+    clearTimeout(window.__odReportT3);
+    window.__odReportT3 = setTimeout(report, typeof delay === 'number' ? delay : 80);
+  }
   window.__odDeckSlideState = function(){
     var list = slides();
     return { active: activeIndex(list), count: list.length };
@@ -2921,6 +2925,12 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     clearTimeout(window.__odReportT);
     window.__odReportT = setTimeout(report, 120);
   }, { passive: true, capture: true });
+  document.addEventListener('click', function(){ scheduleReport(80); }, true);
+  document.addEventListener('keyup', function(){ scheduleReport(80); }, true);
+  document.addEventListener('pointerup', function(){ scheduleReport(100); }, true);
+  document.addEventListener('touchend', function(){ scheduleReport(140); }, true);
+  document.addEventListener('transitionend', function(){ scheduleReport(40); }, true);
+  document.addEventListener('animationend', function(){ scheduleReport(40); }, true);
   // Aggressively nudge during the first second so the deck catches the
   // iframe's first non-zero size; bail out early once the iframe reports a
   // real width. Without this loop, fixed-canvas decks render at scale(0).
@@ -2980,6 +2990,14 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       });
       for (var i = 0; i < list.length; i++) {
         mo.observe(list[i], { attributes: true, attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'] });
+      }
+      var track = transformTrack(list);
+      if (track) {
+        mo.observe(track, { attributes: true, attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'] });
+      } else if (list[0] && list[0].parentElement) {
+        // Some decks only become transform-track decks after their native
+        // controls set parent.style.transform for the first time.
+        mo.observe(list[0].parentElement, { attributes: true, attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'] });
       }
     } catch (e) {}
     setTimeout(restoreInitialSlide, 100);

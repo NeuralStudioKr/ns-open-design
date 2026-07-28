@@ -130,6 +130,29 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(state).toMatchObject({ active: 1, count: 3 });
   });
 
+  it('reports native transform-track slide changes triggered inside the iframe', async () => {
+    const { win, parentPostMessage } = setupDeckBridge(`
+      <style>
+        html, body { margin: 0; overflow: hidden; }
+        #deck { display: flex; width: 300vw; transform: translateX(0); transition: transform 120ms ease; }
+        .slide { flex: 0 0 100vw; width: 100vw; height: 100vh; }
+      </style>
+      <div id="deck">
+        <section class="slide">One</section>
+        <section class="slide">Two</section>
+        <section class="slide">Three</section>
+      </div>
+    `);
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 0, count: 3 });
+
+    (win.document.getElementById('deck') as HTMLElement).style.transform = 'translateX(-100vw)';
+    win.document.getElementById('deck')?.dispatchEvent(new win.Event('transitionend', { bubbles: true }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 180));
+
+    expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 3 });
+  });
+
   it('does not double-advance decks that listen for keyboard navigation on both window and document', async () => {
     const { win, parentPostMessage } = setupDeckBridge(`
       <section class="slide active">One</section>

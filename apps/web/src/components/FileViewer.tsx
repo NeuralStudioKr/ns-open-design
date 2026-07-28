@@ -780,6 +780,30 @@ function manualEditPreviewShellStyle(
   return previewScaleShellStyle(viewport, previewScale);
 }
 
+export function previewShellStyleForRenderedHtml(options: {
+  manualEditMode: boolean;
+  previewViewport: PreviewViewportId;
+  previewScale: number;
+  manualEditViewportWidth: number | null;
+  deckPreviewUsesFixedStage: boolean;
+  effectiveDeck: boolean;
+}): CSSProperties & Record<string, string | number> {
+  if (options.manualEditMode) {
+    return manualEditPreviewShellStyle(
+      options.previewViewport,
+      options.previewScale,
+      options.manualEditViewportWidth,
+    );
+  }
+  if (options.deckPreviewUsesFixedStage) {
+    return deckLetterboxPreviewScaleShellStyle(options.previewScale);
+  }
+  if (options.effectiveDeck) {
+    return deckPreviewScaleShellStyle(options.previewViewport, options.previewScale);
+  }
+  return previewScaleShellStyle(options.previewViewport, options.previewScale);
+}
+
 function deploymentTimestamp(deployment: WebDeploymentInfo): number {
   const maybeDeployedAt = (deployment as WebDeploymentInfo & { deployedAt?: number | string }).deployedAt;
   const candidates = [maybeDeployedAt, deployment.updatedAt, deployment.createdAt];
@@ -7075,13 +7099,17 @@ function HtmlViewer({
 
   function slideMessageTargets(): Window[] {
     const targets: Window[] = [];
-    const previewWin = iframeRef.current?.contentWindow;
-    if (previewWin) targets.push(previewWin);
+    const add = (win: Window | null | undefined) => {
+      if (!win || targets.includes(win)) return;
+      targets.push(win);
+    };
+    add(iframeRef.current?.contentWindow);
+    add(srcDocPreviewIframeRef.current?.contentWindow);
+    add(urlPreviewIframeRef.current?.contentWindow);
     // Present-in-tab opens a separate fullscreen overlay iframe. Host ←/→ must
     // advance that visible frame, not only the hidden preview behind it —
     // otherwise keys look broken until the user exits presentation.
-    const presentWin = presentIframeRef.current?.contentWindow;
-    if (presentWin && presentWin !== previewWin) targets.push(presentWin);
+    add(presentIframeRef.current?.contentWindow);
     return targets;
   }
 
@@ -9436,15 +9464,14 @@ function HtmlViewer({
             >
               <div className={manualEditMode ? undefined : 'comment-frame-clip'} style={manualEditMode ? { height: '100%' } : undefined}>
                 <div
-                  style={
-                    manualEditMode
-                      ? manualEditPreviewShellStyle(previewViewport, previewScale, manualEditViewportWidth)
-                      : deckPreviewUsesFixedStage
-                        ? deckLetterboxPreviewScaleShellStyle(previewScale)
-                        : needsDeckHostViewportFit
-                          ? deckPreviewScaleShellStyle(previewViewport, previewScale)
-                          : previewScaleShellStyle(previewViewport, previewScale)
-                  }
+                  style={previewShellStyleForRenderedHtml({
+                    manualEditMode,
+                    previewViewport,
+                    previewScale,
+                    manualEditViewportWidth,
+                    deckPreviewUsesFixedStage,
+                    effectiveDeck,
+                  })}
                 >
                   <PreviewDrawOverlay
                     active={drawOverlayOpen}
