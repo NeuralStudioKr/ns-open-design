@@ -297,7 +297,7 @@ function findEditableElement(
     root.querySelector(`[data-od-id="${cssEscape(id)}"]`) ??
     root.querySelector(`[data-od-runtime-id="${cssEscape(id)}"]`) ??
     root.querySelector(`[data-od-source-path="${cssEscape(id)}"]`) ??
-    findElementByPath(root, id)
+    findElementByScopedPath(doc, root, id)
   );
 }
 
@@ -500,6 +500,25 @@ function findElementByPath(root: ManualEditLookupRoot, id: string): Element | nu
     if (!current) return null;
   }
   return current;
+}
+
+function findElementByScopedPath(
+  doc: Document,
+  root: ManualEditLookupRoot,
+  id: string,
+): Element | null {
+  if (!id.startsWith('path-')) return null;
+  if (root.nodeType === 9) return findElementByPath(root, id);
+
+  const rootElement = root as Element;
+  const absoluteTarget = findElementByPath(doc, id);
+  if (absoluteTarget) {
+    return rootElement === absoluteTarget || rootElement.contains(absoluteTarget)
+      ? absoluteTarget
+      : null;
+  }
+
+  return findElementByPath(root, id);
 }
 
 function hasElementChildren(el: Element): boolean {
