@@ -654,7 +654,7 @@ describe('preview comment attachment helpers', () => {
       '',
       '[Existing deck edit]',
       'This project already has a completed slide deck saved as `deck.html`.',
-      'Prefer `<artifact type="deck-patch">`.',
+      'Prefer `<artifact type="element-patch">`.',
     ].join('\n');
 
     expect(stripUserVisibleUserMessageText(prompt)).toBe('폰트 사이즈 두배로 키워줘');

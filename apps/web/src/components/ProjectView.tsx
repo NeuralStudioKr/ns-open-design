@@ -25,6 +25,11 @@ import {
   type DeckPatch,
 } from '../artifacts/deck-patch';
 import {
+  applyElementPatches,
+  isElementPatchArtifactType,
+  parseElementPatch,
+} from '../artifacts/element-patch';
+import {
   clearPendingArtifactWrite,
   clearProjectPendingArtifactWrites,
   listPendingArtifactWrites,
@@ -253,6 +258,7 @@ import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import {
   maskManualEditTargets,
   mergeManualEditTargetsFromSource,
+  graftPatchedTargetElementFromSource,
 } from '../edit-mode/source-patches';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
@@ -1080,31 +1086,32 @@ export function promptWithSlideAttachmentDeliverableInstruction(
 }
 
 /**
- * Nudges the model into emitting `<artifact type="deck-patch">` on comment
- * edits so it does not have to regenerate the whole deck for a one-word text
- * change. Paired with `applyDeckPatch` inside `persistArtifact`: the client
- * merges the patch into the current deck file. Failure modes (bad slide
- * index, unreadable current deck, malformed patch) auto-continue into the
- * normal full-deck path so the user always ends up with a valid deck.
+ * Nudges the model into emitting structured element patches on comment edits.
+ * Element-patch maps directly to ManualEditPatch and avoids slide-level merge
+ * guards. Deck-patch remains the fallback when slide structure must change.
  */
 function slideCommentEditPatchInstruction(commentAttachmentCount: number): string {
   return [
     SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER,
-    `The ${commentAttachmentCount === 1 ? 'attached preview comment targets' : `${commentAttachmentCount} attached preview comments target`} specific slides in the current deck. Preferred deliverable is a small patch, not a full deck rewrite:`,
+    `The ${commentAttachmentCount === 1 ? 'attached preview comment targets' : `${commentAttachmentCount} attached preview comments target`} specific element(s) on specific slide(s). Preferred deliverable is a structured element patch, not a full deck rewrite:`,
     '',
-    '<artifact type="deck-patch" identifier="deck">',
-    '  <section class="slide" data-slide-index="{N}">',
-    '    …full replacement outer HTML for the touched slide…',
-    '  </section>',
+    '<artifact type="element-patch" identifier="deck">',
+    '  <patch target-id="{elementId}" slide-index="{N}" kind="set-text">replacement text</patch>',
+    '  <patch target-id="{elementId}" slide-index="{N}" kind="set-style">{"fontSize":"32px","fontWeight":"700","color":"#ef4444"}</patch>',
+    '  <patch target-id="{elementId}" slide-index="{N}" kind="set-outer-html">&lt;tag style="..."&gt;…&lt;/tag&gt;</patch>',
     '</artifact>',
     '',
-    '- `data-slide-index="{N}"` uses the 0-based index the comment reports under `slideIndex:` in `<attached-preview-comments>` (top-to-bottom order of `<section class="slide">` in the current deck).',
-    '- If a comment is missing `slideIndex`, infer the touched slide from the attached deck source using selector/currentText/htmlHint. Do NOT ask the user for the slide number when selector/currentText/htmlHint/file context is present.',
-    '- Include ONE `<section class="slide">` per touched slide. Do NOT include unchanged slides, `<head>`, `<html>`, `<body>`, or global chrome.',
-    '- Preserve existing `data-od-id`, `data-od-runtime-id`, `data-od-source-path`, `data-slide-index`, and comment target element identity unless the user explicitly asks to replace that element.',
-    '- Apply element-local edits directly on the selected target element markup. For style-only requests, prefer inline `style` on that target element over changing global CSS, slide wrapper CSS, or sibling markup.',
-    '- The replacement `<section>` is the full new slide markup — the client swaps it in.',
-    '- Fallback: if you must change deck-wide structure (add slide, reorder, restructure global CSS), emit the full `<artifact type="deck">` document instead.',
+    '- `target-id` MUST match the comment `elementId` (or a selector id from `<attached-preview-comments>`).',
+    '- `slide-index="{N}"` uses the 0-based index from `slideIndex:` in `<attached-preview-comments>`.',
+    '- `kind` is one of: `set-text`, `set-style` (JSON object), `set-outer-html`, `set-link` (JSON), `set-image` (JSON), `set-attributes` (JSON), `remove-element`.',
+    '- Apply the user request to ONLY the pinned target element. Do not change siblings, slide wrappers, or global CSS unless the user explicitly asks for slide-wide changes.',
+    '- For arbitrary natural-language requests (visibility, tone, layout tweaks), interpret the intent and emit the smallest valid element patch — never ask the user to rephrase.',
+    '',
+    'Fallback when multiple elements or slide structure must change:',
+    '<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="{N}">…full slide replacement…</section></artifact>',
+    '',
+    '- Deck-patch: one `<section class="slide">` per touched slide only; preserve `data-od-id` on the comment target.',
+    '- Full `<artifact type="deck">` only for deck-wide edits (new slide, reorder, global CSS).',
   ].join('\n');
 }
 
@@ -1124,8 +1131,8 @@ function slideExistingDeckEditInstruction(deckPath: string): string {
     `This project already has a completed slide deck saved as \`${deckPath}\` (see <attached-project-files> above).`,
     'This turn is an edit to that deck — do NOT claim there is no completed deck in this conversation.',
     'Read the attached deck HTML and apply the user request.',
-    'Prefer `<artifact type="deck-patch">` with one `<section class="slide" data-slide-index="{N}">` per touched slide for localized text/layout changes.',
-    'Use a full `<artifact type="deck">` only when the change is deck-wide (new slide, reorder, global CSS).',
+    'Prefer `<artifact type="element-patch">` with `<patch target-id="…" slide-index="{N}" kind="…">` for single-element edits.',
+    'Use `<artifact type="deck-patch">` only when slide structure must change; use full `<artifact type="deck">` for deck-wide edits.',
   ].join('\n');
 }
 
@@ -1173,6 +1180,42 @@ function coerceDeckPatchToAllowedScope(
   return {
     ops: patch.ops.map((op) => ({ ...op, slideIndex: allowed })),
   };
+}
+
+async function tryApplyElementPatchesAgainstCurrentDeck(input: {
+  projectId: string;
+  fileName: string;
+  patchBody: string;
+  allowedSlideIndexes?: readonly number[];
+  commentAttachments?: readonly ChatCommentAttachment[];
+}): Promise<DeckPatchMergeResult> {
+  const parsed = parseElementPatch(input.patchBody);
+  if (!parsed.ok) {
+    console.warn('[element-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
+    return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
+  }
+  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
+    cache: 'no-store',
+  });
+  if (!currentHtml) {
+    return {
+      ok: false,
+      code: 'deck_patch_current_unreadable',
+      reason: 'current deck file unreadable',
+    };
+  }
+  const allowedTargetIds = input.commentAttachments?.flatMap((attachment) => scopedCommentElementIds(attachment));
+  const applied = applyElementPatches({
+    currentHtml,
+    patches: parsed.patches,
+    allowedSlideIndexes: input.allowedSlideIndexes,
+    allowedTargetIds,
+  });
+  if (!applied.ok) {
+    console.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
+    return { ok: false, code: 'deck_patch_merge_failed', reason: applied.reason };
+  }
+  return { ok: true, html: applied.html };
 }
 
 async function tryApplyDeckPatchAgainstCurrentDeck(input: {
@@ -1417,6 +1460,34 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
         ) {
           continue;
         }
+        let grafted = false;
+        for (const id of ids) {
+          const hint = {
+            id,
+            currentText: attachment.currentText,
+            instructionText: [attachment.comment, input.instructionText].filter(Boolean).join('\n'),
+            htmlHint: attachment.htmlHint,
+          };
+          const graft = graftPatchedTargetElementFromSource(
+            nextHtml,
+            input.patchedHtml,
+            id,
+            { slideIndex },
+            hint,
+          );
+          if (graft.ok && graft.source !== nextHtml) {
+            console.info('[deck-patch] accepted grafted target fallback', {
+              slideIndex,
+              targetId: id,
+              reason: merged.reason,
+            });
+            nextHtml = graft.source;
+            narrowed = true;
+            grafted = true;
+            break;
+          }
+        }
+        if (grafted) continue;
       }
     }
     console.warn('[deck-patch] scoped narrow merge failed', {
@@ -3781,7 +3852,35 @@ export function ProjectView({
       // reasoning around output-token cost (a 10-slide deck at ~2–4KB per
       // slide costs 60–120s of streaming for a one-word text change without
       // this pipeline).
-      if (isDeckPatchArtifactType(art.artifactType)) {
+      // Comment-driven edits prefer `<artifact type="element-patch">` (structured
+      // ManualEditPatch ops applied directly to the pinned element). When the
+      // model still emits `<artifact type="deck-patch">`, we merge slide
+      // sections and narrow to the comment target with graft fallbacks.
+      if (isElementPatchArtifactType(art.artifactType)) {
+        const currentProjectFilesForPatch = projectFilesSnapshot ?? projectFilesRef.current;
+        const targetFileName = resolveArtifactPersistFileName(
+          art,
+          currentProjectFilesForPatch,
+          openTabsStateRef.current.active,
+          { preferredFileName: runPersistTargetFileRef.current },
+        );
+        const merged = await tryApplyElementPatchesAgainstCurrentDeck({
+          projectId: project.id,
+          fileName: targetFileName,
+          patchBody: art.html,
+          allowedSlideIndexes: scopedAllowedSlideIndexes,
+          commentAttachments: runCommentAttachmentsRef.current,
+        });
+        if (!merged.ok) {
+          return {
+            kind: 'scope-rejected',
+            fileName: targetFileName,
+            code: merged.code,
+            reason: merged.reason,
+          };
+        }
+        effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
+      } else if (isDeckPatchArtifactType(art.artifactType)) {
         const currentProjectFilesForPatch = projectFilesSnapshot ?? projectFilesRef.current;
         const targetFileName = resolveArtifactPersistFileName(
           art,

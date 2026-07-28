@@ -3,6 +3,7 @@ import { JSDOM } from 'jsdom';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
+  graftPatchedTargetElementFromSource,
   maskManualEditTargets,
   mergeManualEditTargetsFromSource,
   readManualEditAttributes,
@@ -675,5 +676,42 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('font-weight:700');
     expect(result.source).toContain('font-size:30px');
     expect(result.source).toContain('data-od-id="company-name"');
+  });
+
+  it('grafts a patched target element when ids are missing but text hints match', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<p class="company" data-od-id="company-name" style="font-size:24px">Teamver Inc.</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const patched = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<p class="company" style="font-size:30px;font-weight:700">Teamver Inc.</p>',
+      '<p>Extra sibling the model added</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const graft = graftPatchedTargetElementFromSource(
+      source,
+      patched,
+      'company-name',
+      { slideIndex: 0 },
+      {
+        id: 'company-name',
+        currentText: 'Teamver Inc.',
+        instructionText: '회사 이름 눈에 잘 띄게 수정',
+        htmlHint: '<p class="company"',
+      },
+    );
+
+    expect(graft.ok, JSON.stringify(graft)).toBe(true);
+    if (!graft.ok) return;
+    expect(graft.source).toContain('font-weight:700');
+    expect(graft.source).toContain('data-od-id="company-name"');
+    expect(graft.source).not.toContain('Extra sibling');
   });
 });

@@ -1269,14 +1269,20 @@ If a field was skipped, choose a sensible default and proceed — do not emit an
 
 const TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE = `# Teamver slide-only API — comment-edit patch (READ LAST)
 
-If the turn carries \`<attached-preview-comments>\`, prefer a partial patch over a full deck rewrite:
+If the turn carries \`<attached-preview-comments>\`, prefer a structured element patch over a full deck rewrite:
+
+\`<artifact type="element-patch" identifier="deck"><patch target-id="{elementId}" slide-index="{N}" kind="set-style">{"fontWeight":"700"}</patch></artifact>\`
+
+- \`target-id\` = the comment's pinned \`elementId\` (or selector id).
+- \`slide-index="{N}"\` = the comment's \`slideIndex:\` (0-based).
+- \`kind\`: \`set-text\`, \`set-style\` (JSON), \`set-outer-html\`, \`set-link\`, \`set-image\`, \`set-attributes\`, \`remove-element\`.
+- Interpret ANY natural-language request on the pinned element — do not ask users to rephrase or provide internal ids.
+
+Fallback for multi-element / slide-structure changes:
 
 \`<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="{N}">…full replacement outer HTML…</section></artifact>\`
 
-- \`{N}\` = the comment's \`slideIndex:\` (0-based, top-to-bottom order of \`<section class="slide">\`).
-- One \`<section>\` per touched slide, no unchanged slides, no \`<head>\`/\`<html>\`/\`<body>\`.
-- \`data-op\` defaults to \`replace\`; \`remove\` / \`append\` / \`prepend\` also allowed.
-- Emit ONE artifact: patch OR full deck, never both.
+- Emit ONE artifact: element-patch OR deck-patch OR full deck, never both.
 - Use full \`<artifact type="deck">\` for deck-wide/unclear scope. Never ask users for internal \`slideIndex\`.`;
 
 const TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE = `# Teamver slide-only API — direct deck generation rule (READ LAST — beats every rule above)

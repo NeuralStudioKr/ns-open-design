@@ -606,9 +606,9 @@ function renderCommentAttachmentContext(commentAttachments: ChatCommentAttachmen
       `computedStyle: ${formatAnnotationStyle(item.style) || '(none)'}`,
     );
     // The 0-based slide index inside the current deck. Required so the model
-    // can address the target slide via `<artifact type="deck-patch">` +
-    // `<section class="slide" data-slide-index="{N}">` on comment edits —
-    // without this line the patch contract has no way to name the target.
+    // can address the target slide via `<artifact type="element-patch">` or
+    // `<artifact type="deck-patch">` on comment edits — without this line the
+    // patch contract has no way to name the target.
     // Whole-file comments (no slide index at capture time) omit the line;
     // the model falls back to the full-deck path for those.
     if (typeof item.slideIndex === 'number' && Number.isFinite(item.slideIndex) && item.slideIndex >= 0) {

@@ -88,19 +88,18 @@ describe("promptWithExistingDeckEditInstruction", () => {
 });
 
 describe("promptWithSlideCommentEditPatchInstruction", () => {
-  it("nudges the model into the deck-patch contract on comment edits", () => {
+  it("nudges the model into the element-patch contract on comment edits", () => {
     const prompt = promptWithSlideCommentEditPatchInstruction(
       "이 텍스트를 '안녕'으로 바꿔줘",
       { slideOnlyMvp: true, commentAttachmentCount: 1 },
     );
 
     expect(prompt).toContain("[Comment-edit patch contract]");
+    expect(prompt).toContain('<artifact type="element-patch"');
+    expect(prompt).toContain('target-id="{elementId}"');
+    expect(prompt).toContain('slide-index="{N}"');
+    expect(prompt).toContain('arbitrary natural-language requests');
     expect(prompt).toContain('<artifact type="deck-patch"');
-    expect(prompt).toContain('data-slide-index');
-    expect(prompt).toContain('Preserve existing `data-od-id`');
-    // The patch fallback path exists so a bad merge cleanly re-runs as a
-    // full deck; the prompt should surface that so the model does not treat
-    // deck-patch as the ONLY allowed output shape.
     expect(prompt).toContain('<artifact type="deck">');
   });
 

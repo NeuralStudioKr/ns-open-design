@@ -254,6 +254,49 @@ export function mergeManualEditTargetsFromSource(
   };
 }
 
+/**
+ * Copy a target element's outer HTML from the model's patched deck onto the
+ * current deck when structural id lookup fails but the semantic target can
+ * still be resolved via captured comment hints. This is the last-resort salvage
+ * for deck-patch responses — it never rewrites the whole slide unless the
+ * graft itself is the only change on that slide.
+ */
+export function graftPatchedTargetElementFromSource(
+  currentSource: string,
+  patchedSource: string,
+  targetId: string,
+  scope: ManualEditSourceScope = {},
+  hint?: ManualEditMergeTargetHint,
+): ManualEditPatchResult {
+  const currentDoc = parseSource(currentSource);
+  const patchedDoc = parseSource(patchedSource);
+  if (!currentDoc || !patchedDoc) {
+    return { ok: false, source: currentSource, error: 'Could not parse source.' };
+  }
+
+  const currentTarget = findEditableElement(currentDoc, targetId, scope, hint);
+  if (!currentTarget) {
+    return { ok: false, source: currentSource, error: `Target not found in current deck: ${targetId}` };
+  }
+
+  const patchedTarget =
+    findEditableElement(patchedDoc, targetId, scope, hint)
+    ?? findReplacementCandidateByTextHint(patchedDoc, currentTarget, scope, hint)
+    ?? (hint ? findElementByHint(patchedDoc, scope, hint) : null);
+  if (!patchedTarget) {
+    return { ok: false, source: currentSource, error: `Target not found in patched deck: ${targetId}` };
+  }
+
+  if (currentTarget.outerHTML === patchedTarget.outerHTML) {
+    return { ok: false, source: currentSource, error: 'Selected targets were unchanged.' };
+  }
+
+  const replacement = currentDoc.importNode(patchedTarget, true);
+  preserveManualEditIdentityAttributes(currentTarget, replacement);
+  currentTarget.replaceWith(replacement);
+  return { ok: true, source: serializeSource(currentDoc, currentSource) };
+}
+
 function parseSource(source: string): Document | null {
   if (typeof DOMParser !== 'undefined') {
     return new DOMParser().parseFromString(source, 'text/html');

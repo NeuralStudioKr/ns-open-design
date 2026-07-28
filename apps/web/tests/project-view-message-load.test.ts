@@ -299,7 +299,7 @@ describe("ProjectView message loading", () => {
     // Bumped window from 5200 to 7000 chars when the deck-patch interceptor
     // (isDeckPatchArtifactType + tryApplyDeckPatchAgainstCurrentDeck) added a
     // ~1.5KB prelude at the top of persistArtifact.
-    const persistBlock = source.slice(persistStart, persistStart + 9000);
+    const persistBlock = source.slice(persistStart, persistStart + 12000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
@@ -307,6 +307,8 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toContain("kind: 'skipped-incomplete'");
     // deck-patch interceptor must run BEFORE the incomplete-shell / validate
     // gates so partial patches never get rejected as "not a full document".
+    expect(persistBlock).toContain("isElementPatchArtifactType(art.artifactType)");
+    expect(persistBlock).toContain("tryApplyElementPatchesAgainstCurrentDeck(");
     expect(persistBlock).toContain("isDeckPatchArtifactType(art.artifactType)");
     expect(persistBlock).toContain("tryApplyDeckPatchAgainstCurrentDeck(");
     expect(persistBlock).toContain("kind: 'scope-rejected'");
@@ -497,6 +499,8 @@ describe("ProjectView message loading", () => {
     expect(source).not.toContain("isScopedVisualStyleInstruction");
     expect(source).toContain("return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason }");
     expect(source).toContain("function coerceDeckPatchToAllowedScope");
+    expect(source).toContain("isElementPatchArtifactType");
+    expect(source).toContain("graftPatchedTargetElementFromSource");
   });
 
   it("accepts a slide-level style-only diff when element merge said targets were unchanged", () => {

@@ -202,6 +202,7 @@ function isStreamingCodeArtifactType(type: string): boolean {
     normalized === 'deck'
     || normalized === 'deck-patch'
     || normalized === 'slide-patch'
+    || normalized === 'element-patch'
     || /html|text\//i.test(type)
   );
 }
@@ -209,7 +210,7 @@ function isStreamingCodeArtifactType(type: string): boolean {
 function isClosedPreviewArtifactType(type: string): boolean {
   if (!type) return true;
   const normalized = type.trim().toLowerCase();
-  if (normalized === 'deck-patch' || normalized === 'slide-patch') return false;
+  if (normalized === 'deck-patch' || normalized === 'slide-patch' || normalized === 'element-patch') return false;
   return isStreamingCodeArtifactType(type);
 }
 
@@ -452,9 +453,8 @@ export function artifactPreviewFromInFlightContent(content: string): {
   const { live } = splitStreamingArtifact(content);
   if (live?.content?.trim()) {
     const liveType = live.artifactType.trim().toLowerCase();
-    // Open deck-patch / slide-patch is a fragment — do not paint it as a full
-    // deck preview on leave/re-entry (prefer closed full deck / disk).
-    if (liveType !== 'deck-patch' && liveType !== 'slide-patch') {
+    // Open patch artifacts are fragments — do not paint them as full deck previews.
+    if (liveType !== 'deck-patch' && liveType !== 'slide-patch' && liveType !== 'element-patch') {
       return {
         identifier: live.identifier.trim() || 'deck',
         artifactType: live.artifactType.trim() || 'deck',

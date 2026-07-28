@@ -161,7 +161,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // Ceiling grew by ~700 chars when the comment-edit patch contract
       // landed; that contract cuts a 60–120s round-trip on one-element
       // comment edits down to 2–8s, so the cost is worth it.
-      expect(prompt.length).toBeLessThan(19_000);
+      expect(prompt.length).toBeLessThan(20_500);
     });
 
     it('keeps compact deck for skill-seed projects without raw template copy workflow', () => {
@@ -334,7 +334,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // Ceiling grew by ~700 chars when the comment-edit patch contract
       // landed; that contract cuts a 60–120s round-trip on one-element
       // comment edits down to 2–8s, so the cost is worth it.
-      expect(prompt.length).toBeLessThan(20_000);
+      expect(prompt.length).toBeLessThan(21_000);
     });
 
     it('requires body-first streaming and forbids head-only shells', () => {
@@ -446,7 +446,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       );
       expect(prompt).not.toContain('Do not paste this exact headline');
       // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
-      expect(prompt.length).toBeLessThan(19_000);
+      expect(prompt.length).toBeLessThan(20_500);
     });
 
     it('keeps quick brief available when a selected template supplies style but not content brief', () => {
@@ -504,7 +504,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         prompt.indexOf('Slide deck — API compact contract'),
       );
       // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
-      expect(prompt.length).toBeLessThan(19_000);
+      expect(prompt.length).toBeLessThan(20_500);
     });
 
     it('keeps richer visual template rules while stripping unavailable copy workflows', () => {
@@ -533,15 +533,10 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Read assets/template.html and copy the skeleton');
       expect(prompt).not.toContain('Use references/layouts.md for exact slots');
       // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
-      expect(prompt.length).toBeLessThan(19_000);
+      expect(prompt.length).toBeLessThan(20_500);
     });
 
-    it('carries the comment-edit deck-patch contract so scoped edits skip full deck rewrites', () => {
-      // Comment-edit patch contract is the load-bearing token-cost fix for
-      // Teamver slide-only edits — without this rule the model keeps
-      // regenerating the whole deck for a one-word text change (20–40k
-      // output tokens, ~60–120s of streaming). Present in both the unified
-      // and direct streaming paths since both handle edit turns.
+    it('carries the comment-edit element-patch contract so scoped edits skip full deck rewrites', () => {
       const unified = composeTeamverSlideApiPrompt({
         skillBody: simpleDeckSkill,
         skillName: 'simple-deck',
@@ -554,11 +549,10 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       });
       for (const prompt of [unified, direct]) {
         expect(prompt).toContain('comment-edit patch');
+        expect(prompt).toContain('<artifact type="element-patch"');
+        expect(prompt).toContain('target-id');
+        expect(prompt).toContain('slide-index');
         expect(prompt).toContain('<artifact type="deck-patch"');
-        expect(prompt).toContain('data-slide-index');
-        expect(prompt).toContain('data-op');
-        // Fallback path — patch contract must not lock the model out of the
-        // full-deck deliverable for genuinely structural changes.
         expect(prompt).toContain('<artifact type="deck">');
       }
     });
