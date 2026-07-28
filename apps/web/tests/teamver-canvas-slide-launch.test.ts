@@ -6,8 +6,10 @@ import {
   CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   CANVAS_CREATE_SLIDES_PROMPT,
+  DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
+  canvasSlideQuickSettingsInstruction,
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
   canvasSlideTemplateOptions,
@@ -41,6 +43,8 @@ describe("canvasSlideLaunch", () => {
       topic: "canvas",
       deckType: "presentation from source material",
       designSystem: "Template",
+      quickSettings: DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+      quickSettingsInstruction: expect.stringContaining("Transform mode: Rebuild as a presentation"),
       sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
     });
     expect(canvasCreateSlidesPluginInputs("canvas", "Template")).not.toHaveProperty("slideCount");
@@ -103,6 +107,8 @@ describe("canvasSlideLaunch", () => {
     expect(runPrompt).toContain(CANVAS_CREATE_SLIDES_PROMPT);
     expect(runPrompt).toContain(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION);
     expect(runPrompt).toContain("Selected slide template/style: Hermes Cyber Terminal.");
+    expect(runPrompt).toContain("[Quick settings]");
+    expect(runPrompt).toContain("Transform mode: Rebuild as a presentation");
     expect(runPrompt).toContain("[Source brief]");
     expect(runPrompt).toContain("Canvas title: Onboarding");
     expect(runPrompt).toContain("[User instruction]");
@@ -206,6 +212,34 @@ describe("canvasSlideLaunch", () => {
     expect(canvasCreateSlidesPluginInputs("Topic", "Hermes", "brief")).not.toHaveProperty(
       "userInstruction",
     );
+  });
+
+  it("threads quick settings through hidden prompt and plugin inputs", () => {
+    const quickSettings = {
+      audience: "education" as const,
+      length: "short" as const,
+      transformMode: "summary" as const,
+      tone: "friendly" as const,
+    };
+    const instruction = canvasSlideQuickSettingsInstruction(quickSettings);
+    expect(instruction).toContain("Education/training audience");
+    expect(instruction).toContain("Short deck");
+    expect(instruction).toContain("Summarize and prioritize");
+    expect(instruction).toContain("Friendly");
+
+    const runPrompt = canvasCreateSlidesRunPrompt("Template", "brief", "", quickSettings);
+    expect(runPrompt).toContain("[Quick settings]");
+    expect(runPrompt).toContain("Audience: Education/training audience.");
+    expect(runPrompt).toContain("Length: Short deck.");
+    expect(runPrompt).toContain("Transform mode: Summarize and prioritize key messages.");
+    expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).toBe(CANVAS_CREATE_SLIDES_PROMPT);
+
+    expect(
+      canvasCreateSlidesPluginInputs("Topic", "Template", "brief", "", quickSettings),
+    ).toMatchObject({
+      quickSettings,
+      quickSettingsInstruction: instruction,
+    });
   });
 
   it("threads plugin inputs through the existing-project composer handoff", () => {

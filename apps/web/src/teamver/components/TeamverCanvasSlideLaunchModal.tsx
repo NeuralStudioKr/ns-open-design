@@ -8,7 +8,11 @@ import {
 } from "../canvasLaunchHandoff";
 import { fetchTeamverCanvasPreview } from "../fetchCanvasPreview";
 import { driveImportAssetIconName } from "../driveFileVisual";
-import type { TeamverCanvasSlideTemplateOption } from "../canvasSlideLaunch";
+import {
+  DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+  type CanvasSlideQuickSettings,
+  type TeamverCanvasSlideTemplateOption,
+} from "../canvasSlideLaunch";
 import { CanvasSlideTemplatePicker } from "./CanvasSlideTemplatePicker";
 import {
   CanvasSlideLaunchStepAccordion,
@@ -34,9 +38,55 @@ type Props = {
   /** Optional user instruction merged into the first Design turn prompt. */
   userPrompt?: string;
   onUserPromptChange?: (value: string) => void;
+  quickSettings?: CanvasSlideQuickSettings;
+  onQuickSettingsChange?: (settings: CanvasSlideQuickSettings) => void;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
 };
+
+const QUICK_SETTING_GROUPS = [
+  {
+    key: "audience",
+    labelKey: "teamver.canvasSlideLaunch.quickAudience",
+    options: [
+      ["auto", "teamver.canvasSlideLaunch.quickAudienceAuto"],
+      ["internal", "teamver.canvasSlideLaunch.quickAudienceInternal"],
+      ["client", "teamver.canvasSlideLaunch.quickAudienceClient"],
+      ["education", "teamver.canvasSlideLaunch.quickAudienceEducation"],
+      ["business", "teamver.canvasSlideLaunch.quickAudienceBusiness"],
+    ],
+  },
+  {
+    key: "length",
+    labelKey: "teamver.canvasSlideLaunch.quickLength",
+    options: [
+      ["auto", "teamver.canvasSlideLaunch.quickLengthAuto"],
+      ["short", "teamver.canvasSlideLaunch.quickLengthShort"],
+      ["standard", "teamver.canvasSlideLaunch.quickLengthStandard"],
+      ["detailed", "teamver.canvasSlideLaunch.quickLengthDetailed"],
+    ],
+  },
+  {
+    key: "transformMode",
+    labelKey: "teamver.canvasSlideLaunch.quickTransform",
+    options: [
+      ["presentation", "teamver.canvasSlideLaunch.quickTransformPresentation"],
+      ["faithful", "teamver.canvasSlideLaunch.quickTransformFaithful"],
+      ["summary", "teamver.canvasSlideLaunch.quickTransformSummary"],
+    ],
+  },
+  {
+    key: "tone",
+    labelKey: "teamver.canvasSlideLaunch.quickTone",
+    options: [
+      ["auto", "teamver.canvasSlideLaunch.quickToneAuto"],
+      ["professional", "teamver.canvasSlideLaunch.quickToneProfessional"],
+      ["modern", "teamver.canvasSlideLaunch.quickToneModern"],
+      ["friendly", "teamver.canvasSlideLaunch.quickToneFriendly"],
+      ["impact", "teamver.canvasSlideLaunch.quickToneImpact"],
+    ],
+  },
+] as const;
 
 function formatUpdatedAt(raw: string | undefined, locale: string): string | null {
   if (!raw?.trim()) return null;
@@ -81,6 +131,8 @@ export function TeamverCanvasSlideLaunchModal({
   onTemplateChange,
   userPrompt = "",
   onUserPromptChange,
+  quickSettings = DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+  onQuickSettingsChange,
   onConfirm,
   onClose,
 }: Props) {
@@ -167,6 +219,20 @@ export function TeamverCanvasSlideLaunchModal({
     templateOptions.find((option) => option.id === selectedTemplateId) ?? templateOptions[0] ?? null;
   const showTemplateGrid = templateOptions.length > 1;
   const useStudioLayout = useCanvasSlideLaunchWideLayout(showTemplateGrid);
+  const normalizedQuickSettings = {
+    ...DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+    ...quickSettings,
+  };
+
+  function updateQuickSetting<K extends keyof CanvasSlideQuickSettings>(
+    key: K,
+    value: CanvasSlideQuickSettings[K],
+  ) {
+    onQuickSettingsChange?.({
+      ...normalizedQuickSettings,
+      [key]: value,
+    });
+  }
 
   const renderDocumentPanel = (includeStepNav: boolean) => (
     <article
@@ -258,6 +324,48 @@ export function TeamverCanvasSlideLaunchModal({
         aria-label={t("teamver.canvasSlideLaunch.promptLabel")}
         onChange={(event) => onUserPromptChange?.(event.currentTarget.value)}
       />
+      <div
+        className="teamver-canvas-slide-launch-quick-settings"
+        data-testid="teamver-canvas-slide-launch-quick-settings"
+      >
+        <p className="teamver-canvas-slide-launch-quick-settings-title">
+          {t("teamver.canvasSlideLaunch.quickSettingsTitle")}
+        </p>
+        {QUICK_SETTING_GROUPS.map((group) => (
+          <div
+            key={group.key}
+            className="teamver-canvas-slide-launch-quick-group"
+            data-testid={`teamver-canvas-slide-launch-quick-group-${group.key}`}
+          >
+            <span className="teamver-canvas-slide-launch-quick-label">
+              {t(group.labelKey)}
+            </span>
+            <div className="teamver-canvas-slide-launch-quick-options">
+              {group.options.map(([value, labelKey]) => {
+                const selected = normalizedQuickSettings[group.key] === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className={[
+                      "teamver-canvas-slide-launch-quick-chip",
+                      selected ? "is-selected" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    disabled={confirming}
+                    aria-pressed={selected}
+                    data-testid={`teamver-canvas-slide-launch-quick-${group.key}-${value}`}
+                    onClick={() => updateQuickSetting(group.key, value)}
+                  >
+                    {t(labelKey)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
       {includeStepNav ? (
         <div className="teamver-canvas-slide-launch-step-actions">
           <button

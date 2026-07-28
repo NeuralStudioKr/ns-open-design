@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type DesignFileSection,
   filterEmbedDeliverableProducedFiles,
   isEmbedSupportingProjectFile,
   partitionEmbedDesignFileSections,
@@ -61,7 +62,7 @@ describe("embedDeliverableFilePolicy", () => {
       ["html", [{ name: "index.html", mtime: 2 }]],
       ["references", [{ name: "refs/drive/canvas.html", mtime: 3 }]],
       ["stylesheet", [{ name: "css/deck.css", mtime: 1 }]],
-    ] as const;
+    ] satisfies readonly DesignFileSection<string, { name: string; mtime: number }>[];
     const { deliverableSections, supportingFiles } = partitionEmbedDesignFileSections(
       sections,
       { slideOnlyMvp: true },

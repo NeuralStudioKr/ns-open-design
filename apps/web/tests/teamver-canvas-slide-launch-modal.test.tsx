@@ -141,6 +141,7 @@ describe("TeamverCanvasSlideLaunchModal", () => {
 
   it("orders steps as document → prompt → template and accepts a user prompt", () => {
     const onUserPromptChange = vi.fn();
+    const onQuickSettingsChange = vi.fn();
 
     render(
       <TeamverCanvasSlideLaunchModal
@@ -153,6 +154,7 @@ describe("TeamverCanvasSlideLaunchModal", () => {
         selectedTemplateId="example-simple-deck"
         userPrompt=""
         onUserPromptChange={onUserPromptChange}
+        onQuickSettingsChange={onQuickSettingsChange}
         onConfirm={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -171,6 +173,18 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     const input = screen.getByTestId("teamver-canvas-slide-launch-prompt-input") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "첫 수업용 8장" } });
     expect(onUserPromptChange).toHaveBeenCalledWith("첫 수업용 8장");
+
+    expect(screen.getByTestId("teamver-canvas-slide-launch-quick-settings")).toBeTruthy();
+    expect(
+      screen.getByTestId("teamver-canvas-slide-launch-quick-transformMode-presentation").getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-quick-audience-education"));
+    expect(onQuickSettingsChange).toHaveBeenCalledWith({
+      audience: "education",
+      length: "auto",
+      transformMode: "presentation",
+      tone: "auto",
+    });
   });
 
   it("closes on Escape and moves initial focus to the close affordance", async () => {

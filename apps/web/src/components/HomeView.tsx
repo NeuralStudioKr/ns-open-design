@@ -134,11 +134,13 @@ import {
 } from '../teamver/canvasLaunchHandoff';
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   resolveCanvasSlideTemplate,
   driveCreateSlidesSourceBrief,
+  type CanvasSlideQuickSettings,
 } from '../teamver/canvasSlideLaunch';
 import { useCanvasSlideLaunchTemplates } from '../teamver/hooks/useCanvasSlideLaunchTemplates';
 import {
@@ -367,6 +369,9 @@ export function HomeView({
   const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
   const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
   const [canvasSlideUserPrompt, setCanvasSlideUserPrompt] = useState('');
+  const [canvasSlideQuickSettings, setCanvasSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
+    DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+  );
   const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
   const teamverDriveImportAllowed = useMemo(
     () =>
@@ -1794,6 +1799,7 @@ export function HomeView({
               selectedCanvasSlideTemplate.title,
               sourceBrief,
               canvasSlideUserPrompt,
+              canvasSlideQuickSettings,
             ),
             pluginId: selectedCanvasSlideTemplate.id,
             pluginType: 'official',
@@ -1806,6 +1812,7 @@ export function HomeView({
               selectedCanvasSlideTemplate.title,
               sourceBrief,
               canvasSlideUserPrompt,
+              canvasSlideQuickSettings,
             ),
             projectKind: 'deck',
             projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
@@ -1826,6 +1833,7 @@ export function HomeView({
         setCanvasSlideLaunch(null);
         setCanvasSlideLaunchError(null);
         setCanvasSlideUserPrompt('');
+        setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
         return;
       }
 
@@ -1837,6 +1845,7 @@ export function HomeView({
             selectedCanvasSlideTemplate.title,
             sourceBrief,
             canvasSlideUserPrompt,
+            canvasSlideQuickSettings,
           ),
           pluginId: selectedCanvasSlideTemplate.id,
           pluginType: 'official',
@@ -1849,6 +1858,7 @@ export function HomeView({
             selectedCanvasSlideTemplate.title,
             sourceBrief,
             canvasSlideUserPrompt,
+            canvasSlideQuickSettings,
           ),
           projectKind: 'deck',
           projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
@@ -1874,6 +1884,7 @@ export function HomeView({
       setCanvasSlideLaunch(null);
       setCanvasSlideLaunchError(null);
       setCanvasSlideUserPrompt('');
+      setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
     } catch (err) {
       const message =
         canvasSlideLaunch.kind === 'canvas'
@@ -2241,6 +2252,8 @@ export function HomeView({
           onTemplateChange={setCanvasSlideTemplateId}
           userPrompt={canvasSlideUserPrompt}
           onUserPromptChange={setCanvasSlideUserPrompt}
+          quickSettings={canvasSlideQuickSettings}
+          onQuickSettingsChange={setCanvasSlideQuickSettings}
           onClose={() => {
             if (!canvasSlideLaunchBusy) {
               if (canvasSlideLaunch.kind === 'canvas') {
@@ -2249,6 +2262,7 @@ export function HomeView({
               setCanvasSlideLaunch(null);
               setCanvasSlideLaunchError(null);
               setCanvasSlideUserPrompt('');
+              setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
             }
           }}
           onConfirm={() => {

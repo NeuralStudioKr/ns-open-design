@@ -79,12 +79,14 @@ import {
 } from '../teamver/canvasLaunchHandoff';
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
   driveCreateSlidesSourceBrief,
   resolveCanvasSlideTemplate,
+  type CanvasSlideQuickSettings,
 } from '../teamver/canvasSlideLaunch';
 import { useCanvasSlideLaunchTemplates } from '../teamver/hooks/useCanvasSlideLaunchTemplates';
 import {
@@ -527,6 +529,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [canvasSlideLaunchAuthRelogin, setCanvasSlideLaunchAuthRelogin] = useState(false);
     const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
     const [canvasSlideUserPrompt, setCanvasSlideUserPrompt] = useState('');
+    const [canvasSlideQuickSettings, setCanvasSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+    );
     const [teamverWorkspaceId, setTeamverWorkspaceId] = useState<string | null>(null);
     // External MCP servers configured by the user. Fetched lazily on mount;
     // shown in the slash-command palette so `/mcp <id>` inserts a hint into
@@ -1711,6 +1716,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setCanvasSlideLaunch(null);
           setCanvasSlideLaunchError(null);
           setCanvasSlideUserPrompt('');
+          setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
             designSystemId: designSystemIdForRun,
@@ -1721,6 +1727,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               selectedCanvasSlideTemplate.title,
               sourceBrief,
               promptForRun,
+              canvasSlideQuickSettings,
             ),
             attachments,
             [],
@@ -1736,6 +1743,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 selectedCanvasSlideTemplate.title,
                 sourceBrief,
                 promptForRun,
+                canvasSlideQuickSettings,
               ),
               context: {
                 ...(baseMeta?.context ?? {}),
@@ -1778,6 +1786,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         setCanvasSlideLaunch(null);
         setCanvasSlideLaunchError(null);
         setCanvasSlideUserPrompt('');
+        setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
         {
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
@@ -1789,6 +1798,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               selectedCanvasSlideTemplate.title,
               sourceBrief,
               promptForRun,
+              canvasSlideQuickSettings,
             ),
             attachments,
             [],
@@ -1800,6 +1810,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 selectedCanvasSlideTemplate.title,
                 sourceBrief,
                 promptForRun,
+                canvasSlideQuickSettings,
               ),
               context: {
                 ...(baseMeta?.context ?? {}),
@@ -3020,6 +3031,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             onTemplateChange={setCanvasSlideTemplateId}
             userPrompt={canvasSlideUserPrompt}
             onUserPromptChange={setCanvasSlideUserPrompt}
+            quickSettings={canvasSlideQuickSettings}
+            onQuickSettingsChange={setCanvasSlideQuickSettings}
             onRelogin={
               canvasSlideLaunchAuthRelogin ? redirectToTeamverLoginFromEmbed : null
             }
@@ -3032,6 +3045,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 setCanvasSlideLaunchError(null);
                 setCanvasSlideLaunchAuthRelogin(false);
                 setCanvasSlideUserPrompt('');
+                setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
               }
             }}
             onConfirm={confirmCanvasSlideLaunch}
