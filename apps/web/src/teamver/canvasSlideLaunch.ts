@@ -32,15 +32,115 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
 export const CANVAS_CREATE_SLIDES_PROMPT =
   "첨부한 자료를 바탕으로 슬라이드 덱을 만들어줘.";
 
+export type CanvasSlideAudience = "auto" | "internal" | "client" | "education" | "business";
+export type CanvasSlideLength = "auto" | "short" | "standard" | "detailed";
+export type CanvasSlideTransformMode = "presentation" | "faithful" | "summary";
+export type CanvasSlideTone = "auto" | "professional" | "modern" | "friendly" | "impact";
+
+export type CanvasSlideQuickSettings = {
+  audience: CanvasSlideAudience;
+  length: CanvasSlideLength;
+  transformMode: CanvasSlideTransformMode;
+  tone: CanvasSlideTone;
+};
+
+export const DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS: CanvasSlideQuickSettings = {
+  audience: "auto",
+  length: "auto",
+  transformMode: "presentation",
+  tone: "auto",
+};
+
+const QUICK_SETTING_PROMPT_LABELS = {
+  audience: {
+    auto: "Infer audience from the source",
+    internal: "Internal team/report audience",
+    client: "Client/proposal audience",
+    education: "Education/training audience",
+    business: "Business/investor audience",
+  },
+  length: {
+    auto: "Infer slide count from the source",
+    short: "Short deck",
+    standard: "Standard deck",
+    detailed: "Detailed deck",
+  },
+  transformMode: {
+    presentation: "Rebuild as a presentation, not a literal page copy",
+    faithful: "Stay close to the source structure",
+    summary: "Summarize and prioritize key messages",
+  },
+  tone: {
+    auto: "Infer tone from the source/template",
+    professional: "Professional",
+    modern: "Modern",
+    friendly: "Friendly",
+    impact: "Impact-focused",
+  },
+} as const;
+
+function normalizeQuickSettingValue<T extends string>(
+  value: T | undefined,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return value && allowed.includes(value) ? value : fallback;
+}
+
+export function normalizeCanvasSlideQuickSettings(
+  settings?: Partial<CanvasSlideQuickSettings> | null,
+): CanvasSlideQuickSettings {
+  const raw = settings ?? {};
+  return {
+    audience: normalizeQuickSettingValue(
+      raw.audience,
+      ["auto", "internal", "client", "education", "business"],
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS.audience,
+    ),
+    length: normalizeQuickSettingValue(
+      raw.length,
+      ["auto", "short", "standard", "detailed"],
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS.length,
+    ),
+    transformMode: normalizeQuickSettingValue(
+      raw.transformMode,
+      ["presentation", "faithful", "summary"],
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS.transformMode,
+    ),
+    tone: normalizeQuickSettingValue(
+      raw.tone,
+      ["auto", "professional", "modern", "friendly", "impact"],
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS.tone,
+    ),
+  };
+}
+
+export function canvasSlideQuickSettingsInstruction(
+  settings?: Partial<CanvasSlideQuickSettings> | null,
+): string {
+  const normalized = normalizeCanvasSlideQuickSettings(settings);
+  return [
+    `Audience: ${QUICK_SETTING_PROMPT_LABELS.audience[normalized.audience]}.`,
+    `Length: ${QUICK_SETTING_PROMPT_LABELS.length[normalized.length]}.`,
+    `Transform mode: ${QUICK_SETTING_PROMPT_LABELS.transformMode[normalized.transformMode]}.`,
+    `Tone: ${QUICK_SETTING_PROMPT_LABELS.tone[normalized.tone]}.`,
+  ].join("\n");
+}
+
 export function canvasCreateSlidesRunPrompt(
   templateTitle?: string | null,
   sourceBrief?: string | null,
+  userInstruction?: string | null,
+  quickSettings?: Partial<CanvasSlideQuickSettings> | null,
 ): string {
   const title = templateTitle?.trim();
   const templateHint = title ? `\nSelected slide template/style: ${title}.` : "";
   const brief = compactCanvasBriefValue(sourceBrief ?? "", 900);
   const sourceHint = brief ? `\n\n[Source brief]\n${brief}` : "";
-  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${sourceHint}`;
+  const user = compactCanvasBriefValue(userInstruction ?? "", 600);
+  const userHint = user ? `\n\n[User instruction]\n${user}` : "";
+  const quickHint = `\n\n[Quick settings]\n${canvasSlideQuickSettingsInstruction(quickSettings)}`;
+  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${quickHint}${sourceHint}${userHint}`;
 }
 
 /** Per-turn meta so API/daemon runs compose the selected deck template into the system prompt. */
@@ -259,9 +359,13 @@ export function canvasCreateSlidesPluginInputs(
   topicHint?: string | null,
   templateTitle?: string | null,
   sourceBrief?: string | null,
+  userInstruction?: string | null,
+  quickSettings?: Partial<CanvasSlideQuickSettings> | null,
 ): Record<string, unknown> {
   const topic = (topicHint ?? "").trim() || "the attached source document";
   const brief = sourceBrief?.trim();
+  const user = userInstruction?.trim();
+  const normalizedQuickSettings = normalizeCanvasSlideQuickSettings(quickSettings);
   return {
     deckType: "presentation from source material",
     topic,
@@ -269,6 +373,9 @@ export function canvasCreateSlidesPluginInputs(
     speakerNotes: "no speaker notes",
     designSystem: (templateTitle ?? "").trim() || "the active project design system",
     ...(brief ? { sourceBrief: brief } : {}),
+    ...(user ? { userInstruction: user } : {}),
+    quickSettings: normalizedQuickSettings,
+    quickSettingsInstruction: canvasSlideQuickSettingsInstruction(normalizedQuickSettings),
     sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
   };
 }

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { TeamverDriveImportModal } from "../src/teamver/components/TeamverDriveImportModal";
 import { resetTeamverDriveBrowsePageCachesForTests } from "../src/teamver/driveBrowsePageCache";
+import { TEAMVER_PERSONAL_DRIVE_LABEL } from "../src/teamver/teamverDriveCopy";
 
 const listScopesMock = vi.fn();
 const browsePageMock = vi.fn();
@@ -78,7 +79,7 @@ describe("TeamverDriveImportModal", () => {
     trackMock.mockReset();
     useTeamverBrandingMock.mockReturnValue({ slideOnlyMvp: false });
     listScopesMock.mockResolvedValue([
-      { mode: "personal", folderId: "ROOT-PERSONAL", label: "내 드라이브" },
+      { mode: "personal", folderId: "ROOT-PERSONAL", label: TEAMVER_PERSONAL_DRIVE_LABEL },
     ]);
     browsePageMock.mockResolvedValue({
       rows: [
@@ -330,7 +331,7 @@ describe("TeamverDriveImportModal", () => {
 
   it("filters recent rows by active shared-drive scope", async () => {
     listScopesMock.mockResolvedValue([
-      { mode: "personal", folderId: "ROOT-PERSONAL", label: "내 드라이브" },
+      { mode: "personal", folderId: "ROOT-PERSONAL", label: TEAMVER_PERSONAL_DRIVE_LABEL },
       { mode: "shared", sharedDriveId: "SD-1", folderId: "ROOT-SD-1", label: "개발팀" },
     ]);
     listRecentMock.mockResolvedValue([

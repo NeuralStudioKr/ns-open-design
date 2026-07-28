@@ -96,8 +96,9 @@ describe("FileViewer streaming slide preview", () => {
     const source = readSource("src/components/FileViewer.tsx");
     expect(source).toContain("armPreviewSourceWall");
     expect(source).toContain(
-      "Incomplete/leaky disk with no stable frame. Soft-retry once after",
+      "Incomplete/leaky disk with no stable frame. Retry briefly after",
     );
+    expect(source).toContain("scheduleSoftRetry");
     expect(source).toContain(
       "if (streaming && hasLiveHtml && liveHtmlPaintsPreview) return",
     );
@@ -106,7 +107,10 @@ describe("FileViewer streaming slide preview", () => {
 
   it("soft-retries transient null disk fetches without flipping unavailable", () => {
     const source = readSource("src/components/FileViewer.tsx");
-    expect(source).toContain("Auth blip / soft-sticky / unlink race: one soft retry");
+    expect(source).toContain("Auth blip / S3-read lag / unlink+add race");
+    expect(source).toContain("HTML_PREVIEW_SOURCE_FIRST_RETRY_MS");
+    expect(source).toContain("HTML_PREVIEW_SOURCE_RETRY_MS");
+    expect(source).toContain("retryUntil");
     expect(source).toContain("softRetryTimer");
     expect(source).toContain("abort.signal.aborted");
   });

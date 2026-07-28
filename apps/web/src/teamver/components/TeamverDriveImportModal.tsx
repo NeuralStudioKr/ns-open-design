@@ -47,6 +47,10 @@ import {
   TEAMVER_EMBED_TRANSIENT_AUTH_MESSAGE,
 } from "../teamverBffAuthError";
 import { formatTeamverDriveBrowseReloginMessage } from "../teamverDriveAuthCopy";
+import {
+  TEAMVER_PERSONAL_DRIVE_FOLDER_DESCRIPTION,
+  TEAMVER_PERSONAL_DRIVE_LABEL,
+} from "../teamverDriveCopy";
 import { TeamverDriveModalNav, TeamverDriveListSkeleton } from "./TeamverDriveModalNav";
 import { TeamverDriveScopeSidebar } from "./TeamverDriveScopeSidebar";
 import { TeamverDriveSearchField } from "./TeamverDriveSearchField";
@@ -132,7 +136,7 @@ function targetsFromImportFolders(
       return {
         id: sharedDriveId ? `shared:${sharedDriveId}:${folder.folderId}` : `personal:${folder.folderId}`,
         label: scope.mode === "shared" ? `${scope.label} / ${folder.name}` : folder.name,
-        description: scope.mode === "shared" ? "팀 드라이브 폴더" : "내 드라이브 폴더",
+        description: scope.mode === "shared" ? "팀 드라이브 폴더" : TEAMVER_PERSONAL_DRIVE_FOLDER_DESCRIPTION,
         folderId: folder.folderId,
         sharedDriveId,
       };
@@ -496,7 +500,7 @@ export function TeamverDriveImportModal({
         const nextScopes = await listTeamverDriveImportScopes(workspaceId);
         if (!cancelled) {
           setScopes(
-            nextScopes.length > 0 ? nextScopes : [{ mode: "personal", folderId: null, label: "내 드라이브" }],
+            nextScopes.length > 0 ? nextScopes : [{ mode: "personal", folderId: null, label: TEAMVER_PERSONAL_DRIVE_LABEL }],
           );
         }
       } catch (err) {
@@ -514,7 +518,7 @@ export function TeamverDriveImportModal({
           ) {
             // handled
           }
-          setScopes([{ mode: "personal", folderId: null, label: "내 드라이브" }]);
+          setScopes([{ mode: "personal", folderId: null, label: TEAMVER_PERSONAL_DRIVE_LABEL }]);
         }
       } finally {
         if (!cancelled) setScopesHydrated(true);

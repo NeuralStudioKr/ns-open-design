@@ -233,6 +233,44 @@ async def test_create_project_is_idempotent_for_existing_active_row(
 
 
 @pytest.mark.asyncio
+async def test_create_project_updates_title_on_idempotent_active_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _project_row()
+    row.title = "od1"
+    row.od_project_id = "od1"
+    db = AsyncMock()
+    db.commit = AsyncMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock(side_effect=lambda _row: None)
+    sync = AsyncMock()
+
+    monkeypatch.setattr(
+        design_project_crud,
+        "aget_project_by_od_id",
+        AsyncMock(return_value=row),
+    )
+    monkeypatch.setattr(
+        design_project_crud,
+        "acreate_project",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(projects_router.OdDaemonClient, "sync_scratch_project", sync)
+
+    response = await projects_router.create_project(
+        CreateDesignProjectBody(odProjectId="od1", title="Renamed deck"),
+        _auth(),
+        db,
+    )
+
+    assert response.title == "Renamed deck"
+    assert row.title == "Renamed deck"
+    db.commit.assert_awaited_once()
+    await _drain_background_sync_tasks()
+    sync.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_create_project_reactivates_soft_deleted_row(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

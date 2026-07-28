@@ -5,6 +5,10 @@ import {
 } from "./driveHomeRecentCache";
 import { invalidateTeamverDriveBrowsePageCaches } from "./driveBrowsePageCache";
 import { invalidateTeamverDriveImportThumbnails } from "./driveImportThumbnails";
+import {
+  isLegacyPersonalDriveRootFolderName,
+  TEAMVER_PERSONAL_DRIVE_LABEL,
+} from "./teamverDriveCopy";
 
 export type TeamverDriveImportPick = {
   assetId: string;
@@ -197,7 +201,7 @@ export function filterTeamverDriveImportListRows(
     if (
       rootFolderId &&
       row.folderId === rootFolderId &&
-      (row.name === "개인 드라이브" || row.name === "내 드라이브")
+      isLegacyPersonalDriveRootFolderName(row.name)
     ) {
       return false;
     }
@@ -360,7 +364,7 @@ async function fetchImportScopesUncached(workspaceId: string): Promise<TeamverDr
   }
 
   const scopes: TeamverDriveImportScope[] = [
-    { mode: "personal", folderId: personalRootId, label: "내 드라이브" },
+    { mode: "personal", folderId: personalRootId, label: TEAMVER_PERSONAL_DRIVE_LABEL },
   ];
 
   if (sharedListResult.status !== "fulfilled") {

@@ -361,6 +361,77 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     expect(stage?.style.transform).toBe(centered);
   });
 
+  it('tolerates repeated nudge-fit without insertBefore errors (stacked stage race)', async () => {
+    const slides = Array.from({ length: 2 }, (_, i) =>
+      `<section class="slide" style="min-height:100vh;padding:40px">Slide ${i + 1}</section>`,
+    ).join('');
+    const { win } = setupDeckBridge(slides);
+    Object.defineProperty(win.document.documentElement, 'clientWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win.document.documentElement, 'clientHeight', { configurable: true, value: 600 });
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+
+    const errors: string[] = [];
+    win.addEventListener('error', (event) => {
+      errors.push(String(event.message || event.error));
+    });
+
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
+    for (let i = 0; i < 8; i++) {
+      win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:deck-nudge-fit' } }));
+    }
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 250));
+
+    expect(errors.some((msg) => msg.includes('insertBefore'))).toBe(false);
+    expect(win.document.getElementById('od-stacked-deck-stage')).toBeTruthy();
+  });
+
+  it('hoists slides nested under a body wrapper without insertBefore errors', async () => {
+    const slides = Array.from({ length: 2 }, (_, i) =>
+      `<section class="slide" style="min-height:100vh;padding:40px">Nested ${i + 1}</section>`,
+    ).join('');
+    const bodyHtml = `<div class="content-wrap"><div class="inner">${slides}</div></div>`;
+    const srcdoc = buildSrcdoc(`<!doctype html><html><body>${bodyHtml}</body></html>`, { deck: true });
+    expect(srcdoc).toContain('compactStackedDeckEnabled = true');
+
+    const script = extractDeckBridgeScript(srcdoc);
+    const dom = new JSDOM(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: vi.fn() },
+    });
+    const errors: string[] = [];
+    win.addEventListener('error', (event) => {
+      errors.push(String(event.message || event.error));
+    });
+    const evaluate = new win.Function(script);
+    evaluate.call(win);
+    win.dispatchEvent(new win.Event('load'));
+
+    Object.defineProperty(win.document.documentElement, 'clientWidth', { configurable: true, value: 800 });
+    Object.defineProperty(win.document.documentElement, 'clientHeight', { configurable: true, value: 600 });
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+    }));
+
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 600));
+    for (let i = 0; i < 8; i++) {
+      win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:deck-nudge-fit' } }));
+    }
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 300));
+
+    expect(errors.some((msg) => msg.includes('insertBefore'))).toBe(false);
+    const stage = win.document.getElementById('od-stacked-deck-stage');
+    expect(stage).toBeTruthy();
+    expect(win.document.querySelectorAll('#od-stacked-deck-stage > .slide')).toHaveLength(2);
+    expect(win.document.querySelector('.content-wrap')).toBeNull();
+  });
+
   it('host next/prev changes computed visibility after stacked stage letterbox wraps slides', async () => {
     const slides = Array.from({ length: 3 }, (_, i) =>
       `<section class="slide" style="min-height:100vh;padding:40px">Slide ${i + 1}</section>`,

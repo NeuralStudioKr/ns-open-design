@@ -46,6 +46,15 @@ describe("embedRegistryProjectList", () => {
       ),
     ).toBe("AI 도입 발표 자료");
     expect(
+      resolveProjectDisplayName(
+        {
+          id: "77610df3-5878-41ed-a10f-2d388ac495f3",
+          name: "annual-report-2026",
+        },
+        "77610df3-5878-41ed-a10f-2d388ac495f3",
+      ),
+    ).toBe("annual-report-2026");
+    expect(
       resolveProjectDisplayName({ id: "p1", name: "design" }, "AI 도입 발표 자료"),
     ).toBe("AI 도입 발표 자료");
     expect(

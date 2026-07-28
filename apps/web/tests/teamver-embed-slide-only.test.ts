@@ -179,6 +179,24 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(block).toContain('localizePluginTitle(locale, submittedActive.record)');
   });
 
+  it('does not treat bind-only template picks as complete example briefs', () => {
+    const homeHero = readSource('src/components/HomeHero.tsx');
+    const pickStart = homeHero.indexOf('function pickExamplePluginPreset');
+    expect(pickStart).toBeGreaterThan(0);
+    const pickBlock = homeHero.slice(pickStart, pickStart + 900);
+
+    expect(pickBlock).toContain('onExamplePromptStatusChange?.(null)');
+    expect(pickBlock).not.toContain('briefForPluginPreset');
+
+    const homeView = readSource('src/components/HomeView.tsx');
+    const routeStart = homeView.indexOf('async function routePluginUse');
+    expect(routeStart).toBeGreaterThan(0);
+    const routeBlock = homeView.slice(routeStart, routeStart + 900);
+
+    expect(routeBlock).toContain('examplePromptInfoRef.current = null');
+    expect(routeBlock).toContain('Quick');
+  });
+
   it('guards selected deck template visual language above active design-system defaults', () => {
     const projectView = readSource('src/components/ProjectView.tsx');
     const start = projectView.indexOf("if (skillBody?.trim() && skillMode === 'deck')");

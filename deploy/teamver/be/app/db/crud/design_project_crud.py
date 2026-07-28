@@ -7,6 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import DesignProject
 from ..newid import new_design_project_id
+from .design_project_title import (
+    is_placeholder_registry_title,
+    merge_registry_title_update,
+)
 
 _S3_SEGMENT_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 

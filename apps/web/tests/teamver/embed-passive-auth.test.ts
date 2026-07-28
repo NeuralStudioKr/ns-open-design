@@ -44,6 +44,7 @@ vi.mock("../../src/teamver/designBffClient", () => ({
   probeDesignBffSessionAuthenticated: () => probeSessionMock(),
   ensureDesignBffSessionAuthenticated: () => ensureSessionMock(),
   isDesignAuthRefreshDeclined: vi.fn(() => false),
+  isTeamverRuntimeConfigAuthBlocked: vi.fn(() => false),
 }));
 
 const redirectMock = vi.fn();
@@ -258,5 +259,22 @@ describe("teamverEmbedPassiveAuth", () => {
     expect(hasTeamverEmbedActiveWork()).toBe(true);
     endTeamverEmbedActiveWork();
     expect(hasTeamverEmbedActiveWork()).toBe(false);
+  });
+
+  it("does not run refresh/probe recovery when runtime-config auth is blocked", async () => {
+    const { isTeamverRuntimeConfigAuthBlocked } = await import(
+      "../../src/teamver/designBffClient"
+    );
+    vi.mocked(isTeamverRuntimeConfigAuthBlocked).mockReturnValue(true);
+    refreshMock.mockClear();
+    const events: string[] = [];
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, () => {
+      events.push("auth");
+    });
+    handleEmbedPassiveUnauthorized("daemon");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(probeSessionMock).not.toHaveBeenCalled();
+    expect(events).toEqual(["auth"]);
   });
 });

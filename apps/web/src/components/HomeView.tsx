@@ -134,11 +134,13 @@ import {
 } from '../teamver/canvasLaunchHandoff';
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   resolveCanvasSlideTemplate,
   driveCreateSlidesSourceBrief,
+  type CanvasSlideQuickSettings,
 } from '../teamver/canvasSlideLaunch';
 import { useCanvasSlideLaunchTemplates } from '../teamver/hooks/useCanvasSlideLaunchTemplates';
 import {
@@ -366,6 +368,10 @@ export function HomeView({
   const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
   const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
   const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+  const [canvasSlideUserPrompt, setCanvasSlideUserPrompt] = useState('');
+  const [canvasSlideQuickSettings, setCanvasSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
+    DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+  );
   const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
   const teamverDriveImportAllowed = useMemo(
     () =>
@@ -1174,6 +1180,10 @@ export function HomeView({
     action: PluginUseAction = 'use',
     inputs?: Record<string, unknown>,
   ) {
+    // Community/plugin routing is template/context selection, not proof that a
+    // complete example brief was used. Drop stale example metadata so Quick
+    // brief can still run when the user's actual request is underspecified.
+    examplePromptInfoRef.current = null;
     trackCommunityGalleryClick(analytics.track, {
       page_name: 'home',
       area: 'community_gallery',
@@ -1785,7 +1795,12 @@ export function HomeView({
         const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
         const submitResult = await Promise.resolve(
           onSubmit({
-            prompt: canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief),
+            prompt: canvasCreateSlidesRunPrompt(
+              selectedCanvasSlideTemplate.title,
+              sourceBrief,
+              canvasSlideUserPrompt,
+              canvasSlideQuickSettings,
+            ),
             pluginId: selectedCanvasSlideTemplate.id,
             pluginType: 'official',
             skillId: null,
@@ -1796,6 +1811,8 @@ export function HomeView({
               topicHint,
               selectedCanvasSlideTemplate.title,
               sourceBrief,
+              canvasSlideUserPrompt,
+              canvasSlideQuickSettings,
             ),
             projectKind: 'deck',
             projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
@@ -1815,6 +1832,8 @@ export function HomeView({
         consumeTeamverCanvasLaunchHandoff();
         setCanvasSlideLaunch(null);
         setCanvasSlideLaunchError(null);
+        setCanvasSlideUserPrompt('');
+        setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
         return;
       }
 
@@ -1822,7 +1841,12 @@ export function HomeView({
       const sourceBrief = driveCreateSlidesSourceBrief(asset);
       const submitResult = await Promise.resolve(
         onSubmit({
-          prompt: canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief),
+          prompt: canvasCreateSlidesRunPrompt(
+            selectedCanvasSlideTemplate.title,
+            sourceBrief,
+            canvasSlideUserPrompt,
+            canvasSlideQuickSettings,
+          ),
           pluginId: selectedCanvasSlideTemplate.id,
           pluginType: 'official',
           skillId: null,
@@ -1833,6 +1857,8 @@ export function HomeView({
             asset.filename ?? asset.assetId,
             selectedCanvasSlideTemplate.title,
             sourceBrief,
+            canvasSlideUserPrompt,
+            canvasSlideQuickSettings,
           ),
           projectKind: 'deck',
           projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
@@ -1857,6 +1883,8 @@ export function HomeView({
       }
       setCanvasSlideLaunch(null);
       setCanvasSlideLaunchError(null);
+      setCanvasSlideUserPrompt('');
+      setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
     } catch (err) {
       const message =
         canvasSlideLaunch.kind === 'canvas'
@@ -2077,6 +2105,7 @@ export function HomeView({
         })(),
       }));
       if (submitResult === false) return;
+      examplePromptInfoRef.current = null;
       setSelectedPluginContexts([]);
       setSelectedMcpContexts([]);
       setSelectedConnectorContexts([]);
@@ -2221,6 +2250,10 @@ export function HomeView({
           templateOptions={canvasSlideTemplates}
           selectedTemplateId={selectedCanvasSlideTemplate.id}
           onTemplateChange={setCanvasSlideTemplateId}
+          userPrompt={canvasSlideUserPrompt}
+          onUserPromptChange={setCanvasSlideUserPrompt}
+          quickSettings={canvasSlideQuickSettings}
+          onQuickSettingsChange={setCanvasSlideQuickSettings}
           onClose={() => {
             if (!canvasSlideLaunchBusy) {
               if (canvasSlideLaunch.kind === 'canvas') {
@@ -2228,6 +2261,8 @@ export function HomeView({
               }
               setCanvasSlideLaunch(null);
               setCanvasSlideLaunchError(null);
+              setCanvasSlideUserPrompt('');
+              setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
             }
           }}
           onConfirm={() => {

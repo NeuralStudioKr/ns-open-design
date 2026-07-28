@@ -6,11 +6,12 @@ import {
   pushRecentPublishTarget,
   readRecentPublishTargets,
 } from "../src/teamver/drivePublishRecentTargets";
+import { TEAMVER_PERSONAL_DRIVE_FOLDER_DESCRIPTION } from "../src/teamver/teamverDriveCopy";
 
 const targetA: TeamverDrivePublishTarget = {
   id: "personal:folder-a",
   label: "Exports",
-  description: "내 드라이브 폴더",
+  description: TEAMVER_PERSONAL_DRIVE_FOLDER_DESCRIPTION,
   folderId: "folder-a",
   sharedDriveId: null,
 };

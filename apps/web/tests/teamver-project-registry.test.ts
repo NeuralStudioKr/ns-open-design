@@ -137,6 +137,32 @@ describe('Teamver project registry payload', () => {
       reactivateIfDeleted: false,
     });
   });
+
+  it('omits placeholder title when name equals project id', () => {
+    const id = 'a1b2c3d4-e5f6-4789-a012-3456789abcde';
+    expect(
+      buildTeamverProjectRegistryPayload({
+        id,
+        name: id,
+      }),
+    ).toEqual({
+      odProjectId: id,
+      reactivateIfDeleted: false,
+    });
+  });
+
+  it('keeps hyphenated user rename titles for registry sync', () => {
+    expect(
+      buildTeamverProjectRegistryPayload({
+        id: 'od-1',
+        name: 'annual-report-2026',
+      }),
+    ).toEqual({
+      odProjectId: 'od-1',
+      title: 'annual-report-2026',
+      reactivateIfDeleted: false,
+    });
+  });
 });
 
 describe('Teamver project registry list', () => {

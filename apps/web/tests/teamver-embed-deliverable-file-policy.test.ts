@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type DesignFileSection,
   filterEmbedDeliverableProducedFiles,
   isEmbedSupportingProjectFile,
   partitionEmbedDesignFileSections,
@@ -13,6 +14,8 @@ describe("embedDeliverableFilePolicy", () => {
     expect(isEmbedSupportingProjectFile({ name: "css/deck.css" })).toBe(true);
     expect(isEmbedSupportingProjectFile({ name: "styles.css" })).toBe(true);
     expect(isEmbedSupportingProjectFile({ name: "deck.js" })).toBe(true);
+    expect(isEmbedSupportingProjectFile({ name: "refs/drive/canvas.html" })).toBe(true);
+    expect(isEmbedSupportingProjectFile({ name: "canvas.html", path: "refs/canvas/canvas.html" })).toBe(true);
     expect(isEmbedSupportingProjectFile({ name: "index.html" })).toBe(false);
     expect(isEmbedSupportingProjectFile({ name: "slide-01.html" })).toBe(false);
   });
@@ -34,6 +37,9 @@ describe("embedDeliverableFilePolicy", () => {
       shouldDeclineEmbedAutoOpen({ slideOnlyMvp: true }, { name: "styles.css" }),
     ).toBe(true);
     expect(
+      shouldDeclineEmbedAutoOpen({ slideOnlyMvp: true }, { name: "refs/drive/canvas.html" }),
+    ).toBe(true);
+    expect(
       shouldDeclineEmbedAutoOpen({ slideOnlyMvp: true }, { name: "deck.html" }),
     ).toBe(false);
   });
@@ -42,6 +48,7 @@ describe("embedDeliverableFilePolicy", () => {
     const files = [
       { name: "index.html" },
       { name: "css/deck.css" },
+      { name: "refs/drive/canvas.html" },
       { name: "hero.png" },
     ];
     expect(filterEmbedDeliverableProducedFiles(files, { slideOnlyMvp: true })).toEqual([
@@ -53,13 +60,14 @@ describe("embedDeliverableFilePolicy", () => {
   it("partitions design file sections into deliverable vs supporting buckets", () => {
     const sections = [
       ["html", [{ name: "index.html", mtime: 2 }]],
+      ["references", [{ name: "refs/drive/canvas.html", mtime: 3 }]],
       ["stylesheet", [{ name: "css/deck.css", mtime: 1 }]],
-    ] as const;
+    ] satisfies readonly DesignFileSection<string, { name: string; mtime: number }>[];
     const { deliverableSections, supportingFiles } = partitionEmbedDesignFileSections(
       sections,
       { slideOnlyMvp: true },
     );
     expect(deliverableSections).toEqual([["html", [{ name: "index.html", mtime: 2 }]]]);
-    expect(supportingFiles.map((f) => f.name)).toEqual(["css/deck.css"]);
+    expect(supportingFiles.map((f) => f.name)).toEqual(["refs/drive/canvas.html", "css/deck.css"]);
   });
 });

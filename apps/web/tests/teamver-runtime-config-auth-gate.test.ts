@@ -67,8 +67,11 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
   });
 
   it("does not hit runtime-config when the quiet session gate is expired", async () => {
-    const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =
-      await import("../src/teamver/teamverEmbedSession");
+    const {
+      setTeamverEmbedSessionAuthenticated,
+      isTeamverEmbedSessionAuthenticated,
+      resetTeamverEmbedSessionRelayForTests,
+    } = await import("../src/teamver/teamverEmbedSession");
     const {
       fetchTeamverRuntimeConfig,
       resetTeamverRuntimeConfigCacheForTests,
@@ -85,6 +88,7 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     expect(await fetchTeamverRuntimeConfig()).toBeNull();
     expect(httpGet).not.toHaveBeenCalled();
     expect(isTeamverRuntimeConfigAuthBlocked()).toBe(true);
+    expect(isTeamverEmbedSessionAuthenticated()).toBe(false);
     // Runtime-config miss must not soft-sticky (would seed force-POST cooldown).
     expect(isDesignAuthRefreshDeclined()).toBe(false);
     expect(
@@ -94,6 +98,32 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     // Backoff: no second probe/GET while blocked.
     expect(await fetchTeamverRuntimeConfig({ force: true })).toBeNull();
     expect(httpGet).not.toHaveBeenCalled();
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
+    ).toHaveLength(1);
+  });
+
+  it("caches session-probe 401 locally and skips repeat network probes for 60s", async () => {
+    const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =
+      await import("../src/teamver/teamverEmbedSession");
+    const {
+      probeDesignBffSessionAuthenticated,
+      resetDesignAuthRefreshDeclinedForTests,
+      resetTeamverRuntimeConfigCacheForTests,
+    } = await import("../src/teamver/designBffClient");
+
+    resetTeamverEmbedSessionRelayForTests();
+    resetDesignAuthRefreshDeclinedForTests();
+    resetTeamverRuntimeConfigCacheForTests();
+    setTeamverEmbedSessionAuthenticated(true);
+
+    const fetchMock = stubSessionProbe(401);
+
+    await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(false);
+    await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(false);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
+    ).toHaveLength(1);
   });
 
   it("blocks opportunistic refetch after 401 until session re-auth", async () => {

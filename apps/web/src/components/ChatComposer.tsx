@@ -79,12 +79,14 @@ import {
 } from '../teamver/canvasLaunchHandoff';
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
   driveCreateSlidesSourceBrief,
   resolveCanvasSlideTemplate,
+  type CanvasSlideQuickSettings,
 } from '../teamver/canvasSlideLaunch';
 import { useCanvasSlideLaunchTemplates } from '../teamver/hooks/useCanvasSlideLaunchTemplates';
 import {
@@ -526,6 +528,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
     const [canvasSlideLaunchAuthRelogin, setCanvasSlideLaunchAuthRelogin] = useState(false);
     const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    const [canvasSlideUserPrompt, setCanvasSlideUserPrompt] = useState('');
+    const [canvasSlideQuickSettings, setCanvasSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
+      DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+    );
     const [teamverWorkspaceId, setTeamverWorkspaceId] = useState<string | null>(null);
     // External MCP servers configured by the user. Fetched lazily on mount;
     // shown in the slash-command palette so `/mcp <id>` inserts a hint into
@@ -1691,7 +1697,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       setUploadError(null);
       try {
         if (canvasSlideLaunch.kind === "canvas") {
-          const result = await importTeamverCanvas(id, canvasSlideLaunch.handoff);
+          const handoff = canvasSlideLaunch.handoff;
+          const promptForRun = canvasSlideUserPrompt;
+          const result = await importTeamverCanvas(id, handoff);
           const attachments = assignChatAttachmentOrders(
             canvasImportedToChatAttachments(result.imported),
             Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged)),
@@ -1703,30 +1711,39 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               if (patched) onActiveDesignSystemChange?.(patched);
             });
           }
+          const sourceBrief = canvasCreateSlidesSourceBrief(handoff);
           consumeTeamverCanvasLaunchHandoff();
           setCanvasSlideLaunch(null);
           setCanvasSlideLaunchError(null);
+          setCanvasSlideUserPrompt('');
+          setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
             designSystemId: designSystemIdForRun,
             mergeContext: baseMeta?.context,
           });
-          const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
           sendComposedTurn(
-            canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief),
+            canvasCreateSlidesRunPrompt(
+              selectedCanvasSlideTemplate.title,
+              sourceBrief,
+              promptForRun,
+              canvasSlideQuickSettings,
+            ),
             attachments,
             [],
             {
               ...baseMeta,
               ...canvasMeta,
               pluginInputs: canvasCreateSlidesPluginInputs(
-                canvasSlideLaunch.handoff.title?.trim()
-                  || canvasSlideLaunch.handoff.threadTitle?.trim()
+                handoff.title?.trim()
+                  || handoff.threadTitle?.trim()
                   || attachments[0]?.name
                   || attachments[0]?.path
                   || null,
                 selectedCanvasSlideTemplate.title,
                 sourceBrief,
+                promptForRun,
+                canvasSlideQuickSettings,
               ),
               context: {
                 ...(baseMeta?.context ?? {}),
@@ -1738,6 +1755,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         }
 
         const asset = canvasSlideLaunch.asset;
+        const promptForRun = canvasSlideUserPrompt;
         const blocked = embedAttachBlockReason(asset.filename ?? asset.assetId, {
           mimeType: asset.mimeType,
           slideOnlyMvp,
@@ -1764,17 +1782,24 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             if (patched) onActiveDesignSystemChange?.(patched);
           });
         }
+        const sourceBrief = driveCreateSlidesSourceBrief(asset);
         setCanvasSlideLaunch(null);
         setCanvasSlideLaunchError(null);
+        setCanvasSlideUserPrompt('');
+        setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
         {
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
             designSystemId: designSystemIdForRun,
             mergeContext: baseMeta?.context,
           });
-          const sourceBrief = driveCreateSlidesSourceBrief(asset);
           sendComposedTurn(
-            canvasCreateSlidesRunPrompt(selectedCanvasSlideTemplate.title, sourceBrief),
+            canvasCreateSlidesRunPrompt(
+              selectedCanvasSlideTemplate.title,
+              sourceBrief,
+              promptForRun,
+              canvasSlideQuickSettings,
+            ),
             attachments,
             [],
             {
@@ -1784,6 +1809,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 asset.filename ?? asset.assetId,
                 selectedCanvasSlideTemplate.title,
                 sourceBrief,
+                promptForRun,
+                canvasSlideQuickSettings,
               ),
               context: {
                 ...(baseMeta?.context ?? {}),
@@ -3002,6 +3029,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             templateOptions={canvasSlideTemplates}
             selectedTemplateId={selectedCanvasSlideTemplate.id}
             onTemplateChange={setCanvasSlideTemplateId}
+            userPrompt={canvasSlideUserPrompt}
+            onUserPromptChange={setCanvasSlideUserPrompt}
+            quickSettings={canvasSlideQuickSettings}
+            onQuickSettingsChange={setCanvasSlideQuickSettings}
             onRelogin={
               canvasSlideLaunchAuthRelogin ? redirectToTeamverLoginFromEmbed : null
             }
@@ -3013,6 +3044,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 setCanvasSlideLaunch(null);
                 setCanvasSlideLaunchError(null);
                 setCanvasSlideLaunchAuthRelogin(false);
+                setCanvasSlideUserPrompt('');
+                setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
               }
             }}
             onConfirm={confirmCanvasSlideLaunch}

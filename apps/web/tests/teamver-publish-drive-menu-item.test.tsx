@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { TEAMVER_PERSONAL_DRIVE_LABEL } from "../src/teamver/teamverDriveCopy";
 
 const getWorkspaceMock = vi.fn(async (): Promise<string | null> => "ws-1");
 const listTargetsMock = vi.fn(async (_workspaceId: string, _options?: { limit?: number }) => [
   {
     id: "personal-root",
-    label: "내 드라이브",
+    label: TEAMVER_PERSONAL_DRIVE_LABEL,
     description: "개인 드라이브 루트",
     folderId: "FLD-MY-ROOT",
     sharedDriveId: null,
@@ -29,7 +30,7 @@ const searchTargetsMock = vi.fn(async (_workspaceId: string, _query: string, _op
   },
 ]);
 const listImportScopesMock = vi.fn(async (_workspaceId: string) => [
-  { mode: "personal" as const, folderId: null, label: "내 드라이브" },
+  { mode: "personal" as const, folderId: null, label: TEAMVER_PERSONAL_DRIVE_LABEL },
   { mode: "shared" as const, sharedDriveId: "SD-1", folderId: null, label: "Product" },
 ]);
 const listImportRowsMock = vi.fn(async (_args: unknown) => [
@@ -765,7 +766,7 @@ describe("TeamverPublishDriveMenuItem", () => {
     listTargetsMock.mockResolvedValueOnce([
       {
         id: "personal-root",
-        label: "내 드라이브",
+        label: TEAMVER_PERSONAL_DRIVE_LABEL,
         description: "개인 드라이브 루트",
         folderId: "FLD-MY-ROOT",
         sharedDriveId: null,
@@ -847,7 +848,7 @@ describe("TeamverPublishDriveMenuItem", () => {
     listTargetsMock.mockResolvedValueOnce([
       {
         id: "personal-root",
-        label: "내 드라이브",
+        label: TEAMVER_PERSONAL_DRIVE_LABEL,
         description: "개인 드라이브 루트",
         folderId: "FLD-WS2-ROOT",
         sharedDriveId: null,
@@ -896,7 +897,7 @@ describe("TeamverPublishDriveMenuItem", () => {
     listTargetsMock.mockResolvedValueOnce([
       {
         id: "personal-root",
-        label: "내 드라이브",
+        label: TEAMVER_PERSONAL_DRIVE_LABEL,
         description: "개인 드라이브 루트",
         folderId: "FLD-WS2-ROOT",
         sharedDriveId: null,

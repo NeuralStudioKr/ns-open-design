@@ -27,7 +27,10 @@ interface CandidateFile extends TabResolvableFile {
 }
 
 import type { TeamverBrandingConfig } from '../teamver/branding/config';
-import { shouldDeclineEmbedAutoOpen } from '../teamver/branding/embedDeliverableFilePolicy';
+import {
+  isEmbedSupportingProjectFile,
+  shouldDeclineEmbedAutoOpen,
+} from '../teamver/branding/embedDeliverableFilePolicy';
 
 interface AutoOpenOptions {
   // Names of files that are React modules loaded by a sibling HTML entry (via
@@ -158,6 +161,7 @@ export function selectAutoOpenProducedHtml(
 ): string | null {
   let selected: CandidateFile | null = null;
   for (const file of producedFiles) {
+    if (isEmbedSupportingProjectFile(file)) continue;
     if (!isHtmlPreviewFile(file)) continue;
     if (!selected) {
       selected = file;

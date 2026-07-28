@@ -20,7 +20,7 @@ import {
   isOrphanTeamverJwtAuthFailure,
 } from "./teamverAuthOrphanJwt";
 import { hasProbableTeamverAuthCookie } from "./teamverAuthCookieHints";
-import { isTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
+import { isTeamverEmbedSessionAuthenticated, setTeamverEmbedSessionAuthenticated } from "./teamverEmbedSession";
 import {
   peekTeamverAuthReturnPending,
   isLikelyTeamverAuthReturnNavigation,
@@ -187,7 +187,7 @@ async function postAuthRefreshCoordinated(
           setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS),
         );
         if (
-          (await probeDesignBffSessionAuthenticated())
+          (await probeDesignBffSessionAlive({ bypassNegativeCache: true }))
           || (await ensureDesignBffSessionAuthenticated())
         ) {
           return { ok: true, status: observed.status || 200, bodyText: "" };
@@ -196,7 +196,7 @@ async function postAuthRefreshCoordinated(
           setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS),
         );
         if (
-          (await probeDesignBffSessionAuthenticated())
+          (await probeDesignBffSessionAlive({ bypassNegativeCache: true }))
           || (await ensureDesignBffSessionAuthenticated())
         ) {
           return { ok: true, status: observed.status || 200, bodyText: "" };
@@ -207,7 +207,7 @@ async function postAuthRefreshCoordinated(
       }
       if (observed.status === 400) {
         if (
-          (await probeDesignBffSessionAuthenticated())
+          (await probeDesignBffSessionAlive({ bypassNegativeCache: true }))
           || (await ensureDesignBffSessionAuthenticated())
         ) {
           return { ok: true, status: 200, bodyText: "" };
@@ -248,19 +248,55 @@ function resolveDesignBffSessionProbeUrl(): string {
   return resolveDesignBffRefreshUrl().replace(/\/auth\/refresh\/?$/, "/auth/session-probe");
 }
 
+const SESSION_PROBE_NEGATIVE_CACHE_MS = 60_000;
+let sessionProbeKnownDeadUntil = 0;
+
+function noteSessionProbeKnownDead(): void {
+  sessionProbeKnownDeadUntil = Date.now() + SESSION_PROBE_NEGATIVE_CACHE_MS;
+  runtimeConfigAuthBlocked = true;
+}
+
+function clearSessionProbeKnownDead(): void {
+  sessionProbeKnownDeadUntil = 0;
+}
+
 async function probeDesignBffSessionAlive(options?: {
   /** Sticky recovery ladders may probe after soft decline. */
   bypassDeclineGate?: boolean;
+  /** Explicit auth-return / user retry — allow a fresh network probe. */
+  bypassNegativeCache?: boolean;
 }): Promise<boolean> {
   if (!options?.bypassDeclineGate && authRefreshDeclinedForSession) return false;
+  if (
+    !options?.bypassNegativeCache
+    && sessionProbeKnownDeadUntil > Date.now()
+  ) {
+    return false;
+  }
+  if (
+    !options?.bypassNegativeCache
+    && !options?.bypassDeclineGate
+    && runtimeConfigAuthBlocked
+  ) {
+    return false;
+  }
   try {
     const probeResponse = await fetch(resolveDesignBffSessionProbeUrl(), {
       credentials: "include",
       headers: { Accept: "application/json" },
     });
     // design-api session-probe: 204 = valid BFF session, 401 = expired.
-    if (probeResponse.status === 204) return true;
-    if (probeResponse.status === 401 || probeResponse.status === 403) return false;
+    if (probeResponse.status === 204) {
+      clearSessionProbeKnownDead();
+      runtimeConfigAuthBlocked = false;
+      return true;
+    }
+    if (probeResponse.status === 401 || probeResponse.status === 403) {
+      if (!options?.bypassNegativeCache) {
+        noteSessionProbeKnownDead();
+      }
+      return false;
+    }
     if (probeResponse.ok) {
       // Tests / transitional proxies may return JSON; prefer authenticated flag.
       const body = (await probeResponse.json().catch(() => null)) as {
@@ -295,8 +331,12 @@ async function probeDesignBffSessionAlive(options?: {
  * defeating the purpose of a read-only probe and causing cross-tab HA rotation
  * races when the caller was gating on "is the session still alive".
  */
-export async function probeDesignBffSessionAuthenticated(): Promise<boolean> {
-  return probeDesignBffSessionAlive();
+export async function probeDesignBffSessionAuthenticated(options?: {
+  bypassNegativeCache?: boolean;
+}): Promise<boolean> {
+  return probeDesignBffSessionAlive({
+    bypassNegativeCache: options?.bypassNegativeCache,
+  });
 }
 
 /**
@@ -369,6 +409,8 @@ export function resetDesignAuthRefreshDeclinedForTests(): void {
   authRefreshStickySurvivalProbeAt = 0;
   authRefreshStickySurvivalLastOk = false;
   authRefreshStickySurvivalAttempts = 0;
+  clearSessionProbeKnownDead();
+  runtimeConfigAuthBlocked = false;
 }
 
 function resolveAuthRecoveryLoad(options?: FetchDesignAuthSessionOptions): boolean {
@@ -395,6 +437,7 @@ function resetDesignAuthRefreshDeclined(): void {
   authRefreshStickySurvivalProbeAt = 0;
   authRefreshStickySurvivalLastOk = false;
   authRefreshStickySurvivalAttempts = 0;
+  clearSessionProbeKnownDead();
   // Sticky clear means a recovery path may succeed — allow runtime-config again.
   runtimeConfigAuthBlocked = false;
 }
@@ -613,13 +656,15 @@ async function trySoftStickyRecovery(options?: {
       < DESIGN_BFF_STICKY_SURVIVAL_PROBE_COOLDOWN_MS
     && !authRefreshStickySurvivalLastOk;
 
+  const survivalProbe = { bypassDeclineGate: true as const, bypassNegativeCache: true as const };
+
   const clearSoftAfterConfirmedSession = async (): Promise<boolean> => {
     // ensure may Set-Cookie after absolute access expiry, but stale-grace
     // authenticated:true alone must not clear sticky (nginx still dead →
     // runtime-config 401 + refresh/probe storm). Match quiet hydrate: probe
     // live + authenticated session JSON before clear.
     await ensureDesignBffSessionAuthenticated();
-    if (!(await probeDesignBffSessionAlive({ bypassDeclineGate: true }))) return false;
+    if (!(await probeDesignBffSessionAlive(survivalProbe))) return false;
     const client = getDesignBffClient();
     if (!client) return false;
     try {
@@ -637,11 +682,11 @@ async function trySoftStickyRecovery(options?: {
   if (!skipProbeLadder) {
     authRefreshStickySurvivalProbeAt = Date.now();
     // 1) Cheap read-only probe (sibling Set-Cookie may already be live).
-    if (await probeDesignBffSessionAlive({ bypassDeclineGate: true })) {
+    if (await probeDesignBffSessionAlive(survivalProbe)) {
       if (await clearSoftAfterConfirmedSession()) return true;
     } else {
       await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
-      if (await probeDesignBffSessionAlive({ bypassDeclineGate: true })) {
+      if (await probeDesignBffSessionAlive(survivalProbe)) {
         if (await clearSoftAfterConfirmedSession()) return true;
       }
     }
@@ -684,8 +729,9 @@ async function tryHardStickySurvival(): Promise<boolean> {
   if (skipProbe) return false;
 
   authRefreshStickySurvivalProbeAt = Date.now();
+  const survivalProbe = { bypassDeclineGate: true as const, bypassNegativeCache: true as const };
   // Hard sticky: probe only — ensure /auth/session can re-hit Main refresh.
-  if (await probeDesignBffSessionAlive({ bypassDeclineGate: true })) {
+  if (await probeDesignBffSessionAlive(survivalProbe)) {
     authRefreshStickySurvivalLastOk = true;
     return true;
   }
@@ -750,15 +796,16 @@ export async function refreshDesignAuthCookie(
       return true;
     }
     if (bffResult.status === 401) {
+      const haProbe = { bypassDeclineGate: true as const, bypassNegativeCache: true as const };
       // HA rotation race: losing node returns 401 while access is still usable
       // and a sibling may already have Set-Cookie'd a fresh session. Probe /
       // ensure before sticky-declining.
-      if (await probeDesignBffSessionAlive({ bypassDeclineGate: true })) {
+      if (await probeDesignBffSessionAlive(haProbe)) {
         noteAuthRefreshPostSuppressed();
         return true;
       }
       await new Promise((resolve) => setTimeout(resolve, DESIGN_BFF_COOKIE_RECOVERY_RETRY_DELAY_MS));
-      if (await probeDesignBffSessionAlive({ bypassDeclineGate: true })) {
+      if (await probeDesignBffSessionAlive(haProbe)) {
         noteAuthRefreshPostSuppressed();
         return true;
       }
@@ -1096,6 +1143,7 @@ function noteRuntimeConfigUnauthorized(): void {
 /** Clear 401 backoff — called when embed session becomes authenticated. */
 export function clearTeamverRuntimeConfigAuthBlock(): void {
   runtimeConfigAuthBlocked = false;
+  clearSessionProbeKnownDead();
 }
 
 /** True after /runtime-config 401 or sticky refresh decline. */
@@ -1109,6 +1157,7 @@ export function resetTeamverRuntimeConfigCacheForTests(): void {
   cachedRuntimeConfig = null;
   runtimeConfigAuthBlocked = false;
   runtimeConfigSessionProbeInflight = null;
+  clearSessionProbeKnownDead();
 }
 
 async function confirmRuntimeConfigSessionAlive(): Promise<boolean> {
@@ -1156,6 +1205,9 @@ export async function fetchTeamverRuntimeConfig(
         const sessionAlive = await confirmRuntimeConfigSessionAlive();
         if (!sessionAlive) {
           noteRuntimeConfigUnauthorized();
+          if (isTeamverEmbedSessionAuthenticated()) {
+            setTeamverEmbedSessionAuthenticated(false);
+          }
           return cachedRuntimeConfig?.value ?? null;
         }
       }

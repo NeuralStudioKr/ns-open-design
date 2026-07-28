@@ -1,4 +1,5 @@
 import type { Project } from "../types";
+import { isRegistryPlaceholderTitle } from "../utils/projectName";
 import { resolveProjectDisplayName } from "./embedRegistryProjectList";
 import { sanitizeProjectForEmbed } from "./embedLocalWorkspacePolicy";
 import {
@@ -228,7 +229,11 @@ export function buildTeamverProjectRegistryPayload(
   project: Pick<Project, "id" | "name">,
   options?: { reactivateIfDeleted?: boolean },
 ): TeamverProjectRegistryPayload {
-  const title = project.name?.trim();
+  const rawName = project.name?.trim();
+  const title =
+    rawName && !isRegistryPlaceholderTitle({ id: project.id, name: rawName })
+      ? rawName
+      : "";
   return {
     odProjectId: project.id,
     ...(title ? { title } : {}),
