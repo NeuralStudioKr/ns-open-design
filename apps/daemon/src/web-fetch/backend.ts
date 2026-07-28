@@ -40,6 +40,12 @@ export interface WebFetchBackendResult {
   /** True when the backend stopped reading past MAX_TEXT_BYTES. The
    *  core preserves this flag on the public result. */
   truncated?: boolean;
+  /** Number of HTTP 3xx hops the backend followed before landing on
+   *  the final response (0 when the response was terminal on the
+   *  first request). Surfaced to the log line as `hops=N` and
+   *  intentionally NOT copied onto the public tool result — the model
+   *  and FE do not need to see it. */
+  hops?: number;
   /** Short human-readable failure reason. Present iff ok === false. */
   error?: string;
 }

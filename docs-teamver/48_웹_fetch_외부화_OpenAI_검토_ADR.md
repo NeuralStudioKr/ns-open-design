@@ -12,6 +12,7 @@
 | 2026-07-27 16:00 | v1.0 초안 — OpenAI web search 대체 검토, 현재 아키텍처, 비교표, ADR, Phase 로드맵 |
 | 2026-07-27 16:35 | v1.1 — Phase 2 POC 착수·병합 반영 (§8 체크리스트 상태 갱신, [48-1 설계](./48-1-구현설계-webfetch-adapter.md)/[48-1 현황](./48-1-구현현황-webfetch-adapter.md) 상호 링크) |
 | 2026-07-28 13:35 | **v1.2 — 조직 정책 갱신:** 새 SaaS 구독 금지 (Jina/Firecrawl/Browserless 등 reader-계열 벤더 계약 **불가**). §5 O2 코드 병합은 유지되지만 **staging enable 은 보류**. 크롤 품질 근본 개선은 **Phase 3 로 이관** (managed BYOK 답변 모델 자체를 OpenAI Responses `web_search` / Anthropic hosted `web_search` 로 확장 — Teamver 는 이미 두 vendor 의 API key 를 보유). §5.1 정책 note + §6 Phase 2/3 로드맵 재조정 + §8 체크리스트 재분류. |
+| 2026-07-28 14:10 | **v1.3 — apex→www 리다이렉트 이슈 native 수준에서 해결:** staging 실측 결과 `neuralstudio.kr` 같은 apex-only 도메인이 `redirect: 'error'` 때문에 첫 홉에서 실패. 정공법 fix — `redirect: 'manual'` + **per-hop `assertExternalAssetUrl` 재검증** (SSRF 방어 유지) + max 3 hops + https→http downgrade 거부. curl/wget 표준 정책. 브랜치 `fix/web-fetch-safe-redirects` (base: `feat/web-fetch-adr`). 이 fix 로 흔한 실패 케이스가 해소되어 **O2 reader-SaaS enable · Phase 3 vendor tool loop 의 시급도가 함께 낮아진다** — §5.1.1 정책 자체는 유지, Phase 3 는 needs-based 로 지연 가능. 자세한 설계·회귀는 [48-1 §3.3.1](./48-1-구현설계-webfetch-adapter.md#331-redirect-policy-2026-07-28-갱신). |
 
 **관련 SSOT**
 

@@ -121,6 +121,13 @@ function classifyErrorCode(error: string | undefined): string {
   }
   if (error.includes('timed out') || error === 'aborted') return 'timeout';
   if (error.startsWith('read failed')) return 'read_failed';
+  // Redirect policy failures — surface separately so ops can tell an
+  // "attacker.com→169.254.169.254" pattern from a plain network fault.
+  if (error.startsWith('too many redirects')) return 'redirect_max';
+  if (error.startsWith('blocked redirect')) return 'redirect_blocked';
+  if (error.startsWith('redirect without Location') || error.startsWith('invalid redirect Location')) {
+    return 'redirect_malformed';
+  }
   if (error.startsWith('fetch failed') || error.startsWith('reader fetch failed')) return 'network';
   if (error.startsWith('backend threw')) return 'backend_bug';
   return 'unknown';
@@ -130,6 +137,11 @@ interface WebFetchCallLog {
   backend: string;
   urlHost: string;
   durationMs: number;
+  /** Non-zero redirect hops the native backend followed before landing
+   *  on the terminal response (or the intermediate hop that blocked).
+   *  Emitted as `hops=N` when > 0 to keep the healthy default line
+   *  minimal. */
+  hops?: number;
   readerFallback?: boolean;
 }
 
@@ -140,16 +152,17 @@ function logWebFetchCall(ctx: WebFetchCallLog, result: WebFetchToolResult): void
     = `web_fetch.backend=${ctx.backend}`
     + ` url_host=${ctx.urlHost}`
     + ` duration_ms=${ctx.durationMs}`;
+  const hops = ctx.hops && ctx.hops > 0 ? ` hops=${ctx.hops}` : '';
   const fallback = ctx.readerFallback ? ' reader_fallback=1' : '';
   if (result.ok) {
     const bytes = result.text?.length ?? 0;
     const truncated = result.truncated ? ' truncated=1' : '';
-    console.log(`${base} status=ok text_bytes=${bytes}${truncated}${fallback}`);
+    console.log(`${base}${hops} status=ok text_bytes=${bytes}${truncated}${fallback}`);
   } else {
     const code = classifyErrorCode(result.error);
     // Backend error strings are already short (no body/title). Safe to
     // include verbatim — helpful when the ops bucket is 'unknown'.
-    console.log(`${base} status=error error_code=${code} error=${result.error ?? 'unknown'}${fallback}`);
+    console.log(`${base}${hops} status=error error_code=${code} error=${result.error ?? 'unknown'}${fallback}`);
   }
 }
 
@@ -195,19 +208,24 @@ export async function fetchUrlContent(
   const { primary, fallback } = getBackends();
 
   const first = await runBackend(primary, url, requestInit);
-  if (first.ok || !fallback) {
+  if (first.result.ok || !fallback) {
     logWebFetchCall(
-      { backend: primary.name, urlHost, durationMs: Date.now() - startedAt },
-      first,
+      {
+        backend: primary.name,
+        urlHost,
+        durationMs: Date.now() - startedAt,
+        ...(first.hops ? { hops: first.hops } : {}),
+      },
+      first.result,
     );
-    return first;
+    return first.result;
   }
 
   // Fallback path: only reachable when WEB_FETCH_BACKEND=reader AND
   // WEB_FETCH_READER_FALLBACK_TO_NATIVE=1 AND the reader call errored.
   // A single retry only — no chaining, no exponential backoff.
   console.warn(
-    `web_fetch.reader_fallback primary=${primary.name} url_host=${urlHost} error=${first.error ?? 'unknown'}`,
+    `web_fetch.reader_fallback primary=${primary.name} url_host=${urlHost} error=${first.result.error ?? 'unknown'}`,
   );
   const second = await runBackend(fallback, url, requestInit);
   logWebFetchCall(
@@ -216,17 +234,26 @@ export async function fetchUrlContent(
       urlHost,
       durationMs: Date.now() - startedAt,
       readerFallback: true,
+      ...(second.hops ? { hops: second.hops } : {}),
     },
-    second,
+    second.result,
   );
-  return second;
+  return second.result;
+}
+
+interface RunBackendOutcome {
+  result: WebFetchToolResult;
+  /** Copied from `WebFetchBackendResult.hops` so the log line can
+   *  include it without adding a public field. Undefined when the
+   *  backend did not report one (e.g. reader backend). */
+  hops?: number;
 }
 
 async function runBackend(
   backend: WebFetchBackend,
   url: string,
   requestInit?: Pick<RequestInit, 'dispatcher' | 'signal'>,
-): Promise<WebFetchToolResult> {
+): Promise<RunBackendOutcome> {
   const controller = new AbortController();
   let didTimeout = false;
   const timer = setTimeout(() => {
@@ -252,11 +279,19 @@ async function runBackend(
     clearTimeout(timer);
   }
 
+  const hopsOut = typeof raw.hops === 'number' && raw.hops > 0 ? { hops: raw.hops } : {};
+
   if (!raw.ok) {
     if (didTimeout) {
-      return { ok: false, error: `request timed out after ${FETCH_TIMEOUT_MS}ms` };
+      return {
+        result: { ok: false, error: `request timed out after ${FETCH_TIMEOUT_MS}ms` },
+        ...hopsOut,
+      };
     }
-    return { ok: false, error: raw.error ?? 'unknown backend error' };
+    return {
+      result: { ok: false, error: raw.error ?? 'unknown backend error' },
+      ...hopsOut,
+    };
   }
 
   const rawText = raw.text ?? '';
@@ -280,9 +315,12 @@ async function runBackend(
     Boolean(raw.truncated) || cappedText.length !== stripped.text.length;
 
   return {
-    ok: true,
-    text: cappedText,
-    ...(title ? { title } : {}),
-    ...(truncated ? { truncated: true } : {}),
+    result: {
+      ok: true,
+      text: cappedText,
+      ...(title ? { title } : {}),
+      ...(truncated ? { truncated: true } : {}),
+    },
+    ...hopsOut,
   };
 }

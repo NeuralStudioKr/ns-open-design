@@ -116,7 +116,37 @@ export interface WebFetchBackend {
 
 - 기존 `fetchUrlContent` 의 fetch/streaming 로직을 그대로 이동.
 - **주의:** streaming cap 을 native backend 안에서 계속 돌리되, `WebFetchBackendResult.truncated` 로 core 에 노출한다 (core 는 backend-agnostic 하게 100KB 이하로 잘라내는 fail-safe 를 한 번 더 적용).
-- SSRF/UA/timeout 관련 로직은 이미 core 로 옮겨졌으므로 native 는 **원본 URL 로 GET, redirect: 'error', body 스트리밍** 만 수행.
+- SSRF/UA/timeout 관련 로직은 이미 core 로 옮겨졌으므로 native 는 **원본 URL 로 GET, safe redirect follow (아래), body 스트리밍** 만 수행.
+
+#### 3.3.1 Redirect policy (2026-07-28 갱신)
+
+**배경:** 이전 구현은 SSRF 방어를 위해 `redirect: 'error'` 를 설정했다 (`connectionTest.ts` 주석 §"pair with redirect: 'error' to also block a 3xx hop into private space"). 이 결정은 apex 도메인 하나만 입력해도 `neuralstudio.kr → www.neuralstudio.kr` 같은 정상 리다이렉트조차 즉시 실패시키는 부작용을 낳았다 (staging 실측).
+
+**정공법:** `redirect: 'manual'` 로 바꾸고 **매 hop 마다 SSRF 를 재검증**한다 — attacker 원본이 3xx 로 loopback/RFC1918/link-local/metadata IP 로 hop 하려 해도 `assertExternalAssetUrl` 이 매 hop 마다 재차 거부한다. 표준 curl/wget/browser 정책과 동일:
+
+| 항목 | 값 | 근거 |
+|------|-----|------|
+| `MAX_REDIRECT_HOPS` | `3` | 정상 케이스 (apex→www, http→https) 는 1–2 hop. 3 이면 apex→www→login 도 커버. 5+ 는 tracking 이라 오히려 위험 |
+| 매 hop `assertExternalAssetUrl` | ✅ | DNS resolve → loopback/RFC1918/link-local/metadata IP 차단. SSRF 방어 재현 |
+| http → https upgrade | ✅ 허용 | 안전성 향상 |
+| https → http downgrade | ❌ 거부 | TLS 유출 방지 · `curl --proto-redir =https` 와 동일 |
+| Non-http(s) scheme (`ftp://`, `data:`) | ❌ 거부 | 스킴 확장 통한 공격 벡터 차단 |
+| Cross-origin | ✅ 허용 | CDN/vanity domain 정상 케이스가 대부분. 안전성은 per-hop SSRF 로 확보 |
+| 검증 순서 | (1) scheme, (2) **SSRF**, (3) downgrade | SSRF 가 가장 강력한 방어라 우선. attacker→metadata IP 는 스킴 무관하게 SSRF 로 attribution |
+| `Location` 없는 3xx | ❌ 거부 | `redirect_malformed` |
+| Cap 초과 (`hops > 3`) | ❌ 거부 | `redirect_max` |
+
+**로그 필드:** `WebFetchBackendResult.hops` 에 "consumed 3xx 개수" 를 실어 보내고, core 의 `logWebFetchCall` 이 `hops > 0` 일 때만 `hops=N` 을 라인에 붙인다 (healthy default 는 노이즈 zero). 블록된 hop 도 카운트 — ops 대시보드는 "얼마나 hopping 했는가" 와 "성공/실패" 를 별개 축으로 관찰 가능.
+
+**Error code buckets (`classifyErrorCode`):**
+
+- `redirect_max` — cap 초과
+- `redirect_blocked` — SSRF 재검증 실패 · downgrade · non-http(s) scheme
+- `redirect_malformed` — Location 헤더 없음 · Location URL 파싱 실패
+
+**Public API 영향:** 없음. `WebFetchToolResult` 에 `hops` 는 노출하지 않는다 (LLM/FE 는 볼 필요 없음). `<web-fetch-context>` 계약 무변.
+
+**회귀:** `apps/daemon/tests/web-fetch-redirect.test.ts` (9 케이스, 33/33 pass).
 
 ### 3.4 Reader backend (Phase D)
 

@@ -323,6 +323,7 @@ Teamver embed 1차는 **managed BYOK(API) 고정**이라 CLI 패스와 무관하
 | 일자 | 내용 |
 |------|------|
 | 2026-07-28 | [48 §5.1.1](./48_웹_fetch_외부화_OpenAI_검토_ADR.md#511-정책-갱신-v12--2026-07-28) v1.2 정책 갱신 반영 — reader-\* env 는 🚫 정책 pending 마킹, staging enable 금지, Phase 3 (vendor hosted `web_search`) 로 이관 |
+| 2026-07-28 | [48-1 §3.3.1](./48-1-구현설계-webfetch-adapter.md#331-redirect-policy-2026-07-28-갱신) native safe redirect follow 도입 — `neuralstudio.kr` apex 도메인 이슈 해결. per-hop `assertExternalAssetUrl` 재검증으로 SSRF 방어 유지. 로그에 `hops=N` (>0 시만) · error codes `redirect_max/blocked/malformed` |
 | 2026-07-27 | [48 ADR](./48_웹_fetch_외부화_OpenAI_검토_ADR.md) 링크 — OpenAI web search 전면 대체 vs adapter 로드맵 SSOT |
 | 2026-07-27 | URL-only sparse brief 빠른 질문을 UI/채팅 언어 기준으로 로컬라이즈하도록 프롬프트·테스트 보강 |
 | 2026-06-22 | 초안 — embed URL 참조 FAQ, Main BE web search 대비, minimax-byok `web_fetch` 정리 |

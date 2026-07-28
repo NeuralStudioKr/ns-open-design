@@ -16,6 +16,7 @@
 | 2026-07-27 16:40 | Phase B/C/D/E 완료 · 회귀 3/3 + 신규 16/16 green · staging enable 은 별도 ops task |
 | 2026-07-28 10:35 | 코드 리뷰 반영 (Phase F) — 48-1 §5 로그 필드 실 구현 + 신규 회귀 `web-fetch-log.test.ts` (4 케이스) · 총 24/24 green |
 | 2026-07-28 13:35 | **조직 정책 갱신 (48 §5.1.1 v1.2):** 새 SaaS 구독 금지 → `WEB_FETCH_BACKEND=reader` 는 staging/prod enable **금지**. 코드는 dead-code 로 보존 (Phase 3 재활용 후보). 후속 인수인계 항목 재작성. |
+| 2026-07-28 14:10 | **48-1 §3.3.1 land:** native backend 에 safe redirect follow 도입 (`redirect: 'manual'` + per-hop `assertExternalAssetUrl` + max 3 hops + https→http downgrade 거부). `neuralstudio.kr` 같은 apex 도메인 실측 이슈 해결. 신규 회귀 `web-fetch-redirect.test.ts` (9 케이스) — 총 5 files · 33/33 pass. 로그 스키마에 `hops=N` (>0 시만) 추가, error codes `redirect_max` / `redirect_blocked` / `redirect_malformed` 추가. 브랜치 `fix/web-fetch-safe-redirects`. |
 
 ---
 
