@@ -1728,6 +1728,12 @@ describe('sandboxed preview Blob exports', () => {
     expect(wrapper).toContain('src="blob:test-1"');
     expect(wrapper).toContain('data-od-deck-host-viewport');
     expect(wrapper).toContain("type: 'od:deck-host-viewport'");
+    // Host keyboard → iframe slide bridge (new-tab presentation focus stays on wrapper).
+    expect(wrapper).toContain("type: 'od:slide'");
+    expect(wrapper).toContain("postSlide('next')");
+    expect(wrapper).toContain("e.key === 'ArrowRight'");
+    expect(wrapper).toContain("addEventListener('keydown', onKey, true)");
+    expect(wrapper).toContain('iframe.focus()');
     expect(inner).toContain('<base href="/artifacts/project/assets/">');
     expect(inner).toContain('od:slide');
   });

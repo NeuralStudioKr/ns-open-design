@@ -186,6 +186,10 @@ const ORPHAN_CLOSE_NAMESPACED_INTERNAL_RE =
 
 const OPEN_ARTIFACT_TAG_RE = /<artifact\b[^>]*>/i;
 const CLOSED_ARTIFACT_RE = /<artifact\b[^>]*>[\s\S]*?<\/artifact>/gi;
+const ATTACHED_PREVIEW_COMMENTS_RE =
+  /\n*<attached-preview-comments\b[^>]*>[\s\S]*?<\/attached-preview-comments>\s*/gi;
+const ATTACHED_PREVIEW_COMMENTS_EMPTY_FALLBACK_RE =
+  /(?:^|\n)No comment location data provided\.\s*Apply the requested change to all slides\.\s*(?=\n|$)/gi;
 
 const CLOSED_ANTML_RE = /<antml:[^>]+>[\s\S]*?<\/antml:[^>]+>/gi;
 // Allow newlines inside attributes — agents sometimes break long antml tags
@@ -1218,7 +1222,10 @@ export function sanitizeAssistantProseForDisplay(
   options: SanitizeAssistantProseOptions = {},
 ): string {
   const streaming = options.streaming ?? false;
-  const closed = sanitizeLeakedAgentProse(input, {
+  const withoutCommentProtocol = String(input || "")
+    .replace(ATTACHED_PREVIEW_COMMENTS_RE, "\n")
+    .replace(ATTACHED_PREVIEW_COMMENTS_EMPTY_FALLBACK_RE, "\n");
+  const closed = sanitizeLeakedAgentProse(withoutCommentProtocol, {
     // Live HTML parser feeds onContentDelta from this sanitized stream — keep
     // closed artifacts until the turn settles (display strips via stripArtifact).
     preserveClosedArtifact: streaming || options.preserveClosedArtifact === true,

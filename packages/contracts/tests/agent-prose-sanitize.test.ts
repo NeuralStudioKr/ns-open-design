@@ -149,6 +149,22 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).not.toContain("활성 DESIGN.md");
   });
 
+  it("strips echoed preview-comment protocol blocks from assistant prose", () => {
+    const input = [
+      "<attached-preview-comments>",
+      "No comment location data provided. Apply the requested change to all slides.",
+      "</attached-preview-comments>",
+      "",
+      "현재 덱이 없는 상태라 기준이 되는 슬라이드가 없네요.",
+    ].join("\n");
+
+    const out = sanitizeAssistantProseForDisplay(input);
+
+    expect(out).toBe("현재 덱이 없는 상태라 기준이 되는 슬라이드가 없네요.");
+    expect(out).not.toContain("attached-preview-comments");
+    expect(out).not.toContain("Apply the requested change to all slides");
+  });
+
   it("strips variant internal and pseudo-tool XML blocks from assistant prose", () => {
     const input = [
       "요청을 접수했습니다.",

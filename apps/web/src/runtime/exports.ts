@@ -1572,6 +1572,9 @@ function escapeHtmlAttribute(value: string): string {
 }
 
 function buildSandboxedPreviewDeckHostViewportScript(): string {
+  // New-tab presentation: focus usually stays on this opaque wrapper, not the
+  // sandboxed iframe. Mirror FileViewer's host ←/→ handling by posting
+  // `od:slide` into the child so arrow keys advance slides without iframe focus.
   return `<script data-od-deck-host-viewport>(function(){
   var iframe = document.querySelector('iframe');
   function postViewport(){
@@ -1587,6 +1590,33 @@ function buildSandboxedPreviewDeckHostViewportScript(): string {
       layoutFit: false
     }, '*');
   }
+  function postSlide(action){
+    if (!iframe || !iframe.contentWindow) return;
+    iframe.contentWindow.postMessage({ type: 'od:slide', action: action }, '*');
+  }
+  function onKey(e){
+    if (!e || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    var target = e.target;
+    if (target) {
+      var tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return;
+    }
+    // Match FileViewer host nav (+ Space like deck-framework present mode).
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+      e.preventDefault();
+      postSlide('next');
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      e.preventDefault();
+      postSlide('prev');
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      postSlide('first');
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      postSlide('last');
+    }
+  }
+  window.addEventListener('keydown', onKey, true);
   window.addEventListener('resize', postViewport);
   if (iframe) {
     iframe.addEventListener('load', function(){
@@ -1594,6 +1624,7 @@ function buildSandboxedPreviewDeckHostViewportScript(): string {
       setTimeout(postViewport, 50);
       setTimeout(postViewport, 150);
       setTimeout(postViewport, 400);
+      try { iframe.focus(); } catch (_) {}
     });
   }
   if (document.readyState === 'complete') postViewport();

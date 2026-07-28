@@ -647,6 +647,23 @@ describe('preview comment attachment helpers', () => {
 
     expect(stripUserVisibleUserMessageText(prompt)).toBe("이 텍스트를 '안녕'으로 바꿔줘");
   });
+
+  it('does not render preview-comment context when target location data is missing', () => {
+    const content = messageContentWithCommentAttachments('폰트 크기 2배로 키워줘', [
+      commentAttachment({
+        elementId: '',
+        selector: '',
+        currentText: '',
+        htmlHint: '',
+        pagePosition: { x: 0, y: 0, width: 0, height: 0 },
+        slideIndex: undefined,
+      }),
+    ]);
+
+    expect(content).toBe('폰트 크기 2배로 키워줘');
+    expect(content).not.toContain('<attached-preview-comments>');
+    expect(content).not.toContain('Apply the requested change to all slides');
+  });
 });
 
 function comment(patch: Partial<PreviewComment>): PreviewComment {

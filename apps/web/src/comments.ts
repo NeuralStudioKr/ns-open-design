@@ -402,9 +402,32 @@ export function messageContentWithCommentAttachments(
   content: string,
   commentAttachments: ChatCommentAttachment[],
 ): string {
-  if (commentAttachments.length === 0) return content;
+  const scopedCommentAttachments = commentAttachments.filter(hasUsableCommentLocationData);
+  if (scopedCommentAttachments.length === 0) return content;
   const visibleContent = content.trim() || COMMENT_ONLY_USER_PLACEHOLDER;
-  return `${visibleContent}${renderCommentAttachmentContext(commentAttachments)}`;
+  return `${visibleContent}${renderCommentAttachmentContext(scopedCommentAttachments)}`;
+}
+
+function hasUsableCommentLocationData(item: ChatCommentAttachment): boolean {
+  const selectionKind = item.selectionKind === 'visual' ? 'visual' : item.selectionKind === 'pod' ? 'pod' : 'element';
+  if (selectionKind === 'visual') {
+    return Boolean(
+      String(item.screenshotPath || '').trim()
+      || String(item.selector || '').trim()
+      || String(item.elementId || '').trim(),
+    );
+  }
+  if (selectionKind === 'pod') {
+    return (item.podMembers ?? []).some((member) =>
+      Boolean(String(member.elementId || '').trim() || String(member.selector || '').trim()),
+    ) || Boolean(String(item.elementId || '').trim() || String(item.selector || '').trim());
+  }
+  return Boolean(
+    String(item.elementId || '').trim()
+    || String(item.selector || '').trim()
+    || String(item.htmlHint || '').trim()
+    || String(item.currentText || '').trim(),
+  );
 }
 
 export interface ChatAttachmentsFromPreviewCommentFilesOptions {
