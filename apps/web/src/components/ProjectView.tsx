@@ -241,6 +241,7 @@ import {
   resolveTurnStartFileBaseline,
 } from '../produced-files';
 import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
+import { maskManualEditTargets } from '../edit-mode/source-patches';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
 import { HandoffButton } from './HandoffButton';
@@ -923,6 +924,7 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   fileName: string;
   nextHtml: string;
   allowedSlideIndexes: readonly number[];
+  commentAttachments: readonly ChatCommentAttachment[];
 }): Promise<boolean> {
   if (input.allowedSlideIndexes.length === 0) return false;
   const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
@@ -953,7 +955,65 @@ async function fullDeckEditStaysInsideCommentScope(input: {
     });
     return false;
   }
+  const beforeMasked = maskScopedCommentTargets(currentHtml, input.commentAttachments);
+  const afterMasked = maskScopedCommentTargets(input.nextHtml, input.commentAttachments);
+  if (
+    beforeMasked.ok &&
+    afterMasked.ok &&
+    beforeMasked.maskedCount > 0 &&
+    beforeMasked.maskedCount === afterMasked.maskedCount &&
+    beforeMasked.source !== afterMasked.source
+  ) {
+    console.warn('[deck-patch] scoped full-deck guard rejected non-target changes inside target slide', {
+      fileName: input.fileName,
+      maskedCount: beforeMasked.maskedCount,
+    });
+    return false;
+  }
   return true;
+}
+
+function maskScopedCommentTargets(
+  source: string,
+  commentAttachments: readonly ChatCommentAttachment[],
+): { ok: true; source: string; maskedCount: number } | { ok: false } {
+  let maskedSource = source;
+  let maskedCount = 0;
+  for (const attachment of commentAttachments) {
+    if (
+      !(
+        typeof attachment.slideIndex === 'number' &&
+        Number.isInteger(attachment.slideIndex) &&
+        attachment.slideIndex >= 0
+      )
+    ) {
+      continue;
+    }
+    const ids = scopedCommentElementIds(attachment);
+    if (ids.length === 0) continue;
+    const masked = maskManualEditTargets(maskedSource, ids, {
+      slideIndex: Math.floor(attachment.slideIndex),
+    });
+    if (!masked.ok) continue;
+    maskedSource = masked.source;
+    maskedCount += masked.maskedCount;
+  }
+  return maskedCount > 0
+    ? { ok: true, source: maskedSource, maskedCount }
+    : { ok: false };
+}
+
+function scopedCommentElementIds(attachment: ChatCommentAttachment): string[] {
+  if (attachment.selectionKind === 'visual') return [];
+  const ids = [
+    attachment.elementId,
+    ...(attachment.podMembers ?? []).map((member) => member.elementId),
+  ];
+  return [...new Set(
+    ids
+      .map((id) => String(id || '').trim())
+      .filter((id) => id && !id.startsWith('pin-') && !id.startsWith('file-comment-')),
+  )];
 }
 
 function historyWithWorkspaceContext(
@@ -2918,6 +2978,7 @@ export function ProjectView({
           fileName: targetFileName,
           nextHtml: effectiveArt.html,
           allowedSlideIndexes: scopedAllowedSlideIndexes,
+          commentAttachments: runCommentAttachmentsRef.current,
         });
         if (!insideScope) {
           return {

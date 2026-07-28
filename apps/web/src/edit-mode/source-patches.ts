@@ -6,6 +6,10 @@ export interface ManualEditPatchResult {
   error?: string;
 }
 
+export type ManualEditMaskTargetsResult =
+  | { ok: true; source: string; maskedCount: number }
+  | { ok: false; source: string; reason: string };
+
 export interface ManualEditSourceScope {
   /** Zero-based deck slide index. When present, element lookup is limited to that slide. */
   slideIndex?: number;
@@ -139,6 +143,35 @@ export function readManualEditOuterHtml(
 ): string {
   const doc = parseSource(source);
   return (doc ? findEditableElement(doc, id, scope)?.outerHTML : '') ?? '';
+}
+
+export function maskManualEditTargets(
+  source: string,
+  ids: readonly string[],
+  scope: ManualEditSourceScope = {},
+): ManualEditMaskTargetsResult {
+  const doc = parseSource(source);
+  if (!doc) return { ok: false, source, reason: 'Could not parse source.' };
+  const targets = new Set<Element>();
+  for (const id of ids) {
+    const normalized = String(id || '').trim();
+    if (!normalized) continue;
+    const target = findEditableElement(doc, normalized, scope);
+    if (target) targets.add(target);
+  }
+  if (targets.size === 0) {
+    return { ok: false, source, reason: 'No targets found to mask.' };
+  }
+  let index = 0;
+  for (const target of targets) {
+    target.replaceWith(doc.createComment(`od-masked-comment-target:${index}`));
+    index += 1;
+  }
+  return {
+    ok: true,
+    source: serializeSource(doc, source),
+    maskedCount: targets.size,
+  };
 }
 
 function parseSource(source: string): Document | null {

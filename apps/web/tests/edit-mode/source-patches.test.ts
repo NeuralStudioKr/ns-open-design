@@ -3,6 +3,7 @@ import { JSDOM } from 'jsdom';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
+  maskManualEditTargets,
   readManualEditAttributes,
   readManualEditFields,
   readManualEditOuterHtml,
@@ -243,6 +244,33 @@ describe('manual edit source patches', () => {
 
     expect(result.ok).toBe(false);
     expect(result.source).toBe(source);
+  });
+
+  it('masks only comment targets inside a selected slide for scoped full-deck diffs', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h1 data-od-id="headline">Slide one</h1><p data-od-id="body">Body one</p>',
+      '</section>',
+      '<section class="slide" data-slide-index="1">',
+      '<h1 data-od-id="headline">Slide two</h1><p data-od-id="body">Body two</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const targetOnly = source.replace('Slide two', 'Slide two edited');
+    const siblingChanged = targetOnly.replace('Body two', 'Body two changed');
+
+    const beforeMasked = maskManualEditTargets(source, ['headline'], { slideIndex: 1 });
+    const targetMasked = maskManualEditTargets(targetOnly, ['headline'], { slideIndex: 1 });
+    const siblingMasked = maskManualEditTargets(siblingChanged, ['headline'], { slideIndex: 1 });
+
+    expect(beforeMasked.ok).toBe(true);
+    expect(targetMasked.ok).toBe(true);
+    expect(siblingMasked.ok).toBe(true);
+    if (!beforeMasked.ok || !targetMasked.ok || !siblingMasked.ok) return;
+    expect(targetMasked.source).toBe(beforeMasked.source);
+    expect(siblingMasked.source).not.toBe(beforeMasked.source);
+    expect(maskManualEditTargets(source, ['headline'], { slideIndex: 4 }).ok).toBe(false);
   });
 
   it('rejects text patches for nested markup', () => {
