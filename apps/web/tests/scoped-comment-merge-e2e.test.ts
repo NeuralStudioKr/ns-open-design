@@ -18,7 +18,11 @@
 // deck_patch_merge_failed error must NOT reappear for this case.
 
 import { describe, expect, it } from 'vitest';
-import { mergeScopedCommentTargetsFromPatchedDeck } from '../src/components/ProjectView';
+import {
+  applyScopedDeckPatchToHtml,
+  mergeScopedCommentTargetsFromPatchedDeck,
+  resolveScopedCommentSlideCandidates,
+} from '../src/components/ProjectView';
 import { applyDeckPatch, parseDeckPatch } from '../src/artifacts/deck-patch';
 import type { ChatCommentAttachment } from '../src/types';
 
@@ -177,11 +181,6 @@ describe('scoped comment merge — end-to-end for the actual bug report', () => 
     // actually lives. Strict scope apply rejects; the relaxed retry
     // then lets mergeScoped verify via target-text-preserved and
     // accept the model's choice.
-    //
-    // Note: applyDeckPatch itself is scope-strict on `allowedSlideIndexes`,
-    // so this scenario is exercised at the tryApplyDeckPatchAgainstCurrentDeck
-    // wrapper level. Here we lean on the end-to-end pipeline instead
-    // of exposing the wrapper directly.
     const staleAttachmentSlideIndex = 0; // user thinks target was on slide 0
     const parsed = parseDeckPatch(MODEL_PATCH_BODY);
     expect(parsed.ok).toBe(true);
@@ -200,7 +199,8 @@ describe('scoped comment merge — end-to-end for the actual bug report', () => 
       expect(strict.reason).toContain('outside attached comment scope');
     }
 
-    // Relaxed apply (no scope guard) accepts the model's slide-1 patch.
+    // mergeScoped must discover slide 1 from target text even when
+    // attachment.slideIndex is stale (0).
     const relaxed = applyDeckPatch({
       currentHtml: CURRENT_HTML,
       patch: parsed.patch,
@@ -208,24 +208,40 @@ describe('scoped comment merge — end-to-end for the actual bug report', () => 
     expect(relaxed.ok, JSON.stringify(relaxed)).toBe(true);
     if (!relaxed.ok) return;
 
-    // The wrapper (tryApplyDeckPatchAgainstCurrentDeck) is the layer
-    // that would gate the relaxed retry via the narrow merge. That
-    // path is source-pinned in project-view-message-load; here we
-    // verify that mergeScopedCommentTargetsFromPatchedDeck itself
-    // will still narrow correctly to the actual target slide when
-    // the attachment DOES carry the right slideIndex — the pipeline
-    // only needs to update `attachment.slideIndex` (or supply a
-    // correct one at merge time) to unblock the edit.
     const scoped = mergeScopedCommentTargetsFromPatchedDeck({
       currentHtml: CURRENT_HTML,
       patchedHtml: relaxed.html,
-      commentAttachments: [attachmentFor({ slideIndex: 1 })],
+      commentAttachments: [attachmentFor({ slideIndex: staleAttachmentSlideIndex })],
       instructionText: '회사 이름 눈에 잘 띄게 수정',
     });
     expect(scoped.ok, JSON.stringify(scoped)).toBe(true);
     if (!scoped.ok) return;
     expect(scoped.html).toContain('뉴럴스튜디오㈜');
     expect(scoped.html).toContain('linear-gradient');
+    expect(scoped.html).toContain('<h1 data-od-id="path-0-0">인트로</h1>');
+  });
+
+  it('accepts stale attachment.slideIndex through the full scoped deck-patch wrapper', () => {
+    const result = applyScopedDeckPatchToHtml({
+      currentHtml: CURRENT_HTML,
+      patchBody: MODEL_PATCH_BODY,
+      allowedSlideIndexes: [0],
+      commentAttachments: [attachmentFor({ slideIndex: 0 })],
+      instructionText: '회사 이름 눈에 잘 띄게 수정',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.html).toContain('linear-gradient');
+    expect(result.html).toContain('<h1 data-od-id="path-0-0">인트로</h1>');
+  });
+
+  it('resolves slide candidates from target text when attachment.slideIndex is stale', () => {
+    const candidates = resolveScopedCommentSlideCandidates({
+      attachment: attachmentFor({ slideIndex: 0 }),
+      currentHtml: CURRENT_HTML,
+      patchedHtml: CURRENT_HTML,
+    });
+    expect(candidates).toEqual([0, 1]);
   });
 
   it('accepts even when the disk HTML has no data-od-id at all (model dropped identifiers on a previous save)', () => {
