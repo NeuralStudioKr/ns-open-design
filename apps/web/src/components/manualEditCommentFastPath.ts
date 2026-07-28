@@ -32,7 +32,10 @@ export function buildManualEditCommentFastPath(input: {
     patches.push({ id: attachment.elementId, kind: 'set-text', value: text });
   }
 
-  const styles = parseStylePatch(note, effectiveStyles);
+  const styles = {
+    ...parseStylePatch(note, effectiveStyles),
+    ...parseVisibilityEmphasisPatch(note, effectiveStyles),
+  };
   if (Object.keys(styles).length > 0) {
     patches.push({ id: attachment.elementId, kind: 'set-style', styles });
   }
@@ -109,6 +112,43 @@ function looksLikeStyleModifier(value: string): boolean {
   if (parseColorKeyword(value)) return true;
   if (/^(?:크\s*게|작\s*게|얇\s*게|굵\s*게)/.test(value)) return true;
   return false;
+}
+
+/**
+ * Visibility / emphasis requests that do not name an explicit px size or
+ * color keyword — e.g. "회사 이름 눈에 잘 띄게 수정". These should stay on
+ * the local fast path instead of invoking a deck-patch round-trip that often
+ * rewrites the whole slide and trips the scoped merge guard.
+ */
+function parseVisibilityEmphasisPatch(
+  note: string,
+  currentStyles: Partial<ManualEditStyles>,
+): Partial<ManualEditStyles> {
+  const visibilityCue = /(?:눈에\s*(?:잘\s*)?띄게|돋보이게|(?:더\s*)?(?:잘\s*)?보이게|(?:텍스트|글자|글씨|이름|제목).*(?:눈에|돋보|강조)|(?:stand\s*out|more\s*visible|prominent|emphasize|highlight))/i;
+  if (!visibilityCue.test(note)) return {};
+
+  const styles: Partial<ManualEditStyles> = {};
+  const explicitWeight = parseFontWeight(note);
+  if (explicitWeight) {
+    styles.fontWeight = explicitWeight;
+  } else if (!currentStyles.fontWeight || currentStyles.fontWeight === '400' || currentStyles.fontWeight === 'normal') {
+    styles.fontWeight = '700';
+  }
+
+  const explicitSize = parseFontSize(note, currentStyles.fontSize);
+  if (explicitSize) {
+    styles.fontSize = explicitSize;
+  } else {
+    const base = parsePx(currentStyles.fontSize);
+    if (base) {
+      styles.fontSize = `${trimNumber(Math.min(320, Math.max(base + 4, base * 1.25)))}px`;
+    }
+  }
+
+  const textColor = parseColorForKind(note, 'text');
+  if (textColor) styles.color = textColor;
+
+  return styles;
 }
 
 function parseStylePatch(

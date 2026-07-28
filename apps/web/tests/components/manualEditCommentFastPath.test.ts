@@ -82,6 +82,21 @@ describe('buildManualEditCommentFastPath', () => {
     })).toBeNull();
   });
 
+  it('builds a visibility emphasis patch for 눈에 잘 띄게 requests', () => {
+    const result = buildManualEditCommentFastPath({
+      attachment: attachment({ comment: '회사 이름 눈에 잘 띄게 수정' }),
+      currentStyles: { fontSize: '24px', fontWeight: '400' },
+    });
+
+    expect(result?.patches).toEqual([
+      {
+        id: 'el-1',
+        kind: 'set-style',
+        styles: { fontWeight: '700', fontSize: '30px' },
+      },
+    ]);
+  });
+
   it('handles natural-language 이름을 X로 replacement without quotes', () => {
     const result = buildManualEditCommentFastPath({
       attachment: attachment({ comment: '이름을 김강사로 바꿔줘' }),

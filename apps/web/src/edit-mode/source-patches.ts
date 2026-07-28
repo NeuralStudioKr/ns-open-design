@@ -228,6 +228,7 @@ export function mergeManualEditTargetsFromSource(
       ? findEditableElement(nextDoc, id, scope, hint)
         ?? findEquivalentElementByScopedPosition(currentDoc, nextDoc, currentTarget, scope)
         ?? findReplacementCandidateByTextHint(nextDoc, currentTarget, scope, hint)
+        ?? (hint ? findElementByHint(nextDoc, scope, hint) : null)
       : null;
     if (!currentTarget || !nextTarget) continue;
     const currentOuter = currentTarget.outerHTML;

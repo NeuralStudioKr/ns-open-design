@@ -22,6 +22,7 @@ import {
   extractTopLevelSlideSections,
   isDeckPatchArtifactType,
   parseDeckPatch,
+  type DeckPatch,
 } from '../artifacts/deck-patch';
 import {
   clearPendingArtifactWrite,
@@ -1162,6 +1163,18 @@ type DeckPatchMergeResult =
   | { ok: true; html: string }
   | { ok: false; code: ScopedDeckPersistFailureCode; reason: string };
 
+function coerceDeckPatchToAllowedScope(
+  patch: DeckPatch,
+  allowedSlideIndexes: readonly number[] | undefined,
+): DeckPatch {
+  if (!allowedSlideIndexes || allowedSlideIndexes.length !== 1) return patch;
+  const allowed = allowedSlideIndexes[0]!;
+  if (!patch.ops.some((op) => op.slideIndex !== allowed)) return patch;
+  return {
+    ops: patch.ops.map((op) => ({ ...op, slideIndex: allowed })),
+  };
+}
+
 async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   projectId: string;
   fileName: string;
@@ -1189,9 +1202,10 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       reason: 'current deck file unreadable',
     };
   }
+  const patchForScope = coerceDeckPatchToAllowedScope(parsed.patch, input.allowedSlideIndexes);
   const merged = applyDeckPatch({
     currentHtml,
-    patch: parsed.patch,
+    patch: patchForScope,
     allowedSlideIndexes: input.allowedSlideIndexes,
   });
   if (!merged.ok) {

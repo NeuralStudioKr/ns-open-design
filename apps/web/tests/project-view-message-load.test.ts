@@ -496,6 +496,7 @@ describe("ProjectView message loading", () => {
     expect(source).not.toContain("function tryMergeSingleSlideScopedArtifact");
     expect(source).not.toContain("isScopedVisualStyleInstruction");
     expect(source).toContain("return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason }");
+    expect(source).toContain("function coerceDeckPatchToAllowedScope");
   });
 
   it("accepts a slide-level style-only diff when element merge said targets were unchanged", () => {

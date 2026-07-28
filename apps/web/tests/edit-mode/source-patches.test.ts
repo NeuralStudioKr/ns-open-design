@@ -640,4 +640,40 @@ describe('manual edit source patches', () => {
     // Original source is preserved — no partial write on ambiguous.
     expect(result.source).toBe(source);
   });
+
+  it('finds patched target by captured text hint when the model drops data-od-id', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<p class="company" data-od-id="company-name" style="font-size:24px">Teamver Inc.</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<p class="company" style="font-size:30px;font-weight:700">Teamver Inc.</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetsFromSource(
+      source,
+      modelOutput,
+      ['company-name'],
+      { slideIndex: 0 },
+      [{
+        id: 'company-name',
+        currentText: 'Teamver Inc.',
+        instructionText: '회사 이름 눈에 잘 띄게 수정',
+        htmlHint: '<p class="company"',
+      }],
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('font-weight:700');
+    expect(result.source).toContain('font-size:30px');
+    expect(result.source).toContain('data-od-id="company-name"');
+  });
 });
