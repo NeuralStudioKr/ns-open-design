@@ -463,6 +463,20 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("body\\s*>\\s*(?:[a-z0-9-]+\\s*>\\s*)*section:nth-of-type");
   });
 
+  it("returns undefined from scopedCommentSlideIndexes when no attachment carries a valid slide index", () => {
+    // Regression: previously we returned `[]` in this case which flowed
+    // into applyDeckPatch as a strict-reject allow-set (every op
+    // rejected as "outside comment scope") and into
+    // fullDeckEditStaysInsideCommentScope as `comment_scope_missing_slide`.
+    // Both surfaced as `deck_patch_merge_failed` even when the model
+    // response was fine. Returning `undefined` here means "no scope
+    // restriction" so the deck-patch and full-deck paths behave the
+    // same as unscoped edits.
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("const unique = [...new Set(indexes)]");
+    expect(source).toContain("return unique.length > 0 ? unique : undefined");
+  });
+
   it("passes hint to maskManualEditTargets so full-deck guards respect the same hint fallback", () => {
     // `maskManualEditTargets` accepts a hints array symmetric with
     // `mergeManualEditTargetsFromSource` so a click id that no longer

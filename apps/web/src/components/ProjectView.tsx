@@ -1265,7 +1265,17 @@ function scopedCommentSlideIndexes(
     .filter((slideIndex): slideIndex is number =>
       typeof slideIndex === 'number' && Number.isInteger(slideIndex) && slideIndex >= 0,
     );
-  return [...new Set(indexes)];
+  const unique = [...new Set(indexes)];
+  // Comment attachments exist but none carry a resolvable slideIndex
+  // (hydration miss on freeform pins / whole-file / unhydrated
+  // attachments). Return `undefined` so downstream deck-patch and
+  // full-deck guards treat this as "no scope restriction" instead of
+  // an empty allow-set that rejects every op. Emitting `[]` used to
+  // strict-reject the model's patch as "outside attached comment
+  // scope" and full-deck writes as `comment_scope_missing_slide` —
+  // both surfaced as `deck_patch_merge_failed` even though the model
+  // response was fine.
+  return unique.length > 0 ? unique : undefined;
 }
 
 async function fullDeckEditStaysInsideCommentScope(input: {
