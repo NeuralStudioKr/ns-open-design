@@ -162,6 +162,15 @@ describe("FileViewer streaming slide preview", () => {
     expect(workspace).toContain("artifact-preview-streaming-veil");
   });
 
+  it("preserves the active deck slide index when saving panel comments", () => {
+    const source = readSource("src/components/FileViewer.tsx");
+    const start = source.indexOf("async function savePanelComment");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 900);
+
+    expect(block).toContain("withDeckSlideIndex(targetFromSnapshot(activeCommentTarget))");
+  });
+
   it("arms disk wall once per artifact identity (not on refresh churn)", () => {
     const source = readSource("src/components/FileViewer.tsx");
     expect(source).toContain("previewSourceWallIdentityRef");

@@ -567,6 +567,7 @@ function renderCommentAttachmentContext(commentAttachments: ChatCommentAttachmen
       `file: ${item.filePath}`,
       'sourceFileContext: attached separately when this file exists in the project; inspect that attached-project-files content before saying the file is unavailable.',
       `label: ${item.label || '(unlabeled)'}`,
+      `scopeLock: ${selectionKind === 'visual' ? 'marked visual region' : item.elementId || item.selector || 'selected element'}`,
       `position: x${position.x} y${position.y} ${position.width}x${position.height}`,
       `currentText: ${trimContextText(item.currentText || '') || '(empty)'}`,
       `htmlHint: ${trimHtmlHint(item.htmlHint || '') || '(none)'}`,
@@ -600,6 +601,7 @@ function renderCommentAttachmentContext(commentAttachments: ChatCommentAttachmen
         lines.push(
           `member.${memberIndex + 1}: ${member.elementId} | ${member.label || '(unlabeled)'} | ${member.selector}`,
         );
+        lines.push(`member.${memberIndex + 1}.scopeLock: ${member.elementId || member.selector || 'selected pod member'}`);
         const memberStyle = formatAnnotationStyle(member.style);
         if (memberStyle) lines.push(`member.${memberIndex + 1}.computedStyle: ${memberStyle}`);
       });

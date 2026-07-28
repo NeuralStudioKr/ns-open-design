@@ -8007,7 +8007,7 @@ function HtmlViewer({
     if (!cleanNote) return false;
     const idSeed = Date.now().toString(36);
     const target: PreviewCommentTarget = activeCommentTarget
-      ? targetFromSnapshot(activeCommentTarget)
+      ? withDeckSlideIndex(targetFromSnapshot(activeCommentTarget))
       : {
           filePath: file.name,
           elementId: `file-comment-${idSeed}-${Math.floor(Math.random() * 1e6).toString(36)}`,

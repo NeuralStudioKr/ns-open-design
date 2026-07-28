@@ -131,6 +131,41 @@ describe('preview comment attachment helpers', () => {
     // trip we're trying to remove.
     expect(context).toContain('slideIndex: 3');
     expect(context).toContain('file: deck.html');
+    expect(context).toContain('scopeLock: hero-title');
+  });
+
+  it('adds scope locks for pod members so comment edits stay element-bound', () => {
+    const context = messageContentWithCommentAttachments('', [
+      commentAttachment({
+        id: 'pod-1',
+        elementId: 'pod-root',
+        selector: '[data-od-id="hero"], [data-od-id="cta"]',
+        selectionKind: 'pod',
+        memberCount: 2,
+        podMembers: [
+          {
+            elementId: 'hero',
+            selector: '[data-od-id="hero"]',
+            label: 'Hero',
+            text: 'Hero',
+            position: { x: 1, y: 2, width: 3, height: 4 },
+            htmlHint: '<h1 data-od-id="hero">',
+          },
+          {
+            elementId: 'cta',
+            selector: '[data-od-id="cta"]',
+            label: 'CTA',
+            text: 'Start',
+            position: { x: 5, y: 6, width: 7, height: 8 },
+            htmlHint: '<button data-od-id="cta">',
+          },
+        ],
+      }),
+    ]);
+
+    expect(context).toContain('scopeLock: pod-root');
+    expect(context).toContain('member.1.scopeLock: hero');
+    expect(context).toContain('member.2.scopeLock: cta');
   });
 
   it('resolves the preview deck basename for in-place comment-edit persist', () => {
