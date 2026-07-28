@@ -201,6 +201,8 @@ pnpm exec vitest run \
 
 ### 5.2 Staging smoke (수동)
 
+**Production 직전·직후 전체 게이트:** [48-3 Production 배포 전·후 체크리스트](./48-3-웹_fetch_Production_배포_전후_체크리스트.md) (P0~P5, sign-off, 롤백).
+
 배포 후 동일 세션에서:
 
 1. `neuralstudio.kr 로 회사 소개 슬라이드 5장` — Network 에 web-fetch **ok**, context 에 본문 길이 > 0

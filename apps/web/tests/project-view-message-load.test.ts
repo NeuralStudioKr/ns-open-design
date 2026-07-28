@@ -287,7 +287,7 @@ describe("ProjectView message loading", () => {
     // Bumped window from 5200 to 7000 chars when the deck-patch interceptor
     // (isDeckPatchArtifactType + tryApplyDeckPatchAgainstCurrentDeck) added a
     // ~1.5KB prelude at the top of persistArtifact.
-    const persistBlock = source.slice(persistStart, persistStart + 7000);
+    const persistBlock = source.slice(persistStart, persistStart + 9000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
@@ -297,6 +297,7 @@ describe("ProjectView message loading", () => {
     // gates so partial patches never get rejected as "not a full document".
     expect(persistBlock).toContain("isDeckPatchArtifactType(art.artifactType)");
     expect(persistBlock).toContain("tryApplyDeckPatchAgainstCurrentDeck(");
+    expect(persistBlock).toContain("kind: 'scope-rejected'");
     // Validation refusals still surface a refusal banner; incomplete shells
     // must stay quiet so they do not contradict the automatic-continue notice.
     expect(persistBlock).toContain("formatProjectArtifactRejectedError(");
@@ -312,7 +313,7 @@ describe("ProjectView message loading", () => {
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);
-    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 16000);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 18000);
 
     expect(autoOpenBlock).toContain("const rawFinalText = streamedText || fullText || latestAssistantMsg.content || ''");
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");

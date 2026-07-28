@@ -80,6 +80,7 @@ S3 저장 시점: [16 S3 데이터 저장 시점 SSOT](./16_S3_데이터_저장_
 | 0-3 | deploy + smoke | EC2 | `bash deploy.sh --staging --rds` → `run_post_deploy_track_a.sh --staging --rds --smoke` |
 | 0-4 | storage isolation | EC2 | `bash scripts/check_storage_isolation.sh --staging` — **0 fail** |
 | 0-5 | (선택) Track A E2E | EC2 | `run_post_deploy_track_a.sh --staging --rds --smoke --e2e` |
+| 0-6 | **web_fetch (URL 선-fetch)** | QA | [48-3 §P1](./48-3-웹_fetch_Production_배포_전후_체크리스트.md#3-p1--배포-전-staging-실증-필수) — apex + www smoke · reader env 금지 |
 
 **완료 기준:** `checks.od_storage=ok` (degraded 아님), daemon crash loop 없음.
 

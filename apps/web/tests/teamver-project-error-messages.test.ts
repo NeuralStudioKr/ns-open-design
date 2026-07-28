@@ -55,6 +55,7 @@ describe("project conversation error messages", () => {
     mockedEmbedMode.mockReturnValue(true);
     const {
       formatProjectArtifactRejectedError,
+      formatProjectArtifactCommentScopeRejectedError,
       formatProjectArtifactSaveFailedError,
       formatProjectArtifactStubWarning,
       formatProjectRunDeliverableMissingError,
@@ -67,6 +68,7 @@ describe("project conversation error messages", () => {
     expect(formatProjectArtifactRejectedError("deck.html", "missing doctype")).toContain(
       "저장을 거부",
     );
+    expect(formatProjectArtifactCommentScopeRejectedError()).toContain("댓글 대상 밖");
     expect(formatProjectArtifactSaveFailedError("deck.html")).toContain("저장에 실패");
     expect(formatProjectRunDeliverableMissingError()).toContain("슬라이드 결과물");
     expect(formatAutoContinueIncompleteOutputNotice()).toContain("자동으로 이어쓰기");

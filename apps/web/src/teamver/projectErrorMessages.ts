@@ -150,6 +150,13 @@ export function formatProjectRunDeliverableMissingError(): string {
     : "The slide deliverable was not created. The response may have been cut off — please try again.";
 }
 
+/** A comment-scoped edit tried to touch content outside the selected target. */
+export function formatProjectArtifactCommentScopeRejectedError(): string {
+  return isTeamverEmbedMode()
+    ? "선택한 댓글 대상 밖의 변경이 감지되어 저장하지 않았습니다. 같은 요소만 다시 수정하거나, 슬라이드 전체 수정을 원한다고 요청해 주세요."
+    : "The edit tried to change content outside the selected comment target, so it was not saved.";
+}
+
 /**
  * Notice injected into the failed assistant card at the exact moment the
  * capped automatic continue fires. Semantically it is a status-transition

@@ -227,6 +227,7 @@ export type AutoContinuePersistResultKind =
   | 'skipped-duplicate'
   | 'auth-replay-queued'
   | 'skipped-discovery-turn'
+  | 'scope-rejected'
   | null;
 
 /**

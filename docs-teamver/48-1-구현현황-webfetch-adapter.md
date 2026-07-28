@@ -137,6 +137,7 @@
 
 ### ops 인수인계 — **활성 계약**
 
+- **Production 배포 전·후 필수 확인:** [48-3 체크리스트](./48-3-웹_fetch_Production_배포_전후_체크리스트.md) (P0~P5, sign-off, 롤백).
 - staging/prod daemon 은 `WEB_FETCH_BACKEND` 미설정 상태 = **native 로 계속 동작**. 추가 조치 없음. 회귀 실패 발생 시 `.env` 에 실수로 `WEB_FETCH_BACKEND=reader` 가 들어갔는지 우선 확인.
 - daemon 로그 `web_fetch.backend=` 필드로 실행 backend 확인 가능. 만약 `native` 이외 값이 관측되면 즉시 조사 후 native 로 rollback.
 

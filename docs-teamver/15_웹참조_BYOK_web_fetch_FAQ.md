@@ -28,6 +28,7 @@
 | `ns-teamver-be/docs/모델별_web_search_비교.md` | 벤더별 search vs fetch 차이 |
 | [48 웹 fetch 외부화 OpenAI 검토 ADR](./48_웹_fetch_외부화_OpenAI_검토_ADR.md) | **OpenAI web search 전면 대체 검토** · O2 adapter 로드맵 |
 | [48-2 apex→www redirect 이슈](./48-2-웹_fetch_native_redirect_apex_www_이슈.md) | **apex 도메인 fetch 실패 RCA · safe redirect fix · smoke** |
+| [48-3 Production 배포 전·후 체크](./48-3-웹_fetch_Production_배포_전후_체크리스트.md) | **prod 반영 Go/No-Go · P0~P5 · 롤백** |
 
 ---
 
@@ -332,7 +333,7 @@ Teamver embed 1차는 **managed BYOK(API) 고정**이라 CLI 패스와 무관하
 | 일자 | 내용 |
 |------|------|
 | 2026-07-28 | [48 §5.1.1](./48_웹_fetch_외부화_OpenAI_검토_ADR.md#511-정책-갱신-v12--2026-07-28) v1.2 정책 갱신 반영 — reader-\* env 는 🚫 정책 pending 마킹, staging enable 금지, Phase 3 (vendor hosted `web_search`) 로 이관 |
-| 2026-07-28 | [48-2](./48-2-웹_fetch_native_redirect_apex_www_이슈.md) 신규 — apex 도메인 fetch 실패 RCA · safe redirect · smoke · ADR 영향 |
+| 2026-07-28 | [48-3](./48-3-웹_fetch_Production_배포_전후_체크리스트.md) 신규 — Production 배포 전·후 필수 P0~P5 · sign-off · 롤백 SSOT |
 | 2026-07-28 | [48-1 §3.3.1](./48-1-구현설계-webfetch-adapter.md#331-redirect-policy-2026-07-28-갱신) native safe redirect follow 도입 — `neuralstudio.kr` apex 도메인 이슈 해결. per-hop `assertExternalAssetUrl` 재검증으로 SSRF 방어 유지. 로그에 `hops=N` (>0 시만) · error codes `redirect_max/blocked/malformed` |
 | 2026-07-27 | [48 ADR](./48_웹_fetch_외부화_OpenAI_검토_ADR.md) 링크 — OpenAI web search 전면 대체 vs adapter 로드맵 SSOT |
 | 2026-07-27 | URL-only sparse brief 빠른 질문을 UI/채팅 언어 기준으로 로컬라이즈하도록 프롬프트·테스트 보강 |

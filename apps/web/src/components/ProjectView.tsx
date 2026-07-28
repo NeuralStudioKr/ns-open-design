@@ -267,6 +267,7 @@ import {
   formatProjectArtifactRejectedError,
   formatProjectArtifactSaveFailedError,
   formatProjectArtifactStubWarning,
+  formatProjectArtifactCommentScopeRejectedError,
   formatProjectRunDeliverableMissingError,
   formatAutoContinueIncompleteOutputNotice,
   formatEmergencyDeckFallbackNotice,
@@ -870,21 +871,34 @@ export function promptWithSlideCommentEditPatchInstruction(
 
 /**
  * Load the current deck file, parse the streamed `deck-patch` body, and
- * merge. Returns the merged full-deck HTML on success, or null on ANY
- * failure — the caller then returns `skipped-incomplete` so auto-continue
- * can ask the model for a full-deck fallback rather than writing a mangled
- * file.
+ * merge. Returns the merged full-deck HTML on success, or a structured
+ * failure so the UI can distinguish truncated output from a scoped comment
+ * edit that correctly refused to touch unrelated elements.
  */
+type ScopedDeckPersistFailureCode =
+  | 'deck_patch_parse_failed'
+  | 'deck_patch_current_unreadable'
+  | 'deck_patch_merge_failed'
+  | 'full_deck_current_unreadable'
+  | 'full_deck_diff_failed'
+  | 'full_deck_outside_slide_scope'
+  | 'full_deck_outside_element_scope'
+  | 'comment_scope_missing_slide';
+
+type DeckPatchMergeResult =
+  | { ok: true; html: string }
+  | { ok: false; code: ScopedDeckPersistFailureCode; reason: string };
+
 async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   projectId: string;
   fileName: string;
   patchBody: string;
   allowedSlideIndexes?: readonly number[];
-}): Promise<string | null> {
+}): Promise<DeckPatchMergeResult> {
   const parsed = parseDeckPatch(input.patchBody);
   if (!parsed.ok) {
     console.warn('[deck-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
-    return null;
+    return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
   }
   const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
     cache: 'no-store',
@@ -894,7 +908,11 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       projectId: input.projectId,
       fileName: input.fileName,
     });
-    return null;
+    return {
+      ok: false,
+      code: 'deck_patch_current_unreadable',
+      reason: 'current deck file unreadable',
+    };
   }
   const merged = applyDeckPatch({
     currentHtml,
@@ -903,9 +921,9 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   });
   if (!merged.ok) {
     console.warn('[deck-patch] merge failed', { fileName: input.fileName, reason: merged.reason });
-    return null;
+    return { ok: false, code: 'deck_patch_merge_failed', reason: merged.reason };
   }
-  return merged.html;
+  return { ok: true, html: merged.html };
 }
 
 function scopedCommentSlideIndexes(
@@ -926,8 +944,14 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   nextHtml: string;
   allowedSlideIndexes: readonly number[];
   commentAttachments: readonly ChatCommentAttachment[];
-}): Promise<boolean> {
-  if (input.allowedSlideIndexes.length === 0) return false;
+}): Promise<{ ok: true } | { ok: false; code: ScopedDeckPersistFailureCode; reason: string }> {
+  if (input.allowedSlideIndexes.length === 0) {
+    return {
+      ok: false,
+      code: 'comment_scope_missing_slide',
+      reason: 'comment attachments did not include a valid slide index',
+    };
+  }
   const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
     cache: 'no-store',
   });
@@ -936,7 +960,11 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       projectId: input.projectId,
       fileName: input.fileName,
     });
-    return false;
+    return {
+      ok: false,
+      code: 'full_deck_current_unreadable',
+      reason: 'current deck file unreadable',
+    };
   }
   const diff = diffDeckSlideIndexes(currentHtml, input.nextHtml);
   if (!diff.ok) {
@@ -944,7 +972,7 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       fileName: input.fileName,
       reason: diff.reason,
     });
-    return false;
+    return { ok: false, code: 'full_deck_diff_failed', reason: diff.reason };
   }
   const allowed = new Set(input.allowedSlideIndexes);
   const outsideScope = diff.changedSlideIndexes.filter((slideIndex) => !allowed.has(slideIndex));
@@ -954,7 +982,11 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       changedSlideIndexes: diff.changedSlideIndexes,
       allowedSlideIndexes: input.allowedSlideIndexes,
     });
-    return false;
+    return {
+      ok: false,
+      code: 'full_deck_outside_slide_scope',
+      reason: `changed slides outside comment scope: ${outsideScope.join(', ')}`,
+    };
   }
   const beforeMasked = maskScopedCommentTargets(currentHtml, input.commentAttachments);
   const afterMasked = maskScopedCommentTargets(input.nextHtml, input.commentAttachments);
@@ -969,9 +1001,13 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       fileName: input.fileName,
       maskedCount: beforeMasked.maskedCount,
     });
-    return false;
+    return {
+      ok: false,
+      code: 'full_deck_outside_element_scope',
+      reason: 'non-target changes inside the selected slide',
+    };
   }
-  return true;
+  return { ok: true };
 }
 
 function maskScopedCommentTargets(
@@ -1387,6 +1423,7 @@ type ArtifactPersistResult =
   | { kind: 'pointer'; fileName: string }
   | { kind: 'skipped-duplicate'; fileName: string }
   | { kind: 'skipped-incomplete'; fileName: string }
+  | { kind: 'scope-rejected'; fileName: string; code: ScopedDeckPersistFailureCode; reason: string }
   | { kind: 'rejected'; fileName: string; reason: string }
   | { kind: 'save-failed'; fileName: string; status?: number; code?: string; message?: string }
   | { kind: 'auth-replay-queued'; fileName: string }
@@ -1399,6 +1436,7 @@ function shouldFailRunForArtifactPersistResult(result: ArtifactPersistResult | n
   return result?.kind === 'skipped-incomplete'
     || result?.kind === 'rejected'
     || result?.kind === 'save-failed'
+    || result?.kind === 'scope-rejected'
     || result?.kind === 'skipped-discovery-turn';
 }
 
@@ -2949,23 +2987,21 @@ export function ProjectView({
           openTabsStateRef.current.active,
           { preferredFileName: runPersistTargetFileRef.current },
         );
-        const mergedHtml = await tryApplyDeckPatchAgainstCurrentDeck({
+        const merged = await tryApplyDeckPatchAgainstCurrentDeck({
           projectId: project.id,
           fileName: targetFileName,
           patchBody: art.html,
           allowedSlideIndexes: scopedAllowedSlideIndexes,
         });
-        if (!mergedHtml) {
-          // Patch either failed to parse, targeted a slide index outside the
-          // current deck bounds, or the deck file could not be read. Return
-          // `skipped-incomplete` so the terminal auto-continue path can ask
-          // the model for a full-deck fallback on the next turn.
+        if (!merged.ok) {
           return {
-            kind: 'skipped-incomplete',
+            kind: 'scope-rejected',
             fileName: targetFileName,
+            code: merged.code,
+            reason: merged.reason,
           };
         }
-        effectiveArt = { ...art, html: mergedHtml, artifactType: 'deck' };
+        effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
       } else if (scopedAllowedSlideIndexes && effectiveArt.html) {
         const currentProjectFilesForPatch = projectFilesSnapshot ?? projectFilesRef.current;
         const targetFileName = resolveArtifactPersistFileName(
@@ -2974,17 +3010,19 @@ export function ProjectView({
           openTabsStateRef.current.active,
           { preferredFileName: runPersistTargetFileRef.current },
         );
-        const insideScope = await fullDeckEditStaysInsideCommentScope({
+        const scopeResult = await fullDeckEditStaysInsideCommentScope({
           projectId: project.id,
           fileName: targetFileName,
           nextHtml: effectiveArt.html,
           allowedSlideIndexes: scopedAllowedSlideIndexes,
           commentAttachments: runCommentAttachmentsRef.current,
         });
-        if (!insideScope) {
+        if (!scopeResult.ok) {
           return {
-            kind: 'skipped-incomplete',
+            kind: 'scope-rejected',
             fileName: targetFileName,
+            code: scopeResult.code,
+            reason: scopeResult.reason,
           };
         }
       }
@@ -6057,7 +6095,12 @@ export function ProjectView({
                       code: terminalPersistResult.code,
                       message: terminalPersistResult.message,
                     })
+                  : terminalPersistResult?.kind === 'scope-rejected'
+                    ? formatProjectArtifactCommentScopeRejectedError()
                   : formatProjectRunDeliverableMissingError();
+              const deliverableErrorCode = terminalPersistResult?.kind === 'scope-rejected'
+                ? terminalPersistResult.code
+                : 'incomplete_output';
               const autoContinueCount = syncAutoContinueCountFromMessages(
                 conversationAutoContinueCountRef.current,
                 runConversationId,
@@ -6141,7 +6184,7 @@ export function ProjectView({
                 }));
               } else {
                 updateAssistant((prev) => ({
-                  ...appendErrorStatusEvent(prev, deliverableError, 'incomplete_output'),
+                  ...appendErrorStatusEvent(prev, deliverableError, deliverableErrorCode),
                   producedFiles: produced,
                   runStatus: 'failed',
                   resumable: true,

@@ -243,6 +243,17 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     ).toBe(false);
   });
 
+  it('does NOT fire when a comment-scoped edit is rejected', () => {
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        terminalPersistResultKind: 'scope-rejected',
+        hadIncompleteParsedArtifact: true,
+        shouldFailMissingSlideHtml: true,
+      }),
+    ).toBe(false);
+  });
+
   it('does NOT fire when the run is not visible', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({

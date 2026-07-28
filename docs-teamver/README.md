@@ -20,6 +20,7 @@
 | **[15 웹참조 BYOK web_fetch FAQ](./15_웹참조_BYOK_web_fetch_FAQ.md)** | **URL 기반 슬라이드 · web search vs web_fetch · daemon 패치 FAQ** |
 | **[48 웹 fetch 외부화 OpenAI 검토 ADR](./48_웹_fetch_외부화_OpenAI_검토_ADR.md)** | **OpenAI web search vs 자체 fetch · ADR · Reader SaaS adapter 로드맵** |
 | **[48-2 apex→www redirect 이슈](./48-2-웹_fetch_native_redirect_apex_www_이슈.md)** | **`neuralstudio.kr` 등 apex fetch 실패 RCA · safe redirect fix · staging smoke** |
+| **[48-3 web_fetch Production 배포 전·후 체크](./48-3-웹_fetch_Production_배포_전후_체크리스트.md)** | **P0~P5 필수 검증 · sign-off · 롤백 기준 (prod 반영 SSOT)** |
 | **[16 S3 데이터 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** | **언제 S3에 올라가는지 · scratch/sync-up · RDS·Drive·Litestream 구분** |
 | **[19 S3 버킷 prefix 역할](./19_S3_버킷_prefix_역할.md)** | **버킷·폴더(prefix)별 저장 내용 · 자동 생성 · lifecycle** |
 | **[20 Hybrid 저장소 가이드](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** | **로컬 scratch+S3 · Litestream · 용량·evict · FAQ** |
@@ -61,6 +62,7 @@
 | 15 | **[웹참조 BYOK web_fetch FAQ](./15_웹참조_BYOK_web_fetch_FAQ.md)** |
 | 48 | **[웹 fetch 외부화 OpenAI 검토 ADR](./48_웹_fetch_외부화_OpenAI_검토_ADR.md)** |
 | 48-2 | **[native redirect apex→www 이슈](./48-2-웹_fetch_native_redirect_apex_www_이슈.md)** — staging 실측 · SSRF-safe follow |
+| 48-3 | **[web_fetch Production 배포 전·후 체크](./48-3-웹_fetch_Production_배포_전후_체크리스트.md)** — P0~P5 · 롤백 · sign-off |
 | 16 | **[S3 데이터 저장 시점 SSOT](./16_S3_데이터_저장_시점_SSOT.md)** |
 | 19 | **[S3 버킷 prefix 역할](./19_S3_버킷_prefix_역할.md)** |
 | 20 | **[Hybrid 저장소 (로컬+S3)](./20_Design_Hybrid_저장소_로컬_S3_가이드.md)** |
