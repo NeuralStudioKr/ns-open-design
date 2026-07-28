@@ -122,6 +122,34 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
   });
 
+  it('recovers legacy body-first multi-slide decks that omitted sizing CSS', () => {
+    const html = [
+      '<!doctype html><html><head><style>',
+      'body{margin:0;background:#17251a}.slide{padding:96px;background:#213c2a;color:#f7ead4}',
+      '.slide h1{font-size:clamp(64px,8vw,148px)}',
+      '</style></head><body>',
+      '<section class="slide"><h1>토익 첫 수업에 오신 것을 환영합니다</h1></section>',
+      '<section class="slide"><h2>커리큘럼 안내</h2></section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    const srcdoc = buildSrcdoc(html, { deck: true });
+    expect(srcdoc).toContain('data-od-deck-stacked-fix');
+    expect(srcdoc).toContain('width=1920, initial-scale=1');
+  });
+
+  it('keeps bare root-scroll slide decks on their native path', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide">One</section>',
+      '<section class="slide">Two</section>',
+      '<section class="slide">Three</section>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
+    expect(buildSrcdoc(html, { deck: true })).not.toContain('data-od-deck-stacked-fix');
+  });
+
   it('matches body-first slides after a header chrome element', () => {
     const html = [
       '<!doctype html><html><body>',

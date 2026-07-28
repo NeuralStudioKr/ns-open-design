@@ -2164,6 +2164,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         }
       } catch (_) {}
     }
+    if (!stackedViewport && direct.length >= 2 && !hasHorizontalScroll()) {
+      stackedViewport = true;
+    }
     return stackedViewport;
   }
   var stackedDeckStageHoistInFlight = false;

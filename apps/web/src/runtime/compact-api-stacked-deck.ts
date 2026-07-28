@@ -54,6 +54,16 @@ function extractSlideInlineStyles(html: string): string[] {
   return styles;
 }
 
+function countSlideElements(html: string): number {
+  return [...html.matchAll(/<(?:section|div|main|article)\b[^>]*\bclass\s*=\s*['"][^'"]*\bslide\b[^'"]*['"]/gi)].length;
+}
+
+function looksLikeLegacyStyledBodyFirstDeck(html: string): boolean {
+  if (countSlideElements(html) < 2) return false;
+  if (extractSlideInlineStyles(html).length >= 2) return true;
+  return /\.slide\b[^{]*\{/i.test(extractCssBlocks(html));
+}
+
 /**
  * Horizontal swipe decks (simple-deck, scroll-snap) must keep their native
  * scroll/transform navigation instead of stacked letterbox.
@@ -131,7 +141,6 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (!html) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
-  if (!looksLikeSlideViewportSized(html)) return false;
   if (
     /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(
       html,
@@ -139,7 +148,13 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   ) {
     return false;
   }
-  return hasBodyFirstSlide(html);
+  if (!hasBodyFirstSlide(html)) return false;
+  if (looksLikeSlideViewportSized(html)) return true;
+  // Legacy Canvas/Drive → Slide decks can be body-first multi-slide HTML
+  // without explicit 100vh or 1920×1080 sizing. Keep existing deliverables
+  // recoverable in the host fixed-stage viewer instead of reflowing them as
+  // generic HTML.
+  return looksLikeLegacyStyledBodyFirstDeck(html);
 }
 
 /** Host-side detection that matches buildSrcdoc's wrapped preview HTML. */
@@ -164,6 +179,8 @@ export const compactStackedDeckTestHelpers = {
   SLIDE_VIEWPORT_RE,
   extractCssBlocks,
   extractSlideInlineStyles,
+  countSlideElements,
+  looksLikeLegacyStyledBodyFirstDeck,
   hasFixedCanvasSizing,
   looksLikeSlideViewportSized,
   hasBodyFirstSlide,
