@@ -54,6 +54,35 @@ describe("dedupeAssistantMessagesByRunId", () => {
     const deduped = dedupeAssistantMessagesByRunId([user, empty, live]);
     expect(deduped.map((m) => m.id)).toEqual(["u1", "a-live"]);
   });
+
+  it("keeps terminal produced-file rows over stale in-flight duplicates", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "make deck", createdAt: 1 };
+    const staleRunning: ChatMessage = {
+      id: "a-local",
+      role: "assistant",
+      content: "",
+      runId: "run-1",
+      runStatus: "running",
+      startedAt: 2,
+      createdAt: 2,
+    };
+    const completed: ChatMessage = {
+      id: "a-server",
+      role: "assistant",
+      content: "",
+      runId: "run-1",
+      runStatus: "succeeded",
+      endedAt: 10,
+      createdAt: 3,
+      producedFiles: [{ name: "deck.html", path: "deck.html", mimeType: "text/html", size: 1024 }],
+    };
+
+    const deduped = dedupeAssistantMessagesByRunId([user, staleRunning, completed]);
+
+    expect(deduped.map((m) => m.id)).toEqual(["u1", "a-server"]);
+    expect(deduped.at(-1)?.runStatus).toBe("succeeded");
+    expect(deduped.at(-1)?.producedFiles?.[0]?.name).toBe("deck.html");
+  });
 });
 
 describe("collapseEmptyAssistantShellsBeforeSuccessor", () => {
@@ -132,6 +161,28 @@ describe("patchInFlightAssistantForActiveRun", () => {
       createdAt: 5,
     }, [
       { id: "run-1", assistantMessageId: "daemon-a", status: "running", createdAt: 2 },
+      { id: "run-2", assistantMessageId: "daemon-b", status: "running", createdAt: 5 },
+    ]);
+    expect(patched).toBeNull();
+  });
+
+  it("does not patch when another active run is present without a run id", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "hi", createdAt: 1 };
+    const optimistic: ChatMessage = {
+      id: "client-a",
+      role: "assistant",
+      content: "",
+      runStatus: "running",
+      startedAt: 2,
+      createdAt: 2,
+    };
+    const patched = patchInFlightAssistantForActiveRun([user, optimistic], {
+      id: "run-2",
+      assistantMessageId: "daemon-b",
+      status: "running",
+      createdAt: 5,
+    }, [
+      { assistantMessageId: "daemon-a", status: "running", createdAt: 2 },
       { id: "run-2", assistantMessageId: "daemon-b", status: "running", createdAt: 5 },
     ]);
     expect(patched).toBeNull();

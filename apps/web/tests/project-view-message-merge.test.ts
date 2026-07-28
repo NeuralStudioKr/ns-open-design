@@ -230,6 +230,35 @@ describe("mergeServerMessagesIntoConversation", () => {
     expect(merged[0]?.endedAt).toBe(2);
   });
 
+  it("keeps server completed produced files over a stale local duplicate with the same run id", () => {
+    const local: ChatMessage = {
+      id: "a-local",
+      role: "assistant",
+      content: "",
+      createdAt: 1,
+      startedAt: 1,
+      runStatus: "running",
+      runId: "run-1",
+    };
+    const server: ChatMessage = {
+      id: "a-server",
+      role: "assistant",
+      content: "",
+      createdAt: 1,
+      runStatus: "succeeded",
+      runId: "run-1",
+      endedAt: 2,
+      producedFiles: [{ name: "deck.html", path: "deck.html", mimeType: "text/html", size: 1024 }],
+    };
+
+    const merged = mergeServerMessagesIntoConversation([local], [server]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.id).toBe("a-server");
+    expect(merged[0]?.runStatus).toBe("succeeded");
+    expect(merged[0]?.producedFiles?.[0]?.name).toBe("deck.html");
+  });
+
   it("prefers shorter sanitized local content when terminal server row still has leak residue", () => {
     // FE streaming buffer can shrink after closed-tag strip; daemon append-only
     // persist cannot. On refresh, prefer the cleaned local when the server

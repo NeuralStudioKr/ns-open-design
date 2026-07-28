@@ -40,10 +40,10 @@ export function isEmptyAssistantShell(message: ChatMessage): boolean {
 
 function assistantRichnessScore(message: ChatMessage): number {
   let score = (message.content?.length ?? 0) + (message.events?.length ?? 0) * 64;
-  score += (message.producedFiles?.length ?? 0) * 128;
-  if (isInFlightAssistantMessage(message)) score += 512;
+  score += (message.producedFiles?.length ?? 0) * 2048;
+  if (isTerminalRunStatus(message.runStatus)) score += 1024;
+  if (isInFlightAssistantMessage(message)) score += 256;
   if (message.runId?.trim()) score += 32;
-  if (isTerminalRunStatus(message.runStatus)) score += 16;
   return score;
 }
 
@@ -149,10 +149,8 @@ export function patchInFlightAssistantForActiveRun(
     return null;
   }
 
-  const activeRunIds = (activeRuns ?? [run])
-    .map((candidate) => candidate.id?.trim())
-    .filter((id): id is string => Boolean(id));
-  if (activeRunIds.length > 1) return null;
+  const activeRunCount = activeRuns?.length ?? 1;
+  if (activeRunCount !== 1) return null;
 
   const inFlight = findInFlightAssistantMessages(messages)[0];
   if (!inFlight || inFlight.runId?.trim()) return null;

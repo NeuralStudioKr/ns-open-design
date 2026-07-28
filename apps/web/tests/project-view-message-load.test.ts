@@ -370,11 +370,10 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("handleSendRef.current = handleSend");
     const handleSendStart = source.indexOf("const handleSend = useCallback(");
     expect(handleSendStart).toBeGreaterThan(0);
-    // Bumped window from 4200 to 6000 chars when the deck-patch prompt nudge
-    // (promptWithSlideCommentEditPatchInstruction + skipDeckHtml option on
-    // chatAttachmentsFromPreviewCommentFiles) added a small block before the
-    // auto-continue counter reset.
-    const handleSendBlock = source.slice(handleSendStart, handleSendStart + 6000);
+    // Keep this window broad enough for the prompt preparation block above
+    // the auto-continue counter reset; this test asserts the ordering contract,
+    // not an exact source distance.
+    const handleSendBlock = source.slice(handleSendStart, handleSendStart + 7200);
     expect(handleSendBlock).toContain("isAutoContinueIncompleteOutputPrompt(prompt)");
     expect(handleSendBlock).toContain("conversationAutoContinueCountRef.current.set(runConversationId, 0)");
     // Comment-edit path must plumb the deck-patch nudge + skipDeckHtml opt-in
