@@ -10,6 +10,7 @@ import {
   reattachReplayRemainderAfterSeed,
   reconcileByokBackgroundChatsAfterPoll,
   resolveRunRecoveryBannerPhase,
+  findRecoverableBackgroundAssistantMessage,
   shouldCatchUpReattachTextFromSeed,
   shouldClearPhantomStreamingMarker,
   shouldFullReplayReattachedRun,
@@ -220,21 +221,42 @@ describe("backgroundChatRecovery", () => {
 
   it("catches up reattached SSE replay without duplicating the seeded prefix", () => {
     expect(reattachReplayRemainderAfterSeed("안녕하세요", "안녕")).toEqual({
-      complete: false,
-      remainder: "",
+      status: "waiting",
     });
     expect(reattachReplayRemainderAfterSeed("안녕하세요", "안녕하세요. 계속")).toEqual({
-      complete: true,
+      status: "append",
       remainder: ". 계속",
     });
-    expect(reattachReplayRemainderAfterSeed("초안 작성 중", "작성 중입니다")).toEqual({
-      complete: true,
-      remainder: "입니다",
+    expect(
+      reattachReplayRemainderAfterSeed(
+        "초안을 작성 중입니다. 아래 슬라이드 본문을 이어서 그대로 출력합니다.",
+        "아래 슬라이드 본문을 이어서 그대로 출력합니다. 다음 문단",
+      ),
+    ).toEqual({
+      status: "append",
+      remainder: " 다음 문단",
     });
     expect(reattachReplayRemainderAfterSeed("sanitized", "raw replay")).toEqual({
-      complete: true,
-      remainder: "raw replay",
+      status: "rewrite",
+      content: "raw replay",
     });
+    // Tiny accidental overlaps must not append — rewrite to SSE truth.
+    expect(reattachReplayRemainderAfterSeed("초안 작성 중", "작성 중입니다")).toEqual({
+      status: "rewrite",
+      content: "작성 중입니다",
+    });
+  });
+
+  it("finds recoverable daemon assistants even without startedAt", () => {
+    const message: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "<artifact type=\"deck\">partial",
+      createdAt: 1,
+      runId: "run-1",
+    };
+    expect(findRecoverableBackgroundAssistantMessage([message], "daemon")).toEqual(message);
+    expect(findRecoverableBackgroundAssistantMessage([message], "api")).toBeNull();
   });
 
   it("merges BYOK active projects into daemon summaries", () => {

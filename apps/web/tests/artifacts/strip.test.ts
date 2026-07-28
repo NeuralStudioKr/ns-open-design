@@ -241,6 +241,12 @@ describe('artifactPreviewFromInFlightContent', () => {
     });
   });
 
+  it('does not treat an open deck-patch stream as a full re-entry preview', () => {
+    const content =
+      'Patching\n<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="0">Hi';
+    expect(artifactPreviewFromInFlightContent(content)).toBeNull();
+  });
+
   it('does not treat a closed deck-patch artifact as a full re-entry preview', () => {
     const content =
       '<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="0">Patch</section></artifact>';

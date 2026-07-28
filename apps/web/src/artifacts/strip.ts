@@ -451,12 +451,17 @@ export function artifactPreviewFromInFlightContent(content: string): {
 } | null {
   const { live } = splitStreamingArtifact(content);
   if (live?.content?.trim()) {
-    return {
-      identifier: live.identifier.trim() || 'deck',
-      artifactType: live.artifactType.trim() || 'deck',
-      title: live.title.trim() || 'Deck',
-      html: live.content,
-    };
+    const liveType = live.artifactType.trim().toLowerCase();
+    // Open deck-patch / slide-patch is a fragment — do not paint it as a full
+    // deck preview on leave/re-entry (prefer closed full deck / disk).
+    if (liveType !== 'deck-patch' && liveType !== 'slide-patch') {
+      return {
+        identifier: live.identifier.trim() || 'deck',
+        artifactType: live.artifactType.trim() || 'deck',
+        title: live.title.trim() || 'Deck',
+        html: live.content,
+      };
+    }
   }
   const closed = extractClosedArtifactPreview(content);
   if (closed) return closed;

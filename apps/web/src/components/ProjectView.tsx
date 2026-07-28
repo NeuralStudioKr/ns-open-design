@@ -293,6 +293,7 @@ import {
   conversationAwaitingQuestionFormAnswer,
   conversationHasRecoverableBackgroundChat,
   findInFlightAssistantMessages,
+  findRecoverableBackgroundAssistantMessage,
   isInFlightAssistantMessage,
   isRecoverableDaemonRunMessage,
   mergeActiveRunsIntoMessages,
@@ -323,6 +324,10 @@ import { resolveEmbedSlideDesignSystemId } from '../teamver/embedSlideDesignSyst
 import { fetchPluginLocalSkill } from '../teamver/fetchPluginLocalSkill';
 import { throwIfProjectCommentUploadIncomplete } from '../teamver/projectUploadErrors';
 import { stripLeakedPseudoToolXml } from '../utils/stripLeakedPseudoToolXml';
+import {
+  sanitizeChatMessageLeakedPseudoTool,
+  type SanitizeChatMessageOptions,
+} from '../utils/sanitizeChatMessageLeakedPseudoTool';
 import { sanitizeAssistantProseForDisplay } from '../runtime/internalAgentMarkup';
 import {
   dedupeConversationAssistantRows,
@@ -2265,11 +2270,15 @@ export function ProjectView({
 
   // Re-entry / BYOK background recovery: paint partial streamed deck HTML on
   // the preview panel before SSE deltas reconnect (artifact state is cleared on
-  // unmount).
+  // unmount). Use recoverable eligibility (not only startedAt in-flight) so
+  // daemon runId-only rows still rehydrate.
   useEffect(() => {
     if (!activeConversationId) return;
     if (!currentConversationHasActiveRun && !previewPanelStreaming) return;
-    const inflight = findInFlightAssistantMessages(messages)[0];
+    const recoveryMode = config.mode === 'daemon' ? 'daemon' : 'api';
+    const inflight =
+      findRecoverableBackgroundAssistantMessage(messages, recoveryMode)
+      ?? findInFlightAssistantMessages(messages)[0];
     if (!inflight?.content?.trim()) return;
     const preview = artifactPreviewFromInFlightContent(inflight.content);
     if (!preview) return;
@@ -2293,6 +2302,7 @@ export function ProjectView({
     });
   }, [
     activeConversationId,
+    config.mode,
     currentConversationHasActiveRun,
     messages,
     previewPanelStreaming,
@@ -2918,14 +2928,21 @@ export function ProjectView({
   }, [project.id, activeConversationId]);
 
   const cancelSendTextBuffer = useCallback((flushPending = false) => {
-    if (flushPending) sendTextBufferRef.current?.flush();
-    sendTextBufferRef.current?.cancel();
+    const buffer = sendTextBufferRef.current;
+    if (flushPending) {
+      buffer?.flush();
+      buffer?.finalizeForHistoryDisplay?.();
+    }
+    buffer?.cancel();
     sendTextBufferRef.current = null;
   }, []);
 
   const cancelReattachTextBuffers = useCallback((flushPending = false) => {
     for (const textBuffer of reattachTextBuffersRef.current) {
-      if (flushPending) textBuffer.flush();
+      if (flushPending) {
+        textBuffer.flush();
+        textBuffer.finalizeForHistoryDisplay?.();
+      }
       textBuffer.cancel();
     }
     reattachTextBuffersRef.current.clear();
@@ -4973,11 +4990,34 @@ export function ProjectView({
               if (!catchUpComplete) {
                 sseCatchUpBuffer += delta;
                 const catchUp = reattachReplayRemainderAfterSeed(seededContent, sseCatchUpBuffer);
-                if (!catchUp.complete) {
+                if (catchUp.status === 'waiting') {
+                  return;
+                }
+                catchUpComplete = true;
+                if (catchUp.status === 'rewrite') {
+                  // Seed (often sanitized) diverged from raw SSE — replace
+                  // instead of appending the full replay (would duplicate).
+                  replayedContent = catchUp.content;
+                  updateMessageById(
+                    message.id,
+                    (prev) => ({ ...prev, content: catchUp.content }),
+                  );
+                  rewriteLiveContent(catchUp.content);
+                  if (isTeamverEmbedMode()) {
+                    const nextChars = replayedContent.trim().length;
+                    setRunRecoveryBanner((prev) => {
+                      if (!prev || prev.conversationId !== reattachConversationId) return prev;
+                      return {
+                        ...prev,
+                        phase: 'live',
+                        runStatus: 'running',
+                        savedChars: Math.max(prev.savedChars, nextChars),
+                      };
+                    });
+                  }
                   return;
                 }
                 const remainder = catchUp.remainder;
-                catchUpComplete = true;
                 if (!remainder) return;
                 replayedContent += remainder;
                 if (isTeamverEmbedMode()) {
@@ -5216,6 +5256,8 @@ export function ProjectView({
               persistSoon();
             }
             if (runStatus === 'canceled') {
+              textBuffer.flush();
+              textBuffer.finalizeForHistoryDisplay?.();
               textBuffer.cancel();
               unregisterTextBuffer();
               completedReattachRunsRef.current.add(runId);
@@ -7320,6 +7362,10 @@ export function ProjectView({
               assistantPersist.persistSoon();
             }
             if (!runMayFinalize) return;
+            if (runStatus === 'canceled') {
+              textBuffer.flush();
+              textBuffer.finalizeForHistoryDisplay?.();
+            }
             if (!deferredTerminalSuccess) {
               updateConversationLatestRun(runStatus, endedAt);
             }
@@ -7626,7 +7672,14 @@ export function ProjectView({
     apiBackgroundRecoveryRef.current = false;
     const stopConversationId = activeConversationId ?? streamingConversationIdRef.current;
     setMessages((curr) => {
-      const { messages: next, finalized } = finalizeActiveAssistantMessagesOnStop(curr, stoppedAt);
+      const sanitizeOnStop: SanitizeChatMessageOptions = {
+        stripCodeFences: hideAssistantThinkingDetails && !slideOnlyMvp,
+      };
+      const { messages: next, finalized } = finalizeActiveAssistantMessagesOnStop(
+        curr,
+        stoppedAt,
+        sanitizeOnStop,
+      );
       if (config.mode === 'api' && stopConversationId) {
         const cleared = finalized.length > 0
           ? finalized
@@ -7649,7 +7702,7 @@ export function ProjectView({
     setStreaming(false);
     streamingConversationIdRef.current = null;
     setStreamingConversationId(null);
-  }, [activeConversationId, cancelSendTextBuffer, cancelReattachTextBuffers, clearApiBackgroundRecoveryBanner, config.mode, persistMessage, project.id]);
+  }, [activeConversationId, cancelSendTextBuffer, cancelReattachTextBuffers, clearApiBackgroundRecoveryBanner, config.mode, hideAssistantThinkingDetails, persistMessage, project.id, slideOnlyMvp]);
 
   // Flip the deck preview to the slide a queued send's marked element lives on
   // the moment that send starts processing. No-op for plain prompts or marks
@@ -10385,17 +10438,21 @@ export function shouldClearActiveRunRefs(
 export function finalizeActiveAssistantMessagesOnStop(
   messages: ChatMessage[],
   stoppedAt: number,
+  sanitizeOptions: SanitizeChatMessageOptions = {},
 ): { messages: ChatMessage[]; finalized: ChatMessage[] } {
   const finalized: ChatMessage[] = [];
   const next = messages.map((message) => {
     if (!isStoppableAssistantMessage(message)) {
       return message;
     }
-    const updated = {
-      ...message,
-      runStatus: 'canceled' as const,
-      endedAt: message.endedAt ?? stoppedAt,
-    };
+    const updated = sanitizeChatMessageLeakedPseudoTool(
+      {
+        ...message,
+        runStatus: 'canceled',
+        endedAt: message.endedAt ?? stoppedAt,
+      },
+      sanitizeOptions,
+    );
     finalized.push(updated);
     return updated;
   });
@@ -10634,5 +10691,22 @@ export function createBufferedTextUpdates({
   // tool's stream position) add 1 for this still-buffered preamble.
   const hasPendingText = () => pendingTextEventDelta.length > 0;
 
-  return { appendContent, appendTextEvent, appendEvent, flush, cancel, hasPendingText };
+  const finalizeForHistoryDisplay = () => {
+    if (disposed) return;
+    updateMessage((prev) => sanitizeChatMessageLeakedPseudoTool(prev, { stripCodeFences }));
+    persistSoon();
+    rawContentForSanitize = null;
+    rawTextEventForSanitize = '';
+    sanitizedTextEventSent = '';
+  };
+
+  return {
+    appendContent,
+    appendTextEvent,
+    appendEvent,
+    flush,
+    cancel,
+    hasPendingText,
+    finalizeForHistoryDisplay,
+  };
 }

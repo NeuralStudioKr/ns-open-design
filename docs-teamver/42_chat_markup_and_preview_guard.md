@@ -2,6 +2,14 @@
 
 **판단 시점:** 2026-07-20 현재.
 
+## 2026-07-28 추가: Run Error 카드 위치 정책
+
+- persisted assistant `events[].label === "error"`에서 만든 run error diagnostic 카드는 **채팅 맨 아래 전역 슬롯이 아니라, 해당 실패 assistant 메시지 바로 아래**에 표시한다.
+- 목적: 댓글 수정 실패, incomplete output, merge guard 실패처럼 과거 턴에서 발생한 오류가 후속 대화나 재진입 뒤에 “현재 최신 오류”처럼 보이지 않게 한다.
+- live/global `error` 상태는 여전히 ChatPane 하단 전역 카드로 표시할 수 있지만, 저장된 run 실패 이벤트는 메시지 ID에 귀속한다.
+- `AssistantMessage`의 기존 per-message error pill은 같은 assistant 메시지에 diagnostic 카드가 붙을 때만 suppress하여 중복 표시를 막는다.
+- 회귀 테스트: `apps/web/tests/components/ChatPane.streaming.test.tsx`의 persisted failed-run error 위치 테스트.
+
 ## 왜 검토할 때마다 구멍이 보였는가
 
 에이전트 truncation은 **적대적 분포**다. “이번에 본 조각”만 regex로 막으면 다음 조각이 새로 드러난다.

@@ -793,6 +793,17 @@ describe("agent-prose-sanitize SSOT", () => {
     ).toBe("Hello  World");
   });
 
+  it("strips trailing deck framework CSS leaked after user-facing prose", () => {
+    const input =
+      "덱 전체 색상을 빨간색 계열로 바꾸는 작업이라 전체 재작성으로 전달할게요.\n\n.slide { width:1920px; height:1080px; box-sizing:border-box; }";
+    expect(sanitizeAssistantProseForDisplay(input)).toBe(
+      "덱 전체 색상을 빨간색 계열로 바꾸는 작업이라 전체 재작성으로 전달할게요.",
+    );
+    const openArtifact =
+      'Intro\n<artifact type="deck">\n.slide { width:1920px; height:1080px;';
+    expect(sanitizeAssistantProseForDisplay(openArtifact)).toBe("Intro");
+  });
+
   it("strips code fences when stripCodeFences is enabled", () => {
     const input = "Intro\n```html\n<!doctype html><html></html>\n```\nOutro";
     expect(

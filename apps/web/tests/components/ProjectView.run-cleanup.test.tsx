@@ -551,6 +551,25 @@ describe('ProjectView daemon cleanup', () => {
     expect(resolveSucceededRunStatus('canceled')).toBe('canceled');
   });
 
+  it('finalizeActiveAssistantMessagesOnStop strips open artifact/CSS from canceled rows', () => {
+    const raw =
+      '덱 전체 재작성으로 전달할게요.\n<artifact type="deck">\n.slide { width:1920px; height:1080px;';
+    const messages: ChatMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: raw,
+        events: [{ kind: 'text', text: raw }],
+        createdAt: 1,
+        runStatus: 'running',
+      },
+    ];
+    const { messages: next, finalized } = finalizeActiveAssistantMessagesOnStop(messages, 99);
+    expect(finalized[0]?.runStatus).toBe('canceled');
+    expect(next[0]?.content).toBe('덱 전체 재작성으로 전달할게요.');
+    expect(next[0]?.events?.[0]).toMatchObject({ kind: 'text', text: '덱 전체 재작성으로 전달할게요.' });
+  });
+
   // Regression: a phantom 'running' row in DB (no runId, no matching active
   // daemon run) used to stick the UI on "Waiting for first output —
   // Working 24m+" forever. The reattach loop now self-heals by marking

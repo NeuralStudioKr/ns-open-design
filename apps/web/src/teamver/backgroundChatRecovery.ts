@@ -125,24 +125,54 @@ export function shouldCatchUpReattachTextFromSeed(
   return (message.events?.length ?? 0) > 0;
 }
 
+/** Minimum suffix/prefix overlap before treating divergent streams as aligned. */
+const REATTACH_CATCH_UP_MIN_OVERLAP = 24;
+
+export type ReattachCatchUpResult =
+  | { status: "waiting" }
+  | { status: "append"; remainder: string }
+  | { status: "rewrite"; content: string };
+
+/**
+ * Align SSE replay bytes with a seeded checkpoint.
+ * - waiting: replay still shorter than / is a prefix of the seed
+ * - append: replay continues past the seed (or a substantial overlap)
+ * - rewrite: seed and replay diverged — prefer SSE as source of truth
+ */
 export function reattachReplayRemainderAfterSeed(
   seed: string,
   replayed: string,
-): { complete: boolean; remainder: string } {
-  if (!seed) return { complete: true, remainder: replayed };
-  if (!replayed) return { complete: false, remainder: "" };
-  if (seed.startsWith(replayed)) return { complete: false, remainder: "" };
+): ReattachCatchUpResult {
+  if (!seed) return { status: "append", remainder: replayed };
+  if (!replayed) return { status: "waiting" };
+  if (seed.startsWith(replayed)) return { status: "waiting" };
   if (replayed.startsWith(seed)) {
-    return { complete: true, remainder: replayed.slice(seed.length) };
+    return { status: "append", remainder: replayed.slice(seed.length) };
   }
   let overlap = Math.min(seed.length, replayed.length);
-  while (overlap > 0) {
+  while (overlap >= REATTACH_CATCH_UP_MIN_OVERLAP) {
     if (seed.slice(-overlap) === replayed.slice(0, overlap)) {
-      return { complete: true, remainder: replayed.slice(overlap) };
+      return { status: "append", remainder: replayed.slice(overlap) };
     }
     overlap -= 1;
   }
-  return { complete: true, remainder: replayed };
+  return { status: "rewrite", content: replayed };
+}
+
+/** Latest assistant eligible for leave/re-entry recovery (preview + busy UI). */
+export function findRecoverableBackgroundAssistantMessage(
+  messages: readonly ChatMessage[],
+  mode: "daemon" | "api",
+): ChatMessage | null {
+  if (mode === "daemon") {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (message?.role !== "assistant") continue;
+      return isRecoverableDaemonRunMessage(message) ? message : null;
+    }
+    return null;
+  }
+  return findInFlightAssistantMessages(messages)[0] ?? null;
 }
 
 /** Drop leaked `streaming` UI when the active conversation has no in-flight turn. */

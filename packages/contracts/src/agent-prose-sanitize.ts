@@ -217,6 +217,10 @@ function isLikelyInternalMarkupLine(line: string): boolean {
   if (/^<[a-zA-Z!?/]/.test(trimmed)) return true;
   if (/^<!doctype\b/i.test(trimmed)) return true;
   if (trimmed.includes("<<<<<<< SEARCH")) return true;
+  // Deck/HTML stylesheet bodies streamed inside an open artifact — not chat prose.
+  if (/^\.slide\s*\{/.test(trimmed)) return true;
+  if (/^\.grain::after\s*\{/.test(trimmed)) return true;
+  if (/^@(?:page|media|keyframes|import)\b/.test(trimmed)) return true;
   // CDN / viewport / head-attr debris — never promote out of an open artifact
   // as "user-facing prose" (history stripTrailingOpenArtifact path).
   if (looksLikeHtmlDebrisLine(trimmed)) return true;
@@ -1223,7 +1227,26 @@ export function sanitizeAssistantProseForDisplay(
   });
   // Debris scrub can leave a truncated tag name (`<link`); strip it now.
   text = stripIncompleteTrailingMarkupToken(text);
+  if (!streaming) {
+    text = stripTrailingDeckFrameworkCssLeak(text);
+  }
   return text;
+}
+
+/** Drop truncated deck stylesheet/CSS leaked into chat prose (mid-artifact abort). */
+export function stripTrailingDeckFrameworkCssLeak(input: string): string {
+  if (!input) return input;
+  const match = /(?:^|\n\n|\n)(\.slide\s*\{[\s\S]*)$/.exec(input);
+  if (!match || match.index === undefined) return input;
+  const tail = match[1] ?? "";
+  if (
+    !/width:\s*1920px|height:\s*1080px|box-sizing:\s*border-box|\.grain::after/i.test(
+      tail,
+    )
+  ) {
+    return input;
+  }
+  return input.slice(0, match.index).trimEnd();
 }
 
 /**

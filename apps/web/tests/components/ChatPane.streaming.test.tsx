@@ -316,6 +316,67 @@ describe('ChatPane streaming state', () => {
     expect(copied).toContain('json-rpc id 4: Connection reset by server');
   });
 
+  it('renders a persisted failed-run error at the owning assistant turn', () => {
+    const messages: ChatMessage[] = [
+      { id: 'user-1', role: 'user', content: 'Create a login page', createdAt: 0 },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: 'Generation failed',
+        agentId: 'anthropic-api',
+        createdAt: 1,
+        runId: 'run-failed-1',
+        runStatus: 'failed',
+        events: [
+          {
+            kind: 'status',
+            label: 'error',
+            detail: 'Patch merge failed at the selected comment',
+            code: 'deck_patch_merge_failed',
+          },
+        ],
+      },
+      { id: 'user-2', role: 'user', content: 'Try again on the title only', createdAt: 2 },
+      {
+        id: 'assistant-2',
+        role: 'assistant',
+        content: 'Follow-up succeeded',
+        createdAt: 3,
+        runStatus: 'succeeded',
+      },
+    ];
+
+    render(
+      <ChatPane
+        projectKindForTracking="prototype"
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[]}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        projectMetadata={projectMetadata}
+      />,
+    );
+
+    const errorCard = screen.getByText('Patch merge failed at the selected comment');
+    const firstAssistant = screen.getByTestId('assistant-last-assistant-1');
+    const nextUser = screen.getByText('Try again on the title only');
+    const chatLog = errorCard.closest('.chat-log');
+    const rows = Array.from(chatLog?.children ?? []);
+
+    expect(rows.indexOf(errorCard.closest('.msg.error')!))
+      .toBeGreaterThan(rows.indexOf(firstAssistant));
+    expect(rows.indexOf(errorCard.closest('.msg.error')!))
+      .toBeLessThan(rows.indexOf(nextUser.closest('.msg.user')!));
+  });
+
   it('formats run error diagnostics with a distinct run id when present', () => {
     expect(buildRunErrorDiagnosticText({
       message: 'Service unavailable. Try again.',
