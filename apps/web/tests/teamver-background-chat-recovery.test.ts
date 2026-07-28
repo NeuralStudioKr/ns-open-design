@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import type { ChatRunStatusResponse } from "@open-design/contracts";
 import {
   conversationAwaitingQuestionFormAnswer,
   conversationHasRecoverableBackgroundChat,
@@ -6,20 +7,29 @@ import {
   isInFlightAssistantMessage,
   isRecoverableBackgroundChatMessage,
   isRecoverableDaemonRunMessage,
+  mergeActiveRunsIntoMessages,
   mergeByokBackgroundRunSummaries,
   reattachReplayRemainderAfterSeed,
   reconcileByokBackgroundChatsAfterPoll,
+  rememberUserStoppedAssistantTurn,
+  resetUserStoppedAssistantTurnsForTests,
   resolveRunRecoveryBannerPhase,
   findRecoverableBackgroundAssistantMessage,
   shouldCatchUpReattachTextFromSeed,
   shouldClearPhantomStreamingMarker,
   shouldFullReplayReattachedRun,
+  shouldReattachDaemonRunEvents,
   shouldShowRunRecoveryBannerInChat,
   syntheticByokRunsForTaskCenter,
+  wasUserStoppedAssistantTurn,
 } from "../src/teamver/backgroundChatRecovery";
 import type { ChatMessage } from "../src/types";
 
 describe("backgroundChatRecovery", () => {
+  afterEach(() => {
+    resetUserStoppedAssistantTurnsForTests();
+  });
+
   it("treats a complete unanswered question form as user-input idle, not recovery", () => {
     const formBody = `<question-form id="qf-1">\n${JSON.stringify({
       id: "qf-1",
@@ -173,6 +183,68 @@ describe("backgroundChatRecovery", () => {
     expect(isRecoverableBackgroundChatMessage(message, "daemon")).toBe(false);
     expect(conversationHasRecoverableBackgroundChat([message], "daemon")).toBe(false);
   });
+
+  it("does not reattach after explicit Stop, even while daemon cancel grace is still running", () => {
+    const message: ChatMessage = {
+      id: "a-stopped",
+      role: "assistant",
+      content: "partial",
+      createdAt: 1,
+      startedAt: 1,
+      endedAt: 2,
+      runId: "run-stopped",
+      runStatus: "canceled",
+    };
+    const activeCanceling: ChatRunStatusResponse = {
+      id: "run-stopped",
+      projectId: "p1",
+      conversationId: "c1",
+      assistantMessageId: "a-stopped",
+      agentId: null,
+      status: "running",
+      createdAt: 1,
+      updatedAt: 2,
+      cancelRequested: true,
+    };
+
+    expect(isRecoverableDaemonRunMessage(message)).toBe(false);
+    expect(shouldReattachDaemonRunEvents(message, activeCanceling)).toBe(false);
+    expect(
+      mergeActiveRunsIntoMessages([message], [activeCanceling]),
+    ).toEqual([message]);
+  });
+
+  it("remembers user-stopped turns across remount so running rows stay non-recoverable", () => {
+    const message: ChatMessage = {
+      id: "a-remount",
+      role: "assistant",
+      content: "partial",
+      createdAt: 1,
+      startedAt: 1,
+      runId: "run-remount",
+      runStatus: "running",
+    };
+    rememberUserStoppedAssistantTurn({
+      runId: "run-remount",
+      assistantMessageId: "a-remount",
+    });
+    expect(
+      wasUserStoppedAssistantTurn({
+        runId: "run-remount",
+        assistantMessageId: "a-remount",
+      }),
+    ).toBe(true);
+    expect(isRecoverableDaemonRunMessage(message)).toBe(false);
+    expect(isInFlightAssistantMessage(message)).toBe(false);
+    expect(
+      shouldReattachDaemonRunEvents(message, {
+        id: "run-remount",
+        status: "running",
+        cancelRequested: false,
+      }),
+    ).toBe(false);
+  });
+
 
   it("skips full replay when a checkpoint or saved content exists", () => {
     expect(

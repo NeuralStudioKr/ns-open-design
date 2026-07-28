@@ -8,6 +8,10 @@ import {
   findSameTurnHtmlWriteForRecoveredArtifact,
   mergeRecoveredArtifact,
 } from '../../src/components/ProjectView';
+import {
+  rememberUserStoppedAssistantTurn,
+  resetUserStoppedAssistantTurnsForTests,
+} from '../../src/teamver/backgroundChatRecovery';
 import type { ChatMessage } from '../../src/types';
 
 const listConversations = vi.fn();
@@ -25,6 +29,7 @@ const listActiveChatRuns = vi.fn();
 const listProjectRuns = vi.fn();
 const listActiveByokProxyStreams = vi.fn();
 const reattachDaemonRun = vi.fn();
+const requestDaemonRunCancel = vi.fn();
 const streamViaDaemon = vi.fn();
 const saveMessage = vi.fn();
 const createConversation = vi.fn();
@@ -53,6 +58,7 @@ vi.mock('../../src/providers/daemon', () => ({
   listActiveChatRuns: (...args: unknown[]) => listActiveChatRuns(...args),
   listProjectRuns: (...args: unknown[]) => listProjectRuns(...args),
   reattachDaemonRun: (...args: unknown[]) => reattachDaemonRun(...args),
+  requestDaemonRunCancel: (...args: unknown[]) => requestDaemonRunCancel(...args),
   streamViaDaemon: (...args: unknown[]) => streamViaDaemon(...args),
 }));
 
@@ -304,11 +310,14 @@ describe('ProjectView daemon reattach restore', () => {
     cleanup();
     vi.clearAllMocks();
     window.sessionStorage.clear();
+    resetUserStoppedAssistantTurnsForTests();
   });
 
   beforeEach(() => {
     listActiveChatRuns.mockResolvedValue([]);
     listActiveByokProxyStreams.mockResolvedValue([]);
+    requestDaemonRunCancel.mockResolvedValue(undefined);
+    resetUserStoppedAssistantTurnsForTests();
   });
 
   it('does not replay a terminal succeeded row just because produced files are missing', async () => {
@@ -404,6 +413,56 @@ describe('ProjectView daemon reattach restore', () => {
         .find((m) => m?.id === 'msg-stale-active' && m.runStatus === 'running');
       expect(saved).toBeTruthy();
     });
+  });
+
+  it('does not reattach a user-stopped turn while daemon cancel grace still reports running', async () => {
+    const startedAt = Date.now();
+    const endedAt = startedAt + 1_000;
+    rememberUserStoppedAssistantTurn({
+      runId: 'run-user-stopped',
+      assistantMessageId: 'msg-user-stopped',
+    });
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([
+      {
+        id: 'msg-user-stopped',
+        role: 'assistant',
+        content: 'partial before stop',
+        createdAt: startedAt,
+        startedAt,
+        endedAt,
+        runId: 'run-user-stopped',
+        runStatus: 'canceled',
+        preTurnFileNames: [],
+      } satisfies ChatMessage,
+    ]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([
+      {
+        id: 'run-user-stopped',
+        projectId: 'project-1',
+        conversationId: 'conv-1',
+        assistantMessageId: 'msg-user-stopped',
+        agentId: 'agent-1',
+        status: 'running',
+        createdAt: startedAt,
+        updatedAt: endedAt,
+        cancelRequested: true,
+      },
+    ]);
+    reattachDaemonRun.mockImplementation(async () => new Promise<void>(() => {}));
+
+    renderProjectView();
+
+    await waitFor(() => expect(listActiveChatRuns).toHaveBeenCalledWith('project-1', 'conv-1'));
+    await waitFor(() => expect(requestDaemonRunCancel).toHaveBeenCalledWith('run-user-stopped'));
+    expect(reattachDaemonRun).not.toHaveBeenCalled();
   });
 
   it('recreates a missing assistant row from an active daemon run and reattaches after re-entry', async () => {

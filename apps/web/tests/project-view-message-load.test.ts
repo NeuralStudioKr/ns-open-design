@@ -28,26 +28,34 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const attachRecoverableRuns = async () =>");
     expect(start).toBeGreaterThan(0);
-    const block = source.slice(start, start + 2400);
+    const end = source.indexOf("onProjectsRefresh,\n    scheduleConversationMessageRefresh,\n    reattachNonce,");
+    const block = source.slice(start, end > start ? end : start + 12_000);
 
     expect(block).toContain("let activeRuns: Awaited<ReturnType<typeof listActiveChatRuns>> = []");
     expect(block).toContain("activeRuns = await listActiveChatRuns(project.id, reattachConversationId)");
     expect(block).toContain("active daemon runs reattach probe skipped");
     expect(block).toContain("listProjectRuns().catch");
     expect(block).toContain("daemon run history reattach probe skipped");
+    expect(block).toContain("isDaemonRunCancelPending(run)");
+    expect(block).toContain("wasUserStoppedAssistantTurn");
+    expect(block).toContain("shouldReattachDaemonRunEvents");
+    expect(block).toContain("requestDaemonRunCancel");
+    expect(block).toContain("isLocallyTerminalAssistantMessage(message)");
   });
 
   it("retries the API background stream probe after a transient failure", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("api background recovery stream probe skipped");
     expect(start).toBeGreaterThan(0);
-    const block = source.slice(start - 900, start + 1800);
+    const block = source.slice(start - 900, start + 3200);
 
     expect(block).toContain("let retryTimer: number | null = null");
     expect(block).toContain("retryTimer = window.setTimeout");
     expect(block).toContain("setReattachNonce((value) => value + 1)");
     expect(block).toContain("if (retryTimer !== null) window.clearTimeout(retryTimer)");
     expect(block).toContain("reattachNonce");
+    expect(block).toContain("wasUserStoppedAssistantTurn");
+    expect(block).toContain("isLocallyTerminalAssistantMessage(existing)");
     expect(source).toContain("BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS = BYOK_PROXY_AUTH_BACKOFF_MS");
     expect(source).toContain("err instanceof ActiveByokProxyAuthTransientError");
     expect(source).toContain("? BYOK_BACKGROUND_RECOVERY_AUTH_RETRY_MS");

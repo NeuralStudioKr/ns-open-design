@@ -19,11 +19,152 @@ export function isActiveRunStatus(status: ChatMessage["runStatus"]): boolean {
   return status === "queued" || status === "running";
 }
 
+const USER_STOPPED_TURNS_STORAGE_KEY = "od:user-stopped-assistant-turns:v1";
+
+type UserStoppedTurnKey = string;
+
+const userStoppedTurnKeys = new Set<UserStoppedTurnKey>();
+
+function userStoppedRunKey(runId: string): UserStoppedTurnKey {
+  return `run:${runId}`;
+}
+
+function userStoppedAssistantKey(assistantMessageId: string): UserStoppedTurnKey {
+  return `assistant:${assistantMessageId}`;
+}
+
+function readUserStoppedTurnKeysFromSession(): UserStoppedTurnKey[] {
+  if (typeof sessionStorage === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(USER_STOPPED_TURNS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is string => typeof value === "string" && value.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function persistUserStoppedTurnKeys(): void {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.setItem(
+      USER_STOPPED_TURNS_STORAGE_KEY,
+      JSON.stringify([...userStoppedTurnKeys]),
+    );
+  } catch {
+    // Private mode / quota — in-memory Set still covers SPA remount.
+  }
+}
+
+function ensureUserStoppedTurnKeysHydrated(): void {
+  if (userStoppedTurnKeys.size > 0) return;
+  for (const key of readUserStoppedTurnKeysFromSession()) {
+    userStoppedTurnKeys.add(key);
+  }
+}
+
+/** Explicit Stop — survive ProjectView unmount/remount within the tab. */
+export function rememberUserStoppedAssistantTurn(input: {
+  runId?: string | null;
+  assistantMessageId?: string | null;
+}): void {
+  ensureUserStoppedTurnKeysHydrated();
+  const runId = input.runId?.trim();
+  const assistantMessageId = input.assistantMessageId?.trim();
+  if (runId) userStoppedTurnKeys.add(userStoppedRunKey(runId));
+  if (assistantMessageId) userStoppedTurnKeys.add(userStoppedAssistantKey(assistantMessageId));
+  persistUserStoppedTurnKeys();
+}
+
+export function wasUserStoppedAssistantTurn(input: {
+  runId?: string | null;
+  assistantMessageId?: string | null;
+}): boolean {
+  ensureUserStoppedTurnKeysHydrated();
+  const runId = input.runId?.trim();
+  const assistantMessageId = input.assistantMessageId?.trim();
+  if (runId && userStoppedTurnKeys.has(userStoppedRunKey(runId))) return true;
+  if (
+    assistantMessageId
+    && userStoppedTurnKeys.has(userStoppedAssistantKey(assistantMessageId))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Test helper — clears in-memory + session markers. */
+export function resetUserStoppedAssistantTurnsForTests(): void {
+  userStoppedTurnKeys.clear();
+  if (typeof sessionStorage !== "undefined") {
+    try {
+      sessionStorage.removeItem(USER_STOPPED_TURNS_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/** Daemon cancel grace: status stays `running` while `cancelRequested` is true. */
+export function isDaemonRunCancelPending(
+  run: Pick<ChatRunStatusResponse, "cancelRequested" | "status"> | null | undefined,
+): boolean {
+  return !!run?.cancelRequested;
+}
+
+/** UI/status reconciliation: prefer canceled once the user (or daemon) asked to stop. */
+export function effectiveDaemonRunStatus(
+  run: Pick<ChatRunStatusResponse, "cancelRequested" | "status">,
+): ChatMessage["runStatus"] {
+  if (run.cancelRequested) return "canceled";
+  return run.status;
+}
+
+export function isLocallyTerminalAssistantMessage(message: ChatMessage): boolean {
+  if (message.role !== "assistant") return false;
+  if (message.endedAt !== undefined) return true;
+  return isTerminalRunStatus(message.runStatus);
+}
+
+/**
+ * Whether leave/re-entry should open `/api/runs/:id/events` again.
+ * Explicit Stop, local terminal rows, and daemon cancel grace must not resume.
+ */
+export function shouldReattachDaemonRunEvents(
+  message: ChatMessage,
+  run?: Pick<ChatRunStatusResponse, "cancelRequested" | "status" | "id"> | null,
+): boolean {
+  if (message.role !== "assistant") return false;
+  if (isLocallyTerminalAssistantMessage(message)) return false;
+  if (
+    wasUserStoppedAssistantTurn({
+      runId: message.runId ?? run?.id,
+      assistantMessageId: message.id,
+    })
+  ) {
+    return false;
+  }
+  if (isDaemonRunCancelPending(run)) return false;
+  if (run && isTerminalRunStatus(run.status)) return false;
+  if (run && !isActiveRunStatus(run.status)) return false;
+  return isRecoverableDaemonRunMessage(message);
+}
+
 /** Assistant row still in progress (daemon runStatus or API-mode startedAt). */
 export function isInFlightAssistantMessage(message: ChatMessage): boolean {
   if (message.role !== "assistant") return false;
   if (isTerminalRunStatus(message.runStatus)) return false;
   if (message.endedAt !== undefined) return false;
+  if (
+    wasUserStoppedAssistantTurn({
+      runId: message.runId,
+      assistantMessageId: message.id,
+    })
+  ) {
+    return false;
+  }
   if (isActiveRunStatus(message.runStatus)) return true;
   return message.startedAt !== undefined;
 }
@@ -45,6 +186,14 @@ export function isRecoverableDaemonRunMessage(message: ChatMessage): boolean {
   if (message.role !== "assistant") return false;
   if (message.endedAt !== undefined) return false;
   if (isTerminalRunStatus(message.runStatus)) return false;
+  if (
+    wasUserStoppedAssistantTurn({
+      runId: message.runId,
+      assistantMessageId: message.id,
+    })
+  ) {
+    return false;
+  }
   if (isActiveRunStatus(message.runStatus)) return true;
   if (!message.runId) return false;
   return true;
@@ -363,8 +512,20 @@ export function mergeActiveRunsIntoMessages(
   let merged = [...messages];
   const knownIds = new Set(merged.map((message) => message.id));
   for (const run of activeRuns) {
+    // Stop/cancel grace: do not synthesize a fresh "running" row for a turn the
+    // user already stopped (or the daemon is already canceling).
+    if (isDaemonRunCancelPending(run)) continue;
+    if (
+      wasUserStoppedAssistantTurn({
+        runId: run.id,
+        assistantMessageId: run.assistantMessageId,
+      })
+    ) {
+      continue;
+    }
     const stub = syntheticAssistantFromActiveRun(run);
     if (!stub) continue;
+    // Existing row (including locally canceled) wins — never resurrect it.
     if (knownIds.has(stub.id)) continue;
     if (run.id?.trim() && merged.some((m) => m.role === "assistant" && m.runId === run.id)) {
       continue;

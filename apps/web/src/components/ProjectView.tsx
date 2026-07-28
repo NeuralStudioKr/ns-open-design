@@ -68,6 +68,7 @@ import {
   listProjectRuns,
   reattachDaemonRun,
   reportChatRunFeedback,
+  requestDaemonRunCancel,
   streamViaDaemon,
 } from '../providers/daemon';
 import { fetchElevenLabsVoiceOptions } from '../providers/elevenlabs-voices';
@@ -295,19 +296,24 @@ import {
   conversationHasRecoverableBackgroundChat,
   findInFlightAssistantMessages,
   findRecoverableBackgroundAssistantMessage,
+  isDaemonRunCancelPending,
   isInFlightAssistantMessage,
+  isLocallyTerminalAssistantMessage,
   isRecoverableDaemonRunMessage,
   mergeActiveRunsIntoMessages,
   reattachReplayRemainderAfterSeed,
+  rememberUserStoppedAssistantTurn,
   resolveRunRecoveryBannerPhase,
   shouldCatchUpReattachTextFromSeed,
   shouldFullReplayReattachedRun,
   shouldPollStaleDaemonRun,
   shouldForceFailStaleDaemonRun,
   shouldClearPhantomStreamingMarker,
+  shouldReattachDaemonRunEvents,
   terminalAssistantPatchFromRunStatus,
   TEAMVER_STALE_RUN_POLL_MS,
   shouldShowRunRecoveryBannerInChat,
+  wasUserStoppedAssistantTurn,
   type RunRecoveryBannerPhase,
 } from '../teamver/backgroundChatRecovery';
 import { TeamverRunRecoveryBanner } from '../teamver/components/TeamverRunRecoveryBanner';
@@ -600,6 +606,7 @@ export function mergeMissingActiveRunAssistantMessages(
     agentId?: string | null;
     status?: ChatMessage['runStatus'];
     createdAt?: number | null;
+    cancelRequested?: boolean;
   }[],
 ): ChatMessage[] {
   if (runs.length === 0) return messages;
@@ -607,8 +614,22 @@ export function mergeMissingActiveRunAssistantMessages(
   const seen = new Set(working.map((message) => message.id));
   const recovered: ChatMessage[] = [];
   for (const run of runs) {
+    if (run.cancelRequested) continue;
+    if (
+      wasUserStoppedAssistantTurn({
+        runId: run.id,
+        assistantMessageId: run.assistantMessageId,
+      })
+    ) {
+      continue;
+    }
     const assistantMessageId = run.assistantMessageId?.trim();
-    if (!assistantMessageId || seen.has(assistantMessageId)) continue;
+    if (!assistantMessageId) continue;
+    if (seen.has(assistantMessageId)) {
+      const existing = working.find((message) => message.id === assistantMessageId);
+      if (existing && isLocallyTerminalAssistantMessage(existing)) continue;
+      continue;
+    }
     if (run.id?.trim() && working.some((m) => m.role === 'assistant' && m.runId === run.id)) {
       continue;
     }
@@ -4699,14 +4720,61 @@ export function ProjectView({
           recoverableById.set(message.id, message);
         }
       }
+      // Active daemon runs may still list a turn the user already Stop'd
+      // (cancel grace keeps status=`running` + cancelRequested). Never force
+      // those terminal/stopped rows back into the reattach set.
       for (const run of activeRuns ?? []) {
         const assistantMessageId = run.assistantMessageId?.trim();
         if (!assistantMessageId) continue;
+        if (isDaemonRunCancelPending(run)) continue;
+        if (
+          wasUserStoppedAssistantTurn({
+            runId: run.id,
+            assistantMessageId,
+          })
+        ) {
+          continue;
+        }
         const message = messagesSnapshot.find((item) => item.id === assistantMessageId);
-        if (message?.role === 'assistant') recoverableById.set(message.id, message);
+        if (!message || message.role !== 'assistant') continue;
+        if (isLocallyTerminalAssistantMessage(message)) continue;
+        recoverableById.set(message.id, message);
       }
       const recoverableMessages = [...recoverableById.values()];
-      if (recoverableMessages.length === 0) return;
+      if (recoverableMessages.length === 0) {
+        // Still reconcile cancel-pending active runs so UI stays canceled/idle.
+        for (const run of activeRuns ?? []) {
+          if (!isDaemonRunCancelPending(run) && !wasUserStoppedAssistantTurn({
+            runId: run.id,
+            assistantMessageId: run.assistantMessageId,
+          })) {
+            continue;
+          }
+          const assistantMessageId = run.assistantMessageId?.trim();
+          if (!assistantMessageId || !run.id) continue;
+          rememberUserStoppedAssistantTurn({
+            runId: run.id,
+            assistantMessageId,
+          });
+          void requestDaemonRunCancel(run.id);
+          updateMessageById(
+            assistantMessageId,
+            (prev) => {
+              if (isLocallyTerminalAssistantMessage(prev) && prev.runStatus === 'canceled') {
+                return prev;
+              }
+              return {
+                ...prev,
+                runStatus: 'canceled',
+                endedAt: prev.endedAt ?? Date.now(),
+              };
+            },
+            true,
+          );
+          completedReattachRunsRef.current.add(run.id);
+        }
+        return;
+      }
 
       const latestInFlightAssistant = findInFlightAssistantMessages(messagesSnapshot)[0] ?? null;
 
@@ -4830,13 +4898,74 @@ export function ProjectView({
           completedReattachRunsRef.current.add(runId);
           continue;
         }
+
+        const userStopped = wasUserStoppedAssistantTurn({
+          runId,
+          assistantMessageId: message.id,
+        });
+        const cancelPending = isDaemonRunCancelPending(status) || userStopped;
+        if (cancelPending) {
+          rememberUserStoppedAssistantTurn({
+            runId,
+            assistantMessageId: message.id,
+          });
+          void requestDaemonRunCancel(runId);
+          updateMessageById(
+            message.id,
+            (prev) => ({
+              ...prev,
+              runStatus: 'canceled',
+              endedAt: prev.endedAt ?? Date.now(),
+              ...(status.resumable !== undefined ? { resumable: status.resumable } : {}),
+            }),
+            true,
+          );
+          completedReattachRunsRef.current.add(runId);
+          scheduleConversationMessageRefresh(reattachConversationId);
+          continue;
+        }
+
+        if (!shouldReattachDaemonRunEvents(message, status)) {
+          if (isTerminalRunStatus(status.status) || isLocallyTerminalAssistantMessage(message)) {
+            updateMessageById(
+              message.id,
+              (prev) => {
+                if (isLocallyTerminalAssistantMessage(prev) && !isActiveRunStatus(status.status)) {
+                  return {
+                    ...prev,
+                    ...(status.resumable !== undefined ? { resumable: status.resumable } : {}),
+                  };
+                }
+                if (isTerminalRunStatus(status.status)) {
+                  return {
+                    ...prev,
+                    runStatus: status.status,
+                    endedAt: prev.endedAt ?? Date.now(),
+                    ...(status.resumable !== undefined ? { resumable: status.resumable } : {}),
+                  };
+                }
+                return prev;
+              },
+              true,
+            );
+            completedReattachRunsRef.current.add(runId);
+            scheduleConversationMessageRefresh(reattachConversationId);
+          }
+          continue;
+        }
+
         updateMessageById(
           message.id,
-          (prev) => ({
-            ...prev,
-            runStatus: status.status,
-            ...(status.resumable !== undefined ? { resumable: status.resumable } : {}),
-          }),
+          (prev) => {
+            // Never revive a locally terminal/canceled row from a still-active
+            // daemon status (Stop → leave → re-entry race).
+            if (isLocallyTerminalAssistantMessage(prev)) return prev;
+            return {
+              ...prev,
+              runStatus: status.status,
+              ...(status.resumable !== undefined ? { resumable: status.resumable } : {}),
+            };
+          },
           true,
         );
 
@@ -5377,7 +5506,22 @@ export function ProjectView({
       if (cancelled) return;
       const matchingStreams = activeStreams.filter((stream) => {
         const streamConversationId = stream.conversationId?.trim();
-        return !streamConversationId || streamConversationId === recoveryConversationId;
+        if (streamConversationId && streamConversationId !== recoveryConversationId) {
+          return false;
+        }
+        const assistantMessageId = stream.assistantMessageId?.trim();
+        if (
+          wasUserStoppedAssistantTurn({
+            assistantMessageId,
+          })
+        ) {
+          return false;
+        }
+        if (assistantMessageId) {
+          const existing = messages.find((message) => message.id === assistantMessageId);
+          if (existing && isLocallyTerminalAssistantMessage(existing)) return false;
+        }
+        return true;
       });
       const nextMessages = mergeMissingActiveRunAssistantMessages(
         messages,
@@ -7681,11 +7825,17 @@ export function ProjectView({
         stoppedAt,
         sanitizeOnStop,
       );
+      const stoppedRows = finalized.length > 0
+        ? finalized
+        : curr.filter((message) => isStoppableAssistantMessage(message));
+      for (const message of stoppedRows) {
+        rememberUserStoppedAssistantTurn({
+          runId: message.runId,
+          assistantMessageId: message.id,
+        });
+      }
       if (config.mode === 'api' && stopConversationId) {
-        const cleared = finalized.length > 0
-          ? finalized
-          : curr.filter((message) => isStoppableAssistantMessage(message));
-        for (const message of cleared) {
+        for (const message of stoppedRows) {
           dispatchTeamverBackgroundChat({
             projectId: project.id,
             conversationId: stopConversationId,

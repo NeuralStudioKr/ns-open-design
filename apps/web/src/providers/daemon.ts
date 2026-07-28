@@ -695,6 +695,19 @@ export async function reattachDaemonRun(options: DaemonReattachOptions): Promise
   });
 }
 
+/** Best-effort explicit cancel — used when re-entry finds a still-active canceling run. */
+export async function requestDaemonRunCancel(runId: string): Promise<void> {
+  const id = runId.trim();
+  if (!id) return;
+  try {
+    await fetchTeamverDaemon(`/api/runs/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST',
+    });
+  } catch {
+    // Best-effort — caller already keeps UI terminal/idle.
+  }
+}
+
 export async function fetchChatRunStatus(runId: string): Promise<ChatRunStatusResponse | null> {
   try {
     const resp = await fetchTeamverDaemon(`/api/runs/${encodeURIComponent(runId)}`);
