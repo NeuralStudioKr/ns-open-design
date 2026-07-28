@@ -205,8 +205,10 @@ async function fetchDaemonProjectsForRegistry(): Promise<Project[]> {
     const resp = await fetchTeamverDaemon("/api/projects");
     if (!resp.ok) return [];
     const json = (await resp.json()) as { projects?: Project[] };
+    const workspaceId = (await resolveActiveTeamverWorkspaceId())?.trim() ?? null;
     return (json.projects ?? [])
       .filter((project) => !isTeamverProjectCollectionRouteSlug(project.id))
+      .filter((project) => !isTeamverProjectDeletedTombstoned(project.id, workspaceId))
       .map((project) => sanitizeProjectForEmbed(project));
   } catch {
     return [];
@@ -272,7 +274,8 @@ export async function registerTeamverProjectIfNeeded(
 ): Promise<void> {
   if (!isTeamverEmbedMode()) return;
   if (isTeamverProjectCollectionRouteSlug(project.id)) return;
-  if (isTeamverProjectDeletedTombstoned(project.id)) return;
+  const tombstoneWorkspaceId = (await resolveActiveTeamverWorkspaceId())?.trim() ?? null;
+  if (isTeamverProjectDeletedTombstoned(project.id, tombstoneWorkspaceId)) return;
   if (shouldSkipTeamverBffAuthCalls() || isDesignAuthRefreshDeclined()) {
     throw new TeamverProjectRegistryError("teamver_project_registry_unavailable");
   }
@@ -563,7 +566,7 @@ export async function filterProjectsByTeamverRegistryIfNeeded<T extends Pick<Pro
   }
   return projects
     .filter((project) => registeredIds.has(project.id))
-    .filter((project) => !isTeamverProjectDeletedTombstoned(project.id))
+    .filter((project) => !isTeamverProjectDeletedTombstoned(project.id, fetched.workspaceId))
     .map((project) => {
       const title = titlesById.get(project.id);
       if (!title || !("name" in project)) return project;
@@ -786,5 +789,17 @@ export async function unregisterTeamverProjectFromRegistryIfNeeded(
     }
     console.warn("[teamver] project registry delete failed", err);
     return false;
+  }
+}
+
+/** Best-effort registry DELETE retries after a tombstoned UI delete (auth blips). */
+export function scheduleTeamverRegistryDeleteRetry(projectId: string): void {
+  if (typeof window === "undefined" || !isTeamverEmbedMode()) return;
+  const trimmedId = projectId.trim();
+  if (!trimmedId) return;
+  for (const delayMs of [1500, 5000, 20_000, 60_000]) {
+    window.setTimeout(() => {
+      void unregisterTeamverProjectFromRegistryIfNeeded(trimmedId);
+    }, delayMs);
   }
 }
