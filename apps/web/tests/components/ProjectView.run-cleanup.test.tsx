@@ -570,6 +570,25 @@ describe('ProjectView daemon cleanup', () => {
     expect(next[0]?.events?.[0]).toMatchObject({ kind: 'text', text: '덱 전체 재작성으로 전달할게요.' });
   });
 
+  it('finalizeActiveAssistantMessagesOnStop strips orphaned slide-index HTML from canceled rows', () => {
+    const intro =
+      '다른 슬라이드라면 번호를 말씀해주세요.';
+    const raw = `${intro}-index="0" style="min-height:100vh;padding:96px 88px;box-sizing:border-box;background:#dc2626;color:#fff;display:flex;flex-direction:column;justify-content:center">\n<p style="font:600 18px/1 sans-serif">TEAM`;
+    const messages: ChatMessage[] = [
+      {
+        id: 'a2',
+        role: 'assistant',
+        content: raw,
+        events: [{ kind: 'text', text: raw }],
+        createdAt: 1,
+        runStatus: 'running',
+      },
+    ];
+    const { messages: next } = finalizeActiveAssistantMessagesOnStop(messages, 99);
+    expect(next[0]?.content).toBe(intro);
+    expect(next[0]?.events?.[0]).toMatchObject({ kind: 'text', text: intro });
+  });
+
   // Regression: a phantom 'running' row in DB (no runId, no matching active
   // daemon run) used to stick the UI on "Waiting for first output —
   // Working 24m+" forever. The reattach loop now self-heals by marking

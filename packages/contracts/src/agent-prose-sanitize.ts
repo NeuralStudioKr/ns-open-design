@@ -225,6 +225,10 @@ function isLikelyInternalMarkupLine(line: string): boolean {
   if (trimmed.includes("<<<<<<< SEARCH")) return true;
   // Deck/HTML stylesheet bodies streamed inside an open artifact — not chat prose.
   if (/^\.slide\s*\{/.test(trimmed)) return true;
+  if (/^-index\s*=\s*["']\d+["']/i.test(trimmed)) return true;
+  if (/^<(?:section|div)\b/i.test(trimmed) && /\b(?:slide|data-slide-index|data-slide)\b/i.test(trimmed)) {
+    return true;
+  }
   if (/^\.grain::after\s*\{/.test(trimmed)) return true;
   if (/^#deck-(?:stage|prev|next|idx)\b/i.test(trimmed)) return true;
   if (/^@(?:page|media|keyframes|import)\b/.test(trimmed)) return true;
@@ -277,6 +281,78 @@ function isBareCdnHostLine(lower: string): boolean {
   return HTML_DEBRIS_HOST_FRAGMENTS.some((host) => withoutProto === host);
 }
 
+const DECK_SLIDE_OPEN_TAG_TAIL_RE =
+  /<(?:section|div)\b[^>]*(?:\bclass\s*=\s*["'][^"']*\bslide\b|data-slide-index|data-slide\b)[^>]*(?:>[\s\S]*)?$/i;
+const DECK_SLIDE_ORPHAN_ATTR_TAIL_RE =
+  /-index\s*=\s*["']\d+["']\s+style\s*=\s*["'][\s\S]*?(?:>[\s\S]*)?$/i;
+const DECK_TRAILING_INLINE_MARKUP_RE =
+  /(?:\n|^)\s*<p\b[^>]*style\s*=\s*["'][^"']*(?:font|letter-spacing|margin)[^"']*["'][^>]*>[\s\S]*$/i;
+const DECK_SLIDE_PARTIAL_OPEN_TAG_RE =
+  /<(?:section|div)\b[^>]*(?:\bclass\s*=\s*["'][^"']*\bslide\b|data-slide-index|data-slide\b)[^>]*>/i;
+
+function isDeckSlidePartialTag(name: string, after: string): boolean {
+  const lower = name.toLowerCase();
+  if (lower !== "section" && lower !== "div") return false;
+  const tail = after.toLowerCase();
+  return tail.includes("slide") || tail.includes("data-slide");
+}
+
+function findTrailingSameLineDeckHtmlCut(line: string): number | null {
+  const orphan = line.match(/^(.*?)(-index\s*=\s*["']\d+["']\s+style\s*=.*)$/i);
+  if (orphan?.[1] !== undefined) return orphan[1].length;
+  const open = line.match(
+    /^(.*?)(<(?:section|div)\b[^>]*(?:data-slide-index|\bclass\s*=\s*["'][^"']*\bslide\b)[^>]*)$/i,
+  );
+  if (open?.[1] !== undefined) return open[1].length;
+  return null;
+}
+
+/** Drop truncated deck slide HTML leaked into chat prose (mid-artifact abort). */
+export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
+  if (!input) return input;
+  for (const re of [
+    DECK_SLIDE_OPEN_TAG_TAIL_RE,
+    DECK_SLIDE_ORPHAN_ATTR_TAIL_RE,
+    DECK_TRAILING_INLINE_MARKUP_RE,
+  ]) {
+    const match = re.exec(input);
+    if (!match || match.index === undefined) continue;
+    return input.slice(0, match.index).trimEnd();
+  }
+  return input;
+}
+
+function stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(
+  input: string,
+  preserveArtifactBodies: boolean,
+): string {
+  if (!preserveArtifactBodies) return stripTrailingDeckHtmlMarkupLeak(input);
+  let result = "";
+  let cursor = 0;
+  while (cursor < input.length) {
+    const open = input.indexOf("<artifact", cursor);
+    if (open === -1) {
+      result += stripTrailingDeckHtmlMarkupLeak(input.slice(cursor));
+      break;
+    }
+    result += stripTrailingDeckHtmlMarkupLeak(input.slice(cursor, open));
+    const gt = input.indexOf(">", open);
+    if (gt === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const close = input.toLowerCase().indexOf("</artifact>", gt);
+    if (close === -1) {
+      result += input.slice(open);
+      break;
+    }
+    const end = close + "</artifact>".length;
+    result += input.slice(open, end);
+    cursor = end;
+  }
+  return result;
+}
+
 /**
  * Hold incomplete trailing CDN/viewport/head-attr debris across chunk
  * boundaries. Without this, `feed("googleapis.com")` emits the host, then
@@ -313,6 +389,10 @@ export function stripIncompleteTrailingHtmlDebris(
     if (trailingCut !== null) {
       return input.slice(0, lineStart + trailingCut).trimEnd();
     }
+  }
+  const deckCut = findTrailingSameLineDeckHtmlCut(line);
+  if (deckCut !== null) {
+    return input.slice(0, lineStart + deckCut).trimEnd();
   }
   return input;
 }
@@ -374,6 +454,10 @@ function looksLikeIncompleteHtmlDebrisLine(line: string): boolean {
   if (/^(?:device-width|-width\b|viewport\s*=)/i.test(lower)) return true;
   if (/^(?:css2\?)?family=[a-z0-9_+:;,=%&.@\-]*$/i.test(lower)) return true;
   if (/^(?:rel|charset|integrity|crossorigin|href|name)\s*=/i.test(lower)) return true;
+  if (/^-index\s*=\s*["']\d+["']/i.test(lower)) return true;
+  if (/^style\s*=\s*["'][^"']*(?:min-height|100vh|box-sizing|padding)/i.test(lower)) return true;
+  if (/^-index\s*=\s*["']\d+["']/i.test(lower)) return true;
+  if (/^style\s*=\s*["'][^"']*(?:min-height|100vh|box-sizing|padding)/i.test(lower)) return true;
 
   // Line is essentially a CDN host / URL (optional scheme), not surrounding prose.
   const withoutProto = lower.replace(/^https?:\/\//, "");
@@ -1056,6 +1140,11 @@ function stripTrailingOpenDocumentBlocks(
       text = next.text;
     }
   }
+  const deckSlideOpen = stripTrailingOpenTag(text, DECK_SLIDE_PARTIAL_OPEN_TAG_RE, "section");
+  if (deckSlideOpen.hadOpenInternalMarkup) {
+    hadOpenInternalMarkup = true;
+    text = deckSlideOpen.text;
+  }
   return { text: text + tail, hadOpenInternalMarkup };
 }
 
@@ -1185,6 +1274,9 @@ export function stripIncompleteTrailingMarkupToken(input: string): string {
   if (isInternalMarkupTagName(rawName)) {
     return input.slice(0, lt).trimEnd();
   }
+  if (isDeckSlidePartialTag(rawName, after)) {
+    return input.slice(0, lt).trimEnd();
+  }
   return input;
 }
 
@@ -1262,6 +1354,7 @@ export function sanitizeAssistantProseForDisplay(
   if (stripDeckCssTail) {
     text = stripTrailingDeckFrameworkCssLeak(text);
   }
+  text = stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(text, preservingArtifacts);
   return text;
 }
 
