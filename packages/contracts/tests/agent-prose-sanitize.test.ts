@@ -910,4 +910,32 @@ describe("agent-prose-sanitize SSOT", () => {
     ].join("\n");
     expect(sanitizeLeakedAgentProse(input)).toBe("Intro\n\nOutro");
   });
+
+  it("strips deck-patch slide HTML leaked into prose on stop mid-stream", () => {
+    const intro = [
+      "댓글에 slideIndex 정보가 전달되지 않고 있어요. 몇 번 슬라이드인지 직접 알려주시면 바로 패치할게요!",
+      "",
+      "그 사이, 현재 덱 전체를 기준으로 첫 번째 슬라이드(커버) 배경을 빨간색으로 바꿔드릴게요. 다른 슬라이드라면 번호를 말씀해주세요.",
+    ].join("\n");
+    const leak = [
+      '<artifact type="deck-patch" identifier="deck">',
+      '<section data-slide-index="0" style="min-height:100vh;padding:96px 88px;box-sizing:border-box;background:#dc2626;color:#fff;display:flex;flex-direction:column;justify-content:center">',
+      '<p style="font:600 18px/1 sans-serif;letter-spacing:.08em;opacity:.85;margin:0 0 24px">TEAM',
+    ].join("\n");
+    const input = `${intro}\n${leak}`;
+    expect(sanitizeAssistantProseForDisplay(input)).toBe(intro);
+    const guard = createStreamingAssistantProseGuard();
+    for (const ch of input) guard.feed(ch);
+    expect(sanitizeAssistantProseForDisplay(input, { streaming: false })).toBe(intro);
+  });
+
+  it("strips orphaned data-slide-index tail glued to prose on same line", () => {
+    const intro =
+      "다른 슬라이드라면 번호를 말씀해주세요.";
+    const leak =
+      '-index="0" style="min-height:100vh;padding:96px 88px;box-sizing:border-box;background:#dc2626;color:#fff;display:flex;flex-direction:column;justify-content:center">\n<p style="font:600 18px/1 sans-serif">TEAM';
+    const input = `${intro}${leak}`;
+    expect(sanitizeAssistantProseForDisplay(input)).toBe(intro);
+    expect(sanitizeAssistantProseForDisplay(input, { streaming: true })).toBe(intro);
+  });
 });
