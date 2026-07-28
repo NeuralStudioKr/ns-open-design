@@ -2909,9 +2909,9 @@ describe('FileViewer tweaks toolbar', () => {
     expect(screen.queryByRole('menuitem', { name: 'Region' })).toBeNull();
     expect(screen.getByTestId('draw-overlay-toggle')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Mark' })).toBeTruthy();
-    // Screenshot-to-clipboard is a primary preview tool: present in preview mode.
-    expect(screen.getByTestId('screenshot-copy-button')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Screenshot' })).toBeTruthy();
+    // TEMP: screenshot toolbar control is commented out in FileViewer until capture is fixed.
+    expect(screen.queryByTestId('screenshot-copy-button')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Screenshot' })).toBeNull();
     expect(screen.queryByPlaceholderText('Add a note for this mark')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Pods' })).toBeNull();
 

@@ -102,7 +102,8 @@ import {
   exportProjectAsPdf,
   exportProjectAsPptx,
   exportProjectAsZip,
-  copyImageDataUrlToClipboard,
+  // TEMP: used by commented-out screenshot toolbar handler
+  // copyImageDataUrlToClipboard,
   exportReactComponentAsHtml,
   exportReactComponentAsZip,
   captureHostIframeSnapshot,
@@ -5294,7 +5295,8 @@ function HtmlViewer({
   const imageExportSnapshotDataUrlRef = useRef<string | null>(null);
   const imageExportSlideRef = useRef<number | null>(null);
   const imageExportPrepareIdRef = useRef(0);
-  const screenshotInFlightRef = useRef(false);
+  // TEMP: used by commented-out screenshot toolbar handler
+  // const screenshotInFlightRef = useRef(false);
   // Optional `ttlMs` lets specific toasts override the default 2.2s
   // flash — used by the browser-print PDF fallback where the copy asks
   // the user to interact with the print dialog before it vanishes.
@@ -8237,36 +8239,37 @@ function HtmlViewer({
     useUrlLoadPreview,
   ]);
 
-  const handleCopyScreenshot = useCallback(async () => {
-    if (screenshotInFlightRef.current) return;
-    screenshotInFlightRef.current = true;
-    setExportToast({ message: t('fileViewer.screenshotCopying'), tone: 'loading' });
-    try {
-      const snap = await captureExportImageSnapshot();
-      if (!snap) {
-        setExportToast({ message: t('fileViewer.screenshotPreviewLoading'), tone: 'error' });
-        return;
-      }
-      const result = await copyImageDataUrlToClipboard(snap.dataUrl);
-      setExportToast(
-        result === 'copied'
-          ? { message: t('fileViewer.screenshotCopied'), tone: 'success' }
-          : {
-              message: t(
-                result === 'denied'
-                  ? 'fileViewer.screenshotClipboardDenied'
-                  : 'fileViewer.screenshotCaptureFailed',
-              ),
-              tone: 'error',
-            },
-      );
-    } catch (err) {
-      console.warn('[handleCopyScreenshot] failed:', err);
-      setExportToast({ message: t('fileViewer.screenshotCaptureFailed'), tone: 'error' });
-    } finally {
-      screenshotInFlightRef.current = false;
-    }
-  }, [captureExportImageSnapshot, t]);
+  // TEMP: toolbar screenshot UI is commented out — keep handler for re-enable.
+  // const handleCopyScreenshot = useCallback(async () => {
+  //   if (screenshotInFlightRef.current) return;
+  //   screenshotInFlightRef.current = true;
+  //   setExportToast({ message: t('fileViewer.screenshotCopying'), tone: 'loading' });
+  //   try {
+  //     const snap = await captureExportImageSnapshot();
+  //     if (!snap) {
+  //       setExportToast({ message: t('fileViewer.screenshotPreviewLoading'), tone: 'error' });
+  //       return;
+  //     }
+  //     const result = await copyImageDataUrlToClipboard(snap.dataUrl);
+  //     setExportToast(
+  //       result === 'copied'
+  //         ? { message: t('fileViewer.screenshotCopied'), tone: 'success' }
+  //         : {
+  //             message: t(
+  //               result === 'denied'
+  //                 ? 'fileViewer.screenshotClipboardDenied'
+  //                 : 'fileViewer.screenshotCaptureFailed',
+  //             ),
+  //             tone: 'error',
+  //           },
+  //     );
+  //   } catch (err) {
+  //     console.warn('[handleCopyScreenshot] failed:', err);
+  //     setExportToast({ message: t('fileViewer.screenshotCaptureFailed'), tone: 'error' });
+  //   } finally {
+  //     screenshotInFlightRef.current = false;
+  //   }
+  // }, [captureExportImageSnapshot, t]);
 
   const prepareImageExportBlob = useCallback(async (format: ImageExportFormat) => {
     const prepareId = imageExportPrepareIdRef.current + 1;
@@ -9051,6 +9054,7 @@ function HtmlViewer({
         <div className="viewer-toolbar-actions">
           {showPreviewToolbarControls ? (
             <>
+              {/* TEMP: screenshot toolbar control disabled — capture/clipboard path is unreliable.
               {mode === 'preview' ? (
                 <button
                   type="button"
@@ -9065,6 +9069,7 @@ function HtmlViewer({
                   <RemixIcon name="screenshot-2-line" size={15} />
                 </button>
               ) : null}
+              */}
               <div className="artifact-tool-menu-anchor">
                 <button
                   type="button"

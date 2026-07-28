@@ -50,7 +50,8 @@ describe('FileViewer screenshot tooltip guard', () => {
     vi.unstubAllGlobals();
   });
 
-  it('clears the hover tooltip before the host compositor capture grabs the frame', async () => {
+  // TEMP: screenshot toolbar UI is commented out in FileViewer — re-enable with the button.
+  it.skip('clears the hover tooltip before the host compositor capture grabs the frame', async () => {
     captureHostIframeSnapshotMock.mockResolvedValue({
       dataUrl: 'data:image/png;base64,ok',
       w: 800,
