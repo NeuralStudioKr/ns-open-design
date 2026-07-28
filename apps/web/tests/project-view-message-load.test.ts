@@ -437,7 +437,14 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("function mergeScopedCommentTargetsFromPatchedDeck");
     expect(source).toContain("commentAttachments: runCommentAttachmentsRef.current");
     expect(source).toContain("instructionText: runVisiblePromptRef.current");
-    expect(source).toContain("instructionText: [attachment.comment, input.instructionText].filter(Boolean).join");
+    // Wrapper structure evolved to nest attachment/instructionText
+    // inside a plain object — accept either the historical
+    // `attachment.comment` inline shape or the current `input.attachment.comment`
+    // wrapper shape so downstream refactors of the wrapper name do
+    // not silently rot this pin.
+    expect(source).toMatch(
+      /instructionText:\s*\[[^\]]*attachment\.comment[^\]]*instructionText[^\]]*\]\.filter\(Boolean\)\.join/,
+    );
     expect(source).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)");
     expect(source).toContain("commentAttachmentCount: scopedCommentAttachments.length");
     expect(source).toContain("commentAttachments: scopedCommentAttachments");
@@ -549,8 +556,53 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("scopeRejectionCanRetry");
     expect(source).toContain("outside attached comment scope");
     expect(source).toContain("is not allowed for scoped comment edits");
+    // Also retry when a coerced attachment.slideIndex fell out of
+    // deck bounds — the ORIGINAL patch's slideIndex is likely valid.
+    expect(source).toContain("targets slideIndex \\d+ but deck has \\d+ slides");
     expect(source).toContain("mergedScopeRelaxed");
-    expect(source).toContain("scope-relaxed apply produced no narrowed match — rejecting");
+    // The relaxed branch must still reject when the narrow merge
+    // could not verify the model's chosen slide via
+    // targetTextPreservedInPatchedSlide. Pin the structural shape of
+    // that reject path — the exact console message string was
+    // reorganized in a downstream refactor, so we assert on the
+    // `mergedScopeRelaxed`-guarded reject block instead of the log
+    // wording.
+    expect(source).toMatch(
+      /if \(mergedScopeRelaxed\)[\s\S]{0,200}deck_patch_merge_failed[\s\S]{0,200}strictScopeApply\.reason/,
+    );
+  });
+
+  it("uses every identity anchor the attachment carries for the text-preserved fallback", () => {
+    // Behavioral coverage: merge-scoped-comment-style-fallback.test.ts.
+    // The check now looks at currentText, htmlHint-stripped text,
+    // AND pod members' captured text, and accepts a 2-char anchor
+    // (down from 4). That way short-but-distinctive Korean tokens
+    // like "회사" still greenlight a legitimate style edit that
+    // dropped identifiers but preserved the visible copy.
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("extractTargetIdentityAnchors");
+    expect(source).toContain("podMembers");
+    expect(source).toContain("collapseTargetTextForMatch");
+    // 2-char threshold pin — anything higher blocks legitimate
+    // short-anchor edits.
+    expect(source).toContain("candidate.length < 2");
+  });
+
+  it("surfaces the underlying scope-rejected reason in the user-facing banner", () => {
+    // "선택한 댓글 대상 밖의 변경이 감지되어 저장하지 않았습니다" alone
+    // did not tell the user (or ops looking at the bug report)
+    // WHICH layer rejected. formatProjectArtifactCommentScopeRejectedError
+    // now takes an optional detail string and appends it as a
+    // parenthesized reason so future failure reports include the
+    // concrete `code — reason` pair without needing browser console
+    // access.
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("formatProjectArtifactCommentScopeRejectedError(");
+    // The call site must wire code + reason through as detail. This
+    // stays a lightweight structural pin — the formatter's own
+    // append-detail behaviour is covered separately by
+    // teamver-project-error-messages.
+    expect(source).toContain("[terminalPersistResult.code, terminalPersistResult.reason]");
   });
 
   it("waits for embed boot and retries stuck message loads on re-entry", () => {

@@ -69,6 +69,15 @@ describe("project conversation error messages", () => {
       "저장을 거부",
     );
     expect(formatProjectArtifactCommentScopeRejectedError()).toContain("댓글 대상 밖");
+    // With a detail arg the message must append the concrete
+    // pipeline reason so bug reports include the failure code + reason
+    // without needing browser console access.
+    const withDetail = formatProjectArtifactCommentScopeRejectedError(
+      "deck_patch_merge_failed — Selected targets were unchanged.",
+    );
+    expect(withDetail).toContain("사유: deck_patch_merge_failed — Selected targets were unchanged.");
+    // No detail → no parenthetical suffix (preserves the older UI copy).
+    expect(formatProjectArtifactCommentScopeRejectedError()).not.toContain("사유:");
     expect(formatProjectArtifactSaveFailedError("deck.html")).toContain("저장에 실패");
     expect(formatProjectRunDeliverableMissingError()).toContain("슬라이드 결과물");
     expect(formatAutoContinueIncompleteOutputNotice()).toContain("자동으로 이어쓰기");

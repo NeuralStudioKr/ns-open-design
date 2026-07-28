@@ -150,11 +150,21 @@ export function formatProjectRunDeliverableMissingError(): string {
     : "The slide deliverable was not created. The response may have been cut off — please try again.";
 }
 
-/** A comment-scoped edit tried to touch content outside the selected target. */
-export function formatProjectArtifactCommentScopeRejectedError(): string {
+/**
+ * A comment-scoped edit tried to touch content outside the selected
+ * target. Optional `detail` carries the concrete failure reason
+ * (which layer of the deck-patch pipeline rejected, e.g. "outside
+ * attached comment scope" / "Selected targets were unchanged.") so
+ * users can share it in bug reports without needing browser console
+ * access. Old callers that pass no detail see the original copy.
+ */
+export function formatProjectArtifactCommentScopeRejectedError(detail?: string): string {
+  const trimmedDetail = String(detail ?? '').trim();
+  const suffix = trimmedDetail ? ` (사유: ${trimmedDetail})` : '';
+  const suffixEn = trimmedDetail ? ` (reason: ${trimmedDetail})` : '';
   return isTeamverEmbedMode()
-    ? "선택한 댓글 대상 밖의 변경이 감지되어 저장하지 않았습니다. 같은 요소만 다시 수정하거나, 슬라이드 전체 수정을 원한다고 요청해 주세요."
-    : "The edit tried to change content outside the selected comment target, so it was not saved.";
+    ? `선택한 댓글 대상 밖의 변경이 감지되어 저장하지 않았습니다. 같은 요소만 다시 수정하거나, 슬라이드 전체 수정을 원한다고 요청해 주세요.${suffix}`
+    : `The edit tried to change content outside the selected comment target, so it was not saved.${suffixEn}`;
 }
 
 /**

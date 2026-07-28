@@ -239,9 +239,78 @@ describe('targetTextPreservedInPatchedSlide', () => {
     expect(
       targetTextPreservedInPatchedSlide(
         '<section class="slide">anything at all</section>',
-        makeAttachment({ currentText: '' }),
+        makeAttachment({ currentText: '', htmlHint: '' }),
       ),
     ).toBe(false);
+  });
+
+  it('accepts when htmlHint carries the identity anchor even if currentText is stripped', () => {
+    // Some capture paths land currentText empty (e.g., text-only
+    // elements with only inline SVG that textContent normalizes to
+    // ''), but htmlHint keeps a snippet that includes the original
+    // visible text. The fallback must pick that up so the merge
+    // still ships.
+    const patched = [
+      '<section class="slide">',
+      '<h2><span style="color:#ef4444">뉴럴스튜디오㈜</span> 회사입니다.</h2>',
+      '</section>',
+    ].join('');
+    expect(
+      targetTextPreservedInPatchedSlide(
+        patched,
+        makeAttachment({
+          currentText: '',
+          htmlHint: '<h2>뉴럴스튜디오㈜ 회사입니다.</h2>',
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('accepts when a pod-member captured text anchors the identity check', () => {
+    // Pod selections carry multiple podMembers; each has its own
+    // captured text. Any single member surviving in the patched
+    // slide is enough to greenlight the swap — the user selected
+    // that group as a semantic unit.
+    const patched = [
+      '<section class="slide">',
+      '<div><strong>회사</strong> 소개</div>',
+      '<div>다른 요소</div>',
+      '</section>',
+    ].join('');
+    expect(
+      targetTextPreservedInPatchedSlide(
+        patched,
+        makeAttachment({
+          currentText: '',
+          htmlHint: '',
+          selectionKind: 'pod',
+          podMembers: [
+            {
+              elementId: 'm1',
+              selector: '[data-od-id="m1"]',
+              label: 'strong',
+              text: '회사',
+              position: { x: 0, y: 0, width: 10, height: 10 },
+              htmlHint: '<strong>회사</strong>',
+            },
+          ],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('accepts 2-char Korean anchor tokens like "회사"', () => {
+    // Historically the min-length was 4 which rejected short-but
+    // -distinctive Korean identity tokens. 2 chars is enough anchor
+    // for CJK — substring collisions on 2-char strings are
+    // acceptable given how narrowly we already scoped to the slide.
+    const patched = '<section class="slide"><h1 style="color:red">회사 이름</h1></section>';
+    expect(
+      targetTextPreservedInPatchedSlide(
+        patched,
+        makeAttachment({ currentText: '회사', htmlHint: '' }),
+      ),
+    ).toBe(true);
   });
 });
 

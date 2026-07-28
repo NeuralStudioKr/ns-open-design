@@ -1352,14 +1352,29 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
  * mismatch that could plausibly be recovered by relaxing the scope
  * guard and letting the target-text-preserved narrow merge decide.
  *
- * Not every failure qualifies — a "no <body>…</body>" or "deck has
- * 0 slides" failure means the source is unparseable, and no retry
- * will help.
+ * Recovered failures include:
+ *   - "outside attached comment scope" — model picked a different
+ *     slide than `attachment.slideIndex` (stale bridge state,
+ *     re-used attachment from a previous turn, etc.).
+ *   - "is not allowed for scoped comment edits" — model used a
+ *     non-replace op the strict path forbids. The relaxed retry
+ *     still delegates safety to mergeScoped's per-attachment
+ *     narrow merge, so we don't silently accept arbitrary structural
+ *     changes.
+ *   - "targets slideIndex X but deck has N slides" — the coerced
+ *     slideIndex fell out of bounds because `attachment.slideIndex`
+ *     was stale. The relaxed retry uses the ORIGINAL parsed patch
+ *     which likely has a valid in-bounds slideIndex.
+ *
+ * Not every failure qualifies — "no <body>…</body>" / "deck body
+ * has no <section class=\"slide\">" / "non-integer slideIndex" mean
+ * the source or patch is unparseable and no retry will help.
  */
 function scopeRejectionCanRetry(reason: string): boolean {
   return (
     reason.includes('outside attached comment scope') ||
-    reason.includes('is not allowed for scoped comment edits')
+    reason.includes('is not allowed for scoped comment edits') ||
+    /targets slideIndex \d+ but deck has \d+ slides/.test(reason)
   );
 }
 
@@ -1556,32 +1571,59 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
 
 /**
  * True when the attachment's captured `currentText` still appears
- * verbatim inside the model's patched slide HTML. This is the safety
- * check gating the "text-preserved" slide-level fallback in
- * `mergeScopedCommentTargetsFromPatchedDeck`.
- *
- * Anchoring on `currentText` means the target's identity (the visible
- * copy the user clicked) survived the model's rewrite — the edit is
- * still semantically about the same content even when the surrounding
- * DOM structure or identifiers no longer align. If the text was
- * removed or renamed, this returns false and the scoped merge stays
- * in its default reject path so the response doesn't silently ship a
- * wholly-different slide.
+ * verbatim inside the model's patched slide HTML, OR the attachment's
+ * `htmlHint`-extracted text is preserved (a shorter, more specific
+ * fallback for elements with mostly-empty text). Both checks anchor
+ * on the identity of the clicked target — if the visible copy the
+ * user clicked survived the model's rewrite, the edit is still
+ * semantically about the same content and the slide-level swap is
+ * safe. Only when neither signal survives do we treat the model's
+ * response as a wholly-different slide and reject.
  */
 export function targetTextPreservedInPatchedSlide(
   patchedSlideOuter: string,
   attachment: ChatCommentAttachment,
 ): boolean {
-  const currentText = attachment.currentText || '';
-  const collapsedCurrent = collapseTargetTextForMatch(currentText);
-  // Guard against pathologically short signals — a 1–2 char string
-  // is likely to substring-match into unrelated slide content and
-  // greenlight a wholly-different slide as "text-preserved".
-  if (!collapsedCurrent || collapsedCurrent.length < 4) return false;
   const collapsedSlide = collapseTargetTextForMatch(
     patchedSlideOuter.replace(/<[^>]+>/g, ' '),
   );
-  return collapsedSlide.includes(collapsedCurrent);
+  for (const candidate of extractTargetIdentityAnchors(attachment)) {
+    // 2-char threshold: short Korean strings ("회사", "이름") are
+    // still distinctive enough as anchor tokens to greenlight a
+    // slide-level swap. Below 2 chars the substring collision risk
+    // dominates.
+    if (candidate.length < 2) continue;
+    if (collapsedSlide.includes(candidate)) return true;
+  }
+  return false;
+}
+
+/**
+ * Collect every whitespace-stripped text signal the attachment
+ * carries that could anchor a target-preserved check. We look at
+ * `currentText`, `htmlHint` (rendered text after tag strip), and
+ * the pod members' captured text (for pod selections). Any single
+ * hit greenlights the slide-level fallback — the model just has to
+ * keep ONE of the user's identity anchors intact.
+ */
+function extractTargetIdentityAnchors(attachment: ChatCommentAttachment): string[] {
+  const seen = new Set<string>();
+  const anchors: string[] = [];
+  const push = (raw: string): void => {
+    const collapsed = collapseTargetTextForMatch(raw);
+    if (!collapsed || seen.has(collapsed)) return;
+    seen.add(collapsed);
+    anchors.push(collapsed);
+  };
+  push(attachment.currentText || '');
+  const hintText = (attachment.htmlHint || '').replace(/<[^>]+>/g, ' ');
+  push(hintText);
+  if (attachment.podMembers) {
+    for (const member of attachment.podMembers) {
+      push(member.text || '');
+    }
+  }
+  return anchors;
 }
 
 /**
@@ -7337,7 +7379,11 @@ export function ProjectView({
                       message: terminalPersistResult.message,
                     })
                   : terminalPersistResult?.kind === 'scope-rejected'
-                    ? formatProjectArtifactCommentScopeRejectedError()
+                    ? formatProjectArtifactCommentScopeRejectedError(
+                        [terminalPersistResult.code, terminalPersistResult.reason]
+                          .filter(Boolean)
+                          .join(' — '),
+                      )
                   : formatProjectRunDeliverableMissingError();
               const deliverableErrorCode = terminalPersistResult?.kind === 'scope-rejected'
                 ? terminalPersistResult.code
