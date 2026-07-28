@@ -188,6 +188,8 @@ const OPEN_ARTIFACT_TAG_RE = /<artifact\b[^>]*>/i;
 const CLOSED_ARTIFACT_RE = /<artifact\b[^>]*>[\s\S]*?<\/artifact>/gi;
 const ATTACHED_PREVIEW_COMMENTS_RE =
   /\n*<attached-preview-comments\b[^>]*>[\s\S]*?<\/attached-preview-comments>\s*/gi;
+const OPEN_ATTACHED_PREVIEW_COMMENTS_RE =
+  /\n*<attached-preview-comments\b[^>]*>[\s\S]*$/gi;
 const ATTACHED_PREVIEW_COMMENTS_EMPTY_FALLBACK_RE =
   /(?:^|\n)No comment location data provided\.\s*Apply the requested change to all slides\.\s*(?=\n|$)/gi;
 const COMMENT_SLIDE_INDEX_ASK_RE =
@@ -1318,6 +1320,7 @@ export function sanitizeAssistantProseForDisplay(
   const streaming = options.streaming ?? false;
   const withoutCommentProtocol = String(input || "")
     .replace(ATTACHED_PREVIEW_COMMENTS_RE, "\n")
+    .replace(OPEN_ATTACHED_PREVIEW_COMMENTS_RE, "\n")
     .replace(ATTACHED_PREVIEW_COMMENTS_EMPTY_FALLBACK_RE, "\n")
     .replace(COMMENT_SLIDE_INDEX_ASK_RE, "\n");
   const closed = sanitizeLeakedAgentProse(withoutCommentProtocol, {

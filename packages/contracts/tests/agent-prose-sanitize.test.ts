@@ -66,6 +66,18 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(input)).toBe("");
   });
 
+  it("strips truncated attached preview comment protocol from assistant prose", () => {
+    const input = [
+      "<attached-preview-comments>",
+      "slideIndex: 0",
+      "elementSelector: section.slide:nth-of-type(1)",
+      "commentText: 배경색 빨간색으로 바꿔줘",
+      "</attached-",
+    ].join("\n");
+
+    expect(sanitizeAssistantProseForDisplay(input)).toBe("");
+  });
+
   describe("system-reminder preservation for prompt-injection chip", () => {
     // Regression: `<system-reminder>` is a rendering element (AssistantMessage
     // turns it into the "Possible prompt injection" chip), not internal

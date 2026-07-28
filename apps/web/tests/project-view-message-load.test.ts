@@ -443,13 +443,11 @@ describe("ProjectView message loading", () => {
     expect(source).toContain(".filter((attachment) => !slideOnlyMvp || hasValidDeckSlideIndex(attachment))");
   });
 
-  it("treats a one-slide scoped style artifact as a slide replacement, not a full deck shrink", () => {
+  it("does not replace a whole slide when element-scoped comment merge fails", () => {
     const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("function tryMergeSingleSlideScopedArtifact");
-    expect(source).toContain("isScopedVisualStyleInstruction(input.instructionText)");
-    expect(source).toContain("if (replacementSlides.length !== 1) return null");
-    expect(source).toContain("ops: [{ op: 'replace', slideIndex, html: replacement.outerHtml }]");
-    expect(source).toContain("const slideScoped = tryMergeSingleSlideScopedArtifact({");
+    expect(source).not.toContain("function tryMergeSingleSlideScopedArtifact");
+    expect(source).not.toContain("isScopedVisualStyleInstruction");
+    expect(source).toContain("return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason }");
   });
 
   it("waits for embed boot and retries stuck message loads on re-entry", () => {

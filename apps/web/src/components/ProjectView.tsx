@@ -1119,38 +1119,6 @@ type DeckPatchMergeResult =
   | { ok: true; html: string }
   | { ok: false; code: ScopedDeckPersistFailureCode; reason: string };
 
-function isScopedVisualStyleInstruction(instructionText: string | undefined): boolean {
-  return /(배경|배경색|색상|색깔|컬러|스타일|톤|테마|background|color|style|theme)/i
-    .test(String(instructionText || ''));
-}
-
-function tryMergeSingleSlideScopedArtifact(input: {
-  currentHtml: string;
-  nextHtml: string;
-  allowedSlideIndexes?: readonly number[];
-  instructionText?: string;
-}): DeckPatchMergeResult | null {
-  const allowed = input.allowedSlideIndexes ?? [];
-  if (allowed.length !== 1) return null;
-  if (!isScopedVisualStyleInstruction(input.instructionText)) return null;
-  const replacementSlides = extractTopLevelSlideSections(input.nextHtml);
-  const [replacement] = replacementSlides;
-  if (!replacement) return null;
-  if (replacementSlides.length !== 1) return null;
-  const slideIndex = allowed[0]!;
-  const merged = applyDeckPatch({
-    currentHtml: input.currentHtml,
-    patch: {
-      ops: [{ op: 'replace', slideIndex, html: replacement.outerHtml }],
-    },
-    allowedSlideIndexes: allowed,
-  });
-  if (!merged.ok) {
-    return { ok: false, code: 'deck_patch_merge_failed', reason: merged.reason };
-  }
-  return { ok: true, html: merged.html };
-}
-
 async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   projectId: string;
   fileName: string;
@@ -1199,17 +1167,6 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
         fileName: input.fileName,
         reason: scoped.reason,
       });
-      const allowed = input.allowedSlideIndexes ?? [];
-      const [op] = parsed.patch.ops;
-      if (
-        allowed.length === 1
-        && parsed.patch.ops.length === 1
-        && op?.op === 'replace'
-        && op.slideIndex === allowed[0]
-        && isScopedVisualStyleInstruction(input.instructionText)
-      ) {
-        return { ok: true, html: merged.html };
-      }
       return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason };
     }
     if (scoped.narrowed) return { ok: true, html: scoped.html };
@@ -3498,49 +3455,20 @@ export function ProjectView({
           openTabsStateRef.current.active,
           { preferredFileName: runPersistTargetFileRef.current },
         );
-        const currentHtml = await fetchProjectFileText(project.id, targetFileName, {
-          cache: 'no-store',
+        const scopeResult = await fullDeckEditStaysInsideCommentScope({
+          projectId: project.id,
+          fileName: targetFileName,
+          nextHtml: effectiveArt.html,
+          allowedSlideIndexes: scopedAllowedSlideIndexes,
+          commentAttachments: runCommentAttachmentsRef.current,
         });
-        if (!currentHtml) {
+        if (!scopeResult.ok) {
           return {
             kind: 'scope-rejected',
             fileName: targetFileName,
-            code: 'full_deck_current_unreadable',
-            reason: 'current deck file unreadable',
+            code: scopeResult.code,
+            reason: scopeResult.reason,
           };
-        }
-        const slideScoped = tryMergeSingleSlideScopedArtifact({
-          currentHtml,
-          nextHtml: effectiveArt.html,
-          allowedSlideIndexes: scopedAllowedSlideIndexes,
-          instructionText: runVisiblePromptRef.current,
-        });
-        if (slideScoped) {
-          if (!slideScoped.ok) {
-            return {
-              kind: 'scope-rejected',
-              fileName: targetFileName,
-              code: slideScoped.code,
-              reason: slideScoped.reason,
-            };
-          }
-          effectiveArt = { ...effectiveArt, html: slideScoped.html, artifactType: 'deck' };
-        } else {
-          const scopeResult = await fullDeckEditStaysInsideCommentScope({
-            projectId: project.id,
-            fileName: targetFileName,
-            nextHtml: effectiveArt.html,
-            allowedSlideIndexes: scopedAllowedSlideIndexes,
-            commentAttachments: runCommentAttachmentsRef.current,
-          });
-          if (!scopeResult.ok) {
-            return {
-              kind: 'scope-rejected',
-              fileName: targetFileName,
-              code: scopeResult.code,
-              reason: scopeResult.reason,
-            };
-          }
         }
       }
       const recoveredHtml = recoverHtmlArtifactFromPrecedingDocument({
