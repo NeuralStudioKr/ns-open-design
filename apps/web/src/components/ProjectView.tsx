@@ -1065,6 +1065,7 @@ function slideCommentEditPatchInstruction(commentAttachmentCount: number): strin
     '- `data-slide-index="{N}"` uses the 0-based index the comment reports under `slideIndex:` in `<attached-preview-comments>` (top-to-bottom order of `<section class="slide">` in the current deck).',
     '- Include ONE `<section class="slide">` per touched slide. Do NOT include unchanged slides, `<head>`, `<html>`, `<body>`, or global chrome.',
     '- Preserve existing `data-od-id`, `data-od-runtime-id`, `data-od-source-path`, `data-slide-index`, and comment target element identity unless the user explicitly asks to replace that element.',
+    '- Apply element-local edits directly on the selected target element markup. For style-only requests, prefer inline `style` on that target element over changing global CSS, slide wrapper CSS, or sibling markup.',
     '- The replacement `<section>` is the full new slide markup — the client swaps it in.',
     '- Fallback: if you must change deck-wide structure (add slide, reorder, restructure global CSS), emit the full `<artifact type="deck">` document instead.',
   ].join('\n');
@@ -1358,9 +1359,11 @@ function scopedCommentElementIds(attachment: ChatCommentAttachment): string[] {
   if (attachment.selectionKind === 'visual') return [];
   const ids = [
     attachment.elementId,
+    ...selectorCommentElementIds(attachment.selector),
     domSelectorCommentElementId(attachment.selector),
     ...(attachment.podMembers ?? []).flatMap((member) => [
       member.elementId,
+      ...selectorCommentElementIds(member.selector),
       domSelectorCommentElementId(member.selector),
     ]),
   ];
@@ -1371,9 +1374,29 @@ function scopedCommentElementIds(attachment: ChatCommentAttachment): string[] {
   )];
 }
 
+function selectorCommentElementIds(selector: string | undefined): string[] {
+  const trimmed = String(selector || '').trim();
+  if (!trimmed) return [];
+  const ids: string[] = [];
+  for (const attr of ['data-od-id', 'data-screen-label', 'data-od-source-path', 'data-od-runtime-id']) {
+    const re = new RegExp(`\\[${attr}=(?:"([^"]+)"|'([^']+)'|([^\\]\\s]+))\\]`, 'gi');
+    for (const match of trimmed.matchAll(re)) {
+      const value = match[1] || match[2] || match[3] || '';
+      if (value.trim()) ids.push(value.trim());
+    }
+  }
+  return ids;
+}
+
 function domSelectorCommentElementId(selector: string | undefined): string {
   const trimmed = String(selector || '').trim();
-  if (!trimmed.startsWith('body > ')) return '';
+  if (!trimmed || /[<{}]/.test(trimmed)) return '';
+  if (
+    !trimmed.startsWith('body > ')
+    && !/^(?:[a-z][a-z0-9-]*|\.[a-z0-9_-]+|\[[a-z0-9_-]+=)/i.test(trimmed)
+  ) {
+    return '';
+  }
   return `dom:${trimmed}`;
 }
 

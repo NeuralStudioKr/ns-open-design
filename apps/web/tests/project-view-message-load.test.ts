@@ -414,8 +414,12 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
 
     expect(source).toContain("function domSelectorCommentElementId");
+    expect(source).toContain("function selectorCommentElementIds");
+    expect(source).toContain("'data-od-id', 'data-screen-label', 'data-od-source-path', 'data-od-runtime-id'");
+    expect(source).toContain("...selectorCommentElementIds(attachment.selector)");
     expect(source).toContain("return `dom:${trimmed}`");
     expect(source).toContain("domSelectorCommentElementId(attachment.selector)");
+    expect(source).toContain("...selectorCommentElementIds(member.selector)");
     expect(source).toContain("domSelectorCommentElementId(member.selector)");
 
     const guardStart = source.indexOf("async function fullDeckEditStaysInsideCommentScope");

@@ -405,6 +405,30 @@ describe('manual edit source patches', () => {
     expect(result.source).not.toContain('Unexpected sibling edit');
   });
 
+  it('merges slide-relative selector targets inside the selected slide only', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><h2>Slide one heading</h2></section>',
+      '<section class="slide" data-slide-index="1"><h2>Slide two heading</h2><p>Keep me</p></section>',
+      '</body></html>',
+    ].join('');
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><h2>Unexpected slide one edit</h2></section>',
+      '<section class="slide" data-slide-index="1"><h2 style="color:red">Edited heading</h2><p>Unexpected sibling edit</p></section>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetsFromSource(source, modelOutput, ['dom:h2:nth-of-type(1)'], { slideIndex: 1 });
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('<section class="slide" data-slide-index="0"><h2>Slide one heading</h2></section>');
+    expect(result.source).toContain('<section class="slide" data-slide-index="1"><h2 style="color:red">Edited heading</h2><p>Keep me</p></section>');
+    expect(result.source).not.toContain('Unexpected slide one edit');
+    expect(result.source).not.toContain('Unexpected sibling edit');
+  });
+
   it('merges generated DOM path comment targets inside the selected slide only', () => {
     const source = [
       '<!doctype html><html><body>',

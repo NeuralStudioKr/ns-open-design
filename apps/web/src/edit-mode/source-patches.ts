@@ -436,7 +436,25 @@ function findElementByDomSelector(
 ): Element | null {
   if (!id.startsWith('dom:')) return null;
   const selector = id.slice('dom:'.length).trim();
-  if (!selector.startsWith('body > ') || /[<{}]/.test(selector)) return null;
+  if (!selector || /[<{}]/.test(selector)) return null;
+  if (selector.startsWith('body > ')) {
+    const byPath = findElementByDomSelectorPath(doc, root, selector);
+    if (byPath) return byPath;
+  }
+  const rootElement = root.nodeType === 9 ? null : root as Element;
+  if (rootElement && !selector.startsWith('body > ')) {
+    let scopedEl: Element | null = null;
+    try {
+      scopedEl = rootElement.querySelector(selector);
+    } catch {
+      return null;
+    }
+    if (!scopedEl || scopedEl === rootElement || scopedEl === doc.body || scopedEl === doc.documentElement) {
+      return null;
+    }
+    return scopedEl;
+  }
+  if (!selector.startsWith('body > ')) return null;
   const byPath = findElementByDomSelectorPath(doc, root, selector);
   if (byPath) return byPath;
   let el: Element | null = null;
