@@ -203,9 +203,13 @@ describe("teamverEmbedPassiveAuth", () => {
     expect(prepareReloadMock).not.toHaveBeenCalled();
   });
 
-  it("schedules login redirect only after confirmed consecutive unrecovered failures", async () => {
+  it("surfaces auth-required without login redirect after confirmed consecutive unrecovered failures", async () => {
     refreshMock.mockResolvedValue(false);
     probeSessionMock.mockResolvedValue(false);
+    const events: string[] = [];
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_EVENT, () => {
+      events.push("auth");
+    });
     handleEmbedPassiveUnauthorized("daemon");
     await vi.advanceTimersByTimeAsync(0);
     handleEmbedPassiveUnauthorized("daemon");
@@ -215,11 +219,12 @@ describe("teamverEmbedPassiveAuth", () => {
     handleEmbedPassiveUnauthorized("daemon");
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(prepareReloadMock).toHaveBeenCalledTimes(1);
-    expect(redirectMock).toHaveBeenCalledTimes(1);
+    expect(prepareReloadMock).not.toHaveBeenCalled();
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(events.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("cancels pending redirect when a later recovery succeeds", async () => {
+  it("cancels pending auth-required event when a later recovery succeeds", async () => {
     refreshMock.mockResolvedValue(false);
     probeSessionMock.mockResolvedValue(false);
     handleEmbedPassiveUnauthorized("daemon");

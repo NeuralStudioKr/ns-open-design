@@ -281,8 +281,11 @@ function findElementByDomSelectorPath(
   for (const segment of segments) {
     const match = /^([a-z][a-z0-9-]*):nth-of-type\(([1-9][0-9]*)\)$/i.exec(segment);
     if (!match || !current) return null;
-    const tag = match[1].toLowerCase();
-    const ordinal = Number(match[2]);
+    const tagRaw = match[1];
+    const ordinalRaw = match[2];
+    if (tagRaw === undefined || ordinalRaw === undefined) return null;
+    const tag = tagRaw.toLowerCase();
+    const ordinal = Number(ordinalRaw);
     let seen = 0;
     let next: Element | null = null;
     for (const child of Array.from(current.children)) {

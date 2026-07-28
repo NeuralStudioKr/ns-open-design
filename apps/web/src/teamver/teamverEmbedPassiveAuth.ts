@@ -1,13 +1,10 @@
 import { isBootstrapAuthMode, isTeamverEmbedMode } from "./designApiBase";
-import { redirectToTeamverLoginPreservingRoute } from "./designAuthFlow";
-import { resolveEmbedAuthReturnPath } from "./teamverEmbedAuthNavigation";
 import { hasTeamverEmbedActiveWork } from "./teamverEmbedActiveWork";
 import { hasTeamverEmbedBackgroundRuns } from "./teamverEmbedSessionRuns";
 import {
   ensureDesignBffSessionAuthenticated,
   isDesignAuthRefreshDeclined,
   isTeamverRuntimeConfigAuthBlocked,
-  prepareDesignAuthSessionReload,
   probeDesignBffSessionAuthenticated,
   refreshDesignAuthCookie,
 } from "./designBffClient";
@@ -16,7 +13,7 @@ import {
   setTeamverEmbedSessionAuthenticated,
 } from "./teamverEmbedSession";
 
-function shouldDeferPassiveAuthRedirect(): boolean {
+function shouldDeferPassiveAuthRequired(): boolean {
   return hasTeamverEmbedActiveWork() || hasTeamverEmbedBackgroundRuns();
 }
 
@@ -26,30 +23,22 @@ export const TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT =
   "teamver:embed-passive-auth-recovered";
 
 /**
- * Prefer silent recovery over login redirect. Key-refresh (Apps JWT) failures
- * are often HA rotation races — re-login / "close the tab" is last resort only
- * after consecutive unrecovered failures AND a final session probe.
+ * Prefer silent recovery over hard navigation. Key-refresh (Apps JWT) failures
+ * are often HA rotation races — passive paths only surface a recoverable event.
+ * Explicit user CTA paths own any real login redirect.
  */
 const PASSIVE_AUTH_FAILURE_THRESHOLD = 3;
 /** Window that counts consecutive failures (tab-return blips are usually single). */
 const PASSIVE_AUTH_FAILURE_WINDOW_MS = 60_000;
-/** Delay before navigating away after confirmed session loss. */
-const PASSIVE_AUTH_REDIRECT_DELAY_MS = 4_000;
+/** Delay before surfacing confirmed passive auth loss without moving the page. */
+const PASSIVE_AUTH_REQUIRED_DELAY_MS = 4_000;
 
-let passiveAuthRedirectTimer: ReturnType<typeof setTimeout> | null = null;
+let passiveAuthRequiredTimer: ReturnType<typeof setTimeout> | null = null;
 let passiveAuthRecoveryInflight: Promise<boolean> | null = null;
 /** Dedup failure credits across parallel 401 waiters of the same recovery. */
 let lastRecoveryFailureClaimed = false;
 let consecutivePassiveFailures = 0;
 let lastPassiveFailureAt = 0;
-
-function readEmbedReturnTo(): string | null {
-  if (typeof window === "undefined") return null;
-  return resolveEmbedAuthReturnPath(
-    window.location.pathname,
-    window.location.search,
-  );
-}
 
 function dispatchPassiveAuthRequired(reason: "daemon" | "bff"): void {
   if (typeof window === "undefined") return;
@@ -58,10 +47,10 @@ function dispatchPassiveAuthRequired(reason: "daemon" | "bff"): void {
   );
 }
 
-function cancelPassiveLoginRedirect(): void {
-  if (!passiveAuthRedirectTimer) return;
-  clearTimeout(passiveAuthRedirectTimer);
-  passiveAuthRedirectTimer = null;
+function cancelPassiveAuthRequiredTimer(): void {
+  if (!passiveAuthRequiredTimer) return;
+  clearTimeout(passiveAuthRequiredTimer);
+  passiveAuthRequiredTimer = null;
 }
 
 function dispatchPassiveAuthRecovered(): void {
@@ -72,7 +61,7 @@ function dispatchPassiveAuthRecovered(): void {
 function notePassiveRecoverySuccess(): void {
   consecutivePassiveFailures = 0;
   lastPassiveFailureAt = 0;
-  cancelPassiveLoginRedirect();
+  cancelPassiveAuthRequiredTimer();
   // Keep embed memory authenticated and wake App/banner subscribers even when
   // the flag was already true throughout the outage (forceEvent).
   setTeamverEmbedSessionAuthenticated(true, { forceEvent: true });
@@ -89,40 +78,30 @@ function notePassiveRecoveryFailure(): number {
   return consecutivePassiveFailures;
 }
 
-function schedulePassiveLoginRedirect(): void {
+function schedulePassiveAuthRequired(reason: "daemon" | "bff"): void {
   if (typeof window === "undefined") return;
   if (!isTeamverEmbedMode() || !isBootstrapAuthMode()) return;
-  if (shouldDeferPassiveAuthRedirect()) {
-    dispatchPassiveAuthRequired("daemon");
+  if (shouldDeferPassiveAuthRequired()) {
+    dispatchPassiveAuthRequired(reason);
     return;
   }
-  if (passiveAuthRedirectTimer) return;
-  passiveAuthRedirectTimer = setTimeout(() => {
-    passiveAuthRedirectTimer = null;
-    if (shouldDeferPassiveAuthRedirect()) {
-      dispatchPassiveAuthRequired("daemon");
+  if (passiveAuthRequiredTimer) return;
+  passiveAuthRequiredTimer = setTimeout(() => {
+    passiveAuthRequiredTimer = null;
+    if (shouldDeferPassiveAuthRequired()) {
+      dispatchPassiveAuthRequired(reason);
       return;
     }
-    // Re-check recovery + session right before leaving — a later 401 may have
+    // Re-check recovery + session before surfacing — a later 401 may have
     // recovered, or a concurrent call may still be refreshing.
     void (async () => {
       // Soft/hard sticky: do not re-run probe×2+ensure here — C1 / banner own it.
       if (isDesignAuthRefreshDeclined()) {
-        if (isTeamverEmbedSessionAuthenticated()) {
-          dispatchPassiveAuthRequired("bff");
-          return;
-        }
-        prepareDesignAuthSessionReload();
-        redirectToTeamverLoginPreservingRoute({ returnTo: readEmbedReturnTo() });
+        dispatchPassiveAuthRequired("bff");
         return;
       }
       if (isTeamverRuntimeConfigAuthBlocked()) {
-        if (isTeamverEmbedSessionAuthenticated()) {
-          dispatchPassiveAuthRequired("bff");
-          return;
-        }
-        prepareDesignAuthSessionReload();
-        redirectToTeamverLoginPreservingRoute({ returnTo: readEmbedReturnTo() });
+        dispatchPassiveAuthRequired("bff");
         return;
       }
       if (await tryPassiveAuthRecovery()) {
@@ -148,16 +127,15 @@ function schedulePassiveLoginRedirect(): void {
         notePassiveRecoverySuccess();
         return;
       }
-      // Embed memory still says signed-in — keep in-place recovery; never bounce
-      // to Main login for a refresh/probe blip while the UI looks authenticated.
-      if (isTeamverEmbedSessionAuthenticated()) {
-        dispatchPassiveAuthRequired("bff");
-        return;
-      }
-      prepareDesignAuthSessionReload();
-      redirectToTeamverLoginPreservingRoute({ returnTo: readEmbedReturnTo() });
+      // Passive 401s must never hard-navigate the current tab. A background
+      // poll, runtime-config touch, or HA cookie blip can fail several times
+      // while the visible app is still usable; redirecting to Main sign-in here
+      // interrupts slide generation/editing and leaves users on /auth/callback.
+      // Surface a recoverable auth-required event; explicit CTA handlers own
+      // the real login redirect.
+      dispatchPassiveAuthRequired(reason);
     })();
-  }, PASSIVE_AUTH_REDIRECT_DELAY_MS);
+  }, PASSIVE_AUTH_REQUIRED_DELAY_MS);
 }
 
 function claimPassiveRecoveryFailure(): number | null {
@@ -189,12 +167,13 @@ async function tryPassiveAuthRecovery(): Promise<boolean> {
 }
 
 /**
- * Embed daemon/BFF 401 on background polls — refresh once, defer redirect while
- * a slide run is active, and never hard-navigate synchronously from fetch().
+ * Embed daemon/BFF 401 on background polls — refresh once, defer the visible
+ * auth-required event while a slide run is active, and never hard-navigate
+ * synchronously from fetch().
  *
  * Single unrecovered 401s (common on tab-return) only surface a soft event.
- * Login redirect requires consecutive failures inside the failure window, then
- * a final session probe still saying unauthenticated.
+ * Consecutive failures schedule one final recovery probe, then surface the
+ * soft auth-required event. They do not redirect the current tab.
  *
  * Parallel 401s that share one recovery attempt only count as one failure.
  */
@@ -217,7 +196,7 @@ export function handleEmbedPassiveUnauthorized(reason: "daemon" | "bff"): void {
       notePassiveRecoverySuccess();
       return;
     }
-    if (shouldDeferPassiveAuthRedirect()) {
+    if (shouldDeferPassiveAuthRequired()) {
       dispatchPassiveAuthRequired(reason);
       return;
     }
@@ -225,20 +204,20 @@ export function handleEmbedPassiveUnauthorized(reason: "daemon" | "bff"): void {
     dispatchPassiveAuthRequired(reason);
     if (failures === null) {
       if (consecutivePassiveFailures >= PASSIVE_AUTH_FAILURE_THRESHOLD) {
-        schedulePassiveLoginRedirect();
+        schedulePassiveAuthRequired(reason);
       }
       return;
     }
     if (failures < PASSIVE_AUTH_FAILURE_THRESHOLD) {
       return;
     }
-    schedulePassiveLoginRedirect();
+    schedulePassiveAuthRequired(reason);
   })();
 }
 
 /** @internal vitest only */
 export function resetEmbedPassiveAuthForTests(): void {
-  cancelPassiveLoginRedirect();
+  cancelPassiveAuthRequiredTimer();
   passiveAuthRecoveryInflight = null;
   lastRecoveryFailureClaimed = false;
   consecutivePassiveFailures = 0;
