@@ -1618,17 +1618,36 @@ function buildSandboxedPreviewDeckHostViewportScript(): string {
   }
   window.addEventListener('keydown', onKey, true);
   window.addEventListener('resize', postViewport);
+  function focusPresentationHost(){
+    // Keep keyboard focus on this wrapper document. Focusing the sandboxed
+    // iframe steals ←/→ from the host key handler below; compact stacked decks
+    // rely on postMessage navigation and do not handle arrow keys in-frame.
+    try {
+      if (!document.body.hasAttribute('tabindex')) {
+        document.body.setAttribute('tabindex', '-1');
+      }
+      document.body.focus({ preventScroll: true });
+    } catch (_) {}
+  }
   if (iframe) {
     iframe.addEventListener('load', function(){
       postViewport();
       setTimeout(postViewport, 50);
       setTimeout(postViewport, 150);
       setTimeout(postViewport, 400);
-      try { iframe.focus(); } catch (_) {}
+      focusPresentationHost();
+      setTimeout(focusPresentationHost, 0);
     });
   }
-  if (document.readyState === 'complete') postViewport();
-  else window.addEventListener('load', postViewport);
+  if (document.readyState === 'complete') {
+    postViewport();
+    focusPresentationHost();
+  } else {
+    window.addEventListener('load', function(){
+      postViewport();
+      focusPresentationHost();
+    });
+  }
 })();</script>`;
 }
 
@@ -1666,7 +1685,7 @@ export function buildSandboxedPreviewDocument(
   <title>${safeTitle}</title>
   <style>html,body,iframe{margin:0;width:100%;height:100%;border:0}body{overflow:hidden;background:#fff}</style>
 </head>
-<body>
+<body${opts?.deckHostViewport ? ' tabindex="-1"' : ''}>
   ${iframeTag}
   ${deckHostScript}
 </body>
