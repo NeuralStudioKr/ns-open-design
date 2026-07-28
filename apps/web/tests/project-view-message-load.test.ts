@@ -100,6 +100,8 @@ describe("ProjectView message loading", () => {
     expect(source).not.toContain("fetch('/api/memory/extract'");
     expect(source).toContain("const userText = stripUserVisibleUserMessageText(prompt).trim()");
     expect(source).not.toContain("const userText = (userMsg.content ?? '').trim()");
+    expect(source).toContain("const assistantText = stripAllClosedArtifacts(accumulatedAssistantText).trim()");
+    expect(source).toContain("assistantMessage: assistantText");
   });
 
   it("does not run a separate embed project access preflight before the model stream", () => {
@@ -426,6 +428,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("mergeManualEditTargetsFromSource");
     expect(source).toContain("function mergeScopedCommentTargetsFromPatchedDeck");
     expect(source).toContain("commentAttachments: runCommentAttachmentsRef.current");
+    expect(source).toContain("instructionText: runVisiblePromptRef.current");
+    expect(source).toContain("instructionText: [attachment.comment, input.instructionText].filter(Boolean).join");
   });
 
   it("waits for embed boot and retries stuck message loads on re-entry", () => {

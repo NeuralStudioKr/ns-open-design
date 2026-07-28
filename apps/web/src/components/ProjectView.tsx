@@ -34,7 +34,10 @@ import {
   recoverHtmlArtifactFromPrecedingDocument,
   salvageTruncatedHtmlDocument,
 } from '../artifacts/recover';
-import { artifactPreviewFromInFlightContent } from '../artifacts/strip';
+import {
+  artifactPreviewFromInFlightContent,
+  stripAllClosedArtifacts,
+} from '../artifacts/strip';
 import {
   EMERGENCY_DECK_FALLBACK_STATUS_CODE,
   looksLikeSlideOutline,
@@ -1039,6 +1042,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   patchBody: string;
   allowedSlideIndexes?: readonly number[];
   commentAttachments?: readonly ChatCommentAttachment[];
+  instructionText?: string;
 }): Promise<DeckPatchMergeResult> {
   const parsed = parseDeckPatch(input.patchBody);
   if (!parsed.ok) {
@@ -1073,6 +1077,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       currentHtml,
       patchedHtml: merged.html,
       commentAttachments: input.commentAttachments,
+      instructionText: input.instructionText,
     });
     if (!scoped.ok) {
       console.warn('[deck-patch] scoped element merge failed', {
@@ -1090,6 +1095,7 @@ function mergeScopedCommentTargetsFromPatchedDeck(input: {
   currentHtml: string;
   patchedHtml: string;
   commentAttachments: readonly ChatCommentAttachment[];
+  instructionText?: string;
 }): { ok: true; html: string; narrowed: boolean } | { ok: false; reason: string } {
   let nextHtml = input.currentHtml;
   let narrowed = false;
@@ -1110,6 +1116,12 @@ function mergeScopedCommentTargetsFromPatchedDeck(input: {
       input.patchedHtml,
       ids,
       { slideIndex: Math.floor(attachment.slideIndex) },
+      ids.map((id) => ({
+        id,
+        currentText: attachment.currentText,
+        instructionText: [attachment.comment, input.instructionText].filter(Boolean).join('\n'),
+        htmlHint: attachment.htmlHint,
+      })),
     );
     if (!merged.ok) return { ok: false, reason: merged.reason };
     nextHtml = merged.source;
@@ -2045,6 +2057,8 @@ export function ProjectView({
   const runPersistTargetFileRef = useRef<string | null>(null);
   /** Deck-patch from comment edits may only touch slides named by these attachments. */
   const runCommentAttachmentsRef = useRef<ChatCommentAttachment[]>([]);
+  /** User-visible text for the active run; model-only prompt suffixes are excluded. */
+  const runVisiblePromptRef = useRef<string>('');
   const htmlAutoOpenTimerRef = useRef<number | null>(null);
   /**
    * Gates the message-load auto-open recovery to the first load per
@@ -2091,6 +2105,7 @@ export function ProjectView({
     htmlAutoOpenClaimedRef.current.clear();
     htmlAutoOpenGenerationRef.current.clear();
     runCommentAttachmentsRef.current = [];
+    runVisiblePromptRef.current = '';
     runPersistTargetFileRef.current = null;
     conversationRecoveryAttemptedRef.current.clear();
     conversationAutoContinueCountRef.current.clear();
@@ -3338,6 +3353,7 @@ export function ProjectView({
           patchBody: art.html,
           allowedSlideIndexes: scopedAllowedSlideIndexes,
           commentAttachments: runCommentAttachmentsRef.current,
+          instructionText: runVisiblePromptRef.current,
         });
         if (!merged.ok) {
           return {
@@ -6393,6 +6409,7 @@ export function ProjectView({
           };
       const runCommentAttachments = userMsg.commentAttachments ?? [];
       runCommentAttachmentsRef.current = runCommentAttachments;
+      runVisiblePromptRef.current = stripUserVisibleUserMessageText(prompt).trim();
       runPersistTargetFileRef.current = resolveCommentEditPersistTargetFileName(
         runCommentAttachments,
       );
@@ -7654,7 +7671,7 @@ export function ProjectView({
           },
           onDone: () => {
             handlers.onDone(accumulatedAssistantText);
-            const assistantText = accumulatedAssistantText.trim();
+            const assistantText = stripAllClosedArtifacts(accumulatedAssistantText).trim();
             if (userText.length === 0 || assistantText.length === 0) return;
             void fetchTeamverDaemon('/api/memory/extract', {
               method: 'POST',
@@ -7664,7 +7681,7 @@ export function ProjectView({
               skipEmbedAuthRecovery: true,
               body: JSON.stringify({
                 userMessage: userText,
-                assistantMessage: accumulatedAssistantText,
+                assistantMessage: assistantText,
                 projectId: project.id,
                 conversationId: runConversationId,
                 chatProvider: byokChatProvider,

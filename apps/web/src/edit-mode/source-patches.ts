@@ -14,6 +14,13 @@ export type ManualEditMergeTargetsResult =
   | { ok: true; source: string; replacedCount: number; changedCount: number }
   | { ok: false; source: string; reason: string };
 
+export interface ManualEditMergeTargetHint {
+  id?: string;
+  currentText?: string;
+  instructionText?: string;
+  htmlHint?: string;
+}
+
 export interface ManualEditSourceScope {
   /** Zero-based deck slide index. When present, element lookup is limited to that slide. */
   slideIndex?: number;
@@ -183,6 +190,7 @@ export function mergeManualEditTargetsFromSource(
   nextSource: string,
   ids: readonly string[],
   scope: ManualEditSourceScope = {},
+  hints: readonly ManualEditMergeTargetHint[] = [],
 ): ManualEditMergeTargetsResult {
   const currentDoc = parseSource(currentSource);
   const nextDoc = parseSource(nextSource);
@@ -202,9 +210,11 @@ export function mergeManualEditTargetsFromSource(
   let changedCount = 0;
   for (const id of normalizedIds) {
     const currentTarget = findEditableElement(currentDoc, id, scope);
+    const hint = hints.find((candidate) => String(candidate.id || '').trim() === id);
     const nextTarget = currentTarget
       ? findEditableElement(nextDoc, id, scope)
         ?? findEquivalentElementByScopedPosition(currentDoc, nextDoc, currentTarget, scope)
+        ?? findReplacementCandidateByTextHint(nextDoc, currentTarget, scope, hint)
       : null;
     if (!currentTarget || !nextTarget) continue;
     const currentOuter = currentTarget.outerHTML;
@@ -340,6 +350,83 @@ function preserveManualEditIdentityAttributes(currentTarget: Element, replacemen
       replacement.setAttribute(attr, currentValue);
     }
   }
+}
+
+function findReplacementCandidateByTextHint(
+  nextDoc: Document,
+  currentTarget: Element,
+  scope: ManualEditSourceScope,
+  hint: ManualEditMergeTargetHint | undefined,
+): Element | null {
+  const root = findScopedRoot(nextDoc, scope);
+  if (!root) return null;
+  const rootElement = root.nodeType === 9 ? nextDoc.body : root as Element;
+  const currentText = normalizeTextForCandidate(hint?.currentText || currentTarget.textContent || '');
+  const instructionTerms = extractLikelyReplacementTerms(hint?.instructionText || '');
+  const currentTokens = significantTextTokens(currentText);
+  const candidates = Array.from(rootElement.querySelectorAll('*'))
+    .filter((candidate) => isReasonableTextReplacementCandidate(candidate));
+  let best: { element: Element; score: number; length: number } | null = null;
+  for (const candidate of candidates) {
+    const text = normalizeTextForCandidate(candidate.textContent || '');
+    if (!text) continue;
+    let score = 0;
+    if (candidate.tagName.toLowerCase() === currentTarget.tagName.toLowerCase()) score += 25;
+    for (const term of instructionTerms) {
+      if (term && text.includes(term)) score += 120;
+    }
+    for (const token of currentTokens) {
+      if (text.includes(token)) score += 12;
+    }
+    if (hint?.htmlHint) {
+      const hintedTag = /^<\s*([a-z][a-z0-9-]*)\b/i.exec(hint.htmlHint)?.[1]?.toLowerCase();
+      if (hintedTag && candidate.tagName.toLowerCase() === hintedTag) score += 12;
+    }
+    if (score <= 0) continue;
+    const length = text.length;
+    if (!best || score > best.score || (score === best.score && length < best.length)) {
+      best = { element: candidate, score, length };
+    }
+  }
+  return best && best.score >= 60 ? best.element : null;
+}
+
+function isReasonableTextReplacementCandidate(element: Element): boolean {
+  const tag = element.tagName.toLowerCase();
+  if (['html', 'head', 'body', 'style', 'script', 'svg', 'section'].includes(tag)) return false;
+  const text = normalizeTextForCandidate(element.textContent || '');
+  if (!text || text.length > 240) return false;
+  const childTextElements = Array.from(element.children)
+    .filter((child) => !['style', 'script', 'svg'].includes(child.tagName.toLowerCase()))
+    .filter((child) => normalizeTextForCandidate(child.textContent || '').length > 0);
+  return childTextElements.length <= 1;
+}
+
+function extractLikelyReplacementTerms(text: string): string[] {
+  const terms = new Set<string>();
+  const source = String(text || '');
+  for (const match of source.matchAll(/['"“”‘’「」『』]([^'"“”‘’「」『』\n]{1,80})['"“”‘’「」『』]/g)) {
+    const term = normalizeTextForCandidate(match[1] || '');
+    if (term) terms.add(term);
+  }
+  for (const match of source.matchAll(/(?:이름|제목|텍스트|문구|내용)[^\n]{0,20}?(?:은|는|을|를)\s*([가-힣A-Za-z0-9 _.-]{2,40}?)(?:\s*(?:이야|야|로|으로|입니다|다|\.|$))/g)) {
+    const term = normalizeTextForCandidate(match[1] || '');
+    if (term) terms.add(term);
+  }
+  return [...terms];
+}
+
+function significantTextTokens(text: string): string[] {
+  return [...new Set(
+    text
+      .split(/[^가-힣A-Za-z0-9]+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 2 && token.length <= 24),
+  )].slice(0, 6);
+}
+
+function normalizeTextForCandidate(text: string): string {
+  return String(text || '').replace(/\s+/g, ' ').trim();
 }
 
 function findElementByDomSelector(

@@ -407,6 +407,47 @@ describe('manual edit source patches', () => {
     expect(result.source).not.toContain('Unexpected sibling edit');
   });
 
+  it('merges selected targets by instruction text when model output restructures the slide', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h1>토익 학원 첫 수업 안내</h1>',
+      '<footer><span>강사 </span><strong data-od-id="instructor-name" data-od-edit="text">홍길동</strong></footer>',
+      '<p data-od-id="body">여러분의 목표 점수를 함께 달성해 나가겠습니다.</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<p>TOEIC Preparation Course</p>',
+      '<h1>토익 학원<br>첫 수업 안내</h1>',
+      '<p>강사 <strong>김강사</strong></p>',
+      '<p>여러분의 목표 점수를 함께 달성해 나가겠습니다.</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetsFromSource(
+      source,
+      modelOutput,
+      ['instructor-name'],
+      { slideIndex: 0 },
+      [{
+        id: 'instructor-name',
+        currentText: '홍길동',
+        instructionText: "강사 이름은 '김강사' 야",
+        htmlHint: '<strong data-od-id="instructor-name">홍길동</strong>',
+      }],
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('<strong data-od-id="instructor-name" data-od-edit="text">김강사</strong>');
+    expect(result.source).toContain('<p data-od-id="body">여러분의 목표 점수를 함께 달성해 나가겠습니다.</p>');
+    expect(result.source).not.toContain('TOEIC Preparation Course');
+  });
+
   it('rejects selected target merges when the model did not change the target', () => {
     const source = '<!doctype html><html><body><section class="slide"><h1 data-od-id="headline">Keep</h1></section></body></html>';
     const modelOutput = source.replace('</section>', '<p>Unscoped edit</p></section>');
