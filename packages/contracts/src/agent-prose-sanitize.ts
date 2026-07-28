@@ -233,6 +233,8 @@ function isLikelyInternalMarkupLine(line: string): boolean {
   }
   if (/^\.grain::after\s*\{/.test(trimmed)) return true;
   if (/^#deck-(?:stage|prev|next|idx)\b/i.test(trimmed)) return true;
+  if (/^<h[1-6]\b/i.test(trimmed) && /\bstyle\s*=/i.test(trimmed)) return true;
+  if (/^[\d.]+(?:px|em|rem)(?:\/[\d.]+)?">/i.test(trimmed)) return true;
   if (/^@(?:page|media|keyframes|import)\b/.test(trimmed)) return true;
   if (/^\.[a-zA-Z0-9_-]+(\s*::(?:before|after))?\s*\{/.test(trimmed)) {
     if (/1920px|1080px|box-sizing|overflow:\s*hidden|pointer-events:\s*none|grain/i.test(trimmed)) {
@@ -287,8 +289,12 @@ const DECK_SLIDE_OPEN_TAG_TAIL_RE =
   /<(?:section|div)\b[^>]*(?:\bclass\s*=\s*["'][^"']*\bslide\b|data-slide-index|data-slide\b)[^>]*(?:>[\s\S]*)?$/i;
 const DECK_SLIDE_ORPHAN_ATTR_TAIL_RE =
   /-index\s*=\s*["']\d+["']\s+style\s*=\s*["'][\s\S]*?(?:>[\s\S]*)?$/i;
+const DECK_ORPHAN_STYLE_CLOSE_TAIL_RE =
+  /\s+[\d.]+(?:px|em|rem|%|vh|vw)(?:\/[\d.]+)?">[\s\S]*$/i;
 const DECK_TRAILING_INLINE_MARKUP_RE =
   /(?:\n|^)\s*<p\b[^>]*style\s*=\s*["'][^"']*(?:font|letter-spacing|margin)[^"']*["'][^>]*>[\s\S]*$/i;
+const DECK_TRAILING_HEADING_MARKUP_RE =
+  /(?:\n|^)\s*<h[1-6]\b[^>]*(?:style\s*=)?[^>]*>[\s\S]*$/i;
 const DECK_SLIDE_PARTIAL_OPEN_TAG_RE =
   /<(?:section|div)\b[^>]*(?:\bclass\s*=\s*["'][^"']*\bslide\b|data-slide-index|data-slide\b)[^>]*>/i;
 
@@ -302,6 +308,8 @@ function isDeckSlidePartialTag(name: string, after: string): boolean {
 function findTrailingSameLineDeckHtmlCut(line: string): number | null {
   const orphan = line.match(/^(.*?)(-index\s*=\s*["']\d+["']\s+style\s*=.*)$/i);
   if (orphan?.[1] !== undefined) return orphan[1].length;
+  const pxClose = line.match(/^(.*?)(?:\s+[\d.]+(?:px|em|rem|%|vh|vw)(?:\/[\d.]+)?">.*)$/i);
+  if (pxClose?.[1] !== undefined) return pxClose[1].length;
   const open = line.match(
     /^(.*?)(<(?:section|div)\b[^>]*(?:data-slide-index|\bclass\s*=\s*["'][^"']*\bslide\b)[^>]*)$/i,
   );
@@ -315,6 +323,8 @@ export function stripTrailingDeckHtmlMarkupLeak(input: string): string {
   for (const re of [
     DECK_SLIDE_OPEN_TAG_TAIL_RE,
     DECK_SLIDE_ORPHAN_ATTR_TAIL_RE,
+    DECK_ORPHAN_STYLE_CLOSE_TAIL_RE,
+    DECK_TRAILING_HEADING_MARKUP_RE,
     DECK_TRAILING_INLINE_MARKUP_RE,
   ]) {
     const match = re.exec(input);

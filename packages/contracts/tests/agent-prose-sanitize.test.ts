@@ -960,4 +960,19 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(input)).toBe(intro);
     expect(sanitizeAssistantProseForDisplay(input, { streaming: true })).toBe(intro);
   });
+
+  it("strips orphaned px close-tag tail and trailing h1 leaked on stop", () => {
+    const intro =
+      "슬라이드 번호 정보가 없어서 1번 슬라이드(커버) 기준으로 폰트를 2배 키워드릴게요. 다른 슬라이드라면 번호를 알려주세요!";
+    const leak = [
+      ' 16px">TEAMVER</p>',
+      '<h1 style="margin:0 0 24px;font:700 144px/1.05 sans-serif">업무와 AI를<br>하나의 공간에서</h1>',
+    ].join("\n");
+    const input = `${intro}${leak}`;
+    expect(sanitizeAssistantProseForDisplay(input)).toBe(intro);
+    expect(sanitizeAssistantProseForDisplay(input, { streaming: true })).toBe(intro);
+    const guard = createStreamingAssistantProseGuard();
+    for (const ch of input) guard.feed(ch);
+    expect(guard.flush()).toBe("");
+  });
 });
