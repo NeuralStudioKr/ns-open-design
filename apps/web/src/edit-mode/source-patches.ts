@@ -160,6 +160,7 @@ export function maskManualEditTargets(
   source: string,
   ids: readonly string[],
   scope: ManualEditSourceScope = {},
+  hints: readonly ManualEditMergeTargetHint[] = [],
 ): ManualEditMaskTargetsResult {
   const doc = parseSource(source);
   if (!doc) return { ok: false, source, reason: 'Could not parse source.' };
@@ -167,7 +168,14 @@ export function maskManualEditTargets(
   for (const id of ids) {
     const normalized = String(id || '').trim();
     if (!normalized) continue;
-    const target = findEditableElement(doc, normalized, scope);
+    // Accept per-id hints so the full-deck guard's target masking
+    // benefits from the same hint fallback the scoped merge uses.
+    // Without this, a click id that no longer resolves structurally
+    // masks nothing → the guard reports "target unresolved" and the
+    // whole full-deck path fails while the merge path would have
+    // recovered via hint.
+    const hint = hints.find((candidate) => String(candidate.id || '').trim() === normalized);
+    const target = findEditableElement(doc, normalized, scope, hint);
     if (target) targets.add(target);
   }
   if (targets.size === 0) {

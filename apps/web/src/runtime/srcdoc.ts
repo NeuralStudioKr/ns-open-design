@@ -1184,9 +1184,15 @@ function injectSelectionBridge(
   var UNSAFE_VALUE = /[;{}<>\\n\\r]/;
   function active(){ return commentEnabled || inspectEnabled; }
   function deckSlideIndexForPayload(){
+    // Emit slideIndex for any artifact that reports a slide-shaped
+    // structure (>=1 slide-class element under a deck container /
+    // body). Single-slide "decks" still need the index so the
+    // deck-patch contract (\`<section class="slide" data-slide-index="0">\`)
+    // has a target to name — without this line the model would fall
+    // back to full-deck rewrite for any single-slide artifact.
     try {
       var state = window.__odDeckSlideState && window.__odDeckSlideState();
-      if (state && typeof state.active === 'number' && state.count > 1) return state.active;
+      if (state && typeof state.active === 'number' && state.count >= 1) return state.active;
     } catch (_) {}
     return null;
   }
@@ -1806,8 +1812,14 @@ function meaningfulDomFallbackTarget(el) {
         activeCommentElementId = payload.elementId || activeCommentElementId;
         activeCommentSelector = payload.selector || activeCommentSelector;
         window.parent.postMessage(payload, '*');
+        return;
       }
-      return;
+      // targetFrom refused (rejected as generated root, no usable id,
+      // or elementVisibleForComment failed on a zero-size / hidden node).
+      // In comment picker mode fall through to the free-pin path so the
+      // user still gets an actionable annotation at the click point
+      // instead of a silent no-op. Inspect mode / pod mode still bail
+      // below because those require a resolvable selector.
     }
     // Free-pin fallback (comment mode only). Lets users drop a comment
     // at a click location even when the artifact has no data-od-id

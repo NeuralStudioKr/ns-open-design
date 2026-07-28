@@ -451,6 +451,32 @@ describe("ProjectView message loading", () => {
     expect(source).not.toContain(".filter((attachment) => !slideOnlyMvp || hasValidDeckSlideIndex(attachment))");
   });
 
+  it("recovers deck comment slide index for single-slide decks and DOM-selector elementIds", () => {
+    // Behavioral coverage lives in `infer-slide-index-from-deck-html.test.ts`.
+    // This source-level check pins the shortcuts that make the
+    // behavioral scenarios possible so they don't regress silently
+    // (e.g. by moving the single-slide branch back below the ambiguous
+    // needle path). Keep both in sync.
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("if (sections.length === 1) return 0");
+    expect(source).toContain("elementId.startsWith('dom:')");
+    expect(source).toContain("body\\s*>\\s*(?:[a-z0-9-]+\\s*>\\s*)*section:nth-of-type");
+  });
+
+  it("passes hint to maskManualEditTargets so full-deck guards respect the same hint fallback", () => {
+    // `maskManualEditTargets` accepts a hints array symmetric with
+    // `mergeManualEditTargetsFromSource` so a click id that no longer
+    // resolves structurally on either side of the diff can still be
+    // located via currentText/htmlHint. Without hints the full-deck
+    // guard's target masking failed → the guard reported
+    // "target unresolved" while the scoped merge could have recovered
+    // via hint. Both paths must use the same signal set.
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("const hints = ids.map((id) => ({");
+    expect(source).toContain("maskManualEditTargets(\n");
+    expect(source).toContain("hints,\n");
+  });
+
   it("does not replace a whole slide when element-scoped comment merge fails", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).not.toContain("function tryMergeSingleSlideScopedArtifact");

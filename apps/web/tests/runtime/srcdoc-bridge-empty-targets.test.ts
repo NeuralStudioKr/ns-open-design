@@ -486,4 +486,73 @@ describe('selection bridge — empty annotation surface (#890)', () => {
     expect(clickMessages).toHaveLength(1);
     expect(clickMessages[0].elementId).toBe('tablet-card');
   });
+
+  it('emits slideIndex for single-slide decks too so deck-patch can name a target', async () => {
+    // Regression coverage for the previous count>1 gate that hid the
+    // slide index for single-slide decks. Without slideIndex on the
+    // payload, comment edits on single-slide artifacts silently fell
+    // back to full-deck rewrite because the deck-patch contract has
+    // no way to name the target slide.
+    const { win, parentPostMessage } = setupBridgeDom(
+      '<section class="slide" data-od-id="hero">Only slide</section>',
+      'comment',
+      ['[data-od-id="hero"]'],
+    );
+    // Stub the deck-bridge's slide state exposer so
+    // deckSlideIndexForPayload has something to read. In production
+    // this is installed by the deck bridge inside the same iframe.
+    (win as unknown as { __odDeckSlideState: () => { active: number; count: number } }).__odDeckSlideState =
+      () => ({ active: 0, count: 1 });
+
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 10));
+    parentPostMessage.mockClear();
+
+    win.document.querySelector('[data-od-id="hero"]')!.dispatchEvent(
+      new win.MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+
+    const clickMessages = parentPostMessage.mock.calls
+      .map((call) => call[0])
+      .filter((message) => message?.type === 'od:comment-target');
+    expect(clickMessages).toHaveLength(1);
+    expect(clickMessages[0].slideIndex).toBe(0);
+  });
+
+  it('falls through to free-pin when the resolved target is not usable as a comment target', async () => {
+    // A `.frame-card` markup at zero-size (jsdom's default) is
+    // resolved by closestTarget but rejected by targetFrom via
+    // `elementVisibleForComment`. Historically we returned early
+    // here and silently swallowed the click. The click must now fall
+    // through to the free-pin path so the user still gets an
+    // actionable annotation at the click point.
+    const { win, parentPostMessage } = setupBridgeDom(
+      // No annotations, no meaningful DOM element up the chain: the
+      // click target has empty text and multi children so
+      // meaningfulDomFallbackTarget returns false and closestTarget
+      // returns null. That already routes to free-pin. Instead we
+      // model the "resolved but invisible" case with an annotated
+      // wrapper whose bounding rect is 0×0 by default in jsdom.
+      '<article data-od-id="hero"><div><span></span><span></span></div></article>',
+      'comment',
+      // Intentionally do NOT mark the article visible — jsdom
+      // getBoundingClientRect returns zeros by default, so
+      // elementVisibleForComment rejects the article payload.
+    );
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 10));
+    parentPostMessage.mockClear();
+
+    const article = win.document.querySelector('[data-od-id="hero"]')!;
+    article.dispatchEvent(
+      new win.MouseEvent('click', { bubbles: true, cancelable: true, clientX: 40, clientY: 60 }),
+    );
+
+    const pinMessages = parentPostMessage.mock.calls
+      .map((call) => call[0])
+      .filter((message) => message?.type === 'od:comment-target' && message?.freePin === true);
+    expect(pinMessages).toHaveLength(1);
+    expect(pinMessages[0]).toMatchObject({
+      freePin: true,
+      elementId: expect.stringMatching(/^pin-/),
+    });
+  });
 });

@@ -81,4 +81,49 @@ describe('buildManualEditCommentFastPath', () => {
       currentStyles: { fontSize: '22px' },
     })).toBeNull();
   });
+
+  it('handles natural-language 이름을 X로 replacement without quotes', () => {
+    const result = buildManualEditCommentFastPath({
+      attachment: attachment({ comment: '이름을 김강사로 바꿔줘' }),
+      currentStyles: {},
+    });
+
+    expect(result?.patches).toEqual([
+      { id: 'el-1', kind: 'set-text', value: '김강사' },
+    ]);
+  });
+
+  it('handles 제목을 X로 변경 pattern', () => {
+    const result = buildManualEditCommentFastPath({
+      attachment: attachment({ comment: '제목을 새 커리큘럼 안내로 변경' }),
+      currentStyles: {},
+    });
+
+    expect(result?.patches).toEqual([
+      { id: 'el-1', kind: 'set-text', value: '새 커리큘럼 안내' },
+    ]);
+  });
+
+  it('does not steal font-size directives via 이름을 크게 pattern', () => {
+    // "이름을 크게" and similar font-size directives must NOT be
+    // interpreted as a literal text replacement to "크게". The style
+    // parser owns size/weight/color modifiers.
+    expect(buildManualEditCommentFastPath({
+      attachment: attachment({ comment: '이름을 크게' }),
+      currentStyles: { fontSize: '22px' },
+    })).toBeNull();
+  });
+
+  it('does not steal color directives via 글자를 빨간색으로 pattern', () => {
+    // The color parser handles color changes; the natural-language
+    // fallback must not overwrite the target text with the color name.
+    const result = buildManualEditCommentFastPath({
+      attachment: attachment({ comment: '글자를 빨간색으로 바꿔줘' }),
+      currentStyles: {},
+    });
+    // Style patch fires for color; no text patch should be included.
+    expect(result?.patches).toEqual([
+      { id: 'el-1', kind: 'set-style', styles: { color: '#ef4444' } },
+    ]);
+  });
 });

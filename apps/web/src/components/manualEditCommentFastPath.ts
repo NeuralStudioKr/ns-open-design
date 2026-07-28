@@ -69,17 +69,46 @@ function isElementLevelComment(attachment: ChatCommentAttachment): boolean {
 
 function parseTextReplacement(note: string): string | null {
   const quoted = matchFirst(note, [
-    /(?:텍스트|문구|글자|내용)[^"'“”‘’\n]{0,24}["“”'‘’]([^"“”'‘’\n]{1,240})["“”'‘’]\s*(?:로|으로)?\s*(?:변경|수정|바꿔|교체|replace|change)/i,
+    /(?:텍스트|문구|글자|내용|이름|제목|타이틀|title)[^"'“”‘’\n]{0,24}["“”'‘’]([^"“”'‘’\n]{1,240})["“”'‘’]\s*(?:로|으로)?\s*(?:변경|수정|바꿔|교체|replace|change)?/i,
     /(?:=>|→|->)\s*["“”'‘’]([^"“”'‘’\n]{1,240})["“”'‘’]/i,
     /["“”'‘’]([^"“”'‘’\n]{1,240})["“”'‘’]\s*(?:로|으로)\s*(?:변경|수정|바꿔|교체|replace|change)/i,
   ]);
   if (quoted) return quoted.trim();
 
   const plain = matchFirst(note, [
-    /(?:텍스트|문구|글자|내용)[^:\n]{0,12}:\s*([^\n]{1,160})$/i,
+    /(?:텍스트|문구|글자|내용|이름|제목|타이틀|title)[^:\n]{0,12}:\s*([^\n]{1,160})$/i,
     /(?:replace|change)\s+(?:text|copy|label)\s+(?:to|with)\s+([^\n]{1,160})$/i,
   ]);
-  return plain ? stripTrailingInstructionNoise(plain) : null;
+  if (plain) return stripTrailingInstructionNoise(plain);
+
+  // Natural-language replacement: "이름을 X로", "제목을 X로 변경".
+  // Only accept when the sentence carries a strong replacement verb OR
+  // ends immediately after the "로/으로" marker — otherwise phrases like
+  // "이름을 크게" (font-size) or "글자를 빨간색으로" (color) would
+  // incorrectly steal the text field.
+  const natural = note.match(
+    /(?:이름|제목|타이틀|타이들|헤딩|title|name|heading|텍스트|문구|내용|글자)[을를]\s*['"“”‘’]?([가-힣A-Za-z0-9 _.\-()!?]{1,80}?)['"“”‘’]?\s*(?:로|으로)\s*(?:변경|수정|바꿔|교체|해줘|바꿔줘|change|replace)?\s*[.。!?]?\s*$/i,
+  );
+  if (natural?.[1]) {
+    const value = stripTrailingInstructionNoise(natural[1]);
+    if (looksLikeStyleModifier(value)) return null;
+    return value;
+  }
+  return null;
+}
+
+/**
+ * Reject natural-language replacement candidates that actually name a
+ * style modifier (size / weight / color). The style parser owns those
+ * — accepting them here would rewrite the target's text with the
+ * modifier keyword itself (e.g. "글자를 빨간색으로" → text "빨간색").
+ */
+function looksLikeStyleModifier(value: string): boolean {
+  if (/^(?:크게|작게|얇게|굵게|볼드|보통|regular|normal|bold)$/i.test(value)) return true;
+  if (/색$/.test(value)) return true;
+  if (parseColorKeyword(value)) return true;
+  if (/^(?:크\s*게|작\s*게|얇\s*게|굵\s*게)/.test(value)) return true;
+  return false;
 }
 
 function parseStylePatch(
@@ -119,8 +148,15 @@ function parseFontSize(note: string, currentFontSize?: string): string | null {
 function parseColorForKind(note: string, kind: 'text' | 'background'): string | null {
   const scoped =
     kind === 'text'
-      ? /(?:글자색|글씨색|텍스트\s*색|텍스트색|font\s*color|text\s*color|color)[^\n]{0,24}/i
-      : /(?:배경색|배경\s*색|background(?:\s*color)?)[^\n]{0,24}/i;
+      // Text color: literal "글자색"/"글씨색"/"텍스트색"/"font-color" tokens
+      // OR "글자를/글씨를/텍스트를 … 빨간색/파란색/..." natural sentences
+      // where a color keyword follows the object marker within a short
+      // window. The natural pattern is anchored to "글자/글씨/텍스트[을를]"
+      // so it never fires on ambiguous prose.
+      ? /(?:글자색|글씨색|텍스트\s*색|텍스트색|font\s*color|text\s*color|color)[^\n]{0,24}|(?:글자|글씨|텍스트)[을를]\s*[^\n]{0,20}?(?:빨간색|빨강|파란색|파랑|노란색|노랑|초록색|초록|녹색|검은색|검정|흰색|하얀색|화이트|회색|그레이|red|blue|yellow|green|black|white|gray|grey|#[0-9a-f]{3,8})/i
+      // Background color: literal "배경색"/"background" tokens OR
+      // "배경을 … 빨간색/..." style natural sentences.
+      : /(?:배경색|배경\s*색|background(?:\s*color)?)[^\n]{0,24}|(?:배경|바탕|바닥)[을를]\s*[^\n]{0,20}?(?:빨간색|빨강|파란색|파랑|노란색|노랑|초록색|초록|녹색|검은색|검정|흰색|하얀색|화이트|회색|그레이|red|blue|yellow|green|black|white|gray|grey|#[0-9a-f]{3,8})/i;
   const match = note.match(scoped);
   if (!match) return null;
   const scope = match[0];

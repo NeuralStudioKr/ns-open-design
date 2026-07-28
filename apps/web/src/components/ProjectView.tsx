@@ -925,18 +925,37 @@ function normalizeForSlideLookup(value: string | null | undefined): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
 
-function inferSlideIndexFromDeckHtml(
+export function inferSlideIndexFromDeckHtml(
   html: string,
   attachment: ChatCommentAttachment,
 ): number | null {
   const sections = extractTopLevelSlideSections(html);
   if (sections.length === 0) return null;
+  // Single-slide deck: the only possible target slide IS 0. Skipping
+  // this shortcut sent single-slide comment edits back to the model
+  // as "no slideIndex" turns, which the deck-patch prompt then
+  // refused (or the model asked the user for slideIndex). Preview
+  // iframe's own `deckSlideIndexForPayload` now also emits `active`
+  // for count>=1 — keep the disk-side hydration symmetric.
+  if (sections.length === 1) return 0;
   const elementId = normalizeForSlideLookup(attachment.elementId);
   const selector = normalizeForSlideLookup(attachment.selector);
   const slideNth = selector.match(/\b(?:section\s*)?\.?slide\b[^\n]*?:nth-of-type\((\d+)\)/i)
     ?? selector.match(/\b(?:section\s*)?\.?slide\b[^\n]*?:nth-child\((\d+)\)/i);
   if (slideNth?.[1]) {
     const index = Number(slideNth[1]) - 1;
+    if (Number.isInteger(index) && index >= 0 && index < sections.length) return index;
+  }
+  // DOM-fallback ids carry the same slide index inside the selector
+  // path, e.g. `dom:body > section:nth-of-type(2) > h1:nth-of-type(1)`.
+  // Extract it first so a DOM-scoped click resolves even when no other
+  // signal is available. Uses `section:nth-of-type` because the
+  // outermost `body > …` segment always names the slide's section.
+  const domSelectorSlide = elementId.startsWith('dom:')
+    ? elementId.slice('dom:'.length).match(/\bbody\s*>\s*(?:[a-z0-9-]+\s*>\s*)*section:nth-of-type\((\d+)\)/i)
+    : null;
+  if (domSelectorSlide?.[1]) {
+    const index = Number(domSelectorSlide[1]) - 1;
     if (Number.isInteger(index) && index >= 0 && index < sections.length) return index;
   }
   const currentText = normalizeForSlideLookup(attachment.currentText);
@@ -1360,9 +1379,22 @@ function maskScopedCommentTargets(
     }
     const ids = scopedCommentElementIds(attachment);
     if (ids.length === 0) continue;
-    const masked = maskManualEditTargets(maskedSource, ids, {
-      slideIndex: Math.floor(attachment.slideIndex),
-    });
+    // Reuse the same hint set the scoped merge uses so the mask
+    // path resolves the target via currentText/htmlHint when the
+    // click id no longer maps structurally. Symmetric with
+    // mergeScopedCommentTargetsFromPatchedDeck.
+    const hints = ids.map((id) => ({
+      id,
+      currentText: attachment.currentText,
+      instructionText: attachment.comment,
+      htmlHint: attachment.htmlHint,
+    }));
+    const masked = maskManualEditTargets(
+      maskedSource,
+      ids,
+      { slideIndex: Math.floor(attachment.slideIndex) },
+      hints,
+    );
     if (!masked.ok) continue;
     maskedSource = masked.source;
     maskedCount += masked.maskedCount;
