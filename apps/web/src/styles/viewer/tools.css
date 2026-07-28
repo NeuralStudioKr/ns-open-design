@@ -2277,113 +2277,86 @@
   padding: 0;
   background: transparent;
 }
-/* Mobile: accordion stack. Desktop wide: studio split (see component branch). */
+/* Step wizard (안 A): stepper + single visible panel. */
 .teamver-canvas-slide-launch-modal--wide .teamver-canvas-slide-launch-body {
   display: flex;
   flex-direction: column;
 }
-.teamver-canvas-slide-launch-flow--stack {
-  flex: 0 0 auto;
-}
-.teamver-canvas-slide-launch-flow--studio {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-}
-.teamver-canvas-slide-launch-flow--compact {
+.teamver-canvas-slide-launch-flow--wizard {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
-.teamver-canvas-slide-launch-compact-section {
+.teamver-canvas-slide-launch-wizard {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
-.teamver-canvas-slide-launch-compact-label {
+.teamver-canvas-slide-launch-stepper-list {
+  list-style: none;
   margin: 0;
-  font-size: 12px;
-  font-weight: 650;
-  color: var(--text-muted);
-}
-.teamver-canvas-slide-launch-compact-label .teamver-canvas-slide-launch-step-title-text {
-  font-size: 12px;
-  font-weight: 650;
-  color: var(--text-muted);
-}
-.teamver-canvas-slide-launch-studio {
-  flex: 1 1 auto;
-  min-height: 0;
+  padding: 0;
   display: flex;
-  gap: 0;
-  width: 100%;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
 }
-.teamver-canvas-slide-launch-studio-main {
-  flex: 0 0 min(380px, 42%);
-  min-width: 0;
-  overflow-y: auto;
-  padding-right: 14px;
-  border-right: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-}
-.teamver-canvas-slide-launch-studio-aside {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-y: auto;
-  padding-left: 14px;
-}
-.teamver-canvas-slide-launch-studio-block + .teamver-canvas-slide-launch-studio-block {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
-}
-.teamver-canvas-slide-launch-studio-label {
-  display: flex;
+.teamver-canvas-slide-launch-stepper-item {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 8px;
   font-size: 12px;
-  font-weight: 650;
   color: var(--text-muted);
 }
-.teamver-canvas-slide-launch-studio-label--aside {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding-bottom: 8px;
-  background: linear-gradient(
-    to bottom,
-    var(--bg-panel) 70%,
-    color-mix(in srgb, var(--bg-panel) 0%, transparent)
-  );
+.teamver-canvas-slide-launch-stepper-item.is-current {
+  color: var(--text-strong);
 }
-.teamver-canvas-slide-launch-studio-step {
+.teamver-canvas-slide-launch-stepper-index {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
-  color: var(--accent);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
 }
-/* Keep the left rail scannable — full text stays in DOM / screen readers. */
-.teamver-canvas-slide-launch-studio .teamver-canvas-slide-launch-preview {
-  max-height: 5.5rem;
+.teamver-canvas-slide-launch-stepper-item.is-current .teamver-canvas-slide-launch-stepper-index {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  color: var(--accent);
+}
+.teamver-canvas-slide-launch-wizard-panel {
+  min-height: 0;
+}
+.teamver-canvas-slide-launch-footer-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.teamver-canvas-slide-launch-footer-context {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
   overflow: hidden;
-  mask-image: linear-gradient(to bottom, #000 65%, transparent);
+  text-overflow: ellipsis;
 }
-.teamver-canvas-slide-launch-studio .teamver-canvas-slide-launch-outline {
-  max-height: 4.5rem;
-  overflow: hidden;
-  mask-image: linear-gradient(to bottom, #000 60%, transparent);
+.teamver-canvas-slide-launch-footer-back {
+  border-radius: var(--radius);
+  font-size: 13px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
 }
-.teamver-canvas-slide-launch-studio .teamver-canvas-slide-launch-prompt {
-  margin-top: 0;
-}
-.teamver-canvas-slide-launch-studio-aside .teamver-canvas-slide-launch-template {
-  margin-top: 0;
+.teamver-canvas-slide-launch-footer-next {
+  min-width: 96px;
+  font-weight: 600;
 }
 .teamver-canvas-slide-launch-head {
   display: flex;

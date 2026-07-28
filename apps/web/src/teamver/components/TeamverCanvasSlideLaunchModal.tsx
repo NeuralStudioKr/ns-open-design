@@ -15,15 +15,10 @@ import {
 } from "../canvasSlideLaunch";
 import { CanvasSlideTemplatePicker } from "./CanvasSlideTemplatePicker";
 import {
-  CanvasSlideLaunchStepAccordion,
-  type CanvasSlideLaunchStepId,
-} from "./CanvasSlideLaunchStepAccordion";
-import { CanvasSlideLaunchStudioLayout } from "./CanvasSlideLaunchStudioLayout";
-import { useCanvasSlideLaunchWideLayout } from "../hooks/useCanvasSlideLaunchWideLayout";
-import {
-  CanvasSlideLaunchStepHeading,
-  canvasSlideLaunchStepAriaLabel,
-} from "./CanvasSlideLaunchStepHeading";
+  CanvasSlideLaunchStepWizard,
+  type CanvasSlideLaunchWizardStep,
+  type CanvasSlideLaunchWizardStepId,
+} from "./CanvasSlideLaunchStepWizard";
 
 export type TeamverCanvasSlideLaunchSource =
   | { kind: "drive"; asset: TeamverDriveImportAsset }
@@ -124,6 +119,10 @@ function promptStepSummary(userPrompt: string, emptyLabel: string): string {
   return oneLine.length > 72 ? `${oneLine.slice(0, 72)}…` : oneLine;
 }
 
+function buildWizardStepOrder(includeTemplateStep: boolean): CanvasSlideLaunchWizardStepId[] {
+  return includeTemplateStep ? ["document", "prompt", "template"] : ["document", "prompt"];
+}
+
 export function TeamverCanvasSlideLaunchModal({
   open,
   source,
@@ -145,9 +144,15 @@ export function TeamverCanvasSlideLaunchModal({
     source.kind === "canvas" ? source.handoff : null,
   );
   const [enriching, setEnriching] = useState(false);
-  const [expandedStep, setExpandedStep] = useState<CanvasSlideLaunchStepId>("document");
+  const [activeStepId, setActiveStepId] = useState<CanvasSlideLaunchWizardStepId>("document");
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const includeTemplateStep = templateOptions.length > 1;
+  const wizardStepOrder = useMemo(
+    () => buildWizardStepOrder(includeTemplateStep),
+    [includeTemplateStep],
+  );
 
   useEffect(() => {
     if (!open || source.kind !== "canvas") {
@@ -174,7 +179,7 @@ export function TeamverCanvasSlideLaunchModal({
 
   useEffect(() => {
     if (!open) return;
-    setExpandedStep("document");
+    setActiveStepId("document");
   }, [open, source]);
 
   useEffect(() => {
@@ -183,11 +188,21 @@ export function TeamverCanvasSlideLaunchModal({
       if (event.key === "Escape" && !confirming) {
         event.stopPropagation();
         onClose();
+        return;
+      }
+      if (confirming) return;
+      const mod = event.metaKey || event.ctrlKey;
+      if (mod && event.key === "Enter" && activeStepId === "prompt") {
+        const idx = wizardStepOrder.indexOf(activeStepId);
+        if (idx >= 0 && idx < wizardStepOrder.length - 1) {
+          event.preventDefault();
+          setActiveStepId(wizardStepOrder[idx + 1]!);
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [confirming, onClose, open]);
+  }, [activeStepId, confirming, onClose, open, wizardStepOrder]);
 
   const untitled = t("teamver.canvasSlideLaunch.untitled");
   const handoff = source.kind === "canvas" ? liveHandoff ?? source.handoff : null;
@@ -221,9 +236,7 @@ export function TeamverCanvasSlideLaunchModal({
   const showPreviewSkeleton = isCanvas && enriching && !preview;
   const selectedTemplate =
     templateOptions.find((option) => option.id === selectedTemplateId) ?? templateOptions[0] ?? null;
-  const showTemplateGrid = templateOptions.length > 1;
-  const useStudioLayout = useCanvasSlideLaunchWideLayout(showTemplateGrid);
-  const optionalBadge = t("teamver.canvasSlideLaunch.stepOptionalBadge");
+  const showTemplateGrid = includeTemplateStep;
   const stepDocumentTitle = t("teamver.canvasSlideLaunch.stepDocument");
   const stepPromptTitle = t("teamver.canvasSlideLaunch.stepPrompt");
   const stepTemplateTitle = t("teamver.canvasSlideLaunch.stepTemplate");
@@ -231,6 +244,10 @@ export function TeamverCanvasSlideLaunchModal({
     ...DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
     ...quickSettings,
   };
+
+  const activeStepIndex = wizardStepOrder.indexOf(activeStepId);
+  const isLastWizardStep =
+    activeStepIndex >= 0 && activeStepIndex === wizardStepOrder.length - 1;
 
   function updateQuickSetting<K extends keyof CanvasSlideQuickSettings>(
     key: K,
@@ -242,7 +259,24 @@ export function TeamverCanvasSlideLaunchModal({
     });
   }
 
-  const renderDocumentPanel = (includeStepNav: boolean) => (
+  function goToStep(id: CanvasSlideLaunchWizardStepId) {
+    setActiveStepId(id);
+    if (id === "prompt") {
+      queueMicrotask(() => promptInputRef.current?.focus({ preventScroll: true }));
+    }
+  }
+
+  function goNext() {
+    if (isLastWizardStep) return;
+    goToStep(wizardStepOrder[activeStepIndex + 1]!);
+  }
+
+  function goBack() {
+    if (activeStepIndex <= 0) return;
+    goToStep(wizardStepOrder[activeStepIndex - 1]!);
+  }
+
+  const documentPanel = (
     <article
       className="teamver-canvas-slide-launch-card teamver-canvas-slide-launch-card--step"
       data-testid="teamver-canvas-slide-launch-source"
@@ -296,27 +330,10 @@ export function TeamverCanvasSlideLaunchModal({
           ))}
         </ul>
       ) : null}
-
-      {includeStepNav ? (
-        <div className="teamver-canvas-slide-launch-step-actions">
-          <button
-            type="button"
-            className="teamver-canvas-slide-launch-step-next"
-            disabled={confirming}
-            data-testid="teamver-canvas-slide-launch-next-prompt"
-            onClick={() => {
-              setExpandedStep("prompt");
-              queueMicrotask(() => promptInputRef.current?.focus());
-            }}
-          >
-            {t("teamver.canvasSlideLaunch.nextPrompt")}
-          </button>
-        </div>
-      ) : null}
     </article>
   );
 
-  const renderPromptPanel = (includeStepNav: boolean) => (
+  const promptPanel = (
     <div className="teamver-canvas-slide-launch-prompt">
       <p className="teamver-canvas-slide-launch-prompt-lead">
         {t("teamver.canvasSlideLaunch.promptLead")}
@@ -324,7 +341,7 @@ export function TeamverCanvasSlideLaunchModal({
       <textarea
         ref={promptInputRef}
         className="teamver-canvas-slide-launch-prompt-input"
-        rows={useStudioLayout ? 5 : 4}
+        rows={5}
         value={userPrompt}
         disabled={confirming}
         placeholder={t("teamver.canvasSlideLaunch.promptPlaceholder")}
@@ -374,19 +391,6 @@ export function TeamverCanvasSlideLaunchModal({
           </div>
         ))}
       </div>
-      {includeStepNav ? (
-        <div className="teamver-canvas-slide-launch-step-actions">
-          <button
-            type="button"
-            className="teamver-canvas-slide-launch-step-next"
-            disabled={confirming}
-            data-testid="teamver-canvas-slide-launch-next-template"
-            onClick={() => setExpandedStep("template")}
-          >
-            {t("teamver.canvasSlideLaunch.nextTemplate")}
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 
@@ -418,55 +422,71 @@ export function TeamverCanvasSlideLaunchModal({
     </div>
   );
 
-  const steps = [
+  const wizardSteps: CanvasSlideLaunchWizardStep[] = [
     {
-      id: "document" as const,
+      id: "document",
       stepNumber: 1,
       title: stepDocumentTitle,
-      summary: headline,
-      panel: renderDocumentPanel(true),
+      panel: documentPanel,
     },
     {
-      id: "prompt" as const,
+      id: "prompt",
       stepNumber: 2,
       title: stepPromptTitle,
       optional: true,
-      triggerAriaLabel: canvasSlideLaunchStepAriaLabel(
-        stepPromptTitle,
-        true,
-        optionalBadge,
-      ),
-      summary: promptStepSummary(userPrompt, t("teamver.canvasSlideLaunch.promptEmptySummary")),
-      panel: renderPromptPanel(true),
+      panel: promptPanel,
     },
-    {
-      id: "template" as const,
-      stepNumber: 3,
-      title: stepTemplateTitle,
-      optional: true,
-      triggerAriaLabel: canvasSlideLaunchStepAriaLabel(
-        stepTemplateTitle,
-        true,
-        optionalBadge,
-      ),
-      summary: selectedTemplate?.title ?? t("teamver.canvasSlideLaunch.templateFallback"),
-      panel: templatePanel,
-    },
+    ...(includeTemplateStep
+      ? [
+          {
+            id: "template" as const,
+            stepNumber: 3,
+            title: stepTemplateTitle,
+            optional: true,
+            panel: templatePanel,
+          },
+        ]
+      : []),
   ];
 
   useEffect(() => {
     if (!open) return;
-    const el = closeButtonRef.current;
-    if (!el && !promptInputRef.current) return;
-    const id = requestAnimationFrame(() => {
-      if (useStudioLayout) {
+    if (activeStepId === "prompt") {
+      const id = requestAnimationFrame(() => {
         promptInputRef.current?.focus({ preventScroll: true });
-      } else {
-        el?.focus({ preventScroll: true });
-      }
+      });
+      return () => cancelAnimationFrame(id);
+    }
+    if (activeStepId === "document") {
+      const id = requestAnimationFrame(() => {
+        closeButtonRef.current?.focus({ preventScroll: true });
+      });
+      return () => cancelAnimationFrame(id);
+    }
+    return undefined;
+  }, [activeStepId, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const id = requestAnimationFrame(() => {
+      closeButtonRef.current?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(id);
-  }, [open, useStudioLayout]);
+  }, [open]);
+
+  const promptSummary = promptStepSummary(
+    userPrompt,
+    t("teamver.canvasSlideLaunch.promptEmptySummary"),
+  );
+
+  const footerContextLine =
+    activeStepId === "document"
+      ? headline
+      : activeStepId === "prompt"
+        ? promptSummary
+        : selectedTemplate
+          ? t("teamver.canvasSlideLaunch.footerTemplate", { name: selectedTemplate.title })
+          : null;
 
   if (!open) return null;
 
@@ -490,9 +510,8 @@ export function TeamverCanvasSlideLaunchModal({
         aria-modal="true"
         aria-labelledby="teamver-canvas-slide-launch-title"
         data-testid="teamver-canvas-slide-launch-modal"
-        data-layout={
-          showTemplateGrid ? (useStudioLayout ? "studio" : "accordion") : "compact"
-        }
+        data-layout="wizard"
+        data-wizard-steps={String(wizardStepOrder.length)}
       >
         <header className="teamver-canvas-slide-launch-head">
           <div className="teamver-canvas-slide-launch-kicker">
@@ -505,7 +524,7 @@ export function TeamverCanvasSlideLaunchModal({
             ref={closeButtonRef}
             type="button"
             className="teamver-drive-picker-close"
-            aria-label={t("teamver.canvasSlideLaunch.cancel")}
+            aria-label={t("teamver.canvasSlideLaunch.close")}
             disabled={confirming}
             data-testid="teamver-canvas-slide-launch-close"
             onClick={onClose}
@@ -522,59 +541,13 @@ export function TeamverCanvasSlideLaunchModal({
             {t("teamver.canvasSlideLaunch.description")}
           </p>
 
-          {!showTemplateGrid ? (
-            <div
-              className="teamver-canvas-slide-launch-flow teamver-canvas-slide-launch-flow--compact"
-              data-testid="teamver-canvas-slide-launch-flow-compact"
-            >
-              <div className="teamver-canvas-slide-launch-compact-section">
-                <h3 className="teamver-canvas-slide-launch-compact-label">
-                  <CanvasSlideLaunchStepHeading title={stepDocumentTitle} />
-                </h3>
-                {renderDocumentPanel(false)}
-              </div>
-              <div className="teamver-canvas-slide-launch-compact-section">
-                <h3 className="teamver-canvas-slide-launch-compact-label">
-                  <CanvasSlideLaunchStepHeading title={stepPromptTitle} optional />
-                </h3>
-                {renderPromptPanel(false)}
-              </div>
-              {templateOptions.length > 0 ? (
-                <div className="teamver-canvas-slide-launch-compact-section">
-                  <h3 className="teamver-canvas-slide-launch-compact-label">
-                    <CanvasSlideLaunchStepHeading title={stepTemplateTitle} optional />
-                  </h3>
-                  {templatePanel}
-                </div>
-              ) : null}
-            </div>
-          ) : useStudioLayout ? (
-            <div className="teamver-canvas-slide-launch-flow teamver-canvas-slide-launch-flow--studio">
-              <CanvasSlideLaunchStudioLayout
-                documentTitle={
-                  <CanvasSlideLaunchStepHeading title={stepDocumentTitle} />
-                }
-                promptTitle={
-                  <CanvasSlideLaunchStepHeading title={stepPromptTitle} optional />
-                }
-                templateTitle={
-                  <CanvasSlideLaunchStepHeading title={stepTemplateTitle} optional />
-                }
-                documentPanel={renderDocumentPanel(false)}
-                promptPanel={renderPromptPanel(false)}
-                templatePanel={templatePanel}
-              />
-            </div>
-          ) : (
-            <div className="teamver-canvas-slide-launch-flow teamver-canvas-slide-launch-flow--stack">
-              <CanvasSlideLaunchStepAccordion
-                steps={steps}
-                expandedStep={expandedStep}
-                disabled={confirming}
-                onExpandedStepChange={setExpandedStep}
-              />
-            </div>
-          )}
+          <div className="teamver-canvas-slide-launch-flow teamver-canvas-slide-launch-flow--wizard">
+            <CanvasSlideLaunchStepWizard
+              steps={wizardSteps}
+              activeStepId={activeStepId}
+              stepperAriaLabel={t("teamver.canvasSlideLaunch.stepperLabel")}
+            />
+          </div>
 
           {errorMessage ? (
             <p
@@ -602,39 +575,70 @@ export function TeamverCanvasSlideLaunchModal({
         </div>
 
         <footer className="teamver-canvas-slide-launch-footer">
-          {selectedTemplate ? (
-            <span
-              className="teamver-canvas-slide-launch-footer-template"
-              data-testid="teamver-canvas-slide-launch-footer-template"
-              title={selectedTemplate.title}
-            >
-              {t("teamver.canvasSlideLaunch.footerTemplate", { name: selectedTemplate.title })}
-            </span>
-          ) : (
-            <span className="teamver-canvas-slide-launch-footer-spacer" aria-hidden />
-          )}
+          <div
+            className="teamver-canvas-slide-launch-footer-meta"
+            data-testid="teamver-canvas-slide-launch-footer-meta"
+          >
+            {footerContextLine ? (
+              <span
+                className="teamver-canvas-slide-launch-footer-context"
+                data-testid="teamver-canvas-slide-launch-footer-context"
+                title={footerContextLine}
+              >
+                {footerContextLine}
+              </span>
+            ) : null}
+            {selectedTemplate && (includeTemplateStep ? activeStepId !== "template" : true) ? (
+              <span
+                className="teamver-canvas-slide-launch-footer-template"
+                data-testid="teamver-canvas-slide-launch-footer-template"
+                title={selectedTemplate.title}
+              >
+                {t("teamver.canvasSlideLaunch.footerTemplate", { name: selectedTemplate.title })}
+              </span>
+            ) : null}
+            {!footerContextLine &&
+            !(selectedTemplate && (includeTemplateStep ? activeStepId !== "template" : true)) ? (
+              <span className="teamver-canvas-slide-launch-footer-spacer" aria-hidden />
+            ) : null}
+          </div>
           <div className="teamver-canvas-slide-launch-footer-actions">
-          <button
-            type="button"
-            className="teamver-drive-import-cancel"
-            disabled={confirming}
-            onClick={onClose}
-          >
-            {t("teamver.canvasSlideLaunch.cancel")}
-          </button>
-          <button
-            type="button"
-            className="teamver-drive-import-attach teamver-canvas-slide-launch-confirm"
-            disabled={confirming}
-            data-testid="teamver-canvas-slide-launch-confirm"
-            onClick={() => void onConfirm()}
-          >
-            {confirming
-              ? t("teamver.canvasSlideLaunch.working")
-              : errorMessage
-                ? t("teamver.canvasSlideLaunch.retry")
-                : t("teamver.canvasSlideLaunch.confirm")}
-          </button>
+            {activeStepIndex > 0 ? (
+              <button
+                type="button"
+                className="teamver-canvas-slide-launch-footer-back"
+                disabled={confirming}
+                data-testid="teamver-canvas-slide-launch-footer-back"
+                onClick={goBack}
+              >
+                {t("teamver.canvasSlideLaunch.back")}
+              </button>
+            ) : null}
+            {isLastWizardStep ? (
+              <button
+                type="button"
+                className="teamver-drive-import-attach teamver-canvas-slide-launch-confirm"
+                disabled={confirming}
+                data-testid="teamver-canvas-slide-launch-confirm"
+                onClick={() => void onConfirm()}
+              >
+                {confirming
+                  ? t("teamver.canvasSlideLaunch.working")
+                  : errorMessage
+                    ? t("teamver.canvasSlideLaunch.retry")
+                    : t("teamver.canvasSlideLaunch.confirm")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="teamver-drive-import-attach teamver-canvas-slide-launch-footer-next"
+                disabled={confirming}
+                data-testid="teamver-canvas-slide-launch-footer-next"
+                onClick={goNext}
+              >
+                {t("teamver.canvasSlideLaunch.next")}
+              </button>
+            )}
           </div>
         </footer>
       </section>

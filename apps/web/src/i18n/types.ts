@@ -504,6 +504,10 @@ export interface Dict {
   'teamver.canvasSlideLaunch.sections': string;
   'teamver.canvasSlideLaunch.updated': string;
   'teamver.canvasSlideLaunch.confirm': string;
+  'teamver.canvasSlideLaunch.close': string;
+  'teamver.canvasSlideLaunch.back': string;
+  'teamver.canvasSlideLaunch.next': string;
+  'teamver.canvasSlideLaunch.stepperLabel': string;
   'teamver.canvasSlideLaunch.cancel': string;
   'teamver.canvasSlideLaunch.working': string;
   'teamver.canvasSlideLaunch.retry': string;

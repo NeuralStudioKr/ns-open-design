@@ -13,7 +13,7 @@
 **코드 SSOT (현재):**
 
 - `apps/web/src/teamver/components/TeamverCanvasSlideLaunchModal.tsx`
-- `CanvasSlideLaunchStepAccordion.tsx` · `CanvasSlideLaunchStudioLayout.tsx` · `CanvasSlideTemplatePicker.tsx`
+- `CanvasSlideLaunchStepWizard.tsx` · `CanvasSlideTemplatePicker.tsx`
 
 ---
 
@@ -287,4 +287,4 @@
 |------|------|
 | 2026-07-28 | 초안 — 5안 비교, A 추천, X-only·푸터 취소 제거, Studio deprecated |
 | 2026-07-28 | 파일 재생성 — 이전 턴에서 commit·push 되지 않아 디스크에 없었음 |
-| 2026-07-28 | **선택 단계 표시** — 2·3단 `stepOptionalBadge` pill + `templateLead`; 구현은 아코디언/studio/compact 공통 (`CanvasSlideLaunchStepHeading`) |
+| 2026-07-28 | **P0 안 A 위저드** — studio/accordion 제거, 푸터 prev/next, X-only (`CanvasSlideLaunchStepWizard`) |

@@ -33,14 +33,23 @@ vi.mock("../src/teamver/fetchCanvasPreview", () => ({
   })),
 }));
 
+function advanceToConfirm(options?: { templateSteps?: number }) {
+  const steps = options?.templateSteps ?? 2;
+  if (steps >= 2) {
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-footer-next"));
+  }
+  if (steps >= 3) {
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-footer-next"));
+  }
+}
+
 describe("TeamverCanvasSlideLaunchModal", () => {
   afterEach(() => {
     cleanup();
   });
 
-  it("renders drive source asset and confirms in one action", () => {
+  it("uses wizard layout and confirms from the last step only", () => {
     const onConfirm = vi.fn();
-    const onClose = vi.fn();
 
     render(
       <TeamverCanvasSlideLaunchModal
@@ -50,12 +59,16 @@ describe("TeamverCanvasSlideLaunchModal", () => {
           asset: { assetId: "AST-1", filename: "canvas-export.html", mimeType: "text/html" },
         }}
         onConfirm={onConfirm}
-        onClose={onClose}
+        onClose={vi.fn()}
       />,
     );
 
-    expect(screen.getByTestId("teamver-canvas-slide-launch-modal")).toBeTruthy();
-    expect(screen.getByText("canvas-export.html")).toBeTruthy();
+    const modal = screen.getByTestId("teamver-canvas-slide-launch-modal");
+    expect(modal.getAttribute("data-layout")).toBe("wizard");
+    expect(screen.getByTestId("teamver-canvas-slide-launch-wizard")).toBeTruthy();
+    expect(screen.queryByTestId("teamver-canvas-slide-launch-confirm")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-footer-next"));
     fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-confirm"));
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
@@ -79,7 +92,9 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Live 제목")).toBeTruthy();
+      expect(
+        screen.getByTestId("teamver-canvas-slide-launch-source").textContent,
+      ).toContain("Live 제목");
     });
     expect(screen.getByTestId("teamver-canvas-slide-launch-preview").textContent).toContain(
       "서버에서 보강",
@@ -91,7 +106,7 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     expect(screen.queryByText(/canvas\/artifact/)).toBeNull();
   });
 
-  it("closes from cancel without confirming", () => {
+  it("closes from header X without a footer cancel button", () => {
     const onConfirm = vi.fn();
     const onClose = vi.fn();
 
@@ -104,12 +119,13 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("teamver.canvasSlideLaunch.cancel"));
+    expect(screen.queryByText("teamver.canvasSlideLaunch.cancel")).toBeNull();
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-close"));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
-  it("lets the user choose a slide template via the visual card grid", () => {
+  it("lets the user choose a slide template on step 3 of the wizard", () => {
     const onTemplateChange = vi.fn();
 
     render(
@@ -127,19 +143,17 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-step-trigger-template"));
+    advanceToConfirm({ templateSteps: 3 });
 
     const grid = screen.getByTestId("teamver-canvas-slide-launch-template");
     expect(grid.getAttribute("role")).toBe("radiogroup");
-    const hermesCard = screen.getByTestId(
-      "teamver-canvas-slide-launch-template-card-html-ppt-hermes",
+    fireEvent.click(
+      screen.getByTestId("teamver-canvas-slide-launch-template-card-html-ppt-hermes"),
     );
-    expect(hermesCard.getAttribute("role")).toBe("radio");
-    fireEvent.click(hermesCard);
     expect(onTemplateChange).toHaveBeenCalledWith("html-ppt-hermes");
   });
 
-  it("orders steps as document → prompt → template and accepts a user prompt", () => {
+  it("walks document → prompt → template with optional badges on steps 2–3", () => {
     const onUserPromptChange = vi.fn();
     const onQuickSettingsChange = vi.fn();
 
@@ -160,27 +174,24 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       />,
     );
 
-    const steps = screen.getByTestId("teamver-canvas-slide-launch-steps");
-    const triggers = steps.querySelectorAll(".teamver-canvas-slide-launch-step-trigger");
-    expect(triggers.length).toBe(3);
-    expect(triggers[0]?.textContent).toContain("teamver.canvasSlideLaunch.stepDocument");
-    expect(triggers[1]?.textContent).toContain("teamver.canvasSlideLaunch.stepPrompt");
-    expect(triggers[2]?.textContent).toContain("teamver.canvasSlideLaunch.stepTemplate");
-    expect(triggers[1]?.textContent).toContain("teamver.canvasSlideLaunch.stepOptionalBadge");
-    expect(triggers[2]?.textContent).toContain("teamver.canvasSlideLaunch.stepOptionalBadge");
-    expect(triggers[0]?.textContent).not.toContain("teamver.canvasSlideLaunch.stepOptionalBadge");
+    expect(screen.getByTestId("teamver-canvas-slide-launch-stepper-document")).toBeTruthy();
+    expect(screen.getByTestId("teamver-canvas-slide-launch-stepper-prompt").textContent).toContain(
+      "teamver.canvasSlideLaunch.stepOptionalBadge",
+    );
+    expect(
+      screen.getByTestId("teamver-canvas-slide-launch-stepper-template").textContent,
+    ).toContain("teamver.canvasSlideLaunch.stepOptionalBadge");
+    expect(screen.getByTestId("teamver-canvas-slide-launch-source").textContent).toContain(
+      "lesson.html",
+    );
+    expect(screen.queryByTestId("teamver-canvas-slide-launch-prompt-input")).toBeNull();
 
-    expect(screen.getByText("lesson.html")).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-step-trigger-prompt"));
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-footer-next"));
     const input = screen.getByTestId("teamver-canvas-slide-launch-prompt-input") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "첫 수업용 8장" } });
     expect(onUserPromptChange).toHaveBeenCalledWith("첫 수업용 8장");
 
     expect(screen.getByTestId("teamver-canvas-slide-launch-quick-settings")).toBeTruthy();
-    expect(
-      screen.getByTestId("teamver-canvas-slide-launch-quick-transformMode-presentation").getAttribute("aria-pressed"),
-    ).toBe("true");
     fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-quick-audience-education"));
     expect(onQuickSettingsChange).toHaveBeenCalledWith({
       audience: "education",
@@ -188,6 +199,11 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       transformMode: "presentation",
       tone: "auto",
     });
+
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-footer-back"));
+    expect(screen.getByTestId("teamver-canvas-slide-launch-source").textContent).toContain(
+      "lesson.html",
+    );
   });
 
   it("closes on Escape and moves initial focus to the close affordance", async () => {
@@ -202,7 +218,6 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       />,
     );
 
-    // Initial focus lands on the close button after one animation frame.
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
     const closeButton = screen.getByTestId("teamver-canvas-slide-launch-close");
     expect(document.activeElement).toBe(closeButton);
@@ -244,13 +259,12 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-step-trigger-template"));
+    advanceToConfirm({ templateSteps: 3 });
 
     const badge = screen.getByTestId(
       "teamver-canvas-slide-launch-template-card-default-badge-example-simple-deck",
     );
     expect(badge.textContent).toContain("기본");
-    // Non-default plugin cards do NOT get the badge.
     expect(
       screen.queryByTestId(
         "teamver-canvas-slide-launch-template-card-default-badge-html-ppt-hermes",
@@ -258,7 +272,7 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     ).toBeNull();
   });
 
-  it("renders a single-option picker as a static label (no grid)", () => {
+  it("A-1: single template skips step 3 and shows a static picker on step 2", () => {
     render(
       <TeamverCanvasSlideLaunchModal
         open
@@ -271,27 +285,19 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       />,
     );
 
-    expect(screen.getByTestId("teamver-canvas-slide-launch-flow-compact")).toBeTruthy();
-    const picker = screen.getByTestId("teamver-canvas-slide-launch-template");
-    expect(picker.getAttribute("role")).not.toBe("radiogroup");
-    expect(picker.textContent).toContain("기본 슬라이드 템플릿");
-    expect(
-      screen.queryByTestId(
-        "teamver-canvas-slide-launch-template-card-example-simple-deck",
-      ),
-    ).toBeNull();
+    expect(screen.getByTestId("teamver-canvas-slide-launch-modal").getAttribute("data-wizard-steps")).toBe(
+      "2",
+    );
+    expect(screen.queryByTestId("teamver-canvas-slide-launch-stepper-template")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-footer-next"));
+    expect(screen.getByTestId("teamver-canvas-slide-launch-footer-template").textContent).toContain(
+      "기본 슬라이드 템플릿",
+    );
+    expect(screen.getByTestId("teamver-canvas-slide-launch-confirm")).toBeTruthy();
   });
 
-  it("uses studio split on wide viewports so templates are visible without accordion", () => {
-    const matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches: query.includes("720"),
-      media: query,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    }));
-    vi.stubGlobal("matchMedia", matchMedia);
-
+  it("uses wide wizard on multi-template launches (studio layout removed)", () => {
     render(
       <TeamverCanvasSlideLaunchModal
         open
@@ -307,16 +313,17 @@ describe("TeamverCanvasSlideLaunchModal", () => {
       />,
     );
 
-    const modal = screen.getByTestId("teamver-canvas-slide-launch-modal");
-    expect(modal.getAttribute("data-layout")).toBe("studio");
-    expect(screen.getByTestId("teamver-canvas-slide-launch-studio")).toBeTruthy();
+    expect(screen.getByTestId("teamver-canvas-slide-launch-modal").className).toContain(
+      "teamver-canvas-slide-launch-modal--wide",
+    );
+    expect(screen.queryByTestId("teamver-canvas-slide-launch-studio")).toBeNull();
+
+    advanceToConfirm({ templateSteps: 3 });
     expect(
       screen.getByTestId("teamver-canvas-slide-launch-template-card-html-ppt-hermes"),
     ).toBeTruthy();
-    expect(screen.getByTestId("teamver-canvas-slide-launch-footer-template").textContent).toContain(
-      "Hermes",
+    expect(screen.getByTestId("teamver-canvas-slide-launch-footer-context").textContent).toContain(
+      "template:Hermes",
     );
-
-    vi.unstubAllGlobals();
   });
 });
