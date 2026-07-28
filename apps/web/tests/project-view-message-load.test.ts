@@ -391,7 +391,7 @@ describe("ProjectView message loading", () => {
     // Comment-edit path must plumb the deck-patch nudge + skipDeckHtml opt-in
     // through so the fast path in persistArtifact can actually engage.
     expect(handleSendBlock).toContain("promptWithSlideCommentEditPatchInstruction(");
-    expect(handleSendBlock).toContain("skipDeckHtml: slideOnlyMvp && commentAttachments.length > 0");
+    expect(handleSendBlock).toContain("skipDeckHtml: slideOnlyMvp && scopedCommentAttachments.length > 0");
   });
 
   it("self-heals leaked composer streaming markers after terminal turns settle", () => {
@@ -430,6 +430,9 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("commentAttachments: runCommentAttachmentsRef.current");
     expect(source).toContain("instructionText: runVisiblePromptRef.current");
     expect(source).toContain("instructionText: [attachment.comment, input.instructionText].filter(Boolean).join");
+    expect(source).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(commentAttachments)");
+    expect(source).toContain("commentAttachmentCount: scopedCommentAttachments.length");
+    expect(source).toContain("commentAttachments: scopedCommentAttachments");
   });
 
   it("waits for embed boot and retries stuck message loads on re-entry", () => {

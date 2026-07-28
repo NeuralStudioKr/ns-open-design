@@ -408,7 +408,7 @@ export function messageContentWithCommentAttachments(
   return `${visibleContent}${renderCommentAttachmentContext(scopedCommentAttachments)}`;
 }
 
-function hasUsableCommentLocationData(item: ChatCommentAttachment): boolean {
+export function hasUsableCommentLocationData(item: ChatCommentAttachment): boolean {
   const selectionKind = item.selectionKind === 'visual' ? 'visual' : item.selectionKind === 'pod' ? 'pod' : 'element';
   if (selectionKind === 'visual') {
     return Boolean(
@@ -428,6 +428,12 @@ function hasUsableCommentLocationData(item: ChatCommentAttachment): boolean {
     || String(item.htmlHint || '').trim()
     || String(item.currentText || '').trim(),
   );
+}
+
+export function filterUsableCommentAttachments(
+  commentAttachments: readonly ChatCommentAttachment[],
+): ChatCommentAttachment[] {
+  return commentAttachments.filter(hasUsableCommentLocationData);
 }
 
 export interface ChatAttachmentsFromPreviewCommentFilesOptions {

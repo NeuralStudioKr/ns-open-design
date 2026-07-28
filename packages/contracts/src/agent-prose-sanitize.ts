@@ -1265,11 +1265,12 @@ export function sanitizeAssistantProseForDisplay(
 /** Drop truncated deck stylesheet/CSS leaked into chat prose (mid-artifact abort). */
 export function stripTrailingDeckFrameworkCssLeak(input: string): string {
   if (!input) return input;
-  const match = /(?:^|\n\n|\n)(\.slide\s*\{[\s\S]*)$/.exec(input);
+  const match = /(?:^|\n\n|\n)((?:\.slide|(?:\.[A-Za-z_-][\w-]*|#[A-Za-z_-][\w-]*|h[1-6]|p|ul|li|body|section(?:\.[\w-]+)?)\s*\{)[\s\S]*)$/.exec(input);
   if (!match || match.index === undefined) return input;
   const tail = match[1] ?? "";
   const looksLikeDeckFramework =
     /width:\s*1920px|height:\s*1080px|box-sizing:\s*border-box|\.grain::after/i.test(tail)
+    || /<\/style>|<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b|<!--\s*SLIDE\b/i.test(tail)
     || /^\.slide\s*\{[\s\S]*/.test(tail.trim());
   if (!looksLikeDeckFramework) return input;
   return input.slice(0, match.index).trimEnd();

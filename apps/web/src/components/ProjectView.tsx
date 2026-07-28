@@ -233,6 +233,7 @@ import {
 import {
   chatAttachmentsFromPreviewCommentFiles,
   commentsToAttachments,
+  filterUsableCommentAttachments,
   historyWithCommentAttachmentContext,
   mergeAttachedComments,
   mergePreviewCommentAttachments,
@@ -6281,18 +6282,19 @@ export function ProjectView({
       const isAutoContinueSend =
         meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
         || isAutoContinueIncompleteOutputPrompt(prompt);
+      const scopedCommentAttachments = filterUsableCommentAttachments(commentAttachments);
       let effectiveAttachments = mergeChatAttachments(
         attachments,
-        chatAttachmentsFromPreviewCommentFiles(commentAttachments, projectFiles, {
+        chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, projectFiles, {
           // The deck HTML is the last-assistant artifact in conversation
           // history for Teamver slide-only edits, so re-inlining it via
           // <attached-project-files> is pure duplication that pushes TTFT out.
           // The `<attached-preview-comments>` block still carries currentText,
           // htmlHint, selector, and pod-member context for the target element,
           // which is what the model actually needs to make a scoped edit.
-          skipDeckHtml: slideOnlyMvp && commentAttachments.length > 0,
+          skipDeckHtml: slideOnlyMvp && scopedCommentAttachments.length > 0,
         }),
-        ...commentAttachments.map((attachment) =>
+        ...scopedCommentAttachments.map((attachment) =>
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),
       );
@@ -6302,7 +6304,7 @@ export function ProjectView({
       if (
         slideOnlyMvp
         && !isAutoContinueSend
-        && commentAttachments.length === 0
+        && scopedCommentAttachments.length === 0
       ) {
         const existingDeck = resolvePrimaryDeckFile(
           projectFiles,
@@ -6330,7 +6332,7 @@ export function ProjectView({
         instructionAttachments,
         {
           slideOnlyMvp,
-          commentAttachmentCount: commentAttachments.length,
+          commentAttachmentCount: scopedCommentAttachments.length,
           existingDeckEdit: autoAttachedDeckPath != null,
         },
       );
@@ -6341,7 +6343,7 @@ export function ProjectView({
       // missing current deck cleanly falls through to auto-continue full-deck.
       let modelPrompt = promptWithSlideCommentEditPatchInstruction(modelPromptBase, {
         slideOnlyMvp,
-        commentAttachmentCount: commentAttachments.length,
+        commentAttachmentCount: scopedCommentAttachments.length,
       });
       if (autoAttachedDeckPath) {
         modelPrompt = promptWithExistingDeckEditInstruction(modelPrompt, {
@@ -6354,7 +6356,7 @@ export function ProjectView({
           conversationId: activeConversationId,
           prompt: modelPrompt,
           attachments: effectiveAttachments,
-          commentAttachments,
+          commentAttachments: scopedCommentAttachments,
           meta: { ...(meta ?? {}), sessionMode: runSessionMode },
         });
         return false;
@@ -6370,7 +6372,7 @@ export function ProjectView({
           conversationId: activeConversationId,
           prompt: modelPrompt,
           attachments: effectiveAttachments,
-          commentAttachments,
+          commentAttachments: scopedCommentAttachments,
           meta: { ...(meta ?? {}), sessionMode: runSessionMode },
         });
         return false;
@@ -6405,7 +6407,7 @@ export function ProjectView({
               : {}),
             ...(runContext ? { runContext } : {}),
             attachments: effectiveAttachments.length > 0 ? effectiveAttachments : undefined,
-            commentAttachments: commentAttachments.length > 0 ? commentAttachments : undefined,
+            commentAttachments: scopedCommentAttachments.length > 0 ? scopedCommentAttachments : undefined,
           };
       const runCommentAttachments = userMsg.commentAttachments ?? [];
       runCommentAttachmentsRef.current = runCommentAttachments;

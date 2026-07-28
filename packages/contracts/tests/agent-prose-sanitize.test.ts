@@ -38,6 +38,24 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(text).toBe("Working…");
   });
 
+  it("strips orphan deck CSS and slide markup leaked after prose", () => {
+    const input = [
+      "전체 폰트를 2배로 키운 풀 덱으로 다시 만들게요.",
+      ".tag{font-size:26px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;opacity:.6;margin-bottom:20px}",
+      ".eyebrow{font-size:30px;font-weight:700;letter-spacing:.1em;margin:0 0 16px}",
+      "h1{margin:0 0 24px;font-weight:800;line-height:1.03}",
+      "</style>",
+      "<section class=\"slide\" style=\"background:#0f172a;color:#f8fafc\">",
+      "<h1 style=\"font-size:120px\">업무와 AI를<br>하나의 공간에서</h1>",
+    ].join("\n");
+
+    const out = sanitizeAssistantProseForDisplay(input);
+
+    expect(out).toBe("전체 폰트를 2배로 키운 풀 덱으로 다시 만들게요.");
+    expect(out).not.toContain(".tag{");
+    expect(out).not.toContain("<section");
+  });
+
   describe("system-reminder preservation for prompt-injection chip", () => {
     // Regression: `<system-reminder>` is a rendering element (AssistantMessage
     // turns it into the "Possible prompt injection" chip), not internal
