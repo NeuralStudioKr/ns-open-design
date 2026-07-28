@@ -7,11 +7,12 @@ vi.mock("../src/teamver/designApiBase", () => ({
 }));
 
 import { TeamverDriveTargetSelect } from "../src/teamver/components/TeamverDriveTargetSelect";
+import { TEAMVER_PERSONAL_DRIVE_LABEL } from "../src/teamver/teamverDriveCopy";
 
 const targets = [
   {
     id: "personal-root",
-    label: "내 드라이브",
+    label: TEAMVER_PERSONAL_DRIVE_LABEL,
     description: "개인 드라이브 루트",
     folderId: "FLD-1",
     sharedDriveId: null,

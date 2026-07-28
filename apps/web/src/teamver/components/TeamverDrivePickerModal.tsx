@@ -47,6 +47,11 @@ import {
 } from "../teamverBffAuthError";
 import { formatTeamverDriveImportErrorMessage } from "../importDriveAssets";
 import { formatTeamverDriveBrowseReloginMessage } from "../teamverDriveAuthCopy";
+import {
+  TEAMVER_PERSONAL_DRIVE_FOLDER_DESCRIPTION,
+  TEAMVER_PERSONAL_DRIVE_LABEL,
+  TEAMVER_PERSONAL_DRIVE_ROOT_DESCRIPTION,
+} from "../teamverDriveCopy";
 
 type NavCrumb = {
   folderId: string | null;
@@ -87,7 +92,7 @@ function targetFromScope(scope: TeamverDriveImportScope): TeamverDrivePublishTar
   return {
     id: "personal-root",
     label: scope.label,
-    description: "개인 드라이브 루트",
+    description: TEAMVER_PERSONAL_DRIVE_ROOT_DESCRIPTION,
     folderId: scope.folderId,
     sharedDriveId: null,
   };
@@ -101,7 +106,7 @@ function targetFromFolder(
   return {
     id: sharedDriveId ? `shared:${sharedDriveId}:${folder.folderId}` : `personal:${folder.folderId}`,
     label: scope.mode === "shared" ? `${scope.label} / ${folder.name}` : folder.name,
-    description: scope.mode === "shared" ? "팀 드라이브 폴더" : "내 드라이브 폴더",
+    description: scope.mode === "shared" ? "팀 드라이브 폴더" : TEAMVER_PERSONAL_DRIVE_FOLDER_DESCRIPTION,
     folderId: folder.folderId,
     sharedDriveId,
   };
@@ -123,7 +128,7 @@ function targetFromRecentAsset(asset: TeamverDrivePublishRecentAsset): TeamverDr
   const sharedDriveId = asset.sharedDriveId;
   return {
     id: sharedDriveId ? `shared:${sharedDriveId}:${asset.folderId}` : `personal:${asset.folderId}`,
-    label: sharedDriveId ? "팀 드라이브" : "내 드라이브",
+    label: sharedDriveId ? "팀 드라이브" : TEAMVER_PERSONAL_DRIVE_LABEL,
     description: `최근: ${asset.name}`,
     folderId: asset.folderId,
     sharedDriveId,
@@ -434,7 +439,7 @@ export function TeamverDrivePickerModal({
         if (canceled) return;
         const resolved = nextScopes.length > 0
           ? nextScopes
-          : [{ mode: "personal", folderId: null, label: "내 드라이브" } satisfies TeamverDriveImportScope];
+          : [{ mode: "personal", folderId: null, label: TEAMVER_PERSONAL_DRIVE_LABEL } satisfies TeamverDriveImportScope];
         setScopes(resolved);
         setScopeIndex(0);
         setNavStack([rootCrumb(resolved[0]!)]);
@@ -455,7 +460,7 @@ export function TeamverDrivePickerModal({
         ) {
           // handled
         }
-        const fallback = [{ mode: "personal", folderId: null, label: "내 드라이브" } satisfies TeamverDriveImportScope];
+        const fallback = [{ mode: "personal", folderId: null, label: TEAMVER_PERSONAL_DRIVE_LABEL } satisfies TeamverDriveImportScope];
         setScopes(fallback);
         setScopeIndex(0);
         setNavStack([rootCrumb(fallback[0]!)]);

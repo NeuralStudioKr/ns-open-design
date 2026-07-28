@@ -14,6 +14,7 @@ import {
   searchTeamverDrivePublishTargets,
 } from "../src/teamver/drivePublishTargets";
 import { invalidateTeamverDriveImportCaches } from "../src/teamver/driveImportList";
+import { TEAMVER_PERSONAL_DRIVE_LABEL } from "../src/teamver/teamverDriveCopy";
 
 describe("listTeamverDrivePublishTargets", () => {
   beforeEach(() => {
@@ -164,7 +165,7 @@ describe("listTeamverDrivePublishTargets", () => {
     expect(targets).toEqual([
       expect.objectContaining({
         id: "personal-root",
-        label: "내 드라이브",
+        label: TEAMVER_PERSONAL_DRIVE_LABEL,
         description: "개인 드라이브 루트",
         folderId: null,
         sharedDriveId: null,
@@ -223,7 +224,7 @@ describe("listTeamverDrivePublishTargets", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "personal-root",
-          label: "내 드라이브",
+          label: TEAMVER_PERSONAL_DRIVE_LABEL,
           folderId: null,
         }),
         expect.objectContaining({
@@ -239,7 +240,7 @@ describe("listTeamverDrivePublishTargets", () => {
   it("maps import scopes to quick-pick publish targets", () => {
     expect(
       publishTargetsFromImportScopes([
-        { mode: "personal", folderId: "FLD-MY-ROOT", label: "내 드라이브" },
+        { mode: "personal", folderId: "FLD-MY-ROOT", label: TEAMVER_PERSONAL_DRIVE_LABEL },
         {
           mode: "shared",
           sharedDriveId: "SD-1",

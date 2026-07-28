@@ -18,6 +18,7 @@ import {
   resolveTeamverDriveImportListFolderId,
   searchTeamverDriveImportRows,
 } from "../src/teamver/driveImportList";
+import { TEAMVER_PERSONAL_DRIVE_LABEL } from "../src/teamver/teamverDriveCopy";
 
 describe("driveImportList recent/search", () => {
   afterEach(() => {
@@ -97,7 +98,7 @@ describe("driveImportList recent/search", () => {
   it("resolves scope root folder_id for personal browse at root", () => {
     expect(
       resolveTeamverDriveImportListFolderId(
-        { mode: "personal", folderId: "ROOT-1", label: "내 드라이브" },
+        { mode: "personal", folderId: "ROOT-1", label: TEAMVER_PERSONAL_DRIVE_LABEL },
         null,
       ),
     ).toBe("ROOT-1");
@@ -109,7 +110,7 @@ describe("driveImportList recent/search", () => {
     ).toBe("ROOT-SD");
     expect(
       resolveTeamverDriveImportListFolderId(
-        { mode: "personal", folderId: "ROOT-1", label: "내 드라이브" },
+        { mode: "personal", folderId: "ROOT-1", label: TEAMVER_PERSONAL_DRIVE_LABEL },
         "FLD-CHILD",
       ),
     ).toBe("FLD-CHILD");
@@ -128,6 +129,19 @@ describe("driveImportList recent/search", () => {
     expect(rows.map((row) => (row.kind === "folder" ? row.folderId : row.assetId))).toEqual([
       "FLD-1",
       "AST-1",
+    ]);
+  });
+
+  it("filters personal root shell when folder_id matches root but name is legacy label", () => {
+    const rows = filterTeamverDriveImportListRows(
+      [
+        { kind: "folder", folderId: "ROOT-1", name: "개인 드라이브", folderType: "USER" },
+        { kind: "folder", folderId: "FLD-1", name: "Projects" },
+      ],
+      { rootFolderId: "ROOT-1", sharedDriveId: null, atScopeRoot: true },
+    );
+    expect(rows.map((row) => (row.kind === "folder" ? row.folderId : row.assetId))).toEqual([
+      "FLD-1",
     ]);
   });
 
@@ -152,7 +166,7 @@ describe("driveImportList recent/search", () => {
 
     const scopes = await listTeamverDriveImportScopes("ws-1");
     expect(scopes).toEqual([
-      { mode: "personal", folderId: "ROOT-P", label: "내 드라이브" },
+      { mode: "personal", folderId: "ROOT-P", label: TEAMVER_PERSONAL_DRIVE_LABEL },
       { mode: "shared", sharedDriveId: "SD-1", folderId: "ROOT-SD", label: "개발팀" },
       { mode: "shared", sharedDriveId: "SD-2", folderId: "ROOT-MKT", label: "마케팅" },
     ]);
@@ -176,7 +190,7 @@ describe("driveImportList recent/search", () => {
 
     const scopes = await listTeamverDriveImportScopes("ws-1");
     expect(scopes).toEqual([
-      { mode: "personal", folderId: "ROOT-P", label: "내 드라이브" },
+      { mode: "personal", folderId: "ROOT-P", label: TEAMVER_PERSONAL_DRIVE_LABEL },
       { mode: "shared", sharedDriveId: "SD-1", folderId: "ROOT-SD", label: "개발팀" },
     ]);
     expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/folder-tree"))).toHaveLength(1);
@@ -199,7 +213,7 @@ describe("driveImportList recent/search", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const scope = { mode: "personal" as const, folderId: "ROOT-P", label: "내 드라이브" };
+    const scope = { mode: "personal" as const, folderId: "ROOT-P", label: TEAMVER_PERSONAL_DRIVE_LABEL };
     const first = await browseTeamverDriveImportPage({
       workspaceId: "ws-1",
       scope,

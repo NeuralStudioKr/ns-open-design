@@ -6,6 +6,11 @@ import {
   searchTeamverDriveImportRows,
   type TeamverDriveImportScope,
 } from "./driveImportList";
+import {
+  TEAMVER_PERSONAL_DRIVE_FOLDER_DESCRIPTION,
+  TEAMVER_PERSONAL_DRIVE_LABEL,
+  TEAMVER_PERSONAL_DRIVE_ROOT_DESCRIPTION,
+} from "./teamverDriveCopy";
 
 type RawFolder = {
   folderId?: string | null;
@@ -116,8 +121,8 @@ function buildPersonalPublishTargets(raw: unknown): TeamverDrivePublishTarget[] 
   const targets: TeamverDrivePublishTarget[] = [
     {
       id: "personal-root",
-      label: "내 드라이브",
-      description: "개인 드라이브 루트",
+      label: TEAMVER_PERSONAL_DRIVE_LABEL,
+      description: TEAMVER_PERSONAL_DRIVE_ROOT_DESCRIPTION,
       folderId: rootFolderId,
       sharedDriveId: null,
     },
@@ -128,7 +133,7 @@ function buildPersonalPublishTargets(raw: unknown): TeamverDrivePublishTarget[] 
     targets.push({
       id: `personal:${folderId}`,
       label: folderTargetLabel(row.folder, row.depth),
-      description: "내 드라이브 폴더",
+      description: TEAMVER_PERSONAL_DRIVE_FOLDER_DESCRIPTION,
       folderId,
       sharedDriveId: null,
     });
@@ -344,7 +349,7 @@ export async function searchTeamverDrivePublishTargets(
           ? `shared:${sharedDriveId}:${row.folderId}`
           : `personal:${row.folderId}`,
         label: scope ? `${scope.label} / ${row.name}` : row.name,
-        description: sharedDriveId ? "팀 드라이브 폴더 검색 결과" : "내 드라이브 폴더 검색 결과",
+        description: sharedDriveId ? "팀 드라이브 폴더 검색 결과" : `${TEAMVER_PERSONAL_DRIVE_FOLDER_DESCRIPTION} 검색 결과`,
         folderId: row.folderId,
         sharedDriveId,
       });

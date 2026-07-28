@@ -1,5 +1,6 @@
 import { fetchTeamverDriveHomeRecentRaw } from "./driveHomeRecentCache";
 import type { TeamverDrivePublishTarget } from "./drivePublishTargets";
+import { TEAMVER_PERSONAL_DRIVE_LABEL } from "./teamverDriveCopy";
 
 function publishTargetKey(target: TeamverDrivePublishTarget): string {
   return `${target.sharedDriveId ?? "personal"}:${target.folderId ?? "root"}`;
@@ -56,7 +57,7 @@ export async function listTeamverDrivePublishHomeRecentTargets(
     if (!folderId) continue;
     const sharedDriveId = String(row.sharedDriveId ?? "").trim() || null;
     const driveLabel = String(row.sharedDriveName ?? "").trim()
-      || (sharedDriveId ? "팀 드라이브" : "내 드라이브");
+      || (sharedDriveId ? "팀 드라이브" : TEAMVER_PERSONAL_DRIVE_LABEL);
     const assetName = String(row.name ?? "").trim() || "파일";
     push({
       id: sharedDriveId ? `shared:${sharedDriveId}:${folderId}` : `personal:${folderId}`,

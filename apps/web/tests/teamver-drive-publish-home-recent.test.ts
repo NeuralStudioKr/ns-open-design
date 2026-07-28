@@ -8,6 +8,7 @@ vi.mock("../src/teamver/driveApi", () => ({
 
 import { invalidateTeamverDriveHomeRecentCaches } from "../src/teamver/driveHomeRecentCache";
 import { listTeamverDrivePublishHomeRecentTargets } from "../src/teamver/drivePublishHomeRecent";
+import { TEAMVER_PERSONAL_DRIVE_LABEL } from "../src/teamver/teamverDriveCopy";
 
 describe("listTeamverDrivePublishHomeRecentTargets", () => {
   afterEach(() => {
@@ -69,7 +70,7 @@ describe("listTeamverDrivePublishHomeRecentTargets", () => {
       },
       {
         id: "personal:folder-b",
-        label: "내 드라이브",
+        label: TEAMVER_PERSONAL_DRIVE_LABEL,
         description: "최근: notes.md",
         folderId: "folder-b",
         sharedDriveId: null,

@@ -1,4 +1,5 @@
 import type { TeamverDrivePublishTarget } from "./drivePublishTargets";
+import { TEAMVER_PERSONAL_DRIVE_LABEL } from "./teamverDriveCopy";
 
 /**
  * loop 176 — Always-available default destination so publish never deadlocks
@@ -6,7 +7,7 @@ import type { TeamverDrivePublishTarget } from "./drivePublishTargets";
  */
 export const DEFAULT_PUBLISH_TARGET: TeamverDrivePublishTarget = {
   id: "personal-default",
-  label: "내 드라이브",
+  label: TEAMVER_PERSONAL_DRIVE_LABEL,
   description: "기본 드라이브 위치",
   folderId: null,
   sharedDriveId: null,

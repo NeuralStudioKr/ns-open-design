@@ -1,5 +1,6 @@
 import { Icon } from "../../components/Icon";
 import type { TeamverDriveImportScope } from "../driveImportList";
+import { TEAMVER_PERSONAL_DRIVE_LABEL } from "../teamverDriveCopy";
 
 type Props = {
   scopes: TeamverDriveImportScope[];
@@ -15,7 +16,7 @@ function scopeKey(scope: TeamverDriveImportScope): string {
 /**
  * Left rail replacing the horizontal pill tabs on Drive Import/Picker modals.
  *
- * Groups scopes into "내 드라이브" (personal) and "팀 드라이브" (shared), giving
+ * Groups scopes into "개인 드라이브" (personal) and "팀 드라이브" (shared), giving
  * team drives a users icon + section header so users see membership context at
  * a glance. Vertical scroll keeps N teams tractable where pills previously
  * hijacked the whole modal header with a horizontal scrollbar.
@@ -71,7 +72,7 @@ export function TeamverDriveScopeSidebar({
     >
       {personal.length > 0 ? (
         <div className="teamver-drive-scope-group">
-          <div className="teamver-drive-scope-group-label">내 드라이브</div>
+          <div className="teamver-drive-scope-group-label">{TEAMVER_PERSONAL_DRIVE_LABEL}</div>
           {personal.map(({ scope, index }) => renderItem(scope, index))}
         </div>
       ) : null}
