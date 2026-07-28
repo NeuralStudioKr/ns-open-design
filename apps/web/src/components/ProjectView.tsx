@@ -5614,6 +5614,10 @@ export function ProjectView({
               attempt,
               referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
               slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
+              existingDeckPath: resolvePrimaryDeckFilePath(
+                nextFiles,
+                project.metadata?.entryFile,
+              ),
               ...autoContinueCtx,
             });
             const started = sendNow(
@@ -6599,6 +6603,10 @@ export function ProjectView({
                     truncatedByMaxTokens: runStopReason === 'max_tokens',
                     referenceFiles: collectSlideReferencePathsFromMessages(autoContinueMessages),
                     slideCountHint: extractRequestedSlideCountHintFromMessages(autoContinueMessages),
+                    existingDeckPath: resolvePrimaryDeckFilePath(
+                      projectFiles,
+                      project.metadata?.entryFile,
+                    ),
                     ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
                       partialHtml: partialHtmlForAutoContinue,
                       planOutline: rawFinalText,

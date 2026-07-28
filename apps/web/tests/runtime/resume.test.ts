@@ -176,6 +176,15 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).toContain('버리세요');
     expect(prompt).not.toContain('```html');
   });
+
+  it('reminds the model when a deck file already exists on disk', () => {
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      existingDeckPath: 'deck.html',
+    });
+    expect(prompt).toContain('deck.html');
+    expect(prompt).toContain('완성된 덱이 없다');
+  });
 });
 
 describe('extractAutoContinueContextFromAssistant', () => {

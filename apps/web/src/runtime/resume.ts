@@ -99,6 +99,8 @@ export type AutoContinuePromptContext = {
   slideCountHint?: string | null;
   /** Set when the prior turn ended with stop_reason=max_tokens. */
   truncatedByMaxTokens?: boolean;
+  /** Saved slide deck on disk from an earlier successful turn in this project. */
+  existingDeckPath?: string | null;
 };
 
 // Cap on automatic continue attempts inside a single conversation. Three
@@ -157,6 +159,15 @@ export function buildAutoContinueIncompleteOutputPrompt(
     parts.push(
       '\n\n[이 대화의 슬라이드 분량 — 반드시 준수:]\n'
         + slideCountHint,
+    );
+  }
+
+  const existingDeckPath = context.existingDeckPath?.trim();
+  if (existingDeckPath) {
+    parts.push(
+      `\n\n[이 프로젝트에 이미 저장된 슬라이드 덱: \`${existingDeckPath}\`. `
+        + '직전 turn이 incomplete_output이어도 "완성된 덱이 없다"고 말하지 마세요. '
+        + '디스크의 덱을 기준으로 이어서 완성하거나 필요한 슬라이드만 deck-patch/deck artifact로 수정하세요.]',
     );
   }
 
