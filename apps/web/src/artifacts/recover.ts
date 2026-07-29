@@ -1,4 +1,4 @@
-import { validateHtmlArtifact } from './validate';
+import { validateHtmlArtifact, isIncompleteHtmlDocumentShell } from './validate';
 import { hasSalvageableDeckSlideContent } from './deck-html-content';
 
 type RecoverHtmlArtifactInput = {
@@ -154,7 +154,9 @@ function collectCompleteHtmlDocumentsFromText(sourceText: string, candidates: st
   const addCandidate = (candidate: string) => {
     const normalized = candidate.replace(/^﻿/, '').trim();
     if (/<\/?artifact\b/i.test(normalized)) return;
-    if (validateHtmlArtifact(normalized).ok) candidates.push(normalized);
+    if (validateHtmlArtifact(normalized).ok && !isIncompleteHtmlDocumentShell(normalized)) {
+      candidates.push(normalized);
+    }
   };
 
   DOCTYPE_HTML_BLOCK_RE.lastIndex = 0;

@@ -41,8 +41,8 @@
 
 import {
   documentContainsSlideSection,
-  hasFilledSlideSection,
   isDeckStatusProseOnlyBody,
+  meetsMinimumDeckDeliverableQuality,
 } from './deck-html-content';
 
 const MIN_HTML_LENGTH = 64;
@@ -134,7 +134,10 @@ export function isIncompleteHtmlDocumentShell(content: string): boolean {
 function isEffectivelyEmptyHtmlBody(html: string): boolean {
   if (isDeckStatusProseOnlyBody(html)) return true;
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
-  if (documentContainsSlideSection(withoutComments) && !hasFilledSlideSection(withoutComments)) {
+  if (
+    documentContainsSlideSection(withoutComments)
+    && !meetsMinimumDeckDeliverableQuality(withoutComments)
+  ) {
     return true;
   }
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);
