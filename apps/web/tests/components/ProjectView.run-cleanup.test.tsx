@@ -36,6 +36,7 @@ const patchProject = vi.fn();
 const saveTabs = vi.fn();
 const writeProjectTextFile = vi.fn();
 const writeProjectTextFileDetailed = vi.fn();
+const fetchProjectFileText = vi.fn();
 
 const replayArtifact: Artifact = {
   identifier: 'real-daemon-smoke',
@@ -111,6 +112,7 @@ vi.mock('../../src/providers/registry', () => ({
   fetchProjectDesignSystemPackageAudit: (...args: unknown[]) => fetchProjectDesignSystemPackageAudit(...args),
   fetchLiveArtifacts: (...args: unknown[]) => fetchLiveArtifacts(...args),
   fetchProjectFiles: (...args: unknown[]) => fetchProjectFiles(...args),
+  fetchProjectFileText: (...args: unknown[]) => fetchProjectFileText(...args),
   fetchSkill: (...args: unknown[]) => fetchSkill(...args),
   patchPreviewCommentStatus: vi.fn(),
   upsertPreviewComment: vi.fn(),
@@ -298,6 +300,9 @@ describe('retry target resolution', () => {
 describe('ProjectView daemon cleanup', () => {
   beforeEach(() => {
     listProjectRuns.mockResolvedValue([]);
+    fetchProjectFileText.mockResolvedValue(
+      '<html><body><section class="slide" data-slide-index="0"><h2 data-od-id="hero-title">Title</h2></section></body></html>',
+    );
   });
 
   afterEach(() => {
@@ -950,6 +955,90 @@ describe('ProjectView daemon cleanup', () => {
       window.sessionStorage.removeItem('od:auto-send-first:project-files');
       window.sessionStorage.removeItem('od:auto-send-attachments:project-files');
     }
+  });
+
+  it('starts board comment edit immediately when the conversation is idle', async () => {
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([]);
+    streamViaDaemon.mockResolvedValue(undefined);
+
+    render(
+      <ProjectView
+        project={{
+          id: 'project-comments-idle',
+          name: 'Project',
+          skillId: null,
+          designSystemId: null,
+        } as never}
+        routeFileName={null}
+        config={{ mode: 'daemon', agentId: 'agent-1', notifications: undefined, agentModels: {} } as never}
+        agents={[{ id: 'agent-1', name: 'OpenCode', models: [] } as never]}
+        skills={[]}
+        designTemplates={[]}
+        designSystems={[]}
+        daemonLive
+        onModeChange={() => {}}
+        onAgentChange={() => {}}
+        onAgentModelChange={() => {}}
+        onRefreshAgents={() => {}}
+        onOpenSettings={() => {}}
+        onBack={() => {}}
+        onClearPendingPrompt={() => {}}
+        onTouchProject={() => {}}
+        onProjectChange={() => {}}
+        onProjectsRefresh={() => {}}
+      />,
+    );
+
+    await waitForReadyChatPaneProps();
+
+    const workspaceProps = fileWorkspaceSpy.mock.calls.at(-1)?.[0] as {
+      onSendBoardCommentAttachments?: (attachments: unknown[]) => Promise<boolean | void>;
+    };
+    expect(workspaceProps.onSendBoardCommentAttachments).toBeTruthy();
+
+    await workspaceProps.onSendBoardCommentAttachments!([
+      {
+        id: 'hero-board-1',
+        order: 1,
+        filePath: 'deck.html',
+        elementId: 'hero-title',
+        selector: '[data-od-id="hero-title"]',
+        label: 'h2',
+        comment: '텍스트 더 크게',
+        currentText: 'Title',
+        pagePosition: { x: 10, y: 20, width: 100, height: 40 },
+        htmlHint: '<h2 data-od-id="hero-title">',
+        slideIndex: 0,
+        source: 'board-batch',
+      },
+    ]);
+
+    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(1));
+    const latestChat = chatPaneSpy.mock.calls.at(-1)?.[0] as {
+      queuedItems?: unknown[];
+      messages?: Array<{ role: string; commentAttachments?: unknown[] }>;
+    };
+    expect(latestChat.queuedItems ?? []).toHaveLength(0);
+    const userMessage = latestChat.messages?.find((message) => message.role === 'user');
+    expect(userMessage?.commentAttachments?.[0]).toMatchObject({
+      elementId: 'hero-title',
+      commentContext: 'query',
+    });
+    expect(saveMessage).toHaveBeenCalled();
+    const savedUser = saveMessage.mock.calls.find(
+      (call) => (call[2] as ChatMessage | undefined)?.role === 'user',
+    )?.[2] as ChatMessage | undefined;
+    expect(savedUser?.commentAttachments?.[0]).toMatchObject({ elementId: 'hero-title' });
+    expect(savedUser?.content).toContain('<attached-preview-comments>');
   });
 
   it('queues board comment attachments while the current daemon run is still busy', async () => {

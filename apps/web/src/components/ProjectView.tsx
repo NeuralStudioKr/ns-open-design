@@ -8508,33 +8508,46 @@ export function ProjectView({
       if (commentAttachments.length === 0 && images.length === 0) return false;
       setWorkspaceFocused(false);
       setCommentInspectorActive(false);
-      // Upload any attached images once, then queue. Each comment becomes its
-      // own task (so multiple notes => multiple queued tasks); the images ride
-      // along the first task rather than being duplicated across every note.
+      // Upload any attached images once, then send or queue. Each comment becomes
+      // its own task (so multiple notes => multiple tasks); the images ride along
+      // the first task rather than being duplicated across every note.
       let uploaded: ChatAttachment[] = [];
       if (images.length > 0) {
         const result = await uploadProjectFiles(project.id, images);
         throwIfProjectCommentUploadIncomplete(result, images.length);
         uploaded = result.uploaded;
       }
+      const queueBoardSend = currentConversationBusy;
       if (commentAttachments.length === 0) {
-        if (uploaded.length > 0) await handleSend('', uploaded, [], { queueOnly: true });
+        if (uploaded.length > 0) {
+          await handleSend(
+            '',
+            uploaded,
+            [],
+            queueBoardSend ? { queueOnly: true } : undefined,
+          );
+        }
         return true;
       }
       for (let i = 0; i < commentAttachments.length; i++) {
         const commentAttachment = commentAttachments[i]!;
         const savedImages = chatAttachmentsFromPreviewCommentImages(commentAttachment.imageAttachments);
         const prompt = commentTaskQuery(commentAttachment);
+        // When the conversation is idle, start the first board comment immediately
+        // (OD parity). Additional notes in the same batch still queue so we never
+        // overlap runs. While a run is in-flight, queue everything.
+        const meta =
+          queueBoardSend || i > 0 ? { queueOnly: true as const } : undefined;
         await handleSend(
           prompt,
           mergeChatAttachments(i === 0 ? uploaded : [], savedImages),
           [commentTaskContextAttachment(commentAttachment)],
-          { queueOnly: true },
+          meta,
         );
       }
       return true;
     },
-    [handleSend, project.id, currentConversationQueueDisabled],
+    [handleSend, project.id, currentConversationQueueDisabled, currentConversationBusy],
   );
   const commentQueueOnSend = currentConversationBusy && !currentConversationQueueDisabled;
 
