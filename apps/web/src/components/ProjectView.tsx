@@ -1087,10 +1087,36 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
   patchBody: string;
   allowedSlideIndexes?: readonly number[];
   commentAttachments?: readonly ChatCommentAttachment[];
+  instructionText?: string;
 }): Promise<DeckPatchMergeResult> {
   const parsed = parseElementPatch(input.patchBody);
   if (!parsed.ok) {
-    console.warn('[element-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
+    // Salvage: the model wrapped deck-patch content (or a full
+    // `<section class="slide">` block) in an `element-patch` artifact
+    // by mistake. Route the same body through the deck-patch pipeline
+    // so we still narrow to the comment target instead of failing
+    // with a scary "선택 대상 밖 변경" banner. This covers the common
+    // model glitch where the artifact type is off-by-one for the
+    // content shape.
+    if (elementPatchBodyLooksLikeDeckPatch(input.patchBody)) {
+      console.warn('[element-patch] body looks like deck-patch — falling back', {
+        fileName: input.fileName,
+        parseReason: parsed.reason,
+      });
+      return await tryApplyDeckPatchAgainstCurrentDeck({
+        projectId: input.projectId,
+        fileName: input.fileName,
+        patchBody: input.patchBody,
+        allowedSlideIndexes: input.allowedSlideIndexes,
+        commentAttachments: input.commentAttachments,
+        instructionText: input.instructionText,
+      });
+    }
+    console.warn('[element-patch] parse failed', {
+      fileName: input.fileName,
+      reason: parsed.reason,
+      bodyLength: (input.patchBody ?? '').length,
+    });
     return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
   }
   const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
@@ -1122,6 +1148,40 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
   }
   return { ok: true, html: applied.html };
 }
+
+/**
+ * True when a body claimed to be `<artifact type="element-patch">` in
+ * fact looks like deck-patch content — the model produced
+ * `<section class="slide" data-slide-index="N">…</section>` inside
+ * the wrong wrapper. Detect this so we can salvage the response by
+ * routing the same body through `tryApplyDeckPatchAgainstCurrentDeck`
+ * instead of rejecting the whole edit as a parse failure.
+ */
+function elementPatchBodyLooksLikeDeckPatch(body: string | null | undefined): boolean {
+  const source = String(body ?? '');
+  if (!source.trim()) return false;
+  return /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')/i.test(
+    source,
+  );
+}
+
+/**
+ * True when the element-patch parse failure reason indicates the
+ * model emitted the artifact wrapper but no actual patches inside
+ * (empty body or non-<patch> filler content). These responses are a
+ * model glitch — the user's edit intent was recognized, the artifact
+ * type was picked, but the content vanished. Auto-continue handles
+ * this class of "incomplete deliverable" naturally, so we route
+ * these through `skipped-incomplete` instead of surfacing them as a
+ * scope violation.
+ */
+function isElementPatchEmptyBody(reason: string): boolean {
+  return (
+    reason === 'empty element-patch body' ||
+    reason === 'no <patch> blocks in element-patch body'
+  );
+}
+
 
 async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   projectId: string;
@@ -3397,8 +3457,22 @@ export function ProjectView({
           patchBody: art.html,
           allowedSlideIndexes: scopedAllowedSlideIndexes,
           commentAttachments: persistCommentAttachments,
+          instructionText: runVisiblePromptRef.current,
         });
         if (!merged.ok) {
+          // Empty / patch-less element-patch means the model chose the
+          // element-patch contract but did not actually produce a
+          // patch. Route through skipped-incomplete so the run enters
+          // the auto-continue path (retry the model turn) instead of
+          // surfacing a "선택 대상 밖 변경" banner that misdiagnoses
+          // the failure as a scope violation.
+          if (isElementPatchEmptyBody(merged.reason)) {
+            console.warn('[element-patch] empty artifact — routing to auto-continue', {
+              fileName: targetFileName,
+              reason: merged.reason,
+            });
+            return { kind: 'skipped-incomplete', fileName: targetFileName };
+          }
           return {
             kind: 'scope-rejected',
             fileName: targetFileName,

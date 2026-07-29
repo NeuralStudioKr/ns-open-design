@@ -529,6 +529,29 @@ describe("ProjectView message loading", () => {
     expect(patchSource).toContain("candidate.length < 2");
   });
 
+  it("routes empty element-patch responses through auto-continue instead of the scope banner", () => {
+    // Bug (2026-07-29): the model emitted
+    //   <artifact type="element-patch" identifier="deck"></artifact>
+    // with an empty body. `parseElementPatch` returned
+    // 'empty element-patch body', bubbled up as
+    // `deck_patch_parse_failed`, and the caller wrapped that as
+    // `scope-rejected` → user saw the misleading "선택 대상 밖 변경"
+    // banner. persistArtifact now recognizes the empty-body /
+    // no-<patch>-blocks sentinels and returns `skipped-incomplete`
+    // so the standard auto-continue path fires. Behavioural coverage:
+    // element-patch-empty-fallback.test.ts.
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("isElementPatchEmptyBody");
+    expect(source).toContain("'empty element-patch body'");
+    expect(source).toContain("'no <patch> blocks in element-patch body'");
+    expect(source).toContain("routing to auto-continue");
+    // The salvage path also kicks in when the wrapper contains
+    // deck-patch-shaped content — we route through
+    // tryApplyDeckPatchAgainstCurrentDeck rather than rejecting.
+    expect(source).toContain("elementPatchBodyLooksLikeDeckPatch");
+    expect(source).toContain("body looks like deck-patch — falling back");
+  });
+
   it("surfaces the underlying scope-rejected reason in the user-facing banner", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("formatProjectArtifactCommentScopeRejectedError(");
