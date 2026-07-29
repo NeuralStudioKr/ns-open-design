@@ -1178,7 +1178,9 @@ export function ChatPane({
     requestAnimationFrame(() => {
       // If the last assistant message contains a question form, scroll to
       // the form instead of the bottom, so the user sees the form first.
-      const lastAssistantMsg = [...messages].reverse().find((m) => m.role === 'assistant');
+      const lastAssistantMsg = lastAssistantId
+        ? messages.find((m) => m.id === lastAssistantId)
+        : undefined;
       if (lastAssistantMsg?.content.includes('<question-form')) {
         const assistantEls = el.querySelectorAll('.msg.assistant');
         const lastAssistantEl = assistantEls[assistantEls.length - 1];
@@ -1205,7 +1207,7 @@ export function ChatPane({
     // didInitialScrollRef while the chat-log is unmounted; this effect
     // then re-runs when the user returns to Chat and the element is
     // available, scrolling the new conversation to its initial bottom.
-  }, [activeConversationId, messages.length, tab]);
+  }, [activeConversationId, lastAssistantId, messages, messages.length, tab]);
 
   // When a turn finishes streaming, release the anchor-to-top reserve. The
   // tail spacer only exists to give a streaming reply room to grow while the
@@ -1270,7 +1272,9 @@ export function ChatPane({
     if (pinnedToBottomRef.current) {
       // If the last assistant message contains a question form, scroll to
       // the form instead of the bottom, so the user lands on the form.
-      const lastAssistantMsg = [...messages].reverse().find((m) => m.role === 'assistant');
+      const lastAssistantMsg = lastAssistantId
+        ? messages.find((m) => m.id === lastAssistantId)
+        : undefined;
       if (lastAssistantMsg?.content.includes('<question-form')) {
         const assistantEls = el.querySelectorAll('.msg.assistant');
         const lastAssistantEl = assistantEls[assistantEls.length - 1];
@@ -1292,7 +1296,7 @@ export function ChatPane({
       // breaking auto-follow for subsequent chunks.
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages, error, streaming]);
+  }, [messages, error, streaming, lastAssistantId]);
 
   // Saved chat-log scroll state, preserved across tab switches. The
   // chat-log <div> is conditionally rendered so it unmounts when the
