@@ -314,6 +314,7 @@ import {
   formatProjectConversationListError,
   formatProjectConversationErrorForUser,
   formatProjectMessagesLoadError,
+  formatProjectArtifactRegressionRejectedError,
   formatProjectArtifactRejectedError,
   formatProjectArtifactSaveFailedError,
   formatProjectArtifactStubWarning,
@@ -3873,7 +3874,19 @@ export function ProjectView({
           priorSize: regression.priorSize,
           newSize: regression.newSize,
         });
-        setError(formatProjectArtifactRejectedError(regression.fileName, regression.reason));
+        // Use the unified regression-rejected banner so both the
+        // client-side pre-write guard (this branch) and the daemon
+        // stub-guard reject (surfaced later via
+        // formatProjectArtifactSaveFailedError → save-failed
+        // ARTIFACT_REGRESSION branch → the same helper) share one
+        // reassurance copy. `regression.reason` (the technical byte-
+        // count sentence) is kept in the console log above for
+        // diagnostics and in the artifact-regression persist result
+        // for downstream analytics, but the on-screen banner explains
+        // what happened + reassures about the preserved deck + names
+        // the escape-hatch env var, so users don't stare at a mixed-
+        // language "저장을 거부: New artifact body …" reason.
+        setError(formatProjectArtifactRegressionRejectedError(regression.fileName));
         return {
           kind: 'artifact-regression',
           fileName: regression.fileName,
@@ -7177,9 +7190,8 @@ export function ProjectView({
                       message: terminalPersistResult.message,
                     })
                   : terminalPersistResult?.kind === 'artifact-regression'
-                    ? formatProjectArtifactRejectedError(
+                    ? formatProjectArtifactRegressionRejectedError(
                         terminalPersistResult.fileName,
-                        terminalPersistResult.reason,
                       )
                   : terminalPersistResult?.kind === 'scope-rejected'
                     ? formatProjectArtifactCommentScopeRejectedError(

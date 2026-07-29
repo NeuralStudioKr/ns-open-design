@@ -54,6 +54,7 @@ describe("project conversation error messages", () => {
   it("returns Korean artifact save errors in embed mode", async () => {
     mockedEmbedMode.mockReturnValue(true);
     const {
+      formatProjectArtifactRegressionRejectedError,
       formatProjectArtifactRejectedError,
       formatProjectArtifactCommentScopeRejectedError,
       formatProjectArtifactSaveFailedError,
@@ -160,6 +161,15 @@ describe("project conversation error messages", () => {
     expect(regression).not.toBe(
       `슬라이드 파일 "deck.html" 저장에 실패했습니다. 잠시 후 다시 시도하세요.`,
     );
+    // formatProjectArtifactRegressionRejectedError is the shared
+    // primitive used by both the client-side pre-write guard and the
+    // daemon-side stub-guard reject reaching the client via save-
+    // failed. Both entry points must produce byte-identical copy so
+    // users never see two different explanations for the same
+    // failure. Test the shared helper directly here so a future
+    // refactor that inlines one path cannot silently drift.
+    const regressionShared = formatProjectArtifactRegressionRejectedError("deck.html");
+    expect(regressionShared).toBe(regression);
     // Bare fetch/network failure (no status) → network guidance.
     expect(
       formatProjectArtifactSaveFailedError("deck.html", {

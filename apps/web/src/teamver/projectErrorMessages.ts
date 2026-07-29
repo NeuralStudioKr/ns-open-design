@@ -77,6 +77,24 @@ const UPSTREAM_ERROR_CODES = new Set([
   'INTERNAL_ERROR',
 ]);
 
+/**
+ * Reassurance banner used by both the client-side pre-write
+ * regression guard (`findClientArtifactRegression` in ProjectView) and
+ * the daemon-side stub-guard rejection reaching the client as
+ * `save-failed` + code=ARTIFACT_REGRESSION. Both paths detect the
+ * same failure — the model emitted a placeholder instead of a real
+ * deck — and the user must see a single consistent copy explaining:
+ *   (1) what happened (small placeholder detected)
+ *   (2) that their existing deck is safe on disk
+ *   (3) how to relax the guard for a deliberate small edit
+ */
+export function formatProjectArtifactRegressionRejectedError(fileName: string): string {
+  const embed = isTeamverEmbedMode();
+  return embed
+    ? `모델이 실제 슬라이드 대신 훨씬 작은 플레이스홀더를 보내서 "${fileName}" 저장을 거부했습니다. 기존 슬라이드는 그대로 남아 있으니 다시 시도해 주세요. (의도적으로 짧게 만든 편집이었다면 OD_ARTIFACT_STUB_GUARD=warn 으로 완화할 수 있습니다.)`
+    : `Refused to save "${fileName}" because the model returned a much smaller placeholder instead of the real slide deck. Your existing deck is preserved on disk — retry the request. (If this was a deliberate small edit, relax via OD_ARTIFACT_STUB_GUARD=warn.)`;
+}
+
 export function formatProjectArtifactSaveFailedError(
   fileName: string,
   detail?: ProjectArtifactSaveErrorDetail,
@@ -94,9 +112,7 @@ export function formatProjectArtifactSaveFailedError(
   // to retry (typical model glitch) with an escape hatch env var for
   // the deliberate-small-edit false-positive case.
   if (code === 'ARTIFACT_REGRESSION' || status === 422 && code === 'ARTIFACT_REGRESSION') {
-    return embed
-      ? `모델이 실제 슬라이드 대신 훨씬 작은 플레이스홀더를 보내서 "${fileName}" 저장을 거부했습니다. 기존 슬라이드는 그대로 남아 있으니 다시 시도해 주세요. (의도적으로 짧게 만든 편집이었다면 OD_ARTIFACT_STUB_GUARD=warn 으로 완화할 수 있습니다.)`
-      : `Refused to save "${fileName}" because the model returned a much smaller placeholder instead of the real slide deck. Your existing deck is preserved on disk — retry the request. (If this was a deliberate small edit, relax via OD_ARTIFACT_STUB_GUARD=warn.)`;
+    return formatProjectArtifactRegressionRejectedError(fileName);
   }
 
   if (ACCESS_ERROR_CODES.has(code) || status === 403) {

@@ -305,8 +305,10 @@ describe("ProjectView message loading", () => {
     // (isDeckPatchArtifactType + tryApplyDeckPatchAgainstCurrentDeck) added a
     // ~1.5KB prelude at the top of persistArtifact. Bumped again to 14000
     // chars when the element-patch/deck-patch salvage helpers and the empty
-    // deck-patch → auto-continue routing widened the prelude further.
-    const persistBlock = source.slice(persistStart, persistStart + 14000);
+    // deck-patch → auto-continue routing widened the prelude further, and
+    // once more to 16000 when the client-side artifact-regression pre-write
+    // guard + unified reassurance banner comment landed.
+    const persistBlock = source.slice(persistStart, persistStart + 16000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
