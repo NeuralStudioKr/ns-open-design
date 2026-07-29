@@ -20,6 +20,70 @@ describe("embedDeliverableFilePolicy", () => {
     expect(isEmbedSupportingProjectFile({ name: "slide-01.html" })).toBe(false);
   });
 
+  it("hides root HTML that duplicates a refs/ source basename", () => {
+    const projectFiles = [
+      { name: "refs/drive/canvas.html", path: "refs/drive/canvas.html" },
+      { name: "canvas.html" },
+      { name: "deck.html" },
+    ];
+    expect(
+      isEmbedSupportingProjectFile({ name: "canvas.html" }, { projectFiles }),
+    ).toBe(true);
+    expect(
+      isEmbedSupportingProjectFile({ name: "deck.html" }, { projectFiles }),
+    ).toBe(false);
+    expect(
+      filterEmbedDeliverableProducedFiles(
+        [{ name: "canvas.html" }, { name: "deck.html" }],
+        { slideOnlyMvp: true },
+        { projectFiles },
+      ),
+    ).toEqual([{ name: "deck.html" }]);
+  });
+
+  it("hides root index.html when refs has the same basename", () => {
+    const projectFiles = [
+      { name: "refs/drive/index.html", path: "refs/drive/index.html" },
+      { name: "index.html" },
+      { name: "deck.html" },
+    ];
+    expect(
+      isEmbedSupportingProjectFile({ name: "index.html" }, { projectFiles }),
+    ).toBe(true);
+    expect(
+      isEmbedSupportingProjectFile({ name: "deck.html" }, { projectFiles }),
+    ).toBe(false);
+  });
+
+  it("keeps root deck.html even when refs also has deck.html", () => {
+    const projectFiles = [
+      { name: "refs/drive/deck.html", path: "refs/drive/deck.html" },
+      { name: "deck.html" },
+    ];
+    expect(
+      isEmbedSupportingProjectFile({ name: "deck.html" }, { projectFiles }),
+    ).toBe(false);
+  });
+
+  it("partitions root canvas-source leaks into the supporting bucket", () => {
+    const sections = [
+      ["html", [
+        { name: "deck.html", mtime: 4 },
+        { name: "canvas.html", mtime: 5 },
+      ]],
+      ["references", [{ name: "refs/drive/canvas.html", mtime: 3 }]],
+    ] satisfies readonly DesignFileSection<string, { name: string; mtime: number }>[];
+    const { deliverableSections, supportingFiles } = partitionEmbedDesignFileSections(
+      sections,
+      { slideOnlyMvp: true },
+    );
+    expect(deliverableSections).toEqual([["html", [{ name: "deck.html", mtime: 4 }]]]);
+    expect(supportingFiles.map((f) => f.name)).toEqual([
+      "canvas.html",
+      "refs/drive/canvas.html",
+    ]);
+  });
+
   it("minimizes live tool code streaming for supporting files in slide-only embed", () => {
     expect(
       shouldMinimizeEmbedLiveToolCode({ slideOnlyMvp: true }, "css/deck.css"),

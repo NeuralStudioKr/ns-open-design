@@ -11,6 +11,7 @@ import { useAnalytics } from "../analytics/provider";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
 import {
   filterEmbedDeliverableProducedFiles,
+  isEmbedSupportingProjectFile,
   shouldMinimizeEmbedLiveToolCode,
 } from "../teamver/branding/embedDeliverableFilePolicy";
 import { fetchTeamverDaemon } from "../teamver/teamverDaemonHeaders";
@@ -621,7 +622,7 @@ function AssistantMessageImpl({
               fileOps,
               streaming,
             });
-      return filterEmbedDeliverableProducedFiles(base, { slideOnlyMvp });
+      return filterEmbedDeliverableProducedFiles(base, { slideOnlyMvp }, { projectFiles });
     },
     [blocks, fileOps, message, produced, projectFiles, slideOnlyMvp, streaming],
   );
@@ -630,8 +631,10 @@ function AssistantMessageImpl({
   // message) fall back to the most recently modified HTML in the project so
   // Share / Download still target the deliverable the user just made.
   const nextStepArtifactName = useMemo(
-    () => pickPreviewableArtifact(displayedProduced) ?? pickLatestPreviewableArtifact(projectFiles),
-    [displayedProduced, projectFiles],
+    () =>
+      pickPreviewableArtifact(displayedProduced)
+      ?? pickLatestPreviewableArtifact(projectFiles, { slideOnlyMvp }),
+    [displayedProduced, projectFiles, slideOnlyMvp],
   );
   const pluginActionFolders = useMemo(
     () =>
@@ -1034,10 +1037,19 @@ function pickPreviewableArtifact(files: ProjectFile[]): string | null {
 // most recently modified HTML in the project (the deliverable the user just
 // made / is looking at) rather than whichever HTML happens to be first, which
 // would attach Share/Download to an arbitrary file in a multi-artifact project.
-function pickLatestPreviewableArtifact(files: ProjectFile[]): string | null {
+function pickLatestPreviewableArtifact(
+  files: ProjectFile[],
+  options?: { slideOnlyMvp?: boolean },
+): string | null {
   let latest: ProjectFile | null = null;
   for (const f of files) {
     if (!isPreviewableHtml(f)) continue;
+    if (
+      options?.slideOnlyMvp
+      && isEmbedSupportingProjectFile(f, { projectFiles: files })
+    ) {
+      continue;
+    }
     if (!latest || (f.mtime ?? 0) > (latest.mtime ?? 0)) latest = f;
   }
   return latest ? latest.name : null;

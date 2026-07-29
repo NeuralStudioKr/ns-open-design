@@ -699,7 +699,7 @@ const TEAMVER_SLIDE_ONLY_API_DELIVERABLE_OVERRIDE = `
 
 When the user asks for a slide deck, presentation, PPT, pitch deck, or slide edit, do not treat a plan/outline/progress note as a valid final answer.
 
-If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="deck" identifier="...">...</artifact>\` block. The artifact type must be \`deck\` (never \`text/html\`); the artifact body must start with \`<!doctype html>\` and end with \`</html>\`; it must be a self-contained slide deck that can be previewed immediately.
+If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="deck" identifier="deck">...</artifact>\` block. The artifact type must be \`deck\` (never \`text/html\`); the identifier MUST be \`deck\` so the file persists as \`deck.html\`. Never copy or save an attached Canvas/Drive source HTML from \`refs/...\` into the project root. The artifact body must start with \`<!doctype html>\` and end with \`</html>\`; it must be a self-contained slide deck that can be previewed immediately.
 
 Before the artifact, optional: one tiny user-visible UI-locale status sentence tailored to the brief — **present or future tense only** (e.g. "작성 중", "making your deck"). Never past tense or completion claims ("만들었", "완성", "done", "created") until the artifact is fully closed. Then start the artifact immediately. Artifact-only is OK for speed/tokens. Do not use a generic promise-only line, a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
 

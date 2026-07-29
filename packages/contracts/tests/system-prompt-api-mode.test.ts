@@ -144,7 +144,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('the plan is not the deliverable');
       expect(prompt).toContain('include the complete HTML deck artifact in this same response');
       expect(prompt).toContain('Teamver slide-only API deliverable rule');
-      expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="deck" identifier="...">...</artifact>` block');
+      expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="deck" identifier="deck">...</artifact>` block');
       expect(prompt).toContain('optional: one tiny user-visible UI-locale status sentence tailored to the brief');
       expect(prompt).toContain('optional: one tiny brief-specific UI-locale status sentence');
       expect(prompt).toContain('Stream promptly');
@@ -261,7 +261,7 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       // media is disabled and the deliverable is always an HTML deck).
       expect(prompt).toContain('unified streaming rule');
       expect(prompt).toContain('Teamver slide-only API deliverable rule');
-      expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="deck" identifier="...">...</artifact>` block');
+      expect(prompt).toContain('your same response MUST include exactly one complete `<artifact type="deck" identifier="deck">...</artifact>` block');
       expect(prompt).not.toContain('API mode — BYOK tools available');
     });
   });

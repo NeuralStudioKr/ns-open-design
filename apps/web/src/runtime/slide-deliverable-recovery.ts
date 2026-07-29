@@ -286,7 +286,7 @@ export async function attemptEmergencySlideDeckRecovery(options: {
 
   const nextFiles = await options.refreshProjectFiles();
   let produced = options.computeProducedFiles(options.beforeFileNames, nextFiles) ?? [];
-  let htmlToOpen: string | null = selectAutoOpenProducedHtml(produced)
+  let htmlToOpen: string | null = selectAutoOpenProducedHtml(produced, { projectFiles: nextFiles })
     ?? emergencyPersist?.fileName
     ?? null;
   const verifiedHtmlToOpen = await verifySlideProducedHtmlDeliverable(htmlToOpen, options.readProjectHtml);

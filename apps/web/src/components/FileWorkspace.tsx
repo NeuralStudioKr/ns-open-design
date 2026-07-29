@@ -1578,7 +1578,7 @@ export function FileWorkspace({
     if (!pendingPreviewTab) return null;
     const onDisk = findProjectFileByTabName(activeTab, visibleFiles);
     if (onDisk) return onDisk;
-    const htmlName = selectAutoOpenProducedHtml(visibleFiles);
+    const htmlName = selectAutoOpenProducedHtml(visibleFiles, { projectFiles: visibleFiles });
     if (!htmlName) return null;
     return visibleFiles.find((entry) => entry.name === htmlName) ?? null;
   }, [pendingPreviewTab, activeTab, visibleFiles]);
@@ -1675,7 +1675,7 @@ export function FileWorkspace({
         }
         return;
       }
-      const htmlFallback = selectAutoOpenProducedHtml(visibleFiles);
+      const htmlFallback = selectAutoOpenProducedHtml(visibleFiles, { projectFiles: visibleFiles });
       if (htmlFallback && htmlFallback !== activeTab) {
         openFileReplacing(htmlFallback, activeTab);
         return;

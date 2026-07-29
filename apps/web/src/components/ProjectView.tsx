@@ -906,12 +906,23 @@ function chatAttachmentForProjectFile(file: ProjectFile): ChatAttachment {
   };
 }
 
+function isProjectHtmlFile(file: ProjectFile): boolean {
+  return file.kind === 'html' || /\.html?$/i.test(file.path?.trim() || file.name);
+}
+
+function isCanonicalDeckFileName(fileName: string): boolean {
+  const base = (fileName.split('/').pop() ?? fileName).toLowerCase();
+  return /^deck(?:[-_.].*)?\.html?$/.test(base);
+}
+
 function resolvePrimaryDeckFile(
   files: readonly ProjectFile[],
   entryFile?: string | null,
 ): ProjectFile | null {
   const deliverables = files.filter(
-    (file) => file.kind === 'html' && !isEmbedSupportingProjectFile(file),
+    (file) =>
+      isProjectHtmlFile(file)
+      && !isEmbedSupportingProjectFile(file, { projectFiles: files }),
   );
   if (deliverables.length === 0) return null;
   const preferred = entryFile?.trim();
@@ -921,10 +932,7 @@ function resolvePrimaryDeckFile(
     );
     if (match) return match;
   }
-  const deckNamed = deliverables.find((file) => {
-    const base = (file.name.split('/').pop() ?? file.name).toLowerCase();
-    return /^deck(?:[-_.].*)?\.html?$/.test(base);
-  });
+  const deckNamed = deliverables.find((file) => isCanonicalDeckFileName(file.name));
   if (deckNamed) return deckNamed;
   return selectInitialDesignPreviewFile(deliverables, entryFile ?? null);
 }
@@ -982,7 +990,8 @@ function slideAttachmentDeliverableInstruction(attachments: ChatAttachment[]): s
     SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER,
     'The attached/uploaded files are reference material for this slide deck request.',
     'Read and use them as source content, but do not treat any attachment as the final deliverable.',
-    'Emit ONE complete Teamver compact deck artifact (`<artifact type="deck">`) with one filled `<section class="slide">` per requested slide count '
+    'Do not copy, rename, or save any attachment HTML (including Canvas exports under `refs/...`) into the project root.',
+    'Emit ONE complete Teamver compact deck artifact (`<artifact type="deck" identifier="deck">`) that persists as `deck.html`, with one filled `<section class="slide">` per requested slide count '
     + `(${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), body-first inline styles, and no \`<head>\`, nav, or print scaffolding.`,
     'Do not finish with prose only, do not stop after an outline, and do not stop before `</artifact>`.',
     fileList,
@@ -4419,7 +4428,7 @@ export function ProjectView({
             resolveTurnStartFileBaseline(message.preTurnFileNames, filesSnapshot),
             filesSnapshot,
           ) ?? [];
-      let htmlToOpen = selectAutoOpenProducedHtml(produced)
+      let htmlToOpen = selectAutoOpenProducedHtml(produced, { projectFiles: filesSnapshot })
         ?? selectTouchedHtmlOutputFromEvents(message.events, filesSnapshot, {
           branding: { slideOnlyMvp },
         });
@@ -5444,7 +5453,7 @@ export function ProjectView({
                 }
                 const diff = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
                 let produced = mergeRecoveredArtifact(diff, recoveredExistingArtifact);
-                let producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
+                let producedHtmlToOpen = selectAutoOpenProducedHtml(produced, { projectFiles: nextFiles })
                   ?? selectTouchedHtmlOutputFromEvents(message.events, nextFiles, {
                     branding: { slideOnlyMvp },
                   });
@@ -6542,15 +6551,41 @@ export function ProjectView({
       const runCommentAttachments = userMsg.commentAttachments ?? [];
       runCommentAttachmentsRef.current = runCommentAttachments;
       runVisiblePromptRef.current = stripUserVisibleUserMessageText(prompt).trim();
-      runPersistTargetFileRef.current = resolveCommentEditPersistTargetFileName(
-        runCommentAttachments,
-      );
       const runAttachments = mergeChatAttachments(
         userMsg.attachments ?? [],
         ...runCommentAttachments.map((attachment) =>
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),
       );
+      const commentPersistTarget = resolveCommentEditPersistTargetFileName(
+        runCommentAttachments,
+      );
+      if (commentPersistTarget) {
+        runPersistTargetFileRef.current = commentPersistTarget;
+      } else if (slideOnlyMvp) {
+        // Canvas/Drive source turns must persist as deck.html (or an existing
+        // canonical deck*.html). Never prefer a root leak of refs/*.html —
+        // refs may not be in projectFilesRef yet when the turn starts.
+        const hasRefsHtmlAttachment = runAttachments.some((attachment) => {
+          const path = attachment.path.replace(/\\/g, '/');
+          return path.startsWith('refs/') && /\.html?$/i.test(path);
+        });
+        const existingDeck = resolvePrimaryDeckFile(
+          projectFilesRef.current,
+          project.metadata?.entryFile,
+        );
+        const existingDeckName = existingDeck?.path?.trim() || existingDeck?.name || null;
+        if (hasRefsHtmlAttachment) {
+          runPersistTargetFileRef.current =
+            existingDeckName && isCanonicalDeckFileName(existingDeckName)
+              ? existingDeckName
+              : 'deck.html';
+        } else {
+          runPersistTargetFileRef.current = existingDeckName;
+        }
+      } else {
+        runPersistTargetFileRef.current = null;
+      }
       const selectedAgent =
         config.mode === 'daemon' && config.agentId
           ? agentsById.get(config.agentId)
@@ -6824,7 +6859,7 @@ export function ProjectView({
             if (!isLatestTerminalAutoOpen()) return;
 
             let produced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-            let producedHtmlToOpen = selectAutoOpenProducedHtml(produced)
+            let producedHtmlToOpen = selectAutoOpenProducedHtml(produced, { projectFiles: nextFiles })
               ?? selectTouchedHtmlOutputFromEvents(latestAssistantMsg.events, nextFiles, {
                 branding: { slideOnlyMvp },
               });

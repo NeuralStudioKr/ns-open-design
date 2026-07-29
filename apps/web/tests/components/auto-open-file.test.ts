@@ -168,6 +168,19 @@ describe('decideAutoOpenAfterWrite', () => {
     );
     expect(result).toEqual({ shouldOpen: true, fileName: 'index.html' });
   });
+
+  it('declines root html that duplicates a refs source basename in slide-only embed', () => {
+    const result = decideAutoOpenAfterWrite(
+      'canvas.html',
+      [
+        { name: 'deck.html', path: 'deck.html' },
+        { name: 'canvas.html', path: 'canvas.html' },
+        { name: 'refs/drive/canvas.html', path: 'refs/drive/canvas.html' },
+      ],
+      { branding: { slideOnlyMvp: true } },
+    );
+    expect(result).toEqual({ shouldOpen: false, fileName: null });
+  });
 });
 
 describe('selectAutoOpenProducedHtml', () => {
@@ -194,6 +207,23 @@ describe('selectAutoOpenProducedHtml', () => {
       { name: 'deck.html', path: 'deck.html', kind: 'html', mtime: 10 },
       { name: 'refs/drive/canvas.html', path: 'refs/drive/canvas.html', kind: 'html', mtime: 30 },
     ]);
+
+    expect(result).toBe('deck.html');
+  });
+
+  it('skips root html that duplicates a refs source basename', () => {
+    const projectFiles = [
+      { name: 'deck.html', path: 'deck.html', kind: 'html', mtime: 10 },
+      { name: 'canvas.html', path: 'canvas.html', kind: 'html', mtime: 40 },
+      { name: 'refs/drive/canvas.html', path: 'refs/drive/canvas.html', kind: 'html', mtime: 30 },
+    ];
+    const result = selectAutoOpenProducedHtml(
+      [
+        { name: 'deck.html', path: 'deck.html', kind: 'html', mtime: 10 },
+        { name: 'canvas.html', path: 'canvas.html', kind: 'html', mtime: 40 },
+      ],
+      { projectFiles },
+    );
 
     expect(result).toBe('deck.html');
   });

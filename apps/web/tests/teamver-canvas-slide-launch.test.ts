@@ -37,6 +37,8 @@ describe("canvasSlideLaunch", () => {
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/presentation deck/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/source|not.*deliverable|do NOT use/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/Canvas HTML export or a Drive file/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/identifier="deck"|deck\.html/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/copy|project root|refs/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/artifact type="deck"|compact deck/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/slideCount|requested slide count/i);
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/1920.*1080|fixed/i);

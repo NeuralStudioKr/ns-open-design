@@ -17,13 +17,16 @@ export const CANVAS_CREATE_SLIDES_PLUGIN_ID =
  */
 export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "Build a new presentation deck from the attached source material. " +
-  "The attachment may be a Canvas HTML export or a Drive file; treat it as research/source material only. " +
+  "The attachment may be a Canvas HTML export or a Drive file under `refs/...`; treat it as research/source material only. " +
   "Do NOT use the source file itself as the deliverable, " +
-  "and do not merely rename or lightly restyle it. " +
+  "do not copy/rename/save the source HTML (or any near-copy of it) into the project root, " +
+  "and do not merely lightly restyle the source page. " +
+  "The only HTML deliverable must be a rebuilt slide deck saved as `deck.html` " +
+  "via exactly one `<artifact type=\"deck\" identifier=\"deck\">` (identifier MUST be `deck`). " +
   "Preserve the source structure, headings, callouts, tables, images, and smart blocks " +
   "(FAQ/KPI/timeline); prefer clear slide sectioning over literal page layout. " +
   "Emit ONE complete Teamver compact deck in this same response: " +
-  "`<artifact type=\"deck\">` with one filled `<section class=\"slide\">` per requested slide count " +
+  "`<artifact type=\"deck\" identifier=\"deck\">` with one filled `<section class=\"slide\">` per requested slide count " +
   `(see Plugin inputs slideCount / user brief; ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), ` +
   "body-first inline styles, and no `<head>`, nav, custom slide script, or print scaffolding. " +
   "Each slide must be a fixed 1920×1080 canvas (`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden`) " +

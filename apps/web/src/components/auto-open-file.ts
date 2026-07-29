@@ -100,7 +100,7 @@ export function decideAutoOpenAfterWrite(
     if (moduleFileNames.has(file.name)) {
       return { shouldOpen: false, fileName: null };
     }
-    if (branding && shouldDeclineEmbedAutoOpen(branding, file)) {
+    if (branding && shouldDeclineEmbedAutoOpen(branding, file, { projectFiles: nextFiles })) {
       return { shouldOpen: false, fileName: null };
     }
     return { shouldOpen: true, fileName: file.name };
@@ -158,10 +158,12 @@ function isHtmlPreviewFile(file: CandidateFile): boolean {
 
 export function selectAutoOpenProducedHtml(
   producedFiles: ReadonlyArray<CandidateFile>,
+  options?: { projectFiles?: ReadonlyArray<CandidateFile> },
 ): string | null {
+  const projectFiles = options?.projectFiles ?? producedFiles;
   let selected: CandidateFile | null = null;
   for (const file of producedFiles) {
-    if (isEmbedSupportingProjectFile(file)) continue;
+    if (isEmbedSupportingProjectFile(file, { projectFiles })) continue;
     if (!isHtmlPreviewFile(file)) continue;
     if (!selected) {
       selected = file;
