@@ -35,6 +35,39 @@ describe('coercePlainTextElementPatchBody', () => {
     const parsed = parseElementPatch(body ?? '');
     expect(parsed.ok).toBe(true);
   });
+
+  it('round-trips dom: CSS path target ids that contain ">"', () => {
+    const targetId = 'dom:body > section:nth-of-type(1) > h1:nth-of-type(1)';
+    const body = coercePlainTextElementPatchBody('새 제목', [
+      { targetId, slideIndex: 0 },
+    ]);
+    expect(body).toBeTruthy();
+    const parsed = parseElementPatch(body ?? '');
+    expect(parsed.ok, parsed.ok ? '' : parsed.reason).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.patches[0]).toMatchObject({
+      id: targetId,
+      slideIndex: 0,
+      kind: 'set-text',
+      value: '새 제목',
+    });
+  });
+});
+
+describe('salvageElementPatchBody with dom selectors', () => {
+  it('salvages loose <patch> blocks whose target-id contains ">"', () => {
+    const targetId = 'dom:body > section:nth-of-type(2) > p:nth-of-type(1)';
+    const source = [
+      '수정했습니다.',
+      `<patch target-id="${targetId}" slide-index="1" kind="set-text">본문</patch>`,
+    ].join('\n');
+    const salvaged = salvageElementPatchBody('', source);
+    expect(salvaged).toContain('slide-index="1"');
+    const parsed = parseElementPatch(salvaged ?? '');
+    expect(parsed.ok, parsed.ok ? '' : parsed.reason).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.patches[0]?.id).toBe(targetId);
+  });
 });
 
 describe('resolveElementPatchBodyForApply', () => {

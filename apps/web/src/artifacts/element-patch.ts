@@ -29,7 +29,20 @@ export type ParseElementPatchResult =
   | { ok: true; patches: ElementPatchOp[] }
   | { ok: false; reason: string };
 
-const PATCH_TAG_RE = /<patch\b([^>]*)>([\s\S]*?)<\/patch>/gi;
+/**
+ * Opening-tag attr region that allows `>` inside quoted values.
+ * Comment elementIds are often CSS paths like `dom:body > section:nth-of-type(1) > h1`,
+ * so a naive `[^>]*` cut truncates `target-id` and drops `slide-index`.
+ */
+const PATCH_OPEN_ATTRS_RE = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
+const PATCH_TAG_RE = new RegExp(
+  String.raw`<patch\b(${PATCH_OPEN_ATTRS_RE})>([\s\S]*?)</patch>`,
+  'gi',
+);
+const LOOSE_PATCH_TAG_RE = new RegExp(
+  String.raw`<patch\b${PATCH_OPEN_ATTRS_RE}>[\s\S]*?</patch>`,
+  'gi',
+);
 
 const SUPPORTED_KINDS = new Set([
   'set-text',
@@ -66,7 +79,8 @@ export function salvageElementPatchBody(
   const source = String(sourceText ?? '');
   if (!source.trim()) return null;
 
-  const loosePatches = [...source.matchAll(/<patch\b[^>]*>[\s\S]*?<\/patch>/gi)];
+  LOOSE_PATCH_TAG_RE.lastIndex = 0;
+  const loosePatches = [...source.matchAll(LOOSE_PATCH_TAG_RE)];
   if (loosePatches.length > 0) {
     return loosePatches.map((match) => match[0] ?? '').filter(Boolean).join('\n');
   }
@@ -134,7 +148,18 @@ function escapeXmlAttr(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;');
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'");
 }
 
 function escapeXmlText(value: string): string {
@@ -191,7 +216,7 @@ function parsePatchAttrs(raw: string): Record<string, string> {
   let match: RegExpExecArray | null = re.exec(raw);
   while (match) {
     const key = (match[1] ?? '').trim().toLowerCase();
-    const value = (match[2] ?? match[3] ?? match[4] ?? '').trim();
+    const value = decodeXmlEntities((match[2] ?? match[3] ?? match[4] ?? '').trim());
     if (key) out[key] = value;
     match = re.exec(raw);
   }

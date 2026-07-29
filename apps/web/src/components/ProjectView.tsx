@@ -1321,7 +1321,8 @@ export function deckPatchBodyLooksLikeElementPatch(body: string | null | undefin
   if (/<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')/i.test(source)) {
     return false;
   }
-  return /<patch\b[^>]*>/i.test(source);
+  // Allow ">" inside quoted attrs (dom:body > section… target-ids).
+  return /<patch\b(?:[^>"']|"[^"]*"|'[^']*')*>/i.test(source);
 }
 
 

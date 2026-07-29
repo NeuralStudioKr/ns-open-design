@@ -57,6 +57,31 @@ describe('parseElementPatch', () => {
       value: 'ACME Corp',
     });
   });
+
+  it('parses target-id CSS paths that contain ">" (dom:body selectors)', () => {
+    const targetId = 'dom:body > section:nth-of-type(1) > h1:nth-of-type(1)';
+    // Model / template often emit the raw ">" inside the quoted attr.
+    const rawGt = parseElementPatch(
+      `<patch target-id="${targetId}" slide-index="0" kind="set-text">새 제목</patch>`,
+    );
+    expect(rawGt.ok, rawGt.ok ? '' : rawGt.reason).toBe(true);
+    if (!rawGt.ok) return;
+    expect(rawGt.patches[0]).toMatchObject({
+      slideIndex: 0,
+      id: targetId,
+      kind: 'set-text',
+      value: '새 제목',
+    });
+
+    // Our concrete templates escape ">" as &gt; — both forms must round-trip.
+    const escaped = parseElementPatch(
+      '<patch target-id="dom:body &gt; section:nth-of-type(1) &gt; h1:nth-of-type(1)" slide-index="0" kind="set-text">새 제목</patch>',
+    );
+    expect(escaped.ok, escaped.ok ? '' : escaped.reason).toBe(true);
+    if (!escaped.ok) return;
+    expect(escaped.patches[0]?.id).toBe(targetId);
+    expect(escaped.patches[0]?.slideIndex).toBe(0);
+  });
 });
 
 describe('applyElementPatches', () => {
