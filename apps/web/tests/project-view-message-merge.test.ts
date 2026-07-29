@@ -118,6 +118,8 @@ describe("promptWithSlideCommentEditPatchInstruction", () => {
     expect(prompt).toContain('target-id="hero-title"');
     expect(prompt).toContain('slide-index="2"');
     expect(prompt).toContain('Copy this template and fill in the patch body');
+    expect(prompt).toContain('at least one non-empty `<patch');
+    expect(prompt).toContain('Never emit an empty `<artifact type="element-patch"></artifact>`');
   });
 
   it("nudges the model into the element-patch contract on comment edits", () => {
@@ -131,6 +133,7 @@ describe("promptWithSlideCommentEditPatchInstruction", () => {
     expect(prompt).toContain('target-id="{elementId}"');
     expect(prompt).toContain('slide-index="{N}"');
     expect(prompt).toContain('arbitrary natural-language requests');
+    expect(prompt).toContain('Never answer with a question when a pinned comment target is attached');
     expect(prompt).toContain('<artifact type="deck-patch"');
     expect(prompt).toContain('<artifact type="deck">');
   });
