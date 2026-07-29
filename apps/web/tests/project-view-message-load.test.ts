@@ -405,6 +405,88 @@ describe("ProjectView message loading", () => {
     expect(handleSendBlock).not.toContain("skipDeckHtml: slideOnlyMvp && scopedCommentAttachments.length > 0");
   });
 
+  it("preserves comment scope on manual Continue and Retry (regression: scoped edit lost scope on user-initiated resume)", () => {
+    // Bug (2026-07-29 round-review): the three auto-continue timers
+    // were fixed to pass extractCommentAttachmentsForAutoContinue(...)
+    // as the third handleSend arg, but the manual affordance
+    // handleResumeRun still hardcoded `[]`. A user who clicked
+    // "Continue" after a scoped comment edit failed would see the
+    // retry silently drop scope — deck-patch / full-deck guards fell
+    // silent again and the model was free to rewrite the whole deck.
+    //
+    // Pin the source-level shape of both entry points: manual
+    // Continue must feed the originating user turn's attachments back
+    // through the sendNow-shaped handleSend call. Retry is handled by
+    // the retryTarget spread in handleSend itself (the userMsg
+    // preserves commentAttachments unless explicitly overridden), so
+    // we only source-pin the Continue path.
+    const source = readSource("src/components/ProjectView.tsx");
+
+    const resumeStart = source.indexOf("const handleResumeRun = useCallback");
+    expect(resumeStart).toBeGreaterThan(0);
+    const resumeBlock = source.slice(resumeStart, resumeStart + 800);
+    expect(resumeBlock).toContain("extractCommentAttachmentsForAutoContinue(");
+    expect(resumeBlock).toContain("findPrecedingUserMessage(messagesRef.current, assistantMessage.id)");
+    expect(resumeBlock).toContain("runCommentAttachmentsRef.current");
+    expect(resumeBlock).toContain("RESUME_CONTINUE_PROMPT");
+    expect(resumeBlock).toContain("entryFrom: 'resume_continue'");
+    // Do not pass an empty third arg — that was the regression shape.
+    expect(resumeBlock).not.toMatch(/handleSend\(RESUME_CONTINUE_PROMPT, \[\], \[\],/);
+  });
+
+  it("routes empty deck-patch and salvages misrouted deck/element-patch bodies at the persist gate", () => {
+    // Bug (2026-07-29 round-review): only ONE direction of the
+    // artifact-type salvage was implemented — element-patch bodies
+    // that looked like deck-patch were re-routed, but deck-patch
+    // bodies that looked like element-patch were not, so a model
+    // mis-picking the wrapper still yielded a scary "선택 대상 밖
+    // 변경" banner. Also, empty deck-patch bodies were rejected
+    // immediately instead of being routed to auto-continue like their
+    // empty element-patch siblings, so a scoped run whose model
+    // returned <artifact type="deck-patch"></artifact> could not
+    // recover automatically.
+    //
+    // Pin both routings at the source level so a future refactor
+    // cannot silently drop them.
+    const source = readSource("src/components/ProjectView.tsx");
+
+    // Predicate helpers must exist and stay exported (their tests
+    // live in apps/web/tests/artifact-routing-salvage.test.ts).
+    expect(source).toContain("export function elementPatchBodyLooksLikeDeckPatch");
+    expect(source).toContain("export function deckPatchBodyLooksLikeElementPatch");
+    expect(source).toContain("export function isElementPatchEmptyBody");
+    expect(source).toContain("export function isDeckPatchEmptyBody");
+
+    // deck-patch → element-patch salvage: parse failed + body looks
+    // like element-patch → fall back to element-patch pipeline. This
+    // is the mirror of the existing element-patch → deck-patch route.
+    const deckPatchStart = source.indexOf("async function tryApplyDeckPatchAgainstCurrentDeck");
+    expect(deckPatchStart).toBeGreaterThan(0);
+    const deckPatchBlock = source.slice(deckPatchStart, deckPatchStart + 2400);
+    expect(deckPatchBlock).toContain("deckPatchBodyLooksLikeElementPatch(input.patchBody)");
+    expect(deckPatchBlock).toContain("[deck-patch] body looks like element-patch — falling back");
+    expect(deckPatchBlock).toContain("tryApplyElementPatchesAgainstCurrentDeck({");
+
+    // Empty deck-patch routing: scoped run → skipped-incomplete;
+    // unscoped run → rejected with a specific banner. Mirrors the
+    // empty element-patch policy.
+    const persistStart = source.indexOf("const persistArtifact = useCallback");
+    expect(persistStart).toBeGreaterThan(0);
+    const persistBlock = source.slice(persistStart, persistStart + 14000);
+    expect(persistBlock).toContain(
+      "isDeckPatchEmptyBody(art.html ?? '', merged.reason)",
+    );
+    expect(persistBlock).toContain(
+      "[deck-patch] routing scoped empty deck-patch to auto-continue",
+    );
+    expect(persistBlock).toContain(
+      "[deck-patch] rejecting unscoped empty deck-patch",
+    );
+    expect(persistBlock).toContain(
+      "The model emitted an empty deck-patch artifact on a run without a scoped comment target.",
+    );
+  });
+
   it("self-heals leaked composer streaming markers after terminal turns settle", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("shouldClearPhantomStreamingMarker({");
