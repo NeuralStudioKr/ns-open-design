@@ -930,7 +930,8 @@ function AssistantMessageImpl({
             // The pre-output "initializing" status is surfaced by the footer's
             // shimmering "Preparing…" label instead of its own pill.
             if (b.label === "initializing") return null;
-            const statusDetail = hideAssistantModelLabels ? undefined : b.detail;
+            const statusDetail =
+              b.label === "error" || !hideAssistantModelLabels ? b.detail : undefined;
             return <StatusPill key={i} label={b.label} detail={statusDetail} />;
           }
           return null;

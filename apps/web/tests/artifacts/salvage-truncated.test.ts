@@ -75,6 +75,11 @@ describe("salvageTruncatedHtmlDocument", () => {
         + '<section class="slide"><!-- SLOT: slide 2 content --></section>',
       ),
     ).toBeNull();
+    expect(
+      normalizeBodyFirstHtmlDocument(
+        '<body>슬라이드 초안을 만들고 있어요</body>',
+      ),
+    ).toBeNull();
   });
 
   it("recovers body-first deck tails after prose or an artifact wrapper", () => {

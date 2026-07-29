@@ -39,6 +39,12 @@
  * mid-turn looks like a product failure during demos.
  */
 
+import {
+  documentContainsSlideSection,
+  hasFilledSlideSection,
+  isDeckStatusProseOnlyBody,
+} from './deck-html-content';
+
 const MIN_HTML_LENGTH = 64;
 const STARTS_WITH_DOCUMENT_RE = /^(?:<!doctype\s+html\b|<html\b)/i;
 const RESERVED_PROJECT_PATH_RE = /(?:^|\/|\.\/)(?:\.live-artifacts|\.od|\.tmp)(?=$|[/?#"'`\s>)])/i;
@@ -126,7 +132,11 @@ export function isIncompleteHtmlDocumentShell(content: string): boolean {
 }
 
 function isEffectivelyEmptyHtmlBody(html: string): boolean {
+  if (isDeckStatusProseOnlyBody(html)) return true;
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
+  if (documentContainsSlideSection(withoutComments) && !hasFilledSlideSection(withoutComments)) {
+    return true;
+  }
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);
   const body = bodyMatch ? bodyMatch[1]! : withoutComments;
   const withoutNoise = body

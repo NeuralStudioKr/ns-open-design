@@ -83,4 +83,29 @@ describe('AssistantMessage embed body visibility', () => {
 
     expect(screen.getByText('upstream timeout')).toBeTruthy();
   });
+
+  it('shows error detail in embed when assistant model labels are hidden', () => {
+    render(
+      <AssistantMessage
+        message={{
+          id: 'a-failed',
+          role: 'assistant',
+          content: '',
+          runStatus: 'failed',
+          endedAt: Date.now(),
+          events: [{
+            kind: 'status',
+            label: 'error',
+            detail: '슬라이드 결과물이 생성되지 않았습니다.',
+            code: 'incomplete_output',
+          }],
+        }}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('슬라이드 결과물이 생성되지 않았습니다.')).toBeTruthy();
+  });
 });

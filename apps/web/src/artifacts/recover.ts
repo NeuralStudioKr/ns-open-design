@@ -1,4 +1,5 @@
 import { validateHtmlArtifact } from './validate';
+import { hasSalvageableDeckSlideContent } from './deck-html-content';
 
 type RecoverHtmlArtifactInput = {
   artifactHtml: string;
@@ -19,24 +20,9 @@ const BODY_TAG_RE = /<body\b/gi;
 const SLIDE_SECTION_TAG_RE = /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)/gi;
 const HAS_HTML_CLOSE_RE = /<\/html\s*>/i;
 const HAS_BODY_CLOSE_RE = /<\/body\s*>/i;
-const HAS_MEDIA_CONTENT_RE = /<(?:img|video|audio|canvas|svg|iframe|picture|object|embed)\b/i;
-// Visible text inside a content-ish tag (not merely nested empty containers).
-const HAS_VISIBLE_TEXT_CONTENT_RE =
-  /<(?:h[1-6]|p|li|td|th|dt|dd|blockquote|figcaption|label|button|a|span|strong|em|b|i|code|pre)\b[^>]*>\s*[^<\s][\s\S]*?<\/(?:h[1-6]|p|li|td|th|dt|dd|blockquote|figcaption|label|button|a|span|strong|em|b|i|code|pre)\s*>/i;
 
 function hasSalvageableSlideContent(html: string): boolean {
-  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
-  if (HAS_MEDIA_CONTENT_RE.test(withoutComments)) return true;
-  if (HAS_VISIBLE_TEXT_CONTENT_RE.test(withoutComments)) return true;
-  // Fallback: any non-trivial text node left after stripping tags/scripts/styles.
-  const text = withoutComments
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return text.length >= 8;
+  return hasSalvageableDeckSlideContent(html);
 }
 
 function findLastArtifactOpen(sourceText: string, identifier?: string): number {
