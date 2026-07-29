@@ -146,17 +146,6 @@ function inferDeckTitleFromMessages(messages: readonly ChatMessage[]): string | 
   return null;
 }
 
-function buildStandardSixSlides(topic: string): EmergencySlide[] {
-  return [
-    { title: topic, body: '발표 개요' },
-    { title: '배경 및 문제', body: `${topic}의 핵심 맥락과 해결해야 할 과제를 정리합니다.` },
-    { title: '핵심 메시지', body: '청중이 기억해야 할 한 가지 메시지를 명확히 전달합니다.' },
-    { title: '근거 및 사례', body: '데이터, 사례, 비교를 통해 메시지를 뒷받침합니다.' },
-    { title: '실행 방안', body: '다음 단계와 실행 계획을 구체적으로 제시합니다.' },
-    { title: '마무리', body: '핵심 요약과 다음 행동을 제안합니다.' },
-  ];
-}
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -179,8 +168,12 @@ function renderSlideBody(slide: EmergencySlide, lang: string): string {
 }
 
 /**
- * Synthesize a minimal but valid HTML slide deck from plan/outline prose when
- * the model never shipped a previewable artifact after auto-continue retries.
+ * Build an HTML deck from an explicit slide outline.
+ *
+ * Product rule: never invent a generic six-slide skeleton from thin prose —
+ * that path previously marked junk decks as succeeded and blocked auto-continue.
+ * Callers that need a deliverable after a failed model turn must salvage
+ * model-authored HTML or retry; they must not call this with progress chatter.
  */
 export function buildEmergencySlideDeckFromOutline(
   outlineText: string,
@@ -189,21 +182,13 @@ export function buildEmergencySlideDeckFromOutline(
   const source = String(outlineText || '').trim();
   if (!source) return null;
 
-  let slides = extractSlideOutlineItems(source);
+  const slides = extractSlideOutlineItems(source);
+  // Require a real multi-slide outline. Thin progress text used to fall through
+  // to buildStandardSixSlides() and ship placeholder copy as a "success".
+  if (slides.length < 3) return null;
+
   const lang = options?.lang || (/[가-힣]/.test(source) ? 'ko' : 'en');
   const topic = options?.deckTitle?.trim() || inferTopicFromText(source) || (lang === 'ko' ? '발표 자료' : 'Presentation');
-
-  if (slides.length < 2) {
-    slides = buildStandardSixSlides(topic);
-  } else if (slides.length < 6) {
-    while (slides.length < 6) {
-      slides.push({
-        title: lang === 'ko' ? '추가 슬라이드' : 'Additional slide',
-        body: lang === 'ko' ? '세부 내용을 보완하세요.' : 'Add supporting details here.',
-      });
-    }
-  }
-
   const deckTitle = options?.deckTitle?.trim() || slides[0]?.title || topic;
   const sections = slides
     .map((slide) => {

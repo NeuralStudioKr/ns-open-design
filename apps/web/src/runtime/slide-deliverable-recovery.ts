@@ -1,10 +1,7 @@
 import type { Artifact, ChatMessage, ProjectFile } from '../types';
 import { selectAutoOpenProducedHtml } from '../components/auto-open-file';
 import type { computeProducedFiles as computeProducedFilesFn } from '../produced-files';
-import {
-  buildEmergencyArtifactFromMessages,
-  EMERGENCY_DECK_FALLBACK_STATUS_CODE,
-} from '../artifacts/emergency-deck';
+import { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from '../artifacts/emergency-deck';
 import { recoverBestHtmlDocumentFromText } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
 import { resolveLastSubstantiveAssistantMessageId } from './conversation-message-dedupe';
@@ -251,16 +248,62 @@ export function canFireAutoContinueForConversation(
 }
 
 /**
- * Emergency deck salvage synthesizes a full `<artifact type="deck">` from
- * streamed text or outline prose. That path must never run for scoped
- * preview-comment edits — it rewrites the whole deck (often changing slide
- * count) and collides with the scoped full-deck guard after an empty
+ * Emergency recovery may persist a salvaged full deck from the stream.
+ * That path must never run for scoped preview-comment edits — rewriting the
+ * whole deck collides with the scoped full-deck guard after an empty
  * element-patch already routed the turn to auto-continue.
  */
 export function shouldSkipEmergencySlideDeckRecoveryForScopedCommentEdit(
   commentAttachmentCount: number,
 ): boolean {
   return commentAttachmentCount > 0;
+}
+
+/**
+ * Collect stream texts that might still contain a model-authored HTML deck
+ * the terminal persist path missed (truncated close, unclosed artifact, etc.).
+ */
+export function collectEmergencyHtmlSalvageTexts(options: {
+  finalText?: string | null;
+  outlineMessages?: readonly ChatMessage[];
+}): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (value: string | null | undefined) => {
+    const text = String(value || '').trim();
+    if (!text || seen.has(text)) return;
+    seen.add(text);
+    out.push(text);
+  };
+  push(options.finalText);
+  for (const message of options.outlineMessages ?? []) {
+    if (message.role !== 'assistant') continue;
+    push(message.content);
+    for (const event of message.events ?? []) {
+      if ((event.kind === 'text' || event.kind === 'thinking') && typeof event.text === 'string') {
+        push(event.text);
+      }
+    }
+  }
+  return out;
+}
+
+/** Recover model-authored HTML only — never synthesize a skeleton outline deck. */
+export function recoverEmergencyDeckHtmlFromStream(options: {
+  finalText?: string | null;
+  outlineMessages?: readonly ChatMessage[];
+}): string | null {
+  for (const text of collectEmergencyHtmlSalvageTexts(options)) {
+    const recovered = recoverBestHtmlDocumentFromText(text);
+    if (
+      recovered
+      && validateHtmlArtifact(recovered).ok
+      && !isIncompleteHtmlDocumentShell(recovered)
+    ) {
+      return recovered;
+    }
+  }
+  return null;
 }
 
 export async function attemptEmergencySlideDeckRecovery(options: {
@@ -294,21 +337,23 @@ export async function attemptEmergencySlideDeckRecovery(options: {
     return { recovered: false, produced: [], htmlToOpen: null };
   }
 
-  const recoveredHtml = recoverBestHtmlDocumentFromText(options.finalText);
-  const emergencyArtifact = recoveredHtml
-    ? {
-        identifier: 'deck',
-        artifactType: 'deck',
-        title: 'deck',
-        html: recoveredHtml,
-      } satisfies Artifact
-    : buildEmergencyArtifactFromMessages(
-      options.outlineMessages,
-      options.finalText,
-    );
-  if (!emergencyArtifact) {
+  // Critical product rule: never invent a low-quality outline skeleton and mark
+  // the run succeeded. That short-circuited auto-continue and shipped junk decks
+  // (e.g. "을 만들고 있어요" / "발표 개요"). Only persist HTML the model already
+  // authored in the stream; otherwise let auto-continue / incomplete_output run.
+  const recoveredHtml = recoverEmergencyDeckHtmlFromStream({
+    finalText: options.finalText,
+    outlineMessages: options.outlineMessages,
+  });
+  if (!recoveredHtml) {
     return { recovered: false, produced: [], htmlToOpen: null };
   }
+  const emergencyArtifact = {
+    identifier: 'deck',
+    artifactType: 'deck',
+    title: 'deck',
+    html: recoveredHtml,
+  } satisfies Artifact;
 
   const emergencyPersist = await options.persistArtifact(
     emergencyArtifact,
@@ -326,12 +371,11 @@ export async function attemptEmergencySlideDeckRecovery(options: {
     ?? emergencyPersist?.fileName
     ?? null;
   const verifiedHtmlToOpen = await verifySlideProducedHtmlDeliverable(htmlToOpen, options.readProjectHtml);
-  // The emergency artifact is synthesized locally and already passed
-  // validateHtmlArtifact before persist. In S3 / registry-backed staging,
-  // refresh/read can lag the successful write by a beat; treating that as
-  // unrecovered drops the user into an incomplete_output error even though
-  // persistArtifact returned success. Prefer verified disk HTML when present,
-  // but trust the successful persist result as a preview target fallback.
+  // Salvaged HTML already passed validateHtmlArtifact before persist. In S3 /
+  // registry-backed staging, refresh/read can lag the successful write by a
+  // beat; treating that as unrecovered drops the user into incomplete_output
+  // even though persistArtifact returned success. Prefer verified disk HTML
+  // when present, but trust the successful persist result as a preview target.
   htmlToOpen = verifiedHtmlToOpen ?? emergencyPersist?.fileName ?? null;
   if (
     htmlToOpen

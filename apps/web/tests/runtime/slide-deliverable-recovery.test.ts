@@ -367,7 +367,8 @@ describe('attemptEmergencySlideDeckRecovery', () => {
     expect(persistArtifact).not.toHaveBeenCalled();
   });
 
-  it('trusts a successful emergency persist even when immediate read verification lags', async () => {
+  it('does not synthesize an outline skeleton when the stream has no model HTML', async () => {
+    const persistArtifact = vi.fn();
     const result = await attemptEmergencySlideDeckRecovery({
       slideOnlyMvp: true,
       producedHtmlToOpen: null,
@@ -388,6 +389,34 @@ describe('attemptEmergencySlideDeckRecovery', () => {
         },
       ],
       finalText: '슬라이드 구성을 바탕으로 덱을 준비했습니다.',
+      projectFiles: [],
+      beforeFileNames: [],
+      startedAt: 1,
+      persistArtifact,
+      refreshProjectFiles: async () => [],
+      readProjectHtml: async () => null,
+      computeProducedFiles: () => [],
+    });
+
+    expect(result.recovered).toBe(false);
+    expect(persistArtifact).not.toHaveBeenCalled();
+  });
+
+  it('trusts a successful HTML salvage persist even when immediate read verification lags', async () => {
+    const html = [
+      '<!doctype html><html lang="ko"><body>',
+      '<section class="slide"><h1>표지</h1><p>개요</p></section>',
+      '<section class="slide"><h2>배경</h2><p>문제 정의</p></section>',
+      '</body></html>',
+    ].join('');
+    const result = await attemptEmergencySlideDeckRecovery({
+      slideOnlyMvp: true,
+      producedHtmlToOpen: null,
+      outlineMessages: [
+        { id: 'u1', role: 'user', content: 'AI 도입 효과 발표 자료 만들어줘', createdAt: 1 },
+        { id: 'a1', role: 'assistant', content: html, createdAt: 2 },
+      ],
+      finalText: html,
       projectFiles: [],
       beforeFileNames: [],
       startedAt: 1,

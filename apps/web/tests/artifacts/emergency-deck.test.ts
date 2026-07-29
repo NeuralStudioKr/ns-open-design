@@ -54,27 +54,24 @@ describe('buildEmergencySlideDeckFromOutline', () => {
     expect(html!.length).toBeGreaterThan(256);
   });
 
-  it('falls back to a standard six-slide deck when outline is thin', () => {
+  it('refuses thin prose instead of inventing a six-slide skeleton', () => {
     const html = buildEmergencySlideDeckFromOutline(
       '기업 AI 도입 효과에 대한 프레젠테이션을 만들어 주세요.',
       { deckTitle: 'AI 도입 효과' },
     );
-    expect(html).toContain('<section class="slide">');
-    expect((html!.match(/<section class="slide">/g) || []).length).toBeGreaterThanOrEqual(6);
+    expect(html).toBeNull();
   });
 
   it('does not use progress prose as the cover title', () => {
     const html = buildEmergencySlideDeckFromOutline(
       'NeuralStudio 회사 소개 덱을 Retro Windows 스타일로 만들고 있어요.\n발표 개요를 정리합니다.',
     );
-    expect(html).toBeTruthy();
-    expect(html).not.toContain('<h1>을 만들고 있어요</h1>');
-    expect(html).not.toContain('스타일로 만들고 있어요');
+    expect(html).toBeNull();
   });
 });
 
 describe('buildEmergencyArtifactFromMessages', () => {
-  it('prefers the user URL request for the emergency deck title', () => {
+  it('refuses progress-only assistant turns without a real outline or HTML', () => {
     const messages = [
       {
         id: 'u1',
@@ -90,9 +87,6 @@ describe('buildEmergencyArtifactFromMessages', () => {
       },
     ] as ChatMessage[];
 
-    const artifact = buildEmergencyArtifactFromMessages(messages);
-    expect(artifact?.html).toBeTruthy();
-    expect(artifact!.html).toContain('Neuralstudio 회사 소개');
-    expect(artifact!.html).not.toContain('<h1>을 만들고 있어요</h1>');
+    expect(buildEmergencyArtifactFromMessages(messages)).toBeNull();
   });
 });

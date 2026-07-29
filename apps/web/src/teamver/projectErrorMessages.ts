@@ -248,11 +248,11 @@ export function formatAutoContinueIncompleteOutputNotice(): string {
     : "The deliverable is incomplete — trying an automatic continue…";
 }
 
-/** Shown when a client-side outline deck is synthesized after auto-continue exhausts. */
+/** Shown when truncated/streamed model HTML was salvaged and persisted. */
 export function formatEmergencyDeckFallbackNotice(): string {
   return isTeamverEmbedMode()
-    ? "모델 응답이 완료되지 않아 목차 기반 초안 슬라이드를 자동 생성했습니다. 내용을 확인한 뒤 수정하세요."
-    : "The model did not finish — a draft deck was generated from the outline. Review and edit as needed.";
+    ? "응답이 중간에 끊겨 생성된 HTML을 복구해 저장했습니다. 내용을 확인해 주세요."
+    : "The stream ended early — recovered HTML from the response was saved. Please review.";
 }
 
 /** Resolve structured proxy/daemon error codes when `err.code` was not set. */

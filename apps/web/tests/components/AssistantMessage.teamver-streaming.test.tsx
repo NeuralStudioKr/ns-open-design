@@ -429,9 +429,9 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.getByText('Waiting for first output')).toBeTruthy();
   });
 
-  it('shows emergency draft warning detail in embed (not a bare error pill)', () => {
+  it('shows emergency HTML salvage warning detail in embed (not a bare error pill)', () => {
     const notice =
-      '모델 응답이 완료되지 않아 목차 기반 초안 슬라이드를 자동 생성했습니다. 내용을 확인한 뒤 수정하세요.';
+      '응답이 중간에 끊겨 생성된 HTML을 복구해 저장했습니다. 내용을 확인해 주세요.';
     const { container } = render(
       <AssistantMessage
         message={{
@@ -470,7 +470,7 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(container.querySelector('[data-status="warning"]')).not.toBeNull();
     expect(container.querySelector('.status-label')?.textContent).toBe('안내');
     expect(container.querySelector('.status-detail')?.textContent).toContain(
-      '목차 기반 초안 슬라이드',
+      '생성된 HTML을 복구해 저장했습니다',
     );
   });
 });

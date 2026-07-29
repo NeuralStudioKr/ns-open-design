@@ -7440,7 +7440,17 @@ export function ProjectView({
 
               let emergencyRecovered = false;
               let emergencyProduced = produced;
-              if (slideOnlyMvp && !producedHtmlToOpen && !emergencyRecovered) {
+              // Only salvage model-authored HTML from the stream. Never synthesize
+              // a skeleton outline deck here — that used to mark junk as succeeded
+              // and skip auto-continue. If salvage misses, fall through to retry.
+              const streamLooksLikeHtmlDeliverable =
+                /<!doctype\s+html|<html\b|<body\b|<section\b[^>]*\bslide\b|<artifact\b/i
+                  .test(rawFinalText);
+              if (
+                slideOnlyMvp
+                && !producedHtmlToOpen
+                && streamLooksLikeHtmlDeliverable
+              ) {
                 const outlineMessages = retryTarget
                   ? [...historyBase, latestAssistantMsg]
                   : [...historyBase, userMsg, latestAssistantMsg];
