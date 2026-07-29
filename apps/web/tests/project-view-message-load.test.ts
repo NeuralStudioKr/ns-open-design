@@ -73,7 +73,7 @@ describe("ProjectView message loading", () => {
     const autoOpenStart = source.indexOf("const autoOpenRecoveredHtmlOutput = useCallback");
     expect(autoOpenStart).toBeGreaterThan(0);
     const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 1700);
-    expect(autoOpenBlock).toContain("selectAutoOpenProducedHtml(produced)");
+    expect(autoOpenBlock).toContain("selectAutoOpenProducedHtml(produced, { projectFiles: filesSnapshot })");
     expect(autoOpenBlock).toContain("selectTouchedHtmlOutputFromEvents(message.events, filesSnapshot");
     expect(autoOpenBlock).toContain("branding: { slideOnlyMvp }");
 
@@ -303,8 +303,10 @@ describe("ProjectView message loading", () => {
     expect(persistStart).toBeGreaterThan(0);
     // Bumped window from 5200 to 7000 chars when the deck-patch interceptor
     // (isDeckPatchArtifactType + tryApplyDeckPatchAgainstCurrentDeck) added a
-    // ~1.5KB prelude at the top of persistArtifact.
-    const persistBlock = source.slice(persistStart, persistStart + 12000);
+    // ~1.5KB prelude at the top of persistArtifact. Bumped again to 14000
+    // chars when the element-patch/deck-patch salvage helpers and the empty
+    // deck-patch → auto-continue routing widened the prelude further.
+    const persistBlock = source.slice(persistStart, persistStart + 14000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");

@@ -1194,7 +1194,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
  * routing the same body through `tryApplyDeckPatchAgainstCurrentDeck`
  * instead of rejecting the whole edit as a parse failure.
  */
-function elementPatchBodyLooksLikeDeckPatch(body: string | null | undefined): boolean {
+export function elementPatchBodyLooksLikeDeckPatch(body: string | null | undefined): boolean {
   const source = String(body ?? '');
   if (!source.trim()) return false;
   return /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')/i.test(
@@ -1216,11 +1216,42 @@ function isCommentEditIntentViolation(code: ScopedDeckPersistFailureCode | undef
   return code === 'comment_edit_intent_violated';
 }
 
-function isElementPatchEmptyBody(reason: string): boolean {
+export function isElementPatchEmptyBody(reason: string): boolean {
   return (
     reason === 'empty element-patch body' ||
     reason === 'no <patch> blocks in element-patch body'
   );
+}
+
+/**
+ * True when a `<artifact type="deck-patch">` body carries no
+ * `<section class="slide">` blocks at all — the wrapper is present
+ * but there is nothing to merge. Equivalent to the empty
+ * element-patch case; for a scoped comment run we treat this as an
+ * incomplete deliverable and route to auto-continue instead of a
+ * scary "선택 대상 밖 변경" banner.
+ */
+export function isDeckPatchEmptyBody(body: string, reason: string): boolean {
+  if (reason !== 'no <section class="slide"> blocks in deck-patch body') return false;
+  const trimmed = String(body ?? '').trim();
+  if (!trimmed) return true;
+  return !/<patch\b/i.test(trimmed);
+}
+
+/**
+ * True when the deck-patch parse failed and the body actually looks
+ * like element-patch content (contains `<patch>` blocks and no
+ * `<section class="slide">` wrapper). Symmetric to
+ * `elementPatchBodyLooksLikeDeckPatch` — covers the reverse model
+ * glitch where the artifact type is off-by-one for the content shape.
+ */
+export function deckPatchBodyLooksLikeElementPatch(body: string | null | undefined): boolean {
+  const source = String(body ?? '');
+  if (!source.trim()) return false;
+  if (/<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*')/i.test(source)) {
+    return false;
+  }
+  return /<patch\b[^>]*>/i.test(source);
 }
 
 
@@ -1234,6 +1265,27 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
 }): Promise<DeckPatchMergeResult> {
   const parsed = parseDeckPatch(input.patchBody);
   if (!parsed.ok) {
+    // Symmetric salvage: the model wrapped element-patch content
+    // (a list of `<patch>` blocks) in a `deck-patch` artifact by
+    // mistake. Route the same body through the element-patch
+    // pipeline so we still narrow to the comment target instead of
+    // failing with a scary "선택 대상 밖 변경" banner. Mirrors the
+    // `elementPatchBodyLooksLikeDeckPatch` salvage in
+    // `tryApplyElementPatchesAgainstCurrentDeck`.
+    if (deckPatchBodyLooksLikeElementPatch(input.patchBody)) {
+      console.warn('[deck-patch] body looks like element-patch — falling back', {
+        fileName: input.fileName,
+        parseReason: parsed.reason,
+      });
+      return await tryApplyElementPatchesAgainstCurrentDeck({
+        projectId: input.projectId,
+        fileName: input.fileName,
+        patchBody: input.patchBody,
+        allowedSlideIndexes: input.allowedSlideIndexes,
+        commentAttachments: input.commentAttachments,
+        instructionText: input.instructionText,
+      });
+    }
     console.warn('[deck-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
     return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
   }
@@ -3634,6 +3686,34 @@ export function ProjectView({
               reason: merged.reason,
             });
             return { kind: 'skipped-incomplete', fileName: targetFileName };
+          }
+          // Empty deck-patch body — model chose deck-patch contract
+          // but produced no <section class="slide"> blocks. Route
+          // scoped runs to auto-continue (retry will retain the same
+          // comment scope). For unscoped runs an empty deck-patch is
+          // unrecoverable via retry, so surface it clearly.
+          const runIsScoped = persistCommentAttachments.length > 0;
+          if (
+            merged.code === 'deck_patch_parse_failed' &&
+            isDeckPatchEmptyBody(art.html ?? '', merged.reason)
+          ) {
+            if (runIsScoped) {
+              console.warn('[deck-patch] routing scoped empty deck-patch to auto-continue', {
+                fileName: targetFileName,
+                reason: merged.reason,
+              });
+              return { kind: 'skipped-incomplete', fileName: targetFileName };
+            }
+            console.warn('[deck-patch] rejecting unscoped empty deck-patch', {
+              fileName: targetFileName,
+              reason: merged.reason,
+            });
+            return {
+              kind: 'rejected',
+              fileName: targetFileName,
+              reason:
+                'The model emitted an empty deck-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.',
+            };
           }
           return {
             kind: 'scope-rejected',
@@ -8345,9 +8425,20 @@ export function ProjectView({
   // run_created / run_finished can quantify how often resume fires and whether
   // it recovers (the whole point is to show the mechanism lowers failure rate).
   const handleResumeRun = useCallback(
-    (_assistantMessage: ChatMessage) => {
+    (assistantMessage: ChatMessage) => {
       if (currentConversationActionDisabled) return;
-      void handleSend(RESUME_CONTINUE_PROMPT, [], [], { entryFrom: 'resume_continue' });
+      // Preserve the failed run's comment scope on manual "Continue"
+      // just like the auto-continue paths do. Without this, a user
+      // who clicks Continue after a scoped comment edit failed
+      // sends the retry as an unscoped run — the deck-patch scope
+      // guards go silent and the model can rewrite the whole deck.
+      const resumeCommentAttachments = extractCommentAttachmentsForAutoContinue(
+        findPrecedingUserMessage(messagesRef.current, assistantMessage.id),
+        runCommentAttachmentsRef.current,
+      );
+      void handleSend(RESUME_CONTINUE_PROMPT, [], resumeCommentAttachments, {
+        entryFrom: 'resume_continue',
+      });
     },
     [currentConversationActionDisabled, handleSend],
   );
