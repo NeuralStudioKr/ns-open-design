@@ -51,7 +51,11 @@ export {
   targetTextPreservedInPatchedSlide,
 } from '../edit-mode/scoped-deck-patch';
 import { validateCommentEditIntentRespected } from '../edit-mode/comment-edit-intent';
-import { applyManualEditPatch, readManualEditStyles } from '../edit-mode/source-patches';
+import {
+  applyManualEditPatch,
+  readManualEditStyles,
+  resolveManualEditTargetReference,
+} from '../edit-mode/source-patches';
 import { buildManualEditCommentFastPath } from './manualEditCommentFastPath';
 import {
   clearPendingArtifactWrite,
@@ -1279,8 +1283,32 @@ async function tryApplyCommentEditFastPathAgainstCurrentDeck(input: {
     const editScope = typeof attachment.slideIndex === 'number'
       ? { slideIndex: attachment.slideIndex }
       : undefined;
-    const currentStyles = readManualEditStyles(html, attachment.elementId, editScope);
-    const fastPath = buildManualEditCommentFastPath({ attachment, currentStyles });
+    const targetHint = {
+      id: attachment.elementId,
+      instructionText: attachment.comment || input.instructionText || '',
+      ...(attachment.selector ? { selector: attachment.selector } : {}),
+      ...(attachment.currentText ? { currentText: attachment.currentText } : {}),
+      ...(attachment.htmlHint ? { htmlHint: attachment.htmlHint } : {}),
+    };
+    const resolvedElementId = resolveManualEditTargetReference(
+      html,
+      attachment.elementId,
+      editScope,
+      targetHint,
+    );
+    const fastPathAttachment: ChatCommentAttachment = resolvedElementId
+      ? {
+          ...attachment,
+          elementId: resolvedElementId,
+          comment: attachment.comment.trim() || input.instructionText?.trim() || attachment.comment,
+        }
+      : attachment;
+    const currentStyles = readManualEditStyles(
+      html,
+      fastPathAttachment.elementId,
+      editScope,
+    );
+    const fastPath = buildManualEditCommentFastPath({ attachment: fastPathAttachment, currentStyles });
     if (!fastPath) {
       // Log the miss but keep going — a compound comment set might
       // still have OTHER attachments the parser recognises. Only

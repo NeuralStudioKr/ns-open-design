@@ -569,7 +569,9 @@ describe("ProjectView message loading", () => {
     // returned empty. The salvage sets effectiveArt and skips the
     // scope-rejected return branch.
     expect(source).toContain("tryApplyCommentEditFastPathAgainstCurrentDeck");
-    expect(source).toContain("import { applyManualEditPatch, readManualEditStyles } from '../edit-mode/source-patches'");
+    expect(source).toContain("resolveManualEditTargetReference");
+    expect(source).toContain("const resolvedElementId = resolveManualEditTargetReference(");
+    expect(source).toContain("elementId: resolvedElementId");
     expect(source).toContain("import { buildManualEditCommentFastPath } from './manualEditCommentFastPath'");
     expect(source).toContain("applied scoped comment fast-path after failed model artifact");
     expect(source).toContain("salvagedByFastPath");

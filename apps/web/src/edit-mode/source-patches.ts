@@ -158,6 +158,32 @@ export function readManualEditOuterHtml(
   return (doc ? findEditableElement(doc, id, scope)?.outerHTML : '') ?? '';
 }
 
+export function resolveManualEditTargetReference(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+  hint?: ManualEditMergeTargetHint,
+): string | null {
+  const doc = parseSource(source);
+  if (!doc) return null;
+  const normalizedId = String(id || '').trim();
+  const root = findScopedRoot(doc, scope);
+  if (!root) return null;
+  const target = normalizedId
+    ? findEditableElement(doc, normalizedId, scope, hint)
+    : hint
+      ? findEditableElementBySelector(doc, root, hint.selector) ?? findElementByHint(doc, scope, hint)
+      : null;
+  if (!target) return null;
+  const stableId =
+    target.getAttribute('data-od-id') ||
+    target.getAttribute('data-od-runtime-id') ||
+    target.getAttribute('data-od-source-path');
+  if (stableId?.trim()) return stableId.trim();
+  const selector = String(hint?.selector || '').trim();
+  return selector ? `dom:${selector}` : normalizedId || null;
+}
+
 export function maskManualEditTargets(
   source: string,
   ids: readonly string[],

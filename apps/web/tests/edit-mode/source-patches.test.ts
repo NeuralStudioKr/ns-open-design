@@ -11,6 +11,7 @@ import {
   readManualEditFields,
   readManualEditOuterHtml,
   readManualEditStyles,
+  resolveManualEditTargetReference,
 } from '../../src/edit-mode/source-patches';
 
 const baseSource = `<!doctype html>
@@ -254,6 +255,40 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('<p>Scoped DOM target</p>');
     expect(applyManualEditPatch(source, { kind: 'set-text', id, value: 'Wrong slide' }, { slideIndex: 0 }).ok)
       .toBe(false);
+  });
+
+  it('resolves selector-only comment targets inside the selected slide', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><h2 data-od-id="slide-0-title" style="font-size:20px">Slide one</h2></section>',
+      '<section class="slide" data-slide-index="1"><h2 data-od-id="slide-1-title" style="font-size:24px">Slide two</h2></section>',
+      '</body></html>',
+    ].join('');
+
+    const resolved = resolveManualEditTargetReference(
+      source,
+      '',
+      { slideIndex: 1 },
+      {
+        selector: 'h2',
+        currentText: 'Slide two',
+        instructionText: '폰트 더 크게하자',
+        htmlHint: '<h2>Slide two</h2>',
+      },
+    );
+
+    expect(resolved).toBe('slide-1-title');
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-style', id: resolved ?? '', styles: { fontSize: '30px' } },
+      { slideIndex: 1 },
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    expect(readManualEditStyles(result.source, 'slide-0-title', { slideIndex: 0 }).fontSize)
+      .toBe('20px');
+    expect(readManualEditStyles(result.source, 'slide-1-title', { slideIndex: 1 }).fontSize)
+      .toBe('30px');
   });
 
   it('limits deck comment fast-path patches to the selected slide scope', () => {
