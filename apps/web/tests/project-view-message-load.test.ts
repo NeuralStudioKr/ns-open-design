@@ -247,13 +247,14 @@ describe("ProjectView message loading", () => {
     // preservation block. Keep just enough head-room; the block
     // still asserts the same ordering contract, only over slightly
     // more source.
-    const block = source.slice(start, start + 8000);
+    const block = source.slice(start, start + 9000);
 
     expect(block).toContain("AUTO_CONTINUE_STATUS_CODE");
     expect(block).toContain("syncAutoContinueCountFromMessages(");
     expect(block).toContain("findIncompleteSlideAssistantForRecovery(");
     expect(block).toContain("pendingAutoContinueConversationIdRef.current === activeConversationId");
     expect(block).toContain("attemptEmergencySlideDeckRecovery(");
+    expect(block).toContain("scopedCommentAttachmentCount:");
     expect(block).toContain("canFireAutoContinueForConversation(autoContinueCount)");
     expect(block).toContain("formatAutoContinueIncompleteOutputNotice()");
     expect(block).toContain("appendErrorStatusEvent(");
@@ -385,6 +386,7 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("resolveAutoContinuePrompt");
     expect(autoOpenBlock).toContain("renderCommentAttachmentContext(autoContinueCommentAttachments)");
     expect(autoOpenBlock).toContain("scopedCommentContext");
+    expect(autoOpenBlock).toContain("scopedCommentAttachmentCount:");
     expect(autoOpenBlock).toContain("extractAutoContinueContextFromAssistant");
     expect(autoOpenBlock).toContain("isLiveLocalStreamBlockingAutoContinue({");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_ENTRY_FROM");
@@ -696,6 +698,19 @@ describe("ProjectView message loading", () => {
     expect(source).toContain(
       "The model emitted an empty element-patch artifact on a run without a scoped comment target.",
     );
+  });
+
+  it("skips emergency deck salvage for scoped preview-comment edits", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("scopedCommentAttachmentCount:");
+    expect(source).toContain("terminalAutoContinueCommentAttachments");
+    expect(source).toContain("recoveryCommentAttachments");
+  });
+
+  it("routes scoped full-deck rewrite diff failures to auto-continue", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("scopeResult.code === 'full_deck_diff_failed'");
+    expect(source).toContain("routing scoped full-deck rewrite to auto-continue");
   });
 
   it("routes empty element-patch responses through auto-continue instead of the scope banner", () => {

@@ -3002,9 +3002,14 @@ export function ProjectView({
                   incompleteAssistant.preTurnFileNames,
                   filesForRecovery,
                 );
+                const recoveryCommentAttachments = extractCommentAttachmentsForAutoContinue(
+                  findPrecedingUserMessage(mergedMessages, incompleteAssistant.id),
+                  null,
+                );
                 const emergency = await attemptEmergencySlideDeckRecovery({
                   slideOnlyMvp,
                   producedHtmlToOpen: null,
+                  scopedCommentAttachmentCount: recoveryCommentAttachments.length,
                   outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
                   finalText: incompleteAssistant.content,
                   projectFiles: filesForRecovery,
@@ -3752,6 +3757,23 @@ export function ProjectView({
           commentAttachments: persistCommentAttachments,
         });
         if (!scopeResult.ok) {
+          // Model emitted a full deck on a scoped comment turn (often after
+          // auto-continue). Salvage via emergency recovery would hit the same
+          // guard — route to scoped auto-continue instead of a hard
+          // scope-rejected banner that reads like "you edited the wrong slide".
+          const runIsScoped = persistCommentAttachments.length > 0;
+          if (runIsScoped && scopeResult.code === 'full_deck_diff_failed') {
+            console.warn('[deck-patch] routing scoped full-deck rewrite to auto-continue', {
+              fileName: targetFileName,
+              code: scopeResult.code,
+              reason: scopeResult.reason,
+            });
+            return {
+              kind: 'skipped-incomplete',
+              fileName: targetFileName,
+              reason: scopeResult.reason,
+            };
+          }
           return {
             kind: 'scope-rejected',
             fileName: targetFileName,
@@ -6218,9 +6240,14 @@ export function ProjectView({
               incompleteAssistant.preTurnFileNames,
               nextFiles,
             );
+            const recoveryCommentAttachments = extractCommentAttachmentsForAutoContinue(
+              findPrecedingUserMessage(mergedMessages, incompleteAssistant.id),
+              null,
+            );
             const emergency = await attemptEmergencySlideDeckRecovery({
               slideOnlyMvp,
               producedHtmlToOpen: null,
+              scopedCommentAttachmentCount: recoveryCommentAttachments.length,
               outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
               finalText: incompleteAssistant.content,
               projectFiles: nextFiles,
@@ -7232,6 +7259,10 @@ export function ProjectView({
 
               let emergencyRecovered = false;
               let emergencyProduced = produced;
+              const terminalAutoContinueCommentAttachments = extractCommentAttachmentsForAutoContinue(
+                retryTarget?.userMsg ?? userMsg,
+                runCommentAttachmentsRef.current,
+              );
               if (slideOnlyMvp && !producedHtmlToOpen) {
                 const outlineMessages = retryTarget
                   ? [...historyBase, latestAssistantMsg]
@@ -7239,6 +7270,7 @@ export function ProjectView({
                 const emergency = await attemptEmergencySlideDeckRecovery({
                   slideOnlyMvp,
                   producedHtmlToOpen,
+                  scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
                   outlineMessages,
                   finalText: rawFinalText,
                   projectFiles: nextFiles,
@@ -7383,10 +7415,7 @@ export function ProjectView({
                   const autoContinueMessages = retryTarget
                     ? [...historyBase, latestAssistantMsg]
                     : [...historyBase, userMsg, latestAssistantMsg];
-                  const autoContinueCommentAttachments = extractCommentAttachmentsForAutoContinue(
-                    retryTarget?.userMsg ?? userMsg,
-                    runCommentAttachmentsRef.current,
-                  );
+                  const autoContinueCommentAttachments = terminalAutoContinueCommentAttachments;
                   const scopedCommentContext =
                     autoContinueCommentAttachments.length > 0
                       ? renderCommentAttachmentContext(autoContinueCommentAttachments)

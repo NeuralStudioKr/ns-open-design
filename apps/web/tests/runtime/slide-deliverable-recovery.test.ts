@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatMessage } from '../../src/types';
 import {
@@ -16,6 +16,7 @@ import {
   syncAutoContinueCountFromMessages,
   verifySlideProducedHtmlDeliverable,
   attemptEmergencySlideDeckRecovery,
+  shouldSkipEmergencySlideDeckRecoveryForScopedCommentEdit,
 } from '../../src/runtime/slide-deliverable-recovery';
 
 const INCOMPLETE_SHELL = '<!doctype html><html><head><meta charset="utf-8"></head><body></body>';
@@ -327,7 +328,45 @@ describe('resolveSlideProducedHtmlToOpen', () => {
   });
 });
 
+describe('shouldSkipEmergencySlideDeckRecoveryForScopedCommentEdit', () => {
+  it('skips emergency salvage when preview comments pin element scope', () => {
+    expect(shouldSkipEmergencySlideDeckRecoveryForScopedCommentEdit(0)).toBe(false);
+    expect(shouldSkipEmergencySlideDeckRecoveryForScopedCommentEdit(1)).toBe(true);
+  });
+});
+
 describe('attemptEmergencySlideDeckRecovery', () => {
+  it('does not salvage when scoped comment attachments are present', async () => {
+    const persistArtifact = vi.fn();
+    const result = await attemptEmergencySlideDeckRecovery({
+      slideOnlyMvp: true,
+      producedHtmlToOpen: null,
+      scopedCommentAttachmentCount: 1,
+      outlineMessages: [
+        { id: 'u1', role: 'user', content: 'edit headline', createdAt: 1 },
+        {
+          id: 'a1',
+          role: 'assistant',
+          content:
+            '<artifact type="deck" identifier="deck"><!doctype html><html><body>'
+            + '<section class="slide"><h1>Title</h1></section></body></html></artifact>',
+          createdAt: 2,
+        },
+      ],
+      finalText: 'done',
+      projectFiles: [],
+      beforeFileNames: [],
+      startedAt: 1,
+      persistArtifact,
+      refreshProjectFiles: async () => [],
+      readProjectHtml: async () => null,
+      computeProducedFiles: () => [],
+    });
+
+    expect(result.recovered).toBe(false);
+    expect(persistArtifact).not.toHaveBeenCalled();
+  });
+
   it('trusts a successful emergency persist even when immediate read verification lags', async () => {
     const result = await attemptEmergencySlideDeckRecovery({
       slideOnlyMvp: true,

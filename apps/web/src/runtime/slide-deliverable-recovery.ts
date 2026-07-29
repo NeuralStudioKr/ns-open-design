@@ -250,9 +250,24 @@ export function canFireAutoContinueForConversation(
   return autoContinueCount < maxPerConversation;
 }
 
+/**
+ * Emergency deck salvage synthesizes a full `<artifact type="deck">` from
+ * streamed text or outline prose. That path must never run for scoped
+ * preview-comment edits — it rewrites the whole deck (often changing slide
+ * count) and collides with the scoped full-deck guard after an empty
+ * element-patch already routed the turn to auto-continue.
+ */
+export function shouldSkipEmergencySlideDeckRecoveryForScopedCommentEdit(
+  commentAttachmentCount: number,
+): boolean {
+  return commentAttachmentCount > 0;
+}
+
 export async function attemptEmergencySlideDeckRecovery(options: {
   slideOnlyMvp: boolean;
   producedHtmlToOpen: string | null;
+  /** When > 0, skip salvage — scoped comment edits must retry via element-patch. */
+  scopedCommentAttachmentCount?: number;
   outlineMessages: readonly ChatMessage[];
   finalText?: string | null;
   projectFiles: readonly ProjectFile[];
@@ -269,6 +284,13 @@ export async function attemptEmergencySlideDeckRecovery(options: {
   computeProducedFiles: typeof computeProducedFilesFn;
 }): Promise<EmergencySlideDeckRecoveryResult> {
   if (!options.slideOnlyMvp || options.producedHtmlToOpen) {
+    return { recovered: false, produced: [], htmlToOpen: null };
+  }
+  if (
+    shouldSkipEmergencySlideDeckRecoveryForScopedCommentEdit(
+      options.scopedCommentAttachmentCount ?? 0,
+    )
+  ) {
     return { recovered: false, produced: [], htmlToOpen: null };
   }
 
