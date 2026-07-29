@@ -125,6 +125,7 @@ async def import_canvas_html(
     artifact_id: str,
     filename: str | None = None,
     revision: str | None = None,
+    workspace_id: str | None = None,
     od_daemon: OdDaemonClient | None = None,
 ) -> CanvasImportResult:
     session_id = session_id.strip()
@@ -133,6 +134,9 @@ async def import_canvas_html(
         raise BadRequestError("canvas_session_required")
     if not artifact_id:
         raise BadRequestError("canvas_artifact_required")
+    # Prefer caller active workspace (request X-Workspace-Id); fall back to
+    # project.workspace_id for older call sites / tests.
+    export_workspace = (workspace_id or project.workspace_id or "").strip() or None
 
     try:
         await asyncio.wait_for(_IMPORT_REQUEST_LIMITER.acquire(), timeout=IMPORT_QUEUE_WAIT_SECONDS)
@@ -154,7 +158,7 @@ async def import_canvas_html(
                 access_token=access_token,
                 session_id=session_id,
                 artifact_id=artifact_id,
-                workspace_id=project.workspace_id,
+                workspace_id=export_workspace,
                 destination=temp_path,
                 max_bytes=MAX_IMPORT_BYTES,
             )

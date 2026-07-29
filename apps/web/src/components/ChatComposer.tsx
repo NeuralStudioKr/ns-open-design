@@ -71,12 +71,8 @@ import { TeamverCanvasSlideLaunchModal, type TeamverCanvasSlideLaunchSource } fr
 import {
   consumeTeamverDriveLaunchHandoff,
   readTeamverDriveLaunchHandoffAssets,
-  readTeamverDriveLaunchIntent,
 } from '../teamver/driveLaunchHandoff';
-import {
-  consumeTeamverCanvasLaunchHandoff,
-  readTeamverCanvasLaunchHandoff,
-} from '../teamver/canvasLaunchHandoff';
+import { consumeTeamverCanvasLaunchHandoff } from '../teamver/canvasLaunchHandoff';
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
@@ -85,6 +81,7 @@ import {
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
   driveCreateSlidesSourceBrief,
+  readTeamverCreateSlidesLaunchFromUrl,
   resolveCanvasSlideTemplate,
   type CanvasSlideQuickSettings,
 } from '../teamver/canvasSlideLaunch';
@@ -646,11 +643,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         const trimmed = workspaceId.trim();
         setTeamverWorkspaceId(trimmed || null);
         // Drop in-flight import UI so asset picks from the previous tenant
-        // cannot be attached after the switch.
+        // cannot be attached after the switch. Re-bind create-slides from URL —
+        // clearing without re-read leaves the modal permanently closed when
+        // `allowed` stays true across workspace bootstrap.
         setDriveImportOpen(false);
         setDriveLaunchAssets([]);
-        setCanvasSlideLaunch(null);
         setCanvasSlideLaunchError(null);
+        setCanvasSlideLaunch(readTeamverCreateSlidesLaunchFromUrl());
         setDriveImportPartial(null);
       });
       return () => {
@@ -670,26 +669,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           /* ignore */
         }
       }
-      const canvasHandoff = readTeamverCanvasLaunchHandoff();
-      if (canvasHandoff) {
-        // Consume only after confirm success or cancel (§5.6) — not on detect —
-        // so StrictMode remount / cancel-before-confirm does not lose the handoff.
+      const createSlides = readTeamverCreateSlidesLaunchFromUrl();
+      if (createSlides) {
+        // Keep URL params until confirm/cancel (same as Canvas handoff).
         setCanvasSlideLaunchError(null);
-        setCanvasSlideLaunch({ kind: "canvas", handoff: canvasHandoff });
+        setCanvasSlideLaunch(createSlides);
         return;
       }
       const assets = readTeamverDriveLaunchHandoffAssets();
       if (assets.length === 0) return;
-      const intent = readTeamverDriveLaunchIntent();
       consumeTeamverDriveLaunchHandoff();
-      if (intent === 'create-slides') {
-        setCanvasSlideLaunchError(null);
-        setCanvasSlideLaunch({ kind: "drive", asset: assets[0]! });
-        return;
-      }
       setDriveLaunchAssets(assets);
       setDriveImportOpen(true);
-    }, [teamverDriveImportAllowed, projectId]);
+    }, [teamverDriveImportAllowed, projectId, teamverWorkspaceId]);
     const rememberRecentDir = useCallback(async (dir: string) => {
       setRecentDirs((prev) => [dir, ...prev.filter((d) => d !== dir)].slice(0, 5));
       const persisted = await pushRecentLinkedDir(dir);
@@ -1783,6 +1775,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           });
         }
         const sourceBrief = driveCreateSlidesSourceBrief(asset);
+        consumeTeamverDriveLaunchHandoff();
         setCanvasSlideLaunch(null);
         setCanvasSlideLaunchError(null);
         setCanvasSlideUserPrompt('');
@@ -3040,6 +3033,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               if (!canvasSlideLaunchBusy) {
                 if (canvasSlideLaunch.kind === "canvas") {
                   consumeTeamverCanvasLaunchHandoff();
+                } else {
+                  consumeTeamverDriveLaunchHandoff();
                 }
                 setCanvasSlideLaunch(null);
                 setCanvasSlideLaunchError(null);

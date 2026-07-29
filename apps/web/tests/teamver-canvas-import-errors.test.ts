@@ -10,6 +10,7 @@ describe("formatCanvasImportErrorForUser", () => {
   it("maps stable canvas_* codes", () => {
     expect(formatCanvasImportErrorForUser("canvas_export_forbidden")).toContain("권한");
     expect(formatCanvasImportErrorForUser("canvas_import_busy")).toContain("많");
+    expect(formatCanvasImportErrorForUser("canvas_export_not_found")).toContain("작업공간");
   });
 
   it("maps bare HTTP status strings from SDK", () => {

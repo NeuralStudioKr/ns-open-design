@@ -676,6 +676,9 @@ async def import_project_canvas_html(
     if row is None:
         raise NotFoundError("project_not_found")
     _ensure_project_access(row, auth)
+    # Active request workspace (X-Workspace-Id) — Main scopes canvas sessions by
+    # this header; must match project.workspace_id via _ensure_project_ownership.
+    workspace_id = require_workspace_context(auth)
 
     access_token = await _resolve_drive_mutation_access_token(request, auth)
     result = await import_canvas_html(
@@ -685,6 +688,7 @@ async def import_project_canvas_html(
         artifact_id=body.artifact_id,
         filename=body.filename,
         revision=body.revision,
+        workspace_id=workspace_id,
     )
     return ImportCanvasProjectResponse(
         project_id=result.project_id,

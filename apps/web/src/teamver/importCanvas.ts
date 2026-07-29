@@ -130,7 +130,8 @@ export function formatCanvasImportErrorForUser(code: string): string {
     canvas_session_required: "캔버스 세션 정보가 없습니다.",
     canvas_artifact_required: "캔버스 문서 정보가 없습니다.",
     canvas_export_forbidden: "이 캔버스에 접근할 권한이 없습니다.",
-    canvas_export_not_found: "캔버스를 찾을 수 없습니다. 삭제되었거나 이동되었을 수 있습니다.",
+    canvas_export_not_found:
+      "캔버스를 찾을 수 없습니다. 작업공간이 다르거나 문서가 삭제·이동되었을 수 있습니다. 캔버스와 같은 작업공간인지 확인한 뒤 다시 시도하세요.",
     canvas_export_timeout: "캔버스 내보내기가 시간 초과되었습니다 — 다시 시도해 주세요.",
     canvas_export_too_large: "캔버스가 너무 큽니다. 이미지를 줄이거나 내용을 나눈 뒤 다시 시도하세요.",
     canvas_export_failed: "캔버스 HTML을 만들지 못했습니다.",

@@ -128,16 +128,14 @@ import {
   TeamverCanvasSlideLaunchModal,
   type TeamverCanvasSlideLaunchSource,
 } from '../teamver/components/TeamverCanvasSlideLaunchModal';
-import {
-  consumeTeamverCanvasLaunchHandoff,
-  readTeamverCanvasLaunchHandoff,
-} from '../teamver/canvasLaunchHandoff';
+import { consumeTeamverCanvasLaunchHandoff } from '../teamver/canvasLaunchHandoff';
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
+  readTeamverCreateSlidesLaunchFromUrl,
   resolveCanvasSlideTemplate,
   driveCreateSlidesSourceBrief,
   type CanvasSlideQuickSettings,
@@ -146,7 +144,6 @@ import { useCanvasSlideLaunchTemplates } from '../teamver/hooks/useCanvasSlideLa
 import {
   consumeTeamverDriveLaunchHandoff,
   readTeamverDriveLaunchHandoffAssets,
-  readTeamverDriveLaunchIntent,
 } from '../teamver/driveLaunchHandoff';
 import type { PetTaskSummary } from './pet/PetOverlay';
 
@@ -404,8 +401,11 @@ export function HomeView({
       setTeamverWorkspaceId(trimmed || null);
       setDriveImportOpen(false);
       setStagedDriveAssets([]);
-      setCanvasSlideLaunch(null);
+      // Do not permanently drop create-slides — workspace bootstrap often fires
+      // while `allowed` stays true, so the handoff effect would not re-run.
+      // Re-bind from URL (params stay until confirm/cancel).
       setCanvasSlideLaunchError(null);
+      setCanvasSlideLaunch(readTeamverCreateSlidesLaunchFromUrl());
     });
     return () => {
       cancelled = true;
@@ -427,21 +427,17 @@ export function HomeView({
   // so one-confirm must boot here (§5.6 / docs 42).
   useEffect(() => {
     if (!teamverDriveImportAllowed) return;
-    const canvasHandoff = readTeamverCanvasLaunchHandoff();
-    if (canvasHandoff) {
+    const createSlides = readTeamverCreateSlidesLaunchFromUrl();
+    if (createSlides) {
+      // Keep URL params until confirm/cancel — consume-on-detect lost Drive
+      // handoff when workspace bootstrap cleared modal state.
       setCanvasSlideLaunchError(null);
-      setCanvasSlideLaunch({ kind: 'canvas', handoff: canvasHandoff });
+      setCanvasSlideLaunch(createSlides);
       return;
     }
     const assets = readTeamverDriveLaunchHandoffAssets();
     if (assets.length === 0) return;
-    const intent = readTeamverDriveLaunchIntent();
     consumeTeamverDriveLaunchHandoff();
-    if (intent === 'create-slides') {
-      setCanvasSlideLaunchError(null);
-      setCanvasSlideLaunch({ kind: 'drive', asset: assets[0]! });
-      return;
-    }
     setStagedDriveAssets((prev) => {
       const seen = new Set(prev.map((item) => item.assetId));
       const next = [...prev];
@@ -454,7 +450,7 @@ export function HomeView({
       return next;
     });
     setDriveImportOpen(true);
-  }, [teamverDriveImportAllowed]);
+  }, [teamverDriveImportAllowed, teamverWorkspaceId]);
   const [workingDir, setWorkingDir] = useState<string | null>(null);
   // Token paired with `workingDir` when picked through the desktop host's
   // native dialog. Spent on the post-creation working-dir POST so the
@@ -1881,6 +1877,7 @@ export function HomeView({
         setCanvasSlideLaunchError(formatDriveImportErrorForUser('drive_import_failed'));
         return;
       }
+      consumeTeamverDriveLaunchHandoff();
       setCanvasSlideLaunch(null);
       setCanvasSlideLaunchError(null);
       setCanvasSlideUserPrompt('');
@@ -2258,6 +2255,8 @@ export function HomeView({
             if (!canvasSlideLaunchBusy) {
               if (canvasSlideLaunch.kind === 'canvas') {
                 consumeTeamverCanvasLaunchHandoff();
+              } else {
+                consumeTeamverDriveLaunchHandoff();
               }
               setCanvasSlideLaunch(null);
               setCanvasSlideLaunchError(null);

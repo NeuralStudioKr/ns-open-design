@@ -6,6 +6,8 @@ import {
   consumeTeamverCanvasLaunchHandoff,
   readTeamverCanvasLaunchHandoff,
 } from "../src/teamver/canvasLaunchHandoff";
+import { readTeamverCreateSlidesLaunchFromUrl } from "../src/teamver/canvasSlideLaunch";
+import { buildTeamverDriveLaunchHandoffQuery } from "../src/teamver/driveLaunchHandoff";
 
 describe("canvasLaunchHandoff", () => {
   afterEach(() => {
@@ -54,5 +56,42 @@ describe("canvasLaunchHandoff", () => {
     consumeTeamverCanvasLaunchHandoff();
     expect(window.location.search).toBe("");
     expect(readTeamverCanvasLaunchHandoff()).toBeNull();
+  });
+});
+
+describe("readTeamverCreateSlidesLaunchFromUrl", () => {
+  afterEach(() => {
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("prefers Canvas T2 handoff without consuming URL params", () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/?teamverCanvasSessionId=s1&teamverCanvasArtifactId=a1&teamverDriveIntent=create-slides",
+    );
+    expect(readTeamverCreateSlidesLaunchFromUrl()).toEqual({
+      kind: "canvas",
+      handoff: expect.objectContaining({ sessionId: "s1", artifactId: "a1" }),
+    });
+    expect(window.location.search).toContain("teamverCanvasSessionId=s1");
+  });
+
+  it("reads Drive create-slides handoff without consuming URL params", () => {
+    const q = buildTeamverDriveLaunchHandoffQuery(
+      [{ assetId: "AST-1", filename: "brief.pdf", mimeType: "application/pdf" }],
+      { intent: "create-slides" },
+    );
+    window.history.replaceState({}, "", `/${q}`);
+    expect(readTeamverCreateSlidesLaunchFromUrl()).toEqual({
+      kind: "drive",
+      asset: {
+        assetId: "AST-1",
+        filename: "brief.pdf",
+        mimeType: "application/pdf",
+      },
+    });
+    expect(window.location.search).toContain("teamverDriveAssetId=AST-1");
+    expect(window.location.search).toContain("teamverDriveIntent=create-slides");
   });
 });

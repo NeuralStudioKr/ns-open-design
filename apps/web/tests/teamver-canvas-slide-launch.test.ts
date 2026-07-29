@@ -282,4 +282,17 @@ describe("canvasSlideLaunch", () => {
     expect(daemon).toContain("pluginInputs?: Record<string, unknown>;");
     expect(daemon).toContain("{ pluginInputs }");
   });
+
+  it("rebinds create-slides from URL after workspace bootstrap instead of dropping the modal", () => {
+    const home = readWebSource("src/components/HomeView.tsx");
+    const composer = readWebSource("src/components/ChatComposer.tsx");
+    for (const source of [home, composer]) {
+      expect(source).toContain("readTeamverCreateSlidesLaunchFromUrl()");
+      expect(source).toContain("teamverWorkspaceId");
+      // Must not consume Drive create-slides on detect (only regular attach).
+      expect(source).not.toMatch(
+        /consumeTeamverDriveLaunchHandoff\(\);\s*\n\s*if \(intent === ['"]create-slides['"]\)/,
+      );
+    }
+  });
 });

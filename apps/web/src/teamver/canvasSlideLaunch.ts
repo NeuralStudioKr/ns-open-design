@@ -2,9 +2,35 @@ import { defaultScenarioPluginIdForKind, type InstalledPluginRecord } from "@ope
 import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from "../runtime/deckGuidance";
 import { listPluginsPage } from "../state/projects";
 import type { TeamverDriveImportAsset } from "./importDriveAssets";
-import type { TeamverDriveLaunchIntent } from "./driveLaunchHandoff";
-import type { TeamverCanvasLaunchHandoff } from "./canvasLaunchHandoff";
+import {
+  readTeamverDriveLaunchHandoff,
+  readTeamverDriveLaunchIntent,
+  type TeamverDriveLaunchIntent,
+} from "./driveLaunchHandoff";
+import {
+  readTeamverCanvasLaunchHandoff,
+  type TeamverCanvasLaunchHandoff,
+} from "./canvasLaunchHandoff";
 import { localizePluginTitle } from "../components/plugins-home/localization";
+
+/** Canvas / Drive → create-slides one-confirm source read from the URL. */
+export type TeamverCreateSlidesLaunchSource =
+  | { kind: "drive"; asset: TeamverDriveImportAsset }
+  | { kind: "canvas"; handoff: TeamverCanvasLaunchHandoff };
+
+/**
+ * Read create-slides handoff without consuming URL params.
+ * Workspace bootstrap often clears modal state while `allowed` stays true —
+ * callers must re-read from the URL after workspace settle.
+ */
+export function readTeamverCreateSlidesLaunchFromUrl(): TeamverCreateSlidesLaunchSource | null {
+  const canvasHandoff = readTeamverCanvasLaunchHandoff();
+  if (canvasHandoff) return { kind: "canvas", handoff: canvasHandoff };
+  if (readTeamverDriveLaunchIntent() !== "create-slides") return null;
+  const asset = readTeamverDriveLaunchHandoff();
+  if (!asset) return null;
+  return { kind: "drive", asset };
+}
 
 /** Deck scenario for Canvas / Drive → create-slides (not od-default). */
 export const CANVAS_CREATE_SLIDES_PLUGIN_ID =
