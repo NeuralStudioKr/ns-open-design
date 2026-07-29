@@ -985,4 +985,112 @@ describe("agent-prose-sanitize SSOT", () => {
     for (const ch of input) guard.feed(ch);
     expect(guard.flush()).toBe("");
   });
+
+  // Root-cause regression suite for the element-patch body loss on
+  // 2026-07-29. Multiple staging conversations landed on
+  // "terminalPersistResultKind=skipped-incomplete reason=empty
+  // element-patch body" because the sanitizer's pseudo-tool strip
+  // (PSEUDO_TOOL_TAG_NAMES + LEAKED_AGENT_PROSE_TAG_NAMES +
+  // CLOSED_INTERNAL_MARKUP_FAMILY_RE, which all match `<patch>`) was
+  // chewing through `<artifact type="element-patch">…<patch …>…</patch>…
+  // </artifact>` bodies as if they were file-edit pseudo-tool markup.
+  // The fix masks closed `<artifact>` regions BEFORE any strip and
+  // restores them AFTER the entire chain completes.
+  describe("preserves <patch> tags inside <artifact type=\"element-patch\">", () => {
+    const ELEMENT_PATCH_INPUT = [
+      "Here's the edit:",
+      "",
+      "<artifact type=\"element-patch\" identifier=\"deck\">",
+      "  <patch target-id=\"path-1-2\" slide-index=\"1\" kind=\"set-text\">회사 이름</patch>",
+      "  <patch target-id=\"path-1-3\" slide-index=\"1\" kind=\"set-style\">{\"fontWeight\":\"700\"}</patch>",
+      "</artifact>",
+    ].join("\n");
+
+    it("sanitizeLeakedAgentProse keeps <patch> in streaming mode (preserveClosedArtifact: true)", () => {
+      const out = sanitizeLeakedAgentProse(ELEMENT_PATCH_INPUT, { preserveClosedArtifact: true });
+      expect(out).toContain("<patch target-id=\"path-1-2\" slide-index=\"1\" kind=\"set-text\">회사 이름</patch>");
+      expect(out).toContain("<patch target-id=\"path-1-3\" slide-index=\"1\" kind=\"set-style\">");
+      // Artifact wrapper is preserved verbatim in streaming mode.
+      expect(out).toContain("<artifact type=\"element-patch\" identifier=\"deck\">");
+      expect(out).toContain("</artifact>");
+    });
+
+    it("sanitizeAssistantProseForDisplay streaming keeps <patch> inside artifact", () => {
+      const out = sanitizeAssistantProseForDisplay(ELEMENT_PATCH_INPUT, { streaming: true });
+      expect(out).toContain("<patch target-id=\"path-1-2\"");
+      expect(out).toContain("</patch>");
+    });
+
+    it("sanitizeAssistantProseForDisplay finalize still drops the whole artifact (existing display contract)", () => {
+      // Finalize mode strips closed artifacts entirely — display layers
+      // never render an <artifact> block, they render the persisted
+      // file preview. The <patch> preservation fix must not accidentally
+      // resurrect the artifact wrapper on the finalized display path.
+      const out = sanitizeAssistantProseForDisplay(ELEMENT_PATCH_INPUT);
+      expect(out).not.toContain("<artifact");
+      expect(out).not.toContain("<patch");
+      expect(out).toContain("Here's the edit:");
+    });
+
+    it("still scrubs genuine pseudo-tool <patch> narration OUTSIDE <artifact>", () => {
+      // A Claude-style file-edit pseudo-tool `<patch>` that leaked into
+      // chat prose (not wrapped in an artifact) MUST still get stripped
+      // — the fix only preserved bodies inside `<artifact>`, not every
+      // `<patch>` everywhere.
+      const input = [
+        "I'll apply the edit:",
+        "",
+        "<patch>",
+        "<file>styles.css</file>",
+        "<old>.foo { color: red }</old>",
+        "<new>.foo { color: blue }</new>",
+        "</patch>",
+        "",
+        "Done.",
+      ].join("\n");
+      const out = sanitizeLeakedAgentProse(input, { preserveClosedArtifact: true });
+      expect(out).not.toContain("<patch>");
+      expect(out).not.toContain("<file>styles.css</file>");
+      expect(out).toContain("I'll apply the edit:");
+      expect(out).toContain("Done.");
+    });
+
+    it("does not leak the internal placeholder token", () => {
+      const out = sanitizeLeakedAgentProse(ELEMENT_PATCH_INPUT, { preserveClosedArtifact: true });
+      expect(out).not.toContain("OD_ARTIFACT_MASK_");
+      const outFinalized = sanitizeLeakedAgentProse(ELEMENT_PATCH_INPUT);
+      expect(outFinalized).not.toContain("OD_ARTIFACT_MASK_");
+    });
+
+    it("preserves multiple sibling <artifact> bodies without cross-contaminating restore indexes", () => {
+      const input = [
+        "First edit:",
+        "<artifact type=\"element-patch\" identifier=\"deck\">",
+        "  <patch target-id=\"a\" slide-index=\"0\" kind=\"set-text\">alpha</patch>",
+        "</artifact>",
+        "",
+        "Second edit:",
+        "<artifact type=\"deck-patch\" identifier=\"deck\">",
+        "  <section class=\"slide\" data-slide-index=\"1\">beta</section>",
+        "</artifact>",
+      ].join("\n");
+      const out = sanitizeLeakedAgentProse(input, { preserveClosedArtifact: true });
+      expect(out).toContain("<patch target-id=\"a\" slide-index=\"0\" kind=\"set-text\">alpha</patch>");
+      expect(out).toContain("<section class=\"slide\" data-slide-index=\"1\">beta</section>");
+    });
+
+    it("createStreamingAssistantProseGuard also preserves <patch> across chunk boundaries", () => {
+      // The daemon uses the streaming guard on each SSE delta. Feed
+      // the input one character at a time to simulate the smallest
+      // possible chunks; the guard must NOT strip <patch> from within
+      // an artifact body regardless of where the chunk boundary falls.
+      const guard = createStreamingAssistantProseGuard({ preserveOpenArtifact: true });
+      let accumulated = "";
+      for (const ch of ELEMENT_PATCH_INPUT) {
+        accumulated += guard.feed(ch);
+      }
+      accumulated += guard.flush();
+      expect(accumulated).toContain("<patch target-id=\"path-1-2\"");
+    });
+  });
 });

@@ -953,6 +953,47 @@ function stripClosedTagFamilies(input: string, tagNames: readonly string[]): str
   return out;
 }
 
+const CLOSED_ARTIFACT_SCAN_RE = /<artifact\b[^>]*>[\s\S]*?<\/artifact\s*>/gi;
+const ARTIFACT_PLACEHOLDER_PREFIX = "\u0000OD_ARTIFACT_MASK_";
+const ARTIFACT_PLACEHOLDER_SUFFIX = "\u0000";
+
+/**
+ * Replace every closed `<artifact …>…</artifact>` region with a stable
+ * placeholder token so subsequent tag / debris scrubbing cannot touch
+ * their contents. The returned `restore` swaps placeholders back to
+ * the original bodies verbatim.
+ *
+ * The placeholder uses NUL bytes to guarantee it will not collide
+ * with either the input prose or any regex pattern in this module.
+ * Callers must invoke `restore` before returning the sanitized text
+ * or the placeholders will leak into user-visible output.
+ */
+function maskClosedArtifactRegions(
+  input: string,
+): { text: string; restore: (masked: string) => string } {
+  CLOSED_ARTIFACT_SCAN_RE.lastIndex = 0;
+  const regions: string[] = [];
+  const masked = input.replace(CLOSED_ARTIFACT_SCAN_RE, (match) => {
+    const token = `${ARTIFACT_PLACEHOLDER_PREFIX}${regions.length}${ARTIFACT_PLACEHOLDER_SUFFIX}`;
+    regions.push(match);
+    return token;
+  });
+  if (regions.length === 0) {
+    return { text: input, restore: (out: string) => out };
+  }
+  const restore = (out: string): string => {
+    return out.replace(
+      new RegExp(`${ARTIFACT_PLACEHOLDER_PREFIX}(\\d+)${ARTIFACT_PLACEHOLDER_SUFFIX}`, "g"),
+      (_full, indexRaw: string) => {
+        const index = Number(indexRaw);
+        if (!Number.isInteger(index) || index < 0 || index >= regions.length) return "";
+        return regions[index] ?? "";
+      },
+    );
+  };
+  return { text: masked, restore };
+}
+
 function stripOrphanCloseTagFamilies(input: string, tagNames: readonly string[]): string {
   let out = input;
   for (const tagName of tagNames) {
@@ -970,11 +1011,47 @@ export function sanitizeLeakedAgentProse(
 ): string {
   if (!input) return input;
   let out = input;
+  // Element-patch artifacts embed `<patch target-id="…" slide-index="…"
+  // kind="…">…</patch>` blocks inside their body. `<patch>` is ALSO listed
+  // in FILE_OPERATION_PSEUDO_TOOL_TAG_NAMES so Claude-style file-edit
+  // narration is scrubbed from chat prose — but that strip also chews
+  // through the element-patch body when it runs unconditionally.
+  //
+  // Empirically the model was emitting a well-formed element-patch, the
+  // sanitizer was stripping every `<patch>` block inside it, and by the
+  // time `parseElementPatch` looked at the body it saw only whitespace
+  // between `<artifact type="element-patch">` and `</artifact>`. The
+  // downstream error surfaced as `terminalPersistResultKind=skipped-
+  // incomplete reason=empty element-patch body`, which was reproduced
+  // reliably on staging conversations.
+  //
+  // Mask every closed `<artifact …>…</artifact>` region behind
+  // placeholders BEFORE any tag-family strip runs. Multiple patterns
+  // (PSEUDO_TOOL_TAG_NAMES, LEAKED_AGENT_PROSE_TAG_NAMES,
+  // CLOSED_INTERNAL_MARKUP_FAMILY_RE, and the "patch" keyword inside
+  // INTERNAL_MARKUP_KEYWORDS) would otherwise chew through the
+  // element-patch body (which embeds `<patch target-id="…" slide-index="…"
+  // kind="…">…</patch>` blocks), leaving the artifact body empty and
+  // producing `terminalPersistResultKind=skipped-incomplete
+  // reason=empty element-patch body` downstream.
+  //
+  // Mask BEFORE the strip chain, restore AFTER the entire chain
+  // completes. The strip still runs on prose OUTSIDE artifacts so
+  // genuine pseudo-tool `<patch>` narration keeps getting scrubbed.
+  const { text: masked, restore: restoreArtifacts } = maskClosedArtifactRegions(out);
+  out = masked;
   out = stripClosedTagFamilies(out, PSEUDO_TOOL_TAG_NAMES);
   // While streaming, keep closed <artifact> blocks so the live HTML parser can
   // receive the final body bytes + </artifact>. Display layers strip them.
   if (!options.preserveClosedArtifact) {
-    out = out.replace(CLOSED_ARTIFACT_RE, "");
+    // Strip artifact placeholders too — the restore below would put
+    // them back, but display mode explicitly wants closed artifacts
+    // dropped. Zap the placeholders (and their region entries)
+    // before the restore step so nothing leaks.
+    out = out.replace(
+      new RegExp(`${ARTIFACT_PLACEHOLDER_PREFIX}\\d+${ARTIFACT_PLACEHOLDER_SUFFIX}`, "g"),
+      "",
+    );
   }
   out = out.replace(CLOSED_ANTML_RE, "");
   out = out.replace(CLOSED_NAMESPACED_INTERNAL_RE, "");
@@ -1000,6 +1077,9 @@ export function sanitizeLeakedAgentProse(
   if (bareTail?.index !== undefined) {
     out = out.slice(0, bareTail.index).trimEnd();
   }
+  // Restore the masked artifact regions AFTER every strip has run,
+  // so their inner `<patch>` / other reserved tags survive intact.
+  out = restoreArtifacts(out);
   return collapseExtraBlankLines(out);
 }
 
