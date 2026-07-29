@@ -118,4 +118,30 @@ describe('reconcileChatMessageOnLoad', () => {
     };
     expect(reconcileChatMessageOnLoad(message)).toBe(message);
   });
+
+  it('rehydrates user comment chips from attached-preview-comments content on load', () => {
+    const content = [
+      '더 크게 조정',
+      '',
+      '<attached-preview-comments>',
+      'Hard scope: change ONLY the elements identified below by selector / position / pod members.',
+      '',
+      '1. hero-title',
+      'targetKind: element',
+      'file: deck.html',
+      'label: h2',
+      'selector: [data-od-id="hero-title"]',
+      'position: x0 y0 100x24',
+      'currentText: Title',
+      'htmlHint: <h2>',
+      '</attached-preview-comments>',
+    ].join('\n');
+    const reconciled = reconcileChatMessageOnLoad({
+      id: 'u1',
+      role: 'user',
+      content,
+      createdAt: 1,
+    });
+    expect(reconciled.commentAttachments?.[0]?.elementId).toBe('hero-title');
+  });
 });

@@ -13,6 +13,7 @@ import {
   mergePreviewCommentAttachments,
   messageContentWithCommentAttachments,
   parseCommentAttachmentsFromMessageContent,
+  reconcileUserCommentAttachments,
   overlayBoundsFromSnapshot,
   queuedSlideNavTarget,
   removeAttachedComment,
@@ -641,6 +642,22 @@ describe('preview comment attachment helpers', () => {
     expect(parsed[0]?.elementId).toBe('hero-title');
     expect(parsed[0]?.filePath).toBe('index.html');
     expect(parsed[0]?.selector).toContain('hero-title');
+  });
+
+  it('reconcileUserCommentAttachments rebuilds chips from persisted content blocks', () => {
+    const attachments = commentsToAttachments([
+      comment({ id: 'c1', elementId: 'hero-title', label: 'h2', note: 'Make it bolder' }),
+    ]);
+    const content = messageContentWithCommentAttachments('더 크게 조정', attachments);
+    const reconciled = reconcileUserCommentAttachments({
+      id: 'u1',
+      role: 'user',
+      content,
+      createdAt: 1,
+    });
+
+    expect(reconciled.commentAttachments).toHaveLength(1);
+    expect(reconciled.commentAttachments?.[0]?.elementId).toBe('hero-title');
   });
 
   it('strips hidden comment-edit protocol from user-visible chat text', () => {

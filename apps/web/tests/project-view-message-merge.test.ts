@@ -8,6 +8,7 @@ import {
   promptWithSlideAttachmentDeliverableInstruction,
   promptWithSlideCommentEditPatchInstruction,
 } from "../src/components/ProjectView";
+import { messageContentWithCommentAttachments, commentsToAttachments } from "../src/comments";
 import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
 import type { ChatMessage } from "../src/types";
 
@@ -196,6 +197,36 @@ describe("mergeServerMessagesIntoConversation", () => {
     expect(merged[0]?.attachments).toEqual([
       { path: "deck.html", name: "deck.html", kind: "file" },
     ]);
+  });
+
+  it("rehydrates user-turn chips from server content when metadata column is missing", () => {
+    const attachments = commentsToAttachments([
+      {
+        id: "c1",
+        projectId: "project-1",
+        conversationId: "conversation-1",
+        filePath: "deck.html",
+        elementId: "hero-title",
+        selector: '[data-od-id="hero-title"]',
+        label: "h2",
+        text: "Title",
+        position: { x: 0, y: 0, width: 100, height: 24 },
+        htmlHint: "<h2>",
+        note: "더 크게 조정",
+        status: "open",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+    const server: ChatMessage = {
+      id: "u1",
+      role: "user",
+      content: messageContentWithCommentAttachments("더 크게 조정", attachments),
+      createdAt: 1,
+      sessionMode: "design",
+    };
+    const merged = mergeServerMessagesIntoConversation([], [server]);
+    expect(merged[0]?.commentAttachments?.[0]?.elementId).toBe("hero-title");
   });
 
   it("prefers local terminal runStatus when server row is still running without endedAt", () => {

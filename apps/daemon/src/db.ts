@@ -1968,9 +1968,10 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
       `UPDATE messages
           SET role = ?, content = ?, agent_id = ?, agent_name = ?,
               run_id = ?, run_status = ?, last_run_event_id = ?,
-              events_json = ?, attachments_json = ?, comment_attachments_json = ?,
-              produced_files_json = ?, feedback_json = ?,
-              pre_turn_file_names_json = ?,
+              events_json = ?, attachments_json = COALESCE(?, attachments_json),
+              comment_attachments_json = COALESCE(?, comment_attachments_json),
+              produced_files_json = COALESCE(?, produced_files_json), feedback_json = ?,
+              pre_turn_file_names_json = COALESCE(?, pre_turn_file_names_json),
               session_mode = ?, run_context_json = ?, applied_plugin_snapshot_json = ?,
               telemetry_finalized_at = CASE
                 WHEN ? THEN COALESCE(telemetry_finalized_at, ?)

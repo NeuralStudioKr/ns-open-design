@@ -59,6 +59,7 @@ import { mapRegistryRowToProject, listEmbedProjectsFromRegistry, listEmbedProjec
 import { fetchTeamverProject } from '../teamver/projectRegistry';
 import {
   messageContentWithCommentAttachments,
+  reconcileUserCommentAttachments,
   stripUserVisibleUserMessageText,
 } from '../comments';
 import { reconcileChatMessageOnLoad } from '../runtime/chat-events';
@@ -67,15 +68,16 @@ import { normalizePluginApiId } from '../plugins/pluginIds';
 
 function sanitizeChatMessageForPersist(message: ChatMessage): ChatMessage {
   const hideInternal = resolveTeamverBranding().hideAssistantThinkingDetails;
-  const sanitized = sanitizeChatMessageLeakedPseudoTool(message, {
+  const reconciled = reconcileUserCommentAttachments(message);
+  const sanitized = sanitizeChatMessageLeakedPseudoTool(reconciled, {
     stripCodeFences: hideInternal,
     dropThinkingEvents: hideInternal,
   });
   // Persist sanitizer strips `<attached-preview-comments>` from assistant
   // echoes; for user turns that block is the durable recovery path when
   // `comment_attachments_json` is dropped by a partial upsert.
-  if (message.role !== 'user') return sanitized;
-  const commentAttachments = message.commentAttachments ?? [];
+  if (reconciled.role !== 'user') return sanitized;
+  const commentAttachments = reconciled.commentAttachments ?? [];
   if (commentAttachments.length === 0) return sanitized;
   const visibleContent = stripUserVisibleUserMessageText(sanitized.content ?? '');
   return {

@@ -88,6 +88,51 @@ describe("saveMessage keepalive size guard", () => {
     );
   });
 
+  it("keeps user comment chips on keepalive trims", async () => {
+    const { commentsToAttachments, messageContentWithCommentAttachments } = await import("../src/comments");
+    const commentAttachments = commentsToAttachments([
+      {
+        id: "c1",
+        projectId: "project-1",
+        conversationId: "conversation-1",
+        filePath: "deck.html",
+        elementId: "hero-title",
+        selector: '[data-od-id="hero-title"]',
+        label: "h2",
+        text: "Title",
+        position: { x: 0, y: 0, width: 100, height: 24 },
+        htmlHint: "<h2>",
+        note: "더 크게",
+        status: "open",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+    const heavyEvents = Array.from({ length: 4000 }, (_, i) => ({
+      type: "tool_input" as const,
+      seq: i,
+      payload: "y".repeat(64),
+    }));
+    await saveMessage(
+      "proj-1",
+      "conv-1",
+      makeMessage({
+        role: "user",
+        content: messageContentWithCommentAttachments("더 크게 조정", commentAttachments),
+        commentAttachments,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        events: heavyEvents as any,
+      }),
+      { keepalive: true },
+    );
+    const body = JSON.parse(String(calls[0]!.init!.body)) as {
+      content?: string;
+      commentAttachments?: unknown[];
+    };
+    expect(body.commentAttachments).toHaveLength(1);
+    expect(body.content).toContain("<attached-preview-comments>");
+  });
+
   it("skips the keepalive PUT entirely when even the essentials projection is over the cap", async () => {
     // Content field itself is >56KiB — cannot recover.
     const hugeContent = "z".repeat(80_000);
@@ -117,12 +162,14 @@ describe("saveMessage keepalive size guard", () => {
     );
     expect(fetchTeamverDaemonSpy).toHaveBeenCalledTimes(1);
     expect(consoleWarnSpy).toHaveBeenCalledWith(
-      "[teamver] chat-save: keepalive PUT non-ok",
+      "[teamver] chat-save: PUT non-ok",
       expect.objectContaining({
         projectId: "proj-1",
         conversationId: "conv-1",
         messageId: "msg-1",
         status: 500,
+        keepalive: true,
+        truncated: false,
       }),
     );
   });

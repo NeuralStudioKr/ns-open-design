@@ -471,6 +471,18 @@ export function parseCommentAttachmentsFromMessageContent(
   return out;
 }
 
+/**
+ * Restore `commentAttachments` on a user turn from the durable
+ * `<attached-preview-comments>` block when the structured column was dropped.
+ */
+export function reconcileUserCommentAttachments(message: ChatMessage): ChatMessage {
+  if (message.role !== 'user') return message;
+  if ((message.commentAttachments?.length ?? 0) > 0) return message;
+  const parsed = parseCommentAttachmentsFromMessageContent(message.content);
+  if (parsed.length === 0) return message;
+  return { ...message, commentAttachments: parsed };
+}
+
 /** Strip model-only suffixes from user messages before rendering in chat UI. */
 export function stripUserVisibleUserMessageText(content: string | null | undefined): string {
   let text = String(content ?? '');

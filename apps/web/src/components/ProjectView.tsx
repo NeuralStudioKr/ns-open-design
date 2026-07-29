@@ -267,6 +267,7 @@ import {
   mergePreviewCommentAttachments,
   messageContentWithCommentAttachments,
   queuedSlideNavTarget,
+  reconcileUserCommentAttachments,
   removeAttachedComment,
   resolveCommentEditPersistTargetFileName,
   SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER,
@@ -476,7 +477,7 @@ function messageHasInFlightRunFields(local: ChatMessage): boolean {
 }
 
 function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): ChatMessage {
-  if (!local) return server;
+  if (!local) return reconcileUserCommentAttachments(server);
   const merged: ChatMessage = { ...server };
   if (!server.commentAttachments?.length && local.commentAttachments?.length) {
     merged.commentAttachments = local.commentAttachments;
@@ -574,7 +575,7 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
     merged.content = localContent;
     if (local.events?.length) merged.events = local.events;
   }
-  return merged;
+  return reconcileUserCommentAttachments(merged);
 }
 
 /**
