@@ -53,8 +53,8 @@ ARG VITE_TEAMVER_SITE_URL=https://design.teamver.com
 ARG VITE_TEAMVER_OG_IMAGE_URL=https://design.teamver.com/teamver/teamver-design-opengraph.png
 ENV VITE_TEAMVER_SITE_URL=${VITE_TEAMVER_SITE_URL}
 ENV VITE_TEAMVER_OG_IMAGE_URL=${VITE_TEAMVER_OG_IMAGE_URL}
-# Opt-in PPTX export for Teamver embed (prd default off / unset).
-ARG VITE_TEAMVER_PPTX_EXPORT_ENABLE=
+# Legacy bake arg — PPTX export is always on in web; value is ignored.
+ARG VITE_TEAMVER_PPTX_EXPORT_ENABLE=true
 ENV VITE_TEAMVER_PPTX_EXPORT_ENABLE=${VITE_TEAMVER_PPTX_EXPORT_ENABLE}
 # BYOK streaming — daemon message PUT throttle (ms). Override via deploy .env (rebuild required).
 ARG VITE_MESSAGE_PERSIST_THROTTLE_MS=5000
