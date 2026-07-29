@@ -1,6 +1,6 @@
 import type { Request, RequestHandler, Response } from 'express';
 
-import { readTeamverIdentityFromRequest, readTeamverS3PrefixFromRequest, clearTeamverProjectAccessCache, isTeamverProjectCollectionRouteSlug, isTrustedBackendCaller } from '../teamver-project-access.js';
+import { readTeamverIdentityFromRequest, readTeamverS3PrefixFromRequest, clearTeamverProjectAccessCache, isTeamverProjectCollectionRouteSlug, isTrustedBackendCaller, isExportTicketDownloadRequest } from '../teamver-project-access.js';
 import type { ProjectMaterializationRuntime } from './project-materialization-runtime.js';
 import type { MaterializingProjectStorage } from './materializing-project-storage.js';
 import { resolveTeamverTenantRemoteStorage, TeamverTenantStorageResolutionError } from './teamver-project-storage-meta.js';
@@ -650,6 +650,7 @@ export function createLazyProjectMaterializationMiddleware(
   const scratchHasProjectFilesForRequest = options?.scratchHasProjectFiles;
   return async (req, res, next) => {
     if (!hooks || !isProjectMaterializationPath(req.path)) return next();
+    if (isExportTicketDownloadRequest(req)) return next();
 
     const projectId = req.params.id;
     if (typeof projectId !== 'string' || !projectId.trim()) return next();

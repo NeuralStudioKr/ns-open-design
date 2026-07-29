@@ -25,7 +25,8 @@ import {
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
-import { formatTeamverEmbedAuthRequiredMessage } from '../teamver/teamverBffAuthError';
+import { formatTeamverEmbedAuthRequiredMessage, formatTeamverEmbedOperationFailureMessage } from '../teamver/teamverBffAuthError';
+import { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
 import {
   waitForTeamverProjectStoragePrefix,
 } from '../teamver/teamverProjectS3PrefixResolve';
@@ -128,19 +129,17 @@ async function triggerExportTicketDownload(resp: Response, fallbackTitle: string
     );
     return;
   }
-  // Never navigate the SPA tab to the ticket URL. An `<a download>` GET still
-  // follows nginx auth 302s in the current tab (login → returnTo), which drops
-  // users back on the artifact route with no file saved. Fetch with embed
-  // credentials + redirect:manual keeps the download in-page — same pattern as
-  // exportProjectImageBlob.
-  const downloadResp = await fetchTeamverDaemon(ticket.downloadUrl);
-  if (!downloadResp.ok) {
-    await throwIfDaemonExportFailed(downloadResp, 'export ticket download');
-  }
-  const blob = await downloadResp.blob();
-  if (blob.size <= 0) {
-    throw new Error('export ticket download returned an empty file');
-  }
+  const blob = await withTransientExportRetry('exportTicketDownload', async () => {
+    const downloadResp = await fetchTeamverDaemon(ticket.downloadUrl);
+    if (!downloadResp.ok) {
+      await throwIfDaemonExportFailed(downloadResp, 'export ticket download');
+    }
+    const nextBlob = await downloadResp.blob();
+    if (nextBlob.size <= 0) {
+      throw new Error('export ticket download returned an empty file');
+    }
+    return nextBlob;
+  });
   triggerDownload(
     blob,
     ticket.filename || `${safeFilename(fallbackTitle, 'artifact')}.${extension}`,
@@ -280,22 +279,24 @@ export async function exportProjectAsHtml(opts: {
   htmlSnapshot?: string | null;
 }): Promise<void> {
   try {
-    await refreshEmbedAuthBeforeDaemonExport();
-    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/html`, {
-      body: JSON.stringify({
-        deck: opts.deck === true,
-        delivery: 'ticket',
-        fileName: opts.filePath,
-        title: opts.fallbackTitle,
-        ...inlineExportHtmlPayload(opts.htmlSnapshot),
-      }),
-      headers: { 'content-type': 'application/json' },
-      method: 'POST',
+    await withTransientExportRetry('exportProjectAsHtml', async () => {
+      await refreshEmbedAuthBeforeDaemonExport();
+      const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/html`, {
+        body: JSON.stringify({
+          deck: opts.deck === true,
+          delivery: 'ticket',
+          fileName: opts.filePath,
+          title: opts.fallbackTitle,
+          ...inlineExportHtmlPayload(opts.htmlSnapshot),
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+      if (!resp.ok && resp.status !== 201) {
+        await throwIfDaemonExportFailed(resp, 'html export request');
+      }
+      await consumeDaemonExportDownload(resp, opts.fallbackTitle, 'html');
     });
-    if (!resp.ok && resp.status !== 201) {
-      await throwIfDaemonExportFailed(resp, 'html export request');
-    }
-    await consumeDaemonExportDownload(resp, opts.fallbackTitle, 'html');
   } catch (err) {
     if (opts.requireRenderedExport) {
       console.warn('[exportProjectAsHtml] rendered HTML export failed:', err);
@@ -975,6 +976,85 @@ export type ProjectPdfExportResult = 'desktop' | 'fallback' | 'cancelled';
  */
 const TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS = [0, 800, 1_600] as const;
 const TEAMVER_PPTX_EXPORT_RETRY_DELAYS_MS = [0, 800, 1_600] as const;
+const TEAMVER_DAEMON_EXPORT_RETRY_DELAYS_MS = [0, 800, 1_600] as const;
+
+export const EXPORT_TRANSIENT_GATEWAY_MESSAGE =
+  '서버가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요.';
+
+function isTransientGatewayExportError(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  if (/EXPORT_QUEUE_FULL|export queue full/i.test(text)) return false;
+  if (/HEADLESS_CHROMIUM_UNAVAILABLE/i.test(text)) return false;
+  if (/\b502\b/.test(text)) return true;
+  if (/\b503\b/.test(text) && !/HEADLESS_CHROMIUM_UNAVAILABLE/i.test(text)) return true;
+  if (/\b504\b/.test(text)) return true;
+  if (/UPSTREAM_UNAVAILABLE|teamver_project_s3_prefix_required|teamver project access check failed/i.test(text)) {
+    return true;
+  }
+  if (/export ticket download|bad gateway|failed to fetch|networkerror|load failed/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+/** Map daemon/proxy export failures to user-facing copy (no raw HTTP status codes). */
+export function formatExportFailureMessageForUser(
+  err: unknown,
+  fallback = '다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.',
+  options?: {
+    logoutMessage?: string;
+    transientMessage?: string;
+  },
+): string {
+  if (isExportQueueFullError(err)) return err.message;
+  const message = err instanceof Error ? err.message.trim() : String(err ?? '').trim();
+  if (
+    err instanceof TeamverDaemonUnauthorizedError
+    || /\b401\b/.test(message)
+    || message.includes('로그인 세션이 만료')
+    || message.includes('연결을 확인하지 못했습니다')
+  ) {
+    return formatTeamverEmbedOperationFailureMessage(err, fallback, options);
+  }
+  if (message && isTransientGatewayExportError(message)) {
+    return EXPORT_TRANSIENT_GATEWAY_MESSAGE;
+  }
+  if (message.includes('다운로드를 만들지 못했습니다') || message.includes('렌더링된')) {
+    return message;
+  }
+  if (message && !/\b(?:4\d{2}|5\d{2})\b/.test(message)) {
+    return message;
+  }
+  return fallback;
+}
+
+async function withTransientExportRetry<T>(
+  label: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < TEAMVER_DAEMON_EXPORT_RETRY_DELAYS_MS.length; attempt += 1) {
+    const delay = TEAMVER_DAEMON_EXPORT_RETRY_DELAYS_MS[attempt] ?? 0;
+    if (delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (
+        attempt < TEAMVER_DAEMON_EXPORT_RETRY_DELAYS_MS.length - 1
+        && isRetryableRenderedExportError(err)
+      ) {
+        console.info(`[${label}] retrying transient export failure (attempt %d)`, attempt + 1);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(`${label} retry exhausted`);
+}
 
 function isRetryableRenderedExportError(err: unknown): boolean {
   if (isExportQueueFullError(err)) return false;
@@ -1355,25 +1435,30 @@ export async function exportProjectImageBlob(opts: {
     });
     if (resp.status === 201) {
       const ticket = await readExportTicketResponse(resp);
-      const downloadResp = await fetchTeamverDaemon(ticket.downloadUrl);
-      if (!downloadResp.ok) {
-        throw new Error(`daemon image export download failed (${downloadResp.status})`);
-      }
-      const contentType = (downloadResp.headers.get('content-type') || '').toLowerCase();
-      const expectedContentType =
-        format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
-      if (!contentType.startsWith(expectedContentType)) {
-        throw new Error(
-          `daemon image export returned ${contentType || 'unknown content-type'} for ${format}`,
-        );
-      }
-      const blob = await downloadResp.blob();
-      if (blob.size <= 0) throw new Error('daemon image export returned an empty file');
+      let downloadResp: Response | null = null;
+      const blob = await withTransientExportRetry('exportProjectImageBlob', async () => {
+        const nextDownloadResp = await fetchTeamverDaemon(ticket.downloadUrl);
+        if (!nextDownloadResp.ok) {
+          await throwIfDaemonExportFailed(nextDownloadResp, 'daemon image export download');
+        }
+        const contentType = (nextDownloadResp.headers.get('content-type') || '').toLowerCase();
+        const expectedContentType =
+          format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
+        if (!contentType.startsWith(expectedContentType)) {
+          throw new Error(
+            `daemon image export returned ${contentType || 'unknown content-type'} for ${format}`,
+          );
+        }
+        const nextBlob = await nextDownloadResp.blob();
+        if (nextBlob.size <= 0) throw new Error('daemon image export returned an empty file');
+        downloadResp = nextDownloadResp;
+        return nextBlob;
+      });
       return {
         ok: true,
         blob,
         filename: ticket.filename || attachmentFilenameFrom(
-          downloadResp,
+          downloadResp ?? resp,
           opts.title,
           format === 'jpeg' ? 'jpg' : format === 'webp' ? 'webp' : 'png',
         ),
@@ -1478,22 +1563,24 @@ export async function exportProjectAsZip(opts: {
   htmlSnapshot?: string | null;
 }): Promise<void> {
   try {
-    await refreshEmbedAuthBeforeDaemonExport();
-    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/zip`, {
-      body: JSON.stringify({
-        deck: opts.deck === true,
-        delivery: 'ticket',
-        fileName: opts.filePath,
-        title: opts.fallbackTitle,
-        ...inlineExportHtmlPayload(opts.htmlSnapshot),
-      }),
-      headers: { 'content-type': 'application/json' },
-      method: 'POST',
+    await withTransientExportRetry('exportProjectAsZip', async () => {
+      await refreshEmbedAuthBeforeDaemonExport();
+      const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/zip`, {
+        body: JSON.stringify({
+          deck: opts.deck === true,
+          delivery: 'ticket',
+          fileName: opts.filePath,
+          title: opts.fallbackTitle,
+          ...inlineExportHtmlPayload(opts.htmlSnapshot),
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+      if (!resp.ok && resp.status !== 201) {
+        await throwIfDaemonExportFailed(resp, 'rendered ZIP export');
+      }
+      await consumeDaemonExportDownload(resp, opts.fallbackTitle, 'zip');
     });
-    if (!resp.ok && resp.status !== 201) {
-      await throwIfDaemonExportFailed(resp, 'rendered ZIP export');
-    }
-    await consumeDaemonExportDownload(resp, opts.fallbackTitle, 'zip');
     return;
   } catch (err) {
     if (opts.requireRenderedExport) {

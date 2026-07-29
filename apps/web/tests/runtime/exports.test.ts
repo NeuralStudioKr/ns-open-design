@@ -18,6 +18,8 @@ import {
   exportProjectAsPdf,
   exportProjectAsPptx,
   exportProjectAsZip,
+  EXPORT_TRANSIENT_GATEWAY_MESSAGE,
+  formatExportFailureMessageForUser,
   isTeamverProjectStoragePrefixRequiredError,
   openSandboxedPreviewInNewTab,
   prepareImageExportTarget,
@@ -2302,5 +2304,29 @@ describe('exportAsImage', () => {
     expect(showSaveFilePicker).not.toHaveBeenCalled();
     expect(target?.method).toBe('download');
     expect(target?.filename).toBe('My Design.png');
+  });
+});
+
+describe('formatExportFailureMessageForUser', () => {
+  it('maps raw 502 export errors to a transient gateway message', () => {
+    expect(
+      formatExportFailureMessageForUser(
+        new Error('daemon PDF export 502: teamver_project_s3_prefix_required'),
+      ),
+    ).toBe(EXPORT_TRANSIENT_GATEWAY_MESSAGE);
+    expect(
+      formatExportFailureMessageForUser(
+        new Error('export ticket download unavailable (502)'),
+      ),
+    ).toBe(EXPORT_TRANSIENT_GATEWAY_MESSAGE);
+  });
+
+  it('preserves queue-full and user-facing render errors', () => {
+    expect(formatExportFailureMessageForUser(new ExportQueueFullError())).toContain('15초');
+    expect(
+      formatExportFailureMessageForUser(
+        new Error('렌더링된 PDF 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.'),
+      ),
+    ).toContain('렌더링된 PDF');
   });
 });

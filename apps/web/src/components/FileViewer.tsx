@@ -104,6 +104,7 @@ import {
   exportProjectAsPdf,
   exportProjectAsPptx,
   exportProjectAsZip,
+  formatExportFailureMessageForUser,
   // TEMP: used by commented-out screenshot toolbar handler
   // copyImageDataUrlToClipboard,
   exportReactComponentAsHtml,
@@ -4719,7 +4720,7 @@ function HtmlViewer({
     const showExportFailureToast = (err: unknown) => {
       if (!toastFormats.has(format)) return;
       notifyTeamverEmbedAuthFailureIfNeeded(err, 'daemon');
-      const message = formatTeamverEmbedOperationFailureMessage(
+      const message = formatExportFailureMessageForUser(
         err,
         '다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.',
         {

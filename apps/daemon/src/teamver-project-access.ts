@@ -447,6 +447,7 @@ export function createTeamverProjectAccessMiddleware(
     const projectId = req.params.id;
     if (typeof projectId !== 'string' || !projectId.trim()) return next();
     if (isTeamverProjectCollectionRouteSlug(projectId)) return next();
+    if (isExportTicketDownloadRequest(req)) return next();
     if (!teamverProjectAccessCheckUrl(projectId)) return next();
 
     // Trusted-caller fast path. BE → daemon over the compose network carries
@@ -504,12 +505,6 @@ export function createTeamverProjectAccessMiddleware(
   };
 }
 
-/**
- * True for GET/HEAD under `/preview/:scope/...` on a project route.
- * Accepts mount-relative (`/preview/...`) and absolute
- * (`/api/projects/:id/preview/...`) forms — Express path stripping varies by
- * how the middleware is mounted.
- */
 export function isTrustedPreviewAssetRequest(
   req: Pick<Request, 'method' | 'path' | 'url'> & { originalUrl?: string },
 ): boolean {
@@ -521,4 +516,24 @@ export function isTrustedPreviewAssetRequest(
     .filter(Boolean)
     .join('\n');
   return /\/preview\/[^/]+\//.test(pathCandidates);
+}
+
+/**
+ * Single-use export ticket downloads stream bytes from the in-memory ticket
+ * store. They must not block on tenant S3 materialization or a fresh design-api
+ * `/access` round-trip — the POST that minted the ticket already passed ACL.
+ */
+export function isExportTicketDownloadRequest(
+  req: Pick<Request, 'method' | 'path' | 'url'> & { originalUrl?: string },
+): boolean {
+  const method = String(req.method || '').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') return false;
+  const pathCandidates = [req.path, req.url, req.originalUrl]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .map((value) => value.split(/[?#]/, 1)[0] ?? '')
+    .filter(Boolean);
+  return pathCandidates.some((candidate) =>
+    /\/export\/downloads\/[^/]+$/.test(candidate)
+    || /\/api\/projects\/[^/]+\/export\/downloads\/[^/]+$/.test(candidate),
+  );
 }
