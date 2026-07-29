@@ -1856,45 +1856,60 @@ export async function listMessagesAsync(db: SqliteDb, conversationId: string) {
   return normalized;
 }
 
+function mergeMessageUpsertPayload(existing: DbRow | undefined, incoming: DbRow): DbRow {
+  if (!existing) return incoming;
+  return {
+    ...incoming,
+    commentAttachments: incoming.commentAttachments ?? existing.commentAttachments,
+    attachments: incoming.attachments ?? existing.attachments,
+    sessionMode: incoming.sessionMode ?? existing.sessionMode,
+    runContext: incoming.runContext ?? existing.runContext,
+    appliedPluginSnapshot: incoming.appliedPluginSnapshot ?? existing.appliedPluginSnapshot,
+    preTurnFileNames: incoming.preTurnFileNames ?? existing.preTurnFileNames,
+    feedback: incoming.feedback ?? existing.feedback,
+  };
+}
+
 export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
   if (isDaemonDbPostgres()) {
     const now = Date.now();
     const cached = getCachedMessages(conversationId) ?? [];
     const existing = cached.find((row) => row.id === m.id);
+    const merged = mergeMessageUpsertPayload(existing, m);
     const position = existing && typeof existing.position === 'number'
       ? Number(existing.position)
       : cached.reduce((max, row) => Math.max(max, Number(row.position ?? -1)), -1) + 1;
     const normalized = normalizeMessage({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      agentId: m.agentId ?? null,
-      agentName: m.agentName ?? null,
-      runId: m.runId ?? null,
-      runStatus: m.runStatus ?? null,
-      lastRunEventId: m.lastRunEventId ?? null,
-      eventsJson: m.events ? JSON.stringify(m.events) : null,
-      attachmentsJson: m.attachments ? JSON.stringify(m.attachments) : null,
-      commentAttachmentsJson: m.commentAttachments ? JSON.stringify(m.commentAttachments) : null,
-      producedFilesJson: m.producedFiles ? JSON.stringify(m.producedFiles) : null,
-      feedbackJson: m.feedback ? JSON.stringify(m.feedback) : null,
-      preTurnFileNamesJson: m.preTurnFileNames ? JSON.stringify(m.preTurnFileNames) : null,
-      sessionMode: m.sessionMode ?? null,
-      runContextJson: m.runContext ? JSON.stringify(m.runContext) : null,
-      appliedPluginSnapshotJson: m.appliedPluginSnapshot ? JSON.stringify(m.appliedPluginSnapshot) : null,
-      createdAt: m.createdAt ?? now,
-      startedAt: m.startedAt ?? null,
-      endedAt: m.endedAt ?? null,
+      id: merged.id,
+      role: merged.role,
+      content: merged.content,
+      agentId: merged.agentId ?? null,
+      agentName: merged.agentName ?? null,
+      runId: merged.runId ?? null,
+      runStatus: merged.runStatus ?? null,
+      lastRunEventId: merged.lastRunEventId ?? null,
+      eventsJson: merged.events ? JSON.stringify(merged.events) : null,
+      attachmentsJson: merged.attachments ? JSON.stringify(merged.attachments) : null,
+      commentAttachmentsJson: merged.commentAttachments ? JSON.stringify(merged.commentAttachments) : null,
+      producedFilesJson: merged.producedFiles ? JSON.stringify(merged.producedFiles) : null,
+      feedbackJson: merged.feedback ? JSON.stringify(merged.feedback) : null,
+      preTurnFileNamesJson: merged.preTurnFileNames ? JSON.stringify(merged.preTurnFileNames) : null,
+      sessionMode: merged.sessionMode ?? null,
+      runContextJson: merged.runContext ? JSON.stringify(merged.runContext) : null,
+      appliedPluginSnapshotJson: merged.appliedPluginSnapshot ? JSON.stringify(merged.appliedPluginSnapshot) : null,
+      createdAt: merged.createdAt ?? now,
+      startedAt: merged.startedAt ?? null,
+      endedAt: merged.endedAt ?? null,
       position,
     });
     const nextCache = existing
-      ? cached.map((row) => (row.id === m.id ? normalized : row))
+      ? cached.map((row) => (row.id === merged.id ? normalized : row))
       : [...cached, normalized];
     setCachedMessages(conversationId, nextCache);
     const conversation = getCachedConversationById(conversationId);
     if (conversation?.projectId) invalidateCachedConversations(String(conversation.projectId));
     schedulePostgresWrite(async () => {
-      await pgCore.pgUpsertMessage(getPostgresPool(), conversationId, m);
+      await pgCore.pgUpsertMessage(getPostgresPool(), conversationId, merged);
       // Only touch conversation row when it is already in cache — otherwise
       // we'd overwrite title with null on cold paths (insertConversation race).
       if (conversation) {
@@ -1907,9 +1922,30 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
     });
     return normalized;
   }
-  const existing = db
-    .prepare(`SELECT position FROM messages WHERE id = ?`)
+  const existingRow = db
+    .prepare(
+      `SELECT id, role, content, agent_id AS agentId, agent_name AS agentName,
+              run_id AS runId, run_status AS runStatus,
+              last_run_event_id AS lastRunEventId,
+              events_json AS eventsJson,
+              attachments_json AS attachmentsJson,
+              comment_attachments_json AS commentAttachmentsJson,
+              produced_files_json AS producedFilesJson,
+              feedback_json AS feedbackJson,
+              pre_turn_file_names_json AS preTurnFileNamesJson,
+              session_mode AS sessionMode,
+              run_context_json AS runContextJson,
+              applied_plugin_snapshot_json AS appliedPluginSnapshotJson,
+              created_at AS createdAt, started_at AS startedAt, ended_at AS endedAt,
+              position
+         FROM messages WHERE id = ?`,
+    )
     .get(m.id) as DbRow | undefined;
+  const merged = mergeMessageUpsertPayload(
+    existingRow ? normalizeMessage(existingRow) : undefined,
+    m,
+  );
+  const existing = existingRow;
   const now = Date.now();
   if (existing) {
     db.prepare(
@@ -1927,27 +1963,27 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
               started_at = ?, ended_at = ?
         WHERE id = ?`,
     ).run(
-      m.role,
-      m.content,
-      m.agentId ?? null,
-      m.agentName ?? null,
-      m.runId ?? null,
-      m.runStatus ?? null,
-      m.lastRunEventId ?? null,
-      m.events ? JSON.stringify(m.events) : null,
-      m.attachments ? JSON.stringify(m.attachments) : null,
-      m.commentAttachments ? JSON.stringify(m.commentAttachments) : null,
-      m.producedFiles ? JSON.stringify(m.producedFiles) : null,
-      m.feedback ? JSON.stringify(m.feedback) : null,
-      m.preTurnFileNames ? JSON.stringify(m.preTurnFileNames) : null,
-      normalizeMessageSessionModeForStorage(m.sessionMode),
-      m.runContext ? JSON.stringify(m.runContext) : null,
-      m.appliedPluginSnapshot ? JSON.stringify(m.appliedPluginSnapshot) : null,
-      m.telemetryFinalized === true ? 1 : 0,
+      merged.role,
+      merged.content,
+      merged.agentId ?? null,
+      merged.agentName ?? null,
+      merged.runId ?? null,
+      merged.runStatus ?? null,
+      merged.lastRunEventId ?? null,
+      merged.events ? JSON.stringify(merged.events) : null,
+      merged.attachments ? JSON.stringify(merged.attachments) : null,
+      merged.commentAttachments ? JSON.stringify(merged.commentAttachments) : null,
+      merged.producedFiles ? JSON.stringify(merged.producedFiles) : null,
+      merged.feedback ? JSON.stringify(merged.feedback) : null,
+      merged.preTurnFileNames ? JSON.stringify(merged.preTurnFileNames) : null,
+      normalizeMessageSessionModeForStorage(merged.sessionMode),
+      merged.runContext ? JSON.stringify(merged.runContext) : null,
+      merged.appliedPluginSnapshot ? JSON.stringify(merged.appliedPluginSnapshot) : null,
+      merged.telemetryFinalized === true ? 1 : 0,
       now,
-      m.startedAt ?? null,
-      m.endedAt ?? null,
-      m.id,
+      merged.startedAt ?? null,
+      merged.endedAt ?? null,
+      merged.id,
     );
   } else {
     const max = db
@@ -1972,27 +2008,27 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
           telemetry_finalized_at, started_at, ended_at, position, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
-      m.id,
+      merged.id,
       conversationId,
-      m.role,
-      m.content,
-      m.agentId ?? null,
-      m.agentName ?? null,
-      m.runId ?? null,
-      m.runStatus ?? null,
-      m.lastRunEventId ?? null,
-      m.events ? JSON.stringify(m.events) : null,
-      m.attachments ? JSON.stringify(m.attachments) : null,
-      m.commentAttachments ? JSON.stringify(m.commentAttachments) : null,
-      m.producedFiles ? JSON.stringify(m.producedFiles) : null,
-      m.feedback ? JSON.stringify(m.feedback) : null,
-      m.preTurnFileNames ? JSON.stringify(m.preTurnFileNames) : null,
-      normalizeMessageSessionModeForStorage(m.sessionMode),
-      m.runContext ? JSON.stringify(m.runContext) : null,
-      m.appliedPluginSnapshot ? JSON.stringify(m.appliedPluginSnapshot) : null,
-      m.telemetryFinalized === true ? now : null,
-      m.startedAt ?? null,
-      m.endedAt ?? null,
+      merged.role,
+      merged.content,
+      merged.agentId ?? null,
+      merged.agentName ?? null,
+      merged.runId ?? null,
+      merged.runStatus ?? null,
+      merged.lastRunEventId ?? null,
+      merged.events ? JSON.stringify(merged.events) : null,
+      merged.attachments ? JSON.stringify(merged.attachments) : null,
+      merged.commentAttachments ? JSON.stringify(merged.commentAttachments) : null,
+      merged.producedFiles ? JSON.stringify(merged.producedFiles) : null,
+      merged.feedback ? JSON.stringify(merged.feedback) : null,
+      merged.preTurnFileNames ? JSON.stringify(merged.preTurnFileNames) : null,
+      normalizeMessageSessionModeForStorage(merged.sessionMode),
+      merged.runContext ? JSON.stringify(merged.runContext) : null,
+      merged.appliedPluginSnapshot ? JSON.stringify(merged.appliedPluginSnapshot) : null,
+      merged.telemetryFinalized === true ? now : null,
+      merged.startedAt ?? null,
+      merged.endedAt ?? null,
       position,
       now,
     );
