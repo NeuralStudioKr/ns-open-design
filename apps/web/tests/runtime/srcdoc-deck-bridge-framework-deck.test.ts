@@ -1,6 +1,7 @@
 // @vitest-environment node
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { JSDOM } from 'jsdom';
 import { buildSrcdoc } from '../../src/runtime/srcdoc';
 
 // Regression coverage for the "deck-stage shows a sliver of content in the
@@ -129,5 +130,63 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     expect(out).toContain("data.type === 'od:deck-pan-reset'");
     expect(out).toContain('od:deck-host-viewport-request');
     expect(out).toContain('function deckPanBy');
+  });
+
+  it('registers in-frame presenter keys for every deck shape, not only compact stacked', () => {
+    const out = buildSrcdoc(frameworkDeckHtml(), { deck: true });
+    expect(out).toContain('function onDeckBridgeKeydown');
+    expect(out).toContain("document.addEventListener('keydown', onDeckBridgeKeydown, true)");
+    expect(out).not.toContain('if (compactStackedDeckEnabled) {\n    document.addEventListener(\'keydown\', onDeckBridgeKeydown, true);\n  }');
+    expect(out).toContain('e.stopImmediatePropagation()');
+  });
+
+  it('advances framework decks on ArrowRight inside the iframe', async () => {
+    const slides = Array.from({ length: 2 }, (_, i) =>
+      `<section class="slide${i === 0 ? ' active' : ''}">slide ${i + 1}</section>`,
+    ).join('');
+    const bodyHtml = [
+      '<style>.slide:not(.active) { display: none !important; }</style>',
+      '<div class="deck-shell">',
+      '  <div class="deck-stage" id="deck-stage">',
+      `    ${slides}`,
+      '  </div>',
+      '</div>',
+    ].join('');
+    const srcdoc = buildSrcdoc(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      deck: true,
+    });
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    if (!match?.[1]) throw new Error('deck bridge script not found');
+    const dom = new JSDOM(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      runScripts: 'outside-only',
+      pretendToBeVisual: true,
+    });
+    const win = dom.window;
+    const parentPostMessage = vi.fn();
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: parentPostMessage },
+    });
+    const evaluate = new win.Function(match[1]);
+    evaluate.call(win);
+    win.dispatchEvent(new win.Event('load'));
+    const slideEls = Array.from(win.document.querySelectorAll('.slide'));
+    expect(slideEls).toHaveLength(2);
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 450));
+
+    const keydown = new win.KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      bubbles: true,
+      cancelable: true,
+    });
+    win.document.dispatchEvent(keydown);
+
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
+    expect(slideEls[0]!.classList.contains('active')).toBe(false);
+    expect(slideEls[1]!.classList.contains('active')).toBe(true);
+    const messages = parentPostMessage.mock.calls
+      .map((call) => call[0])
+      .filter((m) => m?.type === 'od:slide-state');
+    expect(messages.at(-1)).toMatchObject({ active: 1, count: 2 });
   });
 });

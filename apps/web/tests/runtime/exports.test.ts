@@ -1736,6 +1736,10 @@ describe('sandboxed preview Blob exports', () => {
     expect(wrapper).toContain('tabindex="-1"');
     expect(wrapper).toContain('document.body.focus');
     expect(wrapper).not.toContain('iframe.focus()');
+    // Reclaim wrapper focus when the iframe steals it or the tab becomes visible.
+    expect(wrapper).toContain("iframe.addEventListener('focus', focusPresentationHost)");
+    expect(wrapper).toContain("document.addEventListener('visibilitychange'");
+    expect(wrapper).toContain("window.addEventListener('focus', focusPresentationHost)");
     expect(inner).toContain('<base href="/artifacts/project/assets/">');
     expect(inner).toContain('od:slide');
   });
