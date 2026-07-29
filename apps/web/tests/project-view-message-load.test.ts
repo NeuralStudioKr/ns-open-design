@@ -242,7 +242,12 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("const openedRecoveredHtml = await autoOpenRecoveredHtmlOutput(");
     expect(start).toBeGreaterThan(0);
-    const block = source.slice(start, start + 7000);
+    // Bumped window from 7000 to 8000 when the auto-continue site
+    // grew the `extractCommentAttachmentsForAutoContinue` scope
+    // preservation block. Keep just enough head-room; the block
+    // still asserts the same ordering contract, only over slightly
+    // more source.
+    const block = source.slice(start, start + 8000);
 
     expect(block).toContain("AUTO_CONTINUE_STATUS_CODE");
     expect(block).toContain("syncAutoContinueCountFromMessages(");
@@ -527,6 +532,32 @@ describe("ProjectView message loading", () => {
     expect(patchSource).toContain("podMembers");
     expect(patchSource).toContain("collapseTargetTextForMatch");
     expect(patchSource).toContain("candidate.length < 2");
+  });
+
+  it("preserves comment attachments on auto-continue retries so scope guards stay engaged", () => {
+    // Bug (2026-07-29): auto-continue passed `[]` for the third
+    // `commentAttachments` arg on all three call sites. That
+    // stripped the scope block from `<attached-preview-comments>`
+    // AND left `scopedCommentSlideIndexes` returning `undefined` on
+    // the retry, so the deck-patch / full-deck scope guards fell
+    // silent. A model that had failed a scoped edit on the
+    // original turn was free to rewrite the whole deck on retry —
+    // the reported 8-slide → 1-slide regression that showed up as
+    // a stub-guard warning after a scoped comment turn.
+    //
+    // Fix: pipe the originating user message's `commentAttachments`
+    // (or `runCommentAttachmentsRef` fallback) through to the retry
+    // so scope stays intact.
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("function extractCommentAttachmentsForAutoContinue");
+    expect(source).toContain("function findPrecedingUserMessage");
+    // Each of the three auto-continue call sites must now pass the
+    // preserved attachments instead of the historical `[]`. Assert
+    // by counting call-site invocations of the helper — if any
+    // regressed back to the `[]` shape the count would drop.
+    const helperCalls = (source.match(/extractCommentAttachmentsForAutoContinue\(/g) ?? []).length;
+    // 3 usages inside handleSend/scheduleAutoContinue sites + 1 definition.
+    expect(helperCalls).toBeGreaterThanOrEqual(4);
   });
 
   it("routes empty element-patch responses through auto-continue instead of the scope banner", () => {
