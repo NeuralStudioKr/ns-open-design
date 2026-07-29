@@ -223,6 +223,19 @@ export function hasUnterminatedQuestionForm(input: string): boolean {
   return stripTrailingOpenQuestionForm(input).hadOpenForm;
 }
 
+const QUESTION_FORM_TAG_RE = /<\/?(?:question-form|ask-question)\b/i;
+
+/** True when assistant prose contains a question-form (or ask-question alias). */
+export function isQuestionFormTurnContent(content: string | null | undefined): boolean {
+  const text = String(content ?? '');
+  if (!text.trim()) return false;
+  return (
+    findFirstQuestionForm(text) !== null
+    || hasUnterminatedQuestionForm(text)
+    || QUESTION_FORM_TAG_RE.test(text)
+  );
+}
+
 function findCloseTag(input: string, from: number, closeTag: string): number {
   const closeLower = closeTag.toLowerCase();
   const tagLen = closeTag.length;

@@ -73,10 +73,12 @@ import {
 import { createArtifactParser } from '../artifacts/parser';
 import {
   findFirstQuestionForm,
-  hasUnterminatedQuestionForm,
+  isQuestionFormTurnContent,
   parsePartialQuestionForm,
   type QuestionForm,
 } from '../artifacts/question-form';
+
+export { isQuestionFormTurnContent } from '../artifacts/question-form';
 import { parseSubmittedAnswers } from './QuestionForm';
 import {
   questionFormForSlideOnlyDisplay,
@@ -10849,17 +10851,6 @@ export function shouldFailSlideRunForMissingHtmlDeliverable(options: {
 }
 
 const DOCTYPE_HTML_TAIL_RE = /<!doctype\s+html[\s\S]*/i;
-const QUESTION_FORM_TAG_RE = /<\/?(?:question-form|ask-question)\b/i;
-
-export function isQuestionFormTurnContent(content: string | null | undefined): boolean {
-  const text = String(content ?? '');
-  if (!text.trim()) return false;
-  return (
-    findFirstQuestionForm(text) !== null
-    || hasUnterminatedQuestionForm(text)
-    || QUESTION_FORM_TAG_RE.test(text)
-  );
-}
 
 function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
   const salvaged = salvageTruncatedHtmlDocument(html);

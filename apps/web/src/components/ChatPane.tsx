@@ -39,6 +39,8 @@ import {
   isDesignSystemWorkspacePrompt,
 } from '../design-system-auto-prompt';
 import { isTodoWriteToolName, latestTodoWriteInputForPinnedCard } from '../runtime/todos';
+import { assistantMessageTextBody } from '../runtime/chat-events';
+import { isQuestionFormTurnContent } from '../artifacts/question-form';
 import { resolvePinnedNextStepSlot } from '../runtime/next-step-slot';
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, ChatMessage, ChatMessageFeedbackChange, Conversation, DesignSystemSummary, PreviewComment, Project, ProjectFile, ProjectMetadata, SkillSummary } from '../types';
 import { exactDateTime, messageTime, shortTime } from '../utils/chatTime';
@@ -1181,9 +1183,15 @@ export function ChatPane({
       const lastAssistantMsg = lastAssistantId
         ? messages.find((m) => m.id === lastAssistantId)
         : undefined;
-      if (lastAssistantMsg?.content.includes('<question-form')) {
-        const assistantEls = el.querySelectorAll('.msg.assistant');
-        const lastAssistantEl = assistantEls[assistantEls.length - 1];
+      const lastAssistantBody = lastAssistantMsg
+        ? assistantMessageTextBody(lastAssistantMsg)
+        : '';
+      if (isQuestionFormTurnContent(lastAssistantBody)) {
+        const lastAssistantEl = lastAssistantId
+          ? el.querySelector<HTMLElement>(
+              `.msg.assistant[data-message-id="${CSS.escape(lastAssistantId)}"]`,
+            )
+          : null;
         const formEl = lastAssistantEl?.querySelector<HTMLElement>('[data-form-id]');
         if (formEl && !scrolledToFormRef.current.has(formEl.dataset.formId!)) {
           scrolledToFormRef.current.add(formEl.dataset.formId!);
@@ -1275,9 +1283,15 @@ export function ChatPane({
       const lastAssistantMsg = lastAssistantId
         ? messages.find((m) => m.id === lastAssistantId)
         : undefined;
-      if (lastAssistantMsg?.content.includes('<question-form')) {
-        const assistantEls = el.querySelectorAll('.msg.assistant');
-        const lastAssistantEl = assistantEls[assistantEls.length - 1];
+      const lastAssistantBody = lastAssistantMsg
+        ? assistantMessageTextBody(lastAssistantMsg)
+        : '';
+      if (isQuestionFormTurnContent(lastAssistantBody)) {
+        const lastAssistantEl = lastAssistantId
+          ? el.querySelector<HTMLElement>(
+              `.msg.assistant[data-message-id="${CSS.escape(lastAssistantId)}"]`,
+            )
+          : null;
         const formEl = lastAssistantEl?.querySelector<HTMLElement>('[data-form-id]');
         if (formEl && !scrolledToFormRef.current.has(formEl.dataset.formId!)) {
           scrolledToFormRef.current.add(formEl.dataset.formId!);
