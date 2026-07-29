@@ -5189,6 +5189,8 @@ function HtmlViewer({
   /** Wall deadline is per artifact identity — must not reset on filesRefresh churn. */
   const previewSourceWallIdentityRef = useRef<string | null>(null);
   const previewSourceWallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Soft-retry wall is per artifact identity — must not reset on filesRefresh churn. */
+  const previewSourceRetryUntilRef = useRef<{ identity: string; until: number } | null>(null);
   const templateNameId = useId();
   const templateDescriptionId = useId();
   const imageExportTitleId = useId();
@@ -5500,6 +5502,7 @@ function HtmlViewer({
         previewSourceWallTimerRef.current = null;
       }
       previewSourceWallIdentityRef.current = null;
+      previewSourceRetryUntilRef.current = null;
     }
 
     if (liveHtml === undefined) {
@@ -5551,6 +5554,7 @@ function HtmlViewer({
         previewSourceWallTimerRef.current = null;
       }
       previewSourceWallIdentityRef.current = null;
+      previewSourceRetryUntilRef.current = null;
     }
     const sourceFileKey = `${artifactIdentity}\0raw`;
     const fileChanged = sourceFileKeyRef.current !== sourceFileKey;
@@ -5572,7 +5576,13 @@ function HtmlViewer({
     let softRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const requestGeneration = ++previewSourceFetchGenerationRef.current;
     const abort = new AbortController();
-    const retryUntil = Date.now() + HTML_PREVIEW_SOURCE_WALL_MS;
+    if (previewSourceRetryUntilRef.current?.identity !== artifactIdentity) {
+      previewSourceRetryUntilRef.current = {
+        identity: artifactIdentity,
+        until: Date.now() + HTML_PREVIEW_SOURCE_WALL_MS,
+      };
+    }
+    const retryUntil = previewSourceRetryUntilRef.current.until;
     let nextSoftRetryDelay = HTML_PREVIEW_SOURCE_FIRST_RETRY_MS;
 
     const clearPreviewSourceWall = () => {
@@ -5613,7 +5623,9 @@ function HtmlViewer({
       // check, and the preview only refreshes when Comment closes and the
       // url-load iframe takes over with its own ?v=mtime cache-bust.
       // Clear sticky unavailable for this attempt so refresh shows loading.
-      setSourceLoadFailed(false);
+      if (sourceRef.current != null || Date.now() < retryUntil) {
+        setSourceLoadFailed(false);
+      }
       const scheduleSoftRetry = () => {
         if (Date.now() >= retryUntil) {
           armPreviewSourceWall();

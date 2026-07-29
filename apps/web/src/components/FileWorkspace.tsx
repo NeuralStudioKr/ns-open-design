@@ -71,7 +71,10 @@ import {
   type ProjectFolder,
 } from '../types';
 import type { ChatSessionMode, WorkspaceContextItem } from '@open-design/contracts';
-import { isArtifactHtmlStableForPreview } from '@open-design/contracts';
+import {
+  isArtifactHtmlStableForPreview,
+  repairArtifactDocumentHead,
+} from '@open-design/contracts';
 import { createTerminal, killTerminal } from '../state/projects';
 import type { QuestionForm } from '../artifacts/question-form';
 import { DesignFilesPanel, type DesignFilesNavState } from './DesignFilesPanel';
@@ -540,6 +543,12 @@ export function FileWorkspace({
   const tabsBarRef = useRef<HTMLDivElement | null>(null);
   const draggedTabNameRef = useRef<string | null>(null);
   const ghostResolveTimerRef = useRef<number | null>(null);
+  const [pendingTabDiskHtml, setPendingTabDiskHtml] = useState<{
+    tab: string;
+    html: string;
+  } | null>(null);
+  const pendingTabDiskHtmlRef = useRef(pendingTabDiskHtml);
+  pendingTabDiskHtmlRef.current = pendingTabDiskHtml;
   /** Last file successfully shown for the active preview tab — survives chokidar list gaps. */
   const lastResolvedPreviewFileRef = useRef<ProjectFile | null>(null);
   const pendingPreviewBootstrapTabRef = useRef<string | null>(null);
@@ -576,6 +585,14 @@ export function FileWorkspace({
   const visibleFiles = useMemo(
     () => files.filter((file) => !isLiveArtifactImplementationPath(file.name)),
     [files],
+  );
+  // Coalesce chokidar/filesRefresh churn — ghost resolve must not reschedule
+  // its 500ms timer on every poll when the visible file set is unchanged.
+  const visibleFilesSignature = useMemo(
+    () => visibleFiles
+      .map((file) => `${file.path ?? file.name}\0${file.mtime ?? 0}\0${file.size ?? 0}`)
+      .join('\n'),
+    [visibleFiles],
   );
 
   const liveArtifactEntries = useMemo(
@@ -1592,7 +1609,7 @@ export function FileWorkspace({
   const memoryOnlyPreview = useMemo<{
     html: string;
     fileName: string | null;
-    reason: 'session' | 'streaming';
+    reason: 'session' | 'streaming' | 'disk-bootstrap';
   } | null>(() => {
     if (
       pendingArtifactRecovery?.html
@@ -1603,6 +1620,17 @@ export function FileWorkspace({
         html: pendingArtifactRecovery.html,
         fileName: pendingArtifactRecovery.fileName,
         reason: 'session',
+      };
+    }
+    if (
+      pendingTabDiskHtml
+      && pendingTabDiskHtml.tab === activeTab
+      && !resolvedPreviewFile
+    ) {
+      return {
+        html: pendingTabDiskHtml.html,
+        fileName: activeTab,
+        reason: 'disk-bootstrap',
       };
     }
     if (
@@ -1621,10 +1649,55 @@ export function FileWorkspace({
     pendingArtifactRecovery,
     activeTab,
     resolvedPreviewFile,
+    pendingTabDiskHtml,
     previewStreaming,
     artifactHtml,
     preferredPreviewFile,
   ]);
+
+  // Pending ghost tabs: the file list can lag behind a deep-linked tab or a
+  // chat chip open. Poll raw GET directly so preview does not strand on
+  // "loading…" while chokidar/registry refresh catches up.
+  useEffect(() => {
+    if (!pendingPreviewTab) {
+      setPendingTabDiskHtml(null);
+      return;
+    }
+    if (!/\.html?$/i.test(activeTab)) {
+      setPendingTabDiskHtml(null);
+      return;
+    }
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const retryUntil = Date.now() + 30_000;
+    const scheduleRetry = (delayMs: number) => {
+      if (cancelled || Date.now() >= retryUntil) return;
+      retryTimer = window.setTimeout(tryFetch, delayMs);
+    };
+    const tryFetch = () => {
+      void fetchProjectFileText(projectId, activeTab, {
+        cache: 'no-store',
+        cacheBustKey: Date.now(),
+      }).then((text) => {
+        if (cancelled) return;
+        if (!text?.trim()) {
+          scheduleRetry(400);
+          return;
+        }
+        const repaired = repairArtifactDocumentHead(text);
+        if (!isArtifactHtmlStableForPreview(repaired)) {
+          scheduleRetry(1_200);
+          return;
+        }
+        setPendingTabDiskHtml({ tab: activeTab, html: repaired });
+      });
+    };
+    tryFetch();
+    return () => {
+      cancelled = true;
+      if (retryTimer != null) window.clearTimeout(retryTimer);
+    };
+  }, [pendingPreviewTab, activeTab, projectId]);
 
   // Bootstrap refresh once per unresolved tab — not on every filesRefreshKey
   // bump (chokidar bursts would otherwise remount FileViewer as "loading").
@@ -1668,6 +1741,7 @@ export function FileWorkspace({
     }
     ghostResolveTimerRef.current = window.setTimeout(() => {
       ghostResolveTimerRef.current = null;
+      if (pendingTabDiskHtmlRef.current?.tab === activeTab) return;
       const resolved = findProjectFileByTabName(activeTab, visibleFiles);
       if (resolved) {
         if (resolved.name !== activeTab) {
@@ -1699,8 +1773,7 @@ export function FileWorkspace({
     streamingPreviewGraceElapsed,
     previewTabPending,
     activeTab,
-    visibleFiles,
-    filesRefreshKey,
+    visibleFilesSignature,
   ]);
 
   const activeWorkspaceContext = useMemo<WorkspaceContextItem | null>(() => {
