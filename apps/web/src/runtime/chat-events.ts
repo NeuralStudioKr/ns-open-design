@@ -64,9 +64,11 @@ export function messageHasVisibleProse(
   message: Pick<ChatMessage, 'content' | 'events'>,
 ): boolean {
   if ((message.content ?? '').trim().length > 0) return true;
+  // Thinking/reasoning is not chat prose — Teamver empty-shell / merge gates
+  // must not treat a thinking-only stub as a richer local body.
   return (message.events ?? []).some(
     (event) =>
-      (event.kind === 'text' || event.kind === 'thinking')
+      event.kind === 'text'
       && typeof event.text === 'string'
       && event.text.trim().length > 0,
   );

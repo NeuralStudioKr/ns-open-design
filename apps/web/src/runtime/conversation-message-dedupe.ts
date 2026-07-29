@@ -47,9 +47,8 @@ const HEADER_ONLY_STATUS_LABELS = new Set([
 
 function isHeaderOnlyNoiseEvent(event: AgentEvent): boolean {
   if (event.kind === "usage") return true;
-  // Thinking tokens are often filtered from Teamver embed chat body; treat as
-  // header-only noise so a thinking-only stub collapses beside a real reply.
-  if (event.kind === "thinking") return true;
+  // Thinking is NOT header-only: OD renders ThinkingBlock. Teamver embed hides
+  // thinking via ChatPane/AssistantMessage filters, not via this predicate.
   if (event.kind === "status") {
     return HEADER_ONLY_STATUS_LABELS.has(event.label ?? "");
   }
@@ -59,6 +58,27 @@ function isHeaderOnlyNoiseEvent(event: AgentEvent): boolean {
 function hasOnlyHeaderOnlyNoiseEvents(events: readonly AgentEvent[] | undefined): boolean {
   if (!events || events.length === 0) return true;
   return events.every(isHeaderOnlyNoiseEvent);
+}
+
+function isThinkingNoiseEvent(event: AgentEvent): boolean {
+  return event.kind === "thinking" || isHeaderOnlyNoiseEvent(event);
+}
+
+/**
+ * Thinking-only (plus status/usage) stub with no prose / files.
+ * Collapsible beside a richer sibling; not a global empty shell (OD shows it).
+ */
+export function isThinkingOnlyAssistantStub(message: ChatMessage): boolean {
+  if (message.role !== "assistant") return false;
+  if (message.runStatus === "failed" || message.runStatus === "canceled") return false;
+  if (message.resumable === true) return false;
+  if ((message.producedFiles?.length ?? 0) > 0) return false;
+  if (assistantMessageTextBody(message).trim().length > 0) return false;
+  if ((message.feedback?.rating ?? null) != null) return false;
+  const events = message.events ?? [];
+  if (events.length === 0) return false;
+  if (!events.some((event) => event.kind === "thinking")) return false;
+  return events.every(isThinkingNoiseEvent);
 }
 
 /** Assistant row with no user-visible body and no side effects worth keeping. */
@@ -75,13 +95,24 @@ export function isEmptyAssistantShell(message: ChatMessage): boolean {
   return true;
 }
 
+/** Empty header shell or thinking-only stub — safe to drop when a richer sibling exists. */
+export function isCollapsibleAssistantStub(message: ChatMessage): boolean {
+  return isEmptyAssistantShell(message) || isThinkingOnlyAssistantStub(message);
+}
+
+function countSubstantiveEvents(events: readonly AgentEvent[] | undefined): number {
+  if (!events || events.length === 0) return 0;
+  return events.filter((event) => !isThinkingNoiseEvent(event)).length;
+}
+
 function assistantRichnessScore(message: ChatMessage): number {
-  let score = (message.content?.length ?? 0) + (message.events?.length ?? 0) * 64;
+  let score =
+    (message.content?.length ?? 0) + countSubstantiveEvents(message.events) * 64;
   score += (message.producedFiles?.length ?? 0) * 2048;
   if (isTerminalRunStatus(message.runStatus)) score += 1024;
   if (isInFlightAssistantMessage(message)) score += 256;
   if (message.runId?.trim()) score += 32;
-  if (!isEmptyAssistantShell(message)) score += 512;
+  if (!isCollapsibleAssistantStub(message)) score += 512;
   return score;
 }
 
@@ -143,10 +174,10 @@ export function collapseEmptyAssistantShellsBeforeSuccessor(
   const flushTurn = () => {
     if (assistantIndicesInTurn.length === 0) return;
     const richIndices = assistantIndicesInTurn.filter(
-      (index) => !isEmptyAssistantShell(messages[index]!),
+      (index) => !isCollapsibleAssistantStub(messages[index]!),
     );
     const emptyIndices = assistantIndicesInTurn.filter(
-      (index) => isEmptyAssistantShell(messages[index]!),
+      (index) => isCollapsibleAssistantStub(messages[index]!),
     );
     if (richIndices.length > 0) {
       // When the only rich siblings are terminal (e.g. a failed attempt kept
@@ -280,7 +311,8 @@ export function resolveLastAssistantMessageId(
     const message = messages[i];
     if (message?.role !== "assistant") continue;
     if (isInFlightAssistantMessage(message)) return message.id;
-    if (!isEmptyAssistantShell(message)) return message.id;
+    // Prefer a real reply over trailing empty/thinking stubs.
+    if (!isCollapsibleAssistantStub(message)) return message.id;
     if (fallback === undefined) fallback = message.id;
   }
   return fallback;

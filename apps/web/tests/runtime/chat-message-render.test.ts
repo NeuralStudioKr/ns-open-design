@@ -87,6 +87,24 @@ describe("chat-message-render", () => {
     expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(true);
   });
 
+  it("omits thinking-only rows in Teamver embed but keeps them in OD", () => {
+    const message: ChatMessage = {
+      id: "a-think",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 2,
+      events: [{ kind: "thinking", text: "planning…" }],
+    };
+    expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(true);
+    expect(
+      shouldOmitMessageFromChatRender(message, {
+        ...embedCtx,
+        hideAssistantThinkingDetails: false,
+      }),
+    ).toBe(false);
+  });
+
   it("keeps canceled empty shells visible after Stop before first token", () => {
     const canceled: ChatMessage = {
       id: "a-canceled",

@@ -5,7 +5,9 @@ import {
   collapseEmptyAssistantShellsBeforeSuccessor,
   dedupeAssistantMessagesByRunId,
   dedupeConversationAssistantRows,
+  isCollapsibleAssistantStub,
   isEmptyAssistantShell,
+  isThinkingOnlyAssistantStub,
   patchInFlightAssistantForActiveRun,
   resolveLastAssistantMessageId,
   resolveLastAssistantMessageIndex,
@@ -35,7 +37,7 @@ describe("isEmptyAssistantShell", () => {
     expect(isEmptyAssistantShell(message)).toBe(true);
   });
 
-  it("treats thinking-only rows as empty shells", () => {
+  it("does not treat thinking-only rows as global empty shells (OD shows ThinkingBlock)", () => {
     const message: ChatMessage = {
       id: "a1",
       role: "assistant",
@@ -44,7 +46,9 @@ describe("isEmptyAssistantShell", () => {
       startedAt: 2,
       events: [{ kind: "thinking", text: "planning…" }],
     };
-    expect(isEmptyAssistantShell(message)).toBe(true);
+    expect(isEmptyAssistantShell(message)).toBe(false);
+    expect(isThinkingOnlyAssistantStub(message)).toBe(true);
+    expect(isCollapsibleAssistantStub(message)).toBe(true);
   });
 
   it("does not treat in-flight rows with text events as shells", () => {
@@ -300,6 +304,46 @@ describe("collapseEmptyAssistantShellsBeforeSuccessor", () => {
     expect(
       collapseEmptyAssistantShellsBeforeSuccessor([user, shell, live]).map((m) => m.id),
     ).toEqual(["u1", "a-live"]);
+  });
+
+  it("collapses a thinking-only stub beside a richer reply", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "hi", createdAt: 1 };
+    const thinkingStub: ChatMessage = {
+      id: "a-think",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 2,
+      createdAt: 2,
+      events: [{ kind: "thinking", text: "planning…" }],
+    };
+    const live: ChatMessage = {
+      id: "a-live",
+      role: "assistant",
+      content: "done",
+      runStatus: "succeeded",
+      endedAt: 3,
+      createdAt: 3,
+    };
+    expect(
+      collapseEmptyAssistantShellsBeforeSuccessor([user, thinkingStub, live]).map((m) => m.id),
+    ).toEqual(["u1", "a-live"]);
+  });
+
+  it("keeps a lone thinking-only stub so OD can render ThinkingBlock", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "hi", createdAt: 1 };
+    const thinkingStub: ChatMessage = {
+      id: "a-think",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 2,
+      createdAt: 2,
+      events: [{ kind: "thinking", text: "planning…" }],
+    };
+    expect(
+      collapseEmptyAssistantShellsBeforeSuccessor([user, thinkingStub]).map((m) => m.id),
+    ).toEqual(["u1", "a-think"]);
   });
 });
 

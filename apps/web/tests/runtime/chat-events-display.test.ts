@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { assistantEventsForDisplay, assistantMessageTextBody, reconcileChatMessageOnLoad } from '../../src/runtime/chat-events';
+import { assistantEventsForDisplay, assistantMessageTextBody, messageHasVisibleProse, reconcileChatMessageOnLoad } from '../../src/runtime/chat-events';
 import type { ChatMessage } from '../../src/types';
 
 describe('assistantEventsForDisplay', () => {
@@ -81,6 +81,23 @@ describe('assistantEventsForDisplay', () => {
         events: [{ kind: 'text', text: 'Events only' }],
       }),
     ).toBe('Events only');
+  });
+});
+
+describe('messageHasVisibleProse', () => {
+  it('ignores thinking-only events so merge gates do not prefer stubs', () => {
+    expect(
+      messageHasVisibleProse({
+        content: '',
+        events: [{ kind: 'thinking', text: 'planning…' }],
+      }),
+    ).toBe(false);
+    expect(
+      messageHasVisibleProse({
+        content: '',
+        events: [{ kind: 'text', text: 'hello' }],
+      }),
+    ).toBe(true);
   });
 });
 
