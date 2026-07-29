@@ -74,7 +74,12 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     expect(out).toContain('runFrameworkDeckFit');
     expect(out).toContain('reconcileFrameworkDeckFitSoon');
     expect(out).toContain('hostViewport.layoutFit');
-    expect(out).toContain('hostViewport.layoutFit');
+    expect(out).toMatch(
+      /function requestHostDeckViewport\(\) \{[\s\S]*compactStackedDeckEnabled && !frameworkDeckStage\(\)/,
+    );
+    expect(out).toMatch(
+      /if \(compactStackedDeckEnabled \|\| frameworkDeckStage\(\)\) requestHostDeckViewport\(\)/,
+    );
   });
 
   it('keeps injecting the place-content fix for legacy / non-framework decks', () => {

@@ -9655,7 +9655,16 @@ function HtmlViewer({
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
                             if (needsDeckHostViewportFit) {
-                              scheduleDeckPreviewFitNudges(frame, deckPreviewFitScale, deckPreviewFitOptions);
+                              schedulePostDeckHostViewportUntilSized(
+                                () => frame ?? urlPreviewIframeRef.current,
+                                deckPreviewFitScale,
+                                deckPreviewFitOptions,
+                              );
+                              scheduleDeckPreviewFitNudges(
+                                () => frame ?? urlPreviewIframeRef.current,
+                                deckPreviewFitScale,
+                                deckPreviewFitOptions,
+                              );
                             }
                           }}
                         />
@@ -9683,7 +9692,16 @@ function HtmlViewer({
                             syncBridgeModes(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
                             if (needsDeckHostViewportFit) {
-                              scheduleDeckPreviewFitNudges(frame, deckPreviewFitScale, deckPreviewFitOptions);
+                              schedulePostDeckHostViewportUntilSized(
+                                () => frame ?? urlPreviewIframeRef.current,
+                                deckPreviewFitScale,
+                                deckPreviewFitOptions,
+                              );
+                              scheduleDeckPreviewFitNudges(
+                                () => frame ?? urlPreviewIframeRef.current,
+                                deckPreviewFitScale,
+                                deckPreviewFitOptions,
+                              );
                             }
                           }}
                         />
@@ -9747,7 +9765,7 @@ function HtmlViewer({
                           syncBridgeModes(frame);
                           syncCachedSlideStateToIframe(frame);
                           if (effectiveDeck) {
-                            if (compactApiStackedDeck) {
+                            if (needsDeckHostViewportFit) {
                               schedulePostDeckHostViewportUntilSized(
                                 () => frame ?? srcDocPreviewIframeRef.current,
                                 deckPreviewFitScale,

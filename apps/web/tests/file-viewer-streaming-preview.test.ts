@@ -27,8 +27,8 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("isArtifactHtmlStableForPreview(repaired)");
     expect(source).toContain("repairArtifactDocumentHead(liveHtml)");
     expect(source).toContain("scheduleDeckPreviewFitNudges");
-    expect(source).toContain("scheduleDeckPreviewFitNudges(frame, deckPreviewFitScale");
-    expect(source).toContain("scheduleDeckPreviewFitNudges(iframeRef.current, deckPreviewFitScale");
+    expect(source).toContain("if (needsDeckHostViewportFit) {");
+    expect(source).toContain("schedulePostDeckHostViewportUntilSized(");
     expect(source).toContain("artifact-preview-streaming-veil");
     expect(source).toContain("artifact-preview-streaming-veil__card");
     expect(source).toContain('name="spinner"');
