@@ -149,9 +149,12 @@ describe("FileViewer streaming slide preview", () => {
     const projectView = readSource("src/components/ProjectView.tsx");
 
     expect(workspace).toContain("previewStreaming?: boolean");
-    expect(workspace).toContain("streaming={previewStreaming ?? false}");
+    expect(workspace).toContain("previewFileStreaming?: boolean");
+    expect(workspace).toContain("streaming={previewFileStreaming ?? previewStreaming ?? false}");
     expect(projectView).toContain("streaming={currentConversationActionDisabled}");
     expect(projectView).toContain("previewStreaming={previewPanelStreaming}");
+    expect(projectView).toContain("previewFileStreaming={previewFileStreaming}");
+    expect(projectView).toContain("const previewFileStreaming = currentConversationStreaming");
     expect(projectView).toContain(
       "currentConversationStreaming || currentConversationAwaitingActiveRunAttach",
     );

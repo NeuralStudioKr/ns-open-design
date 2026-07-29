@@ -2628,6 +2628,7 @@ export function ProjectView({
     currentConversationHasActiveRun
     && !currentConversationStreaming
     && !awaitingQuestionFormAnswer;
+  const previewFileStreaming = currentConversationStreaming;
   const previewPanelStreaming =
     currentConversationStreaming || currentConversationAwaitingActiveRunAttach;
 
@@ -5658,7 +5659,7 @@ export function ProjectView({
           flushAndPersistNow: () => persistNow({ keepalive: true }),
           onContentDelta: applyContentDelta,
           onContentRewrite: rewriteLiveContent,
-          stripCodeFences: hideAssistantThinkingDetails && !slideOnlyMvp,
+          stripCodeFences: hideAssistantThinkingDetails,
         });
         reattachTextBuffersRef.current.add(textBuffer);
         const unregisterTextBuffer = () => {
@@ -7901,7 +7902,7 @@ export function ProjectView({
         flushAndPersistNow: persistAssistantNowKeepalive,
         onContentDelta: applyContentDelta,
         onContentRewrite: rewriteLiveContent,
-        stripCodeFences: hideAssistantThinkingDetails && !slideOnlyMvp,
+        stripCodeFences: hideAssistantThinkingDetails,
       });
       sendTextBufferRef.current = textBuffer;
       const releaseOwnTextBuffer = () => {
@@ -8545,7 +8546,7 @@ export function ProjectView({
     const stopConversationId = activeConversationId ?? streamingConversationIdRef.current;
     setMessages((curr) => {
       const sanitizeOnStop: SanitizeChatMessageOptions = {
-        stripCodeFences: hideAssistantThinkingDetails && !slideOnlyMvp,
+        stripCodeFences: hideAssistantThinkingDetails,
       };
       const { messages: next, finalized } = finalizeActiveAssistantMessagesOnStop(
         curr,
@@ -10582,6 +10583,7 @@ export function ProjectView({
           onExportAsPptx={handleExportAsPptx}
           streaming={currentConversationActionDisabled}
           previewStreaming={previewPanelStreaming}
+          previewFileStreaming={previewFileStreaming}
           commentQueueOnSend={commentQueueOnSend}
           commentSendDisabled={currentConversationQueueDisabled}
           openRequest={openRequest}
