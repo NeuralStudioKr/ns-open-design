@@ -6257,7 +6257,10 @@ function HtmlViewer({
 
   useEffect(() => {
     if (!needsDeckHostViewportFit || mode !== 'preview') return;
-    return scheduleDeckPreviewFitNudges(iframeRef.current, deckPreviewFitScale, deckPreviewFitOptions);
+    const target = useUrlLoadPreview
+      ? (urlPreviewIframeRef.current ?? iframeRef.current)
+      : (srcDocPreviewIframeRef.current ?? iframeRef.current);
+    return scheduleDeckPreviewFitNudges(target, deckPreviewFitScale, deckPreviewFitOptions);
   }, [
     needsDeckHostViewportFit,
     mode,
@@ -6270,6 +6273,8 @@ function HtmlViewer({
     previewStateKey,
     useUrlLoadPreview,
     srcDocTransportResetKey,
+    // Terminal: liveHtml clear / streaming off rebuilds srcDoc — re-nudge fit.
+    streaming,
   ]);
 
   // Stream end often rebuilds srcDoc / clears liveHtml — re-nudge fit once.
@@ -6278,13 +6283,17 @@ function HtmlViewer({
     wasStreamingForDeckFitRef.current = streaming;
     if (!needsDeckHostViewportFit || mode !== 'preview') return;
     if (!(wasStreaming && !streaming)) return;
-    return scheduleDeckPreviewFitNudges(iframeRef.current, deckPreviewFitScale, deckPreviewFitOptions);
+    const target = useUrlLoadPreview
+      ? (urlPreviewIframeRef.current ?? iframeRef.current)
+      : (srcDocPreviewIframeRef.current ?? iframeRef.current);
+    return scheduleDeckPreviewFitNudges(target, deckPreviewFitScale, deckPreviewFitOptions);
   }, [
     streaming,
     needsDeckHostViewportFit,
     mode,
     deckPreviewFitScale,
     deckPreviewFitOptions,
+    useUrlLoadPreview,
   ]);
 
   useEffect(() => {
