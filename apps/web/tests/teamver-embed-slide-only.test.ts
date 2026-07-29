@@ -237,6 +237,9 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(entryShell).toContain('!slideOnlyMvp');
     expect(entryNavRail).toContain('!slideOnlyMvp');
     expect(entryNavRail).toContain('entry-nav-design-systems');
+    // Deploy-safe: hide rail "+" / New project in Teamver embed.
+    expect(entryNavRail).toContain('!teamverEmbed');
+    expect(entryNavRail).toContain('entry-nav-new-project');
     expect(chatComposer).toContain('showMcp={!hideComposerIntegrations}');
     expect(chatComposer).toContain('visibleDesignToolboxActions');
     expect(chatComposer).toContain('!slideOnlyMvp');

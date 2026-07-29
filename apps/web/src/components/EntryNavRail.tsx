@@ -2,11 +2,15 @@
 //
 // Renders a narrow icon-only column. The first slot is the brand logo,
 // followed by the primary destinations users expect to keep in reach:
-// New project, home, projects, automations, design systems, plugins,
+// (optional) New project, home, projects, automations, design systems, plugins,
 // and integrations. Footer controls are reserved for lower-frequency
 // support affordances such as the help launcher.
 // Language switching and other account-scoped controls live behind the
 // floating settings cog in the top-right corner of the main content.
+//
+// Teamver embed: hide the rail "New project" (+) control — creation stays on
+// Home/composer paths so a last-minute deploy does not expose an under-tested
+// rail entry that can race workspace/submit gates.
 
 import { useEffect, useRef, type ReactNode } from 'react';
 import { EntryHelpMenu } from './EntryHelpMenu';
@@ -135,6 +139,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, newProjectDisab
           ) : null}
         </div>
         <div className="entry-nav-rail__logo-divider" role="separator" aria-hidden="true" />
+        {!teamverEmbed ? (
         <NavButton
           ariaLabel={t('entry.navNewProject')}
           tooltip={t('entry.navNewProject')}
@@ -144,6 +149,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, newProjectDisab
         >
           <Icon name="plus" size={18} />
         </NavButton>
+        ) : null}
         <NavButton
           active={isHome}
           ariaLabel={homeLabel}
