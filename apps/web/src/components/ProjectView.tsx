@@ -50,6 +50,8 @@ export {
   targetTextPreservedInPatchedSlide,
 } from '../edit-mode/scoped-deck-patch';
 import { validateCommentEditIntentRespected } from '../edit-mode/comment-edit-intent';
+import { applyManualEditPatch, readManualEditStyles } from '../edit-mode/source-patches';
+import { buildManualEditCommentFastPath } from './manualEditCommentFastPath';
 import {
   clearPendingArtifactWrite,
   clearProjectPendingArtifactWrites,
@@ -1191,6 +1193,63 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
   }
   return { ok: true, html: applied.html };
+}
+
+/**
+ * When the model emits an empty element-patch but the scoped comment
+ * matches a deterministic fast-path pattern (quoted text replacement,
+ * explicit colors, font multipliers), apply the edit locally instead
+ * of burning auto-continue retries on the same model glitch.
+ */
+async function tryApplyCommentEditFastPathAgainstCurrentDeck(input: {
+  projectId: string;
+  fileName: string;
+  commentAttachments?: readonly ChatCommentAttachment[];
+}): Promise<DeckPatchMergeResult> {
+  const attachments = input.commentAttachments ?? [];
+  if (attachments.length === 0) return { ok: false, code: 'deck_patch_parse_failed', reason: 'no comment attachments' };
+
+  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
+    cache: 'no-store',
+  });
+  if (!currentHtml) {
+    return {
+      ok: false,
+      code: 'deck_patch_current_unreadable',
+      reason: 'current deck file unreadable',
+    };
+  }
+
+  let html = currentHtml;
+  let appliedCount = 0;
+  for (const attachment of attachments) {
+    if (attachment.filePath !== input.fileName) continue;
+    const editScope = typeof attachment.slideIndex === 'number'
+      ? { slideIndex: attachment.slideIndex }
+      : undefined;
+    const currentStyles = readManualEditStyles(html, attachment.elementId, editScope);
+    const fastPath = buildManualEditCommentFastPath({ attachment, currentStyles });
+    if (!fastPath) {
+      return { ok: false, code: 'deck_patch_parse_failed', reason: 'no fast-path match' };
+    }
+    for (const patch of fastPath.patches) {
+      const result = applyManualEditPatch(html, patch, editScope);
+      if (!result.ok) {
+        return {
+          ok: false,
+          code: 'deck_patch_merge_failed',
+          reason: result.error ?? `failed to apply ${patch.kind} on ${patch.id}`,
+        };
+      }
+      html = result.source;
+      appliedCount += 1;
+    }
+  }
+
+  if (appliedCount === 0) {
+    return { ok: false, code: 'deck_patch_parse_failed', reason: 'no fast-path patches applied' };
+  }
+  return { ok: true, html };
 }
 
 /**
@@ -3614,6 +3673,7 @@ export function ProjectView({
           instructionText: runVisiblePromptRef.current,
         });
         if (!merged.ok) {
+          let salvagedByFastPath = false;
           // Empty / patch-less element-patch means the model chose the
           // element-patch contract but did not actually produce a
           // patch. When the run has scoped comment attachments, we
@@ -3641,14 +3701,36 @@ export function ProjectView({
             (isElementPatchEmptyBody(merged.reason) ||
               shouldRetryScopedCommentMergeFailure(merged.code, merged.reason))
           ) {
-            console.warn('[element-patch] routing scoped edit to auto-continue', {
-              fileName: targetFileName,
-              code: merged.code,
-              reason: merged.reason,
-            });
-            return { kind: 'skipped-incomplete', fileName: targetFileName };
-          }
-          if (isElementPatchEmptyBody(merged.reason) && !runIsScoped) {
+            if (isElementPatchEmptyBody(merged.reason)) {
+              const fastPathMerged = await tryApplyCommentEditFastPathAgainstCurrentDeck({
+                projectId: project.id,
+                fileName: targetFileName,
+                commentAttachments: persistCommentAttachments,
+              });
+              if (fastPathMerged.ok) {
+                console.warn('[element-patch] applied scoped comment fast-path after empty model artifact', {
+                  fileName: targetFileName,
+                });
+                effectiveArt = { ...art, html: fastPathMerged.html, artifactType: 'deck' };
+                salvagedByFastPath = true;
+              } else {
+                console.warn('[element-patch] routing scoped edit to auto-continue', {
+                  fileName: targetFileName,
+                  code: merged.code,
+                  reason: merged.reason,
+                  fastPathReason: fastPathMerged.reason,
+                });
+                return { kind: 'skipped-incomplete', fileName: targetFileName };
+              }
+            } else {
+              console.warn('[element-patch] routing scoped edit to auto-continue', {
+                fileName: targetFileName,
+                code: merged.code,
+                reason: merged.reason,
+              });
+              return { kind: 'skipped-incomplete', fileName: targetFileName };
+            }
+          } else if (isElementPatchEmptyBody(merged.reason) && !runIsScoped) {
             console.warn('[element-patch] rejecting unscoped empty artifact', {
               fileName: targetFileName,
               reason: merged.reason,
@@ -3660,14 +3742,17 @@ export function ProjectView({
                 'The model emitted an empty element-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.',
             };
           }
-          return {
-            kind: 'scope-rejected',
-            fileName: targetFileName,
-            code: merged.code,
-            reason: merged.reason,
-          };
+          if (!salvagedByFastPath) {
+            return {
+              kind: 'scope-rejected',
+              fileName: targetFileName,
+              code: merged.code,
+              reason: merged.reason,
+            };
+          }
+        } else {
+          effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
         }
-        effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
       } else if (isDeckPatchArtifactType(art.artifactType)) {
         const merged = await tryApplyDeckPatchAgainstCurrentDeck({
           projectId: project.id,

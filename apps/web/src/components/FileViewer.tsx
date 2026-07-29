@@ -198,6 +198,7 @@ import {
 } from '../edit-mode/source-patches';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
+import { buildManualEditCommentFastPath } from './manualEditCommentFastPath';
 
 function resolveChromeActionsHost(): HTMLElement | null {
   return document.querySelector<HTMLElement>(APP_CHROME_FILE_ACTIONS_SELECTOR)
@@ -7941,10 +7942,68 @@ function HtmlViewer({
   async function applyManualEditCommentFastPathAttachments(
     attachments: ChatCommentAttachment[],
   ): Promise<{ appliedIds: Set<string>; remaining: ChatCommentAttachment[] }> {
-    // Comment edits are handled by the model via element-patch / deck-patch.
-    // Client-side regex fast paths were removed — they could not cover arbitrary
-    // natural-language requests and duplicated the model contract poorly.
-    return { appliedIds: new Set(), remaining: attachments };
+    const appliedIds = new Set<string>();
+    const remaining: ChatCommentAttachment[] = [];
+    if (!canUseManualEditCommentFastPath()) {
+      return { appliedIds, remaining: attachments };
+    }
+    for (const attachment of attachments) {
+      if (attachment.filePath !== file.name) {
+        remaining.push(attachment);
+        continue;
+      }
+      if (
+        effectiveDeck &&
+        !(typeof attachment.slideIndex === 'number' && Number.isFinite(attachment.slideIndex) && attachment.slideIndex >= 0)
+      ) {
+        remaining.push(attachment);
+        continue;
+      }
+      const editScope = typeof attachment.slideIndex === 'number'
+        ? { slideIndex: attachment.slideIndex }
+        : undefined;
+      const currentStyles = readManualEditStyles(sourceRef.current ?? '', attachment.elementId, editScope);
+      const fastPath = buildManualEditCommentFastPath({ attachment, currentStyles });
+      if (!fastPath) {
+        remaining.push(attachment);
+        continue;
+      }
+      let applied = true;
+      for (const patch of fastPath.patches) {
+        const ok = await applyManualEdit(
+          patch,
+          embedUiLabel(fastPath.label, '댓글 빠른 편집'),
+          editScope,
+        );
+        if (!ok) {
+          applied = false;
+          break;
+        }
+      }
+      if (applied) {
+        appliedIds.add(attachment.id);
+      } else {
+        remaining.push(attachment);
+      }
+    }
+    if (appliedIds.size > 0) {
+      setCommentSavedToast(embedUiLabel('Applied quick edit.', '빠른 편집을 적용했습니다.'));
+    }
+    return { appliedIds, remaining };
+  }
+
+  function canUseManualEditCommentFastPath(): boolean {
+    if (sourceRef.current == null) return false;
+    const manifestKind = file.artifactManifest?.kind ?? file.artifactKind ?? null;
+    const manifestRenderer = file.artifactManifest?.renderer ?? null;
+    return (
+      file.kind === 'html' ||
+      file.kind === 'presentation' ||
+      manifestKind === 'deck' ||
+      manifestKind === 'html' ||
+      manifestRenderer === 'deck-html' ||
+      manifestRenderer === 'html'
+    );
   }
 
   async function sendBoardBatch() {
