@@ -177,7 +177,11 @@ import { playSound, showCompletionNotification } from '../utils/notifications';
 import { randomUUID } from '../utils/uuid';
 import { DEFAULT_NOTIFICATIONS } from '../state/config';
 import type { TodoItem } from '../runtime/todos';
-import { appendErrorStatusEvent, messageHasVisibleProse } from '../runtime/chat-events';
+import {
+  appendErrorStatusEvent,
+  appendWarningStatusEvent,
+  messageHasVisibleProse,
+} from '../runtime/chat-events';
 import {
   AUTO_CONTINUE_ENTRY_FROM,
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
@@ -3119,7 +3123,7 @@ export function ProjectView({
                 if (emergency.recovered && emergency.htmlToOpen) {
                   const emergencyNotice = formatEmergencyDeckFallbackNotice();
                   const updatedAssistant = {
-                    ...appendErrorStatusEvent(
+                    ...appendWarningStatusEvent(
                       incompleteAssistant,
                       emergencyNotice,
                       EMERGENCY_DECK_FALLBACK_STATUS_CODE,
@@ -6387,7 +6391,7 @@ export function ProjectView({
             if (emergency.recovered && emergency.htmlToOpen) {
               const emergencyNotice = formatEmergencyDeckFallbackNotice();
               const updatedAssistant = {
-                ...appendErrorStatusEvent(
+                ...appendWarningStatusEvent(
                   incompleteAssistant,
                   emergencyNotice,
                   EMERGENCY_DECK_FALLBACK_STATUS_CODE,
@@ -7465,7 +7469,7 @@ export function ProjectView({
               if (emergencyRecovered) {
                 const emergencyNotice = formatEmergencyDeckFallbackNotice();
                 updateAssistant((prev) => ({
-                  ...appendErrorStatusEvent(
+                  ...appendWarningStatusEvent(
                     prev,
                     emergencyNotice,
                     EMERGENCY_DECK_FALLBACK_STATUS_CODE,

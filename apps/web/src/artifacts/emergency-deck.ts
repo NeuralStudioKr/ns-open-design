@@ -74,21 +74,76 @@ export function extractSlideOutlineItems(text: string): EmergencySlide[] {
   return dedupeSlides(slides);
 }
 
+/** Reject progress sentences / particle fragments mistaken for deck titles. */
+function looksLikeProgressOrFragmentTopic(title: string): boolean {
+  const t = title.trim();
+  if (!t) return true;
+  // "덱을 만들고 있어요" → capture group often becomes "을 만들고 있어요".
+  if (/^(?:을|를|이|가|은|는|의|과|와|로|으로)\s/.test(t)) return true;
+  if (
+    /(?:고\s*있어요|고\s*있습니다|중이에요|중입니다|생성\s*중|작성\s*중|만들고\s*있|생성하고|작성하고|작업\s*중|진행\s*중)/i
+      .test(t)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function inferTopicFromHostRequest(text: string): string | null {
+  const host = text.match(/https?:\/\/(?:www\.)?([a-z0-9-]+)\.[^\s/]+/i)?.[1];
+  if (!host) return null;
+  if (!/(?:회사|소개|발표|슬라이드|덱|피피티|ppt|presentation|deck|slides?)/i.test(text)) {
+    return null;
+  }
+  const brand = host
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+  return /[가-힣]/.test(text) ? `${brand} 회사 소개` : `${brand} company overview`;
+}
+
 function inferTopicFromText(text: string): string | null {
   const trimmed = String(text || '').trim();
   if (!trimmed) return null;
+
+  const fromHost = inferTopicFromHostRequest(trimmed);
+  if (fromHost) return fromHost;
+
+  // Require an explicit topic marker or colon so "덱을 만들고 있어요" does not
+  // treat the particle+verb tail as the deck title.
   const ko = trimmed.match(
-    /(?:프레젠테이션|발표\s*자료|슬라이드|피피티|덱)(?:\s*(?:주제|제목|about))?\s*[:：]?\s*["']?([^"'\n.]{4,80})/i,
+    /(?:프레젠테이션|발표\s*자료|슬라이드|피피티|덱)(?:\s*(?:주제|제목|about))\s*[:：]?\s*["']?([^"'\n.]{4,80})|(?:프레젠테이션|발표\s*자료|슬라이드|피피티|덱)\s*[:：]\s*["']?([^"'\n.]{4,80})/i,
   );
-  if (ko?.[1]) return cleanSlideTitle(ko[1]);
+  const koTitle = cleanSlideTitle(ko?.[1] || ko?.[2] || '');
+  if (koTitle && !looksLikeProgressOrFragmentTopic(koTitle)) return koTitle;
+
   const en = trimmed.match(
     /(?:presentation|deck|slides?)\s+(?:about|on|for)\s+["']?([^"'\n.]{4,80})/i,
   );
-  if (en?.[1]) return cleanSlideTitle(en[1]);
+  if (en?.[1]) {
+    const title = cleanSlideTitle(en[1]);
+    if (!looksLikeProgressOrFragmentTopic(title)) return title;
+  }
+
   const firstLine = trimmed.split(/\r?\n/).find((line) => line.trim().length > 4);
   if (!firstLine) return null;
   const cleaned = firstLine.replace(/^\[form answers[^\]]*\]\s*/i, '').trim();
-  return cleaned.length >= 4 && cleaned.length <= 80 ? cleaned : null;
+  if (cleaned.length < 4 || cleaned.length > 80) return null;
+  if (looksLikeProgressOrFragmentTopic(cleaned)) return null;
+  return cleaned;
+}
+
+function inferDeckTitleFromMessages(messages: readonly ChatMessage[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== 'user' || !message.content?.trim()) continue;
+    // Auto-continue prompts are not topic sources.
+    if (/\[Deliverable instruction\]/i.test(message.content)) continue;
+    const topic = inferTopicFromText(message.content);
+    if (topic) return topic;
+  }
+  return null;
 }
 
 function buildStandardSixSlides(topic: string): EmergencySlide[] {
@@ -215,7 +270,8 @@ export function buildEmergencyArtifactFromMessages(
   const outline = [collectSlideOutlineFromMessages(messages), finalText?.trim() ?? '']
     .filter(Boolean)
     .join('\n\n');
-  const html = buildEmergencySlideDeckFromOutline(outline);
+  const deckTitle = inferDeckTitleFromMessages(messages) || undefined;
+  const html = buildEmergencySlideDeckFromOutline(outline, { deckTitle });
   if (!html) return null;
   return {
     identifier: 'deck',

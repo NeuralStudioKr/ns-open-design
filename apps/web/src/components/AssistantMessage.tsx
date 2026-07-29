@@ -578,7 +578,8 @@ function AssistantMessageImpl({
         block.kind !== "thinking"
         && block.kind !== "tool-group"
         && block.kind !== "live-tool"
-        && (block.kind !== "status" || block.label === "error")
+        // Keep fatal errors and non-fatal warnings (e.g. emergency draft deck).
+        && (block.kind !== "status" || block.label === "error" || block.label === "warning")
         && block.kind !== "plugin-candidate",
       );
     }
@@ -930,9 +931,24 @@ function AssistantMessageImpl({
             // The pre-output "initializing" status is surfaced by the footer's
             // shimmering "Preparing…" label instead of its own pill.
             if (b.label === "initializing") return null;
+            // hideAssistantModelLabels is for role/model chrome — never strip
+            // error/warning detail, or embed users only see a bare "error" pill.
             const statusDetail =
-              b.label === "error" || !hideAssistantModelLabels ? b.detail : undefined;
-            return <StatusPill key={i} label={b.label} detail={statusDetail} />;
+              hideAssistantModelLabels && b.label !== "error" && b.label !== "warning"
+                ? undefined
+                : b.detail;
+            const statusLabel = teamverEmbedEnabled
+              ? (b.label === "error" ? "오류" : b.label === "warning" ? "안내" : b.label)
+              : b.label;
+            return (
+              <StatusPill
+                key={i}
+                label={statusLabel}
+                detail={statusDetail}
+                dataStatus={b.label}
+                variant={b.label === "error" ? "error" : b.label === "warning" ? "warning" : undefined}
+              />
+            );
           }
           return null;
         })}
@@ -2508,16 +2524,25 @@ function ThinkingBlock({ text, streaming }: { text: string; streaming?: boolean 
 function StatusPill({
   label,
   detail,
+  variant,
+  dataStatus,
 }: {
   label: string;
   detail?: string | undefined;
+  variant?: "error" | "warning" | undefined;
+  dataStatus?: string | undefined;
 }) {
-  const variant =
-    label === "error" ? "error" : label === "warning" ? "warning" : undefined;
+  const resolvedVariant =
+    variant
+    ?? (label === "error" || label === "오류"
+      ? "error"
+      : label === "warning" || label === "안내"
+        ? "warning"
+        : undefined);
   return (
     <div
-      className={`status-pill${variant ? ` is-${variant}` : ""}`}
-      data-status={label}
+      className={`status-pill${resolvedVariant ? ` is-${resolvedVariant}` : ""}`}
+      data-status={dataStatus ?? label}
     >
       <span className="status-label">{label}</span>
       {detail ? <span className="status-detail">{renderStatusDetail(detail)}</span> : null}
@@ -2947,7 +2972,7 @@ type Block =
       confidence?: number | undefined;
       draftPath?: string | null | undefined;
     }
-  | { kind: "status"; label: string; detail?: string | undefined };
+  | { kind: "status"; label: string; detail?: string | undefined; code?: string | undefined };
 
 /**
  * Walk the event stream and build the rendering layout list. We additionally
@@ -3107,7 +3132,12 @@ function buildBlocks(events: AgentEvent[]): Block[] {
         last.detail = ev.detail;
         continue;
       }
-      out.push({ kind: "status", label: ev.label, detail: ev.detail });
+      out.push({
+        kind: "status",
+        label: ev.label,
+        detail: ev.detail,
+        ...(ev.code ? { code: ev.code } : {}),
+      });
       continue;
     }
   }

@@ -428,4 +428,49 @@ describe('AssistantMessage Teamver streaming visibility', () => {
 
     expect(screen.getByText('Waiting for first output')).toBeTruthy();
   });
+
+  it('shows emergency draft warning detail in embed (not a bare error pill)', () => {
+    const notice =
+      '모델 응답이 완료되지 않아 목차 기반 초안 슬라이드를 자동 생성했습니다. 내용을 확인한 뒤 수정하세요.';
+    const { container } = render(
+      <AssistantMessage
+        message={{
+          id: 'a-emergency',
+          role: 'assistant',
+          content: '덱을 만들고 있어요.',
+          runStatus: 'succeeded',
+          startedAt: Date.now(),
+          endedAt: Date.now(),
+          events: [
+            { kind: 'text', text: '덱을 만들고 있어요.' },
+            {
+              kind: 'status',
+              label: 'warning',
+              detail: notice,
+              code: 'emergency_deck_fallback',
+            },
+          ],
+          producedFiles: [
+            {
+              name: 'deck.html',
+              path: 'deck.html',
+              size: 1400,
+              mtime: Date.now(),
+              kind: 'html',
+              mime: 'text/html',
+            },
+          ],
+        } as ChatMessage}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(container.querySelector('[data-status="warning"]')).not.toBeNull();
+    expect(container.querySelector('.status-label')?.textContent).toBe('안내');
+    expect(container.querySelector('.status-detail')?.textContent).toContain(
+      '목차 기반 초안 슬라이드',
+    );
+  });
 });
