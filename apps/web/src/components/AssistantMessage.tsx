@@ -793,7 +793,6 @@ function AssistantMessageImpl({
     || streamingTodoProgress != null
     || shouldShowTeamverCompletedArtifactLead
     || displayedProduced.length > 0
-    || showNextStepActions
     || pluginActionFolders.length > 0
     || (!streaming && fileOps.length > 0)
     || message.runStatus === "failed"

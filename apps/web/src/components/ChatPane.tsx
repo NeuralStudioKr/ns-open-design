@@ -50,6 +50,10 @@ import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-gu
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
 import { resolveLastAssistantMessageId } from '../runtime/conversation-message-dedupe';
 import {
+  shouldIncludeMessageInChatRender,
+  type ChatMessageRenderContext,
+} from '../runtime/chat-message-render';
+import {
   ChatComposer,
   type ChatComposerHandle,
   type ChatSendMeta,
@@ -2428,9 +2432,18 @@ function ChatRows({
     () => firstTodoWriteAssistantMessageId(messages),
     [messages],
   );
+  const { hideAssistantThinkingDetails } = useTeamverBranding();
+  const renderCtx = useMemo<ChatMessageRenderContext>(
+    () => ({
+      streaming,
+      lastAssistantId,
+      hideAssistantThinkingDetails,
+    }),
+    [streaming, lastAssistantId, hideAssistantThinkingDetails],
+  );
   const items = useMemo(
-    () => buildChatRenderItems(messages),
-    [messages],
+    () => buildChatRenderItems(messages, renderCtx),
+    [messages, renderCtx],
   );
   const pastRunErrorCards = useMemo(() => {
     const cards = new Map<string, RunErrorCardInfo>();
@@ -2738,10 +2751,14 @@ function VirtualChatRow({
   );
 }
 
-function buildChatRenderItems(messages: ChatMessage[]): ChatRenderItem[] {
+export function buildChatRenderItems(
+  messages: ChatMessage[],
+  ctx: ChatMessageRenderContext,
+): ChatRenderItem[] {
   const items: ChatRenderItem[] = [];
   for (let i = 0; i < messages.length; i += 1) {
     const message = messages[i]!;
+    if (!shouldIncludeMessageInChatRender(message, ctx)) continue;
     items.push({
       kind: 'message',
       key: `message:${message.id}`,
