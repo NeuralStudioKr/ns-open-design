@@ -1668,7 +1668,7 @@ export function FileWorkspace({
       return;
     }
     let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryTimer: ReturnType<typeof window.setTimeout> | null = null;
     const retryUntil = Date.now() + 30_000;
     const scheduleRetry = (delayMs: number) => {
       if (cancelled || Date.now() >= retryUntil) return;
