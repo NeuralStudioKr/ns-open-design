@@ -257,6 +257,57 @@ describe('manual edit source patches', () => {
       .toBe(false);
   });
 
+  it('resolves preview dom paths with a drifted outer wrapper relative to the slide', () => {
+    // Preview iframe captured body > div.deck > section > … but the saved
+    // deck.html has sections directly under body (wrapper omitted / different).
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><p>Slide one copy</p></section>',
+      '<section class="slide" data-slide-index="1">',
+      '<div class="content"><div class="meta">meta</div><div class="body"><p>Target copy</p></div></div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const id =
+      'dom:body > div:nth-of-type(1) > section:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > p:nth-of-type(1)';
+
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id, value: 'Patched copy' },
+      { slideIndex: 1 },
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    expect(result.source).toContain('<p>Patched copy</p>');
+    expect(result.source).toContain('<p>Slide one copy</p>');
+    expect(result.source).toContain('>meta<');
+  });
+
+  it('falls back to comment text/html hints when the dom path cannot be walked', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><p>Other</p></section>',
+      '<section class="slide" data-slide-index="1"><p>Keep me</p><p>Unique target phrase</p></section>',
+      '</body></html>',
+    ].join('');
+    const id = 'dom:body > div:nth-of-type(9) > section:nth-of-type(9) > p:nth-of-type(9)';
+
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id, value: 'Hint recovered' },
+      { slideIndex: 1 },
+      {
+        id,
+        currentText: 'Unique target phrase',
+        htmlHint: '<p>Unique target phrase</p>',
+      },
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    expect(result.source).toContain('<p>Hint recovered</p>');
+    expect(result.source).toContain('<p>Keep me</p>');
+  });
+
   it('resolves selector-only comment targets inside the selected slide', () => {
     const source = [
       '<!doctype html><html><body>',

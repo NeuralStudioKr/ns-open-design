@@ -19,7 +19,10 @@
  */
 
 import type { ManualEditPatch } from '../edit-mode/types';
-import { applyManualEditPatch } from '../edit-mode/source-patches';
+import {
+  applyManualEditPatch,
+  type ManualEditMergeTargetHint,
+} from '../edit-mode/source-patches';
 
 export type ElementPatchOp = ManualEditPatch & {
   slideIndex: number;
@@ -301,11 +304,31 @@ export interface ApplyElementPatchOptions {
   patches: readonly ElementPatchOp[];
   allowedSlideIndexes?: readonly number[];
   allowedTargetIds?: readonly string[];
+  /**
+   * Comment-attachment hints (currentText / htmlHint / selector) so apply can
+   * recover when the click `dom:` path drifted from on-disk HTML structure.
+   */
+  targetHints?: readonly ManualEditMergeTargetHint[];
 }
 
 export type ApplyElementPatchResult =
   | { ok: true; html: string; appliedCount: number }
   | { ok: false; reason: string };
+
+function resolveElementPatchTargetHint(
+  targetId: string,
+  hints: readonly ManualEditMergeTargetHint[] | undefined,
+): ManualEditMergeTargetHint | undefined {
+  if (!hints?.length) return undefined;
+  const normalized = String(targetId || '').trim();
+  if (normalized) {
+    const exact = hints.find((hint) => String(hint.id || '').trim() === normalized);
+    if (exact) return exact;
+  }
+  // Single pinned comment: reuse its text/html hint even if the model
+  // slightly rewrote target-id punctuation.
+  return hints.length === 1 ? hints[0] : undefined;
+}
 
 export function applyElementPatches(options: ApplyElementPatchOptions): ApplyElementPatchResult {
   const allowedSlides = options.allowedSlideIndexes
@@ -334,7 +357,8 @@ export function applyElementPatches(options: ApplyElementPatchOptions): ApplyEle
     }
 
     const { slideIndex, ...manualEdit } = patch;
-    const result = applyManualEditPatch(html, manualEdit, { slideIndex });
+    const hint = resolveElementPatchTargetHint(targetId, options.targetHints);
+    const result = applyManualEditPatch(html, manualEdit, { slideIndex }, hint);
     if (!result.ok) {
       return { ok: false, reason: result.error ?? `failed to apply ${manualEdit.kind} on ${targetId}` };
     }

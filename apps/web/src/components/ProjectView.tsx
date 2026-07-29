@@ -1221,11 +1221,21 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     allowedSlideIndexes: input.allowedSlideIndexes,
     commentAttachments: input.commentAttachments,
   });
+  const targetHints = (input.commentAttachments ?? []).flatMap((attachment) =>
+    scopedCommentElementIds(attachment).map((id) => ({
+      id,
+      selector: attachment.selector,
+      currentText: attachment.currentText,
+      instructionText: attachment.comment,
+      htmlHint: attachment.htmlHint,
+    })),
+  );
   const applied = applyElementPatches({
     currentHtml,
     patches: parsed.patches,
     allowedSlideIndexes,
     allowedTargetIds,
+    targetHints,
   });
   if (!applied.ok) {
     console.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });

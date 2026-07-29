@@ -34,6 +34,7 @@ export function applyManualEditPatch(
   source: string,
   patch: ManualEditPatch,
   scope: ManualEditSourceScope = {},
+  hint?: ManualEditMergeTargetHint,
 ): ManualEditPatchResult {
   if (patch.kind === 'set-full-source') return { ok: true, source: patch.source };
 
@@ -47,7 +48,7 @@ export function applyManualEditPatch(
       : { ok: false, source, error: `Token not found: ${patch.token}` };
   }
 
-  const el = findEditableElement(doc, patch.id, scope);
+  const el = findEditableElement(doc, patch.id, scope, hint);
   if (!el) return { ok: false, source, error: `Target not found: ${patch.id}` };
 
   if (patch.kind === 'set-text') {
@@ -687,6 +688,14 @@ function findElementByDomSelector(
   if (selector.startsWith('body > ')) {
     const byPath = findElementByDomSelectorPath(doc, root, selector);
     if (byPath) return byPath;
+    // Preview click paths often include wrappers (e.g. `<div class="deck">`)
+    // that the on-disk HTML may omit / rearrange. When lookup is slide-scoped,
+    // resolve the path relative to that slide so inner nth-of-type segments
+    // still find the pinned element.
+    if (root.nodeType !== 9) {
+      const relative = findElementByDomSelectorPathRelativeToRoot(root as Element, selector);
+      if (relative) return relative;
+    }
   }
   const rootElement = root.nodeType === 9 ? null : root as Element;
   if (rootElement && !selector.startsWith('body > ')) {
@@ -715,41 +724,107 @@ function findElementByDomSelector(
   return (root as Element).contains(el) ? el : null;
 }
 
-function findElementByDomSelectorPath(
-  doc: Document,
-  root: ManualEditLookupRoot,
-  selector: string,
-): Element | null {
-  const segments = selector
-    .slice('body > '.length)
+type DomNthSegment = { tag: string; ordinal: number };
+
+function parseDomNthSegment(segment: string): DomNthSegment | null {
+  const match = /^([a-z][a-z0-9-]*):nth-of-type\(([1-9][0-9]*)\)$/i.exec(segment.trim());
+  if (!match) return null;
+  const tagRaw = match[1];
+  const ordinalRaw = match[2];
+  if (tagRaw === undefined || ordinalRaw === undefined) return null;
+  return { tag: tagRaw.toLowerCase(), ordinal: Number(ordinalRaw) };
+}
+
+function parseDomBodyPathSegments(selector: string): string[] {
+  const trimmed = selector.trim();
+  const bodyPath = trimmed.startsWith('body > ')
+    ? trimmed.slice('body > '.length)
+    : trimmed;
+  return bodyPath
     .split(' > ')
     .map((segment) => segment.trim())
     .filter(Boolean);
-  if (segments.length === 0) return null;
-  let current: Element | null = doc.body;
+}
+
+function walkDomNthTypePath(start: Element, segments: readonly string[]): Element | null {
+  let current: Element | null = start;
   for (const segment of segments) {
-    const match = /^([a-z][a-z0-9-]*):nth-of-type\(([1-9][0-9]*)\)$/i.exec(segment);
-    if (!match || !current) return null;
-    const tagRaw = match[1];
-    const ordinalRaw = match[2];
-    if (tagRaw === undefined || ordinalRaw === undefined) return null;
-    const tag = tagRaw.toLowerCase();
-    const ordinal = Number(ordinalRaw);
+    const parsed = parseDomNthSegment(segment);
+    if (!parsed || !current) return null;
     let seen = 0;
     let next: Element | null = null;
     for (const child of Array.from(current.children)) {
-      if (child.tagName.toLowerCase() !== tag) continue;
+      if (child.tagName.toLowerCase() !== parsed.tag) continue;
       seen += 1;
-      if (seen === ordinal) {
+      if (seen === parsed.ordinal) {
         next = child;
         break;
       }
     }
     current = next;
   }
+  return current;
+}
+
+function elementMatchesDomNthSegment(el: Element, segment: string): boolean {
+  const parsed = parseDomNthSegment(segment);
+  if (!parsed) return false;
+  if (el.tagName.toLowerCase() !== parsed.tag) return false;
+  const parent = el.parentElement;
+  if (!parent) return true;
+  let seen = 0;
+  for (const child of Array.from(parent.children)) {
+    if (child.tagName.toLowerCase() !== parsed.tag) continue;
+    seen += 1;
+    if (child === el) return seen === parsed.ordinal;
+  }
+  return false;
+}
+
+function findElementByDomSelectorPath(
+  doc: Document,
+  root: ManualEditLookupRoot,
+  selector: string,
+): Element | null {
+  const segments = parseDomBodyPathSegments(selector);
+  if (segments.length === 0 || !doc.body) return null;
+  const current = walkDomNthTypePath(doc.body, segments);
   if (!current || current === doc.body || current === doc.documentElement) return null;
   if (root.nodeType === 9) return current;
   return (root as Element).contains(current) ? current : null;
+}
+
+/**
+ * Resolve a preview `body > …` path against a slide-scoped root when the
+ * absolute walk misses (wrapper drift between iframe DOM and saved HTML).
+ *
+ * Only anchors when a path segment identifies the scoped root itself, then
+ * walks the remaining interior segments. Blind suffix walks are rejected —
+ * otherwise `… > p:nth-of-type(1)` would match the first `<p>` on the wrong
+ * slide.
+ */
+function findElementByDomSelectorPathRelativeToRoot(
+  root: Element,
+  selector: string,
+): Element | null {
+  const segments = parseDomBodyPathSegments(selector);
+  if (segments.length === 0) return null;
+
+  for (let start = 0; start < segments.length; start += 1) {
+    const head = segments[start];
+    if (!head || !elementMatchesDomNthSegment(root, head)) continue;
+    const rest = segments.slice(start + 1);
+    if (rest.length === 0) continue;
+    const fromRoot = walkDomNthTypePath(root, rest);
+    if (
+      fromRoot
+      && fromRoot !== root
+      && root.contains(fromRoot)
+    ) {
+      return fromRoot;
+    }
+  }
+  return null;
 }
 
 function findElementByPath(root: ManualEditLookupRoot, id: string): Element | null {
