@@ -54,6 +54,18 @@ export function resetDeckPreviewPan(target: DeckPreviewFitTarget): void {
   target?.contentWindow?.postMessage({ type: 'od:deck-pan-reset' }, '*');
 }
 
+/** Resolve which preview iframe owns a bridge postMessage source. */
+export function resolveDeckPreviewIframeFromSource(
+  source: MessageEventSource | null | undefined,
+  candidates: Array<HTMLIFrameElement | null | undefined>,
+): HTMLIFrameElement | null {
+  if (!source) return null;
+  for (const frame of candidates) {
+    if (frame && frame.contentWindow === source) return frame;
+  }
+  return null;
+}
+
 /** Post the iframe's visual box so the deck bridge can refit when innerWidth is inflated. */
 export function postDeckHostViewportToIframe(
   target: DeckPreviewFitTarget,

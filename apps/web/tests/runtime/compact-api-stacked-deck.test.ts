@@ -384,6 +384,17 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(out).toContain('return { w: hw / scale, h: hh / scale };');
   });
 
+  it('waits for host viewport before fitting compact decks (avoids black letterbox)', () => {
+    const compact = '<!doctype html><html><body><section class="slide" style="min-height:100vh">A</section></body></html>';
+    const out = buildSrcdoc(compact, { deck: true });
+
+    // Inflated 1920 document width alone must not end chaseFirstLayout.
+    expect(out).toContain('if (compactStackedDeckEnabled) {\n      return { w: 0, h: 0 };\n    }');
+    expect(out).toContain('var maxAttempts = compactStackedDeckEnabled ? 40 : 30');
+    expect(out).toContain("document.documentElement.hasAttribute('data-od-stacked-deck-ready')");
+    expect(out).not.toContain('if (hasHost && w > 0 && attempts >= 2) return;');
+  });
+
   it('keeps explicit horizontal scroll-snap decks on their native path', () => {
     const html = [
       '<!doctype html><html><head><style>',

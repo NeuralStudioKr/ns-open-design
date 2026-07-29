@@ -130,6 +130,7 @@ import {
   postDeckHostViewportToIframe,
   postDeckPreviewPanBy,
   resetDeckPreviewPan,
+  resolveDeckPreviewIframeFromSource,
   scheduleDeckPreviewFitNudges,
   type DeckPreviewFitOptions,
 } from '../runtime/deckPreviewFit';
@@ -4911,6 +4912,9 @@ function HtmlViewer({
   // stay correct without re-subscribing on every liveHtml token.
   const streamingRef = useRef(streaming);
   streamingRef.current = streaming;
+  // Stream-end deck fit nudge: track prior `streaming` without putting it in the
+  // main fit-nudge effect deps (avoids canceling in-flight nudges on re-entry).
+  const wasStreamingForDeckFitRef = useRef(streaming);
   const liveHtmlPaintsPreviewRef = useRef(liveHtmlPaintsPreview);
   liveHtmlPaintsPreviewRef.current = liveHtmlPaintsPreview;
   const [inlinedSource, setInlinedSource] = useState<string | null>(null);
@@ -6216,11 +6220,29 @@ function HtmlViewer({
   useEffect(() => {
     if (!needsDeckHostViewportFit || mode !== 'preview') return;
     function onDeckViewportRequest(ev: MessageEvent) {
+      // Accept any of our preview iframes — during liveHtml→disk srcDoc churn
+      // iframeRef can lag the requesting contentWindow by a tick, and the
+      // strict active-ref check used to drop the request (black letterbox until
+      // refresh). Still post to the requesting frame; only sync iframeRef when
+      // that frame is the active transport (never Present / stale dual-mount).
       if (!isOurPreviewIframeSource(ev.source)) return;
-      if (!isActivePreviewIframeSource(ev.source)) return;
       const data = ev.data as { type?: string } | null;
       if (!data || data.type !== 'od:deck-host-viewport-request') return;
-      postDeckHostViewportToIframe(iframeRef.current, deckPreviewFitScale, deckPreviewFitOptions);
+      const target =
+        resolveDeckPreviewIframeFromSource(ev.source, [
+          srcDocPreviewIframeRef.current,
+          urlPreviewIframeRef.current,
+          presentIframeRef.current,
+          iframeRef.current,
+        ])
+        ?? iframeRef.current;
+      const activeTransport = useUrlLoadPreview
+        ? urlPreviewIframeRef.current
+        : srcDocPreviewIframeRef.current;
+      if (target && target === activeTransport) {
+        iframeRef.current = target;
+      }
+      postDeckHostViewportToIframe(target, deckPreviewFitScale, deckPreviewFitOptions);
     }
     window.addEventListener('message', onDeckViewportRequest);
     return () => window.removeEventListener('message', onDeckViewportRequest);
@@ -6228,9 +6250,9 @@ function HtmlViewer({
     needsDeckHostViewportFit,
     mode,
     isOurPreviewIframeSource,
-    isActivePreviewIframeSource,
     deckPreviewFitScale,
     deckPreviewFitOptions,
+    useUrlLoadPreview,
   ]);
 
   useEffect(() => {
@@ -6248,6 +6270,21 @@ function HtmlViewer({
     previewStateKey,
     useUrlLoadPreview,
     srcDocTransportResetKey,
+  ]);
+
+  // Stream end often rebuilds srcDoc / clears liveHtml — re-nudge fit once.
+  useEffect(() => {
+    const wasStreaming = wasStreamingForDeckFitRef.current;
+    wasStreamingForDeckFitRef.current = streaming;
+    if (!needsDeckHostViewportFit || mode !== 'preview') return;
+    if (!(wasStreaming && !streaming)) return;
+    return scheduleDeckPreviewFitNudges(iframeRef.current, deckPreviewFitScale, deckPreviewFitOptions);
+  }, [
+    streaming,
+    needsDeckHostViewportFit,
+    mode,
+    deckPreviewFitScale,
+    deckPreviewFitOptions,
   ]);
 
   useEffect(() => {

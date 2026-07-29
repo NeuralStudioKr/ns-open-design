@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import {
   nudgeDeckPreviewFit,
   postDeckHostViewportToIframe,
+  resolveDeckPreviewIframeFromSource,
   scheduleDeckPreviewFitNudges,
 } from '../../src/runtime/deckPreviewFit';
 
@@ -81,5 +82,15 @@ describe('deckPreviewFit', () => {
       { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1, layoutFit: false },
       '*',
     );
+  });
+
+  it('resolves the requesting preview iframe from postMessage source', () => {
+    const winA = {} as Window;
+    const winB = {} as Window;
+    const frameA = { contentWindow: winA } as HTMLIFrameElement;
+    const frameB = { contentWindow: winB } as HTMLIFrameElement;
+    expect(resolveDeckPreviewIframeFromSource(winB, [frameA, frameB])).toBe(frameB);
+    expect(resolveDeckPreviewIframeFromSource(winA, [null, frameA])).toBe(frameA);
+    expect(resolveDeckPreviewIframeFromSource(winA, [frameB])).toBeNull();
   });
 });

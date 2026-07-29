@@ -2435,6 +2435,14 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       // scale 1 + layout box from host (framework + compact deck previews)
       return { w: hw, h: hh };
     }
+    // Compact stacked decks inject <meta viewport width=1920>, which inflates
+    // documentElement.clientWidth inside the iframe. Fitting against that box
+    // centers the 1920×1080 stage in a fake 1920-wide document while the host
+    // only shows the top-left letterbox — black canvas with a working 1/N
+    // counter. Wait for od:deck-host-viewport before fitting.
+    if (compactStackedDeckEnabled) {
+      return { w: 0, h: 0 };
+    }
     return { w: iw || hw, h: ih || hh };
   }
   function applyStackedDeckTransform(stage, s, panX, panY) {
@@ -3243,11 +3251,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   document.addEventListener('touchend', function(){ scheduleReport(140); }, true);
   document.addEventListener('transitionend', function(){ scheduleReport(40); }, true);
   document.addEventListener('animationend', function(){ scheduleReport(40); }, true);
-  // Aggressively nudge during the first second so the deck catches the
-  // iframe's first non-zero size; bail out early once the iframe reports a
-  // real width. Without this loop, fixed-canvas decks render at scale(0).
+  // Aggressively nudge during the first ~2s so the deck catches the
+  // iframe's first non-zero host box. Compact decks must not stop on the
+  // inflated 1920 document width alone — that freezes a black letterbox
+  // until the page is refreshed (host viewport arrives too late).
   function chaseFirstLayout(){
     var attempts = 0;
+    var maxAttempts = compactStackedDeckEnabled ? 40 : 30;
     function tick(){
       attempts += 1;
       if (compactStackedDeckEnabled) {
@@ -3256,8 +3266,19 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       }
       var w = frameworkDeckViewport().w;
       nudgeDeckFit();
-      if (w > 0 && attempts >= 2) return; // one extra nudge after first non-zero
-      if (attempts < 30) setTimeout(tick, 50);
+      if (compactStackedDeckEnabled) {
+        // Host box alone is not enough — stage may still be missing. Stop only
+        // after a successful fit marked the deck ready (or attempts exhaust).
+        if (
+          attempts >= 2
+          && document.documentElement.hasAttribute('data-od-stacked-deck-ready')
+        ) {
+          return;
+        }
+      } else if (w > 0 && attempts >= 2) {
+        return; // one extra nudge after first non-zero
+      }
+      if (attempts < maxAttempts) setTimeout(tick, 50);
     }
     tick();
   }
