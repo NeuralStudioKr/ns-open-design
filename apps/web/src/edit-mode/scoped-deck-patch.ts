@@ -14,7 +14,7 @@ import {
   type DeckPatch,
 } from '../artifacts/deck-patch';
 import type { ChatCommentAttachment } from '../types';
-import { graftPatchedTargetElementFromSource, mergeManualEditTargetsFromSource } from './source-patches';
+import { graftPatchedTargetElementFromSource, mergeManualEditTargetByHint, mergeManualEditTargetsFromSource } from './source-patches';
 
 export type ScopedDeckPersistFailureCode =
   | 'deck_patch_parse_failed'
@@ -185,6 +185,84 @@ function scopeRejectionCanRetry(reason: string): boolean {
   );
 }
 
+function listChangedDeckSlideIndexes(currentHtml: string, patchedHtml: string): number[] {
+  const currentSlides = listDeckSlideIndexes(currentHtml).map((index) => ({
+    index,
+    html: extractSlideByIndex(currentHtml, index) ?? '',
+  }));
+  const patchedSlides = listDeckSlideIndexes(patchedHtml).map((index) => ({
+    index,
+    html: extractSlideByIndex(patchedHtml, index) ?? '',
+  }));
+  const changed: number[] = [];
+  const pushUnique = (index: number) => {
+    if (Number.isInteger(index) && index >= 0 && !changed.includes(index)) {
+      changed.push(index);
+    }
+  };
+  for (const current of currentSlides) {
+    const patched = patchedSlides.find((slide) => slide.index === current.index);
+    if (patched && patched.html !== current.html) {
+      pushUnique(current.index);
+    }
+  }
+  for (const patched of patchedSlides) {
+    const current = currentSlides.find((slide) => slide.index === patched.index);
+    if (!current || current.html !== patched.html) {
+      pushUnique(patched.index);
+    }
+  }
+  return changed;
+}
+
+function attachmentMergeHint(
+  attachment: ChatCommentAttachment,
+  instructionText?: string,
+): {
+  currentText?: string;
+  instructionText?: string;
+  htmlHint?: string;
+  selector?: string;
+} {
+  return {
+    currentText: attachment.currentText,
+    instructionText: scopedCommentInstructionText(attachment, instructionText),
+    htmlHint: attachment.htmlHint,
+    selector: attachment.selector,
+  };
+}
+
+function tryHintOnlyScopedMerge(input: {
+  nextHtml: string;
+  patchedHtml: string;
+  attachment: ChatCommentAttachment;
+  slideIndex: number;
+  instructionText?: string;
+}): { ok: true; html: string } | { ok: false; reason: string } {
+  const hint = attachmentMergeHint(input.attachment, input.instructionText);
+  if (
+    !String(hint.currentText || '').trim()
+    && !String(hint.htmlHint || '').trim()
+    && !String(hint.selector || '').trim()
+  ) {
+    return { ok: false, reason: 'No matching targets found to merge.' };
+  }
+  const merged = mergeManualEditTargetByHint(
+    input.nextHtml,
+    input.patchedHtml,
+    { slideIndex: input.slideIndex },
+    hint,
+  );
+  if (merged.ok) {
+    console.info('[deck-patch] accepted hint-only target fallback', {
+      slideIndex: input.slideIndex,
+      selector: hint.selector,
+    });
+    return { ok: true, html: merged.source };
+  }
+  return { ok: false, reason: merged.reason };
+}
+
 function listDeckSlideIndexes(html: string): number[] {
   const bodyMatch = /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i.exec(html);
   const scope = bodyMatch ? bodyMatch[1] ?? '' : html;
@@ -224,6 +302,10 @@ export function resolveScopedCommentSlideCandidates(input: {
 
   const candidates: number[] = [...verified];
 
+  for (const slideIndex of listChangedDeckSlideIndexes(input.currentHtml, input.patchedHtml)) {
+    pushUnique(candidates, slideIndex);
+  }
+
   if (hasValidDeckSlideIndex(input.attachment)) {
     const idx = Math.floor(input.attachment.slideIndex as number);
     if (verified.includes(idx)) {
@@ -259,9 +341,7 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
   const ids = scopedCommentElementIds(input.attachment);
   const hints = ids.map((id) => ({
     id,
-    currentText: input.attachment.currentText,
-    instructionText: scopedCommentInstructionText(input.attachment, input.instructionText),
-    htmlHint: input.attachment.htmlHint,
+    ...attachmentMergeHint(input.attachment, input.instructionText),
   }));
 
   const merged = mergeManualEditTargetsFromSource(
@@ -340,6 +420,9 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
     }
   }
 
+  const hintOnly = tryHintOnlyScopedMerge(input);
+  if (hintOnly.ok) return hintOnly;
+
   return { ok: false, reason: merged.reason };
 }
 
@@ -353,7 +436,41 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
   let narrowed = false;
   for (const attachment of input.commentAttachments) {
     const ids = scopedCommentElementIds(attachment);
-    if (ids.length === 0) continue;
+    if (ids.length === 0) {
+      const slideCandidates = resolveScopedCommentSlideCandidates({
+        attachment,
+        currentHtml: nextHtml,
+        patchedHtml: input.patchedHtml,
+      });
+      if (slideCandidates.length === 0) {
+        return {
+          ok: false,
+          reason: 'comment target slide could not be resolved from attachment or deck HTML',
+        };
+      }
+      let hintMerged = false;
+      let lastReason = 'No matching targets found to merge.';
+      for (const slideIndex of slideCandidates) {
+        const attempt = tryHintOnlyScopedMerge({
+          nextHtml,
+          patchedHtml: input.patchedHtml,
+          attachment,
+          slideIndex,
+          instructionText: input.instructionText,
+        });
+        if (attempt.ok) {
+          nextHtml = attempt.html;
+          narrowed = true;
+          hintMerged = true;
+          break;
+        }
+        lastReason = attempt.reason;
+      }
+      if (!hintMerged) {
+        return { ok: false, reason: lastReason };
+      }
+      continue;
+    }
 
     const slideCandidates = resolveScopedCommentSlideCandidates({
       attachment,

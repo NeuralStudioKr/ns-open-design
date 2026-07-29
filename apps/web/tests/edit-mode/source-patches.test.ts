@@ -5,6 +5,7 @@ import {
   isManualEditFullHtmlDocument,
   graftPatchedTargetElementFromSource,
   maskManualEditTargets,
+  mergeManualEditTargetByHint,
   mergeManualEditTargetsFromSource,
   readManualEditAttributes,
   readManualEditFields,
@@ -713,5 +714,37 @@ describe('manual edit source patches', () => {
     expect(graft.source).toContain('font-weight:700');
     expect(graft.source).toContain('data-od-id="company-name"');
     expect(graft.source).not.toContain('Extra sibling');
+  });
+
+  it('merges by captured selector when structural ids are stale', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<div class="deck-shell"><div id="deck-stage" class="deck-stage">',
+      '<section class="slide"><p>뉴럴스튜디오㈜ 소개</p></section>',
+      '</div></div>',
+      '</body></html>',
+    ].join('');
+    const patched = [
+      '<!doctype html><html><body>',
+      '<div class="deck-shell"><div id="deck-stage" class="deck-stage">',
+      '<section class="slide"><p><strong>뉴럴스튜디오㈜</strong> 소개</p></section>',
+      '</div></div>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetByHint(
+      source,
+      patched,
+      { slideIndex: 0 },
+      {
+        currentText: '뉴럴스튜디오㈜ 소개',
+        selector: 'body > div:nth-of-type(1) > div:nth-of-type(1) > section:nth-of-type(1) > p:nth-of-type(1)',
+        htmlHint: '<p>',
+      },
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('<strong>뉴럴스튜디오㈜</strong>');
   });
 });

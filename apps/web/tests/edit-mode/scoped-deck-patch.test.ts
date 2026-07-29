@@ -62,6 +62,25 @@ describe('resolveScopedCommentSlideCandidates', () => {
     });
     expect(candidates).toEqual([1]);
   });
+
+  it('includes slides that changed between current and patched decks', () => {
+    const patchedHtml = CURRENT_HTML.replace(
+      '뉴럴스튜디오㈜는 Agentic AI OS 기반의 AI-native 회사입니다.',
+      '<span style="color:red">뉴럴스튜디오㈜</span>는 Agentic AI OS 기반의 AI-native 회사입니다.',
+    );
+    const candidates = resolveScopedCommentSlideCandidates({
+      attachment: {
+        ...attachment(1),
+        currentText: '',
+        htmlHint: '',
+        elementId: 'dom:body > section:nth-of-type(2) > p:nth-of-type(1)',
+        selector: 'body > section:nth-of-type(2) > p:nth-of-type(1)',
+      },
+      currentHtml: CURRENT_HTML,
+      patchedHtml,
+    });
+    expect(candidates).toContain(1);
+  });
 });
 
 describe('reconcileCommentAttachmentSlideIndex', () => {
@@ -116,5 +135,49 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     if (!result.ok) {
       expect(result.reason).toBeTruthy();
     }
+  });
+
+  it('merges framework deck comments via selector hint when stale path ids miss on disk', () => {
+    const frameworkCurrent = `<!doctype html><html><body>
+<div class="deck-shell">
+  <div id="deck-stage" class="deck-stage">
+    <section class="slide active"><h2>Title</h2></section>
+    <section class="slide">
+      <p>뉴럴스튜디오㈜는 Agentic AI OS 기반의 AI-native 회사입니다.</p>
+    </section>
+  </div>
+</div>
+</body></html>`;
+    const patchedSlide = `<section class="slide" data-slide-index="1">
+  <p><span style="color:#2563eb;font-weight:900">뉴럴스튜디오㈜</span>는 Agentic AI OS 기반의 AI-native 회사입니다.</p>
+</section>`;
+    const frameworkPatched = frameworkCurrent.replace(
+      /<section class="slide">\s*<p>뉴럴스튜디오㈜는 Agentic AI OS 기반의 AI-native 회사입니다\.<\/p>\s*<\/section>/,
+      patchedSlide,
+    );
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml: frameworkCurrent,
+      patchedHtml: frameworkPatched,
+      commentAttachments: [{
+        id: 'c-fw',
+        order: 1,
+        filePath: 'deck.html',
+        elementId: 'path-0-0-1-0',
+        selector: 'body > div:nth-of-type(1) > div:nth-of-type(1) > section:nth-of-type(2) > p:nth-of-type(1)',
+        label: 'p',
+        comment: '회사 이름 눈에 잘 띄게 수정',
+        currentText: '뉴럴스튜디오㈜는 Agentic AI OS 기반의 AI-native 회사입니다.',
+        pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+        htmlHint: '<p>',
+        selectionKind: 'element',
+        slideIndex: 1,
+      }],
+      instructionText: '회사 이름 눈에 잘 띄게 수정',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.html).toContain('font-weight:900');
+    expect(result.html).toContain('뉴럴스튜디오㈜');
+    expect(result.html).toContain('<h2>Title</h2>');
   });
 });

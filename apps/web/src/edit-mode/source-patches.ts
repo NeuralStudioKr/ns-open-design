@@ -19,6 +19,8 @@ export interface ManualEditMergeTargetHint {
   currentText?: string;
   instructionText?: string;
   htmlHint?: string;
+  /** Captured CSS selector from the comment click (may be absolute or slide-relative). */
+  selector?: string;
 }
 
 export interface ManualEditSourceScope {
@@ -357,7 +359,87 @@ function findEditableElement(
     root.querySelector(`[data-od-source-path="${cssEscape(id)}"]`) ??
     findElementByScopedPath(doc, root, id);
   if (structural) return structural;
-  return hint ? findElementByHint(doc, scope, hint) : null;
+  if (hint) {
+    const bySelector = findEditableElementBySelector(doc, root, hint.selector);
+    if (bySelector) return bySelector;
+    return findElementByHint(doc, scope, hint);
+  }
+  return null;
+}
+
+function findEditableElementBySelector(
+  doc: Document,
+  root: ManualEditLookupRoot,
+  selector: string | undefined,
+): Element | null {
+  const trimmed = String(selector || '').trim();
+  if (!trimmed || /[<{}]/.test(trimmed)) return null;
+  const byDom = findElementByDomSelector(doc, root, `dom:${trimmed}`);
+  if (byDom) return byDom;
+  if (trimmed.startsWith('body > ')) return null;
+  const rootElement = root.nodeType === 9 ? doc.body : root as Element;
+  try {
+    const scoped = rootElement.querySelector(trimmed);
+    if (
+      scoped
+      && scoped !== rootElement
+      && scoped !== doc.body
+      && scoped !== doc.documentElement
+    ) {
+      return scoped;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Last-resort scoped merge when structural ids no longer resolve on either
+ * side but the comment payload still carries captured text / selector hints.
+ */
+export function mergeManualEditTargetByHint(
+  currentSource: string,
+  nextSource: string,
+  scope: ManualEditSourceScope = {},
+  hint: ManualEditMergeTargetHint,
+): ManualEditMergeTargetsResult {
+  const currentDoc = parseSource(currentSource);
+  const nextDoc = parseSource(nextSource);
+  if (!currentDoc || !nextDoc) {
+    return { ok: false, source: currentSource, reason: 'Could not parse source.' };
+  }
+
+  const currentTarget =
+    findEditableElementBySelector(currentDoc, findScopedRoot(currentDoc, scope) ?? currentDoc, hint.selector)
+    ?? findElementByHint(currentDoc, scope, hint);
+  if (!currentTarget) {
+    return { ok: false, source: currentSource, reason: 'No matching targets found to merge.' };
+  }
+
+  const nextTarget =
+    findEditableElementBySelector(nextDoc, findScopedRoot(nextDoc, scope) ?? nextDoc, hint.selector)
+    ?? findReplacementCandidateByTextHint(nextDoc, currentTarget, scope, hint)
+    ?? findElementByHint(nextDoc, scope, hint);
+  if (!nextTarget) {
+    return { ok: false, source: currentSource, reason: 'No matching targets found to merge.' };
+  }
+
+  const currentOuter = currentTarget.outerHTML;
+  const nextOuter = nextTarget.outerHTML;
+  if (currentOuter === nextOuter) {
+    return { ok: false, source: currentSource, reason: 'Selected targets were unchanged.' };
+  }
+
+  const replacement = currentDoc.importNode(nextTarget, true);
+  preserveManualEditIdentityAttributes(currentTarget, replacement);
+  currentTarget.replaceWith(replacement);
+  return {
+    ok: true,
+    source: serializeSource(currentDoc, currentSource),
+    replacedCount: 1,
+    changedCount: 1,
+  };
 }
 
 /**
