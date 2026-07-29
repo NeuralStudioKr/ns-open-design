@@ -50,8 +50,6 @@ export {
   targetTextPreservedInPatchedSlide,
 } from '../edit-mode/scoped-deck-patch';
 import { validateCommentEditIntentRespected } from '../edit-mode/comment-edit-intent';
-import { applyManualEditPatch, readManualEditStyles } from '../edit-mode/source-patches';
-import { buildManualEditCommentFastPath } from './manualEditCommentFastPath';
 import {
   clearPendingArtifactWrite,
   clearProjectPendingArtifactWrites,
@@ -183,10 +181,10 @@ import {
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
   AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
-  buildAutoContinueIncompleteOutputPrompt,
   extractAutoContinueContextFromAssistant,
   isAutoContinueIncompleteOutputPrompt,
   isLiveLocalStreamBlockingAutoContinue,
+  resolveAutoContinuePrompt,
   rollbackAutoContinueCount,
   shouldAutoContinueForIncompleteOutput,
 } from '../runtime/resume';
@@ -1076,6 +1074,7 @@ function slideCommentEditPatchInstruction(commentAttachmentCount: number): strin
     '- Apply the user request to ONLY the pinned target element. Do not change siblings, slide wrappers, or global CSS unless the user explicitly asks for slide-wide changes.',
     '- For arbitrary natural-language requests (visibility, tone, layout tweaks), interpret the intent and emit the smallest valid element patch — never ask the user to rephrase.',
     '- When the user asks to make text bigger/smaller/bolder/more visible (e.g. "크게", "키워", "눈에 띄게") WITHOUT changing the words: use `kind="set-style"` with `fontSize` / `fontWeight` / `color`. Keep every character of `currentText` exactly as-is — never use `set-text`, `remove-element`, or empty the element.',
+    '- When the user asks to replace the text ("\'새 문구\'로 수정", "멘트를 …로", "copy to …"): use `kind="set-text"` with the new text only.',
     '',
     'Fallback when multiple elements or slide structure must change:',
     '<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="{N}">…full slide replacement…</section></artifact>',
@@ -1193,63 +1192,6 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
   }
   return { ok: true, html: applied.html };
-}
-
-/**
- * When the model emits an empty element-patch but the scoped comment
- * matches a deterministic fast-path pattern (quoted text replacement,
- * explicit colors, font multipliers), apply the edit locally instead
- * of burning auto-continue retries on the same model glitch.
- */
-async function tryApplyCommentEditFastPathAgainstCurrentDeck(input: {
-  projectId: string;
-  fileName: string;
-  commentAttachments?: readonly ChatCommentAttachment[];
-}): Promise<DeckPatchMergeResult> {
-  const attachments = input.commentAttachments ?? [];
-  if (attachments.length === 0) return { ok: false, code: 'deck_patch_parse_failed', reason: 'no comment attachments' };
-
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
-  if (!currentHtml) {
-    return {
-      ok: false,
-      code: 'deck_patch_current_unreadable',
-      reason: 'current deck file unreadable',
-    };
-  }
-
-  let html = currentHtml;
-  let appliedCount = 0;
-  for (const attachment of attachments) {
-    if (attachment.filePath !== input.fileName) continue;
-    const editScope = typeof attachment.slideIndex === 'number'
-      ? { slideIndex: attachment.slideIndex }
-      : undefined;
-    const currentStyles = readManualEditStyles(html, attachment.elementId, editScope);
-    const fastPath = buildManualEditCommentFastPath({ attachment, currentStyles });
-    if (!fastPath) {
-      return { ok: false, code: 'deck_patch_parse_failed', reason: 'no fast-path match' };
-    }
-    for (const patch of fastPath.patches) {
-      const result = applyManualEditPatch(html, patch, editScope);
-      if (!result.ok) {
-        return {
-          ok: false,
-          code: 'deck_patch_merge_failed',
-          reason: result.error ?? `failed to apply ${patch.kind}${'id' in patch ? ` on ${patch.id}` : ''}`,
-        };
-      }
-      html = result.source;
-      appliedCount += 1;
-    }
-  }
-
-  if (appliedCount === 0) {
-    return { ok: false, code: 'deck_patch_parse_failed', reason: 'no fast-path patches applied' };
-  }
-  return { ok: true, html };
 }
 
 /**
@@ -1924,7 +1866,7 @@ type ArtifactPersistResult =
   | { kind: 'persisted'; fileName: string }
   | { kind: 'pointer'; fileName: string }
   | { kind: 'skipped-duplicate'; fileName: string }
-  | { kind: 'skipped-incomplete'; fileName: string }
+  | { kind: 'skipped-incomplete'; fileName: string; reason?: string }
   | { kind: 'scope-rejected'; fileName: string; code: ScopedDeckPersistFailureCode; reason: string }
   | { kind: 'artifact-regression'; fileName: string; reason: string }
   | { kind: 'rejected'; fileName: string; reason: string }
@@ -3174,15 +3116,23 @@ export function ProjectView({
                 conversationAutoContinueCountRef.current.get(scheduledConversationId) ?? 1;
               const autoContinueCtx =
                 extractAutoContinueContextFromAssistant(incompleteAssistant);
-              const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
-                attempt,
-                referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
-                slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
-                existingDeckPath: resolvePrimaryDeckFilePath(
-                  filesForRecovery,
-                  project.metadata?.entryFile,
-                ),
-                ...autoContinueCtx,
+              const autoContinueCommentAttachments =
+                extractCommentAttachmentsForAutoContinue(
+                  findPrecedingUserMessage(mergedMessages, incompleteAssistant?.id),
+                  runCommentAttachmentsRef.current,
+                );
+              const autoContinuePrompt = resolveAutoContinuePrompt({
+                commentAttachmentCount: autoContinueCommentAttachments.length,
+                incompleteOutput: {
+                  attempt,
+                  referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
+                  slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
+                  existingDeckPath: resolvePrimaryDeckFilePath(
+                    filesForRecovery,
+                    project.metadata?.entryFile,
+                  ),
+                  ...autoContinueCtx,
+                },
               });
               // Comment scope must survive the retry — see the sibling
               // scheduleStreamRunHtmlAutoOpen auto-continue for the
@@ -3190,11 +3140,6 @@ export function ProjectView({
               // the deck-patch / full-deck scope guards to fall
               // silent on retry, letting the model overwrite the
               // whole deck with a small placeholder.
-              const autoContinueCommentAttachments =
-                extractCommentAttachmentsForAutoContinue(
-                  findPrecedingUserMessage(mergedMessages, incompleteAssistant?.id),
-                  runCommentAttachmentsRef.current,
-                );
               const started = sendNow(
                 autoContinuePrompt,
                 [],
@@ -3673,7 +3618,6 @@ export function ProjectView({
           instructionText: runVisiblePromptRef.current,
         });
         if (!merged.ok) {
-          let salvagedByFastPath = false;
           // Empty / patch-less element-patch means the model chose the
           // element-patch contract but did not actually produce a
           // patch. When the run has scoped comment attachments, we
@@ -3701,36 +3645,18 @@ export function ProjectView({
             (isElementPatchEmptyBody(merged.reason) ||
               shouldRetryScopedCommentMergeFailure(merged.code, merged.reason))
           ) {
-            if (isElementPatchEmptyBody(merged.reason)) {
-              const fastPathMerged = await tryApplyCommentEditFastPathAgainstCurrentDeck({
-                projectId: project.id,
-                fileName: targetFileName,
-                commentAttachments: persistCommentAttachments,
-              });
-              if (fastPathMerged.ok) {
-                console.warn('[element-patch] applied scoped comment fast-path after empty model artifact', {
-                  fileName: targetFileName,
-                });
-                effectiveArt = { ...art, html: fastPathMerged.html, artifactType: 'deck' };
-                salvagedByFastPath = true;
-              } else {
-                console.warn('[element-patch] routing scoped edit to auto-continue', {
-                  fileName: targetFileName,
-                  code: merged.code,
-                  reason: merged.reason,
-                  fastPathReason: fastPathMerged.reason,
-                });
-                return { kind: 'skipped-incomplete', fileName: targetFileName };
-              }
-            } else {
-              console.warn('[element-patch] routing scoped edit to auto-continue', {
-                fileName: targetFileName,
-                code: merged.code,
-                reason: merged.reason,
-              });
-              return { kind: 'skipped-incomplete', fileName: targetFileName };
-            }
-          } else if (isElementPatchEmptyBody(merged.reason) && !runIsScoped) {
+            console.warn('[element-patch] routing scoped edit to auto-continue', {
+              fileName: targetFileName,
+              code: merged.code,
+              reason: merged.reason,
+            });
+            return {
+              kind: 'skipped-incomplete',
+              fileName: targetFileName,
+              reason: merged.reason,
+            };
+          }
+          if (isElementPatchEmptyBody(merged.reason) && !runIsScoped) {
             console.warn('[element-patch] rejecting unscoped empty artifact', {
               fileName: targetFileName,
               reason: merged.reason,
@@ -3742,17 +3668,14 @@ export function ProjectView({
                 'The model emitted an empty element-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.',
             };
           }
-          if (!salvagedByFastPath) {
-            return {
-              kind: 'scope-rejected',
-              fileName: targetFileName,
-              code: merged.code,
-              reason: merged.reason,
-            };
-          }
-        } else {
-          effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
+          return {
+            kind: 'scope-rejected',
+            fileName: targetFileName,
+            code: merged.code,
+            reason: merged.reason,
+          };
         }
+        effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
       } else if (isDeckPatchArtifactType(art.artifactType)) {
         const merged = await tryApplyDeckPatchAgainstCurrentDeck({
           projectId: project.id,
@@ -3772,7 +3695,11 @@ export function ProjectView({
               code: merged.code,
               reason: merged.reason,
             });
-            return { kind: 'skipped-incomplete', fileName: targetFileName };
+            return {
+              kind: 'skipped-incomplete',
+              fileName: targetFileName,
+              reason: merged.reason,
+            };
           }
           // Empty deck-patch body — model chose deck-patch contract
           // but produced no <section class="slide"> blocks. Route
@@ -3789,7 +3716,11 @@ export function ProjectView({
                 fileName: targetFileName,
                 reason: merged.reason,
               });
-              return { kind: 'skipped-incomplete', fileName: targetFileName };
+              return {
+                kind: 'skipped-incomplete',
+                fileName: targetFileName,
+                reason: merged.reason,
+              };
             }
             console.warn('[deck-patch] rejecting unscoped empty deck-patch', {
               fileName: targetFileName,
@@ -6381,26 +6312,29 @@ export function ProjectView({
               conversationAutoContinueCountRef.current.get(scheduledConversationId) ?? 1;
             const autoContinueCtx =
               extractAutoContinueContextFromAssistant(incompleteAssistant);
-            const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
-              attempt,
-              referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
-              slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
-              existingDeckPath: resolvePrimaryDeckFilePath(
-                nextFiles,
-                project.metadata?.entryFile,
-              ),
-              ...autoContinueCtx,
+            const autoContinueCommentAttachments =
+              extractCommentAttachmentsForAutoContinue(
+                findPrecedingUserMessage(mergedMessages, incompleteAssistant?.id),
+                runCommentAttachmentsRef.current,
+              );
+            const autoContinuePrompt = resolveAutoContinuePrompt({
+              commentAttachmentCount: autoContinueCommentAttachments.length,
+              incompleteOutput: {
+                attempt,
+                referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
+                slideCountHint: extractRequestedSlideCountHintFromMessages(mergedMessages),
+                existingDeckPath: resolvePrimaryDeckFilePath(
+                  nextFiles,
+                  project.metadata?.entryFile,
+                ),
+                ...autoContinueCtx,
+              },
             });
             // See scheduleStreamRunHtmlAutoOpen — passing [] here strips
             // comment scope from the retry and the deck-patch /
             // full-deck scope guards fall silent. Preserve the
             // originating user turn's attachments so the retry stays
             // scoped to the same target.
-            const autoContinueCommentAttachments =
-              extractCommentAttachmentsForAutoContinue(
-                findPrecedingUserMessage(mergedMessages, incompleteAssistant?.id),
-                runCommentAttachmentsRef.current,
-              );
             const started = sendNow(
               autoContinuePrompt,
               [],
@@ -7436,19 +7370,31 @@ export function ProjectView({
                   const autoContinueMessages = retryTarget
                     ? [...historyBase, latestAssistantMsg]
                     : [...historyBase, userMsg, latestAssistantMsg];
-                  const autoContinuePrompt = buildAutoContinueIncompleteOutputPrompt({
-                    attempt,
-                    truncatedByMaxTokens: runStopReason === 'max_tokens',
-                    referenceFiles: collectSlideReferencePathsFromMessages(autoContinueMessages),
-                    slideCountHint: extractRequestedSlideCountHintFromMessages(autoContinueMessages),
-                    existingDeckPath: resolvePrimaryDeckFilePath(
-                      projectFiles,
-                      project.metadata?.entryFile,
-                    ),
-                    ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
-                      partialHtml: partialHtmlForAutoContinue,
-                      planOutline: rawFinalText,
-                    }),
+                  const autoContinueCommentAttachments = extractCommentAttachmentsForAutoContinue(
+                    retryTarget?.userMsg ?? userMsg,
+                    runCommentAttachmentsRef.current,
+                  );
+                  const scopedFailureReason =
+                    terminalPersistResult?.kind === 'skipped-incomplete'
+                      ? terminalPersistResult.reason ?? null
+                      : null;
+                  const autoContinuePrompt = resolveAutoContinuePrompt({
+                    commentAttachmentCount: autoContinueCommentAttachments.length,
+                    scopedCommentEditFailureReason: scopedFailureReason,
+                    incompleteOutput: {
+                      attempt,
+                      truncatedByMaxTokens: runStopReason === 'max_tokens',
+                      referenceFiles: collectSlideReferencePathsFromMessages(autoContinueMessages),
+                      slideCountHint: extractRequestedSlideCountHintFromMessages(autoContinueMessages),
+                      existingDeckPath: resolvePrimaryDeckFilePath(
+                        projectFiles,
+                        project.metadata?.entryFile,
+                      ),
+                      ...extractAutoContinueContextFromAssistant(latestAssistantMsg, {
+                        partialHtml: partialHtmlForAutoContinue,
+                        planOutline: rawFinalText,
+                      }),
+                    },
                   });
                   // Preserve the failed turn's `commentAttachments`
                   // on the auto-continue call. Without this the retry
@@ -7460,10 +7406,6 @@ export function ProjectView({
                   // deck as an accepted save. Piping the original
                   // attachments back through keeps the scope block
                   // intact across the retry.
-                  const autoContinueCommentAttachments = extractCommentAttachmentsForAutoContinue(
-                    retryTarget?.userMsg ?? userMsg,
-                    runCommentAttachmentsRef.current,
-                  );
                   const started = sendNow(
                     autoContinuePrompt,
                     [],

@@ -7,9 +7,11 @@ import {
   AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
   buildAutoContinueIncompleteOutputPrompt,
+  buildAutoContinueScopedCommentEditPrompt,
   extractAutoContinueContextFromAssistant,
   isAutoContinueIncompleteOutputPrompt,
   isLiveLocalStreamBlockingAutoContinue,
+  resolveAutoContinuePrompt,
   rollbackAutoContinueCount,
   shouldAutoContinueForIncompleteOutput,
 } from '../../src/runtime/resume';
@@ -66,6 +68,37 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(second).toContain('FINAL RETRY');
     expect(second).not.toEqual(first);
     expect(isAutoContinueIncompleteOutputPrompt(second)).toBe(true);
+  });
+
+  it('uses a scoped comment-edit prompt instead of full-deck rewrite when attachments exist', () => {
+    const scoped = resolveAutoContinuePrompt({
+      commentAttachmentCount: 1,
+      incompleteOutput: { attempt: 1 },
+      scopedCommentEditFailureReason: 'empty element-patch body',
+    });
+    expect(scoped.startsWith(AUTO_CONTINUE_PROMPT_SENTINEL)).toBe(true);
+    expect(scoped).toContain('element-patch');
+    expect(scoped).toContain('set-text');
+    expect(scoped).toContain('empty element-patch body');
+    expect(scoped).toContain('<artifact type="element-patch" identifier="deck">');
+    expect(scoped).toContain('전체 덱을 새로 쓰거나');
+    expect(scoped).not.toContain('출력 형식은 반드시 하나의 `<artifact type="deck"');
+    expect(isAutoContinueIncompleteOutputPrompt(scoped)).toBe(true);
+  });
+
+  it('keeps the generic full-deck auto-continue prompt when no comment attachments exist', () => {
+    const generic = resolveAutoContinuePrompt({
+      commentAttachmentCount: 0,
+      incompleteOutput: { attempt: 1 },
+    });
+    expect(generic).toContain('artifact type="deck"');
+    expect(generic).not.toContain('set-text');
+  });
+
+  it('escalates scoped comment-edit retries on later attempts', () => {
+    const second = buildAutoContinueScopedCommentEditPrompt({ attempt: 2 });
+    expect(second).toContain('FINAL RETRY');
+    expect(second).toContain('element-patch');
   });
 
   it('threads partial HTML and plan outline into the auto-continue prompt', () => {

@@ -344,3 +344,60 @@ export function extractAutoContinueContextFromAssistant(
 
   return { partialHtml, planOutline };
 }
+
+export type ScopedCommentEditAutoContinueContext = {
+  attempt: number;
+  failureReason?: string | null;
+};
+
+/**
+ * Auto-continue prompt for scoped preview-comment edits. Unlike the
+ * generic incomplete-output prompt (which demands a full
+ * `<artifact type="deck">`), this keeps the retry on element-patch /
+ * deck-patch so the model does not rewrite the whole deck when only a
+ * pinned element failed to persist.
+ */
+export function buildAutoContinueScopedCommentEditPrompt(
+  context: ScopedCommentEditAutoContinueContext,
+): string {
+  const attempt = Math.max(1, Math.floor(context.attempt));
+  const parts: string[] = [
+    AUTO_CONTINUE_PROMPT_SENTINEL,
+    attempt >= 2 ? '[FINAL RETRY] ' : '',
+    '직전 응답은 `<attached-preview-comments>`가 붙은 **요소 단위 편집** turn이었지만, 유효한 patch deliverable을 만들지 못했습니다.',
+    '전체 덱을 새로 쓰거나 `<artifact type="deck">` 전체 교체를 하지 마세요. 디스크의 기존 deck.html은 그대로 두고, pinned element만 수정하세요.',
+    '',
+    '이번 응답은 반드시 non-empty `<artifact type="element-patch" identifier="deck">` 하나만 출력하세요:',
+    '',
+    '<artifact type="element-patch" identifier="deck">',
+    '  <patch target-id="{elementId from attached-preview-comments}" slide-index="{slideIndex from attached-preview-comments}" kind="set-text">replacement text</patch>',
+    '</artifact>',
+    '',
+    '- `target-id`와 `slide-index`는 `<attached-preview-comments>`의 elementId / slideIndex와 정확히 일치해야 합니다.',
+    '- 텍스트 교체 요청 ("\'새 문구\'로 수정", "멘트를 …로"): `kind="set-text"`에 새 문구만 넣으세요.',
+    '- 크기/색/강조만 바꾸는 요청: `kind="set-style"` JSON (`fontSize`, `fontWeight`, `color`). `currentText`는 그대로.',
+    '- 빈 `<artifact type="element-patch">` 또는 patch 없는 wrapper는 금지.',
+    '- slide 구조 변경이 필요할 때만 `<artifact type="deck-patch">`에 해당 slide `<section>` 하나.',
+    '',
+    '(English: scoped comment edit retry — emit ONE non-empty element-patch for the pinned target only; never rewrite the full deck.)',
+  ];
+  const failureReason = context.failureReason?.trim();
+  if (failureReason) {
+    parts.push('', `[직전 실패 사유: ${failureReason}]`);
+  }
+  return parts.join('\n');
+}
+
+export function resolveAutoContinuePrompt(options: {
+  commentAttachmentCount: number;
+  incompleteOutput: AutoContinuePromptContext;
+  scopedCommentEditFailureReason?: string | null;
+}): string {
+  if (options.commentAttachmentCount > 0) {
+    return buildAutoContinueScopedCommentEditPrompt({
+      attempt: options.incompleteOutput.attempt,
+      failureReason: options.scopedCommentEditFailureReason,
+    });
+  }
+  return buildAutoContinueIncompleteOutputPrompt(options.incompleteOutput);
+}

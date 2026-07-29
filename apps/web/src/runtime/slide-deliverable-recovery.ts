@@ -18,7 +18,7 @@ type ArtifactPersistResult =
   | { kind: 'persisted'; fileName: string }
   | { kind: 'pointer'; fileName: string }
   | { kind: 'skipped-duplicate'; fileName: string }
-  | { kind: 'skipped-incomplete'; fileName: string }
+  | { kind: 'skipped-incomplete'; fileName: string; reason?: string }
   | { kind: 'scope-rejected'; fileName: string; code: string; reason: string }
   | { kind: 'artifact-regression'; fileName: string; reason: string }
   | { kind: 'rejected'; fileName: string; reason: string }
