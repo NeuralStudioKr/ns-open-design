@@ -17,6 +17,7 @@ import {
 import { fetchTeamverDaemon } from "../teamver/teamverDaemonHeaders";
 import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup";
 import { isEmptyAssistantShell } from "../runtime/conversation-message-dedupe";
+import { hasEmbedVisibleAssistantBody } from "../runtime/chat-message-render";
 import {
   trackAssistantFeedbackButtonClick,
   trackAssistantFeedbackClick,
@@ -783,21 +784,18 @@ function AssistantMessageImpl({
     return null;
   }
 
-  // Teamver embed filters tool/thinking/status blocks from the body. A turn that
-  // only has those events would otherwise render as a header-only zombie row
-  // beside the real reply — hide it unless this is the live streaming target
-  // or FileOpsSummary / produced files still give the user something to see.
+  // Teamver embed filters tool/thinking/status blocks from the body. Share the
+  // base predicate with ChatPane render filtering (chat-message-render.ts), then
+  // OR streaming-only / in-message affordances that only AssistantMessage knows.
   const hasEmbedVisibleBody =
-    hasVisibleAssistantTextBlocks
+    hasEmbedVisibleAssistantBody(message)
+    || hasVisibleAssistantTextBlocks
     || streamingDeckArtifactActive
     || streamingTodoProgress != null
     || shouldShowTeamverCompletedArtifactLead
     || displayedProduced.length > 0
     || pluginActionFolders.length > 0
-    || (!streaming && fileOps.length > 0)
-    || message.runStatus === "failed"
-    || message.runStatus === "canceled"
-    || message.resumable === true;
+    || (!streaming && fileOps.length > 0);
   if (
     hideAssistantThinkingDetails
     && !(streaming && isLast)
