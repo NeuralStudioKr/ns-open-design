@@ -178,16 +178,16 @@ export function formatPublishErrorCodeForUser(code: string): string {
   if (exact[trimmed]) return exact[trimmed];
 
   if (trimmed.startsWith("drive_upload_failed_403_viewer")) {
-    return "이 팀 드라이브에는 파일을 올릴 수 없습니다. 멤버로 변경해 달라고 매니저에게 요청해 주세요.";
+    return "이 팀 드라이브는 보기만 가능합니다. 파일을 올리려면 멤버 역할이 필요합니다 — 매니저에게 역할 변경을 요청해 주세요.";
   }
   if (trimmed.startsWith("drive_upload_failed_403_not_a_member")) {
-    return "이 팀 드라이브에 아직 참여하지 않았습니다. 초대를 받은 뒤 다시 발행해 주세요.";
+    return "이 팀 드라이브에 속해 있지 않습니다. 초대를 받은 뒤 다시 발행해 주세요.";
   }
   if (trimmed.startsWith("drive_upload_failed_403_insufficient_role")) {
-    return "이 팀 드라이브에 파일을 올릴 수 없습니다. 멤버로 변경한 뒤 다시 시도해 주세요.";
+    return "이 팀 드라이브에 파일을 올릴 수 없습니다. 발행하려면 멤버 역할이 필요합니다.";
   }
   if (trimmed.startsWith("drive_upload_failed_403")) {
-    return "이 팀 드라이브에 발행할 수 없습니다. 멤버인지 확인한 뒤 다시 시도해 주세요.";
+    return "이 팀 드라이브에 발행할 수 없습니다. 보기만 가능한 역할이면 업로드가 거부됩니다 — 멤버 역할인지 확인해 주세요.";
   }
   if (trimmed.startsWith("drive_upload_failed_401")) {
     return formatTeamverEmbedAuthRequiredMessage(
@@ -205,13 +205,13 @@ export function formatPublishErrorCodeForUser(code: string): string {
     );
   }
   if (trimmed.startsWith("drive_upload_failed_")) {
-    return "이 위치에 파일을 올릴 수 없습니다. 다른 폴더를 선택해 보세요.";
+    return "이 드라이브 위치에 파일을 올릴 수 없습니다 — 역할을 확인하거나 다른 위치를 선택해 주세요.";
   }
   if (trimmed.startsWith("drive_presigned_put_failed_")) {
-    return "드라이브에 올리는 중 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.";
+    return "Drive 저장소 업로드에 실패했습니다 — 잠시 후 다시 시도하세요.";
   }
   if (trimmed.startsWith("drive_confirm_failed_") || trimmed.startsWith("drive.confirm")) {
-    return "드라이브에 올리기를 끝내지 못했습니다. 다시 시도하거나 다른 폴더를 선택해 주세요.";
+    return "Drive가 업로드를 완료하지 못했습니다 — 재시도하거나 다른 폴더를 선택하세요.";
   }
 
   return trimmed;
