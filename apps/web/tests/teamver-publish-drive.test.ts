@@ -259,12 +259,13 @@ describe("parsePublishFailureFromError", () => {
 
 describe("formatPublishErrorCodeForUser", () => {
   it("maps loop-177 phase codes to Korean user hints (loop 173)", () => {
-    expect(formatPublishErrorCodeForUser("drive_upload_failed_403")).toMatch(/^권한 이슈:/);
-    expect(formatPublishErrorCodeForUser("drive_upload_failed_403")).toMatch(/보기\(viewer\)/);
-    expect(formatPublishErrorCodeForUser("drive_upload_failed_403_viewer")).toMatch(/^권한 이슈:/);
-    expect(formatPublishErrorCodeForUser("drive_upload_failed_403_viewer")).toMatch(/편집자/);
-    expect(formatPublishErrorCodeForUser("drive_upload_failed_403_not_a_member")).toMatch(/^권한 이슈:/);
-    expect(formatPublishErrorCodeForUser("drive_upload_failed_403_not_a_member")).toMatch(/멤버/);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403")).toMatch(/멤버 역할/);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403")).not.toMatch(/권한 이슈|편집자|editor|viewer/);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403_viewer")).toMatch(/멤버 역할/);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403_viewer")).toMatch(/매니저/);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403_viewer")).not.toMatch(/권한 이슈|편집자/);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403_not_a_member")).toMatch(/속해 있지/);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403_not_a_member")).not.toMatch(/권한 이슈/);
     expect(formatPublishErrorCodeForUser("drive_presigned_put_failed_502")).toMatch(/저장소 업로드/);
     expect(formatPublishErrorCodeForUser("drive.confirm_timeout")).toMatch(/완료하지 못/);
     expect(formatPublishErrorCodeForUser("artifact_file_required")).toMatch(/슬라이드 파일/);
