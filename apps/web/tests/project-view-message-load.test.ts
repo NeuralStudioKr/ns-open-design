@@ -560,6 +560,33 @@ describe("ProjectView message loading", () => {
     expect(helperCalls).toBeGreaterThanOrEqual(4);
   });
 
+  it("only routes empty element-patch to auto-continue for scoped comment runs", () => {
+    // Bug (2026-07-29): the previous 'empty element-patch → skipped-incomplete'
+    // routing fired for BOTH scoped and unscoped runs. On a fresh
+    // deck project where the model mistakenly picked element-patch,
+    // the retry loop couldn't converge (element-patch is the wrong
+    // contract for greenfield generation), so we burned 3
+    // auto-continue attempts and eventually surfaced a misleading
+    // 'incomplete_output' banner instead of the actual reason.
+    //
+    // Fix: gate the auto-continue routing on
+    //   persistCommentAttachments.length > 0
+    // For unscoped empty-artifact responses, return `rejected` with a
+    // clear message so the user sees the actual failure without a
+    // 15-second retry-timeout wait.
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("const runIsScoped = persistCommentAttachments.length > 0");
+    expect(source).toContain("runIsScoped &&");
+    expect(source).toContain("routing scoped edit to auto-continue");
+    expect(source).toContain("rejecting unscoped empty artifact");
+    // Rejected path must carry a specific reason so the banner
+    // clearly points at the model failure. Guard against a future
+    // refactor that swaps the message for the empty string.
+    expect(source).toContain(
+      "The model emitted an empty element-patch artifact on a run without a scoped comment target.",
+    );
+  });
+
   it("routes empty element-patch responses through auto-continue instead of the scope banner", () => {
     // Bug (2026-07-29): the model emitted
     //   <artifact type="element-patch" identifier="deck"></artifact>

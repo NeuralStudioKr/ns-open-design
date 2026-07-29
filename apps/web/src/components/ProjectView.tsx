@@ -3566,17 +3566,48 @@ export function ProjectView({
         if (!merged.ok) {
           // Empty / patch-less element-patch means the model chose the
           // element-patch contract but did not actually produce a
-          // patch. Route through skipped-incomplete so the run enters
-          // the auto-continue path (retry the model turn) instead of
-          // surfacing a "선택 대상 밖 변경" banner that misdiagnoses
-          // the failure as a scope violation.
-          if (isElementPatchEmptyBody(merged.reason) || isCommentEditIntentViolation(merged.code)) {
-            console.warn('[element-patch] routing to auto-continue', {
+          // patch. When the run has scoped comment attachments, we
+          // route through `skipped-incomplete` so the standard
+          // auto-continue path retries the model turn — the scope
+          // block is what the model was following in the first place,
+          // so re-prompting under the same scope is likely to converge.
+          //
+          // For unscoped runs (no comment attachments — e.g. a fresh
+          // deck generation where the model mistakenly picked
+          // element-patch), auto-continue does NOT help: the
+          // element-patch contract doesn't match the intent, so
+          // re-prompting the model with a "continue where you left
+          // off" message will not correct that. Bail out fast with a
+          // `rejected` result so the user gets a clear
+          // "저장 거부" banner naming the actual reason (empty artifact
+          // body) instead of burning three auto-continue retries and
+          // eventually landing on the generic `incomplete_output`
+          // banner. The rejection reason is surfaced verbatim so the
+          // user (and future ops) can distinguish "model returned an
+          // empty edit artifact" from "no artifact produced at all".
+          const runIsScoped = persistCommentAttachments.length > 0;
+          if (
+            runIsScoped &&
+            (isElementPatchEmptyBody(merged.reason) || isCommentEditIntentViolation(merged.code))
+          ) {
+            console.warn('[element-patch] routing scoped edit to auto-continue', {
               fileName: targetFileName,
               code: merged.code,
               reason: merged.reason,
             });
             return { kind: 'skipped-incomplete', fileName: targetFileName };
+          }
+          if (isElementPatchEmptyBody(merged.reason) && !runIsScoped) {
+            console.warn('[element-patch] rejecting unscoped empty artifact', {
+              fileName: targetFileName,
+              reason: merged.reason,
+            });
+            return {
+              kind: 'rejected',
+              fileName: targetFileName,
+              reason:
+                'The model emitted an empty element-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.',
+            };
           }
           return {
             kind: 'scope-rejected',
