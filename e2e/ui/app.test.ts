@@ -564,6 +564,101 @@ test('[P0] sending preview comments opens the refreshed follow-up artifact', asy
   await expectProjectFileToContain(page, projectId, revisedFileName, 'Preview copy refreshed after comment send.');
 });
 
+test('[P0] board comment chips survive page reload after send', async ({ page }) => {
+  test.setTimeout(75_000);
+  const entry = automatedUiScenarios().find((scenario) => scenario.id === 'comment-attachment-flow');
+  if (!entry?.mockArtifact) {
+    throw new Error('comment-attachment-flow scenario fixture is missing');
+  }
+
+  await routeMockAgents(page);
+  await page.route('**/api/runs', async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({ runId: 'comment-chip-reload-run' }),
+    });
+  });
+  await page.route('**/api/runs/*/events', async (route) => {
+    const body = [
+      'event: start',
+      'data: {"bin":"mock-agent"}',
+      '',
+      'event: end',
+      'data: {"code":0,"status":"succeeded"}',
+      '',
+      '',
+    ].join('\n');
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+      },
+      body,
+    });
+  });
+
+  const projectId = await createEmptyProject(page, 'Comment chip reload');
+  await expectWorkspaceReady(page);
+  await seedHtmlArtifact(page, projectId, entry.mockArtifact.fileName, entry.mockArtifact.html);
+  await page.reload();
+  await expectWorkspaceReady(page);
+  await page.goto(`/projects/${projectId}/files/${entry.mockArtifact.fileName}`, { waitUntil: 'domcontentloaded' });
+  await waitForLoadingToClear(page);
+  await expect(artifactPreview(page)).toBeVisible();
+
+  await page.getByTestId('board-mode-toggle').click();
+  const frame = artifactPreviewFrame(page);
+  await frame.locator('[data-od-id="hero-title"]').click();
+  await expect(page.getByTestId('comment-popover')).toBeVisible();
+  await page.getByTestId('comment-popover-input').fill('Make the headline more specific.');
+  const runRequest = page.waitForRequest(isCreateRunRequest);
+  await page.getByTestId('comment-add-send').click();
+  await runRequest;
+
+  const userMessage = page.locator('.msg.user').filter({ hasText: 'Make the headline more specific.' });
+  await expect(userMessage).toBeVisible({ timeout: T.medium });
+  const commentChip = userMessage.locator('.staged-comment');
+  await expect(commentChip).toBeVisible();
+
+  const { conversationId } = await getCurrentProjectContext(page);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await waitForLoadingToClear(page);
+  const reloadedUserMessage = page.locator('.msg.user').filter({ hasText: 'Make the headline more specific.' });
+  await expect(reloadedUserMessage).toBeVisible({ timeout: T.medium });
+  await expect(reloadedUserMessage.locator('.staged-comment')).toBeVisible();
+
+  const messagesResponse = await page.request.get(
+    `/api/projects/${projectId}/conversations/${conversationId}/messages`,
+  );
+  expect(messagesResponse.ok()).toBeTruthy();
+  const { messages } = (await messagesResponse.json()) as {
+    messages: Array<{
+      role: string;
+      commentAttachments?: Array<{ elementId?: string; comment?: string }>;
+      content?: string;
+    }>;
+  };
+  const storedUserMessage = messages.find(
+    (message) =>
+      message.role === 'user'
+      && (message.commentAttachments?.some((attachment) => attachment.elementId === 'hero-title')
+        || message.content?.includes('hero-title')),
+  );
+  expect(storedUserMessage).toBeTruthy();
+  expect(storedUserMessage?.commentAttachments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        elementId: 'hero-title',
+        filePath: 'commentable-artifact.html',
+        commentContext: 'query',
+      }),
+    ]),
+  );
+  expect(storedUserMessage?.content ?? '').toContain('Make the headline more specific.');
+});
+
 async function routeMockAgents(page: Page) {
   await routeAgents(page, [
     {
