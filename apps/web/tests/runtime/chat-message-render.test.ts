@@ -117,6 +117,18 @@ describe("chat-message-render", () => {
     expect(shouldOmitMessageFromChatRender(canceled, embedCtx)).toBe(false);
   });
 
+  it("keeps artifact-only succeeded deck-patch turns visible in embed virtualization", () => {
+    const message: ChatMessage = {
+      id: "a-deck-patch",
+      role: "assistant",
+      content: '<artifact type="deck-patch" identifier="deck"></artifact>',
+      runStatus: "succeeded",
+      endedAt: 2,
+    };
+    expect(hasEmbedVisibleAssistantBody(message)).toBe(true);
+    expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(false);
+  });
+
   it("keeps embed Write rows that surface file ops", () => {
     const message: ChatMessage = {
       id: "a-write",

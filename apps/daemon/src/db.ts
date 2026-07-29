@@ -1877,11 +1877,8 @@ function mergeMessageUpsertPayload(existing: DbRow | undefined, incoming: DbRow)
     sessionMode: incoming.sessionMode ?? existing.sessionMode,
     runContext: incoming.runContext ?? existing.runContext,
     appliedPluginSnapshot: incoming.appliedPluginSnapshot ?? existing.appliedPluginSnapshot,
-    preTurnFileNames: mergeOptionalMessageArrayField(
-      incoming.preTurnFileNames,
-      existing.preTurnFileNames,
-    ),
-    producedFiles: mergeOptionalMessageArrayField(incoming.producedFiles, existing.producedFiles),
+    preTurnFileNames: incoming.preTurnFileNames ?? existing.preTurnFileNames,
+    producedFiles: incoming.producedFiles ?? existing.producedFiles,
     feedback: incoming.feedback ?? existing.feedback,
   };
 }

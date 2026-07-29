@@ -28,6 +28,27 @@ function hasVisibleTextBody(message: ChatMessage): boolean {
   );
 }
 
+function assistantRunSucceeded(message: ChatMessage): boolean {
+  if (message.runStatus === "failed") return false;
+  return message.runStatus === "succeeded" || (!message.runStatus && !!message.endedAt);
+}
+
+function messageIndicatesDeckPatchArtifact(content: string): boolean {
+  if (/<artifact\b[^>]*\stype=["'](?:deck-patch|slide-patch)["']/i.test(content)) return true;
+  const openIdx = content.search(/<artifact\b/i);
+  if (openIdx === -1) return false;
+  const gt = content.indexOf(">", openIdx);
+  const partialTag = gt === -1 ? content.slice(openIdx) : content.slice(openIdx, gt + 1);
+  return /\btype\s*=\s*["']?(?:deck-patch|slide-patch)\b/i.test(partialTag);
+}
+
+function hasTeamverCompletedArtifactLead(message: ChatMessage): boolean {
+  if (!assistantRunSucceeded(message)) return false;
+  const body = assistantMessageTextBody(message);
+  if (!/<artifact\b/i.test(body)) return false;
+  return (message.producedFiles?.length ?? 0) > 0 || messageIndicatesDeckPatchArtifact(body);
+}
+
 /**
  * Approximate AssistantMessage embed early-return: after tool/thinking/status
  * filters, would the row still show user-visible body?
@@ -42,8 +63,10 @@ export function hasEmbedVisibleAssistantBody(message: ChatMessage): boolean {
   if ((message.producedFiles?.length ?? 0) > 0) return true;
   if (hasVisibleTextBody(message)) return true;
   if (deriveFileOps(message.events ?? []).length > 0) return true;
-  // Artifact-only turns still get a Teamver completion lead in AssistantMessage.
-  if (/<artifact\b/i.test(assistantMessageTextBody(message))) return true;
+  if (hasTeamverCompletedArtifactLead(message)) return true;
+  const body = assistantMessageTextBody(message);
+  if (messageIndicatesDeckPatchArtifact(body)) return true;
+  if (/<artifact\b/i.test(body)) return true;
   return false;
 }
 

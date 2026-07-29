@@ -1,5 +1,6 @@
 import type { ChatMessage, ProjectFile } from '../types';
 import { isEmbedSupportingProjectFile } from '../teamver/branding/embedDeliverableFilePolicy';
+import { isAutoContinueIncompleteOutputPrompt } from './resume';
 
 export function isPreviewableHtml(file: ProjectFile): boolean {
   return file.kind === 'html' || /\.html?$/i.test(file.name);
@@ -49,7 +50,10 @@ export function hasUserMessagesAfterAssistant(
   const assistantIndex = messages.findIndex((message) => message.id === assistantId);
   if (assistantIndex < 0) return false;
   for (let index = assistantIndex + 1; index < messages.length; index += 1) {
-    if (messages[index]?.role === 'user') return true;
+    const message = messages[index];
+    if (message?.role !== 'user') continue;
+    if (isAutoContinueIncompleteOutputPrompt(message.content)) continue;
+    return true;
   }
   return false;
 }

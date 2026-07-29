@@ -189,6 +189,10 @@ import {
   shouldAutoContinueForIncompleteOutput,
 } from '../runtime/resume';
 import {
+  extractCommentAttachmentsForAutoContinue,
+  findPrecedingUserMessage,
+} from '../runtime/auto-continue-comment-scope';
+import {
   attemptEmergencySlideDeckRecovery,
   canFireAutoContinueForConversation,
   collectSlideReferencePathsFromMessages,
@@ -1335,61 +1339,6 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     });
   }
   return result;
-}
-
-/**
- * Recover the failed turn's comment attachments for an
- * auto-continue retry. Auto-continue historically passed `[]` for
- * `commentAttachments`, which stripped the scope block from the
- * `<attached-preview-comments>` context AND left
- * `scopedCommentSlideIndexes` returning `undefined` on the retry.
- * Both scope guards (deck-patch + full-deck) skipped when scope was
- * `undefined`, so a model that had failed a scoped edit on the
- * original turn was free to rewrite the whole deck on retry — the
- * exact 8-slide → 1-slide regression the user hit on 2026-07-29.
- *
- * Attachment lookup order:
- *   1. `originatingUserMsg?.commentAttachments` — the message that
- *      triggered the failed run. This is the authoritative record;
- *      it was persisted with the assistant turn.
- *   2. `runRefFallback` — the live `runCommentAttachmentsRef` in
- *      case the user message shape was rehydrated without
- *      commentAttachments preserved (e.g., an in-flight assistant
- *      stub before persistence).
- *   3. `[]` when neither carries anything — the retry stays
- *      unscoped, matching the previous behavior for non-comment
- *      auto-continues (regular full-deck resume).
- */
-function extractCommentAttachmentsForAutoContinue(
-  originatingUserMsg: ChatMessage | null | undefined,
-  runRefFallback: readonly ChatCommentAttachment[] | null | undefined,
-): ChatCommentAttachment[] {
-  const fromMsg = originatingUserMsg?.commentAttachments;
-  if (fromMsg && fromMsg.length > 0) return [...fromMsg];
-  if (runRefFallback && runRefFallback.length > 0) return [...runRefFallback];
-  return [];
-}
-
-/**
- * Walk a message list backwards from the given assistant message id
- * to find the user turn that immediately preceded it. Returns
- * `null` when the id isn't in the list or when it's the first
- * message. Used by the auto-continue path to locate the failed run's
- * originating user message so its `commentAttachments` can be
- * re-attached to the retry.
- */
-function findPrecedingUserMessage(
-  messages: readonly ChatMessage[] | null | undefined,
-  assistantId: string | null | undefined,
-): ChatMessage | null {
-  if (!messages || !assistantId) return null;
-  const index = messages.findIndex((message) => message.id === assistantId);
-  if (index <= 0) return null;
-  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-    const candidate = messages[cursor];
-    if (candidate?.role === 'user') return candidate;
-  }
-  return null;
 }
 
 function scopedCommentSlideIndexes(

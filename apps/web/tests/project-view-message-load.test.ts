@@ -639,15 +639,15 @@ describe("ProjectView message loading", () => {
     // (or `runCommentAttachmentsRef` fallback) through to the retry
     // so scope stays intact.
     const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("function extractCommentAttachmentsForAutoContinue");
-    expect(source).toContain("function findPrecedingUserMessage");
+    const scopeSource = readSource("src/runtime/auto-continue-comment-scope.ts");
+    expect(scopeSource).toContain("export function extractCommentAttachmentsForAutoContinue");
+    expect(scopeSource).toContain("export function findPrecedingUserMessage");
     // Each of the three auto-continue call sites must now pass the
     // preserved attachments instead of the historical `[]`. Assert
     // by counting call-site invocations of the helper — if any
     // regressed back to the `[]` shape the count would drop.
     const helperCalls = (source.match(/extractCommentAttachmentsForAutoContinue\(/g) ?? []).length;
-    // 3 usages inside handleSend/scheduleAutoContinue sites + 1 definition.
-    expect(helperCalls).toBeGreaterThanOrEqual(4);
+    expect(helperCalls).toBeGreaterThanOrEqual(3);
   });
 
   it("only routes empty element-patch to auto-continue for scoped comment runs", () => {

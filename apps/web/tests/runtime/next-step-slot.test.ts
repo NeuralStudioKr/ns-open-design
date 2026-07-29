@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
+import { AUTO_CONTINUE_PROMPT_SENTINEL } from '../../src/runtime/resume';
 import {
   hasUserMessagesAfterAssistant,
   resolvePinnedNextStepSlot,
@@ -31,6 +32,15 @@ describe('hasUserMessagesAfterAssistant', () => {
 
   it('returns false when the assistant turn is still the latest message', () => {
     const messages = [user('u1', 'hi'), assistant('a1')];
+    expect(hasUserMessagesAfterAssistant(messages, 'a1')).toBe(false);
+  });
+
+  it('ignores auto-continue user prompts when deciding follow-up state', () => {
+    const messages = [
+      user('u1', 'hi'),
+      assistant('a1'),
+      user('u-auto', `${AUTO_CONTINUE_PROMPT_SENTINEL}\ncontinue`),
+    ];
     expect(hasUserMessagesAfterAssistant(messages, 'a1')).toBe(false);
   });
 });
