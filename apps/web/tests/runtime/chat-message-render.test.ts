@@ -198,6 +198,59 @@ describe("chat-message-render", () => {
     expect(items.map((item) => item.message.id)).toEqual(["u1", "a2"]);
   });
 
+  it("does not drop every assistant row when auto-continue ends in a sanitized empty shell", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "make deck", createdAt: 1 };
+    const failed: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "",
+      runStatus: "failed",
+      resumable: true,
+      endedAt: 2,
+      createdAt: 2,
+      events: [
+        { kind: "status", label: "error", detail: "incomplete", code: "incomplete_output" },
+      ],
+    };
+    const autoUser: ChatMessage = {
+      id: "u-auto",
+      role: "user",
+      content: `${AUTO_CONTINUE_PROMPT_SENTINEL}\ncontinue`,
+      createdAt: 3,
+    };
+    const succeededShell: ChatMessage = {
+      id: "a2",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 4,
+      createdAt: 4,
+      events: [{ kind: "status", label: "requesting" }],
+    };
+    const messages = [user, failed, autoUser, succeededShell];
+    expect(shouldOmitSupersededAutoContinueFailure(messages, 1, embedCtx)).toBe(true);
+    const items = buildChatRenderItems(messages, {
+      ...embedCtx,
+      lastAssistantId: "a2",
+    });
+    expect(items.map((item) => item.message.id)).toEqual(["u1", "a2"]);
+  });
+
+  it("keeps a terminal succeeded empty shell as the last assistant anchor after reload", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "make deck", createdAt: 1 };
+    const succeededShell: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 2,
+      createdAt: 2,
+      events: [{ kind: "status", label: "requesting" }],
+    };
+    const items = buildChatRenderItems([user, succeededShell], embedCtx);
+    expect(items.map((item) => item.message.id)).toEqual(["u1", "a1"]);
+  });
+
   it("keeps superseded failed attempts that still have visible prose", () => {
     const user: ChatMessage = { id: "u1", role: "user", content: "edit slide", createdAt: 1 };
     const firstFailed: ChatMessage = {

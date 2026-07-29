@@ -113,6 +113,28 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
   });
 
+  it('shows deck completion copy for a sanitized terminal empty shell after reload', () => {
+    render(
+      <AssistantMessage
+        message={{
+          id: 'assistant-1',
+          role: 'assistant',
+          content: '',
+          runStatus: 'succeeded',
+          startedAt: 1700000000,
+          endedAt: 1700000005,
+          events: [{ kind: 'status', label: 'requesting' }],
+          producedFiles: [],
+        }}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('The slide deck draft is ready.')).toBeTruthy();
+  });
+
   it('keeps deck-creation copy when deck-patch appears only in a non-type attribute', () => {
     render(
       <AssistantMessage

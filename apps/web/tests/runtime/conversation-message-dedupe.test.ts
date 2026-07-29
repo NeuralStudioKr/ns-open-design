@@ -447,6 +447,48 @@ describe("dedupeConversationAssistantRows", () => {
       "a-live",
     ]);
   });
+
+  it("keeps a terminal succeeded empty shell after a failed auto-continue attempt", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "make deck", createdAt: 1 };
+    const failed: ChatMessage = {
+      id: "a-failed",
+      role: "assistant",
+      content: "",
+      runStatus: "failed",
+      resumable: true,
+      endedAt: 2,
+      createdAt: 2,
+      events: [{ kind: "status", label: "error", detail: "incomplete", code: "incomplete_output" }],
+    };
+    const autoUser: ChatMessage = {
+      id: "u-auto",
+      role: "user",
+      content: `${AUTO_CONTINUE_PROMPT_SENTINEL}\ncontinue`,
+      createdAt: 3,
+    };
+    const succeededShell: ChatMessage = {
+      id: "a-succeeded",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 4,
+      createdAt: 4,
+      events: [{ kind: "status", label: "requesting" }],
+    };
+    const messages = [user, failed, autoUser, succeededShell];
+    expect(collapseEmptyAssistantShellsBeforeSuccessor(messages).map((m) => m.id)).toEqual([
+      "u1",
+      "a-failed",
+      "u-auto",
+      "a-succeeded",
+    ]);
+    expect(dedupeConversationAssistantRows(messages).map((m) => m.id)).toEqual([
+      "u1",
+      "a-failed",
+      "u-auto",
+      "a-succeeded",
+    ]);
+  });
 });
 
 describe("resolveLastAssistantMessageId", () => {

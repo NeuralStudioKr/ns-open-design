@@ -762,13 +762,24 @@ function AssistantMessageImpl({
     locale,
     isDeckPatchArtifactTurn,
   );
+  const terminalSucceededAnchor =
+    isLast
+    && !streaming
+    && isEmptyAssistantShell(message)
+    && message.runStatus === "succeeded"
+    && message.endedAt !== undefined;
   const shouldShowTeamverCompletedArtifactLead =
     !streaming
     && runSucceeded
     && !hasVisibleAssistantTextBlocks
     && (slideOnlyMvp || teamverEmbedEnabled)
-    && /<artifact\b/i.test(assistantTextBody)
-    && (displayedProduced.length > 0 || isDeckPatchArtifactTurn);
+    && (
+      terminalSucceededAnchor
+      || (
+        /<artifact\b/i.test(assistantTextBody)
+        && (displayedProduced.length > 0 || isDeckPatchArtifactTurn)
+      )
+    );
 
   // Index of the trailing text block — the streaming caret rides the end of
   // the last prose block so it tracks the final character as tokens arrive.
@@ -781,7 +792,9 @@ function AssistantMessageImpl({
   }
 
   if (isEmptyAssistantShell(message) && !(streaming && isLast)) {
-    return null;
+    if (!terminalSucceededAnchor) {
+      return null;
+    }
   }
 
   // Teamver embed filters tool/thinking/status blocks from the body. Share the
