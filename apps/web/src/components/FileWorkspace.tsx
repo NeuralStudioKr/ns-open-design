@@ -1668,11 +1668,11 @@ export function FileWorkspace({
       return;
     }
     let cancelled = false;
-    let retryTimer: ReturnType<typeof window.setTimeout> | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const retryUntil = Date.now() + 30_000;
     const scheduleRetry = (delayMs: number) => {
       if (cancelled || Date.now() >= retryUntil) return;
-      retryTimer = window.setTimeout(tryFetch, delayMs);
+      retryTimer = setTimeout(tryFetch, delayMs);
     };
     const tryFetch = () => {
       void fetchProjectFileText(projectId, activeTab, {
@@ -1695,7 +1695,7 @@ export function FileWorkspace({
     tryFetch();
     return () => {
       cancelled = true;
-      if (retryTimer != null) window.clearTimeout(retryTimer);
+      if (retryTimer != null) clearTimeout(retryTimer);
     };
   }, [pendingPreviewTab, activeTab, projectId]);
 
