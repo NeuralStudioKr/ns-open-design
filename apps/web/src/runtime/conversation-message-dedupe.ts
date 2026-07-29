@@ -159,6 +159,16 @@ export function dedupeAssistantMessagesByRunId(
   return messages.filter((_, index) => !duplicateIndices.has(index));
 }
 
+/** Terminal succeeded shells anchor reload UI after sanitizer strips artifact prose. */
+function isTerminalSucceededEmptyShell(message: ChatMessage): boolean {
+  return (
+    message.role === "assistant"
+    && message.runStatus === "succeeded"
+    && message.endedAt !== undefined
+    && isCollapsibleAssistantStub(message)
+  );
+}
+
 /**
  * Remove header-only assistant rows that share a visible user turn with a
  * richer assistant (before or after, including across hidden auto-continue
@@ -190,6 +200,12 @@ export function collapseEmptyAssistantShellsBeforeSuccessor(
         if (
           richOnlyTerminal
           && isInFlightAssistantMessage(messages[index]!)
+        ) {
+          continue;
+        }
+        if (
+          index === assistantIndicesInTurn.at(-1)
+          && isTerminalSucceededEmptyShell(messages[index]!)
         ) {
           continue;
         }

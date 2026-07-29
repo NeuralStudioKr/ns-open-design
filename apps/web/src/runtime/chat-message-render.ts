@@ -10,6 +10,57 @@ export type ChatMessageRenderContext = {
   hideAssistantThinkingDetails: boolean;
 };
 
+function isLastAssistantInVisibleUserTurn(
+  messages: readonly ChatMessage[],
+  messageIndex: number,
+): boolean {
+  const turnEnd = findVisibleUserTurnEnd(messages, messageIndex);
+  for (let index = messageIndex + 1; index < turnEnd; index += 1) {
+    if (messages[index]?.role === "assistant") return false;
+  }
+  return true;
+}
+
+function wouldAssistantRenderIgnoringSupersededOmission(
+  message: ChatMessage,
+  ctx: ChatMessageRenderContext,
+  messages: readonly ChatMessage[],
+  messageIndex: number,
+): boolean {
+  if (message.role !== "assistant") return false;
+  if (isLiveStreamingAssistantTarget(message, ctx)) return true;
+  if (
+    isEmptyAssistantShell(message)
+    && isLastAssistantInVisibleUserTurn(messages, messageIndex)
+  ) {
+    return true;
+  }
+  if (isEmptyAssistantShell(message)) return false;
+  if (
+    ctx.hideAssistantThinkingDetails
+    && !hasEmbedVisibleAssistantBody(message)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function hasLaterRenderableAssistantInVisibleUserTurn(
+  messages: readonly ChatMessage[],
+  messageIndex: number,
+  ctx: ChatMessageRenderContext,
+): boolean {
+  const turnEnd = findVisibleUserTurnEnd(messages, messageIndex);
+  for (let index = messageIndex + 1; index < turnEnd; index += 1) {
+    const later = messages[index];
+    if (later?.role !== "assistant") continue;
+    if (wouldAssistantRenderIgnoringSupersededOmission(later, ctx, messages, index)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function findVisibleUserTurnStart(
   messages: readonly ChatMessage[],
   messageIndex: number,
@@ -67,6 +118,7 @@ function hasLaterAssistantInVisibleUserTurn(
 export function shouldOmitSupersededAutoContinueFailure(
   messages: readonly ChatMessage[],
   messageIndex: number,
+  ctx?: ChatMessageRenderContext,
 ): boolean {
   const message = messages[messageIndex];
   if (!message || message.role !== "assistant") return false;
@@ -75,6 +127,12 @@ export function shouldOmitSupersededAutoContinueFailure(
   if ((message.producedFiles?.length ?? 0) > 0) return false;
   if (messageHasVisibleProse(message)) return false;
   if (deriveFileOps(message.events ?? []).length > 0) return false;
+  if (
+    ctx
+    && !hasLaterRenderableAssistantInVisibleUserTurn(messages, messageIndex, ctx)
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -150,7 +208,7 @@ export function shouldOmitMessageFromChatRender(
   if (
     options?.messages
     && typeof options.messageIndex === "number"
-    && shouldOmitSupersededAutoContinueFailure(options.messages, options.messageIndex)
+    && shouldOmitSupersededAutoContinueFailure(options.messages, options.messageIndex, ctx)
   ) {
     return true;
   }
@@ -159,7 +217,16 @@ export function shouldOmitMessageFromChatRender(
   }
   if (message.role !== "assistant") return false;
   if (isLiveStreamingAssistantTarget(message, ctx)) return false;
-  if (isEmptyAssistantShell(message)) return true;
+  if (isEmptyAssistantShell(message)) {
+    if (
+      options?.messages
+      && typeof options.messageIndex === "number"
+      && isLastAssistantInVisibleUserTurn(options.messages, options.messageIndex)
+    ) {
+      return false;
+    }
+    return true;
+  }
   if (
     ctx.hideAssistantThinkingDetails
     && !hasEmbedVisibleAssistantBody(message)
