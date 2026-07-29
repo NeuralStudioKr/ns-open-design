@@ -4,6 +4,7 @@ import {
   hasFilledSlideSection,
   hasSalvageableDeckSlideContent,
   isDeckStatusProseOnlyBody,
+  meetsMinimumDeckDeliverableQuality,
 } from "../../src/artifacts/deck-html-content";
 import {
   normalizeBodyFirstHtmlDocument,
@@ -46,6 +47,44 @@ describe("deck-html-content", () => {
       + "</body></html>";
     expect(hasFilledSlideSection(html)).toBe(false);
     expect(hasSalvageableDeckSlideContent(html)).toBe(false);
+  });
+
+  it("rejects sparse multi-slide decks with only one filled slide", () => {
+    const html =
+      "<!doctype html><html lang=\"ko\"><body>"
+      + "<section class=\"slide\"><h1>Neural Studio</h1><p>회사 소개 슬라이드입니다.</p></section>"
+      + "<section class=\"slide\"></section>"
+      + "<section class=\"slide\"><!-- SLOT: slide 3 --></section>"
+      + "<section class=\"slide\"></section>"
+      + "<section class=\"slide\"></section>"
+      + "<section class=\"slide\"></section>"
+      + "</body></html>";
+    expect(meetsMinimumDeckDeliverableQuality(html)).toBe(false);
+    expect(isIncompleteHtmlDocumentShell(html)).toBe(true);
+  });
+
+  it("rejects outline-only heading slides without body copy", () => {
+    const html =
+      "<!doctype html><html lang=\"ko\"><body>"
+      + "<section class=\"slide\"><h2>발표 개요</h2></section>"
+      + "<section class=\"slide\"><h2>목차</h2></section>"
+      + "</body></html>";
+    expect(meetsMinimumDeckDeliverableQuality(html)).toBe(false);
+    expect(isIncompleteHtmlDocumentShell(html)).toBe(true);
+  });
+
+  it("accepts multi-slide decks with enough filled slides and copy", () => {
+    const html =
+      "<!doctype html><html lang=\"ko\"><body>"
+      + "<section class=\"slide\"><h1>Neural Studio</h1><p>AI 디자인 자동화 회사 소개</p></section>"
+      + "<section class=\"slide\"><h2>서비스</h2><p>슬라이드 제작과 브랜드 시스템을 지원합니다.</p></section>"
+      + "<section class=\"slide\"><h2>고객</h2><p>엔터프라이즈와 스타트업 고객을 지원합니다.</p></section>"
+      + "<section class=\"slide\"></section>"
+      + "<section class=\"slide\"></section>"
+      + "<section class=\"slide\"></section>"
+      + "</body></html>";
+    expect(meetsMinimumDeckDeliverableQuality(html)).toBe(true);
+    expect(isIncompleteHtmlDocumentShell(html)).toBe(false);
   });
 });
 
