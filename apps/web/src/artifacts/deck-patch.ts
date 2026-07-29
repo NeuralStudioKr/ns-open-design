@@ -72,20 +72,44 @@ export function isDeckPatchArtifactType(artifactType: string | null | undefined)
   return trimmed === 'deck-patch' || trimmed === 'slide-patch';
 }
 
+export interface ParseDeckPatchOptions {
+  /**
+   * Comment-scoped slide indexes. When the model omits `data-slide-index`
+   * (common with `data-screen-label`-only Teamver slides) and exactly one
+   * fallback is available, that index is used.
+   */
+  fallbackSlideIndexes?: readonly number[];
+  /**
+   * Current on-disk deck HTML. Used to resolve `data-screen-label` /
+   * `data-od-id` on a patch section back to a 0-based slide index.
+   */
+  currentHtml?: string;
+}
+
 /**
  * Parse the streamed deck-patch body into a sequence of ops. Ignores prose
  * between sections (models occasionally emit a one-line rationale) and
  * whitespace/comment nodes. Returns `ok: false` when the body has no valid
  * `<section class="slide" data-slide-index="…">` blocks.
+ *
+ * When `data-slide-index` is missing, tries (in order):
+ *   1. identity attrs (`data-screen-label` / `data-od-id`) against `currentHtml`
+ *   2. a single `fallbackSlideIndexes` entry from the attached comment scope
  */
-export function parseDeckPatch(body: string): ParseDeckPatchResult | ParseDeckPatchFailure {
+export function parseDeckPatch(
+  body: string,
+  options: ParseDeckPatchOptions = {},
+): ParseDeckPatchResult | ParseDeckPatchFailure {
   const sections = extractTopLevelSlideSections(body);
   if (sections.length === 0) {
     return { ok: false, reason: 'no <section class="slide"> blocks in deck-patch body' };
   }
   const ops: DeckPatchSectionOp[] = [];
   for (const section of sections) {
-    const slideIndex = readSlideIndex(section.openTag);
+    let slideIndex = readSlideIndex(section.openTag);
+    if (slideIndex == null) {
+      slideIndex = resolveMissingDeckPatchSlideIndex(section.openTag, options);
+    }
     if (slideIndex == null) {
       return {
         ok: false,
@@ -102,7 +126,7 @@ export function parseDeckPatch(body: string): ParseDeckPatchResult | ParseDeckPa
     ops.push({
       op,
       slideIndex,
-      html: op === 'remove' ? '' : section.outerHtml,
+      html: op === 'remove' ? '' : ensureDataSlideIndexAttr(section.outerHtml, slideIndex),
     });
   }
   return { ok: true, patch: { ops } };
@@ -286,9 +310,17 @@ export interface TopLevelSlideSection {
  * (vitest runs `environment: 'node'`) and never mutates whitespace/comments.
  * Matches are case-insensitive and tolerate any attribute ordering.
  */
+/**
+ * Opening-tag attr region that allows `>` inside quoted values (e.g. style
+ * `calc()` / content). A naive `[^>]*` cut drops trailing attrs such as
+ * `data-slide-index` and mis-reports them as missing.
+ */
+const SECTION_OPEN_ATTRS_RE = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
+const SECTION_OPEN_RE = new RegExp(String.raw`<section\b(${SECTION_OPEN_ATTRS_RE})>`, 'gi');
+
 export function extractTopLevelSlideSections(html: string): TopLevelSlideSection[] {
   const results: TopLevelSlideSection[] = [];
-  const openRe = /<section\b([^>]*)>/gi;
+  const openRe = new RegExp(SECTION_OPEN_RE.source, 'gi');
   const closeRe = /<\/section\s*>/gi;
 
   let searchFrom = 0;
@@ -353,6 +385,76 @@ function readSlideIndex(openTag: string): number | null {
   const raw = (match[1] ?? match[2] ?? match[3] ?? '').trim();
   const num = Number(raw);
   return Number.isInteger(num) && num >= 0 ? num : null;
+}
+
+function readHtmlAttr(openTag: string, name: string): string {
+  const re = new RegExp(
+    String.raw`\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+?))(?=\s|\/|>)`,
+    'i',
+  );
+  const match = re.exec(openTag);
+  return ((match?.[1] ?? match?.[2] ?? match?.[3] ?? '') || '').trim();
+}
+
+function resolveMissingDeckPatchSlideIndex(
+  openTag: string,
+  options: ParseDeckPatchOptions,
+): number | null {
+  const fromIdentity = resolveSlideIndexBySectionIdentity(openTag, options.currentHtml);
+  if (fromIdentity != null) return fromIdentity;
+
+  const fallbacks = [...new Set(
+    (options.fallbackSlideIndexes ?? [])
+      .filter((index) => Number.isInteger(index) && index >= 0)
+      .map((index) => Math.floor(index)),
+  )];
+  return fallbacks.length === 1 ? fallbacks[0]! : null;
+}
+
+/**
+ * Map a patch section that carries Teamver identity attrs (but no
+ * `data-slide-index`) onto the matching slide in the current deck.
+ */
+function resolveSlideIndexBySectionIdentity(
+  openTag: string,
+  currentHtml: string | undefined,
+): number | null {
+  const html = String(currentHtml ?? '');
+  if (!html.trim()) return null;
+
+  const screenLabel = readHtmlAttr(openTag, 'data-screen-label');
+  const odId = readHtmlAttr(openTag, 'data-od-id');
+  if (!screenLabel && !odId) return null;
+
+  const bodyRange = findBodyContentRange(html);
+  const scope = bodyRange ? html.slice(bodyRange.start, bodyRange.end) : html;
+  const slides = extractTopLevelSlideSections(scope);
+  if (slides.length === 0) return null;
+
+  const matchBy = (attr: string, value: string): number | null => {
+    if (!value) return null;
+    const matches = slides.flatMap((slide, index) => {
+      const slideValue = readHtmlAttr(slide.openTag, attr);
+      return slideValue && slideValue === value ? [index] : [];
+    });
+    return matches.length === 1 ? matches[0]! : null;
+  };
+
+  return matchBy('data-screen-label', screenLabel) ?? matchBy('data-od-id', odId);
+}
+
+/** Stamp `data-slide-index` onto a replacement section when the model omitted it. */
+function ensureDataSlideIndexAttr(outerHtml: string, slideIndex: number): string {
+  return outerHtml.replace(
+    new RegExp(String.raw`^<section\b(${SECTION_OPEN_ATTRS_RE})>`, 'i'),
+    (full, attrs: string) => {
+      if (/\bdata-slide-index\s*=/i.test(attrs)) return full;
+      const rest = attrs.trimStart();
+      return rest
+        ? `<section data-slide-index="${slideIndex}" ${rest}>`
+        : `<section data-slide-index="${slideIndex}">`;
+    },
+  );
 }
 
 function readOp(openTag: string): DeckPatchOp | null {

@@ -157,7 +157,10 @@ export function applyScopedDeckPatchToHtml(input: {
 }): DeckPatchMergeResult {
   const parsed = input.patch
     ? { ok: true as const, patch: input.patch }
-    : parseDeckPatch(input.patchBody ?? '');
+    : parseDeckPatch(input.patchBody ?? '', {
+        fallbackSlideIndexes: input.allowedSlideIndexes,
+        currentHtml: input.currentHtml,
+      });
   if (!parsed.ok) {
     return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
   }

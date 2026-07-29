@@ -109,6 +109,50 @@ describe('parseDeckPatch', () => {
     }
   });
 
+  it('recovers missing data-slide-index from a single comment-scope fallback', () => {
+    const result = parseDeckPatch(
+      '<section class="slide" data-screen-label="03 역사"><h2>History v2</h2></section>',
+      { fallbackSlideIndexes: [2] },
+    );
+    expect(result.ok, result.ok ? '' : result.reason).toBe(true);
+    if (!result.ok) return;
+    expect(result.patch.ops[0]).toMatchObject({ op: 'replace', slideIndex: 2 });
+    expect(result.patch.ops[0]?.html).toContain('data-slide-index="2"');
+    expect(result.patch.ops[0]?.html).toContain('data-screen-label="03 역사"');
+  });
+
+  it('recovers missing data-slide-index via data-screen-label on the current deck', () => {
+    const current = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0" data-screen-label="01 인트로"><h1>Intro</h1></section>',
+      '<section class="slide" data-slide-index="1" data-screen-label="02 개요"><h2>Overview</h2></section>',
+      '<section class="slide" data-slide-index="2" data-screen-label="03 역사"><h2>History</h2></section>',
+      '<section class="slide" data-slide-index="3" data-screen-label="04 레시피"><h2>Recipe</h2></section>',
+      '</body></html>',
+    ].join('');
+    const result = parseDeckPatch(
+      '<section class="slide" data-screen-label="04 레시피" style="background:#0f172a"><h2>Recipe v2</h2></section>',
+      { currentHtml: current },
+    );
+    expect(result.ok, result.ok ? '' : result.reason).toBe(true);
+    if (!result.ok) return;
+    expect(result.patch.ops[0]?.slideIndex).toBe(3);
+    const applied = applyDeckPatch({ currentHtml: current, patch: result.patch, allowedSlideIndexes: [3] });
+    expect(applied.ok, JSON.stringify(applied)).toBe(true);
+    if (!applied.ok) return;
+    expect(applied.html).toContain('Recipe v2');
+    expect(applied.html).toContain('data-screen-label="03 역사"');
+  });
+
+  it('keeps data-slide-index that appears after a quoted attr containing ">"', () => {
+    const result = parseDeckPatch(
+      '<section class="slide" style="width:calc(100% > 50%)" data-slide-index="1"><h2>Ok</h2></section>',
+    );
+    expect(result.ok, result.ok ? '' : result.reason).toBe(true);
+    if (!result.ok) return;
+    expect(result.patch.ops[0]?.slideIndex).toBe(1);
+  });
+
   it('rejects unsupported data-op values so bad patches fall back to full-deck', () => {
     const result = parseDeckPatch(
       '<section class="slide" data-slide-index="0" data-op="rewrite-everything"></section>',

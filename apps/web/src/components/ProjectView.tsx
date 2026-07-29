@@ -1311,7 +1311,8 @@ function shouldRetryScopedCommentMergeFailure(
   if (code === 'deck_patch_parse_failed') {
     return (
       reason.startsWith('element-patch <patch> missing slide-index') ||
-      reason.startsWith('element-patch <patch> missing target-id')
+      reason.startsWith('element-patch <patch> missing target-id') ||
+      reason.startsWith('deck-patch section missing data-slide-index')
     );
   }
   if (code !== 'deck_patch_merge_failed') return false;
@@ -1373,7 +1374,26 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   commentAttachments?: readonly ChatCommentAttachment[];
   instructionText?: string;
 }): Promise<DeckPatchMergeResult> {
-  const parsed = parseDeckPatch(input.patchBody);
+  // Fetch current deck first so parse can recover missing
+  // `data-slide-index` via data-screen-label / comment scope.
+  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
+    cache: 'no-store',
+  });
+  if (!currentHtml) {
+    console.warn('[deck-patch] current deck file unreadable', {
+      projectId: input.projectId,
+      fileName: input.fileName,
+    });
+    return {
+      ok: false,
+      code: 'deck_patch_current_unreadable',
+      reason: 'current deck file unreadable',
+    };
+  }
+  const parsed = parseDeckPatch(input.patchBody, {
+    fallbackSlideIndexes: input.allowedSlideIndexes,
+    currentHtml,
+  });
   if (!parsed.ok) {
     // Symmetric salvage: the model wrapped element-patch content
     // (a list of `<patch>` blocks) in a `deck-patch` artifact by
@@ -1398,20 +1418,6 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     }
     console.warn('[deck-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
     return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
-  }
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
-  if (!currentHtml) {
-    console.warn('[deck-patch] current deck file unreadable', {
-      projectId: input.projectId,
-      fileName: input.fileName,
-    });
-    return {
-      ok: false,
-      code: 'deck_patch_current_unreadable',
-      reason: 'current deck file unreadable',
-    };
   }
   const result = applyScopedDeckPatchToHtml({
     currentHtml,
