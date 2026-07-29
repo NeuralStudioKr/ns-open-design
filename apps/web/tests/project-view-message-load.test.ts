@@ -259,7 +259,10 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("appendErrorStatusEvent(");
     expect(block).toContain("saveMessage(project.id, activeConversationId, updatedAssistant");
     expect(block).toContain("handleSendRef.current");
-    expect(block).toContain("buildAutoContinueIncompleteOutputPrompt");
+    // resolveAutoContinuePrompt replaced buildAutoContinueIncompleteOutputPrompt
+    // in commit 7a80a8688 so the scoped comment auto-continue can route to a
+    // dedicated element-patch retry instead of the full-deck rewrite prompt.
+    expect(block).toContain("resolveAutoContinuePrompt");
     expect(block).toContain("AUTO_CONTINUE_ENTRY_FROM");
     expect(block).toContain("const scheduledProjectId = project.id");
     expect(block).toContain("project.id !== scheduledProjectId");
@@ -281,7 +284,9 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("saveMessage(project.id, recoveryConversationId, updatedAssistant");
     expect(block).toContain("finishRecovery()");
     expect(block).toContain("handleSendRef.current");
-    expect(block).toContain("buildAutoContinueIncompleteOutputPrompt");
+    // resolveAutoContinuePrompt replaced buildAutoContinueIncompleteOutputPrompt.
+    // See sibling block above for the rationale (element-patch retry routing).
+    expect(block).toContain("resolveAutoContinuePrompt");
     expect(block).toContain("const scheduledProjectId = project.id");
     expect(block).toContain("project.id !== scheduledProjectId");
   });
@@ -373,7 +378,11 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("attemptEmergencySlideDeckRecovery(");
     expect(autoOpenBlock).toContain("formatAutoContinueIncompleteOutputNotice()");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_STATUS_CODE");
-    expect(autoOpenBlock).toContain("buildAutoContinueIncompleteOutputPrompt");
+    // resolveAutoContinuePrompt replaces the older direct
+    // buildAutoContinueIncompleteOutputPrompt call so scoped comment
+    // retries can route to an element-patch specific retry prompt
+    // instead of forcing full deck regeneration (commit 7a80a8688).
+    expect(autoOpenBlock).toContain("resolveAutoContinuePrompt");
     expect(autoOpenBlock).toContain("extractAutoContinueContextFromAssistant");
     expect(autoOpenBlock).toContain("isLiveLocalStreamBlockingAutoContinue({");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_ENTRY_FROM");
