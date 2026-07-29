@@ -321,6 +321,17 @@ export function resolveScopedCommentSlideCandidates(input: {
     }
   }
 
+  // Attachments with no identity anchor (empty currentText, htmlHint,
+  // podMembers) can't be text-verified — none of the earlier passes
+  // pushed anything into `verified`. Fall back to whatever slideIndex
+  // the attachment recorded so the anchor-less last-resort swap in
+  // `tryMergeScopedCommentAttachmentAtSlide` has a slide to work on.
+  // Without this the whole merge silently returns [] and rejects
+  // even though the model correctly targeted the attached slide.
+  if (candidates.length === 0 && hasValidDeckSlideIndex(input.attachment)) {
+    pushUnique(candidates, Math.floor(input.attachment.slideIndex as number));
+  }
+
   return candidates;
 }
 
@@ -420,8 +431,51 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
     }
   }
 
+  // Hint-only merge (from upstream): try to resolve the target
+  // purely from the attachment's hint text/selector when structural
+  // and graft lookups all missed. Wins over the anchor-less
+  // slide-level swap below when the model kept a text/selector
+  // signal in the patched slide, because it can still narrow to a
+  // specific element.
   const hintOnly = tryHintOnlyScopedMerge(input);
   if (hintOnly.ok) return hintOnly;
+
+  // Last-resort catch-all — apply the model's patched slide as a
+  // slide-level swap when we have literally no identity signal left
+  // to verify with. This fires when:
+  //   - Narrow merge said "No matching targets found to merge."
+  //     (currentTarget could not be resolved from any id — the model
+  //     likely restructured the slide and dropped identifiers), AND
+  //   - The attachment carries no usable identity anchor
+  //     (currentText, htmlHint, and podMembers all empty) so the
+  //     text-preserved fallback above had nothing to check against.
+  // In that case the strict scope apply already restricted the
+  // patch to the attached slide, so accepting the slide-level swap
+  // ships the user's edit instead of surfacing a misleading
+  // "선택 대상 밖 변경" banner. Style-only "unchanged" cases still
+  // require the tighter check above — this branch never fires when
+  // the narrow merge FOUND the target but saw it unchanged (the
+  // classic sibling-change scenario the safety rail was designed
+  // for stays intact).
+  if (
+    merged.reason === 'No matching targets found to merge.' &&
+    nextSlide !== patchedSlide &&
+    extractTargetIdentityAnchors(input.attachment).length === 0
+  ) {
+    const swapped = applyDeckPatch({
+      currentHtml: input.nextHtml,
+      patch: {
+        ops: [{ op: 'replace', slideIndex: input.slideIndex, html: patchedSlide }],
+      },
+    });
+    if (swapped.ok) {
+      console.warn('[deck-patch] accepted anchor-less slide-level swap — no identity signal to narrow', {
+        slideIndex: input.slideIndex,
+        ids,
+      });
+      return { ok: true, html: swapped.html };
+    }
+  }
 
   return { ok: false, reason: merged.reason };
 }

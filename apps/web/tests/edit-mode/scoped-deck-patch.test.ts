@@ -180,4 +180,91 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(result.html).toContain('뉴럴스튜디오㈜');
     expect(result.html).toContain('<h2>Title</h2>');
   });
+
+  it('accepts an anchor-less scoped edit via the last-resort slide-level swap', () => {
+    // Bug (2026-07-29): user reported "deck_patch_merge_failed — No
+    // matching targets found to merge." The attachment carried a
+    // valid slideIndex + elementId but no identity anchor
+    // (currentText, htmlHint, and podMembers were all empty), so the
+    // narrow merge could not resolve the target in either the
+    // current or patched slide, and the text-preserved fallback had
+    // no anchor to check with. The last-resort catch-all now applies
+    // the patched slide as a slide-level swap when the diff has
+    // measurable content — the strict scope apply already restricted
+    // the model to the attached slide, so the swap is bounded.
+    const currentHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>인트로</h1></section>
+<section class="slide" data-slide-index="1">
+  <p>어떤 본문 텍스트</p>
+</section>
+</body></html>`;
+    const patchedHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>인트로</h1></section>
+<section class="slide" data-slide-index="1">
+  <p style="font-weight:700;color:#ef4444">어떤 본문 텍스트</p>
+</section>
+</body></html>`;
+    const anchorLessAttachment: ChatCommentAttachment = {
+      id: 'c1',
+      order: 1,
+      filePath: 'deck.html',
+      // Non-empty elementId (needed for scopedCommentElementIds to
+      // return a non-empty ids array) that does NOT resolve in either
+      // current or patched HTML.
+      elementId: 'phantom-id-not-in-deck',
+      selector: '[data-od-id="phantom-id-not-in-deck"]',
+      label: 'p',
+      comment: '회사 이름 눈에 잘 띄게 수정',
+      currentText: '',
+      htmlHint: '',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml,
+      patchedHtml,
+      commentAttachments: [anchorLessAttachment],
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    // The last-resort swap must ship the model's slide-level style
+    // edit — otherwise the user's request silently drops.
+    expect(result.html).toContain('font-weight:700');
+    expect(result.html).toContain('color:#ef4444');
+    // Non-target slides survive unchanged — the swap is scoped to
+    // the attached slideIndex only.
+    expect(result.html).toContain('<h1>인트로</h1>');
+  });
+
+  it('does not accept an anchor-less swap when the slide diff is empty', () => {
+    // Safety: if the model's response is byte-identical to current,
+    // there is no visible edit to ship and we shouldn't pretend
+    // there was one. This keeps the anchor-less catch-all from
+    // silently marking a no-op merge as successful.
+    const currentHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>인트로</h1></section>
+<section class="slide" data-slide-index="1"><p>Body</p></section>
+</body></html>`;
+    const anchorLess: ChatCommentAttachment = {
+      id: 'c1',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'phantom-id',
+      selector: '[data-od-id="phantom-id"]',
+      label: 'p',
+      comment: 'test',
+      currentText: '',
+      htmlHint: '',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml,
+      patchedHtml: currentHtml,
+      commentAttachments: [anchorLess],
+    });
+    expect(result.ok).toBe(false);
+  });
 });
