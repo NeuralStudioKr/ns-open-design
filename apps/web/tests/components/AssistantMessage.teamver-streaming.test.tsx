@@ -314,4 +314,96 @@ describe('AssistantMessage Teamver streaming visibility', () => {
 
     expect(container.firstChild).toBeNull();
   });
+
+  it('hides embed tool-only rows that would show only the assistant header', () => {
+    const { container } = render(
+      <AssistantMessage
+        message={{
+          id: 'a-tools',
+          role: 'assistant',
+          content: '',
+          runStatus: 'succeeded',
+          endedAt: Date.now(),
+          events: [
+            {
+              kind: 'tool_use',
+              id: 'tu-1',
+              name: 'Bash',
+              input: { command: 'ls' },
+            },
+            {
+              kind: 'tool_result',
+              toolUseId: 'tu-1',
+              content: 'ok',
+            },
+          ],
+        } as ChatMessage}
+        streaming={false}
+        isLast={false}
+        projectId="proj-1"
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('keeps embed Write tool rows that still surface FileOpsSummary', () => {
+    const { container } = render(
+      <AssistantMessage
+        message={{
+          id: 'a-write',
+          role: 'assistant',
+          content: '',
+          runStatus: 'succeeded',
+          endedAt: Date.now(),
+          events: [
+            {
+              kind: 'tool_use',
+              id: 'tu-1',
+              name: 'Write',
+              input: { path: 'deck.html' },
+            },
+            {
+              kind: 'tool_result',
+              toolUseId: 'tu-1',
+              content: 'ok',
+            },
+          ],
+        } as ChatMessage}
+        streaming={false}
+        isLast={false}
+        projectId="proj-1"
+      />,
+    );
+
+    expect(container.firstChild).not.toBeNull();
+    expect(container.querySelector('.file-ops-row-path')?.textContent).toContain('deck.html');
+  });
+
+  it('keeps an embed tool-only row while it is the live streaming target', () => {
+    render(
+      <AssistantMessage
+        message={{
+          id: 'a-tools-live',
+          role: 'assistant',
+          content: '',
+          runStatus: 'running',
+          startedAt: Date.now(),
+          events: [
+            {
+              kind: 'tool_use',
+              id: 'tu-1',
+              name: 'Bash',
+              input: { command: 'ls' },
+            },
+          ],
+        } as ChatMessage}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Waiting for first output')).toBeTruthy();
+  });
 });

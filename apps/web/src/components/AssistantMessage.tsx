@@ -808,6 +808,30 @@ function AssistantMessageImpl({
     return null;
   }
 
+  // Teamver embed filters tool/thinking/status blocks from the body. A turn that
+  // only has those events would otherwise render as a header-only zombie row
+  // beside the real reply — hide it unless this is the live streaming target
+  // or FileOpsSummary / produced files still give the user something to see.
+  const hasEmbedVisibleBody =
+    hasVisibleAssistantTextBlocks
+    || streamingDeckArtifactActive
+    || streamingTodoProgress != null
+    || shouldShowTeamverCompletedArtifactLead
+    || displayedProduced.length > 0
+    || showNextStepActions
+    || pluginActionFolders.length > 0
+    || (!streaming && fileOps.length > 0)
+    || message.runStatus === "failed"
+    || message.runStatus === "canceled"
+    || message.resumable === true;
+  if (
+    hideAssistantThinkingDetails
+    && !(streaming && isLast)
+    && !hasEmbedVisibleBody
+  ) {
+    return null;
+  }
+
   return (
     <div className="msg assistant">
       <div className="role">
