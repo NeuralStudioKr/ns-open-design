@@ -2935,7 +2935,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     el.style.display = visible ? '' : 'none';
   }
   function requestHostDeckViewport() {
-    if (!compactStackedDeckEnabled) return;
+    if (!compactStackedDeckEnabled && !frameworkDeckStage()) return;
     try { window.parent.postMessage({ type: 'od:deck-host-viewport-request' }, '*'); }
     catch (_) {}
   }
@@ -3264,8 +3264,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var maxSlowAttempts = 30;
     function tick(){
       attempts += 1;
-      if (compactStackedDeckEnabled) {
+      if (compactStackedDeckEnabled || frameworkDeckStage()) {
         requestHostDeckViewport();
+      }
+      if (compactStackedDeckEnabled) {
         ensureStackedDeckStage();
       }
       var w = frameworkDeckViewport().w;
@@ -3279,6 +3281,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         ) {
           return;
         }
+      } else if (frameworkDeckStage()) {
+        // Do not stop on innerWidth alone — wait for host viewport so
+        // framework fit() does not freeze a wrong letterbox scale.
+        if (hostViewport.w > 0 && hostViewport.h > 0 && attempts >= 2) return;
       } else if (w > 0 && attempts >= 2) {
         return; // one extra nudge after first non-zero
       }
@@ -3311,7 +3317,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   }
   if (document.readyState === 'complete') chaseFirstLayout();
   else window.addEventListener('load', chaseFirstLayout);
-  if (compactStackedDeckEnabled) requestHostDeckViewport();
+  if (compactStackedDeckEnabled || frameworkDeckStage()) requestHostDeckViewport();
   if (compactStackedDeckEnabled) {
     document.addEventListener('wheel', function(e) {
       e.preventDefault();
