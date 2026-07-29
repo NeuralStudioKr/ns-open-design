@@ -178,16 +178,16 @@ export function formatPublishErrorCodeForUser(code: string): string {
   if (exact[trimmed]) return exact[trimmed];
 
   if (trimmed.startsWith("drive_upload_failed_403_viewer")) {
-    return "이 팀 드라이브는 볼 수 있지만 업로드 권한이 없습니다 — 편집자(editor) 이상으로 올려 달라고 관리자에게 요청하세요.";
+    return "권한 이슈: 이 팀 드라이브는 보기(viewer)만 가능합니다. 발행(업로드)하려면 편집자(editor) 이상 권한이 필요합니다 — 관리자에게 역할 변경을 요청하세요.";
   }
   if (trimmed.startsWith("drive_upload_failed_403_not_a_member")) {
-    return "이 팀 드라이브 멤버가 아닙니다 — 멤버로 초대된 뒤 다시 발행하세요.";
+    return "권한 이슈: 이 팀 드라이브 멤버가 아닙니다. 멤버로 초대받은 뒤 다시 발행하세요.";
   }
   if (trimmed.startsWith("drive_upload_failed_403_insufficient_role")) {
-    return "이 팀 드라이브에 파일을 올릴 권한이 없습니다 — 편집자(editor) 이상 권한이 필요합니다.";
+    return "권한 이슈: 이 팀 드라이브에 파일을 올릴 수 없습니다. 발행하려면 편집자(editor) 이상 권한이 필요합니다.";
   }
   if (trimmed.startsWith("drive_upload_failed_403")) {
-    return "이 팀 드라이브에 발행할 권한이 없습니다 — 멤버여도 보기(viewer) 권한만 있으면 업로드가 거부됩니다. 편집자 이상인지 확인하세요.";
+    return "권한 이슈: 이 팀 드라이브에 발행할 수 없습니다. 멤버여도 보기(viewer)만 있으면 업로드가 거부됩니다 — 편집자(editor) 이상인지 확인하세요.";
   }
   if (trimmed.startsWith("drive_upload_failed_401")) {
     return formatTeamverEmbedAuthRequiredMessage(
@@ -205,7 +205,7 @@ export function formatPublishErrorCodeForUser(code: string): string {
     );
   }
   if (trimmed.startsWith("drive_upload_failed_")) {
-    return "Teamver 드라이브가 업로드를 거부했습니다 — 폴더 권한을 확인하거나 다른 위치를 선택하세요.";
+    return "권한 이슈: Teamver 드라이브가 업로드를 거부했습니다 — 폴더/드라이브 역할을 확인하거나 다른 위치를 선택하세요.";
   }
   if (trimmed.startsWith("drive_presigned_put_failed_")) {
     return "Drive 저장소 업로드에 실패했습니다 — 잠시 후 다시 시도하세요.";

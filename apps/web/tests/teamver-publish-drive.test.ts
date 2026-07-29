@@ -259,8 +259,11 @@ describe("parsePublishFailureFromError", () => {
 
 describe("formatPublishErrorCodeForUser", () => {
   it("maps loop-177 phase codes to Korean user hints (loop 173)", () => {
-    expect(formatPublishErrorCodeForUser("drive_upload_failed_403")).toMatch(/보기\(viewer\)|권한/);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403")).toMatch(/^권한 이슈:/);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403")).toMatch(/보기\(viewer\)/);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403_viewer")).toMatch(/^권한 이슈:/);
     expect(formatPublishErrorCodeForUser("drive_upload_failed_403_viewer")).toMatch(/편집자/);
+    expect(formatPublishErrorCodeForUser("drive_upload_failed_403_not_a_member")).toMatch(/^권한 이슈:/);
     expect(formatPublishErrorCodeForUser("drive_upload_failed_403_not_a_member")).toMatch(/멤버/);
     expect(formatPublishErrorCodeForUser("drive_presigned_put_failed_502")).toMatch(/저장소 업로드/);
     expect(formatPublishErrorCodeForUser("drive.confirm_timeout")).toMatch(/완료하지 못/);
