@@ -15,7 +15,13 @@ import {
 } from '../artifacts/deck-patch';
 import type { ChatCommentAttachment } from '../types';
 import { validateCommentEditIntentRespected, targetTextContentPreserved } from './comment-edit-intent';
-import { graftPatchedTargetElementFromSource, mergeManualEditTargetByHint, mergeManualEditTargetsFromSource, readScopedCommentTargetText } from './source-patches';
+import {
+  graftPatchedTargetElementFromSource,
+  mergeManualEditTargetByHint,
+  mergeManualEditTargetsFromSource,
+  readScopedCommentTargetText,
+  resolveManualEditTargetReference,
+} from './source-patches';
 
 export type ScopedDeckPersistFailureCode =
   | 'deck_patch_parse_failed'
@@ -810,11 +816,72 @@ export function reconcileCommentAttachmentSlideIndex(
   return attachment;
 }
 
+/**
+ * Map preview-time element ids (often `dom:body > …` paths) to stable
+ * `data-od-id` values on the saved deck so element-patch apply and model
+ * templates agree with on-disk HTML on the first try.
+ */
+export function reconcileCommentAttachmentElementId(
+  deckHtml: string,
+  attachment: ChatCommentAttachment,
+): ChatCommentAttachment {
+  if (!deckHtml.trim()) return attachment;
+  const slideReconciled = reconcileCommentAttachmentSlideIndex(deckHtml, attachment);
+  const slideIndex = slideReconciled.slideIndex;
+  if (!(typeof slideIndex === 'number' && Number.isInteger(slideIndex) && slideIndex >= 0)) {
+    return slideReconciled;
+  }
+  const hint = {
+    id: slideReconciled.elementId,
+    currentText: slideReconciled.currentText,
+    htmlHint: slideReconciled.htmlHint,
+    selector: slideReconciled.selector,
+    instructionText: slideReconciled.comment,
+  };
+  const candidates = [
+    slideReconciled.elementId,
+    ...scopedCommentElementIds(slideReconciled),
+  ]
+    .map((id) => String(id || '').trim())
+    .filter(Boolean);
+  for (const candidate of [...new Set(candidates)]) {
+    const resolved = resolveManualEditTargetReference(
+      deckHtml,
+      candidate,
+      { slideIndex },
+      hint,
+    );
+    if (resolved && !resolved.startsWith('dom:') && resolved !== slideReconciled.elementId) {
+      return { ...slideReconciled, elementId: resolved };
+    }
+    if (resolved && !resolved.startsWith('dom:')) {
+      return slideReconciled;
+    }
+  }
+  const hintOnly = resolveManualEditTargetReference(
+    deckHtml,
+    '',
+    { slideIndex },
+    hint,
+  );
+  if (hintOnly && !hintOnly.startsWith('dom:')) {
+    return { ...slideReconciled, elementId: hintOnly };
+  }
+  return slideReconciled;
+}
+
+export function reconcileCommentAttachmentForDeck(
+  deckHtml: string,
+  attachment: ChatCommentAttachment,
+): ChatCommentAttachment {
+  return reconcileCommentAttachmentElementId(deckHtml, attachment);
+}
+
 export function reconcileCommentAttachmentsForDeck(
   deckHtml: string,
   attachments: readonly ChatCommentAttachment[],
 ): ChatCommentAttachment[] {
-  return attachments.map((attachment) => reconcileCommentAttachmentSlideIndex(deckHtml, attachment));
+  return attachments.map((attachment) => reconcileCommentAttachmentForDeck(deckHtml, attachment));
 }
 
 export function scopedCommentSlideIndexesFromAttachments(

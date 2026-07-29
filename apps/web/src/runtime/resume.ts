@@ -109,6 +109,18 @@ export type AutoContinuePromptContext = {
 // Manual retry stays available beyond the cap via the failed-run affordance.
 export const AUTO_CONTINUE_MAX_PER_CONVERSATION = 3;
 
+/** Scoped preview-comment edits salvage client-side first — one auto retry max. */
+export const AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT = 1;
+
+export function resolveAutoContinueMaxAttempts(options: {
+  scopedCommentAttachmentCount: number;
+}): number {
+  if (options.scopedCommentAttachmentCount > 0) {
+    return AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT;
+  }
+  return AUTO_CONTINUE_MAX_PER_CONVERSATION;
+}
+
 /** Build the user prompt for a capped automatic incomplete-output continue. */
 export function buildAutoContinueIncompleteOutputPrompt(
   context: AutoContinuePromptContext = { attempt: 1 },
@@ -255,12 +267,16 @@ export function shouldAutoContinueForIncompleteOutput(options: {
   runIsVisible: boolean;
   autoContinueCount: number;
   maxPerConversation?: number;
+  scopedCommentAttachmentCount?: number;
   terminalPersistResultKind: AutoContinuePersistResultKind;
   hadIncompleteParsedArtifact: boolean;
   shouldFailMissingSlideHtml: boolean;
 }): boolean {
   if (!options.runIsVisible) return false;
-  const max = options.maxPerConversation ?? AUTO_CONTINUE_MAX_PER_CONVERSATION;
+  const max = options.maxPerConversation
+    ?? (options.scopedCommentAttachmentCount && options.scopedCommentAttachmentCount > 0
+      ? AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT
+      : AUTO_CONTINUE_MAX_PER_CONVERSATION);
   if (options.autoContinueCount >= max) return false;
 
   const kind = options.terminalPersistResultKind;

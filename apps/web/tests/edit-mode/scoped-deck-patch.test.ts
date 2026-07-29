@@ -5,6 +5,7 @@ import {
   coerceDeckPatchToAllowedScope,
   inferSlideIndexFromDeckHtml,
   mergeScopedCommentTargetsFromPatchedDeck,
+  reconcileCommentAttachmentElementId,
   reconcileCommentAttachmentSlideIndex,
   resolveElementPatchAllowedSlideIndexes,
   resolveScopedCommentSlideCandidates,
@@ -35,6 +36,19 @@ function attachment(slideIndex: number): ChatCommentAttachment {
     slideIndex,
   };
 }
+
+describe('reconcileCommentAttachmentElementId', () => {
+  it('maps dom: preview selectors to stable data-od-id on deck html', () => {
+    const domAttachment: ChatCommentAttachment = {
+      ...attachment(1),
+      elementId: 'dom:body > section:nth-of-type(2) > p:nth-of-type(1)',
+      selector: 'body > section:nth-of-type(2) > p:nth-of-type(1)',
+    };
+    const reconciled = reconcileCommentAttachmentElementId(CURRENT_HTML, domAttachment);
+    expect(reconciled.elementId).toBe('path-1-2');
+    expect(reconciled.slideIndex).toBe(1);
+  });
+});
 
 describe('coerceDeckPatchToAllowedScope', () => {
   it('does not coerce when the model slide already contains the target text', () => {

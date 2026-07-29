@@ -3,6 +3,7 @@ import {
   AUTO_CONTINUE_ENTRY_FROM,
   AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
+  AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT,
   AUTO_CONTINUE_PROMPT_SENTINEL,
   AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
@@ -11,6 +12,7 @@ import {
   extractAutoContinueContextFromAssistant,
   isAutoContinueIncompleteOutputPrompt,
   isLiveLocalStreamBlockingAutoContinue,
+  resolveAutoContinueMaxAttempts,
   resolveAutoContinuePrompt,
   rollbackAutoContinueCount,
   shouldAutoContinueForIncompleteOutput,
@@ -335,6 +337,34 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
         terminalPersistResultKind: 'skipped-incomplete',
       }),
     ).toBe(true);
+  });
+
+  it('caps scoped preview-comment edits at one auto-continue', () => {
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        autoContinueCount: AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT,
+        scopedCommentAttachmentCount: 1,
+        terminalPersistResultKind: 'skipped-incomplete',
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        autoContinueCount: 0,
+        scopedCommentAttachmentCount: 1,
+        terminalPersistResultKind: 'skipped-incomplete',
+      }),
+    ).toBe(true);
+  });
+
+  it('resolveAutoContinueMaxAttempts returns scoped cap for comment edits', () => {
+    expect(resolveAutoContinueMaxAttempts({ scopedCommentAttachmentCount: 0 })).toBe(
+      AUTO_CONTINUE_MAX_PER_CONVERSATION,
+    );
+    expect(resolveAutoContinueMaxAttempts({ scopedCommentAttachmentCount: 2 })).toBe(
+      AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT,
+    );
   });
 
   it('does NOT fire when nothing indicates content incompleteness', () => {

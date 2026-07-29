@@ -33,7 +33,7 @@ import {
   applyScopedDeckPatchToHtml,
   inferSlideIndexFromDeckHtml,
   mergeScopedCommentTargetsFromPatchedDeck,
-  reconcileCommentAttachmentSlideIndex,
+  reconcileCommentAttachmentForDeck,
   reconcileCommentAttachmentsForDeck,
   resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
@@ -186,6 +186,7 @@ import {
   extractAutoContinueContextFromAssistant,
   isAutoContinueIncompleteOutputPrompt,
   isLiveLocalStreamBlockingAutoContinue,
+  resolveAutoContinueMaxAttempts,
   resolveAutoContinuePrompt,
   rollbackAutoContinueCount,
   shouldAutoContinueForIncompleteOutput,
@@ -1003,7 +1004,7 @@ async function hydrateDeckCommentSlideIndexes(input: {
       continue;
     }
     const html = await readDeckHtml(filePath);
-    out.push(html ? reconcileCommentAttachmentSlideIndex(html, attachment) : attachment);
+    out.push(html ? reconcileCommentAttachmentForDeck(html, attachment) : attachment);
   }
   return out;
 }
@@ -1117,7 +1118,7 @@ export function promptWithSlideCommentEditPatchInstruction(
   if (concreteTemplate) {
     parts.push(
       '',
-      'Copy this template and fill in the patch body for the user request:',
+      'REQUIRED OUTPUT — respond with ONLY this artifact block (no greeting, no question-form, no deck rewrite). Copy target-id and slide-index exactly; replace only the patch body text:',
       concreteTemplate,
     );
   }
@@ -1161,6 +1162,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     patchBody: input.patchBody,
     sourceText: input.sourceText,
     coerceHints: elementPatchCoerceHintsFromCommentAttachments(input.commentAttachments ?? []),
+    instructionText: input.instructionText,
   });
   if (resolvedBody !== input.patchBody) {
     console.warn('[element-patch] salvaged patch body from assistant output', {
@@ -3070,7 +3072,16 @@ export function ProjectView({
               mergedMessages,
             );
             const incompleteAssistant = findIncompleteSlideAssistantForRecovery(mergedMessages);
-            if (!canFireAutoContinueForConversation(autoContinueCount)) {
+            const recoveryCommentAttachments = incompleteAssistant
+              ? extractCommentAttachmentsForAutoContinue(
+                  findPrecedingUserMessage(mergedMessages, incompleteAssistant.id),
+                  null,
+                )
+              : [];
+            const recoveryAutoContinueMax = resolveAutoContinueMaxAttempts({
+              scopedCommentAttachmentCount: recoveryCommentAttachments.length,
+            });
+            if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
               if (incompleteAssistant && slideOnlyMvp) {
                 const incompleteIndex = mergedMessages.findIndex(
                   (message) => message.id === incompleteAssistant.id,
@@ -3078,10 +3089,6 @@ export function ProjectView({
                 const beforeFileNames = resolveTurnStartFileBaseline(
                   incompleteAssistant.preTurnFileNames,
                   filesForRecovery,
-                );
-                const recoveryCommentAttachments = extractCommentAttachmentsForAutoContinue(
-                  findPrecedingUserMessage(mergedMessages, incompleteAssistant.id),
-                  null,
                 );
                 const emergency = await attemptEmergencySlideDeckRecovery({
                   slideOnlyMvp,
@@ -6333,7 +6340,16 @@ export function ProjectView({
           mergedMessages,
           { restrictToMessageIds: trackedAssistantIds },
         );
-        if (!canFireAutoContinueForConversation(autoContinueCount)) {
+        const recoveryCommentAttachments = incompleteAssistant
+          ? extractCommentAttachmentsForAutoContinue(
+              findPrecedingUserMessage(mergedMessages, incompleteAssistant.id),
+              null,
+            )
+          : [];
+        const recoveryAutoContinueMax = resolveAutoContinueMaxAttempts({
+          scopedCommentAttachmentCount: recoveryCommentAttachments.length,
+        });
+        if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
           if (incompleteAssistant && slideOnlyMvp) {
             const incompleteIndex = mergedMessages.findIndex(
               (message) => message.id === incompleteAssistant.id,
@@ -6341,10 +6357,6 @@ export function ProjectView({
             const beforeFileNames = resolveTurnStartFileBaseline(
               incompleteAssistant.preTurnFileNames,
               nextFiles,
-            );
-            const recoveryCommentAttachments = extractCommentAttachmentsForAutoContinue(
-              findPrecedingUserMessage(mergedMessages, incompleteAssistant.id),
-              null,
             );
             const emergency = await attemptEmergencySlideDeckRecovery({
               slideOnlyMvp,
@@ -7397,9 +7409,14 @@ export function ProjectView({
                 runConversationId,
                 messagesRef.current,
               );
+              const terminalAutoContinueCommentAttachments = extractCommentAttachmentsForAutoContinue(
+                retryTarget?.userMsg ?? userMsg,
+                runCommentAttachmentsRef.current,
+              );
               const canAutoContinue = shouldAutoContinueForIncompleteOutput({
                 runIsVisible: runIsVisible(),
                 autoContinueCount,
+                scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
                 terminalPersistResultKind,
                 hadIncompleteParsedArtifact,
                 shouldFailMissingSlideHtml,
@@ -7407,10 +7424,6 @@ export function ProjectView({
 
               let emergencyRecovered = false;
               let emergencyProduced = produced;
-              const terminalAutoContinueCommentAttachments = extractCommentAttachmentsForAutoContinue(
-                retryTarget?.userMsg ?? userMsg,
-                runCommentAttachmentsRef.current,
-              );
               if (slideOnlyMvp && !producedHtmlToOpen && !emergencyRecovered) {
                 const outlineMessages = retryTarget
                   ? [...historyBase, latestAssistantMsg]

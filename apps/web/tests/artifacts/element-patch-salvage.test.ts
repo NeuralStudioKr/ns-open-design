@@ -85,4 +85,16 @@ describe('resolveElementPatchBodyForApply', () => {
       expect(parsed.patches[0]?.slideIndex).toBe(1);
     }
   });
+
+  it('synthesizes set-text patch from quoted user instruction when body is empty', () => {
+    const resolved = resolveElementPatchBodyForApply({
+      patchBody: '',
+      coerceHints: [{ targetId: 'od-title-1', slideIndex: 2 }],
+      instructionText: "'김개발'로 바꿔줘",
+    });
+    expect(resolved).toContain('target-id="od-title-1"');
+    expect(resolved).toContain('김개발');
+    const parsed = parseElementPatch(resolved);
+    expect(parsed.ok).toBe(true);
+  });
 });

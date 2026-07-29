@@ -23,6 +23,7 @@ import {
   applyManualEditPatch,
   resolveManualEditTargetReference,
   type ManualEditMergeTargetHint,
+  type ManualEditPatchResult,
   type ManualEditSourceScope,
 } from '../edit-mode/source-patches';
 import { attachmentMergeHint, scopedCommentElementIds } from '../edit-mode/scoped-deck-patch';
@@ -107,10 +108,6 @@ export function salvageElementPatchBody(
   return null;
 }
 
-/**
- * When the model puts only replacement prose inside the element-patch
- * wrapper (no `<patch>` tag), wrap it as a single scoped set-text patch.
- */
 export function coercePlainTextElementPatchBody(
   body: string,
   hints: readonly ElementPatchCoerceHint[],
@@ -135,15 +132,44 @@ export function coercePlainTextElementPatchBody(
   ].join('');
 }
 
+/**
+ * When the artifact body is empty but the user's visible comment names a
+ * quoted replacement, synthesize a set-text patch without another model turn.
+ */
+export function coerceElementPatchBodyFromUserInstruction(
+  instruction: string | null | undefined,
+  hints: readonly ElementPatchCoerceHint[],
+): string | null {
+  const replacement = extractQuotedReplacementFromCommentInstruction(instruction ?? '');
+  if (!replacement) return null;
+  return coercePlainTextElementPatchBody(replacement, hints);
+}
+
+function extractQuotedReplacementFromCommentInstruction(instruction: string): string | null {
+  const source = String(instruction ?? '').trim();
+  if (!source) return null;
+  const quoted = source.match(/['"“”‘’「」『』]([^'"“”‘’「」『』\n]{1,120})['"“”‘’「」『』]/);
+  if (quoted?.[1]?.trim()) return quoted[1].trim();
+  const toPhrase = source.match(
+    /(?:멘트|문구|텍스트|이름|제목)(?:를|을)?\s*['"“”]?([^'"“”\n]{2,80}?)['"“”]?\s*(?:로|으로)/,
+  );
+  if (toPhrase?.[1]?.trim()) return toPhrase[1].trim();
+  return null;
+}
+
 export function resolveElementPatchBodyForApply(input: {
   patchBody: string;
   sourceText?: string | null;
   coerceHints?: readonly ElementPatchCoerceHint[];
+  instructionText?: string | null;
 }): string {
   const salvaged = salvageElementPatchBody(input.patchBody, input.sourceText);
   const candidate = salvaged ?? input.patchBody;
   const coerced = input.coerceHints?.length
-    ? coercePlainTextElementPatchBody(candidate, input.coerceHints)
+    ? (
+      coercePlainTextElementPatchBody(candidate, input.coerceHints)
+      ?? coerceElementPatchBodyFromUserInstruction(input.instructionText, input.coerceHints)
+    )
     : null;
   return coerced ?? candidate;
 }
@@ -409,13 +435,50 @@ export function applyElementPatches(options: ApplyElementPatchOptions): ApplyEle
       : { slideIndex };
     const result = applyManualEditPatch(html, manualEdit, scope, hint);
     if (!result.ok) {
-      return { ok: false, reason: result.error ?? `failed to apply ${manualEdit.kind} on ${targetId}` };
+      const salvaged = retryManualEditPatchWithHintResolution(html, manualEdit, scope, hint);
+      if (!salvaged.ok) {
+        return { ok: false, reason: result.error ?? `failed to apply ${manualEdit.kind} on ${targetId}` };
+      }
+      html = salvaged.source;
+      appliedCount += 1;
+      continue;
     }
     html = result.source;
     appliedCount += 1;
   }
 
   return { ok: true, html, appliedCount };
+}
+
+function manualEditTargetId(patch: ManualEditPatch): string {
+  return 'id' in patch ? String(patch.id || '').trim() : '';
+}
+
+function elementPatchTargetId(patch: ElementPatchOp): string {
+  return 'id' in patch ? String(patch.id || '').trim() : '';
+}
+
+function retryManualEditPatchWithHintResolution(
+  html: string,
+  manualEdit: ManualEditPatch,
+  scope: ManualEditSourceScope,
+  hint: ManualEditMergeTargetHint | undefined,
+): ManualEditPatchResult {
+  if (!hint) return { ok: false, source: html, error: 'no merge hint' };
+  const targetId = manualEditTargetId(manualEdit);
+  const resolved =
+    resolveManualEditTargetReference(html, targetId, scope, hint)
+    ?? resolveManualEditTargetReference(html, '', scope, hint);
+  if (!resolved) return { ok: false, source: html, error: 'hint target unresolved' };
+  if (!('id' in manualEdit)) {
+    return { ok: false, source: html, error: 'patch has no target id' };
+  }
+  return applyManualEditPatch(
+    html,
+    { ...manualEdit, id: resolved },
+    scope,
+    hint,
+  );
 }
 
 function findElementPatchTargetHint(
@@ -445,7 +508,7 @@ function findCommentAttachmentForPatch(
   commentAttachments: readonly ChatCommentAttachment[] | undefined,
 ): ChatCommentAttachment | undefined {
   if (!commentAttachments?.length) return undefined;
-  const patchId = String(patch.id || '').trim();
+  const patchId = elementPatchTargetId(patch);
   const exact = commentAttachments.find((attachment) => {
     if (
       typeof attachment.slideIndex === 'number'
@@ -473,8 +536,9 @@ function elementPatchMergeHintForPatch(
 ): ManualEditMergeTargetHint | undefined {
   const attachment = findCommentAttachmentForPatch(patch, commentAttachments);
   if (!attachment) return undefined;
+  const patchId = elementPatchTargetId(patch);
   return {
-    id: patch.id,
+    id: patchId,
     ...attachmentMergeHint(attachment, instructionText),
   };
 }
@@ -494,19 +558,20 @@ export function normalizeElementPatchTargetsForApply(input: {
       input.instructionText,
     );
     const scope = { slideIndex: patch.slideIndex };
+    const patchId = elementPatchTargetId(patch);
     const resolved = resolveManualEditTargetReference(
       input.currentHtml,
-      patch.id,
+      patchId,
       scope,
       hint,
     );
-    if (resolved && resolved !== patch.id) {
+    if (resolved && resolved !== patchId) {
       return { ...patch, id: resolved };
     }
 
     const attachment = findCommentAttachmentForPatch(patch, input.commentAttachments);
     const elementId = String(attachment?.elementId || '').trim();
-    if (elementId && elementId !== patch.id) {
+    if (elementId && elementId !== patchId) {
       const byElementId = resolveManualEditTargetReference(
         input.currentHtml,
         elementId,
