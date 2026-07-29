@@ -104,7 +104,8 @@ export function coercePlainTextElementPatchBody(
   }
   if (hints.length !== 1) return null;
   const hint = hints[0];
-  const targetId = String(hint?.targetId ?? '').trim();
+  if (!hint) return null;
+  const targetId = String(hint.targetId ?? '').trim();
   if (!targetId) return null;
   if (typeof hint.slideIndex !== 'number' || !Number.isInteger(hint.slideIndex) || hint.slideIndex < 0) {
     return null;
