@@ -645,6 +645,36 @@ async def test_publish_project_upload_request_phase_status_propagates():
 
 
 @pytest.mark.asyncio
+async def test_publish_project_upload_request_viewer_forbidden_maps_specific_code():
+    db = AsyncMock()
+    daemon = _daemon_mock()
+    daemon.get_export_manifest.return_value = DECK_MANIFEST
+    daemon.request_export_pdf_ticket.return_value = _export_ticket(size_bytes=12)
+
+    teamver_client = MagicMock()
+    upload_request_exc = TeamverAPIError("forbidden")
+    upload_request_exc.code = "error.drive.upload.viewer_forbidden"
+    upload_request_exc.status_code = 403
+    teamver_client.drive.create_upload_request = AsyncMock(side_effect=upload_request_exc)
+    teamver_client.drive._put_presigned_bytes = AsyncMock()
+    teamver_client.drive.confirm_upload = AsyncMock()
+
+    result = await publish_project(
+        db,
+        teamver_client=teamver_client,
+        access_token="token",
+        project=_project(),
+        formats=["pdf"],
+        artifact_file=None,
+        folder_id=None,
+        od_daemon=daemon,
+    )
+
+    assert result.http_status == 502
+    assert result.outputs[0].error_code == "drive_upload_failed_403_viewer"
+
+
+@pytest.mark.asyncio
 async def test_publish_project_upload_request_invalid_token_maps_to_401():
     db = AsyncMock()
     daemon = _daemon_mock()

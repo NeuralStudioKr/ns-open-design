@@ -267,25 +267,35 @@ def _teamver_upload_error_code(exc: TeamverAPIError) -> str:
     loop 177 — Map a `TeamverAPIError` raised during the Drive upload pipeline
     into a stable, debuggable error_code surface. Order of preference:
 
-      1. HTTP 401/403 — stale or forbidden Drive session (Main Apps JWT).
-      2. SDK-supplied `code` field (e.g., `drive.upload_too_large`).
+      1. SDK-supplied `code` field (e.g. Main BE `error.drive.upload.viewer_forbidden`).
+      2. HTTP 401/403 — stale or forbidden Drive session / membership role.
       3. Other HTTP status — distinguishes presigned-PUT 4xx from 5xx / timeouts.
 
     Without this, every Drive failure collapsed onto `drive_upload_failed` and
     staging operators couldn't tell a stale presigned URL apart from a real S3
-    outage. The status-suffixed shape (`drive_upload_failed_403`) is FE-safe
-    because the FE shows the raw code in the toast and treats anything starting
-    with `drive_upload_failed` as a Drive-side fault.
+    outage. Preferring the SDK code lets FE distinguish viewer-only 403 from a
+    generic forbidden, instead of always suffixing `_403`.
     """
     status = getattr(exc, "status_code", None)
-    if status in (401, 403):
-        return f"drive_upload_failed_{int(status)}"
     code = getattr(exc, "code", None)
     if code:
         normalized = str(code).strip()
-        if normalized.lower().replace(" ", "_") in {"invalid_token", "unauthorized"}:
-            return "drive_upload_failed_401"
-        return normalized
+        if normalized:
+            lowered = normalized.lower().replace(" ", "_").lstrip(".")
+            if lowered in {"invalid_token", "unauthorized", "error.token.notvalid"}:
+                return "drive_upload_failed_401"
+            if "viewer_forbidden" in lowered or lowered.endswith("viewer_forbidden"):
+                return "drive_upload_failed_403_viewer"
+            if "not_a_member" in lowered:
+                return "drive_upload_failed_403_not_a_member"
+            if "insufficient_role" in lowered:
+                return "drive_upload_failed_403_insufficient_role"
+            if lowered.startswith("drive_"):
+                return normalized
+            if lowered.startswith("error.drive."):
+                return lowered.replace("error.", "", 1).replace(".", "_")
+    if status in (401, 403):
+        return f"drive_upload_failed_{int(status)}"
     if status:
         return f"drive_upload_failed_{int(status)}"
     return "drive_upload_failed"

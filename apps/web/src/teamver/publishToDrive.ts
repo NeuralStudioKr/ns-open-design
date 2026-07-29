@@ -177,8 +177,17 @@ export function formatPublishErrorCodeForUser(code: string): string {
   };
   if (exact[trimmed]) return exact[trimmed];
 
+  if (trimmed.startsWith("drive_upload_failed_403_viewer")) {
+    return "이 팀 드라이브는 볼 수 있지만 업로드 권한이 없습니다 — 편집자(editor) 이상으로 올려 달라고 관리자에게 요청하세요.";
+  }
+  if (trimmed.startsWith("drive_upload_failed_403_not_a_member")) {
+    return "이 팀 드라이브 멤버가 아닙니다 — 멤버로 초대된 뒤 다시 발행하세요.";
+  }
+  if (trimmed.startsWith("drive_upload_failed_403_insufficient_role")) {
+    return "이 팀 드라이브에 파일을 올릴 권한이 없습니다 — 편집자(editor) 이상 권한이 필요합니다.";
+  }
   if (trimmed.startsWith("drive_upload_failed_403")) {
-    return "이 작업공간의 Drive에 발행할 권한이 없습니다 — 다른 작업공간을 선택하거나 폴더 권한을 확인하세요.";
+    return "이 팀 드라이브에 발행할 권한이 없습니다 — 멤버여도 보기(viewer) 권한만 있으면 업로드가 거부됩니다. 편집자 이상인지 확인하세요.";
   }
   if (trimmed.startsWith("drive_upload_failed_401")) {
     return formatTeamverEmbedAuthRequiredMessage(
