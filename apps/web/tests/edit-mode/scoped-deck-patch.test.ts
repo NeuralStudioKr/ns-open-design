@@ -387,4 +387,47 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     });
     expect(result.ok).toBe(false);
   });
+
+  it('narrows a full-deck rewrite to the scoped slide when other slides also changed', () => {
+    const currentHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0">
+  <div data-od-id="decor-1" style="width:176px;height:229px;background:#2C1A0E"></div>
+  <h1 data-od-id="title-1">아이폰 시리즈 개요 및 발전 동향 보고서</h1>
+</section>
+<section class="slide" data-slide-index="1"><h2>Slide 2 original</h2></section>
+<section class="slide" data-slide-index="2"><h2>Slide 3 original</h2></section>
+</body></html>`;
+    const patchedHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0">
+  <h1 data-od-id="title-1">아이폰 시리즈 개요 및 발전 동향 보고서</h1>
+</section>
+<section class="slide" data-slide-index="1"><h2>Slide 2 REWRITTEN</h2></section>
+<section class="slide" data-slide-index="2"><h2>Slide 3 REWRITTEN</h2></section>
+</body></html>`;
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml,
+      patchedHtml,
+      commentAttachments: [{
+        id: 'c1',
+        order: 1,
+        filePath: 'deck.html',
+        elementId: 'decor-1',
+        selector: '[data-od-id="decor-1"]',
+        label: 'div',
+        comment: '왼쪽 상단 요소 삭제',
+        currentText: '',
+        htmlHint: '<div style="width:176px;height:229px;background:#2C1A0E"></div>',
+        pagePosition: { x: 0, y: 0, width: 176, height: 229 },
+        selectionKind: 'element',
+        slideIndex: 0,
+      }],
+      instructionText: '왼쪽 상단 요소 삭제',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.narrowed).toBe(true);
+    expect(result.html).not.toContain('decor-1');
+    expect(result.html).toContain('Slide 2 original');
+    expect(result.html).not.toContain('REWRITTEN');
+  });
 });

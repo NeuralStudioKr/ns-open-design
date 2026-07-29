@@ -1568,6 +1568,53 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   return { ok: true };
 }
 
+async function trySalvageScopedFullDeckRewrite(input: {
+  projectId: string;
+  fileName: string;
+  patchedHtml: string;
+  commentAttachments: readonly ChatCommentAttachment[];
+  instructionText?: string;
+}): Promise<{ ok: true; html: string } | { ok: false; reason: string }> {
+  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
+    cache: 'no-store',
+  });
+  if (!currentHtml) {
+    return { ok: false, reason: 'current deck file unreadable' };
+  }
+  const scoped = mergeScopedCommentTargetsFromPatchedDeck({
+    currentHtml,
+    patchedHtml: input.patchedHtml,
+    commentAttachments: input.commentAttachments,
+    instructionText: input.instructionText,
+  });
+  if (!scoped.ok) {
+    return { ok: false, reason: scoped.reason };
+  }
+  if (!scoped.narrowed) {
+    return { ok: false, reason: 'full-deck rewrite produced no narrowed scoped match' };
+  }
+  const intent = validateCommentEditIntentRespected({
+    mergedHtml: scoped.html,
+    commentAttachments: input.commentAttachments,
+    instructionText: input.instructionText,
+  });
+  if (!intent.ok) {
+    return { ok: false, reason: intent.reason };
+  }
+  return { ok: true, html: scoped.html };
+}
+
+function shouldRetryScopedFullDeckRewrite(
+  code: ScopedDeckPersistFailureCode | undefined,
+): boolean {
+  return (
+    code === 'full_deck_diff_failed' ||
+    code === 'full_deck_outside_slide_scope' ||
+    code === 'full_deck_outside_element_scope' ||
+    code === 'full_deck_comment_target_unresolved'
+  );
+}
+
 function maskScopedCommentTargets(
   source: string,
   commentAttachments: readonly ChatCommentAttachment[],
@@ -3893,27 +3940,48 @@ export function ProjectView({
         if (!scopeResult.ok) {
           // Model emitted a full deck on a scoped comment turn (often after
           // auto-continue). Salvage via emergency recovery would hit the same
-          // guard — route to scoped auto-continue instead of a hard
-          // scope-rejected banner that reads like "you edited the wrong slide".
+          // guard — try narrow merge first, then route to scoped auto-continue
+          // instead of a hard scope-rejected banner that reads like "you edited
+          // the wrong slide".
           const runIsScoped = persistCommentAttachments.length > 0;
-          if (runIsScoped && scopeResult.code === 'full_deck_diff_failed') {
-            console.warn('[deck-patch] routing scoped full-deck rewrite to auto-continue', {
+          let scopeCheckPassed = false;
+          if (runIsScoped && shouldRetryScopedFullDeckRewrite(scopeResult.code)) {
+            const salvaged = await trySalvageScopedFullDeckRewrite({
+              projectId: project.id,
+              fileName: targetFileName,
+              patchedHtml: effectiveArt.html,
+              commentAttachments: persistCommentAttachments,
+              instructionText: runVisiblePromptRef.current,
+            });
+            if (salvaged.ok) {
+              console.warn('[deck-patch] salvaged scoped full-deck rewrite via narrow merge', {
+                fileName: targetFileName,
+                code: scopeResult.code,
+              });
+              effectiveArt = { ...effectiveArt, html: salvaged.html };
+              scopeCheckPassed = true;
+            } else {
+              console.warn('[deck-patch] routing scoped full-deck rewrite to auto-continue', {
+                fileName: targetFileName,
+                code: scopeResult.code,
+                reason: salvaged.reason,
+                salvageFailed: true,
+              });
+              return {
+                kind: 'skipped-incomplete',
+                fileName: targetFileName,
+                reason: salvaged.reason,
+              };
+            }
+          }
+          if (!scopeCheckPassed) {
+            return {
+              kind: 'scope-rejected',
               fileName: targetFileName,
               code: scopeResult.code,
               reason: scopeResult.reason,
-            });
-            return {
-              kind: 'skipped-incomplete',
-              fileName: targetFileName,
-              reason: scopeResult.reason,
             };
           }
-          return {
-            kind: 'scope-rejected',
-            fileName: targetFileName,
-            code: scopeResult.code,
-            reason: scopeResult.reason,
-          };
         }
       }
       const recoveredHtml = recoverHtmlArtifactFromPrecedingDocument({
