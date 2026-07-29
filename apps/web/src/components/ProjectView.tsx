@@ -340,6 +340,7 @@ import {
   formatEmergencyDeckFallbackNotice,
   extractProjectRunErrorCode,
   formatProjectRunErrorForUser,
+  formatProjectRunStalledErrorForUser,
   formatProjectForkConversationError,
 } from '../teamver/projectErrorMessages';
 import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEvents';
@@ -364,6 +365,10 @@ import {
   shouldFullReplayReattachedRun,
   shouldPollStaleDaemonRun,
   shouldForceFailStaleDaemonRun,
+  shouldPollStaleApiRun,
+  shouldForceFailStaleApiRun,
+  patchStaleApiAssistantFailure,
+  TEAMVER_STALE_API_RUN_POLL_MS,
   shouldClearPhantomStreamingMarker,
   shouldReattachDaemonRunEvents,
   terminalAssistantPatchFromRunStatus,
@@ -5255,6 +5260,47 @@ export function ProjectView({
   ]);
 
   useEffect(() => {
+    if (config.mode !== 'api' || !activeConversationId || streaming) return;
+    if (isDesignAuthRefreshDeclined()) return;
+
+    let cancelled = false;
+    const poll = () => {
+      if (cancelled) return;
+      const targets = findInFlightAssistantMessages(messages).filter((message) =>
+        shouldPollStaleApiRun(message),
+      );
+      for (const message of targets) {
+        if (!shouldForceFailStaleApiRun(message)) continue;
+        updateMessageById(
+          message.id,
+          (prev) => patchStaleApiAssistantFailure(prev, formatProjectRunStalledErrorForUser()),
+          true,
+        );
+        clearStreamingMarker(activeConversationId);
+        scheduleConversationMessageRefresh(activeConversationId);
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(() => {
+      void poll();
+    }, TEAMVER_STALE_API_RUN_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [
+    activeConversationId,
+    clearStreamingMarker,
+    config.mode,
+    messages,
+    scheduleConversationMessageRefresh,
+    streaming,
+    updateMessageById,
+  ]);
+
+  useEffect(() => {
     if (config.mode !== 'daemon' || !daemonLive || !activeConversationId || streaming) return;
     // Soft/hard sticky: C1 owns recovery — reattach daemon GETs only add 401 noise.
     if (isDesignAuthRefreshDeclined()) return;
@@ -6572,6 +6618,24 @@ export function ProjectView({
       if (!proxyStillActive && stillInflight) {
         idlePollsWithoutProxy += 1;
         if (idlePollsWithoutProxy >= 3) {
+          const stalledDetail = formatProjectRunStalledErrorForUser();
+          const abandoned = findInFlightAssistantMessages(mergedMessages).filter((message) =>
+            trackedAssistantIds.has(message.id),
+          );
+          for (const message of abandoned) {
+            updateMessageById(
+              message.id,
+              (prev) => patchStaleApiAssistantFailure(prev, stalledDetail),
+              true,
+            );
+            dispatchTeamverBackgroundChat({
+              projectId: project.id,
+              conversationId: recoveryConversationId,
+              assistantMessageId: message.id,
+              active: false,
+            });
+          }
+          clearStreamingMarker(recoveryConversationId);
           scheduleConversationMessageRefresh(recoveryConversationId);
           finishRecovery();
           return;
@@ -6614,6 +6678,7 @@ export function ProjectView({
     scheduleConversationMessageRefresh,
     clearApiBackgroundRecoveryBanner,
     reattachNonce,
+    updateMessageById,
   ]);
 
   const commitQueuedChatSends = useCallback((next: QueuedChatSend[]) => {

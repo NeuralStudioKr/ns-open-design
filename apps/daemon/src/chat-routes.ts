@@ -685,9 +685,41 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    const idleTimeoutMs = (() => {
+      const raw = Number(process.env.OD_BYOK_PROXY_INACTIVITY_TIMEOUT_MS);
+      return Number.isFinite(raw) && raw > 0 ? raw : 5 * 60 * 1000;
+    })();
+
+    const readChunk = () =>
+      new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+        let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+          timer = null;
+          reject(
+            Object.assign(new Error('BYOK upstream stream timed out due to inactivity'), {
+              code: 'AGENT_EXECUTION_STALLED',
+            }),
+          );
+        }, idleTimeoutMs);
+        reader.read().then(
+          (result) => {
+            if (timer !== null) {
+              clearTimeout(timer);
+              timer = null;
+            }
+            resolve(result);
+          },
+          (err) => {
+            if (timer !== null) {
+              clearTimeout(timer);
+              timer = null;
+            }
+            reject(err);
+          },
+        );
+      });
 
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readChunk();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
@@ -717,9 +749,41 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    const idleTimeoutMs = (() => {
+      const raw = Number(process.env.OD_BYOK_PROXY_INACTIVITY_TIMEOUT_MS);
+      return Number.isFinite(raw) && raw > 0 ? raw : 5 * 60 * 1000;
+    })();
+
+    const readChunk = () =>
+      new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+        let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+          timer = null;
+          reject(
+            Object.assign(new Error('BYOK upstream stream timed out due to inactivity'), {
+              code: 'AGENT_EXECUTION_STALLED',
+            }),
+          );
+        }, idleTimeoutMs);
+        reader.read().then(
+          (result) => {
+            if (timer !== null) {
+              clearTimeout(timer);
+              timer = null;
+            }
+            resolve(result);
+          },
+          (err) => {
+            if (timer !== null) {
+              clearTimeout(timer);
+              timer = null;
+            }
+            reject(err);
+          },
+        );
+      });
 
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readChunk();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 

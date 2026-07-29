@@ -20,6 +20,57 @@ import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from './proxyAbort';
 import { COMMENT_ONLY_USER_PLACEHOLDER } from '../comments';
 import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
 
+/** No SSE bytes for this long → surface a retryable stall error instead of infinite Working UI. */
+const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+
+async function readProxyStreamChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  idleTimeoutMs: number,
+  signal: AbortSignal,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  return new Promise((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const clearTimer = () => {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+    const onAbort = () => {
+      clearTimer();
+      const err = new Error('aborted') as Error & { name?: string };
+      err.name = 'AbortError';
+      reject(err);
+    };
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+    timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      reject(
+        Object.assign(new Error('BYOK proxy stream timed out due to inactivity'), {
+          code: 'AGENT_EXECUTION_STALLED',
+          retryable: true,
+        }),
+      );
+    }, idleTimeoutMs);
+    reader.read().then(
+      (result) => {
+        clearTimer();
+        signal.removeEventListener('abort', onAbort);
+        resolve(result);
+      },
+      (err) => {
+        clearTimer();
+        signal.removeEventListener('abort', onAbort);
+        reject(err);
+      },
+    );
+  });
+}
+
 /**
  * Optional per-request context that some protocols thread into the
  * proxy body or use to prepare provider-native message payloads:
@@ -275,7 +326,11 @@ async function streamProxyEndpointOnce(
     let buf = '';
 
     while (true) {
-      const { value, done } = await reader.read();
+      const { value, done } = await readProxyStreamChunk(
+        reader,
+        PROXY_STREAM_IDLE_TIMEOUT_MS,
+        signal,
+      );
       if (done) break;
       buf += decoder.decode(value, { stream: true });
 

@@ -314,10 +314,21 @@ export function formatProjectRunErrorForUser(err: unknown): string {
   if (code === "INTERNAL_ERROR") {
     return "실행 중 내부 오류가 발생했습니다. 다시 시도하세요.";
   }
+  if (code === "AGENT_EXECUTION_STALLED") {
+    return formatProjectRunStalledErrorForUser();
+  }
   if (messageImpliesMissingApiKey(err)) {
     return "서버 API 키가 설정되지 않았습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.";
   }
   return "슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.";
+}
+
+/** User-facing copy when a BYOK/API turn stops making progress with no terminal row. */
+export function formatProjectRunStalledErrorForUser(): string {
+  if (!isTeamverEmbedMode()) {
+    return "Generation stopped responding. Please try again.";
+  }
+  return "생성이 응답하지 않아 중단했습니다. 잠시 후 다시 시도하세요.";
 }
 
 function messageImpliesMissingApiKey(err: unknown): boolean {

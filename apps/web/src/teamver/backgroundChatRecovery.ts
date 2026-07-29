@@ -551,6 +551,12 @@ export const TEAMVER_STALE_RUN_POLL_MS = 30_000;
 /** After this window, force-fail a still-running UI row so the composer unlocks. */
 export const TEAMVER_STALE_RUN_FORCE_FAIL_MS = 12 * 60 * 1000;
 
+/** API/BYOK rows without a daemon runId — shorter windows than managed runs. */
+export const TEAMVER_STALE_API_RUN_RECONCILE_MS = 5 * 60 * 1000;
+export const TEAMVER_STALE_API_RUN_FORCE_FAIL_MS = 5 * 60 * 1000 + 30_000;
+export const TEAMVER_STALE_API_RUN_POLL_MS = 15_000;
+export const API_RUN_STALLED_ERROR_CODE = "AGENT_EXECUTION_STALLED";
+
 export function staleDaemonRunStartedAt(message: ChatMessage): number | null {
   if (message.role !== "assistant") return null;
   const startedAt = message.startedAt ?? message.createdAt;
@@ -570,6 +576,37 @@ export function shouldForceFailStaleDaemonRun(message: ChatMessage, now = Date.n
   const startedAt = staleDaemonRunStartedAt(message);
   if (startedAt == null) return false;
   return now - startedAt >= TEAMVER_STALE_RUN_FORCE_FAIL_MS;
+}
+
+export function shouldPollStaleApiRun(message: ChatMessage, now = Date.now()): boolean {
+  if (!isInFlightAssistantMessage(message)) return false;
+  if (message.runId?.trim()) return false;
+  const startedAt = staleDaemonRunStartedAt(message);
+  if (startedAt == null) return false;
+  return now - startedAt >= TEAMVER_STALE_API_RUN_RECONCILE_MS;
+}
+
+export function shouldForceFailStaleApiRun(message: ChatMessage, now = Date.now()): boolean {
+  if (!shouldPollStaleApiRun(message, now)) return false;
+  const startedAt = staleDaemonRunStartedAt(message);
+  if (startedAt == null) return false;
+  return now - startedAt >= TEAMVER_STALE_API_RUN_FORCE_FAIL_MS;
+}
+
+export function patchStaleApiAssistantFailure(
+  prev: ChatMessage,
+  detail: string,
+  code = API_RUN_STALLED_ERROR_CODE,
+): ChatMessage {
+  return appendErrorStatusEvent(
+    {
+      ...prev,
+      runStatus: "failed",
+      endedAt: prev.endedAt ?? Date.now(),
+    },
+    detail,
+    code,
+  );
 }
 
 export function terminalAssistantPatchFromRunStatus(

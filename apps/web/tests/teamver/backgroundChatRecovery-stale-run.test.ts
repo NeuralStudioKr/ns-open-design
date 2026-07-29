@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  API_RUN_STALLED_ERROR_CODE,
+  patchStaleApiAssistantFailure,
+  shouldForceFailStaleApiRun,
   shouldForceFailStaleDaemonRun,
+  shouldPollStaleApiRun,
   shouldPollStaleDaemonRun,
+  TEAMVER_STALE_API_RUN_FORCE_FAIL_MS,
+  TEAMVER_STALE_API_RUN_RECONCILE_MS,
   TEAMVER_STALE_RUN_FORCE_FAIL_MS,
   TEAMVER_STALE_RUN_RECONCILE_MS,
   terminalAssistantPatchFromRunStatus,
@@ -42,6 +48,34 @@ describe("backgroundChatRecovery stale run helpers", () => {
         now,
       ),
     ).toBe(true);
+  });
+
+  it("polls and forces failure for stale API-mode assistant rows without runId", () => {
+    const now = Date.now();
+    const apiAssistant = assistant({
+      runId: undefined,
+      startedAt: now - TEAMVER_STALE_API_RUN_RECONCILE_MS - 1_000,
+      createdAt: now - TEAMVER_STALE_API_RUN_RECONCILE_MS - 1_000,
+    });
+    expect(shouldPollStaleApiRun(apiAssistant, now)).toBe(true);
+    expect(shouldForceFailStaleApiRun(apiAssistant, now)).toBe(false);
+    expect(
+      shouldForceFailStaleApiRun(
+        {
+          ...apiAssistant,
+          startedAt: now - TEAMVER_STALE_API_RUN_FORCE_FAIL_MS - 1_000,
+          createdAt: now - TEAMVER_STALE_API_RUN_FORCE_FAIL_MS - 1_000,
+        },
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it("patches abandoned API assistant rows with a stalled failure", () => {
+    const patched = patchStaleApiAssistantFailure(assistant({ runId: undefined }), "stalled");
+    expect(patched.runStatus).toBe("failed");
+    expect(patched.endedAt).toBeTypeOf("number");
+    expect(patched.events?.some((event) => event.kind === "status" && event.code === API_RUN_STALLED_ERROR_CODE)).toBe(true);
   });
 
   it("maps terminal daemon status into assistant message fields", () => {
