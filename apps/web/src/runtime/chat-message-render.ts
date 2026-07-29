@@ -1,5 +1,7 @@
 import type { ChatMessage } from "../types";
+import { stripAllClosedArtifacts } from "../artifacts/strip";
 import { assistantMessageTextBody, messageHasVisibleProse } from "./chat-events";
+import { sanitizeAssistantProseForDisplay } from "./internalAgentMarkup";
 import { isEmptyAssistantShell } from "./conversation-message-dedupe";
 import { deriveFileOps } from "./file-ops";
 import { isAutoContinueIncompleteOutputPrompt } from "./resume";
@@ -145,13 +147,14 @@ function isLiveStreamingAssistantTarget(
 
 /** Text-channel body only — thinking is filtered in Teamver embed chat UI. */
 function hasVisibleTextBody(message: ChatMessage): boolean {
-  if ((message.content ?? "").trim().length > 0) return true;
-  return (message.events ?? []).some(
-    (event) =>
-      event.kind === "text"
-      && typeof event.text === "string"
-      && event.text.trim().length > 0,
-  );
+  const body = assistantMessageTextBody(message);
+  if (!body.trim()) return false;
+  const stripped = stripAllClosedArtifacts(body);
+  const cleaned = sanitizeAssistantProseForDisplay(stripped, {
+    streaming: false,
+    stripCodeFences: true,
+  }).trim();
+  return cleaned.length > 0;
 }
 
 function assistantRunSucceeded(message: ChatMessage): boolean {
@@ -192,7 +195,6 @@ export function hasEmbedVisibleAssistantBody(message: ChatMessage): boolean {
   if (hasTeamverCompletedArtifactLead(message)) return true;
   const body = assistantMessageTextBody(message);
   if (messageIndicatesDeckPatchArtifact(body)) return true;
-  if (/<artifact\b/i.test(body)) return true;
   return false;
 }
 

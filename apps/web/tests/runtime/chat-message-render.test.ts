@@ -118,6 +118,30 @@ describe("chat-message-render", () => {
     expect(shouldOmitMessageFromChatRender(canceled, embedCtx)).toBe(false);
   });
 
+  it("omits embed rows whose only text body is fenced code", () => {
+    const message: ChatMessage = {
+      id: "a-code",
+      role: "assistant",
+      content: "```html\n<div>deck</motion.div>\n```",
+      runStatus: "succeeded",
+      endedAt: 2,
+    };
+    expect(hasEmbedVisibleAssistantBody(message)).toBe(false);
+    expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(true);
+  });
+
+  it("omits embed rows whose only text body is a generic artifact tag", () => {
+    const message: ChatMessage = {
+      id: "a-artifact",
+      role: "assistant",
+      content: '<artifact type="deck" identifier="deck"></artifact>',
+      runStatus: "succeeded",
+      endedAt: 2,
+    };
+    expect(hasEmbedVisibleAssistantBody(message)).toBe(false);
+    expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(true);
+  });
+
   it("keeps artifact-only succeeded deck-patch turns visible in embed virtualization", () => {
     const message: ChatMessage = {
       id: "a-deck-patch",

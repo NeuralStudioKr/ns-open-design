@@ -128,6 +128,8 @@ interface Props {
   onExportAsPptx?: ((fileName: string) => void) | undefined;
   streaming?: boolean;
   previewStreaming?: boolean;
+  /** Narrow signal for FileViewer disk fetch — true only while tokens stream. */
+  previewFileStreaming?: boolean;
   commentQueueOnSend?: boolean;
   commentSendDisabled?: boolean;
   openRequest?: { name: string; nonce: number; closeTabs?: string[] } | null;
@@ -401,6 +403,7 @@ export function FileWorkspace({
   onExportAsPptx,
   streaming,
   previewStreaming,
+  previewFileStreaming,
   commentQueueOnSend = false,
   commentSendDisabled = false,
   openRequest,
@@ -2472,7 +2475,7 @@ export function FileWorkspace({
             filesRefreshKey={filesRefreshKey}
             isDeck={isDeck}
             onExportAsPptx={onExportAsPptx}
-            streaming={previewStreaming ?? false}
+            streaming={previewFileStreaming ?? previewStreaming ?? false}
             commentQueueOnSend={commentQueueOnSend}
             commentSendDisabled={commentSendDisabled}
             previewComments={previewComments.filter((comment) => comment.filePath === resolvedPreviewFile.name)}
