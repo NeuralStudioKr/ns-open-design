@@ -394,10 +394,6 @@ function findEditableElementBySelector(
   return null;
 }
 
-/**
- * Last-resort scoped merge when structural ids no longer resolve on either
- * side but the comment payload still carries captured text / selector hints.
- */
 export function mergeManualEditTargetByHint(
   currentSource: string,
   nextSource: string,
@@ -440,6 +436,22 @@ export function mergeManualEditTargetByHint(
     replacedCount: 1,
     changedCount: 1,
   };
+}
+
+/** Read visible text from the pinned comment target inside a scoped slide. */
+export function readScopedCommentTargetText(
+  html: string,
+  scope: ManualEditSourceScope,
+  hint: ManualEditMergeTargetHint & { elementId?: string },
+): string | null {
+  const doc = parseSource(html);
+  if (!doc) return null;
+  const id = String(hint.elementId || hint.id || '').trim();
+  const el = id
+    ? findEditableElement(doc, id, scope, hint)
+    : findElementByHint(doc, scope, hint);
+  if (!el) return null;
+  return (el.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
 /**

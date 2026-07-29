@@ -14,12 +14,14 @@ import {
   type DeckPatch,
 } from '../artifacts/deck-patch';
 import type { ChatCommentAttachment } from '../types';
-import { graftPatchedTargetElementFromSource, mergeManualEditTargetByHint, mergeManualEditTargetsFromSource } from './source-patches';
+import { validateCommentEditIntentRespected, targetTextContentPreserved } from './comment-edit-intent';
+import { graftPatchedTargetElementFromSource, mergeManualEditTargetByHint, mergeManualEditTargetsFromSource, readScopedCommentTargetText } from './source-patches';
 
 export type ScopedDeckPersistFailureCode =
   | 'deck_patch_parse_failed'
   | 'deck_patch_current_unreadable'
   | 'deck_patch_merge_failed'
+  | 'comment_edit_intent_violated'
   | 'full_deck_current_unreadable'
   | 'full_deck_diff_failed'
   | 'full_deck_outside_slide_scope'
@@ -102,6 +104,26 @@ export function coerceDeckPatchToAllowedScope(
   };
 }
 
+function targetElementTextPreservedAfterMerge(
+  currentHtml: string,
+  patchedHtml: string,
+  attachment: ChatCommentAttachment,
+  slideIndex: number,
+): boolean {
+  const hint = attachmentMergeHint(attachment);
+  const scope = { slideIndex };
+  const before = readScopedCommentTargetText(currentHtml, scope, {
+    elementId: attachment.elementId,
+    ...hint,
+  });
+  const after = readScopedCommentTargetText(patchedHtml, scope, {
+    elementId: attachment.elementId,
+    ...hint,
+  });
+  if (!before?.trim()) return true;
+  return targetTextContentPreserved(attachment, after ?? '');
+}
+
 export function applyScopedDeckPatchToHtml(input: {
   currentHtml: string;
   patchBody?: string;
@@ -162,7 +184,17 @@ export function applyScopedDeckPatchToHtml(input: {
     if (!scoped.ok) {
       return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason };
     }
-    if (scoped.narrowed) return { ok: true, html: scoped.html };
+    if (scoped.narrowed) {
+      const intent = validateCommentEditIntentRespected({
+        mergedHtml: scoped.html,
+        commentAttachments: input.commentAttachments,
+        instructionText: input.instructionText,
+      });
+      if (!intent.ok) {
+        return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
+      }
+      return { ok: true, html: scoped.html };
+    }
     if (mergedScopeRelaxed) {
       console.warn('[deck-patch] scope-relaxed apply produced no narrowed match — rejecting', {
         allowedSlideIndexes: input.allowedSlideIndexes,
@@ -173,6 +205,14 @@ export function applyScopedDeckPatchToHtml(input: {
         reason: strictScopeApply.ok ? 'unexpected relaxed apply state' : strictScopeApply.reason,
       };
     }
+  }
+  const intent = validateCommentEditIntentRespected({
+    mergedHtml: merged.html,
+    commentAttachments: input.commentAttachments ?? [],
+    instructionText: input.instructionText,
+  });
+  if (!intent.ok && input.commentAttachments?.length) {
+    return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
   }
   return { ok: true, html: merged.html };
 }
@@ -406,7 +446,8 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
 
   if (
     nextSlide !== patchedSlide &&
-    targetTextPreservedInPatchedSlide(patchedSlide, input.attachment)
+    targetTextPreservedInPatchedSlide(patchedSlide, input.attachment) &&
+    targetElementTextPreservedAfterMerge(input.nextHtml, input.patchedHtml, input.attachment, input.slideIndex)
   ) {
     const html = acceptSlideLevel('text-preserved');
     if (html) return { ok: true, html };

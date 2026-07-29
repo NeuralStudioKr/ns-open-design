@@ -49,6 +49,7 @@ export {
   slideDiffIsStyleOnly,
   targetTextPreservedInPatchedSlide,
 } from '../edit-mode/scoped-deck-patch';
+import { validateCommentEditIntentRespected } from '../edit-mode/comment-edit-intent';
 import {
   clearPendingArtifactWrite,
   clearProjectPendingArtifactWrites,
@@ -1047,6 +1048,7 @@ function slideCommentEditPatchInstruction(commentAttachmentCount: number): strin
     '- `kind` is one of: `set-text`, `set-style` (JSON object), `set-outer-html`, `set-link` (JSON), `set-image` (JSON), `set-attributes` (JSON), `remove-element`.',
     '- Apply the user request to ONLY the pinned target element. Do not change siblings, slide wrappers, or global CSS unless the user explicitly asks for slide-wide changes.',
     '- For arbitrary natural-language requests (visibility, tone, layout tweaks), interpret the intent and emit the smallest valid element patch — never ask the user to rephrase.',
+    '- When the user asks to make text bigger/smaller/bolder/more visible (e.g. "크게", "키워", "눈에 띄게") WITHOUT changing the words: use `kind="set-style"` with `fontSize` / `fontWeight` / `color`. Keep every character of `currentText` exactly as-is — never use `set-text`, `remove-element`, or empty the element.',
     '',
     'Fallback when multiple elements or slide structure must change:',
     '<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="{N}">…full slide replacement…</section></artifact>',
@@ -1155,6 +1157,14 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     console.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
     return { ok: false, code: 'deck_patch_merge_failed', reason: applied.reason };
   }
+  const intent = validateCommentEditIntentRespected({
+    mergedHtml: applied.html,
+    commentAttachments: input.commentAttachments ?? [],
+    instructionText: input.instructionText,
+  });
+  if (!intent.ok) {
+    return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
+  }
   return { ok: true, html: applied.html };
 }
 
@@ -1184,6 +1194,10 @@ function elementPatchBodyLooksLikeDeckPatch(body: string | null | undefined): bo
  * these through `skipped-incomplete` instead of surfacing them as a
  * scope violation.
  */
+function isCommentEditIntentViolation(code: ScopedDeckPersistFailureCode | undefined): boolean {
+  return code === 'comment_edit_intent_violated';
+}
+
 function isElementPatchEmptyBody(reason: string): boolean {
   return (
     reason === 'empty element-patch body' ||
@@ -3475,9 +3489,10 @@ export function ProjectView({
           // the auto-continue path (retry the model turn) instead of
           // surfacing a "선택 대상 밖 변경" banner that misdiagnoses
           // the failure as a scope violation.
-          if (isElementPatchEmptyBody(merged.reason)) {
-            console.warn('[element-patch] empty artifact — routing to auto-continue', {
+          if (isElementPatchEmptyBody(merged.reason) || isCommentEditIntentViolation(merged.code)) {
+            console.warn('[element-patch] routing to auto-continue', {
               fileName: targetFileName,
+              code: merged.code,
               reason: merged.reason,
             });
             return { kind: 'skipped-incomplete', fileName: targetFileName };
@@ -3500,6 +3515,13 @@ export function ProjectView({
           instructionText: runVisiblePromptRef.current,
         });
         if (!merged.ok) {
+          if (isCommentEditIntentViolation(merged.code)) {
+            console.warn('[deck-patch] comment intent violated — routing to auto-continue', {
+              fileName: targetFileName,
+              reason: merged.reason,
+            });
+            return { kind: 'skipped-incomplete', fileName: targetFileName };
+          }
           return {
             kind: 'scope-rejected',
             fileName: targetFileName,

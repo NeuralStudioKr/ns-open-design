@@ -1277,6 +1277,7 @@ If the turn carries \`<attached-preview-comments>\`, prefer a structured element
 - \`slide-index="{N}"\` = the comment's \`slideIndex:\` (0-based).
 - \`kind\`: \`set-text\`, \`set-style\` (JSON), \`set-outer-html\`, \`set-link\`, \`set-image\`, \`set-attributes\`, \`remove-element\`.
 - Interpret ANY natural-language request on the pinned element — do not ask users to rephrase or provide internal ids.
+- Size / visibility / emphasis requests ("크게", "키워", "눈에 띄게", "bigger", "bold") WITHOUT changing the words: use \`kind="set-style"\` with \`fontSize\` / \`fontWeight\` / \`color\`. Keep \`currentText\` verbatim — never \`set-text\`, \`remove-element\`, or empty the element.
 
 **Non-empty element-patch is required.** If you open \`<artifact type="element-patch">\`, you MUST emit at least one \`<patch target-id="…" slide-index="…" kind="…">…body…</patch>\` block before closing \`</artifact>\`. An empty artifact wrapper is a critical failure — the client cannot recover it, and the user loses the requested edit. If you cannot express the requested change as any of the allowed \`kind\`s, switch to \`<artifact type="deck-patch">\` with a full \`<section class="slide" data-slide-index="{N}">\` replacement in this same turn.
 
