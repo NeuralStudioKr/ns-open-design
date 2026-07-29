@@ -349,6 +349,7 @@ export type ScopedCommentEditAutoContinueContext = {
   attempt: number;
   failureReason?: string | null;
   commentContext?: string | null;
+  userInstruction?: string | null;
 };
 
 /**
@@ -386,6 +387,14 @@ export function buildAutoContinueScopedCommentEditPrompt(
   if (failureReason) {
     parts.push('', `[직전 실패 사유: ${failureReason}]`);
   }
+  const userInstruction = context.userInstruction?.trim();
+  if (userInstruction) {
+    parts.push(
+      '',
+      '[원래 사용자 편집 요청 — 반드시 이 요청을 아래 댓글 대상에만 적용하세요:]',
+      userInstruction,
+    );
+  }
   const commentContext = context.commentContext?.trim();
   if (commentContext) {
     parts.push(
@@ -402,12 +411,14 @@ export function resolveAutoContinuePrompt(options: {
   incompleteOutput: AutoContinuePromptContext;
   scopedCommentEditFailureReason?: string | null;
   scopedCommentContext?: string | null;
+  scopedUserInstruction?: string | null;
 }): string {
   if (options.commentAttachmentCount > 0) {
     return buildAutoContinueScopedCommentEditPrompt({
       attempt: options.incompleteOutput.attempt,
       failureReason: options.scopedCommentEditFailureReason,
       commentContext: options.scopedCommentContext,
+      userInstruction: options.scopedUserInstruction,
     });
   }
   return buildAutoContinueIncompleteOutputPrompt(options.incompleteOutput);

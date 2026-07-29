@@ -264,6 +264,8 @@ describe("ProjectView message loading", () => {
     // in commit 7a80a8688 so the scoped comment auto-continue can route to a
     // dedicated element-patch retry instead of the full-deck rewrite prompt.
     expect(block).toContain("resolveAutoContinuePrompt");
+    expect(block).toContain("renderCommentAttachmentContext(autoContinueCommentAttachments)");
+    expect(block).toContain("scopedUserInstruction");
     expect(block).toContain("AUTO_CONTINUE_ENTRY_FROM");
     expect(block).toContain("const scheduledProjectId = project.id");
     expect(block).toContain("project.id !== scheduledProjectId");
@@ -274,7 +276,7 @@ describe("ProjectView message loading", () => {
     const start = source.indexOf("const openedRecoveredHtml = await autoOpenRecoveredHtmlOutput(");
     const secondStart = source.indexOf("const openedRecoveredHtml = await autoOpenRecoveredHtmlOutput(", start + 1);
     expect(secondStart).toBeGreaterThan(0);
-    const block = source.slice(secondStart, secondStart + 7200);
+    const block = source.slice(secondStart, secondStart + 8500);
 
     expect(block).toContain("const proxyStillActive = matchingActiveStreams.length > 0");
     expect(block).toContain("!openedRecoveredHtml && !stillInflight && !proxyStillActive");
@@ -288,6 +290,8 @@ describe("ProjectView message loading", () => {
     // resolveAutoContinuePrompt replaced buildAutoContinueIncompleteOutputPrompt.
     // See sibling block above for the rationale (element-patch retry routing).
     expect(block).toContain("resolveAutoContinuePrompt");
+    expect(block).toContain("renderCommentAttachmentContext(autoContinueCommentAttachments)");
+    expect(block).toContain("scopedUserInstruction");
     expect(block).toContain("const scheduledProjectId = project.id");
     expect(block).toContain("project.id !== scheduledProjectId");
   });
@@ -389,6 +393,8 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("renderCommentAttachmentContext(autoContinueCommentAttachments)");
     expect(autoOpenBlock).toContain("scopedCommentContext");
     expect(autoOpenBlock).toContain("scopedCommentAttachmentCount:");
+    expect(autoOpenBlock).toContain("scopedUserInstruction");
+    expect(autoOpenBlock).toContain("stripUserVisibleUserMessageText(");
     expect(autoOpenBlock).toContain("extractAutoContinueContextFromAssistant");
     expect(autoOpenBlock).toContain("isLiveLocalStreamBlockingAutoContinue({");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_ENTRY_FROM");

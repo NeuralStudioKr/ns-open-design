@@ -3199,8 +3199,20 @@ export function ProjectView({
                   findPrecedingUserMessage(mergedMessages, incompleteAssistant?.id),
                   runCommentAttachmentsRef.current,
                 );
+              const autoContinueOriginUser = findPrecedingUserMessage(
+                mergedMessages,
+                incompleteAssistant?.id,
+              );
+              const scopedCommentContext =
+                autoContinueCommentAttachments.length > 0
+                  ? renderCommentAttachmentContext(autoContinueCommentAttachments)
+                  : null;
               const autoContinuePrompt = resolveAutoContinuePrompt({
                 commentAttachmentCount: autoContinueCommentAttachments.length,
+                scopedCommentContext,
+                scopedUserInstruction: autoContinueOriginUser
+                  ? stripUserVisibleUserMessageText(autoContinueOriginUser.content).trim()
+                  : null,
                 incompleteOutput: {
                   attempt,
                   referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
@@ -6471,8 +6483,20 @@ export function ProjectView({
                 findPrecedingUserMessage(mergedMessages, incompleteAssistant?.id),
                 runCommentAttachmentsRef.current,
               );
+            const autoContinueOriginUser = findPrecedingUserMessage(
+              mergedMessages,
+              incompleteAssistant?.id,
+            );
+            const scopedCommentContext =
+              autoContinueCommentAttachments.length > 0
+                ? renderCommentAttachmentContext(autoContinueCommentAttachments)
+                : null;
             const autoContinuePrompt = resolveAutoContinuePrompt({
               commentAttachmentCount: autoContinueCommentAttachments.length,
+              scopedCommentContext,
+              scopedUserInstruction: autoContinueOriginUser
+                ? stripUserVisibleUserMessageText(autoContinueOriginUser.content).trim()
+                : null,
               incompleteOutput: {
                 attempt,
                 referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
@@ -7348,7 +7372,7 @@ export function ProjectView({
                   : formatProjectRunDeliverableMissingError({
                       kind: terminalPersistResult?.kind ?? null,
                       reason:
-                        terminalPersistResult?.kind === 'rejected'
+                        terminalPersistResult && 'reason' in terminalPersistResult
                           ? terminalPersistResult.reason ?? null
                           : null,
                     });
@@ -7533,6 +7557,9 @@ export function ProjectView({
                     autoContinueCommentAttachments.length > 0
                       ? renderCommentAttachmentContext(autoContinueCommentAttachments)
                       : null;
+                  const scopedUserInstruction = stripUserVisibleUserMessageText(
+                    (retryTarget?.userMsg ?? userMsg).content,
+                  ).trim();
                   const scopedFailureReason =
                     terminalPersistResult?.kind === 'skipped-incomplete'
                       ? terminalPersistResult.reason ?? null
@@ -7555,6 +7582,7 @@ export function ProjectView({
                       }),
                     },
                     scopedCommentContext,
+                    scopedUserInstruction,
                   });
                   // Preserve the failed turn's `commentAttachments`
                   // on the auto-continue call. Without this the retry
