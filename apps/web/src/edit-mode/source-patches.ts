@@ -175,7 +175,7 @@ export function resolveManualEditTargetReference(
   const target = normalizedId
     ? findEditableElement(doc, normalizedId, scope, hint)
     : hint
-      ? findEditableElementBySelector(doc, root, hint.selector) ?? findElementByHint(doc, scope, hint)
+      ? findEditableElementBySelector(doc, root, hint.selector, scope) ?? findElementByHint(doc, scope, hint)
       : null;
   if (!target) return null;
   const stableId =
@@ -380,7 +380,7 @@ function findEditableElement(
   const root = findScopedRoot(doc, scope);
   if (!root) return null;
   if (id === '__body__') return root.nodeType === 9 ? (root as Document).body : root as Element;
-  const domFallback = findElementByDomSelector(doc, root, id);
+  const domFallback = findElementByDomSelector(doc, root, id, scope);
   if (domFallback) return domFallback;
   const structural =
     root.querySelector(`[data-od-id="${cssEscape(id)}"]`) ??
@@ -389,7 +389,7 @@ function findEditableElement(
     findElementByScopedPath(doc, root, id);
   if (structural) return structural;
   if (hint) {
-    const bySelector = findEditableElementBySelector(doc, root, hint.selector);
+    const bySelector = findEditableElementBySelector(doc, root, hint.selector, scope);
     if (bySelector) return bySelector;
     return findElementByHint(doc, scope, hint);
   }
@@ -400,10 +400,11 @@ function findEditableElementBySelector(
   doc: Document,
   root: ManualEditLookupRoot,
   selector: string | undefined,
+  scope: ManualEditSourceScope = {},
 ): Element | null {
   const trimmed = String(selector || '').trim();
   if (!trimmed || /[<{}]/.test(trimmed)) return null;
-  const byDom = findElementByDomSelector(doc, root, `dom:${trimmed}`);
+  const byDom = findElementByDomSelector(doc, root, `dom:${trimmed}`, scope);
   if (byDom) return byDom;
   if (trimmed.startsWith('body > ')) return null;
   const rootElement = root.nodeType === 9 ? doc.body : root as Element;
@@ -436,14 +437,14 @@ export function mergeManualEditTargetByHint(
   }
 
   const currentTarget =
-    findEditableElementBySelector(currentDoc, findScopedRoot(currentDoc, scope) ?? currentDoc, hint.selector)
+    findEditableElementBySelector(currentDoc, findScopedRoot(currentDoc, scope) ?? currentDoc, hint.selector, scope)
     ?? findElementByHint(currentDoc, scope, hint);
   if (!currentTarget) {
     return { ok: false, source: currentSource, reason: 'No matching targets found to merge.' };
   }
 
   const nextTarget =
-    findEditableElementBySelector(nextDoc, findScopedRoot(nextDoc, scope) ?? nextDoc, hint.selector)
+    findEditableElementBySelector(nextDoc, findScopedRoot(nextDoc, scope) ?? nextDoc, hint.selector, scope)
     ?? findReplacementCandidateByTextHint(nextDoc, currentTarget, scope, hint)
     ?? findElementByHint(nextDoc, scope, hint);
   if (!nextTarget) {
@@ -683,6 +684,7 @@ function findElementByDomSelector(
   doc: Document,
   root: ManualEditLookupRoot,
   id: string,
+  scope: ManualEditSourceScope = {},
 ): Element | null {
   if (!id.startsWith('dom:')) return null;
   const selector = id.slice('dom:'.length).trim();
@@ -700,17 +702,21 @@ function findElementByDomSelector(
     }
   }
   const rootElement = root.nodeType === 9 ? null : root as Element;
+  if (rootElement && selector.startsWith('body > ')) {
+    const relative = parseAbsoluteDomSlideSelector(selector);
+    if (
+      relative
+      && typeof scope.slideIndex === 'number'
+      && Number.isInteger(scope.slideIndex)
+      && scope.slideIndex === relative.slideIndex
+    ) {
+      const byRelative = queryDomSelectorWithinRoot(rootElement, doc, relative.suffix);
+      if (byRelative) return byRelative;
+    }
+  }
   if (rootElement && !selector.startsWith('body > ')) {
-    let scopedEl: Element | null = null;
-    try {
-      scopedEl = rootElement.querySelector(selector);
-    } catch {
-      return null;
-    }
-    if (!scopedEl || scopedEl === rootElement || scopedEl === doc.body || scopedEl === doc.documentElement) {
-      return null;
-    }
-    return scopedEl;
+    const scopedEl = queryDomSelectorWithinRoot(rootElement, doc, selector);
+    if (scopedEl) return scopedEl;
   }
   if (!selector.startsWith('body > ')) return null;
   const byPath = findElementByDomSelectorPath(doc, root, selector);
@@ -746,6 +752,45 @@ function parseDomBodyPathSegments(selector: string): string[] {
     .split(' > ')
     .map((segment) => segment.trim())
     .filter(Boolean);
+}
+
+function queryDomSelectorWithinRoot(
+  rootElement: Element,
+  doc: Document,
+  selector: string,
+): Element | null {
+  let scopedEl: Element | null = null;
+  try {
+    scopedEl = rootElement.querySelector(selector);
+  } catch {
+    return null;
+  }
+  if (!scopedEl || scopedEl === rootElement || scopedEl === doc.body || scopedEl === doc.documentElement) {
+    return null;
+  }
+  return scopedEl;
+}
+
+/**
+ * Preview iframes often wrap slides in an extra `body > div > section` shell.
+ * Saved deck HTML is usually `body > section.slide` directly. When lookup is
+ * scoped to the matching slide, strip the absolute `body > … > section:nth-of-type(N)`
+ * prefix and resolve the remainder inside that slide.
+ */
+export function parseAbsoluteDomSlideSelector(
+  selector: string,
+): { suffix: string; slideIndex: number } | null {
+  const trimmed = String(selector || '').trim();
+  if (!trimmed.startsWith('body > ')) return null;
+  const match = trimmed.match(
+    /^body\s*>\s*(?:.+?\s*>\s*)*section(?::nth-of-type\((\d+)\)|(?:\.[a-z0-9_-]+)*)?\s*>\s*(.+)$/i,
+  );
+  const ordinal = match?.[1];
+  const suffix = match?.[2]?.trim();
+  if (!ordinal || !suffix) return null;
+  const slideIndex = Number(ordinal) - 1;
+  if (!Number.isInteger(slideIndex) || slideIndex < 0) return null;
+  return { suffix, slideIndex };
 }
 
 function walkDomNthTypePath(start: Element, segments: readonly string[]): Element | null {

@@ -308,6 +308,30 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('<p>Keep me</p>');
   });
 
+  it('resolves preview dom selectors with wrapper div inside a selected slide', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><p>Slide one copy</p></section>',
+      '<section class="slide" data-slide-index="1">',
+      '<div><div><p data-od-id="company-name">회사 이름</p></div></div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const id =
+      'dom:body > div:nth-of-type(1) > section:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > p:nth-of-type(1)';
+
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id, value: '뉴럴스튜디오' },
+      { slideIndex: 1 },
+      { currentText: '회사 이름', htmlHint: '<p>회사 이름</p>' },
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    expect(result.source).toContain('뉴럴스튜디오');
+    expect(result.source).not.toContain('회사 이름');
+  });
+
   it('resolves selector-only comment targets inside the selected slide', () => {
     const source = [
       '<!doctype html><html><body>',

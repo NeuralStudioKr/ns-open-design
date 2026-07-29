@@ -21,9 +21,12 @@
 import type { ManualEditPatch } from '../edit-mode/types';
 import {
   applyManualEditPatch,
+  resolveManualEditTargetReference,
   type ManualEditMergeTargetHint,
   type ManualEditSourceScope,
 } from '../edit-mode/source-patches';
+import { attachmentMergeHint, scopedCommentElementIds } from '../edit-mode/scoped-deck-patch';
+import type { ChatCommentAttachment } from '../types';
 
 export type ElementPatchOp = ManualEditPatch & {
   slideIndex: number;
@@ -39,14 +42,11 @@ export type ParseElementPatchResult =
  * so a naive `[^>]*` cut truncates `target-id` and drops `slide-index`.
  */
 const PATCH_OPEN_ATTRS_RE = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
-const PATCH_TAG_RE = new RegExp(
-  String.raw`<patch\b(${PATCH_OPEN_ATTRS_RE})>([\s\S]*?)</patch>`,
-  'gi',
-);
 const LOOSE_PATCH_TAG_RE = new RegExp(
   String.raw`<patch\b${PATCH_OPEN_ATTRS_RE}>[\s\S]*?</patch>`,
   'gi',
 );
+const PATCH_OPEN_RE = /<patch\b/gi;
 
 const SUPPORTED_KINDS = new Set([
   'set-text',
@@ -180,14 +180,12 @@ export function parseElementPatch(body: string): ParseElementPatchResult {
     return { ok: false, reason: 'empty element-patch body' };
   }
 
-  PATCH_TAG_RE.lastIndex = 0;
-  let match: RegExpExecArray | null = PATCH_TAG_RE.exec(source);
-  while (match) {
-    const attrs = parsePatchAttrs(match[1] ?? '');
+  for (const block of iteratePatchTags(source)) {
+    const attrs = parsePatchAttrs(block.attrsRaw);
     const targetId = attrs['target-id'] || attrs['targetid'] || attrs['data-target-id'] || '';
     const slideIndex = readSlideIndex(attrs['slide-index'] ?? attrs['slideindex'] ?? attrs['data-slide-index']);
     const kind = String(attrs['kind'] ?? '').trim().toLowerCase();
-    const bodyText = (match[2] ?? '').trim();
+    const bodyText = block.body.trim();
 
     if (!targetId) {
       return { ok: false, reason: 'element-patch <patch> missing target-id attribute' };
@@ -205,13 +203,49 @@ export function parseElementPatch(body: string): ParseElementPatchResult {
     }
 
     patches.push({ ...manualEdit, slideIndex });
-    match = PATCH_TAG_RE.exec(source);
   }
 
   if (patches.length === 0) {
     return { ok: false, reason: 'no <patch> blocks in element-patch body' };
   }
   return { ok: true, patches };
+}
+
+function iteratePatchTags(source: string): Array<{ attrsRaw: string; body: string }> {
+  const blocks: Array<{ attrsRaw: string; body: string }> = [];
+  PATCH_OPEN_RE.lastIndex = 0;
+  let openMatch: RegExpExecArray | null = PATCH_OPEN_RE.exec(source);
+  while (openMatch) {
+    const attrStart = openMatch.index + openMatch[0].length;
+    const attrEnd = findPatchTagEnd(source, attrStart);
+    if (attrEnd < 0) break;
+    const attrsRaw = source.slice(attrStart, attrEnd).trim();
+    const bodyStart = attrEnd + 1;
+    const closeMatch = /<\/patch>/i.exec(source.slice(bodyStart));
+    if (!closeMatch || closeMatch.index == null) break;
+    const body = source.slice(bodyStart, bodyStart + closeMatch.index);
+    blocks.push({ attrsRaw, body });
+    PATCH_OPEN_RE.lastIndex = bodyStart + closeMatch.index + closeMatch[0].length;
+    openMatch = PATCH_OPEN_RE.exec(source);
+  }
+  return blocks;
+}
+
+function findPatchTagEnd(source: string, start: number): number {
+  let quote: '"' | "'" | null = null;
+  for (let index = start; index < source.length; index += 1) {
+    const ch = source[index];
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === '>') return index;
+  }
+  return -1;
 }
 
 function parsePatchAttrs(raw: string): Record<string, string> {
@@ -306,6 +340,8 @@ export interface ApplyElementPatchOptions {
   allowedSlideIndexes?: readonly number[];
   allowedTargetIds?: readonly string[];
   targetHints?: readonly ElementPatchTargetHint[];
+  commentAttachments?: readonly ChatCommentAttachment[];
+  instructionText?: string;
 }
 
 export type ElementPatchTargetHint = ManualEditMergeTargetHint & {
@@ -327,8 +363,16 @@ export function applyElementPatches(options: ApplyElementPatchOptions): ApplyEle
 
   let html = options.currentHtml;
   let appliedCount = 0;
+  const normalizedPatches = normalizeElementPatchTargetsForApply({
+    currentHtml: html,
+    patches: options.patches,
+    commentAttachments: options.commentAttachments,
+    instructionText: options.instructionText,
+  });
 
-  for (const patch of options.patches) {
+  for (let index = 0; index < normalizedPatches.length; index += 1) {
+    const patch = normalizedPatches[index]!;
+    const originalPatch = options.patches[index];
     if (allowedSlides && !allowedSlides.has(patch.slideIndex)) {
       return {
         ok: false,
@@ -336,7 +380,16 @@ export function applyElementPatches(options: ApplyElementPatchOptions): ApplyEle
       };
     }
     const targetId = 'id' in patch ? String(patch.id || '').trim() : '';
-    if (allowedTargets && allowedTargets.size > 0 && targetId && !allowedTargets.has(targetId)) {
+    const originalTargetId = originalPatch && 'id' in originalPatch
+      ? String(originalPatch.id || '').trim()
+      : '';
+    if (
+      allowedTargets
+      && allowedTargets.size > 0
+      && targetId
+      && !allowedTargets.has(targetId)
+      && (!originalTargetId || !allowedTargets.has(originalTargetId))
+    ) {
       return {
         ok: false,
         reason: `element-patch targets ${targetId} outside attached comment scope`,
@@ -345,10 +398,16 @@ export function applyElementPatches(options: ApplyElementPatchOptions): ApplyEle
 
     const { slideIndex, ...manualEdit } = patch;
     const targetHint = findElementPatchTargetHint(options.targetHints, targetId, slideIndex);
+    const mergeHint = elementPatchMergeHintForPatch(
+      patch,
+      options.commentAttachments,
+      options.instructionText,
+    );
+    const hint = mergeHint ?? (targetHint ? { ...targetHint, id: targetId } : undefined);
     const scope: ManualEditSourceScope = targetHint
       ? { slideIndex, targetHint }
       : { slideIndex };
-    const result = applyManualEditPatch(html, manualEdit, scope);
+    const result = applyManualEditPatch(html, manualEdit, scope, hint);
     if (!result.ok) {
       return { ok: false, reason: result.error ?? `failed to apply ${manualEdit.kind} on ${targetId}` };
     }
@@ -379,4 +438,86 @@ function findElementPatchTargetHint(
     if (ids.includes(normalizedTarget)) return hint;
   }
   return hints.length === 1 ? hints[0] : undefined;
+}
+
+function findCommentAttachmentForPatch(
+  patch: ElementPatchOp,
+  commentAttachments: readonly ChatCommentAttachment[] | undefined,
+): ChatCommentAttachment | undefined {
+  if (!commentAttachments?.length) return undefined;
+  const patchId = String(patch.id || '').trim();
+  const exact = commentAttachments.find((attachment) => {
+    if (
+      typeof attachment.slideIndex === 'number'
+      && Number.isInteger(attachment.slideIndex)
+      && attachment.slideIndex !== patch.slideIndex
+    ) {
+      return false;
+    }
+    return scopedCommentElementIds(attachment).includes(patchId);
+  });
+  if (exact) return exact;
+
+  const onSlide = commentAttachments.filter(
+    (attachment) => attachment.slideIndex === patch.slideIndex,
+  );
+  if (onSlide.length === 1) return onSlide[0];
+  if (commentAttachments.length === 1) return commentAttachments[0];
+  return undefined;
+}
+
+function elementPatchMergeHintForPatch(
+  patch: ElementPatchOp,
+  commentAttachments: readonly ChatCommentAttachment[] | undefined,
+  instructionText?: string,
+): ManualEditMergeTargetHint | undefined {
+  const attachment = findCommentAttachmentForPatch(patch, commentAttachments);
+  if (!attachment) return undefined;
+  return {
+    id: patch.id,
+    ...attachmentMergeHint(attachment, instructionText),
+  };
+}
+
+export function normalizeElementPatchTargetsForApply(input: {
+  currentHtml: string;
+  patches: readonly ElementPatchOp[];
+  commentAttachments?: readonly ChatCommentAttachment[];
+  instructionText?: string;
+}): ElementPatchOp[] {
+  if (!input.commentAttachments?.length) return [...input.patches];
+
+  return input.patches.map((patch) => {
+    const hint = elementPatchMergeHintForPatch(
+      patch,
+      input.commentAttachments,
+      input.instructionText,
+    );
+    const scope = { slideIndex: patch.slideIndex };
+    const resolved = resolveManualEditTargetReference(
+      input.currentHtml,
+      patch.id,
+      scope,
+      hint,
+    );
+    if (resolved && resolved !== patch.id) {
+      return { ...patch, id: resolved };
+    }
+
+    const attachment = findCommentAttachmentForPatch(patch, input.commentAttachments);
+    const elementId = String(attachment?.elementId || '').trim();
+    if (elementId && elementId !== patch.id) {
+      const byElementId = resolveManualEditTargetReference(
+        input.currentHtml,
+        elementId,
+        scope,
+        hint,
+      );
+      if (byElementId) {
+        return { ...patch, id: byElementId };
+      }
+    }
+
+    return patch;
+  });
 }

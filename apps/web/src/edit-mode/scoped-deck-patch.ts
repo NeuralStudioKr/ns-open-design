@@ -272,7 +272,7 @@ function listChangedDeckSlideIndexes(currentHtml: string, patchedHtml: string): 
   return changed;
 }
 
-function attachmentMergeHint(
+export function attachmentMergeHint(
   attachment: ChatCommentAttachment,
   instructionText?: string,
 ): {

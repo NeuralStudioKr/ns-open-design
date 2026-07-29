@@ -1081,6 +1081,7 @@ function slideCommentEditPatchInstruction(commentAttachmentCount: number): strin
     '- `target-id` MUST match the comment `elementId` (or a selector id from `<attached-preview-comments>`).',
     '- Copy `target-id` exactly from the numbered comment header / `scopeLock`; do NOT invent tag-like ids such as `h1`, `h2`, `p`, or `section.slide.active` from the visible UI label.',
     '- Never target page roots such as `body`, `html`, `document`, `dom:body`, or `dom:html`. If the visible label says `h1`/`h2`, use the concrete attached element id / scopeLock for that heading, not a root selector.',
+    '- Do NOT use `dom:body > …` CSS paths as `target-id` unless they appear verbatim in `scopeLock` / `elementId`. Prefer stable ids such as `data-od-id` values from the comment attachment.',
     '- `slide-index="{N}"` uses the 0-based index from `slideIndex:` in `<attached-preview-comments>`.',
     '- `kind` is one of: `set-text`, `set-style` (JSON object), `set-outer-html`, `set-link` (JSON), `set-image` (JSON), `set-attributes` (JSON), `remove-element`.',
     '- Apply the user request to ONLY the pinned target element. Do not change siblings, slide wrappers, or global CSS unless the user explicitly asks for slide-wide changes.',
@@ -1228,6 +1229,8 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     allowedSlideIndexes,
     allowedTargetIds,
     targetHints: elementPatchTargetHintsFromCommentAttachments(input.commentAttachments ?? []),
+    commentAttachments: input.commentAttachments,
+    instructionText: input.instructionText,
   });
   if (!applied.ok) {
     console.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
