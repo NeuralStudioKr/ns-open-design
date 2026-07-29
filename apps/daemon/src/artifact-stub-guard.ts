@@ -65,9 +65,9 @@ export class ArtifactRegressionError extends Error {
 }
 
 export const DEFAULT_ARTIFACT_STUB_GUARD_CONFIG: ArtifactStubGuardConfig = {
-  mode: 'warn',
-  minRetainedRatio: 0.2,
-  minPriorBytes: 4096,
+  mode: 'reject',
+  minRetainedRatio: 0.35,
+  minPriorBytes: 8192,
 };
 
 // HTML-rendered manifest kinds. Decks are HTML files on disk and have the
@@ -259,7 +259,7 @@ function buildWarning(
       `New artifact body for identifier "${identifier}" is ${newSize} bytes, ` +
       `but the largest prior sibling "${prior.name}" is ${prior.size} bytes. ` +
       'This pattern usually means the agent emitted a placeholder instead of the full document. ' +
-      'Set OD_ARTIFACT_STUB_GUARD=warn to record the warning without rejecting, or =off to disable the guard entirely.',
+      'The write was rejected to preserve the existing artifact.',
     identifier,
     newSize,
     priorSize: prior.size,

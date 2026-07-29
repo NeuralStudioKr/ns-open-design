@@ -374,6 +374,11 @@ describe('readArtifactStubGuardConfigFromEnv', () => {
   it('returns defaults when env vars are absent', () => {
     const config = readArtifactStubGuardConfigFromEnv({});
     expect(config).toEqual(DEFAULT_ARTIFACT_STUB_GUARD_CONFIG);
+    expect(config).toMatchObject({
+      mode: 'reject',
+      minRetainedRatio: 0.35,
+      minPriorBytes: 8_192,
+    });
   });
 
   it('parses recognised mode values', () => {
