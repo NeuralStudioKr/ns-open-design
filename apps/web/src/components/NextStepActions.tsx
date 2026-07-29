@@ -35,6 +35,8 @@ import styles from './NextStepActions.module.css';
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
 interface Props {
+  /** When true, the card is pinned above the composer (not inside a message). */
+  pinned?: boolean;
   // The previewable artifact this affordance is anchored to. Passed back to
   // share/download so the parent can act on the right file.
   fileName?: string | null;
@@ -97,6 +99,7 @@ type Anchor = { left: number; top: number };
 type SubKind = 'toolbox' | 'share';
 
 export function NextStepActions({
+  pinned = false,
   fileName,
   onShare,
   onDownload,
@@ -301,7 +304,10 @@ export function NextStepActions({
   const keepOpen = { onMouseEnter: cancelClose, onMouseLeave: scheduleClose };
 
   return (
-    <div className={styles.root} data-testid="next-step-actions">
+    <div
+      className={pinned ? `${styles.root} ${styles.rootPinned}` : styles.root}
+      data-testid="next-step-actions"
+    >
       <div className={styles.label}>{t('nextStep.title')}</div>
       {showToolbox || hasMore ? (
         <div className={styles.toolboxList} data-testid="next-step-toolbox">

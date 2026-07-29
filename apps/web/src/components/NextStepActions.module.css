@@ -14,6 +14,10 @@
   animation: next-step-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
+.rootPinned {
+  margin-top: 0;
+}
+
 @keyframes next-step-in {
   from {
     opacity: 0;

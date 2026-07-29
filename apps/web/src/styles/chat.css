@@ -954,6 +954,11 @@
 .chat-composer-slot {
   flex: 0 0 auto;
 }
+.chat-pinned-next-step {
+  flex: 0 0 auto;
+  padding: 0 var(--chat-composer-inline-inset, 12px) 8px;
+  min-width: 0;
+}
 .chat-composer-fixed-layer {
   position: fixed;
   z-index: 45;

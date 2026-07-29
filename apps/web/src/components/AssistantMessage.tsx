@@ -59,7 +59,6 @@ import {
 } from "./design-files/pluginFolders";
 import type { PluginFolderAgentAction } from "./design-files/pluginFolderActions";
 import { Icon } from "./Icon";
-import { NextStepActions } from "./NextStepActions";
 import type { DesignToolboxActionId } from "../runtime/design-toolbox";
 import { copyToClipboard } from "../lib/copy-to-clipboard";
 import { assistantEventsForDisplay, assistantMessageTextBody } from "../runtime/chat-events";
@@ -626,16 +625,6 @@ function AssistantMessageImpl({
     },
     [blocks, fileOps, message, produced, projectFiles, slideOnlyMvp, streaming],
   );
-  // The single artifact the "next step" affordance anchors to: prefer the HTML
-  // produced by THIS turn; if the final turn emitted none (a summary / continue
-  // message) fall back to the most recently modified HTML in the project so
-  // Share / Download still target the deliverable the user just made.
-  const nextStepArtifactName = useMemo(
-    () =>
-      pickPreviewableArtifact(displayedProduced)
-      ?? pickLatestPreviewableArtifact(projectFiles, { slideOnlyMvp }),
-    [displayedProduced, projectFiles, slideOnlyMvp],
-  );
   const pluginActionFolders = useMemo(
     () =>
       !streaming && isLast && projectId
@@ -743,20 +732,6 @@ function AssistantMessageImpl({
     hasEmptyResponse ||
     !!copyMarkdown ||
     canFork;
-  const canShowOpenDesignSubmission = !!onShareToOpenDesign && showFeedback && runSucceeded;
-  const showOpenDesignSubmission =
-    canShowOpenDesignSubmission && (!!isLast || shareToOpenDesignBusy);
-  // "Next step" only makes sense once there is a deliverable to act on. Anchor
-  // the whole card (toolbox cascade + Share + Contribute) on a previewable HTML
-  // artifact — produced this turn or earlier in the project. A pure
-  // clarifying-questions / summary turn that emitted no HTML must not surface
-  // the card (issue: card appeared after a question-only turn with no artifact).
-  const showNextStepActions =
-    !streaming &&
-    !!projectId &&
-    runSucceeded &&
-    !!nextStepArtifactName &&
-    ((!!isLast && !!onToolboxAction) || showOpenDesignSubmission);
   // Pre-output vs working: before any real content (text / thinking / tools /
   // files) the footer shimmers "Preparing…"; the moment content lands it
   // flips to "Working". The elapsed clock stays anchored to the persisted run
@@ -1026,57 +1001,9 @@ function AssistantMessageImpl({
             )}
           </div>
         ) : null}
-        {showNextStepActions ? (
-          <NextStepActions
-            fileName={isLast ? nextStepArtifactName : null}
-            onShare={isLast && nextStepArtifactName ? onArtifactShare : undefined}
-            onToolboxAction={isLast ? onToolboxAction : undefined}
-            onPickSkill={isLast ? onPickSkill : undefined}
-            onDownload={isLast && nextStepArtifactName ? onArtifactDownload : undefined}
-            skills={isLast ? nextStepSkills : undefined}
-            toolboxSkillNames={isLast ? toolboxSkillNames : undefined}
-            onShareToOpenDesign={showOpenDesignSubmission ? onShareToOpenDesign : undefined}
-            shareToOpenDesignBusy={shareToOpenDesignBusy}
-          />
-        ) : null}
       </div>
     </div>
   );
-}
-
-// Return the name of the first previewable HTML artifact among the produced
-// files, or null if this turn produced no shareable/polishable preview. Only
-// HTML files drive the preview workspace's Share/Export menu and the
-// visual-polish loop, so the "next step" affordance keys off them.
-function isPreviewableHtml(f: ProjectFile): boolean {
-  return f.kind === "html" || /\.html?$/i.test(f.name);
-}
-
-function pickPreviewableArtifact(files: ProjectFile[]): string | null {
-  const html = files.find(isPreviewableHtml);
-  return html ? html.name : null;
-}
-
-// Fallback for when the card-bearing turn produced no HTML itself: pick the
-// most recently modified HTML in the project (the deliverable the user just
-// made / is looking at) rather than whichever HTML happens to be first, which
-// would attach Share/Download to an arbitrary file in a multi-artifact project.
-function pickLatestPreviewableArtifact(
-  files: ProjectFile[],
-  options?: { slideOnlyMvp?: boolean },
-): string | null {
-  let latest: ProjectFile | null = null;
-  for (const f of files) {
-    if (!isPreviewableHtml(f)) continue;
-    if (
-      options?.slideOnlyMvp
-      && isEmbedSupportingProjectFile(f, { projectFiles: files })
-    ) {
-      continue;
-    }
-    if (!latest || (f.mtime ?? 0) > (latest.mtime ?? 0)) latest = f;
-  }
-  return latest ? latest.name : null;
 }
 
 function inferProducedFilesFromTurn({

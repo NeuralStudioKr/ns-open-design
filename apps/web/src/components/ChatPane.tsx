@@ -39,10 +39,12 @@ import {
   isDesignSystemWorkspacePrompt,
 } from '../design-system-auto-prompt';
 import { isTodoWriteToolName, latestTodoWriteInputForPinnedCard } from '../runtime/todos';
+import { resolvePinnedNextStepSlot } from '../runtime/next-step-slot';
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, ChatMessage, ChatMessageFeedbackChange, Conversation, DesignSystemSummary, PreviewComment, Project, ProjectFile, ProjectMetadata, SkillSummary } from '../types';
 import { exactDateTime, messageTime, shortTime } from '../utils/chatTime';
 import { commentTargetDisplayName, commentsToAttachments, COMMENT_ONLY_USER_PLACEHOLDER, simplePositionLabel, stripUserVisibleUserMessageText } from '../comments';
 import { AssistantMessage, type QuestionFormOpenRequest } from './AssistantMessage';
+import { PinnedNextStepSlot } from './PinnedNextStepSlot';
 import { AmrGuidance } from './AmrGuidance';
 import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-guidance';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
@@ -759,7 +761,7 @@ export function ChatPane({
 }: Props) {
   const t = useTeamverT();
   const analytics = useAnalytics();
-  const { hideUsefulTips } = useTeamverBranding();
+  const { hideUsefulTips, slideOnlyMvp } = useTeamverBranding();
   const amrProfile = config?.agentCliEnv?.amr?.[AMR_PROFILE_ENV_KEY] ?? null;
   const logRef = useRef<HTMLDivElement | null>(null);
   const chatLogScrollIdleTimerRef = useRef<number | null>(null);
@@ -854,6 +856,36 @@ export function ChatPane({
   );
   const hasActiveRunMessage = messages.some(
     (m) => m.role === 'assistant' && isActiveRunStatus(m.runStatus),
+  );
+  const pinnedNextStep = useMemo(
+    () => resolvePinnedNextStepSlot({
+      messages,
+      lastAssistantId,
+      streaming,
+      hasActiveRun: hasActiveRunMessage,
+      queuedSendCount: queuedItems.length,
+      projectId,
+      projectFiles,
+      slideOnlyMvp,
+      onToolboxAction: handleToolboxAction,
+      onShareToOpenDesign,
+      onFeedback: onAssistantFeedback,
+      shareToOpenDesignBusy: !!lastAssistantId && shareToOpenDesignBusyMessageId === lastAssistantId,
+    }),
+    [
+      messages,
+      lastAssistantId,
+      streaming,
+      hasActiveRunMessage,
+      queuedItems.length,
+      projectId,
+      projectFiles,
+      slideOnlyMvp,
+      handleToolboxAction,
+      onShareToOpenDesign,
+      onAssistantFeedback,
+      shareToOpenDesignBusyMessageId,
+    ],
   );
   const retryAssistant = retryableAssistantMessage(messages, lastAssistantId, streaming);
   const diagnosticAssistant = useMemo(() => {
@@ -2218,6 +2250,25 @@ export function ChatPane({
                 }
               : undefined}
           />
+          {pinnedNextStep.visible && pinnedNextStep.artifactName ? (
+            <PinnedNextStepSlot
+              artifactName={pinnedNextStep.artifactName}
+              onShare={onArtifactShare}
+              onDownload={onArtifactDownload}
+              onToolboxAction={handleToolboxAction}
+              onPickSkill={handlePickSkill}
+              skills={skills}
+              toolboxSkillNames={featuredToolboxSkillNames}
+              onShareToOpenDesign={
+                pinnedNextStep.showOpenDesignSubmission && onShareToOpenDesign && lastAssistantId
+                  ? () => onShareToOpenDesign(lastAssistantId)
+                  : undefined
+              }
+              shareToOpenDesignBusy={
+                !!lastAssistantId && shareToOpenDesignBusyMessageId === lastAssistantId
+              }
+            />
+          ) : null}
           <div
             className="chat-composer-slot"
             ref={composerSlotRef}
