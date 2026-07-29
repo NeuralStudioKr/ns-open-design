@@ -26,6 +26,8 @@ export interface ManualEditMergeTargetHint {
 export interface ManualEditSourceScope {
   /** Zero-based deck slide index. When present, element lookup is limited to that slide. */
   slideIndex?: number;
+  /** Optional comment-capture fallback when preview DOM paths do not exist in source. */
+  targetHint?: ManualEditMergeTargetHint;
 }
 
 type ManualEditLookupRoot = (ParentNode & Element) | Document;
@@ -48,7 +50,7 @@ export function applyManualEditPatch(
       : { ok: false, source, error: `Token not found: ${patch.token}` };
   }
 
-  const el = findEditableElement(doc, patch.id, scope, hint);
+  const el = findEditableElement(doc, patch.id, scope, hint ?? scope.targetHint);
   if (!el) return { ok: false, source, error: `Target not found: ${patch.id}` };
 
   if (patch.kind === 'set-text') {

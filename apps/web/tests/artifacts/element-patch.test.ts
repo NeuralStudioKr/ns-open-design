@@ -145,6 +145,8 @@ describe('applyElementPatches', () => {
       allowedSlideIndexes: [1],
       allowedTargetIds: [targetId],
       targetHints: [{
+        targetIds: [targetId],
+        slideIndex: 1,
         id: targetId,
         currentText: 'Target copy',
         htmlHint: '<p>Target copy</p>',
@@ -154,5 +156,43 @@ describe('applyElementPatches', () => {
     if (!applied.ok) return;
     expect(applied.html).toContain('<p>Patched</p>');
     expect(applied.html).toContain('<p>one</p>');
+  });
+
+  it('falls back to comment text/html hints when preview dom paths include non-source wrappers', () => {
+    const currentDeck = [
+      '<!doctype html>',
+      '<html><body>',
+      '<section class="slide" data-slide-index="0"><p>Intro</p></section>',
+      '<section class="slide" data-slide-index="1">',
+      '  <div><div><p>AI 여민동락</p></div></div>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const targetId = 'dom:body > div:nth-of-type(1) > section:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > p:nth-of-type(1)';
+    const parsed = parseElementPatch(
+      `<patch target-id="${targetId}" slide-index="1" kind="set-style">{"fontSize":"40px"}</patch>`,
+    );
+    expect(parsed.ok, parsed.ok ? '' : parsed.reason).toBe(true);
+    if (!parsed.ok) return;
+
+    const applied = applyElementPatches({
+      currentHtml: currentDeck,
+      patches: parsed.patches,
+      allowedSlideIndexes: [1],
+      allowedTargetIds: [targetId],
+      targetHints: [{
+        targetIds: [targetId],
+        slideIndex: 1,
+        id: targetId,
+        currentText: 'AI 여민동락',
+        htmlHint: '<p>',
+        selector: 'body > div:nth-of-type(1) > section:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > p:nth-of-type(1)',
+      }],
+    });
+
+    expect(applied.ok, JSON.stringify(applied)).toBe(true);
+    if (!applied.ok) return;
+    expect(applied.html).toContain('font-size: 40px');
+    expect(applied.html).toContain('AI 여민동락');
   });
 });

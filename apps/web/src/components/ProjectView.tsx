@@ -27,6 +27,7 @@ import {
   isElementPatchArtifactType,
   parseElementPatch,
   resolveElementPatchBodyForApply,
+  type ElementPatchTargetHint,
 } from '../artifacts/element-patch';
 import {
   applyScopedDeckPatchToHtml,
@@ -1221,21 +1222,12 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     allowedSlideIndexes: input.allowedSlideIndexes,
     commentAttachments: input.commentAttachments,
   });
-  const targetHints = (input.commentAttachments ?? []).flatMap((attachment) =>
-    scopedCommentElementIds(attachment).map((id) => ({
-      id,
-      selector: attachment.selector,
-      currentText: attachment.currentText,
-      instructionText: attachment.comment,
-      htmlHint: attachment.htmlHint,
-    })),
-  );
   const applied = applyElementPatches({
     currentHtml,
     patches: parsed.patches,
     allowedSlideIndexes,
     allowedTargetIds,
-    targetHints,
+    targetHints: elementPatchTargetHintsFromCommentAttachments(input.commentAttachments ?? []),
   });
   if (!applied.ok) {
     console.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
@@ -1250,6 +1242,30 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
   }
   return { ok: true, html: applied.html };
+}
+
+function elementPatchTargetHintsFromCommentAttachments(
+  commentAttachments: readonly ChatCommentAttachment[],
+): ElementPatchTargetHint[] {
+  const hints: ElementPatchTargetHint[] = [];
+  for (const attachment of commentAttachments) {
+    const targetIds = scopedCommentElementIds(attachment);
+    if (targetIds.length === 0) continue;
+    hints.push({
+      targetIds,
+      ...(typeof attachment.slideIndex === 'number' &&
+      Number.isInteger(attachment.slideIndex) &&
+      attachment.slideIndex >= 0
+        ? { slideIndex: Math.floor(attachment.slideIndex) }
+        : {}),
+      id: attachment.elementId,
+      currentText: attachment.currentText,
+      instructionText: attachment.comment,
+      htmlHint: attachment.htmlHint,
+      selector: attachment.selector,
+    });
+  }
+  return hints;
 }
 
 /**

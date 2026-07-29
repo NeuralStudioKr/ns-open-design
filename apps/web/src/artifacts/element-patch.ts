@@ -22,6 +22,7 @@ import type { ManualEditPatch } from '../edit-mode/types';
 import {
   applyManualEditPatch,
   type ManualEditMergeTargetHint,
+  type ManualEditSourceScope,
 } from '../edit-mode/source-patches';
 
 export type ElementPatchOp = ManualEditPatch & {
@@ -304,31 +305,17 @@ export interface ApplyElementPatchOptions {
   patches: readonly ElementPatchOp[];
   allowedSlideIndexes?: readonly number[];
   allowedTargetIds?: readonly string[];
-  /**
-   * Comment-attachment hints (currentText / htmlHint / selector) so apply can
-   * recover when the click `dom:` path drifted from on-disk HTML structure.
-   */
-  targetHints?: readonly ManualEditMergeTargetHint[];
+  targetHints?: readonly ElementPatchTargetHint[];
 }
+
+export type ElementPatchTargetHint = ManualEditMergeTargetHint & {
+  targetIds: readonly string[];
+  slideIndex?: number;
+};
 
 export type ApplyElementPatchResult =
   | { ok: true; html: string; appliedCount: number }
   | { ok: false; reason: string };
-
-function resolveElementPatchTargetHint(
-  targetId: string,
-  hints: readonly ManualEditMergeTargetHint[] | undefined,
-): ManualEditMergeTargetHint | undefined {
-  if (!hints?.length) return undefined;
-  const normalized = String(targetId || '').trim();
-  if (normalized) {
-    const exact = hints.find((hint) => String(hint.id || '').trim() === normalized);
-    if (exact) return exact;
-  }
-  // Single pinned comment: reuse its text/html hint even if the model
-  // slightly rewrote target-id punctuation.
-  return hints.length === 1 ? hints[0] : undefined;
-}
 
 export function applyElementPatches(options: ApplyElementPatchOptions): ApplyElementPatchResult {
   const allowedSlides = options.allowedSlideIndexes
@@ -357,8 +344,11 @@ export function applyElementPatches(options: ApplyElementPatchOptions): ApplyEle
     }
 
     const { slideIndex, ...manualEdit } = patch;
-    const hint = resolveElementPatchTargetHint(targetId, options.targetHints);
-    const result = applyManualEditPatch(html, manualEdit, { slideIndex }, hint);
+    const targetHint = findElementPatchTargetHint(options.targetHints, targetId, slideIndex);
+    const scope: ManualEditSourceScope = targetHint
+      ? { slideIndex, targetHint }
+      : { slideIndex };
+    const result = applyManualEditPatch(html, manualEdit, scope);
     if (!result.ok) {
       return { ok: false, reason: result.error ?? `failed to apply ${manualEdit.kind} on ${targetId}` };
     }
@@ -367,4 +357,26 @@ export function applyElementPatches(options: ApplyElementPatchOptions): ApplyEle
   }
 
   return { ok: true, html, appliedCount };
+}
+
+function findElementPatchTargetHint(
+  hints: readonly ElementPatchTargetHint[] | undefined,
+  targetId: string,
+  slideIndex: number,
+): ElementPatchTargetHint | undefined {
+  if (!hints?.length) return undefined;
+  const normalizedTarget = String(targetId || '').trim();
+  for (const hint of hints) {
+    if (
+      typeof hint.slideIndex === 'number' &&
+      Number.isInteger(hint.slideIndex) &&
+      hint.slideIndex >= 0 &&
+      hint.slideIndex !== slideIndex
+    ) {
+      continue;
+    }
+    const ids = hint.targetIds.map((id) => String(id || '').trim()).filter(Boolean);
+    if (ids.includes(normalizedTarget)) return hint;
+  }
+  return hints.length === 1 ? hints[0] : undefined;
 }
