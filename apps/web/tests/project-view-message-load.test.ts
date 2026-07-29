@@ -99,6 +99,10 @@ describe("ProjectView message loading", () => {
     expect((source.match(/skipEmbedAuthRecovery: true/g) ?? []).length).toBeGreaterThanOrEqual(2);
     expect(source).not.toContain("fetch('/api/memory/extract'");
     expect(source).toContain("const userText = stripUserVisibleUserMessageText(prompt).trim()");
+    expect(source).toContain("const isHiddenAutoContinueTurn =");
+    expect(source).toContain("isAutoContinueIncompleteOutputPrompt(prompt)");
+    expect(source).toContain("userText.length > 0 && !isHiddenAutoContinueTurn");
+    expect(source).toContain("assistantText.length === 0 || isHiddenAutoContinueTurn");
     expect(source).not.toContain("const userText = (userMsg.content ?? '').trim()");
     expect(source).toContain("const assistantText = stripAllClosedArtifacts(accumulatedAssistantText).trim()");
     expect(source).toContain("assistantMessage: assistantText");

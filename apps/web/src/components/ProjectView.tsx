@@ -8414,6 +8414,9 @@ export function ProjectView({
         // BYOK users even though the UI saves model + index + entries
         // for that mode.
         const userText = stripUserVisibleUserMessageText(prompt).trim();
+        const isHiddenAutoContinueTurn =
+          isAutoContinueIncompleteOutputPrompt(prompt) ||
+          isAutoContinueIncompleteOutputPrompt(userText);
         // Snapshot the live BYOK chat config so the daemon can run
         // "Same as chat" memory extraction against the same vendor /
         // key / baseUrl / apiVersion the user is chatting with. The
@@ -8437,7 +8440,7 @@ export function ProjectView({
                     : '',
               }
             : undefined;
-        if (userText.length > 0) {
+        if (userText.length > 0 && !isHiddenAutoContinueTurn) {
           try {
             const memoryResponse = await fetchTeamverDaemon('/api/memory/extract', {
               method: 'POST',
@@ -8531,7 +8534,7 @@ export function ProjectView({
           onDone: () => {
             handlers.onDone(accumulatedAssistantText);
             const assistantText = stripAllClosedArtifacts(accumulatedAssistantText).trim();
-            if (userText.length === 0 || assistantText.length === 0) return;
+            if (userText.length === 0 || assistantText.length === 0 || isHiddenAutoContinueTurn) return;
             void fetchTeamverDaemon('/api/memory/extract', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
