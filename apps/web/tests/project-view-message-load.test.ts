@@ -750,7 +750,10 @@ describe("ProjectView message loading", () => {
 
   it("routes scoped full-deck rewrite diff failures to auto-continue", () => {
     const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("scopeResult.code === 'full_deck_diff_failed'");
+    expect(source).toContain("function shouldRetryScopedFullDeckRewrite");
+    expect(source).toContain("full_deck_outside_slide_scope");
+    expect(source).toContain("async function trySalvageScopedFullDeckRewrite");
+    expect(source).toContain("salvaged scoped full-deck rewrite via narrow merge");
     expect(source).toContain("routing scoped full-deck rewrite to auto-continue");
   });
 
