@@ -91,7 +91,7 @@ export function resolvePinnedNextStepSlot(input: {
   streaming: boolean;
   hasActiveRun: boolean;
   queuedSendCount: number;
-  projectId?: string;
+  projectId?: string | null;
   projectFiles: readonly ProjectFile[];
   slideOnlyMvp?: boolean;
   onToolboxAction?: unknown;
