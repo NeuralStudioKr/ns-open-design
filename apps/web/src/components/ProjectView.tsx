@@ -1867,6 +1867,7 @@ type ArtifactPersistResult =
   | { kind: 'skipped-duplicate'; fileName: string }
   | { kind: 'skipped-incomplete'; fileName: string }
   | { kind: 'scope-rejected'; fileName: string; code: ScopedDeckPersistFailureCode; reason: string }
+  | { kind: 'artifact-regression'; fileName: string; reason: string }
   | { kind: 'rejected'; fileName: string; reason: string }
   | { kind: 'save-failed'; fileName: string; status?: number; code?: string; message?: string }
   | { kind: 'auth-replay-queued'; fileName: string }
@@ -1880,7 +1881,38 @@ function shouldFailRunForArtifactPersistResult(result: ArtifactPersistResult | n
     || result?.kind === 'rejected'
     || result?.kind === 'save-failed'
     || result?.kind === 'scope-rejected'
+    || result?.kind === 'artifact-regression'
     || result?.kind === 'skipped-discovery-turn';
+}
+
+const ARTIFACT_REGRESSION_MIN_PRIOR_BYTES = 8192;
+const ARTIFACT_REGRESSION_MIN_RATIO = 0.35;
+
+function findClientArtifactRegression(input: {
+  fileName: string;
+  htmlBody: string;
+  projectFiles: readonly ProjectFile[];
+}): { fileName: string; priorSize: number; newSize: number; reason: string } | null {
+  const fileName = input.fileName.trim();
+  if (!fileName.toLowerCase().endsWith('.html')) return null;
+  const newSize = new Blob([input.htmlBody]).size;
+  const prior = input.projectFiles.find((file) => {
+    const name = (file.path ?? file.name).trim();
+    return name === fileName || file.name.trim() === fileName;
+  });
+  const priorSize = typeof prior?.size === 'number' && Number.isFinite(prior.size)
+    ? prior.size
+    : 0;
+  if (priorSize < ARTIFACT_REGRESSION_MIN_PRIOR_BYTES) return null;
+  if (newSize >= priorSize * ARTIFACT_REGRESSION_MIN_RATIO) return null;
+  return {
+    fileName,
+    priorSize,
+    newSize,
+    reason:
+      `New artifact body for "${fileName}" is ${newSize} bytes, but the current file is ${priorSize} bytes. ` +
+      'This looks like a placeholder/regression and was not written over the existing deck.',
+  };
 }
 
 export function ProjectView({
@@ -3814,6 +3846,24 @@ export function ProjectView({
                 designSystemId: project.designSystemId,
               },
             });
+      const regression = findClientArtifactRegression({
+        fileName,
+        htmlBody,
+        projectFiles: currentProjectFiles,
+      });
+      if (regression) {
+        console.warn('[teamver] blocked placeholder artifact regression before save', {
+          fileName: regression.fileName,
+          priorSize: regression.priorSize,
+          newSize: regression.newSize,
+        });
+        setError(formatProjectArtifactRejectedError(regression.fileName, regression.reason));
+        return {
+          kind: 'artifact-regression',
+          fileName: regression.fileName,
+          reason: regression.reason,
+        };
+      }
       const result = await writeProjectTextFileDetailed(
         project.id,
         fileName,
@@ -7107,6 +7157,11 @@ export function ProjectView({
                       code: terminalPersistResult.code,
                       message: terminalPersistResult.message,
                     })
+                  : terminalPersistResult?.kind === 'artifact-regression'
+                    ? formatProjectArtifactRejectedError(
+                        terminalPersistResult.fileName,
+                        terminalPersistResult.reason,
+                      )
                   : terminalPersistResult?.kind === 'scope-rejected'
                     ? formatProjectArtifactCommentScopeRejectedError(
                         [terminalPersistResult.code, terminalPersistResult.reason]
@@ -7127,6 +7182,8 @@ export function ProjectView({
                     });
               const deliverableErrorCode = terminalPersistResult?.kind === 'scope-rejected'
                 ? terminalPersistResult.code
+                : terminalPersistResult?.kind === 'artifact-regression'
+                  ? 'artifact_regression'
                 : 'incomplete_output';
               const autoContinueCount = syncAutoContinueCountFromMessages(
                 conversationAutoContinueCountRef.current,

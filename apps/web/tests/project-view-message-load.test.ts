@@ -334,7 +334,7 @@ describe("ProjectView message loading", () => {
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);
-    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 19000);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 24000);
 
     expect(autoOpenBlock).toContain("const rawFinalText = streamedText || fullText || latestAssistantMsg.content || ''");
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");
@@ -712,6 +712,16 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("formatProjectArtifactCommentScopeRejectedError(");
     expect(source).toContain("[terminalPersistResult.code, terminalPersistResult.reason]");
+  });
+
+  it("blocks tiny placeholder artifacts before they overwrite an existing deck", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("function findClientArtifactRegression");
+    expect(source).toContain("ARTIFACT_REGRESSION_MIN_PRIOR_BYTES");
+    expect(source).toContain("ARTIFACT_REGRESSION_MIN_RATIO");
+    expect(source).toContain("blocked placeholder artifact regression before save");
+    expect(source).toContain("kind: 'artifact-regression'");
+    expect(source).toContain("? 'artifact_regression'");
   });
 
   it("waits for embed boot and retries stuck message loads on re-entry", () => {

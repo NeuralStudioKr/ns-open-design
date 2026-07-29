@@ -239,6 +239,7 @@ export type AutoContinuePersistResultKind =
   | 'auth-replay-queued'
   | 'skipped-discovery-turn'
   | 'scope-rejected'
+  | 'artifact-regression'
   | null;
 
 /**
@@ -263,7 +264,7 @@ export function shouldAutoContinueForIncompleteOutput(options: {
   if (options.autoContinueCount >= max) return false;
 
   const kind = options.terminalPersistResultKind;
-  if (kind === 'skipped-incomplete' || kind === 'rejected') return true;
+  if (kind === 'skipped-incomplete') return true;
   if (kind !== null) return false;
   return options.hadIncompleteParsedArtifact || options.shouldFailMissingSlideHtml;
 }

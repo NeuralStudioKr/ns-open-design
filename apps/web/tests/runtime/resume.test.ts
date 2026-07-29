@@ -217,13 +217,13 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     ).toBe(true);
   });
 
-  it('fires for validation rejected artifacts', () => {
+  it('does NOT fire for validation rejected artifacts', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({
         ...base,
         terminalPersistResultKind: 'rejected',
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('fires when no persist ran but slide-missing / incomplete signals are set', () => {

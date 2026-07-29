@@ -20,6 +20,7 @@ type ArtifactPersistResult =
   | { kind: 'skipped-duplicate'; fileName: string }
   | { kind: 'skipped-incomplete'; fileName: string }
   | { kind: 'scope-rejected'; fileName: string; code: string; reason: string }
+  | { kind: 'artifact-regression'; fileName: string; reason: string }
   | { kind: 'rejected'; fileName: string; reason: string }
   | { kind: 'save-failed'; fileName: string; status?: number; code?: string; message?: string }
   | { kind: 'auth-replay-queued'; fileName: string }
