@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { streamViaDaemon } from '../../providers/daemon';
 import { listMessages, saveMessage } from '../../state/projects';
 import { appendErrorStatusEvent } from '../../runtime/chat-events';
+import { dedupeConversationAssistantRows } from '../../runtime/conversation-message-dedupe';
 import { agentModelDisplayName } from '../../utils/agentLabels';
 import { randomUUID } from '../../utils/uuid';
 import { effectiveAgentModelChoice } from '../agentModelSelection';
@@ -106,7 +107,7 @@ export function useConversationChat(
       try {
         const list = await listMessages(projectId, conversationId);
         if (cancelled) return;
-        setMessages(list);
+        setMessages(dedupeConversationAssistantRows(list));
         setError(null);
       } catch (err) {
         if (cancelled) return;
@@ -209,7 +210,7 @@ export function useConversationChat(
       const history = retryTarget
         ? [...retryTarget.priorMessages, userMsg]
         : [...messagesRef.current, userMsg];
-      setMessages([...history, assistantMsg]);
+      setMessages(dedupeConversationAssistantRows([...history, assistantMsg]));
       setStreaming(true);
       setError(null);
       if (!retryTarget) persist(userMsg);
