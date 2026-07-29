@@ -470,7 +470,8 @@ function readOp(openTag: string): DeckPatchOp | null {
  * boilerplate without touching them.
  */
 function findBodyContentRange(html: string): { start: number; end: number } | null {
-  const openMatch = /<body\b[^>]*>/i.exec(html);
+  // Allow `>` inside quoted body attrs (same class of bug as section/patch opens).
+  const openMatch = /<body\b(?:[^>"']|"[^"]*"|'[^']*')*>/i.exec(html);
   if (!openMatch) return null;
   const start = openMatch.index + openMatch[0].length;
   const closeMatch = /<\/body\s*>/i.exec(html.slice(start));

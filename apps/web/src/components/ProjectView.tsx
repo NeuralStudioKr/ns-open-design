@@ -1312,6 +1312,7 @@ function shouldRetryScopedCommentMergeFailure(
     return (
       reason.startsWith('element-patch <patch> missing slide-index') ||
       reason.startsWith('element-patch <patch> missing target-id') ||
+      reason.startsWith('element-patch could not parse ') ||
       reason.startsWith('deck-patch section missing data-slide-index')
     );
   }
@@ -1321,6 +1322,8 @@ function shouldRetryScopedCommentMergeFailure(
     reason === 'Selected targets were unchanged.' ||
     reason === 'No valid element targets in attached comment scope.' ||
     reason.startsWith('Target not found:') ||
+    reason.includes('nested markup') ||
+    reason.startsWith('element-patch could not parse ') ||
     (reason.startsWith('element-patch targets ') &&
       reason.endsWith(' outside attached comment scope'))
   );
@@ -1329,7 +1332,10 @@ function shouldRetryScopedCommentMergeFailure(
 export function isElementPatchEmptyBody(reason: string): boolean {
   return (
     reason === 'empty element-patch body' ||
-    reason === 'no <patch> blocks in element-patch body'
+    reason === 'no <patch> blocks in element-patch body' ||
+    // Model emitted `<patch … kind="set-text"></patch>` (empty body) or
+    // invalid set-style JSON — same recovery path as a missing patch block.
+    reason.startsWith('element-patch could not parse ')
   );
 }
 

@@ -122,9 +122,55 @@ export function coerceDeckPatchToAllowedScope(
       }
     }
   }
+  // Refuse remap when the patch HTML clearly identifies a different slide
+  // (data-slide-index / data-screen-label). Blindly rewriting slideIndex in
+  // that case pastes foreign slide content onto the allowed index.
+  if (currentHtml) {
+    const conflicts = patch.ops.some(
+      (op) =>
+        op.slideIndex !== allowed
+        && op.op === 'replace'
+        && deckPatchHtmlConflictsWithAllowedSlide(op.html, currentHtml, allowed),
+    );
+    if (conflicts) return patch;
+  }
   return {
     ops: patch.ops.map((op) => ({ ...op, slideIndex: allowed })),
   };
+}
+
+function deckPatchHtmlConflictsWithAllowedSlide(
+  html: string,
+  currentHtml: string,
+  allowedSlideIndex: number,
+): boolean {
+  const source = String(html || '');
+  if (!source.trim()) return false;
+  const openTag = /^<section\b(?:[^>"']|"[^"]*"|'[^']*')*>/i.exec(source)?.[0] ?? '';
+  const declaredIndex = /\bdata-slide-index\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/i.exec(openTag);
+  const declaredRaw = (declaredIndex?.[1] ?? declaredIndex?.[2] ?? declaredIndex?.[3] ?? '').trim();
+  if (declaredRaw !== '') {
+    const declared = Number(declaredRaw);
+    if (Number.isInteger(declared) && declared >= 0 && declared !== allowedSlideIndex) {
+      return true;
+    }
+  }
+  const labelMatch = /\bdata-screen-label\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(openTag);
+  const label = (labelMatch?.[1] ?? labelMatch?.[2] ?? '').trim();
+  if (!label) return false;
+  const allowedSlide = extractSlideByIndex(currentHtml, allowedSlideIndex);
+  if (allowedSlide && allowedSlide.includes(`data-screen-label="${label}"`)) return false;
+  const foreign = extractTopLevelSlideSections(
+    (() => {
+      const bodyMatch = /<body\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/body\s*>/i.exec(currentHtml);
+      return bodyMatch?.[1] ?? currentHtml;
+    })(),
+  );
+  for (let index = 0; index < foreign.length; index += 1) {
+    if (index === allowedSlideIndex) continue;
+    if (foreign[index]?.openTag.includes(`data-screen-label="${label}"`)) return true;
+  }
+  return false;
 }
 
 function targetElementTextPreservedAfterMerge(

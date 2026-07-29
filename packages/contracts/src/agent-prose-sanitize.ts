@@ -953,15 +953,24 @@ function stripClosedTagFamilies(input: string, tagNames: readonly string[]): str
   return out;
 }
 
-const CLOSED_ARTIFACT_SCAN_RE = /<artifact\b[^>]*>[\s\S]*?<\/artifact\s*>/gi;
+/** Quote-aware artifact open tag so attrs may contain `>`. */
+const ARTIFACT_OPEN_ATTRS = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
+const CLOSED_ARTIFACT_SCAN_RE = new RegExp(
+  String.raw`<artifact\b${ARTIFACT_OPEN_ATTRS}>[\s\S]*?</artifact\s*>`,
+  "gi",
+);
+/** Unclosed artifact stream suffix (no matching `</artifact>`). */
+const OPEN_ARTIFACT_SUFFIX_RE = new RegExp(
+  String.raw`<artifact\b${ARTIFACT_OPEN_ATTRS}>(?![\s\S]*?</artifact\s*>)[\s\S]*$`,
+  "i",
+);
 const ARTIFACT_PLACEHOLDER_PREFIX = "\u0000OD_ARTIFACT_MASK_";
 const ARTIFACT_PLACEHOLDER_SUFFIX = "\u0000";
 
 /**
- * Replace every closed `<artifact …>…</artifact>` region with a stable
- * placeholder token so subsequent tag / debris scrubbing cannot touch
- * their contents. The returned `restore` swaps placeholders back to
- * the original bodies verbatim.
+ * Replace closed `<artifact …>…</artifact>` regions (and any trailing unclosed
+ * `type="element-patch"` stream) with stable placeholders so subsequent tag /
+ * debris scrubbing cannot touch their contents — including inner `<patch>`.
  *
  * The placeholder uses NUL bytes to guarantee it will not collide
  * with either the input prose or any regex pattern in this module.
@@ -973,10 +982,19 @@ function maskClosedArtifactRegions(
 ): { text: string; restore: (masked: string) => string } {
   CLOSED_ARTIFACT_SCAN_RE.lastIndex = 0;
   const regions: string[] = [];
-  const masked = input.replace(CLOSED_ARTIFACT_SCAN_RE, (match) => {
+  const push = (match: string): string => {
     const token = `${ARTIFACT_PLACEHOLDER_PREFIX}${regions.length}${ARTIFACT_PLACEHOLDER_SUFFIX}`;
     regions.push(match);
     return token;
+  };
+  let masked = input.replace(CLOSED_ARTIFACT_SCAN_RE, (match) => push(match));
+  // Truncated streams often leave `<artifact type="element-patch">…<patch>…`
+  // without `</artifact>`. Mask element-patch suffixes so pseudo-tool strip
+  // does not empty the in-progress patch body mid-turn.
+  OPEN_ARTIFACT_SUFFIX_RE.lastIndex = 0;
+  masked = masked.replace(OPEN_ARTIFACT_SUFFIX_RE, (match) => {
+    if (!/\btype\s*=\s*["']element-patch["']/i.test(match)) return match;
+    return push(match);
   });
   if (regions.length === 0) {
     return { text: input, restore: (out: string) => out };

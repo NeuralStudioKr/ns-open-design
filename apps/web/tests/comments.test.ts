@@ -738,6 +738,22 @@ describe('preview comment attachment helpers', () => {
     expect(stripUserVisibleUserMessageText(prompt)).toBe('폰트 사이즈 두배로 키워줘');
   });
 
+  it('builds set-style templates for style-only comment requests', () => {
+    const template = buildConcreteElementPatchTemplate([
+      commentAttachment({
+        elementId: 'hero-title',
+        selector: '[data-od-id="hero-title"]',
+        slideIndex: 0,
+        label: 'h1',
+        comment: '폰트 더 크게 하고 굵게',
+        currentText: 'Title',
+      }),
+    ]);
+    expect(template).toContain('kind="set-style"');
+    expect(template).toContain('fontSize');
+    expect(template).not.toContain('요청한 새 텍스트');
+  });
+
   it('does not build element-patch templates or coerce hints for page root targets', () => {
     const rootTarget = commentAttachment({
       elementId: 'dom:body',

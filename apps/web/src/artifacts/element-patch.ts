@@ -73,41 +73,56 @@ export type ElementPatchCoerceHint = {
 
 /**
  * Recover `<patch>` blocks (or plain replacement text) when the streaming
- * parser captured an empty element-patch artifact body but the assistant
- * turn still contains patch-shaped output elsewhere.
+ * parser captured an empty / junk element-patch artifact body but the
+ * assistant turn still contains patch-shaped output elsewhere.
+ *
+ * Non-empty junk (prose, truncated `<pa`) must NOT block salvage — otherwise
+ * a well-formed `<patch>` in raw assistant text is ignored and apply fails.
  */
 export function salvageElementPatchBody(
   artifactBody: string | null | undefined,
   sourceText?: string | null,
 ): string | null {
   const body = String(artifactBody ?? '').trim();
-  if (body) return body;
+  if (body && elementPatchBodyHasParseablePatches(body)) return body;
 
   const source = String(sourceText ?? '');
-  if (!source.trim()) return null;
+  let plainCandidate: string | null = null;
+  if (source.trim()) {
+    LOOSE_PATCH_TAG_RE.lastIndex = 0;
+    const loosePatches = [...source.matchAll(LOOSE_PATCH_TAG_RE)];
+    if (loosePatches.length > 0) {
+      const joined = loosePatches.map((match) => match[0] ?? '').filter(Boolean).join('\n');
+      if (elementPatchBodyHasParseablePatches(joined)) return joined;
+    }
 
-  LOOSE_PATCH_TAG_RE.lastIndex = 0;
-  const loosePatches = [...source.matchAll(LOOSE_PATCH_TAG_RE)];
-  if (loosePatches.length > 0) {
-    return loosePatches.map((match) => match[0] ?? '').filter(Boolean).join('\n');
+    const closedArtifact = source.match(
+      /<artifact\b(?:[^>"']|"[^"]*"|'[^']*')*\btype\s*=\s*["']element-patch["'](?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/artifact>/i,
+    );
+    if (closedArtifact?.[1]?.trim()) {
+      const inner = closedArtifact[1].trim();
+      if (elementPatchBodyHasParseablePatches(inner)) return inner;
+      plainCandidate = inner;
+    }
+
+    const openArtifact = source.match(
+      /<artifact\b(?:[^>"']|"[^"]*"|'[^']*')*\btype\s*=\s*["']element-patch["'](?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*)$/i,
+    );
+    if (openArtifact?.[1]) {
+      const tail = openArtifact[1].replace(/<\/artifact>[\s\S]*$/i, '').trim();
+      if (tail) {
+        if (elementPatchBodyHasParseablePatches(tail)) return tail;
+        plainCandidate = plainCandidate ?? tail;
+      }
+    }
   }
 
-  const closedArtifact = source.match(
-    /<artifact\b[^>]*\btype\s*=\s*["']element-patch["'][^>]*>([\s\S]*?)<\/artifact>/i,
-  );
-  if (closedArtifact?.[1]?.trim()) {
-    return closedArtifact[1].trim();
-  }
+  // Prefer original body, then plain artifact text for coercePlainText…
+  return body || plainCandidate;
+}
 
-  const openArtifact = source.match(
-    /<artifact\b[^>]*\btype\s*=\s*["']element-patch["'][^>]*>([\s\S]*)$/i,
-  );
-  if (openArtifact?.[1]) {
-    const tail = openArtifact[1].replace(/<\/artifact>[\s\S]*$/i, '').trim();
-    if (tail) return tail;
-  }
-
-  return null;
+function elementPatchBodyHasParseablePatches(body: string): boolean {
+  return parseElementPatch(body).ok;
 }
 
 export function coercePlainTextElementPatchBody(
@@ -261,15 +276,34 @@ function iteratePatchTags(source: string): Array<{ attrsRaw: string; body: strin
 
 function findPatchTagEnd(source: string, start: number): number {
   let quote: '"' | "'" | null = null;
+  let unquotedDomPath = false;
   for (let index = start; index < source.length; index += 1) {
     const ch = source[index];
+    if (!ch) break;
     if (quote) {
       if (ch === quote) quote = null;
       continue;
     }
     if (ch === '"' || ch === "'") {
       quote = ch;
+      unquotedDomPath = false;
       continue;
+    }
+    // Unquoted `target-id=dom:body > section…` — `>` is a CSS combinator,
+    // not the end of the opening tag.
+    const prefix = source.slice(start, index + 1);
+    if (!unquotedDomPath && /(?:^|\s)target-id\s*=\s*dom:$/i.test(prefix)) {
+      unquotedDomPath = true;
+      continue;
+    }
+    if (unquotedDomPath) {
+      if (ch === '>') continue;
+      if (/\s/.test(ch)) {
+        if (/^\s+(?:slide-index|kind|data-[\w-]+)\s*=/i.test(source.slice(index))) {
+          unquotedDomPath = false;
+        }
+        continue;
+      }
     }
     if (ch === '>') return index;
   }
@@ -286,6 +320,34 @@ function parsePatchAttrs(raw: string): Record<string, string> {
     if (key) out[key] = value;
     match = re.exec(raw);
   }
+  // Unquoted `target-id=dom:body > section…` truncates at the first space
+  // under the generic attr regex even when slide-index parsed correctly.
+  const targetId = out['target-id'] || out['targetid'] || '';
+  if (
+    targetId.startsWith('dom:')
+    && !targetId.includes('>')
+    && /\btarget-id\s*=\s*dom:\S+\s*>/i.test(raw)
+  ) {
+    const recovered = recoverUnquotedDomTargetAttrs(raw);
+    if (recovered) Object.assign(out, recovered);
+  }
+  return out;
+}
+
+function recoverUnquotedDomTargetAttrs(raw: string): Record<string, string> | null {
+  const match = /\btarget-id\s*=\s*(dom:\S+(?:\s*>\s*[^\s>]+(?:\([^)]*\))?)+)\s+(?=slide-index\s*=|kind\s*=|data-[\w-]+\s*=)/i.exec(
+    raw,
+  );
+  if (!match?.[1]) return null;
+  const out: Record<string, string> = {
+    'target-id': decodeXmlEntities(match[1].trim()),
+  };
+  const slide = /\bslide-index\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/i.exec(raw);
+  const slideRaw = (slide?.[1] ?? slide?.[2] ?? slide?.[3] ?? '').trim();
+  if (slideRaw) out['slide-index'] = slideRaw;
+  const kind = /\bkind\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/i.exec(raw);
+  const kindRaw = (kind?.[1] ?? kind?.[2] ?? kind?.[3] ?? '').trim();
+  if (kindRaw) out.kind = kindRaw;
   return out;
 }
 
@@ -411,12 +473,13 @@ export function applyElementPatches(options: ApplyElementPatchOptions): ApplyEle
     const originalTargetId = originalPatch && 'id' in originalPatch
       ? String(originalPatch.id || '').trim()
       : '';
+    const allowedIdList = allowedTargets ? [...allowedTargets] : [];
     if (
       allowedTargets
       && allowedTargets.size > 0
       && targetId
-      && !allowedTargets.has(targetId)
-      && (!originalTargetId || !allowedTargets.has(originalTargetId))
+      && !commentTargetIdsInclude(targetId, allowedIdList)
+      && !(originalTargetId && commentTargetIdsInclude(originalTargetId, allowedIdList))
     ) {
       return {
         ok: false,

@@ -58,6 +58,20 @@ describe('parseElementPatch', () => {
     });
   });
 
+  it('recovers unquoted target-id CSS paths that contain ">"', () => {
+    const result = parseElementPatch(
+      '<patch target-id=dom:body > section:nth-of-type(1) > h1:nth-of-type(1) slide-index=0 kind=set-text>새 제목</patch>',
+    );
+    expect(result.ok, result.ok ? '' : result.reason).toBe(true);
+    if (!result.ok) return;
+    expect(result.patches[0]).toMatchObject({
+      slideIndex: 0,
+      id: 'dom:body > section:nth-of-type(1) > h1:nth-of-type(1)',
+      kind: 'set-text',
+      value: '새 제목',
+    });
+  });
+
   it('parses target-id CSS paths that contain ">" (dom:body selectors)', () => {
     const targetId = 'dom:body > section:nth-of-type(1) > h1:nth-of-type(1)';
     // Model / template often emit the raw ">" inside the quoted attr.

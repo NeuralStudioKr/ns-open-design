@@ -22,6 +22,18 @@ describe('salvageElementPatchBody', () => {
       '<artifact type="element-patch" identifier="deck">김개발 작업물</artifact>';
     expect(salvageElementPatchBody('', source)).toBe('김개발 작업물');
   });
+
+  it('prefers loose <patch> blocks when the artifact body is non-empty junk', () => {
+    const source = [
+      '수정했습니다.',
+      '<artifact type="element-patch" identifier="deck">partial <pa</artifact>',
+      '<patch target-id="od-title-1" slide-index="2" kind="set-text">김개발 작업물</patch>',
+    ].join('\n');
+    const salvaged = salvageElementPatchBody('partial <pa', source);
+    expect(salvaged).toContain('od-title-1');
+    expect(salvaged).toContain('김개발 작업물');
+    expect(parseElementPatch(salvaged ?? '').ok).toBe(true);
+  });
 });
 
 describe('coercePlainTextElementPatchBody', () => {

@@ -1032,6 +1032,18 @@ describe("agent-prose-sanitize SSOT", () => {
       expect(out).toContain("Here's the edit:");
     });
 
+    it("preserves <patch> inside an unclosed element-patch stream suffix", () => {
+      const input = [
+        "Streaming edit:",
+        "<artifact type=\"element-patch\" identifier=\"deck\">",
+        "  <patch target-id=\"headline\" slide-index=\"0\" kind=\"set-text\">New Title</patch>",
+        // no closing </artifact> — truncated stream
+      ].join("\n");
+      const out = sanitizeLeakedAgentProse(input, { preserveClosedArtifact: true });
+      expect(out).toContain("<patch target-id=\"headline\" slide-index=\"0\" kind=\"set-text\">New Title</patch>");
+      expect(out).toContain("<artifact type=\"element-patch\"");
+    });
+
     it("still scrubs genuine pseudo-tool <patch> narration OUTSIDE <artifact>", () => {
       // A Claude-style file-edit pseudo-tool `<patch>` that leaked into
       // chat prose (not wrapped in an artifact) MUST still get stripped

@@ -72,6 +72,36 @@ describe('element-patch dom: target resolution', () => {
     expect(applied.html).not.toContain('회사 이름');
   });
 
+  it('accepts path-N aliases in allowedTargetIds when patch uses dom:[data-od-id]', () => {
+    const deck = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><h1>Intro</h1></section>',
+      '<section class="slide" data-slide-index="1"><h1>Title</h1></section>',
+      '</body></html>',
+    ].join('');
+    const parsed = parseElementPatch(
+      '<patch target-id=\'dom:[data-od-id="path-1-0"]\' slide-index="1" kind="set-text">New</patch>',
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const applied = applyElementPatches({
+      currentHtml: deck,
+      patches: parsed.patches,
+      allowedSlideIndexes: [1],
+      // Only the structural id is allow-listed — alias must still pass.
+      allowedTargetIds: ['path-1-0'],
+      commentAttachments: [{
+        ...COMMENT_ATTACHMENT,
+        elementId: 'path-1-0',
+        selector: '[data-od-id="path-1-0"]',
+        currentText: 'Title',
+        htmlHint: '<h1>Title</h1>',
+        slideIndex: 1,
+      }],
+    });
+    expect(applied.ok, JSON.stringify(applied)).toBe(true);
+  });
+
   it('keeps structural path-N ids instead of minting dom:[data-od-id="path-N"]', () => {
     // Preview annotates body > section[0] > h1 as path-0-0; disk has no data-od-id.
     const deck = [

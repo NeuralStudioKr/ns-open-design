@@ -13,6 +13,7 @@ import type {
   PreviewVisualMarkKind,
 } from './types';
 import { stripUserVisibleQuestionFormProtocolText } from './artifacts/question-form';
+import { looksLikeStyleOnlyCommentRequest } from './edit-mode/comment-edit-intent';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 
 export interface PreviewCommentSnapshot {
@@ -817,9 +818,14 @@ export function buildConcreteElementPatchTemplate(
     if (!targetId) continue;
     if (isUnsafeElementPatchTargetId(targetId)) continue;
     const slideIndex = Math.floor(item.slideIndex);
+    const styleOnly = looksLikeStyleOnlyCommentRequest(item.comment || '');
+    const kind = styleOnly ? 'set-style' : 'set-text';
+    const body = styleOnly
+      ? '{"fontSize":"32px","fontWeight":"700"}'
+      : '(요청한 새 텍스트)';
     blocks.push(
       '<artifact type="element-patch" identifier="deck">',
-      `  <patch target-id="${escapeXmlAttr(targetId)}" slide-index="${slideIndex}" kind="set-text">(요청한 새 텍스트)</patch>`,
+      `  <patch target-id="${escapeXmlAttr(targetId)}" slide-index="${slideIndex}" kind="${kind}">${body}</patch>`,
       '</artifact>',
     );
   }

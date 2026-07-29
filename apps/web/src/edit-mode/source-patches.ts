@@ -207,16 +207,21 @@ export function resolveManualEditTargetReference(
       ? findEditableElementBySelector(doc, root, hint.selector, scope) ?? findElementByHint(doc, scope, hint)
       : null;
   if (!target) return null;
+  const attrOdId = (target.getAttribute('data-od-id') || '').trim();
   const stableId = (
-    target.getAttribute('data-od-id') ||
+    attrOdId ||
     target.getAttribute('data-od-runtime-id') ||
     target.getAttribute('data-od-source-path') ||
     target.getAttribute('data-screen-label') ||
     ''
   ).trim();
-  // Prefer durable attrs; never promote preview-only path-N attrs — they
-  // vanish on disk and become `dom:[data-od-id="path-N"]` dead ends.
-  if (stableId && !isEphemeralGeneratedPathId(stableId)) return stableId;
+  // Prefer durable attrs. path-N is acceptable only when it is literally
+  // present on the on-disk element we resolved — never invent
+  // `dom:[data-od-id="path-N"]` from a preview-only hint selector.
+  if (stableId) {
+    if (!isEphemeralGeneratedPathId(stableId)) return stableId;
+    if (attrOdId === stableId) return stableId;
+  }
 
   const pathId =
     (isEphemeralGeneratedPathId(normalizedId) ? normalizedId : null)
@@ -234,10 +239,10 @@ export function resolveManualEditTargetReference(
   if (selector) {
     const fromSelector = extractIdentityFromAttrSelectorId(selector);
     if (fromSelector && isEphemeralGeneratedPathId(fromSelector)) {
-      return fromSelector;
-    }
-    // Avoid minting dom:[data-od-id="path-N"] for ephemeral preview selectors.
-    if (!(fromSelector && isEphemeralGeneratedPathId(fromSelector))) {
+      // Only keep path-N when the disk element actually carries it.
+      if (attrOdId === fromSelector) return fromSelector;
+      if (findElementByScopedPath(doc, root, fromSelector)) return fromSelector;
+    } else if (!fromSelector || !isEphemeralGeneratedPathId(fromSelector)) {
       return selector.startsWith('dom:') ? selector : `dom:${selector}`;
     }
   }
@@ -811,7 +816,14 @@ function significantTextTokens(text: string): string[] {
 }
 
 function normalizeTextForCandidate(text: string): string {
-  return String(text || '').replace(/\s+/g, ' ').trim();
+  // Comment captures truncate with a literal `...` suffix (trimContextText /
+  // trimHtmlHint). Strip that ellipsis so hint matching still works against
+  // the full on-disk text.
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/(?:\u2026|\.{3})$/, '')
+    .trim();
 }
 
 function findElementByDomSelector(

@@ -66,6 +66,36 @@ describe('coerceDeckPatchToAllowedScope', () => {
     const coerced = coerceDeckPatchToAllowedScope(patch, [0], CURRENT_HTML, [attachment(0)]);
     expect(coerced.ops[0]?.slideIndex).toBe(0);
   });
+
+  it('does not remap HTML that carries another slide\'s data-screen-label', () => {
+    const current = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0" data-screen-label="01 Cover"><h1>Cover</h1></section>',
+      '<section class="slide" data-slide-index="1" data-screen-label="02 About"><h2>About</h2></section>',
+      '</body></html>',
+    ].join('');
+    const patch = {
+      ops: [{
+        op: 'replace' as const,
+        slideIndex: 1,
+        html: '<section class="slide" data-screen-label="02 About"><h2>Hijacked</h2></section>',
+      }],
+    };
+    const coerced = coerceDeckPatchToAllowedScope(
+      patch,
+      [0],
+      current,
+      [{
+        ...attachment(0),
+        elementId: '01 Cover',
+        currentText: 'Cover',
+        htmlHint: '<h1>Cover</h1>',
+        slideIndex: 0,
+      }],
+    );
+    // Keep the model's index so scoped apply rejects instead of pasting About onto Cover.
+    expect(coerced.ops[0]?.slideIndex).toBe(1);
+  });
 });
 
 describe('resolveScopedCommentSlideCandidates', () => {
