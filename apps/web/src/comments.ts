@@ -814,6 +814,7 @@ export function buildConcreteElementPatchTemplate(
     }
     const targetId = String(item.elementId || '').trim();
     if (!targetId) continue;
+    if (isUnsafeElementPatchTargetId(targetId)) continue;
     const slideIndex = Math.floor(item.slideIndex);
     blocks.push(
       '<artifact type="element-patch" identifier="deck">',
@@ -838,9 +839,23 @@ export function elementPatchCoerceHintsFromCommentAttachments(
     }
     const targetId = String(item.elementId || '').trim();
     if (!targetId) continue;
+    if (isUnsafeElementPatchTargetId(targetId)) continue;
     hints.push({ targetId, slideIndex: Math.floor(item.slideIndex) });
   }
   return hints;
+}
+
+function isUnsafeElementPatchTargetId(targetId: string): boolean {
+  const normalized = String(targetId || '').trim().toLowerCase();
+  return (
+    normalized === 'body'
+    || normalized === 'html'
+    || normalized === 'document'
+    || normalized === 'dom:body'
+    || normalized === 'dom:html'
+    || normalized === 'dom:document'
+    || normalized === 'dom:body > body'
+  );
 }
 
 function canAttachCommentSourceFile(path: string): boolean {

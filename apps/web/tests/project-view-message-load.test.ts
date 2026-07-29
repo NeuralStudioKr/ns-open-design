@@ -552,6 +552,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("commentAttachments: scopedCommentAttachments");
     expect(source).toContain("buildConcreteElementPatchTemplate(autoContinueCommentAttachments)");
     expect(source).toContain("hydrateQueryContextCommentAttachments(");
+    expect(source).toContain("reason.startsWith('element-patch <patch> missing slide-index')");
+    expect(source).toContain("outside attached comment scope");
   });
 
   it("self-heals leaked composer streaming markers after terminal turns settle", () => {

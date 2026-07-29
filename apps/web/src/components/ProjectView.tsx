@@ -1079,6 +1079,7 @@ function slideCommentEditPatchInstruction(commentAttachmentCount: number): strin
     '- Never answer with a question when a pinned comment target is attached. Use the provided target context and emit a patch for that target.',
     '- `target-id` MUST match the comment `elementId` (or a selector id from `<attached-preview-comments>`).',
     '- Copy `target-id` exactly from the numbered comment header / `scopeLock`; do NOT invent tag-like ids such as `h1`, `h2`, `p`, or `section.slide.active` from the visible UI label.',
+    '- Never target page roots such as `body`, `html`, `document`, `dom:body`, or `dom:html`. If the visible label says `h1`/`h2`, use the concrete attached element id / scopeLock for that heading, not a root selector.',
     '- `slide-index="{N}"` uses the 0-based index from `slideIndex:` in `<attached-preview-comments>`.',
     '- `kind` is one of: `set-text`, `set-style` (JSON object), `set-outer-html`, `set-link` (JSON), `set-image` (JSON), `set-attributes` (JSON), `remove-element`.',
     '- Apply the user request to ONLY the pinned target element. Do not change siblings, slide wrappers, or global CSS unless the user explicitly asks for slide-wide changes.',
@@ -1269,11 +1270,19 @@ function shouldRetryScopedCommentMergeFailure(
   reason: string,
 ): boolean {
   if (isCommentEditIntentViolation(code)) return true;
+  if (code === 'deck_patch_parse_failed') {
+    return (
+      reason.startsWith('element-patch <patch> missing slide-index') ||
+      reason.startsWith('element-patch <patch> missing target-id')
+    );
+  }
   if (code !== 'deck_patch_merge_failed') return false;
   return (
     reason === 'No matching targets found to merge.' ||
     reason === 'Selected targets were unchanged.' ||
-    reason.startsWith('Target not found:')
+    reason.startsWith('Target not found:') ||
+    (reason.startsWith('element-patch targets ') &&
+      reason.endsWith(' outside attached comment scope'))
   );
 }
 

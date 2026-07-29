@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBoardCommentAttachments,
+  buildConcreteElementPatchTemplate,
   buildVisualAnnotationAttachment,
   chatAttachmentsFromPreviewCommentFiles,
   commentSnapshotOverlayEqual,
@@ -8,6 +9,7 @@ import {
   commentsToAttachments,
   historyWithCommentAttachmentContext,
   hydrateQueryContextCommentAttachments,
+  elementPatchCoerceHintsFromCommentAttachments,
   liveCommentTargetMapsEqual,
   liveSnapshotForComment,
   mergeAttachedComments,
@@ -734,6 +736,33 @@ describe('preview comment attachment helpers', () => {
     ].join('\n');
 
     expect(stripUserVisibleUserMessageText(prompt)).toBe('폰트 사이즈 두배로 키워줘');
+  });
+
+  it('does not build element-patch templates or coerce hints for page root targets', () => {
+    const rootTarget = commentAttachment({
+      elementId: 'dom:body',
+      selector: 'body',
+      slideIndex: 0,
+      label: 'body',
+      currentText: 'Whole page',
+    });
+    const headingTarget = commentAttachment({
+      id: 'att-2',
+      elementId: 'hero-title',
+      selector: '[data-od-id="hero-title"]',
+      slideIndex: 0,
+      label: 'h1',
+      currentText: 'Title',
+    });
+
+    const template = buildConcreteElementPatchTemplate([rootTarget, headingTarget]);
+    expect(template).not.toContain('target-id="dom:body"');
+    expect(template).toContain('target-id="hero-title"');
+
+    expect(elementPatchCoerceHintsFromCommentAttachments([rootTarget])).toEqual([]);
+    expect(elementPatchCoerceHintsFromCommentAttachments([headingTarget])).toEqual([
+      { targetId: 'hero-title', slideIndex: 0 },
+    ]);
   });
 
   it('does not render preview-comment context when target location data is missing', () => {
