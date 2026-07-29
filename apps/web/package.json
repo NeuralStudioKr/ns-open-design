@@ -26,6 +26,7 @@
     "build": "next build",
     "build:sidecar": "tsc -p tsconfig.sidecar.json",
     "typecheck": "tsc -b --noEmit",
+    "pretest": "pnpm -C ../../packages/contracts run build",
     "test": "vitest run -c vitest.config.ts"
   },
   "dependencies": {
