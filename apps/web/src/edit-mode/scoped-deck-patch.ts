@@ -482,27 +482,46 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
   if (hintOnly.ok) return hintOnly;
 
   // Last-resort catch-all — apply the model's patched slide as a
-  // slide-level swap when we have literally no identity signal left
-  // to verify with. This fires when:
-  //   - Narrow merge said "No matching targets found to merge."
-  //     (currentTarget could not be resolved from any id — the model
-  //     likely restructured the slide and dropped identifiers), AND
-  //   - The attachment carries no usable identity anchor
-  //     (currentText, htmlHint, and podMembers all empty) so the
-  //     text-preserved fallback above had nothing to check against.
-  // In that case the strict scope apply already restricted the
-  // patch to the attached slide, so accepting the slide-level swap
-  // ships the user's edit instead of surfacing a misleading
-  // "선택 대상 밖 변경" banner. Style-only "unchanged" cases still
-  // require the tighter check above — this branch never fires when
-  // the narrow merge FOUND the target but saw it unchanged (the
-  // classic sibling-change scenario the safety rail was designed
-  // for stays intact).
-  if (
+  // slide-level swap when the narrow merge and every intermediate
+  // fallback have declined. This branch trades element-scope
+  // precision for reliability so the user's edit actually ships
+  // instead of surfacing a misleading "선택 대상 밖 변경" banner.
+  //
+  // Two acceptance paths:
+  //
+  //  (A) "Selected targets were unchanged." + slide diff exists.
+  //      The target IS present in both docs and the merge already
+  //      proved it did not change. The strict scope apply already
+  //      restricted the patch to the attached slide, so any diff
+  //      here is contained. If the attachment carries an anchor
+  //      and text-preserved above already rejected because the
+  //      anchor was WIPED from the patched slide, we treat that as
+  //      a suspect response and skip this branch (see below).
+  //
+  //  (B) "No matching targets found to merge." + empty anchor +
+  //      slide diff exists. The id could not be resolved anywhere
+  //      and we have no identity signal to verify with. Accept the
+  //      slide-level swap so an anchor-less pin/comment edit still
+  //      lands.
+  //
+  // Safety rails:
+  //   - Byte-identical slides never accept — no visible edit to
+  //     ship, no reason to declare success on a no-op.
+  //   - "No matching targets" WITH anchor is NOT accepted here —
+  //     the anchor exists but did not resolve in either doc AND
+  //     text-preserved already rejected, meaning the model likely
+  //     wrote a wholly-different slide.
+  //   - Cross-slide safety comes from the outer applyDeckPatch's
+  //     scope guard, so this branch cannot touch a slide other than
+  //     the one the attachment is scoped to.
+  const anchors = extractTargetIdentityAnchors(input.attachment);
+  const acceptForUnchanged =
+    merged.reason === 'Selected targets were unchanged.' && nextSlide !== patchedSlide;
+  const acceptForAnchorlessNotFound =
     merged.reason === 'No matching targets found to merge.' &&
     nextSlide !== patchedSlide &&
-    extractTargetIdentityAnchors(input.attachment).length === 0
-  ) {
+    anchors.length === 0;
+  if (acceptForUnchanged || acceptForAnchorlessNotFound) {
     const swapped = applyDeckPatch({
       currentHtml: input.nextHtml,
       patch: {
@@ -510,9 +529,12 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
       },
     });
     if (swapped.ok) {
-      console.warn('[deck-patch] accepted anchor-less slide-level swap — no identity signal to narrow', {
+      console.warn('[deck-patch] accepted last-resort slide-level swap', {
         slideIndex: input.slideIndex,
         ids,
+        reason: merged.reason,
+        branch: acceptForUnchanged ? 'target-unchanged' : 'anchor-less',
+        anchorCount: anchors.length,
       });
       return { ok: true, html: swapped.html };
     }

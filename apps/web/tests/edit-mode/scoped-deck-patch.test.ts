@@ -237,6 +237,73 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(result.html).toContain('<h1>인트로</h1>');
   });
 
+  it('accepts a "target unchanged" scoped edit via the last-resort slide-level swap even with anchors', () => {
+    // Bug (2026-07-29, second variant): user reported
+    //   "deck_patch_merge_failed — Selected targets were unchanged."
+    // Console warn: `[deck-patch] scoped deck patch failed`. The
+    // narrow merge found the target in both docs (structural id
+    // resolved on the disk source) but the model expressed the
+    // requested emphasis as a wrapper / decoration around the target
+    // — the target's own outerHTML stayed byte-identical while the
+    // slide's structure changed. Style-only rejected (structural
+    // change), text-preserved rejected (currentText wiped or moved),
+    // graft rejected (no diff at target level). The last-resort
+    // "target-unchanged" branch now accepts the slide-level swap so
+    // the model's visible edit lands instead of the misleading
+    // "선택 대상 밖 변경" banner.
+    const currentHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>인트로</h1></section>
+<section class="slide" data-slide-index="1">
+  <h1 data-od-id="target">회사 소개</h1>
+  <p>어떤 본문 텍스트</p>
+</section>
+</body></html>`;
+    const patchedHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>인트로</h1></section>
+<section class="slide" data-slide-index="1">
+  <h1 data-od-id="target">회사 소개</h1>
+  <div class="highlight-wrapper">
+    <p>어떤 본문 텍스트</p>
+    <span class="badge">NEW</span>
+  </div>
+</section>
+</body></html>`;
+    const targetUnchangedAttachment: ChatCommentAttachment = {
+      id: 'c1',
+      order: 1,
+      filePath: 'deck.html',
+      // elementId RESOLVES on both docs (data-od-id survives), so
+      // narrow merge returns "Selected targets were unchanged." —
+      // the target h1 itself was not touched by the model.
+      elementId: 'target',
+      selector: '[data-od-id="target"]',
+      label: 'h1',
+      comment: '회사 이름 눈에 잘 띄게 수정',
+      // Note: currentText intentionally set to something that will
+      // NOT appear verbatim in the patched slide's textContent so
+      // targetTextPreservedInPatchedSlide declines. That forces the
+      // last-resort branch to be the one that ships the edit.
+      currentText: 'THIS_WILL_NOT_APPEAR_ANYWHERE_IN_PATCHED',
+      htmlHint: '<h1>',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml,
+      patchedHtml,
+      commentAttachments: [targetUnchangedAttachment],
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    // The wrapper and badge from the model's response must land in
+    // the final HTML — otherwise the user's edit silently drops.
+    expect(result.html).toContain('highlight-wrapper');
+    expect(result.html).toContain('badge');
+    // Non-target slides survive untouched — the swap is scoped.
+    expect(result.html).toContain('<h1>인트로</h1>');
+  });
+
   it('does not accept an anchor-less swap when the slide diff is empty', () => {
     // Safety: if the model's response is byte-identical to current,
     // there is no visible edit to ship and we shouldn't pretend
