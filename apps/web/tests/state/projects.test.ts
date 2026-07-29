@@ -685,6 +685,55 @@ describe('conversation daemon auth', () => {
     fetchDaemonSpy.mockRestore();
   });
 
+  it('saveMessage re-embeds attached-preview-comments for user turns with comment chips', async () => {
+    let capturedBody = '';
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockImplementation(async (_url, init) => {
+      capturedBody = String(init?.body ?? '');
+      return new Response('{}', { status: 200 });
+    });
+    const { commentsToAttachments, messageContentWithCommentAttachments } = await import('../../src/comments');
+    const { saveMessage } = await import('../../src/state/projects');
+    const commentAttachments = commentsToAttachments([
+      {
+        id: 'c1',
+        projectId: 'project-1',
+        conversationId: 'conv-1',
+        filePath: 'deck.html',
+        elementId: 'hero-title',
+        selector: '[data-od-id="hero-title"]',
+        label: 'h2',
+        text: 'Title',
+        position: { x: 1, y: 2, width: 3, height: 4 },
+        htmlHint: '<h2>',
+        note: '더 크게',
+        status: 'open',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+    const content = messageContentWithCommentAttachments('더 크게 조정', commentAttachments);
+
+    await saveMessage('project-1', 'conv-1', {
+      id: 'msg-user-chip',
+      role: 'user',
+      content,
+      createdAt: Date.now(),
+      commentAttachments,
+    });
+
+    const payload = JSON.parse(capturedBody) as {
+      content?: string;
+      commentAttachments?: unknown[];
+    };
+    expect(payload.commentAttachments).toHaveLength(1);
+    expect(payload.content).toContain('<attached-preview-comments>');
+    expect(payload.content).toContain('hero-title');
+    fetchDaemonSpy.mockRestore();
+  });
+
   it('saveMessage keepalive trims heavy fields but preserves error status events', async () => {
     let capturedBody = '';
     const fetchDaemonSpy = vi.spyOn(

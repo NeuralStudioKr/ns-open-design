@@ -1856,16 +1856,32 @@ export async function listMessagesAsync(db: SqliteDb, conversationId: string) {
   return normalized;
 }
 
+function mergeOptionalMessageArrayField<T>(
+  incoming: T[] | undefined,
+  existing: T[] | undefined,
+): T[] | undefined {
+  if (incoming === undefined) return existing;
+  if (incoming.length === 0 && (existing?.length ?? 0) > 0) return existing;
+  return incoming;
+}
+
 function mergeMessageUpsertPayload(existing: DbRow | undefined, incoming: DbRow): DbRow {
   if (!existing) return incoming;
   return {
     ...incoming,
-    commentAttachments: incoming.commentAttachments ?? existing.commentAttachments,
-    attachments: incoming.attachments ?? existing.attachments,
+    commentAttachments: mergeOptionalMessageArrayField(
+      incoming.commentAttachments,
+      existing.commentAttachments,
+    ),
+    attachments: mergeOptionalMessageArrayField(incoming.attachments, existing.attachments),
     sessionMode: incoming.sessionMode ?? existing.sessionMode,
     runContext: incoming.runContext ?? existing.runContext,
     appliedPluginSnapshot: incoming.appliedPluginSnapshot ?? existing.appliedPluginSnapshot,
-    preTurnFileNames: incoming.preTurnFileNames ?? existing.preTurnFileNames,
+    preTurnFileNames: mergeOptionalMessageArrayField(
+      incoming.preTurnFileNames,
+      existing.preTurnFileNames,
+    ),
+    producedFiles: mergeOptionalMessageArrayField(incoming.producedFiles, existing.producedFiles),
     feedback: incoming.feedback ?? existing.feedback,
   };
 }
