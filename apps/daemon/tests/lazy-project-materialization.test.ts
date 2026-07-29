@@ -712,6 +712,33 @@ describe('createLazyProjectMaterializationMiddleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
+  it('skips materialization for single-use export ticket downloads', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const ensure = vi
+      .spyOn(hooks!, 'ensureMaterialized')
+      .mockRejectedValue(new TeamverTenantStorageResolutionError('teamver_project_s3_prefix_required'));
+    const sendApiError = vi.fn();
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, sendApiError);
+
+    const next = vi.fn();
+    await middleware(
+      mockReq('GET', '/api/projects/p1/export/downloads/abc123def4567890abcdef1234567890'),
+      mockRes(),
+      next,
+    );
+
+    expect(ensure).not.toHaveBeenCalled();
+    expect(sendApiError).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
   it('still 502s export routes when scratch is empty and tenant resolution fails', async () => {
     const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
     const storage = new MaterializingProjectStorage(

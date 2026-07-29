@@ -1,5 +1,6 @@
 import { isTeamverEmbedMode } from "./designApiBase";
 import { formatTeamverEmbedOperationFailureMessage, formatTeamverEmbedAuthRequiredMessage } from "./teamverBffAuthError";
+import { formatExportFailureMessageForUser } from "../runtime/exports";
 import { TeamverDaemonUnauthorizedError } from "./teamverDaemonHeaders";
 import type { UploadProjectFilesResult, WriteProjectFileSaveResult } from "../providers/registry";
 import { formatProjectArtifactSaveFailedError } from "./projectErrorMessages";
@@ -185,7 +186,7 @@ export function formatProjectImageExportErrorForUser(
   if (!isTeamverEmbedMode()) {
     return detail ? `${fallback}\n(${detail})` : fallback;
   }
-  if (detail && (detail.includes("연결") || detail.includes("로그인"))) {
+  if (detail && (detail.includes("연결") || detail.includes("로그인") || detail.includes("서버가 일시적으로"))) {
     return detail;
   }
   const normalizedErr =
@@ -194,7 +195,7 @@ export function formatProjectImageExportErrorForUser(
       : detail
         ? new Error(detail)
         : null;
-  return formatTeamverEmbedOperationFailureMessage(normalizedErr ?? fallback, fallback, {
+  return formatExportFailureMessageForUser(normalizedErr ?? fallback, fallback, {
     logoutMessage:
       "로그인 세션이 만료되어 이미지 내보내기에 실패했습니다. 다시 로그인한 뒤 시도하세요.",
     transientMessage:
