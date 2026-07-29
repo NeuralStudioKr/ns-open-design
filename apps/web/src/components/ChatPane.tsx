@@ -74,6 +74,13 @@ type RunErrorCardInfo = {
   diagnosticText: string | null;
 };
 
+function cssEscapeAttributeValue(value: string): string {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+    return CSS.escape(value);
+  }
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 // Featured starter prompts shown on the empty chat. Clicking one fills
 // the composer (does not auto-send) so users can tweak before sending.
 // Each prompt is intentionally dense — it should showcase ambitious
@@ -1189,7 +1196,7 @@ export function ChatPane({
       if (isQuestionFormTurnContent(lastAssistantBody)) {
         const lastAssistantEl = lastAssistantId
           ? el.querySelector<HTMLElement>(
-              `.msg.assistant[data-message-id="${CSS.escape(lastAssistantId)}"]`,
+              `.msg.assistant[data-message-id="${cssEscapeAttributeValue(lastAssistantId)}"]`,
             )
           : null;
         const formEl = lastAssistantEl?.querySelector<HTMLElement>('[data-form-id]');
@@ -1289,7 +1296,7 @@ export function ChatPane({
       if (isQuestionFormTurnContent(lastAssistantBody)) {
         const lastAssistantEl = lastAssistantId
           ? el.querySelector<HTMLElement>(
-              `.msg.assistant[data-message-id="${CSS.escape(lastAssistantId)}"]`,
+              `.msg.assistant[data-message-id="${cssEscapeAttributeValue(lastAssistantId)}"]`,
             )
           : null;
         const formEl = lastAssistantEl?.querySelector<HTMLElement>('[data-form-id]');

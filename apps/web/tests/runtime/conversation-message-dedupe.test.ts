@@ -11,6 +11,7 @@ import {
   patchInFlightAssistantForActiveRun,
   resolveLastAssistantMessageId,
   resolveLastAssistantMessageIndex,
+  resolveLastSubstantiveAssistantMessageId,
 } from "../../src/runtime/conversation-message-dedupe";
 
 describe("isEmptyAssistantShell", () => {
@@ -511,5 +512,58 @@ describe("resolveLastAssistantMessageId", () => {
     ];
     expect(resolveLastAssistantMessageId(messages)).toBe("a2");
     expect(resolveLastAssistantMessageIndex(messages)).toBe(3);
+  });
+});
+
+describe("resolveLastSubstantiveAssistantMessageId", () => {
+  it("skips an in-flight empty shell so recovery can see the failed incomplete row", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "a-failed",
+        role: "assistant",
+        content: "",
+        runStatus: "failed",
+        resumable: true,
+        endedAt: 1,
+        createdAt: 1,
+        events: [{ kind: "status", label: "error", detail: "x", code: "incomplete_output" }],
+      },
+      {
+        id: "a-shell",
+        role: "assistant",
+        content: "",
+        runStatus: "running",
+        startedAt: 2,
+        createdAt: 2,
+        events: [{ kind: "status", label: "requesting" }],
+      },
+    ];
+    expect(resolveLastAssistantMessageId(messages)).toBe("a-shell");
+    expect(resolveLastSubstantiveAssistantMessageId(messages)).toBe("a-failed");
+  });
+
+  it("still prefers a substantive in-flight assistant over a prior failure", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "a-failed",
+        role: "assistant",
+        content: "",
+        runStatus: "failed",
+        resumable: true,
+        endedAt: 1,
+        createdAt: 1,
+        events: [{ kind: "status", label: "error", detail: "x", code: "incomplete_output" }],
+      },
+      {
+        id: "a-live",
+        role: "assistant",
+        content: "",
+        runStatus: "running",
+        startedAt: 2,
+        createdAt: 2,
+        events: [{ kind: "text", text: "retrying" }],
+      },
+    ];
+    expect(resolveLastSubstantiveAssistantMessageId(messages)).toBe("a-live");
   });
 });

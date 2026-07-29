@@ -209,6 +209,40 @@ describe('findIncompleteSlideAssistantForRecovery', () => {
     ];
     expect(findIncompleteSlideAssistantForRecovery(messages)?.id).toBe('a1');
   });
+
+  it('still recovers when a trailing in-flight empty shell follows the failure', () => {
+    const messages: ChatMessage[] = [
+      { id: 'u1', role: 'user', content: 'deck', createdAt: 1 },
+      assistantMessage('a1'),
+      {
+        id: 'a-inflight-shell',
+        role: 'assistant',
+        content: '',
+        createdAt: 2,
+        runStatus: 'running',
+        startedAt: 2,
+        events: [{ kind: 'status', label: 'requesting' }],
+      },
+    ];
+    expect(findIncompleteSlideAssistantForRecovery(messages)?.id).toBe('a1');
+  });
+
+  it('does not recover when a newer in-flight assistant already has body content', () => {
+    const messages: ChatMessage[] = [
+      { id: 'u1', role: 'user', content: 'deck', createdAt: 1 },
+      assistantMessage('a1'),
+      {
+        id: 'a2',
+        role: 'assistant',
+        content: '',
+        createdAt: 2,
+        runStatus: 'running',
+        startedAt: 2,
+        events: [{ kind: 'text', text: 'retrying deck…' }],
+      },
+    ];
+    expect(findIncompleteSlideAssistantForRecovery(messages)).toBeNull();
+  });
 });
 
 describe('canFireAutoContinueForConversation', () => {

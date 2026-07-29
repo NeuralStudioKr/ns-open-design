@@ -7,7 +7,7 @@ import {
 } from '../artifacts/emergency-deck';
 import { recoverBestHtmlDocumentFromText } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
-import { resolveLastAssistantMessageId } from './conversation-message-dedupe';
+import { resolveLastSubstantiveAssistantMessageId } from './conversation-message-dedupe';
 import {
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
   AUTO_CONTINUE_STATUS_CODE,
@@ -200,8 +200,9 @@ export function findIncompleteSlideAssistantForRecovery(
   options?: { restrictToMessageIds?: ReadonlySet<string> },
 ): ChatMessage | null {
   const restrict = options?.restrictToMessageIds;
-  // Skip trailing empty/thinking stubs — same SSOT as ChatPane lastAssistant.
-  const latestAssistantId = resolveLastAssistantMessageId(messages);
+  // Skip trailing empty/thinking stubs — including in-flight optimistic shells
+  // that would otherwise win resolveLastAssistantMessageId and block recovery.
+  const latestAssistantId = resolveLastSubstantiveAssistantMessageId(messages);
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;

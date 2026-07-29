@@ -318,6 +318,28 @@ export function resolveLastAssistantMessageId(
   return fallback;
 }
 
+/**
+ * Like {@link resolveLastAssistantMessageId}, but skips empty/thinking stubs
+ * even when they are in-flight. Use for recovery / auto-continue gates so a
+ * phantom optimistic shell cannot block a failed incomplete turn.
+ */
+export function resolveLastSubstantiveAssistantMessageId(
+  messages: readonly ChatMessage[],
+): string | undefined {
+  let fallback: string | undefined;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role !== "assistant") continue;
+    if (isCollapsibleAssistantStub(message)) {
+      if (fallback === undefined) fallback = message.id;
+      continue;
+    }
+    if (isInFlightAssistantMessage(message)) return message.id;
+    return message.id;
+  }
+  return fallback;
+}
+
 export function resolveLastAssistantMessageIndex(
   messages: readonly ChatMessage[],
 ): number {
