@@ -71,4 +71,56 @@ describe('element-patch dom: target resolution', () => {
     expect(applied.html).toContain('뉴럴스튜디오');
     expect(applied.html).not.toContain('회사 이름');
   });
+
+  it('keeps structural path-N ids instead of minting dom:[data-od-id="path-N"]', () => {
+    // Preview annotates body > section[0] > h1 as path-0-0; disk has no data-od-id.
+    const deck = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><h1>Intro</h1><p>Keep</p></section>',
+      '<section class="slide" data-slide-index="1"><h1>Title</h1><p>Body</p></section>',
+      '</body></html>',
+    ].join('');
+    // path-1-0 = body.children[1] (slide 1) .children[0] (h1)
+    const attachment: ChatCommentAttachment = {
+      ...COMMENT_ATTACHMENT,
+      elementId: 'path-1-0',
+      selector: '[data-od-id="path-1-0"]',
+      label: 'h1',
+      comment: '제목 바꿔줘',
+      currentText: 'Title',
+      htmlHint: '<h1>Title</h1>',
+      slideIndex: 1,
+    };
+
+    const normalized = normalizeElementPatchTargetsForApply({
+      currentHtml: deck,
+      patches: [{
+        id: 'path-1-0',
+        kind: 'set-text',
+        value: 'New Title',
+        slideIndex: 1,
+      }],
+      commentAttachments: [attachment],
+    });
+    expect(normalized[0]?.id).toBe('path-1-0');
+    expect(normalized[0]?.id).not.toMatch(/^dom:\[/);
+
+    const parsed = parseElementPatch(
+      '<patch target-id=\'dom:[data-od-id="path-1-0"]\' slide-index="1" kind="set-text">New Title</patch>',
+    );
+    expect(parsed.ok, parsed.ok ? '' : parsed.reason).toBe(true);
+    if (!parsed.ok) return;
+
+    const applied = applyElementPatches({
+      currentHtml: deck,
+      patches: parsed.patches,
+      commentAttachments: [attachment],
+      allowedSlideIndexes: [1],
+      allowedTargetIds: ['path-1-0', 'dom:[data-od-id="path-1-0"]'],
+    });
+    expect(applied.ok, JSON.stringify(applied)).toBe(true);
+    if (!applied.ok) return;
+    expect(applied.html).toContain('<h1>New Title</h1>');
+    expect(applied.html).toContain('<p>Body</p>');
+  });
 });

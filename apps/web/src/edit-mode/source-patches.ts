@@ -170,6 +170,26 @@ export function readManualEditOuterHtml(
   return (doc ? findEditableElement(doc, id, scope)?.outerHTML : '') ?? '';
 }
 
+/**
+ * Preview srcdoc annotates unlabeled nodes with generated `path-N` ids.
+ * Those attributes are NOT persisted to deck.html — only the structural
+ * child-index walk (`findElementByPath`) can resolve them on disk.
+ */
+export function isEphemeralGeneratedPathId(id: string | null | undefined): boolean {
+  return /^path-\d+(?:-\d+)*$/.test(String(id || '').trim());
+}
+
+/** Pull `path-4` out of `dom:[data-od-id="path-4"]` / `[data-od-id="path-4"]`. */
+export function extractIdentityFromAttrSelectorId(idOrSelector: string): string | null {
+  const raw = String(idOrSelector || '').trim();
+  const selector = raw.startsWith('dom:') ? raw.slice('dom:'.length).trim() : raw;
+  const match = /^\[(data-od-id|data-screen-label|data-od-runtime-id|data-od-source-path|id)\s*=\s*(?:"([^"]+)"|'([^']+)')\]$/i.exec(
+    selector,
+  );
+  const value = (match?.[2] ?? match?.[3] ?? '').trim();
+  return value || null;
+}
+
 export function resolveManualEditTargetReference(
   source: string,
   id: string,
@@ -187,14 +207,41 @@ export function resolveManualEditTargetReference(
       ? findEditableElementBySelector(doc, root, hint.selector, scope) ?? findElementByHint(doc, scope, hint)
       : null;
   if (!target) return null;
-  const stableId =
+  const stableId = (
     target.getAttribute('data-od-id') ||
     target.getAttribute('data-od-runtime-id') ||
     target.getAttribute('data-od-source-path') ||
-    target.getAttribute('data-screen-label');
-  if (stableId?.trim()) return stableId.trim();
+    target.getAttribute('data-screen-label') ||
+    ''
+  ).trim();
+  // Prefer durable attrs; never promote preview-only path-N attrs — they
+  // vanish on disk and become `dom:[data-od-id="path-N"]` dead ends.
+  if (stableId && !isEphemeralGeneratedPathId(stableId)) return stableId;
+
+  const pathId =
+    (isEphemeralGeneratedPathId(normalizedId) ? normalizedId : null)
+    ?? (() => {
+      const extracted = extractIdentityFromAttrSelectorId(normalizedId);
+      return extracted && isEphemeralGeneratedPathId(extracted) ? extracted : null;
+    })()
+    ?? (() => {
+      const fromHint = extractIdentityFromAttrSelectorId(String(hint?.selector || ''));
+      return fromHint && isEphemeralGeneratedPathId(fromHint) ? fromHint : null;
+    })();
+  if (pathId && findElementByScopedPath(doc, root, pathId)) return pathId;
+
   const selector = String(hint?.selector || '').trim();
-  return selector ? `dom:${selector}` : normalizedId || null;
+  if (selector) {
+    const fromSelector = extractIdentityFromAttrSelectorId(selector);
+    if (fromSelector && isEphemeralGeneratedPathId(fromSelector)) {
+      return fromSelector;
+    }
+    // Avoid minting dom:[data-od-id="path-N"] for ephemeral preview selectors.
+    if (!(fromSelector && isEphemeralGeneratedPathId(fromSelector))) {
+      return selector.startsWith('dom:') ? selector : `dom:${selector}`;
+    }
+  }
+  return pathId || normalizedId || null;
 }
 
 export function maskManualEditTargets(
@@ -425,8 +472,13 @@ function findEditableElement(
   if (id === '__body__') return root.nodeType === 9 ? (root as Document).body : root as Element;
   const domFallback = findElementByDomSelector(doc, root, id, scope);
   if (domFallback) return domFallback;
+  const identityFromAttr = extractIdentityFromAttrSelectorId(id);
   const structural =
     findEditableElementByIdentity(root, id)
+    ?? (identityFromAttr
+      ? findEditableElementByIdentity(root, identityFromAttr)
+        ?? findElementByScopedPath(doc, root, identityFromAttr)
+      : null)
     ?? findElementByScopedPath(doc, root, id);
   if (structural) return structural;
   if (hint) {
@@ -771,6 +823,15 @@ function findElementByDomSelector(
   if (!id.startsWith('dom:')) return null;
   const selector = id.slice('dom:'.length).trim();
   if (!selector || /[<{}]/.test(selector)) return null;
+  // `dom:[data-od-id="path-4"]` — unwrap to identity / structural path walk.
+  // Preview injects path-N as data-od-id; saved HTML usually lacks the attr.
+  const identity = extractIdentityFromAttrSelectorId(id);
+  if (identity) {
+    const byIdentity =
+      findEditableElementByIdentity(root, identity)
+      ?? findElementByScopedPath(doc, root, identity);
+    if (byIdentity) return byIdentity;
+  }
   if (selector.startsWith('body > ')) {
     const byPath = findElementByDomSelectorPath(doc, root, selector);
     if (byPath) return byPath;

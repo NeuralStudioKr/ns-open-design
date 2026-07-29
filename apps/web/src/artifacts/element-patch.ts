@@ -21,6 +21,8 @@
 import type { ManualEditPatch } from '../edit-mode/types';
 import {
   applyManualEditPatch,
+  extractIdentityFromAttrSelectorId,
+  isEphemeralGeneratedPathId,
   resolveManualEditTargetReference,
   type ManualEditMergeTargetHint,
   type ManualEditPatchResult,
@@ -503,6 +505,22 @@ function findElementPatchTargetHint(
   return hints.length === 1 ? hints[0] : undefined;
 }
 
+function commentTargetIdsInclude(patchId: string, candidateIds: readonly string[]): boolean {
+  const normalized = String(patchId || '').trim();
+  if (!normalized) return false;
+  if (candidateIds.includes(normalized)) return true;
+  const extracted = extractIdentityFromAttrSelectorId(normalized);
+  if (extracted && candidateIds.includes(extracted)) return true;
+  for (const candidate of candidateIds) {
+    const fromCandidate = extractIdentityFromAttrSelectorId(candidate);
+    if (!fromCandidate) continue;
+    if (fromCandidate === normalized || (extracted != null && fromCandidate === extracted)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function findCommentAttachmentForPatch(
   patch: ElementPatchOp,
   commentAttachments: readonly ChatCommentAttachment[] | undefined,
@@ -517,7 +535,7 @@ function findCommentAttachmentForPatch(
     ) {
       return false;
     }
-    return scopedCommentElementIds(attachment).includes(patchId);
+    return commentTargetIdsInclude(patchId, scopedCommentElementIds(attachment));
   });
   if (exact) return exact;
 
@@ -566,6 +584,18 @@ export function normalizeElementPatchTargetsForApply(input: {
       hint,
     );
     if (resolved && resolved !== patchId) {
+      // Never replace a structural `path-N` id with `dom:[data-od-id="path-N"]`
+      // — that attr exists only in the preview srcdoc, not on disk.
+      const resolvedIdentity = extractIdentityFromAttrSelectorId(resolved);
+      if (
+        isEphemeralGeneratedPathId(patchId)
+        && (
+          resolved.startsWith('dom:[')
+          || (resolvedIdentity != null && isEphemeralGeneratedPathId(resolvedIdentity))
+        )
+      ) {
+        return patch;
+      }
       return { ...patch, id: resolved };
     }
 

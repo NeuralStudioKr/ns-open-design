@@ -12,6 +12,8 @@ import {
   readManualEditOuterHtml,
   readManualEditStyles,
   resolveManualEditTargetReference,
+  extractIdentityFromAttrSelectorId,
+  isEphemeralGeneratedPathId,
 } from '../../src/edit-mode/source-patches';
 
 const baseSource = `<!doctype html>
@@ -233,6 +235,34 @@ describe('manual edit source patches', () => {
         { slideIndex: 1 },
       ).ok,
     ).toBe(false);
+  });
+
+  it('resolves preview path-N ids without minting dom:[data-od-id=path-N]', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0"><h1>Intro</h1></section>',
+      '<section class="slide" data-slide-index="1"><h1>Title</h1><p>Body</p></section>',
+      '</body></html>',
+    ].join('');
+    expect(isEphemeralGeneratedPathId('path-1-0')).toBe(true);
+    expect(extractIdentityFromAttrSelectorId('dom:[data-od-id="path-1-0"]')).toBe('path-1-0');
+
+    const resolved = resolveManualEditTargetReference(
+      source,
+      'path-1-0',
+      { slideIndex: 1 },
+      { id: 'path-1-0', selector: '[data-od-id="path-1-0"]', currentText: 'Title' },
+    );
+    expect(resolved).toBe('path-1-0');
+
+    const fromDomAttr = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'dom:[data-od-id="path-1-0"]', value: 'New Title' },
+      { slideIndex: 1 },
+      { id: 'path-1-0', selector: '[data-od-id="path-1-0"]', currentText: 'Title', htmlHint: '<h1>Title</h1>' },
+    );
+    expect(fromDomAttr.ok, JSON.stringify(fromDomAttr)).toBe(true);
+    expect(fromDomAttr.source).toContain('<h1>New Title</h1>');
   });
 
   it('addresses page-level data-screen-label targets like "01 Cover"', () => {
