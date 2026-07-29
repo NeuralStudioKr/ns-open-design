@@ -192,6 +192,23 @@ describe('findIncompleteSlideAssistantForRecovery', () => {
     ];
     expect(findIncompleteSlideAssistantForRecovery(messages)).toBeNull();
   });
+
+  it('still recovers when only a trailing empty shell follows the incomplete failure', () => {
+    const messages: ChatMessage[] = [
+      { id: 'u1', role: 'user', content: 'deck', createdAt: 1 },
+      assistantMessage('a1'),
+      {
+        id: 'a-shell',
+        role: 'assistant',
+        content: '',
+        createdAt: 2,
+        endedAt: 2,
+        runStatus: 'succeeded',
+        events: [{ kind: 'status', label: 'requesting' }],
+      },
+    ];
+    expect(findIncompleteSlideAssistantForRecovery(messages)?.id).toBe('a1');
+  });
 });
 
 describe('canFireAutoContinueForConversation', () => {

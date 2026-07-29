@@ -7,6 +7,7 @@ import {
 } from '../artifacts/emergency-deck';
 import { recoverBestHtmlDocumentFromText } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
+import { resolveLastAssistantMessageId } from './conversation-message-dedupe';
 import {
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
   AUTO_CONTINUE_STATUS_CODE,
@@ -199,7 +200,8 @@ export function findIncompleteSlideAssistantForRecovery(
   options?: { restrictToMessageIds?: ReadonlySet<string> },
 ): ChatMessage | null {
   const restrict = options?.restrictToMessageIds;
-  const latestAssistant = messages.filter((message) => message.role === 'assistant').at(-1) ?? null;
+  // Skip trailing empty/thinking stubs — same SSOT as ChatPane lastAssistant.
+  const latestAssistantId = resolveLastAssistantMessageId(messages);
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
@@ -216,7 +218,7 @@ export function findIncompleteSlideAssistantForRecovery(
     if (!hasIncompleteStatus) continue;
     // Only recover the latest assistant turn — a newer child auto-continue
     // run may already be in flight or failed separately.
-    if (latestAssistant && message.id !== latestAssistant.id) continue;
+    if (latestAssistantId && message.id !== latestAssistantId) continue;
     const messageIndex = index;
     const hasAutoContinueAfter = messages.slice(messageIndex + 1).some(
       (later) =>
