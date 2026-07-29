@@ -62,4 +62,25 @@ describe('AssistantMessage embed body visibility', () => {
 
     expect(screen.getByText('still broken')).toBeTruthy();
   });
+
+  it('keeps inline error detail in embed even when this row owns the top-level error card', () => {
+    render(
+      <AssistantMessage
+        message={{
+          id: 'a-failed',
+          role: 'assistant',
+          content: '',
+          runStatus: 'failed',
+          endedAt: Date.now(),
+          events: [{ kind: 'status', label: 'error', detail: 'upstream timeout' }],
+        }}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+        errorCardOwnerId="a-failed"
+      />,
+    );
+
+    expect(screen.getByText('upstream timeout')).toBeTruthy();
+  });
 });

@@ -17,7 +17,11 @@ import {
 import { fetchTeamverDaemon } from "../teamver/teamverDaemonHeaders";
 import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup";
 import { isEmptyAssistantShell } from "../runtime/conversation-message-dedupe";
-import { hasEmbedVisibleAssistantBody } from "../runtime/chat-message-render";
+import {
+  hasEmbedVisibleAssistantBody,
+  isTerminalSucceededEmptyShellAnchor,
+  terminalSucceededAnchorLeadCopy,
+} from "../runtime/chat-message-render";
 import {
   trackAssistantFeedbackButtonClick,
   trackAssistantFeedbackClick,
@@ -127,13 +131,6 @@ function teamverCompletedArtifactLeadCopy(locale: string, deckPatch: boolean): s
   return deckPatch
     ? "Slide updates have been applied."
     : "The slide deck draft is ready.";
-}
-
-function terminalSucceededAnchorLeadCopy(locale: string): string {
-  if (locale.startsWith("ko")) {
-    return "작업이 완료되었습니다.";
-  }
-  return "The task is complete.";
 }
 
 export type QuestionFormOpenRequest = {
@@ -769,12 +766,10 @@ function AssistantMessageImpl({
     locale,
     isDeckPatchArtifactTurn,
   );
-  const terminalSucceededAnchor =
-    isLast
-    && !streaming
-    && isEmptyAssistantShell(message)
-    && message.runStatus === "succeeded"
-    && message.endedAt !== undefined;
+  const terminalSucceededAnchor = isTerminalSucceededEmptyShellAnchor(message, {
+    isLast: !!isLast,
+    streaming,
+  });
   const shouldShowTerminalSucceededLead =
     !streaming
     && terminalSucceededAnchor
@@ -923,10 +918,15 @@ function AssistantMessageImpl({
           if (b.kind === "status") {
             // Suppress this message's gray error pill ONLY when ChatPane is
             // rendering the top-level error card for it (the last failed run).
-            // Other failed turns — older history, or once a follow-up makes
-            // this no longer the last assistant message — keep their pill so
-            // the error detail still survives reload / history review.
-            if (b.label === "error" && message.id === errorCardOwnerId) return null;
+            // Embed chat keeps the inline pill so reload/history still shows
+            // error detail beside the agent header.
+            if (
+              b.label === "error"
+              && message.id === errorCardOwnerId
+              && !hideAssistantThinkingDetails
+            ) {
+              return null;
+            }
             // The pre-output "initializing" status is surfaced by the footer's
             // shimmering "Preparing…" label instead of its own pill.
             if (b.label === "initializing") return null;

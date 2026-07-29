@@ -25,7 +25,9 @@ describe("Teamver embed local workspace UI guards", () => {
     expect(assistant).toMatch(
       /hideAssistantThinkingDetails[\s\S]{0,280}block\.kind !== "thinking"/,
     );
-    expect(assistant).toContain('block.kind !== "status"');
+    expect(assistant).toMatch(
+      /block\.kind !== "status"[\s\S]{0,80}block\.label === "error"/,
+    );
     expect(assistant).toContain('block.kind !== "plugin-candidate"');
     expect(assistant).toContain("hideAssistantThinkingDetails && streaming");
     expect(assistant).toMatch(

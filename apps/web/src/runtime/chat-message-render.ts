@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../types";
+import { stripAllClosedArtifacts } from "../artifacts/strip";
 import { assistantMessageTextBody, messageHasVisibleProse } from "./chat-events";
 import { isEmptyAssistantShell } from "./conversation-message-dedupe";
 import { deriveFileOps } from "./file-ops";
@@ -9,6 +10,42 @@ export type ChatMessageRenderContext = {
   lastAssistantId: string | undefined;
   hideAssistantThinkingDetails: boolean;
 };
+
+export type TerminalSucceededAnchorOptions = {
+  isLast: boolean;
+  streaming: boolean;
+};
+
+/**
+ * Terminal succeeded empty shells anchor the turn after auto-continue recovery.
+ * They must count as renderable only when AssistantMessage would show a body
+ * (completion lead), not merely the agent role header.
+ */
+export function isTerminalSucceededEmptyShellForDisplay(message: ChatMessage): boolean {
+  return (
+    isEmptyAssistantShell(message)
+    && message.runStatus === "succeeded"
+    && message.endedAt !== undefined
+  );
+}
+
+export function isTerminalSucceededEmptyShellAnchor(
+  message: ChatMessage,
+  options: TerminalSucceededAnchorOptions,
+): boolean {
+  return (
+    options.isLast
+    && !options.streaming
+    && isTerminalSucceededEmptyShellForDisplay(message)
+  );
+}
+
+export function terminalSucceededAnchorLeadCopy(locale: string): string {
+  if (locale.startsWith("ko")) {
+    return "작업이 완료되었습니다.";
+  }
+  return "The task is complete.";
+}
 
 function isLastAssistantInVisibleUserTurn(
   messages: readonly ChatMessage[],
@@ -27,11 +64,7 @@ function isLastAssistantInVisibleUserTurn(
  * (completion lead), not merely the agent role header.
  */
 function wouldTerminalEmptyShellShowBody(message: ChatMessage): boolean {
-  return (
-    isEmptyAssistantShell(message)
-    && message.runStatus === "succeeded"
-    && message.endedAt !== undefined
-  );
+  return isTerminalSucceededEmptyShellForDisplay(message);
 }
 
 function wouldAssistantRenderIgnoringSupersededOmission(
@@ -157,14 +190,13 @@ function isLiveStreamingAssistantTarget(
 }
 
 /** Text-channel body only — thinking is filtered in Teamver embed chat UI. */
-function hasVisibleTextBody(message: ChatMessage): boolean {
-  if ((message.content ?? "").trim().length > 0) return true;
-  return (message.events ?? []).some(
-    (event) =>
-      event.kind === "text"
-      && typeof event.text === "string"
-      && event.text.trim().length > 0,
-  );
+function hasEmbedVisibleProseBody(message: ChatMessage): boolean {
+  const body = assistantMessageTextBody(message).trim();
+  if (!body) return false;
+  const stripped = stripAllClosedArtifacts(body)
+    .replace(/<artifact\b[\s\S]*$/i, "")
+    .trim();
+  return stripped.length > 0;
 }
 
 function assistantRunSucceeded(message: ChatMessage): boolean {
@@ -200,7 +232,7 @@ export function hasEmbedVisibleAssistantBody(message: ChatMessage): boolean {
   if (message.runStatus === "failed" || message.runStatus === "canceled") return true;
   if (message.resumable === true) return true;
   if ((message.producedFiles?.length ?? 0) > 0) return true;
-  if (hasVisibleTextBody(message)) return true;
+  if (hasEmbedVisibleProseBody(message)) return true;
   if (deriveFileOps(message.events ?? []).length > 0) return true;
   if (hasTeamverCompletedArtifactLead(message)) return true;
   const body = assistantMessageTextBody(message);
