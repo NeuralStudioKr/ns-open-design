@@ -122,6 +122,40 @@ describe('applyElementPatches', () => {
     expect(applied.ok).toBe(false);
   });
 
+  it('applies page-level data-screen-label targets like "01 Cover"', () => {
+    const deck = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0" data-screen-label="01 Cover">',
+      '<h1>KIM SEUNGHYUN</h1><p>Keep</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const parsed = parseElementPatch(
+      '<patch target-id="01 Cover" slide-index="0" kind="set-style">{"backgroundColor":"#111827"}</patch>',
+    );
+    expect(parsed.ok, parsed.ok ? '' : parsed.reason).toBe(true);
+    if (!parsed.ok) return;
+
+    const applied = applyElementPatches({
+      currentHtml: deck,
+      patches: parsed.patches,
+      allowedSlideIndexes: [0],
+      allowedTargetIds: ['01 Cover'],
+      targetHints: [{
+        id: '01 Cover',
+        targetIds: ['01 Cover'],
+        slideIndex: 0,
+        selector: '[data-screen-label="01 Cover"]',
+        currentText: 'KIM SEUNGHYUN',
+        htmlHint: '<h1>KIM SEUNGHYUN</h1>',
+      }],
+    });
+    expect(applied.ok, JSON.stringify(applied)).toBe(true);
+    if (!applied.ok) return;
+    expect(applied.html).toContain('data-screen-label="01 Cover"');
+    expect(applied.html).toMatch(/background-color:\s*(#111827|rgb\(17,\s*24,\s*39\))/i);
+  });
+
   it('applies dom: CSS paths that drifted from preview wrappers using slide-relative lookup', () => {
     const deck = [
       '<!doctype html><html><body>',

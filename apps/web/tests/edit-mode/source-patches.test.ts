@@ -235,6 +235,42 @@ describe('manual edit source patches', () => {
     ).toBe(false);
   });
 
+  it('addresses page-level data-screen-label targets like "01 Cover"', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0" data-screen-label="01 Cover">',
+      '<h1>KIM SEUNGHYUN</h1><p>Subtitle</p>',
+      '</section>',
+      '<section class="slide" data-slide-index="1" data-screen-label="02 About"><h2>About</h2></section>',
+      '</body></html>',
+    ].join('');
+
+    const styled = applyManualEditPatch(
+      source,
+      { kind: 'set-style', id: '01 Cover', styles: { backgroundColor: '#0f172a' } },
+      { slideIndex: 0 },
+    );
+    expect(styled.ok, JSON.stringify(styled)).toBe(true);
+    expect(styled.source).toMatch(/data-screen-label="01 Cover"[^>]*style=/);
+    expect(styled.source).toContain('background-color');
+
+    const texted = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: '01 Cover', value: 'New Name' },
+      { slideIndex: 0 },
+      {
+        id: '01 Cover',
+        selector: '[data-screen-label="01 Cover"]',
+        currentText: 'KIM SEUNGHYUN',
+        htmlHint: '<h1>KIM SEUNGHYUN</h1>',
+      },
+    );
+    expect(texted.ok, JSON.stringify(texted)).toBe(true);
+    expect(texted.source).toContain('<h1>New Name</h1>');
+    expect(texted.source).toContain('<p>Subtitle</p>');
+    expect(resolveManualEditTargetReference(source, '01 Cover', { slideIndex: 0 })).toBe('01 Cover');
+  });
+
   it('addresses unannotated comment targets with dom selector ids inside the selected slide', () => {
     const source = [
       '<!doctype html><html><body>',

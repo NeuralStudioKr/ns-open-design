@@ -50,12 +50,21 @@ export function applyManualEditPatch(
       : { ok: false, source, error: `Token not found: ${patch.token}` };
   }
 
-  const el = findEditableElement(doc, patch.id, scope, hint ?? scope.targetHint);
+  const effectiveHint = hint ?? scope.targetHint;
+  let el = findEditableElement(doc, patch.id, scope, effectiveHint);
   if (!el) return { ok: false, source, error: `Target not found: ${patch.id}` };
 
   if (patch.kind === 'set-text') {
     if (hasElementChildren(el)) {
-      return { ok: false, source, error: 'This element contains nested markup. Use the HTML tab instead.' };
+      // Page-level pins resolve to the slide `<section>`; text edits should
+      // land on the leaf matched by the comment's currentText/htmlHint.
+      const leaf = effectiveHint
+        ? findLeafTextTargetByHint(doc, scope, effectiveHint)
+        : null;
+      if (!leaf) {
+        return { ok: false, source, error: 'This element contains nested markup. Use the HTML tab instead.' };
+      }
+      el = leaf;
     }
     el.textContent = patch.value;
   } else if (patch.kind === 'set-link') {
@@ -181,7 +190,8 @@ export function resolveManualEditTargetReference(
   const stableId =
     target.getAttribute('data-od-id') ||
     target.getAttribute('data-od-runtime-id') ||
-    target.getAttribute('data-od-source-path');
+    target.getAttribute('data-od-source-path') ||
+    target.getAttribute('data-screen-label');
   if (stableId?.trim()) return stableId.trim();
   const selector = String(hint?.selector || '').trim();
   return selector ? `dom:${selector}` : normalizedId || null;
@@ -371,6 +381,39 @@ function inferKind(el: Element): 'text' | 'link' | 'image' | 'container' {
   return 'text';
 }
 
+function elementMatchesManualEditId(el: Element, id: string): boolean {
+  const normalized = String(id || '').trim();
+  if (!normalized) return false;
+  return (
+    el.getAttribute('data-od-id') === normalized
+    || el.getAttribute('data-screen-label') === normalized
+    || el.getAttribute('data-od-runtime-id') === normalized
+    || el.getAttribute('data-od-source-path') === normalized
+    || el.getAttribute('id') === normalized
+  );
+}
+
+function findEditableElementByIdentity(
+  root: ManualEditLookupRoot,
+  id: string,
+): Element | null {
+  const normalized = String(id || '').trim();
+  if (!normalized) return null;
+  // Page-level comments pin the slide section itself (`data-screen-label="01 Cover"`).
+  // `querySelector` only matches descendants, so check the scoped root first.
+  if (root.nodeType !== 9 && elementMatchesManualEditId(root as Element, normalized)) {
+    return root as Element;
+  }
+  const escaped = cssQuotedAttrValue(normalized);
+  return (
+    root.querySelector(`[data-od-id="${escaped}"]`)
+    ?? root.querySelector(`[data-screen-label="${escaped}"]`)
+    ?? root.querySelector(`[data-od-runtime-id="${escaped}"]`)
+    ?? root.querySelector(`[data-od-source-path="${escaped}"]`)
+    ?? root.querySelector(`[id="${escaped}"]`)
+  );
+}
+
 function findEditableElement(
   doc: Document,
   id: string,
@@ -383,10 +426,8 @@ function findEditableElement(
   const domFallback = findElementByDomSelector(doc, root, id, scope);
   if (domFallback) return domFallback;
   const structural =
-    root.querySelector(`[data-od-id="${cssEscape(id)}"]`) ??
-    root.querySelector(`[data-od-runtime-id="${cssEscape(id)}"]`) ??
-    root.querySelector(`[data-od-source-path="${cssEscape(id)}"]`) ??
-    findElementByScopedPath(doc, root, id);
+    findEditableElementByIdentity(root, id)
+    ?? findElementByScopedPath(doc, root, id);
   if (structural) return structural;
   if (hint) {
     const bySelector = findEditableElementBySelector(doc, root, hint.selector, scope);
@@ -409,6 +450,10 @@ function findEditableElementBySelector(
   if (trimmed.startsWith('body > ')) return null;
   const rootElement = root.nodeType === 9 ? doc.body : root as Element;
   try {
+    // Attribute selectors for the slide root itself (page pin).
+    if (root.nodeType !== 9 && rootElement.matches(trimmed)) {
+      return rootElement;
+    }
     const scoped = rootElement.querySelector(trimmed);
     if (
       scoped
@@ -422,6 +467,43 @@ function findEditableElementBySelector(
     return null;
   }
   return null;
+}
+
+/**
+ * When a comment pins a container/slide, set-text should apply to a leaf
+ * text node identified by the capture hint — not wipe nested markup.
+ */
+function findLeafTextTargetByHint(
+  doc: Document,
+  scope: ManualEditSourceScope,
+  hint: ManualEditMergeTargetHint,
+): Element | null {
+  const byHint = findElementByHint(doc, scope, hint);
+  if (byHint && !hasElementChildren(byHint)) return byHint;
+  const hintText = normalizeTextForCandidate(hint.currentText || '');
+  if (!hintText) return null;
+  const root = findScopedRoot(doc, scope);
+  if (!root) return null;
+  const rootElement = root.nodeType === 9 ? doc.body : root as Element;
+  const hintedTag = /^<\s*([a-z][a-z0-9-]*)\b/i.exec(hint.htmlHint ?? '')?.[1]?.toLowerCase();
+  const candidates = Array.from(rootElement.querySelectorAll('*')).filter(
+    (candidate) => !hasElementChildren(candidate) && isReasonableTextReplacementCandidate(candidate),
+  );
+  let best: { element: Element; score: number; length: number } | null = null;
+  for (const candidate of candidates) {
+    const text = normalizeTextForCandidate(candidate.textContent || '');
+    if (!text) continue;
+    let score = 0;
+    if (hintedTag && candidate.tagName.toLowerCase() === hintedTag) score += 50;
+    if (text === hintText) score += 200;
+    else if (text.includes(hintText) || hintText.includes(text)) score += 80;
+    if (score < 80) continue;
+    const length = text.length;
+    if (!best || score > best.score || (score === best.score && length < best.length)) {
+      best = { element: candidate, score, length };
+    }
+  }
+  return best?.element ?? null;
 }
 
 export function mergeManualEditTargetByHint(
@@ -960,6 +1042,11 @@ function setCssToken(doc: Document, token: string, value: string): boolean {
 function cssEscape(value: string): string {
   if (typeof CSS !== 'undefined' && CSS.escape) return CSS.escape(value);
   return value.replace(/"/g, '\\"');
+}
+
+/** Escape a value for use inside a double-quoted CSS attribute selector. */
+function cssQuotedAttrValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 function escapeRegExp(value: string): string {
