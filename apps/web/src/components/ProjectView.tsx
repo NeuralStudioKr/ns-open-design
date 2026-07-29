@@ -1208,6 +1208,13 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     };
   }
   const allowedTargetIds = input.commentAttachments?.flatMap((attachment) => scopedCommentElementIds(attachment));
+  if ((input.commentAttachments?.length ?? 0) > 0 && (!allowedTargetIds || allowedTargetIds.length === 0)) {
+    return {
+      ok: false,
+      code: 'deck_patch_merge_failed',
+      reason: 'No valid element targets in attached comment scope.',
+    };
+  }
   const allowedSlideIndexes = resolveElementPatchAllowedSlideIndexes({
     currentHtml,
     patches: parsed.patches,
@@ -1280,6 +1287,7 @@ function shouldRetryScopedCommentMergeFailure(
   return (
     reason === 'No matching targets found to merge.' ||
     reason === 'Selected targets were unchanged.' ||
+    reason === 'No valid element targets in attached comment scope.' ||
     reason.startsWith('Target not found:') ||
     (reason.startsWith('element-patch targets ') &&
       reason.endsWith(' outside attached comment scope'))

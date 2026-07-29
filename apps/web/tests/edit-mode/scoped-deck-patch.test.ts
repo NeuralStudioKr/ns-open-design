@@ -8,6 +8,7 @@ import {
   reconcileCommentAttachmentSlideIndex,
   resolveElementPatchAllowedSlideIndexes,
   resolveScopedCommentSlideCandidates,
+  scopedCommentElementIds,
 } from '../../src/edit-mode/scoped-deck-patch';
 import { parseElementPatch } from '../../src/artifacts/element-patch';
 import type { ChatCommentAttachment } from '../../src/types';
@@ -80,6 +81,26 @@ describe('resolveScopedCommentSlideCandidates', () => {
       patchedHtml,
     });
     expect(candidates).toContain(1);
+  });
+});
+
+describe('scopedCommentElementIds', () => {
+  it('drops exact page-root targets but keeps deep dom paths', () => {
+    expect(
+      scopedCommentElementIds({
+        ...attachment(0),
+        elementId: 'dom:body',
+        selector: 'body',
+      }),
+    ).toEqual([]);
+
+    expect(
+      scopedCommentElementIds({
+        ...attachment(1),
+        elementId: 'dom:body > section:nth-of-type(2) > p:nth-of-type(1)',
+        selector: 'body > section:nth-of-type(2) > p:nth-of-type(1)',
+      }),
+    ).toEqual(['dom:body > section:nth-of-type(2) > p:nth-of-type(1)']);
   });
 });
 

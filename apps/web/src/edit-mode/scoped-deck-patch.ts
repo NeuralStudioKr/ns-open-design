@@ -48,8 +48,22 @@ export function scopedCommentElementIds(attachment: ChatCommentAttachment): stri
   return [...new Set(
     ids
       .map((id) => String(id || '').trim())
-      .filter((id) => id && !id.startsWith('pin-') && !id.startsWith('file-comment-')),
+      .filter((id) => id && !id.startsWith('pin-') && !id.startsWith('file-comment-'))
+      .filter((id) => !isUnsafeCommentElementTargetId(id)),
   )];
+}
+
+export function isUnsafeCommentElementTargetId(targetId: string): boolean {
+  const normalized = String(targetId || '').trim().toLowerCase();
+  return (
+    normalized === 'body'
+    || normalized === 'html'
+    || normalized === 'document'
+    || normalized === 'dom:body'
+    || normalized === 'dom:html'
+    || normalized === 'dom:document'
+    || normalized === 'dom:body > body'
+  );
 }
 
 export function selectorCommentElementIds(selector: string | undefined): string[] {
@@ -69,6 +83,9 @@ export function selectorCommentElementIds(selector: string | undefined): string[
 function domSelectorCommentElementId(selector: string | undefined): string {
   const trimmed = String(selector || '').trim();
   if (!trimmed || /[<{}]/.test(trimmed)) return '';
+  if (isUnsafeCommentElementTargetId(trimmed) || isUnsafeCommentElementTargetId(`dom:${trimmed}`)) {
+    return '';
+  }
   if (
     !trimmed.startsWith('body > ')
     && !/^(?:[a-z][a-z0-9-]*|\.[a-z0-9_-]+|\[[a-z0-9_-]+=)/i.test(trimmed)

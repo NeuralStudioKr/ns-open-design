@@ -173,6 +173,7 @@ import {
   targetFromSnapshot,
   type PreviewCommentSnapshot,
 } from '../comments';
+import { isUnsafeCommentElementTargetId } from '../edit-mode/scoped-deck-patch';
 import { applyPodMemberRemoval } from '../lib/pod-members';
 import { AnnotationHoverPopover, BoardComposerPopover } from './BoardComposerPopover';
 import {
@@ -6521,6 +6522,12 @@ function HtmlViewer({
       };
       return enrichSnapshotWithDeckSlideIndex(snapshot);
     };
+    const usableSnapshotFromData = (data: Partial<PreviewCommentSnapshot>): PreviewCommentSnapshot | null => {
+      const snapshot = snapshotFromData(data);
+      if (!snapshot.elementId || isUnsafeCommentElementTargetId(snapshot.elementId)) return null;
+      if (snapshot.selector && isUnsafeCommentElementTargetId(`dom:${snapshot.selector}`)) return null;
+      return snapshot;
+    };
     function onMessage(ev: MessageEvent) {
       if (!isOurPreviewIframeSource(ev.source)) return;
       const data = ev.data as (Partial<PreviewCommentSnapshot> & {
@@ -6532,8 +6539,8 @@ function HtmlViewer({
       if (data.type === 'od:comment-targets' && Array.isArray(data.targets)) {
         const next = new Map<string, PreviewCommentSnapshot>();
         data.targets.forEach((item) => {
-          const snapshot = snapshotFromData(item);
-          if (!snapshot.elementId || !isValidCommentOverlayPosition(snapshot.position)) return;
+          const snapshot = usableSnapshotFromData(item);
+          if (!snapshot || !isValidCommentOverlayPosition(snapshot.position)) return;
           next.set(snapshot.elementId, snapshot);
         });
         setLiveCommentTargets((current) => (
@@ -6556,8 +6563,8 @@ function HtmlViewer({
         return;
       }
       if (data.type === 'od:comment-active-target-update') {
-        const snapshot = snapshotFromData(data);
-        if (!snapshot.elementId || !isValidCommentOverlayPosition(snapshot.position)) return;
+        const snapshot = usableSnapshotFromData(data);
+        if (!snapshot || !isValidCommentOverlayPosition(snapshot.position)) return;
         // Fires on every pointermove while a target is active — skip the Map
         // clone and the active/hovered state writes when nothing changed, so a
         // steady hover doesn't re-render the whole overlay each frame.
@@ -6590,8 +6597,8 @@ function HtmlViewer({
         return;
       }
       if (data.type === 'od:comment-hover') {
-        const snapshot = snapshotFromData(data);
-        if (!snapshot.elementId || !isValidCommentOverlayPosition(snapshot.position)) return;
+        const snapshot = usableSnapshotFromData(data);
+        if (!snapshot || !isValidCommentOverlayPosition(snapshot.position)) return;
         // Pointer landed on an element — cancel any deferred dismiss so moving
         // from the card back onto the element it describes keeps the card.
         cancelHoverCardDismiss();
@@ -6610,8 +6617,8 @@ function HtmlViewer({
         return;
       }
       if (data.type === 'od:comment-target') {
-        const snapshot = snapshotFromData(data);
-        if (!snapshot.elementId || !isValidCommentOverlayPosition(snapshot.position)) return;
+        const snapshot = usableSnapshotFromData(data);
+        if (!snapshot || !isValidCommentOverlayPosition(snapshot.position)) return;
         if (effectiveDeck && typeof snapshot.slideIndex !== 'number') {
           requestSlideStateFromIframe();
         }

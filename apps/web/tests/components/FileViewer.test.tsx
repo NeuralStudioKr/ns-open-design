@@ -4095,6 +4095,36 @@ describe('FileViewer tweaks toolbar', () => {
     await waitFor(() => expect(screen.queryByTestId('comment-popover')).toBeNull());
   });
 
+  it('ignores exact page-root comment targets from the preview bridge', async () => {
+    render(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml='<html><body><main data-od-id="hero">Hero</main></body></html>'
+      />,
+    );
+
+    const frame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+    fireEvent.click(screen.getByTestId('board-mode-toggle'));
+    window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow,
+      data: {
+        type: 'od:comment-target',
+        elementId: 'dom:body',
+        selector: 'body',
+        label: 'body',
+        text: 'Whole page',
+        position: { x: 0, y: 0, width: 800, height: 600 },
+        htmlHint: '<body>',
+      },
+    }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('comment-popover')).toBeNull();
+    });
+  });
+
   it('keeps the comment draft when chat queueing declines the send', async () => {
     const onSendBoardCommentAttachments = vi.fn().mockResolvedValue(false);
     render(
