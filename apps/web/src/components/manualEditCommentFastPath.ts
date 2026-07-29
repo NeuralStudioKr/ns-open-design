@@ -1,5 +1,5 @@
 import type { ChatCommentAttachment } from '../types';
-import type { ManualEditPatch } from '../edit-mode/source-patches';
+import type { ManualEditPatch } from '../edit-mode/types';
 
 export type ManualEditCommentFastPathResult = {
   patches: ManualEditPatch[];
