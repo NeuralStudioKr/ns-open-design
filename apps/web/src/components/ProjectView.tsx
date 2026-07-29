@@ -10950,11 +10950,15 @@ export function finalizeActiveAssistantMessagesOnStop(
       return message;
     }
     const updated = sanitizeChatMessageLeakedPseudoTool(
-      {
-        ...message,
-        runStatus: 'canceled',
-        endedAt: message.endedAt ?? stoppedAt,
-      },
+      appendErrorStatusEvent(
+        {
+          ...message,
+          runStatus: 'canceled',
+          endedAt: message.endedAt ?? stoppedAt,
+        },
+        'Stopped by user',
+        'CANCELED_BY_USER',
+      ),
       sanitizeOptions,
     );
     finalized.push(updated);

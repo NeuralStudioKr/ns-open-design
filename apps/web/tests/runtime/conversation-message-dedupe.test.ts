@@ -68,6 +68,28 @@ describe("isEmptyAssistantShell", () => {
     };
     expect(isEmptyAssistantShell(message)).toBe(false);
   });
+
+  it("does not treat canceled or resumable empty rows as shells", () => {
+    expect(
+      isEmptyAssistantShell({
+        id: "a-canceled",
+        role: "assistant",
+        content: "",
+        runStatus: "canceled",
+        endedAt: 2,
+      }),
+    ).toBe(false);
+    expect(
+      isEmptyAssistantShell({
+        id: "a-resumable",
+        role: "assistant",
+        content: "",
+        runStatus: "failed",
+        endedAt: 2,
+        resumable: true,
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("dedupeAssistantMessagesByRunId", () => {
@@ -419,5 +441,31 @@ describe("resolveLastAssistantMessageId", () => {
       },
     ];
     expect(resolveLastAssistantMessageId(messages)).toBe("a-shell");
+  });
+
+  it("prefers a fresh in-flight empty shell over a prior completed assistant", () => {
+    const messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "first", createdAt: 1 },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "done",
+        runStatus: "succeeded",
+        endedAt: 2,
+        createdAt: 2,
+      },
+      { id: "u2", role: "user", content: "second", createdAt: 3 },
+      {
+        id: "a2",
+        role: "assistant",
+        content: "",
+        runStatus: "running",
+        startedAt: 4,
+        createdAt: 4,
+        events: [{ kind: "status", label: "requesting" }],
+      },
+    ];
+    expect(resolveLastAssistantMessageId(messages)).toBe("a2");
+    expect(resolveLastAssistantMessageIndex(messages)).toBe(3);
   });
 });

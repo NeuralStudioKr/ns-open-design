@@ -64,6 +64,10 @@ function hasOnlyHeaderOnlyNoiseEvents(events: readonly AgentEvent[] | undefined)
 /** Assistant row with no user-visible body and no side effects worth keeping. */
 export function isEmptyAssistantShell(message: ChatMessage): boolean {
   if (message.role !== "assistant") return false;
+  // Failed / canceled / resumable rows anchor error cards and Continue — never
+  // treat them as disposable shells even when the body is still empty.
+  if (message.runStatus === "failed" || message.runStatus === "canceled") return false;
+  if (message.resumable === true) return false;
   if ((message.producedFiles?.length ?? 0) > 0) return false;
   if (!hasOnlyHeaderOnlyNoiseEvents(message.events)) return false;
   if (assistantMessageTextBody(message).trim().length > 0) return false;
@@ -264,8 +268,9 @@ export function dedupeConversationAssistantRows(
 }
 
 /**
- * Prefer the newest non-empty assistant for streaming / question-form anchors.
- * Falls back to the newest empty shell when that is the only assistant.
+ * Prefer the live streaming / in-flight assistant for chat anchors, then the
+ * newest non-empty assistant. Falls back to the newest empty shell only when
+ * that is the sole assistant (so multi-turn streams keep the new shell visible).
  */
 export function resolveLastAssistantMessageId(
   messages: readonly ChatMessage[],
@@ -274,6 +279,7 @@ export function resolveLastAssistantMessageId(
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];
     if (message?.role !== "assistant") continue;
+    if (isInFlightAssistantMessage(message)) return message.id;
     if (!isEmptyAssistantShell(message)) return message.id;
     if (fallback === undefined) fallback = message.id;
   }

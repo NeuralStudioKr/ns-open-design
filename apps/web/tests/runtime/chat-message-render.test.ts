@@ -6,6 +6,7 @@ import {
   shouldIncludeMessageInChatRender,
   shouldOmitMessageFromChatRender,
 } from "../../src/runtime/chat-message-render";
+import { resolveLastAssistantMessageId } from "../../src/runtime/conversation-message-dedupe";
 import { buildChatRenderItems } from "../../src/components/ChatPane";
 
 const embedCtx = {
@@ -69,6 +70,35 @@ describe("chat-message-render", () => {
     expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(true);
   });
 
+  it("omits embed thinking+Bash rows so no phantom empty slot remains", () => {
+    const message: ChatMessage = {
+      id: "a-think",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 2,
+      events: [
+        { kind: "thinking", text: "planning…" },
+        { kind: "tool_use", id: "tu-1", name: "Bash", input: { command: "ls" } },
+        { kind: "tool_result", toolUseId: "tu-1", content: "ok" },
+      ],
+    } as ChatMessage;
+    expect(hasEmbedVisibleAssistantBody(message)).toBe(false);
+    expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(true);
+  });
+
+  it("keeps canceled empty shells visible after Stop before first token", () => {
+    const canceled: ChatMessage = {
+      id: "a-canceled",
+      role: "assistant",
+      content: "",
+      runStatus: "canceled",
+      startedAt: 1,
+      endedAt: 2,
+    };
+    expect(shouldOmitMessageFromChatRender(canceled, embedCtx)).toBe(false);
+  });
+
   it("keeps embed Write rows that surface file ops", () => {
     const message: ChatMessage = {
       id: "a-write",
@@ -120,5 +150,36 @@ describe("chat-message-render", () => {
       lastAssistantId: "a-live",
     });
     expect(items.map((item) => item.message.id)).toEqual(["u1", "a-live"]);
+  });
+
+  it("keeps a multi-turn streaming shell when lastAssistantId comes from resolveLastAssistantMessageId", () => {
+    const messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "first", createdAt: 1 },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "done",
+        runStatus: "succeeded",
+        endedAt: 2,
+        createdAt: 2,
+      },
+      { id: "u2", role: "user", content: "second", createdAt: 3 },
+      {
+        id: "a2",
+        role: "assistant",
+        content: "",
+        runStatus: "running",
+        startedAt: 4,
+        createdAt: 4,
+      },
+    ];
+    const lastAssistantId = resolveLastAssistantMessageId(messages);
+    const items = buildChatRenderItems(messages, {
+      streaming: true,
+      lastAssistantId,
+      hideAssistantThinkingDetails: true,
+    });
+    expect(lastAssistantId).toBe("a2");
+    expect(items.map((item) => item.message.id)).toEqual(["u1", "a1", "u2", "a2"]);
   });
 });
