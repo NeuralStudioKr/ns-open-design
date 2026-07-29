@@ -237,20 +237,13 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(result.html).toContain('<h1>인트로</h1>');
   });
 
-  it('accepts a "target unchanged" scoped edit via the last-resort slide-level swap even with anchors', () => {
-    // Bug (2026-07-29, second variant): user reported
-    //   "deck_patch_merge_failed — Selected targets were unchanged."
-    // Console warn: `[deck-patch] scoped deck patch failed`. The
-    // narrow merge found the target in both docs (structural id
-    // resolved on the disk source) but the model expressed the
-    // requested emphasis as a wrapper / decoration around the target
-    // — the target's own outerHTML stayed byte-identical while the
-    // slide's structure changed. Style-only rejected (structural
-    // change), text-preserved rejected (currentText wiped or moved),
-    // graft rejected (no diff at target level). The last-resort
-    // "target-unchanged" branch now accepts the slide-level swap so
-    // the model's visible edit lands instead of the misleading
-    // "선택 대상 밖 변경" banner.
+  it('rejects a "target unchanged" scoped edit instead of swapping the whole slide', () => {
+    // Regression guard (2026-07-29): a previous fallback accepted a
+    // whole-slide replacement when the selected target resolved but
+    // was byte-identical in the model output. That made comment edits
+    // mutate sibling elements/pages while the selected element stayed
+    // unchanged. Anchored element comments must reject this response
+    // so the persist layer can retry under the same scope.
     const currentHtml = `<!doctype html><html><body>
 <section class="slide" data-slide-index="0"><h1>인트로</h1></section>
 <section class="slide" data-slide-index="1">
@@ -294,14 +287,9 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
       patchedHtml,
       commentAttachments: [targetUnchangedAttachment],
     });
-    expect(result.ok, JSON.stringify(result)).toBe(true);
-    if (!result.ok) return;
-    // The wrapper and badge from the model's response must land in
-    // the final HTML — otherwise the user's edit silently drops.
-    expect(result.html).toContain('highlight-wrapper');
-    expect(result.html).toContain('badge');
-    // Non-target slides survive untouched — the swap is scoped.
-    expect(result.html).toContain('<h1>인트로</h1>');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('Selected targets were unchanged.');
   });
 
   it('does not accept an anchor-less swap when the slide diff is empty', () => {

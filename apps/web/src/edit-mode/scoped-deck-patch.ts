@@ -482,23 +482,15 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
   if (hintOnly.ok) return hintOnly;
 
   // Last-resort catch-all — apply the model's patched slide as a
-  // slide-level swap when the narrow merge and every intermediate
-  // fallback have declined. This branch trades element-scope
-  // precision for reliability so the user's edit actually ships
-  // instead of surfacing a misleading "선택 대상 밖 변경" banner.
+  // slide-level swap only when the comment has no identity anchor at
+  // all. Anchored element comments must never fall through to a whole
+  // slide replacement: if the selected target stayed unchanged while
+  // siblings changed, accepting the slide would mutate outside the
+  // user's clicked element.
   //
   // Two acceptance paths:
   //
-  //  (A) "Selected targets were unchanged." + slide diff exists.
-  //      The target IS present in both docs and the merge already
-  //      proved it did not change. The strict scope apply already
-  //      restricted the patch to the attached slide, so any diff
-  //      here is contained. If the attachment carries an anchor
-  //      and text-preserved above already rejected because the
-  //      anchor was WIPED from the patched slide, we treat that as
-  //      a suspect response and skip this branch (see below).
-  //
-  //  (B) "No matching targets found to merge." + empty anchor +
+  //  (A) "No matching targets found to merge." + empty anchor +
   //      slide diff exists. The id could not be resolved anywhere
   //      and we have no identity signal to verify with. Accept the
   //      slide-level swap so an anchor-less pin/comment edit still
@@ -507,6 +499,10 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
   // Safety rails:
   //   - Byte-identical slides never accept — no visible edit to
   //     ship, no reason to declare success on a no-op.
+  //   - "Selected targets were unchanged" is NOT accepted here —
+  //     the selected element resolved but the model edited something
+  //     else. Persisting that would be the exact "selected element
+  //     ignored" bug users are reporting.
   //   - "No matching targets" WITH anchor is NOT accepted here —
   //     the anchor exists but did not resolve in either doc AND
   //     text-preserved already rejected, meaning the model likely
@@ -515,13 +511,11 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
   //     scope guard, so this branch cannot touch a slide other than
   //     the one the attachment is scoped to.
   const anchors = extractTargetIdentityAnchors(input.attachment);
-  const acceptForUnchanged =
-    merged.reason === 'Selected targets were unchanged.' && nextSlide !== patchedSlide;
   const acceptForAnchorlessNotFound =
     merged.reason === 'No matching targets found to merge.' &&
     nextSlide !== patchedSlide &&
     anchors.length === 0;
-  if (acceptForUnchanged || acceptForAnchorlessNotFound) {
+  if (acceptForAnchorlessNotFound) {
     const swapped = applyDeckPatch({
       currentHtml: input.nextHtml,
       patch: {
@@ -533,7 +527,7 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
         slideIndex: input.slideIndex,
         ids,
         reason: merged.reason,
-        branch: acceptForUnchanged ? 'target-unchanged' : 'anchor-less',
+        branch: 'anchor-less',
         anchorCount: anchors.length,
       });
       return { ok: true, html: swapped.html };
