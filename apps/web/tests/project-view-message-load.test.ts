@@ -431,9 +431,11 @@ describe("ProjectView message loading", () => {
     // Keep this window broad enough for the prompt preparation block above
     // the auto-continue counter reset; this test asserts the ordering contract,
     // not an exact source distance.
-    const handleSendBlock = source.slice(handleSendStart, handleSendStart + 7200);
+    const handleSendBlock = source.slice(handleSendStart, handleSendStart + 9600);
     expect(handleSendBlock).toContain("isAutoContinueIncompleteOutputPrompt(prompt)");
     expect(handleSendBlock).toContain("conversationAutoContinueCountRef.current.set(runConversationId, 0)");
+    expect(handleSendBlock).toContain("scopedCommentAttachments.length > 0");
+    expect(handleSendBlock).toContain("chatAttachmentForProjectFile(existingDeck)");
     // Comment-edit path must plumb the deck-patch nudge, while keeping the
     // current deck source attached. Prior assistant artifact history is not
     // reliable after refresh/queue/background reattach; without deck.html the
@@ -765,6 +767,14 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     expect(source).toContain("scopeResult.code === 'full_deck_diff_failed'");
     expect(source).toContain("routing scoped full-deck rewrite to auto-continue");
+  });
+
+  it("salvages empty element-patch bodies from assistant source text before failing", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("resolveElementPatchBodyForApply");
+    expect(source).toContain("sourceText");
+    expect(source).toContain("salvaged patch body from assistant output");
+    expect(source).toContain("buildConcreteElementPatchTemplate");
   });
 
   it("routes empty element-patch responses through auto-continue instead of the scope banner", () => {

@@ -350,6 +350,7 @@ export type ScopedCommentEditAutoContinueContext = {
   failureReason?: string | null;
   commentContext?: string | null;
   userInstruction?: string | null;
+  concretePatchTemplate?: string | null;
 };
 
 /**
@@ -403,6 +404,22 @@ export function buildAutoContinueScopedCommentEditPrompt(
       commentContext,
     );
   }
+  const concreteTemplate = context.concretePatchTemplate?.trim();
+  if (concreteTemplate) {
+    parts.push(
+      '',
+      attempt >= 2
+        ? '[필수] 아래 템플릿을 **그대로 복사**해서 출력하세요. `(요청한 새 텍스트)` 자리만 사용자 요청 문구로 바꾸고, 다른 설명·인사·question-form은 금지합니다:'
+        : '[권장] 아래 템플릿의 target-id / slide-index 를 그대로 쓰고 `(요청한 새 텍스트)` 만 교체하세요:',
+      concreteTemplate,
+    );
+  }
+  if (attempt >= 3) {
+    parts.push(
+      '',
+      '[최종 시도] 위 템플릿을 그대로 출력하지 못하면 `<artifact type="deck-patch" identifier="deck">` 안에 해당 slide `<section class="slide" data-slide-index="{N}">` 하나만 넣으세요. 전체 deck rewrite 금지.',
+    );
+  }
   return parts.join('\n');
 }
 
@@ -412,6 +429,7 @@ export function resolveAutoContinuePrompt(options: {
   scopedCommentEditFailureReason?: string | null;
   scopedCommentContext?: string | null;
   scopedUserInstruction?: string | null;
+  concretePatchTemplate?: string | null;
 }): string {
   if (options.commentAttachmentCount > 0) {
     return buildAutoContinueScopedCommentEditPrompt({
@@ -419,6 +437,7 @@ export function resolveAutoContinuePrompt(options: {
       failureReason: options.scopedCommentEditFailureReason,
       commentContext: options.scopedCommentContext,
       userInstruction: options.scopedUserInstruction,
+      concretePatchTemplate: options.concretePatchTemplate,
     });
   }
   return buildAutoContinueIncompleteOutputPrompt(options.incompleteOutput);

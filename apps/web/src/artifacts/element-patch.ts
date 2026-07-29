@@ -46,6 +46,103 @@ export function isElementPatchArtifactType(artifactType: string | null | undefin
   return trimmed === 'element-patch';
 }
 
+export type ElementPatchCoerceHint = {
+  targetId: string;
+  slideIndex: number;
+};
+
+/**
+ * Recover `<patch>` blocks (or plain replacement text) when the streaming
+ * parser captured an empty element-patch artifact body but the assistant
+ * turn still contains patch-shaped output elsewhere.
+ */
+export function salvageElementPatchBody(
+  artifactBody: string | null | undefined,
+  sourceText?: string | null,
+): string | null {
+  const body = String(artifactBody ?? '').trim();
+  if (body) return body;
+
+  const source = String(sourceText ?? '');
+  if (!source.trim()) return null;
+
+  const loosePatches = [...source.matchAll(/<patch\b[^>]*>[\s\S]*?<\/patch>/gi)];
+  if (loosePatches.length > 0) {
+    return loosePatches.map((match) => match[0] ?? '').filter(Boolean).join('\n');
+  }
+
+  const closedArtifact = source.match(
+    /<artifact\b[^>]*\btype\s*=\s*["']element-patch["'][^>]*>([\s\S]*?)<\/artifact>/i,
+  );
+  if (closedArtifact?.[1]?.trim()) {
+    return closedArtifact[1].trim();
+  }
+
+  const openArtifact = source.match(
+    /<artifact\b[^>]*\btype\s*=\s*["']element-patch["'][^>]*>([\s\S]*)$/i,
+  );
+  if (openArtifact?.[1]) {
+    const tail = openArtifact[1].replace(/<\/artifact>[\s\S]*$/i, '').trim();
+    if (tail) return tail;
+  }
+
+  return null;
+}
+
+/**
+ * When the model puts only replacement prose inside the element-patch
+ * wrapper (no `<patch>` tag), wrap it as a single scoped set-text patch.
+ */
+export function coercePlainTextElementPatchBody(
+  body: string,
+  hints: readonly ElementPatchCoerceHint[],
+): string | null {
+  const trimmed = String(body ?? '').trim();
+  if (!trimmed) return null;
+  if (/<patch\b/i.test(trimmed) || /<section\b/i.test(trimmed) || /<!doctype/i.test(trimmed)) {
+    return null;
+  }
+  if (hints.length !== 1) return null;
+  const hint = hints[0];
+  const targetId = String(hint?.targetId ?? '').trim();
+  if (!targetId) return null;
+  if (typeof hint.slideIndex !== 'number' || !Number.isInteger(hint.slideIndex) || hint.slideIndex < 0) {
+    return null;
+  }
+  return [
+    `<patch target-id="${escapeXmlAttr(targetId)}" slide-index="${hint.slideIndex}" kind="set-text">`,
+    escapeXmlText(trimmed),
+    '</patch>',
+  ].join('');
+}
+
+export function resolveElementPatchBodyForApply(input: {
+  patchBody: string;
+  sourceText?: string | null;
+  coerceHints?: readonly ElementPatchCoerceHint[];
+}): string {
+  const salvaged = salvageElementPatchBody(input.patchBody, input.sourceText);
+  const candidate = salvaged ?? input.patchBody;
+  const coerced = input.coerceHints?.length
+    ? coercePlainTextElementPatchBody(candidate, input.coerceHints)
+    : null;
+  return coerced ?? candidate;
+}
+
+function escapeXmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
+function escapeXmlText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 export function parseElementPatch(body: string): ParseElementPatchResult {
   const patches: ElementPatchOp[] = [];
   const source = String(body ?? '');

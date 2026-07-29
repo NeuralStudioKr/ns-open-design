@@ -741,6 +741,61 @@ export function renderCommentAttachmentContext(commentAttachments: ChatCommentAt
   return lines.join('\n');
 }
 
+function escapeXmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
+/**
+ * Ready-to-copy element-patch template with real target-id / slide-index
+ * values so auto-continue retries do not depend on the model inferring
+ * placeholders from prose.
+ */
+export function buildConcreteElementPatchTemplate(
+  commentAttachments: readonly ChatCommentAttachment[],
+): string | null {
+  const blocks: string[] = [];
+  for (const item of commentAttachments) {
+    if (
+      typeof item.slideIndex !== 'number'
+      || !Number.isFinite(item.slideIndex)
+      || item.slideIndex < 0
+    ) {
+      continue;
+    }
+    const targetId = String(item.elementId || '').trim();
+    if (!targetId) continue;
+    const slideIndex = Math.floor(item.slideIndex);
+    blocks.push(
+      '<artifact type="element-patch" identifier="deck">',
+      `  <patch target-id="${escapeXmlAttr(targetId)}" slide-index="${slideIndex}" kind="set-text">(요청한 새 텍스트)</patch>`,
+      '</artifact>',
+    );
+  }
+  return blocks.length > 0 ? blocks.join('\n') : null;
+}
+
+export function elementPatchCoerceHintsFromCommentAttachments(
+  commentAttachments: readonly ChatCommentAttachment[],
+): Array<{ targetId: string; slideIndex: number }> {
+  const hints: Array<{ targetId: string; slideIndex: number }> = [];
+  for (const item of commentAttachments) {
+    if (
+      typeof item.slideIndex !== 'number'
+      || !Number.isFinite(item.slideIndex)
+      || item.slideIndex < 0
+    ) {
+      continue;
+    }
+    const targetId = String(item.elementId || '').trim();
+    if (!targetId) continue;
+    hints.push({ targetId, slideIndex: Math.floor(item.slideIndex) });
+  }
+  return hints;
+}
+
 function canAttachCommentSourceFile(path: string): boolean {
   const lower = path.toLowerCase();
   return /\.(html?|css|js|mjs|cjs|ts|tsx|json|md|txt|svg)$/.test(lower);

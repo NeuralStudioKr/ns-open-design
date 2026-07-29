@@ -26,6 +26,7 @@ import {
   applyElementPatches,
   isElementPatchArtifactType,
   parseElementPatch,
+  resolveElementPatchBodyForApply,
 } from '../artifacts/element-patch';
 import {
   applyScopedDeckPatchToHtml,
@@ -267,8 +268,10 @@ import {
   historyWithApiWebFetchContext,
 } from '../api-web-fetch-context';
 import {
+  buildConcreteElementPatchTemplate,
   chatAttachmentsFromPreviewCommentFiles,
   commentsToAttachments,
+  elementPatchCoerceHintsFromCommentAttachments,
   filterUsableCommentAttachments,
   historyWithCommentAttachmentContext,
   mergeAttachedComments,
@@ -1126,11 +1129,24 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
   projectId: string;
   fileName: string;
   patchBody: string;
+  sourceText?: string;
   allowedSlideIndexes?: readonly number[];
   commentAttachments?: readonly ChatCommentAttachment[];
   instructionText?: string;
 }): Promise<DeckPatchMergeResult> {
-  const parsed = parseElementPatch(input.patchBody);
+  const resolvedBody = resolveElementPatchBodyForApply({
+    patchBody: input.patchBody,
+    sourceText: input.sourceText,
+    coerceHints: elementPatchCoerceHintsFromCommentAttachments(input.commentAttachments ?? []),
+  });
+  if (resolvedBody !== input.patchBody) {
+    console.warn('[element-patch] salvaged patch body from assistant output', {
+      fileName: input.fileName,
+      beforeLength: (input.patchBody ?? '').length,
+      afterLength: resolvedBody.length,
+    });
+  }
+  const parsed = parseElementPatch(resolvedBody);
   if (!parsed.ok) {
     // Salvage: the model wrapped deck-patch content (or a full
     // `<section class="slide">` block) in an `element-patch` artifact
@@ -1139,7 +1155,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     // with a scary "선택 대상 밖 변경" banner. This covers the common
     // model glitch where the artifact type is off-by-one for the
     // content shape.
-    if (elementPatchBodyLooksLikeDeckPatch(input.patchBody)) {
+    if (elementPatchBodyLooksLikeDeckPatch(resolvedBody)) {
       console.warn('[element-patch] body looks like deck-patch — falling back', {
         fileName: input.fileName,
         parseReason: parsed.reason,
@@ -1147,7 +1163,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
       return await tryApplyDeckPatchAgainstCurrentDeck({
         projectId: input.projectId,
         fileName: input.fileName,
-        patchBody: input.patchBody,
+        patchBody: resolvedBody,
         allowedSlideIndexes: input.allowedSlideIndexes,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
@@ -1156,7 +1172,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     console.warn('[element-patch] parse failed', {
       fileName: input.fileName,
       reason: parsed.reason,
-      bodyLength: (input.patchBody ?? '').length,
+      bodyLength: (resolvedBody ?? '').length,
     });
     return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
   }
@@ -3207,12 +3223,17 @@ export function ProjectView({
                 autoContinueCommentAttachments.length > 0
                   ? renderCommentAttachmentContext(autoContinueCommentAttachments)
                   : null;
+              const concretePatchTemplate =
+                autoContinueCommentAttachments.length > 0
+                  ? buildConcreteElementPatchTemplate(autoContinueCommentAttachments)
+                  : null;
               const autoContinuePrompt = resolveAutoContinuePrompt({
                 commentAttachmentCount: autoContinueCommentAttachments.length,
                 scopedCommentContext,
                 scopedUserInstruction: autoContinueOriginUser
                   ? stripUserVisibleUserMessageText(autoContinueOriginUser.content).trim()
                   : null,
+                concretePatchTemplate,
                 incompleteOutput: {
                   attempt,
                   referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
@@ -3703,6 +3724,7 @@ export function ProjectView({
           projectId: project.id,
           fileName: targetFileName,
           patchBody: art.html,
+          sourceText,
           allowedSlideIndexes: scopedAllowedSlideIndexes,
           commentAttachments: persistCommentAttachments,
           instructionText: runVisiblePromptRef.current,
@@ -6512,12 +6534,17 @@ export function ProjectView({
               autoContinueCommentAttachments.length > 0
                 ? renderCommentAttachmentContext(autoContinueCommentAttachments)
                 : null;
+            const concretePatchTemplate =
+              autoContinueCommentAttachments.length > 0
+                ? buildConcreteElementPatchTemplate(autoContinueCommentAttachments)
+                : null;
             const autoContinuePrompt = resolveAutoContinuePrompt({
               commentAttachmentCount: autoContinueCommentAttachments.length,
               scopedCommentContext,
               scopedUserInstruction: autoContinueOriginUser
                 ? stripUserVisibleUserMessageText(autoContinueOriginUser.content).trim()
                 : null,
+              concretePatchTemplate,
               incompleteOutput: {
                 attempt,
                 referenceFiles: collectSlideReferencePathsFromMessages(mergedMessages),
@@ -6901,6 +6928,28 @@ export function ProjectView({
         ),
       );
       let autoAttachedDeckPath: string | null = null;
+      // Scoped comment edits (including auto-continue retries) must keep the
+      // on-disk deck attached so the model can emit element-patch / deck-patch
+      // against real target ids instead of guessing from stale chat prose.
+      if (slideOnlyMvp && scopedCommentAttachments.length > 0) {
+        const existingDeck = resolvePrimaryDeckFile(
+          projectFiles,
+          project.metadata?.entryFile ?? null,
+        );
+        if (existingDeck) {
+          const deckPath = existingDeck.path?.trim() || existingDeck.name;
+          if (
+            deckPath
+            && !attachmentsIncludeProjectFilePath(effectiveAttachments, deckPath)
+          ) {
+            effectiveAttachments = mergeChatAttachments(
+              effectiveAttachments,
+              [chatAttachmentForProjectFile(existingDeck)],
+            );
+          }
+          autoAttachedDeckPath = deckPath;
+        }
+      }
       // Disk deck is enough — first-turn interrupt + retry often has no prior
       // assistant in historyBase, but the project already has deck.html.
       if (
@@ -7657,6 +7706,10 @@ export function ProjectView({
                   const scopedUserInstruction = stripUserVisibleUserMessageText(
                     (retryTarget?.userMsg ?? userMsg).content,
                   ).trim();
+                  const concretePatchTemplate =
+                    autoContinueCommentAttachments.length > 0
+                      ? buildConcreteElementPatchTemplate(autoContinueCommentAttachments)
+                      : null;
                   const scopedFailureReason =
                     terminalPersistResult?.kind === 'skipped-incomplete'
                       ? terminalPersistResult.reason ?? null
@@ -7664,6 +7717,9 @@ export function ProjectView({
                   const autoContinuePrompt = resolveAutoContinuePrompt({
                     commentAttachmentCount: autoContinueCommentAttachments.length,
                     scopedCommentEditFailureReason: scopedFailureReason,
+                    scopedCommentContext,
+                    scopedUserInstruction,
+                    concretePatchTemplate,
                     incompleteOutput: {
                       attempt,
                       truncatedByMaxTokens: runStopReason === 'max_tokens',
@@ -7678,8 +7734,6 @@ export function ProjectView({
                         planOutline: rawFinalText,
                       }),
                     },
-                    scopedCommentContext,
-                    scopedUserInstruction,
                   });
                   // Preserve the failed turn's `commentAttachments`
                   // on the auto-continue call. Without this the retry

@@ -73,11 +73,15 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
   it('uses a scoped comment-edit prompt instead of full-deck rewrite when attachments exist', () => {
     const scoped = resolveAutoContinuePrompt({
       commentAttachmentCount: 1,
-      incompleteOutput: { attempt: 1 },
+      incompleteOutput: { attempt: 2 },
       scopedCommentEditFailureReason: 'empty element-patch body',
       scopedCommentContext:
         '<attached-preview-comments>\nslideIndex: 2\nelementId: od-title-1\ncurrentText: 모두의 기술\n</attached-preview-comments>',
       scopedUserInstruction: "'모두의 기술'을 빨간색으로 바꿔줘",
+      concretePatchTemplate:
+        '<artifact type="element-patch" identifier="deck">\n'
+        + '  <patch target-id="od-title-1" slide-index="2" kind="set-text">(요청한 새 텍스트)</patch>\n'
+        + '</artifact>',
     });
     expect(scoped.startsWith(AUTO_CONTINUE_PROMPT_SENTINEL)).toBe(true);
     expect(scoped).toContain('element-patch');
@@ -87,6 +91,9 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(scoped).toContain('od-title-1');
     expect(scoped).toContain('모두의 기술');
     expect(scoped).toContain("'모두의 기술'을 빨간색으로 바꿔줘");
+    expect(scoped).toContain('target-id="od-title-1"');
+    expect(scoped).toContain('FINAL RETRY');
+    expect(scoped).toContain('그대로 복사');
     expect(scoped).toContain('<artifact type="element-patch" identifier="deck">');
     expect(scoped).toContain('전체 덱을 새로 쓰거나');
     expect(scoped).not.toContain('출력 형식은 반드시 하나의 `<artifact type="deck"');
