@@ -558,8 +558,16 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("tryApplyCommentEditFastPathAgainstCurrentDeck");
     expect(source).toContain("import { applyManualEditPatch, readManualEditStyles } from '../edit-mode/source-patches'");
     expect(source).toContain("import { buildManualEditCommentFastPath } from './manualEditCommentFastPath'");
-    expect(source).toContain("applied scoped comment fast-path after empty model artifact");
+    expect(source).toContain("applied scoped comment fast-path after failed model artifact");
     expect(source).toContain("salvagedByFastPath");
+    // The fast-path must also cover the deck-patch failure branch AND
+    // the terminal-auto-open last-resort salvage before the generic
+    // "결과물이 생성되지 않았습니다" banner fires. Without those two
+    // extensions, only empty element-patch failures got salvaged; the
+    // second user report on the same day hit skipped-incomplete on a
+    // deck-patch shape and no salvage layer caught it.
+    expect(source).toContain("[deck-patch] applied scoped comment fast-path after failed model artifact");
+    expect(source).toContain("[teamver] terminal-auto-open scoped comment fast-path salvage succeeded");
   });
 
   it("self-heals leaked composer streaming markers after terminal turns settle", () => {
