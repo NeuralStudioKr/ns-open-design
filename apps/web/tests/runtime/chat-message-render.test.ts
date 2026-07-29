@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../src/types";
 import { AUTO_CONTINUE_PROMPT_SENTINEL } from "../../src/runtime/resume";
 import {
+  assistantMessageHasSanitizedVisibleText,
   hasEmbedVisibleAssistantBody,
   shouldIncludeMessageInChatRender,
   shouldOmitMessageFromChatRender,
@@ -140,6 +141,21 @@ describe("chat-message-render", () => {
     };
     expect(hasEmbedVisibleAssistantBody(message)).toBe(false);
     expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(true);
+  });
+
+  it("assistantMessageHasSanitizedVisibleText matches embed prose gates", () => {
+    expect(
+      assistantMessageHasSanitizedVisibleText({
+        content: "```html\n<div>deck</div>\n```",
+        events: [],
+      }),
+    ).toBe(false);
+    expect(
+      assistantMessageHasSanitizedVisibleText({
+        content: "슬라이드 구성을 설명드렸습니다.",
+        events: [],
+      }),
+    ).toBe(true);
   });
 
   it("keeps artifact-only succeeded deck-patch turns visible in embed virtualization", () => {

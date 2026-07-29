@@ -62,4 +62,21 @@ describe("chat reload assistant visibility", () => {
     const deduped = dedupeConversationAssistantRows(autoContinueReloadFixture());
     expect(deduped.some((message) => message.id === "a-succeeded")).toBe(true);
   });
+
+  it("drops code-fence-only assistant rows from chat render after reload", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "make deck", createdAt: 1 };
+    const codeOnly: ChatMessage = {
+      id: "a-code",
+      role: "assistant",
+      content: "```html\n<section class=\"slide\"><h1>Draft</h1></section>\n```",
+      runStatus: "succeeded",
+      endedAt: 2,
+      createdAt: 2,
+    };
+    const items = buildChatRenderItems([user, codeOnly], {
+      ...embedCtx,
+      lastAssistantId: "a-code",
+    });
+    expect(items.map((item) => item.message.id)).toEqual(["u1"]);
+  });
 });

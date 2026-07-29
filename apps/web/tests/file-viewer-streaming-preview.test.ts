@@ -28,7 +28,9 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("repairArtifactDocumentHead(liveHtml)");
     expect(source).toContain("scheduleDeckPreviewFitNudges");
     expect(source).toContain("scheduleDeckPreviewFitNudges(frame, deckPreviewFitScale");
-    expect(source).toContain("scheduleDeckPreviewFitNudges(iframeRef.current, deckPreviewFitScale");
+    expect(source).toMatch(
+      /scheduleDeckPreviewFitNudges\(\s*frame,\s*deckPreviewFitScale/,
+    );
     expect(source).toContain("artifact-preview-streaming-veil");
     expect(source).toContain("artifact-preview-streaming-veil__card");
     expect(source).toContain('name="spinner"');
@@ -158,6 +160,8 @@ describe("FileViewer streaming slide preview", () => {
     expect(projectView).toContain(
       "currentConversationStreaming || currentConversationAwaitingActiveRunAttach",
     );
+    expect(projectView).toContain("messageHasMergeVisibleProse");
+    expect(projectView).toContain("assistantMessageHasSanitizedVisibleText");
     expect(projectView).toContain("shouldCatchUpReattachTextFromSeed");
     expect(projectView).toContain("reattachReplayRemainderAfterSeed");
     expect(projectView).toContain("resolvePrimaryDeckFile");

@@ -178,6 +178,7 @@ import { randomUUID } from '../utils/uuid';
 import { DEFAULT_NOTIFICATIONS } from '../state/config';
 import type { TodoItem } from '../runtime/todos';
 import { appendErrorStatusEvent, messageHasVisibleProse } from '../runtime/chat-events';
+import { assistantMessageHasSanitizedVisibleText } from '../runtime/chat-message-render';
 import {
   AUTO_CONTINUE_ENTRY_FROM,
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
@@ -491,6 +492,14 @@ function messageHasInFlightRunFields(local: ChatMessage): boolean {
   return false;
 }
 
+/** Merge gates: assistant rows use sanitized prose (embed + OD), users stay raw. */
+function messageHasMergeVisibleProse(message: ChatMessage): boolean {
+  if (message.role === 'assistant') {
+    return assistantMessageHasSanitizedVisibleText(message);
+  }
+  return messageHasVisibleProse(message);
+}
+
 function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): ChatMessage {
   if (!local) return reconcileUserCommentAttachments(server);
   const merged: ChatMessage = { ...server };
@@ -580,11 +589,18 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
       ) {
         merged.content = localContent;
         if (local.events) merged.events = local.events;
+      } else if (
+        messageHasMergeVisibleProse(local)
+        && !messageHasMergeVisibleProse(server)
+        && (isTerminalRunStatus(server.runStatus) || isTerminalRunStatus(local.runStatus))
+      ) {
+        merged.content = localContent;
+        if (local.events?.length) merged.events = local.events;
       }
     }
   } else if (
-    messageHasVisibleProse(local)
-    && !messageHasVisibleProse(server)
+    messageHasMergeVisibleProse(local)
+    && !messageHasMergeVisibleProse(server)
     && (isTerminalRunStatus(server.runStatus) || isTerminalRunStatus(local.runStatus))
   ) {
     merged.content = localContent;

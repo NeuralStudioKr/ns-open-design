@@ -1,6 +1,6 @@
 import type { ChatMessage } from "../types";
 import { stripAllClosedArtifacts } from "../artifacts/strip";
-import { assistantMessageTextBody, messageHasVisibleProse } from "./chat-events";
+import { assistantMessageTextBody } from "./chat-events";
 import { sanitizeAssistantProseForDisplay } from "./internalAgentMarkup";
 import { isEmptyAssistantShell } from "./conversation-message-dedupe";
 import { deriveFileOps } from "./file-ops";
@@ -127,7 +127,7 @@ export function shouldOmitSupersededAutoContinueFailure(
   if (message.runStatus !== "failed") return false;
   if (!hasLaterAssistantInVisibleUserTurn(messages, messageIndex)) return false;
   if ((message.producedFiles?.length ?? 0) > 0) return false;
-  if (messageHasVisibleProse(message)) return false;
+  if (assistantMessageHasSanitizedVisibleText(message)) return false;
   if (deriveFileOps(message.events ?? []).length > 0) return false;
   if (
     ctx
@@ -145,9 +145,15 @@ function isLiveStreamingAssistantTarget(
   return ctx.streaming && message.id === ctx.lastAssistantId;
 }
 
-/** Text-channel body only — thinking is filtered in Teamver embed chat UI. */
-function hasVisibleTextBody(message: ChatMessage): boolean {
-  const body = assistantMessageTextBody(message);
+/**
+ * User-visible assistant prose after the same sanitize pass as embed chat UI.
+ * Keep in sync with AssistantMessage `hasVisibleAssistantTextOutput` /
+ * `stripInternalMarkupFromProseBlocks` (stripCodeFences when thinking is hidden).
+ */
+export function assistantMessageHasSanitizedVisibleText(
+  message: Pick<ChatMessage, "content" | "events">,
+): boolean {
+  const body = assistantMessageTextBody(message as ChatMessage);
   if (!body.trim()) return false;
   const stripped = stripAllClosedArtifacts(body);
   const cleaned = sanitizeAssistantProseForDisplay(stripped, {
@@ -155,6 +161,11 @@ function hasVisibleTextBody(message: ChatMessage): boolean {
     stripCodeFences: true,
   }).trim();
   return cleaned.length > 0;
+}
+
+/** Text-channel body only — thinking is filtered in Teamver embed chat UI. */
+function hasVisibleTextBody(message: ChatMessage): boolean {
+  return assistantMessageHasSanitizedVisibleText(message);
 }
 
 function assistantRunSucceeded(message: ChatMessage): boolean {
@@ -184,6 +195,8 @@ function hasTeamverCompletedArtifactLead(message: ChatMessage): boolean {
  *
  * Keep in sync with AssistantMessage `hasEmbedVisibleBody` (text-only prose;
  * thinking must NOT count as visible here or ChatPane reserves a phantom row).
+ *
+ * Sanitized text gate: `assistantMessageHasSanitizedVisibleText`.
  */
 export function hasEmbedVisibleAssistantBody(message: ChatMessage): boolean {
   if (message.role !== "assistant") return false;

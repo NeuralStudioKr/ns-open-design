@@ -117,7 +117,7 @@ describe("promptWithSlideCommentEditPatchInstruction", () => {
 
     expect(prompt).toContain('target-id="hero-title"');
     expect(prompt).toContain('slide-index="2"');
-    expect(prompt).toContain('Copy this template and fill in the patch body');
+    expect(prompt).toContain('REQUIRED OUTPUT — respond with ONLY this artifact block');
     expect(prompt).toContain('at least one non-empty `<patch');
     expect(prompt).toContain('Never emit an empty `<artifact type="element-patch"></artifact>`');
   });
@@ -437,6 +437,37 @@ describe("mergeServerMessagesIntoConversation", () => {
     };
     const merged = mergeServerMessagesIntoConversation([local], [server]);
     expect(merged[0]?.content).toBe("Done.\n\nNext.");
+  });
+
+  it("prefers local user-visible prose when server row is code-fence-only residue", () => {
+    const local: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "슬라이드 구성을 설명드렸습니다.",
+      createdAt: 1,
+      runStatus: "succeeded",
+      endedAt: 2,
+      events: [{ kind: "text", text: "슬라이드 구성을 설명드렸습니다." }],
+    };
+    const server: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "```html\n<section class=\"slide\"><h1>Draft</h1></section>\n```",
+      createdAt: 1,
+      runStatus: "succeeded",
+      endedAt: 2,
+      events: [
+        {
+          kind: "text",
+          text: "```html\n<section class=\"slide\"><h1>Draft</h1></section>\n```",
+        },
+      ],
+    };
+    const merged = mergeServerMessagesIntoConversation([local], [server]);
+    expect(merged[0]?.content).toBe("슬라이드 구성을 설명드렸습니다.");
+    expect(merged[0]?.events).toEqual([
+      { kind: "text", text: "슬라이드 구성을 설명드렸습니다." },
+    ]);
   });
 });
 

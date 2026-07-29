@@ -337,6 +337,23 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it('hides fenced code from completed assistant turns in slide-only embed', () => {
+    const { container } = render(
+      <AssistantMessage
+        message={completedMessage(
+          '```html\n<!doctype html><html><body><section class="slide"><h1>Draft</h1></section></body></html>\n```',
+        )}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(container.textContent).toContain('deck.html');
+    expect(container.textContent).not.toMatch(/<!doctype html/i);
+    expect(container.textContent).not.toContain('```');
+  });
+
   it('hides embed tool-only rows that would show only the assistant header', () => {
     const { container } = render(
       <AssistantMessage
