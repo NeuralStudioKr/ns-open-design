@@ -7143,6 +7143,11 @@ export function ProjectView({
                           .filter(Boolean)
                           .join(' — '),
                       )
+                  : terminalPersistResult?.kind === 'rejected' && terminalPersistResult.reason
+                    ? formatProjectArtifactRejectedError(
+                        terminalPersistResult.fileName || 'untitled',
+                        terminalPersistResult.reason,
+                      )
                   : formatProjectRunDeliverableMissingError();
               const deliverableErrorCode = terminalPersistResult?.kind === 'scope-rejected'
                 ? terminalPersistResult.code

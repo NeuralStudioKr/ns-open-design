@@ -345,6 +345,12 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("finalText: rawFinalText");
     expect(autoOpenBlock).toContain("terminalPersistResult = persistResult");
     expect(autoOpenBlock).toContain("formatProjectArtifactSaveFailedError(terminalPersistResult.fileName");
+    // deliverableError must surface the specific `rejected.reason` (e.g., the
+    // "empty deck-patch artifact on unscoped run" copy) instead of the generic
+    // "결과물이 생성되지 않았습니다" banner. Otherwise the user only sees the
+    // catch-all after auto-continue exhausts, hiding the actual model glitch.
+    expect(autoOpenBlock).toContain("terminalPersistResult?.kind === 'rejected' && terminalPersistResult.reason");
+    expect(autoOpenBlock).toContain("formatProjectArtifactRejectedError(");
     expect(autoOpenBlock).toContain("htmlAutoOpenGenerationRef");
     expect(autoOpenBlock).toContain("isLatestTerminalAutoOpen");
     expect(autoOpenBlock).toContain("shouldFailSlideRunForMissingHtmlDeliverable(");
