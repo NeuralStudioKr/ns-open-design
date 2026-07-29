@@ -1238,7 +1238,7 @@ async function tryApplyCommentEditFastPathAgainstCurrentDeck(input: {
         return {
           ok: false,
           code: 'deck_patch_merge_failed',
-          reason: result.error ?? `failed to apply ${patch.kind} on ${patch.id}`,
+          reason: result.error ?? `failed to apply ${patch.kind}${'id' in patch ? ` on ${patch.id}` : ''}`,
         };
       }
       html = result.source;
