@@ -1194,7 +1194,18 @@ function injectSelectionBridge(
   // brackets (close the <style> tag), and newlines (defense in depth).
   var UNSAFE_VALUE = /[;{}<>\\n\\r]/;
   function active(){ return commentEnabled || inspectEnabled; }
-  function deckSlideIndexForPayload(){
+  function deckSlideIndexForPayload(anchorEl){
+    // Prefer the slide that actually contains the clicked element. The
+    // globally "active" slide from deck navigation heuristics can lag
+    // behind what the user sees (transform decks, framework idx desync,
+    // stacked-stage letterbox) and was the main source of wrong slideIndex
+    // on comment pins.
+    try {
+      if (anchorEl && typeof window.__odSlideIndexForElement === 'function') {
+        var fromElement = window.__odSlideIndexForElement(anchorEl);
+        if (typeof fromElement === 'number' && fromElement >= 0) return fromElement;
+      }
+    } catch (_) {}
     // Emit slideIndex for any artifact that reports a slide-shaped
     // structure (>=1 slide-class element under a deck container /
     // body). Single-slide "decks" still need the index so the
@@ -1457,7 +1468,7 @@ function meaningfulDomFallbackTarget(el) {
       htmlHint: html.slice(0, 180),
       style: styleSnapshot(el)
     };
-    var slideIndex = deckSlideIndexForPayload();
+    var slideIndex = deckSlideIndexForPayload(el);
     if (typeof slideIndex === 'number') payload.slideIndex = slideIndex;
     if (clickPoint) {
       payload.hoverPoint = { x: Math.round(clickPoint.x), y: Math.round(clickPoint.y) };
@@ -2708,15 +2719,32 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var track = transformTrack(list);
     if (!track) return -1;
     var raw = track.style.transform || '';
-    var match = raw.match(/translate(?:3d|X)?\\(\\s*(-?[0-9.]+)\\s*(vw|%|px)/i);
-    if (!match) return -1;
-    var value = parseFloat(match[1]);
-    if (!Number.isFinite(value)) return -1;
-    var unit = match[2];
-    var step = unit === 'px'
-      ? Math.max(1, track.clientWidth / list.length, window.innerWidth)
-      : 100;
-    return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(value) / step)));
+    if (!raw) {
+      try {
+        if (window.getComputedStyle) raw = window.getComputedStyle(track).transform || '';
+      } catch (_) {}
+    }
+    if (!raw || raw === 'none') return -1;
+    var match = raw.match(/translate(?:3d|X)?\\(\\s*(-?[0-9.]+)\\s*(vw|%|px)?/i);
+    if (match) {
+      var value = parseFloat(match[1]);
+      if (!Number.isFinite(value)) return -1;
+      var unit = match[2] || 'px';
+      var step = unit === 'px'
+        ? Math.max(1, track.clientWidth / list.length, window.innerWidth)
+        : 100;
+      return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(value) / step)));
+    }
+    var matrix = raw.match(/matrix(?:3d)?\\(([^)]+)\\)/);
+    if (matrix) {
+      var parts = matrix[1].split(',').map(function(part){ return parseFloat(String(part).trim()); });
+      var tx = parts.length === 16 ? parts[12] : parts.length >= 6 ? parts[4] : NaN;
+      if (Number.isFinite(tx)) {
+        var stepPx = Math.max(1, window.innerWidth, track.clientWidth / list.length);
+        return Math.max(0, Math.min(list.length - 1, Math.round(Math.abs(tx) / stepPx)));
+      }
+    }
+    return -1;
   }
   function activeIndexFromPagination(list){
     if (!list || !list.length) return -1;
@@ -3064,6 +3092,31 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   window.__odDeckSlideState = function(){
     var list = slides();
     return { active: activeIndex(list), count: list.length };
+  };
+  window.__odSlideIndexForElement = function(el){
+    if (!el) return -1;
+    var slide = null;
+    try { slide = el.closest ? el.closest('.slide') : null; } catch (_) {}
+    if (!slide) return -1;
+    var list = slides();
+    if (!list || !list.length) return -1;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] === slide) return i;
+    }
+    var attr = slide.getAttribute('data-slide-index');
+    if (attr !== null && attr !== '') {
+      var parsed = parseInt(attr, 10);
+      if (Number.isFinite(parsed) && parsed >= 0 && parsed < list.length) return parsed;
+    }
+    var allSlides = document.querySelectorAll('.slide');
+    for (var j = 0; j < allSlides.length; j++) {
+      if (allSlides[j] !== slide) continue;
+      for (var k = 0; k < list.length; k++) {
+        if (list[k] === slide) return k;
+      }
+      return j < list.length ? j : -1;
+    }
+    return -1;
   };
   function restoreInitialSlide(){
     var list = slides();

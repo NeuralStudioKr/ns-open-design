@@ -743,6 +743,18 @@ export function reconcileCommentAttachmentSlideIndex(
     patchedHtml: deckHtml,
   });
 
+  const inferred = inferSlideIndexFromDeckHtml(deckHtml, attachment);
+  if (inferred != null) {
+    const inferredSlide = extractSlideByIndex(deckHtml, inferred);
+    if (
+      inferredSlide
+      && targetTextPreservedInPatchedSlide(inferredSlide, attachment)
+      && (!hasValidDeckSlideIndex(attachment) || attachment.slideIndex !== inferred)
+    ) {
+      return { ...attachment, slideIndex: inferred };
+    }
+  }
+
   if (hasValidDeckSlideIndex(attachment)) {
     const slide = extractSlideByIndex(deckHtml, attachment.slideIndex!);
     if (slide && targetTextPreservedInPatchedSlide(slide, attachment)) {
@@ -758,7 +770,6 @@ export function reconcileCommentAttachmentSlideIndex(
     return attachment;
   }
 
-  const inferred = inferSlideIndexFromDeckHtml(deckHtml, attachment);
   if (inferred != null && (!hasValidDeckSlideIndex(attachment) || attachment.slideIndex !== inferred)) {
     return { ...attachment, slideIndex: inferred };
   }
