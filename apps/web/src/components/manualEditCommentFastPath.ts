@@ -46,6 +46,17 @@ export function buildManualEditCommentFastPath(input: {
   const effectiveStyles = mergeStyleFallbacks(attachment.style, currentStyles);
 
   const patches: ManualEditPatch[] = [];
+
+  // Remove-element pattern must run FIRST so a "delete this" comment
+  // is never misread as a text-replacement whose value happens to
+  // contain 삭제/지워/제거.
+  if (parseRemoveElement(note)) {
+    return {
+      patches: [{ id: attachment.elementId, kind: 'remove-element' }],
+      label: 'Comment remove element',
+    };
+  }
+
   const text = parseTextReplacement(note);
   if (text !== null) {
     patches.push({ id: attachment.elementId, kind: 'set-text', value: text });
@@ -54,6 +65,9 @@ export function buildManualEditCommentFastPath(input: {
   const styles = {
     ...parseStylePatch(note, effectiveStyles),
     ...parseVisibilityEmphasisPatch(note, effectiveStyles),
+    ...parseStandaloneSizeKeyword(note, effectiveStyles),
+    ...parseTextDecorationPatch(note),
+    ...parseTextAlignPatch(note),
   };
   if (Object.keys(styles).length > 0) {
     patches.push({ id: attachment.elementId, kind: 'set-style', styles });
@@ -61,6 +75,31 @@ export function buildManualEditCommentFastPath(input: {
 
   if (patches.length === 0) return null;
   return { patches, label: 'Comment quick edit' };
+}
+
+/**
+ * True when the user's comment is explicitly a "delete this" request
+ * against the pinned element. Distinct from `set-text` because
+ * removing the element (rather than emptying its text) is the correct
+ * outcome for phrases like "이 슬라이드 제목 지워줘".
+ */
+function parseRemoveElement(note: string): boolean {
+  // Korean glyphs are non-word chars in JS \b so word-boundary anchors
+  // would drop matches like "삭제해줘" (the `\b` after 줘 becomes
+  // ambiguous). Match the Korean removal verbs plainly and let the
+  // English ones keep the boundary check to avoid false positives on
+  // "removal-adjacent" filler words.
+  const removeCueKo = /(?:삭제|제거|없애|지워|숨겨|숨기)(?:해|해줘|주세요|주기|바랍|해라|주라|해라|줘)?/;
+  const removeCueEn = /(?:remove|delete|hide|erase)\s+(?:this|the\s+\w+)?\s*(?:element|section|block|item|now)?\b/i;
+  if (!removeCueKo.test(note) && !removeCueEn.test(note)) return false;
+  // Guard against "삭제해줘 → 새 문구" mixed requests: if the note also
+  // carries a quoted or → text-replacement, prefer set-text so the
+  // user's intended new text still lands. remove-element should be a
+  // dedicated request, not one clause of a compound edit.
+  if (/["'\u201C\u201D\u2018\u2019]/.test(note) && /(?:=>|→|->|로\s*변경|로\s*수정)/i.test(note)) {
+    return false;
+  }
+  return true;
 }
 
 function mergeStyleFallbacks(
@@ -220,6 +259,73 @@ function parseFontWeight(note: string): string | null {
   if (/(?:굵게|볼드|bold|font-weight)[^\n]{0,12}(?:해|변경|키|increase)?/i.test(note)) return '700';
   if (/(?:얇게|보통|regular|normal)[^\n]{0,12}(?:해|변경)?/i.test(note)) return '400';
   return null;
+}
+
+/**
+ * Handles "크게 해줘" / "작게" without an explicit multiplier — a very
+ * common shape that `parseFontSize`'s multiplier regex misses because
+ * there's no `배` or number. Bumps the current fontSize by ±25% so the
+ * user gets a visible change instead of dropping to auto-continue.
+ * When the comment ALSO carries a visibility emphasis or explicit
+ * multiplier that already produced a fontSize, this returns {} to
+ * avoid stomping the more precise value.
+ */
+function parseStandaloneSizeKeyword(
+  note: string,
+  currentStyles: Partial<ManualEditStyles>,
+): Partial<ManualEditStyles> {
+  const enlarge = /(?:^|[\s.,;])(?:더\s*)?(?:크게|커지게|키워|키워줘|larger|bigger|increase\s+size)/i;
+  const shrink = /(?:^|[\s.,;])(?:더\s*)?(?:작게|작아지게|줄여|줄여줘|smaller|reduce\s+size|decrease\s+size)/i;
+  const wantsEnlarge = enlarge.test(note);
+  const wantsShrink = shrink.test(note);
+  if (!wantsEnlarge && !wantsShrink) return {};
+  const base = parsePx(currentStyles.fontSize);
+  if (!base) return {};
+  const factor = wantsShrink ? 0.8 : 1.25;
+  const min = wantsShrink ? Math.max(8, base - 4) : Math.max(base + 2, base * factor);
+  const max = wantsShrink ? Math.min(base - 2, base * factor) : Math.min(320, base + 24);
+  const next = wantsShrink
+    ? Math.max(min, Math.min(base * factor, max))
+    : Math.max(min, Math.min(max, base * factor));
+  return { fontSize: `${trimNumber(next)}px` };
+}
+
+/**
+ * Recognises underline / strikethrough / no-decoration requests. Sets
+ * `textDecoration` directly so the model doesn't have to re-encode the
+ * user's plain-language emphasis into set-outer-html.
+ */
+function parseTextDecorationPatch(note: string): Partial<ManualEditStyles> {
+  if (/(?:밑줄(?:\s*그어|\s*표시|\s*추가)?|underline)/i.test(note)) {
+    return { textDecoration: 'underline' };
+  }
+  if (/(?:취소선|가로줄|strikethrough|strike\s*through|line-through)/i.test(note)) {
+    return { textDecoration: 'line-through' };
+  }
+  if (/(?:밑줄\s*(?:제거|지워|없애|해제)|no\s*underline|remove\s+underline)/i.test(note)) {
+    return { textDecoration: 'none' };
+  }
+  return {};
+}
+
+/**
+ * Recognises alignment requests ("가운데 정렬", "왼쪽으로", "center
+ * align", etc). Maps to `textAlign` on the target element.
+ */
+function parseTextAlignPatch(note: string): Partial<ManualEditStyles> {
+  if (/(?:가운데|중앙|중간|center)\s*(?:정렬|맞춤|align|배치)?/i.test(note)) {
+    return { textAlign: 'center' };
+  }
+  if (/(?:왼쪽|좌측|left)\s*(?:정렬|맞춤|align|배치)?/i.test(note)) {
+    return { textAlign: 'left' };
+  }
+  if (/(?:오른쪽|우측|right)\s*(?:정렬|맞춤|align|배치)?/i.test(note)) {
+    return { textAlign: 'right' };
+  }
+  if (/(?:양쪽|justify)\s*(?:정렬|맞춤|align)?/i.test(note)) {
+    return { textAlign: 'justify' };
+  }
+  return {};
 }
 
 function matchFirst(text: string, patterns: RegExp[]): string | null {

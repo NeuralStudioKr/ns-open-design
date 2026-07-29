@@ -122,6 +122,97 @@ describe('buildManualEditCommentFastPath — deterministic client-side comment e
     ).toBeNull();
   });
 
+  it('handles the remove-element pattern for "삭제" / "지워" / "없애" / "숨겨"', () => {
+    for (const removalCue of ['이 텍스트 삭제해줘', '여기 지워', '이거 없애', '이 카드 숨겨']) {
+      const result = buildManualEditCommentFastPath({
+        attachment: attachment({ comment: removalCue }),
+        currentStyles: {},
+      });
+      expect(result, `must match removal cue "${removalCue}"`).not.toBeNull();
+      if (!result) continue;
+      expect(result.patches).toHaveLength(1);
+      expect(result.patches[0]).toMatchObject({ id: 'el-1', kind: 'remove-element' });
+    }
+  });
+
+  it('handles standalone size keywords ("크게" / "작게") without an explicit multiplier', () => {
+    // The multiplier path (parseFontSize) requires "N배" / "N x" so a
+    // bare "크게 해줘" falls through. The standalone-size parser
+    // bumps the current fontSize by ±25% instead. Real user comments
+    // rarely include the multiplier — they just say "크게".
+    const bigger = buildManualEditCommentFastPath({
+      attachment: attachment({ comment: '더 크게 해줘' }),
+      currentStyles: { fontSize: '20px' },
+    });
+    expect(bigger, 'must match bare 크게').not.toBeNull();
+    if (!bigger) return;
+    const bumpUp = bigger.patches.find((patch) => patch.kind === 'set-style');
+    if (bumpUp && bumpUp.kind === 'set-style') {
+      // 20 × 1.25 = 25; parseStandaloneSizeKeyword's floor is +2, so 25.
+      expect(bumpUp.styles.fontSize).toBe('25px');
+    }
+
+    const smaller = buildManualEditCommentFastPath({
+      attachment: attachment({ comment: '조금 작게 줄여줘' }),
+      currentStyles: { fontSize: '20px' },
+    });
+    expect(smaller, 'must match bare 작게').not.toBeNull();
+    if (!smaller) return;
+    const bumpDown = smaller.patches.find((patch) => patch.kind === 'set-style');
+    if (bumpDown && bumpDown.kind === 'set-style') {
+      expect(bumpDown.styles.fontSize).toBe('16px');
+    }
+  });
+
+  it('handles underline / strikethrough text-decoration requests', () => {
+    const underline = buildManualEditCommentFastPath({
+      attachment: attachment({ comment: '여기 밑줄 그어줘' }),
+      currentStyles: {},
+    });
+    expect(underline).not.toBeNull();
+    if (underline) {
+      const style = underline.patches.find((patch) => patch.kind === 'set-style');
+      if (style && style.kind === 'set-style') {
+        expect(style.styles.textDecoration).toBe('underline');
+      }
+    }
+
+    const strike = buildManualEditCommentFastPath({
+      attachment: attachment({ comment: '취소선 표시해줘' }),
+      currentStyles: {},
+    });
+    expect(strike).not.toBeNull();
+    if (strike) {
+      const style = strike.patches.find((patch) => patch.kind === 'set-style');
+      if (style && style.kind === 'set-style') {
+        expect(style.styles.textDecoration).toBe('line-through');
+      }
+    }
+  });
+
+  it('handles text-align requests ("가운데" / "왼쪽" / "오른쪽" / "양쪽")', () => {
+    const cases: Array<[string, string]> = [
+      ['가운데 정렬', 'center'],
+      ['중앙 정렬', 'center'],
+      ['왼쪽 정렬', 'left'],
+      ['오른쪽 정렬', 'right'],
+      ['양쪽 정렬', 'justify'],
+      ['center align', 'center'],
+    ];
+    for (const [note, expected] of cases) {
+      const result = buildManualEditCommentFastPath({
+        attachment: attachment({ comment: note }),
+        currentStyles: {},
+      });
+      expect(result, `must match text-align cue "${note}"`).not.toBeNull();
+      if (!result) continue;
+      const style = result.patches.find((patch) => patch.kind === 'set-style');
+      if (style && style.kind === 'set-style') {
+        expect(style.styles.textAlign).toBe(expected);
+      }
+    }
+  });
+
   it('defers to the model when the comment is blank', () => {
     expect(
       buildManualEditCommentFastPath({

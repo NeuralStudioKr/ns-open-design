@@ -348,7 +348,12 @@ describe("ProjectView message loading", () => {
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);
-    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 24000);
+    // Terminal auto-open picked up the scoped-comment fast-path
+    // salvage layer (~40 lines) between emergency deck recovery and
+    // the auto-continue fire; bump the pin window so the older
+    // AUTO_CONTINUE_ENTRY_FROM / rollbackAutoContinueCount assertions
+    // continue to see the block after the new layer.
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 27000);
 
     expect(autoOpenBlock).toContain("const rawFinalText = streamedText || fullText || latestAssistantMsg.content || ''");
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");

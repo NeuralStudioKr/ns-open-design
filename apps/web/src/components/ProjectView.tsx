@@ -1256,17 +1256,37 @@ async function tryApplyCommentEditFastPathAgainstCurrentDeck(input: {
     };
   }
 
+  const targetFileName = String(input.fileName || '').trim();
+  const targetFileNameLc = targetFileName.toLowerCase();
+
   let html = currentHtml;
   let appliedCount = 0;
+  let anyParserMiss = false;
   for (const attachment of attachments) {
-    if (attachment.filePath !== input.fileName) continue;
+    // Match the attachment to the current persist target loosely:
+    //   - identical path → obviously matches.
+    //   - empty attachment.filePath → attachment predates the multi-file
+    //     comment protocol; assume the target file.
+    //   - case-insensitive equality → handles filesystem mismatches.
+    // Anything else (attachment pinned to a different file) is skipped
+    // so we don't accidentally rewrite the wrong file.
+    const attachmentPath = String(attachment.filePath || '').trim();
+    const matches =
+      attachmentPath.length === 0
+      || attachmentPath === targetFileName
+      || attachmentPath.toLowerCase() === targetFileNameLc;
+    if (!matches) continue;
     const editScope = typeof attachment.slideIndex === 'number'
       ? { slideIndex: attachment.slideIndex }
       : undefined;
     const currentStyles = readManualEditStyles(html, attachment.elementId, editScope);
     const fastPath = buildManualEditCommentFastPath({ attachment, currentStyles });
     if (!fastPath) {
-      return { ok: false, code: 'deck_patch_parse_failed', reason: 'no fast-path match' };
+      // Log the miss but keep going — a compound comment set might
+      // still have OTHER attachments the parser recognises. Only
+      // fail the whole salvage if NOTHING applied by the end.
+      anyParserMiss = true;
+      continue;
     }
     for (const patch of fastPath.patches) {
       const result = applyManualEditPatch(html, patch, editScope);
@@ -1284,7 +1304,13 @@ async function tryApplyCommentEditFastPathAgainstCurrentDeck(input: {
   }
 
   if (appliedCount === 0) {
-    return { ok: false, code: 'deck_patch_parse_failed', reason: 'no fast-path patches applied' };
+    return {
+      ok: false,
+      code: 'deck_patch_parse_failed',
+      reason: anyParserMiss
+        ? 'no fast-path match'
+        : 'no fast-path patches applied',
+    };
   }
   return { ok: true, html };
 }
