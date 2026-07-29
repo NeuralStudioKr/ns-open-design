@@ -681,6 +681,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     }
   };
 
+  // Daemon tsconfig has no DOM lib — avoid ReadableStreamReadResult global.
+  type UpstreamByteReadResult =
+    | { done: true; value?: undefined }
+    | { done: false; value: Uint8Array };
+
   const streamUpstreamSse = async (response: any, onFrame: any) => {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -691,7 +696,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     })();
 
     const readChunk = () =>
-      new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+      new Promise<UpstreamByteReadResult>((resolve, reject) => {
         let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
           timer = null;
           reject(
@@ -701,14 +706,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           );
         }, idleTimeoutMs);
         reader.read().then(
-          (result) => {
+          (result: UpstreamByteReadResult) => {
             if (timer !== null) {
               clearTimeout(timer);
               timer = null;
             }
             resolve(result);
           },
-          (err) => {
+          (err: unknown) => {
             if (timer !== null) {
               clearTimeout(timer);
               timer = null;
@@ -755,7 +760,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     })();
 
     const readChunk = () =>
-      new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+      new Promise<UpstreamByteReadResult>((resolve, reject) => {
         let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
           timer = null;
           reject(
@@ -765,14 +770,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           );
         }, idleTimeoutMs);
         reader.read().then(
-          (result) => {
+          (result: UpstreamByteReadResult) => {
             if (timer !== null) {
               clearTimeout(timer);
               timer = null;
             }
             resolve(result);
           },
-          (err) => {
+          (err: unknown) => {
             if (timer !== null) {
               clearTimeout(timer);
               timer = null;
