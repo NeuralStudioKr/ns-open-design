@@ -311,10 +311,12 @@ describe("ProjectView message loading", () => {
     // (isDeckPatchArtifactType + tryApplyDeckPatchAgainstCurrentDeck) added a
     // ~1.5KB prelude at the top of persistArtifact. Bumped again to 14000
     // chars when the element-patch/deck-patch salvage helpers and the empty
-    // deck-patch → auto-continue routing widened the prelude further, and
-    // once more to 16000 when the client-side artifact-regression pre-write
-    // guard + unified reassurance banner comment landed.
-    const persistBlock = source.slice(persistStart, persistStart + 16000);
+    // deck-patch → auto-continue routing widened the prelude further, then
+    // 16000 for the client-side artifact-regression pre-write guard, then
+    // 18000 when the empty-element-patch fast-path salvage
+    // (tryApplyCommentEditFastPathAgainstCurrentDeck + salvagedByFastPath
+    // bookkeeping in persistArtifact) landed.
+    const persistBlock = source.slice(persistStart, persistStart + 18000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
@@ -514,6 +516,44 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toContain(
       "The model emitted an empty deck-patch artifact on a run without a scoped comment target.",
     );
+  });
+
+  it("salvages empty element-patch responses with the deterministic client-side fast-path before auto-continue", () => {
+    // Bug (2026-07-29 later user report): the dedicated
+    // buildAutoContinueScopedCommentEditPrompt retry prompt still did
+    // not converge for common comment edits — the model kept emitting
+    // empty <artifact type="element-patch"> for requests like
+    //   "회사 이름 눈에 잘 띄게 수정"
+    //   "글자를 빨간색으로 바꿔줘"
+    //   "'김개발 작업물' 로 멘트 수정"
+    // and the 3-retry cap exhausted into the generic
+    // "결과물이 생성되지 않았습니다 (terminalPersistResultKind=skipped-incomplete)"
+    // banner.
+    //
+    // The fix restores the client-side comment fast-path
+    // (buildManualEditCommentFastPath) that was previously removed and
+    // wires it into persistArtifact so an empty scoped element-patch
+    // gets applied locally against the deck on disk BEFORE the retry
+    // loop fires. Non-fast-path-recognisable comments still fall
+    // through to the auto-continue path.
+    const source = readSource("src/components/ProjectView.tsx");
+
+    // Fast-path util must exist and be non-stubbed. The stubbed
+    // version returned null unconditionally (broke the salvage).
+    const fastPathSource = readSource("src/components/manualEditCommentFastPath.ts");
+    expect(fastPathSource).toContain("parseTextReplacement");
+    expect(fastPathSource).toContain("parseVisibilityEmphasisPatch");
+    expect(fastPathSource).toContain("parseColorForKind");
+    expect(fastPathSource).not.toMatch(/export function buildManualEditCommentFastPath\([^)]*\): ManualEditCommentFastPathResult \| null \{\s*return null;\s*\}/);
+
+    // persistArtifact must call the fast-path when scoped element-patch
+    // returned empty. The salvage sets effectiveArt and skips the
+    // scope-rejected return branch.
+    expect(source).toContain("tryApplyCommentEditFastPathAgainstCurrentDeck");
+    expect(source).toContain("import { applyManualEditPatch, readManualEditStyles } from '../edit-mode/source-patches'");
+    expect(source).toContain("import { buildManualEditCommentFastPath } from './manualEditCommentFastPath'");
+    expect(source).toContain("applied scoped comment fast-path after empty model artifact");
+    expect(source).toContain("salvagedByFastPath");
   });
 
   it("self-heals leaked composer streaming markers after terminal turns settle", () => {
