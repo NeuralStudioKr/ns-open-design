@@ -264,6 +264,7 @@ import {
   historyWithCommentAttachmentContext,
   mergeAttachedComments,
   mergePreviewCommentAttachments,
+  messageContentWithCommentAttachments,
   queuedSlideNavTarget,
   removeAttachedComment,
   resolveCommentEditPersistTargetFileName,
@@ -475,6 +476,21 @@ function messageHasInFlightRunFields(local: ChatMessage): boolean {
 function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): ChatMessage {
   if (!local) return server;
   const merged: ChatMessage = { ...server };
+  if (!server.commentAttachments?.length && local.commentAttachments?.length) {
+    merged.commentAttachments = local.commentAttachments;
+  }
+  if (!server.attachments?.length && local.attachments?.length) {
+    merged.attachments = local.attachments;
+  }
+  if (!server.sessionMode && local.sessionMode) {
+    merged.sessionMode = local.sessionMode;
+  }
+  if (!server.runContext && local.runContext) {
+    merged.runContext = local.runContext;
+  }
+  if (!server.appliedPluginSnapshot && local.appliedPluginSnapshot) {
+    merged.appliedPluginSnapshot = local.appliedPluginSnapshot;
+  }
   if (!server.producedFiles?.length && local.producedFiles?.length) {
     merged.producedFiles = local.producedFiles;
   }
@@ -6444,18 +6460,24 @@ export function ProjectView({
       clearRunRecoveryBannerState(runConversationId);
       setError(null);
       const startedAt = Date.now();
+      const persistedUserContent = scopedCommentAttachments.length > 0
+        ? messageContentWithCommentAttachments(modelPrompt, scopedCommentAttachments)
+        : modelPrompt;
       const userMsg: ChatMessage = retryTarget
         ? {
             ...retryTarget.userMsg,
-            content: modelPrompt,
+            content: persistedUserContent,
             attachments: instructionAttachments.length > 0
               ? instructionAttachments
               : retryTarget.userMsg.attachments,
+            ...(scopedCommentAttachments.length > 0
+              ? { commentAttachments: scopedCommentAttachments }
+              : {}),
           }
         : {
             id: randomUUID(),
             role: 'user',
-            content: modelPrompt,
+            content: persistedUserContent,
             createdAt: startedAt,
             sessionMode: runSessionMode,
             ...(meta?.appliedPluginSnapshot

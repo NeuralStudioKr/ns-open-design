@@ -1,4 +1,5 @@
 import type { AgentEvent, ChatMessage } from '../types';
+import { parseCommentAttachmentsFromMessageContent } from '../comments';
 import { AUTO_CONTINUE_STATUS_CODE } from './resume';
 
 function joinedTextFromEvents(events: AgentEvent[]): string {
@@ -87,13 +88,24 @@ function hasPersistedRunErrorEvent(events: AgentEvent[]): boolean {
  * metadata gaps that would hide error cards after reload.
  */
 export function reconcileChatMessageOnLoad(message: ChatMessage): ChatMessage {
-  const events = message.events ?? [];
-  if (!hasPersistedRunErrorEvent(events)) return message;
-  if (message.runStatus === 'failed' || message.runStatus === 'canceled') return message;
+  let reconciled = message;
+  if (
+    message.role === 'user'
+    && (!message.commentAttachments || message.commentAttachments.length === 0)
+  ) {
+    const parsed = parseCommentAttachmentsFromMessageContent(message.content);
+    if (parsed.length > 0) {
+      reconciled = { ...reconciled, commentAttachments: parsed };
+    }
+  }
+
+  const events = reconciled.events ?? [];
+  if (!hasPersistedRunErrorEvent(events)) return reconciled;
+  if (reconciled.runStatus === 'failed' || reconciled.runStatus === 'canceled') return reconciled;
   return {
-    ...message,
+    ...reconciled,
     runStatus: 'failed',
-    endedAt: message.endedAt ?? Date.now(),
+    endedAt: reconciled.endedAt ?? Date.now(),
   };
 }
 

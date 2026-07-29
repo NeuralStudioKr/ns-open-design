@@ -391,6 +391,85 @@ const EXISTING_DECK_EDIT_DIRECTIVE_RE =
   /\n*\[Existing deck edit\][\s\S]*$/i;
 const ATTACHED_PREVIEW_COMMENTS_RE =
   /\n*<attached-preview-comments>[\s\S]*?<\/attached-preview-comments>\s*/gi;
+const ATTACHED_PREVIEW_COMMENTS_BLOCK_RE =
+  /<attached-preview-comments>([\s\S]*?)<\/attached-preview-comments>/i;
+
+function parseAttachedPreviewCommentField(
+  block: string,
+  key: string,
+): string | undefined {
+  const match = block.match(new RegExp(`^${key}:\\s*(.*)$`, 'm'));
+  const value = match?.[1]?.trim();
+  return value ? value : undefined;
+}
+
+function parseAttachedPreviewCommentPosition(
+  raw: string | undefined,
+): PreviewComment['position'] {
+  const value = String(raw ?? '').trim();
+  const match = value.match(/^x(-?\d+)\s+y(-?\d+)\s+(-?\d+)x(-?\d+)$/i);
+  if (!match) return { x: 0, y: 0, width: 0, height: 0 };
+  return {
+    x: Number(match[1]) || 0,
+    y: Number(match[2]) || 0,
+    width: Number(match[3]) || 0,
+    height: Number(match[4]) || 0,
+  };
+}
+
+/**
+ * Rebuild `commentAttachments` from a persisted `<attached-preview-comments>`
+ * block when the structured column was dropped by a stale server merge.
+ */
+export function parseCommentAttachmentsFromMessageContent(
+  content: string | null | undefined,
+): ChatCommentAttachment[] {
+  const source = String(content ?? '');
+  const blockMatch = source.match(ATTACHED_PREVIEW_COMMENTS_BLOCK_RE);
+  if (!blockMatch?.[1]) return [];
+  const body = blockMatch[1];
+  const sections = body.split(/\n(?=\d+\.\s)/).map((section) => section.trim()).filter(Boolean);
+  const out: ChatCommentAttachment[] = [];
+  for (const section of sections) {
+    const header = section.match(/^(\d+)\.\s+(.+)$/m);
+    if (!header) continue;
+    const order = Number(header[1]);
+    const elementId = header[2]?.trim() ?? '';
+    if (!elementId || !Number.isFinite(order)) continue;
+    const targetKind = parseAttachedPreviewCommentField(section, 'targetKind');
+    const selectionKind =
+      targetKind === 'visual' ? 'visual' : targetKind === 'pod' ? 'pod' : 'element';
+    const labelRaw = parseAttachedPreviewCommentField(section, 'label');
+    const label = labelRaw && labelRaw !== '(unlabeled)' ? labelRaw : '';
+    const slideIndexRaw = parseAttachedPreviewCommentField(section, 'slideIndex');
+    const slideIndex = slideIndexRaw != null ? Number(slideIndexRaw) : undefined;
+    const attachment: ChatCommentAttachment = {
+      id: `${elementId}-history-${order}`,
+      order,
+      filePath: parseAttachedPreviewCommentField(section, 'file') ?? '',
+      elementId,
+      selector: parseAttachedPreviewCommentField(section, 'selector') ?? '',
+      label,
+      comment: parseAttachedPreviewCommentField(section, 'comment') ?? '',
+      currentText: parseAttachedPreviewCommentField(section, 'currentText') ?? '',
+      pagePosition: parseAttachedPreviewCommentPosition(
+        parseAttachedPreviewCommentField(section, 'position'),
+      ),
+      htmlHint: parseAttachedPreviewCommentField(section, 'htmlHint') ?? '',
+      selectionKind,
+      ...(Number.isFinite(slideIndex) ? { slideIndex } : {}),
+      ...(selectionKind === 'visual'
+        ? {
+            screenshotPath: parseAttachedPreviewCommentField(section, 'screenshot'),
+            markKind: parseAttachedPreviewCommentField(section, 'markKind') as PreviewVisualMarkKind | undefined,
+            intent: parseAttachedPreviewCommentField(section, 'intent'),
+          }
+        : {}),
+    };
+    if (hasUsableCommentLocationData(attachment)) out.push(attachment);
+  }
+  return out;
+}
 
 /** Strip model-only suffixes from user messages before rendering in chat UI. */
 export function stripUserVisibleUserMessageText(content: string | null | undefined): string {

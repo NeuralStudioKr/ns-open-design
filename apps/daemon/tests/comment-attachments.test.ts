@@ -346,6 +346,27 @@ describe('preview comment persistence', () => {
     expect(listMessages(db, 'conversation-1')[0]?.commentAttachments).toEqual([attachment]);
   });
 
+  it('preserves comment attachments when a partial upsert omits them', () => {
+    const db = seededDb();
+    const attachment = commentAttachment({ id: 'c1', elementId: 'hero-title', label: 'h2' });
+
+    upsertMessage(db, 'conversation-1', {
+      id: 'message-1',
+      role: 'user',
+      content: '더 크게 조정',
+      commentAttachments: [attachment],
+      sessionMode: 'design',
+    });
+    upsertMessage(db, 'conversation-1', {
+      id: 'message-1',
+      role: 'user',
+      content: '더 크게 조정',
+      sessionMode: 'design',
+    });
+
+    expect(listMessages(db, 'conversation-1')[0]?.commentAttachments).toEqual([attachment]);
+  });
+
   it('persists user message session mode and plugin context snapshot', () => {
     const db = seededDb();
     const appliedPluginSnapshot = {

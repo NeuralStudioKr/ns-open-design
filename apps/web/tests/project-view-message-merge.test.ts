@@ -160,6 +160,43 @@ describe("mergeServerMessagesIntoConversation", () => {
     expect(merged[0]?.runStatus).toBe("running");
   });
 
+  it("keeps local user-turn chips when a stale server refresh omits comment metadata", () => {
+    const attachment = {
+      id: "c1",
+      order: 1,
+      filePath: "deck.html",
+      elementId: "hero-title",
+      selector: '[data-od-id="hero-title"]',
+      label: "h2",
+      comment: "더 크게 조정",
+      currentText: "Title",
+      pagePosition: { x: 0, y: 0, width: 100, height: 24 },
+      htmlHint: "<h2>",
+      selectionKind: "element" as const,
+    };
+    const local: ChatMessage = {
+      id: "u1",
+      role: "user",
+      content: "더 크게 조정",
+      createdAt: 1,
+      sessionMode: "design",
+      attachments: [{ path: "deck.html", name: "deck.html", kind: "file" }],
+      commentAttachments: [attachment],
+    };
+    const server: ChatMessage = {
+      id: "u1",
+      role: "user",
+      content: "더 크게 조정",
+      createdAt: 1,
+      sessionMode: "design",
+    };
+    const merged = mergeServerMessagesIntoConversation([local], [server]);
+    expect(merged[0]?.commentAttachments).toEqual([attachment]);
+    expect(merged[0]?.attachments).toEqual([
+      { path: "deck.html", name: "deck.html", kind: "file" },
+    ]);
+  });
+
   it("prefers local terminal runStatus when server row is still running without endedAt", () => {
     const local: ChatMessage = {
       id: "a1",

@@ -12,6 +12,7 @@ import {
   mergeAttachedComments,
   mergePreviewCommentAttachments,
   messageContentWithCommentAttachments,
+  parseCommentAttachmentsFromMessageContent,
   overlayBoundsFromSnapshot,
   queuedSlideNavTarget,
   removeAttachedComment,
@@ -626,6 +627,20 @@ describe('preview comment attachment helpers', () => {
     const again = historyWithCommentAttachmentContext(next);
     expect(again[0]?.content).toBe(next[0]?.content);
     expect(again[1]?.content).toBe(next[1]?.content);
+  });
+
+  it('parses comment attachments back out of persisted attached-preview-comments blocks', () => {
+    const attachments = commentsToAttachments([
+      comment({ id: 'c1', elementId: 'hero-title', label: 'h2', note: 'Make it bolder' }),
+    ]);
+    const content = messageContentWithCommentAttachments('더 크게 조정', attachments);
+    const parsed = parseCommentAttachmentsFromMessageContent(content);
+
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.label).toBe('h2');
+    expect(parsed[0]?.elementId).toBe('hero-title');
+    expect(parsed[0]?.filePath).toBe('index.html');
+    expect(parsed[0]?.selector).toContain('hero-title');
   });
 
   it('strips hidden comment-edit protocol from user-visible chat text', () => {
