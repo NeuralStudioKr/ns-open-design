@@ -12,7 +12,7 @@ describe("FileWorkspace preview bootstrap", () => {
   it("hydrates pending preview tabs from the last known html artifact", () => {
     const source = readSource("src/components/FileWorkspace.tsx");
     expect(source).toContain("stalePreviewBootstrapFile");
-    expect(source).toContain("selectAutoOpenProducedHtml(visibleFiles)");
+    expect(source).toContain("selectAutoOpenProducedHtml(visibleFiles, { projectFiles: visibleFiles })");
     expect(source).toContain("resolvedPreviewFile");
     expect(source).toMatch(/resolvedPreviewFile \? \([\s\S]*<FileViewer/);
   });
@@ -25,6 +25,10 @@ describe("FileWorkspace preview bootstrap", () => {
       "Always re-arm on tab/stream change so a previous ghost's elapsed grace",
     );
     expect(source).toContain("cannot immediately settle the next pending tab");
+    expect(source).toContain("visibleFilesSignature");
+    expect(source).toContain("pendingTabDiskHtml");
+    expect(source).toContain("reason: 'disk-bootstrap'");
+    expect(source).toMatch(/visibleFilesSignature,\s*\n\s*\]\);/);
     // Pending tab shows loading only — ghost resolve retargets/closes; do not
     // flash previewUnavailable while the file list is still catching up.
     expect(source).toMatch(/pendingPreviewTab \? \([\s\S]*fileViewer\.loading/);

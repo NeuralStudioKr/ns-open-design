@@ -111,7 +111,7 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("Auth blip / S3-read lag / unlink+add race");
     expect(source).toContain("HTML_PREVIEW_SOURCE_FIRST_RETRY_MS");
     expect(source).toContain("HTML_PREVIEW_SOURCE_RETRY_MS");
-    expect(source).toContain("retryUntil");
+    expect(source).toContain("previewSourceRetryUntilRef");
     expect(source).toContain("softRetryTimer");
     expect(source).toContain("abort.signal.aborted");
     expect(source).toContain("liveHtmlPaintsPreviewRef");
