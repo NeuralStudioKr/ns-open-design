@@ -144,10 +144,48 @@ export function formatProjectArtifactStubWarning(fileName: string, message: stri
 }
 
 /** Terminal run finished but no previewable HTML deck landed on disk. */
-export function formatProjectRunDeliverableMissingError(): string {
+/**
+ * "결과물이 생성되지 않았습니다" banner. Auto-continue paths (fresh
+ * deck generation, scoped edit intent-violation, incomplete-shell
+ * skipped) all end up here once emergency recovery declines and the
+ * automatic-continue budget is exhausted. Optional `detail` surfaces
+ * the terminal persist-result kind (and reason when we have one) so
+ * users can share it in bug reports without needing browser console
+ * access — mirrors `formatProjectArtifactCommentScopeRejectedError`.
+ *
+ * Detail examples:
+ *   - `terminalPersistResultKind=skipped-incomplete` — model produced
+ *     an incomplete shell, auto-continue exhausted.
+ *   - `terminalPersistResultKind=rejected reason=<validation reason>`
+ *     — model produced malformed HTML, retries exhausted.
+ *   - `terminalPersistResultKind=null` — model produced no artifact
+ *     at all and emergency recovery could not synthesize one.
+ */
+export function formatProjectRunDeliverableMissingError(detail?: {
+  kind?: string | null;
+  reason?: string | null;
+}): string {
+  // The kind label used below is intentionally verbose so a copy-pasted
+  // banner from a user report already carries the diagnostic bucket.
+  // Values we expect: 'skipped-incomplete', 'rejected', 'scope-rejected'
+  // (surfaced via a different formatter), 'no-artifact' (synthetic —
+  // null-kind means the model never produced a persistable artifact).
+  //
+  // When called with no arg (legacy shape), we return the plain banner
+  // WITHOUT any diagnostic suffix — a lot of existing callers still use
+  // that form and their copy shape should stay stable.
+  const parts: string[] = [];
+  if (detail) {
+    const rawKind = detail.kind == null ? 'no-artifact' : String(detail.kind).trim();
+    const kind = rawKind || 'no-artifact';
+    const reason = String(detail.reason ?? '').trim();
+    if (kind) parts.push(`terminalPersistResultKind=${kind}`);
+    if (reason) parts.push(`reason=${reason}`);
+  }
+  const suffix = parts.length > 0 ? ` (${parts.join(' ')})` : '';
   return isTeamverEmbedMode()
-    ? "슬라이드 결과물이 생성되지 않았습니다. 응답이 중간에 끊겼거나 HTML 파일이 저장되지 않았습니다. 이어서 다시 시도하세요."
-    : "The slide deliverable was not created. The response may have been cut off — please try again.";
+    ? `슬라이드 결과물이 생성되지 않았습니다. 응답이 중간에 끊겼거나 HTML 파일이 저장되지 않았습니다. 이어서 다시 시도하세요.${suffix}`
+    : `The slide deliverable was not created. The response may have been cut off — please try again.${suffix}`;
 }
 
 /**

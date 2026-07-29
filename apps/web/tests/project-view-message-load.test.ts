@@ -334,12 +334,20 @@ describe("ProjectView message loading", () => {
 
     const autoOpenStart = source.indexOf("const scheduleStreamRunHtmlAutoOpen");
     expect(autoOpenStart).toBeGreaterThan(0);
-    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 18000);
+    const autoOpenBlock = source.slice(autoOpenStart, autoOpenStart + 19000);
 
     expect(autoOpenBlock).toContain("const rawFinalText = streamedText || fullText || latestAssistantMsg.content || ''");
     expect(autoOpenBlock).toContain("const persistResult = await persistArtifact(");
     expect(autoOpenBlock).toContain("terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult)");
-    expect(autoOpenBlock).toContain("formatProjectRunDeliverableMissingError()");
+    // deliverableError fallback now feeds the persist-result kind through
+    // so the "결과물이 생성되지 않았습니다" banner in a copied bug report
+    // includes `terminalPersistResultKind=<kind>` (or `no-artifact` for
+    // null). Previously the fallback was a bare no-arg call and future
+    // reports could not distinguish "model returned nothing" from
+    // "persist returned skipped-incomplete" without browser console.
+    expect(autoOpenBlock).toContain("formatProjectRunDeliverableMissingError({");
+    expect(autoOpenBlock).toContain("kind: terminalPersistResult?.kind ?? null,");
+    expect(autoOpenBlock).toContain("terminalPersistResult?.kind === 'rejected'");
     expect(autoOpenBlock).toContain("resolveTerminalArtifactToPersist(");
     expect(autoOpenBlock).toContain("rawFinalText,\n              artifactFromStandaloneHtml");
     expect(autoOpenBlock).toContain("finalText: rawFinalText");

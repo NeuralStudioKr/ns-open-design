@@ -7118,7 +7118,13 @@ export function ProjectView({
                         terminalPersistResult.fileName || 'untitled',
                         terminalPersistResult.reason,
                       )
-                  : formatProjectRunDeliverableMissingError();
+                  : formatProjectRunDeliverableMissingError({
+                      kind: terminalPersistResult?.kind ?? null,
+                      reason:
+                        terminalPersistResult?.kind === 'rejected'
+                          ? terminalPersistResult.reason ?? null
+                          : null,
+                    });
               const deliverableErrorCode = terminalPersistResult?.kind === 'scope-rejected'
                 ? terminalPersistResult.code
                 : 'incomplete_output';
