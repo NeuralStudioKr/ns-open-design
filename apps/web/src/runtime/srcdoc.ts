@@ -2097,7 +2097,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   top: 0 !important;
   left: 0 !important;
   overflow: hidden !important;
-  display: flex;
+  display: none !important;
   flex-direction: column;
   justify-content: center;
   align-items: stretch;
@@ -2138,7 +2138,9 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!el || el.nodeType !== 1) return false;
     if (el.id === 'od-stacked-deck-stage') return false;
     if (el.closest && el.closest('header, nav, #od-stacked-deck-stage')) return false;
-    if (el.closest && el.closest('.deck, .deck-shell, .deck-stage, #deck-stage, #deck, #deck-track')) return false;
+    // Only skip slides owned by the real framework / transform-track hosts.
+    // Decorative deck-shell wrappers without #deck-stage must still hoist.
+    if (el.closest && el.closest('#deck-stage, #deck, #deck-track')) return false;
     return !!(el.classList && el.classList.contains('slide'));
   }
   function slidesFromElementChildren(container) {
@@ -2385,6 +2387,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       }
 
       document.documentElement.setAttribute('data-od-stacked-deck', '');
+      var target = Math.max(0, Math.min(slideList.length - 1, initialSlideIndex));
+      forceRevealSlide(target);
       return stage;
     } finally {
       stackedDeckStageHoistInFlight = false;
@@ -2992,6 +2996,28 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     nudgeDeckFit();
     return true;
   }
+  function countVisibleSlides(list) {
+    var visible = 0;
+    if (!list || !list.length) return 0;
+    for (var i = 0; i < list.length; i++) {
+      try {
+        var cs = window.getComputedStyle(list[i]);
+        if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+        if (parseFloat(cs.opacity || '1') <= 0.01) continue;
+        visible += 1;
+      } catch (_) {}
+    }
+    return visible;
+  }
+  function repairOverlappingSlides(preferredIndex) {
+    var list = slides();
+    if (list.length < 2) return false;
+    if (countVisibleSlides(list) <= 1) return false;
+    var target = typeof preferredIndex === 'number'
+      ? Math.max(0, Math.min(list.length - 1, preferredIndex))
+      : Math.max(0, activeIndex(list));
+    return forceRevealSlide(target);
+  }
   function scrollGo(i){
     var list = slides();
     var next = Math.max(0, Math.min(list.length - 1, i));
@@ -3357,7 +3383,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         mo.observe(list[0].parentElement, { attributes: true, attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'] });
       }
     } catch (e) {}
-    setTimeout(restoreInitialSlide, 100);
+    setTimeout(function(){
+      restoreInitialSlide();
+      repairOverlappingSlides(initialSlideIndex);
+    }, 100);
   }
   observeSlides();
 })();</script>`;

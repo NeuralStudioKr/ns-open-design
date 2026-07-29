@@ -421,4 +421,17 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
     expect(buildSrcdoc(html, { deck: true })).not.toContain('data-od-deck-stacked-fix');
   });
+
+  it('treats deck-shell wrappers without #deck-stage as compact stacked decks', () => {
+    const html = [
+      '<!doctype html><html><body>',
+      '<div class="deck-shell"><div class="deck-stage">',
+      '<section class="slide" style="width:1920px;height:1080px;position:absolute;inset:0">Cover</section>',
+      '<section class="slide" style="width:1920px;height:1080px;position:absolute;inset:0">Agenda</section>',
+      '</div></div>',
+      '</body></html>',
+    ].join('');
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
+  });
 });

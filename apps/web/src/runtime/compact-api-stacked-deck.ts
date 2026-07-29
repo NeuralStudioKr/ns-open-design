@@ -123,11 +123,11 @@ function hasBodyFirstSlide(html: string): boolean {
 }
 
 function looksLikeFrameworkDeckMarkup(html: string): boolean {
+  // Only the real framework / transform-track markers — not decorative
+  // `.deck-shell` / `.deck-stage` class names that API compact decks
+  // sometimes copy without the framework script or visibility CSS.
   if (/\bid\s*=\s*["']deck-stage["']/i.test(html)) return true;
-  if (/<(?:div|section)[^>]*\bclass\s*=\s*['"][^'"]*\b(?:deck-shell|deck-stage|deck-track)\b/i.test(html)) {
-    return true;
-  }
-  if (/<div[^>]*\bid\s*=\s*['"](?:deck-stage|deck|deck-track)['"]/i.test(html)) return true;
+  if (/<div[^>]*\bid\s*=\s*['"](?:deck|deck-track)['"]/i.test(html)) return true;
   return false;
 }
 

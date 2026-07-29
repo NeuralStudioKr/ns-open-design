@@ -579,6 +579,45 @@ describe('deck bridge — nested slide markup (#1530)', () => {
     await new Promise<void>((resolve) => win.setTimeout(resolve, 350));
     expect(lastSlideState(parentPostMessage)).toMatchObject({ active: 1, count: 2 });
   });
+
+  it('reveals only one fixed 1920x1080 slide after stacked stage hoist (#overlap)', async () => {
+    const slides = Array.from({ length: 7 }, (_, i) =>
+      `<section class="slide" style="width:1920px;height:1080px;position:relative;overflow:hidden;padding:96px">Slide ${i + 1}</section>`,
+    ).join('');
+    const { win } = setupDeckBridge(slides);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 500));
+
+    const slideEls = Array.from(
+      win.document.querySelectorAll('#od-stacked-deck-stage > .slide'),
+    ) as HTMLElement[];
+    expect(slideEls).toHaveLength(7);
+    expect(slideEls.filter((el) => win.getComputedStyle(el).display !== 'none')).toHaveLength(1);
+    expect(win.getComputedStyle(slideEls[0]!).display).not.toBe('none');
+    for (let i = 1; i < slideEls.length; i++) {
+      expect(win.getComputedStyle(slideEls[i]!).display).toBe('none');
+    }
+  });
+
+  it('repairs overlapping absolute slides inside a decorative deck-shell wrapper', async () => {
+    const slides = Array.from({ length: 3 }, (_, i) =>
+      `<section class="slide" style="width:1920px;height:1080px;position:absolute;inset:0">Slide ${i + 1}</section>`,
+    ).join('');
+    const bodyHtml = `<div class="deck-shell"><div class="deck-stage">${slides}</div></div>`;
+    const { win } = setupDeckBridge(bodyHtml);
+    win.dispatchEvent(new win.MessageEvent('message', {
+      data: { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1, layoutFit: false },
+    }));
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 500));
+
+    const slideEls = Array.from(
+      win.document.querySelectorAll('#od-stacked-deck-stage > .slide'),
+    ) as HTMLElement[];
+    expect(slideEls).toHaveLength(3);
+    expect(slideEls.filter((el) => win.getComputedStyle(el).display !== 'none')).toHaveLength(1);
+  });
 });
 
 describe('deck bridge — slide-state-request', () => {
