@@ -36,7 +36,7 @@ describe("chat-message-render", () => {
       events: [{ kind: "status", label: "requesting" }],
     };
     expect(shouldOmitMessageFromChatRender(shell, embedCtx)).toBe(true);
-    expect(hasEmbedVisibleAssistantBody(shell)).toBe(false);
+    expect(hasEmbedVisibleAssistantBody(shell)).toBe(true);
   });
 
   it("keeps a live streaming empty shell", () => {
@@ -234,6 +234,7 @@ describe("chat-message-render", () => {
       lastAssistantId: "a2",
     });
     expect(items.map((item) => item.message.id)).toEqual(["u1", "a2"]);
+    expect(hasEmbedVisibleAssistantBody(succeededShell)).toBe(true);
   });
 
   it("keeps a terminal succeeded empty shell as the last assistant anchor after reload", () => {

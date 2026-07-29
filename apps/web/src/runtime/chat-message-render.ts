@@ -21,6 +21,19 @@ function isLastAssistantInVisibleUserTurn(
   return true;
 }
 
+/**
+ * Terminal succeeded empty shells anchor the turn after auto-continue recovery.
+ * They must count as renderable only when AssistantMessage would show a body
+ * (completion lead), not merely the agent role header.
+ */
+function wouldTerminalEmptyShellShowBody(message: ChatMessage): boolean {
+  return (
+    isEmptyAssistantShell(message)
+    && message.runStatus === "succeeded"
+    && message.endedAt !== undefined
+  );
+}
+
 function wouldAssistantRenderIgnoringSupersededOmission(
   message: ChatMessage,
   ctx: ChatMessageRenderContext,
@@ -33,7 +46,7 @@ function wouldAssistantRenderIgnoringSupersededOmission(
     isEmptyAssistantShell(message)
     && isLastAssistantInVisibleUserTurn(messages, messageIndex)
   ) {
-    return true;
+    return wouldTerminalEmptyShellShowBody(message) || hasEmbedVisibleAssistantBody(message);
   }
   if (isEmptyAssistantShell(message)) return false;
   if (
@@ -192,7 +205,7 @@ export function hasEmbedVisibleAssistantBody(message: ChatMessage): boolean {
   if (hasTeamverCompletedArtifactLead(message)) return true;
   const body = assistantMessageTextBody(message);
   if (messageIndicatesDeckPatchArtifact(body)) return true;
-  if (/<artifact\b/i.test(body)) return true;
+  if (wouldTerminalEmptyShellShowBody(message)) return true;
   return false;
 }
 

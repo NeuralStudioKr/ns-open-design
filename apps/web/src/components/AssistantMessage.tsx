@@ -129,6 +129,13 @@ function teamverCompletedArtifactLeadCopy(locale: string, deckPatch: boolean): s
     : "The slide deck draft is ready.";
 }
 
+function terminalSucceededAnchorLeadCopy(locale: string): string {
+  if (locale.startsWith("ko")) {
+    return "작업이 완료되었습니다.";
+  }
+  return "The task is complete.";
+}
+
 export type QuestionFormOpenRequest = {
   form: QuestionForm;
   messageId: string;
@@ -574,7 +581,7 @@ function AssistantMessageImpl({
         block.kind !== "thinking"
         && block.kind !== "tool-group"
         && block.kind !== "live-tool"
-        && block.kind !== "status"
+        && (block.kind !== "status" || block.label === "error")
         && block.kind !== "plugin-candidate",
       );
     }
@@ -768,10 +775,16 @@ function AssistantMessageImpl({
     && isEmptyAssistantShell(message)
     && message.runStatus === "succeeded"
     && message.endedAt !== undefined;
+  const shouldShowTerminalSucceededLead =
+    !streaming
+    && terminalSucceededAnchor
+    && !hasVisibleAssistantTextBlocks
+    && !(slideOnlyMvp || teamverEmbedEnabled);
   const shouldShowTeamverCompletedArtifactLead =
     !streaming
     && runSucceeded
     && !hasVisibleAssistantTextBlocks
+    && !shouldShowTerminalSucceededLead
     && (slideOnlyMvp || teamverEmbedEnabled)
     && (
       terminalSucceededAnchor
@@ -780,6 +793,9 @@ function AssistantMessageImpl({
         && (displayedProduced.length > 0 || isDeckPatchArtifactTurn)
       )
     );
+  const terminalSucceededLeadCopy = shouldShowTerminalSucceededLead
+    ? terminalSucceededAnchorLeadCopy(locale)
+    : null;
 
   // Index of the trailing text block — the streaming caret rides the end of
   // the last prose block so it tracks the final character as tokens arrive.
@@ -805,6 +821,7 @@ function AssistantMessageImpl({
     || hasVisibleAssistantTextBlocks
     || streamingDeckArtifactActive
     || streamingTodoProgress != null
+    || shouldShowTerminalSucceededLead
     || shouldShowTeamverCompletedArtifactLead
     || displayedProduced.length > 0
     || pluginActionFolders.length > 0
@@ -827,6 +844,11 @@ function AssistantMessageImpl({
         {streaming && !hasContent ? (
           <div className="assistant-waiting-output shimmer-text shimmer-prepare" role="status">
             {t("assistant.waitingFirstOutput")}
+          </div>
+        ) : null}
+        {terminalSucceededLeadCopy ? (
+          <div className="prose-block">
+            <p className="teamver-streaming-lead">{terminalSucceededLeadCopy}</p>
           </div>
         ) : null}
         {shouldShowTeamverCompletedArtifactLead ? (

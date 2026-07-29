@@ -4,6 +4,7 @@ import { buildChatRenderItems } from "../../src/components/ChatPane";
 import { dedupeConversationAssistantRows } from "../../src/runtime/conversation-message-dedupe";
 import { mergeActiveRunsIntoMessages } from "../../src/teamver/backgroundChatRecovery";
 import { AUTO_CONTINUE_PROMPT_SENTINEL } from "../../src/runtime/resume";
+import { hasEmbedVisibleAssistantBody } from "../../src/runtime/chat-message-render";
 
 const embedCtx = {
   streaming: false,
@@ -56,6 +57,9 @@ describe("chat reload assistant visibility", () => {
       lastAssistantId: "a-succeeded",
     });
     expect(items.map((item) => item.message.id)).toEqual(["u1", "a-succeeded"]);
+    const succeededShell = loaded.find((message) => message.id === "a-succeeded");
+    expect(succeededShell).toBeDefined();
+    expect(hasEmbedVisibleAssistantBody(succeededShell!)).toBe(true);
   });
 
   it("does not drop the succeeded shell when deduping conversation rows directly", () => {
