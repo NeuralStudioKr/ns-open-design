@@ -1,5 +1,6 @@
-import type { ChatMessage } from "../types";
+import type { AgentEvent, ChatMessage } from "../types";
 import { assistantMessageTextBody } from "./chat-events";
+import { isAutoContinueIncompleteOutputPrompt } from "./resume";
 
 function isTerminalRunStatus(status: ChatMessage["runStatus"]): boolean {
   return status === "succeeded" || status === "failed" || status === "canceled";
@@ -28,11 +29,40 @@ function findInFlightAssistantMessages(
   return [];
 }
 
+/** Status/usage events that leave only the assistant header visible in chat. */
+const HEADER_ONLY_STATUS_LABELS = new Set([
+  "requesting",
+  "initializing",
+  "working",
+  "empty_response",
+  "queued",
+  // Match AssistantMessage block filter — these never render a body pill.
+  "starting",
+  "running",
+  "streaming",
+  "thinking",
+  "tool_call",
+  "tool_call_update",
+]);
+
+function isHeaderOnlyNoiseEvent(event: AgentEvent): boolean {
+  if (event.kind === "usage") return true;
+  if (event.kind === "status") {
+    return HEADER_ONLY_STATUS_LABELS.has(event.label ?? "");
+  }
+  return false;
+}
+
+function hasOnlyHeaderOnlyNoiseEvents(events: readonly AgentEvent[] | undefined): boolean {
+  if (!events || events.length === 0) return true;
+  return events.every(isHeaderOnlyNoiseEvent);
+}
+
 /** Assistant row with no user-visible body and no side effects worth keeping. */
 export function isEmptyAssistantShell(message: ChatMessage): boolean {
   if (message.role !== "assistant") return false;
   if ((message.producedFiles?.length ?? 0) > 0) return false;
-  if ((message.events?.length ?? 0) > 0) return false;
+  if (!hasOnlyHeaderOnlyNoiseEvents(message.events)) return false;
   if (assistantMessageTextBody(message).trim().length > 0) return false;
   if ((message.feedback?.rating ?? null) != null) return false;
   return true;
@@ -44,6 +74,7 @@ function assistantRichnessScore(message: ChatMessage): number {
   if (isTerminalRunStatus(message.runStatus)) score += 1024;
   if (isInFlightAssistantMessage(message)) score += 256;
   if (message.runId?.trim()) score += 32;
+  if (!isEmptyAssistantShell(message)) score += 512;
   return score;
 }
 
@@ -52,6 +83,13 @@ function findLastUserIndex(messages: readonly ChatMessage[]): number {
     if (messages[i]?.role === "user") return i;
   }
   return -1;
+}
+
+function isVisibleUserTurnBoundary(message: ChatMessage): boolean {
+  if (message.role !== "user") return false;
+  // Auto-continue prompts are hidden in ChatPane; they must not split a turn
+  // for empty-shell collapse or the incomplete first assistant survives.
+  return !isAutoContinueIncompleteOutputPrompt(message.content);
 }
 
 /** Drop duplicate assistant rows that share the same daemon run id. */
@@ -84,43 +122,75 @@ export function dedupeAssistantMessagesByRunId(
 }
 
 /**
- * Remove a header-only assistant immediately before a richer assistant on the
- * same user turn (no intervening user message).
+ * Remove header-only assistant rows that share a visible user turn with a
+ * richer assistant (before or after, including across hidden auto-continue
+ * user prompts). When every assistant in the turn is an empty shell, keep
+ * the richest / latest one only.
  */
 export function collapseEmptyAssistantShellsBeforeSuccessor(
   messages: readonly ChatMessage[],
 ): ChatMessage[] {
-  const out: ChatMessage[] = [];
+  const drop = new Set<number>();
+  let assistantIndicesInTurn: number[] = [];
+
+  const flushTurn = () => {
+    if (assistantIndicesInTurn.length === 0) return;
+    const richIndices = assistantIndicesInTurn.filter(
+      (index) => !isEmptyAssistantShell(messages[index]!),
+    );
+    const emptyIndices = assistantIndicesInTurn.filter(
+      (index) => isEmptyAssistantShell(messages[index]!),
+    );
+    if (richIndices.length > 0) {
+      // When the only rich siblings are terminal (e.g. a failed attempt kept
+      // for Retry history), keep the in-flight optimistic shell — otherwise
+      // dedupe would delete the new streaming target mid-retry.
+      const richOnlyTerminal = richIndices.every(
+        (index) => !isInFlightAssistantMessage(messages[index]!),
+      );
+      for (const index of emptyIndices) {
+        if (
+          richOnlyTerminal
+          && isInFlightAssistantMessage(messages[index]!)
+        ) {
+          continue;
+        }
+        drop.add(index);
+      }
+    } else if (emptyIndices.length > 1) {
+      const inFlightEmpty = emptyIndices.filter((index) =>
+        isInFlightAssistantMessage(messages[index]!),
+      );
+      let best = (inFlightEmpty.at(-1) ?? emptyIndices[0])!;
+      if (inFlightEmpty.length === 0) {
+        for (const index of emptyIndices) {
+          if (assistantRichnessScore(messages[index]!) >= assistantRichnessScore(messages[best]!)) {
+            best = index;
+          }
+        }
+      }
+      for (const index of emptyIndices) {
+        if (index !== best) drop.add(index);
+      }
+    }
+    assistantIndicesInTurn = [];
+  };
+
   for (let i = 0; i < messages.length; i += 1) {
-    const current = messages[i]!;
-    if (current.role !== "assistant") {
-      out.push(current);
+    const message = messages[i]!;
+    if (message.role === "user") {
+      if (!isVisibleUserTurnBoundary(message)) continue;
+      flushTurn();
       continue;
     }
-    let drop = false;
-    for (let j = i + 1; j < messages.length; j += 1) {
-      const next = messages[j]!;
-      if (next.role === "user") break;
-      if (next.role !== "assistant") continue;
-      if (
-        isEmptyAssistantShell(current)
-        && !isEmptyAssistantShell(next)
-      ) {
-        drop = true;
-      } else if (
-        isEmptyAssistantShell(current)
-        && isInFlightAssistantMessage(next)
-      ) {
-        drop = true;
-      }
-      break;
+    if (message.role === "assistant") {
+      assistantIndicesInTurn.push(i);
     }
-    if (!drop) out.push(current);
   }
-  if (out.length === messages.length && out.every((message, index) => message === messages[index])) {
-    return messages as ChatMessage[];
-  }
-  return out;
+  flushTurn();
+
+  if (drop.size === 0) return messages as ChatMessage[];
+  return messages.filter((_, index) => !drop.has(index));
 }
 
 type ActiveRunLike = {

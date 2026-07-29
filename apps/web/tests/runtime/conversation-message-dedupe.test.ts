@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../src/types";
+import { AUTO_CONTINUE_PROMPT_SENTINEL } from "../../src/runtime/resume";
 import {
   collapseEmptyAssistantShellsBeforeSuccessor,
   dedupeAssistantMessagesByRunId,
@@ -20,13 +21,36 @@ describe("isEmptyAssistantShell", () => {
     expect(isEmptyAssistantShell(message)).toBe(true);
   });
 
-  it("does not treat in-flight rows with events as shells", () => {
+  it("treats requesting/initializing status-only rows as empty shells", () => {
+    const message: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "",
+      runStatus: "running",
+      startedAt: 2,
+      events: [{ kind: "status", label: "requesting", detail: "claude" }],
+    };
+    expect(isEmptyAssistantShell(message)).toBe(true);
+  });
+
+  it("does not treat in-flight rows with text events as shells", () => {
     const message: ChatMessage = {
       id: "a1",
       role: "assistant",
       content: "",
       runStatus: "running",
       events: [{ kind: "text", text: "hello" }],
+    };
+    expect(isEmptyAssistantShell(message)).toBe(false);
+  });
+
+  it("does not treat error status rows as shells", () => {
+    const message: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "",
+      runStatus: "failed",
+      events: [{ kind: "status", label: "error", detail: "boom" }],
     };
     expect(isEmptyAssistantShell(message)).toBe(false);
   });
@@ -74,7 +98,14 @@ describe("dedupeAssistantMessagesByRunId", () => {
       runStatus: "succeeded",
       endedAt: 10,
       createdAt: 3,
-      producedFiles: [{ name: "deck.html", path: "deck.html", mimeType: "text/html", size: 1024 }],
+      producedFiles: [{
+        name: "deck.html",
+        path: "deck.html",
+        mime: "text/html",
+        size: 1024,
+        mtime: 10,
+        kind: "html",
+      }],
     };
 
     const deduped = dedupeAssistantMessagesByRunId([user, staleRunning, completed]);
@@ -110,6 +141,129 @@ describe("collapseEmptyAssistantShellsBeforeSuccessor", () => {
     };
     const collapsed = collapseEmptyAssistantShellsBeforeSuccessor([user, shell, active]);
     expect(collapsed.map((m) => m.id)).toEqual(["u1", "a-live"]);
+  });
+
+  it("drops an empty shell that arrives after a richer assistant", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "hi", createdAt: 1 };
+    const live: ChatMessage = {
+      id: "a-live",
+      role: "assistant",
+      content: "done",
+      runStatus: "succeeded",
+      endedAt: 3,
+      createdAt: 2,
+    };
+    const shell: ChatMessage = {
+      id: "a-shell",
+      role: "assistant",
+      content: "",
+      createdAt: 4,
+      events: [{ kind: "status", label: "requesting", detail: "model" }],
+    };
+    expect(
+      collapseEmptyAssistantShellsBeforeSuccessor([user, live, shell]).map((m) => m.id),
+    ).toEqual(["u1", "a-live"]);
+  });
+
+  it("collapses empty shells across a hidden auto-continue user prompt", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "make slides", createdAt: 1 };
+    const shell: ChatMessage = {
+      id: "a-shell",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 2,
+      createdAt: 2,
+      events: [{ kind: "status", label: "requesting", detail: "model" }],
+    };
+    const autoContinueUser: ChatMessage = {
+      id: "u-auto",
+      role: "user",
+      content: `${AUTO_CONTINUE_PROMPT_SENTINEL}\n이어쓰기`,
+      createdAt: 3,
+    };
+    const live: ChatMessage = {
+      id: "a-live",
+      role: "assistant",
+      content: "deck ready",
+      runStatus: "succeeded",
+      endedAt: 4,
+      createdAt: 4,
+    };
+    expect(
+      collapseEmptyAssistantShellsBeforeSuccessor([
+        user,
+        shell,
+        autoContinueUser,
+        live,
+      ]).map((m) => m.id),
+    ).toEqual(["u1", "u-auto", "a-live"]);
+  });
+
+  it("keeps a single empty shell when it is the only assistant on the turn", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "hi", createdAt: 1 };
+    const shell: ChatMessage = {
+      id: "a-shell",
+      role: "assistant",
+      content: "",
+      runStatus: "running",
+      startedAt: 2,
+      createdAt: 2,
+      events: [{ kind: "status", label: "requesting" }],
+    };
+    expect(
+      collapseEmptyAssistantShellsBeforeSuccessor([user, shell]).map((m) => m.id),
+    ).toEqual(["u1", "a-shell"]);
+  });
+
+  it("keeps the in-flight retry shell beside a preserved failed attempt", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "retry me", createdAt: 1 };
+    const failed: ChatMessage = {
+      id: "a-failed",
+      role: "assistant",
+      content: "",
+      runStatus: "failed",
+      endedAt: 3,
+      createdAt: 2,
+      events: [{ kind: "status", label: "error", detail: "boom" }],
+    };
+    const retryShell: ChatMessage = {
+      id: "a-retry",
+      role: "assistant",
+      content: "",
+      runStatus: "running",
+      startedAt: 4,
+      createdAt: 4,
+      events: [{ kind: "status", label: "requesting", detail: "model" }],
+    };
+    expect(
+      collapseEmptyAssistantShellsBeforeSuccessor([user, failed, retryShell]).map((m) => m.id),
+    ).toEqual(["u1", "a-failed", "a-retry"]);
+  });
+
+  it("still drops a noise-only shell when a richer in-flight sibling exists", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "hi", createdAt: 1 };
+    const shell: ChatMessage = {
+      id: "a-shell",
+      role: "assistant",
+      content: "",
+      runStatus: "running",
+      startedAt: 2,
+      createdAt: 2,
+      events: [{ kind: "status", label: "starting" }],
+    };
+    const live: ChatMessage = {
+      id: "a-live",
+      role: "assistant",
+      content: "",
+      runStatus: "running",
+      startedAt: 3,
+      createdAt: 3,
+      events: [{ kind: "text", text: "drafting" }],
+    };
+    expect(
+      collapseEmptyAssistantShellsBeforeSuccessor([user, shell, live]).map((m) => m.id),
+    ).toEqual(["u1", "a-live"]);
   });
 });
 

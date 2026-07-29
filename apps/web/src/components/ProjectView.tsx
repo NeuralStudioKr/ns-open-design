@@ -4382,7 +4382,7 @@ export function ProjectView({
         activeConversationId === conversationId
         || messagesConversationIdRef.current === conversationId
       ) {
-        setMessages((curr) => [...curr, message]);
+        setMessages((curr) => dedupeConversationAssistantRows([...curr, message]));
       }
       if (persist) void saveMessage(project.id, conversationId, message, options);
     },

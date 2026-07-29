@@ -804,7 +804,7 @@ function AssistantMessageImpl({
     }
   }
 
-  if (!streaming && !isLast && isEmptyAssistantShell(message)) {
+  if (isEmptyAssistantShell(message) && !(streaming && isLast)) {
     return null;
   }
 
