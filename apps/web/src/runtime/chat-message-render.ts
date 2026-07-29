@@ -1,5 +1,5 @@
 import type { ChatMessage } from "../types";
-import { assistantMessageTextBody } from "./chat-events";
+import { assistantMessageTextBody, messageHasVisibleProse } from "./chat-events";
 import { isEmptyAssistantShell } from "./conversation-message-dedupe";
 import { deriveFileOps } from "./file-ops";
 import { isAutoContinueIncompleteOutputPrompt } from "./resume";
@@ -9,6 +9,74 @@ export type ChatMessageRenderContext = {
   lastAssistantId: string | undefined;
   hideAssistantThinkingDetails: boolean;
 };
+
+function findVisibleUserTurnStart(
+  messages: readonly ChatMessage[],
+  messageIndex: number,
+): number {
+  let index = messageIndex;
+  while (index > 0) {
+    const previous = messages[index - 1];
+    if (
+      previous?.role === "user"
+      && !isAutoContinueIncompleteOutputPrompt(previous.content)
+    ) {
+      return index - 1;
+    }
+    index -= 1;
+  }
+  return 0;
+}
+
+function findVisibleUserTurnEnd(
+  messages: readonly ChatMessage[],
+  messageIndex: number,
+): number {
+  let index = messageIndex + 1;
+  while (index < messages.length) {
+    const message = messages[index];
+    if (
+      message?.role === "user"
+      && !isAutoContinueIncompleteOutputPrompt(message.content)
+    ) {
+      return index;
+    }
+    index += 1;
+  }
+  return messages.length;
+}
+
+function hasLaterAssistantInVisibleUserTurn(
+  messages: readonly ChatMessage[],
+  messageIndex: number,
+): boolean {
+  const turnEnd = findVisibleUserTurnEnd(messages, messageIndex);
+  for (let index = messageIndex + 1; index < turnEnd; index += 1) {
+    if (messages[index]?.role === "assistant") return true;
+  }
+  return false;
+}
+
+/**
+ * Auto-continue retries append a new assistant row after each incomplete
+ * failure. The earlier failures often carry only error status events — the
+ * chat UI still renders their role header (agent icon + name), so three
+ * retries look like three stacked agent labels. Drop superseded failed rows
+ * in the same visible user turn when they have no user-visible body left.
+ */
+export function shouldOmitSupersededAutoContinueFailure(
+  messages: readonly ChatMessage[],
+  messageIndex: number,
+): boolean {
+  const message = messages[messageIndex];
+  if (!message || message.role !== "assistant") return false;
+  if (message.runStatus !== "failed") return false;
+  if (!hasLaterAssistantInVisibleUserTurn(messages, messageIndex)) return false;
+  if ((message.producedFiles?.length ?? 0) > 0) return false;
+  if (messageHasVisibleProse(message)) return false;
+  if (deriveFileOps(message.events ?? []).length > 0) return false;
+  return true;
+}
 
 function isLiveStreamingAssistantTarget(
   message: ChatMessage,
@@ -74,7 +142,18 @@ export function hasEmbedVisibleAssistantBody(message: ChatMessage): boolean {
 export function shouldOmitMessageFromChatRender(
   message: ChatMessage,
   ctx: ChatMessageRenderContext,
+  options?: {
+    messages?: readonly ChatMessage[];
+    messageIndex?: number;
+  },
 ): boolean {
+  if (
+    options?.messages
+    && typeof options.messageIndex === "number"
+    && shouldOmitSupersededAutoContinueFailure(options.messages, options.messageIndex)
+  ) {
+    return true;
+  }
   if (message.role === "user") {
     return isAutoContinueIncompleteOutputPrompt(message.content);
   }
@@ -93,6 +172,10 @@ export function shouldOmitMessageFromChatRender(
 export function shouldIncludeMessageInChatRender(
   message: ChatMessage,
   ctx: ChatMessageRenderContext,
+  options?: {
+    messages?: readonly ChatMessage[];
+    messageIndex?: number;
+  },
 ): boolean {
-  return !shouldOmitMessageFromChatRender(message, ctx);
+  return !shouldOmitMessageFromChatRender(message, ctx, options);
 }

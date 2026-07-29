@@ -5,6 +5,7 @@ import {
   hasEmbedVisibleAssistantBody,
   shouldIncludeMessageInChatRender,
   shouldOmitMessageFromChatRender,
+  shouldOmitSupersededAutoContinueFailure,
 } from "../../src/runtime/chat-message-render";
 import { resolveLastAssistantMessageId } from "../../src/runtime/conversation-message-dedupe";
 import { buildChatRenderItems } from "../../src/components/ChatPane";
@@ -155,6 +156,68 @@ describe("chat-message-render", () => {
       events: [{ kind: "status", label: "error", detail: "boom" }],
     };
     expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(false);
+  });
+
+  it("omits superseded auto-continue failures that only leave an agent header", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "edit slide", createdAt: 1 };
+    const hiddenAutoContinueUser: ChatMessage = {
+      id: "u-auto",
+      role: "user",
+      content: "<!--od:auto_continue_incomplete_output-->\ncontinue",
+      createdAt: 2,
+    };
+    const firstFailed: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "",
+      agentName: "Anthropic API",
+      runStatus: "failed",
+      endedAt: 3,
+      createdAt: 3,
+      events: [
+        { kind: "status", label: "error", detail: "recovering", code: "auto_continue_incomplete_output" },
+      ],
+    };
+    const secondFailed: ChatMessage = {
+      id: "a2",
+      role: "assistant",
+      content: "",
+      agentName: "Anthropic API",
+      runStatus: "failed",
+      endedAt: 4,
+      createdAt: 4,
+      events: [{ kind: "status", label: "error", detail: "still broken", code: "incomplete_output" }],
+    };
+    const messages = [user, firstFailed, hiddenAutoContinueUser, secondFailed];
+    expect(shouldOmitSupersededAutoContinueFailure(messages, 1)).toBe(true);
+    expect(shouldOmitSupersededAutoContinueFailure(messages, 3)).toBe(false);
+    const items = buildChatRenderItems(messages, {
+      ...embedCtx,
+      lastAssistantId: "a2",
+    });
+    expect(items.map((item) => item.message.id)).toEqual(["u1", "a2"]);
+  });
+
+  it("keeps superseded failed attempts that still have visible prose", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "edit slide", createdAt: 1 };
+    const firstFailed: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "partial deck draft",
+      runStatus: "failed",
+      endedAt: 2,
+      createdAt: 2,
+    };
+    const retry: ChatMessage = {
+      id: "a2",
+      role: "assistant",
+      content: "",
+      runStatus: "running",
+      startedAt: 3,
+      createdAt: 3,
+    };
+    const messages = [user, firstFailed, retry];
+    expect(shouldOmitSupersededAutoContinueFailure(messages, 1)).toBe(false);
   });
 
   it("buildChatRenderItems drops omitted rows before virtualization count", () => {

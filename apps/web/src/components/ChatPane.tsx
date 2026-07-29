@@ -2783,7 +2783,7 @@ export function buildChatRenderItems(
   const items: ChatRenderItem[] = [];
   for (let i = 0; i < messages.length; i += 1) {
     const message = messages[i]!;
-    if (!shouldIncludeMessageInChatRender(message, ctx)) continue;
+    if (!shouldIncludeMessageInChatRender(message, ctx, { messages, messageIndex: i })) continue;
     items.push({
       kind: 'message',
       key: `message:${message.id}`,
