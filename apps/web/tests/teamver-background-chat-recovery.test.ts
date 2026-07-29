@@ -477,4 +477,27 @@ describe("backgroundChatRecovery", () => {
       }),
     ).toBe(false);
   });
+
+  it("dedupes persisted empty+content assistant rows when there are no active runs", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "hi", createdAt: 1 };
+    const shell: ChatMessage = {
+      id: "a-shell",
+      role: "assistant",
+      content: "",
+      createdAt: 2,
+      endedAt: 2,
+      runStatus: "succeeded",
+      events: [{ kind: "status", label: "requesting", detail: "model" }],
+    };
+    const live: ChatMessage = {
+      id: "a-live",
+      role: "assistant",
+      content: "deck ready",
+      createdAt: 3,
+      endedAt: 3,
+      runStatus: "succeeded",
+    };
+    const merged = mergeActiveRunsIntoMessages([user, shell, live], []);
+    expect(merged.map((m) => m.id)).toEqual(["u1", "a-live"]);
+  });
 });

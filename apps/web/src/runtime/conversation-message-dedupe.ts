@@ -47,6 +47,9 @@ const HEADER_ONLY_STATUS_LABELS = new Set([
 
 function isHeaderOnlyNoiseEvent(event: AgentEvent): boolean {
   if (event.kind === "usage") return true;
+  // Thinking tokens are often filtered from Teamver embed chat body; treat as
+  // header-only noise so a thinking-only stub collapses beside a real reply.
+  if (event.kind === "thinking") return true;
   if (event.kind === "status") {
     return HEADER_ONLY_STATUS_LABELS.has(event.label ?? "");
   }
@@ -258,4 +261,29 @@ export function dedupeConversationAssistantRows(
     return messages as ChatMessage[];
   }
   return collapsed;
+}
+
+/**
+ * Prefer the newest non-empty assistant for streaming / question-form anchors.
+ * Falls back to the newest empty shell when that is the only assistant.
+ */
+export function resolveLastAssistantMessageId(
+  messages: readonly ChatMessage[],
+): string | undefined {
+  let fallback: string | undefined;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role !== "assistant") continue;
+    if (!isEmptyAssistantShell(message)) return message.id;
+    if (fallback === undefined) fallback = message.id;
+  }
+  return fallback;
+}
+
+export function resolveLastAssistantMessageIndex(
+  messages: readonly ChatMessage[],
+): number {
+  const id = resolveLastAssistantMessageId(messages);
+  if (!id) return -1;
+  return messages.findIndex((message) => message.id === id);
 }

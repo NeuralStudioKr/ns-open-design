@@ -370,6 +370,7 @@ import { sanitizeAssistantProseForDisplay } from '../runtime/internalAgentMarkup
 import {
   dedupeConversationAssistantRows,
   patchInFlightAssistantForActiveRun,
+  resolveLastAssistantMessageIndex,
 } from '../runtime/conversation-message-dedupe';
 import { Icon } from './Icon';
 import { DesignSystemPicker } from './DesignSystemPicker';
@@ -2366,12 +2367,10 @@ export function ProjectView({
   // <question-form> block, the panel renders it. The form is interactive
   // only while it's the most recent turn and the user hasn't answered yet
   // (an answer arrives as a following "[form answers …]" user message).
-  const lastAssistantIndex = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]?.role === 'assistant') return i;
-    }
-    return -1;
-  }, [messages]);
+  const lastAssistantIndex = useMemo(
+    () => resolveLastAssistantMessageIndex(messages),
+    [messages],
+  );
   const lastAssistantContent =
     lastAssistantIndex >= 0 ? messages[lastAssistantIndex]?.content ?? '' : '';
   const lastAssistantMessageId =

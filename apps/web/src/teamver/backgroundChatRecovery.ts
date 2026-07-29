@@ -508,7 +508,9 @@ export function mergeActiveRunsIntoMessages(
   messages: readonly ChatMessage[],
   activeRuns: readonly ChatRunStatusResponse[],
 ): ChatMessage[] {
-  if (activeRuns.length === 0) return [...messages];
+  if (activeRuns.length === 0) {
+    return dedupeConversationAssistantRows(messages);
+  }
   let merged = [...messages];
   const knownIds = new Set(merged.map((message) => message.id));
   for (const run of activeRuns) {

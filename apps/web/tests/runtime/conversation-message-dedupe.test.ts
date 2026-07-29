@@ -7,6 +7,8 @@ import {
   dedupeConversationAssistantRows,
   isEmptyAssistantShell,
   patchInFlightAssistantForActiveRun,
+  resolveLastAssistantMessageId,
+  resolveLastAssistantMessageIndex,
 } from "../../src/runtime/conversation-message-dedupe";
 
 describe("isEmptyAssistantShell", () => {
@@ -29,6 +31,18 @@ describe("isEmptyAssistantShell", () => {
       runStatus: "running",
       startedAt: 2,
       events: [{ kind: "status", label: "requesting", detail: "claude" }],
+    };
+    expect(isEmptyAssistantShell(message)).toBe(true);
+  });
+
+  it("treats thinking-only rows as empty shells", () => {
+    const message: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "",
+      runStatus: "running",
+      startedAt: 2,
+      events: [{ kind: "thinking", text: "planning…" }],
     };
     expect(isEmptyAssistantShell(message)).toBe(true);
   });
@@ -365,5 +379,45 @@ describe("dedupeConversationAssistantRows", () => {
       "u1",
       "a-live",
     ]);
+  });
+});
+
+describe("resolveLastAssistantMessageId", () => {
+  it("prefers the newest non-empty assistant over a trailing empty shell", () => {
+    const messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "hi", createdAt: 1 },
+      {
+        id: "a-live",
+        role: "assistant",
+        content: "done",
+        runStatus: "succeeded",
+        endedAt: 2,
+        createdAt: 2,
+      },
+      {
+        id: "a-shell",
+        role: "assistant",
+        content: "",
+        createdAt: 3,
+        events: [{ kind: "status", label: "requesting" }],
+      },
+    ];
+    expect(resolveLastAssistantMessageId(messages)).toBe("a-live");
+    expect(resolveLastAssistantMessageIndex(messages)).toBe(1);
+  });
+
+  it("falls back to an empty shell when it is the only assistant", () => {
+    const messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "hi", createdAt: 1 },
+      {
+        id: "a-shell",
+        role: "assistant",
+        content: "",
+        runStatus: "running",
+        startedAt: 2,
+        createdAt: 2,
+      },
+    ];
+    expect(resolveLastAssistantMessageId(messages)).toBe("a-shell");
   });
 });

@@ -46,6 +46,7 @@ import { AssistantMessage, type QuestionFormOpenRequest } from './AssistantMessa
 import { AmrGuidance } from './AmrGuidance';
 import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-guidance';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
+import { resolveLastAssistantMessageId } from '../runtime/conversation-message-dedupe';
 import {
   ChatComposer,
   type ChatComposerHandle,
@@ -847,12 +848,10 @@ export function ChatPane({
   const [editingQueuedSendId, setEditingQueuedSendId] = useState<string | null>(null);
   // Reverse scan (no array copy) + memo so this and the maps below don't
   // recompute on every non-`messages` render (scroll, hover, toggles).
-  const lastAssistantId = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]!.role === 'assistant') return messages[i]!.id;
-    }
-    return undefined;
-  }, [messages]);
+  const lastAssistantId = useMemo(
+    () => resolveLastAssistantMessageId(messages),
+    [messages],
+  );
   const hasActiveRunMessage = messages.some(
     (m) => m.role === 'assistant' && isActiveRunStatus(m.runStatus),
   );
