@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildEmergencyArtifactFromMessages,
   buildEmergencySlideDeckFromOutline,
   extractSlideOutlineItems,
   looksLikeSlideOutline,
 } from '../../src/artifacts/emergency-deck';
+import type { ChatMessage } from '../../src/types';
 
 describe('extractSlideOutlineItems', () => {
   it('parses numbered Korean slide outlines', () => {
@@ -59,5 +61,38 @@ describe('buildEmergencySlideDeckFromOutline', () => {
     );
     expect(html).toContain('<section class="slide">');
     expect((html!.match(/<section class="slide">/g) || []).length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('does not use progress prose as the cover title', () => {
+    const html = buildEmergencySlideDeckFromOutline(
+      'NeuralStudio 회사 소개 덱을 Retro Windows 스타일로 만들고 있어요.\n발표 개요를 정리합니다.',
+    );
+    expect(html).toBeTruthy();
+    expect(html).not.toContain('<h1>을 만들고 있어요</h1>');
+    expect(html).not.toContain('스타일로 만들고 있어요');
+  });
+});
+
+describe('buildEmergencyArtifactFromMessages', () => {
+  it('prefers the user URL request for the emergency deck title', () => {
+    const messages = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: 'https://neuralstudio.kr 분석해서 회사 소개 PPT 만들어줘',
+        createdAt: 1,
+      },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'NeuralStudio 회사 소개 덱을 Retro Windows 스타일로 만들고 있어요.',
+        createdAt: 2,
+      },
+    ] as ChatMessage[];
+
+    const artifact = buildEmergencyArtifactFromMessages(messages);
+    expect(artifact?.html).toBeTruthy();
+    expect(artifact!.html).toContain('Neuralstudio 회사 소개');
+    expect(artifact!.html).not.toContain('<h1>을 만들고 있어요</h1>');
   });
 });

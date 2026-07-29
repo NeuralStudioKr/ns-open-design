@@ -148,8 +148,20 @@ export function recoverBestHtmlDocumentFromText(
 
   collectCompleteHtmlDocumentsFromText(withoutArtifacts, candidates);
 
+  // Truncated doctype decks (max_tokens mid-stream) never match the complete
+  // document collectors above — close them when they already have real slides.
+  collectTruncatedHtmlDocumentsFromText(text, candidates);
+  collectTruncatedHtmlDocumentsFromText(withoutArtifacts, candidates);
+
   if (candidates.length === 0) return null;
   return candidates.reduce((best, cur) => (cur.length > best.length ? cur : best));
+}
+
+function collectTruncatedHtmlDocumentsFromText(sourceText: string, candidates: string[]): void {
+  const doctypeTail = sourceText.match(/<!doctype\s+html[\s\S]*/i)?.[0];
+  if (!doctypeTail) return;
+  const salvaged = salvageTruncatedHtmlDocument(doctypeTail);
+  if (salvaged) candidates.push(salvaged);
 }
 
 function collectCompleteHtmlDocumentsFromText(sourceText: string, candidates: string[]): void {

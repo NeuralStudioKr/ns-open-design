@@ -1,4 +1,5 @@
 import type { AgentEvent, ChatMessage } from '../types';
+import { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from '../artifacts/emergency-deck';
 import { reconcileUserCommentAttachments } from '../comments';
 import { AUTO_CONTINUE_STATUS_CODE } from './resume';
 
@@ -80,6 +81,9 @@ function hasPersistedRunErrorEvent(events: AgentEvent[]): boolean {
       event.kind === 'status'
       && event.label === 'error'
       && event.code !== AUTO_CONTINUE_STATUS_CODE
+      // Emergency draft salvage marks the run succeeded — do not flip it back
+      // to failed on reload just because the notice reused the status channel.
+      && event.code !== EMERGENCY_DECK_FALLBACK_STATUS_CODE
       && Boolean(event.detail?.trim()),
   );
 }
@@ -118,5 +122,23 @@ export function appendErrorStatusEvent(
   return {
     ...message,
     events: [...events, { kind: 'status', label: 'error', detail, ...(code ? { code } : {}) }],
+  };
+}
+
+/** Non-fatal assistant-card notice (e.g. emergency draft deck fallback). */
+export function appendWarningStatusEvent(
+  message: ChatMessage,
+  detail: string,
+  code?: string,
+): ChatMessage {
+  if (!detail?.trim()) return message;
+  const events = message.events ?? [];
+  const last = events[events.length - 1];
+  if (last?.kind === 'status' && last.label === 'warning' && last.detail === detail) {
+    return message;
+  }
+  return {
+    ...message,
+    events: [...events, { kind: 'status', label: 'warning', detail, ...(code ? { code } : {}) }],
   };
 }

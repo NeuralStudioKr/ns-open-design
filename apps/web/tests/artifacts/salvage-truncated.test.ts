@@ -90,4 +90,17 @@ describe("salvageTruncatedHtmlDocument", () => {
     expect(recovered).toMatch(/<\/body><\/html>$/);
     expect(isIncompleteHtmlDocumentShell(recovered!)).toBe(false);
   });
+
+  it("recovers truncated doctype decks from assistant prose via recoverBest", () => {
+    const text =
+      '덱 HTML을 작성 중입니다.\n'
+      + '<!doctype html>\n<html lang="ko"><head><meta charset="utf-8" /><title>NS</title></head><body>'
+      + '<section class="slide"><h1>NeuralStudio</h1><p>회사 소개 개요입니다.</p></section>'
+      + '<section class="slide"><h2>제품</h2><p>핵심 제품 라인업을 소개합니다.';
+    const recovered = recoverBestHtmlDocumentFromText(text);
+    expect(recovered).toBeTruthy();
+    expect(recovered).toContain('<h1>NeuralStudio</h1>');
+    expect(recovered).toMatch(/<\/body>\s*<\/html>\s*$/i);
+    expect(isIncompleteHtmlDocumentShell(recovered!)).toBe(false);
+  });
 });
