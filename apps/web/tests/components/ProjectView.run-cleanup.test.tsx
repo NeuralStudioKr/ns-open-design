@@ -1031,7 +1031,7 @@ describe('ProjectView daemon cleanup', () => {
     const userMessage = latestChat.messages?.find((message) => message.role === 'user');
     expect(userMessage?.commentAttachments?.[0]).toMatchObject({
       elementId: 'hero-title',
-      commentContext: 'query',
+      comment: '텍스트 더 크게',
     });
     expect(saveMessage).toHaveBeenCalled();
     const savedUser = saveMessage.mock.calls.find(
@@ -1123,12 +1123,11 @@ describe('ProjectView daemon cleanup', () => {
       };
       expect(latest.queuedItems).toHaveLength(1);
       // Each board comment is queued as its own task: the comment text becomes
-      // the task prompt while the attachment rides along as element context
-      // (comment blanked, commentContext === 'query').
+      // the task prompt while the full attachment rides along for scope context.
       expect(latest.queuedItems?.[0]?.prompt).toBe('Use a warmer accent');
       const queuedAttachment = latest.queuedItems?.[0]?.commentAttachments?.[0];
       expect(queuedAttachment?.elementId).toBe('hero');
-      expect(queuedAttachment?.commentContext).toBe('query');
+      expect(queuedAttachment?.comment).toBe('Use a warmer accent');
     });
     expect(streamViaDaemon).toHaveBeenCalledTimes(1);
   });

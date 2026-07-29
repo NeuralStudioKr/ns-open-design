@@ -193,7 +193,7 @@ describe('preview comment attachment helpers', () => {
     expect(context).not.toContain('slideIndex:');
   });
 
-  it('keeps the task query out of context when a comment is promoted to message text', () => {
+  it('includes comment in scope block when hydrated from the visible user prompt', () => {
     const [attachment] = commentsToAttachments([
       comment({ id: 'c1', elementId: 'hero-title', note: 'Make the title factual' }),
     ]);
@@ -205,7 +205,7 @@ describe('preview comment attachment helpers', () => {
 
     expect(content).toContain('Make the title factual');
     expect(content).toContain('selector: [data-od-id="hero-title"]');
-    expect(content).not.toContain('comment: Make the title factual');
+    expect(content).toContain('comment: Make the title factual');
   });
 
   it('hydrates query-context attachments from the visible user prompt for recovery', () => {

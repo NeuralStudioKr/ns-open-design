@@ -547,8 +547,7 @@ test('[P0] sending preview comments opens the refreshed follow-up artifact', asy
   expect(body.commentAttachments).toEqual([
     expect.objectContaining({
       elementId: 'hero-title',
-      comment: '',
-      commentContext: 'query',
+      comment: 'Make the headline more specific.',
       filePath: 'commentable-artifact.html',
     }),
   ]);
@@ -652,7 +651,6 @@ test('[P0] board comment chips survive page reload after send', async ({ page })
       expect.objectContaining({
         elementId: 'hero-title',
         filePath: 'commentable-artifact.html',
-        commentContext: 'query',
         comment: 'Make the headline more specific.',
       }),
     ]),
@@ -1241,8 +1239,7 @@ async function runCommentAttachmentFlow(
   expect(body.commentAttachments).toEqual([
     expect.objectContaining({
       elementId: 'hero-title',
-      comment: '',
-      commentContext: 'query',
+      comment: 'Make the headline more specific.',
       filePath: 'commentable-artifact.html',
     }),
   ]);

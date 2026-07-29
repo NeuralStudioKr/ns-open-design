@@ -472,11 +472,11 @@ export function parseCommentAttachmentsFromMessageContent(
 }
 
 /**
- * Board-batch sends promote the user's note into the visible prompt and
- * blank `attachment.comment` with `commentContext: 'query'` so the model
- * does not see the instruction twice. Downstream recovery (fast-path,
- * auto-continue, chip render) must hydrate the note back from the
- * visible user text when the structured field was cleared.
+ * Legacy board-batch rows may promote the user's note into the visible
+ * prompt and blank `attachment.comment` with `commentContext: 'query'`.
+ * Downstream recovery (auto-continue, chip render, scope blocks) must
+ * hydrate the note back from the visible user text when the structured
+ * field was cleared.
  */
 export function hydrateQueryContextCommentAttachments(
   attachments: readonly ChatCommentAttachment[],
@@ -536,7 +536,11 @@ export function messageContentWithCommentAttachments(
   const scopedCommentAttachments = commentAttachments.filter(hasUsableCommentLocationData);
   if (scopedCommentAttachments.length === 0) return content;
   const visibleContent = content.trim() || COMMENT_ONLY_USER_PLACEHOLDER;
-  return `${visibleContent}${renderCommentAttachmentContext(scopedCommentAttachments)}`;
+  const hydrated = hydrateQueryContextCommentAttachments(
+    scopedCommentAttachments,
+    visibleCommentEditInstruction(content),
+  );
+  return `${visibleContent}${renderCommentAttachmentContext(hydrated, { includeQueryComments: true })}`;
 }
 
 export function hasUsableCommentLocationData(item: ChatCommentAttachment): boolean {
