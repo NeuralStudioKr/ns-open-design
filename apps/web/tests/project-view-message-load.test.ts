@@ -247,7 +247,7 @@ describe("ProjectView message loading", () => {
     // preservation block. Keep just enough head-room; the block
     // still asserts the same ordering contract, only over slightly
     // more source.
-    const block = source.slice(start, start + 9000);
+    const block = source.slice(start, start + 11000);
 
     expect(block).toContain("AUTO_CONTINUE_STATUS_CODE");
     expect(block).toContain("syncAutoContinueCountFromMessages(");
@@ -264,7 +264,8 @@ describe("ProjectView message loading", () => {
     // in commit 7a80a8688 so the scoped comment auto-continue can route to a
     // dedicated element-patch retry instead of the full-deck rewrite prompt.
     expect(block).toContain("resolveAutoContinuePrompt");
-    expect(block).toContain("renderCommentAttachmentContext(autoContinueCommentAttachments)");
+    expect(block).toContain("renderCommentAttachmentContext(autoContinueCommentAttachments, {");
+    expect(block).toContain("includeQueryComments: true");
     expect(block).toContain("scopedUserInstruction");
     expect(block).toContain("AUTO_CONTINUE_ENTRY_FROM");
     expect(block).toContain("const scheduledProjectId = project.id");
@@ -276,7 +277,7 @@ describe("ProjectView message loading", () => {
     const start = source.indexOf("const openedRecoveredHtml = await autoOpenRecoveredHtmlOutput(");
     const secondStart = source.indexOf("const openedRecoveredHtml = await autoOpenRecoveredHtmlOutput(", start + 1);
     expect(secondStart).toBeGreaterThan(0);
-    const block = source.slice(secondStart, secondStart + 8500);
+    const block = source.slice(secondStart, secondStart + 10500);
 
     expect(block).toContain("const proxyStillActive = matchingActiveStreams.length > 0");
     expect(block).toContain("!openedRecoveredHtml && !stillInflight && !proxyStillActive");
@@ -290,7 +291,8 @@ describe("ProjectView message loading", () => {
     // resolveAutoContinuePrompt replaced buildAutoContinueIncompleteOutputPrompt.
     // See sibling block above for the rationale (element-patch retry routing).
     expect(block).toContain("resolveAutoContinuePrompt");
-    expect(block).toContain("renderCommentAttachmentContext(autoContinueCommentAttachments)");
+    expect(block).toContain("renderCommentAttachmentContext(autoContinueCommentAttachments, {");
+    expect(block).toContain("includeQueryComments: true");
     expect(block).toContain("scopedUserInstruction");
     expect(block).toContain("const scheduledProjectId = project.id");
     expect(block).toContain("project.id !== scheduledProjectId");
@@ -317,9 +319,8 @@ describe("ProjectView message loading", () => {
     // chars when the element-patch/deck-patch salvage helpers and the empty
     // deck-patch → auto-continue routing widened the prelude further, then
     // 16000 for the client-side artifact-regression pre-write guard, then
-    // 18000 when the empty-element-patch fast-path salvage
-    // (tryApplyCommentEditFastPathAgainstCurrentDeck + salvagedByFastPath
-    // bookkeeping in persistArtifact) landed.
+    // 18000 when the empty-element-patch → auto-continue routing
+    // (without client-side fast-path salvage) landed.
     const persistBlock = source.slice(persistStart, persistStart + 18000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
@@ -443,6 +444,7 @@ describe("ProjectView message loading", () => {
     // reliable after refresh/queue/background reattach; without deck.html the
     // model can claim the selected text does not exist.
     expect(handleSendBlock).toContain("promptWithSlideCommentEditPatchInstruction(");
+    expect(handleSendBlock).toContain("commentAttachments: scopedCommentAttachments");
     expect(handleSendBlock).not.toContain("skipDeckHtml: slideOnlyMvp && scopedCommentAttachments.length > 0");
   });
 
@@ -528,50 +530,28 @@ describe("ProjectView message loading", () => {
     );
   });
 
-  it("salvages empty element-patch responses with the deterministic client-side fast-path before auto-continue", () => {
-    // Bug (2026-07-29 later user report): the dedicated
-    // buildAutoContinueScopedCommentEditPrompt retry prompt still did
-    // not converge for common comment edits — the model kept emitting
-    // empty <artifact type="element-patch"> for requests like
-    //   "회사 이름 눈에 잘 띄게 수정"
-    //   "글자를 빨간색으로 바꿔줘"
-    //   "'김개발 작업물' 로 멘트 수정"
-    // and the 3-retry cap exhausted into the generic
-    // "결과물이 생성되지 않았습니다 (terminalPersistResultKind=skipped-incomplete)"
-    // banner.
-    //
-    // The fix restores the client-side comment fast-path
-    // (buildManualEditCommentFastPath) that was previously removed and
-    // wires it into persistArtifact so an empty scoped element-patch
-    // gets applied locally against the deck on disk BEFORE the retry
-    // loop fires. Non-fast-path-recognisable comments still fall
-    // through to the auto-continue path.
+  it("routes scoped empty element-patch failures to auto-continue without client-side fast-path salvage", () => {
+    // Bug (2026-07-29): scoped comment edits that produced empty
+    // <artifact type="element-patch"> bodies exhausted auto-continue and
+    // surfaced "결과물이 생성되지 않았습니다". The durable fix is richer model
+    // context (comment in scope block, concrete patch template on first turn)
+    // plus hydrated scoped auto-continue — not a client-side regex fast-path.
     const source = readSource("src/components/ProjectView.tsx");
 
-    // Fast-path util must exist and be non-stubbed. The stubbed
-    // version returned null unconditionally (broke the salvage).
-    const fastPathSource = readSource("src/components/manualEditCommentFastPath.ts");
-    expect(fastPathSource).toContain("parseTextReplacement");
-    expect(fastPathSource).toContain("parseVisibilityEmphasisPatch");
-    expect(fastPathSource).toContain("parseColorForKind");
-    expect(fastPathSource).not.toMatch(/export function buildManualEditCommentFastPath\([^)]*\): ManualEditCommentFastPathResult \| null \{\s*return null;\s*\}/);
+    expect(source).not.toContain("tryApplyCommentEditFastPathAgainstCurrentDeck");
+    expect(source).not.toContain("buildManualEditCommentFastPath");
+    expect(source).not.toContain("salvagedByFastPath");
+    expect(source).not.toContain("[element-patch] applied scoped comment fast-path");
+    expect(source).not.toContain("[deck-patch] applied scoped comment fast-path");
+    expect(source).not.toContain("[teamver] terminal-auto-open scoped comment fast-path");
 
-    // persistArtifact must call the fast-path when scoped element-patch
-    // returned empty. The salvage sets effectiveArt and skips the
-    // scope-rejected return branch.
-    expect(source).toContain("tryApplyCommentEditFastPathAgainstCurrentDeck");
-    expect(source).toContain("import { applyManualEditPatch, readManualEditStyles } from '../edit-mode/source-patches'");
-    expect(source).toContain("import { buildManualEditCommentFastPath } from './manualEditCommentFastPath'");
-    expect(source).toContain("applied scoped comment fast-path after failed model artifact");
-    expect(source).toContain("salvagedByFastPath");
-    // The fast-path must also cover the deck-patch failure branch AND
-    // the terminal-auto-open last-resort salvage before the generic
-    // "결과물이 생성되지 않았습니다" banner fires. Without those two
-    // extensions, only empty element-patch failures got salvaged; the
-    // second user report on the same day hit skipped-incomplete on a
-    // deck-patch shape and no salvage layer caught it.
-    expect(source).toContain("[deck-patch] applied scoped comment fast-path after failed model artifact");
-    expect(source).toContain("[teamver] terminal-auto-open scoped comment fast-path salvage succeeded");
+    const fastPathSource = readSource("src/components/manualEditCommentFastPath.ts");
+    expect(fastPathSource).toContain("return null");
+
+    expect(source).toContain("[element-patch] routing scoped edit to auto-continue");
+    expect(source).toContain("commentAttachments: scopedCommentAttachments");
+    expect(source).toContain("buildConcreteElementPatchTemplate(autoContinueCommentAttachments)");
+    expect(source).toContain("hydrateQueryContextCommentAttachments(");
   });
 
   it("self-heals leaked composer streaming markers after terminal turns settle", () => {

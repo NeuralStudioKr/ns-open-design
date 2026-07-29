@@ -90,6 +90,36 @@ describe("promptWithExistingDeckEditInstruction", () => {
 });
 
 describe("promptWithSlideCommentEditPatchInstruction", () => {
+  it("appends a concrete element-patch template when comment attachments are provided", () => {
+    const prompt = promptWithSlideCommentEditPatchInstruction(
+      "이 텍스트를 '안녕'으로 바꿔줘",
+      {
+        slideOnlyMvp: true,
+        commentAttachmentCount: 1,
+        commentAttachments: [
+          {
+            id: 'c1',
+            order: 1,
+            filePath: 'deck.html',
+            elementId: 'hero-title',
+            selector: '[data-od-id="hero-title"]',
+            label: 'Title',
+            comment: "이 텍스트를 '안녕'으로 바꿔줘",
+            currentText: 'Hello',
+            pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+            htmlHint: '<h1 data-od-id="hero-title">Hello</h1>',
+            selectionKind: 'element',
+            slideIndex: 2,
+          },
+        ],
+      },
+    );
+
+    expect(prompt).toContain('target-id="hero-title"');
+    expect(prompt).toContain('slide-index="2"');
+    expect(prompt).toContain('Copy this template and fill in the patch body');
+  });
+
   it("nudges the model into the element-patch contract on comment edits", () => {
     const prompt = promptWithSlideCommentEditPatchInstruction(
       "이 텍스트를 '안녕'으로 바꿔줘",

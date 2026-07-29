@@ -51,8 +51,6 @@ export {
   targetTextPreservedInPatchedSlide,
 } from '../edit-mode/scoped-deck-patch';
 import { validateCommentEditIntentRespected } from '../edit-mode/comment-edit-intent';
-import { applyManualEditPatch, readManualEditStyles } from '../edit-mode/source-patches';
-import { buildManualEditCommentFastPath } from './manualEditCommentFastPath';
 import {
   clearPendingArtifactWrite,
   clearProjectPendingArtifactWrites,
@@ -1095,12 +1093,29 @@ function slideCommentEditPatchInstruction(commentAttachmentCount: number): strin
 
 export function promptWithSlideCommentEditPatchInstruction(
   prompt: string,
-  options: { slideOnlyMvp: boolean; commentAttachmentCount: number },
+  options: {
+    slideOnlyMvp: boolean;
+    commentAttachmentCount: number;
+    commentAttachments?: readonly ChatCommentAttachment[];
+  },
 ): string {
   if (!options.slideOnlyMvp || options.commentAttachmentCount <= 0) return prompt;
   if (prompt.includes(SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '이 코멘트에 맞춰 슬라이드를 수정해줘.';
-  return `${visiblePrompt}\n\n${slideCommentEditPatchInstruction(options.commentAttachmentCount)}`;
+  const parts = [
+    `${visiblePrompt}\n\n${slideCommentEditPatchInstruction(options.commentAttachmentCount)}`,
+  ];
+  const concreteTemplate = options.commentAttachments?.length
+    ? buildConcreteElementPatchTemplate(options.commentAttachments)
+    : null;
+  if (concreteTemplate) {
+    parts.push(
+      '',
+      'Copy this template and fill in the patch body for the user request:',
+      concreteTemplate,
+    );
+  }
+  return parts.join('\n');
 }
 
 function slideExistingDeckEditInstruction(deckPath: string): string {
@@ -1214,79 +1229,6 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
   }
   return { ok: true, html: applied.html };
-}
-
-/**
- * Deterministic comment-edit fast-path applied to the current deck on
- * disk. Used as a client-side salvage when the model returns an empty
- * `<artifact type="element-patch">` for a scoped comment run whose
- * comment matches one of the fast-path patterns (quoted text
- * replacement, explicit colors, font multipliers, visibility
- * emphasis). Applying the edit here bypasses the auto-continue retry
- * loop that has been landing on `incomplete_output` after three
- * attempts on the same model glitch.
- *
- * When no attachment matches a fast-path pattern (e.g. ambiguous
- * natural language, pod comments, visual annotations) we return
- * `{ ok: false }` so the caller falls back to auto-continue with the
- * dedicated scoped-comment-edit retry prompt.
- */
-async function tryApplyCommentEditFastPathAgainstCurrentDeck(input: {
-  projectId: string;
-  fileName: string;
-  commentAttachments?: readonly ChatCommentAttachment[];
-  instructionText?: string;
-}): Promise<DeckPatchMergeResult> {
-  const attachments = hydrateQueryContextCommentAttachments(
-    input.commentAttachments ?? [],
-    input.instructionText,
-  );
-  if (attachments.length === 0) {
-    return { ok: false, code: 'deck_patch_parse_failed', reason: 'no comment attachments' };
-  }
-
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
-  if (!currentHtml) {
-    return {
-      ok: false,
-      code: 'deck_patch_current_unreadable',
-      reason: 'current deck file unreadable',
-    };
-  }
-
-  let html = currentHtml;
-  let appliedCount = 0;
-  for (const attachment of attachments) {
-    if (attachment.filePath !== input.fileName) continue;
-    const editScope = typeof attachment.slideIndex === 'number'
-      ? { slideIndex: attachment.slideIndex }
-      : undefined;
-    const currentStyles = readManualEditStyles(html, attachment.elementId, editScope);
-    const fastPath = buildManualEditCommentFastPath({ attachment, currentStyles });
-    if (!fastPath) {
-      return { ok: false, code: 'deck_patch_parse_failed', reason: 'no fast-path match' };
-    }
-    for (const patch of fastPath.patches) {
-      const result = applyManualEditPatch(html, patch, editScope);
-      if (!result.ok) {
-        return {
-          ok: false,
-          code: 'deck_patch_merge_failed',
-          reason: result.error
-            ?? `failed to apply ${patch.kind}${'id' in patch ? ` on ${patch.id}` : ''}`,
-        };
-      }
-      html = result.source;
-      appliedCount += 1;
-    }
-  }
-
-  if (appliedCount === 0) {
-    return { ok: false, code: 'deck_patch_parse_failed', reason: 'no fast-path patches applied' };
-  }
-  return { ok: true, html };
 }
 
 /**
@@ -1627,14 +1569,6 @@ function historyWithWorkspaceContext(
 
 function commentTaskQuery(attachment: ChatCommentAttachment): string {
   return (attachment.comment ?? '').trim();
-}
-
-function commentTaskContextAttachment(attachment: ChatCommentAttachment): ChatCommentAttachment {
-  return {
-    ...attachment,
-    comment: '',
-    commentContext: 'query',
-  };
 }
 
 function designSystemNeedsWorkPrompt(
@@ -3216,18 +3150,24 @@ export function ProjectView({
                 conversationAutoContinueCountRef.current.get(scheduledConversationId) ?? 1;
               const autoContinueCtx =
                 extractAutoContinueContextFromAssistant(incompleteAssistant);
-              const autoContinueCommentAttachments =
+              const autoContinueCommentAttachments = hydrateQueryContextCommentAttachments(
                 extractCommentAttachmentsForAutoContinue(
                   findPrecedingUserMessage(mergedMessages, incompleteAssistant?.id),
                   runCommentAttachmentsRef.current,
-                );
+                ),
+                visibleCommentEditInstruction(
+                  findPrecedingUserMessage(mergedMessages, incompleteAssistant?.id)?.content,
+                ),
+              );
               const autoContinueOriginUser = findPrecedingUserMessage(
                 mergedMessages,
                 incompleteAssistant?.id,
               );
               const scopedCommentContext =
                 autoContinueCommentAttachments.length > 0
-                  ? renderCommentAttachmentContext(autoContinueCommentAttachments)
+                  ? renderCommentAttachmentContext(autoContinueCommentAttachments, {
+                      includeQueryComments: true,
+                    })
                   : null;
               const concretePatchTemplate =
                 autoContinueCommentAttachments.length > 0
@@ -3758,55 +3698,21 @@ export function ProjectView({
           // user (and future ops) can distinguish "model returned an
           // empty edit artifact" from "no artifact produced at all".
           const runIsScoped = persistCommentAttachments.length > 0;
-          let salvagedByFastPath = false;
           if (
             runIsScoped &&
             (isElementPatchEmptyBody(merged.reason) ||
               shouldRetryScopedCommentMergeFailure(merged.code, merged.reason))
           ) {
-            // Client-side fast-path: try to apply the edit locally
-            // against the current deck before falling through to the
-            // model's auto-continue retry loop. Fires for BOTH:
-            //   - empty element-patch (model wrote wrapper only)
-            //   - non-empty element-patch that failed to apply (wrong
-            //     target-id, slideIndex out of bounds, unsupported kind,
-            //     etc.)
-            // Only comments whose text matches the narrow parser
-            // (quoted text, explicit colors, font multipliers,
-            // visibility emphasis) will match; anything else returns
-            // `{ ok: false }` and we still route to auto-continue for
-            // the model to retry. Trying fast-path for both failure
-            // shapes catches the case where the model attempted a
-            // non-empty patch that missed the target — the deterministic
-            // interpretation of the comment can still land the edit
-            // locally instead of burning another 3-retry cycle.
-            const fastPath = await tryApplyCommentEditFastPathAgainstCurrentDeck({
-              projectId: project.id,
+            console.warn('[element-patch] routing scoped edit to auto-continue', {
               fileName: targetFileName,
-              commentAttachments: persistCommentAttachments,
-              instructionText: runVisiblePromptRef.current,
+              code: merged.code,
+              reason: merged.reason,
             });
-            if (fastPath.ok) {
-              console.warn('[element-patch] applied scoped comment fast-path after failed model artifact', {
-                fileName: targetFileName,
-                originalCode: merged.code,
-                originalReason: merged.reason,
-              });
-              effectiveArt = { ...art, html: fastPath.html, artifactType: 'deck' };
-              salvagedByFastPath = true;
-            } else {
-              console.warn('[element-patch] routing scoped edit to auto-continue', {
-                fileName: targetFileName,
-                code: merged.code,
-                reason: merged.reason,
-                fastPathReason: fastPath.reason,
-              });
-              return {
-                kind: 'skipped-incomplete',
-                fileName: targetFileName,
-                reason: merged.reason,
-              };
-            }
+            return {
+              kind: 'skipped-incomplete',
+              fileName: targetFileName,
+              reason: merged.reason,
+            };
           } else if (isElementPatchEmptyBody(merged.reason) && !runIsScoped) {
             console.warn('[element-patch] rejecting unscoped empty artifact', {
               fileName: targetFileName,
@@ -3819,14 +3725,12 @@ export function ProjectView({
                 'The model emitted an empty element-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.',
             };
           }
-          if (!salvagedByFastPath) {
-            return {
-              kind: 'scope-rejected',
-              fileName: targetFileName,
-              code: merged.code,
-              reason: merged.reason,
-            };
-          }
+          return {
+            kind: 'scope-rejected',
+            fileName: targetFileName,
+            code: merged.code,
+            reason: merged.reason,
+          };
         } else {
           effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
         }
@@ -3841,39 +3745,33 @@ export function ProjectView({
         });
         if (!merged.ok) {
           const runIsScoped = persistCommentAttachments.length > 0;
-          let salvagedByFastPath = false;
-          // Try the client-side fast-path BEFORE routing to auto-
-          // continue. Any scoped deck-patch failure — retryable
-          // scope/target mismatch, empty body, generic parse failure —
-          // gets one shot at the deterministic parser. If the comment
-          // matches (quoted text, explicit colors, font multipliers,
-          // visibility emphasis), applying locally avoids the 3-retry
-          // model round-trip. Non-matching comments fall through to
-          // the existing auto-continue path unchanged.
-          if (runIsScoped) {
-            const fastPath = await tryApplyCommentEditFastPathAgainstCurrentDeck({
-              projectId: project.id,
+          if (
+            runIsScoped &&
+            shouldRetryScopedCommentMergeFailure(merged.code, merged.reason)
+          ) {
+            console.warn('[deck-patch] scoped merge missed comment target — routing to auto-continue', {
               fileName: targetFileName,
-              commentAttachments: persistCommentAttachments,
+              code: merged.code,
+              reason: merged.reason,
             });
-            if (fastPath.ok) {
-              console.warn('[deck-patch] applied scoped comment fast-path after failed model artifact', {
-                fileName: targetFileName,
-                originalCode: merged.code,
-                originalReason: merged.reason,
-              });
-              effectiveArt = { ...art, html: fastPath.html, artifactType: 'deck' };
-              salvagedByFastPath = true;
-            }
+            return {
+              kind: 'skipped-incomplete',
+              fileName: targetFileName,
+              reason: merged.reason,
+            };
           }
-          if (!salvagedByFastPath) {
-            if (
-              runIsScoped &&
-              shouldRetryScopedCommentMergeFailure(merged.code, merged.reason)
-            ) {
-              console.warn('[deck-patch] scoped merge missed comment target — routing to auto-continue', {
+          // Empty deck-patch body — model chose deck-patch contract
+          // but produced no <section class="slide"> blocks. Route
+          // scoped runs to auto-continue (retry will retain the same
+          // comment scope). For unscoped runs an empty deck-patch is
+          // unrecoverable via retry, so surface it clearly.
+          if (
+            merged.code === 'deck_patch_parse_failed' &&
+            isDeckPatchEmptyBody(art.html ?? '', merged.reason)
+          ) {
+            if (runIsScoped) {
+              console.warn('[deck-patch] routing scoped empty deck-patch to auto-continue', {
                 fileName: targetFileName,
-                code: merged.code,
                 reason: merged.reason,
               });
               return {
@@ -3882,44 +3780,23 @@ export function ProjectView({
                 reason: merged.reason,
               };
             }
-            // Empty deck-patch body — model chose deck-patch contract
-            // but produced no <section class="slide"> blocks. Route
-            // scoped runs to auto-continue (retry will retain the same
-            // comment scope). For unscoped runs an empty deck-patch is
-            // unrecoverable via retry, so surface it clearly.
-            if (
-              merged.code === 'deck_patch_parse_failed' &&
-              isDeckPatchEmptyBody(art.html ?? '', merged.reason)
-            ) {
-              if (runIsScoped) {
-                console.warn('[deck-patch] routing scoped empty deck-patch to auto-continue', {
-                  fileName: targetFileName,
-                  reason: merged.reason,
-                });
-                return {
-                  kind: 'skipped-incomplete',
-                  fileName: targetFileName,
-                  reason: merged.reason,
-                };
-              }
-              console.warn('[deck-patch] rejecting unscoped empty deck-patch', {
-                fileName: targetFileName,
-                reason: merged.reason,
-              });
-              return {
-                kind: 'rejected',
-                fileName: targetFileName,
-                reason:
-                  'The model emitted an empty deck-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.',
-              };
-            }
-            return {
-              kind: 'scope-rejected',
+            console.warn('[deck-patch] rejecting unscoped empty deck-patch', {
               fileName: targetFileName,
-              code: merged.code,
               reason: merged.reason,
+            });
+            return {
+              kind: 'rejected',
+              fileName: targetFileName,
+              reason:
+                'The model emitted an empty deck-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.',
             };
           }
+          return {
+            kind: 'scope-rejected',
+            fileName: targetFileName,
+            code: merged.code,
+            reason: merged.reason,
+          };
         } else {
           effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
         }
@@ -6528,18 +6405,24 @@ export function ProjectView({
               conversationAutoContinueCountRef.current.get(scheduledConversationId) ?? 1;
             const autoContinueCtx =
               extractAutoContinueContextFromAssistant(incompleteAssistant);
-            const autoContinueCommentAttachments =
+            const autoContinueCommentAttachments = hydrateQueryContextCommentAttachments(
               extractCommentAttachmentsForAutoContinue(
                 findPrecedingUserMessage(mergedMessages, incompleteAssistant?.id),
                 runCommentAttachmentsRef.current,
-              );
+              ),
+              visibleCommentEditInstruction(
+                findPrecedingUserMessage(mergedMessages, incompleteAssistant?.id)?.content,
+              ),
+            );
             const autoContinueOriginUser = findPrecedingUserMessage(
               mergedMessages,
               incompleteAssistant?.id,
             );
             const scopedCommentContext =
               autoContinueCommentAttachments.length > 0
-                ? renderCommentAttachmentContext(autoContinueCommentAttachments)
+                ? renderCommentAttachmentContext(autoContinueCommentAttachments, {
+                    includeQueryComments: true,
+                  })
                 : null;
             const concretePatchTemplate =
               autoContinueCommentAttachments.length > 0
@@ -7002,6 +6885,7 @@ export function ProjectView({
       let modelPrompt = promptWithSlideCommentEditPatchInstruction(modelPromptBase, {
         slideOnlyMvp,
         commentAttachmentCount: scopedCommentAttachments.length,
+        commentAttachments: scopedCommentAttachments,
       });
       if (autoAttachedDeckPath) {
         modelPrompt = promptWithExistingDeckEditInstruction(modelPrompt, {
@@ -7477,82 +7361,6 @@ export function ProjectView({
                 retryTarget?.userMsg ?? userMsg,
                 runCommentAttachmentsRef.current,
               );
-              // Scoped comment last-resort salvage: emergency deck
-              // recovery is skipped for scoped edits (it would overwrite
-              // the disk deck with a placeholder), and auto-continue may
-              // have already exhausted or not helped for the specific
-              // comment shape. Give the deterministic fast-path one
-              // shot against the current deck before we mark the run
-              // failed. This catches comments that would have applied
-              // locally if the model had emitted a valid element-patch
-              // at any point in the retry cycle — the exact class of
-              // failure the user hit on conversation 0cbb4507 where
-              // three retries all landed on skipped-incomplete.
-              if (
-                slideOnlyMvp
-                && terminalAutoContinueCommentAttachments.length > 0
-                && terminalPersistResult?.kind !== 'save-failed'
-                && terminalPersistResult?.kind !== 'scope-rejected'
-                && terminalPersistResult?.kind !== 'artifact-regression'
-              ) {
-                const commentFastPathTarget = terminalPersistResult?.fileName
-                  ?? resolvePrimaryDeckFilePath(nextFiles, project.metadata?.entryFile)
-                  ?? '';
-                if (commentFastPathTarget) {
-                  const fastPath = await tryApplyCommentEditFastPathAgainstCurrentDeck({
-                    projectId: project.id,
-                    fileName: commentFastPathTarget,
-                    commentAttachments: terminalAutoContinueCommentAttachments,
-                  });
-                  if (fastPath.ok) {
-                    const salvagePersist = await persistArtifact(
-                      {
-                        identifier: 'deck',
-                        artifactType: 'deck',
-                        title: 'deck',
-                        html: fastPath.html,
-                      },
-                      nextFiles,
-                      rawFinalText,
-                      startedAt,
-                    );
-                    if (
-                      salvagePersist?.kind === 'persisted'
-                      || salvagePersist?.kind === 'pointer'
-                      || salvagePersist?.kind === 'skipped-duplicate'
-                      || salvagePersist?.kind === 'auth-replay-queued'
-                    ) {
-                      nextFiles = await refreshProjectFiles();
-                      const salvageProduced = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-                      const salvageHtmlToOpen =
-                        selectAutoOpenProducedHtml(salvageProduced, { projectFiles: nextFiles })
-                        ?? salvagePersist.fileName
-                        ?? commentFastPathTarget;
-                      console.warn(
-                        '[teamver] terminal-auto-open scoped comment fast-path salvage succeeded',
-                        {
-                          fileName: commentFastPathTarget,
-                          persistKind: salvagePersist.kind,
-                        },
-                      );
-                      emergencyRecovered = true;
-                      emergencyProduced = salvageProduced;
-                      if (salvageHtmlToOpen && runIsVisible()) {
-                        maybeArmTeamverPublishMenuAfterRunSuccess(project.id, salvageHtmlToOpen);
-                        requestOpenFile(salvageHtmlToOpen);
-                      }
-                    } else {
-                      console.warn(
-                        '[teamver] terminal-auto-open scoped comment fast-path salvage rejected by persist',
-                        {
-                          fileName: commentFastPathTarget,
-                          persistKind: salvagePersist?.kind ?? 'null',
-                        },
-                      );
-                    }
-                  }
-                }
-              }
               if (slideOnlyMvp && !producedHtmlToOpen && !emergencyRecovered) {
                 const outlineMessages = retryTarget
                   ? [...historyBase, latestAssistantMsg]
@@ -8983,7 +8791,7 @@ export function ProjectView({
         await handleSend(
           prompt,
           mergeChatAttachments(i === 0 ? uploaded : [], savedImages),
-          [commentTaskContextAttachment(commentAttachment)],
+          [commentAttachment],
           meta,
         );
       }
