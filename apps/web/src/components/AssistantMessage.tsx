@@ -17,7 +17,11 @@ import {
 import { fetchTeamverDaemon } from "../teamver/teamverDaemonHeaders";
 import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup";
 import { isEmptyAssistantShell } from "../runtime/conversation-message-dedupe";
-import { hasEmbedVisibleAssistantBody } from "../runtime/chat-message-render";
+import {
+  hasEmbedVisibleAssistantBody,
+  isTerminalSucceededEmptyShellAnchor,
+  terminalSucceededAnchorLeadCopy,
+} from "../runtime/chat-message-render";
 import {
   trackAssistantFeedbackButtonClick,
   trackAssistantFeedbackClick,
@@ -574,7 +578,7 @@ function AssistantMessageImpl({
         block.kind !== "thinking"
         && block.kind !== "tool-group"
         && block.kind !== "live-tool"
-        && block.kind !== "status"
+        && (block.kind !== "status" || block.label === "error")
         && block.kind !== "plugin-candidate",
       );
     }
@@ -762,16 +766,20 @@ function AssistantMessageImpl({
     locale,
     isDeckPatchArtifactTurn,
   );
-  const terminalSucceededAnchor =
-    isLast
-    && !streaming
-    && isEmptyAssistantShell(message)
-    && message.runStatus === "succeeded"
-    && message.endedAt !== undefined;
+  const terminalSucceededAnchor = isTerminalSucceededEmptyShellAnchor(message, {
+    isLast: !!isLast,
+    streaming,
+  });
+  const shouldShowTerminalSucceededLead =
+    !streaming
+    && terminalSucceededAnchor
+    && !hasVisibleAssistantTextBlocks
+    && !(slideOnlyMvp || teamverEmbedEnabled);
   const shouldShowTeamverCompletedArtifactLead =
     !streaming
     && runSucceeded
     && !hasVisibleAssistantTextBlocks
+    && !shouldShowTerminalSucceededLead
     && (slideOnlyMvp || teamverEmbedEnabled)
     && (
       terminalSucceededAnchor
@@ -780,6 +788,9 @@ function AssistantMessageImpl({
         && (displayedProduced.length > 0 || isDeckPatchArtifactTurn)
       )
     );
+  const terminalSucceededLeadCopy = shouldShowTerminalSucceededLead
+    ? terminalSucceededAnchorLeadCopy(locale)
+    : null;
 
   // Index of the trailing text block — the streaming caret rides the end of
   // the last prose block so it tracks the final character as tokens arrive.
@@ -805,6 +816,7 @@ function AssistantMessageImpl({
     || hasVisibleAssistantTextBlocks
     || streamingDeckArtifactActive
     || streamingTodoProgress != null
+    || shouldShowTerminalSucceededLead
     || shouldShowTeamverCompletedArtifactLead
     || displayedProduced.length > 0
     || pluginActionFolders.length > 0
@@ -827,6 +839,11 @@ function AssistantMessageImpl({
         {streaming && !hasContent ? (
           <div className="assistant-waiting-output shimmer-text shimmer-prepare" role="status">
             {t("assistant.waitingFirstOutput")}
+          </div>
+        ) : null}
+        {terminalSucceededLeadCopy ? (
+          <div className="prose-block">
+            <p className="teamver-streaming-lead">{terminalSucceededLeadCopy}</p>
           </div>
         ) : null}
         {shouldShowTeamverCompletedArtifactLead ? (
@@ -901,10 +918,15 @@ function AssistantMessageImpl({
           if (b.kind === "status") {
             // Suppress this message's gray error pill ONLY when ChatPane is
             // rendering the top-level error card for it (the last failed run).
-            // Other failed turns — older history, or once a follow-up makes
-            // this no longer the last assistant message — keep their pill so
-            // the error detail still survives reload / history review.
-            if (b.label === "error" && message.id === errorCardOwnerId) return null;
+            // Embed chat keeps the inline pill so reload/history still shows
+            // error detail beside the agent header.
+            if (
+              b.label === "error"
+              && message.id === errorCardOwnerId
+              && !hideAssistantThinkingDetails
+            ) {
+              return null;
+            }
             // The pre-output "initializing" status is surfaced by the footer's
             // shimmering "Preparing…" label instead of its own pill.
             if (b.label === "initializing") return null;
