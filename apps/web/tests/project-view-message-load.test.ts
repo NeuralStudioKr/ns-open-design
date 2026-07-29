@@ -436,7 +436,7 @@ describe("ProjectView message loading", () => {
 
     expect(patchSource).toContain("mergeManualEditTargetsFromSource");
     expect(patchSource).toContain("function mergeScopedCommentTargetsFromPatchedDeck");
-    expect(viewSource).toContain("commentAttachments: runCommentAttachmentsRef.current");
+    expect(viewSource).toContain("commentAttachments: persistCommentAttachments");
     expect(viewSource).toContain("instructionText: runVisiblePromptRef.current");
     expect(patchSource).toContain("scopedCommentInstructionText");
     expect(viewSource).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)");
@@ -445,39 +445,27 @@ describe("ProjectView message loading", () => {
   });
 
   it("hydrates missing deck comment slide indexes before scoped edit prompts", () => {
-    const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("hydrateDeckCommentSlideIndexes");
-    expect(source).toContain("extractTopLevelSlideSections(html)");
-    expect(source).toContain("inferSlideIndexFromDeckHtml(html, attachment)");
-    expect(source).toContain(":nth-of-type");
-    expect(source).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)");
-    expect(source).not.toContain(".filter((attachment) => !slideOnlyMvp || hasValidDeckSlideIndex(attachment))");
+    const viewSource = readSource("src/components/ProjectView.tsx");
+    const patchSource = readSource("src/edit-mode/scoped-deck-patch.ts");
+    expect(viewSource).toContain("hydrateDeckCommentSlideIndexes");
+    expect(viewSource).toContain("reconcileCommentAttachmentSlideIndex");
+    expect(viewSource).toContain("resolvePersistCommentAttachments");
+    expect(patchSource).toContain(":nth-of-type");
+    expect(viewSource).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)");
+    expect(viewSource).not.toContain(".filter((attachment) => !slideOnlyMvp || hasValidDeckSlideIndex(attachment))");
   });
 
   it("recovers deck comment slide index for single-slide decks and DOM-selector elementIds", () => {
-    // Behavioral coverage lives in `infer-slide-index-from-deck-html.test.ts`.
-    // This source-level check pins the shortcuts that make the
-    // behavioral scenarios possible so they don't regress silently
-    // (e.g. by moving the single-slide branch back below the ambiguous
-    // needle path). Keep both in sync.
-    const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("if (sections.length === 1) return 0");
-    expect(source).toContain("elementId.startsWith('dom:')");
-    expect(source).toContain("body\\s*>\\s*(?:[a-z0-9-]+\\s*>\\s*)*section:nth-of-type");
+    const patchSource = readSource("src/edit-mode/scoped-deck-patch.ts");
+    expect(patchSource).toContain("if (sections.length === 1) return 0");
+    expect(patchSource).toContain("elementId.startsWith('dom:')");
+    expect(patchSource).toContain("body\\s*>\\s*(?:[a-z0-9-]+\\s*>\\s*)*section:nth-of-type");
   });
 
   it("returns undefined from scopedCommentSlideIndexes when no attachment carries a valid slide index", () => {
-    // Regression: previously we returned `[]` in this case which flowed
-    // into applyDeckPatch as a strict-reject allow-set (every op
-    // rejected as "outside comment scope") and into
-    // fullDeckEditStaysInsideCommentScope as `comment_scope_missing_slide`.
-    // Both surfaced as `deck_patch_merge_failed` even when the model
-    // response was fine. Returning `undefined` here means "no scope
-    // restriction" so the deck-patch and full-deck paths behave the
-    // same as unscoped edits.
-    const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("const unique = [...new Set(indexes)]");
-    expect(source).toContain("return unique.length > 0 ? unique : undefined");
+    const patchSource = readSource("src/edit-mode/scoped-deck-patch.ts");
+    expect(patchSource).toContain("const unique = [...new Set(indexes)]");
+    expect(patchSource).toContain("return unique.length > 0 ? unique : undefined");
   });
 
   it("passes hint to maskManualEditTargets so full-deck guards respect the same hint fallback", () => {

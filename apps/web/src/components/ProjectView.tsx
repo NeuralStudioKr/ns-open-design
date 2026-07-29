@@ -29,11 +29,13 @@ import {
 } from '../artifacts/element-patch';
 import {
   applyScopedDeckPatchToHtml,
-  extractSlideByIndex,
+  inferSlideIndexFromDeckHtml,
   mergeScopedCommentTargetsFromPatchedDeck,
+  reconcileCommentAttachmentSlideIndex,
+  reconcileCommentAttachmentsForDeck,
+  resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
-  selectorCommentElementIds,
-  targetTextPreservedInPatchedSlide,
+  scopedCommentSlideIndexesFromAttachments,
   type DeckPatchMergeResult,
   type ScopedDeckPersistFailureCode,
 } from '../edit-mode/scoped-deck-patch';
@@ -41,6 +43,7 @@ import {
 export {
   applyScopedDeckPatchToHtml,
   extractSlideByIndex,
+  inferSlideIndexFromDeckHtml,
   mergeScopedCommentTargetsFromPatchedDeck,
   resolveScopedCommentSlideCandidates,
   slideDiffIsStyleOnly,
@@ -935,87 +938,6 @@ function resolvePrimaryDeckFilePath(
   return deck.path?.trim() || deck.name;
 }
 
-function hasValidDeckSlideIndex(attachment: ChatCommentAttachment): boolean {
-  return (
-    typeof attachment.slideIndex === 'number'
-    && Number.isInteger(attachment.slideIndex)
-    && attachment.slideIndex >= 0
-  );
-}
-
-function normalizeForSlideLookup(value: string | null | undefined): string {
-  return String(value ?? '').replace(/\s+/g, ' ').trim();
-}
-
-export function inferSlideIndexFromDeckHtml(
-  html: string,
-  attachment: ChatCommentAttachment,
-): number | null {
-  const sections = extractTopLevelSlideSections(html);
-  if (sections.length === 0) return null;
-  // Single-slide deck: the only possible target slide IS 0. Skipping
-  // this shortcut sent single-slide comment edits back to the model
-  // as "no slideIndex" turns, which the deck-patch prompt then
-  // refused (or the model asked the user for slideIndex). Preview
-  // iframe's own `deckSlideIndexForPayload` now also emits `active`
-  // for count>=1 — keep the disk-side hydration symmetric.
-  if (sections.length === 1) return 0;
-  const elementId = normalizeForSlideLookup(attachment.elementId);
-  const selector = normalizeForSlideLookup(attachment.selector);
-  const slideNth = selector.match(/\b(?:section\s*)?\.?slide\b[^\n]*?:nth-of-type\((\d+)\)/i)
-    ?? selector.match(/\b(?:section\s*)?\.?slide\b[^\n]*?:nth-child\((\d+)\)/i);
-  if (slideNth?.[1]) {
-    const index = Number(slideNth[1]) - 1;
-    if (Number.isInteger(index) && index >= 0 && index < sections.length) return index;
-  }
-  // DOM-fallback ids carry the same slide index inside the selector
-  // path, e.g. `dom:body > section:nth-of-type(2) > h1:nth-of-type(1)`.
-  // Extract it first so a DOM-scoped click resolves even when no other
-  // signal is available. Uses `section:nth-of-type` because the
-  // outermost `body > …` segment always names the slide's section.
-  const domSelectorSlide = elementId.startsWith('dom:')
-    ? elementId.slice('dom:'.length).match(/\bbody\s*>\s*(?:[a-z0-9-]+\s*>\s*)*section:nth-of-type\((\d+)\)/i)
-    : null;
-  if (domSelectorSlide?.[1]) {
-    const index = Number(domSelectorSlide[1]) - 1;
-    if (Number.isInteger(index) && index >= 0 && index < sections.length) return index;
-  }
-  const currentText = normalizeForSlideLookup(attachment.currentText);
-  const htmlHint = normalizeForSlideLookup(attachment.htmlHint);
-  const candidates = sections.map((section, index) => ({
-    index,
-    text: normalizeForSlideLookup(section.outerHtml),
-  }));
-  const byNeedle = (needle: string): number | null => {
-    if (!needle) return null;
-    const matches = candidates.filter((candidate) => candidate.text.includes(needle));
-    return matches.length === 1 ? matches[0]!.index : null;
-  };
-  const byElementId =
-    byNeedle(`data-od-id="${elementId}"`)
-    ?? byNeedle(`data-od-id='${elementId}'`)
-    ?? byNeedle(`id="${elementId}"`)
-    ?? byNeedle(`id='${elementId}'`)
-    ?? byNeedle(elementId);
-  if (byElementId != null) return byElementId;
-  const selectorIds = selectorCommentElementIds(selector);
-  const bySelectorId = selectorIds.reduce<number | null>((found, selectorId) => {
-    if (found != null) return found;
-    return (
-      byNeedle(`data-od-id="${selectorId}"`)
-      ?? byNeedle(`data-od-id='${selectorId}'`)
-      ?? byNeedle(`data-od-source-path="${selectorId}"`)
-      ?? byNeedle(`data-od-source-path='${selectorId}'`)
-      ?? byNeedle(`data-od-runtime-id="${selectorId}"`)
-      ?? byNeedle(`data-od-runtime-id='${selectorId}'`)
-      ?? byNeedle(`data-screen-label="${selectorId}"`)
-      ?? byNeedle(`data-screen-label='${selectorId}'`)
-    );
-  }, null);
-  if (bySelectorId != null) return bySelectorId;
-  return byNeedle(htmlHint) ?? byNeedle(currentText);
-}
-
 async function hydrateDeckCommentSlideIndexes(input: {
   projectId: string;
   attachments: readonly ChatCommentAttachment[];
@@ -1034,18 +956,13 @@ async function hydrateDeckCommentSlideIndexes(input: {
   };
   const out: ChatCommentAttachment[] = [];
   for (const attachment of input.attachments) {
-    if (hasValidDeckSlideIndex(attachment)) {
-      out.push(attachment);
-      continue;
-    }
     const filePath = String(attachment.filePath || primaryDeckPath || '').trim();
     if (!filePath) {
       out.push(attachment);
       continue;
     }
     const html = await readDeckHtml(filePath);
-    const slideIndex = html ? inferSlideIndexFromDeckHtml(html, attachment) : null;
-    out.push(slideIndex == null ? attachment : { ...attachment, slideIndex });
+    out.push(html ? reconcileCommentAttachmentSlideIndex(html, attachment) : attachment);
   }
   return out;
 }
@@ -1187,39 +1104,18 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     };
   }
   const allowedTargetIds = input.commentAttachments?.flatMap((attachment) => scopedCommentElementIds(attachment));
-  let allowedSlideIndexes = input.allowedSlideIndexes;
-  let patches = parsed.patches;
-  let applied = applyElementPatches({
+  const allowedSlideIndexes = resolveElementPatchAllowedSlideIndexes({
     currentHtml,
-    patches,
+    patches: parsed.patches,
+    allowedSlideIndexes: input.allowedSlideIndexes,
+    commentAttachments: input.commentAttachments,
+  });
+  const applied = applyElementPatches({
+    currentHtml,
+    patches: parsed.patches,
     allowedSlideIndexes,
     allowedTargetIds,
   });
-  if (
-    !applied.ok &&
-    allowedSlideIndexes?.length === 1 &&
-    input.commentAttachments?.length &&
-    applied.reason.includes('outside comment scope')
-  ) {
-    const discovered = new Set<number>();
-    for (const attachment of input.commentAttachments) {
-      for (const patch of patches) {
-        const modelSlide = extractSlideByIndex(currentHtml, patch.slideIndex);
-        if (modelSlide && targetTextPreservedInPatchedSlide(modelSlide, attachment)) {
-          discovered.add(patch.slideIndex);
-        }
-      }
-    }
-    if (discovered.size > 0) {
-      allowedSlideIndexes = [...discovered];
-      applied = applyElementPatches({
-        currentHtml,
-        patches,
-        allowedSlideIndexes,
-        allowedTargetIds,
-      });
-    }
-  }
   if (!applied.ok) {
     console.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
     return { ok: false, code: 'deck_patch_merge_failed', reason: applied.reason };
@@ -1275,23 +1171,20 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
 function scopedCommentSlideIndexes(
   commentAttachments: readonly ChatCommentAttachment[],
 ): number[] | undefined {
-  if (commentAttachments.length === 0) return undefined;
-  const indexes = commentAttachments
-    .map((attachment) => attachment.slideIndex)
-    .filter((slideIndex): slideIndex is number =>
-      typeof slideIndex === 'number' && Number.isInteger(slideIndex) && slideIndex >= 0,
-    );
-  const unique = [...new Set(indexes)];
-  // Comment attachments exist but none carry a resolvable slideIndex
-  // (hydration miss on freeform pins / whole-file / unhydrated
-  // attachments). Return `undefined` so downstream deck-patch and
-  // full-deck guards treat this as "no scope restriction" instead of
-  // an empty allow-set that rejects every op. Emitting `[]` used to
-  // strict-reject the model's patch as "outside attached comment
-  // scope" and full-deck writes as `comment_scope_missing_slide` —
-  // both surfaced as `deck_patch_merge_failed` even though the model
-  // response was fine.
-  return unique.length > 0 ? unique : undefined;
+  return scopedCommentSlideIndexesFromAttachments(commentAttachments);
+}
+
+async function resolvePersistCommentAttachments(input: {
+  projectId: string;
+  fileName: string;
+  commentAttachments: readonly ChatCommentAttachment[];
+}): Promise<readonly ChatCommentAttachment[]> {
+  if (input.commentAttachments.length === 0) return input.commentAttachments;
+  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
+    cache: 'no-store',
+  });
+  if (!currentHtml) return input.commentAttachments;
+  return reconcileCommentAttachmentsForDeck(currentHtml, input.commentAttachments);
 }
 
 async function fullDeckEditStaysInsideCommentScope(input: {
@@ -3471,7 +3364,19 @@ export function ProjectView({
         return { kind: 'skipped-discovery-turn', fileName: artifactBaseNameForPersist(art) };
       }
       let effectiveArt = art;
-      const scopedAllowedSlideIndexes = scopedCommentSlideIndexes(runCommentAttachmentsRef.current);
+      const currentProjectFilesForPatch = projectFilesSnapshot ?? projectFilesRef.current;
+      const targetFileName = resolveArtifactPersistFileName(
+        art,
+        currentProjectFilesForPatch,
+        openTabsStateRef.current.active,
+        { preferredFileName: runPersistTargetFileRef.current },
+      );
+      const persistCommentAttachments = await resolvePersistCommentAttachments({
+        projectId: project.id,
+        fileName: targetFileName,
+        commentAttachments: runCommentAttachmentsRef.current,
+      });
+      const scopedAllowedSlideIndexes = scopedCommentSlideIndexes(persistCommentAttachments);
       // `deck-patch` short-circuits the full-deck emit path. Comment-driven
       // edits carry `<artifact type="deck-patch">` bodies whose sections list
       // ONLY the changed `<section class="slide">` blocks; we merge them into
@@ -3486,19 +3391,12 @@ export function ProjectView({
       // model still emits `<artifact type="deck-patch">`, we merge slide
       // sections and narrow to the comment target with graft fallbacks.
       if (isElementPatchArtifactType(art.artifactType)) {
-        const currentProjectFilesForPatch = projectFilesSnapshot ?? projectFilesRef.current;
-        const targetFileName = resolveArtifactPersistFileName(
-          art,
-          currentProjectFilesForPatch,
-          openTabsStateRef.current.active,
-          { preferredFileName: runPersistTargetFileRef.current },
-        );
         const merged = await tryApplyElementPatchesAgainstCurrentDeck({
           projectId: project.id,
           fileName: targetFileName,
           patchBody: art.html,
           allowedSlideIndexes: scopedAllowedSlideIndexes,
-          commentAttachments: runCommentAttachmentsRef.current,
+          commentAttachments: persistCommentAttachments,
         });
         if (!merged.ok) {
           return {
@@ -3510,19 +3408,12 @@ export function ProjectView({
         }
         effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
       } else if (isDeckPatchArtifactType(art.artifactType)) {
-        const currentProjectFilesForPatch = projectFilesSnapshot ?? projectFilesRef.current;
-        const targetFileName = resolveArtifactPersistFileName(
-          art,
-          currentProjectFilesForPatch,
-          openTabsStateRef.current.active,
-          { preferredFileName: runPersistTargetFileRef.current },
-        );
         const merged = await tryApplyDeckPatchAgainstCurrentDeck({
           projectId: project.id,
           fileName: targetFileName,
           patchBody: art.html,
           allowedSlideIndexes: scopedAllowedSlideIndexes,
-          commentAttachments: runCommentAttachmentsRef.current,
+          commentAttachments: persistCommentAttachments,
           instructionText: runVisiblePromptRef.current,
         });
         if (!merged.ok) {
@@ -3535,19 +3426,12 @@ export function ProjectView({
         }
         effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
       } else if (scopedAllowedSlideIndexes && effectiveArt.html) {
-        const currentProjectFilesForPatch = projectFilesSnapshot ?? projectFilesRef.current;
-        const targetFileName = resolveArtifactPersistFileName(
-          effectiveArt,
-          currentProjectFilesForPatch,
-          openTabsStateRef.current.active,
-          { preferredFileName: runPersistTargetFileRef.current },
-        );
         const scopeResult = await fullDeckEditStaysInsideCommentScope({
           projectId: project.id,
           fileName: targetFileName,
           nextHtml: effectiveArt.html,
           allowedSlideIndexes: scopedAllowedSlideIndexes,
-          commentAttachments: runCommentAttachmentsRef.current,
+          commentAttachments: persistCommentAttachments,
         });
         if (!scopeResult.ok) {
           return {

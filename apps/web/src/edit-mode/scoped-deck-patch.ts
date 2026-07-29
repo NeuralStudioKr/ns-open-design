@@ -224,15 +224,22 @@ export function resolveScopedCommentSlideCandidates(input: {
 
   const candidates: number[] = [...verified];
 
-  if (
-    typeof input.attachment.slideIndex === 'number' &&
-    Number.isInteger(input.attachment.slideIndex) &&
-    input.attachment.slideIndex >= 0
-  ) {
-    pushUnique(candidates, Math.floor(input.attachment.slideIndex));
+  if (hasValidDeckSlideIndex(input.attachment)) {
+    const idx = Math.floor(input.attachment.slideIndex as number);
+    if (verified.includes(idx)) {
+      pushUnique(candidates, idx);
+    }
   }
 
-  return candidates.length > 0 ? candidates : verified;
+  if (candidates.length === 0) {
+    const inferred = inferSlideIndexFromDeckHtml(input.currentHtml, input.attachment)
+      ?? inferSlideIndexFromDeckHtml(input.patchedHtml, input.attachment);
+    if (inferred != null) {
+      pushUnique(candidates, inferred);
+    }
+  }
+
+  return candidates;
 }
 
 function scopedCommentInstructionText(
@@ -299,13 +306,17 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
 
   if (
     merged.reason === 'Selected targets were unchanged.' &&
+    nextSlide !== patchedSlide &&
     slideDiffIsStyleOnly(nextSlide, patchedSlide)
   ) {
     const html = acceptSlideLevel('style-only');
     if (html) return { ok: true, html };
   }
 
-  if (targetTextPreservedInPatchedSlide(patchedSlide, input.attachment)) {
+  if (
+    nextSlide !== patchedSlide &&
+    targetTextPreservedInPatchedSlide(patchedSlide, input.attachment)
+  ) {
     const html = acceptSlideLevel('text-preserved');
     if (html) return { ok: true, html };
   }
@@ -349,7 +360,12 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
       currentHtml: nextHtml,
       patchedHtml: input.patchedHtml,
     });
-    if (slideCandidates.length === 0) continue;
+    if (slideCandidates.length === 0) {
+      return {
+        ok: false,
+        reason: 'comment target slide could not be resolved from attachment or deck HTML',
+      };
+    }
 
     let lastReason = 'No matching targets found to merge.';
     let mergedForAttachment = false;
@@ -420,6 +436,184 @@ export function extractTargetIdentityAnchors(attachment: ChatCommentAttachment):
 
 function collapseTargetTextForMatch(value: string): string {
   return String(value ?? '').replace(/\s+/g, '').trim();
+}
+
+function normalizeForSlideLookup(value: string | null | undefined): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+export function hasValidDeckSlideIndex(attachment: ChatCommentAttachment): boolean {
+  return (
+    typeof attachment.slideIndex === 'number'
+    && Number.isInteger(attachment.slideIndex)
+    && attachment.slideIndex >= 0
+  );
+}
+
+/**
+ * Recover a 0-based slide index from deck HTML when the attachment is
+ * missing `slideIndex` or carries a stale value from the deck bridge.
+ */
+export function inferSlideIndexFromDeckHtml(
+  html: string,
+  attachment: ChatCommentAttachment,
+): number | null {
+  const sections = extractTopLevelSlideSections(html);
+  if (sections.length === 0) return null;
+  if (sections.length === 1) return 0;
+  const elementId = normalizeForSlideLookup(attachment.elementId);
+  const selector = normalizeForSlideLookup(attachment.selector);
+  const slideNth = selector.match(/\b(?:section\s*)?\.?slide\b[^\n]*?:nth-of-type\((\d+)\)/i)
+    ?? selector.match(/\b(?:section\s*)?\.?slide\b[^\n]*?:nth-child\((\d+)\)/i);
+  if (slideNth?.[1]) {
+    const index = Number(slideNth[1]) - 1;
+    if (Number.isInteger(index) && index >= 0 && index < sections.length) return index;
+  }
+  const domSelectorSlide = elementId.startsWith('dom:')
+    ? elementId.slice('dom:'.length).match(/\bbody\s*>\s*(?:[a-z0-9-]+\s*>\s*)*section:nth-of-type\((\d+)\)/i)
+    : null;
+  if (domSelectorSlide?.[1]) {
+    const index = Number(domSelectorSlide[1]) - 1;
+    if (Number.isInteger(index) && index >= 0 && index < sections.length) return index;
+  }
+  const currentText = normalizeForSlideLookup(attachment.currentText);
+  const htmlHint = normalizeForSlideLookup(attachment.htmlHint);
+  const bodyMatch = /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i.exec(html);
+  const scope = bodyMatch ? bodyMatch[1] ?? '' : html;
+  const topSections = extractTopLevelSlideSections(scope);
+  const candidates = topSections.map((section, index) => ({
+    index,
+    text: normalizeForSlideLookup(section.outerHtml),
+  }));
+  const byNeedle = (needle: string): number | null => {
+    if (!needle) return null;
+    const matches = candidates.filter((candidate) => candidate.text.includes(needle));
+    return matches.length === 1 ? matches[0]!.index : null;
+  };
+  const byElementId =
+    byNeedle(`data-od-id="${elementId}"`)
+    ?? byNeedle(`data-od-id='${elementId}'`)
+    ?? byNeedle(`id="${elementId}"`)
+    ?? byNeedle(`id='${elementId}'`)
+    ?? byNeedle(elementId);
+  if (byElementId != null) return byElementId;
+  const selectorIds = selectorCommentElementIds(selector);
+  const bySelectorId = selectorIds.reduce<number | null>((found, selectorId) => {
+    if (found != null) return found;
+    return (
+      byNeedle(`data-od-id="${selectorId}"`)
+      ?? byNeedle(`data-od-id='${selectorId}'`)
+      ?? byNeedle(`data-od-source-path="${selectorId}"`)
+      ?? byNeedle(`data-od-source-path='${selectorId}'`)
+      ?? byNeedle(`data-od-runtime-id="${selectorId}"`)
+      ?? byNeedle(`data-od-runtime-id='${selectorId}'`)
+      ?? byNeedle(`data-screen-label="${selectorId}"`)
+      ?? byNeedle(`data-screen-label='${selectorId}'`)
+    );
+  }, null);
+  if (bySelectorId != null) return bySelectorId;
+  return byNeedle(htmlHint) ?? byNeedle(currentText);
+}
+
+/**
+ * Verify or replace `attachment.slideIndex` against the current deck HTML.
+ * Prefers text-verified slides, then structural inference.
+ */
+export function reconcileCommentAttachmentSlideIndex(
+  deckHtml: string,
+  attachment: ChatCommentAttachment,
+): ChatCommentAttachment {
+  if (!deckHtml.trim()) return attachment;
+
+  const candidates = resolveScopedCommentSlideCandidates({
+    attachment,
+    currentHtml: deckHtml,
+    patchedHtml: deckHtml,
+  });
+
+  if (hasValidDeckSlideIndex(attachment)) {
+    const slide = extractSlideByIndex(deckHtml, attachment.slideIndex!);
+    if (slide && targetTextPreservedInPatchedSlide(slide, attachment)) {
+      return attachment;
+    }
+  }
+
+  if (candidates.length > 0) {
+    const best = candidates[0]!;
+    if (!hasValidDeckSlideIndex(attachment) || attachment.slideIndex !== best) {
+      return { ...attachment, slideIndex: best };
+    }
+    return attachment;
+  }
+
+  const inferred = inferSlideIndexFromDeckHtml(deckHtml, attachment);
+  if (inferred != null && (!hasValidDeckSlideIndex(attachment) || attachment.slideIndex !== inferred)) {
+    return { ...attachment, slideIndex: inferred };
+  }
+
+  return attachment;
+}
+
+export function reconcileCommentAttachmentsForDeck(
+  deckHtml: string,
+  attachments: readonly ChatCommentAttachment[],
+): ChatCommentAttachment[] {
+  return attachments.map((attachment) => reconcileCommentAttachmentSlideIndex(deckHtml, attachment));
+}
+
+export function scopedCommentSlideIndexesFromAttachments(
+  commentAttachments: readonly ChatCommentAttachment[],
+): number[] | undefined {
+  if (commentAttachments.length === 0) return undefined;
+  const indexes = commentAttachments
+    .map((attachment) => attachment.slideIndex)
+    .filter((slideIndex): slideIndex is number =>
+      typeof slideIndex === 'number' && Number.isInteger(slideIndex) && slideIndex >= 0,
+    );
+  const unique = [...new Set(indexes)];
+  return unique.length > 0 ? unique : undefined;
+}
+
+/**
+ * Resolve allowed slide indexes for element-patch when the attachment
+ * carried a stale slideIndex. Uses target-text signals on the model's
+ * chosen slide before falling back to the attachment value.
+ */
+export function resolveElementPatchAllowedSlideIndexes(input: {
+  currentHtml: string;
+  patches: readonly { slideIndex: number }[];
+  allowedSlideIndexes?: readonly number[];
+  commentAttachments?: readonly ChatCommentAttachment[];
+}): number[] | undefined {
+  if (!input.allowedSlideIndexes || input.allowedSlideIndexes.length === 0) {
+    return input.allowedSlideIndexes ? [...input.allowedSlideIndexes] : undefined;
+  }
+  if (!input.commentAttachments?.length) {
+    return [...input.allowedSlideIndexes];
+  }
+
+  const discovered = new Set<number>();
+  for (const attachment of input.commentAttachments) {
+    for (const patch of input.patches) {
+      const modelSlide = extractSlideByIndex(input.currentHtml, patch.slideIndex);
+      if (modelSlide && targetTextPreservedInPatchedSlide(modelSlide, attachment)) {
+        discovered.add(patch.slideIndex);
+      }
+    }
+    const candidates = resolveScopedCommentSlideCandidates({
+      attachment,
+      currentHtml: input.currentHtml,
+      patchedHtml: input.currentHtml,
+    });
+    for (const candidate of candidates) {
+      discovered.add(candidate);
+    }
+  }
+
+  if (discovered.size > 0) {
+    return [...discovered];
+  }
+  return [...input.allowedSlideIndexes];
 }
 
 export function extractSlideByIndex(html: string, slideIndex: number): string | null {

@@ -241,7 +241,7 @@ describe('scoped comment merge — end-to-end for the actual bug report', () => 
       currentHtml: CURRENT_HTML,
       patchedHtml: CURRENT_HTML,
     });
-    expect(candidates).toEqual([1, 0]);
+    expect(candidates).toEqual([1]);
   });
 
   it('accepts even when the disk HTML has no data-od-id at all (model dropped identifiers on a previous save)', () => {
