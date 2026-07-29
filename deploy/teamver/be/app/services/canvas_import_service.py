@@ -19,6 +19,11 @@ from .drive_import_service import (
     _IMPORT_REQUEST_LIMITER,
     IMPORT_QUEUE_WAIT_SECONDS,
 )
+from .main_canvas_client import (
+    main_api_url,
+    main_canvas_request_headers,
+    main_session_canvas_item_path,
+)
 from .od_daemon_client import OdDaemonClient, OdDaemonIdentity
 
 logger = logging.getLogger(__name__)
@@ -65,21 +70,26 @@ async def _download_canvas_html_to_path(
     access_token: str,
     session_id: str,
     artifact_id: str,
+    workspace_id: str | None,
     destination: Path,
     max_bytes: int,
 ) -> int:
-    base = settings.teamver_api_base_url.rstrip("/")
-    url = (
-        f"{base}/api/v2/session/{session_id}/canvas/item/{artifact_id}/export-html"
+    url = main_api_url(
+        main_session_canvas_item_path(session_id, artifact_id, suffix="export-html"),
     )
     headers = {
-        "Authorization": f"Bearer {access_token}",
+        **main_canvas_request_headers(access_token, workspace_id),
         "Accept": "text/html,application/octet-stream;q=0.9,*/*;q=0.8",
     }
     timeout = httpx.Timeout(CANVAS_EXPORT_TIMEOUT_SECONDS)
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-            async with client.stream("POST", url, headers=headers, json={}) as response:
+            async with client.stream(
+                "POST",
+                url,
+                headers=headers,
+                json={"checkpoint_before_export": True},
+            ) as response:
                 if response.status_code >= 400:
                     raise _map_main_status(response.status_code)
                 content_type = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
@@ -144,6 +154,7 @@ async def import_canvas_html(
                 access_token=access_token,
                 session_id=session_id,
                 artifact_id=artifact_id,
+                workspace_id=project.workspace_id,
                 destination=temp_path,
                 max_bytes=MAX_IMPORT_BYTES,
             )

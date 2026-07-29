@@ -12,7 +12,7 @@ from ..auth.main_sso import (
     main_sso_user_mismatches_bff,
     read_main_sso_cookie,
 )
-from ..auth_context import AuthContext, require_auth
+from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..errors import UnauthorizedError
 from ..schemas.canvas_preview import CanvasPreviewResponse
 from ..services.canvas_preview_service import fetch_canvas_preview
@@ -60,10 +60,12 @@ async def get_canvas_preview(
 ) -> CanvasPreviewResponse:
     """Enrich Canvas → Design one-confirm with live title/preview/headings/thread."""
     access_token = await _resolve_main_access_token(request, auth)
+    workspace_id = require_workspace_context(auth)
     result = await fetch_canvas_preview(
         access_token=access_token,
         session_id=session_id,
         artifact_id=artifact_id,
+        workspace_id=workspace_id,
     )
     return CanvasPreviewResponse(
         session_id=result.session_id,

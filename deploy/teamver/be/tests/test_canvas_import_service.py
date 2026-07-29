@@ -57,7 +57,14 @@ async def test_import_canvas_html_uploads_streamed_bytes(monkeypatch: pytest.Mon
         def stream(self, *args, **kwargs):
             return _FakeStreamResponse()
 
-    monkeypatch.setattr(svc.httpx, "AsyncClient", _FakeClient)
+    captured: dict = {}
+
+    class _CapturingClient(_FakeClient):
+        def stream(self, *args, **kwargs):
+            captured["headers"] = kwargs.get("headers")
+            return super().stream(*args, **kwargs)
+
+    monkeypatch.setattr(svc.httpx, "AsyncClient", _CapturingClient)
     monkeypatch.setattr(svc.settings, "teamver_api_base_url", "https://main.example")
 
     daemon = SimpleNamespace(
@@ -80,6 +87,8 @@ async def test_import_canvas_html_uploads_streamed_bytes(monkeypatch: pytest.Mon
     assert result.imported[0].asset_id == "art"
     daemon.upload_project_file_path.assert_awaited_once()
     assert daemon.upload_project_file_path.await_args.kwargs["filename"] == "canvas-rev-9.html"
+    assert captured["headers"]["X-Workspace-Id"] == "ws-1"
+    assert captured["headers"]["Authorization"] == "Bearer tok"
 
 
 @pytest.mark.asyncio
@@ -119,6 +128,7 @@ async def test_download_maps_403(monkeypatch: pytest.MonkeyPatch) -> None:
             access_token="tok",
             session_id="s",
             artifact_id="a",
+            workspace_id="ws-1",
             destination=Path("/tmp/should-not-matter.html"),
             max_bytes=100,
         )
@@ -163,6 +173,7 @@ async def test_download_maps_404(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
             access_token="tok",
             session_id="s",
             artifact_id="a",
+            workspace_id="ws-1",
             destination=tmp_path / "x.html",
             max_bytes=100,
         )

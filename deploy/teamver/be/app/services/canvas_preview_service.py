@@ -6,11 +6,17 @@ import re
 from dataclasses import dataclass
 from html import unescape
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
 from ..config import settings
 from ..errors import ApiError, BadRequestError
+from .main_canvas_client import (
+    main_api_url,
+    main_canvas_request_headers,
+    main_session_canvas_item_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +137,7 @@ async def fetch_canvas_preview(
     access_token: str,
     session_id: str,
     artifact_id: str,
+    workspace_id: str | None = None,
 ) -> CanvasPreviewResult:
     session_id = session_id.strip()
     artifact_id = artifact_id.strip()
@@ -139,14 +146,15 @@ async def fetch_canvas_preview(
     if not artifact_id:
         raise BadRequestError("canvas_artifact_required")
 
-    base = settings.teamver_api_base_url.rstrip("/")
     headers = {
-        "Authorization": f"Bearer {access_token}",
+        **main_canvas_request_headers(access_token, workspace_id),
         "Accept": "application/json",
     }
     timeout = httpx.Timeout(CANVAS_PREVIEW_TIMEOUT_SECONDS)
-    item_url = f"{base}/api/v2/session/{session_id}/canvas/item/{artifact_id}"
-    session_url = f"{base}/api/v2/session/{session_id}"
+    item_url = main_api_url(
+        main_session_canvas_item_path(session_id, artifact_id),
+    )
+    session_url = main_api_url(f"/api/v2/session/{quote(session_id.strip(), safe='')}")
 
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
