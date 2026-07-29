@@ -55,6 +55,32 @@ describe('countAutoContinueAttemptsInConversation', () => {
     ];
     expect(countAutoContinueAttemptsInConversation(messages)).toBe(1);
   });
+
+  it('resets the count after a later normal user request', () => {
+    const messages: ChatMessage[] = [
+      { id: 'u1', role: 'user', content: 'make slides', createdAt: 1 },
+      {
+        id: 'u-auto-1',
+        role: 'user',
+        content: `${AUTO_CONTINUE_PROMPT_SENTINEL}\ncontinue`,
+        createdAt: 2,
+      },
+      {
+        id: 'u-auto-2',
+        role: 'user',
+        content: `${AUTO_CONTINUE_PROMPT_SENTINEL}\ncontinue again`,
+        createdAt: 3,
+      },
+      { id: 'u2', role: 'user', content: '이 요소만 수정해줘', createdAt: 4 },
+      {
+        id: 'u-auto-3',
+        role: 'user',
+        content: `${AUTO_CONTINUE_PROMPT_SENTINEL}\nscoped retry`,
+        createdAt: 5,
+      },
+    ];
+    expect(countAutoContinueAttemptsInConversation(messages)).toBe(1);
+  });
 });
 
 describe('collectSlideReferencePathsFromMessages', () => {

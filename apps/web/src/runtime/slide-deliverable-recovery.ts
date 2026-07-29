@@ -32,11 +32,21 @@ export type EmergencySlideDeckRecoveryResult = {
   htmlToOpen: string | null;
 };
 
-/** Count automatic-continue user turns — one hidden user row per fired attempt. */
+/**
+ * Count automatic-continue user turns for the current visible user request.
+ * A conversation can contain several unrelated normal user edits; old
+ * auto-continue attempts must not exhaust the retry budget for a later edit.
+ */
 export function countAutoContinueAttemptsInConversation(
   messages: readonly ChatMessage[],
 ): number {
-  return messages.reduce((count, message) => {
+  let lastManualUserIndex = -1;
+  messages.forEach((message, index) => {
+    if (message.role !== 'user') return;
+    if (isAutoContinueIncompleteOutputPrompt(message.content)) return;
+    lastManualUserIndex = index;
+  });
+  return messages.slice(lastManualUserIndex + 1).reduce((count, message) => {
     if (message.role !== 'user') return count;
     return isAutoContinueIncompleteOutputPrompt(message.content) ? count + 1 : count;
   }, 0);

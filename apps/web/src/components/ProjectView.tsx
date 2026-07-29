@@ -275,6 +275,7 @@ import {
   queuedSlideNavTarget,
   reconcileUserCommentAttachments,
   removeAttachedComment,
+  renderCommentAttachmentContext,
   resolveCommentEditPersistTargetFileName,
   SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER,
   stripUserVisibleUserMessageText,
@@ -7386,6 +7387,10 @@ export function ProjectView({
                     retryTarget?.userMsg ?? userMsg,
                     runCommentAttachmentsRef.current,
                   );
+                  const scopedCommentContext =
+                    autoContinueCommentAttachments.length > 0
+                      ? renderCommentAttachmentContext(autoContinueCommentAttachments)
+                      : null;
                   const scopedFailureReason =
                     terminalPersistResult?.kind === 'skipped-incomplete'
                       ? terminalPersistResult.reason ?? null
@@ -7407,6 +7412,7 @@ export function ProjectView({
                         planOutline: rawFinalText,
                       }),
                     },
+                    scopedCommentContext,
                   });
                   // Preserve the failed turn's `commentAttachments`
                   // on the auto-continue call. Without this the retry

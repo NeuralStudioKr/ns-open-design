@@ -348,6 +348,7 @@ export function extractAutoContinueContextFromAssistant(
 export type ScopedCommentEditAutoContinueContext = {
   attempt: number;
   failureReason?: string | null;
+  commentContext?: string | null;
 };
 
 /**
@@ -385,6 +386,14 @@ export function buildAutoContinueScopedCommentEditPrompt(
   if (failureReason) {
     parts.push('', `[직전 실패 사유: ${failureReason}]`);
   }
+  const commentContext = context.commentContext?.trim();
+  if (commentContext) {
+    parts.push(
+      '',
+      '[반드시 사용할 댓글 대상 정보 — 아래 slideIndex / elementId / selector / currentText 만 수정 대상입니다:]',
+      commentContext,
+    );
+  }
   return parts.join('\n');
 }
 
@@ -392,11 +401,13 @@ export function resolveAutoContinuePrompt(options: {
   commentAttachmentCount: number;
   incompleteOutput: AutoContinuePromptContext;
   scopedCommentEditFailureReason?: string | null;
+  scopedCommentContext?: string | null;
 }): string {
   if (options.commentAttachmentCount > 0) {
     return buildAutoContinueScopedCommentEditPrompt({
       attempt: options.incompleteOutput.attempt,
       failureReason: options.scopedCommentEditFailureReason,
+      commentContext: options.scopedCommentContext,
     });
   }
   return buildAutoContinueIncompleteOutputPrompt(options.incompleteOutput);

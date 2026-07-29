@@ -75,11 +75,16 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
       commentAttachmentCount: 1,
       incompleteOutput: { attempt: 1 },
       scopedCommentEditFailureReason: 'empty element-patch body',
+      scopedCommentContext:
+        '<attached-preview-comments>\nslideIndex: 2\nelementId: od-title-1\ncurrentText: 모두의 기술\n</attached-preview-comments>',
     });
     expect(scoped.startsWith(AUTO_CONTINUE_PROMPT_SENTINEL)).toBe(true);
     expect(scoped).toContain('element-patch');
     expect(scoped).toContain('set-text');
     expect(scoped).toContain('empty element-patch body');
+    expect(scoped).toContain('slideIndex: 2');
+    expect(scoped).toContain('od-title-1');
+    expect(scoped).toContain('모두의 기술');
     expect(scoped).toContain('<artifact type="element-patch" identifier="deck">');
     expect(scoped).toContain('전체 덱을 새로 쓰거나');
     expect(scoped).not.toContain('출력 형식은 반드시 하나의 `<artifact type="deck"');

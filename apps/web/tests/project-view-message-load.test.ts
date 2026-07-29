@@ -383,6 +383,8 @@ describe("ProjectView message loading", () => {
     // retries can route to an element-patch specific retry prompt
     // instead of forcing full deck regeneration (commit 7a80a8688).
     expect(autoOpenBlock).toContain("resolveAutoContinuePrompt");
+    expect(autoOpenBlock).toContain("renderCommentAttachmentContext(autoContinueCommentAttachments)");
+    expect(autoOpenBlock).toContain("scopedCommentContext");
     expect(autoOpenBlock).toContain("extractAutoContinueContextFromAssistant");
     expect(autoOpenBlock).toContain("isLiveLocalStreamBlockingAutoContinue({");
     expect(autoOpenBlock).toContain("AUTO_CONTINUE_ENTRY_FROM");

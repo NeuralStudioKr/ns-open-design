@@ -672,7 +672,7 @@ export function trimHtmlHint(value: string): string {
   return text.length > 180 ? `${text.slice(0, 177)}...` : text;
 }
 
-function renderCommentAttachmentContext(commentAttachments: ChatCommentAttachment[]): string {
+export function renderCommentAttachmentContext(commentAttachments: ChatCommentAttachment[]): string {
   const lines = [
     '',
     '',
