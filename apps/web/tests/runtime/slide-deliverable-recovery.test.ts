@@ -405,8 +405,8 @@ describe('attemptEmergencySlideDeckRecovery', () => {
   it('trusts a successful HTML salvage persist even when immediate read verification lags', async () => {
     const html = [
       '<!doctype html><html lang="ko"><body>',
-      '<section class="slide"><h1>표지</h1><p>개요</p></section>',
-      '<section class="slide"><h2>배경</h2><p>문제 정의</p></section>',
+      '<section class="slide"><h1>AI 도입 효과 발표 자료</h1><p>업무 생산성, 비용 절감, 리스크 관리 효과를 요약합니다.</p></section>',
+      '<section class="slide"><h2>도입 배경</h2><p>반복 업무 자동화와 지식 근로자 의사결정 지원을 중심으로 문제를 정의합니다.</p></section>',
       '</body></html>',
     ].join('');
     const result = await attemptEmergencySlideDeckRecovery({

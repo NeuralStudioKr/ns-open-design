@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../../src/artifacts/validate';
+import {
+  isIncompleteHtmlDocumentShell,
+  isLowSubstanceSlideDeckArtifact,
+  validateHtmlArtifact,
+} from '../../src/artifacts/validate';
 
 describe('validateHtmlArtifact', () => {
   it('rejects an empty string', () => {
@@ -130,6 +134,35 @@ describe('validateHtmlArtifact', () => {
       + '<section class="slide"><h1>Cover</h1><p>Real copy for the deck.</p></section>'
       + '</body></html>';
     expect(isIncompleteHtmlDocumentShell(filled)).toBe(false);
+  });
+
+  it('classifies progress placeholder decks as low-substance deck artifacts', () => {
+    const broken =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"><style>'
+      + '.slide{min-height:100vh;padding:48px}.deck{background:#fff}'
+      + '</style></head><body>'
+      + '<section class="slide active"><h1>을 만들고 있어요</h1><p>발표 개요</p></section>'
+      + '<section class="slide"></section>'
+      + '<section class="slide"></section>'
+      + '<section class="slide"></section>'
+      + '<section class="slide"></section>'
+      + '<section class="slide"><p>error</p></section>'
+      + '</body></html>';
+    expect(validateHtmlArtifact(broken).ok).toBe(true);
+    expect(isIncompleteHtmlDocumentShell(broken)).toBe(true);
+    expect(isLowSubstanceSlideDeckArtifact(broken)).toBe(true);
+  });
+
+  it('does not classify concise real decks as low-substance', () => {
+    const real =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"><style>'
+      + '.slide{min-height:100vh;padding:64px}.slide h1{font-size:54px}'
+      + '</style></head><body>'
+      + '<section class="slide"><h1>NeuralStudio 회사 소개</h1><p>AI 기반 업무 자동화와 팀 협업 제품을 만드는 조직입니다.</p></section>'
+      + '<section class="slide"><h1>핵심 역량</h1><p>Teamver, Genver, 디자인 자동화와 웹 기반 산출물 제작 경험을 보유합니다.</p></section>'
+      + '<section class="slide"><h1>문의</h1><p>파트너십과 도입 문의를 환영합니다.</p></section>'
+      + '</body></html>';
+    expect(isLowSubstanceSlideDeckArtifact(real)).toBe(false);
   });
 
   it('rejects a long prose blob that lacks any HTML structural markers', () => {

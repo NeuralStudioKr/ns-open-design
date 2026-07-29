@@ -41,6 +41,7 @@
 
 import {
   documentContainsSlideSection,
+  hasSalvageableDeckSlideContent,
   isDeckStatusProseOnlyBody,
   meetsMinimumDeckDeliverableQuality,
 } from './deck-html-content';
@@ -58,6 +59,11 @@ const STYLE_BLOCK_RE = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
 const CSS_URL_RE = /\burl\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi;
 const CSS_IMPORT_RE =
   /@import\s+(?:url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)|"([^"]*)"|'([^']*)')/gi;
+const SLIDE_LIKE_SECTION_RE =
+  /<section\b[^>]*(?:\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)|\bdata-slide(?:-index)?\b)[^>]*>/gi;
+const DELIVERABLE_PLACEHOLDER_TEXT_RE =
+  /(?:\b(?:error|loading)\b|만들고\s*있|작성\s*중|생성\s*중|준비\s*중|잠시만\s*기다|발표\s*개요|바로\s*만들|만들어\s*드릴)/i;
+const MEDIA_OR_REPLACED_CONTENT_RE = /<(img|video|audio|canvas|svg|iframe|picture|object|embed)\b/i;
 
 export type HtmlArtifactValidationResult =
   | { ok: true }
@@ -131,6 +137,38 @@ export function isIncompleteHtmlDocumentShell(content: string): boolean {
   return isEffectivelyEmptyHtmlBody(trimmed);
 }
 
+/**
+ * Detect a "successful" deck artifact that is structurally HTML but is still a
+ * progress/placeholder deliverable, e.g. a 1KB deck with six slides and only
+ * "을 만들고 있어요 / 발표 개요 / error" visible. This is intentionally kept
+ * separate from `validateHtmlArtifact()` because short but real non-deck HTML
+ * snippets can still be valid; Teamver slide-only runs need the stronger gate.
+ */
+export function isLowSubstanceSlideDeckArtifact(content: string): boolean {
+  const trimmed = content.replace(/^﻿/, '').trim();
+  if (trimmed.length === 0 || !STARTS_WITH_DOCUMENT_RE.test(trimmed)) return false;
+  const slideCount = countSlideLikeSections(trimmed);
+  if (slideCount === 0) return false;
+  if (!hasSalvageableDeckSlideContent(trimmed)) return true;
+
+  const bodyText = visibleHtmlBodyText(trimmed);
+  const withoutNoise = stripHtmlNoise(trimmed);
+  if (MEDIA_OR_REPLACED_CONTENT_RE.test(withoutNoise)) return false;
+
+  if (DELIVERABLE_PLACEHOLDER_TEXT_RE.test(bodyText) && bodyText.length < 320) {
+    return true;
+  }
+
+  // A multi-slide deck with only a few words across all slides is almost
+  // always a placeholder shell, even if it has enough tags/CSS to pass the
+  // structural HTML validator.
+  if (slideCount >= 3 && bodyText.length < Math.max(90, slideCount * 24)) {
+    return true;
+  }
+
+  return false;
+}
+
 function isEffectivelyEmptyHtmlBody(html: string): boolean {
   if (isDeckStatusProseOnlyBody(html)) return true;
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
@@ -142,26 +180,46 @@ function isEffectivelyEmptyHtmlBody(html: string): boolean {
   }
   const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);
   const body = bodyMatch ? bodyMatch[1]! : withoutComments;
-  const withoutNoise = body
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, '');
+  const withoutNoise = stripHtmlNoise(body);
   // Media / replaced elements count as deliverable content even without text.
   // Empty containers (`<section class="slide"></section>`, SLOT-comment-only
   // sections after comment strip) must NOT — those were the demo failure mode
   // where persist succeeded and the iframe showed a blank white deck.
-  if (
-    /<(img|video|audio|canvas|svg|iframe|picture|object|embed)\b/i
-      .test(withoutNoise)
-  ) {
+  if (MEDIA_OR_REPLACED_CONTENT_RE.test(withoutNoise)) {
     return false;
   }
-  const text = withoutNoise
+  return visibleTextFromHtmlFragment(withoutNoise).length === 0;
+}
+
+function countSlideLikeSections(html: string): number {
+  SLIDE_LIKE_SECTION_RE.lastIndex = 0;
+  let count = 0;
+  while (SLIDE_LIKE_SECTION_RE.exec(html) !== null) {
+    count += 1;
+  }
+  return count;
+}
+
+function visibleHtmlBodyText(html: string): string {
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
+  const bodyMatch = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(withoutComments);
+  const body = bodyMatch ? bodyMatch[1]! : withoutComments;
+  return visibleTextFromHtmlFragment(stripHtmlNoise(body));
+}
+
+function stripHtmlNoise(fragment: string): string {
+  return fragment
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, '');
+}
+
+function visibleTextFromHtmlFragment(fragment: string): string {
+  return fragment
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return text.length === 0;
 }
 
 function referencesReservedProjectPath(content: string): boolean {

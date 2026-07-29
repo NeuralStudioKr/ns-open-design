@@ -15,7 +15,11 @@ import { AnimatePresence } from 'motion/react';
 import { createArtifactManifest, inferLegacyManifest } from '../artifacts/manifest';
 import type { ArtifactManifest } from '../artifacts/types';
 import { resolveHtmlPointerArtifactTarget } from '../artifacts/pointer';
-import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
+import {
+  isIncompleteHtmlDocumentShell,
+  isLowSubstanceSlideDeckArtifact,
+  validateHtmlArtifact,
+} from '../artifacts/validate';
 import {
   diffDeckSlideIndexes,
   extractTopLevelSlideSections,
@@ -3962,6 +3966,20 @@ export function ProjectView({
           // incomplete HTML document shell」 mid/end-turn contradicted the
           // auto-continue banner and looked like a product failure during demos.
           return { kind: 'skipped-incomplete', fileName };
+        }
+        const normalizedArtifactType = normalizeSlideOnlyArtifactContractType(
+          artifactToPersist.artifactType,
+          slideOnlyMvp,
+        );
+        if (
+          normalizedArtifactType === 'deck' &&
+          isLowSubstanceSlideDeckArtifact(artifactToPersist.html)
+        ) {
+          return {
+            kind: 'skipped-incomplete',
+            fileName,
+            reason: 'low-substance deck artifact',
+          };
         }
         const validation = validateHtmlArtifact(artifactToPersist.html);
         if (!validation.ok) {

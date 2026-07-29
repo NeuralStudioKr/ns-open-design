@@ -255,7 +255,7 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("pendingAutoContinueConversationIdRef.current === activeConversationId");
     expect(block).toContain("attemptEmergencySlideDeckRecovery(");
     expect(block).toContain("scopedCommentAttachmentCount:");
-    expect(block).toContain("canFireAutoContinueForConversation(autoContinueCount)");
+    expect(block).toContain("canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)");
     expect(block).toContain("formatAutoContinueIncompleteOutputNotice()");
     expect(block).toContain("appendErrorStatusEvent(");
     expect(block).toContain("saveMessage(project.id, activeConversationId, updatedAssistant");
@@ -283,7 +283,7 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("!openedRecoveredHtml && !stillInflight && !proxyStillActive");
     expect(block).toContain("findIncompleteSlideAssistantForRecovery(");
     expect(block).toContain("restrictToMessageIds: trackedAssistantIds");
-    expect(block).toContain("canFireAutoContinueForConversation(autoContinueCount)");
+    expect(block).toContain("canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)");
     expect(block).toContain("formatAutoContinueIncompleteOutputNotice()");
     expect(block).toContain("saveMessage(project.id, recoveryConversationId, updatedAssistant");
     expect(block).toContain("finishRecovery()");
@@ -607,7 +607,7 @@ describe("ProjectView message loading", () => {
     const viewSource = readSource("src/components/ProjectView.tsx");
     const patchSource = readSource("src/edit-mode/scoped-deck-patch.ts");
     expect(viewSource).toContain("hydrateDeckCommentSlideIndexes");
-    expect(viewSource).toContain("reconcileCommentAttachmentSlideIndex");
+    expect(viewSource).toContain("reconcileCommentAttachmentForDeck");
     expect(viewSource).toContain("resolvePersistCommentAttachments");
     expect(patchSource).toContain(":nth-of-type");
     expect(viewSource).toContain("const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments)");
@@ -799,6 +799,14 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("blocked placeholder artifact regression before save");
     expect(source).toContain("kind: 'artifact-regression'");
     expect(source).toContain("? 'artifact_regression'");
+  });
+
+  it("skips low-substance deck artifacts before marking slide generation complete", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("isLowSubstanceSlideDeckArtifact");
+    expect(source).toContain("normalizedArtifactType === 'deck'");
+    expect(source).toContain("reason: 'low-substance deck artifact'");
+    expect(source).toContain("kind: 'skipped-incomplete'");
   });
 
   it("waits for embed boot and retries stuck message loads on re-entry", () => {
