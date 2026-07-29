@@ -1334,8 +1334,10 @@
   align-items: baseline;
   max-width: 100%;
   min-width: 0;
+  overflow: hidden;
 }
 .teamver-drive-display-filename-stem {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1707,6 +1709,8 @@
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
   min-height: 96px;
   padding: 8px;
   border: 1px solid var(--border);
@@ -1715,6 +1719,7 @@
   color: var(--text);
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
 }
 .teamver-drive-import-card:hover {
   background: var(--bg-subtle);
@@ -1788,12 +1793,18 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 .teamver-drive-import-card-name {
   font-size: 12px;
   font-weight: 550;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 .teamver-drive-import-card-name.teamver-drive-display-filename {
+  display: flex;
   width: 100%;
 }
 .teamver-drive-import-card-copy small {
