@@ -3251,13 +3251,17 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   document.addEventListener('touchend', function(){ scheduleReport(140); }, true);
   document.addEventListener('transitionend', function(){ scheduleReport(40); }, true);
   document.addEventListener('animationend', function(){ scheduleReport(40); }, true);
-  // Aggressively nudge during the first ~2s so the deck catches the
+  // Aggressively nudge during the first ~3s so the deck catches the
   // iframe's first non-zero host box. Compact decks must not stop on the
   // inflated 1920 document width alone — that freezes a black letterbox
-  // until the page is refreshed (host viewport arrives too late).
+  // until the page is refreshed (host viewport arrives too late). After the
+  // fast chase, keep a slow recovery loop until ready (liveHtml→disk remount
+  // often lands host viewport after the initial window).
   function chaseFirstLayout(){
     var attempts = 0;
-    var maxAttempts = compactStackedDeckEnabled ? 40 : 30;
+    var maxAttempts = compactStackedDeckEnabled ? 60 : 30;
+    var slowAttempts = 0;
+    var maxSlowAttempts = 30;
     function tick(){
       attempts += 1;
       if (compactStackedDeckEnabled) {
@@ -3278,7 +3282,21 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
       } else if (w > 0 && attempts >= 2) {
         return; // one extra nudge after first non-zero
       }
-      if (attempts < maxAttempts) setTimeout(tick, 50);
+      if (attempts < maxAttempts) {
+        setTimeout(tick, 50);
+        return;
+      }
+      if (!compactStackedDeckEnabled) return;
+      if (document.documentElement.hasAttribute('data-od-stacked-deck-ready')) return;
+      function slowTick(){
+        slowAttempts += 1;
+        if (document.documentElement.hasAttribute('data-od-stacked-deck-ready')) return;
+        requestHostDeckViewport();
+        ensureStackedDeckStage();
+        nudgeDeckFit();
+        if (slowAttempts < maxSlowAttempts) setTimeout(slowTick, 500);
+      }
+      setTimeout(slowTick, 500);
     }
     tick();
   }

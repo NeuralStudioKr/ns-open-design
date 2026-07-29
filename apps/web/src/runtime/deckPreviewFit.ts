@@ -3,6 +3,9 @@ type DeckPreviewFitTarget = Pick<
   'contentWindow' | 'getBoundingClientRect' | 'clientWidth' | 'clientHeight'
 > | null | undefined;
 
+/** Static target or live getter — prefer getter across remounts / delayed nudges. */
+export type DeckPreviewFitTargetResolver = DeckPreviewFitTarget | (() => DeckPreviewFitTarget);
+
 export type DeckPreviewFitOptions = {
   /** Auto-fit modal scalers pass scale < 1 without user zoom — reconstruct layout width. */
   layoutFit?: boolean;
@@ -13,6 +16,16 @@ export type DeckPreviewFitOptions = {
    */
   useLayoutBox?: boolean;
 };
+
+const DEFAULT_FIT_NUDGE_DELAYS_MS = [0, 50, 150, 400, 900, 1600, 2500, 4000, 6500] as const;
+/** Extra retries when the iframe still reports 0×0 (panel not laid out yet). */
+const ZERO_SIZE_RETRY_DELAYS_MS = [0, 16, 50, 100, 200, 400, 800, 1600, 2500, 4000, 6500] as const;
+
+function resolveDeckPreviewFitTarget(
+  targetOrGet: DeckPreviewFitTargetResolver,
+): DeckPreviewFitTarget {
+  return typeof targetOrGet === 'function' ? targetOrGet() : targetOrGet;
+}
 
 function readDeckHostViewportSize(
   target: DeckPreviewFitTarget,
@@ -66,16 +79,19 @@ export function resolveDeckPreviewIframeFromSource(
   return null;
 }
 
-/** Post the iframe's visual box so the deck bridge can refit when innerWidth is inflated. */
+/**
+ * Post the iframe's visual box so the deck bridge can refit when innerWidth is inflated.
+ * @returns true when a non-zero viewport was posted.
+ */
 export function postDeckHostViewportToIframe(
   target: DeckPreviewFitTarget,
   hostScale = 1,
   options?: DeckPreviewFitOptions,
-): void {
+): boolean {
   const win = target?.contentWindow;
-  if (!win) return;
+  if (!win) return false;
   const { width, height } = readDeckHostViewportSize(target, options);
-  if (width <= 0 || height <= 0) return;
+  if (width <= 0 || height <= 0) return false;
   const scale = Number.isFinite(hostScale) && hostScale > 0 ? hostScale : 1;
   win.postMessage({
     type: 'od:deck-host-viewport',
@@ -84,31 +100,71 @@ export function postDeckHostViewportToIframe(
     scale,
     layoutFit: options?.layoutFit === true,
   }, '*');
+  return true;
+}
+
+/**
+ * Keep posting until the iframe has a measurable box (or delays exhaust).
+ * Generation-complete → liveHtml clear often mounts the iframe at 0×0 for a beat.
+ */
+export function schedulePostDeckHostViewportUntilSized(
+  targetOrGet: DeckPreviewFitTargetResolver,
+  hostScale = 1,
+  delaysMsOrOptions: number[] | DeckPreviewFitOptions = [...ZERO_SIZE_RETRY_DELAYS_MS],
+  maybeOptions?: DeckPreviewFitOptions,
+): () => void {
+  const delaysMs = Array.isArray(delaysMsOrOptions)
+    ? delaysMsOrOptions
+    : [...ZERO_SIZE_RETRY_DELAYS_MS];
+  const options = Array.isArray(delaysMsOrOptions) ? maybeOptions : delaysMsOrOptions;
+  let cancelled = false;
+  let posted = false;
+  const timers: Array<ReturnType<typeof globalThis.setTimeout>> = [];
+  for (const delay of delaysMs) {
+    timers.push(
+      globalThis.setTimeout(() => {
+        if (cancelled || posted) return;
+        posted = postDeckHostViewportToIframe(
+          resolveDeckPreviewFitTarget(targetOrGet),
+          hostScale,
+          options,
+        );
+      }, delay),
+    );
+  }
+  return () => {
+    cancelled = true;
+    for (const id of timers) globalThis.clearTimeout(id);
+  };
 }
 
 /** Ask the deck bridge / framework fit() to recompute after host layout changes. */
 export function nudgeDeckPreviewFit(
-  target: DeckPreviewFitTarget,
+  targetOrGet: DeckPreviewFitTargetResolver,
   hostScale = 1,
   options?: DeckPreviewFitOptions,
 ): void {
+  const target = resolveDeckPreviewFitTarget(targetOrGet);
   postDeckHostViewportToIframe(target, hostScale, options);
   target?.contentWindow?.postMessage({ type: 'od:deck-nudge-fit' }, '*');
 }
 
 /** Deck fit() often runs while the iframe is still 0×0; re-nudge through layout settles. */
 export function scheduleDeckPreviewFitNudges(
-  target: DeckPreviewFitTarget,
+  targetOrGet: DeckPreviewFitTargetResolver,
   hostScale = 1,
-  delaysMsOrOptions: number[] | DeckPreviewFitOptions = [0, 50, 150, 400, 900, 1600, 2500],
+  delaysMsOrOptions: number[] | DeckPreviewFitOptions = [...DEFAULT_FIT_NUDGE_DELAYS_MS],
   maybeOptions?: DeckPreviewFitOptions,
 ): () => void {
   const delaysMs = Array.isArray(delaysMsOrOptions)
     ? delaysMsOrOptions
-    : [0, 50, 150, 400, 900, 1600, 2500];
+    : [...DEFAULT_FIT_NUDGE_DELAYS_MS];
   const options = Array.isArray(delaysMsOrOptions) ? maybeOptions : delaysMsOrOptions;
   const timers = delaysMs.map((delay) =>
-    globalThis.setTimeout(() => nudgeDeckPreviewFit(target, hostScale, options), delay),
+    globalThis.setTimeout(
+      () => nudgeDeckPreviewFit(targetOrGet, hostScale, options),
+      delay,
+    ),
   );
   return () => {
     for (const id of timers) globalThis.clearTimeout(id);

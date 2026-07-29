@@ -390,7 +390,8 @@ describe('looksLikeCompactApiStackedDeck', () => {
 
     // Inflated 1920 document width alone must not end chaseFirstLayout.
     expect(out).toContain('if (compactStackedDeckEnabled) {\n      return { w: 0, h: 0 };\n    }');
-    expect(out).toContain('var maxAttempts = compactStackedDeckEnabled ? 40 : 30');
+    expect(out).toContain('var maxAttempts = compactStackedDeckEnabled ? 60 : 30');
+    expect(out).toContain('var maxSlowAttempts = 30');
     expect(out).toContain("document.documentElement.hasAttribute('data-od-stacked-deck-ready')");
     expect(out).not.toContain('if (hasHost && w > 0 && attempts >= 2) return;');
   });

@@ -5,6 +5,7 @@ import {
   postDeckHostViewportToIframe,
   resolveDeckPreviewIframeFromSource,
   scheduleDeckPreviewFitNudges,
+  schedulePostDeckHostViewportUntilSized,
 } from '../../src/runtime/deckPreviewFit';
 
 describe('deckPreviewFit', () => {
@@ -33,11 +34,60 @@ describe('deckPreviewFit', () => {
 
   it('skips host viewport post when the iframe has no measurable box', () => {
     const postMessage = vi.fn();
-    postDeckHostViewportToIframe({
-      contentWindow: { postMessage } as unknown as Window,
-      getBoundingClientRect: () => ({ width: 0, height: 0 } as DOMRect),
-    });
+    expect(
+      postDeckHostViewportToIframe({
+        contentWindow: { postMessage } as unknown as Window,
+        getBoundingClientRect: () => ({ width: 0, height: 0 } as DOMRect),
+      }),
+    ).toBe(false);
     expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('retries host viewport until the iframe reports a real box', () => {
+    const postMessage = vi.fn();
+    let width = 0;
+    let height = 0;
+    const target = {
+      contentWindow: { postMessage } as unknown as Window,
+      getBoundingClientRect: () => ({ width, height } as DOMRect),
+    };
+    const cancel = schedulePostDeckHostViewportUntilSized(target, 1, [0, 100, 200]);
+    vi.advanceTimersByTime(0);
+    expect(postMessage).not.toHaveBeenCalled();
+    width = 960;
+    height = 540;
+    vi.advanceTimersByTime(100);
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith(
+      { type: 'od:deck-host-viewport', width: 960, height: 540, scale: 1, layoutFit: false },
+      '*',
+    );
+    vi.advanceTimersByTime(200);
+    // Already posted — further delays must not spam.
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    cancel();
+  });
+
+  it('resolves a live getter at each scheduled nudge (survives remount)', () => {
+    const postMessageA = vi.fn();
+    const postMessageB = vi.fn();
+    const frameA = {
+      contentWindow: { postMessage: postMessageA } as unknown as Window,
+      getBoundingClientRect: () => ({ width: 640, height: 480 } as DOMRect),
+    };
+    const frameB = {
+      contentWindow: { postMessage: postMessageB } as unknown as Window,
+      getBoundingClientRect: () => ({ width: 800, height: 600 } as DOMRect),
+    };
+    let current: typeof frameA | typeof frameB = frameA;
+    const cancel = scheduleDeckPreviewFitNudges(() => current, 1, [0, 100]);
+    vi.advanceTimersByTime(0);
+    expect(postMessageA).toHaveBeenCalled();
+    expect(postMessageB).not.toHaveBeenCalled();
+    current = frameB;
+    vi.advanceTimersByTime(100);
+    expect(postMessageB).toHaveBeenCalled();
+    cancel();
   });
 
   it('schedules repeated nudges through layout settles', () => {

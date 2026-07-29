@@ -132,6 +132,7 @@ import {
   resetDeckPreviewPan,
   resolveDeckPreviewIframeFromSource,
   scheduleDeckPreviewFitNudges,
+  schedulePostDeckHostViewportUntilSized,
   type DeckPreviewFitOptions,
 } from '../runtime/deckPreviewFit';
 import { withResolvedDeckSlideIndex } from '../runtime/deck-slide-index';
@@ -6220,6 +6221,7 @@ function HtmlViewer({
 
   useEffect(() => {
     if (!needsDeckHostViewportFit || mode !== 'preview') return;
+    let cancelZeroSizeRetry: (() => void) | null = null;
     function onDeckViewportRequest(ev: MessageEvent) {
       // Accept any of our preview iframes — during liveHtml→disk srcDoc churn
       // iframeRef can lag the requesting contentWindow by a tick, and the
@@ -6229,8 +6231,9 @@ function HtmlViewer({
       if (!isOurPreviewIframeSource(ev.source)) return;
       const data = ev.data as { type?: string } | null;
       if (!data || data.type !== 'od:deck-host-viewport-request') return;
+      const requestSource = ev.source;
       const target =
-        resolveDeckPreviewIframeFromSource(ev.source, [
+        resolveDeckPreviewIframeFromSource(requestSource, [
           srcDocPreviewIframeRef.current,
           urlPreviewIframeRef.current,
           presentIframeRef.current,
@@ -6243,10 +6246,33 @@ function HtmlViewer({
       if (target && target === activeTransport) {
         iframeRef.current = target;
       }
-      postDeckHostViewportToIframe(target, deckPreviewFitScale, deckPreviewFitOptions);
+      // Immediate post may no-op at 0×0; coalesce one retry schedule so chase
+      // spam does not stack dozens of timer chains.
+      const posted = postDeckHostViewportToIframe(target, deckPreviewFitScale, deckPreviewFitOptions);
+      if (!posted) {
+        cancelZeroSizeRetry?.();
+        cancelZeroSizeRetry = schedulePostDeckHostViewportUntilSized(
+          () =>
+            resolveDeckPreviewIframeFromSource(requestSource, [
+              srcDocPreviewIframeRef.current,
+              urlPreviewIframeRef.current,
+              presentIframeRef.current,
+              iframeRef.current,
+            ])
+            ?? (useUrlLoadPreview
+              ? urlPreviewIframeRef.current
+              : srcDocPreviewIframeRef.current)
+            ?? iframeRef.current,
+          deckPreviewFitScale,
+          deckPreviewFitOptions,
+        );
+      }
     }
     window.addEventListener('message', onDeckViewportRequest);
-    return () => window.removeEventListener('message', onDeckViewportRequest);
+    return () => {
+      window.removeEventListener('message', onDeckViewportRequest);
+      cancelZeroSizeRetry?.();
+    };
   }, [
     needsDeckHostViewportFit,
     mode,
@@ -6256,12 +6282,22 @@ function HtmlViewer({
     useUrlLoadPreview,
   ]);
 
+  const resolveActiveDeckPreviewIframe = useCallback((): HTMLIFrameElement | null => {
+    if (useUrlLoadPreview) {
+      return urlPreviewIframeRef.current ?? iframeRef.current;
+    }
+    return srcDocPreviewIframeRef.current ?? iframeRef.current;
+  }, [useUrlLoadPreview]);
+
   useEffect(() => {
     if (!needsDeckHostViewportFit || mode !== 'preview') return;
-    const target = useUrlLoadPreview
-      ? (urlPreviewIframeRef.current ?? iframeRef.current)
-      : (srcDocPreviewIframeRef.current ?? iframeRef.current);
-    return scheduleDeckPreviewFitNudges(target, deckPreviewFitScale, deckPreviewFitOptions);
+    // Resolve the iframe at fire time — stream-end / liveHtml clear remounts
+    // often leave a null capture from effect start (black letterbox until refresh).
+    return scheduleDeckPreviewFitNudges(
+      resolveActiveDeckPreviewIframe,
+      deckPreviewFitScale,
+      deckPreviewFitOptions,
+    );
   }, [
     needsDeckHostViewportFit,
     mode,
@@ -6274,8 +6310,11 @@ function HtmlViewer({
     previewStateKey,
     useUrlLoadPreview,
     srcDocTransportResetKey,
+    resolveActiveDeckPreviewIframe,
     // Terminal: liveHtml clear / streaming off rebuilds srcDoc — re-nudge fit.
     streaming,
+    hasLiveHtml,
+    source,
   ]);
 
   // Stream end often rebuilds srcDoc / clears liveHtml — re-nudge fit once.
@@ -6284,17 +6323,40 @@ function HtmlViewer({
     wasStreamingForDeckFitRef.current = streaming;
     if (!needsDeckHostViewportFit || mode !== 'preview') return;
     if (!(wasStreaming && !streaming)) return;
-    const target = useUrlLoadPreview
-      ? (urlPreviewIframeRef.current ?? iframeRef.current)
-      : (srcDocPreviewIframeRef.current ?? iframeRef.current);
-    return scheduleDeckPreviewFitNudges(target, deckPreviewFitScale, deckPreviewFitOptions);
+    return scheduleDeckPreviewFitNudges(
+      resolveActiveDeckPreviewIframe,
+      deckPreviewFitScale,
+      deckPreviewFitOptions,
+    );
   }, [
     streaming,
     needsDeckHostViewportFit,
     mode,
     deckPreviewFitScale,
     deckPreviewFitOptions,
-    useUrlLoadPreview,
+    resolveActiveDeckPreviewIframe,
+  ]);
+
+  // liveHtml → disk: after stream paint clears, disk srcDoc may remount after
+  // the stream-end nudge window — schedule another fit pass.
+  const hadLiveHtmlForDeckFitRef = useRef(hasLiveHtml);
+  useEffect(() => {
+    const hadLive = hadLiveHtmlForDeckFitRef.current;
+    hadLiveHtmlForDeckFitRef.current = hasLiveHtml;
+    if (!needsDeckHostViewportFit || mode !== 'preview') return;
+    if (!(hadLive && !hasLiveHtml)) return;
+    return scheduleDeckPreviewFitNudges(
+      resolveActiveDeckPreviewIframe,
+      deckPreviewFitScale,
+      deckPreviewFitOptions,
+    );
+  }, [
+    hasLiveHtml,
+    needsDeckHostViewportFit,
+    mode,
+    deckPreviewFitScale,
+    deckPreviewFitOptions,
+    resolveActiveDeckPreviewIframe,
   ]);
 
   useEffect(() => {
@@ -9685,9 +9747,17 @@ function HtmlViewer({
                           syncCachedSlideStateToIframe(frame);
                           if (effectiveDeck) {
                             if (compactApiStackedDeck) {
-                              postDeckHostViewportToIframe(frame, deckPreviewFitScale, deckPreviewFitOptions);
+                              schedulePostDeckHostViewportUntilSized(
+                                () => frame ?? srcDocPreviewIframeRef.current,
+                                deckPreviewFitScale,
+                                deckPreviewFitOptions,
+                              );
                             }
-                            scheduleDeckPreviewFitNudges(frame, deckPreviewFitScale, deckPreviewFitOptions);
+                            scheduleDeckPreviewFitNudges(
+                              () => frame ?? srcDocPreviewIframeRef.current,
+                              deckPreviewFitScale,
+                              deckPreviewFitOptions,
+                            );
                           }
                           if (!useUrlLoadPreview) restorePreviewScrollPosition();
                         }}
