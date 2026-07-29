@@ -472,15 +472,52 @@ export function parseCommentAttachmentsFromMessageContent(
 }
 
 /**
+ * Board-batch sends promote the user's note into the visible prompt and
+ * blank `attachment.comment` with `commentContext: 'query'` so the model
+ * does not see the instruction twice. Downstream recovery (fast-path,
+ * auto-continue, chip render) must hydrate the note back from the
+ * visible user text when the structured field was cleared.
+ */
+export function hydrateQueryContextCommentAttachments(
+  attachments: readonly ChatCommentAttachment[],
+  instructionText?: string | null,
+): ChatCommentAttachment[] {
+  const instruction = stripUserVisibleUserMessageText(instructionText ?? '').trim();
+  if (!instruction) return [...attachments];
+  return attachments.map((attachment) => {
+    if (String(attachment.comment ?? '').trim()) return attachment;
+    if (attachment.commentContext !== 'query') return attachment;
+    return { ...attachment, comment: instruction };
+  });
+}
+
+export function visibleCommentEditInstruction(content: string | null | undefined): string {
+  return stripUserVisibleUserMessageText(content ?? '').trim();
+}
+
+/**
  * Restore `commentAttachments` on a user turn from the durable
  * `<attached-preview-comments>` block when the structured column was dropped.
  */
 export function reconcileUserCommentAttachments(message: ChatMessage): ChatMessage {
   if (message.role !== 'user') return message;
-  if ((message.commentAttachments?.length ?? 0) > 0) return message;
-  const parsed = parseCommentAttachmentsFromMessageContent(message.content);
-  if (parsed.length === 0) return message;
-  return { ...message, commentAttachments: parsed };
+  const commentAttachments =
+    (message.commentAttachments?.length ?? 0) > 0
+      ? message.commentAttachments!
+      : parseCommentAttachmentsFromMessageContent(message.content);
+  if (commentAttachments.length === 0) return message;
+  const hydrated = hydrateQueryContextCommentAttachments(
+    commentAttachments,
+    visibleCommentEditInstruction(message.content),
+  );
+  const unchanged =
+    (message.commentAttachments?.length ?? 0) === hydrated.length
+    && hydrated.every((item, index) => {
+      const prior = message.commentAttachments?.[index];
+      return prior?.comment === item.comment && prior?.elementId === item.elementId;
+    });
+  if (unchanged && (message.commentAttachments?.length ?? 0) > 0) return message;
+  return { ...message, commentAttachments: hydrated };
 }
 
 /** Strip model-only suffixes from user messages before rendering in chat UI. */
@@ -672,7 +709,10 @@ export function trimHtmlHint(value: string): string {
   return text.length > 180 ? `${text.slice(0, 177)}...` : text;
 }
 
-export function renderCommentAttachmentContext(commentAttachments: ChatCommentAttachment[]): string {
+export function renderCommentAttachmentContext(
+  commentAttachments: ChatCommentAttachment[],
+  options?: { includeQueryComments?: boolean },
+): string {
   const lines = [
     '',
     '',
@@ -705,7 +745,10 @@ export function renderCommentAttachmentContext(commentAttachments: ChatCommentAt
     if (typeof item.slideIndex === 'number' && Number.isFinite(item.slideIndex) && item.slideIndex >= 0) {
       lines.push(`slideIndex: ${Math.floor(item.slideIndex)}`);
     }
-    if (item.comment && item.commentContext !== 'query') {
+    if (
+      item.comment
+      && (options?.includeQueryComments || item.commentContext !== 'query')
+    ) {
       lines.push(`comment: ${item.comment}`);
     }
     if (selectionKind === 'visual') {

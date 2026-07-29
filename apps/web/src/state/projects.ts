@@ -58,9 +58,11 @@ import {
 import { mapRegistryRowToProject, listEmbedProjectsFromRegistry, listEmbedProjectsPageFromRegistry, mergeDaemonFieldsOntoRegistryProjects } from '../teamver/embedRegistryProjectList';
 import { fetchTeamverProject } from '../teamver/projectRegistry';
 import {
+  hydrateQueryContextCommentAttachments,
   messageContentWithCommentAttachments,
   reconcileUserCommentAttachments,
   stripUserVisibleUserMessageText,
+  visibleCommentEditInstruction,
 } from '../comments';
 import { reconcileChatMessageOnLoad } from '../runtime/chat-events';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
@@ -77,9 +79,12 @@ function sanitizeChatMessageForPersist(message: ChatMessage): ChatMessage {
   // echoes; for user turns that block is the durable recovery path when
   // `comment_attachments_json` is dropped by a partial upsert.
   if (reconciled.role !== 'user') return sanitized;
-  const commentAttachments = reconciled.commentAttachments ?? [];
+  const commentAttachments = hydrateQueryContextCommentAttachments(
+    reconciled.commentAttachments ?? [],
+    visibleCommentEditInstruction(sanitized.content ?? ''),
+  );
   if (commentAttachments.length === 0) return sanitized;
-  const visibleContent = stripUserVisibleUserMessageText(sanitized.content ?? '');
+  const visibleContent = visibleCommentEditInstruction(sanitized.content ?? '');
   return {
     ...sanitized,
     commentAttachments,

@@ -274,6 +274,7 @@ import {
   elementPatchCoerceHintsFromCommentAttachments,
   filterUsableCommentAttachments,
   historyWithCommentAttachmentContext,
+  hydrateQueryContextCommentAttachments,
   mergeAttachedComments,
   mergePreviewCommentAttachments,
   messageContentWithCommentAttachments,
@@ -284,6 +285,7 @@ import {
   resolveCommentEditPersistTargetFileName,
   SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER,
   stripUserVisibleUserMessageText,
+  visibleCommentEditInstruction,
 } from '../comments';
 import {
   computeProducedFiles,
@@ -1233,8 +1235,12 @@ async function tryApplyCommentEditFastPathAgainstCurrentDeck(input: {
   projectId: string;
   fileName: string;
   commentAttachments?: readonly ChatCommentAttachment[];
+  instructionText?: string;
 }): Promise<DeckPatchMergeResult> {
-  const attachments = input.commentAttachments ?? [];
+  const attachments = hydrateQueryContextCommentAttachments(
+    input.commentAttachments ?? [],
+    input.instructionText,
+  );
   if (attachments.length === 0) {
     return { ok: false, code: 'deck_patch_parse_failed', reason: 'no comment attachments' };
   }
@@ -3778,6 +3784,7 @@ export function ProjectView({
               projectId: project.id,
               fileName: targetFileName,
               commentAttachments: persistCommentAttachments,
+              instructionText: runVisiblePromptRef.current,
             });
             if (fastPath.ok) {
               console.warn('[element-patch] applied scoped comment fast-path after failed model artifact', {
@@ -7698,10 +7705,16 @@ export function ProjectView({
                   const autoContinueMessages = retryTarget
                     ? [...historyBase, latestAssistantMsg]
                     : [...historyBase, userMsg, latestAssistantMsg];
-                  const autoContinueCommentAttachments = terminalAutoContinueCommentAttachments;
+                  const originatingUserMsg = retryTarget?.userMsg ?? userMsg;
+                  const autoContinueCommentAttachments = hydrateQueryContextCommentAttachments(
+                    terminalAutoContinueCommentAttachments,
+                    visibleCommentEditInstruction(originatingUserMsg.content),
+                  );
                   const scopedCommentContext =
                     autoContinueCommentAttachments.length > 0
-                      ? renderCommentAttachmentContext(autoContinueCommentAttachments)
+                      ? renderCommentAttachmentContext(autoContinueCommentAttachments, {
+                          includeQueryComments: true,
+                        })
                       : null;
                   const scopedUserInstruction = stripUserVisibleUserMessageText(
                     (retryTarget?.userMsg ?? userMsg).content,

@@ -653,6 +653,7 @@ test('[P0] board comment chips survive page reload after send', async ({ page })
         elementId: 'hero-title',
         filePath: 'commentable-artifact.html',
         commentContext: 'query',
+        comment: 'Make the headline more specific.',
       }),
     ]),
   );

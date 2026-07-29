@@ -7,6 +7,7 @@ import {
   commentVisibleOnDeckSlide,
   commentsToAttachments,
   historyWithCommentAttachmentContext,
+  hydrateQueryContextCommentAttachments,
   liveCommentTargetMapsEqual,
   liveSnapshotForComment,
   mergeAttachedComments,
@@ -14,12 +15,14 @@ import {
   messageContentWithCommentAttachments,
   parseCommentAttachmentsFromMessageContent,
   reconcileUserCommentAttachments,
+  renderCommentAttachmentContext,
   overlayBoundsFromSnapshot,
   queuedSlideNavTarget,
   removeAttachedComment,
   resolveCommentEditPersistTargetFileName,
   stripUserVisibleUserMessageText,
   targetFromSnapshot,
+  visibleCommentEditInstruction,
 } from '../src/comments';
 import type { PreviewCommentSnapshot } from '../src/comments';
 import type { ChatCommentAttachment, ChatMessage, PreviewComment } from '../src/types';
@@ -203,6 +206,47 @@ describe('preview comment attachment helpers', () => {
     expect(content).toContain('Make the title factual');
     expect(content).toContain('selector: [data-od-id="hero-title"]');
     expect(content).not.toContain('comment: Make the title factual');
+  });
+
+  it('hydrates query-context attachments from the visible user prompt for recovery', () => {
+    const [attachment] = commentsToAttachments([
+      comment({ id: 'c1', elementId: 'hero-title', note: 'Make the title factual' }),
+    ]);
+    const queryAttachment = attachment
+      ? [{ ...attachment, comment: '', commentContext: 'query' as const }]
+      : [];
+
+    expect(
+      hydrateQueryContextCommentAttachments(queryAttachment, 'Make the title factual')[0]?.comment,
+    ).toBe('Make the title factual');
+
+    const message: ChatMessage = {
+      id: 'user-1',
+      role: 'user',
+      content: messageContentWithCommentAttachments('Make the title factual', queryAttachment),
+      createdAt: 1,
+      commentAttachments: queryAttachment,
+    };
+    expect(reconcileUserCommentAttachments(message).commentAttachments?.[0]?.comment).toBe(
+      'Make the title factual',
+    );
+    expect(visibleCommentEditInstruction(message.content)).toBe('Make the title factual');
+  });
+
+  it('includes query comments in scoped auto-continue context when requested', () => {
+    const hydrated = hydrateQueryContextCommentAttachments(
+      [
+        commentAttachment({
+          id: 'c1',
+          elementId: 'hero-title',
+          comment: '',
+          commentContext: 'query',
+        }),
+      ],
+      "'김개발 작업물' 로 멘트 수정",
+    );
+    const context = renderCommentAttachmentContext(hydrated, { includeQueryComments: true });
+    expect(context).toContain("comment: '김개발 작업물' 로 멘트 수정");
   });
 
   it('turns comment target source files into hidden API attachments', () => {
