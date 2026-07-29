@@ -7,6 +7,7 @@ import { buildEmergencySlideDeckFromOutline } from '../../src/artifacts/emergenc
 import {
   injectStackedDeckViewport,
   looksLikeAuthoredHorizontalSwipeDeck,
+  looksLikeAuthoredScrollNavigateDeck,
   looksLikeCompactApiStackedDeck,
   looksLikeCompactApiStackedDeckForPreview,
   wrapPreviewHtmlShell,
@@ -433,5 +434,31 @@ describe('looksLikeCompactApiStackedDeck', () => {
     ].join('');
     expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
     expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
+  });
+
+  it('keeps scrollIntoView-authored slide decks on native scroll navigation', () => {
+    const navScript = `(function(){
+var slides=document.querySelectorAll('.slide');
+var cur=0;
+function go(n){
+n=Math.max(0,Math.min(slides.length-1,n));
+slides[n].scrollIntoView({behavior:'smooth'});
+cur=n;
+}
+document.addEventListener('keydown',function(e){
+if(e.key==='ArrowRight'||e.key==='ArrowDown')go(cur+1);
+if(e.key==='ArrowLeft'||e.key==='ArrowUp')go(cur-1);
+});
+})();`;
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="min-height:100vh">One</section>',
+      '<section class="slide" style="min-height:100vh">Two</section>',
+      `<script>${navScript}</script>`,
+      '</body></html>',
+    ].join('');
+    expect(looksLikeAuthoredScrollNavigateDeck(html)).toBe(true);
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
+    expect(buildSrcdoc(html, { deck: true })).not.toContain('data-od-deck-stacked-fix');
   });
 });

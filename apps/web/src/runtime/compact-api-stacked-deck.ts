@@ -65,6 +65,30 @@ function looksLikeLegacyStyledBodyFirstDeck(html: string): boolean {
 }
 
 /**
+ * Decks that ship their own scrollIntoView / touch-swipe drivers on `.slide`
+ * nodes must keep native document scroll. Host letterbox hoist breaks
+ * `slides[n].scrollIntoView(...)` and stacks every page on top of each other.
+ */
+export function looksLikeAuthoredScrollNavigateDeck(html: string): boolean {
+  if (!html) return false;
+  if (
+    /querySelectorAll\s*\(\s*['"]\.slide['"]\s*\)[\s\S]{0,2000}?\.scrollIntoView\s*\(/i.test(html)
+    || /querySelectorAll\s*\(\s*['"]\.slide['"]\s*\)[\s\S]{0,2000}?scrollIntoView\s*\(/i.test(html)
+  ) {
+    return true;
+  }
+  if (/\.slide[^;\n]{0,120}\.scrollIntoView\s*\(/i.test(html)) return true;
+  if (
+    /scrollIntoView\s*\(\s*\{[^}]*behavior\s*:\s*['"]smooth['"]/i.test(html)
+    && /\.slide\b/i.test(html)
+    && countSlideElements(html) >= 2
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Horizontal swipe decks (simple-deck, scroll-snap) must keep their native
  * scroll/transform navigation instead of stacked letterbox.
  */
@@ -141,6 +165,7 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (!html) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
+  if (looksLikeAuthoredScrollNavigateDeck(html)) return false;
   if (
     /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(
       html,
