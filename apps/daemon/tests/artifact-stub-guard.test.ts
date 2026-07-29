@@ -381,6 +381,22 @@ describe('readArtifactStubGuardConfigFromEnv', () => {
     });
   });
 
+  it("defaults to 'reject' mode so a placeholder cannot silently overwrite a real deck", () => {
+    // Data-loss prevention: the previous 'warn' default allowed a 1KB
+    // placeholder to overwrite a 20KB deck on disk while merely logging
+    // a banner. Reject refuses the write, so the real deck is preserved
+    // and the user retries with a clear "save was refused" message
+    // instead of discovering their deck reduced hours later.
+    expect(DEFAULT_ARTIFACT_STUB_GUARD_CONFIG.mode).toBe('reject');
+    // Env-unset (undefined OD_ARTIFACT_STUB_GUARD) must inherit the
+    // reject default so production without an explicit override still
+    // gets the safety guarantee. Passing OD_ARTIFACT_STUB_GUARD=warn
+    // remains available as the intentional escape hatch for callers
+    // whose model regularly ships smaller-than-prior valid decks.
+    expect(readArtifactStubGuardConfigFromEnv({}).mode).toBe('reject');
+    expect(readArtifactStubGuardConfigFromEnv({ OD_ARTIFACT_STUB_GUARD: undefined }).mode).toBe('reject');
+  });
+
   it('parses recognised mode values', () => {
     expect(readArtifactStubGuardConfigFromEnv({ OD_ARTIFACT_STUB_GUARD: 'reject' }).mode).toBe('reject');
     expect(readArtifactStubGuardConfigFromEnv({ OD_ARTIFACT_STUB_GUARD: 'WARN' }).mode).toBe('warn');

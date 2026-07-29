@@ -65,6 +65,24 @@ export class ArtifactRegressionError extends Error {
 }
 
 export const DEFAULT_ARTIFACT_STUB_GUARD_CONFIG: ArtifactStubGuardConfig = {
+  // Reject by default (not warn) — the failure mode is DATA LOSS: the
+  // agent emits a small placeholder that overwrites a real multi-KB
+  // document with the same identifier, and warn-mode allows that
+  // overwrite while merely logging a banner. Rejecting refuses the
+  // write, so the disk copy of the real document is preserved and the
+  // user can retry with a clear "save was refused" error instead of
+  // discovering their deck reduced from 20KB to 1KB after the fact.
+  //
+  // `minRetainedRatio` / `minPriorBytes` are the tightening pair that
+  // came in the same round: 0.35 / 8192 catches a wider band of
+  // placeholder regressions (e.g., a 20KB deck reduced to 6KB is now
+  // rejected instead of allowed at the previous 20% / 4KB thresholds)
+  // at the cost of more aggressive false positives on deliberately
+  // short decks. Callers whose model deliberately shrinks the deck
+  // below these thresholds override with `OD_ARTIFACT_STUB_GUARD=warn`
+  // (record but allow) or `=off` (disable). The rejection UX names
+  // both env vars in the error copy so users have a clear escape
+  // hatch; data loss from the previous default has no such recovery.
   mode: 'reject',
   minRetainedRatio: 0.35,
   minPriorBytes: 8192,

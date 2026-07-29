@@ -141,6 +141,25 @@ describe("project conversation error messages", () => {
     expect(
       formatProjectArtifactSaveFailedError("deck.html", { status: 503 }),
     ).toContain("일시적으로 불안정");
+    // ARTIFACT_REGRESSION (stub guard reject): data-loss prevention path
+    // must reassure the user their existing deck is safe on disk and
+    // hint at the escape-hatch env var so a deliberate small edit that
+    // trips the guard can be salvaged without a mystery banner.
+    const regression = formatProjectArtifactSaveFailedError("deck.html", {
+      status: 422,
+      code: "ARTIFACT_REGRESSION",
+      message:
+        'New artifact body for identifier "deck" is 1279 bytes, but the largest prior sibling "deck.html" is 21918 bytes.',
+    });
+    expect(regression).toContain("플레이스홀더");
+    expect(regression).toContain("기존 슬라이드는 그대로");
+    expect(regression).toContain("OD_ARTIFACT_STUB_GUARD=warn");
+    // The bare generic "저장에 실패" copy must not fire when we can
+    // recognise the ARTIFACT_REGRESSION code — otherwise the improved
+    // reassurance-banner regresses to the mystery banner.
+    expect(regression).not.toBe(
+      `슬라이드 파일 "deck.html" 저장에 실패했습니다. 잠시 후 다시 시도하세요.`,
+    );
     // Bare fetch/network failure (no status) → network guidance.
     expect(
       formatProjectArtifactSaveFailedError("deck.html", {

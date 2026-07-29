@@ -86,6 +86,19 @@ export function formatProjectArtifactSaveFailedError(
   const status = detail?.status;
   const rawMessage = (detail?.message || '').toLowerCase();
 
+  // Stub-guard rejection: the daemon refused to overwrite a real deck
+  // with a placeholder because the new body is < minRetainedRatio of
+  // the largest prior sibling. This is the DATA LOSS prevention path —
+  // the user's existing deck is safe on disk. Surface that reassurance
+  // in the banner so users don't think their work vanished; direct them
+  // to retry (typical model glitch) with an escape hatch env var for
+  // the deliberate-small-edit false-positive case.
+  if (code === 'ARTIFACT_REGRESSION' || status === 422 && code === 'ARTIFACT_REGRESSION') {
+    return embed
+      ? `모델이 실제 슬라이드 대신 훨씬 작은 플레이스홀더를 보내서 "${fileName}" 저장을 거부했습니다. 기존 슬라이드는 그대로 남아 있으니 다시 시도해 주세요. (의도적으로 짧게 만든 편집이었다면 OD_ARTIFACT_STUB_GUARD=warn 으로 완화할 수 있습니다.)`
+      : `Refused to save "${fileName}" because the model returned a much smaller placeholder instead of the real slide deck. Your existing deck is preserved on disk — retry the request. (If this was a deliberate small edit, relax via OD_ARTIFACT_STUB_GUARD=warn.)`;
+  }
+
   if (ACCESS_ERROR_CODES.has(code) || status === 403) {
     return embed
       ? '이 슬라이드 프로젝트에 접근 권한이 없어 저장에 실패했습니다. 워크스페이스가 올바른지 확인하거나 관리자에게 문의하세요.'
