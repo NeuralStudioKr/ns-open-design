@@ -2673,19 +2673,27 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         node = node.parentElement;
         continue;
       }
+      // Framework decks drive slides via active-class toggles on #deck-stage
+      // children, not by translating the stage itself.
+      if (node.id === 'deck-stage') {
+        node = node.parentElement;
+        continue;
+      }
       try {
         var directSlides = 0;
         for (var i=0; i<node.children.length; i++) {
           if (node.children[i].classList && node.children[i].classList.contains('slide')) directSlides += 1;
         }
         var style = window.getComputedStyle(node);
+        var computedTransform = style.transform || '';
+        var hasComputedTransform = !!(computedTransform && computedTransform !== 'none');
         if (
           directSlides >= list.length &&
           (
             node.id === 'deck-track' ||
             (node.classList && node.classList.contains('deck-track')) ||
             node.style.transform ||
-            style.transform !== 'none' ||
+            hasComputedTransform ||
             /\\b(?:flex|grid)\\b/i.test(style.display)
           )
         ) {
@@ -3083,24 +3091,27 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     }
     if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
       e.preventDefault();
+      e.stopImmediatePropagation();
       go('next');
     } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
       e.preventDefault();
+      e.stopImmediatePropagation();
       go('prev');
     } else if (e.key === 'Home') {
       e.preventDefault();
+      e.stopImmediatePropagation();
       go('first');
     } else if (e.key === 'End') {
       e.preventDefault();
+      e.stopImmediatePropagation();
       go('last');
     }
   }
-  // Compact stacked decks have no in-artifact presenter keys. When the
-  // sandboxed iframe captures focus (e.g. after a click), the outer new-tab
-  // wrapper cannot post od:slide — handle navigation inside the bridge.
-  if (compactStackedDeckEnabled) {
-    document.addEventListener('keydown', onDeckBridgeKeydown, true);
-  }
+  // Sandboxed new-tab presentation keeps keyboard focus on the outer wrapper
+  // when possible, but any click inside the iframe steals focus. The wrapper
+  // can no longer post od:slide, so handle presenter keys inside the bridge
+  // for every deck shape — not only compact stacked decks.
+  document.addEventListener('keydown', onDeckBridgeKeydown, true);
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;
     if (!data) return;

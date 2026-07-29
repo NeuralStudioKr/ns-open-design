@@ -1619,9 +1619,9 @@ function buildSandboxedPreviewDeckHostViewportScript(): string {
   window.addEventListener('keydown', onKey, true);
   window.addEventListener('resize', postViewport);
   function focusPresentationHost(){
-    // Keep keyboard focus on this wrapper document. Focusing the sandboxed
-    // iframe steals ←/→ from the host key handler below; compact stacked decks
-    // rely on postMessage navigation and do not handle arrow keys in-frame.
+    // Keep keyboard focus on this wrapper document when possible. Focusing the
+    // sandboxed iframe steals ←/→ from the host key handler below; the in-frame
+    // deck bridge also handles presenter keys when focus cannot be reclaimed.
     try {
       if (!document.body.hasAttribute('tabindex')) {
         document.body.setAttribute('tabindex', '-1');
@@ -1638,7 +1638,15 @@ function buildSandboxedPreviewDeckHostViewportScript(): string {
       focusPresentationHost();
       setTimeout(focusPresentationHost, 0);
     });
+    iframe.addEventListener('focus', focusPresentationHost);
   }
+  document.addEventListener('focusin', function(e){
+    if (iframe && e && e.target === iframe) focusPresentationHost();
+  }, true);
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible') focusPresentationHost();
+  });
+  window.addEventListener('focus', focusPresentationHost);
   if (document.readyState === 'complete') {
     postViewport();
     focusPresentationHost();
