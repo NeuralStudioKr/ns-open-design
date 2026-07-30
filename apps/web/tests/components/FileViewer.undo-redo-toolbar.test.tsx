@@ -96,6 +96,38 @@ describe('FileViewer undo/redo toolbar', () => {
     await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
   });
 
+  it('undoes via Ctrl+Z keyboard shortcut after a manual edit save', async () => {
+    const initialSource = heroSource();
+    const { fetchMock, getPersistedSource } = createProjectFileRevisionFetchMock({
+      projectId: 'project-1',
+      fileName: 'preview.html',
+      initialSource,
+    });
+    vi.stubGlobal('fetch', vi.fn(fetchMock));
+
+    render(
+      <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
+        liveHtml={initialSource}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('manual-edit-mode-toggle'));
+    await selectManualEditTarget();
+
+    act(() => {
+      panelState.props?.onApplyPatch(
+        { kind: 'set-style', id: 'hero', styles: { color: '#ef4444' } },
+        'Style: Hero',
+      );
+    });
+    await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    });
+    await waitFor(() => expect(getPersistedSource()).toContain('#111111'));
+  });
+
   it('places undo/redo immediately left of the manual edit toggle', () => {
     render(
       <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}

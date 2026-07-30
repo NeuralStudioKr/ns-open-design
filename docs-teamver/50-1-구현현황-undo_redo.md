@@ -32,6 +32,7 @@
 | `POST .../revisions/:id/restore` | [x] | |
 | `RevisionController` (web) | [x] | `revision-stack.ts` + FileViewer 연동 |
 | Manual undo → 서버 restore 전환 | [x] | in-memory stack 제거 |
+| 키보드 ⌘Z / Ctrl+Z undo·redo | [x] | draw overlay 비활성 시에만 |
 | `od project revisions` CLI | [x] | list + restore |
 | Daemon tests | [x] | `file-revisions.test.ts` |
 

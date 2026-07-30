@@ -2828,7 +2828,8 @@ export type TrackingRevisionArea =
   | 'agent_toast'
   | 'manual_edit'
   | 'inspect_save'
-  | 'agent_persist';
+  | 'agent_persist'
+  | 'keyboard';
 
 export interface RevisionPushProps {
   page_name: 'artifact';

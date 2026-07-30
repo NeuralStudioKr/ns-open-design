@@ -193,6 +193,7 @@ export function PreviewDrawOverlay({
   }, [redraw, active, hasInk, hasBox]);
 
   useEffect(() => {
+    if (!active) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         onActiveChange?.(false);
@@ -206,7 +207,7 @@ export function PreviewDrawOverlay({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onActiveChange, sending]);
+  }, [active, onActiveChange, sending]);
 
   function syncHistoryState() {
     setHasInk(strokesRef.current.length > 0);

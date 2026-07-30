@@ -14,6 +14,7 @@ import {
   anonymizeArtifactId,
   artifactKindToTracking,
   type TrackingProjectKind,
+  type TrackingRevisionArea,
 } from '@open-design/contracts/analytics';
 import { useAnalytics } from '../analytics/provider';
 import { trackIframeLoad } from '../observability/iframe-error';
@@ -120,6 +121,7 @@ import {
   type ImageExportFormat,
 } from '../runtime/exports';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
+import { isMacPlatform } from '../utils/platform';
 import { buildReactComponentSrcdoc } from '../runtime/react-component';
 import { shouldConsumeSlideNav } from '../runtime/slide-nav';
 import { findHtmlEntriesReferencing } from '../runtime/jsx-module-refs';
@@ -7248,7 +7250,7 @@ function HtmlViewer({
     return true;
   }
 
-  async function undoManualEdit() {
+  async function undoManualEdit(area: TrackingRevisionArea = 'revision_toolbar') {
     if (manualEditSavingRef.current) return;
     const target = revisionBeforeCursor(revisionStackRef.current);
     if (!target) return;
@@ -7257,7 +7259,7 @@ function HtmlViewer({
     try {
       const ok = await applyRestoredRevision(target);
       if (ok) {
-        emitRevisionUndo(analytics.track, projectId, projectKind, file.name, target);
+        emitRevisionUndo(analytics.track, projectId, projectKind, file.name, target, area);
       }
     } finally {
       manualEditSavingRef.current = false;
@@ -7265,7 +7267,7 @@ function HtmlViewer({
     }
   }
 
-  async function redoManualEdit() {
+  async function redoManualEdit(area: TrackingRevisionArea = 'revision_toolbar') {
     if (manualEditSavingRef.current) return;
     const target = revisionAfterCursor(revisionStackRef.current);
     if (!target) return;
@@ -7274,7 +7276,7 @@ function HtmlViewer({
     try {
       const ok = await applyRestoredRevision(target);
       if (ok) {
-        emitRevisionRedo(analytics.track, projectId, projectKind, file.name, target);
+        emitRevisionRedo(analytics.track, projectId, projectKind, file.name, target, area);
       }
     } finally {
       manualEditSavingRef.current = false;
@@ -7513,6 +7515,46 @@ function HtmlViewer({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [effectiveDeck, mode]);
+
+  // Revision undo/redo shortcuts (design §8.2): ⌘Z / Ctrl+Z, redo via Shift+Z or Ctrl+Y.
+  useEffect(() => {
+    if (mode !== 'preview' || source === null) return;
+    function onKey(e: KeyboardEvent) {
+      if (drawOverlayOpen) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+      }
+      if (manualEditSavingRef.current) return;
+
+      const primary = isMacPlatform()
+        ? e.metaKey && !e.ctrlKey
+        : e.ctrlKey && !e.metaKey;
+      if (!primary) return;
+
+      const key = e.key.toLowerCase();
+      if (key === 'z') {
+        if (e.shiftKey) {
+          if (!canRedoRevisionStack(revisionStackRef.current)) return;
+          e.preventDefault();
+          void redoManualEdit('keyboard');
+        } else {
+          if (!canUndoRevisionStack(revisionStackRef.current)) return;
+          e.preventDefault();
+          void undoManualEdit('keyboard');
+        }
+        return;
+      }
+      if (!isMacPlatform() && key === 'y') {
+        if (!canRedoRevisionStack(revisionStackRef.current)) return;
+        e.preventDefault();
+        void redoManualEdit('keyboard');
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mode, source, drawOverlayOpen]);
 
   useEffect(() => {
     if (!presentMenuOpen) return;
