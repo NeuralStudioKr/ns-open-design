@@ -123,6 +123,10 @@ import {
 } from './skills.js';
 import { loadPluginLocalSkill } from './plugins/local-skill.js';
 import {
+  readSelectedDeckTemplateFromMetadata,
+  wrapSelectedDeckTemplateSkillBody,
+} from './prompts/selected-deck-template.js';
+import {
   filterSkillsForSlideOnlyCatalog,
   parseSkillsCatalogSlideOnlyQuery,
   readDefaultSkillsSlideOnlyCatalogFromEnv,
@@ -11768,7 +11772,22 @@ export async function startServer({
         if (seen.has(canonicalId)) continue;
         seen.add(canonicalId);
         const extra = findSkillById(allSkills, id);
-        if (!extra) continue;
+        if (!extra) {
+          const plugin = getInstalledPlugin(db, id);
+          if (plugin) {
+            const local = await loadPluginLocalSkill(plugin);
+            const localBody = local?.body?.trim();
+            if (localBody) {
+              registerPrimarySkillMode('deck');
+              registerSkillDir(local.dir);
+              if (!critiqueSkillId) critiqueSkillId = canonicalId;
+              blocks.push(
+                `\n\n---\n\n## Composed skill — ${local.name || id}\n\n${localBody}`,
+              );
+            }
+          }
+          continue;
+        }
         registerSkillDir(extra.dir);
         registerSkillMode(extra.mode);
         if (!effectiveCanonicalSkillId && adHocSkillIds.length === 1) {
@@ -11833,6 +11852,42 @@ export async function startServer({
           `[plugins] pluginSkillBody load failed: ${err?.message ?? err}`,
         );
       }
+    }
+
+    const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);
+    if (!skillBody?.trim() && selectedDeckTemplate) {
+      try {
+        const plugin = getInstalledPlugin(db, selectedDeckTemplate.id);
+        if (plugin) {
+          const local = await loadPluginLocalSkill(plugin);
+          if (local?.body?.trim()) {
+            skillBody = local.body;
+            skillName = selectedDeckTemplate.title ?? local.name;
+            registerPrimarySkillMode('deck');
+            registerSkillDir(local.dir);
+          }
+        }
+      } catch (err) {
+        console.warn(
+          `[plugins] selectedDeckTemplate load failed: ${err?.message ?? err}`,
+        );
+      }
+      if (!skillBody?.trim() && selectedDeckTemplate.title) {
+        skillBody = [
+          '# Selected visual template',
+          '',
+          `Template: ${selectedDeckTemplate.title}`,
+          "Match this selected deck template's visible style as closely as possible.",
+        ].join('\n');
+        skillName = selectedDeckTemplate.title;
+        registerPrimarySkillMode('deck');
+      }
+    }
+    if (skillBody?.trim() && skillMode === 'deck') {
+      skillBody = wrapSelectedDeckTemplateSkillBody(
+        skillBody,
+        skillName?.trim() || selectedDeckTemplate?.title || 'selected deck template',
+      );
     }
 
     let craftBody;
@@ -11929,10 +11984,9 @@ export async function startServer({
       }
     }
 
-    const template =
-      metadata?.kind === 'template' && typeof metadata.templateId === 'string'
-        ? (getTemplate(db, metadata.templateId) ?? undefined)
-        : undefined;
+    const templateId =
+      typeof metadata?.templateId === 'string' ? metadata.templateId.trim() : '';
+    const template = templateId ? (getTemplate(db, templateId) ?? undefined) : undefined;
     let audioVoiceOptions = [];
     let audioVoiceOptionsError;
     if (

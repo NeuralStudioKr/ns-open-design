@@ -179,6 +179,19 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(block).toContain('localizePluginTitle(locale, submittedActive.record)');
   });
 
+  it('persists canvas launch template picks through metadata instead of project skillId', () => {
+    const homeView = readSource('src/components/HomeView.tsx');
+    const start = homeView.indexOf('async function confirmCanvasSlideLaunch');
+    expect(start).toBeGreaterThan(0);
+    const block = homeView.slice(start, start + 4200);
+
+    expect(block).toContain('buildSlideOnlyDeckTemplateCreateBinding');
+    expect(block).toContain('templateBinding.pluginId');
+    expect(block).toContain('templateBinding.projectMetadata');
+    expect(block).toContain('templateBinding.pluginInputsPatch');
+    expect(block).not.toContain('pluginId: selectedCanvasSlideTemplate.id');
+  });
+
   it('does not treat bind-only template picks as complete example briefs', () => {
     const homeHero = readSource('src/components/HomeHero.tsx');
     const pickStart = homeHero.indexOf('function pickExamplePluginPreset');
@@ -211,6 +224,7 @@ describe('Teamver embed slide-only MVP policy', () => {
   it('loads selected deck template metadata when project skillId is intentionally empty', () => {
     const projectView = readSource('src/components/ProjectView.tsx');
     expect(projectView).toContain('selectedDeckTemplateMetadata(project.metadata)');
+    expect(projectView).toContain('enrichChatSendMetaWithProjectDeckTemplate');
     expect(projectView).toContain('fetchPluginLocalSkill(selectedTemplate.id)');
     expect(projectView).toContain('Selected visual template');
   });
@@ -266,7 +280,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(designTemplatesSection).toContain('fetchDesignTemplates(');
     expect(designTemplatesSection).toContain("branding.slideOnlyMvp ? { mode: 'deck', limit: 24 } : undefined");
     expect(chatComposer).toContain('embedAttachBlockReason');
-    expect(chatComposer).toContain("intent === 'create-slides'");
+    expect(chatComposer).toContain('readTeamverCreateSlidesLaunchFromUrl()');
     expect(chatComposer).toContain('TeamverCanvasSlideLaunchModal');
     expect(chatComposer).toContain('setCanvasSlideLaunch(null)');
     expect(chatComposer).toContain('setDriveImportPartial(null)');

@@ -12,6 +12,7 @@ import {
   canvasSlideQuickSettingsInstruction,
   canvasCreateSlidesSourceBrief,
   canvasCreateSlidesTurnMeta,
+  buildSlideOnlyDeckTemplateCreateBinding,
   canvasSlideTemplateOptions,
   driveCreateSlidesSourceBrief,
   isCanvasSlideOneConfirmLaunch,
@@ -144,6 +145,24 @@ describe("canvasSlideLaunch", () => {
 
   it("binds create-slides to the deck scenario plugin", () => {
     expect(CANVAS_CREATE_SLIDES_PLUGIN_ID).toBe("example-simple-deck");
+  });
+
+  it("keeps canvas launch project creation on the deck scenario while persisting template metadata", () => {
+    const binding = buildSlideOnlyDeckTemplateCreateBinding(
+      { id: "html-ppt-hermes", title: "Hermes" },
+      { slideOnlyMvp: true },
+    );
+    expect(binding.pluginId).toBe(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    expect(binding.projectMetadata).toMatchObject({
+      kind: "deck",
+      skipDiscoveryBrief: true,
+      selectedDeckTemplateId: "html-ppt-hermes",
+      selectedDeckTemplateTitle: "Hermes",
+    });
+    expect(binding.pluginInputsPatch).toMatchObject({
+      designSystem: "Hermes",
+      visualTemplate: "Hermes",
+    });
   });
 
   it("detects create-slides one-confirm launches", () => {

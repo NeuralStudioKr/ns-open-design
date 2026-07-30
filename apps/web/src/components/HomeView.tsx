@@ -135,6 +135,7 @@ import {
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
+  buildSlideOnlyDeckTemplateCreateBinding,
   readTeamverCreateSlidesLaunchFromUrl,
   resolveCanvasSlideTemplate,
   driveCreateSlidesSourceBrief,
@@ -1789,6 +1790,10 @@ export function HomeView({
           canvasSlideLaunch.handoff.threadTitle?.trim() ||
           null;
         const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
+        const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
+          selectedCanvasSlideTemplate,
+          { slideOnlyMvp },
+        );
         const submitResult = await Promise.resolve(
           onSubmit({
             prompt: canvasCreateSlidesRunPrompt(
@@ -1797,21 +1802,24 @@ export function HomeView({
               canvasSlideUserPrompt,
               canvasSlideQuickSettings,
             ),
-            pluginId: selectedCanvasSlideTemplate.id,
+            pluginId: templateBinding.pluginId,
             pluginType: 'official',
             skillId: null,
             appliedPluginSnapshotId: null,
             pluginTitle: selectedCanvasSlideTemplate.title,
             taskKind: null,
-            pluginInputs: canvasCreateSlidesPluginInputs(
-              topicHint,
-              selectedCanvasSlideTemplate.title,
-              sourceBrief,
-              canvasSlideUserPrompt,
-              canvasSlideQuickSettings,
-            ),
+            pluginInputs: {
+              ...canvasCreateSlidesPluginInputs(
+                topicHint,
+                selectedCanvasSlideTemplate.title,
+                sourceBrief,
+                canvasSlideUserPrompt,
+                canvasSlideQuickSettings,
+              ),
+              ...templateBinding.pluginInputsPatch,
+            },
             projectKind: 'deck',
-            projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
+            projectMetadata: templateBinding.projectMetadata,
             designSystemId: submittedDesignSystemId,
             contextPlugins: [],
             contextMcpServers: [],
@@ -1835,6 +1843,10 @@ export function HomeView({
 
       const asset = canvasSlideLaunch.asset;
       const sourceBrief = driveCreateSlidesSourceBrief(asset);
+      const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
+        selectedCanvasSlideTemplate,
+        { slideOnlyMvp },
+      );
       const submitResult = await Promise.resolve(
         onSubmit({
           prompt: canvasCreateSlidesRunPrompt(
@@ -1843,21 +1855,24 @@ export function HomeView({
             canvasSlideUserPrompt,
             canvasSlideQuickSettings,
           ),
-          pluginId: selectedCanvasSlideTemplate.id,
+          pluginId: templateBinding.pluginId,
           pluginType: 'official',
           skillId: null,
           appliedPluginSnapshotId: null,
           pluginTitle: selectedCanvasSlideTemplate.title,
           taskKind: null,
-          pluginInputs: canvasCreateSlidesPluginInputs(
-            asset.filename ?? asset.assetId,
-            selectedCanvasSlideTemplate.title,
-            sourceBrief,
-            canvasSlideUserPrompt,
-            canvasSlideQuickSettings,
-          ),
+          pluginInputs: {
+            ...canvasCreateSlidesPluginInputs(
+              asset.filename ?? asset.assetId,
+              selectedCanvasSlideTemplate.title,
+              sourceBrief,
+              canvasSlideUserPrompt,
+              canvasSlideQuickSettings,
+            ),
+            ...templateBinding.pluginInputsPatch,
+          },
           projectKind: 'deck',
-          projectMetadata: { kind: 'deck', skipDiscoveryBrief: true },
+          projectMetadata: templateBinding.projectMetadata,
           designSystemId: slideOnlyMvp
             ? resolveEmbedSlideDesignSystemId({
                 explicitId: null,

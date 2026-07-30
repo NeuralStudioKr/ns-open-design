@@ -140,6 +140,12 @@ describe("ProjectView message loading", () => {
     expect(block).not.toContain("project.metadata?.kind === 'template' && tplId");
   });
 
+  it("injects selected deck template skillIds into daemon runs from project metadata", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("enrichChatSendMetaWithProjectDeckTemplate(meta, project.metadata)");
+    expect(source).toContain("skillIds: [selected.id, ...existingSkillIds.filter");
+  });
+
   it("uses this turn's selected skillIds when composing API-mode prompts", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const signature = source.indexOf("skillIdOverride?: string | null");

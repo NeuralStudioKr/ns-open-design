@@ -1970,6 +1970,27 @@ function selectedDeckTemplateMetadata(
   return { id, title };
 }
 
+function enrichChatSendMetaWithProjectDeckTemplate(
+  meta: ProjectChatSendMeta | undefined,
+  metadata: ProjectMetadata | null | undefined,
+): ProjectChatSendMeta | undefined {
+  const selected = selectedDeckTemplateMetadata(metadata);
+  if (!selected) return meta;
+  const existingSkillIds = meta?.skillIds ?? [];
+  if (existingSkillIds.includes(selected.id)) return meta;
+  const priorPluginIds = meta?.context?.pluginIds ?? [];
+  const priorContextSkillIds = meta?.context?.skillIds ?? [];
+  return {
+    ...meta,
+    skillIds: [selected.id, ...existingSkillIds.filter((id) => id !== selected.id)],
+    context: {
+      ...meta?.context,
+      pluginIds: [selected.id, ...priorPluginIds.filter((id) => id !== selected.id)],
+      skillIds: [selected.id, ...priorContextSkillIds.filter((id) => id !== selected.id)],
+    },
+  };
+}
+
 // Carry the creation-time model pick into the conversation ONLY when it belongs
 // to the active BYOK provider. Guards against clobbering a user's Settings
 // default with a model from a different provider — e.g. a SenseAudio user whose
@@ -7017,6 +7038,7 @@ export function ProjectView({
         onEmbedSubmitBlocked?.();
         return false;
       }
+      meta = enrichChatSendMetaWithProjectDeckTemplate(meta, project.metadata);
       if (!activeConversationId) return false;
       if (messagesConversationIdRef.current !== activeConversationId) return false;
       const runSessionMode = meta?.sessionMode ?? activeSessionMode;
