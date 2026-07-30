@@ -5,7 +5,7 @@
 **상위 SSOT:** [01 통합 아키텍처](./01_통합_아키텍처.md) · [33 프로젝트 다운로드·Export](./33_프로젝트_다운로드_Export_아키텍처.md)  
 **구현 현황:** [50-1 구현현황 — undo/redo](./50-1-구현현황-undo_redo.md)  
 **대상 브랜치:** `feat/undo-redo` (base: `staging`)  
-**상태:** 설계 확정 · Phase 0~3 완료 (툴바 + daemon revision + agent persist undo + inspect/history)
+**상태:** 설계 확정 · Phase 0~4 (gzip diff) 완료
 
 ---
 
@@ -156,10 +156,12 @@ export type FileRevision = {
 ### 5.2 Snapshot 저장 경로
 
 ```
-<project-dir>/.od/revisions/<fileName>/<revisionId>.html
+<project-dir>/.od/revisions/<fileName>/<revisionId>.snap.gz
 ```
 
-- `writeProjectFile` 성공 직후 snapshot 복사 (atomic push)
+- **Phase 4:** gzip 압축 + parent 대비 prefix/suffix diff (더 작을 때만 diff 선택)
+- sequence 1, 6, 11… 은 full checkpoint (`REVISION_FULL_SNAPSHOT_INTERVAL=5`)
+- legacy `{revisionId}.html` 은 읽기 호환만 유지; 신규 write는 `.snap.gz`만 생성
 - Retention: 파일당 최근 **30** revision (기본), 초과 시 oldest prune
 
 ### 5.3 클라이언트 스택

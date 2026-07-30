@@ -74,7 +74,7 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| gzip diff storage | [ ] | |
+| gzip diff storage | [x] | `.snap.gz` + prefix/suffix diff, legacy `.html` 읽기 |
 | cross-file transaction | [ ] | |
 
 ---
