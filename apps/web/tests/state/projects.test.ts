@@ -104,7 +104,9 @@ describe('listPlugins', () => {
   it('requests deck catalog in embed slide-only mode', async () => {
     const designApiBase = await import('../../src/teamver/designApiBase');
     const branding = await import('../../src/teamver/branding/config');
+    const embedSession = await import('../../src/teamver/teamverEmbedSession');
     const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const sessionSpy = vi.spyOn(embedSession, 'isTeamverEmbedSessionAuthenticated').mockReturnValue(true);
     const brandingSpy = vi.spyOn(branding, 'resolveTeamverBranding').mockReturnValue({ slideOnlyMvp: true } as never);
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(
       JSON.stringify({ plugins: [] }),
@@ -114,15 +116,18 @@ describe('listPlugins', () => {
 
     await listPlugins();
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins?mode=deck&limit=24');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins?mode=deck&limit=24');
     embedSpy.mockRestore();
+    sessionSpy.mockRestore();
     brandingSpy.mockRestore();
   });
 
   it('uses the deck catalog instead of plugin detail in embed slide-only mode', async () => {
     const designApiBase = await import('../../src/teamver/designApiBase');
     const branding = await import('../../src/teamver/branding/config');
+    const embedSession = await import('../../src/teamver/teamverEmbedSession');
     const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const sessionSpy = vi.spyOn(embedSession, 'isTeamverEmbedSessionAuthenticated').mockReturnValue(true);
     const brandingSpy = vi.spyOn(branding, 'resolveTeamverBranding').mockReturnValue({ slideOnlyMvp: true } as never);
     const plugin = {
       id: 'example-simple-deck',
@@ -140,8 +145,9 @@ describe('listPlugins', () => {
 
     await expect(getInstalledPlugin('example-simple-deck', { includeHidden: true })).resolves.toEqual(plugin);
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins?mode=deck&limit=48');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins?mode=deck&limit=48');
     embedSpy.mockRestore();
+    sessionSpy.mockRestore();
     brandingSpy.mockRestore();
   });
 
@@ -196,7 +202,7 @@ describe('listPlugins', () => {
 
     await listPlugins({ mode: 'deck', query: 'terminal deck', limit: 12, offset: 24 });
 
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
       '/api/plugins?mode=deck&q=terminal+deck&limit=12&offset=24',
     );
   });
@@ -232,6 +238,8 @@ describe('getInstalledPlugin', () => {
   });
 
   it('fetches a plugin by id outside the paginated community list', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(false);
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
       if (typeof url === 'string' && url === '/api/plugins/example-simple-deck') {
         return new Response(
@@ -250,13 +258,16 @@ describe('getInstalledPlugin', () => {
     const plugin = await getInstalledPlugin('example-simple-deck');
 
     expect(plugin?.id).toBe('example-simple-deck');
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins/example-simple-deck');
+    expect(fetchMock.mock.calls.some((call) => call[0] === '/api/plugins/example-simple-deck')).toBe(true);
+    embedSpy.mockRestore();
   });
 
   it('returns null when slide-only embed filters the plugin out', async () => {
     const designApiBase = await import('../../src/teamver/designApiBase');
     const branding = await import('../../src/teamver/branding/config');
+    const embedSession = await import('../../src/teamver/teamverEmbedSession');
     const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const sessionSpy = vi.spyOn(embedSession, 'isTeamverEmbedSessionAuthenticated').mockReturnValue(true);
     const brandingSpy = vi.spyOn(branding, 'resolveTeamverBranding').mockReturnValue({ slideOnlyMvp: true } as never);
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(
       JSON.stringify({
@@ -271,6 +282,7 @@ describe('getInstalledPlugin', () => {
 
     expect(plugin).toBeNull();
     embedSpy.mockRestore();
+    sessionSpy.mockRestore();
     brandingSpy.mockRestore();
   });
 });

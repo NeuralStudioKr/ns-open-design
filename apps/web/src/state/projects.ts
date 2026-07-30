@@ -44,7 +44,7 @@ import {
   waitForTeamverRegistrySyncIfNeeded,
 } from '../teamver/projectRegistry';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
-import { refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
+import { isDesignAuthRefreshDeclined, refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
 import { resolveTeamverBranding } from '../teamver/branding/config';
 import { pluginsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
@@ -202,6 +202,21 @@ async function fetchProjectsListWhenAuthenticated(url: string, init?: RequestIni
     return null;
   }
   return fetchTeamverDaemon(url, init);
+}
+
+/** Plugin catalog GETs — skip when embed has no usable session; avoid raw fetch 401 spam. */
+async function fetchPluginsCatalog(url: string, init?: RequestInit): Promise<Response | null> {
+  if (
+    isTeamverEmbedMode()
+    && (!isTeamverEmbedSessionAuthenticated() || isDesignAuthRefreshDeclined())
+  ) {
+    return null;
+  }
+  return fetchTeamverDaemon(url, {
+    ...init,
+    // Metadata only — do not climb refresh/probe ladders on every Home chip resolve.
+    skipEmbedAuthRecovery: true,
+  });
 }
 
 async function registerCreatedProjectOrRollback(project: Pick<Project, 'id' | 'name'>): Promise<void> {
@@ -1324,8 +1339,8 @@ export async function getInstalledPlugin(
     }
   }
   try {
-    const resp = await fetch(`/api/plugins/${encodeURIComponent(id)}`);
-    if (!resp.ok) return null;
+    const resp = await fetchPluginsCatalog(`/api/plugins/${encodeURIComponent(id)}`);
+    if (!resp?.ok) return null;
     const plugin = (await resp.json()) as InstalledPluginRecord;
     if (slideOnly) {
       const visible = pluginsForSlideOnlyMvp([plugin], { slideOnlyMvp: true });
@@ -1342,8 +1357,8 @@ export async function listPluginsPage(
   options: ListPluginsOptions = {},
 ): Promise<ListPluginsPageResult> {
   try {
-    const resp = await fetch(resolvePluginsListUrl(options));
-    if (!resp.ok) return emptyPluginsPage();
+    const resp = await fetchPluginsCatalog(resolvePluginsListUrl(options));
+    if (!resp?.ok) return emptyPluginsPage();
     const json = (await resp.json()) as {
       plugins?: InstalledPluginRecord[];
       total?: number;
