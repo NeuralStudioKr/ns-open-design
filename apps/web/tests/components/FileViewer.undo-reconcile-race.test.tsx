@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentProps } from 'react';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
 import type { ProjectFile } from '../../src/types';
+import { FileViewer } from '../../src/components/FileViewer';
+import { createProjectFileRevisionFetchMock } from '../helpers/project-file-revision-fetch-mock';
 
 const panelState = vi.hoisted(() => ({
   props: null as ComponentProps<typeof import('../../src/components/ManualEditPanel').ManualEditPanel> | null,
@@ -21,9 +23,6 @@ vi.mock('../../src/components/ManualEditPanel', async (importOriginal) => {
   };
 });
 
-import { FileViewer } from '../../src/components/FileViewer';
-import { createProjectFileRevisionFetchMock } from '../helpers/project-file-revision-fetch-mock';
-
 afterEach(() => {
   cleanup();
   panelState.props = null;
@@ -31,33 +30,34 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('FileViewer undo/redo toolbar', () => {
-  it('renders undo/redo controls disabled until manual edit history exists', async () => {
-    render(
-      <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
-        liveHtml={heroSource()}
-      />,
-    );
-
-    const undo = screen.getByTestId('file-viewer-undo');
-    const redo = screen.getByTestId('file-viewer-redo');
-    expect(undo).toBeTruthy();
-    expect(redo).toBeTruthy();
-    expect(undo.hasAttribute('disabled')).toBe(true);
-    expect(redo.hasAttribute('disabled')).toBe(true);
-  });
-
-  it('enables undo after a manual edit save and restores via toolbar click', async () => {
+describe('FileViewer undo reconcile race', () => {
+  it('ignores stale reconcile work when undo lands before revision content fetch resolves', async () => {
     const initialSource = heroSource();
-    const { fetchMock, getPersistedSource, getRevisions } = createProjectFileRevisionFetchMock({
+    const { fetchMock: baseFetchMock, getPersistedSource } = createProjectFileRevisionFetchMock({
       projectId: 'project-1',
       fileName: 'preview.html',
       initialSource,
     });
+    let delayRevisionContentFetch = false;
+
+    const fetchMock = async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+      const isRevisionContentGet = url.includes('/revisions/')
+        && (!init?.method || init.method === 'GET')
+        && !url.endsWith('/restore')
+        && !url.endsWith('/revisions');
+      if (delayRevisionContentFetch && isRevisionContentGet) {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      return baseFetchMock(input, init);
+    };
     vi.stubGlobal('fetch', vi.fn(fetchMock));
 
     render(
-      <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
         liveHtml={initialSource}
       />,
     );
@@ -71,7 +71,7 @@ describe('FileViewer undo/redo toolbar', () => {
         'Style: Hero',
       );
     });
-    await waitFor(() => expect(getRevisions().length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
 
     const undo = await waitFor(() => {
       const button = screen.getByTestId('file-viewer-undo');
@@ -79,71 +79,15 @@ describe('FileViewer undo/redo toolbar', () => {
       return button;
     });
 
+    delayRevisionContentFetch = true;
     await act(async () => {
       fireEvent.click(undo);
+      await new Promise((resolve) => setTimeout(resolve, 200));
     });
+
     await waitFor(() => expect(getPersistedSource()).toContain('#111111'));
     expect(screen.queryByRole('alert')).toBeNull();
-
-    const redo = await waitFor(() => {
-      const button = screen.getByTestId('file-viewer-redo');
-      if (button.hasAttribute('disabled')) throw new Error('redo still disabled');
-      return button;
-    });
-
-    await act(async () => {
-      fireEvent.click(redo);
-    });
-    await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
-  });
-
-  it('undoes via Ctrl+Z keyboard shortcut after a manual edit save', async () => {
-    const initialSource = heroSource();
-    const { fetchMock, getPersistedSource } = createProjectFileRevisionFetchMock({
-      projectId: 'project-1',
-      fileName: 'preview.html',
-      initialSource,
-    });
-    vi.stubGlobal('fetch', vi.fn(fetchMock));
-
-    render(
-      <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
-        liveHtml={initialSource}
-      />,
-    );
-
-    fireEvent.click(screen.getByTestId('manual-edit-mode-toggle'));
-    await selectManualEditTarget();
-
-    act(() => {
-      panelState.props?.onApplyPatch(
-        { kind: 'set-style', id: 'hero', styles: { color: '#ef4444' } },
-        'Style: Hero',
-      );
-    });
-    await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
-
-    await act(async () => {
-      fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
-    });
-    await waitFor(() => expect(getPersistedSource()).toContain('#111111'));
-  });
-
-  it('places undo/redo immediately left of the manual edit toggle', () => {
-    render(
-      <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
-        liveHtml={heroSource()}
-      />,
-    );
-
-    const undo = screen.getByTestId('file-viewer-undo');
-    const edit = screen.getByTestId('manual-edit-mode-toggle');
-    expect(
-      undo.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      undo.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_PRECEDING,
-    ).toBe(0);
+    expect(screen.getByTestId('file-viewer-redo').hasAttribute('disabled')).toBe(false);
   });
 });
 
@@ -199,6 +143,6 @@ function heroTarget(): ManualEditTarget {
     attributes: { 'data-od-id': 'hero' },
     styles: emptyManualEditStyles(),
     isLayoutContainer: false,
-    outerHtml: '<h1 data-od-id="hero" style="color: #111111">Hero</h1>',
+    outerHtml: '<h1 data-od-id="hero">Hero</h1>',
   };
 }

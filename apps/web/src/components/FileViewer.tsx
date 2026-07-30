@@ -5308,8 +5308,10 @@ function HtmlViewer({
   ));
   const revisionStackRef = useRef(revisionStack);
   revisionStackRef.current = revisionStack;
+  const revisionReconcileGenerationRef = useRef(0);
   function commitRevisionStack(next: RevisionStackSnapshot) {
     revisionStackRef.current = next;
+    revisionReconcileGenerationRef.current += 1;
     setRevisionStack(next);
   }
   const revisionSyncSuppressRef = useRef(false);
@@ -6762,20 +6764,31 @@ function HtmlViewer({
     clearManualEditStyleTimer();
   }, [file.name]);
 
-  const reconcileRevisionWithDisk = useCallback(async (stack: RevisionStackSnapshot = revisionStackRef.current) => {
+  const reconcileRevisionWithDisk = useCallback(async () => {
     if (revisionSyncSuppressRef.current || manualEditSavingRef.current) return;
+    const reconcileGeneration = revisionReconcileGenerationRef.current;
+    const stack = revisionStackRef.current;
     const cursor = cursorRevisionFromStack(stack);
     if (!cursor) return;
+    const cursorRevisionId = cursor.id;
 
     const [disk, snapshot] = await Promise.all([
       fetchProjectFileText(projectId, file.name, {
         cache: 'no-store',
         cacheBustKey: Date.now(),
       }),
-      fetchProjectFileRevisionContent(projectId, file.name, cursor.id),
+      fetchProjectFileRevisionContent(projectId, file.name, cursorRevisionId),
     ]);
+    if (
+      revisionSyncSuppressRef.current
+      || manualEditSavingRef.current
+      || reconcileGeneration !== revisionReconcileGenerationRef.current
+      || revisionStackRef.current.cursorRevisionId !== cursorRevisionId
+    ) {
+      return;
+    }
     if (disk == null || snapshot == null) return;
-    if (revisionCursorMatchesDisk(stack, disk, snapshot.content)) return;
+    if (revisionCursorMatchesDisk(revisionStackRef.current, disk, snapshot.content)) return;
 
     setSource(disk);
     sourceRef.current = disk;
@@ -6832,7 +6845,7 @@ function HtmlViewer({
     } else {
       clearActiveRevisionSequence(projectId, file.name);
     }
-    await reconcileRevisionWithDisk(nextStack);
+    await reconcileRevisionWithDisk();
   }, [projectId, file.name, reconcileRevisionWithDisk]);
 
   useEffect(() => {
