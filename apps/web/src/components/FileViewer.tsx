@@ -6975,6 +6975,7 @@ function HtmlViewer({
           id: String(data.id),
           kind: 'set-text',
           value: String(data.value),
+          flattenNestedMarkup: data.flattenNestedMarkup === true,
         }, embedUiLabel('Edit text', '텍스트 편집'));
         return;
       }

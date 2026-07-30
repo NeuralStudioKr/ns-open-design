@@ -55,7 +55,7 @@ export function applyManualEditPatch(
   if (!el) return { ok: false, source, error: `Target not found: ${patch.id}` };
 
   if (patch.kind === 'set-text') {
-    if (hasElementChildren(el)) {
+    if (hasElementChildren(el) && !patch.flattenNestedMarkup) {
       // Page-level pins resolve to the slide `<section>`; text edits should
       // land on the leaf matched by the comment's currentText/htmlHint.
       const leaf = effectiveHint

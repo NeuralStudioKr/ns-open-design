@@ -397,6 +397,7 @@ describe('manual edit bridge target normalization', () => {
       type: 'od-edit-text-commit',
       id: 'title',
       value: 'Edited title',
+      flattenNestedMarkup: true,
     }, '*');
 
     dom.window.close();

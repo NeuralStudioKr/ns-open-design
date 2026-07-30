@@ -255,7 +255,8 @@ export function buildManualEditBridge(enabled: boolean): string {
         window.parent.postMessage({
           type: 'od-edit-text-commit',
           id: stableId(el),
-          value: value
+          value: value,
+          flattenNestedMarkup: true
         }, '*');
       } else if (!commit) {
         el.textContent = originalText;
