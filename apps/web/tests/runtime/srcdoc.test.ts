@@ -100,6 +100,8 @@ describe('buildSrcdoc', () => {
     expect(srcdoc).toContain('function renderSnapshotDom(');
     expect(srcdoc).toContain('capture.domToPng(target');
     expect(srcdoc).toContain('function snapshotTargetDimensions(');
+    expect(srcdoc).toContain("target.id === 'deck-stage'");
+    expect(srcdoc).toContain('font: false');
     expect(srcdoc).toContain('clearDeckSnapshotRestore');
     expect(srcdoc).toContain('activeDeckSnapshotRestore');
   });

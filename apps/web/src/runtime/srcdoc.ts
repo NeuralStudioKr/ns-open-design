@@ -638,6 +638,9 @@ function injectSnapshotBridge(doc: string): string {
     renderSnapshotViaImage(id, svg, w, h, dpr, bgColor, settled);
   }
   function snapshotTargetDimensions(target){
+    if (target && (target.id === 'deck-stage' || (target.classList && target.classList.contains('deck-stage')))) {
+      return { w: 1920, h: 1080 };
+    }
     var rect = target && target.getBoundingClientRect ? target.getBoundingClientRect() : null;
     return {
       w: Math.max(1, Math.round((rect && rect.width) || (target && target.clientWidth) || 1)),
@@ -648,7 +651,13 @@ function injectSnapshotBridge(doc: string): string {
     var target = document.getElementById('deck-stage') || document.querySelector('.deck-stage') || document.body;
     if (!target) return Promise.reject(new Error('snapshot target missing'));
     return ensureSnapshotDomCapture().then(function(capture){
-      return capture.domToPng(target, { scale: dpr, width: w, height: h, timeout: 4000 });
+      return capture.domToPng(target, {
+        scale: dpr,
+        width: w,
+        height: h,
+        timeout: 6000,
+        font: false
+      });
     }).then(function(dataUrl){
       if (settled && settled.done) return;
       settled.done = true;

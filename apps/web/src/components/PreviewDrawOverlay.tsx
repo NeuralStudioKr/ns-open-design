@@ -545,13 +545,17 @@ export function PreviewDrawOverlay({
   }
 
   function snapshotFrameRect(): CaptureFrameRect | null {
-    return (
-      captureFrameRect?.() ??
-      (captureSnapshot
-        ? wrapRef.current?.getBoundingClientRect()
-        : activePreviewIframe()?.getBoundingClientRect()) ??
-      null
-    );
+    const candidates = [
+      captureFrameRect?.(),
+      captureSnapshot ? wrapRef.current?.getBoundingClientRect() : null,
+      activePreviewIframe()?.getBoundingClientRect(),
+      wrapRef.current?.getBoundingClientRect(),
+      canvasRef.current?.getBoundingClientRect(),
+    ];
+    for (const rect of candidates) {
+      if (rect && rect.width > 0 && rect.height > 0) return rect;
+    }
+    return null;
   }
 
   async function requestSnapshot(): Promise<PreviewSnapshot | null> {
@@ -572,7 +576,7 @@ export function PreviewDrawOverlay({
     if (!iframe) return null;
     // Capture mode may still be swapping the srcDoc frame to full content when
     // the user submits, so retry with growing timeouts before giving up.
-    const timeouts = [600, 1200, 2000];
+    const timeouts = [10_000];
     for (const timeout of timeouts) {
       const snapshot = await requestPreviewSnapshot(iframe, timeout);
       if (snapshot) return snapshot;
@@ -621,6 +625,39 @@ export function PreviewDrawOverlay({
     ctx.restore();
   }
 
+  async function compositeMarksOnly(): Promise<Blob | null> {
+    const canvas = canvasRef.current;
+    const frameRect = snapshotFrameRect() ?? canvas?.getBoundingClientRect() ?? null;
+    if (!frameRect || frameRect.width <= 0 || frameRect.height <= 0) return null;
+    const w = Math.max(1, Math.floor(frameRect.width));
+    const h = Math.max(1, Math.floor(frameRect.height));
+    const out = document.createElement('canvas');
+    out.width = w;
+    out.height = h;
+    const ctx = out.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    drawCaptureTarget(ctx, 1, 1, captureTarget);
+    if (selectionBoxRef.current) drawNormalizedBox(ctx, selectionBoxRef.current, w, h);
+    ctx.strokeStyle = STROKE_COLOR;
+    ctx.lineWidth = STROKE_WIDTH;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const s of strokesRef.current) {
+      const first = s.points[0];
+      if (!first) continue;
+      ctx.beginPath();
+      ctx.moveTo(first.x * w, first.y * h);
+      for (let i = 1; i < s.points.length; i++) {
+        const p = s.points[i]!;
+        ctx.lineTo(p.x * w, p.y * h);
+      }
+      ctx.stroke();
+    }
+    return new Promise((resolve) => out.toBlob((b) => resolve(b), 'image/png'));
+  }
+
   async function compositeWithBackground(snap: PreviewSnapshot): Promise<Blob | null> {
     const frameRect = snapshotFrameRect();
     if (!frameRect) return null;
@@ -667,7 +704,12 @@ export function PreviewDrawOverlay({
 
   async function send(action: AnnotationAction) {
     const hasTarget = Boolean(captureTarget);
-    const shouldCapture = hasInk || hasBox || hasTarget || captureViewport;
+    const hasVisualMark =
+      hasInk ||
+      hasBox ||
+      Boolean(selectionBoxRef.current) ||
+      strokesRef.current.length > 0;
+    const shouldCapture = hasVisualMark || hasTarget || captureViewport;
     const canSubmit = shouldCapture || Boolean(note.trim()) || extraFiles.length > 0;
     if (sending || !canSubmit) return;
     // While a task is running the primary Send is disabled (use Queue instead).
@@ -682,6 +724,9 @@ export function PreviewDrawOverlay({
         let blob: Blob | null = null;
         const snap = await requestSnapshot();
         if (snap) blob = await compositeWithBackground(snap);
+        if (!blob && (hasVisualMark || hasTarget)) {
+          blob = await compositeMarksOnly();
+        }
         if (blob) {
           const ts = new Date().toISOString().replace(/[:.]/g, '-');
           file = new File([blob], `drawing-${ts}.png`, { type: 'image/png' });

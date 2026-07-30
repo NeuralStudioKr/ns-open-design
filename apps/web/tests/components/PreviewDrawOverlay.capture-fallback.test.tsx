@@ -6,7 +6,7 @@
 // that carries its own meaning without pixels (typed note / attached images) —
 // the retry warning is a dead end because retrying the same pipeline fails the
 // same way. Ink/box-only annotations still block: without the bitmap there is
-// nothing to send.
+// nothing to send. When iframe capture fails, marks-only export still sends the ink.
 
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -43,7 +43,36 @@ beforeEach(() => {
       bottom: 200,
       toJSON: () => ({}),
     } as DOMRect);
-  restoreRect = () => rectSpy.mockRestore();
+  const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => ({
+    beginPath: vi.fn(),
+    clearRect: vi.fn(),
+    drawImage: vi.fn(),
+    fillRect: vi.fn(),
+    fillText: vi.fn(),
+    lineCap: 'round',
+    lineJoin: 'round',
+    lineTo: vi.fn(),
+    lineWidth: 1,
+    measureText: vi.fn(() => ({ width: 0 })),
+    moveTo: vi.fn(),
+    restore: vi.fn(),
+    save: vi.fn(),
+    scale: vi.fn(),
+    setLineDash: vi.fn(),
+    stroke: vi.fn(),
+    strokeRect: vi.fn(),
+    fillStyle: '',
+    font: '',
+    strokeStyle: '',
+  }) as unknown as CanvasRenderingContext2D) as unknown as HTMLCanvasElement['getContext']);
+  const toBlobSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback: BlobCallback) => {
+    callback(new Blob(['png'], { type: 'image/png' }));
+  });
+  restoreRect = () => {
+    rectSpy.mockRestore();
+    getContextSpy.mockRestore();
+    toBlobSpy.mockRestore();
+  };
 });
 
 afterEach(() => {
@@ -89,14 +118,9 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
         detail: expect.objectContaining({
           action: 'send',
           note: 'This section is missing its bar chart.',
-          file: null,
+          file: expect.any(File),
         }),
       });
-      await waitFor(() =>
-        expect(
-          getByText('Could not capture preview — only your note was sent. Try Comment mode for element-specific edits.'),
-        ).toBeTruthy(),
-      );
     } finally {
       window.removeEventListener('opendesign:annotation', annotation);
     }
@@ -137,13 +161,27 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     }
   });
 
-  it('still blocks a box-only annotation with no note when the snapshot fails', async () => {
-    const annotation = vi.fn();
+  it('sends a box-only mark as a marks-only image when the snapshot fails', async () => {
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
     window.addEventListener('opendesign:annotation', annotation);
 
     try {
-      const { container, getByRole, getByText } = render(
-        <PreviewDrawOverlay active>
+      const frameRect = {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        width: 320,
+        height: 200,
+        right: 320,
+        bottom: 200,
+        toJSON: () => ({}),
+      } as DOMRect;
+      const { container, getByRole } = render(
+        <PreviewDrawOverlay active captureFrameRect={() => frameRect}>
           <iframe title="srcdoc" data-od-render-mode="srcdoc" />
         </PreviewDrawOverlay>,
       );
@@ -154,12 +192,13 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
 
       fireEvent.click(getByRole('button', { name: 'Send' }));
 
-      await waitFor(() =>
-        expect(
-          getByText('Could not capture the preview. Add a note describing the change, or use Comment mode.'),
-        ).toBeTruthy(),
-      );
-      expect(annotation).not.toHaveBeenCalled();
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1));
+      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
+        detail: expect.objectContaining({
+          action: 'send',
+          file: expect.any(File),
+        }),
+      });
     } finally {
       window.removeEventListener('opendesign:annotation', annotation);
     }
