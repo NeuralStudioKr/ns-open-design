@@ -7059,6 +7059,24 @@ function HtmlViewer({
         setManualEditInlineTextEditing(Boolean(data.active));
         return;
       }
+      if (data.type === 'od-edit-rect') {
+        const id = String(data.id ?? '');
+        const rect = data.rect;
+        if (!id || !rect || typeof rect.width !== 'number' || typeof rect.height !== 'number') return;
+        setSelectedManualEditTarget((current) => {
+          if (!current || current.id !== id) return current;
+          return {
+            ...current,
+            rect: {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+            },
+          };
+        });
+        return;
+      }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -7191,6 +7209,12 @@ function HtmlViewer({
     });
   }
 
+  function requestManualEditRemeasure(id: string) {
+    const win = iframeRef.current?.contentWindow;
+    if (!win || !id) return;
+    win.postMessage({ type: 'od-edit-remeasure', id }, '*');
+  }
+
   async function handleManualEditResizeCommit(styles: Partial<ManualEditStyles>) {
     const target = selectedManualEditTarget;
     if (!target) return;
@@ -7209,6 +7233,8 @@ function HtmlViewer({
         styles: { ...current.styles, ...styles },
       };
     });
+    // Sync host overlay to the iframe's real border-box after layout settles.
+    requestManualEditRemeasure(target.id);
   }
 
   function handleManualEditResizeCancel(stylesBefore: Partial<ManualEditStyles>) {

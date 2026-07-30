@@ -111,6 +111,31 @@ describe('aspectLockForTarget', () => {
     expect(aspectLockForTarget('container', false)).toBe(false);
     expect(aspectLockForTarget('container', true)).toBe(true);
   });
+
+  it('keeps image SE resize on aspect unless Shift unlocks', () => {
+    const locked = computeResize(baseInput({
+      handle: 'se',
+      startWidthPx: 200,
+      startHeightPx: 100,
+      aspect: 2,
+      aspectLock: aspectLockForTarget('image', false),
+      dx: 40,
+      dy: 80,
+    }));
+    expect(locked.widthPx / locked.heightPx).toBeCloseTo(2, 5);
+
+    const unlocked = computeResize(baseInput({
+      handle: 'se',
+      startWidthPx: 200,
+      startHeightPx: 100,
+      aspect: 2,
+      aspectLock: aspectLockForTarget('image', true),
+      dx: 40,
+      dy: 80,
+    }));
+    expect(unlocked.widthPx).toBe(240);
+    expect(unlocked.heightPx).toBe(180);
+  });
 });
 
 describe('preview coords', () => {

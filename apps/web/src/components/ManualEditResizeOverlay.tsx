@@ -143,7 +143,11 @@ export function ManualEditResizeOverlay({
     };
     setDragging(true);
     onResizeSessionChange?.(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+      // jsdom / older engines may lack pointer capture
+    }
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -168,9 +172,9 @@ export function ManualEditResizeOverlay({
     const drag = dragRef.current;
     if (!drag || event.pointerId !== drag.pointerId) return;
     try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
     } catch {
-      // already released
+      // already released / unsupported
     }
     const last = drag.lastStyles;
     const before = drag.stylesBefore;

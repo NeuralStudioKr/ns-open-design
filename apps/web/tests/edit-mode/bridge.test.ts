@@ -584,4 +584,33 @@ describe('manual edit bridge target normalization', () => {
 
     dom.window.close();
   });
+
+  it('answers od-edit-remeasure with od-edit-rect for the target id', () => {
+    const posts: Array<{ type?: string; id?: string; rect?: { width: number; height: number } }> = [];
+    const dom = new JSDOM(
+      `<main><div data-od-id="card">Box</div></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const card = dom.window.document.querySelector('[data-od-id="card"]')!;
+    card.getBoundingClientRect = () => ({
+      x: 12, y: 24, width: 320, height: 180,
+      top: 24, right: 332, bottom: 204, left: 12,
+      toJSON: () => ({}),
+    } as DOMRect);
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as { type?: string; id?: string; rect?: { width: number; height: number } });
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-remeasure', id: 'card' },
+    }));
+
+    expect(posts).toContainEqual({
+      type: 'od-edit-rect',
+      id: 'card',
+      rect: { x: 12, y: 24, width: 320, height: 180 },
+    });
+
+    dom.window.close();
+  });
 });

@@ -381,6 +381,23 @@ export function buildManualEditBridge(enabled: boolean): string {
       applyPreviewStyles(ev.data.id, ev.data.styles || {}, ev.data.version);
       return;
     }
+    if (ev.data.type === 'od-edit-remeasure') {
+      var measureId = ev.data.id || null;
+      var measureEl = findById(measureId);
+      if (!measureEl) return;
+      var measureRect = measureEl.getBoundingClientRect();
+      window.parent.postMessage({
+        type: 'od-edit-rect',
+        id: measureId,
+        rect: {
+          x: Math.round(measureRect.x),
+          y: Math.round(measureRect.y),
+          width: Math.round(measureRect.width),
+          height: Math.round(measureRect.height),
+        },
+      }, '*');
+      return;
+    }
   });
   document.addEventListener('click', function(ev){
     if (!enabled) return;
