@@ -515,7 +515,7 @@ Exit criteria:
 
 ## Non-Goals for v1
 
-- Drag-and-drop layout editing.
+- Drag-and-drop layout editing (reposition / re-parent). Box **size** drag-resize via selection handles is in scope — see `docs-teamver/51-0_수동편집_드래그_리사이즈_기획.md`.
 - Freeform vector editing.
 - Multi-user collaboration.
 - Auto-layout system.
