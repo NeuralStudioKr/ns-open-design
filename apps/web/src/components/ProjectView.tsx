@@ -2503,6 +2503,16 @@ export function ProjectView({
   const autoContinueTimerRef = useRef<number | null>(null);
   /** Conversation id that owns the pending auto-continue timer (for cap rollback). */
   const pendingAutoContinueConversationIdRef = useRef<string | null>(null);
+  /**
+   * Live streaming buffer mutator for the in-flight assistant row. `surfaceChatVisibleError`
+   * updates React `messages` + saves, but the stream scheduler persists from a separate
+   * `latestAssistantMsg` closure — keep that buffer in sync so a later PUT cannot wipe
+   * a just-persisted status:error card.
+   */
+  const liveAssistantMutatorRef = useRef<{
+    assistantId: string;
+    apply: (updater: (prev: ChatMessage) => ChatMessage) => void;
+  } | null>(null);
 
   const clearPendingAutoContinueTimer = useCallback((options?: { rollback?: boolean }) => {
     if (autoContinueTimerRef.current === null) {
@@ -3760,6 +3770,10 @@ export function ProjectView({
           }
         }
         if (!targetId) return curr;
+        const live = liveAssistantMutatorRef.current;
+        if (live?.assistantId === targetId) {
+          live.apply((prev) => attachPersistedChatError(prev, detail, code));
+        }
         return curr.map((m) => {
           if (m.id !== targetId) return m;
           const updated = attachPersistedChatError(m, detail, code);
@@ -4253,6 +4267,8 @@ export function ProjectView({
         // file metadata silently and the user would never see that the
         // model shipped a placeholder.
         if (file.stubGuardWarning) {
+          // Warn-mode stub guard: file still persisted. Keep as session banner
+          // (not runStatus:failed) so a successful deliverable is not marked failed.
           setError(
             formatProjectArtifactStubWarning(file.name, file.stubGuardWarning.message),
           );
@@ -8068,6 +8084,12 @@ export function ProjectView({
             return latestAssistantMsg;
           }),
         );
+      };
+      liveAssistantMutatorRef.current = {
+        assistantId,
+        apply: (updater) => {
+          latestAssistantMsg = updater(latestAssistantMsg);
+        },
       };
       const assistantPersist = createMessagePersistScheduler(
         (options) => {
