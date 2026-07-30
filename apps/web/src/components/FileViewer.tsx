@@ -215,6 +215,10 @@ import {
   waitForManualEditSaveIdle,
 } from '../edit-mode/manual-edit-style-persist';
 import { manualEditStyleReplayPatches } from '../edit-mode/manual-edit-style-replay';
+import {
+  applyManualEditPreviewStylesToDocument,
+  iframeContentDocumentIfAccessible,
+} from '../edit-mode/manual-edit-host-preview';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 
@@ -6493,9 +6497,20 @@ function HtmlViewer({
   }, [manualEditMode, selectedManualEditTarget?.id, srcDoc, useUrlLoadPreview]);
 
   const previewStyleToIframe = useCallback((id: string, styles: Partial<ManualEditStyles>, version: number) => {
-    const win = iframeRef.current?.contentWindow;
+    const frame = iframeRef.current;
+    const win = frame?.contentWindow;
     if (!win) return false;
     win.postMessage({ type: 'od-edit-preview-style', id, styles, version }, '*');
+    // Bridge postMessage is the canonical path, but on some artifact HTMLs
+    // the bridge is missing / disabled / delayed. srcDoc previews are
+    // same-origin, so the host can also apply the style directly with
+    // !important — that way slider tweaks show up even when postMessage
+    // does not (older exports, non-bridge fixtures).
+    applyManualEditPreviewStylesToDocument(
+      iframeContentDocumentIfAccessible(frame),
+      id,
+      styles,
+    );
     return true;
   }, []);
 
@@ -7262,9 +7277,14 @@ function HtmlViewer({
       sourceRef.current = result.source;
       pinManualEditSavedSource(result.source);
       setInlinedSource(null);
-      if (patch.kind !== 'set-style') {
-        setManualEditFrozenSource(result.source);
-      }
+      // Every persisted patch (including set-style) must update the freeze so
+      // the next iframe render — from a re-entry, remount, or the same edit
+      // pass — reflects the saved HTML. Previously set-style skipped this to
+      // avoid a reload, but that left the frozen srcDoc stuck on the pre-edit
+      // snapshot, so users had to toggle edit mode off to see their tweaks.
+      // Capture scroll first; the reload restore path handles landing back.
+      capturePreviewScrollPosition();
+      setManualEditFrozenSource(result.source);
       setManualEditHistory((current) => [entry, ...current]);
       setManualEditUndone([]);
       setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
