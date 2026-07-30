@@ -17,13 +17,14 @@ describe('file-revision-agent', () => {
   it('derives scoped comment labels from attachments', () => {
     const attachments: ChatCommentAttachment[] = [{
       id: 'c1',
+      order: 0,
       comment: 'Make this headline bigger',
       elementId: 'hero',
       selector: 'h1',
       label: 'Hero headline',
-      text: 'Hero',
+      currentText: 'Hero',
       filePath: 'deck.html',
-      position: { x: 0, y: 0, width: 10, height: 10 },
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
       htmlHint: '<h1>Hero</h1>',
     }];
     expect(deriveAgentRevisionLabel(attachments, 'deck.html')).toContain('Hero headline');

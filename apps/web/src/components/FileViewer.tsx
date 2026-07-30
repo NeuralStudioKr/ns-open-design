@@ -95,7 +95,6 @@ import {
   type WebDeployProjectFileResponse,
   type WebDeployProviderId,
   type WebUpdateDeployConfigRequest,
-  writeProjectTextFileDetailed,
 } from '../providers/registry';
 import type { ProjectFilePreview } from '../providers/registry';
 import {
@@ -4905,7 +4904,8 @@ function HtmlViewer({
       | 'edit'
       | 'zoom_out'
       | 'zoom_level_dropdown'
-      | 'zoom_in',
+      | 'zoom_in'
+      | 'revision_history',
   ) => {
     trackArtifactToolbarClick(analytics.track, {
       page_name: 'artifact',
@@ -6779,7 +6779,7 @@ function HtmlViewer({
 
   const refreshRevisionStack = useCallback(async () => {
     const list = await listProjectFileRevisions(projectId, file.name);
-    if (!list) return;
+    if (!list || !Array.isArray(list.revisions)) return;
     const nextStack = createRevisionStackSnapshot(
       list.revisions,
       list.headRevisionId,
@@ -7549,41 +7549,47 @@ function HtmlViewer({
   async function applyRestoredRevision(target: FileRevision): Promise<boolean> {
     revisionSyncSuppressRef.current = true;
     try {
-    const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
-    if (!restored.ok) {
-      if (restored.status === 401) {
-        notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+      const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
+      if (!restored.ok) {
+        if (restored.status === 401) {
+          notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+        }
+        setManualEditError(
+          isTeamverEmbedMode()
+            ? formatProjectArtifactSaveFailedError(file.name, {
+                status: restored.status,
+                code: restored.code,
+                message: restored.message,
+              })
+            : embedUiLabel('Could not restore this revision.', '이 버전으로 복원하지 못했습니다.'),
+        );
+        return false;
       }
-      setManualEditError(
-        isTeamverEmbedMode()
-          ? formatProjectArtifactSaveFailedError(file.name, {
-              status: restored.status,
-              code: restored.code,
-              message: restored.message,
-            })
-          : embedUiLabel('Could not restore this revision.', '이 버전으로 복원하지 못했습니다.'),
-      );
-      return false;
-    }
-    const restoredSource = await fetchProjectFileText(projectId, file.name, {
-      cache: 'no-store',
-      cacheBustKey: Date.now(),
-    });
-    if (restoredSource == null) {
-      setManualEditError(embedUiLabel('Could not load the restored file.', '복원한 파일을 불러오지 못했습니다.'));
-      return false;
-    }
-    setSource(restoredSource);
-    sourceRef.current = restoredSource;
-    setInlinedSource(null);
-    setManualEditFrozenSource(restoredSource);
-    setRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
-    setActiveRevisionSequence(projectId, file.name, target.sequence);
-    setManualEditDraft((current) => ({ ...current, fullSource: restoredSource }));
-    setReloadKey((k) => k + 1);
-    setRevisionStackInvalidated(false);
-    await onFileSaved?.();
-    return true;
+      const restoredSource = await fetchProjectFileText(projectId, file.name, {
+        cache: 'no-store',
+        cacheBustKey: Date.now(),
+      });
+      if (restoredSource == null) {
+        setManualEditError(embedUiLabel('Could not load the restored file.', '복원한 파일을 불러오지 못했습니다.'));
+        return false;
+      }
+      setSource(restoredSource);
+      sourceRef.current = restoredSource;
+      pinManualEditSavedSource(restoredSource);
+      setInlinedSource(null);
+      setManualEditFrozenSource(restoredSource);
+      setRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+      setActiveRevisionSequence(projectId, file.name, target.sequence);
+      setManualEditDraft((current) => ({ ...current, fullSource: restoredSource }));
+      if (manualEditMode && !useUrlLoadPreview) {
+        capturePreviewScrollPosition();
+        queueMicrotask(() => activateManualEditPreviewHtml(restoredSource));
+      } else {
+        setReloadKey((k) => k + 1);
+      }
+      setRevisionStackInvalidated(false);
+      await onFileSaved?.();
+      return true;
     } finally {
       revisionSyncSuppressRef.current = false;
     }

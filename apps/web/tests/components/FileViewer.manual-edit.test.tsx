@@ -20,6 +20,55 @@ import {
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
 import type { ProjectFile } from '../../src/types';
 import * as designApiBase from '../../src/teamver/designApiBase';
+import { createProjectFileRevisionFetchMock } from '../helpers/project-file-revision-fetch-mock';
+
+const MANUAL_EDIT_PROJECT_ID = 'project-1';
+const MANUAL_EDIT_FILE_NAME = 'preview.html';
+
+function manualEditRevisionPushUrl(fileName = MANUAL_EDIT_FILE_NAME) {
+  return `/api/projects/${MANUAL_EDIT_PROJECT_ID}/files/${fileName.split('/').map(encodeURIComponent).join('/')}/revisions`;
+}
+
+function isManualEditRevisionPush(call: unknown[], fileName: string = MANUAL_EDIT_FILE_NAME) {
+  const input = call[0];
+  const url = typeof input === 'string'
+    ? input
+    : input instanceof Request
+      ? input.url
+      : String(input);
+  const init = call[1] as RequestInit | undefined;
+  return url.includes(manualEditRevisionPushUrl(fileName))
+    && init?.method === 'POST'
+    && !url.endsWith('/restore');
+}
+
+function setupManualEditRevisionFetch(
+  initialSource: string,
+  options?: {
+    onRevisionPush?: (attempt: number) => Response | null | undefined;
+  },
+) {
+  const revisionMock = createProjectFileRevisionFetchMock({
+    projectId: MANUAL_EDIT_PROJECT_ID,
+    fileName: MANUAL_EDIT_FILE_NAME,
+    initialSource,
+  });
+  let pushAttempts = 0;
+  const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+    if (url.includes(manualEditRevisionPushUrl()) && init?.method === 'POST' && !url.endsWith('/restore')) {
+      pushAttempts += 1;
+      const override = options?.onRevisionPush?.(pushAttempts);
+      if (override) return override;
+    }
+    return revisionMock.fetchMock(input, init);
+  });
+  return {
+    fetchMock,
+    pushAttempts: () => pushAttempts,
+    getPersistedSource: revisionMock.getPersistedSource,
+  };
+}
 
 afterEach(() => {
   cleanup();
@@ -194,16 +243,8 @@ describe('FileViewer manual edit regressions', () => {
   });
 
   it('does not let a pending manual edit style save survive a file switch', async () => {
-    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
-        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      return new Response('<!doctype html><html><body></body></html>', { status: 200 });
-    });
+    const source = '<!doctype html><html><body><main data-od-id="hero">Hero</main></body></html>';
+    const { fetchMock } = setupManualEditRevisionFetch(source);
     vi.stubGlobal('fetch', fetchMock);
     const first = htmlPreviewFile();
     const second = { ...htmlPreviewFile(), name: 'second.html', path: 'second.html' };
@@ -224,10 +265,7 @@ describe('FileViewer manual edit regressions', () => {
       />,
     );
 
-    expect(fetchMock).not.toHaveBeenCalledWith(
-      '/api/projects/project-1/files',
-      expect.objectContaining({ method: 'POST' }),
-    );
+    expect(fetchMock.mock.calls.some((call) => isManualEditRevisionPush(call))).toBe(false);
   });
 
   it('clears loaded source immediately on file switch without liveHtml before manual edit can save', async () => {
@@ -235,18 +273,14 @@ describe('FileViewer manual edit regressions', () => {
     const secondFetch = new Promise<Response>((resolve) => {
       secondResolve = resolve;
     });
-    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const source = '<!doctype html><html><body><main data-od-id="hero">First</main></body></html>';
+    const { fetchMock } = setupManualEditRevisionFetch(source);
+    const wrappedFetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
-        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
       if (url.includes('/api/projects/project-1/raw/second.html')) return secondFetch;
-      return new Response('<!doctype html><html><body><main data-od-id="hero">First</main></body></html>', { status: 200 });
+      return fetchMock(input, init);
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', wrappedFetch);
     try {
       const first = htmlPreviewFile();
       const second = { ...htmlPreviewFile(), name: 'second.html', path: 'second.html' };
@@ -254,7 +288,7 @@ describe('FileViewer manual edit regressions', () => {
 
       // The raw fetch is cache-busted on every mtime / reload / files-refresh
       // bump so srcDoc-mode previews see fresh HTML after agent edits.
-      await waitFor(() => expect(fetchMock.mock.calls.some((call) => {
+      await waitFor(() => expect(wrappedFetch.mock.calls.some((call) => {
         const url = typeof call[0] === 'string' ? call[0] : String(call[0]);
         return /^\/api\/projects\/project-1\/raw\/preview\.html(\?|$)/.test(url);
       })).toBe(true));
@@ -269,10 +303,7 @@ describe('FileViewer manual edit regressions', () => {
         await new Promise((resolve) => setTimeout(resolve, 1100));
       });
 
-      expect(fetchMock).not.toHaveBeenCalledWith(
-        '/api/projects/project-1/files',
-        expect.objectContaining({ method: 'POST' }),
-      );
+      expect(wrappedFetch.mock.calls.some((call) => isManualEditRevisionPush(call))).toBe(false);
       secondResolve(new Response('<!doctype html><html><body><main data-od-id="second">Second</main></body></html>', { status: 200 }));
     } finally {
       vi.useRealTimers();
@@ -281,25 +312,15 @@ describe('FileViewer manual edit regressions', () => {
 
   it('clears a prior manual edit save error after a later successful save', async () => {
     const source = '<!doctype html><html><body><main data-od-id="hero">Hero</main></body></html>';
-    let saveAttempts = 0;
-    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
-        saveAttempts += 1;
-        if (saveAttempts === 1) {
+    const { fetchMock } = setupManualEditRevisionFetch(source, {
+      onRevisionPush: (attempt) => {
+        if (attempt === 1) {
           return new Response(JSON.stringify({
             error: { code: 'FORBIDDEN', message: 'Request failed (403).' },
           }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
-        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/api/projects/project-1/raw/preview.html')) {
-        return new Response(source, { status: 200 });
-      }
-      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+        return null;
+      },
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -350,24 +371,12 @@ describe('FileViewer manual edit regressions', () => {
       expect(document.querySelector('.manual-edit-right')).toBeNull();
     });
     expect(document.querySelector('.manual-edit-workspace')).not.toBeNull();
-    expect(fetchMock).not.toHaveBeenCalledWith(
-      '/api/projects/project-1/files',
-      expect.objectContaining({ method: 'POST' }),
-    );
+    expect(fetchMock.mock.calls.some((call) => isManualEditRevisionPush(call))).toBe(false);
   });
 
   it('closes the inspector after save succeeds, staying in edit mode', async () => {
     const source = '<!doctype html><html><body><main data-od-id="hero">Hero</main></body></html>';
-    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
-        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      return new Response(source, { status: 200, headers: { 'Content-Type': 'text/html' } });
-    });
+    const { fetchMock } = setupManualEditRevisionFetch(source);
     vi.stubGlobal('fetch', fetchMock);
 
     render(
@@ -384,10 +393,7 @@ describe('FileViewer manual edit regressions', () => {
     fireEvent.click(screen.getByText('Save'));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/projects/project-1/files',
-        expect.objectContaining({ method: 'POST' }),
-      );
+      expect(fetchMock.mock.calls.some((call) => isManualEditRevisionPush(call))).toBe(true);
       expect(document.querySelector('.manual-edit-right')).toBeNull();
     });
     expect(document.querySelector('.manual-edit-workspace')).not.toBeNull();
@@ -395,16 +401,7 @@ describe('FileViewer manual edit regressions', () => {
 
   it('flushes pending styles when selecting a different target instead of cancelling them', async () => {
     const source = '<!doctype html><html><body><main data-od-id="hero">Hero</main><button data-od-id="cta">Go</button></body></html>';
-    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
-        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      return new Response(source, { status: 200, headers: { 'Content-Type': 'text/html' } });
-    });
+    const { fetchMock } = setupManualEditRevisionFetch(source);
     vi.stubGlobal('fetch', fetchMock);
 
     render(
@@ -421,37 +418,24 @@ describe('FileViewer manual edit regressions', () => {
     await selectManualEditTarget(ctaTarget());
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/projects/project-1/files',
-        expect.objectContaining({ method: 'POST' }),
-      );
+      expect(fetchMock.mock.calls.some((call) => isManualEditRevisionPush(call))).toBe(true);
     });
-    const postCall = fetchMock.mock.calls.find((call) => {
-      const url = typeof call[0] === 'string' ? call[0] : String(call[0]);
-      return url.includes('/api/projects/project-1/files') && call[1]?.method === 'POST';
-    });
+    const postCall = fetchMock.mock.calls.find((call) => isManualEditRevisionPush(call));
     const body = JSON.parse(String(postCall?.[1]?.body ?? '{}')) as { content?: string };
     expect(body.content).toMatch(/font-size:\s*18px/i);
   });
 
   it('keeps a failed style draft so a later Save can retry the same tweak', async () => {
     const source = '<!doctype html><html><body><main data-od-id="hero">Hero</main></body></html>';
-    let saveAttempts = 0;
-    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
-        saveAttempts += 1;
-        if (saveAttempts === 1) {
+    const { fetchMock, pushAttempts } = setupManualEditRevisionFetch(source, {
+      onRevisionPush: (attempt) => {
+        if (attempt === 1) {
           return new Response(JSON.stringify({
             error: { code: 'FORBIDDEN', message: 'Request failed (403).' },
           }), { status: 403, headers: { 'Content-Type': 'application/json' } });
         }
-        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      return new Response(source, { status: 200, headers: { 'Content-Type': 'text/html' } });
+        return null;
+      },
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -474,13 +458,10 @@ describe('FileViewer manual edit regressions', () => {
     // so retrying Save alone persists the original tweak.
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() => {
-      expect(saveAttempts).toBe(2);
+      expect(pushAttempts()).toBe(2);
       expect(screen.queryByText(/Could not save the edited file/)).toBeNull();
     });
-    const postCalls = fetchMock.mock.calls.filter((call) => {
-      const url = typeof call[0] === 'string' ? call[0] : String(call[0]);
-      return url.includes('/api/projects/project-1/files') && call[1]?.method === 'POST';
-    });
+    const postCalls = fetchMock.mock.calls.filter((call) => isManualEditRevisionPush(call));
     const retryBody = JSON.parse(String(postCalls[1]?.[1]?.body ?? '{}')) as { content?: string };
     expect(retryBody.content).toMatch(/font-size:\s*18px/i);
   });

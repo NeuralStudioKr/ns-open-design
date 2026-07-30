@@ -15,7 +15,10 @@ afterEach(() => {
 function htmlPreviewFile(): ProjectFile {
   return {
     name: 'deck.html',
+    path: 'deck.html',
+    type: 'file',
     kind: 'html',
+    mime: 'text/html',
     mtime: Date.now(),
     size: 100,
   };

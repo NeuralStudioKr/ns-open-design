@@ -127,6 +127,16 @@ export function createProjectFileRevisionFetchMock(options: {
     if (url.includes(`/api/projects/${projectId}/raw/${fileName.split('/').map(encodeURIComponent).join('/')}`)) {
       return new Response(persistedSource, { status: 200 });
     }
+    if (
+      url.includes(`/api/projects/${projectId}/files/`)
+      && url.endsWith('/revisions')
+      && (!init?.method || init.method === 'GET')
+    ) {
+      return new Response(JSON.stringify({ revisions: [], headRevisionId: null }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
 
