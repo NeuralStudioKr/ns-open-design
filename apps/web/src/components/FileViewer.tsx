@@ -4670,6 +4670,10 @@ function HtmlViewer({
   // they either land on the user's machine or stay inside the Teamver
   // workspace tenant.
   const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp } = useTeamverBranding();
+  // Kept in sync with live `source` / last-stable preview so fireShareExport
+  // (declared above those hooks) can gate Teamver rendered downloads without
+  // reading later const bindings.
+  const exportHtmlSnapshotGateRef = useRef<string | null>(null);
   // Shared helper for the share menu: emit studio_click share_option on
   // entry and artifact_export_result on resolution. Sync exports report
   // success immediately after the call returns; async exports get .then
@@ -4730,6 +4734,24 @@ function HtmlViewer({
       );
       setExportToast({ message, tone: 'error' });
     };
+    // Teamver rendered exports need a stable HTML snapshot (or the daemon
+    // falls back to scratch/S3 and often races). If the preview has not
+    // painted yet, fail fast with a clear nudge — before the loading toast.
+    const renderedFormats = new Set(['pdf', 'pptx', 'zip', 'html', 'image']);
+    if (
+      isTeamverEmbedMode()
+      && renderedFormats.has(format)
+      && !(exportHtmlSnapshotGateRef.current ?? '').trim()
+    ) {
+      finish('failed', 'preview_not_ready');
+      setDownloadMenuOpen(false);
+      setExportToast({
+        message: '미리보기가 아직 준비되지 않았습니다. 슬라이드가 보인 뒤 다시 다운로드해 주세요.',
+        tone: 'error',
+        ttlMs: 6000,
+      });
+      return;
+    }
     if (toastFormats.has(format)) {
       flushSync(() => {
         setDownloadMenuOpen(false);
@@ -5494,6 +5516,7 @@ function HtmlViewer({
       lastStablePreviewIdentityRef.current = artifactIdentity;
       lastStablePreviewSourceRef.current = null;
       sourceRef.current = null;
+      exportHtmlSnapshotGateRef.current = null;
       setSource(null);
       setLiveHtmlPaintsPreview(false);
       setSourceLoadFailed(false);
@@ -5516,6 +5539,7 @@ function HtmlViewer({
     if (accepted != null) {
       setSource(accepted);
       sourceRef.current = accepted;
+      exportHtmlSnapshotGateRef.current = accepted;
       setSourceLoadFailed(false);
       setLiveHtmlPaintsPreview(true);
       if (previewSourceWallTimerRef.current != null) {
@@ -5546,6 +5570,7 @@ function HtmlViewer({
       lastStablePreviewIdentityRef.current = artifactIdentity;
       lastStablePreviewSourceRef.current = null;
       sourceRef.current = null;
+      exportHtmlSnapshotGateRef.current = null;
       setSource(null);
       setLiveHtmlPaintsPreview(false);
       setSourceLoadFailed(false);
@@ -5565,9 +5590,11 @@ function HtmlViewer({
       if (stable) {
         setSource(stable);
         sourceRef.current = stable;
+        exportHtmlSnapshotGateRef.current = stable;
       } else {
         setSource(null);
         sourceRef.current = null;
+        exportHtmlSnapshotGateRef.current = null;
       }
     }
 
@@ -6548,6 +6575,7 @@ function HtmlViewer({
 
   useEffect(() => {
     sourceRef.current = source;
+    exportHtmlSnapshotGateRef.current = source ?? lastStablePreviewSourceRef.current;
     if (source == null) return;
     setManualEditDraft((current) => (
       current.fullSource === source ? current : { ...current, fullSource: source }

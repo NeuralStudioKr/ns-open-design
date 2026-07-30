@@ -75,8 +75,9 @@ POST /export/image → renderHeadlessImage → res.send
 | 항목 | 현재 값 | 의미 |
 |------|---------|------|
 | `EXPORT_TIMEOUT_MS` | 30_000 | page/render 타임아웃 |
-| Chromium | **요청마다 launch → close** | cold start 비용 큼 |
-| `runExclusive` | **전역 Promise 큐** | 동시 export **1개만** 실행, 나머지 대기 |
+| Chromium pool | `export-runtime` + `OD_EXPORT_BROWSER_POOL_SIZE` | 요청마다 launch/close 아님 |
+| Boot prewarm | `OD_EXPORT_BOOT_PREWARM_COUNT` (기본 1) | boot 시 풀에 브라우저 유지 — 첫 클릭 cold start 제거 |
+| Semaphore | `OD_EXPORT_MAX_CONCURRENT` | 동시 render 상한, 초과는 큐 |
 | deck | 1920×1080 flatten, resource inline | CPU·RAM·HTML 크기 ↑ |
 | image | `deviceScaleFactor: 2` | 픽셀 4배 → PNG/JPEG 크기 ↑ |
 

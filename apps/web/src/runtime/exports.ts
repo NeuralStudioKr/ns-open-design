@@ -1057,7 +1057,10 @@ async function withTransientExportRetry<T>(
 }
 
 function isRetryableRenderedExportError(err: unknown): boolean {
-  if (isExportQueueFullError(err)) return false;
+  // Queue-full is transient under concurrent team use — brief backoff often
+  // lands after the previous Chromium job releases a pool slot. Permanent
+  // Chromium-missing is still not retried (needs ops / browser-print path).
+  if (isExportQueueFullError(err)) return true;
   if (isTeamverProjectStoragePrefixRequiredError(err)) return true;
   if (err instanceof TypeError) return true;
   const message = err instanceof Error ? err.message : String(err ?? '');

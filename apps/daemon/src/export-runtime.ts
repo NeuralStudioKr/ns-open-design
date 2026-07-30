@@ -201,6 +201,32 @@ async function releaseBrowser(browser: BrowserLike): Promise<void> {
   browserPool.available.push(browser);
 }
 
+/**
+ * Seed the Chromium pool at daemon boot so the first user export does not
+ * pay a cold `launchChromium()` (often 1–3s, worse under image pull / font
+ * cache). Caps at `OD_EXPORT_BROWSER_POOL_SIZE`. Safe to call repeatedly —
+ * only fills slots that are still empty.
+ *
+ * Returns how many browsers were newly launched into the pool.
+ */
+export async function prewarmExportBrowserPool(target?: number): Promise<number> {
+  if (!launchBrowser) {
+    throw new Error('export browser launcher not configured');
+  }
+  browserPool.poolSize = exportBrowserPoolSize();
+  const desired = Math.min(
+    Math.max(1, target ?? 1),
+    browserPool.poolSize,
+  );
+  let warmed = 0;
+  while (browserPool.total < desired) {
+    const browser = await launchPooledBrowser();
+    await releaseBrowser(browser);
+    warmed += 1;
+  }
+  return warmed;
+}
+
 const exportSemaphore = new ExportSemaphore();
 
 export function logExportMetrics(metrics: ExportJobMetrics): void {
@@ -286,8 +312,7 @@ export async function resetExportRuntimeForTests(): Promise<void> {
   launchBrowser = null;
 }
 
-/** @internal vitest */
-export function exportRuntimeStatsForTests(): {
+export function exportBrowserPoolStats(): {
   poolAvailable: number;
   poolTotal: number;
   running: number;
@@ -299,4 +324,14 @@ export function exportRuntimeStatsForTests(): {
     running: exportSemaphore.running,
     pending: exportSemaphore.pending,
   };
+}
+
+/** @internal vitest */
+export function exportRuntimeStatsForTests(): {
+  poolAvailable: number;
+  poolTotal: number;
+  running: number;
+  pending: number;
+} {
+  return exportBrowserPoolStats();
 }

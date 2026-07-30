@@ -84,6 +84,8 @@ services:
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
       OD_EXPORT_MAX_CONCURRENT: ${OD_EXPORT_MAX_CONCURRENT:-4}
       OD_EXPORT_BROWSER_POOL_SIZE: ${OD_EXPORT_BROWSER_POOL_SIZE:-2}
+      # Keep N Chromium instances warm after boot (default 1). Was probe-and-close.
+      OD_EXPORT_BOOT_PREWARM_COUNT: ${OD_EXPORT_BOOT_PREWARM_COUNT:-1}
       OD_EXPORT_QUEUE_MAX: ${OD_EXPORT_QUEUE_MAX:-32}
       OD_EXPORT_TICKET_TTL_SEC: ${OD_EXPORT_TICKET_TTL_SEC:-300}
       # Export artifact cache (Phase 1a — docs-teamver/34 §20). code default ON.
