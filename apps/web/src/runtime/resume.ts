@@ -413,6 +413,7 @@ export function buildAutoContinueScopedCommentEditPrompt(
     '- 크기/색/강조만 바꾸는 요청: `kind="set-style"` JSON (`fontSize`, `fontWeight`, `color`). `currentText`는 그대로.',
     '- 줄바꿈/한 줄/nowrap 같은 레이아웃 요청: `kind="set-outer-html"` (`<br>` 제거) 또는 `kind="set-style"` `{"whiteSpace":"nowrap"}`. `<br>`/중첩 태그가 있으면 `set-text` 금지.',
     '- 정렬/간격 요청: `kind="set-style"` JSON (`textAlign`, `padding`, `margin`). `currentText`는 그대로.',
+    '- 삭제/제거 요청: `kind="remove-element"` (빈 body).',
     '- 빈 `<artifact type="element-patch">` 또는 patch 없는 wrapper는 금지.',
     '- slide 구조 변경이 필요할 때만 `<artifact type="deck-patch">`에 해당 slide `<section>` 하나.',
     '',

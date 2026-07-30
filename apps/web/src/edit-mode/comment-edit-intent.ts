@@ -64,7 +64,10 @@ function significantTokens(text: string): string[] {
  * emphasis) without replacing the actual words.
  */
 const EXPLICIT_TEXT_CHANGE_SIGNAL =
-  /텍스트\s*(를|을)\s*['"“”「『]|(?:로|으로)\s*바꿔|(?:로|으로)\s*변경|삭제|제거|없애|지워|문구\s*변경|내용\s*변경|replace\s+with|rename|다르게\s*써/i;
+  /텍스트\s*(를|을)\s*['"“”「『]|(?:로|으로)\s*바꿔|(?:로|으로)\s*변경|문구\s*변경|내용\s*변경|replace\s+with|rename|다르게\s*써/i;
+
+const EXPLICIT_REMOVAL_SIGNAL =
+  /삭제|제거|없애|지워|빼\s*줘|빼주|remove|delete/i;
 
 export function looksLikeStyleOnlyCommentRequest(instruction: string): boolean {
   const text = String(instruction ?? '').trim();
@@ -104,6 +107,15 @@ export function looksLikePresentationTweakCommentRequest(instruction: string): b
     || looksLikeMarkupLayoutCommentRequest(instruction)
     || looksLikeAlignmentCommentRequest(instruction)
   );
+}
+
+/**
+ * True when the user asked to delete/remove the pinned element.
+ */
+export function looksLikeRemovalCommentRequest(instruction: string): boolean {
+  const text = String(instruction ?? '').trim();
+  if (!text) return false;
+  return EXPLICIT_REMOVAL_SIGNAL.test(text) && !EXPLICIT_TEXT_CHANGE_SIGNAL.test(text);
 }
 
 export function targetTextContentPreserved(

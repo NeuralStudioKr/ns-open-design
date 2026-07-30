@@ -21,6 +21,8 @@ export function shouldRouteScopedCommentEditToAutoContinue(
 
   if (code === 'comment_edit_intent_violated') return true;
 
+  if (code === 'comment_scope_missing_slide') return true;
+
   if (code === 'deck_patch_parse_failed') {
     return (
       normalized.startsWith('element-patch <patch> missing slide-index') ||

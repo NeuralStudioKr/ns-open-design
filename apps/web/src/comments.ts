@@ -16,6 +16,7 @@ import { stripUserVisibleQuestionFormProtocolText } from './artifacts/question-f
 import {
   looksLikeAlignmentCommentRequest,
   looksLikeMarkupLayoutCommentRequest,
+  looksLikeRemovalCommentRequest,
   looksLikeStyleOnlyCommentRequest,
 } from './edit-mode/comment-edit-intent';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
@@ -822,22 +823,29 @@ export function buildConcreteElementPatchTemplate(
     if (!targetId) continue;
     if (isUnsafeElementPatchTargetId(targetId)) continue;
     const slideIndex = Math.floor(item.slideIndex);
-    const layoutOnly = looksLikeMarkupLayoutCommentRequest(item.comment || '');
-    const alignmentOnly = !layoutOnly && looksLikeAlignmentCommentRequest(item.comment || '');
-    const styleOnly = !layoutOnly && !alignmentOnly && looksLikeStyleOnlyCommentRequest(item.comment || '');
-    const kind = layoutOnly ? 'set-outer-html' : 'set-style';
-    const body = layoutOnly
-      ? '&lt;tag&gt;줄바꿈 없이 한 줄 텍스트&lt;/tag&gt;'
-      : alignmentOnly
-        ? '{"textAlign":"center"}'
-        : styleOnly
-          ? '{"fontSize":"32px","fontWeight":"700"}'
-          : null;
-    const resolvedKind = body === null ? 'set-text' : kind;
-    const resolvedBody = body ?? '(요청한 새 텍스트)';
+    const removal = looksLikeRemovalCommentRequest(item.comment || '');
+    const layoutOnly = !removal && looksLikeMarkupLayoutCommentRequest(item.comment || '');
+    const alignmentOnly = !removal && !layoutOnly && looksLikeAlignmentCommentRequest(item.comment || '');
+    const styleOnly = !removal && !layoutOnly && !alignmentOnly && looksLikeStyleOnlyCommentRequest(item.comment || '');
+    const resolvedKind = removal
+      ? 'remove-element'
+      : layoutOnly
+        ? 'set-outer-html'
+        : 'set-style';
+    const resolvedBody = removal
+      ? ''
+      : layoutOnly
+        ? '&lt;tag&gt;줄바꿈 없이 한 줄 텍스트&lt;/tag&gt;'
+        : alignmentOnly
+          ? '{"textAlign":"center"}'
+          : styleOnly
+            ? '{"fontSize":"32px","fontWeight":"700"}'
+            : null;
+    const patchKind = resolvedBody === null ? 'set-text' : resolvedKind;
+    const patchBody = resolvedBody ?? '(요청한 새 텍스트)';
     blocks.push(
       '<artifact type="element-patch" identifier="deck">',
-      `  <patch target-id="${escapeXmlAttr(targetId)}" slide-index="${slideIndex}" kind="${resolvedKind}">${resolvedBody}</patch>`,
+      `  <patch target-id="${escapeXmlAttr(targetId)}" slide-index="${slideIndex}" kind="${patchKind}">${patchBody}</patch>`,
       '</artifact>',
     );
   }

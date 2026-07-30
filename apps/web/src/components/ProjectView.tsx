@@ -42,6 +42,7 @@ import {
   resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
   scopedCommentSlideIndexesFromAttachments,
+  scopedCommentSlideIndexesFromDeck,
   type DeckPatchMergeResult,
   type ScopedDeckPersistFailureCode,
 } from '../edit-mode/scoped-deck-patch';
@@ -1105,6 +1106,7 @@ function slideCommentEditPatchInstruction(commentAttachmentCount: number): strin
     '- When the user asks for layout/wrapping tweaks without changing the words (e.g. "줄바꿈 없이 한줄로", "한 줄로", "nowrap"): use `kind="set-outer-html"` on the pinned element (remove `<br>` / wrap markup) OR `kind="set-style"` with `{"whiteSpace":"nowrap"}`. Never use `set-text` when the target contains `<br>` or nested tags.',
     '- When the user asks for alignment/spacing tweaks without changing the words (e.g. "가운데 정렬", "왼쪽 맞춤"): use `kind="set-style"` with `textAlign` / spacing fields. Keep `currentText` verbatim.',
     '- When the user asks to replace the text ("\'새 문구\'로 수정", "멘트를 …로", "copy to …"): use `kind="set-text"` with the new text only.',
+    '- When the user asks to delete/remove the pinned element ("삭제", "제거", "지워"): use `kind="remove-element"` with an empty patch body.',
     '',
     'Fallback when multiple elements or slide structure must change:',
     '<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="{N}">…full slide replacement…</section></artifact>',
@@ -1482,13 +1484,6 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   allowedSlideIndexes: readonly number[];
   commentAttachments: readonly ChatCommentAttachment[];
 }): Promise<{ ok: true } | { ok: false; code: ScopedDeckPersistFailureCode; reason: string }> {
-  if (input.allowedSlideIndexes.length === 0) {
-    return {
-      ok: false,
-      code: 'comment_scope_missing_slide',
-      reason: 'comment attachments did not include a valid slide index',
-    };
-  }
   const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
     cache: 'no-store',
   });
@@ -1503,6 +1498,19 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       reason: 'current deck file unreadable',
     };
   }
+  let allowedSlideIndexes = [...input.allowedSlideIndexes];
+  if (allowedSlideIndexes.length === 0) {
+    const inferred = scopedCommentSlideIndexesFromDeck(currentHtml, input.commentAttachments);
+    if (inferred) {
+      allowedSlideIndexes = inferred;
+    } else {
+      return {
+        ok: false,
+        code: 'comment_scope_missing_slide',
+        reason: 'comment attachments did not include a valid slide index',
+      };
+    }
+  }
   const diff = diffDeckSlideIndexes(currentHtml, input.nextHtml);
   if (!diff.ok) {
     console.warn('[deck-patch] scoped full-deck guard could not diff deck', {
@@ -1511,13 +1519,13 @@ async function fullDeckEditStaysInsideCommentScope(input: {
     });
     return { ok: false, code: 'full_deck_diff_failed', reason: diff.reason };
   }
-  const allowed = new Set(input.allowedSlideIndexes);
+  const allowed = new Set(allowedSlideIndexes);
   const outsideScope = diff.changedSlideIndexes.filter((slideIndex) => !allowed.has(slideIndex));
   if (outsideScope.length > 0) {
     console.warn('[deck-patch] scoped full-deck guard rejected outside-scope changes', {
       fileName: input.fileName,
       changedSlideIndexes: diff.changedSlideIndexes,
-      allowedSlideIndexes: input.allowedSlideIndexes,
+      allowedSlideIndexes,
     });
     return {
       ok: false,
@@ -3769,7 +3777,21 @@ export function ProjectView({
         fileName: targetFileName,
         commentAttachments: runCommentAttachmentsRef.current,
       });
-      const scopedAllowedSlideIndexes = scopedCommentSlideIndexes(persistCommentAttachments);
+      let scopedAllowedSlideIndexes = scopedCommentSlideIndexes(persistCommentAttachments);
+      if (persistCommentAttachments.length > 0) {
+        const currentHtmlForScope = await fetchProjectFileText(project.id, targetFileName, {
+          cache: 'no-store',
+        });
+        if (currentHtmlForScope) {
+          const fromDeck = scopedCommentSlideIndexesFromDeck(
+            currentHtmlForScope,
+            persistCommentAttachments,
+          );
+          if (fromDeck) {
+            scopedAllowedSlideIndexes = fromDeck;
+          }
+        }
+      }
       // `deck-patch` short-circuits the full-deck emit path. Comment-driven
       // edits carry `<artifact type="deck-patch">` bodies whose sections list
       // ONLY the changed `<section class="slide">` blocks; we merge them into

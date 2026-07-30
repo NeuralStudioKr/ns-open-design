@@ -62,8 +62,8 @@ describe('shouldRouteScopedCommentEditToAutoContinue', () => {
   it('does not route non-recoverable failures', () => {
     expect(
       shouldRouteScopedCommentEditToAutoContinue(
-        'comment_scope_missing_slide',
-        'comment attachments did not include a valid slide index',
+        'deck_patch_merge_failed',
+        'unexpected relaxed apply state',
       ),
     ).toBe(false);
   });

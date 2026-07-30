@@ -947,6 +947,49 @@ export function scopedCommentSlideIndexesFromAttachments(
 }
 
 /**
+ * Recover slide indexes from on-disk deck HTML when attachments carry stale
+ * or missing `slideIndex` values from the preview bridge.
+ */
+export function scopedCommentSlideIndexesFromDeck(
+  deckHtml: string,
+  commentAttachments: readonly ChatCommentAttachment[],
+): number[] | undefined {
+  if (!deckHtml.trim() || commentAttachments.length === 0) return undefined;
+  const sections = extractTopLevelSlideSections(deckHtml);
+  const maxSlideIndex = sections.length - 1;
+  const indexes = new Set<number>();
+  for (const attachment of commentAttachments) {
+    let resolved = false;
+    for (const candidate of resolveScopedCommentSlideCandidates({
+      attachment,
+      currentHtml: deckHtml,
+      patchedHtml: deckHtml,
+    })) {
+      if (candidate >= 0 && candidate <= maxSlideIndex) {
+        indexes.add(candidate);
+        resolved = true;
+      }
+    }
+    const inferred = inferSlideIndexFromDeckHtml(deckHtml, attachment);
+    if (inferred != null && inferred >= 0 && inferred <= maxSlideIndex) {
+      indexes.add(inferred);
+      resolved = true;
+    }
+    if (
+      !resolved
+      && hasValidDeckSlideIndex(attachment)
+      && attachment.slideIndex! <= maxSlideIndex
+    ) {
+      const slide = extractSlideByIndex(deckHtml, attachment.slideIndex!);
+      if (slide && targetTextPreservedInPatchedSlide(slide, attachment)) {
+        indexes.add(attachment.slideIndex!);
+      }
+    }
+  }
+  return indexes.size > 0 ? [...indexes] : undefined;
+}
+
+/**
  * Resolve allowed slide indexes for element-patch when the attachment
  * carried a stale slideIndex. Uses target-text signals on the model's
  * chosen slide before falling back to the attachment value.
