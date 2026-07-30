@@ -145,6 +145,7 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     expect(out).toContain('[contenteditable]:not([contenteditable="false"])');
     expect(out).not.toContain('if (compactStackedDeckEnabled) {\n    document.addEventListener(\'keydown\', onDeckBridgeKeydown, true);\n  }');
     expect(out).toContain('e.stopImmediatePropagation()');
+    expect(out).toContain("target.closest('[data-od-editing=\"true\"]')");
   });
 
   it('advances framework decks on ArrowRight inside the iframe', async () => {

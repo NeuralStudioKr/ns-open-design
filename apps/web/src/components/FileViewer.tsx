@@ -219,6 +219,11 @@ import {
   applyManualEditPreviewStylesToDocument,
   iframeContentDocumentIfAccessible,
 } from '../edit-mode/manual-edit-host-preview';
+import {
+  manualEditPatchBaseSource,
+  shouldHoldDiskPreviewDuringManualEdit,
+  shouldSkipManualEditHistoryConfirm,
+} from '../edit-mode/manual-edit-session';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 
@@ -5050,6 +5055,9 @@ function HtmlViewer({
   const [manualEditMode, setManualEditModeRaw] = useState(false);
   const [manualEditSrcDocActive, setManualEditSrcDocActive] = useState(false);
   const [manualEditFrozenSource, setManualEditFrozenSource] = useState<string | null>(null);
+  const [manualEditInlineTextEditing, setManualEditInlineTextEditing] = useState(false);
+  const manualEditModeRef = useRef(false);
+  const manualEditFrozenSourceRef = useRef<string | null>(null);
   const [manualEditViewportWidth, setManualEditViewportWidth] = useState<number | null>(null);
   const [commentPortalHost, setCommentPortalHost] = useState<HTMLElement | null>(null);
   const [previewBodyRef, previewBodySize] = usePreviewCanvasSize<HTMLDivElement>();
@@ -5111,6 +5119,13 @@ function HtmlViewer({
     scale: 1,
   });
   const dcViewportRestoreAtRef = useRef(0);
+  useEffect(() => {
+    manualEditModeRef.current = manualEditMode;
+  }, [manualEditMode]);
+  useEffect(() => {
+    manualEditFrozenSourceRef.current = manualEditFrozenSource;
+  }, [manualEditFrozenSource]);
+
   const setManualEditMode = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
     setManualEditModeRaw((prev) => {
       const value = typeof next === 'function' ? (next as (p: boolean) => boolean)(prev) : next;
@@ -5120,9 +5135,11 @@ function HtmlViewer({
         // next freeze snapshots the latest saved HTML — otherwise re-entering
         // edit mode paints the pre-edit freeze and looks "reverted".
         setManualEditFrozenSource(null);
+        setManualEditInlineTextEditing(false);
       }
       if (value !== prev && !value) {
         setManualEditViewportWidth(null);
+        setManualEditInlineTextEditing(false);
       }
       return value;
     });
@@ -5742,6 +5759,14 @@ function HtmlViewer({
           sourceRef.current = pinnedPreferred;
           lastStablePreviewSourceRef.current = pinnedPreferred;
           exportHtmlSnapshotGateRef.current = pinnedPreferred;
+          clearPreviewSourceWall();
+          setSourceLoadFailed(false);
+          return;
+        }
+        if (shouldHoldDiskPreviewDuringManualEdit(
+          manualEditModeRef.current,
+          manualEditFrozenSourceRef.current,
+        )) {
           clearPreviewSourceWall();
           setSourceLoadFailed(false);
           return;
@@ -6979,6 +7004,10 @@ function HtmlViewer({
         })();
         return;
       }
+      if (data.type === 'od-edit-text-active') {
+        setManualEditInlineTextEditing(Boolean(data.active));
+        return;
+      }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -7219,18 +7248,39 @@ function HtmlViewer({
     }
   }
 
+  function activateManualEditPreviewHtml(html: string) {
+    if (useUrlLoadPreview) return;
+    const activated = buildSrcdoc(html, {
+      deck: effectiveDeck,
+      baseHref: projectPreviewAssetUrl(baseDirFor(file.name)),
+      initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
+      selectionBridge: true,
+      editBridge: manualEditRequiresSrcDoc,
+      paletteBridge: false,
+      previewFocusGuard: true,
+    });
+    for (const win of slideMessageTargets()) {
+      win.postMessage({ type: 'od:srcdoc-transport-activate', html: activated }, '*');
+    }
+    activatedSrcDocTransportHtmlRef.current = activated;
+  }
+
   async function applyManualEdit(
     patch: ManualEditPatch,
     label: string,
     scope?: { slideIndex?: number },
   ): Promise<boolean> {
     if (manualEditSavingRef.current) return false;
-    if (sourceRef.current == null) return false;
+    const baseSource = manualEditPatchBaseSource({
+      manualEditMode,
+      frozenSource: manualEditFrozenSource,
+      liveSource: sourceRef.current,
+    });
+    if (baseSource == null) return false;
     manualEditSavingRef.current = true;
     setManualEditSaving(true);
     setManualEditError(null);
     try {
-      const baseSource = sourceRef.current;
       const result = applyManualEditPatch(baseSource, patch, scope);
       if (!result.ok) {
         setManualEditError(
@@ -7238,13 +7288,17 @@ function HtmlViewer({
         );
         return false;
       }
-      if (!(await confirmManualEditHistorySource(
-        baseSource,
-        embedUiLabel(
-          'The file changed outside manual edit mode. Refreshing before applying manual edits.',
-          '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
-        ),
-      ))) return false;
+      pinManualEditSavedSource(baseSource);
+      if (
+        !shouldSkipManualEditHistoryConfirm(manualEditMode)
+        && !(await confirmManualEditHistorySource(
+          baseSource,
+          embedUiLabel(
+            'The file changed outside manual edit mode. Refreshing before applying manual edits.',
+            '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
+          ),
+        ))
+      ) return false;
       const saved = await writeProjectTextFileDetailed(projectId, file.name, result.source, {
         artifactManifest: file.artifactManifest,
       });
@@ -7278,13 +7332,13 @@ function HtmlViewer({
       pinManualEditSavedSource(result.source);
       setInlinedSource(null);
       // Every persisted patch (including set-style) must update the freeze so
-      // the next iframe render — from a re-entry, remount, or the same edit
-      // pass — reflects the saved HTML. Previously set-style skipped this to
-      // avoid a reload, but that left the frozen srcDoc stuck on the pre-edit
-      // snapshot, so users had to toggle edit mode off to see their tweaks.
-      // Capture scroll first; the reload restore path handles landing back.
+      // the next iframe render reflects the saved HTML. Structural patches
+      // also push the updated srcDoc into the live iframe without exiting edit.
       capturePreviewScrollPosition();
       setManualEditFrozenSource(result.source);
+      if (patch.kind !== 'set-style') {
+        queueMicrotask(() => activateManualEditPreviewHtml(result.source));
+      }
       setManualEditHistory((current) => [entry, ...current]);
       setManualEditUndone([]);
       setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
@@ -7383,6 +7437,7 @@ function HtmlViewer({
       pinManualEditSavedSource(latest.beforeSource);
       setInlinedSource(null);
       setManualEditFrozenSource(latest.beforeSource);
+      queueMicrotask(() => activateManualEditPreviewHtml(latest.beforeSource));
       setManualEditHistory(rest);
       setManualEditUndone((current) => [latest, ...current]);
       setManualEditDraft((current) => ({ ...current, fullSource: latest.beforeSource }));
@@ -7431,6 +7486,7 @@ function HtmlViewer({
       pinManualEditSavedSource(latest.afterSource);
       setInlinedSource(null);
       setManualEditFrozenSource(latest.afterSource);
+      queueMicrotask(() => activateManualEditPreviewHtml(latest.afterSource));
       setManualEditUndone(rest);
       setManualEditHistory((current) => [latest, ...current]);
       setManualEditDraft((current) => ({ ...current, fullSource: latest.afterSource }));

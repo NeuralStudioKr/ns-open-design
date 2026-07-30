@@ -245,11 +245,18 @@ export function buildManualEditBridge(enabled: boolean): string {
     el.setAttribute('data-od-editing', 'true');
     try { el.focus(); } catch (e) {}
     placeCaretFromClick(clickEvent, el);
+    try {
+      window.parent.postMessage({ type: 'od-edit-text-active', active: true }, '*');
+    } catch (e) {}
     function finish(commit){
       el.removeAttribute('contenteditable');
       el.removeAttribute('data-od-editing');
       el.removeEventListener('blur', onBlur);
+      el.removeEventListener('keydown', onKeyCapture, true);
       el.removeEventListener('keydown', onKey);
+      try {
+        window.parent.postMessage({ type: 'od-edit-text-active', active: false }, '*');
+      } catch (e) {}
       var value = (el.textContent || '').trim();
       if (commit && value !== originalText.trim()) {
         window.parent.postMessage({
@@ -262,6 +269,14 @@ export function buildManualEditBridge(enabled: boolean): string {
       }
     }
     function onBlur(){ finish(true); }
+    function onKeyCapture(ev){
+      if (
+        ev.key === 'ArrowLeft' || ev.key === 'ArrowRight' || ev.key === 'ArrowUp' || ev.key === 'ArrowDown'
+        || ev.key === 'Home' || ev.key === 'End' || ev.key === 'PageUp' || ev.key === 'PageDown'
+      ) {
+        ev.stopImmediatePropagation();
+      }
+    }
     function onKey(ev){
       if (ev.key === 'Enter' && !ev.shiftKey) {
         ev.preventDefault();
@@ -275,6 +290,7 @@ export function buildManualEditBridge(enabled: boolean): string {
       }
     }
     el.addEventListener('blur', onBlur);
+    el.addEventListener('keydown', onKeyCapture, true);
     el.addEventListener('keydown', onKey);
   }
   function camelToKebab(name){ return String(name).replace(/[A-Z]/g, function(m){ return '-' + m.toLowerCase(); }); }

@@ -121,13 +121,19 @@ export interface ManualEditTextCommitMessage {
   value: string;
 }
 
+export interface ManualEditTextActiveMessage {
+  type: 'od-edit-text-active';
+  active: boolean;
+}
+
 export type ManualEditBridgeMessage =
   | ManualEditTargetMessage
   | ManualEditSelectMessage
   | ManualEditHoverMessage
   | ManualEditBackgroundMessage
   | ManualEditPreviewAppliedMessage
-  | ManualEditTextCommitMessage;
+  | ManualEditTextCommitMessage
+  | ManualEditTextActiveMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
   'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'textDecoration', 'lineHeight', 'letterSpacing',
