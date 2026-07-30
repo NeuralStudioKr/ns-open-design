@@ -428,7 +428,12 @@ export function PreviewDrawOverlay({
   }
   function removeExtraFile(index: number) {
     setExtraFiles((cur) => cur.filter((_, i) => i !== index));
-    setPreviewIndex(null);
+    setPreviewIndex((current) => {
+      if (current === null) return null;
+      if (current === index) return null;
+      if (current > index) return current - 1;
+      return current;
+    });
   }
 
   // Keep object-URL thumbnails in sync with the attached files; revoke on
@@ -899,6 +904,7 @@ export function PreviewDrawOverlay({
                 transform: 'translateX(-50%)',
                 display: 'flex',
                 alignItems: 'center',
+                gap: 8,
                 maxWidth: 'min(420px, calc(100% - 144px))',
                 padding: '8px 12px',
                 borderRadius: 999,
@@ -907,13 +913,35 @@ export function PreviewDrawOverlay({
                 boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
                 backdropFilter: 'blur(8px)',
                 zIndex: 92,
-                pointerEvents: 'none',
+                pointerEvents: 'auto',
                 fontSize: 13,
                 lineHeight: 1.35,
                 visibility: chromeHidden ? 'hidden' : undefined,
               }}
             >
-              <span>{captureWarning.message}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{captureWarning.message}</span>
+              <button
+                type="button"
+                onClick={() => setCaptureWarning(null)}
+                aria-label={t('common.close')}
+                title={t('common.close')}
+                style={{
+                  width: 18,
+                  height: 18,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 999,
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  background: 'rgba(255,255,255,0.08)',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              >
+                <Icon name="close" size={10} />
+              </button>
             </div>
           ) : !drawHintDismissed ? (
             <div
@@ -986,7 +1014,7 @@ export function PreviewDrawOverlay({
                 borderRadius: 12,
                 boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
                 backdropFilter: 'blur(8px)',
-                zIndex: 90,
+                zIndex: 94,
                 pointerEvents: 'auto',
                 visibility: chromeHidden ? 'hidden' : undefined,
               }}
@@ -1020,9 +1048,12 @@ export function PreviewDrawOverlay({
                   </button>
                   <button
                     type="button"
-                    onClick={() => removeExtraFile(i)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeExtraFile(i);
+                    }}
                     disabled={sending}
-                    aria-label={t('chat.annotationAttachedRemove')}
+                    aria-label={t('chat.removeAria', { name: item.file.name })}
                     title={t('chat.annotationAttachedRemove')}
                     style={{
                       position: 'absolute',
@@ -1039,6 +1070,7 @@ export function PreviewDrawOverlay({
                       color: '#fff',
                       cursor: sending ? 'wait' : 'pointer',
                       padding: 0,
+                      zIndex: 1,
                     }}
                   >
                     <Icon name="close" size={10} />

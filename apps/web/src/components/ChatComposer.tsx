@@ -2430,8 +2430,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     }
 
     function removeCommentAttachment(id: string) {
+      const screenshotPath =
+        stagedVisualComments.find((attachment) => attachment.id === id)?.screenshotPath?.trim()
+        ?? commentAttachments.find((attachment) => attachment.id === id)?.screenshotPath?.trim()
+        ?? '';
+      if (screenshotPath) {
+        setStaged((current) => current.filter((attachment) => attachment.path !== screenshotPath));
+      }
+      const wasStagedVisual = stagedVisualComments.some((attachment) => attachment.id === id);
       setStagedVisualComments((current) => current.filter((attachment) => attachment.id !== id));
-      if (!stagedVisualComments.some((attachment) => attachment.id === id)) {
+      if (!wasStagedVisual) {
         onRemoveCommentAttachment?.(id);
       }
     }

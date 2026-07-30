@@ -1505,7 +1505,7 @@ export const en: Dict = {
   'chat.annotationSlidePrefix': 'Slide {n}',
   'chat.annotationAttachImage': 'Attach image',
   'chat.annotationAttachedImages': 'Attached images',
-  'chat.annotationAttachedRemove': 'Remove last image',
+  'chat.annotationAttachedRemove': 'Remove image',
   'chat.annotationAddToInput': 'Add to input',
   'chat.annotationAddingToInput': 'Adding...',
   'chat.annotationQueue': 'Queue',

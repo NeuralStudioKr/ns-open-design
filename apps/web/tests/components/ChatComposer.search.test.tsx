@@ -1,7 +1,17 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../src/teamver/designApiBase', async () => {
+  const actual = await vi.importActual<typeof import('../../src/teamver/designApiBase')>(
+    '../../src/teamver/designApiBase',
+  );
+  return {
+    ...actual,
+    isTeamverEmbedMode: vi.fn(() => false),
+  };
+});
 
 import { ChatComposer } from '../../src/components/ChatComposer';
 import { ANNOTATION_EVENT } from '../../src/components/PreviewDrawOverlay';
@@ -423,6 +433,50 @@ describe('ChatComposer /search command', () => {
       markKind: 'stroke',
       comment: 'tighten this area',
     });
+  });
+
+  it('removes a staged draw screenshot and its hidden visual comment together', async () => {
+    const onSend = vi.fn();
+    mockedUploadProjectFiles.mockResolvedValue({
+      uploaded: [{ path: 'uploads/drawing.png', name: 'drawing.png', kind: 'image' }],
+      failed: [],
+    });
+
+    render(
+      <ChatComposer
+        projectId="project-1"
+        projectFiles={[]}
+        streaming={false}
+        onEnsureProject={async () => 'project-1'}
+        onSend={onSend}
+        onStop={vi.fn()}
+      />,
+    );
+
+    window.dispatchEvent(new CustomEvent(ANNOTATION_EVENT, {
+      detail: {
+        file: new File(['drawing'], 'drawing.png', { type: 'image/png' }),
+        note: 'review this before sending',
+        action: 'draft',
+        filePath: 'index.html',
+        markKind: 'stroke',
+        bounds: { x: 12, y: 24, width: 140, height: 80 },
+      },
+    }));
+
+    await waitFor(() => expect(screen.getByText('drawing.png')).toBeTruthy());
+    const removeButton = within(screen.getByTestId('staged-contexts')).getByRole('button', {
+      name: 'Remove drawing.png',
+    });
+    fireEvent.click(removeButton);
+
+    await waitFor(() => expect(screen.queryByText('drawing.png')).toBeNull());
+    fireEvent.click(screen.getByTestId('chat-send'));
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    const [, attachments, commentAttachments] = onSend.mock.calls[0]!;
+    expect(attachments).toEqual([]);
+    expect(commentAttachments).toEqual([]);
   });
 
   it('previews a staged image attachment from its chip', async () => {

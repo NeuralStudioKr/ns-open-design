@@ -1505,7 +1505,7 @@ export const ko: Dict = {
   'chat.annotationSlidePrefix': '슬라이드 {n}',
   'chat.annotationAttachImage': '이미지 첨부',
   'chat.annotationAttachedImages': '첨부된 이미지',
-  'chat.annotationAttachedRemove': '마지막 이미지 제거',
+  'chat.annotationAttachedRemove': '이미지 제거',
   'chat.annotationAddToInput': '입력란에 추가',
   'chat.annotationAddingToInput': '추가 중...',
   'chat.annotationQueue': '대기열',
