@@ -143,6 +143,13 @@ import {
 } from '@open-design/contracts';
 import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from '../runtime/deckGuidance';
 import {
+  enrichChatSendMetaWithProjectDeckTemplate,
+  resolveDeckTemplateSkillId,
+  resolveScenarioPluginIdForLocalSkill,
+  selectedDeckTemplateMetadata,
+  wrapSelectedDeckTemplateSkillBody,
+} from '../runtime/selected-deck-template';
+import {
   anonymizeArtifactId,
   artifactKindToTracking,
   projectKindToTracking,
@@ -1959,36 +1966,6 @@ function projectMediaVoiceSeed(
     return metadata.voice?.trim() || undefined;
   }
   return undefined;
-}
-
-function selectedDeckTemplateMetadata(
-  metadata: ProjectMetadata | null | undefined,
-): { id: string; title?: string } | null {
-  const id = metadata?.selectedDeckTemplateId?.trim();
-  if (!id) return null;
-  const title = metadata?.selectedDeckTemplateTitle?.trim() || undefined;
-  return { id, title };
-}
-
-function enrichChatSendMetaWithProjectDeckTemplate(
-  meta: ProjectChatSendMeta | undefined,
-  metadata: ProjectMetadata | null | undefined,
-): ProjectChatSendMeta | undefined {
-  const selected = selectedDeckTemplateMetadata(metadata);
-  if (!selected) return meta;
-  const existingSkillIds = meta?.skillIds ?? [];
-  if (existingSkillIds.includes(selected.id)) return meta;
-  const priorPluginIds = meta?.context?.pluginIds ?? [];
-  const priorContextSkillIds = meta?.context?.skillIds ?? [];
-  return {
-    ...meta,
-    skillIds: [selected.id, ...existingSkillIds.filter((id) => id !== selected.id)],
-    context: {
-      ...meta?.context,
-      pluginIds: [selected.id, ...priorPluginIds.filter((id) => id !== selected.id)],
-      skillIds: [selected.id, ...priorContextSkillIds.filter((id) => id !== selected.id)],
-    },
-  };
 }
 
 // Carry the creation-time model pick into the conversation ONLY when it belongs
@@ -4632,8 +4609,43 @@ export function ProjectView({
     let designSystemBody: string | undefined;
     let designSystemTitle: string | undefined;
 
+    const selectedTemplate = selectedDeckTemplateMetadata(project.metadata);
+    if (selectedTemplate) {
+      const cached = pluginSkillCache.current.get(selectedTemplate.id);
+      if (cached !== undefined) {
+        skillBody = cached;
+        skillName = selectedTemplate.title ?? skillName;
+        skillMode = 'deck';
+      } else {
+        const summary =
+          skills.find((s) => s.id === selectedTemplate.id) ??
+          designTemplates.find((s) => s.id === selectedTemplate.id);
+        skillName = selectedTemplate.title ?? summary?.name;
+        skillMode = summary?.mode ?? 'deck';
+        const detail =
+          (await fetchSkill(selectedTemplate.id)) ??
+          (await fetchDesignTemplate(selectedTemplate.id));
+        if (detail) {
+          skillBody = detail.body;
+          pluginSkillCache.current.set(selectedTemplate.id, detail.body);
+        } else {
+          const local = await fetchPluginLocalSkill(selectedTemplate.id);
+          if (local) {
+            skillBody = local.body;
+            skillName = selectedTemplate.title ?? local.name;
+            skillMode = 'deck';
+            pluginSkillCache.current.set(selectedTemplate.id, local.body);
+          }
+        }
+      }
+    }
+
     const effectiveSkillId = skillIdOverride ?? project.skillId;
-    if (effectiveSkillId) {
+    if (
+      !skillBody?.trim()
+      && effectiveSkillId
+      && effectiveSkillId !== selectedTemplate?.id
+    ) {
       // effectiveSkillId can resolve to either root after the
       // skills/design-templates split; check both lists so a template-backed
       // project keeps composing its template body when running in API mode.
@@ -4665,7 +4677,11 @@ export function ProjectView({
         }
       }
     }
-    if (!skillBody?.trim() && pluginIdForLocalSkill) {
+    if (
+      !skillBody?.trim()
+      && pluginIdForLocalSkill
+      && pluginIdForLocalSkill !== selectedTemplate?.id
+    ) {
       const cached = pluginSkillCache.current.get(pluginIdForLocalSkill);
       if (cached !== undefined) {
         skillBody = cached;
@@ -4675,31 +4691,6 @@ export function ProjectView({
           skillBody = local.body;
           skillName = local.name;
           pluginSkillCache.current.set(pluginIdForLocalSkill, local.body);
-        }
-      }
-    }
-    const selectedTemplate = selectedDeckTemplateMetadata(project.metadata);
-    if (!skillBody?.trim() && selectedTemplate) {
-      const cached = pluginSkillCache.current.get(selectedTemplate.id);
-      if (cached !== undefined) {
-        skillBody = cached;
-        skillName = selectedTemplate.title ?? skillName;
-        skillMode = 'deck';
-      } else {
-        const detail = await fetchDesignTemplate(selectedTemplate.id);
-        if (detail) {
-          skillBody = detail.body;
-          skillName = selectedTemplate.title ?? detail.name;
-          skillMode = 'deck';
-          pluginSkillCache.current.set(selectedTemplate.id, detail.body);
-        } else {
-          const local = await fetchPluginLocalSkill(selectedTemplate.id);
-          if (local) {
-            skillBody = local.body;
-            skillName = selectedTemplate.title ?? local.name;
-            skillMode = 'deck';
-            pluginSkillCache.current.set(selectedTemplate.id, local.body);
-          }
         }
       }
     }
@@ -4714,17 +4705,8 @@ export function ProjectView({
       skillMode = 'deck';
     }
     if (skillBody?.trim() && skillMode === 'deck') {
-      const title = skillName?.trim() || 'selected deck template';
-      skillBody = [
-        `# Teamver selected deck template guard`,
-        ``,
-        `Template: ${title}`,
-        `Treat this template as the primary visual contract for this run.`,
-        `Preserve its palette, typography, layout rhythm, spacing, motif language, and first-slide mood in the generated deck.`,
-        `If an active design system is also present, use it only as secondary brand context; do not replace the selected template's visual language with the design system default.`,
-        ``,
-        skillBody.trim(),
-      ].join('\n');
+      const title = skillName?.trim() || selectedTemplate?.title || 'selected deck template';
+      skillBody = wrapSelectedDeckTemplateSkillBody(skillBody, title);
     }
     if (designSystemIdOverride ?? project.designSystemId) {
       const effectiveDesignSystemId = designSystemIdOverride ?? project.designSystemId;
@@ -8533,20 +8515,21 @@ export function ProjectView({
           }
         }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
-        const effectiveSkillId =
-          (Array.isArray(meta?.skillIds) ? meta.skillIds[0] : null) ??
-          (Array.isArray(meta?.context?.pluginIds) ? meta.context.pluginIds[0] : null);
-        let pluginIdForLocalSkill =
-          (Array.isArray(meta?.context?.pluginIds) ? meta.context.pluginIds[0] : null) ?? null;
+        const effectiveSkillId = resolveDeckTemplateSkillId(project.metadata, meta);
         let pluginBlock: string | undefined;
+        let appliedSnapshotPluginId = meta?.appliedPluginSnapshot?.pluginId ?? null;
         if (meta?.appliedPluginSnapshot) {
           pluginBlock = renderPluginBlock(meta.appliedPluginSnapshot);
-          pluginIdForLocalSkill = pluginIdForLocalSkill ?? meta.appliedPluginSnapshot.pluginId;
         } else if (project.appliedPluginSnapshotId) {
           const snap = await fetchAppliedPluginSnapshot(project.appliedPluginSnapshotId);
-          pluginIdForLocalSkill = pluginIdForLocalSkill ?? snap?.pluginId ?? null;
+          appliedSnapshotPluginId = snap?.pluginId ?? null;
           if (snap) pluginBlock = renderPluginBlock(snap);
         }
+        const pluginIdForLocalSkill = resolveScenarioPluginIdForLocalSkill(
+          project.metadata,
+          meta,
+          appliedSnapshotPluginId,
+        );
         const systemPrompt = await composedSystemPrompt(
           runSessionMode,
           effectiveDesignSystemId,
