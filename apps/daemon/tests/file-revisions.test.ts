@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
 import type http from 'node:http';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { startServer } from '../src/server.js';
+import { snapshotStorageFileName } from '../src/file-revisions/snapshot-codec.js';
 
 describe('project file revisions API', () => {
   let server: http.Server;
@@ -87,5 +88,29 @@ describe('project file revisions API', () => {
     const list2Json = await list2.json() as { revisions: Array<{ id: string; sequence: number }> };
     expect(list2Json.revisions.length).toBeGreaterThanOrEqual(2);
     expect(list2Json.revisions.some((revision) => revision.id === push1Json.revision.id)).toBe(false);
+  });
+
+  it('stores gzip diff snapshots on disk and serves content through the API', async () => {
+    const push = await fetch(revisionsUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: '<!doctype html><html><body><h1>gzip-v1</h1></body></html>',
+        source: 'manual_edit',
+        label: 'gzip edit',
+      }),
+    });
+    expect(push.status).toBe(200);
+    const pushJson = await push.json() as { revision: { id: string } };
+
+    const projectsRoot = path.join(process.env.OD_DATA_DIR!, 'projects');
+    const revisionDir = path.join(projectsRoot, projectId, '.od', 'revisions', 'deck.html');
+    const files = await readdir(revisionDir);
+    expect(files.some((file) => file === snapshotStorageFileName(pushJson.revision.id))).toBe(true);
+
+    const contentResp = await fetch(`${revisionsUrl()}/${encodeURIComponent(pushJson.revision.id)}`);
+    expect(contentResp.status).toBe(200);
+    const contentJson = await contentResp.json() as { content: string };
+    expect(contentJson.content).toContain('gzip-v1');
   });
 });

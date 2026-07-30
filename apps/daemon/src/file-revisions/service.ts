@@ -106,7 +106,12 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       const revision = getFileRevision(db, projectId, fileName, revisionId);
       if (!revision) return null;
       const projectDir = resolveProjectDir(projectsRoot, projectId, metadata);
-      const content = await readRevisionSnapshot(projectDir, fileName, revisionId);
+      const content = await readRevisionSnapshot(
+        projectDir,
+        fileName,
+        revisionId,
+        (id) => getFileRevision(db, projectId, fileName, id)?.parentRevisionId ?? null,
+      );
       return { revision, content };
     },
 
@@ -124,6 +129,8 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         metadata,
       } = input;
       const projectDir = resolveProjectDir(projectsRoot, projectId, metadata);
+      const getParentRevisionId = (id: string) =>
+        getFileRevision(db, projectId, fileName, id)?.parentRevisionId ?? null;
 
       if (typeof truncateAfterSequence === 'number' && Number.isFinite(truncateAfterSequence)) {
         const truncated = deleteFileRevisionsAfterSequence(
@@ -141,7 +148,10 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         const beforeContent = beforeFile.buffer.toString('utf8');
         const baselineId = randomUUID();
         const createdAt = Date.now();
-        await writeRevisionSnapshot(projectDir, fileName, baselineId, beforeContent);
+        await writeRevisionSnapshot(projectDir, fileName, baselineId, beforeContent, {
+          parentContent: null,
+          sequence: 1,
+        });
         parent = insertFileRevision(db, {
           id: baselineId,
           projectId,
@@ -159,6 +169,13 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       const revisionId = randomUUID();
       const createdAt = Date.now();
 
+      const parentContent = await readRevisionSnapshot(
+        projectDir,
+        fileName,
+        parent.id,
+        getParentRevisionId,
+      );
+
       const file = await writeProjectFile(
         projectsRoot,
         projectId,
@@ -168,7 +185,10 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         metadata,
       );
 
-      await writeRevisionSnapshot(projectDir, fileName, revisionId, content);
+      await writeRevisionSnapshot(projectDir, fileName, revisionId, content, {
+        parentContent,
+        sequence,
+      });
       const revision = insertFileRevision(db, {
         id: revisionId,
         projectId,
@@ -191,7 +211,12 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       const revision = getFileRevision(db, projectId, fileName, revisionId);
       if (!revision) return null;
       const projectDir = resolveProjectDir(projectsRoot, projectId, metadata);
-      const content = await readRevisionSnapshot(projectDir, fileName, revisionId);
+      const content = await readRevisionSnapshot(
+        projectDir,
+        fileName,
+        revisionId,
+        (id) => getFileRevision(db, projectId, fileName, id)?.parentRevisionId ?? null,
+      );
       const file = await writeProjectFile(
         projectsRoot,
         projectId,
