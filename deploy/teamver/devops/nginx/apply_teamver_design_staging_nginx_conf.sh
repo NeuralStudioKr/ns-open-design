@@ -58,6 +58,17 @@ TARGET_AVAILABLE_PATH="$SITES_AVAILABLE_DIR/$CONF_NAME"
 TARGET_ENABLED_PATH="$SITES_ENABLED_DIR/$CONF_NAME"
 BACKUP_DIR="/etc/nginx/backup_$(date +%Y%m%d_%H%M%S)"
 
+# http/https conf each define the same upstream — enabling both breaks nginx -t
+# with "duplicate upstream teamver_main_be_stg". Auto-disable the sibling.
+case "$CONF_NAME" in
+  stg-design.teamver.com.https.conf)
+    DISABLE_NAMES+=("stg-design.teamver.com.http.conf")
+    ;;
+  stg-design.teamver.com.http.conf)
+    DISABLE_NAMES+=("stg-design.teamver.com.https.conf")
+    ;;
+esac
+
 if [[ $EUID -ne 0 ]]; then
   echo "❌ root(sudo)로 실행하세요."
   exit 1
