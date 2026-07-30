@@ -11,7 +11,6 @@ import {
   MANUAL_EDIT_MOVE_MIN_DELTA_PX,
   canMoveTarget,
   computeMove,
-  moveResultToStyles,
   startPositionFromTarget,
 } from '../edit-mode/move-math';
 import {
@@ -71,6 +70,8 @@ type MoveDragState = {
   stylesBefore: Partial<ManualEditStyles>;
   lastStyles: Partial<ManualEditStyles>;
   moved: boolean;
+  /** True after at least one move preview — gates cancel so jitter clicks keep pending styles. */
+  previewed: boolean;
 };
 
 type DragState = ResizeDragState | MoveDragState;
@@ -140,6 +141,24 @@ export function ManualEditResizeOverlay({
   }, [onMoveCancel, onResizeCancel, onResizeSessionChange]);
 
   useEffect(() => {
+    const endMove = (event: PointerEvent, commit: boolean) => {
+      const drag = dragRef.current;
+      if (!drag || drag.kind !== 'move' || event.pointerId !== drag.pointerId) return;
+      const last = drag.lastStyles;
+      const before = drag.stylesBefore;
+      const moved = drag.moved;
+      const previewed = drag.previewed;
+      dragRef.current = null;
+      setDragging(false);
+      setMoving(false);
+      onResizeSessionChange?.(false);
+      // pointercancel / Escape-equivalent: never persist. pointerup commits only
+      // past the jitter threshold. A plain click (no preview) must not wipe
+      // unrelated pending panel styles via onMoveCancel.
+      if (commit && moved) onMoveCommit?.(last);
+      else if (previewed) onMoveCancel?.(before);
+    };
+
     const onPointerMove = (event: PointerEvent) => {
       const drag = dragRef.current;
       if (!drag || drag.kind !== 'move' || event.pointerId !== drag.pointerId) return;
@@ -154,39 +173,27 @@ export function ManualEditResizeOverlay({
         dx,
         dy,
       });
-      const next = moveResultToStyles(result);
-      // Always preview absolute position during the gesture for smooth overlay
-      // follow; commit path still gates on `moved`.
+      // Preview every move frame for smooth overlay follow; commit still gates on `moved`.
       const preview: Partial<ManualEditStyles> = {
         left: `${result.leftPx}px`,
         top: `${result.topPx}px`,
       };
       drag.lastStyles = preview;
       drag.moved = result.moved;
-      onMovePreview?.(Object.keys(next).length > 0 ? next : preview);
+      drag.previewed = true;
+      onMovePreview?.(preview);
     };
 
-    const onPointerUp = (event: PointerEvent) => {
-      const drag = dragRef.current;
-      if (!drag || drag.kind !== 'move' || event.pointerId !== drag.pointerId) return;
-      const last = drag.lastStyles;
-      const before = drag.stylesBefore;
-      const moved = drag.moved;
-      dragRef.current = null;
-      setDragging(false);
-      setMoving(false);
-      onResizeSessionChange?.(false);
-      if (moved) onMoveCommit?.(last);
-      else onMoveCancel?.(before);
-    };
+    const onPointerUp = (event: PointerEvent) => endMove(event, true);
+    const onPointerCancel = (event: PointerEvent) => endMove(event, false);
 
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
     return () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('pointercancel', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
     };
   }, [onMoveCancel, onMoveCommit, onMovePreview, onResizeSessionChange, previewScale]);
 
@@ -276,6 +283,7 @@ export function ManualEditResizeOverlay({
         top: `${pos.startTopPx}px`,
       },
       moved: false,
+      previewed: false,
     };
     setDragging(true);
     setMoving(true);

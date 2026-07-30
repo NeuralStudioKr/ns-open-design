@@ -425,6 +425,42 @@ test('[P1] manual edit body-drag moves absolute box left/top in source', async (
     .toBe(true);
 });
 
+test('[P1] manual edit body-drag Escape cancels without persisting left/top', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit move escape');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-esc.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-esc.html`);
+  await openDesignFile(page, 'manual-edit-move-esc.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="move-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 60, startY + 40, { steps: 8 });
+  await page.keyboard.press('Escape');
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-esc.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return left === 24 && top === 24;
+    })
+    .toBe(true);
+});
+
 async function selectPreviewElementThroughBridge(
   page: Page,
   frame: ReturnType<Page['frameLocator']>,

@@ -7213,6 +7213,13 @@ function HtmlViewer({
       const height = parseExplicitPx(styles.height) ?? prev?.height ?? target.rect.height;
       return { width, height };
     });
+    // Anchored W/N resize also writes left/top — keep host overlay box in sync.
+    if (styles.left != null || styles.top != null) {
+      setManualEditMoveDraftPos((prev) => ({
+        x: parseExplicitPx(styles.left) ?? prev?.x ?? target.rect.x,
+        y: parseExplicitPx(styles.top) ?? prev?.y ?? target.rect.y,
+      }));
+    }
   }
 
   function handleManualEditMovePreview(styles: Partial<ManualEditStyles>) {
@@ -7320,11 +7327,20 @@ function HtmlViewer({
   function handleManualEditMoveCancel(stylesBefore: Partial<ManualEditStyles>) {
     const target = selectedManualEditTarget;
     clearManualEditStyleTimer();
-    manualEditPendingStyleRef.current = null;
     manualEditResizeSessionActiveRef.current = false;
     setManualEditMoveDraftPos(null);
     setManualEditResizeDraftSize(null);
     if (!target) return;
+    // Drop only left/top so unrelated panel drafts (e.g. fontSize) survive a
+    // cancelled / sub-threshold move. Full wipe was wiping those on jitter clicks.
+    cancelManualEditPendingStyles(target.id, ['left', 'top']);
+    const pending = manualEditPendingStyleRef.current;
+    if (pending?.id === target.id && pending.label === moveHistoryLabel(target.label)) {
+      manualEditPendingStyleRef.current = {
+        ...pending,
+        label: `Edit: ${target.label}`,
+      };
+    }
     const reset: Partial<ManualEditStyles> = {
       left: stylesBefore.left ?? '',
       top: stylesBefore.top ?? '',
@@ -7334,6 +7350,14 @@ function HtmlViewer({
       ...current,
       styles: { ...current.styles, ...reset },
     }));
+    // Resume autosave for any non-move draft that survived the cancel.
+    if (manualEditPendingStyleRef.current && !manualEditResizeSessionActiveRef.current) {
+      clearManualEditStyleTimer();
+      manualEditStyleTimerRef.current = setTimeout(() => {
+        manualEditStyleTimerRef.current = null;
+        void flushManualEditStyleSave();
+      }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
+    }
   }
 
   async function flushManualEditStyleSave(): Promise<boolean> {

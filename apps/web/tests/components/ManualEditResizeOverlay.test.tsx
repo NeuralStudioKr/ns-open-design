@@ -229,4 +229,157 @@ describe('ManualEditResizeOverlay', () => {
     fireEvent.pointerUp(window, { pointerId: 12, clientX: 90, clientY: 90 });
     expect(onMoveCommit).not.toHaveBeenCalled();
   });
+
+  it('sub-threshold body drag after preview cancels without commit', () => {
+    const onMoveCommit = vi.fn();
+    const onMoveCancel = vi.fn();
+
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'absolute',
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+            left: '40px',
+            top: '60px',
+          },
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={vi.fn()}
+        onMoveCommit={onMoveCommit}
+        onMoveCancel={onMoveCancel}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    fireEvent.pointerDown(overlay, { pointerId: 16, clientX: 50, clientY: 50, buttons: 1 });
+    // 1px < MANUAL_EDIT_MOVE_MIN_DELTA_PX (2)
+    fireEvent.pointerMove(window, { pointerId: 16, clientX: 51, clientY: 50, buttons: 1 });
+    fireEvent.pointerUp(window, { pointerId: 16, clientX: 51, clientY: 50 });
+
+    expect(onMoveCancel).toHaveBeenCalledTimes(1);
+    expect(onMoveCommit).not.toHaveBeenCalled();
+  });
+
+  it('body click without preview does not cancel (keeps unrelated pending safe)', () => {
+    const onMoveCommit = vi.fn();
+    const onMoveCancel = vi.fn();
+    const onMovePreview = vi.fn();
+
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'absolute',
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+            left: '40px',
+            top: '60px',
+          },
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={onMovePreview}
+        onMoveCommit={onMoveCommit}
+        onMoveCancel={onMoveCancel}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    fireEvent.pointerDown(overlay, { pointerId: 13, clientX: 50, clientY: 50, buttons: 1 });
+    fireEvent.pointerUp(window, { pointerId: 13, clientX: 50, clientY: 50 });
+    expect(onMovePreview).not.toHaveBeenCalled();
+    expect(onMoveCommit).not.toHaveBeenCalled();
+    expect(onMoveCancel).not.toHaveBeenCalled();
+  });
+
+  it('pointercancel after move preview cancels instead of committing', () => {
+    const onMoveCommit = vi.fn();
+    const onMoveCancel = vi.fn();
+
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'absolute',
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+            left: '40px',
+            top: '60px',
+          },
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={vi.fn()}
+        onMoveCommit={onMoveCommit}
+        onMoveCancel={onMoveCancel}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    fireEvent.pointerDown(overlay, { pointerId: 14, clientX: 50, clientY: 50, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 14, clientX: 100, clientY: 80, buttons: 1 });
+    fireEvent.pointerCancel(window, { pointerId: 14, clientX: 100, clientY: 80 });
+
+    expect(onMoveCancel).toHaveBeenCalledTimes(1);
+    expect(onMoveCommit).not.toHaveBeenCalled();
+  });
+
+  it('resize handle drag does not start a move session', () => {
+    const onMovePreview = vi.fn();
+    const onMoveCommit = vi.fn();
+    const onResizePreview = vi.fn();
+    const onResizeCommit = vi.fn();
+
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'absolute',
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+            left: '40px',
+            top: '60px',
+          },
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={onResizePreview}
+        onResizeCommit={onResizeCommit}
+        onResizeCancel={vi.fn()}
+        onMovePreview={onMovePreview}
+        onMoveCommit={onMoveCommit}
+        onMoveCancel={vi.fn()}
+      />,
+    );
+
+    const handle = getByTestId('manual-edit-resize-handle-se');
+    fireEvent.pointerDown(handle, { pointerId: 15, clientX: 240, clientY: 160, buttons: 1 });
+    fireEvent.pointerMove(handle, { pointerId: 15, clientX: 260, clientY: 180, buttons: 1 });
+    fireEvent.pointerUp(handle, { pointerId: 15, clientX: 260, clientY: 180 });
+
+    expect(onResizePreview).toHaveBeenCalled();
+    expect(onResizeCommit).toHaveBeenCalledTimes(1);
+    expect(onMovePreview).not.toHaveBeenCalled();
+    expect(onMoveCommit).not.toHaveBeenCalled();
+  });
 });
