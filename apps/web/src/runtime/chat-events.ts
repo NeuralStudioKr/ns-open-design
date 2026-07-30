@@ -125,6 +125,42 @@ export function appendErrorStatusEvent(
   };
 }
 
+/**
+ * Persist a user-visible chat error onto an assistant message so ChatPane can
+ * rebuild the error card after reload (`error` React state is ephemeral and
+ * cleared on message load). Marks the run failed unless the code is a
+ * transient auto-continue / emergency-draft notice.
+ */
+export function attachPersistedChatError(
+  message: ChatMessage,
+  detail: string,
+  code?: string,
+): ChatMessage {
+  if (!detail?.trim()) return message;
+  const withEvent = appendErrorStatusEvent(message, detail, code);
+  if (
+    code === AUTO_CONTINUE_STATUS_CODE
+    || code === EMERGENCY_DECK_FALLBACK_STATUS_CODE
+  ) {
+    return withEvent;
+  }
+  if (withEvent.runStatus === 'failed' || withEvent.runStatus === 'canceled') {
+    return withEvent.endedAt ? withEvent : { ...withEvent, endedAt: Date.now() };
+  }
+  return {
+    ...withEvent,
+    runStatus: 'failed',
+    endedAt: withEvent.endedAt ?? Date.now(),
+  };
+}
+
+/** True when the message carries a durable, user-facing run-error status event. */
+export function messageHasPersistedChatError(
+  message: Pick<ChatMessage, 'events'>,
+): boolean {
+  return hasPersistedRunErrorEvent(message.events ?? []);
+}
+
 /** Non-fatal assistant-card notice (e.g. emergency draft deck fallback). */
 export function appendWarningStatusEvent(
   message: ChatMessage,
