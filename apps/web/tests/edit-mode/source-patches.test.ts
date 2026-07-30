@@ -759,9 +759,48 @@ describe('manual edit source patches', () => {
     if (!result.ok) expect(result.reason).toContain('unchanged');
   });
 
-  it('rejects text patches for nested markup', () => {
+  it('salvages text patches onto the primary leaf inside nested markup', () => {
+    // `<p data-od-id="nested"><strong>Nested</strong> copy</p>` — comment /
+    // manual set-text used to fail with "Use the HTML tab instead".
     const result = applyManualEditPatch(baseSource, { kind: 'set-text', id: 'nested', value: 'Flat text' });
 
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'nested');
+    expect(html).toContain('<strong>Flat text</strong>');
+    expect(html).not.toContain('>Nested<');
+    // Trailing sibling text beside the leaf is cleared so the label rewrite
+    // does not leave stale " copy" next to the new value.
+    expect(html.replace(/\s+/g, ' ')).not.toMatch(/Flat text<\/strong>\s*copy/);
+  });
+
+  it('salvages text patches for gradient/span wrappers via comment hint', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h1 data-od-id="title"><span class="grad">뉴럴스튜디오</span></h1>',
+      '<p>Keep</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'title', value: 'Neural Studio' },
+      { slideIndex: 0 },
+      { id: 'title', currentText: '뉴럴스튜디오', htmlHint: '<span class="grad">뉴럴스튜디오</span>' },
+    );
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('<span class="grad">Neural Studio</span>');
+    expect(result.source).toContain('<p>Keep</p>');
+    expect(result.source).toContain('data-od-id="title"');
+  });
+
+  it('still rejects text patches when nested leaves are ambiguous', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<div data-od-id="pair"><span>Alpha</span><span>Beta</span></div>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, { kind: 'set-text', id: 'pair', value: 'Gamma' });
     expect(result.ok).toBe(false);
     expect(result.error).toContain('nested markup');
   });
