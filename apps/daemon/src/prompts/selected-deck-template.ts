@@ -11,11 +11,12 @@ export function readSelectedDeckTemplateFromMetadata(
       ? metadata.selectedDeckTemplateId.trim()
       : '';
   if (!id) return null;
-  const title =
+  const rawTitle =
     typeof metadata?.selectedDeckTemplateTitle === 'string'
-      ? metadata.selectedDeckTemplateTitle.trim() || undefined
-      : undefined;
-  return { id, title };
+      ? metadata.selectedDeckTemplateTitle.trim()
+      : '';
+  // exactOptionalPropertyTypes: omit key when absent (do not set title: undefined).
+  return rawTitle ? { id, title: rawTitle } : { id };
 }
 
 export function wrapSelectedDeckTemplateSkillBody(
