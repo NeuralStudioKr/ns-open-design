@@ -61,14 +61,14 @@ export function readMainSsoUserIdFromDocumentCookie(): string | null {
 export async function hashMainSsoUserId(userId: string): Promise<string> {
   const normalized = userId.trim().toLowerCase();
   if (!normalized) return "";
-  if (typeof crypto !== "undefined" && crypto.subtle?.digest) {
-    const data = new TextEncoder().encode(normalized);
-    const digest = await crypto.subtle.digest("SHA-256", data);
-    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  // Web Crypto only — keep this module client-bundle safe (no `node:crypto`).
+  const subtle = globalThis.crypto?.subtle;
+  if (typeof subtle?.digest !== "function") {
+    throw new Error("Web Crypto subtle.digest is required to hash Main SSO user ids");
   }
-  // Vitest/node fallback without Web Crypto
-  const { createHash } = await import("node:crypto");
-  return createHash("sha256").update(normalized, "utf8").digest("hex");
+  const data = new TextEncoder().encode(normalized);
+  const digest = await subtle.digest("SHA-256", data);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export function resolveDesignSessionUserId(session: DesignAuthSession): string | null {

@@ -161,6 +161,28 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: configuredAllowedDevHosts(),
   outputFileTracingRoot: WORKSPACE_ROOT,
   reactStrictMode: true,
+  // Expose Teamver vite-style flags to the browser. Dynamic `process.env[key]`
+  // is not inlined; `readTeamverViteEnv` uses static `process.env.VITE_*` access.
+  env: {
+    VITE_TEAMVER_EMBED: process.env.VITE_TEAMVER_EMBED ?? '',
+    VITE_TEAMVER_DESIGN_API_URL: process.env.VITE_TEAMVER_DESIGN_API_URL ?? '',
+    VITE_TEAMVER_BOOTSTRAP_ENABLED: process.env.VITE_TEAMVER_BOOTSTRAP_ENABLED ?? '',
+    VITE_TEAMVER_MAIN_LOGIN_URL: process.env.VITE_TEAMVER_MAIN_LOGIN_URL ?? '',
+    VITE_TEAMVER_BRAND_TITLE: process.env.VITE_TEAMVER_BRAND_TITLE ?? '',
+    VITE_TEAMVER_BRAND_SUBTITLE: process.env.VITE_TEAMVER_BRAND_SUBTITLE ?? '',
+    VITE_TEAMVER_FAVICON_URL: process.env.VITE_TEAMVER_FAVICON_URL ?? '',
+    VITE_TEAMVER_LOGO_URL: process.env.VITE_TEAMVER_LOGO_URL ?? '',
+    VITE_TEAMVER_LOGO_URL_DARK: process.env.VITE_TEAMVER_LOGO_URL_DARK ?? '',
+    VITE_TEAMVER_NAV_MARK_URL: process.env.VITE_TEAMVER_NAV_MARK_URL ?? '',
+    VITE_TEAMVER_HERO_TITLE: process.env.VITE_TEAMVER_HERO_TITLE ?? '',
+    VITE_TEAMVER_HERO_SUBTITLE: process.env.VITE_TEAMVER_HERO_SUBTITLE ?? '',
+    VITE_TEAMVER_SITE_URL: process.env.VITE_TEAMVER_SITE_URL ?? '',
+    VITE_TEAMVER_OG_IMAGE_URL: process.env.VITE_TEAMVER_OG_IMAGE_URL ?? '',
+    VITE_TEAMVER_OG_TITLE: process.env.VITE_TEAMVER_OG_TITLE ?? '',
+    VITE_TEAMVER_DRIVE_PUBLISH_FOLDER_ID: process.env.VITE_TEAMVER_DRIVE_PUBLISH_FOLDER_ID ?? '',
+    VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID:
+      process.env.VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID ?? '',
+  },
   // Emit browser sourcemaps so packaged-runtime exceptions can be symbolicated
   // by PostHog. `tools/pack/src/web-sourcemaps.ts` runs after `next build`
   // to inject chunk IDs, upload to PostHog, and ALWAYS delete the .map files

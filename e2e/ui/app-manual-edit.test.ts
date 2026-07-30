@@ -158,8 +158,10 @@ test('[P0] manual edit mode preserves preview actions after style edits', async 
 });
 
 test('[P1] manual edit drag-resize handle persists box width to source', async ({ page }) => {
+  test.setTimeout(60_000);
   await routeMockAgents(page);
-  const projectId = await createEmptyProject(page, 'Manual edit resize');
+  // Teamver vite-dev on 127.0.0.1 hides entry-nav-new-project; create via daemon API.
+  const projectId = await createProjectViaApi(page, 'Manual edit resize');
   await seedHtmlArtifact(page, projectId, 'manual-edit-resize.html', manualEditHtml());
   await page.goto(`/projects/${projectId}/files/manual-edit-resize.html`);
   await openDesignFile(page, 'manual-edit-resize.html');
@@ -193,6 +195,66 @@ test('[P1] manual edit drag-resize handle persists box width to source', async (
       return Number(match[1]) > 120;
     })
     .toBe(true);
+});
+
+test('[P1] manual edit drag-resize Escape cancels without persisting width', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize escape');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize-esc.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-esc.html`);
+  await openDesignFile(page, 'manual-edit-resize-esc.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const handle = page.getByTestId('manual-edit-resize-handle-e');
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 80, startY, { steps: 6 });
+  await page.keyboard.press('Escape');
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-resize-esc.html`);
+      if (!resp.ok()) return -1;
+      const source = await resp.text();
+      const match = source.match(/data-od-id="resize-box"[^>]*style="[^"]*width:\s*(\d+)px/);
+      return match ? Number(match[1]) : -1;
+    })
+    .toBe(120);
+});
+
+test('[P1] manual edit drag-resize hides handles on deck slide root', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize slide');
+  // `data-slide` marks a slide root for canResizeTarget without enabling the deck renderer
+  // (which looks for `.slide` and can leave Preview stuck on Loading).
+  await seedHtmlArtifact(
+    page,
+    projectId,
+    'manual-edit-resize-slide.html',
+    `<!doctype html><html><body>
+      <section data-slide="0" data-od-id="slide-1" data-od-label="Slide One" style="width:640px;height:360px;background:#eee;">
+        <h1>Slide One</h1>
+      </section>
+    </body></html>`,
+  );
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-slide.html`);
+  await openDesignFile(page, 'manual-edit-resize-slide.html');
+
+  const frame = artifactPreviewFrame(page);
+  await expect(frame.getByText('Slide One')).toBeVisible();
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await frame.locator('[data-od-id="slide-1"]').click();
+  await expect(frame.locator('[data-od-id="slide-1"][data-od-edit-selected="true"]')).toHaveCount(1);
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toHaveCount(0);
 });
 
 async function selectPreviewElementThroughBridge(
@@ -498,6 +560,24 @@ async function createEmptyProject(page: Page, name: string): Promise<string> {
   const current = new URL(page.url());
   const [, projects, projectId] = current.pathname.split('/');
   if (projects !== 'projects' || !projectId) throw new Error(`unexpected project route: ${current.pathname}`);
+  return projectId;
+}
+
+/** Create a project without the entry-rail new-project control (hidden in Teamver embed/vite-dev). */
+async function createProjectViaApi(page: Page, name: string): Promise<string> {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await waitForLoadingToClear(page);
+  const projectId = `manual-resize-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const projectResponse = await page.request.post('/api/projects', {
+    data: {
+      id: projectId,
+      name,
+      skillId: null,
+      designSystemId: null,
+      metadata: { kind: 'prototype' },
+    },
+  });
+  expect(projectResponse.ok(), `create project: ${await projectResponse.text()}`).toBeTruthy();
   return projectId;
 }
 
