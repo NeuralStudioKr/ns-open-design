@@ -1,0 +1,36 @@
+.overlay {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 1.5px solid #2563eb;
+  outline: none;
+}
+
+.handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  padding: 0;
+  border: 1.5px solid #2563eb;
+  border-radius: 2px;
+  background: #fff;
+  box-sizing: border-box;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.handle::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  background: #2563eb;
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+.handle:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
+}

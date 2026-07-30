@@ -578,7 +578,8 @@ function StyleInspector({
 }) {
   const u = (key: keyof ManualEditStyles, value: string) => onChange(key, value);
   const showTypography = targetKind === 'text' || targetKind === 'link' || targetKind === 'token';
-  const showSize = targetKind !== 'text' && targetKind !== 'link' && targetKind !== 'token';
+  // Box width/height for containers, images, and text/link leaves (drag-resize sync).
+  const showSize = targetKind !== 'token';
   const showLayout = layoutEnabled;
   const showBox = targetKind === 'container' || targetKind === 'image' || targetKind === 'token';
 

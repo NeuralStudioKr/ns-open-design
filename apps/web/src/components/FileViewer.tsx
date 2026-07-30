@@ -192,6 +192,7 @@ import type {
   PreviewCommentTarget,
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
+import { ManualEditResizeOverlay } from './ManualEditResizeOverlay';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
@@ -200,6 +201,8 @@ import {
   readManualEditOuterHtml,
   readManualEditStyles,
 } from '../edit-mode/source-patches';
+import { contentRectToHostRect } from '../edit-mode/preview-coords';
+import { canResizeTarget, parseExplicitPx } from '../edit-mode/resize-math';
 import {
   createManualEditSourcePin,
   manualEditHistoryConfirmTrustsLocal,
@@ -886,16 +889,16 @@ function manualEditFloatingPanelStyle(
   previewScale: number,
   canvasSize: PreviewCanvasSize | undefined,
 ): CSSProperties {
-  const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
   const panelWidth = 320;
   const preferredPanelHeight = 380;
   const pad = 12;
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
   const panelHeight = Math.min(preferredPanelHeight, Math.max(260, canvasHeight - pad * 2));
-  const targetLeft = target.rect.x * scale;
-  const targetTop = target.rect.y * scale;
-  const targetRight = (target.rect.x + target.rect.width) * scale;
+  const hostRect = contentRectToHostRect(target.rect, previewScale);
+  const targetLeft = hostRect.x;
+  const targetTop = hostRect.y;
+  const targetRight = hostRect.x + hostRect.width;
   let left = targetRight + pad;
   if (left + panelWidth > canvasWidth - pad) {
     left = Math.max(pad, targetLeft - panelWidth - pad);
@@ -924,13 +927,13 @@ function manualEditHoverIconStyle(
   previewScale: number,
   canvasSize: PreviewCanvasSize | undefined,
 ): CSSProperties {
-  const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
   const iconSize = 26;
   const inset = 4;
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
-  const targetTop = target.rect.y * scale;
-  const targetRight = (target.rect.x + target.rect.width) * scale;
+  const hostRect = contentRectToHostRect(target.rect, previewScale);
+  const targetTop = hostRect.y;
+  const targetRight = hostRect.x + hostRect.width;
   const left = Math.max(
     inset,
     Math.min(targetRight - iconSize - inset, canvasWidth - iconSize - inset),
@@ -5074,6 +5077,11 @@ function HtmlViewer({
   const [manualEditSrcDocActive, setManualEditSrcDocActive] = useState(false);
   const [manualEditFrozenSource, setManualEditFrozenSource] = useState<string | null>(null);
   const [manualEditInlineTextEditing, setManualEditInlineTextEditing] = useState(false);
+  const [manualEditResizeDraftSize, setManualEditResizeDraftSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const manualEditResizeSessionActiveRef = useRef(false);
   const manualEditModeRef = useRef(false);
   const manualEditFrozenSourceRef = useRef<string | null>(null);
   const [manualEditViewportWidth, setManualEditViewportWidth] = useState<number | null>(null);
@@ -7137,12 +7145,88 @@ function HtmlViewer({
     previewStyleToIframe(id, styles, version);
     // Autosave shortly after the user stops tweaking — select/background/
     // exit also flush, but a remount or crash before those gestures must not
-    // be the only persistence path.
+    // be the only persistence path. Resize drag sessions pause this timer.
     clearManualEditStyleTimer();
+    if (manualEditResizeSessionActiveRef.current) return;
     manualEditStyleTimerRef.current = setTimeout(() => {
       manualEditStyleTimerRef.current = null;
       void flushManualEditStyleSave();
     }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
+  }
+
+  function handleManualEditResizeSessionChange(active: boolean) {
+    manualEditResizeSessionActiveRef.current = active;
+    if (active) {
+      clearManualEditStyleTimer();
+      return;
+    }
+    setManualEditResizeDraftSize(null);
+  }
+
+  function handleManualEditResizePreview(styles: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    if (!target) return;
+    const version = nextManualEditPreviewVersion();
+    const currentPending = manualEditPendingStyleRef.current;
+    const pendingStyles = currentPending?.id === target.id
+      ? { ...currentPending.styles, ...styles }
+      : styles;
+    clearManualEditStyleTimer();
+    manualEditPendingStyleRef.current = {
+      id: target.id,
+      styles: pendingStyles,
+      label: `Resize: ${target.label}`,
+      version,
+    };
+    setManualEditError(null);
+    previewStyleToIframe(target.id, styles, version);
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...styles },
+    }));
+    setManualEditResizeDraftSize((prev) => {
+      const width = parseExplicitPx(styles.width) ?? prev?.width ?? target.rect.width;
+      const height = parseExplicitPx(styles.height) ?? prev?.height ?? target.rect.height;
+      return { width, height };
+    });
+  }
+
+  async function handleManualEditResizeCommit(styles: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    if (!target) return;
+    handleManualEditResizePreview(styles);
+    manualEditResizeSessionActiveRef.current = false;
+    setManualEditResizeDraftSize(null);
+    const ok = await flushManualEditStyleSave();
+    if (!ok) return;
+    const width = parseExplicitPx(styles.width) ?? target.rect.width;
+    const height = parseExplicitPx(styles.height) ?? target.rect.height;
+    setSelectedManualEditTarget((current) => {
+      if (!current || current.id !== target.id) return current;
+      return {
+        ...current,
+        rect: { ...current.rect, width, height },
+        styles: { ...current.styles, ...styles },
+      };
+    });
+  }
+
+  function handleManualEditResizeCancel(stylesBefore: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    clearManualEditStyleTimer();
+    manualEditPendingStyleRef.current = null;
+    manualEditResizeSessionActiveRef.current = false;
+    setManualEditResizeDraftSize(null);
+    if (!target) return;
+    const reset: Partial<ManualEditStyles> = {
+      width: stylesBefore.width ?? '',
+      height: stylesBefore.height ?? '',
+    };
+    previewStyleToIframe(target.id, reset, nextManualEditPreviewVersion());
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...reset },
+    }));
   }
 
   async function flushManualEditStyleSave(): Promise<boolean> {
@@ -7235,6 +7319,8 @@ function HtmlViewer({
       if (!(await flushManualEditStyleSave())) return;
     }
     setManualEditPageStylesOpen(false);
+    setManualEditResizeDraftSize(null);
+    manualEditResizeSessionActiveRef.current = false;
     const base = sourceRef.current ?? '';
     const fields = readManualEditFields(base, target.id);
     selectedManualEditTargetIdRef.current = target.id;
@@ -7266,6 +7352,8 @@ function HtmlViewer({
     selectedManualEditTargetIdRef.current = null;
     setSelectedManualEditTarget(null);
     setManualEditPanelPosition(null);
+    setManualEditResizeDraftSize(null);
+    manualEditResizeSessionActiveRef.current = false;
     setManualEditDraft(emptyManualEditDraft(sourceRef.current ?? ''));
     setManualEditError(null);
     return true;
@@ -9234,6 +9322,28 @@ function HtmlViewer({
         <Icon name="sliders" size={15} />
       </button>
     ) : null;
+  const manualEditResizeOverlay =
+    manualEditMode
+    && !drawOverlayOpen
+    && selectedManualEditTarget
+    && canResizeTarget(selectedManualEditTarget, {
+      editMode: manualEditMode,
+      inlineTextEditing: manualEditInlineTextEditing,
+    }) ? (
+      <ManualEditResizeOverlay
+        target={selectedManualEditTarget}
+        previewScale={overlayPreviewScale}
+        draftWidthPx={manualEditResizeDraftSize?.width ?? null}
+        draftHeightPx={manualEditResizeDraftSize?.height ?? null}
+        disabled={manualEditInlineTextEditing || manualEditSaving}
+        onResizeSessionChange={handleManualEditResizeSessionChange}
+        onResizePreview={handleManualEditResizePreview}
+        onResizeCommit={(styles) => {
+          void handleManualEditResizeCommit(styles);
+        }}
+        onResizeCancel={handleManualEditResizeCancel}
+      />
+    ) : null;
   const activeComposerComment = activePreviewCommentId
     ? visibleSideComments.find((comment) => comment.id === activePreviewCommentId) ?? null
     : null;
@@ -9923,6 +10033,7 @@ function HtmlViewer({
           >
             {manualEditPanel}
             {manualEditHoverAffordance}
+            {manualEditResizeOverlay}
             <div
               className={[
                 manualEditMode ? 'manual-edit-canvas' : 'comment-preview-canvas',

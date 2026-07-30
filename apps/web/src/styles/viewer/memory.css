@@ -678,6 +678,11 @@
 /* Hover affordance: a small "edit params" handle pinned to the hovered
    element so click-to-pin selection stays discoverable without the panel
    chasing the cursor. */
+/* Resize overlay is a sibling under .manual-edit-workspace (host layer). */
+.manual-edit-workspace > [data-testid='manual-edit-resize-overlay'] {
+  z-index: 30;
+}
+
 .manual-edit-workspace > .manual-edit-hover-action {
   position: absolute;
   z-index: 31;
