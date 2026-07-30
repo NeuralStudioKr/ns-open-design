@@ -12,6 +12,10 @@
  * is still null/stale after that, keep holding the pin until disk matches or
  * the hard cap (`MANUAL_EDIT_SAVE_PIN_MAX_MS`) elapses — otherwise a late
  * stale GET after soft expiry still clobbers the save.
+ *
+ * Do NOT clear the pin merely because one fetch matched: a later stale GET
+ * in the same session would then fail history-confirm and surface
+ * "file changed outside manual edit mode" as a false positive.
  */
 
 export const MANUAL_EDIT_SAVE_PIN_MS = 15_000;
@@ -78,16 +82,23 @@ export function preferManualEditPinnedSourceOverLive(
 
 /**
  * History confirm fetches disk before undo/redo/next edit. If that GET is
- * still the pre-write snapshot while `expectedSource` is our pinned save,
- * trust the local expected source instead of wiping history.
+ * still the pre-write snapshot while `expectedSource` is our local save,
+ * trust the local buffer instead of wiping history / blocking the edit.
+ *
+ * `authoredSource` is the host's last-stable / pinned authored bytes. When it
+ * still equals `expectedSource`, a disagreeing GET is treated as lag — not an
+ * external rewrite (true external rewrites update authored via the live/disk
+ * apply path before the next edit).
  */
 export function manualEditHistoryConfirmTrustsLocal(
   expectedSource: string,
   persisted: string | null,
   pinned: ManualEditSourcePin | null | undefined,
   now: number = Date.now(),
+  authoredSource?: string | null,
 ): boolean {
   if (persisted == null || persisted === expectedSource) return true;
+  if (authoredSource != null && authoredSource === expectedSource) return true;
   return Boolean(
     isManualEditSourcePinActive(pinned, now)
     && pinned
