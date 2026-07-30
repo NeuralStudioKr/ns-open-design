@@ -485,7 +485,7 @@ export function DesignSystemPicker({
               <iframe
                 className="project-ds-picker-fullscreen-iframe"
                 srcDoc={previewHtml}
-                sandbox="allow-same-origin"
+                sandbox="allow-scripts"
                 title={t('designSystemPicker.fullscreenFrameTitle', { title: previewSystem.title })}
               />
             </div>
