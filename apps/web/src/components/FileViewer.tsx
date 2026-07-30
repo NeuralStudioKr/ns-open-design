@@ -205,6 +205,7 @@ import {
   preferManualEditPinnedSource,
   type ManualEditSourcePin,
 } from '../edit-mode/manual-edit-save-pin';
+import { shouldClearManualEditFrozenSourceOnModeChange } from '../edit-mode/manual-edit-freeze';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 
@@ -5100,6 +5101,13 @@ function HtmlViewer({
   const setManualEditMode = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
     setManualEditModeRaw((prev) => {
       const value = typeof next === 'function' ? (next as (p: boolean) => boolean)(prev) : next;
+      if (shouldClearManualEditFrozenSourceOnModeChange(prev, value)) {
+        // Style edits update `source` but leave the entry freeze intact while
+        // editing (postMessage live preview). Clear on exit/re-enter so the
+        // next freeze snapshots the latest saved HTML — otherwise re-entering
+        // edit mode paints the pre-edit freeze and looks "reverted".
+        setManualEditFrozenSource(null);
+      }
       if (value !== prev && !value) {
         setManualEditViewportWidth(null);
       }
