@@ -4228,6 +4228,10 @@ export function ProjectView({
           reason: regression.reason,
         };
       }
+      const truncateAfterSequence = getActiveRevisionSequence(project.id, fileName);
+      const assistantMessageId = [...messagesRef.current]
+        .reverse()
+        .find((message) => message.role === 'assistant')?.id;
       const result = ext === '.html'
         ? await pushProjectFileRevision(
           project.id,
@@ -4236,12 +4240,12 @@ export function ProjectView({
             content: htmlBody,
             source: mapArtifactTypeToRevisionSource(artifactToPersist.artifactType),
             label: deriveAgentRevisionLabel(persistCommentAttachments, title),
-            artifactManifest: manifest ?? undefined,
-            conversationId: activeConversationId ?? undefined,
-            assistantMessageId: [...messagesRef.current]
-              .reverse()
-              .find((message) => message.role === 'assistant')?.id,
-            truncateAfterSequence: getActiveRevisionSequence(project.id, fileName),
+            ...(manifest ? { artifactManifest: manifest } : {}),
+            ...(activeConversationId ? { conversationId: activeConversationId } : {}),
+            ...(assistantMessageId ? { assistantMessageId } : {}),
+            ...(typeof truncateAfterSequence === 'number'
+              ? { truncateAfterSequence }
+              : {}),
           },
         )
         : await writeProjectTextFileDetailed(
