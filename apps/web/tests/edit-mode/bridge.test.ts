@@ -394,12 +394,23 @@ describe('manual edit bridge target normalization', () => {
     expect(title.hasAttribute('contenteditable')).toBe(false);
     expect(title.hasAttribute('data-od-editing')).toBe(false);
     expect(postMessage).toHaveBeenCalledWith({
+      type: 'od-edit-text-active',
+      active: false,
+    }, '*');
+    expect(postMessage).toHaveBeenCalledWith({
       type: 'od-edit-text-commit',
       id: 'title',
       value: 'Edited title',
     }, '*');
 
     dom.window.close();
+  });
+
+  it('announces inline text editing and stops arrow keys in capture phase', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("type: 'od-edit-text-active'");
+    expect(bridge).toContain('stopImmediatePropagation');
+    expect(bridge).toContain('onKeyCapture');
   });
 
   it('cancels inline text edits with Escape without posting a commit', () => {
