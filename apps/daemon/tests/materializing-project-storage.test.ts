@@ -133,6 +133,52 @@ describe('MaterializingProjectStorage', () => {
     expect(scratchMeta?.mtimeMs).toBeLessThan(runStart - 1000);
   });
 
+  it('sync-down preserves newer local scratch over stale remote', async () => {
+    scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-scratch-newer-'));
+    remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-remote-older-'));
+    const remoteDir = path.join(remoteRoot, 'p1');
+    await mkdir(remoteDir, { recursive: true });
+    const remoteFile = path.join(remoteDir, 'deck.html');
+    await writeFile(remoteFile, '<html>remote-older</html>');
+    const oldMtimeMs = Date.now() - 60_000;
+    const { utimes } = await import('node:fs/promises');
+    await utimes(remoteFile, oldMtimeMs / 1000, oldMtimeMs / 1000);
+
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage(remoteRoot),
+    );
+    await storage.writeFile('p1', 'deck.html', Buffer.from('<html>local-newer</html>'));
+
+    const down = await storage.syncDown('p1', storage.flatRemote());
+    expect(down.files).toBe(0);
+    const local = await storage.readFile('p1', 'deck.html');
+    expect(local.toString('utf8')).toBe('<html>local-newer</html>');
+  });
+
+  it('sync-down overwrites local when remote is newer', async () => {
+    scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-scratch-older-'));
+    remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-remote-newer-'));
+    const remoteDir = path.join(remoteRoot, 'p1');
+    await mkdir(remoteDir, { recursive: true });
+    await writeFile(path.join(remoteDir, 'deck.html'), '<html>remote-newer</html>');
+
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage(remoteRoot),
+    );
+    await storage.writeFile('p1', 'deck.html', Buffer.from('<html>local-older</html>'));
+    const oldMtimeMs = Date.now() - 60_000;
+    const { utimes } = await import('node:fs/promises');
+    const localFile = path.join(scratchRoot, 'p1', 'deck.html');
+    await utimes(localFile, oldMtimeMs / 1000, oldMtimeMs / 1000);
+
+    const down = await storage.syncDown('p1', storage.flatRemote());
+    expect(down.files).toBe(1);
+    const local = await storage.readFile('p1', 'deck.html');
+    expect(local.toString('utf8')).toBe('<html>remote-newer</html>');
+  });
+
   it('sync-down retries transient remote list/read failures', async () => {
     const previousRetries = process.env.OD_S3_SYNC_DOWN_RETRIES;
     const previousRetryMs = process.env.OD_S3_SYNC_DOWN_RETRY_MS;

@@ -8407,7 +8407,10 @@ function HtmlViewer({
         deck: effectiveDeck,
         filePath: file.name,
         format,
-        htmlSnapshot: source ?? null,
+        // Prefer live source; if a post-write refresh briefly cleared it,
+        // fall back to the last accepted preview HTML so export/download
+        // does not fail until the user hard-refreshes.
+        htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
         projectId,
         slideIndex: effectiveDeck ? slideState?.active : undefined,
         title: exportTitle,
@@ -9498,10 +9501,14 @@ function HtmlViewer({
                     fireShareExport={fireShareExport}
 	                    exportPdf={(options) => exportProjectAsPdf({
 	                      deck: effectiveDeck,
-	                      fallbackPdf: () => exportAsPdf(source ?? '', exportTitle, { deck: effectiveDeck }),
+	                      fallbackPdf: () => exportAsPdf(
+                        source ?? lastStablePreviewSourceRef.current ?? '',
+                        exportTitle,
+                        { deck: effectiveDeck },
+                      ),
 	                      filePath: file.name,
 	                      fresh: options?.fresh,
-	                      htmlSnapshot: source ?? null,
+	                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
 	                      projectId,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                      title: exportTitle,
@@ -9511,28 +9518,31 @@ function HtmlViewer({
                       projectId,
                       filePath: file.name,
                       title: exportTitle,
-                      htmlSnapshot: source ?? null,
+                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
                       requireRenderedExport: isTeamverEmbedMode(),
                     })}
 	                    exportHtml={() => exportProjectAsHtml({
 	                      deck: effectiveDeck,
 	                      projectId,
 	                      filePath: file.name,
-	                      fallbackHtml: source ?? '',
+	                      fallbackHtml: source ?? lastStablePreviewSourceRef.current ?? '',
 	                      fallbackTitle: exportTitle,
-	                      htmlSnapshot: source ?? null,
+	                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
 	                    exportZip={() => exportProjectAsZip({
 	                      deck: effectiveDeck,
 	                      projectId,
 	                      filePath: file.name,
-	                      fallbackHtml: source ?? '',
+	                      fallbackHtml: source ?? lastStablePreviewSourceRef.current ?? '',
 	                      fallbackTitle: exportTitle,
-	                      htmlSnapshot: source ?? null,
+	                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
-                    exportMarkdown={() => exportAsMd(source ?? '', exportTitle)}
+                    exportMarkdown={() => exportAsMd(
+                      source ?? lastStablePreviewSourceRef.current ?? '',
+                      exportTitle,
+                    )}
                   />
                 </div>
                 ) : null}

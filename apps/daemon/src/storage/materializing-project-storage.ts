@@ -135,15 +135,40 @@ export class MaterializingProjectStorage implements ProjectStorage {
 
   async syncDown(projectId: string, remote: ProjectStorage): Promise<{ files: number }> {
     const remoteFiles = await withSyncDownRetry(() => remote.listFiles(projectId));
+    // Prefer newer scratch bytes over a stale S3 snapshot. FE/agent writes
+    // (persistArtifact, manual edit) can land in scratch and race a GET that
+    // triggers sync-down before background sync-up finishes — unconditional
+    // overwrite here made preview/edit/download look broken until refresh.
+    const localFiles = await this.scratch.listFiles(projectId);
+    const localByPath = new Map(localFiles.map((file) => [file.path, file]));
     let files = 0;
+    let preservedNewerLocal = 0;
     for (const file of remoteFiles) {
       if (isTeamverDaemonStateRelpath(file.path)) continue;
+      const local = localByPath.get(file.path);
+      if (
+        local
+        && Number.isFinite(local.mtimeMs)
+        && Number.isFinite(file.mtimeMs)
+        && local.mtimeMs > file.mtimeMs
+      ) {
+        preservedNewerLocal += 1;
+        continue;
+      }
       const body = await withSyncDownRetry(() => remote.readFile(projectId, file.path));
       await this.scratch.writeFile(projectId, file.path, body);
       if (file.mtimeMs > 0 && Number.isFinite(file.mtimeMs)) {
         await this.scratch.setFileMtime(projectId, file.path, file.mtimeMs);
       }
       files += 1;
+    }
+    if (preservedNewerLocal > 0 && process.env.OD_S3_SYNC_UP_METRICS === '1') {
+      console.info(JSON.stringify({
+        metric: 'od_s3_sync_down_preserved_newer_local',
+        projectId,
+        preserved: preservedNewerLocal,
+        written: files,
+      }));
     }
     return { files };
   }
