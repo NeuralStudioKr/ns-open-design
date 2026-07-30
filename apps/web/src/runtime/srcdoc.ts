@@ -450,12 +450,13 @@ function injectSnapshotBridge(doc: string): string {
       'width:' + docW + 'px;height:' + docH + 'px;overflow:visible;';
     return { w: w, h: h, docW: docW, docH: docH, wrapperStyle: wrapperStyle, bodyContent: bodyContent };
   }
-  function postSnapshotCanvas(id, canvas){
+  function postSnapshotCanvas(id, canvas, settled){
+    if (settled && settled.done) return false;
     var ctx = canvas.getContext('2d');
     if (!ctx || canvasLooksBlank(ctx, canvas.width, canvas.height)) {
-      window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: 'empty-render' }, '*');
-      return;
+      return false;
     }
+    if (settled) settled.done = true;
     window.parent.postMessage({
       type: 'od:snapshot:result',
       id: id,
@@ -463,6 +464,12 @@ function injectSnapshotBridge(doc: string): string {
       w: canvas.width,
       h: canvas.height
     }, '*');
+    return true;
+  }
+  function publishSnapshotError(id, settled, error){
+    if (settled && settled.done) return;
+    if (settled) settled.done = true;
+    window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: error }, '*');
   }
   function drawSnapshotSourceToCanvas(source, w, h, dpr, bgColor){
     var canvas = document.createElement('canvas');
@@ -476,13 +483,15 @@ function injectSnapshotBridge(doc: string): string {
     ctx.drawImage(source, 0, 0, w, h);
     return canvas;
   }
-  function renderSnapshotViaImage(id, svg, w, h, dpr, bgColor){
+  function renderSnapshotViaImage(id, svg, w, h, dpr, bgColor, settled){
     var img = new Image();
     function onImageReady(){
       try {
-        postSnapshotCanvas(id, drawSnapshotSourceToCanvas(img, w, h, dpr, bgColor));
+        if (!postSnapshotCanvas(id, drawSnapshotSourceToCanvas(img, w, h, dpr, bgColor), settled)) {
+          publishSnapshotError(id, settled, 'empty-render');
+        }
       } catch (err) {
-        window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: String(err && err.message || err) }, '*');
+        publishSnapshotError(id, settled, String(err && err.message || err));
       }
     }
     function loadSvgSource(src, triedBlob){
@@ -498,13 +507,14 @@ function injectSnapshotBridge(doc: string): string {
             return;
           } catch (_) {}
         }
-        window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: 'snapshot image failed' }, '*');
+        publishSnapshotError(id, settled, 'snapshot image failed');
       };
       img.src = src;
     }
     loadSvgSource('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg), false);
   }
   function renderSnapshot(id){
+    var settled = { done: false };
     var deckFrame = prepareDeckSnapshotFrame();
     var payload = buildSnapshotPayload(deckFrame);
     var w = payload.w;
@@ -532,20 +542,22 @@ function injectSnapshotBridge(doc: string): string {
           resizeHeight: Math.max(1, Math.floor(h * dpr))
         }).then(function(bitmap){
           try {
-            postSnapshotCanvas(id, drawSnapshotSourceToCanvas(bitmap, w, h, dpr, bgColor));
+            if (!postSnapshotCanvas(id, drawSnapshotSourceToCanvas(bitmap, w, h, dpr, bgColor), settled)) {
+              renderSnapshotViaImage(id, svg, w, h, dpr, bgColor, settled);
+            }
             if (bitmap.close) bitmap.close();
           } catch (err) {
-            window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: String(err && err.message || err) }, '*');
+            publishSnapshotError(id, settled, String(err && err.message || err));
           }
         }).catch(function(){
-          renderSnapshotViaImage(id, svg, w, h, dpr, bgColor);
+          renderSnapshotViaImage(id, svg, w, h, dpr, bgColor, settled);
         }).finally(function(){
           if (host.parentNode) host.parentNode.removeChild(host);
         });
         return;
       } catch (_) {}
     }
-    renderSnapshotViaImage(id, svg, w, h, dpr, bgColor);
+    renderSnapshotViaImage(id, svg, w, h, dpr, bgColor, settled);
   }
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;

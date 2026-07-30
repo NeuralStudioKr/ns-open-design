@@ -1502,6 +1502,7 @@ export const th: Dict = {
   'chat.comments.targetArea': 'พื้นที่',
   'chat.annotationNotePlaceholder': 'Describe the change for the AI (e.g. shrink this title)',
   'chat.annotationDrawHint': 'Marks and your note are sent to the chat.',
+  'chat.annotationSlidePrefix': 'Slide {n}',
   'chat.annotationAttachImage': 'แนบรูปภาพ',
   'chat.annotationAttachedImages': 'รูปภาพที่แนบ',
   'chat.annotationAttachedRemove': 'ลบรูปภาพล่าสุด',

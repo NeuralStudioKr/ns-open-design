@@ -1502,6 +1502,7 @@ export const ptBR: Dict = {
   'chat.comments.targetArea': 'Área',
   'chat.annotationNotePlaceholder': 'Describe the change for the AI (e.g. shrink this title)',
   'chat.annotationDrawHint': 'Marks and your note are sent to the chat.',
+  'chat.annotationSlidePrefix': 'Slide {n}',
   'chat.annotationAttachImage': 'Anexar imagem',
   'chat.annotationAttachedImages': 'Imagens anexadas',
   'chat.annotationAttachedRemove': 'Remover última imagem',

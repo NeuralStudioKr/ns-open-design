@@ -2150,6 +2150,7 @@ export interface Dict {
   'chat.comments.targetArea': string;
   'chat.annotationNotePlaceholder': string;
   'chat.annotationDrawHint': string;
+  'chat.annotationSlidePrefix': string;
   'chat.annotationAttachImage': string;
   'chat.annotationAttachedImages': string;
   'chat.annotationAttachedRemove': string;

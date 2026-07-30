@@ -61,6 +61,8 @@ interface Props {
   captureSnapshot?: () => Promise<PreviewSnapshot | null>;
   captureFrameRect?: () => CaptureFrameRect | null;
   filePath?: string;
+  /** 0-based active slide index; used to prefix notes when screenshot capture fails. */
+  slideIndex?: number | null;
   hideChrome?: boolean;
   sendDisabled?: boolean;
   sendDisabledReason?: string;
@@ -88,6 +90,19 @@ function persistDrawHintDismissed(): void {
   }
 }
 
+export function annotationNoteForSend(
+  rawNote: string,
+  slideIndex: number | null | undefined,
+  sentWithoutScreenshot: boolean,
+  slidePrefix: (index: number) => string,
+): string {
+  const note = rawNote.trim();
+  if (!note || !sentWithoutScreenshot || slideIndex == null || !Number.isFinite(slideIndex)) return note;
+  const marker = slidePrefix(Math.max(0, Math.floor(slideIndex)) + 1);
+  if (note.includes(marker)) return note;
+  return `${marker}\n${note}`;
+}
+
 // Render `node` into `host` via a portal when one is provided, otherwise inline.
 function maybePortal(node: ReactNode, host: HTMLElement | null) {
   return host ? createPortal(node, host) : node;
@@ -102,6 +117,7 @@ export function PreviewDrawOverlay({
   captureSnapshot,
   captureFrameRect,
   filePath,
+  slideIndex = null,
   hideChrome = false,
   sendDisabled = false,
   sendDisabledReason,
@@ -680,6 +696,12 @@ export function PreviewDrawOverlay({
         }
       }
       const sentWithoutScreenshot = shouldCapture && !file;
+      const noteText = annotationNoteForSend(
+        note,
+        slideIndex,
+        sentWithoutScreenshot,
+        (index) => t('chat.annotationSlidePrefix', { n: index }),
+      );
       const kind = markKind();
       const result = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
         let settled = false;
@@ -693,7 +715,7 @@ export function PreviewDrawOverlay({
         }, 60000);
         const detail: AnnotationEventDetail = {
           file,
-          note: note.trim(),
+          note: noteText,
           action,
           filePath: captureTarget?.filePath || filePath,
           markKind: kind,

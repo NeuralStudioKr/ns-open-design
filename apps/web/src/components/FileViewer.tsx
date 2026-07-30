@@ -9919,6 +9919,7 @@ function HtmlViewer({
                     captureSnapshot={captureExportImageSnapshot}
                     captureTarget={null}
                     filePath={file.name}
+                    slideIndex={effectiveDeck ? slideState?.active ?? null : null}
                     sendDisabled={streaming}
                     sendDisabledReason={t('chat.annotationSendDisabledReason')}
                     onToolbarClick={fireDrawToolbarClick}

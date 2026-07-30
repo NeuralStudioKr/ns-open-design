@@ -92,12 +92,41 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
           file: null,
         }),
       });
-      // The user is told the annotation went out without its screenshot.
       await waitFor(() =>
         expect(
           getByText('Preview capture failed — only your note was sent. Try Comment mode for element-specific edits, or mention the slide number.'),
         ).toBeTruthy(),
       );
+    } finally {
+      window.removeEventListener('opendesign:annotation', annotation);
+    }
+  });
+
+  it('prefixes the active slide when screenshot capture fails on a deck', async () => {
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
+    window.addEventListener('opendesign:annotation', annotation);
+
+    try {
+      const { container, getByRole } = render(
+        <PreviewDrawOverlay active captureViewport slideIndex={2}>
+          <iframe title="srcdoc" data-od-render-mode="srcdoc" />
+        </PreviewDrawOverlay>,
+      );
+
+      const input = container.querySelector<HTMLInputElement>('.preview-draw-note-input');
+      fireEvent.change(input!, { target: { value: 'Shrink this title' } });
+      fireEvent.click(getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1));
+      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
+        detail: expect.objectContaining({
+          note: 'Slide 3\nShrink this title',
+          file: null,
+        }),
+      });
     } finally {
       window.removeEventListener('opendesign:annotation', annotation);
     }

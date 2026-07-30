@@ -79,7 +79,6 @@ describe('buildSrcdoc', () => {
 
     expect(doc).toContain('var initialSlideIndex = 2;');
     expect(doc).toContain('setTimeout(restoreInitialSlide, 200)');
-    expect(doc).toContain('setTimeout(restoreInitialSlide, 100)');
   });
 
   it('clamps invalid initial slide indices before injecting deck bridge script', () => {
@@ -121,7 +120,7 @@ describe('buildSrcdoc', () => {
     // must surface that as an honest failure so the host can fall back / show
     // an error rather than copy a (now white-filled but still empty) frame.
     expect(srcdoc).toContain('function canvasLooksBlank(');
-    expect(srcdoc).toContain("error: 'empty-render'");
+    expect(srcdoc).toContain("publishSnapshotError(id, settled, 'empty-render')");
   });
 
   it('renders snapshot SVGs through data URLs and falls back to blob URLs when needed', () => {
@@ -151,7 +150,15 @@ describe('buildSrcdoc', () => {
     const srcdoc = buildSrcdoc('<main style="color:red">Hero</main>');
 
     expect(srcdoc).toContain('createImageBitmap(svgEl');
-    expect(srcdoc).toContain('renderSnapshotViaImage(id, svg, w, h, dpr, bgColor);');
+    expect(srcdoc).toContain('renderSnapshotViaImage(id, svg, w, h, dpr, bgColor, settled);');
+  });
+
+  it('guards snapshot responses so fallbacks cannot publish twice', () => {
+    const srcdoc = buildSrcdoc('<main style="color:red">Hero</main>');
+
+    expect(srcdoc).toContain('function publishSnapshotError(');
+    expect(srcdoc).toContain('var settled = { done: false };');
+    expect(srcdoc).toContain('if (settled && settled.done) return false;');
   });
 
   it('crops snapshots with an XHTML wrapper instead of moving foreignObject offscreen', () => {

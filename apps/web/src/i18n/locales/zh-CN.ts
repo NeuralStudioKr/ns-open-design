@@ -1502,6 +1502,7 @@ export const zhCN: Dict = {
   'chat.comments.targetArea': '区域',
   'chat.annotationNotePlaceholder': 'Describe the change for the AI (e.g. shrink this title)',
   'chat.annotationDrawHint': 'Marks and your note are sent to the chat.',
+  'chat.annotationSlidePrefix': '幻灯片 {n}',
   'chat.annotationAttachImage': '添加图片',
   'chat.annotationAttachedImages': '已添加图片',
   'chat.annotationAttachedRemove': '移除最后一张图片',

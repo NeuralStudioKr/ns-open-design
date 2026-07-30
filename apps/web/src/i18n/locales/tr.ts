@@ -1502,6 +1502,7 @@ export const tr: Dict = {
   'chat.comments.targetArea': 'Alan',
   'chat.annotationNotePlaceholder': 'Describe the change for the AI (e.g. shrink this title)',
   'chat.annotationDrawHint': 'Marks and your note are sent to the chat.',
+  'chat.annotationSlidePrefix': 'Slide {n}',
   'chat.annotationAttachImage': 'Görsel ekle',
   'chat.annotationAttachedImages': 'Eklenen görseller',
   'chat.annotationAttachedRemove': 'Son görseli kaldır',

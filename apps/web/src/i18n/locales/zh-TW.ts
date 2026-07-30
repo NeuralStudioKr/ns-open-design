@@ -1502,6 +1502,7 @@ export const zhTW: Dict = {
   'chat.comments.targetArea': '區域',
   'chat.annotationNotePlaceholder': 'Describe the change for the AI (e.g. shrink this title)',
   'chat.annotationDrawHint': 'Marks and your note are sent to the chat.',
+  'chat.annotationSlidePrefix': '投影片 {n}',
   'chat.annotationAttachImage': '加入圖片',
   'chat.annotationAttachedImages': '已加入圖片',
   'chat.annotationAttachedRemove': '移除最後一張圖片',

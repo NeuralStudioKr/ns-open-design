@@ -1502,6 +1502,7 @@ export const ar: Dict = {
   'chat.comments.targetArea': 'منطقة',
   'chat.annotationNotePlaceholder': 'Describe the change for the AI (e.g. shrink this title)',
   'chat.annotationDrawHint': 'Marks and your note are sent to the chat.',
+  'chat.annotationSlidePrefix': 'Slide {n}',
   'chat.annotationAttachImage': 'إرفاق صورة',
   'chat.annotationAttachedImages': 'الصور المرفقة',
   'chat.annotationAttachedRemove': 'إزالة آخر صورة',

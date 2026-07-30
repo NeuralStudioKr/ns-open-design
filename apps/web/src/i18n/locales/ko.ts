@@ -1502,6 +1502,7 @@ export const ko: Dict = {
   'chat.comments.targetArea': '영역',
   'chat.annotationNotePlaceholder': 'AI에게 보낼 수정 요청 (예: 이 제목 작게)',
   'chat.annotationDrawHint': '표시한 영역과 메모가 채팅으로 전송됩니다.',
+  'chat.annotationSlidePrefix': '슬라이드 {n}',
   'chat.annotationAttachImage': '이미지 첨부',
   'chat.annotationAttachedImages': '첨부된 이미지',
   'chat.annotationAttachedRemove': '마지막 이미지 제거',

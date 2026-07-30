@@ -1502,6 +1502,7 @@ export const ja: Dict = {
   'chat.comments.targetArea': 'エリア',
   'chat.annotationNotePlaceholder': 'Describe the change for the AI (e.g. shrink this title)',
   'chat.annotationDrawHint': 'Marks and your note are sent to the chat.',
+  'chat.annotationSlidePrefix': 'スライド {n}',
   'chat.annotationAttachImage': '画像を添付',
   'chat.annotationAttachedImages': '添付した画像',
   'chat.annotationAttachedRemove': '最後の画像を削除',
