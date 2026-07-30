@@ -295,6 +295,51 @@ describe('manual edit bridge target normalization', () => {
     expect(bridge).toContain("ok: false, error: 'Target not found'");
   });
 
+  it('applies preview styles with !important so artifact CSS cannot suppress the live tweak', () => {
+    const dom = new JSDOM(
+      `<style>[data-od-id="hero"] { font-size: 12px !important; color: red !important; }</style>
+      <main><h1 data-od-id="hero">Hero</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const hero = dom.window.document.querySelector('[data-od-id="hero"]') as HTMLElement;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: {
+        type: 'od-edit-preview-style',
+        id: 'hero',
+        styles: { fontSize: '42px', color: 'rgb(0, 0, 255)' },
+        version: 1,
+      },
+    }));
+
+    expect(hero.style.getPropertyPriority('font-size')).toBe('important');
+    expect(hero.style.getPropertyPriority('color')).toBe('important');
+    expect(hero.style.getPropertyValue('font-size')).toBe('42px');
+
+    dom.window.close();
+  });
+
+  it('clears the important flag when a preview style value is emptied', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="hero" style="font-size: 42px !important">Hero</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const hero = dom.window.document.querySelector('[data-od-id="hero"]') as HTMLElement;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: {
+        type: 'od-edit-preview-style',
+        id: 'hero',
+        styles: { fontSize: '' },
+        version: 2,
+      },
+    }));
+
+    expect(hero.style.getPropertyValue('font-size')).toBe('');
+
+    dom.window.close();
+  });
+
   it('moves the runtime selected marker between selected targets', () => {
     const dom = new JSDOM(
       `<main>
@@ -394,6 +439,10 @@ describe('manual edit bridge target normalization', () => {
     expect(title.hasAttribute('contenteditable')).toBe(false);
     expect(title.hasAttribute('data-od-editing')).toBe(false);
     expect(postMessage).toHaveBeenCalledWith({
+      type: 'od-edit-text-active',
+      active: false,
+    }, '*');
+    expect(postMessage).toHaveBeenCalledWith({
       type: 'od-edit-text-commit',
       id: 'title',
       value: 'Edited title',
@@ -401,6 +450,13 @@ describe('manual edit bridge target normalization', () => {
     }, '*');
 
     dom.window.close();
+  });
+
+  it('announces inline text editing and stops arrow keys in capture phase', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("type: 'od-edit-text-active'");
+    expect(bridge).toContain('stopImmediatePropagation');
+    expect(bridge).toContain('onKeyCapture');
   });
 
   it('cancels inline text edits with Escape without posting a commit', () => {

@@ -109,8 +109,8 @@ export type AutoContinuePromptContext = {
 // Manual retry stays available beyond the cap via the failed-run affordance.
 export const AUTO_CONTINUE_MAX_PER_CONVERSATION = 3;
 
-/** Scoped preview-comment edits salvage client-side first — one auto retry max. */
-export const AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT = 1;
+/** Scoped preview-comment edits salvage client-side first — two auto retries max. */
+export const AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT = 2;
 
 export function resolveAutoContinueMaxAttempts(options: {
   scopedCommentAttachmentCount: number;
@@ -269,8 +269,14 @@ export function shouldAutoContinueForIncompleteOutput(options: {
   maxPerConversation?: number;
   scopedCommentAttachmentCount?: number;
   terminalPersistResultKind: AutoContinuePersistResultKind;
+  terminalPersistResultCode?: string | null;
+  terminalPersistResultReason?: string | null;
   hadIncompleteParsedArtifact: boolean;
   shouldFailMissingSlideHtml: boolean;
+  shouldRouteScopedCommentEditToAutoContinue?: (
+    code: string | null | undefined,
+    reason: string,
+  ) => boolean;
 }): boolean {
   if (!options.runIsVisible) return false;
   const max = options.maxPerConversation
@@ -281,6 +287,16 @@ export function shouldAutoContinueForIncompleteOutput(options: {
 
   const kind = options.terminalPersistResultKind;
   if (kind === 'skipped-incomplete') return true;
+  if (
+    kind === 'scope-rejected'
+    && (options.scopedCommentAttachmentCount ?? 0) > 0
+    && options.shouldRouteScopedCommentEditToAutoContinue?.(
+      options.terminalPersistResultCode,
+      options.terminalPersistResultReason ?? '',
+    )
+  ) {
+    return true;
+  }
   if (kind !== null) return false;
   return options.hadIncompleteParsedArtifact || options.shouldFailMissingSlideHtml;
 }
@@ -396,6 +412,8 @@ export function buildAutoContinueScopedCommentEditPrompt(
     '- 텍스트 교체 요청 ("\'새 문구\'로 수정", "멘트를 …로"): `kind="set-text"`에 새 문구만 넣으세요.',
     '- 크기/색/강조만 바꾸는 요청: `kind="set-style"` JSON (`fontSize`, `fontWeight`, `color`). `currentText`는 그대로.',
     '- 줄바꿈/한 줄/nowrap 같은 레이아웃 요청: `kind="set-outer-html"` (`<br>` 제거) 또는 `kind="set-style"` `{"whiteSpace":"nowrap"}`. `<br>`/중첩 태그가 있으면 `set-text` 금지.',
+    '- 정렬/간격 요청: `kind="set-style"` JSON (`textAlign`, `padding`, `margin`). `currentText`는 그대로.',
+    '- 삭제/제거 요청: `kind="remove-element"` (빈 body).',
     '- 빈 `<artifact type="element-patch">` 또는 patch 없는 wrapper는 금지.',
     '- slide 구조 변경이 필요할 때만 `<artifact type="deck-patch">`에 해당 slide `<section>` 하나.',
     '',

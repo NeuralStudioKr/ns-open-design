@@ -56,15 +56,34 @@ export function applyManualEditPatch(
 
   if (patch.kind === 'set-text') {
     if (hasElementChildren(el) && !patch.flattenNestedMarkup) {
-      // Page-level pins resolve to the slide `<section>`; text edits should
-      // land on the leaf matched by the comment's currentText/htmlHint.
-      const leaf = effectiveHint
-        ? findLeafTextTargetByHint(doc, scope, effectiveHint)
-        : null;
-      if (!leaf) {
+      // Page-level / wrapper pins resolve to a container with nested
+      // `<span>`/`<strong>` markup. Prefer the comment hint leaf, then the
+      // dominant text leaf under the pinned element — wiping the whole
+      // container with textContent would destroy structure, but rejecting
+      // with "Use the HTML tab" breaks Teamver comment edits.
+      const leaf =
+        (effectiveHint ? findLeafTextTargetByHint(doc, scope, effectiveHint) : null)
+        ?? findPrimaryLeafTextTarget(el, effectiveHint);
+      if (leaf) {
+        if (leaf !== el && el.contains(leaf)) {
+          // Drop leftover sibling text ("… <strong>X</strong> trailing") so a
+          // full-label rewrite does not leave stale copy beside the leaf.
+          for (const node of Array.from(el.childNodes)) {
+            if (node.nodeType === 3 && (node.textContent || '').trim()) {
+              node.textContent = '';
+            }
+          }
+        }
+        el = leaf;
+      } else if (onlyHasIgnorableInlineMarkup(el)) {
+        // Headings/labels that only use `<br>` for line breaks have no leaf
+        // element to patch. Flatten to the committed plain text instead of
+        // rejecting with "Use the HTML tab instead".
+        el.textContent = patch.value;
+        return { ok: true, source: serializeSource(doc, source) };
+      } else {
         return { ok: false, source, error: 'This element contains nested markup. Use the HTML tab instead.' };
       }
-      el = leaf;
     }
     el.textContent = patch.value;
   } else if (patch.kind === 'set-link') {
@@ -537,23 +556,78 @@ function findLeafTextTargetByHint(
 ): Element | null {
   const byHint = findElementByHint(doc, scope, hint);
   if (byHint && !hasElementChildren(byHint)) return byHint;
+  // Hint matched a wrapper (`<h1><span>…</span></h1>` / `<p><strong>…`):
+  // search leaves under that wrapper first before scanning the whole slide.
+  if (byHint && hasElementChildren(byHint)) {
+    const nested = findPrimaryLeafTextTarget(byHint, hint);
+    if (nested) return nested;
+  }
   const hintText = normalizeTextForCandidate(hint.currentText || '');
   if (!hintText) return null;
   const root = findScopedRoot(doc, scope);
   if (!root) return null;
   const rootElement = root.nodeType === 9 ? doc.body : root as Element;
-  const hintedTag = /^<\s*([a-z][a-z0-9-]*)\b/i.exec(hint.htmlHint ?? '')?.[1]?.toLowerCase();
+  return pickBestLeafTextTarget(rootElement, hint);
+}
+
+/**
+ * Dominant leaf text target under a pinned container. Used when comment
+ * hints are missing/weak but the element clearly has one primary label
+ * leaf (gradient span, bold name, etc.).
+ */
+function findPrimaryLeafTextTarget(
+  container: Element,
+  hint?: ManualEditMergeTargetHint,
+): Element | null {
+  return pickBestLeafTextTarget(container, hint);
+}
+
+function pickBestLeafTextTarget(
+  rootElement: Element,
+  hint?: ManualEditMergeTargetHint,
+): Element | null {
+  const hintText = normalizeTextForCandidate(hint?.currentText || '');
+  const hintedTag = /^<\s*([a-z][a-z0-9-]*)\b/i.exec(hint?.htmlHint ?? '')?.[1]?.toLowerCase();
   const candidates = Array.from(rootElement.querySelectorAll('*')).filter(
     (candidate) => !hasElementChildren(candidate) && isReasonableTextReplacementCandidate(candidate),
   );
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0]!;
+
+  const parentText = normalizeTextForCandidate(rootElement.textContent || '');
+
+  // No hint + multiple leaves: only auto-pick a clear primary label
+  // (e.g. one gradient span holding most of the heading). Sibling labels
+  // of similar weight stay rejected so we do not rewrite the wrong one.
+  if (!hintText) {
+    const ranked = candidates
+      .map((candidate) => ({
+        candidate,
+        len: normalizeTextForCandidate(candidate.textContent || '').length,
+      }))
+      .filter((entry) => entry.len > 0)
+      .sort((a, b) => b.len - a.len);
+    const top = ranked[0];
+    if (!top) return null;
+    const secondLen = ranked[1]?.len ?? 0;
+    const clearWinner =
+      (parentText.length > 0 && top.len >= Math.ceil(parentText.length * 0.7))
+      || (top.len >= Math.max(2, secondLen * 2));
+    return clearWinner ? top.candidate : null;
+  }
+
   let best: { element: Element; score: number; length: number } | null = null;
   for (const candidate of candidates) {
     const text = normalizeTextForCandidate(candidate.textContent || '');
     if (!text) continue;
-    let score = 0;
+    let score = text.length;
     if (hintedTag && candidate.tagName.toLowerCase() === hintedTag) score += 50;
     if (text === hintText) score += 200;
     else if (text.includes(hintText) || hintText.includes(text)) score += 80;
+    if (parentText) {
+      if (text === parentText) score += 120;
+      else if (parentText.includes(text)) score += Math.min(60, text.length);
+    }
     if (score < 80) continue;
     const length = text.length;
     if (!best || score > best.score || (score === best.score && length < best.length)) {
@@ -1065,6 +1139,19 @@ function findElementByScopedPath(
 
 function hasElementChildren(el: Element): boolean {
   return Array.from(el.children).some((child) => child.nodeType === 1);
+}
+
+/** True when nested elements are only line breaks / empty wrappers — safe to flatten. */
+export function onlyHasIgnorableInlineMarkup(el: Element): boolean {
+  for (const child of Array.from(el.children)) {
+    if (child.nodeType !== 1) continue;
+    const tag = child.tagName.toLowerCase();
+    if (tag === 'br' || tag === 'wbr') continue;
+    const text = normalizeTextForCandidate(child.textContent || '');
+    if (!text && !hasElementChildren(child)) continue;
+    return false;
+  }
+  return true;
 }
 
 function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {

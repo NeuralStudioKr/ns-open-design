@@ -770,6 +770,22 @@ describe('preview comment attachment helpers', () => {
     expect(template).not.toContain('kind="set-text"');
   });
 
+  it('builds set-style alignment templates for alignment comment requests', () => {
+    const template = buildConcreteElementPatchTemplate([
+      commentAttachment({
+        elementId: 'hero-title',
+        selector: '[data-od-id="hero-title"]',
+        slideIndex: 0,
+        label: 'h2',
+        comment: '가운데 정렬해줘',
+        currentText: 'Title',
+      }),
+    ]);
+    expect(template).toContain('kind="set-style"');
+    expect(template).toContain('textAlign');
+    expect(template).not.toContain('kind="set-text"');
+  });
+
   it('does not build element-patch templates or coerce hints for page root targets', () => {
     const rootTarget = commentAttachment({
       elementId: 'dom:body',

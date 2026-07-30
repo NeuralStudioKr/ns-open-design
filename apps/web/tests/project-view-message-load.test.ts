@@ -333,7 +333,8 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toContain("tryApplyElementPatchesAgainstCurrentDeck(");
     expect(persistBlock).toContain("isDeckPatchArtifactType(art.artifactType)");
     expect(persistBlock).toContain("tryApplyDeckPatchAgainstCurrentDeck(");
-    expect(persistBlock).toContain("kind: 'scope-rejected'");
+    expect(source).toContain("function routeScopedCommentPersistFailure");
+    expect(source).toContain("kind: 'scope-rejected'");
     // Validation refusals still surface a refusal banner; incomplete shells
     // must stay quiet so they do not contradict the automatic-continue notice.
     expect(persistBlock).toContain("formatProjectArtifactRejectedError(");
@@ -552,9 +553,10 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("commentAttachments: scopedCommentAttachments");
     expect(source).toContain("buildConcreteElementPatchTemplate(autoContinueCommentAttachments)");
     expect(source).toContain("hydrateQueryContextCommentAttachments(");
-    expect(source).toContain("reason.startsWith('element-patch <patch> missing slide-index')");
-    expect(source).toContain("outside attached comment scope");
-    expect(source).toContain("No valid element targets in attached comment scope.");
+    expect(source).toContain("shouldRouteScopedCommentEditToAutoContinue");
+    const persistRoutingSource = readSource("src/edit-mode/scoped-comment-persist.ts");
+    expect(persistRoutingSource).toContain("outside attached comment scope");
+    expect(persistRoutingSource).toContain("No valid element targets in attached comment scope.");
   });
 
   it("self-heals leaked composer streaming markers after terminal turns settle", () => {
@@ -750,9 +752,8 @@ describe("ProjectView message loading", () => {
 
   it("routes scoped full-deck rewrite diff failures to auto-continue", () => {
     const source = readSource("src/components/ProjectView.tsx");
-    expect(source).toContain("function shouldRetryScopedFullDeckRewrite");
-    expect(source).toContain("full_deck_outside_slide_scope");
-    expect(source).toContain("async function trySalvageScopedFullDeckRewrite");
+    expect(source).toContain("function routeScopedCommentPersistFailure");
+    expect(source).toContain("shouldRouteScopedCommentEditToAutoContinue");
     expect(source).toContain("salvaged scoped full-deck rewrite via narrow merge");
     expect(source).toContain("routing scoped full-deck rewrite to auto-continue");
   });
