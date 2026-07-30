@@ -313,7 +313,7 @@ export function buildManualEditBridge(enabled: boolean): string {
         var value = styles[key];
         var cssName = camelToKebab(key);
         if (typeof value !== 'string' || value.trim() === '') el.style.removeProperty(cssName);
-        else el.style.setProperty(cssName, value.trim());
+        else el.style.setProperty(cssName, value.trim(), 'important');
       }
       window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id, version: Number(version) || 0, ok: true }, '*');
     } catch (e) {
