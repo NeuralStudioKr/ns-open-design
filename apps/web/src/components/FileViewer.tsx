@@ -1060,7 +1060,6 @@ async function requestPreviewSnapshotWithRetry(
   iframe: HTMLIFrameElement,
   timeouts: readonly number[] = EXPORT_SNAPSHOT_RETRY_MS,
 ): Promise<Awaited<ReturnType<typeof requestPreviewSnapshot>>> {
-  const timeouts = [1500, 3000, 6000];
   for (const timeout of timeouts) {
     const snapshot = await requestPreviewSnapshot(iframe, timeout);
     if (snapshot) return snapshot;
