@@ -2077,6 +2077,7 @@ export const de: Dict = {
   'fileRevision.history.close': 'Close history',
   'fileRevision.history.current': 'Current',
   'fileRevision.history.retentionHint': 'Showing the latest {count} saved edits per file.',
+  'fileRevision.conflict.message': 'This file was changed unexpectedly, so Undo and Redo are unavailable. You can restore an earlier version from Edit history.',
   'manualEdit.noChanges': 'Noch keine manuellen Bearbeitungen.',
   'manualEdit.imageUrl': 'Bild-URL',
   'manualEdit.altText': 'Alternativtext',

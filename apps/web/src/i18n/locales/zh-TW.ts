@@ -2077,6 +2077,7 @@ export const zhTW: Dict = {
   'fileRevision.history.close': '關閉記錄',
   'fileRevision.history.current': '目前',
   'fileRevision.history.retentionHint': '每個檔案僅保留最近 {count} 條編輯記錄。',
+  'fileRevision.conflict.message': '檔案發生意外變更，無法使用復原與重做。您可以從編輯記錄還原較早的版本。',
   'manualEdit.noChanges': '尚無手動編輯。',
   'manualEdit.imageUrl': '圖片 URL',
   'manualEdit.altText': '替代文字',

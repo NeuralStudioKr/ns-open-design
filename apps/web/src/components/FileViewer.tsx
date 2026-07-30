@@ -6836,13 +6836,8 @@ function HtmlViewer({
       setRevisionStackInvalidated(true);
     }
 
-    setRevisionConflictToast(
-      embedUiLabel(
-        'The file changed outside undo history. The undo stack was reset.',
-        '파일이 편집 기록 밖에서 변경되어 실행 취소 스택을 초기화했습니다.',
-      ),
-    );
-  }, [projectId, file.name, resolveRevisionSnapshotContent]);
+    setRevisionConflictToast(t('fileRevision.conflict.message'));
+  }, [projectId, file.name, resolveRevisionSnapshotContent, t]);
 
   const refreshRevisionStack = useCallback(async () => {
     const list = await listProjectFileRevisions(projectId, file.name);

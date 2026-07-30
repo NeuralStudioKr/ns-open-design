@@ -2743,6 +2743,7 @@ export interface Dict {
   'fileRevision.history.close': string;
   'fileRevision.history.current': string;
   'fileRevision.history.retentionHint': string;
+  'fileRevision.conflict.message': string;
   'manualEdit.noChanges': string;
   'manualEdit.imageUrl': string;
   'manualEdit.altText': string;
