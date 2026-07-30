@@ -49,6 +49,8 @@
 ## Preview (HtmlViewer / FileWorkspace) 정책
 
 - `acceptPreviewHtmlCandidate`: `repair` → `isArtifactHtmlStableForPreview`만 채택. unstable이면 last-stable만 반환 (느슨한 `</body></html>`+leak-only fallback **금지**).
+- Tag-balance는 HTML/CSS 주석을 strip한 뒤 계산한다. skeleton CSS 주석의 문자 그대로 `<style>` 가 open-count에 잡히면 complete deck이 영구 loading에 고정된다.
+- Compact modern deck-nav IIFE (`const/let slides=document.querySelectorAll('.slide')` + ArrowRight/touch/wheel)도 chat scrub SSOT에 포함한다 — classic `var`+`deck-stage`만 보면 완료 후 채팅에 JS가 남는다.
 - **liveHtml apply와 disk fetch는 effect를 분리**한다. live 토큰 매 청크가 disk debounce를 cancel하면 sticky `"loading…"`가 난다.
 - disk debounce `HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS` (200) ≤ ProjectView file-changed coalesce `maxWait` (250).
 - hung GET 방지: `HTML_PREVIEW_SOURCE_WALL_MS` (12s). wall은 empty+non-streaming에서 arm; soft-retry/late incomplete 후 **재arm** 가능. **streaming 중에는 wall을 arm하지 않는다**.

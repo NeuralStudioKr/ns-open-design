@@ -76,10 +76,19 @@ export function applyManualEditPatch(
         }
         el = leaf;
       } else if (onlyHasIgnorableInlineMarkup(el)) {
-        // Headings/labels that only use `<br>` for line breaks have no leaf
-        // element to patch. Flatten to the committed plain text instead of
-        // rejecting with "Use the HTML tab instead".
+        // Headings/labels that only use `<br>` (or empty wrappers) for line
+        // breaks have no leaf element to patch. Flatten to the committed
+        // plain text — safer than the broader innerHTML rewrite below.
         el.textContent = patch.value;
+        return { ok: true, source: serializeSource(doc, source) };
+      } else if (containsOnlyInlineTextFormatting(el)) {
+        // Ambiguous inline siblings (e.g. `<span>Alpha</span><span>Beta</span>`,
+        // gradient + label wrappers). The wrapper is a plain text container
+        // and the user has explicitly asked to change its text — replace
+        // innerHTML with the escaped value. This wipes inline formatting
+        // spans but keeps the edit unblocked, matching upstream v2's
+        // `set-inner-html` fallback.
+        el.innerHTML = escapeManualEditText(patch.value);
         return { ok: true, source: serializeSource(doc, source) };
       } else {
         return { ok: false, source, error: 'This element contains nested markup. Use the HTML tab instead.' };
@@ -89,7 +98,11 @@ export function applyManualEditPatch(
   } else if (patch.kind === 'set-link') {
     if (hasElementChildren(el)) {
       const currentText = el.textContent?.trim() ?? '';
-      if (patch.text.trim() !== currentText) {
+      if (patch.text.trim() === currentText) {
+        // Href-only edit on a formatted link — safe to keep the markup.
+      } else if (containsOnlyInlineTextFormatting(el)) {
+        el.innerHTML = escapeManualEditText(patch.text);
+      } else {
         return { ok: false, source, error: 'This link contains nested markup. Use the HTML tab to change its label.' };
       }
     } else {
@@ -1152,6 +1165,51 @@ export function onlyHasIgnorableInlineMarkup(el: Element): boolean {
     return false;
   }
   return true;
+}
+
+const MANUAL_EDIT_INLINE_TEXT_TAGS = new Set([
+  'span', 'em', 'strong', 'b', 'i', 'u', 'mark', 'small',
+  'sub', 'sup', 'br', 'a', 'abbr', 'cite', 'code', 'kbd', 'samp',
+  'time', 'var', 's', 'q', 'dfn', 'del', 'ins',
+  'wbr', 'bdi', 'bdo',
+]);
+
+const MANUAL_EDIT_INLINE_WRAPPER_TAGS = new Set([
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'p', 'span', 'a', 'button', 'label', 'li',
+  'strong', 'em', 'b', 'i', 'u', 'mark', 'small',
+  'div', 'dt', 'dd', 'figcaption', 'summary',
+  'cite', 'blockquote', 'q',
+]);
+
+/**
+ * True when `el` is a text-shaped wrapper (heading, paragraph, list item,
+ * label, small `<div>`) whose children only carry inline formatting. Used to
+ * decide whether a `set-text` patch may destructively replace inner HTML with
+ * the escaped user text — safer than blocking the edit outright, but not so
+ * aggressive that we would wipe block layout (`ul`, `table`, `section`, etc.).
+ */
+export function containsOnlyInlineTextFormatting(el: Element): boolean {
+  const tag = el.tagName?.toLowerCase() ?? '';
+  if (!MANUAL_EDIT_INLINE_WRAPPER_TAGS.has(tag)) return false;
+  return Array.from(el.children).every(childIsInlineTextFormatting);
+}
+
+function childIsInlineTextFormatting(child: Element): boolean {
+  const tag = child.tagName?.toLowerCase() ?? '';
+  if (!MANUAL_EDIT_INLINE_TEXT_TAGS.has(tag)) return false;
+  if (child.children.length === 0) return true;
+  return Array.from(child.children).every(childIsInlineTextFormatting);
+}
+
+/** Escape user-provided text before writing it into an element's innerHTML. */
+export function escapeManualEditText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {

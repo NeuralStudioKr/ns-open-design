@@ -1,11 +1,32 @@
 import { describe, expect, it } from "vitest";
 
 import { isArtifactHtmlStableForPreview } from "../src/html/isArtifactHtmlStableForPreview.js";
+import { DECK_SKELETON_HTML } from "../src/prompts/deck-framework.js";
+import { repairArtifactDocumentHead } from "../src/html/repairArtifactDocumentHead.js";
 
 describe("isArtifactHtmlStableForPreview", () => {
   it("rejects empty and partial documents", () => {
     expect(isArtifactHtmlStableForPreview("")).toBe(false);
     expect(isArtifactHtmlStableForPreview("<!doctype html><html><head><title>T</title>")).toBe(false);
+  });
+
+  it("accepts the canonical deck-framework skeleton despite <style> text in CSS comments", () => {
+    // Agents copy DECK_SKELETON_HTML verbatim. CSS comments historically
+    // contained the literal string "<style>" which naive open-tag counting
+    // treated as an unclosed style — permanently stuck preview loading.
+    expect(isArtifactHtmlStableForPreview(DECK_SKELETON_HTML)).toBe(true);
+    expect(isArtifactHtmlStableForPreview(repairArtifactDocumentHead(DECK_SKELETON_HTML))).toBe(true);
+  });
+
+  it("ignores instructional <style>/<script> copies inside CSS and HTML comments", () => {
+    const html = `<!doctype html><html><head>
+<style>
+  /* Do not edit this <style> block. Also ignore <script> mentions. */
+  :root { --bg: #fff; }
+</style>
+<!-- example: <style>.x{}</style> <script>alert(1)</script> -->
+</head><body><section class="slide">A</section></body></html>`;
+    expect(isArtifactHtmlStableForPreview(html)).toBe(true);
   });
 
   it("rejects documents with unclosed style or script tags", () => {

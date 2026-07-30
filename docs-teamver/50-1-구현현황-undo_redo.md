@@ -75,7 +75,18 @@
 | 항목 | 상태 | 비고 |
 |------|------|------|
 | gzip diff storage | [x] | `.snap.gz` + prefix/suffix diff, legacy `.html` 읽기 |
-| cross-file transaction | [ ] | |
+| cross-file transaction | [-] | 설계 §1 Non-goal (프로젝트 전체 multi-file undo). 요구 발생 시 별도 설계 |
+
+---
+
+## 마무리 체크리스트 (staging 머지 전)
+
+| 항목 | 상태 |
+|------|------|
+| `staging` 최신 머지 | [x] |
+| undo/redo + manual-edit regression tests | [x] |
+| daemon file-revisions tests | [x] |
+| nested markup (inline salvage + flattenNestedMarkup) | [x] |
 
 ---
 
