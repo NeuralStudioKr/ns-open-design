@@ -210,6 +210,14 @@ describe('style helpers', () => {
       topPx: null,
     });
     expect(styles).toEqual({ width: '220px' });
+    // Text/fontSize and other style keys must never ride along with a box resize.
+    expect(Object.keys(styles)).toEqual(['width']);
+  });
+
+  it('disables handles while inline text editing or edit mode is off', () => {
+    expect(canResizeTarget(target(), { editMode: false })).toBe(false);
+    expect(canResizeTarget(target(), { inlineTextEditing: true })).toBe(false);
+    expect(canResizeTarget(target({ kind: 'text', tagName: 'p' }))).toBe(true);
   });
 
   it('anchors left when W-dragging an absolute element', () => {

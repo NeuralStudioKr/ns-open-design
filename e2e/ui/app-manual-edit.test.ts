@@ -257,6 +257,135 @@ test('[P1] manual edit drag-resize hides handles on deck slide root', async ({ p
   await expect(page.getByTestId('manual-edit-resize-overlay')).toHaveCount(0);
 });
 
+test('[P1] manual edit drag-resize E handle updates width without changing height', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize E-only');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize-e.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-e.html`);
+  await openDesignFile(page, 'manual-edit-resize-e.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const handle = page.getByTestId('manual-edit-resize-handle-e');
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 90, startY, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-resize-e.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const width = Number(style.match(/width:\s*(\d+)px/)?.[1] ?? NaN);
+      const height = Number(style.match(/height:\s*(\d+)px/)?.[1] ?? NaN);
+      return width > 120 && height === 80;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit drag-resize hides overlay while Draw mode is active', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize draw');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize-draw.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-draw.html`);
+  await openDesignFile(page, 'manual-edit-resize-draw.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toBeVisible();
+
+  await page.getByTestId('draw-overlay-toggle').click();
+  await expect(page.getByTestId('draw-overlay-toggle')).toHaveAttribute('aria-pressed', 'true');
+  // §16: Draw mode must drop resize handles (selection/edit may also clear).
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toHaveCount(0);
+});
+
+test('[P1] manual edit drag-resize handles stay aligned at 75% zoom', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize zoom');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize-zoom.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-zoom.html`);
+  await openDesignFile(page, 'manual-edit-resize-zoom.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const zoomButton = page.locator('.viewer-toolbar-zoom .zoom-trigger');
+  await zoomButton.click();
+  const zoomMenu = page.locator('.zoom-menu-popover[role="menu"]');
+  await expect(zoomMenu).toBeVisible();
+  await zoomMenu.getByRole('menuitem', { name: '75%' }).click();
+  await expect(zoomButton).toHaveText('75%');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const handle = page.getByTestId('manual-edit-resize-handle-e');
+  await expect(overlay).toBeVisible();
+  await expect(handle).toBeVisible();
+  const overlayBox = await overlay.boundingBox();
+  const handleBox = await handle.boundingBox();
+  expect(overlayBox).toBeTruthy();
+  expect(handleBox).toBeTruthy();
+  // E handle sits on the right edge of the host overlay box (within hit padding).
+  const handleCenterX = handleBox!.x + handleBox!.width / 2;
+  expect(Math.abs(handleCenterX - (overlayBox!.x + overlayBox!.width))).toBeLessThan(12);
+  expect(overlayBox!.width).toBeGreaterThan(40);
+  expect(overlayBox!.height).toBeGreaterThan(20);
+});
+
+test('[P1] manual edit drag-resize keeps image aspect by default', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize image');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize-image.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-image.html`);
+  await openDesignFile(page, 'manual-edit-resize-image.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="hero-image"]', 'IMAGE');
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toBeVisible();
+
+  const handle = page.getByTestId('manual-edit-resize-handle-se');
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  // Uneven delta — aspect lock should keep a square for the 64×64 image.
+  await page.mouse.move(startX + 80, startY + 20, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-resize-image.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="hero-image"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const width = Number(style.match(/width:\s*(\d+)px/)?.[1] ?? NaN);
+      const height = Number(style.match(/height:\s*(\d+)px/)?.[1] ?? NaN);
+      if (!Number.isFinite(width) || !Number.isFinite(height) || height <= 0) return false;
+      const ratio = width / height;
+      return width > 64 && Math.abs(ratio - 1) < 0.08;
+    })
+    .toBe(true);
+});
+
 async function selectPreviewElementThroughBridge(
   page: Page,
   frame: ReturnType<Page['frameLocator']>,
