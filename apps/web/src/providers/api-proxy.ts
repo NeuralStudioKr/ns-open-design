@@ -538,12 +538,13 @@ export async function buildProxyMessages(
 ): Promise<ProxyMessage[]> {
   const anthropic = usesAnthropicMessagesPayload(endpoint);
   if (!anthropic || !context?.projectId) {
-    return history.map((message) => ({
+    const out = history.map((message) => ({
       role: message.role,
       // Anthropic rejects empty user content even when projectId is missing
       // (image blocks skipped). Other protocols keep historical behavior.
       content: sanitizeAnthropicProxyRoleContent(message.role, message.content, anthropic),
     }));
+    return anthropic ? normalizeAnthropicProxyMessageRoles(out) : out;
   }
 
   const out: ProxyMessage[] = [];
@@ -555,7 +556,7 @@ export async function buildProxyMessages(
       content,
     });
   }
-  return out;
+  return normalizeAnthropicProxyMessageRoles(out);
 }
 
 function sanitizeAnthropicProxyRoleContent(
@@ -571,6 +572,45 @@ function sanitizeAnthropicProxyRoleContent(
 
 /** Failed/canceled runs often persist assistant shells with empty `content`. */
 export const ANTHROPIC_EMPTY_ASSISTANT_PLACEHOLDER = '(No assistant reply was recorded.)';
+
+/** Anthropic Messages API rejects images above 5 MB; stay under with headroom. */
+export const MAX_ANTHROPIC_PROXY_IMAGE_BYTES = 4_500_000;
+
+/**
+ * Anthropic requires alternating user/assistant roles. Hidden auto-continue user
+ * rows and collapsed empty assistant shells can leave consecutive user turns in
+ * chat history — insert placeholders instead of forwarding invalid sequences.
+ */
+export function normalizeAnthropicProxyMessageRoles(
+  messages: ProxyMessage[],
+): ProxyMessage[] {
+  if (messages.length === 0) return messages;
+  const normalized: ProxyMessage[] = [];
+  for (const message of messages) {
+    const previous = normalized[normalized.length - 1];
+    if (previous && previous.role === message.role) {
+      normalized.push(
+        message.role === 'user'
+          ? {
+              role: 'assistant',
+              content: ANTHROPIC_EMPTY_ASSISTANT_PLACEHOLDER,
+            }
+          : {
+              role: 'user',
+              content: COMMENT_ONLY_USER_PLACEHOLDER,
+            },
+      );
+    }
+    normalized.push(message);
+  }
+  if (normalized[0]?.role === 'assistant') {
+    normalized.unshift({
+      role: 'user',
+      content: COMMENT_ONLY_USER_PLACEHOLDER,
+    });
+  }
+  return normalized;
+}
 
 function anthropicContentHasSubstance(content: ProxyMessageContent): boolean {
   if (typeof content === 'string') return content.trim().length > 0;
@@ -657,6 +697,7 @@ async function readAnthropicImageBlock(
     if (!mediaType) return null;
 
     const bytes = new Uint8Array(await resp.arrayBuffer());
+    if (bytes.length > MAX_ANTHROPIC_PROXY_IMAGE_BYTES) return null;
     return {
       type: 'image',
       source: {
