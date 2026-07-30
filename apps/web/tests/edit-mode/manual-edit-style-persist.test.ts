@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   restoreManualEditPendingStyleAfterFailedFlush,
   shouldFlushManualEditStylesOnTargetBoundary,
+  waitForManualEditSaveIdle,
 } from '../../src/edit-mode/manual-edit-style-persist';
 
 describe('manual edit style persist boundary', () => {
@@ -41,5 +42,31 @@ describe('manual edit style persist boundary', () => {
       version: 2,
     };
     expect(restoreManualEditPendingStyleAfterFailedFlush(newer, flushed)).toEqual(newer);
+  });
+
+  it('waits for an in-flight save lock to clear before boundary flushes continue', async () => {
+    let busy = true;
+    let now = 0;
+    const sleep = vi.fn(async (ms: number) => {
+      now += ms;
+      if (now >= 48) busy = false;
+    });
+    await expect(waitForManualEditSaveIdle(() => busy, {
+      pollMs: 16,
+      timeoutMs: 200,
+      now: () => now,
+      sleep,
+    })).resolves.toBe(true);
+    expect(busy).toBe(false);
+  });
+
+  it('times out when the save lock never clears', async () => {
+    let now = 0;
+    await expect(waitForManualEditSaveIdle(() => true, {
+      pollMs: 10,
+      timeoutMs: 30,
+      now: () => now,
+      sleep: async (ms) => { now += ms; },
+    })).resolves.toBe(false);
   });
 });
