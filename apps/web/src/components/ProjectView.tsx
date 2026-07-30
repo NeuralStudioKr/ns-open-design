@@ -4287,7 +4287,7 @@ export function ProjectView({
           emitRevisionPush(
             analytics.track,
             project.id,
-            projectKindToTracking(project.kind, project.metadata?.videoModel),
+            projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel),
             file.name,
             pushedRevision,
             'agent_persist',
@@ -4311,7 +4311,7 @@ export function ProjectView({
                   emitRevisionUndo(
                     analytics.track,
                     project.id,
-                    projectKindToTracking(project.kind, project.metadata?.videoModel),
+                    projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel),
                     restoredFileName,
                     cursorRevision,
                     'agent_toast',
