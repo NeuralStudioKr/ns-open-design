@@ -1,5 +1,3 @@
-import type { ScopedDeckPersistFailureCode } from './scoped-deck-patch';
-
 const EXACT_MERGE_RETRY_REASONS = new Set([
   'No matching targets found to merge.',
   'Selected targets were unchanged.',
@@ -15,7 +13,7 @@ const EXACT_MERGE_RETRY_REASONS = new Set([
  * `skipped-incomplete` (auto-continue) instead of a hard scope-rejected banner.
  */
 export function shouldRouteScopedCommentEditToAutoContinue(
-  code: ScopedDeckPersistFailureCode | undefined,
+  code: string | null | undefined,
   reason: string,
 ): boolean {
   if (!code) return false;
