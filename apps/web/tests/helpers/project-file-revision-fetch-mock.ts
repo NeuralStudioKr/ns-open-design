@@ -21,7 +21,31 @@ export function createProjectFileRevisionFetchMock(options: {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    if (url.includes(encodedPath) && init?.method !== 'POST') {
+    if (url.includes(`${encodedPath}/`) && (!init?.method || init.method === 'GET') && !url.endsWith('/restore')) {
+      const revisionId = decodeURIComponent(url.split('/revisions/')[1]?.split('?')[0]?.replace(/\/$/, '') ?? '');
+      const revision = revisions.find((entry) => entry.id === revisionId);
+      if (!revision) {
+        return new Response(JSON.stringify({ error: 'missing revision' }), { status: 404 });
+      }
+      return new Response(JSON.stringify({
+        revision: {
+          id: revision.id,
+          projectId,
+          fileName,
+          parentRevisionId: null,
+          sequence: revision.sequence,
+          createdAt: Date.now(),
+          byteSize: revision.content.length,
+          source: revision.id === 'rev-baseline' ? 'import' : 'manual_edit',
+          label: revision.id,
+        },
+        content: revision.content,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.includes(encodedPath) && (!init?.method || init.method === 'GET')) {
       const head = revisions[revisions.length - 1] ?? null;
       return new Response(JSON.stringify({
         revisions: revisions.map((revision) => ({
@@ -109,6 +133,9 @@ export function createProjectFileRevisionFetchMock(options: {
   return {
     fetchMock,
     getPersistedSource: () => persistedSource,
+    setPersistedSource: (next: string) => {
+      persistedSource = next;
+    },
     getRevisions: () => revisions,
   };
 }

@@ -7,6 +7,7 @@ import type {
   ConnectorListResponse,
   ConnectorStatusResponse,
   FileRevision,
+  FileRevisionContentResponse,
   FileRevisionPushRequest,
   FileRevisionPushResponse,
   FileRevisionRestoreResponse,
@@ -1992,6 +1993,23 @@ export async function listProjectFileRevisions(
     const resp = await fetchTeamverDaemon(projectFileRevisionsPath(projectId, fileName));
     if (!resp.ok) return null;
     return (await resp.json()) as FileRevisionsListResponse;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchProjectFileRevisionContent(
+  projectId: string,
+  fileName: string,
+  revisionId: string,
+): Promise<FileRevisionContentResponse | null> {
+  try {
+    const encodedName = fileName.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+    const resp = await fetchTeamverDaemon(
+      `/api/projects/${encodeURIComponent(projectId)}/files/${encodedName}/revisions/${encodeURIComponent(revisionId)}`,
+    );
+    if (!resp.ok) return null;
+    return (await resp.json()) as FileRevisionContentResponse;
   } catch {
     return null;
   }

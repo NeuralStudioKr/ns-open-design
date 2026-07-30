@@ -59,6 +59,17 @@
 
 ---
 
+## 충돌 감지 (설계 §8.3·§9)
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| disk ≠ cursor snapshot 감지 | [x] | `reconcileRevisionWithDisk` |
+| 스택 reset + toast | [x] | cursor → head, `revisionConflictToast` |
+| head ≠ disk 시 undo 비활성화 | [x] | `revisionStackInvalidated` |
+| revision API fetch content | [x] | `fetchProjectFileRevisionContent` |
+
+---
+
 ## Phase 4 — 최적화 (요구 시)
 
 | 항목 | 상태 | 비고 |
