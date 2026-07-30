@@ -211,6 +211,7 @@ import {
   MANUAL_EDIT_STYLE_AUTOSAVE_MS,
   restoreManualEditPendingStyleAfterFailedFlush,
   shouldFlushManualEditStylesOnTargetBoundary,
+  waitForManualEditSaveIdle,
 } from '../edit-mode/manual-edit-style-persist';
 import { manualEditStyleReplayPatches } from '../edit-mode/manual-edit-style-replay';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
@@ -5861,8 +5862,11 @@ function HtmlViewer({
   // invisible to the iframe — live updates flow through od-edit-preview-style
   // postMessage instead, so the canvas never has to reload.
   useEffect(() => {
-    if (manualEditMode && manualEditFrozenSource === null && livePreviewSource != null) {
-      setManualEditFrozenSource(livePreviewSource);
+    if (manualEditMode && manualEditFrozenSource === null) {
+      // Prefer sourceRef (includes a just-pinned save) over a lagging
+      // livePreviewSource token so re-enter freezes the edited HTML.
+      const snap = sourceRef.current ?? livePreviewSource;
+      if (snap != null) setManualEditFrozenSource(snap);
     }
   }, [manualEditMode, manualEditFrozenSource, livePreviewSource]);
   const previewSource = (manualEditMode && manualEditFrozenSource !== null)
@@ -7058,10 +7062,15 @@ function HtmlViewer({
   }
 
   async function flushManualEditStyleSave(): Promise<boolean> {
+    // Boundary flushes (exit / select / text commit) must not lose a race with
+    // autosave: wait for the lock, then persist whatever draft remains.
+    if (manualEditSavingRef.current) {
+      if (!(await waitForManualEditSaveIdle(() => manualEditSavingRef.current))) {
+        return false;
+      }
+    }
     const pending = manualEditPendingStyleRef.current;
     if (!pending) return true;
-    // Keep the draft when another write owns the lock so a later Save / exit
-    // / boundary flush can retry — clearing here permanently loses the tweak.
     if (manualEditSavingRef.current) return false;
     clearManualEditStyleTimer();
     manualEditPendingStyleRef.current = null;
@@ -7077,6 +7086,10 @@ function HtmlViewer({
       return false;
     }
     return true;
+  }
+
+  async function settleManualEditStyleBoundary(): Promise<boolean> {
+    return flushManualEditStyleSave();
   }
 
   function cancelManualEditStyleDraft() {
@@ -7311,6 +7324,7 @@ function HtmlViewer({
   }
 
   async function undoManualEdit() {
+    if (!(await settleManualEditStyleBoundary())) return;
     if (manualEditSavingRef.current) return;
     const [latest, ...rest] = manualEditHistory;
     if (!latest) return;
@@ -7358,6 +7372,7 @@ function HtmlViewer({
   }
 
   async function redoManualEdit() {
+    if (!(await settleManualEditStyleBoundary())) return;
     if (manualEditSavingRef.current) return;
     const [latest, ...rest] = manualEditUndone;
     if (!latest) return;
@@ -9012,7 +9027,10 @@ function HtmlViewer({
       }}
       onInvalidStyle={cancelManualEditPendingStyles}
       onApplyPatch={(patch, label) => {
-        void applyManualEdit(patch, label);
+        void (async () => {
+          if (patch.kind !== 'set-style' && !(await settleManualEditStyleBoundary())) return;
+          await applyManualEdit(patch, label);
+        })();
       }}
       onError={setManualEditError}
       onClearSelection={() => {
