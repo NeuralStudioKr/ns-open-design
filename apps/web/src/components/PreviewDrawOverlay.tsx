@@ -892,7 +892,7 @@ export function PreviewDrawOverlay({
               style={{
                 position: 'absolute',
                 left: 'calc(50% - 52px)',
-                bottom: 112,
+                bottom: 128,
                 transform: 'translateX(-50%)',
                 display: 'flex',
                 alignItems: 'center',
@@ -1067,7 +1067,7 @@ export function PreviewDrawOverlay({
               borderRadius: 24,
               boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
               backdropFilter: 'blur(8px)',
-              zIndex: 91,
+              zIndex: 93,
               pointerEvents: 'auto',
               fontSize: 13,
               visibility: chromeHidden ? 'hidden' : undefined,
