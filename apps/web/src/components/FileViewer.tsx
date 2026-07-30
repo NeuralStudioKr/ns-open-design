@@ -199,6 +199,12 @@ import {
   readManualEditOuterHtml,
   readManualEditStyles,
 } from '../edit-mode/source-patches';
+import {
+  createManualEditSourcePin,
+  manualEditHistoryConfirmTrustsLocal,
+  preferManualEditPinnedSource,
+  type ManualEditSourcePin,
+} from '../edit-mode/manual-edit-save-pin';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 
@@ -4924,6 +4930,14 @@ function HtmlViewer({
       })()
       : null,
   );
+  // After POST /files succeeds, pin the saved HTML so onFileSaved → disk
+  // refetch cannot briefly restore the pre-edit snapshot (S3/lazy race).
+  const manualEditPinnedSourceRef = useRef<ManualEditSourcePin | null>(null);
+  const pinManualEditSavedSource = (savedSource: string) => {
+    manualEditPinnedSourceRef.current = createManualEditSourcePin(savedSource);
+    lastStablePreviewSourceRef.current = savedSource;
+    exportHtmlSnapshotGateRef.current = savedSource;
+  };
   const lastStablePreviewIdentityRef = useRef<string | null>(null);
   // When liveHtml is present and paints (stable or last-stable fallback),
   // skip disk fetch. Token churn must NOT cancel an in-flight disk debounce.
@@ -5515,6 +5529,7 @@ function HtmlViewer({
     if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
       lastStablePreviewIdentityRef.current = artifactIdentity;
       lastStablePreviewSourceRef.current = null;
+      manualEditPinnedSourceRef.current = null;
       sourceRef.current = null;
       exportHtmlSnapshotGateRef.current = null;
       setSource(null);
@@ -5569,6 +5584,7 @@ function HtmlViewer({
     if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
       lastStablePreviewIdentityRef.current = artifactIdentity;
       lastStablePreviewSourceRef.current = null;
+      manualEditPinnedSourceRef.current = null;
       sourceRef.current = null;
       exportHtmlSnapshotGateRef.current = null;
       setSource(null);
@@ -5674,6 +5690,22 @@ function HtmlViewer({
       }).then((text) => {
         if (cancelled || abort.signal.aborted) return;
         if (requestGeneration !== previewSourceFetchGenerationRef.current) return;
+        // Manual-edit POST succeeded but GET may still return null/stale S3
+        // for a few seconds — keep the pinned saved buffer instead of
+        // painting the pre-edit lastStable frame (looks like "edit didn't save").
+        const pinnedPreferred = preferManualEditPinnedSource(
+          manualEditPinnedSourceRef.current,
+          text,
+        );
+        if (pinnedPreferred != null) {
+          setSource(pinnedPreferred);
+          sourceRef.current = pinnedPreferred;
+          lastStablePreviewSourceRef.current = pinnedPreferred;
+          exportHtmlSnapshotGateRef.current = pinnedPreferred;
+          clearPreviewSourceWall();
+          setSourceLoadFailed(false);
+          return;
+        }
         // Chokidar emits agent rewrites as unlink+add+change bursts; a
         // transient null mid-burst would blank source → srcDoc empty →
         // shell stays on prior frame. Keep the last good text instead.
@@ -7104,6 +7136,7 @@ function HtmlViewer({
       };
       setSource(result.source);
       sourceRef.current = result.source;
+      pinManualEditSavedSource(result.source);
       setInlinedSource(null);
       if (patch.kind !== 'set-style') {
         setManualEditFrozenSource(result.source);
@@ -7145,14 +7178,20 @@ function HtmlViewer({
       cache: 'no-store',
       cacheBustKey: Date.now(),
     });
-    if (persisted == null || persisted === expectedSource) return true;
-    setSource(persisted);
-    sourceRef.current = persisted;
+    if (manualEditHistoryConfirmTrustsLocal(
+      expectedSource,
+      persisted,
+      manualEditPinnedSourceRef.current,
+    )) {
+      return true;
+    }
+    setSource(persisted!);
+    sourceRef.current = persisted!;
     setInlinedSource(null);
     setManualEditHistory([]);
     setManualEditUndone([]);
     manualEditPendingStyleRef.current = null;
-    setManualEditDraft((current) => ({ ...current, fullSource: persisted }));
+    setManualEditDraft((current) => ({ ...current, fullSource: persisted! }));
     setManualEditError(message);
     return false;
   }
@@ -7191,6 +7230,7 @@ function HtmlViewer({
       }
       setSource(latest.beforeSource);
       sourceRef.current = latest.beforeSource;
+      pinManualEditSavedSource(latest.beforeSource);
       setInlinedSource(null);
       setManualEditFrozenSource(latest.beforeSource);
       setManualEditHistory(rest);
@@ -7237,6 +7277,7 @@ function HtmlViewer({
       }
       setSource(latest.afterSource);
       sourceRef.current = latest.afterSource;
+      pinManualEditSavedSource(latest.afterSource);
       setInlinedSource(null);
       setManualEditFrozenSource(latest.afterSource);
       setManualEditUndone(rest);
