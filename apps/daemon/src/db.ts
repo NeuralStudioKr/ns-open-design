@@ -1867,14 +1867,73 @@ function mergeOptionalMessageArrayField<T>(
   return incoming;
 }
 
+/** Non-fatal status:error codes that must not force runStatus back to failed. */
+const NON_FATAL_CHAT_ERROR_CODES = new Set([
+  'auto_continue_incomplete_output',
+  'emergency_deck_fallback',
+]);
+
+function isDurableChatErrorEvent(event: unknown): boolean {
+  if (!event || typeof event !== 'object') return false;
+  const row = event as { kind?: unknown; label?: unknown; detail?: unknown; code?: unknown };
+  if (row.kind !== 'status' || row.label !== 'error') return false;
+  if (typeof row.detail !== 'string' || !row.detail.trim()) return false;
+  if (typeof row.code === 'string' && NON_FATAL_CHAT_ERROR_CODES.has(row.code)) return false;
+  return true;
+}
+
+function chatErrorEventKey(event: unknown): string {
+  const row = event as { detail?: unknown; code?: unknown };
+  return `${String(row.detail ?? '')}\0${String(row.code ?? '')}`;
+}
+
+/**
+ * Keepalive may omit/empty `events`. A later streaming-buffer PUT may send a
+ * non-empty events array that still lacks a previously persisted status:error
+ * card. Preserve those durable error events so hard re-entry can rebuild the
+ * chat error UI from the server row alone.
+ */
+function mergeMessageEvents(
+  incoming: unknown[] | undefined,
+  existing: unknown[] | undefined,
+): unknown[] | undefined {
+  if (incoming === undefined) return existing;
+  if (incoming.length === 0 && (existing?.length ?? 0) > 0) return existing;
+  if (!existing?.length) return incoming;
+  const incomingKeys = new Set(
+    incoming.filter(isDurableChatErrorEvent).map(chatErrorEventKey),
+  );
+  const missing = existing.filter(
+    (event) => isDurableChatErrorEvent(event) && !incomingKeys.has(chatErrorEventKey(event)),
+  );
+  if (missing.length === 0) return incoming;
+  return [...incoming, ...missing];
+}
+
 function mergeMessageUpsertPayload(existing: DbRow | undefined, incoming: DbRow): DbRow {
   if (!existing) return incoming;
+  const events = mergeMessageEvents(
+    incoming.events as unknown[] | undefined,
+    existing.events as unknown[] | undefined,
+  ) as DbRow['events'];
+  let runStatus = incoming.runStatus;
+  // Restored durable error cards must stay failed so ChatPane can rebuild the
+  // diagnostic after hard reload (ephemeral React `error` is cleared on load).
+  if (
+    Array.isArray(events)
+    && events.some(isDurableChatErrorEvent)
+    && runStatus !== 'canceled'
+    && runStatus !== 'failed'
+  ) {
+    runStatus = 'failed';
+  }
   return {
     ...incoming,
-    // Keepalive pagehide trims may omit `events` entirely (or send []). Never
-    // clobber a previously persisted transcript / error status card that way —
-    // attachments already used the same coalesce helper.
-    events: mergeOptionalMessageArrayField(incoming.events, existing.events),
+    runStatus,
+    endedAt: runStatus === 'failed'
+      ? (incoming.endedAt ?? existing.endedAt ?? Date.now())
+      : incoming.endedAt,
+    events,
     commentAttachments: mergeOptionalMessageArrayField(
       incoming.commentAttachments,
       existing.commentAttachments,

@@ -16,6 +16,13 @@
 - daemon message upsert는 keepalive 등이 `events`를 생략해도 기존 `events_json`을 지우지 않는다 (`mergeOptionalMessageArrayField` + `COALESCE`).
 - `mergeServerMessageWithLocal`은 서버 row에 status:error가 없을 때 로컬 에러 이벤트를 유지한다.
 
+## 2026-07-30 추가: stale streaming PUT이 status:error를 덮어쓰지 않게
+
+- **원인:** `surfaceChatVisibleError`가 React `messages`에 error를 붙인 뒤, 스트림 스케줄러의 `latestAssistantMsg` 버퍼(에러 미포함)가 곧이어 non-empty `events` PUT을 보내면 daemon이 배열을 통째로 교체해 에러 카드가 삭제됨. soft refresh는 로컬 merge로 버티지만 **hard re-entry**는 서버 row만 보므로 카드가 사라짐.
+- **daemon:** `mergeMessageEvents`가 기존 durable `status:error`를 incoming에 없으면 뒤에 보존하고, 그 경우 `runStatus`를 `failed`로 유지.
+- **web:** `liveAssistantMutatorRef`로 스트리밍 버퍼에도 동일 `attachPersistedChatError`를 적용.
+- 회귀: `apps/daemon/tests/db-message-events.test.ts` (`keeps status:error when a later non-empty events upsert omits it`).
+
 ## 왜 검토할 때마다 구멍이 보였는가
 
 에이전트 truncation은 **적대적 분포**다. “이번에 본 조각”만 regex로 막으면 다음 조각이 새로 드러난다.

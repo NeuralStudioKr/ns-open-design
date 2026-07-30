@@ -846,4 +846,17 @@ describe("ProjectView message loading", () => {
       /loadMessagesWithRetry[\s\S]{0,200}await waitForTeamverEmbedBoot\(\)/,
     );
   });
+
+  it("keeps chat-visible errors on the live streaming buffer and assistant events", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("const surfaceChatVisibleError = useCallback(");
+    expect(source).toContain("attachPersistedChatError(m, detail, code)");
+    expect(source).toContain("liveAssistantMutatorRef");
+    expect(source).toContain("live.apply((prev) => attachPersistedChatError(prev, detail, code))");
+    expect(source).toContain("liveAssistantMutatorRef.current = {\n        assistantId,");
+    // Hard reload clears ephemeral React error — durable path must remain.
+    const loadStart = source.indexOf("const loadMessagesWithRetry = async () =>");
+    expect(loadStart).toBeGreaterThan(0);
+    expect(source.slice(loadStart, loadStart + 2200)).toContain("setError(null)");
+  });
 });
