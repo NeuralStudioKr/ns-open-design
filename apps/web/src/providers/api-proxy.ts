@@ -687,7 +687,10 @@ async function readAnthropicImageBlock(
   path: string,
 ): Promise<ProxyImageContentBlock | null> {
   try {
-    const resp = await fetch(projectFileUrl(projectId, path), { cache: 'no-store' });
+    const resp = await fetchTeamverDaemon(projectFileUrl(projectId, path), {
+      cache: 'no-store',
+      teamverProjectId: projectId,
+    });
     if (!resp.ok) return null;
 
     const mediaType = supportedAnthropicImageMediaType(
@@ -697,6 +700,7 @@ async function readAnthropicImageBlock(
     if (!mediaType) return null;
 
     const bytes = new Uint8Array(await resp.arrayBuffer());
+    if (!isValidAnthropicImageBytes(bytes, mediaType)) return null;
     if (bytes.length > MAX_ANTHROPIC_PROXY_IMAGE_BYTES) return null;
     return {
       type: 'image',
@@ -709,6 +713,34 @@ async function readAnthropicImageBlock(
   } catch {
     return null;
   }
+}
+
+/** Reject HTML/JSON error bodies that inherit a .png path extension. */
+export function isValidAnthropicImageBytes(
+  bytes: Uint8Array,
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+): boolean {
+  if (bytes.length < 4) return false;
+  if (mediaType === 'image/png') {
+    return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+  }
+  if (mediaType === 'image/jpeg') {
+    return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (mediaType === 'image/gif') {
+    return bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46;
+  }
+  if (bytes.length < 12) return false;
+  return (
+    bytes[0] === 0x52
+    && bytes[1] === 0x49
+    && bytes[2] === 0x46
+    && bytes[3] === 0x46
+    && bytes[8] === 0x57
+    && bytes[9] === 0x45
+    && bytes[10] === 0x42
+    && bytes[11] === 0x50
+  );
 }
 
 function supportedAnthropicImageMediaType(

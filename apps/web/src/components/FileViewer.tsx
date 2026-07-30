@@ -5131,6 +5131,8 @@ function HtmlViewer({
   const [deckPanning, setDeckPanning] = useState(false);
   const urlPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const srcDocPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
+  /** Draw mode remounts srcDoc; block capture until the active frame has loaded. */
+  const drawCaptureReadyRef = useRef(true);
   const activatedSrcDocTransportHtmlRef = useRef<string | null>(null);
   // Tracks the iframe DOM node whose dedupe ref was last reset by the
   // srcDoc onLoad handler. We reset the dedupe exactly once per freshly
@@ -6515,6 +6517,37 @@ function HtmlViewer({
     if (!drawOverlayOpen) return;
     resetDrawPreviewPan();
   }, [drawOverlayOpen, effectiveDeck, resetDrawPreviewPan]);
+
+  useEffect(() => {
+    if (!drawOverlayOpen) {
+      drawCaptureReadyRef.current = true;
+      return;
+    }
+    drawCaptureReadyRef.current = false;
+    const iframe = srcDocPreviewIframeRef.current;
+    if (!iframe) {
+      drawCaptureReadyRef.current = true;
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      await waitForIframeLoadOrTimeout(iframe, 4_000);
+      await waitForAnimationFrame();
+      await waitForAnimationFrame();
+      if (!cancelled) drawCaptureReadyRef.current = true;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [drawOverlayOpen, srcDocTransportResetKey, srcDoc]);
+
+  const resolveAnnotationCaptureFrameRect = useCallback(() => {
+    const iframe = resolveActiveDeckPreviewIframe();
+    if (!iframe) return null;
+    const rect = iframe.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return rect;
+  }, [resolveActiveDeckPreviewIframe]);
 
   useEffect(() => {
     if (!needsDeckHostViewportFit || mode !== 'preview') return;
@@ -8851,6 +8884,12 @@ function HtmlViewer({
     // in the browser screenshot flow (DesignBrowserPanel).
     await waitForAnimationFrame();
     await waitForAnimationFrame();
+    if (drawOverlayOpen && !drawCaptureReadyRef.current) {
+      const deadline = Date.now() + 4_000;
+      while (!drawCaptureReadyRef.current && Date.now() < deadline) {
+        await waitForAnimationFrame();
+      }
+    }
     try {
     const srcDocIframe = srcDocPreviewIframeRef.current;
     const urlIframe = iframeRef.current ?? urlPreviewIframeRef.current;
@@ -8918,6 +8957,7 @@ function HtmlViewer({
     }
   }, [
     activateSrcDocSnapshotTransport,
+    drawOverlayOpen,
     effectiveDeck,
     ensureDeckSlideSyncedForSnapshot,
     resolveActiveDeckPreviewIframe,
@@ -10231,6 +10271,7 @@ function HtmlViewer({
                     onActiveChange={setDrawOverlayOpen}
                     captureViewport
                     captureSnapshot={captureExportImageSnapshot}
+                    captureFrameRect={resolveAnnotationCaptureFrameRect}
                     captureTarget={null}
                     filePath={file.name}
                     slideIndex={effectiveDeck ? slideState?.active ?? null : null}

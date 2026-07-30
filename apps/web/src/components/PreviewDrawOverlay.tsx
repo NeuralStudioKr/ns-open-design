@@ -77,7 +77,9 @@ const STROKE_WIDTH = 4;
 const TARGET_COLOR = '#1677ff';
 const DRAW_HINT_STORAGE_KEY = 'open-design:annotation-draw-hint-dismissed';
 /** Max wait for a full compositor/iframe capture before marks-only or degraded send. */
-const ANNOTATION_CAPTURE_BUDGET_MS = 2_500;
+const ANNOTATION_CAPTURE_BUDGET_MS = 10_000;
+/** When ink/box marks exist, prefer marks-only over waiting for a slow full capture. */
+const ANNOTATION_CAPTURE_FAST_FALLBACK_MS = 3_000;
 const ANNOTATION_IFRAME_SNAPSHOT_TIMEOUTS_MS = [2_500, 3_000] as const;
 
 async function raceWithBudget<T>(promise: Promise<T>, budgetMs: number): Promise<T | null> {
@@ -582,7 +584,7 @@ export function PreviewDrawOverlay({
     return null;
   }
 
-  async function requestSnapshot(): Promise<PreviewSnapshot | null> {
+  async function requestSnapshot(budgetMs = ANNOTATION_CAPTURE_BUDGET_MS): Promise<PreviewSnapshot | null> {
     if (captureSnapshot) {
       // The host's captureSnapshot is a compositor screenshot of the on-screen
       // region, which would otherwise include this overlay's own strokes +
@@ -591,7 +593,7 @@ export function PreviewDrawOverlay({
       flushSync(() => setCapturing(true));
       try {
         await waitForOverlayHidden();
-        return await raceWithBudget(captureSnapshot(), ANNOTATION_CAPTURE_BUDGET_MS);
+        return await raceWithBudget(captureSnapshot(), budgetMs);
       } finally {
         flushSync(() => setCapturing(false));
       }
@@ -747,7 +749,9 @@ export function PreviewDrawOverlay({
         let blob: Blob | null = null;
         const marksOnlyPromise =
           hasVisualMark || hasTarget ? compositeMarksOnly() : null;
-        const snap = await requestSnapshot();
+        const snap = await requestSnapshot(
+          marksOnlyPromise ? ANNOTATION_CAPTURE_FAST_FALLBACK_MS : ANNOTATION_CAPTURE_BUDGET_MS,
+        );
         if (snap) blob = await compositeWithBackground(snap);
         if (!blob && marksOnlyPromise) {
           blob = await marksOnlyPromise;

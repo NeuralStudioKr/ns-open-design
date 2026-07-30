@@ -8,6 +8,7 @@ import {
 import {
   buildProxyMessages,
   buildProxyResponseError,
+  isValidAnthropicImageBytes,
   MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
   normalizeAnthropicProxyMessageRoles,
   shouldSoftRetryProxyFailure,
@@ -47,7 +48,10 @@ describe('buildProxyMessages', () => {
 
     expect(fetch).toHaveBeenCalledWith(
       '/api/projects/project-1/raw/references/logo.png',
-      { cache: 'no-store' },
+      expect.objectContaining({
+        cache: 'no-store',
+        credentials: 'same-origin',
+      }),
     );
     expect(messages).toEqual([
       {
@@ -94,12 +98,18 @@ describe('buildProxyMessages', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       '/api/projects/project-1/raw/references/first.png',
-      { cache: 'no-store' },
+      expect.objectContaining({
+        cache: 'no-store',
+        credentials: 'same-origin',
+      }),
     );
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       '/api/projects/project-1/raw/references/second.png',
-      { cache: 'no-store' },
+      expect.objectContaining({
+        cache: 'no-store',
+        credentials: 'same-origin',
+      }),
     );
   });
 
@@ -321,6 +331,43 @@ describe('buildProxyMessages', () => {
           {
             type: 'text',
             text: 'Attached image could not be sent as native image content: path: references/logo.png | name: logo.png',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('rejects non-image bodies that inherit a .png extension', async () => {
+    const htmlBytes = new TextEncoder().encode('<html><body>Unauthorized</body></html>');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: {
+          get: (name: string) => (name.toLowerCase() === 'content-type' ? 'image/png' : null),
+        },
+        arrayBuffer: async () => htmlBytes.buffer,
+      }),
+    );
+
+    const messages = await buildProxyMessages(
+      '/api/proxy/anthropic/stream',
+      [
+        userMessage('See screenshot', [
+          { path: 'uploads/drawing.png', name: 'drawing.png', kind: 'image', size: htmlBytes.length },
+        ]),
+      ],
+      { projectId: 'project-1' },
+    );
+
+    expect(messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'See screenshot' },
+          {
+            type: 'text',
+            text: 'Attached image could not be sent as native image content: path: uploads/drawing.png | name: drawing.png',
           },
         ],
       },
@@ -617,6 +664,17 @@ function userMessage(
 // `error_code: n/a` even when the daemon already answered with a specific
 // code (e.g. `MANAGED_API_KEY_MISSING` from a daemon container missing
 // TEAMVER_OD_API_KEY).
+describe('isValidAnthropicImageBytes', () => {
+  it('accepts PNG magic bytes', () => {
+    expect(isValidAnthropicImageBytes(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), 'image/png')).toBe(true);
+  });
+
+  it('rejects HTML error bodies labeled as PNG', () => {
+    const html = new TextEncoder().encode('<html>');
+    expect(isValidAnthropicImageBytes(html, 'image/png')).toBe(false);
+  });
+});
+
 describe('buildProxyResponseError', () => {
   it('extracts the daemon error code + message from a nested error envelope', () => {
     const err = buildProxyResponseError(
