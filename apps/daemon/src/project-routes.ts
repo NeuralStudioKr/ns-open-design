@@ -37,6 +37,7 @@ import {
   writeProjectManifest,
 } from './project-locations.js';
 import { auditDesignSystemPackage } from './tools-connectors-cli.js';
+import { createFileRevisionService, isFileRevisionSource } from './file-revisions/service.js';
 import {
   isTeamverDesignManaged,
   readTeamverIdentityFromRequest,
@@ -2302,6 +2303,13 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
   const { buildDocumentPreview } = ctx.documents;
   const { validateArtifactManifestInput } = ctx.artifacts;
   const { projectPreviewScopes } = ctx;
+  const fileRevisionService = createFileRevisionService({
+    db,
+    projectsRoot: PROJECTS_DIR,
+    writeProjectFile,
+    readProjectFile,
+    resolveProjectDir,
+  });
   const projectPreviewIframeSandbox = 'allow-scripts allow-forms';
   const projectPreviewCsp = [
     `sandbox ${projectPreviewIframeSandbox}`,
@@ -2815,6 +2823,149 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         status === 404 ? 'FILE_NOT_FOUND' : 'BAD_REQUEST',
         err?.message || 'preview unavailable',
       );
+    }
+  });
+
+  app.get(/^\/api\/projects\/([^/]+)\/files\/(.+)\/revisions$/u, async (req, res) => {
+    try {
+      const params = req.params as unknown as { 0?: string; 1?: string };
+      const projectId = String(params[0] ?? '');
+      const fileName = String(params[1] ?? '');
+      const project = getProject(db, projectId);
+      if (!project) {
+        return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
+      }
+      const body = fileRevisionService.listRevisions(projectId, fileName);
+      res.json(body);
+    } catch (err: any) {
+      sendApiError(res, 400, 'BAD_REQUEST', String(err));
+    }
+  });
+
+  app.get(/^\/api\/projects\/([^/]+)\/files\/(.+)\/revisions\/([^/]+)$/u, async (req, res) => {
+    try {
+      const params = req.params as unknown as { 0?: string; 1?: string; 2?: string };
+      const projectId = String(params[0] ?? '');
+      const fileName = String(params[1] ?? '');
+      const revisionId = String(params[2] ?? '');
+      const project = getProject(db, projectId);
+      if (!project) {
+        return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
+      }
+      const result = await fileRevisionService.getRevisionContent(
+        projectId,
+        fileName,
+        revisionId,
+        project.metadata,
+      );
+      if (!result) {
+        return sendApiError(res, 404, 'REVISION_NOT_FOUND', 'revision not found');
+      }
+      res.json(result);
+    } catch (err: any) {
+      const status = err && err.code === 'ENOENT' ? 404 : 400;
+      sendApiError(
+        res,
+        status,
+        status === 404 ? 'REVISION_NOT_FOUND' : 'BAD_REQUEST',
+        String(err),
+      );
+    }
+  });
+
+  app.post(/^\/api\/projects\/([^/]+)\/files\/(.+)\/revisions\/([^/]+)\/restore$/u, async (req, res) => {
+    try {
+      const params = req.params as unknown as { 0?: string; 1?: string; 2?: string };
+      const projectId = String(params[0] ?? '');
+      const fileName = String(params[1] ?? '');
+      const revisionId = String(params[2] ?? '');
+      const project = getProject(db, projectId);
+      if (!project) {
+        return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
+      }
+      const result = await fileRevisionService.restoreRevision({
+        projectId,
+        fileName,
+        revisionId,
+        metadata: project.metadata,
+      });
+      if (!result) {
+        return sendApiError(res, 404, 'REVISION_NOT_FOUND', 'revision not found');
+      }
+      res.json(result);
+    } catch (err: any) {
+      const status = err && err.code === 'ENOENT' ? 404 : 400;
+      sendApiError(
+        res,
+        status,
+        status === 404 ? 'REVISION_NOT_FOUND' : 'BAD_REQUEST',
+        String(err),
+      );
+    }
+  });
+
+  app.post(/^\/api\/projects\/([^/]+)\/files\/(.+)\/revisions$/u, async (req, res) => {
+    try {
+      const params = req.params as unknown as { 0?: string; 1?: string };
+      const projectId = String(params[0] ?? '');
+      const fileName = String(params[1] ?? '');
+      const project = getProject(db, projectId);
+      if (!project) {
+        return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
+      }
+      const {
+        content,
+        source,
+        label,
+        artifactManifest,
+        conversationId,
+        assistantMessageId,
+        truncateAfterSequence,
+      } = req.body || {};
+      if (typeof content !== 'string') {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'content required');
+      }
+      if (!isFileRevisionSource(source)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'invalid revision source');
+      }
+      if (typeof label !== 'string' || !label.trim()) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'label required');
+      }
+      if (artifactManifest !== undefined && artifactManifest !== null) {
+        const validated = validateArtifactManifestInput(artifactManifest, fileName);
+        if (!validated.ok) {
+          return sendApiError(
+            res,
+            400,
+            'BAD_REQUEST',
+            `invalid artifactManifest: ${validated.error}`,
+          );
+        }
+      }
+      const truncate = truncateAfterSequence === undefined || truncateAfterSequence === null
+        ? undefined
+        : Number(truncateAfterSequence);
+      const result = await fileRevisionService.pushRevision({
+        projectId,
+        fileName,
+        content,
+        source,
+        label: label.trim(),
+        artifactManifest: artifactManifest ?? null,
+        conversationId: typeof conversationId === 'string' ? conversationId : undefined,
+        assistantMessageId: typeof assistantMessageId === 'string' ? assistantMessageId : undefined,
+        truncateAfterSequence: Number.isFinite(truncate) ? truncate : undefined,
+        metadata: project.metadata,
+      });
+      res.json(result);
+    } catch (err: any) {
+      if (err instanceof ArtifactRegressionError) {
+        return sendApiError(res, 422, 'ARTIFACT_REGRESSION', err.message);
+      }
+      if (err instanceof ArtifactPublicationBlockedError) {
+        return sendApiError(res, 422, 'ARTIFACT_PUBLICATION_BLOCKED', err.message);
+      }
+      sendApiError(res, 400, 'BAD_REQUEST', String(err));
     }
   });
 

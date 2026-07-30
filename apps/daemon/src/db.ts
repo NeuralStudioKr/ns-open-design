@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { ProjectBrowserWorkspaceTab, ProjectTabsState } from '@open-design/contracts';
 import { migrateCritique } from './critique/persistence.js';
+import { migrateFileRevisions } from './file-revisions/persistence.js';
 import { migrateMediaTasks } from './media-tasks.js';
 import { migratePlugins } from './plugins/persistence.js';
 import {
@@ -385,6 +386,7 @@ function migrate(db: SqliteDb): void {
     db.exec(`ALTER TABLE tabs_state ADD COLUMN state_json TEXT`);
   }
   migrateCritique(db);
+  migrateFileRevisions(db);
   migrateMediaTasks(db);
   migratePlugins(db);
 }

@@ -6,6 +6,11 @@ import type {
   ConnectorDetailResponse,
   ConnectorListResponse,
   ConnectorStatusResponse,
+  FileRevision,
+  FileRevisionPushRequest,
+  FileRevisionPushResponse,
+  FileRevisionRestoreResponse,
+  FileRevisionsListResponse,
   ImportGitHubDesignSystemRequest,
   ImportGitHubDesignSystemResponse,
   ImportShadcnDesignSystemRequest,
@@ -1971,6 +1976,92 @@ export async function writeProjectTextFileDetailed(
     return { ok: true, file: json.file };
   } catch {
     return { ok: false, message: 'Network error while saving the file' };
+  }
+}
+
+function projectFileRevisionsPath(projectId: string, fileName: string): string {
+  const encodedName = fileName.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+  return `/api/projects/${encodeURIComponent(projectId)}/files/${encodedName}/revisions`;
+}
+
+export async function listProjectFileRevisions(
+  projectId: string,
+  fileName: string,
+): Promise<FileRevisionsListResponse | null> {
+  try {
+    const resp = await fetchTeamverDaemon(projectFileRevisionsPath(projectId, fileName));
+    if (!resp.ok) return null;
+    return (await resp.json()) as FileRevisionsListResponse;
+  } catch {
+    return null;
+  }
+}
+
+export type PushProjectFileRevisionResult =
+  | { ok: true; revision: FileRevision; file: ProjectFile }
+  | { ok: false; status?: number; code?: string; message: string };
+
+export async function pushProjectFileRevision(
+  projectId: string,
+  fileName: string,
+  request: FileRevisionPushRequest,
+): Promise<PushProjectFileRevisionResult> {
+  try {
+    const resp = await fetchTeamverDaemon(projectFileRevisionsPath(projectId, fileName), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    if (!resp.ok) {
+      notifyDaemonMutatingUnauthorized(resp);
+      const body = await readApiErrorBody(resp);
+      return {
+        ok: false,
+        status: resp.status,
+        code: body.code,
+        message: resp.status === 401
+          ? formatDaemonMutatingAuthError(body.message || resp.statusText || 'Save failed')
+          : body.message || resp.statusText || 'Save failed',
+      };
+    }
+    const json = (await resp.json()) as FileRevisionPushResponse;
+    return { ok: true, revision: json.revision, file: json.file };
+  } catch {
+    return { ok: false, message: 'Network error while saving the revision' };
+  }
+}
+
+export type RestoreProjectFileRevisionResult =
+  | { ok: true; revision: FileRevision; file: ProjectFile }
+  | { ok: false; status?: number; code?: string; message: string };
+
+export async function restoreProjectFileRevision(
+  projectId: string,
+  fileName: string,
+  revisionId: string,
+): Promise<RestoreProjectFileRevisionResult> {
+  try {
+    const encodedName = fileName.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+    const resp = await fetchTeamverDaemon(
+      `/api/projects/${encodeURIComponent(projectId)}/files/${encodedName}/revisions/${encodeURIComponent(revisionId)}/restore`,
+      { method: 'POST' },
+    );
+    if (!resp.ok) {
+      notifyDaemonMutatingUnauthorized(resp);
+      const body = await readApiErrorBody(resp);
+      return {
+        ok: false,
+        status: resp.status,
+        code: body.code,
+        message: resp.status === 401
+          ? formatDaemonMutatingAuthError(body.message || resp.statusText || 'Restore failed')
+          : body.message || resp.statusText || 'Restore failed',
+      };
+    }
+    const json = (await resp.json()) as FileRevisionRestoreResponse;
+    return { ok: true, revision: json.revision, file: json.file };
+  } catch {
+    return { ok: false, message: 'Network error while restoring the revision' };
   }
 }
 

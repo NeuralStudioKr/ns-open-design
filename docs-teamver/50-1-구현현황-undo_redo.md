@@ -25,15 +25,15 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| `packages/contracts/src/api/revisions.ts` | [ ] | |
-| SQLite `file_revisions` 테이블 | [ ] | |
-| Snapshot 디렉터리 `.od/revisions/` | [ ] | |
-| `GET/POST .../revisions` API | [ ] | |
-| `POST .../revisions/:id/restore` | [ ] | |
-| `RevisionController` (web) | [ ] | |
-| Manual undo → 서버 restore 전환 | [ ] | in-memory stack 제거 |
-| `od project revisions` CLI | [ ] | list + restore |
-| Daemon tests | [ ] | |
+| `packages/contracts/src/api/revisions.ts` | [x] | |
+| SQLite `file_revisions` 테이블 | [x] | `migrateFileRevisions` |
+| Snapshot 디렉터리 `.od/revisions/` | [x] | `file-revisions/store.ts` |
+| `GET/POST .../revisions` API | [x] | `project-routes.ts` |
+| `POST .../revisions/:id/restore` | [x] | |
+| `RevisionController` (web) | [x] | `revision-stack.ts` + FileViewer 연동 |
+| Manual undo → 서버 restore 전환 | [x] | in-memory stack 제거 |
+| `od project revisions` CLI | [x] | list + restore |
+| Daemon tests | [x] | `file-revisions.test.ts` |
 
 ---
 

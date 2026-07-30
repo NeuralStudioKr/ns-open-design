@@ -22,6 +22,7 @@ vi.mock('../../src/components/ManualEditPanel', async (importOriginal) => {
 });
 
 import { FileViewer } from '../../src/components/FileViewer';
+import { createProjectFileRevisionFetchMock } from '../helpers/project-file-revision-fetch-mock';
 
 afterEach(() => {
   cleanup();
@@ -48,31 +49,12 @@ describe('FileViewer undo/redo toolbar', () => {
 
   it('enables undo after a manual edit save and restores via toolbar click', async () => {
     const initialSource = heroSource();
-    let persistedSource = initialSource;
-    const savedSources: string[] = [];
-    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-      if (url.includes('/api/projects/project-1/deployments')) {
-        return new Response(JSON.stringify({ deployments: [] }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
-        const payload = JSON.parse(String(init.body)) as { content: string };
-        persistedSource = payload.content;
-        savedSources.push(payload.content);
-        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/api/projects/project-1/raw/preview.html')) {
-        return new Response(persistedSource, { status: 200 });
-      }
-      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const { fetchMock, getPersistedSource, getRevisions } = createProjectFileRevisionFetchMock({
+      projectId: 'project-1',
+      fileName: 'preview.html',
+      initialSource,
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', vi.fn(fetchMock));
 
     render(
       <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
@@ -89,21 +71,29 @@ describe('FileViewer undo/redo toolbar', () => {
         'Style: Hero',
       );
     });
-    await waitFor(() => expect(savedSources).toHaveLength(1));
+    await waitFor(() => expect(getRevisions().length).toBeGreaterThanOrEqual(2));
 
-    const undo = screen.getByTestId('file-viewer-undo');
-    await waitFor(() => expect(undo.hasAttribute('disabled')).toBe(false));
+    const undo = await waitFor(() => {
+      const button = screen.getByTestId('file-viewer-undo');
+      if (button.hasAttribute('disabled')) throw new Error('undo still disabled');
+      return button;
+    });
 
-    fireEvent.click(undo);
-    await waitFor(() => expect(savedSources).toHaveLength(2));
-    expect(savedSources[1]).toBe(initialSource);
+    await act(async () => {
+      fireEvent.click(undo);
+    });
+    await waitFor(() => expect(getPersistedSource()).toContain('#111111'));
 
-    const redo = screen.getByTestId('file-viewer-redo');
-    await waitFor(() => expect(redo.hasAttribute('disabled')).toBe(false));
+    const redo = await waitFor(() => {
+      const button = screen.getByTestId('file-viewer-redo');
+      if (button.hasAttribute('disabled')) throw new Error('redo still disabled');
+      return button;
+    });
 
-    fireEvent.click(redo);
-    await waitFor(() => expect(savedSources).toHaveLength(3));
-    expect(savedSources[2]).toContain('rgb(239, 68, 68)');
+    await act(async () => {
+      fireEvent.click(redo);
+    });
+    await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
   });
 
   it('places undo/redo immediately left of the manual edit toggle', () => {

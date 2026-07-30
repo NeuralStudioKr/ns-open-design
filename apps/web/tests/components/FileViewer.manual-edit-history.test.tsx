@@ -22,6 +22,7 @@ vi.mock('../../src/components/ManualEditPanel', async (importOriginal) => {
 });
 
 import { FileViewer } from '../../src/components/FileViewer';
+import { createProjectFileRevisionFetchMock } from '../helpers/project-file-revision-fetch-mock';
 
 function openManualTools() {
   // Manual tools now live directly in the primary toolbar.
@@ -69,23 +70,19 @@ describe('FileViewer manual edit history regressions', () => {
       saveResolve = resolve;
     });
     const savedSources: string[] = [];
+    const { fetchMock: revisionFetchMock } = createProjectFileRevisionFetchMock({
+      projectId: 'project-1',
+      fileName: 'preview.html',
+      initialSource,
+    });
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-      if (url.includes('/api/projects/project-1/deployments')) {
-        return new Response(JSON.stringify({ deployments: [] }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
+      if (url.includes('/api/projects/project-1/files/preview.html/revisions') && init?.method === 'POST' && !url.endsWith('/restore')) {
         const payload = JSON.parse(String(init.body)) as { content: string };
         savedSources.push(payload.content);
         return saveResponse;
       }
-      if (url.includes('/api/projects/project-1/raw/preview.html')) {
-        return new Response(initialSource, { status: 200 });
-      }
-      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return revisionFetchMock(input, init);
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -110,7 +107,20 @@ describe('FileViewer manual edit history regressions', () => {
     expect(screen.getByTestId('draw-overlay-toggle').getAttribute('aria-pressed')).toBe('false');
 
     await act(async () => {
-      saveResolve(new Response(JSON.stringify({ file: htmlPreviewFile() }), {
+      saveResolve(new Response(JSON.stringify({
+        revision: {
+          id: 'rev-2',
+          projectId: 'project-1',
+          fileName: 'preview.html',
+          parentRevisionId: 'rev-baseline',
+          sequence: 2,
+          createdAt: Date.now(),
+          byteSize: savedSources[0]?.length ?? 0,
+          source: 'manual_edit',
+          label: 'Style: Hero',
+        },
+        file: htmlPreviewFile(),
+      }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }));
@@ -155,31 +165,12 @@ describe('FileViewer manual edit history regressions', () => {
 
   it('uses the undone source snapshot for a follow-up edit after undo', async () => {
     const initialSource = '<!doctype html><html><body><h1 data-od-id="hero" style="color: #111111">Hero</h1></body></html>';
-    let persistedSource = initialSource;
-    const savedSources: string[] = [];
-    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-      if (url.includes('/api/projects/project-1/deployments')) {
-        return new Response(JSON.stringify({ deployments: [] }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
-        const payload = JSON.parse(String(init.body)) as { content: string };
-        persistedSource = payload.content;
-        savedSources.push(payload.content);
-        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/api/projects/project-1/raw/preview.html')) {
-        return new Response(persistedSource, { status: 200 });
-      }
-      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const { fetchMock, getPersistedSource } = createProjectFileRevisionFetchMock({
+      projectId: 'project-1',
+      fileName: 'preview.html',
+      initialSource,
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', vi.fn(fetchMock));
 
     render(
       <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
@@ -196,14 +187,12 @@ describe('FileViewer manual edit history regressions', () => {
         'Style: Hero',
       );
     });
-    await waitFor(() => expect(savedSources).toHaveLength(1));
-    expect(savedSources[0]).toContain('rgb(239, 68, 68)');
+    await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
 
-    act(() => {
+    await act(async () => {
       panelState.props?.onUndo();
     });
-    await waitFor(() => expect(savedSources).toHaveLength(2));
-    expect(savedSources[1]).toBe(initialSource);
+    await waitFor(() => expect(getPersistedSource()).toContain('#111111'));
 
     act(() => {
       panelState.props?.onApplyPatch(
@@ -211,37 +200,18 @@ describe('FileViewer manual edit history regressions', () => {
         'Style: Hero',
       );
     });
-    await waitFor(() => expect(savedSources).toHaveLength(3));
-
-    expect(savedSources[2]).toContain('background-color: rgb(249, 115, 22)');
-    expect(savedSources[2]).not.toContain('rgb(239, 68, 68)');
+    await waitFor(() => expect(getPersistedSource()).toContain('background-color: rgb(249, 115, 22)'));
+    expect(getPersistedSource()).not.toContain('rgb(239, 68, 68)');
   });
 
   it('refreshes the manual edit canvas after non-style source patches', async () => {
     const initialSource = '<!doctype html><html><body><h1 data-od-id="hero">Hero</h1></body></html>';
-    const savedSources: string[] = [];
-    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-      if (url.includes('/api/projects/project-1/deployments')) {
-        return new Response(JSON.stringify({ deployments: [] }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
-        const payload = JSON.parse(String(init.body)) as { content: string };
-        savedSources.push(payload.content);
-        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/api/projects/project-1/raw/preview.html')) {
-        return new Response(initialSource, { status: 200 });
-      }
-      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const { fetchMock, getRevisions } = createProjectFileRevisionFetchMock({
+      projectId: 'project-1',
+      fileName: 'preview.html',
+      initialSource,
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', vi.fn(fetchMock));
 
     render(
       <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
@@ -266,7 +236,7 @@ describe('FileViewer manual edit history regressions', () => {
       );
     });
 
-    await waitFor(() => expect(savedSources).toHaveLength(1));
+    await waitFor(() => expect(getRevisions().length).toBeGreaterThanOrEqual(2));
     await waitFor(() => expect(panelState.props?.draft.fullSource).toContain('Updated hero'));
     await waitFor(() => {
       expect(getActivePreviewFrame().srcdoc).toContain('Updated hero');
@@ -275,31 +245,12 @@ describe('FileViewer manual edit history regressions', () => {
 
   it('clears the selected target after deleting an element', async () => {
     const initialSource = '<!doctype html><html><body><h1 data-od-id="hero">Hero</h1><p data-od-id="body">Body</p></body></html>';
-    let persistedSource = initialSource;
-    const savedSources: string[] = [];
-    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-      if (url.includes('/api/projects/project-1/deployments')) {
-        return new Response(JSON.stringify({ deployments: [] }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
-        const payload = JSON.parse(String(init.body)) as { content: string };
-        persistedSource = payload.content;
-        savedSources.push(payload.content);
-        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/api/projects/project-1/raw/preview.html')) {
-        return new Response(persistedSource, { status: 200 });
-      }
-      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const { fetchMock, getPersistedSource, getRevisions } = createProjectFileRevisionFetchMock({
+      projectId: 'project-1',
+      fileName: 'preview.html',
+      initialSource,
     });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', vi.fn(fetchMock));
 
     render(
       <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
@@ -322,9 +273,9 @@ describe('FileViewer manual edit history regressions', () => {
       );
     });
 
-    await waitFor(() => expect(savedSources).toHaveLength(1));
-    expect(savedSources[0]).not.toContain('data-od-id="hero"');
-    expect(savedSources[0]).toContain('data-od-id="body"');
+    await waitFor(() => expect(getRevisions().length).toBeGreaterThanOrEqual(2));
+    expect(getPersistedSource()).not.toContain('data-od-id="hero"');
+    expect(getPersistedSource()).toContain('data-od-id="body"');
     // Clearing the selection closes the inspector: edit mode returns to a clean
     // canvas (no docked/pinned panel) and the iframe selection marker is reset.
     await waitFor(() => expect(screen.queryByTestId('mock-manual-edit-panel')).toBeNull());

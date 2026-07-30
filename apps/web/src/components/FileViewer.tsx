@@ -77,6 +77,9 @@ import {
   fetchProjectFilePreview,
   fetchProjectFiles,
   fetchProjectFileText,
+  listProjectFileRevisions,
+  pushProjectFileRevision,
+  restoreProjectFileRevision,
   uploadProjectFiles,
   liveArtifactPreviewUrl,
   projectFileUrl,
@@ -127,6 +130,16 @@ import {
   canActivateSrcDocTransport,
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
+import {
+  canRedoRevisionStack,
+  canUndoRevisionStack,
+  createRevisionStackSnapshot,
+  revisionAfterCursor,
+  revisionBeforeCursor,
+  stackWithCursor,
+  truncateAfterSequenceForStack,
+  type RevisionStackSnapshot,
+} from '../runtime/revision-stack';
 import {
   postDeckHostViewportToIframe,
   postDeckPreviewPanBy,
@@ -200,7 +213,7 @@ import {
   readManualEditOuterHtml,
   readManualEditStyles,
 } from '../edit-mode/source-patches';
-import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
+import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 
 function resolveChromeActionsHost(): HTMLElement | null {
@@ -5198,8 +5211,11 @@ function HtmlViewer({
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
   const selectedManualEditTargetIdRef = useRef<string | null>(null);
   const [manualEditDraft, setManualEditDraft] = useState<ManualEditDraft>(() => emptyManualEditDraft());
-  const [manualEditHistory, setManualEditHistory] = useState<ManualEditHistoryEntry[]>([]);
-  const [manualEditUndone, setManualEditUndone] = useState<ManualEditHistoryEntry[]>([]);
+  const [revisionStack, setRevisionStack] = useState<RevisionStackSnapshot>(() => (
+    createRevisionStackSnapshot([], null)
+  ));
+  const revisionStackRef = useRef(revisionStack);
+  revisionStackRef.current = revisionStack;
   const [manualEditError, setManualEditError] = useState<string | null>(null);
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const manualEditSavingRef = useRef(false);
@@ -6537,12 +6553,28 @@ function HtmlViewer({
     setManualEditPanelPosition(null);
     selectedManualEditTargetIdRef.current = null;
     setManualEditDraft(emptyManualEditDraft());
-    setManualEditHistory([]);
-    setManualEditUndone([]);
+    setRevisionStack(createRevisionStackSnapshot([], null));
     setManualEditError(null);
     manualEditPendingStyleRef.current = null;
     clearManualEditStyleTimer();
   }, [file.name]);
+
+  const refreshRevisionStack = useCallback(async () => {
+    const list = await listProjectFileRevisions(projectId, file.name);
+    if (!list) return;
+    setRevisionStack((current) => createRevisionStackSnapshot(
+      list.revisions,
+      list.headRevisionId,
+      current.cursorRevisionId && list.revisions.some((revision) => revision.id === current.cursorRevisionId)
+        ? current.cursorRevisionId
+        : list.headRevisionId,
+    ));
+  }, [projectId, file.name]);
+
+  useEffect(() => {
+    if (source === null) return;
+    void refreshRevisionStack();
+  }, [source, refreshRevisionStack, filesRefreshKey]);
 
   // Selecting a new file or turning inspect/comment-inspect off resets the panel target.
   useEffect(() => {
@@ -7075,8 +7107,12 @@ function HtmlViewer({
           '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
         ),
       ))) return false;
-      const saved = await writeProjectTextFileDetailed(projectId, file.name, result.source, {
+      const saved = await pushProjectFileRevision(projectId, file.name, {
+        content: result.source,
+        source: 'manual_edit',
+        label,
         artifactManifest: file.artifactManifest,
+        truncateAfterSequence: truncateAfterSequenceForStack(revisionStackRef.current),
       });
       if (!saved.ok) {
         const status = 'status' in saved ? saved.status : undefined;
@@ -7095,22 +7131,14 @@ function HtmlViewer({
         );
         return false;
       }
-      const entry: ManualEditHistoryEntry = {
-        id: `${Date.now()}-${manualEditHistory.length}`,
-        label,
-        patch,
-        beforeSource: baseSource,
-        afterSource: result.source,
-        createdAt: Date.now(),
-      };
       setSource(result.source);
       sourceRef.current = result.source;
       setInlinedSource(null);
       if (patch.kind !== 'set-style') {
         setManualEditFrozenSource(result.source);
       }
-      setManualEditHistory((current) => [entry, ...current]);
-      setManualEditUndone([]);
+      setRevisionStack((current) => stackWithCursor(current, saved.revision.id));
+      await refreshRevisionStack();
       setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
       if (patch.kind === 'set-text') {
         setSelectedManualEditTarget((current) => current?.id === patch.id
@@ -7150,53 +7178,51 @@ function HtmlViewer({
     setSource(persisted);
     sourceRef.current = persisted;
     setInlinedSource(null);
-    setManualEditHistory([]);
-    setManualEditUndone([]);
+    setRevisionStack(createRevisionStackSnapshot([], null));
     manualEditPendingStyleRef.current = null;
     setManualEditDraft((current) => ({ ...current, fullSource: persisted }));
     setManualEditError(message);
+    void refreshRevisionStack();
     return false;
   }
 
   async function undoManualEdit() {
     if (manualEditSavingRef.current) return;
-    const [latest, ...rest] = manualEditHistory;
-    if (!latest) return;
+    const target = revisionBeforeCursor(revisionStackRef.current);
+    if (!target) return;
     manualEditSavingRef.current = true;
     setManualEditSaving(true);
     try {
-      if (!(await confirmManualEditHistorySource(
-        latest.afterSource,
-        embedUiLabel(
-          'The file changed outside manual edit mode. History was cleared to avoid overwriting newer content.',
-          '수동 편집 모드 밖에서 파일이 변경되어 편집 기록을 초기화했습니다.',
-        ),
-      ))) return;
-      const saved = await writeProjectTextFileDetailed(projectId, file.name, latest.beforeSource, {
-        artifactManifest: file.artifactManifest,
-      });
-      if (!saved.ok) {
-        if (saved.status === 401) {
+      const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
+      if (!restored.ok) {
+        if (restored.status === 401) {
           notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
         }
         setManualEditError(
           isTeamverEmbedMode()
             ? formatProjectArtifactSaveFailedError(file.name, {
-                status: saved.status,
-                code: saved.code,
-                message: saved.message,
+                status: restored.status,
+                code: restored.code,
+                message: restored.message,
               })
             : embedUiLabel('Could not save the undo result.', '실행 취소 결과를 저장하지 못했습니다.'),
         );
         return;
       }
-      setSource(latest.beforeSource);
-      sourceRef.current = latest.beforeSource;
+      const restoredSource = await fetchProjectFileText(projectId, file.name, {
+        cache: 'no-store',
+        cacheBustKey: Date.now(),
+      });
+      if (restoredSource == null) {
+        setManualEditError(embedUiLabel('Could not load the undo result.', '실행 취소 결과를 불러오지 못했습니다.'));
+        return;
+      }
+      setSource(restoredSource);
+      sourceRef.current = restoredSource;
       setInlinedSource(null);
-      setManualEditFrozenSource(latest.beforeSource);
-      setManualEditHistory(rest);
-      setManualEditUndone((current) => [latest, ...current]);
-      setManualEditDraft((current) => ({ ...current, fullSource: latest.beforeSource }));
+      setManualEditFrozenSource(restoredSource);
+      setRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+      setManualEditDraft((current) => ({ ...current, fullSource: restoredSource }));
       await onFileSaved?.();
     } finally {
       manualEditSavingRef.current = false;
@@ -7206,43 +7232,41 @@ function HtmlViewer({
 
   async function redoManualEdit() {
     if (manualEditSavingRef.current) return;
-    const [latest, ...rest] = manualEditUndone;
-    if (!latest) return;
+    const target = revisionAfterCursor(revisionStackRef.current);
+    if (!target) return;
     manualEditSavingRef.current = true;
     setManualEditSaving(true);
     try {
-      if (!(await confirmManualEditHistorySource(
-        latest.beforeSource,
-        embedUiLabel(
-          'The file changed outside manual edit mode. History was cleared to avoid overwriting newer content.',
-          '수동 편집 모드 밖에서 파일이 변경되어 편집 기록을 초기화했습니다.',
-        ),
-      ))) return;
-      const saved = await writeProjectTextFileDetailed(projectId, file.name, latest.afterSource, {
-        artifactManifest: file.artifactManifest,
-      });
-      if (!saved.ok) {
-        if (saved.status === 401) {
+      const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
+      if (!restored.ok) {
+        if (restored.status === 401) {
           notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
         }
         setManualEditError(
           isTeamverEmbedMode()
             ? formatProjectArtifactSaveFailedError(file.name, {
-                status: saved.status,
-                code: saved.code,
-                message: saved.message,
+                status: restored.status,
+                code: restored.code,
+                message: restored.message,
               })
             : embedUiLabel('Could not save the redo result.', '다시 실행 결과를 저장하지 못했습니다.'),
         );
         return;
       }
-      setSource(latest.afterSource);
-      sourceRef.current = latest.afterSource;
+      const restoredSource = await fetchProjectFileText(projectId, file.name, {
+        cache: 'no-store',
+        cacheBustKey: Date.now(),
+      });
+      if (restoredSource == null) {
+        setManualEditError(embedUiLabel('Could not load the redo result.', '다시 실행 결과를 불러오지 못했습니다.'));
+        return;
+      }
+      setSource(restoredSource);
+      sourceRef.current = restoredSource;
       setInlinedSource(null);
-      setManualEditFrozenSource(latest.afterSource);
-      setManualEditUndone(rest);
-      setManualEditHistory((current) => [latest, ...current]);
-      setManualEditDraft((current) => ({ ...current, fullSource: latest.afterSource }));
+      setManualEditFrozenSource(restoredSource);
+      setRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+      setManualEditDraft((current) => ({ ...current, fullSource: restoredSource }));
       await onFileSaved?.();
     } finally {
       manualEditSavingRef.current = false;
@@ -8838,15 +8862,17 @@ function HtmlViewer({
     manualEditMode && !selectedManualEditTarget && manualEditPageStylesOpen;
   const manualEditPanelActive =
     manualEditMode && (!!selectedManualEditTarget || manualEditPageCardActive);
+  const revisionCanUndo = canUndoRevisionStack(revisionStack);
+  const revisionCanRedo = canRedoRevisionStack(revisionStack);
   const manualEditPanel = manualEditPanelActive ? (
     <ManualEditPanel
       targets={manualEditTargets}
       selectedTarget={selectedManualEditTarget}
       draft={manualEditDraft}
-      history={manualEditHistory}
+      history={[]}
       error={manualEditError}
-      canUndo={manualEditHistory.length > 0}
-      canRedo={manualEditUndone.length > 0}
+      canUndo={revisionCanUndo}
+      canRedo={revisionCanRedo}
       busy={manualEditSaving}
       pageStylesEnabled={manualEditPageStylesEnabled}
       onSelectTarget={(target) => {
@@ -9246,8 +9272,8 @@ function HtmlViewer({
               <span className="viewer-toolbar-tool-divider" aria-hidden />
               {source !== null ? (
                 <FileViewerUndoRedoToolbar
-                  canUndo={manualEditHistory.length > 0}
-                  canRedo={manualEditUndone.length > 0}
+                  canUndo={revisionCanUndo}
+                  canRedo={revisionCanRedo}
                   busy={manualEditSaving}
                   onUndo={() => {
                     void undoManualEdit();
