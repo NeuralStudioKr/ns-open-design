@@ -191,6 +191,7 @@ import type {
   PreviewCommentTarget,
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
+import { FileViewerUndoRedoToolbar } from './FileViewerUndoRedoToolbar';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
@@ -9243,6 +9244,20 @@ function HtmlViewer({
                 <RemixIcon name="mark-pen-line" size={15} />
               </button>
               <span className="viewer-toolbar-tool-divider" aria-hidden />
+              {source !== null ? (
+                <FileViewerUndoRedoToolbar
+                  canUndo={manualEditHistory.length > 0}
+                  canRedo={manualEditUndone.length > 0}
+                  busy={manualEditSaving}
+                  onUndo={() => {
+                    void undoManualEdit();
+                  }}
+                  onRedo={() => {
+                    void redoManualEdit();
+                  }}
+                  t={t}
+                />
+              ) : null}
               <button
                 className={`viewer-action viewer-action-icon od-tooltip${manualEditMode ? ' active' : ''}`}
                 type="button"

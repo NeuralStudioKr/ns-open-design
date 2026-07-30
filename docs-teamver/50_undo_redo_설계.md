@@ -5,7 +5,7 @@
 **상위 SSOT:** [01 통합 아키텍처](./01_통합_아키텍처.md) · [33 프로젝트 다운로드·Export](./33_프로젝트_다운로드_Export_아키텍처.md)  
 **구현 현황:** [50-1 구현현황 — undo/redo](./50-1-구현현황-undo_redo.md)  
 **대상 브랜치:** `feat/undo-redo` (base: `staging`)  
-**상태:** 설계 확정 · Phase 0 진행 중 (툴바 UI 스캐폴드)
+**상태:** 설계 확정 · Phase 0 완료 (툴바 UI + manual history 위임)
 
 ---
 

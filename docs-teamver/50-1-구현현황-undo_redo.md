@@ -13,10 +13,10 @@
 |------|------|------|
 | 설계 문서 `50_undo_redo_설계.md` | [x] | |
 | 구현현황 `50-1-구현현황-undo_redo.md` | [x] | |
-| `FileViewerUndoRedoToolbar` 컴포넌트 | [ ] | Undo/Redo 아이콘 버튼 |
-| `FileViewer` 툴바 통합 (편집 버튼 왼쪽) | [ ] | `data-testid` file-viewer-undo/redo |
-| `undoManualEdit` / `redoManualEdit` 위임 | [ ] | Phase 0는 기존 in-memory history |
-| 단위 테스트 | [ ] | disabled/enabled, click handler |
+| `FileViewerUndoRedoToolbar` 컴포넌트 | [x] | Undo/Redo 아이콘 버튼 |
+| `FileViewer` 툴바 통합 (편집 버튼 왼쪽) | [x] | `data-testid` file-viewer-undo/redo |
+| `undoManualEdit` / `redoManualEdit` 위임 | [x] | Phase 0는 기존 in-memory history |
+| 단위 테스트 | [x] | disabled/enabled, click handler |
 | i18n | [x] | `manualEdit.undo` / `manualEdit.redo` 재사용 |
 
 ---
