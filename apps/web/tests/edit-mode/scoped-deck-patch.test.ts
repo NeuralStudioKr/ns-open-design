@@ -430,4 +430,40 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(result.html).toContain('Slide 2 original');
     expect(result.html).not.toContain('REWRITTEN');
   });
+
+  it('accepts a layout-only br removal via slide-level presentation fallback', () => {
+    const currentHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0">
+  <h2 data-od-id="title-1">아이폰 시리즈 개요 및<br>발전 동향 보고서</h2>
+</section>
+</body></html>`;
+    const patchedHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0">
+  <h2 data-od-id="title-1">아이폰 시리즈 개요 및 발전 동향 보고서</h2>
+</section>
+</body></html>`;
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml,
+      patchedHtml,
+      commentAttachments: [{
+        id: 'c1',
+        order: 1,
+        filePath: 'deck.html',
+        elementId: 'title-1',
+        selector: '[data-od-id="title-1"]',
+        label: 'h2',
+        comment: '줄바꿈 없이 한줄로 해줘',
+        currentText: '아이폰 시리즈 개요 및\n발전 동향 보고서',
+        htmlHint: '<h2 data-od-id="title-1">',
+        pagePosition: { x: 0, y: 0, width: 176, height: 229 },
+        selectionKind: 'element',
+        slideIndex: 0,
+      }],
+      instructionText: '줄바꿈 없이 한줄로 해줘',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.html).not.toContain('<br');
+    expect(result.html).toContain('아이폰 시리즈 개요 및 발전 동향 보고서');
+  });
 });

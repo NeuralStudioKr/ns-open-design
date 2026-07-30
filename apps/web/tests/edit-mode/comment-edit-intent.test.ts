@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  looksLikeMarkupLayoutCommentRequest,
   looksLikeStyleOnlyCommentRequest,
   targetTextContentPreserved,
   validateCommentEditIntentRespected,
@@ -34,6 +35,22 @@ describe('looksLikeStyleOnlyCommentRequest', () => {
 
   it('does not treat explicit text replacement as style-only', () => {
     expect(looksLikeStyleOnlyCommentRequest("텍스트를 '새 이름'으로 바꿔줘")).toBe(false);
+  });
+
+  it('does not treat layout-only requests as style-only', () => {
+    expect(looksLikeStyleOnlyCommentRequest('줄바꿈 없이 한줄로 해줘')).toBe(false);
+  });
+});
+
+describe('looksLikeMarkupLayoutCommentRequest', () => {
+  it('detects Korean line-break / single-line layout requests', () => {
+    expect(looksLikeMarkupLayoutCommentRequest('줄바꿈 없이 한줄로 해줘')).toBe(true);
+    expect(looksLikeMarkupLayoutCommentRequest('한 줄로 맞춰줘')).toBe(true);
+    expect(looksLikeMarkupLayoutCommentRequest('nowrap으로 표시')).toBe(true);
+  });
+
+  it('does not treat explicit text replacement as layout-only', () => {
+    expect(looksLikeMarkupLayoutCommentRequest("텍스트를 '새 이름'으로 바꿔줘")).toBe(false);
   });
 });
 

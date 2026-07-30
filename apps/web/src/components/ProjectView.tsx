@@ -1101,6 +1101,7 @@ function slideCommentEditPatchInstruction(commentAttachmentCount: number): strin
     '- Apply the user request to ONLY the pinned target element. Do not change siblings, slide wrappers, or global CSS unless the user explicitly asks for slide-wide changes.',
     '- For arbitrary natural-language requests (visibility, tone, layout tweaks), interpret the intent and emit the smallest valid element patch — never ask the user to rephrase.',
     '- When the user asks to make text bigger/smaller/bolder/more visible (e.g. "크게", "키워", "눈에 띄게") WITHOUT changing the words: use `kind="set-style"` with `fontSize` / `fontWeight` / `color`. Keep every character of `currentText` exactly as-is — never use `set-text`, `remove-element`, or empty the element.',
+    '- When the user asks for layout/wrapping tweaks without changing the words (e.g. "줄바꿈 없이 한줄로", "한 줄로", "nowrap"): use `kind="set-outer-html"` on the pinned element (remove `<br>` / wrap markup) OR `kind="set-style"` with `{"whiteSpace":"nowrap"}`. Never use `set-text` when the target contains `<br>` or nested tags.',
     '- When the user asks to replace the text ("\'새 문구\'로 수정", "멘트를 …로", "copy to …"): use `kind="set-text"` with the new text only.',
     '',
     'Fallback when multiple elements or slide structure must change:',
