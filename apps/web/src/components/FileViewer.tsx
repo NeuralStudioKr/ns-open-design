@@ -8588,18 +8588,38 @@ function HtmlViewer({
     // in the browser screenshot flow (DesignBrowserPanel).
     await waitForAnimationFrame();
     await waitForAnimationFrame();
-    // Prefer the desktop compositor screenshot of the visible preview region:
-    // it returns the real rendered pixels (fonts, external CSS, gradients,
-    // images) and is never tainted, so it cannot produce the black/blank frames
-    // the in-iframe SVG-foreignObject bridge does. Works for both srcDoc and
-    // URL-load previews. Falls through to the bridge on pure web (no host).
-    const visibleIframe = iframeRef.current ?? srcDocPreviewIframeRef.current;
+    const srcDocIframe = srcDocPreviewIframeRef.current;
+    const urlIframe = iframeRef.current ?? urlPreviewIframeRef.current;
+    const visibleIframe = iframeRef.current ?? srcDocIframe;
     await ensureDeckSlideSyncedForSnapshot(visibleIframe);
     const hostSnapshot = await captureHostIframeSnapshot(visibleIframe);
     if (hostSnapshot) return hostSnapshot;
 
+    // Prefer the srcDoc transport iframe: it always carries the snapshot bridge
+    // and (when draw mode is active) the full artifact HTML. URL-load frames
+    // often lack the bridge and fail capture on web embeds.
+    if (srcDocIframe?.contentWindow) {
+      if (useLazySrcDocTransport && !srcDocShellReady) {
+        await waitForIframeLoadOrTimeout(srcDocIframe, 500);
+      }
+      if (useLazySrcDocTransport && activateSrcDocSnapshotTransport(srcDocIframe)) {
+        await waitForIframeLoadOrTimeout(srcDocIframe);
+        await waitForAnimationFrame();
+        await waitForAnimationFrame();
+      }
+      const restoreVisibility = temporarilyExposeIframeForSnapshot(srcDocIframe);
+      try {
+        await ensureDeckSlideSyncedForSnapshot(srcDocIframe);
+        await waitForAnimationFrame();
+        const srcDocSnapshot = await requestPreviewSnapshotWithRetry(srcDocIframe);
+        if (srcDocSnapshot) return srcDocSnapshot;
+      } finally {
+        restoreVisibility();
+      }
+    }
+
     if (!useUrlLoadPreview) {
-      const activeIframe = srcDocPreviewIframeRef.current ?? iframeRef.current;
+      const activeIframe = srcDocIframe ?? iframeRef.current;
       if (!activeIframe) return null;
       await ensureDeckSlideSyncedForSnapshot(activeIframe);
       await waitForIframeLoadOrTimeout(activeIframe, 250);
@@ -8607,7 +8627,6 @@ function HtmlViewer({
       return requestPreviewSnapshotWithRetry(activeIframe);
     }
 
-    const urlIframe = iframeRef.current ?? urlPreviewIframeRef.current;
     if (urlIframe) {
       await ensureDeckSlideSyncedForSnapshot(urlIframe);
       await waitForIframeLoadOrTimeout(urlIframe, 250);
@@ -8616,7 +8635,6 @@ function HtmlViewer({
       if (urlSnapshot) return urlSnapshot;
     }
 
-    const srcDocIframe = srcDocPreviewIframeRef.current;
     if (!srcDocIframe) {
       const activeIframe = iframeRef.current;
       if (!activeIframe) return null;
@@ -8624,30 +8642,13 @@ function HtmlViewer({
       return requestPreviewSnapshotWithRetry(activeIframe);
     }
 
-    if (useLazySrcDocTransport && !srcDocShellReady) {
+    if (useUrlLoadPreview && activateSrcDocSnapshotTransport(srcDocIframe)) {
       await waitForIframeLoadOrTimeout(srcDocIframe, 500);
-    }
-    if (useLazySrcDocTransport && activateSrcDocSnapshotTransport(srcDocIframe)) {
-      await waitForIframeLoadOrTimeout(srcDocIframe);
       await waitForAnimationFrame();
       await waitForAnimationFrame();
+      return requestPreviewSnapshotWithRetry(srcDocIframe);
     }
-    const restoreVisibility = temporarilyExposeIframeForSnapshot(srcDocIframe);
-    try {
-      await ensureDeckSlideSyncedForSnapshot(srcDocIframe);
-      await waitForAnimationFrame();
-      const srcDocSnapshot = await requestPreviewSnapshotWithRetry(srcDocIframe);
-      if (srcDocSnapshot) return srcDocSnapshot;
-      if (useUrlLoadPreview && activateSrcDocSnapshotTransport(srcDocIframe)) {
-        await waitForIframeLoadOrTimeout(srcDocIframe, 500);
-        await waitForAnimationFrame();
-        await waitForAnimationFrame();
-        return requestPreviewSnapshotWithRetry(srcDocIframe);
-      }
-      return null;
-    } finally {
-      restoreVisibility();
-    }
+    return null;
   }, [
     activateSrcDocSnapshotTransport,
     ensureDeckSlideSyncedForSnapshot,
@@ -9512,9 +9513,9 @@ function HtmlViewer({
                 className={`viewer-action viewer-action-icon od-tooltip${drawOverlayOpen ? ' active' : ''}`}
                 type="button"
                 data-testid="draw-overlay-toggle"
-                data-tooltip={t('fileViewer.mark')}
+                data-tooltip={t('fileViewer.markTooltip')}
                 data-tooltip-placement="bottom"
-                title={t('fileViewer.mark')}
+                title={t('fileViewer.markTooltip')}
                 aria-label={t('fileViewer.mark')}
                 aria-pressed={drawOverlayOpen}
                 onClick={activateDrawTool}
@@ -9929,6 +9930,7 @@ function HtmlViewer({
                     captureSnapshot={captureExportImageSnapshot}
                     captureTarget={null}
                     filePath={file.name}
+                    slideIndex={effectiveDeck ? slideState?.active ?? null : null}
                     sendDisabled={streaming}
                     sendDisabledReason={t('chat.annotationSendDisabledReason')}
                     onToolbarClick={fireDrawToolbarClick}

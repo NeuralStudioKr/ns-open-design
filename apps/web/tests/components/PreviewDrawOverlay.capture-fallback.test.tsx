@@ -92,10 +92,44 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
           file: null,
         }),
       });
-      // The user is told the annotation went out without its screenshot.
       await waitFor(() =>
         expect(
-          getByText('Could not capture the preview. The annotation was sent without a screenshot.'),
+          getByText('Could not capture preview — only your note was sent. Try Comment mode for element-specific edits.'),
+        ).toBeTruthy(),
+      );
+    } finally {
+      window.removeEventListener('opendesign:annotation', annotation);
+    }
+  });
+
+  it('prefixes the active slide when screenshot capture fails on a deck', async () => {
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
+    window.addEventListener('opendesign:annotation', annotation);
+
+    try {
+      const { container, getByRole, getByText } = render(
+        <PreviewDrawOverlay active captureViewport slideIndex={2}>
+          <iframe title="srcdoc" data-od-render-mode="srcdoc" />
+        </PreviewDrawOverlay>,
+      );
+
+      const input = container.querySelector<HTMLInputElement>('.preview-draw-note-input');
+      fireEvent.change(input!, { target: { value: 'Shrink this title' } });
+      fireEvent.click(getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1));
+      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
+        detail: expect.objectContaining({
+          note: 'Slide 3\nShrink this title',
+          file: null,
+        }),
+      });
+      await waitFor(() =>
+        expect(
+          getByText('Your note was sent with the slide number — no preview image attached.'),
         ).toBeTruthy(),
       );
     } finally {
@@ -122,7 +156,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
 
       await waitFor(() =>
         expect(
-          getByText('Could not capture the preview. Try again to avoid sending only ink.'),
+          getByText('Could not capture the preview. Add a note describing the change, or use Comment mode.'),
         ).toBeTruthy(),
       );
       expect(annotation).not.toHaveBeenCalled();

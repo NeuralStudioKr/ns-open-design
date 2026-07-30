@@ -61,6 +61,8 @@ interface Props {
   captureSnapshot?: () => Promise<PreviewSnapshot | null>;
   captureFrameRect?: () => CaptureFrameRect | null;
   filePath?: string;
+  /** 0-based active slide index; used to prefix notes when screenshot capture fails. */
+  slideIndex?: number | null;
   hideChrome?: boolean;
   sendDisabled?: boolean;
   sendDisabledReason?: string;
@@ -70,6 +72,36 @@ interface Props {
 const STROKE_COLOR = '#ff3b30';
 const STROKE_WIDTH = 4;
 const TARGET_COLOR = '#1677ff';
+const DRAW_HINT_STORAGE_KEY = 'open-design:annotation-draw-hint-dismissed';
+
+function readDrawHintDismissed(): boolean {
+  try {
+    return window.sessionStorage.getItem(DRAW_HINT_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function persistDrawHintDismissed(): void {
+  try {
+    window.sessionStorage.setItem(DRAW_HINT_STORAGE_KEY, '1');
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+export function annotationNoteForSend(
+  rawNote: string,
+  slideIndex: number | null | undefined,
+  sentWithoutScreenshot: boolean,
+  slidePrefix: (index: number) => string,
+): string {
+  const note = rawNote.trim();
+  if (!note || !sentWithoutScreenshot || slideIndex == null || !Number.isFinite(slideIndex)) return note;
+  const marker = slidePrefix(Math.max(0, Math.floor(slideIndex)) + 1);
+  if (note.includes(marker)) return note;
+  return `${marker}\n${note}`;
+}
 
 // Render `node` into `host` via a portal when one is provided, otherwise inline.
 function maybePortal(node: ReactNode, host: HTMLElement | null) {
@@ -85,6 +117,7 @@ export function PreviewDrawOverlay({
   captureSnapshot,
   captureFrameRect,
   filePath,
+  slideIndex = null,
   hideChrome = false,
   sendDisabled = false,
   sendDisabledReason,
@@ -122,6 +155,7 @@ export function PreviewDrawOverlay({
     action: AnnotationAction;
     message: string;
   } | null>(null);
+  const [drawHintDismissed, setDrawHintDismissed] = useState(readDrawHintDismissed);
   const sending = pendingAction !== null;
 
   const redraw = useCallback(() => {
@@ -662,6 +696,12 @@ export function PreviewDrawOverlay({
         }
       }
       const sentWithoutScreenshot = shouldCapture && !file;
+      const noteText = annotationNoteForSend(
+        note,
+        slideIndex,
+        sentWithoutScreenshot,
+        (index) => t('chat.annotationSlidePrefix', { n: index }),
+      );
       const kind = markKind();
       const result = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
         let settled = false;
@@ -675,7 +715,7 @@ export function PreviewDrawOverlay({
         }, 60000);
         const detail: AnnotationEventDetail = {
           file,
-          note: note.trim(),
+          note: noteText,
           action,
           filePath: captureTarget?.filePath || filePath,
           markKind: kind,
@@ -698,7 +738,13 @@ export function PreviewDrawOverlay({
       // the note went out, the pixels did not.
       setCaptureWarning(
         sentWithoutScreenshot
-          ? { action, message: t('chat.annotationSentWithoutScreenshot') }
+          ? {
+              action,
+              message:
+                noteText !== note.trim()
+                  ? t('chat.annotationSentTextOnly')
+                  : t('chat.annotationSentWithoutScreenshot'),
+            }
           : null,
       );
       setNote('');
@@ -795,6 +841,58 @@ export function PreviewDrawOverlay({
               }}
             >
               <span>{captureWarning.message}</span>
+            </div>
+          ) : !drawHintDismissed ? (
+            <div
+              role="note"
+              style={{
+                position: 'absolute',
+                left: 'calc(50% - 52px)',
+                bottom: 72,
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                maxWidth: 'min(420px, calc(100% - 144px))',
+                padding: '6px 8px 6px 12px',
+                borderRadius: 999,
+                background: 'rgba(20,20,20,0.82)',
+                color: 'rgba(255,255,255,0.92)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
+                backdropFilter: 'blur(8px)',
+                zIndex: 92,
+                pointerEvents: 'auto',
+                fontSize: 12,
+                lineHeight: 1.35,
+                visibility: chromeHidden ? 'hidden' : undefined,
+              }}
+            >
+              <span>{t('chat.annotationDrawHint')}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  persistDrawHintDismissed();
+                  setDrawHintDismissed(true);
+                }}
+                aria-label={t('common.close')}
+                title={t('common.close')}
+                style={{
+                  width: 18,
+                  height: 18,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 999,
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  background: 'transparent',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              >
+                <Icon name="close" size={10} />
+              </button>
             </div>
           ) : null}
           {imagePreviews.length > 0 ? (
