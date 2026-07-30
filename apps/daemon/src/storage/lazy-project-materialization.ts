@@ -388,8 +388,6 @@ export function createProjectStorageAccessHooks(
     const trimmedId = projectId.trim();
     if (!trimmedId) return;
 
-    lastSyncAt.delete(trimmedId);
-
     // Active-run guard: a managed run or BYOK proxy stream will sync-up the
     // canonical scratch state on its run-end / stream-end hook. Issuing a
     // racing sync-up here can PUT a partially-written intermediate state to
@@ -398,6 +396,11 @@ export function createProjectStorageAccessHooks(
     // strictly newer (or equal) generation, with the floor applied. Strict
     // callers (immediate publish/deploy) still proceed: they hold a higher
     // contract than the run-end uploader.
+    //
+    // Important: do NOT clear lastSyncAt on this skip path. Clearing TTL here
+    // forced the next GET to sync-down a stale S3 snapshot and clobber the
+    // scratch write that triggered this mutation (preview/edit/download
+    // only worked after a later refresh).
     if (
       !options?.strict
       && materializationRuntime.getActiveRunCount(trimmedId) > 0
@@ -413,117 +416,124 @@ export function createProjectStorageAccessHooks(
     }
 
     const priorPersist = persistInflight.get(trimmedId);
-    if (priorPersist) {
-      await priorPersist.catch(() => {});
-    }
+    // Gate must be in the map BEFORE any await so concurrent
+    // ensureMaterialized (FE refresh/raw/export right after POST /files 200)
+    // waits instead of syncing-down the pre-write S3 snapshot.
+    // Always resolve (never reject) so void finish-handlers cannot create
+    // unhandled rejections; awaitPendingPersist already treats failures soft.
+    let settleGate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      settleGate = resolve;
+    });
+    persistInflight.set(trimmedId, gate);
 
-    const task = (async (): Promise<void> => {
-    const runPersist = async (): Promise<boolean> => {
-      try {
-        if (await maybeSyncBootOrphan(req, trimmedId)) {
-          return true;
-        }
-        const remote = await resolveRemote(req, trimmedId);
-        // runStart=0 → upload all scratch files (non-run API writes).
-        const result = await storage.syncUp(trimmedId, remote, 0);
-        if (db) {
-          await exportTeamverProjectDaemonStateThrottled(db, remote, trimmedId);
-        }
-        console.info(
-          `[project-materialization] lazy sync-up ${trimmedId}: uploaded=${result.uploaded} skipped=${result.skipped} deleted=${result.deleted} failed=${result.failed}`,
-        );
-        if (result.failed > 0 && process.env.OD_S3_SYNC_UP_METRICS === '1') {
-          console.info(JSON.stringify({
-            metric: 'od_s3_sync_up_failed',
-            projectId: trimmedId,
-            failed: result.failed,
-            uploaded: result.uploaded,
-          }));
-        }
-        if (result.failed > 0) {
-          materializationRuntime.markProjectSyncFailed(trimmedId);
-          if (options?.strict) {
-            throw new Error(`project_storage_sync_failed:${result.failed}`);
-          }
-          return false;
-        } else {
-          materializationRuntime.clearProjectSyncFailed(trimmedId);
-        }
-        return true;
-      } catch (err) {
-        materializationRuntime.markProjectSyncFailed(trimmedId);
-        console.warn(
-          `[project-materialization] lazy sync-up failed for ${trimmedId}:`,
-          err instanceof Error ? err.message : err,
-        );
-        // Non-retriable access errors must always propagate so the outer
-        // retry loop can bail out. Non-strict callers otherwise swallow
-        // the error (return false) and the loop would spin the deny
-        // through every configured attempt.
-        if (options?.strict || isNonRetriableAccessError(err)) throw err;
-        return false;
+    try {
+      if (priorPersist) {
+        await priorPersist.catch(() => {});
       }
-    };
+      lastSyncAt.delete(trimmedId);
 
-    const maxAttempts = options?.strict ? strictPersistRetryAttempts() : backgroundPersistRetryAttempts();
-    const retryMs = options?.strict ? strictPersistRetryMs() : backgroundPersistRetryMs();
-    let lastErr: unknown;
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
-        const persisted = await materializationRuntime.withProjectLock(trimmedId, runPersist);
-        if (persisted) return;
-        if (attempt >= maxAttempts) return;
-        console.warn(
-          `[project-materialization] retrying background sync-up for ${trimmedId} (${attempt}/${maxAttempts}) after partial failure`,
-        );
-        if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
-          console.info(JSON.stringify({
-            metric: 'od_s3_background_persist_retry',
-            projectId: trimmedId,
-            attempt,
-            maxAttempts,
-          }));
-        }
-        await sleep(retryMs * attempt);
-      } catch (err) {
-        lastErr = err;
-        if (!options?.strict || attempt >= maxAttempts) break;
-        if (isNonRetriableAccessError(err)) {
-          // Same rationale as the sync-down loop above — deny is a data-
-          // state problem, not a transient upstream hiccup.
-          if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+      const runPersist = async (): Promise<boolean> => {
+        try {
+          if (await maybeSyncBootOrphan(req, trimmedId)) {
+            return true;
+          }
+          const remote = await resolveRemote(req, trimmedId);
+          // runStart=0 → upload all scratch files (non-run API writes).
+          const result = await storage.syncUp(trimmedId, remote, 0);
+          if (db) {
+            await exportTeamverProjectDaemonStateThrottled(db, remote, trimmedId);
+          }
+          console.info(
+            `[project-materialization] lazy sync-up ${trimmedId}: uploaded=${result.uploaded} skipped=${result.skipped} deleted=${result.deleted} failed=${result.failed}`,
+          );
+          if (result.failed > 0 && process.env.OD_S3_SYNC_UP_METRICS === '1') {
             console.info(JSON.stringify({
-              metric: 'od_s3_strict_persist_denied',
+              metric: 'od_s3_sync_up_failed',
               projectId: trimmedId,
-              attempt,
-              reason: err instanceof Error ? err.message : String(err),
+              failed: result.failed,
+              uploaded: result.uploaded,
             }));
           }
-          break;
+          if (result.failed > 0) {
+            materializationRuntime.markProjectSyncFailed(trimmedId);
+            if (options?.strict) {
+              throw new Error(`project_storage_sync_failed:${result.failed}`);
+            }
+            return false;
+          }
+          materializationRuntime.clearProjectSyncFailed(trimmedId);
+          return true;
+        } catch (err) {
+          materializationRuntime.markProjectSyncFailed(trimmedId);
+          console.warn(
+            `[project-materialization] lazy sync-up failed for ${trimmedId}:`,
+            err instanceof Error ? err.message : err,
+          );
+          // Non-retriable access errors must always propagate so the outer
+          // retry loop can bail out. Non-strict callers otherwise swallow
+          // the error (return false) and the loop would spin the deny
+          // through every configured attempt.
+          if (options?.strict || isNonRetriableAccessError(err)) throw err;
+          return false;
         }
-        console.warn(
-          `[project-materialization] retrying strict sync-up for ${trimmedId} (${attempt}/${maxAttempts}) after failure:`,
-          err instanceof Error ? err.message : err,
-        );
-        if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
-          console.info(JSON.stringify({
-            metric: 'od_s3_strict_persist_retry',
-            projectId: trimmedId,
-            attempt,
-            maxAttempts,
-          }));
-        }
-        await sleep(retryMs * attempt);
-      }
-    }
-    if (options?.strict) throw lastErr;
-    })();
+      };
 
-    persistInflight.set(trimmedId, task);
-    try {
-      await task;
+      const maxAttempts = options?.strict ? strictPersistRetryAttempts() : backgroundPersistRetryAttempts();
+      const retryMs = options?.strict ? strictPersistRetryMs() : backgroundPersistRetryMs();
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          const persisted = await materializationRuntime.withProjectLock(trimmedId, runPersist);
+          if (persisted) return;
+          if (attempt >= maxAttempts) return;
+          console.warn(
+            `[project-materialization] retrying background sync-up for ${trimmedId} (${attempt}/${maxAttempts}) after partial failure`,
+          );
+          if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+            console.info(JSON.stringify({
+              metric: 'od_s3_background_persist_retry',
+              projectId: trimmedId,
+              attempt,
+              maxAttempts,
+            }));
+          }
+          await sleep(retryMs * attempt);
+        } catch (err) {
+          lastErr = err;
+          if (!options?.strict || attempt >= maxAttempts) break;
+          if (isNonRetriableAccessError(err)) {
+            // Same rationale as the sync-down loop above — deny is a data-
+            // state problem, not a transient upstream hiccup.
+            if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+              console.info(JSON.stringify({
+                metric: 'od_s3_strict_persist_denied',
+                projectId: trimmedId,
+                attempt,
+                reason: err instanceof Error ? err.message : String(err),
+              }));
+            }
+            break;
+          }
+          console.warn(
+            `[project-materialization] retrying strict sync-up for ${trimmedId} (${attempt}/${maxAttempts}) after failure:`,
+            err instanceof Error ? err.message : err,
+          );
+          if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+            console.info(JSON.stringify({
+              metric: 'od_s3_strict_persist_retry',
+              projectId: trimmedId,
+              attempt,
+              maxAttempts,
+            }));
+          }
+          await sleep(retryMs * attempt);
+        }
+      }
+      if (options?.strict && lastErr !== undefined) throw lastErr;
     } finally {
-      if (persistInflight.get(trimmedId) === task) {
+      settleGate();
+      if (persistInflight.get(trimmedId) === gate) {
         persistInflight.delete(trimmedId);
       }
     }
