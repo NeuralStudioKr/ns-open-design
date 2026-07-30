@@ -2,16 +2,29 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../src/teamver/designApiBase', async () => {
+  const actual = await vi.importActual<typeof import('../../src/teamver/designApiBase')>(
+    '../../src/teamver/designApiBase',
+  );
+  return {
+    ...actual,
+    isTeamverEmbedMode: vi.fn(() => false),
+  };
+});
+
 import {
   FileViewer,
   cancelManualEditPendingStyleSnapshot,
 } from '../../src/components/FileViewer';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
 import type { ProjectFile } from '../../src/types';
+import * as designApiBase from '../../src/teamver/designApiBase';
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
   vi.unstubAllGlobals();
 });
 
@@ -241,10 +254,10 @@ describe('FileViewer manual edit regressions', () => {
 
       // The raw fetch is cache-busted on every mtime / reload / files-refresh
       // bump so srcDoc-mode previews see fresh HTML after agent edits.
-      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringMatching(/^\/api\/projects\/project-1\/raw\/preview\.html(\?|$)/),
-        {},
-      ));
+      await waitFor(() => expect(fetchMock.mock.calls.some((call) => {
+        const url = typeof call[0] === 'string' ? call[0] : String(call[0]);
+        return /^\/api\/projects\/project-1\/raw\/preview\.html(\?|$)/.test(url);
+      })).toBe(true));
       fireEvent.click(screen.getByTestId('manual-edit-mode-toggle'));
       await selectManualEditTarget();
       const baseSizeInput = await findStyleInput('Size');
@@ -379,6 +392,98 @@ describe('FileViewer manual edit regressions', () => {
     });
     expect(document.querySelector('.manual-edit-workspace')).not.toBeNull();
   });
+
+  it('flushes pending styles when selecting a different target instead of cancelling them', async () => {
+    const source = '<!doctype html><html><body><main data-od-id="hero">Hero</main><button data-od-id="cta">Go</button></body></html>';
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(source, { status: 200, headers: { 'Content-Type': 'text/html' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
+        liveHtml={source}
+      />,
+    );
+
+    clickManualTool('manual-edit-mode-toggle');
+    await selectManualEditTarget(heroTarget());
+    const baseSizeInput = await findStyleInput('Size');
+    fireEvent.change(baseSizeInput, { target: { value: '18' } });
+
+    await selectManualEditTarget(ctaTarget());
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/projects/project-1/files',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+    const postCall = fetchMock.mock.calls.find((call) => {
+      const url = typeof call[0] === 'string' ? call[0] : String(call[0]);
+      return url.includes('/api/projects/project-1/files') && call[1]?.method === 'POST';
+    });
+    const body = JSON.parse(String(postCall?.[1]?.body ?? '{}')) as { content?: string };
+    expect(body.content).toMatch(/font-size:\s*18px/i);
+  });
+
+  it('keeps a failed style draft so a later Save can retry the same tweak', async () => {
+    const source = '<!doctype html><html><body><main data-od-id="hero">Hero</main></body></html>';
+    let saveAttempts = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+      if (url.includes('/api/projects/project-1/files') && init?.method === 'POST') {
+        saveAttempts += 1;
+        if (saveAttempts === 1) {
+          return new Response(JSON.stringify({
+            error: { code: 'FORBIDDEN', message: 'Request failed (403).' },
+          }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(source, { status: 200, headers: { 'Content-Type': 'text/html' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
+        liveHtml={source}
+      />,
+    );
+
+    clickManualTool('manual-edit-mode-toggle');
+    await selectManualEditTarget();
+    const baseSizeInput = await findStyleInput('Size');
+    fireEvent.change(baseSizeInput, { target: { value: '18' } });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => {
+      expect(screen.getByText(/Could not save the edited file/)).toBeTruthy();
+    });
+
+    // Do not change the input — a failed flush must restore the pending draft
+    // so retrying Save alone persists the original tweak.
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => {
+      expect(saveAttempts).toBe(2);
+      expect(screen.queryByText(/Could not save the edited file/)).toBeNull();
+    });
+    const postCalls = fetchMock.mock.calls.filter((call) => {
+      const url = typeof call[0] === 'string' ? call[0] : String(call[0]);
+      return url.includes('/api/projects/project-1/files') && call[1]?.method === 'POST';
+    });
+    const retryBody = JSON.parse(String(postCalls[1]?.[1]?.body ?? '{}')) as { content?: string };
+    expect(retryBody.content).toMatch(/font-size:\s*18px/i);
+  });
 });
 
 function heroTarget(): ManualEditTarget {
@@ -395,6 +500,23 @@ function heroTarget(): ManualEditTarget {
     styles: emptyManualEditStyles(),
     isLayoutContainer: false,
     outerHtml: '<main data-od-id="hero">Hero</main>',
+  };
+}
+
+function ctaTarget(): ManualEditTarget {
+  return {
+    id: 'cta',
+    kind: 'text',
+    label: 'Go',
+    tagName: 'button',
+    className: '',
+    text: 'Go',
+    rect: { x: 24, y: 96, width: 80, height: 32 },
+    fields: { text: 'Go' },
+    attributes: { 'data-od-id': 'cta' },
+    styles: emptyManualEditStyles(),
+    isLayoutContainer: false,
+    outerHtml: '<button data-od-id="cta">Go</button>',
   };
 }
 
