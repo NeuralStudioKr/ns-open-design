@@ -10,6 +10,12 @@
 - `AssistantMessage`의 기존 per-message error pill은 같은 assistant 메시지에 diagnostic 카드가 붙을 때만 suppress하여 중복 표시를 막는다.
 - 회귀 테스트: `apps/web/tests/components/ChatPane.streaming.test.tsx`의 persisted failed-run error 위치 테스트.
 
+## 2026-07-30 추가: 재진입 시 에러 카드 소실 방지
+
+- 채팅에 보이는 에러는 ephemeral `setError`만으로 끝내지 말고 `attachPersistedChatError` / `surfaceChatVisibleError`로 assistant `events` + `runStatus: failed`에 저장한다.
+- daemon message upsert는 keepalive 등이 `events`를 생략해도 기존 `events_json`을 지우지 않는다 (`mergeOptionalMessageArrayField` + `COALESCE`).
+- `mergeServerMessageWithLocal`은 서버 row에 status:error가 없을 때 로컬 에러 이벤트를 유지한다.
+
 ## 왜 검토할 때마다 구멍이 보였는가
 
 에이전트 truncation은 **적대적 분포**다. “이번에 본 조각”만 regex로 막으면 다음 조각이 새로 드러난다.

@@ -193,6 +193,8 @@ import type { TodoItem } from '../runtime/todos';
 import {
   appendErrorStatusEvent,
   appendWarningStatusEvent,
+  attachPersistedChatError,
+  messageHasPersistedChatError,
   messageHasVisibleProse,
 } from '../runtime/chat-events';
 import {
@@ -611,6 +613,16 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
   ) {
     merged.content = localContent;
     if (local.events?.length) merged.events = local.events;
+  }
+  // Keepalive omit-events / partial upsert can drop status:error cards from the
+  // server row while the local buffer still has them. Prefer local so re-entry
+  // and soft refresh do not hide a chat error the user already saw.
+  if (messageHasPersistedChatError(local) && !messageHasPersistedChatError(merged)) {
+    merged.events = local.events;
+    if (local.runStatus === 'failed') {
+      merged.runStatus = 'failed';
+      merged.endedAt = local.endedAt ?? merged.endedAt ?? Date.now();
+    }
   }
   return reconcileUserCommentAttachments(merged);
 }
@@ -3711,6 +3723,40 @@ export function ProjectView({
     return nextFiles;
   }, [refreshLiveArtifacts, refreshProjectFiles]);
 
+  /**
+   * Chat-visible errors must ride on the assistant message's status:error
+   * events (and usually `runStatus: failed`). The ephemeral `error` React
+   * state is cleared on every message reload, so setError-only paths vanish
+   * after page re-entry.
+   */
+  const surfaceChatVisibleError = useCallback(
+    (detail: string, code?: string) => {
+      if (!detail?.trim()) return;
+      setError(detail);
+      const conversationId = activeConversationId;
+      if (!conversationId) return;
+      setMessages((curr) => {
+        let targetId: string | null = null;
+        for (let i = curr.length - 1; i >= 0; i -= 1) {
+          if (curr[i]?.role === 'assistant') {
+            targetId = curr[i]!.id;
+            break;
+          }
+        }
+        if (!targetId) return curr;
+        return curr.map((m) => {
+          if (m.id !== targetId) return m;
+          const updated = attachPersistedChatError(m, detail, code);
+          if (!isPhantomDaemonRunMessage(updated)) {
+            void saveMessage(project.id, conversationId, updated);
+          }
+          return updated;
+        });
+      });
+    },
+    [activeConversationId, project.id],
+  );
+
   useEffect(() => {
     if (!tabsLoadedRef.current) return;
     if (hasAppliedInitialPrimaryOpenRef.current) return;
@@ -4071,11 +4117,12 @@ export function ProjectView({
         }
         const validation = validateHtmlArtifact(artifactToPersist.html);
         if (!validation.ok) {
-          setError(
+          surfaceChatVisibleError(
             formatProjectArtifactRejectedError(
               art.identifier || art.title || 'untitled',
               validation.reason,
             ),
+            'artifact_rejected',
           );
           return { kind: 'rejected', fileName, reason: validation.reason };
         }
@@ -4140,7 +4187,10 @@ export function ProjectView({
         // what happened + reassures about the preserved deck + names
         // the escape-hatch env var, so users don't stare at a mixed-
         // language "저장을 거부: New artifact body …" reason.
-        setError(formatProjectArtifactRegressionRejectedError(regression.fileName));
+        surfaceChatVisibleError(
+          formatProjectArtifactRegressionRejectedError(regression.fileName),
+          'artifact_regression',
+        );
         return {
           kind: 'artifact-regression',
           fileName: regression.fileName,
@@ -4231,12 +4281,13 @@ export function ProjectView({
         // they either require a manual action or indicate no recovery is
         // scheduled.
         if (!stashedForAutoRetry) {
-          setError(
+          surfaceChatVisibleError(
             formatProjectArtifactSaveFailedError(fileName, {
               status: result.status,
               code: result.code,
               message: result.message,
             }),
+            result.code ?? 'artifact_save_failed',
           );
         }
         if (stashedForAutoRetry) return { kind: 'auth-replay-queued', fileName };
@@ -4249,7 +4300,15 @@ export function ProjectView({
         };
       }
     },
-    [project.id, project.designSystemId, project.skillId, project.metadata?.skipDiscoveryBrief, requestOpenFile, slideOnlyMvp],
+    [
+      project.id,
+      project.designSystemId,
+      project.skillId,
+      project.metadata?.skipDiscoveryBrief,
+      requestOpenFile,
+      slideOnlyMvp,
+      surfaceChatVisibleError,
+    ],
   );
 
   // Auth-recovery replay: when the embed cookie is refreshed after a session
