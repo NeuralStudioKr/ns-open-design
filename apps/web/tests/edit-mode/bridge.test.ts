@@ -458,6 +458,90 @@ describe('manual edit bridge target normalization', () => {
     expect(bridge).toContain('onKeyCapture');
   });
 
+  it('lets plain Enter insert a newline; commits with Cmd/Ctrl+Enter or blur', () => {
+    const bridge = buildManualEditBridge(true);
+    // Regression: Enter used to call finish(true) and confirm the edit.
+    expect(bridge).not.toContain("ev.key === 'Enter' && !ev.shiftKey");
+    expect(bridge).toContain("ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)");
+    expect(bridge).toContain('plainTextFrom');
+    expect(bridge).toContain("tag === 'br'");
+    expect(bridge).not.toContain('var value = (el.textContent || \'\').trim()');
+  });
+
+  it('preserves <br> line breaks on blur commit and does not strip them as unchanged', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Line one<br>Line two</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+
+    title.dispatchEvent(new dom.window.MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 8,
+      clientY: 8,
+    }));
+    // No user edits — blur must not invent a flattened "Line oneLine two" commit.
+    title.dispatchEvent(new dom.window.FocusEvent('blur', { bubbles: false }));
+
+    expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'od-edit-text-commit',
+    }), '*');
+    expect(title.innerHTML).toContain('<br');
+
+    dom.window.close();
+  });
+
+  it('commits multiline plain text with newlines preserved', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Original</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+
+    title.dispatchEvent(new dom.window.MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+    }));
+    title.innerHTML = 'First line<br>Second line';
+    title.dispatchEvent(new dom.window.FocusEvent('blur', { bubbles: false }));
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'od-edit-text-commit',
+      id: 'title',
+      value: 'First line\nSecond line',
+    }, '*');
+
+    dom.window.close();
+  });
+
+  it('does not confirm the edit on plain Enter', () => {
+    const dom = new JSDOM(
+      `<main><p data-od-id="body">Original body</p></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const body = dom.window.document.querySelector('[data-od-id="body"]') as HTMLElement;
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+
+    body.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    body.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'Enter',
+      shiftKey: false,
+    }));
+
+    expect(body.getAttribute('contenteditable')).toBe('plaintext-only');
+    expect(body.getAttribute('data-od-editing')).toBe('true');
+    expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'od-edit-text-commit',
+    }), '*');
+
+    dom.window.close();
+  });
+
   it('cancels inline text edits with Escape without posting a commit', () => {
     const dom = new JSDOM(
       `<main><p data-od-id="body">Original body</p></main>${buildManualEditBridge(true)}`,

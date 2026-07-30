@@ -814,6 +814,42 @@ describe('manual edit source patches', () => {
     expect(result.source).not.toContain('<br');
   });
 
+  it('maps committed newlines back to <br> so Enter wraps persist', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h2 data-od-id="title">한 줄 제목</h2>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'title', value: '첫 줄\n둘째 줄' },
+      { slideIndex: 0 },
+    );
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('<h2 data-od-id="title">첫 줄<br>둘째 줄</h2>');
+  });
+
+  it('keeps intentional newlines when rewriting br-only headings', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h2 data-od-id="title">아이폰 시리즈 개요 및<br>발전 동향 보고서</h2>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'title', value: '아이폰 시리즈 개요 및\n발전 동향 보고서' },
+      { slideIndex: 0 },
+    );
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain(
+      '<h2 data-od-id="title">아이폰 시리즈 개요 및<br>발전 동향 보고서</h2>',
+    );
+  });
+
   it('salvages ambiguous inline-only wrappers by rewriting their inner text', () => {
     // `<h1><span>Alpha</span><span>Beta</span></h1>` used to reject with
     // "Use the HTML tab" — real Teamver decks hit this constantly (badge +

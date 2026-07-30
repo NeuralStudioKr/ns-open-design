@@ -133,6 +133,22 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (targetVisibility === 'hidden' || targetVisibility === 'collapse') return true;
     return hasHiddenAncestorDisplayState(el);
   }
+  function plainTextFrom(el){
+    // Preserve intentional line breaks: <br> → \\n.
+    // textContent alone collapses <br> away (e.g. "A<br>B" → "AB").
+    var out = '';
+    function walk(node){
+      if (!node) return;
+      if (node.nodeType === 3) { out += node.nodeValue || ''; return; }
+      if (node.nodeType !== 1) return;
+      var tag = (node.tagName || '').toLowerCase();
+      if (tag === 'br') { out += '\\n'; return; }
+      var child = node.firstChild;
+      while (child) { walk(child); child = child.nextSibling; }
+    }
+    walk(el);
+    return out.replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n');
+  }
   function targetFrom(el, includeOuterHtml){
     var rect = el.getBoundingClientRect();
     var kind = inferKind(el);
@@ -140,13 +156,13 @@ export function buildManualEditBridge(enabled: boolean): string {
     var hidden = isHiddenTarget(el, rect);
     var fields = {};
     if (kind === 'link') {
-      fields.text = (el.textContent || '').trim();
+      fields.text = plainTextFrom(el);
       fields.href = el.getAttribute('href') || '';
     } else if (kind === 'image') {
       fields.src = el.getAttribute('src') || '';
       fields.alt = el.getAttribute('alt') || '';
     } else {
-      fields.text = (el.textContent || '').trim();
+      fields.text = plainTextFrom(el);
     }
     return {
       id: id,
@@ -239,7 +255,8 @@ export function buildManualEditBridge(enabled: boolean): string {
   }
   function makeEditable(el, clickEvent){
     if (!el || el.getAttribute('contenteditable') === 'true') return;
-    var originalText = el.textContent || '';
+    var originalHtml = el.innerHTML;
+    var originalText = plainTextFrom(el);
     clearSelectedTarget();
     el.setAttribute('contenteditable', 'plaintext-only');
     el.setAttribute('data-od-editing', 'true');
@@ -257,15 +274,17 @@ export function buildManualEditBridge(enabled: boolean): string {
       try {
         window.parent.postMessage({ type: 'od-edit-text-active', active: false }, '*');
       } catch (e) {}
-      var value = (el.textContent || '').trim();
-      if (commit && value !== originalText.trim()) {
+      // Do not .trim() — that silently drops leading/trailing newlines the
+      // user kept. Only normalize newline shape for a stable compare/commit.
+      var value = plainTextFrom(el);
+      if (commit && value !== originalText) {
         window.parent.postMessage({
           type: 'od-edit-text-commit',
           id: stableId(el),
           value: value
         }, '*');
       } else if (!commit) {
-        el.textContent = originalText;
+        el.innerHTML = originalHtml;
       }
     }
     function onBlur(){ finish(true); }
@@ -278,10 +297,13 @@ export function buildManualEditBridge(enabled: boolean): string {
       }
     }
     function onKey(ev){
-      if (ev.key === 'Enter' && !ev.shiftKey) {
+      // Enter inserts a newline (contenteditable default). Commit with
+      // Cmd/Ctrl+Enter or by blurring (click outside). Escape cancels.
+      if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) {
         ev.preventDefault();
         finish(true);
         try { el.blur(); } catch (e) {}
+        return;
       }
       if (ev.key === 'Escape') {
         ev.preventDefault();
