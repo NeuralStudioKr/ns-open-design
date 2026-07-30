@@ -388,19 +388,59 @@ function injectSnapshotBridge(doc: string): string {
       return samples > 8;
     } catch (_) { return false; }
   }
-  function renderSnapshot(id){
-    var deckFrame = prepareDeckSnapshotFrame();
+  function waitForSnapshotReady(){
+    return waitForImages().then(function(){
+      return new Promise(function(resolve){
+        var stage = document.getElementById('deck-stage') || document.querySelector('.deck-stage');
+        if (!stage) {
+          resolve();
+          return;
+        }
+        function settle(){
+          requestAnimationFrame(function(){ requestAnimationFrame(resolve); });
+        }
+        if (document.documentElement.hasAttribute('data-od-stacked-deck-ready')) {
+          settle();
+          return;
+        }
+        var deadline = Date.now() + 1500;
+        function tick(){
+          if (document.documentElement.hasAttribute('data-od-stacked-deck-ready') || Date.now() >= deadline) {
+            settle();
+            return;
+          }
+          setTimeout(tick, 50);
+        }
+        tick();
+      });
+    });
+  }
+  function buildSnapshotPayload(deckFrame){
     var w = deckFrame ? deckFrame.w : Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
     var h = deckFrame ? deckFrame.h : Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
-    var dpr = window.devicePixelRatio || 1;
-    var bgColor = snapshotBackgroundColor();
     var docW = deckFrame ? deckFrame.docW : Math.max(w, document.documentElement.scrollWidth || 0, document.body ? document.body.scrollWidth : 0);
     var docH = deckFrame ? deckFrame.docH : Math.max(h, document.documentElement.scrollHeight || 0, document.body ? document.body.scrollHeight : 0);
+    var scroll = deckFrame ? { x: deckFrame.scrollX, y: deckFrame.scrollY } : scrollOffset();
+    if (deckFrame) {
+      var stage = document.getElementById('deck-stage') || document.querySelector('.deck-stage');
+      if (stage) {
+        var stageClone = stage.cloneNode(true);
+        inlineSnapshotStyles(stage, stageClone);
+        pruneHiddenSnapshotNodes(stage, stageClone);
+        return {
+          w: w,
+          h: h,
+          docW: docW,
+          docH: docH,
+          wrapperStyle: 'margin:0;padding:0;width:' + docW + 'px;height:' + docH + 'px;overflow:hidden;',
+          bodyContent: stageClone.outerHTML
+        };
+      }
+    }
     var clone = document.documentElement.cloneNode(true);
     clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
     inlineSnapshotStyles(document.documentElement, clone);
     pruneHiddenSnapshotNodes(document.documentElement, clone);
-    var scroll = deckFrame ? { x: deckFrame.scrollX, y: deckFrame.scrollY } : scrollOffset();
     var cloneBody = clone.querySelector('body');
     var rootStyle = clone.getAttribute('style') || '';
     var bodyStyle = cloneBody ? cloneBody.getAttribute('style') || '' : '';
@@ -408,47 +448,109 @@ function injectSnapshotBridge(doc: string): string {
     var wrapperStyle = rootStyle + bodyStyle +
       'margin:0;position:relative;left:' + (-scroll.x) + 'px;top:' + (-scroll.y) + 'px;' +
       'width:' + docW + 'px;height:' + docH + 'px;overflow:visible;';
-    var html = '<div xmlns="http://www.w3.org/1999/xhtml" style="' + escapeAttribute(wrapperStyle) + '">' + bodyContent + '</div>';
+    return { w: w, h: h, docW: docW, docH: docH, wrapperStyle: wrapperStyle, bodyContent: bodyContent };
+  }
+  function postSnapshotCanvas(id, canvas){
+    var ctx = canvas.getContext('2d');
+    if (!ctx || canvasLooksBlank(ctx, canvas.width, canvas.height)) {
+      window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: 'empty-render' }, '*');
+      return;
+    }
+    window.parent.postMessage({
+      type: 'od:snapshot:result',
+      id: id,
+      dataUrl: canvas.toDataURL('image/png'),
+      w: canvas.width,
+      h: canvas.height
+    }, '*');
+  }
+  function drawSnapshotSourceToCanvas(source, w, h, dpr, bgColor){
+    var canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.floor(w * dpr));
+    canvas.height = Math.max(1, Math.floor(h * dpr));
+    var ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('no 2d context');
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(source, 0, 0, w, h);
+    return canvas;
+  }
+  function renderSnapshotViaImage(id, svg, w, h, dpr, bgColor){
+    var img = new Image();
+    function onImageReady(){
+      try {
+        postSnapshotCanvas(id, drawSnapshotSourceToCanvas(img, w, h, dpr, bgColor));
+      } catch (err) {
+        window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: String(err && err.message || err) }, '*');
+      }
+    }
+    function loadSvgSource(src, triedBlob){
+      img.onload = function(){
+        if (src.indexOf('blob:') === 0 && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(src);
+        onImageReady();
+      };
+      img.onerror = function(){
+        if (src.indexOf('blob:') === 0 && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(src);
+        if (!triedBlob && typeof URL.createObjectURL === 'function' && typeof Blob !== 'undefined') {
+          try {
+            loadSvgSource(URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })), true);
+            return;
+          } catch (_) {}
+        }
+        window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: 'snapshot image failed' }, '*');
+      };
+      img.src = src;
+    }
+    loadSvgSource('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg), false);
+  }
+  function renderSnapshot(id){
+    var deckFrame = prepareDeckSnapshotFrame();
+    var payload = buildSnapshotPayload(deckFrame);
+    var w = payload.w;
+    var h = payload.h;
+    var docW = payload.docW;
+    var docH = payload.docH;
+    var dpr = window.devicePixelRatio || 1;
+    var bgColor = snapshotBackgroundColor();
+    var html = '<div xmlns="http://www.w3.org/1999/xhtml" style="' + escapeAttribute(payload.wrapperStyle) + '">' + payload.bodyContent + '</div>';
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
       '<foreignObject x="0" y="0" width="' + docW + '" height="' + docH + '">' +
       html +
       '</foreignObject></svg>';
-    var img = new Image();
-    img.onload = function(){
+    if (typeof createImageBitmap === 'function' && typeof DOMParser !== 'undefined') {
       try {
-        var canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.floor(w * dpr));
-        canvas.height = Math.max(1, Math.floor(h * dpr));
-        var ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('no 2d context');
-        ctx.scale(dpr, dpr);
-        // Opaque base so a transparent (un-painted) raster never flattens to
-        // pure black in clipboards / PNG viewers.
-        ctx.fillStyle = bgColor;
-        ctx.fillRect(0, 0, w, h);
-        ctx.drawImage(img, 0, 0, w, h);
-        if (canvasLooksBlank(ctx, canvas.width, canvas.height)) {
-          window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: 'empty-render' }, '*');
-          return;
-        }
-        window.parent.postMessage({ type: 'od:snapshot:result', id: id, dataUrl: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height }, '*');
-      } catch (err) {
-        window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: String(err && err.message || err) }, '*');
-      }
-    };
-    function encodedSvgDataUrl(){
-      var encoded = encodeURIComponent(svg);
-      return 'data:image/svg+xml;charset=utf-8,' + encoded;
+        var parsed = new DOMParser().parseFromString(svg, 'image/svg+xml');
+        var svgEl = parsed.documentElement;
+        var host = document.createElement('div');
+        host.setAttribute('aria-hidden', 'true');
+        host.style.cssText = 'position:fixed;left:-10000px;top:0;width:0;height:0;overflow:hidden;pointer-events:none;opacity:0;';
+        document.body.appendChild(host);
+        host.appendChild(svgEl);
+        createImageBitmap(svgEl, {
+          resizeWidth: Math.max(1, Math.floor(w * dpr)),
+          resizeHeight: Math.max(1, Math.floor(h * dpr))
+        }).then(function(bitmap){
+          try {
+            postSnapshotCanvas(id, drawSnapshotSourceToCanvas(bitmap, w, h, dpr, bgColor));
+            if (bitmap.close) bitmap.close();
+          } catch (err) {
+            window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: String(err && err.message || err) }, '*');
+          }
+        }).catch(function(){
+          renderSnapshotViaImage(id, svg, w, h, dpr, bgColor);
+        }).finally(function(){
+          if (host.parentNode) host.parentNode.removeChild(host);
+        });
+        return;
+      } catch (_) {}
     }
-    img.onerror = function(){
-      window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: 'snapshot image failed' }, '*');
-    };
-    img.src = encodedSvgDataUrl();
+    renderSnapshotViaImage(id, svg, w, h, dpr, bgColor);
   }
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;
     if (!data || data.type !== 'od:snapshot' || !data.id) return;
-    waitForImages().then(function(){ renderSnapshot(String(data.id)); });
+    waitForSnapshotReady().then(function(){ renderSnapshot(String(data.id)); });
   });
 })();</script>`;
   return injectBeforeBodyEnd(doc, script);

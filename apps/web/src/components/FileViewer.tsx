@@ -9502,9 +9502,9 @@ function HtmlViewer({
                 className={`viewer-action viewer-action-icon od-tooltip${drawOverlayOpen ? ' active' : ''}`}
                 type="button"
                 data-testid="draw-overlay-toggle"
-                data-tooltip={t('fileViewer.mark')}
+                data-tooltip={t('fileViewer.markTooltip')}
                 data-tooltip-placement="bottom"
-                title={t('fileViewer.mark')}
+                title={t('fileViewer.markTooltip')}
                 aria-label={t('fileViewer.mark')}
                 aria-pressed={drawOverlayOpen}
                 onClick={activateDrawTool}

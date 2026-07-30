@@ -109,7 +109,7 @@ describe('buildSrcdoc', () => {
     expect(srcdoc).toContain('ctx.fillRect(0, 0, w, h);');
     // The fill happens before the rasterized image is drawn over it.
     const fillIdx = srcdoc.indexOf('ctx.fillRect(0, 0, w, h);');
-    const drawIdx = srcdoc.indexOf('ctx.drawImage(img, 0, 0, w, h);');
+    const drawIdx = srcdoc.indexOf('ctx.drawImage(source, 0, 0, w, h);');
     expect(fillIdx).toBeGreaterThan(-1);
     expect(drawIdx).toBeGreaterThan(fillIdx);
   });
@@ -124,13 +124,34 @@ describe('buildSrcdoc', () => {
     expect(srcdoc).toContain("error: 'empty-render'");
   });
 
-  it('renders snapshot SVGs through data URLs so canvas export stays origin-clean', () => {
+  it('renders snapshot SVGs through data URLs and falls back to blob URLs when needed', () => {
     const srcdoc = buildSrcdoc('<main style="color:red">Hero</main>');
 
-    expect(srcdoc).toContain('function encodedSvgDataUrl()');
-    expect(srcdoc).toContain('img.src = encodedSvgDataUrl();');
-    expect(srcdoc).not.toContain('createObjectURL');
-    expect(srcdoc).not.toContain('snapshot too large');
+    expect(srcdoc).toContain('function renderSnapshotViaImage(');
+    expect(srcdoc).toContain('data:image/svg+xml;charset=utf-8,');
+    expect(srcdoc).toContain('createObjectURL');
+  });
+
+  it('scopes deck snapshots to the deck stage instead of the full document', () => {
+    const srcdoc = buildSrcdoc('<main style="color:red">Hero</main>');
+
+    expect(srcdoc).toContain('function buildSnapshotPayload(');
+    expect(srcdoc).toContain('stageClone.outerHTML');
+  });
+
+  it('waits for stacked deck readiness before rasterizing snapshots', () => {
+    const srcdoc = buildSrcdoc('<main style="color:red">Hero</main>');
+
+    expect(srcdoc).toContain('function waitForSnapshotReady(');
+    expect(srcdoc).toContain('data-od-stacked-deck-ready');
+    expect(srcdoc).toContain('waitForSnapshotReady().then(function(){ renderSnapshot(String(data.id)); });');
+  });
+
+  it('prefers createImageBitmap for embedded SVG snapshots before the image fallback', () => {
+    const srcdoc = buildSrcdoc('<main style="color:red">Hero</main>');
+
+    expect(srcdoc).toContain('createImageBitmap(svgEl');
+    expect(srcdoc).toContain('renderSnapshotViaImage(id, svg, w, h, dpr, bgColor);');
   });
 
   it('crops snapshots with an XHTML wrapper instead of moving foreignObject offscreen', () => {

@@ -2149,6 +2149,7 @@ export interface Dict {
   'chat.comments.targetPage': string;
   'chat.comments.targetArea': string;
   'chat.annotationNotePlaceholder': string;
+  'chat.annotationDrawHint': string;
   'chat.annotationAttachImage': string;
   'chat.annotationAttachedImages': string;
   'chat.annotationAttachedRemove': string;
@@ -2699,6 +2700,7 @@ export interface Dict {
   'fileViewer.edit': string;
   'fileViewer.draw': string;
   'fileViewer.mark': string;
+  'fileViewer.markTooltip': string;
   'fileViewer.markTool': string;
   'fileViewer.boxSelect': string;
   'fileViewer.screenshot': string;

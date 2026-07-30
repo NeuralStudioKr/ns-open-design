@@ -95,7 +95,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
       // The user is told the annotation went out without its screenshot.
       await waitFor(() =>
         expect(
-          getByText('Could not capture the preview. The annotation was sent without a screenshot.'),
+          getByText('Preview capture failed — only your note was sent. Try Comment mode for element-specific edits, or mention the slide number.'),
         ).toBeTruthy(),
       );
     } finally {
@@ -122,7 +122,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
 
       await waitFor(() =>
         expect(
-          getByText('Could not capture the preview. Try again to avoid sending only ink.'),
+          getByText('Could not capture the preview. Add a note describing the change, or use Comment mode.'),
         ).toBeTruthy(),
       );
       expect(annotation).not.toHaveBeenCalled();
