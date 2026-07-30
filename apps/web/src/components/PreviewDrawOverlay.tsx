@@ -745,7 +745,7 @@ export function PreviewDrawOverlay({
         if (!blob && marksOnlyPromise) {
           blob = await marksOnlyPromise;
         }
-        if (blob) {
+        if (blob && blob.size > 0) {
           const ts = new Date().toISOString().replace(/[:.]/g, '-');
           file = new File([blob], `drawing-${ts}.png`, { type: 'image/png' });
         } else if (!note.trim() && extraFiles.length === 0) {

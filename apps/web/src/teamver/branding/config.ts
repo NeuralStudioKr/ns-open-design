@@ -1,4 +1,5 @@
 import { isTeamverEmbedMode } from "../designApiBase";
+import { isTeamverDrawAnnotationEnabled } from "../drawAnnotationEnable";
 import { readTeamverViteEnv } from "../teamverViteEnv";
 import { TEAMVER_BRAND_ASSETS } from "./assets";
 import {
@@ -78,6 +79,8 @@ export type TeamverBrandingConfig = {
    * cross-user share channel.
    */
   hideExternalShareSurfaces: boolean;
+  /** Hide preview draw/mark toolbar (unstable capture path in embed production). */
+  hideDrawAnnotation: boolean;
 };
 
 function readEnv(key: string): string | undefined {
@@ -149,6 +152,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideCommunityGallery: true,
         hidePluginRegistry: true,
         hideExternalShareSurfaces: true,
+        hideDrawAnnotation: !isTeamverDrawAnnotationEnabled(),
       }
     : {
         hideNavViews: new Set<"tasks" | "plugins" | "integrations">(),
@@ -169,6 +173,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideCommunityGallery: false,
         hidePluginRegistry: false,
         hideExternalShareSurfaces: false,
+        hideDrawAnnotation: false,
       };
 
   return {

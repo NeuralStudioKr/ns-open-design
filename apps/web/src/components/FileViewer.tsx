@@ -4712,7 +4712,7 @@ function HtmlViewer({
   // template) and the Teamver Drive Publish menu item stay visible because
   // they either land on the user's machine or stay inside the Teamver
   // workspace tenant.
-  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp } = useTeamverBranding();
+  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp, hideDrawAnnotation } = useTeamverBranding();
   // Kept in sync with live `source` / last-stable preview so fireShareExport
   // (declared above those hooks) can gate Teamver rendered downloads without
   // reading later const bindings.
@@ -5068,6 +5068,9 @@ function HtmlViewer({
   const [inspectMode, setInspectMode] = useState(false);
   const [agentToolsOpen, setAgentToolsOpen] = useState(false);
   const [drawOverlayOpen, setDrawOverlayOpen] = useState(false);
+  useEffect(() => {
+    if (hideDrawAnnotation) setDrawOverlayOpen(false);
+  }, [hideDrawAnnotation]);
   // for hint managing hint box state
   const [openHintBox, setOpenHintBox] = useState(true);
   const [manualEditMode, setManualEditModeRaw] = useState(false);
@@ -9534,19 +9537,21 @@ function HtmlViewer({
                   <RemixIcon name="chat-new-line" size={15} />
                 </button>
               </div>
-              <button
-                className={`viewer-action viewer-action-icon od-tooltip${drawOverlayOpen ? ' active' : ''}`}
-                type="button"
-                data-testid="draw-overlay-toggle"
-                data-tooltip={t('fileViewer.markTooltip')}
-                data-tooltip-placement="bottom"
-                title={t('fileViewer.markTooltip')}
-                aria-label={t('fileViewer.mark')}
-                aria-pressed={drawOverlayOpen}
-                onClick={activateDrawTool}
-              >
-                <RemixIcon name="mark-pen-line" size={15} />
-              </button>
+              {!hideDrawAnnotation ? (
+                <button
+                  className={`viewer-action viewer-action-icon od-tooltip${drawOverlayOpen ? ' active' : ''}`}
+                  type="button"
+                  data-testid="draw-overlay-toggle"
+                  data-tooltip={t('fileViewer.markTooltip')}
+                  data-tooltip-placement="bottom"
+                  title={t('fileViewer.markTooltip')}
+                  aria-label={t('fileViewer.mark')}
+                  aria-pressed={drawOverlayOpen}
+                  onClick={activateDrawTool}
+                >
+                  <RemixIcon name="mark-pen-line" size={15} />
+                </button>
+              ) : null}
               <span className="viewer-toolbar-tool-divider" aria-hidden />
               <button
                 className={`viewer-action viewer-action-icon od-tooltip${manualEditMode ? ' active' : ''}`}
@@ -9949,7 +9954,7 @@ function HtmlViewer({
                   })}
                 >
                   <PreviewDrawOverlay
-                    active={drawOverlayOpen}
+                    active={!hideDrawAnnotation && drawOverlayOpen}
                     onActiveChange={setDrawOverlayOpen}
                     captureViewport
                     captureSnapshot={captureExportImageSnapshot}

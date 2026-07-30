@@ -1911,16 +1911,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 }
               }
               if (result.failed.length > 0) {
-                setUploadError(
-                  resolveProjectUploadBatchErrorMessage({
-                    uploadedCount: uploaded.length,
-                    failedCount: result.failed.length,
-                    error: result.error,
-                    slideOnlyMvp,
-                  }),
-                );
+                const uploadErrorMessage = resolveProjectUploadBatchErrorMessage({
+                  uploadedCount: uploaded.length,
+                  failedCount: result.failed.length,
+                  error: result.error,
+                  slideOnlyMvp,
+                });
+                setUploadError(uploadErrorMessage);
                 if (uploaded.length === 0) {
-                  ack({ ok: false, message: t('chat.annotationUploadFailed') });
+                  ack({ ok: false, message: uploadErrorMessage || t('chat.annotationUploadFailed') });
                   return;
                 }
               }
