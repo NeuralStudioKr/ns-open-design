@@ -52,9 +52,9 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| Inspect save push | [ ] | |
-| History 사이드 패널 UI | [ ] | revision 목록 + restore |
-| analytics `revision_*` events | [ ] | |
+| Inspect save push | [x] | `pushProjectFileRevision`, `source: inspect` |
+| History 사이드 패널 UI | [x] | `FileRevisionHistoryPanel` + toolbar toggle |
+| analytics `revision_*` events | [x] | push/undo/redo/restore |
 
 ---
 

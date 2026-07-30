@@ -151,6 +151,10 @@ import {
   setActiveRevisionSequence,
 } from '../runtime/revision-active-sequence';
 import {
+  emitRevisionPush,
+  emitRevisionUndo,
+} from '../runtime/revision-analytics';
+import {
   anonymizeArtifactId,
   artifactKindToTracking,
   projectKindToTracking,
@@ -4192,6 +4196,14 @@ export function ProjectView({
         requestOpenFile(file.name);
         if (ext === '.html' && 'revision' in result) {
           setActiveRevisionSequence(project.id, file.name, result.revision.sequence);
+          emitRevisionPush(
+            analytics.track,
+            project.id,
+            projectKindToTracking(project.kind, project.metadata?.videoModel),
+            file.name,
+            result.revision,
+            'agent_persist',
+          );
           if (result.revision.parentRevisionId) {
             const parentRevisionId = result.revision.parentRevisionId;
             const restoredFileName = file.name;
@@ -4208,6 +4220,14 @@ export function ProjectView({
                   );
                   if (!restored.ok) return;
                   const cursorRevision = restored.revision;
+                  emitRevisionUndo(
+                    analytics.track,
+                    project.id,
+                    projectKindToTracking(project.kind, project.metadata?.videoModel),
+                    restoredFileName,
+                    cursorRevision,
+                    'agent_toast',
+                  );
                   setActiveRevisionSequence(project.id, restoredFileName, cursorRevision.sequence);
                   setFilesRefresh((count) => count + 1);
                   setProjectActionsToast(null);

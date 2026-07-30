@@ -2732,6 +2732,12 @@ export interface Dict {
   'manualEdit.changes': string;
   'manualEdit.undo': string;
   'manualEdit.redo': string;
+  'fileRevision.history.title': string;
+  'fileRevision.history.empty': string;
+  'fileRevision.history.restore': string;
+  'fileRevision.history.toggle': string;
+  'fileRevision.history.close': string;
+  'fileRevision.history.current': string;
   'manualEdit.noChanges': string;
   'manualEdit.imageUrl': string;
   'manualEdit.altText': string;

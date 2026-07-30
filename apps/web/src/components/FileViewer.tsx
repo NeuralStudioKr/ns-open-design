@@ -135,6 +135,12 @@ import {
   setActiveRevisionSequence,
 } from '../runtime/revision-active-sequence';
 import {
+  emitRevisionPush,
+  emitRevisionRedo,
+  emitRevisionRestore,
+  emitRevisionUndo,
+} from '../runtime/revision-analytics';
+import {
   canRedoRevisionStack,
   canUndoRevisionStack,
   createRevisionStackSnapshot,
@@ -209,6 +215,7 @@ import type {
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
 import { FileViewerUndoRedoToolbar } from './FileViewerUndoRedoToolbar';
+import { FileRevisionHistoryPanel } from './FileRevisionHistoryPanel';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
@@ -219,6 +226,7 @@ import {
 } from '../edit-mode/source-patches';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
+import type { FileRevision } from '@open-design/contracts';
 
 function resolveChromeActionsHost(): HTMLElement | null {
   return document.querySelector<HTMLElement>(APP_CHROME_FILE_ACTIONS_SELECTOR)
@@ -5369,6 +5377,7 @@ function HtmlViewer({
   const [shareGuideToast, setShareGuideToast] = useState<string | null>(null);
   const [selectedSideCommentIds, setSelectedSideCommentIds] = useState<Set<string>>(() => new Set());
   const [commentSidePanelCollapsed, setCommentSidePanelCollapsed] = useState(false);
+  const [revisionHistoryOpen, setRevisionHistoryOpen] = useState(false);
   const [strokePoints, setStrokePoints] = useState<StrokePoint[]>([]);
   const previewStateKey = `${projectId}:${file.name}`;
   const previewScale = zoom / 100;
@@ -6559,6 +6568,7 @@ function HtmlViewer({
     setManualEditDraft(emptyManualEditDraft());
     setRevisionStack(createRevisionStackSnapshot([], null));
     setManualEditError(null);
+    setRevisionHistoryOpen(false);
     manualEditPendingStyleRef.current = null;
     clearManualEditStyleTimer();
   }, [file.name]);
@@ -7152,6 +7162,7 @@ function HtmlViewer({
       }
       setRevisionStack((current) => stackWithCursor(current, saved.revision.id));
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
+      emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
       await refreshRevisionStack();
       setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
       if (patch.kind === 'set-text') {
@@ -7200,6 +7211,43 @@ function HtmlViewer({
     return false;
   }
 
+  async function applyRestoredRevision(target: FileRevision): Promise<boolean> {
+    const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
+    if (!restored.ok) {
+      if (restored.status === 401) {
+        notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+      }
+      setManualEditError(
+        isTeamverEmbedMode()
+          ? formatProjectArtifactSaveFailedError(file.name, {
+              status: restored.status,
+              code: restored.code,
+              message: restored.message,
+            })
+          : embedUiLabel('Could not restore this revision.', '이 버전으로 복원하지 못했습니다.'),
+      );
+      return false;
+    }
+    const restoredSource = await fetchProjectFileText(projectId, file.name, {
+      cache: 'no-store',
+      cacheBustKey: Date.now(),
+    });
+    if (restoredSource == null) {
+      setManualEditError(embedUiLabel('Could not load the restored file.', '복원한 파일을 불러오지 못했습니다.'));
+      return false;
+    }
+    setSource(restoredSource);
+    sourceRef.current = restoredSource;
+    setInlinedSource(null);
+    setManualEditFrozenSource(restoredSource);
+    setRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+    setActiveRevisionSequence(projectId, file.name, target.sequence);
+    setManualEditDraft((current) => ({ ...current, fullSource: restoredSource }));
+    setReloadKey((k) => k + 1);
+    await onFileSaved?.();
+    return true;
+  }
+
   async function undoManualEdit() {
     if (manualEditSavingRef.current) return;
     const target = revisionBeforeCursor(revisionStackRef.current);
@@ -7207,38 +7255,10 @@ function HtmlViewer({
     manualEditSavingRef.current = true;
     setManualEditSaving(true);
     try {
-      const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
-      if (!restored.ok) {
-        if (restored.status === 401) {
-          notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
-        }
-        setManualEditError(
-          isTeamverEmbedMode()
-            ? formatProjectArtifactSaveFailedError(file.name, {
-                status: restored.status,
-                code: restored.code,
-                message: restored.message,
-              })
-            : embedUiLabel('Could not save the undo result.', '실행 취소 결과를 저장하지 못했습니다.'),
-        );
-        return;
+      const ok = await applyRestoredRevision(target);
+      if (ok) {
+        emitRevisionUndo(analytics.track, projectId, projectKind, file.name, target);
       }
-      const restoredSource = await fetchProjectFileText(projectId, file.name, {
-        cache: 'no-store',
-        cacheBustKey: Date.now(),
-      });
-      if (restoredSource == null) {
-        setManualEditError(embedUiLabel('Could not load the undo result.', '실행 취소 결과를 불러오지 못했습니다.'));
-        return;
-      }
-      setSource(restoredSource);
-      sourceRef.current = restoredSource;
-      setInlinedSource(null);
-      setManualEditFrozenSource(restoredSource);
-      setRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
-      setActiveRevisionSequence(projectId, file.name, target.sequence);
-      setManualEditDraft((current) => ({ ...current, fullSource: restoredSource }));
-      await onFileSaved?.();
     } finally {
       manualEditSavingRef.current = false;
       setManualEditSaving(false);
@@ -7252,38 +7272,25 @@ function HtmlViewer({
     manualEditSavingRef.current = true;
     setManualEditSaving(true);
     try {
-      const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
-      if (!restored.ok) {
-        if (restored.status === 401) {
-          notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
-        }
-        setManualEditError(
-          isTeamverEmbedMode()
-            ? formatProjectArtifactSaveFailedError(file.name, {
-                status: restored.status,
-                code: restored.code,
-                message: restored.message,
-              })
-            : embedUiLabel('Could not save the redo result.', '다시 실행 결과를 저장하지 못했습니다.'),
-        );
-        return;
+      const ok = await applyRestoredRevision(target);
+      if (ok) {
+        emitRevisionRedo(analytics.track, projectId, projectKind, file.name, target);
       }
-      const restoredSource = await fetchProjectFileText(projectId, file.name, {
-        cache: 'no-store',
-        cacheBustKey: Date.now(),
-      });
-      if (restoredSource == null) {
-        setManualEditError(embedUiLabel('Could not load the redo result.', '다시 실행 결과를 불러오지 못했습니다.'));
-        return;
+    } finally {
+      manualEditSavingRef.current = false;
+      setManualEditSaving(false);
+    }
+  }
+
+  async function restoreRevisionFromHistory(target: FileRevision) {
+    if (manualEditSavingRef.current) return;
+    manualEditSavingRef.current = true;
+    setManualEditSaving(true);
+    try {
+      const ok = await applyRestoredRevision(target);
+      if (ok) {
+        emitRevisionRestore(analytics.track, projectId, projectKind, file.name, target);
       }
-      setSource(restoredSource);
-      sourceRef.current = restoredSource;
-      setInlinedSource(null);
-      setManualEditFrozenSource(restoredSource);
-      setRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
-      setActiveRevisionSequence(projectId, file.name, target.sequence);
-      setManualEditDraft((current) => ({ ...current, fullSource: restoredSource }));
-      await onFileSaved?.();
     } finally {
       manualEditSavingRef.current = false;
       setManualEditSaving(false);
@@ -7440,16 +7447,32 @@ function HtmlViewer({
     try {
       const css = serializeInspectOverrides(inspectOverrides).trim();
       const next = applyInspectOverridesToSource(source, css);
-      const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: file.name, content: next }),
+      const saved = await pushProjectFileRevision(projectId, file.name, {
+        content: next,
+        source: 'inspect',
+        label: embedUiLabel('Style adjustments', '스타일 조정'),
+        artifactManifest: file.artifactManifest,
+        truncateAfterSequence: truncateAfterSequenceForStack(revisionStackRef.current),
       });
-      if (!resp.ok) {
-        const payload = await resp.json().catch(() => null) as { error?: string; message?: string } | null;
-        throw new Error(payload?.error || payload?.message || `Save failed (${resp.status})`);
+      if (!saved.ok) {
+        const status = 'status' in saved ? saved.status : undefined;
+        const code = 'code' in saved ? saved.code : undefined;
+        const message = 'message' in saved ? saved.message : 'Unknown save error';
+        if (status === 401) {
+          notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+        }
+        throw new Error(
+          isTeamverEmbedMode()
+            ? formatProjectArtifactSaveFailedError(file.name, { status, code, message })
+            : (message || `Save failed${status ? ` (${status})` : ''}`),
+        );
       }
       setSource(next);
+      sourceRef.current = next;
+      setRevisionStack((current) => stackWithCursor(current, saved.revision.id));
+      setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
+      emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'inspect_save');
+      await refreshRevisionStack();
       setInspectSavedAt(Date.now());
       setReloadKey((k) => k + 1);
     } catch (err) {
@@ -7457,9 +7480,6 @@ function HtmlViewer({
         ? '소스에 저장하지 못했습니다.'
         : (err instanceof Error ? err.message : 'Save failed');
       setInspectError(msg);
-      // The error banner inside the inspect panel is easy to miss when the
-      // user is focused on the iframe preview — surface failures in the
-      // console as well so quota/network errors aren't silently lost.
       console.error('[inspect] saveToSource failed:', err);
     } finally {
       setSavingInspect(false);
@@ -9301,6 +9321,22 @@ function HtmlViewer({
                 />
               ) : null}
               <button
+                type="button"
+                className={`viewer-action viewer-action-icon od-tooltip${revisionHistoryOpen ? ' active' : ''}`}
+                data-testid="file-revision-history-toggle"
+                data-tooltip={t('fileRevision.history.toggle')}
+                data-tooltip-placement="bottom"
+                title={t('fileRevision.history.toggle')}
+                aria-label={t('fileRevision.history.toggle')}
+                aria-pressed={revisionHistoryOpen}
+                onClick={() => {
+                  fireArtifactToolbarClick('revision_history');
+                  setRevisionHistoryOpen((open) => !open);
+                }}
+              >
+                <RemixIcon name="history-line" size={15} />
+              </button>
+              <button
                 className={`viewer-action viewer-action-icon od-tooltip${manualEditMode ? ' active' : ''}`}
                 type="button"
                 data-testid="manual-edit-mode-toggle"
@@ -10086,6 +10122,17 @@ function HtmlViewer({
                 saving={savingInspect}
                 savedAt={inspectSavedAt}
                 error={inspectError}
+              />
+            ) : null}
+            {revisionHistoryOpen && source !== null ? (
+              <FileRevisionHistoryPanel
+                revisions={revisionStack.revisions}
+                cursorRevisionId={revisionStack.cursorRevisionId}
+                busy={manualEditSaving}
+                onRestore={(revision) => {
+                  void restoreRevisionFromHistory(revision);
+                }}
+                onClose={() => setRevisionHistoryOpen(false)}
               />
             ) : null}
           </div>

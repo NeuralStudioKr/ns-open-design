@@ -124,6 +124,10 @@ import type {
   DesignSystemReviewResultProps,
   DesignSystemStatusResultProps,
   DesignSystemApplyResultProps,
+  RevisionPushProps,
+  RevisionRedoProps,
+  RevisionRestoreProps,
+  RevisionUndoProps,
   UpdateIndicatorSurfaceViewProps,
   UpdatePromptSurfaceViewProps,
   UpdateInstallResultProps,
@@ -1030,6 +1034,34 @@ export function trackDesignSystemApplyResult(
   options?: { requestId?: string },
 ): void {
   send(track, 'design_system_apply_result', props, options);
+}
+
+export function trackRevisionPush(
+  track: Track,
+  props: RevisionPushProps,
+): void {
+  send(track, 'revision_push', props);
+}
+
+export function trackRevisionUndo(
+  track: Track,
+  props: RevisionUndoProps,
+): void {
+  send(track, 'revision_undo', props);
+}
+
+export function trackRevisionRedo(
+  track: Track,
+  props: RevisionRedoProps,
+): void {
+  send(track, 'revision_redo', props);
+}
+
+export function trackRevisionRestore(
+  track: Track,
+  props: RevisionRestoreProps,
+): void {
+  send(track, 'revision_restore', props);
 }
 
 // ---- Update indicator / prompt ------------------------------------------
