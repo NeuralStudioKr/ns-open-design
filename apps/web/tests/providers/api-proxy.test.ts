@@ -384,6 +384,42 @@ describe('buildProxyMessages', () => {
     ).resolves.toEqual([{ role: 'user', content: '   ' }]);
   });
 
+  it('replaces empty Anthropic assistant shells from failed runs', async () => {
+    const history: ChatMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: '첫 요청',
+        createdAt: 1,
+      },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: '',
+        createdAt: 2,
+        runStatus: 'failed',
+      },
+      {
+        id: 'u2',
+        role: 'user',
+        content: '슬라이드 3\n제목 크게',
+        createdAt: 3,
+      },
+    ];
+
+    const messages = await buildProxyMessages(
+      '/api/proxy/anthropic/stream',
+      history,
+      { projectId: 'project-1' },
+    );
+
+    expect(messages).toEqual([
+      { role: 'user', content: '첫 요청' },
+      { role: 'assistant', content: '(No assistant reply was recorded.)' },
+      { role: 'user', content: '슬라이드 3\n제목 크게' },
+    ]);
+  });
+
   it('does not send preview-unavailable text alongside sketch raster image blocks', async () => {
     const pngBytes = new Uint8Array([137, 80, 78, 71]);
     vi.stubGlobal(

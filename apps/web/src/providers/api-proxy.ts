@@ -542,19 +542,14 @@ export async function buildProxyMessages(
       role: message.role,
       // Anthropic rejects empty user content even when projectId is missing
       // (image blocks skipped). Other protocols keep historical behavior.
-      content:
-        anthropic && message.role === 'user'
-          ? ensureNonEmptyAnthropicUserContent(message.content)
-          : message.content,
+      content: sanitizeAnthropicProxyRoleContent(message.role, message.content, anthropic),
     }));
   }
 
   const out: ProxyMessage[] = [];
   for (const message of history) {
     let content = await buildAnthropicMessageContent(message, context.projectId);
-    if (message.role === 'user') {
-      content = ensureNonEmptyAnthropicUserContent(content);
-    }
+    content = sanitizeAnthropicProxyRoleContent(message.role, content, true);
     out.push({
       role: message.role,
       content,
@@ -563,20 +558,37 @@ export async function buildProxyMessages(
   return out;
 }
 
+function sanitizeAnthropicProxyRoleContent(
+  role: ChatMessage['role'],
+  content: ProxyMessageContent,
+  anthropic: boolean,
+): ProxyMessageContent {
+  if (!anthropic) return content;
+  if (role === 'user') return ensureNonEmptyAnthropicUserContent(content);
+  if (role === 'assistant') return ensureNonEmptyAnthropicAssistantContent(content);
+  return content;
+}
+
+/** Failed/canceled runs often persist assistant shells with empty `content`. */
+export const ANTHROPIC_EMPTY_ASSISTANT_PLACEHOLDER = '(No assistant reply was recorded.)';
+
+function anthropicContentHasSubstance(content: ProxyMessageContent): boolean {
+  if (typeof content === 'string') return content.trim().length > 0;
+  if (!Array.isArray(content)) return false;
+  return content.some((block) => {
+    if (!block || typeof block !== 'object') return false;
+    if (block.type === 'text') return String(block.text ?? '').trim().length > 0;
+    if (block.type === 'image') return true;
+    return true;
+  });
+}
+
 function ensureNonEmptyAnthropicUserContent(content: ProxyMessageContent): ProxyMessageContent {
-  if (typeof content === 'string') {
-    return content.trim().length > 0 ? content : COMMENT_ONLY_USER_PLACEHOLDER;
-  }
-  if (Array.isArray(content)) {
-    const hasSubstance = content.some((block) => {
-      if (!block || typeof block !== 'object') return false;
-      if (block.type === 'text') return String(block.text ?? '').trim().length > 0;
-      if (block.type === 'image') return true;
-      return true;
-    });
-    return hasSubstance ? content : COMMENT_ONLY_USER_PLACEHOLDER;
-  }
-  return COMMENT_ONLY_USER_PLACEHOLDER;
+  return anthropicContentHasSubstance(content) ? content : COMMENT_ONLY_USER_PLACEHOLDER;
+}
+
+function ensureNonEmptyAnthropicAssistantContent(content: ProxyMessageContent): ProxyMessageContent {
+  return anthropicContentHasSubstance(content) ? content : ANTHROPIC_EMPTY_ASSISTANT_PLACEHOLDER;
 }
 
 function usesAnthropicMessagesPayload(endpoint: string): boolean {

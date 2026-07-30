@@ -44,6 +44,7 @@ export interface AnnotationEventDetail {
   note: string;
   action: AnnotationAction;
   filePath?: string;
+  slideIndex?: number | null;
   markKind?: PreviewVisualMarkKind;
   bounds?: { x: number; y: number; width: number; height: number };
   target?: CaptureTarget | null;
@@ -788,6 +789,7 @@ export function PreviewDrawOverlay({
           note: noteText,
           action,
           filePath: captureTarget?.filePath || filePath,
+          slideIndex,
           markKind: kind,
           bounds: kind ? annotationBounds() : undefined,
           target: captureTarget,

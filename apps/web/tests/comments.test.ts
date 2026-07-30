@@ -421,6 +421,7 @@ describe('preview comment attachment helpers', () => {
       markKind: 'stroke',
       note: '',
       bounds: { x: 12, y: 24, width: 140, height: 80 },
+      slideIndex: 2,
       target: {
         filePath: 'index.html',
         position: { x: 12, y: 24, width: 140, height: 80 },
@@ -431,6 +432,7 @@ describe('preview comment attachment helpers', () => {
       selectionKind: 'visual',
       screenshotPath: 'uploads/drawing.png',
       markKind: 'stroke',
+      slideIndex: 2,
       selector: '',
       comment: expect.stringContaining('red strokes'),
       intent: expect.stringContaining('red strokes'),
@@ -438,6 +440,7 @@ describe('preview comment attachment helpers', () => {
     expect(messageContentWithCommentAttachments('', [attachment])).toContain('targetKind: visual');
     expect(messageContentWithCommentAttachments('', [attachment])).toContain('screenshot: uploads/drawing.png');
     expect(messageContentWithCommentAttachments('', [attachment])).toContain('markKind: stroke');
+    expect(messageContentWithCommentAttachments('', [attachment])).toContain('slideIndex: 2');
     expect(messageContentWithCommentAttachments('', [attachment])).not.toContain('selector: ');
   });
 

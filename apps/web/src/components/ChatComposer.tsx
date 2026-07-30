@@ -1893,6 +1893,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                     markKind: detail.markKind,
                     note: detail.note,
                     bounds: detail.bounds,
+                    ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                      ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                      : {}),
                     target: detail.target
                       ? {
                           filePath: detail.target.filePath || detail.filePath || screenshot.path,
@@ -1902,10 +1905,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                           text: detail.target.text,
                           position: detail.target.position,
                           htmlHint: detail.target.htmlHint,
+                          ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                            ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                            : {}),
                         }
                       : {
                           filePath: detail.filePath || screenshot.path,
                           position: detail.bounds,
+                          ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                            ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                            : {}),
                         },
                   };
                 }
