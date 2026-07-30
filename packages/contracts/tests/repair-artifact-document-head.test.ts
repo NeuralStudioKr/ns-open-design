@@ -191,4 +191,32 @@ name="viewport" content="width=device-width, initial-scale=1" />
     expect(out).not.toContain("<script>");
     expect(isArtifactHtmlStableForPreview(out)).toBe(false);
   });
+
+  it("closes unclosed head style truncated before body so slides are kept", () => {
+    const html = `<!doctype html><html><head><title>Deck</title>
+<style>.slide{padding:40px
+<body>
+<section class="slide"><h1>기업 AI 도입 효과</h1><p>개요 설명입니다.</p></section>
+</body></html>`;
+    expect(isArtifactHtmlStableForPreview(html)).toBe(false);
+    const out = repairArtifactDocumentHead(html);
+    expect(out).toContain("기업 AI 도입 효과");
+    expect(out).toContain("</style>");
+    expect(out).toMatch(/<section class="slide"/);
+    expect(isArtifactHtmlStableForPreview(out)).toBe(true);
+  });
+
+  it("clears dual trailing unclosed style+script after slides", () => {
+    const html = `<!doctype html><html><body>
+<section class="slide"><h1>Cover slide with enough copy</h1><p>Body text for salvage quality.</p></section>
+<style>.a{
+<script>var x=1
+</body></html>`;
+    expect(isArtifactHtmlStableForPreview(html)).toBe(false);
+    const out = repairArtifactDocumentHead(html);
+    expect(out).toContain("Cover slide");
+    expect(out).not.toMatch(/<style\b/i);
+    expect(out).not.toMatch(/<script\b/i);
+    expect(isArtifactHtmlStableForPreview(out)).toBe(true);
+  });
 });

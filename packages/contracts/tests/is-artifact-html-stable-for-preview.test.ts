@@ -144,4 +144,22 @@ family=Inter" />
       ),
     ).toBe(false);
   });
+
+  it("ignores <!-- inside closed script strings for HTML comment balance", () => {
+    const html = `<!doctype html><html><head></head><body>
+<section class="slide"><h1>A</h1><p>Enough slide copy for preview.</p></section>
+<script>(function(){ var s = "<!-- not a comment"; })();</script>
+</body></html>`;
+    expect(isArtifactHtmlStableForPreview(html)).toBe(true);
+  });
+
+  it("ignores unterminated CSS comments inside a closed style block", () => {
+    const html = `<!doctype html><html><head><style>
+/* Do not copy this <style> mention
+:root { --bg: #fff; }
+</style></head><body>
+<section class="slide"><h1>A</h1><p>Enough slide copy for preview.</p></section>
+</body></html>`;
+    expect(isArtifactHtmlStableForPreview(html)).toBe(true);
+  });
 });

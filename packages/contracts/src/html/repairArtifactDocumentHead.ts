@@ -53,13 +53,95 @@ function stripLeakedViewportFragments(doc: string): string {
 
 const TRAILING_RAW_BLOCK_OPEN_RE = /<(script|style)\b(?![^>]*\/>)[^>]*>/gi;
 const TRAILING_DOCUMENT_CLOSERS_RE = /((?:\s*<\/body\s*>)?(?:\s*<\/html\s*>)?)\s*$/i;
+/** HTML that proves the model left a raw block and resumed document markup. */
+const STRUCTURAL_HTML_AFTER_RAW_RE =
+  /<\/head\s*>|<body\b|<section\b|<div\b(?=[^>]*\b(?:class\s*=\s*["'][^"']*\b(?:slide|deck)|id\s*=\s*["']deck))/i;
+const SLIDE_MARKUP_RE =
+  /<(?:section|div)\b[^>]*\b(?:class\s*=\s*["'][^"']*\bslide\b|data-slide|id\s*=\s*["']deck)/i;
+
+type RawBlockOpen = { index: number; tag: string; openEnd: number };
+
+function findRawBlockOpens(html: string): RawBlockOpen[] {
+  const opens: RawBlockOpen[] = [];
+  TRAILING_RAW_BLOCK_OPEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = TRAILING_RAW_BLOCK_OPEN_RE.exec(html)) !== null) {
+    const tag = String(match[1] ?? "").toLowerCase();
+    if (tag !== "script" && tag !== "style") continue;
+    opens.push({
+      index: match.index,
+      tag,
+      openEnd: match.index + match[0].length,
+    });
+  }
+  return opens;
+}
+
+function isRawBlockClosed(html: string, open: RawBlockOpen): boolean {
+  const closeRe = new RegExp(`</${open.tag}\\s*>`, "i");
+  return closeRe.test(html.slice(open.openEnd));
+}
 
 /**
- * Drop a trailing unclosed `<script>` / `<style>` that agents leave when
+ * When `end_turn` truncates a head `<style>` / `<script>` and the model
+ * continues with `<body>` / slides, the open raw span swallows that markup.
+ * Blindly cutting from the open tag would delete the slides. Insert the
+ * missing closer immediately before the first structural HTML resume point.
+ */
+function closeRawBlocksTruncatedBeforeStructuralHtml(html: string): string {
+  let out = html;
+  // Earliest-first so nested truncations (style then later script) settle.
+  for (let guard = 0; guard < 8; guard += 1) {
+    const opens = findRawBlockOpens(out);
+    let changed = false;
+    for (const open of opens) {
+      if (isRawBlockClosed(out, open)) continue;
+      const after = out.slice(open.openEnd);
+      const structural = STRUCTURAL_HTML_AFTER_RAW_RE.exec(after);
+      if (!structural || structural.index === undefined) continue;
+      const insertAt = open.openEnd + structural.index;
+      out = `${out.slice(0, insertAt)}</${open.tag}>${out.slice(insertAt)}`;
+      changed = true;
+      break;
+    }
+    if (!changed) break;
+  }
+  return out;
+}
+
+function stripOneTrailingUnclosedRawBlock(html: string): string {
+  const opens = findRawBlockOpens(html);
+  let lastOpen: RawBlockOpen | null = null;
+  for (const open of opens) {
+    if (!isRawBlockClosed(html, open)) lastOpen = open;
+  }
+  if (!lastOpen) return html;
+
+  const suffix = html.slice(lastOpen.index);
+  const closersMatch = TRAILING_DOCUMENT_CLOSERS_RE.exec(suffix);
+  const preservedClosers = closersMatch?.[1] ?? "";
+  const region = suffix.slice(0, suffix.length - (preservedClosers.length)).replace(/\s*$/u, "");
+  // Never cut through slide markup (unclosed head style that still embeds body).
+  // `closeRawBlocksTruncatedBeforeStructuralHtml` should have closed those first;
+  // if it could not, refuse to destroy slides.
+  if (SLIDE_MARKUP_RE.test(region) || /<body\b/i.test(region)) {
+    return html;
+  }
+
+  const before = html.slice(0, lastOpen.index).replace(/[ \t]+$/u, "").replace(/\n{3,}$/u, "\n\n");
+  return `${before}${preservedClosers}`;
+}
+
+/**
+ * Drop trailing unclosed `<script>` / `<style>` that agents leave when
  * `end_turn` lands mid-block. Slides are usually already complete; the open
  * raw block alone keeps `isArtifactHtmlStableForPreview` false forever
  * (preview stuck on "loading…"). Preserve any salvage-appended
  * `</body></html>` closers after the cut point.
+ *
+ * Also closes raw blocks that were truncated before structural HTML resumed
+ * (unclosed head `<style>` then `<body>` / slides) so slide content is kept.
+ * Loops so dual trailing unclosed `<style>`+`<script>` both clear.
  *
  * Intact closed scripts/styles are left alone. Mid-stream docs without
  * document closers stay incomplete after the strip, so the stable gate
@@ -68,28 +150,13 @@ const TRAILING_DOCUMENT_CLOSERS_RE = /((?:\s*<\/body\s*>)?(?:\s*<\/html\s*>)?)\s
 export function stripTrailingUnclosedRawBlocks(html: string): string {
   if (!html) return html;
 
-  TRAILING_RAW_BLOCK_OPEN_RE.lastIndex = 0;
-  let lastOpen: { index: number; tag: string; openEnd: number } | null = null;
-  let match: RegExpExecArray | null;
-  while ((match = TRAILING_RAW_BLOCK_OPEN_RE.exec(html)) !== null) {
-    const tag = String(match[1] ?? "").toLowerCase();
-    if (tag !== "script" && tag !== "style") continue;
-    lastOpen = {
-      index: match.index,
-      tag,
-      openEnd: match.index + match[0].length,
-    };
+  let out = closeRawBlocksTruncatedBeforeStructuralHtml(html);
+  for (let guard = 0; guard < 8; guard += 1) {
+    const next = stripOneTrailingUnclosedRawBlock(out);
+    if (next === out) break;
+    out = next;
   }
-  if (!lastOpen) return html;
-
-  const closeRe = new RegExp(`</${lastOpen.tag}\\s*>`, "i");
-  if (closeRe.test(html.slice(lastOpen.openEnd))) return html;
-
-  const suffix = html.slice(lastOpen.index);
-  const closersMatch = TRAILING_DOCUMENT_CLOSERS_RE.exec(suffix);
-  const preservedClosers = closersMatch?.[1] ?? "";
-  const before = html.slice(0, lastOpen.index).replace(/[ \t]+$/u, "").replace(/\n{3,}$/u, "\n\n");
-  return `${before}${preservedClosers}`;
+  return out;
 }
 
 export function repairArtifactDocumentHead(html: string): string {

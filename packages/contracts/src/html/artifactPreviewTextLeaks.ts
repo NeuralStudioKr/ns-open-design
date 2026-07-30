@@ -275,6 +275,23 @@ export function hasArtifactPreviewBodyTextLeaks(html: string): boolean {
   if (/document\.getElementById\(['"]deck-(?:stage|prev|next|cur|total)['"]\)/i.test(scan)) {
     return true;
   }
+  // Compact modern nav leaked as body text (no <script> wrapper).
+  if (
+    /(?:const|let|var)\s+slides\s*=\s*(?:Array\.prototype\.slice\.call\()?document\.querySelectorAll\(['"]\.slide['"]/i.test(
+      scan,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*(?:onKey|e\s*=>)/i.test(scan)
+    && /ArrowRight|ArrowLeft|ArrowDown/i.test(scan)
+  ) {
+    return true;
+  }
+  if (/\(\s*\(\s*\)\s*=>\s*\{[\s\S]{0,400}?document\.querySelectorAll\(['"]\.slide['"]/i.test(scan)) {
+    return true;
+  }
   return false;
 }
 
@@ -299,6 +316,14 @@ export const LEAKED_CSS_TOKEN_BLOCK_RE =
 /** Truncated deck-framework script bodies that render as visible text. */
 export const LEAKED_DECK_SCRIPT_SNIPPET_RE =
   /(?:^|>)\s*\(function\s*\(\)\s*\{\s*var\s+stage\s*=\s*document\.getElementById\(['"]deck-stage['"]\)[\s\S]{0,1200}?onKey\(e\)\s*\{[\s\S]{0,200}?/gim;
+
+/** Compact modern deck-nav JS painted as body text (missing `<script>` wrapper). */
+const LEAKED_COMPACT_SLIDES_DECL_BODY_TEXT_RE =
+  /(?:^|>)\s*(?:const|let|var)\s+slides\s*=\s*(?:Array\.prototype\.slice\.call\()?document\.querySelectorAll\(['"]\.slide['"]\)[\s\S]{0,8000}?(?=<(?:div|section|script|style|\/body|\/html)|$)/gim;
+const LEAKED_COMPACT_KEYDOWN_BODY_TEXT_RE =
+  /(?:^|>)\s*document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*e\s*=>\s*\{[\s\S]{0,4000}?(?:ArrowRight|ArrowDown)[\s\S]{0,4000}?(?=<(?:div|section|script|style|\/body|\/html)|$)/gim;
+const LEAKED_COMPACT_ARROW_IIFE_BODY_TEXT_RE =
+  /(?:^|>)\s*\(\s*\(\s*\)\s*=>\s*\{[\s\S]{0,400}?document\.querySelectorAll\(['"]\.slide['"][\s\S]{0,12000}?(?:\}\s*\)\s*(?:\(\s*\)\s*)?;?|(?=<(?:div|section|script|style|\/body|\/html)|$))/gim;
 
 function stripPreviewTextLeakMatches(text: string, re: RegExp): string {
   return text.replace(re, (match) => (match.startsWith(">") ? ">" : ""));
@@ -337,6 +362,9 @@ function stripLeakedPreviewTextFromUnprotectedHtml(text: string): string {
   out = stripPreviewTextLeakMatches(out, LEAKED_DECK_SCRIPT_SNIPPET_BODY_RE);
   out = stripPreviewTextLeakMatches(out, LEAKED_CSS_TOKEN_BLOCK_RE);
   out = stripPreviewTextLeakMatches(out, LEAKED_DECK_SCRIPT_SNIPPET_RE);
+  out = stripPreviewTextLeakMatches(out, LEAKED_COMPACT_ARROW_IIFE_BODY_TEXT_RE);
+  out = stripPreviewTextLeakMatches(out, LEAKED_COMPACT_SLIDES_DECL_BODY_TEXT_RE);
+  out = stripPreviewTextLeakMatches(out, LEAKED_COMPACT_KEYDOWN_BODY_TEXT_RE);
   ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE.lastIndex = 0;
   out = out.replace(ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE, (match) => (match.startsWith(">") ? ">" : ""));
   ARTIFACT_LEAKED_META_VIEWPORT_TAG_RE.lastIndex = 0;

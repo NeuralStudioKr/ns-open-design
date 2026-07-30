@@ -77,6 +77,15 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toMatch(/setTimeout\(runFetch, HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS\)/);
   });
 
+  it("refuses to pin slide-less repaired shells as last-stable preview", () => {
+    const source = readSource("src/components/FileViewer.tsx");
+    expect(source).toContain("hasSalvageableDeckSlideContent");
+    expect(source).toContain("DECK_SLIDE_MARKUP_RE");
+    expect(source).toContain(
+      "Never pin that as last-stable when the candidate itself",
+    );
+  });
+
   it("keeps streaming veil over unavailable while live HTML is incomplete", () => {
     const source = readSource("src/components/FileViewer.tsx");
     expect(source).toContain(

@@ -39,6 +39,22 @@ describe("artifactPreviewTextLeaks", () => {
     expect(hasArtifactPreviewBodyTextLeaks(LEAKED_DECK_SCRIPT)).toBe(true);
   });
 
+  it("detects and strips compact modern deck-nav JS leaked as body text", () => {
+    const leaked = `<!doctype html><html><head><title>Deck</title></head><body>
+<section class="slide"><h1>Cover</h1><p>Enough slide copy for preview quality.</p></section>
+const slides=document.querySelectorAll('.slide');
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'){}});
+</body></html>`;
+    expect(hasArtifactPreviewBodyTextLeaks(leaked)).toBe(true);
+    expect(isArtifactHtmlStableForPreview(leaked)).toBe(false);
+    const repaired = repairArtifactDocumentHead(leaked);
+    expect(repaired).toContain('<section class="slide">');
+    expect(repaired).not.toContain("querySelectorAll");
+    expect(repaired).not.toContain("ArrowRight");
+    expect(hasArtifactPreviewBodyTextLeaks(repaired)).toBe(false);
+    expect(isArtifactHtmlStableForPreview(repaired)).toBe(true);
+  });
+
   it("ignores the same CSS when it lives inside a closed style tag", () => {
     const html = `<!doctype html><html><head><style>
 / ── Per-deck styles ── /

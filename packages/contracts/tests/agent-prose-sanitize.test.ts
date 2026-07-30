@@ -431,6 +431,50 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(`${visibleProse}\n${brokenOpener}`)).toBe(visibleProse);
   });
 
+  it("strips orphan function go remnant ahead of truncated keydown nav", () => {
+    const input = [
+      "덱 완료.",
+      "function go(n){if(n<0)return;}",
+      "document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')go(1);",
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      const out = sanitizeAssistantProseForDisplay(input, { streaming });
+      expect(out).toBe("덱 완료.");
+      expect(out).not.toContain("function go");
+      expect(out).not.toContain("ArrowRight");
+    }
+  });
+
+  it("strips same-line glued deck-nav JS after sentence punctuation", () => {
+    const cases = [
+      [
+        "덱 완성. document.addEventListener('keydown', e=>{ if(e.key==='ArrowRight')go(1);",
+        "덱 완성.",
+      ],
+      [
+        "완료.(()=>{const slides=document.querySelectorAll('.slide');document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'){}});})();",
+        "완료.",
+      ],
+      [
+        "완료했습니다. const slides=document.querySelectorAll('.slide'); let cur=0;",
+        "완료했습니다.",
+      ],
+      [
+        "완료. window.onkeydown=e=>{if(e.key==='ArrowRight')cur++};",
+        "완료.",
+      ],
+    ] as const;
+    for (const [input, expected] of cases) {
+      for (const streaming of [true, false]) {
+        const out = sanitizeAssistantProseForDisplay(input, { streaming });
+        expect(out).toBe(expected);
+        expect(out).not.toContain("addEventListener");
+        expect(out).not.toContain("querySelectorAll");
+        expect(out).not.toContain("onkeydown");
+      }
+    }
+  });
+
   it("strips leaked deck navigation script prose while preserving trailing user prose", () => {
     const visibleProse = "요청하신 덱 초안을 바로 만들겠습니다.";
     const input = [

@@ -647,7 +647,13 @@ const LEAKED_DECK_NAV_SCRIPT_TAIL_RE = new RegExp(
 
 /** Compact one-line / modern-const IIFE with `.slide` + keyboard nav. */
 const LEAKED_COMPACT_DECK_NAV_IIFE_RE = new RegExp(
-  `(?:^|\\n)\\s*\\(\\s*function\\s*\\(\\s*\\)\\s*\\{(?=[\\s\\S]{0,4000}?document\\.querySelectorAll\\(['"]\\.slide['"]\\))(?=[\\s\\S]{0,8000}?(?:ArrowRight|ArrowLeft|keydown))[\\s\\S]{0,20000}${DECK_IIFE_STRICT_CLOSE_TAIL}`,
+  `(?:^|\\n|(?<=[.。!?…])\\s*)\\(\\s*function\\s*\\(\\s*\\)\\s*\\{(?=[\\s\\S]{0,4000}?document\\.querySelectorAll\\(['"]\\.slide['"]\\))(?=[\\s\\S]{0,8000}?(?:ArrowRight|ArrowLeft|keydown))[\\s\\S]{0,20000}${DECK_IIFE_STRICT_CLOSE_TAIL}`,
+  "gi",
+);
+
+/** Arrow-function IIFE dialect: `(()=>{ const slides=querySelectorAll('.slide'); … })();` */
+const LEAKED_COMPACT_ARROW_DECK_NAV_IIFE_RE = new RegExp(
+  `(?:^|\\n|(?<=[.。!?…])\\s*)\\(\\s*\\(\\s*\\)\\s*=>\\s*\\{(?=[\\s\\S]{0,4000}?document\\.querySelectorAll\\(['"]\\.slide['"]\\))(?=[\\s\\S]{0,8000}?(?:ArrowRight|ArrowLeft|keydown))[\\s\\S]{0,20000}${DECK_IIFE_STRICT_CLOSE_TAIL}`,
   "gi",
 );
 
@@ -657,7 +663,13 @@ const LEAKED_COMPACT_DECK_NAV_IIFE_RE = new RegExp(
  * with `})();` in the same prose blob.
  */
 const LEAKED_COMPACT_ARROW_NAV_TAIL_RE = new RegExp(
-  `(?:^|\\n)\\s*document\\.addEventListener\\(['"]keydown['"]\\s*,\\s*e\\s*=>\\s*\\{(?=[\\s\\S]{0,4000}?ArrowRight)[\\s\\S]{0,12000}${DECK_IIFE_STRICT_CLOSE_TAIL}`,
+  `(?:^|\\n|(?<=[.。!?…])\\s*)document\\.addEventListener\\(['"]keydown['"]\\s*,\\s*e\\s*=>\\s*\\{(?=[\\s\\S]{0,4000}?ArrowRight)[\\s\\S]{0,12000}${DECK_IIFE_STRICT_CLOSE_TAIL}`,
+  "gi",
+);
+
+/** `window.onkeydown = e => { if (e.key === 'ArrowRight') … }` glued into prose. */
+const LEAKED_WINDOW_ONKEYDOWN_NAV_RE = new RegExp(
+  `(?:^|\\n|(?<=[.。!?…])\\s*)(?:window|document)\\.onkeydown\\s*=\\s*e\\s*=>\\s*\\{(?=[\\s\\S]{0,2000}?ArrowRight)[\\s\\S]{0,4000}?\\}\\s*;?`,
   "gi",
 );
 
@@ -705,6 +717,8 @@ const OPEN_DECK_NAV_SCRIPT_RE_LIST = [
   /(?:^|\n)\s*if\s*\(\s*prev\s*\)\s*prev\.toggleAttribute\(['"]disabled['"]\s*,\s*idx\s*<=\s*0\)\s*;?/i,
   /(?:^|\n)\s*if\s*\(\s*next\s*\)\s*next\.toggleAttribute\(['"]disabled['"]\s*,\s*idx\s*>=\s*slides\.length\s*-\s*1\)\s*;?/i,
   /(?:^|\n)\s*function\s+go\s*\(\s*i\s*\)\s*\{(?=[\s\S]{0,1200}?(?:Math\.max|paint\(\)|localStorage\.setItem))/i,
+  // Compact `function go(n){…}` left behind after a mid-script keydown strip.
+  /(?:^|\n)\s*function\s+go\s*\(\s*\w+\s*\)\s*\{(?=[\s\S]{0,1600}?(?:ArrowRight|slides\.length|querySelectorAll\(['"]\.slide))/i,
   /(?:^|\n)\s*idx\s*=\s*Math\.max\(0,\s*Math\.min\(slides\.length\s*-\s*1,\s*i\)\)\s*;?/i,
   /(?:^|\n)\s*try\s*\{\s*localStorage\.setItem\(STORE,\s*String\(idx\)\)\s*;\s*\}\s*catch\s*\(_\)\s*\{\s*\}\s*;?/i,
   /(?:^|\n)\s*function\s+onKey\s*\(\s*e\s*\)\s*\{(?=[\s\S]{0,1600}?(?:ArrowRight|PageDown|PageUp|Home|End|go\(idx))/i,
@@ -716,13 +730,19 @@ const OPEN_DECK_NAV_SCRIPT_RE_LIST = [
   /(?:^|\n)\s*document\.addEventListener\(['"]keydown['"]\s*,\s*onKey\s*,\s*true\)\s*;?/i,
   // Truncated compact nav: bare `document.addEventListener('keydown', e=>{…`
   // without deck-stage / querySelectorAll anchors (end_turn mid-script).
-  /(?:^|\n)\s*document\.addEventListener\(['"]keydown['"]\s*,\s*(?:onKey|e\s*=>)/i,
-  /(?:^|\n)\s*(?:window|document)\.addEventListener\(['"](?:touchstart|touchend|wheel)['"]/i,
+  // Allow same-line glue after sentence punctuation (`덱 완성. document…`).
+  /(?:^|\n|[.。!?…]\s*)document\.addEventListener\(['"]keydown['"]\s*,\s*(?:onKey|e\s*=>)/i,
+  /(?:^|\n|[.。!?…]\s*)(?:window|document)\.addEventListener\(['"](?:touchstart|touchend|wheel)['"]/i,
+  /(?:^|\n|[.。!?…]\s*)(?:window|document)\.onkeydown\s*=\s*e\s*=>/i,
   /(?:^|\n)\s*if\s*\(\s*e\.key\s*===\s*['"]ArrowRight['"]\s*\|\|\s*e\.key\s*===\s*['"]ArrowDown['"]/i,
   /(?:^|\n)\s*if\s*\(\s*e\.key\s*===\s*['"]ArrowRight['"]\s*\|\|\s*e\.key\s*===\s*['"]ArrowLeft['"]/i,
   // Broken IIFE remnant that agents stream after a dropped opener:
   // `(\n  }\n  document.addEventListener('keydown', …`
   /(?:^|\n)\s*\(\s*\n?\s*\}\s*\n?\s*document\.addEventListener\(['"]keydown['"]/i,
+  // Arrow IIFE opener glued to prose or on its own line.
+  /(?:^|\n|[.。!?…]\s*)\(\s*\(\s*\)\s*=>\s*\{(?=[\s\S]{0,4000}?document\.querySelectorAll\(['"]\.slide['"]\))/i,
+  /(?:^|\n|[.。!?…]\s*)\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,4000}?document\.querySelectorAll\(['"]\.slide['"]\))/i,
+  /(?:^|\n|[.。!?…]\s*)(?:const|let|var)\s+slides\s*=\s*(?:Array\.prototype\.slice\.call\()?document\.querySelectorAll\(['"]\.slide['"]/i,
   /(?:^|\n)\s*if\s*\(\s*prev\s*\)\s*prev\.addEventListener\(['"]click['"]\s*,\s*function\s*\(\s*\)\s*\{\s*go\(idx\s*-\s*1\)/i,
   /(?:^|\n)\s*if\s*\(\s*next\s*\)\s*next\.addEventListener\(['"]click['"]\s*,\s*function\s*\(\s*\)\s*\{\s*go\(idx\s*\+\s*1\)/i,
   /(?:^|\n)\s*document\.body\.setAttribute\(['"]tabindex['"]\s*,\s*['"]-1['"]\)\s*;?/i,
@@ -950,6 +970,30 @@ function stripTrailingBareToolJson(
   return { text: input.slice(0, lastIdx).trimEnd(), hadOpenInternalMarkup: true };
 }
 
+/**
+ * Inline fingerprints for deck-nav JS glued onto the same line as prose
+ * (`덱 완성. document.addEventListener…`, `완료.(()=>{const slides=…`).
+ * Returns the start index of the JS leak, or -1.
+ */
+function findInlineDeckNavLeakStart(input: string): number {
+  const patterns = [
+    /document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*(?:onKey|e\s*=>)/i,
+    /(?:window|document)\.addEventListener\s*\(\s*['"](?:touchstart|touchend|wheel)['"]/i,
+    /(?:window|document)\.onkeydown\s*=\s*e\s*=>/i,
+    /\(\s*\(\s*\)\s*=>\s*\{(?=[\s\S]{0,4000}?document\.querySelectorAll\(['"]\.slide['"]\))/i,
+    /\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,4000}?document\.querySelectorAll\(['"]\.slide['"]\))/i,
+    /(?:const|let|var)\s+slides\s*=\s*(?:Array\.prototype\.slice\.call\()?document\.querySelectorAll\(['"]\.slide['"]/i,
+  ] as const;
+  let best = -1;
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0;
+    const match = pattern.exec(input);
+    if (!match || match.index === undefined) continue;
+    if (best === -1 || match.index < best) best = match.index;
+  }
+  return best;
+}
+
 function findOpenDeckNavScriptStart(input: string): number {
   let best = -1;
   for (const pattern of OPEN_DECK_NAV_SCRIPT_RE_LIST) {
@@ -958,10 +1002,17 @@ function findOpenDeckNavScriptStart(input: string): number {
     if (!match || match.index === undefined) continue;
     const rawStart = match.index;
     const matchText = match[0] ?? "";
-    const trimmedStart = rawStart + matchText.search(/\S/);
-    const start = trimmedStart >= rawStart ? trimmedStart : rawStart;
+    // Patterns that allow `[.。!?…]\s*` may include the punctuation in
+    // match[0]. Strip only that leading punct/space prefix so prose like
+    // `덱 완성.` stays — never advance into mid-match (`var total = document…`).
+    const punctPrefix = matchText.match(/^[.。!?…]+\s*/);
+    const start = punctPrefix
+      ? rawStart + punctPrefix[0].length
+      : rawStart + Math.max(0, matchText.search(/\S/));
     if (best === -1 || start < best) best = start;
   }
+  const inline = findInlineDeckNavLeakStart(input);
+  if (inline !== -1 && (best === -1 || inline < best)) best = inline;
   return best;
 }
 
@@ -1122,7 +1173,9 @@ export function sanitizeLeakedAgentProse(
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_PREV_BODY_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_TAIL_RE, "");
   out = out.replace(LEAKED_COMPACT_DECK_NAV_IIFE_RE, "");
+  out = out.replace(LEAKED_COMPACT_ARROW_DECK_NAV_IIFE_RE, "");
   out = out.replace(LEAKED_COMPACT_ARROW_NAV_TAIL_RE, "");
+  out = out.replace(LEAKED_WINDOW_ONKEYDOWN_NAV_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_STORE_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_MANGLED_IIFE_RE, "");
   out = stripOrphanCloseTagFamilies(out, LEAKED_AGENT_PROSE_TAG_NAMES);

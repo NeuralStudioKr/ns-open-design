@@ -27,6 +27,7 @@ import {
   trackPresentPopoverClick,
   trackShareOptionPopoverClick,
 } from '../analytics/events';
+import { hasSalvageableDeckSlideContent } from '../artifacts/deck-html-content';
 import { MarkdownRenderer, artifactRendererRegistry } from '../artifacts/renderer-registry';
 import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
 import { useI18n } from '../i18n';
@@ -4284,6 +4285,9 @@ const HTML_PREVIEW_SOURCE_WALL_MS = 30_000;
 const HTML_PREVIEW_SOURCE_FIRST_RETRY_MS = 400;
 const HTML_PREVIEW_SOURCE_RETRY_MS = 1_200;
 
+const DECK_SLIDE_MARKUP_RE =
+  /<(?:section|div)\b[^>]*\b(?:class\s*=\s*["'][^"']*\bslide\b|data-slide)/i;
+
 function acceptPreviewHtmlCandidate(
   candidate: string | null,
   lastStableRef: { current: string | null },
@@ -4291,6 +4295,12 @@ function acceptPreviewHtmlCandidate(
   if (candidate == null) return null;
   const repaired = repairArtifactDocumentHead(candidate);
   if (isArtifactHtmlStableForPreview(repaired)) {
+    // Repair can theoretically close/strip into a slide-less shell that still
+    // tag-balances. Never pin that as last-stable when the candidate itself
+    // still carried deck slides — keep the previous good frame instead.
+    if (DECK_SLIDE_MARKUP_RE.test(candidate) && !hasSalvageableDeckSlideContent(repaired)) {
+      return lastStableRef.current;
+    }
     lastStableRef.current = repaired;
     return repaired;
   }

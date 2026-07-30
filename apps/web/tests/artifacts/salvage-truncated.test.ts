@@ -108,4 +108,34 @@ describe("salvageTruncatedHtmlDocument", () => {
     expect(recovered).toMatch(/<\/body>\s*<\/html>\s*$/i);
     expect(isIncompleteHtmlDocumentShell(recovered!)).toBe(false);
   });
+
+  it("strips trailing unclosed nav script before appending document closers", () => {
+    const truncated = `<!doctype html><html lang="ko"><head><meta charset="utf-8" /><title>NS</title></head><body>
+<section class="slide"><h1>NeuralStudio</h1><p>회사 소개 개요입니다.</p></section>
+<section class="slide"><h2>제품</h2><p>핵심 제품 라인업을 소개합니다.</p></section>
+<script>
+(
+  }
+  document.addEventListener('keydown', e=>{
+    if(e.key==='ArrowRight') go(1);`;
+    const salvaged = salvageTruncatedHtmlDocument(truncated);
+    expect(salvaged).toBeTruthy();
+    expect(salvaged).toContain('<h1>NeuralStudio</h1>');
+    expect(salvaged).not.toMatch(/<script\b/i);
+    expect(salvaged).toMatch(/<\/body>\s*<\/html>\s*$/i);
+    expect(isIncompleteHtmlDocumentShell(salvaged!)).toBe(false);
+  });
+
+  it("keeps slides when head style is truncated before body", () => {
+    const truncated = `<!doctype html><html><head><title>Deck</title>
+<style>.slide{padding:40px
+<body>
+<section class="slide"><h1>기업 AI 도입 효과</h1><p>개요 설명과 본문 내용입니다.</p></section>
+<section class="slide"><h2>생산성</h2><p>업무 자동화 사례를 소개합니다.</p></section>`;
+    const salvaged = salvageTruncatedHtmlDocument(truncated);
+    expect(salvaged).toBeTruthy();
+    expect(salvaged).toContain('기업 AI 도입 효과');
+    expect(salvaged).toContain('</style>');
+    expect(salvaged).toMatch(/<\/body>\s*<\/html>\s*$/i);
+  });
 });
