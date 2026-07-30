@@ -2,7 +2,7 @@
 
 **문서 번호:** 50-1  
 **설계 SSOT:** [50 Undo/Redo 설계](./50_undo_redo_설계.md)  
-**브랜치:** `feat/undo-redo`  
+**브랜치:** `staging` (머지 완료, `2047f7c3b`)  
 **최종 갱신:** 2026-07-30
 
 ---
@@ -79,11 +79,12 @@
 
 ---
 
-## 마무리 체크리스트 (staging 머지 전)
+## 마무리 체크리스트
 
 | 항목 | 상태 |
 |------|------|
 | `staging` 최신 머지 | [x] |
+| `feat/undo-redo` → `staging` 머지 | [x] |
 | undo/redo + manual-edit regression tests | [x] |
 | daemon file-revisions tests | [x] |
 | nested markup (inline salvage + flattenNestedMarkup) | [x] |
