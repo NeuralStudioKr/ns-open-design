@@ -203,9 +203,16 @@ import {
   createManualEditSourcePin,
   manualEditHistoryConfirmTrustsLocal,
   preferManualEditPinnedSource,
+  preferManualEditPinnedSourceOverLive,
   type ManualEditSourcePin,
 } from '../edit-mode/manual-edit-save-pin';
 import { shouldClearManualEditFrozenSourceOnModeChange } from '../edit-mode/manual-edit-freeze';
+import {
+  MANUAL_EDIT_STYLE_AUTOSAVE_MS,
+  restoreManualEditPendingStyleAfterFailedFlush,
+  shouldFlushManualEditStylesOnTargetBoundary,
+} from '../edit-mode/manual-edit-style-persist';
+import { manualEditStyleReplayPatches } from '../edit-mode/manual-edit-style-replay';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 
@@ -5227,6 +5234,15 @@ function HtmlViewer({
   const manualEditPendingStyleRef = useRef<ManualEditPendingStyleSave | null>(null);
   const manualEditStyleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const manualEditPreviewVersionRef = useRef(0);
+  useEffect(() => {
+    // Drop in-flight style drafts on artifact switch — autosave must not
+    // POST the previous file's pending tweak into the next file's path.
+    manualEditPendingStyleRef.current = null;
+    if (manualEditStyleTimerRef.current) {
+      clearTimeout(manualEditStyleTimerRef.current);
+      manualEditStyleTimerRef.current = null;
+    }
+  }, [projectId, file.name]);
   const sourceRef = useRef<string | null>(source);
   const sourceFileKeyRef = useRef<string | null>(null);
   const previewSourceFetchGenerationRef = useRef(0);
@@ -5560,9 +5576,20 @@ function HtmlViewer({
     sourceFileKeyRef.current = sourceFileKey;
     const accepted = acceptPreviewHtmlCandidate(liveHtml, lastStablePreviewSourceRef);
     if (accepted != null) {
-      setSource(accepted);
-      sourceRef.current = accepted;
-      exportHtmlSnapshotGateRef.current = accepted;
+      // A lagging parent liveHtml token must not clobber a just-saved pin
+      // (S3/lazy race + ProjectView still holding the pre-edit buffer).
+      const pinnedOverLive = preferManualEditPinnedSourceOverLive(
+        manualEditPinnedSourceRef.current,
+        accepted,
+      );
+      const nextSource = pinnedOverLive ?? accepted;
+      if (pinnedOverLive == null && manualEditPinnedSourceRef.current?.source === accepted) {
+        manualEditPinnedSourceRef.current = null;
+      }
+      setSource(nextSource);
+      sourceRef.current = nextSource;
+      lastStablePreviewSourceRef.current = nextSource;
+      exportHtmlSnapshotGateRef.current = nextSource;
       setSourceLoadFailed(false);
       setLiveHtmlPaintsPreview(true);
       if (previewSourceWallTimerRef.current != null) {
@@ -5713,6 +5740,9 @@ function HtmlViewer({
           clearPreviewSourceWall();
           setSourceLoadFailed(false);
           return;
+        }
+        if (text != null && manualEditPinnedSourceRef.current?.source === text) {
+          manualEditPinnedSourceRef.current = null;
         }
         // Chokidar emits agent rewrites as unlink+add+change bursts; a
         // transient null mid-burst would blank source → srcDoc empty →
@@ -6488,6 +6518,35 @@ function HtmlViewer({
     if (effectiveDeck && boardMode) requestSlideStateFromIframe(target);
   }
 
+  // Style saves leave the edit-mode freeze alone (postMessage live preview).
+  // When srcDoc remounts mid-edit, re-apply saved-vs-freeze diffs plus any
+  // still-pending draft so the canvas does not look reverted.
+  function replayManualEditStylesToIframe(target: HTMLIFrameElement | null = iframeRef.current) {
+    if (!manualEditMode) return;
+    const win = target?.contentWindow;
+    if (!win) return;
+    const patches = manualEditStyleReplayPatches(
+      manualEditFrozenSource,
+      sourceRef.current,
+    );
+    for (const patch of patches) {
+      win.postMessage({
+        type: 'od-edit-preview-style',
+        id: patch.id,
+        styles: patch.styles,
+        version: nextManualEditPreviewVersion(),
+      }, '*');
+    }
+    const pending = manualEditPendingStyleRef.current;
+    if (!pending) return;
+    win.postMessage({
+      type: 'od-edit-preview-style',
+      id: pending.id,
+      styles: pending.styles,
+      version: pending.version,
+    }, '*');
+  }
+
   useEffect(() => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
@@ -6881,20 +6940,27 @@ function HtmlViewer({
       }
       if (data.type === 'od-edit-background') {
         // Clicking empty canvas deselects and opens the compact page-styles
-        // card — only meaningful for full HTML documents.
+        // card — only meaningful for full HTML documents. Flush pending
+        // styles first so a background click does not discard unsaved tweaks.
         setManualEditHoverTarget(null);
         if (typeof source === 'string' && isManualEditFullHtmlDocument(source)) {
-          void clearManualEditTargetSelection();
-          setManualEditPageStylesOpen(true);
+          void clearManualEditTargetSelection().then((ok) => {
+            if (ok) setManualEditPageStylesOpen(true);
+          });
         }
         return;
       }
       if (data.type === 'od-edit-text-commit') {
-        void applyManualEdit({
-          id: String(data.id),
-          kind: 'set-text',
-          value: String(data.value),
-        }, embedUiLabel('Edit text', '텍스트 편집'));
+        // Text commits remount the freeze from saved source; flush style
+        // drafts first or postMessage-only previews are lost on reload.
+        void (async () => {
+          if (!(await flushManualEditStyleSave())) return;
+          await applyManualEdit({
+            id: String(data.id),
+            kind: 'set-text',
+            value: String(data.value),
+          }, embedUiLabel('Edit text', '텍스트 편집'));
+        })();
         return;
       }
     }
@@ -6981,14 +7047,36 @@ function HtmlViewer({
     manualEditPendingStyleRef.current = pending;
     setManualEditError(null);
     previewStyleToIframe(id, styles, version);
+    // Autosave shortly after the user stops tweaking — select/background/
+    // exit also flush, but a remount or crash before those gestures must not
+    // be the only persistence path.
+    clearManualEditStyleTimer();
+    manualEditStyleTimerRef.current = setTimeout(() => {
+      manualEditStyleTimerRef.current = null;
+      void flushManualEditStyleSave();
+    }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
   }
 
   async function flushManualEditStyleSave(): Promise<boolean> {
     const pending = manualEditPendingStyleRef.current;
     if (!pending) return true;
+    // Keep the draft when another write owns the lock so a later Save / exit
+    // / boundary flush can retry — clearing here permanently loses the tweak.
     if (manualEditSavingRef.current) return false;
+    clearManualEditStyleTimer();
     manualEditPendingStyleRef.current = null;
-    return applyManualEdit({ id: pending.id, kind: 'set-style', styles: pending.styles }, pending.label);
+    const ok = await applyManualEdit(
+      { id: pending.id, kind: 'set-style', styles: pending.styles },
+      pending.label,
+    );
+    if (!ok) {
+      manualEditPendingStyleRef.current = restoreManualEditPendingStyleAfterFailedFlush(
+        manualEditPendingStyleRef.current,
+        pending,
+      );
+      return false;
+    }
+    return true;
   }
 
   function cancelManualEditStyleDraft() {
@@ -7040,8 +7128,16 @@ function HtmlViewer({
   }
 
   async function selectManualEditTarget(target: ManualEditTarget) {
+    // Switching targets used to cancel the previous draft — looks like the
+    // style "didn't save". Flush the boundary first (upstream
+    // settleManualEditHistoryBoundary) and abort the switch if save fails.
+    if (shouldFlushManualEditStylesOnTargetBoundary(
+      manualEditPendingStyleRef.current?.id,
+      target.id,
+    )) {
+      if (!(await flushManualEditStyleSave())) return;
+    }
     setManualEditPageStylesOpen(false);
-    if (manualEditPendingStyleRef.current?.id !== target.id) cancelManualEditStyleDraft();
     const base = sourceRef.current ?? '';
     const fields = readManualEditFields(base, target.id);
     selectedManualEditTargetIdRef.current = target.id;
@@ -7059,13 +7155,23 @@ function HtmlViewer({
     setManualEditError(null);
   }
 
-  async function clearManualEditTargetSelection() {
-    cancelManualEditStyleDraft();
+  async function clearManualEditTargetSelection(
+    options?: { discardPendingStyles?: boolean },
+  ): Promise<boolean> {
+    if (options?.discardPendingStyles) {
+      cancelManualEditStyleDraft();
+    } else if (shouldFlushManualEditStylesOnTargetBoundary(
+      manualEditPendingStyleRef.current?.id,
+      null,
+    )) {
+      if (!(await flushManualEditStyleSave())) return false;
+    }
     selectedManualEditTargetIdRef.current = null;
     setSelectedManualEditTarget(null);
     setManualEditPanelPosition(null);
     setManualEditDraft(emptyManualEditDraft(sourceRef.current ?? ''));
     setManualEditError(null);
+    return true;
   }
 
   // The inspector is scoped to one element (or the page). Closing it should
@@ -7081,7 +7187,7 @@ function HtmlViewer({
 
   function cancelManualEditPanel() {
     if (selectedManualEditTarget) {
-      void clearManualEditTargetSelection();
+      void clearManualEditTargetSelection({ discardPendingStyles: true });
     } else {
       cancelManualEditStyleDraft();
       setManualEditPageStylesOpen(false);
@@ -9752,6 +9858,7 @@ function HtmlViewer({
                             }, '*');
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
+                            replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
                             if (needsDeckHostViewportFit) {
                               schedulePostDeckHostViewportUntilSized(
@@ -9789,6 +9896,7 @@ function HtmlViewer({
                             }, '*');
                             frame?.contentWindow?.postMessage({ type: 'od:url-selection-bridge-probe' }, '*');
                             syncBridgeModes(frame);
+                            replayManualEditStylesToIframe(frame);
                             if (useUrlLoadPreview) restorePreviewScrollPosition();
                             if (needsDeckHostViewportFit) {
                               schedulePostDeckHostViewportUntilSized(
@@ -9862,6 +9970,7 @@ function HtmlViewer({
                           }, '*');
                           replayInspectOverridesToIframe(frame);
                           syncBridgeModes(frame);
+                          replayManualEditStylesToIframe(frame);
                           syncCachedSlideStateToIframe(frame);
                           if (effectiveDeck) {
                             if (needsDeckHostViewportFit) {
