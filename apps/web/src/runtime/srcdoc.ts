@@ -3172,10 +3172,19 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   function onDeckBridgeKeydown(e) {
     if (!e || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     var target = e.target;
+    // Manual-edit inline text uses contenteditable="plaintext-only" plus
+    // data-od-editing. Some engines leave isContentEditable false for
+    // plaintext-only, so also honor the attribute / editing marker —
+    // otherwise ←/→ advances slides instead of moving the caret.
     if (target) {
       var tag = target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return;
+      if (target.closest) {
+        if (target.closest('[data-od-editing="true"]')) return;
+        if (target.closest('[contenteditable]:not([contenteditable="false"])')) return;
+      }
     }
+    if (document.querySelector && document.querySelector('[data-od-editing="true"]')) return;
     if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
       e.preventDefault();
       e.stopImmediatePropagation();

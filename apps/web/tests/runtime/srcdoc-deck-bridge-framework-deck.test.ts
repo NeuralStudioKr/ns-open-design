@@ -141,6 +141,8 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     const out = buildSrcdoc(frameworkDeckHtml(), { deck: true });
     expect(out).toContain('function onDeckBridgeKeydown');
     expect(out).toContain("document.addEventListener('keydown', onDeckBridgeKeydown, true)");
+    expect(out).toContain('[data-od-editing="true"]');
+    expect(out).toContain('[contenteditable]:not([contenteditable="false"])');
     expect(out).not.toContain('if (compactStackedDeckEnabled) {\n    document.addEventListener(\'keydown\', onDeckBridgeKeydown, true);\n  }');
     expect(out).toContain('e.stopImmediatePropagation()');
   });

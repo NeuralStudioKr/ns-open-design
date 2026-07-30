@@ -54,4 +54,11 @@ describe('manual edit save pin', () => {
     expect(manualEditHistoryConfirmTrustsLocal(saved, stale, pinned, 1_000 + MANUAL_EDIT_SAVE_PIN_MAX_MS)).toBe(false);
     expect(manualEditHistoryConfirmTrustsLocal(saved, saved, null)).toBe(true);
   });
+
+  it('lets history confirm trust authored last-stable bytes when the pin was cleared after a matching fetch', () => {
+    // Pin cleared after disk briefly matched; a later stale GET must not
+    // surface "file changed outside manual edit mode".
+    expect(manualEditHistoryConfirmTrustsLocal(saved, stale, null, Date.now(), saved)).toBe(true);
+    expect(manualEditHistoryConfirmTrustsLocal(saved, stale, null, Date.now(), stale)).toBe(false);
+  });
 });

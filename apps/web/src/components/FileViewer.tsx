@@ -207,6 +207,7 @@ import {
   type ManualEditSourcePin,
 } from '../edit-mode/manual-edit-save-pin';
 import { shouldClearManualEditFrozenSourceOnModeChange } from '../edit-mode/manual-edit-freeze';
+import { isManualEditKeyboardTextTarget } from '../edit-mode/manual-edit-keyboard';
 import {
   MANUAL_EDIT_STYLE_AUTOSAVE_MS,
   restoreManualEditPendingStyleAfterFailedFlush,
@@ -5584,9 +5585,8 @@ function HtmlViewer({
         accepted,
       );
       const nextSource = pinnedOverLive ?? accepted;
-      if (pinnedOverLive == null && manualEditPinnedSourceRef.current?.source === accepted) {
-        manualEditPinnedSourceRef.current = null;
-      }
+      // Keep the pin after a matching fetch — a later stale GET in the same
+      // session must still lose to history-confirm / prefer-pin.
       setSource(nextSource);
       sourceRef.current = nextSource;
       lastStablePreviewSourceRef.current = nextSource;
@@ -5741,9 +5741,6 @@ function HtmlViewer({
           clearPreviewSourceWall();
           setSourceLoadFailed(false);
           return;
-        }
-        if (text != null && manualEditPinnedSourceRef.current?.source === text) {
-          manualEditPinnedSourceRef.current = null;
         }
         // Chokidar emits agent rewrites as unlink+add+change bursts; a
         // transient null mid-burst would blank source → srcDoc empty →
@@ -7305,10 +7302,15 @@ function HtmlViewer({
       cache: 'no-store',
       cacheBustKey: Date.now(),
     });
+    const authored = manualEditPinnedSourceRef.current?.source
+      ?? lastStablePreviewSourceRef.current
+      ?? sourceRef.current;
     if (manualEditHistoryConfirmTrustsLocal(
       expectedSource,
       persisted,
       manualEditPinnedSourceRef.current,
+      Date.now(),
+      authored,
     )) {
       return true;
     }
@@ -7596,15 +7598,13 @@ function HtmlViewer({
   }
 
   // Keyboard nav on the host, so the user can press ←/→ even when focus
-  // is on the chat composer or any other host control.
+  // is on the chat composer or any other host control. Skip while manual
+  // edit owns the canvas — iframe text editing must keep arrow keys for
+  // the caret (and host-side slide posts would steal them if focus leaks).
   useEffect(() => {
-    if (!effectiveDeck || mode !== 'preview') return;
+    if (!effectiveDeck || mode !== 'preview' || manualEditMode) return;
     function onKey(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
-      }
+      if (isManualEditKeyboardTextTarget(e.target)) return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown') {
         e.preventDefault();
         postSlide('next');
@@ -7621,7 +7621,7 @@ function HtmlViewer({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [effectiveDeck, mode]);
+  }, [effectiveDeck, manualEditMode, mode]);
 
   useEffect(() => {
     if (!presentMenuOpen) return;
