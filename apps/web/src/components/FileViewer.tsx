@@ -5449,6 +5449,8 @@ function HtmlViewer({
   const [revisionHistoryOpen, setRevisionHistoryOpen] = useState(false);
   const [revisionConflictToast, setRevisionConflictToast] = useState<string | null>(null);
   const [revisionStackInvalidated, setRevisionStackInvalidated] = useState(false);
+  const revisionStackInvalidatedRef = useRef(revisionStackInvalidated);
+  revisionStackInvalidatedRef.current = revisionStackInvalidated;
   const [strokePoints, setStrokePoints] = useState<StrokePoint[]>([]);
   const previewStateKey = `${projectId}:${file.name}`;
   const previewScale = zoom / 100;
@@ -7596,6 +7598,7 @@ function HtmlViewer({
   }
 
   async function undoManualEdit(area: TrackingRevisionArea = 'revision_toolbar') {
+    if (revisionStackInvalidatedRef.current) return;
     if (!(await settleManualEditStyleBoundary())) return;
     if (manualEditSavingRef.current) return;
     const target = revisionBeforeCursor(revisionStackRef.current);
@@ -7614,6 +7617,7 @@ function HtmlViewer({
   }
 
   async function redoManualEdit(area: TrackingRevisionArea = 'revision_toolbar') {
+    if (revisionStackInvalidatedRef.current) return;
     if (!(await settleManualEditStyleBoundary())) return;
     if (manualEditSavingRef.current) return;
     const target = revisionAfterCursor(revisionStackRef.current);
@@ -7875,6 +7879,7 @@ function HtmlViewer({
         if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
       }
       if (manualEditSavingRef.current) return;
+      if (revisionStackInvalidatedRef.current) return;
 
       const primary = isMacPlatform()
         ? e.metaKey && !e.ctrlKey

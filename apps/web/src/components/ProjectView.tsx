@@ -262,7 +262,7 @@ import {
   createMessagePersistScheduler,
   resolveMessagePersistThrottleMs,
 } from '../state/messagePersistSchedule';
-import type { AppliedPluginSnapshot, ChatAnalyticsEntryFrom, ChatSessionMode, InstalledPluginRecord, WorkspaceContextItem } from '@open-design/contracts';
+import type { AppliedPluginSnapshot, ChatAnalyticsEntryFrom, ChatSessionMode, FileRevision, InstalledPluginRecord, WorkspaceContextItem } from '@open-design/contracts';
 import type {
   AgentEvent,
   AgentInfo,
@@ -4189,6 +4189,9 @@ export function ProjectView({
         );
       if (result.ok) {
         const file = result.file;
+        const pushedRevision = ext === '.html' && 'revision' in result
+          ? (result as { ok: true; revision: FileRevision; file: ProjectFile }).revision
+          : null;
         // A newer successful write supersedes any stashed replay for this
         // exact filename — the file the user is looking at is now the one
         // on disk, not the pre-401 in-memory snapshot.
@@ -4210,18 +4213,18 @@ export function ProjectView({
         // sees it without an extra click. The Write-tool path already does
         // this for tool-emitted files; this handles the artifact-tag path.
         requestOpenFile(file.name);
-        if (ext === '.html' && 'revision' in result) {
-          setActiveRevisionSequence(project.id, file.name, result.revision.sequence);
+        if (pushedRevision) {
+          setActiveRevisionSequence(project.id, file.name, pushedRevision.sequence);
           emitRevisionPush(
             analytics.track,
             project.id,
             projectKindToTracking(project.kind, project.metadata?.videoModel),
             file.name,
-            result.revision,
+            pushedRevision,
             'agent_persist',
           );
-          if (result.revision.parentRevisionId) {
-            const parentRevisionId = result.revision.parentRevisionId;
+          if (pushedRevision.parentRevisionId) {
+            const parentRevisionId = pushedRevision.parentRevisionId;
             const restoredFileName = file.name;
             setProjectActionsToast({
               message: embedUiLabel('AI edit saved', 'AI 편집을 저장했습니다'),
@@ -4255,7 +4258,7 @@ export function ProjectView({
         return {
           kind: 'persisted',
           fileName: file.name,
-          parentRevisionId: 'revision' in result ? result.revision.parentRevisionId : null,
+          parentRevisionId: pushedRevision?.parentRevisionId ?? null,
         };
       } else {
         // Clear the saved-artifact ref so the streaming layer can retry

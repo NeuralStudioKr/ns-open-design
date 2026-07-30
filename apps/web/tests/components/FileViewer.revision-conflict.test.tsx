@@ -77,6 +77,13 @@ describe('FileViewer revision conflict', () => {
       expect(screen.getByRole('alert').textContent).toMatch(/undo stack was reset|실행 취소 스택을 초기화/);
     });
     expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(true);
+
+    const persistedBeforeKeyboardUndo = getPersistedSource();
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(getPersistedSource()).toBe(persistedBeforeKeyboardUndo);
   });
 });
 

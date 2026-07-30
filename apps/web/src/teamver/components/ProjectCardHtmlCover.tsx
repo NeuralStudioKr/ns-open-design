@@ -118,7 +118,7 @@ function AuthenticatedHtmlCover({
           srcDoc={srcDoc}
           title=""
           loading="lazy"
-          sandbox=""
+          sandbox="allow-scripts"
           tabIndex={-1}
         />
       ) : (
@@ -164,7 +164,7 @@ async function loadHtmlCover(
 }
 
 export function pagePreviewSrcDoc(html: string, sourceUrl: string): string {
-  const withoutScripts = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu, "");
+  const withoutScripts = stripHtmlScripts(html);
   const style = `<style id="od-page-card-preview">
     html,
     body {
@@ -178,7 +178,7 @@ export function pagePreviewSrcDoc(html: string, sourceUrl: string): string {
 }
 
 export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
-  const withoutScripts = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu, "");
+  const withoutScripts = stripHtmlScripts(html);
   const style = `<style id="od-deck-card-preview">
     html,
     body {
@@ -250,6 +250,13 @@ function injectBefore(source: string, marker: string, addition: string): string 
   const index = source.toLowerCase().lastIndexOf(marker);
   if (index === -1) return `${addition}${source}`;
   return `${source.slice(0, index)}${addition}${source.slice(index)}`;
+}
+
+/** Drop executable script tags so card thumbs stay CSS-only. */
+function stripHtmlScripts(html: string): string {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu, "")
+    .replace(/<script\b[^>]*\/>/giu, "");
 }
 
 /** @internal vitest */
