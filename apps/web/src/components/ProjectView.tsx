@@ -224,6 +224,7 @@ import {
   rollbackAutoContinueCount,
   shouldAutoContinueForIncompleteOutput,
 } from '../runtime/resume';
+import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from '../runtime/deckGuidance';
 import {
   extractCommentAttachmentsForAutoContinue,
   findPrecedingUserMessage,
