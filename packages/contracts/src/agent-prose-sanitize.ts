@@ -597,6 +597,9 @@ const DECK_NAV_ORIGINAL_ANCHORS = [
   `document\\.getElementById\\(['"]deck-prev['"]\\)`,
   `document\\.getElementById\\(['"]deck-next['"]\\)`,
   `deck:idx:`,
+  // Compact agent-authored nav (no deck-stage chrome): `(function(){ const
+  // slides=document.querySelectorAll('.slide'); … ArrowRight … })();`
+  `document\\.querySelectorAll\\(['"]\\.slide['"]\\)`,
 ].join("|");
 
 /**
@@ -610,6 +613,10 @@ const DECK_NAV_BODY_FINGERPRINTS = [
   `function\\s+focusDeck\\s*\\(`,
   `document\\.addEventListener\\(['"]mousedown['"]\\s*,\\s*focusDeck\\s*\\)`,
   `window\\.addEventListener\\(['"]resize['"]\\s*,\\s*fit\\s*\\)`,
+  // Compact nav dialects: arrow/touch/wheel handlers around `.slide` nodes.
+  `e\\.key\\s*===\\s*['"]ArrowRight['"]`,
+  `document\\.addEventListener\\(['"]touchstart['"]`,
+  `document\\.addEventListener\\(['"]wheel['"]`,
 ].join("|");
 
 /** Loose IIFE close: bare `})` OR full `})();`. */
@@ -634,7 +641,13 @@ const LEAKED_DECK_NAV_SCRIPT_PREV_BODY_RE = new RegExp(
 );
 
 const LEAKED_DECK_NAV_SCRIPT_TAIL_RE = new RegExp(
-  `(?:^|\\n)\\s*var\\s+slides\\s*=\\s*Array\\.prototype\\.slice\\.call\\(document\\.querySelectorAll\\(['"]\\.slide['"]\\)\\);[\\s\\S]{0,20000}${DECK_IIFE_CLOSE_TAIL}`,
+  `(?:^|\\n)\\s*(?:var|let|const)\\s+slides\\s*=\\s*(?:Array\\.prototype\\.slice\\.call\\()?document\\.querySelectorAll\\(['"]\\.slide['"]\\)\\)?;?[\\s\\S]{0,20000}${DECK_IIFE_CLOSE_TAIL}`,
+  "gi",
+);
+
+/** Compact one-line / modern-const IIFE with `.slide` + keyboard nav. */
+const LEAKED_COMPACT_DECK_NAV_IIFE_RE = new RegExp(
+  `(?:^|\\n)\\s*\\(\\s*function\\s*\\(\\s*\\)\\s*\\{(?=[\\s\\S]{0,4000}?document\\.querySelectorAll\\(['"]\\.slide['"]\\))(?=[\\s\\S]{0,8000}?(?:ArrowRight|ArrowLeft|keydown))[\\s\\S]{0,20000}${DECK_IIFE_STRICT_CLOSE_TAIL}`,
   "gi",
 );
 
@@ -668,6 +681,9 @@ const OPEN_DECK_NAV_SCRIPT_RE_LIST = [
   /(?:^|\n)\s*var\s+cur\s*=\s*document\.getElementById\(['"]deck-cur['"]\)/i,
   /(?:^|\n)\s*var\s+STORE\s*=\s*['"]deck:idx:/i,
   /(?:^|\n)\s*var\s+slides\s*=\s*Array\.prototype\.slice\.call\(document\.querySelectorAll\(['"]\.slide['"]\)\);/i,
+  /(?:^|\n)\s*(?:var|let|const)\s+slides\s*=\s*(?:Array\.prototype\.slice\.call\()?document\.querySelectorAll\(['"]\.slide['"]\)/i,
+  /(?:^|\n)\s*\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,4000}?document\.querySelectorAll\(['"]\.slide['"]\))/i,
+  /(?:^|\n)\s*slides\.forEach\(\s*(?:function\s*\(|\()/i,
   /(?:^|\n)\s*var\s+total\s*=\s*document\.getElementById\(['"]deck-total['"]\)/i,
   /(?:^|\n)\s*(?:try\s*\{\s*)?var\s+saved\s*=\s*parseInt\(localStorage\.getItem\(STORE\)\s*\|\|\s*['"]0['"]\s*,\s*10\)/i,
   /(?:^|\n)\s*if\s*\(!isNaN\(saved\)\s*&&\s*saved\s*>=\s*0\s*&&\s*saved\s*<\s*slides\.length\)\s*idx\s*=\s*saved\s*;?/i,
@@ -1086,6 +1102,7 @@ export function sanitizeLeakedAgentProse(
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_BODY_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_PREV_BODY_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_TAIL_RE, "");
+  out = out.replace(LEAKED_COMPACT_DECK_NAV_IIFE_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_STORE_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_MANGLED_IIFE_RE, "");
   out = stripOrphanCloseTagFamilies(out, LEAKED_AGENT_PROSE_TAG_NAMES);

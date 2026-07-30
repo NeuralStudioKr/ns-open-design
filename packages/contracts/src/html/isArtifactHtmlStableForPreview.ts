@@ -11,6 +11,20 @@ function countTagBalance(html: string, openRe: RegExp, closeRe: RegExp): boolean
 }
 
 /**
+ * Tag-balance heuristics must ignore instructional copies of `<style>` /
+ * `<script>` that live inside HTML comments or CSS block comments. The
+ * deck-framework skeleton documents its contract with the literal text
+ * "this <style> block" inside a CSS comment — counting that as an open tag
+ * permanently rejects complete, on-disk decks and leaves the preview on
+ * "loading…" even after refresh.
+ */
+export function stripCommentsForArtifactTagBalance(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+/**
  * Heuristic gate for live HTML preview updates during agent streaming.
  * Partial documents often render leaked CSS/JS / truncated head tags as
  * visible body text until the closing tags arrive — hold the iframe on the
@@ -24,10 +38,11 @@ export function isArtifactHtmlStableForPreview(html: string): boolean {
   if (!lower.includes("</body>") || !lower.includes("</html>")) return false;
   if (hasArtifactPreviewBodyTextLeaks(trimmed)) return false;
 
-  if (!countTagBalance(trimmed, /<style\b/gi, /<\/style>/gi)) return false;
-  if (!countTagBalance(trimmed, /<script\b/gi, /<\/script>/gi)) return false;
-  if (!countTagBalance(trimmed, /<svg\b/gi, /<\/svg>/gi)) return false;
-  if (!countTagBalance(trimmed, /<math\b/gi, /<\/math>/gi)) return false;
+  const forBalance = stripCommentsForArtifactTagBalance(trimmed);
+  if (!countTagBalance(forBalance, /<style\b/gi, /<\/style>/gi)) return false;
+  if (!countTagBalance(forBalance, /<script\b/gi, /<\/script>/gi)) return false;
+  if (!countTagBalance(forBalance, /<svg\b/gi, /<\/svg>/gi)) return false;
+  if (!countTagBalance(forBalance, /<math\b/gi, /<\/math>/gi)) return false;
 
   // Unclosed HTML comments leave the rest of the document inside a comment
   // node in some parsers / paint oddly in others.
