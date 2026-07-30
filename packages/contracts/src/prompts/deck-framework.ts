@@ -50,8 +50,8 @@ export const DECK_SKELETON_HTML = `<!doctype html>
   <title><!-- SLOT: deck title --></title>
   <style>
     /* ===========================================================
-       Deck framework — DO NOT EDIT the rules in this <style> block.
-       Edit only inside the second <style> block below (per-deck
+       Deck framework — DO NOT EDIT the rules in this style block.
+       Edit only inside the second style block below (per-deck
        styles) and inside <section class="slide"> bodies.
 
        Contract this framework provides:

@@ -349,6 +349,61 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).not.toContain("<!doctype html>");
   });
 
+  it("strips compact modern const/let deck nav IIFE leaked into chat prose", () => {
+    const visibleProse = "덱을 만들었습니다.";
+    const input = [
+      "(function(){",
+      "  const slides=document.querySelectorAll('.slide');",
+      "  let cur=0,lock=false;",
+      "  function go(n){",
+      "    if(lock||n<0||n>=slides.length)return;",
+      "    lock=true;",
+      "    slides[cur].style.display='none';",
+      "    cur=n;",
+      "    slides[cur].style.display='flex';",
+      "    setTimeout(()=>{lock=false},400);",
+      "  }",
+      "  slides.forEach((s,i)=>{s.style.display=i===0?'flex':'none';s.style.width='100vw';});",
+      "  document.addEventListener('keydown',e=>{",
+      "    if(e.key==='ArrowRight'||e.key==='ArrowDown'||e.key===' ')go(cur+1);",
+      "    if(e.key==='ArrowLeft'||e.key==='ArrowUp')go(cur-1);",
+      "  });",
+      "  let tx=0;",
+      "  document.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;});",
+      "  document.addEventListener('touchend',e=>{",
+      "    const dx=tx-e.changedTouches[0].clientX;",
+      "    if(Math.abs(dx)>50)go(dx>0?cur+1:cur-1);",
+      "  });",
+      "  document.addEventListener('wheel',e=>{go(e.deltaY>0?cur+1:cur-1);},{passive:true});",
+      "})();",
+      visibleProse,
+    ].join("\n");
+
+    for (const streaming of [true, false]) {
+      const out = sanitizeAssistantProseForDisplay(input, { streaming });
+      expect(out).toBe(visibleProse);
+      expect(out).not.toContain("querySelectorAll");
+      expect(out).not.toContain("ArrowRight");
+      expect(out).not.toContain("function(){");
+    }
+  });
+
+  it("strips partial compact deck nav IIFE while streaming before the closing arrives", () => {
+    const out = sanitizeAssistantProseForDisplay(
+      [
+        "작업 중입니다.",
+        "(function(){",
+        "  const slides=document.querySelectorAll('.slide');",
+        "  document.addEventListener('keydown',e=>{",
+        "    if(e.key==='ArrowRight')go(cur+1);",
+      ].join("\n"),
+      { streaming: true },
+    );
+    expect(out).toBe("작업 중입니다.");
+    expect(out).not.toContain("querySelectorAll");
+    expect(out).not.toContain("ArrowRight");
+  });
+
   it("strips leaked deck navigation script prose while preserving trailing user prose", () => {
     const visibleProse = "요청하신 덱 초안을 바로 만들겠습니다.";
     const input = [
