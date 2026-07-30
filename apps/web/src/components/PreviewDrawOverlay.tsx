@@ -61,6 +61,10 @@ interface Props {
   captureSnapshot?: () => Promise<PreviewSnapshot | null>;
   captureFrameRect?: () => CaptureFrameRect | null;
   filePath?: string;
+  /** 0-based active slide index; used to prefix notes when screenshot capture fails. */
+  slideIndex?: number | null;
+  /** Reset deck letterbox pan after annotation capture (decks only). */
+  resetPreviewPan?: () => void;
   hideChrome?: boolean;
   sendDisabled?: boolean;
   sendDisabledReason?: string;
@@ -70,6 +74,53 @@ interface Props {
 const STROKE_COLOR = '#ff3b30';
 const STROKE_WIDTH = 4;
 const TARGET_COLOR = '#1677ff';
+const DRAW_HINT_STORAGE_KEY = 'open-design:annotation-draw-hint-dismissed';
+/** Max wait for a full compositor/iframe capture before marks-only or degraded send. */
+const ANNOTATION_CAPTURE_BUDGET_MS = 2_500;
+const ANNOTATION_IFRAME_SNAPSHOT_TIMEOUTS_MS = [2_500, 3_000] as const;
+
+async function raceWithBudget<T>(promise: Promise<T>, budgetMs: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), budgetMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function readDrawHintDismissed(): boolean {
+  try {
+    return window.sessionStorage.getItem(DRAW_HINT_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function persistDrawHintDismissed(): void {
+  try {
+    window.sessionStorage.setItem(DRAW_HINT_STORAGE_KEY, '1');
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+export function annotationNoteForSend(
+  rawNote: string,
+  slideIndex: number | null | undefined,
+  sentWithoutScreenshot: boolean,
+  slidePrefix: (index: number) => string,
+): string {
+  const note = rawNote.trim();
+  if (!note || !sentWithoutScreenshot || slideIndex == null || !Number.isFinite(slideIndex)) return note;
+  const marker = slidePrefix(Math.max(0, Math.floor(slideIndex)) + 1);
+  if (note.includes(marker)) return note;
+  return `${marker}\n${note}`;
+}
 
 // Render `node` into `host` via a portal when one is provided, otherwise inline.
 function maybePortal(node: ReactNode, host: HTMLElement | null) {
@@ -85,6 +136,8 @@ export function PreviewDrawOverlay({
   captureSnapshot,
   captureFrameRect,
   filePath,
+  slideIndex = null,
+  resetPreviewPan,
   hideChrome = false,
   sendDisabled = false,
   sendDisabledReason,
@@ -122,6 +175,7 @@ export function PreviewDrawOverlay({
     action: AnnotationAction;
     message: string;
   } | null>(null);
+  const [drawHintDismissed, setDrawHintDismissed] = useState(readDrawHintDismissed);
   const sending = pendingAction !== null;
 
   const redraw = useCallback(() => {
@@ -333,6 +387,9 @@ export function PreviewDrawOverlay({
 
   function onCanvasWheel(e: WheelEvent<HTMLCanvasElement>) {
     if (!active || sending) return;
+    // Deck previews pan the entire letterboxed stage via od:preview-scroll-by.
+    // Wheel forwarding in draw mode makes the slide drift as a whole — disable it.
+    if (slideIndex != null && Number.isFinite(slideIndex)) return;
     const iframe = activePreviewIframe();
     if (!iframe) return;
     if (scrollPreviewIframeBy(iframe, e.deltaX, e.deltaY)) {
@@ -506,13 +563,17 @@ export function PreviewDrawOverlay({
   }
 
   function snapshotFrameRect(): CaptureFrameRect | null {
-    return (
-      captureFrameRect?.() ??
-      (captureSnapshot
-        ? wrapRef.current?.getBoundingClientRect()
-        : activePreviewIframe()?.getBoundingClientRect()) ??
-      null
-    );
+    const candidates = [
+      captureFrameRect?.(),
+      captureSnapshot ? wrapRef.current?.getBoundingClientRect() : null,
+      activePreviewIframe()?.getBoundingClientRect(),
+      wrapRef.current?.getBoundingClientRect(),
+      canvasRef.current?.getBoundingClientRect(),
+    ];
+    for (const rect of candidates) {
+      if (rect && rect.width > 0 && rect.height > 0) return rect;
+    }
+    return null;
   }
 
   async function requestSnapshot(): Promise<PreviewSnapshot | null> {
@@ -524,7 +585,7 @@ export function PreviewDrawOverlay({
       flushSync(() => setCapturing(true));
       try {
         await waitForOverlayHidden();
-        return await captureSnapshot();
+        return await raceWithBudget(captureSnapshot(), ANNOTATION_CAPTURE_BUDGET_MS);
       } finally {
         flushSync(() => setCapturing(false));
       }
@@ -532,9 +593,8 @@ export function PreviewDrawOverlay({
     const iframe = snapshotHostIframe();
     if (!iframe) return null;
     // Capture mode may still be swapping the srcDoc frame to full content when
-    // the user submits, so retry with growing timeouts before giving up.
-    const timeouts = [1500, 3000, 6000];
-    for (const timeout of timeouts) {
+    // the user submits, so retry with short timeouts before giving up.
+    for (const timeout of ANNOTATION_IFRAME_SNAPSHOT_TIMEOUTS_MS) {
       const snapshot = await requestPreviewSnapshot(iframe, timeout);
       if (snapshot) return snapshot;
     }
@@ -580,6 +640,39 @@ export function PreviewDrawOverlay({
       ctx.fillText(text, left + padX, labelTop + padY + fontSize * 0.82);
     }
     ctx.restore();
+  }
+
+  async function compositeMarksOnly(): Promise<Blob | null> {
+    const canvas = canvasRef.current;
+    const frameRect = snapshotFrameRect() ?? canvas?.getBoundingClientRect() ?? null;
+    if (!frameRect || frameRect.width <= 0 || frameRect.height <= 0) return null;
+    const w = Math.max(1, Math.floor(frameRect.width));
+    const h = Math.max(1, Math.floor(frameRect.height));
+    const out = document.createElement('canvas');
+    out.width = w;
+    out.height = h;
+    const ctx = out.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    drawCaptureTarget(ctx, 1, 1, captureTarget);
+    if (selectionBoxRef.current) drawNormalizedBox(ctx, selectionBoxRef.current, w, h);
+    ctx.strokeStyle = STROKE_COLOR;
+    ctx.lineWidth = STROKE_WIDTH;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const s of strokesRef.current) {
+      const first = s.points[0];
+      if (!first) continue;
+      ctx.beginPath();
+      ctx.moveTo(first.x * w, first.y * h);
+      for (let i = 1; i < s.points.length; i++) {
+        const p = s.points[i]!;
+        ctx.lineTo(p.x * w, p.y * h);
+      }
+      ctx.stroke();
+    }
+    return new Promise((resolve) => out.toBlob((b) => resolve(b), 'image/png'));
   }
 
   async function compositeWithBackground(snap: PreviewSnapshot): Promise<Blob | null> {
@@ -628,7 +721,12 @@ export function PreviewDrawOverlay({
 
   async function send(action: AnnotationAction) {
     const hasTarget = Boolean(captureTarget);
-    const shouldCapture = hasInk || hasBox || hasTarget || captureViewport;
+    const hasVisualMark =
+      hasInk ||
+      hasBox ||
+      Boolean(selectionBoxRef.current) ||
+      strokesRef.current.length > 0;
+    const shouldCapture = hasVisualMark || hasTarget || captureViewport;
     const canSubmit = shouldCapture || Boolean(note.trim()) || extraFiles.length > 0;
     if (sending || !canSubmit) return;
     // While a task is running the primary Send is disabled (use Queue instead).
@@ -641,9 +739,14 @@ export function PreviewDrawOverlay({
       let file: File | null = null;
       if (shouldCapture) {
         let blob: Blob | null = null;
+        const marksOnlyPromise =
+          hasVisualMark || hasTarget ? compositeMarksOnly() : null;
         const snap = await requestSnapshot();
         if (snap) blob = await compositeWithBackground(snap);
-        if (blob) {
+        if (!blob && marksOnlyPromise) {
+          blob = await marksOnlyPromise;
+        }
+        if (blob && blob.size > 0) {
           const ts = new Date().toISOString().replace(/[:.]/g, '-');
           file = new File([blob], `drawing-${ts}.png`, { type: 'image/png' });
         } else if (!note.trim() && extraFiles.length === 0) {
@@ -663,6 +766,12 @@ export function PreviewDrawOverlay({
         }
       }
       const sentWithoutScreenshot = shouldCapture && !file;
+      const noteText = annotationNoteForSend(
+        note,
+        slideIndex,
+        sentWithoutScreenshot,
+        (index) => t('chat.annotationSlidePrefix', { n: index }),
+      );
       const kind = markKind();
       const result = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
         let settled = false;
@@ -676,7 +785,7 @@ export function PreviewDrawOverlay({
         }, 60000);
         const detail: AnnotationEventDetail = {
           file,
-          note: note.trim(),
+          note: noteText,
           action,
           filePath: captureTarget?.filePath || filePath,
           markKind: kind,
@@ -699,7 +808,13 @@ export function PreviewDrawOverlay({
       // the note went out, the pixels did not.
       setCaptureWarning(
         sentWithoutScreenshot
-          ? { action, message: t('chat.annotationSentWithoutScreenshot') }
+          ? {
+              action,
+              message:
+                noteText !== note.trim()
+                  ? t('chat.annotationSentTextOnly')
+                  : t('chat.annotationSentWithoutScreenshot'),
+            }
           : null,
       );
       setNote('');
@@ -707,6 +822,7 @@ export function PreviewDrawOverlay({
       setPreviewIndex(null);
     } finally {
       setPendingAction(null);
+      resetPreviewPan?.();
     }
   }
 
@@ -777,7 +893,7 @@ export function PreviewDrawOverlay({
               style={{
                 position: 'absolute',
                 left: 'calc(50% - 52px)',
-                bottom: 112,
+                bottom: 128,
                 transform: 'translateX(-50%)',
                 display: 'flex',
                 alignItems: 'center',
@@ -796,6 +912,58 @@ export function PreviewDrawOverlay({
               }}
             >
               <span>{captureWarning.message}</span>
+            </div>
+          ) : !drawHintDismissed ? (
+            <div
+              role="note"
+              style={{
+                position: 'absolute',
+                left: 'calc(50% - 52px)',
+                bottom: 72,
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                maxWidth: 'min(420px, calc(100% - 144px))',
+                padding: '6px 8px 6px 12px',
+                borderRadius: 999,
+                background: 'rgba(20,20,20,0.82)',
+                color: 'rgba(255,255,255,0.92)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
+                backdropFilter: 'blur(8px)',
+                zIndex: 92,
+                pointerEvents: 'auto',
+                fontSize: 12,
+                lineHeight: 1.35,
+                visibility: chromeHidden ? 'hidden' : undefined,
+              }}
+            >
+              <span>{t('chat.annotationDrawHint')}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  persistDrawHintDismissed();
+                  setDrawHintDismissed(true);
+                }}
+                aria-label={t('common.close')}
+                title={t('common.close')}
+                style={{
+                  width: 18,
+                  height: 18,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 999,
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  background: 'transparent',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              >
+                <Icon name="close" size={10} />
+              </button>
             </div>
           ) : null}
           {imagePreviews.length > 0 ? (
@@ -900,7 +1068,7 @@ export function PreviewDrawOverlay({
               borderRadius: 24,
               boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
               backdropFilter: 'blur(8px)',
-              zIndex: 91,
+              zIndex: 93,
               pointerEvents: 'auto',
               fontSize: 13,
               visibility: chromeHidden ? 'hidden' : undefined,

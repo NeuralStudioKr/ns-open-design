@@ -77,9 +77,9 @@ export function applyManualEditPatch(
         el = leaf;
       } else if (onlyHasIgnorableInlineMarkup(el)) {
         // Headings/labels that only use `<br>` (or empty wrappers) for line
-        // breaks have no leaf element to patch. Flatten to the committed
-        // plain text — safer than the broader innerHTML rewrite below.
-        el.textContent = patch.value;
+        // breaks have no leaf element to patch. Write plain text, mapping
+        // committed `\n` back to `<br>` so intentional wraps survive.
+        applyManualEditPlainText(el, patch.value);
         return { ok: true, source: serializeSource(doc, source) };
       } else if (containsOnlyInlineTextFormatting(el)) {
         // Ambiguous inline siblings (e.g. `<span>Alpha</span><span>Beta</span>`,
@@ -88,25 +88,25 @@ export function applyManualEditPatch(
         // innerHTML with the escaped value. This wipes inline formatting
         // spans but keeps the edit unblocked, matching upstream v2's
         // `set-inner-html` fallback.
-        el.innerHTML = escapeManualEditText(patch.value);
+        applyManualEditPlainText(el, patch.value);
         return { ok: true, source: serializeSource(doc, source) };
       } else {
         return { ok: false, source, error: 'This element contains nested markup. Use the HTML tab instead.' };
       }
     }
-    el.textContent = patch.value;
+    applyManualEditPlainText(el, patch.value);
   } else if (patch.kind === 'set-link') {
     if (hasElementChildren(el)) {
       const currentText = el.textContent?.trim() ?? '';
       if (patch.text.trim() === currentText) {
         // Href-only edit on a formatted link — safe to keep the markup.
       } else if (containsOnlyInlineTextFormatting(el)) {
-        el.innerHTML = escapeManualEditText(patch.text);
+        applyManualEditPlainText(el, patch.text);
       } else {
         return { ok: false, source, error: 'This link contains nested markup. Use the HTML tab to change its label.' };
       }
     } else {
-      el.textContent = patch.text;
+      applyManualEditPlainText(el, patch.text);
     }
     el.setAttribute('href', patch.href);
   } else if (patch.kind === 'set-image') {
@@ -1210,6 +1210,27 @@ export function escapeManualEditText(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/**
+ * Escape plain text and map newlines to `<br>` so manual-edit commits that
+ * keep line breaks (Enter in contenteditable) persist as visible wraps.
+ */
+export function manualEditPlainTextToHtml(value: string): string {
+  return escapeManualEditText(String(value ?? ''))
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\n/g, '<br>');
+}
+
+/** Write committed plain text onto an element, preserving `\n` as `<br>`. */
+export function applyManualEditPlainText(el: Element, value: string): void {
+  const text = String(value ?? '');
+  if (/[\r\n]/.test(text)) {
+    el.innerHTML = manualEditPlainTextToHtml(text);
+    return;
+  }
+  el.textContent = text;
 }
 
 function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {

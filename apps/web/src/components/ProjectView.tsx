@@ -157,6 +157,13 @@ import {
   emitRevisionUndo,
 } from '../runtime/revision-analytics';
 import {
+  enrichChatSendMetaWithProjectDeckTemplate,
+  resolveDeckTemplateSkillId,
+  resolveScenarioPluginIdForLocalSkill,
+  selectedDeckTemplateMetadata,
+  wrapSelectedDeckTemplateSkillBody,
+} from '../runtime/selected-deck-template';
+import {
   anonymizeArtifactId,
   artifactKindToTracking,
   projectKindToTracking,
@@ -200,6 +207,8 @@ import type { TodoItem } from '../runtime/todos';
 import {
   appendErrorStatusEvent,
   appendWarningStatusEvent,
+  attachPersistedChatError,
+  messageHasPersistedChatError,
   messageHasVisibleProse,
 } from '../runtime/chat-events';
 import {
@@ -618,6 +627,16 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
   ) {
     merged.content = localContent;
     if (local.events?.length) merged.events = local.events;
+  }
+  // Keepalive omit-events / partial upsert can drop status:error cards from the
+  // server row while the local buffer still has them. Prefer local so re-entry
+  // and soft refresh do not hide a chat error the user already saw.
+  if (messageHasPersistedChatError(local) && !messageHasPersistedChatError(merged)) {
+    merged.events = local.events;
+    if (local.runStatus === 'failed') {
+      merged.runStatus = 'failed';
+      merged.endedAt = local.endedAt ?? merged.endedAt ?? Date.now();
+    }
   }
   return reconcileUserCommentAttachments(merged);
 }
@@ -1973,15 +1992,6 @@ function projectMediaVoiceSeed(
     return metadata.voice?.trim() || undefined;
   }
   return undefined;
-}
-
-function selectedDeckTemplateMetadata(
-  metadata: ProjectMetadata | null | undefined,
-): { id: string; title?: string } | null {
-  const id = metadata?.selectedDeckTemplateId?.trim();
-  if (!id) return null;
-  const title = metadata?.selectedDeckTemplateTitle?.trim() || undefined;
-  return { id, title };
 }
 
 // Carry the creation-time model pick into the conversation ONLY when it belongs
@@ -3729,6 +3739,40 @@ export function ProjectView({
     return nextFiles;
   }, [refreshLiveArtifacts, refreshProjectFiles]);
 
+  /**
+   * Chat-visible errors must ride on the assistant message's status:error
+   * events (and usually `runStatus: failed`). The ephemeral `error` React
+   * state is cleared on every message reload, so setError-only paths vanish
+   * after page re-entry.
+   */
+  const surfaceChatVisibleError = useCallback(
+    (detail: string, code?: string) => {
+      if (!detail?.trim()) return;
+      setError(detail);
+      const conversationId = activeConversationId;
+      if (!conversationId) return;
+      setMessages((curr) => {
+        let targetId: string | null = null;
+        for (let i = curr.length - 1; i >= 0; i -= 1) {
+          if (curr[i]?.role === 'assistant') {
+            targetId = curr[i]!.id;
+            break;
+          }
+        }
+        if (!targetId) return curr;
+        return curr.map((m) => {
+          if (m.id !== targetId) return m;
+          const updated = attachPersistedChatError(m, detail, code);
+          if (!isPhantomDaemonRunMessage(updated)) {
+            void saveMessage(project.id, conversationId, updated);
+          }
+          return updated;
+        });
+      });
+    },
+    [activeConversationId, project.id],
+  );
+
   useEffect(() => {
     if (!tabsLoadedRef.current) return;
     if (hasAppliedInitialPrimaryOpenRef.current) return;
@@ -4089,11 +4133,12 @@ export function ProjectView({
         }
         const validation = validateHtmlArtifact(artifactToPersist.html);
         if (!validation.ok) {
-          setError(
+          surfaceChatVisibleError(
             formatProjectArtifactRejectedError(
               art.identifier || art.title || 'untitled',
               validation.reason,
             ),
+            'artifact_rejected',
           );
           return { kind: 'rejected', fileName, reason: validation.reason };
         }
@@ -4158,7 +4203,10 @@ export function ProjectView({
         // what happened + reassures about the preserved deck + names
         // the escape-hatch env var, so users don't stare at a mixed-
         // language "저장을 거부: New artifact body …" reason.
-        setError(formatProjectArtifactRegressionRejectedError(regression.fileName));
+        surfaceChatVisibleError(
+          formatProjectArtifactRegressionRejectedError(regression.fileName),
+          'artifact_regression',
+        );
         return {
           kind: 'artifact-regression',
           fileName: regression.fileName,
@@ -4314,12 +4362,13 @@ export function ProjectView({
         // they either require a manual action or indicate no recovery is
         // scheduled.
         if (!stashedForAutoRetry) {
-          setError(
+          surfaceChatVisibleError(
             formatProjectArtifactSaveFailedError(fileName, {
               status: result.status,
               code: result.code,
               message: result.message,
             }),
+            result.code ?? 'artifact_save_failed',
           );
         }
         if (stashedForAutoRetry) return { kind: 'auth-replay-queued', fileName };
@@ -4332,7 +4381,16 @@ export function ProjectView({
         };
       }
     },
-    [project.id, project.designSystemId, project.skillId, project.metadata?.skipDiscoveryBrief, requestOpenFile, slideOnlyMvp, activeConversationId],
+    [
+      project.id,
+      project.designSystemId,
+      project.skillId,
+      project.metadata?.skipDiscoveryBrief,
+      requestOpenFile,
+      slideOnlyMvp,
+      activeConversationId,
+      surfaceChatVisibleError,
+    ],
   );
 
   // Auth-recovery replay: when the embed cookie is refreshed after a session
@@ -4692,8 +4750,43 @@ export function ProjectView({
     let designSystemBody: string | undefined;
     let designSystemTitle: string | undefined;
 
+    const selectedTemplate = selectedDeckTemplateMetadata(project.metadata);
+    if (selectedTemplate) {
+      const cached = pluginSkillCache.current.get(selectedTemplate.id);
+      if (cached !== undefined) {
+        skillBody = cached;
+        skillName = selectedTemplate.title ?? skillName;
+        skillMode = 'deck';
+      } else {
+        const summary =
+          skills.find((s) => s.id === selectedTemplate.id) ??
+          designTemplates.find((s) => s.id === selectedTemplate.id);
+        skillName = selectedTemplate.title ?? summary?.name;
+        skillMode = summary?.mode ?? 'deck';
+        const detail =
+          (await fetchSkill(selectedTemplate.id)) ??
+          (await fetchDesignTemplate(selectedTemplate.id));
+        if (detail) {
+          skillBody = detail.body;
+          pluginSkillCache.current.set(selectedTemplate.id, detail.body);
+        } else {
+          const local = await fetchPluginLocalSkill(selectedTemplate.id);
+          if (local) {
+            skillBody = local.body;
+            skillName = selectedTemplate.title ?? local.name;
+            skillMode = 'deck';
+            pluginSkillCache.current.set(selectedTemplate.id, local.body);
+          }
+        }
+      }
+    }
+
     const effectiveSkillId = skillIdOverride ?? project.skillId;
-    if (effectiveSkillId) {
+    if (
+      !skillBody?.trim()
+      && effectiveSkillId
+      && effectiveSkillId !== selectedTemplate?.id
+    ) {
       // effectiveSkillId can resolve to either root after the
       // skills/design-templates split; check both lists so a template-backed
       // project keeps composing its template body when running in API mode.
@@ -4725,7 +4818,11 @@ export function ProjectView({
         }
       }
     }
-    if (!skillBody?.trim() && pluginIdForLocalSkill) {
+    if (
+      !skillBody?.trim()
+      && pluginIdForLocalSkill
+      && pluginIdForLocalSkill !== selectedTemplate?.id
+    ) {
       const cached = pluginSkillCache.current.get(pluginIdForLocalSkill);
       if (cached !== undefined) {
         skillBody = cached;
@@ -4735,31 +4832,6 @@ export function ProjectView({
           skillBody = local.body;
           skillName = local.name;
           pluginSkillCache.current.set(pluginIdForLocalSkill, local.body);
-        }
-      }
-    }
-    const selectedTemplate = selectedDeckTemplateMetadata(project.metadata);
-    if (!skillBody?.trim() && selectedTemplate) {
-      const cached = pluginSkillCache.current.get(selectedTemplate.id);
-      if (cached !== undefined) {
-        skillBody = cached;
-        skillName = selectedTemplate.title ?? skillName;
-        skillMode = 'deck';
-      } else {
-        const detail = await fetchDesignTemplate(selectedTemplate.id);
-        if (detail) {
-          skillBody = detail.body;
-          skillName = selectedTemplate.title ?? detail.name;
-          skillMode = 'deck';
-          pluginSkillCache.current.set(selectedTemplate.id, detail.body);
-        } else {
-          const local = await fetchPluginLocalSkill(selectedTemplate.id);
-          if (local) {
-            skillBody = local.body;
-            skillName = selectedTemplate.title ?? local.name;
-            skillMode = 'deck';
-            pluginSkillCache.current.set(selectedTemplate.id, local.body);
-          }
         }
       }
     }
@@ -4774,17 +4846,8 @@ export function ProjectView({
       skillMode = 'deck';
     }
     if (skillBody?.trim() && skillMode === 'deck') {
-      const title = skillName?.trim() || 'selected deck template';
-      skillBody = [
-        `# Teamver selected deck template guard`,
-        ``,
-        `Template: ${title}`,
-        `Treat this template as the primary visual contract for this run.`,
-        `Preserve its palette, typography, layout rhythm, spacing, motif language, and first-slide mood in the generated deck.`,
-        `If an active design system is also present, use it only as secondary brand context; do not replace the selected template's visual language with the design system default.`,
-        ``,
-        skillBody.trim(),
-      ].join('\n');
+      const title = skillName?.trim() || selectedTemplate?.title || 'selected deck template';
+      skillBody = wrapSelectedDeckTemplateSkillBody(skillBody, title);
     }
     if (designSystemIdOverride ?? project.designSystemId) {
       const effectiveDesignSystemId = designSystemIdOverride ?? project.designSystemId;
@@ -5720,7 +5783,12 @@ export function ProjectView({
           continue;
         }
 
-        if (!shouldReattachDaemonRunEvents(message, status)) {
+        const shouldReplayTerminalSucceededDeliverable =
+          slideOnlyMvp
+          && status.status === 'succeeded'
+          && !(message.producedFiles ?? []).some(isHtmlProjectFile);
+
+        if (!shouldReattachDaemonRunEvents(message, status) && !shouldReplayTerminalSucceededDeliverable) {
           if (isTerminalRunStatus(status.status) || isLocallyTerminalAssistantMessage(message)) {
             updateMessageById(
               message.id,
@@ -5764,14 +5832,19 @@ export function ProjectView({
           true,
         );
 
-        if (!isActiveRunStatus(status.status) && isTerminalRunStatus(status.status)) {
+        if (
+          !shouldReplayTerminalSucceededDeliverable
+          && !isActiveRunStatus(status.status)
+          && isTerminalRunStatus(status.status)
+        ) {
           completedReattachRunsRef.current.add(runId);
           scheduleConversationMessageRefresh(reattachConversationId);
           continue;
         }
 
         const needsFullReplay =
-          isActiveRunStatus(status.status) && shouldFullReplayReattachedRun(message);
+          shouldReplayTerminalSucceededDeliverable
+          || (isActiveRunStatus(status.status) && shouldFullReplayReattachedRun(message));
         const savedChars = (message.content ?? '').trim().length;
         if (
           isTeamverEmbedMode()
@@ -7098,6 +7171,7 @@ export function ProjectView({
         onEmbedSubmitBlocked?.();
         return false;
       }
+      meta = enrichChatSendMetaWithProjectDeckTemplate(meta, project.metadata);
       if (!activeConversationId) return false;
       if (messagesConversationIdRef.current !== activeConversationId) return false;
       const runSessionMode = meta?.sessionMode ?? activeSessionMode;
@@ -8592,20 +8666,21 @@ export function ProjectView({
           }
         }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
-        const effectiveSkillId =
-          (Array.isArray(meta?.skillIds) ? meta.skillIds[0] : null) ??
-          (Array.isArray(meta?.context?.pluginIds) ? meta.context.pluginIds[0] : null);
-        let pluginIdForLocalSkill =
-          (Array.isArray(meta?.context?.pluginIds) ? meta.context.pluginIds[0] : null) ?? null;
+        const effectiveSkillId = resolveDeckTemplateSkillId(project.metadata, meta);
         let pluginBlock: string | undefined;
+        let appliedSnapshotPluginId = meta?.appliedPluginSnapshot?.pluginId ?? null;
         if (meta?.appliedPluginSnapshot) {
           pluginBlock = renderPluginBlock(meta.appliedPluginSnapshot);
-          pluginIdForLocalSkill = pluginIdForLocalSkill ?? meta.appliedPluginSnapshot.pluginId;
         } else if (project.appliedPluginSnapshotId) {
           const snap = await fetchAppliedPluginSnapshot(project.appliedPluginSnapshotId);
-          pluginIdForLocalSkill = pluginIdForLocalSkill ?? snap?.pluginId ?? null;
+          appliedSnapshotPluginId = snap?.pluginId ?? null;
           if (snap) pluginBlock = renderPluginBlock(snap);
         }
+        const pluginIdForLocalSkill = resolveScenarioPluginIdForLocalSkill(
+          project.metadata,
+          meta,
+          appliedSnapshotPluginId,
+        );
         const systemPrompt = await composedSystemPrompt(
           runSessionMode,
           effectiveDesignSystemId,

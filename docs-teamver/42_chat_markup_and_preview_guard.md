@@ -10,6 +10,12 @@
 - `AssistantMessage`의 기존 per-message error pill은 같은 assistant 메시지에 diagnostic 카드가 붙을 때만 suppress하여 중복 표시를 막는다.
 - 회귀 테스트: `apps/web/tests/components/ChatPane.streaming.test.tsx`의 persisted failed-run error 위치 테스트.
 
+## 2026-07-30 추가: 재진입 시 에러 카드 소실 방지
+
+- 채팅에 보이는 에러는 ephemeral `setError`만으로 끝내지 말고 `attachPersistedChatError` / `surfaceChatVisibleError`로 assistant `events` + `runStatus: failed`에 저장한다.
+- daemon message upsert는 keepalive 등이 `events`를 생략해도 기존 `events_json`을 지우지 않는다 (`mergeOptionalMessageArrayField` + `COALESCE`).
+- `mergeServerMessageWithLocal`은 서버 row에 status:error가 없을 때 로컬 에러 이벤트를 유지한다.
+
 ## 왜 검토할 때마다 구멍이 보였는가
 
 에이전트 truncation은 **적대적 분포**다. “이번에 본 조각”만 regex로 막으면 다음 조각이 새로 드러난다.
@@ -51,9 +57,13 @@
 - `acceptPreviewHtmlCandidate`: `repair` → `isArtifactHtmlStableForPreview`만 채택. unstable이면 last-stable만 반환 (느슨한 `</body></html>`+leak-only fallback **금지**).
 - Tag-balance는 HTML/CSS 주석을 strip한 뒤 계산한다. skeleton CSS 주석의 문자 그대로 `<style>` 가 open-count에 잡히면 complete deck이 영구 loading에 고정된다.
 - Compact modern deck-nav IIFE (`const/let slides=document.querySelectorAll('.slide')` + ArrowRight/touch/wheel)도 chat scrub SSOT에 포함한다 — classic `var`+`deck-stage`만 보면 완료 후 채팅에 JS가 남는다.
+- `end_turn` mid-`<script>` 잘림: chat scrub은 bare `document.addEventListener('keydown', e=>` / `ArrowDown` / `touchstart|touchend|wheel` / same-line glue / arrow IIFE / `window.onkeydown` / orphan `function go` 조각도 잘라낸다. preview는 `repairArtifactDocumentHead` → `stripTrailingUnclosedRawBlocks`가 (1) raw block이 `<body>`/slide 앞에서 잘리면 closer를 삽입하고 (2) trailing 미닫힘 `<script|style>`를 루프로 제거하며 salvage `</body></html>`는 보존한다.
+- salvage(`salvageTruncatedHtmlDocument` / body-first normalize)도 closer 붙이기 전에 동일 strip을 적용해 disk에 unstable HTML이 쓰지 않게 한다.
+- `acceptPreviewHtmlCandidate`는 repair 결과가 slide-less shell이면 last-stable을 유지한다(슬라이드 파괴 빈 프레임 pin 금지).
+- compact nav가 `<script>` 없이 body text로 새면 `hasArtifactPreviewBodyTextLeaks`가 reject하고 repair strip이 제거한다.
 - **liveHtml apply와 disk fetch는 effect를 분리**한다. live 토큰 매 청크가 disk debounce를 cancel하면 sticky `"loading…"`가 난다.
 - disk debounce `HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS` (200) ≤ ProjectView file-changed coalesce `maxWait` (250).
-- hung GET 방지: `HTML_PREVIEW_SOURCE_WALL_MS` (12s). wall은 empty+non-streaming에서 arm; soft-retry/late incomplete 후 **재arm** 가능. **streaming 중에는 wall을 arm하지 않는다**.
+- hung GET 방지: `HTML_PREVIEW_SOURCE_WALL_MS` (30s). wall은 empty 소스에서 arm; soft-retry/late incomplete 후 **재arm** 가능.
 - incomplete disk / transient null fetch는 **즉시 unavailable로 올리지 않는다** (veil/loading 유지; wall만 승격). null·incomplete 모두 abort 무시 + soft-retry 1회 후 wall에 맡긴다. fetch 시도 시작 시 sticky `sourceLoadFailed`를 해제한다.
 - stream 중 `liveHtmlPaintsPreview`면 disk skip 가능. **stream 종료 후에는 paints여도 disk fetch 허용** (turn-end scrub 최종본 반영).
 - stream-end에 `liveHtml`을 끊지 않는다 — `artifactHtml`이 있는 한 유지 (`streaming && artifactHtml` 절단은 turn-end scrub race로 오판).

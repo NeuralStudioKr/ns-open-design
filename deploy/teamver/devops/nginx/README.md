@@ -154,6 +154,7 @@ curl -si -X OPTIONS \
 | `teamver-design-api-*.inc.conf` | design-api auth / protected / CORS |
 | `teamver-design-plugin-preview.inc.conf` | plugin preview ([25](../../../docs-teamver/25_플러그인_preview_샌드박스_nginx_보강.md)) |
 | `teamver-design-od-public-static.inc.conf` | `/_next/*` auth 제외 ([31 §8.2](../../../docs-teamver/31_Design_Staging_vs_Production_네트워크_TLS_DNS.md#82-chunkloaderror--_nextstaticchunksjs-auth_request-on-static)) |
+| `teamver-design-od-public-api.inc.conf` | `GET /api/version` auth 제외 (About/boot metadata) |
 | `teamver-design-od-preview-scope.inc.conf` | preview scope auth 제외 |
 | `teamver-design-od-token.conf.example` | OD_API_TOKEN |
 

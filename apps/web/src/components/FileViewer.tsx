@@ -28,6 +28,7 @@ import {
   trackPresentPopoverClick,
   trackShareOptionPopoverClick,
 } from '../analytics/events';
+import { hasSalvageableDeckSlideContent } from '../artifacts/deck-html-content';
 import { MarkdownRenderer, artifactRendererRegistry } from '../artifacts/renderer-registry';
 import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
 import { useI18n } from '../i18n';
@@ -1068,6 +1069,9 @@ function waitForAnimationFrame(): Promise<void> {
 }
 
 function temporarilyExposeIframeForSnapshot(iframe: HTMLIFrameElement): () => void {
+  if (iframe.getAttribute('data-od-active') !== 'false') {
+    return () => {};
+  }
   const previousVisibility = iframe.style.visibility;
   const previousOpacity = iframe.style.opacity;
   const previousPointerEvents = iframe.style.pointerEvents;
@@ -1081,8 +1085,13 @@ function temporarilyExposeIframeForSnapshot(iframe: HTMLIFrameElement): () => vo
   };
 }
 
-async function requestPreviewSnapshotWithRetry(iframe: HTMLIFrameElement): Promise<Awaited<ReturnType<typeof requestPreviewSnapshot>>> {
-  const timeouts = [1500, 3000, 6000];
+const ANNOTATION_SNAPSHOT_RETRY_MS = [2_500, 3_000] as const;
+const EXPORT_SNAPSHOT_RETRY_MS = [1500, 3000, 6000] as const;
+
+async function requestPreviewSnapshotWithRetry(
+  iframe: HTMLIFrameElement,
+  timeouts: readonly number[] = EXPORT_SNAPSHOT_RETRY_MS,
+): Promise<Awaited<ReturnType<typeof requestPreviewSnapshot>>> {
   for (const timeout of timeouts) {
     const snapshot = await requestPreviewSnapshot(iframe, timeout);
     if (snapshot) return snapshot;
@@ -4316,6 +4325,9 @@ const HTML_PREVIEW_SOURCE_WALL_MS = 30_000;
 const HTML_PREVIEW_SOURCE_FIRST_RETRY_MS = 400;
 const HTML_PREVIEW_SOURCE_RETRY_MS = 1_200;
 
+const DECK_SLIDE_MARKUP_RE =
+  /<(?:section|div)\b[^>]*\b(?:class\s*=\s*["'][^"']*\bslide\b|data-slide)/i;
+
 function acceptPreviewHtmlCandidate(
   candidate: string | null,
   lastStableRef: { current: string | null },
@@ -4323,6 +4335,12 @@ function acceptPreviewHtmlCandidate(
   if (candidate == null) return null;
   const repaired = repairArtifactDocumentHead(candidate);
   if (isArtifactHtmlStableForPreview(repaired)) {
+    // Repair can theoretically close/strip into a slide-less shell that still
+    // tag-balances. Never pin that as last-stable when the candidate itself
+    // still carried deck slides — keep the previous good frame instead.
+    if (DECK_SLIDE_MARKUP_RE.test(candidate) && !hasSalvageableDeckSlideContent(repaired)) {
+      return lastStableRef.current;
+    }
     lastStableRef.current = repaired;
     return repaired;
   }
@@ -4726,7 +4744,7 @@ function HtmlViewer({
   // template) and the Teamver Drive Publish menu item stay visible because
   // they either land on the user's machine or stay inside the Teamver
   // workspace tenant.
-  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp } = useTeamverBranding();
+  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp, hideDrawAnnotation } = useTeamverBranding();
   // Kept in sync with live `source` / last-stable preview so fireShareExport
   // (declared above those hooks) can gate Teamver rendered downloads without
   // reading later const bindings.
@@ -5083,6 +5101,9 @@ function HtmlViewer({
   const [inspectMode, setInspectMode] = useState(false);
   const [agentToolsOpen, setAgentToolsOpen] = useState(false);
   const [drawOverlayOpen, setDrawOverlayOpen] = useState(false);
+  useEffect(() => {
+    if (hideDrawAnnotation) setDrawOverlayOpen(false);
+  }, [hideDrawAnnotation]);
   // for hint managing hint box state
   const [openHintBox, setOpenHintBox] = useState(true);
   const [manualEditMode, setManualEditModeRaw] = useState(false);
@@ -6470,6 +6491,17 @@ function HtmlViewer({
     }
     return srcDocPreviewIframeRef.current ?? iframeRef.current;
   }, [useUrlLoadPreview]);
+
+  const resetDrawPreviewPan = useCallback(() => {
+    if (!effectiveDeck) return;
+    resetDeckPreviewPan(resolveActiveDeckPreviewIframe());
+  }, [effectiveDeck, resolveActiveDeckPreviewIframe]);
+
+  useEffect(() => {
+    if (!effectiveDeck) return;
+    if (!drawOverlayOpen) return;
+    resetDrawPreviewPan();
+  }, [drawOverlayOpen, effectiveDeck, resetDrawPreviewPan]);
 
   useEffect(() => {
     if (!needsDeckHostViewportFit || mode !== 'preview') return;
@@ -8768,18 +8800,39 @@ function HtmlViewer({
     // in the browser screenshot flow (DesignBrowserPanel).
     await waitForAnimationFrame();
     await waitForAnimationFrame();
-    // Prefer the desktop compositor screenshot of the visible preview region:
-    // it returns the real rendered pixels (fonts, external CSS, gradients,
-    // images) and is never tainted, so it cannot produce the black/blank frames
-    // the in-iframe SVG-foreignObject bridge does. Works for both srcDoc and
-    // URL-load previews. Falls through to the bridge on pure web (no host).
-    const visibleIframe = iframeRef.current ?? srcDocPreviewIframeRef.current;
+    try {
+    const srcDocIframe = srcDocPreviewIframeRef.current;
+    const urlIframe = iframeRef.current ?? urlPreviewIframeRef.current;
+    const visibleIframe = iframeRef.current ?? srcDocIframe;
     await ensureDeckSlideSyncedForSnapshot(visibleIframe);
     const hostSnapshot = await captureHostIframeSnapshot(visibleIframe);
     if (hostSnapshot) return hostSnapshot;
 
+    // Prefer the srcDoc transport iframe: it always carries the snapshot bridge
+    // and (when draw mode is active) the full artifact HTML. URL-load frames
+    // often lack the bridge and fail capture on web embeds.
+    if (srcDocIframe?.contentWindow) {
+      if (useLazySrcDocTransport && !srcDocShellReady) {
+        await waitForIframeLoadOrTimeout(srcDocIframe, 500);
+      }
+      if (useLazySrcDocTransport && activateSrcDocSnapshotTransport(srcDocIframe)) {
+        await waitForIframeLoadOrTimeout(srcDocIframe);
+        await waitForAnimationFrame();
+        await waitForAnimationFrame();
+      }
+      const restoreVisibility = temporarilyExposeIframeForSnapshot(srcDocIframe);
+      try {
+        await ensureDeckSlideSyncedForSnapshot(srcDocIframe);
+        await waitForAnimationFrame();
+        const srcDocSnapshot = await requestPreviewSnapshotWithRetry(srcDocIframe, ANNOTATION_SNAPSHOT_RETRY_MS);
+        if (srcDocSnapshot) return srcDocSnapshot;
+      } finally {
+        restoreVisibility();
+      }
+    }
+
     if (!useUrlLoadPreview) {
-      const activeIframe = srcDocPreviewIframeRef.current ?? iframeRef.current;
+      const activeIframe = srcDocIframe ?? iframeRef.current;
       if (!activeIframe) return null;
       await ensureDeckSlideSyncedForSnapshot(activeIframe);
       await waitForIframeLoadOrTimeout(activeIframe, 250);
@@ -8787,7 +8840,6 @@ function HtmlViewer({
       return requestPreviewSnapshotWithRetry(activeIframe);
     }
 
-    const urlIframe = iframeRef.current ?? urlPreviewIframeRef.current;
     if (urlIframe) {
       await ensureDeckSlideSyncedForSnapshot(urlIframe);
       await waitForIframeLoadOrTimeout(urlIframe, 250);
@@ -8796,7 +8848,6 @@ function HtmlViewer({
       if (urlSnapshot) return urlSnapshot;
     }
 
-    const srcDocIframe = srcDocPreviewIframeRef.current;
     if (!srcDocIframe) {
       const activeIframe = iframeRef.current;
       if (!activeIframe) return null;
@@ -8804,33 +8855,21 @@ function HtmlViewer({
       return requestPreviewSnapshotWithRetry(activeIframe);
     }
 
-    if (useLazySrcDocTransport && !srcDocShellReady) {
+    if (useUrlLoadPreview && activateSrcDocSnapshotTransport(srcDocIframe)) {
       await waitForIframeLoadOrTimeout(srcDocIframe, 500);
+      await waitForAnimationFrame();
+      await waitForAnimationFrame();
+      return requestPreviewSnapshotWithRetry(srcDocIframe);
     }
-    if (useLazySrcDocTransport && activateSrcDocSnapshotTransport(srcDocIframe)) {
-      await waitForIframeLoadOrTimeout(srcDocIframe);
-      await waitForAnimationFrame();
-      await waitForAnimationFrame();
-    }
-    const restoreVisibility = temporarilyExposeIframeForSnapshot(srcDocIframe);
-    try {
-      await ensureDeckSlideSyncedForSnapshot(srcDocIframe);
-      await waitForAnimationFrame();
-      const srcDocSnapshot = await requestPreviewSnapshotWithRetry(srcDocIframe);
-      if (srcDocSnapshot) return srcDocSnapshot;
-      if (useUrlLoadPreview && activateSrcDocSnapshotTransport(srcDocIframe)) {
-        await waitForIframeLoadOrTimeout(srcDocIframe, 500);
-        await waitForAnimationFrame();
-        await waitForAnimationFrame();
-        return requestPreviewSnapshotWithRetry(srcDocIframe);
-      }
-      return null;
+    return null;
     } finally {
-      restoreVisibility();
+      if (effectiveDeck) resetDeckPreviewPan(resolveActiveDeckPreviewIframe());
     }
   }, [
     activateSrcDocSnapshotTransport,
+    effectiveDeck,
     ensureDeckSlideSyncedForSnapshot,
+    resolveActiveDeckPreviewIframe,
     srcDocShellReady,
     useLazySrcDocTransport,
     useUrlLoadPreview,
@@ -9690,19 +9729,21 @@ function HtmlViewer({
                   <RemixIcon name="chat-new-line" size={15} />
                 </button>
               </div>
-              <button
-                className={`viewer-action viewer-action-icon od-tooltip${drawOverlayOpen ? ' active' : ''}`}
-                type="button"
-                data-testid="draw-overlay-toggle"
-                data-tooltip={t('fileViewer.mark')}
-                data-tooltip-placement="bottom"
-                title={t('fileViewer.mark')}
-                aria-label={t('fileViewer.mark')}
-                aria-pressed={drawOverlayOpen}
-                onClick={activateDrawTool}
-              >
-                <RemixIcon name="mark-pen-line" size={15} />
-              </button>
+              {!hideDrawAnnotation ? (
+                <button
+                  className={`viewer-action viewer-action-icon od-tooltip${drawOverlayOpen ? ' active' : ''}`}
+                  type="button"
+                  data-testid="draw-overlay-toggle"
+                  data-tooltip={t('fileViewer.markTooltip')}
+                  data-tooltip-placement="bottom"
+                  title={t('fileViewer.markTooltip')}
+                  aria-label={t('fileViewer.mark')}
+                  aria-pressed={drawOverlayOpen}
+                  onClick={activateDrawTool}
+                >
+                  <RemixIcon name="mark-pen-line" size={15} />
+                </button>
+              ) : null}
               <span className="viewer-toolbar-tool-divider" aria-hidden />
               {source !== null ? (
                 <FileViewerUndoRedoToolbar
@@ -10135,12 +10176,14 @@ function HtmlViewer({
                   })}
                 >
                   <PreviewDrawOverlay
-                    active={drawOverlayOpen}
+                    active={!hideDrawAnnotation && drawOverlayOpen}
                     onActiveChange={setDrawOverlayOpen}
                     captureViewport
                     captureSnapshot={captureExportImageSnapshot}
                     captureTarget={null}
                     filePath={file.name}
+                    slideIndex={effectiveDeck ? slideState?.active ?? null : null}
+                    resetPreviewPan={resetDrawPreviewPan}
                     sendDisabled={streaming}
                     sendDisabledReason={t('chat.annotationSendDisabledReason')}
                     onToolbarClick={fireDrawToolbarClick}

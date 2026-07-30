@@ -360,6 +360,38 @@ describe("mergeServerMessagesIntoConversation", () => {
     expect(merged[0]?.producedFiles?.[0]?.name).toBe("deck.html");
   });
 
+  it("preserves local error status events when the server row lost them", () => {
+    const local: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "partial",
+      createdAt: 1,
+      runStatus: "failed",
+      endedAt: 2,
+      events: [
+        { kind: "text", text: "partial" },
+        {
+          kind: "status",
+          label: "error",
+          detail: "Provider timeout",
+          code: "timeout",
+        },
+      ],
+    };
+    const server: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "partial",
+      createdAt: 1,
+      runStatus: "succeeded",
+      endedAt: 2,
+      events: [{ kind: "text", text: "partial" }],
+    };
+    const merged = mergeServerMessagesIntoConversation([local], [server]);
+    expect(merged[0]?.runStatus).toBe("failed");
+    expect(merged[0]?.events).toEqual(local.events);
+  });
+
   it("preserves local prose when terminal server row lost content to sanitize-on-read", () => {
     const local: ChatMessage = {
       id: "a1",

@@ -323,7 +323,8 @@ export async function pgUpsertMessage(pool: Pool, conversationId: string, m: DbR
       `UPDATE messages
           SET role = $2, content = $3, agent_id = $4, agent_name = $5,
               run_id = $6, run_status = $7, last_run_event_id = $8,
-              events_json = $9, attachments_json = COALESCE($10, attachments_json),
+              events_json = COALESCE($9, events_json),
+              attachments_json = COALESCE($10, attachments_json),
               comment_attachments_json = COALESCE($11, comment_attachments_json),
               produced_files_json = COALESCE($12, produced_files_json), feedback_json = $13,
               pre_turn_file_names_json = COALESCE($14, pre_turn_file_names_json),

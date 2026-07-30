@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { assistantEventsForDisplay, assistantMessageTextBody, messageHasVisibleProse, reconcileChatMessageOnLoad } from '../../src/runtime/chat-events';
+import {
+  assistantEventsForDisplay,
+  assistantMessageTextBody,
+  attachPersistedChatError,
+  messageHasPersistedChatError,
+  messageHasVisibleProse,
+  reconcileChatMessageOnLoad,
+} from '../../src/runtime/chat-events';
+import { AUTO_CONTINUE_STATUS_CODE } from '../../src/runtime/resume';
 import type { ChatMessage } from '../../src/types';
 
 describe('assistantEventsForDisplay', () => {
@@ -98,6 +106,50 @@ describe('messageHasVisibleProse', () => {
         events: [{ kind: 'text', text: 'hello' }],
       }),
     ).toBe(true);
+  });
+});
+
+describe('attachPersistedChatError', () => {
+  it('appends a status:error event and marks the run failed', () => {
+    const updated = attachPersistedChatError(
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'partial',
+        createdAt: 1,
+        runStatus: 'succeeded',
+        endedAt: 2,
+        events: [{ kind: 'text', text: 'partial' }],
+      },
+      '저장을 거부했습니다: incomplete HTML',
+      'artifact_rejected',
+    );
+    expect(updated.runStatus).toBe('failed');
+    expect(updated.endedAt).toEqual(expect.any(Number));
+    expect(updated.events?.at(-1)).toEqual({
+      kind: 'status',
+      label: 'error',
+      detail: '저장을 거부했습니다: incomplete HTML',
+      code: 'artifact_rejected',
+    });
+    expect(messageHasPersistedChatError(updated)).toBe(true);
+  });
+
+  it('does not flip runStatus for auto-continue notices', () => {
+    const message: ChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      content: 'still going',
+      createdAt: 1,
+      runStatus: 'running',
+    };
+    const updated = attachPersistedChatError(
+      message,
+      'Continuing…',
+      AUTO_CONTINUE_STATUS_CODE,
+    );
+    expect(updated.runStatus).toBe('running');
+    expect(messageHasPersistedChatError(updated)).toBe(false);
   });
 });
 

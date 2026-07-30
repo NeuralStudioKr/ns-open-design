@@ -1871,6 +1871,10 @@ function mergeMessageUpsertPayload(existing: DbRow | undefined, incoming: DbRow)
   if (!existing) return incoming;
   return {
     ...incoming,
+    // Keepalive pagehide trims may omit `events` entirely (or send []). Never
+    // clobber a previously persisted transcript / error status card that way —
+    // attachments already used the same coalesce helper.
+    events: mergeOptionalMessageArrayField(incoming.events, existing.events),
     commentAttachments: mergeOptionalMessageArrayField(
       incoming.commentAttachments,
       existing.commentAttachments,
@@ -1967,7 +1971,8 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
       `UPDATE messages
           SET role = ?, content = ?, agent_id = ?, agent_name = ?,
               run_id = ?, run_status = ?, last_run_event_id = ?,
-              events_json = ?, attachments_json = COALESCE(?, attachments_json),
+              events_json = COALESCE(?, events_json),
+              attachments_json = COALESCE(?, attachments_json),
               comment_attachments_json = COALESCE(?, comment_attachments_json),
               produced_files_json = COALESCE(?, produced_files_json), feedback_json = ?,
               pre_turn_file_names_json = COALESCE(?, pre_turn_file_names_json),

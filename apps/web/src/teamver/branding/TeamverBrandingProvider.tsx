@@ -33,6 +33,7 @@ const TeamverBrandingContext = createContext<TeamverBrandingConfig>({
   hideCommunityGallery: false,
   hidePluginRegistry: false,
   hideExternalShareSurfaces: false,
+  hideDrawAnnotation: false,
 });
 
 export function TeamverBrandingProvider({ children }: { children: ReactNode }) {

@@ -1,3 +1,4 @@
+import { stripTrailingUnclosedRawBlocks } from '@open-design/contracts';
 import { validateHtmlArtifact, isIncompleteHtmlDocumentShell } from './validate';
 import { hasSalvageableDeckSlideContent } from './deck-html-content';
 
@@ -216,9 +217,12 @@ export function normalizeBodyFirstHtmlDocument(content: string | null | undefine
   if (!startsWithBody && !startsWithSlide) return null;
   if (!hasSalvageableSlideContent(trimmed)) return null;
 
+  const cleaned = stripTrailingUnclosedRawBlocks(trimmed);
+  if (!hasSalvageableSlideContent(cleaned)) return null;
+
   const body = startsWithBody
-    ? `${trimmed.replace(/<\/html\s*>\s*$/i, '')}${HAS_BODY_CLOSE_RE.test(trimmed) ? '' : '</body>'}`
-    : `<body>${trimmed}${HAS_BODY_CLOSE_RE.test(trimmed) ? '' : '</body>'}`;
+    ? `${cleaned.replace(/<\/html\s*>\s*$/i, '')}${HAS_BODY_CLOSE_RE.test(cleaned) ? '' : '</body>'}`
+    : `<body>${cleaned}${HAS_BODY_CLOSE_RE.test(cleaned) ? '' : '</body>'}`;
   const html = `<!doctype html><html lang="ko">${body}${HAS_HTML_CLOSE_RE.test(body) ? '' : '</html>'}`;
   return validateHtmlArtifact(html).ok && hasSalvageableSlideContent(html) ? html : null;
 }
@@ -247,6 +251,11 @@ export function salvageTruncatedHtmlDocument(content: string | null | undefined)
   // (e.g. `<section class="sli`). Browsers forgive this, but closing
   // after an open `<` can confuse some parsers.
   out = out.replace(/<[^>]*$/, '');
+  // Drop trailing unclosed <script>/<style> (and close raw blocks truncated
+  // before <body>/slides) before appending document closers — otherwise
+  // salvage writes permanently preview-unstable HTML to disk.
+  out = stripTrailingUnclosedRawBlocks(out);
+  if (!hasSalvageableSlideContent(out)) return null;
 
   if (!HAS_BODY_CLOSE_RE.test(out)) {
     if (!/<body\b/i.test(out)) {

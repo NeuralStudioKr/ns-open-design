@@ -1,6 +1,7 @@
-import { defaultScenarioPluginIdForKind, type InstalledPluginRecord } from "@open-design/contracts";
+import { defaultScenarioPluginIdForKind, DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID, type InstalledPluginRecord } from "@open-design/contracts";
 import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from "../runtime/deckGuidance";
 import { listPluginsPage } from "../state/projects";
+import { resolveSlideOnlyCreatePluginId } from "./branding/slideOnlyMvpPolicy";
 import type { TeamverDriveImportAsset } from "./importDriveAssets";
 import {
   readTeamverDriveLaunchHandoff,
@@ -199,6 +200,54 @@ export function canvasCreateSlidesTurnMeta(
       pluginIds: id ? [id, ...priorPluginIds.filter((pluginId) => pluginId !== id)] : priorPluginIds,
       skillIds: id ? [id, ...priorSkillIds.filter((skillId) => skillId !== id)] : priorSkillIds,
     },
+  };
+}
+
+/**
+ * Slide-only embed: keep project creation on the deck scenario plugin while
+ * persisting the user's visual template choice in project metadata.
+ */
+export function buildSlideOnlyDeckTemplateCreateBinding(
+  template: Pick<TeamverCanvasSlideTemplateOption, "id" | "title">,
+  options: { slideOnlyMvp: boolean },
+): {
+  pluginId: string;
+  projectMetadata: {
+    kind: "deck";
+    skipDiscoveryBrief: true;
+    selectedDeckTemplateId?: string;
+    selectedDeckTemplateTitle?: string;
+  };
+  pluginInputsPatch: Record<string, unknown>;
+} {
+  const explicitTemplateId =
+    template.id.trim() && template.id !== CANVAS_CREATE_SLIDES_PLUGIN_ID
+      ? template.id
+      : null;
+  const pluginId = options.slideOnlyMvp
+    ? resolveSlideOnlyCreatePluginId(
+        explicitTemplateId ? DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID : template.id,
+        { slideOnlyMvp: true },
+      ) ?? CANVAS_CREATE_SLIDES_PLUGIN_ID
+    : template.id;
+  return {
+    pluginId,
+    projectMetadata: {
+      kind: "deck",
+      skipDiscoveryBrief: true,
+      ...(explicitTemplateId
+        ? {
+            selectedDeckTemplateId: explicitTemplateId,
+            selectedDeckTemplateTitle: template.title,
+          }
+        : {}),
+    },
+    pluginInputsPatch: explicitTemplateId
+      ? {
+          designSystem: template.title,
+          visualTemplate: template.title,
+        }
+      : {},
   };
 }
 

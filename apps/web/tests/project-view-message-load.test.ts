@@ -43,6 +43,20 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("isLocallyTerminalAssistantMessage(message)");
   });
 
+  it("replays terminal daemon success when no slide HTML was recovered during page leave", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("const shouldReplayTerminalSucceededDeliverable =");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 2600);
+
+    expect(block).toContain("slideOnlyMvp");
+    expect(block).toContain("status.status === 'succeeded'");
+    expect(block).toContain("!(message.producedFiles ?? []).some(isHtmlProjectFile)");
+    expect(block).toContain("&& !shouldReplayTerminalSucceededDeliverable");
+    expect(block).toContain("shouldReplayTerminalSucceededDeliverable\n          ||");
+    expect(source).toContain("initialLastEventId: needsFullReplay ? null : message.lastRunEventId ?? null");
+  });
+
   it("retries the API background stream probe after a transient failure", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("api background recovery stream probe skipped");
@@ -140,24 +154,31 @@ describe("ProjectView message loading", () => {
     expect(block).not.toContain("project.metadata?.kind === 'template' && tplId");
   });
 
+  it("injects selected deck template skillIds into daemon runs from project metadata", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("enrichChatSendMetaWithProjectDeckTemplate(meta, project.metadata)");
+    expect(source).toContain("resolveDeckTemplateSkillId(project.metadata, meta)");
+  });
+
   it("uses this turn's selected skillIds when composing API-mode prompts", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const signature = source.indexOf("skillIdOverride?: string | null");
     expect(signature).toBeGreaterThan(0);
-    const composeBlock = source.slice(signature, signature + 3200);
+    const composeBlock = source.slice(signature, signature + 3600);
 
     expect(composeBlock).toContain("const effectiveSkillId = skillIdOverride ?? project.skillId");
     expect(composeBlock).toContain("skills.find((s) => s.id === effectiveSkillId)");
     expect(composeBlock).toContain("await fetchDesignTemplate(effectiveSkillId)");
+    expect(composeBlock).toContain("selectedDeckTemplateMetadata(project.metadata)");
+    expect(composeBlock).toContain("pluginIdForLocalSkill !== selectedTemplate?.id");
 
     expect(composeBlock).toContain("await fetchPluginLocalSkill(pluginIdForLocalSkill)");
 
-    const callStart = source.indexOf("const effectiveSkillId =\n          (Array.isArray(meta?.skillIds)");
+    const callStart = source.indexOf("const effectiveSkillId = resolveDeckTemplateSkillId(project.metadata, meta)");
     expect(callStart).toBeGreaterThan(0);
-    const callBlock = source.slice(callStart, callStart + 1100);
-    expect(callBlock).toContain("meta.skillIds[0]");
-    expect(callBlock).toContain("meta?.context?.pluginIds");
-    expect(callBlock).toContain("pluginIdForLocalSkill");
+    const callBlock = source.slice(callStart, callStart + 1200);
+    expect(callBlock).toContain("resolveDeckTemplateSkillId(project.metadata, meta)");
+    expect(callBlock).toContain("resolveScenarioPluginIdForLocalSkill(");
     expect(callBlock).toContain("composedSystemPrompt(");
   });
 

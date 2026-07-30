@@ -88,6 +88,13 @@ describe("resolveTeamverLoginUrl (local dev / Plan B returnTo)", () => {
     );
   });
 
+  it("localhost API path returnTo is rewritten to origin root", () => {
+    setLocation("localhost", "/api/plugins/example-simple-deck");
+    expect(resolveTeamverLoginUrl()).toBe(
+      "https://stg.teamver.com/auth/signin?returnTo=https%3A%2F%2Flocalhost%2F",
+    );
+  });
+
   it("accepts explicit returnTo override on localhost", () => {
     setLocation("localhost");
     expect(resolveTeamverLoginUrl("https://localhost/deck/1")).toBe(

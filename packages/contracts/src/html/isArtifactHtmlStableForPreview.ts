@@ -19,9 +19,23 @@ function countTagBalance(html: string, openRe: RegExp, closeRe: RegExp): boolean
  * "loading…" even after refresh.
  */
 export function stripCommentsForArtifactTagBalance(html: string): string {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "");
+  // Closed HTML comments first.
+  let out = html.replace(/<!--[\s\S]*?-->/g, "");
+  // Inside closed <style> blocks: drop CSS comments so instructional
+  // "<style>" text and unterminated `/* …` tails cannot inflate open counts.
+  // Unterminated tails must stop before `</style>` so the closer still counts.
+  out = out.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, (block) =>
+    block
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\*[\s\S]*?(?=<\/style>)/gi, ""),
+  );
+  // Unclosed trailing <style>: scrub CSS comments on the open tail only.
+  out = out.replace(/<style\b[^>]*>(?![\s\S]*<\/style>)[\s\S]*$/i, (block) =>
+    block.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\*[\s\S]*$/g, ""),
+  );
+  // Remaining closed CSS comments outside style (rare prose/docs).
+  out = out.replace(/\/\*[\s\S]*?\*\//g, "");
+  return out;
 }
 
 /**
@@ -45,9 +59,13 @@ export function isArtifactHtmlStableForPreview(html: string): boolean {
   if (!countTagBalance(forBalance, /<math\b/gi, /<\/math>/gi)) return false;
 
   // Unclosed HTML comments leave the rest of the document inside a comment
-  // node in some parsers / paint oddly in others.
-  const commentOpens = (trimmed.match(/<!--/g) ?? []).length;
-  const commentCloses = (trimmed.match(/-->/g) ?? []).length;
+  // node in some parsers / paint oddly in others. Ignore `<!--` / `-->`
+  // that only appear inside closed <script>/<style> (JS/CSS string literals).
+  const outsideRawBlocks = trimmed
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+  const commentOpens = (outsideRawBlocks.match(/<!--/g) ?? []).length;
+  const commentCloses = (outsideRawBlocks.match(/-->/g) ?? []).length;
   if (commentOpens > commentCloses) return false;
 
   // Truncated void tags can appear outside <body> (e.g. after <head>) and still

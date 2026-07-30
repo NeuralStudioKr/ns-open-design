@@ -71,6 +71,116 @@ describe('message event persistence', () => {
     ]);
   });
 
+  it('preserves existing events when an upsert omits the events field', () => {
+    const db = openDatabase(tempDir, { dataDir: tempDir });
+    const now = Date.now();
+    insertProject(db, {
+      id: 'proj-1',
+      name: 'Keepalive project',
+      createdAt: now,
+      updatedAt: now,
+    });
+    insertConversation(db, {
+      id: 'conv-1',
+      projectId: 'proj-1',
+      title: 'Keepalive trim',
+      createdAt: now,
+      updatedAt: now,
+    });
+    upsertMessage(db, 'conv-1', {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'partial',
+      runId: 'agent-run-1',
+      runStatus: 'failed',
+      events: [
+        { kind: 'text', text: 'partial' },
+        {
+          kind: 'status',
+          label: 'error',
+          detail: 'Provider timeout',
+          code: 'timeout',
+        },
+      ],
+      startedAt: now,
+      endedAt: now + 1,
+    });
+
+    // Mimic a keepalive essentials trim that deleted `events` from the payload.
+    upsertMessage(db, 'conv-1', {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'partial',
+      runId: 'agent-run-1',
+      runStatus: 'failed',
+      startedAt: now,
+      endedAt: now + 1,
+    });
+
+    expect(listMessages(db, 'conv-1')[0]?.events).toEqual([
+      { kind: 'text', text: 'partial' },
+      {
+        kind: 'status',
+        label: 'error',
+        detail: 'Provider timeout',
+        code: 'timeout',
+      },
+    ]);
+  });
+
+  it('preserves existing events when an upsert sends an empty events array', () => {
+    const db = openDatabase(tempDir, { dataDir: tempDir });
+    const now = Date.now();
+    insertProject(db, {
+      id: 'proj-1',
+      name: 'Empty events project',
+      createdAt: now,
+      updatedAt: now,
+    });
+    insertConversation(db, {
+      id: 'conv-1',
+      projectId: 'proj-1',
+      title: 'Empty events',
+      createdAt: now,
+      updatedAt: now,
+    });
+    upsertMessage(db, 'conv-1', {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'done',
+      runStatus: 'failed',
+      events: [
+        {
+          kind: 'status',
+          label: 'error',
+          detail: 'Artifact rejected',
+          code: 'artifact_rejected',
+        },
+      ],
+      startedAt: now,
+      endedAt: now + 1,
+    });
+
+    upsertMessage(db, 'conv-1', {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'done',
+      runStatus: 'failed',
+      events: [],
+      startedAt: now,
+      endedAt: now + 1,
+    });
+
+    expect(listMessages(db, 'conv-1')[0]?.events).toEqual([
+      {
+        kind: 'status',
+        label: 'error',
+        detail: 'Artifact rejected',
+        code: 'artifact_rejected',
+      },
+    ]);
+  });
+
   it('appends agent events and mirrors text deltas into message content', () => {
     const db = openDatabase(tempDir, { dataDir: tempDir });
     const now = Date.now();

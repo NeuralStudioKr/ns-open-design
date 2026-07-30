@@ -33,6 +33,16 @@ export function appendTeamverAuthReturnTo(loginUrl: string, returnTo: string): s
 
 export function resolveTeamverLoginReturnTo(): string | null {
   if (typeof window === "undefined") return null;
+  try {
+    const url = new URL(window.location.href);
+    const path = url.pathname || "/";
+    // Never send Main FE back to daemon/API routes after sign-in.
+    if (path === "/api" || path.startsWith("/api/") || path.startsWith("/teamver-bff/")) {
+      return `${url.origin}/`;
+    }
+  } catch {
+    // fall through
+  }
   return window.location.href;
 }
 

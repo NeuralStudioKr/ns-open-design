@@ -6,7 +6,7 @@
 // that carries its own meaning without pixels (typed note / attached images) —
 // the retry warning is a dead end because retrying the same pipeline fails the
 // same way. Ink/box-only annotations still block: without the bitmap there is
-// nothing to send.
+// nothing to send. When iframe capture fails, marks-only export still sends the ink.
 
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -43,7 +43,36 @@ beforeEach(() => {
       bottom: 200,
       toJSON: () => ({}),
     } as DOMRect);
-  restoreRect = () => rectSpy.mockRestore();
+  const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => ({
+    beginPath: vi.fn(),
+    clearRect: vi.fn(),
+    drawImage: vi.fn(),
+    fillRect: vi.fn(),
+    fillText: vi.fn(),
+    lineCap: 'round',
+    lineJoin: 'round',
+    lineTo: vi.fn(),
+    lineWidth: 1,
+    measureText: vi.fn(() => ({ width: 0 })),
+    moveTo: vi.fn(),
+    restore: vi.fn(),
+    save: vi.fn(),
+    scale: vi.fn(),
+    setLineDash: vi.fn(),
+    stroke: vi.fn(),
+    strokeRect: vi.fn(),
+    fillStyle: '',
+    font: '',
+    strokeStyle: '',
+  }) as unknown as CanvasRenderingContext2D) as unknown as HTMLCanvasElement['getContext']);
+  const toBlobSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback: BlobCallback) => {
+    callback(new Blob(['png'], { type: 'image/png' }));
+  });
+  restoreRect = () => {
+    rectSpy.mockRestore();
+    getContextSpy.mockRestore();
+    toBlobSpy.mockRestore();
+  };
 });
 
 afterEach(() => {
@@ -89,13 +118,42 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
         detail: expect.objectContaining({
           action: 'send',
           note: 'This section is missing its bar chart.',
+          file: expect.any(File),
+        }),
+      });
+    } finally {
+      window.removeEventListener('opendesign:annotation', annotation);
+    }
+  });
+
+  it('prefixes the active slide when screenshot capture fails on a deck', async () => {
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
+    window.addEventListener('opendesign:annotation', annotation);
+
+    try {
+      const { container, getByRole, getByText } = render(
+        <PreviewDrawOverlay active captureViewport slideIndex={2}>
+          <iframe title="srcdoc" data-od-render-mode="srcdoc" />
+        </PreviewDrawOverlay>,
+      );
+
+      const input = container.querySelector<HTMLInputElement>('.preview-draw-note-input');
+      fireEvent.change(input!, { target: { value: 'Shrink this title' } });
+      fireEvent.click(getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1));
+      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
+        detail: expect.objectContaining({
+          note: 'Slide 3\nShrink this title',
           file: null,
         }),
       });
-      // The user is told the annotation went out without its screenshot.
       await waitFor(() =>
         expect(
-          getByText('Could not capture the preview. The annotation was sent without a screenshot.'),
+          getByText('Your note was sent with the slide number — no preview image attached.'),
         ).toBeTruthy(),
       );
     } finally {
@@ -103,13 +161,27 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     }
   });
 
-  it('still blocks a box-only annotation with no note when the snapshot fails', async () => {
-    const annotation = vi.fn();
+  it('sends a box-only mark as a marks-only image when the snapshot fails', async () => {
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
     window.addEventListener('opendesign:annotation', annotation);
 
     try {
-      const { container, getByRole, getByText } = render(
-        <PreviewDrawOverlay active>
+      const frameRect = {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        width: 320,
+        height: 200,
+        right: 320,
+        bottom: 200,
+        toJSON: () => ({}),
+      } as DOMRect;
+      const { container, getByRole } = render(
+        <PreviewDrawOverlay active captureFrameRect={() => frameRect}>
           <iframe title="srcdoc" data-od-render-mode="srcdoc" />
         </PreviewDrawOverlay>,
       );
@@ -120,12 +192,63 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
 
       fireEvent.click(getByRole('button', { name: 'Send' }));
 
-      await waitFor(() =>
-        expect(
-          getByText('Could not capture the preview. Try again to avoid sending only ink.'),
-        ).toBeTruthy(),
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1));
+      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
+        detail: expect.objectContaining({
+          action: 'send',
+          file: expect.any(File),
+        }),
+      });
+    } finally {
+      window.removeEventListener('opendesign:annotation', annotation);
+    }
+  });
+
+  it('does not block send on a slow captureSnapshot when marks-only is available', async () => {
+    const slowCapture = vi.fn(
+      () =>
+        new Promise<{ dataUrl: string; w: number; h: number } | null>((resolve) => {
+          window.setTimeout(() => resolve({ dataUrl: 'data:image/png;base64,abc', w: 320, h: 200 }), 10_000);
+        }),
+    );
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
+    window.addEventListener('opendesign:annotation', annotation);
+
+    try {
+      const frameRect = {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        width: 320,
+        height: 200,
+        right: 320,
+        bottom: 200,
+        toJSON: () => ({}),
+      } as DOMRect;
+      const { container, getByRole } = render(
+        <PreviewDrawOverlay active captureSnapshot={slowCapture} captureFrameRect={() => frameRect}>
+          <iframe title="srcdoc" data-od-render-mode="srcdoc" />
+        </PreviewDrawOverlay>,
       );
-      expect(annotation).not.toHaveBeenCalled();
+
+      const canvas = container.querySelector<HTMLCanvasElement>('canvas');
+      drawSelectionBox(canvas!);
+
+      const started = performance.now();
+      fireEvent.click(getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 5_000 });
+      expect(performance.now() - started).toBeLessThan(4_000);
+      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
+        detail: expect.objectContaining({
+          action: 'send',
+          file: expect.any(File),
+        }),
+      });
     } finally {
       window.removeEventListener('opendesign:annotation', annotation);
     }
