@@ -2290,6 +2290,21 @@ function injectDeckBridge(
     : `<style data-od-deck-fix>
 .stage, .deck-stage, .deck-shell { place-content: center !important; }
 </style>`;
+  // Belt-and-suspenders against agent CSS that re-shows inactive slides
+  // (e.g. `.slide.s-about { display:flex !important }` after the framework
+  // hide rule). Absolute-stacked slides then paint through transparent
+  // regions of the active slide — "ghost text in the background".
+  const inactiveSlideHideFix = `<style data-od-deck-inactive-hide>
+#deck-stage > .slide:not(.active):not(.is-active):not(.current),
+.deck-stage > .slide:not(.active):not(.is-active):not(.current),
+.deck-shell > .slide:not(.active):not(.is-active):not(.current),
+.deck > .slide:not(.active):not(.is-active):not(.current),
+body > .slide:not(.active):not(.is-active):not(.current) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+</style>`;
   const compactStackedBoot = isCompactStackedDeck
     ? `<script data-od-stacked-boot>document.documentElement.setAttribute('data-od-compact-stacked','');document.documentElement.style.overflow='hidden';</script>`
     : '';
@@ -2338,7 +2353,7 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
 }
 </style>`
     : '';
-  const styleFix = `${compactStackedBoot}${legacyDeckFix}${compactStackedDeckFix}`;
+  const styleFix = `${compactStackedBoot}${legacyDeckFix}${inactiveSlideHideFix}${compactStackedDeckFix}`;
   const script = `<script data-od-deck-bridge>(function(){
   var initialSlideIndex = ${safeInitialSlideIndex};
   var compactStackedDeckEnabled = ${isCompactStackedDeck ? 'true' : 'false'};
@@ -3160,17 +3175,25 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!el || !el.style) return;
     var parent = el.parentElement;
     var stacked = !!(parent && (parent.id === 'od-stacked-deck-stage' || parent.getAttribute('data-od-stacked-deck-stage') !== null));
-    if (stacked) {
-      if (visible) {
+    if (visible) {
+      if (stacked) {
+        // Stacked stage owns layout — force a flex box onto the active slide.
         el.style.setProperty('display', 'flex', 'important');
-        el.style.removeProperty('pointer-events');
       } else {
-        el.style.setProperty('display', 'none', 'important');
-        el.style.setProperty('pointer-events', 'none', 'important');
+        // Framework / class-toggle decks: clear any previous hide so author
+        // .active / variant classes (flex/grid/block) control layout.
+        el.style.removeProperty('display');
       }
+      el.style.removeProperty('pointer-events');
+      el.style.removeProperty('visibility');
       return;
     }
-    el.style.display = visible ? '' : 'none';
+    // Always hide with !important so agent display:flex !important rules
+    // on variant classes cannot keep inactive slides painted behind the
+    // active one.
+    el.style.setProperty('display', 'none', 'important');
+    el.style.setProperty('pointer-events', 'none', 'important');
+    el.style.setProperty('visibility', 'hidden', 'important');
   }
   function requestHostDeckViewport() {
     if (!compactStackedDeckEnabled && !frameworkDeckStage()) return;
@@ -3182,14 +3205,8 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!list.length) return false;
     var target = Math.max(0, Math.min(list.length - 1, i));
     var activeClass = activeClassName(list);
-    var stackedStage = stackedDeckStage();
-    var isStackedDeckSlideList = !!(stackedStage && list[0] && list[0].parentElement === stackedStage);
-    var usesInlineDisplay = false;
-    var usesInlineVisibility = false;
     var usesHidden = false;
     for (var j=0; j<list.length; j++) {
-      usesInlineDisplay = usesInlineDisplay || list[j].style.display === 'none';
-      usesInlineVisibility = usesInlineVisibility || list[j].style.visibility === 'hidden';
       usesHidden = usesHidden || list[j].hasAttribute('hidden');
     }
     for (var k=0; k<list.length; k++) {
@@ -3201,12 +3218,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
         if (k === target) list[k].removeAttribute('hidden');
         else list[k].setAttribute('hidden', '');
       }
-      if ((usesInlineDisplay || isStackedDeckSlideList) && list[k].style) {
-        setSlideDisplayed(list[k], k === target);
-      }
-      if (usesInlineVisibility && list[k].style) {
-        list[k].style.visibility = k === target ? '' : 'hidden';
-      }
+      // Always apply display hide/show. Framework decks used to rely only on
+      // author CSS slide:not(.active) display:none; agent overrides then
+      // left every absolute slide painted and ghost text bled through.
+      setSlideDisplayed(list[k], k === target);
     }
     updateDeckChrome(target, list.length);
     report();

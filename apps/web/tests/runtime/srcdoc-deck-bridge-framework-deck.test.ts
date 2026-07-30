@@ -62,9 +62,13 @@ function legacyDeckHtml(): string {
 describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
   it('skips the place-content fix when the deck carries the framework #deck-stage marker', () => {
     const out = buildSrcdoc(frameworkDeckHtml(), { deck: true });
-    expect(out).not.toMatch(/<style[^>]*data-od-deck-fix/);
+    expect(out).not.toMatch(/<style[^>]*data-od-deck-fix[^>]*>/);
     expect(out).not.toContain('place-content: center !important');
     expect(out).not.toMatch(/<style[^>]*data-od-deck-layout-guard/);
+    // Host still injects inactive-slide hide so agent CSS cannot bleed
+    // other slides through transparent regions of the active slide.
+    expect(out).toMatch(/<style[^>]*data-od-deck-inactive-hide/);
+    expect(out).toContain('#deck-stage > .slide:not(.active)');
     // The bridge script itself must still ship — the framework's own
     // fit() handles centering, but the host-side counter / keyboard
     // bridge still needs the slide-state postMessage channel.
@@ -80,6 +84,54 @@ describe('injectDeckBridge — framework-deck detection (#deck-stage)', () => {
     expect(out).toMatch(
       /if \(compactStackedDeckEnabled \|\| frameworkDeckStage\(\)\) requestHostDeckViewport\(\)/,
     );
+  });
+
+  it('hides inactive framework slides even when agent CSS forces display:flex !important', async () => {
+    const bodyHtml = [
+      '<style>',
+      '.slide { position: absolute; inset: 0; }',
+      '.slide:not(.active) { display: none !important; }',
+      // Equal-specificity later rule — the classic ghost-bleed author bug.
+      '.slide.s-mission { display: flex !important; }',
+      '</style>',
+      '<div class="deck-shell">',
+      '  <div class="deck-stage" id="deck-stage">',
+      '    <section class="slide active s-about"><div>ABOUT</div></section>',
+      '    <section class="slide s-mission"><div>세계에서 빛날 수 있도록 지원합니다.</div></section>',
+      '  </div>',
+      '</div>',
+    ].join('');
+    const srcdoc = buildSrcdoc(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
+      deck: true,
+    });
+    const match = srcdoc.match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/);
+    if (!match?.[1]) throw new Error('deck bridge script not found');
+    const styleMatch = srcdoc.match(/<style data-od-deck-inactive-hide>[\s\S]*?<\/style>/);
+    const dom = new JSDOM(
+      `<!doctype html><html><head>${styleMatch?.[0] ?? ''}</head><body>${bodyHtml}</body></html>`,
+      { runScripts: 'outside-only', pretendToBeVisual: true },
+    );
+    const win = dom.window;
+    Object.defineProperty(win, 'parent', {
+      configurable: true,
+      value: { postMessage: vi.fn() },
+    });
+    const evaluate = new win.Function(match[1]);
+    evaluate.call(win);
+    win.dispatchEvent(new win.Event('load'));
+    // restoreInitialSlide + repairOverlappingSlides settle on a timer.
+    await new Promise((r) => setTimeout(r, 280));
+
+    const slides = [...win.document.querySelectorAll('.slide')] as HTMLElement[];
+    expect(slides).toHaveLength(2);
+    // Host nav path must also pin inactive slides with !important hide.
+    win.postMessage({ type: 'od:slide', action: 'go', index: 0 }, '*');
+    await new Promise((r) => setTimeout(r, 80));
+    const inactive = slides[1]!;
+    expect(inactive.style.getPropertyValue('display')).toBe('none');
+    expect(inactive.style.getPropertyPriority('display')).toBe('important');
+    expect(win.getComputedStyle(inactive).display).toBe('none');
+    expect(inactive.textContent).toContain('세계에서 빛날');
   });
 
   it('keeps injecting the place-content fix for legacy / non-framework decks', () => {
