@@ -63,20 +63,27 @@ export function applyManualEditPatch(
       // with "Use the HTML tab" breaks Teamver comment edits.
       const leaf =
         (effectiveHint ? findLeafTextTargetByHint(doc, scope, effectiveHint) : null)
-        ?? findPrimaryLeafTextTarget(el);
-      if (!leaf) {
-        return { ok: false, source, error: 'This element contains nested markup. Use the HTML tab instead.' };
-      }
-      if (leaf !== el && el.contains(leaf)) {
-        // Drop leftover sibling text ("… <strong>X</strong> trailing") so a
-        // full-label rewrite does not leave stale copy beside the leaf.
-        for (const node of Array.from(el.childNodes)) {
-          if (node.nodeType === 3 && (node.textContent || '').trim()) {
-            node.textContent = '';
+        ?? findPrimaryLeafTextTarget(el, effectiveHint);
+      if (leaf) {
+        if (leaf !== el && el.contains(leaf)) {
+          // Drop leftover sibling text ("… <strong>X</strong> trailing") so a
+          // full-label rewrite does not leave stale copy beside the leaf.
+          for (const node of Array.from(el.childNodes)) {
+            if (node.nodeType === 3 && (node.textContent || '').trim()) {
+              node.textContent = '';
+            }
           }
         }
+        el = leaf;
+      } else if (onlyHasIgnorableInlineMarkup(el)) {
+        // Headings/labels that only use `<br>` for line breaks have no leaf
+        // element to patch. Flatten to the committed plain text instead of
+        // rejecting with "Use the HTML tab instead".
+        el.textContent = patch.value;
+        return { ok: true, source: serializeSource(doc, source) };
+      } else {
+        return { ok: false, source, error: 'This element contains nested markup. Use the HTML tab instead.' };
       }
-      el = leaf;
     }
     el.textContent = patch.value;
   } else if (patch.kind === 'set-link') {
@@ -1132,6 +1139,19 @@ function findElementByScopedPath(
 
 function hasElementChildren(el: Element): boolean {
   return Array.from(el.children).some((child) => child.nodeType === 1);
+}
+
+/** True when nested elements are only line breaks / empty wrappers — safe to flatten. */
+export function onlyHasIgnorableInlineMarkup(el: Element): boolean {
+  for (const child of Array.from(el.children)) {
+    if (child.nodeType !== 1) continue;
+    const tag = child.tagName.toLowerCase();
+    if (tag === 'br' || tag === 'wbr') continue;
+    const text = normalizeTextForCandidate(child.textContent || '');
+    if (!text && !hasElementChildren(child)) continue;
+    return false;
+  }
+  return true;
 }
 
 function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {

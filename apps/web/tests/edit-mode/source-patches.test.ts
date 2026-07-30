@@ -794,6 +794,26 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('data-od-id="title"');
   });
 
+  it('flattens br-only headings instead of rejecting nested markup', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h2 data-od-id="title">아이폰 시리즈 개요 및<br>발전 동향 보고서</h2>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'title', value: '아이폰 시리즈 개요 및 발전 동향 보고서' },
+      { slideIndex: 0 },
+    );
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain(
+      '<h2 data-od-id="title">아이폰 시리즈 개요 및 발전 동향 보고서</h2>',
+    );
+    expect(result.source).not.toContain('<br');
+  });
+
   it('still rejects text patches when nested leaves are ambiguous', () => {
     const source = [
       '<!doctype html><html><body>',

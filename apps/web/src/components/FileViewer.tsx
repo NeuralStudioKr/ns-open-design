@@ -6996,11 +6996,25 @@ function HtmlViewer({
         // drafts first or postMessage-only previews are lost on reload.
         void (async () => {
           if (!(await flushManualEditStyleSave())) return;
-          await applyManualEdit({
-            id: String(data.id),
-            kind: 'set-text',
-            value: String(data.value),
-          }, embedUiLabel('Edit text', '텍스트 편집'));
+          const targetId = String(data.id);
+          const target = selectedManualEditTarget?.id === targetId
+            ? selectedManualEditTarget
+            : manualEditTargets.find((item) => item.id === targetId) ?? null;
+          const slideIndex = effectiveDeck
+            ? htmlPreviewSlideState.get(previewStateKey)?.active
+            : undefined;
+          await applyManualEdit(
+            { id: targetId, kind: 'set-text', value: String(data.value) },
+            embedUiLabel('Edit text', '텍스트 편집'),
+            typeof slideIndex === 'number' ? { slideIndex } : undefined,
+            target
+              ? {
+                  id: target.id,
+                  currentText: target.fields.text ?? target.text,
+                  htmlHint: target.outerHtml,
+                }
+              : undefined,
+          );
         })();
         return;
       }
@@ -7269,6 +7283,7 @@ function HtmlViewer({
     patch: ManualEditPatch,
     label: string,
     scope?: { slideIndex?: number },
+    hint?: { id?: string; currentText?: string; htmlHint?: string; selector?: string },
   ): Promise<boolean> {
     if (manualEditSavingRef.current) return false;
     const baseSource = manualEditPatchBaseSource({
@@ -7281,7 +7296,12 @@ function HtmlViewer({
     setManualEditSaving(true);
     setManualEditError(null);
     try {
-      const result = applyManualEditPatch(baseSource, patch, scope);
+      const result = applyManualEditPatch(
+        baseSource,
+        patch,
+        { ...scope, targetHint: hint },
+        hint,
+      );
       if (!result.ok) {
         setManualEditError(
           result.error ?? embedUiLabel('Could not apply edit.', '편집을 적용하지 못했습니다.'),
