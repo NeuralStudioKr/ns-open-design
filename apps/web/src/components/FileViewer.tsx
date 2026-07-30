@@ -131,6 +131,10 @@ import {
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
 import {
+  clearActiveRevisionSequence,
+  setActiveRevisionSequence,
+} from '../runtime/revision-active-sequence';
+import {
   canRedoRevisionStack,
   canUndoRevisionStack,
   createRevisionStackSnapshot,
@@ -6562,13 +6566,22 @@ function HtmlViewer({
   const refreshRevisionStack = useCallback(async () => {
     const list = await listProjectFileRevisions(projectId, file.name);
     if (!list) return;
-    setRevisionStack((current) => createRevisionStackSnapshot(
-      list.revisions,
-      list.headRevisionId,
-      current.cursorRevisionId && list.revisions.some((revision) => revision.id === current.cursorRevisionId)
+    setRevisionStack((current) => {
+      const nextCursor = current.cursorRevisionId && list.revisions.some((revision) => revision.id === current.cursorRevisionId)
         ? current.cursorRevisionId
-        : list.headRevisionId,
-    ));
+        : list.headRevisionId;
+      const cursorRevision = list.revisions.find((revision) => revision.id === nextCursor);
+      if (cursorRevision) {
+        setActiveRevisionSequence(projectId, file.name, cursorRevision.sequence);
+      } else {
+        clearActiveRevisionSequence(projectId, file.name);
+      }
+      return createRevisionStackSnapshot(
+        list.revisions,
+        list.headRevisionId,
+        nextCursor,
+      );
+    });
   }, [projectId, file.name]);
 
   useEffect(() => {
@@ -7138,6 +7151,7 @@ function HtmlViewer({
         setManualEditFrozenSource(result.source);
       }
       setRevisionStack((current) => stackWithCursor(current, saved.revision.id));
+      setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       await refreshRevisionStack();
       setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
       if (patch.kind === 'set-text') {
@@ -7222,6 +7236,7 @@ function HtmlViewer({
       setInlinedSource(null);
       setManualEditFrozenSource(restoredSource);
       setRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+      setActiveRevisionSequence(projectId, file.name, target.sequence);
       setManualEditDraft((current) => ({ ...current, fullSource: restoredSource }));
       await onFileSaved?.();
     } finally {
@@ -7266,6 +7281,7 @@ function HtmlViewer({
       setInlinedSource(null);
       setManualEditFrozenSource(restoredSource);
       setRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+      setActiveRevisionSequence(projectId, file.name, target.sequence);
       setManualEditDraft((current) => ({ ...current, fullSource: restoredSource }));
       await onFileSaved?.();
     } finally {

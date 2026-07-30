@@ -41,9 +41,10 @@
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
-| `persistArtifact` 성공 시 push | [ ] | before/after capture |
-| AI 성공 toast “실행 취소” CTA | [ ] | |
-| scoped comment label (`deriveLabel`) | [ ] | |
+| `persistArtifact` 성공 시 push | [x] | `pushProjectFileRevision` |
+| AI 성공 toast “실행 취소” CTA | [x] | Toast action → restore parent revision |
+| scoped comment label (`deriveLabel`) | [x] | `deriveAgentRevisionLabel` |
+| active revision sequence bridge | [x] | `revision-active-sequence.ts` |
 
 ---
 

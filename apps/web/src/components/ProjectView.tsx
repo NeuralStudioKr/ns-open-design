@@ -125,6 +125,8 @@ import {
   fetchSkill,
   patchPreviewCommentStatus,
   projectRawUrl,
+  pushProjectFileRevision,
+  restoreProjectFileRevision,
   uploadProjectFiles,
   upsertPreviewComment,
   writeProjectTextFileDetailed,
@@ -139,7 +141,15 @@ import {
   type MemorySystemPromptResponse,
   type ResearchOptions,
 } from '@open-design/contracts';
-import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from '../runtime/deckGuidance';
+import { embedUiLabel } from '../teamver/embedUiLabels';
+import {
+  deriveAgentRevisionLabel,
+  mapArtifactTypeToRevisionSource,
+} from '../runtime/file-revision-agent';
+import {
+  getActiveRevisionSequence,
+  setActiveRevisionSequence,
+} from '../runtime/revision-active-sequence';
 import {
   anonymizeArtifactId,
   artifactKindToTracking,
@@ -2017,7 +2027,7 @@ function projectEventToAgentEvent(evt: ProjectEvent): LiveArtifactEventItem['eve
 }
 
 type ArtifactPersistResult =
-  | { kind: 'persisted'; fileName: string }
+  | { kind: 'persisted'; fileName: string; parentRevisionId?: string | null }
   | { kind: 'pointer'; fileName: string }
   | { kind: 'skipped-duplicate'; fileName: string }
   | { kind: 'skipped-incomplete'; fileName: string; reason?: string }
@@ -2326,6 +2336,8 @@ export function ProjectView({
     message: string;
     details: string | null;
     code?: string | null;
+    actionLabel?: string;
+    onAction?: () => void;
   } | null>(null);
   const [chatSeed, setChatSeed] = useState<{ id: string; value: string } | null>(null);
   const [autoAuditRepairSeed, setAutoAuditRepairSeed] =
@@ -4133,12 +4145,28 @@ export function ProjectView({
           reason: regression.reason,
         };
       }
-      const result = await writeProjectTextFileDetailed(
-        project.id,
-        fileName,
-        htmlBody,
-        { artifactManifest: manifest ?? undefined },
-      );
+      const result = ext === '.html'
+        ? await pushProjectFileRevision(
+          project.id,
+          fileName,
+          {
+            content: htmlBody,
+            source: mapArtifactTypeToRevisionSource(artifactToPersist.artifactType),
+            label: deriveAgentRevisionLabel(persistCommentAttachments, title),
+            artifactManifest: manifest ?? undefined,
+            conversationId: activeConversationId ?? undefined,
+            assistantMessageId: [...messagesRef.current]
+              .reverse()
+              .find((message) => message.role === 'assistant')?.id,
+            truncateAfterSequence: getActiveRevisionSequence(project.id, fileName),
+          },
+        )
+        : await writeProjectTextFileDetailed(
+          project.id,
+          fileName,
+          htmlBody,
+          { artifactManifest: manifest ?? undefined },
+        );
       if (result.ok) {
         const file = result.file;
         // A newer successful write supersedes any stashed replay for this
@@ -4162,7 +4190,37 @@ export function ProjectView({
         // sees it without an extra click. The Write-tool path already does
         // this for tool-emitted files; this handles the artifact-tag path.
         requestOpenFile(file.name);
-        return { kind: 'persisted', fileName: file.name };
+        if (ext === '.html' && 'revision' in result) {
+          setActiveRevisionSequence(project.id, file.name, result.revision.sequence);
+          if (result.revision.parentRevisionId) {
+            const parentRevisionId = result.revision.parentRevisionId;
+            const restoredFileName = file.name;
+            setProjectActionsToast({
+              message: embedUiLabel('AI edit saved', 'AI 편집을 저장했습니다'),
+              details: restoredFileName,
+              actionLabel: embedUiLabel('Undo', '실행 취소'),
+              onAction: () => {
+                void (async () => {
+                  const restored = await restoreProjectFileRevision(
+                    project.id,
+                    restoredFileName,
+                    parentRevisionId,
+                  );
+                  if (!restored.ok) return;
+                  const cursorRevision = restored.revision;
+                  setActiveRevisionSequence(project.id, restoredFileName, cursorRevision.sequence);
+                  setFilesRefresh((count) => count + 1);
+                  setProjectActionsToast(null);
+                })();
+              },
+            });
+          }
+        }
+        return {
+          kind: 'persisted',
+          fileName: file.name,
+          parentRevisionId: 'revision' in result ? result.revision.parentRevisionId : null,
+        };
       } else {
         // Clear the saved-artifact ref so the streaming layer can retry
         // the write (idempotent by fileName) once auth or the daemon
@@ -4235,7 +4293,7 @@ export function ProjectView({
         };
       }
     },
-    [project.id, project.designSystemId, project.skillId, project.metadata?.skipDiscoveryBrief, requestOpenFile, slideOnlyMvp],
+    [project.id, project.designSystemId, project.skillId, project.metadata?.skipDiscoveryBrief, requestOpenFile, slideOnlyMvp, activeConversationId],
   );
 
   // Auth-recovery replay: when the embed cookie is refreshed after a session
@@ -10873,6 +10931,10 @@ export function ProjectView({
             message={projectActionsToast.message}
             details={projectActionsToast.details}
             code={projectActionsToast.code}
+            actionLabel={projectActionsToast.actionLabel}
+            onAction={projectActionsToast.onAction}
+            tone={projectActionsToast.actionLabel ? 'success' : 'default'}
+            ttlMs={projectActionsToast.actionLabel ? 8000 : undefined}
             onDismiss={() => setProjectActionsToast(null)}
           />
         ) : null}
