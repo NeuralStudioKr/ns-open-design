@@ -5308,6 +5308,10 @@ function HtmlViewer({
   ));
   const revisionStackRef = useRef(revisionStack);
   revisionStackRef.current = revisionStack;
+  function commitRevisionStack(next: RevisionStackSnapshot) {
+    revisionStackRef.current = next;
+    setRevisionStack(next);
+  }
   const revisionSyncSuppressRef = useRef(false);
   const [manualEditError, setManualEditError] = useState<string | null>(null);
   const [manualEditSaving, setManualEditSaving] = useState(false);
@@ -6750,7 +6754,7 @@ function HtmlViewer({
     setManualEditPanelPosition(null);
     selectedManualEditTargetIdRef.current = null;
     setManualEditDraft(emptyManualEditDraft());
-    setRevisionStack(createRevisionStackSnapshot([], null));
+    commitRevisionStack(createRevisionStackSnapshot([], null));
     setManualEditError(null);
     setRevisionHistoryOpen(false);
     setRevisionStackInvalidated(false);
@@ -6788,8 +6792,7 @@ function HtmlViewer({
         list.headRevisionId,
         list.headRevisionId,
       );
-      revisionStackRef.current = resetStack;
-      setRevisionStack(resetStack);
+      commitRevisionStack(resetStack);
       const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
       if (head) {
         setActiveRevisionSequence(projectId, file.name, head.sequence);
@@ -6822,8 +6825,7 @@ function HtmlViewer({
         ? revisionStackRef.current.cursorRevisionId
         : list.headRevisionId,
     );
-    revisionStackRef.current = nextStack;
-    setRevisionStack(nextStack);
+    commitRevisionStack(nextStack);
     const cursorRevision = nextStack.revisions.find((revision) => revision.id === nextStack.cursorRevisionId);
     if (cursorRevision) {
       setActiveRevisionSequence(projectId, file.name, cursorRevision.sequence);
@@ -7516,7 +7518,7 @@ function HtmlViewer({
       if (patch.kind !== 'set-style') {
         queueMicrotask(() => activateManualEditPreviewHtml(result.source));
       }
-      setRevisionStack((current) => stackWithCursor(current, saved.revision.id));
+      commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
       setRevisionStackInvalidated(false);
@@ -7572,7 +7574,7 @@ function HtmlViewer({
     setSource(persisted!);
     sourceRef.current = persisted!;
     setInlinedSource(null);
-    setRevisionStack(createRevisionStackSnapshot([], null));
+    commitRevisionStack(createRevisionStackSnapshot([], null));
     manualEditPendingStyleRef.current = null;
     setManualEditDraft((current) => ({ ...current, fullSource: persisted! }));
     setManualEditError(message);
@@ -7612,7 +7614,7 @@ function HtmlViewer({
       pinManualEditSavedSource(restoredSource);
       setInlinedSource(null);
       setManualEditFrozenSource(restoredSource);
-      setRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+      commitRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
       setActiveRevisionSequence(projectId, file.name, target.sequence);
       setManualEditDraft((current) => ({ ...current, fullSource: restoredSource }));
       if (manualEditMode && !useUrlLoadPreview) {
@@ -7855,7 +7857,7 @@ function HtmlViewer({
       }
       setSource(next);
       sourceRef.current = next;
-      setRevisionStack((current) => stackWithCursor(current, saved.revision.id));
+      commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'inspect_save');
       setRevisionStackInvalidated(false);
