@@ -5642,7 +5642,12 @@ export function ProjectView({
           continue;
         }
 
-        if (!shouldReattachDaemonRunEvents(message, status)) {
+        const shouldReplayTerminalSucceededDeliverable =
+          slideOnlyMvp
+          && status.status === 'succeeded'
+          && !(message.producedFiles ?? []).some(isHtmlProjectFile);
+
+        if (!shouldReattachDaemonRunEvents(message, status) && !shouldReplayTerminalSucceededDeliverable) {
           if (isTerminalRunStatus(status.status) || isLocallyTerminalAssistantMessage(message)) {
             updateMessageById(
               message.id,
@@ -5686,14 +5691,19 @@ export function ProjectView({
           true,
         );
 
-        if (!isActiveRunStatus(status.status) && isTerminalRunStatus(status.status)) {
+        if (
+          !shouldReplayTerminalSucceededDeliverable
+          && !isActiveRunStatus(status.status)
+          && isTerminalRunStatus(status.status)
+        ) {
           completedReattachRunsRef.current.add(runId);
           scheduleConversationMessageRefresh(reattachConversationId);
           continue;
         }
 
         const needsFullReplay =
-          isActiveRunStatus(status.status) && shouldFullReplayReattachedRun(message);
+          shouldReplayTerminalSucceededDeliverable
+          || (isActiveRunStatus(status.status) && shouldFullReplayReattachedRun(message));
         const savedChars = (message.content ?? '').trim().length;
         if (
           isTeamverEmbedMode()

@@ -43,6 +43,20 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("isLocallyTerminalAssistantMessage(message)");
   });
 
+  it("replays terminal daemon success when no slide HTML was recovered during page leave", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const start = source.indexOf("const shouldReplayTerminalSucceededDeliverable =");
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 2600);
+
+    expect(block).toContain("slideOnlyMvp");
+    expect(block).toContain("status.status === 'succeeded'");
+    expect(block).toContain("!(message.producedFiles ?? []).some(isHtmlProjectFile)");
+    expect(block).toContain("&& !shouldReplayTerminalSucceededDeliverable");
+    expect(block).toContain("shouldReplayTerminalSucceededDeliverable\n          ||");
+    expect(source).toContain("initialLastEventId: needsFullReplay ? null : message.lastRunEventId ?? null");
+  });
+
   it("retries the API background stream probe after a transient failure", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const start = source.indexOf("api background recovery stream probe skipped");
