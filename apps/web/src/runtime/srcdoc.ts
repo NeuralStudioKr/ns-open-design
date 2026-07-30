@@ -336,6 +336,28 @@ function injectSnapshotBridge(doc: string): string {
     var stage = document.getElementById('deck-stage') || document.querySelector('.deck-stage');
     if (!stage) return null;
     var selector = '.slide, [data-slide], [data-screen-label], section.slide, .deck-slide, .ppt-slide';
+    var saved = {
+      stageTransform: stage.style.transform,
+      stageTransformPriority: stage.style.getPropertyPriority('transform'),
+      deckScale: document.documentElement.style.getPropertyValue('--deck-scale'),
+      deckScalePriority: document.documentElement.style.getPropertyPriority('--deck-scale'),
+      shells: [],
+      slides: []
+    };
+    document.querySelectorAll('.deck-shell').forEach(function(shell){
+      saved.shells.push({
+        el: shell,
+        padding: shell.style.padding,
+        priority: shell.style.getPropertyPriority('padding')
+      });
+    });
+    document.querySelectorAll(selector).forEach(function(slide){
+      saved.slides.push({
+        el: slide,
+        display: slide.style.display,
+        priority: slide.style.getPropertyPriority('display')
+      });
+    });
     try {
       stage.style.setProperty('transform', 'none', 'important');
       document.querySelectorAll('.deck-shell').forEach(function(shell){
@@ -350,7 +372,48 @@ function injectSnapshotBridge(doc: string): string {
         }
       });
     } catch (_) {}
-    return { w: 1920, h: 1080, docW: 1920, docH: 1080, scrollX: 0, scrollY: 0 };
+    return {
+      w: 1920,
+      h: 1080,
+      docW: 1920,
+      docH: 1080,
+      scrollX: 0,
+      scrollY: 0,
+      restore: function(){
+        try {
+          if (saved.stageTransformPriority) {
+            stage.style.setProperty('transform', saved.stageTransform, saved.stageTransformPriority);
+          } else if (saved.stageTransform) {
+            stage.style.transform = saved.stageTransform;
+          } else {
+            stage.style.removeProperty('transform');
+          }
+          if (saved.deckScalePriority) {
+            document.documentElement.style.setProperty('--deck-scale', saved.deckScale, saved.deckScalePriority);
+          } else if (saved.deckScale) {
+            document.documentElement.style.setProperty('--deck-scale', saved.deckScale);
+          } else {
+            document.documentElement.style.removeProperty('--deck-scale');
+          }
+          saved.shells.forEach(function(entry){
+            if (entry.priority) entry.el.style.setProperty('padding', entry.padding, entry.priority);
+            else if (entry.padding) entry.el.style.padding = entry.padding;
+            else entry.el.style.removeProperty('padding');
+          });
+          saved.slides.forEach(function(entry){
+            if (entry.priority) entry.el.style.setProperty('display', entry.display, entry.priority);
+            else if (entry.display) entry.el.style.display = entry.display;
+            else entry.el.style.removeProperty('display');
+          });
+        } catch (_) {}
+      }
+    };
+  }
+  var activeDeckSnapshotRestore = null;
+  function clearDeckSnapshotRestore(){
+    if (!activeDeckSnapshotRestore) return;
+    try { activeDeckSnapshotRestore(); } catch (_) {}
+    activeDeckSnapshotRestore = null;
   }
   function scrollOffset(){
     var doc = document.documentElement;
@@ -459,6 +522,7 @@ function injectSnapshotBridge(doc: string): string {
       return false;
     }
     if (settled) settled.done = true;
+    clearDeckSnapshotRestore();
     window.parent.postMessage({
       type: 'od:snapshot:result',
       id: id,
@@ -471,6 +535,7 @@ function injectSnapshotBridge(doc: string): string {
   function publishSnapshotError(id, settled, error){
     if (settled && settled.done) return;
     if (settled) settled.done = true;
+    clearDeckSnapshotRestore();
     window.parent.postMessage({ type: 'od:snapshot:result', id: id, error: error }, '*');
   }
   function drawSnapshotSourceToCanvas(source, w, h, dpr, bgColor){
@@ -572,11 +637,18 @@ function injectSnapshotBridge(doc: string): string {
     }
     renderSnapshotViaImage(id, svg, w, h, dpr, bgColor, settled);
   }
-  function renderSnapshotDom(id, settled, deckFrame, payload, w, h, dpr, bgColor){
+  function snapshotTargetDimensions(target){
+    var rect = target && target.getBoundingClientRect ? target.getBoundingClientRect() : null;
+    return {
+      w: Math.max(1, Math.round((rect && rect.width) || (target && target.clientWidth) || 1)),
+      h: Math.max(1, Math.round((rect && rect.height) || (target && target.clientHeight) || 1))
+    };
+  }
+  function renderSnapshotDom(id, settled, w, h, dpr){
     var target = document.getElementById('deck-stage') || document.querySelector('.deck-stage') || document.body;
     if (!target) return Promise.reject(new Error('snapshot target missing'));
     return ensureSnapshotDomCapture().then(function(capture){
-      return capture.domToPng(target, { scale: dpr, width: w, height: h });
+      return capture.domToPng(target, { scale: dpr, width: w, height: h, timeout: 4000 });
     }).then(function(dataUrl){
       if (settled && settled.done) return;
       settled.done = true;
@@ -591,16 +663,20 @@ function injectSnapshotBridge(doc: string): string {
   }
   function renderSnapshot(id){
     var settled = { done: false };
-    var deckFrame = prepareDeckSnapshotFrame();
-    var payload = buildSnapshotPayload(deckFrame);
-    var w = payload.w;
-    var h = payload.h;
-    var docW = payload.docW;
-    var docH = payload.docH;
     var dpr = window.devicePixelRatio || 1;
+    var target = document.getElementById('deck-stage') || document.querySelector('.deck-stage') || document.body;
+    var dims = snapshotTargetDimensions(target);
+    var w = dims.w;
+    var h = dims.h;
     var bgColor = snapshotBackgroundColor();
-    renderSnapshotDom(id, settled, deckFrame, payload, w, h, dpr, bgColor).catch(function(){
-      if (!settled.done) renderSnapshotLegacy(id, settled, deckFrame, payload, w, h, docW, docH, dpr, bgColor);
+    renderSnapshotDom(id, settled, w, h, dpr).catch(function(){
+      if (settled.done) return;
+      var deckFrame = prepareDeckSnapshotFrame();
+      activeDeckSnapshotRestore = deckFrame && deckFrame.restore ? deckFrame.restore : null;
+      var payload = buildSnapshotPayload(deckFrame);
+      var docW = payload.docW;
+      var docH = payload.docH;
+      renderSnapshotLegacy(id, settled, deckFrame, payload, payload.w, payload.h, docW, docH, dpr, bgColor);
     });
   }
   window.addEventListener('message', function(ev){

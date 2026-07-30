@@ -1037,6 +1037,9 @@ function waitForAnimationFrame(): Promise<void> {
 }
 
 function temporarilyExposeIframeForSnapshot(iframe: HTMLIFrameElement): () => void {
+  if (iframe.getAttribute('data-od-active') !== 'false') {
+    return () => {};
+  }
   const previousVisibility = iframe.style.visibility;
   const previousOpacity = iframe.style.opacity;
   const previousPointerEvents = iframe.style.pointerEvents;
@@ -1050,7 +1053,13 @@ function temporarilyExposeIframeForSnapshot(iframe: HTMLIFrameElement): () => vo
   };
 }
 
-async function requestPreviewSnapshotWithRetry(iframe: HTMLIFrameElement): Promise<Awaited<ReturnType<typeof requestPreviewSnapshot>>> {
+const ANNOTATION_SNAPSHOT_RETRY_MS = [600, 1200, 2000] as const;
+const EXPORT_SNAPSHOT_RETRY_MS = [1500, 3000, 6000] as const;
+
+async function requestPreviewSnapshotWithRetry(
+  iframe: HTMLIFrameElement,
+  timeouts: readonly number[] = EXPORT_SNAPSHOT_RETRY_MS,
+): Promise<Awaited<ReturnType<typeof requestPreviewSnapshot>>> {
   const timeouts = [1500, 3000, 6000];
   for (const timeout of timeouts) {
     const snapshot = await requestPreviewSnapshot(iframe, timeout);
@@ -8611,7 +8620,7 @@ function HtmlViewer({
       try {
         await ensureDeckSlideSyncedForSnapshot(srcDocIframe);
         await waitForAnimationFrame();
-        const srcDocSnapshot = await requestPreviewSnapshotWithRetry(srcDocIframe);
+        const srcDocSnapshot = await requestPreviewSnapshotWithRetry(srcDocIframe, ANNOTATION_SNAPSHOT_RETRY_MS);
         if (srcDocSnapshot) return srcDocSnapshot;
       } finally {
         restoreVisibility();

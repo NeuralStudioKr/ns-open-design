@@ -566,7 +566,7 @@ export function PreviewDrawOverlay({
     if (!iframe) return null;
     // Capture mode may still be swapping the srcDoc frame to full content when
     // the user submits, so retry with growing timeouts before giving up.
-    const timeouts = [1500, 3000, 6000];
+    const timeouts = [600, 1200, 2000];
     for (const timeout of timeouts) {
       const snapshot = await requestPreviewSnapshot(iframe, timeout);
       if (snapshot) return snapshot;

@@ -99,6 +99,9 @@ describe('buildSrcdoc', () => {
     expect(srcdoc).toContain('__odSnapshotDomCapture');
     expect(srcdoc).toContain('function renderSnapshotDom(');
     expect(srcdoc).toContain('capture.domToPng(target');
+    expect(srcdoc).toContain('function snapshotTargetDimensions(');
+    expect(srcdoc).toContain('clearDeckSnapshotRestore');
+    expect(srcdoc).toContain('activeDeckSnapshotRestore');
   });
 
   it('paints an opaque background before drawing so empty rasters never flatten to black', () => {
