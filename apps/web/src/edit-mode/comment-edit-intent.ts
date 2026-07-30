@@ -63,14 +63,28 @@ function significantTokens(text: string): string[] {
  * True when the user asked to change presentation (size, weight, color,
  * emphasis) without replacing the actual words.
  */
+const EXPLICIT_TEXT_CHANGE_SIGNAL =
+  /텍스트\s*(를|을)\s*['"“”「『]|(?:로|으로)\s*바꿔|(?:로|으로)\s*변경|삭제|제거|없애|지워|문구\s*변경|내용\s*변경|replace\s+with|rename|다르게\s*써/i;
+
 export function looksLikeStyleOnlyCommentRequest(instruction: string): boolean {
   const text = String(instruction ?? '').trim();
   if (!text) return false;
+  if (looksLikeMarkupLayoutCommentRequest(text)) return false;
   const styleSignals =
     /크게|작게|키워|글자|폰트|굵게|선명|눈에\s*띄|강조|크기|사이즈|가독|눈에\s*잘|font|bigger|larger|smaller|size|bold|emphas|highlight|visibility/i;
-  const textChangeSignals =
-    /텍스트\s*(를|을)\s*['"“”「『]|(?:로|으로)\s*바꿔|(?:로|으로)\s*변경|삭제|제거|없애|지워|문구\s*변경|내용\s*변경|replace\s+with|rename|다르게\s*써/i;
-  return styleSignals.test(text) && !textChangeSignals.test(text);
+  return styleSignals.test(text) && !EXPLICIT_TEXT_CHANGE_SIGNAL.test(text);
+}
+
+/**
+ * True when the user asked to change layout/wrapping (line breaks, single line)
+ * without replacing the actual words.
+ */
+export function looksLikeMarkupLayoutCommentRequest(instruction: string): boolean {
+  const text = String(instruction ?? '').trim();
+  if (!text) return false;
+  const layoutSignals =
+    /줄바꿈|한\s*줄|한줄|줄\s*맞|개행|엔터|wrap|line[-\s]?break|single\s*line|one\s*line|nowrap|no[-\s]?wrap|white[-\s]?space/i;
+  return layoutSignals.test(text) && !EXPLICIT_TEXT_CHANGE_SIGNAL.test(text);
 }
 
 export function targetTextContentPreserved(

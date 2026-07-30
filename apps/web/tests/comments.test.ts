@@ -754,6 +754,22 @@ describe('preview comment attachment helpers', () => {
     expect(template).not.toContain('요청한 새 텍스트');
   });
 
+  it('builds set-outer-html templates for layout-only comment requests', () => {
+    const template = buildConcreteElementPatchTemplate([
+      commentAttachment({
+        elementId: 'hero-title',
+        selector: '[data-od-id="hero-title"]',
+        slideIndex: 0,
+        label: 'h2',
+        comment: '줄바꿈 없이 한줄로 해줘',
+        currentText: 'AI를 모두의 기술로\n만드는 기업',
+      }),
+    ]);
+    expect(template).toContain('kind="set-outer-html"');
+    expect(template).toContain('한 줄 텍스트');
+    expect(template).not.toContain('kind="set-text"');
+  });
+
   it('does not build element-patch templates or coerce hints for page root targets', () => {
     const rootTarget = commentAttachment({
       elementId: 'dom:body',

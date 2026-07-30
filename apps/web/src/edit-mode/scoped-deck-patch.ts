@@ -1005,7 +1005,11 @@ function normalizeSlideStructure(slideHtml: string): string {
     .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '')
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/\s(?:class|style)\s*=\s*("[^"]*"|'[^']*')/gi, '')
-    .replace(/>\s+</g, '><')
+    // Layout-only edits (remove <br>, nowrap) should still count as
+    // presentation-only when the visible words are unchanged.
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
+    .toLowerCase();
 }
