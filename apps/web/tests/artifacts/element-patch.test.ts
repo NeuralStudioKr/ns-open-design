@@ -136,6 +136,34 @@ describe('applyElementPatches', () => {
     expect(applied.ok).toBe(false);
   });
 
+  it('applies set-outer-html even when the body has a style sibling root', () => {
+    // Repro: deck_patch_merge_failed — Replacement HTML must contain exactly
+    // one root element. Comment-edit models frequently emit <style>+element.
+    const parsed = parseElementPatch(
+      [
+        '<patch target-id="company-name" slide-index="0" kind="set-outer-html">',
+        '<style>.pop{font-weight:700;color:#ef4444}</style>',
+        '<h1 class="pop" data-od-id="company-name">Acme Corp</h1>',
+        '</patch>',
+      ].join(''),
+    );
+    expect(parsed.ok, parsed.ok ? '' : parsed.reason).toBe(true);
+    if (!parsed.ok) return;
+
+    const applied = applyElementPatches({
+      currentHtml: CURRENT_DECK,
+      patches: parsed.patches,
+      allowedSlideIndexes: [0],
+      allowedTargetIds: ['company-name'],
+    });
+    expect(applied.ok, JSON.stringify(applied)).toBe(true);
+    if (!applied.ok) return;
+    expect(applied.html).toContain('class="pop"');
+    expect(applied.html).toContain('data-od-id="company-name"');
+    expect(applied.html).toContain('Acme Corp');
+    expect(applied.html).toContain('<p>Subtitle</p>');
+  });
+
   it('applies page-level data-screen-label targets like "01 Cover"', () => {
     const deck = [
       '<!doctype html><html><body>',
