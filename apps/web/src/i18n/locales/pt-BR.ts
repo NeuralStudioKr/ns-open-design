@@ -2076,6 +2076,7 @@ export const ptBR: Dict = {
   'fileRevision.history.toggle': 'Edit history',
   'fileRevision.history.close': 'Close history',
   'fileRevision.history.current': 'Current',
+  'fileRevision.history.retentionHint': 'Showing the latest {count} saved edits per file.',
   'manualEdit.noChanges': 'Nenhuma edição manual ainda.',
   'manualEdit.imageUrl': 'URL da imagem',
   'manualEdit.altText': 'Texto alternativo',

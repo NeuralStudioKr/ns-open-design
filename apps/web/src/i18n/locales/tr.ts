@@ -2076,6 +2076,7 @@ export const tr: Dict = {
   'fileRevision.history.toggle': 'Edit history',
   'fileRevision.history.close': 'Close history',
   'fileRevision.history.current': 'Current',
+  'fileRevision.history.retentionHint': 'Showing the latest {count} saved edits per file.',
   'manualEdit.noChanges': 'Henüz manuel düzenleme yok.',
   'manualEdit.imageUrl': 'Görsel URL\'si',
   'manualEdit.altText': 'Alternatif metin',

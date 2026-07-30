@@ -158,6 +158,12 @@ import {
   revisionCursorMatchesDisk,
 } from '../runtime/revision-conflict';
 import {
+  clearRevisionContentCacheForFile,
+  getRevisionContentCache,
+  prefetchRevisionContents,
+  setRevisionContentCache,
+} from '../runtime/revision-content-cache';
+import {
   postDeckHostViewportToIframe,
   postDeckPreviewPanBy,
   resetDeckPreviewPan,
@@ -5315,6 +5321,7 @@ function HtmlViewer({
     setRevisionStack(next);
   }
   const revisionSyncSuppressRef = useRef(false);
+  const revisionSkipReconcileOnceRef = useRef(false);
   const [manualEditError, setManualEditError] = useState<string | null>(null);
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const manualEditSavingRef = useRef(false);
@@ -6757,12 +6764,22 @@ function HtmlViewer({
     selectedManualEditTargetIdRef.current = null;
     setManualEditDraft(emptyManualEditDraft());
     commitRevisionStack(createRevisionStackSnapshot([], null));
+    clearRevisionContentCacheForFile(projectId, file.name);
     setManualEditError(null);
     setRevisionHistoryOpen(false);
     setRevisionStackInvalidated(false);
     manualEditPendingStyleRef.current = null;
     clearManualEditStyleTimer();
   }, [file.name]);
+
+  const resolveRevisionSnapshotContent = useCallback(async (revisionId: string): Promise<string | null> => {
+    const cached = getRevisionContentCache(projectId, file.name, revisionId);
+    if (cached != null) return cached;
+    const response = await fetchProjectFileRevisionContent(projectId, file.name, revisionId);
+    if (response?.content == null) return null;
+    setRevisionContentCache(projectId, file.name, revisionId, response.content);
+    return response.content;
+  }, [projectId, file.name]);
 
   const reconcileRevisionWithDisk = useCallback(async () => {
     if (revisionSyncSuppressRef.current || manualEditSavingRef.current) return;
@@ -6772,12 +6789,12 @@ function HtmlViewer({
     if (!cursor) return;
     const cursorRevisionId = cursor.id;
 
-    const [disk, snapshot] = await Promise.all([
+    const [disk, snapshotContent] = await Promise.all([
       fetchProjectFileText(projectId, file.name, {
         cache: 'no-store',
         cacheBustKey: Date.now(),
       }),
-      fetchProjectFileRevisionContent(projectId, file.name, cursorRevisionId),
+      resolveRevisionSnapshotContent(cursorRevisionId),
     ]);
     if (
       revisionSyncSuppressRef.current
@@ -6787,8 +6804,8 @@ function HtmlViewer({
     ) {
       return;
     }
-    if (disk == null || snapshot == null) return;
-    if (revisionCursorMatchesDisk(revisionStackRef.current, disk, snapshot.content)) return;
+    if (disk == null || snapshotContent == null) return;
+    if (revisionCursorMatchesDisk(revisionStackRef.current, disk, snapshotContent)) return;
 
     setSource(disk);
     sourceRef.current = disk;
@@ -6809,8 +6826,8 @@ function HtmlViewer({
       const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
       if (head) {
         setActiveRevisionSequence(projectId, file.name, head.sequence);
-        const headSnapshot = await fetchProjectFileRevisionContent(projectId, file.name, head.id);
-        setRevisionStackInvalidated(headSnapshot != null && disk !== headSnapshot.content);
+        const headSnapshot = await resolveRevisionSnapshotContent(head.id);
+        setRevisionStackInvalidated(headSnapshot != null && disk !== headSnapshot);
       } else {
         clearActiveRevisionSequence(projectId, file.name);
         setRevisionStackInvalidated(true);
@@ -6825,7 +6842,7 @@ function HtmlViewer({
         '파일이 편집 기록 밖에서 변경되어 실행 취소 스택을 초기화했습니다.',
       ),
     );
-  }, [projectId, file.name]);
+  }, [projectId, file.name, resolveRevisionSnapshotContent]);
 
   const refreshRevisionStack = useCallback(async () => {
     const list = await listProjectFileRevisions(projectId, file.name);
@@ -6845,8 +6862,20 @@ function HtmlViewer({
     } else {
       clearActiveRevisionSequence(projectId, file.name);
     }
-    await reconcileRevisionWithDisk();
-  }, [projectId, file.name, reconcileRevisionWithDisk]);
+    const skipReconcile = revisionSkipReconcileOnceRef.current;
+    revisionSkipReconcileOnceRef.current = false;
+    if (!skipReconcile) {
+      await reconcileRevisionWithDisk();
+    }
+    const before = revisionBeforeCursor(revisionStackRef.current);
+    const after = revisionAfterCursor(revisionStackRef.current);
+    prefetchRevisionContents(
+      projectId,
+      file.name,
+      [before?.id, after?.id].filter((id): id is string => Boolean(id)),
+      (revisionId) => resolveRevisionSnapshotContent(revisionId),
+    );
+  }, [projectId, file.name, reconcileRevisionWithDisk, resolveRevisionSnapshotContent]);
 
   useEffect(() => {
     if (source === null) return;
@@ -7532,6 +7561,8 @@ function HtmlViewer({
         queueMicrotask(() => activateManualEditPreviewHtml(result.source));
       }
       commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
+      setRevisionContentCache(projectId, file.name, saved.revision.id, result.source);
+      revisionSkipReconcileOnceRef.current = true;
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
       setRevisionStackInvalidated(false);
@@ -7598,7 +7629,10 @@ function HtmlViewer({
   async function applyRestoredRevision(target: FileRevision): Promise<boolean> {
     revisionSyncSuppressRef.current = true;
     try {
-      const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
+      const [restored, restoredSource] = await Promise.all([
+        restoreProjectFileRevision(projectId, file.name, target.id),
+        resolveRevisionSnapshotContent(target.id),
+      ]);
       if (!restored.ok) {
         if (restored.status === 401) {
           notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
@@ -7614,25 +7648,30 @@ function HtmlViewer({
         );
         return false;
       }
-      const restoredSource = await fetchProjectFileText(projectId, file.name, {
-        cache: 'no-store',
-        cacheBustKey: Date.now(),
-      });
-      if (restoredSource == null) {
+      let sourceToApply = restoredSource;
+      if (sourceToApply == null) {
+        sourceToApply = await fetchProjectFileText(projectId, file.name, {
+          cache: 'no-store',
+          cacheBustKey: Date.now(),
+        });
+      }
+      if (sourceToApply == null) {
         setManualEditError(embedUiLabel('Could not load the restored file.', '복원한 파일을 불러오지 못했습니다.'));
         return false;
       }
-      setSource(restoredSource);
-      sourceRef.current = restoredSource;
-      pinManualEditSavedSource(restoredSource);
+      setRevisionContentCache(projectId, file.name, target.id, sourceToApply);
+      revisionSkipReconcileOnceRef.current = true;
+      setSource(sourceToApply);
+      sourceRef.current = sourceToApply;
+      pinManualEditSavedSource(sourceToApply);
       setInlinedSource(null);
-      setManualEditFrozenSource(restoredSource);
+      setManualEditFrozenSource(sourceToApply);
       commitRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
       setActiveRevisionSequence(projectId, file.name, target.sequence);
-      setManualEditDraft((current) => ({ ...current, fullSource: restoredSource }));
+      setManualEditDraft((current) => ({ ...current, fullSource: sourceToApply }));
       if (manualEditMode && !useUrlLoadPreview) {
         capturePreviewScrollPosition();
-        queueMicrotask(() => activateManualEditPreviewHtml(restoredSource));
+        queueMicrotask(() => activateManualEditPreviewHtml(sourceToApply));
       } else {
         setReloadKey((k) => k + 1);
       }
@@ -7871,6 +7910,8 @@ function HtmlViewer({
       setSource(next);
       sourceRef.current = next;
       commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
+      setRevisionContentCache(projectId, file.name, saved.revision.id, next);
+      revisionSkipReconcileOnceRef.current = true;
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'inspect_save');
       setRevisionStackInvalidated(false);

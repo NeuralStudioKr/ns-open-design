@@ -111,8 +111,9 @@ flowchart TB
 | **Undo 동작** | cursor를 이전 revision으로 이동 → `POST .../revisions/:id/restore` → 디스크 overwrite → 프리뷰 reload |
 | **Redo** | cursor를 다음 revision으로 이동 → 동일 restore |
 | **새로고침** | 서버 목록 재조회 → 스택 복원 가능 |
-| **스택 깊이** | **파일당 30개** (`FILE_REVISION_RETENTION_LIMIT`) — 초과 시 oldest prune (DB + 스냅샷 파일 삭제) |
+| **스택 깊이** | **파일당 30개** (기본, `FILE_REVISION_RETENTION_LIMIT_DEFAULT`) — `OD_FILE_REVISION_RETENTION_LIMIT` env로 조정; 초과 시 oldest prune (DB + 스냅샷 삭제) |
 | **서버 부하 (undo 시)** | restore마다 `writeProjectFile` + 스냅샷 read (gzip diff chain) |
+| **클라이언트 최적화 (2026-07-30)** | `revision-content-cache.ts` — restore 시 raw refetch 생략, save/restore 직후 reconcile skip, 인접 revision prefetch |
 | **통합 편집 경로** | manual_edit, inspect, agent_element_patch, agent_deck_patch, … 동일 스택 |
 | **CLI** | `od project revisions list|restore` (UI/CLI dual-track) |
 
@@ -122,7 +123,8 @@ flowchart TB
 |------|------|
 | Contract | `packages/contracts/src/api/revisions.ts` |
 | Daemon service | `apps/daemon/src/file-revisions/service.ts` |
-| Retention | `apps/daemon/src/file-revisions/persistence.ts` — `FILE_REVISION_RETENTION_LIMIT = 30` |
+| Retention | `apps/daemon/src/file-revisions/persistence.ts` — `resolveFileRevisionRetentionLimit()` |
+| Content cache | `apps/web/src/runtime/revision-content-cache.ts` |
 | Snapshot codec | `apps/daemon/src/file-revisions/snapshot-codec.ts` (gzip + prefix/suffix diff) |
 | Client stack | `apps/web/src/runtime/revision-stack.ts` |
 | 충돌 감지 | `apps/web/src/runtime/revision-conflict.ts`, `FileViewer.tsx` — `reconcileRevisionWithDisk` |

@@ -34,6 +34,14 @@
   flex-shrink: 0;
 }
 
+.retentionHint {
+  margin: 0;
+  padding: 8px 14px 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .list {
   margin: 0;
   padding: 8px;

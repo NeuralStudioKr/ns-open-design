@@ -2742,6 +2742,7 @@ export interface Dict {
   'fileRevision.history.toggle': string;
   'fileRevision.history.close': string;
   'fileRevision.history.current': string;
+  'fileRevision.history.retentionHint': string;
   'manualEdit.noChanges': string;
   'manualEdit.imageUrl': string;
   'manualEdit.altText': string;

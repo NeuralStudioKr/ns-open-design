@@ -2076,6 +2076,7 @@ export const ko: Dict = {
   'fileRevision.history.toggle': '편집 기록',
   'fileRevision.history.close': '기록 닫기',
   'fileRevision.history.current': '현재',
+  'fileRevision.history.retentionHint': '파일당 최근 {count}개의 편집만 보관됩니다.',
   'manualEdit.noChanges': '아직 수동 편집이 없습니다.',
   'manualEdit.imageUrl': '이미지 URL',
   'manualEdit.altText': '대체 텍스트',

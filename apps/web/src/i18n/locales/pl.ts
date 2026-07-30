@@ -2076,6 +2076,7 @@ export const pl: Dict = {
   'fileRevision.history.toggle': 'Edit history',
   'fileRevision.history.close': 'Close history',
   'fileRevision.history.current': 'Current',
+  'fileRevision.history.retentionHint': 'Showing the latest {count} saved edits per file.',
   'manualEdit.noChanges': 'Brak ręcznych zmian.',
   'manualEdit.imageUrl': 'URL obrazu',
   'manualEdit.altText': 'Tekst alternatywny',

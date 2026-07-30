@@ -55,6 +55,7 @@ describe('FileRevisionHistoryPanel', () => {
     );
 
     expect(screen.getByTestId('file-revision-history-item-2')).toBeTruthy();
+    expect(screen.getByTestId('file-revision-history-retention-hint')).toBeTruthy();
     fireEvent.click(screen.getByTestId('file-revision-restore-1'));
     expect(onRestore).toHaveBeenCalledWith(revisions[0]);
   });

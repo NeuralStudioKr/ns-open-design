@@ -1,7 +1,18 @@
 import type Database from 'better-sqlite3';
 import type { FileRevision, FileRevisionSource } from '@open-design/contracts';
+import { FILE_REVISION_RETENTION_LIMIT_DEFAULT } from '@open-design/contracts';
 
-export const FILE_REVISION_RETENTION_LIMIT = 30;
+export function resolveFileRevisionRetentionLimit(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env.OD_FILE_REVISION_RETENTION_LIMIT;
+  if (raw == null || raw.trim() === '') return FILE_REVISION_RETENTION_LIMIT_DEFAULT;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 2) return FILE_REVISION_RETENTION_LIMIT_DEFAULT;
+  return Math.min(parsed, 200);
+}
+
+export const FILE_REVISION_RETENTION_LIMIT = resolveFileRevisionRetentionLimit();
 
 export interface FileRevisionRow {
   id: string;

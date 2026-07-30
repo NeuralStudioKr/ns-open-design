@@ -61,3 +61,6 @@ export interface FileRevisionRestoreResponse {
 }
 
 export type FileRevisionDeleteResponse = OkResponse;
+
+/** Default max revisions retained per file; daemon may override via `OD_FILE_REVISION_RETENTION_LIMIT`. */
+export const FILE_REVISION_RETENTION_LIMIT_DEFAULT = 30;

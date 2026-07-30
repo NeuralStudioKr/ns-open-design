@@ -2076,6 +2076,7 @@ export const zhCN: Dict = {
   'fileRevision.history.toggle': '编辑历史',
   'fileRevision.history.close': '关闭历史',
   'fileRevision.history.current': '当前',
+  'fileRevision.history.retentionHint': '每个文件仅保留最近 {count} 条编辑记录。',
   'manualEdit.noChanges': '尚未进行手动修改。',
   'manualEdit.imageUrl': '图片 URL',
   'manualEdit.altText': '替代文本',

@@ -162,7 +162,7 @@ export type FileRevision = {
 - **Phase 4:** gzip 압축 + parent 대비 prefix/suffix diff (더 작을 때만 diff 선택)
 - sequence 1, 6, 11… 은 full checkpoint (`REVISION_FULL_SNAPSHOT_INTERVAL=5`)
 - legacy `{revisionId}.html` 은 읽기 호환만 유지; 신규 write는 `.snap.gz`만 생성
-- Retention: 파일당 최근 **30** revision (기본), 초과 시 oldest prune
+- Retention: 파일당 최근 **30** revision (기본), 초과 시 oldest prune — daemon `OD_FILE_REVISION_RETENTION_LIMIT` env로 조정 가능 ([50-2 §4.3](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md))
 
 ### 5.3 클라이언트 스택
 

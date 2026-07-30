@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FileRevision } from '@open-design/contracts';
+import { FILE_REVISION_RETENTION_LIMIT_DEFAULT } from '@open-design/contracts';
 import { Button } from '@open-design/components';
 import { useI18n } from '../i18n';
 import { revisionSourceIcon } from '../runtime/revision-source';
@@ -57,6 +58,11 @@ export function FileRevisionHistoryPanel({
           ×
         </Button>
       </header>
+      {ordered.length > 0 ? (
+        <p className={styles.retentionHint} data-testid="file-revision-history-retention-hint">
+          {t('fileRevision.history.retentionHint', { count: FILE_REVISION_RETENTION_LIMIT_DEFAULT })}
+        </p>
+      ) : null}
       {ordered.length === 0 ? (
         <div className={styles.empty} data-testid="file-revision-history-empty">
           {t('fileRevision.history.empty')}

@@ -2076,6 +2076,7 @@ export const fa: Dict = {
   'fileRevision.history.toggle': 'Edit history',
   'fileRevision.history.close': 'Close history',
   'fileRevision.history.current': 'Current',
+  'fileRevision.history.retentionHint': 'Showing the latest {count} saved edits per file.',
   'manualEdit.noChanges': 'هنوز هیچ ویرایش دستی‌ای انجام نشده است.',
   'manualEdit.imageUrl': 'URL تصویر',
   'manualEdit.altText': 'متن جایگزین',

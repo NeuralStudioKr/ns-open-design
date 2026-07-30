@@ -89,6 +89,9 @@
 | undo/redo + manual-edit regression tests | [x] |
 | daemon file-revisions tests | [x] |
 | nested markup (inline salvage + flattenNestedMarkup) | [x] |
+| revision content cache + reconcile skip + prefetch | [x] | `revision-content-cache.ts` |
+| `OD_FILE_REVISION_RETENTION_LIMIT` env | [x] | daemon `resolveFileRevisionRetentionLimit()` |
+| History panel retention hint | [x] | i18n `fileRevision.history.retentionHint` |
 
 ---
 

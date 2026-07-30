@@ -2076,6 +2076,7 @@ export const hu: Dict = {
   'fileRevision.history.toggle': 'Edit history',
   'fileRevision.history.close': 'Close history',
   'fileRevision.history.current': 'Current',
+  'fileRevision.history.retentionHint': 'Showing the latest {count} saved edits per file.',
   'manualEdit.noChanges': 'Még nincsenek kézi szerkesztések.',
   'manualEdit.imageUrl': 'Kép URL',
   'manualEdit.altText': 'Alternatív szöveg',

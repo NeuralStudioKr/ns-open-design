@@ -2076,6 +2076,7 @@ export const ru: Dict = {
   'fileRevision.history.toggle': 'Edit history',
   'fileRevision.history.close': 'Close history',
   'fileRevision.history.current': 'Current',
+  'fileRevision.history.retentionHint': 'Showing the latest {count} saved edits per file.',
   'manualEdit.noChanges': 'Ручных изменений пока нет.',
   'manualEdit.imageUrl': 'URL изображения',
   'manualEdit.altText': 'Замещающий текст',

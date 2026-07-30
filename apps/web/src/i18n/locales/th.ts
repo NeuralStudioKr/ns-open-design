@@ -2076,6 +2076,7 @@ export const th: Dict = {
   'fileRevision.history.toggle': 'Edit history',
   'fileRevision.history.close': 'Close history',
   'fileRevision.history.current': 'Current',
+  'fileRevision.history.retentionHint': 'Showing the latest {count} saved edits per file.',
   'manualEdit.noChanges': 'การใช้มือแก้ยังไม่มี',
   'manualEdit.imageUrl': 'จุดฝังภาพ (URL)',
   'manualEdit.altText': 'ตัวหนังสือข้อความลับ',

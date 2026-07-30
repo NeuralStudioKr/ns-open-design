@@ -2076,6 +2076,7 @@ export const ja: Dict = {
   'fileRevision.history.toggle': '編集履歴',
   'fileRevision.history.close': '履歴を閉じる',
   'fileRevision.history.current': '現在',
+  'fileRevision.history.retentionHint': 'ファイルごとに最新 {count} 件の編集のみ保持されます。',
   'manualEdit.noChanges': 'まだ手動編集はありません。',
   'manualEdit.imageUrl': '画像 URL',
   'manualEdit.altText': '代替テキスト',
