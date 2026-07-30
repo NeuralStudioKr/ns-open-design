@@ -158,6 +158,54 @@ describe('manual edit source patches', () => {
     expect(html).toContain('class="replacement"');
   });
 
+  it('salvages set-outer-html when model emits style sibling + matching root', () => {
+    // User-facing failure: deck_patch_merge_failed — Replacement HTML must
+    // contain exactly one root element. Models often pair a <style> block
+    // with the real replacement element for "make it stand out" edits.
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{font-size:40px;color:#ef4444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).toContain('class="hero-pop"');
+    expect(html).toContain('Original title');
+    expect(html).not.toContain('<style');
+  });
+
+  it('salvages set-outer-html when model emits multiple sibling roots by wrapping', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<span class="badge">NEW</span><strong>Original title</strong>',
+    });
+
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html.startsWith('<h1')).toBe(true);
+    expect(html).toContain('data-od-id="hero-title"');
+    expect(html).toContain('class="badge"');
+    expect(html).toContain('<strong>Original title</strong>');
+  });
+
+  it('salvages text-only set-outer-html bodies by wrapping in the original tag', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: 'Just plain text title',
+    });
+
+    expect(result.ok, result.error).toBe(true);
+    expect(readManualEditOuterHtml(result.source, 'hero-title')).toBe(
+      '<h1 data-od-id="hero-title">Just plain text title</h1>',
+    );
+  });
+
   it('replaces full source for snapshot-based undo history', () => {
     const source = '<!doctype html><html><body><h1 data-od-id="hero-title">Snapshot</h1></body></html>';
     const result = applyManualEditPatch(baseSource, { kind: 'set-full-source', source });

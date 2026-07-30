@@ -1087,9 +1087,14 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
 function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true } | { ok: false; error: string } {
   const template = doc.createElement('template');
   template.innerHTML = html.trim();
-  const elements = Array.from(template.content.children);
-  if (elements.length !== 1) return { ok: false, error: 'Replacement HTML must contain exactly one root element.' };
-  const next = elements[0]!;
+  // Models often emit set-outer-html bodies with sibling roots
+  // (`<style>…</style><h1>…</h1>`, badge + title, etc.). Strict
+  // "exactly one root" rejected those as deck_patch_merge_failed even
+  // when a clear primary replacement was present — salvage first.
+  const next = resolveSingleRootReplacementElement(doc, el, template);
+  if (!next) {
+    return { ok: false, error: 'Replacement HTML must contain exactly one root element.' };
+  }
   if (el.getAttribute('data-od-id') && !next.getAttribute('data-od-id')) {
     next.setAttribute('data-od-id', el.getAttribute('data-od-id') ?? '');
   }
@@ -1098,6 +1103,117 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
   }
   el.replaceWith(next);
   return { ok: true };
+}
+
+const NON_CONTENT_REPLACEMENT_TAGS = new Set([
+  'STYLE',
+  'SCRIPT',
+  'LINK',
+  'META',
+  'NOSCRIPT',
+  'TEMPLATE',
+]);
+
+/**
+ * Pick / synthesize a single root element for `set-outer-html`.
+ * Preference: identity match → unique same tag (ignoring style/script) →
+ * unique content root → best text overlap among same-tag → text-only wrap.
+ */
+function resolveSingleRootReplacementElement(
+  doc: Document,
+  el: Element,
+  template: HTMLTemplateElement,
+): Element | null {
+  const elements = Array.from(template.content.children);
+  if (elements.length === 1) return elements[0]!;
+
+  if (elements.length === 0) {
+    const text = (template.content.textContent ?? '').trim();
+    if (!text) return null;
+    const wrapper = doc.createElement(el.tagName.toLowerCase());
+    copyPreservableManualEditAttributes(el, wrapper);
+    wrapper.textContent = text;
+    return wrapper;
+  }
+
+  const odId = (el.getAttribute('data-od-id') || '').trim();
+  if (odId) {
+    const direct = elements.find((candidate) => candidate.getAttribute('data-od-id') === odId);
+    if (direct) return direct;
+    const escaped = cssQuotedAttrValue(odId);
+    for (const candidate of elements) {
+      try {
+        const nested = candidate.querySelector(`[data-od-id="${escaped}"]`);
+        if (nested) return nested;
+      } catch {
+        // Invalid selector characters — fall through.
+      }
+    }
+  }
+
+  const contentRoots = elements.filter(
+    (candidate) => !NON_CONTENT_REPLACEMENT_TAGS.has(candidate.tagName),
+  );
+  const pool = contentRoots.length > 0 ? contentRoots : elements;
+
+  const sameTag = pool.filter((candidate) => candidate.tagName === el.tagName);
+  if (sameTag.length === 1) return sameTag[0]!;
+  if (sameTag.length > 1) {
+    const currentText = (el.textContent ?? '').trim();
+    if (currentText) {
+      let best: Element | null = null;
+      let bestScore = -1;
+      for (const candidate of sameTag) {
+        const score = replacementTextOverlapScore(currentText, (candidate.textContent ?? '').trim());
+        if (score > bestScore) {
+          bestScore = score;
+          best = candidate;
+        }
+      }
+      if (best && bestScore > 0) return best;
+    }
+    return sameTag[0]!;
+  }
+
+  if (pool.length === 1) return pool[0]!;
+
+  // Model emitted sibling content roots with no tag/id match — wrap them
+  // as children of a clone of the original element so the edit still
+  // lands on the pinned target instead of failing the whole comment turn.
+  const wrapper = doc.createElement(el.tagName.toLowerCase());
+  copyPreservableManualEditAttributes(el, wrapper);
+  for (const node of Array.from(template.content.childNodes)) {
+    if (node.nodeType === 1 && NON_CONTENT_REPLACEMENT_TAGS.has((node as Element).tagName)) {
+      continue;
+    }
+    wrapper.appendChild(doc.importNode(node, true));
+  }
+  if (!wrapper.hasChildNodes()) return null;
+  return wrapper;
+}
+
+function copyPreservableManualEditAttributes(from: Element, to: Element): void {
+  for (const name of ['data-od-id', 'data-od-edit', 'data-od-label', 'class', 'style'] as const) {
+    const value = from.getAttribute(name);
+    if (value != null && value !== '' && !to.hasAttribute(name)) {
+      to.setAttribute(name, value);
+    }
+  }
+}
+
+function replacementTextOverlapScore(current: string, next: string): number {
+  if (!current || !next) return 0;
+  if (current === next) return current.length + 1000;
+  if (next.includes(current) || current.includes(next)) {
+    return Math.min(current.length, next.length);
+  }
+  const currentTokens = current.toLowerCase().split(/\s+/).filter(Boolean);
+  const nextLower = next.toLowerCase();
+  let hits = 0;
+  for (const token of currentTokens) {
+    if (token.length >= 2 && nextLower.includes(token)) hits += token.length;
+  }
+  return hits;
 }
 
 function setCssToken(doc: Document, token: string, value: string): boolean {
