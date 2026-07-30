@@ -6,6 +6,7 @@ import {
   exportMaxConcurrent,
   exportQueueMax,
   exportRuntimeStatsForTests,
+  prewarmExportBrowserPool,
   resetExportRuntimeForTests,
   runHeadlessExportJob,
 } from '../src/export-runtime.js';
@@ -112,5 +113,35 @@ describe('export runtime', () => {
     delete process.env.OD_EXPORT_QUEUE_MAX;
     expect(exportMaxConcurrent()).toBeGreaterThanOrEqual(1);
     expect(exportQueueMax()).toBeGreaterThanOrEqual(4);
+  });
+
+  it('prewarmExportBrowserPool seeds available browsers for the first export', async () => {
+    process.env.OD_EXPORT_BROWSER_POOL_SIZE = '2';
+    let launches = 0;
+    bindExportBrowserLauncher(async () => {
+      launches += 1;
+      return mockBrowser();
+    });
+
+    expect(await prewarmExportBrowserPool(2)).toBe(2);
+    expect(launches).toBe(2);
+    expect(exportRuntimeStatsForTests()).toMatchObject({
+      poolAvailable: 2,
+      poolTotal: 2,
+    });
+
+    // Re-prewarm is a no-op when the pool is already full to target.
+    expect(await prewarmExportBrowserPool(2)).toBe(0);
+    expect(launches).toBe(2);
+
+    let usedPooled = false;
+    await runHeadlessExportJob({ format: 'pdf', deck: false }, async () => {
+      usedPooled = true;
+      return Buffer.from('warm');
+    });
+    expect(usedPooled).toBe(true);
+    // Job reused a pooled browser — no third launch.
+    expect(launches).toBe(2);
+    expect(exportRuntimeStatsForTests().poolAvailable).toBe(2);
   });
 });

@@ -21,6 +21,9 @@ import {
 
 import {
   bindExportBrowserLauncher,
+  exportBrowserPoolSize,
+  exportBrowserPoolStats,
+  prewarmExportBrowserPool,
   runHeadlessExportJob,
   type ExportJobMeta,
 } from './export-runtime.js';
@@ -1972,12 +1975,12 @@ export function logChromiumAvailabilityAtBoot(): void {
 }
 
 /**
- * Actively probe headless Chromium at daemon startup. Runs
- * `launchChromium()` (with the same self-healing / retry pipeline the
- * export routes use) and immediately closes the browser. Emits a
- * structured `od_chromium_warmup` log so ops can verify PDF export is
- * functional the moment the container comes up, instead of discovering
- * a broken image only when a user clicks "PDF 다운로드".
+ * Actively probe headless Chromium at daemon startup and **seed the
+ * export browser pool** so the first user click does not pay cold launch.
+ *
+ * Previously this launched Chromium and immediately closed it — that
+ * verified the binary but left the pool empty, so the first PDF/PPTX/HTML
+ * export still cold-started (often 1–3s+, worse on busy hosts).
  *
  * Optional strict mode (`OD_CHROMIUM_BOOT_WARMUP=strict`) exits the
  * process with a non-zero code so the orchestrator restarts the pod;
@@ -1986,19 +1989,30 @@ export function logChromiumAvailabilityAtBoot(): void {
  *
  * Disable entirely with `OD_CHROMIUM_BOOT_WARMUP=off` (useful for unit
  * tests and CI environments where Chromium isn't available).
+ *
+ * How many browsers to keep warm: `OD_EXPORT_BOOT_PREWARM_COUNT` (default 1),
+ * capped by `OD_EXPORT_BROWSER_POOL_SIZE`.
  */
 export async function warmupHeadlessChromiumAtBoot(): Promise<void> {
   const mode = (process.env.OD_CHROMIUM_BOOT_WARMUP || '').trim().toLowerCase();
   if (mode === 'off' || mode === '0' || mode === 'false') return;
   const strict = mode === 'strict';
   const startedAt = Date.now();
-  let browser: Awaited<ReturnType<typeof launchChromium>> | null = null;
+  const rawCount = Number((process.env.OD_EXPORT_BOOT_PREWARM_COUNT ?? '').trim());
+  const prewarmTarget = Number.isFinite(rawCount) && rawCount >= 1
+    ? Math.floor(rawCount)
+    : 1;
   try {
-    browser = await launchChromium();
+    const warmed = await prewarmExportBrowserPool(prewarmTarget);
+    const stats = exportBrowserPoolStats();
     const elapsedMs = Date.now() - startedAt;
     console.info('[headless-export] boot: chromium warm-up ok', {
       marker: 'od_chromium_warmup',
       elapsedMs,
+      warmed,
+      poolAvailable: stats.poolAvailable,
+      poolTotal: stats.poolTotal,
+      poolSize: exportBrowserPoolSize(),
     });
   } catch (err) {
     const elapsedMs = Date.now() - startedAt;
@@ -2021,22 +2035,12 @@ export async function warmupHeadlessChromiumAtBoot(): Promise<void> {
       // supervisors that inspect codes.
       process.exit(78);
     }
-    return;
-  } finally {
-    if (browser) {
-      try {
-        await browser.close();
-      } catch {
-        // Best-effort: an already-dying browser is fine, we care about
-        // the launch signal, not the teardown path.
-      }
-    }
   }
 }
 
 bindExportBrowserLauncher(() => launchChromium());
 logChromiumAvailabilityAtBoot();
 // Fire-and-forget: the warm-up promise must not block module import.
-// It's harmless to have export routes handle an in-flight warm-up
-// because launchChromium is called per-export anyway.
+// Export routes that race an in-flight warm-up still work — they either
+// reuse a just-seeded pool browser or launch one of their own.
 void warmupHeadlessChromiumAtBoot();

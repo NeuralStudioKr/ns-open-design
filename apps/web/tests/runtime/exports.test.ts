@@ -1559,22 +1559,31 @@ describe('exportProjectAsPptx', () => {
     expect(capturedFilename).toBe('Seed-Deck.pptx');
   });
 
-  it('does not retry PPTX export when the daemon queue is full', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(
-      JSON.stringify({ error: { code: 'EXPORT_QUEUE_FULL', message: 'export queue full — retry shortly' } }),
-      { headers: { 'content-type': 'application/json' }, status: 503 },
-    )));
+  it('retries PPTX export when the daemon queue is full, then surfaces ExportQueueFullError', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(
+        JSON.stringify({ error: { code: 'EXPORT_QUEUE_FULL', message: 'export queue full — retry shortly' } }),
+        { headers: { 'content-type': 'application/json' }, status: 503 },
+      )));
 
-    await expect(exportProjectAsPptx({
-      deck: true,
-      projectId: 'proj-1',
-      filePath: 'deck/index.html',
-      title: 'Seed Deck',
-      htmlSnapshot: '<!doctype html><section class="slide">A</section>',
-      requireRenderedExport: true,
-    })).rejects.toBeInstanceOf(ExportQueueFullError);
+      const pending = exportProjectAsPptx({
+        deck: true,
+        projectId: 'proj-1',
+        filePath: 'deck/index.html',
+        title: 'Seed Deck',
+        htmlSnapshot: '<!doctype html><section class="slide">A</section>',
+        requireRenderedExport: true,
+      });
+      const expectation = expect(pending).rejects.toBeInstanceOf(ExportQueueFullError);
+      await vi.runAllTimersAsync();
+      await expectation;
 
-    expect(fetch).toHaveBeenCalledTimes(1);
+      // [0, 800, 1600] → 3 attempts against a still-full queue.
+      expect(fetch).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
