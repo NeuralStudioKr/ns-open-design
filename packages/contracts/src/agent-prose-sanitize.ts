@@ -651,6 +651,16 @@ const LEAKED_COMPACT_DECK_NAV_IIFE_RE = new RegExp(
   "gi",
 );
 
+/**
+ * Closed-form for truncated-then-completed compact arrow/touch nav that never
+ * mentions `.slide` / deck-stage — e.g. a mid-script leak that later closed
+ * with `})();` in the same prose blob.
+ */
+const LEAKED_COMPACT_ARROW_NAV_TAIL_RE = new RegExp(
+  `(?:^|\\n)\\s*document\\.addEventListener\\(['"]keydown['"]\\s*,\\s*e\\s*=>\\s*\\{(?=[\\s\\S]{0,4000}?ArrowRight)[\\s\\S]{0,12000}${DECK_IIFE_STRICT_CLOSE_TAIL}`,
+  "gi",
+);
+
 const LEAKED_DECK_NAV_SCRIPT_STORE_RE = new RegExp(
   `(?:^|\\n)\\s*var\\s+STORE\\s*=\\s*['"]deck:idx:[^'"]*['"][\\s\\S]{0,20000}${DECK_IIFE_CLOSE_TAIL}`,
   "gi",
@@ -704,6 +714,15 @@ const OPEN_DECK_NAV_SCRIPT_RE_LIST = [
   /(?:^|\n)\s*else\s+if\s*\(\s*e\.key\s*===\s*['"]End['"]\s*\)\s*\{\s*e\.preventDefault\(\)\s*;\s*go\(slides\.length\s*-\s*1\)/i,
   /(?:^|\n)\s*window\.addEventListener\(['"]keydown['"]\s*,\s*onKey\s*,\s*true\)\s*;?/i,
   /(?:^|\n)\s*document\.addEventListener\(['"]keydown['"]\s*,\s*onKey\s*,\s*true\)\s*;?/i,
+  // Truncated compact nav: bare `document.addEventListener('keydown', e=>{…`
+  // without deck-stage / querySelectorAll anchors (end_turn mid-script).
+  /(?:^|\n)\s*document\.addEventListener\(['"]keydown['"]\s*,\s*(?:onKey|e\s*=>)/i,
+  /(?:^|\n)\s*(?:window|document)\.addEventListener\(['"](?:touchstart|touchend|wheel)['"]/i,
+  /(?:^|\n)\s*if\s*\(\s*e\.key\s*===\s*['"]ArrowRight['"]\s*\|\|\s*e\.key\s*===\s*['"]ArrowDown['"]/i,
+  /(?:^|\n)\s*if\s*\(\s*e\.key\s*===\s*['"]ArrowRight['"]\s*\|\|\s*e\.key\s*===\s*['"]ArrowLeft['"]/i,
+  // Broken IIFE remnant that agents stream after a dropped opener:
+  // `(\n  }\n  document.addEventListener('keydown', …`
+  /(?:^|\n)\s*\(\s*\n?\s*\}\s*\n?\s*document\.addEventListener\(['"]keydown['"]/i,
   /(?:^|\n)\s*if\s*\(\s*prev\s*\)\s*prev\.addEventListener\(['"]click['"]\s*,\s*function\s*\(\s*\)\s*\{\s*go\(idx\s*-\s*1\)/i,
   /(?:^|\n)\s*if\s*\(\s*next\s*\)\s*next\.addEventListener\(['"]click['"]\s*,\s*function\s*\(\s*\)\s*\{\s*go\(idx\s*\+\s*1\)/i,
   /(?:^|\n)\s*document\.body\.setAttribute\(['"]tabindex['"]\s*,\s*['"]-1['"]\)\s*;?/i,
@@ -1103,6 +1122,7 @@ export function sanitizeLeakedAgentProse(
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_PREV_BODY_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_TAIL_RE, "");
   out = out.replace(LEAKED_COMPACT_DECK_NAV_IIFE_RE, "");
+  out = out.replace(LEAKED_COMPACT_ARROW_NAV_TAIL_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_STORE_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_MANGLED_IIFE_RE, "");
   out = stripOrphanCloseTagFamilies(out, LEAKED_AGENT_PROSE_TAG_NAMES);

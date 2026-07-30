@@ -404,6 +404,33 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(out).not.toContain("ArrowRight");
   });
 
+  it("strips truncated compact keydown/touchstart nav without .slide anchors", () => {
+    // end_turn mid-<script>: chat only sees the broken handler tail — no
+    // querySelectorAll / deck-stage opener for the classic scrub to latch onto.
+    const visibleProse = "덱을 만들었습니다.";
+    const leaked = [
+      "document.addEventListener('keydown', e=>{",
+      "  if(e.key==='ArrowRight'||e.key==='ArrowDown'||e.key===' ') go(curX=0;",
+      "document.addEventListener('touchstart', e=>startX=e.touches[0].clientX,",
+    ].join("\n");
+
+    for (const streaming of [true, false]) {
+      const out = sanitizeAssistantProseForDisplay(`${visibleProse}\n${leaked}`, { streaming });
+      expect(out).toBe(visibleProse);
+      expect(out).not.toContain("addEventListener");
+      expect(out).not.toContain("ArrowRight");
+      expect(out).not.toContain("touchstart");
+    }
+
+    const brokenOpener = [
+      "(",
+      "  }",
+      "  document.addEventListener('keydown', e=>{",
+      "    if(e.key==='ArrowRight'||e.key==='ArrowDown'||e.key===' ') go(curX=0;",
+    ].join("\n");
+    expect(sanitizeAssistantProseForDisplay(`${visibleProse}\n${brokenOpener}`)).toBe(visibleProse);
+  });
+
   it("strips leaked deck navigation script prose while preserving trailing user prose", () => {
     const visibleProse = "요청하신 덱 초안을 바로 만들겠습니다.";
     const input = [

@@ -51,12 +51,56 @@ function stripLeakedViewportFragments(doc: string): string {
   return out;
 }
 
+const TRAILING_RAW_BLOCK_OPEN_RE = /<(script|style)\b(?![^>]*\/>)[^>]*>/gi;
+const TRAILING_DOCUMENT_CLOSERS_RE = /((?:\s*<\/body\s*>)?(?:\s*<\/html\s*>)?)\s*$/i;
+
+/**
+ * Drop a trailing unclosed `<script>` / `<style>` that agents leave when
+ * `end_turn` lands mid-block. Slides are usually already complete; the open
+ * raw block alone keeps `isArtifactHtmlStableForPreview` false forever
+ * (preview stuck on "loading…"). Preserve any salvage-appended
+ * `</body></html>` closers after the cut point.
+ *
+ * Intact closed scripts/styles are left alone. Mid-stream docs without
+ * document closers stay incomplete after the strip, so the stable gate
+ * still rejects them until the turn finishes or salvage closes them.
+ */
+export function stripTrailingUnclosedRawBlocks(html: string): string {
+  if (!html) return html;
+
+  TRAILING_RAW_BLOCK_OPEN_RE.lastIndex = 0;
+  let lastOpen: { index: number; tag: string; openEnd: number } | null = null;
+  let match: RegExpExecArray | null;
+  while ((match = TRAILING_RAW_BLOCK_OPEN_RE.exec(html)) !== null) {
+    const tag = String(match[1] ?? "").toLowerCase();
+    if (tag !== "script" && tag !== "style") continue;
+    lastOpen = {
+      index: match.index,
+      tag,
+      openEnd: match.index + match[0].length,
+    };
+  }
+  if (!lastOpen) return html;
+
+  const closeRe = new RegExp(`</${lastOpen.tag}\\s*>`, "i");
+  if (closeRe.test(html.slice(lastOpen.openEnd))) return html;
+
+  const suffix = html.slice(lastOpen.index);
+  const closersMatch = TRAILING_DOCUMENT_CLOSERS_RE.exec(suffix);
+  const preservedClosers = closersMatch?.[1] ?? "";
+  const before = html.slice(0, lastOpen.index).replace(/[ \t]+$/u, "").replace(/\n{3,}$/u, "\n\n");
+  return `${before}${preservedClosers}`;
+}
+
 export function repairArtifactDocumentHead(html: string): string {
   if (!html) return html;
 
   let doc = stripLeakedViewportFragments(html);
   doc = stripArtifactPreviewBodyTextLeaks(doc);
-  if (!/<head/i.test(doc)) return repairMangledDeckFrameworkScript(doc);
+  if (!/<head/i.test(doc)) {
+    doc = repairMangledDeckFrameworkScript(doc);
+    return stripTrailingUnclosedRawBlocks(doc);
+  }
 
   doc = doc.replace(
     CORRUPTED_HEAD_VIEWPORT_CAPTURE_RE,
@@ -82,5 +126,6 @@ export function repairArtifactDocumentHead(html: string): string {
 
   doc = stripLeakedViewportFragments(doc);
   doc = stripArtifactPreviewBodyTextLeaks(doc);
-  return repairMangledDeckFrameworkScript(doc);
+  doc = repairMangledDeckFrameworkScript(doc);
+  return stripTrailingUnclosedRawBlocks(doc);
 }

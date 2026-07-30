@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { repairArtifactDocumentHead } from "../src/html/repairArtifactDocumentHead.js";
+import { isArtifactHtmlStableForPreview } from "../src/html/isArtifactHtmlStableForPreview.js";
+import {
+  repairArtifactDocumentHead,
+  stripTrailingUnclosedRawBlocks,
+} from "../src/html/repairArtifactDocumentHead.js";
 import { DECK_SKELETON_HTML } from "../src/prompts/deck-framework.js";
 
 const HERMES_CORRUPT = `<!doctype html>
@@ -131,5 +135,60 @@ name="viewport" content="width=device-width, initial-scale=1" />
     expect(out).toContain("@import url('https://fonts.googleapis.com/css2')");
     expect(out).not.toMatch(/<body>\s*-width/i);
     expect(out).toContain('<section class="slide active s-cover">A</section>');
+  });
+
+  it("strips trailing unclosed script so salvaged decks become preview-stable", () => {
+    // Model finishes all slides then end_turn mid-nav <script>. Salvage may
+    // append </body></html> after the broken block — tag-balance still fails
+    // until the unclosed script is dropped.
+    const html = `<!doctype html><html lang="ko"><body style="margin:0">
+<section class="slide" style="background:#0f172a"><h1>Cover</h1></section>
+<section class="slide" style="background:#FAFAFA"><h2>Overview</h2></section>
+<script>
+(
+  }
+  document.addEventListener('keydown', e=>{
+    if(e.key==='ArrowRight'||e.key==='ArrowDown'||e.key===' ') go(curX=0;
+  document.addEventListener('touchstart', e=>startX=e.touches[0].clientX,
+</body></html>`;
+
+    expect(isArtifactHtmlStableForPreview(html)).toBe(false);
+    const out = repairArtifactDocumentHead(html);
+    expect(out).toContain('<section class="slide"');
+    expect(out).toContain("Cover");
+    expect(out).toContain("Overview");
+    expect(out).not.toMatch(/<script\b/i);
+    expect(out).not.toContain("ArrowRight");
+    expect(out).toMatch(/<\/body>\s*<\/html>\s*$/i);
+    expect(isArtifactHtmlStableForPreview(out)).toBe(true);
+  });
+
+  it("does not strip intact closed navigation scripts", () => {
+    const html = `<!doctype html><html><head><title>T</title></head><body>
+<section class="slide">A</section>
+<script>
+(function(){
+  const slides=document.querySelectorAll('.slide');
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'){/* next */}
+  });
+})();
+</script>
+</body></html>`;
+    const out = repairArtifactDocumentHead(html);
+    expect(out).toContain("<script>");
+    expect(out).toContain("querySelectorAll('.slide')");
+    expect(out).toContain("</script>");
+    expect(isArtifactHtmlStableForPreview(out)).toBe(true);
+  });
+
+  it("stripTrailingUnclosedRawBlocks preserves mid-stream incompleteness without document closers", () => {
+    const streaming = `<!doctype html><html><body><section class="slide">A</section>
+<script>
+(function(){ const slides=document.querySelectorAll('.slide');`;
+    const out = stripTrailingUnclosedRawBlocks(streaming);
+    expect(out).toContain('<section class="slide">A</section>');
+    expect(out).not.toContain("<script>");
+    expect(isArtifactHtmlStableForPreview(out)).toBe(false);
   });
 });
