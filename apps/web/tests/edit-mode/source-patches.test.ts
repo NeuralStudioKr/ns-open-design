@@ -794,15 +794,51 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('data-od-id="title"');
   });
 
-  it('still rejects text patches when nested leaves are ambiguous', () => {
+  it('salvages ambiguous inline-only wrappers by rewriting their inner text', () => {
+    // `<h1><span>Alpha</span><span>Beta</span></h1>` used to reject with
+    // "Use the HTML tab" — real Teamver decks hit this constantly (badge +
+    // label spans, gradient wrappers, etc.). Inline-only children mean the
+    // user's edit can safely replace inner HTML with the escaped text.
     const source = [
       '<!doctype html><html><body>',
-      '<div data-od-id="pair"><span>Alpha</span><span>Beta</span></div>',
+      '<h1 data-od-id="pair"><span>Alpha</span> <span>Beta</span></h1>',
       '</body></html>',
     ].join('');
-    const result = applyManualEditPatch(source, { kind: 'set-text', id: 'pair', value: 'Gamma' });
+    const result = applyManualEditPatch(source, { kind: 'set-text', id: 'pair', value: 'Gamma & <em>more</em>' });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'pair');
+    expect(html).toContain('Gamma &amp; &lt;em&gt;more&lt;/em&gt;');
+    expect(html).not.toContain('<span>');
+  });
+
+  it('still rejects text patches on block layout containers', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section data-od-id="grid"><article>One</article><article>Two</article></section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, { kind: 'set-text', id: 'grid', value: 'Gamma' });
     expect(result.ok).toBe(false);
     expect(result.error).toContain('nested markup');
+  });
+
+  it('lets set-link update the label on a link with inline emphasis', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<a data-od-id="cta" href="/old"><strong>Old</strong> label</a>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-link',
+      id: 'cta',
+      text: 'Go now',
+      href: '/new',
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'cta');
+    expect(html).toContain('href="/new"');
+    expect(html).toContain('Go now');
+    expect(html).not.toContain('<strong>');
   });
 
   it('resolves scoped root for decks wrapped in .deck / .deck-stage containers', () => {

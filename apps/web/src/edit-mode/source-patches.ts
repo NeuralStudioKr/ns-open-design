@@ -64,25 +64,38 @@ export function applyManualEditPatch(
       const leaf =
         (effectiveHint ? findLeafTextTargetByHint(doc, scope, effectiveHint) : null)
         ?? findPrimaryLeafTextTarget(el);
-      if (!leaf) {
-        return { ok: false, source, error: 'This element contains nested markup. Use the HTML tab instead.' };
-      }
-      if (leaf !== el && el.contains(leaf)) {
-        // Drop leftover sibling text ("… <strong>X</strong> trailing") so a
-        // full-label rewrite does not leave stale copy beside the leaf.
-        for (const node of Array.from(el.childNodes)) {
-          if (node.nodeType === 3 && (node.textContent || '').trim()) {
-            node.textContent = '';
+      if (leaf) {
+        if (leaf !== el && el.contains(leaf)) {
+          // Drop leftover sibling text ("… <strong>X</strong> trailing") so a
+          // full-label rewrite does not leave stale copy beside the leaf.
+          for (const node of Array.from(el.childNodes)) {
+            if (node.nodeType === 3 && (node.textContent || '').trim()) {
+              node.textContent = '';
+            }
           }
         }
+        el = leaf;
+      } else if (containsOnlyInlineTextFormatting(el)) {
+        // Ambiguous siblings (e.g. `<span>Alpha</span><span>Beta</span>`) but
+        // the wrapper is a plain text container — the user has explicitly
+        // asked to change its text. Replace innerHTML with the escaped
+        // value; this wipes inline formatting spans but keeps the edit
+        // unblocked, which matches upstream v2's `set-inner-html` fallback.
+        el.innerHTML = escapeManualEditText(patch.value);
+        return { ok: true, source: serializeSource(doc, source) };
+      } else {
+        return { ok: false, source, error: 'This element contains nested markup. Use the HTML tab instead.' };
       }
-      el = leaf;
     }
     el.textContent = patch.value;
   } else if (patch.kind === 'set-link') {
     if (hasElementChildren(el)) {
       const currentText = el.textContent?.trim() ?? '';
-      if (patch.text.trim() !== currentText) {
+      if (patch.text.trim() === currentText) {
+        // Href-only edit on a formatted link — safe to keep the markup.
+      } else if (containsOnlyInlineTextFormatting(el)) {
+        el.innerHTML = escapeManualEditText(patch.text);
+      } else {
         return { ok: false, source, error: 'This link contains nested markup. Use the HTML tab to change its label.' };
       }
     } else {
@@ -1132,6 +1145,51 @@ function findElementByScopedPath(
 
 function hasElementChildren(el: Element): boolean {
   return Array.from(el.children).some((child) => child.nodeType === 1);
+}
+
+const MANUAL_EDIT_INLINE_TEXT_TAGS = new Set([
+  'span', 'em', 'strong', 'b', 'i', 'u', 'mark', 'small',
+  'sub', 'sup', 'br', 'a', 'abbr', 'cite', 'code', 'kbd', 'samp',
+  'time', 'var', 's', 'q', 'dfn', 'del', 'ins',
+  'wbr', 'bdi', 'bdo',
+]);
+
+const MANUAL_EDIT_INLINE_WRAPPER_TAGS = new Set([
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'p', 'span', 'a', 'button', 'label', 'li',
+  'strong', 'em', 'b', 'i', 'u', 'mark', 'small',
+  'div', 'dt', 'dd', 'figcaption', 'summary',
+  'cite', 'blockquote', 'q',
+]);
+
+/**
+ * True when `el` is a text-shaped wrapper (heading, paragraph, list item,
+ * label, small `<div>`) whose children only carry inline formatting. Used to
+ * decide whether a `set-text` patch may destructively replace inner HTML with
+ * the escaped user text — safer than blocking the edit outright, but not so
+ * aggressive that we would wipe block layout (`ul`, `table`, `section`, etc.).
+ */
+export function containsOnlyInlineTextFormatting(el: Element): boolean {
+  const tag = el.tagName?.toLowerCase() ?? '';
+  if (!MANUAL_EDIT_INLINE_WRAPPER_TAGS.has(tag)) return false;
+  return Array.from(el.children).every(childIsInlineTextFormatting);
+}
+
+function childIsInlineTextFormatting(child: Element): boolean {
+  const tag = child.tagName?.toLowerCase() ?? '';
+  if (!MANUAL_EDIT_INLINE_TEXT_TAGS.has(tag)) return false;
+  if (child.children.length === 0) return true;
+  return Array.from(child.children).every(childIsInlineTextFormatting);
+}
+
+/** Escape user-provided text before writing it into an element's innerHTML. */
+export function escapeManualEditText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
