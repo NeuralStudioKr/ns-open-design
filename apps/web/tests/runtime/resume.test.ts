@@ -301,7 +301,33 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     ).toBe(false);
   });
 
-  it('does NOT fire when a comment-scoped edit is rejected', () => {
+  it('fires for recoverable scoped scope-rejected failures', () => {
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        scopedCommentAttachmentCount: 1,
+        terminalPersistResultKind: 'scope-rejected',
+        terminalPersistResultCode: 'deck_patch_merge_failed',
+        terminalPersistResultReason: 'No matching targets found to merge.',
+        shouldRouteScopedCommentEditToAutoContinue: () => true,
+      }),
+    ).toBe(true);
+  });
+
+  it('does NOT fire for non-recoverable scoped scope-rejected failures', () => {
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        scopedCommentAttachmentCount: 1,
+        terminalPersistResultKind: 'scope-rejected',
+        terminalPersistResultCode: 'comment_scope_missing_slide',
+        terminalPersistResultReason: 'comment attachments did not include a valid slide index',
+        shouldRouteScopedCommentEditToAutoContinue: () => false,
+      }),
+    ).toBe(false);
+  });
+
+  it('does NOT fire when a comment-scoped edit is rejected without recoverable routing', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({
         ...base,
@@ -339,7 +365,7 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     ).toBe(true);
   });
 
-  it('caps scoped preview-comment edits at one auto-continue', () => {
+  it('caps scoped preview-comment edits at two auto-continues', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({
         ...base,
@@ -351,7 +377,7 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({
         ...base,
-        autoContinueCount: 0,
+        autoContinueCount: AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT - 1,
         scopedCommentAttachmentCount: 1,
         terminalPersistResultKind: 'skipped-incomplete',
       }),

@@ -14,6 +14,7 @@ import type {
 } from './types';
 import { stripUserVisibleQuestionFormProtocolText } from './artifacts/question-form';
 import {
+  looksLikeAlignmentCommentRequest,
   looksLikeMarkupLayoutCommentRequest,
   looksLikeStyleOnlyCommentRequest,
 } from './edit-mode/comment-edit-intent';
@@ -822,16 +823,21 @@ export function buildConcreteElementPatchTemplate(
     if (isUnsafeElementPatchTargetId(targetId)) continue;
     const slideIndex = Math.floor(item.slideIndex);
     const layoutOnly = looksLikeMarkupLayoutCommentRequest(item.comment || '');
-    const styleOnly = !layoutOnly && looksLikeStyleOnlyCommentRequest(item.comment || '');
-    const kind = layoutOnly ? 'set-outer-html' : styleOnly ? 'set-style' : 'set-text';
+    const alignmentOnly = !layoutOnly && looksLikeAlignmentCommentRequest(item.comment || '');
+    const styleOnly = !layoutOnly && !alignmentOnly && looksLikeStyleOnlyCommentRequest(item.comment || '');
+    const kind = layoutOnly ? 'set-outer-html' : 'set-style';
     const body = layoutOnly
       ? '&lt;tag&gt;줄바꿈 없이 한 줄 텍스트&lt;/tag&gt;'
-      : styleOnly
-        ? '{"fontSize":"32px","fontWeight":"700"}'
-        : '(요청한 새 텍스트)';
+      : alignmentOnly
+        ? '{"textAlign":"center"}'
+        : styleOnly
+          ? '{"fontSize":"32px","fontWeight":"700"}'
+          : null;
+    const resolvedKind = body === null ? 'set-text' : kind;
+    const resolvedBody = body ?? '(요청한 새 텍스트)';
     blocks.push(
       '<artifact type="element-patch" identifier="deck">',
-      `  <patch target-id="${escapeXmlAttr(targetId)}" slide-index="${slideIndex}" kind="${kind}">${body}</patch>`,
+      `  <patch target-id="${escapeXmlAttr(targetId)}" slide-index="${slideIndex}" kind="${resolvedKind}">${resolvedBody}</patch>`,
       '</artifact>',
     );
   }

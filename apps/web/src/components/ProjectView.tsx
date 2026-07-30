@@ -56,6 +56,7 @@ export {
   targetTextPreservedInPatchedSlide,
 } from '../edit-mode/scoped-deck-patch';
 import { validateCommentEditIntentRespected } from '../edit-mode/comment-edit-intent';
+import { shouldRouteScopedCommentEditToAutoContinue } from '../edit-mode/scoped-comment-persist';
 import {
   clearPendingArtifactWrite,
   clearProjectPendingArtifactWrites,
@@ -1102,6 +1103,7 @@ function slideCommentEditPatchInstruction(commentAttachmentCount: number): strin
     '- For arbitrary natural-language requests (visibility, tone, layout tweaks), interpret the intent and emit the smallest valid element patch — never ask the user to rephrase.',
     '- When the user asks to make text bigger/smaller/bolder/more visible (e.g. "크게", "키워", "눈에 띄게") WITHOUT changing the words: use `kind="set-style"` with `fontSize` / `fontWeight` / `color`. Keep every character of `currentText` exactly as-is — never use `set-text`, `remove-element`, or empty the element.',
     '- When the user asks for layout/wrapping tweaks without changing the words (e.g. "줄바꿈 없이 한줄로", "한 줄로", "nowrap"): use `kind="set-outer-html"` on the pinned element (remove `<br>` / wrap markup) OR `kind="set-style"` with `{"whiteSpace":"nowrap"}`. Never use `set-text` when the target contains `<br>` or nested tags.',
+    '- When the user asks for alignment/spacing tweaks without changing the words (e.g. "가운데 정렬", "왼쪽 맞춤"): use `kind="set-style"` with `textAlign` / spacing fields. Keep `currentText` verbatim.',
     '- When the user asks to replace the text ("\'새 문구\'로 수정", "멘트를 …로", "copy to …"): use `kind="set-text"` with the new text only.',
     '',
     'Fallback when multiple elements or slide structure must change:',
@@ -1313,34 +1315,31 @@ export function elementPatchBodyLooksLikeDeckPatch(body: string | null | undefin
  * these through `skipped-incomplete` instead of surfacing them as a
  * scope violation.
  */
-function isCommentEditIntentViolation(code: ScopedDeckPersistFailureCode | undefined): boolean {
-  return code === 'comment_edit_intent_violated';
-}
-
-function shouldRetryScopedCommentMergeFailure(
-  code: ScopedDeckPersistFailureCode | undefined,
-  reason: string,
-): boolean {
-  if (isCommentEditIntentViolation(code)) return true;
-  if (code === 'deck_patch_parse_failed') {
-    return (
-      reason.startsWith('element-patch <patch> missing slide-index') ||
-      reason.startsWith('element-patch <patch> missing target-id') ||
-      reason.startsWith('element-patch could not parse ') ||
-      reason.startsWith('deck-patch section missing data-slide-index')
-    );
+function routeScopedCommentPersistFailure(input: {
+  fileName: string;
+  code: ScopedDeckPersistFailureCode;
+  reason: string;
+  runIsScoped: boolean;
+  logLabel: string;
+}): Extract<ArtifactPersistResult, { kind: 'skipped-incomplete' | 'scope-rejected' }> {
+  if (input.runIsScoped && shouldRouteScopedCommentEditToAutoContinue(input.code, input.reason)) {
+    console.warn(`[${input.logLabel}] routing scoped edit to auto-continue`, {
+      fileName: input.fileName,
+      code: input.code,
+      reason: input.reason,
+    });
+    return {
+      kind: 'skipped-incomplete',
+      fileName: input.fileName,
+      reason: input.reason,
+    };
   }
-  if (code !== 'deck_patch_merge_failed') return false;
-  return (
-    reason === 'No matching targets found to merge.' ||
-    reason === 'Selected targets were unchanged.' ||
-    reason === 'No valid element targets in attached comment scope.' ||
-    reason.startsWith('Target not found:') ||
-    reason.includes('nested markup') ||
-    reason.startsWith('element-patch could not parse ') ||
-    (reason.startsWith('element-patch targets ') &&
-      reason.endsWith(' outside attached comment scope'))
-  );
+  return {
+    kind: 'scope-rejected',
+    fileName: input.fileName,
+    code: input.code,
+    reason: input.reason,
+  };
 }
 
 export function isElementPatchEmptyBody(reason: string): boolean {
@@ -1603,17 +1602,6 @@ async function trySalvageScopedFullDeckRewrite(input: {
     return { ok: false, reason: intent.reason };
   }
   return { ok: true, html: scoped.html };
-}
-
-function shouldRetryScopedFullDeckRewrite(
-  code: ScopedDeckPersistFailureCode | undefined,
-): boolean {
-  return (
-    code === 'full_deck_diff_failed' ||
-    code === 'full_deck_outside_slide_scope' ||
-    code === 'full_deck_outside_element_scope' ||
-    code === 'full_deck_comment_target_unresolved'
-  );
 }
 
 function maskScopedCommentTargets(
@@ -3831,7 +3819,7 @@ export function ProjectView({
           if (
             runIsScoped &&
             (isElementPatchEmptyBody(merged.reason) ||
-              shouldRetryScopedCommentMergeFailure(merged.code, merged.reason))
+              shouldRouteScopedCommentEditToAutoContinue(merged.code, merged.reason))
           ) {
             console.warn('[element-patch] routing scoped edit to auto-continue', {
               fileName: targetFileName,
@@ -3855,12 +3843,13 @@ export function ProjectView({
                 'The model emitted an empty element-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.',
             };
           }
-          return {
-            kind: 'scope-rejected',
+          return routeScopedCommentPersistFailure({
             fileName: targetFileName,
             code: merged.code,
             reason: merged.reason,
-          };
+            runIsScoped,
+            logLabel: 'element-patch',
+          });
         } else {
           effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
         }
@@ -3877,7 +3866,7 @@ export function ProjectView({
           const runIsScoped = persistCommentAttachments.length > 0;
           if (
             runIsScoped &&
-            shouldRetryScopedCommentMergeFailure(merged.code, merged.reason)
+            shouldRouteScopedCommentEditToAutoContinue(merged.code, merged.reason)
           ) {
             console.warn('[deck-patch] scoped merge missed comment target — routing to auto-continue', {
               fileName: targetFileName,
@@ -3921,12 +3910,13 @@ export function ProjectView({
                 'The model emitted an empty deck-patch artifact on a run without a scoped comment target. Retry with a clearer request or use full deck generation.',
             };
           }
-          return {
-            kind: 'scope-rejected',
+          return routeScopedCommentPersistFailure({
             fileName: targetFileName,
             code: merged.code,
             reason: merged.reason,
-          };
+            runIsScoped,
+            logLabel: 'deck-patch',
+          });
         } else {
           effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
         }
@@ -3946,7 +3936,7 @@ export function ProjectView({
           // the wrong slide".
           const runIsScoped = persistCommentAttachments.length > 0;
           let scopeCheckPassed = false;
-          if (runIsScoped && shouldRetryScopedFullDeckRewrite(scopeResult.code)) {
+          if (runIsScoped) {
             const salvaged = await trySalvageScopedFullDeckRewrite({
               projectId: project.id,
               fileName: targetFileName,
@@ -3961,7 +3951,10 @@ export function ProjectView({
               });
               effectiveArt = { ...effectiveArt, html: salvaged.html };
               scopeCheckPassed = true;
-            } else {
+            } else if (
+              shouldRouteScopedCommentEditToAutoContinue(scopeResult.code, salvaged.reason)
+              || shouldRouteScopedCommentEditToAutoContinue(scopeResult.code, scopeResult.reason)
+            ) {
               console.warn('[deck-patch] routing scoped full-deck rewrite to auto-continue', {
                 fileName: targetFileName,
                 code: scopeResult.code,
@@ -3976,12 +3969,13 @@ export function ProjectView({
             }
           }
           if (!scopeCheckPassed) {
-            return {
-              kind: 'scope-rejected',
+            return routeScopedCommentPersistFailure({
               fileName: targetFileName,
               code: scopeResult.code,
               reason: scopeResult.reason,
-            };
+              runIsScoped,
+              logLabel: 'deck-patch',
+            });
           }
         }
       }
@@ -7586,8 +7580,17 @@ export function ProjectView({
                 autoContinueCount,
                 scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
                 terminalPersistResultKind,
+                terminalPersistResultCode:
+                  terminalPersistResult?.kind === 'scope-rejected'
+                    ? terminalPersistResult.code
+                    : null,
+                terminalPersistResultReason:
+                  terminalPersistResult && 'reason' in terminalPersistResult
+                    ? terminalPersistResult.reason ?? null
+                    : null,
                 hadIncompleteParsedArtifact,
                 shouldFailMissingSlideHtml,
+                shouldRouteScopedCommentEditToAutoContinue,
               });
 
               let emergencyRecovered = false;
@@ -7774,6 +7777,7 @@ export function ProjectView({
                       : null;
                   const scopedFailureReason =
                     terminalPersistResult?.kind === 'skipped-incomplete'
+                    || terminalPersistResult?.kind === 'scope-rejected'
                       ? terminalPersistResult.reason ?? null
                       : null;
                   const autoContinuePrompt = resolveAutoContinuePrompt({

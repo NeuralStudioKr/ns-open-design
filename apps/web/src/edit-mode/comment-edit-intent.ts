@@ -83,8 +83,27 @@ export function looksLikeMarkupLayoutCommentRequest(instruction: string): boolea
   const text = String(instruction ?? '').trim();
   if (!text) return false;
   const layoutSignals =
-    /줄바꿈|한\s*줄|한줄|줄\s*맞|개행|엔터|wrap|line[-\s]?break|single\s*line|one\s*line|nowrap|no[-\s]?wrap|white[-\s]?space/i;
+    /줄바꿈|한\s*줄|한줄|줄\s*맞|개행|엔터|두\s*줄|2\s*줄|wrap|line[-\s]?break|single\s*line|one\s*line|nowrap|no[-\s]?wrap|white[-\s]?space/i;
   return layoutSignals.test(text) && !EXPLICIT_TEXT_CHANGE_SIGNAL.test(text);
+}
+
+/**
+ * True when the user asked to change alignment/spacing without replacing words.
+ */
+export function looksLikeAlignmentCommentRequest(instruction: string): boolean {
+  const text = String(instruction ?? '').trim();
+  if (!text) return false;
+  const alignmentSignals =
+    /정렬|가운데|중앙|왼쪽|오른쪽|align|center|left|right|justify|spacing|간격|여백|padding|margin/i;
+  return alignmentSignals.test(text) && !EXPLICIT_TEXT_CHANGE_SIGNAL.test(text);
+}
+
+export function looksLikePresentationTweakCommentRequest(instruction: string): boolean {
+  return (
+    looksLikeStyleOnlyCommentRequest(instruction)
+    || looksLikeMarkupLayoutCommentRequest(instruction)
+    || looksLikeAlignmentCommentRequest(instruction)
+  );
 }
 
 export function targetTextContentPreserved(
