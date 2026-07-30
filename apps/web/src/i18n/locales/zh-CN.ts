@@ -1515,6 +1515,7 @@ export const zhCN: Dict = {
   'chat.annotationPreviewMissing': 'Could not capture the preview. Try Comment mode or add a note with the slide number.',
   'chat.annotationPreviewMissingInk': 'Could not capture the preview. Add a note describing the change, or use Comment mode.',
   'chat.annotationSentWithoutScreenshot': 'Preview capture failed — only your note was sent. Try Comment mode for element-specific edits, or mention the slide number.',
+  'chat.annotationSentTextOnly': 'Your note was sent with the slide number — no preview image attached.',
   'chat.annotationTimeout': '标注发送超时，请重试',
   'chat.annotationFailed': '标注发送失败，请重试',
   'chat.annotationProjectCreateFailed': '无法创建项目，标注未发送',

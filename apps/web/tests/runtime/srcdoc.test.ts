@@ -95,6 +95,10 @@ describe('buildSrcdoc', () => {
     expect(srcdoc).toContain("type: 'od:snapshot:result'");
     expect(srcdoc).toContain('copyComputedStyle');
     expect(srcdoc).toContain('foreignObject');
+    expect(srcdoc).toContain('data-od-snapshot-dom-capture');
+    expect(srcdoc).toContain('__odSnapshotDomCapture');
+    expect(srcdoc).toContain('function renderSnapshotDom(');
+    expect(srcdoc).toContain('capture.domToPng(target');
   });
 
   it('paints an opaque background before drawing so empty rasters never flatten to black', () => {

@@ -94,7 +94,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
       });
       await waitFor(() =>
         expect(
-          getByText('Preview capture failed — only your note was sent. Try Comment mode for element-specific edits, or mention the slide number.'),
+          getByText('Could not capture preview — only your note was sent. Try Comment mode for element-specific edits.'),
         ).toBeTruthy(),
       );
     } finally {
@@ -110,7 +110,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     window.addEventListener('opendesign:annotation', annotation);
 
     try {
-      const { container, getByRole } = render(
+      const { container, getByRole, getByText } = render(
         <PreviewDrawOverlay active captureViewport slideIndex={2}>
           <iframe title="srcdoc" data-od-render-mode="srcdoc" />
         </PreviewDrawOverlay>,
@@ -127,6 +127,11 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
           file: null,
         }),
       });
+      await waitFor(() =>
+        expect(
+          getByText('Your note was sent with the slide number — no preview image attached.'),
+        ).toBeTruthy(),
+      );
     } finally {
       window.removeEventListener('opendesign:annotation', annotation);
     }

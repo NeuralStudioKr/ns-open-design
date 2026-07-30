@@ -30,6 +30,7 @@ import {
   prepareCompactStackedDeckPreviewHtml,
   wrapPreviewHtmlShell,
 } from './compact-api-stacked-deck';
+import { SNAPSHOT_DOM_CAPTURE_INLINE } from './snapshot-capture-inline';
 
 export type SrcdocOptions = {
   deck?: boolean;
@@ -239,6 +240,7 @@ function injectSrcdocTransportActivationBridge(doc: string): string {
 }
 
 function injectSnapshotBridge(doc: string): string {
+  const domCaptureScript = `<script data-od-snapshot-dom-capture>${SNAPSHOT_DOM_CAPTURE_INLINE}</script>`;
   const script = `<script data-od-snapshot-bridge>(function(){
   var SNAPSHOT_STYLE_PROPS = [
     'display','position','box-sizing','width','height','min-width','max-width','min-height','max-height',
@@ -513,16 +515,27 @@ function injectSnapshotBridge(doc: string): string {
     }
     loadSvgSource('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg), false);
   }
-  function renderSnapshot(id){
-    var settled = { done: false };
-    var deckFrame = prepareDeckSnapshotFrame();
-    var payload = buildSnapshotPayload(deckFrame);
-    var w = payload.w;
-    var h = payload.h;
-    var docW = payload.docW;
-    var docH = payload.docH;
-    var dpr = window.devicePixelRatio || 1;
-    var bgColor = snapshotBackgroundColor();
+  function ensureSnapshotDomCapture(){
+    if (window.__odSnapshotDomCapture && typeof window.__odSnapshotDomCapture.domToPng === 'function') {
+      return Promise.resolve(window.__odSnapshotDomCapture);
+    }
+    return new Promise(function(resolve, reject){
+      var deadline = Date.now() + 5000;
+      function tick(){
+        if (window.__odSnapshotDomCapture && typeof window.__odSnapshotDomCapture.domToPng === 'function') {
+          resolve(window.__odSnapshotDomCapture);
+          return;
+        }
+        if (Date.now() >= deadline) {
+          reject(new Error('snapshot dom capture unavailable'));
+          return;
+        }
+        setTimeout(tick, 50);
+      }
+      tick();
+    });
+  }
+  function renderSnapshotLegacy(id, settled, deckFrame, payload, w, h, docW, docH, dpr, bgColor){
     var html = '<div xmlns="http://www.w3.org/1999/xhtml" style="' + escapeAttribute(payload.wrapperStyle) + '">' + payload.bodyContent + '</div>';
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
       '<foreignObject x="0" y="0" width="' + docW + '" height="' + docH + '">' +
@@ -559,13 +572,44 @@ function injectSnapshotBridge(doc: string): string {
     }
     renderSnapshotViaImage(id, svg, w, h, dpr, bgColor, settled);
   }
+  function renderSnapshotDom(id, settled, deckFrame, payload, w, h, dpr, bgColor){
+    var target = document.getElementById('deck-stage') || document.querySelector('.deck-stage') || document.body;
+    if (!target) return Promise.reject(new Error('snapshot target missing'));
+    return ensureSnapshotDomCapture().then(function(capture){
+      return capture.domToPng(target, { scale: dpr, width: w, height: h });
+    }).then(function(dataUrl){
+      if (settled && settled.done) return;
+      settled.done = true;
+      window.parent.postMessage({
+        type: 'od:snapshot:result',
+        id: id,
+        dataUrl: dataUrl,
+        w: w,
+        h: h
+      }, '*');
+    });
+  }
+  function renderSnapshot(id){
+    var settled = { done: false };
+    var deckFrame = prepareDeckSnapshotFrame();
+    var payload = buildSnapshotPayload(deckFrame);
+    var w = payload.w;
+    var h = payload.h;
+    var docW = payload.docW;
+    var docH = payload.docH;
+    var dpr = window.devicePixelRatio || 1;
+    var bgColor = snapshotBackgroundColor();
+    renderSnapshotDom(id, settled, deckFrame, payload, w, h, dpr, bgColor).catch(function(){
+      if (!settled.done) renderSnapshotLegacy(id, settled, deckFrame, payload, w, h, docW, docH, dpr, bgColor);
+    });
+  }
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;
     if (!data || data.type !== 'od:snapshot' || !data.id) return;
     waitForSnapshotReady().then(function(){ renderSnapshot(String(data.id)); });
   });
 })();</script>`;
-  return injectBeforeBodyEnd(doc, script);
+  return injectBeforeBodyEnd(doc, domCaptureScript + script);
 }
 
 // Palette bridge: re-skin the page on host postMessage. Generated pages

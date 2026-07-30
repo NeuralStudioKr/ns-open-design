@@ -738,7 +738,13 @@ export function PreviewDrawOverlay({
       // the note went out, the pixels did not.
       setCaptureWarning(
         sentWithoutScreenshot
-          ? { action, message: t('chat.annotationSentWithoutScreenshot') }
+          ? {
+              action,
+              message:
+                noteText !== note.trim()
+                  ? t('chat.annotationSentTextOnly')
+                  : t('chat.annotationSentWithoutScreenshot'),
+            }
           : null,
       );
       setNote('');
