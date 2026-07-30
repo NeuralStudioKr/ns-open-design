@@ -1053,7 +1053,7 @@ function temporarilyExposeIframeForSnapshot(iframe: HTMLIFrameElement): () => vo
   };
 }
 
-const ANNOTATION_SNAPSHOT_RETRY_MS = [10_000] as const;
+const ANNOTATION_SNAPSHOT_RETRY_MS = [2_500, 3_000] as const;
 const EXPORT_SNAPSHOT_RETRY_MS = [1500, 3000, 6000] as const;
 
 async function requestPreviewSnapshotWithRetry(

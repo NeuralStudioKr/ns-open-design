@@ -115,7 +115,7 @@ import type {
   RunContextSelection,
   WorkspaceContextItem,
 } from '@open-design/contracts';
-import { buildVisualAnnotationAttachment, commentTargetDisplayName } from '../comments';
+import { buildVisualAnnotationAttachment, commentTargetDisplayName, COMMENT_ONLY_USER_PLACEHOLDER } from '../comments';
 import { Icon, type IconName } from "./Icon";
 import { SessionModeToggle } from './SessionModeToggle';
 import { ComposerPlusMenu } from './ComposerPlusMenu';
@@ -1956,17 +1956,50 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               editorRef.current?.focus();
             };
 
+            const composeAnnotationSendPrompt = (
+              draftText: string,
+              note: string,
+              hasOutbound: boolean,
+            ): string => {
+              const prompt = [draftText.trim(), note].filter(Boolean).join('\n');
+              if (prompt.trim() || !hasOutbound) return prompt;
+              return COMMENT_ONLY_USER_PLACEHOLDER;
+            };
+
+            const finishAnnotationSend = (
+              prompt: string,
+              attachments: ChatAttachment[],
+              nextCommentAttachments: ChatCommentAttachment[],
+              meta?: ChatSendMeta,
+            ) => {
+              if (
+                !prompt.trim()
+                && attachments.length === 0
+                && nextCommentAttachments.length === 0
+              ) {
+                ack({ ok: false, message: t('chat.annotationFailed') });
+                return;
+              }
+              const slideOnlyBlock = embedSlideOnlyOutboundBlockReason(prompt, { slideOnlyMvp });
+              if (slideOnlyBlock) {
+                ack({ ok: false, message: slideOnlyBlock });
+                return;
+              }
+              sendComposedTurn(prompt, attachments, nextCommentAttachments, meta);
+              ack({ ok: true });
+            };
+
             if (detail.action === 'queue') {
               if (visualAttachmentInput) {
                 visualAttachment = buildVisualAnnotationAttachment({
                   ...visualAttachmentInput,
                 });
               }
-              const prompt = [draft.trim(), detail.note].filter(Boolean).join('\n');
+              const hasOutbound = uploaded.length > 0 || Boolean(visualAttachment);
+              const prompt = composeAnnotationSendPrompt(draft.trim(), detail.note, hasOutbound);
               const attachments = sortChatAttachmentsByOrder([...staged, ...uploaded]);
               const nextCommentAttachments = currentCommentAttachments(visualAttachment ? [visualAttachment] : []);
-              sendComposedTurn(prompt, attachments, nextCommentAttachments, queueMeta(currentRunContextMeta()));
-              ack({ ok: true });
+              finishAnnotationSend(prompt, attachments, nextCommentAttachments, queueMeta(currentRunContextMeta()));
               return;
             }
 
@@ -1982,11 +2015,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   ...visualAttachmentInput,
                 });
               }
-              const prompt = [draft.trim(), detail.note].filter(Boolean).join('\n');
+              const hasOutbound = uploaded.length > 0 || Boolean(visualAttachment);
+              const prompt = composeAnnotationSendPrompt(draft.trim(), detail.note, hasOutbound);
               const attachments = sortChatAttachmentsByOrder([...staged, ...uploaded]);
               const nextCommentAttachments = currentCommentAttachments(visualAttachment ? [visualAttachment] : []);
-              sendComposedTurn(prompt, attachments, nextCommentAttachments, currentRunContextMeta());
-              ack({ ok: true });
+              finishAnnotationSend(prompt, attachments, nextCommentAttachments, currentRunContextMeta());
               return;
             }
 

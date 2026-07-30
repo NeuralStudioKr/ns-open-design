@@ -75,6 +75,23 @@ const STROKE_COLOR = '#ff3b30';
 const STROKE_WIDTH = 4;
 const TARGET_COLOR = '#1677ff';
 const DRAW_HINT_STORAGE_KEY = 'open-design:annotation-draw-hint-dismissed';
+/** Max wait for a full compositor/iframe capture before marks-only or degraded send. */
+const ANNOTATION_CAPTURE_BUDGET_MS = 2_500;
+const ANNOTATION_IFRAME_SNAPSHOT_TIMEOUTS_MS = [2_500, 3_000] as const;
+
+async function raceWithBudget<T>(promise: Promise<T>, budgetMs: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = window.setTimeout(() => resolve(null), budgetMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) window.clearTimeout(timer);
+  }
+}
 
 function readDrawHintDismissed(): boolean {
   try {
@@ -567,7 +584,7 @@ export function PreviewDrawOverlay({
       flushSync(() => setCapturing(true));
       try {
         await waitForOverlayHidden();
-        return await captureSnapshot();
+        return await raceWithBudget(captureSnapshot(), ANNOTATION_CAPTURE_BUDGET_MS);
       } finally {
         flushSync(() => setCapturing(false));
       }
@@ -575,9 +592,8 @@ export function PreviewDrawOverlay({
     const iframe = snapshotHostIframe();
     if (!iframe) return null;
     // Capture mode may still be swapping the srcDoc frame to full content when
-    // the user submits, so retry with growing timeouts before giving up.
-    const timeouts = [10_000];
-    for (const timeout of timeouts) {
+    // the user submits, so retry with short timeouts before giving up.
+    for (const timeout of ANNOTATION_IFRAME_SNAPSHOT_TIMEOUTS_MS) {
       const snapshot = await requestPreviewSnapshot(iframe, timeout);
       if (snapshot) return snapshot;
     }
@@ -722,10 +738,12 @@ export function PreviewDrawOverlay({
       let file: File | null = null;
       if (shouldCapture) {
         let blob: Blob | null = null;
+        const marksOnlyPromise =
+          hasVisualMark || hasTarget ? compositeMarksOnly() : null;
         const snap = await requestSnapshot();
         if (snap) blob = await compositeWithBackground(snap);
-        if (!blob && (hasVisualMark || hasTarget)) {
-          blob = await compositeMarksOnly();
+        if (!blob && marksOnlyPromise) {
+          blob = await marksOnlyPromise;
         }
         if (blob) {
           const ts = new Date().toISOString().replace(/[:.]/g, '-');
