@@ -152,6 +152,21 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(_request: Request, exc: StarletteHTTPException) -> JSONResponse:
         detail = exc.detail
+        # Apps auth envelope from raise_auth_http / auth_error_body:
+        # {"error": {"code": "token_expired", "message": "...", "login_url": ...}}
+        # Must pass through — stringifying destroys code/login_url and breaks FE
+        # workspace-switch recovery (nested unauthorized → refresh/ensure ladder).
+        if isinstance(detail, dict) and isinstance(detail.get("error"), dict):
+            return JSONResponse(status_code=exc.status_code, content=detail)
+        # Compact {"code": "..."} details (bootstrap_failed, etc.)
+        if isinstance(detail, dict) and isinstance(detail.get("code"), str):
+            payload = dict(detail)
+            if "message" not in payload:
+                payload["message"] = payload["code"]
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"error": payload},
+            )
         message = detail if isinstance(detail, str) else str(detail)
         code = status_code_to_error_code(exc.status_code)
         return JSONResponse(

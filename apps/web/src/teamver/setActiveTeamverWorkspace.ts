@@ -11,15 +11,47 @@ import { postDesignAuthWorkspace } from "./designAuthClient";
 import { dispatchTeamverWorkspaceChanged } from "./teamverWorkspaceEvents";
 import { bumpTeamverWorkspaceStoreRevision } from "./teamverWorkspaceStoreRevision";
 
+const AUTH_WORKSPACE_ERROR_CODES = new Set([
+  "unauthorized",
+  "token_expired",
+  "session_expired",
+  "session_revoked",
+]);
+
+function readErrorCode(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function isUnauthorizedWorkspaceError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const record = err as Record<string, unknown>;
   const status = Number(record.status);
   if (status === 401 || status === 403) return true;
-  const code = typeof record.code === "string" ? record.code : "";
-  const detail = typeof record.detail === "string" ? record.detail : "";
-  if (code === "session_expired" || detail === "session_expired") return true;
-  if (code === "token_expired" || detail === "token_expired") return true;
+
+  const code = readErrorCode(record.code);
+  const detail = readErrorCode(record.detail);
+  if (AUTH_WORKSPACE_ERROR_CODES.has(code) || AUTH_WORKSPACE_ERROR_CODES.has(detail)) {
+    return true;
+  }
+
+  // BFF envelope: { error: { code, message, login_url } }
+  // (and legacy mangled form where message embeds token_expired text).
+  const nested =
+    record.error && typeof record.error === "object"
+      ? (record.error as Record<string, unknown>)
+      : null;
+  if (nested) {
+    const nestedCode = readErrorCode(nested.code);
+    if (AUTH_WORKSPACE_ERROR_CODES.has(nestedCode)) return true;
+    const nestedMessage = readErrorCode(nested.message);
+    if (
+      nestedMessage.includes("token_expired") ||
+      nestedMessage.includes("session_expired") ||
+      nestedMessage.includes("session_revoked")
+    ) {
+      return true;
+    }
+  }
   return false;
 }
 

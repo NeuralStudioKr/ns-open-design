@@ -95,8 +95,10 @@ export async function postDesignAuthWorkspace(workspaceId: string): Promise<void
     body: JSON.stringify({ workspace_id: workspaceId }),
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw body;
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    // Attach HTTP status so recovery ladder can treat 401/403 without relying
+    // only on nested error.code (mangled envelopes still recover via status).
+    throw { ...body, status: res.status };
   }
 }
 

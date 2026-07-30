@@ -141,6 +141,56 @@ describe("setActiveTeamverWorkspace recovery ladder", () => {
     expect(workspaceStoreSet).toHaveBeenCalledWith("ws-5");
   });
 
+  it("retries after refresh when BFF returns nested token_expired envelope", async () => {
+    const { setActiveTeamverWorkspace } = await import(
+      "../src/teamver/setActiveTeamverWorkspace"
+    );
+    // Production-shaped body after exception-handler fix (and status from client).
+    postDesignAuthWorkspaceMock
+      .mockRejectedValueOnce({
+        status: 401,
+        error: {
+          code: "token_expired",
+          message: "Session expired",
+          login_url: "https://teamver.com/auth/signin?app_id=teamver-design",
+        },
+      })
+      .mockResolvedValueOnce(undefined);
+    refreshDesignAuthCookieMock.mockResolvedValue(true);
+
+    const ok = await setActiveTeamverWorkspace("ws-nested");
+
+    expect(ok).toBe(true);
+    expect(refreshDesignAuthCookieMock).toHaveBeenCalledTimes(1);
+    expect(postDesignAuthWorkspaceMock).toHaveBeenCalledTimes(2);
+    expect(workspaceStoreSet).toHaveBeenCalledWith("ws-nested");
+  });
+
+  it("retries after refresh when legacy mangled unauthorized envelope appears", async () => {
+    const { setActiveTeamverWorkspace } = await import(
+      "../src/teamver/setActiveTeamverWorkspace"
+    );
+    // Pre-fix handler: code=unauthorized, message=str(auth_error_body dict)
+    postDesignAuthWorkspaceMock
+      .mockRejectedValueOnce({
+        status: 401,
+        error: {
+          code: "unauthorized",
+          message:
+            "{'error': {'code': 'token_expired', 'message': 'Session expired', 'request_id': 'AUTH-3086D0', 'retryable': False}}",
+        },
+      })
+      .mockResolvedValueOnce(undefined);
+    refreshDesignAuthCookieMock.mockResolvedValue(true);
+
+    const ok = await setActiveTeamverWorkspace("ws-mangled");
+
+    expect(ok).toBe(true);
+    expect(refreshDesignAuthCookieMock).toHaveBeenCalledTimes(1);
+    expect(postDesignAuthWorkspaceMock).toHaveBeenCalledTimes(2);
+    expect(workspaceStoreSet).toHaveBeenCalledWith("ws-mangled");
+  });
+
   it("skips workspace switch when sticky / logged-out auth gate is active", async () => {
     shouldSkipTeamverBffAuthCallsMock.mockReturnValue(true);
     const { setActiveTeamverWorkspace } = await import(
