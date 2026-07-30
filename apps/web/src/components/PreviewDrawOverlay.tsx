@@ -63,6 +63,8 @@ interface Props {
   filePath?: string;
   /** 0-based active slide index; used to prefix notes when screenshot capture fails. */
   slideIndex?: number | null;
+  /** Reset deck letterbox pan after annotation capture (decks only). */
+  resetPreviewPan?: () => void;
   hideChrome?: boolean;
   sendDisabled?: boolean;
   sendDisabledReason?: string;
@@ -118,6 +120,7 @@ export function PreviewDrawOverlay({
   captureFrameRect,
   filePath,
   slideIndex = null,
+  resetPreviewPan,
   hideChrome = false,
   sendDisabled = false,
   sendDisabledReason,
@@ -366,6 +369,9 @@ export function PreviewDrawOverlay({
 
   function onCanvasWheel(e: WheelEvent<HTMLCanvasElement>) {
     if (!active || sending) return;
+    // Deck previews pan the entire letterboxed stage via od:preview-scroll-by.
+    // Wheel forwarding in draw mode makes the slide drift as a whole — disable it.
+    if (slideIndex != null && Number.isFinite(slideIndex)) return;
     const iframe = activePreviewIframe();
     if (!iframe) return;
     if (scrollPreviewIframeBy(iframe, e.deltaX, e.deltaY)) {
@@ -752,6 +758,7 @@ export function PreviewDrawOverlay({
       setPreviewIndex(null);
     } finally {
       setPendingAction(null);
+      resetPreviewPan?.();
     }
   }
 

@@ -281,6 +281,32 @@ describe('PreviewDrawOverlay', () => {
     expect(scrollBy).toHaveBeenCalledWith({ left: 12, top: 180, behavior: 'auto' });
   });
 
+  it('does not forward wheel events on deck previews (avoids panning the whole slide)', () => {
+    const { container } = render(
+      <PreviewDrawOverlay active slideIndex={1}>
+        <iframe title="preview" sandbox="allow-scripts allow-downloads" />
+      </PreviewDrawOverlay>,
+    );
+
+    const canvas = container.querySelector('canvas');
+    const iframe = container.querySelector('iframe');
+    expect(canvas).toBeTruthy();
+    expect(iframe?.contentWindow).toBeTruthy();
+
+    const postMessage = vi.fn();
+    Object.defineProperty(iframe!.contentWindow!, 'postMessage', {
+      value: postMessage,
+      configurable: true,
+    });
+
+    fireEvent.wheel(canvas!, {
+      deltaX: 8,
+      deltaY: 96,
+    });
+
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
   it('uses the postMessage scroll bridge for sandboxed preview iframes', () => {
     const { container } = render(
       <PreviewDrawOverlay active>

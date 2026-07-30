@@ -6448,6 +6448,17 @@ function HtmlViewer({
     return srcDocPreviewIframeRef.current ?? iframeRef.current;
   }, [useUrlLoadPreview]);
 
+  const resetDrawPreviewPan = useCallback(() => {
+    if (!effectiveDeck) return;
+    resetDeckPreviewPan(resolveActiveDeckPreviewIframe());
+  }, [effectiveDeck, resolveActiveDeckPreviewIframe]);
+
+  useEffect(() => {
+    if (!effectiveDeck) return;
+    if (!drawOverlayOpen) return;
+    resetDrawPreviewPan();
+  }, [drawOverlayOpen, effectiveDeck, resetDrawPreviewPan]);
+
   useEffect(() => {
     if (!needsDeckHostViewportFit || mode !== 'preview') return;
     // Resolve the iframe at fire time — stream-end / liveHtml clear remounts
@@ -8597,6 +8608,7 @@ function HtmlViewer({
     // in the browser screenshot flow (DesignBrowserPanel).
     await waitForAnimationFrame();
     await waitForAnimationFrame();
+    try {
     const srcDocIframe = srcDocPreviewIframeRef.current;
     const urlIframe = iframeRef.current ?? urlPreviewIframeRef.current;
     const visibleIframe = iframeRef.current ?? srcDocIframe;
@@ -8658,9 +8670,14 @@ function HtmlViewer({
       return requestPreviewSnapshotWithRetry(srcDocIframe);
     }
     return null;
+    } finally {
+      if (effectiveDeck) resetDeckPreviewPan(resolveActiveDeckPreviewIframe());
+    }
   }, [
     activateSrcDocSnapshotTransport,
+    effectiveDeck,
     ensureDeckSlideSyncedForSnapshot,
+    resolveActiveDeckPreviewIframe,
     srcDocShellReady,
     useLazySrcDocTransport,
     useUrlLoadPreview,
@@ -9940,6 +9957,7 @@ function HtmlViewer({
                     captureTarget={null}
                     filePath={file.name}
                     slideIndex={effectiveDeck ? slideState?.active ?? null : null}
+                    resetPreviewPan={resetDrawPreviewPan}
                     sendDisabled={streaming}
                     sendDisabledReason={t('chat.annotationSendDisabledReason')}
                     onToolbarClick={fireDrawToolbarClick}
