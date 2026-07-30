@@ -386,6 +386,45 @@ test('[P1] manual edit drag-resize keeps image aspect by default', async ({ page
     .toBe(true);
 });
 
+test('[P1] manual edit body-drag moves absolute box left/top in source', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit move');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move.html`);
+  await openDesignFile(page, 'manual-edit-move.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="move-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return left >= 60 && top >= 40;
+    })
+    .toBe(true);
+});
+
 async function selectPreviewElementThroughBridge(
   page: Page,
   frame: ReturnType<Page['frameLocator']>,
@@ -937,6 +976,7 @@ function manualEditHtml(): string {
         <img data-od-id="hero-image" data-od-label="Hero image" src="/hero.png" alt="Hero" style="width:64px;height:64px;">
       </section>
       <div data-od-id="resize-box" data-od-label="Resize box" style="width:120px;height:80px;background:#d4d4d8;">Resize me</div>
+      <div data-od-id="move-box" data-od-label="Move box" style="position:absolute;left:24px;top:24px;width:140px;height:90px;background:#93c5fd;">Move me</div>
     </main>
   </body>
 </html>`;

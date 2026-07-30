@@ -8,6 +8,13 @@ import {
 
 import { contentRectToHostRect, hostDeltaToContentDelta } from '../edit-mode/preview-coords';
 import {
+  MANUAL_EDIT_MOVE_MIN_DELTA_PX,
+  canMoveTarget,
+  computeMove,
+  moveResultToStyles,
+  startPositionFromTarget,
+} from '../edit-mode/move-math';
+import {
   MANUAL_EDIT_RESIZE_MIN_PX,
   RESIZE_HANDLES,
   aspectLockForTarget,
@@ -28,14 +35,22 @@ export type ManualEditResizeOverlayProps = {
   /** Live draft size while dragging; null uses target.rect. */
   draftWidthPx: number | null;
   draftHeightPx: number | null;
+  /** Live draft position while moving; null uses target.rect. */
+  draftLeftPx?: number | null;
+  draftTopPx?: number | null;
   disabled?: boolean;
   onResizePreview: (next: Partial<ManualEditStyles>) => void;
   onResizeCommit: (next: Partial<ManualEditStyles>) => void;
   onResizeCancel: (stylesBefore: Partial<ManualEditStyles>) => void;
+  /** Shared with move — autosave pause while any geometry gesture is active. */
   onResizeSessionChange?: (active: boolean) => void;
+  onMovePreview?: (next: Partial<ManualEditStyles>) => void;
+  onMoveCommit?: (next: Partial<ManualEditStyles>) => void;
+  onMoveCancel?: (stylesBefore: Partial<ManualEditStyles>) => void;
 };
 
-type DragState = {
+type ResizeDragState = {
+  kind: 'resize';
   pointerId: number;
   handle: ResizeHandle;
   startClientX: number;
@@ -44,6 +59,21 @@ type DragState = {
   stylesBefore: Partial<ManualEditStyles>;
   lastStyles: Partial<ManualEditStyles>;
 };
+
+type MoveDragState = {
+  kind: 'move';
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startLeftPx: number;
+  startTopPx: number;
+  startRect: ManualEditTarget['rect'];
+  stylesBefore: Partial<ManualEditStyles>;
+  lastStyles: Partial<ManualEditStyles>;
+  moved: boolean;
+};
+
+type DragState = ResizeDragState | MoveDragState;
 
 function handlePositionStyle(handle: ResizeHandle): CSSProperties {
   const mid = '50%';
@@ -65,22 +95,29 @@ export function ManualEditResizeOverlay({
   previewScale,
   draftWidthPx,
   draftHeightPx,
+  draftLeftPx = null,
+  draftTopPx = null,
   disabled = false,
   onResizePreview,
   onResizeCommit,
   onResizeCancel,
   onResizeSessionChange,
+  onMovePreview,
+  onMoveCommit,
+  onMoveCancel,
 }: ManualEditResizeOverlayProps) {
   const dragRef = useRef<DragState | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [moving, setMoving] = useState(false);
 
   const contentRect = {
-    x: target.rect.x,
-    y: target.rect.y,
+    x: draftLeftPx ?? target.rect.x,
+    y: draftTopPx ?? target.rect.y,
     width: draftWidthPx ?? target.rect.width,
     height: draftHeightPx ?? target.rect.height,
   };
   const hostRect = contentRectToHostRect(contentRect, previewScale);
+  const movable = !disabled && canMoveTarget(target);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -90,14 +127,68 @@ export function ManualEditResizeOverlay({
       event.preventDefault();
       event.stopPropagation();
       const before = drag.stylesBefore;
+      const kind = drag.kind;
       dragRef.current = null;
       setDragging(false);
+      setMoving(false);
       onResizeSessionChange?.(false);
-      onResizeCancel(before);
+      if (kind === 'resize') onResizeCancel(before);
+      else onMoveCancel?.(before);
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [onResizeCancel, onResizeSessionChange]);
+  }, [onMoveCancel, onResizeCancel, onResizeSessionChange]);
+
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag || drag.kind !== 'move' || event.pointerId !== drag.pointerId) return;
+      const hostDx = event.clientX - drag.startClientX;
+      const hostDy = event.clientY - drag.startClientY;
+      const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, previewScale);
+      const result = computeMove({
+        startLeftPx: drag.startLeftPx,
+        startTopPx: drag.startTopPx,
+        startRect: drag.startRect,
+        minDeltaPx: MANUAL_EDIT_MOVE_MIN_DELTA_PX,
+        dx,
+        dy,
+      });
+      const next = moveResultToStyles(result);
+      // Always preview absolute position during the gesture for smooth overlay
+      // follow; commit path still gates on `moved`.
+      const preview: Partial<ManualEditStyles> = {
+        left: `${result.leftPx}px`,
+        top: `${result.topPx}px`,
+      };
+      drag.lastStyles = preview;
+      drag.moved = result.moved;
+      onMovePreview?.(Object.keys(next).length > 0 ? next : preview);
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag || drag.kind !== 'move' || event.pointerId !== drag.pointerId) return;
+      const last = drag.lastStyles;
+      const before = drag.stylesBefore;
+      const moved = drag.moved;
+      dragRef.current = null;
+      setDragging(false);
+      setMoving(false);
+      onResizeSessionChange?.(false);
+      if (moved) onMoveCommit?.(last);
+      else onMoveCancel?.(before);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, [onMoveCancel, onMoveCommit, onMovePreview, onResizeSessionChange, previewScale]);
 
   const boxStyle: CSSProperties = {
     left: hostRect.x,
@@ -106,7 +197,7 @@ export function ManualEditResizeOverlay({
     height: Math.max(1, hostRect.height),
   };
 
-  const beginDrag = (handle: ResizeHandle, event: ReactPointerEvent<HTMLButtonElement>) => {
+  const beginResize = (handle: ResizeHandle, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (disabled || dragRef.current) return;
     event.preventDefault();
     event.stopPropagation();
@@ -133,6 +224,7 @@ export function ManualEditResizeOverlay({
       startTopPx: anchor.startTopPx,
     };
     dragRef.current = {
+      kind: 'resize',
       pointerId: event.pointerId,
       handle,
       startClientX: event.clientX,
@@ -151,6 +243,7 @@ export function ManualEditResizeOverlay({
       }),
     };
     setDragging(true);
+    setMoving(false);
     onResizeSessionChange?.(true);
     try {
       event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -159,9 +252,44 @@ export function ManualEditResizeOverlay({
     }
   };
 
-  const onPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const beginMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!movable || dragRef.current) return;
+    if ((event.target as HTMLElement | null)?.closest?.('[data-handle]')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const pos = startPositionFromTarget(target);
+    const stylesBefore: Partial<ManualEditStyles> = {
+      left: target.styles.left,
+      top: target.styles.top,
+    };
+    dragRef.current = {
+      kind: 'move',
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startLeftPx: pos.startLeftPx,
+      startTopPx: pos.startTopPx,
+      startRect: { ...target.rect },
+      stylesBefore,
+      lastStyles: {
+        left: `${pos.startLeftPx}px`,
+        top: `${pos.startTopPx}px`,
+      },
+      moved: false,
+    };
+    setDragging(true);
+    setMoving(true);
+    onResizeSessionChange?.(true);
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+      // jsdom / older engines may lack pointer capture
+    }
+  };
+
+  const onResizePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const drag = dragRef.current;
-    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (!drag || drag.kind !== 'resize' || event.pointerId !== drag.pointerId) return;
     const hostDx = event.clientX - drag.startClientX;
     const hostDy = event.clientY - drag.startClientY;
     const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, previewScale);
@@ -177,9 +305,9 @@ export function ManualEditResizeOverlay({
     onResizePreview(next);
   };
 
-  const endDrag = (event: ReactPointerEvent<HTMLButtonElement>, commit: boolean) => {
+  const endResize = (event: ReactPointerEvent<HTMLButtonElement>, commit: boolean) => {
     const drag = dragRef.current;
-    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (!drag || drag.kind !== 'resize' || event.pointerId !== drag.pointerId) return;
     try {
       event.currentTarget.releasePointerCapture?.(event.pointerId);
     } catch {
@@ -189,6 +317,7 @@ export function ManualEditResizeOverlay({
     const before = drag.stylesBefore;
     dragRef.current = null;
     setDragging(false);
+    setMoving(false);
     onResizeSessionChange?.(false);
     if (commit) onResizeCommit(last);
     else onResizeCancel(before);
@@ -196,11 +325,20 @@ export function ManualEditResizeOverlay({
 
   return (
     <div
-      className={styles.overlay}
+      className={[
+        styles.overlay,
+        movable ? styles.movable : '',
+        moving ? styles.moving : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       data-testid="manual-edit-resize-overlay"
       data-dragging={dragging ? 'true' : 'false'}
+      data-moving={moving ? 'true' : 'false'}
+      data-movable={movable ? 'true' : 'false'}
       style={boxStyle}
       aria-hidden={disabled || undefined}
+      onPointerDown={movable ? beginMove : undefined}
     >
       {RESIZE_HANDLES.map((handle) => (
         <button
@@ -215,10 +353,10 @@ export function ManualEditResizeOverlay({
             ...handlePositionStyle(handle),
             cursor: disabled ? 'default' : cursorForResizeHandle(handle),
           }}
-          onPointerDown={(event) => beginDrag(handle, event)}
-          onPointerMove={onPointerMove}
-          onPointerUp={(event) => endDrag(event, true)}
-          onPointerCancel={(event) => endDrag(event, false)}
+          onPointerDown={(event) => beginResize(handle, event)}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={(event) => endResize(event, true)}
+          onPointerCancel={(event) => endResize(event, false)}
         />
       ))}
     </div>

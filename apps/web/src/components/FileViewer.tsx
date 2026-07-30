@@ -203,6 +203,7 @@ import {
 } from '../edit-mode/source-patches';
 import { contentRectToHostRect } from '../edit-mode/preview-coords';
 import { canResizeTarget, parseExplicitPx, resizeHistoryLabel } from '../edit-mode/resize-math';
+import { moveHistoryLabel } from '../edit-mode/move-math';
 import {
   createManualEditSourcePin,
   manualEditHistoryConfirmTrustsLocal,
@@ -5081,6 +5082,10 @@ function HtmlViewer({
     width: number;
     height: number;
   } | null>(null);
+  const [manualEditMoveDraftPos, setManualEditMoveDraftPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const manualEditResizeSessionActiveRef = useRef(false);
   const manualEditModeRef = useRef(false);
   const manualEditFrozenSourceRef = useRef<string | null>(null);
@@ -7179,6 +7184,7 @@ function HtmlViewer({
       return;
     }
     setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
   }
 
   function handleManualEditResizePreview(styles: Partial<ManualEditStyles>) {
@@ -7209,6 +7215,34 @@ function HtmlViewer({
     });
   }
 
+  function handleManualEditMovePreview(styles: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    if (!target) return;
+    const version = nextManualEditPreviewVersion();
+    const currentPending = manualEditPendingStyleRef.current;
+    const pendingStyles = currentPending?.id === target.id
+      ? { ...currentPending.styles, ...styles }
+      : styles;
+    clearManualEditStyleTimer();
+    manualEditPendingStyleRef.current = {
+      id: target.id,
+      styles: pendingStyles,
+      label: moveHistoryLabel(target.label),
+      version,
+    };
+    setManualEditError(null);
+    previewStyleToIframe(target.id, styles, version);
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...styles },
+    }));
+    setManualEditMoveDraftPos((prev) => {
+      const x = parseExplicitPx(styles.left) ?? prev?.x ?? target.rect.x;
+      const y = parseExplicitPx(styles.top) ?? prev?.y ?? target.rect.y;
+      return { x, y };
+    });
+  }
+
   function requestManualEditRemeasure(id: string) {
     const win = iframeRef.current?.contentWindow;
     if (!win || !id) return;
@@ -7221,19 +7255,44 @@ function HtmlViewer({
     handleManualEditResizePreview(styles);
     manualEditResizeSessionActiveRef.current = false;
     setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
     const ok = await flushManualEditStyleSave();
     if (!ok) return;
     const width = parseExplicitPx(styles.width) ?? target.rect.width;
     const height = parseExplicitPx(styles.height) ?? target.rect.height;
+    const x = parseExplicitPx(styles.left) ?? target.rect.x;
+    const y = parseExplicitPx(styles.top) ?? target.rect.y;
     setSelectedManualEditTarget((current) => {
       if (!current || current.id !== target.id) return current;
       return {
         ...current,
-        rect: { ...current.rect, width, height },
+        rect: { ...current.rect, width, height, x, y },
         styles: { ...current.styles, ...styles },
       };
     });
     // Sync host overlay to the iframe's real border-box after layout settles.
+    requestManualEditRemeasure(target.id);
+  }
+
+  async function handleManualEditMoveCommit(styles: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    if (!target) return;
+    handleManualEditMovePreview(styles);
+    manualEditResizeSessionActiveRef.current = false;
+    setManualEditMoveDraftPos(null);
+    setManualEditResizeDraftSize(null);
+    const ok = await flushManualEditStyleSave();
+    if (!ok) return;
+    const x = parseExplicitPx(styles.left) ?? target.rect.x;
+    const y = parseExplicitPx(styles.top) ?? target.rect.y;
+    setSelectedManualEditTarget((current) => {
+      if (!current || current.id !== target.id) return current;
+      return {
+        ...current,
+        rect: { ...current.rect, x, y },
+        styles: { ...current.styles, ...styles },
+      };
+    });
     requestManualEditRemeasure(target.id);
   }
 
@@ -7243,10 +7302,30 @@ function HtmlViewer({
     manualEditPendingStyleRef.current = null;
     manualEditResizeSessionActiveRef.current = false;
     setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
     if (!target) return;
     const reset: Partial<ManualEditStyles> = {
       width: stylesBefore.width ?? '',
       height: stylesBefore.height ?? '',
+      left: stylesBefore.left ?? '',
+      top: stylesBefore.top ?? '',
+    };
+    previewStyleToIframe(target.id, reset, nextManualEditPreviewVersion());
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...reset },
+    }));
+  }
+
+  function handleManualEditMoveCancel(stylesBefore: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    clearManualEditStyleTimer();
+    manualEditPendingStyleRef.current = null;
+    manualEditResizeSessionActiveRef.current = false;
+    setManualEditMoveDraftPos(null);
+    setManualEditResizeDraftSize(null);
+    if (!target) return;
+    const reset: Partial<ManualEditStyles> = {
       left: stylesBefore.left ?? '',
       top: stylesBefore.top ?? '',
     };
@@ -7348,6 +7427,7 @@ function HtmlViewer({
     }
     setManualEditPageStylesOpen(false);
     setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
     manualEditResizeSessionActiveRef.current = false;
     const base = sourceRef.current ?? '';
     const fields = readManualEditFields(base, target.id);
@@ -7381,6 +7461,7 @@ function HtmlViewer({
     setSelectedManualEditTarget(null);
     setManualEditPanelPosition(null);
     setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
     manualEditResizeSessionActiveRef.current = false;
     setManualEditDraft(emptyManualEditDraft(sourceRef.current ?? ''));
     setManualEditError(null);
@@ -9363,6 +9444,8 @@ function HtmlViewer({
         previewScale={overlayPreviewScale}
         draftWidthPx={manualEditResizeDraftSize?.width ?? null}
         draftHeightPx={manualEditResizeDraftSize?.height ?? null}
+        draftLeftPx={manualEditMoveDraftPos?.x ?? null}
+        draftTopPx={manualEditMoveDraftPos?.y ?? null}
         disabled={manualEditInlineTextEditing || manualEditSaving}
         onResizeSessionChange={handleManualEditResizeSessionChange}
         onResizePreview={handleManualEditResizePreview}
@@ -9370,6 +9453,11 @@ function HtmlViewer({
           void handleManualEditResizeCommit(styles);
         }}
         onResizeCancel={handleManualEditResizeCancel}
+        onMovePreview={handleManualEditMovePreview}
+        onMoveCommit={(styles) => {
+          void handleManualEditMoveCommit(styles);
+        }}
+        onMoveCancel={handleManualEditMoveCancel}
       />
     ) : null;
   const activeComposerComment = activePreviewCommentId

@@ -7,8 +7,20 @@
   outline: none;
 }
 
+.movable {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.moving {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .handle {
   position: absolute;
+  z-index: 1;
   width: 14px;
   height: 14px;
   margin: -7px 0 0 -7px;
