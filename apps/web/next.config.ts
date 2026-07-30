@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readTeamverClientBuildEnv } from './src/teamver/teamverClientBuildEnv';
 
 // Daemon port the local Express server binds to (see apps/daemon/src/cli.ts). The
 // dev-all launcher overrides OD_PORT after probing for a free port; we read
@@ -158,6 +159,9 @@ function configuredAllowedDevHosts(): string[] {
 }
 
 const nextConfig: NextConfig = {
+  // Bake-time Teamver flags (VITE_*) must be listed here — Next.js does not
+  // expose arbitrary process.env keys to the browser client bundle.
+  env: readTeamverClientBuildEnv(),
   allowedDevOrigins: configuredAllowedDevHosts(),
   outputFileTracingRoot: WORKSPACE_ROOT,
   reactStrictMode: true,
