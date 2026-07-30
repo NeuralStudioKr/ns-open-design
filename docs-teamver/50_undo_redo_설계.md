@@ -324,6 +324,7 @@ od project revisions restore <projectId> deck.html <revisionId>
 |------|------|
 | 설계 | `docs-teamver/50_undo_redo_설계.md` |
 | 현황 | `docs-teamver/50-1-구현현황-undo_redo.md` |
+| Canvas vs Design 비교 | `docs-teamver/50-2_Teamver_Canvas_vs_Design_Undo_비교.md` |
 | 툴바 UI | `apps/web/src/components/FileViewerUndoRedoToolbar.tsx` |
 | Manual history | `apps/web/src/components/FileViewer.tsx` |
 | Contract (P1) | `packages/contracts/src/api/revisions.ts` |
@@ -345,5 +346,6 @@ od project revisions restore <projectId> deck.html <revisionId>
 ## 15. 참고
 
 - Manual edit history: `apps/web/src/edit-mode/types.ts` — `ManualEditHistoryEntry`
+- **Teamver Canvas vs Design undo 비교:** [50-2 Teamver Canvas vs Design Undo/Redo 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md)
 - Draw overlay undo UI: `apps/web/src/components/PreviewDrawOverlay.tsx` (아이콘·패턴 참고)
 - Drive publish history: `TeamverDrivePublishHistory` (별도 제품 surface)

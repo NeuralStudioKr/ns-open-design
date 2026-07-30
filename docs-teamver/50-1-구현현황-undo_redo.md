@@ -2,6 +2,7 @@
 
 **문서 번호:** 50-1  
 **설계 SSOT:** [50 Undo/Redo 설계](./50_undo_redo_설계.md)  
+**비교 문서:** [50-2 Teamver Canvas vs Design Undo 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md)  
 **브랜치:** `staging` (머지 완료, `2047f7c3b`)  
 **최종 갱신:** 2026-07-30
 
