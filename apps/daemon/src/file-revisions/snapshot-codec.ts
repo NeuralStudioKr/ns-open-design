@@ -79,7 +79,8 @@ export function gzipRevisionSnapshot(
   content: string,
   options?: { parentContent?: string | null; forceFull?: boolean },
 ): { kind: RevisionSnapshotKind; compressed: Buffer } {
-  const forceFull = options?.forceFull || options?.parentContent == null;
+  const parentContent = options?.parentContent;
+  const forceFull = Boolean(options?.forceFull) || parentContent == null;
   if (forceFull) {
     return {
       kind: 'full',
@@ -87,7 +88,6 @@ export function gzipRevisionSnapshot(
     };
   }
 
-  const parentContent = options.parentContent;
   const patch = computeSuffixPrefixPatch(parentContent, content);
   const diffPayload = encodePayload('diff', content, patch);
   const fullPayload = encodePayload('full', content);

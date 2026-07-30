@@ -56,7 +56,7 @@ export async function writeRevisionSnapshot(
     ? shouldForceFullSnapshot(options.sequence)
     : options?.parentContent == null;
   const encoded = gzipRevisionSnapshot(content, {
-    parentContent: options?.parentContent,
+    parentContent: options?.parentContent ?? null,
     forceFull,
   });
   await writeFile(target, encoded.compressed);

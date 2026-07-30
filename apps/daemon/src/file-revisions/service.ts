@@ -6,7 +6,7 @@ import type {
   FileRevisionPushRequest,
   FileRevisionSource,
 } from '@open-design/contracts';
-import type { ProjectFile } from '../projects.js';
+import type { ProjectFile } from '@open-design/contracts';
 import {
   deleteFileRevisionsAfterSequence,
   FILE_REVISION_RETENTION_LIMIT,

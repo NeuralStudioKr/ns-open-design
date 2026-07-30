@@ -3093,9 +3093,11 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         source,
         label: label.trim(),
         artifactManifest: artifactManifest ?? null,
-        conversationId: typeof conversationId === 'string' ? conversationId : undefined,
-        assistantMessageId: typeof assistantMessageId === 'string' ? assistantMessageId : undefined,
-        truncateAfterSequence: Number.isFinite(truncate) ? truncate : undefined,
+        ...(typeof conversationId === 'string' ? { conversationId } : {}),
+        ...(typeof assistantMessageId === 'string' ? { assistantMessageId } : {}),
+        ...(typeof truncate === 'number' && Number.isFinite(truncate)
+          ? { truncateAfterSequence: truncate }
+          : {}),
         metadata: project.metadata,
       });
       res.json(result);
