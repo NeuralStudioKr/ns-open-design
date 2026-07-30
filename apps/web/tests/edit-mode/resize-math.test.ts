@@ -6,9 +6,12 @@ import {
   aspectLockForTarget,
   canResizeTarget,
   computeResize,
+  isAnchoredCssPosition,
   isDeckSlideRoot,
   parseExplicitPx,
+  resizeHistoryLabel,
   resizeResultToStyles,
+  startAnchorFromTarget,
   startSizeFromTarget,
   type ResizeMathInput,
 } from '../../src/edit-mode/resize-math';
@@ -25,6 +28,9 @@ function baseInput(over: Partial<ResizeMathInput> = {}): ResizeMathInput {
     aspectLock: false,
     minWidth: MANUAL_EDIT_RESIZE_MIN_PX,
     minHeight: MANUAL_EDIT_RESIZE_MIN_PX,
+    anchorPosition: false,
+    startLeftPx: null,
+    startTopPx: null,
     dx: 0,
     dy: 0,
     ...over,
@@ -200,7 +206,45 @@ describe('style helpers', () => {
       y: 0,
       touchedWidth: true,
       touchedHeight: false,
+      leftPx: null,
+      topPx: null,
     });
     expect(styles).toEqual({ width: '220px' });
+  });
+
+  it('anchors left when W-dragging an absolute element', () => {
+    expect(isAnchoredCssPosition('absolute')).toBe(true);
+    const out = computeResize(baseInput({
+      handle: 'w',
+      dx: 40,
+      anchorPosition: true,
+      startLeftPx: 100,
+      startTopPx: 50,
+    }));
+    // width 200-40=160, left moves +40 to keep right edge fixed
+    expect(out.widthPx).toBe(160);
+    expect(out.leftPx).toBe(140);
+    expect(out.topPx).toBeNull();
+    expect(resizeResultToStyles(out)).toEqual({ width: '160px', left: '140px' });
+  });
+
+  it('anchors top when N-dragging an absolute element', () => {
+    const out = computeResize(baseInput({
+      handle: 'n',
+      dy: 20,
+      anchorPosition: true,
+      startLeftPx: 100,
+      startTopPx: 50,
+    }));
+    expect(out.heightPx).toBe(80);
+    expect(out.topPx).toBe(70);
+    expect(out.leftPx).toBeNull();
+  });
+
+  it('does not write left/top for static flow layout', () => {
+    const out = computeResize(baseInput({ handle: 'w', dx: 40 }));
+    expect(out.leftPx).toBeNull();
+    expect(startAnchorFromTarget(target({ cssPosition: 'static' })).anchorPosition).toBe(false);
+    expect(resizeHistoryLabel('Card')).toBe('Resize: Card');
   });
 });

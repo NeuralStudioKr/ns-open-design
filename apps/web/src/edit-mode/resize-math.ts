@@ -17,6 +17,13 @@ export type ResizeSessionStart = {
   aspectLock: boolean;
   minWidth: number;
   minHeight: number;
+  /**
+   * When true (absolute/fixed), W/N edges keep the opposite edge fixed by
+   * writing left/top. Flow layout leaves these null.
+   */
+  anchorPosition: boolean;
+  startLeftPx: number | null;
+  startTopPx: number | null;
 };
 
 export type ResizeMathInput = ResizeSessionStart & {
@@ -28,12 +35,12 @@ export type ResizeMathInput = ResizeSessionStart & {
 export type ResizeMathResult = {
   widthPx: number;
   heightPx: number;
-  /** Phase 1: position unchanged (reserved). */
   x: number;
   y: number;
-  /** Which axes were driven by this handle (for partial set-style). */
   touchedWidth: boolean;
   touchedHeight: boolean;
+  leftPx: number | null;
+  topPx: number | null;
 };
 
 type AxisSign = -1 | 0 | 1;
@@ -56,13 +63,14 @@ function clampMin(value: number, min: number): number {
   return Math.max(min, value);
 }
 
-/**
- * Image: aspect locked by default; Shift unlocks.
- * Others: free by default; Shift locks.
- */
 export function aspectLockForTarget(kind: ManualEditKind, shiftKey: boolean): boolean {
   if (kind === 'image') return !shiftKey;
   return shiftKey;
+}
+
+export function isAnchoredCssPosition(cssPosition: string | null | undefined): boolean {
+  const value = String(cssPosition ?? 'static').toLowerCase();
+  return value === 'absolute' || value === 'fixed';
 }
 
 export function computeResize(input: ResizeMathInput): ResizeMathResult {
@@ -77,6 +85,9 @@ export function computeResize(input: ResizeMathInput): ResizeMathResult {
     minHeight,
     dx,
     dy,
+    anchorPosition,
+    startLeftPx,
+    startTopPx,
   } = input;
   const { signW, signH } = axisSigns(handle);
   const touchedWidth = signW !== 0;
@@ -92,7 +103,6 @@ export function computeResize(input: ResizeMathInput): ResizeMathResult {
     if (touchedWidth) widthPx = clampMin(startWidthPx + signW * dx, minWidth);
     if (touchedHeight) heightPx = clampMin(startHeightPx + signH * dy, minHeight);
   } else if (touchedWidth && touchedHeight) {
-    // Corner: dominate by larger absolute content delta (dx wins ties).
     const useWidth = Math.abs(dx) >= Math.abs(dy);
     if (useWidth) {
       widthPx = clampMin(startWidthPx + signW * dx, minWidth);
@@ -113,17 +123,38 @@ export function computeResize(input: ResizeMathInput): ResizeMathResult {
     heightPx = clampMin(widthPx / safeAspect, minHeight);
   }
 
+  widthPx = Math.round(widthPx);
+  heightPx = Math.round(heightPx);
+
+  let leftPx: number | null = null;
+  let topPx: number | null = null;
+  let x = startRect.x;
+  let y = startRect.y;
+
+  if (anchorPosition) {
+    // Keep the opposite edge fixed: growing/shrinking from W/N moves left/top.
+    if (signW < 0 && startLeftPx != null) {
+      leftPx = Math.round(startLeftPx + (startWidthPx - widthPx));
+      x = leftPx;
+    }
+    if (signH < 0 && startTopPx != null) {
+      topPx = Math.round(startTopPx + (startHeightPx - heightPx));
+      y = topPx;
+    }
+  }
+
   return {
-    widthPx: Math.round(widthPx),
-    heightPx: Math.round(heightPx),
-    x: startRect.x,
-    y: startRect.y,
+    widthPx,
+    heightPx,
+    x,
+    y,
     touchedWidth: touchedWidth || aspectLock,
     touchedHeight: touchedHeight || aspectLock,
+    leftPx,
+    topPx,
   };
 }
 
-/** Parse a CSS length to px when it is already px; otherwise null (use computed). */
 export function parseExplicitPx(value: string | null | undefined): number | null {
   const trimmed = String(value ?? '').trim().toLowerCase();
   if (!trimmed || trimmed === 'auto' || trimmed === 'none') return null;
@@ -133,10 +164,6 @@ export function parseExplicitPx(value: string | null | undefined): number | null
   return Number.isFinite(n) ? n : null;
 }
 
-/**
- * Start size for a drag session: prefer computed rect (border-box), which
- * already reflects % / auto / rem. Persist always writes px.
- */
 export function startSizeFromTarget(target: ManualEditTarget): {
   widthPx: number;
   heightPx: number;
@@ -151,13 +178,36 @@ export function startSizeFromTarget(target: ManualEditTarget): {
   };
 }
 
+export function startAnchorFromTarget(target: ManualEditTarget): {
+  anchorPosition: boolean;
+  startLeftPx: number | null;
+  startTopPx: number | null;
+} {
+  const anchorPosition = isAnchoredCssPosition(target.cssPosition);
+  if (!anchorPosition) {
+    return { anchorPosition: false, startLeftPx: null, startTopPx: null };
+  }
+  return {
+    anchorPosition: true,
+    startLeftPx: Math.round(parseExplicitPx(target.styles.left) ?? target.rect.x),
+    startTopPx: Math.round(parseExplicitPx(target.styles.top) ?? target.rect.y),
+  };
+}
+
 export function resizeResultToStyles(
   result: ResizeMathResult,
 ): Partial<ManualEditStyles> {
   const styles: Partial<ManualEditStyles> = {};
   if (result.touchedWidth) styles.width = `${result.widthPx}px`;
   if (result.touchedHeight) styles.height = `${result.heightPx}px`;
+  if (result.leftPx != null) styles.left = `${result.leftPx}px`;
+  if (result.topPx != null) styles.top = `${result.topPx}px`;
   return styles;
+}
+
+/** Resize commit must flush once → one Manual Edit history entry. */
+export function resizeHistoryLabel(targetLabel: string): string {
+  return `Resize: ${targetLabel}`;
 }
 
 export function isDeckSlideRoot(target: ManualEditTarget): boolean {

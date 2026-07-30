@@ -471,7 +471,7 @@ type NormalizeResult =
   | { ok: false; error: string };
 
 const PX_STYLE_PROPS = new Set<keyof ManualEditStyles>([
-  'fontSize', 'letterSpacing', 'width', 'height', 'minHeight', 'gap',
+  'fontSize', 'letterSpacing', 'width', 'height', 'minHeight', 'left', 'top', 'gap',
   'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'border', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',

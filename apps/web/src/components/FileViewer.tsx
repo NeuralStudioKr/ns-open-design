@@ -202,7 +202,7 @@ import {
   readManualEditStyles,
 } from '../edit-mode/source-patches';
 import { contentRectToHostRect } from '../edit-mode/preview-coords';
-import { canResizeTarget, parseExplicitPx } from '../edit-mode/resize-math';
+import { canResizeTarget, parseExplicitPx, resizeHistoryLabel } from '../edit-mode/resize-math';
 import {
   createManualEditSourcePin,
   manualEditHistoryConfirmTrustsLocal,
@@ -7193,7 +7193,7 @@ function HtmlViewer({
     manualEditPendingStyleRef.current = {
       id: target.id,
       styles: pendingStyles,
-      label: `Resize: ${target.label}`,
+      label: resizeHistoryLabel(target.label),
       version,
     };
     setManualEditError(null);
@@ -7247,6 +7247,8 @@ function HtmlViewer({
     const reset: Partial<ManualEditStyles> = {
       width: stylesBefore.width ?? '',
       height: stylesBefore.height ?? '',
+      left: stylesBefore.left ?? '',
+      top: stylesBefore.top ?? '',
     };
     previewStyleToIframe(target.id, reset, nextManualEditPreviewVersion());
     setManualEditDraft((current) => ({

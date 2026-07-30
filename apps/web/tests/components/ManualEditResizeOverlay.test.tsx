@@ -91,6 +91,8 @@ describe('ManualEditResizeOverlay', () => {
     expect(onResizeCancel.mock.calls[0]?.[0]).toEqual({
       width: '200px',
       height: '100px',
+      left: '',
+      top: '',
     });
     expect(onResizeCommit).not.toHaveBeenCalled();
   });

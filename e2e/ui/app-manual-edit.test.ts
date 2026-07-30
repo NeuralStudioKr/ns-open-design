@@ -157,6 +157,44 @@ test('[P0] manual edit mode preserves preview actions after style edits', async 
   await expect(page.getByRole('button', { name: /^Download$/ })).toBeVisible();
 });
 
+test('[P1] manual edit drag-resize handle persists box width to source', async ({ page }) => {
+  await routeMockAgents(page);
+  const projectId = await createEmptyProject(page, 'Manual edit resize');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize.html`);
+  await openDesignFile(page, 'manual-edit-resize.html');
+
+  await expect(artifactPreview(page)).toBeVisible();
+  const frame = artifactPreviewFrame(page);
+  await expect(frame.locator('[data-od-id="resize-box"]')).toBeVisible();
+
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toBeVisible();
+
+  const handle = page.getByTestId('manual-edit-resize-handle-e');
+  await expect(handle).toBeVisible();
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 100, startY, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-resize.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const match = source.match(/data-od-id="resize-box"[^>]*style="[^"]*width:\s*(\d+)px/);
+      if (!match) return false;
+      return Number(match[1]) > 120;
+    })
+    .toBe(true);
+});
+
 async function selectPreviewElementThroughBridge(
   page: Page,
   frame: ReturnType<Page['frameLocator']>,
@@ -689,6 +727,7 @@ function manualEditHtml(): string {
         <a data-od-id="cta" data-od-label="Primary CTA" href="/start">Start now</a>
         <img data-od-id="hero-image" data-od-label="Hero image" src="/hero.png" alt="Hero" style="width:64px;height:64px;">
       </section>
+      <div data-od-id="resize-box" data-od-label="Resize box" style="width:120px;height:80px;background:#d4d4d8;">Resize me</div>
     </main>
   </body>
 </html>`;

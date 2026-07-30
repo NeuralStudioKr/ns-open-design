@@ -14,6 +14,7 @@ import {
   computeResize,
   cursorForResizeHandle,
   resizeResultToStyles,
+  startAnchorFromTarget,
   startSizeFromTarget,
   type ResizeHandle,
   type ResizeSessionStart,
@@ -110,10 +111,13 @@ export function ManualEditResizeOverlay({
     event.preventDefault();
     event.stopPropagation();
     const size = startSizeFromTarget(target);
+    const anchor = startAnchorFromTarget(target);
     const aspect = size.heightPx > 0 ? size.widthPx / size.heightPx : 1;
     const stylesBefore: Partial<ManualEditStyles> = {
       width: target.styles.width,
       height: target.styles.height,
+      left: target.styles.left,
+      top: target.styles.top,
     };
     const session: ResizeSessionStart = {
       startRect: { ...target.rect },
@@ -124,6 +128,9 @@ export function ManualEditResizeOverlay({
       aspectLock: aspectLockForTarget(target.kind, event.shiftKey),
       minWidth: MANUAL_EDIT_RESIZE_MIN_PX,
       minHeight: MANUAL_EDIT_RESIZE_MIN_PX,
+      anchorPosition: anchor.anchorPosition,
+      startLeftPx: anchor.startLeftPx,
+      startTopPx: anchor.startTopPx,
     };
     dragRef.current = {
       pointerId: event.pointerId,
@@ -139,6 +146,8 @@ export function ManualEditResizeOverlay({
         y: target.rect.y,
         touchedWidth: true,
         touchedHeight: true,
+        leftPx: null,
+        topPx: null,
       }),
     };
     setDragging(true);
