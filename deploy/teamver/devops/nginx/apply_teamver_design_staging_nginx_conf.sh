@@ -9,8 +9,10 @@ usage() {
 apply_teamver_design_staging_nginx_conf.sh — Staging VM
 
   sudo ./apply_teamver_design_staging_nginx_conf.sh ./stg-design.teamver.com.http.conf
-  sudo ./apply_teamver_design_staging_nginx_conf.sh ./stg-design.teamver.com.https.conf \
-       --disable stg-design.teamver.com.http.conf
+  sudo ./apply_teamver_design_staging_nginx_conf.sh ./stg-design.teamver.com.https.conf
+
+http/https 는 같은 upstream 을 쓰므로 상대 conf 는 자동 비활성화됩니다.
+필요 시 --disable <name> 으로 추가 비활성화 가능.
 EOF
 }
 
