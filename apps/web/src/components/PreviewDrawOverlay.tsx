@@ -85,11 +85,11 @@ async function raceWithBudget<T>(promise: Promise<T>, budgetMs: number): Promise
     return await Promise.race([
       promise,
       new Promise<null>((resolve) => {
-        timer = window.setTimeout(() => resolve(null), budgetMs);
+        timer = setTimeout(() => resolve(null), budgetMs);
       }),
     ]);
   } finally {
-    if (timer !== undefined) window.clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
