@@ -159,10 +159,144 @@ export function stripTrailingUnclosedRawBlocks(html: string): string {
   return out;
 }
 
+/**
+ * Drop mid-document incomplete open tags where the agent stuttered mid-attribute
+ * and restarted the same (or next) tag, e.g.:
+ *
+ *   `<section class="\n<section class="slide" …>`
+ *
+ * HTML5 will treat the first open as a mangled tag whose quoted attribute
+ * swallows the real slide opener, nesting later slides into slide 1 and
+ * painting "ghost" content through transparent regions.
+ *
+ * Newline + next markup tag while still inside a quoted attribute is treated
+ * as a hard stutter boundary. `<` before `>` outside quotes is also incomplete.
+ * `script` / `style` bodies and HTML comments are left alone.
+ */
+export function stripIncompleteOpenTags(html: string): string {
+  if (!html || html.indexOf("<") === -1) return html;
+
+  let out = "";
+  let i = 0;
+  const n = html.length;
+
+  while (i < n) {
+    if (html[i] !== "<") {
+      out += html[i];
+      i += 1;
+      continue;
+    }
+
+    if (html.startsWith("<!--", i)) {
+      const end = html.indexOf("-->", i + 4);
+      if (end === -1) {
+        out += html.slice(i);
+        break;
+      }
+      out += html.slice(i, end + 3);
+      i = end + 3;
+      continue;
+    }
+
+    if (html.startsWith("<!", i) || html.startsWith("<?", i)) {
+      const end = html.indexOf(">", i + 2);
+      if (end === -1) break;
+      out += html.slice(i, end + 1);
+      i = end + 1;
+      continue;
+    }
+
+    const tagMatch = /^<\/?([A-Za-z][\w:-]*)/.exec(html.slice(i));
+    if (!tagMatch) {
+      out += html[i];
+      i += 1;
+      continue;
+    }
+
+    const tagName = String(tagMatch[1] ?? "").toLowerCase();
+    const isClose = html.startsWith("</", i);
+    let j = i + tagMatch[0].length;
+    let quote: '"' | "'" | null = null;
+    let incompleteAt = -1;
+    let closed = false;
+
+    while (j < n) {
+      const c = html[j];
+      if (quote) {
+        if (c === quote) {
+          quote = null;
+          j += 1;
+          continue;
+        }
+        // Quoted attr cut mid-value, then a new tag starts on the next line.
+        if (c === "\n" || c === "\r") {
+          let k = j;
+          while (k < n && (html[k] === "\n" || html[k] === "\r" || html[k] === " " || html[k] === "\t")) {
+            k += 1;
+          }
+          if (k < n && html[k] === "<" && /^<\/?[A-Za-z]/.test(html.slice(k))) {
+            incompleteAt = k;
+            break;
+          }
+        }
+        j += 1;
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        quote = c;
+        j += 1;
+        continue;
+      }
+      if (c === ">") {
+        j += 1;
+        closed = true;
+        break;
+      }
+      if (c === "<") {
+        incompleteAt = j;
+        break;
+      }
+      j += 1;
+    }
+
+    if (incompleteAt >= 0) {
+      i = incompleteAt;
+      continue;
+    }
+    if (!closed) {
+      // Trailing incomplete open at EOF — drop it.
+      break;
+    }
+
+    const tagText = html.slice(i, j);
+    out += tagText;
+    i = j;
+
+    if (
+      !isClose
+      && (tagName === "script" || tagName === "style")
+      && !/\/\s*>$/.test(tagText)
+    ) {
+      const closeRe = new RegExp(`</${tagName}\\s*>`, "i");
+      const rest = html.slice(i);
+      const closeMatch = closeRe.exec(rest);
+      if (!closeMatch) {
+        out += rest;
+        break;
+      }
+      out += rest.slice(0, closeMatch.index + closeMatch[0].length);
+      i += closeMatch.index + closeMatch[0].length;
+    }
+  }
+
+  return out;
+}
+
 export function repairArtifactDocumentHead(html: string): string {
   if (!html) return html;
 
-  let doc = stripLeakedViewportFragments(html);
+  let doc = stripIncompleteOpenTags(html);
+  doc = stripLeakedViewportFragments(doc);
   doc = stripArtifactPreviewBodyTextLeaks(doc);
   if (!/<head/i.test(doc)) {
     doc = repairMangledDeckFrameworkScript(doc);

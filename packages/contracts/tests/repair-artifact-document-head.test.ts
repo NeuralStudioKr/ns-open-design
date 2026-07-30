@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { isArtifactHtmlStableForPreview } from "../src/html/isArtifactHtmlStableForPreview.js";
 import {
   repairArtifactDocumentHead,
+  stripIncompleteOpenTags,
   stripTrailingUnclosedRawBlocks,
 } from "../src/html/repairArtifactDocumentHead.js";
 import { DECK_SKELETON_HTML } from "../src/prompts/deck-framework.js";
@@ -218,5 +219,50 @@ name="viewport" content="width=device-width, initial-scale=1" />
     expect(out).not.toMatch(/<style\b/i);
     expect(out).not.toMatch(/<script\b/i);
     expect(isArtifactHtmlStableForPreview(out)).toBe(true);
+  });
+
+  it("strips stuttered incomplete section open that swallows the next slide tag", () => {
+    // Agent cut mid-attribute then restarted: `<section class="\n<section class="slide"…>`
+    const html = `<!doctype html>
+<html lang="ko">
+<body>
+<section class="slide" style="background:#0a0a1a"><h1>Cover</h1></section>
+<!-- 슬라이드 2 -->
+<section class="
+<section class="slide" style="background:#ffffff">
+  <h2>NeuralStudio란?</h2>
+  <div style="background:#f0f9ff;border-left:5px solid #0ea5e9">
+    <h3>미션</h3>
+    <p>AI 기술과 크리에이티브 역량을 결합합니다.</p>
+  </div>
+</section>
+<section class="slide" style="background:#0f172a"><h2>핵심 서비스</h2></section>
+</body>
+</html>`;
+    const out = repairArtifactDocumentHead(html);
+    expect(out).not.toMatch(/<section class="\s*\n\s*<section/i);
+    expect(out).toContain('<section class="slide" style="background:#ffffff">');
+    expect(out).toContain("NeuralStudio란?");
+    expect(out).toContain("미션");
+    expect(out).toContain("핵심 서비스");
+    // Exactly three real slide openers remain.
+    expect(out.match(/<section\b[^>]*\bclass=["'][^"']*\bslide\b/gi)?.length).toBe(3);
+  });
+
+  it("stripIncompleteOpenTags keeps legitimate multiline tags and script comparisons", () => {
+    const html = `<!doctype html><html><body>
+<section
+  class="slide"
+  style="min-height:100vh">
+  <h1>Ok</h1>
+</section>
+<script>
+if (a < b) { window.__ok = true; }
+</script>
+</body></html>`;
+    const out = stripIncompleteOpenTags(html);
+    expect(out).toContain('class="slide"');
+    expect(out).toContain("if (a < b)");
+    expect(out).toContain("</script>");
   });
 });
