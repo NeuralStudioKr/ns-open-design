@@ -5,7 +5,7 @@
 **상위 SSOT:** [01 통합 아키텍처](./01_통합_아키텍처.md) · [33 프로젝트 다운로드·Export](./33_프로젝트_다운로드_Export_아키텍처.md)  
 **구현 현황:** [50-1 구현현황 — undo/redo](./50-1-구현현황-undo_redo.md)  
 **대상 브랜치:** `feat/undo-redo` (base: `staging`)  
-**상태:** 설계 확정 · Phase 0 진행 중 (툴바 UI 스캐폴드)
+**상태:** 설계 확정 · Phase 0~4 완료 (cross-file는 Non-goal으로 보류)
 
 ---
 
@@ -156,11 +156,13 @@ export type FileRevision = {
 ### 5.2 Snapshot 저장 경로
 
 ```
-<project-dir>/.od/revisions/<fileName>/<revisionId>.html
+<project-dir>/.od/revisions/<fileName>/<revisionId>.snap.gz
 ```
 
-- `writeProjectFile` 성공 직후 snapshot 복사 (atomic push)
-- Retention: 파일당 최근 **30** revision (기본), 초과 시 oldest prune
+- **Phase 4:** gzip 압축 + parent 대비 prefix/suffix diff (더 작을 때만 diff 선택)
+- sequence 1, 6, 11… 은 full checkpoint (`REVISION_FULL_SNAPSHOT_INTERVAL=5`)
+- legacy `{revisionId}.html` 은 읽기 호환만 유지; 신규 write는 `.snap.gz`만 생성
+- Retention: 파일당 최근 **30** revision (기본), 초과 시 oldest prune — daemon `OD_FILE_REVISION_RETENTION_LIMIT` env로 조정 가능 ([50-2 §4.3](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md))
 
 ### 5.3 클라이언트 스택
 
@@ -322,6 +324,7 @@ od project revisions restore <projectId> deck.html <revisionId>
 |------|------|
 | 설계 | `docs-teamver/50_undo_redo_설계.md` |
 | 현황 | `docs-teamver/50-1-구현현황-undo_redo.md` |
+| Canvas vs Design 비교 | `docs-teamver/50-2_Teamver_Canvas_vs_Design_Undo_비교.md` |
 | 툴바 UI | `apps/web/src/components/FileViewerUndoRedoToolbar.tsx` |
 | Manual history | `apps/web/src/components/FileViewer.tsx` |
 | Contract (P1) | `packages/contracts/src/api/revisions.ts` |
@@ -343,5 +346,6 @@ od project revisions restore <projectId> deck.html <revisionId>
 ## 15. 참고
 
 - Manual edit history: `apps/web/src/edit-mode/types.ts` — `ManualEditHistoryEntry`
+- **Teamver Canvas vs Design undo 비교:** [50-2 Teamver Canvas vs Design Undo/Redo 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md)
 - Draw overlay undo UI: `apps/web/src/components/PreviewDrawOverlay.tsx` (아이콘·패턴 참고)
 - Drive publish history: `TeamverDrivePublishHistory` (별도 제품 surface)

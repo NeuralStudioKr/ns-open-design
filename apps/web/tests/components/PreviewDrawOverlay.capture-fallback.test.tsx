@@ -204,6 +204,33 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     }
   });
 
+  it('removes an attached screenshot image from the markup composer', async () => {
+    const { container } = render(
+      <PreviewDrawOverlay active>
+        <iframe title="srcdoc" data-od-render-mode="srcdoc" />
+      </PreviewDrawOverlay>,
+    );
+
+    const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(fileInput).toBeTruthy();
+    const file = new File(['pixels'], 'clip.png', { type: 'image/png' });
+    fireEvent.change(fileInput!, { target: { files: [file] } });
+
+    await waitFor(() =>
+      expect(container.querySelectorAll('img[aria-hidden="true"]').length).toBeGreaterThan(0),
+    );
+
+    const removeButton = container.querySelector<HTMLButtonElement>(
+      'button[title="Remove image"]',
+    );
+    expect(removeButton).toBeTruthy();
+    fireEvent.click(removeButton!);
+
+    await waitFor(() =>
+      expect(container.querySelectorAll('img[aria-hidden="true"]').length).toBe(0),
+    );
+  });
+
   it('does not block send on a slow captureSnapshot when marks-only is available', async () => {
     const slowCapture = vi.fn(
       () =>

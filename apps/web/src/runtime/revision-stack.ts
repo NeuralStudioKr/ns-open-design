@@ -1,0 +1,54 @@
+import type { FileRevision } from '@open-design/contracts';
+
+export type RevisionStackSnapshot = {
+  revisions: FileRevision[];
+  headRevisionId: string | null;
+  cursorRevisionId: string | null;
+};
+
+export function createRevisionStackSnapshot(
+  revisions: FileRevision[],
+  headRevisionId: string | null,
+  cursorRevisionId: string | null = headRevisionId,
+): RevisionStackSnapshot {
+  return { revisions, headRevisionId, cursorRevisionId };
+}
+
+export function revisionCursorIndex(stack: RevisionStackSnapshot): number {
+  if (!stack.cursorRevisionId) return -1;
+  return stack.revisions.findIndex((revision) => revision.id === stack.cursorRevisionId);
+}
+
+export function canUndoRevisionStack(stack: RevisionStackSnapshot): boolean {
+  return revisionCursorIndex(stack) > 0;
+}
+
+export function canRedoRevisionStack(stack: RevisionStackSnapshot): boolean {
+  const index = revisionCursorIndex(stack);
+  return index >= 0 && index < stack.revisions.length - 1;
+}
+
+export function revisionBeforeCursor(stack: RevisionStackSnapshot): FileRevision | null {
+  const index = revisionCursorIndex(stack);
+  if (index <= 0) return null;
+  return stack.revisions[index - 1] ?? null;
+}
+
+export function revisionAfterCursor(stack: RevisionStackSnapshot): FileRevision | null {
+  const index = revisionCursorIndex(stack);
+  if (index < 0 || index >= stack.revisions.length - 1) return null;
+  return stack.revisions[index + 1] ?? null;
+}
+
+export function truncateAfterSequenceForStack(stack: RevisionStackSnapshot): number | undefined {
+  const index = revisionCursorIndex(stack);
+  if (index < 0) return undefined;
+  return stack.revisions[index]?.sequence;
+}
+
+export function stackWithCursor(
+  stack: RevisionStackSnapshot,
+  cursorRevisionId: string | null,
+): RevisionStackSnapshot {
+  return { ...stack, cursorRevisionId };
+}

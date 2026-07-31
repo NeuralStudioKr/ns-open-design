@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { ProjectBrowserWorkspaceTab, ProjectTabsState } from '@open-design/contracts';
 import { migrateCritique } from './critique/persistence.js';
+import { migrateFileRevisions } from './file-revisions/persistence.js';
 import { migrateMediaTasks } from './media-tasks.js';
 import { migratePlugins } from './plugins/persistence.js';
 import {
@@ -49,6 +50,7 @@ import {
   isDaemonDbPostgres,
   schedulePostgresWrite,
 } from './storage/daemon-db-runtime.js';
+import { mergeMessageUpsertPayload } from './storage/message-upsert-merge.js';
 
 type SqliteDb = Database.Database;
 type DbRow = Record<string, any>;
@@ -385,6 +387,7 @@ function migrate(db: SqliteDb): void {
     db.exec(`ALTER TABLE tabs_state ADD COLUMN state_json TEXT`);
   }
   migrateCritique(db);
+  migrateFileRevisions(db);
   migrateMediaTasks(db);
   migratePlugins(db);
 }
@@ -1856,42 +1859,13 @@ export async function listMessagesAsync(db: SqliteDb, conversationId: string) {
   return normalized;
 }
 
-function mergeOptionalMessageArrayField<T>(
-  incoming: T[] | undefined,
-  existing: T[] | undefined,
-): T[] | undefined {
-  if (incoming === undefined) return existing;
-  if (incoming.length === 0 && (existing?.length ?? 0) > 0) return existing;
-  return incoming;
-}
-
-function mergeMessageUpsertPayload(existing: DbRow | undefined, incoming: DbRow): DbRow {
-  if (!existing) return incoming;
-  return {
-    ...incoming,
-    // Keepalive pagehide trims may omit `events` entirely (or send []). Never
-    // clobber a previously persisted transcript / error status card that way —
-    // attachments already used the same coalesce helper.
-    events: mergeOptionalMessageArrayField(incoming.events, existing.events),
-    commentAttachments: mergeOptionalMessageArrayField(
-      incoming.commentAttachments,
-      existing.commentAttachments,
-    ),
-    attachments: mergeOptionalMessageArrayField(incoming.attachments, existing.attachments),
-    sessionMode: incoming.sessionMode ?? existing.sessionMode,
-    runContext: incoming.runContext ?? existing.runContext,
-    appliedPluginSnapshot: incoming.appliedPluginSnapshot ?? existing.appliedPluginSnapshot,
-    preTurnFileNames: incoming.preTurnFileNames ?? existing.preTurnFileNames,
-    producedFiles: incoming.producedFiles ?? existing.producedFiles,
-    feedback: incoming.feedback ?? existing.feedback,
-  };
-}
-
 export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
   if (isDaemonDbPostgres()) {
     const now = Date.now();
     const cached = getCachedMessages(conversationId) ?? [];
     const existing = cached.find((row) => row.id === m.id);
+    // Best-effort cache merge for sync reads. Durable PG write below merges
+    // against the real row — required when cache is cold/stale (HA / restart).
     const merged = mergeMessageUpsertPayload(existing, m);
     const position = existing && typeof existing.position === 'number'
       ? Number(existing.position)
@@ -1926,7 +1900,9 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
     const conversation = getCachedConversationById(conversationId);
     if (conversation?.projectId) invalidateCachedConversations(String(conversation.projectId));
     schedulePostgresWrite(async () => {
-      await pgCore.pgUpsertMessage(getPostgresPool(), conversationId, merged);
+      // Merge the *incoming* client payload against durable Postgres — not the
+      // cache-merged snapshot. Cache miss/stale would otherwise wipe status:error.
+      await upsertMessageRowToPostgresMerged(conversationId, m);
       // Only touch conversation row when it is already in cache — otherwise
       // we'd overwrite title with null on cold paths (insertConversation race).
       if (conversation) {
@@ -2119,8 +2095,12 @@ export function appendMessageStatusEvent(db: SqliteDb, messageId: string, event:
     const next = [...events, nextEvent];
     const merged = { ...hit.message, events: next };
     updateCachedMessage(hit.conversationId, hit.index, merged);
+    const conversationId = hit.conversationId;
+    const incoming = messageRowForPgUpsert(messageId, merged, next);
     schedulePostgresWrite(async () => {
-      await pgCore.pgUpsertMessage(getPostgresPool(), hit.conversationId, messageRowForPgUpsert(messageId, merged, next));
+      // Merge against durable PG at write time — a cache snapshot scheduled
+      // before a concurrent error upsert must not overwrite status:error.
+      await upsertMessageRowToPostgresMerged(conversationId, incoming);
     });
     return next;
   }
@@ -2160,8 +2140,10 @@ export function appendMessageAgentEvent(db: SqliteDb, messageId: string, event: 
     const content = String(hit.message.content ?? '') + textDelta;
     const merged = { ...hit.message, content, events: next };
     updateCachedMessage(hit.conversationId, hit.index, merged);
+    const conversationId = hit.conversationId;
+    const incoming = messageRowForPgUpsert(messageId, merged, next);
     schedulePostgresWrite(async () => {
-      await pgCore.pgUpsertMessage(getPostgresPool(), hit.conversationId, messageRowForPgUpsert(messageId, merged, next));
+      await upsertMessageRowToPostgresMerged(conversationId, incoming);
     });
     return next;
   }
@@ -3019,6 +3001,60 @@ function messageRowForPgUpsert(messageId: string, merged: DbRow, events: DbRow[]
     startedAt: merged.startedAt,
     endedAt: merged.endedAt,
   };
+}
+
+/**
+ * Durable Postgres write for append/upsert helpers that only hold a cache
+ * snapshot. Always re-read PG and merge so a stale scheduled write cannot
+ * erase status:error cards persisted by a concurrent client PUT.
+ */
+async function upsertMessageRowToPostgresMerged(
+  conversationId: string,
+  incoming: DbRow,
+): Promise<DbRow> {
+  const pool = getPostgresPool();
+  const pgRow = await pgCore.pgGetMessage(pool, String(incoming.id));
+  const pgExisting = pgRow ? normalizeMessage(pgRow) : undefined;
+  const durable = mergeMessageUpsertPayload(pgExisting, incoming);
+  await pgCore.pgUpsertMessage(pool, conversationId, durable);
+  const now = Date.now();
+  const durableNormalized = normalizeMessage({
+    id: durable.id,
+    role: durable.role,
+    content: durable.content,
+    agentId: durable.agentId ?? null,
+    agentName: durable.agentName ?? null,
+    runId: durable.runId ?? null,
+    runStatus: durable.runStatus ?? null,
+    lastRunEventId: durable.lastRunEventId ?? null,
+    eventsJson: durable.events ? JSON.stringify(durable.events) : null,
+    attachmentsJson: durable.attachments ? JSON.stringify(durable.attachments) : null,
+    commentAttachmentsJson: durable.commentAttachments
+      ? JSON.stringify(durable.commentAttachments)
+      : null,
+    producedFilesJson: durable.producedFiles ? JSON.stringify(durable.producedFiles) : null,
+    feedbackJson: durable.feedback ? JSON.stringify(durable.feedback) : null,
+    preTurnFileNamesJson: durable.preTurnFileNames
+      ? JSON.stringify(durable.preTurnFileNames)
+      : null,
+    sessionMode: durable.sessionMode ?? null,
+    runContextJson: durable.runContext ? JSON.stringify(durable.runContext) : null,
+    appliedPluginSnapshotJson: durable.appliedPluginSnapshot
+      ? JSON.stringify(durable.appliedPluginSnapshot)
+      : null,
+    createdAt: durable.createdAt ?? (pgRow?.createdAt as number | undefined) ?? now,
+    startedAt: durable.startedAt ?? null,
+    endedAt: durable.endedAt ?? null,
+    position: pgRow && typeof pgRow.position === 'number' ? pgRow.position : 0,
+  });
+  const latestCache = getCachedMessages(conversationId) ?? [];
+  const idx = latestCache.findIndex((row) => row.id === durableNormalized.id);
+  if (idx >= 0) {
+    updateCachedMessage(conversationId, idx, durableNormalized);
+  } else {
+    setCachedMessages(conversationId, [...latestCache, durableNormalized]);
+  }
+  return durableNormalized;
 }
 
 export function updateRoutineRun(db: SqliteDb, id: string, patch: DbRow) {

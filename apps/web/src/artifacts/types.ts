@@ -1,3 +1,5 @@
+import type { JsonValue } from '@open-design/contracts';
+
 export type ArtifactKind =
   | 'html'
   | 'deck'
@@ -56,5 +58,6 @@ export interface ArtifactManifest {
   updatedAt?: string;
   sourceSkillId?: string;
   designSystemId?: string | null;
-  metadata?: Record<string, unknown>;
+  /** Align with contracts ArtifactManifest — JSON-serializable metadata only. */
+  metadata?: Record<string, JsonValue | undefined>;
 }

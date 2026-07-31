@@ -53,6 +53,7 @@ export interface VisualAnnotationTarget {
   position?: { x: number; y: number; width: number; height: number };
   htmlHint?: string;
   style?: PreviewAnnotationStyle;
+  slideIndex?: number;
 }
 
 export interface VisualAnnotationAttachmentInput {
@@ -63,6 +64,7 @@ export interface VisualAnnotationAttachmentInput {
   note: string;
   bounds: { x: number; y: number; width: number; height: number };
   target?: VisualAnnotationTarget | null;
+  slideIndex?: number;
 }
 
 export function isInternalCommentTargetName(value: string | undefined | null): boolean {
@@ -362,6 +364,12 @@ export function buildVisualAnnotationAttachment(input: VisualAnnotationAttachmen
   const elementId = target?.elementId?.trim() || `visual-mark-${visualId}`;
   const label = target?.label?.trim() || 'Marked screenshot region';
   const comment = input.note.trim() || intent;
+  const slideIndex =
+    typeof input.slideIndex === 'number' && Number.isFinite(input.slideIndex) && input.slideIndex >= 0
+      ? Math.floor(input.slideIndex)
+      : typeof target?.slideIndex === 'number' && Number.isFinite(target.slideIndex) && target.slideIndex >= 0
+        ? Math.floor(target.slideIndex)
+        : undefined;
   return {
     id: `${elementId}-visual-${visualId}`,
     order: input.order,
@@ -378,6 +386,7 @@ export function buildVisualAnnotationAttachment(input: VisualAnnotationAttachmen
     screenshotPath: input.screenshotPath,
     markKind: input.markKind,
     intent,
+    ...(slideIndex !== undefined ? { slideIndex } : {}),
     source: 'board-batch',
   };
 }

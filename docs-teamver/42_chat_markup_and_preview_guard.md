@@ -16,6 +16,19 @@
 - daemon message upsert는 keepalive 등이 `events`를 생략해도 기존 `events_json`을 지우지 않는다 (`mergeOptionalMessageArrayField` + `COALESCE`).
 - `mergeServerMessageWithLocal`은 서버 row에 status:error가 없을 때 로컬 에러 이벤트를 유지한다.
 
+## 2026-07-30 추가: stale streaming PUT이 status:error를 덮어쓰지 않게
+
+- **원인:** `surfaceChatVisibleError`가 React `messages`에 error를 붙인 뒤, 스트림 스케줄러의 `latestAssistantMsg` 버퍼(에러 미포함)가 곧이어 non-empty `events` PUT을 보내면 daemon이 배열을 통째로 교체해 에러 카드가 삭제됨. soft refresh는 로컬 merge로 버티지만 **hard re-entry**는 서버 row만 보므로 카드가 사라짐.
+- **daemon:** `mergeMessageEvents`가 기존 durable `status:error`를 incoming에 없으면 뒤에 보존하고, 그 경우 `runStatus`를 `failed`로 유지.
+- **web:** `liveAssistantMutatorRef`로 스트리밍 버퍼에도 동일 `attachPersistedChatError`를 적용.
+- 회귀: `apps/daemon/tests/db-message-events.test.ts` (`keeps status:error when a later non-empty events upsert omits it`).
+
+## 2026-07-30 추가: Postgres HA에서 cache-miss upsert가 에러를 지우지 않게
+
+- **원인 (PR #39 이후 잔존):** SQLite upsert는 DB row를 읽어 `mergeMessageUpsertPayload`를 적용하지만, Postgres 경로는 **in-process cache**만 보고 merge한 뒤 `events_json`을 그대로 덮어씀. cache cold/stale·멀티 인스턴스에서 이후 PUT이 durable `status:error` 없는 버퍼를 쓰면 PG row의 에러 카드가 삭제되고, 새로고침 시 인라인 오류·하단 「다시 시도」패널이 모두 사라짐.
+- **수정:** `message-upsert-merge.ts`로 merge SSOT 추출. Postgres `schedulePostgresWrite`에서 `pgGetMessage`로 durable row를 읽은 뒤 **incoming 클라이언트 payload**와 merge하여 기록하고, 결과를 cache에 재동기화.
+- 회귀: `apps/daemon/tests/message-upsert-merge.test.ts`.
+
 ## 왜 검토할 때마다 구멍이 보였는가
 
 에이전트 truncation은 **적대적 분포**다. “이번에 본 조각”만 regex로 막으면 다음 조각이 새로 드러난다.

@@ -14,6 +14,7 @@ import {
   anonymizeArtifactId,
   artifactKindToTracking,
   type TrackingProjectKind,
+  type TrackingRevisionArea,
 } from '@open-design/contracts/analytics';
 import { useAnalytics } from '../analytics/provider';
 import { trackIframeLoad } from '../observability/iframe-error';
@@ -77,7 +78,11 @@ import {
   fetchProjectDeployments,
   fetchProjectFilePreview,
   fetchProjectFiles,
+  fetchProjectFileRevisionContent,
   fetchProjectFileText,
+  listProjectFileRevisions,
+  pushProjectFileRevision,
+  restoreProjectFileRevision,
   uploadProjectFiles,
   liveArtifactPreviewUrl,
   projectFileUrl,
@@ -91,7 +96,6 @@ import {
   type WebDeployProjectFileResponse,
   type WebDeployProviderId,
   type WebUpdateDeployConfigRequest,
-  writeProjectTextFileDetailed,
 } from '../providers/registry';
 import type { ProjectFilePreview } from '../providers/registry';
 import {
@@ -118,6 +122,7 @@ import {
   type ImageExportFormat,
 } from '../runtime/exports';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
+import { isMacPlatform } from '../utils/platform';
 import { buildReactComponentSrcdoc } from '../runtime/react-component';
 import { shouldConsumeSlideNav } from '../runtime/slide-nav';
 import { findHtmlEntriesReferencing } from '../runtime/jsx-module-refs';
@@ -128,6 +133,36 @@ import {
   canActivateSrcDocTransport,
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
+import {
+  clearActiveRevisionSequence,
+  setActiveRevisionSequence,
+} from '../runtime/revision-active-sequence';
+import {
+  emitRevisionPush,
+  emitRevisionRedo,
+  emitRevisionRestore,
+  emitRevisionUndo,
+} from '../runtime/revision-analytics';
+import {
+  canRedoRevisionStack,
+  canUndoRevisionStack,
+  createRevisionStackSnapshot,
+  revisionAfterCursor,
+  revisionBeforeCursor,
+  stackWithCursor,
+  truncateAfterSequenceForStack,
+  type RevisionStackSnapshot,
+} from '../runtime/revision-stack';
+import {
+  cursorRevisionFromStack,
+  revisionCursorMatchesDisk,
+} from '../runtime/revision-conflict';
+import {
+  clearRevisionContentCacheForFile,
+  getRevisionContentCache,
+  prefetchRevisionContents,
+  setRevisionContentCache,
+} from '../runtime/revision-content-cache';
 import {
   postDeckHostViewportToIframe,
   postDeckPreviewPanBy,
@@ -193,6 +228,8 @@ import type {
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
 import { ManualEditResizeOverlay } from './ManualEditResizeOverlay';
+import { FileViewerUndoRedoToolbar } from './FileViewerUndoRedoToolbar';
+import { FileRevisionHistoryPanel } from './FileRevisionHistoryPanel';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
@@ -231,6 +268,7 @@ import {
 } from '../edit-mode/manual-edit-session';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
+import type { FileRevision } from '@open-design/contracts';
 
 function resolveChromeActionsHost(): HTMLElement | null {
   return document.querySelector<HTMLElement>(APP_CHROME_FILE_ACTIONS_SELECTOR)
@@ -4716,7 +4754,7 @@ function HtmlViewer({
   // template) and the Teamver Drive Publish menu item stay visible because
   // they either land on the user's machine or stay inside the Teamver
   // workspace tenant.
-  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp } = useTeamverBranding();
+  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp, hideDrawAnnotation } = useTeamverBranding();
   // Kept in sync with live `source` / last-stable preview so fireShareExport
   // (declared above those hooks) can gate Teamver rendered downloads without
   // reading later const bindings.
@@ -4894,7 +4932,8 @@ function HtmlViewer({
       | 'edit'
       | 'zoom_out'
       | 'zoom_level_dropdown'
-      | 'zoom_in',
+      | 'zoom_in'
+      | 'revision_history',
   ) => {
     trackArtifactToolbarClick(analytics.track, {
       page_name: 'artifact',
@@ -5072,6 +5111,9 @@ function HtmlViewer({
   const [inspectMode, setInspectMode] = useState(false);
   const [agentToolsOpen, setAgentToolsOpen] = useState(false);
   const [drawOverlayOpen, setDrawOverlayOpen] = useState(false);
+  useEffect(() => {
+    if (hideDrawAnnotation) setDrawOverlayOpen(false);
+  }, [hideDrawAnnotation]);
   // for hint managing hint box state
   const [openHintBox, setOpenHintBox] = useState(true);
   const [manualEditMode, setManualEditModeRaw] = useState(false);
@@ -5102,6 +5144,8 @@ function HtmlViewer({
   const [deckPanning, setDeckPanning] = useState(false);
   const urlPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const srcDocPreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
+  /** Draw mode remounts srcDoc; block capture until the active frame has loaded. */
+  const drawCaptureReadyRef = useRef(true);
   const activatedSrcDocTransportHtmlRef = useRef<string | null>(null);
   // Tracks the iframe DOM node whose dedupe ref was last reset by the
   // srcDoc onLoad handler. We reset the dedupe exactly once per freshly
@@ -5280,8 +5324,19 @@ function HtmlViewer({
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
   const selectedManualEditTargetIdRef = useRef<string | null>(null);
   const [manualEditDraft, setManualEditDraft] = useState<ManualEditDraft>(() => emptyManualEditDraft());
-  const [manualEditHistory, setManualEditHistory] = useState<ManualEditHistoryEntry[]>([]);
-  const [manualEditUndone, setManualEditUndone] = useState<ManualEditHistoryEntry[]>([]);
+  const [revisionStack, setRevisionStack] = useState<RevisionStackSnapshot>(() => (
+    createRevisionStackSnapshot([], null)
+  ));
+  const revisionStackRef = useRef(revisionStack);
+  revisionStackRef.current = revisionStack;
+  const revisionReconcileGenerationRef = useRef(0);
+  function commitRevisionStack(next: RevisionStackSnapshot) {
+    revisionStackRef.current = next;
+    revisionReconcileGenerationRef.current += 1;
+    setRevisionStack(next);
+  }
+  const revisionSyncSuppressRef = useRef(false);
+  const revisionSkipReconcileOnceRef = useRef(false);
   const [manualEditError, setManualEditError] = useState<string | null>(null);
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const manualEditSavingRef = useRef(false);
@@ -5440,6 +5495,11 @@ function HtmlViewer({
   const [shareGuideToast, setShareGuideToast] = useState<string | null>(null);
   const [selectedSideCommentIds, setSelectedSideCommentIds] = useState<Set<string>>(() => new Set());
   const [commentSidePanelCollapsed, setCommentSidePanelCollapsed] = useState(false);
+  const [revisionHistoryOpen, setRevisionHistoryOpen] = useState(false);
+  const [revisionConflictToast, setRevisionConflictToast] = useState<string | null>(null);
+  const [revisionStackInvalidated, setRevisionStackInvalidated] = useState(false);
+  const revisionStackInvalidatedRef = useRef(revisionStackInvalidated);
+  revisionStackInvalidatedRef.current = revisionStackInvalidated;
   const [strokePoints, setStrokePoints] = useState<StrokePoint[]>([]);
   const previewStateKey = `${projectId}:${file.name}`;
   const previewScale = zoom / 100;
@@ -6472,6 +6532,41 @@ function HtmlViewer({
   }, [drawOverlayOpen, effectiveDeck, resetDrawPreviewPan]);
 
   useEffect(() => {
+    if (!drawOverlayOpen) {
+      drawCaptureReadyRef.current = true;
+      return;
+    }
+    drawCaptureReadyRef.current = false;
+    const iframe = srcDocPreviewIframeRef.current;
+    if (!iframe) {
+      drawCaptureReadyRef.current = true;
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      await waitForIframeLoadOrTimeout(iframe, 5_000);
+      await waitForAnimationFrame();
+      await waitForAnimationFrame();
+      if (!useUrlLoadPreview) {
+        await waitForIframeLoadOrTimeout(iframe, 2_000);
+        await waitForAnimationFrame();
+      }
+      if (!cancelled) drawCaptureReadyRef.current = true;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [drawOverlayOpen, srcDocTransportResetKey, srcDoc, useUrlLoadPreview]);
+
+  const resolveAnnotationCaptureFrameRect = useCallback(() => {
+    const iframe = resolveActiveDeckPreviewIframe();
+    if (!iframe) return null;
+    const rect = iframe.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return rect;
+  }, [resolveActiveDeckPreviewIframe]);
+
+  useEffect(() => {
     if (!needsDeckHostViewportFit || mode !== 'preview') return;
     // Resolve the iframe at fire time — stream-end / liveHtml clear remounts
     // often leave a null capture from effect start (black letterbox until refresh).
@@ -6718,12 +6813,119 @@ function HtmlViewer({
     setManualEditPanelPosition(null);
     selectedManualEditTargetIdRef.current = null;
     setManualEditDraft(emptyManualEditDraft());
-    setManualEditHistory([]);
-    setManualEditUndone([]);
+    commitRevisionStack(createRevisionStackSnapshot([], null));
+    clearRevisionContentCacheForFile(projectId, file.name);
     setManualEditError(null);
+    setRevisionHistoryOpen(false);
+    setRevisionStackInvalidated(false);
     manualEditPendingStyleRef.current = null;
     clearManualEditStyleTimer();
   }, [file.name]);
+
+  const resolveRevisionSnapshotContent = useCallback(async (revisionId: string): Promise<string | null> => {
+    const cached = getRevisionContentCache(projectId, file.name, revisionId);
+    if (cached != null) return cached;
+    const response = await fetchProjectFileRevisionContent(projectId, file.name, revisionId);
+    if (response?.content == null) return null;
+    setRevisionContentCache(projectId, file.name, revisionId, response.content);
+    return response.content;
+  }, [projectId, file.name]);
+
+  const reconcileRevisionWithDisk = useCallback(async () => {
+    if (revisionSyncSuppressRef.current || manualEditSavingRef.current) return;
+    const reconcileGeneration = revisionReconcileGenerationRef.current;
+    const stack = revisionStackRef.current;
+    const cursor = cursorRevisionFromStack(stack);
+    if (!cursor) return;
+    const cursorRevisionId = cursor.id;
+
+    const [disk, snapshotContent] = await Promise.all([
+      fetchProjectFileText(projectId, file.name, {
+        cache: 'no-store',
+        cacheBustKey: Date.now(),
+      }),
+      resolveRevisionSnapshotContent(cursorRevisionId),
+    ]);
+    if (
+      revisionSyncSuppressRef.current
+      || manualEditSavingRef.current
+      || reconcileGeneration !== revisionReconcileGenerationRef.current
+      || revisionStackRef.current.cursorRevisionId !== cursorRevisionId
+    ) {
+      return;
+    }
+    if (disk == null || snapshotContent == null) return;
+    if (revisionCursorMatchesDisk(revisionStackRef.current, disk, snapshotContent)) return;
+
+    setSource(disk);
+    sourceRef.current = disk;
+    setInlinedSource(null);
+    setManualEditFrozenSource(disk);
+    setManualEditDraft((current) => ({ ...current, fullSource: disk }));
+    setReloadKey((k) => k + 1);
+    manualEditPendingStyleRef.current = null;
+
+    const list = await listProjectFileRevisions(projectId, file.name);
+    if (list) {
+      const resetStack = createRevisionStackSnapshot(
+        list.revisions,
+        list.headRevisionId,
+        list.headRevisionId,
+      );
+      commitRevisionStack(resetStack);
+      const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
+      if (head) {
+        setActiveRevisionSequence(projectId, file.name, head.sequence);
+        const headSnapshot = await resolveRevisionSnapshotContent(head.id);
+        setRevisionStackInvalidated(headSnapshot != null && disk !== headSnapshot);
+      } else {
+        clearActiveRevisionSequence(projectId, file.name);
+        setRevisionStackInvalidated(true);
+      }
+    } else {
+      setRevisionStackInvalidated(true);
+    }
+
+    setRevisionConflictToast(t('fileRevision.conflict.message'));
+  }, [projectId, file.name, resolveRevisionSnapshotContent, t]);
+
+  const refreshRevisionStack = useCallback(async () => {
+    const list = await listProjectFileRevisions(projectId, file.name);
+    if (!list || !Array.isArray(list.revisions)) return;
+    const nextStack = createRevisionStackSnapshot(
+      list.revisions,
+      list.headRevisionId,
+      revisionStackRef.current.cursorRevisionId
+        && list.revisions.some((revision) => revision.id === revisionStackRef.current.cursorRevisionId)
+        ? revisionStackRef.current.cursorRevisionId
+        : list.headRevisionId,
+    );
+    commitRevisionStack(nextStack);
+    const cursorRevision = nextStack.revisions.find((revision) => revision.id === nextStack.cursorRevisionId);
+    if (cursorRevision) {
+      setActiveRevisionSequence(projectId, file.name, cursorRevision.sequence);
+    } else {
+      clearActiveRevisionSequence(projectId, file.name);
+    }
+    const skipReconcile = revisionSkipReconcileOnceRef.current;
+    revisionSkipReconcileOnceRef.current = false;
+    if (!skipReconcile) {
+      await reconcileRevisionWithDisk();
+    }
+    const before = revisionBeforeCursor(revisionStackRef.current);
+    const after = revisionAfterCursor(revisionStackRef.current);
+    prefetchRevisionContents(
+      projectId,
+      file.name,
+      [before?.id, after?.id].filter((id): id is string => Boolean(id)),
+      (revisionId) => resolveRevisionSnapshotContent(revisionId),
+    );
+  }, [projectId, file.name, reconcileRevisionWithDisk, resolveRevisionSnapshotContent]);
+
+  useEffect(() => {
+    if (source === null) return;
+    void refreshRevisionStack();
+  }, [source, refreshRevisionStack, filesRefreshKey]);
 
   // Selecting a new file or turning inspect/comment-inspect off resets the panel target.
   useEffect(() => {
@@ -7046,7 +7248,12 @@ function HtmlViewer({
             ? htmlPreviewSlideState.get(previewStateKey)?.active
             : undefined;
           await applyManualEdit(
-            { id: targetId, kind: 'set-text', value: String(data.value) },
+            {
+              id: targetId,
+              kind: 'set-text',
+              value: String(data.value),
+              flattenNestedMarkup: data.flattenNestedMarkup === true,
+            },
             embedUiLabel('Edit text', '텍스트 편집'),
             typeof slideIndex === 'number' ? { slideIndex } : undefined,
             target
@@ -7571,8 +7778,13 @@ function HtmlViewer({
           ),
         ))
       ) return false;
-      const saved = await writeProjectTextFileDetailed(projectId, file.name, result.source, {
+      revisionSyncSuppressRef.current = true;
+      const saved = await pushProjectFileRevision(projectId, file.name, {
+        content: result.source,
+        source: 'manual_edit',
+        label,
         artifactManifest: file.artifactManifest,
+        truncateAfterSequence: truncateAfterSequenceForStack(revisionStackRef.current),
       });
       if (!saved.ok) {
         const status = 'status' in saved ? saved.status : undefined;
@@ -7591,14 +7803,6 @@ function HtmlViewer({
         );
         return false;
       }
-      const entry: ManualEditHistoryEntry = {
-        id: `${Date.now()}-${manualEditHistory.length}`,
-        label,
-        patch,
-        beforeSource: baseSource,
-        afterSource: result.source,
-        createdAt: Date.now(),
-      };
       setSource(result.source);
       sourceRef.current = result.source;
       pinManualEditSavedSource(result.source);
@@ -7611,8 +7815,13 @@ function HtmlViewer({
       if (patch.kind !== 'set-style') {
         queueMicrotask(() => activateManualEditPreviewHtml(result.source));
       }
-      setManualEditHistory((current) => [entry, ...current]);
-      setManualEditUndone([]);
+      commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
+      setRevisionContentCache(projectId, file.name, saved.revision.id, result.source);
+      revisionSkipReconcileOnceRef.current = true;
+      setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
+      emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
+      setRevisionStackInvalidated(false);
+      await refreshRevisionStack();
       setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
       if (patch.kind === 'set-text') {
         setSelectedManualEditTarget((current) => current?.id === patch.id
@@ -7638,6 +7847,7 @@ function HtmlViewer({
       await onFileSaved?.();
       return true;
     } finally {
+      revisionSyncSuppressRef.current = false;
       manualEditSavingRef.current = false;
       setManualEditSaving(false);
     }
@@ -7663,106 +7873,118 @@ function HtmlViewer({
     setSource(persisted!);
     sourceRef.current = persisted!;
     setInlinedSource(null);
-    setManualEditHistory([]);
-    setManualEditUndone([]);
+    commitRevisionStack(createRevisionStackSnapshot([], null));
     manualEditPendingStyleRef.current = null;
     setManualEditDraft((current) => ({ ...current, fullSource: persisted! }));
     setManualEditError(message);
+    void refreshRevisionStack();
     return false;
   }
 
-  async function undoManualEdit() {
-    if (!(await settleManualEditStyleBoundary())) return;
-    if (manualEditSavingRef.current) return;
-    const [latest, ...rest] = manualEditHistory;
-    if (!latest) return;
-    manualEditSavingRef.current = true;
-    setManualEditSaving(true);
+  async function applyRestoredRevision(target: FileRevision): Promise<boolean> {
+    revisionSyncSuppressRef.current = true;
     try {
-      if (!(await confirmManualEditHistorySource(
-        latest.afterSource,
-        embedUiLabel(
-          'The file changed outside manual edit mode. History was cleared to avoid overwriting newer content.',
-          '수동 편집 모드 밖에서 파일이 변경되어 편집 기록을 초기화했습니다.',
-        ),
-      ))) return;
-      const saved = await writeProjectTextFileDetailed(projectId, file.name, latest.beforeSource, {
-        artifactManifest: file.artifactManifest,
-      });
-      if (!saved.ok) {
-        if (saved.status === 401) {
+      const [restored, restoredSource] = await Promise.all([
+        restoreProjectFileRevision(projectId, file.name, target.id),
+        resolveRevisionSnapshotContent(target.id),
+      ]);
+      if (!restored.ok) {
+        if (restored.status === 401) {
           notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
         }
         setManualEditError(
           isTeamverEmbedMode()
             ? formatProjectArtifactSaveFailedError(file.name, {
-                status: saved.status,
-                code: saved.code,
-                message: saved.message,
+                status: restored.status,
+                code: restored.code,
+                message: restored.message,
               })
-            : embedUiLabel('Could not save the undo result.', '실행 취소 결과를 저장하지 못했습니다.'),
+            : embedUiLabel('Could not restore this revision.', '이 버전으로 복원하지 못했습니다.'),
         );
-        return;
+        return false;
       }
-      setSource(latest.beforeSource);
-      sourceRef.current = latest.beforeSource;
-      pinManualEditSavedSource(latest.beforeSource);
+      let sourceToApply = restoredSource;
+      if (sourceToApply == null) {
+        sourceToApply = await fetchProjectFileText(projectId, file.name, {
+          cache: 'no-store',
+          cacheBustKey: Date.now(),
+        });
+      }
+      if (sourceToApply == null) {
+        setManualEditError(embedUiLabel('Could not load the restored file.', '복원한 파일을 불러오지 못했습니다.'));
+        return false;
+      }
+      setRevisionContentCache(projectId, file.name, target.id, sourceToApply);
+      revisionSkipReconcileOnceRef.current = true;
+      setSource(sourceToApply);
+      sourceRef.current = sourceToApply;
+      pinManualEditSavedSource(sourceToApply);
       setInlinedSource(null);
-      setManualEditFrozenSource(latest.beforeSource);
-      queueMicrotask(() => activateManualEditPreviewHtml(latest.beforeSource));
-      setManualEditHistory(rest);
-      setManualEditUndone((current) => [latest, ...current]);
-      setManualEditDraft((current) => ({ ...current, fullSource: latest.beforeSource }));
+      setManualEditFrozenSource(sourceToApply);
+      commitRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+      setActiveRevisionSequence(projectId, file.name, target.sequence);
+      setManualEditDraft((current) => ({ ...current, fullSource: sourceToApply }));
+      if (manualEditMode && !useUrlLoadPreview) {
+        capturePreviewScrollPosition();
+        queueMicrotask(() => activateManualEditPreviewHtml(sourceToApply));
+      } else {
+        setReloadKey((k) => k + 1);
+      }
+      setRevisionStackInvalidated(false);
       await onFileSaved?.();
+      return true;
+    } finally {
+      revisionSyncSuppressRef.current = false;
+    }
+  }
+
+  async function undoManualEdit(area: TrackingRevisionArea = 'revision_toolbar') {
+    if (revisionStackInvalidatedRef.current) return;
+    if (!(await settleManualEditStyleBoundary())) return;
+    if (manualEditSavingRef.current) return;
+    const target = revisionBeforeCursor(revisionStackRef.current);
+    if (!target) return;
+    manualEditSavingRef.current = true;
+    setManualEditSaving(true);
+    try {
+      const ok = await applyRestoredRevision(target);
+      if (ok) {
+        emitRevisionUndo(analytics.track, projectId, projectKind, file.name, target, area);
+      }
     } finally {
       manualEditSavingRef.current = false;
       setManualEditSaving(false);
     }
   }
 
-  async function redoManualEdit() {
+  async function redoManualEdit(area: TrackingRevisionArea = 'revision_toolbar') {
+    if (revisionStackInvalidatedRef.current) return;
     if (!(await settleManualEditStyleBoundary())) return;
     if (manualEditSavingRef.current) return;
-    const [latest, ...rest] = manualEditUndone;
-    if (!latest) return;
+    const target = revisionAfterCursor(revisionStackRef.current);
+    if (!target) return;
     manualEditSavingRef.current = true;
     setManualEditSaving(true);
     try {
-      if (!(await confirmManualEditHistorySource(
-        latest.beforeSource,
-        embedUiLabel(
-          'The file changed outside manual edit mode. History was cleared to avoid overwriting newer content.',
-          '수동 편집 모드 밖에서 파일이 변경되어 편집 기록을 초기화했습니다.',
-        ),
-      ))) return;
-      const saved = await writeProjectTextFileDetailed(projectId, file.name, latest.afterSource, {
-        artifactManifest: file.artifactManifest,
-      });
-      if (!saved.ok) {
-        if (saved.status === 401) {
-          notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
-        }
-        setManualEditError(
-          isTeamverEmbedMode()
-            ? formatProjectArtifactSaveFailedError(file.name, {
-                status: saved.status,
-                code: saved.code,
-                message: saved.message,
-              })
-            : embedUiLabel('Could not save the redo result.', '다시 실행 결과를 저장하지 못했습니다.'),
-        );
-        return;
+      const ok = await applyRestoredRevision(target);
+      if (ok) {
+        emitRevisionRedo(analytics.track, projectId, projectKind, file.name, target, area);
       }
-      setSource(latest.afterSource);
-      sourceRef.current = latest.afterSource;
-      pinManualEditSavedSource(latest.afterSource);
-      setInlinedSource(null);
-      setManualEditFrozenSource(latest.afterSource);
-      queueMicrotask(() => activateManualEditPreviewHtml(latest.afterSource));
-      setManualEditUndone(rest);
-      setManualEditHistory((current) => [latest, ...current]);
-      setManualEditDraft((current) => ({ ...current, fullSource: latest.afterSource }));
-      await onFileSaved?.();
+    } finally {
+      manualEditSavingRef.current = false;
+      setManualEditSaving(false);
+    }
+  }
+
+  async function restoreRevisionFromHistory(target: FileRevision) {
+    if (manualEditSavingRef.current) return;
+    manualEditSavingRef.current = true;
+    setManualEditSaving(true);
+    try {
+      const ok = await applyRestoredRevision(target);
+      if (ok) {
+        emitRevisionRestore(analytics.track, projectId, projectKind, file.name, target);
+      }
     } finally {
       manualEditSavingRef.current = false;
       setManualEditSaving(false);
@@ -7916,19 +8138,39 @@ function HtmlViewer({
     if (!source) return;
     setSavingInspect(true);
     setInspectError(null);
+    revisionSyncSuppressRef.current = true;
     try {
       const css = serializeInspectOverrides(inspectOverrides).trim();
       const next = applyInspectOverridesToSource(source, css);
-      const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: file.name, content: next }),
+      const saved = await pushProjectFileRevision(projectId, file.name, {
+        content: next,
+        source: 'inspect',
+        label: embedUiLabel('Style adjustments', '스타일 조정'),
+        artifactManifest: file.artifactManifest,
+        truncateAfterSequence: truncateAfterSequenceForStack(revisionStackRef.current),
       });
-      if (!resp.ok) {
-        const payload = await resp.json().catch(() => null) as { error?: string; message?: string } | null;
-        throw new Error(payload?.error || payload?.message || `Save failed (${resp.status})`);
+      if (!saved.ok) {
+        const status = 'status' in saved ? saved.status : undefined;
+        const code = 'code' in saved ? saved.code : undefined;
+        const message = 'message' in saved ? saved.message : 'Unknown save error';
+        if (status === 401) {
+          notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+        }
+        throw new Error(
+          isTeamverEmbedMode()
+            ? formatProjectArtifactSaveFailedError(file.name, { status, code, message })
+            : (message || `Save failed${status ? ` (${status})` : ''}`),
+        );
       }
       setSource(next);
+      sourceRef.current = next;
+      commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
+      setRevisionContentCache(projectId, file.name, saved.revision.id, next);
+      revisionSkipReconcileOnceRef.current = true;
+      setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
+      emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'inspect_save');
+      setRevisionStackInvalidated(false);
+      await refreshRevisionStack();
       setInspectSavedAt(Date.now());
       setReloadKey((k) => k + 1);
     } catch (err) {
@@ -7936,11 +8178,9 @@ function HtmlViewer({
         ? '소스에 저장하지 못했습니다.'
         : (err instanceof Error ? err.message : 'Save failed');
       setInspectError(msg);
-      // The error banner inside the inspect panel is easy to miss when the
-      // user is focused on the iframe preview — surface failures in the
-      // console as well so quota/network errors aren't silently lost.
       console.error('[inspect] saveToSource failed:', err);
     } finally {
+      revisionSyncSuppressRef.current = false;
       setSavingInspect(false);
     }
   }
@@ -7970,6 +8210,47 @@ function HtmlViewer({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [effectiveDeck, manualEditMode, mode]);
+
+  // Revision undo/redo shortcuts (design §8.2): ⌘Z / Ctrl+Z, redo via Shift+Z or Ctrl+Y.
+  useEffect(() => {
+    if (mode !== 'preview' || source === null) return;
+    function onKey(e: KeyboardEvent) {
+      if (drawOverlayOpen) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+      }
+      if (manualEditSavingRef.current) return;
+      if (revisionStackInvalidatedRef.current) return;
+
+      const primary = isMacPlatform()
+        ? e.metaKey && !e.ctrlKey
+        : e.ctrlKey && !e.metaKey;
+      if (!primary) return;
+
+      const key = e.key.toLowerCase();
+      if (key === 'z') {
+        if (e.shiftKey) {
+          if (!canRedoRevisionStack(revisionStackRef.current)) return;
+          e.preventDefault();
+          void redoManualEdit('keyboard');
+        } else {
+          if (!canUndoRevisionStack(revisionStackRef.current)) return;
+          e.preventDefault();
+          void undoManualEdit('keyboard');
+        }
+        return;
+      }
+      if (!isMacPlatform() && key === 'y') {
+        if (!canRedoRevisionStack(revisionStackRef.current)) return;
+        e.preventDefault();
+        void redoManualEdit('keyboard');
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mode, source, drawOverlayOpen]);
 
   useEffect(() => {
     if (!presentMenuOpen) return;
@@ -8830,6 +9111,12 @@ function HtmlViewer({
     // in the browser screenshot flow (DesignBrowserPanel).
     await waitForAnimationFrame();
     await waitForAnimationFrame();
+    if (drawOverlayOpen && !drawCaptureReadyRef.current) {
+      const deadline = Date.now() + 4_000;
+      while (!drawCaptureReadyRef.current && Date.now() < deadline) {
+        await waitForAnimationFrame();
+      }
+    }
     try {
     const srcDocIframe = srcDocPreviewIframeRef.current;
     const urlIframe = iframeRef.current ?? urlPreviewIframeRef.current;
@@ -8897,6 +9184,7 @@ function HtmlViewer({
     }
   }, [
     activateSrcDocSnapshotTransport,
+    drawOverlayOpen,
     effectiveDeck,
     ensureDeckSlideSyncedForSnapshot,
     resolveActiveDeckPreviewIframe,
@@ -9362,15 +9650,17 @@ function HtmlViewer({
     manualEditMode && !selectedManualEditTarget && manualEditPageStylesOpen;
   const manualEditPanelActive =
     manualEditMode && (!!selectedManualEditTarget || manualEditPageCardActive);
+  const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
+  const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const manualEditPanel = manualEditPanelActive ? (
     <ManualEditPanel
       targets={manualEditTargets}
       selectedTarget={selectedManualEditTarget}
       draft={manualEditDraft}
-      history={manualEditHistory}
+      history={[]}
       error={manualEditError}
-      canUndo={manualEditHistory.length > 0}
-      canRedo={manualEditUndone.length > 0}
+      canUndo={revisionCanUndo}
+      canRedo={revisionCanRedo}
       busy={manualEditSaving}
       pageStylesEnabled={manualEditPageStylesEnabled}
       onSelectTarget={(target) => {
@@ -9786,20 +10076,52 @@ function HtmlViewer({
                   <RemixIcon name="chat-new-line" size={15} />
                 </button>
               </div>
-              <button
-                className={`viewer-action viewer-action-icon od-tooltip${drawOverlayOpen ? ' active' : ''}`}
-                type="button"
-                data-testid="draw-overlay-toggle"
-                data-tooltip={t('fileViewer.markTooltip')}
-                data-tooltip-placement="bottom"
-                title={t('fileViewer.markTooltip')}
-                aria-label={t('fileViewer.mark')}
-                aria-pressed={drawOverlayOpen}
-                onClick={activateDrawTool}
-              >
-                <RemixIcon name="mark-pen-line" size={15} />
-              </button>
+              {!hideDrawAnnotation ? (
+                <button
+                  className={`viewer-action viewer-action-icon od-tooltip${drawOverlayOpen ? ' active' : ''}`}
+                  type="button"
+                  data-testid="draw-overlay-toggle"
+                  data-tooltip={t('fileViewer.markTooltip')}
+                  data-tooltip-placement="bottom"
+                  title={t('fileViewer.markTooltip')}
+                  aria-label={t('fileViewer.mark')}
+                  aria-pressed={drawOverlayOpen}
+                  onClick={activateDrawTool}
+                >
+                  <RemixIcon name="mark-pen-line" size={15} />
+                </button>
+              ) : null}
               <span className="viewer-toolbar-tool-divider" aria-hidden />
+              {source !== null ? (
+                <FileViewerUndoRedoToolbar
+                  canUndo={revisionCanUndo}
+                  canRedo={revisionCanRedo}
+                  busy={manualEditSaving}
+                  onUndo={() => {
+                    void undoManualEdit();
+                  }}
+                  onRedo={() => {
+                    void redoManualEdit();
+                  }}
+                  t={t}
+                />
+              ) : null}
+              <button
+                type="button"
+                className={`viewer-action viewer-action-icon od-tooltip${revisionHistoryOpen ? ' active' : ''}`}
+                data-testid="file-revision-history-toggle"
+                data-tooltip={t('fileRevision.history.toggle')}
+                data-tooltip-placement="bottom"
+                title={t('fileRevision.history.toggle')}
+                aria-label={t('fileRevision.history.toggle')}
+                aria-pressed={revisionHistoryOpen}
+                onClick={() => {
+                  fireArtifactToolbarClick('revision_history');
+                  setRevisionHistoryOpen((open) => !open);
+                }}
+              >
+                <RemixIcon name="history-line" size={15} />
+              </button>
               <button
                 className={`viewer-action viewer-action-icon od-tooltip${manualEditMode ? ' active' : ''}`}
                 type="button"
@@ -10202,10 +10524,11 @@ function HtmlViewer({
                   })}
                 >
                   <PreviewDrawOverlay
-                    active={drawOverlayOpen}
+                    active={!hideDrawAnnotation && drawOverlayOpen}
                     onActiveChange={setDrawOverlayOpen}
                     captureViewport
                     captureSnapshot={captureExportImageSnapshot}
+                    captureFrameRect={resolveAnnotationCaptureFrameRect}
                     captureTarget={null}
                     filePath={file.name}
                     slideIndex={effectiveDeck ? slideState?.active ?? null : null}
@@ -10592,6 +10915,17 @@ function HtmlViewer({
                 saving={savingInspect}
                 savedAt={inspectSavedAt}
                 error={inspectError}
+              />
+            ) : null}
+            {revisionHistoryOpen && source !== null ? (
+              <FileRevisionHistoryPanel
+                revisions={revisionStack.revisions}
+                cursorRevisionId={revisionStack.cursorRevisionId}
+                busy={manualEditSaving}
+                onRestore={(revision) => {
+                  void restoreRevisionFromHistory(revision);
+                }}
+                onClose={() => setRevisionHistoryOpen(false)}
               />
             ) : null}
           </div>
@@ -11183,6 +11517,17 @@ function HtmlViewer({
           ttlMs={2400}
           role="alert"
           onDismiss={() => setDeployActionToast(null)}
+        />,
+        document.body,
+      ) : null}
+      {revisionConflictToast && typeof document !== 'undefined' ? createPortal(
+        <Toast
+          message={revisionConflictToast}
+          placement="top"
+          ttlMs={5000}
+          role="alert"
+          tone="error"
+          onDismiss={() => setRevisionConflictToast(null)}
         />,
         document.body,
       ) : null}

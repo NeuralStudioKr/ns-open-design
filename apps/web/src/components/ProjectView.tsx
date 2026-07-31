@@ -41,6 +41,8 @@ import {
   reconcileCommentAttachmentsForDeck,
   resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
+  hasElementScopedCommentAttachments,
+  isVisualCommentAttachment,
   scopedCommentSlideIndexesFromAttachments,
   scopedCommentSlideIndexesFromDeck,
   type DeckPatchMergeResult,
@@ -127,6 +129,8 @@ import {
   fetchSkill,
   patchPreviewCommentStatus,
   projectRawUrl,
+  pushProjectFileRevision,
+  restoreProjectFileRevision,
   uploadProjectFiles,
   upsertPreviewComment,
   writeProjectTextFileDetailed,
@@ -141,7 +145,19 @@ import {
   type MemorySystemPromptResponse,
   type ResearchOptions,
 } from '@open-design/contracts';
-import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from '../runtime/deckGuidance';
+import { embedUiLabel } from '../teamver/embedUiLabels';
+import {
+  deriveAgentRevisionLabel,
+  mapArtifactTypeToRevisionSource,
+} from '../runtime/file-revision-agent';
+import {
+  getActiveRevisionSequence,
+  setActiveRevisionSequence,
+} from '../runtime/revision-active-sequence';
+import {
+  emitRevisionPush,
+  emitRevisionUndo,
+} from '../runtime/revision-analytics';
 import {
   enrichChatSendMetaWithProjectDeckTemplate,
   resolveDeckTemplateSkillId,
@@ -194,13 +210,13 @@ import {
   appendErrorStatusEvent,
   appendWarningStatusEvent,
   attachPersistedChatError,
+  attachAutoContinueIncompleteOutputNotice,
   messageHasPersistedChatError,
   messageHasVisibleProse,
 } from '../runtime/chat-events';
 import {
   AUTO_CONTINUE_ENTRY_FROM,
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
-  AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
   extractAutoContinueContextFromAssistant,
   isAutoContinueIncompleteOutputPrompt,
@@ -210,6 +226,7 @@ import {
   rollbackAutoContinueCount,
   shouldAutoContinueForIncompleteOutput,
 } from '../runtime/resume';
+import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from '../runtime/deckGuidance';
 import {
   extractCommentAttachmentsForAutoContinue,
   findPrecedingUserMessage,
@@ -257,7 +274,7 @@ import {
   createMessagePersistScheduler,
   resolveMessagePersistThrottleMs,
 } from '../state/messagePersistSchedule';
-import type { AppliedPluginSnapshot, ChatAnalyticsEntryFrom, ChatSessionMode, InstalledPluginRecord, WorkspaceContextItem } from '@open-design/contracts';
+import type { AppliedPluginSnapshot, ChatAnalyticsEntryFrom, ChatSessionMode, FileRevision, InstalledPluginRecord, WorkspaceContextItem } from '@open-design/contracts';
 import type {
   AgentEvent,
   AgentInfo,
@@ -378,6 +395,7 @@ import {
   shouldForceFailStaleDaemonRun,
   shouldPollStaleApiRun,
   shouldForceFailStaleApiRun,
+  applyTerminalRunStatusToAssistant,
   patchStaleApiAssistantFailure,
   TEAMVER_STALE_API_RUN_POLL_MS,
   shouldClearPhantomStreamingMarker,
@@ -1248,8 +1266,11 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
       reason: 'current deck file unreadable',
     };
   }
-  const allowedTargetIds = input.commentAttachments?.flatMap((attachment) => scopedCommentElementIds(attachment));
-  if ((input.commentAttachments?.length ?? 0) > 0 && (!allowedTargetIds || allowedTargetIds.length === 0)) {
+  const allowedTargetIds = input.commentAttachments?.flatMap((attachment) => scopedCommentElementIds(attachment)) ?? [];
+  if (
+    hasElementScopedCommentAttachments(input.commentAttachments)
+    && allowedTargetIds.length === 0
+  ) {
     return {
       ok: false,
       code: 'deck_patch_merge_failed',
@@ -1291,6 +1312,22 @@ function elementPatchTargetHintsFromCommentAttachments(
 ): ElementPatchTargetHint[] {
   const hints: ElementPatchTargetHint[] = [];
   for (const attachment of commentAttachments) {
+    if (isVisualCommentAttachment(attachment)) {
+      hints.push({
+        targetIds: [],
+        ...(typeof attachment.slideIndex === 'number' &&
+        Number.isInteger(attachment.slideIndex) &&
+        attachment.slideIndex >= 0
+          ? { slideIndex: Math.floor(attachment.slideIndex) }
+          : {}),
+        id: attachment.elementId,
+        currentText: attachment.currentText,
+        instructionText: attachment.comment,
+        htmlHint: attachment.htmlHint,
+        selector: attachment.selector,
+      });
+      continue;
+    }
     const targetIds = scopedCommentElementIds(attachment);
     if (targetIds.length === 0) continue;
     hints.push({
@@ -2023,7 +2060,7 @@ function projectEventToAgentEvent(evt: ProjectEvent): LiveArtifactEventItem['eve
 }
 
 type ArtifactPersistResult =
-  | { kind: 'persisted'; fileName: string }
+  | { kind: 'persisted'; fileName: string; parentRevisionId?: string | null }
   | { kind: 'pointer'; fileName: string }
   | { kind: 'skipped-duplicate'; fileName: string }
   | { kind: 'skipped-incomplete'; fileName: string; reason?: string }
@@ -2332,6 +2369,8 @@ export function ProjectView({
     message: string;
     details: string | null;
     code?: string | null;
+    actionLabel?: string;
+    onAction?: () => void;
   } | null>(null);
   const [chatSeed, setChatSeed] = useState<{ id: string; value: string } | null>(null);
   const [autoAuditRepairSeed, setAutoAuditRepairSeed] =
@@ -2487,16 +2526,30 @@ export function ProjectView({
   const autoContinueTimerRef = useRef<number | null>(null);
   /** Conversation id that owns the pending auto-continue timer (for cap rollback). */
   const pendingAutoContinueConversationIdRef = useRef<string | null>(null);
+  /** True while the 600ms auto-continue timer is armed — ChatPane hides Retry. */
+  const [autoContinuePending, setAutoContinuePending] = useState(false);
+  /**
+   * Live streaming buffer mutator for the in-flight assistant row. `surfaceChatVisibleError`
+   * updates React `messages` + saves, but the stream scheduler persists from a separate
+   * `latestAssistantMsg` closure — keep that buffer in sync so a later PUT cannot wipe
+   * a just-persisted status:error card.
+   */
+  const liveAssistantMutatorRef = useRef<{
+    assistantId: string;
+    apply: (updater: (prev: ChatMessage) => ChatMessage) => void;
+  } | null>(null);
 
   const clearPendingAutoContinueTimer = useCallback((options?: { rollback?: boolean }) => {
     if (autoContinueTimerRef.current === null) {
       pendingAutoContinueConversationIdRef.current = null;
+      setAutoContinuePending(false);
       return;
     }
     window.clearTimeout(autoContinueTimerRef.current);
     autoContinueTimerRef.current = null;
     const scheduledId = pendingAutoContinueConversationIdRef.current;
     pendingAutoContinueConversationIdRef.current = null;
+    setAutoContinuePending(false);
     if (options?.rollback && scheduledId) {
       rollbackAutoContinueCount(conversationAutoContinueCountRef.current, scheduledId);
     }
@@ -3216,10 +3269,10 @@ export function ProjectView({
               autoContinueCount + 1,
             );
             const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
-            const updatedAssistant = appendErrorStatusEvent(
+            const updatedAssistant = attachAutoContinueIncompleteOutputNotice(
               incompleteAssistant,
               autoContinueNotice,
-              AUTO_CONTINUE_STATUS_CODE,
+              formatProjectRunDeliverableMissingError(),
             );
             setMessages((current) =>
               current.map((message) =>
@@ -3235,9 +3288,11 @@ export function ProjectView({
             const scheduledProjectId = project.id;
             const scheduledConversationId = activeConversationId;
             pendingAutoContinueConversationIdRef.current = scheduledConversationId;
+            setAutoContinuePending(true);
             autoContinueTimerRef.current = window.setTimeout(() => {
               autoContinueTimerRef.current = null;
               pendingAutoContinueConversationIdRef.current = null;
+              setAutoContinuePending(false);
               if (project.id !== scheduledProjectId) {
                 rollbackAutoContinueCount(
                   conversationAutoContinueCountRef.current,
@@ -3744,6 +3799,10 @@ export function ProjectView({
           }
         }
         if (!targetId) return curr;
+        const live = liveAssistantMutatorRef.current;
+        if (live?.assistantId === targetId) {
+          live.apply((prev) => attachPersistedChatError(prev, detail, code));
+        }
         return curr.map((m) => {
           if (m.id !== targetId) return m;
           const updated = attachPersistedChatError(m, detail, code);
@@ -4197,14 +4256,37 @@ export function ProjectView({
           reason: regression.reason,
         };
       }
-      const result = await writeProjectTextFileDetailed(
-        project.id,
-        fileName,
-        htmlBody,
-        { artifactManifest: manifest ?? undefined },
-      );
+      const truncateAfterSequence = getActiveRevisionSequence(project.id, fileName);
+      const assistantMessageId = [...messagesRef.current]
+        .reverse()
+        .find((message) => message.role === 'assistant')?.id;
+      const result = ext === '.html'
+        ? await pushProjectFileRevision(
+          project.id,
+          fileName,
+          {
+            content: htmlBody,
+            source: mapArtifactTypeToRevisionSource(artifactToPersist.artifactType),
+            label: deriveAgentRevisionLabel(persistCommentAttachments, title),
+            ...(manifest ? { artifactManifest: manifest } : {}),
+            ...(activeConversationId ? { conversationId: activeConversationId } : {}),
+            ...(assistantMessageId ? { assistantMessageId } : {}),
+            ...(typeof truncateAfterSequence === 'number'
+              ? { truncateAfterSequence }
+              : {}),
+          },
+        )
+        : await writeProjectTextFileDetailed(
+          project.id,
+          fileName,
+          htmlBody,
+          { artifactManifest: manifest ?? undefined },
+        );
       if (result.ok) {
         const file = result.file;
+        const pushedRevision = ext === '.html' && 'revision' in result
+          ? (result as { ok: true; revision: FileRevision; file: ProjectFile }).revision
+          : null;
         // A newer successful write supersedes any stashed replay for this
         // exact filename — the file the user is looking at is now the one
         // on disk, not the pre-401 in-memory snapshot.
@@ -4218,6 +4300,8 @@ export function ProjectView({
         // file metadata silently and the user would never see that the
         // model shipped a placeholder.
         if (file.stubGuardWarning) {
+          // Warn-mode stub guard: file still persisted. Keep as session banner
+          // (not runStatus:failed) so a successful deliverable is not marked failed.
           setError(
             formatProjectArtifactStubWarning(file.name, file.stubGuardWarning.message),
           );
@@ -4226,7 +4310,53 @@ export function ProjectView({
         // sees it without an extra click. The Write-tool path already does
         // this for tool-emitted files; this handles the artifact-tag path.
         requestOpenFile(file.name);
-        return { kind: 'persisted', fileName: file.name };
+        if (pushedRevision) {
+          setActiveRevisionSequence(project.id, file.name, pushedRevision.sequence);
+          emitRevisionPush(
+            analytics.track,
+            project.id,
+            projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel),
+            file.name,
+            pushedRevision,
+            'agent_persist',
+          );
+          if (pushedRevision.parentRevisionId) {
+            const parentRevisionId = pushedRevision.parentRevisionId;
+            const restoredFileName = file.name;
+            setProjectActionsToast({
+              message: embedUiLabel('AI edit saved', 'AI 편집을 저장했습니다'),
+              details: restoredFileName,
+              actionLabel: embedUiLabel('Undo', '실행 취소'),
+              onAction: () => {
+                void (async () => {
+                  const restored = await restoreProjectFileRevision(
+                    project.id,
+                    restoredFileName,
+                    parentRevisionId,
+                  );
+                  if (!restored.ok) return;
+                  const cursorRevision = restored.revision;
+                  emitRevisionUndo(
+                    analytics.track,
+                    project.id,
+                    projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel),
+                    restoredFileName,
+                    cursorRevision,
+                    'agent_toast',
+                  );
+                  setActiveRevisionSequence(project.id, restoredFileName, cursorRevision.sequence);
+                  setFilesRefresh((count) => count + 1);
+                  setProjectActionsToast(null);
+                })();
+              },
+            });
+          }
+        }
+        return {
+          kind: 'persisted',
+          fileName: file.name,
+          parentRevisionId: pushedRevision?.parentRevisionId ?? null,
+        };
       } else {
         // Clear the saved-artifact ref so the streaming layer can retry
         // the write (idempotent by fileName) once auth or the daemon
@@ -4307,6 +4437,7 @@ export function ProjectView({
       project.metadata?.skipDiscoveryBrief,
       requestOpenFile,
       slideOnlyMvp,
+      activeConversationId,
       surfaceChatVisibleError,
     ],
   );
@@ -5158,21 +5289,6 @@ export function ProjectView({
     [updateMessageById, activeConversationId, project.id],
   );
 
-  // `code` is the structured API error code (e.g. AGENT_AUTH_REQUIRED); it
-  // rides along on the error status event so AssistantMessage can render the
-  // hosted-AMR nudge for model/auth/quota failures on non-AMR agents.
-  const appendAssistantErrorEvent = useCallback(
-    (messageId: string, message: string, code?: string) => {
-      if (!message) return;
-      updateMessageById(
-        messageId,
-        (prev) => appendErrorStatusEvent(prev, message, code),
-        true,
-      );
-    },
-    [updateMessageById],
-  );
-
   const auditDesignSystemWorkspaceAfterRun = useCallback(
     async (assistantMessageId: string) => {
       if (!isDesignSystemWorkspaceMetadata(project.metadata)) return;
@@ -5356,7 +5472,11 @@ export function ProjectView({
         if (status) {
           const patch = terminalAssistantPatchFromRunStatus(status);
           if (patch) {
-            updateMessageById(message.id, (prev) => ({ ...prev, ...patch }), true);
+            updateMessageById(
+              message.id,
+              (prev) => applyTerminalRunStatusToAssistant(prev, status),
+              true,
+            );
             clearStreamingMarker(activeConversationId);
             scheduleConversationMessageRefresh(activeConversationId);
             continue;
@@ -5366,10 +5486,9 @@ export function ProjectView({
           updateMessageById(
             message.id,
             (prev) =>
-              appendErrorStatusEvent(
+              attachPersistedChatError(
                 {
                   ...prev,
-                  runStatus: 'failed',
                   endedAt: prev.endedAt ?? Date.now(),
                 },
                 formatProjectRunErrorForUser(
@@ -5612,13 +5731,23 @@ export function ProjectView({
             scheduleReattachRetry(message.id, null);
             continue;
           }
+          // Phantom running row with no runId — must persist a durable
+          // status:error so hard reload can rebuild the Retry panel.
           updateMessageById(
             message.id,
-            (prev) => ({
-              ...prev,
-              runStatus: 'failed',
-              endedAt: prev.endedAt ?? Date.now(),
-            }),
+            (prev) =>
+              attachPersistedChatError(
+                {
+                  ...prev,
+                  endedAt: prev.endedAt ?? Date.now(),
+                },
+                formatProjectRunErrorForUser(
+                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                    code: 'AGENT_EXECUTION_FAILED',
+                  }),
+                ),
+                'AGENT_EXECUTION_FAILED',
+              ),
             true,
           );
           continue;
@@ -5666,9 +5795,23 @@ export function ProjectView({
             scheduleReattachRetry(message.id, runId);
             continue;
           }
+          // Run id existed locally but daemon has no status — persist a
+          // durable error so hard reload still rebuilds Retry UI.
           updateMessageById(
             message.id,
-            (prev) => ({ ...prev, runStatus: 'failed', endedAt: prev.endedAt ?? Date.now() }),
+            (prev) =>
+              attachPersistedChatError(
+                {
+                  ...prev,
+                  endedAt: prev.endedAt ?? Date.now(),
+                },
+                formatProjectRunErrorForUser(
+                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                    code: 'AGENT_EXECUTION_FAILED',
+                  }),
+                ),
+                'AGENT_EXECUTION_FAILED',
+              ),
             true,
           );
           completedReattachRunsRef.current.add(runId);
@@ -6068,12 +6211,18 @@ export function ProjectView({
                     );
                     if (shouldFailRunForArtifactPersistResult(replayPersistResult)) {
                       const endedAt = Date.now();
+                      const detail = formatProjectRunDeliverableMissingError({
+                        kind: replayPersistResult?.kind ?? null,
+                        reason:
+                          replayPersistResult && 'reason' in replayPersistResult
+                            ? replayPersistResult.reason ?? null
+                            : null,
+                      });
                       updateMessageById(
                         message.id,
                         (prev) => ({
-                          ...prev,
+                          ...attachPersistedChatError(prev, detail, 'incomplete_output'),
                           endedAt: prev.endedAt ?? endedAt,
-                          runStatus: 'failed',
                           resumable: true,
                         }),
                         true,
@@ -6132,17 +6281,19 @@ export function ProjectView({
               textBuffer.cancel();
               unregisterTextBuffer();
               if (runMayFinalize) {
-                setError(formatProjectRunErrorForUser(err));
-                appendAssistantErrorEvent(message.id, formatProjectRunErrorForUser(err), errorCode);
+                const detail = formatProjectRunErrorForUser(err);
+                setError(detail);
+                // Single persist: durable status:error + failed (+ resumable).
+                // Do not call persistNow afterward — that can race a second
+                // PUT from a pre-error snapshot before messagesRef syncs.
                 updateMessageById(
                   message.id,
                   (prev) => ({
-                    ...prev,
-                    runStatus: 'failed',
-                    endedAt: prev.endedAt ?? Date.now(),
+                    ...attachPersistedChatError(prev, detail, errorCode),
                     resumable,
                   }),
                   true,
+                  { telemetryFinalized: true },
                 );
               }
               completedReattachRunsRef.current.add(runId);
@@ -6150,7 +6301,6 @@ export function ProjectView({
               reattachCancelControllersRef.current.delete(runId);
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
               finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
-              persistNow({ telemetryFinalized: true });
             },
           },
           onRunStatus: (runStatus) => {
@@ -6175,15 +6325,29 @@ export function ProjectView({
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
             }
             if (isTerminalRunStatus(runStatus)) {
-              persistNow(
-                runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
-              );
+              if (runStatus === 'failed') {
+                // Let onError attach status:error before the terminal persist.
+                persistSoon();
+              } else {
+                persistNow(
+                  runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
+                );
+              }
             } else {
               persistSoon();
             }
             if (isTerminalRunStatus(runStatus)) {
               finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
-              scheduleConversationMessageRefresh(reattachConversationId);
+              // Delay soft-refresh on failed so onError's durable error wins
+              // the merge race (symmetric with the main chat path).
+              if (runStatus === 'failed') {
+                window.setTimeout(() => {
+                  if (cancelled) return;
+                  scheduleConversationMessageRefresh(reattachConversationId);
+                }, 500);
+              } else {
+                scheduleConversationMessageRefresh(reattachConversationId);
+              }
             }
           },
           onRunEventId: (lastRunEventId) => {
@@ -6203,13 +6367,10 @@ export function ProjectView({
               const resumable = (err as Error & { resumable?: boolean }).resumable === true;
               const msg = formatProjectRunErrorForUser(err);
               setError(msg);
-              appendAssistantErrorEvent(message.id, msg, errorCode);
               updateMessageById(
                 message.id,
                 (prev) => ({
-                  ...prev,
-                  runStatus: 'failed',
-                  endedAt: prev.endedAt ?? Date.now(),
+                  ...attachPersistedChatError(prev, msg, errorCode),
                   resumable,
                 }),
                 true,
@@ -6642,10 +6803,10 @@ export function ProjectView({
             autoContinueCount + 1,
           );
           const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
-          const updatedAssistant = appendErrorStatusEvent(
+          const updatedAssistant = attachAutoContinueIncompleteOutputNotice(
             incompleteAssistant,
             autoContinueNotice,
-            AUTO_CONTINUE_STATUS_CODE,
+            formatProjectRunDeliverableMissingError(),
           );
           setMessages((current) =>
             current.map((message) =>
@@ -6662,9 +6823,11 @@ export function ProjectView({
           const scheduledProjectId = project.id;
           const scheduledConversationId = recoveryConversationId;
           pendingAutoContinueConversationIdRef.current = scheduledConversationId;
+          setAutoContinuePending(true);
           autoContinueTimerRef.current = window.setTimeout(() => {
             autoContinueTimerRef.current = null;
             pendingAutoContinueConversationIdRef.current = null;
+            setAutoContinuePending(false);
             if (project.id !== scheduledProjectId) {
               rollbackAutoContinueCount(
                 conversationAutoContinueCountRef.current,
@@ -7760,16 +7923,22 @@ export function ProjectView({
                   autoContinueCount + 1,
                 );
                 const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
+                // Durable incomplete_output under the transient notice so a
+                // hard reload can rebuild Retry after AUTO_CONTINUE is no
+                // longer "pending" in this session.
                 updateAssistant((prev) => ({
-                  ...appendErrorStatusEvent(prev, autoContinueNotice, AUTO_CONTINUE_STATUS_CODE),
+                  ...attachAutoContinueIncompleteOutputNotice(
+                    prev,
+                    autoContinueNotice,
+                    deliverableError,
+                    deliverableErrorCode,
+                  ),
                   producedFiles: produced,
-                  runStatus: 'failed',
-                  resumable: true,
                   endedAt: prev.endedAt ?? endedAt,
                 }));
               } else {
                 updateAssistant((prev) => ({
-                  ...appendErrorStatusEvent(prev, deliverableError, deliverableErrorCode),
+                  ...attachPersistedChatError(prev, deliverableError, deliverableErrorCode),
                   producedFiles: produced,
                   runStatus: 'failed',
                   resumable: true,
@@ -7789,9 +7958,11 @@ export function ProjectView({
                 const scheduledProjectId = project.id;
                 const scheduledConversationId = runConversationId;
                 pendingAutoContinueConversationIdRef.current = scheduledConversationId;
+                setAutoContinuePending(true);
                 autoContinueTimerRef.current = window.setTimeout(() => {
                   autoContinueTimerRef.current = null;
                   pendingAutoContinueConversationIdRef.current = null;
+                  setAutoContinuePending(false);
                   // Abort if the user switched projects/conversations — otherwise
                   // a late timer from project A would inject the recovery prompt
                   // into project B's brand-new chat.
@@ -7986,6 +8157,12 @@ export function ProjectView({
             return latestAssistantMsg;
           }),
         );
+      };
+      liveAssistantMutatorRef.current = {
+        assistantId,
+        apply: (updater) => {
+          latestAssistantMsg = updater(latestAssistantMsg);
+        },
       };
       const assistantPersist = createMessagePersistScheduler(
         (options) => {
@@ -8357,14 +8534,16 @@ export function ProjectView({
           releaseOwnTextBuffer();
           let finalizedAssistant = latestAssistantMsg;
           if (runMayFinalize) {
-            if (runIsVisible()) setError(formatProjectRunErrorForUser(err));
+            const detail = formatProjectRunErrorForUser(err);
+            if (runIsVisible()) setError(detail);
             updateAssistant((prev) => {
+              const withError = attachPersistedChatError(prev, detail, errorCode);
               finalizedAssistant = {
-                ...appendErrorStatusEvent(prev, formatProjectRunErrorForUser(err), errorCode),
-                endedAt,
+                ...withError,
+                endedAt: withError.endedAt ?? endedAt,
                 runStatus: config.mode === 'api' || prev.runId || isActiveRunStatus(prev.runStatus)
                   ? 'failed'
-                  : prev.runStatus,
+                  : withError.runStatus,
                 resumable,
               };
               return finalizedAssistant;
@@ -8503,9 +8682,16 @@ export function ProjectView({
               textBuffer.finalizeForHistoryDisplay?.();
             }
             if (isTerminalRunStatus(runStatus) && !deferredTerminalSuccess) {
-              assistantPersist.persistNow(
-                runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
-              );
+              if (runStatus === 'failed') {
+                // Prefer onError's attachPersistedChatError + save to land first.
+                // A premature persistNow of failed-without-error races soft refresh
+                // and hard-reload windows before the status:error event exists.
+                assistantPersist.persistSoon();
+              } else {
+                assistantPersist.persistNow(
+                  runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
+                );
+              }
             } else {
               assistantPersist.persistSoon();
             }
@@ -8514,7 +8700,13 @@ export function ProjectView({
             }
             if (isTerminalRunStatus(runStatus)) {
               clearCurrentRunStreamingMarker(runConversationId, controller, cancelController);
-              scheduleConversationMessageRefresh(runConversationId);
+              if (runStatus === 'failed') {
+                window.setTimeout(() => {
+                  scheduleConversationMessageRefresh(runConversationId);
+                }, 500);
+              } else {
+                scheduleConversationMessageRefresh(runConversationId);
+              }
             }
           },
           onRunEventId: (lastRunEventId) => {
@@ -10654,6 +10846,7 @@ export function ProjectView({
               onSend={handleSend}
               onRetry={handleRetry}
               onResumeRun={handleResumeRun}
+              autoContinuePending={autoContinuePending}
               onStop={handleStop}
               onRemoveQueuedSend={removeQueuedChatSend}
               onUpdateQueuedSend={updateQueuedChatSend}
@@ -10973,6 +11166,10 @@ export function ProjectView({
             message={projectActionsToast.message}
             details={projectActionsToast.details}
             code={projectActionsToast.code}
+            actionLabel={projectActionsToast.actionLabel}
+            onAction={projectActionsToast.onAction}
+            tone={projectActionsToast.actionLabel ? 'success' : 'default'}
+            ttlMs={projectActionsToast.actionLabel ? 8000 : undefined}
             onDismiss={() => setProjectActionsToast(null)}
           />
         ) : null}

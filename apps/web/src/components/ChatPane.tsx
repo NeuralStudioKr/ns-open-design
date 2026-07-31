@@ -27,6 +27,7 @@ import {
 import type { Dict } from '../i18n/types';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
+import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -49,6 +50,7 @@ import { AssistantMessage, type QuestionFormOpenRequest } from './AssistantMessa
 import { PinnedNextStepSlot } from './PinnedNextStepSlot';
 import { AmrGuidance } from './AmrGuidance';
 import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-guidance';
+import { formatProjectRunErrorForUser } from '../teamver/projectErrorMessages';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
 import { resolveLastAssistantMessageId } from '../runtime/conversation-message-dedupe';
 import {
@@ -382,7 +384,13 @@ function ChatArtifactPreview({
     return <SketchPreview projectId={projectId} file={file} />;
   }
   if (file.kind === 'image' || file.kind === 'sketch') {
-    return <img src={url} alt="" loading="lazy" />;
+    return (
+      <AuthenticatedProjectFileImage
+        projectId={projectId}
+        path={file.name}
+        alt=""
+      />
+    );
   }
   if (file.kind === 'html') {
     return (
@@ -481,6 +489,13 @@ interface Props {
   ) => void;
   onRetry?: (assistantMessage: ChatMessage) => void;
   onResumeRun?: (assistantMessage: ChatMessage) => void;
+  /**
+   * True while ProjectView's 600ms automatic-continue timer is armed.
+   * After hard reload this is false even if the message still carries an
+   * `auto_continue_incomplete_output` notice — Retry must come back from the
+   * durable `incomplete_output` underneath.
+   */
+  autoContinuePending?: boolean;
   onStop: () => void;
   // Skills available for @-mention assembly. ProjectView filters out the
   // user's disabled set before passing them in here.
@@ -694,6 +709,7 @@ export function ChatPane({
   onSend,
   onRetry,
   onResumeRun,
+  autoContinuePending = false,
   onStop,
   onRemoveQueuedSend,
   onUpdateQueuedSend,
@@ -922,14 +938,41 @@ export function ChatPane({
     }
     return null;
   })();
-  // AUTO_CONTINUE_STATUS_CODE is a transient recovery notice, not a final
-  // user-facing error. Keep the latest event for suppressing manual retry
-  // affordances, but exclude it from the chat error card and diagnostics.
+  // Prefer the durable deliverable/auth error under a stacked auto-continue
+  // notice so hard reload can rebuild Retry after the live timer is gone.
+  const durableFailedRunErrorEvent = (() => {
+    const evs = retryAssistant?.events ?? [];
+    for (let i = evs.length - 1; i >= 0; i--) {
+      const ev = evs[i];
+      if (
+        ev?.kind === 'status'
+        && ev.label === 'error'
+        && ev.code !== AUTO_CONTINUE_STATUS_CODE
+        && Boolean(ev.detail?.trim())
+      ) {
+        return ev;
+      }
+    }
+    return null;
+  })();
+  // Suppress manual Retry only while ProjectView's timer is armed, or for
+  // legacy rows that only carry the auto-continue notice (no durable error).
   const autoContinueScheduled =
-    latestFailedRunErrorEvent?.code === AUTO_CONTINUE_STATUS_CODE;
-  const failedRunErrorEvent = autoContinueScheduled ? null : latestFailedRunErrorEvent;
+    autoContinuePending
+    || (
+      latestFailedRunErrorEvent?.code === AUTO_CONTINUE_STATUS_CODE
+      && !durableFailedRunErrorEvent
+    );
+  const failedRunErrorEvent = autoContinueScheduled
+    ? null
+    : (durableFailedRunErrorEvent ?? (
+      latestFailedRunErrorEvent?.code === AUTO_CONTINUE_STATUS_CODE
+        ? null
+        : latestFailedRunErrorEvent
+    ));
   const diagnosticRunErrorEvent = (() => {
     if (failedRunErrorEvent) return failedRunErrorEvent;
+    if (durableFailedRunErrorEvent) return durableFailedRunErrorEvent;
     const evs = diagnosticAssistant?.events ?? [];
     for (let i = evs.length - 1; i >= 0; i--) {
       const ev = evs[i];
@@ -948,11 +991,11 @@ export function ChatPane({
   const runFailureUi = retryAssistant
     ? resolveRunFailureUi(failedRunErrorEvent?.code, retryAssistant.agentId)
     : null;
-  // When the last error event on the failed run is the auto-continue notice,
-  // ProjectView has already scheduled a fresh run (setTimeout 600ms) — hide
-  // ALL manual recovery affordances so the user cannot double-fire in the
-  // race window. Distinct from `runFailureUi.primaryAction === 'none'` so
-  // this specifically covers the auto-continue path without accidentally
+  // When auto-continue is pending, ProjectView has already scheduled a fresh
+  // run (setTimeout 600ms) — hide ALL manual recovery affordances so the user
+  // cannot double-fire in the race window. Distinct from
+  // `runFailureUi.primaryAction === 'none'` so this specifically covers the
+  // auto-continue path without accidentally
   // gating the NON_RETRYABLE_CODES cases (which have their own already-none
   // return path but still want the copy button).
   // Offer Continue (resume) when the failed run is resumable AND the active
@@ -972,9 +1015,20 @@ export function ChatPane({
     retryAssistant.agentId === config?.agentId &&
     !autoContinueScheduled;
   // Prefer a case-specific message (AMR auth / balance) over the raw upstream
-  // string. Historical persisted run errors render at their owning assistant
-  // turn inside ChatRows, so they must not also fall through to this tail card.
-  const rawError = error ?? failedRunErrorEvent?.detail ?? null;
+  // string. After hard reload, ephemeral `error` is null — rebuild from the
+  // durable status:error event. If the row is failed but the event was lost
+  // (legacy / race), still show a Retry dock with a fallback detail so the
+  // user is not left with a silent failed turn.
+  const rawError = error
+    ?? failedRunErrorEvent?.detail
+    ?? (retryAssistant && !autoContinueScheduled
+      ? (diagnosticRunErrorEvent?.detail
+        ?? formatProjectRunErrorForUser(
+          Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+            code: 'AGENT_EXECUTION_FAILED',
+          }),
+        ))
+      : null);
   const displayError = runFailureUi?.messageKey ? t(runFailureUi.messageKey) : rawError;
   const errorDiagnosticText = displayError
     ? buildRunErrorDiagnosticText({
@@ -2476,30 +2530,48 @@ function ChatRows({
       if (message.role !== 'assistant' || message.runStatus !== 'failed') continue;
       if (message.id === errorCardOwnerId) continue;
       const evs = message.events ?? [];
-      let errorEvent: {
+      type StatusErrorEvent = {
         kind: 'status';
         label: string;
         detail?: string;
         code?: string;
-      } | null = null;
+      };
+      let errorEvent: StatusErrorEvent | null = null;
+      let latestAnyError: StatusErrorEvent | null = null;
       for (let i = evs.length - 1; i >= 0; i -= 1) {
         const ev = evs[i];
-        if (
-          ev?.kind === 'status'
-          && ev.label === 'error'
-          && ev.code !== AUTO_CONTINUE_STATUS_CODE
-        ) {
-          errorEvent = ev;
+        if (ev?.kind !== 'status' || ev.label !== 'error') continue;
+        const statusError: StatusErrorEvent = {
+          kind: 'status',
+          label: ev.label,
+          detail: ev.detail,
+          code: ev.code,
+        };
+        if (!latestAnyError) latestAnyError = statusError;
+        if (ev.code !== AUTO_CONTINUE_STATUS_CODE) {
+          errorEvent = statusError;
           break;
         }
       }
-      if (!errorEvent?.detail) continue;
+      // Transient auto-continue notice must not become a past error card.
+      if (!errorEvent && latestAnyError?.code === AUTO_CONTINUE_STATUS_CODE) {
+        continue;
+      }
+      // Legacy / race rows may be failed without a durable status:error —
+      // still show an inline card so hard reload does not hide the failure.
+      const detail = errorEvent?.detail?.trim()
+        || formatProjectRunErrorForUser(
+          Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+            code: 'AGENT_EXECUTION_FAILED',
+          }),
+        );
+      const errorCode = errorEvent?.code ?? 'AGENT_EXECUTION_FAILED';
       cards.set(message.id, {
-        message: errorEvent.detail,
+        message: detail,
         diagnosticText: buildRunErrorDiagnosticText({
-          message: errorEvent.detail,
-          rawMessage: errorEvent.detail,
-          errorCode: errorEvent.code,
+          message: detail,
+          rawMessage: detail,
+          errorCode,
           traceId: message.runId,
           runId: message.runId,
           projectId,
@@ -3648,7 +3720,11 @@ function UserMessageImpl({
                     {index + 1}
                   </span>
                   {a.kind === 'image' && projectId ? (
-                    <img src={projectRawUrl(projectId, a.path)} alt={a.name} />
+                    <AuthenticatedProjectFileImage
+                      projectId={projectId}
+                      path={a.path}
+                      alt={a.name}
+                    />
                   ) : (
                     <Icon name="file" size={14} />
                   )}

@@ -1,5 +1,11 @@
+# syntax=docker/dockerfile:1.7
 # Build and runtime must share glibc — better-sqlite3/node-pty native addons and
 # Playwright headless export (distro Chromium) both fail on Alpine→bookworm copy.
+#
+# BuildKit cache mounts (pnpm store + Next .next/cache) keep incremental deploys
+# fast when lockfile/apps change without --no-cache. Requires DOCKER_BUILDKIT=1
+# (deploy.sh sets this). Disk: prune with `docker builder prune --filter until=168h`
+# — do not wipe BuildKit cache on every deploy.
 ARG NODE_IMAGE=docker.io/library/node:24-bookworm-slim
 ARG RUNTIME_IMAGE=docker.io/library/node:24-bookworm-slim
 
@@ -37,7 +43,9 @@ COPY apps/web/package.json ./apps/web/package.json
 COPY e2e/package.json ./e2e/package.json
 # @teamver/app-sdk — file:../../vendor/teamver/app-sdk.tgz (apps/web)
 COPY vendor/teamver ./vendor/teamver
-RUN corepack enable && \
+RUN --mount=type=cache,id=od-pnpm-store,target=/root/.local/share/pnpm/store \
+    --mount=type=cache,id=od-pnpm-cache,target=/root/.cache/pnpm \
+    corepack enable && \
     corepack prepare pnpm@10.33.2 --activate && \
     pnpm install --frozen-lockfile
 
@@ -56,18 +64,25 @@ ENV VITE_TEAMVER_OG_IMAGE_URL=${VITE_TEAMVER_OG_IMAGE_URL}
 # Legacy bake arg — PPTX export is always on in web; value is ignored.
 ARG VITE_TEAMVER_PPTX_EXPORT_ENABLE=true
 ENV VITE_TEAMVER_PPTX_EXPORT_ENABLE=${VITE_TEAMVER_PPTX_EXPORT_ENABLE}
+# Draw/mark annotation — off in production embed unless explicitly enabled at bake time.
+ARG VITE_TEAMVER_DRAW_ANNOTATION_ENABLE=
+ENV VITE_TEAMVER_DRAW_ANNOTATION_ENABLE=${VITE_TEAMVER_DRAW_ANNOTATION_ENABLE}
 # BYOK streaming — daemon message PUT throttle (ms). Override via deploy .env (rebuild required).
 ARG VITE_MESSAGE_PERSIST_THROTTLE_MS=5000
 ENV VITE_MESSAGE_PERSIST_THROTTLE_MS=${VITE_MESSAGE_PERSIST_THROTTLE_MS}
-RUN pnpm --filter @open-design/contracts build && \
+# Skip Next.js post-compile typecheck/eslint in image builds (~1–2 min).
+# Daemon `tsc` still runs above; web types are gated in local/CI before push.
+ENV OD_SKIP_NEXT_TYPECHECK=1
+# Keep pnpm/Next caches on BuildKit mounts — do not delete store paths here.
+RUN --mount=type=cache,id=od-pnpm-store,target=/root/.local/share/pnpm/store \
+    --mount=type=cache,id=od-pnpm-cache,target=/root/.cache/pnpm \
+    --mount=type=cache,id=od-next-cache,target=/app/apps/web/.next/cache \
+    pnpm --filter @open-design/contracts build && \
     pnpm --filter @open-design/registry-protocol build && \
     pnpm --filter @open-design/daemon build && \
     pnpm --filter @open-design/web build && \
     pnpm --filter @open-design/daemon deploy --legacy --prod /app/deploy/daemon && \
-    pnpm store prune && \
     rm -rf \
-      /root/.cache \
-      /root/.local/share/pnpm/store \
       /app/deploy/daemon/node_modules/.cache \
       /app/deploy/daemon/node_modules/@types \
       /app/deploy/daemon/node_modules/.pnpm/@types+* \
@@ -153,11 +168,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # build and falls back to the shell so the container still exports
 # something if the full build regresses on the current base image.
 #
-# PLAYWRIGHT_INSTALL_TOKEN cache-busts THIS layer only. deploy.sh
-# passes the current git SHA so every deploy rebuilds the install RUN
-# even without --no-cache, ensuring the container never inherits a
-# stale/partial /ms-playwright directory from a previous cached layer.
-ARG PLAYWRIGHT_INSTALL_TOKEN=default
+# PLAYWRIGHT_INSTALL_TOKEN busts THIS layer only when the pin changes
+# (or an operator overrides the token). Do NOT pass git SHA every deploy —
+# that forced a multi-minute Chromium re-download on every ship.
+# Pin must match `npx playwright-core@… install` below.
+ARG PLAYWRIGHT_INSTALL_TOKEN=playwright-core@1.60.0
 RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PLAYWRIGHT_INSTALL_TOKEN=$PLAYWRIGHT_INSTALL_TOKEN \
     npx --yes playwright-core@1.60.0 install chromium \

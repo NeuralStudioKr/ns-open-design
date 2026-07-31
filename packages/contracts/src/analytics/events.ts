@@ -61,7 +61,12 @@ export type AnalyticsEventName =
   | 'design_system_create_result'
   | 'design_system_review_result'
   | 'design_system_status_result'
-  | 'design_system_apply_result';
+  | 'design_system_apply_result'
+  // File revision undo/redo lifecycle (artifact HTML edits).
+  | 'revision_push'
+  | 'revision_undo'
+  | 'revision_redo'
+  | 'revision_restore';
 
 // ---- Pages ---------------------------------------------------------------
 
@@ -1901,6 +1906,7 @@ export interface ArtifactToolbarClickProps {
     | 'pods'
     | 'inspect'
     | 'edit'
+    | 'revision_history'
     | 'zoom_out'
     | 'zoom_level_dropdown'
     | 'zoom_in';
@@ -2816,6 +2822,59 @@ export interface ArtifactExportResultProps {
   project_kind: TrackingProjectKind | null;
 }
 
+export type TrackingRevisionArea =
+  | 'revision_toolbar'
+  | 'revision_history'
+  | 'agent_toast'
+  | 'manual_edit'
+  | 'inspect_save'
+  | 'agent_persist'
+  | 'keyboard';
+
+export interface RevisionPushProps {
+  page_name: 'artifact';
+  area: TrackingRevisionArea;
+  project_id: string;
+  project_kind: TrackingProjectKind | null;
+  file_name: string;
+  revision_id: string;
+  revision_source: string;
+  revision_sequence: number;
+}
+
+export interface RevisionUndoProps {
+  page_name: 'artifact';
+  area: TrackingRevisionArea;
+  project_id: string;
+  project_kind: TrackingProjectKind | null;
+  file_name: string;
+  revision_id: string;
+  revision_source: string;
+  revision_sequence: number;
+}
+
+export interface RevisionRedoProps {
+  page_name: 'artifact';
+  area: TrackingRevisionArea;
+  project_id: string;
+  project_kind: TrackingProjectKind | null;
+  file_name: string;
+  revision_id: string;
+  revision_source: string;
+  revision_sequence: number;
+}
+
+export interface RevisionRestoreProps {
+  page_name: 'artifact';
+  area: TrackingRevisionArea;
+  project_id: string;
+  project_kind: TrackingProjectKind | null;
+  file_name: string;
+  revision_id: string;
+  revision_source: string;
+  revision_sequence: number;
+}
+
 export interface FeedbackSubmitResultProps {
   page_name: 'chat_panel';
   area: 'chat_panel';
@@ -3010,7 +3069,11 @@ export type AnalyticsEventPayload =
   | { event: 'design_system_create_result'; props: DesignSystemCreateResultProps }
   | { event: 'design_system_review_result'; props: DesignSystemReviewResultProps }
   | { event: 'design_system_status_result'; props: DesignSystemStatusResultProps }
-  | { event: 'design_system_apply_result'; props: DesignSystemApplyResultProps };
+  | { event: 'design_system_apply_result'; props: DesignSystemApplyResultProps }
+  | { event: 'revision_push'; props: RevisionPushProps }
+  | { event: 'revision_undo'; props: RevisionUndoProps }
+  | { event: 'revision_redo'; props: RevisionRedoProps }
+  | { event: 'revision_restore'; props: RevisionRestoreProps };
 
 // ---- Enum mapping helpers (code ↔ CSV wire format) -----------------------
 

@@ -55,7 +55,7 @@ export function applyManualEditPatch(
   if (!el) return { ok: false, source, error: `Target not found: ${patch.id}` };
 
   if (patch.kind === 'set-text') {
-    if (hasElementChildren(el)) {
+    if (hasElementChildren(el) && !patch.flattenNestedMarkup) {
       // Page-level / wrapper pins resolve to a container with nested
       // `<span>`/`<strong>` markup. Prefer the comment hint leaf, then the
       // dominant text leaf under the pinned element — wiping the whole

@@ -5,6 +5,9 @@ import type {
   ArtifactRendererId,
   ArtifactStatus,
 } from './types';
+import type { JsonValue } from '@open-design/contracts';
+
+type ArtifactManifestMetadata = Record<string, JsonValue | undefined>;
 
 const MANIFEST_VERSION = 1;
 const ALLOWED_KINDS: ReadonlySet<ArtifactKind> = new Set([
@@ -72,7 +75,7 @@ export function artifactManifestNameFor(entry: string): string {
 export function createHtmlArtifactManifest(input: {
   entry: string;
   title: string;
-  metadata?: Record<string, unknown>;
+  metadata?: ArtifactManifestMetadata;
   sourceSkillId?: string;
   designSystemId?: string | null;
 }): ArtifactManifest {
@@ -100,7 +103,7 @@ export function createArtifactManifest(input: {
   artifactType?: string | null;
   /** Teamver slide-only: always persist deck manifests regardless of stream tag. */
   preferDeck?: boolean;
-  metadata?: Record<string, unknown>;
+  metadata?: ArtifactManifestMetadata;
   sourceSkillId?: string;
   designSystemId?: string | null;
 }): ArtifactManifest {
@@ -176,7 +179,7 @@ export function parseArtifactManifest(raw: string): ArtifactManifest | null {
           : undefined,
       metadata:
         parsed.metadata && typeof parsed.metadata === 'object' && !Array.isArray(parsed.metadata)
-          ? parsed.metadata
+          ? (parsed.metadata as ArtifactManifestMetadata)
           : undefined,
     };
   } catch {
@@ -187,7 +190,7 @@ export function parseArtifactManifest(raw: string): ArtifactManifest | null {
 export function inferLegacyManifest(input: {
   entry: string;
   title?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: ArtifactManifestMetadata;
 }): ArtifactManifest | null {
   const kind = inferKindFromEntry(input.entry);
   if (!kind) return null;

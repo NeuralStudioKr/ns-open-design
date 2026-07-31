@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readTeamverClientBuildEnv } from './src/teamver/teamverClientBuildEnv';
 
 // Daemon port the local Express server binds to (see apps/daemon/src/cli.ts). The
 // dev-all launcher overrides OD_PORT after probing for a free port; we read
@@ -157,7 +158,12 @@ function configuredAllowedDevHosts(): string[] {
   ]));
 }
 
+const skipNextTypecheck = process.env.OD_SKIP_NEXT_TYPECHECK === '1';
+
 const nextConfig: NextConfig = {
+  // Bake-time Teamver flags (VITE_*) must be listed here — Next.js does not
+  // expose arbitrary process.env keys to the browser client bundle.
+  env: readTeamverClientBuildEnv(),
   allowedDevOrigins: configuredAllowedDevHosts(),
   outputFileTracingRoot: WORKSPACE_ROOT,
   reactStrictMode: true,
@@ -192,7 +198,13 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: WORKSPACE_ROOT,
   },
-  ...(DEV_TSCONFIG_PATH ? { typescript: { tsconfigPath: DEV_TSCONFIG_PATH } } : {}),
+  // Docker/EC2 image builds: skip Next's post-compile `tsc` (~1–2 min on
+  // ProjectView-sized trees). Set OD_SKIP_NEXT_TYPECHECK=1 in deploy/Dockerfile.
+  // Local `next build` and CI should leave this unset so type errors still fail.
+  typescript: {
+    ...(DEV_TSCONFIG_PATH ? { tsconfigPath: DEV_TSCONFIG_PATH } : {}),
+    ...(skipNextTypecheck ? { ignoreBuildErrors: true } : {}),
+  },
   // Static exports keep Next.js's default `out/` output directory so static
   // hosts like Vercel can publish the generated site directly. Server runtimes
   // still keep a predictable traced build directory for sidecar launchers.

@@ -878,6 +878,16 @@ describe('manual edit source patches', () => {
     expect(result.error).toContain('nested markup');
   });
 
+  it('flattens nested markup for inline contenteditable commits', () => {
+    const result = applyManualEditPatch(
+      baseSource,
+      { kind: 'set-text', id: 'nested', value: 'Flat text', flattenNestedMarkup: true },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(readManualEditOuterHtml(result.source, 'nested')).toBe('<p data-od-id="nested">Flat text</p>');
+  });
+
   it('lets set-link update the label on a link with inline emphasis', () => {
     const source = [
       '<!doctype html><html><body>',

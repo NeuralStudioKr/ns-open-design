@@ -18,7 +18,7 @@ Usage: $0 --staging | --production [options]
   --production    사용 환경 파일: .env.production (Compose 프로젝트 teamver-open-design)
 
 옵션:
-  --no-cache        Docker 빌드 시 캐시 미사용
+  --no-cache        Docker 빌드 시 레이어·BuildKit 캐시 미사용 (평소 금지 — 느림)
   --rds             AWS RDS (POSTGRES_HOST=RDS endpoint, 로컬 design-db 미사용)
   --local-db        compose Postgres 프로필 (dev/레거시)
   --with-minio      MinIO 프로필 (로컬 S3-compat)
@@ -35,8 +35,13 @@ Usage: $0 --staging | --production [options]
   - .env 심볼릭 링크를 만들지 않습니다. compose 는 --env-file 로 env 파일을 직접 읽습니다.
   - teamver-design-api env_file 은 docker-compose.staging.yml / docker-compose.production.yml override.
   - 선행: cp .env.staging.example .env.staging (또는 .env.production.example)
+  - BuildKit 캐시(pnpm/Next)를 쓰므로 평소 --no-cache 없이 배포하세요.
+  - Playwright Chromium 은 playwright-core 핀 변경 시에만 재다운로드합니다.
+    강제 재설치: PLAYWRIGHT_INSTALL_TOKEN=force-$(date +%s) $0 --staging
+  - 디스크 부족(ENOSPC) 시: df -h && docker builder prune --filter until=168h
 EOF
 }
+
 
 NO_CACHE=""
 ENV_FILE=""
@@ -217,20 +222,21 @@ fi
 
 export DOCKER_CLIENT_TIMEOUT="${DOCKER_CLIENT_TIMEOUT:-300}"
 export COMPOSE_HTTP_TIMEOUT="${COMPOSE_HTTP_TIMEOUT:-300}"
+# BuildKit required for Dockerfile cache mounts (pnpm store + Next cache).
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
 
-# PLAYWRIGHT_INSTALL_TOKEN cache-busts the deploy/Dockerfile install RUN
-# so /ms-playwright is redownloaded every deploy. Without this, a
-# previously cached-but-corrupt install layer can survive across
-# deploys and re-produce the "headless Chromium unavailable" SIGTRAP
-# path. Fall back to a timestamp when we cannot read a git SHA (e.g.
-# on hosts running from a shallow tarball).
+# PLAYWRIGHT_INSTALL_TOKEN busts only the Chromium install layer when the
+# pin changes (must match `playwright-core@…` in deploy/Dockerfile). Passing
+# git SHA every deploy forced a multi-minute re-download on every ship.
+# Override to force reinstall after a corrupt /ms-playwright layer, e.g.:
+#   PLAYWRIGHT_INSTALL_TOKEN=force-$(date +%s) ./deploy.sh --staging
 if [[ -z "${PLAYWRIGHT_INSTALL_TOKEN:-}" ]]; then
-  PLAYWRIGHT_INSTALL_TOKEN="$(
-    git -C "$OD_ROOT" rev-parse --short HEAD 2>/dev/null || date -u +%Y%m%dT%H%M%SZ
-  )"
+  PLAYWRIGHT_INSTALL_TOKEN="playwright-core@1.60.0"
 fi
 export PLAYWRIGHT_INSTALL_TOKEN
-echo "==> PLAYWRIGHT_INSTALL_TOKEN=${PLAYWRIGHT_INSTALL_TOKEN} (cache-bust /ms-playwright)"
+echo "==> PLAYWRIGHT_INSTALL_TOKEN=${PLAYWRIGHT_INSTALL_TOKEN} (Playwright layer pin; not git SHA)"
+echo "==> DOCKER_BUILDKIT=1 (pnpm/Next cache mounts enabled)"
 
 # docs-teamver/39_2 · 39_5 — inject OD_NODE_ID from EC2 IMDS so daemon
 # (/api/health nodeId + X-OD-Node-Id) and design-api (/healthz node_id +
@@ -434,6 +440,7 @@ elif [[ "$TARGET_ENV" == "production" ]]; then
   echo "  - sudo bash devops/nginx/apply_teamver_design_nginx_conf.sh ./design.teamver.com.http.conf"
 fi
 echo "  - ${DESIGN_COMPOSE_ARGS[*]} logs teamver-design-api --tail 80"
+echo "  - 빌드가 느리면: 평소 --no-cache 금지 · df -h · bash scripts/prune_docker_build_disk.sh"
 if [[ -n "$NO_CACHE" ]]; then
-  echo "  - 이미지가 반영 안 된 것 같으면: $0 --$TARGET_ENV --no-cache"
+  echo "  - (--no-cache 사용됨) 다음부터는 캐시 빌드 권장: $0 --$TARGET_ENV"
 fi

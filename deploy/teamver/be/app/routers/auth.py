@@ -418,12 +418,29 @@ async def refresh_auth_session(request: Request) -> Any:
     """BFF: refresh Apps JWT in server session. Plan B proxy removed."""
     if not bff_enabled():
         raise HTTPException(status_code=410, detail={"code": "plan_b_refresh_removed"})
+    prior = load_bff_session(request)
+    cookie_name = (settings.design_bff_session_cookie_name or "").strip() or "teamver_design_bff_session"
+    had_cookie = bool(
+        request.cookies.get(cookie_name) or request.cookies.get("session")
+    )
     session = await force_refresh_bff_session(request)
     if session is None:
         login_url = teamver_main_login_url_for_design()
+        # Distinguish empty jar / bad signature / Main refresh failure so FE/ops
+        # can tell HA secret drift from a truly expired Apps refresh token.
+        if prior is None and had_cookie:
+            code = "session_cookie_invalid"
+        elif prior is None:
+            code = "session_missing"
+        else:
+            code = "refresh_failed"
         return JSONResponse(
             status_code=401,
-            content={"detail": "session_expired", "login_url": login_url},
+            content={
+                "detail": "session_expired",
+                "code": code,
+                "login_url": login_url,
+            },
         )
     return {"status": "ok", "authenticated": True}
 

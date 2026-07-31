@@ -287,10 +287,7 @@ export async function pgDeleteConversation(pool: Pool, id: string): Promise<void
   await pool.query(`DELETE FROM conversations WHERE id = $1`, [id]);
 }
 
-export async function pgListMessages(pool: Pool, conversationId: string): Promise<DbRow[]> {
-  return queryPostgresRows(
-    pool,
-    `SELECT id, role, content, agent_id AS "agentId", agent_name AS "agentName",
+const MESSAGE_SELECT_COLS = `id, role, content, agent_id AS "agentId", agent_name AS "agentName",
             run_id AS "runId", run_status AS "runStatus",
             last_run_event_id AS "lastRunEventId",
             events_json AS "eventsJson",
@@ -303,11 +300,27 @@ export async function pgListMessages(pool: Pool, conversationId: string): Promis
             run_context_json AS "runContextJson",
             applied_plugin_snapshot_json AS "appliedPluginSnapshotJson",
             created_at AS "createdAt", started_at AS "startedAt", ended_at AS "endedAt",
-            position
+            position`;
+
+export async function pgListMessages(pool: Pool, conversationId: string): Promise<DbRow[]> {
+  return queryPostgresRows(
+    pool,
+    `SELECT ${MESSAGE_SELECT_COLS}
        FROM messages
       WHERE conversation_id = $1
       ORDER BY position ASC`,
     [conversationId],
+  );
+}
+
+/** Full message row for durable merge on upsert (cache may be cold/stale). */
+export async function pgGetMessage(pool: Pool, messageId: string): Promise<DbRow | null> {
+  return queryPostgresRow(
+    pool,
+    `SELECT ${MESSAGE_SELECT_COLS}
+       FROM messages
+      WHERE id = $1`,
+    [messageId],
   );
 }
 

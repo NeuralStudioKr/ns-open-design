@@ -10,6 +10,8 @@ import {
   resolveElementPatchAllowedSlideIndexes,
   resolveScopedCommentSlideCandidates,
   scopedCommentElementIds,
+  hasElementScopedCommentAttachments,
+  isVisualCommentAttachment,
 } from '../../src/edit-mode/scoped-deck-patch';
 import { parseElementPatch } from '../../src/artifacts/element-patch';
 import type { ChatCommentAttachment } from '../../src/types';
@@ -36,6 +38,44 @@ function attachment(slideIndex: number): ChatCommentAttachment {
     slideIndex,
   };
 }
+
+describe('hasElementScopedCommentAttachments', () => {
+  it('returns false for visual-only attachments so slide-level edits are not blocked', () => {
+    expect(hasElementScopedCommentAttachments([{
+      ...attachment(1),
+      selectionKind: 'visual',
+      elementId: 'visual-mark-1',
+    }])).toBe(false);
+  });
+
+  it('returns false when selectionKind is missing but screenshotPath marks a visual annotation', () => {
+    expect(hasElementScopedCommentAttachments([{
+      ...attachment(1),
+      selectionKind: undefined,
+      elementId: 'visual-mark-lost-kind',
+      screenshotPath: 'drawing-2026-07-31.png',
+      markKind: 'stroke',
+    }])).toBe(false);
+    expect(isVisualCommentAttachment({
+      ...attachment(1),
+      selectionKind: undefined,
+      elementId: 'visual-mark-lost-kind',
+    })).toBe(true);
+    expect(scopedCommentElementIds({
+      ...attachment(1),
+      selectionKind: undefined,
+      elementId: 'visual-mark-lost-kind',
+      screenshotPath: 'drawing-2026-07-31.png',
+    })).toEqual([]);
+  });
+
+  it('returns true when at least one attachment needs a concrete element target', () => {
+    expect(hasElementScopedCommentAttachments([
+      { ...attachment(1), selectionKind: 'visual', elementId: 'visual-mark-1' },
+      attachment(1),
+    ])).toBe(true);
+  });
+});
 
 describe('reconcileCommentAttachmentElementId', () => {
   it('maps dom: preview selectors to stable data-od-id on deck html', () => {

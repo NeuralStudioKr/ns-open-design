@@ -77,7 +77,7 @@ export interface ManualEditTarget {
 }
 
 export type ManualEditPatch =
-  | { id: string; kind: 'set-text'; value: string }
+  | { id: string; kind: 'set-text'; value: string; flattenNestedMarkup?: boolean }
   | { id: string; kind: 'set-link'; text: string; href: string }
   | { id: string; kind: 'set-image'; src: string; alt: string }
   | { id: string; kind: 'remove-element' }
@@ -127,6 +127,8 @@ export interface ManualEditTextCommitMessage {
   type: 'od-edit-text-commit';
   id: string;
   value: string;
+  /** Inline contenteditable edits intentionally flatten nested markup. */
+  flattenNestedMarkup?: boolean;
 }
 
 export interface ManualEditTextActiveMessage {

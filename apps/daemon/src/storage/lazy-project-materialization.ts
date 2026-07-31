@@ -20,8 +20,10 @@ export type ProjectStorageAccessHooks = {
   persistAfterMutation: (
     req: Request,
     projectId: string,
-    options?: { strict?: boolean },
+    options?: { strict?: boolean; explicitDeletedPaths?: readonly string[] },
   ) => Promise<void>;
+  /** Pre-lock sync-down while a user file DELETE persists to remote SSOT. */
+  armPersistInflight: (projectId: string) => () => void;
   onProjectRemoved: (req: Request, projectId: string) => Promise<void>;
   resolveRemoteForDaemonState?: (
     req: Request,
@@ -148,6 +150,31 @@ function isMutatingMethod(method: string): boolean {
 }
 
 /**
+ * Relpath for an explicit user file delete (Design Files row delete, MCP, etc.).
+ * Mounted middleware sees `/raw/...`; unmounted tests may pass absolute paths.
+ */
+export function parseExplicitProjectFileDeleteRelpath(pathname: string): string | null {
+  const path = String(pathname ?? '');
+  const patterns = [
+    /^\/raw\/(.+)$/u,
+    /^\/api\/projects\/[^/]+\/raw\/(.+)$/u,
+    /^\/files\/([^/]+)$/u,
+    /^\/api\/projects\/[^/]+\/files\/([^/]+)$/u,
+  ];
+  for (const pattern of patterns) {
+    const match = path.match(pattern);
+    if (match?.[1]) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return match[1];
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Export/archive routes are semantically read-only even though POST is used
  * (they never mutate the project — they just render existing scratch bytes
  * into a downloadable artifact). When tenant-storage resolution fails on
@@ -215,6 +242,24 @@ export function createProjectStorageAccessHooks(
     } catch {
       // A failed background sync-up must not block later sync-down self-heal.
     }
+  }
+
+  /** Block sync-down until an in-flight DELETE persist finishes. */
+  function armPersistInflight(projectId: string): () => void {
+    const trimmedId = projectId.trim();
+    if (!trimmedId) return () => {};
+    if (persistInflight.has(trimmedId)) return () => {};
+    let settleGate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      settleGate = resolve;
+    });
+    persistInflight.set(trimmedId, gate);
+    return () => {
+      settleGate();
+      if (persistInflight.get(trimmedId) === gate) {
+        persistInflight.delete(trimmedId);
+      }
+    };
   }
 
   async function resolveRemote(req: Request, projectId: string) {
@@ -383,7 +428,7 @@ export function createProjectStorageAccessHooks(
   async function persistAfterMutation(
     req: Request,
     projectId: string,
-    options?: { strict?: boolean },
+    options?: { strict?: boolean; explicitDeletedPaths?: readonly string[] },
   ): Promise<void> {
     const trimmedId = projectId.trim();
     if (!trimmedId) return;
@@ -415,21 +460,27 @@ export function createProjectStorageAccessHooks(
       return;
     }
 
-    const priorPersist = persistInflight.get(trimmedId);
+    const prearmedGate = persistInflight.get(trimmedId);
     // Gate must be in the map BEFORE any await so concurrent
     // ensureMaterialized (FE refresh/raw/export right after POST /files 200)
     // waits instead of syncing-down the pre-write S3 snapshot.
     // Always resolve (never reject) so void finish-handlers cannot create
     // unhandled rejections; awaitPendingPersist already treats failures soft.
-    let settleGate!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      settleGate = resolve;
-    });
-    persistInflight.set(trimmedId, gate);
+    let settleOwnedGate: (() => void) | undefined;
+    let ownedGate: Promise<void> | undefined;
+    if (!prearmedGate) {
+      ownedGate = new Promise<void>((resolve) => {
+        settleOwnedGate = resolve;
+      });
+      persistInflight.set(trimmedId, ownedGate);
+    }
 
     try {
-      if (priorPersist) {
-        await priorPersist.catch(() => {});
+      if (!prearmedGate) {
+        const priorPersist = persistInflight.get(trimmedId);
+        if (priorPersist && priorPersist !== ownedGate) {
+          await priorPersist.catch(() => {});
+        }
       }
       lastSyncAt.delete(trimmedId);
 
@@ -440,7 +491,14 @@ export function createProjectStorageAccessHooks(
           }
           const remote = await resolveRemote(req, trimmedId);
           // runStart=0 → upload all scratch files (non-run API writes).
-          const result = await storage.syncUp(trimmedId, remote, 0);
+          const result = await storage.syncUp(
+            trimmedId,
+            remote,
+            0,
+            options?.explicitDeletedPaths
+              ? { explicitDeletedPaths: options.explicitDeletedPaths }
+              : undefined,
+          );
           if (db) {
             await exportTeamverProjectDaemonStateThrottled(db, remote, trimmedId);
           }
@@ -532,9 +590,11 @@ export function createProjectStorageAccessHooks(
       }
       if (options?.strict && lastErr !== undefined) throw lastErr;
     } finally {
-      settleGate();
-      if (persistInflight.get(trimmedId) === gate) {
-        persistInflight.delete(trimmedId);
+      if (settleOwnedGate && ownedGate) {
+        settleOwnedGate();
+        if (persistInflight.get(trimmedId) === ownedGate) {
+          persistInflight.delete(trimmedId);
+        }
       }
     }
   }
@@ -593,6 +653,7 @@ export function createProjectStorageAccessHooks(
   return {
     ensureMaterialized,
     persistAfterMutation,
+    armPersistInflight,
     onProjectRemoved,
     resolveRemoteForDaemonState: async (req, projectId) => {
       try {
@@ -740,11 +801,35 @@ export function createLazyProjectMaterializationMiddleware(
         const softContinue = await handleError(err);
         if (!softContinue) return;
       }
+      const explicitDeletedRelpath = req.method === 'DELETE'
+        ? parseExplicitProjectFileDeleteRelpath(req.path)
+        : null;
+      const releaseEarlyPersistGate = explicitDeletedRelpath
+        ? hooks.armPersistInflight(projectId)
+        : null;
       res.on('finish', () => {
-        if (res.statusCode < 200 || res.statusCode >= 300) return;
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          releaseEarlyPersistGate?.();
+          return;
+        }
         // Export/archive requests never mutate project state — skip sync-up.
-        if (isProjectExportOrArchivePath(req.path)) return;
-        void hooks.persistAfterMutation(req, projectId);
+        if (isProjectExportOrArchivePath(req.path)) {
+          releaseEarlyPersistGate?.();
+          return;
+        }
+        void (async () => {
+          try {
+            await hooks.persistAfterMutation(
+              req,
+              projectId,
+              explicitDeletedRelpath
+                ? { explicitDeletedPaths: [explicitDeletedRelpath] }
+                : undefined,
+            );
+          } finally {
+            releaseEarlyPersistGate?.();
+          }
+        })();
       });
     }
 

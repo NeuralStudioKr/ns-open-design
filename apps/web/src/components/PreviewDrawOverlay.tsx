@@ -7,6 +7,7 @@ import { useT } from '../i18n';
 import type { PreviewVisualMarkKind } from '../types';
 import { requestPreviewSnapshot } from '../runtime/exports';
 import { isImeComposing } from '../utils/imeComposing';
+import { fitPngBlobForAnthropicProxy } from '../utils/annotationImage';
 
 interface Point { x: number; y: number }
 interface Stroke { points: Point[] }
@@ -44,6 +45,7 @@ export interface AnnotationEventDetail {
   note: string;
   action: AnnotationAction;
   filePath?: string;
+  slideIndex?: number | null;
   markKind?: PreviewVisualMarkKind;
   bounds?: { x: number; y: number; width: number; height: number };
   target?: CaptureTarget | null;
@@ -76,7 +78,9 @@ const STROKE_WIDTH = 4;
 const TARGET_COLOR = '#1677ff';
 const DRAW_HINT_STORAGE_KEY = 'open-design:annotation-draw-hint-dismissed';
 /** Max wait for a full compositor/iframe capture before marks-only or degraded send. */
-const ANNOTATION_CAPTURE_BUDGET_MS = 2_500;
+const ANNOTATION_CAPTURE_BUDGET_MS = 10_000;
+/** When ink/box marks exist, prefer marks-only over waiting for a slow full capture. */
+const ANNOTATION_CAPTURE_FAST_FALLBACK_MS = 3_000;
 const ANNOTATION_IFRAME_SNAPSHOT_TIMEOUTS_MS = [2_500, 3_000] as const;
 
 async function raceWithBudget<T>(promise: Promise<T>, budgetMs: number): Promise<T | null> {
@@ -247,6 +251,7 @@ export function PreviewDrawOverlay({
   }, [redraw, active, hasInk, hasBox]);
 
   useEffect(() => {
+    if (!active) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         onActiveChange?.(false);
@@ -260,7 +265,7 @@ export function PreviewDrawOverlay({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onActiveChange, sending]);
+  }, [active, onActiveChange, sending]);
 
   function syncHistoryState() {
     setHasInk(strokesRef.current.length > 0);
@@ -426,7 +431,12 @@ export function PreviewDrawOverlay({
   }
   function removeExtraFile(index: number) {
     setExtraFiles((cur) => cur.filter((_, i) => i !== index));
-    setPreviewIndex(null);
+    setPreviewIndex((current) => {
+      if (current === null) return null;
+      if (current === index) return null;
+      if (current > index) return current - 1;
+      return current;
+    });
   }
 
   // Keep object-URL thumbnails in sync with the attached files; revoke on
@@ -575,7 +585,7 @@ export function PreviewDrawOverlay({
     return null;
   }
 
-  async function requestSnapshot(): Promise<PreviewSnapshot | null> {
+  async function requestSnapshot(budgetMs = ANNOTATION_CAPTURE_BUDGET_MS): Promise<PreviewSnapshot | null> {
     if (captureSnapshot) {
       // The host's captureSnapshot is a compositor screenshot of the on-screen
       // region, which would otherwise include this overlay's own strokes +
@@ -584,7 +594,7 @@ export function PreviewDrawOverlay({
       flushSync(() => setCapturing(true));
       try {
         await waitForOverlayHidden();
-        return await raceWithBudget(captureSnapshot(), ANNOTATION_CAPTURE_BUDGET_MS);
+        return await raceWithBudget(captureSnapshot(), budgetMs);
       } finally {
         flushSync(() => setCapturing(false));
       }
@@ -641,12 +651,17 @@ export function PreviewDrawOverlay({
     ctx.restore();
   }
 
-  async function compositeMarksOnly(): Promise<Blob | null> {
+  function effectiveCaptureFrameRect(pinned?: CaptureFrameRect | null): CaptureFrameRect | null {
+    if (pinned && pinned.width > 0 && pinned.height > 0) return pinned;
+    return snapshotFrameRect();
+  }
+
+  async function compositeMarksOnly(frameRect?: CaptureFrameRect | null): Promise<Blob | null> {
     const canvas = canvasRef.current;
-    const frameRect = snapshotFrameRect() ?? canvas?.getBoundingClientRect() ?? null;
-    if (!frameRect || frameRect.width <= 0 || frameRect.height <= 0) return null;
-    const w = Math.max(1, Math.floor(frameRect.width));
-    const h = Math.max(1, Math.floor(frameRect.height));
+    const resolved = effectiveCaptureFrameRect(frameRect) ?? canvas?.getBoundingClientRect() ?? null;
+    if (!resolved || resolved.width <= 0 || resolved.height <= 0) return null;
+    const w = Math.max(1, Math.floor(resolved.width));
+    const h = Math.max(1, Math.floor(resolved.height));
     const out = document.createElement('canvas');
     out.width = w;
     out.height = h;
@@ -674,10 +689,15 @@ export function PreviewDrawOverlay({
     return new Promise((resolve) => out.toBlob((b) => resolve(b), 'image/png'));
   }
 
-  async function compositeWithBackground(snap: PreviewSnapshot): Promise<Blob | null> {
-    const frameRect = snapshotFrameRect();
-    if (!frameRect) return null;
-    const rect = frameRect;
+  async function compositeWithBackground(
+    snap: PreviewSnapshot,
+    frameRect?: CaptureFrameRect | null,
+  ): Promise<Blob | null> {
+    let resolved = effectiveCaptureFrameRect(frameRect);
+    if (!resolved) {
+      resolved = { left: 0, top: 0, width: snap.w, height: snap.h };
+    }
+    const rect = resolved;
     const out = document.createElement('canvas');
     out.width = snap.w;
     out.height = snap.h;
@@ -738,14 +758,20 @@ export function PreviewDrawOverlay({
       let file: File | null = null;
       if (shouldCapture) {
         let blob: Blob | null = null;
+        const pinnedFrameRect = snapshotFrameRect();
         const marksOnlyPromise =
-          hasVisualMark || hasTarget ? compositeMarksOnly() : null;
-        const snap = await requestSnapshot();
-        if (snap) blob = await compositeWithBackground(snap);
+          hasVisualMark || hasTarget ? compositeMarksOnly(pinnedFrameRect) : null;
+        const snap = await requestSnapshot(
+          marksOnlyPromise ? ANNOTATION_CAPTURE_FAST_FALLBACK_MS : ANNOTATION_CAPTURE_BUDGET_MS,
+        );
+        if (snap) blob = await compositeWithBackground(snap, pinnedFrameRect);
         if (!blob && marksOnlyPromise) {
           blob = await marksOnlyPromise;
         }
-        if (blob) {
+        if (blob && blob.size > 0) {
+          blob = await fitPngBlobForAnthropicProxy(blob);
+        }
+        if (blob && blob.size > 0) {
           const ts = new Date().toISOString().replace(/[:.]/g, '-');
           file = new File([blob], `drawing-${ts}.png`, { type: 'image/png' });
         } else if (!note.trim() && extraFiles.length === 0) {
@@ -787,6 +813,7 @@ export function PreviewDrawOverlay({
           note: noteText,
           action,
           filePath: captureTarget?.filePath || filePath,
+          slideIndex,
           markKind: kind,
           bounds: kind ? annotationBounds() : undefined,
           target: captureTarget,
@@ -892,10 +919,11 @@ export function PreviewDrawOverlay({
               style={{
                 position: 'absolute',
                 left: 'calc(50% - 52px)',
-                bottom: 112,
+                bottom: 128,
                 transform: 'translateX(-50%)',
                 display: 'flex',
                 alignItems: 'center',
+                gap: 8,
                 maxWidth: 'min(420px, calc(100% - 144px))',
                 padding: '8px 12px',
                 borderRadius: 999,
@@ -904,13 +932,35 @@ export function PreviewDrawOverlay({
                 boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
                 backdropFilter: 'blur(8px)',
                 zIndex: 92,
-                pointerEvents: 'none',
+                pointerEvents: 'auto',
                 fontSize: 13,
                 lineHeight: 1.35,
                 visibility: chromeHidden ? 'hidden' : undefined,
               }}
             >
-              <span>{captureWarning.message}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{captureWarning.message}</span>
+              <button
+                type="button"
+                onClick={() => setCaptureWarning(null)}
+                aria-label={t('common.close')}
+                title={t('common.close')}
+                style={{
+                  width: 18,
+                  height: 18,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 999,
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  background: 'rgba(255,255,255,0.08)',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              >
+                <Icon name="close" size={10} />
+              </button>
             </div>
           ) : !drawHintDismissed ? (
             <div
@@ -983,7 +1033,7 @@ export function PreviewDrawOverlay({
                 borderRadius: 12,
                 boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
                 backdropFilter: 'blur(8px)',
-                zIndex: 90,
+                zIndex: 94,
                 pointerEvents: 'auto',
                 visibility: chromeHidden ? 'hidden' : undefined,
               }}
@@ -1017,9 +1067,12 @@ export function PreviewDrawOverlay({
                   </button>
                   <button
                     type="button"
-                    onClick={() => removeExtraFile(i)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeExtraFile(i);
+                    }}
                     disabled={sending}
-                    aria-label={t('chat.annotationAttachedRemove')}
+                    aria-label={t('chat.removeAria', { name: item.file.name })}
                     title={t('chat.annotationAttachedRemove')}
                     style={{
                       position: 'absolute',
@@ -1036,6 +1089,7 @@ export function PreviewDrawOverlay({
                       color: '#fff',
                       cursor: sending ? 'wait' : 'pointer',
                       padding: 0,
+                      zIndex: 1,
                     }}
                   >
                     <Icon name="close" size={10} />
@@ -1067,7 +1121,7 @@ export function PreviewDrawOverlay({
               borderRadius: 24,
               boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
               backdropFilter: 'blur(8px)',
-              zIndex: 91,
+              zIndex: 93,
               pointerEvents: 'auto',
               fontSize: 13,
               visibility: chromeHidden ? 'hidden' : undefined,

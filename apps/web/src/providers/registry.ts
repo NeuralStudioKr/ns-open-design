@@ -6,6 +6,12 @@ import type {
   ConnectorDetailResponse,
   ConnectorListResponse,
   ConnectorStatusResponse,
+  FileRevision,
+  FileRevisionContentResponse,
+  FileRevisionPushRequest,
+  FileRevisionPushResponse,
+  FileRevisionRestoreResponse,
+  FileRevisionsListResponse,
   ImportGitHubDesignSystemRequest,
   ImportGitHubDesignSystemResponse,
   ImportShadcnDesignSystemRequest,
@@ -74,6 +80,8 @@ import {
 } from '../teamver/teamverDaemonHeaders';
 import { notifyTeamverEmbedAuthFailureIfNeeded, formatTeamverEmbedOperationFailureMessage } from '../teamver/teamverBffAuthError';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
+import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
 import { resolveTeamverBranding } from '../teamver/branding/config';
 import { skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { normalizePluginApiId } from '../plugins/pluginIds';
@@ -1974,6 +1982,109 @@ export async function writeProjectTextFileDetailed(
   }
 }
 
+function projectFileRevisionsPath(projectId: string, fileName: string): string {
+  const encodedName = fileName.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+  return `/api/projects/${encodeURIComponent(projectId)}/files/${encodedName}/revisions`;
+}
+
+export async function listProjectFileRevisions(
+  projectId: string,
+  fileName: string,
+): Promise<FileRevisionsListResponse | null> {
+  try {
+    const resp = await fetchTeamverDaemon(projectFileRevisionsPath(projectId, fileName));
+    if (!resp.ok) return null;
+    return (await resp.json()) as FileRevisionsListResponse;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchProjectFileRevisionContent(
+  projectId: string,
+  fileName: string,
+  revisionId: string,
+): Promise<FileRevisionContentResponse | null> {
+  try {
+    const encodedName = fileName.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+    const resp = await fetchTeamverDaemon(
+      `/api/projects/${encodeURIComponent(projectId)}/files/${encodedName}/revisions/${encodeURIComponent(revisionId)}`,
+    );
+    if (!resp.ok) return null;
+    return (await resp.json()) as FileRevisionContentResponse;
+  } catch {
+    return null;
+  }
+}
+
+export type PushProjectFileRevisionResult =
+  | { ok: true; revision: FileRevision; file: ProjectFile }
+  | { ok: false; status?: number; code?: string; message: string };
+
+export async function pushProjectFileRevision(
+  projectId: string,
+  fileName: string,
+  request: FileRevisionPushRequest,
+): Promise<PushProjectFileRevisionResult> {
+  try {
+    const resp = await fetchTeamverDaemon(projectFileRevisionsPath(projectId, fileName), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    if (!resp.ok) {
+      notifyDaemonMutatingUnauthorized(resp);
+      const body = await readApiErrorBody(resp);
+      return {
+        ok: false,
+        status: resp.status,
+        code: body.code,
+        message: resp.status === 401
+          ? formatDaemonMutatingAuthError(body.message || resp.statusText || 'Save failed')
+          : body.message || resp.statusText || 'Save failed',
+      };
+    }
+    const json = (await resp.json()) as FileRevisionPushResponse;
+    return { ok: true, revision: json.revision, file: json.file };
+  } catch {
+    return { ok: false, message: 'Network error while saving the revision' };
+  }
+}
+
+export type RestoreProjectFileRevisionResult =
+  | { ok: true; revision: FileRevision; file: ProjectFile }
+  | { ok: false; status?: number; code?: string; message: string };
+
+export async function restoreProjectFileRevision(
+  projectId: string,
+  fileName: string,
+  revisionId: string,
+): Promise<RestoreProjectFileRevisionResult> {
+  try {
+    const encodedName = fileName.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+    const resp = await fetchTeamverDaemon(
+      `/api/projects/${encodeURIComponent(projectId)}/files/${encodedName}/revisions/${encodeURIComponent(revisionId)}/restore`,
+      { method: 'POST' },
+    );
+    if (!resp.ok) {
+      notifyDaemonMutatingUnauthorized(resp);
+      const body = await readApiErrorBody(resp);
+      return {
+        ok: false,
+        status: resp.status,
+        code: body.code,
+        message: resp.status === 401
+          ? formatDaemonMutatingAuthError(body.message || resp.statusText || 'Restore failed')
+          : body.message || resp.statusText || 'Restore failed',
+      };
+    }
+    const json = (await resp.json()) as FileRevisionRestoreResponse;
+    return { ok: true, revision: json.revision, file: json.file };
+  } catch {
+    return { ok: false, message: 'Network error while restoring the revision' };
+  }
+}
+
 export async function writeProjectBase64File(
   projectId: string,
   name: string,
@@ -2042,6 +2153,27 @@ export async function uploadProjectFile(
 // reshaped into ChatAttachments so the composer can stage them without a
 // follow-up listFiles round-trip.
 const PROJECT_UPLOAD_BATCH_SIZE = 12;
+const PROJECT_UPLOAD_PREFIX_RETRY_MS = [0, 400, 900] as const;
+
+function isProjectUploadStorageUnavailable(
+  resp: Response,
+  payload: { code?: string; error?: string } | null,
+): boolean {
+  const message = `${payload?.error ?? ''} ${payload?.code ?? ''}`;
+  return (
+    resp.status === 502
+    || resp.status === 503
+    || payload?.code === 'PROJECT_STORAGE_UNAVAILABLE'
+    || payload?.code === 'PROJECT_STORAGE_SYNC_FAILED'
+    || message.includes('teamver_project_s3_prefix_required')
+  );
+}
+
+async function warmTeamverProjectUpload(projectId: string, quick = false): Promise<void> {
+  if (!isTeamverEmbedMode()) return;
+  await refreshTeamverEmbedAuthBeforeMutating().catch(() => undefined);
+  await waitForTeamverProjectStoragePrefix(projectId, quick ? { quick: true } : {}).catch(() => null);
+}
 
 export interface ProjectUploadFailure {
   name: string;
@@ -2066,10 +2198,24 @@ export async function uploadProjectFiles(
   const failed: ProjectUploadFailure[] = [];
   let error: string | undefined;
   const targetDir = dir?.trim() ?? '';
+  const uploadable: File[] = [];
+  for (const file of files) {
+    if (file.size <= 0) {
+      failed.push({ name: file.name, error: 'empty file' });
+      error ??= 'empty file';
+      continue;
+    }
+    uploadable.push(file);
+  }
+  if (uploadable.length === 0) {
+    return { uploaded, failed, error };
+  }
 
-  for (let i = 0; i < files.length; i += PROJECT_UPLOAD_BATCH_SIZE) {
-    const batch = files.slice(i, i + PROJECT_UPLOAD_BATCH_SIZE);
-    const remaining = files.slice(i + PROJECT_UPLOAD_BATCH_SIZE);
+  await warmTeamverProjectUpload(projectId);
+
+  for (let i = 0; i < uploadable.length; i += PROJECT_UPLOAD_BATCH_SIZE) {
+    const batch = uploadable.slice(i, i + PROJECT_UPLOAD_BATCH_SIZE);
+    const remaining = uploadable.slice(i + PROJECT_UPLOAD_BATCH_SIZE);
     const form = new FormData();
     // The `dir` field MUST be appended before the file parts: the daemon's
     // multer destination resolver reads req.body.dir as each file streams in,
@@ -2077,53 +2223,87 @@ export async function uploadProjectFiles(
     if (targetDir) form.append('dir', targetDir);
     for (const f of batch) form.append('files', f);
 
-    try {
-      const     resp = await fetchTeamverDaemon(
-      `/api/projects/${encodeURIComponent(projectId)}/upload`,
-        { method: 'POST', body: form },
-      );
+    let batchDone = false;
+    for (let attempt = 0; attempt < PROJECT_UPLOAD_PREFIX_RETRY_MS.length; attempt += 1) {
+      const retryDelay = PROJECT_UPLOAD_PREFIX_RETRY_MS[attempt]!;
+      if (retryDelay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        await warmTeamverProjectUpload(projectId, true);
+      }
+      try {
+        const resp = await fetchTeamverDaemon(
+          `/api/projects/${encodeURIComponent(projectId)}/upload`,
+          { method: 'POST', body: form },
+        );
 
-      if (!resp.ok) {
-        notifyDaemonMutatingUnauthorized(resp);
-        const payload = (await resp.json().catch(() => null)) as
-          | { code?: string; error?: string }
-          | null;
-        error = resp.status === 401
-          ? formatDaemonMutatingAuthError(`upload failed (${resp.status})`)
-          : payload?.error ?? `upload failed (${resp.status})`;
+        if (!resp.ok) {
+          notifyDaemonMutatingUnauthorized(resp);
+          const payload = (await resp.json().catch(() => null)) as
+            | { code?: string; error?: string }
+            | null;
+          if (
+            isProjectUploadStorageUnavailable(resp, payload)
+            && attempt < PROJECT_UPLOAD_PREFIX_RETRY_MS.length - 1
+          ) {
+            continue;
+          }
+          error = resp.status === 401
+            ? formatDaemonMutatingAuthError(`upload failed (${resp.status})`)
+            : payload?.error ?? `upload failed (${resp.status})`;
+          for (const f of batch) {
+            failed.push({ name: f.name, code: payload?.code, error: error });
+          }
+          for (const f of remaining) {
+            failed.push({ name: f.name, code: payload?.code, error: error });
+          }
+          batchDone = true;
+          break;
+        }
+
+        const json = (await resp.json()) as {
+          files: { name: string; path: string; size?: number; originalName?: string }[];
+        };
+        const responseFiles = json.files ?? [];
+        uploaded.push(
+          ...responseFiles.map((f) => ({
+            path: f.path,
+            name: f.originalName ?? f.name,
+            kind: looksLikeImage(f.name) ? ('image' as const) : ('file' as const),
+            size: f.size,
+          })),
+        );
+        // Server preserves request order; any dropped files are unmatched at the batch tail.
+        if (responseFiles.length < batch.length) {
+          if (responseFiles.length === 0 && attempt < PROJECT_UPLOAD_PREFIX_RETRY_MS.length - 1) {
+            continue;
+          }
+          error ??= 'some files could not be stored';
+          for (const f of batch.slice(responseFiles.length)) {
+            failed.push({
+              name: f.name,
+              error: error ?? 'some files could not be stored',
+            });
+          }
+        }
+        batchDone = true;
+        break;
+      } catch {
+        if (attempt < PROJECT_UPLOAD_PREFIX_RETRY_MS.length - 1) {
+          continue;
+        }
+        error = 'upload request failed';
         for (const f of batch) {
-          failed.push({ name: f.name, code: payload?.code, error: error });
+          failed.push({ name: f.name, error });
         }
         for (const f of remaining) {
-          failed.push({ name: f.name, code: payload?.code, error: error });
+          failed.push({ name: f.name, error });
         }
+        batchDone = true;
         break;
       }
-
-      const json = (await resp.json()) as {
-        files: { name: string; path: string; size?: number; originalName?: string }[];
-      };
-      const responseFiles = json.files ?? [];
-      uploaded.push(
-        ...responseFiles.map((f) => ({
-          path: f.path,
-          name: f.originalName ?? f.name,
-          kind: looksLikeImage(f.name) ? ('image' as const) : ('file' as const),
-          size: f.size,
-        })),
-      );
-      // Server preserves request order; any dropped files are unmatched at the batch tail.
-      if (responseFiles.length < batch.length) {
-        error ??= 'some files could not be stored';
-        for (const f of batch.slice(responseFiles.length)) {
-          failed.push({
-            name: f.name,
-            error: error ?? 'some files could not be stored',
-          });
-        }
-      }
-    } catch {
-      error = 'upload request failed';
+    }
+    if (!batchDone) {
+      error ??= 'upload request failed';
       for (const f of batch) {
         failed.push({ name: f.name, error });
       }
@@ -2132,6 +2312,7 @@ export async function uploadProjectFiles(
       }
       break;
     }
+    if (failed.length > 0 && uploaded.length === 0) break;
   }
 
   return { uploaded, failed, error };

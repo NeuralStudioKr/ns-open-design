@@ -446,6 +446,7 @@ describe('manual edit bridge target normalization', () => {
       type: 'od-edit-text-commit',
       id: 'title',
       value: 'Edited title',
+      flattenNestedMarkup: true,
     }, '*');
 
     dom.window.close();
@@ -512,6 +513,7 @@ describe('manual edit bridge target normalization', () => {
       type: 'od-edit-text-commit',
       id: 'title',
       value: 'First line\nSecond line',
+      flattenNestedMarkup: true,
     }, '*');
 
     dom.window.close();

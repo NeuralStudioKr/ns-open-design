@@ -212,13 +212,13 @@ describe('Teamver embed slide-only MVP policy', () => {
 
   it('guards selected deck template visual language above active design-system defaults', () => {
     const projectView = readSource('src/components/ProjectView.tsx');
-    const start = projectView.indexOf("if (skillBody?.trim() && skillMode === 'deck')");
-    expect(start).toBeGreaterThan(0);
-    const block = projectView.slice(start, start + 900);
-
-    expect(block).toContain('Teamver selected deck template guard');
-    expect(block).toContain('primary visual contract');
-    expect(block).toContain("use it only as secondary brand context");
+    expect(projectView).toContain("if (skillBody?.trim() && skillMode === 'deck')");
+    expect(projectView).toContain('wrapSelectedDeckTemplateSkillBody(skillBody, title)');
+    // Guard copy lives in the helper (not inlined in ProjectView).
+    const helper = readSource('src/runtime/selected-deck-template.ts');
+    expect(helper).toContain('Teamver selected deck template guard');
+    expect(helper).toContain('primary visual contract');
+    expect(helper).toContain('use it only as secondary brand context');
   });
 
   it('loads selected deck template metadata when project skillId is intentionally empty', () => {
@@ -320,8 +320,14 @@ describe('Teamver embed slide-only MVP policy', () => {
 
   it("routes run failure chat status events through Korean formatter in embed", () => {
     const projectView = readSource("src/components/ProjectView.tsx");
-    expect(projectView).toContain("appendAssistantErrorEvent(message.id, formatProjectRunErrorForUser(err)");
-    expect(projectView).toContain("appendErrorStatusEvent(prev, formatProjectRunErrorForUser(err), errorCode)");
+    // Durable persist: attachPersistedChatError (status:error + failed) after
+    // formatProjectRunErrorForUser — not a bare appendErrorStatusEvent.
+    expect(projectView).toContain("attachPersistedChatError(prev, detail, errorCode)");
+    expect(projectView).toContain("attachPersistedChatError(prev, msg, errorCode)");
+    expect(projectView).toContain("formatProjectRunErrorForUser(err)");
+    expect(projectView).toMatch(
+      /const detail = formatProjectRunErrorForUser\(err\);[\s\S]{0,500}attachPersistedChatError\(prev, detail, errorCode\)/,
+    );
   });
 
   it("minimizes supporting file streams and collapses design-file scaffolds in slide-only embed", () => {

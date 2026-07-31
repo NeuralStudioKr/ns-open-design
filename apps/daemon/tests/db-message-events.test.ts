@@ -181,6 +181,82 @@ describe('message event persistence', () => {
     ]);
   });
 
+  it('keeps status:error when a later non-empty events upsert omits it', () => {
+    // Stale streaming-buffer PUTs often include text/tool events but miss the
+    // error card that surfaceChatVisibleError already persisted. Hard re-entry
+    // must still rebuild the card from the preserved event.
+    const db = openDatabase(tempDir, { dataDir: tempDir });
+    const now = Date.now();
+    insertProject(db, {
+      id: 'proj-1',
+      name: 'Stale buffer project',
+      createdAt: now,
+      updatedAt: now,
+    });
+    insertConversation(db, {
+      id: 'conv-1',
+      projectId: 'proj-1',
+      title: 'Stale buffer',
+      createdAt: now,
+      updatedAt: now,
+    });
+    upsertMessage(db, 'conv-1', {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'partial',
+      runId: 'agent-run-1',
+      runStatus: 'failed',
+      events: [
+        { kind: 'text', text: 'partial' },
+        {
+          kind: 'status',
+          label: 'error',
+          detail: 'Artifact rejected: empty HTML',
+          code: 'artifact_rejected',
+        },
+      ],
+      startedAt: now,
+      endedAt: now + 1,
+    });
+
+    upsertMessage(db, 'conv-1', {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'partial more',
+      runId: 'agent-run-1',
+      runStatus: 'succeeded',
+      events: [
+        { kind: 'text', text: 'partial more' },
+        {
+          kind: 'tool_use',
+          id: 'tool-1',
+          name: 'Write',
+          input: { file_path: 'deck.html' },
+        },
+      ],
+      startedAt: now,
+      endedAt: now + 2,
+    });
+
+    const message = listMessages(db, 'conv-1')[0];
+    expect(message?.runStatus).toBe('failed');
+    expect(message?.events).toEqual([
+      { kind: 'text', text: 'partial more' },
+      {
+        kind: 'tool_use',
+        id: 'tool-1',
+        name: 'Write',
+        input: { file_path: 'deck.html' },
+      },
+      {
+        kind: 'status',
+        label: 'error',
+        detail: 'Artifact rejected: empty HTML',
+        code: 'artifact_rejected',
+      },
+    ]);
+  });
+
   it('appends agent events and mirrors text deltas into message content', () => {
     const db = openDatabase(tempDir, { dataDir: tempDir });
     const now = Date.now();

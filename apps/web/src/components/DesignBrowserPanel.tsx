@@ -29,7 +29,7 @@ import {
 import { useT } from '../i18n';
 import { formatProjectFileSaveResultForUser } from '../teamver/projectUploadErrors';
 import type { Dict } from '../i18n/types';
-import { captureHostRegionSnapshot } from '../runtime/exports';
+import { captureHostIframeSnapshot, captureHostRegionSnapshot } from '../runtime/exports';
 import { buildBoardCommentAttachments, commentsToAttachments } from '../comments';
 import type {
   ChatCommentAttachment,
@@ -728,6 +728,7 @@ export function DesignBrowserPanel({
   const [browserUseOpen, setBrowserUseOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [webviewNode, setWebviewNode] = useState<WebviewElement | null>(null);
+  const fallbackFrameRef = useRef<HTMLIFrameElement | null>(null);
   const [drawOverlayOpen, setDrawOverlayOpen] = useState(false);
   const [viewport, setViewport] = useState<BrowserViewportId>('desktop');
   const [activeTool, setActiveTool] = useState<BrowserTool | null>(null);
@@ -1361,6 +1362,16 @@ export function DesignBrowserPanel({
     }
   }
 
+  const captureBrowserAnnotationSnapshot = useCallback(async () => {
+    if (isBlank) return null;
+    if (desktopHostAvailable && webviewNode) {
+      return captureBrowserSnapshot();
+    }
+    const frame = fallbackFrameRef.current;
+    if (!frame) return null;
+    return captureHostIframeSnapshot(frame);
+  }, [desktopHostAvailable, isBlank, webviewNode]);
+
   async function savePageBrief() {
     if (!webviewNode || isBlank) {
       setStatusMessage('Open a page before saving a brief');
@@ -1989,8 +2000,11 @@ export function DesignBrowserPanel({
           active={drawOverlayOpen}
           captureTarget={activeCommentTarget ? browserTargetFromSnapshot(activeCommentTarget) : null}
           captureViewport={!isBlank}
-          captureSnapshot={desktopHostAvailable ? captureBrowserSnapshot : undefined}
-          captureFrameRect={() => webviewNode?.getBoundingClientRect() ?? null}
+          captureSnapshot={!isBlank ? captureBrowserAnnotationSnapshot : undefined}
+          captureFrameRect={() =>
+            webviewNode?.getBoundingClientRect()
+            ?? fallbackFrameRef.current?.getBoundingClientRect()
+            ?? null}
           filePath={isBlank ? undefined : currentUrl}
           hideChrome={captureChromeHidden}
           onActiveChange={setDrawOverlayOpen}
@@ -2017,6 +2031,7 @@ export function DesignBrowserPanel({
             ) : (
               <div className="db-fallback">
                 <iframe
+                  ref={fallbackFrameRef}
                   title={pageTitle}
                   src={loadUrl}
                   onLoad={(event) => syncFromFallbackFrame(event.currentTarget)}

@@ -11,6 +11,8 @@ import type { StreamHandlers } from './anthropic';
 import { parseSseFrame } from './sse';
 import { isAnthropicSupportedImagePath } from '../utils/apiProtocol';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import { downscaleImageBytesForAnthropicProxy } from '../utils/annotationImage';
+import { MAX_ANTHROPIC_PROXY_IMAGE_BYTES } from './anthropic-proxy-limits';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import {
   hasChatApiCredentials,
@@ -538,45 +540,97 @@ export async function buildProxyMessages(
 ): Promise<ProxyMessage[]> {
   const anthropic = usesAnthropicMessagesPayload(endpoint);
   if (!anthropic || !context?.projectId) {
-    return history.map((message) => ({
+    const out = history.map((message) => ({
       role: message.role,
       // Anthropic rejects empty user content even when projectId is missing
       // (image blocks skipped). Other protocols keep historical behavior.
-      content:
-        anthropic && message.role === 'user'
-          ? ensureNonEmptyAnthropicUserContent(message.content)
-          : message.content,
+      content: sanitizeAnthropicProxyRoleContent(message.role, message.content, anthropic),
     }));
+    return anthropic ? normalizeAnthropicProxyMessageRoles(out) : out;
   }
 
   const out: ProxyMessage[] = [];
   for (const message of history) {
     let content = await buildAnthropicMessageContent(message, context.projectId);
-    if (message.role === 'user') {
-      content = ensureNonEmptyAnthropicUserContent(content);
-    }
+    content = sanitizeAnthropicProxyRoleContent(message.role, content, true);
     out.push({
       role: message.role,
       content,
     });
   }
-  return out;
+  return normalizeAnthropicProxyMessageRoles(out);
+}
+
+function sanitizeAnthropicProxyRoleContent(
+  role: ChatMessage['role'],
+  content: ProxyMessageContent,
+  anthropic: boolean,
+): ProxyMessageContent {
+  if (!anthropic) return content;
+  if (role === 'user') return ensureNonEmptyAnthropicUserContent(content);
+  if (role === 'assistant') return ensureNonEmptyAnthropicAssistantContent(content);
+  return content;
+}
+
+/** Failed/canceled runs often persist assistant shells with empty `content`. */
+export const ANTHROPIC_EMPTY_ASSISTANT_PLACEHOLDER = '(No assistant reply was recorded.)';
+
+/** Anthropic Messages API rejects images above 5 MB; stay under with headroom. */
+export { MAX_ANTHROPIC_PROXY_IMAGE_BYTES } from './anthropic-proxy-limits';
+
+/**
+ * Anthropic requires alternating user/assistant roles. Hidden auto-continue user
+ * rows and collapsed empty assistant shells can leave consecutive user turns in
+ * chat history — insert placeholders instead of forwarding invalid sequences.
+ */
+export function normalizeAnthropicProxyMessageRoles(
+  messages: ProxyMessage[],
+): ProxyMessage[] {
+  if (messages.length === 0) return messages;
+  const normalized: ProxyMessage[] = [];
+  for (const message of messages) {
+    const previous = normalized[normalized.length - 1];
+    if (previous && previous.role === message.role) {
+      normalized.push(
+        message.role === 'user'
+          ? {
+              role: 'assistant',
+              content: ANTHROPIC_EMPTY_ASSISTANT_PLACEHOLDER,
+            }
+          : {
+              role: 'user',
+              content: COMMENT_ONLY_USER_PLACEHOLDER,
+            },
+      );
+    }
+    normalized.push(message);
+  }
+  if (normalized[0]?.role === 'assistant') {
+    normalized.unshift({
+      role: 'user',
+      content: COMMENT_ONLY_USER_PLACEHOLDER,
+    });
+  }
+  return normalized;
+}
+
+function anthropicContentHasSubstance(content: ProxyMessageContent): boolean {
+  if (typeof content === 'string') return content.trim().length > 0;
+  if (!Array.isArray(content)) return false;
+  return content.some((block) => {
+    if (!block || typeof block !== 'object') return false;
+    if (block.type === 'text') return String(block.text ?? '').trim().length > 0;
+    if (block.type === 'image') return true;
+    return true;
+  });
 }
 
 function ensureNonEmptyAnthropicUserContent(content: ProxyMessageContent): ProxyMessageContent {
-  if (typeof content === 'string') {
-    return content.trim().length > 0 ? content : COMMENT_ONLY_USER_PLACEHOLDER;
-  }
-  if (Array.isArray(content)) {
-    const hasSubstance = content.some((block) => {
-      if (!block || typeof block !== 'object') return false;
-      if (block.type === 'text') return String(block.text ?? '').trim().length > 0;
-      if (block.type === 'image') return true;
-      return true;
-    });
-    return hasSubstance ? content : COMMENT_ONLY_USER_PLACEHOLDER;
-  }
-  return COMMENT_ONLY_USER_PLACEHOLDER;
+  return anthropicContentHasSubstance(content) ? content : COMMENT_ONLY_USER_PLACEHOLDER;
+}
+
+function ensureNonEmptyAnthropicAssistantContent(content: ProxyMessageContent): ProxyMessageContent {
+  return anthropicContentHasSubstance(content) ? content : ANTHROPIC_EMPTY_ASSISTANT_PLACEHOLDER;
 }
 
 function usesAnthropicMessagesPayload(endpoint: string): boolean {
@@ -635,7 +689,10 @@ async function readAnthropicImageBlock(
   path: string,
 ): Promise<ProxyImageContentBlock | null> {
   try {
-    const resp = await fetch(projectFileUrl(projectId, path), { cache: 'no-store' });
+    const resp = await fetchTeamverDaemon(projectFileUrl(projectId, path), {
+      cache: 'no-store',
+      teamverProjectId: projectId,
+    });
     if (!resp.ok) return null;
 
     const mediaType = supportedAnthropicImageMediaType(
@@ -645,17 +702,56 @@ async function readAnthropicImageBlock(
     if (!mediaType) return null;
 
     const bytes = new Uint8Array(await resp.arrayBuffer());
+    if (!isValidAnthropicImageBytes(bytes, mediaType)) return null;
+    let payload = bytes;
+    if (payload.length > MAX_ANTHROPIC_PROXY_IMAGE_BYTES) {
+      const downscaled = await downscaleImageBytesForAnthropicProxy(
+        payload,
+        mediaType,
+        MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
+      );
+      if (!downscaled) return null;
+      payload = downscaled;
+    }
     return {
       type: 'image',
       source: {
         type: 'base64',
         media_type: mediaType,
-        data: bytesToBase64(bytes),
+        data: bytesToBase64(payload),
       },
     };
   } catch {
     return null;
   }
+}
+
+/** Reject HTML/JSON error bodies that inherit a .png path extension. */
+export function isValidAnthropicImageBytes(
+  bytes: Uint8Array,
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+): boolean {
+  if (bytes.length < 4) return false;
+  if (mediaType === 'image/png') {
+    return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+  }
+  if (mediaType === 'image/jpeg') {
+    return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (mediaType === 'image/gif') {
+    return bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46;
+  }
+  if (bytes.length < 12) return false;
+  return (
+    bytes[0] === 0x52
+    && bytes[1] === 0x49
+    && bytes[2] === 0x46
+    && bytes[3] === 0x46
+    && bytes[8] === 0x57
+    && bytes[9] === 0x45
+    && bytes[10] === 0x42
+    && bytes[11] === 0x50
+  );
 }
 
 function supportedAnthropicImageMediaType(

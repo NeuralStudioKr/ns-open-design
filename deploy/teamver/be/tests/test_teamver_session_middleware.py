@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from http.cookies import SimpleCookie
 from typing import Any
 
+import pytest
 from app.middleware.teamver_session import TeamverSessionMiddleware
 
 
@@ -77,6 +79,46 @@ def test_session_middleware_uses_app_specific_cookie_name() -> None:
     assert len(cookies) == 1
     assert cookies[0].startswith("teamver_design_bff_session=")
     assert "path=/" in cookies[0]
+
+
+def test_session_middleware_logs_invalid_signature(caplog: pytest.LogCaptureFixture) -> None:
+    async def app(scope: dict[str, Any], _receive: Any, send: Any) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    middleware = TeamverSessionMiddleware(
+        app,
+        secret_key="test-secret",
+        session_cookie="teamver_design_bff_session",
+    )
+
+    with caplog.at_level(logging.WARNING, logger="app.middleware.teamver_session"):
+        asyncio.run(
+            _call_middleware(
+                middleware,
+                cookie_header="teamver_design_bff_session=definitely-not-signed",
+            )
+        )
+
+    assert any("invalid signature" in record.getMessage() for record in caplog.records)
+
+
+def test_session_middleware_https_only_sets_secure_flag() -> None:
+    async def app(scope: dict[str, Any], _receive: Any, send: Any) -> None:
+        scope["session"]["teamver_bff_v1"] = {"user_id": "u1", "access_token": "token"}
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    middleware = TeamverSessionMiddleware(
+        app,
+        secret_key="test-secret",
+        session_cookie="teamver_design_bff_session",
+        https_only=True,
+    )
+    messages = asyncio.run(_call_middleware(middleware))
+    cookies = _set_cookie_headers(messages)
+    assert len(cookies) == 1
+    assert "secure" in cookies[0].lower()
 
 
 def test_session_middleware_migrates_legacy_session_cookie() -> None:

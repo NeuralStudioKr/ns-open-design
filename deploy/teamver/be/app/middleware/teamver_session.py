@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import typing
 from base64 import b64decode, b64encode
 import json
@@ -13,6 +14,8 @@ from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..auth.bff_session import SUPPRESS_SESSION_COOKIE_SCOPE_KEY
+
+logger = logging.getLogger(__name__)
 
 
 class TeamverSessionMiddleware:
@@ -73,6 +76,14 @@ class TeamverSessionMiddleware:
             loaded_session = self._load_cookie_session(connection.cookies[self.session_cookie])
             if loaded_session is not None:
                 source_cookie_name = self.session_cookie
+            else:
+                # Cookie present but unreadable — almost always DESIGN_BFF_SESSION_SECRET
+                # drift across HA nodes (or secret rotation mid-session).
+                logger.warning(
+                    "[bff] session cookie present but invalid signature cookie=%s path=%s",
+                    self.session_cookie,
+                    scope.get("path"),
+                )
         if loaded_session is None:
             for cookie_name in self.legacy_session_cookies:
                 if cookie_name not in connection.cookies:
@@ -81,6 +92,11 @@ class TeamverSessionMiddleware:
                 if loaded_session is not None:
                     source_cookie_name = cookie_name
                     break
+                logger.warning(
+                    "[bff] legacy session cookie present but invalid signature cookie=%s path=%s",
+                    cookie_name,
+                    scope.get("path"),
+                )
 
         if loaded_session is not None:
             scope["session"] = loaded_session

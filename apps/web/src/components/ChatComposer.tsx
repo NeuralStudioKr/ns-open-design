@@ -35,7 +35,7 @@ import type {
 } from '@open-design/contracts/analytics';
 import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { shouldFetchRecentLinkedDirs } from '../teamver/embedDaemonFetchPolicy';
-import { projectRawUrl, uploadProjectFiles, openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir, dirExists } from "../providers/registry";
+import { uploadProjectFiles, openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir, dirExists } from "../providers/registry";
 import { WorkingDirPicker } from './WorkingDirPicker';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { embedAttachBlockReason } from '../teamver/branding/embedFileAttachPolicy';
@@ -43,6 +43,7 @@ import { resolveProjectUploadBatchErrorMessage } from '../teamver/projectUploadE
 import { getDesignBffClient } from '../teamver/designBffClient';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
+import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import {
   shouldHideTeamverToolboxPlugin,
   shouldHideTeamverToolboxSkill,
@@ -1893,6 +1894,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                     markKind: detail.markKind,
                     note: detail.note,
                     bounds: detail.bounds,
+                    ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                      ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                      : {}),
                     target: detail.target
                       ? {
                           filePath: detail.target.filePath || detail.filePath || screenshot.path,
@@ -1902,25 +1906,30 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                           text: detail.target.text,
                           position: detail.target.position,
                           htmlHint: detail.target.htmlHint,
+                          ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                            ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                            : {}),
                         }
                       : {
                           filePath: detail.filePath || screenshot.path,
                           position: detail.bounds,
+                          ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                            ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                            : {}),
                         },
                   };
                 }
               }
               if (result.failed.length > 0) {
-                setUploadError(
-                  resolveProjectUploadBatchErrorMessage({
-                    uploadedCount: uploaded.length,
-                    failedCount: result.failed.length,
-                    error: result.error,
-                    slideOnlyMvp,
-                  }),
-                );
+                const uploadErrorMessage = resolveProjectUploadBatchErrorMessage({
+                  uploadedCount: uploaded.length,
+                  failedCount: result.failed.length,
+                  error: result.error,
+                  slideOnlyMvp,
+                });
+                setUploadError(uploadErrorMessage);
                 if (uploaded.length === 0) {
-                  ack({ ok: false, message: t('chat.annotationUploadFailed') });
+                  ack({ ok: false, message: uploadErrorMessage || t('chat.annotationUploadFailed') });
                   return;
                 }
               }
@@ -2059,7 +2068,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     useEffect(() => {
       if (!streamingAnnotationSendPending || !streamingAnnotationSendPendingRef.current) return;
-      if (streaming || sendDisabled) return;
+      if (streaming || sendDisabled || uploading) return;
       // Read the ref, not the closed-over `draft`: the accumulating annotation
       // handler writes draftRef synchronously, so the ref is authoritative even
       // if this effect's render closure predates the last accumulation.
@@ -2078,6 +2087,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       stagedVisualComments,
       streaming,
       streamingAnnotationSendPending,
+      uploading,
     ]);
 
     // Paste handler invoked by the editor's PastePlugin. `files` are the items
@@ -2422,8 +2432,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     }
 
     function removeCommentAttachment(id: string) {
+      const screenshotPath =
+        stagedVisualComments.find((attachment) => attachment.id === id)?.screenshotPath?.trim()
+        ?? commentAttachments.find((attachment) => attachment.id === id)?.screenshotPath?.trim()
+        ?? '';
+      if (screenshotPath) {
+        setStaged((current) => current.filter((attachment) => attachment.path !== screenshotPath));
+      }
+      const wasStagedVisual = stagedVisualComments.some((attachment) => attachment.id === id);
       setStagedVisualComments((current) => current.filter((attachment) => attachment.id !== id));
-      if (!stagedVisualComments.some((attachment) => attachment.id === id)) {
+      if (!wasStagedVisual) {
         onRemoveCommentAttachment?.(id);
       }
     }
@@ -3439,7 +3457,6 @@ function StagedRunContexts({
   // other run-context chips (so files flow to the picker's right, wrapping to a
   // new line only when the row fills) instead of forcing a separate row below.
   const [preview, setPreview] = useState<ChatAttachment | null>(null);
-  const previewUrl = preview && projectId ? projectRawUrl(projectId, preview.path) : null;
   useEffect(() => {
     if (!preview) return;
     function onKey(e: KeyboardEvent) {
@@ -3595,7 +3612,6 @@ function StagedRunContexts({
       ))}
       {attachments.map((a, index) => {
         const canPreview = a.kind === 'image' && Boolean(projectId);
-        const imageUrl = canPreview ? projectRawUrl(projectId!, a.path) : null;
         const embed = isTeamverEmbedMode();
         return (
           <div key={a.path} className={`staged-chip staged-${a.kind}`}>
@@ -3605,7 +3621,7 @@ function StagedRunContexts({
             >
               {index + 1}
             </span>
-            {canPreview && imageUrl ? (
+            {canPreview ? (
               <button
                 type="button"
                 className="staged-preview-trigger"
@@ -3613,7 +3629,7 @@ function StagedRunContexts({
                 title={a.path}
                 aria-label={embed ? `${a.name} 미리보기` : `Preview ${a.name}`}
               >
-                <img src={imageUrl} alt="" aria-hidden />
+                <AuthenticatedProjectFileImage projectId={projectId!} path={a.path} alt="" className="" />
                 <span className="staged-name">{a.name}</span>
               </button>
             ) : (
@@ -3653,7 +3669,7 @@ function StagedRunContexts({
         );
       })}
     </div>
-    {preview && previewUrl ? createPortal(
+    {preview && projectId ? createPortal(
       <div
         className="staged-preview-modal"
         role="dialog"
@@ -3677,7 +3693,7 @@ function StagedRunContexts({
               <Icon name="close" size={14} />
             </button>
           </div>
-          <img src={previewUrl} alt={preview.name} />
+          <AuthenticatedProjectFileImage projectId={projectId} path={preview.path} alt={preview.name} />
         </div>
       </div>,
       document.body

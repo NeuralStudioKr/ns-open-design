@@ -8,9 +8,13 @@ import {
 import {
   buildProxyMessages,
   buildProxyResponseError,
+  isValidAnthropicImageBytes,
+  MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
+  normalizeAnthropicProxyMessageRoles,
   shouldSoftRetryProxyFailure,
   streamProxyEndpoint,
 } from '../../src/providers/api-proxy';
+import { AUTO_CONTINUE_PROMPT_SENTINEL } from '../../src/runtime/resume';
 import type { ChatMessage } from '../../src/types';
 
 describe('buildProxyMessages', () => {
@@ -44,7 +48,10 @@ describe('buildProxyMessages', () => {
 
     expect(fetch).toHaveBeenCalledWith(
       '/api/projects/project-1/raw/references/logo.png',
-      { cache: 'no-store' },
+      expect.objectContaining({
+        cache: 'no-store',
+        credentials: 'same-origin',
+      }),
     );
     expect(messages).toEqual([
       {
@@ -91,12 +98,18 @@ describe('buildProxyMessages', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       '/api/projects/project-1/raw/references/first.png',
-      { cache: 'no-store' },
+      expect.objectContaining({
+        cache: 'no-store',
+        credentials: 'same-origin',
+      }),
     );
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       '/api/projects/project-1/raw/references/second.png',
-      { cache: 'no-store' },
+      expect.objectContaining({
+        cache: 'no-store',
+        credentials: 'same-origin',
+      }),
     );
   });
 
@@ -324,6 +337,43 @@ describe('buildProxyMessages', () => {
     ]);
   });
 
+  it('rejects non-image bodies that inherit a .png extension', async () => {
+    const htmlBytes = new TextEncoder().encode('<html><body>Unauthorized</body></html>');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: {
+          get: (name: string) => (name.toLowerCase() === 'content-type' ? 'image/png' : null),
+        },
+        arrayBuffer: async () => htmlBytes.buffer,
+      }),
+    );
+
+    const messages = await buildProxyMessages(
+      '/api/proxy/anthropic/stream',
+      [
+        userMessage('See screenshot', [
+          { path: 'uploads/drawing.png', name: 'drawing.png', kind: 'image', size: htmlBytes.length },
+        ]),
+      ],
+      { projectId: 'project-1' },
+    );
+
+    expect(messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'See screenshot' },
+          {
+            type: 'text',
+            text: 'Attached image could not be sent as native image content: path: uploads/drawing.png | name: drawing.png',
+          },
+        ],
+      },
+    ]);
+  });
+
   it('never forwards empty Anthropic user messages after comment history enrichment', async () => {
     const attachments = commentsToAttachments([
       {
@@ -362,7 +412,11 @@ describe('buildProxyMessages', () => {
     expect(typeof messages[0]?.content).toBe('string');
     expect(String(messages[0]?.content).trim().length).toBeGreaterThan(0);
     expect(String(messages[0]?.content)).toContain('<attached-preview-comments>');
-    expect(String(messages[1]?.content)).toBe('Follow up on the title');
+    expect(messages[1]).toEqual({
+      role: 'assistant',
+      content: '(No assistant reply was recorded.)',
+    });
+    expect(String(messages[2]?.content)).toBe('Follow up on the title');
   });
 
   it('replaces blank Anthropic user strings without mutating OpenAI payloads', async () => {
@@ -382,6 +436,153 @@ describe('buildProxyMessages', () => {
     await expect(
       buildProxyMessages('/api/proxy/openai/stream', [blankUser], { projectId: 'project-1' }),
     ).resolves.toEqual([{ role: 'user', content: '   ' }]);
+  });
+
+  it('replaces empty Anthropic assistant shells from failed runs', async () => {
+    const history: ChatMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: '첫 요청',
+        createdAt: 1,
+      },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: '',
+        createdAt: 2,
+        runStatus: 'failed',
+      },
+      {
+        id: 'u2',
+        role: 'user',
+        content: '슬라이드 3\n제목 크게',
+        createdAt: 3,
+      },
+    ];
+
+    const messages = await buildProxyMessages(
+      '/api/proxy/anthropic/stream',
+      history,
+      { projectId: 'project-1' },
+    );
+
+    expect(messages).toEqual([
+      { role: 'user', content: '첫 요청' },
+      { role: 'assistant', content: '(No assistant reply was recorded.)' },
+      { role: 'user', content: '슬라이드 3\n제목 크게' },
+    ]);
+  });
+
+  it('inserts assistant placeholders between consecutive Anthropic user turns', async () => {
+    const history: ChatMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: '첫 요청',
+        createdAt: 1,
+      },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: '응답',
+        createdAt: 2,
+      },
+      {
+        id: 'u-auto',
+        role: 'user',
+        content: `${AUTO_CONTINUE_PROMPT_SENTINEL}\n이어서 완성해 주세요`,
+        createdAt: 3,
+      },
+      {
+        id: 'u-memo',
+        role: 'user',
+        content: '슬라이드 3\n제목 크게',
+        createdAt: 4,
+        attachments: [{ path: 'uploads/drawing.png', name: 'drawing.png', kind: 'image', size: 4 }],
+      },
+    ];
+
+    const pngBytes = new Uint8Array([137, 80, 78, 71]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: {
+          get: (name: string) => (name.toLowerCase() === 'content-type' ? 'image/png' : null),
+        },
+        arrayBuffer: async () => pngBytes.buffer,
+      }),
+    );
+
+    const messages = await buildProxyMessages(
+      '/api/proxy/anthropic/stream',
+      history,
+      { projectId: 'project-1' },
+    );
+
+    expect(messages.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'user',
+      'assistant',
+      'user',
+    ]);
+    expect(messages[3]).toEqual({
+      role: 'assistant',
+      content: '(No assistant reply was recorded.)',
+    });
+    expect(messages[4]?.role).toBe('user');
+  });
+
+  it('skips oversized Anthropic image blocks and keeps a text fallback', async () => {
+    const oversized = new Uint8Array(MAX_ANTHROPIC_PROXY_IMAGE_BYTES + 1);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: {
+          get: (name: string) => (name.toLowerCase() === 'content-type' ? 'image/png' : null),
+        },
+        arrayBuffer: async () => oversized.buffer,
+      }),
+    );
+
+    const messages = await buildProxyMessages(
+      '/api/proxy/anthropic/stream',
+      [
+        userMessage('mark this region', [
+          { path: 'uploads/drawing.png', name: 'drawing.png', kind: 'image', size: oversized.length },
+        ]),
+      ],
+      { projectId: 'project-1' },
+    );
+
+    expect(messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'mark this region' },
+          {
+            type: 'text',
+            text: 'Attached image could not be sent as native image content: path: uploads/drawing.png | name: drawing.png',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('normalizes Anthropic history that starts with an assistant row', () => {
+    expect(
+      normalizeAnthropicProxyMessageRoles([
+        { role: 'assistant', content: 'orphan' },
+        { role: 'user', content: 'follow up' },
+      ]),
+    ).toEqual([
+      { role: 'user', content: '(No extra typed instruction.)' },
+      { role: 'assistant', content: 'orphan' },
+      { role: 'user', content: 'follow up' },
+    ]);
   });
 
   it('does not send preview-unavailable text alongside sketch raster image blocks', async () => {
@@ -463,6 +664,17 @@ function userMessage(
 // `error_code: n/a` even when the daemon already answered with a specific
 // code (e.g. `MANAGED_API_KEY_MISSING` from a daemon container missing
 // TEAMVER_OD_API_KEY).
+describe('isValidAnthropicImageBytes', () => {
+  it('accepts PNG magic bytes', () => {
+    expect(isValidAnthropicImageBytes(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), 'image/png')).toBe(true);
+  });
+
+  it('rejects HTML error bodies labeled as PNG', () => {
+    const html = new TextEncoder().encode('<html>');
+    expect(isValidAnthropicImageBytes(html, 'image/png')).toBe(false);
+  });
+});
+
 describe('buildProxyResponseError', () => {
   it('extracts the daemon error code + message from a nested error envelope', () => {
     const err = buildProxyResponseError(

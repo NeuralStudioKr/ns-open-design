@@ -6,6 +6,7 @@ import type { Request, Response } from 'express';
 import {
   createLazyProjectMaterializationMiddleware,
   createProjectStorageAccessHooks,
+  parseExplicitProjectFileDeleteRelpath,
 } from '../src/storage/lazy-project-materialization.js';
 import { TeamverTenantStorageResolutionError } from '../src/storage/teamver-project-storage-meta.js';
 import { MaterializingProjectStorage } from '../src/storage/materializing-project-storage.js';
@@ -828,5 +829,45 @@ describe('createLazyProjectMaterializationMiddleware', () => {
       await new Promise((r) => setTimeout(r, 0));
       expect(persist).toHaveBeenCalled();
     }
+  });
+});
+
+describe('parseExplicitProjectFileDeleteRelpath', () => {
+  it('parses nested raw delete paths used by Design Files', () => {
+    expect(parseExplicitProjectFileDeleteRelpath('/raw/drawing-2026.png')).toBe('drawing-2026.png');
+    expect(parseExplicitProjectFileDeleteRelpath('/raw/browser/browser-capture-example.png'))
+      .toBe('browser/browser-capture-example.png');
+    expect(parseExplicitProjectFileDeleteRelpath('/api/projects/p1/raw/drawing-2026.png'))
+      .toBe('drawing-2026.png');
+  });
+});
+
+describe('createLazyProjectMaterializationMiddleware delete persist', () => {
+  it('passes explicit deleted relpath and pre-arms persist gate for DELETE /raw/*', async () => {
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const hooks = createProjectStorageAccessHooks(
+      createProjectMaterializationRuntime(layout, storage),
+    );
+    const ensure = vi.spyOn(hooks!, 'ensureMaterialized').mockResolvedValue(undefined);
+    const arm = vi.spyOn(hooks!, 'armPersistInflight').mockReturnValue(() => {});
+    let persistOptions: { explicitDeletedPaths?: readonly string[] } | undefined;
+    const persist = vi.spyOn(hooks!, 'persistAfterMutation').mockImplementation(async (_req, _id, options) => {
+      persistOptions = options;
+    });
+    const middleware = createLazyProjectMaterializationMiddleware(hooks, vi.fn());
+    const res = mockRes();
+    const next = vi.fn();
+    await middleware(mockReq('DELETE', '/raw/drawing-2026.png'), res, next);
+    expect(ensure).toHaveBeenCalled();
+    expect(arm).toHaveBeenCalledWith('p1');
+    expect(next).toHaveBeenCalled();
+    res.emit('finish');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(persist).toHaveBeenCalled();
+    expect(persistOptions?.explicitDeletedPaths).toEqual(['drawing-2026.png']);
   });
 });

@@ -24,11 +24,11 @@ services:
         VITE_TEAMVER_SITE_URL: ${VITE_TEAMVER_SITE_URL:-https://design.teamver.com}
         # Legacy bake arg — PPTX is always on in web; value ignored.
         VITE_TEAMVER_PPTX_EXPORT_ENABLE: ${VITE_TEAMVER_PPTX_EXPORT_ENABLE:-true}
-        # Cache-busts the Playwright chromium install RUN layer. deploy.sh
-        # sets this to the current git SHA so every deploy rebuilds the
-        # download step, preventing stale/broken /ms-playwright payloads
-        # from surviving across deploys without --no-cache.
-        PLAYWRIGHT_INSTALL_TOKEN: ${PLAYWRIGHT_INSTALL_TOKEN:-default}
+        VITE_TEAMVER_DRAW_ANNOTATION_ENABLE: ${VITE_TEAMVER_DRAW_ANNOTATION_ENABLE:-}
+        # Busts Playwright chromium install only when the pin changes.
+        # Default matches deploy/Dockerfile playwright-core@… (not git SHA).
+        # Force reinstall: PLAYWRIGHT_INSTALL_TOKEN=force-$(date +%s) deploy.sh …
+        PLAYWRIGHT_INSTALL_TOKEN: ${PLAYWRIGHT_INSTALL_TOKEN:-playwright-core@1.60.0}
     restart: unless-stopped
     environment:
       NODE_ENV: production

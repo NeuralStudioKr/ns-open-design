@@ -4823,6 +4823,62 @@ async function postImportFolderToDaemon(base, body, baseDir) {
   return postJsonToDaemon(base, '/api/import/folder', body, headers);
 }
 
+function encodeProjectFilePathForUrl(fileName: string): string {
+  return fileName.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+}
+
+async function runProjectRevisions(args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    console.log(`Usage:
+  od project revisions list <projectId> <fileName> [--json]
+  od project revisions restore <projectId> <fileName> <revisionId> [--json]`);
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const flags = parseFlags(args, { boolean: ['json'], string: ['daemon-url'] });
+  const base = (await projectDaemonUrl(flags)).replace(/\/$/, '');
+  const positional = args.filter((arg) => !arg.startsWith('-'));
+  const sub = positional[0];
+  if (sub === 'list') {
+    const projectId = positional[1];
+    const fileName = positional[2];
+    if (!projectId || !fileName) {
+      console.error('Usage: od project revisions list <projectId> <fileName>');
+      process.exit(2);
+    }
+    const resp = await fetch(
+      `${base}/api/projects/${encodeURIComponent(projectId)}/files/${encodeProjectFilePathForUrl(fileName)}/revisions`,
+    );
+    if (!resp.ok) return structuredHttpFailure(resp);
+    const data = await resp.json();
+    if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+    const revisions = data?.revisions ?? [];
+    for (const revision of revisions) {
+      console.log(`${revision.sequence}\t${revision.id}\t${revision.source}\t${revision.label}`);
+    }
+    return;
+  }
+  if (sub === 'restore') {
+    const projectId = positional[1];
+    const fileName = positional[2];
+    const revisionId = positional[3];
+    if (!projectId || !fileName || !revisionId) {
+      console.error('Usage: od project revisions restore <projectId> <fileName> <revisionId>');
+      process.exit(2);
+    }
+    const resp = await fetch(
+      `${base}/api/projects/${encodeURIComponent(projectId)}/files/${encodeProjectFilePathForUrl(fileName)}/revisions/${encodeURIComponent(revisionId)}/restore`,
+      { method: 'POST' },
+    );
+    if (!resp.ok) return structuredHttpFailure(resp);
+    const data = await resp.json();
+    if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+    console.log(`restored ${fileName} to revision ${revisionId}`);
+    return;
+  }
+  console.error(`unknown subcommand: od project revisions ${sub}`);
+  process.exit(2);
+}
+
 async function runProject(args) {
   if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
     console.log(`Usage:
@@ -4843,6 +4899,10 @@ async function runProject(args) {
   od project handoff <id> --conversation <id> --api-key <key> --model <model>
                     [--base-url <url>] [--max-tokens <n>]
                     Synthesize a resume-conversation handoff prompt.
+  od project revisions list <id> <file> [--json]
+                    List file revision history.
+  od project revisions restore <id> <file> <revisionId> [--json]
+                    Restore a file to a prior revision.
 
 Common options:
   --daemon-url <url>   Open Design daemon HTTP base.
@@ -4859,6 +4919,10 @@ Common options:
   if (sub === 'handoff') {
     const { exitCode } = await runProjectHandoff(rest);
     if (exitCode !== 0) process.exit(exitCode);
+    return;
+  }
+  if (sub === 'revisions') {
+    await runProjectRevisions(rest);
     return;
   }
   const flags = parseFlags(rest, { string: PROJECT_STRING_FLAGS, boolean: PROJECT_BOOLEAN_FLAGS });
