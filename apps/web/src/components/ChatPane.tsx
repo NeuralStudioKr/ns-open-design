@@ -28,6 +28,7 @@ import type { Dict } from '../i18n/types';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
+import { projectFilePathExists } from '../utils/projectFilePaths';
 import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -3727,7 +3728,7 @@ function UserMessageImpl({
             const baseName = a.path.split('/').pop() || a.path;
             const openable =
               !!onRequestOpenFile &&
-              (projectFileNames ? projectFileNames.has(baseName) : true);
+              projectFilePathExists(projectFileNames, a.path);
             const handleOpen = openable
               ? () => onRequestOpenFile?.(baseName)
               : undefined;
@@ -3748,6 +3749,7 @@ function UserMessageImpl({
                       projectId={projectId}
                       path={a.path}
                       alt={a.name}
+                      fetchEnabled={projectFilePathExists(projectFileNames, a.path)}
                     />
                   ) : (
                     <Icon name="file" size={14} />
@@ -3776,7 +3778,7 @@ function UserMessageImpl({
             const label = commentTargetDisplayName(a);
             const openable =
               !!onRequestOpenFile &&
-              (projectFileNames ? projectFileNames.has(baseName) : true);
+              projectFilePathExists(projectFileNames, path);
             const handleOpen = openable
               ? () => onRequestOpenFile?.(baseName)
               : undefined;
@@ -3797,6 +3799,7 @@ function UserMessageImpl({
                       projectId={projectId}
                       path={path}
                       alt={label}
+                      fetchEnabled={projectFilePathExists(projectFileNames, path)}
                     />
                   ) : (
                     <Icon name="file" size={14} />

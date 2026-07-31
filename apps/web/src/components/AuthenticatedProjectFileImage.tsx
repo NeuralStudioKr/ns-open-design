@@ -7,6 +7,8 @@ type AuthenticatedProjectFileImageProps = {
   path: string;
   alt?: string;
   className?: string;
+  /** When false, skip authenticated raw GET (e.g. file already deleted). */
+  fetchEnabled?: boolean;
 };
 
 /**
@@ -18,13 +20,15 @@ export function AuthenticatedProjectFileImage({
   path,
   alt = '',
   className,
+  fetchEnabled = true,
 }: AuthenticatedProjectFileImageProps) {
   const embed = isTeamverEmbedMode();
+  const shouldFetch = fetchEnabled && embed;
   const objectUrl = useAuthenticatedProjectFileObjectUrl(
-    embed ? projectId : null,
-    embed ? path : null,
+    shouldFetch ? projectId : null,
+    shouldFetch ? path : null,
   );
   const src = embed ? objectUrl : projectRawUrl(projectId, path);
-  if (!src) return null;
+  if (!fetchEnabled || !src) return null;
   return <img src={src} alt={alt} className={className} />;
 }

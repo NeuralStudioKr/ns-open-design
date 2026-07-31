@@ -44,6 +44,7 @@ import { getDesignBffClient } from '../teamver/designBffClient';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
+import { projectFilePathExists } from '../utils/projectFilePaths';
 import {
   shouldHideTeamverToolboxPlugin,
   shouldHideTeamverToolboxSkill,
@@ -2705,6 +2706,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   : null
               }
               projectId={projectId}
+              projectFileNames={projectFiles.map((file) => file.name)}
               onRemoveWorkspace={removeWorkspaceContext}
               onRemoveSkill={removeStagedSkill}
               onRemoveMcp={removeStagedMcpServer}
@@ -3459,6 +3461,7 @@ function StagedRunContexts({
   attachments,
   pluginChip,
   projectId,
+  projectFileNames,
   onRemoveWorkspace,
   onRemoveSkill,
   onRemoveMcp,
@@ -3477,6 +3480,7 @@ function StagedRunContexts({
   attachments: ChatAttachment[];
   pluginChip?: { id: string; title: string } | null;
   projectId: string | null;
+  projectFileNames?: readonly string[];
   onRemoveWorkspace: (id: string) => void;
   onRemoveSkill: (id: string) => void;
   onRemoveMcp: (id: string) => void;
@@ -3491,6 +3495,10 @@ function StagedRunContexts({
   // other run-context chips (so files flow to the picker's right, wrapping to a
   // new line only when the row fills) instead of forcing a separate row below.
   const [preview, setPreview] = useState<ChatAttachment | null>(null);
+  const projectFileNameSet = useMemo(
+    () => new Set(projectFileNames ?? []),
+    [projectFileNames],
+  );
   useEffect(() => {
     if (!preview) return;
     function onKey(e: KeyboardEvent) {
@@ -3663,7 +3671,13 @@ function StagedRunContexts({
                 title={a.path}
                 aria-label={embed ? `${a.name} 미리보기` : `Preview ${a.name}`}
               >
-                <AuthenticatedProjectFileImage projectId={projectId!} path={a.path} alt="" className="" />
+                <AuthenticatedProjectFileImage
+                  projectId={projectId!}
+                  path={a.path}
+                  alt=""
+                  className=""
+                  fetchEnabled={projectFilePathExists(projectFileNameSet, a.path)}
+                />
                 <span className="staged-name">{a.name}</span>
               </button>
             ) : (
@@ -3727,7 +3741,12 @@ function StagedRunContexts({
               <Icon name="close" size={14} />
             </button>
           </div>
-          <AuthenticatedProjectFileImage projectId={projectId} path={preview.path} alt={preview.name} />
+          <AuthenticatedProjectFileImage
+            projectId={projectId}
+            path={preview.path}
+            alt={preview.name}
+            fetchEnabled={projectFilePathExists(projectFileNameSet, preview.path)}
+          />
         </div>
       </div>,
       document.body

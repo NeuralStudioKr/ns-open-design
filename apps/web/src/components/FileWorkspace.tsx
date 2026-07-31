@@ -127,6 +127,7 @@ interface Props {
   liveArtifacts: LiveArtifactSummary[];
   filesRefreshKey?: number;
   onRefreshFiles: () => Promise<void> | void;
+  onFilesDeleted?: (names: readonly string[]) => void;
   isDeck: boolean;
   onExportAsPptx?: ((fileName: string) => void) | undefined;
   streaming?: boolean;
@@ -400,6 +401,7 @@ export function FileWorkspace({
   liveArtifacts,
   filesRefreshKey = 0,
   onRefreshFiles,
+  onFilesDeleted,
   isDeck,
   onExportAsPptx,
   streaming,
@@ -1293,6 +1295,7 @@ export function FileWorkspace({
     if (!confirm(t('workspace.deleteFileConfirm', { name }))) return;
     const ok = await deleteProjectFile(projectId, name);
     if (ok) {
+      onFilesDeleted?.([name]);
       await onRefreshFiles();
       const nextTabs = persistedTabs.filter((n) => n !== name);
       if (activeTab === name) {
@@ -1332,6 +1335,7 @@ export function FileWorkspace({
       else failed.push(name);
     }
     if (deleted.length > 0) {
+      onFilesDeleted?.(deleted);
       await onRefreshFiles();
       const deletedSet = new Set(deleted);
       const nextTabs = persistedTabs.filter((n) => !deletedSet.has(n));

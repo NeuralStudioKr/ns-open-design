@@ -3745,6 +3745,16 @@ export function ProjectView({
     );
   }, []);
 
+  const removeProjectFilesLocally = useCallback((names: readonly string[]) => {
+    if (names.length === 0) return;
+    const deleted = new Set(names);
+    setProjectFiles((current) => {
+      const next = current.filter((file) => !deleted.has(file.name));
+      projectFilesRef.current = next;
+      return next;
+    });
+  }, []);
+
   const refreshProjectFiles = useCallback(async (): Promise<ProjectFile[]> => {
     if (isTeamverEmbedMode()) {
       await waitForTeamverEmbedBoot();
@@ -11106,9 +11116,8 @@ export function ProjectView({
           files={projectFiles}
           liveArtifacts={liveArtifacts}
           filesRefreshKey={filesRefresh}
-          onRefreshFiles={() => {
-            void refreshWorkspaceItems();
-          }}
+          onRefreshFiles={refreshWorkspaceItems}
+          onFilesDeleted={removeProjectFilesLocally}
           isDeck={isDeck}
           onExportAsPptx={handleExportAsPptx}
           streaming={currentConversationActionDisabled}
