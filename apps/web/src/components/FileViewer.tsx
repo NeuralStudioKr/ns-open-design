@@ -2807,20 +2807,24 @@ export function CommentSidePanel({
               {projectId && comment.attachments && comment.attachments.length > 0 ? (
                 <div className="comment-side-attachments">
                   {comment.attachments.map((attachment) => {
-                    const url = projectRawUrl(projectId, attachment.path);
                     return (
                       <a
                         key={attachment.path}
                         className="comment-side-attachment"
                         data-testid="comment-side-attachment"
-                        href={url}
+                        href={projectRawUrl(projectId, attachment.path)}
                         target="_blank"
                         rel="noopener noreferrer"
                         aria-label={attachment.name}
                         title={attachment.name}
                         onClick={(event) => event.stopPropagation()}
                       >
-                        <img src={url} alt={attachment.name} />
+                        <AuthenticatedProjectFileImage
+                          projectId={projectId}
+                          path={attachment.path}
+                          alt={attachment.name}
+                          trustExists
+                        />
                       </a>
                     );
                   })}
@@ -11808,6 +11812,7 @@ function ImageViewer({
           path={file.name}
           alt={file.name}
           rev={Math.round(file.mtime)}
+          trustExists
         />
       </div>
     </div>
@@ -12002,6 +12007,7 @@ export function SvgViewer({
             path={file.name}
             alt={file.name}
             rev={`${Math.round(file.mtime)}-${reloadKey}`}
+            trustExists
           />
         ) : loadingSource ? (
           <div className="viewer-empty">{t('fileViewer.loading')}</div>

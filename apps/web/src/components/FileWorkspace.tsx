@@ -88,6 +88,7 @@ import {
   previewFileMatchesTab,
   selectAutoOpenProducedHtml,
 } from './auto-open-file';
+import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { Icon, type IconName } from './Icon';
 import { Toast } from './Toast';
 import { TabLauncherMenu } from './workspace/TabLauncherMenu';
@@ -4163,7 +4164,15 @@ function DesignSystemInlinePreview({
       />
     );
   }
-  return <img src={`${url}?v=${Math.round(file.mtime)}`} alt={file.name} />;
+  return (
+    <AuthenticatedProjectFileImage
+      projectId={projectId}
+      path={file.name}
+      alt={file.name}
+      rev={Math.round(file.mtime)}
+      trustExists
+    />
+  );
 }
 
 async function inlineDesignSystemPreviewRelativeAssets(

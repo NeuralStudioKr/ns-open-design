@@ -11,6 +11,11 @@ type AuthenticatedProjectFileImageProps = {
   fetchEnabled?: boolean;
   /** Refetch blob when the backing file changes (e.g. file mtime). */
   rev?: string | number;
+  /**
+   * File is known to exist in the project index (design panel row, staged
+   * upload). Bypasses session 404 cache and drawing-path fetch guards.
+   */
+  trustExists?: boolean;
 };
 
 /**
@@ -24,6 +29,7 @@ export function AuthenticatedProjectFileImage({
   className,
   fetchEnabled = true,
   rev,
+  trustExists = false,
 }: AuthenticatedProjectFileImageProps) {
   const embed = isTeamverEmbedMode();
   const shouldFetch = fetchEnabled && embed;
@@ -31,8 +37,10 @@ export function AuthenticatedProjectFileImage({
     shouldFetch ? projectId : null,
     shouldFetch ? path : null,
     shouldFetch ? rev : null,
+    shouldFetch ? trustExists : false,
   );
   const src = embed ? objectUrl : projectRawUrl(projectId, path);
-  if (!fetchEnabled || !src) return null;
+  if (!fetchEnabled) return null;
+  if (!src) return null;
   return <img src={src} alt={alt} className={className} />;
 }

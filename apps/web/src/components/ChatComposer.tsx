@@ -3711,7 +3711,8 @@ function StagedRunContexts({
                   path={a.path}
                   alt=""
                   className=""
-                  fetchEnabled={projectFilePathExists(projectFileNameSet, a.path)}
+                  fetchEnabled
+                  trustExists
                 />
                 <span className="staged-name">{a.name}</span>
               </button>
@@ -3780,7 +3781,8 @@ function StagedRunContexts({
             projectId={projectId}
             path={preview.path}
             alt={preview.name}
-            fetchEnabled={projectFilePathExists(projectFileNameSet, preview.path)}
+            fetchEnabled
+            trustExists
           />
         </div>
       </div>,
