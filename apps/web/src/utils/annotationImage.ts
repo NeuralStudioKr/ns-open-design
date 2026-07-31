@@ -4,6 +4,14 @@ export type AnthropicProxyImageMediaType = 'image/jpeg' | 'image/png' | 'image/g
 
 const DEFAULT_MAX_BYTES = MAX_ANTHROPIC_PROXY_IMAGE_BYTES;
 
+/**
+ * Newer TS/DOM typings make `Uint8Array` default to `Uint8Array<ArrayBufferLike>`,
+ * which is not assignable to `BlobPart`. Copy into an ArrayBuffer-backed view.
+ */
+function toBlobBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(bytes);
+}
+
 function canvasToBlob(
   canvas: HTMLCanvasElement,
   mime: AnthropicProxyImageMediaType,
@@ -19,7 +27,7 @@ async function loadImageFromBytes(
   mediaType: AnthropicProxyImageMediaType,
 ): Promise<HTMLImageElement | null> {
   if (typeof Image === 'undefined') return null;
-  const blob = new Blob([bytes], { type: mediaType });
+  const blob = new Blob([toBlobBytes(bytes)], { type: mediaType });
   const url = URL.createObjectURL(blob);
   try {
     return await new Promise<HTMLImageElement | null>((resolve) => {
@@ -37,7 +45,7 @@ async function downscaleImageElement(
   image: CanvasImageSource & { width: number; height: number },
   mediaType: AnthropicProxyImageMediaType,
   maxBytes: number,
-): Promise<Uint8Array | null> {
+): Promise<Uint8Array<ArrayBuffer> | null> {
   if (typeof document === 'undefined') return null;
   let scale = Math.min(1, Math.sqrt(maxBytes / Math.max(image.width * image.height, 1)) * 0.85);
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -87,10 +95,10 @@ export async function downscaleImageBytesForAnthropicProxy(
   bytes: Uint8Array,
   mediaType: AnthropicProxyImageMediaType,
   maxBytes: number = DEFAULT_MAX_BYTES,
-): Promise<Uint8Array | null> {
-  if (bytes.length <= maxBytes) return bytes;
+): Promise<Uint8Array<ArrayBuffer> | null> {
+  if (bytes.length <= maxBytes) return toBlobBytes(bytes);
   if (typeof createImageBitmap === 'function') {
-    const bitmap = await createImageBitmap(new Blob([bytes], { type: mediaType }));
+    const bitmap = await createImageBitmap(new Blob([toBlobBytes(bytes)], { type: mediaType }));
     try {
       return await downscaleImageElement(bitmap, mediaType, maxBytes);
     } finally {
