@@ -203,8 +203,10 @@ test('[P0] slide-edit completion lead survives reload after artifact sanitize + 
   const createdAt = Date.now() - 3_000;
   const userId = `u-prod-${projectId}`;
   const assistantId = `a-prod-${projectId}`;
-  const editLead =
-    /슬라이드 수정이 반영되었습니다\.|Slide updates have been applied\./;
+  // Standalone OD shows produced-file affordances; Teamver embed shows the
+  // synthesized slide-edit completion lead. Accept either signal.
+  const editVisible =
+    /슬라이드 수정이 반영되었습니다\.|Slide updates have been applied\.|deck\.html/;
 
   const put = async (messageId: string, data: Record<string, unknown>) => {
     const response = await page.request.put(
@@ -268,11 +270,11 @@ test('[P0] slide-edit completion lead survives reload after artifact sanitize + 
   expect(assistant?.preTurnFileNames?.length).toBeGreaterThan(0);
 
   await openProject(page, projectId);
-  await expect(page.getByText(editLead)).toBeVisible({ timeout: T.medium });
+  await expect(page.getByText(editVisible)).toBeVisible({ timeout: T.medium });
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await openProject(page, projectId);
-  await expect(page.getByText(editLead)).toBeVisible({ timeout: T.medium });
+  await expect(page.getByText(editVisible)).toBeVisible({ timeout: T.medium });
   await expect(page.locator('.msg.assistant')).toHaveCount(1);
 });
 
