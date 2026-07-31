@@ -3766,7 +3766,7 @@ function UserMessageImpl({
                       projectId={projectId}
                       path={a.path}
                       alt={a.name}
-                      fetchEnabled={Boolean(a.path)}
+                      fetchEnabled={projectFilePathExists(projectFileNames, a.path)}
                       trustExists={projectFilePathExists(projectFileNames, a.path)}
                     />
                   ) : (
@@ -3817,7 +3817,7 @@ function UserMessageImpl({
                       projectId={projectId}
                       path={path}
                       alt={label}
-                      fetchEnabled={Boolean(path)}
+                      fetchEnabled={projectFilePathExists(projectFileNames, path)}
                       trustExists={projectFilePathExists(projectFileNames, path)}
                     />
                   ) : (

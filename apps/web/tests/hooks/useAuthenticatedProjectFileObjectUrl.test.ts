@@ -57,4 +57,21 @@ describe('loadAuthenticatedProjectFileBlob', () => {
 
     expect(blob?.type).toBe('image/png');
   });
+
+  it('skips ephemeral drawing screenshots unless the caller trusts they exist', async () => {
+    const fetchDaemon = vi.fn();
+
+    const blob = await loadAuthenticatedProjectFileBlob(
+      'project-1',
+      'ms798rzf-drawing-2026-07-30T08-31-44-563Z.png',
+      {
+        delaysMs: [0],
+        fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
+        waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
+      },
+    );
+
+    expect(blob).toBeNull();
+    expect(fetchDaemon).not.toHaveBeenCalled();
+  });
 });

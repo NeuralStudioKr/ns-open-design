@@ -7,6 +7,7 @@ import {
 } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { blobToImageDataUrl } from '../utils/imageBlobNormalize';
+import { isEphemeralDrawingScreenshotPath } from '../utils/projectFilePaths';
 
 type AuthenticatedProjectFileImageProps = {
   projectId: string;
@@ -38,7 +39,8 @@ export function AuthenticatedProjectFileImage({
   trustExists = false,
 }: AuthenticatedProjectFileImageProps) {
   const embed = isTeamverEmbedMode();
-  const shouldFetch = fetchEnabled && embed;
+  const canFetchEphemeralDrawing = trustExists || !isEphemeralDrawingScreenshotPath(path);
+  const shouldFetch = fetchEnabled && embed && canFetchEphemeralDrawing;
   const [reloadNonce, setReloadNonce] = useState(0);
   const [fallbackDataUrl, setFallbackDataUrl] = useState<string | null>(null);
   const objectUrl = useAuthenticatedProjectFileObjectUrl(
