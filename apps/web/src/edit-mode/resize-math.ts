@@ -3,6 +3,8 @@ import type { ManualEditKind, ManualEditRect, ManualEditStyles, ManualEditTarget
 export type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
 export const MANUAL_EDIT_RESIZE_MIN_PX = 24;
+/** Ignore tiny handle jitter so a plain click does not flush a resize. */
+export const MANUAL_EDIT_RESIZE_MIN_DELTA_PX = 2;
 
 export const RESIZE_HANDLES: ResizeHandle[] = [
   'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw',
@@ -133,15 +135,17 @@ export function computeResize(input: ResizeMathInput): ResizeMathResult {
 
   if (anchorPosition) {
     // Keep the opposite edge fixed: growing/shrinking from W/N moves left/top.
+    // left/top are containing-block relative; x/y stay viewport (startRect + Δ).
     if (signW < 0 && startLeftPx != null) {
       leftPx = Math.round(startLeftPx + (startWidthPx - widthPx));
-      x = leftPx;
     }
     if (signH < 0 && startTopPx != null) {
       topPx = Math.round(startTopPx + (startHeightPx - heightPx));
-      y = topPx;
     }
   }
+  const viewport = resizeViewportOrigin(startRect, startLeftPx, startTopPx, leftPx, topPx);
+  x = viewport.x;
+  y = viewport.y;
 
   return {
     widthPx,
@@ -152,6 +156,27 @@ export function computeResize(input: ResizeMathInput): ResizeMathResult {
     touchedHeight: touchedHeight || aspectLock,
     leftPx,
     topPx,
+  };
+}
+
+/**
+ * Host overlay viewport origin while W/N-resizing an absolute/fixed box.
+ * CSS left/top are CB-relative — never assign them to rect.x/y.
+ */
+export function resizeViewportOrigin(
+  startRect: ManualEditRect,
+  startLeftPx: number | null,
+  startTopPx: number | null,
+  leftPx: number | null,
+  topPx: number | null,
+): { x: number; y: number } {
+  return {
+    x: leftPx != null && startLeftPx != null
+      ? startRect.x + (leftPx - startLeftPx)
+      : startRect.x,
+    y: topPx != null && startTopPx != null
+      ? startRect.y + (topPx - startTopPx)
+      : startRect.y,
   };
 }
 
@@ -189,8 +214,14 @@ export function startAnchorFromTarget(target: ManualEditTarget): {
   }
   return {
     anchorPosition: true,
-    startLeftPx: Math.round(parseExplicitPx(target.styles.left) ?? target.rect.x),
-    startTopPx: Math.round(parseExplicitPx(target.styles.top) ?? target.rect.y),
+    // Prefer explicit style, then CB offset (bridge promoteCoords), then viewport.
+    // Falling straight to rect.x writes viewport coords into CB left (nested absolute).
+    startLeftPx: Math.round(
+      parseExplicitPx(target.styles.left) ?? target.offsetLeft ?? target.rect.x,
+    ),
+    startTopPx: Math.round(
+      parseExplicitPx(target.styles.top) ?? target.offsetTop ?? target.rect.y,
+    ),
   };
 }
 

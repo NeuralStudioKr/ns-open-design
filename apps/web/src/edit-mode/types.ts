@@ -145,6 +145,10 @@ export interface ManualEditRectMessage {
   type: 'od-edit-rect';
   id: string;
   rect: ManualEditRect;
+  /** Containing-block left/top from bridge promoteCoords (optional, remasure). */
+  offsetLeft?: number;
+  offsetTop?: number;
+  cssPosition?: string;
 }
 
 export type ManualEditBridgeMessage =

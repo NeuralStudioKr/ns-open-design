@@ -149,15 +149,38 @@ export function buildManualEditBridge(enabled: boolean): string {
     walk(el);
     return out.replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n');
   }
-  // Post-promote absolute containing block ≈ nearest positioned ancestor.
-  // Use that origin (not pre-promote offsetParent) so left/top do not jump (53).
+  // Absolute CB: positioned ancestor OR transform/filter/perspective/contain.
+  // Fixed CB: viewport unless a transform-like ancestor traps it (CSS2.1/CSS transforms).
+  function isTransformContainingBlock(style){
+    if (!style) return false;
+    if (style.transform && style.transform !== 'none') return true;
+    if (style.perspective && style.perspective !== 'none') return true;
+    if (style.filter && style.filter !== 'none') return true;
+    if (style.backdropFilter && style.backdropFilter !== 'none') return true;
+    var contain = String(style.contain || '');
+    if (/\\b(paint|layout|strict|content)\\b/.test(contain)) return true;
+    var willChange = String(style.willChange || '');
+    if (/\\b(transform|perspective|filter|backdrop-filter)\\b/.test(willChange)) return true;
+    return false;
+  }
+  function isAbsoluteContainingBlock(style){
+    var pos = style && style.position ? style.position : '';
+    if (pos && pos !== 'static') return true;
+    return isTransformContainingBlock(style);
+  }
+  // Post-promote / nested absolute left/top origin (not pre-promote offsetParent).
   function promoteCoords(el){
     var rect = el.getBoundingClientRect();
     var parent = null;
     var node = el.parentElement;
+    var selfPos = (window.getComputedStyle(el).position || 'static');
+    var isFixed = selfPos === 'fixed';
     while (node && node !== document.documentElement) {
-      var pos = window.getComputedStyle(node).position || '';
-      if (pos && pos !== 'static') { parent = node; break; }
+      var style = window.getComputedStyle(node);
+      if (isFixed ? isTransformContainingBlock(style) : isAbsoluteContainingBlock(style)) {
+        parent = node;
+        break;
+      }
       node = node.parentElement;
     }
     if (!parent) parent = document.documentElement;
@@ -409,6 +432,7 @@ export function buildManualEditBridge(enabled: boolean): string {
       var measureEl = findById(measureId);
       if (!measureEl) return;
       var measureRect = measureEl.getBoundingClientRect();
+      var measurePromo = promoteCoords(measureEl);
       window.parent.postMessage({
         type: 'od-edit-rect',
         id: measureId,
@@ -418,6 +442,11 @@ export function buildManualEditBridge(enabled: boolean): string {
           width: Math.round(measureRect.width),
           height: Math.round(measureRect.height),
         },
+        // Keep CB offsets fresh after promote/resize so the next gesture
+        // does not seed startLeft from a stale pre-gesture value.
+        offsetLeft: measurePromo.left,
+        offsetTop: measurePromo.top,
+        cssPosition: (window.getComputedStyle(measureEl).position || 'static'),
       }, '*');
       return;
     }

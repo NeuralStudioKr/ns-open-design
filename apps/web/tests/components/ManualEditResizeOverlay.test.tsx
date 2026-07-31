@@ -103,6 +103,66 @@ describe('ManualEditResizeOverlay', () => {
     expect(onResizeCommit).not.toHaveBeenCalled();
   });
 
+  it('does not commit or cancel a bare resize-handle click', () => {
+    const onResizePreview = vi.fn();
+    const onResizeCommit = vi.fn();
+    const onResizeCancel = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target()}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={onResizePreview}
+        onResizeCommit={onResizeCommit}
+        onResizeCancel={onResizeCancel}
+      />,
+    );
+
+    const handle = getByTestId('manual-edit-resize-handle-e');
+    fireEvent.pointerDown(handle, { pointerId: 4, clientX: 100, clientY: 100, buttons: 1 });
+    fireEvent.pointerUp(handle, { pointerId: 4, clientX: 100, clientY: 100 });
+    expect(onResizePreview).not.toHaveBeenCalled();
+    expect(onResizeCommit).not.toHaveBeenCalled();
+    expect(onResizeCancel).not.toHaveBeenCalled();
+  });
+
+  it('W-resize overlay follows viewport Δ when CB left ≠ rect.x', () => {
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'absolute',
+          offsetLeft: 40,
+          offsetTop: 60,
+          rect: { x: 160, y: 180, width: 200, height: 100 },
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+            left: '40px',
+            top: '60px',
+          },
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    const handle = getByTestId('manual-edit-resize-handle-w');
+    expect(overlay.style.left).toBe('160px');
+
+    // Drag W edge +40 content px → width 160, CB left 80, viewport x 200.
+    fireEvent.pointerDown(handle, { pointerId: 5, clientX: 160, clientY: 200, buttons: 1 });
+    fireEvent.pointerMove(handle, { pointerId: 5, clientX: 200, clientY: 200, buttons: 1 });
+    expect(overlay.style.left).toBe('200px');
+    expect(overlay.style.top).toBe('180px');
+  });
+
   it('scales host deltas by previewScale', () => {
     const onResizePreview = vi.fn();
     const { getByTestId } = render(

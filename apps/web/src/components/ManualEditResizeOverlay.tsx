@@ -21,6 +21,7 @@ import {
   startPositionFromTarget,
 } from '../edit-mode/move-math';
 import {
+  MANUAL_EDIT_RESIZE_MIN_DELTA_PX,
   MANUAL_EDIT_RESIZE_MIN_PX,
   RESIZE_HANDLES,
   aspectLockForTarget,
@@ -71,6 +72,8 @@ type ResizeDragState = {
   session: ResizeSessionStart;
   stylesBefore: Partial<ManualEditStyles>;
   lastStyles: Partial<ManualEditStyles>;
+  /** True after pointer moved past jitter — gates commit/Esc like move. */
+  previewed: boolean;
 };
 
 type MoveDragState = {
@@ -159,14 +162,16 @@ export function ManualEditResizeOverlay({
       event.stopPropagation();
       const before = drag.stylesBefore;
       const kind = drag.kind;
-      const previewed = kind === 'move' ? drag.previewed : true;
+      const previewed = drag.previewed;
       dragRef.current = null;
       setDragging(false);
       setMoving(false);
       setLiveViewportPos(null);
       onResizeSessionChangeRef.current?.(false);
+      // Bare click+Esc must not wipe panel drafts / bake computed styles.
+      if (!previewed) return;
       if (kind === 'resize') onResizeCancelRef.current(before);
-      else if (previewed) onMoveCancelRef.current?.(before);
+      else onMoveCancelRef.current?.(before);
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
@@ -263,10 +268,10 @@ export function ManualEditResizeOverlay({
     const anchor = startAnchorFromTarget(target);
     const aspect = size.heightPx > 0 ? size.widthPx / size.heightPx : 1;
     const stylesBefore: Partial<ManualEditStyles> = {
-      width: target.styles.width,
-      height: target.styles.height,
-      left: target.styles.left,
-      top: target.styles.top,
+      width: cascadeRollbackStyle(target.styles.width),
+      height: cascadeRollbackStyle(target.styles.height),
+      left: cascadeRollbackStyle(target.styles.left),
+      top: cascadeRollbackStyle(target.styles.top),
     };
     const session: ResizeSessionStart = {
       startRect: { ...target.rect },
@@ -289,17 +294,10 @@ export function ManualEditResizeOverlay({
       startClientY: event.clientY,
       session,
       stylesBefore,
-      lastStyles: resizeResultToStyles({
-        widthPx: size.widthPx,
-        heightPx: size.heightPx,
-        x: target.rect.x,
-        y: target.rect.y,
-        touchedWidth: true,
-        touchedHeight: true,
-        leftPx: null,
-        topPx: null,
-      }),
+      lastStyles: {},
+      previewed: false,
     };
+    setLiveViewportPos(null);
     setDragging(true);
     setMoving(false);
     onResizeSessionChange?.(true);
@@ -361,6 +359,7 @@ export function ManualEditResizeOverlay({
     const hostDx = event.clientX - drag.startClientX;
     const hostDy = event.clientY - drag.startClientY;
     const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, previewScale);
+    if (Math.hypot(dx, dy) < MANUAL_EDIT_RESIZE_MIN_DELTA_PX && !drag.previewed) return;
     const aspectLock = aspectLockForTarget(target.kind, event.shiftKey);
     const result = computeResize({
       ...drag.session,
@@ -370,6 +369,9 @@ export function ManualEditResizeOverlay({
     });
     const next = resizeResultToStyles(result);
     drag.lastStyles = next;
+    drag.previewed = true;
+    // result.x/y are viewport (CB left/top stay in leftPx/topPx only).
+    setLiveViewportPos({ x: result.x, y: result.y });
     onResizePreview(next);
   };
 
@@ -383,10 +385,14 @@ export function ManualEditResizeOverlay({
     }
     const last = drag.lastStyles;
     const before = drag.stylesBefore;
+    const previewed = drag.previewed;
     dragRef.current = null;
     setDragging(false);
     setMoving(false);
+    setLiveViewportPos(null);
     onResizeSessionChange?.(false);
+    // Handle click / sub-threshold jitter: no flush, no cancel wipe.
+    if (!previewed) return;
     if (commit) onResizeCommit(last, before);
     else onResizeCancel(before);
   };

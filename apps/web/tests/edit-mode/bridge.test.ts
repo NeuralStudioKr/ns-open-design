@@ -588,9 +588,16 @@ describe('manual edit bridge target normalization', () => {
   });
 
   it('answers od-edit-remeasure with od-edit-rect for the target id', () => {
-    const posts: Array<{ type?: string; id?: string; rect?: { width: number; height: number } }> = [];
+    const posts: Array<{
+      type?: string;
+      id?: string;
+      rect?: { width: number; height: number };
+      offsetLeft?: number;
+      offsetTop?: number;
+      cssPosition?: string;
+    }> = [];
     const dom = new JSDOM(
-      `<main><div data-od-id="card">Box</div></main>${buildManualEditBridge(true)}`,
+      `<main><div data-od-id="card" style="position:absolute;left:12px;top:24px">Box</div></main>${buildManualEditBridge(true)}`,
       { runScripts: 'dangerously', url: 'http://localhost' },
     );
     const card = dom.window.document.querySelector('[data-od-id="card"]')!;
@@ -600,18 +607,80 @@ describe('manual edit bridge target normalization', () => {
       toJSON: () => ({}),
     } as DOMRect);
     dom.window.parent.postMessage = ((message: unknown) => {
-      posts.push(message as { type?: string; id?: string; rect?: { width: number; height: number } });
+      posts.push(message as typeof posts[number]);
     }) as typeof dom.window.parent.postMessage;
 
     dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
       data: { type: 'od-edit-remeasure', id: 'card' },
     }));
 
-    expect(posts).toContainEqual({
+    const rectMsg = posts.find((p) => p.type === 'od-edit-rect');
+    expect(rectMsg).toMatchObject({
       type: 'od-edit-rect',
       id: 'card',
       rect: { x: 12, y: 24, width: 320, height: 180 },
+      cssPosition: 'absolute',
     });
+    expect(typeof rectMsg?.offsetLeft).toBe('number');
+    expect(typeof rectMsg?.offsetTop).toBe('number');
+
+    dom.window.close();
+  });
+
+  it('uses a transform ancestor as the absolute containing block for offsetLeft', () => {
+    const posts: Array<{ type?: string; id?: string; offsetLeft?: number; offsetTop?: number }> = [];
+    const dom = new JSDOM(
+      `<main>
+        <div id="host" style="position: static;">
+          <div data-od-id="box" style="position:absolute;left:40px;top:60px;width:100px;height:50px">Box</div>
+        </div>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const host = dom.window.document.getElementById('host')!;
+    const box = dom.window.document.querySelector('[data-od-id="box"]') as HTMLElement;
+    host.getBoundingClientRect = () => ({
+      x: 100, y: 200, width: 400, height: 300,
+      top: 200, right: 500, bottom: 500, left: 100,
+      toJSON: () => ({}),
+    } as DOMRect);
+    Object.defineProperty(host, 'clientLeft', { value: 0 });
+    Object.defineProperty(host, 'clientTop', { value: 0 });
+    Object.defineProperty(host, 'scrollLeft', { value: 0 });
+    Object.defineProperty(host, 'scrollTop', { value: 0 });
+    // Force computed transform — jsdom may not parse inline transform as ≠ none.
+    const realGetComputed = dom.window.getComputedStyle.bind(dom.window);
+    dom.window.getComputedStyle = ((el: Element) => {
+      const style = realGetComputed(el);
+      if (el === host) {
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'transform') return 'matrix(1, 0, 0, 1, 0, 0)';
+            if (prop === 'position') return 'static';
+            return Reflect.get(target, prop);
+          },
+        }) as CSSStyleDeclaration;
+      }
+      return style;
+    }) as typeof dom.window.getComputedStyle;
+    box.getBoundingClientRect = () => ({
+      x: 140, y: 260, width: 100, height: 50,
+      top: 260, right: 240, bottom: 310, left: 140,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-remeasure', id: 'box' },
+    }));
+
+    const rectMsg = posts.find((p) => p.type === 'od-edit-rect');
+    // CB origin = host (100,200) → offset 40,60 — not document (0,0) → 140,260.
+    expect(rectMsg?.offsetLeft).toBe(40);
+    expect(rectMsg?.offsetTop).toBe(60);
 
     dom.window.close();
   });

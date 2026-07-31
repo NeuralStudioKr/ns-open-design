@@ -7288,6 +7288,9 @@ function HtmlViewer({
         const id = String(data.id ?? '');
         const rect = data.rect;
         if (!id || !rect || typeof rect.width !== 'number' || typeof rect.height !== 'number') return;
+        const offsetLeft = typeof data.offsetLeft === 'number' ? data.offsetLeft : null;
+        const offsetTop = typeof data.offsetTop === 'number' ? data.offsetTop : null;
+        const cssPosition = typeof data.cssPosition === 'string' ? data.cssPosition : null;
         setSelectedManualEditTarget((current) => {
           if (!current || current.id !== id) return current;
           return {
@@ -7298,6 +7301,9 @@ function HtmlViewer({
               width: Math.round(rect.width),
               height: Math.round(rect.height),
             },
+            ...(offsetLeft != null ? { offsetLeft: Math.round(offsetLeft) } : {}),
+            ...(offsetTop != null ? { offsetTop: Math.round(offsetTop) } : {}),
+            ...(cssPosition ? { cssPosition } : {}),
           };
         });
         return;
@@ -7433,13 +7439,8 @@ function HtmlViewer({
       const height = parseExplicitPx(styles.height) ?? prev?.height ?? target.rect.height;
       return { width, height };
     });
-    // Anchored W/N resize also writes left/top — keep host overlay box in sync.
-    if (styles.left != null || styles.top != null) {
-      setManualEditMoveDraftPos((prev) => ({
-        x: parseExplicitPx(styles.left) ?? prev?.x ?? target.rect.x,
-        y: parseExplicitPx(styles.top) ?? prev?.y ?? target.rect.y,
-      }));
-    }
+    // Overlay owns viewport origin via computeResize x/y (liveViewportPos).
+    // Do not map CB left/top onto manualEditMoveDraftPos.
   }
 
   function handleManualEditMovePreview(styles: Partial<ManualEditStyles>) {
@@ -7534,14 +7535,17 @@ function HtmlViewer({
     }
     const width = parseExplicitPx(styles.width) ?? target.rect.width;
     const height = parseExplicitPx(styles.height) ?? target.rect.height;
-    const x = parseExplicitPx(styles.left) ?? target.rect.x;
-    const y = parseExplicitPx(styles.top) ?? target.rect.y;
+    const leftPx = parseExplicitPx(styles.left);
+    const topPx = parseExplicitPx(styles.top);
     setSelectedManualEditTarget((current) => {
       if (!current || current.id !== target.id) return current;
       return {
         ...current,
-        rect: { ...current.rect, width, height, x, y },
+        // Remasure owns viewport x/y — CB left/top must not become rect origin.
+        rect: viewportRectAfterMoveCommit(current.rect, width, height),
         styles: { ...current.styles, ...styles },
+        offsetLeft: leftPx ?? current.offsetLeft,
+        offsetTop: topPx ?? current.offsetTop,
       };
     });
     // Sync host overlay to the iframe's real border-box after layout settles.

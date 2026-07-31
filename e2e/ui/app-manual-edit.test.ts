@@ -693,6 +693,57 @@ test('[P1] manual edit relative promote uses layout coords not relative left', a
     .toBe(true);
 });
 
+test('[P1] manual edit W-resize keeps overlay aligned on nested absolute', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit nested W resize');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-nested-w-resize.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-nested-w-resize.html`);
+  await openDesignFile(page, 'manual-edit-nested-w-resize.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  // Promote relative-box first so it becomes nested absolute under relative-host.
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  let box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 24, box!.y + box!.height / 2 + 12, { steps: 6 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-nested-w-resize.html`);
+      if (!resp.ok()) return false;
+      return /data-od-id="relative-box"[^>]*style="[^"]*position:\s*absolute/.test(await resp.text());
+    })
+    .toBe(true);
+
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
+  const handle = page.getByTestId('manual-edit-resize-handle-w');
+  await expect(handle).toBeVisible();
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).toBeTruthy();
+  await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    handleBox!.x + handleBox!.width / 2 + 32,
+    handleBox!.y + handleBox!.height / 2,
+    { steps: 6 },
+  );
+
+  const midTarget = await frame.locator('[data-od-id="relative-box"]').boundingBox();
+  const midOverlay = await overlay.boundingBox();
+  expect(midTarget).toBeTruthy();
+  expect(midOverlay).toBeTruthy();
+  expect(Math.abs(midOverlay!.x - midTarget!.x)).toBeLessThan(14);
+  expect(Math.abs(midOverlay!.y - midTarget!.y)).toBeLessThan(14);
+
+  await page.mouse.up();
+});
+
 test('[P1] manual edit post-promote re-drag keeps overlay aligned to nested CB', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);

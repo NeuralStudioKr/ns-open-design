@@ -11,6 +11,7 @@ import {
   parseExplicitPx,
   resizeHistoryLabel,
   resizeResultToStyles,
+  resizeViewportOrigin,
   startAnchorFromTarget,
   startSizeFromTarget,
   type ResizeMathInput,
@@ -233,6 +234,8 @@ describe('style helpers', () => {
     expect(out.widthPx).toBe(160);
     expect(out.leftPx).toBe(140);
     expect(out.topPx).toBeNull();
+    // startRect.x=10 → viewport x = 10 + (140-100) = 50 (not CB left 140)
+    expect(out.x).toBe(50);
     expect(resizeResultToStyles(out)).toEqual({ width: '160px', left: '140px' });
   });
 
@@ -247,6 +250,32 @@ describe('style helpers', () => {
     expect(out.heightPx).toBe(80);
     expect(out.topPx).toBe(70);
     expect(out.leftPx).toBeNull();
+    // startRect.y=20 → viewport y = 20 + (70-50) = 40
+    expect(out.y).toBe(40);
+  });
+
+  it('maps CB left Δ onto viewport overlay origin', () => {
+    expect(resizeViewportOrigin(
+      { x: 160, y: 180, width: 200, height: 100 },
+      40,
+      60,
+      80,
+      60,
+    )).toEqual({ x: 200, y: 180 });
+  });
+
+  it('prefers offsetLeft over viewport rect when style left is missing', () => {
+    expect(startAnchorFromTarget(target({
+      cssPosition: 'absolute',
+      offsetLeft: 40,
+      offsetTop: 60,
+      rect: { x: 160, y: 180, width: 200, height: 100 },
+      styles: { ...emptyManualEditStyles(), width: '200px', height: '100px' },
+    }))).toEqual({
+      anchorPosition: true,
+      startLeftPx: 40,
+      startTopPx: 60,
+    });
   });
 
   it('does not write left/top for static flow layout', () => {
