@@ -70,6 +70,9 @@ ENV VITE_TEAMVER_DRAW_ANNOTATION_ENABLE=${VITE_TEAMVER_DRAW_ANNOTATION_ENABLE}
 # BYOK streaming — daemon message PUT throttle (ms). Override via deploy .env (rebuild required).
 ARG VITE_MESSAGE_PERSIST_THROTTLE_MS=5000
 ENV VITE_MESSAGE_PERSIST_THROTTLE_MS=${VITE_MESSAGE_PERSIST_THROTTLE_MS}
+# Skip Next.js post-compile typecheck/eslint in image builds (~1–2 min).
+# Daemon `tsc` still runs above; web types are gated in local/CI before push.
+ENV OD_SKIP_NEXT_TYPECHECK=1
 # Keep pnpm/Next caches on BuildKit mounts — do not delete store paths here.
 RUN --mount=type=cache,id=od-pnpm-store,target=/root/.local/share/pnpm/store \
     --mount=type=cache,id=od-pnpm-cache,target=/root/.cache/pnpm \

@@ -792,6 +792,7 @@ sudo nginx -t && sudo systemctl reload nginx
 |------|------|
 | BuildKit cache mounts | `deploy/Dockerfile` — pnpm store + `apps/web/.next/cache` |
 | Playwright pin | `PLAYWRIGHT_INSTALL_TOKEN=playwright-core@1.60.0` (git SHA bust **금지**) |
+| Next typecheck skip | `OD_SKIP_NEXT_TYPECHECK=1` — 이미지 빌드에서만 `Running TypeScript` 생략 (~1–2분) |
 | `DOCKER_BUILDKIT=1` | `deploy.sh`가 export |
 
 **평소:** `--no-cache` 쓰지 말 것.  

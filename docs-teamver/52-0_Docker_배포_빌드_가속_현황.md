@@ -31,7 +31,8 @@
 
 | 파일 | 변경 |
 |------|------|
-| `deploy/Dockerfile` | `# syntax=docker/dockerfile:1.7` · `RUN --mount=type=cache` (pnpm store / pnpm cache / `.next/cache`) · 빌드 후 store wipe 제거 |
+| `deploy/Dockerfile` | `# syntax=docker/dockerfile:1.7` · `RUN --mount=type=cache` (pnpm store / pnpm cache / `.next/cache`) · 빌드 후 store wipe 제거 · **`OD_SKIP_NEXT_TYPECHECK=1`** |
+| `apps/web/next.config.ts` | Docker에서만 Next post-compile typecheck 스킵 (`ignoreBuildErrors`) |
 | `deploy/teamver/deploy.sh` | `DOCKER_BUILDKIT=1` · `COMPOSE_DOCKER_CLI_BUILD=1` · Playwright 토큰 기본값 `playwright-core@1.60.0` (git SHA 제거) · help/팁 |
 | `deploy/teamver/docker-compose.yml` | `PLAYWRIGHT_INSTALL_TOKEN` 기본값·주석 정합 |
 | `deploy/teamver/scripts/prune_docker_build_disk.sh` | BuildKit `until=168h` prune + dangling image (캐시 전면 삭제 아님) |
