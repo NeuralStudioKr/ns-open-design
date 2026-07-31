@@ -15,3 +15,16 @@ export function shouldClearManualEditFrozenSourceOnModeChange(
 ): boolean {
   return previousEnabled !== nextEnabled;
 }
+
+/**
+ * Structural / text patches remount the freeze from saved HTML so the next
+ * iframe paint matches disk. Style-only patches must NOT — they rely on the
+ * entry freeze + `od-edit-preview-style` postMessage (and remount replay via
+ * freeze→source diffs). Updating freeze on every set-style forces a full
+ * srcDoc remount and flickers / drops live selection.
+ */
+export function shouldUpdateManualEditFrozenSourceOnPatch(
+  kind: string | null | undefined,
+): boolean {
+  return kind !== 'set-style';
+}

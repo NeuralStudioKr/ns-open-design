@@ -2044,20 +2044,36 @@ export function HomeView({
               submittedActive?.inputs ?? null,
               submittedActive?.projectMetadata ?? fallbackProjectMetadata ?? null,
             );
-      // Scenario plugins (chips / preset cards) and explicit skill picks are
-      // mutually exclusive routing sources — never send both (#2972).
-      const selectedDeckTemplateSkillId = slideOnlyMvp
-        ? resolveSlideOnlyDeckTemplateSkillId(submittedActive?.record, {
-            explicitPick: submittedActive?.explicitPick,
-          })
+      // Scenario plugins (chips / preset cards) and skill / design-template
+      // picks are mutually exclusive routing sources — never send both (#2972).
+      // Deck visual templates (community cards or design-template skills) go
+      // through metadata.selectedDeckTemplate*; skillId stays null for those.
+      const selectedDeckTemplateFromPlugin = slideOnlyMvp
+        ? resolveSlideOnlyDeckTemplateSkillId(submittedActive?.record)
         : null;
-      const selectedDeckTemplateTitle =
-        selectedDeckTemplateSkillId && submittedActive
-          ? localizePluginTitle(locale, submittedActive.record) || submittedActive.record.title
+      const selectedDeckTemplateFromSkill =
+        slideOnlyMvp
+        && !selectedDeckTemplateFromPlugin
+        && activeSkill
+        && isRenderableDesignTemplate(activeSkill)
+          ? activeSkill.id
           : null;
-      const resolvedSkillId = submittedActive
+      const selectedDeckTemplateSkillId =
+        selectedDeckTemplateFromPlugin ?? selectedDeckTemplateFromSkill;
+      const selectedDeckTemplateTitle = selectedDeckTemplateSkillId
+        ? (
+          selectedDeckTemplateFromPlugin && submittedActive
+            ? localizePluginTitle(locale, submittedActive.record) || submittedActive.record.title
+            : activeSkill
+              ? localizeSkillName(locale, activeSkill)
+              : null
+        )
+        : null;
+      const resolvedSkillId = selectedDeckTemplateSkillId
         ? null
-        : activeSkill?.id ?? null;
+        : submittedActive
+          ? null
+          : activeSkill?.id ?? null;
       const routedPluginId = slideOnlyMvp
         ? resolveSlideOnlyCreatePluginId(
             selectedDeckTemplateSkillId
@@ -2068,14 +2084,17 @@ export function HomeView({
         : sessionMode === 'design'
           ? submittedActive?.record.id ?? DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID
           : submittedActive?.record.id ?? null;
+      const selectedDeckTemplateLabel =
+        selectedDeckTemplateTitle
+        ?? (submittedActive?.record.title ?? activeSkill?.name ?? null);
       const submittedPluginInputsForCreate = slideOnlyMvp
         ? {
             ...defaultSlideOnlyDeckPluginInputs(trimmed),
             ...(submittedPluginInputs ?? {}),
-            ...(selectedDeckTemplateSkillId && submittedActive
+            ...(selectedDeckTemplateSkillId && selectedDeckTemplateLabel
               ? {
-                  designSystem: selectedDeckTemplateTitle ?? submittedActive.record.title,
-                  visualTemplate: selectedDeckTemplateTitle ?? submittedActive.record.title,
+                  designSystem: selectedDeckTemplateLabel,
+                  visualTemplate: selectedDeckTemplateLabel,
                 }
               : {}),
           }

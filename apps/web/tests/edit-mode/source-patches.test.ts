@@ -873,6 +873,22 @@ describe('manual edit source patches', () => {
     expect(html).not.toContain('<span>');
   });
 
+  it('flattens shallow text-only div/p stacks instead of rejecting', () => {
+    // Teamver decks often wrap multi-line labels as sibling text divs.
+    // Rejecting with "Use the HTML tab" blocked ordinary wording edits.
+    const source = [
+      '<!doctype html><html><body>',
+      '<div data-od-id="stack"><div>첫 줄</div><div>둘째 줄</div></div>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, { kind: 'set-text', id: 'stack', value: '한 줄로' });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'stack');
+    expect(html).toContain('한 줄로');
+    expect(html).not.toContain('<div>첫 줄</div>');
+    expect(html).not.toContain('둘째 줄');
+  });
+
   it('still rejects text patches on block layout containers', () => {
     const source = [
       '<!doctype html><html><body>',

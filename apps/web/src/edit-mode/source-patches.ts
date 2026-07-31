@@ -1182,12 +1182,19 @@ const MANUAL_EDIT_INLINE_WRAPPER_TAGS = new Set([
   'cite', 'blockquote', 'q',
 ]);
 
+/** Shallow text stacks under a wrapper: `<div>a</div><div>b</div>` / `<p>…</p>`. */
+const MANUAL_EDIT_TEXT_LEAF_CONTAINER_TAGS = new Set(['div', 'p']);
+
 /**
  * True when `el` is a text-shaped wrapper (heading, paragraph, list item,
  * label, small `<div>`) whose children only carry inline formatting. Used to
  * decide whether a `set-text` patch may destructively replace inner HTML with
  * the escaped user text — safer than blocking the edit outright, but not so
  * aggressive that we would wipe block layout (`ul`, `table`, `section`, etc.).
+ *
+ * Also accepts one level of text-leaf `div`/`p` children (common in Teamver
+ * decks for multi-line labels). Deeper block nests and real layout containers
+ * still reject so callers fall through to the HTML tab.
  */
 export function containsOnlyInlineTextFormatting(el: Element): boolean {
   const tag = el.tagName?.toLowerCase() ?? '';
@@ -1197,9 +1204,21 @@ export function containsOnlyInlineTextFormatting(el: Element): boolean {
 
 function childIsInlineTextFormatting(child: Element): boolean {
   const tag = child.tagName?.toLowerCase() ?? '';
-  if (!MANUAL_EDIT_INLINE_TEXT_TAGS.has(tag)) return false;
-  if (child.children.length === 0) return true;
-  return Array.from(child.children).every(childIsInlineTextFormatting);
+  if (MANUAL_EDIT_INLINE_TEXT_TAGS.has(tag)) {
+    if (child.children.length === 0) return true;
+    return Array.from(child.children).every(childIsInlineTextFormatting);
+  }
+  // Shallow text-leaf containers: allow `<div>line</div>` / `<p><span>x</span></p>`
+  // under a wrapper, but do not recurse into further block containers.
+  if (MANUAL_EDIT_TEXT_LEAF_CONTAINER_TAGS.has(tag)) {
+    return Array.from(child.children).every((grand) => {
+      const grandTag = grand.tagName?.toLowerCase() ?? '';
+      if (!MANUAL_EDIT_INLINE_TEXT_TAGS.has(grandTag)) return false;
+      if (grand.children.length === 0) return true;
+      return Array.from(grand.children).every(childIsInlineTextFormatting);
+    });
+  }
+  return false;
 }
 
 /** Escape user-provided text before writing it into an element's innerHTML. */

@@ -144,7 +144,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     );
   });
 
-  it('keeps explicitly picked deck community cards as visual template skills', () => {
+  it('keeps deck community cards as visual template skills without requiring explicitPick', () => {
     const creativeMode = {
       id: 'html-ppt-zhangzara-creative-mode',
       manifest: { od: { mode: 'deck' } },
@@ -153,21 +153,34 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(resolveSlideOnlyDeckTemplateSkillId(creativeMode, { explicitPick: true })).toBe(
       'html-ppt-zhangzara-creative-mode',
     );
-    expect(resolveSlideOnlyDeckTemplateSkillId(creativeMode, { explicitPick: false })).toBeNull();
+    // Free-form / chip-adjacent binds still persist template metadata when the
+    // active plugin is a real deck visual template (not the scenario generator).
+    expect(resolveSlideOnlyDeckTemplateSkillId(creativeMode, { explicitPick: false })).toBe(
+      'html-ppt-zhangzara-creative-mode',
+    );
+    expect(resolveSlideOnlyDeckTemplateSkillId(creativeMode)).toBe(
+      'html-ppt-zhangzara-creative-mode',
+    );
     expect(resolveSlideOnlyDeckTemplateSkillId({
       id: 'od-new-generation',
       manifest: { od: { mode: 'deck' } },
     } as Parameters<typeof resolveSlideOnlyDeckTemplateSkillId>[0], { explicitPick: true })).toBeNull();
+    expect(resolveSlideOnlyDeckTemplateSkillId({
+      id: 'example-simple-deck',
+      manifest: { od: { mode: 'deck' } },
+    } as Parameters<typeof resolveSlideOnlyDeckTemplateSkillId>[0])).toBeNull();
   });
 
   it('stores picked deck templates as metadata while keeping the deck generator plugin', () => {
     const homeView = readSource('src/components/HomeView.tsx');
-    const start = homeView.indexOf('const selectedDeckTemplateSkillId = slideOnlyMvp');
+    const start = homeView.indexOf('const selectedDeckTemplateFromPlugin = slideOnlyMvp');
     expect(start).toBeGreaterThan(0);
-    const block = homeView.slice(start, start + 2300);
+    const block = homeView.slice(start, start + 2800);
 
     expect(block).toContain('resolveSlideOnlyDeckTemplateSkillId');
-    expect(block).toContain('const resolvedSkillId = submittedActive');
+    expect(block).toContain('selectedDeckTemplateFromSkill');
+    expect(block).toContain('isRenderableDesignTemplate(activeSkill)');
+    expect(block).toContain('const resolvedSkillId = selectedDeckTemplateSkillId');
     expect(block).toContain('? null');
     expect(block).toContain('selectedDeckTemplateSkillId');
     expect(block).toContain('selectedDeckTemplateTitle');
@@ -177,6 +190,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(block).toContain('skillId: resolvedSkillId');
     expect(block).toContain('visualTemplate');
     expect(block).toContain('localizePluginTitle(locale, submittedActive.record)');
+    expect(block).toContain('localizeSkillName(locale, activeSkill)');
   });
 
   it('persists canvas launch template picks through metadata instead of project skillId', () => {
