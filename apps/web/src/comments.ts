@@ -150,12 +150,10 @@ export function resolveCommentEditPersistTargetFileName(
     const filePath = attachment.filePath?.trim();
     if (!filePath) continue;
     const baseName = filePath.split('/').filter(Boolean).pop() ?? filePath;
+    // Screenshot-only visual marks store uploads/*.png as filePath. Never
+    // treat image/binary uploads as the in-place deck persist target —
+    // callers fall back to the open/canonical deck instead.
     if (/\.html?$/i.test(baseName)) return baseName;
-  }
-  for (const attachment of commentAttachments) {
-    const filePath = attachment.filePath?.trim();
-    if (!filePath) continue;
-    return filePath.split('/').filter(Boolean).pop() ?? filePath;
   }
   return null;
 }

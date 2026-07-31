@@ -83,4 +83,15 @@ describe('selected-deck-template prompt helpers', () => {
     );
     expect(serverSource).toContain('secondarySkillBody: scenarioSkillBody');
   });
+
+  it('loads selected deck templates from skill-like/design-template roots before plugins', () => {
+    const start = serverSource.indexOf('if (selectedDeckTemplate) {');
+    expect(start).toBeGreaterThan(0);
+    const block = serverSource.slice(start, start + 1600);
+    expect(block).toContain('const allSkills = await loadAllSkills();');
+    expect(block).toContain('findSkillById(allSkills, selectedDeckTemplate.id)');
+    expect(block.indexOf('findSkillById(allSkills, selectedDeckTemplate.id)')).toBeLessThan(
+      block.indexOf('getInstalledPlugin(db, selectedDeckTemplate.id)'),
+    );
+  });
 });

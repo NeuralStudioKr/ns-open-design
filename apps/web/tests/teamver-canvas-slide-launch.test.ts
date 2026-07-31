@@ -126,6 +126,7 @@ describe("canvasSlideLaunch", () => {
       skillIds: ["html-ppt-hermes"],
       designSystemId: "ds-1",
       context: {
+        pluginIds: ["example-simple-deck"],
         skillIds: ["html-ppt-hermes"],
       },
     });

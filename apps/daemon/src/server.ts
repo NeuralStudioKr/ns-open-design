@@ -11909,13 +11909,25 @@ export async function startServer({
     if (selectedDeckTemplate) {
       let templateBody: string | null = null;
       try {
-        const plugin = getInstalledPlugin(db, selectedDeckTemplate.id);
-        if (plugin) {
-          const local = await loadPluginLocalSkill(plugin);
-          if (local?.body?.trim()) {
-            templateBody = local.body;
-            registerSkillDir(local.dir);
-            if (!activeSkillDir) activeSkillDir = local.dir;
+        // Mirror web/API order: skill-like / design-template body first, then
+        // community plugin local SKILL.md. Metadata-only design-template picks
+        // (skillId null) used to degrade to a title stub here.
+        const allSkills = await loadAllSkills();
+        const templateSkill = findSkillById(allSkills, selectedDeckTemplate.id);
+        if (templateSkill?.body?.trim()) {
+          templateBody = templateSkill.body;
+          registerSkillDir(templateSkill.dir);
+          if (!activeSkillDir) activeSkillDir = templateSkill.dir;
+          registerPrimarySkillMode(templateSkill.mode ?? 'deck');
+        } else {
+          const plugin = getInstalledPlugin(db, selectedDeckTemplate.id);
+          if (plugin) {
+            const local = await loadPluginLocalSkill(plugin);
+            if (local?.body?.trim()) {
+              templateBody = local.body;
+              registerSkillDir(local.dir);
+              if (!activeSkillDir) activeSkillDir = local.dir;
+            }
           }
         }
       } catch (err) {

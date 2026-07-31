@@ -191,6 +191,25 @@ describe('preview comment attachment helpers', () => {
     ).toBe('deck.html');
   });
 
+  it('never routes screenshot-only visual marks to a PNG persist target', () => {
+    const visualOnly = buildVisualAnnotationAttachment({
+      order: 0,
+      screenshotPath: 'uploads/visual-mark-1.png',
+      markKind: 'stroke',
+      note: '여기 키워줘',
+      slideIndex: 1,
+      bounds: { x: 10, y: 20, width: 100, height: 40 },
+    });
+    expect(visualOnly.filePath).toContain('.png');
+    expect(resolveCommentEditPersistTargetFileName([visualOnly])).toBeNull();
+    expect(
+      resolveCommentEditPersistTargetFileName([
+        visualOnly,
+        commentAttachment({ id: 'c2', filePath: 'deck.html', slideIndex: 0 }),
+      ]),
+    ).toBe('deck.html');
+  });
+
   it('omits slideIndex when the comment has none (whole-file target)', () => {
     const context = messageContentWithCommentAttachments('', [
       commentAttachment({ id: 'c1', elementId: 'hero-title' }),
