@@ -199,22 +199,27 @@ export function ManualEditResizeOverlay({
       const kind = drag.kind;
       const moved = kind === 'move' ? drag.moved : false;
       dragRef.current = null;
+      onResizeSessionChangeRef.current?.(false);
+      // Commit/cancel BEFORE clearing liveViewportPos. Commit applies an
+      // optimistic target.rect synchronously; clearing first would flash the
+      // overlay back onto the pre-gesture rect for a frame (or longer if flush
+      // awaited before the optimistic update).
+      if (kind === 'resize') {
+        // Handle click / sub-threshold jitter: no flush, no cancel wipe.
+        if (previewed) {
+          if (commit) onResizeCommitRef.current(last, before, viewport);
+          else onResizeCancelRef.current(before);
+        }
+      } else if (commit && moved) {
+        // pointercancel: never persist. pointerup commits only past the jitter
+        // threshold. A plain click (no preview) must not wipe pending styles.
+        onMoveCommitRef.current?.(last, before, viewport);
+      } else if (previewed) {
+        onMoveCancelRef.current?.(before);
+      }
       setDragging(false);
       setMoving(false);
       setLiveViewportPos(null);
-      onResizeSessionChangeRef.current?.(false);
-      if (kind === 'resize') {
-        // Handle click / sub-threshold jitter: no flush, no cancel wipe.
-        if (!previewed) return;
-        if (commit) onResizeCommitRef.current(last, before, viewport);
-        else onResizeCancelRef.current(before);
-        return;
-      }
-      // pointercancel: never persist. pointerup commits only past the jitter
-      // threshold. A plain click (no preview) must not wipe pending styles.
-      // Pass stylesBefore so flush-fail can mirror Esc keyed rollback.
-      if (commit && moved) onMoveCommitRef.current?.(last, before, viewport);
-      else if (previewed) onMoveCancelRef.current?.(before);
     };
 
     const onPointerMove = (event: PointerEvent) => {
@@ -304,6 +309,7 @@ export function ManualEditResizeOverlay({
 
   const beginResize = (handle: ResizeHandle, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (disabled || dragRef.current) return;
+    // Capture-phase friendly: stop before the movable body can begin a move.
     event.preventDefault();
     event.stopPropagation();
     const size = startSizeFromTarget(target);
@@ -431,12 +437,15 @@ export function ManualEditResizeOverlay({
           data-testid={`manual-edit-resize-handle-${handle}`}
           data-handle={handle}
           aria-label={`Resize ${handle}`}
-          disabled={disabled}
+          // Avoid HTML `disabled` — it drops pointer hits through to the
+          // movable overlay body, so edge drags become moves.
+          aria-disabled={disabled || undefined}
+          tabIndex={disabled ? -1 : 0}
           style={{
             ...handlePositionStyle(handle),
             cursor: disabled ? 'default' : cursorForResizeHandle(handle),
           }}
-          onPointerDown={(event) => beginResize(handle, event)}
+          onPointerDownCapture={(event) => beginResize(handle, event)}
         />
       ))}
     </div>

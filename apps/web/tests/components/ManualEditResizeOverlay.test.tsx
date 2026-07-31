@@ -29,6 +29,25 @@ function target(over: Partial<ManualEditTarget> = {}): ManualEditTarget {
 }
 
 describe('ManualEditResizeOverlay', () => {
+  it('keeps resize handles pointer-hit even when interaction is gated', () => {
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target()}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        disabled
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+      />,
+    );
+    const handle = getByTestId('manual-edit-resize-handle-se') as HTMLButtonElement;
+    // HTML disabled would drop hits through to the movable body (resize→move).
+    expect(handle.disabled).toBe(false);
+    expect(handle.getAttribute('aria-disabled')).toBe('true');
+  });
+
   it('previews on move and commits once on pointerup', () => {
     const onResizePreview = vi.fn();
     const onResizeCommit = vi.fn();

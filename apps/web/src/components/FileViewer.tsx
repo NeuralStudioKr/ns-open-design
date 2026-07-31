@@ -7391,6 +7391,9 @@ function HtmlViewer({
         return;
       }
       if (data.type === 'od-edit-rect' && data.ok && data.target) {
+        // Ignore remasure while a geometry gesture still owns the overlay —
+        // a stale postMessage must not yank the box mid-drag.
+        if (manualEditResizeSessionActiveRef.current) return;
         const measured = data.target;
         setSelectedManualEditTarget((current) => {
           if (current?.id !== measured.id) return current;
@@ -7504,10 +7507,40 @@ function HtmlViewer({
     manualEditResizePausedRef.current = active;
     if (active) {
       clearManualEditStyleTimer();
-      return;
     }
-    setManualEditResizeDraftSize(null);
-    setManualEditMoveDraftPos(null);
+    // Do not clear resize/move drafts here. endDrag clears liveViewport before
+    // the async flush finishes; wiping drafts in the same turn snaps the host
+    // overlay back to a stale target.rect until optimistic commit/remeasure.
+  }
+
+  function applyManualEditGestureOptimisticTarget(
+    target: ManualEditTarget,
+    styles: Partial<ManualEditStyles>,
+    viewport?: { x: number; y: number },
+    options?: { promoted?: boolean },
+  ) {
+    const width = parseExplicitPx(styles.width) ?? target.rect.width;
+    const height = parseExplicitPx(styles.height) ?? target.rect.height;
+    const leftPx = parseExplicitPx(styles.left);
+    const topPx = parseExplicitPx(styles.top);
+    setSelectedManualEditTarget((current) => {
+      if (!current || current.id !== target.id) return current;
+      const base = viewportRectAfterMoveCommit(current.rect, width, height);
+      const next: ManualEditTarget = {
+        ...current,
+        // Apply gesture viewport immediately so the overlay never falls back to
+        // the pre-gesture rect while flush/remeasure is in flight.
+        rect: viewport
+          ? { ...base, x: Math.round(viewport.x), y: Math.round(viewport.y) }
+          : base,
+        styles: { ...current.styles, ...styles },
+        offsetLeft: leftPx ?? current.offsetLeft,
+        offsetTop: topPx ?? current.offsetTop,
+        cssPosition: options?.promoted ? 'absolute' : current.cssPosition,
+      };
+      selectedManualEditTargetRef.current = next;
+      return next;
+    });
   }
 
   function handleManualEditResizePreview(styles: Partial<ManualEditStyles>) {
@@ -7618,36 +7651,22 @@ function HtmlViewer({
     const target = selectedManualEditTarget;
     if (!target) return;
     handleManualEditResizePreview(styles);
+    // Optimistic geometry must land before any await; otherwise clearing
+    // liveViewport/drafts snaps the overlay to the pre-gesture rect.
+    applyManualEditGestureOptimisticTarget(target, styles, viewport);
     manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
-    manualEditResizePausedRef.current = false;
     const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) {
       rollbackManualEditGestureStyles(stylesBefore);
       return;
     }
-    const width = parseExplicitPx(styles.width) ?? target.rect.width;
-    const height = parseExplicitPx(styles.height) ?? target.rect.height;
-    const leftPx = parseExplicitPx(styles.left);
-    const topPx = parseExplicitPx(styles.top);
-    setSelectedManualEditTarget((current) => {
-      if (!current || current.id !== target.id) return current;
-      const base = viewportRectAfterMoveCommit(current.rect, width, height);
-      return {
-        ...current,
-        // Apply gesture viewport immediately so the next drag does not seed
-        // startRect from a stale pre-gesture origin while remasure is in flight.
-        rect: viewport
-          ? { ...base, x: Math.round(viewport.x), y: Math.round(viewport.y) }
-          : base,
-        styles: { ...current.styles, ...styles },
-        offsetLeft: leftPx ?? current.offsetLeft,
-        offsetTop: topPx ?? current.offsetTop,
-      };
-    });
     // Sync host overlay to the iframe's real border-box after layout settles.
-    requestManualEditTargetRemeasure(target.id);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => requestManualEditTargetRemeasure(target.id));
+    });
   }
 
   async function handleManualEditMoveCommit(
@@ -7658,35 +7677,20 @@ function HtmlViewer({
     const target = selectedManualEditTarget;
     if (!target) return;
     handleManualEditMovePreview(styles);
+    const promoted = String(styles.position || '').toLowerCase() === 'absolute';
+    applyManualEditGestureOptimisticTarget(target, styles, viewport, { promoted });
     manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
     setManualEditMoveDraftPos(null);
     setManualEditResizeDraftSize(null);
-    manualEditResizePausedRef.current = false;
     const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) {
       rollbackManualEditGestureStyles(stylesBefore);
       return;
     }
-    const width = parseExplicitPx(styles.width) ?? target.rect.width;
-    const height = parseExplicitPx(styles.height) ?? target.rect.height;
-    const promoted = String(styles.position || '').toLowerCase() === 'absolute';
-    const leftPx = parseExplicitPx(styles.left);
-    const topPx = parseExplicitPx(styles.top);
-    setSelectedManualEditTarget((current) => {
-      if (!current || current.id !== target.id) return current;
-      const base = viewportRectAfterMoveCommit(current.rect, width, height);
-      return {
-        ...current,
-        rect: viewport
-          ? { ...base, x: Math.round(viewport.x), y: Math.round(viewport.y) }
-          : base,
-        styles: { ...current.styles, ...styles },
-        cssPosition: promoted ? 'absolute' : current.cssPosition,
-        offsetLeft: leftPx ?? current.offsetLeft,
-        offsetTop: topPx ?? current.offsetTop,
-      };
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => requestManualEditTargetRemeasure(target.id));
     });
-    requestManualEditTargetRemeasure(target.id);
   }
 
   function handleManualEditResizeCancel(stylesBefore: Partial<ManualEditStyles>) {
@@ -10018,7 +10022,9 @@ function HtmlViewer({
         draftHeightPx={manualEditResizeDraftSize?.height ?? null}
         draftLeftPx={manualEditMoveDraftPos?.x ?? null}
         draftTopPx={manualEditMoveDraftPos?.y ?? null}
-        disabled={manualEditInlineTextEditing || manualEditSaving}
+        // Do not disable handles while saving — HTML disabled buttons drop
+        // pointer events through to the movable body, so resize becomes move.
+        disabled={manualEditInlineTextEditing}
         onResizeSessionChange={handleManualEditResizeSessionChange}
         onResizePreview={handleManualEditResizePreview}
         onResizeCommit={(styles, stylesBefore, viewport) => {
