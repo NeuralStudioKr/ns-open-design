@@ -1175,8 +1175,7 @@ function asyncExportProgressToastMessage(
   status: AsyncExportProgressStatus,
   t: ExportToastTranslate,
 ): string {
-  if (status === 'queued') return t('fileViewer.exportAsyncQueued');
-  if (status === 'ready') return t('fileViewer.exportAsyncReady');
+  if (status === 'queued' || status === 'ready') return t('fileViewer.exportInProgress');
   return exportInProgressToastMessage(format, t);
 }
 

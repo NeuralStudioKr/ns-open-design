@@ -1242,6 +1242,91 @@ describe('exportProjectAsHtml', () => {
     expect(await capturedBlob!.text()).toBe('<!doctype html><p>async job html</p>');
   });
 
+  it('uses async export job SSE events before falling back to polling', async () => {
+    process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED = '1';
+    type ExportJobHandler = (event: { data: string }) => void;
+    class MockEventSource {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSED = 2;
+      readonly url: string;
+      readonly withCredentials: boolean;
+      readonly close = vi.fn();
+      onerror: (() => void) | null = null;
+      private readonly handlers = new Map<string, ExportJobHandler>();
+
+      constructor(url: string, init?: EventSourceInit) {
+        this.url = url;
+        this.withCredentials = init?.withCredentials === true;
+        eventSources.push(this);
+      }
+
+      addEventListener(type: string, handler: ExportJobHandler): void {
+        this.handlers.set(type, handler);
+      }
+
+      emit(type: string, data: unknown): void {
+        this.handlers.get(type)?.({ data: JSON.stringify(data) });
+      }
+    }
+    const eventSources: MockEventSource[] = [];
+    const statuses: string[] = [];
+    vi.stubGlobal('EventSource', MockEventSource);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/projects/proj-1/export/jobs') {
+        return new Response(
+          JSON.stringify({
+            eventsUrl: '/api/projects/proj-1/export/jobs/job-1/events',
+            jobId: 'job-1',
+            status: 'queued',
+            statusUrl: '/api/projects/proj-1/export/jobs/job-1',
+          }),
+          { status: 202, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url === '/api/projects/proj-1/export/downloads/ticket-job') {
+        return new Response('<!doctype html><p>sse html</p>', {
+          headers: {
+            'content-disposition': 'attachment; filename="Seed-Deck.html"',
+            'content-type': 'text/html',
+          },
+          status: 200,
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+
+    const pending = exportProjectAsHtml({
+      deck: true,
+      projectId: 'proj-1',
+      onAsyncExportStatus: (status) => statuses.push(status),
+      filePath: 'deck/index.html',
+      fallbackHtml: '<section>fallback</section>',
+      fallbackTitle: 'Seed Deck',
+    });
+    await vi.waitFor(() => expect(eventSources).toHaveLength(1));
+    expect(eventSources[0]!.url).toBe('/api/projects/proj-1/export/jobs/job-1/events');
+    expect(eventSources[0]!.withCredentials).toBe(true);
+    eventSources[0]!.emit('export_job', {
+      jobId: 'job-1',
+      status: 'running',
+      statusUrl: '/api/projects/proj-1/export/jobs/job-1',
+    });
+    eventSources[0]!.emit('export_job', {
+      downloadUrl: '/api/projects/proj-1/export/downloads/ticket-job',
+      filename: 'Seed-Deck.html',
+      jobId: 'job-1',
+      status: 'ready',
+      statusUrl: '/api/projects/proj-1/export/jobs/job-1',
+    });
+    await pending;
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(statuses).toEqual(['queued', 'running', 'ready']);
+    expect(capturedFilename).toBe('Seed-Deck.html');
+    expect(await capturedBlob!.text()).toBe('<!doctype html><p>sse html</p>');
+  });
+
   it('falls back to the synchronous export route when async jobs are disabled server-side', async () => {
     process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED = '1';
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {

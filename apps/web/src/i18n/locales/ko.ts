@@ -2163,8 +2163,6 @@ export const ko: Dict = {
   'fileViewer.exportReactHtml': '미리보기를 HTML로 내보내기',
   'fileViewer.exportStarted': '다운로드를 시작했습니다',
   'fileViewer.exportInProgress': '다운로드 준비 중…',
-  'fileViewer.exportAsyncQueued': '다운로드 작업 대기 중…',
-  'fileViewer.exportAsyncReady': '파일 준비 중…',
   'fileViewer.exportPdfInProgress': 'PDF 생성 중…',
   'fileViewer.exportHtmlInProgress': 'HTML 생성 중…',
   'fileViewer.exportZipInProgress': 'ZIP 생성 중…',

@@ -98,6 +98,7 @@ type AsyncExportJobResponse = {
   jobId: string;
   status: 'queued' | 'running' | 'ready' | 'failed';
   statusUrl: string;
+  eventsUrl?: string;
   downloadUrl?: string;
   filename?: string;
   mime?: string;
@@ -229,6 +230,55 @@ async function pollAsyncExportJob(options: {
   throw new Error('async export job timed out');
 }
 
+function isAsyncExportProgressStatus(status: string): status is AsyncExportProgressStatus {
+  return status === 'queued' || status === 'running' || status === 'ready';
+}
+
+async function waitForAsyncExportJobEvent(options: {
+  eventsUrl?: string;
+  onStatus?: (status: AsyncExportProgressStatus) => void;
+  timeoutMs?: number;
+}): Promise<AsyncExportJobResponse | null> {
+  const eventsUrl = options.eventsUrl;
+  if (!eventsUrl || typeof EventSource === 'undefined') return null;
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  return await new Promise<AsyncExportJobResponse | null>((resolve, reject) => {
+    let settled = false;
+    let source: EventSource | null = null;
+    const finish = (job: AsyncExportJobResponse | null, err?: Error) => {
+      if (settled) return;
+      settled = true;
+      globalThis.clearTimeout(timer);
+      source?.close();
+      if (err) reject(err);
+      else resolve(job);
+    };
+    const timer = globalThis.setTimeout(() => finish(null), timeoutMs);
+    try {
+      source = new EventSource(eventsUrl, { withCredentials: true });
+      source.addEventListener('export_job', (event) => {
+        try {
+          const job = JSON.parse((event as MessageEvent).data) as AsyncExportJobResponse;
+          if (isAsyncExportProgressStatus(job.status)) {
+            options.onStatus?.(job.status);
+          }
+          if (job.status === 'ready') {
+            finish(job);
+          } else if (job.status === 'failed') {
+            const message = job.error?.message || job.error?.code || 'async export job failed';
+            finish(null, new Error(message));
+          }
+        } catch {
+          finish(null);
+        }
+      });
+      source.onerror = () => finish(null);
+    } catch {
+      finish(null);
+    }
+  });
+}
+
 async function tryAsyncRenderedExportDownload(options: {
   projectId: string;
   format: AsyncExportFormat;
@@ -270,13 +320,23 @@ async function tryAsyncRenderedExportDownload(options: {
   if (!created.statusUrl || typeof created.statusUrl !== 'string') {
     return false;
   }
+  let lastStatus: AsyncExportProgressStatus | null = null;
+  const emitStatus = (status: AsyncExportProgressStatus) => {
+    if (lastStatus === status) return;
+    lastStatus = status;
+    options.onAsyncExportStatus?.(status);
+  };
   if (created.status === 'queued' || created.status === 'running') {
-    options.onAsyncExportStatus?.(created.status);
+    emitStatus(created.status);
   }
-  const ready = await pollAsyncExportJob({
+  const sseReady = await waitForAsyncExportJobEvent({
+    eventsUrl: created.eventsUrl,
+    onStatus: emitStatus,
+  });
+  const ready = sseReady ?? await pollAsyncExportJob({
     projectId: options.projectId,
     statusUrl: created.statusUrl,
-    onStatus: options.onAsyncExportStatus,
+    onStatus: emitStatus,
   });
   await triggerAsyncExportJobDownload(ready, options.title, options.extension);
   return true;
@@ -1342,6 +1402,7 @@ export async function exportProjectAsPdf(opts: {
    * caller that does not have a snapshot ready keeps working.
    */
   htmlSnapshot?: string | null;
+  onAsyncExportStatus?: (status: AsyncExportProgressStatus) => void;
 }): Promise<ProjectPdfExportResult> {
   // Warm the tenant S3-prefix cache so the very first daemon request already
   // carries `X-Teamver-S3-Prefix`. Without this the `/access` gate must race
