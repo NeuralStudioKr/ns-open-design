@@ -52,18 +52,20 @@ describe('ManualEditResizeOverlay', () => {
     fireEvent.pointerDown(handle, { pointerId: 1, clientX: 240, clientY: 160, buttons: 1 });
     expect(onResizeSessionChange).toHaveBeenCalledWith(true);
 
-    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 260, clientY: 170, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 260, clientY: 170, buttons: 1 });
     expect(onResizePreview).toHaveBeenCalled();
     const previewStyles = onResizePreview.mock.calls.at(-1)?.[0] as { width?: string; height?: string };
     expect(previewStyles.width).toBe('220px');
     expect(previewStyles.height).toBe('110px');
 
-    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 260, clientY: 170 });
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 260, clientY: 170 });
     expect(onResizeCommit).toHaveBeenCalledTimes(1);
     expect(onResizeCommit.mock.calls[0]?.[0]).toEqual(previewStyles);
     expect(onResizeCommit.mock.calls[0]?.[1]).toEqual({
       width: '200px',
       height: '100px',
+      maxWidth: '',
+      maxHeight: '',
       left: '',
       top: '',
       right: '',
@@ -92,13 +94,15 @@ describe('ManualEditResizeOverlay', () => {
 
     const handle = getByTestId('manual-edit-resize-handle-e');
     fireEvent.pointerDown(handle, { pointerId: 2, clientX: 100, clientY: 100, buttons: 1 });
-    fireEvent.pointerMove(handle, { pointerId: 2, clientX: 140, clientY: 100, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 2, clientX: 140, clientY: 100, buttons: 1 });
     fireEvent.keyDown(window, { key: 'Escape' });
 
     expect(onResizeCancel).toHaveBeenCalledTimes(1);
     expect(onResizeCancel.mock.calls[0]?.[0]).toEqual({
       width: '200px',
       height: '100px',
+      maxWidth: '',
+      maxHeight: '',
       left: '',
       top: '',
       right: '',
@@ -134,7 +138,7 @@ describe('ManualEditResizeOverlay', () => {
 
     const handle = getByTestId('manual-edit-resize-handle-e');
     fireEvent.pointerDown(handle, { pointerId: 6, clientX: 100, clientY: 100, buttons: 1 });
-    fireEvent.pointerMove(handle, { pointerId: 6, clientX: 140, clientY: 100, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 6, clientX: 140, clientY: 100, buttons: 1 });
     fireEvent.keyDown(window, { key: 'Escape' });
 
     expect(onResizeCancel.mock.calls[0]?.[0]).toMatchObject({
@@ -163,7 +167,7 @@ describe('ManualEditResizeOverlay', () => {
 
     const handle = getByTestId('manual-edit-resize-handle-e');
     fireEvent.pointerDown(handle, { pointerId: 4, clientX: 100, clientY: 100, buttons: 1 });
-    fireEvent.pointerUp(handle, { pointerId: 4, clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(window, { pointerId: 4, clientX: 100, clientY: 100 });
     expect(onResizePreview).not.toHaveBeenCalled();
     expect(onResizeCommit).not.toHaveBeenCalled();
     expect(onResizeCancel).not.toHaveBeenCalled();
@@ -200,7 +204,7 @@ describe('ManualEditResizeOverlay', () => {
 
     // Drag W edge +40 content px → width 160, CB left 80, viewport x 200.
     fireEvent.pointerDown(handle, { pointerId: 5, clientX: 160, clientY: 200, buttons: 1 });
-    fireEvent.pointerMove(handle, { pointerId: 5, clientX: 200, clientY: 200, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 5, clientX: 200, clientY: 200, buttons: 1 });
     expect(overlay.style.left).toBe('200px');
     expect(overlay.style.top).toBe('180px');
   });
@@ -222,8 +226,12 @@ describe('ManualEditResizeOverlay', () => {
     const handle = getByTestId('manual-edit-resize-handle-e');
     // host +20px at scale 0.5 → content +40px
     fireEvent.pointerDown(handle, { pointerId: 3, clientX: 0, clientY: 0, buttons: 1 });
-    fireEvent.pointerMove(handle, { pointerId: 3, clientX: 20, clientY: 0, buttons: 1 });
-    expect(onResizePreview.mock.calls.at(-1)?.[0]).toEqual({ width: '240px', right: '' });
+    fireEvent.pointerMove(window, { pointerId: 3, clientX: 20, clientY: 0, buttons: 1 });
+    expect(onResizePreview.mock.calls.at(-1)?.[0]).toEqual({
+      width: '240px',
+      maxWidth: 'none',
+      right: '',
+    });
   });
 
   it('absolute body-drag overlay follows viewport delta when CB left ≠ rect.x', () => {
@@ -650,8 +658,8 @@ describe('ManualEditResizeOverlay', () => {
 
     const handle = getByTestId('manual-edit-resize-handle-se');
     fireEvent.pointerDown(handle, { pointerId: 15, clientX: 240, clientY: 160, buttons: 1 });
-    fireEvent.pointerMove(handle, { pointerId: 15, clientX: 260, clientY: 180, buttons: 1 });
-    fireEvent.pointerUp(handle, { pointerId: 15, clientX: 260, clientY: 180 });
+    fireEvent.pointerMove(window, { pointerId: 15, clientX: 260, clientY: 180, buttons: 1 });
+    fireEvent.pointerUp(window, { pointerId: 15, clientX: 260, clientY: 180 });
 
     expect(onResizePreview).toHaveBeenCalled();
     expect(onResizeCommit).toHaveBeenCalledTimes(1);

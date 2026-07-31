@@ -6707,7 +6707,24 @@ function HtmlViewer({
   function postSelectedManualEditTargetToIframe(id: string | null, target: HTMLIFrameElement | null = iframeRef.current) {
     const win = target?.contentWindow;
     if (!win) return;
-    win.postMessage({ type: 'od-edit-selected-target', id }, '*');
+    // Prefer render-state over the ref: the selection-sync effect can run
+    // before the ref-sync effect after setSelectedManualEditTarget.
+    const selected = (
+      id
+      && selectedManualEditTarget
+      && selectedManualEditTarget.id === id
+    )
+      ? selectedManualEditTarget
+      : (id && selectedManualEditTargetRef.current?.id === id
+        ? selectedManualEditTargetRef.current
+        : null);
+    // When the host resize overlay is active it owns the selection ring —
+    // tell the bridge to suppress the iframe outline (avoids double borders).
+    const hostChrome = Boolean(
+      selected
+      && canResizeTarget(selected, { inlineTextEditing: manualEditInlineTextEditing }),
+    );
+    win.postMessage({ type: 'od-edit-selected-target', id, hostChrome }, '*');
   }
 
   function requestManualEditTargetRemeasure(id: string, target: HTMLIFrameElement | null = iframeRef.current) {
@@ -7816,6 +7833,7 @@ function HtmlViewer({
     const base = sourceRef.current ?? '';
     const fields = readManualEditFields(base, target.id);
     selectedManualEditTargetIdRef.current = target.id;
+    selectedManualEditTargetRef.current = target;
     setSelectedManualEditTarget(target);
     setManualEditDraft({
       text: fields.text ?? target.fields.text ?? target.text,

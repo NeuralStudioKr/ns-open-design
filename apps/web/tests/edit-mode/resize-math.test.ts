@@ -214,9 +214,29 @@ describe('style helpers', () => {
       leftPx: null,
       topPx: null,
     });
-    expect(styles).toEqual({ width: '220px', right: '' });
+    expect(styles).toEqual({ width: '220px', maxWidth: 'none', right: '' });
     // Text/fontSize and other style keys must never ride along with a box resize.
-    expect(Object.keys(styles).sort()).toEqual(['right', 'width']);
+    expect(Object.keys(styles).sort()).toEqual(['maxWidth', 'right', 'width']);
+  });
+
+  it('lifts max-width/height clamps so responsive CSS cannot pin used size', () => {
+    expect(resizeResultToStyles({
+      widthPx: 240,
+      heightPx: 120,
+      x: 0,
+      y: 0,
+      touchedWidth: true,
+      touchedHeight: true,
+      leftPx: null,
+      topPx: null,
+    })).toEqual({
+      width: '240px',
+      height: '120px',
+      maxWidth: 'none',
+      maxHeight: 'none',
+      right: '',
+      bottom: '',
+    });
   });
 
   it('disables handles while inline text editing or edit mode is off', () => {
@@ -242,6 +262,7 @@ describe('style helpers', () => {
     expect(out.x).toBe(50);
     expect(resizeResultToStyles(out)).toEqual({
       width: '160px',
+      maxWidth: 'none',
       left: '140px',
       right: '',
     });
@@ -317,7 +338,7 @@ describe('resize-math staging compat', () => {
     );
     const result = computeResize({ ...start, dx: 20, dy: 0 });
     expect(result).toMatchObject({ widthPx: 120, heightPx: 50 });
-    expect(resizeStylesForCommit(result, 'e')).toEqual({ width: '120px' });
+    expect(resizeStylesForCommit(result, 'e')).toEqual({ width: '120px', maxWidth: 'none' });
   });
 
   it('keeps aspect ratio when locked on corner drag', () => {
