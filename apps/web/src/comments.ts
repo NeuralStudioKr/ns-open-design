@@ -744,6 +744,27 @@ export function trimHtmlHint(value: string): string {
   return text.length > 180 ? `${text.slice(0, 177)}...` : text;
 }
 
+/** Inline CSS for a visual-mark overlay box (preview-capture pixel coordinates). */
+export function formatVisualMarkPlacementStyle(
+  position: PreviewComment['position'],
+): string {
+  const pos = normalizePosition(position);
+  return `position:absolute;left:${pos.x}px;top:${pos.y}px;width:${Math.max(1, pos.width)}px;height:${Math.max(1, pos.height)}px`;
+}
+
+/** Model-facing placement rules for screenshot/drawing scoped edits. */
+export function visualMarkPlacementGuidance(
+  position: PreviewComment['position'],
+): string {
+  const pos = normalizePosition(position);
+  return [
+    'Preserve the current slide HTML from disk; do not redesign unrelated layout.',
+    `Place the requested icon/shape inside the marked box at x=${pos.x} y=${pos.y} ${pos.width}x${pos.height} (slide canvas pixels; Teamver decks are 1920×1080).`,
+    `Wrap the new markup in a container with style="${formatVisualMarkPlacementStyle(position)}" inside a position:relative slide root.`,
+    'Size the icon/SVG to fill that box (width/height 100% or matching px).',
+  ].join(' ');
+}
+
 export function renderCommentAttachmentContext(
   commentAttachments: ChatCommentAttachment[],
   options?: { includeQueryComments?: boolean },
@@ -791,6 +812,7 @@ export function renderCommentAttachmentContext(
         `screenshot: ${item.screenshotPath || '(missing)'}`,
         `markKind: ${item.markKind || 'stroke'}`,
         `intent: ${item.intent || visualAnnotationIntent(item.markKind || 'stroke')}`,
+        `placement: ${visualMarkPlacementGuidance(item.pagePosition)}`,
       );
       if (item.selector) lines.push(`selector: ${item.selector}`);
     } else {
@@ -923,11 +945,14 @@ export function buildConcreteDeckPatchTemplateForVisualMarks(
       continue;
     }
     const slideIndex = Math.floor(item.slideIndex);
+    const placementStyle = formatVisualMarkPlacementStyle(item.pagePosition);
     blocks.push(
       '<artifact type="deck-patch" identifier="deck">',
-      `  <section class="slide" data-slide-index="${slideIndex}">`,
-      '    <!-- Replace this entire slide section. Use the screenshot annotation for placement.',
-      '         For shapes/hearts, add inline SVG or appropriate markup inside the slide. -->',
+      `  <section class="slide" data-slide-index="${slideIndex}" style="position:relative">`,
+      '    <!-- COPY the existing slide HTML for this index from deck.html unchanged, then ADD: -->',
+      `    <div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center">`,
+      '      <!-- robot/icon/SVG sized to fill this box (100% width/height) -->',
+      '    </div>',
       '  </section>',
       '</artifact>',
     );

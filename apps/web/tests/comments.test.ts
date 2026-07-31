@@ -5,6 +5,8 @@ import {
   buildConcreteElementPatchTemplate,
   buildConcretePatchTemplatesForCommentAttachments,
   buildVisualAnnotationAttachment,
+  formatVisualMarkPlacementStyle,
+  visualMarkPlacementGuidance,
   chatAttachmentsFromPreviewCommentFiles,
   commentSnapshotOverlayEqual,
   commentVisibleOnDeckSlide,
@@ -855,6 +857,7 @@ describe('preview comment attachment helpers', () => {
     expect(elementPatchCoerceHintsFromCommentAttachments([visualOnly])).toEqual([]);
     expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('type="deck-patch"');
     expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('data-slide-index="1"');
+    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('left:10px;top:20px;width:100px;height:40px');
     expect(buildConcretePatchTemplatesForCommentAttachments([visualOnly])).toContain('type="deck-patch"');
 
     const visualWithRealTarget = buildVisualAnnotationAttachment({

@@ -6,6 +6,7 @@ import {
   useAuthenticatedProjectFileObjectUrl,
 } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { blobToImageDataUrl } from '../utils/imageBlobNormalize';
 
 type AuthenticatedProjectFileImageProps = {
   projectId: string;
@@ -23,21 +24,9 @@ type AuthenticatedProjectFileImageProps = {
   trustExists?: boolean;
 };
 
-async function blobToDataUrl(blob: Blob): Promise<string | null> {
-  if (typeof FileReader === 'undefined') return null;
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      resolve(typeof reader.result === 'string' ? reader.result : null);
-    };
-    reader.onerror = () => resolve(null);
-    reader.readAsDataURL(blob);
-  });
-}
-
 /**
  * Renders a project file image. In Teamver embed, fetches with daemon auth
- * headers and uses a blob URL so thumbnails/previews do not show broken alt text.
+ * headers and uses a data URL so thumbnails/previews do not show broken alt text.
  */
 export function AuthenticatedProjectFileImage({
   projectId,
@@ -68,7 +57,7 @@ export function AuthenticatedProjectFileImage({
         setReloadNonce((value) => value + 1);
         return;
       }
-      const dataUrl = await blobToDataUrl(blob);
+      const dataUrl = await blobToImageDataUrl(blob);
       if (dataUrl) {
         setFallbackDataUrl(dataUrl);
         return;
@@ -78,7 +67,9 @@ export function AuthenticatedProjectFileImage({
   }, [fallbackDataUrl, path, projectId, shouldFetch, trustExists]);
 
   if (!fetchEnabled) return null;
-  if (!src) return null;
+  if (!src) {
+    return <div className={`authenticated-project-file-image-loading${className ? ` ${className}` : ''}`} aria-hidden />;
+  }
   return (
     <img
       src={src}

@@ -1,16 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  useLayoutEffect,
-  type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MutableRefObject,
-  type PointerEvent as ReactPointerEvent,
-} from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useLayoutEffect, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence } from 'motion/react';
 import { createArtifactManifest, inferLegacyManifest } from '../artifacts/manifest';
 import type { ArtifactManifest } from '../artifacts/types';
@@ -11289,7 +11278,7 @@ export function ProjectView({
         />
       ) : null}
       <AnimatePresence>
-        {projectActionsToast ? (
+        {projectActionsToast && typeof document !== 'undefined' ? createPortal(
           <Toast
             message={projectActionsToast.message}
             details={projectActionsToast.details}
@@ -11297,9 +11286,11 @@ export function ProjectView({
             actionLabel={projectActionsToast.actionLabel}
             onAction={projectActionsToast.onAction}
             tone={projectActionsToast.actionLabel ? 'success' : 'default'}
+            layout={projectActionsToast.actionLabel ? 'compact' : 'default'}
             ttlMs={projectActionsToast.actionLabel ? 8000 : undefined}
             onDismiss={() => setProjectActionsToast(null)}
-          />
+          />,
+          document.body,
         ) : null}
       </AnimatePresence>
     </div>
