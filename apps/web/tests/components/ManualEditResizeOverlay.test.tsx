@@ -29,6 +29,24 @@ function target(over: Partial<ManualEditTarget> = {}): ManualEditTarget {
 }
 
 describe('ManualEditResizeOverlay', () => {
+  it('applies hostOffset so the overlay tracks a non-origin iframe', () => {
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({ rect: { x: 40, y: 60, width: 200, height: 100 } })}
+        previewScale={1}
+        hostOffset={{ x: 24, y: 16 }}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+      />,
+    );
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    expect(overlay.style.left).toBe('64px');
+    expect(overlay.style.top).toBe('76px');
+  });
+
   it('keeps resize handles pointer-hit even when interaction is gated', () => {
     const { getByTestId } = render(
       <ManualEditResizeOverlay

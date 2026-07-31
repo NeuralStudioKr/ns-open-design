@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from 'vitest';
-import { applyManualEditPreviewStylesToDocument } from '../../src/edit-mode/manual-edit-host-preview';
+import {
+  applyManualEditPreviewStylesToDocument,
+  measureManualEditTargetContentRect,
+} from '../../src/edit-mode/manual-edit-host-preview';
 
 function makeDoc(html: string): Document {
   const doc = document.implementation.createHTMLDocument('preview');
@@ -64,5 +67,26 @@ describe('manual edit host preview fallback', () => {
 
     expect(ok).toBe(true);
     expect(el.style.getPropertyValue('font-size')).toBe('28px');
+  });
+
+  it('measures selected target content rects from the iframe document', () => {
+    const frame = document.createElement('iframe');
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument!;
+    doc.body.innerHTML = '<div data-od-id="card">Card</div>';
+    const el = doc.querySelector('[data-od-id="card"]') as HTMLElement;
+    el.getBoundingClientRect = () => ({
+      x: 12, y: 24, width: 160, height: 80,
+      top: 24, left: 12, right: 172, bottom: 104,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+    expect(measureManualEditTargetContentRect(frame, 'card')).toEqual({
+      x: 12,
+      y: 24,
+      width: 160,
+      height: 80,
+    });
+    frame.remove();
   });
 });

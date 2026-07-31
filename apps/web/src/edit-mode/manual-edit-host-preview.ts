@@ -22,7 +22,7 @@ function cssEscape(value: string): string {
   return value.replace(/"/g, '\\"');
 }
 
-function findManualEditPreviewTarget(doc: Document, id: string): HTMLElement | null {
+export function findManualEditPreviewTarget(doc: Document, id: string): HTMLElement | null {
   if (!id) return null;
   if (id === '__body__') return doc.body as HTMLElement | null;
   const escaped = cssEscape(id);
@@ -89,4 +89,27 @@ export function iframeContentDocumentIfAccessible(
   } catch {
     return null;
   }
+}
+
+/**
+ * Live border-box of a manual-edit target in iframe content coordinates
+ * (`getBoundingClientRect` inside the frame). Used to keep host overlay /
+ * target.rect aligned with the painted element after layout settles.
+ */
+export function measureManualEditTargetContentRect(
+  frame: HTMLIFrameElement | null,
+  id: string,
+): { x: number; y: number; width: number; height: number } | null {
+  const doc = iframeContentDocumentIfAccessible(frame);
+  if (!doc || !id) return null;
+  const el = findManualEditPreviewTarget(doc, id);
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  if (!(rect.width >= 0) || !(rect.height >= 0)) return null;
+  return {
+    x: Math.round(rect.x),
+    y: Math.round(rect.y),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+  };
 }
