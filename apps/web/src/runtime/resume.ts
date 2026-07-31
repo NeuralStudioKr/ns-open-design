@@ -112,11 +112,17 @@ export const AUTO_CONTINUE_MAX_PER_CONVERSATION = 3;
 /** Scoped preview-comment edits salvage client-side first — two auto retries max. */
 export const AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT = 2;
 
+/** Visual-mark scoped edits (no DOM target id) get one extra retry. */
+export const AUTO_CONTINUE_MAX_SCOPED_VISUAL_MARK_EDIT = 3;
+
 export function resolveAutoContinueMaxAttempts(options: {
   scopedCommentAttachmentCount: number;
+  visualMarkOnly?: boolean;
 }): number {
   if (options.scopedCommentAttachmentCount > 0) {
-    return AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT;
+    return options.visualMarkOnly
+      ? AUTO_CONTINUE_MAX_SCOPED_VISUAL_MARK_EDIT
+      : AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT;
   }
   return AUTO_CONTINUE_MAX_PER_CONVERSATION;
 }
@@ -442,7 +448,7 @@ function buildAutoContinueVisualMarkEditPrompt(
     '</artifact>',
     '',
     '- `data-slide-index`는 `<attached-preview-comments>`의 slideIndex와 정확히 일치해야 합니다.',
-    '- element-patch / target-id 사용 금지 (시각 마크에는 DOM element id가 없습니다).',
+    '- target-id 기반 패치 사용 금지 (시각 마크에는 DOM element id가 없습니다).',
     '- 빈 `<artifact type="deck-patch">` 또는 slide section 없는 wrapper는 금지.',
     '',
     '(English: visual-mark scoped edit — emit ONE non-empty deck-patch with a single slide section; use the screenshot annotation for placement.)',

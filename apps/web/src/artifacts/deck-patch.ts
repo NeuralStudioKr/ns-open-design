@@ -96,13 +96,53 @@ export interface ParseDeckPatchOptions {
  *   1. identity attrs (`data-screen-label` / `data-od-id`) against `currentHtml`
  *   2. a single `fallbackSlideIndexes` entry from the attached comment scope
  */
+const DECK_PATCH_MISSING_SLIDE_SECTIONS =
+  'no <section class="slide"> blocks in deck-patch body';
+
+/**
+ * Visual-mark / drawing edits often emit raw SVG or div markup inside a
+ * deck-patch artifact without wrapping it in `<section class="slide">`.
+ * When the run has exactly one scoped slide index, wrap the inner HTML so
+ * persist can merge instead of burning an auto-continue slot.
+ */
+export function salvageDeckPatchBodyMissingSlideWrapper(
+  body: string,
+  options: ParseDeckPatchOptions = {},
+): string | null {
+  const trimmed = String(body ?? '').trim();
+  if (!trimmed) return null;
+  if (extractTopLevelSlideSections(trimmed).length > 0) return null;
+  if (/<patch\b/i.test(trimmed)) return null;
+
+  const fallbacks = [...new Set(
+    (options.fallbackSlideIndexes ?? [])
+      .filter((index) => Number.isInteger(index) && index >= 0)
+      .map((index) => Math.floor(index)),
+  )];
+  if (fallbacks.length !== 1) return null;
+
+  const inner = trimmed
+    .replace(/^<artifact\b[^>]*>/i, '')
+    .replace(/<\/artifact>\s*$/i, '')
+    .trim();
+  if (!inner || inner.length < 4) return null;
+  if (!/<[a-z!?]/i.test(inner)) return null;
+
+  const slideIndex = fallbacks[0]!;
+  return [
+    `<section class="slide" data-slide-index="${slideIndex}">`,
+    inner,
+    '</section>',
+  ].join('\n');
+}
+
 export function parseDeckPatch(
   body: string,
   options: ParseDeckPatchOptions = {},
 ): ParseDeckPatchResult | ParseDeckPatchFailure {
   const sections = extractTopLevelSlideSections(body);
   if (sections.length === 0) {
-    return { ok: false, reason: 'no <section class="slide"> blocks in deck-patch body' };
+    return { ok: false, reason: DECK_PATCH_MISSING_SLIDE_SECTIONS };
   }
   const ops: DeckPatchSectionOp[] = [];
   for (const section of sections) {
@@ -130,6 +170,19 @@ export function parseDeckPatch(
     });
   }
   return { ok: true, patch: { ops } };
+}
+
+export function parseDeckPatchWithSalvage(
+  body: string,
+  options: ParseDeckPatchOptions = {},
+): ParseDeckPatchResult | ParseDeckPatchFailure {
+  const direct = parseDeckPatch(body, options);
+  if (direct.ok) return direct;
+  if (direct.reason !== DECK_PATCH_MISSING_SLIDE_SECTIONS) return direct;
+  const salvagedBody = salvageDeckPatchBodyMissingSlideWrapper(body, options);
+  if (!salvagedBody) return direct;
+  const salvaged = parseDeckPatch(salvagedBody, options);
+  return salvaged.ok ? salvaged : direct;
 }
 
 export interface ApplyDeckPatchOptions {
