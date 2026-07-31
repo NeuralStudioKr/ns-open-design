@@ -78,4 +78,42 @@ describe('message-upsert-merge', () => {
     const incoming = { id: 'a', content: 'x', runStatus: 'failed' };
     expect(mergeMessageUpsertPayload(existing, incoming).events).toEqual(existing.events);
   });
+
+  it('keeps durable errors when a late append snapshot races ahead of an error upsert', () => {
+    // appendMessageAgentEvent scheduled write A (text only) after client PUT B
+    // already persisted status:error on PG — merge must keep the error.
+    const pgDurable = {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'hello',
+      runStatus: 'failed',
+      events: [
+        { kind: 'text', text: 'hello' },
+        {
+          kind: 'status',
+          label: 'error',
+          detail: '요청을 처리하지 못했습니다. 내용을 확인한 뒤 다시 시도하세요.',
+          code: 'BAD_REQUEST',
+        },
+      ],
+    };
+    const lateAppendSnapshot = {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'hello world',
+      runStatus: 'running',
+      events: [
+        { kind: 'text', text: 'hello' },
+        { kind: 'text', text: ' world' },
+      ],
+    };
+    const durable = mergeMessageUpsertPayload(pgDurable, lateAppendSnapshot);
+    expect(durable.runStatus).toBe('failed');
+    expect(durable.events?.some((event) =>
+      event
+      && typeof event === 'object'
+      && (event as { label?: string }).label === 'error'
+      && (event as { code?: string }).code === 'BAD_REQUEST',
+    )).toBe(true);
+  });
 });

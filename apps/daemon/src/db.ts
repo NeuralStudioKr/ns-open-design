@@ -1900,54 +1900,13 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
     const conversation = getCachedConversationById(conversationId);
     if (conversation?.projectId) invalidateCachedConversations(String(conversation.projectId));
     schedulePostgresWrite(async () => {
-      const pool = getPostgresPool();
-      const pgRow = await pgCore.pgGetMessage(pool, String(m.id));
-      const pgExisting = pgRow ? normalizeMessage(pgRow) : undefined;
       // Merge the *incoming* client payload against durable Postgres — not the
-      // cache-merged snapshot. Cache miss/stale would otherwise wipe status:error
-      // cards that hard re-entry needs after refresh.
-      const durable = mergeMessageUpsertPayload(pgExisting, m);
-      await pgCore.pgUpsertMessage(pool, conversationId, durable);
-      const durableNormalized = normalizeMessage({
-        id: durable.id,
-        role: durable.role,
-        content: durable.content,
-        agentId: durable.agentId ?? null,
-        agentName: durable.agentName ?? null,
-        runId: durable.runId ?? null,
-        runStatus: durable.runStatus ?? null,
-        lastRunEventId: durable.lastRunEventId ?? null,
-        eventsJson: durable.events ? JSON.stringify(durable.events) : null,
-        attachmentsJson: durable.attachments ? JSON.stringify(durable.attachments) : null,
-        commentAttachmentsJson: durable.commentAttachments
-          ? JSON.stringify(durable.commentAttachments)
-          : null,
-        producedFilesJson: durable.producedFiles ? JSON.stringify(durable.producedFiles) : null,
-        feedbackJson: durable.feedback ? JSON.stringify(durable.feedback) : null,
-        preTurnFileNamesJson: durable.preTurnFileNames
-          ? JSON.stringify(durable.preTurnFileNames)
-          : null,
-        sessionMode: durable.sessionMode ?? null,
-        runContextJson: durable.runContext ? JSON.stringify(durable.runContext) : null,
-        appliedPluginSnapshotJson: durable.appliedPluginSnapshot
-          ? JSON.stringify(durable.appliedPluginSnapshot)
-          : null,
-        createdAt: durable.createdAt ?? now,
-        startedAt: durable.startedAt ?? null,
-        endedAt: durable.endedAt ?? null,
-        position: pgRow && typeof pgRow.position === 'number' ? pgRow.position : position,
-      });
-      const latestCache = getCachedMessages(conversationId) ?? [];
-      const idx = latestCache.findIndex((row) => row.id === durableNormalized.id);
-      if (idx >= 0) {
-        updateCachedMessage(conversationId, idx, durableNormalized);
-      } else {
-        setCachedMessages(conversationId, [...latestCache, durableNormalized]);
-      }
+      // cache-merged snapshot. Cache miss/stale would otherwise wipe status:error.
+      await upsertMessageRowToPostgresMerged(conversationId, m);
       // Only touch conversation row when it is already in cache — otherwise
       // we'd overwrite title with null on cold paths (insertConversation race).
       if (conversation) {
-        await pgCore.pgUpdateConversation(pool, conversationId, {
+        await pgCore.pgUpdateConversation(getPostgresPool(), conversationId, {
           title: conversation.title ?? null,
           sessionMode: conversation.sessionMode ?? 'design',
           updatedAt: now,
@@ -2136,8 +2095,12 @@ export function appendMessageStatusEvent(db: SqliteDb, messageId: string, event:
     const next = [...events, nextEvent];
     const merged = { ...hit.message, events: next };
     updateCachedMessage(hit.conversationId, hit.index, merged);
+    const conversationId = hit.conversationId;
+    const incoming = messageRowForPgUpsert(messageId, merged, next);
     schedulePostgresWrite(async () => {
-      await pgCore.pgUpsertMessage(getPostgresPool(), hit.conversationId, messageRowForPgUpsert(messageId, merged, next));
+      // Merge against durable PG at write time — a cache snapshot scheduled
+      // before a concurrent error upsert must not overwrite status:error.
+      await upsertMessageRowToPostgresMerged(conversationId, incoming);
     });
     return next;
   }
@@ -2177,8 +2140,10 @@ export function appendMessageAgentEvent(db: SqliteDb, messageId: string, event: 
     const content = String(hit.message.content ?? '') + textDelta;
     const merged = { ...hit.message, content, events: next };
     updateCachedMessage(hit.conversationId, hit.index, merged);
+    const conversationId = hit.conversationId;
+    const incoming = messageRowForPgUpsert(messageId, merged, next);
     schedulePostgresWrite(async () => {
-      await pgCore.pgUpsertMessage(getPostgresPool(), hit.conversationId, messageRowForPgUpsert(messageId, merged, next));
+      await upsertMessageRowToPostgresMerged(conversationId, incoming);
     });
     return next;
   }
@@ -3036,6 +3001,60 @@ function messageRowForPgUpsert(messageId: string, merged: DbRow, events: DbRow[]
     startedAt: merged.startedAt,
     endedAt: merged.endedAt,
   };
+}
+
+/**
+ * Durable Postgres write for append/upsert helpers that only hold a cache
+ * snapshot. Always re-read PG and merge so a stale scheduled write cannot
+ * erase status:error cards persisted by a concurrent client PUT.
+ */
+async function upsertMessageRowToPostgresMerged(
+  conversationId: string,
+  incoming: DbRow,
+): Promise<DbRow> {
+  const pool = getPostgresPool();
+  const pgRow = await pgCore.pgGetMessage(pool, String(incoming.id));
+  const pgExisting = pgRow ? normalizeMessage(pgRow) : undefined;
+  const durable = mergeMessageUpsertPayload(pgExisting, incoming);
+  await pgCore.pgUpsertMessage(pool, conversationId, durable);
+  const now = Date.now();
+  const durableNormalized = normalizeMessage({
+    id: durable.id,
+    role: durable.role,
+    content: durable.content,
+    agentId: durable.agentId ?? null,
+    agentName: durable.agentName ?? null,
+    runId: durable.runId ?? null,
+    runStatus: durable.runStatus ?? null,
+    lastRunEventId: durable.lastRunEventId ?? null,
+    eventsJson: durable.events ? JSON.stringify(durable.events) : null,
+    attachmentsJson: durable.attachments ? JSON.stringify(durable.attachments) : null,
+    commentAttachmentsJson: durable.commentAttachments
+      ? JSON.stringify(durable.commentAttachments)
+      : null,
+    producedFilesJson: durable.producedFiles ? JSON.stringify(durable.producedFiles) : null,
+    feedbackJson: durable.feedback ? JSON.stringify(durable.feedback) : null,
+    preTurnFileNamesJson: durable.preTurnFileNames
+      ? JSON.stringify(durable.preTurnFileNames)
+      : null,
+    sessionMode: durable.sessionMode ?? null,
+    runContextJson: durable.runContext ? JSON.stringify(durable.runContext) : null,
+    appliedPluginSnapshotJson: durable.appliedPluginSnapshot
+      ? JSON.stringify(durable.appliedPluginSnapshot)
+      : null,
+    createdAt: durable.createdAt ?? (pgRow?.createdAt as number | undefined) ?? now,
+    startedAt: durable.startedAt ?? null,
+    endedAt: durable.endedAt ?? null,
+    position: pgRow && typeof pgRow.position === 'number' ? pgRow.position : 0,
+  });
+  const latestCache = getCachedMessages(conversationId) ?? [];
+  const idx = latestCache.findIndex((row) => row.id === durableNormalized.id);
+  if (idx >= 0) {
+    updateCachedMessage(conversationId, idx, durableNormalized);
+  } else {
+    setCachedMessages(conversationId, [...latestCache, durableNormalized]);
+  }
+  return durableNormalized;
 }
 
 export function updateRoutineRun(db: SqliteDb, id: string, patch: DbRow) {

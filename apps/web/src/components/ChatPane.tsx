@@ -49,6 +49,7 @@ import { AssistantMessage, type QuestionFormOpenRequest } from './AssistantMessa
 import { PinnedNextStepSlot } from './PinnedNextStepSlot';
 import { AmrGuidance } from './AmrGuidance';
 import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-guidance';
+import { formatProjectRunErrorForUser } from '../teamver/projectErrorMessages';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
 import { resolveLastAssistantMessageId } from '../runtime/conversation-message-dedupe';
 import {
@@ -972,9 +973,20 @@ export function ChatPane({
     retryAssistant.agentId === config?.agentId &&
     !autoContinueScheduled;
   // Prefer a case-specific message (AMR auth / balance) over the raw upstream
-  // string. Historical persisted run errors render at their owning assistant
-  // turn inside ChatRows, so they must not also fall through to this tail card.
-  const rawError = error ?? failedRunErrorEvent?.detail ?? null;
+  // string. After hard reload, ephemeral `error` is null — rebuild from the
+  // durable status:error event. If the row is failed but the event was lost
+  // (legacy / race), still show a Retry dock with a fallback detail so the
+  // user is not left with a silent failed turn.
+  const rawError = error
+    ?? failedRunErrorEvent?.detail
+    ?? (retryAssistant && !autoContinueScheduled
+      ? (diagnosticRunErrorEvent?.detail
+        ?? formatProjectRunErrorForUser(
+          Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+            code: 'AGENT_EXECUTION_FAILED',
+          }),
+        ))
+      : null);
   const displayError = runFailureUi?.messageKey ? t(runFailureUi.messageKey) : rawError;
   const errorDiagnosticText = displayError
     ? buildRunErrorDiagnosticText({
@@ -2482,24 +2494,35 @@ function ChatRows({
         detail?: string;
         code?: string;
       } | null = null;
+      let latestAnyError: typeof errorEvent = null;
       for (let i = evs.length - 1; i >= 0; i -= 1) {
         const ev = evs[i];
-        if (
-          ev?.kind === 'status'
-          && ev.label === 'error'
-          && ev.code !== AUTO_CONTINUE_STATUS_CODE
-        ) {
+        if (ev?.kind !== 'status' || ev.label !== 'error') continue;
+        if (!latestAnyError) latestAnyError = ev;
+        if (ev.code !== AUTO_CONTINUE_STATUS_CODE) {
           errorEvent = ev;
           break;
         }
       }
-      if (!errorEvent?.detail) continue;
+      // Transient auto-continue notice must not become a past error card.
+      if (!errorEvent && latestAnyError?.code === AUTO_CONTINUE_STATUS_CODE) {
+        continue;
+      }
+      // Legacy / race rows may be failed without a durable status:error —
+      // still show an inline card so hard reload does not hide the failure.
+      const detail = errorEvent?.detail?.trim()
+        || formatProjectRunErrorForUser(
+          Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+            code: 'AGENT_EXECUTION_FAILED',
+          }),
+        );
+      const errorCode = errorEvent?.code ?? 'AGENT_EXECUTION_FAILED';
       cards.set(message.id, {
-        message: errorEvent.detail,
+        message: detail,
         diagnosticText: buildRunErrorDiagnosticText({
-          message: errorEvent.detail,
-          rawMessage: errorEvent.detail,
-          errorCode: errorEvent.code,
+          message: detail,
+          rawMessage: detail,
+          errorCode,
           traceId: message.runId,
           runId: message.runId,
           projectId,

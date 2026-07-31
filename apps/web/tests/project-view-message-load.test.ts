@@ -859,4 +859,15 @@ describe("ProjectView message loading", () => {
     expect(loadStart).toBeGreaterThan(0);
     expect(source.slice(loadStart, loadStart + 2200)).toContain("setError(null)");
   });
+
+  it("delays soft-refresh on failed runs so durable status:error can win merge races", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    // Main chat path and reattach path both delay failed soft-refresh.
+    expect(source).toMatch(
+      /runStatus === 'failed'[\s\S]{0,200}window\.setTimeout\(\(\) => \{[\s\S]{0,120}scheduleConversationMessageRefresh/,
+    );
+    expect(source).toContain("applyTerminalRunStatusToAssistant");
+    expect(source).toContain("attachPersistedChatError(prev, detail, errorCode)");
+    expect(source).toContain("attachPersistedChatError(prev, msg, errorCode)");
+  });
 });

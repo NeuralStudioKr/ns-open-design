@@ -393,6 +393,7 @@ import {
   shouldForceFailStaleDaemonRun,
   shouldPollStaleApiRun,
   shouldForceFailStaleApiRun,
+  applyTerminalRunStatusToAssistant,
   patchStaleApiAssistantFailure,
   TEAMVER_STALE_API_RUN_POLL_MS,
   shouldClearPhantomStreamingMarker,
@@ -5261,21 +5262,6 @@ export function ProjectView({
     [updateMessageById, activeConversationId, project.id],
   );
 
-  // `code` is the structured API error code (e.g. AGENT_AUTH_REQUIRED); it
-  // rides along on the error status event so AssistantMessage can render the
-  // hosted-AMR nudge for model/auth/quota failures on non-AMR agents.
-  const appendAssistantErrorEvent = useCallback(
-    (messageId: string, message: string, code?: string) => {
-      if (!message) return;
-      updateMessageById(
-        messageId,
-        (prev) => appendErrorStatusEvent(prev, message, code),
-        true,
-      );
-    },
-    [updateMessageById],
-  );
-
   const auditDesignSystemWorkspaceAfterRun = useCallback(
     async (assistantMessageId: string) => {
       if (!isDesignSystemWorkspaceMetadata(project.metadata)) return;
@@ -5459,7 +5445,11 @@ export function ProjectView({
         if (status) {
           const patch = terminalAssistantPatchFromRunStatus(status);
           if (patch) {
-            updateMessageById(message.id, (prev) => ({ ...prev, ...patch }), true);
+            updateMessageById(
+              message.id,
+              (prev) => applyTerminalRunStatusToAssistant(prev, status),
+              true,
+            );
             clearStreamingMarker(activeConversationId);
             scheduleConversationMessageRefresh(activeConversationId);
             continue;
@@ -5469,10 +5459,9 @@ export function ProjectView({
           updateMessageById(
             message.id,
             (prev) =>
-              appendErrorStatusEvent(
+              attachPersistedChatError(
                 {
                   ...prev,
-                  runStatus: 'failed',
                   endedAt: prev.endedAt ?? Date.now(),
                 },
                 formatProjectRunErrorForUser(
@@ -5715,13 +5704,23 @@ export function ProjectView({
             scheduleReattachRetry(message.id, null);
             continue;
           }
+          // Phantom running row with no runId — must persist a durable
+          // status:error so hard reload can rebuild the Retry panel.
           updateMessageById(
             message.id,
-            (prev) => ({
-              ...prev,
-              runStatus: 'failed',
-              endedAt: prev.endedAt ?? Date.now(),
-            }),
+            (prev) =>
+              attachPersistedChatError(
+                {
+                  ...prev,
+                  endedAt: prev.endedAt ?? Date.now(),
+                },
+                formatProjectRunErrorForUser(
+                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                    code: 'AGENT_EXECUTION_FAILED',
+                  }),
+                ),
+                'AGENT_EXECUTION_FAILED',
+              ),
             true,
           );
           continue;
@@ -6235,17 +6234,19 @@ export function ProjectView({
               textBuffer.cancel();
               unregisterTextBuffer();
               if (runMayFinalize) {
-                setError(formatProjectRunErrorForUser(err));
-                appendAssistantErrorEvent(message.id, formatProjectRunErrorForUser(err), errorCode);
+                const detail = formatProjectRunErrorForUser(err);
+                setError(detail);
+                // Single persist: durable status:error + failed (+ resumable).
+                // Do not call persistNow afterward — that can race a second
+                // PUT from a pre-error snapshot before messagesRef syncs.
                 updateMessageById(
                   message.id,
                   (prev) => ({
-                    ...prev,
-                    runStatus: 'failed',
-                    endedAt: prev.endedAt ?? Date.now(),
+                    ...attachPersistedChatError(prev, detail, errorCode),
                     resumable,
                   }),
                   true,
+                  { telemetryFinalized: true },
                 );
               }
               completedReattachRunsRef.current.add(runId);
@@ -6253,7 +6254,6 @@ export function ProjectView({
               reattachCancelControllersRef.current.delete(runId);
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
               finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
-              persistNow({ telemetryFinalized: true });
             },
           },
           onRunStatus: (runStatus) => {
@@ -6278,15 +6278,29 @@ export function ProjectView({
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
             }
             if (isTerminalRunStatus(runStatus)) {
-              persistNow(
-                runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
-              );
+              if (runStatus === 'failed') {
+                // Let onError attach status:error before the terminal persist.
+                persistSoon();
+              } else {
+                persistNow(
+                  runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
+                );
+              }
             } else {
               persistSoon();
             }
             if (isTerminalRunStatus(runStatus)) {
               finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
-              scheduleConversationMessageRefresh(reattachConversationId);
+              // Delay soft-refresh on failed so onError's durable error wins
+              // the merge race (symmetric with the main chat path).
+              if (runStatus === 'failed') {
+                window.setTimeout(() => {
+                  if (cancelled) return;
+                  scheduleConversationMessageRefresh(reattachConversationId);
+                }, 500);
+              } else {
+                scheduleConversationMessageRefresh(reattachConversationId);
+              }
             }
           },
           onRunEventId: (lastRunEventId) => {
@@ -6306,13 +6320,10 @@ export function ProjectView({
               const resumable = (err as Error & { resumable?: boolean }).resumable === true;
               const msg = formatProjectRunErrorForUser(err);
               setError(msg);
-              appendAssistantErrorEvent(message.id, msg, errorCode);
               updateMessageById(
                 message.id,
                 (prev) => ({
-                  ...prev,
-                  runStatus: 'failed',
-                  endedAt: prev.endedAt ?? Date.now(),
+                  ...attachPersistedChatError(prev, msg, errorCode),
                   resumable,
                 }),
                 true,
@@ -8466,14 +8477,16 @@ export function ProjectView({
           releaseOwnTextBuffer();
           let finalizedAssistant = latestAssistantMsg;
           if (runMayFinalize) {
-            if (runIsVisible()) setError(formatProjectRunErrorForUser(err));
+            const detail = formatProjectRunErrorForUser(err);
+            if (runIsVisible()) setError(detail);
             updateAssistant((prev) => {
+              const withError = attachPersistedChatError(prev, detail, errorCode);
               finalizedAssistant = {
-                ...appendErrorStatusEvent(prev, formatProjectRunErrorForUser(err), errorCode),
-                endedAt,
+                ...withError,
+                endedAt: withError.endedAt ?? endedAt,
                 runStatus: config.mode === 'api' || prev.runId || isActiveRunStatus(prev.runStatus)
                   ? 'failed'
-                  : prev.runStatus,
+                  : withError.runStatus,
                 resumable,
               };
               return finalizedAssistant;
@@ -8612,9 +8625,16 @@ export function ProjectView({
               textBuffer.finalizeForHistoryDisplay?.();
             }
             if (isTerminalRunStatus(runStatus) && !deferredTerminalSuccess) {
-              assistantPersist.persistNow(
-                runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
-              );
+              if (runStatus === 'failed') {
+                // Prefer onError's attachPersistedChatError + save to land first.
+                // A premature persistNow of failed-without-error races soft refresh
+                // and hard-reload windows before the status:error event exists.
+                assistantPersist.persistSoon();
+              } else {
+                assistantPersist.persistNow(
+                  runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
+                );
+              }
             } else {
               assistantPersist.persistSoon();
             }
@@ -8623,7 +8643,13 @@ export function ProjectView({
             }
             if (isTerminalRunStatus(runStatus)) {
               clearCurrentRunStreamingMarker(runConversationId, controller, cancelController);
-              scheduleConversationMessageRefresh(runConversationId);
+              if (runStatus === 'failed') {
+                window.setTimeout(() => {
+                  scheduleConversationMessageRefresh(runConversationId);
+                }, 500);
+              } else {
+                scheduleConversationMessageRefresh(runConversationId);
+              }
             }
           },
           onRunEventId: (lastRunEventId) => {
