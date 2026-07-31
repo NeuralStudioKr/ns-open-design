@@ -486,7 +486,8 @@ staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으�
 
 - ✅ route/render service split — async job/worker가 HTTP route 없이 동일 render 함수를 호출할 수 있는 진입점 확보
 - ✅ async job API skeleton — `OD_EXPORT_ASYNC_JOBS_ENABLED=1`일 때 daemon in-memory job store + `POST/GET /export/jobs` 계약 제공
-- FileViewer UX (poll/SSE + ready download)
+- ✅ FE async job polling opt-in — `VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED=1`일 때 PDF/PPTX/HTML/ZIP 다운로드가 `/export/jobs`를 먼저 사용하고, 서버 disabled 시 기존 sync ticket 경로로 fallback
+- FileViewer UX polish (visible background progress dialog/SSE)
 - dedicated export worker (Chromium isolate)
 - deck slide count soft cap + “대형 deck은 PDF만” UX
 
@@ -554,6 +555,7 @@ staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으�
 | `OD_EXPORT_ASYNC_JOBS_ENABLED` | `0` → 실험 시 `1` | `0` | Phase 3 async export job API flag (`/export/jobs`) |
 | `OD_EXPORT_JOB_TTL_SEC` | `900` | `900` | in-memory async job status TTL (60~86400 clamp) |
 | `OD_EXPORT_JOB_MAX_ENTRIES` | `128` | `128` | daemon process당 job status 상한 (8~1024 clamp) |
+| `VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED` | `0` → 실험 시 `1` | `0` | FE가 PDF/PPTX/HTML/ZIP 다운로드에서 async job API를 우선 사용 |
 | `OD_EXPORT_CACHE_ENABLED` | `1` (Phase 1 후) | **`1`** | S3 artifact cache |
 | `OD_EXPORT_CACHE_TTL_SEC` | `604800` | `604800` | exports/ lifecycle hint |
 | `OD_EXPORT_OFFLOAD_ENABLED` | `1` (staging 검증) | `0` → 안정화 후 `1` | presigned GET/offload rollout flag |
@@ -992,6 +994,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-31 | FE async export job opt-in 연결 — `VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED=1`이면 PDF/PPTX/HTML/ZIP 다운로드가 `/export/jobs` 생성 → status polling → ready ticket download를 사용. daemon이 `EXPORT_JOBS_DISABLED`를 반환하면 기존 sync `/export/{format}` ticket 경로로 자동 fallback해 배포 flag 불일치 시에도 사용자 다운로드가 막히지 않도록 함 |
 | 2026-07-31 | Async export job API 스켈레톤 추가 — `OD_EXPORT_ASYNC_JOBS_ENABLED=1`일 때 `POST /api/projects/:id/export/jobs`가 202 job을 만들고 background에서 `export-render-service`를 실행, `GET /api/projects/:id/export/jobs/:jobId`가 queued/running/ready/failed와 ticket `downloadUrl`을 반환. 기본 off로 배포 리스크를 낮추고, in-memory TTL/max entry guard로 daemon 누적 부하를 제한 |
 | 2026-07-31 | Export 모듈 분리 착수 — PDF/image/PPTX/HTML/ZIP rendered export 생성·cache descriptor 구성을 `export-render-service.ts`로 분리. `import-export-routes.ts`는 검증·ticket/offload 응답만 담당하도록 축소해 Phase 3 async job/dedicated worker가 route를 거치지 않고 같은 render 함수를 재사용할 수 있게 준비. desktop PDF exporter 예외 경로는 기존 호환을 위해 route에 유지하고, non-desktop PDF의 중복 입력 생성을 제거 |
 | 2026-07-31 | Export presigned GET 테스트 계약 갱신 — 한글/비ASCII 파일명 S3 `SignatureDoesNotMatch` 방지를 위해 presign query에는 `response-content-*`를 싣지 않고, PUT 시 저장된 object metadata(Content-Disposition/Type)를 다운로드 계약으로 사용함을 테스트에 반영 |

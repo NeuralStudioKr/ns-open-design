@@ -24,6 +24,7 @@ import {
 } from '@open-design/host';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { readTeamverViteEnv } from '../teamver/teamverViteEnv';
 import { refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
 import { formatTeamverEmbedAuthRequiredMessage, formatTeamverEmbedOperationFailureMessage } from '../teamver/teamverBffAuthError';
 import { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
@@ -90,6 +91,25 @@ type ExportTicketResponse = {
   expiresAt?: string;
 };
 
+type AsyncExportFormat = 'pdf' | 'html' | 'zip' | 'pptx';
+
+type AsyncExportJobResponse = {
+  jobId: string;
+  status: 'queued' | 'running' | 'ready' | 'failed';
+  statusUrl: string;
+  downloadUrl?: string;
+  filename?: string;
+  mime?: string;
+  bytes?: number;
+  deliveryMode?: 'stream' | 'redirect';
+  error?: { code?: string; message?: string };
+};
+
+function isAsyncExportJobsEnabled(): boolean {
+  const flag = readTeamverViteEnv('VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED')?.toLowerCase();
+  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
+}
+
 export class ExportQueueFullError extends Error {
   readonly code = 'EXPORT_QUEUE_FULL';
 
@@ -144,6 +164,112 @@ async function triggerExportTicketDownload(resp: Response, fallbackTitle: string
     blob,
     ticket.filename || `${safeFilename(fallbackTitle, 'artifact')}.${extension}`,
   );
+}
+
+async function triggerAsyncExportJobDownload(
+  job: AsyncExportJobResponse,
+  fallbackTitle: string,
+  extension: string,
+): Promise<void> {
+  if (typeof job.downloadUrl !== 'string' || !job.downloadUrl) {
+    throw new Error('async export job is ready but missing downloadUrl');
+  }
+  const filename = typeof job.filename === 'string' && job.filename.trim()
+    ? job.filename
+    : `${safeFilename(fallbackTitle, 'artifact')}.${extension}`;
+  if (job.deliveryMode === 'redirect') {
+    triggerHrefDownload(job.downloadUrl, filename);
+    return;
+  }
+  const blob = await withTransientExportRetry('asyncExportJobDownload', async () => {
+    const downloadResp = await fetchTeamverDaemon(job.downloadUrl!);
+    if (!downloadResp.ok) {
+      await throwIfDaemonExportFailed(downloadResp, 'async export job download');
+    }
+    const nextBlob = await downloadResp.blob();
+    if (nextBlob.size <= 0) {
+      throw new Error('async export job download returned an empty file');
+    }
+    return nextBlob;
+  });
+  triggerDownload(blob, filename);
+}
+
+async function pollAsyncExportJob(options: {
+  projectId: string;
+  statusUrl: string;
+  timeoutMs?: number;
+  intervalMs?: number;
+}): Promise<AsyncExportJobResponse> {
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  const intervalMs = options.intervalMs ?? 1_200;
+  const deadline = Date.now() + timeoutMs;
+  let nextDelay = 0;
+  while (Date.now() <= deadline) {
+    if (nextDelay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, nextDelay));
+    }
+    const resp = await fetchTeamverDaemon(options.statusUrl);
+    if (!resp.ok) {
+      await throwIfDaemonExportFailed(resp, 'async export job status');
+    }
+    const job = (await resp.json()) as AsyncExportJobResponse;
+    if (job.status === 'ready') return job;
+    if (job.status === 'failed') {
+      const message = job.error?.message || job.error?.code || 'async export job failed';
+      throw new Error(message);
+    }
+    nextDelay = intervalMs;
+  }
+  throw new Error('async export job timed out');
+}
+
+async function tryAsyncRenderedExportDownload(options: {
+  projectId: string;
+  format: AsyncExportFormat;
+  deck: boolean;
+  fileName: string;
+  title: string;
+  extension: string;
+  fresh?: boolean;
+  htmlSnapshot?: string | null;
+}): Promise<boolean> {
+  if (!isAsyncExportJobsEnabled()) return false;
+  await refreshEmbedAuthBeforeDaemonExport();
+  const url = options.fresh
+    ? `/api/projects/${encodeURIComponent(options.projectId)}/export/jobs?fresh=1`
+    : `/api/projects/${encodeURIComponent(options.projectId)}/export/jobs`;
+  const resp = await fetchTeamverDaemon(url, {
+    body: JSON.stringify({
+      deck: options.format === 'pptx' ? true : options.deck,
+      delivery: 'ticket',
+      fileName: options.fileName,
+      format: options.format,
+      ...(options.format === 'pptx' ? { editable: true } : {}),
+      title: options.title,
+      ...(options.fresh ? { fresh: true } : {}),
+      ...inlineExportHtmlPayload(options.htmlSnapshot),
+    }),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  });
+  if (resp.status === 404) {
+    const { code } = await readDaemonApiError(resp);
+    if (code === 'EXPORT_JOBS_DISABLED' || !code) return false;
+  }
+  if (!resp.ok && resp.status !== 202) {
+    await throwIfDaemonExportFailed(resp, 'async export job request');
+  }
+  const created = (await resp.json()) as AsyncExportJobResponse;
+  if (!created.statusUrl || typeof created.statusUrl !== 'string') {
+    return false;
+  }
+  const ready = await pollAsyncExportJob({
+    projectId: options.projectId,
+    statusUrl: created.statusUrl,
+  });
+  await triggerAsyncExportJobDownload(ready, options.title, options.extension);
+  return true;
 }
 
 async function refreshEmbedAuthBeforeDaemonExport(): Promise<void> {
@@ -279,6 +405,17 @@ export async function exportProjectAsHtml(opts: {
   htmlSnapshot?: string | null;
 }): Promise<void> {
   try {
+    if (await tryAsyncRenderedExportDownload({
+      projectId: opts.projectId,
+      format: 'html',
+      deck: opts.deck === true,
+      fileName: opts.filePath,
+      title: opts.fallbackTitle,
+      extension: 'html',
+      htmlSnapshot: opts.htmlSnapshot,
+    })) {
+      return;
+    }
     await withTransientExportRetry('exportProjectAsHtml', async () => {
       await refreshEmbedAuthBeforeDaemonExport();
       const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/html`, {
@@ -1208,6 +1345,18 @@ export async function exportProjectAsPdf(opts: {
 
   let daemonErr: unknown = null;
   try {
+    if (await tryAsyncRenderedExportDownload({
+      projectId: opts.projectId,
+      format: 'pdf',
+      deck: opts.deck,
+      fileName: opts.filePath,
+      title: opts.title,
+      extension: 'pdf',
+      fresh: opts.fresh,
+      htmlSnapshot: opts.htmlSnapshot,
+    })) {
+      return 'desktop';
+    }
     for (let attempt = 0; attempt < TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS.length; attempt += 1) {
       const delay = TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS[attempt] ?? 0;
       if (delay > 0) {
@@ -1314,6 +1463,17 @@ export async function exportProjectAsPptx(opts: {
     await waitForTeamverProjectStoragePrefix(opts.projectId).catch(() => null);
   }
   try {
+    if (await tryAsyncRenderedExportDownload({
+      projectId: opts.projectId,
+      format: 'pptx',
+      deck: true,
+      fileName: opts.filePath,
+      title: opts.title,
+      extension: 'pptx',
+      htmlSnapshot: opts.htmlSnapshot,
+    })) {
+      return;
+    }
     for (let attempt = 0; attempt < TEAMVER_PPTX_EXPORT_RETRY_DELAYS_MS.length; attempt += 1) {
       const delay = TEAMVER_PPTX_EXPORT_RETRY_DELAYS_MS[attempt] ?? 0;
       if (delay > 0) {
@@ -1566,6 +1726,17 @@ export async function exportProjectAsZip(opts: {
   htmlSnapshot?: string | null;
 }): Promise<void> {
   try {
+    if (await tryAsyncRenderedExportDownload({
+      projectId: opts.projectId,
+      format: 'zip',
+      deck: opts.deck === true,
+      fileName: opts.filePath,
+      title: opts.fallbackTitle,
+      extension: 'zip',
+      htmlSnapshot: opts.htmlSnapshot,
+    })) {
+      return;
+    }
     await withTransientExportRetry('exportProjectAsZip', async () => {
       await refreshEmbedAuthBeforeDaemonExport();
       const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(opts.projectId)}/export/zip`, {

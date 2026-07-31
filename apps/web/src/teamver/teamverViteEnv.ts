@@ -41,6 +41,10 @@ const STATIC_TEAMVER_VITE_ENV: Record<string, string | undefined> = {
     typeof process !== "undefined"
       ? process.env.VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID
       : undefined,
+  VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED:
+    typeof process !== "undefined"
+      ? process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED
+      : undefined,
 };
 
 export function readTeamverViteEnv(key: string): string | undefined {
