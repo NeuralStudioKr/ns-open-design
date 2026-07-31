@@ -4775,7 +4775,7 @@ function HtmlViewer({
   // template) and the Teamver Drive Publish menu item stay visible because
   // they either land on the user's machine or stay inside the Teamver
   // workspace tenant.
-  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp, hideDrawAnnotation, hideManualEditBoxDrag } = useTeamverBranding();
+  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp, hideDrawAnnotation, hideManualEditBoxDrag, hideFileRevisionChrome } = useTeamverBranding();
   // Kept in sync with live `source` / last-stable preview so fireShareExport
   // (declared above those hooks) can gate Teamver rendered downloads without
   // reading later const bindings.
@@ -5534,6 +5534,9 @@ function HtmlViewer({
   const [selectedSideCommentIds, setSelectedSideCommentIds] = useState<Set<string>>(() => new Set());
   const [commentSidePanelCollapsed, setCommentSidePanelCollapsed] = useState(false);
   const [revisionHistoryOpen, setRevisionHistoryOpen] = useState(false);
+  useEffect(() => {
+    if (hideFileRevisionChrome) setRevisionHistoryOpen(false);
+  }, [hideFileRevisionChrome]);
   const [revisionConflictToast, setRevisionConflictToast] = useState<string | null>(null);
   const [revisionStackInvalidated, setRevisionStackInvalidated] = useState(false);
   const [revisionRetentionLimit, setRevisionRetentionLimit] = useState(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
@@ -8627,6 +8630,7 @@ function HtmlViewer({
   // Revision undo/redo shortcuts (design §8.2): ⌘Z / Ctrl+Z, redo via Shift+Z or Ctrl+Y.
   useEffect(() => {
     if (mode !== 'preview' || source === null) return;
+    if (hideFileRevisionChrome) return;
     function onKey(e: KeyboardEvent) {
       if (drawOverlayOpen) return;
       const target = e.target as HTMLElement | null;
@@ -8663,7 +8667,7 @@ function HtmlViewer({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, source, drawOverlayOpen]);
+  }, [mode, source, drawOverlayOpen, hideFileRevisionChrome]);
 
   useEffect(() => {
     if (!presentMenuOpen) return;
@@ -10513,7 +10517,7 @@ function HtmlViewer({
                 </button>
               ) : null}
               <span className="viewer-toolbar-tool-divider" aria-hidden />
-              {source !== null ? (
+              {!hideFileRevisionChrome && source !== null ? (
                 <FileViewerUndoRedoToolbar
                   canUndo={revisionCanUndo}
                   canRedo={revisionCanRedo}
@@ -10529,22 +10533,24 @@ function HtmlViewer({
                   t={t}
                 />
               ) : null}
-              <button
-                type="button"
-                className={`viewer-action viewer-action-icon od-tooltip${revisionHistoryOpen ? ' active' : ''}`}
-                data-testid="file-revision-history-toggle"
-                data-tooltip={t('fileRevision.history.toggle')}
-                data-tooltip-placement="bottom"
-                title={t('fileRevision.history.toggle')}
-                aria-label={t('fileRevision.history.toggle')}
-                aria-pressed={revisionHistoryOpen}
-                onClick={() => {
-                  fireArtifactToolbarClick('revision_history');
-                  setRevisionHistoryOpen((open) => !open);
-                }}
-              >
-                <RemixIcon name="history-line" size={15} />
-              </button>
+              {!hideFileRevisionChrome ? (
+                <button
+                  type="button"
+                  className={`viewer-action viewer-action-icon od-tooltip${revisionHistoryOpen ? ' active' : ''}`}
+                  data-testid="file-revision-history-toggle"
+                  data-tooltip={t('fileRevision.history.toggle')}
+                  data-tooltip-placement="bottom"
+                  title={t('fileRevision.history.toggle')}
+                  aria-label={t('fileRevision.history.toggle')}
+                  aria-pressed={revisionHistoryOpen}
+                  onClick={() => {
+                    fireArtifactToolbarClick('revision_history');
+                    setRevisionHistoryOpen((open) => !open);
+                  }}
+                >
+                  <RemixIcon name="history-line" size={15} />
+                </button>
+              ) : null}
               <button
                 className={`viewer-action viewer-action-icon od-tooltip${manualEditMode ? ' active' : ''}`}
                 type="button"
@@ -11344,7 +11350,7 @@ function HtmlViewer({
                 error={inspectError}
               />
             ) : null}
-            {revisionHistoryOpen && source !== null ? (
+            {!hideFileRevisionChrome && revisionHistoryOpen && source !== null ? (
               <FileRevisionHistoryPanel
                 revisions={revisionStack.revisions}
                 cursorRevisionId={revisionStack.cursorRevisionId}

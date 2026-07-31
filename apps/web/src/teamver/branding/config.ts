@@ -87,6 +87,11 @@ export type TeamverBrandingConfig = {
    * and inline text edit stay available. See `manualEditBoxDragEnable.ts`.
    */
   hideManualEditBoxDrag: boolean;
+  /**
+   * Hide file revision undo/redo toolbar + history toggle/panel (same bake flag
+   * as box drag until revision UX is prod-ready).
+   */
+  hideFileRevisionChrome: boolean;
 };
 
 function readEnv(key: string): string | undefined {
@@ -160,6 +165,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideExternalShareSurfaces: true,
         hideDrawAnnotation: !isTeamverDrawAnnotationEnabled(),
         hideManualEditBoxDrag: !isTeamverManualEditBoxDragEnabled(),
+        hideFileRevisionChrome: !isTeamverManualEditBoxDragEnabled(),
       }
     : {
         hideNavViews: new Set<"tasks" | "plugins" | "integrations">(),
@@ -182,6 +188,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hideExternalShareSurfaces: false,
         hideDrawAnnotation: false,
         hideManualEditBoxDrag: false,
+        hideFileRevisionChrome: false,
       };
 
   return {
