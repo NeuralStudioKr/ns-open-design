@@ -30,10 +30,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('FileViewer revision conflict', () => {
-  it('shows a toast and resets undo when disk diverges from the cursor revision', async () => {
+describe('FileViewer revision re-entry', () => {
+  it('does not show a conflict toast when disk still matches an older revision after re-entry', async () => {
     const initialSource = heroSource();
-    const { fetchMock, getPersistedSource, setPersistedSource } = createProjectFileRevisionFetchMock({
+    const { fetchMock, getPersistedSource } = createProjectFileRevisionFetchMock({
       projectId: 'project-1',
       fileName: 'preview.html',
       initialSource,
@@ -61,7 +61,15 @@ describe('FileViewer revision conflict', () => {
     });
     await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
 
-    setPersistedSource(initialSource.replace('#111111', '#0000ff'));
+    const undo = await waitFor(() => {
+      const button = screen.getByTestId('file-viewer-undo');
+      if (button.hasAttribute('disabled')) throw new Error('undo still disabled');
+      return button;
+    });
+    await act(async () => {
+      fireEvent.click(undo);
+    });
+    await waitFor(() => expect(getPersistedSource()).toContain('#111111'));
 
     view.rerender(
       <FileViewer
@@ -73,20 +81,8 @@ describe('FileViewer revision conflict', () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByRole('alert').textContent).toMatch(/Undo and Redo are unavailable|실행 취소와 다시 실행을 사용할 수 없/);
-    });
-    expect(screen.getByTestId('file-viewer-undo').getAttribute('data-tooltip')).toMatch(
-      /Undo and Redo are unavailable|실행 취소와 다시 실행을 사용할 수 없/,
-    );
-    expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(true);
-
-    const persistedBeforeKeyboardUndo = getPersistedSource();
-    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    });
-    expect(getPersistedSource()).toBe(persistedBeforeKeyboardUndo);
+    await waitFor(() => expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(false));
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
 
@@ -142,6 +138,6 @@ function heroTarget(): ManualEditTarget {
     attributes: { 'data-od-id': 'hero' },
     styles: emptyManualEditStyles(),
     isLayoutContainer: false,
-    outerHtml: '<h1 data-od-id="hero">Hero</h1>',
+    outerHtml: '<h1 data-od-id="hero" style="color: #111111">Hero</h1>',
   };
 }

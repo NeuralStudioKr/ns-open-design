@@ -4,6 +4,8 @@ type FileViewerUndoRedoToolbarProps = {
   canUndo: boolean;
   canRedo: boolean;
   busy?: boolean;
+  undoTooltip?: string;
+  redoTooltip?: string;
   onUndo: () => void;
   onRedo: () => void;
   t: (key: 'manualEdit.undo' | 'manualEdit.redo') => string;
@@ -13,20 +15,24 @@ export function FileViewerUndoRedoToolbar({
   canUndo,
   canRedo,
   busy = false,
+  undoTooltip,
+  redoTooltip,
   onUndo,
   onRedo,
   t,
 }: FileViewerUndoRedoToolbarProps) {
+  const undoLabel = undoTooltip ?? t('manualEdit.undo');
+  const redoLabel = redoTooltip ?? t('manualEdit.redo');
   return (
     <>
       <button
         type="button"
         className="viewer-action viewer-action-icon od-tooltip"
         data-testid="file-viewer-undo"
-        data-tooltip={t('manualEdit.undo')}
+        data-tooltip={undoLabel}
         data-tooltip-placement="bottom"
-        title={t('manualEdit.undo')}
-        aria-label={t('manualEdit.undo')}
+        title={undoLabel}
+        aria-label={undoLabel}
         disabled={!canUndo || busy}
         onClick={onUndo}
       >
@@ -36,10 +42,10 @@ export function FileViewerUndoRedoToolbar({
         type="button"
         className="viewer-action viewer-action-icon od-tooltip"
         data-testid="file-viewer-redo"
-        data-tooltip={t('manualEdit.redo')}
+        data-tooltip={redoLabel}
         data-tooltip-placement="bottom"
-        title={t('manualEdit.redo')}
-        aria-label={t('manualEdit.redo')}
+        title={redoLabel}
+        aria-label={redoLabel}
         disabled={!canRedo || busy}
         onClick={onRedo}
       >

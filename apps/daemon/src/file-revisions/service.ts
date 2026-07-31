@@ -94,6 +94,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       return {
         revisions,
         headRevisionId: head?.id ?? null,
+        retentionLimit: FILE_REVISION_RETENTION_LIMIT,
       };
     },
 

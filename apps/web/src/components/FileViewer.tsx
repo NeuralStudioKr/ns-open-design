@@ -156,6 +156,7 @@ import {
 } from '../runtime/revision-stack';
 import {
   cursorRevisionFromStack,
+  findRevisionMatchingDiskContent,
   revisionCursorMatchesDisk,
 } from '../runtime/revision-conflict';
 import {
@@ -268,7 +269,10 @@ import {
 } from '../edit-mode/manual-edit-session';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
-import type { FileRevision } from '@open-design/contracts';
+import {
+  FILE_REVISION_RETENTION_LIMIT_DEFAULT,
+  type FileRevision,
+} from '@open-design/contracts';
 
 function resolveChromeActionsHost(): HTMLElement | null {
   return document.querySelector<HTMLElement>(APP_CHROME_FILE_ACTIONS_SELECTOR)
@@ -5328,6 +5332,7 @@ function HtmlViewer({
   }
   const revisionSyncSuppressRef = useRef(false);
   const revisionSkipReconcileOnceRef = useRef(false);
+  const revisionConflictSuppressedRef = useRef(false);
   const [manualEditError, setManualEditError] = useState<string | null>(null);
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const manualEditSavingRef = useRef(false);
@@ -5489,6 +5494,7 @@ function HtmlViewer({
   const [revisionHistoryOpen, setRevisionHistoryOpen] = useState(false);
   const [revisionConflictToast, setRevisionConflictToast] = useState<string | null>(null);
   const [revisionStackInvalidated, setRevisionStackInvalidated] = useState(false);
+  const [revisionRetentionLimit, setRevisionRetentionLimit] = useState(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
   const revisionStackInvalidatedRef = useRef(revisionStackInvalidated);
   revisionStackInvalidatedRef.current = revisionStackInvalidated;
   const [strokePoints, setStrokePoints] = useState<StrokePoint[]>([]);
@@ -6829,6 +6835,9 @@ function HtmlViewer({
     setManualEditError(null);
     setRevisionHistoryOpen(false);
     setRevisionStackInvalidated(false);
+    setRevisionConflictToast(null);
+    revisionConflictSuppressedRef.current = false;
+    setRevisionRetentionLimit(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
     manualEditPendingStyleRef.current = null;
     clearManualEditStyleTimer();
   }, [file.name]);
@@ -6866,7 +6875,59 @@ function HtmlViewer({
       return;
     }
     if (disk == null || snapshotContent == null) return;
-    if (revisionCursorMatchesDisk(revisionStackRef.current, disk, snapshotContent)) return;
+    if (revisionCursorMatchesDisk(revisionStackRef.current, disk, snapshotContent)) {
+      setRevisionStackInvalidated(false);
+      return;
+    }
+
+    const list = await listProjectFileRevisions(projectId, file.name);
+    if (!list) {
+      setRevisionStackInvalidated(true);
+      if (!revisionConflictSuppressedRef.current) {
+        setRevisionConflictToast(t('fileRevision.conflict.message'));
+      }
+      return;
+    }
+    if (typeof list.retentionLimit === 'number') {
+      setRevisionRetentionLimit(list.retentionLimit);
+    }
+
+    const matchingRevision = await findRevisionMatchingDiskContent(
+      list.revisions,
+      disk,
+      resolveRevisionSnapshotContent,
+      new Set([cursorRevisionId]),
+    );
+    if (
+      revisionSyncSuppressRef.current
+      || manualEditSavingRef.current
+      || reconcileGeneration !== revisionReconcileGenerationRef.current
+    ) {
+      return;
+    }
+
+    if (matchingRevision) {
+      commitRevisionStack(createRevisionStackSnapshot(
+        list.revisions,
+        list.headRevisionId,
+        matchingRevision.id,
+      ));
+      setActiveRevisionSequence(projectId, file.name, matchingRevision.sequence);
+      setRevisionStackInvalidated(false);
+      revisionConflictSuppressedRef.current = false;
+      setRevisionConflictToast(null);
+
+      if (sourceRef.current !== disk) {
+        setSource(disk);
+        sourceRef.current = disk;
+        setInlinedSource(null);
+        setManualEditFrozenSource(disk);
+        setManualEditDraft((current) => ({ ...current, fullSource: disk }));
+        setReloadKey((k) => k + 1);
+        manualEditPendingStyleRef.current = null;
+      }
+      return;
+    }
 
     setSource(disk);
     sourceRef.current = disk;
@@ -6876,33 +6937,29 @@ function HtmlViewer({
     setReloadKey((k) => k + 1);
     manualEditPendingStyleRef.current = null;
 
-    const list = await listProjectFileRevisions(projectId, file.name);
-    if (list) {
-      const resetStack = createRevisionStackSnapshot(
-        list.revisions,
-        list.headRevisionId,
-        list.headRevisionId,
-      );
-      commitRevisionStack(resetStack);
-      const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
-      if (head) {
-        setActiveRevisionSequence(projectId, file.name, head.sequence);
-        const headSnapshot = await resolveRevisionSnapshotContent(head.id);
-        setRevisionStackInvalidated(headSnapshot != null && disk !== headSnapshot);
-      } else {
-        clearActiveRevisionSequence(projectId, file.name);
-        setRevisionStackInvalidated(true);
-      }
+    commitRevisionStack(createRevisionStackSnapshot(
+      list.revisions,
+      list.headRevisionId,
+      list.headRevisionId,
+    ));
+    const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
+    if (head) {
+      setActiveRevisionSequence(projectId, file.name, head.sequence);
     } else {
-      setRevisionStackInvalidated(true);
+      clearActiveRevisionSequence(projectId, file.name);
     }
-
-    setRevisionConflictToast(t('fileRevision.conflict.message'));
+    setRevisionStackInvalidated(true);
+    if (!revisionConflictSuppressedRef.current) {
+      setRevisionConflictToast(t('fileRevision.conflict.message'));
+    }
   }, [projectId, file.name, resolveRevisionSnapshotContent, t]);
 
   const refreshRevisionStack = useCallback(async () => {
     const list = await listProjectFileRevisions(projectId, file.name);
     if (!list || !Array.isArray(list.revisions)) return;
+    if (typeof list.retentionLimit === 'number') {
+      setRevisionRetentionLimit(list.retentionLimit);
+    }
     const nextStack = createRevisionStackSnapshot(
       list.revisions,
       list.headRevisionId,
@@ -9455,6 +9512,9 @@ function HtmlViewer({
     manualEditMode && (!!selectedManualEditTarget || manualEditPageCardActive);
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
+  const revisionUndoUnavailableTooltip = revisionStackInvalidated
+    ? t('fileRevision.undo.unavailableTooltip')
+    : undefined;
   const manualEditPanel = manualEditPanelActive ? (
     <ManualEditPanel
       targets={manualEditTargets}
@@ -9871,6 +9931,8 @@ function HtmlViewer({
                   canUndo={revisionCanUndo}
                   canRedo={revisionCanRedo}
                   busy={manualEditSaving}
+                  undoTooltip={revisionUndoUnavailableTooltip}
+                  redoTooltip={revisionUndoUnavailableTooltip}
                   onUndo={() => {
                     void undoManualEdit();
                   }}
@@ -10694,6 +10756,7 @@ function HtmlViewer({
               <FileRevisionHistoryPanel
                 revisions={revisionStack.revisions}
                 cursorRevisionId={revisionStack.cursorRevisionId}
+                retentionLimit={revisionRetentionLimit}
                 busy={manualEditSaving}
                 onRestore={(revision) => {
                   void restoreRevisionFromHistory(revision);
@@ -11300,7 +11363,10 @@ function HtmlViewer({
           ttlMs={5000}
           role="alert"
           tone="error"
-          onDismiss={() => setRevisionConflictToast(null)}
+          onDismiss={() => {
+            revisionConflictSuppressedRef.current = true;
+            setRevisionConflictToast(null);
+          }}
         />,
         document.body,
       ) : null}

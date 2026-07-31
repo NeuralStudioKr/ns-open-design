@@ -30,6 +30,7 @@ describe('FileRevisionHistoryPanel', () => {
       <FileRevisionHistoryPanel
         revisions={[]}
         cursorRevisionId={null}
+        retentionLimit={30}
         onRestore={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -49,6 +50,7 @@ describe('FileRevisionHistoryPanel', () => {
       <FileRevisionHistoryPanel
         revisions={revisions}
         cursorRevisionId="rev-2"
+        retentionLimit={30}
         onRestore={onRestore}
         onClose={vi.fn()}
       />,
