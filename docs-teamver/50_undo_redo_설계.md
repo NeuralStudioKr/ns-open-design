@@ -155,9 +155,12 @@ export type FileRevision = {
 
 ### 5.2 Snapshot 저장 경로
 
-```
-<project-dir>/.od/revisions/<fileName>/<revisionId>.snap.gz
-```
+**상세 (RDS 관계·용량):** [50-3_revision_스냅샷_저장소_RDS_용량관리.md](./50-3_revision_스냅샷_저장소_RDS_용량관리.md)
+
+| 모드 | 경로 |
+|------|------|
+| `files` (기본) | `<project-dir>/.od/revisions/<fileName>/<revisionId>.snap.gz` |
+| `sqlite` | DaemonDb `file_revision_snapshots.compressed` (`OD_DATA_DIR/app.sqlite` 또는 Postgres DaemonDb — 후속) |
 
 - **Phase 4:** gzip 압축 + parent 대비 prefix/suffix diff (더 작을 때만 diff 선택)
 - sequence 1, 6, 11… 은 full checkpoint (`REVISION_FULL_SNAPSHOT_INTERVAL=5`)

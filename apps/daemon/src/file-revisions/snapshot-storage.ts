@@ -56,3 +56,25 @@ export function deleteFileRevisionSnapshotsFromDb(
   const placeholders = revisionIds.map(() => '?').join(', ');
   db.prepare(`DELETE FROM file_revision_snapshots WHERE revision_id IN (${placeholders})`).run(...revisionIds);
 }
+
+export function getFileRevisionSnapshotStorageStats(db: Database.Database): {
+  snapshotRowCount: number;
+  orphanSnapshotRowCount: number;
+  totalSnapshotBytes: number;
+} {
+  const snapshotRowCount = (
+    db.prepare(`SELECT count(*) AS c FROM file_revision_snapshots`).get() as { c: number }
+  ).c;
+  const orphanSnapshotRowCount = (
+    db.prepare(`
+      SELECT count(*) AS c
+      FROM file_revision_snapshots s
+      LEFT JOIN file_revisions r ON r.id = s.revision_id
+      WHERE r.id IS NULL
+    `).get() as { c: number }
+  ).c;
+  const totalSnapshotBytes = (
+    db.prepare(`SELECT coalesce(sum(storage_bytes), 0) AS total FROM file_revision_snapshots`).get() as { total: number }
+  ).total;
+  return { snapshotRowCount, orphanSnapshotRowCount, totalSnapshotBytes };
+}

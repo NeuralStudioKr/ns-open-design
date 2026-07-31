@@ -206,6 +206,7 @@ import {
   readDefaultPluginCatalogModeFromEnv,
   searchInstalledPlugins,
 } from './plugins/index.js';
+import { startFileRevisionGc } from './file-revisions/gc.js';
 import {
   filterPluginsExcludingChinesePrimaryDeck,
   isExcludedChinesePrimaryDeckPlugin,
@@ -5664,6 +5665,30 @@ export async function startServer({
     console.warn(`[plugins] snapshot GC startup sweep failed: ${(err)?.message ?? err}`);
   }
   void snapshotGc; // keep handle alive for the daemon's lifetime
+
+  const fileRevisionGc = startFileRevisionGc({
+    db,
+    projectsRoot: PROJECTS_DIR,
+    resolveProjectDir: (projectId) => resolveProjectDir(
+      PROJECTS_DIR,
+      projectId,
+      projectMetadataLookup?.(projectId),
+    ),
+    sqliteDbFile: path.join(RUNTIME_DATA_DIR, 'app.sqlite'),
+  });
+  void fileRevisionGc.sweep().then((result) => {
+    if (
+      result.orphanSnapshotsRemoved > 0
+      || result.retentionRevisionsPruned > 0
+      || result.orphanFilesRemoved > 0
+      || result.vacuum
+    ) {
+      console.info('[file-revisions] GC startup sweep', result);
+    }
+  }).catch((err) => {
+    console.warn(`[file-revisions] GC startup sweep failed: ${(err)?.message ?? err}`);
+  });
+  void fileRevisionGc;
 
   // Warm agent-capability probes (e.g. whether the installed Claude Code
   // build advertises --include-partial-messages) so the first /api/chat

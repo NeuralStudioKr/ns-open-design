@@ -247,6 +247,16 @@ export function getRevisionAncestry(
   return ancestry;
 }
 
+export function listDistinctFileRevisionTargets(
+  db: Database.Database,
+): Array<{ projectId: string; fileName: string }> {
+  return db.prepare(`
+    SELECT DISTINCT project_id AS projectId, file_name AS fileName
+    FROM file_revisions
+    ORDER BY project_id ASC, file_name ASC
+  `).all() as Array<{ projectId: string; fileName: string }>;
+}
+
 export function pruneOldestFileRevisions(
   db: Database.Database,
   projectId: string,

@@ -142,7 +142,9 @@
 | nested markup (inline salvage + flattenNestedMarkup) | [x] |
 | revision content cache + reconcile skip + prefetch | [x] | `revision-content-cache.ts` — LRU 8 entries, 16MB/파일, 4MB/항목, prefetch `byteSize` skip |
 | `OD_FILE_REVISION_RETENTION_LIMIT` env | [x] | daemon `resolveFileRevisionRetentionLimit()` |
-| `OD_FILE_REVISION_SNAPSHOT_STORAGE` env | [x] | `files` (기본) \| `sqlite` — Teamver 권장: `sqlite` |
+| `OD_FILE_REVISION_SNAPSHOT_STORAGE` env | [x] | `files` (기본) \| `sqlite` — Teamver 권장: `sqlite` ([50-3](./50-3_revision_스냅샷_저장소_RDS_용량관리.md)) |
+| 주기 GC + orphan 정리 | [x] | `file-revisions/gc.ts` · `OD_FILE_REVISION_GC_INTERVAL_MS` |
+| 프로젝트 삭제 시 BLOB 선삭제 | [x] | `deleteFileRevisionSnapshotsForProject` |
 | History panel retention hint | [x] | i18n `fileRevision.history.retentionHint` |
 | List API `retentionLimit` → History 패널 | [x] | daemon list 응답, 하드코드 제거 |
 | 충돌 토스트는 head ≠ disk일 때만 | [x] | cursor만 어긋나면 조용히 reset |
