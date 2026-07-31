@@ -35,7 +35,7 @@ import type {
 } from '@open-design/contracts/analytics';
 import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { shouldFetchRecentLinkedDirs } from '../teamver/embedDaemonFetchPolicy';
-import { projectRawUrl, uploadProjectFiles, openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir, dirExists } from "../providers/registry";
+import { uploadProjectFiles, openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir, dirExists } from "../providers/registry";
 import { WorkingDirPicker } from './WorkingDirPicker';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { embedAttachBlockReason } from '../teamver/branding/embedFileAttachPolicy';
@@ -43,6 +43,7 @@ import { resolveProjectUploadBatchErrorMessage } from '../teamver/projectUploadE
 import { getDesignBffClient } from '../teamver/designBffClient';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
+import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import {
   shouldHideTeamverToolboxPlugin,
   shouldHideTeamverToolboxSkill,
@@ -3456,7 +3457,6 @@ function StagedRunContexts({
   // other run-context chips (so files flow to the picker's right, wrapping to a
   // new line only when the row fills) instead of forcing a separate row below.
   const [preview, setPreview] = useState<ChatAttachment | null>(null);
-  const previewUrl = preview && projectId ? projectRawUrl(projectId, preview.path) : null;
   useEffect(() => {
     if (!preview) return;
     function onKey(e: KeyboardEvent) {
@@ -3612,7 +3612,6 @@ function StagedRunContexts({
       ))}
       {attachments.map((a, index) => {
         const canPreview = a.kind === 'image' && Boolean(projectId);
-        const imageUrl = canPreview ? projectRawUrl(projectId!, a.path) : null;
         const embed = isTeamverEmbedMode();
         return (
           <div key={a.path} className={`staged-chip staged-${a.kind}`}>
@@ -3622,7 +3621,7 @@ function StagedRunContexts({
             >
               {index + 1}
             </span>
-            {canPreview && imageUrl ? (
+            {canPreview ? (
               <button
                 type="button"
                 className="staged-preview-trigger"
@@ -3630,7 +3629,7 @@ function StagedRunContexts({
                 title={a.path}
                 aria-label={embed ? `${a.name} 미리보기` : `Preview ${a.name}`}
               >
-                <img src={imageUrl} alt="" aria-hidden />
+                <AuthenticatedProjectFileImage projectId={projectId!} path={a.path} alt="" className="" />
                 <span className="staged-name">{a.name}</span>
               </button>
             ) : (
@@ -3670,7 +3669,7 @@ function StagedRunContexts({
         );
       })}
     </div>
-    {preview && previewUrl ? createPortal(
+    {preview && projectId ? createPortal(
       <div
         className="staged-preview-modal"
         role="dialog"
@@ -3694,7 +3693,7 @@ function StagedRunContexts({
               <Icon name="close" size={14} />
             </button>
           </div>
-          <img src={previewUrl} alt={preview.name} />
+          <AuthenticatedProjectFileImage projectId={projectId} path={preview.path} alt={preview.name} />
         </div>
       </div>,
       document.body

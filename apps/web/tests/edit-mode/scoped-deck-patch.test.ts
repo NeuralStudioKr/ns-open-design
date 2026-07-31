@@ -10,6 +10,7 @@ import {
   resolveElementPatchAllowedSlideIndexes,
   resolveScopedCommentSlideCandidates,
   scopedCommentElementIds,
+  hasElementScopedCommentAttachments,
 } from '../../src/edit-mode/scoped-deck-patch';
 import { parseElementPatch } from '../../src/artifacts/element-patch';
 import type { ChatCommentAttachment } from '../../src/types';
@@ -36,6 +37,23 @@ function attachment(slideIndex: number): ChatCommentAttachment {
     slideIndex,
   };
 }
+
+describe('hasElementScopedCommentAttachments', () => {
+  it('returns false for visual-only attachments so slide-level edits are not blocked', () => {
+    expect(hasElementScopedCommentAttachments([{
+      ...attachment(1),
+      selectionKind: 'visual',
+      elementId: 'visual-mark-1',
+    }])).toBe(false);
+  });
+
+  it('returns true when at least one attachment needs a concrete element target', () => {
+    expect(hasElementScopedCommentAttachments([
+      { ...attachment(1), selectionKind: 'visual', elementId: 'visual-mark-1' },
+      attachment(1),
+    ])).toBe(true);
+  });
+});
 
 describe('reconcileCommentAttachmentElementId', () => {
   it('maps dom: preview selectors to stable data-od-id on deck html', () => {

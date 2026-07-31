@@ -41,6 +41,7 @@ import {
   reconcileCommentAttachmentsForDeck,
   resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
+  hasElementScopedCommentAttachments,
   scopedCommentSlideIndexesFromAttachments,
   scopedCommentSlideIndexesFromDeck,
   type DeckPatchMergeResult,
@@ -1263,8 +1264,11 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
       reason: 'current deck file unreadable',
     };
   }
-  const allowedTargetIds = input.commentAttachments?.flatMap((attachment) => scopedCommentElementIds(attachment));
-  if ((input.commentAttachments?.length ?? 0) > 0 && (!allowedTargetIds || allowedTargetIds.length === 0)) {
+  const allowedTargetIds = input.commentAttachments?.flatMap((attachment) => scopedCommentElementIds(attachment)) ?? [];
+  if (
+    hasElementScopedCommentAttachments(input.commentAttachments)
+    && allowedTargetIds.length === 0
+  ) {
     return {
       ok: false,
       code: 'deck_patch_merge_failed',
@@ -1306,6 +1310,22 @@ function elementPatchTargetHintsFromCommentAttachments(
 ): ElementPatchTargetHint[] {
   const hints: ElementPatchTargetHint[] = [];
   for (const attachment of commentAttachments) {
+    if (attachment.selectionKind === 'visual') {
+      hints.push({
+        targetIds: [],
+        ...(typeof attachment.slideIndex === 'number' &&
+        Number.isInteger(attachment.slideIndex) &&
+        attachment.slideIndex >= 0
+          ? { slideIndex: Math.floor(attachment.slideIndex) }
+          : {}),
+        id: attachment.elementId,
+        currentText: attachment.currentText,
+        instructionText: attachment.comment,
+        htmlHint: attachment.htmlHint,
+        selector: attachment.selector,
+      });
+      continue;
+    }
     const targetIds = scopedCommentElementIds(attachment);
     if (targetIds.length === 0) continue;
     hints.push({

@@ -59,6 +59,13 @@ export function scopedCommentElementIds(attachment: ChatCommentAttachment): stri
   )];
 }
 
+/** True when at least one attachment needs a concrete DOM/element target id. */
+export function hasElementScopedCommentAttachments(
+  commentAttachments: readonly ChatCommentAttachment[] | undefined,
+): boolean {
+  return (commentAttachments ?? []).some((attachment) => attachment.selectionKind !== 'visual');
+}
+
 export function isUnsafeCommentElementTargetId(targetId: string): boolean {
   const normalized = String(targetId || '').trim().toLowerCase();
   return (
