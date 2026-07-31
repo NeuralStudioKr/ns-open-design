@@ -15,7 +15,6 @@ import {
   type FileRevisionGcResult,
 } from './maintenance.js';
 import {
-  FILE_REVISION_SNAPSHOT_STORAGE,
   resolveFileRevisionSnapshotStorage,
 } from './snapshot-storage.js';
 
@@ -33,7 +32,7 @@ export interface FileRevisionGcWorkerOptions {
 export interface FileRevisionGcHandle {
   stop(): void;
   sweep(): Promise<FileRevisionGcResult>;
-  stats(): ReturnType<typeof collectFileRevisionStorageStats>;
+  stats(): Promise<ReturnType<typeof collectFileRevisionStorageStats>>;
 }
 
 const NOOP_HANDLE: FileRevisionGcHandle = {
@@ -50,7 +49,7 @@ const NOOP_HANDLE: FileRevisionGcHandle = {
     snapshotRowCount: 0,
     orphanSnapshotRowCount: 0,
     totalSnapshotBytes: 0,
-    storageMode: FILE_REVISION_SNAPSHOT_STORAGE,
+    storageMode: resolveFileRevisionSnapshotStorage(),
   }),
 };
 

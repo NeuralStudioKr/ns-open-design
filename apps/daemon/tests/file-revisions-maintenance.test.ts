@@ -5,10 +5,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { migrateFileRevisions, insertFileRevision } from '../src/file-revisions/persistence.js';
 import {
   collectFileRevisionStorageStats,
-  pruneOrphanFileRevisionSnapshotsInDb,
   runFileRevisionGc,
 } from '../src/file-revisions/maintenance.js';
-import { upsertFileRevisionSnapshot } from '../src/file-revisions/snapshot-storage.js';
+import { upsertFileRevisionSnapshot, pruneOrphanFileRevisionSnapshotsDurable } from '../src/file-revisions/snapshot-storage.js';
 
 const ROOT = path.join(process.cwd(), '.tmp', 'file-revisions-maintenance-test');
 
@@ -25,12 +24,12 @@ function openDb(): Database.Database {
 }
 
 describe('file-revisions maintenance', () => {
-  it('removes orphan snapshot rows without metadata', () => {
+  it('removes orphan snapshot rows without metadata', async () => {
     const db = openDb();
     upsertFileRevisionSnapshot(db, 'orphan-rev', Buffer.from('blob'));
-    const result = pruneOrphanFileRevisionSnapshotsInDb(db);
+    const result = await pruneOrphanFileRevisionSnapshotsDurable(db);
     expect(result.removed).toBe(1);
-    const stats = collectFileRevisionStorageStats(db);
+    const stats = await collectFileRevisionStorageStats(db);
     expect(stats.snapshotRowCount).toBe(0);
     expect(stats.orphanSnapshotRowCount).toBe(0);
   });
@@ -70,6 +69,7 @@ describe('file-revisions maintenance', () => {
 
     expect(result.retentionRevisionsPruned).toBe(2);
     expect(result.orphanFilesRemoved).toBe(1);
-    expect(collectFileRevisionStorageStats(db).snapshotRowCount).toBe(2);
+    const stats = await collectFileRevisionStorageStats(db);
+    expect(stats.snapshotRowCount).toBe(2);
   });
 });

@@ -10,8 +10,9 @@
 // v5 — B5.5 routines / routine_runs / routine_schedule_claims
 // v6 — B5.6 installed_plugins / plugin_marketplaces / applied_plugin_snapshots
 // v7 — B5.7 media_tasks (queue/progress/artifacts for generative media)
+// v8 — file_revisions + file_revision_snapshots (undo/redo history)
 
-export const DAEMON_DB_SCHEMA_VERSION = 7;
+export const DAEMON_DB_SCHEMA_VERSION = 8;
 
 export const DAEMON_DB_POSTGRES_MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS daemon_db_schema_migrations (
@@ -320,6 +321,32 @@ CREATE INDEX IF NOT EXISTS idx_media_tasks_status
   ON media_tasks(status, updated_at DESC);
 `;
 
+export const DAEMON_DB_POSTGRES_MIGRATION_V8 = `
+CREATE TABLE IF NOT EXISTS file_revisions (
+  id                    TEXT PRIMARY KEY,
+  project_id            TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  file_name             TEXT NOT NULL,
+  parent_revision_id    TEXT,
+  sequence              BIGINT NOT NULL,
+  created_at            BIGINT NOT NULL,
+  byte_size             BIGINT NOT NULL,
+  source                TEXT NOT NULL,
+  label                 TEXT NOT NULL,
+  conversation_id       TEXT,
+  assistant_message_id  TEXT,
+  UNIQUE(project_id, file_name, sequence)
+);
+
+CREATE INDEX IF NOT EXISTS idx_file_revisions_project_file
+  ON file_revisions(project_id, file_name, sequence DESC);
+
+CREATE TABLE IF NOT EXISTS file_revision_snapshots (
+  revision_id    TEXT PRIMARY KEY,
+  compressed     BYTEA NOT NULL,
+  storage_bytes  BIGINT NOT NULL
+);
+`;
+
 export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   version: number;
   sql: string;
@@ -331,4 +358,5 @@ export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   { version: 5, sql: DAEMON_DB_POSTGRES_MIGRATION_V5 },
   { version: 6, sql: DAEMON_DB_POSTGRES_MIGRATION_V6 },
   { version: 7, sql: DAEMON_DB_POSTGRES_MIGRATION_V7 },
+  { version: 8, sql: DAEMON_DB_POSTGRES_MIGRATION_V8 },
 ];

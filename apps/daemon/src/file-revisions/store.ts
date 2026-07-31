@@ -15,11 +15,14 @@ import {
   type RevisionSnapshotPatch,
 } from './snapshot-codec.js';
 import {
+  deleteFileRevisionSnapshotsDurable,
   deleteFileRevisionSnapshotsFromDb,
-  FILE_REVISION_SNAPSHOT_STORAGE,
   getFileRevisionSnapshot,
+  getFileRevisionSnapshotDurable,
+  resolveFileRevisionSnapshotStorage,
   type FileRevisionSnapshotStorage,
   upsertFileRevisionSnapshot,
+  upsertFileRevisionSnapshotDurable,
 } from './snapshot-storage.js';
 
 export type RevisionParentLookup = (revisionId: string) => string | null;
@@ -64,7 +67,7 @@ export interface WriteRevisionSnapshotResult {
 }
 
 function resolveStorageMode(context?: RevisionSnapshotStoreContext): FileRevisionSnapshotStorage {
-  return context?.storage ?? FILE_REVISION_SNAPSHOT_STORAGE;
+  return context?.storage ?? resolveFileRevisionSnapshotStorage();
 }
 
 async function readCompressedFromFiles(
@@ -92,6 +95,11 @@ async function readCompressedSnapshot(
 ): Promise<Buffer | null> {
   const mode = resolveStorageMode(context);
   const db = context?.db;
+  if (mode === 'postgres') {
+    const fromPg = await getFileRevisionSnapshotDurable(revisionId, db);
+    if (fromPg) return fromPg;
+    return await readCompressedFromFiles(projectDir, fileName, revisionId);
+  }
   if (mode === 'sqlite' && db) {
     const fromDb = getFileRevisionSnapshot(db, revisionId);
     if (fromDb) return fromDb;
@@ -100,7 +108,7 @@ async function readCompressedSnapshot(
   const fromFiles = await readCompressedFromFiles(projectDir, fileName, revisionId);
   if (fromFiles) return fromFiles;
   if (db) {
-    return getFileRevisionSnapshot(db, revisionId);
+    return await getFileRevisionSnapshotDurable(revisionId, db);
   }
   return null;
 }
@@ -123,6 +131,19 @@ export async function writeRevisionSnapshot(
   });
   const mode = resolveStorageMode(context);
   const db = context?.db;
+
+  if (mode === 'postgres') {
+    await upsertFileRevisionSnapshotDurable(revisionId, encoded.compressed, db);
+    await rm(compressedSnapshotPath(projectDir, fileName, revisionId), { force: true });
+    await rm(legacySnapshotPath(projectDir, fileName, revisionId), { force: true });
+    if (db) {
+      deleteFileRevisionSnapshotsFromDb(db, [revisionId]);
+    }
+    return {
+      kind: encoded.kind,
+      storageBytes: encoded.compressed.length,
+    };
+  }
 
   if (mode === 'sqlite' && db) {
     upsertFileRevisionSnapshot(db, revisionId, encoded.compressed);
@@ -260,9 +281,7 @@ export async function deleteRevisionSnapshot(
 ): Promise<void> {
   await rm(compressedSnapshotPath(projectDir, fileName, revisionId), { force: true });
   await rm(legacySnapshotPath(projectDir, fileName, revisionId), { force: true });
-  if (context?.db) {
-    deleteFileRevisionSnapshotsFromDb(context.db, [revisionId]);
-  }
+  await deleteFileRevisionSnapshotsDurable([revisionId], context?.db);
 }
 
 export async function deleteRevisionSnapshots(

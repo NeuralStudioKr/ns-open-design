@@ -1,7 +1,17 @@
 import type Database from 'better-sqlite3';
 import type { FileRevision, FileRevisionSource } from '@open-design/contracts';
 import { FILE_REVISION_RETENTION_LIMIT_DEFAULT } from '@open-design/contracts';
+import {
+  getPostgresPool,
+  isDaemonDbPostgres,
+  schedulePostgresWrite,
+} from '../storage/daemon-db-runtime.js';
 import { migrateFileRevisionSnapshots } from './snapshot-storage.js';
+import {
+  pgDeleteFileRevisionsAfterSequence as pgDeleteRevisionsAfterSequence,
+  pgDeleteFileRevisionsByIds,
+  pgInsertFileRevision,
+} from './postgres-persistence.js';
 
 export function resolveFileRevisionRetentionLimit(
   env: NodeJS.ProcessEnv = process.env,
@@ -105,7 +115,7 @@ export function insertFileRevision(db: Database.Database, input: FileRevisionIns
     conversationId: input.conversationId ?? null,
     assistantMessageId: input.assistantMessageId ?? null,
   });
-  return rowToRevision({
+  const revision = rowToRevision({
     id: input.id,
     projectId: input.projectId,
     fileName: input.fileName,
@@ -117,6 +127,42 @@ export function insertFileRevision(db: Database.Database, input: FileRevisionIns
     label: input.label,
     conversationId: input.conversationId ?? null,
     assistantMessageId: input.assistantMessageId ?? null,
+  });
+  if (isDaemonDbPostgres()) {
+    schedulePostgresWrite(async () => {
+      await pgInsertFileRevision(getPostgresPool(), {
+        id: revision.id,
+        projectId: revision.projectId,
+        fileName: revision.fileName,
+        parentRevisionId: revision.parentRevisionId,
+        sequence: revision.sequence,
+        createdAt: revision.createdAt,
+        byteSize: revision.byteSize,
+        source: revision.source,
+        label: revision.label,
+        conversationId: revision.conversationId ?? null,
+        assistantMessageId: revision.assistantMessageId ?? null,
+      });
+    });
+  }
+  return revision;
+}
+
+function syncDeletedRevisionIdsToPostgres(ids: string[]): void {
+  if (!isDaemonDbPostgres() || ids.length === 0) return;
+  schedulePostgresWrite(async () => {
+    await pgDeleteFileRevisionsByIds(getPostgresPool(), ids);
+  });
+}
+
+function syncDeleteAfterSequenceToPostgres(
+  projectId: string,
+  fileName: string,
+  sequence: number,
+): void {
+  if (!isDaemonDbPostgres()) return;
+  schedulePostgresWrite(async () => {
+    await pgDeleteRevisionsAfterSequence(getPostgresPool(), projectId, fileName, sequence);
   });
 }
 
@@ -224,6 +270,7 @@ export function deleteFileRevisionsAfterSequence(
     DELETE FROM file_revisions
     WHERE project_id = ? AND file_name = ? AND sequence > ?
   `).run(projectId, fileName, sequence);
+  syncDeleteAfterSequenceToPostgres(projectId, fileName, sequence);
   return rows.map(rowToRevision);
 }
 
@@ -285,5 +332,6 @@ export function pruneOldestFileRevisions(
   const ids = rows.map((row) => row.id);
   const placeholders = ids.map(() => '?').join(', ');
   db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...ids);
+  syncDeletedRevisionIdsToPostgres(ids);
   return rows.map(rowToRevision);
 }

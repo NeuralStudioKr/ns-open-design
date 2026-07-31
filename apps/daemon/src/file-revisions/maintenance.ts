@@ -3,9 +3,11 @@ import path from 'node:path';
 import { statSync } from 'node:fs';
 import type Database from 'better-sqlite3';
 import {
-  deleteFileRevisionSnapshotsFromDb,
-  FILE_REVISION_SNAPSHOT_STORAGE,
-  getFileRevisionSnapshotStorageStats,
+  deleteFileRevisionSnapshotsDurable,
+  getFileRevisionSnapshotStorageStatsDurable,
+  pruneOrphanFileRevisionSnapshotsDurable,
+  resolveFileRevisionSnapshotStorage,
+  type FileRevisionSnapshotStorage,
 } from './snapshot-storage.js';
 import {
   FILE_REVISION_RETENTION_LIMIT,
@@ -19,7 +21,7 @@ export interface FileRevisionStorageStats {
   snapshotRowCount: number;
   orphanSnapshotRowCount: number;
   totalSnapshotBytes: number;
-  storageMode: typeof FILE_REVISION_SNAPSHOT_STORAGE;
+  storageMode: FileRevisionSnapshotStorage;
 }
 
 export interface FileRevisionGcOptions {
@@ -28,7 +30,6 @@ export interface FileRevisionGcOptions {
   resolveProjectDir: (projectId: string) => string;
   retentionLimit?: number;
   now?: number;
-  /** When true and storage mode is sqlite, run VACUUM if enough bytes were deleted since last vacuum. */
   vacuumSqlite?: boolean;
   sqliteDbFile?: string;
   lastVacuumAtMs?: number;
@@ -49,45 +50,30 @@ export interface FileRevisionGcResult {
   } | null;
 }
 
-export function collectFileRevisionStorageStats(db: Database.Database): FileRevisionStorageStats {
+export async function collectFileRevisionStorageStats(
+  db: Database.Database,
+): Promise<FileRevisionStorageStats> {
   const revisionRowCount = (
     db.prepare(`SELECT count(*) AS c FROM file_revisions`).get() as { c: number }
   ).c;
-  const snapshotStats = getFileRevisionSnapshotStorageStats(db);
+  const snapshotStats = await getFileRevisionSnapshotStorageStatsDurable(db);
   return {
     revisionRowCount,
     snapshotRowCount: snapshotStats.snapshotRowCount,
     orphanSnapshotRowCount: snapshotStats.orphanSnapshotRowCount,
     totalSnapshotBytes: snapshotStats.totalSnapshotBytes,
-    storageMode: FILE_REVISION_SNAPSHOT_STORAGE,
+    storageMode: resolveFileRevisionSnapshotStorage(),
   };
 }
 
-export function pruneOrphanFileRevisionSnapshotsInDb(db: Database.Database): {
-  removed: number;
-  reclaimedBytes: number;
-} {
-  const rows = db.prepare(`
-    SELECT s.revision_id AS id, s.storage_bytes AS storageBytes
-    FROM file_revision_snapshots s
-    LEFT JOIN file_revisions r ON r.id = s.revision_id
-    WHERE r.id IS NULL
-  `).all() as Array<{ id: string; storageBytes: number }>;
-  if (rows.length === 0) return { removed: 0, reclaimedBytes: 0 };
-  const reclaimedBytes = rows.reduce((sum, row) => sum + (row.storageBytes ?? 0), 0);
-  deleteFileRevisionSnapshotsFromDb(db, rows.map((row) => row.id));
-  return { removed: rows.length, reclaimedBytes };
-}
-
-export function deleteFileRevisionSnapshotsForProject(
+export async function deleteFileRevisionSnapshotsForProject(
   db: Database.Database,
   projectId: string,
-): number {
+): Promise<number> {
   const rows = db.prepare(`
     SELECT id FROM file_revisions WHERE project_id = ?
   `).all(projectId) as Array<{ id: string }>;
-  if (rows.length === 0) return 0;
-  deleteFileRevisionSnapshotsFromDb(db, rows.map((row) => row.id));
+  await deleteFileRevisionSnapshotsDurable(rows.map((row) => row.id), db);
   return rows.length;
 }
 
@@ -222,23 +208,22 @@ export async function runFileRevisionGc(options: FileRevisionGcOptions): Promise
     sqliteDbFile,
   } = options;
 
-  const orphan = pruneOrphanFileRevisionSnapshotsInDb(db);
+  const orphan = await pruneOrphanFileRevisionSnapshotsDurable(db);
   const retentionBatches = enforceGlobalFileRevisionRetention(db, retentionLimit);
   let retentionRevisionsPruned = 0;
   for (const batch of retentionBatches) {
     retentionRevisionsPruned += batch.revisionIds.length;
-    deleteFileRevisionSnapshotsFromDb(db, batch.revisionIds);
+    await deleteFileRevisionSnapshotsDurable(batch.revisionIds, db);
     const projectDir = resolveProjectDir(batch.projectId);
     await deleteRevisionSnapshots(projectDir, batch.fileName, batch.revisionIds, { db });
   }
 
   const orphanFilesRemoved = await pruneOrphanRevisionFilesOnDisk(projectsRoot, db);
 
-  const reclaimedBytes = orphan.reclaimedBytes;
   let vacuum: FileRevisionGcResult['vacuum'] = null;
   if (
     vacuumSqlite
-    && FILE_REVISION_SNAPSHOT_STORAGE === 'sqlite'
+    && resolveFileRevisionSnapshotStorage() === 'sqlite'
     && sqliteDbFile
     && (orphan.removed > 0 || retentionRevisionsPruned > 0)
   ) {

@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { ProjectBrowserWorkspaceTab, ProjectTabsState } from '@open-design/contracts';
 import { migrateCritique } from './critique/persistence.js';
 import { migrateFileRevisions } from './file-revisions/persistence.js';
-import { deleteFileRevisionSnapshotsForProject } from './file-revisions/maintenance.js';
+import { deleteFileRevisionSnapshotsForProjectDurable } from './file-revisions/snapshot-storage.js';
 import { migrateMediaTasks } from './media-tasks.js';
 import { migratePlugins } from './plugins/persistence.js';
 import {
@@ -1136,7 +1136,7 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
 
 export function deleteProject(db: SqliteDb, id: string) {
   try {
-    deleteFileRevisionSnapshotsForProject(db, id);
+    void deleteFileRevisionSnapshotsForProjectDurable(id, db);
   } catch {
     // Best-effort — CASCADE on file_revisions still removes metadata.
   }
