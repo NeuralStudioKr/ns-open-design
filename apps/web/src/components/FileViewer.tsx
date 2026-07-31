@@ -120,6 +120,7 @@ import {
   openSandboxedPreviewInNewTab,
   prepareImageExportTarget,
   requestPreviewSnapshot,
+  type AsyncExportProgressStatus,
   type ImageExportFormat,
 } from '../runtime/exports';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
@@ -1167,6 +1168,16 @@ function exportInProgressToastMessage(format: ShareExportFormat, t: ExportToastT
     default:
       return t('fileViewer.exportInProgress');
   }
+}
+
+function asyncExportProgressToastMessage(
+  format: ShareExportFormat,
+  status: AsyncExportProgressStatus,
+  t: ExportToastTranslate,
+): string {
+  if (status === 'queued') return t('fileViewer.exportAsyncQueued');
+  if (status === 'ready') return t('fileViewer.exportAsyncReady');
+  return exportInProgressToastMessage(format, t);
 }
 
 function exportSuccessToastMessage(format: ShareExportFormat, t: ExportToastTranslate): string {
@@ -4915,6 +4926,15 @@ function HtmlViewer({
     } else {
       window.setTimeout(runExport, 0);
     }
+  };
+  const showAsyncExportProgress = (format: ShareExportFormat) => (
+    status: AsyncExportProgressStatus,
+  ) => {
+    setExportToast({
+      message: asyncExportProgressToastMessage(format, status, t),
+      tone: 'loading',
+      ttlMs: 0,
+    });
   };
   // P0 helpers — keep the artifact_id + artifact_kind derivation in one place
   // so each per-button onClick stays a one-liner. We compute lazily inside the
@@ -10673,6 +10693,7 @@ function HtmlViewer({
 	                      filePath: file.name,
 	                      fresh: options?.fresh,
 	                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+	                      onAsyncExportStatus: showAsyncExportProgress('pdf'),
 	                      projectId,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                      title: exportTitle,
@@ -10683,6 +10704,7 @@ function HtmlViewer({
                       filePath: file.name,
                       title: exportTitle,
                       htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+                      onAsyncExportStatus: showAsyncExportProgress('pptx'),
                       requireRenderedExport: isTeamverEmbedMode(),
                     })}
 	                    exportHtml={() => exportProjectAsHtml({
@@ -10692,6 +10714,7 @@ function HtmlViewer({
 	                      fallbackHtml: source ?? lastStablePreviewSourceRef.current ?? '',
 	                      fallbackTitle: exportTitle,
 	                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+	                      onAsyncExportStatus: showAsyncExportProgress('html'),
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
 	                    exportZip={() => exportProjectAsZip({
@@ -10701,6 +10724,7 @@ function HtmlViewer({
 	                      fallbackHtml: source ?? lastStablePreviewSourceRef.current ?? '',
 	                      fallbackTitle: exportTitle,
 	                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+	                      onAsyncExportStatus: showAsyncExportProgress('zip'),
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
                     exportMarkdown={() => exportAsMd(

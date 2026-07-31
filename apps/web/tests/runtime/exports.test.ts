@@ -1180,6 +1180,7 @@ describe('exportProjectAsHtml', () => {
 
   it('uses async export jobs first when the feature flag is enabled', async () => {
     process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED = '1';
+    const statuses: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/projects/proj-1/export/jobs') {
         return new Response(
@@ -1217,6 +1218,7 @@ describe('exportProjectAsHtml', () => {
     await exportProjectAsHtml({
       deck: true,
       projectId: 'proj-1',
+      onAsyncExportStatus: (status) => statuses.push(status),
       filePath: 'deck/index.html',
       fallbackHtml: '<section>fallback</section>',
       fallbackTitle: 'Seed Deck',
@@ -1235,6 +1237,7 @@ describe('exportProjectAsHtml', () => {
       method: 'POST',
     });
     expect(fetch).toHaveBeenCalledTimes(3);
+    expect(statuses).toEqual(['queued', 'ready']);
     expect(capturedFilename).toBe('Seed-Deck.html');
     expect(await capturedBlob!.text()).toBe('<!doctype html><p>async job html</p>');
   });

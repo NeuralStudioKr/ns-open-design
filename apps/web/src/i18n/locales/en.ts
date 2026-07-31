@@ -2163,6 +2163,8 @@ export const en: Dict = {
   'fileViewer.exportReactHtml': 'Export preview as HTML',
   'fileViewer.exportStarted': 'Export started',
   'fileViewer.exportInProgress': 'Preparing download…',
+  'fileViewer.exportAsyncQueued': 'Queued download…',
+  'fileViewer.exportAsyncReady': 'Preparing file…',
   'fileViewer.exportPdfInProgress': 'Generating PDF…',
   'fileViewer.exportHtmlInProgress': 'Generating HTML…',
   'fileViewer.exportZipInProgress': 'Generating ZIP…',

@@ -92,6 +92,7 @@ type ExportTicketResponse = {
 };
 
 type AsyncExportFormat = 'pdf' | 'html' | 'zip' | 'pptx';
+export type AsyncExportProgressStatus = 'queued' | 'running' | 'ready';
 
 type AsyncExportJobResponse = {
   jobId: string;
@@ -198,6 +199,7 @@ async function triggerAsyncExportJobDownload(
 async function pollAsyncExportJob(options: {
   projectId: string;
   statusUrl: string;
+  onStatus?: (status: AsyncExportProgressStatus) => void;
   timeoutMs?: number;
   intervalMs?: number;
 }): Promise<AsyncExportJobResponse> {
@@ -214,6 +216,9 @@ async function pollAsyncExportJob(options: {
       await throwIfDaemonExportFailed(resp, 'async export job status');
     }
     const job = (await resp.json()) as AsyncExportJobResponse;
+    if (job.status === 'queued' || job.status === 'running' || job.status === 'ready') {
+      options.onStatus?.(job.status);
+    }
     if (job.status === 'ready') return job;
     if (job.status === 'failed') {
       const message = job.error?.message || job.error?.code || 'async export job failed';
@@ -233,6 +238,7 @@ async function tryAsyncRenderedExportDownload(options: {
   extension: string;
   fresh?: boolean;
   htmlSnapshot?: string | null;
+  onAsyncExportStatus?: (status: AsyncExportProgressStatus) => void;
 }): Promise<boolean> {
   if (!isAsyncExportJobsEnabled()) return false;
   await refreshEmbedAuthBeforeDaemonExport();
@@ -264,9 +270,13 @@ async function tryAsyncRenderedExportDownload(options: {
   if (!created.statusUrl || typeof created.statusUrl !== 'string') {
     return false;
   }
+  if (created.status === 'queued' || created.status === 'running') {
+    options.onAsyncExportStatus?.(created.status);
+  }
   const ready = await pollAsyncExportJob({
     projectId: options.projectId,
     statusUrl: created.statusUrl,
+    onStatus: options.onAsyncExportStatus,
   });
   await triggerAsyncExportJobDownload(ready, options.title, options.extension);
   return true;
@@ -403,6 +413,7 @@ export async function exportProjectAsHtml(opts: {
    * through to `fallbackHtml` if the daemon export still fails.
    */
   htmlSnapshot?: string | null;
+  onAsyncExportStatus?: (status: AsyncExportProgressStatus) => void;
 }): Promise<void> {
   try {
     if (await tryAsyncRenderedExportDownload({
@@ -413,6 +424,7 @@ export async function exportProjectAsHtml(opts: {
       title: opts.fallbackTitle,
       extension: 'html',
       htmlSnapshot: opts.htmlSnapshot,
+      onAsyncExportStatus: opts.onAsyncExportStatus,
     })) {
       return;
     }
@@ -1228,6 +1240,7 @@ async function performPdfExportRequest(opts: {
   title: string;
   fresh?: boolean;
   htmlSnapshot?: string | null;
+  onAsyncExportStatus?: (status: AsyncExportProgressStatus) => void;
 }): Promise<ProjectPdfExportResult> {
   const url = opts.fresh
     ? `/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf?fresh=1`
@@ -1354,6 +1367,7 @@ export async function exportProjectAsPdf(opts: {
       extension: 'pdf',
       fresh: opts.fresh,
       htmlSnapshot: opts.htmlSnapshot,
+      onAsyncExportStatus: opts.onAsyncExportStatus,
     })) {
       return 'desktop';
     }
@@ -1453,6 +1467,7 @@ export async function exportProjectAsPptx(opts: {
   requireRenderedExport?: boolean;
   title: string;
   htmlSnapshot?: string | null;
+  onAsyncExportStatus?: (status: AsyncExportProgressStatus) => void;
 }): Promise<void> {
   if (!opts.deck) {
     throw new Error('PPTX 다운로드는 슬라이드 덱에서만 사용할 수 있습니다.');
@@ -1471,6 +1486,7 @@ export async function exportProjectAsPptx(opts: {
       title: opts.title,
       extension: 'pptx',
       htmlSnapshot: opts.htmlSnapshot,
+      onAsyncExportStatus: opts.onAsyncExportStatus,
     })) {
       return;
     }
@@ -1724,6 +1740,7 @@ export async function exportProjectAsZip(opts: {
    * would deny.
    */
   htmlSnapshot?: string | null;
+  onAsyncExportStatus?: (status: AsyncExportProgressStatus) => void;
 }): Promise<void> {
   try {
     if (await tryAsyncRenderedExportDownload({
@@ -1734,6 +1751,7 @@ export async function exportProjectAsZip(opts: {
       title: opts.fallbackTitle,
       extension: 'zip',
       htmlSnapshot: opts.htmlSnapshot,
+      onAsyncExportStatus: opts.onAsyncExportStatus,
     })) {
       return;
     }
