@@ -43,6 +43,7 @@
 | **[49 Canvas→Design 런치 모달 UX](./49_Canvas_Design_슬라이드_런치_모달_UX_안_비교.md)** | **스텝 위저드 vs 2열·아코디언 · X-only · 푸터 취소 제거** |
 | **[50 Undo/Redo 설계](./50_undo_redo_설계.md)** · [50-1 현황](./50-1-구현현황-undo_redo.md) · **[50-2 Canvas vs Design 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md)** | **수동편집·에이전트 revision undo · Teamver canvas와 차이** |
 | **[51-0~2 드래그 리사이즈](./51-0_수동편집_드래그_리사이즈_기획.md)** | **Manual Edit 박스 핸들 · [51-0 기획](./51-0_수동편집_드래그_리사이즈_기획.md) · [51-1 설계](./51-1_수동편집_드래그_리사이즈_설계.md) · [51-2 현황](./51-2_수동편집_드래그_리사이즈_구현현황.md)** |
+| **[52-0~1 Docker 배포 빌드](./52-0_Docker_배포_빌드_가속_현황.md)** | **Phase 0 가속 현황 · [52-1 CI·ECR 설계](./52-1_Docker_이미지_CI_ECR_배포_설계.md) (미구현)** |
 | **[46 embed 슬라이드 품질](./46_embed_슬라이드_품질_원인분석_개선로드맵.md)** | **품질 trade-off · Phase 1~3 로드맵** |
 | **[47 body-first compact deck 검토](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** | **body-first 결정 · 0716 이후 판단 · 유지/롤백 SSOT** |
 | **[17 Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** | **Step 0~6 체크리스트 · ACM→TF→DNS→EC2→e2e-strict** |
@@ -85,6 +86,8 @@
 | 49 | **[Canvas→Design 런치 모달 UX 안 비교](./49_Canvas_Design_슬라이드_런치_모달_UX_안_비교.md)** — 스텝 위저드(권장) · Studio 2열 폐기 · 크롬 X-only |
 | 50 | **[Undo/Redo 설계](./50_undo_redo_설계.md)** · [50-1 현황](./50-1-구현현황-undo_redo.md) · **[50-2 Canvas vs Design 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md)** |
 | 51-0 | **[드래그 리사이즈 기획](./51-0_수동편집_드래그_리사이즈_기획.md)** · [51-1 설계](./51-1_수동편집_드래그_리사이즈_설계.md) · [51-2 현황](./51-2_수동편집_드래그_리사이즈_구현현황.md) |
+| 52-0 | **[Docker 배포 빌드 가속 현황](./52-0_Docker_배포_빌드_가속_현황.md)** — Phase 0 BuildKit·Playwright |
+| 52-1 | **[Docker 이미지 CI·ECR 배포 설계](./52-1_Docker_이미지_CI_ECR_배포_설계.md)** — 다음 단계 (미구현) |
 | 46 | **[embed 슬라이드 품질 원인분석·로드맵](./46_embed_슬라이드_품질_원인분석_개선로드맵.md)** — Phase 1~3 |
 | 47 | **[body-first compact deck 검토·0716 이후 판단](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** — 유지/롤백 SSOT |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |
@@ -140,6 +143,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-07-31 | [52-0 Docker 빌드 가속 현황](./52-0_Docker_배포_빌드_가속_현황.md) · [52-1 CI·ECR 배포 설계](./52-1_Docker_이미지_CI_ECR_배포_설계.md) |
 | 2026-07-23 | [40 OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md) — 루프 20: main `034c3895d` 기준 43개 신규 커밋 분류, P0 run/artifact/security 포팅 순서 갱신 |
 | 2026-07-14 | [39_10 HA 세션쿠키 경합](./39_10_HA_세션쿠키_경합_해결.md) — Drive `session_expired` 근본 원인·해결 SSOT |
 | 2026-07-08 | [40 OD upstream main 반영 검토](./40_OD_upstream_main_반영_검토.md) — 현재 시점 기준 반영 후보·보류 커밋 정리 |
