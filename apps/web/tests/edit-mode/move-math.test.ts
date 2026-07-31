@@ -77,6 +77,8 @@ describe('promoteMoveStyles', () => {
       top: '50px',
       width: '120px',
       height: '80px',
+      maxWidth: 'none',
+      maxHeight: 'none',
       margin: '0px',
       right: '',
       bottom: '',

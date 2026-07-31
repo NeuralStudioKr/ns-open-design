@@ -181,20 +181,35 @@ export function ManualEditResizeOverlay({
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, []);
 
+  const onResizePreviewRef = useRef(onResizePreview);
+  onResizePreviewRef.current = onResizePreview;
+  const onResizeCommitRef = useRef(onResizeCommit);
+  onResizeCommitRef.current = onResizeCommit;
+  const targetKindRef = useRef(target.kind);
+  targetKindRef.current = target.kind;
+
   useEffect(() => {
-    const endMove = (event: PointerEvent, commit: boolean) => {
+    const endDrag = (event: PointerEvent, commit: boolean) => {
       const drag = dragRef.current;
-      if (!drag || drag.kind !== 'move' || event.pointerId !== drag.pointerId) return;
+      if (!drag || event.pointerId !== drag.pointerId) return;
       const last = drag.lastStyles;
       const before = drag.stylesBefore;
-      const moved = drag.moved;
       const previewed = drag.previewed;
       const viewport = drag.lastViewport;
+      const kind = drag.kind;
+      const moved = kind === 'move' ? drag.moved : false;
       dragRef.current = null;
       setDragging(false);
       setMoving(false);
       setLiveViewportPos(null);
       onResizeSessionChangeRef.current?.(false);
+      if (kind === 'resize') {
+        // Handle click / sub-threshold jitter: no flush, no cancel wipe.
+        if (!previewed) return;
+        if (commit) onResizeCommitRef.current(last, before, viewport);
+        else onResizeCancelRef.current(before);
+        return;
+      }
       // pointercancel: never persist. pointerup commits only past the jitter
       // threshold. A plain click (no preview) must not wipe pending styles.
       // Pass stylesBefore so flush-fail can mirror Esc keyed rollback.
@@ -204,10 +219,30 @@ export function ManualEditResizeOverlay({
 
     const onPointerMove = (event: PointerEvent) => {
       const drag = dragRef.current;
-      if (!drag || drag.kind !== 'move' || event.pointerId !== drag.pointerId) return;
+      if (!drag || event.pointerId !== drag.pointerId) return;
       const hostDx = event.clientX - drag.startClientX;
       const hostDy = event.clientY - drag.startClientY;
       const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, previewScaleRef.current);
+
+      if (drag.kind === 'resize') {
+        if (Math.hypot(dx, dy) < MANUAL_EDIT_RESIZE_MIN_DELTA_PX && !drag.previewed) return;
+        const aspectLock = aspectLockForTarget(targetKindRef.current, event.shiftKey);
+        const result = computeResize({
+          ...drag.session,
+          aspectLock,
+          dx,
+          dy,
+        });
+        const next = resizeResultToStyles(result);
+        drag.lastStyles = next;
+        drag.previewed = true;
+        // result.x/y are viewport (CB left/top stay in leftPx/topPx only).
+        drag.lastViewport = { x: result.x, y: result.y };
+        setLiveViewportPos(drag.lastViewport);
+        onResizePreviewRef.current(next);
+        return;
+      }
+
       const result = computeMove({
         startLeftPx: drag.startLeftPx,
         startTopPx: drag.startTopPx,
@@ -247,8 +282,8 @@ export function ManualEditResizeOverlay({
       onMovePreviewRef.current?.(preview);
     };
 
-    const onPointerUp = (event: PointerEvent) => endMove(event, true);
-    const onPointerCancel = (event: PointerEvent) => endMove(event, false);
+    const onPointerUp = (event: PointerEvent) => endDrag(event, true);
+    const onPointerCancel = (event: PointerEvent) => endDrag(event, false);
 
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
@@ -277,6 +312,10 @@ export function ManualEditResizeOverlay({
     const stylesBefore: Partial<ManualEditStyles> = {
       width: cascadeRollbackStyle(target.styles.width),
       height: cascadeRollbackStyle(target.styles.height),
+      // resizeResultToStyles lifts max-width/height clamps — capture so Esc /
+      // flush-fail can removeProperty and restore stylesheet constraints.
+      maxWidth: cascadeRollbackStyle(target.styles.maxWidth),
+      maxHeight: cascadeRollbackStyle(target.styles.maxHeight),
       left: cascadeRollbackStyle(target.styles.left),
       top: cascadeRollbackStyle(target.styles.top),
       // Loop7 clears right/bottom on resize preview — capture them so Esc /
@@ -367,52 +406,6 @@ export function ManualEditResizeOverlay({
     }
   };
 
-  const onResizePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.kind !== 'resize' || event.pointerId !== drag.pointerId) return;
-    const hostDx = event.clientX - drag.startClientX;
-    const hostDy = event.clientY - drag.startClientY;
-    const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, previewScale);
-    if (Math.hypot(dx, dy) < MANUAL_EDIT_RESIZE_MIN_DELTA_PX && !drag.previewed) return;
-    const aspectLock = aspectLockForTarget(target.kind, event.shiftKey);
-    const result = computeResize({
-      ...drag.session,
-      aspectLock,
-      dx,
-      dy,
-    });
-    const next = resizeResultToStyles(result);
-    drag.lastStyles = next;
-    drag.previewed = true;
-    // result.x/y are viewport (CB left/top stay in leftPx/topPx only).
-    drag.lastViewport = { x: result.x, y: result.y };
-    setLiveViewportPos(drag.lastViewport);
-    onResizePreview(next);
-  };
-
-  const endResize = (event: ReactPointerEvent<HTMLButtonElement>, commit: boolean) => {
-    const drag = dragRef.current;
-    if (!drag || drag.kind !== 'resize' || event.pointerId !== drag.pointerId) return;
-    try {
-      event.currentTarget.releasePointerCapture?.(event.pointerId);
-    } catch {
-      // already released / unsupported
-    }
-    const last = drag.lastStyles;
-    const before = drag.stylesBefore;
-    const previewed = drag.previewed;
-    const viewport = drag.lastViewport;
-    dragRef.current = null;
-    setDragging(false);
-    setMoving(false);
-    setLiveViewportPos(null);
-    onResizeSessionChange?.(false);
-    // Handle click / sub-threshold jitter: no flush, no cancel wipe.
-    if (!previewed) return;
-    if (commit) onResizeCommit(last, before, viewport);
-    else onResizeCancel(before);
-  };
-
   return (
     <div
       className={[
@@ -444,9 +437,6 @@ export function ManualEditResizeOverlay({
             cursor: disabled ? 'default' : cursorForResizeHandle(handle),
           }}
           onPointerDown={(event) => beginResize(handle, event)}
-          onPointerMove={onResizePointerMove}
-          onPointerUp={(event) => endResize(event, true)}
-          onPointerCancel={(event) => endResize(event, false)}
         />
       ))}
     </div>

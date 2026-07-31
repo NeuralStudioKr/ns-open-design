@@ -229,8 +229,17 @@ export function resizeResultToStyles(
   result: ResizeMathResult,
 ): Partial<ManualEditStyles> {
   const styles: Partial<ManualEditStyles> = {};
-  if (result.touchedWidth) styles.width = `${result.widthPx}px`;
-  if (result.touchedHeight) styles.height = `${result.heightPx}px`;
+  if (result.touchedWidth) {
+    styles.width = `${result.widthPx}px`;
+    // Responsive decks commonly ship `max-width: 100%` on images/cards.
+    // width:!important does not beat max-width — used size stays clamped and
+    // the drag appears to do nothing. Lift the clamp for the resized axis.
+    styles.maxWidth = 'none';
+  }
+  if (result.touchedHeight) {
+    styles.height = `${result.heightPx}px`;
+    styles.maxHeight = 'none';
+  }
   if (result.leftPx != null) styles.left = `${result.leftPx}px`;
   if (result.topPx != null) styles.top = `${result.topPx}px`;
   // Match move: clear opposing edges so right:0 / bottom:0 cannot pin the box
@@ -337,7 +346,13 @@ export function resizeStylesForCommit(
 ): Partial<ManualEditStyles> {
   const { signW, signH } = axisSigns(handle);
   const styles: Partial<ManualEditStyles> = {};
-  if (signW !== 0 || result.touchedWidth) styles.width = `${result.widthPx}px`;
-  if (signH !== 0 || result.touchedHeight) styles.height = `${result.heightPx}px`;
+  if (signW !== 0 || result.touchedWidth) {
+    styles.width = `${result.widthPx}px`;
+    styles.maxWidth = 'none';
+  }
+  if (signH !== 0 || result.touchedHeight) {
+    styles.height = `${result.heightPx}px`;
+    styles.maxHeight = 'none';
+  }
   return styles;
 }

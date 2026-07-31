@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import {
   buildManualEditBridge,
+  buildManualEditBridgeStyle,
   isMeaningfulManualEditElement,
   isManualEditHostNode,
   isSourceMappableManualEditElement,
@@ -400,6 +401,36 @@ describe('manual edit bridge target normalization', () => {
     expect(bridge).toContain("attr.name === 'data-od-edit-selected'");
     expect(bridge).toContain('replace(/\\sdata-od-edit-selected="[^"]*"/g, \'\')');
     expect(bridge).toContain('[data-od-edit-selected]');
+    expect(bridge).toContain('data-od-edit-host-chrome');
+  });
+
+  it('suppresses nested rest outlines and host-chrome selected rings', () => {
+    const css = buildManualEditBridgeStyle();
+    expect(css).toContain('[data-od-source-path] [data-od-source-path] { outline-color: transparent; }');
+    expect(css).toContain('[data-od-edit-selected][data-od-edit-host-chrome]');
+    expect(css).toContain('outline: none !important');
+  });
+
+  it('marks hostChrome selection so iframe outline can yield to the overlay', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Title</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]')!;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-selected-target', id: 'title', hostChrome: true },
+    }));
+    expect(title.getAttribute('data-od-edit-selected')).toBe('true');
+    expect(title.getAttribute('data-od-edit-host-chrome')).toBe('true');
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-selected-target', id: 'title', hostChrome: false },
+    }));
+    expect(title.getAttribute('data-od-edit-selected')).toBe('true');
+    expect(title.hasAttribute('data-od-edit-host-chrome')).toBe(false);
+
+    dom.window.close();
   });
 
   it('marks flex/grid targets as layout containers', () => {

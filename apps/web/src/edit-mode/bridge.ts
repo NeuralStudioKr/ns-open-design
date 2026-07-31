@@ -49,7 +49,7 @@ export function buildManualEditBridge(enabled: boolean): string {
   var discoverySelector = ${JSON.stringify(MANUAL_EDIT_DISCOVERY_SELECTOR)};
   var hostNodeSelector = ${JSON.stringify(MANUAL_EDIT_HOST_NODE_SELECTOR)};
   var sourcePathAttr = ${JSON.stringify(MANUAL_EDIT_SOURCE_PATH_ATTR)};
-  var styleProps = ['fontFamily','fontSize','fontWeight','color','textAlign','lineHeight','letterSpacing','width','height','minHeight','position','left','top','right','bottom','gap','flexDirection','justifyContent','alignItems','backgroundColor','opacity','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','margin','marginTop','marginRight','marginBottom','marginLeft','border','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderStyle','borderColor','borderRadius'];
+  var styleProps = ['fontFamily','fontSize','fontWeight','color','textAlign','lineHeight','letterSpacing','width','height','minHeight','maxWidth','maxHeight','position','left','top','right','bottom','gap','flexDirection','justifyContent','alignItems','backgroundColor','opacity','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','margin','marginTop','marginRight','marginBottom','marginLeft','border','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderStyle','borderColor','borderRadius'];
   function isHostNode(el){
     return !!(el && el.matches && el.matches(hostNodeSelector));
   }
@@ -100,7 +100,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     var attrs = {};
     for (var i = 0; i < el.attributes.length; i++) {
       var attr = el.attributes[i];
-      if (!attr || attr.name.indexOf('data-od-runtime') === 0 || attr.name === 'data-od-edit-selected') continue;
+      if (!attr || attr.name.indexOf('data-od-runtime') === 0 || attr.name === 'data-od-edit-selected' || attr.name === 'data-od-edit-host-chrome') continue;
       attrs[attr.name] = attr.value;
     }
     return attrs;
@@ -109,7 +109,7 @@ export function buildManualEditBridge(enabled: boolean): string {
   // removeProperty instead of baking computed px (!important) over %/auto CSS.
   // Typography/paint still fall back to computed for the inspector.
   var geometryStyleProps = {
-    width:1, height:1, minHeight:1, position:1,
+    width:1, height:1, minHeight:1, maxWidth:1, maxHeight:1, position:1,
     left:1, top:1, right:1, bottom:1,
     margin:1, marginTop:1, marginRight:1, marginBottom:1, marginLeft:1,
     padding:1, paddingTop:1, paddingRight:1, paddingBottom:1, paddingLeft:1,
@@ -238,7 +238,7 @@ export function buildManualEditBridge(enabled: boolean): string {
       cssPosition: (window.getComputedStyle(el).position || 'static'),
       offsetLeft: promo.left,
       offsetTop: promo.top,
-      outerHtml: includeOuterHtml ? (el.outerHTML || '').replace(/\\sdata-od-runtime-id="[^"]*"/g, '').replace(/\\sdata-od-source-path="[^"]*"/g, '').replace(/\\sdata-od-edit-selected="[^"]*"/g, '') : ''
+      outerHtml: includeOuterHtml ? (el.outerHTML || '').replace(/\\sdata-od-runtime-id="[^"]*"/g, '').replace(/\\sdata-od-source-path="[^"]*"/g, '').replace(/\\sdata-od-edit-selected="[^"]*"/g, '').replace(/\\sdata-od-edit-host-chrome="[^"]*"/g, '') : ''
     };
   }
   function allTargets(){
@@ -266,13 +266,20 @@ export function buildManualEditBridge(enabled: boolean): string {
   }
   function clearSelectedTarget(){
     var selected = document.querySelectorAll('[data-od-edit-selected]');
-    for (var i = 0; i < selected.length; i++) selected[i].removeAttribute('data-od-edit-selected');
+    for (var i = 0; i < selected.length; i++) {
+      selected[i].removeAttribute('data-od-edit-selected');
+      selected[i].removeAttribute('data-od-edit-host-chrome');
+    }
   }
-  function setSelectedTarget(id){
+  function setSelectedTarget(id, hostChrome){
     clearSelectedTarget();
     if (!id) return;
     var el = findById(id);
-    if (el) el.setAttribute('data-od-edit-selected', 'true');
+    if (!el) return;
+    el.setAttribute('data-od-edit-selected', 'true');
+    // Host resize/move overlay already paints the selection ring — suppress the
+    // iframe outline/glow so users do not see a double border.
+    if (hostChrome) el.setAttribute('data-od-edit-host-chrome', 'true');
   }
   function closestTarget(event){
     var el = event.target;
@@ -430,7 +437,7 @@ export function buildManualEditBridge(enabled: boolean): string {
       return;
     }
     if (ev.data.type === 'od-edit-selected-target') {
-      setSelectedTarget(ev.data.id || null);
+      setSelectedTarget(ev.data.id || null, !!ev.data.hostChrome);
       return;
     }
     if (ev.data.type === 'od-edit-hover-reset') {
@@ -493,18 +500,34 @@ export function buildManualEditBridgeStyle(): string {
 html[data-od-edit-mode] body * { cursor: pointer !important; }
 html[data-od-edit-mode] [data-od-id],
 html[data-od-edit-mode] [data-od-runtime-id],
-html[data-od-edit-mode] [data-od-source-path] { outline: 1px dashed rgba(37, 99, 235, 0.35); outline-offset: 3px; }
+html[data-od-edit-mode] [data-od-source-path] { outline: 1px dashed rgba(37, 99, 235, 0.35); outline-offset: 2px; }
+/* Nested editable boxes: only the outer ancestor paints at rest (avoids double dashed rings). */
+html[data-od-edit-mode] [data-od-id] [data-od-id],
+html[data-od-edit-mode] [data-od-id] [data-od-runtime-id],
+html[data-od-edit-mode] [data-od-id] [data-od-source-path],
+html[data-od-edit-mode] [data-od-runtime-id] [data-od-id],
+html[data-od-edit-mode] [data-od-runtime-id] [data-od-runtime-id],
+html[data-od-edit-mode] [data-od-runtime-id] [data-od-source-path],
+html[data-od-edit-mode] [data-od-source-path] [data-od-id],
+html[data-od-edit-mode] [data-od-source-path] [data-od-runtime-id],
+html[data-od-edit-mode] [data-od-source-path] [data-od-source-path] { outline-color: transparent; }
 html[data-od-edit-mode] [data-od-id]:hover,
 html[data-od-edit-mode] [data-od-runtime-id]:hover,
-html[data-od-edit-mode] [data-od-source-path]:hover { outline: 2px solid #2563eb; }
+html[data-od-edit-mode] [data-od-source-path]:hover { outline: 2px solid #2563eb; outline-offset: 2px; }
 html[data-od-edit-mode] [data-od-edit-selected] {
   outline: 2px solid #2563eb !important;
-  outline-offset: 4px;
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.16);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+/* Host ManualEditResizeOverlay owns the selection chrome — no iframe ring. */
+html[data-od-edit-mode] [data-od-edit-selected][data-od-edit-host-chrome] {
+  outline: none !important;
+  outline-offset: 0;
+  box-shadow: none !important;
 }
 html[data-od-edit-mode] [data-od-editing="true"] {
   outline: 2px solid #2563eb !important;
-  outline-offset: 4px;
+  outline-offset: 2px;
   background: rgba(37, 99, 235, 0.06);
   cursor: text !important;
 }

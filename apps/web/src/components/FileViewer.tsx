@@ -6684,7 +6684,15 @@ function HtmlViewer({
     if (!win) return;
     win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
     postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null);
-  }, [manualEditMode, selectedManualEditTarget?.id, srcDoc, useUrlLoadPreview]);
+    // hostChrome tracks overlay mount: also re-post when draw / inline-text hide it.
+  }, [
+    manualEditMode,
+    selectedManualEditTarget?.id,
+    srcDoc,
+    useUrlLoadPreview,
+    manualEditInlineTextEditing,
+    drawOverlayOpen,
+  ]);
 
   const previewStyleToIframe = useCallback((id: string, styles: Partial<ManualEditStyles>, version: number) => {
     const frame = iframeRef.current;
@@ -6707,7 +6715,25 @@ function HtmlViewer({
   function postSelectedManualEditTargetToIframe(id: string | null, target: HTMLIFrameElement | null = iframeRef.current) {
     const win = target?.contentWindow;
     if (!win) return;
-    win.postMessage({ type: 'od-edit-selected-target', id }, '*');
+    // Prefer render-state over the ref: the selection-sync effect can run
+    // before the ref-sync effect after setSelectedManualEditTarget.
+    const selected = (
+      id
+      && selectedManualEditTarget
+      && selectedManualEditTarget.id === id
+    )
+      ? selectedManualEditTarget
+      : (id && selectedManualEditTargetRef.current?.id === id
+        ? selectedManualEditTargetRef.current
+        : null);
+    // Match ManualEditResizeOverlay mount: only suppress the iframe ring when
+    // the host overlay is actually painted (not during draw / inline text).
+    const hostChrome = Boolean(
+      selected
+      && !drawOverlayOpen
+      && canResizeTarget(selected, { inlineTextEditing: manualEditInlineTextEditing }),
+    );
+    win.postMessage({ type: 'od-edit-selected-target', id, hostChrome }, '*');
   }
 
   function requestManualEditTargetRemeasure(id: string, target: HTMLIFrameElement | null = iframeRef.current) {
@@ -7816,6 +7842,7 @@ function HtmlViewer({
     const base = sourceRef.current ?? '';
     const fields = readManualEditFields(base, target.id);
     selectedManualEditTargetIdRef.current = target.id;
+    selectedManualEditTargetRef.current = target;
     setSelectedManualEditTarget(target);
     setManualEditDraft({
       text: fields.text ?? target.fields.text ?? target.text,
