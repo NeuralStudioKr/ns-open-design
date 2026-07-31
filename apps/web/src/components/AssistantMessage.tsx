@@ -20,7 +20,7 @@ import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup
 import { isEmptyAssistantShell } from "../runtime/conversation-message-dedupe";
 import {
   hasEmbedVisibleAssistantBody,
-  isTerminalSucceededEmptyShellAnchor,
+  isTerminalSucceededEmptyShellForDisplay,
   messageLooksLikeSlideEditTurn,
   shouldSynthesizeTeamverCompletedArtifactLead,
   terminalSucceededAnchorLeadCopy,
@@ -775,13 +775,13 @@ function AssistantMessageImpl({
     locale,
     isDeckPatchArtifactTurn,
   );
-  const terminalSucceededAnchor = isTerminalSucceededEmptyShellAnchor(message, {
-    isLast: !!isLast,
-    streaming,
-  });
+  // Completion leads must not depend on ChatPane `isLast`. Auto-continue leaves
+  // a superseded failed sibling that `resolveLastAssistantMessageId` prefers,
+  // and historical turns must keep their lead after later user messages.
+  const terminalSucceededForDisplay =
+    !streaming && isTerminalSucceededEmptyShellForDisplay(message);
   const shouldShowTerminalSucceededLead =
-    !streaming
-    && terminalSucceededAnchor
+    terminalSucceededForDisplay
     && !hasVisibleAssistantTextBlocks
     && !(slideOnlyMvp || teamverEmbedEnabled);
   // Persist sanitizer strips closed `<artifact>` tags, so reload must not
@@ -810,7 +810,11 @@ function AssistantMessageImpl({
   }
 
   if (isEmptyAssistantShell(message) && !(streaming && isLast)) {
-    if (!terminalSucceededAnchor) {
+    if (
+      !terminalSucceededForDisplay
+      && !shouldShowTeamverCompletedArtifactLead
+      && !hasEmbedVisibleAssistantBody(message)
+    ) {
       return null;
     }
   }

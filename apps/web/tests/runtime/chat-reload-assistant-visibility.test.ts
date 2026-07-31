@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../src/types";
 import { buildChatRenderItems } from "../../src/components/ChatPane";
-import { dedupeConversationAssistantRows } from "../../src/runtime/conversation-message-dedupe";
+import {
+  dedupeConversationAssistantRows,
+  resolveLastAssistantMessageId,
+} from "../../src/runtime/conversation-message-dedupe";
 import { mergeActiveRunsIntoMessages } from "../../src/teamver/backgroundChatRecovery";
 import { AUTO_CONTINUE_PROMPT_SENTINEL } from "../../src/runtime/resume";
 import { hasEmbedVisibleAssistantBody } from "../../src/runtime/chat-message-render";
@@ -52,9 +55,11 @@ describe("chat reload assistant visibility", () => {
       "a-succeeded",
     ]);
 
+    const lastAssistantId = resolveLastAssistantMessageId(loaded);
+    expect(lastAssistantId).toBe("a-succeeded");
     const items = buildChatRenderItems(loaded, {
       ...embedCtx,
-      lastAssistantId: "a-succeeded",
+      lastAssistantId,
     });
     expect(items.map((item) => item.message.id)).toEqual(["u1", "a-succeeded"]);
     const succeededShell = loaded.find((message) => message.id === "a-succeeded");

@@ -6020,9 +6020,12 @@ export function ProjectView({
           markStreamingConversation(reattachConversationId);
         }
         if (needsFullReplay) {
+          // Clear stream buffers for replay, but keep producedFiles — wiping
+          // them makes the assistant row vanish in Teamver embed until SSE
+          // refills, and a failed replay leaves the bubble permanently empty.
           updateMessageById(
             message.id,
-            (prev) => ({ ...prev, content: '', events: [], producedFiles: undefined }),
+            (prev) => ({ ...prev, content: '', events: [] }),
           );
         }
 
