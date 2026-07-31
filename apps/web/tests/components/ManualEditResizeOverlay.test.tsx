@@ -181,7 +181,7 @@ describe('ManualEditResizeOverlay', () => {
     // host +20px at scale 0.5 → content +40px
     fireEvent.pointerDown(handle, { pointerId: 3, clientX: 0, clientY: 0, buttons: 1 });
     fireEvent.pointerMove(handle, { pointerId: 3, clientX: 20, clientY: 0, buttons: 1 });
-    expect(onResizePreview.mock.calls.at(-1)?.[0]).toEqual({ width: '240px' });
+    expect(onResizePreview.mock.calls.at(-1)?.[0]).toEqual({ width: '240px', right: '' });
   });
 
   it('absolute body-drag overlay follows viewport delta when CB left ≠ rect.x', () => {

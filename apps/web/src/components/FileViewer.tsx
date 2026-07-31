@@ -7521,6 +7521,7 @@ function HtmlViewer({
   async function handleManualEditResizeCommit(
     styles: Partial<ManualEditStyles>,
     stylesBefore: Partial<ManualEditStyles>,
+    viewport?: { x: number; y: number },
   ) {
     const target = selectedManualEditTarget;
     if (!target) return;
@@ -7539,10 +7540,14 @@ function HtmlViewer({
     const topPx = parseExplicitPx(styles.top);
     setSelectedManualEditTarget((current) => {
       if (!current || current.id !== target.id) return current;
+      const base = viewportRectAfterMoveCommit(current.rect, width, height);
       return {
         ...current,
-        // Remasure owns viewport x/y — CB left/top must not become rect origin.
-        rect: viewportRectAfterMoveCommit(current.rect, width, height),
+        // Apply gesture viewport immediately so the next drag does not seed
+        // startRect from a stale pre-gesture origin while remasure is in flight.
+        rect: viewport
+          ? { ...base, x: Math.round(viewport.x), y: Math.round(viewport.y) }
+          : base,
         styles: { ...current.styles, ...styles },
         offsetLeft: leftPx ?? current.offsetLeft,
         offsetTop: topPx ?? current.offsetTop,
@@ -7555,6 +7560,7 @@ function HtmlViewer({
   async function handleManualEditMoveCommit(
     styles: Partial<ManualEditStyles>,
     stylesBefore: Partial<ManualEditStyles>,
+    viewport?: { x: number; y: number },
   ) {
     const target = selectedManualEditTarget;
     if (!target) return;
@@ -7574,10 +7580,12 @@ function HtmlViewer({
     const topPx = parseExplicitPx(styles.top);
     setSelectedManualEditTarget((current) => {
       if (!current || current.id !== target.id) return current;
+      const base = viewportRectAfterMoveCommit(current.rect, width, height);
       return {
         ...current,
-        // Remasure owns viewport x/y — CB left/top must not become rect origin.
-        rect: viewportRectAfterMoveCommit(current.rect, width, height),
+        rect: viewport
+          ? { ...base, x: Math.round(viewport.x), y: Math.round(viewport.y) }
+          : base,
         styles: { ...current.styles, ...styles },
         cssPosition: promoted ? 'absolute' : current.cssPosition,
         offsetLeft: leftPx ?? current.offsetLeft,
@@ -9793,13 +9801,13 @@ function HtmlViewer({
         disabled={manualEditInlineTextEditing || manualEditSaving}
         onResizeSessionChange={handleManualEditResizeSessionChange}
         onResizePreview={handleManualEditResizePreview}
-        onResizeCommit={(styles, stylesBefore) => {
-          void handleManualEditResizeCommit(styles, stylesBefore);
+        onResizeCommit={(styles, stylesBefore, viewport) => {
+          void handleManualEditResizeCommit(styles, stylesBefore, viewport);
         }}
         onResizeCancel={handleManualEditResizeCancel}
         onMovePreview={handleManualEditMovePreview}
-        onMoveCommit={(styles, stylesBefore) => {
-          void handleManualEditMoveCommit(styles, stylesBefore);
+        onMoveCommit={(styles, stylesBefore, viewport) => {
+          void handleManualEditMoveCommit(styles, stylesBefore, viewport);
         }}
         onMoveCancel={handleManualEditMoveCancel}
       />

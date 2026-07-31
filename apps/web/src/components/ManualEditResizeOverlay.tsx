@@ -51,6 +51,7 @@ export type ManualEditResizeOverlayProps = {
   onResizeCommit: (
     next: Partial<ManualEditStyles>,
     stylesBefore: Partial<ManualEditStyles>,
+    viewport?: { x: number; y: number },
   ) => void;
   onResizeCancel: (stylesBefore: Partial<ManualEditStyles>) => void;
   /** Shared with move — autosave pause while any geometry gesture is active. */
@@ -59,6 +60,7 @@ export type ManualEditResizeOverlayProps = {
   onMoveCommit?: (
     next: Partial<ManualEditStyles>,
     stylesBefore: Partial<ManualEditStyles>,
+    viewport?: { x: number; y: number },
   ) => void;
   onMoveCancel?: (stylesBefore: Partial<ManualEditStyles>) => void;
 };
@@ -74,6 +76,7 @@ type ResizeDragState = {
   lastStyles: Partial<ManualEditStyles>;
   /** True after pointer moved past jitter — gates commit/Esc like move. */
   previewed: boolean;
+  lastViewport: { x: number; y: number };
 };
 
 type MoveDragState = {
@@ -91,6 +94,7 @@ type MoveDragState = {
   previewed: boolean;
   /** 53: flow → absolute promote during this gesture. */
   promote: boolean;
+  lastViewport: { x: number; y: number };
 };
 
 type DragState = ResizeDragState | MoveDragState;
@@ -185,6 +189,7 @@ export function ManualEditResizeOverlay({
       const before = drag.stylesBefore;
       const moved = drag.moved;
       const previewed = drag.previewed;
+      const viewport = drag.lastViewport;
       dragRef.current = null;
       setDragging(false);
       setMoving(false);
@@ -193,7 +198,7 @@ export function ManualEditResizeOverlay({
       // pointercancel: never persist. pointerup commits only past the jitter
       // threshold. A plain click (no preview) must not wipe pending styles.
       // Pass stylesBefore so flush-fail can mirror Esc keyed rollback.
-      if (commit && moved) onMoveCommitRef.current?.(last, before);
+      if (commit && moved) onMoveCommitRef.current?.(last, before, viewport);
       else if (previewed) onMoveCancelRef.current?.(before);
     };
 
@@ -229,6 +234,7 @@ export function ManualEditResizeOverlay({
         const preview = promoteMoveStyles(drag.startRect, result);
         drag.lastStyles = preview;
         drag.previewed = true;
+        drag.lastViewport = viewport;
         setLiveViewportPos(viewport);
         onMovePreviewRef.current?.(preview);
         return;
@@ -236,6 +242,7 @@ export function ManualEditResizeOverlay({
       const preview = movePreviewStyles(result);
       drag.lastStyles = result.moved ? (moveResultToStyles(result) ?? preview) : preview;
       drag.previewed = true;
+      drag.lastViewport = viewport;
       setLiveViewportPos(viewport);
       onMovePreviewRef.current?.(preview);
     };
@@ -296,6 +303,7 @@ export function ManualEditResizeOverlay({
       stylesBefore,
       lastStyles: {},
       previewed: false,
+      lastViewport: { x: target.rect.x, y: target.rect.y },
     };
     setLiveViewportPos(null);
     setDragging(true);
@@ -341,6 +349,7 @@ export function ManualEditResizeOverlay({
       moved: false,
       previewed: false,
       promote,
+      lastViewport: { x: target.rect.x, y: target.rect.y },
     };
     setLiveViewportPos(null);
     setDragging(true);
@@ -371,7 +380,8 @@ export function ManualEditResizeOverlay({
     drag.lastStyles = next;
     drag.previewed = true;
     // result.x/y are viewport (CB left/top stay in leftPx/topPx only).
-    setLiveViewportPos({ x: result.x, y: result.y });
+    drag.lastViewport = { x: result.x, y: result.y };
+    setLiveViewportPos(drag.lastViewport);
     onResizePreview(next);
   };
 
@@ -386,6 +396,7 @@ export function ManualEditResizeOverlay({
     const last = drag.lastStyles;
     const before = drag.stylesBefore;
     const previewed = drag.previewed;
+    const viewport = drag.lastViewport;
     dragRef.current = null;
     setDragging(false);
     setMoving(false);
@@ -393,7 +404,7 @@ export function ManualEditResizeOverlay({
     onResizeSessionChange?.(false);
     // Handle click / sub-threshold jitter: no flush, no cancel wipe.
     if (!previewed) return;
-    if (commit) onResizeCommit(last, before);
+    if (commit) onResizeCommit(last, before, viewport);
     else onResizeCancel(before);
   };
 

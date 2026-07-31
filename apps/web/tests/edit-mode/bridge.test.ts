@@ -587,6 +587,35 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('reports geometry styles as authored/inline only (no computed bake)', async () => {
+    const posts: Array<{ type?: string; target?: { id: string; styles?: Record<string, string> } }> = [];
+    const dom = new JSDOM(
+      `<style>[data-od-id="card"] { width: 320px; }</style>
+      <main><div data-od-id="card" style="position:absolute;left:10px;height:80px">Box</div></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const cardEl = dom.window.document.querySelector('[data-od-id="card"]') as HTMLElement;
+    cardEl.getBoundingClientRect = () => ({
+      x: 10, y: 10, width: 320, height: 80,
+      top: 10, right: 330, bottom: 90, left: 10,
+      toJSON: () => ({}),
+    } as DOMRect);
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    cardEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    const select = posts.find((p) => p.type === 'od-edit-select');
+    expect(select?.target?.styles?.position).toBe('absolute');
+    expect(select?.target?.styles?.left).toBe('10px');
+    expect(select?.target?.styles?.height).toBe('80px');
+    // Stylesheet-only width must not appear as if it were inline.
+    expect(select?.target?.styles?.width).toBe('');
+
+    dom.window.close();
+  });
+
   it('answers od-edit-remeasure with od-edit-rect for the target id', () => {
     const posts: Array<{
       type?: string;

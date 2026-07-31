@@ -105,10 +105,26 @@ export function buildManualEditBridge(enabled: boolean): string {
     }
     return attrs;
   }
+  // Geometry must stay authored/inline-only so Esc / flush-fail rollback
+  // removeProperty instead of baking computed px (!important) over %/auto CSS.
+  // Typography/paint still fall back to computed for the inspector.
+  var geometryStyleProps = {
+    width:1, height:1, minHeight:1, position:1,
+    left:1, top:1, right:1, bottom:1,
+    margin:1, marginTop:1, marginRight:1, marginBottom:1, marginLeft:1,
+    padding:1, paddingTop:1, paddingRight:1, paddingBottom:1, paddingLeft:1,
+    gap:1, flexDirection:1, justifyContent:1, alignItems:1,
+    border:1, borderTopWidth:1, borderRightWidth:1, borderBottomWidth:1, borderLeftWidth:1,
+    borderStyle:1, borderColor:1, borderRadius:1,
+  };
   function stylesFor(el){
     var computed = window.getComputedStyle(el);
     var styles = {};
-    styleProps.forEach(function(prop){ styles[prop] = el.style[prop] || computed[prop] || ''; });
+    styleProps.forEach(function(prop){
+      var inline = el.style[prop] || '';
+      if (geometryStyleProps[prop]) styles[prop] = inline;
+      else styles[prop] = inline || computed[prop] || '';
+    });
     return styles;
   }
   function isLayoutContainer(el){

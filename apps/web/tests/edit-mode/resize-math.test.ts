@@ -210,9 +210,9 @@ describe('style helpers', () => {
       leftPx: null,
       topPx: null,
     });
-    expect(styles).toEqual({ width: '220px' });
+    expect(styles).toEqual({ width: '220px', right: '' });
     // Text/fontSize and other style keys must never ride along with a box resize.
-    expect(Object.keys(styles)).toEqual(['width']);
+    expect(Object.keys(styles).sort()).toEqual(['right', 'width']);
   });
 
   it('disables handles while inline text editing or edit mode is off', () => {
@@ -236,7 +236,11 @@ describe('style helpers', () => {
     expect(out.topPx).toBeNull();
     // startRect.x=10 → viewport x = 10 + (140-100) = 50 (not CB left 140)
     expect(out.x).toBe(50);
-    expect(resizeResultToStyles(out)).toEqual({ width: '160px', left: '140px' });
+    expect(resizeResultToStyles(out)).toEqual({
+      width: '160px',
+      left: '140px',
+      right: '',
+    });
   });
 
   it('anchors top when N-dragging an absolute element', () => {
