@@ -30,6 +30,7 @@ import {
   type RevisionSnapshotStoreContext,
 } from './store.js';
 import { usesPostgresRevisionSnapshots } from './snapshot-storage.js';
+import { withFileRevisionMutationLock } from './postgres-lock.js';
 
 type WriteProjectFile = (
   projectsRoot: string,
@@ -180,103 +181,107 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         truncateAfterSequence,
         metadata,
       } = input;
-      const projectDir = resolveProjectDir(projectsRoot, projectId, metadata);
-      await ensureHydrated(projectId, fileName);
+      return withFileRevisionMutationLock(projectId, fileName, async () => {
+        const projectDir = resolveProjectDir(projectsRoot, projectId, metadata);
+        await ensureHydrated(projectId, fileName);
 
-      if (typeof truncateAfterSequence === 'number' && Number.isFinite(truncateAfterSequence)) {
-        const truncated = postgresAuthority
-          ? await deleteFileRevisionsAfterSequenceDurable(db, projectId, fileName, truncateAfterSequence)
-          : deleteFileRevisionsAfterSequence(db, projectId, fileName, truncateAfterSequence);
-        await pruneSnapshots(projectDir, fileName, truncated);
-      }
+        if (typeof truncateAfterSequence === 'number' && Number.isFinite(truncateAfterSequence)) {
+          const truncated = postgresAuthority
+            ? await deleteFileRevisionsAfterSequenceDurable(db, projectId, fileName, truncateAfterSequence)
+            : deleteFileRevisionsAfterSequence(db, projectId, fileName, truncateAfterSequence);
+          await pruneSnapshots(projectDir, fileName, truncated);
+        }
 
-      let parent = getLatestFileRevision(db, projectId, fileName);
-      if (!parent) {
-        const beforeFile = await deps.readProjectFile(projectsRoot, projectId, fileName, metadata);
-        const beforeContent = beforeFile.buffer.toString('utf8');
-        const baselineId = randomUUID();
+        let parent = getLatestFileRevision(db, projectId, fileName);
+        if (!parent) {
+          const beforeFile = await deps.readProjectFile(projectsRoot, projectId, fileName, metadata);
+          const beforeContent = beforeFile.buffer.toString('utf8');
+          const baselineId = randomUUID();
+          const createdAt = Date.now();
+          parent = await persistRevisionSnapshot(
+            projectDir,
+            fileName,
+            {
+              id: baselineId,
+              projectId,
+              fileName,
+              parentRevisionId: null,
+              sequence: 1,
+              createdAt,
+              byteSize: Buffer.byteLength(beforeContent, 'utf8'),
+              source: 'import',
+              label: 'Baseline',
+            },
+            beforeContent,
+            { parentContent: null, sequence: 1 },
+          );
+        }
+
+        const sequence = parent.sequence + 1;
+        const revisionId = randomUUID();
         const createdAt = Date.now();
-        parent = await persistRevisionSnapshot(
+
+        const beforeFile = await deps.readProjectFile(projectsRoot, projectId, fileName, metadata);
+        const parentContent = beforeFile.buffer.toString('utf8');
+
+        const file = await writeProjectFile(
+          projectsRoot,
+          projectId,
+          fileName,
+          content,
+          { overwrite: true, artifactManifest },
+          metadata,
+        );
+
+        const revision = await persistRevisionSnapshot(
           projectDir,
           fileName,
           {
-            id: baselineId,
+            id: revisionId,
             projectId,
             fileName,
-            parentRevisionId: null,
-            sequence: 1,
+            parentRevisionId: parent.id,
+            sequence,
             createdAt,
-            byteSize: Buffer.byteLength(beforeContent, 'utf8'),
-            source: 'import',
-            label: 'Baseline',
+            byteSize: Buffer.byteLength(content, 'utf8'),
+            source,
+            label,
+            conversationId: conversationId ?? null,
+            assistantMessageId: assistantMessageId ?? null,
           },
-          beforeContent,
-          { parentContent: null, sequence: 1 },
+          content,
+          { parentContent, sequence },
         );
-      }
-
-      const sequence = parent.sequence + 1;
-      const revisionId = randomUUID();
-      const createdAt = Date.now();
-
-      const beforeFile = await deps.readProjectFile(projectsRoot, projectId, fileName, metadata);
-      const parentContent = beforeFile.buffer.toString('utf8');
-
-      const file = await writeProjectFile(
-        projectsRoot,
-        projectId,
-        fileName,
-        content,
-        { overwrite: true, artifactManifest },
-        metadata,
-      );
-
-      const revision = await persistRevisionSnapshot(
-        projectDir,
-        fileName,
-        {
-          id: revisionId,
-          projectId,
-          fileName,
-          parentRevisionId: parent.id,
-          sequence,
-          createdAt,
-          byteSize: Buffer.byteLength(content, 'utf8'),
-          source,
-          label,
-          conversationId: conversationId ?? null,
-          assistantMessageId: assistantMessageId ?? null,
-        },
-        content,
-        { parentContent, sequence },
-      );
-      await enforceRetention(projectId, fileName, projectDir);
-      return { revision, file };
+        await enforceRetention(projectId, fileName, projectDir);
+        return { revision, file };
+      });
     },
 
     async restoreRevision(input: RestoreFileRevisionInput) {
       const { projectId, fileName, revisionId, metadata } = input;
-      await ensureHydrated(projectId, fileName);
-      const revision = getFileRevision(db, projectId, fileName, revisionId);
-      if (!revision) return null;
-      const projectDir = resolveProjectDir(projectsRoot, projectId, metadata);
-      const content = await readRevisionSnapshot(
-        projectDir,
-        fileName,
-        revisionId,
-        (id) => getFileRevision(db, projectId, fileName, id)?.parentRevisionId ?? null,
-        revisionMetadataLookup(projectId, fileName),
-        snapshotContext,
-      );
-      const file = await writeProjectFile(
-        projectsRoot,
-        projectId,
-        fileName,
-        content,
-        { overwrite: true },
-        metadata,
-      );
-      return { revision, file };
+      return withFileRevisionMutationLock(projectId, fileName, async () => {
+        await ensureHydrated(projectId, fileName);
+        const revision = getFileRevision(db, projectId, fileName, revisionId);
+        if (!revision) return null;
+        const projectDir = resolveProjectDir(projectsRoot, projectId, metadata);
+        const content = await readRevisionSnapshot(
+          projectDir,
+          fileName,
+          revisionId,
+          (id) => getFileRevision(db, projectId, fileName, id)?.parentRevisionId ?? null,
+          revisionMetadataLookup(projectId, fileName),
+          snapshotContext,
+        );
+        const file = await writeProjectFile(
+          projectsRoot,
+          projectId,
+          fileName,
+          content,
+          { overwrite: true },
+          metadata,
+        );
+        return { revision, file };
+      });
     },
   };
 }

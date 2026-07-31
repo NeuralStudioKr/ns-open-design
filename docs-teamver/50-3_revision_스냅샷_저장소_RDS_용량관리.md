@@ -88,13 +88,14 @@ Teamver에서 undo 히스토리를 노드 로컬 디스크에 두면 안 되는 
 - **메타+스냅샷 SSOT:** RDS `file_revisions` + `file_revision_snapshots`. push 시 `pgCommitRevisionWithSnapshot`으로 **단일 트랜잭션** 커밋 후 sqlite 미러.
 - **읽기:** `ensureFileRevisionsHydrated` — PG head revision id·row count가 sqlite와 다르면 PG → sqlite 전체 hydrate. `warmProjectFromPostgres`에 file_revisions warm 포함.
 - **삭제/retention/GC:** Postgres 경로가 먼저 snapshot+meta 삭제, sqlite 미러 동기화 (`durable-store.ts`).
+- **동시성:** push/restore는 `withFileRevisionMutationLock`으로 `(project_id, file_name)` 단위 Postgres advisory lock.
 - **canonical 파일** (`deck.html`)은 scratch/S3 — undo와 별개.
 - legacy `.od/revisions` 파일은 read fallback + GC orphan 정리.
 - S3 materialization: `.od/revisions/**` sync 제외.
 
 Postgres 스키마: `DAEMON_DB_POSTGRES_MIGRATION_V8` — `daemon-db-postgres-schema.ts` v8.
 
-코드: `durable-store.ts` · `postgres-persistence.ts` · `snapshot-storage.ts` · `store.ts` · `service.ts`
+코드: `durable-store.ts` · `postgres-lock.ts` · `postgres-persistence.ts` · `snapshot-storage.ts` · `store.ts` · `service.ts`
 
 ---
 
@@ -144,6 +145,7 @@ undo/redo **탐색만**으로는 스냅샷이 늘지 않는다. **save(push)** �
 | 변수 | 기본 | 설명 |
 |------|------|------|
 | `OD_FILE_REVISION_GC_INTERVAL_MS` | `21600000` (6h) | `0` 이면 GC 비활성 |
+| `OD_FILE_REVISION_LOCK_TIMEOUT_MS` | `15000` | postgres 모드 push/restore advisory lock 대기 (`0` = 무한 대기) |
 | `OD_FILE_REVISION_GC_VACUUM` | sqlite dev 모드만 on | Postgres는 RDS autovacuum |
 | `OD_FILE_REVISION_FULL_SNAPSHOT_INTERVAL` | `5` | full checkpoint 주기 |
 
@@ -198,6 +200,7 @@ OD_PG_PASSWORD=...
 
 OD_FILE_REVISION_RETENTION_LIMIT=15
 OD_FILE_REVISION_GC_INTERVAL_MS=21600000
+OD_FILE_REVISION_LOCK_TIMEOUT_MS=15000
 ```
 
 daemon 부팅 시 `migratePostgresDaemonSchema` 가 v8 `file_revisions` / `file_revision_snapshots` 테이블을 생성한다.
@@ -206,11 +209,12 @@ daemon 부팅 시 `migratePostgresDaemonSchema` 가 v8 `file_revisions` / `file_
 
 ## 8. 로드맵 (잔여)
 
-| 단계 | 내용 |
-|------|------|
-| hydrate | 프로젝트 접근 시 Postgres → sqlite 메타 warm (다른 노드에서 쓴 revision 목록) |
-| S3 blob | 초대형 deck 전용 외부 blob 백엔드 (현재는 Postgres BYTEA로 충분) |
-| 메트릭 | Prometheus `od_file_revision_snapshot_bytes` gauge |
+| 단계 | 내용 | 상태 |
+|------|------|------|
+| hydrate | 프로젝트 접근 시 Postgres → sqlite 메타 warm | [x] `durable-store.ts` · `warmProjectFromPostgres` |
+| advisory lock | 동시 push/restore 시 sequence race 방지 | [x] `postgres-lock.ts` · `OD_FILE_REVISION_LOCK_TIMEOUT_MS` |
+| S3 blob | 초대형 deck 전용 외부 blob 백엔드 (현재는 Postgres BYTEA로 충분) | [-] |
+| 메트릭 | Prometheus `od_file_revision_snapshot_bytes` gauge | [-] |
 
 ---
 

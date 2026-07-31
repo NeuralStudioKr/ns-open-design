@@ -145,6 +145,7 @@
 | `OD_FILE_REVISION_SNAPSHOT_STORAGE` env | [x] | `postgres` (Teamver 기본) \| `sqlite` \| `files` — [50-3](./50-3_revision_스냅샷_저장소_RDS_용량관리.md) |
 | Postgres `file_revision_snapshots` BYTEA (schema v8) | [x] | `DAEMON_DB_POSTGRES_MIGRATION_V8` |
 | Postgres durable revision SSOT (멀티노드) | [x] | `durable-store.ts` — transactional commit, head+count hydrate, warm/GC |
+| Postgres advisory lock (push/restore) | [x] | `postgres-lock.ts` — `OD_FILE_REVISION_LOCK_TIMEOUT_MS` |
 | 주기 GC + orphan 정리 | [x] | `file-revisions/gc.ts` · `OD_FILE_REVISION_GC_INTERVAL_MS` |
 | 프로젝트 삭제 시 BLOB 선삭제 | [x] | `deleteFileRevisionSnapshotsForProject` |
 | History panel retention hint | [x] | i18n `fileRevision.history.retentionHint` |
