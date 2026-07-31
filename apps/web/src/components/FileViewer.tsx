@@ -194,6 +194,7 @@ import type {
   LiveArtifactWorkspaceEntry,
   ProjectFile,
 } from '../types';
+import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { Icon } from './Icon';
 import { RemixIcon } from './RemixIcon';
 import { SocialShareGrid } from './SocialShareGrid';
@@ -11552,7 +11553,6 @@ function ImageViewer({
   file: ProjectFile;
 }) {
   const t = useTeamverT();
-  const url = `${projectFileUrl(projectId, file.name)}?v=${Math.round(file.mtime)}`;
   return (
     <div className="viewer image-viewer">
       <div className="viewer-toolbar">
@@ -11582,7 +11582,12 @@ function ImageViewer({
         </div>
       </div>
       <div className="viewer-body image-body">
-        <img alt={file.name} src={url} />
+        <AuthenticatedProjectFileImage
+          projectId={projectId}
+          path={file.name}
+          alt={file.name}
+          rev={Math.round(file.mtime)}
+        />
       </div>
     </div>
   );
@@ -11690,7 +11695,6 @@ export function SvgViewer({
   const [loadingSource, setLoadingSource] = useState(false);
   const [sourceError, setSourceError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const url = `${projectFileUrl(projectId, file.name)}?v=${Math.round(file.mtime)}&r=${reloadKey}`;
 
   useEffect(() => {
     if (mode !== 'source') return;
@@ -11772,7 +11776,12 @@ export function SvgViewer({
       </div>
       <div className={`viewer-body ${mode === 'preview' ? 'image-body' : ''}`}>
         {mode === 'preview' ? (
-          <img alt={file.name} src={url} />
+          <AuthenticatedProjectFileImage
+            projectId={projectId}
+            path={file.name}
+            alt={file.name}
+            rev={`${Math.round(file.mtime)}-${reloadKey}`}
+          />
         ) : loadingSource ? (
           <div className="viewer-empty">{t('fileViewer.loading')}</div>
         ) : sourceError ? (

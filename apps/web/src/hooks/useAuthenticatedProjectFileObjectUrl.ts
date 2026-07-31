@@ -89,6 +89,8 @@ export async function loadAuthenticatedProjectFileBlob(
 export function useAuthenticatedProjectFileObjectUrl(
   projectId: string | null | undefined,
   filePath: string | null | undefined,
+  /** Bust in-memory blob cache when the backing file changes (e.g. mtime). */
+  rev?: string | number | null,
 ): string | null {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
@@ -118,7 +120,7 @@ export function useAuthenticatedProjectFileObjectUrl(
       if (revokeUrl) URL.revokeObjectURL(revokeUrl);
       setObjectUrl(null);
     };
-  }, [filePath, projectId]);
+  }, [filePath, projectId, rev]);
 
   return objectUrl;
 }
