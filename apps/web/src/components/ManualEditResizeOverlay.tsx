@@ -279,6 +279,11 @@ export function ManualEditResizeOverlay({
       height: cascadeRollbackStyle(target.styles.height),
       left: cascadeRollbackStyle(target.styles.left),
       top: cascadeRollbackStyle(target.styles.top),
+      // Loop7 clears right/bottom on resize preview — capture them so Esc /
+      // flush-fail can restore authored pins (e.g. right:0) instead of
+      // leaving '' in pending and autosaving the wipe.
+      right: cascadeRollbackStyle(target.styles.right),
+      bottom: cascadeRollbackStyle(target.styles.bottom),
     };
     const session: ResizeSessionStart = {
       startRect: { ...target.rect },

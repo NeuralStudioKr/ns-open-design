@@ -66,6 +66,8 @@ describe('ManualEditResizeOverlay', () => {
       height: '100px',
       left: '',
       top: '',
+      right: '',
+      bottom: '',
     });
     expect(onResizeCancel).not.toHaveBeenCalled();
     expect(onResizeSessionChange).toHaveBeenCalledWith(false);
@@ -99,8 +101,48 @@ describe('ManualEditResizeOverlay', () => {
       height: '100px',
       left: '',
       top: '',
+      right: '',
+      bottom: '',
     });
     expect(onResizeCommit).not.toHaveBeenCalled();
+  });
+
+  it('resize stylesBefore preserves authored right/bottom for cancel', () => {
+    const onResizeCancel = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'absolute',
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+            left: '40px',
+            top: '60px',
+            right: '0px',
+            bottom: '0px',
+          },
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={onResizeCancel}
+      />,
+    );
+
+    const handle = getByTestId('manual-edit-resize-handle-e');
+    fireEvent.pointerDown(handle, { pointerId: 6, clientX: 100, clientY: 100, buttons: 1 });
+    fireEvent.pointerMove(handle, { pointerId: 6, clientX: 140, clientY: 100, buttons: 1 });
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(onResizeCancel.mock.calls[0]?.[0]).toMatchObject({
+      right: '0px',
+      bottom: '0px',
+      width: '200px',
+      left: '40px',
+    });
   });
 
   it('does not commit or cancel a bare resize-handle click', () => {
