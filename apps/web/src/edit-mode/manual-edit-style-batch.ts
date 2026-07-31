@@ -1,4 +1,5 @@
 import { readManualEditStyles } from './source-patches';
+import { manualEditStyleValuesEqual } from './manual-edit-style-values';
 import type { ManualEditStyles } from './types';
 
 /**
@@ -13,9 +14,9 @@ export function diffManualEditStylePatch(
   const sourceStyles = readManualEditStyles(baseSource, id);
   const diff: Partial<ManualEditStyles> = {};
   for (const [key, value] of Object.entries(pendingStyles) as Array<[keyof ManualEditStyles, string]>) {
-    const next = String(value ?? '').trim();
-    const prev = String(sourceStyles[key] ?? '').trim();
-    if (next !== prev) diff[key] = value;
+    const next = String(value ?? '');
+    const prev = String(sourceStyles[key] ?? '');
+    if (!manualEditStyleValuesEqual(key, next, prev)) diff[key] = value;
   }
   return diff;
 }

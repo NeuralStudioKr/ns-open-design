@@ -47,4 +47,20 @@ describe('manual-edit-style-batch', () => {
     expect(patch).toEqual({ width: '160px', height: '96px' });
     expect(isNoOpManualEditStyleFlush(html, 'card', patch)).toBe(false);
   });
+
+  it('treats rgb and hex colors as equivalent when diffing pending styles', () => {
+    const html = sourceWithCardSize('120px', '80px');
+    const colored = applyManualEditPatch(html, {
+      id: 'card',
+      kind: 'set-style',
+      styles: { color: 'rgb(239, 68, 68)' },
+    });
+    if (!colored.ok) throw new Error('fixture setup failed');
+    expect(isNoOpManualEditStyleFlush(colored.source, 'card', {
+      color: '#ef4444',
+    })).toBe(true);
+    expect(diffManualEditStylePatch(colored.source, 'card', {
+      color: '#ef4444',
+    })).toEqual({});
+  });
 });
