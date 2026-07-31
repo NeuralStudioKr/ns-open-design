@@ -470,8 +470,6 @@ export function parseCommentAttachmentsFromMessageContent(
     const targetKind = parseAttachedPreviewCommentField(section, 'targetKind');
     const selectionKind =
       targetKind === 'visual' ? 'visual' : targetKind === 'pod' ? 'pod' : 'element';
-    const labelRaw = parseAttachedPreviewCommentField(section, 'label');
-    const label = labelRaw && labelRaw !== '(unlabeled)' ? labelRaw : '';
     const slideIndexRaw = parseAttachedPreviewCommentField(section, 'slideIndex');
     const slideIndex = slideIndexRaw != null ? Number(slideIndexRaw) : undefined;
     const attachment: ChatCommentAttachment = {
@@ -479,21 +477,33 @@ export function parseCommentAttachmentsFromMessageContent(
       order,
       filePath: parseAttachedPreviewCommentField(section, 'file') ?? '',
       elementId,
-      selector: parseAttachedPreviewCommentField(section, 'selector') ?? '',
-      label,
+      selector: stripAttachedPreviewPlaceholder(
+        parseAttachedPreviewCommentField(section, 'selector'),
+      ),
+      label: stripAttachedPreviewPlaceholder(
+        parseAttachedPreviewCommentField(section, 'label'),
+      ),
       comment: parseAttachedPreviewCommentField(section, 'comment') ?? '',
-      currentText: parseAttachedPreviewCommentField(section, 'currentText') ?? '',
+      currentText: stripAttachedPreviewPlaceholder(
+        parseAttachedPreviewCommentField(section, 'currentText'),
+      ),
       pagePosition: parseAttachedPreviewCommentPosition(
         parseAttachedPreviewCommentField(section, 'position'),
       ),
-      htmlHint: parseAttachedPreviewCommentField(section, 'htmlHint') ?? '',
+      htmlHint: stripAttachedPreviewPlaceholder(
+        parseAttachedPreviewCommentField(section, 'htmlHint'),
+      ),
       selectionKind,
       ...(Number.isFinite(slideIndex) ? { slideIndex } : {}),
       ...(selectionKind === 'visual'
         ? {
-            screenshotPath: parseAttachedPreviewCommentField(section, 'screenshot'),
+            screenshotPath: stripAttachedPreviewPlaceholder(
+              parseAttachedPreviewCommentField(section, 'screenshot'),
+            ) || undefined,
             markKind: parseAttachedPreviewCommentField(section, 'markKind') as PreviewVisualMarkKind | undefined,
-            intent: parseAttachedPreviewCommentField(section, 'intent'),
+            intent: stripAttachedPreviewPlaceholder(
+              parseAttachedPreviewCommentField(section, 'intent'),
+            ) || undefined,
           }
         : {}),
     };
@@ -851,7 +861,7 @@ function escapeXmlAttr(value: string): string {
 
 /**
  * Screenshot-only visual marks use synthetic `visual-mark-*` ids (or have no
- * DOM selector/htmlHint). Those must not become REQUIRED element-patch
+ * extractable DOM target id). Those must not become REQUIRED element-patch
  * templates — the id is not in the deck HTML and persist cannot merge it.
  * Visual marks that still carry a real picked element target stay eligible.
  */
@@ -868,14 +878,10 @@ export function isScreenshotOnlyVisualCommentTarget(
     || Boolean(String(item.screenshotPath || '').trim())
     || elementId.startsWith('visual-mark-');
   if (!isVisual) return false;
-  // Concrete DOM anchors: selector, htmlHint, or a real (non-synthetic) elementId.
-  // visual-mark-* alone is not an anchor — those stay screenshot-only unless
-  // selector/htmlHint are present.
-  const hasDomAnchor =
-    Boolean(String(item.selector || '').trim())
-    || Boolean(String(item.htmlHint || '').trim())
-    || (Boolean(elementId) && !elementId.startsWith('visual-mark-'));
-  return !hasDomAnchor;
+  // Only extractable target ids count as DOM anchors. A bare class selector
+  // (`h1.hero`) or prose htmlHint must not flip screenshot-only off — that
+  // forces element-patch auto-continue with no concrete template.
+  return concreteElementPatchTargetIds(item).length === 0;
 }
 
 /**
@@ -993,38 +999,52 @@ export function elementPatchCoerceHintsFromCommentAttachments(
 
 /**
  * Resolve concrete DOM target ids for element-patch templates / coerce hints.
- * Prefer a real elementId; otherwise extract from selector attrs (same attrs
- * as scoped-deck-patch) so visual-mark-* + `[data-od-id=…]` still templates.
+ * Prefer a real elementId; otherwise extract from selector / htmlHint attrs
+ * so visual-mark-* + `[data-od-id=…]` still templates.
  */
 function concreteElementPatchTargetIds(
-  item: Pick<ChatCommentAttachment, 'elementId' | 'selector'>,
+  item: Pick<ChatCommentAttachment, 'elementId' | 'selector' | 'htmlHint'>,
 ): string[] {
   const ids: string[] = [];
-  const elementId = String(item.elementId || '').trim();
-  if (
-    elementId
-    && !isSyntheticVisualMarkTargetId(elementId)
-    && !isUnsafeElementPatchTargetId(elementId)
-  ) {
-    ids.push(elementId);
-  }
-  const selector = String(item.selector || '').trim();
-  if (selector) {
+  const push = (value: string): void => {
+    const trimmed = String(value || '').trim();
+    if (
+      !trimmed
+      || isSyntheticVisualMarkTargetId(trimmed)
+      || isUnsafeElementPatchTargetId(trimmed)
+      || isAttachedPreviewPlaceholder(trimmed)
+    ) {
+      return;
+    }
+    ids.push(trimmed);
+  };
+  push(String(item.elementId || ''));
+  const sources = [String(item.selector || ''), String(item.htmlHint || '')];
+  for (const source of sources) {
+    if (!source.trim()) continue;
     for (const attr of ['data-od-id', 'data-screen-label', 'data-od-source-path', 'data-od-runtime-id']) {
-      const re = new RegExp(`\\[${attr}=(?:"([^"]+)"|'([^']+)'|([^\\]\\s]+))\\]`, 'gi');
-      for (const match of selector.matchAll(re)) {
-        const value = (match[1] || match[2] || match[3] || '').trim();
-        if (
-          value
-          && !isSyntheticVisualMarkTargetId(value)
-          && !isUnsafeElementPatchTargetId(value)
-        ) {
-          ids.push(value);
-        }
+      const re = new RegExp(`\\[${attr}=(?:"([^"]+)"|'([^']+)'|([^\\]\\s>]+))\\]`, 'gi');
+      for (const match of source.matchAll(re)) {
+        push(match[1] || match[2] || match[3] || '');
       }
+    }
+    // Bare htmlHint attributes: data-od-id="hero" without surrounding [].
+    for (const match of source.matchAll(/\bdata-od-id\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi)) {
+      push(match[1] || match[2] || match[3] || '');
     }
   }
   return [...new Set(ids)];
+}
+
+/** Serialize placeholders like `(none)` / `(empty)` must not round-trip as real data. */
+function isAttachedPreviewPlaceholder(value: string | null | undefined): boolean {
+  return /^\((?:none|empty|missing|unlabeled)\)$/i.test(String(value ?? '').trim());
+}
+
+function stripAttachedPreviewPlaceholder(value: string | null | undefined): string {
+  const raw = String(value ?? '').trim();
+  if (!raw || isAttachedPreviewPlaceholder(raw)) return '';
+  return raw;
 }
 
 function isUnsafeElementPatchTargetId(targetId: string): boolean {

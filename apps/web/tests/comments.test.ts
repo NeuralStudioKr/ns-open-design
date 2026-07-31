@@ -905,7 +905,32 @@ describe('preview comment attachment helpers', () => {
       }),
     ).toBe(false);
 
-    // visual-mark-* + selector still yields an element-patch template.
+    // Bare class selectors are NOT extractable target ids — stay screenshot-only.
+    expect(
+      isScreenshotOnlyVisualCommentTarget({
+        selectionKind: 'visual',
+        markKind: 'click',
+        screenshotPath: 'uploads/mark.png',
+        elementId: 'visual-mark-class',
+        selector: 'h1.hero',
+        htmlHint: '',
+      }),
+    ).toBe(true);
+    expect(
+      buildConcretePatchTemplatesForCommentAttachments([
+        commentAttachment({
+          elementId: 'visual-mark-class',
+          selector: 'h1.hero',
+          htmlHint: '',
+          slideIndex: 0,
+          selectionKind: 'visual',
+          screenshotPath: 'uploads/mark.png',
+          markKind: 'click',
+        }),
+      ]),
+    ).toContain('type="deck-patch"');
+
+    // visual-mark-* + attr selector still yields an element-patch template.
     const visualMarkWithSelector = {
       ...commentAttachment({
         elementId: 'visual-mark-x',
@@ -923,6 +948,26 @@ describe('preview comment attachment helpers', () => {
     expect(elementPatchCoerceHintsFromCommentAttachments([visualMarkWithSelector])).toEqual([
       { targetId: 'hero', slideIndex: 0 },
     ]);
+  });
+
+  it('strips serialize placeholders so history round-trip stays screenshot-only', () => {
+    const visualOnly = buildVisualAnnotationAttachment({
+      order: 0,
+      screenshotPath: 'uploads/visual-mark-1.png',
+      markKind: 'stroke',
+      note: '여기 키워줘',
+      slideIndex: 1,
+      bounds: { x: 10, y: 20, width: 100, height: 40 },
+    });
+    const content = messageContentWithCommentAttachments('여기 키워줘', [visualOnly]);
+    expect(content).toContain('htmlHint: (none)');
+    expect(content).toContain('currentText: (empty)');
+    const parsed = parseCommentAttachmentsFromMessageContent(content);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.htmlHint).toBe('');
+    expect(parsed[0]?.currentText).toBe('');
+    expect(isScreenshotOnlyVisualCommentTarget(parsed[0]!)).toBe(true);
+    expect(buildConcreteDeckPatchTemplateForVisualMarks(parsed)).toContain('type="deck-patch"');
   });
 
   it('does not render preview-comment context when target location data is missing', () => {

@@ -214,6 +214,47 @@ describe('manual edit source patches', () => {
     expect(attrs['aria-label']).toBe('ok');
   });
 
+  it('rejects spaced data:text/html and javascript: on action/formaction/poster', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<a data-od-id="cta" href="/start">Start</a>',
+      '<form data-od-id="form"><button data-od-id="submit">Go</button></form>',
+      '<video data-od-id="clip" poster="/thumb.png"></video>',
+      '</body></html>',
+    ].join('');
+    const spaced = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: { href: 'data: text/html,hi' },
+    });
+    expect(spaced.ok).toBe(true);
+    expect(readManualEditAttributes(spaced.source, 'cta').href).toBe('/start');
+
+    const formDenied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'form',
+      attributes: { action: 'javascript:alert(1)' },
+    });
+    expect(formDenied.ok).toBe(true);
+    expect(readManualEditAttributes(formDenied.source, 'form').action).toBeUndefined();
+
+    const formactionDenied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'submit',
+      attributes: { formaction: 'javascript:alert(1)' },
+    });
+    expect(formactionDenied.ok).toBe(true);
+    expect(readManualEditAttributes(formactionDenied.source, 'submit').formaction).toBeUndefined();
+
+    const posterDenied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'clip',
+      attributes: { poster: 'javascript:alert(1)' },
+    });
+    expect(posterDenied.ok).toBe(true);
+    expect(readManualEditAttributes(posterDenied.source, 'clip').poster).toBe('/thumb.png');
+  });
+
   it('preserves data-od-id when selected outerHTML omits it', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',

@@ -1367,7 +1367,7 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
       continue;
     }
     // Block dangerous URL schemes on navigable / embeddable attrs.
-    if ((lower === 'href' || lower === 'src' || lower === 'xlink:href') && !isSafeManualEditUrl(value)) {
+    if (MANUAL_EDIT_URL_ATTRS.has(lower) && !isSafeManualEditUrl(value)) {
       continue;
     }
     el.setAttribute(name, value);
@@ -1562,13 +1562,29 @@ function isSafeAttributeName(value: string): boolean {
   return true;
 }
 
+/** Attrs whose values are treated as URLs for scheme deny-list checks. */
+const MANUAL_EDIT_URL_ATTRS = new Set([
+  'href',
+  'src',
+  'xlink:href',
+  'action',
+  'formaction',
+  'poster',
+  'cite',
+  'ping',
+  'background',
+  'dynsrc',
+  'lowsrc',
+]);
+
 /** Reject javascript:/vbscript:/data:text/html URL schemes in manual edits. */
 export function isSafeManualEditUrl(value: string): boolean {
   const trimmed = String(value || '').trim();
   if (!trimmed) return true;
-  const lower = trimmed.toLowerCase();
-  if (lower.startsWith('javascript:')) return false;
-  if (lower.startsWith('vbscript:')) return false;
-  if (lower.startsWith('data:text/html')) return false;
+  // Strip whitespace so `data: text/html` / `java\nscript:` cannot bypass.
+  const compact = trimmed.replace(/\s+/g, '').toLowerCase();
+  if (compact.startsWith('javascript:')) return false;
+  if (compact.startsWith('vbscript:')) return false;
+  if (compact.startsWith('data:text/html')) return false;
   return true;
 }

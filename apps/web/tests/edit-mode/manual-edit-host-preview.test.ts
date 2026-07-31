@@ -56,4 +56,13 @@ describe('manual edit host preview fallback', () => {
     expect(ok).toBe(true);
     expect(doc.body.style.getPropertyValue('background-color')).toBe('rgb(0, 0, 0)');
   });
+
+  it('resolves path-* ids via child-index walk when attrs are absent', () => {
+    const doc = makeDoc('<p>Copy</p>');
+    const ok = applyManualEditPreviewStylesToDocument(doc, 'path-0', { fontSize: '28px' });
+    const el = doc.body.children.item(0) as HTMLElement;
+
+    expect(ok).toBe(true);
+    expect(el.style.getPropertyValue('font-size')).toBe('28px');
+  });
 });

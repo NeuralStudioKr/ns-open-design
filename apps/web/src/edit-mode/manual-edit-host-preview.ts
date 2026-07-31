@@ -26,11 +26,34 @@ function findManualEditPreviewTarget(doc: Document, id: string): HTMLElement | n
   if (!id) return null;
   if (id === '__body__') return doc.body as HTMLElement | null;
   const escaped = cssEscape(id);
-  return (
+  const byAttr = (
     doc.querySelector(`[data-od-id="${escaped}"]`)
     ?? doc.querySelector(`[data-od-runtime-id="${escaped}"]`)
     ?? doc.querySelector(`[data-od-source-path="${escaped}"]`)
+    ?? doc.querySelector(`[data-screen-label="${escaped}"]`)
   ) as HTMLElement | null;
+  if (byAttr) return byAttr;
+  // Preview annotates unlabeled nodes with path-N; host fallback must walk
+  // the same child-index path when attrs were not persisted to disk HTML.
+  if (id.startsWith('path-')) {
+    return findElementByChildPath(doc.body, id);
+  }
+  return null;
+}
+
+function findElementByChildPath(root: Element | null, id: string): HTMLElement | null {
+  if (!root || !id.startsWith('path-')) return null;
+  const indexes = id
+    .slice('path-'.length)
+    .split('-')
+    .map((part) => Number(part));
+  if (indexes.some((index) => !Number.isInteger(index) || index < 0)) return null;
+  let current: Element | null = root;
+  for (const index of indexes) {
+    current = current?.children.item(index) ?? null;
+    if (!current) return null;
+  }
+  return current as HTMLElement;
 }
 
 export function applyManualEditPreviewStylesToDocument(
