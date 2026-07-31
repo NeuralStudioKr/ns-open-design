@@ -11,6 +11,7 @@ import {
   isExportAsyncJobsEnabled,
   markExportJobRunning,
   resolveExportJob,
+  subscribeExportJob,
 } from '../src/export-job-store.js';
 
 describe('export job store', () => {
@@ -107,6 +108,31 @@ describe('export job store', () => {
       error: { code: 'EXPORT_FAILED', message: 'render failed' },
     });
     expect(failed?.result).toBeUndefined();
+  });
+
+  it('notifies subscribers on job state transitions', () => {
+    const job = createExportJob({ projectId: 'proj-1', format: 'pdf', now: 1_000 });
+    const seen: string[] = [];
+    const unsubscribe = subscribeExportJob('proj-1', job.id, (snapshot) => {
+      seen.push(snapshot.status);
+    });
+
+    markExportJobRunning('proj-1', job.id, 2_000);
+    completeExportJob(
+      'proj-1',
+      job.id,
+      {
+        downloadUrl: '/download',
+        filename: 'Deck.pdf',
+        mime: 'application/pdf',
+        bytes: 1,
+      },
+      3_000,
+    );
+    unsubscribe();
+    failExportJob('proj-1', job.id, { code: 'IGNORED', message: 'ignored' }, 4_000);
+
+    expect(seen).toEqual(['running', 'ready']);
   });
 
   it('expires jobs after OD_EXPORT_JOB_TTL_SEC', () => {

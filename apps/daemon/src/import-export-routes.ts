@@ -37,8 +37,10 @@ import {
   isExportAsyncJobsEnabled,
   markExportJobRunning,
   resolveExportJob,
+  subscribeExportJob,
   type ExportJobFormat,
   type ExportJobResult,
+  type ExportJobSnapshot,
 } from './export-job-store.js';
 import {
   renderHtmlExportOutcome,
@@ -411,6 +413,40 @@ function handleExportRouteError(
 
 function exportJobStatusUrl(projectId: string, jobId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/export/jobs/${encodeURIComponent(jobId)}`;
+}
+
+function exportJobEventsUrl(projectId: string, jobId: string): string {
+  return `${exportJobStatusUrl(projectId, jobId)}/events`;
+}
+
+function serializeExportJob(projectId: string, job: ExportJobSnapshot): Record<string, unknown> {
+  return {
+    jobId: job.id,
+    status: job.status,
+    statusUrl: exportJobStatusUrl(projectId, job.id),
+    eventsUrl: exportJobEventsUrl(projectId, job.id),
+    format: job.format,
+    createdAt: new Date(job.createdAt).toISOString(),
+    updatedAt: new Date(job.updatedAt).toISOString(),
+    expiresAt: new Date(job.expiresAt).toISOString(),
+    ...(job.startedAt !== undefined ? { startedAt: new Date(job.startedAt).toISOString() } : {}),
+    ...(job.completedAt !== undefined ? { completedAt: new Date(job.completedAt).toISOString() } : {}),
+    ...(job.result
+      ? {
+          downloadUrl: job.result.downloadUrl,
+          filename: job.result.filename,
+          mime: job.result.mime,
+          bytes: job.result.bytes,
+          sizeBytes: job.result.bytes,
+          cache: job.result.cache,
+          deliveryMode: job.result.deliveryMode,
+          ...(job.result.offloadStatus ? { offloadStatus: job.result.offloadStatus } : {}),
+          ...(job.result.offloadReason ? { offloadReason: job.result.offloadReason } : {}),
+          ...(job.result.expiresAt ? { downloadExpiresAt: new Date(job.result.expiresAt).toISOString() } : {}),
+        }
+      : {}),
+    ...(job.error ? { error: job.error } : {}),
+  };
 }
 
 export { buildStaticHtmlExportFallback } from './export-render-service.js';
@@ -838,7 +874,7 @@ export interface RegisterProjectExportRoutesDeps extends RouteDeps<'db' | 'http'
 
 export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectExportRoutesDeps) {
   const { db } = ctx;
-  const { sendApiError } = ctx.http;
+  const { createSseResponse, sendApiError } = ctx.http;
   const { PROJECTS_DIR } = ctx.paths;
   const { getProject } = ctx.projectStore;
   const { listFiles, readProjectFile, resolveProjectFilePath } = ctx.projectFiles;
@@ -1190,6 +1226,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         jobId: job.id,
         status: job.status,
         statusUrl: exportJobStatusUrl(req.params.id, job.id),
+        eventsUrl: exportJobEventsUrl(req.params.id, job.id),
         format: job.format,
         createdAt: new Date(job.createdAt).toISOString(),
         expiresAt: new Date(job.expiresAt).toISOString(),
@@ -1215,34 +1252,38 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       if (!job) {
         return sendApiError(res, 404, 'EXPORT_JOB_NOT_FOUND', 'export job not found or expired');
       }
-      res.json({
-        jobId: job.id,
-        status: job.status,
-        statusUrl: exportJobStatusUrl(req.params.id, job.id),
-        format: job.format,
-        createdAt: new Date(job.createdAt).toISOString(),
-        updatedAt: new Date(job.updatedAt).toISOString(),
-        expiresAt: new Date(job.expiresAt).toISOString(),
-        ...(job.startedAt !== undefined ? { startedAt: new Date(job.startedAt).toISOString() } : {}),
-        ...(job.completedAt !== undefined ? { completedAt: new Date(job.completedAt).toISOString() } : {}),
-        ...(job.result
-          ? {
-              downloadUrl: job.result.downloadUrl,
-              filename: job.result.filename,
-              mime: job.result.mime,
-              bytes: job.result.bytes,
-              sizeBytes: job.result.bytes,
-              cache: job.result.cache,
-              deliveryMode: job.result.deliveryMode,
-              ...(job.result.offloadStatus ? { offloadStatus: job.result.offloadStatus } : {}),
-              ...(job.result.offloadReason ? { offloadReason: job.result.offloadReason } : {}),
-              ...(job.result.expiresAt ? { downloadExpiresAt: new Date(job.result.expiresAt).toISOString() } : {}),
-            }
-          : {}),
-        ...(job.error ? { error: job.error } : {}),
-      });
+      res.json(serializeExportJob(req.params.id, job));
     } catch (err: unknown) {
       handleExportRouteError(res, sendApiError, 'export/jobs/status', req.params.id, err);
+    }
+  });
+
+  app.get('/api/projects/:id/export/jobs/:jobId/events', async (req, res) => {
+    try {
+      if (!isExportAsyncJobsEnabled()) {
+        return sendApiError(res, 404, 'EXPORT_JOBS_DISABLED', 'async export jobs are disabled');
+      }
+      if (!isSafeId(req.params.id)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'invalid project id');
+      }
+      const initial = resolveExportJob(req.params.id, req.params.jobId);
+      if (!initial) {
+        return sendApiError(res, 404, 'EXPORT_JOB_NOT_FOUND', 'export job not found or expired');
+      }
+      const sse = createSseResponse(res);
+      let sequence = 0;
+      const sendJob = (job: ExportJobSnapshot) => {
+        sequence += 1;
+        sse.send('export_job', serializeExportJob(req.params.id, job), sequence);
+        if (job.status === 'ready' || job.status === 'failed') {
+          sse.end();
+        }
+      };
+      const unsubscribe = subscribeExportJob(req.params.id, req.params.jobId, sendJob);
+      res.on('close', unsubscribe);
+      sendJob(initial);
+    } catch (err: unknown) {
+      handleExportRouteError(res, sendApiError, 'export/jobs/events', req.params.id, err);
     }
   });
 

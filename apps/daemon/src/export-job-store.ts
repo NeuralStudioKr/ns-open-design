@@ -35,6 +35,7 @@ export type ExportJobSnapshot = {
 };
 
 type ExportJobEntry = ExportJobSnapshot;
+type ExportJobListener = (snapshot: ExportJobSnapshot) => void;
 
 export class ExportJobStoreFullError extends Error {
   readonly code = 'EXPORT_JOB_STORE_FULL';
@@ -46,6 +47,7 @@ export class ExportJobStoreFullError extends Error {
 }
 
 const jobs = new Map<string, ExportJobEntry>();
+const listeners = new Map<string, Set<ExportJobListener>>();
 
 const EXPORT_JOB_ID_RE = /^[a-f0-9]{32}$/i;
 
@@ -90,6 +92,23 @@ function snapshot(entry: ExportJobEntry): ExportJobSnapshot {
   };
 }
 
+function listenerKey(projectId: string, jobId: string): string {
+  return `${projectId}:${jobId}`;
+}
+
+function notifyExportJobListeners(entry: ExportJobEntry): void {
+  const current = snapshot(entry);
+  const projectListeners = listeners.get(listenerKey(entry.projectId, entry.id));
+  if (!projectListeners || projectListeners.size === 0) return;
+  for (const listener of projectListeners) {
+    try {
+      listener(current);
+    } catch {
+      // Listener failures must not affect export job state transitions.
+    }
+  }
+}
+
 function purgeExpiredExportJobs(now = Date.now()): void {
   for (const [jobId, entry] of jobs) {
     if (entry.expiresAt <= now) jobs.delete(jobId);
@@ -117,6 +136,7 @@ export function createExportJob(input: {
     expiresAt: now + exportJobTtlMs(),
   };
   jobs.set(id, entry);
+  notifyExportJobListeners(entry);
   return snapshot(entry);
 }
 
@@ -131,6 +151,7 @@ export function markExportJobRunning(
   entry.status = 'running';
   entry.startedAt = now;
   entry.updatedAt = now;
+  notifyExportJobListeners(entry);
   return snapshot(entry);
 }
 
@@ -147,6 +168,7 @@ export function completeExportJob(
   delete entry.error;
   entry.completedAt = now;
   entry.updatedAt = now;
+  notifyExportJobListeners(entry);
   return snapshot(entry);
 }
 
@@ -163,6 +185,7 @@ export function failExportJob(
   delete entry.result;
   entry.completedAt = now;
   entry.updatedAt = now;
+  notifyExportJobListeners(entry);
   return snapshot(entry);
 }
 
@@ -188,7 +211,28 @@ export function resolveExportJob(
   return entry ? snapshot(entry) : null;
 }
 
+export function subscribeExportJob(
+  projectId: string,
+  jobId: string,
+  listener: ExportJobListener,
+): () => void {
+  const key = listenerKey(projectId, jobId);
+  let bucket = listeners.get(key);
+  if (!bucket) {
+    bucket = new Set();
+    listeners.set(key, bucket);
+  }
+  bucket.add(listener);
+  return () => {
+    const current = listeners.get(key);
+    if (!current) return;
+    current.delete(listener);
+    if (current.size === 0) listeners.delete(key);
+  };
+}
+
 /** @internal vitest */
 export function clearExportJobsForTests(): void {
   jobs.clear();
+  listeners.clear();
 }

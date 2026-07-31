@@ -34,6 +34,44 @@ describe('export job routes', () => {
       expect(response.status).toBe(404);
       const body = await response.json() as { error?: { code?: string } };
       expect(body.error?.code).toBe('EXPORT_JOBS_DISABLED');
+
+      const eventsResponse = await fetch(`${started.url}/api/projects/proj-1/export/jobs/0123456789abcdef0123456789abcdef/events`);
+      expect(eventsResponse.status).toBe(404);
+      const eventsBody = await eventsResponse.json() as { error?: { code?: string } };
+      expect(eventsBody.error?.code).toBe('EXPORT_JOBS_DISABLED');
+    } finally {
+      await closeServer(started);
+    }
+  }, 60_000);
+
+  it('returns polling and SSE URLs when an async export job is accepted', async () => {
+    process.env.OD_EXPORT_ASYNC_JOBS_ENABLED = '1';
+    const started = await startServer({ port: 0, returnServer: true }) as StartedServer;
+    try {
+      const response = await fetch(`${started.url}/api/projects/proj-1/export/jobs`, {
+        body: JSON.stringify({
+          deck: true,
+          fileName: 'deck.html',
+          format: 'html',
+          inlineHtml: '<!doctype html><p>hello</p>',
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+
+      expect(response.status).toBe(202);
+      const body = await response.json() as {
+        eventsUrl?: string;
+        format?: string;
+        jobId?: string;
+        status?: string;
+        statusUrl?: string;
+      };
+      expect(body.status).toBe('queued');
+      expect(body.format).toBe('html');
+      expect(body.jobId).toMatch(/^[a-f0-9]{32}$/);
+      expect(body.statusUrl).toBe(`/api/projects/proj-1/export/jobs/${body.jobId}`);
+      expect(body.eventsUrl).toBe(`/api/projects/proj-1/export/jobs/${body.jobId}/events`);
     } finally {
       await closeServer(started);
     }

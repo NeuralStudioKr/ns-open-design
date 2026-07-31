@@ -488,7 +488,8 @@ staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으�
 - ✅ async job API skeleton — `OD_EXPORT_ASYNC_JOBS_ENABLED=1`일 때 daemon in-memory job store + `POST/GET /export/jobs` 계약 제공
 - ✅ FE async job polling opt-in — `VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED=1`일 때 PDF/PPTX/HTML/ZIP 다운로드가 `/export/jobs`를 먼저 사용하고, 서버 disabled 시 기존 sync ticket 경로로 fallback
 - ✅ FE async job progress feedback — `/export/jobs` queued/running/ready 상태를 다운로드 loading toast에 반영해 긴 export에서도 클릭·요청 진행 상태가 끊겨 보이지 않도록 보강
-- FileViewer UX polish (visible background progress dialog/SSE)
+- ✅ async job SSE feed — `GET /export/jobs/:jobId/events`가 status JSON과 동일한 `export_job` 이벤트를 송신해 polling보다 빠른 진행 상태 반영을 준비
+- FileViewer UX polish (visible background progress dialog)
 - dedicated export worker (Chromium isolate)
 - deck slide count soft cap + “대형 deck은 PDF만” UX
 
@@ -995,6 +996,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-31 | Async export SSE feed 추가 — daemon export job store에 상태 transition subscriber를 추가하고, `GET /api/projects/:id/export/jobs/:jobId/events`에서 `export_job` SSE 이벤트로 queued/running/ready/failed snapshot을 송신하도록 구현. `POST /export/jobs` 응답에는 `eventsUrl`을 포함해 FE가 SSE 우선·polling fallback 구조로 넘어갈 수 있게 준비 |
 | 2026-07-31 | FE async export job opt-in 연결 — `VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED=1`이면 PDF/PPTX/HTML/ZIP 다운로드가 `/export/jobs` 생성 → status polling → ready ticket download를 사용. daemon이 `EXPORT_JOBS_DISABLED`를 반환하면 기존 sync `/export/{format}` ticket 경로로 자동 fallback해 배포 flag 불일치 시에도 사용자 다운로드가 막히지 않도록 함 |
 | 2026-07-31 | FE async export 진행 표시 보강 — web export runtime이 async job `queued/running/ready` 상태 callback을 노출하고, FileViewer 다운로드 UI가 해당 상태를 loading toast로 계속 표시하도록 연결. async job 경로 테스트에 status callback 검증을 추가해 대형 deck export 중 사용자가 요청 진행 여부를 더 명확히 알 수 있게 함 |
 | 2026-07-31 | Async export job API 스켈레톤 추가 — `OD_EXPORT_ASYNC_JOBS_ENABLED=1`일 때 `POST /api/projects/:id/export/jobs`가 202 job을 만들고 background에서 `export-render-service`를 실행, `GET /api/projects/:id/export/jobs/:jobId`가 queued/running/ready/failed와 ticket `downloadUrl`을 반환. 기본 off로 배포 리스크를 낮추고, in-memory TTL/max entry guard로 daemon 누적 부하를 제한 |
