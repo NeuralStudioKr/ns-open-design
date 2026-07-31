@@ -38,7 +38,14 @@ import styles from './ManualEditResizeOverlay.module.css';
 
 export type ManualEditResizeOverlayProps = {
   target: ManualEditTarget;
+  /** Visual scale of the iframe inside the workspace (measured, not toolbar zoom). */
   previewScale: number;
+  /**
+   * Iframe top-left inside `.manual-edit-workspace`. Content rects are iframe-
+   * local; overlay is workspace-local — without this offset the box drifts
+   * whenever the canvas is centered / letterboxed / not at (0,0).
+   */
+  hostOffset?: { x: number; y: number };
   /** Live draft size while dragging; null uses target.rect. */
   draftWidthPx: number | null;
   draftHeightPx: number | null;
@@ -117,6 +124,7 @@ function handlePositionStyle(handle: ResizeHandle): CSSProperties {
 export function ManualEditResizeOverlay({
   target,
   previewScale,
+  hostOffset = { x: 0, y: 0 },
   draftWidthPx,
   draftHeightPx,
   draftLeftPx = null,
@@ -154,7 +162,13 @@ export function ManualEditResizeOverlay({
     width: draftWidthPx ?? target.rect.width,
     height: draftHeightPx ?? target.rect.height,
   };
-  const hostRect = contentRectToHostRect(contentRect, previewScale);
+  const scaled = contentRectToHostRect(contentRect, previewScale);
+  const hostRect = {
+    x: hostOffset.x + scaled.x,
+    y: hostOffset.y + scaled.y,
+    width: scaled.width,
+    height: scaled.height,
+  };
   const movable = !disabled && canMoveOrPromoteTarget(target);
 
   useEffect(() => {

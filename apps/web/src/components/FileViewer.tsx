@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { Button, Input, Select } from '@open-design/components';
 import { APP_CHROME_FILE_ACTIONS_ID, APP_CHROME_FILE_ACTIONS_SELECTOR } from './AppChromeHeader';
@@ -245,7 +245,11 @@ import {
   readManualEditOuterHtml,
   readManualEditStyles,
 } from '../edit-mode/source-patches';
-import { contentRectToHostRect } from '../edit-mode/preview-coords';
+import {
+  contentRectToHostRect,
+  measureIframeHostScale,
+  measureIframeOffsetInHost,
+} from '../edit-mode/preview-coords';
 import {
   parseExplicitPx,
   resizeHistoryLabel,
@@ -279,6 +283,7 @@ import { manualEditStyleReplayPatches } from '../edit-mode/manual-edit-style-rep
 import {
   applyManualEditPreviewStylesToDocument,
   iframeContentDocumentIfAccessible,
+  measureManualEditTargetContentRect,
 } from '../edit-mode/manual-edit-host-preview';
 import {
   manualEditPatchBaseSource,
@@ -924,6 +929,7 @@ function manualEditFloatingPanelStyle(
   target: ManualEditTarget,
   previewScale: number,
   canvasSize: PreviewCanvasSize | undefined,
+  hostOffset: { x: number; y: number } = { x: 0, y: 0 },
 ): CSSProperties {
   const panelWidth = 320;
   const preferredPanelHeight = 380;
@@ -931,7 +937,13 @@ function manualEditFloatingPanelStyle(
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
   const panelHeight = Math.min(preferredPanelHeight, Math.max(260, canvasHeight - pad * 2));
-  const hostRect = contentRectToHostRect(target.rect, previewScale);
+  const scaled = contentRectToHostRect(target.rect, previewScale);
+  const hostRect = {
+    x: hostOffset.x + scaled.x,
+    y: hostOffset.y + scaled.y,
+    width: scaled.width,
+    height: scaled.height,
+  };
   const targetLeft = hostRect.x;
   const targetTop = hostRect.y;
   const targetRight = hostRect.x + hostRect.width;
@@ -962,12 +974,19 @@ function manualEditHoverIconStyle(
   target: ManualEditTarget,
   previewScale: number,
   canvasSize: PreviewCanvasSize | undefined,
+  hostOffset: { x: number; y: number } = { x: 0, y: 0 },
 ): CSSProperties {
   const iconSize = 26;
   const inset = 4;
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
-  const hostRect = contentRectToHostRect(target.rect, previewScale);
+  const scaled = contentRectToHostRect(target.rect, previewScale);
+  const hostRect = {
+    x: hostOffset.x + scaled.x,
+    y: hostOffset.y + scaled.y,
+    width: scaled.width,
+    height: scaled.height,
+  };
   const targetTop = hostRect.y;
   const targetRight = hostRect.x + hostRect.width;
   const left = Math.max(
@@ -5129,6 +5148,11 @@ function HtmlViewer({
     x: number;
     y: number;
   } | null>(null);
+  /** Iframe offset inside `.manual-edit-workspace` — canvas may be centered. */
+  const [manualEditHostOffset, setManualEditHostOffset] = useState({ x: 0, y: 0 });
+  /** Measured CSS scale of the preview iframe (toolbar zoom can diverge). */
+  const [manualEditHostScale, setManualEditHostScale] = useState(1);
+  const manualEditWorkspaceRef = useRef<HTMLDivElement | null>(null);
   const manualEditResizeSessionActiveRef = useRef(false);
   const manualEditModeRef = useRef(false);
   const manualEditResizePausedRef = useRef(false);
@@ -7088,6 +7112,77 @@ function HtmlViewer({
     selectedManualEditTargetIdRef.current = selectedManualEditTarget?.id ?? null;
     selectedManualEditTargetRef.current = selectedManualEditTarget;
   }, [selectedManualEditTarget?.id, selectedManualEditTarget]);
+
+  // Keep overlay scale/offset + target.rect locked to the painted iframe
+  // element. Toolbar zoom / centered mobile canvas / shell transforms can
+  // diverge from `overlayPreviewScale`, which used to leave the drag box
+  // floating away from the element until a late remasure.
+  useLayoutEffect(() => {
+    if (!manualEditMode) {
+      setManualEditHostOffset({ x: 0, y: 0 });
+      setManualEditHostScale(1);
+      return;
+    }
+    let raf = 0;
+    const sync = () => {
+      const frame = iframeRef.current;
+      const workspace = manualEditWorkspaceRef.current;
+      if (!frame || !workspace) return;
+      const nextScale = measureIframeHostScale(frame);
+      const nextOffset = measureIframeOffsetInHost(frame, workspace);
+      setManualEditHostScale((prev) => (Math.abs(prev - nextScale) < 0.0005 ? prev : nextScale));
+      setManualEditHostOffset((prev) => (
+        Math.abs(prev.x - nextOffset.x) < 0.5 && Math.abs(prev.y - nextOffset.y) < 0.5
+          ? prev
+          : nextOffset
+      ));
+      if (manualEditResizeSessionActiveRef.current) return;
+      const selectedId = selectedManualEditTargetIdRef.current;
+      if (!selectedId) return;
+      const measured = measureManualEditTargetContentRect(frame, selectedId);
+      if (!measured || measured.width < 1 || measured.height < 1) return;
+      setSelectedManualEditTarget((current) => {
+        if (!current || current.id !== selectedId) return current;
+        const same =
+          current.rect.x === measured.x
+          && current.rect.y === measured.y
+          && current.rect.width === measured.width
+          && current.rect.height === measured.height;
+        if (same) return current;
+        const next = { ...current, rect: measured };
+        selectedManualEditTargetRef.current = next;
+        return next;
+      });
+    };
+    const schedule = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(sync);
+    };
+    schedule();
+    const frame = iframeRef.current;
+    const workspace = manualEditWorkspaceRef.current;
+    const ro = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(schedule)
+      : null;
+    if (frame) ro?.observe(frame);
+    if (workspace) ro?.observe(workspace);
+    window.addEventListener('resize', schedule);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+      window.removeEventListener('resize', schedule);
+    };
+  }, [
+    manualEditMode,
+    selectedManualEditTarget?.id,
+    previewScale,
+    previewViewport,
+    manualEditViewportWidth,
+    srcDoc,
+    useUrlLoadPreview,
+    previewBodySize?.width,
+    previewBodySize?.height,
+  ]);
 
   useEffect(() => {
     if (!boardMode) {
@@ -9962,8 +10057,9 @@ function HtmlViewer({
         ? {
             ...manualEditFloatingPanelStyle(
               selectedManualEditTarget,
-              overlayPreviewScale,
+              manualEditHostScale,
               previewBodySize,
+              manualEditHostOffset,
             ),
             ...(manualEditPanelPosition ?? {}),
           }
@@ -9996,8 +10092,9 @@ function HtmlViewer({
         title={t('manualEdit.editParams')}
         style={manualEditHoverIconStyle(
           manualEditHoverTarget,
-          overlayPreviewScale,
+          manualEditHostScale,
           previewBodySize,
+          manualEditHostOffset,
         )}
         onClick={() => {
           const target = manualEditHoverTarget;
@@ -10017,7 +10114,8 @@ function HtmlViewer({
     }) ? (
       <ManualEditResizeOverlay
         target={selectedManualEditTarget}
-        previewScale={overlayPreviewScale}
+        previewScale={manualEditHostScale}
+        hostOffset={manualEditHostOffset}
         draftWidthPx={manualEditResizeDraftSize?.width ?? null}
         draftHeightPx={manualEditResizeDraftSize?.height ?? null}
         draftLeftPx={manualEditMoveDraftPos?.x ?? null}
@@ -10753,6 +10851,7 @@ function HtmlViewer({
           )
         ) : mode === 'preview' ? (
           <div
+            ref={manualEditMode ? manualEditWorkspaceRef : undefined}
             className={`${manualEditMode ? 'manual-edit-workspace' : commentPreviewLayoutClass} preview-viewport preview-viewport-${previewViewport}${drawOverlayOpen ? ' preview-draw-active' : ''}`}
             data-testid={manualEditMode ? undefined : 'comment-preview-layout'}
             style={previewViewportStyle(previewViewport, previewScale, boardPreviewCanvasSize, boardPreviewScaleOptions)}
