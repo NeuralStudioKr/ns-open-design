@@ -4775,7 +4775,7 @@ function HtmlViewer({
   // template) and the Teamver Drive Publish menu item stay visible because
   // they either land on the user's machine or stay inside the Teamver
   // workspace tenant.
-  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp, hideDrawAnnotation } = useTeamverBranding();
+  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp, hideDrawAnnotation, hideManualEditBoxDrag } = useTeamverBranding();
   // Kept in sync with live `source` / last-stable preview so fireShareExport
   // (declared above those hooks) can gate Teamver rendered downloads without
   // reading later const bindings.
@@ -6760,10 +6760,12 @@ function HtmlViewer({
         ? selectedManualEditTargetRef.current
         : null);
     // Match ManualEditResizeOverlay mount: only suppress the iframe ring when
-    // the host overlay is actually painted (not during draw / inline text).
+    // the host overlay is actually painted (not during draw / inline text /
+    // prod drag kill-switch).
     const hostChrome = Boolean(
       selected
       && !drawOverlayOpen
+      && !hideManualEditBoxDrag
       && canResizeTarget(selected, { inlineTextEditing: manualEditInlineTextEditing }),
     );
     win.postMessage({ type: 'od-edit-selected-target', id, hostChrome }, '*');
@@ -10165,6 +10167,7 @@ function HtmlViewer({
     ) : null;
   const manualEditResizeOverlay =
     manualEditMode
+    && !hideManualEditBoxDrag
     && !drawOverlayOpen
     && selectedManualEditTarget
     && canResizeTarget(selectedManualEditTarget, {

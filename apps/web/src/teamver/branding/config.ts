@@ -1,5 +1,6 @@
 import { isTeamverEmbedMode } from "../designApiBase";
 import { isTeamverDrawAnnotationEnabled } from "../drawAnnotationEnable";
+import { isTeamverManualEditBoxDragEnabled } from "../manualEditBoxDragEnable";
 import { readTeamverViteEnv } from "../teamverViteEnv";
 import { TEAMVER_BRAND_ASSETS } from "./assets";
 import {
@@ -81,6 +82,11 @@ export type TeamverBrandingConfig = {
   hideExternalShareSurfaces: boolean;
   /** Hide preview draw/mark toolbar (unstable capture path in embed production). */
   hideDrawAnnotation: boolean;
+  /**
+   * Hide Manual Edit box drag (resize handles + move/promote). Inspector panel
+   * and inline text edit stay available. See `manualEditBoxDragEnable.ts`.
+   */
+  hideManualEditBoxDrag: boolean;
 };
 
 function readEnv(key: string): string | undefined {
@@ -153,6 +159,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hidePluginRegistry: true,
         hideExternalShareSurfaces: true,
         hideDrawAnnotation: !isTeamverDrawAnnotationEnabled(),
+        hideManualEditBoxDrag: !isTeamverManualEditBoxDragEnabled(),
       }
     : {
         hideNavViews: new Set<"tasks" | "plugins" | "integrations">(),
@@ -174,6 +181,7 @@ export function resolveTeamverBranding(): TeamverBrandingConfig {
         hidePluginRegistry: false,
         hideExternalShareSurfaces: false,
         hideDrawAnnotation: false,
+        hideManualEditBoxDrag: false,
       };
 
   return {
