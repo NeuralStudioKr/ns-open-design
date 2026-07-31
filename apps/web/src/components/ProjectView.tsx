@@ -5768,9 +5768,23 @@ export function ProjectView({
             scheduleReattachRetry(message.id, runId);
             continue;
           }
+          // Run id existed locally but daemon has no status — persist a
+          // durable error so hard reload still rebuilds Retry UI.
           updateMessageById(
             message.id,
-            (prev) => ({ ...prev, runStatus: 'failed', endedAt: prev.endedAt ?? Date.now() }),
+            (prev) =>
+              attachPersistedChatError(
+                {
+                  ...prev,
+                  endedAt: prev.endedAt ?? Date.now(),
+                },
+                formatProjectRunErrorForUser(
+                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                    code: 'AGENT_EXECUTION_FAILED',
+                  }),
+                ),
+                'AGENT_EXECUTION_FAILED',
+              ),
             true,
           );
           completedReattachRunsRef.current.add(runId);
@@ -6170,12 +6184,18 @@ export function ProjectView({
                     );
                     if (shouldFailRunForArtifactPersistResult(replayPersistResult)) {
                       const endedAt = Date.now();
+                      const detail = formatProjectRunDeliverableMissingError({
+                        kind: replayPersistResult?.kind ?? null,
+                        reason:
+                          replayPersistResult && 'reason' in replayPersistResult
+                            ? replayPersistResult.reason ?? null
+                            : null,
+                      });
                       updateMessageById(
                         message.id,
                         (prev) => ({
-                          ...prev,
+                          ...attachPersistedChatError(prev, detail, 'incomplete_output'),
                           endedAt: prev.endedAt ?? endedAt,
-                          runStatus: 'failed',
                           resumable: true,
                         }),
                         true,
