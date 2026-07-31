@@ -11,6 +11,7 @@ import {
   isDeckSlideRoot,
   parseExplicitPx,
   parseManualEditStylePx,
+  resizeHandleFromHostPoint,
   resizeHistoryLabel,
   resizeResultToStyles,
   resizeStylesForCommit,
@@ -201,6 +202,16 @@ describe('style helpers', () => {
       styles: { ...emptyManualEditStyles(), width: 'auto', height: '' },
       rect: { x: 0, y: 0, width: 180, height: 90 },
     }))).toEqual({ widthPx: 180, heightPx: 90 });
+  });
+
+  it('maps host overlay edge hits to resize handles (interior stays null)', () => {
+    expect(resizeHandleFromHostPoint(2, 50, 200, 100)).toBe('w');
+    expect(resizeHandleFromHostPoint(198, 50, 200, 100)).toBe('e');
+    expect(resizeHandleFromHostPoint(100, 2, 200, 100)).toBe('n');
+    expect(resizeHandleFromHostPoint(100, 98, 200, 100)).toBe('s');
+    expect(resizeHandleFromHostPoint(2, 2, 200, 100)).toBe('nw');
+    expect(resizeHandleFromHostPoint(198, 98, 200, 100)).toBe('se');
+    expect(resizeHandleFromHostPoint(100, 50, 200, 100)).toBeNull();
   });
 
   it('omits untouched axes in set-style payload', () => {
