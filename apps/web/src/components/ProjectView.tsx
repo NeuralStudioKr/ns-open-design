@@ -312,6 +312,7 @@ import {
   filterUsableCommentAttachments,
   historyWithCommentAttachmentContext,
   hydrateQueryContextCommentAttachments,
+  isScreenshotOnlyVisualCommentTarget,
   mergeAttachedComments,
   mergePreviewCommentAttachments,
   messageContentWithCommentAttachments,
@@ -1332,7 +1333,7 @@ function elementPatchTargetHintsFromCommentAttachments(
 ): ElementPatchTargetHint[] {
   const hints: ElementPatchTargetHint[] = [];
   for (const attachment of commentAttachments) {
-    if (isVisualCommentAttachment(attachment)) {
+    if (isScreenshotOnlyVisualCommentTarget(attachment)) {
       hints.push({
         targetIds: [],
         ...(typeof attachment.slideIndex === 'number' &&
@@ -1349,7 +1350,10 @@ function elementPatchTargetHintsFromCommentAttachments(
       continue;
     }
     const targetIds = scopedCommentElementIds(attachment);
-    if (targetIds.length === 0) continue;
+    if (targetIds.length === 0) {
+      // Visual+DOM without resolvable ids still contributes slide/context hints.
+      if (!isVisualCommentAttachment(attachment)) continue;
+    }
     hints.push({
       targetIds,
       ...(typeof attachment.slideIndex === 'number' &&
@@ -9157,10 +9161,16 @@ export function ProjectView({
   // without a slide index; FileWorkspace/FileViewer ignore it unless the named
   // file is the open deck.
   const armSlideNavForQueuedSend = useCallback((item: QueuedChatSend) => {
-    const target = queuedSlideNavTarget(item.commentAttachments);
+    const fallbackDeck =
+      openTabsStateRef.current.active
+      || project.metadata?.entryFile
+      || null;
+    const target = queuedSlideNavTarget(item.commentAttachments, {
+      fallbackDeckFilePath: fallbackDeck,
+    });
     if (!target) return;
     setSlideNavRequest({ name: target.filePath, slideIndex: target.slideIndex, nonce: Date.now() });
-  }, []);
+  }, [project.metadata?.entryFile]);
 
   const sendQueuedChatSendNow = useCallback((id: string) => {
     const item = queuedChatSendsRef.current.find((candidate) => candidate.id === id);

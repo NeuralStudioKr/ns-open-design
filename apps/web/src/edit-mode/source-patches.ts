@@ -1353,7 +1353,8 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
     'data-screen-label',
   ]);
   for (const [name, value] of Object.entries(attributes)) {
-    if (!isSafeAttributeName(name) || protectedAttrs.has(name)) continue;
+    // Attribute names are case-insensitive in HTML; protect via lowercase.
+    if (!isSafeAttributeName(name) || protectedAttrs.has(name.toLowerCase())) continue;
     if (value.trim() === '') el.removeAttribute(name);
     else el.setAttribute(name, value);
   }

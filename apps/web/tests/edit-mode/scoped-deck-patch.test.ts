@@ -46,6 +46,10 @@ describe('hasElementScopedCommentAttachments', () => {
       ...attachment(1),
       selectionKind: 'visual',
       elementId: 'visual-mark-1',
+      selector: '',
+      htmlHint: '',
+      screenshotPath: 'uploads/visual-mark-1.png',
+      markKind: 'stroke',
     }])).toBe(false);
   });
 
@@ -54,6 +58,8 @@ describe('hasElementScopedCommentAttachments', () => {
       ...attachment(1),
       selectionKind: undefined,
       elementId: 'visual-mark-lost-kind',
+      selector: '',
+      htmlHint: '',
       screenshotPath: 'drawing-2026-07-31.png',
       markKind: 'stroke',
     }])).toBe(false);
@@ -61,18 +67,29 @@ describe('hasElementScopedCommentAttachments', () => {
       ...attachment(1),
       selectionKind: undefined,
       elementId: 'visual-mark-lost-kind',
+      selector: '',
+      htmlHint: '',
     })).toBe(true);
     expect(scopedCommentElementIds({
       ...attachment(1),
       selectionKind: undefined,
       elementId: 'visual-mark-lost-kind',
+      selector: '',
+      htmlHint: '',
       screenshotPath: 'drawing-2026-07-31.png',
     })).toEqual([]);
   });
 
   it('returns true when at least one attachment needs a concrete element target', () => {
     expect(hasElementScopedCommentAttachments([
-      { ...attachment(1), selectionKind: 'visual', elementId: 'visual-mark-1' },
+      {
+        ...attachment(1),
+        selectionKind: 'visual',
+        elementId: 'visual-mark-1',
+        selector: '',
+        htmlHint: '',
+        screenshotPath: 'uploads/visual-mark-1.png',
+      },
       attachment(1),
     ])).toBe(true);
   });

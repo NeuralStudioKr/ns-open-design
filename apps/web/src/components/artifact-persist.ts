@@ -76,6 +76,18 @@ export function resolveArtifactPersistFileName(
   const preferredRaw = options?.preferredFileName?.trim().replace(/\\/g, '/').replace(/^\.\//, '');
   if (preferredRaw) {
     const preferredBase = preferredRaw.split('/').filter(Boolean).pop() ?? preferredRaw;
+    const hasDirectory = preferredRaw.includes('/');
+    // Nested preferred paths must win over a root basename sibling
+    // (`slides/deck.html` must not resolve to root `deck.html`).
+    if (hasDirectory) {
+      const exact = projectFiles.find((file) => {
+        const name = String(file.name || '').replace(/\\/g, '/');
+        const path = String(file.path || '').replace(/\\/g, '/');
+        return name === preferredRaw || path === preferredRaw;
+      });
+      if (exact) return exact.path?.trim() || exact.name;
+      return preferredRaw;
+    }
     const matched = projectFiles.find(
       (file) =>
         file.name === preferredBase
@@ -83,10 +95,6 @@ export function resolveArtifactPersistFileName(
         || (file.path ?? file.name) === preferredRaw,
     );
     if (matched) return matched.path?.trim() || matched.name;
-    if (preferredRaw.includes('/')) {
-      // Nested preferred path — keep directories even when the file list lags.
-      return preferredRaw;
-    }
     if (existing.has(preferredBase)) return preferredBase;
     // Preview-comment edits target a concrete open deck even if the refreshed
     // file list lags behind the tab the user is annotating.

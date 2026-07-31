@@ -877,6 +877,18 @@ describe('preview comment attachment helpers', () => {
     });
     expect(isScreenshotOnlyVisualCommentTarget(visualWithRealTarget)).toBe(false);
     expect(buildConcreteElementPatchTemplate([visualWithRealTarget])).toContain('target-id="hero-title"');
+
+    // visual-mark-* with selector/htmlHint (no stable elementId) stays element-scoped.
+    expect(
+      isScreenshotOnlyVisualCommentTarget({
+        selectionKind: 'visual',
+        markKind: 'click',
+        screenshotPath: 'uploads/mark.png',
+        elementId: 'visual-mark-x',
+        selector: '[data-od-id="hero"]',
+        htmlHint: '<h1 data-od-id="hero">Title</h1>',
+      }),
+    ).toBe(false);
   });
 
   it('does not render preview-comment context when target location data is missing', () => {
@@ -956,5 +968,27 @@ describe('queuedSlideNavTarget', () => {
     expect(
       queuedSlideNavTarget([commentAttachment({ slideIndex: -1 })]),
     ).toBeNull();
+  });
+
+  it('skips screenshot PNG filePath and uses fallback deck for slide nav', () => {
+    expect(
+      queuedSlideNavTarget([
+        commentAttachment({
+          filePath: 'uploads/visual-mark-1.png',
+          slideIndex: 2,
+        }),
+      ]),
+    ).toBeNull();
+    expect(
+      queuedSlideNavTarget(
+        [
+          commentAttachment({
+            filePath: 'uploads/visual-mark-1.png',
+            slideIndex: 2,
+          }),
+        ],
+        { fallbackDeckFilePath: 'deck.html' },
+      ),
+    ).toEqual({ filePath: 'deck.html', slideIndex: 2 });
   });
 });

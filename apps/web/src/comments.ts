@@ -170,19 +170,32 @@ export function resolveCommentEditPersistTargetFileName(
 // nothing slide-scoped to navigate to (plain prompt, free pin, missing index).
 export function queuedSlideNavTarget(
   commentAttachments: readonly ChatCommentAttachment[] | null | undefined,
+  options?: { fallbackDeckFilePath?: string | null },
 ): { filePath: string; slideIndex: number } | null {
   if (!commentAttachments) return null;
+  let slideOnly: number | null = null;
   for (const attachment of commentAttachments) {
-    const filePath = attachment.filePath?.trim();
+    const filePath = attachment.filePath?.trim().replace(/\\/g, '/').replace(/^\.\//, '');
     const slideIndex = attachment.slideIndex;
     if (
-      filePath &&
-      typeof slideIndex === 'number' &&
-      Number.isFinite(slideIndex) &&
-      slideIndex >= 0
+      typeof slideIndex !== 'number' ||
+      !Number.isFinite(slideIndex) ||
+      slideIndex < 0
     ) {
-      return { filePath, slideIndex: Math.floor(slideIndex) };
+      continue;
     }
+    const floor = Math.floor(slideIndex);
+    // Screenshot-only visuals store uploads/*.png as filePath — never treat
+    // that as a deck tab name. Keep the slide index for fallback below.
+    if (filePath && /\.html?$/i.test(filePath)) {
+      return { filePath, slideIndex: floor };
+    }
+    if (slideOnly == null) slideOnly = floor;
+  }
+  if (slideOnly == null) return null;
+  const fallback = options?.fallbackDeckFilePath?.trim().replace(/\\/g, '/').replace(/^\.\//, '') || '';
+  if (fallback && /\.html?$/i.test(fallback)) {
+    return { filePath: fallback, slideIndex: slideOnly };
   }
   return null;
 }
@@ -833,8 +846,14 @@ export function isScreenshotOnlyVisualCommentTarget(
     || Boolean(String(item.screenshotPath || '').trim())
     || elementId.startsWith('visual-mark-');
   if (!isVisual) return false;
-  if (elementId.startsWith('visual-mark-')) return true;
-  return !String(item.selector || '').trim() && !String(item.htmlHint || '').trim();
+  // Synthetic visual-mark-* ids are screenshot-only only when there is no
+  // concrete DOM anchor (selector / htmlHint). Visual+click picks that mint
+  // visual-mark-* while still carrying selector/htmlHint stay element-scoped.
+  const hasDomAnchor =
+    Boolean(String(item.selector || '').trim())
+    || Boolean(String(item.htmlHint || '').trim());
+  if (elementId.startsWith('visual-mark-')) return !hasDomAnchor;
+  return !hasDomAnchor;
 }
 
 /**

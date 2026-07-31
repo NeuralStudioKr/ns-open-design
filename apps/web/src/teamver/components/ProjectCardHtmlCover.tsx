@@ -2,7 +2,12 @@ import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 
 import { injectHtmlBaseHref } from "../../runtime/authenticatedHtmlSrcDoc";
+import { isTeamverEmbedMode } from "../designApiBase";
 import { fetchTeamverDaemon } from "../teamverDaemonHeaders";
+import {
+  projectScopedPreviewUrl,
+  resolveTeamverProjectPreviewPrefix,
+} from "../teamverProjectPreviewScope";
 
 const DECK_PREVIEW_WIDTH = 1280;
 const DECK_PREVIEW_HEIGHT = 720;
@@ -128,6 +133,50 @@ function AuthenticatedHtmlCover({
   );
 }
 
+/** Parse `/api/projects/:id/raw/:path` so cover base href can use scoped preview. */
+export function parseProjectRawUrl(
+  src: string,
+): { projectId: string; filePath: string } | null {
+  const match = /^\/api\/projects\/([^/]+)\/raw\/(.+)$/u.exec(String(src || "").trim());
+  if (!match) return null;
+  let projectId = match[1] || "";
+  let filePath = match[2] || "";
+  try {
+    projectId = decodeURIComponent(projectId);
+  } catch {
+    /* keep raw */
+  }
+  filePath = filePath
+    .split("/")
+    .map((seg) => {
+      try {
+        return decodeURIComponent(seg);
+      } catch {
+        return seg;
+      }
+    })
+    .filter(Boolean)
+    .join("/");
+  if (!projectId || !filePath) return null;
+  return { projectId, filePath };
+}
+
+async function resolveCoverBaseHref(
+  src: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!isTeamverEmbedMode()) return src;
+  const parsed = parseProjectRawUrl(src);
+  if (!parsed) return src;
+  const prefix = await resolveTeamverProjectPreviewPrefix(
+    parsed.projectId,
+    parsed.filePath,
+    { signal },
+  );
+  if (!prefix) return src;
+  return projectScopedPreviewUrl(prefix, parsed.filePath);
+}
+
 async function loadHtmlCover(
   src: string,
   mode: "deck" | "page",
@@ -142,22 +191,21 @@ async function loadHtmlCover(
   const existing = !signal ? htmlCoverInflight.get(cacheKey) : undefined;
   if (existing) return existing;
 
-  const run = fetchTeamverDaemon(src, {
-    // Unique AbortSignal skips GET dedupe in fetchTeamverDaemon.
-    signal: signal ?? new AbortController().signal,
-  })
-    .then((res) => {
-      if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
-      return res.text();
-    })
-    .then((html) => {
-      const parsed = mode === "deck" ? deckPreviewSrcDoc(html, src) : pagePreviewSrcDoc(html, src);
-      htmlCoverCache.set(cacheKey, parsed);
-      return parsed;
-    })
-    .finally(() => {
-      htmlCoverInflight.delete(cacheKey);
+  const run = (async () => {
+    const res = await fetchTeamverDaemon(src, {
+      // Unique AbortSignal skips GET dedupe in fetchTeamverDaemon.
+      signal: signal ?? new AbortController().signal,
     });
+    if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
+    const html = await res.text();
+    const baseHref = await resolveCoverBaseHref(src, signal);
+    const parsed =
+      mode === "deck" ? deckPreviewSrcDoc(html, baseHref) : pagePreviewSrcDoc(html, baseHref);
+    htmlCoverCache.set(cacheKey, parsed);
+    return parsed;
+  })().finally(() => {
+    htmlCoverInflight.delete(cacheKey);
+  });
 
   if (!signal) htmlCoverInflight.set(cacheKey, run);
   return run;

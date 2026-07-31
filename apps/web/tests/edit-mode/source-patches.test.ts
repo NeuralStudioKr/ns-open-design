@@ -173,6 +173,26 @@ describe('manual edit source patches', () => {
     expect(result.source).not.toContain('onclick=');
   });
 
+  it('protects slide identity attrs case-insensitively in set-attributes', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-od-id="01 Cover" data-slide-index="0">Cover</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: '01 Cover',
+      attributes: {
+        'DATA-SLIDE-INDEX': '9',
+        'Data-Od-Id': 'hijacked',
+      },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const attrs = readManualEditAttributes(result.source, '01 Cover');
+    expect(attrs['data-slide-index']).toBe('0');
+    expect(attrs['data-od-id']).toBe('01 Cover');
+  });
+
   it('preserves data-od-id when selected outerHTML omits it', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',

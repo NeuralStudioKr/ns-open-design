@@ -11894,7 +11894,9 @@ export async function startServer({
                 scenarioSkillName = local.name;
                 if (!activeSkillDir) activeSkillDir = local.dir;
               } else {
-                skillBody = local.body + composedSkillBlocks;
+                // Keep ad-hoc blocks out of skillBody until final assembly
+                // (same invariant as the ad-hoc compose path above).
+                skillBody = local.body;
                 skillName = local.name;
                 activeSkillDir = local.dir;
                 registerPrimarySkillMode('deck');

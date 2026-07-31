@@ -103,4 +103,12 @@ describe('selected-deck-template prompt helpers', () => {
     expect(block).toContain('skillBody = baseBody;');
     expect(block).not.toContain('skillBody = baseBody + composedSkillBlocks;');
   });
+
+  it('keeps plugin-primary skillBody free of composedSkillBlocks until final assembly', () => {
+    const start = serverSource.indexOf('// Keep ad-hoc blocks out of skillBody until final assembly');
+    expect(start).toBeGreaterThan(0);
+    const block = serverSource.slice(start, start + 400);
+    expect(block).toContain('skillBody = local.body;');
+    expect(block).not.toContain('skillBody = local.body + composedSkillBlocks;');
+  });
 });
