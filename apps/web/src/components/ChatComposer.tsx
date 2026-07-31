@@ -151,11 +151,32 @@ import {
 } from './composer/LexicalComposerInput';
 import { CaretFloatingLayer } from './composer/CaretFloatingLayer';
 import { ANNOTATION_EVENT, type AnnotationEventDetail } from "./PreviewDrawOverlay";
+import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 import { DesignSystemSwitchPicker } from "./DesignSystemSwitchPicker";
 import { listenForConnectorsChanged } from './connectors-events';
 import { fetchConnectorCatalogSnapshot } from './connectors-state';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
+
+const ANNOTATION_UPLOAD_READ_DELAYS_MS = [0, 250, 800, 1500, 2500] as const;
+
+async function uploadedImagesReadableOnDisk(
+  projectId: string,
+  uploaded: ChatAttachment[],
+): Promise<ChatAttachment[]> {
+  const ready: ChatAttachment[] = [];
+  for (const item of uploaded) {
+    if (item.kind !== 'image') {
+      ready.push(item);
+      continue;
+    }
+    const blob = await loadAuthenticatedProjectFileBlob(projectId, item.path, {
+      delaysMs: ANNOTATION_UPLOAD_READ_DELAYS_MS,
+    });
+    if (blob) ready.push(item);
+  }
+  return ready;
+}
 
 type ToolsTab = 'plugins' | 'skills' | 'mcp' | 'import';
 
@@ -1918,8 +1939,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               }
               setUploading(true);
               const result = await uploadProjectFiles(id, annotationFiles);
-              if (result.uploaded.length > 0) {
-                uploaded = assignChatAttachmentOrders(result.uploaded, orderStart);
+              const readableUploaded = result.uploaded.length > 0
+                ? await uploadedImagesReadableOnDisk(id, result.uploaded)
+                : [];
+              if (readableUploaded.length > 0) {
+                uploaded = assignChatAttachmentOrders(readableUploaded, orderStart);
                 const screenshot = detail.file ? uploaded[0] : null;
                 if (screenshot && detail.markKind && detail.bounds) {
                   visualAttachmentInput = {
@@ -1955,16 +1979,23 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   };
                 }
               }
-              if (result.failed.length > 0) {
+              if (
+                result.uploaded.length > readableUploaded.length
+                || result.failed.length > 0
+              ) {
+                const failedReadCount = result.uploaded.length - readableUploaded.length;
                 const uploadErrorMessage = resolveProjectUploadBatchErrorMessage({
                   uploadedCount: uploaded.length,
-                  failedCount: result.failed.length,
+                  failedCount: result.failed.length + failedReadCount,
                   error: result.error,
                   slideOnlyMvp,
                 });
                 setUploadError(uploadErrorMessage);
                 if (uploaded.length === 0) {
-                  ack({ ok: false, message: uploadErrorMessage || t('chat.annotationUploadFailed') });
+                  ack({
+                    ok: false,
+                    message: uploadErrorMessage || t('chat.annotationUploadFailed'),
+                  });
                   return;
                 }
               }
