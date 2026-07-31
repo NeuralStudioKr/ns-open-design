@@ -77,14 +77,25 @@ export function resolveSlideOnlyCreatePluginId(
   return trimmed;
 }
 
+/**
+ * Resolve a community / free-form deck visual template id for Home create.
+ *
+ * `explicitPick` is accepted for call-site compatibility but no longer gates
+ * persistence: free-form binds that leave a `mode: deck` plugin on `active`
+ * (without the chip-default scenario / routers) must still write
+ * `selectedDeckTemplate*` metadata so ProjectView / daemon can compose it.
+ */
 export function resolveSlideOnlyDeckTemplateSkillId(
   plugin: InstalledPluginRecord | null | undefined,
-  options: { explicitPick?: boolean | null },
+  _options?: { explicitPick?: boolean | null },
 ): string | null {
-  if (!options.explicitPick) return null;
   const id = plugin?.id?.trim() ?? "";
   if (!id) return null;
   if (SLIDE_ONLY_COERCED_ROUTER_PLUGIN_IDS.has(id)) return null;
+  // Scenario generator is the create plugin, not a visual template skill.
+  if (id === TEAMVER_EMBED_SLIDE_SCENARIO_PLUGIN_ID || id === "example-simple-deck") {
+    return null;
+  }
   if (plugin?.manifest?.od?.mode !== "deck") return null;
   return id;
 }

@@ -122,23 +122,22 @@ describe("canvasSlideLaunch", () => {
   });
 
   it("binds selected deck template into per-turn skillIds for system prompt composition", () => {
-    expect(canvasCreateSlidesTurnMeta("example-simple-deck", { designSystemId: "ds-1" })).toEqual({
-      skillIds: ["example-simple-deck"],
+    expect(canvasCreateSlidesTurnMeta("html-ppt-hermes", { designSystemId: "ds-1" })).toEqual({
+      skillIds: ["html-ppt-hermes"],
       designSystemId: "ds-1",
       context: {
-        pluginIds: ["example-simple-deck"],
-        skillIds: ["example-simple-deck"],
+        skillIds: ["html-ppt-hermes"],
       },
     });
     expect(
-      canvasCreateSlidesTurnMeta("example-simple-deck", {
-        mergeContext: { pluginIds: ["other-plugin"], skillIds: ["staged-skill"] },
+      canvasCreateSlidesTurnMeta("html-ppt-hermes", {
+        mergeContext: { pluginIds: ["example-simple-deck", "html-ppt-hermes"], skillIds: ["staged-skill"] },
       }),
     ).toEqual({
-      skillIds: ["example-simple-deck"],
+      skillIds: ["html-ppt-hermes"],
       context: {
-        pluginIds: ["example-simple-deck", "other-plugin"],
-        skillIds: ["example-simple-deck", "staged-skill"],
+        pluginIds: ["example-simple-deck"],
+        skillIds: ["html-ppt-hermes", "staged-skill"],
       },
     });
   });
@@ -290,7 +289,10 @@ describe("canvasSlideLaunch", () => {
     const projectView = readWebSource("src/components/ProjectView.tsx");
     const daemon = readWebSource("src/providers/daemon.ts");
 
-    expect(composer).toContain("pluginInputs: canvasCreateSlidesPluginInputs(");
+    expect(composer).toContain("canvasCreateSlidesPluginInputs(");
+    expect(composer).toContain("buildSlideOnlyDeckTemplateCreateBinding(");
+    expect(composer).toContain("selectedDeckTemplateId");
+    expect(composer).toContain("await patchProject(id, projectPatch)");
     expect(composer).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(handoff)");
     expect(composer).toContain("const sourceBrief = driveCreateSlidesSourceBrief(asset)");
     expect(composer).toContain("promptForRun");

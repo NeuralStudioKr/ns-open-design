@@ -637,14 +637,58 @@ function usesAnthropicMessagesPayload(endpoint: string): boolean {
   return endpoint.includes('/api/proxy/anthropic/');
 }
 
+type AnthropicImageCandidate = {
+  path: string;
+  name: string;
+  order?: number;
+};
+
+/**
+ * Visual marks store screenshots on `commentAttachments.screenshotPath`.
+ * History rows can keep that metadata after regular `attachments` were
+ * dropped — still emit native Anthropic image blocks for those paths.
+ */
+export function anthropicImageCandidatesFromMessage(
+  message: Pick<ChatMessage, 'attachments' | 'commentAttachments'>,
+): AnthropicImageCandidate[] {
+  const imageAttachments = sortAttachmentsByUserOrder(
+    (message.attachments ?? []).filter((attachment) => attachment.kind === 'image'),
+  );
+  const seen = new Set(imageAttachments.map((attachment) => attachment.path));
+  const fromAttachments: AnthropicImageCandidate[] = imageAttachments.map((attachment) => ({
+    path: attachment.path,
+    name: attachment.name,
+    order: attachment.order,
+  }));
+  const fromVisualComments: AnthropicImageCandidate[] = [];
+  for (const [index, attachment] of (message.commentAttachments ?? []).entries()) {
+    const selectionKind = attachment.selectionKind;
+    const screenshotPath = String(attachment.screenshotPath || '').trim();
+    const filePath = String(attachment.filePath || '').trim();
+    const isVisual =
+      selectionKind === 'visual'
+      || Boolean(attachment.markKind)
+      || Boolean(screenshotPath)
+      || String(attachment.elementId || '').startsWith('visual-mark-');
+    if (!isVisual) continue;
+    const path = screenshotPath || filePath;
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    fromVisualComments.push({
+      path,
+      name: String(attachment.label || path.split('/').pop() || path).trim() || path,
+      order: typeof attachment.order === 'number' ? attachment.order : index,
+    });
+  }
+  return sortAttachmentsByUserOrder([...fromAttachments, ...fromVisualComments]);
+}
+
 async function buildAnthropicMessageContent(
   message: ChatMessage,
   projectId: string,
 ): Promise<ProxyMessageContent> {
-  const imageAttachments = sortAttachmentsByUserOrder(
-    (message.attachments ?? []).filter((attachment) => attachment.kind === 'image'),
-  );
-  if (message.role !== 'user' || imageAttachments.length === 0) {
+  const imageCandidates = anthropicImageCandidatesFromMessage(message);
+  if (message.role !== 'user' || imageCandidates.length === 0) {
     return message.content;
   }
 
@@ -653,7 +697,7 @@ async function buildAnthropicMessageContent(
     blocks.push({ type: 'text', text: message.content });
   }
 
-  for (const attachment of imageAttachments) {
+  for (const attachment of imageCandidates) {
     const block = await readAnthropicImageBlock(projectId, attachment.path);
     if (block) {
       blocks.push(block);
@@ -684,46 +728,61 @@ function sortAttachmentsByUserOrder<T extends { order?: number }>(attachments: T
     .map((entry) => entry.attachment);
 }
 
+const ANTHROPIC_IMAGE_FETCH_DELAYS_MS = [0, 250, 800] as const;
+
 async function readAnthropicImageBlock(
   projectId: string,
   path: string,
 ): Promise<ProxyImageContentBlock | null> {
   try {
-    const resp = await fetchTeamverDaemon(projectFileUrl(projectId, path), {
-      cache: 'no-store',
-      teamverProjectId: projectId,
-    });
-    if (!resp.ok) return null;
-
-    const mediaType = supportedAnthropicImageMediaType(
-      resp.headers.get('content-type') ?? '',
-      path,
-    );
-    if (!mediaType) return null;
-
-    const bytes = new Uint8Array(await resp.arrayBuffer());
-    if (!isValidAnthropicImageBytes(bytes, mediaType)) return null;
-    let payload = bytes;
-    if (payload.length > MAX_ANTHROPIC_PROXY_IMAGE_BYTES) {
-      const downscaled = await downscaleImageBytesForAnthropicProxy(
-        payload,
-        mediaType,
-        MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
-      );
-      if (!downscaled) return null;
-      payload = downscaled;
-    }
-    return {
-      type: 'image',
-      source: {
-        type: 'base64',
-        media_type: mediaType,
-        data: bytesToBase64(payload),
-      },
-    };
+    await waitForTeamverProjectStoragePrefix(projectId, { quick: true });
   } catch {
-    return null;
+    // Prefix warm is best-effort; still attempt the raw fetch.
   }
+
+  for (let attempt = 0; attempt < ANTHROPIC_IMAGE_FETCH_DELAYS_MS.length; attempt += 1) {
+    const delay = ANTHROPIC_IMAGE_FETCH_DELAYS_MS[attempt] ?? 0;
+    if (delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    try {
+      const resp = await fetchTeamverDaemon(projectFileUrl(projectId, path), {
+        cache: 'no-store',
+        teamverProjectId: projectId,
+      });
+      if (!resp.ok) continue;
+
+      const mediaType = supportedAnthropicImageMediaType(
+        resp.headers.get('content-type') ?? '',
+        path,
+      );
+      if (!mediaType) return null;
+
+      const bytes = new Uint8Array(await resp.arrayBuffer());
+      if (!isValidAnthropicImageBytes(bytes, mediaType)) return null;
+      let payload = bytes;
+      if (payload.length > MAX_ANTHROPIC_PROXY_IMAGE_BYTES) {
+        const downscaled = await downscaleImageBytesForAnthropicProxy(
+          payload,
+          mediaType,
+          MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
+        );
+        if (!downscaled) return null;
+        payload = downscaled;
+      }
+      return {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mediaType,
+          data: bytesToBase64(payload),
+        },
+      };
+    } catch {
+      // Auth / storage race — retry remaining attempts.
+    }
+  }
+  return null;
 }
 
 /** Reject HTML/JSON error bodies that inherit a .png path extension. */

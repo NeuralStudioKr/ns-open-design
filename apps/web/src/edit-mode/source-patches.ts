@@ -1182,12 +1182,19 @@ const MANUAL_EDIT_INLINE_WRAPPER_TAGS = new Set([
   'cite', 'blockquote', 'q',
 ]);
 
+/** Shallow text stacks under a wrapper: `<div>a</div><div>b</div>` / `<p>…</p>`. */
+const MANUAL_EDIT_TEXT_LEAF_CONTAINER_TAGS = new Set(['div', 'p']);
+
 /**
  * True when `el` is a text-shaped wrapper (heading, paragraph, list item,
  * label, small `<div>`) whose children only carry inline formatting. Used to
  * decide whether a `set-text` patch may destructively replace inner HTML with
  * the escaped user text — safer than blocking the edit outright, but not so
  * aggressive that we would wipe block layout (`ul`, `table`, `section`, etc.).
+ *
+ * Also accepts one level of text-leaf `div`/`p` children (common in Teamver
+ * decks for multi-line labels). Deeper block nests and real layout containers
+ * still reject so callers fall through to the HTML tab.
  */
 export function containsOnlyInlineTextFormatting(el: Element): boolean {
   const tag = el.tagName?.toLowerCase() ?? '';
@@ -1197,9 +1204,21 @@ export function containsOnlyInlineTextFormatting(el: Element): boolean {
 
 function childIsInlineTextFormatting(child: Element): boolean {
   const tag = child.tagName?.toLowerCase() ?? '';
-  if (!MANUAL_EDIT_INLINE_TEXT_TAGS.has(tag)) return false;
-  if (child.children.length === 0) return true;
-  return Array.from(child.children).every(childIsInlineTextFormatting);
+  if (MANUAL_EDIT_INLINE_TEXT_TAGS.has(tag)) {
+    if (child.children.length === 0) return true;
+    return Array.from(child.children).every(childIsInlineTextFormatting);
+  }
+  // Shallow text-leaf containers: allow `<div>line</div>` / `<p><span>x</span></p>`
+  // under a wrapper, but do not recurse into further block containers.
+  if (MANUAL_EDIT_TEXT_LEAF_CONTAINER_TAGS.has(tag)) {
+    return Array.from(child.children).every((grand) => {
+      const grandTag = grand.tagName?.toLowerCase() ?? '';
+      if (!MANUAL_EDIT_INLINE_TEXT_TAGS.has(grandTag)) return false;
+      if (grand.children.length === 0) return true;
+      return Array.from(grand.children).every(childIsInlineTextFormatting);
+    });
+  }
+  return false;
 }
 
 /** Escape user-provided text before writing it into an element's innerHTML. */
@@ -1237,7 +1256,9 @@ function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): vo
   for (const [name, value] of Object.entries(styles)) {
     const cssName = camelToKebab(name);
     if (typeof value !== 'string' || value.trim() === '') el.style.removeProperty(cssName);
-    else el.style.setProperty(cssName, value.trim());
+    // Match live preview (`!important`) so brand-kit / artifact CSS rules
+    // cannot silently win after freeze remount drops postMessage styles.
+    else el.style.setProperty(cssName, value.trim(), 'important');
   }
 }
 
@@ -1257,6 +1278,9 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
   // (`<style>…</style><h1>…</h1>`, badge + title, etc.). Strict
   // "exactly one root" rejected those as deck_patch_merge_failed even
   // when a clear primary replacement was present — salvage first.
+  const styleSiblings = Array.from(template.content.children).filter(
+    (candidate) => candidate.tagName === 'STYLE',
+  );
   const next = resolveSingleRootReplacementElement(doc, el, template);
   if (!next) {
     return { ok: false, error: 'Replacement HTML must contain exactly one root element.' };
@@ -1268,6 +1292,25 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
     next.setAttribute('data-od-edit', el.getAttribute('data-od-edit') ?? '');
   }
   el.replaceWith(next);
+  // Style siblings were dropped by single-root salvage — keep their rules
+  // so "make it stand out" edits that ship class + <style> still paint.
+  // Deduplicate by text so repeated comment edits do not accumulate clones.
+  const styleHost = doc.head ?? doc.documentElement ?? doc.body;
+  if (styleHost) {
+    for (const style of styleSiblings) {
+      if (next === style || next.contains(style)) continue;
+      const text = (style.textContent ?? '').trim();
+      if (
+        text
+        && Array.from(styleHost.querySelectorAll('style')).some(
+          (existing) => (existing.textContent ?? '').trim() === text,
+        )
+      ) {
+        continue;
+      }
+      styleHost.appendChild(doc.importNode(style, true));
+    }
+  }
   return { ok: true };
 }
 

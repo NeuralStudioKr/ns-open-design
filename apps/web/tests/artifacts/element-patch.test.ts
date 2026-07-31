@@ -162,6 +162,7 @@ describe('applyElementPatches', () => {
     expect(applied.html).toContain('data-od-id="company-name"');
     expect(applied.html).toContain('Acme Corp');
     expect(applied.html).toContain('<p>Subtitle</p>');
+    expect(applied.html).toContain('.pop{font-weight:700;color:#ef4444}');
   });
 
   it('applies page-level data-screen-label targets like "01 Cover"', () => {

@@ -12,23 +12,19 @@ function countTagBalance(html: string, openRe: RegExp, closeRe: RegExp): boolean
 
 /**
  * Tag-balance heuristics must ignore instructional copies of `<style>` /
- * `<script>` that live inside HTML comments or CSS block comments. The
- * deck-framework skeleton documents its contract with the literal text
- * "this <style> block" inside a CSS comment — counting that as an open tag
- * permanently rejects complete, on-disk decks and leaves the preview on
- * "loading…" even after refresh.
+ * `<script>` that live inside HTML comments, CSS block comments, or the
+ * *bodies* of already-closed script/style tags (e.g. `const tip = "<script>"`).
+ * Counting those as open tags permanently rejects complete decks and leaves
+ * the preview on "loading…" even after refresh.
  */
 export function stripCommentsForArtifactTagBalance(html: string): string {
   // Closed HTML comments first.
   let out = html.replace(/<!--[\s\S]*?-->/g, "");
-  // Inside closed <style> blocks: drop CSS comments so instructional
-  // "<style>" text and unterminated `/* …` tails cannot inflate open counts.
-  // Unterminated tails must stop before `</style>` so the closer still counts.
-  out = out.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, (block) =>
-    block
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\*[\s\S]*?(?=<\/style>)/gi, ""),
-  );
+  // Blank closed script/style bodies so string literals like
+  // `const tip = "<script>"` cannot inflate open-tag counts.
+  out = out
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "<script></script>")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "<style></style>");
   // Unclosed trailing <style>: scrub CSS comments on the open tail only.
   out = out.replace(/<style\b[^>]*>(?![\s\S]*<\/style>)[\s\S]*$/i, (block) =>
     block.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\*[\s\S]*$/g, ""),

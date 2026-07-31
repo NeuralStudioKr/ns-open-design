@@ -50,8 +50,12 @@ import { AssistantMessage, type QuestionFormOpenRequest } from './AssistantMessa
 import { PinnedNextStepSlot } from './PinnedNextStepSlot';
 import { AmrGuidance } from './AmrGuidance';
 import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-guidance';
-import { formatProjectRunErrorForUser } from '../teamver/projectErrorMessages';
+import {
+  formatProjectRunDeliverableMissingError,
+  formatProjectRunErrorForUser,
+} from '../teamver/projectErrorMessages';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
+import { isVisualCommentAttachment } from '../edit-mode/scoped-deck-patch';
 import { resolveLastAssistantMessageId } from '../runtime/conversation-message-dedupe';
 import {
   shouldIncludeMessageInChatRender,
@@ -955,21 +959,25 @@ export function ChatPane({
     }
     return null;
   })();
-  // Suppress manual Retry only while ProjectView's timer is armed, or for
-  // legacy rows that only carry the auto-continue notice (no durable error).
-  const autoContinueScheduled =
-    autoContinuePending
-    || (
-      latestFailedRunErrorEvent?.code === AUTO_CONTINUE_STATUS_CODE
-      && !durableFailedRunErrorEvent
-    );
-  const failedRunErrorEvent = autoContinueScheduled
-    ? null
-    : (durableFailedRunErrorEvent ?? (
-      latestFailedRunErrorEvent?.code === AUTO_CONTINUE_STATUS_CODE
-        ? null
-        : latestFailedRunErrorEvent
-    ));
+  // Suppress manual Retry only while ProjectView's live timer is armed.
+  // Legacy rows that only carry `auto_continue_incomplete_output` must still
+  // rebuild Retry after reload (`autoContinuePending === false`).
+  const autoContinueScheduled = Boolean(autoContinuePending);
+  const failedRunErrorEvent = (() => {
+    if (autoContinueScheduled) return null;
+    if (durableFailedRunErrorEvent) return durableFailedRunErrorEvent;
+    if (latestFailedRunErrorEvent?.code === AUTO_CONTINUE_STATUS_CODE) {
+      // Pre-stacking persistence left only the transient notice. Synthesize a
+      // retryable incomplete_output so Continue/Retry is not hidden forever.
+      return {
+        kind: 'status' as const,
+        label: 'error',
+        code: 'incomplete_output',
+        detail: formatProjectRunDeliverableMissingError(),
+      };
+    }
+    return latestFailedRunErrorEvent;
+  })();
   const diagnosticRunErrorEvent = (() => {
     if (failedRunErrorEvent) return failedRunErrorEvent;
     if (durableFailedRunErrorEvent) return durableFailedRunErrorEvent;
@@ -2553,9 +2561,15 @@ function ChatRows({
           break;
         }
       }
-      // Transient auto-continue notice must not become a past error card.
+      // Legacy auto-continue-only rows (timer gone after reload) still need a
+      // past error card; synthesize incomplete_output instead of skipping.
       if (!errorEvent && latestAnyError?.code === AUTO_CONTINUE_STATUS_CODE) {
-        continue;
+        errorEvent = {
+          kind: 'status',
+          label: 'error',
+          code: 'incomplete_output',
+          detail: formatProjectRunDeliverableMissingError(),
+        };
       }
       // Legacy / race rows may be failed without a durable status:error —
       // still show an inline card so hard reload does not hide the failure.
@@ -3620,6 +3634,16 @@ function UserMessageImpl({
 }) {
   const attachments = sortChatAttachmentsForDisplay(message.attachments ?? []);
   const commentAttachments = message.commentAttachments ?? [];
+  const attachmentPaths = new Set(attachments.map((item) => item.path));
+  // Visual marks are often represented twice on send (image attachment +
+  // commentAttachment). When normal attachments were dropped from history,
+  // still render the screenshot from surviving visual comment metadata.
+  const visualHistoryAttachments = commentAttachments.filter((attachment) => {
+    if (!isVisualCommentAttachment(attachment)) return false;
+    const path = String(attachment.screenshotPath || attachment.filePath || '').trim();
+    if (!path) return false;
+    return !attachmentPaths.has(path);
+  });
   const workspaceItems = message.runContext?.workspaceItems ?? [];
   const messagePluginSnapshot = message.appliedPluginSnapshot ?? activePluginSnapshot ?? null;
   const hasRunContext = Boolean(
@@ -3697,7 +3721,7 @@ function UserMessageImpl({
           ) : null}
         </div>
       ) : null}
-      {attachments.length > 0 ? (
+      {attachments.length > 0 || visualHistoryAttachments.length > 0 ? (
         <div className="user-attachments">
           {attachments.map((a, index) => {
             const baseName = a.path.split('/').pop() || a.path;
@@ -3746,11 +3770,50 @@ function UserMessageImpl({
               </div>
             );
           })}
+          {visualHistoryAttachments.map((a, index) => {
+            const path = String(a.screenshotPath || a.filePath || '').trim();
+            const baseName = path.split('/').pop() || path;
+            const label = commentTargetDisplayName(a);
+            const openable =
+              !!onRequestOpenFile &&
+              (projectFileNames ? projectFileNames.has(baseName) : true);
+            const handleOpen = openable
+              ? () => onRequestOpenFile?.(baseName)
+              : undefined;
+            return (
+              <div key={`visual-${a.id}`} className="user-attachment-row" data-testid="visual-history-attachment">
+                <button
+                  type="button"
+                  className={`user-attachment staged-image${openable ? ' openable' : ''}`}
+                  onClick={handleOpen}
+                  disabled={!openable}
+                  title={openable ? t('chat.openFile', { name: baseName }) : path}
+                >
+                  <span className="staged-order" aria-label={`Attachment ${attachments.length + index + 1}`}>
+                    {attachments.length + index + 1}
+                  </span>
+                  {projectId ? (
+                    <AuthenticatedProjectFileImage
+                      projectId={projectId}
+                      path={path}
+                      alt={label}
+                    />
+                  ) : (
+                    <Icon name="file" size={14} />
+                  )}
+                  <span className="staged-name" title={a.comment ? `${label}: ${a.comment}` : label}>
+                    {label}
+                    {a.comment ? <span>{a.comment}</span> : null}
+                  </span>
+                </button>
+              </div>
+            );
+          })}
         </div>
       ) : null}
-      {commentAttachments.some((attachment) => attachment.selectionKind !== 'visual') ? (
+      {commentAttachments.some((attachment) => !isVisualCommentAttachment(attachment)) ? (
         <div className="user-attachments comment-history-attachments">
-          {commentAttachments.filter((attachment) => attachment.selectionKind !== 'visual').map((a) => (
+          {commentAttachments.filter((attachment) => !isVisualCommentAttachment(attachment)).map((a) => (
             <span key={a.id} className="user-attachment staged-comment">
               <span className="staged-name" title={a.comment ? `${commentTargetDisplayName(a)}: ${a.comment}` : commentTargetDisplayName(a)}>
                 <strong>{commentTargetDisplayName(a)}</strong>

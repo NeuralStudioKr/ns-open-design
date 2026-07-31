@@ -253,7 +253,10 @@ import {
   preferManualEditPinnedSourceOverLive,
   type ManualEditSourcePin,
 } from '../edit-mode/manual-edit-save-pin';
-import { shouldClearManualEditFrozenSourceOnModeChange } from '../edit-mode/manual-edit-freeze';
+import {
+  shouldClearManualEditFrozenSourceOnModeChange,
+  shouldUpdateManualEditFrozenSourceOnPatch,
+} from '../edit-mode/manual-edit-freeze';
 import { isManualEditKeyboardTextTarget } from '../edit-mode/manual-edit-keyboard';
 import {
   MANUAL_EDIT_STYLE_AUTOSAVE_MS,
@@ -7795,7 +7798,9 @@ function HtmlViewer({
         );
         return false;
       }
-      pinManualEditSavedSource(baseSource);
+      // Do not pin `baseSource` before history confirm — that made
+      // `manualEditHistoryConfirmTrustsLocal` always trust local and skip real
+      // external-change detection. Pin only after a successful revision save.
       if (
         !shouldSkipManualEditHistoryConfirm(manualEditMode)
         && !(await confirmManualEditHistorySource(
@@ -7835,12 +7840,12 @@ function HtmlViewer({
       sourceRef.current = result.source;
       pinManualEditSavedSource(result.source);
       setInlinedSource(null);
-      // Every persisted patch (including set-style) must update the freeze so
-      // the next iframe render reflects the saved HTML. Structural patches
-      // also push the updated srcDoc into the live iframe without exiting edit.
+      // Style-only saves update source/pin but leave the entry freeze alone so
+      // postMessage live preview keeps working without a srcDoc remount.
+      // Structural / text patches remount freeze + push updated srcDoc.
       capturePreviewScrollPosition();
-      setManualEditFrozenSource(result.source);
-      if (patch.kind !== 'set-style') {
+      if (shouldUpdateManualEditFrozenSourceOnPatch(patch.kind)) {
+        setManualEditFrozenSource(result.source);
         queueMicrotask(() => activateManualEditPreviewHtml(result.source));
       }
       commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));

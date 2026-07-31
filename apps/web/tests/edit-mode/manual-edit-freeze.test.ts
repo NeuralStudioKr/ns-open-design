@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { shouldClearManualEditFrozenSourceOnModeChange } from '../../src/edit-mode/manual-edit-freeze';
+import {
+  shouldClearManualEditFrozenSourceOnModeChange,
+  shouldUpdateManualEditFrozenSourceOnPatch,
+} from '../../src/edit-mode/manual-edit-freeze';
 
 describe('manual edit freeze reset', () => {
   it('clears the entry freeze when leaving edit mode', () => {
@@ -15,5 +18,12 @@ describe('manual edit freeze reset', () => {
   it('does not clear when the mode value is unchanged', () => {
     expect(shouldClearManualEditFrozenSourceOnModeChange(true, true)).toBe(false);
     expect(shouldClearManualEditFrozenSourceOnModeChange(false, false)).toBe(false);
+  });
+
+  it('does not remount the freeze on set-style saves', () => {
+    expect(shouldUpdateManualEditFrozenSourceOnPatch('set-style')).toBe(false);
+    expect(shouldUpdateManualEditFrozenSourceOnPatch('set-text')).toBe(true);
+    expect(shouldUpdateManualEditFrozenSourceOnPatch('set-outer-html')).toBe(true);
+    expect(shouldUpdateManualEditFrozenSourceOnPatch('remove-element')).toBe(true);
   });
 });

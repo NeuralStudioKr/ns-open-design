@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../src/teamver/teamverProjectS3PrefixResolve', () => ({
+  waitForTeamverProjectStoragePrefix: vi.fn().mockResolvedValue(null),
+}));
+
 import { historyWithApiAttachmentContext } from '../../src/api-attachment-context';
 import {
   commentsToAttachments,
   historyWithCommentAttachmentContext,
 } from '../../src/comments';
 import {
+  anthropicImageCandidatesFromMessage,
   buildProxyMessages,
   buildProxyResponseError,
   isValidAnthropicImageBytes,
@@ -303,15 +308,109 @@ describe('buildProxyMessages', () => {
     });
   });
 
-  it('keeps a text fallback when a supported Anthropic image cannot be read', async () => {
+  it('serializes visual comment screenshots when regular attachments were dropped', async () => {
+    const pngBytes = new Uint8Array([137, 80, 78, 71]);
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
-        ok: false,
-        headers: { get: () => null },
-        arrayBuffer: async () => new ArrayBuffer(0),
+        ok: true,
+        headers: {
+          get: (name: string) => (name.toLowerCase() === 'content-type' ? 'image/png' : null),
+        },
+        arrayBuffer: async () => pngBytes.buffer,
       }),
     );
+
+    const messages = await buildProxyMessages(
+      '/api/proxy/anthropic/stream',
+      [
+        {
+          id: 'msg-visual',
+          role: 'user',
+          content: '이 영역 고쳐줘',
+          createdAt: 1,
+          commentAttachments: [
+            {
+              id: 'visual-mark-1',
+              order: 0,
+              filePath: 'uploads/visual-mark-1.png',
+              elementId: 'visual-mark-1',
+              selector: '',
+              label: 'Visual mark',
+              comment: '키워줘',
+              currentText: '',
+              pagePosition: { x: 0.1, y: 0.2, width: 0.3, height: 0.2 },
+              htmlHint: '',
+              selectionKind: 'visual',
+              screenshotPath: 'uploads/visual-mark-1.png',
+              markKind: 'rect',
+            },
+          ],
+        },
+      ],
+      { projectId: 'project-1' },
+    );
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/projects/project-1/raw/uploads/visual-mark-1.png',
+      expect.objectContaining({
+        cache: 'no-store',
+        credentials: 'same-origin',
+      }),
+    );
+    expect(messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '이 영역 고쳐줘' },
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: 'image/png',
+              data: 'iVBORw==',
+            },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('dedupes visual comment screenshots against regular image attachments', () => {
+    const candidates = anthropicImageCandidatesFromMessage({
+      attachments: [
+        { path: 'uploads/visual-mark-1.png', name: 'visual-mark-1.png', kind: 'image', size: 4, order: 0 },
+      ],
+      commentAttachments: [
+        {
+          id: 'visual-mark-1',
+          order: 0,
+          filePath: 'uploads/visual-mark-1.png',
+          elementId: 'visual-mark-1',
+          selector: '',
+          label: 'Visual mark',
+          comment: '',
+          currentText: '',
+          pagePosition: { x: 0, y: 0, width: 1, height: 1 },
+          htmlHint: '',
+          selectionKind: 'visual',
+          screenshotPath: 'uploads/visual-mark-1.png',
+          markKind: 'rect',
+        },
+      ],
+    });
+    expect(candidates).toEqual([
+      { path: 'uploads/visual-mark-1.png', name: 'visual-mark-1.png', order: 0 },
+    ]);
+  });
+
+  it('keeps a text fallback when a supported Anthropic image cannot be read', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      headers: { get: () => null },
+      arrayBuffer: async () => new ArrayBuffer(0),
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     const messages = await buildProxyMessages(
       '/api/proxy/anthropic/stream',
@@ -323,6 +422,8 @@ describe('buildProxyMessages', () => {
       { projectId: 'project-1' },
     );
 
+    // Bounded auth/storage retries before falling back to a text notice.
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(messages).toEqual([
       {
         role: 'user',

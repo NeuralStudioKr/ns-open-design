@@ -123,6 +123,7 @@ import {
 } from './skills.js';
 import { loadPluginLocalSkill } from './plugins/local-skill.js';
 import {
+  preferSelectedDeckTemplateSkill,
   readSelectedDeckTemplateFromMetadata,
   wrapSelectedDeckTemplateSkillBody,
 } from './prompts/selected-deck-template.js';
@@ -11739,6 +11740,10 @@ export async function startServer({
       }
       return current;
     };
+    // Read early so ad-hoc skill composition can skip the visual template
+    // (it becomes the primary body below) without losing other skillIds.
+    const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);
+
     if (effectiveSkillId) {
       // Span both functional skills and design templates so a project
       // saved against either surface keeps its system prompt after the
@@ -11764,6 +11769,7 @@ export async function startServer({
       const seen = new Set(
         effectiveCanonicalSkillId ? [String(effectiveCanonicalSkillId)] : [],
       );
+      if (selectedDeckTemplate?.id) seen.add(selectedDeckTemplate.id);
       const blocks = [];
       const baseBody = skillBody && skillBody.trim().length > 0 ? skillBody : '';
       for (const id of adHocSkillIds) {
@@ -11818,12 +11824,18 @@ export async function startServer({
       }
     }
 
+    // Selected visual template (metadata) owns the primary skill body for
+    // Teamver slide-only creates. Scenario snapshot SKILL.md stays as a
+    // secondary composed skill — overwriting with example-simple-deck alone
+    // drops Hermes/Zhangzara/etc., but dropping the scenario body loses
+    // deliverable/structure contracts that still worked before.
+    let scenarioSkillBody: string | null = null;
+    let scenarioSkillName: string | null = null;
+
     // Stage A of plugin-driven-flow-plan: when the run is bound to a
     // plugin snapshot, prefer the plugin's local SKILL.md (declared via
     // `od.context.skills[{ path: './SKILL.md' }]`) over the global
-    // skill. Without this override the agent loses the plugin's
-    // template / token / layout rules and falls back to generic prompt
-    // behaviour even though the user explicitly applied the plugin.
+    // skill — unless a selected deck template already owns the visual contract.
     if (
       typeof appliedPluginSnapshotId === 'string'
       && appliedPluginSnapshotId.length > 0
@@ -11840,10 +11852,21 @@ export async function startServer({
             const { loadPluginLocalSkill } = await import('./plugins/local-skill.js');
             const local = await loadPluginLocalSkill(plugin);
             if (local) {
-              skillBody = local.body + composedSkillBlocks;
-              skillName = local.name;
-              activeSkillDir = local.dir;
               registerSkillDir(local.dir);
+              if (
+                selectedDeckTemplate
+                && snap.pluginId !== selectedDeckTemplate.id
+              ) {
+                // Keep scenario body for secondary compose; do not make it primary.
+                scenarioSkillBody = local.body;
+                scenarioSkillName = local.name;
+                if (!activeSkillDir) activeSkillDir = local.dir;
+              } else {
+                skillBody = local.body + composedSkillBlocks;
+                skillName = local.name;
+                activeSkillDir = local.dir;
+                registerPrimarySkillMode('deck');
+              }
             }
           }
         }
@@ -11854,17 +11877,16 @@ export async function startServer({
       }
     }
 
-    const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);
-    if (!skillBody?.trim() && selectedDeckTemplate) {
+    if (selectedDeckTemplate) {
+      let templateBody: string | null = null;
       try {
         const plugin = getInstalledPlugin(db, selectedDeckTemplate.id);
         if (plugin) {
           const local = await loadPluginLocalSkill(plugin);
           if (local?.body?.trim()) {
-            skillBody = local.body;
-            skillName = selectedDeckTemplate.title ?? local.name;
-            registerPrimarySkillMode('deck');
+            templateBody = local.body;
             registerSkillDir(local.dir);
+            if (!activeSkillDir) activeSkillDir = local.dir;
           }
         }
       } catch (err) {
@@ -11872,21 +11894,32 @@ export async function startServer({
           `[plugins] selectedDeckTemplate load failed: ${err?.message ?? err}`,
         );
       }
-      if (!skillBody?.trim() && selectedDeckTemplate.title) {
-        skillBody = [
-          '# Selected visual template',
-          '',
-          `Template: ${selectedDeckTemplate.title}`,
-          "Match this selected deck template's visible style as closely as possible.",
-        ].join('\n');
-        skillName = selectedDeckTemplate.title;
+      const preferred = preferSelectedDeckTemplateSkill({
+        selected: selectedDeckTemplate,
+        templateBody,
+        currentSkillBody: skillBody,
+        currentSkillName: skillName,
+        secondarySkillBody: scenarioSkillBody,
+        secondarySkillName: scenarioSkillName,
+      });
+      if (preferred) {
+        // Keep other ad-hoc skillIds (mentions) that were composed earlier —
+        // selected template replaces the primary slot, not the whole stack.
+        skillBody = preferred.skillBody + composedSkillBlocks;
+        skillName = preferred.skillName;
+        registerPrimarySkillMode('deck');
+      } else if (scenarioSkillBody?.trim()) {
+        // Template id present but body/title unavailable — keep prior
+        // scenario-primary behavior so compose never goes skill-empty.
+        skillBody = scenarioSkillBody + composedSkillBlocks;
+        skillName = scenarioSkillName ?? skillName;
         registerPrimarySkillMode('deck');
       }
-    }
-    if (skillBody?.trim() && skillMode === 'deck') {
+    } else if (skillBody?.trim() && skillMode === 'deck') {
+      // No selected template — keep legacy deck skill wrap for scenario-only runs.
       skillBody = wrapSelectedDeckTemplateSkillBody(
         skillBody,
-        skillName?.trim() || selectedDeckTemplate?.title || 'selected deck template',
+        skillName?.trim() || 'selected deck template',
       );
     }
 

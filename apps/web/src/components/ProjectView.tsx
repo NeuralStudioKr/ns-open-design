@@ -4867,20 +4867,44 @@ export function ProjectView({
         }
       }
     }
+    // Scenario plugin SKILL stays available as a secondary compose block when
+    // a visual/primary skill already filled skillBody — do not drop structure
+    // rules. Gate on primary id (metadata OR this-turn skillIdOverride), not
+    // React metadata alone: Canvas/Drive confirm patches metadata then sends
+    // immediately, so project.metadata can still be stale on the first turn.
+    const primaryDeckSkillId =
+      selectedTemplate?.id
+      ?? (typeof skillIdOverride === 'string' && skillIdOverride.trim()
+        ? skillIdOverride.trim()
+        : null)
+      ?? (typeof project.skillId === 'string' && project.skillId.trim()
+        ? project.skillId.trim()
+        : null);
+    let secondaryScenarioSkillBody: string | undefined;
+    let secondaryScenarioSkillName: string | undefined;
     if (
-      !skillBody?.trim()
-      && pluginIdForLocalSkill
-      && pluginIdForLocalSkill !== selectedTemplate?.id
+      pluginIdForLocalSkill
+      && pluginIdForLocalSkill !== primaryDeckSkillId
     ) {
       const cached = pluginSkillCache.current.get(pluginIdForLocalSkill);
       if (cached !== undefined) {
-        skillBody = cached;
+        if (!skillBody?.trim()) {
+          skillBody = cached;
+        } else {
+          secondaryScenarioSkillBody = cached;
+          secondaryScenarioSkillName = pluginIdForLocalSkill;
+        }
       } else {
         const local = await fetchPluginLocalSkill(pluginIdForLocalSkill);
         if (local) {
-          skillBody = local.body;
-          skillName = local.name;
           pluginSkillCache.current.set(pluginIdForLocalSkill, local.body);
+          if (!skillBody?.trim()) {
+            skillBody = local.body;
+            skillName = local.name;
+          } else {
+            secondaryScenarioSkillBody = local.body;
+            secondaryScenarioSkillName = local.name;
+          }
         }
       }
     }
@@ -4894,9 +4918,33 @@ export function ProjectView({
       skillName = selectedTemplate.title;
       skillMode = 'deck';
     }
-    if (skillBody?.trim() && skillMode === 'deck') {
-      const title = skillName?.trim() || selectedTemplate?.title || 'selected deck template';
-      skillBody = wrapSelectedDeckTemplateSkillBody(skillBody, title);
+    const shouldWrapSelectedTemplate =
+      Boolean(skillBody?.trim())
+      && (
+        Boolean(selectedTemplate)
+        || (
+          Boolean(skillIdOverride?.trim())
+          && skillMode === 'deck'
+          && skillIdOverride !== pluginIdForLocalSkill
+        )
+      );
+    if (shouldWrapSelectedTemplate) {
+      const title =
+        skillName?.trim()
+        || selectedTemplate?.title
+        || 'selected deck template';
+      skillBody = wrapSelectedDeckTemplateSkillBody(skillBody!, title);
+    } else if (skillBody?.trim() && skillMode === 'deck') {
+      // Non-template deck skills keep the prior wrap so API/daemon stay aligned.
+      skillBody = wrapSelectedDeckTemplateSkillBody(
+        skillBody,
+        skillName?.trim() || 'selected deck template',
+      );
+    }
+    const secondary = secondaryScenarioSkillBody?.trim();
+    if (skillBody?.trim() && secondary && !skillBody.includes(secondary)) {
+      const secondaryName = secondaryScenarioSkillName?.trim() || 'scenario';
+      skillBody += `\n\n---\n\n## Composed skill — ${secondaryName}\n\n${secondary}`;
     }
     if (designSystemIdOverride ?? project.designSystemId) {
       const effectiveDesignSystemId = designSystemIdOverride ?? project.designSystemId;

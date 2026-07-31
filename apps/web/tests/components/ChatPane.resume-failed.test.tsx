@@ -215,6 +215,7 @@ describe('ChatPane resume-on-failure', () => {
       onRetry,
       onSend,
       activeAgentId: 'claude',
+      autoContinuePending: true,
       messages: [autoContinueScheduledMessage()],
     });
 
@@ -225,6 +226,24 @@ describe('ChatPane resume-on-failure', () => {
     expect(onResumeRun).not.toHaveBeenCalled();
     expect(onRetry).not.toHaveBeenCalled();
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('rebuilds Continue from legacy auto-continue-only rows after reload', () => {
+    // Older persistence wrote only the transient notice. After hard reload
+    // `autoContinuePending` is false — Retry/Continue must come back.
+    const onResumeRun = vi.fn();
+    const onRetry = vi.fn();
+    renderChat({
+      onResumeRun,
+      onRetry,
+      activeAgentId: 'claude',
+      autoContinuePending: false,
+      messages: [autoContinueScheduledMessage()],
+    });
+
+    expect(screen.getByText(/슬라이드 결과물이 생성되지 않았습니다/)).toBeTruthy();
+    expect(screen.getByText('chat.resumeRunCta')).toBeTruthy();
+    expect(screen.queryByText('Deliverable is incomplete — trying an automatic continue…')).toBeNull();
   });
 
   it('hides Retry while autoContinuePending even when durable incomplete_output is stacked', () => {

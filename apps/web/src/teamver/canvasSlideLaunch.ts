@@ -188,16 +188,20 @@ export function canvasCreateSlidesTurnMeta(
 ): {
   skillIds: string[];
   designSystemId?: string | null;
-  context: { pluginIds: string[]; skillIds: string[] };
+  context: { pluginIds?: string[]; skillIds: string[] };
 } {
   const id = templateId.trim();
-  const priorPluginIds = options?.mergeContext?.pluginIds ?? [];
+  // Visual template stays in skillIds only. Scenario/applied plugins keep
+  // context.pluginIds — injecting the template there shadows the scenario.
+  const priorPluginIds = (options?.mergeContext?.pluginIds ?? []).filter(
+    (pluginId) => pluginId !== id,
+  );
   const priorSkillIds = options?.mergeContext?.skillIds ?? [];
   return {
     skillIds: id ? [id] : [],
     ...(options?.designSystemId != null ? { designSystemId: options.designSystemId } : {}),
     context: {
-      pluginIds: id ? [id, ...priorPluginIds.filter((pluginId) => pluginId !== id)] : priorPluginIds,
+      ...(priorPluginIds.length > 0 ? { pluginIds: priorPluginIds } : {}),
       skillIds: id ? [id, ...priorSkillIds.filter((skillId) => skillId !== id)] : priorSkillIds,
     },
   };
