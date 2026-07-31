@@ -58,9 +58,14 @@ describe('project file revisions API', () => {
 
     const list1 = await fetch(revisionsUrl());
     expect(list1.status).toBe(200);
-    const list1Json = await list1.json() as { revisions: Array<{ sequence: number }>; headRevisionId: string };
+    const list1Json = await list1.json() as {
+      revisions: Array<{ sequence: number }>;
+      headRevisionId: string;
+      retentionLimit: number;
+    };
     expect(list1Json.revisions.length).toBeGreaterThanOrEqual(2);
     expect(list1Json.headRevisionId).toBeTruthy();
+    expect(list1Json.retentionLimit).toBeGreaterThanOrEqual(2);
 
     const baseline = list1Json.revisions[0]!;
     const restore = await fetch(`${revisionsUrl()}/${encodeURIComponent(baseline.id)}/restore`, {

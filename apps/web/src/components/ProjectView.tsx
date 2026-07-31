@@ -152,6 +152,7 @@ import {
   getActiveRevisionSequence,
   setActiveRevisionSequence,
 } from '../runtime/revision-active-sequence';
+import { setRevisionContentCache } from '../runtime/revision-content-cache';
 import {
   emitRevisionPush,
   emitRevisionUndo,
@@ -4283,6 +4284,7 @@ export function ProjectView({
         // this for tool-emitted files; this handles the artifact-tag path.
         requestOpenFile(file.name);
         if (pushedRevision) {
+          setRevisionContentCache(project.id, file.name, pushedRevision.id, htmlBody);
           setActiveRevisionSequence(project.id, file.name, pushedRevision.sequence);
           emitRevisionPush(
             analytics.track,

@@ -60,6 +60,7 @@ export function createProjectFileRevisionFetchMock(options: {
           label: revision.id,
         })),
         headRevisionId: head?.id ?? null,
+        retentionLimit: 30,
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -132,7 +133,7 @@ export function createProjectFileRevisionFetchMock(options: {
       && url.endsWith('/revisions')
       && (!init?.method || init.method === 'GET')
     ) {
-      return new Response(JSON.stringify({ revisions: [], headRevisionId: null }), {
+      return new Response(JSON.stringify({ revisions: [], headRevisionId: null, retentionLimit: 30 }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });

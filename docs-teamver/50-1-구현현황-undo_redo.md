@@ -92,6 +92,10 @@
 | revision content cache + reconcile skip + prefetch | [x] | `revision-content-cache.ts` |
 | `OD_FILE_REVISION_RETENTION_LIMIT` env | [x] | daemon `resolveFileRevisionRetentionLimit()` |
 | History panel retention hint | [x] | i18n `fileRevision.history.retentionHint` |
+| List API `retentionLimit` → History 패널 | [x] | daemon list 응답, 하드코드 제거 |
+| 충돌 토스트는 head ≠ disk일 때만 | [x] | cursor만 어긋나면 조용히 reset |
+| undo/redo 비활성 tooltip | [x] | `fileRevision.undo.unavailableTooltip` |
+| Agent push revision content cache | [x] | `ProjectView` → `setRevisionContentCache` |
 
 ---
 

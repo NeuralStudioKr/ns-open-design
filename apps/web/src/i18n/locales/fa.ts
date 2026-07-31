@@ -2078,6 +2078,7 @@ export const fa: Dict = {
   'fileRevision.history.current': 'Current',
   'fileRevision.history.retentionHint': 'Showing the latest {count} saved edits per file.',
   'fileRevision.conflict.message': 'This file was changed unexpectedly, so Undo and Redo are unavailable. You can restore an earlier version from Edit history.',
+  'fileRevision.undo.unavailableTooltip': 'Undo and Redo are unavailable — the file was changed unexpectedly.',
   'manualEdit.noChanges': 'هنوز هیچ ویرایش دستی‌ای انجام نشده است.',
   'manualEdit.imageUrl': 'URL تصویر',
   'manualEdit.altText': 'متن جایگزین',

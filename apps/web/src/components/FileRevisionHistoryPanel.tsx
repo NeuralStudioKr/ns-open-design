@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { FileRevision } from '@open-design/contracts';
-import { FILE_REVISION_RETENTION_LIMIT_DEFAULT } from '@open-design/contracts';
 import { Button } from '@open-design/components';
 import { useI18n } from '../i18n';
 import { revisionSourceIcon } from '../runtime/revision-source';
@@ -10,6 +9,7 @@ import styles from './FileRevisionHistoryPanel.module.css';
 type FileRevisionHistoryPanelProps = {
   revisions: FileRevision[];
   cursorRevisionId: string | null;
+  retentionLimit: number;
   busy?: boolean;
   onRestore: (revision: FileRevision) => void;
   onClose: () => void;
@@ -31,6 +31,7 @@ function formatRevisionTime(createdAt: number, locale: string): string {
 export function FileRevisionHistoryPanel({
   revisions,
   cursorRevisionId,
+  retentionLimit,
   busy = false,
   onRestore,
   onClose,
@@ -60,7 +61,7 @@ export function FileRevisionHistoryPanel({
       </header>
       {ordered.length > 0 ? (
         <p className={styles.retentionHint} data-testid="file-revision-history-retention-hint">
-          {t('fileRevision.history.retentionHint', { count: FILE_REVISION_RETENTION_LIMIT_DEFAULT })}
+          {t('fileRevision.history.retentionHint', { count: retentionLimit })}
         </p>
       ) : null}
       {ordered.length === 0 ? (

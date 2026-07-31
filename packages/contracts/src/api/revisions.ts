@@ -29,6 +29,8 @@ export interface FileRevision {
 export interface FileRevisionsListResponse {
   revisions: FileRevision[];
   headRevisionId: string | null;
+  /** Server-side retention cap for this file (matches OD_FILE_REVISION_RETENTION_LIMIT). */
+  retentionLimit: number;
 }
 
 /** GET /api/projects/:id/files/:name/revisions/:revId */
