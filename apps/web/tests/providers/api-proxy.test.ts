@@ -13,6 +13,7 @@ import {
   anthropicImageCandidatesFromMessage,
   buildProxyMessages,
   buildProxyResponseError,
+  filterAnthropicImageCandidatesByProjectFiles,
   isValidAnthropicImageBytes,
   MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
   normalizeAnthropicProxyMessageRoles,
@@ -402,6 +403,44 @@ describe('buildProxyMessages', () => {
     expect(candidates).toEqual([
       { path: 'uploads/visual-mark-1.png', name: 'visual-mark-1.png', order: 0 },
     ]);
+  });
+
+  it('skips deleted visual-mark screenshots when building proxy messages', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const messages = await buildProxyMessages(
+      '/api/proxy/anthropic/stream',
+      [
+        userMessage('Follow up without screenshots', []),
+        userMessage('Earlier visual mark', [
+          { path: 'ms8hq9qu-drawing-2026-07-31T05-17-03-125Z.png', name: 'mark.png', kind: 'image', size: 4, order: 0 },
+        ]),
+      ],
+      {
+        projectId: 'project-1',
+        projectFileNames: new Set(['deck.html']),
+      },
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(messages).toEqual([
+      { role: 'user', content: 'Follow up without screenshots' },
+      { role: 'assistant', content: '(No assistant reply was recorded.)' },
+      { role: 'user', content: 'Earlier visual mark' },
+    ]);
+  });
+
+  it('filters image candidates against the project file index', () => {
+    const candidates = filterAnthropicImageCandidatesByProjectFiles(
+      [
+        { path: 'deck.html', name: 'deck.html' },
+        { path: 'ms8hq9qu-drawing-2026-07-31T05-17-03-125Z.png', name: 'mark.png' },
+      ],
+      'project-1',
+      new Set(['deck.html']),
+    );
+    expect(candidates).toEqual([{ path: 'deck.html', name: 'deck.html' }]);
   });
 
   it('keeps a text fallback when a supported Anthropic image cannot be read', async () => {
