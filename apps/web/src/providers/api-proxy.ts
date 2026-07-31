@@ -11,6 +11,8 @@ import type { StreamHandlers } from './anthropic';
 import { parseSseFrame } from './sse';
 import { isAnthropicSupportedImagePath } from '../utils/apiProtocol';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import { downscaleImageBytesForAnthropicProxy } from '../utils/annotationImage';
+import { MAX_ANTHROPIC_PROXY_IMAGE_BYTES } from './anthropic-proxy-limits';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import {
   hasChatApiCredentials,
@@ -574,7 +576,7 @@ function sanitizeAnthropicProxyRoleContent(
 export const ANTHROPIC_EMPTY_ASSISTANT_PLACEHOLDER = '(No assistant reply was recorded.)';
 
 /** Anthropic Messages API rejects images above 5 MB; stay under with headroom. */
-export const MAX_ANTHROPIC_PROXY_IMAGE_BYTES = 4_500_000;
+export { MAX_ANTHROPIC_PROXY_IMAGE_BYTES } from './anthropic-proxy-limits';
 
 /**
  * Anthropic requires alternating user/assistant roles. Hidden auto-continue user
@@ -701,13 +703,22 @@ async function readAnthropicImageBlock(
 
     const bytes = new Uint8Array(await resp.arrayBuffer());
     if (!isValidAnthropicImageBytes(bytes, mediaType)) return null;
-    if (bytes.length > MAX_ANTHROPIC_PROXY_IMAGE_BYTES) return null;
+    let payload = bytes;
+    if (payload.length > MAX_ANTHROPIC_PROXY_IMAGE_BYTES) {
+      const downscaled = await downscaleImageBytesForAnthropicProxy(
+        payload,
+        mediaType,
+        MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
+      );
+      if (!downscaled) return null;
+      payload = downscaled;
+    }
     return {
       type: 'image',
       source: {
         type: 'base64',
         media_type: mediaType,
-        data: bytesToBase64(bytes),
+        data: bytesToBase64(payload),
       },
     };
   } catch {

@@ -7,6 +7,7 @@ import { useT } from '../i18n';
 import type { PreviewVisualMarkKind } from '../types';
 import { requestPreviewSnapshot } from '../runtime/exports';
 import { isImeComposing } from '../utils/imeComposing';
+import { fitPngBlobForAnthropicProxy } from '../utils/annotationImage';
 
 interface Point { x: number; y: number }
 interface Stroke { points: Point[] }
@@ -650,12 +651,17 @@ export function PreviewDrawOverlay({
     ctx.restore();
   }
 
-  async function compositeMarksOnly(): Promise<Blob | null> {
+  function effectiveCaptureFrameRect(pinned?: CaptureFrameRect | null): CaptureFrameRect | null {
+    if (pinned && pinned.width > 0 && pinned.height > 0) return pinned;
+    return snapshotFrameRect();
+  }
+
+  async function compositeMarksOnly(frameRect?: CaptureFrameRect | null): Promise<Blob | null> {
     const canvas = canvasRef.current;
-    const frameRect = snapshotFrameRect() ?? canvas?.getBoundingClientRect() ?? null;
-    if (!frameRect || frameRect.width <= 0 || frameRect.height <= 0) return null;
-    const w = Math.max(1, Math.floor(frameRect.width));
-    const h = Math.max(1, Math.floor(frameRect.height));
+    const resolved = effectiveCaptureFrameRect(frameRect) ?? canvas?.getBoundingClientRect() ?? null;
+    if (!resolved || resolved.width <= 0 || resolved.height <= 0) return null;
+    const w = Math.max(1, Math.floor(resolved.width));
+    const h = Math.max(1, Math.floor(resolved.height));
     const out = document.createElement('canvas');
     out.width = w;
     out.height = h;
@@ -683,10 +689,15 @@ export function PreviewDrawOverlay({
     return new Promise((resolve) => out.toBlob((b) => resolve(b), 'image/png'));
   }
 
-  async function compositeWithBackground(snap: PreviewSnapshot): Promise<Blob | null> {
-    const frameRect = snapshotFrameRect();
-    if (!frameRect) return null;
-    const rect = frameRect;
+  async function compositeWithBackground(
+    snap: PreviewSnapshot,
+    frameRect?: CaptureFrameRect | null,
+  ): Promise<Blob | null> {
+    let resolved = effectiveCaptureFrameRect(frameRect);
+    if (!resolved) {
+      resolved = { left: 0, top: 0, width: snap.w, height: snap.h };
+    }
+    const rect = resolved;
     const out = document.createElement('canvas');
     out.width = snap.w;
     out.height = snap.h;
@@ -747,14 +758,18 @@ export function PreviewDrawOverlay({
       let file: File | null = null;
       if (shouldCapture) {
         let blob: Blob | null = null;
+        const pinnedFrameRect = snapshotFrameRect();
         const marksOnlyPromise =
-          hasVisualMark || hasTarget ? compositeMarksOnly() : null;
+          hasVisualMark || hasTarget ? compositeMarksOnly(pinnedFrameRect) : null;
         const snap = await requestSnapshot(
           marksOnlyPromise ? ANNOTATION_CAPTURE_FAST_FALLBACK_MS : ANNOTATION_CAPTURE_BUDGET_MS,
         );
-        if (snap) blob = await compositeWithBackground(snap);
+        if (snap) blob = await compositeWithBackground(snap, pinnedFrameRect);
         if (!blob && marksOnlyPromise) {
           blob = await marksOnlyPromise;
+        }
+        if (blob && blob.size > 0) {
+          blob = await fitPngBlobForAnthropicProxy(blob);
         }
         if (blob && blob.size > 0) {
           const ts = new Date().toISOString().replace(/[:.]/g, '-');

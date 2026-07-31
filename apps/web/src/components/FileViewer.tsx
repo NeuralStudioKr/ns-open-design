@@ -6531,15 +6531,19 @@ function HtmlViewer({
     }
     let cancelled = false;
     void (async () => {
-      await waitForIframeLoadOrTimeout(iframe, 4_000);
+      await waitForIframeLoadOrTimeout(iframe, 5_000);
       await waitForAnimationFrame();
       await waitForAnimationFrame();
+      if (!useUrlLoadPreview) {
+        await waitForIframeLoadOrTimeout(iframe, 2_000);
+        await waitForAnimationFrame();
+      }
       if (!cancelled) drawCaptureReadyRef.current = true;
     })();
     return () => {
       cancelled = true;
     };
-  }, [drawOverlayOpen, srcDocTransportResetKey, srcDoc]);
+  }, [drawOverlayOpen, srcDocTransportResetKey, srcDoc, useUrlLoadPreview]);
 
   const resolveAnnotationCaptureFrameRect = useCallback(() => {
     const iframe = resolveActiveDeckPreviewIframe();

@@ -91,7 +91,7 @@ describe('PreviewDrawOverlay', () => {
     const input = container.querySelector<HTMLInputElement>('.preview-draw-note-input');
 
     expect(canvas?.style.zIndex).toBe('80');
-    expect(toolbar?.style.zIndex).toBe('91');
+    expect(toolbar?.style.zIndex).toBe('93');
     expect(toolbar?.style.flexWrap).toBe('wrap');
     expect(toolbar?.style.left).toBe('calc(50% - 52px)');
     expect(toolbar?.style.maxWidth).toContain('100% - 144px');
@@ -373,13 +373,17 @@ describe('PreviewDrawOverlay', () => {
 
   it('closes the draw toolbar from an explicit close button', async () => {
     const onActiveChange = vi.fn();
-    const { getByRole } = render(
+    const { container } = render(
       <PreviewDrawOverlay active onActiveChange={onActiveChange}>
         <div style={{ width: 320, height: 200 }} />
       </PreviewDrawOverlay>,
     );
 
-    fireEvent.click(getByRole('button', { name: 'Close' }));
+    const toolbar = container.querySelector('.preview-draw-toolbar');
+    expect(toolbar).toBeTruthy();
+    const closeButton = toolbar!.querySelector('button[aria-label="Close"]');
+    expect(closeButton).toBeTruthy();
+    fireEvent.click(closeButton!);
 
     expect(onActiveChange).toHaveBeenCalledWith(false);
   });

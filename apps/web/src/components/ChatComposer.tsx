@@ -2067,7 +2067,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     useEffect(() => {
       if (!streamingAnnotationSendPending || !streamingAnnotationSendPendingRef.current) return;
-      if (streaming || sendDisabled) return;
+      if (streaming || sendDisabled || uploading) return;
       // Read the ref, not the closed-over `draft`: the accumulating annotation
       // handler writes draftRef synchronously, so the ref is authoritative even
       // if this effect's render closure predates the last accumulation.
@@ -2086,6 +2086,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       stagedVisualComments,
       streaming,
       streamingAnnotationSendPending,
+      uploading,
     ]);
 
     // Paste handler invoked by the editor's PastePlugin. `files` are the items
