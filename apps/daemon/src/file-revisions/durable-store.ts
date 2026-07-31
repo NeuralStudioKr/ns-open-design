@@ -9,7 +9,9 @@ import {
   pgCommitRevisionWithSnapshot,
   pgDeleteFileRevisionsAfterSequence,
   pgDeleteFileRevisionsByIdsWithSnapshots,
+  pgGetFileRevisionCount,
   pgGetLatestFileRevision,
+  pgListDistinctFileRevisionTargets,
   pgListFileRevisions,
   pgPruneOldestFileRevisionsWithSnapshots,
   type PgFileRevisionRow,
@@ -152,11 +154,18 @@ export async function ensureFileRevisionsHydrated(
 ): Promise<void> {
   if (!usesPostgresRevisionSnapshots()) return;
   const pool = getPostgresPool();
-  const [pgHead, sqliteHead] = await Promise.all([
+  const [pgHead, sqliteHead, pgCount, sqliteCount] = await Promise.all([
     pgGetLatestFileRevision(pool, projectId, fileName),
     Promise.resolve(getLatestFileRevisionFromSqlite(db, projectId, fileName)),
+    pgGetFileRevisionCount(pool, projectId, fileName),
+    Promise.resolve(getFileRevisionCountFromSqlite(db, projectId, fileName)),
   ]);
-  if ((pgHead?.id ?? null) === (sqliteHead?.id ?? null)) return;
+  if (
+    (pgHead?.id ?? null) === (sqliteHead?.id ?? null)
+    && pgCount === sqliteCount
+  ) {
+    return;
+  }
   await hydrateFileRevisionsFromPostgres(db, projectId, fileName);
 }
 
@@ -169,11 +178,24 @@ export async function hydrateProjectFileRevisionsFromPostgres(
   const targets = await pgListDistinctFileRevisionTargets(pool, projectId);
   let files = 0;
   for (const target of targets) {
-    if (target.projectId !== projectId) continue;
     await hydrateFileRevisionsFromPostgres(db, projectId, target.fileName);
     files += 1;
   }
   return files;
+}
+
+function getFileRevisionCountFromSqlite(
+  db: Database.Database,
+  projectId: string,
+  fileName: string,
+): number {
+  return (
+    db.prepare(`
+      SELECT count(*) AS c
+      FROM file_revisions
+      WHERE project_id = ? AND file_name = ?
+    `).get(projectId, fileName) as { c: number }
+  ).c;
 }
 
 function getLatestFileRevisionFromSqlite(
@@ -295,21 +317,6 @@ export async function pruneOldestFileRevisionsDurable(
   }
   const { pruneOldestFileRevisions } = await import('./persistence.js');
   return pruneOldestFileRevisions(db, projectId, fileName, keep);
-}
-
-async function pgListDistinctFileRevisionTargets(
-  pool: import('pg').Pool,
-  projectId: string,
-): Promise<Array<{ projectId: string; fileName: string }>> {
-  const { queryPostgresRows } = await import('../storage/daemon-db-postgres.js');
-  return queryPostgresRows<{ projectId: string; fileName: string }>(
-    pool,
-    `SELECT DISTINCT project_id AS "projectId", file_name AS "fileName"
-     FROM file_revisions
-     WHERE project_id = $1
-     ORDER BY file_name ASC`,
-    [projectId],
-  );
 }
 
 export function mirrorFileRevisionInsertToSqlite(

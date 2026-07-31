@@ -21,9 +21,10 @@ import {
   pruneOldestFileRevisions,
 } from './persistence.js';
 import {
+  pgListAllFileRevisionIds,
   pgListDistinctFileRevisionTargets,
 } from './postgres-persistence.js';
-import { deleteRevisionSnapshots } from './store.js';
+import { deleteRevisionSnapshots, removeRevisionSnapshotFiles } from './store.js';
 
 export interface FileRevisionStorageStats {
   revisionRowCount: number;
@@ -117,9 +118,11 @@ async function pruneOrphanRevisionFilesOnDisk(
   projectsRoot: string,
   db: Database.Database,
 ): Promise<number> {
-  const validIds = new Set(
-    (db.prepare(`SELECT id FROM file_revisions`).all() as Array<{ id: string }>).map((row) => row.id),
-  );
+  const validIds = usesPostgresRevisionSnapshots()
+    ? new Set(await pgListAllFileRevisionIds(getPostgresPool()))
+    : new Set(
+      (db.prepare(`SELECT id FROM file_revisions`).all() as Array<{ id: string }>).map((row) => row.id),
+    );
   let removed = 0;
   let projectEntries;
   try {
@@ -231,11 +234,15 @@ export async function runFileRevisionGc(options: FileRevisionGcOptions): Promise
   let retentionRevisionsPruned = 0;
   for (const batch of retentionBatches) {
     retentionRevisionsPruned += batch.revisionIds.length;
-    if (!usesPostgresRevisionSnapshots()) {
-      await deleteFileRevisionSnapshotsDurable(batch.revisionIds, db);
-    }
     const projectDir = resolveProjectDir(batch.projectId);
-    await deleteRevisionSnapshots(projectDir, batch.fileName, batch.revisionIds, { db });
+    if (usesPostgresRevisionSnapshots()) {
+      await Promise.all(
+        batch.revisionIds.map((revisionId) => removeRevisionSnapshotFiles(projectDir, batch.fileName, revisionId)),
+      );
+    } else {
+      await deleteFileRevisionSnapshotsDurable(batch.revisionIds, db);
+      await deleteRevisionSnapshots(projectDir, batch.fileName, batch.revisionIds, { db });
+    }
   }
 
   const orphanFilesRemoved = await pruneOrphanRevisionFilesOnDisk(projectsRoot, db);

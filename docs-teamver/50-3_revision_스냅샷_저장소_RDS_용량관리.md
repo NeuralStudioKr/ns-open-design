@@ -86,7 +86,7 @@ Teamver에서 undo 히스토리를 노드 로컬 디스크에 두면 안 되는 
 공통 (Teamver `postgres` 모드):
 
 - **메타+스냅샷 SSOT:** RDS `file_revisions` + `file_revision_snapshots`. push 시 `pgCommitRevisionWithSnapshot`으로 **단일 트랜잭션** 커밋 후 sqlite 미러.
-- **읽기:** `ensureFileRevisionsHydrated` — PG head revision id ≠ sqlite head 이면 PG → sqlite 전체 hydrate. `warmProjectFromPostgres`에 file_revisions warm 포함.
+- **읽기:** `ensureFileRevisionsHydrated` — PG head revision id·row count가 sqlite와 다르면 PG → sqlite 전체 hydrate. `warmProjectFromPostgres`에 file_revisions warm 포함.
 - **삭제/retention/GC:** Postgres 경로가 먼저 snapshot+meta 삭제, sqlite 미러 동기화 (`durable-store.ts`).
 - **canonical 파일** (`deck.html`)은 scratch/S3 — undo와 별개.
 - legacy `.od/revisions` 파일은 read fallback + GC orphan 정리.

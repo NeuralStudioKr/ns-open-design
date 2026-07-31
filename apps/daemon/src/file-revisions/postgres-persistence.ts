@@ -337,9 +337,43 @@ export async function pgGetFileRevisionSnapshotStorageStats(pool: Pool): Promise
   return { snapshotRowCount, orphanSnapshotRowCount, totalSnapshotBytes };
 }
 
+export async function pgGetFileRevisionCount(
+  pool: Pool,
+  projectId: string,
+  fileName: string,
+): Promise<number> {
+  const row = await queryPostgresRow<{ c: string }>(
+    pool,
+    `SELECT count(*)::text AS c
+     FROM file_revisions
+     WHERE project_id = $1 AND file_name = $2`,
+    [projectId, fileName],
+  );
+  return Number(row?.c ?? 0);
+}
+
+export async function pgListAllFileRevisionIds(pool: Pool): Promise<string[]> {
+  const rows = await queryPostgresRows<{ id: string }>(
+    pool,
+    `SELECT id FROM file_revisions`,
+  );
+  return rows.map((row) => row.id);
+}
+
 export async function pgListDistinctFileRevisionTargets(
   pool: Pool,
+  projectId?: string,
 ): Promise<Array<{ projectId: string; fileName: string }>> {
+  if (projectId) {
+    return queryPostgresRows<{ projectId: string; fileName: string }>(
+      pool,
+      `SELECT DISTINCT project_id AS "projectId", file_name AS "fileName"
+       FROM file_revisions
+       WHERE project_id = $1
+       ORDER BY file_name ASC`,
+      [projectId],
+    );
+  }
   return queryPostgresRows<{ projectId: string; fileName: string }>(
     pool,
     `SELECT DISTINCT project_id AS "projectId", file_name AS "fileName"

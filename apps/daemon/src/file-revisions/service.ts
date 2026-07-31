@@ -102,6 +102,12 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
     revisions: FileRevision[],
   ): Promise<void> {
     if (revisions.length === 0) return;
+    if (postgresAuthority) {
+      await Promise.all(
+        revisions.map((revision) => removeRevisionSnapshotFiles(projectDir, fileName, revision.id)),
+      );
+      return;
+    }
     await deleteRevisionSnapshots(projectDir, fileName, revisions.map((revision) => revision.id), snapshotContext);
   }
 
