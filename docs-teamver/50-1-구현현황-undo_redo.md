@@ -92,9 +92,12 @@
 | 단위 테스트 | [x] | `revision-restore.test.ts` |
 | 통합 테스트 | [x] | `FileViewer.revision-client-restore.test.tsx` (jsdom 환경 이슈 시 unit으로 대체) |
 
-**Phase B (다음):** optimistic undo, manual style debounce/batch commit  
-**Phase C:** Layer A micro-undo (51 시리즈)  
-**Phase D:** daemon snapshot chain 최적화
+### Phase B — optimistic undo 확장 (진행)
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| snapshot API fetch hit → UI 즉시 + background restore | [x] | cache miss여도 `resolveRevisionSnapshotContent` 성공 시 Phase A와 동일 경로 |
+| snapshot 없을 때만 blocking restore | [x] | fetch text fallback |
 
 ---
 

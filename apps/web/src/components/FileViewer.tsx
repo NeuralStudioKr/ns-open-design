@@ -7801,39 +7801,45 @@ function HtmlViewer({
     return true;
   }
 
+  async function scheduleBackgroundRevisionDiskSync(target: FileRevision): Promise<void> {
+    const syncPromise = (async () => {
+      const ok = await syncRevisionToDisk(target);
+      if (ok) {
+        await onFileSaved?.();
+      } else {
+        setRevisionStackInvalidated(true);
+      }
+      return ok;
+    })();
+    revisionDiskSyncPromiseRef.current = syncPromise;
+    void syncPromise.finally(() => {
+      if (revisionDiskSyncPromiseRef.current === syncPromise) {
+        revisionDiskSyncPromiseRef.current = null;
+      }
+    });
+  }
+
   async function applyRestoredRevision(target: FileRevision): Promise<boolean> {
     revisionSyncSuppressRef.current = true;
     try {
       await awaitRevisionDiskSync();
 
-      const cachedSource = getRevisionContentCache(projectId, file.name, target.id);
-      if (canApplyRevisionFromClientCache(cachedSource)) {
-        applyRestoredSourceToViewer(cachedSource, target);
-        const syncPromise = (async () => {
-          const ok = await syncRevisionToDisk(target);
-          if (ok) {
-            await onFileSaved?.();
-          } else {
-            setRevisionStackInvalidated(true);
-          }
-          return ok;
-        })();
-        revisionDiskSyncPromiseRef.current = syncPromise;
-        void syncPromise.finally(() => {
-          if (revisionDiskSyncPromiseRef.current === syncPromise) {
-            revisionDiskSyncPromiseRef.current = null;
-          }
-        });
+      let sourceToApply = getRevisionContentCache(projectId, file.name, target.id);
+      if (!canApplyRevisionFromClientCache(sourceToApply)) {
+        const fetched = await resolveRevisionSnapshotContent(target.id);
+        if (fetched != null) {
+          setRevisionContentCache(projectId, file.name, target.id, fetched);
+          sourceToApply = fetched;
+        }
+      }
+
+      if (canApplyRevisionFromClientCache(sourceToApply)) {
+        applyRestoredSourceToViewer(sourceToApply, target);
+        void scheduleBackgroundRevisionDiskSync(target);
         return true;
       }
 
-      const restorePromise = restoreProjectFileRevision(projectId, file.name, target.id);
-      const restoredSource = await resolveRevisionSnapshotContent(target.id);
-      if (restoredSource != null) {
-        setRevisionContentCache(projectId, file.name, target.id, restoredSource);
-        applyRestoredSourceToViewer(restoredSource, target);
-      }
-      const restored = await restorePromise;
+      const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
       if (!restored.ok) {
         if (restored.status === 401) {
           notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
@@ -7849,20 +7855,16 @@ function HtmlViewer({
         );
         return false;
       }
-      if (restoredSource != null) {
-        await onFileSaved?.();
-        return true;
-      }
-      const sourceToApply = await fetchProjectFileText(projectId, file.name, {
+      const diskSource = await fetchProjectFileText(projectId, file.name, {
         cache: 'no-store',
         cacheBustKey: Date.now(),
       });
-      if (sourceToApply == null) {
+      if (diskSource == null) {
         setManualEditError(embedUiLabel('Could not load the restored file.', '복원한 파일을 불러오지 못했습니다.'));
         return false;
       }
-      setRevisionContentCache(projectId, file.name, target.id, sourceToApply);
-      applyRestoredSourceToViewer(sourceToApply, target);
+      setRevisionContentCache(projectId, file.name, target.id, diskSource);
+      applyRestoredSourceToViewer(diskSource, target);
       await onFileSaved?.();
       return true;
     } finally {
