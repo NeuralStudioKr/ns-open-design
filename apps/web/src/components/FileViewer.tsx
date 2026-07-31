@@ -165,6 +165,7 @@ import {
   prefetchRevisionContents,
   setRevisionContentCache,
 } from '../runtime/revision-content-cache';
+import { cacheParentRevisionOnPush, canApplyRevisionFromClientCache } from '../runtime/revision-restore';
 import {
   postDeckHostViewportToIframe,
   postDeckPreviewPanBy,
@@ -5334,6 +5335,7 @@ function HtmlViewer({
   const revisionSyncSuppressRef = useRef(false);
   const revisionSkipReconcileOnceRef = useRef(false);
   const revisionConflictSuppressedRef = useRef(false);
+  const revisionDiskSyncPromiseRef = useRef<Promise<boolean> | null>(null);
   const [manualEditError, setManualEditError] = useState<string | null>(null);
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const manualEditSavingRef = useRef(false);
@@ -7610,6 +7612,9 @@ function HtmlViewer({
       liveSource: sourceRef.current,
     });
     if (baseSource == null) return false;
+    if (revisionDiskSyncPromiseRef.current) {
+      await revisionDiskSyncPromiseRef.current;
+    }
     manualEditSavingRef.current = true;
     setManualEditSaving(true);
     setManualEditError(null);
@@ -7678,6 +7683,7 @@ function HtmlViewer({
       }
       commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
       setRevisionContentCache(projectId, file.name, saved.revision.id, result.source);
+      cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, baseSource);
       revisionSkipReconcileOnceRef.current = true;
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
@@ -7742,13 +7748,92 @@ function HtmlViewer({
     return false;
   }
 
+  async function awaitRevisionDiskSync(): Promise<void> {
+    if (revisionDiskSyncPromiseRef.current) {
+      await revisionDiskSyncPromiseRef.current;
+    }
+  }
+
+  function applyRestoredSourceToViewer(sourceToApply: string, target: FileRevision): void {
+    revisionSkipReconcileOnceRef.current = true;
+    setSource(sourceToApply);
+    sourceRef.current = sourceToApply;
+    pinManualEditSavedSource(sourceToApply);
+    setInlinedSource(null);
+    setManualEditFrozenSource(sourceToApply);
+    commitRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+    setActiveRevisionSequence(projectId, file.name, target.sequence);
+    setManualEditDraft((current) => ({ ...current, fullSource: sourceToApply }));
+    if (manualEditMode && !useUrlLoadPreview) {
+      capturePreviewScrollPosition();
+      queueMicrotask(() => activateManualEditPreviewHtml(sourceToApply));
+    } else {
+      setReloadKey((k) => k + 1);
+    }
+    setRevisionStackInvalidated(false);
+    const before = revisionBeforeCursor(revisionStackRef.current);
+    const after = revisionAfterCursor(revisionStackRef.current);
+    prefetchRevisionContents(
+      projectId,
+      file.name,
+      [before?.id, after?.id].filter((id): id is string => Boolean(id)),
+      (revisionId) => resolveRevisionSnapshotContent(revisionId),
+    );
+  }
+
+  async function syncRevisionToDisk(target: FileRevision): Promise<boolean> {
+    const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
+    if (!restored.ok) {
+      if (restored.status === 401) {
+        notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+      }
+      setManualEditError(
+        isTeamverEmbedMode()
+          ? formatProjectArtifactSaveFailedError(file.name, {
+              status: restored.status,
+              code: restored.code,
+              message: restored.message,
+            })
+          : embedUiLabel('Could not restore this revision.', '이 버전으로 복원하지 못했습니다.'),
+      );
+      return false;
+    }
+    return true;
+  }
+
   async function applyRestoredRevision(target: FileRevision): Promise<boolean> {
     revisionSyncSuppressRef.current = true;
     try {
-      const [restored, restoredSource] = await Promise.all([
-        restoreProjectFileRevision(projectId, file.name, target.id),
-        resolveRevisionSnapshotContent(target.id),
-      ]);
+      await awaitRevisionDiskSync();
+
+      const cachedSource = getRevisionContentCache(projectId, file.name, target.id);
+      if (canApplyRevisionFromClientCache(cachedSource)) {
+        applyRestoredSourceToViewer(cachedSource, target);
+        const syncPromise = (async () => {
+          const ok = await syncRevisionToDisk(target);
+          if (ok) {
+            await onFileSaved?.();
+          } else {
+            setRevisionStackInvalidated(true);
+          }
+          return ok;
+        })();
+        revisionDiskSyncPromiseRef.current = syncPromise;
+        void syncPromise.finally(() => {
+          if (revisionDiskSyncPromiseRef.current === syncPromise) {
+            revisionDiskSyncPromiseRef.current = null;
+          }
+        });
+        return true;
+      }
+
+      const restorePromise = restoreProjectFileRevision(projectId, file.name, target.id);
+      const restoredSource = await resolveRevisionSnapshotContent(target.id);
+      if (restoredSource != null) {
+        setRevisionContentCache(projectId, file.name, target.id, restoredSource);
+        applyRestoredSourceToViewer(restoredSource, target);
+      }
+      const restored = await restorePromise;
       if (!restored.ok) {
         if (restored.status === 401) {
           notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
@@ -7764,34 +7849,20 @@ function HtmlViewer({
         );
         return false;
       }
-      let sourceToApply = restoredSource;
-      if (sourceToApply == null) {
-        sourceToApply = await fetchProjectFileText(projectId, file.name, {
-          cache: 'no-store',
-          cacheBustKey: Date.now(),
-        });
+      if (restoredSource != null) {
+        await onFileSaved?.();
+        return true;
       }
+      const sourceToApply = await fetchProjectFileText(projectId, file.name, {
+        cache: 'no-store',
+        cacheBustKey: Date.now(),
+      });
       if (sourceToApply == null) {
         setManualEditError(embedUiLabel('Could not load the restored file.', '복원한 파일을 불러오지 못했습니다.'));
         return false;
       }
       setRevisionContentCache(projectId, file.name, target.id, sourceToApply);
-      revisionSkipReconcileOnceRef.current = true;
-      setSource(sourceToApply);
-      sourceRef.current = sourceToApply;
-      pinManualEditSavedSource(sourceToApply);
-      setInlinedSource(null);
-      setManualEditFrozenSource(sourceToApply);
-      commitRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
-      setActiveRevisionSequence(projectId, file.name, target.sequence);
-      setManualEditDraft((current) => ({ ...current, fullSource: sourceToApply }));
-      if (manualEditMode && !useUrlLoadPreview) {
-        capturePreviewScrollPosition();
-        queueMicrotask(() => activateManualEditPreviewHtml(sourceToApply));
-      } else {
-        setReloadKey((k) => k + 1);
-      }
-      setRevisionStackInvalidated(false);
+      applyRestoredSourceToViewer(sourceToApply, target);
       await onFileSaved?.();
       return true;
     } finally {
@@ -8027,6 +8098,7 @@ function HtmlViewer({
       sourceRef.current = next;
       commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
       setRevisionContentCache(projectId, file.name, saved.revision.id, next);
+      cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, source);
       revisionSkipReconcileOnceRef.current = true;
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'inspect_save');

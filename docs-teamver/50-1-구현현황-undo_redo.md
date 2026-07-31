@@ -3,8 +3,8 @@
 **문서 번호:** 50-1  
 **설계 SSOT:** [50 Undo/Redo 설계](./50_undo_redo_설계.md)  
 **비교 문서:** [50-2 Teamver Canvas vs Design Undo 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md)  
-**브랜치:** `staging` (머지 완료, `2047f7c3b`)  
-**최종 갱신:** 2026-07-30
+**브랜치:** `staging`  
+**최종 갱신:** 2026-07-31
 
 ---
 
@@ -80,6 +80,24 @@
 
 ---
 
+## Phase A — client-cache fast undo (체감 속도)
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| `revision-restore.ts` | [x] | `canApplyRevisionFromClientCache`, `cacheParentRevisionOnPush` |
+| 캐시 hit 시 UI 즉시 갱신 | [x] | `applyRestoredSourceToViewer` |
+| disk restore 백그라운드 sync | [x] | `revisionDiskSyncPromiseRef` — save/undo 전 `awaitRevisionDiskSync` |
+| push 시 parent revision 캐시 | [x] | 첫 undo도 fast path 가능 |
+| 백그라운드 restore 실패 시 스택 invalidate | [x] | `setRevisionStackInvalidated(true)` |
+| 단위 테스트 | [x] | `revision-restore.test.ts` |
+| 통합 테스트 | [x] | `FileViewer.revision-client-restore.test.tsx` (jsdom 환경 이슈 시 unit으로 대체) |
+
+**Phase B (다음):** optimistic undo, manual style debounce/batch commit  
+**Phase C:** Layer A micro-undo (51 시리즈)  
+**Phase D:** daemon snapshot chain 최적화
+
+---
+
 ## 마무리 체크리스트
 
 | 항목 | 상태 |
@@ -96,6 +114,7 @@
 | 충돌 토스트는 head ≠ disk일 때만 | [x] | cursor만 어긋나면 조용히 reset |
 | undo/redo 비활성 tooltip | [x] | `fileRevision.undo.unavailableTooltip` |
 | Agent push revision content cache | [x] | `ProjectView` → `setRevisionContentCache` |
+| Phase A client-cache fast undo | [x] | `revision-restore.ts`, background disk sync |
 
 ---
 

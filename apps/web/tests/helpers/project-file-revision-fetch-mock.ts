@@ -11,6 +11,8 @@ export function createProjectFileRevisionFetchMock(options: {
   let persistedSource = initialSource;
   const revisions: StoredRevision[] = [];
   let nextSequence = 0;
+  let restoreCallCount = 0;
+  let restoreDelayMs = 0;
   const encodedPath = `/api/projects/${projectId}/files/${fileName.split('/').map(encodeURIComponent).join('/')}/revisions`;
 
   const fetchMock = async (input: string | URL | Request, init?: RequestInit) => {
@@ -101,6 +103,10 @@ export function createProjectFileRevisionFetchMock(options: {
       });
     }
     if (url.includes(`${encodedPath}/`) && init?.method === 'POST' && url.endsWith('/restore')) {
+      restoreCallCount += 1;
+      if (restoreDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, restoreDelayMs));
+      }
       const revisionId = decodeURIComponent(url.split('/revisions/')[1]?.replace(/\/restore$/, '') ?? '');
       const revision = revisions.find((entry) => entry.id === revisionId);
       if (!revision) {
@@ -148,6 +154,10 @@ export function createProjectFileRevisionFetchMock(options: {
       persistedSource = next;
     },
     getRevisions: () => revisions,
+    getRestoreCallCount: () => restoreCallCount,
+    setRestoreDelayMs: (ms: number) => {
+      restoreDelayMs = ms;
+    },
   };
 }
 
