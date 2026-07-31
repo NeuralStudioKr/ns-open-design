@@ -11820,9 +11820,13 @@ export async function startServer({
     }
 
     // Selected visual template (metadata) owns the primary skill body for
-    // Teamver slide-only creates. Scenario snapshot SKILL.md is secondary —
-    // overwriting with example-simple-deck drops Hermes/Zhangzara/etc.
+    // Teamver slide-only creates. Scenario snapshot SKILL.md stays as a
+    // secondary composed skill — overwriting with example-simple-deck alone
+    // drops Hermes/Zhangzara/etc., but dropping the scenario body loses
+    // deliverable/structure contracts that still worked before.
     const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);
+    let scenarioSkillBody: string | null = null;
+    let scenarioSkillName: string | null = null;
 
     // Stage A of plugin-driven-flow-plan: when the run is bound to a
     // plugin snapshot, prefer the plugin's local SKILL.md (declared via
@@ -11844,18 +11848,20 @@ export async function startServer({
             const { loadPluginLocalSkill } = await import('./plugins/local-skill.js');
             const local = await loadPluginLocalSkill(plugin);
             if (local) {
+              registerSkillDir(local.dir);
               if (
-                !selectedDeckTemplate
-                || snap.pluginId === selectedDeckTemplate.id
+                selectedDeckTemplate
+                && snap.pluginId !== selectedDeckTemplate.id
               ) {
+                // Keep scenario body for secondary compose; do not make it primary.
+                scenarioSkillBody = local.body;
+                scenarioSkillName = local.name;
+                if (!activeSkillDir) activeSkillDir = local.dir;
+              } else {
                 skillBody = local.body + composedSkillBlocks;
                 skillName = local.name;
                 activeSkillDir = local.dir;
-                registerSkillDir(local.dir);
                 registerPrimarySkillMode('deck');
-              } else {
-                // Scenario snapshot is secondary when a visual template is selected.
-                registerSkillDir(local.dir);
               }
             }
           }
@@ -11876,6 +11882,7 @@ export async function startServer({
           if (local?.body?.trim()) {
             templateBody = local.body;
             registerSkillDir(local.dir);
+            if (!activeSkillDir) activeSkillDir = local.dir;
           }
         }
       } catch (err) {
@@ -11888,10 +11895,18 @@ export async function startServer({
         templateBody,
         currentSkillBody: skillBody,
         currentSkillName: skillName,
+        secondarySkillBody: scenarioSkillBody,
+        secondarySkillName: scenarioSkillName,
       });
       if (preferred) {
         skillBody = preferred.skillBody;
         skillName = preferred.skillName;
+        registerPrimarySkillMode('deck');
+      } else if (scenarioSkillBody?.trim()) {
+        // Template id present but body/title unavailable — keep prior
+        // scenario-primary behavior so compose never goes skill-empty.
+        skillBody = scenarioSkillBody + composedSkillBlocks;
+        skillName = scenarioSkillName ?? skillName;
         registerPrimarySkillMode('deck');
       }
     } else if (skillBody?.trim() && skillMode === 'deck') {

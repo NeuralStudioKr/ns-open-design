@@ -47,13 +47,17 @@ export function selectedDeckTemplateTitleStub(templateTitle: string): string {
 
 /**
  * When project metadata names a visual template, that body owns the primary
- * skill slot. Scenario/plugin snapshot skills must not overwrite it.
+ * skill slot. Scenario/plugin snapshot skills must not overwrite it — but
+ * their body is kept as a secondary composed skill so deck structure /
+ * deliverable contracts from example-simple-deck are not lost.
  */
 export function preferSelectedDeckTemplateSkill(input: {
   selected: SelectedDeckTemplateMetadata | null;
   templateBody?: string | null;
   currentSkillBody?: string | null;
   currentSkillName?: string | null;
+  secondarySkillBody?: string | null;
+  secondarySkillName?: string | null;
 }): { skillBody: string; skillName: string } | null {
   const selected = input.selected;
   if (!selected) return null;
@@ -61,8 +65,19 @@ export function preferSelectedDeckTemplateSkill(input: {
     || (selected.title ? selectedDeckTemplateTitleStub(selected.title) : '');
   if (!templateBody) return null;
   const title = selected.title?.trim() || input.currentSkillName?.trim() || selected.id;
+  let skillBody = wrapSelectedDeckTemplateSkillBody(templateBody, title);
+  const secondary = input.secondarySkillBody?.trim() || '';
+  if (
+    secondary
+    && secondary !== templateBody
+    && !skillBody.includes(secondary)
+  ) {
+    const secondaryName =
+      input.secondarySkillName?.trim() || input.currentSkillName?.trim() || 'scenario';
+    skillBody += `\n\n---\n\n## Composed skill — ${secondaryName}\n\n${secondary}`;
+  }
   return {
-    skillBody: wrapSelectedDeckTemplateSkillBody(templateBody, title),
+    skillBody,
     skillName: title,
   };
 }

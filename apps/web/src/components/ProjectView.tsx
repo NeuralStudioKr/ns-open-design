@@ -4867,20 +4867,33 @@ export function ProjectView({
         }
       }
     }
+    // Scenario plugin SKILL stays available as a secondary compose block when
+    // a visual template already filled skillBody — do not drop structure rules.
+    let secondaryScenarioSkillBody: string | undefined;
+    let secondaryScenarioSkillName: string | undefined;
     if (
-      !skillBody?.trim()
-      && pluginIdForLocalSkill
+      pluginIdForLocalSkill
       && pluginIdForLocalSkill !== selectedTemplate?.id
     ) {
       const cached = pluginSkillCache.current.get(pluginIdForLocalSkill);
       if (cached !== undefined) {
-        skillBody = cached;
+        if (!skillBody?.trim()) {
+          skillBody = cached;
+        } else if (selectedTemplate) {
+          secondaryScenarioSkillBody = cached;
+          secondaryScenarioSkillName = pluginIdForLocalSkill;
+        }
       } else {
         const local = await fetchPluginLocalSkill(pluginIdForLocalSkill);
         if (local) {
-          skillBody = local.body;
-          skillName = local.name;
           pluginSkillCache.current.set(pluginIdForLocalSkill, local.body);
+          if (!skillBody?.trim()) {
+            skillBody = local.body;
+            skillName = local.name;
+          } else if (selectedTemplate) {
+            secondaryScenarioSkillBody = local.body;
+            secondaryScenarioSkillName = local.name;
+          }
         }
       }
     }
@@ -4897,6 +4910,17 @@ export function ProjectView({
     if (skillBody?.trim() && selectedTemplate) {
       const title = skillName?.trim() || selectedTemplate.title || 'selected deck template';
       skillBody = wrapSelectedDeckTemplateSkillBody(skillBody, title);
+      const secondary = secondaryScenarioSkillBody?.trim();
+      if (secondary && !skillBody.includes(secondary)) {
+        const secondaryName = secondaryScenarioSkillName?.trim() || 'scenario';
+        skillBody += `\n\n---\n\n## Composed skill — ${secondaryName}\n\n${secondary}`;
+      }
+    } else if (skillBody?.trim() && skillMode === 'deck') {
+      // Non-template deck skills keep the prior wrap so API/daemon stay aligned.
+      skillBody = wrapSelectedDeckTemplateSkillBody(
+        skillBody,
+        skillName?.trim() || 'selected deck template',
+      );
     }
     if (designSystemIdOverride ?? project.designSystemId) {
       const effectiveDesignSystemId = designSystemIdOverride ?? project.designSystemId;

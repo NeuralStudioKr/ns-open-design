@@ -1275,10 +1275,20 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
   el.replaceWith(next);
   // Style siblings were dropped by single-root salvage — keep their rules
   // so "make it stand out" edits that ship class + <style> still paint.
+  // Deduplicate by text so repeated comment edits do not accumulate clones.
   const styleHost = doc.head ?? doc.documentElement ?? doc.body;
   if (styleHost) {
     for (const style of styleSiblings) {
       if (next === style || next.contains(style)) continue;
+      const text = (style.textContent ?? '').trim();
+      if (
+        text
+        && Array.from(styleHost.querySelectorAll('style')).some(
+          (existing) => (existing.textContent ?? '').trim() === text,
+        )
+      ) {
+        continue;
+      }
       styleHost.appendChild(doc.importNode(style, true));
     }
   }

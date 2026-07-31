@@ -63,4 +63,15 @@ describe('selected-deck-template runtime helpers', () => {
     expect(wrapped).toContain('Template: Hermes');
     expect(wrapped).toContain('body');
   });
+
+  it('does not invent pluginIds when enriching a send with no context', () => {
+    const enriched = enrichChatSendMetaWithProjectDeckTemplate(undefined, {
+      kind: 'deck',
+      selectedDeckTemplateId: 'html-ppt-hermes',
+      selectedDeckTemplateTitle: 'Hermes',
+    });
+    expect(enriched?.skillIds).toEqual(['html-ppt-hermes']);
+    expect(enriched?.context?.pluginIds).toBeUndefined();
+    expect(enriched?.context?.skillIds).toEqual(['html-ppt-hermes']);
+  });
 });

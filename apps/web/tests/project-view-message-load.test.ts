@@ -164,14 +164,14 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const signature = source.indexOf("skillIdOverride?: string | null");
     expect(signature).toBeGreaterThan(0);
-    const composeBlock = source.slice(signature, signature + 3600);
+    const composeBlock = source.slice(signature, signature + 5600);
 
     expect(composeBlock).toContain("const effectiveSkillId = skillIdOverride ?? project.skillId");
     expect(composeBlock).toContain("skills.find((s) => s.id === effectiveSkillId)");
     expect(composeBlock).toContain("await fetchDesignTemplate(effectiveSkillId)");
     expect(composeBlock).toContain("selectedDeckTemplateMetadata(project.metadata)");
     expect(composeBlock).toContain("pluginIdForLocalSkill !== selectedTemplate?.id");
-
+    expect(composeBlock).toContain("secondaryScenarioSkillBody");
     expect(composeBlock).toContain("await fetchPluginLocalSkill(pluginIdForLocalSkill)");
 
     const callStart = source.indexOf("const effectiveSkillId = resolveDeckTemplateSkillId(project.metadata, meta)");
