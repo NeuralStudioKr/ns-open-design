@@ -10,7 +10,7 @@
  * This is preview-only. Persistence still flows through `applyManualEdit`.
  */
 
-import type { ManualEditStyles } from './types';
+import type { ManualEditRect, ManualEditStyles } from './types';
 
 function camelToKebab(name: string): string {
   return name.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
@@ -99,7 +99,7 @@ export function iframeContentDocumentIfAccessible(
 export function measureManualEditTargetContentRect(
   frame: HTMLIFrameElement | null,
   id: string,
-): { x: number; y: number; width: number; height: number } | null {
+): ManualEditRect | null {
   const doc = iframeContentDocumentIfAccessible(frame);
   if (!doc || !id) return null;
   const el = findManualEditPreviewTarget(doc, id);
@@ -111,5 +111,51 @@ export function measureManualEditTargetContentRect(
     y: Math.round(rect.y),
     width: Math.round(rect.width),
     height: Math.round(rect.height),
+  };
+}
+
+/**
+ * Live border-box of a manual-edit target in the host workspace's absolute
+ * content coordinates (padding edge + scroll).
+ *
+ * Projects the iframe-local element rect through the frame's *visual* box
+ * (ancestor CSS scale included) rather than trusting React state for
+ * `previewScale` / hostOffset. The drag overlay should call this so the
+ * painted box cannot drift from the element when scale/offset state is
+ * stale (iframe not ready yet, zoom shell remount, mobile scroll, etc.).
+ */
+export function measureManualEditTargetHostRect(
+  frame: HTMLIFrameElement | null,
+  host: HTMLElement | null,
+  id: string,
+): ManualEditRect | null {
+  if (!frame || !host || !id) return null;
+  const doc = iframeContentDocumentIfAccessible(frame);
+  if (!doc) return null;
+  const el = findManualEditPreviewTarget(doc, id);
+  if (!el) return null;
+
+  const elBox = el.getBoundingClientRect();
+  if (!(elBox.width >= 0) || !(elBox.height >= 0)) return null;
+  if (!(elBox.width >= 1) && !(elBox.height >= 1)) return null;
+
+  const iframeBox = frame.getBoundingClientRect();
+  const hostBox = host.getBoundingClientRect();
+  const layoutW = frame.offsetWidth;
+  const layoutH = frame.offsetHeight;
+  if (!(layoutW > 0) || !(layoutH > 0)) return null;
+  if (!(iframeBox.width > 0) || !(iframeBox.height > 0)) return null;
+
+  const scaleX = iframeBox.width / layoutW;
+  const scaleY = iframeBox.height / layoutH;
+  // Content viewport origin inside the (possibly CSS-scaled) iframe border box.
+  const visualLeft = iframeBox.left + frame.clientLeft * scaleX + elBox.left * scaleX;
+  const visualTop = iframeBox.top + frame.clientTop * scaleY + elBox.top * scaleY;
+
+  return {
+    x: visualLeft - hostBox.left - host.clientLeft + host.scrollLeft,
+    y: visualTop - hostBox.top - host.clientTop + host.scrollTop,
+    width: elBox.width * scaleX,
+    height: elBox.height * scaleY,
   };
 }

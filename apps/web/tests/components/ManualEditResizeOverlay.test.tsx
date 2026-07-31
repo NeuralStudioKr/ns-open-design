@@ -95,6 +95,27 @@ describe('ManualEditResizeOverlay', () => {
     expect(overlay.style.top).toBe('76px');
   });
 
+  it('prefers live hostPaintRect over composed scale/offset math', () => {
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({ rect: { x: 40, y: 60, width: 200, height: 100 } })}
+        previewScale={1}
+        hostOffset={{ x: 0, y: 0 }}
+        hostPaintRect={{ x: 120, y: 80, width: 90, height: 45 }}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+      />,
+    );
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    expect(overlay.style.left).toBe('120px');
+    expect(overlay.style.top).toBe('80px');
+    expect(overlay.style.width).toBe('90px');
+    expect(overlay.style.height).toBe('45px');
+  });
+
   it('keeps resize handles pointer-hit even when interaction is gated', () => {
     const { getByTestId } = render(
       <ManualEditResizeOverlay

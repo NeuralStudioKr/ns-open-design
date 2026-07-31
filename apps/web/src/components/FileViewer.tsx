@@ -284,6 +284,7 @@ import {
   applyManualEditPreviewStylesToDocument,
   iframeContentDocumentIfAccessible,
   measureManualEditTargetContentRect,
+  measureManualEditTargetHostRect,
 } from '../edit-mode/manual-edit-host-preview';
 import {
   manualEditPatchBaseSource,
@@ -295,7 +296,7 @@ import {
   manualEditInspectorStyleValue,
   manualEditStyleValuesEqual,
 } from '../edit-mode/manual-edit-style-values';
-import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
+import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditRect, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import {
   FILE_REVISION_RETENTION_LIMIT_DEFAULT,
@@ -5152,6 +5153,14 @@ function HtmlViewer({
   const [manualEditHostOffset, setManualEditHostOffset] = useState({ x: 0, y: 0 });
   /** Measured CSS scale of the preview iframe (toolbar zoom can diverge). */
   const [manualEditHostScale, setManualEditHostScale] = useState(1);
+  /**
+   * Live host-space paint box for the selected element. Overlay prefers this
+   * over composing target.rect × scale + offset (which goes stale when the
+   * iframe is not ready yet or zoom shell remounts).
+   */
+  const [manualEditHostPaintRect, setManualEditHostPaintRect] = useState<ManualEditRect | null>(null);
+  /** Bumped when the active preview iframe loads so geometry sync retries. */
+  const [manualEditGeomEpoch, setManualEditGeomEpoch] = useState(0);
   const manualEditWorkspaceRef = useRef<HTMLDivElement | null>(null);
   const manualEditResizeSessionActiveRef = useRef(false);
   const manualEditModeRef = useRef(false);
@@ -7110,21 +7119,23 @@ function HtmlViewer({
     selectedManualEditTargetRef.current = selectedManualEditTarget;
   }, [selectedManualEditTarget?.id, selectedManualEditTarget]);
 
-  // Keep overlay scale/offset + target.rect locked to the painted iframe
-  // element. Toolbar zoom / centered mobile canvas / shell transforms can
-  // diverge from `overlayPreviewScale`, which used to leave the drag box
-  // floating away from the element until a late remasure.
+  // Keep overlay geometry locked to the painted iframe element. Prefer a live
+  // host-space paint rect (DOM projection) over composing React scale/offset
+  // state — that composition stays wrong when the iframe is not ready yet
+  // (effect early-returns, scale stuck at 1) or after zoom-shell remounts.
   useLayoutEffect(() => {
     if (!manualEditMode) {
       setManualEditHostOffset({ x: 0, y: 0 });
       setManualEditHostScale(1);
+      setManualEditHostPaintRect(null);
       return;
     }
     let raf = 0;
+    let alive = true;
     const sync = () => {
       const frame = iframeRef.current;
       const workspace = manualEditWorkspaceRef.current;
-      if (!frame || !workspace) return;
+      if (!frame || !workspace) return false;
       const nextScale = measureIframeHostScale(frame);
       const nextOffset = measureIframeOffsetInHost(frame, workspace);
       setManualEditHostScale((prev) => (Math.abs(prev - nextScale) < 0.0005 ? prev : nextScale));
@@ -7133,11 +7144,28 @@ function HtmlViewer({
           ? prev
           : nextOffset
       ));
-      if (manualEditResizeSessionActiveRef.current) return;
       const selectedId = selectedManualEditTargetIdRef.current;
-      if (!selectedId) return;
+      if (!selectedId) {
+        setManualEditHostPaintRect(null);
+        return true;
+      }
+      const paint = measureManualEditTargetHostRect(frame, workspace, selectedId);
+      if (paint && paint.width >= 1 && paint.height >= 1) {
+        setManualEditHostPaintRect((prev) => (
+          prev
+          && Math.abs(prev.x - paint.x) < 0.5
+          && Math.abs(prev.y - paint.y) < 0.5
+          && Math.abs(prev.width - paint.width) < 0.5
+          && Math.abs(prev.height - paint.height) < 0.5
+            ? prev
+            : paint
+        ));
+      }
+      // During a gesture, drafts/optimistic rect own content-space state —
+      // still refresh paint from the live styled DOM above.
+      if (manualEditResizeSessionActiveRef.current) return true;
       const measured = measureManualEditTargetContentRect(frame, selectedId);
-      if (!measured || measured.width < 1 || measured.height < 1) return;
+      if (!measured || measured.width < 1 || measured.height < 1) return true;
       setSelectedManualEditTarget((current) => {
         if (!current || current.id !== selectedId) return current;
         const same =
@@ -7150,27 +7178,36 @@ function HtmlViewer({
         selectedManualEditTargetRef.current = next;
         return next;
       });
+      return true;
     };
-    const schedule = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(sync);
+    const tick = () => {
+      if (!alive) return;
+      const ok = sync();
+      // Keep sampling while a target is selected (CSS transform / scroll can
+      // move the painted box without ResizeObserver). Also retry while the
+      // iframe/workspace are not ready — first selection often races srcDoc
+      // remount and used to leave scale stuck at 1.
+      if (!ok || selectedManualEditTargetIdRef.current) {
+        raf = requestAnimationFrame(tick);
+      }
     };
-    schedule();
+    raf = requestAnimationFrame(tick);
     const frame = iframeRef.current;
     const workspace = manualEditWorkspaceRef.current;
     const ro = typeof ResizeObserver !== 'undefined'
-      ? new ResizeObserver(schedule)
+      ? new ResizeObserver(() => { sync(); })
       : null;
     if (frame) ro?.observe(frame);
     if (workspace) ro?.observe(workspace);
-    // Mobile/tablet workspace scrolls; hostOffset is scroll-dependent.
-    workspace?.addEventListener('scroll', schedule, { passive: true });
-    window.addEventListener('resize', schedule);
+    // Mobile/tablet workspace scrolls; host paint rect is scroll-dependent.
+    workspace?.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync);
     return () => {
+      alive = false;
       cancelAnimationFrame(raf);
       ro?.disconnect();
-      workspace?.removeEventListener('scroll', schedule);
-      window.removeEventListener('resize', schedule);
+      workspace?.removeEventListener('scroll', sync);
+      window.removeEventListener('resize', sync);
     };
   }, [
     manualEditMode,
@@ -7178,6 +7215,7 @@ function HtmlViewer({
     previewScale,
     previewViewport,
     manualEditViewportWidth,
+    manualEditGeomEpoch,
     srcDoc,
     useUrlLoadPreview,
     previewBodySize?.width,
@@ -7638,6 +7676,22 @@ function HtmlViewer({
     });
   }
 
+  function refreshManualEditHostPaintRect(id: string | null = selectedManualEditTargetIdRef.current) {
+    if (!id) {
+      setManualEditHostPaintRect(null);
+      return;
+    }
+    const frame = iframeRef.current;
+    const workspace = manualEditWorkspaceRef.current;
+    if (!frame || !workspace) return;
+    const paint = measureManualEditTargetHostRect(frame, workspace, id);
+    if (paint && paint.width >= 1 && paint.height >= 1) {
+      setManualEditHostPaintRect(paint);
+    }
+    setManualEditHostScale(measureIframeHostScale(frame));
+    setManualEditHostOffset(measureIframeOffsetInHost(frame, workspace));
+  }
+
   function handleManualEditResizePreview(styles: Partial<ManualEditStyles>) {
     const target = selectedManualEditTarget;
     if (!target) return;
@@ -7664,8 +7718,9 @@ function HtmlViewer({
       const height = parseExplicitPx(styles.height) ?? prev?.height ?? target.rect.height;
       return { width, height };
     });
-    // Overlay owns viewport origin via computeResize x/y (liveViewportPos).
-    // Do not map CB left/top onto manualEditMoveDraftPos.
+    // Re-project from the styled DOM so the overlay tracks the element even
+    // when composed scale/offset state is wrong.
+    refreshManualEditHostPaintRect(target.id);
   }
 
   function handleManualEditMovePreview(styles: Partial<ManualEditStyles>) {
@@ -7689,9 +7744,7 @@ function HtmlViewer({
       ...current,
       styles: { ...current.styles, ...styles },
     }));
-    // Overlay owns viewport position via promoteViewportDraft during body-drag.
-    // Do not map CB left/top onto manualEditMoveDraftPos (nested absolute /
-    // post-promote re-drag would jump the host box).
+    refreshManualEditHostPaintRect(target.id);
   }
 
 
@@ -7943,6 +7996,8 @@ function HtmlViewer({
     selectedManualEditTargetIdRef.current = target.id;
     selectedManualEditTargetRef.current = target;
     setSelectedManualEditTarget(target);
+    // Measure before paint so the overlay does not flash at scale=1 / offset=0.
+    refreshManualEditHostPaintRect(target.id);
     setManualEditDraft({
       text: fields.text ?? target.fields.text ?? target.text,
       href: fields.href ?? target.fields.href ?? '',
@@ -7972,6 +8027,7 @@ function HtmlViewer({
     setManualEditPanelPosition(null);
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
+    setManualEditHostPaintRect(null);
     manualEditResizeSessionActiveRef.current = false;
     setManualEditDraft(emptyManualEditDraft(sourceRef.current ?? ''));
     setManualEditError(null);
@@ -10116,6 +10172,7 @@ function HtmlViewer({
         target={selectedManualEditTarget}
         previewScale={manualEditHostScale}
         hostOffset={manualEditHostOffset}
+        hostPaintRect={manualEditHostPaintRect}
         draftWidthPx={manualEditResizeDraftSize?.width ?? null}
         draftHeightPx={manualEditResizeDraftSize?.height ?? null}
         draftLeftPx={manualEditMoveDraftPos?.x ?? null}
@@ -10940,6 +10997,7 @@ function HtmlViewer({
                           onLoad={() => {
                             const frame = urlPreviewIframeRef.current;
                             if (useUrlLoadPreview) iframeRef.current = frame;
+                            setManualEditGeomEpoch((n) => n + 1);
                             setUrlSelectionBridgeReady(false);
                             dcViewportRestoreAtRef.current = Date.now();
                             frame?.contentWindow?.postMessage({
@@ -10978,6 +11036,7 @@ function HtmlViewer({
                           onLoad={() => {
                             const frame = urlPreviewIframeRef.current;
                             if (useUrlLoadPreview) iframeRef.current = frame;
+                            setManualEditGeomEpoch((n) => n + 1);
                             setUrlSelectionBridgeReady(false);
                             dcViewportRestoreAtRef.current = Date.now();
                             frame?.contentWindow?.postMessage({
@@ -11017,6 +11076,7 @@ function HtmlViewer({
                         onLoad={() => {
                           const frame = srcDocPreviewIframeRef.current;
                           if (!useUrlLoadPreview) iframeRef.current = frame;
+                          setManualEditGeomEpoch((n) => n + 1);
                           // Reset the activation dedupe exactly ONCE per
                           // freshly mounted iframe DOM node, never on the
                           // subsequent load events that the same node

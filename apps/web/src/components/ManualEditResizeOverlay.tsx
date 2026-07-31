@@ -34,7 +34,7 @@ import {
   type ResizeHandle,
   type ResizeSessionStart,
 } from '../edit-mode/resize-math';
-import type { ManualEditStyles, ManualEditTarget } from '../edit-mode/types';
+import type { ManualEditRect, ManualEditStyles, ManualEditTarget } from '../edit-mode/types';
 import styles from './ManualEditResizeOverlay.module.css';
 
 export type ManualEditResizeOverlayProps = {
@@ -47,6 +47,13 @@ export type ManualEditResizeOverlayProps = {
    * whenever the canvas is centered / letterboxed / not at (0,0).
    */
   hostOffset?: { x: number; y: number };
+  /**
+   * Live host-space paint box from `measureManualEditTargetHostRect`. When set,
+   * the overlay uses this for display instead of composing
+   * `hostOffset + target.rect * previewScale` — that composition goes stale
+   * whenever scale/offset state lags the painted iframe.
+   */
+  hostPaintRect?: ManualEditRect | null;
   /** Live draft size while dragging; null uses target.rect. */
   draftWidthPx: number | null;
   draftHeightPx: number | null;
@@ -126,6 +133,7 @@ export function ManualEditResizeOverlay({
   target,
   previewScale,
   hostOffset = { x: 0, y: 0 },
+  hostPaintRect = null,
   draftWidthPx,
   draftHeightPx,
   draftLeftPx = null,
@@ -164,12 +172,18 @@ export function ManualEditResizeOverlay({
     height: draftHeightPx ?? target.rect.height,
   };
   const scaled = contentRectToHostRect(contentRect, previewScale);
-  const hostRect = {
+  const composedHostRect = {
     x: hostOffset.x + scaled.x,
     y: hostOffset.y + scaled.y,
     width: scaled.width,
     height: scaled.height,
   };
+  // Prefer the live DOM projection. During an in-flight gesture the parent
+  // keeps refreshing hostPaintRect after each preview style apply; fall back
+  // to composed math only when measure is unavailable (tests / cross-origin).
+  const hostRect = hostPaintRect && hostPaintRect.width >= 1 && hostPaintRect.height >= 1
+    ? hostPaintRect
+    : composedHostRect;
   const movable = !disabled && canMoveOrPromoteTarget(target);
 
   useEffect(() => {
