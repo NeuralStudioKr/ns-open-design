@@ -1024,12 +1024,14 @@ export function ChatPane({
     retryAssistant.agentId === config?.agentId &&
     !autoContinueScheduled;
   // Prefer a case-specific message (AMR auth / balance) over the raw upstream
-  // string. After hard reload, ephemeral `error` is null — rebuild from the
-  // durable status:error event. If the row is failed but the event was lost
-  // (legacy / race), still show a Retry dock with a fallback detail so the
-  // user is not left with a silent failed turn.
-  const rawError = error
-    ?? failedRunErrorEvent?.detail
+  // string. Persisted `events[].detail` is the reload SSOT — prefer it over
+  // ephemeral `error` so the tail card matches per-turn cards and does not
+  // change after page re-entry (live setError(generic) vs durable deliverable).
+  // If the row is failed but the event was lost (legacy / race), still show a
+  // Retry dock with a fallback detail so the user is not left with a silent
+  // failed turn.
+  const rawError = failedRunErrorEvent?.detail
+    ?? error
     ?? (retryAssistant && !autoContinueScheduled
       ? (diagnosticRunErrorEvent?.detail
         ?? formatProjectRunErrorForUser(

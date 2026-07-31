@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  appendErrorStatusEvent,
   assistantEventsForDisplay,
   assistantMessageTextBody,
   attachAutoContinueIncompleteOutputNotice,
@@ -11,6 +12,36 @@ import {
 } from '../../src/runtime/chat-events';
 import { AUTO_CONTINUE_STATUS_CODE } from '../../src/runtime/resume';
 import type { ChatMessage } from '../../src/types';
+
+describe('appendErrorStatusEvent', () => {
+  it('replaces prior durable error events so a turn keeps one user-facing copy', () => {
+    const first = appendErrorStatusEvent(
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'partial',
+        createdAt: 1,
+        events: [{ kind: 'text', text: 'partial' }],
+      },
+      '슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.',
+      'UPSTREAM_UNAVAILABLE',
+    );
+    const second = appendErrorStatusEvent(
+      first,
+      '슬라이드 결과물이 생성되지 않았습니다. (terminalPersistResultKind=skipped-incomplete)',
+      'incomplete_output',
+    );
+    expect(second.events).toEqual([
+      { kind: 'text', text: 'partial' },
+      {
+        kind: 'status',
+        label: 'error',
+        detail: '슬라이드 결과물이 생성되지 않았습니다. (terminalPersistResultKind=skipped-incomplete)',
+        code: 'incomplete_output',
+      },
+    ]);
+  });
+});
 
 describe('assistantEventsForDisplay', () => {
   it('returns events unchanged when a non-empty text event exists and matches content length', () => {
@@ -107,6 +138,36 @@ describe('messageHasVisibleProse', () => {
         events: [{ kind: 'text', text: 'hello' }],
       }),
     ).toBe(true);
+  });
+});
+
+describe('appendErrorStatusEvent', () => {
+  it('replaces prior durable error events so a turn keeps one user-facing copy', () => {
+    const first = appendErrorStatusEvent(
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'partial',
+        createdAt: 1,
+        events: [{ kind: 'text', text: 'partial' }],
+      },
+      '슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.',
+      'UPSTREAM_UNAVAILABLE',
+    );
+    const second = appendErrorStatusEvent(
+      first,
+      '슬라이드 결과물이 생성되지 않았습니다. (terminalPersistResultKind=skipped-incomplete)',
+      'incomplete_output',
+    );
+    expect(second.events).toEqual([
+      { kind: 'text', text: 'partial' },
+      {
+        kind: 'status',
+        label: 'error',
+        detail: '슬라이드 결과물이 생성되지 않았습니다. (terminalPersistResultKind=skipped-incomplete)',
+        code: 'incomplete_output',
+      },
+    ]);
   });
 });
 

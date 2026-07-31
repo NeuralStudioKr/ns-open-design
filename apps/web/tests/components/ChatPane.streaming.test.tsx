@@ -377,6 +377,56 @@ describe('ChatPane streaming state', () => {
       .toBeLessThan(rows.indexOf(nextUser.closest('.msg.user')!));
   });
 
+  it('prefers persisted error event detail over ephemeral error prop for the tail card', () => {
+    const durableDetail =
+      '슬라이드 결과물이 생성되지 않았습니다. (terminalPersistResultKind=skipped-incomplete)';
+    const messages: ChatMessage[] = [
+      { id: 'user-1', role: 'user', content: '이모지 넣어줘', createdAt: 0 },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '카드 제목에 이모지를 추가할게요.',
+        agentId: 'anthropic-api',
+        createdAt: 1,
+        runId: 'run-failed-1',
+        runStatus: 'failed',
+        resumable: true,
+        events: [
+          {
+            kind: 'status',
+            label: 'error',
+            detail: durableDetail,
+            code: 'incomplete_output',
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        projectKindForTracking="prototype"
+        messages={messages}
+        streaming={false}
+        error="슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요."
+        projectId="project-1"
+        projectFiles={[]}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        projectMetadata={projectMetadata}
+      />,
+    );
+
+    expect(screen.getByText(durableDetail)).toBeTruthy();
+    expect(
+      screen.queryByText('슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.'),
+    ).toBeNull();
+  });
+
   it('formats run error diagnostics with a distinct run id when present', () => {
     expect(buildRunErrorDiagnosticText({
       message: 'Service unavailable. Try again.',

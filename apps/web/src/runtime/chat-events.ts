@@ -105,6 +105,13 @@ export function reconcileChatMessageOnLoad(message: ChatMessage): ChatMessage {
   };
 }
 
+function isTransientChatErrorCode(code: string | undefined): boolean {
+  return (
+    code === AUTO_CONTINUE_STATUS_CODE
+    || code === EMERGENCY_DECK_FALLBACK_STATUS_CODE
+  );
+}
+
 export function appendErrorStatusEvent(
   message: ChatMessage,
   detail: string,
@@ -119,9 +126,15 @@ export function appendErrorStatusEvent(
   if (!detail?.trim()) {
     return message;
   }
+  // Durable errors replace prior status:error events so StatusPill / past cards
+  // / the tail card cannot show conflicting copy for the same turn. Transient
+  // auto-continue notices stack on top of the durable error underneath.
+  const baseEvents = isTransientChatErrorCode(code)
+    ? events
+    : events.filter((event) => !(event.kind === 'status' && event.label === 'error'));
   return {
     ...message,
-    events: [...events, { kind: 'status', label: 'error', detail, ...(code ? { code } : {}) }],
+    events: [...baseEvents, { kind: 'status', label: 'error', detail, ...(code ? { code } : {}) }],
   };
 }
 
