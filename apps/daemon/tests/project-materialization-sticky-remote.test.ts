@@ -144,6 +144,8 @@ describe('project materialization sticky remote cache (BYOK safety net)', () => 
     const hooks = {
       ensureMaterialized: async () => {},
       persistAfterMutation: persist,
+      ensureFileAvailable: async () => false,
+      armPersistInflight: () => () => {},
       onProjectRemoved: async () => {},
     };
     const req = mockReq('PUT', '/api/projects/p-byok/conversations/c1/messages/m1', 'p-byok');
@@ -165,6 +167,8 @@ describe('project materialization sticky remote cache (BYOK safety net)', () => 
     const hooks = {
       ensureMaterialized: async () => {},
       persistAfterMutation: persist,
+      ensureFileAvailable: async () => false,
+      armPersistInflight: () => () => {},
       onProjectRemoved: async () => {},
     };
     const req = mockReq('PUT', '/api/projects/p-byok/conversations/c1/messages/m1', 'p-byok');

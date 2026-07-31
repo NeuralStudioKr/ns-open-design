@@ -471,6 +471,43 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(result.html).not.toContain('REWRITTEN');
   });
 
+  it('accepts visual-only marks via slide-level swap when no element id exists', () => {
+    const currentHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Cover</h1></section>
+<section class="slide" data-slide-index="1"><p data-od-id="body-1">원본 본문</p></section>
+</body></html>`;
+    const patchedHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Cover</h1></section>
+<section class="slide" data-slide-index="1"><p data-od-id="body-1">강조된 본문</p></section>
+</body></html>`;
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml,
+      patchedHtml,
+      commentAttachments: [{
+        id: 'visual-1',
+        order: 1,
+        filePath: 'ms798rzf-drawing.png',
+        elementId: 'visual-mark-ms798rzf',
+        selector: '',
+        label: 'Marked screenshot region',
+        comment: '이 영역 강조해줘',
+        currentText: '',
+        htmlHint: '',
+        pagePosition: { x: 10, y: 10, width: 100, height: 80 },
+        selectionKind: 'visual',
+        markKind: 'stroke',
+        screenshotPath: 'ms798rzf-drawing.png',
+        slideIndex: 1,
+      }],
+      instructionText: '이 영역 강조해줘',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.narrowed).toBe(true);
+    expect(result.html).toContain('강조된 본문');
+    expect(result.html).toContain('Cover');
+  });
+
   it('accepts a layout-only br removal via slide-level presentation fallback', () => {
     const currentHtml = `<!doctype html><html><body>
 <section class="slide" data-slide-index="0">

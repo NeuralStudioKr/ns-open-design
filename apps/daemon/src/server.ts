@@ -11168,7 +11168,23 @@ export async function startServer({
       const projectId = String(req.params[0] ?? '');
       const relPath = String(req.params[1] ?? '');
       const project = getProject(db, projectId);
-      const file = await readProjectFile(PROJECTS_DIR, projectId, relPath, project?.metadata);
+      let file;
+      try {
+        file = await readProjectFile(PROJECTS_DIR, projectId, relPath, project?.metadata);
+      } catch (err) {
+        // Sibling-node uploads can land in S3 while this node's TTL still
+        // skips full sync-down — point-get the missing object once.
+        if (err && err.code === 'ENOENT' && projectStorageHooks) {
+          const filled = await projectStorageHooks.ensureFileAvailable(req, projectId, relPath);
+          if (filled) {
+            file = await readProjectFile(PROJECTS_DIR, projectId, relPath, project?.metadata);
+          } else {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
       // PreviewModal loads artifact HTML via srcdoc, giving the iframe Origin: "null".
       // data: URIs, file://, and some sandboxed iframes also send null — all are
       // local-only callers, so this is safe. Real cross-origin sites send a real
@@ -11632,6 +11648,19 @@ export async function startServer({
             });
           } catch {
             // skip files that vanished mid-flight
+          }
+        }
+        // Annotation/chat images are fetched immediately (thumbnail + Anthropic
+        // proxy). Await sync-up before 200 so a sticky-miss sibling node can
+        // materialize the object from S3 instead of returning raw 404.
+        if (out.length > 0 && projectStorageHooks) {
+          try {
+            await projectStorageHooks.persistAfterMutation(req, req.params.id, { strict: true });
+          } catch (persistErr) {
+            console.warn(
+              '[project-upload] sync-up before response failed:',
+              persistErr instanceof Error ? persistErr.message : persistErr,
+            );
           }
         }
         /** @type {import('@open-design/contracts').UploadProjectFilesResponse} */

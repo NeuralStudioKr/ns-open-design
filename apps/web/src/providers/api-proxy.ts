@@ -728,7 +728,7 @@ function sortAttachmentsByUserOrder<T extends { order?: number }>(attachments: T
     .map((entry) => entry.attachment);
 }
 
-const ANTHROPIC_IMAGE_FETCH_DELAYS_MS = [0, 250, 800] as const;
+const ANTHROPIC_IMAGE_FETCH_DELAYS_MS = [0, 250, 800, 1_600, 3_200] as const;
 
 async function readAnthropicImageBlock(
   projectId: string,
