@@ -59,7 +59,36 @@ describe('computeMove', () => {
       dy: 10,
     });
     expect(out).toEqual({ leftPx: 60, topPx: 70, moved: true });
-    expect(moveResultToStyles(out)).toEqual({ left: '60px', top: '70px' });
+    expect(moveResultToStyles(out)).toEqual({
+      left: '60px',
+      top: '70px',
+      right: '',
+      bottom: '',
+    });
+  });
+
+  it('locks to the dominant axis when Shift is held', () => {
+    const horizontal = computeMove({
+      startLeftPx: 40,
+      startTopPx: 60,
+      startRect: { x: 40, y: 60, width: 200, height: 100 },
+      minDeltaPx: MANUAL_EDIT_MOVE_MIN_DELTA_PX,
+      dx: 30,
+      dy: 8,
+      shiftKey: true,
+    });
+    expect(horizontal).toEqual({ leftPx: 70, topPx: 60, moved: true });
+
+    const vertical = computeMove({
+      startLeftPx: 40,
+      startTopPx: 60,
+      startRect: { x: 40, y: 60, width: 200, height: 100 },
+      minDeltaPx: MANUAL_EDIT_MOVE_MIN_DELTA_PX,
+      dx: 8,
+      dy: 30,
+      shiftKey: true,
+    });
+    expect(vertical).toEqual({ leftPx: 40, topPx: 90, moved: true });
   });
 
   it('ignores sub-threshold jitter', () => {

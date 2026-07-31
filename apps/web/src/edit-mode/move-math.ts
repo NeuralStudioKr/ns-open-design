@@ -41,19 +41,47 @@ export function startPositionFromTarget(target: ManualEditTarget): {
   };
 }
 
-export function computeMove(input: MoveSessionStart & { dx: number; dy: number }): MoveMathResult {
-  const leftPx = Math.round(input.startLeftPx + input.dx);
-  const topPx = Math.round(input.startTopPx + input.dy);
+/**
+ * Translate left/top by content-space deltas.
+ * With Shift held, lock to the dominant axis (horizontal if |dx| >= |dy|).
+ */
+export function computeMove(
+  input: MoveSessionStart & { dx: number; dy: number; shiftKey?: boolean },
+): MoveMathResult {
+  let dx = input.dx;
+  let dy = input.dy;
+  if (input.shiftKey) {
+    if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
+    else dx = 0;
+  }
+  const leftPx = Math.round(input.startLeftPx + dx);
+  const topPx = Math.round(input.startTopPx + dy);
   const moved =
     Math.hypot(leftPx - input.startLeftPx, topPx - input.startTopPx) >= input.minDeltaPx;
   return { leftPx, topPx, moved };
 }
 
+/**
+ * Persist left/top and clear right/bottom so opposing edges cannot pin the box
+ * after a body-drag move (52 Phase 2).
+ */
 export function moveResultToStyles(result: MoveMathResult): Partial<ManualEditStyles> {
   if (!result.moved) return {};
   return {
     left: `${result.leftPx}px`,
     top: `${result.topPx}px`,
+    right: '',
+    bottom: '',
+  };
+}
+
+/** Live preview styles (also clear opposing edges once the pointer moves). */
+export function movePreviewStyles(result: MoveMathResult): Partial<ManualEditStyles> {
+  return {
+    left: `${result.leftPx}px`,
+    top: `${result.topPx}px`,
+    right: '',
+    bottom: '',
   };
 }
 

@@ -7331,9 +7331,9 @@ function HtmlViewer({
     setManualEditMoveDraftPos(null);
     setManualEditResizeDraftSize(null);
     if (!target) return;
-    // Drop only left/top so unrelated panel drafts (e.g. fontSize) survive a
+    // Drop only position keys so unrelated panel drafts (e.g. fontSize) survive a
     // cancelled / sub-threshold move. Full wipe was wiping those on jitter clicks.
-    cancelManualEditPendingStyles(target.id, ['left', 'top']);
+    cancelManualEditPendingStyles(target.id, ['left', 'top', 'right', 'bottom']);
     const pending = manualEditPendingStyleRef.current;
     if (pending?.id === target.id && pending.label === moveHistoryLabel(target.label)) {
       manualEditPendingStyleRef.current = {
@@ -7344,6 +7344,8 @@ function HtmlViewer({
     const reset: Partial<ManualEditStyles> = {
       left: stylesBefore.left ?? '',
       top: stylesBefore.top ?? '',
+      right: stylesBefore.right ?? '',
+      bottom: stylesBefore.bottom ?? '',
     };
     previewStyleToIframe(target.id, reset, nextManualEditPreviewVersion());
     setManualEditDraft((current) => ({

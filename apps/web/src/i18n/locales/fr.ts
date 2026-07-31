@@ -2046,6 +2046,7 @@ export const fr: Dict = {
   'manualEdit.title': 'Éditeur manuel',
   'manualEdit.fallbackTitle': 'Modifier',
   'manualEdit.movePanel': 'Déplacer le panneau d’édition',
+  'manualEdit.positionMoveRequiresAbsolute': 'Le glisser-déposer de position nécessite absolute ou fixed.',
   'manualEdit.editParams': 'Modifier les paramètres',
   'manualEdit.closePanel': 'Fermer le panneau d’édition',
   'manualEdit.selectLayer': 'Sélectionnez un calque',

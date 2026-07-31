@@ -11,6 +11,8 @@ import {
   MANUAL_EDIT_MOVE_MIN_DELTA_PX,
   canMoveTarget,
   computeMove,
+  movePreviewStyles,
+  moveResultToStyles,
   startPositionFromTarget,
 } from '../edit-mode/move-math';
 import {
@@ -172,13 +174,11 @@ export function ManualEditResizeOverlay({
         minDeltaPx: MANUAL_EDIT_MOVE_MIN_DELTA_PX,
         dx,
         dy,
+        shiftKey: event.shiftKey,
       });
-      // Preview every move frame for smooth overlay follow; commit still gates on `moved`.
-      const preview: Partial<ManualEditStyles> = {
-        left: `${result.leftPx}px`,
-        top: `${result.topPx}px`,
-      };
-      drag.lastStyles = preview;
+      // Preview every frame (incl. right/bottom clear). Commit still gates on `moved`.
+      const preview = movePreviewStyles(result);
+      drag.lastStyles = result.moved ? (moveResultToStyles(result) ?? preview) : preview;
       drag.moved = result.moved;
       drag.previewed = true;
       onMovePreview?.(preview);
@@ -268,6 +268,8 @@ export function ManualEditResizeOverlay({
     const stylesBefore: Partial<ManualEditStyles> = {
       left: target.styles.left,
       top: target.styles.top,
+      right: target.styles.right,
+      bottom: target.styles.bottom,
     };
     dragRef.current = {
       kind: 'move',

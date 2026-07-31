@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { useT } from '../i18n';
+import { isAnchoredCssPosition } from '../edit-mode/resize-math';
 import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { Icon } from './Icon';
 
@@ -163,6 +164,7 @@ export function ManualEditPanel({
           {targetForInspector ? (
             <StyleInspector
               targetKind={targetForInspector.kind}
+              cssPosition={targetForInspector.cssPosition}
               styles={draft.styles}
               layoutEnabled={targetForInspector.isLayoutContainer}
               onChange={changeTargetStyle}
@@ -471,7 +473,7 @@ type NormalizeResult =
   | { ok: false; error: string };
 
 const PX_STYLE_PROPS = new Set<keyof ManualEditStyles>([
-  'fontSize', 'letterSpacing', 'width', 'height', 'minHeight', 'left', 'top', 'gap',
+  'fontSize', 'letterSpacing', 'width', 'height', 'minHeight', 'left', 'top', 'right', 'bottom', 'gap',
   'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'border', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
@@ -569,17 +571,21 @@ function styleLabel(key: keyof ManualEditStyles): string {
 }
 
 function StyleInspector({
-  targetKind, styles, layoutEnabled, onChange,
+  targetKind, cssPosition, styles, layoutEnabled, onChange,
 }: {
   targetKind: ManualEditTarget['kind'];
+  cssPosition?: string;
   styles: ManualEditStyles;
   layoutEnabled: boolean;
   onChange: (key: keyof ManualEditStyles, value: string) => void;
 }) {
+  const t = useT();
   const u = (key: keyof ManualEditStyles, value: string) => onChange(key, value);
   const showTypography = targetKind === 'text' || targetKind === 'link' || targetKind === 'token';
   // Box width/height for containers, images, and text/link leaves (drag-resize sync).
   const showSize = targetKind !== 'token';
+  const showPosition = showSize && isAnchoredCssPosition(cssPosition);
+  const showPositionHint = showSize && !showPosition;
   const showLayout = layoutEnabled;
   const showBox = targetKind === 'container' || targetKind === 'image' || targetKind === 'token';
 
@@ -609,6 +615,23 @@ function StyleInspector({
             <UnitRow label="Width" value={styles.width} onChange={(v) => u('width', v)} unit="px" autoUnit />
             <UnitRow label="Height" value={styles.height} onChange={(v) => u('height', v)} unit="px" autoUnit />
           </PairRow>
+        </Section>
+      ) : null}
+
+      {showPosition ? (
+        <Section title="POSITION">
+          <PairRow>
+            <UnitRow label="Left" value={styles.left} onChange={(v) => u('left', v)} unit="px" autoUnit />
+            <UnitRow label="Top" value={styles.top} onChange={(v) => u('top', v)} unit="px" autoUnit />
+          </PairRow>
+        </Section>
+      ) : null}
+
+      {showPositionHint ? (
+        <Section title="POSITION" inactive>
+          <p className="cc-section-hint" data-testid="manual-edit-position-hint">
+            {t('manualEdit.positionMoveRequiresAbsolute')}
+          </p>
         </Section>
       ) : null}
 

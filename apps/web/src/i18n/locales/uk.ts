@@ -2046,6 +2046,7 @@ export const uk: Dict = {
   'manualEdit.title': 'Ручний редактор',
   'manualEdit.fallbackTitle': 'Редагувати',
   'manualEdit.movePanel': 'Перемістити панель редагування',
+  'manualEdit.positionMoveRequiresAbsolute': 'Перетягування позиції доступне лише для absolute/fixed.',
   'manualEdit.editParams': 'Редагувати параметри',
   'manualEdit.closePanel': 'Закрити панель редагування',
   'manualEdit.selectLayer': 'Виберіть шар',

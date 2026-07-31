@@ -2046,6 +2046,7 @@ export const th: Dict = {
   'manualEdit.title': 'กล่องควบคุม',
   'manualEdit.fallbackTitle': 'แก้ไข',
   'manualEdit.movePanel': 'ย้ายแผงแก้ไข',
+  'manualEdit.positionMoveRequiresAbsolute': 'ลากย้ายตำแหน่งใช้ได้กับ absolute/fixed เท่านั้น',
   'manualEdit.editParams': 'แก้ไขพารามิเตอร์',
   'manualEdit.closePanel': 'ปิดแผงแก้ไข',
   'manualEdit.selectLayer': 'เลือกเลเยอร์ขึ้นมา',

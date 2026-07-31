@@ -158,14 +158,65 @@ describe('ManualEditResizeOverlay', () => {
 
     fireEvent.pointerMove(window, { pointerId: 10, clientX: 140, clientY: 120, buttons: 1 });
     expect(onMovePreview).toHaveBeenCalled();
-    expect(onMovePreview.mock.calls.at(-1)?.[0]).toEqual({ left: '80px', top: '80px' });
+    expect(onMovePreview.mock.calls.at(-1)?.[0]).toEqual({
+      left: '80px',
+      top: '80px',
+      right: '',
+      bottom: '',
+    });
 
     fireEvent.pointerUp(window, { pointerId: 10, clientX: 140, clientY: 120 });
     expect(onMoveCommit).toHaveBeenCalledTimes(1);
-    expect(onMoveCommit.mock.calls[0]?.[0]).toEqual({ left: '80px', top: '80px' });
+    expect(onMoveCommit.mock.calls[0]?.[0]).toEqual({
+      left: '80px',
+      top: '80px',
+      right: '',
+      bottom: '',
+    });
     expect(onMoveCancel).not.toHaveBeenCalled();
     expect(onResizeCommit).not.toHaveBeenCalled();
     expect(onResizeSessionChange).toHaveBeenCalledWith(false);
+  });
+
+  it('Shift during body drag locks to the dominant axis', () => {
+    const onMovePreview = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'absolute',
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+            left: '40px',
+            top: '60px',
+          },
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={onMovePreview}
+        onMoveCommit={vi.fn()}
+        onMoveCancel={vi.fn()}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    fireEvent.pointerDown(overlay, { pointerId: 21, clientX: 100, clientY: 100, buttons: 1 });
+    fireEvent.pointerMove(window, {
+      pointerId: 21,
+      clientX: 160,
+      clientY: 112,
+      buttons: 1,
+      shiftKey: true,
+    });
+    expect(onMovePreview.mock.calls.at(-1)?.[0]).toMatchObject({
+      left: '100px',
+      top: '60px',
+    });
   });
 
   it('body drag Escape cancels move without commit', () => {
@@ -202,7 +253,12 @@ describe('ManualEditResizeOverlay', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
 
     expect(onMoveCancel).toHaveBeenCalledTimes(1);
-    expect(onMoveCancel.mock.calls[0]?.[0]).toEqual({ left: '40px', top: '60px' });
+    expect(onMoveCancel.mock.calls[0]?.[0]).toEqual({
+      left: '40px',
+      top: '60px',
+      right: '',
+      bottom: '',
+    });
     expect(onMoveCommit).not.toHaveBeenCalled();
   });
 

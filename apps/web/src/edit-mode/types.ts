@@ -26,9 +26,12 @@ export interface ManualEditStyles {
   width: string;
   height: string;
   minHeight: string;
-  /** Used by drag-resize anchor for absolute/fixed elements. */
+  /** Used by drag-resize / position-move for absolute/fixed elements. */
   left: string;
   top: string;
+  /** Cleared on move commit so left+right / top+bottom do not fight. */
+  right: string;
+  bottom: string;
   gap: string;
   flexDirection: string;
   justifyContent: string;
@@ -149,7 +152,7 @@ export type ManualEditBridgeMessage =
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
   'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'textDecoration', 'lineHeight', 'letterSpacing',
-  'width', 'height', 'minHeight', 'left', 'top',
+  'width', 'height', 'minHeight', 'left', 'top', 'right', 'bottom',
   'gap', 'flexDirection', 'justifyContent', 'alignItems',
   'backgroundColor', 'opacity',
   'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
