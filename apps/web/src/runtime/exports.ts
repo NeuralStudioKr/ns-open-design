@@ -203,11 +203,14 @@ async function pollAsyncExportJob(options: {
   onStatus?: (status: AsyncExportProgressStatus) => void;
   timeoutMs?: number;
   intervalMs?: number;
+  maxIntervalMs?: number;
 }): Promise<AsyncExportJobResponse> {
   const timeoutMs = options.timeoutMs ?? 120_000;
   const intervalMs = options.intervalMs ?? 1_200;
+  const maxIntervalMs = options.maxIntervalMs ?? 5_000;
   const deadline = Date.now() + timeoutMs;
   let nextDelay = 0;
+  let attempt = 0;
   while (Date.now() <= deadline) {
     if (nextDelay > 0) {
       await new Promise((resolve) => setTimeout(resolve, nextDelay));
@@ -225,7 +228,8 @@ async function pollAsyncExportJob(options: {
       const message = job.error?.message || job.error?.code || 'async export job failed';
       throw new Error(message);
     }
-    nextDelay = intervalMs;
+    nextDelay = Math.min(maxIntervalMs, intervalMs * (2 ** Math.min(attempt, 3)));
+    attempt += 1;
   }
   throw new Error('async export job timed out');
 }

@@ -1327,6 +1327,72 @@ describe('exportProjectAsHtml', () => {
     expect(await capturedBlob!.text()).toBe('<!doctype html><p>sse html</p>');
   });
 
+  it('falls back to async export job polling when SSE is unavailable', async () => {
+    process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED = '1';
+    class MockEventSource {
+      readonly close = vi.fn();
+      onerror: (() => void) | null = null;
+
+      constructor() {
+        eventSources.push(this);
+      }
+
+      addEventListener(): void {}
+    }
+    const eventSources: MockEventSource[] = [];
+    vi.stubGlobal('EventSource', MockEventSource);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/projects/proj-1/export/jobs') {
+        return new Response(
+          JSON.stringify({
+            eventsUrl: '/api/projects/proj-1/export/jobs/job-1/events',
+            jobId: 'job-1',
+            status: 'queued',
+            statusUrl: '/api/projects/proj-1/export/jobs/job-1',
+          }),
+          { status: 202, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url === '/api/projects/proj-1/export/jobs/job-1') {
+        return new Response(
+          JSON.stringify({
+            downloadUrl: '/api/projects/proj-1/export/downloads/ticket-job',
+            filename: 'Seed-Deck.html',
+            jobId: 'job-1',
+            status: 'ready',
+            statusUrl: '/api/projects/proj-1/export/jobs/job-1',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url === '/api/projects/proj-1/export/downloads/ticket-job') {
+        return new Response('<!doctype html><p>poll html</p>', {
+          headers: {
+            'content-disposition': 'attachment; filename="Seed-Deck.html"',
+            'content-type': 'text/html',
+          },
+          status: 200,
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+
+    const pending = exportProjectAsHtml({
+      deck: true,
+      projectId: 'proj-1',
+      filePath: 'deck/index.html',
+      fallbackHtml: '<section>fallback</section>',
+      fallbackTitle: 'Seed Deck',
+    });
+    await vi.waitFor(() => expect(eventSources).toHaveLength(1));
+    eventSources[0]!.onerror?.();
+    await pending;
+
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(capturedFilename).toBe('Seed-Deck.html');
+    expect(await capturedBlob!.text()).toBe('<!doctype html><p>poll html</p>');
+  });
+
   it('falls back to the synchronous export route when async jobs are disabled server-side', async () => {
     process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED = '1';
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
