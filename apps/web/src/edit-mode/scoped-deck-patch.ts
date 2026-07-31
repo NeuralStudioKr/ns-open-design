@@ -736,7 +736,6 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
         lastReason = attempt.reason;
       }
       if (!hintMerged) {
-<<<<<<< HEAD
         // Screenshot-only visual marks (and other id-less pins) cannot
         // resolve an element target — fall back to slide-level swap when
         // the model produced a real slide diff on a candidate slide.
@@ -758,28 +757,6 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
       }
       if (!hintMerged) {
         return { ok: false, reason: lastReason };
-=======
-        if (isVisualCommentAttachment(attachment)) {
-          for (const slideIndex of slideCandidates) {
-            const swapped = tryAnchorlessSlideLevelSwap({
-              nextHtml,
-              patchedHtml: input.patchedHtml,
-              slideIndex,
-              logContext: 'visual-mark',
-            });
-            if (swapped.ok) {
-              nextHtml = swapped.html;
-              narrowed = true;
-              hintMerged = true;
-              break;
-            }
-            lastReason = swapped.reason;
-          }
-        }
-        if (!hintMerged) {
-          return { ok: false, reason: lastReason };
-        }
->>>>>>> 0f2a1468c (fix(web): stabilize visual mark send and deck merge)
       }
       continue;
     }
