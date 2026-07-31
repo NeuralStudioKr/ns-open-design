@@ -31,6 +31,8 @@ describe('snapshot-codec', () => {
     expect(shouldForceFullSnapshot(1)).toBe(true);
     expect(shouldForceFullSnapshot(6)).toBe(true);
     expect(shouldForceFullSnapshot(7)).toBe(false);
+    expect(shouldForceFullSnapshot(6, 3)).toBe(false);
+    expect(shouldForceFullSnapshot(7, 3)).toBe(true);
   });
 
   it('encodes and decodes full payloads', () => {

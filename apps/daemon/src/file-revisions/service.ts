@@ -68,6 +68,18 @@ export interface RestoreFileRevisionInput {
 export function createFileRevisionService(deps: FileRevisionServiceDeps) {
   const { db, projectsRoot, writeProjectFile, resolveProjectDir } = deps;
 
+  function revisionMetadataLookup(projectId: string, fileName: string) {
+    return (id: string) => {
+      const revision = getFileRevision(db, projectId, fileName, id);
+      if (!revision) return null;
+      return {
+        id: revision.id,
+        sequence: revision.sequence,
+        parentRevisionId: revision.parentRevisionId,
+      };
+    };
+  }
+
   async function pruneSnapshots(
     projectDir: string,
     fileName: string,
@@ -112,6 +124,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         fileName,
         revisionId,
         (id) => getFileRevision(db, projectId, fileName, id)?.parentRevisionId ?? null,
+        revisionMetadataLookup(projectId, fileName),
       );
       return { revision, content };
     },
@@ -130,8 +143,6 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         metadata,
       } = input;
       const projectDir = resolveProjectDir(projectsRoot, projectId, metadata);
-      const getParentRevisionId = (id: string) =>
-        getFileRevision(db, projectId, fileName, id)?.parentRevisionId ?? null;
 
       if (typeof truncateAfterSequence === 'number' && Number.isFinite(truncateAfterSequence)) {
         const truncated = deleteFileRevisionsAfterSequence(
@@ -170,12 +181,8 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       const revisionId = randomUUID();
       const createdAt = Date.now();
 
-      const parentContent = await readRevisionSnapshot(
-        projectDir,
-        fileName,
-        parent.id,
-        getParentRevisionId,
-      );
+      const beforeFile = await deps.readProjectFile(projectsRoot, projectId, fileName, metadata);
+      const parentContent = beforeFile.buffer.toString('utf8');
 
       const file = await writeProjectFile(
         projectsRoot,
@@ -217,6 +224,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         fileName,
         revisionId,
         (id) => getFileRevision(db, projectId, fileName, id)?.parentRevisionId ?? null,
+        revisionMetadataLookup(projectId, fileName),
       );
       const file = await writeProjectFile(
         projectsRoot,

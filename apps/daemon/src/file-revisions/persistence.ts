@@ -224,6 +224,26 @@ export function deleteFileRevisionsAfterSequence(
   return rows.map(rowToRevision);
 }
 
+export function getRevisionAncestry(
+  db: Database.Database,
+  projectId: string,
+  fileName: string,
+  revisionId: string,
+): FileRevision[] {
+  const ancestry: FileRevision[] = [];
+  let currentId: string | null = revisionId;
+  const seen = new Set<string>();
+  while (currentId) {
+    if (seen.has(currentId)) break;
+    seen.add(currentId);
+    const revision = getFileRevision(db, projectId, fileName, currentId);
+    if (!revision) break;
+    ancestry.push(revision);
+    currentId = revision.parentRevisionId;
+  }
+  return ancestry;
+}
+
 export function pruneOldestFileRevisions(
   db: Database.Database,
   projectId: string,

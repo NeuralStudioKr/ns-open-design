@@ -122,8 +122,24 @@ export function legacySnapshotFileName(revisionId: string): string {
 }
 
 /** Force a full gzip snapshot every N sequences so reads do not walk long diff chains. */
-export const REVISION_FULL_SNAPSHOT_INTERVAL = 5;
+export const REVISION_FULL_SNAPSHOT_INTERVAL_DEFAULT = 5;
 
-export function shouldForceFullSnapshot(sequence: number): boolean {
-  return sequence <= 1 || sequence % REVISION_FULL_SNAPSHOT_INTERVAL === 1;
+export function resolveFullSnapshotInterval(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env.OD_FILE_REVISION_FULL_SNAPSHOT_INTERVAL;
+  if (raw == null || raw.trim() === '') return REVISION_FULL_SNAPSHOT_INTERVAL_DEFAULT;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 2) return REVISION_FULL_SNAPSHOT_INTERVAL_DEFAULT;
+  return Math.min(parsed, 30);
+}
+
+/** @deprecated Use resolveFullSnapshotInterval — kept for tests expecting constant 5. */
+export const REVISION_FULL_SNAPSHOT_INTERVAL = REVISION_FULL_SNAPSHOT_INTERVAL_DEFAULT;
+
+export function shouldForceFullSnapshot(
+  sequence: number,
+  interval: number = resolveFullSnapshotInterval(),
+): boolean {
+  return sequence <= 1 || ((sequence - 1) % interval) === 0;
 }
