@@ -3862,16 +3862,16 @@ function ToolsPluginsPanel({
   return (
     <>
       <div className="composer-tools-filter">
-        <div className="composer-tools-segments" role="tablist" aria-label="Plugin source">
+        <div className="composer-tools-segments" role="tablist" aria-label={t('chat.plusMenu.pluginSourceAria')}>
           <button
             type="button"
             role="tab"
             aria-selected={source === 'community'}
             className={`composer-tools-segment${source === 'community' ? ' active' : ''}`}
             onClick={() => setSource('community')}
-            title={`${communityPlugins.length} installed official plugins`}
+            title={`${communityPlugins.length} ${t('chat.mentionPluginOfficial')}`}
           >
-            Official
+            {t('chat.mentionPluginOfficial')}
           </button>
           <button
             type="button"
@@ -3879,9 +3879,9 @@ function ToolsPluginsPanel({
             aria-selected={source === 'mine'}
             className={`composer-tools-segment${source === 'mine' ? ' active' : ''}`}
             onClick={() => setSource('mine')}
-            title={`${userPlugins.length} installed user plugins`}
+            title={`${userPlugins.length} ${t('chat.plusMenu.pluginsMine')}`}
           >
-            My plugins
+            {t('chat.plusMenu.pluginsMine')}
           </button>
         </div>
         <input
@@ -4008,7 +4008,7 @@ function ToolsMcpPanel({
         </div>
       ) : (
         <div className="composer-tools-list">
-          <div className="composer-tools-section-label">Configured</div>
+          <div className="composer-tools-section-label">{t('settings.mediaProviderConfigured')}</div>
           {visibleServers.map((s) => (
             <button
               key={s.id}
@@ -4030,7 +4030,7 @@ function ToolsMcpPanel({
       )}
       {visibleTemplates.length > 0 ? (
         <div className="composer-tools-list">
-          <div className="composer-tools-section-label">Templates</div>
+          <div className="composer-tools-section-label">{t('chat.plusMenu.mcpTemplates')}</div>
           {visibleTemplates.map((tpl) => (
             <button
               key={tpl.id}

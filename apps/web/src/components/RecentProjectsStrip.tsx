@@ -72,6 +72,7 @@ export function RecentProjectsStrip({
   const confirmTitleId = useId();
   const menuContainerRef = useRef<HTMLDivElement | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [menuOpenUp, setMenuOpenUp] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; original: string } | null>(null);
   const [renameInput, setRenameInput] = useState('');
   const [confirmTarget, setConfirmTarget] = useState<{
@@ -272,9 +273,16 @@ export function RecentProjectsStrip({
                     data-testid={`recent-projects-more-${project.id}`}
                     onClick={(e) => {
                       e.stopPropagation();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const openUp = window.innerHeight - rect.bottom < 120;
                       setMenuOpenId((cur) => {
                         const nextId = cur === project.id ? null : project.id;
-                        if (nextId === project.id) trackProjectAction(project, 'more');
+                        if (nextId === project.id) {
+                          setMenuOpenUp(openUp);
+                          trackProjectAction(project, 'more');
+                        } else {
+                          setMenuOpenUp(false);
+                        }
                         return nextId;
                       });
                     }}
@@ -283,7 +291,7 @@ export function RecentProjectsStrip({
                   </button>
                   {menuOpenId === project.id ? (
                     <div
-                      className="design-card-menu"
+                      className={`design-card-menu${menuOpenUp ? ' design-card-menu--up' : ''}`}
                       role="menu"
                       onClick={(e) => e.stopPropagation()}
                     >

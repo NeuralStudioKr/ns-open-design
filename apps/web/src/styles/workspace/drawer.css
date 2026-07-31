@@ -647,6 +647,10 @@
   flex-direction: column;
   z-index: 50;
 }
+.design-card-menu.design-card-menu--up {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
 .design-card-menu button {
   display: flex;
   align-items: center;

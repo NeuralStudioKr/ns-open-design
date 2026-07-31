@@ -15,6 +15,7 @@ import { motion } from 'motion/react';
 
 import { Icon } from './Icon';
 import { toastSlideUp } from '../motion';
+import { useT } from '../i18n';
 
 export interface ToastProps {
   message: string;
@@ -62,6 +63,7 @@ const TONE_ICON: Record<NonNullable<ToastProps['tone']>, 'check' | 'close' | 'sp
 };
 
 export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs = DEFAULT_TTL, onDismiss, role = 'status', tone = 'default', placement = 'bottom', layout = 'default', actionLabel, onAction }: ToastProps) {
+  const t = useT();
   // When code is present the toast is a manual-action surface; never
   // auto-dismiss it out from under the user mid-copy.
   const effectiveTtl = code ? 0 : ttlMs;
@@ -127,7 +129,7 @@ export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs 
                 type="button"
                 className="od-toast-dismiss od-toast-dismiss-inline"
                 onClick={onDismiss}
-                aria-label="Dismiss"
+                aria-label={t('common.close')}
               >
                 ×
               </button>
@@ -189,9 +191,9 @@ export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs 
           type="button"
           className="od-toast-dismiss"
           onClick={onDismiss}
-          aria-label="Dismiss"
+          aria-label={t('common.close')}
         >
-          {code ? 'Dismiss' : '×'}
+          {code ? t('common.close') : '×'}
         </button>
       ) : null}
         </>

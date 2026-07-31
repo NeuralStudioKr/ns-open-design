@@ -62,15 +62,15 @@ describe('Toast', () => {
     expect(container.querySelector('.od-toast.tone-success .od-toast-icon')).not.toBeNull();
   });
 
-  it('renders a Dismiss button when both code and onDismiss are present', () => {
+  it('renders a Close button when both code and onDismiss are present', () => {
     render(<Toast message="manual copy" code="x" onDismiss={() => {}} />);
-    expect(screen.getByRole('button', { name: /Dismiss/i })).not.toBeNull();
+    expect(screen.getByRole('button', { name: /Close/i })).not.toBeNull();
   });
 
   it('renders a dismiss control for error toasts without code', () => {
     const onDismiss = vi.fn();
     render(<Toast message="Something failed" tone="error" onDismiss={onDismiss} />);
-    fireEvent.click(screen.getByRole('button', { name: /Dismiss/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Close/i }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });

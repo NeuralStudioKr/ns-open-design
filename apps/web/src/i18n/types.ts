@@ -2179,6 +2179,8 @@ export interface Dict {
   'chat.conversationsHeading': string;
   'chat.new': string;
   'chat.emptyConversations': string;
+  'chat.conversationsSearchPlaceholder': string;
+  'chat.conversationsNoMatch': string;
   'chat.deleteConversation': string;
   'chat.renameConversationLabel': string;
   'chat.deleteConversationConfirm': string;
@@ -2323,6 +2325,9 @@ export interface Dict {
   'chat.plusMenu.searchPlugins': string;
   'chat.plusMenu.searchMcp': string;
   'chat.plusMenu.searchSkills': string;
+  'chat.plusMenu.pluginSourceAria': string;
+  'chat.plusMenu.pluginsMine': string;
+  'chat.plusMenu.mcpTemplates': string;
   "chat.designToolbox.searchAria": string;
   "chat.designToolbox.followupSection": string;
   "chat.designToolbox.resourcesSection": string;
