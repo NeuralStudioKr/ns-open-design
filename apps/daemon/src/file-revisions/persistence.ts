@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { FileRevision, FileRevisionSource } from '@open-design/contracts';
 import { FILE_REVISION_RETENTION_LIMIT_DEFAULT } from '@open-design/contracts';
+import { migrateFileRevisionSnapshots } from './snapshot-storage.js';
 
 export function resolveFileRevisionRetentionLimit(
   env: NodeJS.ProcessEnv = process.env,
@@ -42,6 +43,7 @@ export interface FileRevisionInsert {
   assistantMessageId?: string | null;
 }
 
+
 export function migrateFileRevisions(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS file_revisions (
@@ -62,6 +64,7 @@ export function migrateFileRevisions(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_file_revisions_project_file
       ON file_revisions(project_id, file_name, sequence DESC);
   `);
+  migrateFileRevisionSnapshots(db);
 }
 
 function rowToRevision(row: FileRevisionRow): FileRevision {

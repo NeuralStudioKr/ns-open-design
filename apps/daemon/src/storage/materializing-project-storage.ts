@@ -11,7 +11,7 @@ import {
   type ProjectStorageProbeResult,
 } from './project-storage.js';
 import { createS3CredentialProvider } from './s3-credential-provider.js';
-import { isTeamverDaemonStateRelpath } from '../teamver-project-daemon-state-store.js';
+import { isProjectScratchSyncExcludedRelpath } from './project-scratch-sync-exclude.js';
 import { TenantScopedProjectStorage } from './tenant-scoped-project-storage.js';
 
 const DEFAULT_SYNC_UP_ATTEMPTS = 3;
@@ -149,7 +149,7 @@ export class MaterializingProjectStorage implements ProjectStorage {
     let files = 0;
     let preservedNewerLocal = 0;
     for (const file of remoteFiles) {
-      if (isTeamverDaemonStateRelpath(file.path)) continue;
+      if (isProjectScratchSyncExcludedRelpath(file.path)) continue;
       const local = localByPath.get(file.path);
       if (
         local
@@ -188,7 +188,7 @@ export class MaterializingProjectStorage implements ProjectStorage {
     relpath: string,
   ): Promise<boolean> {
     const normalized = String(relpath || '').trim().replace(/^\/+/, '');
-    if (!normalized || isTeamverDaemonStateRelpath(normalized)) return false;
+    if (!normalized || isProjectScratchSyncExcludedRelpath(normalized)) return false;
     const local = await this.scratch.statFile(projectId, normalized);
     if (local) return true;
     try {
@@ -257,6 +257,10 @@ export class MaterializingProjectStorage implements ProjectStorage {
       failed += explicit.failed;
     }
     for (const file of scratchFiles) {
+      if (isProjectScratchSyncExcludedRelpath(file.path)) {
+        skipped += 1;
+        continue;
+      }
       if (!isRunTouchedProjectFile(file.mtimeMs, runStartTimeMs)) {
         skipped += 1;
         continue;

@@ -20,6 +20,7 @@ import {
   deleteRevisionSnapshots,
   readRevisionSnapshot,
   writeRevisionSnapshot,
+  type RevisionSnapshotStoreContext,
 } from './store.js';
 
 type WriteProjectFile = (
@@ -67,6 +68,7 @@ export interface RestoreFileRevisionInput {
 
 export function createFileRevisionService(deps: FileRevisionServiceDeps) {
   const { db, projectsRoot, writeProjectFile, resolveProjectDir } = deps;
+  const snapshotContext: RevisionSnapshotStoreContext = { db };
 
   function revisionMetadataLookup(projectId: string, fileName: string) {
     return (id: string) => {
@@ -86,7 +88,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
     revisions: FileRevision[],
   ): Promise<void> {
     if (revisions.length === 0) return;
-    await deleteRevisionSnapshots(projectDir, fileName, revisions.map((revision) => revision.id));
+    await deleteRevisionSnapshots(projectDir, fileName, revisions.map((revision) => revision.id), snapshotContext);
   }
 
   async function enforceRetention(projectId: string, fileName: string, projectDir: string): Promise<void> {
@@ -125,6 +127,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         revisionId,
         (id) => getFileRevision(db, projectId, fileName, id)?.parentRevisionId ?? null,
         revisionMetadataLookup(projectId, fileName),
+        snapshotContext,
       );
       return { revision, content };
     },
@@ -163,7 +166,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         await writeRevisionSnapshot(projectDir, fileName, baselineId, beforeContent, {
           parentContent: null,
           sequence: 1,
-        });
+        }, snapshotContext);
         parent = insertFileRevision(db, {
           id: baselineId,
           projectId,
@@ -196,7 +199,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       await writeRevisionSnapshot(projectDir, fileName, revisionId, content, {
         parentContent,
         sequence,
-      });
+      }, snapshotContext);
       const revision = insertFileRevision(db, {
         id: revisionId,
         projectId,
@@ -225,6 +228,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         revisionId,
         (id) => getFileRevision(db, projectId, fileName, id)?.parentRevisionId ?? null,
         revisionMetadataLookup(projectId, fileName),
+        snapshotContext,
       );
       const file = await writeProjectFile(
         projectsRoot,

@@ -107,7 +107,7 @@ flowchart TB
 |------|------|
 | **진실 원천** | **디스크 HTML 파일** + daemon **revision 스냅샷** (설계 P1) |
 | **Undo 단위** | **Commit 단위** — manual save 1회, inspect save 1회, agent persist 1회 = revision 1개 (설계 P3) |
-| **저장 위치** | SQLite `file_revisions` + `<project>/.od/revisions/<fileName>/<id>.snap.gz` |
+| **저장 위치** | SQLite `file_revisions` + 스냅샷: `files` 모드는 `<project>/.od/revisions/…`, `sqlite` 모드는 daemon DB `file_revision_snapshots` |
 | **Undo 동작** | cursor를 이전 revision으로 이동 → `POST .../revisions/:id/restore` → 디스크 overwrite → 프리뷰 reload |
 | **Redo** | cursor를 다음 revision으로 이동 → 동일 restore |
 | **새로고침** | 서버 목록 재조회 → 스택 복원 가능 |

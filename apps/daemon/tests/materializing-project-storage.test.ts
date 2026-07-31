@@ -241,6 +241,30 @@ describe('MaterializingProjectStorage', () => {
     await expect(remoteStore.statFile('p1', 'old.txt')).resolves.toBeNull();
   });
 
+  it('sync-up skips .od/revisions snapshots even when run-touched', async () => {
+    scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-scratch-'));
+    remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-remote-'));
+
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage(remoteRoot),
+    );
+    const remote = storage.flatRemote();
+    const runStart = Date.now();
+    await storage.writeFile(
+      'p1',
+      '.od/revisions/deck.html/rev-1.snap.gz',
+      Buffer.from('snapshot'),
+    );
+
+    const up = await storage.syncUp('p1', remote, runStart);
+    expect(up.uploaded).toBe(0);
+    expect(up.skipped).toBe(1);
+
+    const remoteStore = new LocalProjectStorage(remoteRoot);
+    await expect(remoteStore.statFile('p1', '.od/revisions/deck.html/rev-1.snap.gz')).resolves.toBeNull();
+  });
+
   it('sync-up with runStart=0 deletes remote files missing from scratch when purge enabled', async () => {
     const previousPurge = process.env.OD_S3_PURGE_ON_DELETE;
     process.env.OD_S3_PURGE_ON_DELETE = '1';

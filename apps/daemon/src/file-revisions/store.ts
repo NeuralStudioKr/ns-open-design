@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
+import type Database from 'better-sqlite3';
 import type { FileRevision } from '@open-design/contracts';
 import {
   applySuffixPrefixPatch,
@@ -13,10 +14,22 @@ import {
   type RevisionSnapshotKind,
   type RevisionSnapshotPatch,
 } from './snapshot-codec.js';
+import {
+  deleteFileRevisionSnapshotsFromDb,
+  FILE_REVISION_SNAPSHOT_STORAGE,
+  getFileRevisionSnapshot,
+  type FileRevisionSnapshotStorage,
+  upsertFileRevisionSnapshot,
+} from './snapshot-storage.js';
 
 export type RevisionParentLookup = (revisionId: string) => string | null;
 
 export type RevisionMetadataLookup = (revisionId: string) => Pick<FileRevision, 'id' | 'sequence' | 'parentRevisionId'> | null;
+
+export interface RevisionSnapshotStoreContext {
+  db?: Database.Database;
+  storage?: FileRevisionSnapshotStorage;
+}
 
 function revisionDirForFile(projectDir: string, fileName: string): string {
   const normalized = fileName.replace(/\\/g, '/').replace(/^\/+/, '');
@@ -50,15 +63,56 @@ export interface WriteRevisionSnapshotResult {
   storageBytes: number;
 }
 
+function resolveStorageMode(context?: RevisionSnapshotStoreContext): FileRevisionSnapshotStorage {
+  return context?.storage ?? FILE_REVISION_SNAPSHOT_STORAGE;
+}
+
+async function readCompressedFromFiles(
+  projectDir: string,
+  fileName: string,
+  revisionId: string,
+): Promise<Buffer | null> {
+  const compressedPath = compressedSnapshotPath(projectDir, fileName, revisionId);
+  if (await pathExists(compressedPath)) {
+    return await readFile(compressedPath);
+  }
+  const legacyPath = legacySnapshotPath(projectDir, fileName, revisionId);
+  if (await pathExists(legacyPath)) {
+    const content = await readFile(legacyPath, 'utf8');
+    return gzipRevisionSnapshot(content, { parentContent: null, forceFull: true }).compressed;
+  }
+  return null;
+}
+
+async function readCompressedSnapshot(
+  projectDir: string,
+  fileName: string,
+  revisionId: string,
+  context?: RevisionSnapshotStoreContext,
+): Promise<Buffer | null> {
+  const mode = resolveStorageMode(context);
+  const db = context?.db;
+  if (mode === 'sqlite' && db) {
+    const fromDb = getFileRevisionSnapshot(db, revisionId);
+    if (fromDb) return fromDb;
+    return await readCompressedFromFiles(projectDir, fileName, revisionId);
+  }
+  const fromFiles = await readCompressedFromFiles(projectDir, fileName, revisionId);
+  if (fromFiles) return fromFiles;
+  if (db) {
+    return getFileRevisionSnapshot(db, revisionId);
+  }
+  return null;
+}
+
 export async function writeRevisionSnapshot(
   projectDir: string,
   fileName: string,
   revisionId: string,
   content: string,
   options?: WriteRevisionSnapshotOptions,
+  context?: RevisionSnapshotStoreContext,
 ): Promise<WriteRevisionSnapshotResult> {
-  const target = compressedSnapshotPath(projectDir, fileName, revisionId);
-  await mkdir(path.dirname(target), { recursive: true });
   const interval = resolveFullSnapshotInterval();
   const forceFull = options?.sequence != null
     ? shouldForceFullSnapshot(options.sequence, interval)
@@ -67,8 +121,26 @@ export async function writeRevisionSnapshot(
     parentContent: options?.parentContent ?? null,
     forceFull,
   });
+  const mode = resolveStorageMode(context);
+  const db = context?.db;
+
+  if (mode === 'sqlite' && db) {
+    upsertFileRevisionSnapshot(db, revisionId, encoded.compressed);
+    await rm(compressedSnapshotPath(projectDir, fileName, revisionId), { force: true });
+    await rm(legacySnapshotPath(projectDir, fileName, revisionId), { force: true });
+    return {
+      kind: encoded.kind,
+      storageBytes: encoded.compressed.length,
+    };
+  }
+
+  const target = compressedSnapshotPath(projectDir, fileName, revisionId);
+  await mkdir(path.dirname(target), { recursive: true });
   await writeFile(target, encoded.compressed);
   await rm(legacySnapshotPath(projectDir, fileName, revisionId), { force: true });
+  if (db) {
+    deleteFileRevisionSnapshotsFromDb(db, [revisionId]);
+  }
   return {
     kind: encoded.kind,
     storageBytes: encoded.compressed.length,
@@ -79,27 +151,20 @@ async function readSnapshotPayload(
   projectDir: string,
   fileName: string,
   revisionId: string,
+  context?: RevisionSnapshotStoreContext,
 ): Promise<{ kind: 'full'; content: string } | { kind: 'diff'; patch: RevisionSnapshotPatch }> {
-  const compressedPath = compressedSnapshotPath(projectDir, fileName, revisionId);
-  if (await pathExists(compressedPath)) {
-    const compressed = await readFile(compressedPath);
-    const decoded = decodePayload(gunzipSync(compressed));
-    if (decoded.kind === 'full') {
-      return { kind: 'full', content: decoded.content ?? '' };
-    }
-    if (!decoded.patch) {
-      throw new Error(`Revision ${revisionId} diff payload is missing patch body`);
-    }
-    return { kind: 'diff', patch: decoded.patch };
+  const compressed = await readCompressedSnapshot(projectDir, fileName, revisionId, context);
+  if (!compressed) {
+    throw Object.assign(new Error(`Revision snapshot not found: ${revisionId}`), { code: 'ENOENT' });
   }
-
-  const legacyPath = legacySnapshotPath(projectDir, fileName, revisionId);
-  if (await pathExists(legacyPath)) {
-    const content = await readFile(legacyPath, 'utf8');
-    return { kind: 'full', content };
+  const decoded = decodePayload(gunzipSync(compressed));
+  if (decoded.kind === 'full') {
+    return { kind: 'full', content: decoded.content ?? '' };
   }
-
-  throw Object.assign(new Error(`Revision snapshot not found: ${revisionId}`), { code: 'ENOENT' });
+  if (!decoded.patch) {
+    throw new Error(`Revision ${revisionId} diff payload is missing patch body`);
+  }
+  return { kind: 'diff', patch: decoded.patch };
 }
 
 /** Oldest-first chain from nearest full checkpoint through target (inclusive). */
@@ -122,13 +187,14 @@ export async function readRevisionSnapshotFromChain(
   projectDir: string,
   fileName: string,
   chainOldestFirst: Array<Pick<FileRevision, 'id'>>,
+  context?: RevisionSnapshotStoreContext,
 ): Promise<string> {
   if (chainOldestFirst.length === 0) {
     throw new Error('Revision snapshot chain is empty');
   }
   let content = '';
   for (const revision of chainOldestFirst) {
-    const payload = await readSnapshotPayload(projectDir, fileName, revision.id);
+    const payload = await readSnapshotPayload(projectDir, fileName, revision.id, context);
     if (payload.kind === 'full') {
       content = payload.content;
     } else {
@@ -144,6 +210,7 @@ export async function readRevisionSnapshot(
   revisionId: string,
   getParentRevisionId: RevisionParentLookup,
   getRevisionMetadata?: RevisionMetadataLookup,
+  context?: RevisionSnapshotStoreContext,
 ): Promise<string> {
   if (getRevisionMetadata) {
     const ancestry: Array<Pick<FileRevision, 'id' | 'sequence'>> = [];
@@ -158,7 +225,7 @@ export async function readRevisionSnapshot(
       currentId = revision.parentRevisionId;
     }
     const chain = sliceRevisionChainFromCheckpoint(ancestry);
-    return readRevisionSnapshotFromChain(projectDir, fileName, chain);
+    return readRevisionSnapshotFromChain(projectDir, fileName, chain, context);
   }
 
   const cache = new Map<string, string>();
@@ -167,7 +234,7 @@ export async function readRevisionSnapshot(
     const cached = cache.get(id);
     if (cached != null) return cached;
 
-    const payload = await readSnapshotPayload(projectDir, fileName, id);
+    const payload = await readSnapshotPayload(projectDir, fileName, id, context);
     if (payload.kind === 'full') {
       cache.set(id, payload.content);
       return payload.content;
@@ -189,15 +256,21 @@ export async function deleteRevisionSnapshot(
   projectDir: string,
   fileName: string,
   revisionId: string,
+  context?: RevisionSnapshotStoreContext,
 ): Promise<void> {
   await rm(compressedSnapshotPath(projectDir, fileName, revisionId), { force: true });
   await rm(legacySnapshotPath(projectDir, fileName, revisionId), { force: true });
+  if (context?.db) {
+    deleteFileRevisionSnapshotsFromDb(context.db, [revisionId]);
+  }
 }
 
 export async function deleteRevisionSnapshots(
   projectDir: string,
   fileName: string,
   revisionIds: string[],
+  context?: RevisionSnapshotStoreContext,
 ): Promise<void> {
-  await Promise.all(revisionIds.map((revisionId) => deleteRevisionSnapshot(projectDir, fileName, revisionId)));
+  if (revisionIds.length === 0) return;
+  await Promise.all(revisionIds.map((revisionId) => deleteRevisionSnapshot(projectDir, fileName, revisionId, context)));
 }

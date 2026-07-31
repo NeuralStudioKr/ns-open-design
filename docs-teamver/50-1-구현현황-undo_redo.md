@@ -28,7 +28,8 @@
 |------|------|------|
 | `packages/contracts/src/api/revisions.ts` | [x] | |
 | SQLite `file_revisions` 테이블 | [x] | `migrateFileRevisions` |
-| Snapshot 디렉터리 `.od/revisions/` | [x] | `file-revisions/store.ts` |
+| Snapshot 디렉터리 `.od/revisions/` | [x] | `file-revisions/store.ts` (기본 `files`) |
+| SQLite `file_revision_snapshots` BLOB | [x] | `OD_FILE_REVISION_SNAPSHOT_STORAGE=sqlite` 시 daemon DB에만 저장 |
 | `GET/POST .../revisions` API | [x] | `project-routes.ts` |
 | `POST .../revisions/:id/restore` | [x] | |
 | `RevisionController` (web) | [x] | `revision-stack.ts` + FileViewer 연동 |
@@ -141,6 +142,7 @@
 | nested markup (inline salvage + flattenNestedMarkup) | [x] |
 | revision content cache + reconcile skip + prefetch | [x] | `revision-content-cache.ts` — LRU 8 entries, 16MB/파일, 4MB/항목, prefetch `byteSize` skip |
 | `OD_FILE_REVISION_RETENTION_LIMIT` env | [x] | daemon `resolveFileRevisionRetentionLimit()` |
+| `OD_FILE_REVISION_SNAPSHOT_STORAGE` env | [x] | `files` (기본) \| `sqlite` — Teamver 권장: `sqlite` |
 | History panel retention hint | [x] | i18n `fileRevision.history.retentionHint` |
 | List API `retentionLimit` → History 패널 | [x] | daemon list 응답, 하드코드 제거 |
 | 충돌 토스트는 head ≠ disk일 때만 | [x] | cursor만 어긋나면 조용히 reset |
