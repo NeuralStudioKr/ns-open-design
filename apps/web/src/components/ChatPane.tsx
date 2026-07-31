@@ -54,6 +54,8 @@ import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-gu
 import {
   formatProjectRunDeliverableMissingError,
   formatProjectRunErrorForUser,
+  userFacingRunErrorDetail,
+  extractPersistedRunErrorDiagnostic,
 } from '../teamver/projectErrorMessages';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
 import { isVisualCommentAttachment } from '../edit-mode/scoped-deck-patch';
@@ -1040,11 +1042,16 @@ export function ChatPane({
           }),
         ))
       : null);
-  const displayError = runFailureUi?.messageKey ? t(runFailureUi.messageKey) : rawError;
+  const displayError = runFailureUi?.messageKey
+    ? t(runFailureUi.messageKey)
+    : userFacingRunErrorDetail(rawError);
+  const persistDiagnostic = extractPersistedRunErrorDiagnostic(rawError);
   const errorDiagnosticText = displayError
     ? buildRunErrorDiagnosticText({
         message: displayError,
-        rawMessage: rawError,
+        rawMessage: persistDiagnostic
+          ? `${displayError}\n\n${persistDiagnostic}`
+          : rawError,
         errorCode: failedRunErrorEvent?.code ?? diagnosticRunErrorEvent?.code,
         traceId: diagnosticAssistant?.runId,
         runId: diagnosticAssistant?.runId,
@@ -2579,18 +2586,21 @@ function ChatRows({
       }
       // Legacy / race rows may be failed without a durable status:error —
       // still show an inline card so hard reload does not hide the failure.
-      const detail = errorEvent?.detail?.trim()
+      const detail = userFacingRunErrorDetail(
+        errorEvent?.detail?.trim()
         || formatProjectRunErrorForUser(
           Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
             code: 'AGENT_EXECUTION_FAILED',
           }),
-        );
+        ),
+      );
+      const persistDiagnostic = extractPersistedRunErrorDiagnostic(errorEvent?.detail);
       const errorCode = errorEvent?.code ?? 'AGENT_EXECUTION_FAILED';
       cards.set(message.id, {
         message: detail,
         diagnosticText: buildRunErrorDiagnosticText({
           message: detail,
-          rawMessage: detail,
+          rawMessage: persistDiagnostic ? `${detail}\n\n${persistDiagnostic}` : detail,
           errorCode,
           traceId: message.runId,
           runId: message.runId,

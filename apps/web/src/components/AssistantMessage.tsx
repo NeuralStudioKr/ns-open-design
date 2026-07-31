@@ -7,6 +7,7 @@ import {
 } from "../runtime/markdown";
 import { asInProjectFilePath } from "../runtime/in-project-link";
 import { projectFileUrl } from "../providers/registry";
+import { userFacingRunErrorDetail } from "../teamver/projectErrorMessages";
 import { useAnalytics } from "../analytics/provider";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
 import {
@@ -935,7 +936,9 @@ function AssistantMessageImpl({
             const statusDetail =
               hideAssistantModelLabels && b.label !== "error" && b.label !== "warning"
                 ? undefined
-                : b.detail;
+                : b.label === "error"
+                  ? userFacingRunErrorDetail(b.detail)
+                  : b.detail;
             const statusLabel = teamverEmbedEnabled
               ? (b.label === "error" ? "오류" : b.label === "warning" ? "안내" : b.label)
               : b.label;

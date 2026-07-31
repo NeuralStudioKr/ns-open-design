@@ -172,49 +172,68 @@ export function formatProjectArtifactStubWarning(fileName: string, message: stri
     : `Saved "${fileName}", but the model may have shipped a placeholder: ${message}`;
 }
 
-/** Terminal run finished but no previewable HTML deck landed on disk. */
-/**
- * "결과물이 생성되지 않았습니다" banner. Auto-continue paths (fresh
- * deck generation, scoped edit intent-violation, incomplete-shell
- * skipped) all end up here once emergency recovery declines and the
- * automatic-continue budget is exhausted. Optional `detail` surfaces
- * the terminal persist-result kind (and reason when we have one) so
- * users can share it in bug reports without needing browser console
- * access — mirrors `formatProjectArtifactCommentScopeRejectedError`.
- *
- * Detail examples:
- *   - `terminalPersistResultKind=skipped-incomplete` — model produced
- *     an incomplete shell, auto-continue exhausted.
- *   - `terminalPersistResultKind=rejected reason=<validation reason>`
- *     — model produced malformed HTML, retries exhausted.
- *   - `terminalPersistResultKind=null` — model produced no artifact
- *     at all and emergency recovery could not synthesize one.
- */
-export function formatProjectRunDeliverableMissingError(detail?: {
+const RUN_ERROR_DIAG_MARKER_START = '<!--od-run-error-diag:';
+const RUN_ERROR_DIAG_MARKER_END = '-->';
+
+/** User-facing copy when a slide run finished without a saved HTML deliverable. */
+export function formatProjectRunDeliverableMissingError(): string {
+  return isTeamverEmbedMode()
+    ? '슬라이드 결과물이 생성되지 않았습니다. 응답이 중간에 끊겼거나 HTML 파일이 저장되지 않았습니다. 이어서 다시 시도하세요.'
+    : 'The slide deliverable was not created. The response may have been cut off — please try again.';
+}
+
+/** Ops-only persist diagnostic — never shown in the chat banner. */
+export function formatProjectRunDeliverablePersistDiagnostic(detail?: {
   kind?: string | null;
   reason?: string | null;
-}): string {
-  // The kind label used below is intentionally verbose so a copy-pasted
-  // banner from a user report already carries the diagnostic bucket.
-  // Values we expect: 'skipped-incomplete', 'rejected', 'scope-rejected'
-  // (surfaced via a different formatter), 'no-artifact' (synthetic —
-  // null-kind means the model never produced a persistable artifact).
-  //
-  // When called with no arg (legacy shape), we return the plain banner
-  // WITHOUT any diagnostic suffix — a lot of existing callers still use
-  // that form and their copy shape should stay stable.
+}): string | null {
+  if (!detail) return null;
   const parts: string[] = [];
-  if (detail) {
-    const rawKind = detail.kind == null ? 'no-artifact' : String(detail.kind).trim();
-    const kind = rawKind || 'no-artifact';
-    const reason = String(detail.reason ?? '').trim();
-    if (kind) parts.push(`terminalPersistResultKind=${kind}`);
-    if (reason) parts.push(`reason=${reason}`);
+  const rawKind = detail.kind == null ? 'no-artifact' : String(detail.kind).trim();
+  const kind = rawKind || 'no-artifact';
+  const reason = String(detail.reason ?? '').trim();
+  if (kind) parts.push(`terminalPersistResultKind=${kind}`);
+  if (reason) parts.push(`reason=${reason}`);
+  return parts.length > 0 ? parts.join(' ') : null;
+}
+
+/** Persist user copy + hidden diagnostic tail for the copy-diagnostics button. */
+export function encodePersistedRunErrorDetail(
+  userMessage: string,
+  diagnostic?: { kind?: string | null; reason?: string | null },
+): string {
+  const diag = formatProjectRunDeliverablePersistDiagnostic(diagnostic);
+  if (!diag) return userMessage;
+  return `${userMessage}${RUN_ERROR_DIAG_MARKER_START}${diag}${RUN_ERROR_DIAG_MARKER_END}`;
+}
+
+/** Strip hidden diagnostic markers (and legacy inline suffixes) for UI display. */
+export function userFacingRunErrorDetail(detail: string | null | undefined): string {
+  const value = String(detail ?? '');
+  const markerStart = value.indexOf(RUN_ERROR_DIAG_MARKER_START);
+  const withoutMarker = markerStart >= 0 ? value.slice(0, markerStart).trimEnd() : value;
+  return withoutMarker.replace(
+    /\s*\(terminalPersistResultKind=[^)]*\)\s*$/,
+    '',
+  ).trimEnd();
+}
+
+/** Recover ops diagnostic text from a persisted status detail string. */
+export function extractPersistedRunErrorDiagnostic(
+  detail: string | null | undefined,
+): string | null {
+  const value = String(detail ?? '');
+  const markerStart = value.indexOf(RUN_ERROR_DIAG_MARKER_START);
+  if (markerStart >= 0) {
+    const from = markerStart + RUN_ERROR_DIAG_MARKER_START.length;
+    const markerEnd = value.indexOf(RUN_ERROR_DIAG_MARKER_END, from);
+    if (markerEnd > from) {
+      const extracted = value.slice(from, markerEnd).trim();
+      return extracted || null;
+    }
   }
-  const suffix = parts.length > 0 ? ` (${parts.join(' ')})` : '';
-  return isTeamverEmbedMode()
-    ? `슬라이드 결과물이 생성되지 않았습니다. 응답이 중간에 끊겼거나 HTML 파일이 저장되지 않았습니다. 이어서 다시 시도하세요.${suffix}`
-    : `The slide deliverable was not created. The response may have been cut off — please try again.${suffix}`;
+  const legacy = /\((terminalPersistResultKind=[^)]+)\)\s*$/.exec(value);
+  return legacy?.[1]?.trim() ?? null;
 }
 
 /**

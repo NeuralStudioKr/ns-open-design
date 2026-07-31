@@ -102,6 +102,26 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(isAutoContinueIncompleteOutputPrompt(scoped)).toBe(true);
   });
 
+  it('uses deck-patch guidance for visual-mark-only scoped retries', () => {
+    const visual = resolveAutoContinuePrompt({
+      commentAttachmentCount: 1,
+      visualMarkOnly: true,
+      incompleteOutput: { attempt: 2 },
+      scopedCommentEditFailureReason:
+        'no <section class="slide"> blocks in deck-patch body',
+      scopedUserInstruction: '여기에 이렇게 하트 도형 넣어줘',
+      concretePatchTemplate:
+        '<artifact type="deck-patch" identifier="deck">\n'
+        + '  <section class="slide" data-slide-index="1"></section>\n'
+        + '</artifact>',
+    });
+    expect(visual).toContain('deck-patch');
+    expect(visual).toContain('시각 마크');
+    expect(visual).not.toContain('element-patch');
+    expect(visual).toContain('하트');
+    expect(visual).toContain('no <section class="slide"> blocks in deck-patch body');
+  });
+
   it('keeps the generic full-deck auto-continue prompt when no comment attachments exist', () => {
     const generic = resolveAutoContinuePrompt({
       commentAttachmentCount: 0,

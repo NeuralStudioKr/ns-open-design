@@ -366,6 +366,7 @@ import {
   formatProjectArtifactStubWarning,
   formatProjectArtifactCommentScopeRejectedError,
   formatProjectRunDeliverableMissingError,
+  encodePersistedRunErrorDetail,
   formatAutoContinueIncompleteOutputNotice,
   formatEmergencyDeckFallbackNotice,
   extractProjectRunErrorCode,
@@ -3385,6 +3386,9 @@ export function ProjectView({
                   : null;
               const autoContinuePrompt = resolveAutoContinuePrompt({
                 commentAttachmentCount: autoContinueCommentAttachments.length,
+                visualMarkOnly:
+                  autoContinueCommentAttachments.length > 0
+                  && !hasElementScopedCommentAttachments(autoContinueCommentAttachments),
                 scopedCommentContext,
                 scopedUserInstruction: autoContinueOriginUser
                   ? stripUserVisibleUserMessageText(autoContinueOriginUser.content).trim()
@@ -6289,13 +6293,16 @@ export function ProjectView({
                     );
                     if (shouldFailRunForArtifactPersistResult(replayPersistResult)) {
                       const endedAt = Date.now();
-                      const detail = formatProjectRunDeliverableMissingError({
-                        kind: replayPersistResult?.kind ?? null,
-                        reason:
-                          replayPersistResult && 'reason' in replayPersistResult
-                            ? replayPersistResult.reason ?? null
-                            : null,
-                      });
+                      const detail = encodePersistedRunErrorDetail(
+                        formatProjectRunDeliverableMissingError(),
+                        {
+                          kind: replayPersistResult?.kind ?? null,
+                          reason:
+                            replayPersistResult && 'reason' in replayPersistResult
+                              ? replayPersistResult.reason ?? null
+                              : null,
+                        },
+                      );
                       updateMessageById(
                         message.id,
                         (prev) => ({
@@ -6970,6 +6977,9 @@ export function ProjectView({
                 : null;
             const autoContinuePrompt = resolveAutoContinuePrompt({
               commentAttachmentCount: autoContinueCommentAttachments.length,
+              visualMarkOnly:
+                autoContinueCommentAttachments.length > 0
+                && !hasElementScopedCommentAttachments(autoContinueCommentAttachments),
               scopedCommentContext,
               scopedUserInstruction: autoContinueOriginUser
                 ? stripUserVisibleUserMessageText(autoContinueOriginUser.content).trim()
@@ -7900,13 +7910,16 @@ export function ProjectView({
                         terminalPersistResult.fileName || 'untitled',
                         terminalPersistResult.reason,
                       )
-                  : formatProjectRunDeliverableMissingError({
-                      kind: terminalPersistResult?.kind ?? null,
-                      reason:
-                        terminalPersistResult && 'reason' in terminalPersistResult
-                          ? terminalPersistResult.reason ?? null
-                          : null,
-                    });
+                  : encodePersistedRunErrorDetail(
+                      formatProjectRunDeliverableMissingError(),
+                      {
+                        kind: terminalPersistResult?.kind ?? null,
+                        reason:
+                          terminalPersistResult && 'reason' in terminalPersistResult
+                            ? terminalPersistResult.reason ?? null
+                            : null,
+                      },
+                    );
               const deliverableErrorCode = terminalPersistResult?.kind === 'scope-rejected'
                 ? terminalPersistResult.code
                 : terminalPersistResult?.kind === 'artifact-regression'
@@ -8136,6 +8149,9 @@ export function ProjectView({
                       : null;
                   const autoContinuePrompt = resolveAutoContinuePrompt({
                     commentAttachmentCount: autoContinueCommentAttachments.length,
+                    visualMarkOnly:
+                      autoContinueCommentAttachments.length > 0
+                      && !hasElementScopedCommentAttachments(autoContinueCommentAttachments),
                     scopedCommentEditFailureReason: scopedFailureReason,
                     scopedCommentContext,
                     scopedUserInstruction,

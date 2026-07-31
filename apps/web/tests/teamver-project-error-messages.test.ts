@@ -60,6 +60,9 @@ describe("project conversation error messages", () => {
       formatProjectArtifactSaveFailedError,
       formatProjectArtifactStubWarning,
       formatProjectRunDeliverableMissingError,
+      encodePersistedRunErrorDetail,
+      userFacingRunErrorDetail,
+      extractPersistedRunErrorDiagnostic,
       formatAutoContinueIncompleteOutputNotice,
       extractProjectRunErrorCode,
       formatProjectRunErrorForUser,
@@ -81,34 +84,24 @@ describe("project conversation error messages", () => {
     expect(formatProjectArtifactCommentScopeRejectedError()).not.toContain("사유:");
     expect(formatProjectArtifactSaveFailedError("deck.html")).toContain("저장에 실패");
     expect(formatProjectRunDeliverableMissingError()).toContain("슬라이드 결과물");
-    // No detail arg → no suffix (preserves the older UI copy) so historic
-    // callers keep matching this shape via `toContain("슬라이드 결과물")`
-    // without a diagnostic tail.
     expect(formatProjectRunDeliverableMissingError()).not.toContain("terminalPersistResultKind=");
-    // Detail with a kind → appended diagnostic suffix so copy-pasted bug
-    // reports carry the failure bucket. Uses the same `(...)` parenthetical
-    // as `formatProjectArtifactCommentScopeRejectedError` for consistency.
-    const missingWithKind = formatProjectRunDeliverableMissingError({ kind: "skipped-incomplete" });
-    expect(missingWithKind).toContain("terminalPersistResultKind=skipped-incomplete");
-    // Null kind resolves to a synthetic "no-artifact" label — the model
-    // produced no persistable artifact at all (persist call was never
-    // made). Distinct from "kind=skipped-incomplete" (persist was called
-    // but returned incomplete-shell skip) so triage can distinguish them.
-    const missingNoKind = formatProjectRunDeliverableMissingError({ kind: null });
-    expect(missingNoKind).toContain("terminalPersistResultKind=no-artifact");
-    // Detail with reason ONLY (no kind) still appends the reason so a
-    // caller that already has the reason but not the kind is not silently
-    // dropped. Reason falls back to no-artifact label like the null case.
-    const missingReasonOnly = formatProjectRunDeliverableMissingError({ reason: "invalid html" });
-    expect(missingReasonOnly).toContain("reason=invalid html");
-    // Detail with both kind + reason includes both so triage sees the
-    // full bucket + specific reason without needing browser console.
-    const missingBoth = formatProjectRunDeliverableMissingError({
-      kind: "rejected",
-      reason: "empty deck-patch artifact",
+    const encoded = encodePersistedRunErrorDetail(formatProjectRunDeliverableMissingError(), {
+      kind: "skipped-incomplete",
+      reason: "no <section class=\"slide\"> blocks in deck-patch body",
     });
-    expect(missingBoth).toContain("terminalPersistResultKind=rejected");
-    expect(missingBoth).toContain("reason=empty deck-patch artifact");
+    expect(userFacingRunErrorDetail(encoded)).toBe(formatProjectRunDeliverableMissingError());
+    expect(extractPersistedRunErrorDiagnostic(encoded)).toContain(
+      "terminalPersistResultKind=skipped-incomplete",
+    );
+    expect(extractPersistedRunErrorDiagnostic(encoded)).toContain(
+      "reason=no <section class=\"slide\"> blocks in deck-patch body",
+    );
+    const legacy =
+      '슬라이드 결과물이 생성되지 않았습니다. (terminalPersistResultKind=skipped-incomplete reason=empty)';
+    expect(userFacingRunErrorDetail(legacy)).not.toContain("terminalPersistResultKind=");
+    expect(extractPersistedRunErrorDiagnostic(legacy)).toContain(
+      "terminalPersistResultKind=skipped-incomplete",
+    );
     expect(formatAutoContinueIncompleteOutputNotice()).toContain("자동으로 이어쓰기");
     // Generic fallback must never leak developer / infra jargon to end users.
     const generic = formatProjectArtifactSaveFailedError("deck.html");

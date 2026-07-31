@@ -905,7 +905,8 @@ export function buildConcreteDeckPatchTemplateForVisualMarks(
     blocks.push(
       '<artifact type="deck-patch" identifier="deck">',
       `  <section class="slide" data-slide-index="${slideIndex}">`,
-      '    <!-- Replace this slide section to satisfy the marked region and comment -->',
+      '    <!-- Replace this entire slide section. Use the screenshot annotation for placement.',
+      '         For shapes/hearts, add inline SVG or appropriate markup inside the slide. -->',
       '  </section>',
       '</artifact>',
     );

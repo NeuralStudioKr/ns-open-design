@@ -5,6 +5,10 @@ import { forwardRef, useImperativeHandle } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ChatPane, buildRunErrorDiagnosticText, retryableAssistantMessage } from '../../src/components/ChatPane';
+import {
+  encodePersistedRunErrorDetail,
+  formatProjectRunDeliverableMissingError,
+} from '../../src/teamver/projectErrorMessages';
 import { DESIGN_SYSTEM_WORKSPACE_PROMPT_PREFIX } from '../../src/design-system-auto-prompt';
 import { readExpandedIndexCss } from '../helpers/read-expanded-css';
 import type { ChatMessage, Conversation, ProjectMetadata } from '../../src/types';
@@ -378,8 +382,11 @@ describe('ChatPane streaming state', () => {
   });
 
   it('prefers persisted error event detail over ephemeral error prop for the tail card', () => {
-    const durableDetail =
-      '슬라이드 결과물이 생성되지 않았습니다. (terminalPersistResultKind=skipped-incomplete)';
+    const durableDetail = encodePersistedRunErrorDetail(
+      formatProjectRunDeliverableMissingError(),
+      { kind: 'skipped-incomplete' },
+    );
+    const userFacingDetail = formatProjectRunDeliverableMissingError();
     const messages: ChatMessage[] = [
       { id: 'user-1', role: 'user', content: '이모지 넣어줘', createdAt: 0 },
       {
@@ -421,7 +428,7 @@ describe('ChatPane streaming state', () => {
       />,
     );
 
-    expect(screen.getByText(durableDetail)).toBeTruthy();
+    expect(screen.getByText(userFacingDetail)).toBeTruthy();
     expect(
       screen.queryByText('슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.'),
     ).toBeNull();

@@ -25,6 +25,7 @@ export function shouldRouteScopedCommentEditToAutoContinue(
 
   if (code === 'deck_patch_parse_failed') {
     return (
+      normalized === 'no <section class="slide"> blocks in deck-patch body' ||
       normalized.startsWith('element-patch <patch> missing slide-index') ||
       normalized.startsWith('element-patch <patch> missing target-id') ||
       normalized.startsWith('element-patch could not parse ') ||

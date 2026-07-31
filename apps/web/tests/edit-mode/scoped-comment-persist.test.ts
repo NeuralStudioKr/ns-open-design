@@ -59,6 +59,15 @@ describe('shouldRouteScopedCommentEditToAutoContinue', () => {
     ).toBe(true);
   });
 
+  it('routes empty deck-patch parse failures to auto-continue', () => {
+    expect(
+      shouldRouteScopedCommentEditToAutoContinue(
+        'deck_patch_parse_failed',
+        'no <section class="slide"> blocks in deck-patch body',
+      ),
+    ).toBe(true);
+  });
+
   it('does not route non-recoverable failures', () => {
     expect(
       shouldRouteScopedCommentEditToAutoContinue(
