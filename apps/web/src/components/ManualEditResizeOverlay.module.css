@@ -33,6 +33,14 @@
   touch-action: none;
 }
 
+/* Invisible hit slop so edge grabs prefer resize over body-move. */
+.handle::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  pointer-events: auto;
+}
+
 .handle::after {
   content: '';
   position: absolute;
@@ -40,6 +48,11 @@
   background: #2563eb;
   border-radius: 1px;
   pointer-events: none;
+}
+
+.handle[aria-disabled='true'] {
+  pointer-events: none;
+  opacity: 0.45;
 }
 
 .handle:focus-visible {
