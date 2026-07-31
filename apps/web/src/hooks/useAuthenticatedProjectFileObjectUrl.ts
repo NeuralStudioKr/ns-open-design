@@ -16,6 +16,22 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function revokeObjectUrl(url: string | null): void {
+  if (url) URL.revokeObjectURL(url);
+}
+
+async function readResponseImageBlob(resp: Response): Promise<Blob> {
+  if (typeof resp.arrayBuffer === 'function') {
+    return new Blob([await resp.arrayBuffer()], {
+      type: resp.headers?.get?.('content-type') || '',
+    });
+  }
+  if (typeof resp.blob === 'function') {
+    return await resp.blob();
+  }
+  throw new Error('response body unavailable');
+}
+
 /**
  * Fetch a project raw file as an image blob with bounded retry.
  *
@@ -63,7 +79,7 @@ export async function loadAuthenticatedProjectFileBlob(
         return null;
       }
       if (!resp.ok) continue;
-      const rawBlob = await resp.blob();
+      const rawBlob = await readResponseImageBlob(resp);
       const blob = await normalizeFetchedImageBlob(rawBlob);
       if (!blob) continue;
       clearProjectRawFileMissing(id, path);
@@ -92,28 +108,35 @@ export function useAuthenticatedProjectFileObjectUrl(
   useEffect(() => {
     const path = String(filePath || '').trim();
     if (!projectId || !path) {
-      setObjectUrl(null);
+      setObjectUrl((prev) => {
+        revokeObjectUrl(prev);
+        return null;
+      });
       return;
     }
 
     let cancelled = false;
-    let revokeUrl: string | null = null;
 
     void (async () => {
       const blob = await loadAuthenticatedProjectFileBlob(projectId, path, { trustExists });
       if (cancelled || !blob) return;
-      revokeUrl = URL.createObjectURL(blob);
+      const nextUrl = URL.createObjectURL(blob);
       if (cancelled) {
-        URL.revokeObjectURL(revokeUrl);
+        revokeObjectUrl(nextUrl);
         return;
       }
-      setObjectUrl(revokeUrl);
+      setObjectUrl((prev) => {
+        revokeObjectUrl(prev);
+        return nextUrl;
+      });
     })();
 
     return () => {
       cancelled = true;
-      if (revokeUrl) URL.revokeObjectURL(revokeUrl);
-      setObjectUrl(null);
+      setObjectUrl((prev) => {
+        revokeObjectUrl(prev);
+        return null;
+      });
     };
   }, [filePath, projectId, rev, trustExists]);
 

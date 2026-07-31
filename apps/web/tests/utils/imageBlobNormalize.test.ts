@@ -11,8 +11,14 @@ describe('sniffImageMime', () => {
 });
 
 describe('normalizeFetchedImageBlob', () => {
-  it('keeps image/* blobs unchanged', async () => {
+  it('keeps image/* blobs unchanged when magic bytes match', async () => {
     const input = new Blob([PNG_HEADER], { type: 'image/png' });
+    const out = await normalizeFetchedImageBlob(input);
+    expect(out?.type).toBe('image/png');
+  });
+
+  it('repairs PNG bytes when the server declares the wrong image/* subtype', async () => {
+    const input = new Blob([PNG_HEADER, 0x01], { type: 'image/jpeg' });
     const out = await normalizeFetchedImageBlob(input);
     expect(out?.type).toBe('image/png');
   });

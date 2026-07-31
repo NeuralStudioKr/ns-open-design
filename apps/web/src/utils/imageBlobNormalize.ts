@@ -27,17 +27,20 @@ export function sniffImageMime(bytes: Uint8Array): string | null {
 /**
  * Normalize a fetched raw file body into an image blob the browser can render.
  * Teamver/S3 responses sometimes return valid PNG bytes with a non-image MIME
- * (or none), which made `<img>` show only alt text after blob URL creation failed.
+ * (or the wrong image/* subtype), which made `<img>` show only alt text.
  */
 export async function normalizeFetchedImageBlob(blob: Blob): Promise<Blob | null> {
   if (blob.size <= 0) return null;
-  const mime = String(blob.type || '').toLowerCase();
-  if (mime.startsWith('image/')) return blob;
 
+  const mime = String(blob.type || '').toLowerCase();
   const buffer = await blob.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   const sniffed = sniffImageMime(bytes);
-  if (sniffed) return new Blob([buffer], { type: sniffed });
+  if (sniffed) {
+    if (sniffed === mime) return blob;
+    return new Blob([buffer], { type: sniffed });
+  }
+  if (mime.startsWith('image/')) return blob;
 
   if (mime === '' || mime === 'application/octet-stream') {
     // Last resort: let the browser try opaque bytes (some gateways strip MIME).

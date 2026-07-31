@@ -396,6 +396,8 @@ function ChatArtifactPreview({
         projectId={projectId}
         path={file.name}
         alt=""
+        rev={Math.round(file.mtime)}
+        trustExists
       />
     );
   }
