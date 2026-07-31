@@ -318,6 +318,36 @@ describe('MaterializingProjectStorage', () => {
       else process.env.OD_S3_PURGE_ON_DELETE = previousPurge;
     }
   });
+
+  it('sync-up propagates explicit user deletes to remote when OD_S3_PURGE_ON_DELETE=0', async () => {
+    const previousPurge = process.env.OD_S3_PURGE_ON_DELETE;
+    process.env.OD_S3_PURGE_ON_DELETE = '0';
+    scratchRoot = await mkdtemp(path.join(tmpdir(), 'od-scratch-'));
+    remoteRoot = await mkdtemp(path.join(tmpdir(), 'od-remote-'));
+
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage(scratchRoot),
+      new LocalProjectStorage(remoteRoot),
+    );
+    const remote = storage.flatRemote();
+    const remoteStore = new LocalProjectStorage(remoteRoot);
+
+    await remoteStore.writeFile('p1', 'drawing-screenshot.png', Buffer.from('png'));
+    await storage.writeFile('p1', 'deck.html', Buffer.from('<html></html>'));
+
+    try {
+      const up = await storage.syncUp('p1', remote, 0, {
+        explicitDeletedPaths: ['drawing-screenshot.png'],
+      });
+      expect(up.deleted).toBe(1);
+      expect(up.failed).toBe(0);
+      await expect(remoteStore.statFile('p1', 'drawing-screenshot.png')).resolves.toBeNull();
+      await expect(remoteStore.statFile('p1', 'deck.html')).resolves.not.toBeNull();
+    } finally {
+      if (previousPurge === undefined) delete process.env.OD_S3_PURGE_ON_DELETE;
+      else process.env.OD_S3_PURGE_ON_DELETE = previousPurge;
+    }
+  });
 });
 
 describe('TenantScopedProjectStorage', () => {

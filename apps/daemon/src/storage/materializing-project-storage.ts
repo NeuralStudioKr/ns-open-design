@@ -85,6 +85,11 @@ export function shouldPropagateScratchDeletionsToRemote(scratchFileCount: number
   return true;
 }
 
+export type SyncUpOptions = {
+  /** User-initiated file deletes — always propagated to remote SSOT. */
+  explicitDeletedPaths?: readonly string[];
+};
+
 /**
  * Hybrid storage: agent run cwd reads/writes scratch; S3 is SSOT.
  * Non-run routes keep using projects.ts on scratch after sync-down.
@@ -173,10 +178,37 @@ export class MaterializingProjectStorage implements ProjectStorage {
     return { files };
   }
 
+  async syncExplicitRemoteDeletions(
+    projectId: string,
+    remote: ProjectStorage,
+    relpaths: readonly string[],
+  ): Promise<{ deleted: number; failed: number }> {
+    let deleted = 0;
+    let failed = 0;
+    for (const relpath of relpaths) {
+      const normalized = String(relpath || '').trim();
+      if (!normalized) continue;
+      try {
+        await withSyncUpRetry(async () => {
+          await remote.deleteFile(projectId, normalized);
+        });
+        deleted += 1;
+      } catch (err) {
+        failed += 1;
+        console.warn(
+          `[project-materialization] explicit remote delete failed for ${projectId}/${normalized}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+    return { deleted, failed };
+  }
+
   async syncUp(
     projectId: string,
     remote: ProjectStorage,
     runStartTimeMs: number,
+    options?: SyncUpOptions,
   ): Promise<{ uploaded: number; skipped: number; failed: number; deleted: number }> {
     const scratchFiles = await this.scratch.listFiles(projectId);
     const scratchPaths = new Set(scratchFiles.map((file) => file.path));
@@ -184,6 +216,16 @@ export class MaterializingProjectStorage implements ProjectStorage {
     let skipped = 0;
     let failed = 0;
     let deleted = 0;
+
+    if (options?.explicitDeletedPaths?.length) {
+      const explicit = await this.syncExplicitRemoteDeletions(
+        projectId,
+        remote,
+        options.explicitDeletedPaths,
+      );
+      deleted += explicit.deleted;
+      failed += explicit.failed;
+    }
     for (const file of scratchFiles) {
       if (!isRunTouchedProjectFile(file.mtimeMs, runStartTimeMs)) {
         skipped += 1;
