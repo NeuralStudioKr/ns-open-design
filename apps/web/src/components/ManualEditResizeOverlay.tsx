@@ -11,6 +11,7 @@ import {
   MANUAL_EDIT_MOVE_MIN_DELTA_PX,
   canMoveOrPromoteTarget,
   canPromoteTarget,
+  cascadeRollbackStyle,
   computeMove,
   movePreviewStyles,
   moveResultToStyles,
@@ -207,6 +208,15 @@ export function ManualEditResizeOverlay({
         shiftKey: event.shiftKey,
       });
       drag.moved = result.moved;
+      // Viewport overlay tracks startRect+Δ for every body-drag. CSS left/top
+      // are CB-relative for absolute/fixed and for in-flight promote — never
+      // drive the host box from those values (post-promote re-drag / nested CB).
+      const viewport = promoteViewportDraft(
+        drag.startRect,
+        drag.startLeftPx,
+        drag.startTopPx,
+        result,
+      );
       // Promote styles only after the move threshold — avoids flash + Esc wiping
       // panel SIZE drafts on a plain click (53 review).
       if (drag.promote) {
@@ -214,15 +224,14 @@ export function ManualEditResizeOverlay({
         const preview = promoteMoveStyles(drag.startRect, result);
         drag.lastStyles = preview;
         drag.previewed = true;
-        setLiveViewportPos(
-          promoteViewportDraft(drag.startRect, drag.startLeftPx, drag.startTopPx, result),
-        );
+        setLiveViewportPos(viewport);
         onMovePreviewRef.current?.(preview);
         return;
       }
       const preview = movePreviewStyles(result);
       drag.lastStyles = result.moved ? (moveResultToStyles(result) ?? preview) : preview;
       drag.previewed = true;
+      setLiveViewportPos(viewport);
       onMovePreviewRef.current?.(preview);
     };
 
@@ -311,10 +320,12 @@ export function ManualEditResizeOverlay({
     const stylesBefore: Partial<ManualEditStyles> = promote
       ? promoteMoveStylesBefore(target)
       : {
-          left: target.styles.left,
-          top: target.styles.top,
-          right: target.styles.right,
-          bottom: target.styles.bottom,
+          // Collapse computed auto so flush-fail / Esc removeProperty instead of
+          // baking `auto !important` into the live preview.
+          left: cascadeRollbackStyle(target.styles.left),
+          top: cascadeRollbackStyle(target.styles.top),
+          right: cascadeRollbackStyle(target.styles.right),
+          bottom: cascadeRollbackStyle(target.styles.bottom),
         };
     dragRef.current = {
       kind: 'move',

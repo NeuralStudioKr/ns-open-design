@@ -13,6 +13,7 @@ import {
   promoteMoveStylesBefore,
   promoteViewportDraft,
   startPositionFromTarget,
+  viewportRectAfterMoveCommit,
 } from '../../src/edit-mode/move-math';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
 
@@ -115,6 +116,14 @@ describe('promote start / rollback helpers', () => {
       50,
       { leftPx: 60, topPx: 70, moved: true },
     )).toEqual({ x: 120, y: 220 });
+  });
+
+  it('keeps viewport x/y on move commit when CB left/top differ', () => {
+    expect(viewportRectAfterMoveCommit(
+      { x: 160, y: 180, width: 100, height: 60 },
+      100,
+      60,
+    )).toEqual({ x: 160, y: 180, width: 100, height: 60 });
   });
 });
 

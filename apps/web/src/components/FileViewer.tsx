@@ -241,11 +241,14 @@ import {
 import { contentRectToHostRect } from '../edit-mode/preview-coords';
 import {
   canResizeTarget,
-  isAnchoredCssPosition,
   parseExplicitPx,
   resizeHistoryLabel,
 } from '../edit-mode/resize-math';
-import { moveHistoryLabel, PROMOTE_MOVE_STYLE_KEYS } from '../edit-mode/move-math';
+import {
+  moveHistoryLabel,
+  PROMOTE_MOVE_STYLE_KEYS,
+  viewportRectAfterMoveCommit,
+} from '../edit-mode/move-math';
 import {
   createManualEditSourcePin,
   manualEditHistoryConfirmTrustsLocal,
@@ -7460,18 +7463,9 @@ function HtmlViewer({
       ...current,
       styles: { ...current.styles, ...styles },
     }));
-    // Promote left/top are containing-block relative — do not drive the host
-    // overlay from them (overlay keeps a viewport draft). Absolute/fixed moves
-    // still sync overlay from left/top.
-    const promoting = String(styles.position || '').toLowerCase() === 'absolute'
-      && !isAnchoredCssPosition(target.cssPosition);
-    if (!promoting) {
-      setManualEditMoveDraftPos((prev) => {
-        const x = parseExplicitPx(styles.left) ?? prev?.x ?? target.rect.x;
-        const y = parseExplicitPx(styles.top) ?? prev?.y ?? target.rect.y;
-        return { x, y };
-      });
-    }
+    // Overlay owns viewport position via promoteViewportDraft during body-drag.
+    // Do not map CB left/top onto manualEditMoveDraftPos (nested absolute /
+    // post-promote re-drag would jump the host box).
   }
 
   function requestManualEditRemeasure(id: string) {
@@ -7578,15 +7572,8 @@ function HtmlViewer({
       if (!current || current.id !== target.id) return current;
       return {
         ...current,
-        // Keep viewport rect x/y until remasure — promote left/top are CB-space.
-        rect: {
-          ...current.rect,
-          width,
-          height,
-          ...(promoted || leftPx == null || topPx == null
-            ? {}
-            : { x: leftPx, y: topPx }),
-        },
+        // Remasure owns viewport x/y — CB left/top must not become rect origin.
+        rect: viewportRectAfterMoveCommit(current.rect, width, height),
         styles: { ...current.styles, ...styles },
         cssPosition: promoted ? 'absolute' : current.cssPosition,
         offsetLeft: leftPx ?? current.offsetLeft,

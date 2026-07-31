@@ -693,6 +693,78 @@ test('[P1] manual edit relative promote uses layout coords not relative left', a
     .toBe(true);
 });
 
+test('[P1] manual edit post-promote re-drag keeps overlay aligned to nested CB', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit promote re-drag');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-relative-redrag.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-relative-redrag.html`);
+  await openDesignFile(page, 'manual-edit-move-relative-redrag.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+
+  // First drag: promote relative → absolute inside relative-host (CB ≠ viewport).
+  let box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 40, box!.y + box!.height / 2 + 20, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-relative-redrag.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      return /data-od-id="relative-box"[^>]*style="[^"]*position:\s*absolute/.test(source);
+    })
+    .toBe(true);
+
+  // Exit + re-enter Edit so host reselects from bridge (post-promote absolute).
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+
+  const beforeTarget = await frame.locator('[data-od-id="relative-box"]').boundingBox();
+  const beforeOverlay = await overlay.boundingBox();
+  expect(beforeTarget).toBeTruthy();
+  expect(beforeOverlay).toBeTruthy();
+  expect(Math.abs(beforeOverlay!.x - beforeTarget!.x)).toBeLessThan(12);
+  expect(Math.abs(beforeOverlay!.y - beforeTarget!.y)).toBeLessThan(12);
+
+  // Second drag: overlay must stay glued to the element (not jump to CB left/top).
+  box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 36, box!.y + box!.height / 2 + 18, { steps: 8 });
+
+  const midTarget = await frame.locator('[data-od-id="relative-box"]').boundingBox();
+  const midOverlay = await overlay.boundingBox();
+  expect(midTarget).toBeTruthy();
+  expect(midOverlay).toBeTruthy();
+  expect(Math.abs(midOverlay!.x - midTarget!.x)).toBeLessThan(14);
+  expect(Math.abs(midOverlay!.y - midTarget!.y)).toBeLessThan(14);
+
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const targetBox = await frame.locator('[data-od-id="relative-box"]').boundingBox();
+      const overlayBox = await overlay.boundingBox();
+      if (!targetBox || !overlayBox) return false;
+      return Math.abs(overlayBox.x - targetBox.x) < 12
+        && Math.abs(overlayBox.y - targetBox.y) < 12;
+    })
+    .toBe(true);
+});
+
 test('[P1] manual edit body-drag stays aligned and persists at 75% zoom', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);

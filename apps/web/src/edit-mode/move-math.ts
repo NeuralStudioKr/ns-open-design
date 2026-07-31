@@ -209,7 +209,11 @@ export const PROMOTE_MOVE_STYLE_KEYS = [
   'marginLeft',
 ] as const satisfies ReadonlyArray<keyof ManualEditStyles>;
 
-/** Host overlay viewport rect while promoting (CSS left/top are CB-relative). */
+/**
+ * Host overlay viewport origin while body-dragging.
+ * CSS `left`/`top` are containing-block relative for absolute/fixed (and for
+ * in-flight promote) — never feed them straight into the overlay/rect.
+ */
 export function promoteViewportDraft(
   startRect: ManualEditRect,
   startLeftPx: number,
@@ -219,6 +223,22 @@ export function promoteViewportDraft(
   return {
     x: startRect.x + (result.leftPx - startLeftPx),
     y: startRect.y + (result.topPx - startTopPx),
+  };
+}
+
+/**
+ * After move/promote persist, keep viewport `x`/`y` until remasure.
+ * CSS `left`/`top` are containing-block relative and must not become rect origin.
+ */
+export function viewportRectAfterMoveCommit(
+  currentRect: ManualEditRect,
+  nextWidth: number,
+  nextHeight: number,
+): ManualEditRect {
+  return {
+    ...currentRect,
+    width: nextWidth,
+    height: nextHeight,
   };
 }
 

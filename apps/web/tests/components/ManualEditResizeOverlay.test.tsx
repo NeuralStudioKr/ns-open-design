@@ -124,6 +124,48 @@ describe('ManualEditResizeOverlay', () => {
     expect(onResizePreview.mock.calls.at(-1)?.[0]).toEqual({ width: '240px' });
   });
 
+  it('absolute body-drag overlay follows viewport delta when CB left ≠ rect.x', () => {
+    // Nested absolute: CSS left/top are containing-block relative; rect is viewport.
+    // Overlay must track startRect + Δ, not raw CSS left/top (post-promote re-drag).
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'absolute',
+          offsetLeft: 40,
+          offsetTop: 60,
+          rect: { x: 160, y: 180, width: 200, height: 100 },
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+            left: '40px',
+            top: '60px',
+          },
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={vi.fn()}
+        onMoveCommit={vi.fn()}
+        onMoveCancel={vi.fn()}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    expect(overlay.style.left).toBe('160px');
+    expect(overlay.style.top).toBe('180px');
+
+    fireEvent.pointerDown(overlay, { pointerId: 11, clientX: 100, clientY: 100, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 11, clientX: 140, clientY: 120, buttons: 1 });
+
+    // Δ +40,+20 → viewport 200,200. Raw CSS left/top (80,80) must not drive the box.
+    expect(overlay.style.left).toBe('200px');
+    expect(overlay.style.top).toBe('200px');
+  });
+
   it('body drag moves absolute target and commits left/top once', () => {
     const onMovePreview = vi.fn();
     const onMoveCommit = vi.fn();
