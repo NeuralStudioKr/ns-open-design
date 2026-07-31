@@ -771,7 +771,7 @@
 }
 /*
  * Project thumb aspect lock: iframe covers below render at a fixed
- * 1280x720 desktop size and are scaled to fit via a Math.min() ratio
+ * 1920×1080 Teamver canvas and are scaled to fit via ResizeObserver
  * (see DesignsTabProjectThumb + ProjectCardHtmlCover), so if the card
  * thumb slot ends up wider than 16:9 the scale collapses on the short
  * axis and the frame's white background bleeds through on the long axis
@@ -822,8 +822,8 @@
   background: #fff;
 }
 .project-thumb-deck-iframe {
-  width: 1280px;
-  height: 720px;
+  width: 1920px;
+  height: 1080px;
   border: 0;
   pointer-events: none;
   transform: scale(var(--project-deck-scale, 1));

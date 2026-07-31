@@ -128,6 +128,12 @@ function AuthenticatedHtmlCover({
           loading="lazy"
           sandbox="allow-scripts"
           tabIndex={-1}
+          style={{
+            width: DECK_PREVIEW_WIDTH,
+            height: DECK_PREVIEW_HEIGHT,
+            transform: `scale(${scale})`,
+            transformOrigin: "0 0",
+          }}
         />
       ) : (
         <span className={deckLoadingClassName} aria-hidden />
