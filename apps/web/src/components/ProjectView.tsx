@@ -8956,6 +8956,7 @@ export function ProjectView({
         }, {
           projectId: project.id,
           conversationId: runConversationId,
+          projectFileNames,
           // Daemon-side billing reconciliation (PR1 §3.6): the proxy stages
           // usage SSE frames keyed by this id so the terminal message PUT
           // can finalize Strategy-B billing even if the FE drops the PUT
@@ -9005,6 +9006,7 @@ export function ProjectView({
       project.id,
       project.name,
       projectFiles,
+      projectFileNames,
       refreshProjectFiles,
       refreshLiveArtifacts,
       readProjectHtml,

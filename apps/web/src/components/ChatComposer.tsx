@@ -152,6 +152,7 @@ import {
 import { CaretFloatingLayer } from './composer/CaretFloatingLayer';
 import { ANNOTATION_EVENT, type AnnotationEventDetail } from "./PreviewDrawOverlay";
 import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
+import { clearProjectRawFileMissing } from '../utils/projectFileFetchCache';
 import { DesignSystemSwitchPicker } from "./DesignSystemSwitchPicker";
 import { listenForConnectorsChanged } from './connectors-events';
 import { fetchConnectorCatalogSnapshot } from './connectors-state';
@@ -173,7 +174,10 @@ async function uploadedImagesReadableOnDisk(
     const blob = await loadAuthenticatedProjectFileBlob(projectId, item.path, {
       delaysMs: ANNOTATION_UPLOAD_READ_DELAYS_MS,
     });
-    if (blob) ready.push(item);
+    if (blob) {
+      clearProjectRawFileMissing(projectId, item.path);
+      ready.push(item);
+    }
   }
   return ready;
 }

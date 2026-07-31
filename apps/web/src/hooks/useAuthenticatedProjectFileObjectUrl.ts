@@ -3,6 +3,11 @@ import { useEffect, useState } from 'react';
 import { projectRawUrl } from '../providers/registry';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
+import {
+  clearProjectRawFileMissing,
+  isProjectRawFileKnownMissing,
+  markProjectRawFileMissing,
+} from '../utils/projectFileFetchCache';
 
 const FETCH_RETRY_DELAYS_MS = [0, 250, 800] as const;
 
@@ -40,6 +45,7 @@ export async function loadAuthenticatedProjectFileBlob(
   const id = projectId.trim();
   const path = filePath.trim();
   if (!id || !path) return null;
+  if (isProjectRawFileKnownMissing(id, path)) return null;
 
   const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
   const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
@@ -59,9 +65,14 @@ export async function loadAuthenticatedProjectFileBlob(
         cache: 'no-store',
         teamverProjectId: id,
       });
+      if (resp.status === 404) {
+        markProjectRawFileMissing(id, path);
+        return null;
+      }
       if (!resp.ok) continue;
       const blob = await resp.blob();
       if (!isUsableImageBlob(blob)) continue;
+      clearProjectRawFileMissing(id, path);
       return blob;
     } catch {
       // Auth / network race — retry remaining attempts.

@@ -24,7 +24,8 @@ describe('projectFilePathExists', () => {
     expect(projectFilePathExists(names, '')).toBe(false);
   });
 
-  it('defaults to true when the file index is unavailable', () => {
-    expect(projectFilePathExists(undefined, 'anything.png')).toBe(true);
+  it('defaults to false for ephemeral drawing screenshots when the file index is unavailable', () => {
+    expect(projectFilePathExists(undefined, 'ms8hq9qu-drawing-2026-07-31T05-17-03-125Z.png')).toBe(false);
+    expect(projectFilePathExists(undefined, 'references/logo.png')).toBe(true);
   });
 });

@@ -21,6 +21,11 @@ import {
 import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from './proxyAbort';
 import { COMMENT_ONLY_USER_PLACEHOLDER } from '../comments';
 import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
+import { projectFilePathExists } from '../utils/projectFilePaths';
+import {
+  isProjectRawFileKnownMissing,
+  markProjectRawFileMissing,
+} from '../utils/projectFileFetchCache';
 
 /** No SSE bytes for this long → surface a retryable stall error instead of infinite Working UI. */
 const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -88,6 +93,8 @@ async function readProxyStreamChunk(
 export interface ProxyContext {
   projectId?: string;
   conversationId?: string;
+  /** When set, skip raw GETs for attachment paths absent from the project file index. */
+  projectFileNames?: ReadonlySet<string>;
   /** Embed BYOK — ties proxy usage SSE to the assistant message row for daemon-side billing staging. */
   assistantMessageId?: string;
   byokImageModel?: string;
@@ -551,7 +558,7 @@ export async function buildProxyMessages(
 
   const out: ProxyMessage[] = [];
   for (const message of history) {
-    let content = await buildAnthropicMessageContent(message, context.projectId);
+    let content = await buildAnthropicMessageContent(message, context);
     content = sanitizeAnthropicProxyRoleContent(message.role, content, true);
     out.push({
       role: message.role,
@@ -683,11 +690,30 @@ export function anthropicImageCandidatesFromMessage(
   return sortAttachmentsByUserOrder([...fromAttachments, ...fromVisualComments]);
 }
 
+export function filterAnthropicImageCandidatesByProjectFiles(
+  candidates: readonly AnthropicImageCandidate[],
+  projectId: string,
+  projectFileNames?: ReadonlySet<string>,
+): AnthropicImageCandidate[] {
+  return candidates.filter((candidate) => {
+    if (isProjectRawFileKnownMissing(projectId, candidate.path)) return false;
+    if (projectFileNames && !projectFilePathExists(projectFileNames, candidate.path)) return false;
+    return true;
+  });
+}
+
 async function buildAnthropicMessageContent(
   message: ChatMessage,
-  projectId: string,
+  context: Pick<ProxyContext, 'projectId' | 'projectFileNames'>,
 ): Promise<ProxyMessageContent> {
-  const imageCandidates = anthropicImageCandidatesFromMessage(message);
+  const projectId = context.projectId;
+  if (!projectId) return message.content;
+  let imageCandidates = anthropicImageCandidatesFromMessage(message);
+  imageCandidates = filterAnthropicImageCandidatesByProjectFiles(
+    imageCandidates,
+    projectId,
+    context.projectFileNames,
+  );
   if (message.role !== 'user' || imageCandidates.length === 0) {
     return message.content;
   }
@@ -734,6 +760,7 @@ async function readAnthropicImageBlock(
   projectId: string,
   path: string,
 ): Promise<ProxyImageContentBlock | null> {
+  if (isProjectRawFileKnownMissing(projectId, path)) return null;
   try {
     await waitForTeamverProjectStoragePrefix(projectId, { quick: true });
   } catch {
@@ -750,6 +777,10 @@ async function readAnthropicImageBlock(
         cache: 'no-store',
         teamverProjectId: projectId,
       });
+      if (resp.status === 404) {
+        markProjectRawFileMissing(projectId, path);
+        return null;
+      }
       if (!resp.ok) continue;
 
       const mediaType = supportedAnthropicImageMediaType(
