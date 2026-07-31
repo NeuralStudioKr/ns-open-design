@@ -2053,7 +2053,18 @@ export function ChatPane({
                     onOpenFile={onRequestOpenFile}
                     t={t}
                   />
-                ) : hideUsefulTips ? null : (
+                ) : hideUsefulTips ? (
+                  <div className="chat-empty-wrap" data-testid="chat-empty-minimal">
+                    <div className="chat-empty">
+                      <span className="chat-empty-title">
+                        {t('chat.startTitle')}
+                      </span>
+                      <span className="chat-empty-hint">
+                        {t('chat.startHintComposerOnly')}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
                   <div className="chat-empty-wrap">
                     <div className="chat-empty">
                       <span className="chat-empty-title">

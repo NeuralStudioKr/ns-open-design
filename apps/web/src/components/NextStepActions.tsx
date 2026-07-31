@@ -135,12 +135,9 @@ export function NextStepActions({
   const analytics = useAnalytics();
   const exposedRef = useRef(false);
   const bodyId = useId();
-  // Start expanded for SSR/hydration parity; restore the persisted preference
-  // after mount so localStorage never mismatches the server HTML.
-  const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => {
-    setCollapsed(readNextStepCollapsed());
-  }, []);
+  // Start with the persisted preference on the client so collapsed users
+  // never flash an expanded card; SSR stays expanded (no window).
+  const [collapsed, setCollapsed] = useState(readNextStepCollapsed);
   useEffect(() => {
     if (exposedRef.current) return;
     exposedRef.current = true;
@@ -344,6 +341,7 @@ export function NextStepActions({
   const rootClass = [
     pinned ? `${styles.root} ${styles.rootPinned}` : styles.root,
     collapsed ? styles.rootCollapsed : '',
+    collapsed ? styles.rootNoEnterAnim : '',
   ]
     .filter(Boolean)
     .join(' ');

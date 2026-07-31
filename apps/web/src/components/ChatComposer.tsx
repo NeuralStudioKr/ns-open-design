@@ -3841,7 +3841,7 @@ function ToolsPluginsPanel({
   onApply: (record: InstalledPluginRecord) => void | Promise<void>;
   onShowDetails: (record: InstalledPluginRecord) => void;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [source, setSource] = useState<'community' | 'mine'>('community');
   const [query, setQuery] = useState('');
@@ -3888,8 +3888,8 @@ function ToolsPluginsPanel({
           className="composer-tools-search"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
-          placeholder="Search plugins…"
-          aria-label="Search plugins"
+          placeholder={t('chat.plusMenu.searchPlugins')}
+          aria-label={t('chat.plusMenu.searchPlugins')}
         />
       </div>
       {visiblePlugins.length === 0 ? (
@@ -3978,6 +3978,7 @@ function ToolsMcpPanel({
   onInsert: (serverId: string) => void;
   onManage: () => void;
 }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const visibleServers = useMemo(
     () => servers.filter((s) => mcpServerMatchesQuery(s, query)),
@@ -3995,8 +3996,8 @@ function ToolsMcpPanel({
           className="composer-tools-search"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
-          placeholder="Search MCP…"
-          aria-label="Search MCP servers and templates"
+          placeholder={t('chat.plusMenu.searchMcp')}
+          aria-label={t('chat.plusMenu.searchMcp')}
         />
       </div>
       {visibleServers.length === 0 ? (
@@ -4385,7 +4386,7 @@ function ToolsSkillsPanel({
   currentSkillId: string | null;
   onPick: (skill: SkillSummary) => void | Promise<void>;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const [query, setQuery] = useState('');
   const [pendingId, setPendingId] = useState<string | null>(null);
   const visibleSkills = useMemo(
@@ -4399,8 +4400,8 @@ function ToolsSkillsPanel({
           className="composer-tools-search"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
-          placeholder="Search skills…"
-          aria-label="Search skills"
+          placeholder={t('chat.plusMenu.searchSkills')}
+          aria-label={t('chat.plusMenu.searchSkills')}
         />
       </div>
       {visibleSkills.length === 0 ? (

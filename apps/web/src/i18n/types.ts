@@ -2187,6 +2187,7 @@ export interface Dict {
   'chat.forkConversationFailed': string;
   'chat.startTitle': string;
   'chat.startHint': string;
+  'chat.startHintComposerOnly': string;
   'chat.fillInputTitle': string;
   'chat.jumpToLatest': string;
   'chat.scrollToLatest': string;
@@ -2319,6 +2320,9 @@ export interface Dict {
   "chat.designToolbox.tooltip": string;
   "chat.designToolbox.aria": string;
   "chat.designToolbox.searchPlaceholder": string;
+  'chat.plusMenu.searchPlugins': string;
+  'chat.plusMenu.searchMcp': string;
+  'chat.plusMenu.searchSkills': string;
   "chat.designToolbox.searchAria": string;
   "chat.designToolbox.followupSection": string;
   "chat.designToolbox.resourcesSection": string;

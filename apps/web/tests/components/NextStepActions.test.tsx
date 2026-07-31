@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { NextStepActions } from '../../src/components/NextStepActions';
@@ -258,14 +258,12 @@ describe('NextStepActions', () => {
     expect(window.localStorage.getItem('od.chat.nextStepCollapsed')).toBe('0');
   });
 
-  it('restores collapsed preference from localStorage on mount', async () => {
+  it('restores collapsed preference from localStorage on mount', () => {
     window.localStorage.setItem('od.chat.nextStepCollapsed', '1');
     renderActions();
-    await waitFor(() => {
-      expect(screen.queryByTestId('next-step-toolbox')).toBeNull();
-      expect(screen.getByTestId('next-step-collapse-toggle').getAttribute('aria-expanded')).toBe(
-        'false',
-      );
-    });
+    expect(screen.queryByTestId('next-step-toolbox')).toBeNull();
+    expect(screen.getByTestId('next-step-collapse-toggle').getAttribute('aria-expanded')).toBe(
+      'false',
+    );
   });
 });

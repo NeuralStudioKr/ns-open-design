@@ -85,6 +85,10 @@
   padding-bottom: 8px;
 }
 
+.rootNoEnterAnim {
+  animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chevron {
     transition: none;

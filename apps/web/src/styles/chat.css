@@ -33,6 +33,11 @@
   background: var(--bg-subtle);
   color: var(--text);
 }
+.chat-project-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  color: var(--text);
+}
 .chat-project-design-system {
   display: inline-flex;
   align-items: center;
@@ -183,6 +188,11 @@
 .chat-session-trigger:hover,
 .chat-session-switcher.open .chat-session-trigger {
   background: var(--bg-subtle);
+  color: var(--text);
+}
+.chat-session-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
   color: var(--text);
 }
 .chat-header-tabs { display: inline-flex; gap: 16px; flex: 1; }
@@ -927,7 +937,7 @@
 }
 
 .composer {
-  padding: 10px 16px;
+  padding: 10px var(--chat-composer-inline-inset, 12px);
   display: flex;
   flex-direction: column;
   gap: 8px;

@@ -448,7 +448,9 @@
   transition: border-color 120ms var(--ease-out), box-shadow 120ms var(--ease-out), transform 120ms var(--ease-out);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* Keep overflow visible so the kebab dropdown isn't clipped; thumbs clip
+   * their own media below. */
+  overflow: visible;
   min-height: 168px;
 }
 .design-card.is-design-system-project {
@@ -472,6 +474,8 @@
   color: var(--text-faint);
   font-size: 38px;
   position: relative;
+  overflow: hidden;
+  border-radius: var(--radius) var(--radius) 0 0;
 }
 .design-card-thumb::before {
   /* Folder-shape icon */

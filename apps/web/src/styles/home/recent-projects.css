@@ -39,6 +39,12 @@
   color: var(--text);
   background: var(--bg-subtle);
 }
+.recent-projects__view-all:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  color: var(--text);
+  background: var(--bg-subtle);
+}
 .recent-projects__empty {
   color: var(--text-muted);
   font-size: 13px;

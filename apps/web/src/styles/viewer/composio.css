@@ -2596,6 +2596,10 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
     visibility 0s linear 0s;
 }
 .chat-jump-btn:hover { background: var(--bg-subtle); border-color: var(--border-strong); }
+.chat-jump-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* ============================================================
    Assistant message footer (bottom-of-message status pill)
