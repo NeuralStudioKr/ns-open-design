@@ -30,6 +30,17 @@ import {
   type ExportCacheOutcome,
 } from './export-cache-runtime.js';
 import {
+  ExportJobStoreFullError,
+  completeExportJob,
+  createExportJob,
+  failExportJob,
+  isExportAsyncJobsEnabled,
+  markExportJobRunning,
+  resolveExportJob,
+  type ExportJobFormat,
+  type ExportJobResult,
+} from './export-job-store.js';
+import {
   renderHtmlExportOutcome,
   renderImageExportOutcome,
   renderPdfExportOutcome,
@@ -147,6 +158,16 @@ function wantsFreshExport(req: {
     if (raw === true || raw === '1' || raw === 'true') return true;
   }
   return false;
+}
+
+function parseExportJobFormat(raw: unknown): ExportJobFormat | null {
+  return raw === 'pdf'
+    || raw === 'html'
+    || raw === 'zip'
+    || raw === 'image'
+    || raw === 'pptx'
+    ? raw
+    : null;
 }
 
 async function respondExportPayload(
@@ -272,9 +293,23 @@ function exportOffloadPayloadForRequest(
   | { offloadEnabled: true; offloadKey?: string; offloadStatus: string; offloadReason?: string }
   | Record<string, never>
 > {
+  return exportOffloadPayloadForWorkspace({
+    workspaceId: resolveExportOffloadWorkspaceIdFromRequest(req),
+    projectId: String(req.params.id ?? ''),
+    outcome,
+  });
+}
+
+function exportOffloadPayloadForWorkspace(input: {
+  workspaceId: string | null;
+  projectId: string;
+  outcome: ExportCacheOutcome;
+}): Promise<
+  | { offloadEnabled: true; offloadKey?: string; offloadStatus: string; offloadReason?: string }
+  | Record<string, never>
+> {
   if (!isExportOffloadEnabled()) return Promise.resolve({});
-  const workspaceId = resolveExportOffloadWorkspaceIdFromRequest(req);
-  if (!workspaceId) {
+  if (!input.workspaceId) {
     return Promise.resolve({
       offloadEnabled: true,
       offloadStatus: 'skipped_missing_workspace',
@@ -282,10 +317,10 @@ function exportOffloadPayloadForRequest(
     });
   }
   const offloadKey = buildExportOffloadObjectKey({
-    workspaceId,
-    projectId: String(req.params.id ?? ''),
-    cacheKey: outcome.key,
-    filename: outcome.filename,
+    workspaceId: input.workspaceId,
+    projectId: input.projectId,
+    cacheKey: input.outcome.key,
+    filename: input.outcome.filename,
   });
   return (async () => {
     let offloadStatus = 'skipped_no_payload';
@@ -294,20 +329,20 @@ function exportOffloadPayloadForRequest(
       | Awaited<ReturnType<typeof putExportOffloadObject>>
       | Awaited<ReturnType<typeof putExportOffloadFileObject>>
       | null = null;
-    if (outcome.body !== undefined) {
+    if (input.outcome.body !== undefined) {
       result = await putExportOffloadObject({
         key: offloadKey,
-        body: outcome.body,
-        contentType: outcome.mime,
-        contentDisposition: attachmentDisposition(outcome.filename),
+        body: input.outcome.body,
+        contentType: input.outcome.mime,
+        contentDisposition: attachmentDisposition(input.outcome.filename),
       });
-    } else if (outcome.filePath) {
+    } else if (input.outcome.filePath) {
       result = await putExportOffloadFileObject({
         key: offloadKey,
-        filePath: outcome.filePath,
-        bytes: outcome.bytes,
-        contentType: outcome.mime,
-        contentDisposition: attachmentDisposition(outcome.filename),
+        filePath: input.outcome.filePath,
+        bytes: input.outcome.bytes,
+        contentType: input.outcome.mime,
+        contentDisposition: attachmentDisposition(input.outcome.filename),
       });
     }
     if (result) {
@@ -317,11 +352,11 @@ function exportOffloadPayloadForRequest(
       console.info(
         JSON.stringify({
           metric: 'od_export_offload_put',
-          projectId: req.params.id,
+          projectId: input.projectId,
           status: result.status,
           ...(offloadReason ? { reason: offloadReason } : {}),
-          cache: outcome.cache,
-          bytes: outcome.bytes,
+          cache: input.outcome.cache,
+          bytes: input.outcome.bytes,
         }),
       );
     }
@@ -372,6 +407,10 @@ function handleExportRouteError(
   }
   console.warn(`[${routeLabel}] failed`, { projectId, reason });
   sendApiError(res, 500, 'EXPORT_FAILED', reason);
+}
+
+function exportJobStatusUrl(projectId: string, jobId: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/export/jobs/${encodeURIComponent(jobId)}`;
 }
 
 export { buildStaticHtmlExportFallback } from './export-render-service.js';
@@ -993,6 +1032,217 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       stream.pipe(res);
     } catch (err: unknown) {
       sendApiError(res, 500, 'INTERNAL_ERROR', String((err as Error)?.message || err));
+    }
+  });
+
+  async function runExportJobInBackground(options: {
+    jobId: string;
+    projectId: string;
+    workspaceId: string | null;
+    format: ExportJobFormat;
+    fileName: string;
+    deck: boolean;
+    title?: string;
+    inlineHtml?: string;
+    fresh?: boolean;
+    image?: {
+      format?: unknown;
+      slideIndex?: unknown;
+      width?: unknown;
+      height?: unknown;
+    };
+    pptx?: {
+      editable?: unknown;
+    };
+  }): Promise<void> {
+    markExportJobRunning(options.projectId, options.jobId);
+    try {
+      let outcome: ExportCacheOutcome;
+      const baseRequest = {
+        fileName: options.fileName,
+        deck: options.deck,
+        ...(options.title ? { title: options.title } : {}),
+        ...(options.inlineHtml ? { inlineHtml: options.inlineHtml } : {}),
+        ...(options.fresh ? { fresh: true } : {}),
+      };
+      if (options.format === 'pdf') {
+        outcome = (await renderPdfExportOutcome(exportRenderContext(options.projectId), baseRequest)).outcome;
+      } else if (options.format === 'html') {
+        outcome = await renderHtmlExportOutcome(exportRenderContext(options.projectId), baseRequest);
+      } else if (options.format === 'zip') {
+        outcome = await renderZipExportOutcome(exportRenderContext(options.projectId), baseRequest);
+      } else if (options.format === 'image') {
+        outcome = await renderImageExportOutcome(exportRenderContext(options.projectId), {
+          ...baseRequest,
+          format: options.image?.format,
+          slideIndex: options.image?.slideIndex,
+          width: options.image?.width,
+          height: options.image?.height,
+        });
+      } else {
+        outcome = await renderPptxExportOutcome(exportRenderContext(options.projectId), {
+          ...baseRequest,
+          deck: true,
+          editable: options.pptx?.editable,
+        });
+      }
+      const offloadPayload = await exportOffloadPayloadForWorkspace({
+        workspaceId: options.workspaceId,
+        projectId: options.projectId,
+        outcome,
+      });
+      const canRedirect =
+        'offloadKey' in offloadPayload
+        && offloadPayload.offloadKey
+        && (offloadPayload.offloadStatus === 'uploaded' || offloadPayload.offloadStatus === 'hit');
+      if (isExportOffloadRequired() && !canRedirect) {
+        failExportJob(options.projectId, options.jobId, {
+          code: 'EXPORT_OFFLOAD_UNAVAILABLE',
+          message: 'export offload is required but no S3 redirect ticket could be prepared',
+        });
+        return;
+      }
+      const ticket = await storeExportDownload({
+        projectId: options.projectId,
+        ...(outcome.filePath
+          ? { sourceFilePath: outcome.filePath }
+          : { body: outcome.body! }),
+        bytes: outcome.bytes,
+        filename: outcome.filename,
+        mime: outcome.mime,
+        ...(canRedirect
+          ? { deliveryMode: 'redirect' as const, offloadKey: offloadPayload.offloadKey }
+          : {}),
+        ...('offloadStatus' in offloadPayload && offloadPayload.offloadStatus
+          ? { offloadStatus: offloadPayload.offloadStatus }
+          : {}),
+        ...('offloadReason' in offloadPayload && offloadPayload.offloadReason
+          ? { offloadReason: offloadPayload.offloadReason }
+          : {}),
+      });
+      const result: ExportJobResult = {
+        downloadUrl: ticket.url,
+        filename: ticket.filename,
+        mime: ticket.mime,
+        bytes: ticket.bytes,
+        cache: outcome.cache,
+        deliveryMode: ticket.deliveryMode,
+        ...(ticket.offloadStatus ? { offloadStatus: ticket.offloadStatus } : {}),
+        ...(ticket.offloadReason ? { offloadReason: ticket.offloadReason } : {}),
+        expiresAt: ticket.expiresAt,
+      };
+      completeExportJob(options.projectId, options.jobId, result);
+    } catch (err: unknown) {
+      const reason = String((err as Error)?.message || err);
+      failExportJob(options.projectId, options.jobId, {
+        code: err instanceof ExportQueueFullError ? err.code : 'EXPORT_FAILED',
+        message: reason,
+      });
+      console.warn('[export/job] failed', {
+        projectId: options.projectId,
+        jobId: options.jobId,
+        format: options.format,
+        reason,
+      });
+    }
+  }
+
+  app.post('/api/projects/:id/export/jobs', async (req, res) => {
+    try {
+      if (!isExportAsyncJobsEnabled()) {
+        return sendApiError(res, 404, 'EXPORT_JOBS_DISABLED', 'async export jobs are disabled');
+      }
+      if (!isSafeId(req.params.id)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'invalid project id');
+      }
+      const { fileName, title, deck, format, slideIndex, width, height } = req.body || {};
+      const exportFormat = parseExportJobFormat(format);
+      if (!exportFormat) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'format must be pdf, html, zip, image, or pptx');
+      }
+      if (typeof fileName !== 'string' || fileName.length === 0) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'fileName required');
+      }
+      if (exportFormat === 'pptx' && deck !== true) {
+        return sendApiError(res, 422, 'NO_SLIDES', 'PPTX export requires a slide deck');
+      }
+      const inlineHtml = readInlineHtmlFromBody(req.body);
+      const job = createExportJob({
+        projectId: req.params.id,
+        format: exportFormat,
+      });
+      void runExportJobInBackground({
+        jobId: job.id,
+        projectId: req.params.id,
+        workspaceId: resolveExportOffloadWorkspaceIdFromRequest(req),
+        format: exportFormat,
+        fileName,
+        deck: exportFormat === 'pptx' ? true : deck === true,
+        ...(typeof title === 'string' ? { title } : {}),
+        ...(inlineHtml ? { inlineHtml } : {}),
+        ...(wantsFreshExport(req) ? { fresh: true } : {}),
+        ...(exportFormat === 'image'
+          ? { image: { format: req.body?.format, slideIndex, width, height } }
+          : {}),
+        ...(exportFormat === 'pptx' ? { pptx: { editable: req.body?.editable } } : {}),
+      });
+      res.status(202).json({
+        jobId: job.id,
+        status: job.status,
+        statusUrl: exportJobStatusUrl(req.params.id, job.id),
+        format: job.format,
+        createdAt: new Date(job.createdAt).toISOString(),
+        expiresAt: new Date(job.expiresAt).toISOString(),
+      });
+    } catch (err: unknown) {
+      if (err instanceof ExportJobStoreFullError) {
+        res.setHeader('Retry-After', '15');
+        return sendApiError(res, 503, err.code, err.message);
+      }
+      handleExportRouteError(res, sendApiError, 'export/jobs', req.params.id, err);
+    }
+  });
+
+  app.get('/api/projects/:id/export/jobs/:jobId', async (req, res) => {
+    try {
+      if (!isExportAsyncJobsEnabled()) {
+        return sendApiError(res, 404, 'EXPORT_JOBS_DISABLED', 'async export jobs are disabled');
+      }
+      if (!isSafeId(req.params.id)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'invalid project id');
+      }
+      const job = resolveExportJob(req.params.id, req.params.jobId);
+      if (!job) {
+        return sendApiError(res, 404, 'EXPORT_JOB_NOT_FOUND', 'export job not found or expired');
+      }
+      res.json({
+        jobId: job.id,
+        status: job.status,
+        statusUrl: exportJobStatusUrl(req.params.id, job.id),
+        format: job.format,
+        createdAt: new Date(job.createdAt).toISOString(),
+        updatedAt: new Date(job.updatedAt).toISOString(),
+        expiresAt: new Date(job.expiresAt).toISOString(),
+        ...(job.startedAt !== undefined ? { startedAt: new Date(job.startedAt).toISOString() } : {}),
+        ...(job.completedAt !== undefined ? { completedAt: new Date(job.completedAt).toISOString() } : {}),
+        ...(job.result
+          ? {
+              downloadUrl: job.result.downloadUrl,
+              filename: job.result.filename,
+              mime: job.result.mime,
+              bytes: job.result.bytes,
+              sizeBytes: job.result.bytes,
+              cache: job.result.cache,
+              deliveryMode: job.result.deliveryMode,
+              ...(job.result.offloadStatus ? { offloadStatus: job.result.offloadStatus } : {}),
+              ...(job.result.offloadReason ? { offloadReason: job.result.offloadReason } : {}),
+              ...(job.result.expiresAt ? { downloadExpiresAt: new Date(job.result.expiresAt).toISOString() } : {}),
+            }
+          : {}),
+        ...(job.error ? { error: job.error } : {}),
+      });
+    } catch (err: unknown) {
+      handleExportRouteError(res, sendApiError, 'export/jobs/status', req.params.id, err);
     }
   });
 
