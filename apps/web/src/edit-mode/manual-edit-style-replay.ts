@@ -37,7 +37,15 @@ export function manualEditStyleReplayPatches(
   savedSource: string | null | undefined,
 ): ManualEditStyleReplayPatch[] {
   if (!frozenSource || !savedSource || frozenSource === savedSource) return [];
-  const ids = collectManualEditStyleIds(savedSource);
+  // Union freeze + saved ids. Preview freeze often annotates unlabeled nodes
+  // with path-N `data-od-id`s that saved HTML lacks as attributes; collecting
+  // only from saved would skip those targets after a srcDoc remount.
+  const ids = [
+    ...new Set([
+      ...collectManualEditStyleIds(savedSource),
+      ...collectManualEditStyleIds(frozenSource),
+    ]),
+  ];
   const patches: ManualEditStyleReplayPatch[] = [];
   for (const id of ids) {
     const styles = diffManualEditStylePatch(

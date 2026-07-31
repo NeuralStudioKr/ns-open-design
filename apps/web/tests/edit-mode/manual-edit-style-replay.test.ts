@@ -30,4 +30,16 @@ describe('manual edit style replay against freeze', () => {
     expect(manualEditStyleReplayPatches(frozenRgb, savedHex)).toEqual([]);
     expect(manualEditStyleReplayPatches(savedHex, frozenRgb)).toEqual([]);
   });
+
+  it('replays path-* targets annotated on freeze but missing as attrs on saved HTML', () => {
+    // path-0 = body.children[0]; freeze carries the preview annotation.
+    const frozenPath =
+      '<!doctype html><html><body><p data-od-id="path-0">Copy</p></body></html>';
+    const savedPath =
+      '<!doctype html><html><body><p style="font-size: 28px;">Copy</p></body></html>';
+    const patches = manualEditStyleReplayPatches(frozenPath, savedPath);
+    expect(patches.some((p) => p.id === 'path-0' && /28/.test(String(p.styles.fontSize || '')))).toBe(
+      true,
+    );
+  });
 });

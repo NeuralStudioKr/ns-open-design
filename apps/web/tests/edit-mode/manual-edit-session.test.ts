@@ -7,11 +7,19 @@ import {
 } from '../../src/edit-mode/manual-edit-session';
 
 describe('manual edit session', () => {
-  it('patches against the frozen canvas while edit mode is active', () => {
+  it('patches against the latest saved session buffer while edit mode is active', () => {
     expect(manualEditPatchBaseSource({
       manualEditMode: true,
       frozenSource: '<html>frozen</html>',
-      liveSource: '<html>live</html>',
+      liveSource: '<html>live-saved</html>',
+    })).toBe('<html>live-saved</html>');
+  });
+
+  it('falls back to freeze when the session buffer is not ready yet', () => {
+    expect(manualEditPatchBaseSource({
+      manualEditMode: true,
+      frozenSource: '<html>frozen</html>',
+      liveSource: null,
     })).toBe('<html>frozen</html>');
   });
 

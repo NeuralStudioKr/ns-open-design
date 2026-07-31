@@ -868,13 +868,13 @@ export function isScreenshotOnlyVisualCommentTarget(
     || Boolean(String(item.screenshotPath || '').trim())
     || elementId.startsWith('visual-mark-');
   if (!isVisual) return false;
-  // Synthetic visual-mark-* ids are screenshot-only only when there is no
-  // concrete DOM anchor (selector / htmlHint). Visual+click picks that mint
-  // visual-mark-* while still carrying selector/htmlHint stay element-scoped.
+  // Concrete DOM anchors: selector, htmlHint, or a real (non-synthetic) elementId.
+  // visual-mark-* alone is not an anchor — those stay screenshot-only unless
+  // selector/htmlHint are present.
   const hasDomAnchor =
     Boolean(String(item.selector || '').trim())
-    || Boolean(String(item.htmlHint || '').trim());
-  if (elementId.startsWith('visual-mark-')) return !hasDomAnchor;
+    || Boolean(String(item.htmlHint || '').trim())
+    || (Boolean(elementId) && !elementId.startsWith('visual-mark-'));
   return !hasDomAnchor;
 }
 
@@ -896,10 +896,8 @@ export function buildConcreteElementPatchTemplate(
       continue;
     }
     if (isScreenshotOnlyVisualCommentTarget(item)) continue;
-    const targetId = String(item.elementId || '').trim();
-    if (!targetId) continue;
-    if (isUnsafeElementPatchTargetId(targetId)) continue;
-    if (isSyntheticVisualMarkTargetId(targetId)) continue;
+    const targetIds = concreteElementPatchTargetIds(item);
+    if (targetIds.length === 0) continue;
     const slideIndex = Math.floor(item.slideIndex);
     const removal = looksLikeRemovalCommentRequest(item.comment || '');
     const layoutOnly = !removal && looksLikeMarkupLayoutCommentRequest(item.comment || '');
@@ -921,11 +919,13 @@ export function buildConcreteElementPatchTemplate(
             : null;
     const patchKind = resolvedBody === null ? 'set-text' : resolvedKind;
     const patchBody = resolvedBody ?? '(요청한 새 텍스트)';
-    blocks.push(
-      '<artifact type="element-patch" identifier="deck">',
-      `  <patch target-id="${escapeXmlAttr(targetId)}" slide-index="${slideIndex}" kind="${patchKind}">${patchBody}</patch>`,
-      '</artifact>',
-    );
+    for (const targetId of targetIds) {
+      blocks.push(
+        '<artifact type="element-patch" identifier="deck">',
+        `  <patch target-id="${escapeXmlAttr(targetId)}" slide-index="${slideIndex}" kind="${patchKind}">${patchBody}</patch>`,
+        '</artifact>',
+      );
+    }
   }
   return blocks.length > 0 ? blocks.join('\n') : null;
 }
@@ -983,13 +983,48 @@ export function elementPatchCoerceHintsFromCommentAttachments(
       continue;
     }
     if (isScreenshotOnlyVisualCommentTarget(item)) continue;
-    const targetId = String(item.elementId || '').trim();
-    if (!targetId) continue;
-    if (isUnsafeElementPatchTargetId(targetId)) continue;
-    if (isSyntheticVisualMarkTargetId(targetId)) continue;
-    hints.push({ targetId, slideIndex: Math.floor(item.slideIndex) });
+    const slideIndex = Math.floor(item.slideIndex);
+    for (const targetId of concreteElementPatchTargetIds(item)) {
+      hints.push({ targetId, slideIndex });
+    }
   }
   return hints;
+}
+
+/**
+ * Resolve concrete DOM target ids for element-patch templates / coerce hints.
+ * Prefer a real elementId; otherwise extract from selector attrs (same attrs
+ * as scoped-deck-patch) so visual-mark-* + `[data-od-id=…]` still templates.
+ */
+function concreteElementPatchTargetIds(
+  item: Pick<ChatCommentAttachment, 'elementId' | 'selector'>,
+): string[] {
+  const ids: string[] = [];
+  const elementId = String(item.elementId || '').trim();
+  if (
+    elementId
+    && !isSyntheticVisualMarkTargetId(elementId)
+    && !isUnsafeElementPatchTargetId(elementId)
+  ) {
+    ids.push(elementId);
+  }
+  const selector = String(item.selector || '').trim();
+  if (selector) {
+    for (const attr of ['data-od-id', 'data-screen-label', 'data-od-source-path', 'data-od-runtime-id']) {
+      const re = new RegExp(`\\[${attr}=(?:"([^"]+)"|'([^']+)'|([^\\]\\s]+))\\]`, 'gi');
+      for (const match of selector.matchAll(re)) {
+        const value = (match[1] || match[2] || match[3] || '').trim();
+        if (
+          value
+          && !isSyntheticVisualMarkTargetId(value)
+          && !isUnsafeElementPatchTargetId(value)
+        ) {
+          ids.push(value);
+        }
+      }
+    }
+  }
+  return [...new Set(ids)];
 }
 
 function isUnsafeElementPatchTargetId(targetId: string): boolean {

@@ -193,6 +193,27 @@ describe('manual edit source patches', () => {
     expect(attrs['data-od-id']).toBe('01 Cover');
   });
 
+  it('rejects javascript: URLs in set-link and set-attributes href/src', () => {
+    const linkDenied = applyManualEditPatch(baseSource, {
+      kind: 'set-link',
+      id: 'cta',
+      text: 'Start',
+      href: 'javascript:alert(1)',
+    });
+    expect(linkDenied.ok).toBe(false);
+    expect(readManualEditFields(baseSource, 'cta').href).toBe('/start');
+
+    const attrDenied = applyManualEditPatch(baseSource, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: { href: 'javascript:alert(1)', 'aria-label': 'ok' },
+    });
+    expect(attrDenied.ok).toBe(true);
+    const attrs = readManualEditAttributes(attrDenied.source, 'cta');
+    expect(attrs.href).toBe('/start');
+    expect(attrs['aria-label']).toBe('ok');
+  });
+
   it('preserves data-od-id when selected outerHTML omits it', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',

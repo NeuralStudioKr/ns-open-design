@@ -164,17 +164,40 @@ export function parseProjectRawUrl(
 async function resolveCoverBaseHref(
   src: string,
   signal?: AbortSignal,
-): Promise<string> {
-  if (!isTeamverEmbedMode()) return src;
+): Promise<{ href: string; scoped: boolean }> {
+  if (!isTeamverEmbedMode()) return { href: src, scoped: true };
   const parsed = parseProjectRawUrl(src);
-  if (!parsed) return src;
-  const prefix = await resolveTeamverProjectPreviewPrefix(
-    parsed.projectId,
-    parsed.filePath,
-    { signal },
-  );
-  if (!prefix) return src;
-  return projectScopedPreviewUrl(prefix, parsed.filePath);
+  if (!parsed) return { href: src, scoped: false };
+  // Retry briefly — a one-shot preview-url miss must not poison the cover
+  // cache with an auth-gated /raw base that sandboxed iframes cannot load.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (signal?.aborted) break;
+    const prefix = await resolveTeamverProjectPreviewPrefix(
+      parsed.projectId,
+      parsed.filePath,
+      { signal },
+    );
+    if (prefix) {
+      return {
+        href: projectScopedPreviewUrl(prefix, parsed.filePath),
+        scoped: true,
+      };
+    }
+    if (attempt < 2) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 120 * (attempt + 1));
+        signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            resolve();
+          },
+          { once: true },
+        );
+      });
+    }
+  }
+  return { href: src, scoped: false };
 }
 
 async function loadHtmlCover(
@@ -198,10 +221,13 @@ async function loadHtmlCover(
     });
     if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
     const html = await res.text();
-    const baseHref = await resolveCoverBaseHref(src, signal);
+    const { href: baseHref, scoped } = await resolveCoverBaseHref(src, signal);
     const parsed =
       mode === "deck" ? deckPreviewSrcDoc(html, baseHref) : pagePreviewSrcDoc(html, baseHref);
-    htmlCoverCache.set(cacheKey, parsed);
+    // Never cache embed covers that fell back to /raw — next mount should retry.
+    if (scoped || !isTeamverEmbedMode()) {
+      htmlCoverCache.set(cacheKey, parsed);
+    }
     return parsed;
   })().finally(() => {
     htmlCoverInflight.delete(cacheKey);

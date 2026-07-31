@@ -892,6 +892,37 @@ describe('preview comment attachment helpers', () => {
         htmlHint: '<h1 data-od-id="hero">Title</h1>',
       }),
     ).toBe(false);
+
+    // Real elementId alone is a DOM anchor even without selector/htmlHint.
+    expect(
+      isScreenshotOnlyVisualCommentTarget({
+        selectionKind: 'visual',
+        markKind: 'click',
+        screenshotPath: 'uploads/mark.png',
+        elementId: 'hero-title',
+        selector: '',
+        htmlHint: '',
+      }),
+    ).toBe(false);
+
+    // visual-mark-* + selector still yields an element-patch template.
+    const visualMarkWithSelector = {
+      ...commentAttachment({
+        elementId: 'visual-mark-x',
+        selector: '[data-od-id="hero"]',
+        htmlHint: '<h1 data-od-id="hero">Title</h1>',
+        slideIndex: 0,
+        selectionKind: 'visual' as const,
+        screenshotPath: 'uploads/mark.png',
+        markKind: 'click' as const,
+      }),
+    };
+    expect(buildConcreteElementPatchTemplate([visualMarkWithSelector])).toContain(
+      'target-id="hero"',
+    );
+    expect(elementPatchCoerceHintsFromCommentAttachments([visualMarkWithSelector])).toEqual([
+      { targetId: 'hero', slideIndex: 0 },
+    ]);
   });
 
   it('does not render preview-comment context when target location data is missing', () => {

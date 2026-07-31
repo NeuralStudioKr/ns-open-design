@@ -9163,10 +9163,13 @@ export function ProjectView({
   // without a slide index; FileWorkspace/FileViewer ignore it unless the named
   // file is the open deck.
   const armSlideNavForQueuedSend = useCallback((item: QueuedChatSend) => {
-    const fallbackDeck =
-      openTabsStateRef.current.active
-      || project.metadata?.entryFile
-      || null;
+    // Screenshot-only visuals need an HTML deck fallback. Prefer entryFile
+    // (canonical deck) over an active non-HTML / wrong-sibling tab.
+    const active = openTabsStateRef.current.active?.trim() || '';
+    const entry = project.metadata?.entryFile?.trim() || '';
+    const htmlEntry = /\.html?$/i.test(entry) ? entry : '';
+    const htmlActive = /\.html?$/i.test(active) ? active : '';
+    const fallbackDeck = htmlEntry || htmlActive || null;
     const target = queuedSlideNavTarget(item.commentAttachments, {
       fallbackDeckFilePath: fallbackDeck,
     });
