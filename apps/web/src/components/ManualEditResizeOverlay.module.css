@@ -1,0 +1,29 @@
+.manualEditResizeOverlay {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid #2563eb;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  padding: 0;
+  border: 1px solid #2563eb;
+  border-radius: 2px;
+  background: #fff;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.handleN { left: 50%; top: 0; cursor: ns-resize; }
+.handleS { left: 50%; top: 100%; cursor: ns-resize; }
+.handleE { left: 100%; top: 50%; cursor: ew-resize; }
+.handleW { left: 0; top: 50%; cursor: ew-resize; }
+.handleNE { left: 100%; top: 0; cursor: nesw-resize; }
+.handleNW { left: 0; top: 0; cursor: nwse-resize; }
+.handleSE { left: 100%; top: 100%; cursor: nwse-resize; }
+.handleSW { left: 0; top: 100%; cursor: nwse-resize; }

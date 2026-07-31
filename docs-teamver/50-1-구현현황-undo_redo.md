@@ -101,6 +101,21 @@
 
 ---
 
+## Phase C — Layer A micro-undo (51 드래그 리사이즈)
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| 8방향 resize overlay | [x] | `ManualEditResizeOverlay` |
+| 드래그 중 preview-only (Layer A) | [x] | `od-edit-preview-style` |
+| pointerup 1회 commit (Layer B) | [x] | `flushManualEditStyleSave({ force: true })` |
+| autosave pause during drag | [x] | revision push 없이 미리보기만 |
+| Esc 취소 | [x] | disk/revision 불변 |
+| undo 1스텝 = resize 전체 | [x] | 기존 revision stack (50) |
+
+**Phase D (다음):** daemon snapshot chain 최적화
+
+---
+
 ## 마무리 체크리스트
 
 | 항목 | 상태 |
