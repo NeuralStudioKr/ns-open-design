@@ -160,6 +160,27 @@ describe('manual edit source patches', () => {
     expect(html).toContain('class="replacement"');
   });
 
+  it('preserves slide identity attrs when page-level outerHTML omits them', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-od-id="01 Cover" data-slide-index="0" data-screen-label="01 Cover">',
+      '<h1>Cover</h1>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: '01 Cover',
+      html: '<section class="slide replacement"><h1>Cover</h1></section>',
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, '01 Cover');
+    expect(html).toContain('data-od-id="01 Cover"');
+    expect(html).toContain('data-slide-index="0"');
+    expect(html).toContain('data-screen-label="01 Cover"');
+    expect(html).toContain('class="slide replacement"');
+  });
+
   it('salvages set-outer-html when model emits style sibling + matching root', () => {
     // User-facing failure: deck_patch_merge_failed — Replacement HTML must
     // contain exactly one root element. Models often pair a <style> block

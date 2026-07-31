@@ -812,6 +812,29 @@ function escapeXmlAttr(value: string): string {
 }
 
 /**
+ * Screenshot-only visual marks use synthetic `visual-mark-*` ids (or have no
+ * DOM selector/htmlHint). Those must not become REQUIRED element-patch
+ * templates — the id is not in the deck HTML and persist cannot merge it.
+ * Visual marks that still carry a real picked element target stay eligible.
+ */
+export function isScreenshotOnlyVisualCommentTarget(
+  item: Pick<
+    ChatCommentAttachment,
+    'selectionKind' | 'markKind' | 'screenshotPath' | 'elementId' | 'selector' | 'htmlHint'
+  >,
+): boolean {
+  const elementId = String(item.elementId || '').trim();
+  const isVisual =
+    item.selectionKind === 'visual'
+    || Boolean(item.markKind)
+    || Boolean(String(item.screenshotPath || '').trim())
+    || elementId.startsWith('visual-mark-');
+  if (!isVisual) return false;
+  if (elementId.startsWith('visual-mark-')) return true;
+  return !String(item.selector || '').trim() && !String(item.htmlHint || '').trim();
+}
+
+/**
  * Ready-to-copy element-patch template with real target-id / slide-index
  * values so auto-continue retries do not depend on the model inferring
  * placeholders from prose.
@@ -828,6 +851,7 @@ export function buildConcreteElementPatchTemplate(
     ) {
       continue;
     }
+    if (isScreenshotOnlyVisualCommentTarget(item)) continue;
     const targetId = String(item.elementId || '').trim();
     if (!targetId) continue;
     if (isUnsafeElementPatchTargetId(targetId)) continue;
@@ -873,6 +897,7 @@ export function elementPatchCoerceHintsFromCommentAttachments(
     ) {
       continue;
     }
+    if (isScreenshotOnlyVisualCommentTarget(item)) continue;
     const targetId = String(item.elementId || '').trim();
     if (!targetId) continue;
     if (isUnsafeElementPatchTargetId(targetId)) continue;

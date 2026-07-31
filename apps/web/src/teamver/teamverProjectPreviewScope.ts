@@ -102,6 +102,16 @@ export function projectScopedPreviewUrl(prefix: string, filePath: string): strin
   return `${prefix}/${safePath}`;
 }
 
+/** Drop cached preview prefixes so auth/session recovery can re-mint scopes. */
+export function invalidateTeamverProjectPreviewPrefix(projectId?: string): void {
+  const id = projectId?.trim();
+  if (!id) {
+    prefixByProject.clear();
+    return;
+  }
+  prefixByProject.delete(id);
+}
+
 /** @internal vitest only */
 export function resetTeamverProjectPreviewScopeForTests(): void {
   prefixByProject.clear();

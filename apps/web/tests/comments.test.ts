@@ -10,6 +10,7 @@ import {
   historyWithCommentAttachmentContext,
   hydrateQueryContextCommentAttachments,
   elementPatchCoerceHintsFromCommentAttachments,
+  isScreenshotOnlyVisualCommentTarget,
   liveCommentTargetMapsEqual,
   liveSnapshotForComment,
   mergeAttachedComments,
@@ -814,6 +815,43 @@ describe('preview comment attachment helpers', () => {
     expect(elementPatchCoerceHintsFromCommentAttachments([headingTarget])).toEqual([
       { targetId: 'hero-title', slideIndex: 0 },
     ]);
+  });
+
+  it('does not build element-patch templates for screenshot-only visual marks', () => {
+    const visualOnly = buildVisualAnnotationAttachment({
+      order: 0,
+      screenshotPath: 'uploads/visual-mark-1.png',
+      markKind: 'stroke',
+      note: '여기 키워줘',
+      slideIndex: 1,
+      bounds: { x: 10, y: 20, width: 100, height: 40 },
+    });
+    expect(isScreenshotOnlyVisualCommentTarget(visualOnly)).toBe(true);
+    expect(visualOnly.elementId.startsWith('visual-mark-')).toBe(true);
+
+    expect(buildConcreteElementPatchTemplate([visualOnly])).toBeNull();
+    expect(elementPatchCoerceHintsFromCommentAttachments([visualOnly])).toEqual([]);
+
+    const visualWithRealTarget = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'uploads/visual-mark-2.png',
+      markKind: 'click',
+      note: '제목 키워',
+      slideIndex: 0,
+      bounds: { x: 0, y: 0, width: 10, height: 10 },
+      target: {
+        filePath: 'deck.html',
+        elementId: 'hero-title',
+        selector: '[data-od-id="hero-title"]',
+        label: 'h1',
+        text: 'Title',
+        position: { x: 0, y: 0, width: 1, height: 1 },
+        htmlHint: '<h1 data-od-id="hero-title">Title</h1>',
+        slideIndex: 0,
+      },
+    });
+    expect(isScreenshotOnlyVisualCommentTarget(visualWithRealTarget)).toBe(false);
+    expect(buildConcreteElementPatchTemplate([visualWithRealTarget])).toContain('target-id="hero-title"');
   });
 
   it('does not render preview-comment context when target location data is missing', () => {

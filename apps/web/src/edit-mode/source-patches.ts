@@ -821,7 +821,17 @@ function findEquivalentElementByScopedPosition(
 }
 
 function preserveManualEditIdentityAttributes(currentTarget: Element, replacement: Element): void {
-  for (const attr of ['data-od-id', 'data-od-runtime-id', 'data-od-source-path', 'data-od-edit', 'data-od-label']) {
+  // Slide page targets rely on data-slide-index / data-screen-label for
+  // lookup and page-level comments — keep them when the model omits them.
+  for (const attr of [
+    'data-od-id',
+    'data-od-runtime-id',
+    'data-od-source-path',
+    'data-od-edit',
+    'data-od-label',
+    'data-slide-index',
+    'data-screen-label',
+  ]) {
     const currentValue = currentTarget.getAttribute(attr);
     if (currentValue && !replacement.getAttribute(attr)) {
       replacement.setAttribute(attr, currentValue);
@@ -1285,12 +1295,7 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
   if (!next) {
     return { ok: false, error: 'Replacement HTML must contain exactly one root element.' };
   }
-  if (el.getAttribute('data-od-id') && !next.getAttribute('data-od-id')) {
-    next.setAttribute('data-od-id', el.getAttribute('data-od-id') ?? '');
-  }
-  if (el.getAttribute('data-od-edit') && !next.getAttribute('data-od-edit')) {
-    next.setAttribute('data-od-edit', el.getAttribute('data-od-edit') ?? '');
-  }
+  preserveManualEditIdentityAttributes(el, next);
   el.replaceWith(next);
   // Style siblings were dropped by single-root salvage — keep their rules
   // so "make it stand out" edits that ship class + <style> still paint.

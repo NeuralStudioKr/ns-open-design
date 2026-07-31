@@ -43,6 +43,7 @@ import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../teamver/teamverEmbedPassiveAuth';
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import {
+  invalidateTeamverProjectPreviewPrefix,
   projectScopedPreviewUrl,
   resolveTeamverProjectPreviewPrefix,
 } from '../teamver/teamverProjectPreviewScope';
@@ -6087,26 +6088,46 @@ function HtmlViewer({
       return;
     }
     let cancelled = false;
-    const abort = new AbortController();
-    // Fail-open: if preview-url is slow/sticky, keep prefix null so srcDoc
-    // path can paint once disk/live HTML is ready (do not force unavailable).
-    const failOpenTimer = window.setTimeout(() => {
-      if (cancelled) return;
-      abort.abort();
-    }, 8_000);
-    void resolveTeamverProjectPreviewPrefix(projectId, file.name, {
-      signal: abort.signal,
-    }).then((prefix) => {
-      if (cancelled) return;
-      window.clearTimeout(failOpenTimer);
-      setEmbedPreviewPrefix(prefix);
-    });
+    const retryDelaysMs = [0, 400, 1_200] as const;
+    // Fail-open on first null so srcDoc can paint, then retry with a fresh
+    // abort budget. Auth recovery bumps embedAuthRecoveryNonce and invalidates
+    // the cached prefix so stale daemon scopes / 401 races do not leave deck
+    // relative assets resolving against about:blank forever.
+    if (embedAuthRecoveryNonce > 0) {
+      invalidateTeamverProjectPreviewPrefix(projectId);
+    }
+    void (async () => {
+      for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
+        if (cancelled) return;
+        const delay = retryDelaysMs[attempt] ?? 0;
+        if (delay > 0) {
+          await new Promise((settle) => window.setTimeout(settle, delay));
+          if (cancelled) return;
+          invalidateTeamverProjectPreviewPrefix(projectId);
+        }
+        const abort = new AbortController();
+        const failOpenTimer = window.setTimeout(() => abort.abort(), 8_000);
+        let resolved: string | null = null;
+        try {
+          resolved = await resolveTeamverProjectPreviewPrefix(projectId, file.name, {
+            signal: abort.signal,
+          });
+        } finally {
+          window.clearTimeout(failOpenTimer);
+        }
+        if (cancelled) return;
+        if (resolved) {
+          setEmbedPreviewPrefix(resolved);
+          return;
+        }
+        if (attempt === 0) setEmbedPreviewPrefix(null);
+      }
+      if (!cancelled) setEmbedPreviewPrefix(null);
+    })();
     return () => {
       cancelled = true;
-      abort.abort();
-      window.clearTimeout(failOpenTimer);
     };
-  }, [file.name, projectId, teamverEmbedPreviewMode]);
+  }, [embedAuthRecoveryNonce, file.name, projectId, teamverEmbedPreviewMode]);
   const useUrlLoadPreview = shouldUrlLoadHtmlPreview({
     mode,
     isDeck: effectiveDeck,
