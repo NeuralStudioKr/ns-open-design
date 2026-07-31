@@ -2392,6 +2392,8 @@ export const zhCN: Dict = {
   'assistant.openFile': '打开',
   'assistant.downloadFile': '下载',
   'nextStep.title': '下一步',
+  'nextStep.collapse': '收起',
+  'nextStep.expand': '展开',
   'nextStep.more': '更多',
   'nextStep.share': '分享',
   'nextStep.download': '下载',

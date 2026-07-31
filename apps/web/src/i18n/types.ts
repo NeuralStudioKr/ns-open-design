@@ -3068,6 +3068,8 @@ export interface Dict {
   'assistant.openFile': string;
   'assistant.downloadFile': string;
   'nextStep.title': string;
+  'nextStep.collapse': string;
+  'nextStep.expand': string;
   'nextStep.more': string;
   'nextStep.share': string;
   'nextStep.download': string;

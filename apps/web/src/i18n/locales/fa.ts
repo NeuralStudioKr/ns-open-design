@@ -2392,6 +2392,8 @@ export const fa: Dict = {
   'assistant.openFile': 'باز کردن',
   'assistant.downloadFile': 'دانلود',
   'nextStep.title': 'گام بعدی',
+  'nextStep.collapse': 'جمع کردن',
+  'nextStep.expand': 'باز کردن',
   'nextStep.more': 'بیشتر',
   'nextStep.share': 'اشتراک‌گذاری',
   'nextStep.download': 'دانلود',

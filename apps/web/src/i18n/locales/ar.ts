@@ -2392,6 +2392,8 @@ export const ar: Dict = {
   'assistant.openFile': 'فتح',
   'assistant.downloadFile': 'تحميل',
   'nextStep.title': 'الخطوة التالية',
+  'nextStep.collapse': 'طي',
+  'nextStep.expand': 'توسيع',
   'nextStep.more': 'المزيد',
   'nextStep.share': 'مشاركة',
   'nextStep.download': 'تنزيل',

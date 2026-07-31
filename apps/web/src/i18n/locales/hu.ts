@@ -2392,6 +2392,8 @@ export const hu: Dict = {
   'assistant.openFile': 'Megnyitás',
   'assistant.downloadFile': 'Letöltés',
   'nextStep.title': 'Következő lépés',
+  'nextStep.collapse': 'Összecsukás',
+  'nextStep.expand': 'Kibontás',
   'nextStep.more': 'Több',
   'nextStep.share': 'Megosztás',
   'nextStep.download': 'Letöltés',

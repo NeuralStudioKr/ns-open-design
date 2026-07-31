@@ -2392,6 +2392,8 @@ export const esES: Dict = {
   'assistant.openFile': 'Abrir',
   'assistant.downloadFile': 'Descargar',
   'nextStep.title': 'Siguiente paso',
+  'nextStep.collapse': 'Contraer',
+  'nextStep.expand': 'Expandir',
   'nextStep.more': 'Más',
   'nextStep.share': 'Compartir',
   'nextStep.download': 'Descargar',

@@ -2392,6 +2392,8 @@ export const de: Dict = {
   'assistant.openFile': 'Öffnen',
   'assistant.downloadFile': 'Herunterladen',
   'nextStep.title': 'Nächster Schritt',
+  'nextStep.collapse': 'Einklappen',
+  'nextStep.expand': 'Ausklappen',
   'nextStep.more': 'Mehr',
   'nextStep.share': 'Teilen',
   'nextStep.download': 'Herunterladen',

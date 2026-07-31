@@ -1721,7 +1721,9 @@ export interface NextStepActionClickProps {
     | 'chip'
     | 'toolbox_action'
     | 'toolbox_more'
-    | 'share_to_open_design';
+    | 'share_to_open_design'
+    | 'collapse'
+    | 'expand';
   chip_id?: string;
 }
 
