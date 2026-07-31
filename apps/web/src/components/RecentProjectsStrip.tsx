@@ -2,11 +2,14 @@
 //
 // Mirrors the strip Lovart shows under its hero: a small set of
 // recent project cards with a "View all" link that switches to the
-// full Projects view. We keep the data shape narrow (Project[] +
-// onOpen / onViewAll) so the strip can be reused later by other
-// surfaces (e.g. an in-project quick-switcher pane).
+// full Projects view. Overflow kebab (rename/delete) matches DesignsTab
+// so home and /projects share the same project actions.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Dialog, DialogDescription, DialogFooter, DialogTitle } from '@open-design/components';
+import { projectKindToTracking } from '@open-design/contracts/analytics';
+import { useAnalytics } from '../analytics/provider';
+import { trackRecentProjectsClick } from '../analytics/events';
 import { useT } from '../i18n';
 import type { DesignSystemSummary, Project, ProjectDisplayStatus } from '../types';
 import { Icon } from './Icon';
@@ -42,6 +45,8 @@ interface Props {
   loading?: boolean;
   onOpen: (id: string, options?: { fileName?: string }) => void;
   onViewAll: () => void;
+  onRename?: (id: string, name: string) => void;
+  onDelete?: (id: string) => Promise<boolean | void> | boolean | void;
   limit?: number;
   /** Embed: invalidate cached covers when the active workspace changes. */
   workspaceScopeKey?: string | null;
@@ -56,10 +61,25 @@ export function RecentProjectsStrip({
   loading = false,
   onOpen,
   onViewAll,
+  onRename,
+  onDelete,
   limit = 6,
   workspaceScopeKey,
 }: Props) {
   const t = useT();
+  const analytics = useAnalytics();
+  const renameTitleId = useId();
+  const confirmTitleId = useId();
+  const menuContainerRef = useRef<HTMLDivElement | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ id: string; original: string } | null>(null);
+  const [renameInput, setRenameInput] = useState('');
+  const [confirmTarget, setConfirmTarget] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
   const activeRunStatusByProjectId = useMemo(
     () => buildActiveRunStatusByProjectId(activeRunSummaries),
     [activeRunSummaries],
@@ -73,6 +93,7 @@ export function RecentProjectsStrip({
   const [coverByProject, setCoverByProject] = useState<
     Record<string, ProjectCoverFile | null>
   >({});
+  const showOverflowMenu = Boolean(onRename || onDelete);
 
   useEffect(() => {
     setCoverByProject({});
@@ -108,6 +129,25 @@ export function RecentProjectsStrip({
     };
   }, [recent]);
 
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const el = menuContainerRef.current;
+      if (el && !el.contains(event.target as Node)) {
+        setMenuOpenId(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpenId(null);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpenId]);
+
   // First-run home shouldn't reserve space for an empty "Recent
   // projects" rail — the dashed empty box just adds visual noise
   // above the plugin gallery. While loading, show a compact skeleton
@@ -140,6 +180,48 @@ export function RecentProjectsStrip({
     return null;
   }
 
+  const trackProjectAction = (
+    project: Project,
+    element: 'more' | 'rename' | 'delete',
+  ) => {
+    const projectKind = projectKindToTracking(
+      project.metadata?.kind,
+      project.metadata?.videoModel,
+    );
+    trackRecentProjectsClick(analytics.track, {
+      page_name: 'home',
+      area: 'recent_projects',
+      element,
+      project_id: project.id,
+      ...(projectKind ? { project_kind: projectKind } : {}),
+    });
+  };
+
+  const openRename = (project: Project) => {
+    setRenameTarget({ id: project.id, original: project.name });
+    setRenameInput(project.name);
+  };
+
+  const commitRename = () => {
+    if (!renameTarget) return;
+    const trimmed = renameInput.trim();
+    if (trimmed && trimmed !== renameTarget.original) {
+      onRename?.(renameTarget.id, trimmed);
+    }
+    setRenameTarget(null);
+    setRenameInput('');
+  };
+
+  const openDelete = (project: Project) => {
+    if (!onDelete) return;
+    setConfirmTarget({
+      title: t('designs.deleteTitle'),
+      message: t('designs.deleteConfirm', { name: project.name }),
+      confirmLabel: t('designs.menuDelete'),
+      onConfirm: () => onDelete(project.id),
+    });
+  };
+
   return (
     <section className="recent-projects" data-testid="recent-projects-strip">
       <header className="recent-projects__head">
@@ -170,83 +252,231 @@ export function RecentProjectsStrip({
             !publishedDesignSystem &&
             (status === 'running' || status === 'queued' || status === 'awaiting_input');
           return (
-            <button
+            <article
               key={project.id}
-              type="button"
               role="listitem"
               className={`recent-projects__card${designSystemProject ? ' is-design-system-project' : ''}`}
-              onClick={() => onOpen(project.id, projectOpenOptionsFromPreviewCover(project, coverOverride))}
-              title={project.name}
               data-project-id={project.id}
             >
-              <div
-                className={`recent-projects__card-thumb recent-projects__card-thumb-${cover.kind}`}
-                style={cover.style}
-                aria-hidden
-              >
-                {(cover.kind === 'image' || cover.kind === 'logo') && cover.src ? (
-                  <img
-                    className="recent-projects__thumb-media"
-                    src={cover.src}
-                    alt=""
-                    loading="lazy"
-                  />
-                ) : cover.kind === 'video' && cover.src ? (
-                  <video
-                    className="recent-projects__thumb-media"
-                    src={cover.src}
-                    muted
-                    preload="metadata"
-                    playsInline
-                  />
-                ) : cover.kind === 'html' && cover.src ? (
-                  <ProjectCardHtmlCover
-                    src={cover.src}
-                    deckCoverOnly={project.metadata?.kind === 'deck'}
-                    iframeClassName="recent-projects__thumb-iframe"
-                    deckFrameClassName="recent-projects__deck-frame"
-                    deckIframeClassName="recent-projects__deck-iframe"
-                    deckLoadingClassName="recent-projects__deck-cover-loading"
-                  />
-                ) : (
-                  <span className="recent-projects__card-glyph">{cover.initial}</span>
-                )}
-              </div>
-              <div className="recent-projects__card-meta">
-                <div className="design-card-tag-row">
-                  {designSystemProject ? (
-                    <DesignSystemProjectTag />
-                  ) : (
-                    <ProjectTag category={projectCategory(project)} />
-                  )}
-                </div>
-                <div className="recent-projects__card-name">{project.name}</div>
-                <div className="recent-projects__card-footer">
-                  <div className="recent-projects__card-time">
-                    <span
-                      className={`recent-projects__card-status recent-projects__card-status-${publishedDesignSystem ? 'published' : status}`}
+              {showOverflowMenu ? (
+                <div
+                  className="design-card-menu-anchor recent-projects__menu-anchor"
+                  ref={menuOpenId === project.id ? menuContainerRef : undefined}
+                >
+                  <button
+                    type="button"
+                    className="design-card-more"
+                    aria-label={t('designs.menuMore')}
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpenId === project.id}
+                    data-testid={`recent-projects-more-${project.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpenId((cur) => {
+                        const nextId = cur === project.id ? null : project.id;
+                        if (nextId === project.id) trackProjectAction(project, 'more');
+                        return nextId;
+                      });
+                    }}
+                  >
+                    <Icon name="more-horizontal" size={14} />
+                  </button>
+                  {menuOpenId === project.id ? (
+                    <div
+                      className="design-card-menu"
+                      role="menu"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {isActive ? (
-                        <span className="recent-projects__card-status-dot" aria-hidden />
+                      {onRename ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            trackProjectAction(project, 'rename');
+                            setMenuOpenId(null);
+                            openRename(project);
+                          }}
+                        >
+                          <Icon name="pencil" size={12} />
+                          <span>{t('designs.menuRename')}</span>
+                        </button>
                       ) : null}
-                      {publishedDesignSystem ? t('designs.status.published') : statusLabel(status, t)}
-                    </span>
-                    <span className="recent-projects__card-sep" aria-hidden>·</span>
-                    <span className="recent-projects__card-updated">
-                      {relativeTime(project.updatedAt, t)}
-                    </span>
-                  </div>
-                  {isTeamverEmbedMode() && !designSystemProject ? (
-                    <div className="recent-projects__card-drive">
-                      <TeamverLatestPublishChip projectId={project.id} />
+                      {onDelete ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="danger"
+                          onClick={() => {
+                            trackProjectAction(project, 'delete');
+                            setMenuOpenId(null);
+                            openDelete(project);
+                          }}
+                        >
+                          <Icon name="close" size={12} />
+                          <span>{t('designs.menuDelete')}</span>
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
-              </div>
-            </button>
+              ) : null}
+              <button
+                type="button"
+                className="recent-projects__card-open"
+                onClick={() => onOpen(project.id, projectOpenOptionsFromPreviewCover(project, coverOverride))}
+                title={project.name}
+              >
+                <div
+                  className={`recent-projects__card-thumb recent-projects__card-thumb-${cover.kind}`}
+                  style={cover.style}
+                  aria-hidden
+                >
+                  {(cover.kind === 'image' || cover.kind === 'logo') && cover.src ? (
+                    <img
+                      className="recent-projects__thumb-media"
+                      src={cover.src}
+                      alt=""
+                      loading="lazy"
+                    />
+                  ) : cover.kind === 'video' && cover.src ? (
+                    <video
+                      className="recent-projects__thumb-media"
+                      src={cover.src}
+                      muted
+                      preload="metadata"
+                      playsInline
+                    />
+                  ) : cover.kind === 'html' && cover.src ? (
+                    <ProjectCardHtmlCover
+                      src={cover.src}
+                      deckCoverOnly={project.metadata?.kind === 'deck'}
+                      iframeClassName="recent-projects__thumb-iframe"
+                      deckFrameClassName="recent-projects__deck-frame"
+                      deckIframeClassName="recent-projects__deck-iframe"
+                      deckLoadingClassName="recent-projects__deck-cover-loading"
+                    />
+                  ) : (
+                    <span className="recent-projects__card-glyph">{cover.initial}</span>
+                  )}
+                </div>
+                <div className="recent-projects__card-meta">
+                  <div className="design-card-tag-row">
+                    {designSystemProject ? (
+                      <DesignSystemProjectTag />
+                    ) : (
+                      <ProjectTag category={projectCategory(project)} />
+                    )}
+                  </div>
+                  <div className="recent-projects__card-name">{project.name}</div>
+                  <div className="recent-projects__card-footer">
+                    <div className="recent-projects__card-time">
+                      <span
+                        className={`recent-projects__card-status recent-projects__card-status-${publishedDesignSystem ? 'published' : status}`}
+                      >
+                        {isActive ? (
+                          <span className="recent-projects__card-status-dot" aria-hidden />
+                        ) : null}
+                        {publishedDesignSystem ? t('designs.status.published') : statusLabel(status, t)}
+                      </span>
+                      <span className="recent-projects__card-sep" aria-hidden>·</span>
+                      <span className="recent-projects__card-updated">
+                        {relativeTime(project.updatedAt, t)}
+                      </span>
+                    </div>
+                    {isTeamverEmbedMode() && !designSystemProject ? (
+                      <div className="recent-projects__card-drive">
+                        <TeamverLatestPublishChip projectId={project.id} />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </button>
+            </article>
           );
         })}
       </div>
+      {renameTarget ? (
+        <Dialog
+          as="form"
+          className="modal-rename"
+          onClose={() => {
+            setRenameTarget(null);
+            setRenameInput('');
+          }}
+          closeOnEscape
+          ariaLabelledBy={renameTitleId}
+          onSubmit={(e) => {
+            e.preventDefault();
+            commitRename();
+          }}
+        >
+          <DialogTitle id={renameTitleId}>{t('designs.renameTitle')}</DialogTitle>
+          <label>
+            {t('designs.renamePrompt', { name: renameTarget.original })}
+            <input
+              type="text"
+              value={renameInput}
+              autoFocus
+              onChange={(e) => setRenameInput(e.target.value)}
+            />
+          </label>
+          <DialogFooter className="row">
+            <button
+              type="button"
+              onClick={() => {
+                setRenameTarget(null);
+                setRenameInput('');
+              }}
+            >
+              {t('designs.renameCancel')}
+            </button>
+            <button
+              type="submit"
+              className="primary"
+              disabled={
+                !renameInput.trim() ||
+                renameInput.trim() === renameTarget.original
+              }
+            >
+              {t('designs.renameSave')}
+            </button>
+          </DialogFooter>
+        </Dialog>
+      ) : null}
+      {confirmTarget ? (
+        <Dialog
+          className="modal-confirm"
+          role="alertdialog"
+          onClose={() => setConfirmTarget(null)}
+          closeOnEscape
+          ariaLabelledBy={confirmTitleId}
+        >
+          <DialogTitle id={confirmTitleId}>{confirmTarget.title}</DialogTitle>
+          <DialogDescription className="modal-confirm-message">
+            {confirmTarget.message}
+          </DialogDescription>
+          <DialogFooter className="row">
+            <button type="button" onClick={() => setConfirmTarget(null)}>
+              {t('designs.renameCancel')}
+            </button>
+            <button
+              type="button"
+              className="primary danger"
+              autoFocus
+              onClick={() => {
+                const action = confirmTarget.onConfirm;
+                setConfirmTarget(null);
+                void Promise.resolve(action()).catch(() => {
+                  // App-level delete handlers return false on failure; ignore
+                  // unexpected rejections so the home strip stays usable.
+                });
+              }}
+            >
+              {confirmTarget.confirmLabel}
+            </button>
+          </DialogFooter>
+        </Dialog>
+      ) : null}
     </section>
   );
 }

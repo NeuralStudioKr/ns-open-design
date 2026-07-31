@@ -1226,7 +1226,7 @@ export interface PrivacyModalClickProps {
 export interface RecentProjectsClickProps {
   page_name: 'home';
   area: 'recent_projects';
-  element: 'project_card' | 'view_all';
+  element: 'project_card' | 'view_all' | 'more' | 'rename' | 'delete';
   project_id?: string;
   project_kind?: TrackingProjectKind;
   project_status?: string;

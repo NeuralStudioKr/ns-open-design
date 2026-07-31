@@ -242,7 +242,105 @@ describe('RecentProjectsStrip', () => {
       expect(container.querySelector('[data-project-id="project-deck"]')).toBeTruthy();
     });
 
-    fireEvent.click(container.querySelector('[data-project-id="project-deck"]')!);
+    fireEvent.click(container.querySelector('.recent-projects__card-open')!);
     expect(onOpen).toHaveBeenCalledWith('project-deck', { fileName: 'deck.html' });
+  });
+
+  it('hides overflow menu when rename/delete handlers are absent', () => {
+    render(
+      <RecentProjectsStrip
+        projects={[
+          project({
+            id: 'project-1',
+            name: 'My Deck',
+            updatedAt: 4,
+            metadata: { kind: 'deck' },
+          }),
+        ]}
+        onOpen={() => {}}
+        onViewAll={() => {}}
+      />,
+    );
+
+    expect(screen.queryByTestId('recent-projects-more-project-1')).toBeNull();
+  });
+
+  it('shows overflow menu and renames when handlers are provided', async () => {
+    const onRename = vi.fn();
+    const onDelete = vi.fn(async () => true);
+    render(
+      <RecentProjectsStrip
+        projects={[
+          project({
+            id: 'project-1',
+            name: 'My Deck',
+            updatedAt: 4,
+            metadata: { kind: 'deck' },
+          }),
+        ]}
+        onOpen={() => {}}
+        onViewAll={() => {}}
+        onRename={onRename}
+        onDelete={onDelete}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('recent-projects-more-project-1'));
+    fireEvent.click(screen.getByRole('menuitem', { name: /rename/i }));
+    const input = screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: 'Renamed Deck' } });
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+    expect(onRename).toHaveBeenCalledWith('project-1', 'Renamed Deck');
+  });
+
+  it('does not open the project when the kebab is clicked', () => {
+    const onOpen = vi.fn();
+    render(
+      <RecentProjectsStrip
+        projects={[
+          project({
+            id: 'project-1',
+            name: 'My Deck',
+            updatedAt: 4,
+            metadata: { kind: 'deck' },
+          }),
+        ]}
+        onOpen={onOpen}
+        onViewAll={() => {}}
+        onRename={() => {}}
+        onDelete={async () => true}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('recent-projects-more-project-1'));
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(screen.getByRole('menu')).toBeTruthy();
+  });
+
+  it('confirms delete from the overflow menu', async () => {
+    const onDelete = vi.fn(async () => true);
+    render(
+      <RecentProjectsStrip
+        projects={[
+          project({
+            id: 'project-1',
+            name: 'My Deck',
+            updatedAt: 4,
+            metadata: { kind: 'deck' },
+          }),
+        ]}
+        onOpen={() => {}}
+        onViewAll={() => {}}
+        onRename={() => {}}
+        onDelete={onDelete}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('recent-projects-more-project-1'));
+    fireEvent.click(screen.getByRole('menuitem', { name: /delete/i }));
+    fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+    await waitFor(() => {
+      expect(onDelete).toHaveBeenCalledWith('project-1');
+    });
   });
 });

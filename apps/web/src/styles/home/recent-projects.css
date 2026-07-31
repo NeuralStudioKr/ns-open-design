@@ -53,23 +53,53 @@
   gap: 12px;
 }
 .recent-projects__card {
-  appearance: none;
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-panel);
+  text-align: left;
+  overflow: visible;
+  transition: border-color 120ms var(--ease-out), box-shadow 120ms var(--ease-out), transform 120ms var(--ease-out);
+}
+.recent-projects__card-open {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
   cursor: pointer;
   text-align: left;
   overflow: hidden;
-  transition: border-color 120ms var(--ease-out), box-shadow 120ms var(--ease-out), transform 120ms var(--ease-out);
+  color: inherit;
 }
 .recent-projects__card:hover {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
+}
+.recent-projects__card:hover .design-card-more,
+.recent-projects__card:focus-within .design-card-more,
+.recent-projects__card .design-card-more[aria-expanded="true"],
+.recent-projects__card .design-card-more:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .recent-projects__card .design-card-more {
+    opacity: 1;
+  }
+}
+.recent-projects__menu-anchor {
+  /* Keep kebab above the open button hit target */
+  z-index: 4;
 }
 .recent-projects__card.is-design-system-project {
   border-color: color-mix(in srgb, var(--red) 62%, var(--border));

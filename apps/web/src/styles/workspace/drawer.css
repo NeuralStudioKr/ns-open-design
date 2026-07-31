@@ -620,11 +620,14 @@
 }
 .design-card:hover .design-card-more,
 .design-card:focus-within .design-card-more,
+.recent-projects__card:hover .design-card-more,
+.recent-projects__card:focus-within .design-card-more,
 .design-card-more[aria-expanded="true"],
 .design-card-more:focus-visible { opacity: 1; }
 .design-card-more:hover { color: var(--text-strong); border-color: var(--border-strong); }
 @media (hover: none) {
-  .design-card .design-card-more { opacity: 1; }
+  .design-card .design-card-more,
+  .recent-projects__card .design-card-more { opacity: 1; }
 }
 .design-card-menu {
   position: absolute;
