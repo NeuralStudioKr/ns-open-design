@@ -214,6 +214,18 @@ describe('manual edit source patches', () => {
     expect(attrs['aria-label']).toBe('ok');
   });
 
+  it('coerces numeric set-style JSON instead of silently clearing properties', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-style',
+      id: 'hero-title',
+      styles: { fontSize: 32 as unknown as string, fontWeight: 700 as unknown as string },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const styles = readManualEditStyles(result.source, 'hero-title');
+    expect(styles.fontSize).toMatch(/32/);
+    expect(styles.fontWeight).toBe('700');
+  });
+
   it('rejects spaced data:text/html and javascript: on action/formaction/poster', () => {
     const source = [
       '<!doctype html><html><body>',

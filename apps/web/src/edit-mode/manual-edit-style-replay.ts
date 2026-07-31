@@ -48,13 +48,21 @@ export function manualEditStyleReplayPatches(
   ];
   const patches: ManualEditStyleReplayPatch[] = [];
   for (const id of ids) {
-    const styles = diffManualEditStylePatch(
-      frozenSource,
-      id,
-      readManualEditStyles(savedSource, id),
-    );
-    if (Object.keys(styles).length === 0) continue;
-    patches.push({ id, styles });
+    const savedStyles = readManualEditStyles(savedSource, id);
+    // Only restore non-empty saved styles. Freeze-only ghost ids used to
+    // emit clear patches (`""`) that wiped live preview on remount.
+    const pending: Partial<ManualEditStyles> = {};
+    for (const [key, value] of Object.entries(savedStyles) as Array<[keyof ManualEditStyles, string]>) {
+      if (typeof value === 'string' && value.trim() !== '') pending[key] = value;
+    }
+    if (Object.keys(pending).length === 0) continue;
+    const styles = diffManualEditStylePatch(frozenSource, id, pending);
+    const restore: Partial<ManualEditStyles> = {};
+    for (const [key, value] of Object.entries(styles) as Array<[keyof ManualEditStyles, string]>) {
+      if (typeof value === 'string' && value.trim() !== '') restore[key] = value;
+    }
+    if (Object.keys(restore).length === 0) continue;
+    patches.push({ id, styles: restore });
   }
   return patches;
 }

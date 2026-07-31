@@ -6785,28 +6785,25 @@ function HtmlViewer({
   // still-pending draft so the canvas does not look reverted.
   function replayManualEditStylesToIframe(target: HTMLIFrameElement | null = iframeRef.current) {
     if (!manualEditMode) return;
-    const win = target?.contentWindow;
-    if (!win) return;
-    const patches = manualEditStyleReplayPatches(
-      manualEditFrozenSource,
-      sourceRef.current,
-    );
-    for (const patch of patches) {
-      win.postMessage({
-        type: 'od-edit-preview-style',
-        id: patch.id,
-        styles: patch.styles,
-        version: nextManualEditPreviewVersion(),
-      }, '*');
+    // Temporarily point the shared preview helper at the remounting frame so
+    // host fallback (`applyManualEditPreviewStylesToDocument`) runs too —
+    // postMessage-only misses bridge-less / late-bridge / path-* targets.
+    const previous = iframeRef.current;
+    if (target && target !== previous) iframeRef.current = target;
+    try {
+      const patches = manualEditStyleReplayPatches(
+        manualEditFrozenSource,
+        sourceRef.current,
+      );
+      for (const patch of patches) {
+        previewStyleToIframe(patch.id, patch.styles, nextManualEditPreviewVersion());
+      }
+      const pending = manualEditPendingStyleRef.current;
+      if (!pending) return;
+      previewStyleToIframe(pending.id, pending.styles, pending.version);
+    } finally {
+      if (target && target !== previous) iframeRef.current = previous;
     }
-    const pending = manualEditPendingStyleRef.current;
-    if (!pending) return;
-    win.postMessage({
-      type: 'od-edit-preview-style',
-      id: pending.id,
-      styles: pending.styles,
-      version: pending.version,
-    }, '*');
   }
 
   useEffect(() => {

@@ -58,6 +58,18 @@ describe('parseElementPatch', () => {
     });
   });
 
+  it('coerces numeric set-style JSON into CSS strings with px where needed', () => {
+    const result = parseElementPatch(
+      '<patch target-id="company-name" slide-index="0" kind="set-style">{"fontSize":32,"fontWeight":700}</patch>',
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.patches[0]).toMatchObject({
+      kind: 'set-style',
+      styles: { fontSize: '32px', fontWeight: '700' },
+    });
+  });
+
   it('recovers unquoted target-id CSS paths that contain ">"', () => {
     const result = parseElementPatch(
       '<patch target-id=dom:body > section:nth-of-type(1) > h1:nth-of-type(1) slide-index=0 kind=set-text>새 제목</patch>',

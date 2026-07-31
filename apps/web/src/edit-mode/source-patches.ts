@@ -677,7 +677,9 @@ function pickBestLeafTextTarget(
     let score = text.length;
     if (hintedTag && candidate.tagName.toLowerCase() === hintedTag) score += 50;
     if (text === hintText) score += 200;
-    else if (text.includes(hintText) || hintText.includes(text)) score += 80;
+    else if (hintText.length >= 4 && (text.includes(hintText) || hintText.includes(text))) {
+      score += 40;
+    }
     if (parentText) {
       if (text === parentText) score += 120;
       else if (parentText.includes(text)) score += Math.min(60, text.length);
@@ -789,7 +791,12 @@ function findElementByHint(
     let score = 0;
     if (hintedTag && candidate.tagName.toLowerCase() === hintedTag) score += 50;
     if (hintText && text === hintText) score += 200;
-    else if (hintText && text.includes(hintText)) score += 80;
+    else if (hintText && text.includes(hintText) && hintText.length >= 4) {
+      // Short substring hits (`"OK"`) used to score 80 alone and latch the
+      // shortest containing node. Require a longer hint; tag+substring can
+      // still clear the threshold.
+      score += 40;
+    }
     if (score <= 0) continue;
     const length = text.length;
     if (!best || score > best.score || (score === best.score && length < best.length)) {
@@ -1337,8 +1344,48 @@ export function applyManualEditPlainText(el: Element, value: string): void {
   el.innerHTML = manualEditPlainTextToHtml(String(value ?? ''));
 }
 
-function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
+/**
+ * Models often emit numeric CSS JSON (`{"fontSize":32}`). Coerce to CSS
+ * strings so set-style does not silently removeProperty on non-strings.
+ */
+export function coerceManualEditStyleValue(name: string, value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed === '' ? '' : trimmed;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const unitless = new Set([
+      'fontWeight',
+      'opacity',
+      'lineHeight',
+      'zIndex',
+      'flex',
+      'flexGrow',
+      'flexShrink',
+      'order',
+    ]);
+    if (unitless.has(name)) return String(value);
+    return `${value}px`;
+  }
+  return null;
+}
+
+export function coerceManualEditStyleRecord(
+  styles: Record<string, unknown> | Partial<ManualEditStyles> | null | undefined,
+): Partial<ManualEditStyles> {
+  const out: Partial<ManualEditStyles> = {};
+  if (!styles) return out;
   for (const [name, value] of Object.entries(styles)) {
+    const coerced = coerceManualEditStyleValue(name, value);
+    if (coerced == null) continue;
+    out[name as keyof ManualEditStyles] = coerced;
+  }
+  return out;
+}
+
+function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
+  const coerced = coerceManualEditStyleRecord(styles as Record<string, unknown>);
+  for (const [name, value] of Object.entries(coerced)) {
     const cssName = camelToKebab(name);
     if (typeof value !== 'string' || value.trim() === '') el.style.removeProperty(cssName);
     // Match live preview (`!important`) so brand-kit / artifact CSS rules

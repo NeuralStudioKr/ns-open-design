@@ -414,6 +414,57 @@ describe('preview comment attachment helpers', () => {
     expect(messageContentWithCommentAttachments('', attachments)).toContain('memberCount: 2');
   });
 
+  it('round-trips podMembers through attached-preview-comments history parse', () => {
+    const attachments = buildBoardCommentAttachments({
+      target: {
+        filePath: 'atlas.html',
+        elementId: 'hero',
+        selector: '[data-od-id="hero"]',
+        label: 'section.hero',
+        text: 'Hero title Chart value',
+        position: { x: 10, y: 20, width: 300, height: 200 },
+        htmlHint: '<section data-od-id="hero">',
+        selectionKind: 'pod',
+        memberCount: 2,
+        podMembers: [
+          {
+            elementId: 'hero',
+            selector: '[data-od-id="hero"]',
+            label: 'section.hero',
+            text: 'Hero title',
+            position: { x: 10, y: 20, width: 200, height: 100 },
+            htmlHint: '<section data-od-id="hero">',
+          },
+          {
+            elementId: 'chart',
+            selector: '[data-od-id="chart"]',
+            label: 'section.chart',
+            text: 'Chart value',
+            position: { x: 120, y: 80, width: 190, height: 120 },
+            htmlHint: '<section data-od-id="chart">',
+          },
+        ],
+      },
+      notes: ['Tighten the hierarchy'],
+    });
+    const content = messageContentWithCommentAttachments('Tighten the hierarchy', attachments);
+    const parsed = parseCommentAttachmentsFromMessageContent(content);
+    expect(parsed[0]?.selectionKind).toBe('pod');
+    expect(parsed[0]?.memberCount).toBe(2);
+    expect(parsed[0]?.podMembers).toEqual([
+      expect.objectContaining({
+        elementId: 'hero',
+        selector: '[data-od-id="hero"]',
+        label: 'section.hero',
+      }),
+      expect.objectContaining({
+        elementId: 'chart',
+        selector: '[data-od-id="chart"]',
+        label: 'section.chart',
+      }),
+    ]);
+  });
+
   it('builds an image-only board payload when no text note was entered', () => {
     const attachments = buildBoardCommentAttachments({
       target: {

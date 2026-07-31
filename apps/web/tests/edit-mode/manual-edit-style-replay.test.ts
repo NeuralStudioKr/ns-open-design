@@ -42,4 +42,15 @@ describe('manual edit style replay against freeze', () => {
       true,
     );
   });
+
+  it('does not emit clear patches for freeze-only ghost ids missing from saved HTML', () => {
+    const frozen =
+      '<!doctype html><html><body><main data-od-id="ghost" style="font-size: 22px;">Ghost</main></body></html>';
+    const saved = '<!doctype html><html><body><p data-od-id="hero">Hero</p></body></html>';
+    const patches = manualEditStyleReplayPatches(frozen, saved);
+    expect(patches.some((p) => p.id === 'ghost')).toBe(false);
+    expect(patches.every((p) => Object.values(p.styles).every((v) => String(v || '').trim()))).toBe(
+      true,
+    );
+  });
 });

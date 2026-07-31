@@ -21,6 +21,7 @@
 import type { ManualEditPatch } from '../edit-mode/types';
 import {
   applyManualEditPatch,
+  coerceManualEditStyleRecord,
   extractIdentityFromAttrSelectorId,
   isEphemeralGeneratedPathId,
   resolveManualEditTargetReference,
@@ -373,7 +374,11 @@ function parsePatchBody(
       return { id: targetId, kind: 'remove-element' };
     case 'set-style': {
       const styles = parseJsonObject(body);
-      return styles ? { id: targetId, kind: 'set-style', styles } : null;
+      if (!styles) return null;
+      const coerced = coerceManualEditStyleRecord(styles);
+      return Object.keys(coerced).length > 0
+        ? { id: targetId, kind: 'set-style', styles: coerced }
+        : null;
     }
     case 'set-attributes': {
       const attributes = parseJsonObject(body);

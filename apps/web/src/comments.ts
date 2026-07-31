@@ -448,6 +448,31 @@ function parseAttachedPreviewCommentPosition(
   };
 }
 
+/** Rebuild pod members from `member.N: id | label | selector` history lines. */
+function parseAttachedPreviewPodMembers(section: string): PreviewCommentMember[] {
+  const byIndex = new Map<number, PreviewCommentMember>();
+  const re = /^member\.(\d+):\s*([^|]+)\|\s*([^|]*)\|\s*(.*)$/gm;
+  for (const match of section.matchAll(re)) {
+    const index = Number(match[1]);
+    if (!Number.isFinite(index) || index < 1) continue;
+    const elementId = String(match[2] || '').trim();
+    const label = stripAttachedPreviewPlaceholder(match[3]);
+    const selector = stripAttachedPreviewPlaceholder(match[4]);
+    if (!elementId || !selector) continue;
+    byIndex.set(index, {
+      elementId,
+      selector,
+      label,
+      text: '',
+      position: { x: 0, y: 0, width: 0, height: 0 },
+      htmlHint: '',
+    });
+  }
+  return [...byIndex.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, member]) => member);
+}
+
 /**
  * Rebuild `commentAttachments` from a persisted `<attached-preview-comments>`
  * block when the structured column was dropped by a stale server merge.
@@ -505,6 +530,19 @@ export function parseCommentAttachmentsFromMessageContent(
               parseAttachedPreviewCommentField(section, 'intent'),
             ) || undefined,
           }
+        : {}),
+      ...(selectionKind === 'pod'
+        ? (() => {
+            const podMembers = parseAttachedPreviewPodMembers(section);
+            const memberCountRaw = parseAttachedPreviewCommentField(section, 'memberCount');
+            const memberCount = memberCountRaw != null && Number.isFinite(Number(memberCountRaw))
+              ? Math.max(0, Math.floor(Number(memberCountRaw)))
+              : podMembers.length;
+            return {
+              ...(podMembers.length > 0 ? { podMembers } : {}),
+              ...(memberCount > 0 ? { memberCount } : {}),
+            };
+          })()
         : {}),
     };
     if (hasUsableCommentLocationData(attachment)) out.push(attachment);
