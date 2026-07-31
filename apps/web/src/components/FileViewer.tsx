@@ -8117,11 +8117,13 @@ function HtmlViewer({
         ))
       ) return false;
       revisionSyncSuppressRef.current = true;
+      // Do not echo `file.artifactManifest` on manual-edit pushes. Style/text
+      // saves never update the sidecar, and a stale client manifest (empty
+      // title, stripped exports) used to 400 the whole revision POST.
       const saved = await pushProjectFileRevision(projectId, file.name, {
         content: result.source,
         source: 'manual_edit',
         label,
-        artifactManifest: file.artifactManifest,
         truncateAfterSequence: truncateAfterSequenceForStack(revisionStackRef.current),
       });
       if (!saved.ok) {
@@ -8554,7 +8556,7 @@ function HtmlViewer({
         content: next,
         source: 'inspect',
         label: embedUiLabel('Style adjustments', '스타일 조정'),
-        artifactManifest: file.artifactManifest,
+        // Inspect tweaks are content-only — avoid stale-manifest 400s.
         truncateAfterSequence: truncateAfterSequenceForStack(revisionStackRef.current),
       });
       if (!saved.ok) {
