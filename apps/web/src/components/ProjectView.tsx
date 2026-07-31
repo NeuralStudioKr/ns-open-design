@@ -208,6 +208,7 @@ import {
   appendErrorStatusEvent,
   appendWarningStatusEvent,
   attachPersistedChatError,
+  attachAutoContinueIncompleteOutputNotice,
   messageHasPersistedChatError,
   messageHasVisibleProse,
 } from '../runtime/chat-events';
@@ -2505,6 +2506,8 @@ export function ProjectView({
   const autoContinueTimerRef = useRef<number | null>(null);
   /** Conversation id that owns the pending auto-continue timer (for cap rollback). */
   const pendingAutoContinueConversationIdRef = useRef<string | null>(null);
+  /** True while the 600ms auto-continue timer is armed — ChatPane hides Retry. */
+  const [autoContinuePending, setAutoContinuePending] = useState(false);
   /**
    * Live streaming buffer mutator for the in-flight assistant row. `surfaceChatVisibleError`
    * updates React `messages` + saves, but the stream scheduler persists from a separate
@@ -2519,12 +2522,14 @@ export function ProjectView({
   const clearPendingAutoContinueTimer = useCallback((options?: { rollback?: boolean }) => {
     if (autoContinueTimerRef.current === null) {
       pendingAutoContinueConversationIdRef.current = null;
+      setAutoContinuePending(false);
       return;
     }
     window.clearTimeout(autoContinueTimerRef.current);
     autoContinueTimerRef.current = null;
     const scheduledId = pendingAutoContinueConversationIdRef.current;
     pendingAutoContinueConversationIdRef.current = null;
+    setAutoContinuePending(false);
     if (options?.rollback && scheduledId) {
       rollbackAutoContinueCount(conversationAutoContinueCountRef.current, scheduledId);
     }
@@ -3244,10 +3249,10 @@ export function ProjectView({
               autoContinueCount + 1,
             );
             const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
-            const updatedAssistant = appendErrorStatusEvent(
+            const updatedAssistant = attachAutoContinueIncompleteOutputNotice(
               incompleteAssistant,
               autoContinueNotice,
-              AUTO_CONTINUE_STATUS_CODE,
+              formatProjectRunDeliverableMissingError(),
             );
             setMessages((current) =>
               current.map((message) =>
@@ -3263,9 +3268,11 @@ export function ProjectView({
             const scheduledProjectId = project.id;
             const scheduledConversationId = activeConversationId;
             pendingAutoContinueConversationIdRef.current = scheduledConversationId;
+            setAutoContinuePending(true);
             autoContinueTimerRef.current = window.setTimeout(() => {
               autoContinueTimerRef.current = null;
               pendingAutoContinueConversationIdRef.current = null;
+              setAutoContinuePending(false);
               if (project.id !== scheduledProjectId) {
                 rollbackAutoContinueCount(
                   conversationAutoContinueCountRef.current,
@@ -6776,10 +6783,10 @@ export function ProjectView({
             autoContinueCount + 1,
           );
           const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
-          const updatedAssistant = appendErrorStatusEvent(
+          const updatedAssistant = attachAutoContinueIncompleteOutputNotice(
             incompleteAssistant,
             autoContinueNotice,
-            AUTO_CONTINUE_STATUS_CODE,
+            formatProjectRunDeliverableMissingError(),
           );
           setMessages((current) =>
             current.map((message) =>
@@ -6796,9 +6803,11 @@ export function ProjectView({
           const scheduledProjectId = project.id;
           const scheduledConversationId = recoveryConversationId;
           pendingAutoContinueConversationIdRef.current = scheduledConversationId;
+          setAutoContinuePending(true);
           autoContinueTimerRef.current = window.setTimeout(() => {
             autoContinueTimerRef.current = null;
             pendingAutoContinueConversationIdRef.current = null;
+            setAutoContinuePending(false);
             if (project.id !== scheduledProjectId) {
               rollbackAutoContinueCount(
                 conversationAutoContinueCountRef.current,
@@ -7894,16 +7903,22 @@ export function ProjectView({
                   autoContinueCount + 1,
                 );
                 const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
+                // Durable incomplete_output under the transient notice so a
+                // hard reload can rebuild Retry after AUTO_CONTINUE is no
+                // longer "pending" in this session.
                 updateAssistant((prev) => ({
-                  ...appendErrorStatusEvent(prev, autoContinueNotice, AUTO_CONTINUE_STATUS_CODE),
+                  ...attachAutoContinueIncompleteOutputNotice(
+                    prev,
+                    autoContinueNotice,
+                    deliverableError,
+                    deliverableErrorCode,
+                  ),
                   producedFiles: produced,
-                  runStatus: 'failed',
-                  resumable: true,
                   endedAt: prev.endedAt ?? endedAt,
                 }));
               } else {
                 updateAssistant((prev) => ({
-                  ...appendErrorStatusEvent(prev, deliverableError, deliverableErrorCode),
+                  ...attachPersistedChatError(prev, deliverableError, deliverableErrorCode),
                   producedFiles: produced,
                   runStatus: 'failed',
                   resumable: true,
@@ -7923,9 +7938,11 @@ export function ProjectView({
                 const scheduledProjectId = project.id;
                 const scheduledConversationId = runConversationId;
                 pendingAutoContinueConversationIdRef.current = scheduledConversationId;
+                setAutoContinuePending(true);
                 autoContinueTimerRef.current = window.setTimeout(() => {
                   autoContinueTimerRef.current = null;
                   pendingAutoContinueConversationIdRef.current = null;
+                  setAutoContinuePending(false);
                   // Abort if the user switched projects/conversations — otherwise
                   // a late timer from project A would inject the recovery prompt
                   // into project B's brand-new chat.
@@ -10809,6 +10826,7 @@ export function ProjectView({
               onSend={handleSend}
               onRetry={handleRetry}
               onResumeRun={handleResumeRun}
+              autoContinuePending={autoContinuePending}
               onStop={handleStop}
               onRemoveQueuedSend={removeQueuedChatSend}
               onUpdateQueuedSend={updateQueuedChatSend}

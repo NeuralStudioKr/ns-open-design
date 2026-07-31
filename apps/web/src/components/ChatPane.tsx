@@ -482,6 +482,13 @@ interface Props {
   ) => void;
   onRetry?: (assistantMessage: ChatMessage) => void;
   onResumeRun?: (assistantMessage: ChatMessage) => void;
+  /**
+   * True while ProjectView's 600ms automatic-continue timer is armed.
+   * After hard reload this is false even if the message still carries an
+   * `auto_continue_incomplete_output` notice — Retry must come back from the
+   * durable `incomplete_output` underneath.
+   */
+  autoContinuePending?: boolean;
   onStop: () => void;
   // Skills available for @-mention assembly. ProjectView filters out the
   // user's disabled set before passing them in here.
@@ -695,6 +702,7 @@ export function ChatPane({
   onSend,
   onRetry,
   onResumeRun,
+  autoContinuePending = false,
   onStop,
   onRemoveQueuedSend,
   onUpdateQueuedSend,
@@ -923,14 +931,41 @@ export function ChatPane({
     }
     return null;
   })();
-  // AUTO_CONTINUE_STATUS_CODE is a transient recovery notice, not a final
-  // user-facing error. Keep the latest event for suppressing manual retry
-  // affordances, but exclude it from the chat error card and diagnostics.
+  // Prefer the durable deliverable/auth error under a stacked auto-continue
+  // notice so hard reload can rebuild Retry after the live timer is gone.
+  const durableFailedRunErrorEvent = (() => {
+    const evs = retryAssistant?.events ?? [];
+    for (let i = evs.length - 1; i >= 0; i--) {
+      const ev = evs[i];
+      if (
+        ev?.kind === 'status'
+        && ev.label === 'error'
+        && ev.code !== AUTO_CONTINUE_STATUS_CODE
+        && Boolean(ev.detail?.trim())
+      ) {
+        return ev;
+      }
+    }
+    return null;
+  })();
+  // Suppress manual Retry only while ProjectView's timer is armed, or for
+  // legacy rows that only carry the auto-continue notice (no durable error).
   const autoContinueScheduled =
-    latestFailedRunErrorEvent?.code === AUTO_CONTINUE_STATUS_CODE;
-  const failedRunErrorEvent = autoContinueScheduled ? null : latestFailedRunErrorEvent;
+    autoContinuePending
+    || (
+      latestFailedRunErrorEvent?.code === AUTO_CONTINUE_STATUS_CODE
+      && !durableFailedRunErrorEvent
+    );
+  const failedRunErrorEvent = autoContinueScheduled
+    ? null
+    : (durableFailedRunErrorEvent ?? (
+      latestFailedRunErrorEvent?.code === AUTO_CONTINUE_STATUS_CODE
+        ? null
+        : latestFailedRunErrorEvent
+    ));
   const diagnosticRunErrorEvent = (() => {
     if (failedRunErrorEvent) return failedRunErrorEvent;
+    if (durableFailedRunErrorEvent) return durableFailedRunErrorEvent;
     const evs = diagnosticAssistant?.events ?? [];
     for (let i = evs.length - 1; i >= 0; i--) {
       const ev = evs[i];
@@ -949,11 +984,11 @@ export function ChatPane({
   const runFailureUi = retryAssistant
     ? resolveRunFailureUi(failedRunErrorEvent?.code, retryAssistant.agentId)
     : null;
-  // When the last error event on the failed run is the auto-continue notice,
-  // ProjectView has already scheduled a fresh run (setTimeout 600ms) — hide
-  // ALL manual recovery affordances so the user cannot double-fire in the
-  // race window. Distinct from `runFailureUi.primaryAction === 'none'` so
-  // this specifically covers the auto-continue path without accidentally
+  // When auto-continue is pending, ProjectView has already scheduled a fresh
+  // run (setTimeout 600ms) — hide ALL manual recovery affordances so the user
+  // cannot double-fire in the race window. Distinct from
+  // `runFailureUi.primaryAction === 'none'` so this specifically covers the
+  // auto-continue path without accidentally
   // gating the NON_RETRYABLE_CODES cases (which have their own already-none
   // return path but still want the copy button).
   // Offer Continue (resume) when the failed run is resumable AND the active

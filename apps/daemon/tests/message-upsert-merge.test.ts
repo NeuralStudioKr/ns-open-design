@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isDurableChatErrorEvent,
+  isPreservedChatErrorEvent,
   mergeMessageEvents,
   mergeMessageUpsertPayload,
 } from '../src/storage/message-upsert-merge.js';
 
 describe('message-upsert-merge', () => {
-  it('recognizes durable status:error events', () => {
+  it('recognizes durable vs preserved status:error events', () => {
     expect(isDurableChatErrorEvent({
       kind: 'status',
       label: 'error',
@@ -20,6 +21,62 @@ describe('message-upsert-merge', () => {
       detail: 'auto',
       code: 'auto_continue_incomplete_output',
     })).toBe(false);
+    expect(isPreservedChatErrorEvent({
+      kind: 'status',
+      label: 'error',
+      detail: 'auto',
+      code: 'auto_continue_incomplete_output',
+    })).toBe(true);
+  });
+
+  it('preserves auto-continue notices and incomplete_output under stale streaming PUTs', () => {
+    const existing = {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'partial',
+      runStatus: 'failed',
+      events: [
+        { kind: 'text', text: 'partial' },
+        {
+          kind: 'status',
+          label: 'error',
+          detail: '슬라이드 결과물이 생성되지 않았습니다.',
+          code: 'incomplete_output',
+        },
+        {
+          kind: 'status',
+          label: 'error',
+          detail: '결과물이 완성되지 않아 자동으로 이어쓰기를 시도합니다…',
+          code: 'auto_continue_incomplete_output',
+        },
+      ],
+    };
+    const incoming = {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'partial more',
+      runStatus: 'running',
+      events: [
+        { kind: 'text', text: 'partial more' },
+      ],
+    };
+    const durable = mergeMessageUpsertPayload(existing, incoming);
+    expect(durable.runStatus).toBe('failed');
+    expect(durable.events).toEqual([
+      { kind: 'text', text: 'partial more' },
+      {
+        kind: 'status',
+        label: 'error',
+        detail: '슬라이드 결과물이 생성되지 않았습니다.',
+        code: 'incomplete_output',
+      },
+      {
+        kind: 'status',
+        label: 'error',
+        detail: '결과물이 완성되지 않아 자동으로 이어쓰기를 시도합니다…',
+        code: 'auto_continue_incomplete_output',
+      },
+    ]);
   });
 
   it('preserves durable errors when a later non-empty events upsert omits them (cache-miss / PG)', () => {

@@ -270,7 +270,7 @@ describe("ProjectView message loading", () => {
     // more source.
     const block = source.slice(start, start + 11000);
 
-    expect(block).toContain("AUTO_CONTINUE_STATUS_CODE");
+    expect(block).toContain("attachAutoContinueIncompleteOutputNotice(");
     expect(block).toContain("syncAutoContinueCountFromMessages(");
     expect(block).toContain("findIncompleteSlideAssistantForRecovery(");
     expect(block).toContain("pendingAutoContinueConversationIdRef.current === activeConversationId");
@@ -278,7 +278,7 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("scopedCommentAttachmentCount:");
     expect(block).toContain("canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)");
     expect(block).toContain("formatAutoContinueIncompleteOutputNotice()");
-    expect(block).toContain("appendErrorStatusEvent(");
+    expect(block).toContain("formatProjectRunDeliverableMissingError()");
     expect(block).toContain("saveMessage(project.id, activeConversationId, updatedAssistant");
     expect(block).toContain("handleSendRef.current");
     // resolveAutoContinuePrompt replaced buildAutoContinueIncompleteOutputPrompt
@@ -407,7 +407,8 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("shouldAutoContinueForIncompleteOutput({");
     expect(autoOpenBlock).toContain("attemptEmergencySlideDeckRecovery(");
     expect(autoOpenBlock).toContain("formatAutoContinueIncompleteOutputNotice()");
-    expect(autoOpenBlock).toContain("AUTO_CONTINUE_STATUS_CODE");
+    expect(autoOpenBlock).toContain("attachAutoContinueIncompleteOutputNotice(");
+    expect(autoOpenBlock).toContain("attachPersistedChatError(prev, deliverableError, deliverableErrorCode)");
     // resolveAutoContinuePrompt replaces the older direct
     // buildAutoContinueIncompleteOutputPrompt call so scoped comment
     // retries can route to an element-patch specific retry prompt

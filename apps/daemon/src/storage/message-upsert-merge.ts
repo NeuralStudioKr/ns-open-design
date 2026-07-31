@@ -28,11 +28,22 @@ export const NON_FATAL_CHAT_ERROR_CODES = new Set([
   'emergency_deck_fallback',
 ]);
 
-export function isDurableChatErrorEvent(event: unknown): boolean {
+/**
+ * Any status:error with detail — including transient auto-continue notices.
+ * Used when merging events so a later streaming PUT cannot erase the notice
+ * (or the durable incomplete_output beneath it) before hard reload.
+ */
+export function isPreservedChatErrorEvent(event: unknown): boolean {
   if (!event || typeof event !== 'object') return false;
-  const row = event as { kind?: unknown; label?: unknown; detail?: unknown; code?: unknown };
+  const row = event as { kind?: unknown; label?: unknown; detail?: unknown };
   if (row.kind !== 'status' || row.label !== 'error') return false;
-  if (typeof row.detail !== 'string' || !row.detail.trim()) return false;
+  return typeof row.detail === 'string' && Boolean(row.detail.trim());
+}
+
+/** Fatal/user-facing status:error — excludes auto-continue / emergency notices. */
+export function isDurableChatErrorEvent(event: unknown): boolean {
+  if (!isPreservedChatErrorEvent(event)) return false;
+  const row = event as { code?: unknown };
   if (typeof row.code === 'string' && NON_FATAL_CHAT_ERROR_CODES.has(row.code)) return false;
   return true;
 }
@@ -59,10 +70,10 @@ export function mergeMessageEvents(
   if (incoming.length === 0 && (existing?.length ?? 0) > 0) return existing;
   if (!existing?.length) return incoming;
   const incomingKeys = new Set(
-    incoming.filter(isDurableChatErrorEvent).map(chatErrorEventKey),
+    incoming.filter(isPreservedChatErrorEvent).map(chatErrorEventKey),
   );
   const missing = existing.filter(
-    (event) => isDurableChatErrorEvent(event) && !incomingKeys.has(chatErrorEventKey(event)),
+    (event) => isPreservedChatErrorEvent(event) && !incomingKeys.has(chatErrorEventKey(event)),
   );
   if (missing.length === 0) return incoming;
   return [...incoming, ...missing];
