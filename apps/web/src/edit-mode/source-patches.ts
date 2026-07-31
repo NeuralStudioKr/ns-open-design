@@ -377,7 +377,7 @@ export function mergeManualEditTargetsFromSource(
     const currentOuter = currentTarget.outerHTML;
     const nextOuter = nextTarget.outerHTML;
     const replacement = currentDoc.importNode(nextTarget, true);
-    preserveManualEditIdentityAttributes(currentTarget, replacement);
+    finalizeManualEditReplacement(currentTarget, replacement);
     currentTarget.replaceWith(replacement);
     replacedCount += 1;
     if (currentOuter !== nextOuter) changedCount += 1;
@@ -435,7 +435,7 @@ export function graftPatchedTargetElementFromSource(
   }
 
   const replacement = currentDoc.importNode(patchedTarget, true);
-  preserveManualEditIdentityAttributes(currentTarget, replacement);
+  finalizeManualEditReplacement(currentTarget, replacement);
   currentTarget.replaceWith(replacement);
   return { ok: true, source: serializeSource(currentDoc, currentSource) };
 }
@@ -727,7 +727,7 @@ export function mergeManualEditTargetByHint(
   }
 
   const replacement = currentDoc.importNode(nextTarget, true);
-  preserveManualEditIdentityAttributes(currentTarget, replacement);
+  finalizeManualEditReplacement(currentTarget, replacement);
   currentTarget.replaceWith(replacement);
   return {
     ok: true,
@@ -869,8 +869,9 @@ function findEquivalentElementByScopedPosition(
 }
 
 function preserveManualEditIdentityAttributes(currentTarget: Element, replacement: Element): void {
-  // Slide page targets rely on data-slide-index / data-screen-label for
-  // lookup and page-level comments — keep them when the model omits them.
+  // Always force current identity / slide-scope attrs onto the replacement.
+  // Models often emit wrong data-slide-index / data-screen-label; filling only
+  // when omitted let those wrong values win and break page-level lookup.
   for (const attr of [
     'data-od-id',
     'data-od-runtime-id',
@@ -881,10 +882,36 @@ function preserveManualEditIdentityAttributes(currentTarget: Element, replacemen
     'data-screen-label',
   ]) {
     const currentValue = currentTarget.getAttribute(attr);
-    if (currentValue && !replacement.getAttribute(attr)) {
+    if (currentValue) {
       replacement.setAttribute(attr, currentValue);
     }
   }
+}
+
+/** Strip event handlers / unsafe URL attrs from model-supplied replacement trees. */
+function sanitizeManualEditReplacementTree(root: Element): void {
+  const walk = (el: Element): void => {
+    for (const attr of Array.from(el.attributes)) {
+      const lower = attr.name.toLowerCase();
+      if (lower.startsWith('on') || lower === 'srcdoc') {
+        el.removeAttribute(attr.name);
+        continue;
+      }
+      if (
+        (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
+        && !isSafeManualEditUrlAttrValue(lower, attr.value)
+      ) {
+        el.removeAttribute(attr.name);
+      }
+    }
+    for (const child of Array.from(el.children)) walk(child);
+  };
+  walk(root);
+}
+
+function finalizeManualEditReplacement(currentTarget: Element, replacement: Element): void {
+  preserveManualEditIdentityAttributes(currentTarget, replacement);
+  sanitizeManualEditReplacementTree(replacement);
 }
 
 function findReplacementCandidateByTextHint(
@@ -1348,23 +1375,33 @@ export function applyManualEditPlainText(el: Element, value: string): void {
  * Models often emit numeric CSS JSON (`{"fontSize":32}`). Coerce to CSS
  * strings so set-style does not silently removeProperty on non-strings.
  */
+const MANUAL_EDIT_UNITLESS_STYLE_PROPS = new Set([
+  'fontWeight',
+  'opacity',
+  'lineHeight',
+  'zIndex',
+  'flex',
+  'flexGrow',
+  'flexShrink',
+  'order',
+]);
+
 export function coerceManualEditStyleValue(name: string, value: unknown): string | null {
   if (typeof value === 'string') {
     const trimmed = value.trim();
-    return trimmed === '' ? '' : trimmed;
+    if (trimmed === '') return '';
+    // Models often emit unitless length strings (`"32"`). Append px so
+    // setProperty does not silently ignore invalid CSS lengths.
+    if (
+      !MANUAL_EDIT_UNITLESS_STYLE_PROPS.has(name)
+      && /^-?\d+(\.\d+)?$/.test(trimmed)
+    ) {
+      return `${trimmed}px`;
+    }
+    return trimmed;
   }
   if (typeof value === 'number' && Number.isFinite(value)) {
-    const unitless = new Set([
-      'fontWeight',
-      'opacity',
-      'lineHeight',
-      'zIndex',
-      'flex',
-      'flexGrow',
-      'flexShrink',
-      'order',
-    ]);
-    if (unitless.has(name)) return String(value);
+    if (MANUAL_EDIT_UNITLESS_STYLE_PROPS.has(name)) return String(value);
     return `${value}px`;
   }
   return null;
@@ -1414,7 +1451,10 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
       continue;
     }
     // Block dangerous URL schemes on navigable / embeddable attrs.
-    if (MANUAL_EDIT_URL_ATTRS.has(lower) && !isSafeManualEditUrl(value)) {
+    if (
+      (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
+      && !isSafeManualEditUrlAttrValue(lower, value)
+    ) {
       continue;
     }
     el.setAttribute(name, value);
@@ -1435,7 +1475,7 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
   if (!next) {
     return { ok: false, error: 'Replacement HTML must contain exactly one root element.' };
   }
-  preserveManualEditIdentityAttributes(el, next);
+  finalizeManualEditReplacement(el, next);
   el.replaceWith(next);
   // Style siblings were dropped by single-root salvage — keep their rules
   // so "make it stand out" edits that ship class + <style> still paint.
@@ -1622,16 +1662,41 @@ const MANUAL_EDIT_URL_ATTRS = new Set([
   'background',
   'dynsrc',
   'lowsrc',
+  'srcset',
+  'data',
 ]);
 
-/** Reject javascript:/vbscript:/data:text/html URL schemes in manual edits. */
+const SAFE_MANUAL_EDIT_DATA_IMAGE_RE = /^data:image\/(png|jpe?g|gif|webp|avif|bmp)(;|,)/i;
+
+/** Reject javascript:/vbscript:/dangerous data: URL schemes in manual edits. */
 export function isSafeManualEditUrl(value: string): boolean {
   const trimmed = String(value || '').trim();
   if (!trimmed) return true;
-  // Strip whitespace so `data: text/html` / `java\nscript:` cannot bypass.
-  const compact = trimmed.replace(/\s+/g, '').toLowerCase();
+  // Strip whitespace + C0 controls so `java\0script:` / `data: text/html` cannot bypass.
+  const compact = trimmed.replace(/[\s\u0000-\u001f\u007f\ufeff]+/g, '').toLowerCase();
   if (compact.startsWith('javascript:')) return false;
   if (compact.startsWith('vbscript:')) return false;
-  if (compact.startsWith('data:text/html')) return false;
+  if (compact.startsWith('data:')) {
+    if (compact.startsWith('data:text/html')) return false;
+    if (compact.startsWith('data:image/svg+xml')) return false;
+    // Allow only common raster data:image MIME types.
+    if (compact.startsWith('data:image/')) {
+      return SAFE_MANUAL_EDIT_DATA_IMAGE_RE.test(compact);
+    }
+    return false;
+  }
   return true;
+}
+
+/** Validate URL attr values; `srcset` checks each comma-separated candidate URL. */
+export function isSafeManualEditUrlAttrValue(attr: string, value: string): boolean {
+  const lower = String(attr || '').toLowerCase();
+  if (lower === 'srcset') {
+    for (const part of String(value || '').split(',')) {
+      const url = part.trim().split(/\s+/)[0] || '';
+      if (url && !isSafeManualEditUrl(url)) return false;
+    }
+    return true;
+  }
+  return isSafeManualEditUrl(value);
 }

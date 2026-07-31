@@ -459,6 +459,9 @@ function parseAttachedPreviewPodMembers(section: string): PreviewCommentMember[]
     const label = stripAttachedPreviewPlaceholder(match[3]);
     const selector = stripAttachedPreviewPlaceholder(match[4]);
     if (!elementId || !selector) continue;
+    const style = parseAttachedPreviewComputedStyle(
+      parseAttachedPreviewCommentField(section, `member.${index}.computedStyle`),
+    );
     byIndex.set(index, {
       elementId,
       selector,
@@ -466,11 +469,47 @@ function parseAttachedPreviewPodMembers(section: string): PreviewCommentMember[]
       text: '',
       position: { x: 0, y: 0, width: 0, height: 0 },
       htmlHint: '',
+      ...(style ? { style } : {}),
     });
   }
   return [...byIndex.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([, member]) => member);
+}
+
+/** Inverse of `formatAnnotationStyle` for history round-trip. */
+function parseAttachedPreviewComputedStyle(
+  raw: string | null | undefined,
+): PreviewAnnotationStyle | undefined {
+  const text = stripAttachedPreviewPlaceholder(raw);
+  if (!text) return undefined;
+  const style: PreviewAnnotationStyle = {};
+  for (const part of text.split(';')) {
+    const idx = part.indexOf(':');
+    if (idx < 0) continue;
+    const key = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).replace(/\s+/g, ' ').trim();
+    if (!(ANNOTATION_STYLE_KEYS as readonly string[]).includes(key) || !value) continue;
+    style[key as keyof PreviewAnnotationStyle] = value.slice(0, 120);
+  }
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
+/** Rebuild `image.N: path | name` lines written by renderCommentAttachmentContext. */
+function parseAttachedPreviewImageAttachments(section: string): PreviewCommentAttachment[] {
+  const byIndex = new Map<number, PreviewCommentAttachment>();
+  const re = /^image\.(\d+):\s*([^|]+)\|\s*(.*)$/gm;
+  for (const match of section.matchAll(re)) {
+    const index = Number(match[1]);
+    if (!Number.isFinite(index) || index < 1) continue;
+    const path = String(match[2] || '').trim();
+    if (!path) continue;
+    const name = String(match[3] || '').trim() || path.split('/').pop() || path;
+    byIndex.set(index, { path, name });
+  }
+  return [...byIndex.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, item]) => item);
 }
 
 /**
@@ -518,6 +557,9 @@ export function parseCommentAttachmentsFromMessageContent(
       htmlHint: stripAttachedPreviewPlaceholder(
         parseAttachedPreviewCommentField(section, 'htmlHint'),
       ),
+      style: parseAttachedPreviewComputedStyle(
+        parseAttachedPreviewCommentField(section, 'computedStyle'),
+      ),
       selectionKind,
       ...(Number.isFinite(slideIndex) ? { slideIndex } : {}),
       ...(selectionKind === 'visual'
@@ -544,6 +586,10 @@ export function parseCommentAttachmentsFromMessageContent(
             };
           })()
         : {}),
+      ...(() => {
+        const imageAttachments = parseAttachedPreviewImageAttachments(section);
+        return imageAttachments.length > 0 ? { imageAttachments } : {};
+      })(),
     };
     if (hasUsableCommentLocationData(attachment)) out.push(attachment);
   }

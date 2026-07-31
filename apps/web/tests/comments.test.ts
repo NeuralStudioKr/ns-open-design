@@ -1001,6 +1001,25 @@ describe('preview comment attachment helpers', () => {
     ]);
   });
 
+  it('round-trips computedStyle and imageAttachments through history parse', () => {
+    const attachment = commentAttachment({
+      style: { color: 'rgb(1, 2, 3)', fontSize: '18px' },
+      imageAttachments: [
+        { path: 'uploads/ref-a.png', name: 'ref-a.png' },
+        { path: 'uploads/ref-b.png', name: 'ref-b.png' },
+      ],
+    });
+    const content = messageContentWithCommentAttachments('참고 이미지 반영', [attachment]);
+    expect(content).toContain('computedStyle: color: rgb(1, 2, 3); fontSize: 18px');
+    expect(content).toContain('image.1: uploads/ref-a.png | ref-a.png');
+    const parsed = parseCommentAttachmentsFromMessageContent(content);
+    expect(parsed[0]?.style).toEqual({ color: 'rgb(1, 2, 3)', fontSize: '18px' });
+    expect(parsed[0]?.imageAttachments).toEqual([
+      { path: 'uploads/ref-a.png', name: 'ref-a.png' },
+      { path: 'uploads/ref-b.png', name: 'ref-b.png' },
+    ]);
+  });
+
   it('strips serialize placeholders so history round-trip stays screenshot-only', () => {
     const visualOnly = buildVisualAnnotationAttachment({
       order: 0,
