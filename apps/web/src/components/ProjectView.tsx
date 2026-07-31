@@ -24,7 +24,7 @@ import {
   diffDeckSlideIndexes,
   extractTopLevelSlideSections,
   isDeckPatchArtifactType,
-  parseDeckPatch,
+  parseDeckPatchWithSalvage,
 } from '../artifacts/deck-patch';
 import {
   applyElementPatches,
@@ -1491,7 +1491,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       reason: 'current deck file unreadable',
     };
   }
-  const parsed = parseDeckPatch(input.patchBody, {
+  const parsed = parseDeckPatchWithSalvage(input.patchBody, {
     fallbackSlideIndexes: input.allowedSlideIndexes,
     currentHtml,
   });
@@ -3236,6 +3236,9 @@ export function ProjectView({
               : [];
             const recoveryAutoContinueMax = resolveAutoContinueMaxAttempts({
               scopedCommentAttachmentCount: recoveryCommentAttachments.length,
+              visualMarkOnly:
+                recoveryCommentAttachments.length > 0
+                && !hasElementScopedCommentAttachments(recoveryCommentAttachments),
             });
             if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
               if (incompleteAssistant && slideOnlyMvp) {
@@ -6835,6 +6838,9 @@ export function ProjectView({
           : [];
         const recoveryAutoContinueMax = resolveAutoContinueMaxAttempts({
           scopedCommentAttachmentCount: recoveryCommentAttachments.length,
+          visualMarkOnly:
+            recoveryCommentAttachments.length > 0
+            && !hasElementScopedCommentAttachments(recoveryCommentAttachments),
         });
         if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
           if (incompleteAssistant && slideOnlyMvp) {
@@ -7938,10 +7944,17 @@ export function ProjectView({
                 retryTarget?.userMsg ?? userMsg,
                 runCommentAttachmentsRef.current,
               );
+              const visualMarkOnlyAutoContinue =
+                terminalAutoContinueCommentAttachments.length > 0
+                && !hasElementScopedCommentAttachments(terminalAutoContinueCommentAttachments);
               const canAutoContinue = shouldAutoContinueForIncompleteOutput({
                 runIsVisible: runIsVisible(),
                 autoContinueCount,
                 scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
+                maxPerConversation: resolveAutoContinueMaxAttempts({
+                  scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
+                  visualMarkOnly: visualMarkOnlyAutoContinue,
+                }),
                 terminalPersistResultKind,
                 terminalPersistResultCode:
                   terminalPersistResult?.kind === 'scope-rejected'

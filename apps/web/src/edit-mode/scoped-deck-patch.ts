@@ -10,7 +10,7 @@
 import {
   applyDeckPatch,
   extractTopLevelSlideSections,
-  parseDeckPatch,
+  parseDeckPatchWithSalvage,
   type DeckPatch,
 } from '../artifacts/deck-patch';
 import type { ChatCommentAttachment } from '../types';
@@ -229,7 +229,7 @@ export function applyScopedDeckPatchToHtml(input: {
 }): DeckPatchMergeResult {
   const parsed = input.patch
     ? { ok: true as const, patch: input.patch }
-    : parseDeckPatch(input.patchBody ?? '', {
+    : parseDeckPatchWithSalvage(input.patchBody ?? '', {
         fallbackSlideIndexes: input.allowedSlideIndexes,
         currentHtml: input.currentHtml,
       });
