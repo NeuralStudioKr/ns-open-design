@@ -363,6 +363,33 @@ export function attachmentMergeHint(
   };
 }
 
+function tryAnchorlessSlideLevelSwap(input: {
+  nextHtml: string;
+  patchedHtml: string;
+  slideIndex: number;
+  logContext?: string;
+}): { ok: true; html: string } | { ok: false; reason: string } {
+  const nextSlide = extractSlideByIndex(input.nextHtml, input.slideIndex);
+  const patchedSlide = extractSlideByIndex(input.patchedHtml, input.slideIndex);
+  if (!nextSlide || !patchedSlide || nextSlide === patchedSlide) {
+    return { ok: false, reason: 'No matching targets found to merge.' };
+  }
+  const swapped = applyDeckPatch({
+    currentHtml: input.nextHtml,
+    patch: {
+      ops: [{ op: 'replace', slideIndex: input.slideIndex, html: patchedSlide }],
+    },
+  });
+  if (!swapped.ok) {
+    return { ok: false, reason: swapped.reason ?? 'No matching targets found to merge.' };
+  }
+  console.info('[deck-patch] accepted anchor-less slide-level swap', {
+    slideIndex: input.slideIndex,
+    branch: input.logContext ?? 'anchor-less',
+  });
+  return { ok: true, html: swapped.html };
+}
+
 function tryHintOnlyScopedMerge(input: {
   nextHtml: string;
   patchedHtml: string;
@@ -669,7 +696,26 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
         lastReason = attempt.reason;
       }
       if (!hintMerged) {
-        return { ok: false, reason: lastReason };
+        if (isVisualCommentAttachment(attachment)) {
+          for (const slideIndex of slideCandidates) {
+            const swapped = tryAnchorlessSlideLevelSwap({
+              nextHtml,
+              patchedHtml: input.patchedHtml,
+              slideIndex,
+              logContext: 'visual-mark',
+            });
+            if (swapped.ok) {
+              nextHtml = swapped.html;
+              narrowed = true;
+              hintMerged = true;
+              break;
+            }
+            lastReason = swapped.reason;
+          }
+        }
+        if (!hintMerged) {
+          return { ok: false, reason: lastReason };
+        }
       }
       continue;
     }

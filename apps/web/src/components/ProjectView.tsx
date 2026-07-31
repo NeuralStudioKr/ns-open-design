@@ -7361,18 +7361,28 @@ export function ProjectView({
       const isAutoContinueSend =
         meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
         || isAutoContinueIncompleteOutputPrompt(prompt);
+      let filesSnapshot = projectFiles;
+      if (
+        commentAttachments.some(
+          (attachment) =>
+            Boolean(attachment.markKind)
+            || String(attachment.screenshotPath || '').trim().length > 0,
+        )
+      ) {
+        filesSnapshot = await refreshProjectFiles().catch(() => projectFiles);
+      }
       const hydratedCommentAttachments = commentAttachments.length > 0
         ? await hydrateDeckCommentSlideIndexes({
           projectId: project.id,
           attachments: commentAttachments,
-          projectFiles,
+          projectFiles: filesSnapshot,
           entryFile: project.metadata?.entryFile ?? null,
         })
         : commentAttachments;
       const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments);
       let effectiveAttachments = mergeChatAttachments(
         attachments,
-        chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, projectFiles),
+        chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, filesSnapshot),
         ...scopedCommentAttachments.map((attachment) =>
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),
@@ -7383,7 +7393,7 @@ export function ProjectView({
       // against real target ids instead of guessing from stale chat prose.
       if (slideOnlyMvp && scopedCommentAttachments.length > 0) {
         const existingDeck = resolvePrimaryDeckFile(
-          projectFiles,
+          filesSnapshot,
           project.metadata?.entryFile ?? null,
         );
         if (existingDeck) {
@@ -7408,7 +7418,7 @@ export function ProjectView({
         && scopedCommentAttachments.length === 0
       ) {
         const existingDeck = resolvePrimaryDeckFile(
-          projectFiles,
+          filesSnapshot,
           project.metadata?.entryFile ?? null,
         );
         if (existingDeck) {

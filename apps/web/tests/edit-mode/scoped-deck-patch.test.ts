@@ -15,6 +15,7 @@ import {
 } from '../../src/edit-mode/scoped-deck-patch';
 import { parseElementPatch } from '../../src/artifacts/element-patch';
 import type { ChatCommentAttachment } from '../../src/types';
+import { buildVisualAnnotationAttachment } from '../../src/comments';
 
 const CURRENT_HTML = `<!doctype html><html><body>
 <section class="slide" data-slide-index="0"><h1>인트로</h1></section>
@@ -426,6 +427,39 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
       commentAttachments: [anchorLess],
     });
     expect(result.ok).toBe(false);
+  });
+
+  it('accepts a screenshot-only visual mark via slide-level swap', () => {
+    const currentHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>인트로</h1></section>
+<section class="slide" data-slide-index="1">
+  <p>본문</p>
+</section>
+</body></html>`;
+    const patchedHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>인트로</h1></section>
+<section class="slide" data-slide-index="1">
+  <p style="font-weight:700;color:#ef4444">본문</p>
+</section>
+</body></html>`;
+    const visualAttachment = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'ms798rzf-drawing-2026-07-30T08-31-44-563Z.png',
+      markKind: 'stroke',
+      note: '여기 강조해줘',
+      slideIndex: 1,
+      bounds: { x: 10, y: 20, width: 100, height: 40 },
+    });
+    expect(scopedCommentElementIds(visualAttachment)).toEqual([]);
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml,
+      patchedHtml,
+      commentAttachments: [visualAttachment],
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.html).toContain('font-weight:700');
+    expect(result.html).toContain('<h1>인트로</h1>');
   });
 
   it('narrows a full-deck rewrite to the scoped slide when other slides also changed', () => {
