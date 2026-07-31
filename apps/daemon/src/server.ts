@@ -11740,6 +11740,10 @@ export async function startServer({
       }
       return current;
     };
+    // Read early so ad-hoc skill composition can skip the visual template
+    // (it becomes the primary body below) without losing other skillIds.
+    const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);
+
     if (effectiveSkillId) {
       // Span both functional skills and design templates so a project
       // saved against either surface keeps its system prompt after the
@@ -11765,6 +11769,7 @@ export async function startServer({
       const seen = new Set(
         effectiveCanonicalSkillId ? [String(effectiveCanonicalSkillId)] : [],
       );
+      if (selectedDeckTemplate?.id) seen.add(selectedDeckTemplate.id);
       const blocks = [];
       const baseBody = skillBody && skillBody.trim().length > 0 ? skillBody : '';
       for (const id of adHocSkillIds) {
@@ -11824,7 +11829,6 @@ export async function startServer({
     // secondary composed skill — overwriting with example-simple-deck alone
     // drops Hermes/Zhangzara/etc., but dropping the scenario body loses
     // deliverable/structure contracts that still worked before.
-    const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);
     let scenarioSkillBody: string | null = null;
     let scenarioSkillName: string | null = null;
 
@@ -11899,7 +11903,9 @@ export async function startServer({
         secondarySkillName: scenarioSkillName,
       });
       if (preferred) {
-        skillBody = preferred.skillBody;
+        // Keep other ad-hoc skillIds (mentions) that were composed earlier —
+        // selected template replaces the primary slot, not the whole stack.
+        skillBody = preferred.skillBody + composedSkillBlocks;
         skillName = preferred.skillName;
         registerPrimarySkillMode('deck');
       } else if (scenarioSkillBody?.trim()) {

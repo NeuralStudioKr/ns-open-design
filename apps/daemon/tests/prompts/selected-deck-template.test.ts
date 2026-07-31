@@ -1,9 +1,17 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   preferSelectedDeckTemplateSkill,
   readSelectedDeckTemplateFromMetadata,
   wrapSelectedDeckTemplateSkillBody,
 } from '../../src/prompts/selected-deck-template.js';
+
+const serverSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../../src/server.ts'),
+  'utf8',
+);
 
 describe('selected-deck-template prompt helpers', () => {
   it('reads selected deck template metadata', () => {
@@ -51,5 +59,28 @@ describe('selected-deck-template prompt helpers', () => {
     });
     expect(preferred?.skillBody).toContain('Template: Hermes');
     expect(preferred?.skillBody).toContain('Match this selected deck template');
+  });
+
+  it('does not treat missing title as fatal when template body is present', () => {
+    const preferred = preferSelectedDeckTemplateSkill({
+      selected: { id: 'html-ppt-hermes' },
+      templateBody: '# Hermes body',
+      secondarySkillBody: '# scenario body',
+      secondarySkillName: 'Simple Deck',
+    });
+    expect(preferred?.skillName).toBe('html-ppt-hermes');
+    expect(preferred?.skillBody).toContain('# Hermes body');
+    expect(preferred?.skillBody).toContain('## Composed skill — Simple Deck');
+  });
+
+  it('pins daemon compose to keep ad-hoc skill stack when template wins', () => {
+    expect(serverSource).toContain(
+      'const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);',
+    );
+    expect(serverSource).toContain('if (selectedDeckTemplate?.id) seen.add(selectedDeckTemplate.id);');
+    expect(serverSource).toContain(
+      'skillBody = preferred.skillBody + composedSkillBlocks;',
+    );
+    expect(serverSource).toContain('secondarySkillBody: scenarioSkillBody');
   });
 });

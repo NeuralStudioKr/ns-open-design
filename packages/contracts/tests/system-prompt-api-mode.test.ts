@@ -331,10 +331,12 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('# OD core directives');
       expect(prompt).not.toContain('Artifact handoff');
       expect(prompt).not.toContain('Read `assets/template.html`');
-      // Ceiling grew by ~700 chars when the comment-edit patch contract
-      // landed; that contract cuts a 60–120s round-trip on one-element
-      // comment edits down to 2–8s, so the cost is worth it.
-      expect(prompt.length).toBeLessThan(21_000);
+      // Budget guard for the lean slide-only API composer. Measured ~21.3k
+      // after comment-edit patch + compact layout vocabulary landed; those
+      // contracts cut 60–120s full-deck rewrites on one-element edits, so
+      // the cost is intentional. Keep a small headroom for copy tweaks.
+      expect(prompt.length).toBeLessThan(22_000);
+      expect(prompt.length).toBeGreaterThan(18_000);
     });
 
     it('requires body-first streaming and forbids head-only shells', () => {

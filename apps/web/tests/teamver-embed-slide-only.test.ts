@@ -212,8 +212,10 @@ describe('Teamver embed slide-only MVP policy', () => {
 
   it('guards selected deck template visual language above active design-system defaults', () => {
     const projectView = readSource('src/components/ProjectView.tsx');
-    expect(projectView).toContain("if (skillBody?.trim() && skillMode === 'deck')");
-    expect(projectView).toContain('wrapSelectedDeckTemplateSkillBody(skillBody, title)');
+    expect(projectView).toContain('shouldWrapSelectedTemplate');
+    expect(projectView).toContain('primaryDeckSkillId');
+    expect(projectView).toContain('wrapSelectedDeckTemplateSkillBody(skillBody!, title)');
+    expect(projectView).toContain("else if (skillBody?.trim() && skillMode === 'deck')");
     // Guard copy lives in the helper (not inlined in ProjectView).
     const helper = readSource('src/runtime/selected-deck-template.ts');
     expect(helper).toContain('Teamver selected deck template guard');
