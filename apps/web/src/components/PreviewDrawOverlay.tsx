@@ -753,7 +753,7 @@ export function PreviewDrawOverlay({
     if (action === 'send' && sendDisabled) return;
     onToolbarClick?.('annotation_submit', action);
     setCaptureWarning(null);
-    setPendingAction(action);
+    flushSync(() => setPendingAction(action));
     try {
       let file: File | null = null;
       if (shouldCapture) {
@@ -879,6 +879,7 @@ export function PreviewDrawOverlay({
   const canRedo = redoCount > 0 && !sending;
   const chromeHidden = capturing || hideChrome;
   const toolbarHidden = chromeHidden || sending;
+  const canvasHidden = chromeHidden || sending;
 
   return (
     <div
@@ -922,7 +923,7 @@ export function PreviewDrawOverlay({
             inset: 0,
             pointerEvents: overlayPointer,
             cursor: active ? 'crosshair' : 'default',
-            visibility: chromeHidden ? 'hidden' : 'visible',
+            visibility: canvasHidden ? 'hidden' : 'visible',
             zIndex: 80,
           }}
         />
