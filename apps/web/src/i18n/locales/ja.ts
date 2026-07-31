@@ -2047,6 +2047,7 @@ export const ja: Dict = {
   'manualEdit.fallbackTitle': '編集',
   'manualEdit.movePanel': '編集パネルを移動',
   'manualEdit.positionMoveRequiresAbsolute': '位置ドラッグは absolute/fixed 要素でのみ使えます。',
+  'manualEdit.positionPromoteOnDrag': 'ドラッグすると absolute に切り替えて移動できます。',
   'manualEdit.editParams': 'パラメーターを編集',
   'manualEdit.closePanel': '編集パネルを閉じる',
   'manualEdit.selectLayer': 'レイヤーを選択',

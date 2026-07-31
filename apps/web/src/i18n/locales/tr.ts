@@ -2047,6 +2047,7 @@ export const tr: Dict = {
   'manualEdit.fallbackTitle': 'Düzenle',
   'manualEdit.movePanel': 'Düzenleme panelini taşı',
   'manualEdit.positionMoveRequiresAbsolute': 'Konum sürükleme yalnızca absolute/fixed için geçerlidir.',
+  'manualEdit.positionPromoteOnDrag': 'Sürükleyerek öğeyi serbest bırakın (position: absolute).',
   'manualEdit.editParams': 'Parametreleri düzenle',
   'manualEdit.closePanel': 'Düzenleme panelini kapat',
   'manualEdit.selectLayer': 'Bir katman seç',

@@ -9,10 +9,13 @@ import {
 import { contentRectToHostRect, hostDeltaToContentDelta } from '../edit-mode/preview-coords';
 import {
   MANUAL_EDIT_MOVE_MIN_DELTA_PX,
-  canMoveTarget,
+  canMoveOrPromoteTarget,
+  canPromoteTarget,
   computeMove,
   movePreviewStyles,
   moveResultToStyles,
+  promoteMoveStyles,
+  promoteMoveStylesBefore,
   startPositionFromTarget,
 } from '../edit-mode/move-math';
 import {
@@ -74,6 +77,8 @@ type MoveDragState = {
   moved: boolean;
   /** True after at least one move preview — gates cancel so jitter clicks keep pending styles. */
   previewed: boolean;
+  /** 53: flow → absolute promote during this gesture. */
+  promote: boolean;
 };
 
 type DragState = ResizeDragState | MoveDragState;
@@ -120,7 +125,7 @@ export function ManualEditResizeOverlay({
     height: draftHeightPx ?? target.rect.height,
   };
   const hostRect = contentRectToHostRect(contentRect, previewScale);
-  const movable = !disabled && canMoveTarget(target);
+  const movable = !disabled && canMoveOrPromoteTarget(target);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -177,8 +182,12 @@ export function ManualEditResizeOverlay({
         shiftKey: event.shiftKey,
       });
       // Preview every frame (incl. right/bottom clear). Commit still gates on `moved`.
-      const preview = movePreviewStyles(result);
-      drag.lastStyles = result.moved ? (moveResultToStyles(result) ?? preview) : preview;
+      const preview = drag.promote
+        ? promoteMoveStyles(target, result)
+        : movePreviewStyles(result);
+      drag.lastStyles = drag.promote
+        ? preview
+        : (result.moved ? (moveResultToStyles(result) ?? preview) : preview);
       drag.moved = result.moved;
       drag.previewed = true;
       onMovePreview?.(preview);
@@ -195,7 +204,7 @@ export function ManualEditResizeOverlay({
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
     };
-  }, [onMoveCancel, onMoveCommit, onMovePreview, onResizeSessionChange, previewScale]);
+  }, [onMoveCancel, onMoveCommit, onMovePreview, onResizeSessionChange, previewScale, target]);
 
   const boxStyle: CSSProperties = {
     left: hostRect.x,
@@ -265,12 +274,15 @@ export function ManualEditResizeOverlay({
     event.preventDefault();
     event.stopPropagation();
     const pos = startPositionFromTarget(target);
-    const stylesBefore: Partial<ManualEditStyles> = {
-      left: target.styles.left,
-      top: target.styles.top,
-      right: target.styles.right,
-      bottom: target.styles.bottom,
-    };
+    const promote = canPromoteTarget(target);
+    const stylesBefore: Partial<ManualEditStyles> = promote
+      ? promoteMoveStylesBefore(target)
+      : {
+          left: target.styles.left,
+          top: target.styles.top,
+          right: target.styles.right,
+          bottom: target.styles.bottom,
+        };
     dragRef.current = {
       kind: 'move',
       pointerId: event.pointerId,
@@ -280,12 +292,19 @@ export function ManualEditResizeOverlay({
       startTopPx: pos.startTopPx,
       startRect: { ...target.rect },
       stylesBefore,
-      lastStyles: {
-        left: `${pos.startLeftPx}px`,
-        top: `${pos.startTopPx}px`,
-      },
+      lastStyles: promote
+        ? promoteMoveStyles(target, {
+            leftPx: pos.startLeftPx,
+            topPx: pos.startTopPx,
+            moved: false,
+          })
+        : {
+            left: `${pos.startLeftPx}px`,
+            top: `${pos.startTopPx}px`,
+          },
       moved: false,
       previewed: false,
+      promote,
     };
     setDragging(true);
     setMoving(true);

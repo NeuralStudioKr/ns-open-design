@@ -2047,6 +2047,7 @@ export const fa: Dict = {
   'manualEdit.fallbackTitle': 'ویرایش',
   'manualEdit.movePanel': 'جابه‌جایی پنل ویرایش',
   'manualEdit.positionMoveRequiresAbsolute': 'جابه\u200cجایی با کشیدن فقط برای absolute/fixed است.',
+  'manualEdit.positionPromoteOnDrag': 'برای آزاد کردن عنصر بکشید (position: absolute).',
   'manualEdit.editParams': 'ویرایش پارامترها',
   'manualEdit.closePanel': 'بستن پنل ویرایش',
   'manualEdit.selectLayer': 'یک لایه انتخاب کنید',

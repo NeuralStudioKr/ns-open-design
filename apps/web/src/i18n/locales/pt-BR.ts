@@ -2047,6 +2047,7 @@ export const ptBR: Dict = {
   'manualEdit.fallbackTitle': 'Editar',
   'manualEdit.movePanel': 'Mover painel de edição',
   'manualEdit.positionMoveRequiresAbsolute': 'Arrastar para mover exige posição absolute ou fixed.',
+  'manualEdit.positionPromoteOnDrag': 'Arraste para liberar o elemento (position: absolute).',
   'manualEdit.editParams': 'Editar parâmetros',
   'manualEdit.closePanel': 'Fechar painel de edição',
   'manualEdit.selectLayer': 'Selecione uma camada',

@@ -2047,6 +2047,7 @@ export const en: Dict = {
   'manualEdit.fallbackTitle': 'Edit',
   'manualEdit.movePanel': 'Move edit panel',
   'manualEdit.positionMoveRequiresAbsolute': 'Drag to move requires absolute or fixed position.',
+  'manualEdit.positionPromoteOnDrag': 'Drag to free this element (sets position: absolute).',
   'manualEdit.editParams': 'Edit parameters',
   'manualEdit.closePanel': 'Close edit panel',
   'manualEdit.selectLayer': 'Select a layer',

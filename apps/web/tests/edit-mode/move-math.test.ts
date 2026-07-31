@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   MANUAL_EDIT_MOVE_MIN_DELTA_PX,
+  canMoveOrPromoteTarget,
   canMoveTarget,
+  canPromoteTarget,
   computeMove,
   moveHistoryLabel,
   moveResultToStyles,
+  promoteMoveStyles,
   startPositionFromTarget,
 } from '../../src/edit-mode/move-math';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
@@ -45,6 +48,41 @@ describe('canMoveTarget', () => {
     }))).toBe(false);
     expect(canMoveTarget(target(), { editMode: false })).toBe(false);
     expect(canMoveTarget(target(), { inlineTextEditing: true })).toBe(false);
+  });
+});
+
+describe('canPromoteTarget', () => {
+  it('allows static / relative / sticky and not anchored', () => {
+    expect(canPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
+    expect(canPromoteTarget(target({ cssPosition: 'relative' }))).toBe(true);
+    expect(canPromoteTarget(target({ cssPosition: 'sticky' }))).toBe(true);
+    expect(canPromoteTarget(target({ cssPosition: 'absolute' }))).toBe(false);
+    expect(canMoveOrPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
+  });
+});
+
+describe('promoteMoveStyles', () => {
+  it('sets absolute + size lock + zero margins', () => {
+    const out = promoteMoveStyles(
+      target({
+        cssPosition: 'static',
+        offsetLeft: 12,
+        offsetTop: 34,
+        rect: { x: 100, y: 200, width: 120, height: 80 },
+        styles: emptyManualEditStyles(),
+      }),
+      { leftPx: 40, topPx: 50, moved: true },
+    );
+    expect(out).toMatchObject({
+      position: 'absolute',
+      left: '40px',
+      top: '50px',
+      width: '120px',
+      height: '80px',
+      margin: '0px',
+      right: '',
+      bottom: '',
+    });
   });
 });
 
@@ -110,5 +148,14 @@ describe('computeMove', () => {
       rect: { x: 12, y: 34, width: 80, height: 40 },
     }))).toEqual({ startLeftPx: 12, startTopPx: 34 });
     expect(moveHistoryLabel('Card')).toBe('Move: Card');
+  });
+
+  it('prefers offsetLeft/offsetTop over rect when styles are empty', () => {
+    expect(startPositionFromTarget(target({
+      styles: emptyManualEditStyles(),
+      offsetLeft: 8,
+      offsetTop: 16,
+      rect: { x: 100, y: 200, width: 80, height: 40 },
+    }))).toEqual({ startLeftPx: 8, startTopPx: 16 });
   });
 });

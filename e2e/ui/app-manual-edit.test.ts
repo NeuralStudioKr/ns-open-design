@@ -461,10 +461,10 @@ test('[P1] manual edit body-drag Escape cancels without persisting left/top', as
     .toBe(true);
 });
 
-test('[P1] manual edit static target is not movable and shows POSITION hint', async ({ page }) => {
+test('[P1] manual edit static target promote-on-drag writes absolute left/top', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);
-  const projectId = await createProjectViaApi(page, 'Manual edit static move');
+  const projectId = await createProjectViaApi(page, 'Manual edit static promote');
   await seedHtmlArtifact(page, projectId, 'manual-edit-move-static.html', manualEditHtml());
   await page.goto(`/projects/${projectId}/files/manual-edit-move-static.html`);
   await openDesignFile(page, 'manual-edit-move-static.html');
@@ -475,9 +475,9 @@ test('[P1] manual edit static target is not movable and shows POSITION hint', as
 
   const overlay = page.getByTestId('manual-edit-resize-overlay');
   await expect(overlay).toBeVisible();
-  await expect(overlay).toHaveAttribute('data-movable', 'false');
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
   await expect(page.getByTestId('manual-edit-position-hint')).toContainText(
-    'Drag to move requires absolute or fixed position.',
+    'Drag to free this element (sets position: absolute).',
   );
   await expect(page.locator('.manual-edit-modal')).toContainText('POSITION');
   await expect(page.locator('.manual-edit-modal .cc-row').filter({ hasText: 'Left' })).toHaveCount(0);
@@ -498,7 +498,43 @@ test('[P1] manual edit static target is not movable and shows POSITION hint', as
       const source = await resp.text();
       const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1];
       if (!style) return false;
-      return !/\bleft\s*:/.test(style) && !/\btop\s*:/.test(style);
+      const hasAbsolute = /position:\s*absolute/.test(style);
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return hasAbsolute && Number.isFinite(left) && Number.isFinite(top);
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit static promote Escape leaves source without absolute', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit static promote esc');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-static-esc.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-static-esc.html`);
+  await openDesignFile(page, 'manual-edit-move-static-esc.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 60, startY + 40, { steps: 8 });
+  await page.keyboard.press('Escape');
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-static-esc.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1] ?? '';
+      return !/position:\s*absolute/.test(style) && !/\bleft\s*:/.test(style);
     })
     .toBe(true);
 });

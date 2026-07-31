@@ -2047,6 +2047,7 @@ export const ru: Dict = {
   'manualEdit.fallbackTitle': 'Редактировать',
   'manualEdit.movePanel': 'Переместить панель редактирования',
   'manualEdit.positionMoveRequiresAbsolute': 'Перетаскивание позиции доступно только для absolute/fixed.',
+  'manualEdit.positionPromoteOnDrag': 'Перетащите, чтобы освободить элемент (position: absolute).',
   'manualEdit.editParams': 'Изменить параметры',
   'manualEdit.closePanel': 'Закрыть панель редактирования',
   'manualEdit.selectLayer': 'Выберите слой',

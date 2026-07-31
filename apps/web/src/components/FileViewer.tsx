@@ -240,7 +240,7 @@ import {
 } from '../edit-mode/source-patches';
 import { contentRectToHostRect } from '../edit-mode/preview-coords';
 import { canResizeTarget, parseExplicitPx, resizeHistoryLabel } from '../edit-mode/resize-math';
-import { moveHistoryLabel } from '../edit-mode/move-math';
+import { moveHistoryLabel, PROMOTE_MOVE_STYLE_KEYS } from '../edit-mode/move-math';
 import {
   createManualEditSourcePin,
   manualEditHistoryConfirmTrustsLocal,
@@ -7499,12 +7499,18 @@ function HtmlViewer({
     if (!ok) return;
     const x = parseExplicitPx(styles.left) ?? target.rect.x;
     const y = parseExplicitPx(styles.top) ?? target.rect.y;
+    const width = parseExplicitPx(styles.width) ?? target.rect.width;
+    const height = parseExplicitPx(styles.height) ?? target.rect.height;
+    const promoted = String(styles.position || '').toLowerCase() === 'absolute';
     setSelectedManualEditTarget((current) => {
       if (!current || current.id !== target.id) return current;
       return {
         ...current,
-        rect: { ...current.rect, x, y },
+        rect: { ...current.rect, x, y, width, height },
         styles: { ...current.styles, ...styles },
+        cssPosition: promoted ? 'absolute' : current.cssPosition,
+        offsetLeft: x,
+        offsetTop: y,
       };
     });
     requestManualEditRemeasure(target.id);
@@ -7538,9 +7544,13 @@ function HtmlViewer({
     setManualEditMoveDraftPos(null);
     setManualEditResizeDraftSize(null);
     if (!target) return;
-    // Drop only position keys so unrelated panel drafts (e.g. fontSize) survive a
-    // cancelled / sub-threshold move. Full wipe was wiping those on jitter clicks.
-    cancelManualEditPendingStyles(target.id, ['left', 'top', 'right', 'bottom']);
+    // Drop only geometry keys so unrelated panel drafts (e.g. fontSize) survive a
+    // cancelled / sub-threshold move. Promote sessions also roll back position/size.
+    const promoteCancel = Object.prototype.hasOwnProperty.call(stylesBefore, 'position');
+    const cancelKeys = promoteCancel
+      ? [...PROMOTE_MOVE_STYLE_KEYS]
+      : (['left', 'top', 'right', 'bottom'] as const);
+    cancelManualEditPendingStyles(target.id, [...cancelKeys]);
     const pending = manualEditPendingStyleRef.current;
     if (pending?.id === target.id && pending.label === moveHistoryLabel(target.label)) {
       manualEditPendingStyleRef.current = {
@@ -7548,12 +7558,10 @@ function HtmlViewer({
         label: `Edit: ${target.label}`,
       };
     }
-    const reset: Partial<ManualEditStyles> = {
-      left: stylesBefore.left ?? '',
-      top: stylesBefore.top ?? '',
-      right: stylesBefore.right ?? '',
-      bottom: stylesBefore.bottom ?? '',
-    };
+    const reset: Partial<ManualEditStyles> = {};
+    for (const key of cancelKeys) {
+      reset[key] = stylesBefore[key] ?? '';
+    }
     previewStyleToIframe(target.id, reset, nextManualEditPreviewVersion());
     setManualEditDraft((current) => ({
       ...current,

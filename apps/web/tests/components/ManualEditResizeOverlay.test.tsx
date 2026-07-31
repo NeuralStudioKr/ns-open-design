@@ -262,28 +262,51 @@ describe('ManualEditResizeOverlay', () => {
     expect(onMoveCommit).not.toHaveBeenCalled();
   });
 
-  it('static target is not movable via body drag', () => {
+  it('static target promote-on-drag commits position absolute', () => {
     const onMoveCommit = vi.fn();
+    const onMovePreview = vi.fn();
     const { getByTestId } = render(
       <ManualEditResizeOverlay
-        target={target({ cssPosition: 'static' })}
+        target={target({
+          cssPosition: 'static',
+          offsetLeft: 40,
+          offsetTop: 60,
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+          },
+        })}
         previewScale={1}
         draftWidthPx={null}
         draftHeightPx={null}
         onResizePreview={vi.fn()}
         onResizeCommit={vi.fn()}
         onResizeCancel={vi.fn()}
-        onMovePreview={vi.fn()}
+        onMovePreview={onMovePreview}
         onMoveCommit={onMoveCommit}
         onMoveCancel={vi.fn()}
       />,
     );
 
     const overlay = getByTestId('manual-edit-resize-overlay');
-    expect(overlay.getAttribute('data-movable')).toBe('false');
+    expect(overlay.getAttribute('data-movable')).toBe('true');
     fireEvent.pointerDown(overlay, { pointerId: 12, clientX: 50, clientY: 50, buttons: 1 });
-    fireEvent.pointerUp(window, { pointerId: 12, clientX: 90, clientY: 90 });
-    expect(onMoveCommit).not.toHaveBeenCalled();
+    fireEvent.pointerMove(window, { pointerId: 12, clientX: 90, clientY: 70, buttons: 1 });
+    expect(onMovePreview.mock.calls.at(-1)?.[0]).toMatchObject({
+      position: 'absolute',
+      left: '80px',
+      top: '80px',
+      width: '200px',
+      height: '100px',
+    });
+    fireEvent.pointerUp(window, { pointerId: 12, clientX: 90, clientY: 70 });
+    expect(onMoveCommit).toHaveBeenCalledTimes(1);
+    expect(onMoveCommit.mock.calls[0]?.[0]).toMatchObject({
+      position: 'absolute',
+      left: '80px',
+      top: '80px',
+    });
   });
 
   it('sub-threshold body drag after preview cancels without commit', () => {

@@ -2047,6 +2047,7 @@ export const uk: Dict = {
   'manualEdit.fallbackTitle': 'Редагувати',
   'manualEdit.movePanel': 'Перемістити панель редагування',
   'manualEdit.positionMoveRequiresAbsolute': 'Перетягування позиції доступне лише для absolute/fixed.',
+  'manualEdit.positionPromoteOnDrag': 'Перетягніть, щоб звільнити елемент (position: absolute).',
   'manualEdit.editParams': 'Редагувати параметри',
   'manualEdit.closePanel': 'Закрити панель редагування',
   'manualEdit.selectLayer': 'Виберіть шар',

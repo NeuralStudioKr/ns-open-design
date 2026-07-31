@@ -630,7 +630,7 @@ function StyleInspector({
       {showPositionHint ? (
         <Section title="POSITION" inactive>
           <p className="cc-section-hint" data-testid="manual-edit-position-hint">
-            {t('manualEdit.positionMoveRequiresAbsolute')}
+            {t('manualEdit.positionPromoteOnDrag')}
           </p>
         </Section>
       ) : null}

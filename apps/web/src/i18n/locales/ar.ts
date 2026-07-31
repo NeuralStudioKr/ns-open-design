@@ -2047,6 +2047,7 @@ export const ar: Dict = {
   'manualEdit.fallbackTitle': 'تحرير',
   'manualEdit.movePanel': 'نقل لوحة التحرير',
   'manualEdit.positionMoveRequiresAbsolute': 'السحب لتحريك الموضع يتطلب absolute أو fixed.',
+  'manualEdit.positionPromoteOnDrag': 'اسحب لتحرير العنصر (position: absolute).',
   'manualEdit.editParams': 'تعديل المعلمات',
   'manualEdit.closePanel': 'إغلاق لوحة التحرير',
   'manualEdit.selectLayer': 'اختر طبقة',

@@ -26,6 +26,8 @@ export interface ManualEditStyles {
   width: string;
   height: string;
   minHeight: string;
+  /** Inline CSS position; used when promoting flow boxes to absolute (53). */
+  position: string;
   /** Used by drag-resize / position-move for absolute/fixed elements. */
   left: string;
   top: string;
@@ -73,6 +75,9 @@ export interface ManualEditTarget {
   isHidden?: boolean;
   /** Computed CSS position (`static` / `absolute` / …) for resize anchoring. */
   cssPosition?: string;
+  /** offsetParent-relative left/top for promote-on-drag (53). */
+  offsetLeft?: number;
+  offsetTop?: number;
   outerHtml: string;
 }
 
@@ -154,7 +159,7 @@ export type ManualEditBridgeMessage =
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
   'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'textDecoration', 'lineHeight', 'letterSpacing',
-  'width', 'height', 'minHeight', 'left', 'top', 'right', 'bottom',
+  'width', 'height', 'minHeight', 'position', 'left', 'top', 'right', 'bottom',
   'gap', 'flexDirection', 'justifyContent', 'alignItems',
   'backgroundColor', 'opacity',
   'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
