@@ -491,9 +491,14 @@ export function createProjectStorageAccessHooks(
           }
           const remote = await resolveRemote(req, trimmedId);
           // runStart=0 → upload all scratch files (non-run API writes).
-          const result = await storage.syncUp(trimmedId, remote, 0, {
-            explicitDeletedPaths: options?.explicitDeletedPaths,
-          });
+          const result = await storage.syncUp(
+            trimmedId,
+            remote,
+            0,
+            options?.explicitDeletedPaths
+              ? { explicitDeletedPaths: options.explicitDeletedPaths }
+              : undefined,
+          );
           if (db) {
             await exportTeamverProjectDaemonStateThrottled(db, remote, trimmedId);
           }
@@ -814,9 +819,13 @@ export function createLazyProjectMaterializationMiddleware(
         }
         void (async () => {
           try {
-            await hooks.persistAfterMutation(req, projectId, {
-              explicitDeletedPaths: explicitDeletedRelpath ? [explicitDeletedRelpath] : undefined,
-            });
+            await hooks.persistAfterMutation(
+              req,
+              projectId,
+              explicitDeletedRelpath
+                ? { explicitDeletedPaths: [explicitDeletedRelpath] }
+                : undefined,
+            );
           } finally {
             releaseEarlyPersistGate?.();
           }
