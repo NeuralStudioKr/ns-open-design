@@ -6684,7 +6684,15 @@ function HtmlViewer({
     if (!win) return;
     win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
     postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null);
-  }, [manualEditMode, selectedManualEditTarget?.id, srcDoc, useUrlLoadPreview]);
+    // hostChrome tracks overlay mount: also re-post when draw / inline-text hide it.
+  }, [
+    manualEditMode,
+    selectedManualEditTarget?.id,
+    srcDoc,
+    useUrlLoadPreview,
+    manualEditInlineTextEditing,
+    drawOverlayOpen,
+  ]);
 
   const previewStyleToIframe = useCallback((id: string, styles: Partial<ManualEditStyles>, version: number) => {
     const frame = iframeRef.current;
@@ -6718,10 +6726,11 @@ function HtmlViewer({
       : (id && selectedManualEditTargetRef.current?.id === id
         ? selectedManualEditTargetRef.current
         : null);
-    // When the host resize overlay is active it owns the selection ring —
-    // tell the bridge to suppress the iframe outline (avoids double borders).
+    // Match ManualEditResizeOverlay mount: only suppress the iframe ring when
+    // the host overlay is actually painted (not during draw / inline text).
     const hostChrome = Boolean(
       selected
+      && !drawOverlayOpen
       && canResizeTarget(selected, { inlineTextEditing: manualEditInlineTextEditing }),
     );
     win.postMessage({ type: 'od-edit-selected-target', id, hostChrome }, '*');
