@@ -116,6 +116,18 @@
 
 ---
 
+## Phase D — daemon snapshot chain 최적화
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| push 시 parentContent = disk read | [x] | snapshot chain walk 제거 |
+| checkpoint-forward snapshot decode | [x] | `sliceRevisionChainFromCheckpoint` + `readRevisionSnapshotFromChain` |
+| `OD_FILE_REVISION_FULL_SNAPSHOT_INTERVAL` | [x] | 기본 5, `resolveFullSnapshotInterval()` |
+| `getRevisionAncestry` (DB metadata) | [x] | read path metadata lookup |
+| 단위 테스트 | [x] | `file-revisions-store.test.ts` |
+
+---
+
 ## 마무리 체크리스트
 
 | 항목 | 상태 |
