@@ -2354,12 +2354,15 @@ export function ChatPane({
               skills={skills}
               toolboxSkillNames={featuredToolboxSkillNames}
               onShareToOpenDesign={
-                pinnedNextStep.showOpenDesignSubmission && onShareToOpenDesign && lastAssistantId
-                  ? () => onShareToOpenDesign(lastAssistantId)
+                pinnedNextStep.showOpenDesignSubmission
+                && onShareToOpenDesign
+                && pinnedNextStep.assistantMessageId
+                  ? () => onShareToOpenDesign(pinnedNextStep.assistantMessageId!)
                   : undefined
               }
               shareToOpenDesignBusy={
-                !!lastAssistantId && shareToOpenDesignBusyMessageId === lastAssistantId
+                !!pinnedNextStep.assistantMessageId
+                && shareToOpenDesignBusyMessageId === pinnedNextStep.assistantMessageId
               }
             />
           ) : null}
