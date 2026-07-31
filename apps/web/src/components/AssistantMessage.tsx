@@ -21,6 +21,8 @@ import { isEmptyAssistantShell } from "../runtime/conversation-message-dedupe";
 import {
   hasEmbedVisibleAssistantBody,
   isTerminalSucceededEmptyShellAnchor,
+  messageLooksLikeSlideEditTurn,
+  shouldSynthesizeTeamverCompletedArtifactLead,
   terminalSucceededAnchorLeadCopy,
 } from "../runtime/chat-message-render";
 import {
@@ -765,7 +767,10 @@ function AssistantMessageImpl({
     || (!(hideAssistantThinkingDetails && streaming) && fileOps.length > 0)
     || streamingTodoProgress != null;
   const preparing = streaming && !hasContent;
-  const isDeckPatchArtifactTurn = messageIndicatesDeckPatchArtifact(assistantTextBody);
+  // After reload, closed deck-patch tags may already be stripped — fall back
+  // to preTurn HTML baseline so we keep "slide edit applied" copy, not create.
+  const isDeckPatchArtifactTurn = messageLooksLikeSlideEditTurn(message)
+    || messageIndicatesDeckPatchArtifact(assistantTextBody);
   const teamverCompletedArtifactLead = teamverCompletedArtifactLeadCopy(
     locale,
     isDeckPatchArtifactTurn,
@@ -779,19 +784,17 @@ function AssistantMessageImpl({
     && terminalSucceededAnchor
     && !hasVisibleAssistantTextBlocks
     && !(slideOnlyMvp || teamverEmbedEnabled);
+  // Persist sanitizer strips closed `<artifact>` tags, so reload must not
+  // require artifact markers in the body — producedFiles / preTurn HTML /
+  // empty succeeded shells are enough to keep the completion sentence.
   const shouldShowTeamverCompletedArtifactLead =
-    !streaming
-    && runSucceeded
-    && !hasVisibleAssistantTextBlocks
+    (slideOnlyMvp || teamverEmbedEnabled)
     && !shouldShowTerminalSucceededLead
-    && (slideOnlyMvp || teamverEmbedEnabled)
-    && (
-      terminalSucceededAnchor
-      || (
-        /<artifact\b/i.test(assistantTextBody)
-        && (displayedProduced.length > 0 || isDeckPatchArtifactTurn)
-      )
-    );
+    && shouldSynthesizeTeamverCompletedArtifactLead(message, {
+      streaming,
+      isLast: !!isLast,
+      hasVisibleAssistantText: hasVisibleAssistantTextBlocks,
+    });
   const terminalSucceededLeadCopy = shouldShowTerminalSucceededLead
     ? terminalSucceededAnchorLeadCopy(locale)
     : null;

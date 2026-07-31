@@ -130,6 +130,30 @@ describe("chat-message-render", () => {
     expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(false);
   });
 
+  it("keeps completion-lead visibility after reload when artifact tags were stripped", () => {
+    const message: ChatMessage = {
+      id: "a-reload",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 2,
+      producedFiles: [
+        {
+          name: "deck.html",
+          path: "deck.html",
+          size: 100,
+          mtime: 2,
+          kind: "html",
+          mime: "text/html",
+        },
+      ],
+      preTurnFileNames: ["deck.html"],
+      events: [{ kind: "status", label: "requesting" }],
+    };
+    expect(hasEmbedVisibleAssistantBody(message)).toBe(true);
+    expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(false);
+  });
+
   it("keeps embed Write rows that surface file ops", () => {
     const message: ChatMessage = {
       id: "a-write",
