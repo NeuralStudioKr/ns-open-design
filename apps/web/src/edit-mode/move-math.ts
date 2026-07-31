@@ -56,10 +56,29 @@ function baseMoveEligibility(
   return true;
 }
 
+/**
+ * Start left/top for a move/promote session.
+ * Promote (flow) must prefer offsetParent / post-absolute CB coords — relative
+ * `left`/`top` styles are deltas, not layout position (53 no-jump).
+ */
 export function startPositionFromTarget(target: ManualEditTarget): {
   startLeftPx: number;
   startTopPx: number;
 } {
+  if (canPromoteTarget(target)) {
+    return {
+      startLeftPx: Math.round(
+        target.offsetLeft
+          ?? parseExplicitPx(target.styles.left)
+          ?? target.rect.x,
+      ),
+      startTopPx: Math.round(
+        target.offsetTop
+          ?? parseExplicitPx(target.styles.top)
+          ?? target.rect.y,
+      ),
+    };
+  }
   return {
     startLeftPx: Math.round(
       parseExplicitPx(target.styles.left)
@@ -123,11 +142,11 @@ export function movePreviewStyles(result: MoveMathResult): Partial<ManualEditSty
  * and zeroes margin so flow exit does not collapse or double-offset.
  */
 export function promoteMoveStyles(
-  target: ManualEditTarget,
+  startRect: ManualEditRect,
   result: MoveMathResult,
 ): Partial<ManualEditStyles> {
-  const widthPx = Math.round(target.rect.width);
-  const heightPx = Math.round(target.rect.height);
+  const widthPx = Math.round(startRect.width);
+  const heightPx = Math.round(startRect.height);
   return {
     position: 'absolute',
     left: `${result.leftPx}px`,
@@ -144,21 +163,34 @@ export function promoteMoveStyles(
   };
 }
 
+/**
+ * Collapse computed-only cascade keywords so cancel `removeProperty`s them
+ * instead of baking `auto`/`static` into the live preview.
+ */
+export function cascadeRollbackStyle(value: string | undefined): string {
+  const v = String(value ?? '').trim();
+  const lower = v.toLowerCase();
+  if (!v || lower === 'auto' || lower === 'normal' || lower === 'static') return '';
+  return v;
+}
+
 /** Styles captured at drag start so promote+move cancel can keyed-rollback. */
 export function promoteMoveStylesBefore(target: ManualEditTarget): Partial<ManualEditStyles> {
   return {
-    position: '',
-    left: target.styles.left,
-    top: target.styles.top,
-    right: target.styles.right,
-    bottom: target.styles.bottom,
-    width: target.styles.width,
-    height: target.styles.height,
-    margin: target.styles.margin,
-    marginTop: target.styles.marginTop,
-    marginRight: target.styles.marginRight,
-    marginBottom: target.styles.marginBottom,
-    marginLeft: target.styles.marginLeft,
+    position: cascadeRollbackStyle(target.styles.position),
+    left: cascadeRollbackStyle(target.styles.left),
+    top: cascadeRollbackStyle(target.styles.top),
+    right: cascadeRollbackStyle(target.styles.right),
+    bottom: cascadeRollbackStyle(target.styles.bottom),
+    // Size/margin: prefer restoring prior non-keyword values; empty clears
+    // promote-injected locks when the source had no real inline size.
+    width: cascadeRollbackStyle(target.styles.width),
+    height: cascadeRollbackStyle(target.styles.height),
+    margin: cascadeRollbackStyle(target.styles.margin),
+    marginTop: cascadeRollbackStyle(target.styles.marginTop),
+    marginRight: cascadeRollbackStyle(target.styles.marginRight),
+    marginBottom: cascadeRollbackStyle(target.styles.marginBottom),
+    marginLeft: cascadeRollbackStyle(target.styles.marginLeft),
   };
 }
 
@@ -176,6 +208,19 @@ export const PROMOTE_MOVE_STYLE_KEYS = [
   'marginBottom',
   'marginLeft',
 ] as const satisfies ReadonlyArray<keyof ManualEditStyles>;
+
+/** Host overlay viewport rect while promoting (CSS left/top are CB-relative). */
+export function promoteViewportDraft(
+  startRect: ManualEditRect,
+  startLeftPx: number,
+  startTopPx: number,
+  result: MoveMathResult,
+): { x: number; y: number } {
+  return {
+    x: startRect.x + (result.leftPx - startLeftPx),
+    y: startRect.y + (result.topPx - startTopPx),
+  };
+}
 
 /** Move commit must flush once → one Manual Edit history entry. */
 export function moveHistoryLabel(targetLabel: string): string {

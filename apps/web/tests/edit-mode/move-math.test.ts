@@ -5,10 +5,13 @@ import {
   canMoveOrPromoteTarget,
   canMoveTarget,
   canPromoteTarget,
+  cascadeRollbackStyle,
   computeMove,
   moveHistoryLabel,
   moveResultToStyles,
   promoteMoveStyles,
+  promoteMoveStylesBefore,
+  promoteViewportDraft,
   startPositionFromTarget,
 } from '../../src/edit-mode/move-math';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
@@ -64,13 +67,7 @@ describe('canPromoteTarget', () => {
 describe('promoteMoveStyles', () => {
   it('sets absolute + size lock + zero margins', () => {
     const out = promoteMoveStyles(
-      target({
-        cssPosition: 'static',
-        offsetLeft: 12,
-        offsetTop: 34,
-        rect: { x: 100, y: 200, width: 120, height: 80 },
-        styles: emptyManualEditStyles(),
-      }),
+      { x: 100, y: 200, width: 120, height: 80 },
       { leftPx: 40, topPx: 50, moved: true },
     );
     expect(out).toMatchObject({
@@ -83,6 +80,41 @@ describe('promoteMoveStyles', () => {
       right: '',
       bottom: '',
     });
+  });
+});
+
+describe('promote start / rollback helpers', () => {
+  it('prefers offset over relative left/top styles for promote targets', () => {
+    expect(startPositionFromTarget(target({
+      cssPosition: 'relative',
+      offsetLeft: 80,
+      offsetTop: 90,
+      styles: { ...emptyManualEditStyles(), left: '10px', top: '5px' },
+      rect: { x: 200, y: 300, width: 100, height: 50 },
+    }))).toEqual({ startLeftPx: 80, startTopPx: 90 });
+  });
+
+  it('rolls back static/auto to empty and keeps relative', () => {
+    expect(cascadeRollbackStyle('static')).toBe('');
+    expect(cascadeRollbackStyle('auto')).toBe('');
+    expect(cascadeRollbackStyle('relative')).toBe('relative');
+    expect(promoteMoveStylesBefore(target({
+      cssPosition: 'relative',
+      styles: { ...emptyManualEditStyles(), position: 'relative', left: '10px', width: 'auto' },
+    }))).toMatchObject({
+      position: 'relative',
+      left: '10px',
+      width: '',
+    });
+  });
+
+  it('maps promote CSS delta onto viewport overlay draft', () => {
+    expect(promoteViewportDraft(
+      { x: 100, y: 200, width: 120, height: 80 },
+      40,
+      50,
+      { leftPx: 60, topPx: 70, moved: true },
+    )).toEqual({ x: 120, y: 220 });
   });
 });
 

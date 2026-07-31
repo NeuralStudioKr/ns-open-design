@@ -506,6 +506,53 @@ test('[P1] manual edit static target promote-on-drag writes absolute left/top', 
     .toBe(true);
 });
 
+test('[P1] manual edit static promote undo restores pre-promote source', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit static promote undo');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-static-undo.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-static-undo.html`);
+  await openDesignFile(page, 'manual-edit-move-static-undo.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-static-undo.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1];
+      return !!style && /position:\s*absolute/.test(style);
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-static-undo.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1] ?? '';
+      return !/position:\s*absolute/.test(style) && !/\bleft\s*:/.test(style);
+    })
+    .toBe(true);
+});
+
 test('[P1] manual edit static promote Escape leaves source without absolute', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);

@@ -149,11 +149,30 @@ export function buildManualEditBridge(enabled: boolean): string {
     walk(el);
     return out.replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n');
   }
+  // Post-promote absolute containing block ≈ nearest positioned ancestor.
+  // Use that origin (not pre-promote offsetParent) so left/top do not jump (53).
+  function promoteCoords(el){
+    var rect = el.getBoundingClientRect();
+    var parent = null;
+    var node = el.parentElement;
+    while (node && node !== document.documentElement) {
+      var pos = window.getComputedStyle(node).position || '';
+      if (pos && pos !== 'static') { parent = node; break; }
+      node = node.parentElement;
+    }
+    if (!parent) parent = document.documentElement;
+    var pr = parent.getBoundingClientRect();
+    return {
+      left: Math.round(rect.left - pr.left - (parent.clientLeft || 0) + (parent.scrollLeft || 0)),
+      top: Math.round(rect.top - pr.top - (parent.clientTop || 0) + (parent.scrollTop || 0)),
+    };
+  }
   function targetFrom(el, includeOuterHtml){
     var rect = el.getBoundingClientRect();
     var kind = inferKind(el);
     var id = stableId(el);
     var hidden = isHiddenTarget(el, rect);
+    var promo = promoteCoords(el);
     var fields = {};
     if (kind === 'link') {
       fields.text = plainTextFrom(el);
@@ -178,8 +197,8 @@ export function buildManualEditBridge(enabled: boolean): string {
       isLayoutContainer: isLayoutContainer(el),
       isHidden: hidden,
       cssPosition: (window.getComputedStyle(el).position || 'static'),
-      offsetLeft: Math.round(el.offsetLeft || 0),
-      offsetTop: Math.round(el.offsetTop || 0),
+      offsetLeft: promo.left,
+      offsetTop: promo.top,
       outerHtml: includeOuterHtml ? (el.outerHTML || '').replace(/\\sdata-od-runtime-id="[^"]*"/g, '').replace(/\\sdata-od-source-path="[^"]*"/g, '').replace(/\\sdata-od-edit-selected="[^"]*"/g, '') : ''
     };
   }

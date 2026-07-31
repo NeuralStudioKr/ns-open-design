@@ -16,6 +16,7 @@ import {
   moveResultToStyles,
   promoteMoveStyles,
   promoteMoveStylesBefore,
+  promoteViewportDraft,
   startPositionFromTarget,
 } from '../edit-mode/move-math';
 import {
@@ -117,10 +118,24 @@ export function ManualEditResizeOverlay({
   const dragRef = useRef<DragState | null>(null);
   const [dragging, setDragging] = useState(false);
   const [moving, setMoving] = useState(false);
+  /** Viewport-space overlay origin during promote (CSS left/top are CB-relative). */
+  const [liveViewportPos, setLiveViewportPos] = useState<{ x: number; y: number } | null>(null);
+  const previewScaleRef = useRef(previewScale);
+  previewScaleRef.current = previewScale;
+  const onMovePreviewRef = useRef(onMovePreview);
+  onMovePreviewRef.current = onMovePreview;
+  const onMoveCommitRef = useRef(onMoveCommit);
+  onMoveCommitRef.current = onMoveCommit;
+  const onMoveCancelRef = useRef(onMoveCancel);
+  onMoveCancelRef.current = onMoveCancel;
+  const onResizeCancelRef = useRef(onResizeCancel);
+  onResizeCancelRef.current = onResizeCancel;
+  const onResizeSessionChangeRef = useRef(onResizeSessionChange);
+  onResizeSessionChangeRef.current = onResizeSessionChange;
 
   const contentRect = {
-    x: draftLeftPx ?? target.rect.x,
-    y: draftTopPx ?? target.rect.y,
+    x: liveViewportPos?.x ?? draftLeftPx ?? target.rect.x,
+    y: liveViewportPos?.y ?? draftTopPx ?? target.rect.y,
     width: draftWidthPx ?? target.rect.width,
     height: draftHeightPx ?? target.rect.height,
   };
@@ -136,16 +151,18 @@ export function ManualEditResizeOverlay({
       event.stopPropagation();
       const before = drag.stylesBefore;
       const kind = drag.kind;
+      const previewed = kind === 'move' ? drag.previewed : true;
       dragRef.current = null;
       setDragging(false);
       setMoving(false);
-      onResizeSessionChange?.(false);
-      if (kind === 'resize') onResizeCancel(before);
-      else onMoveCancel?.(before);
+      setLiveViewportPos(null);
+      onResizeSessionChangeRef.current?.(false);
+      if (kind === 'resize') onResizeCancelRef.current(before);
+      else if (previewed) onMoveCancelRef.current?.(before);
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [onMoveCancel, onResizeCancel, onResizeSessionChange]);
+  }, []);
 
   useEffect(() => {
     const endMove = (event: PointerEvent, commit: boolean) => {
@@ -158,12 +175,12 @@ export function ManualEditResizeOverlay({
       dragRef.current = null;
       setDragging(false);
       setMoving(false);
-      onResizeSessionChange?.(false);
-      // pointercancel / Escape-equivalent: never persist. pointerup commits only
-      // past the jitter threshold. A plain click (no preview) must not wipe
-      // unrelated pending panel styles via onMoveCancel.
-      if (commit && moved) onMoveCommit?.(last);
-      else if (previewed) onMoveCancel?.(before);
+      setLiveViewportPos(null);
+      onResizeSessionChangeRef.current?.(false);
+      // pointercancel: never persist. pointerup commits only past the jitter
+      // threshold. A plain click (no preview) must not wipe pending styles.
+      if (commit && moved) onMoveCommitRef.current?.(last);
+      else if (previewed) onMoveCancelRef.current?.(before);
     };
 
     const onPointerMove = (event: PointerEvent) => {
@@ -171,7 +188,7 @@ export function ManualEditResizeOverlay({
       if (!drag || drag.kind !== 'move' || event.pointerId !== drag.pointerId) return;
       const hostDx = event.clientX - drag.startClientX;
       const hostDy = event.clientY - drag.startClientY;
-      const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, previewScale);
+      const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, previewScaleRef.current);
       const result = computeMove({
         startLeftPx: drag.startLeftPx,
         startTopPx: drag.startTopPx,
@@ -181,16 +198,24 @@ export function ManualEditResizeOverlay({
         dy,
         shiftKey: event.shiftKey,
       });
-      // Preview every frame (incl. right/bottom clear). Commit still gates on `moved`.
-      const preview = drag.promote
-        ? promoteMoveStyles(target, result)
-        : movePreviewStyles(result);
-      drag.lastStyles = drag.promote
-        ? preview
-        : (result.moved ? (moveResultToStyles(result) ?? preview) : preview);
       drag.moved = result.moved;
+      // Promote styles only after the move threshold — avoids flash + Esc wiping
+      // panel SIZE drafts on a plain click (53 review).
+      if (drag.promote) {
+        if (!result.moved) return;
+        const preview = promoteMoveStyles(drag.startRect, result);
+        drag.lastStyles = preview;
+        drag.previewed = true;
+        setLiveViewportPos(
+          promoteViewportDraft(drag.startRect, drag.startLeftPx, drag.startTopPx, result),
+        );
+        onMovePreviewRef.current?.(preview);
+        return;
+      }
+      const preview = movePreviewStyles(result);
+      drag.lastStyles = result.moved ? (moveResultToStyles(result) ?? preview) : preview;
       drag.previewed = true;
-      onMovePreview?.(preview);
+      onMovePreviewRef.current?.(preview);
     };
 
     const onPointerUp = (event: PointerEvent) => endMove(event, true);
@@ -204,7 +229,7 @@ export function ManualEditResizeOverlay({
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
     };
-  }, [onMoveCancel, onMoveCommit, onMovePreview, onResizeSessionChange, previewScale, target]);
+  }, []);
 
   const boxStyle: CSSProperties = {
     left: hostRect.x,
@@ -292,20 +317,15 @@ export function ManualEditResizeOverlay({
       startTopPx: pos.startTopPx,
       startRect: { ...target.rect },
       stylesBefore,
-      lastStyles: promote
-        ? promoteMoveStyles(target, {
-            leftPx: pos.startLeftPx,
-            topPx: pos.startTopPx,
-            moved: false,
-          })
-        : {
-            left: `${pos.startLeftPx}px`,
-            top: `${pos.startTopPx}px`,
-          },
+      lastStyles: {
+        left: `${pos.startLeftPx}px`,
+        top: `${pos.startTopPx}px`,
+      },
       moved: false,
       previewed: false,
       promote,
     };
+    setLiveViewportPos(null);
     setDragging(true);
     setMoving(true);
     onResizeSessionChange?.(true);

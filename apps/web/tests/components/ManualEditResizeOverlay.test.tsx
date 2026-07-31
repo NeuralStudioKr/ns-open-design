@@ -309,6 +309,39 @@ describe('ManualEditResizeOverlay', () => {
     });
   });
 
+  it('static promote does not preview or cancel below move threshold', () => {
+    const onMovePreview = vi.fn();
+    const onMoveCancel = vi.fn();
+    const onMoveCommit = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'static',
+          offsetLeft: 40,
+          offsetTop: 60,
+          styles: emptyManualEditStyles(),
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={onMovePreview}
+        onMoveCommit={onMoveCommit}
+        onMoveCancel={onMoveCancel}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    fireEvent.pointerDown(overlay, { pointerId: 13, clientX: 50, clientY: 50, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 13, clientX: 51, clientY: 50, buttons: 1 });
+    expect(onMovePreview).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onMoveCancel).not.toHaveBeenCalled();
+    expect(onMoveCommit).not.toHaveBeenCalled();
+  });
+
   it('sub-threshold body drag after preview cancels without commit', () => {
     const onMoveCommit = vi.fn();
     const onMoveCancel = vi.fn();

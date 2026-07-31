@@ -239,7 +239,12 @@ import {
   readManualEditStyles,
 } from '../edit-mode/source-patches';
 import { contentRectToHostRect } from '../edit-mode/preview-coords';
-import { canResizeTarget, parseExplicitPx, resizeHistoryLabel } from '../edit-mode/resize-math';
+import {
+  canResizeTarget,
+  isAnchoredCssPosition,
+  parseExplicitPx,
+  resizeHistoryLabel,
+} from '../edit-mode/resize-math';
 import { moveHistoryLabel, PROMOTE_MOVE_STYLE_KEYS } from '../edit-mode/move-math';
 import {
   createManualEditSourcePin,
@@ -7450,11 +7455,18 @@ function HtmlViewer({
       ...current,
       styles: { ...current.styles, ...styles },
     }));
-    setManualEditMoveDraftPos((prev) => {
-      const x = parseExplicitPx(styles.left) ?? prev?.x ?? target.rect.x;
-      const y = parseExplicitPx(styles.top) ?? prev?.y ?? target.rect.y;
-      return { x, y };
-    });
+    // Promote left/top are containing-block relative — do not drive the host
+    // overlay from them (overlay keeps a viewport draft). Absolute/fixed moves
+    // still sync overlay from left/top.
+    const promoting = String(styles.position || '').toLowerCase() === 'absolute'
+      && !isAnchoredCssPosition(target.cssPosition);
+    if (!promoting) {
+      setManualEditMoveDraftPos((prev) => {
+        const x = parseExplicitPx(styles.left) ?? prev?.x ?? target.rect.x;
+        const y = parseExplicitPx(styles.top) ?? prev?.y ?? target.rect.y;
+        return { x, y };
+      });
+    }
   }
 
   function requestManualEditRemeasure(id: string) {
@@ -7497,20 +7509,28 @@ function HtmlViewer({
     setManualEditResizeDraftSize(null);
     const ok = await flushManualEditStyleSave();
     if (!ok) return;
-    const x = parseExplicitPx(styles.left) ?? target.rect.x;
-    const y = parseExplicitPx(styles.top) ?? target.rect.y;
     const width = parseExplicitPx(styles.width) ?? target.rect.width;
     const height = parseExplicitPx(styles.height) ?? target.rect.height;
     const promoted = String(styles.position || '').toLowerCase() === 'absolute';
+    const leftPx = parseExplicitPx(styles.left);
+    const topPx = parseExplicitPx(styles.top);
     setSelectedManualEditTarget((current) => {
       if (!current || current.id !== target.id) return current;
       return {
         ...current,
-        rect: { ...current.rect, x, y, width, height },
+        // Keep viewport rect x/y until remasure — promote left/top are CB-space.
+        rect: {
+          ...current.rect,
+          width,
+          height,
+          ...(promoted || leftPx == null || topPx == null
+            ? {}
+            : { x: leftPx, y: topPx }),
+        },
         styles: { ...current.styles, ...styles },
         cssPosition: promoted ? 'absolute' : current.cssPosition,
-        offsetLeft: x,
-        offsetTop: y,
+        offsetLeft: leftPx ?? current.offsetLeft,
+        offsetTop: topPx ?? current.offsetTop,
       };
     });
     requestManualEditRemeasure(target.id);
