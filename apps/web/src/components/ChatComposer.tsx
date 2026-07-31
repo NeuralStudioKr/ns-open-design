@@ -44,7 +44,7 @@ import { getDesignBffClient } from '../teamver/designBffClient';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
-import { projectFilePathExists } from '../utils/projectFilePaths';
+import { excludeAttachmentsBackedByVisualScreenshots, projectFilePathExists } from '../utils/projectFilePaths';
 import {
   shouldHideTeamverToolboxPlugin,
   shouldHideTeamverToolboxSkill,
@@ -1255,7 +1255,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         setUploadError(slideOnlyBlock);
         return false;
       }
-      const nextAttachments =
+      const nextAttachments = excludeAttachmentsBackedByVisualScreenshots(
         activeFileContext && !attachments.some((attachment) => attachment.path === activeFileContext)
           ? [
               {
@@ -1265,7 +1265,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               },
               ...attachments,
             ]
-          : attachments;
+          : attachments,
+        nextCommentAttachments,
+      );
       onSend(prompt, nextAttachments, nextCommentAttachments, meta);
       reset();
       return true;
@@ -1946,8 +1948,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               const readableUploaded = result.uploaded.length > 0
                 ? await uploadedImagesReadableOnDisk(id, result.uploaded)
                 : [];
-              if (readableUploaded.length > 0) {
-                uploaded = assignChatAttachmentOrders(readableUploaded, orderStart);
+              const resolvedUploaded = readableUploaded.length > 0
+                ? readableUploaded
+                : result.uploaded;
+              if (resolvedUploaded.length > 0) {
+                uploaded = assignChatAttachmentOrders(
+                  resolvedUploaded,
+                  orderStart,
+                );
                 const screenshot = detail.file ? uploaded[0] : null;
                 if (screenshot && detail.markKind && detail.bounds) {
                   visualAttachmentInput = {
@@ -1984,10 +1992,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 }
               }
               if (
-                result.uploaded.length > readableUploaded.length
+                result.uploaded.length > resolvedUploaded.length
                 || result.failed.length > 0
               ) {
-                const failedReadCount = result.uploaded.length - readableUploaded.length;
+                const failedReadCount = result.uploaded.length - resolvedUploaded.length;
                 const uploadErrorMessage = resolveProjectUploadBatchErrorMessage({
                   uploadedCount: uploaded.length,
                   failedCount: result.failed.length + failedReadCount,
@@ -2538,7 +2546,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       if (hatched) {
         if (streaming) return;
         setStreamingAnnotationSendPending(false);
-        onSend(hatched, staged, nextCommentAttachments, contextMeta);
+        onSend(
+          hatched,
+          excludeAttachmentsBackedByVisualScreenshots(staged, nextCommentAttachments),
+          nextCommentAttachments,
+          contextMeta,
+        );
         reset();
         return;
       }
@@ -2546,10 +2559,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       if (search) {
         if (streaming) return;
         setStreamingAnnotationSendPending(false);
-        onSend(search.prompt, staged, nextCommentAttachments, {
-          ...contextMeta,
-          research: { enabled: true, query: search.query },
-        });
+        onSend(
+          search.prompt,
+          excludeAttachmentsBackedByVisualScreenshots(staged, nextCommentAttachments),
+          nextCommentAttachments,
+          {
+            ...contextMeta,
+            research: { enabled: true, query: search.query },
+          },
+        );
         reset();
         return;
       }

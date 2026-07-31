@@ -28,7 +28,7 @@ import type { Dict } from '../i18n/types';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
-import { projectFilePathExists } from '../utils/projectFilePaths';
+import { projectFilePathExists, projectFilePathsInclude } from '../utils/projectFilePaths';
 import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -3663,7 +3663,7 @@ function UserMessageImpl({
 }) {
   const attachments = sortChatAttachmentsForDisplay(message.attachments ?? []);
   const commentAttachments = message.commentAttachments ?? [];
-  const attachmentPaths = new Set(attachments.map((item) => item.path));
+  const attachmentPaths = attachments.map((item) => item.path);
   // Visual marks are often represented twice on send (image attachment +
   // commentAttachment). When normal attachments were dropped from history,
   // still render the screenshot from surviving visual comment metadata.
@@ -3671,7 +3671,7 @@ function UserMessageImpl({
     if (!isVisualCommentAttachment(attachment)) return false;
     const path = String(attachment.screenshotPath || attachment.filePath || '').trim();
     if (!path) return false;
-    return !attachmentPaths.has(path);
+    return !projectFilePathsInclude(attachmentPaths, path);
   });
   const workspaceItems = message.runContext?.workspaceItems ?? [];
   const messagePluginSnapshot = message.appliedPluginSnapshot ?? activePluginSnapshot ?? null;

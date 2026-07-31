@@ -21,7 +21,7 @@ import {
 import { EXPLICIT_PROXY_STOP_REASON, requestProxyAbort } from './proxyAbort';
 import { COMMENT_ONLY_USER_PLACEHOLDER } from '../comments';
 import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
-import { projectFilePathExists } from '../utils/projectFilePaths';
+import { projectFilePathExists, projectFilePathBasename } from '../utils/projectFilePaths';
 import {
   isProjectRawFileKnownMissing,
   markProjectRawFileMissing,
@@ -661,7 +661,7 @@ export function anthropicImageCandidatesFromMessage(
   const imageAttachments = sortAttachmentsByUserOrder(
     (message.attachments ?? []).filter((attachment) => attachment.kind === 'image'),
   );
-  const seen = new Set(imageAttachments.map((attachment) => attachment.path));
+  const seen = new Set(imageAttachments.map((attachment) => projectFilePathBasename(attachment.path)));
   const fromAttachments: AnthropicImageCandidate[] = imageAttachments.map((attachment) => ({
     path: attachment.path,
     name: attachment.name,
@@ -679,8 +679,10 @@ export function anthropicImageCandidatesFromMessage(
       || String(attachment.elementId || '').startsWith('visual-mark-');
     if (!isVisual) continue;
     const path = screenshotPath || filePath;
-    if (!path || seen.has(path)) continue;
-    seen.add(path);
+    if (!path) continue;
+    const basename = projectFilePathBasename(path);
+    if (seen.has(basename)) continue;
+    seen.add(basename);
     fromVisualComments.push({
       path,
       name: String(attachment.label || path.split('/').pop() || path).trim() || path,
