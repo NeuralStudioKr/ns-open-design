@@ -78,7 +78,7 @@ pnpm … build  →  위 + id=od-next-cache → /app/apps/web/.next/cache
 |------|-------------|-------------|
 | `pnpm install` | 1–3분 + 네트워크 | 수 초~수십 초 (레이어/스토어 hit) |
 | Playwright Chromium | 수 분 | **스킵** (핀 불변) |
-| Next build+typecheck | 2–3분 | 다소 감소(캐시) — **apps 변경 시 여전히 존재** |
+| Next build+typecheck | 2–3분 | compile만 (~45s); **typecheck는 Docker에서 스킵** (`OD_SKIP_NEXT_TYPECHECK`) |
 | design-api | 상대적 짧음 | 변화 적음 |
 
 ### 3.2 한계 (Phase 0로 안 없어지는 것)
