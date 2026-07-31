@@ -858,6 +858,67 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('<h2 data-od-id="title">첫 줄<br>둘째 줄</h2>');
   });
 
+  it('encodes significant spaces so space-only set-text edits survive freeze remount', () => {
+    // Under CSS white-space:normal, trailing / run spaces collapse after the
+    // host remounts freeze HTML from source. ContentEditable made them look
+    // real during edit; without &nbsp; encoding the save looks like a no-op.
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h2 data-od-id="title">헬로월드</h2>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const trailing = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'title', value: '헬로월드 ' },
+      { slideIndex: 0 },
+    );
+    expect(trailing.ok, trailing.error).toBe(true);
+    expect(trailing.source).toMatch(
+      /<h2 data-od-id="title">헬로월드(?:&nbsp;|\u00a0)<\/h2>/,
+    );
+
+    const double = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'title', value: '헬로  월드' },
+      { slideIndex: 0 },
+    );
+    expect(double.ok, double.error).toBe(true);
+    expect(double.source).toMatch(
+      /<h2 data-od-id="title">헬로 (?:&nbsp;|\u00a0)월드<\/h2>/,
+    );
+
+    const leading = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'title', value: ' 헬로월드' },
+      { slideIndex: 0 },
+    );
+    expect(leading.ok, leading.error).toBe(true);
+    expect(leading.source).toMatch(
+      /<h2 data-od-id="title">(?:&nbsp;|\u00a0)헬로월드<\/h2>/,
+    );
+  });
+
+  it('round-trips space-only edits through readManualEditFields without trim', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h2 data-od-id="title">헬로월드</h2>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'title', value: '헬로 월드 ' },
+      { slideIndex: 0 },
+    );
+    expect(result.ok, result.error).toBe(true);
+    expect(readManualEditFields(result.source, 'title', { slideIndex: 0 }).text).toBe(
+      '헬로 월드 ',
+    );
+  });
+
   it('keeps intentional newlines when rewriting br-only headings', () => {
     const source = [
       '<!doctype html><html><body>',

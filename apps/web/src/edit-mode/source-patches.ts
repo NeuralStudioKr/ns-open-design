@@ -97,9 +97,10 @@ export function applyManualEditPatch(
     applyManualEditPlainText(el, patch.value);
   } else if (patch.kind === 'set-link') {
     if (hasElementChildren(el)) {
-      const currentText = el.textContent?.trim() ?? '';
-      if (patch.text.trim() === currentText) {
+      const currentText = manualEditElementToPlainText(el);
+      if (patch.text === currentText) {
         // Href-only edit on a formatted link — safe to keep the markup.
+        // Compare without trim so space-only label edits still rewrite text.
       } else if (containsOnlyInlineTextFormatting(el)) {
         applyManualEditPlainText(el, patch.text);
       } else {
@@ -149,7 +150,7 @@ export function readManualEditFields(
   const kind = inferKind(el);
   if (kind === 'link') {
     return {
-      text: el.textContent?.trim() ?? '',
+      text: manualEditElementToPlainText(el),
       href: el.getAttribute('href') ?? '',
     };
   }
@@ -159,7 +160,7 @@ export function readManualEditFields(
       alt: el.getAttribute('alt') ?? '',
     };
   }
-  return { text: el.textContent?.trim() ?? '' };
+  return { text: manualEditElementToPlainText(el) };
 }
 
 export function readManualEditStyles(
@@ -1276,24 +1277,58 @@ export function escapeManualEditText(value: string): string {
 }
 
 /**
- * Escape plain text and map newlines to `<br>` so manual-edit commits that
- * keep line breaks (Enter in contenteditable) persist as visible wraps.
+ * Encode spaces that CSS `white-space: normal` would collapse after a freeze
+ * remount: leading/trailing spaces on each line, and 2nd+ spaces in a run.
+ * Single internal word spaces stay as regular `" "` (already visible).
  */
-export function manualEditPlainTextToHtml(value: string): string {
-  return escapeManualEditText(String(value ?? ''))
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .replace(/\n/g, '<br>');
+export function encodeManualEditSignificantSpaces(escapedLine: string): string {
+  if (!escapedLine) return escapedLine;
+  let out = escapedLine.replace(/ {2,}/g, (run) => ` ${'&nbsp;'.repeat(run.length - 1)}`);
+  out = out.replace(/^( +)/, (run) => '&nbsp;'.repeat(run.length));
+  out = out.replace(/( +)$/, (run) => '&nbsp;'.repeat(run.length));
+  return out;
 }
 
-/** Write committed plain text onto an element, preserving `\n` as `<br>`. */
+/**
+ * Escape plain text and map newlines / significant spaces so manual-edit
+ * commits survive freeze remount under normal CSS whitespace collapsing.
+ */
+export function manualEditPlainTextToHtml(value: string): string {
+  const normalized = escapeManualEditText(String(value ?? ''))
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+  return normalized
+    .split('\n')
+    .map((line) => encodeManualEditSignificantSpaces(line))
+    .join('<br>');
+}
+
+/**
+ * Read committed manual-edit plain text back from an element: keep spaces
+ * (including `&nbsp;`), map `<br>` → `\n`, and never trim.
+ */
+export function manualEditElementToPlainText(el: Element): string {
+  let out = '';
+  const walk = (node: Node): void => {
+    if (node.nodeType === 3) {
+      out += (node.nodeValue || '').replace(/\u00a0/g, ' ');
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    const tag = ((node as Element).tagName || '').toLowerCase();
+    if (tag === 'br') {
+      out += '\n';
+      return;
+    }
+    for (const child of Array.from(node.childNodes)) walk(child);
+  };
+  walk(el);
+  return out.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+/** Write committed plain text onto an element, preserving `\n` / spaces. */
 export function applyManualEditPlainText(el: Element, value: string): void {
-  const text = String(value ?? '');
-  if (/[\r\n]/.test(text)) {
-    el.innerHTML = manualEditPlainTextToHtml(text);
-    return;
-  }
-  el.textContent = text;
+  el.innerHTML = manualEditPlainTextToHtml(String(value ?? ''));
 }
 
 function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
