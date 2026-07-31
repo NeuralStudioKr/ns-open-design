@@ -461,6 +461,75 @@ test('[P1] manual edit body-drag Escape cancels without persisting left/top', as
     .toBe(true);
 });
 
+test('[P1] manual edit body-drag Shift locks to dominant horizontal axis', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit move shift');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-shift.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-shift.html`);
+  await openDesignFile(page, 'manual-edit-move-shift.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="move-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.keyboard.down('Shift');
+  // Dominant dx — top must stay at seed 24.
+  await page.mouse.move(startX + 64, startY + 20, { steps: 8 });
+  await page.keyboard.up('Shift');
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-shift.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return left >= 70 && top === 24;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit promote reveals POSITION Left/Top fields', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit promote panel');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-promote-panel.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-promote-panel.html`);
+  await openDesignFile(page, 'manual-edit-promote-panel.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  await expect(page.getByTestId('manual-edit-position-hint')).toBeVisible();
+  await expect(page.locator('.manual-edit-modal .cc-row').filter({ hasText: 'Left' })).toHaveCount(0);
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(page.getByTestId('manual-edit-position-hint')).toHaveCount(0);
+  await expect(page.locator('.manual-edit-modal .cc-row').filter({ hasText: 'Left' })).toHaveCount(1);
+  await expect(page.locator('.manual-edit-modal .cc-row').filter({ hasText: 'Top' })).toHaveCount(1);
+});
+
 test('[P1] manual edit static target promote-on-drag writes absolute left/top', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);
