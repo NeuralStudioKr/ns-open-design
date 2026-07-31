@@ -461,6 +461,155 @@ test('[P1] manual edit body-drag Escape cancels without persisting left/top', as
     .toBe(true);
 });
 
+test('[P1] manual edit static target is not movable and shows POSITION hint', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit static move');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-static.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-static.html`);
+  await openDesignFile(page, 'manual-edit-move-static.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toHaveAttribute('data-movable', 'false');
+  await expect(page.getByTestId('manual-edit-position-hint')).toContainText(
+    'Drag to move requires absolute or fixed position.',
+  );
+  await expect(page.locator('.manual-edit-modal')).toContainText('POSITION');
+  await expect(page.locator('.manual-edit-modal .cc-row').filter({ hasText: 'Left' })).toHaveCount(0);
+
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-static.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      return !/\bleft\s*:/.test(style) && !/\btop\s*:/.test(style);
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit body-drag stays aligned and persists at 75% zoom', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit move zoom');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-zoom.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-zoom.html`);
+  await openDesignFile(page, 'manual-edit-move-zoom.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="move-box"]', 'SIZE');
+
+  const zoomButton = page.locator('.viewer-toolbar-zoom .zoom-trigger');
+  await zoomButton.click();
+  const zoomMenu = page.locator('.zoom-menu-popover[role="menu"]');
+  await expect(zoomMenu).toBeVisible();
+  await zoomMenu.getByRole('menuitem', { name: '75%' }).click();
+  await expect(zoomButton).toHaveText('75%');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+
+  const targetBox = await frame.locator('[data-od-id="move-box"]').boundingBox();
+  const overlayBox = await overlay.boundingBox();
+  expect(targetBox).toBeTruthy();
+  expect(overlayBox).toBeTruthy();
+  expect(Math.abs(overlayBox!.x - targetBox!.x)).toBeLessThan(12);
+  expect(Math.abs(overlayBox!.y - targetBox!.y)).toBeLessThan(12);
+  expect(Math.abs(overlayBox!.width - targetBox!.width)).toBeLessThan(12);
+  expect(Math.abs(overlayBox!.height - targetBox!.height)).toBeLessThan(12);
+
+  const startX = overlayBox!.x + overlayBox!.width / 2;
+  const startY = overlayBox!.y + overlayBox!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-zoom.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      // 75% zoom: host delta / 0.75 → content left/top must move past the seed.
+      return left >= 60 && top >= 40;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit body-drag undo restores left/top in one step', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit move undo');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-undo.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-undo.html`);
+  await openDesignFile(page, 'manual-edit-move-undo.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="move-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-undo.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return left >= 60 && top >= 40;
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-undo.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return left === 24 && top === 24;
+    })
+    .toBe(true);
+});
+
 async function selectPreviewElementThroughBridge(
   page: Page,
   frame: ReturnType<Page['frameLocator']>,
