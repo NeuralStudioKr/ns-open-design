@@ -43,6 +43,7 @@ import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../teamver/teamverEmbedPassiveAuth';
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import {
+  invalidateTeamverProjectPreviewPrefix,
   projectScopedPreviewUrl,
   resolveTeamverProjectPreviewPrefix,
 } from '../teamver/teamverProjectPreviewScope';
@@ -155,6 +156,7 @@ import {
 } from '../runtime/revision-stack';
 import {
   cursorRevisionFromStack,
+  findRevisionMatchingDiskContent,
   revisionCursorMatchesDisk,
 } from '../runtime/revision-conflict';
 import {
@@ -163,6 +165,8 @@ import {
   prefetchRevisionContents,
   setRevisionContentCache,
 } from '../runtime/revision-content-cache';
+import { canResizeTarget } from '../edit-mode/resize-eligibility';
+import { cacheParentRevisionOnPush, canApplyRevisionFromClientCache } from '../runtime/revision-restore';
 import {
   postDeckHostViewportToIframe,
   postDeckPreviewPanBy,
@@ -175,6 +179,7 @@ import {
 import { withResolvedDeckSlideIndex } from '../runtime/deck-slide-index';
 import { looksLikeCompactApiStackedDeckForPreview } from '../runtime/compact-api-stacked-deck';
 import {
+  hasTweaksTemplate,
   hasUrlModeBridge,
   htmlNeedsFocusGuard,
   htmlNeedsRedirectGuard,
@@ -192,6 +197,7 @@ import type {
   LiveArtifactWorkspaceEntry,
   ProjectFile,
 } from '../types';
+import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { Icon } from './Icon';
 import { RemixIcon } from './RemixIcon';
 import { SocialShareGrid } from './SocialShareGrid';
@@ -240,7 +246,6 @@ import {
 } from '../edit-mode/source-patches';
 import { contentRectToHostRect } from '../edit-mode/preview-coords';
 import {
-  canResizeTarget,
   parseExplicitPx,
   resizeHistoryLabel,
 } from '../edit-mode/resize-math';
@@ -279,9 +284,17 @@ import {
   shouldHoldDiskPreviewDuringManualEdit,
   shouldSkipManualEditHistoryConfirm,
 } from '../edit-mode/manual-edit-session';
+import { diffManualEditStylePatch } from '../edit-mode/manual-edit-style-batch';
+import {
+  manualEditInspectorStyleValue,
+  manualEditStyleValuesEqual,
+} from '../edit-mode/manual-edit-style-values';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
-import type { FileRevision } from '@open-design/contracts';
+import {
+  FILE_REVISION_RETENTION_LIMIT_DEFAULT,
+  type FileRevision,
+} from '@open-design/contracts';
 
 function resolveChromeActionsHost(): HTMLElement | null {
   return document.querySelector<HTMLElement>(APP_CHROME_FILE_ACTIONS_SELECTOR)
@@ -484,42 +497,12 @@ function mergeManualEditInspectorStyles(
   }, {} as ManualEditStyles);
 }
 
-function manualEditInspectorStyleValue(key: keyof ManualEditStyles, value: string): string {
-  if (!value) return '';
-  if (key === 'color' || key === 'backgroundColor' || key === 'borderColor') {
-    return normalizeManualEditInspectorColor(value);
-  }
-  return value;
-}
-
-function normalizeManualEditInspectorColor(value: string): string {
-  const trimmed = value.trim();
-  if (/^#[0-9a-f]{6}$/i.test(trimmed)) return trimmed.toLowerCase();
-  if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
-    const r = trimmed[1]!, g = trimmed[2]!, b = trimmed[3]!;
-    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
-  }
-  const rgba = trimmed.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
-  if (!rgba) return trimmed;
-  if (rgba[4] !== undefined && Number(rgba[4]) === 0) return '';
-  const toHex = (raw: string) => Math.max(0, Math.min(255, Math.round(Number(raw))))
-    .toString(16)
-    .padStart(2, '0');
-  return `#${toHex(rgba[1]!)}${toHex(rgba[2]!)}${toHex(rgba[3]!)}`;
-}
-
 function manualEditPersistedValueMatchesSavedSnapshot(
   key: keyof ManualEditStyles,
   persistedValue: string,
   savedValue: string,
 ): boolean {
-  return canonicalManualEditStyleValue(key, persistedValue) === canonicalManualEditStyleValue(key, savedValue);
-}
-
-function canonicalManualEditStyleValue(key: keyof ManualEditStyles, value: string): string {
-  const normalized = manualEditInspectorStyleValue(key, value).trim();
-  if (!normalized) return '';
-  return normalized.toLowerCase();
+  return manualEditStyleValuesEqual(key, persistedValue, savedValue);
 }
 
 function getDeployProviderOption(providerId: WebDeployProviderId): DeployProviderOption {
@@ -5143,6 +5126,7 @@ function HtmlViewer({
   } | null>(null);
   const manualEditResizeSessionActiveRef = useRef(false);
   const manualEditModeRef = useRef(false);
+  const manualEditResizePausedRef = useRef(false);
   const manualEditFrozenSourceRef = useRef<string | null>(null);
   const [manualEditViewportWidth, setManualEditViewportWidth] = useState<number | null>(null);
   const [commentPortalHost, setCommentPortalHost] = useState<HTMLElement | null>(null);
@@ -5336,6 +5320,7 @@ function HtmlViewer({
   const [manualEditPageStylesOpen, setManualEditPageStylesOpen] = useState(false);
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
   const selectedManualEditTargetIdRef = useRef<string | null>(null);
+  const selectedManualEditTargetRef = useRef<ManualEditTarget | null>(null);
   const [manualEditDraft, setManualEditDraft] = useState<ManualEditDraft>(() => emptyManualEditDraft());
   const [revisionStack, setRevisionStack] = useState<RevisionStackSnapshot>(() => (
     createRevisionStackSnapshot([], null)
@@ -5350,6 +5335,8 @@ function HtmlViewer({
   }
   const revisionSyncSuppressRef = useRef(false);
   const revisionSkipReconcileOnceRef = useRef(false);
+  const revisionConflictSuppressedRef = useRef(false);
+  const revisionDiskSyncPromiseRef = useRef<Promise<boolean> | null>(null);
   const [manualEditError, setManualEditError] = useState<string | null>(null);
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const manualEditSavingRef = useRef(false);
@@ -5511,6 +5498,7 @@ function HtmlViewer({
   const [revisionHistoryOpen, setRevisionHistoryOpen] = useState(false);
   const [revisionConflictToast, setRevisionConflictToast] = useState<string | null>(null);
   const [revisionStackInvalidated, setRevisionStackInvalidated] = useState(false);
+  const [revisionRetentionLimit, setRevisionRetentionLimit] = useState(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
   const revisionStackInvalidatedRef = useRef(revisionStackInvalidated);
   revisionStackInvalidatedRef.current = revisionStackInvalidated;
   const [strokePoints, setStrokePoints] = useState<StrokePoint[]>([]);
@@ -6110,26 +6098,46 @@ function HtmlViewer({
       return;
     }
     let cancelled = false;
-    const abort = new AbortController();
-    // Fail-open: if preview-url is slow/sticky, keep prefix null so srcDoc
-    // path can paint once disk/live HTML is ready (do not force unavailable).
-    const failOpenTimer = window.setTimeout(() => {
-      if (cancelled) return;
-      abort.abort();
-    }, 8_000);
-    void resolveTeamverProjectPreviewPrefix(projectId, file.name, {
-      signal: abort.signal,
-    }).then((prefix) => {
-      if (cancelled) return;
-      window.clearTimeout(failOpenTimer);
-      setEmbedPreviewPrefix(prefix);
-    });
+    const retryDelaysMs = [0, 400, 1_200] as const;
+    // Fail-open on first null so srcDoc can paint, then retry with a fresh
+    // abort budget. Auth recovery bumps embedAuthRecoveryNonce and invalidates
+    // the cached prefix so stale daemon scopes / 401 races do not leave deck
+    // relative assets resolving against about:blank forever.
+    if (embedAuthRecoveryNonce > 0) {
+      invalidateTeamverProjectPreviewPrefix(projectId);
+    }
+    void (async () => {
+      for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
+        if (cancelled) return;
+        const delay = retryDelaysMs[attempt] ?? 0;
+        if (delay > 0) {
+          await new Promise((settle) => window.setTimeout(settle, delay));
+          if (cancelled) return;
+          invalidateTeamverProjectPreviewPrefix(projectId);
+        }
+        const abort = new AbortController();
+        const failOpenTimer = window.setTimeout(() => abort.abort(), 8_000);
+        let resolved: string | null = null;
+        try {
+          resolved = await resolveTeamverProjectPreviewPrefix(projectId, file.name, {
+            signal: abort.signal,
+          });
+        } finally {
+          window.clearTimeout(failOpenTimer);
+        }
+        if (cancelled) return;
+        if (resolved) {
+          setEmbedPreviewPrefix(resolved);
+          return;
+        }
+        if (attempt === 0) setEmbedPreviewPrefix(null);
+      }
+      if (!cancelled) setEmbedPreviewPrefix(null);
+    })();
     return () => {
       cancelled = true;
-      abort.abort();
-      window.clearTimeout(failOpenTimer);
     };
-  }, [file.name, projectId, teamverEmbedPreviewMode]);
+  }, [embedAuthRecoveryNonce, file.name, projectId, teamverEmbedPreviewMode]);
   const useUrlLoadPreview = shouldUrlLoadHtmlPreview({
     mode,
     isDeck: effectiveDeck,
@@ -6142,6 +6150,8 @@ function HtmlViewer({
     forceInline: forceInline || needsSandboxShim,
     needsFocusGuard,
     needsRedirectGuard,
+    // Tweaks template needs the srcDoc bridge so the toolbar toggle can arm.
+    tweaksBridge: hasTweaksTemplate(source),
   }) && !manualEditRequiresSrcDoc
     && (!teamverEmbedPreviewMode || embedPreviewPrefix != null);
   const projectPreviewAssetUrl = useCallback(
@@ -6695,6 +6705,12 @@ function HtmlViewer({
     win.postMessage({ type: 'od-edit-selected-target', id }, '*');
   }
 
+  function requestManualEditTargetRemeasure(id: string, target: HTMLIFrameElement | null = iframeRef.current) {
+    const win = target?.contentWindow;
+    if (!win || !id) return;
+    win.postMessage({ type: 'od-edit-remeasure', id }, '*');
+  }
+
   function syncBridgeModes(target: HTMLIFrameElement | null = iframeRef.current) {
     const win = target?.contentWindow;
     if (!win) return;
@@ -6831,8 +6847,14 @@ function HtmlViewer({
     setManualEditError(null);
     setRevisionHistoryOpen(false);
     setRevisionStackInvalidated(false);
+    setRevisionConflictToast(null);
+    revisionConflictSuppressedRef.current = false;
+    setRevisionRetentionLimit(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
     manualEditPendingStyleRef.current = null;
     clearManualEditStyleTimer();
+    manualEditResizePausedRef.current = false;
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
   }, [file.name]);
 
   const resolveRevisionSnapshotContent = useCallback(async (revisionId: string): Promise<string | null> => {
@@ -6868,7 +6890,59 @@ function HtmlViewer({
       return;
     }
     if (disk == null || snapshotContent == null) return;
-    if (revisionCursorMatchesDisk(revisionStackRef.current, disk, snapshotContent)) return;
+    if (revisionCursorMatchesDisk(revisionStackRef.current, disk, snapshotContent)) {
+      setRevisionStackInvalidated(false);
+      return;
+    }
+
+    const list = await listProjectFileRevisions(projectId, file.name);
+    if (!list) {
+      setRevisionStackInvalidated(true);
+      if (!revisionConflictSuppressedRef.current) {
+        setRevisionConflictToast(t('fileRevision.conflict.message'));
+      }
+      return;
+    }
+    if (typeof list.retentionLimit === 'number') {
+      setRevisionRetentionLimit(list.retentionLimit);
+    }
+
+    const matchingRevision = await findRevisionMatchingDiskContent(
+      list.revisions,
+      disk,
+      resolveRevisionSnapshotContent,
+      new Set([cursorRevisionId]),
+    );
+    if (
+      revisionSyncSuppressRef.current
+      || manualEditSavingRef.current
+      || reconcileGeneration !== revisionReconcileGenerationRef.current
+    ) {
+      return;
+    }
+
+    if (matchingRevision) {
+      commitRevisionStack(createRevisionStackSnapshot(
+        list.revisions,
+        list.headRevisionId,
+        matchingRevision.id,
+      ));
+      setActiveRevisionSequence(projectId, file.name, matchingRevision.sequence);
+      setRevisionStackInvalidated(false);
+      revisionConflictSuppressedRef.current = false;
+      setRevisionConflictToast(null);
+
+      if (sourceRef.current !== disk) {
+        setSource(disk);
+        sourceRef.current = disk;
+        setInlinedSource(null);
+        setManualEditFrozenSource(disk);
+        setManualEditDraft((current) => ({ ...current, fullSource: disk }));
+        setReloadKey((k) => k + 1);
+        manualEditPendingStyleRef.current = null;
+      }
+      return;
+    }
 
     setSource(disk);
     sourceRef.current = disk;
@@ -6878,33 +6952,29 @@ function HtmlViewer({
     setReloadKey((k) => k + 1);
     manualEditPendingStyleRef.current = null;
 
-    const list = await listProjectFileRevisions(projectId, file.name);
-    if (list) {
-      const resetStack = createRevisionStackSnapshot(
-        list.revisions,
-        list.headRevisionId,
-        list.headRevisionId,
-      );
-      commitRevisionStack(resetStack);
-      const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
-      if (head) {
-        setActiveRevisionSequence(projectId, file.name, head.sequence);
-        const headSnapshot = await resolveRevisionSnapshotContent(head.id);
-        setRevisionStackInvalidated(headSnapshot != null && disk !== headSnapshot);
-      } else {
-        clearActiveRevisionSequence(projectId, file.name);
-        setRevisionStackInvalidated(true);
-      }
+    commitRevisionStack(createRevisionStackSnapshot(
+      list.revisions,
+      list.headRevisionId,
+      list.headRevisionId,
+    ));
+    const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
+    if (head) {
+      setActiveRevisionSequence(projectId, file.name, head.sequence);
     } else {
-      setRevisionStackInvalidated(true);
+      clearActiveRevisionSequence(projectId, file.name);
     }
-
-    setRevisionConflictToast(t('fileRevision.conflict.message'));
+    setRevisionStackInvalidated(true);
+    if (!revisionConflictSuppressedRef.current) {
+      setRevisionConflictToast(t('fileRevision.conflict.message'));
+    }
   }, [projectId, file.name, resolveRevisionSnapshotContent, t]);
 
   const refreshRevisionStack = useCallback(async () => {
     const list = await listProjectFileRevisions(projectId, file.name);
     if (!list || !Array.isArray(list.revisions)) return;
+    if (typeof list.retentionLimit === 'number') {
+      setRevisionRetentionLimit(list.retentionLimit);
+    }
     const nextStack = createRevisionStackSnapshot(
       list.revisions,
       list.headRevisionId,
@@ -6981,7 +7051,8 @@ function HtmlViewer({
 
   useEffect(() => {
     selectedManualEditTargetIdRef.current = selectedManualEditTarget?.id ?? null;
-  }, [selectedManualEditTarget?.id]);
+    selectedManualEditTargetRef.current = selectedManualEditTarget;
+  }, [selectedManualEditTarget?.id, selectedManualEditTarget]);
 
   useEffect(() => {
     if (!boardMode) {
@@ -7284,28 +7355,17 @@ function HtmlViewer({
         setManualEditInlineTextEditing(Boolean(data.active));
         return;
       }
-      if (data.type === 'od-edit-rect') {
-        const id = String(data.id ?? '');
-        const rect = data.rect;
-        if (!id || !rect || typeof rect.width !== 'number' || typeof rect.height !== 'number') return;
-        const offsetLeft = typeof data.offsetLeft === 'number' ? data.offsetLeft : null;
-        const offsetTop = typeof data.offsetTop === 'number' ? data.offsetTop : null;
-        const cssPosition = typeof data.cssPosition === 'string' ? data.cssPosition : null;
+      if (data.type === 'od-edit-rect' && data.ok && data.target) {
+        const measured = data.target;
         setSelectedManualEditTarget((current) => {
-          if (!current || current.id !== id) return current;
-          return {
-            ...current,
-            rect: {
-              x: Math.round(rect.x),
-              y: Math.round(rect.y),
-              width: Math.round(rect.width),
-              height: Math.round(rect.height),
-            },
-            ...(offsetLeft != null ? { offsetLeft: Math.round(offsetLeft) } : {}),
-            ...(offsetTop != null ? { offsetTop: Math.round(offsetTop) } : {}),
-            ...(cssPosition ? { cssPosition } : {}),
-          };
+          if (current?.id !== measured.id) return current;
+          const next = { ...current, ...measured };
+          selectedManualEditTargetRef.current = next;
+          return next;
         });
+        setManualEditTargets((current) =>
+          current.map((item) => (item.id === measured.id ? { ...item, ...measured } : item)),
+        );
         return;
       }
     }
@@ -7399,12 +7459,14 @@ function HtmlViewer({
     if (manualEditResizeSessionActiveRef.current) return;
     manualEditStyleTimerRef.current = setTimeout(() => {
       manualEditStyleTimerRef.current = null;
+      if (manualEditResizePausedRef.current) return;
       void flushManualEditStyleSave();
     }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
   }
 
   function handleManualEditResizeSessionChange(active: boolean) {
     manualEditResizeSessionActiveRef.current = active;
+    manualEditResizePausedRef.current = active;
     if (active) {
       clearManualEditStyleTimer();
       return;
@@ -7469,11 +7531,6 @@ function HtmlViewer({
     // post-promote re-drag would jump the host box).
   }
 
-  function requestManualEditRemeasure(id: string) {
-    const win = iframeRef.current?.contentWindow;
-    if (!win || !id) return;
-    win.postMessage({ type: 'od-edit-remeasure', id }, '*');
-  }
 
   /**
    * Keyed iframe/draft + pending rollback for a geometry gesture. Used by Esc /
@@ -7529,7 +7586,8 @@ function HtmlViewer({
     manualEditResizeSessionActiveRef.current = false;
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
-    const ok = await flushManualEditStyleSave();
+    manualEditResizePausedRef.current = false;
+    const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) {
       rollbackManualEditGestureStyles(stylesBefore);
       return;
@@ -7554,7 +7612,7 @@ function HtmlViewer({
       };
     });
     // Sync host overlay to the iframe's real border-box after layout settles.
-    requestManualEditRemeasure(target.id);
+    requestManualEditTargetRemeasure(target.id);
   }
 
   async function handleManualEditMoveCommit(
@@ -7568,7 +7626,8 @@ function HtmlViewer({
     manualEditResizeSessionActiveRef.current = false;
     setManualEditMoveDraftPos(null);
     setManualEditResizeDraftSize(null);
-    const ok = await flushManualEditStyleSave();
+    manualEditResizePausedRef.current = false;
+    const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) {
       rollbackManualEditGestureStyles(stylesBefore);
       return;
@@ -7592,7 +7651,7 @@ function HtmlViewer({
         offsetTop: topPx ?? current.offsetTop,
       };
     });
-    requestManualEditRemeasure(target.id);
+    requestManualEditTargetRemeasure(target.id);
   }
 
   function handleManualEditResizeCancel(stylesBefore: Partial<ManualEditStyles>) {
@@ -7603,7 +7662,40 @@ function HtmlViewer({
     rollbackManualEditGestureStyles(stylesBefore);
   }
 
-  async function flushManualEditStyleSave(): Promise<boolean> {
+  function reconcileManualEditDraftAfterNoOpFlush(pending: ManualEditPendingStyleSave) {
+    const base = sourceRef.current ?? '';
+    if (!base) return;
+    const keys = Object.keys(pending.styles) as Array<keyof ManualEditStyles>;
+    if (keys.length === 0) return;
+
+    const target = pending.id === '__body__'
+      ? null
+      : selectedManualEditTargetRef.current?.id === pending.id
+        ? selectedManualEditTargetRef.current
+        : manualEditTargets.find((item) => item.id === pending.id) ?? null;
+
+    const sourceStyles = target
+      ? inspectorManualEditStyles(target, base)
+      : readManualEditStyles(base, pending.id);
+    const resetStyles = keys.reduce<Partial<ManualEditStyles>>((acc, key) => {
+      acc[key] = sourceStyles[key] ?? '';
+      return acc;
+    }, {});
+
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
+    previewStyleToIframe(pending.id, resetStyles, nextManualEditPreviewVersion());
+
+    if (!target || selectedManualEditTarget?.id === pending.id) {
+      setManualEditDraft((current) => ({
+        ...current,
+        styles: { ...current.styles, ...resetStyles },
+      }));
+    }
+  }
+
+  async function flushManualEditStyleSave(options?: { force?: boolean }): Promise<boolean> {
+    if (manualEditResizePausedRef.current && !options?.force) return true;
     // Boundary flushes (exit / select / text commit) must not lose a race with
     // autosave: wait for the lock, then persist whatever draft remains.
     if (manualEditSavingRef.current) {
@@ -7616,8 +7708,22 @@ function HtmlViewer({
     if (manualEditSavingRef.current) return false;
     clearManualEditStyleTimer();
     manualEditPendingStyleRef.current = null;
+    const baseSource = manualEditPatchBaseSource({
+      manualEditMode,
+      frozenSource: manualEditFrozenSource,
+      liveSource: sourceRef.current,
+    });
+    if (baseSource == null) {
+      manualEditPendingStyleRef.current = pending;
+      return false;
+    }
+    const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles);
+    if (Object.keys(effectiveStyles).length === 0) {
+      reconcileManualEditDraftAfterNoOpFlush(pending);
+      return true;
+    }
     const ok = await applyManualEdit(
-      { id: pending.id, kind: 'set-style', styles: pending.styles },
+      { id: pending.id, kind: 'set-style', styles: effectiveStyles },
       pending.label,
     );
     if (!ok) {
@@ -7633,6 +7739,7 @@ function HtmlViewer({
   async function settleManualEditStyleBoundary(): Promise<boolean> {
     return flushManualEditStyleSave();
   }
+
 
   function cancelManualEditStyleDraft() {
     const pending = manualEditPendingStyleRef.current;
@@ -7696,6 +7803,7 @@ function HtmlViewer({
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
     manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
     const base = sourceRef.current ?? '';
     const fields = readManualEditFields(base, target.id);
     selectedManualEditTargetIdRef.current = target.id;
@@ -7785,6 +7893,9 @@ function HtmlViewer({
       liveSource: sourceRef.current,
     });
     if (baseSource == null) return false;
+    if (revisionDiskSyncPromiseRef.current) {
+      await revisionDiskSyncPromiseRef.current;
+    }
     manualEditSavingRef.current = true;
     setManualEditSaving(true);
     setManualEditError(null);
@@ -7853,6 +7964,7 @@ function HtmlViewer({
       }
       commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
       setRevisionContentCache(projectId, file.name, saved.revision.id, result.source);
+      cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, baseSource);
       revisionSkipReconcileOnceRef.current = true;
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
@@ -7917,13 +8029,98 @@ function HtmlViewer({
     return false;
   }
 
+  async function awaitRevisionDiskSync(): Promise<void> {
+    if (revisionDiskSyncPromiseRef.current) {
+      await revisionDiskSyncPromiseRef.current;
+    }
+  }
+
+  function applyRestoredSourceToViewer(sourceToApply: string, target: FileRevision): void {
+    revisionSkipReconcileOnceRef.current = true;
+    setSource(sourceToApply);
+    sourceRef.current = sourceToApply;
+    pinManualEditSavedSource(sourceToApply);
+    setInlinedSource(null);
+    setManualEditFrozenSource(sourceToApply);
+    commitRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+    setActiveRevisionSequence(projectId, file.name, target.sequence);
+    setManualEditDraft((current) => ({ ...current, fullSource: sourceToApply }));
+    if (manualEditMode && !useUrlLoadPreview) {
+      capturePreviewScrollPosition();
+      queueMicrotask(() => activateManualEditPreviewHtml(sourceToApply));
+    } else {
+      setReloadKey((k) => k + 1);
+    }
+    setRevisionStackInvalidated(false);
+    const before = revisionBeforeCursor(revisionStackRef.current);
+    const after = revisionAfterCursor(revisionStackRef.current);
+    prefetchRevisionContents(
+      projectId,
+      file.name,
+      [before?.id, after?.id].filter((id): id is string => Boolean(id)),
+      (revisionId) => resolveRevisionSnapshotContent(revisionId),
+    );
+  }
+
+  async function syncRevisionToDisk(target: FileRevision): Promise<boolean> {
+    const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
+    if (!restored.ok) {
+      if (restored.status === 401) {
+        notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+      }
+      setManualEditError(
+        isTeamverEmbedMode()
+          ? formatProjectArtifactSaveFailedError(file.name, {
+              status: restored.status,
+              code: restored.code,
+              message: restored.message,
+            })
+          : embedUiLabel('Could not restore this revision.', '이 버전으로 복원하지 못했습니다.'),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  async function scheduleBackgroundRevisionDiskSync(target: FileRevision): Promise<void> {
+    const syncPromise = (async () => {
+      const ok = await syncRevisionToDisk(target);
+      if (ok) {
+        await onFileSaved?.();
+      } else {
+        setRevisionStackInvalidated(true);
+      }
+      return ok;
+    })();
+    revisionDiskSyncPromiseRef.current = syncPromise;
+    void syncPromise.finally(() => {
+      if (revisionDiskSyncPromiseRef.current === syncPromise) {
+        revisionDiskSyncPromiseRef.current = null;
+      }
+    });
+  }
+
   async function applyRestoredRevision(target: FileRevision): Promise<boolean> {
     revisionSyncSuppressRef.current = true;
     try {
-      const [restored, restoredSource] = await Promise.all([
-        restoreProjectFileRevision(projectId, file.name, target.id),
-        resolveRevisionSnapshotContent(target.id),
-      ]);
+      await awaitRevisionDiskSync();
+
+      let sourceToApply = getRevisionContentCache(projectId, file.name, target.id);
+      if (!canApplyRevisionFromClientCache(sourceToApply)) {
+        const fetched = await resolveRevisionSnapshotContent(target.id);
+        if (fetched != null) {
+          setRevisionContentCache(projectId, file.name, target.id, fetched);
+          sourceToApply = fetched;
+        }
+      }
+
+      if (canApplyRevisionFromClientCache(sourceToApply)) {
+        applyRestoredSourceToViewer(sourceToApply, target);
+        void scheduleBackgroundRevisionDiskSync(target);
+        return true;
+      }
+
+      const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
       if (!restored.ok) {
         if (restored.status === 401) {
           notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
@@ -7939,34 +8136,16 @@ function HtmlViewer({
         );
         return false;
       }
-      let sourceToApply = restoredSource;
-      if (sourceToApply == null) {
-        sourceToApply = await fetchProjectFileText(projectId, file.name, {
-          cache: 'no-store',
-          cacheBustKey: Date.now(),
-        });
-      }
-      if (sourceToApply == null) {
+      const diskSource = await fetchProjectFileText(projectId, file.name, {
+        cache: 'no-store',
+        cacheBustKey: Date.now(),
+      });
+      if (diskSource == null) {
         setManualEditError(embedUiLabel('Could not load the restored file.', '복원한 파일을 불러오지 못했습니다.'));
         return false;
       }
-      setRevisionContentCache(projectId, file.name, target.id, sourceToApply);
-      revisionSkipReconcileOnceRef.current = true;
-      setSource(sourceToApply);
-      sourceRef.current = sourceToApply;
-      pinManualEditSavedSource(sourceToApply);
-      setInlinedSource(null);
-      setManualEditFrozenSource(sourceToApply);
-      commitRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
-      setActiveRevisionSequence(projectId, file.name, target.sequence);
-      setManualEditDraft((current) => ({ ...current, fullSource: sourceToApply }));
-      if (manualEditMode && !useUrlLoadPreview) {
-        capturePreviewScrollPosition();
-        queueMicrotask(() => activateManualEditPreviewHtml(sourceToApply));
-      } else {
-        setReloadKey((k) => k + 1);
-      }
-      setRevisionStackInvalidated(false);
+      setRevisionContentCache(projectId, file.name, target.id, diskSource);
+      applyRestoredSourceToViewer(diskSource, target);
       await onFileSaved?.();
       return true;
     } finally {
@@ -8202,6 +8381,7 @@ function HtmlViewer({
       sourceRef.current = next;
       commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
       setRevisionContentCache(projectId, file.name, saved.revision.id, next);
+      cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, source);
       revisionSkipReconcileOnceRef.current = true;
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'inspect_save');
@@ -9688,6 +9868,9 @@ function HtmlViewer({
     manualEditMode && (!!selectedManualEditTarget || manualEditPageCardActive);
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
+  const revisionUndoUnavailableTooltip = revisionStackInvalidated
+    ? t('fileRevision.undo.unavailableTooltip')
+    : undefined;
   const manualEditPanel = manualEditPanelActive ? (
     <ManualEditPanel
       targets={manualEditTargets}
@@ -9788,7 +9971,6 @@ function HtmlViewer({
     && !drawOverlayOpen
     && selectedManualEditTarget
     && canResizeTarget(selectedManualEditTarget, {
-      editMode: manualEditMode,
       inlineTextEditing: manualEditInlineTextEditing,
     }) ? (
       <ManualEditResizeOverlay
@@ -9809,8 +9991,7 @@ function HtmlViewer({
         onMoveCommit={(styles, stylesBefore, viewport) => {
           void handleManualEditMoveCommit(styles, stylesBefore, viewport);
         }}
-        onMoveCancel={handleManualEditMoveCancel}
-      />
+        onMoveCancel={handleManualEditMoveCancel}      />
     ) : null;
   const activeComposerComment = activePreviewCommentId
     ? visibleSideComments.find((comment) => comment.id === activePreviewCommentId) ?? null
@@ -10133,6 +10314,8 @@ function HtmlViewer({
                   canUndo={revisionCanUndo}
                   canRedo={revisionCanRedo}
                   busy={manualEditSaving}
+                  undoTooltip={revisionUndoUnavailableTooltip}
+                  redoTooltip={revisionUndoUnavailableTooltip}
                   onUndo={() => {
                     void undoManualEdit();
                   }}
@@ -10957,6 +11140,7 @@ function HtmlViewer({
               <FileRevisionHistoryPanel
                 revisions={revisionStack.revisions}
                 cursorRevisionId={revisionStack.cursorRevisionId}
+                retentionLimit={revisionRetentionLimit}
                 busy={manualEditSaving}
                 onRestore={(revision) => {
                   void restoreRevisionFromHistory(revision);
@@ -11563,7 +11747,10 @@ function HtmlViewer({
           ttlMs={5000}
           role="alert"
           tone="error"
-          onDismiss={() => setRevisionConflictToast(null)}
+          onDismiss={() => {
+            revisionConflictSuppressedRef.current = true;
+            setRevisionConflictToast(null);
+          }}
         />,
         document.body,
       ) : null}
@@ -11705,7 +11892,12 @@ async function fetchProjectRelativeText(
   const filePath = resolveProjectRelativePath(ownerFileName, assetRef);
   if (!filePath) return null;
   try {
-    const resp = await fetch(projectRawUrl(projectId, filePath));
+    // Teamver embed needs daemon auth / workspace / S3-prefix headers and
+    // 401 recovery — plain fetch() silently fails after auth races.
+    const resp = await fetchTeamverDaemon(projectRawUrl(projectId, filePath), {
+      cache: 'no-store',
+      teamverProjectId: projectId,
+    });
     if (!resp.ok) return null;
     return await resp.text();
   } catch {
@@ -11749,7 +11941,6 @@ function ImageViewer({
   file: ProjectFile;
 }) {
   const t = useTeamverT();
-  const url = `${projectFileUrl(projectId, file.name)}?v=${Math.round(file.mtime)}`;
   return (
     <div className="viewer image-viewer">
       <div className="viewer-toolbar">
@@ -11779,7 +11970,12 @@ function ImageViewer({
         </div>
       </div>
       <div className="viewer-body image-body">
-        <img alt={file.name} src={url} />
+        <AuthenticatedProjectFileImage
+          projectId={projectId}
+          path={file.name}
+          alt={file.name}
+          rev={Math.round(file.mtime)}
+        />
       </div>
     </div>
   );
@@ -11887,7 +12083,6 @@ export function SvgViewer({
   const [loadingSource, setLoadingSource] = useState(false);
   const [sourceError, setSourceError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const url = `${projectFileUrl(projectId, file.name)}?v=${Math.round(file.mtime)}&r=${reloadKey}`;
 
   useEffect(() => {
     if (mode !== 'source') return;
@@ -11969,7 +12164,12 @@ export function SvgViewer({
       </div>
       <div className={`viewer-body ${mode === 'preview' ? 'image-body' : ''}`}>
         {mode === 'preview' ? (
-          <img alt={file.name} src={url} />
+          <AuthenticatedProjectFileImage
+            projectId={projectId}
+            path={file.name}
+            alt={file.name}
+            rev={`${Math.round(file.mtime)}-${reloadKey}`}
+          />
         ) : loadingSource ? (
           <div className="viewer-empty">{t('fileViewer.loading')}</div>
         ) : sourceError ? (

@@ -2080,6 +2080,7 @@ export const ja: Dict = {
   'fileRevision.history.current': '現在',
   'fileRevision.history.retentionHint': 'ファイルごとに最新 {count} 件の編集のみ保持されます。',
   'fileRevision.conflict.message': 'ファイルが予期せず変更されたため、元に戻す・やり直しは使えません。編集履歴から以前のバージョンを復元できます。',
+  'fileRevision.undo.unavailableTooltip': 'ファイルが予期せず変更されたため、元に戻す・やり直しは使えません。',
   'manualEdit.noChanges': 'まだ手動編集はありません。',
   'manualEdit.imageUrl': '画像 URL',
   'manualEdit.altText': '代替テキスト',

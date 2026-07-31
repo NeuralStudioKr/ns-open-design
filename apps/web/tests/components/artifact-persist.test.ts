@@ -101,6 +101,37 @@ describe('resolveArtifactPersistFileName', () => {
     );
     expect(fileName).toBe('deck.html');
   });
+
+  it('preserves nested preferred deck paths when the file list lags', () => {
+    const fileName = resolveArtifactPersistFileName(
+      {
+        identifier: 'deck',
+        title: 'Deck',
+        artifactType: 'deck-patch',
+      },
+      [deck],
+      null,
+      { preferredFileName: 'slides/deck.html' },
+    );
+    expect(fileName).toBe('slides/deck.html');
+  });
+
+  it('does not resolve nested preferred path to a root basename sibling', () => {
+    const fileName = resolveArtifactPersistFileName(
+      {
+        identifier: 'deck',
+        title: 'Deck',
+        artifactType: 'deck-patch',
+      },
+      [
+        { name: 'deck.html', mtime: 1 },
+        { name: 'slides/deck.html', path: 'slides/deck.html', mtime: 2 },
+      ],
+      null,
+      { preferredFileName: 'slides/deck.html' },
+    );
+    expect(fileName).toBe('slides/deck.html');
+  });
 });
 
 describe('artifact version tab helpers', () => {

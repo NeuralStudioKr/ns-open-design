@@ -3,6 +3,11 @@ import { useEffect, useState } from 'react';
 import { projectRawUrl } from '../providers/registry';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
+import {
+  clearProjectRawFileMissing,
+  isProjectRawFileKnownMissing,
+  markProjectRawFileMissing,
+} from '../utils/projectFileFetchCache';
 
 const FETCH_RETRY_DELAYS_MS = [0, 250, 800] as const;
 
@@ -40,6 +45,7 @@ export async function loadAuthenticatedProjectFileBlob(
   const id = projectId.trim();
   const path = filePath.trim();
   if (!id || !path) return null;
+  if (isProjectRawFileKnownMissing(id, path)) return null;
 
   const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
   const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
@@ -59,9 +65,14 @@ export async function loadAuthenticatedProjectFileBlob(
         cache: 'no-store',
         teamverProjectId: id,
       });
+      if (resp.status === 404) {
+        markProjectRawFileMissing(id, path);
+        return null;
+      }
       if (!resp.ok) continue;
       const blob = await resp.blob();
       if (!isUsableImageBlob(blob)) continue;
+      clearProjectRawFileMissing(id, path);
       return blob;
     } catch {
       // Auth / network race — retry remaining attempts.
@@ -78,6 +89,8 @@ export async function loadAuthenticatedProjectFileBlob(
 export function useAuthenticatedProjectFileObjectUrl(
   projectId: string | null | undefined,
   filePath: string | null | undefined,
+  /** Bust in-memory blob cache when the backing file changes (e.g. mtime). */
+  rev?: string | number | null,
 ): string | null {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
@@ -107,7 +120,7 @@ export function useAuthenticatedProjectFileObjectUrl(
       if (revokeUrl) URL.revokeObjectURL(revokeUrl);
       setObjectUrl(null);
     };
-  }, [filePath, projectId]);
+  }, [filePath, projectId, rev]);
 
   return objectUrl;
 }

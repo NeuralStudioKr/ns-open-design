@@ -568,6 +568,34 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('posts od-edit-rect after od-edit-remeasure for a mapped target', async () => {
+    const posts: Array<{ type?: string; id?: string; ok?: boolean; target?: { id: string; rect?: { width: number } } }> = [];
+    const dom = new JSDOM(
+      `<main><div data-od-id="card" style="width:120px;height:80px">Card</div></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const card = dom.window.document.querySelector('[data-od-id="card"]')!;
+    card.getBoundingClientRect = () => ({
+      x: 10, y: 20, width: 120, height: 80,
+      top: 20, right: 130, bottom: 100, left: 10,
+      toJSON: () => ({}),
+    } as DOMRect);
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as { type?: string; id?: string; ok?: boolean; target?: { id: string; rect?: { width: number } } });
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-remeasure', id: 'card' },
+    }));
+
+    const rectMessage = posts.find((message) => message.type === 'od-edit-rect');
+    expect(rectMessage).toMatchObject({ id: 'card', ok: true });
+    expect(rectMessage?.target?.id).toBe('card');
+    expect(rectMessage?.target?.rect?.width).toBe(120);
+
+    dom.window.close();
+  });
+
   it('blocks clicks on unmapped elements while edit mode is enabled', () => {
     const dom = new JSDOM(
       `<main><button id="cta">Launch</button></main>${buildManualEditBridge(true)}`,
@@ -620,10 +648,14 @@ describe('manual edit bridge target normalization', () => {
     const posts: Array<{
       type?: string;
       id?: string;
-      rect?: { width: number; height: number };
-      offsetLeft?: number;
-      offsetTop?: number;
-      cssPosition?: string;
+      ok?: boolean;
+      target?: {
+        id?: string;
+        rect?: { x: number; y: number; width: number; height: number };
+        offsetLeft?: number;
+        offsetTop?: number;
+        cssPosition?: string;
+      };
     }> = [];
     const dom = new JSDOM(
       `<main><div data-od-id="card" style="position:absolute;left:12px;top:24px">Box</div></main>${buildManualEditBridge(true)}`,
@@ -647,17 +679,26 @@ describe('manual edit bridge target normalization', () => {
     expect(rectMsg).toMatchObject({
       type: 'od-edit-rect',
       id: 'card',
-      rect: { x: 12, y: 24, width: 320, height: 180 },
-      cssPosition: 'absolute',
+      ok: true,
+      target: {
+        id: 'card',
+        rect: { x: 12, y: 24, width: 320, height: 180 },
+        cssPosition: 'absolute',
+      },
     });
-    expect(typeof rectMsg?.offsetLeft).toBe('number');
-    expect(typeof rectMsg?.offsetTop).toBe('number');
+    expect(typeof rectMsg?.target?.offsetLeft).toBe('number');
+    expect(typeof rectMsg?.target?.offsetTop).toBe('number');
 
     dom.window.close();
   });
 
   it('uses a transform ancestor as the absolute containing block for offsetLeft', () => {
-    const posts: Array<{ type?: string; id?: string; offsetLeft?: number; offsetTop?: number }> = [];
+    const posts: Array<{
+      type?: string;
+      id?: string;
+      ok?: boolean;
+      target?: { offsetLeft?: number; offsetTop?: number };
+    }> = [];
     const dom = new JSDOM(
       `<main>
         <div id="host" style="position: static;">
@@ -708,8 +749,9 @@ describe('manual edit bridge target normalization', () => {
 
     const rectMsg = posts.find((p) => p.type === 'od-edit-rect');
     // CB origin = host (100,200) → offset 40,60 — not document (0,0) → 140,260.
-    expect(rectMsg?.offsetLeft).toBe(40);
-    expect(rectMsg?.offsetTop).toBe(60);
+    expect(rectMsg?.ok).toBe(true);
+    expect(rectMsg?.target?.offsetLeft).toBe(40);
+    expect(rectMsg?.target?.offsetTop).toBe(60);
 
     dom.window.close();
   });

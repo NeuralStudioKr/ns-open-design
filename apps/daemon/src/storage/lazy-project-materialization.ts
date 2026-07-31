@@ -22,6 +22,11 @@ export type ProjectStorageAccessHooks = {
     projectId: string,
     options?: { strict?: boolean; explicitDeletedPaths?: readonly string[] },
   ) => Promise<void>;
+  /**
+   * When scratch misses a path (sibling-node upload / TTL-skipped sync-down),
+   * pull that single object from tenant S3 into scratch.
+   */
+  ensureFileAvailable: (req: Request, projectId: string, relpath: string) => Promise<boolean>;
   /** Pre-lock sync-down while a user file DELETE persists to remote SSOT. */
   armPersistInflight: (projectId: string) => () => void;
   onProjectRemoved: (req: Request, projectId: string) => Promise<void>;
@@ -650,9 +655,41 @@ export function createProjectStorageAccessHooks(
     }
   }
 
+  async function ensureFileAvailable(
+    req: Request,
+    projectId: string,
+    relpath: string,
+  ): Promise<boolean> {
+    const trimmedId = projectId.trim();
+    const normalized = String(relpath || '').trim().replace(/^\/+/, '');
+    if (!trimmedId || !normalized) return false;
+    await awaitPendingPersist(trimmedId);
+    const local = await storage.statFile(trimmedId, normalized);
+    if (local) return true;
+    try {
+      const remote = await resolveRemote(req, trimmedId);
+      const pulled = await storage.pullRemoteFileIfMissing(trimmedId, remote, normalized);
+      if (pulled && process.env.OD_S3_SYNC_UP_METRICS === '1') {
+        console.info(JSON.stringify({
+          metric: 'od_s3_point_get_scratch_fill',
+          projectId: trimmedId,
+          path: normalized,
+        }));
+      }
+      return pulled;
+    } catch (err) {
+      console.warn(
+        `[project-materialization] point-get fill failed for ${trimmedId}/${normalized}:`,
+        err instanceof Error ? err.message : err,
+      );
+      return false;
+    }
+  }
+
   return {
     ensureMaterialized,
     persistAfterMutation,
+    ensureFileAvailable,
     armPersistInflight,
     onProjectRemoved,
     resolveRemoteForDaemonState: async (req, projectId) => {

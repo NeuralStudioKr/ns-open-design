@@ -16,6 +16,12 @@
 - daemon message upsert는 keepalive 등이 `events`를 생략해도 기존 `events_json`을 지우지 않는다 (`mergeOptionalMessageArrayField` + `COALESCE`).
 - `mergeServerMessageWithLocal`은 서버 row에 status:error가 없을 때 로컬 에러 이벤트를 유지한다.
 
+## 2026-07-31 추가: 에러 패널 문구 일관성
+
+- ChatPane tail 카드는 persisted `events[].detail`을 ephemeral `error`보다 우선한다 (재진입 후 문구 변경 방지).
+- `errorCardOwnerId`인 assistant의 StatusPill(error)은 embed에서도 suppress — diagnostic 카드가 SSOT.
+- durable `appendErrorStatusEvent`는 이전 status:error를 교체해 한 턴에 하나의 사용자 문구만 남긴다.
+
 ## 2026-07-30 추가: stale streaming PUT이 status:error를 덮어쓰지 않게
 
 - **원인:** `surfaceChatVisibleError`가 React `messages`에 error를 붙인 뒤, 스트림 스케줄러의 `latestAssistantMsg` 버퍼(에러 미포함)가 곧이어 non-empty `events` PUT을 보내면 daemon이 배열을 통째로 교체해 에러 카드가 삭제됨. soft refresh는 로컬 merge로 버티지만 **hard re-entry**는 서버 row만 보므로 카드가 사라짐.

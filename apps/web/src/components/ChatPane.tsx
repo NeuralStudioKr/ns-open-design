@@ -28,6 +28,7 @@ import type { Dict } from '../i18n/types';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
+import { projectFilePathExists } from '../utils/projectFilePaths';
 import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -53,6 +54,8 @@ import { amrRechargeUrlForProfile, resolveRunFailureUi } from '../runtime/amr-gu
 import {
   formatProjectRunDeliverableMissingError,
   formatProjectRunErrorForUser,
+  userFacingRunErrorDetail,
+  extractPersistedRunErrorDiagnostic,
 } from '../teamver/projectErrorMessages';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
 import { isVisualCommentAttachment } from '../edit-mode/scoped-deck-patch';
@@ -1023,12 +1026,14 @@ export function ChatPane({
     retryAssistant.agentId === config?.agentId &&
     !autoContinueScheduled;
   // Prefer a case-specific message (AMR auth / balance) over the raw upstream
-  // string. After hard reload, ephemeral `error` is null — rebuild from the
-  // durable status:error event. If the row is failed but the event was lost
-  // (legacy / race), still show a Retry dock with a fallback detail so the
-  // user is not left with a silent failed turn.
-  const rawError = error
-    ?? failedRunErrorEvent?.detail
+  // string. Persisted `events[].detail` is the reload SSOT — prefer it over
+  // ephemeral `error` so the tail card matches per-turn cards and does not
+  // change after page re-entry (live setError(generic) vs durable deliverable).
+  // If the row is failed but the event was lost (legacy / race), still show a
+  // Retry dock with a fallback detail so the user is not left with a silent
+  // failed turn.
+  const rawError = failedRunErrorEvent?.detail
+    ?? error
     ?? (retryAssistant && !autoContinueScheduled
       ? (diagnosticRunErrorEvent?.detail
         ?? formatProjectRunErrorForUser(
@@ -1037,11 +1042,16 @@ export function ChatPane({
           }),
         ))
       : null);
-  const displayError = runFailureUi?.messageKey ? t(runFailureUi.messageKey) : rawError;
+  const displayError = runFailureUi?.messageKey
+    ? t(runFailureUi.messageKey)
+    : userFacingRunErrorDetail(rawError);
+  const persistDiagnostic = extractPersistedRunErrorDiagnostic(rawError);
   const errorDiagnosticText = displayError
     ? buildRunErrorDiagnosticText({
         message: displayError,
-        rawMessage: rawError,
+        rawMessage: persistDiagnostic
+          ? `${displayError}\n\n${persistDiagnostic}`
+          : rawError,
         errorCode: failedRunErrorEvent?.code ?? diagnosticRunErrorEvent?.code,
         traceId: diagnosticAssistant?.runId,
         runId: diagnosticAssistant?.runId,
@@ -2351,12 +2361,15 @@ export function ChatPane({
               skills={skills}
               toolboxSkillNames={featuredToolboxSkillNames}
               onShareToOpenDesign={
-                pinnedNextStep.showOpenDesignSubmission && onShareToOpenDesign && lastAssistantId
-                  ? () => onShareToOpenDesign(lastAssistantId)
+                pinnedNextStep.showOpenDesignSubmission
+                && onShareToOpenDesign
+                && pinnedNextStep.assistantMessageId
+                  ? () => onShareToOpenDesign(pinnedNextStep.assistantMessageId!)
                   : undefined
               }
               shareToOpenDesignBusy={
-                !!lastAssistantId && shareToOpenDesignBusyMessageId === lastAssistantId
+                !!pinnedNextStep.assistantMessageId
+                && shareToOpenDesignBusyMessageId === pinnedNextStep.assistantMessageId
               }
             />
           ) : null}
@@ -2573,18 +2586,21 @@ function ChatRows({
       }
       // Legacy / race rows may be failed without a durable status:error —
       // still show an inline card so hard reload does not hide the failure.
-      const detail = errorEvent?.detail?.trim()
+      const detail = userFacingRunErrorDetail(
+        errorEvent?.detail?.trim()
         || formatProjectRunErrorForUser(
           Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
             code: 'AGENT_EXECUTION_FAILED',
           }),
-        );
+        ),
+      );
+      const persistDiagnostic = extractPersistedRunErrorDiagnostic(errorEvent?.detail);
       const errorCode = errorEvent?.code ?? 'AGENT_EXECUTION_FAILED';
       cards.set(message.id, {
         message: detail,
         diagnosticText: buildRunErrorDiagnosticText({
           message: detail,
-          rawMessage: detail,
+          rawMessage: persistDiagnostic ? `${detail}\n\n${persistDiagnostic}` : detail,
           errorCode,
           traceId: message.runId,
           runId: message.runId,
@@ -3727,7 +3743,7 @@ function UserMessageImpl({
             const baseName = a.path.split('/').pop() || a.path;
             const openable =
               !!onRequestOpenFile &&
-              (projectFileNames ? projectFileNames.has(baseName) : true);
+              projectFilePathExists(projectFileNames, a.path);
             const handleOpen = openable
               ? () => onRequestOpenFile?.(baseName)
               : undefined;
@@ -3748,6 +3764,7 @@ function UserMessageImpl({
                       projectId={projectId}
                       path={a.path}
                       alt={a.name}
+                      fetchEnabled={projectFilePathExists(projectFileNames, a.path)}
                     />
                   ) : (
                     <Icon name="file" size={14} />
@@ -3776,7 +3793,7 @@ function UserMessageImpl({
             const label = commentTargetDisplayName(a);
             const openable =
               !!onRequestOpenFile &&
-              (projectFileNames ? projectFileNames.has(baseName) : true);
+              projectFilePathExists(projectFileNames, path);
             const handleOpen = openable
               ? () => onRequestOpenFile?.(baseName)
               : undefined;
@@ -3797,6 +3814,7 @@ function UserMessageImpl({
                       projectId={projectId}
                       path={path}
                       alt={label}
+                      fetchEnabled={projectFilePathExists(projectFileNames, path)}
                     />
                   ) : (
                     <Icon name="file" size={14} />

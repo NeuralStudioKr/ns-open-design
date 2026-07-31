@@ -1,8 +1,12 @@
 import type { ManualEditKind, ManualEditRect, ManualEditStyles, ManualEditTarget } from './types';
+import {
+  aspectLockForTarget,
+  MANUAL_EDIT_RESIZE_MIN_PX,
+} from './resize-eligibility';
 
 export type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
-export const MANUAL_EDIT_RESIZE_MIN_PX = 24;
+export { aspectLockForTarget, MANUAL_EDIT_RESIZE_MIN_PX };
 /** Ignore tiny handle jitter so a plain click does not flush a resize. */
 export const MANUAL_EDIT_RESIZE_MIN_DELTA_PX = 2;
 
@@ -65,10 +69,6 @@ function clampMin(value: number, min: number): number {
   return Math.max(min, value);
 }
 
-export function aspectLockForTarget(kind: ManualEditKind, shiftKey: boolean): boolean {
-  if (kind === 'image') return !shiftKey;
-  return shiftKey;
-}
 
 export function isAnchoredCssPosition(cssPosition: string | null | undefined): boolean {
   const value = String(cssPosition ?? 'static').toLowerCase();
@@ -286,4 +286,58 @@ export function cursorForResizeHandle(handle: ResizeHandle): string {
     default:
       return 'default';
   }
+}
+
+
+/** Staging-compatible px parser used by FileViewer resize draft helpers. */
+export function parseManualEditStylePx(value: string | undefined, fallbackPx: number): number {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed || trimmed === 'auto') return Math.round(fallbackPx);
+  const pxMatch = /^(-?\d+(?:\.\d+)?)\s*px$/i.exec(trimmed);
+  if (pxMatch) return Math.round(Number(pxMatch[1]));
+  const numeric = Number.parseFloat(trimmed);
+  if (Number.isFinite(numeric)) return Math.round(numeric);
+  return Math.round(fallbackPx);
+}
+
+/** Staging-compatible session builder (no CB anchor — use startAnchorFromTarget for W/N). */
+export function buildResizeSessionStart(
+  targetRect: { x: number; y: number; width: number; height: number },
+  styles: Pick<ManualEditStyles, 'width' | 'height'>,
+  handle: ResizeHandle,
+  kind: ManualEditKind,
+  shiftKey: boolean,
+): Omit<ResizeSessionStart, 'anchorPosition' | 'startLeftPx' | 'startTopPx'> & {
+  anchorPosition?: boolean;
+  startLeftPx?: number | null;
+  startTopPx?: number | null;
+} {
+  const startWidthPx = parseManualEditStylePx(styles.width, targetRect.width);
+  const startHeightPx = parseManualEditStylePx(styles.height, targetRect.height);
+  const safeHeight = startHeightPx > 0 ? startHeightPx : MANUAL_EDIT_RESIZE_MIN_PX;
+  return {
+    startRect: targetRect,
+    startWidthPx,
+    startHeightPx,
+    aspect: startWidthPx / safeHeight,
+    handle,
+    aspectLock: aspectLockForTarget(kind, shiftKey),
+    minWidth: MANUAL_EDIT_RESIZE_MIN_PX,
+    minHeight: MANUAL_EDIT_RESIZE_MIN_PX,
+    anchorPosition: false,
+    startLeftPx: null,
+    startTopPx: null,
+  };
+}
+
+/** Staging-compatible width/height-only commit styles (no left/top). */
+export function resizeStylesForCommit(
+  result: Pick<ResizeMathResult, 'widthPx' | 'heightPx'> & Partial<Pick<ResizeMathResult, 'touchedWidth' | 'touchedHeight'>>,
+  handle: ResizeHandle,
+): Partial<ManualEditStyles> {
+  const { signW, signH } = axisSigns(handle);
+  const styles: Partial<ManualEditStyles> = {};
+  if (signW !== 0 || result.touchedWidth) styles.width = `${result.widthPx}px`;
+  if (signH !== 0 || result.touchedHeight) styles.height = `${result.heightPx}px`;
+  return styles;
 }

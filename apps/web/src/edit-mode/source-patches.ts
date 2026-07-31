@@ -97,9 +97,10 @@ export function applyManualEditPatch(
     applyManualEditPlainText(el, patch.value);
   } else if (patch.kind === 'set-link') {
     if (hasElementChildren(el)) {
-      const currentText = el.textContent?.trim() ?? '';
-      if (patch.text.trim() === currentText) {
+      const currentText = manualEditElementToPlainText(el);
+      if (patch.text === currentText) {
         // Href-only edit on a formatted link — safe to keep the markup.
+        // Compare without trim so space-only label edits still rewrite text.
       } else if (containsOnlyInlineTextFormatting(el)) {
         applyManualEditPlainText(el, patch.text);
       } else {
@@ -149,7 +150,7 @@ export function readManualEditFields(
   const kind = inferKind(el);
   if (kind === 'link') {
     return {
-      text: el.textContent?.trim() ?? '',
+      text: manualEditElementToPlainText(el),
       href: el.getAttribute('href') ?? '',
     };
   }
@@ -159,7 +160,7 @@ export function readManualEditFields(
       alt: el.getAttribute('alt') ?? '',
     };
   }
-  return { text: el.textContent?.trim() ?? '' };
+  return { text: manualEditElementToPlainText(el) };
 }
 
 export function readManualEditStyles(
@@ -210,6 +211,17 @@ export function readManualEditOuterHtml(
 export function isEphemeralGeneratedPathId(id: string | null | undefined): boolean {
   return /^path-\d+(?:-\d+)*$/.test(String(id || '').trim());
 }
+
+/** Synthetic id for region-only draw marks — not persisted on disk. */
+export function isSyntheticVisualMarkTargetId(id: string | null | undefined): boolean {
+  return /^visual-mark-/i.test(String(id || '').trim());
+}
+
+export function elementPatchReasonTargetsSyntheticVisualMark(reason: string): boolean {
+  const match = /^Target not found:\s*(.+)$/i.exec(String(reason || '').trim());
+  return match ? isSyntheticVisualMarkTargetId(match[1]) : false;
+}
+
 
 /** Pull `path-4` out of `dom:[data-od-id="path-4"]` / `[data-od-id="path-4"]`. */
 export function extractIdentityFromAttrSelectorId(idOrSelector: string): string | null {
@@ -507,6 +519,29 @@ function findEditableElement(
   const root = findScopedRoot(doc, scope);
   if (!root) return null;
   if (id === '__body__') return root.nodeType === 9 ? (root as Document).body : root as Element;
+  if (
+    isSyntheticVisualMarkTargetId(id)
+    && typeof scope.slideIndex === 'number'
+    && Number.isFinite(scope.slideIndex)
+    && scope.slideIndex >= 0
+  ) {
+    const slideRoot = root.nodeType === 9 ? findScopedRoot(doc, scope) : root;
+    if (slideRoot) {
+      if (hint) {
+        const scopedRoot = slideRoot.nodeType === 9 ? slideRoot as Document : slideRoot as Element;
+        const bySelector = findEditableElementBySelector(
+          doc,
+          scopedRoot,
+          hint.selector,
+          scope,
+        );
+        if (bySelector) return bySelector;
+        const byHint = findElementByHint(doc, scope, hint);
+        if (byHint) return byHint;
+      }
+      return slideRoot.nodeType === 9 ? (slideRoot as Document).body : slideRoot as Element;
+    }
+  }
   const domFallback = findElementByDomSelector(doc, root, id, scope);
   if (domFallback) return domFallback;
   const identityFromAttr = extractIdentityFromAttrSelectorId(id);
@@ -821,7 +856,17 @@ function findEquivalentElementByScopedPosition(
 }
 
 function preserveManualEditIdentityAttributes(currentTarget: Element, replacement: Element): void {
-  for (const attr of ['data-od-id', 'data-od-runtime-id', 'data-od-source-path', 'data-od-edit', 'data-od-label']) {
+  // Slide page targets rely on data-slide-index / data-screen-label for
+  // lookup and page-level comments — keep them when the model omits them.
+  for (const attr of [
+    'data-od-id',
+    'data-od-runtime-id',
+    'data-od-source-path',
+    'data-od-edit',
+    'data-od-label',
+    'data-slide-index',
+    'data-screen-label',
+  ]) {
     const currentValue = currentTarget.getAttribute(attr);
     if (currentValue && !replacement.getAttribute(attr)) {
       replacement.setAttribute(attr, currentValue);
@@ -1232,24 +1277,58 @@ export function escapeManualEditText(value: string): string {
 }
 
 /**
- * Escape plain text and map newlines to `<br>` so manual-edit commits that
- * keep line breaks (Enter in contenteditable) persist as visible wraps.
+ * Encode spaces that CSS `white-space: normal` would collapse after a freeze
+ * remount: leading/trailing spaces on each line, and 2nd+ spaces in a run.
+ * Single internal word spaces stay as regular `" "` (already visible).
  */
-export function manualEditPlainTextToHtml(value: string): string {
-  return escapeManualEditText(String(value ?? ''))
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .replace(/\n/g, '<br>');
+export function encodeManualEditSignificantSpaces(escapedLine: string): string {
+  if (!escapedLine) return escapedLine;
+  let out = escapedLine.replace(/ {2,}/g, (run) => ` ${'&nbsp;'.repeat(run.length - 1)}`);
+  out = out.replace(/^( +)/, (run) => '&nbsp;'.repeat(run.length));
+  out = out.replace(/( +)$/, (run) => '&nbsp;'.repeat(run.length));
+  return out;
 }
 
-/** Write committed plain text onto an element, preserving `\n` as `<br>`. */
+/**
+ * Escape plain text and map newlines / significant spaces so manual-edit
+ * commits survive freeze remount under normal CSS whitespace collapsing.
+ */
+export function manualEditPlainTextToHtml(value: string): string {
+  const normalized = escapeManualEditText(String(value ?? ''))
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+  return normalized
+    .split('\n')
+    .map((line) => encodeManualEditSignificantSpaces(line))
+    .join('<br>');
+}
+
+/**
+ * Read committed manual-edit plain text back from an element: keep spaces
+ * (including `&nbsp;`), map `<br>` → `\n`, and never trim.
+ */
+export function manualEditElementToPlainText(el: Element): string {
+  let out = '';
+  const walk = (node: Node): void => {
+    if (node.nodeType === 3) {
+      out += (node.nodeValue || '').replace(/\u00a0/g, ' ');
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    const tag = ((node as Element).tagName || '').toLowerCase();
+    if (tag === 'br') {
+      out += '\n';
+      return;
+    }
+    for (const child of Array.from(node.childNodes)) walk(child);
+  };
+  walk(el);
+  return out.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+/** Write committed plain text onto an element, preserving `\n` / spaces. */
 export function applyManualEditPlainText(el: Element, value: string): void {
-  const text = String(value ?? '');
-  if (/[\r\n]/.test(text)) {
-    el.innerHTML = manualEditPlainTextToHtml(text);
-    return;
-  }
-  el.textContent = text;
+  el.innerHTML = manualEditPlainTextToHtml(String(value ?? ''));
 }
 
 function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
@@ -1263,9 +1342,19 @@ function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): vo
 }
 
 function setAttributes(el: Element, attributes: Record<string, string>): void {
-  const protectedAttrs = new Set(['data-od-id', 'data-od-edit', 'data-od-label', 'data-od-runtime-id']);
+  // Keep identity / slide-scope attrs aligned with set-outer-html preservation.
+  const protectedAttrs = new Set([
+    'data-od-id',
+    'data-od-edit',
+    'data-od-label',
+    'data-od-runtime-id',
+    'data-od-source-path',
+    'data-slide-index',
+    'data-screen-label',
+  ]);
   for (const [name, value] of Object.entries(attributes)) {
-    if (!isSafeAttributeName(name) || protectedAttrs.has(name)) continue;
+    // Attribute names are case-insensitive in HTML; protect via lowercase.
+    if (!isSafeAttributeName(name) || protectedAttrs.has(name.toLowerCase())) continue;
     if (value.trim() === '') el.removeAttribute(name);
     else el.setAttribute(name, value);
   }
@@ -1285,12 +1374,7 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
   if (!next) {
     return { ok: false, error: 'Replacement HTML must contain exactly one root element.' };
   }
-  if (el.getAttribute('data-od-id') && !next.getAttribute('data-od-id')) {
-    next.setAttribute('data-od-id', el.getAttribute('data-od-id') ?? '');
-  }
-  if (el.getAttribute('data-od-edit') && !next.getAttribute('data-od-edit')) {
-    next.setAttribute('data-od-edit', el.getAttribute('data-od-edit') ?? '');
-  }
+  preserveManualEditIdentityAttributes(el, next);
   el.replaceWith(next);
   // Style siblings were dropped by single-root salvage — keep their rules
   // so "make it stand out" edits that ship class + <style> still paint.
@@ -1456,5 +1540,10 @@ function camelToKebab(value: string): string {
 }
 
 function isSafeAttributeName(value: string): boolean {
-  return /^[a-zA-Z_:][a-zA-Z0-9_:.-]*$/.test(value);
+  if (!/^[a-zA-Z_:][a-zA-Z0-9_:.-]*$/.test(value)) return false;
+  const lower = value.toLowerCase();
+  // Block event handlers and high-risk markup attrs from model set-attributes.
+  if (lower.startsWith('on')) return false;
+  if (lower === 'style' || lower === 'srcdoc') return false;
+  return true;
 }

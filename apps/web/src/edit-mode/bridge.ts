@@ -444,26 +444,14 @@ export function buildManualEditBridge(enabled: boolean): string {
       return;
     }
     if (ev.data.type === 'od-edit-remeasure') {
-      var measureId = ev.data.id || null;
-      var measureEl = findById(measureId);
-      if (!measureEl) return;
-      var measureRect = measureEl.getBoundingClientRect();
-      var measurePromo = promoteCoords(measureEl);
-      window.parent.postMessage({
-        type: 'od-edit-rect',
-        id: measureId,
-        rect: {
-          x: Math.round(measureRect.x),
-          y: Math.round(measureRect.y),
-          width: Math.round(measureRect.width),
-          height: Math.round(measureRect.height),
-        },
-        // Keep CB offsets fresh after promote/resize so the next gesture
-        // does not seed startLeft from a stale pre-gesture value.
-        offsetLeft: measurePromo.left,
-        offsetTop: measurePromo.top,
-        cssPosition: (window.getComputedStyle(measureEl).position || 'static'),
-      }, '*');
+      var remeasureId = ev.data.id || null;
+      var remeasureEl = findById(remeasureId);
+      if (!remeasureEl) {
+        window.parent.postMessage({ type: 'od-edit-rect', id: remeasureId, ok: false, error: 'Target not found' }, '*');
+        return;
+      }
+      // Staging contract: full target (includes promoteCoords offsets / cssPosition).
+      window.parent.postMessage({ type: 'od-edit-rect', id: remeasureId, ok: true, target: targetFrom(remeasureEl, false) }, '*');
       return;
     }
   });

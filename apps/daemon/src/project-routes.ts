@@ -2826,8 +2826,28 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             projectsRoot: PROJECTS_DIR,
             readProjectFile,
           });
-          const html = Buffer.isBuffer(transformed) ? transformed.toString('utf8') : transformed;
-          return maybeRepairServedHtml(file, html);
+          // Mirror /raw bridge injection so Teamver embed scoped URL-load
+          // previews keep scroll/selection/snapshot bridges.
+          if (
+            (wantsUrlPreviewScrollBridge(req.query.odPreviewBridge) ||
+              wantsUrlPreviewSelectionBridge(req.query.odPreviewBridge) ||
+              wantsUrlPreviewSnapshotBridge(req.query.odPreviewBridge)) &&
+            /^text\/html(?:;|$)/i.test(file.mime)
+          ) {
+            let html = Buffer.isBuffer(transformed) ? transformed.toString('utf8') : transformed;
+            if (wantsUrlPreviewScrollBridge(req.query.odPreviewBridge)) {
+              html = injectUrlPreviewBridge(html, 'scroll');
+            }
+            if (wantsUrlPreviewSelectionBridge(req.query.odPreviewBridge)) {
+              html = injectUrlPreviewBridge(html, 'selection');
+            }
+            if (wantsUrlPreviewSnapshotBridge(req.query.odPreviewBridge)) {
+              html = injectUrlPreviewBridge(html, 'snapshot');
+            }
+            transformed = html;
+          }
+          const servedHtml = Buffer.isBuffer(transformed) ? transformed.toString('utf8') : transformed;
+          return maybeRepairServedHtml(file, servedHtml);
         },
       );
     } catch (err: any) {

@@ -3,9 +3,22 @@ import { describe, expect, it } from "vitest";
 import {
   deckPreviewSrcDoc,
   pagePreviewSrcDoc,
+  parseProjectRawUrl,
 } from "../../src/teamver/components/ProjectCardHtmlCover";
 
 describe("ProjectCardHtmlCover srcDoc builders", () => {
+  it("parses project raw URLs for scoped preview base resolution", () => {
+    expect(parseProjectRawUrl("/api/projects/p1/raw/slides/deck.html")).toEqual({
+      projectId: "p1",
+      filePath: "slides/deck.html",
+    });
+    expect(parseProjectRawUrl("/api/projects/p%2Fweird/raw/a%20b.html")).toEqual({
+      projectId: "p/weird",
+      filePath: "a b.html",
+    });
+    expect(parseProjectRawUrl("https://example.com/api/projects/p1/raw/x.html")).toBeNull();
+  });
+
   it("preserves relative asset resolution with a base href for page previews", () => {
     const srcDoc = pagePreviewSrcDoc(
       '<html><head><link rel="stylesheet" href="./style.css"></head><body></body></html>',

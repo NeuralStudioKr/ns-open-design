@@ -14,6 +14,7 @@ import {
   type DeckPatch,
 } from '../artifacts/deck-patch';
 import type { ChatCommentAttachment } from '../types';
+import { isScreenshotOnlyVisualCommentTarget } from '../comments';
 import { validateCommentEditIntentRespected, targetTextContentPreserved } from './comment-edit-intent';
 import {
   graftPatchedTargetElementFromSource,
@@ -52,7 +53,9 @@ export function isVisualCommentAttachment(attachment: ChatCommentAttachment): bo
 }
 
 export function scopedCommentElementIds(attachment: ChatCommentAttachment): string[] {
-  if (isVisualCommentAttachment(attachment)) return [];
+  // Screenshot-only visuals have no DOM id. Visual marks that still carry a
+  // concrete picked element (selector/htmlHint/real elementId) stay element-scoped.
+  if (isScreenshotOnlyVisualCommentTarget(attachment)) return [];
   const ids = [
     attachment.elementId,
     ...selectorCommentElementIds(attachment.selector),
@@ -67,6 +70,7 @@ export function scopedCommentElementIds(attachment: ChatCommentAttachment): stri
     ids
       .map((id) => String(id || '').trim())
       .filter((id) => id && !id.startsWith('pin-') && !id.startsWith('file-comment-'))
+      .filter((id) => !id.startsWith('visual-mark-'))
       .filter((id) => !isUnsafeCommentElementTargetId(id)),
   )];
 }
@@ -75,7 +79,10 @@ export function scopedCommentElementIds(attachment: ChatCommentAttachment): stri
 export function hasElementScopedCommentAttachments(
   commentAttachments: readonly ChatCommentAttachment[] | undefined,
 ): boolean {
-  return (commentAttachments ?? []).some((attachment) => !isVisualCommentAttachment(attachment));
+  return (commentAttachments ?? []).some(
+    (attachment) => !isScreenshotOnlyVisualCommentTarget(attachment)
+      && scopedCommentElementIds(attachment).length > 0,
+  );
 }
 
 export function isUnsafeCommentElementTargetId(targetId: string): boolean {
@@ -363,6 +370,33 @@ export function attachmentMergeHint(
   };
 }
 
+function tryAnchorlessSlideLevelSwap(input: {
+  nextHtml: string;
+  patchedHtml: string;
+  slideIndex: number;
+  logContext?: string;
+}): { ok: true; html: string } | { ok: false; reason: string } {
+  const nextSlide = extractSlideByIndex(input.nextHtml, input.slideIndex);
+  const patchedSlide = extractSlideByIndex(input.patchedHtml, input.slideIndex);
+  if (!nextSlide || !patchedSlide || nextSlide === patchedSlide) {
+    return { ok: false, reason: 'No matching targets found to merge.' };
+  }
+  const swapped = applyDeckPatch({
+    currentHtml: input.nextHtml,
+    patch: {
+      ops: [{ op: 'replace', slideIndex: input.slideIndex, html: patchedSlide }],
+    },
+  });
+  if (!swapped.ok) {
+    return { ok: false, reason: swapped.reason ?? 'No matching targets found to merge.' };
+  }
+  console.info('[deck-patch] accepted anchor-less slide-level swap', {
+    slideIndex: input.slideIndex,
+    branch: input.logContext ?? 'anchor-less',
+  });
+  return { ok: true, html: swapped.html };
+}
+
 function tryHintOnlyScopedMerge(input: {
   nextHtml: string;
   patchedHtml: string;
@@ -392,6 +426,48 @@ function tryHintOnlyScopedMerge(input: {
     return { ok: true, html: merged.source };
   }
   return { ok: false, reason: merged.reason };
+}
+
+/**
+ * Visual / anchor-less comments have no DOM element id. When the model
+ * still produced a slide diff, accept a slide-level replace for the
+ * candidate slide instead of failing with "No matching targets…".
+ */
+function tryVisualOrAnchorlessSlideSwap(input: {
+  nextHtml: string;
+  patchedHtml: string;
+  attachment: ChatCommentAttachment;
+  slideIndex: number;
+}): { ok: true; html: string } | { ok: false; reason: string } {
+  const nextSlide = extractSlideByIndex(input.nextHtml, input.slideIndex);
+  const patchedSlide = extractSlideByIndex(input.patchedHtml, input.slideIndex);
+  if (!nextSlide || !patchedSlide || nextSlide === patchedSlide) {
+    return { ok: false, reason: 'No matching targets found to merge.' };
+  }
+  const anchors = extractTargetIdentityAnchors(input.attachment);
+  // Only screenshot-only / truly anchorless marks may slide-swap. Visual
+  // selections that still name a concrete DOM target must merge by element.
+  const allow =
+    isScreenshotOnlyVisualCommentTarget(input.attachment)
+    || anchors.length === 0;
+  if (!allow) {
+    return { ok: false, reason: 'No matching targets found to merge.' };
+  }
+  const swapped = applyDeckPatch({
+    currentHtml: input.nextHtml,
+    patch: {
+      ops: [{ op: 'replace', slideIndex: input.slideIndex, html: patchedSlide }],
+    },
+  });
+  if (!swapped.ok) {
+    return { ok: false, reason: swapped.reason || 'No matching targets found to merge.' };
+  }
+  console.warn('[deck-patch] accepted visual/anchorless slide-level swap', {
+    slideIndex: input.slideIndex,
+    visual: isScreenshotOnlyVisualCommentTarget(input.attachment),
+    anchorCount: anchors.length,
+  });
+  return { ok: true, html: swapped.html };
 }
 
 function listDeckSlideIndexes(html: string): number[] {
@@ -667,6 +743,26 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
           break;
         }
         lastReason = attempt.reason;
+      }
+      if (!hintMerged) {
+        // Screenshot-only visual marks (and other id-less pins) cannot
+        // resolve an element target — fall back to slide-level swap when
+        // the model produced a real slide diff on a candidate slide.
+        for (const slideIndex of slideCandidates) {
+          const swap = tryVisualOrAnchorlessSlideSwap({
+            nextHtml,
+            patchedHtml: input.patchedHtml,
+            attachment,
+            slideIndex,
+          });
+          if (swap.ok) {
+            nextHtml = swap.html;
+            narrowed = true;
+            hintMerged = true;
+            break;
+          }
+          lastReason = swap.reason;
+        }
       }
       if (!hintMerged) {
         return { ok: false, reason: lastReason };

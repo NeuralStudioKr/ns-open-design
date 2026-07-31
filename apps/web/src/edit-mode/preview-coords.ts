@@ -1,30 +1,22 @@
 import type { ManualEditRect } from './types';
 
-/** Normalize previewScale; non-finite / non-positive → 1. */
-export function normalizePreviewScale(previewScale: number): number {
-  return Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
-}
-
-/** iframe content rect → host/canvas rect (`manualEditFloatingPanelStyle` basis). */
-export function contentRectToHostRect(
-  rect: ManualEditRect,
-  previewScale: number,
-): ManualEditRect {
-  const s = normalizePreviewScale(previewScale);
+/** Map iframe content rect to host/canvas overlay coordinates. */
+export function contentRectToHostRect(rect: ManualEditRect, previewScale: number): ManualEditRect {
+  const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
   return {
-    x: rect.x * s,
-    y: rect.y * s,
-    width: rect.width * s,
-    height: rect.height * s,
+    x: rect.x * scale,
+    y: rect.y * scale,
+    width: rect.width * scale,
+    height: rect.height * scale,
   };
 }
 
-/** Host pointer delta → content (iframe) delta. */
+/** Convert pointer delta in host px to content-space delta. */
 export function hostDeltaToContentDelta(
   dx: number,
   dy: number,
   previewScale: number,
 ): { dx: number; dy: number } {
-  const s = normalizePreviewScale(previewScale);
-  return { dx: dx / s, dy: dy / s };
+  const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
+  return { dx: dx / scale, dy: dy / scale };
 }

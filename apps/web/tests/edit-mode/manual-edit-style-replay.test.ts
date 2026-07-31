@@ -23,4 +23,11 @@ describe('manual edit style replay against freeze', () => {
     expect(manualEditStyleReplayPatches(null, saved)).toEqual([]);
     expect(manualEditStyleReplayPatches(frozen, null)).toEqual([]);
   });
+
+  it('skips replay when frozen and saved colors are canonically equivalent', () => {
+    const frozenRgb = '<!doctype html><html><body><main data-od-id="hero" style="color: rgb(239, 68, 68);">Hero</main></body></html>';
+    const savedHex = '<!doctype html><html><body><main data-od-id="hero" style="color: #ef4444;">Hero</main></body></html>';
+    expect(manualEditStyleReplayPatches(frozenRgb, savedHex)).toEqual([]);
+    expect(manualEditStyleReplayPatches(savedHex, frozenRgb)).toEqual([]);
+  });
 });

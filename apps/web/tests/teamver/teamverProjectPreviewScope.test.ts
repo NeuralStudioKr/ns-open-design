@@ -11,6 +11,7 @@ vi.mock('../../src/teamver/teamverDaemonHeaders', () => ({
 import { isTeamverEmbedMode } from '../../src/teamver/designApiBase';
 import { fetchTeamverDaemon } from '../../src/teamver/teamverDaemonHeaders';
 import {
+  invalidateTeamverProjectPreviewPrefix,
   projectScopedPreviewUrl,
   resetTeamverProjectPreviewScopeForTests,
   resolveTeamverProjectPreviewPrefix,
@@ -51,6 +52,38 @@ describe('teamverProjectPreviewScope', () => {
     const cached = await resolveTeamverProjectPreviewPrefix('proj-1', 'other.html');
     expect(cached).toBe(prefix);
     expect(fetchTeamverDaemon).not.toHaveBeenCalled();
+  });
+
+  it('invalidates cached prefixes so auth recovery can re-mint scopes', async () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(fetchTeamverDaemon)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            url: '/api/projects/proj-1/preview/scope-old/deck.html',
+            file: 'deck.html',
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            url: '/api/projects/proj-1/preview/scope-new/deck.html',
+            file: 'deck.html',
+          }),
+          { status: 200 },
+        ),
+      );
+
+    expect(await resolveTeamverProjectPreviewPrefix('proj-1', 'deck.html')).toBe(
+      '/api/projects/proj-1/preview/scope-old',
+    );
+    invalidateTeamverProjectPreviewPrefix('proj-1');
+    expect(await resolveTeamverProjectPreviewPrefix('proj-1', 'deck.html')).toBe(
+      '/api/projects/proj-1/preview/scope-new',
+    );
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(2);
   });
 
   it('treats malformed preview-url responses as unavailable without throwing', async () => {

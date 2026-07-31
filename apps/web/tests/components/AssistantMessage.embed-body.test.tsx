@@ -63,7 +63,9 @@ describe('AssistantMessage embed body visibility', () => {
     expect(screen.getByText('still broken')).toBeTruthy();
   });
 
-  it('keeps inline error detail in embed even when this row owns the top-level error card', () => {
+  it('suppresses the inline error pill when this row owns the ChatPane error card', () => {
+    // Past-run / tail diagnostic cards are the SSOT for error copy. Keeping
+    // the StatusPill too duplicated (and sometimes conflicted with) that card.
     render(
       <AssistantMessage
         message={{
@@ -81,7 +83,7 @@ describe('AssistantMessage embed body visibility', () => {
       />,
     );
 
-    expect(screen.getByText('upstream timeout')).toBeTruthy();
+    expect(screen.queryByText('upstream timeout')).toBeNull();
   });
 
   it('shows error detail in embed when assistant model labels are hidden', () => {

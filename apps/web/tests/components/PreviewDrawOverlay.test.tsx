@@ -446,6 +446,7 @@ describe('PreviewDrawOverlay', () => {
     const captureSnapshot = vi.fn(async () => {
       expect(host?.querySelector('canvas')?.style.visibility).toBe('hidden');
       expect(host?.querySelector<HTMLElement>('.preview-draw-toolbar')?.style.visibility).toBe('hidden');
+      expect(host?.querySelector('[data-testid="preview-draw-sending-veil"]')).toBeTruthy();
       return { dataUrl: 'data:image/png;base64,cG5n', w: 10, h: 10 };
     });
 
@@ -462,6 +463,39 @@ describe('PreviewDrawOverlay', () => {
       await waitFor(() => expect(captureSnapshot).toHaveBeenCalledTimes(1));
       await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1));
       expect(container.querySelector<HTMLElement>('.preview-draw-toolbar')?.style.visibility).toBe('');
+      expect(container.querySelector('[data-testid="preview-draw-sending-veil"]')).toBeNull();
+    } finally {
+      window.removeEventListener('opendesign:annotation', annotation);
+      restoreCompositeMocks();
+    }
+  });
+
+  it('shows a loading veil while annotation send is in flight', async () => {
+    const restoreCompositeMocks = installImageCompositeMocks();
+    let resolveAck: ((result: { ok: boolean }) => void) | undefined;
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      resolveAck = detail.ack;
+    });
+    window.addEventListener('opendesign:annotation', annotation);
+    const captureSnapshot = vi.fn(async () => ({ dataUrl: 'data:image/png;base64,cG5n', w: 10, h: 10 }));
+
+    try {
+      const { container, getByRole } = render(
+        <PreviewDrawOverlay active captureViewport captureSnapshot={captureSnapshot}>
+          <div style={{ width: 320, height: 200 }} />
+        </PreviewDrawOverlay>,
+      );
+
+      fireEvent.click(getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => expect(captureSnapshot).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1));
+      expect(container.querySelector('[data-testid="preview-draw-sending-veil"]')).toBeTruthy();
+      resolveAck?.({ ok: true });
+      await waitFor(() => {
+        expect(container.querySelector('[data-testid="preview-draw-sending-veil"]')).toBeNull();
+      });
     } finally {
       window.removeEventListener('opendesign:annotation', annotation);
       restoreCompositeMocks();

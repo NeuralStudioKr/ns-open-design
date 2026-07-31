@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Toast } from '../../src/components/Toast';
@@ -65,5 +65,12 @@ describe('Toast', () => {
   it('renders a Dismiss button when both code and onDismiss are present', () => {
     render(<Toast message="manual copy" code="x" onDismiss={() => {}} />);
     expect(screen.getByRole('button', { name: /Dismiss/i })).not.toBeNull();
+  });
+
+  it('renders a dismiss control for error toasts without code', () => {
+    const onDismiss = vi.fn();
+    render(<Toast message="Something failed" tone="error" onDismiss={onDismiss} />);
+    fireEvent.click(screen.getByRole('button', { name: /Dismiss/i }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });

@@ -7,6 +7,7 @@ import {
 } from "../runtime/markdown";
 import { asInProjectFilePath } from "../runtime/in-project-link";
 import { projectFileUrl } from "../providers/registry";
+import { userFacingRunErrorDetail } from "../teamver/projectErrorMessages";
 import { useAnalytics } from "../analytics/provider";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
 import {
@@ -919,15 +920,12 @@ function AssistantMessageImpl({
             );
           }
           if (b.kind === "status") {
-            // Suppress this message's gray error pill ONLY when ChatPane is
-            // rendering the top-level error card for it (the last failed run).
-            // Embed chat keeps the inline pill so reload/history still shows
-            // error detail beside the agent header.
-            if (
-              b.label === "error"
-              && message.id === errorCardOwnerId
-              && !hideAssistantThinkingDetails
-            ) {
+            // Suppress this message's error StatusPill when ChatPane already
+            // owns the diagnostic card for it (tail card OR past-run card).
+            // Embed used to keep the pill for reload visibility, but past-run
+            // cards now cover that — keeping both showed the same (or worse,
+            // conflicting) copy twice.
+            if (b.label === "error" && message.id === errorCardOwnerId) {
               return null;
             }
             // The pre-output "initializing" status is surfaced by the footer's
@@ -938,7 +936,9 @@ function AssistantMessageImpl({
             const statusDetail =
               hideAssistantModelLabels && b.label !== "error" && b.label !== "warning"
                 ? undefined
-                : b.detail;
+                : b.label === "error"
+                  ? userFacingRunErrorDetail(b.detail)
+                  : b.detail;
             const statusLabel = teamverEmbedEnabled
               ? (b.label === "error" ? "오류" : b.label === "warning" ? "안내" : b.label)
               : b.label;

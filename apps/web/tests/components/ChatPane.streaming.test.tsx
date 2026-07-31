@@ -5,6 +5,10 @@ import { forwardRef, useImperativeHandle } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ChatPane, buildRunErrorDiagnosticText, retryableAssistantMessage } from '../../src/components/ChatPane';
+import {
+  encodePersistedRunErrorDetail,
+  formatProjectRunDeliverableMissingError,
+} from '../../src/teamver/projectErrorMessages';
 import { DESIGN_SYSTEM_WORKSPACE_PROMPT_PREFIX } from '../../src/design-system-auto-prompt';
 import { readExpandedIndexCss } from '../helpers/read-expanded-css';
 import type { ChatMessage, Conversation, ProjectMetadata } from '../../src/types';
@@ -375,6 +379,59 @@ describe('ChatPane streaming state', () => {
       .toBeGreaterThan(rows.indexOf(firstAssistant));
     expect(rows.indexOf(errorCard.closest('.msg.error')!))
       .toBeLessThan(rows.indexOf(nextUser.closest('.msg.user')!));
+  });
+
+  it('prefers persisted error event detail over ephemeral error prop for the tail card', () => {
+    const durableDetail = encodePersistedRunErrorDetail(
+      formatProjectRunDeliverableMissingError(),
+      { kind: 'skipped-incomplete' },
+    );
+    const userFacingDetail = formatProjectRunDeliverableMissingError();
+    const messages: ChatMessage[] = [
+      { id: 'user-1', role: 'user', content: '이모지 넣어줘', createdAt: 0 },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '카드 제목에 이모지를 추가할게요.',
+        agentId: 'anthropic-api',
+        createdAt: 1,
+        runId: 'run-failed-1',
+        runStatus: 'failed',
+        resumable: true,
+        events: [
+          {
+            kind: 'status',
+            label: 'error',
+            detail: durableDetail,
+            code: 'incomplete_output',
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        projectKindForTracking="prototype"
+        messages={messages}
+        streaming={false}
+        error="슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요."
+        projectId="project-1"
+        projectFiles={[]}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        projectMetadata={projectMetadata}
+      />,
+    );
+
+    expect(screen.getByText(userFacingDetail)).toBeTruthy();
+    expect(
+      screen.queryByText('슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.'),
+    ).toBeNull();
   });
 
   it('formats run error diagnostics with a distinct run id when present', () => {

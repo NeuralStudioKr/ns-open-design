@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  appendErrorStatusEvent,
   assistantEventsForDisplay,
   assistantMessageTextBody,
   attachAutoContinueIncompleteOutputNotice,
@@ -9,8 +10,44 @@ import {
   messageHasVisibleProse,
   reconcileChatMessageOnLoad,
 } from '../../src/runtime/chat-events';
+import { encodePersistedRunErrorDetail } from '../../src/teamver/projectErrorMessages';
 import { AUTO_CONTINUE_STATUS_CODE } from '../../src/runtime/resume';
 import type { ChatMessage } from '../../src/types';
+
+const DELIVERABLE_MISSING_ENCODED = encodePersistedRunErrorDetail(
+  '슬라이드 결과물이 생성되지 않았습니다. 응답이 중간에 끊겼거나 HTML 파일이 저장되지 않았습니다. 이어서 다시 시도하세요.',
+  { kind: 'skipped-incomplete' },
+);
+
+describe('appendErrorStatusEvent', () => {
+  it('replaces prior durable error events so a turn keeps one user-facing copy', () => {
+    const first = appendErrorStatusEvent(
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'partial',
+        createdAt: 1,
+        events: [{ kind: 'text', text: 'partial' }],
+      },
+      '슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.',
+      'UPSTREAM_UNAVAILABLE',
+    );
+    const second = appendErrorStatusEvent(
+      first,
+      DELIVERABLE_MISSING_ENCODED,
+      'incomplete_output',
+    );
+    expect(second.events).toEqual([
+      { kind: 'text', text: 'partial' },
+      {
+        kind: 'status',
+        label: 'error',
+        detail: DELIVERABLE_MISSING_ENCODED,
+        code: 'incomplete_output',
+      },
+    ]);
+  });
+});
 
 describe('assistantEventsForDisplay', () => {
   it('returns events unchanged when a non-empty text event exists and matches content length', () => {
@@ -107,6 +144,36 @@ describe('messageHasVisibleProse', () => {
         events: [{ kind: 'text', text: 'hello' }],
       }),
     ).toBe(true);
+  });
+});
+
+describe('appendErrorStatusEvent', () => {
+  it('replaces prior durable error events so a turn keeps one user-facing copy', () => {
+    const first = appendErrorStatusEvent(
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'partial',
+        createdAt: 1,
+        events: [{ kind: 'text', text: 'partial' }],
+      },
+      '슬라이드 실행 중 오류가 발생했습니다. 다시 시도하세요.',
+      'UPSTREAM_UNAVAILABLE',
+    );
+    const second = appendErrorStatusEvent(
+      first,
+      DELIVERABLE_MISSING_ENCODED,
+      'incomplete_output',
+    );
+    expect(second.events).toEqual([
+      { kind: 'text', text: 'partial' },
+      {
+        kind: 'status',
+        label: 'error',
+        detail: DELIVERABLE_MISSING_ENCODED,
+        code: 'incomplete_output',
+      },
+    ]);
   });
 });
 

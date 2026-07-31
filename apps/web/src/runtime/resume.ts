@@ -383,42 +383,14 @@ export type ScopedCommentEditAutoContinueContext = {
   commentContext?: string | null;
   userInstruction?: string | null;
   concretePatchTemplate?: string | null;
+  /** Screenshot/draw visual marks have no DOM target id — deck-patch only. */
+  visualMarkOnly?: boolean;
 };
 
-/**
- * Auto-continue prompt for scoped preview-comment edits. Unlike the
- * generic incomplete-output prompt (which demands a full
- * `<artifact type="deck">`), this keeps the retry on element-patch /
- * deck-patch so the model does not rewrite the whole deck when only a
- * pinned element failed to persist.
- */
-export function buildAutoContinueScopedCommentEditPrompt(
+function appendScopedCommentEditRetryContext(
+  parts: string[],
   context: ScopedCommentEditAutoContinueContext,
-): string {
-  const attempt = Math.max(1, Math.floor(context.attempt));
-  const parts: string[] = [
-    AUTO_CONTINUE_PROMPT_SENTINEL,
-    attempt >= 2 ? '[FINAL RETRY] ' : '',
-    '직전 응답은 `<attached-preview-comments>`가 붙은 **요소 단위 편집** turn이었지만, 유효한 patch deliverable을 만들지 못했습니다.',
-    '전체 덱을 새로 쓰거나 `<artifact type="deck">` 전체 교체를 하지 마세요. 디스크의 기존 deck.html은 그대로 두고, pinned element만 수정하세요.',
-    '',
-    '이번 응답은 반드시 non-empty `<artifact type="element-patch" identifier="deck">` 하나만 출력하세요:',
-    '',
-    '<artifact type="element-patch" identifier="deck">',
-    '  <patch target-id="{elementId from attached-preview-comments}" slide-index="{slideIndex from attached-preview-comments}" kind="set-text">replacement text</patch>',
-    '</artifact>',
-    '',
-    '- `target-id`와 `slide-index`는 `<attached-preview-comments>`의 elementId / slideIndex와 정확히 일치해야 합니다.',
-    '- 텍스트 교체 요청 ("\'새 문구\'로 수정", "멘트를 …로"): `kind="set-text"`에 새 문구만 넣으세요.',
-    '- 크기/색/강조만 바꾸는 요청: `kind="set-style"` JSON (`fontSize`, `fontWeight`, `color`). `currentText`는 그대로.',
-    '- 줄바꿈/한 줄/nowrap 같은 레이아웃 요청: `kind="set-outer-html"` (`<br>` 제거) 또는 `kind="set-style"` `{"whiteSpace":"nowrap"}`. `<br>`/중첩 태그가 있으면 `set-text` 금지.',
-    '- 정렬/간격 요청: `kind="set-style"` JSON (`textAlign`, `padding`, `margin`). `currentText`는 그대로.',
-    '- 삭제/제거 요청: `kind="remove-element"` (빈 body).',
-    '- 빈 `<artifact type="element-patch">` 또는 patch 없는 wrapper는 금지.',
-    '- slide 구조 변경이 필요할 때만 `<artifact type="deck-patch">`에 해당 slide `<section>` 하나.',
-    '',
-    '(English: scoped comment edit retry — emit ONE non-empty element-patch for the pinned target only; never rewrite the full deck.)',
-  ];
+): void {
   const failureReason = context.failureReason?.trim();
   if (failureReason) {
     parts.push('', `[직전 실패 사유: ${failureReason}]`);
@@ -443,12 +415,86 @@ export function buildAutoContinueScopedCommentEditPrompt(
   if (concreteTemplate) {
     parts.push(
       '',
-      attempt >= 2
-        ? '[필수] 아래 템플릿을 **그대로 복사**해서 출력하세요. `(요청한 새 텍스트)` 자리만 사용자 요청 문구로 바꾸고, 다른 설명·인사·question-form은 금지합니다:'
-        : '[권장] 아래 템플릿의 target-id / slide-index 를 그대로 쓰고 `(요청한 새 텍스트)` 만 교체하세요:',
+      context.attempt >= 2
+        ? '[필수] 아래 템플릿을 **그대로 복사**해서 출력하세요. 주석 자리만 사용자 요청에 맞게 채우고, 다른 설명·인사·question-form은 금지합니다:'
+        : '[권장] 아래 템플릿의 slide-index 를 그대로 쓰고 슬라이드 section 본문만 사용자 요청에 맞게 채우세요:',
       concreteTemplate,
     );
   }
+}
+
+function buildAutoContinueVisualMarkEditPrompt(
+  context: ScopedCommentEditAutoContinueContext,
+): string {
+  const attempt = Math.max(1, Math.floor(context.attempt));
+  const parts: string[] = [
+    AUTO_CONTINUE_PROMPT_SENTINEL,
+    attempt >= 2 ? '[FINAL RETRY] ' : '',
+    '직전 응답은 **시각 마크(드로잉/스크린샷)가 붙은 슬라이드 영역 편집** turn이었지만, 유효한 deck-patch deliverable을 만들지 못했습니다.',
+    '전체 덱을 새로 쓰거나 `<artifact type="deck">` 전체 교체를 하지 마세요. 디스크의 기존 deck.html은 그대로 두고, 표시된 슬라이드 section만 수정하세요.',
+    '',
+    '이번 응답은 반드시 non-empty `<artifact type="deck-patch" identifier="deck">` 하나만 출력하세요:',
+    '',
+    '<artifact type="deck-patch" identifier="deck">',
+    '  <section class="slide" data-slide-index="{slideIndex from attached-preview-comments}">',
+    '    <!-- 해당 슬라이드 전체 HTML. 첨부 스크린샷/드로잉 표시를 참고해 하트·도형은 inline SVG 등으로 추가 -->',
+    '  </section>',
+    '</artifact>',
+    '',
+    '- `data-slide-index`는 `<attached-preview-comments>`의 slideIndex와 정확히 일치해야 합니다.',
+    '- element-patch / target-id 사용 금지 (시각 마크에는 DOM element id가 없습니다).',
+    '- 빈 `<artifact type="deck-patch">` 또는 slide section 없는 wrapper는 금지.',
+    '',
+    '(English: visual-mark scoped edit — emit ONE non-empty deck-patch with a single slide section; use the screenshot annotation for placement.)',
+  ];
+  appendScopedCommentEditRetryContext(parts, context);
+  if (attempt >= 3) {
+    parts.push(
+      '',
+      '[최종 시도] 위 템플릿을 그대로 출력하지 못하면 `<artifact type="deck-patch" identifier="deck">` 안에 해당 slide `<section class="slide" data-slide-index="{N}">` 하나만 넣으세요. 전체 deck rewrite 금지.',
+    );
+  }
+  return parts.join('\n');
+}
+
+/**
+ * Auto-continue prompt for scoped preview-comment edits. Unlike the
+ * generic incomplete-output prompt (which demands a full
+ * `<artifact type="deck">`), this keeps the retry on element-patch /
+ * deck-patch so the model does not rewrite the whole deck when only a
+ * pinned element failed to persist.
+ */
+export function buildAutoContinueScopedCommentEditPrompt(
+  context: ScopedCommentEditAutoContinueContext,
+): string {
+  const attempt = Math.max(1, Math.floor(context.attempt));
+  if (context.visualMarkOnly) {
+    return buildAutoContinueVisualMarkEditPrompt(context);
+  }
+  const parts: string[] = [
+    AUTO_CONTINUE_PROMPT_SENTINEL,
+    attempt >= 2 ? '[FINAL RETRY] ' : '',
+    '직전 응답은 `<attached-preview-comments>`가 붙은 **요소 단위 편집** turn이었지만, 유효한 patch deliverable을 만들지 못했습니다.',
+    '전체 덱을 새로 쓰거나 `<artifact type="deck">` 전체 교체를 하지 마세요. 디스크의 기존 deck.html은 그대로 두고, pinned element만 수정하세요.',
+    '',
+    '이번 응답은 반드시 non-empty `<artifact type="element-patch" identifier="deck">` 하나만 출력하세요:',
+    '',
+    '<artifact type="element-patch" identifier="deck">',
+    '  <patch target-id="{elementId from attached-preview-comments}" slide-index="{slideIndex from attached-preview-comments}" kind="set-text">replacement text</patch>',
+    '</artifact>',
+    '',
+    '- `target-id`와 `slide-index`는 `<attached-preview-comments>`의 elementId / slideIndex와 정확히 일치해야 합니다.',
+    '- 텍스트 교체 요청 ("\'새 문구\'로 수정", "멘트를 …로"): `kind="set-text"`에 새 문구만 넣으세요.',
+    '- 크기/색/강조만 바꾸는 요청: `kind="set-style"` JSON (`fontSize`, `fontWeight`, `color`). `currentText`는 그대로.',
+    '- 줄바꿈/한 줄/nowrap 같은 레이아웃 요청: `kind="set-outer-html"` (`<br>` 제거) 또는 `kind="set-style"` `{"whiteSpace":"nowrap"}`. `<br>`/중첩 태그가 있으면 `set-text` 금지.',
+    '- 정렬/간격 요청: `kind="set-style"` JSON (`textAlign`, `padding`, `margin`). `currentText`는 그대로.',
+    '- 삭제/제거 요청: `kind="remove-element"` (빈 body).',
+    '- 빈 `<artifact type="element-patch">` 또는 patch 없는 wrapper는 금지.',
+    '- slide 구조 변경이 필요할 때만 `<artifact type="deck-patch">`에 해당 slide `<section>` 하나.',
+    '',
+    '(English: scoped comment edit retry — emit ONE non-empty element-patch for the pinned target only; never rewrite the full deck.)',
+  ];
+  appendScopedCommentEditRetryContext(parts, context);
   if (attempt >= 3) {
     parts.push(
       '',
@@ -465,6 +511,7 @@ export function resolveAutoContinuePrompt(options: {
   scopedCommentContext?: string | null;
   scopedUserInstruction?: string | null;
   concretePatchTemplate?: string | null;
+  visualMarkOnly?: boolean;
 }): string {
   if (options.commentAttachmentCount > 0) {
     return buildAutoContinueScopedCommentEditPrompt({
@@ -473,6 +520,7 @@ export function resolveAutoContinuePrompt(options: {
       commentContext: options.scopedCommentContext,
       userInstruction: options.scopedUserInstruction,
       concretePatchTemplate: options.concretePatchTemplate,
+      visualMarkOnly: options.visualMarkOnly,
     });
   }
   return buildAutoContinueIncompleteOutputPrompt(options.incompleteOutput);

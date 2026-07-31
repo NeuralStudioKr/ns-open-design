@@ -178,6 +178,36 @@ export class MaterializingProjectStorage implements ProjectStorage {
     return { files };
   }
 
+  /**
+   * Point-get a single remote object into scratch when local TTL skipped a
+   * full sync-down (common for annotation PNGs fetched on a sibling node).
+   */
+  async pullRemoteFileIfMissing(
+    projectId: string,
+    remote: ProjectStorage,
+    relpath: string,
+  ): Promise<boolean> {
+    const normalized = String(relpath || '').trim().replace(/^\/+/, '');
+    if (!normalized || isTeamverDaemonStateRelpath(normalized)) return false;
+    const local = await this.scratch.statFile(projectId, normalized);
+    if (local) return true;
+    try {
+      const body = await withSyncDownRetry(() => remote.readFile(projectId, normalized));
+      if (!body || body.length <= 0) return false;
+      await this.scratch.writeFile(projectId, normalized, body);
+      return true;
+    } catch (err) {
+      if (err instanceof StorageError && err.code === 'NOT_FOUND') return false;
+      const code = err && typeof err === 'object' && 'code' in err
+        ? String((err as { code?: unknown }).code || '')
+        : '';
+      if (code === 'ENOENT' || code === 'NoSuchKey' || code === 'NotFound' || code === 'NOT_FOUND') {
+        return false;
+      }
+      throw err;
+    }
+  }
+
   async syncExplicitRemoteDeletions(
     projectId: string,
     remote: ProjectStorage,

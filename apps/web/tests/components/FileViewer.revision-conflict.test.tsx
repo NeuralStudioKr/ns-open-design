@@ -76,6 +76,9 @@ describe('FileViewer revision conflict', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toMatch(/Undo and Redo are unavailable|실행 취소와 다시 실행을 사용할 수 없/);
     });
+    expect(screen.getByTestId('file-viewer-undo').getAttribute('data-tooltip')).toMatch(
+      /Undo and Redo are unavailable|실행 취소와 다시 실행을 사용할 수 없/,
+    );
     expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(true);
 
     const persistedBeforeKeyboardUndo = getPersistedSource();

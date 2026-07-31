@@ -19,6 +19,7 @@ import {
   looksLikeRemovalCommentRequest,
   looksLikeStyleOnlyCommentRequest,
 } from './edit-mode/comment-edit-intent';
+import { isSyntheticVisualMarkTargetId } from './edit-mode/source-patches';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 
 export interface PreviewCommentSnapshot {
@@ -140,21 +141,23 @@ export function commentVisibleOnDeckSlide(
   return comment.slideIndex === activeSlideIndex;
 }
 
-/** Basename of the deck HTML file a comment edit should update in place. */
+/**
+ * Project-relative HTML path a comment edit should update in place.
+ * Nested decks keep their directory (`slides/deck.html`); basenames alone
+ * are returned only for root HTML. Non-HTML paths (e.g. screenshot PNGs)
+ * are ignored so callers fall back to the open/canonical deck.
+ */
 export function resolveCommentEditPersistTargetFileName(
   commentAttachments: readonly ChatCommentAttachment[] | null | undefined,
 ): string | null {
   if (!commentAttachments?.length) return null;
   for (const attachment of commentAttachments) {
-    const filePath = attachment.filePath?.trim();
+    const filePath = attachment.filePath?.trim().replace(/\\/g, '/').replace(/^\.\//, '');
     if (!filePath) continue;
-    const baseName = filePath.split('/').filter(Boolean).pop() ?? filePath;
-    if (/\.html?$/i.test(baseName)) return baseName;
-  }
-  for (const attachment of commentAttachments) {
-    const filePath = attachment.filePath?.trim();
-    if (!filePath) continue;
-    return filePath.split('/').filter(Boolean).pop() ?? filePath;
+    // Screenshot-only visual marks store uploads/*.png as filePath. Never
+    // treat image/binary uploads as the in-place deck persist target.
+    if (!/\.html?$/i.test(filePath)) continue;
+    return filePath;
   }
   return null;
 }
@@ -167,19 +170,32 @@ export function resolveCommentEditPersistTargetFileName(
 // nothing slide-scoped to navigate to (plain prompt, free pin, missing index).
 export function queuedSlideNavTarget(
   commentAttachments: readonly ChatCommentAttachment[] | null | undefined,
+  options?: { fallbackDeckFilePath?: string | null },
 ): { filePath: string; slideIndex: number } | null {
   if (!commentAttachments) return null;
+  let slideOnly: number | null = null;
   for (const attachment of commentAttachments) {
-    const filePath = attachment.filePath?.trim();
+    const filePath = attachment.filePath?.trim().replace(/\\/g, '/').replace(/^\.\//, '');
     const slideIndex = attachment.slideIndex;
     if (
-      filePath &&
-      typeof slideIndex === 'number' &&
-      Number.isFinite(slideIndex) &&
-      slideIndex >= 0
+      typeof slideIndex !== 'number' ||
+      !Number.isFinite(slideIndex) ||
+      slideIndex < 0
     ) {
-      return { filePath, slideIndex: Math.floor(slideIndex) };
+      continue;
     }
+    const floor = Math.floor(slideIndex);
+    // Screenshot-only visuals store uploads/*.png as filePath — never treat
+    // that as a deck tab name. Keep the slide index for fallback below.
+    if (filePath && /\.html?$/i.test(filePath)) {
+      return { filePath, slideIndex: floor };
+    }
+    if (slideOnly == null) slideOnly = floor;
+  }
+  if (slideOnly == null) return null;
+  const fallback = options?.fallbackDeckFilePath?.trim().replace(/\\/g, '/').replace(/^\.\//, '') || '';
+  if (fallback && /\.html?$/i.test(fallback)) {
+    return { filePath: fallback, slideIndex: slideOnly };
   }
   return null;
 }
@@ -812,6 +828,35 @@ function escapeXmlAttr(value: string): string {
 }
 
 /**
+ * Screenshot-only visual marks use synthetic `visual-mark-*` ids (or have no
+ * DOM selector/htmlHint). Those must not become REQUIRED element-patch
+ * templates — the id is not in the deck HTML and persist cannot merge it.
+ * Visual marks that still carry a real picked element target stay eligible.
+ */
+export function isScreenshotOnlyVisualCommentTarget(
+  item: Pick<
+    ChatCommentAttachment,
+    'selectionKind' | 'markKind' | 'screenshotPath' | 'elementId' | 'selector' | 'htmlHint'
+  >,
+): boolean {
+  const elementId = String(item.elementId || '').trim();
+  const isVisual =
+    item.selectionKind === 'visual'
+    || Boolean(item.markKind)
+    || Boolean(String(item.screenshotPath || '').trim())
+    || elementId.startsWith('visual-mark-');
+  if (!isVisual) return false;
+  // Synthetic visual-mark-* ids are screenshot-only only when there is no
+  // concrete DOM anchor (selector / htmlHint). Visual+click picks that mint
+  // visual-mark-* while still carrying selector/htmlHint stay element-scoped.
+  const hasDomAnchor =
+    Boolean(String(item.selector || '').trim())
+    || Boolean(String(item.htmlHint || '').trim());
+  if (elementId.startsWith('visual-mark-')) return !hasDomAnchor;
+  return !hasDomAnchor;
+}
+
+/**
  * Ready-to-copy element-patch template with real target-id / slide-index
  * values so auto-continue retries do not depend on the model inferring
  * placeholders from prose.
@@ -828,9 +873,11 @@ export function buildConcreteElementPatchTemplate(
     ) {
       continue;
     }
+    if (isScreenshotOnlyVisualCommentTarget(item)) continue;
     const targetId = String(item.elementId || '').trim();
     if (!targetId) continue;
     if (isUnsafeElementPatchTargetId(targetId)) continue;
+    if (isSyntheticVisualMarkTargetId(targetId)) continue;
     const slideIndex = Math.floor(item.slideIndex);
     const removal = looksLikeRemovalCommentRequest(item.comment || '');
     const layoutOnly = !removal && looksLikeMarkupLayoutCommentRequest(item.comment || '');
@@ -861,6 +908,43 @@ export function buildConcreteElementPatchTemplate(
   return blocks.length > 0 ? blocks.join('\n') : null;
 }
 
+/** deck-patch template for region-only visual marks (no concrete DOM target id). */
+export function buildConcreteDeckPatchTemplateForVisualMarks(
+  commentAttachments: readonly ChatCommentAttachment[],
+): string | null {
+  const blocks: string[] = [];
+  for (const item of commentAttachments) {
+    if (!isScreenshotOnlyVisualCommentTarget(item)) continue;
+    if (
+      typeof item.slideIndex !== 'number'
+      || !Number.isFinite(item.slideIndex)
+      || item.slideIndex < 0
+    ) {
+      continue;
+    }
+    const slideIndex = Math.floor(item.slideIndex);
+    blocks.push(
+      '<artifact type="deck-patch" identifier="deck">',
+      `  <section class="slide" data-slide-index="${slideIndex}">`,
+      '    <!-- Replace this entire slide section. Use the screenshot annotation for placement.',
+      '         For shapes/hearts, add inline SVG or appropriate markup inside the slide. -->',
+      '  </section>',
+      '</artifact>',
+    );
+  }
+  return blocks.length > 0 ? blocks.join('\n') : null;
+}
+
+export function buildConcretePatchTemplatesForCommentAttachments(
+  commentAttachments: readonly ChatCommentAttachment[],
+): string | null {
+  const parts = [
+    buildConcreteElementPatchTemplate(commentAttachments),
+    buildConcreteDeckPatchTemplateForVisualMarks(commentAttachments),
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join('\n\n') : null;
+}
+
 export function elementPatchCoerceHintsFromCommentAttachments(
   commentAttachments: readonly ChatCommentAttachment[],
 ): Array<{ targetId: string; slideIndex: number }> {
@@ -873,9 +957,11 @@ export function elementPatchCoerceHintsFromCommentAttachments(
     ) {
       continue;
     }
+    if (isScreenshotOnlyVisualCommentTarget(item)) continue;
     const targetId = String(item.elementId || '').trim();
     if (!targetId) continue;
     if (isUnsafeElementPatchTargetId(targetId)) continue;
+    if (isSyntheticVisualMarkTargetId(targetId)) continue;
     hints.push({ targetId, slideIndex: Math.floor(item.slideIndex) });
   }
   return hints;

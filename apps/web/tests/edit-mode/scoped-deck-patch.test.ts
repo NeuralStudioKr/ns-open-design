@@ -15,6 +15,7 @@ import {
 } from '../../src/edit-mode/scoped-deck-patch';
 import { parseElementPatch } from '../../src/artifacts/element-patch';
 import type { ChatCommentAttachment } from '../../src/types';
+import { buildVisualAnnotationAttachment } from '../../src/comments';
 
 const CURRENT_HTML = `<!doctype html><html><body>
 <section class="slide" data-slide-index="0"><h1>인트로</h1></section>
@@ -45,6 +46,10 @@ describe('hasElementScopedCommentAttachments', () => {
       ...attachment(1),
       selectionKind: 'visual',
       elementId: 'visual-mark-1',
+      selector: '',
+      htmlHint: '',
+      screenshotPath: 'uploads/visual-mark-1.png',
+      markKind: 'stroke',
     }])).toBe(false);
   });
 
@@ -53,6 +58,8 @@ describe('hasElementScopedCommentAttachments', () => {
       ...attachment(1),
       selectionKind: undefined,
       elementId: 'visual-mark-lost-kind',
+      selector: '',
+      htmlHint: '',
       screenshotPath: 'drawing-2026-07-31.png',
       markKind: 'stroke',
     }])).toBe(false);
@@ -60,20 +67,46 @@ describe('hasElementScopedCommentAttachments', () => {
       ...attachment(1),
       selectionKind: undefined,
       elementId: 'visual-mark-lost-kind',
+      selector: '',
+      htmlHint: '',
     })).toBe(true);
     expect(scopedCommentElementIds({
       ...attachment(1),
       selectionKind: undefined,
       elementId: 'visual-mark-lost-kind',
+      selector: '',
+      htmlHint: '',
       screenshotPath: 'drawing-2026-07-31.png',
     })).toEqual([]);
   });
 
   it('returns true when at least one attachment needs a concrete element target', () => {
     expect(hasElementScopedCommentAttachments([
-      { ...attachment(1), selectionKind: 'visual', elementId: 'visual-mark-1' },
+      {
+        ...attachment(1),
+        selectionKind: 'visual',
+        elementId: 'visual-mark-1',
+        selector: '',
+        htmlHint: '',
+        screenshotPath: 'uploads/visual-mark-1.png',
+      },
       attachment(1),
     ])).toBe(true);
+  });
+
+  it('keeps visual marks with real DOM targets element-scoped', () => {
+    const visualWithTarget = {
+      ...attachment(1),
+      selectionKind: 'visual' as const,
+      elementId: 'hero-title',
+      selector: '[data-od-id="hero-title"]',
+      htmlHint: '<h1 data-od-id="hero-title">Title</h1>',
+      screenshotPath: 'uploads/mark.png',
+      markKind: 'click' as const,
+    };
+    expect(isVisualCommentAttachment(visualWithTarget)).toBe(true);
+    expect(scopedCommentElementIds(visualWithTarget)).toContain('hero-title');
+    expect(hasElementScopedCommentAttachments([visualWithTarget])).toBe(true);
   });
 });
 
@@ -428,6 +461,39 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('accepts a screenshot-only visual mark via slide-level swap', () => {
+    const currentHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>인트로</h1></section>
+<section class="slide" data-slide-index="1">
+  <p>본문</p>
+</section>
+</body></html>`;
+    const patchedHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>인트로</h1></section>
+<section class="slide" data-slide-index="1">
+  <p style="font-weight:700;color:#ef4444">본문</p>
+</section>
+</body></html>`;
+    const visualAttachment = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'ms798rzf-drawing-2026-07-30T08-31-44-563Z.png',
+      markKind: 'stroke',
+      note: '여기 강조해줘',
+      slideIndex: 1,
+      bounds: { x: 10, y: 20, width: 100, height: 40 },
+    });
+    expect(scopedCommentElementIds(visualAttachment)).toEqual([]);
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml,
+      patchedHtml,
+      commentAttachments: [visualAttachment],
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.html).toContain('font-weight:700');
+    expect(result.html).toContain('<h1>인트로</h1>');
+  });
+
   it('narrows a full-deck rewrite to the scoped slide when other slides also changed', () => {
     const currentHtml = `<!doctype html><html><body>
 <section class="slide" data-slide-index="0">
@@ -469,6 +535,43 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(result.html).not.toContain('decor-1');
     expect(result.html).toContain('Slide 2 original');
     expect(result.html).not.toContain('REWRITTEN');
+  });
+
+  it('accepts visual-only marks via slide-level swap when no element id exists', () => {
+    const currentHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Cover</h1></section>
+<section class="slide" data-slide-index="1"><p data-od-id="body-1">원본 본문</p></section>
+</body></html>`;
+    const patchedHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Cover</h1></section>
+<section class="slide" data-slide-index="1"><p data-od-id="body-1">강조된 본문</p></section>
+</body></html>`;
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml,
+      patchedHtml,
+      commentAttachments: [{
+        id: 'visual-1',
+        order: 1,
+        filePath: 'ms798rzf-drawing.png',
+        elementId: 'visual-mark-ms798rzf',
+        selector: '',
+        label: 'Marked screenshot region',
+        comment: '이 영역 강조해줘',
+        currentText: '',
+        htmlHint: '',
+        pagePosition: { x: 10, y: 10, width: 100, height: 80 },
+        selectionKind: 'visual',
+        markKind: 'stroke',
+        screenshotPath: 'ms798rzf-drawing.png',
+        slideIndex: 1,
+      }],
+      instructionText: '이 영역 강조해줘',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.narrowed).toBe(true);
+    expect(result.html).toContain('강조된 본문');
+    expect(result.html).toContain('Cover');
   });
 
   it('accepts a layout-only br removal via slide-level presentation fallback', () => {

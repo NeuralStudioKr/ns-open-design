@@ -154,6 +154,7 @@ import {
   getActiveRevisionSequence,
   setActiveRevisionSequence,
 } from '../runtime/revision-active-sequence';
+import { setRevisionContentCache } from '../runtime/revision-content-cache';
 import {
   emitRevisionPush,
   emitRevisionUndo,
@@ -304,13 +305,14 @@ import {
   historyWithApiWebFetchContext,
 } from '../api-web-fetch-context';
 import {
-  buildConcreteElementPatchTemplate,
+  buildConcretePatchTemplatesForCommentAttachments,
   chatAttachmentsFromPreviewCommentFiles,
   commentsToAttachments,
   elementPatchCoerceHintsFromCommentAttachments,
   filterUsableCommentAttachments,
   historyWithCommentAttachmentContext,
   hydrateQueryContextCommentAttachments,
+  isScreenshotOnlyVisualCommentTarget,
   mergeAttachedComments,
   mergePreviewCommentAttachments,
   messageContentWithCommentAttachments,
@@ -330,6 +332,7 @@ import {
 import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import {
   maskManualEditTargets,
+  elementPatchReasonTargetsSyntheticVisualMark,
 } from '../edit-mode/source-patches';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
@@ -364,6 +367,7 @@ import {
   formatProjectArtifactStubWarning,
   formatProjectArtifactCommentScopeRejectedError,
   formatProjectRunDeliverableMissingError,
+  encodePersistedRunErrorDetail,
   formatAutoContinueIncompleteOutputNotice,
   formatEmergencyDeckFallbackNotice,
   extractProjectRunErrorCode,
@@ -1168,7 +1172,7 @@ export function promptWithSlideCommentEditPatchInstruction(
     `${visiblePrompt}\n\n${slideCommentEditPatchInstruction(options.commentAttachmentCount)}`,
   ];
   const concreteTemplate = options.commentAttachments?.length
-    ? buildConcreteElementPatchTemplate(options.commentAttachments)
+    ? buildConcretePatchTemplatesForCommentAttachments(options.commentAttachments)
     : null;
   if (concreteTemplate) {
     parts.push(
@@ -1293,6 +1297,23 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     instructionText: input.instructionText,
   });
   if (!applied.ok) {
+    if (
+      elementPatchReasonTargetsSyntheticVisualMark(applied.reason)
+      && elementPatchBodyLooksLikeDeckPatch(resolvedBody)
+    ) {
+      console.warn('[element-patch] visual-mark target — falling back to deck-patch', {
+        fileName: input.fileName,
+        reason: applied.reason,
+      });
+      return await tryApplyDeckPatchAgainstCurrentDeck({
+        projectId: input.projectId,
+        fileName: input.fileName,
+        patchBody: resolvedBody,
+        allowedSlideIndexes: input.allowedSlideIndexes,
+        commentAttachments: input.commentAttachments,
+        instructionText: input.instructionText,
+      });
+    }
     console.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
     return { ok: false, code: 'deck_patch_merge_failed', reason: applied.reason };
   }
@@ -1312,7 +1333,7 @@ function elementPatchTargetHintsFromCommentAttachments(
 ): ElementPatchTargetHint[] {
   const hints: ElementPatchTargetHint[] = [];
   for (const attachment of commentAttachments) {
-    if (isVisualCommentAttachment(attachment)) {
+    if (isScreenshotOnlyVisualCommentTarget(attachment)) {
       hints.push({
         targetIds: [],
         ...(typeof attachment.slideIndex === 'number' &&
@@ -1329,7 +1350,10 @@ function elementPatchTargetHintsFromCommentAttachments(
       continue;
     }
     const targetIds = scopedCommentElementIds(attachment);
-    if (targetIds.length === 0) continue;
+    if (targetIds.length === 0) {
+      // Visual+DOM without resolvable ids still contributes slide/context hints.
+      if (!isVisualCommentAttachment(attachment)) continue;
+    }
     hints.push({
       targetIds,
       ...(typeof attachment.slideIndex === 'number' &&
@@ -3362,10 +3386,13 @@ export function ProjectView({
                   : null;
               const concretePatchTemplate =
                 autoContinueCommentAttachments.length > 0
-                  ? buildConcreteElementPatchTemplate(autoContinueCommentAttachments)
+                  ? buildConcretePatchTemplatesForCommentAttachments(autoContinueCommentAttachments)
                   : null;
               const autoContinuePrompt = resolveAutoContinuePrompt({
                 commentAttachmentCount: autoContinueCommentAttachments.length,
+                visualMarkOnly:
+                  autoContinueCommentAttachments.length > 0
+                  && !hasElementScopedCommentAttachments(autoContinueCommentAttachments),
                 scopedCommentContext,
                 scopedUserInstruction: autoContinueOriginUser
                   ? stripUserVisibleUserMessageText(autoContinueOriginUser.content).trim()
@@ -3725,6 +3752,16 @@ export function ProjectView({
     setWorkspaceContexts((current) =>
       workspaceContextItemsEqual(current, next) ? current : next,
     );
+  }, []);
+
+  const removeProjectFilesLocally = useCallback((names: readonly string[]) => {
+    if (names.length === 0) return;
+    const deleted = new Set(names);
+    setProjectFiles((current) => {
+      const next = current.filter((file) => !deleted.has(file.name));
+      projectFilesRef.current = next;
+      return next;
+    });
   }, []);
 
   const refreshProjectFiles = useCallback(async (): Promise<ProjectFile[]> => {
@@ -4311,6 +4348,7 @@ export function ProjectView({
         // this for tool-emitted files; this handles the artifact-tag path.
         requestOpenFile(file.name);
         if (pushedRevision) {
+          setRevisionContentCache(project.id, file.name, pushedRevision.id, htmlBody);
           setActiveRevisionSequence(project.id, file.name, pushedRevision.sequence);
           emitRevisionPush(
             analytics.track,
@@ -6259,13 +6297,16 @@ export function ProjectView({
                     );
                     if (shouldFailRunForArtifactPersistResult(replayPersistResult)) {
                       const endedAt = Date.now();
-                      const detail = formatProjectRunDeliverableMissingError({
-                        kind: replayPersistResult?.kind ?? null,
-                        reason:
-                          replayPersistResult && 'reason' in replayPersistResult
-                            ? replayPersistResult.reason ?? null
-                            : null,
-                      });
+                      const detail = encodePersistedRunErrorDetail(
+                        formatProjectRunDeliverableMissingError(),
+                        {
+                          kind: replayPersistResult?.kind ?? null,
+                          reason:
+                            replayPersistResult && 'reason' in replayPersistResult
+                              ? replayPersistResult.reason ?? null
+                              : null,
+                        },
+                      );
                       updateMessageById(
                         message.id,
                         (prev) => ({
@@ -6936,10 +6977,13 @@ export function ProjectView({
                 : null;
             const concretePatchTemplate =
               autoContinueCommentAttachments.length > 0
-                ? buildConcreteElementPatchTemplate(autoContinueCommentAttachments)
+                ? buildConcretePatchTemplatesForCommentAttachments(autoContinueCommentAttachments)
                 : null;
             const autoContinuePrompt = resolveAutoContinuePrompt({
               commentAttachmentCount: autoContinueCommentAttachments.length,
+              visualMarkOnly:
+                autoContinueCommentAttachments.length > 0
+                && !hasElementScopedCommentAttachments(autoContinueCommentAttachments),
               scopedCommentContext,
               scopedUserInstruction: autoContinueOriginUser
                 ? stripUserVisibleUserMessageText(autoContinueOriginUser.content).trim()
@@ -7331,18 +7375,28 @@ export function ProjectView({
       const isAutoContinueSend =
         meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM
         || isAutoContinueIncompleteOutputPrompt(prompt);
+      let filesSnapshot = projectFiles;
+      if (
+        commentAttachments.some(
+          (attachment) =>
+            Boolean(attachment.markKind)
+            || String(attachment.screenshotPath || '').trim().length > 0,
+        )
+      ) {
+        filesSnapshot = await refreshProjectFiles().catch(() => projectFiles);
+      }
       const hydratedCommentAttachments = commentAttachments.length > 0
         ? await hydrateDeckCommentSlideIndexes({
           projectId: project.id,
           attachments: commentAttachments,
-          projectFiles,
+          projectFiles: filesSnapshot,
           entryFile: project.metadata?.entryFile ?? null,
         })
         : commentAttachments;
       const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments);
       let effectiveAttachments = mergeChatAttachments(
         attachments,
-        chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, projectFiles),
+        chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, filesSnapshot),
         ...scopedCommentAttachments.map((attachment) =>
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),
@@ -7353,7 +7407,7 @@ export function ProjectView({
       // against real target ids instead of guessing from stale chat prose.
       if (slideOnlyMvp && scopedCommentAttachments.length > 0) {
         const existingDeck = resolvePrimaryDeckFile(
-          projectFiles,
+          filesSnapshot,
           project.metadata?.entryFile ?? null,
         );
         if (existingDeck) {
@@ -7378,7 +7432,7 @@ export function ProjectView({
         && scopedCommentAttachments.length === 0
       ) {
         const existingDeck = resolvePrimaryDeckFile(
-          projectFiles,
+          filesSnapshot,
           project.metadata?.entryFile ?? null,
         );
         if (existingDeck) {
@@ -7860,13 +7914,16 @@ export function ProjectView({
                         terminalPersistResult.fileName || 'untitled',
                         terminalPersistResult.reason,
                       )
-                  : formatProjectRunDeliverableMissingError({
-                      kind: terminalPersistResult?.kind ?? null,
-                      reason:
-                        terminalPersistResult && 'reason' in terminalPersistResult
-                          ? terminalPersistResult.reason ?? null
-                          : null,
-                    });
+                  : encodePersistedRunErrorDetail(
+                      formatProjectRunDeliverableMissingError(),
+                      {
+                        kind: terminalPersistResult?.kind ?? null,
+                        reason:
+                          terminalPersistResult && 'reason' in terminalPersistResult
+                            ? terminalPersistResult.reason ?? null
+                            : null,
+                      },
+                    );
               const deliverableErrorCode = terminalPersistResult?.kind === 'scope-rejected'
                 ? terminalPersistResult.code
                 : terminalPersistResult?.kind === 'artifact-regression'
@@ -8087,7 +8144,7 @@ export function ProjectView({
                   ).trim();
                   const concretePatchTemplate =
                     autoContinueCommentAttachments.length > 0
-                      ? buildConcreteElementPatchTemplate(autoContinueCommentAttachments)
+                      ? buildConcretePatchTemplatesForCommentAttachments(autoContinueCommentAttachments)
                       : null;
                   const scopedFailureReason =
                     terminalPersistResult?.kind === 'skipped-incomplete'
@@ -8096,6 +8153,9 @@ export function ProjectView({
                       : null;
                   const autoContinuePrompt = resolveAutoContinuePrompt({
                     commentAttachmentCount: autoContinueCommentAttachments.length,
+                    visualMarkOnly:
+                      autoContinueCommentAttachments.length > 0
+                      && !hasElementScopedCommentAttachments(autoContinueCommentAttachments),
                     scopedCommentEditFailureReason: scopedFailureReason,
                     scopedCommentContext,
                     scopedUserInstruction,
@@ -8916,6 +8976,7 @@ export function ProjectView({
         }, {
           projectId: project.id,
           conversationId: runConversationId,
+          projectFileNames,
           // Daemon-side billing reconciliation (PR1 §3.6): the proxy stages
           // usage SSE frames keyed by this id so the terminal message PUT
           // can finalize Strategy-B billing even if the FE drops the PUT
@@ -8965,6 +9026,7 @@ export function ProjectView({
       project.id,
       project.name,
       projectFiles,
+      projectFileNames,
       refreshProjectFiles,
       refreshLiveArtifacts,
       readProjectHtml,
@@ -9099,10 +9161,16 @@ export function ProjectView({
   // without a slide index; FileWorkspace/FileViewer ignore it unless the named
   // file is the open deck.
   const armSlideNavForQueuedSend = useCallback((item: QueuedChatSend) => {
-    const target = queuedSlideNavTarget(item.commentAttachments);
+    const fallbackDeck =
+      openTabsStateRef.current.active
+      || project.metadata?.entryFile
+      || null;
+    const target = queuedSlideNavTarget(item.commentAttachments, {
+      fallbackDeckFilePath: fallbackDeck,
+    });
     if (!target) return;
     setSlideNavRequest({ name: target.filePath, slideIndex: target.slideIndex, nonce: Date.now() });
-  }, []);
+  }, [project.metadata?.entryFile]);
 
   const sendQueuedChatSendNow = useCallback((id: string) => {
     const item = queuedChatSendsRef.current.find((candidate) => candidate.id === id);
@@ -11088,9 +11156,8 @@ export function ProjectView({
           files={projectFiles}
           liveArtifacts={liveArtifacts}
           filesRefreshKey={filesRefresh}
-          onRefreshFiles={() => {
-            void refreshWorkspaceItems();
-          }}
+          onRefreshFiles={refreshWorkspaceItems}
+          onFilesDeleted={removeProjectFilesLocally}
           isDeck={isDeck}
           onExportAsPptx={handleExportAsPptx}
           streaming={currentConversationActionDisabled}

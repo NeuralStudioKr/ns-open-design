@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBoardCommentAttachments,
+  buildConcreteDeckPatchTemplateForVisualMarks,
   buildConcreteElementPatchTemplate,
+  buildConcretePatchTemplatesForCommentAttachments,
   buildVisualAnnotationAttachment,
   chatAttachmentsFromPreviewCommentFiles,
   commentSnapshotOverlayEqual,
@@ -10,6 +12,7 @@ import {
   historyWithCommentAttachmentContext,
   hydrateQueryContextCommentAttachments,
   elementPatchCoerceHintsFromCommentAttachments,
+  isScreenshotOnlyVisualCommentTarget,
   liveCommentTargetMapsEqual,
   liveSnapshotForComment,
   mergeAttachedComments,
@@ -175,15 +178,35 @@ describe('preview comment attachment helpers', () => {
     expect(context).toContain('member.2.scopeLock: cta');
   });
 
-  it('resolves the preview deck basename for in-place comment-edit persist', () => {
+  it('resolves the preview deck path for in-place comment-edit persist', () => {
     expect(
       resolveCommentEditPersistTargetFileName([
         commentAttachment({ id: 'c1', filePath: 'deck.html', slideIndex: 1 }),
       ]),
     ).toBe('deck.html');
+    // Nested decks keep their directory so persist does not rewrite root deck.html.
     expect(
       resolveCommentEditPersistTargetFileName([
         commentAttachment({ id: 'c1', filePath: 'refs/deck.html', slideIndex: 1 }),
+      ]),
+    ).toBe('refs/deck.html');
+  });
+
+  it('never routes screenshot-only visual marks to a PNG persist target', () => {
+    const visualOnly = buildVisualAnnotationAttachment({
+      order: 0,
+      screenshotPath: 'uploads/visual-mark-1.png',
+      markKind: 'stroke',
+      note: '여기 키워줘',
+      slideIndex: 1,
+      bounds: { x: 10, y: 20, width: 100, height: 40 },
+    });
+    expect(visualOnly.filePath).toContain('.png');
+    expect(resolveCommentEditPersistTargetFileName([visualOnly])).toBeNull();
+    expect(
+      resolveCommentEditPersistTargetFileName([
+        visualOnly,
+        commentAttachment({ id: 'c2', filePath: 'deck.html', slideIndex: 0 }),
       ]),
     ).toBe('deck.html');
   });
@@ -816,6 +839,58 @@ describe('preview comment attachment helpers', () => {
     ]);
   });
 
+  it('does not build element-patch templates for screenshot-only visual marks', () => {
+    const visualOnly = buildVisualAnnotationAttachment({
+      order: 0,
+      screenshotPath: 'uploads/visual-mark-1.png',
+      markKind: 'stroke',
+      note: '여기 키워줘',
+      slideIndex: 1,
+      bounds: { x: 10, y: 20, width: 100, height: 40 },
+    });
+    expect(isScreenshotOnlyVisualCommentTarget(visualOnly)).toBe(true);
+    expect(visualOnly.elementId.startsWith('visual-mark-')).toBe(true);
+
+    expect(buildConcreteElementPatchTemplate([visualOnly])).toBeNull();
+    expect(elementPatchCoerceHintsFromCommentAttachments([visualOnly])).toEqual([]);
+    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('type="deck-patch"');
+    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('data-slide-index="1"');
+    expect(buildConcretePatchTemplatesForCommentAttachments([visualOnly])).toContain('type="deck-patch"');
+
+    const visualWithRealTarget = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'uploads/visual-mark-2.png',
+      markKind: 'click',
+      note: '제목 키워',
+      slideIndex: 0,
+      bounds: { x: 0, y: 0, width: 10, height: 10 },
+      target: {
+        filePath: 'deck.html',
+        elementId: 'hero-title',
+        selector: '[data-od-id="hero-title"]',
+        label: 'h1',
+        text: 'Title',
+        position: { x: 0, y: 0, width: 1, height: 1 },
+        htmlHint: '<h1 data-od-id="hero-title">Title</h1>',
+        slideIndex: 0,
+      },
+    });
+    expect(isScreenshotOnlyVisualCommentTarget(visualWithRealTarget)).toBe(false);
+    expect(buildConcreteElementPatchTemplate([visualWithRealTarget])).toContain('target-id="hero-title"');
+
+    // visual-mark-* with selector/htmlHint (no stable elementId) stays element-scoped.
+    expect(
+      isScreenshotOnlyVisualCommentTarget({
+        selectionKind: 'visual',
+        markKind: 'click',
+        screenshotPath: 'uploads/mark.png',
+        elementId: 'visual-mark-x',
+        selector: '[data-od-id="hero"]',
+        htmlHint: '<h1 data-od-id="hero">Title</h1>',
+      }),
+    ).toBe(false);
+  });
+
   it('does not render preview-comment context when target location data is missing', () => {
     const content = messageContentWithCommentAttachments('폰트 크기 2배로 키워줘', [
       commentAttachment({
@@ -893,5 +968,27 @@ describe('queuedSlideNavTarget', () => {
     expect(
       queuedSlideNavTarget([commentAttachment({ slideIndex: -1 })]),
     ).toBeNull();
+  });
+
+  it('skips screenshot PNG filePath and uses fallback deck for slide nav', () => {
+    expect(
+      queuedSlideNavTarget([
+        commentAttachment({
+          filePath: 'uploads/visual-mark-1.png',
+          slideIndex: 2,
+        }),
+      ]),
+    ).toBeNull();
+    expect(
+      queuedSlideNavTarget(
+        [
+          commentAttachment({
+            filePath: 'uploads/visual-mark-1.png',
+            slideIndex: 2,
+          }),
+        ],
+        { fallbackDeckFilePath: 'deck.html' },
+      ),
+    ).toEqual({ filePath: 'deck.html', slideIndex: 2 });
   });
 });

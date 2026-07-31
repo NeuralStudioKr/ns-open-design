@@ -11168,7 +11168,23 @@ export async function startServer({
       const projectId = String(req.params[0] ?? '');
       const relPath = String(req.params[1] ?? '');
       const project = getProject(db, projectId);
-      const file = await readProjectFile(PROJECTS_DIR, projectId, relPath, project?.metadata);
+      let file;
+      try {
+        file = await readProjectFile(PROJECTS_DIR, projectId, relPath, project?.metadata);
+      } catch (err) {
+        // Sibling-node uploads can land in S3 while this node's TTL still
+        // skips full sync-down — point-get the missing object once.
+        if (err && err.code === 'ENOENT' && projectStorageHooks) {
+          const filled = await projectStorageHooks.ensureFileAvailable(req, projectId, relPath);
+          if (filled) {
+            file = await readProjectFile(PROJECTS_DIR, projectId, relPath, project?.metadata);
+          } else {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
       // PreviewModal loads artifact HTML via srcdoc, giving the iframe Origin: "null".
       // data: URIs, file://, and some sandboxed iframes also send null — all are
       // local-only callers, so this is safe. Real cross-origin sites send a real
@@ -11634,6 +11650,19 @@ export async function startServer({
             // skip files that vanished mid-flight
           }
         }
+        // Annotation/chat images are fetched immediately (thumbnail + Anthropic
+        // proxy). Await sync-up before 200 so a sticky-miss sibling node can
+        // materialize the object from S3 instead of returning raw 404.
+        if (out.length > 0 && projectStorageHooks) {
+          try {
+            await projectStorageHooks.persistAfterMutation(req, req.params.id, { strict: true });
+          } catch (persistErr) {
+            console.warn(
+              '[project-upload] sync-up before response failed:',
+              persistErr instanceof Error ? persistErr.message : persistErr,
+            );
+          }
+        }
         /** @type {import('@open-design/contracts').UploadProjectFilesResponse} */
         const body = { files: out };
         res.json(body);
@@ -11814,8 +11843,11 @@ export async function startServer({
         );
       }
       if (blocks.length > 0) {
+        // Keep ad-hoc blocks separate until final assembly so selected-template
+        // / deck-wrap paths cannot double-append or wrap them inside the
+        // primary visual-template guard.
         composedSkillBlocks = blocks.join('');
-        skillBody = baseBody + composedSkillBlocks;
+        skillBody = baseBody;
         if (!skillName) {
           skillName = adHocSkillIds.length === 1
             ? findSkillById(allSkills, adHocSkillIds[0])?.name ?? null
@@ -11862,7 +11894,9 @@ export async function startServer({
                 scenarioSkillName = local.name;
                 if (!activeSkillDir) activeSkillDir = local.dir;
               } else {
-                skillBody = local.body + composedSkillBlocks;
+                // Keep ad-hoc blocks out of skillBody until final assembly
+                // (same invariant as the ad-hoc compose path above).
+                skillBody = local.body;
                 skillName = local.name;
                 activeSkillDir = local.dir;
                 registerPrimarySkillMode('deck');
@@ -11880,13 +11914,25 @@ export async function startServer({
     if (selectedDeckTemplate) {
       let templateBody: string | null = null;
       try {
-        const plugin = getInstalledPlugin(db, selectedDeckTemplate.id);
-        if (plugin) {
-          const local = await loadPluginLocalSkill(plugin);
-          if (local?.body?.trim()) {
-            templateBody = local.body;
-            registerSkillDir(local.dir);
-            if (!activeSkillDir) activeSkillDir = local.dir;
+        // Mirror web/API order: skill-like / design-template body first, then
+        // community plugin local SKILL.md. Metadata-only design-template picks
+        // (skillId null) used to degrade to a title stub here.
+        const allSkills = await loadAllSkills();
+        const templateSkill = findSkillById(allSkills, selectedDeckTemplate.id);
+        if (templateSkill?.body?.trim()) {
+          templateBody = templateSkill.body;
+          registerSkillDir(templateSkill.dir);
+          if (!activeSkillDir) activeSkillDir = templateSkill.dir;
+          registerPrimarySkillMode(templateSkill.mode ?? 'deck');
+        } else {
+          const plugin = getInstalledPlugin(db, selectedDeckTemplate.id);
+          if (plugin) {
+            const local = await loadPluginLocalSkill(plugin);
+            if (local?.body?.trim()) {
+              templateBody = local.body;
+              registerSkillDir(local.dir);
+              if (!activeSkillDir) activeSkillDir = local.dir;
+            }
           }
         }
       } catch (err) {
@@ -11914,13 +11960,18 @@ export async function startServer({
         skillBody = scenarioSkillBody + composedSkillBlocks;
         skillName = scenarioSkillName ?? skillName;
         registerPrimarySkillMode('deck');
+      } else if (skillBody?.trim() || composedSkillBlocks) {
+        skillBody = (skillBody || '') + composedSkillBlocks;
       }
     } else if (skillBody?.trim() && skillMode === 'deck') {
       // No selected template — keep legacy deck skill wrap for scenario-only runs.
+      // Wrap primary only, then append ad-hoc blocks once.
       skillBody = wrapSelectedDeckTemplateSkillBody(
         skillBody,
         skillName?.trim() || 'selected deck template',
-      );
+      ) + composedSkillBlocks;
+    } else if (composedSkillBlocks) {
+      skillBody = (skillBody || '') + composedSkillBlocks;
     }
 
     let craftBody;

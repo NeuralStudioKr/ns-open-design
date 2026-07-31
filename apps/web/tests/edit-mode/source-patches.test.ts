@@ -147,6 +147,52 @@ describe('manual edit source patches', () => {
     expect(attrs['data-empty']).toBeUndefined();
   });
 
+  it('protects slide identity attrs and rejects unsafe event handlers in set-attributes', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-od-id="01 Cover" data-slide-index="0" data-screen-label="01 Cover">Cover</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: '01 Cover',
+      attributes: {
+        'data-slide-index': '',
+        'data-screen-label': '',
+        onclick: 'alert(1)',
+        style: 'display:none',
+        'aria-label': 'Cover slide',
+      },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const attrs = readManualEditAttributes(result.source, '01 Cover');
+    expect(attrs['data-slide-index']).toBe('0');
+    expect(attrs['data-screen-label']).toBe('01 Cover');
+    expect(attrs.onclick).toBeUndefined();
+    expect(attrs['aria-label']).toBe('Cover slide');
+    expect(result.source).not.toContain('onclick=');
+  });
+
+  it('protects slide identity attrs case-insensitively in set-attributes', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-od-id="01 Cover" data-slide-index="0">Cover</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: '01 Cover',
+      attributes: {
+        'DATA-SLIDE-INDEX': '9',
+        'Data-Od-Id': 'hijacked',
+      },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const attrs = readManualEditAttributes(result.source, '01 Cover');
+    expect(attrs['data-slide-index']).toBe('0');
+    expect(attrs['data-od-id']).toBe('01 Cover');
+  });
+
   it('preserves data-od-id when selected outerHTML omits it', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',
@@ -158,6 +204,27 @@ describe('manual edit source patches', () => {
     const html = readManualEditOuterHtml(result.source, 'card');
     expect(html).toContain('data-od-id="card"');
     expect(html).toContain('class="replacement"');
+  });
+
+  it('preserves slide identity attrs when page-level outerHTML omits them', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-od-id="01 Cover" data-slide-index="0" data-screen-label="01 Cover">',
+      '<h1>Cover</h1>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: '01 Cover',
+      html: '<section class="slide replacement"><h1>Cover</h1></section>',
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, '01 Cover');
+    expect(html).toContain('data-od-id="01 Cover"');
+    expect(html).toContain('data-slide-index="0"');
+    expect(html).toContain('data-screen-label="01 Cover"');
+    expect(html).toContain('class="slide replacement"');
   });
 
   it('salvages set-outer-html when model emits style sibling + matching root', () => {
@@ -837,6 +904,67 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('<h2 data-od-id="title">첫 줄<br>둘째 줄</h2>');
   });
 
+  it('encodes significant spaces so space-only set-text edits survive freeze remount', () => {
+    // Under CSS white-space:normal, trailing / run spaces collapse after the
+    // host remounts freeze HTML from source. ContentEditable made them look
+    // real during edit; without &nbsp; encoding the save looks like a no-op.
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h2 data-od-id="title">헬로월드</h2>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const trailing = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'title', value: '헬로월드 ' },
+      { slideIndex: 0 },
+    );
+    expect(trailing.ok, trailing.error).toBe(true);
+    expect(trailing.source).toMatch(
+      /<h2 data-od-id="title">헬로월드(?:&nbsp;|\u00a0)<\/h2>/,
+    );
+
+    const double = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'title', value: '헬로  월드' },
+      { slideIndex: 0 },
+    );
+    expect(double.ok, double.error).toBe(true);
+    expect(double.source).toMatch(
+      /<h2 data-od-id="title">헬로 (?:&nbsp;|\u00a0)월드<\/h2>/,
+    );
+
+    const leading = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'title', value: ' 헬로월드' },
+      { slideIndex: 0 },
+    );
+    expect(leading.ok, leading.error).toBe(true);
+    expect(leading.source).toMatch(
+      /<h2 data-od-id="title">(?:&nbsp;|\u00a0)헬로월드<\/h2>/,
+    );
+  });
+
+  it('round-trips space-only edits through readManualEditFields without trim', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<h2 data-od-id="title">헬로월드</h2>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(
+      source,
+      { kind: 'set-text', id: 'title', value: '헬로 월드 ' },
+      { slideIndex: 0 },
+    );
+    expect(result.ok, result.error).toBe(true);
+    expect(readManualEditFields(result.source, 'title', { slideIndex: 0 }).text).toBe(
+      '헬로 월드 ',
+    );
+  });
+
   it('keeps intentional newlines when rewriting br-only headings', () => {
     const source = [
       '<!doctype html><html><body>',
@@ -1133,5 +1261,26 @@ describe('manual edit source patches', () => {
     expect(result.ok, JSON.stringify(result)).toBe(true);
     if (!result.ok) return;
     expect(result.source).toContain('<strong>뉴럴스튜디오㈜</strong>');
+  });
+
+  it('resolves synthetic visual-mark ids to the scoped slide section', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>One</h1></section>
+<section class="slide" data-slide-index="1"><p data-od-id="p1">Marked</p></section>
+</body></html>`;
+    const result = applyManualEditPatch(
+      deck,
+      {
+        kind: 'set-style',
+        id: 'visual-mark-ms8hq9qu-drawing-2026-07-31T05-17-03-125Z-png',
+        styles: { fontSize: '32px' },
+      },
+      { slideIndex: 1 },
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('font-size: 32px');
+    expect(result.source).toContain('Marked');
   });
 });

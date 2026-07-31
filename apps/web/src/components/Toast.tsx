@@ -142,14 +142,14 @@ export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs 
       {code ? (
         <pre className="od-toast-code">{code}</pre>
       ) : null}
-      {code && onDismiss ? (
+      {onDismiss ? (
         <button
           type="button"
           className="od-toast-dismiss"
           onClick={onDismiss}
           aria-label="Dismiss"
         >
-          Dismiss
+          {code ? 'Dismiss' : '×'}
         </button>
       ) : null}
     </motion.div>

@@ -20,6 +20,7 @@ import type { PluginFolderAgentAction } from './design-files/pluginFolderActions
 import { getPluginFolderCandidates } from './design-files/pluginFolders';
 import { Icon } from './Icon';
 import { LiveArtifactBadges } from './LiveArtifactBadges';
+import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
@@ -1276,7 +1277,12 @@ function DfPreview({
         {rendersSketchJson ? (
           <SketchPreview projectId={projectId} file={file} />
         ) : file.kind === 'image' || file.kind === 'sketch' ? (
-          <img src={`${url}?v=${Math.round(file.mtime)}`} alt={file.name} />
+          <AuthenticatedProjectFileImage
+            projectId={projectId}
+            path={file.name}
+            alt={file.name}
+            rev={Math.round(file.mtime)}
+          />
         ) : file.kind === 'html' ? (
           <HtmlPreviewThumbnail projectId={projectId} file={file} />
         ) : file.kind === 'video' ? (
