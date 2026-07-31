@@ -14,6 +14,42 @@ export const RESIZE_HANDLES: ResizeHandle[] = [
   'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw',
 ];
 
+/**
+ * Host-space edge/corner band that must prefer resize over body-move.
+ * When the overlay drifts from the painted element, users aim at the visual
+ * edge and hit the movable body instead of the 14px handle — this slop makes
+ * the whole border act as resize.
+ */
+export const MANUAL_EDIT_RESIZE_EDGE_SLOP_PX = 14;
+
+/**
+ * Map a pointer position inside the host overlay box to a resize handle.
+ * Returns null for the interior (move zone).
+ */
+export function resizeHandleFromHostPoint(
+  localX: number,
+  localY: number,
+  width: number,
+  height: number,
+  slopPx: number = MANUAL_EDIT_RESIZE_EDGE_SLOP_PX,
+): ResizeHandle | null {
+  if (!(width > 0) || !(height > 0)) return null;
+  const slop = Math.max(4, Math.min(slopPx, width / 2, height / 2));
+  const onW = localX <= slop;
+  const onE = localX >= width - slop;
+  const onN = localY <= slop;
+  const onS = localY >= height - slop;
+  if (onN && onW) return 'nw';
+  if (onN && onE) return 'ne';
+  if (onS && onW) return 'sw';
+  if (onS && onE) return 'se';
+  if (onN) return 'n';
+  if (onS) return 's';
+  if (onW) return 'w';
+  if (onE) return 'e';
+  return null;
+}
+
 export type ResizeSessionStart = {
   startRect: ManualEditRect;
   startWidthPx: number;

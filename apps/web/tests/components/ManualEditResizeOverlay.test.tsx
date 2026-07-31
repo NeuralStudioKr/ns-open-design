@@ -29,6 +29,54 @@ function target(over: Partial<ManualEditTarget> = {}): ManualEditTarget {
 }
 
 describe('ManualEditResizeOverlay', () => {
+  it('edge body pointerdown resizes instead of moving', () => {
+    const onResizePreview = vi.fn();
+    const onResizeCommit = vi.fn();
+    const onMovePreview = vi.fn();
+    const onMoveCommit = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'absolute',
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+            left: '40px',
+            top: '60px',
+          },
+          rect: { x: 40, y: 60, width: 200, height: 100 },
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={onResizePreview}
+        onResizeCommit={onResizeCommit}
+        onResizeCancel={vi.fn()}
+        onMovePreview={onMovePreview}
+        onMoveCommit={onMoveCommit}
+        onMoveCancel={vi.fn()}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    // jsdom defaults getBoundingClientRect to zeros — pin the host box.
+    overlay.getBoundingClientRect = () => ({
+      x: 40, y: 60, width: 200, height: 100,
+      top: 60, left: 40, right: 240, bottom: 160,
+      toJSON: () => ({}),
+    }) as DOMRect;
+    // SE corner of the overlay body (not the handle button) — must resize.
+    fireEvent.pointerDown(overlay, { pointerId: 31, clientX: 238, clientY: 158, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 31, clientX: 278, clientY: 188, buttons: 1 });
+    fireEvent.pointerUp(window, { pointerId: 31, clientX: 278, clientY: 188 });
+
+    expect(onResizePreview).toHaveBeenCalled();
+    expect(onResizeCommit).toHaveBeenCalledTimes(1);
+    expect(onMovePreview).not.toHaveBeenCalled();
+    expect(onMoveCommit).not.toHaveBeenCalled();
+  });
+
   it('applies hostOffset so the overlay tracks a non-origin iframe', () => {
     const { getByTestId } = render(
       <ManualEditResizeOverlay

@@ -7,10 +7,15 @@
   outline: none;
 }
 
-.movable {
+/* Interactive whenever resize is available — not only when body-move is on.
+   Edge hit-testing on the body needs pointer events even for flow boxes. */
+.interactive {
   pointer-events: auto;
-  cursor: grab;
   touch-action: none;
+}
+
+.movable {
+  cursor: grab;
 }
 
 .moving {

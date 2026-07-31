@@ -27,6 +27,7 @@ import {
   aspectLockForTarget,
   computeResize,
   cursorForResizeHandle,
+  resizeHandleFromHostPoint,
   resizeResultToStyles,
   startAnchorFromTarget,
   startSizeFromTarget,
@@ -321,7 +322,13 @@ export function ManualEditResizeOverlay({
     height: Math.max(1, hostRect.height),
   };
 
-  const beginResize = (handle: ResizeHandle, event: ReactPointerEvent<HTMLButtonElement>) => {
+  const beginResize = (
+    handle: ResizeHandle,
+    event: Pick<
+      ReactPointerEvent<Element>,
+      'pointerId' | 'clientX' | 'clientY' | 'shiftKey' | 'preventDefault' | 'stopPropagation' | 'currentTarget'
+    >,
+  ) => {
     if (disabled || dragRef.current) return;
     // Capture-phase friendly: stop before the movable body can begin a move.
     event.preventDefault();
@@ -374,7 +381,7 @@ export function ManualEditResizeOverlay({
     setMoving(false);
     onResizeSessionChange?.(true);
     try {
-      event.currentTarget.setPointerCapture?.(event.pointerId);
+      (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
     } catch {
       // jsdom / older engines may lack pointer capture
     }
@@ -382,7 +389,6 @@ export function ManualEditResizeOverlay({
 
   const beginMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!movable || dragRef.current) return;
-    if ((event.target as HTMLElement | null)?.closest?.('[data-handle]')) return;
     event.preventDefault();
     event.stopPropagation();
     const pos = startPositionFromTarget(target);
@@ -426,10 +432,48 @@ export function ManualEditResizeOverlay({
     }
   };
 
+  /**
+   * Resize wins on the border band; move only in the clear interior.
+   * Box/element drift made users aim at the visual edge and hit the movable
+   * body — which felt like "resize always becomes move".
+   */
+  const onOverlayPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (disabled || dragRef.current) return;
+    if ((event.target as HTMLElement | null)?.closest?.('[data-handle]')) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const edge = resizeHandleFromHostPoint(
+      event.clientX - box.left,
+      event.clientY - box.top,
+      box.width,
+      box.height,
+    );
+    if (edge) {
+      beginResize(edge, event);
+      return;
+    }
+    if (movable) beginMove(event);
+  };
+
+  const onOverlayPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (disabled || dragRef.current || moving) return;
+    if ((event.target as HTMLElement | null)?.closest?.('[data-handle]')) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const edge = resizeHandleFromHostPoint(
+      event.clientX - box.left,
+      event.clientY - box.top,
+      box.width,
+      box.height,
+    );
+    event.currentTarget.style.cursor = edge
+      ? cursorForResizeHandle(edge)
+      : (movable ? 'grab' : 'default');
+  };
+
   return (
     <div
       className={[
         styles.overlay,
+        disabled ? '' : styles.interactive,
         movable ? styles.movable : '',
         moving ? styles.moving : '',
       ]
@@ -441,7 +485,8 @@ export function ManualEditResizeOverlay({
       data-movable={movable ? 'true' : 'false'}
       style={boxStyle}
       aria-hidden={disabled || undefined}
-      onPointerDown={movable ? beginMove : undefined}
+      onPointerDown={disabled ? undefined : onOverlayPointerDown}
+      onPointerMove={disabled ? undefined : onOverlayPointerMove}
     >
       {RESIZE_HANDLES.map((handle) => (
         <button
