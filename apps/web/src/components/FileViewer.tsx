@@ -7166,10 +7166,13 @@ function HtmlViewer({
       : null;
     if (frame) ro?.observe(frame);
     if (workspace) ro?.observe(workspace);
+    // Mobile/tablet workspace scrolls; hostOffset is scroll-dependent.
+    workspace?.addEventListener('scroll', schedule, { passive: true });
     window.addEventListener('resize', schedule);
     return () => {
       cancelAnimationFrame(raf);
       ro?.disconnect();
+      workspace?.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
     };
   }, [

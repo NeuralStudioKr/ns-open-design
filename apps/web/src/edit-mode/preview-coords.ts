@@ -36,7 +36,18 @@ export function measureIframeHostScale(frame: HTMLIFrameElement | null): number 
   return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
-/** Iframe top-left inside a host positioning ancestor (e.g. `.manual-edit-workspace`). */
+/**
+ * Iframe content-origin inside a host positioning ancestor
+ * (e.g. `.manual-edit-workspace`).
+ *
+ * Overlay / floating chrome use `position: absolute` under that host, so the
+ * returned point must be in the host's **content** coordinates (padding edge
+ * + scroll), not the visible viewport delta from `getBoundingClientRect`.
+ *
+ * Mobile/tablet preview sets `overflow: auto` on the workspace — ignoring
+ * `scrollLeft`/`scrollTop` shifts the drag box off the painted element, and
+ * edge hits then fall through to body-move instead of resize.
+ */
 export function measureIframeOffsetInHost(
   frame: HTMLIFrameElement | null,
   host: HTMLElement | null,
@@ -44,9 +55,12 @@ export function measureIframeOffsetInHost(
   if (!frame || !host) return { x: 0, y: 0 };
   const iframeBox = frame.getBoundingClientRect();
   const hostBox = host.getBoundingClientRect();
+  const scale = measureIframeHostScale(frame);
+  // Host border (clientLeft/Top) sits outside the absolute containing block.
+  // Iframe border is outside the content viewport — content rects start after it.
   return {
-    x: iframeBox.left - hostBox.left,
-    y: iframeBox.top - hostBox.top,
+    x: iframeBox.left - hostBox.left - host.clientLeft + host.scrollLeft + frame.clientLeft * scale,
+    y: iframeBox.top - hostBox.top - host.clientTop + host.scrollTop + frame.clientTop * scale,
   };
 }
 
