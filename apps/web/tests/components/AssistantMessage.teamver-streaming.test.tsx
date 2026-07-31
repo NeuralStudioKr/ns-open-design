@@ -318,6 +318,66 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
   });
 
+  it('keeps slide-edit completion copy after reload when artifact tags were stripped', () => {
+    // saveMessage sanitizer strips closed <artifact> blocks. After hard refresh
+    // the row still has producedFiles / preTurnFileNames but no artifact markup —
+    // the completion sentence must still render.
+    render(
+      <AssistantMessage
+        message={{
+          ...completedMessage(''),
+          content: '',
+          events: [{ kind: 'status', label: 'requesting' }],
+          producedFiles: [
+            {
+              name: 'deck.html',
+              path: 'deck.html',
+              size: 2048,
+              mtime: 1700000005,
+              kind: 'html',
+              mime: 'text/html',
+            },
+          ],
+          preTurnFileNames: ['deck.html'],
+        }}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Slide updates have been applied.')).toBeTruthy();
+    expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
+  });
+
+  it('keeps create completion copy after reload when artifact tags were stripped', () => {
+    render(
+      <AssistantMessage
+        message={{
+          ...completedMessage(''),
+          content: '',
+          events: [{ kind: 'status', label: 'requesting' }],
+          producedFiles: [
+            {
+              name: 'deck.html',
+              path: 'deck.html',
+              size: 2048,
+              mtime: 1700000005,
+              kind: 'html',
+              mime: 'text/html',
+            },
+          ],
+          preTurnFileNames: [],
+        }}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('The slide deck draft is ready.')).toBeTruthy();
+  });
+
   it('does not render a header-only assistant row superseded by a later reply', () => {
     const { container } = render(
       <AssistantMessage
