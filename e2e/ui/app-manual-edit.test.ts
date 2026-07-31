@@ -586,6 +586,44 @@ test('[P1] manual edit static promote Escape leaves source without absolute', as
     .toBe(true);
 });
 
+test('[P1] manual edit relative promote uses layout coords not relative left', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit relative promote');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-relative.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-relative.html`);
+  await openDesignFile(page, 'manual-edit-move-relative.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-relative.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="relative-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style || !/position:\s*absolute/.test(style)) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      // Layout start is ~margin(40)+relative(10)=50, +~48 drag ⇒ ≥80.
+      // Using style left:10 as start would land near 58 — that must fail.
+      return Number.isFinite(left) && left >= 80;
+    })
+    .toBe(true);
+});
+
 test('[P1] manual edit body-drag stays aligned and persists at 75% zoom', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);
@@ -1245,6 +1283,9 @@ function manualEditHtml(): string {
       </section>
       <div data-od-id="resize-box" data-od-label="Resize box" style="width:120px;height:80px;background:#d4d4d8;">Resize me</div>
       <div data-od-id="move-box" data-od-label="Move box" style="position:absolute;left:24px;top:24px;width:140px;height:90px;background:#93c5fd;">Move me</div>
+      <div data-od-id="relative-host" data-od-label="Relative host" style="position:relative;width:280px;height:140px;margin-top:120px;border:1px solid #e5e5e5;">
+        <div data-od-id="relative-box" data-od-label="Relative box" style="position:relative;left:10px;top:8px;margin-left:40px;width:100px;height:60px;background:#fca5a5;">Relative</div>
+      </div>
     </main>
   </body>
 </html>`;
