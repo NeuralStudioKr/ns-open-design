@@ -28,3 +28,16 @@ export function isNoOpManualEditStyleFlush(
 ): boolean {
   return Object.keys(diffManualEditStylePatch(baseSource, id, pendingStyles)).length === 0;
 }
+
+/** Source-backed style values for the keys that were part of a no-op flush. */
+export function pickManualEditSourceStylesForKeys(
+  baseSource: string,
+  id: string,
+  keys: Array<keyof ManualEditStyles>,
+): Partial<ManualEditStyles> {
+  const sourceStyles = readManualEditStyles(baseSource, id);
+  return keys.reduce<Partial<ManualEditStyles>>((acc, key) => {
+    acc[key] = sourceStyles[key] ?? '';
+    return acc;
+  }, {});
+}

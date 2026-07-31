@@ -5,6 +5,7 @@ import { applyManualEditPatch } from '../../src/edit-mode/source-patches';
 import {
   diffManualEditStylePatch,
   isNoOpManualEditStyleFlush,
+  pickManualEditSourceStylesForKeys,
 } from '../../src/edit-mode/manual-edit-style-batch';
 
 const baseSource = `<!doctype html><html><body>
@@ -62,5 +63,13 @@ describe('manual-edit-style-batch', () => {
     expect(diffManualEditStylePatch(colored.source, 'card', {
       color: '#ef4444',
     })).toEqual({});
+  });
+
+  it('picks source-backed values for no-op draft reconciliation keys', () => {
+    const html = sourceWithCardSize('120px', '80px');
+    expect(pickManualEditSourceStylesForKeys(html, 'card', ['width', 'height'])).toEqual({
+      width: '120px',
+      height: '80px',
+    });
   });
 });

@@ -7440,6 +7440,37 @@ function HtmlViewer({
     }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
   }
 
+  function reconcileManualEditDraftAfterNoOpFlush(pending: ManualEditPendingStyleSave) {
+    const base = sourceRef.current ?? '';
+    if (!base) return;
+    const keys = Object.keys(pending.styles) as Array<keyof ManualEditStyles>;
+    if (keys.length === 0) return;
+
+    const target = pending.id === '__body__'
+      ? null
+      : selectedManualEditTargetRef.current?.id === pending.id
+        ? selectedManualEditTargetRef.current
+        : manualEditTargets.find((item) => item.id === pending.id) ?? null;
+
+    const sourceStyles = target
+      ? inspectorManualEditStyles(target, base)
+      : readManualEditStyles(base, pending.id);
+    const resetStyles = keys.reduce<Partial<ManualEditStyles>>((acc, key) => {
+      acc[key] = sourceStyles[key] ?? '';
+      return acc;
+    }, {});
+
+    setManualEditResizeDraft(null);
+    previewStyleToIframe(pending.id, resetStyles, nextManualEditPreviewVersion());
+
+    if (!target || selectedManualEditTarget?.id === pending.id) {
+      setManualEditDraft((current) => ({
+        ...current,
+        styles: { ...current.styles, ...resetStyles },
+      }));
+    }
+  }
+
   async function flushManualEditStyleSave(options?: { force?: boolean }): Promise<boolean> {
     if (manualEditResizePausedRef.current && !options?.force) return true;
     // Boundary flushes (exit / select / text commit) must not lose a race with
@@ -7465,6 +7496,7 @@ function HtmlViewer({
     }
     const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles);
     if (Object.keys(effectiveStyles).length === 0) {
+      reconcileManualEditDraftAfterNoOpFlush(pending);
       return true;
     }
     const ok = await applyManualEdit(
