@@ -215,7 +215,6 @@ import {
 import {
   AUTO_CONTINUE_ENTRY_FROM,
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
-  AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
   extractAutoContinueContextFromAssistant,
   isAutoContinueIncompleteOutputPrompt,

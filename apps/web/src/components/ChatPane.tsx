@@ -2523,19 +2523,26 @@ function ChatRows({
       if (message.role !== 'assistant' || message.runStatus !== 'failed') continue;
       if (message.id === errorCardOwnerId) continue;
       const evs = message.events ?? [];
-      let errorEvent: {
+      type StatusErrorEvent = {
         kind: 'status';
         label: string;
         detail?: string;
         code?: string;
-      } | null = null;
-      let latestAnyError: typeof errorEvent = null;
+      };
+      let errorEvent: StatusErrorEvent | null = null;
+      let latestAnyError: StatusErrorEvent | null = null;
       for (let i = evs.length - 1; i >= 0; i -= 1) {
         const ev = evs[i];
         if (ev?.kind !== 'status' || ev.label !== 'error') continue;
-        if (!latestAnyError) latestAnyError = ev;
+        const statusError: StatusErrorEvent = {
+          kind: 'status',
+          label: ev.label,
+          detail: ev.detail,
+          code: ev.code,
+        };
+        if (!latestAnyError) latestAnyError = statusError;
         if (ev.code !== AUTO_CONTINUE_STATUS_CODE) {
-          errorEvent = ev;
+          errorEvent = statusError;
           break;
         }
       }
