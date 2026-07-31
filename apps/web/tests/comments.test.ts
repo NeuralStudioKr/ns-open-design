@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBoardCommentAttachments,
+  buildConcreteDeckPatchTemplateForVisualMarks,
   buildConcreteElementPatchTemplate,
+  buildConcretePatchTemplatesForCommentAttachments,
   buildVisualAnnotationAttachment,
   chatAttachmentsFromPreviewCommentFiles,
   commentSnapshotOverlayEqual,
@@ -831,6 +833,9 @@ describe('preview comment attachment helpers', () => {
 
     expect(buildConcreteElementPatchTemplate([visualOnly])).toBeNull();
     expect(elementPatchCoerceHintsFromCommentAttachments([visualOnly])).toEqual([]);
+    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('type="deck-patch"');
+    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('data-slide-index="1"');
+    expect(buildConcretePatchTemplatesForCommentAttachments([visualOnly])).toContain('type="deck-patch"');
 
     const visualWithRealTarget = buildVisualAnnotationAttachment({
       order: 1,

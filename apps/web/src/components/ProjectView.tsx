@@ -304,7 +304,7 @@ import {
   historyWithApiWebFetchContext,
 } from '../api-web-fetch-context';
 import {
-  buildConcreteElementPatchTemplate,
+  buildConcretePatchTemplatesForCommentAttachments,
   chatAttachmentsFromPreviewCommentFiles,
   commentsToAttachments,
   elementPatchCoerceHintsFromCommentAttachments,
@@ -330,6 +330,7 @@ import {
 import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import {
   maskManualEditTargets,
+  elementPatchReasonTargetsSyntheticVisualMark,
 } from '../edit-mode/source-patches';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
@@ -1168,7 +1169,7 @@ export function promptWithSlideCommentEditPatchInstruction(
     `${visiblePrompt}\n\n${slideCommentEditPatchInstruction(options.commentAttachmentCount)}`,
   ];
   const concreteTemplate = options.commentAttachments?.length
-    ? buildConcreteElementPatchTemplate(options.commentAttachments)
+    ? buildConcretePatchTemplatesForCommentAttachments(options.commentAttachments)
     : null;
   if (concreteTemplate) {
     parts.push(
@@ -1293,6 +1294,23 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     instructionText: input.instructionText,
   });
   if (!applied.ok) {
+    if (
+      elementPatchReasonTargetsSyntheticVisualMark(applied.reason)
+      && elementPatchBodyLooksLikeDeckPatch(resolvedBody)
+    ) {
+      console.warn('[element-patch] visual-mark target — falling back to deck-patch', {
+        fileName: input.fileName,
+        reason: applied.reason,
+      });
+      return await tryApplyDeckPatchAgainstCurrentDeck({
+        projectId: input.projectId,
+        fileName: input.fileName,
+        patchBody: resolvedBody,
+        allowedSlideIndexes: input.allowedSlideIndexes,
+        commentAttachments: input.commentAttachments,
+        instructionText: input.instructionText,
+      });
+    }
     console.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
     return { ok: false, code: 'deck_patch_merge_failed', reason: applied.reason };
   }
@@ -3362,7 +3380,7 @@ export function ProjectView({
                   : null;
               const concretePatchTemplate =
                 autoContinueCommentAttachments.length > 0
-                  ? buildConcreteElementPatchTemplate(autoContinueCommentAttachments)
+                  ? buildConcretePatchTemplatesForCommentAttachments(autoContinueCommentAttachments)
                   : null;
               const autoContinuePrompt = resolveAutoContinuePrompt({
                 commentAttachmentCount: autoContinueCommentAttachments.length,
@@ -6936,7 +6954,7 @@ export function ProjectView({
                 : null;
             const concretePatchTemplate =
               autoContinueCommentAttachments.length > 0
-                ? buildConcreteElementPatchTemplate(autoContinueCommentAttachments)
+                ? buildConcretePatchTemplatesForCommentAttachments(autoContinueCommentAttachments)
                 : null;
             const autoContinuePrompt = resolveAutoContinuePrompt({
               commentAttachmentCount: autoContinueCommentAttachments.length,
@@ -8087,7 +8105,7 @@ export function ProjectView({
                   ).trim();
                   const concretePatchTemplate =
                     autoContinueCommentAttachments.length > 0
-                      ? buildConcreteElementPatchTemplate(autoContinueCommentAttachments)
+                      ? buildConcretePatchTemplatesForCommentAttachments(autoContinueCommentAttachments)
                       : null;
                   const scopedFailureReason =
                     terminalPersistResult?.kind === 'skipped-incomplete'

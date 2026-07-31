@@ -1155,4 +1155,25 @@ describe('manual edit source patches', () => {
     if (!result.ok) return;
     expect(result.source).toContain('<strong>뉴럴스튜디오㈜</strong>');
   });
+
+  it('resolves synthetic visual-mark ids to the scoped slide section', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>One</h1></section>
+<section class="slide" data-slide-index="1"><p data-od-id="p1">Marked</p></section>
+</body></html>`;
+    const result = applyManualEditPatch(
+      deck,
+      {
+        kind: 'set-style',
+        id: 'visual-mark-ms8hq9qu-drawing-2026-07-31T05-17-03-125Z-png',
+        styles: { fontSize: '32px' },
+      },
+      { slideIndex: 1 },
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('font-size: 32px');
+    expect(result.source).toContain('Marked');
+  });
 });

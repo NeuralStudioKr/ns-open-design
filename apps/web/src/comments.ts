@@ -19,6 +19,7 @@ import {
   looksLikeRemovalCommentRequest,
   looksLikeStyleOnlyCommentRequest,
 } from './edit-mode/comment-edit-intent';
+import { isSyntheticVisualMarkTargetId } from './edit-mode/source-patches';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 
 export interface PreviewCommentSnapshot {
@@ -855,6 +856,7 @@ export function buildConcreteElementPatchTemplate(
     const targetId = String(item.elementId || '').trim();
     if (!targetId) continue;
     if (isUnsafeElementPatchTargetId(targetId)) continue;
+    if (isSyntheticVisualMarkTargetId(targetId)) continue;
     const slideIndex = Math.floor(item.slideIndex);
     const removal = looksLikeRemovalCommentRequest(item.comment || '');
     const layoutOnly = !removal && looksLikeMarkupLayoutCommentRequest(item.comment || '');
@@ -885,6 +887,42 @@ export function buildConcreteElementPatchTemplate(
   return blocks.length > 0 ? blocks.join('\n') : null;
 }
 
+/** deck-patch template for region-only visual marks (no concrete DOM target id). */
+export function buildConcreteDeckPatchTemplateForVisualMarks(
+  commentAttachments: readonly ChatCommentAttachment[],
+): string | null {
+  const blocks: string[] = [];
+  for (const item of commentAttachments) {
+    if (!isScreenshotOnlyVisualCommentTarget(item)) continue;
+    if (
+      typeof item.slideIndex !== 'number'
+      || !Number.isFinite(item.slideIndex)
+      || item.slideIndex < 0
+    ) {
+      continue;
+    }
+    const slideIndex = Math.floor(item.slideIndex);
+    blocks.push(
+      '<artifact type="deck-patch" identifier="deck">',
+      `  <section class="slide" data-slide-index="${slideIndex}">`,
+      '    <!-- Replace this slide section to satisfy the marked region and comment -->',
+      '  </section>',
+      '</artifact>',
+    );
+  }
+  return blocks.length > 0 ? blocks.join('\n') : null;
+}
+
+export function buildConcretePatchTemplatesForCommentAttachments(
+  commentAttachments: readonly ChatCommentAttachment[],
+): string | null {
+  const parts = [
+    buildConcreteElementPatchTemplate(commentAttachments),
+    buildConcreteDeckPatchTemplateForVisualMarks(commentAttachments),
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join('\n\n') : null;
+}
+
 export function elementPatchCoerceHintsFromCommentAttachments(
   commentAttachments: readonly ChatCommentAttachment[],
 ): Array<{ targetId: string; slideIndex: number }> {
@@ -901,6 +939,7 @@ export function elementPatchCoerceHintsFromCommentAttachments(
     const targetId = String(item.elementId || '').trim();
     if (!targetId) continue;
     if (isUnsafeElementPatchTargetId(targetId)) continue;
+    if (isSyntheticVisualMarkTargetId(targetId)) continue;
     hints.push({ targetId, slideIndex: Math.floor(item.slideIndex) });
   }
   return hints;

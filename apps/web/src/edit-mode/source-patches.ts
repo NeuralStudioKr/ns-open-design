@@ -211,6 +211,17 @@ export function isEphemeralGeneratedPathId(id: string | null | undefined): boole
   return /^path-\d+(?:-\d+)*$/.test(String(id || '').trim());
 }
 
+/** Synthetic id for region-only draw marks — not persisted on disk. */
+export function isSyntheticVisualMarkTargetId(id: string | null | undefined): boolean {
+  return /^visual-mark-/i.test(String(id || '').trim());
+}
+
+export function elementPatchReasonTargetsSyntheticVisualMark(reason: string): boolean {
+  const match = /^Target not found:\s*(.+)$/i.exec(String(reason || '').trim());
+  return match ? isSyntheticVisualMarkTargetId(match[1]) : false;
+}
+
+
 /** Pull `path-4` out of `dom:[data-od-id="path-4"]` / `[data-od-id="path-4"]`. */
 export function extractIdentityFromAttrSelectorId(idOrSelector: string): string | null {
   const raw = String(idOrSelector || '').trim();
@@ -507,6 +518,29 @@ function findEditableElement(
   const root = findScopedRoot(doc, scope);
   if (!root) return null;
   if (id === '__body__') return root.nodeType === 9 ? (root as Document).body : root as Element;
+  if (
+    isSyntheticVisualMarkTargetId(id)
+    && typeof scope.slideIndex === 'number'
+    && Number.isFinite(scope.slideIndex)
+    && scope.slideIndex >= 0
+  ) {
+    const slideRoot = root.nodeType === 9 ? findScopedRoot(doc, scope) : root;
+    if (slideRoot) {
+      if (hint) {
+        const scopedRoot = slideRoot.nodeType === 9 ? slideRoot as Document : slideRoot as Element;
+        const bySelector = findEditableElementBySelector(
+          doc,
+          scopedRoot,
+          hint.selector,
+          scope,
+        );
+        if (bySelector) return bySelector;
+        const byHint = findElementByHint(doc, scope, hint);
+        if (byHint) return byHint;
+      }
+      return slideRoot.nodeType === 9 ? (slideRoot as Document).body : slideRoot as Element;
+    }
+  }
   const domFallback = findElementByDomSelector(doc, root, id, scope);
   if (domFallback) return domFallback;
   const identityFromAttr = extractIdentityFromAttrSelectorId(id);
