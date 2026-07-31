@@ -7,7 +7,7 @@ import {
 } from '../../src/runtime/selected-deck-template';
 
 describe('selected-deck-template runtime helpers', () => {
-  it('always keeps the selected deck template first in per-turn routing', () => {
+  it('keeps the selected deck template first in skillIds without polluting pluginIds', () => {
     const enriched = enrichChatSendMetaWithProjectDeckTemplate(
       {
         skillIds: ['example-simple-deck', 'html-ppt-hermes'],
@@ -24,7 +24,7 @@ describe('selected-deck-template runtime helpers', () => {
     );
 
     expect(enriched?.skillIds).toEqual(['html-ppt-hermes', 'example-simple-deck']);
-    expect(enriched?.context?.pluginIds).toEqual(['html-ppt-hermes', 'example-simple-deck']);
+    expect(enriched?.context?.pluginIds).toEqual(['example-simple-deck']);
     expect(enriched?.context?.skillIds).toEqual(['html-ppt-hermes', 'example-simple-deck']);
   });
 

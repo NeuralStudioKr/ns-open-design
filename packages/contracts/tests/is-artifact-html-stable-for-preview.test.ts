@@ -29,6 +29,19 @@ describe("isArtifactHtmlStableForPreview", () => {
     expect(isArtifactHtmlStableForPreview(html)).toBe(true);
   });
 
+  it("ignores <script>/<style> string literals inside closed raw blocks", () => {
+    const html = `<!doctype html><html><head>
+<style>:root { --bg: #fff; }</style>
+</head><body>
+<section class="slide">A</section>
+<script>
+  const tip = "<script>alert(1)</script>";
+  const cssTip = "<style>.x{}</style>";
+</script>
+</body></html>`;
+    expect(isArtifactHtmlStableForPreview(html)).toBe(true);
+  });
+
   it("rejects documents with unclosed style or script tags", () => {
     expect(
       isArtifactHtmlStableForPreview(

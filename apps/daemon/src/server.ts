@@ -123,6 +123,7 @@ import {
 } from './skills.js';
 import { loadPluginLocalSkill } from './plugins/local-skill.js';
 import {
+  preferSelectedDeckTemplateSkill,
   readSelectedDeckTemplateFromMetadata,
   wrapSelectedDeckTemplateSkillBody,
 } from './prompts/selected-deck-template.js';
@@ -11818,12 +11819,15 @@ export async function startServer({
       }
     }
 
+    // Selected visual template (metadata) owns the primary skill body for
+    // Teamver slide-only creates. Scenario snapshot SKILL.md is secondary —
+    // overwriting with example-simple-deck drops Hermes/Zhangzara/etc.
+    const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);
+
     // Stage A of plugin-driven-flow-plan: when the run is bound to a
     // plugin snapshot, prefer the plugin's local SKILL.md (declared via
     // `od.context.skills[{ path: './SKILL.md' }]`) over the global
-    // skill. Without this override the agent loses the plugin's
-    // template / token / layout rules and falls back to generic prompt
-    // behaviour even though the user explicitly applied the plugin.
+    // skill — unless a selected deck template already owns the visual contract.
     if (
       typeof appliedPluginSnapshotId === 'string'
       && appliedPluginSnapshotId.length > 0
@@ -11840,10 +11844,19 @@ export async function startServer({
             const { loadPluginLocalSkill } = await import('./plugins/local-skill.js');
             const local = await loadPluginLocalSkill(plugin);
             if (local) {
-              skillBody = local.body + composedSkillBlocks;
-              skillName = local.name;
-              activeSkillDir = local.dir;
-              registerSkillDir(local.dir);
+              if (
+                !selectedDeckTemplate
+                || snap.pluginId === selectedDeckTemplate.id
+              ) {
+                skillBody = local.body + composedSkillBlocks;
+                skillName = local.name;
+                activeSkillDir = local.dir;
+                registerSkillDir(local.dir);
+                registerPrimarySkillMode('deck');
+              } else {
+                // Scenario snapshot is secondary when a visual template is selected.
+                registerSkillDir(local.dir);
+              }
             }
           }
         }
@@ -11854,16 +11867,14 @@ export async function startServer({
       }
     }
 
-    const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);
-    if (!skillBody?.trim() && selectedDeckTemplate) {
+    if (selectedDeckTemplate) {
+      let templateBody: string | null = null;
       try {
         const plugin = getInstalledPlugin(db, selectedDeckTemplate.id);
         if (plugin) {
           const local = await loadPluginLocalSkill(plugin);
           if (local?.body?.trim()) {
-            skillBody = local.body;
-            skillName = selectedDeckTemplate.title ?? local.name;
-            registerPrimarySkillMode('deck');
+            templateBody = local.body;
             registerSkillDir(local.dir);
           }
         }
@@ -11872,21 +11883,22 @@ export async function startServer({
           `[plugins] selectedDeckTemplate load failed: ${err?.message ?? err}`,
         );
       }
-      if (!skillBody?.trim() && selectedDeckTemplate.title) {
-        skillBody = [
-          '# Selected visual template',
-          '',
-          `Template: ${selectedDeckTemplate.title}`,
-          "Match this selected deck template's visible style as closely as possible.",
-        ].join('\n');
-        skillName = selectedDeckTemplate.title;
+      const preferred = preferSelectedDeckTemplateSkill({
+        selected: selectedDeckTemplate,
+        templateBody,
+        currentSkillBody: skillBody,
+        currentSkillName: skillName,
+      });
+      if (preferred) {
+        skillBody = preferred.skillBody;
+        skillName = preferred.skillName;
         registerPrimarySkillMode('deck');
       }
-    }
-    if (skillBody?.trim() && skillMode === 'deck') {
+    } else if (skillBody?.trim() && skillMode === 'deck') {
+      // No selected template — keep legacy deck skill wrap for scenario-only runs.
       skillBody = wrapSelectedDeckTemplateSkillBody(
         skillBody,
-        skillName?.trim() || selectedDeckTemplate?.title || 'selected deck template',
+        skillName?.trim() || 'selected deck template',
       );
     }
 

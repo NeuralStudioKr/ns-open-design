@@ -35,3 +35,34 @@ export function wrapSelectedDeckTemplateSkillBody(
     skillBody.trim(),
   ].join('\n');
 }
+
+export function selectedDeckTemplateTitleStub(templateTitle: string): string {
+  return [
+    '# Selected visual template',
+    '',
+    `Template: ${templateTitle.trim()}`,
+    "Match this selected deck template's visible style as closely as possible.",
+  ].join('\n');
+}
+
+/**
+ * When project metadata names a visual template, that body owns the primary
+ * skill slot. Scenario/plugin snapshot skills must not overwrite it.
+ */
+export function preferSelectedDeckTemplateSkill(input: {
+  selected: SelectedDeckTemplateMetadata | null;
+  templateBody?: string | null;
+  currentSkillBody?: string | null;
+  currentSkillName?: string | null;
+}): { skillBody: string; skillName: string } | null {
+  const selected = input.selected;
+  if (!selected) return null;
+  const templateBody = input.templateBody?.trim()
+    || (selected.title ? selectedDeckTemplateTitleStub(selected.title) : '');
+  if (!templateBody) return null;
+  const title = selected.title?.trim() || input.currentSkillName?.trim() || selected.id;
+  return {
+    skillBody: wrapSelectedDeckTemplateSkillBody(templateBody, title),
+    skillName: title,
+  };
+}

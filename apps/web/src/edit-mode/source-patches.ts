@@ -1237,7 +1237,9 @@ function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): vo
   for (const [name, value] of Object.entries(styles)) {
     const cssName = camelToKebab(name);
     if (typeof value !== 'string' || value.trim() === '') el.style.removeProperty(cssName);
-    else el.style.setProperty(cssName, value.trim());
+    // Match live preview (`!important`) so brand-kit / artifact CSS rules
+    // cannot silently win after freeze remount drops postMessage styles.
+    else el.style.setProperty(cssName, value.trim(), 'important');
   }
 }
 
@@ -1257,6 +1259,9 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
   // (`<style>…</style><h1>…</h1>`, badge + title, etc.). Strict
   // "exactly one root" rejected those as deck_patch_merge_failed even
   // when a clear primary replacement was present — salvage first.
+  const styleSiblings = Array.from(template.content.children).filter(
+    (candidate) => candidate.tagName === 'STYLE',
+  );
   const next = resolveSingleRootReplacementElement(doc, el, template);
   if (!next) {
     return { ok: false, error: 'Replacement HTML must contain exactly one root element.' };
@@ -1268,6 +1273,15 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
     next.setAttribute('data-od-edit', el.getAttribute('data-od-edit') ?? '');
   }
   el.replaceWith(next);
+  // Style siblings were dropped by single-root salvage — keep their rules
+  // so "make it stand out" edits that ship class + <style> still paint.
+  const styleHost = doc.head ?? doc.documentElement ?? doc.body;
+  if (styleHost) {
+    for (const style of styleSiblings) {
+      if (next === style || next.contains(style)) continue;
+      styleHost.appendChild(doc.importNode(style, true));
+    }
+  }
   return { ok: true };
 }
 

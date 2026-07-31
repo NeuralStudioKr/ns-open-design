@@ -4894,8 +4894,8 @@ export function ProjectView({
       skillName = selectedTemplate.title;
       skillMode = 'deck';
     }
-    if (skillBody?.trim() && skillMode === 'deck') {
-      const title = skillName?.trim() || selectedTemplate?.title || 'selected deck template';
+    if (skillBody?.trim() && selectedTemplate) {
+      const title = skillName?.trim() || selectedTemplate.title || 'selected deck template';
       skillBody = wrapSelectedDeckTemplateSkillBody(skillBody, title);
     }
     if (designSystemIdOverride ?? project.designSystemId) {

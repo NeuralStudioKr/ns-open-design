@@ -80,6 +80,7 @@ import {
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
+  buildSlideOnlyDeckTemplateCreateBinding,
   canvasCreateSlidesTurnMeta,
   driveCreateSlidesSourceBrief,
   readTeamverCreateSlidesLaunchFromUrl,
@@ -1699,10 +1700,23 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           );
           const designSystemIdForRun =
             currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null;
+          const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
+            selectedCanvasSlideTemplate,
+            { slideOnlyMvp },
+          );
+          const projectPatch: Parameters<typeof patchProject>[1] = {};
           if (designSystemIdForRun && !currentDesignSystemId) {
-            void patchProject(id, { designSystemId: designSystemIdForRun }).then((patched) => {
-              if (patched) onActiveDesignSystemChange?.(patched);
-            });
+            projectPatch.designSystemId = designSystemIdForRun;
+          }
+          if (templateBinding.projectMetadata.selectedDeckTemplateId) {
+            projectPatch.metadata = {
+              ...(projectMetadata ?? {}),
+              ...templateBinding.projectMetadata,
+            };
+          }
+          if (Object.keys(projectPatch).length > 0) {
+            const patched = await patchProject(id, projectPatch);
+            if (patched) onActiveDesignSystemChange?.(patched);
           }
           const sourceBrief = canvasCreateSlidesSourceBrief(handoff);
           consumeTeamverCanvasLaunchHandoff();
@@ -1727,17 +1741,20 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             {
               ...baseMeta,
               ...canvasMeta,
-              pluginInputs: canvasCreateSlidesPluginInputs(
-                handoff.title?.trim()
-                  || handoff.threadTitle?.trim()
-                  || attachments[0]?.name
-                  || attachments[0]?.path
-                  || null,
-                selectedCanvasSlideTemplate.title,
-                sourceBrief,
-                promptForRun,
-                canvasSlideQuickSettings,
-              ),
+              pluginInputs: {
+                ...canvasCreateSlidesPluginInputs(
+                  handoff.title?.trim()
+                    || handoff.threadTitle?.trim()
+                    || attachments[0]?.name
+                    || attachments[0]?.path
+                    || null,
+                  selectedCanvasSlideTemplate.title,
+                  sourceBrief,
+                  promptForRun,
+                  canvasSlideQuickSettings,
+                ),
+                ...templateBinding.pluginInputsPatch,
+              },
               context: {
                 ...(baseMeta?.context ?? {}),
                 ...canvasMeta.context,
@@ -1770,10 +1787,23 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         );
         const designSystemIdForRun =
           currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null;
+        const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
+          selectedCanvasSlideTemplate,
+          { slideOnlyMvp },
+        );
+        const projectPatch: Parameters<typeof patchProject>[1] = {};
         if (designSystemIdForRun && !currentDesignSystemId) {
-          void patchProject(id, { designSystemId: designSystemIdForRun }).then((patched) => {
-            if (patched) onActiveDesignSystemChange?.(patched);
-          });
+          projectPatch.designSystemId = designSystemIdForRun;
+        }
+        if (templateBinding.projectMetadata.selectedDeckTemplateId) {
+          projectPatch.metadata = {
+            ...(projectMetadata ?? {}),
+            ...templateBinding.projectMetadata,
+          };
+        }
+        if (Object.keys(projectPatch).length > 0) {
+          const patched = await patchProject(id, projectPatch);
+          if (patched) onActiveDesignSystemChange?.(patched);
         }
         const sourceBrief = driveCreateSlidesSourceBrief(asset);
         consumeTeamverDriveLaunchHandoff();
@@ -1799,20 +1829,24 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             {
               ...baseMeta,
               ...canvasMeta,
-              pluginInputs: canvasCreateSlidesPluginInputs(
-                asset.filename ?? asset.assetId,
-                selectedCanvasSlideTemplate.title,
-                sourceBrief,
-                promptForRun,
-                canvasSlideQuickSettings,
-              ),
+              pluginInputs: {
+                ...canvasCreateSlidesPluginInputs(
+                  asset.filename ?? asset.assetId,
+                  selectedCanvasSlideTemplate.title,
+                  sourceBrief,
+                  promptForRun,
+                  canvasSlideQuickSettings,
+                ),
+                ...templateBinding.pluginInputsPatch,
+              },
               context: {
                 ...(baseMeta?.context ?? {}),
                 ...canvasMeta.context,
               },
             },
           );
-        }      } catch (err) {
+        }
+      } catch (err) {
         if (isMainSsoUserMismatchError(err)) {
           void beginMainSsoMismatchRecovery();
           setCanvasSlideLaunchError(null);

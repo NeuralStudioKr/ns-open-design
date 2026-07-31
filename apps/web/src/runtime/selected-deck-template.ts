@@ -23,9 +23,10 @@ export function selectedDeckTemplateMetadata(
 }
 
 /**
- * Keep the project's selected deck template first in per-turn skill/plugin
- * routing so API-mode system prompts and daemon ad-hoc skills cannot be
- * shadowed by the scenario plugin id from run context.
+ * Keep the project's selected deck template first in per-turn skillIds so
+ * API-mode / daemon ad-hoc skills cannot be shadowed by the scenario plugin.
+ * Do not inject the visual template into context.pluginIds — that slot is for
+ * the deck scenario / applied plugin only.
  */
 export function enrichChatSendMetaWithProjectDeckTemplate<T extends DeckTemplateSendMeta>(
   meta: T | undefined,
@@ -34,20 +35,20 @@ export function enrichChatSendMetaWithProjectDeckTemplate<T extends DeckTemplate
   const selected = selectedDeckTemplateMetadata(metadata);
   if (!selected) return meta;
   const existingSkillIds = meta?.skillIds ?? [];
-  const priorPluginIds = meta?.context?.pluginIds ?? [];
+  const priorPluginIds = (meta?.context?.pluginIds ?? []).filter((id) => id !== selected.id);
   const priorContextSkillIds = meta?.context?.skillIds ?? [];
   const skillIds = [selected.id, ...existingSkillIds.filter((id) => id !== selected.id)];
-  const pluginIds = [selected.id, ...priorPluginIds.filter((id) => id !== selected.id)];
   const contextSkillIds = [
     selected.id,
     ...priorContextSkillIds.filter((id) => id !== selected.id),
   ];
+  const { pluginIds: _dropTemplateFromPlugins, ...restContext } = meta?.context ?? {};
   return {
     ...(meta ?? ({} as T)),
     skillIds,
     context: {
-      ...meta?.context,
-      pluginIds,
+      ...restContext,
+      ...(priorPluginIds.length > 0 ? { pluginIds: priorPluginIds } : {}),
       skillIds: contextSkillIds,
     },
   };

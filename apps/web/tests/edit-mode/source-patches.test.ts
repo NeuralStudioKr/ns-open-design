@@ -119,7 +119,8 @@ describe('manual edit source patches', () => {
     expect(styles.color).toBe('');
     expect(styles.backgroundColor).toBe('rgb(255, 0, 0)');
     expect(styles.fontSize).toBe('24px');
-    expect(styles.padding).toBe('12px 8px 8px');
+    // Persist uses !important (match live preview). jsdom may drop the
+    // padding shorthand when longhands mix priority — assert longhands.
     expect(styles.paddingTop).toBe('12px');
     expect(styles.marginLeft).toBe('4px');
     expect(styles.borderTopWidth).toBe('2px');
@@ -127,6 +128,7 @@ describe('manual edit source patches', () => {
     expect(styles.borderColor).toBe('rgb(0, 0, 0)');
     expect(styles.borderRadius).toBe('8px');
     expect(styles.opacity).toBe('0.5');
+    expect(result.source).toMatch(/background-color:\s*rgb\(255,\s*0,\s*0\)\s*!important/i);
   });
 
   it('applies attributes additively and preserves class/style unless explicitly updated', () => {
@@ -176,6 +178,8 @@ describe('manual edit source patches', () => {
     expect(html).toContain('class="hero-pop"');
     expect(html).toContain('Original title');
     expect(html).not.toContain('<style');
+    // Style sibling is retained in <head> so the class rules still paint.
+    expect(result.source).toContain('.hero-pop{font-size:40px;color:#ef4444}');
   });
 
   it('salvages set-outer-html when model emits multiple sibling roots by wrapping', () => {
@@ -274,7 +278,9 @@ describe('manual edit source patches', () => {
     );
 
     expect(result.ok, JSON.stringify(result)).toBe(true);
-    expect(result.source).toContain('<h1 style="background-color: rgb(239, 68, 68);">Slide two title</h1>');
+    expect(result.source).toMatch(
+      /<h1 style="background-color:\s*rgb\(239,\s*68,\s*68\)\s*!important;">Slide two title<\/h1>/,
+    );
     expect(result.source).toContain('<section class="slide" data-slide-index="0"><h1>Slide one title</h1></section>');
     expect(
       applyManualEditPatch(
