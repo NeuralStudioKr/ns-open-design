@@ -8,6 +8,7 @@ import {
   isProjectRawFileKnownMissing,
   markProjectRawFileMissing,
 } from '../utils/projectFileFetchCache';
+import { normalizeFetchedImageBlob } from '../utils/imageBlobNormalize';
 
 const FETCH_RETRY_DELAYS_MS = [0, 250, 800] as const;
 
@@ -15,15 +16,20 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isUsableImageBlob(blob: Blob): boolean {
-  if (blob.size <= 0) return false;
-  const mime = String(blob.type || '').toLowerCase();
-  // Reject HTML/JSON error bodies that somehow returned 200 — those
-  // surface as broken <img> alt text in the chat thumbnail.
-  if (mime && !mime.startsWith('image/') && mime !== 'application/octet-stream') {
-    return false;
+function revokeObjectUrl(url: string | null): void {
+  if (url) URL.revokeObjectURL(url);
+}
+
+async function readResponseImageBlob(resp: Response): Promise<Blob> {
+  if (typeof resp.arrayBuffer === 'function') {
+    return new Blob([await resp.arrayBuffer()], {
+      type: resp.headers?.get?.('content-type') || '',
+    });
   }
-  return true;
+  if (typeof resp.blob === 'function') {
+    return await resp.blob();
+  }
+  throw new Error('response body unavailable');
 }
 
 /**
@@ -40,12 +46,15 @@ export async function loadAuthenticatedProjectFileBlob(
     delaysMs?: readonly number[];
     fetchDaemon?: typeof fetchTeamverDaemon;
     waitForPrefix?: typeof waitForTeamverProjectStoragePrefix;
+    /** Skip session 404 cache — use when the file is listed in the project index. */
+    trustExists?: boolean;
   },
 ): Promise<Blob | null> {
   const id = projectId.trim();
   const path = filePath.trim();
   if (!id || !path) return null;
-  if (isProjectRawFileKnownMissing(id, path)) return null;
+  if (!options?.trustExists && isProjectRawFileKnownMissing(id, path)) return null;
+  if (options?.trustExists) clearProjectRawFileMissing(id, path);
 
   const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
   const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
@@ -70,8 +79,9 @@ export async function loadAuthenticatedProjectFileBlob(
         return null;
       }
       if (!resp.ok) continue;
-      const blob = await resp.blob();
-      if (!isUsableImageBlob(blob)) continue;
+      const rawBlob = await readResponseImageBlob(resp);
+      const blob = await normalizeFetchedImageBlob(rawBlob);
+      if (!blob) continue;
       clearProjectRawFileMissing(id, path);
       return blob;
     } catch {
@@ -91,36 +101,44 @@ export function useAuthenticatedProjectFileObjectUrl(
   filePath: string | null | undefined,
   /** Bust in-memory blob cache when the backing file changes (e.g. mtime). */
   rev?: string | number | null,
+  trustExists?: boolean,
 ): string | null {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const path = String(filePath || '').trim();
     if (!projectId || !path) {
-      setObjectUrl(null);
+      setObjectUrl((prev) => {
+        revokeObjectUrl(prev);
+        return null;
+      });
       return;
     }
 
     let cancelled = false;
-    let revokeUrl: string | null = null;
 
     void (async () => {
-      const blob = await loadAuthenticatedProjectFileBlob(projectId, path);
+      const blob = await loadAuthenticatedProjectFileBlob(projectId, path, { trustExists });
       if (cancelled || !blob) return;
-      revokeUrl = URL.createObjectURL(blob);
+      const nextUrl = URL.createObjectURL(blob);
       if (cancelled) {
-        URL.revokeObjectURL(revokeUrl);
+        revokeObjectUrl(nextUrl);
         return;
       }
-      setObjectUrl(revokeUrl);
+      setObjectUrl((prev) => {
+        revokeObjectUrl(prev);
+        return nextUrl;
+      });
     })();
 
     return () => {
       cancelled = true;
-      if (revokeUrl) URL.revokeObjectURL(revokeUrl);
-      setObjectUrl(null);
+      setObjectUrl((prev) => {
+        revokeObjectUrl(prev);
+        return null;
+      });
     };
-  }, [filePath, projectId, rev]);
+  }, [filePath, projectId, rev, trustExists]);
 
   return objectUrl;
 }

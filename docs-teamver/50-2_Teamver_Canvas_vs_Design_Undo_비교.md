@@ -113,7 +113,7 @@ flowchart TB
 | **새로고침** | 서버 목록 재조회 → 스택 복원 가능 |
 | **스택 깊이** | **파일당 30개** (기본, `FILE_REVISION_RETENTION_LIMIT_DEFAULT`) — `OD_FILE_REVISION_RETENTION_LIMIT` env로 조정; 초과 시 oldest prune (DB + 스냅샷 삭제) |
 | **서버 부하 (undo 시)** | restore마다 `writeProjectFile` + 스냅샷 read (gzip diff chain) |
-| **클라이언트 최적화 (2026-07-30)** | `revision-content-cache.ts` — restore 시 raw refetch 생략, save/restore 직후 reconcile skip, 인접 revision prefetch |
+| **클라이언트 최적화 (2026-07-30)** | `revision-content-cache.ts` — undo/redo 인접 revision만 LRU 캐시(기본 8개·16MB/파일·항목 4MB 상한); restore 시 refetch 생략, 인접 prefetch는 `byteSize`로 대용량 스킵 |
 | **Phase A fast undo (2026-07-31)** | 캐시 hit 시 프리뷰 즉시 갱신 + `POST restore` 백그라운드; push 시 parent snapshot 캐시; restore 실패 시 스택 invalidate |
 | **통합 편집 경로** | manual_edit, inspect, agent_element_patch, agent_deck_patch, … 동일 스택 |
 | **CLI** | `od project revisions list|restore` (UI/CLI dual-track) |

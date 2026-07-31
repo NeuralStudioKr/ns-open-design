@@ -396,6 +396,8 @@ function ChatArtifactPreview({
         projectId={projectId}
         path={file.name}
         alt=""
+        rev={Math.round(file.mtime)}
+        trustExists
       />
     );
   }
@@ -3764,7 +3766,8 @@ function UserMessageImpl({
                       projectId={projectId}
                       path={a.path}
                       alt={a.name}
-                      fetchEnabled={projectFilePathExists(projectFileNames, a.path)}
+                      fetchEnabled={Boolean(a.path)}
+                      trustExists={projectFilePathExists(projectFileNames, a.path)}
                     />
                   ) : (
                     <Icon name="file" size={14} />
@@ -3814,7 +3817,8 @@ function UserMessageImpl({
                       projectId={projectId}
                       path={path}
                       alt={label}
-                      fetchEnabled={projectFilePathExists(projectFileNames, path)}
+                      fetchEnabled={Boolean(path)}
+                      trustExists={projectFilePathExists(projectFileNames, path)}
                     />
                   ) : (
                     <Icon name="file" size={14} />
