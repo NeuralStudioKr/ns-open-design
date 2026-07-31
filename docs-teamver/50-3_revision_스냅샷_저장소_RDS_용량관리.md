@@ -15,13 +15,13 @@
 | design-api RDS (`teamver_design_staging` 등)와 관계? | **무관** — registry(제목·권한·`s3_prefix`)만 있고 undo 히스토리는 없음 |
 | 프로젝트 HTML 본문은? | **S3 SSOT** + 작업 중 **scratch** (`OD_PROJECT_STORAGE=s3` 시) |
 | 디스크 0? | 아님 — 바이트가 **프로젝트 `.od/revisions/`** 대신 **DaemonDb**로 모임 |
-| 용량 상한? | 파일당 retention + 주기 GC + (sqlite 모드) 선택적 VACUUM |
+| 용량 상한? | 파일당 retention + 주기 GC (Postgres orphan 정리) |
 
 ---
 
 ## 2. 저장층 5분면 (RDS 포함)
 
-Teamver Design은 “DB가 하나”가 아니라 **역할별 저장소**가 나뉜다. revision undo는 **④ DaemonDb**에 속한다.
+Teamver Design은 “DB가 하나”가 아니라 **역할별 저장소**가 나뉜다. revision undo는 **② RDS DaemonDb**에 속한다.
 
 ```text
 [브라우저 / design-api BFF]
@@ -33,15 +33,15 @@ Teamver Design은 “DB가 하나”가 아니라 **역할별 저장소**가 나
         │
         ├─ ② RDS — DaemonDb database (같은 RDS 인스턴스, DB 이름만 분리)
         │     teamver_design_daemon_staging | teamver_design_daemon_production
-        │     projects, conversations, messages, file_revisions, …
-        │     OD_DAEMON_DB=postgres 시 여기가 SSOT
-        │     ※ file_revision_snapshots BLOB (sqlite 모드, Postgres BYTEA는 후속)
+        │     projects, conversations, messages,
+        │     file_revisions, file_revision_snapshots (BYTEA)
+        │     OD_DAEMON_DB=postgres 시 SSOT — 스키마 v8 마이그레이션
         │
         └─ open-design-daemon (EC2 pod)
               │
               ├─ ③ OD_DATA_DIR (노드 로컬)
-              │     app.sqlite — OD_DAEMON_DB=sqlite 일 때 DaemonDb 파일
-              │     OD_DAEMON_DB=postgres 일 때도 캐시·이중쓰기용 sqlite 잔존 가능
+              │     app.sqlite — 메타 캐시·이중쓰기 (postgres 모드에서도 존재)
+              │     ※ revision 스냅샷 BLOB은 postgres 모드에서 RDS에만 저장
               │     scratch/projects/<id>/ — agent CWD (S3 모드)
               │
               ├─ ④ S3 (tenant prefix) — deck.html, assets SSOT
@@ -49,13 +49,16 @@ Teamver Design은 “DB가 하나”가 아니라 **역할별 저장소**가 나
               └─ ⑤ (구) .od/revisions/*.snap.gz — files 모드 또는 마이그레이션 잔여
 ```
 
-### 2.1 “왜 OD_DATA_DIR의 app.sqlite인가?”
+### 2.1 “왜 OD_DATA_DIR/app.sqlite 얘기가 나오나?”
 
-Open Design daemon은 부팅 시 `RUNTIME_DATA_DIR = resolve(OD_DATA_DIR)` 를 정하고, `openDatabase(..., { dataDir: RUNTIME_DATA_DIR })` 로 **`$OD_DATA_DIR/app.sqlite`** 를 연다 (`apps/daemon/src/db.ts`).
+daemon 프로세스는 항상 `openDatabase(..., { dataDir: OD_DATA_DIR })` 로 **노드 로컬 `app.sqlite`** 를 연다. 이것이 **전체 SSOT**인 경우와 **캐시**인 경우를 구분해야 한다.
 
-- **로컬 / 단일 노드 / `OD_DAEMON_DB` 미설정:** DaemonDb **전체**가 이 파일이다. `file_revisions` 메타와 `file_revision_snapshots` BLOB 모두 여기.
-- **Teamver `OD_DAEMON_DB=postgres`:** 채팅·프로젝트 메타의 **durable SSOT는 RDS DaemonDb database**이다. 노드의 `app.sqlite`는 캐시·이중쓰기·마이그레이션 경로로 남을 수 있다 ([39_9](./39_9_DaemonDb_B5_잔여_plugins_후속_및_RDS.md)).  
-  **현재(2026-07-31):** `file_revision_snapshots` 마이그레이션은 **SQLite 경로에만** 존재. Postgres DaemonDb에 동일 테이블을 옮기는 것은 **Track B 후속**이다.
+| 환경 | `app.sqlite` 역할 | revision 스냅샷 바이트 |
+|------|-------------------|------------------------|
+| 로컬 dev (`OD_DAEMON_DB` 미설정) | DaemonDb 전체 SSOT | `sqlite` 또는 `files` 모드 선택 |
+| Teamver (`OD_DAEMON_DB=postgres`) | 메타 **캐시** + 이중쓰기 버퍼 | **`postgres` 모드 → RDS `file_revision_snapshots`만** (로컬 sqlite BLOB에 쓰지 않음) |
+
+Teamver에서 undo 히스토리를 노드 로컬 디스크에 두면 안 되는 이유: multi-node·scratch eviction 시 **노드가 바뀌면 히스토리 유실**. Postgres DaemonDb(RDS)가 노드 간 공유 SSOT이다 ([39_9](./39_9_DaemonDb_B5_잔여_plugins_후속_및_RDS.md)).
 
 ### 2.2 RDS 두 database — 헷갈리지 않기
 
@@ -72,19 +75,25 @@ Open Design daemon은 부팅 시 `RUNTIME_DATA_DIR = resolve(OD_DATA_DIR)` 를 �
 
 환경 변수: **`OD_FILE_REVISION_SNAPSHOT_STORAGE`**
 
-| 값 | 스냅샷 바이트 위치 | 비고 |
-|----|-------------------|------|
-| `files` (기본) | `<project>/.od/revisions/<file>/<id>.snap.gz` | 기존 동작, 호환 |
-| `sqlite` | DaemonDb `file_revision_snapshots.compressed` BLOB | Teamver 권장 |
+| 값 | 스냅샷 바이트 위치 | 사용처 |
+|----|-------------------|--------|
+| `postgres` (**Teamver 기본**) | RDS `teamver_design_daemon_*`.`file_revision_snapshots.compressed` BYTEA | `OD_DAEMON_DB=postgres` 일 때 env 미설정 시 자동 |
+| `files` | `<project>/.od/revisions/...` | 로컬 dev·마이그레이션 |
+| `sqlite` | 노드 로컬 `app.sqlite` BLOB | 단일 노드 dev 전용 (Teamver prod 비권장) |
+
+**Teamver 규칙:** `OD_DAEMON_DB=postgres` 이면 스냅샷은 **반드시 RDS**에 저장된다. `OD_FILE_REVISION_SNAPSHOT_STORAGE=sqlite` 로 로컬 BLOB을 쓰지 않는다 (`files`만 명시적 opt-out).
 
 공통:
 
-- **메타**는 항상 `file_revisions` 테이블 (DaemonDb).
-- **canonical 파일** (`deck.html`)은 프로젝트 scratch/S3 — undo와 별개.
-- 읽기: 활성 모드 우선, 반대쪽 **fallback** (마이그레이션·모드 전환 허용).
-- S3 materialization: `.od/revisions/**` 는 sync-up/down **제외** (`isProjectScratchSyncExcludedRelpath`).
+- **메타** `file_revisions`: sqlite 캐시 + Postgres 이중쓰기 (`schedulePostgresWrite`).
+- **스냅샷** `postgres` 모드: write/read/delete 시 Postgres pool **동기 await** (undo 직후 일관성).
+- **canonical 파일** (`deck.html`)은 scratch/S3 — undo와 별개.
+- legacy `.od/revisions` 파일은 read fallback + GC orphan 정리.
+- S3 materialization: `.od/revisions/**` sync 제외.
 
-코드: `apps/daemon/src/file-revisions/store.ts` · `snapshot-storage.ts`
+Postgres 스키마: `DAEMON_DB_POSTGRES_MIGRATION_V8` — `daemon-db-postgres-schema.ts` v8.
+
+코드: `postgres-persistence.ts` · `snapshot-storage.ts` · `store.ts`
 
 ---
 
@@ -176,28 +185,31 @@ GC sweep 로그 (stdout JSON):
 
 ---
 
-## 7. Teamver 배포 권장값
+## 7. Teamver 배포 (필수 env)
 
 ```env
-# daemon container / EC2 env
-OD_FILE_REVISION_SNAPSHOT_STORAGE=sqlite
-OD_FILE_REVISION_RETENTION_LIMIT=15
-OD_FILE_REVISION_GC_INTERVAL_MS=21600000
-OD_FILE_REVISION_GC_VACUUM=1
 OD_DAEMON_DB=postgres
 OD_PG_DATABASE=teamver_design_daemon_staging   # 환경별
+OD_PG_HOST=...
+OD_PG_PASSWORD=...
+
+# 스냅샷 — OD_DAEMON_DB=postgres 이면 기본 postgres (별도 설정 불필요)
+# OD_FILE_REVISION_SNAPSHOT_STORAGE=postgres
+
+OD_FILE_REVISION_RETENTION_LIMIT=15
+OD_FILE_REVISION_GC_INTERVAL_MS=21600000
 ```
 
-**주의:** Postgres DaemonDb에 `file_revision_snapshots` DDL이 아직 없으면, prod에서 `sqlite` 모드 BLOB는 **노드 로컬 app.sqlite**에만 쌓일 수 있다. 멀티노드에서 undo 히스토리 내구성을 맞추려면 **Postgres BYTEA 마이그레이션** 또는 **S3 blob 백엔드**가 다음 마일스톤이다.
+daemon 부팅 시 `migratePostgresDaemonSchema` 가 v8 `file_revisions` / `file_revision_snapshots` 테이블을 생성한다.
 
 ---
 
-## 8. 로드맵 (미구현)
+## 8. 로드맵 (잔여)
 
 | 단계 | 내용 |
 |------|------|
-| B5+ | Postgres `file_revision_snapshots BYTEA` + `OD_DAEMON_DB=postgres` 정합 |
-| S3 blob | `RevisionSnapshotStore` 인터페이스, tenant prefix 아래 `revisions/` |
+| hydrate | 프로젝트 접근 시 Postgres → sqlite 메타 warm (다른 노드에서 쓴 revision 목록) |
+| S3 blob | 초대형 deck 전용 외부 blob 백엔드 (현재는 Postgres BYTEA로 충분) |
 | 메트릭 | Prometheus `od_file_revision_snapshot_bytes` gauge |
 
 ---
