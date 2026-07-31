@@ -58,17 +58,19 @@ raw는 “파일 복사”에 가깝고, export는 **매번 미니 빌드 파이
 
 **문제:** `fetch` + `blob()`은 브라우저가 **응답 body 전체를 JS heap에 복제**한다. 20MB PDF면 FE만 20MB+ (GC 전까지).
 
-### 2.2 daemon — `apps/daemon/src/import-export-routes.ts`
+### 2.2 daemon — route + render service
 
 ```text
-POST /export/html  → buildDesktopPdfExportInput → renderHeadlessHtmlSnapshot → res.send(Buffer)
-POST /export/zip   → renderHeadlessHtmlSnapshot → JSZip.generateAsync(nodebuffer) → res.send
-POST /export/pdf   → renderHeadlessPdf → res.send(pdf Buffer)
-POST /export/image → renderHeadlessImage → res.send
+POST /export/html  → import-export-routes → export-render-service → renderHeadlessHtmlSnapshot
+POST /export/zip   → import-export-routes → export-render-service → renderHeadlessHtmlSnapshot + JSZip
+POST /export/pdf   → import-export-routes → export-render-service → renderHeadlessPdf
+POST /export/image → import-export-routes → export-render-service → renderHeadlessImage
+POST /export/pptx  → import-export-routes → export-render-service → renderHeadlessEditablePptx
 ```
 
 - HTML/ZIP은 **동일 headless snapshot**을 공유 (ZIP = snapshot 1파일 압축).
-- 응답은 **스트리밍 없이** `res.send(Buffer)` — nginx·FE까지 **한 덩어리**.
+- route는 요청 검증·ticket/offload 응답만 담당하고, rendered export 생성과 cache descriptor 구성은 `apps/daemon/src/export-render-service.ts`가 담당한다.
+- ticket을 사용하지 않는 legacy 응답은 `res.send(Buffer)` 또는 cache file stream이며, Teamver 다운로드/Drive publish는 ticket + native/S3 offload 경로가 기본이다.
 
 ### 2.3 headless — `apps/daemon/src/headless-export.ts`
 
@@ -481,6 +483,7 @@ staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으�
 
 ### Backlog — Phase 3
 
+- ✅ route/render service split — async job/worker가 HTTP route 없이 동일 render 함수를 호출할 수 있는 진입점 확보
 - async job API + FileViewer UX
 - dedicated export worker (Chromium isolate)
 - deck slide count soft cap + “대형 deck은 PDF만” UX
@@ -984,6 +987,8 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-31 | Export 모듈 분리 착수 — PDF/image/PPTX/HTML/ZIP rendered export 생성·cache descriptor 구성을 `export-render-service.ts`로 분리. `import-export-routes.ts`는 검증·ticket/offload 응답만 담당하도록 축소해 Phase 3 async job/dedicated worker가 route를 거치지 않고 같은 render 함수를 재사용할 수 있게 준비. desktop PDF exporter 예외 경로는 기존 호환을 위해 route에 유지하고, non-desktop PDF의 중복 입력 생성을 제거 |
+| 2026-07-31 | Export presigned GET 테스트 계약 갱신 — 한글/비ASCII 파일명 S3 `SignatureDoesNotMatch` 방지를 위해 presign query에는 `response-content-*`를 싣지 않고, PUT 시 저장된 object metadata(Content-Disposition/Type)를 다운로드 계약으로 사용함을 테스트에 반영 |
 | 2026-07-23 | Editable PPTX 작은 텍스트 줄바꿈 보정 — dom-to-pptx 변환 후 작은 pill/tag/email/짧은 metric 텍스트가 한 글자씩 줄바꿈되는 케이스 확인. editable 변환 직전 short no-wrap 요소를 감지해 `white-space: nowrap`, `word-break: keep-all`, `hyphens: none`, 여유 width/min-width를 강제. cache namespace를 `pptx-editable-dom-v3`로 올려 기존 깨진 PPTX cache 재사용 방지 |
 | 2026-07-23 | Export 다운로드 파일명 프로젝트명 우선 복구 — FE `resolveExportDownloadTitle()`이 project title이 `Design` 같은 generic 값이면 artifact slug를 우선해 `ai-adoption-deck.pptx`처럼 저장될 수 있었다. 다운로드 title은 프로젝트명이 존재하면 항상 프로젝트명을 사용하도록 복원. export cache hit도 과거 meta filename을 재사용하지 않고 현재 descriptor filename(project title 기반)을 응답하도록 고정 |
 | 2026-07-16 | Export offload 한글 파일명 복구 — S3 SigV4 충돌을 피하려고 presign 쿼리에 ASCII `filename=`만 넣으면 프로젝트명이 `_`로 저장됨. PUT 시 객체에 RFC 5987 `Content-Disposition`(+`Content-Type`)을 저장하고 presign에서는 `response-content-disposition`을 제거. HEAD로 disposition 일치 시 PUT skip, 구 객체(메타 없음)는 다음 export에서 한 번 재업로드 |
