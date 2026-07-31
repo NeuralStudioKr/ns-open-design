@@ -35,6 +35,7 @@ const TeamverBrandingContext = createContext<TeamverBrandingConfig>({
   hideExternalShareSurfaces: false,
   hideDrawAnnotation: false,
   hideManualEditBoxDrag: false,
+  hideFileRevisionChrome: false,
 });
 
 export function TeamverBrandingProvider({ children }: { children: ReactNode }) {
