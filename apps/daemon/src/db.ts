@@ -1428,6 +1428,8 @@ export async function warmProjectFromPostgres(db: SqliteDb, projectId: string): 
   }
   const deployments = await pgCore.pgListDeployments(pool, projectId);
   setCachedDeployments(projectId, deployments as DbRow[]);
+  const { hydrateProjectFileRevisionsFromPostgres } = await import('./file-revisions/durable-store.js');
+  await hydrateProjectFileRevisionsFromPostgres(db, projectId);
 }
 
 export function getConversation(db: SqliteDb, id: string) {

@@ -142,7 +142,8 @@
 | nested markup (inline salvage + flattenNestedMarkup) | [x] |
 | revision content cache + reconcile skip + prefetch | [x] | `revision-content-cache.ts` — LRU 8 entries, 16MB/파일, 4MB/항목, prefetch `byteSize` skip |
 | `OD_FILE_REVISION_RETENTION_LIMIT` env | [x] | daemon `resolveFileRevisionRetentionLimit()` |
-| `OD_FILE_REVISION_SNAPSHOT_STORAGE` env | [x] | `files` (기본) \| `sqlite` — Teamver 권장: `sqlite` ([50-3](./50-3_revision_스냅샷_저장소_RDS_용량관리.md)) |
+| `OD_FILE_REVISION_SNAPSHOT_STORAGE` env | [x] | `postgres` (Teamver 기본) \| `sqlite` \| `files` — [50-3](./50-3_revision_스냅샷_저장소_RDS_용량관리.md) |
+| Postgres `file_revision_snapshots` BYTEA (schema v8) | [x] | `DAEMON_DB_POSTGRES_MIGRATION_V8` |
 | 주기 GC + orphan 정리 | [x] | `file-revisions/gc.ts` · `OD_FILE_REVISION_GC_INTERVAL_MS` |
 | 프로젝트 삭제 시 BLOB 선삭제 | [x] | `deleteFileRevisionSnapshotsForProject` |
 | History panel retention hint | [x] | i18n `fileRevision.history.retentionHint` |

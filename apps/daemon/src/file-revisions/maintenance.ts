@@ -2,11 +2,17 @@ import { readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { statSync } from 'node:fs';
 import type Database from 'better-sqlite3';
+import { getPostgresPool } from '../storage/daemon-db-runtime.js';
+import { queryPostgresRow } from '../storage/daemon-db-postgres.js';
+import {
+  pruneOldestFileRevisionsDurable,
+} from './durable-store.js';
 import {
   deleteFileRevisionSnapshotsDurable,
   getFileRevisionSnapshotStorageStatsDurable,
   pruneOrphanFileRevisionSnapshotsDurable,
   resolveFileRevisionSnapshotStorage,
+  usesPostgresRevisionSnapshots,
   type FileRevisionSnapshotStorage,
 } from './snapshot-storage.js';
 import {
@@ -14,6 +20,9 @@ import {
   listDistinctFileRevisionTargets,
   pruneOldestFileRevisions,
 } from './persistence.js';
+import {
+  pgListDistinctFileRevisionTargets,
+} from './postgres-persistence.js';
 import { deleteRevisionSnapshots } from './store.js';
 
 export interface FileRevisionStorageStats {
@@ -53,9 +62,14 @@ export interface FileRevisionGcResult {
 export async function collectFileRevisionStorageStats(
   db: Database.Database,
 ): Promise<FileRevisionStorageStats> {
-  const revisionRowCount = (
-    db.prepare(`SELECT count(*) AS c FROM file_revisions`).get() as { c: number }
-  ).c;
+  const revisionRowCount = usesPostgresRevisionSnapshots()
+    ? Number((await queryPostgresRow<{ c: string }>(
+      getPostgresPool(),
+      `SELECT count(*)::text AS c FROM file_revisions`,
+    ))?.c ?? 0)
+    : (
+      db.prepare(`SELECT count(*) AS c FROM file_revisions`).get() as { c: number }
+    ).c;
   const snapshotStats = await getFileRevisionSnapshotStorageStatsDurable(db);
   return {
     revisionRowCount,
@@ -77,14 +91,18 @@ export async function deleteFileRevisionSnapshotsForProject(
   return rows.length;
 }
 
-export function enforceGlobalFileRevisionRetention(
+export async function enforceGlobalFileRevisionRetention(
   db: Database.Database,
   retentionLimit: number = FILE_REVISION_RETENTION_LIMIT,
-): Array<{ projectId: string; fileName: string; revisionIds: string[] }> {
-  const targets = listDistinctFileRevisionTargets(db);
+): Promise<Array<{ projectId: string; fileName: string; revisionIds: string[] }>> {
+  const targets = usesPostgresRevisionSnapshots()
+    ? await pgListDistinctFileRevisionTargets(getPostgresPool())
+    : listDistinctFileRevisionTargets(db);
   const batches: Array<{ projectId: string; fileName: string; revisionIds: string[] }> = [];
   for (const target of targets) {
-    const pruned = pruneOldestFileRevisions(db, target.projectId, target.fileName, retentionLimit);
+    const pruned = usesPostgresRevisionSnapshots()
+      ? await pruneOldestFileRevisionsDurable(db, target.projectId, target.fileName, retentionLimit)
+      : pruneOldestFileRevisions(db, target.projectId, target.fileName, retentionLimit);
     if (pruned.length === 0) continue;
     batches.push({
       projectId: target.projectId,
@@ -209,11 +227,13 @@ export async function runFileRevisionGc(options: FileRevisionGcOptions): Promise
   } = options;
 
   const orphan = await pruneOrphanFileRevisionSnapshotsDurable(db);
-  const retentionBatches = enforceGlobalFileRevisionRetention(db, retentionLimit);
+  const retentionBatches = await enforceGlobalFileRevisionRetention(db, retentionLimit);
   let retentionRevisionsPruned = 0;
   for (const batch of retentionBatches) {
     retentionRevisionsPruned += batch.revisionIds.length;
-    await deleteFileRevisionSnapshotsDurable(batch.revisionIds, db);
+    if (!usesPostgresRevisionSnapshots()) {
+      await deleteFileRevisionSnapshotsDurable(batch.revisionIds, db);
+    }
     const projectDir = resolveProjectDir(batch.projectId);
     await deleteRevisionSnapshots(projectDir, batch.fileName, batch.revisionIds, { db });
   }

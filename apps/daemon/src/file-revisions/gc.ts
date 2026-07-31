@@ -32,7 +32,7 @@ export interface FileRevisionGcWorkerOptions {
 export interface FileRevisionGcHandle {
   stop(): void;
   sweep(): Promise<FileRevisionGcResult>;
-  stats(): Promise<ReturnType<typeof collectFileRevisionStorageStats>>;
+  stats(): Promise<Awaited<ReturnType<typeof collectFileRevisionStorageStats>>>;
 }
 
 const NOOP_HANDLE: FileRevisionGcHandle = {
@@ -44,7 +44,7 @@ const NOOP_HANDLE: FileRevisionGcHandle = {
     orphanFilesRemoved: 0,
     vacuum: null,
   }),
-  stats: () => ({
+  stats: async () => ({
     revisionRowCount: 0,
     snapshotRowCount: 0,
     orphanSnapshotRowCount: 0,
@@ -86,8 +86,8 @@ export function startFileRevisionGc(opts: FileRevisionGcWorkerOptions): FileRevi
     projectsRoot: opts.projectsRoot,
     resolveProjectDir: opts.resolveProjectDir,
     vacuumSqlite,
-    sqliteDbFile: opts.sqliteDbFile,
-    lastVacuumAtMs: lastVacuumAtMs ?? undefined,
+    ...(opts.sqliteDbFile ? { sqliteDbFile: opts.sqliteDbFile } : {}),
+    ...(lastVacuumAtMs != null ? { lastVacuumAtMs } : {}),
   });
 
   const tick = () => {

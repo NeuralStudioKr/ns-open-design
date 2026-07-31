@@ -6,7 +6,7 @@ import {
   isDaemonDbPostgres,
   schedulePostgresWrite,
 } from '../storage/daemon-db-runtime.js';
-import { migrateFileRevisionSnapshots } from './snapshot-storage.js';
+import { migrateFileRevisionSnapshots, usesPostgresRevisionSnapshots } from './snapshot-storage.js';
 import {
   pgDeleteFileRevisionsAfterSequence as pgDeleteRevisionsAfterSequence,
   pgDeleteFileRevisionsByIds,
@@ -128,7 +128,7 @@ export function insertFileRevision(db: Database.Database, input: FileRevisionIns
     conversationId: input.conversationId ?? null,
     assistantMessageId: input.assistantMessageId ?? null,
   });
-  if (isDaemonDbPostgres()) {
+  if (isDaemonDbPostgres() && !usesPostgresRevisionSnapshots()) {
     schedulePostgresWrite(async () => {
       await pgInsertFileRevision(getPostgresPool(), {
         id: revision.id,
@@ -149,7 +149,7 @@ export function insertFileRevision(db: Database.Database, input: FileRevisionIns
 }
 
 function syncDeletedRevisionIdsToPostgres(ids: string[]): void {
-  if (!isDaemonDbPostgres() || ids.length === 0) return;
+  if (!isDaemonDbPostgres() || usesPostgresRevisionSnapshots() || ids.length === 0) return;
   schedulePostgresWrite(async () => {
     await pgDeleteFileRevisionsByIds(getPostgresPool(), ids);
   });
@@ -160,7 +160,7 @@ function syncDeleteAfterSequenceToPostgres(
   fileName: string,
   sequence: number,
 ): void {
-  if (!isDaemonDbPostgres()) return;
+  if (!isDaemonDbPostgres() || usesPostgresRevisionSnapshots()) return;
   schedulePostgresWrite(async () => {
     await pgDeleteRevisionsAfterSequence(getPostgresPool(), projectId, fileName, sequence);
   });

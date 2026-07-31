@@ -1,0 +1,333 @@
+import type Database from 'better-sqlite3';
+import type { FileRevision } from '@open-design/contracts';
+import {
+  getPostgresPool,
+  isDaemonDbPostgres,
+} from '../storage/daemon-db-runtime.js';
+import type { FileRevisionInsert, FileRevisionRow } from './persistence.js';
+import {
+  pgCommitRevisionWithSnapshot,
+  pgDeleteFileRevisionsAfterSequence,
+  pgDeleteFileRevisionsByIdsWithSnapshots,
+  pgGetLatestFileRevision,
+  pgListFileRevisions,
+  pgPruneOldestFileRevisionsWithSnapshots,
+  type PgFileRevisionRow,
+} from './postgres-persistence.js';
+import {
+  gzipRevisionSnapshot,
+  resolveFullSnapshotInterval,
+  shouldForceFullSnapshot,
+} from './snapshot-codec.js';
+import { usesPostgresRevisionSnapshots } from './snapshot-storage.js';
+
+function rowToRevision(row: FileRevisionRow): FileRevision {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    fileName: row.fileName,
+    parentRevisionId: row.parentRevisionId,
+    sequence: row.sequence,
+    createdAt: row.createdAt,
+    byteSize: row.byteSize,
+    source: row.source,
+    label: row.label,
+    ...(row.conversationId ? { conversationId: row.conversationId } : {}),
+    ...(row.assistantMessageId ? { assistantMessageId: row.assistantMessageId } : {}),
+  };
+}
+
+function mirrorFileRevisionToSqlite(db: Database.Database, input: FileRevisionInsert): void {
+  db.prepare(`
+    INSERT INTO file_revisions (
+      id, project_id, file_name, parent_revision_id, sequence, created_at,
+      byte_size, source, label, conversation_id, assistant_message_id
+    ) VALUES (
+      @id, @projectId, @fileName, @parentRevisionId, @sequence, @createdAt,
+      @byteSize, @source, @label, @conversationId, @assistantMessageId
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      project_id = excluded.project_id,
+      file_name = excluded.file_name,
+      parent_revision_id = excluded.parent_revision_id,
+      sequence = excluded.sequence,
+      created_at = excluded.created_at,
+      byte_size = excluded.byte_size,
+      source = excluded.source,
+      label = excluded.label,
+      conversation_id = excluded.conversation_id,
+      assistant_message_id = excluded.assistant_message_id
+  `).run({
+    id: input.id,
+    projectId: input.projectId,
+    fileName: input.fileName,
+    parentRevisionId: input.parentRevisionId ?? null,
+    sequence: input.sequence,
+    createdAt: input.createdAt,
+    byteSize: input.byteSize,
+    source: input.source,
+    label: input.label,
+    conversationId: input.conversationId ?? null,
+    assistantMessageId: input.assistantMessageId ?? null,
+  });
+}
+
+function pgRowToInsert(row: PgFileRevisionRow): FileRevisionInsert {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    fileName: row.fileName,
+    parentRevisionId: row.parentRevisionId,
+    sequence: row.sequence,
+    createdAt: row.createdAt,
+    byteSize: row.byteSize,
+    source: row.source,
+    label: row.label,
+    conversationId: row.conversationId,
+    assistantMessageId: row.assistantMessageId,
+  };
+}
+
+function insertToPgRow(input: FileRevisionInsert): PgFileRevisionRow {
+  return {
+    id: input.id,
+    projectId: input.projectId,
+    fileName: input.fileName,
+    parentRevisionId: input.parentRevisionId ?? null,
+    sequence: input.sequence,
+    createdAt: input.createdAt,
+    byteSize: input.byteSize,
+    source: input.source,
+    label: input.label,
+    conversationId: input.conversationId ?? null,
+    assistantMessageId: input.assistantMessageId ?? null,
+  };
+}
+
+export async function commitRevisionWithSnapshotDurable(
+  db: Database.Database,
+  input: FileRevisionInsert,
+  content: string,
+  options?: { parentContent?: string | null; sequence?: number },
+): Promise<FileRevision> {
+  const interval = resolveFullSnapshotInterval();
+  const forceFull = options?.sequence != null
+    ? shouldForceFullSnapshot(options.sequence, interval)
+    : options?.parentContent == null;
+  const encoded = gzipRevisionSnapshot(content, {
+    parentContent: options?.parentContent ?? null,
+    forceFull,
+  });
+  if (usesPostgresRevisionSnapshots()) {
+    await pgCommitRevisionWithSnapshot(
+      getPostgresPool(),
+      insertToPgRow(input),
+      encoded.compressed,
+    );
+  }
+  return mirrorFileRevisionInsertToSqlite(db, input);
+}
+
+export async function hydrateFileRevisionsFromPostgres(
+  db: Database.Database,
+  projectId: string,
+  fileName: string,
+): Promise<void> {
+  if (!usesPostgresRevisionSnapshots()) return;
+  const pool = getPostgresPool();
+  const rows = await pgListFileRevisions(pool, projectId, fileName);
+  db.prepare(`
+    DELETE FROM file_revisions
+    WHERE project_id = ? AND file_name = ?
+  `).run(projectId, fileName);
+  for (const row of rows) {
+    mirrorFileRevisionToSqlite(db, pgRowToInsert(row));
+  }
+}
+
+export async function ensureFileRevisionsHydrated(
+  db: Database.Database,
+  projectId: string,
+  fileName: string,
+): Promise<void> {
+  if (!usesPostgresRevisionSnapshots()) return;
+  const pool = getPostgresPool();
+  const [pgHead, sqliteHead] = await Promise.all([
+    pgGetLatestFileRevision(pool, projectId, fileName),
+    Promise.resolve(getLatestFileRevisionFromSqlite(db, projectId, fileName)),
+  ]);
+  if ((pgHead?.id ?? null) === (sqliteHead?.id ?? null)) return;
+  await hydrateFileRevisionsFromPostgres(db, projectId, fileName);
+}
+
+export async function hydrateProjectFileRevisionsFromPostgres(
+  db: Database.Database,
+  projectId: string,
+): Promise<number> {
+  if (!isDaemonDbPostgres()) return 0;
+  const pool = getPostgresPool();
+  const targets = await pgListDistinctFileRevisionTargets(pool, projectId);
+  let files = 0;
+  for (const target of targets) {
+    if (target.projectId !== projectId) continue;
+    await hydrateFileRevisionsFromPostgres(db, projectId, target.fileName);
+    files += 1;
+  }
+  return files;
+}
+
+function getLatestFileRevisionFromSqlite(
+  db: Database.Database,
+  projectId: string,
+  fileName: string,
+): FileRevision | null {
+  const row = db.prepare(`
+    SELECT
+      id,
+      project_id AS projectId,
+      file_name AS fileName,
+      parent_revision_id AS parentRevisionId,
+      sequence,
+      created_at AS createdAt,
+      byte_size AS byteSize,
+      source,
+      label,
+      conversation_id AS conversationId,
+      assistant_message_id AS assistantMessageId
+    FROM file_revisions
+    WHERE project_id = ? AND file_name = ?
+    ORDER BY sequence DESC
+    LIMIT 1
+  `).get(projectId, fileName) as FileRevisionRow | undefined;
+  return row ? rowToRevision(row) : null;
+}
+
+export async function deleteFileRevisionsByIdsDurable(
+  db: Database.Database,
+  ids: string[],
+): Promise<void> {
+  if (ids.length === 0) return;
+  if (usesPostgresRevisionSnapshots()) {
+    await pgDeleteFileRevisionsByIdsWithSnapshots(getPostgresPool(), ids);
+  }
+  const placeholders = ids.map(() => '?').join(', ');
+  db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...ids);
+}
+
+export async function deleteFileRevisionsAfterSequenceDurable(
+  db: Database.Database,
+  projectId: string,
+  fileName: string,
+  sequence: number,
+): Promise<FileRevision[]> {
+  if (usesPostgresRevisionSnapshots()) {
+    await ensureFileRevisionsHydrated(db, projectId, fileName);
+    const rows = db.prepare(`
+      SELECT
+        id,
+        project_id AS projectId,
+        file_name AS fileName,
+        parent_revision_id AS parentRevisionId,
+        sequence,
+        created_at AS createdAt,
+        byte_size AS byteSize,
+        source,
+        label,
+        conversation_id AS conversationId,
+        assistant_message_id AS assistantMessageId
+      FROM file_revisions
+      WHERE project_id = ? AND file_name = ? AND sequence > ?
+      ORDER BY sequence ASC
+    `).all(projectId, fileName, sequence) as FileRevisionRow[];
+    const ids = await pgDeleteFileRevisionsAfterSequence(
+      getPostgresPool(),
+      projectId,
+      fileName,
+      sequence,
+    );
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(', ');
+      db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...ids);
+    }
+    return rows.map(rowToRevision);
+  }
+  const { deleteFileRevisionsAfterSequence } = await import('./persistence.js');
+  return deleteFileRevisionsAfterSequence(db, projectId, fileName, sequence);
+}
+
+export async function pruneOldestFileRevisionsDurable(
+  db: Database.Database,
+  projectId: string,
+  fileName: string,
+  keep: number,
+): Promise<FileRevision[]> {
+  if (usesPostgresRevisionSnapshots()) {
+    await ensureFileRevisionsHydrated(db, projectId, fileName);
+    const rows = db.prepare(`
+      SELECT
+        id,
+        project_id AS projectId,
+        file_name AS fileName,
+        parent_revision_id AS parentRevisionId,
+        sequence,
+        created_at AS createdAt,
+        byte_size AS byteSize,
+        source,
+        label,
+        conversation_id AS conversationId,
+        assistant_message_id AS assistantMessageId
+      FROM file_revisions
+      WHERE project_id = ? AND file_name = ?
+      ORDER BY sequence DESC
+      LIMIT -1 OFFSET ?
+    `).all(projectId, fileName, keep) as FileRevisionRow[];
+    if (rows.length === 0) return [];
+    const prunedIds = rows.map((row) => row.id);
+    await pgPruneOldestFileRevisionsWithSnapshots(
+      getPostgresPool(),
+      projectId,
+      fileName,
+      keep,
+    );
+    const placeholders = prunedIds.map(() => '?').join(', ');
+    db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...prunedIds);
+    return rows.map(rowToRevision);
+  }
+  const { pruneOldestFileRevisions } = await import('./persistence.js');
+  return pruneOldestFileRevisions(db, projectId, fileName, keep);
+}
+
+async function pgListDistinctFileRevisionTargets(
+  pool: import('pg').Pool,
+  projectId: string,
+): Promise<Array<{ projectId: string; fileName: string }>> {
+  const { queryPostgresRows } = await import('../storage/daemon-db-postgres.js');
+  return queryPostgresRows<{ projectId: string; fileName: string }>(
+    pool,
+    `SELECT DISTINCT project_id AS "projectId", file_name AS "fileName"
+     FROM file_revisions
+     WHERE project_id = $1
+     ORDER BY file_name ASC`,
+    [projectId],
+  );
+}
+
+export function mirrorFileRevisionInsertToSqlite(
+  db: Database.Database,
+  input: FileRevisionInsert,
+): FileRevision {
+  mirrorFileRevisionToSqlite(db, input);
+  return rowToRevision({
+    id: input.id,
+    projectId: input.projectId,
+    fileName: input.fileName,
+    parentRevisionId: input.parentRevisionId ?? null,
+    sequence: input.sequence,
+    createdAt: input.createdAt,
+    byteSize: input.byteSize,
+    source: input.source,
+    label: input.label,
+    conversationId: input.conversationId ?? null,
+    assistantMessageId: input.assistantMessageId ?? null,
+  });
+}

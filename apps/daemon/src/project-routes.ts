@@ -2996,7 +2996,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
-      const body = fileRevisionService.listRevisions(projectId, fileName);
+      const body = await fileRevisionService.listRevisions(projectId, fileName);
       res.json(body);
     } catch (err: any) {
       sendApiError(res, 400, 'BAD_REQUEST', String(err));

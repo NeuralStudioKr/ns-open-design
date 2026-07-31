@@ -49,6 +49,38 @@ function rowToRevision(row: PgFileRevisionRow): FileRevision {
   };
 }
 
+export async function pgListFileRevisions(
+  pool: Pool,
+  projectId: string,
+  fileName: string,
+): Promise<PgFileRevisionRow[]> {
+  return queryPostgresRows<PgFileRevisionRow>(
+    pool,
+    `SELECT ${REVISION_COLS}
+     FROM file_revisions
+     WHERE project_id = $1 AND file_name = $2
+     ORDER BY sequence ASC`,
+    [projectId, fileName],
+  );
+}
+
+export async function pgGetLatestFileRevision(
+  pool: Pool,
+  projectId: string,
+  fileName: string,
+): Promise<FileRevision | null> {
+  const row = await queryPostgresRow<PgFileRevisionRow>(
+    pool,
+    `SELECT ${REVISION_COLS}
+     FROM file_revisions
+     WHERE project_id = $1 AND file_name = $2
+     ORDER BY sequence DESC
+     LIMIT 1`,
+    [projectId, fileName],
+  );
+  return row ? rowToRevision(row) : null;
+}
+
 export async function pgInsertFileRevision(
   pool: Pool,
   input: PgFileRevisionRow,
@@ -75,9 +107,34 @@ export async function pgInsertFileRevision(
   );
 }
 
+export async function pgDeleteFileRevisionsByIdsWithSnapshots(
+  pool: Pool,
+  ids: string[],
+): Promise<void> {
+  if (ids.length === 0) return;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `DELETE FROM file_revision_snapshots WHERE revision_id = ANY($1::text[])`,
+      [ids],
+    );
+    await client.query(
+      `DELETE FROM file_revisions WHERE id = ANY($1::text[])`,
+      [ids],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function pgDeleteFileRevisionsByIds(pool: Pool, ids: string[]): Promise<void> {
   if (ids.length === 0) return;
-  await pool.query(`DELETE FROM file_revisions WHERE id = ANY($1::text[])`, [ids]);
+  await pgDeleteFileRevisionsByIdsWithSnapshots(pool, ids);
 }
 
 export async function pgDeleteFileRevisionsAfterSequence(
@@ -95,11 +152,7 @@ export async function pgDeleteFileRevisionsAfterSequence(
   );
   if (rows.length === 0) return [];
   const ids = rows.map((row) => row.id);
-  await pool.query(
-    `DELETE FROM file_revisions
-     WHERE project_id = $1 AND file_name = $2 AND sequence > $3`,
-    [projectId, fileName, sequence],
-  );
+  await pgDeleteFileRevisionsByIdsWithSnapshots(pool, ids);
   return ids;
 }
 
@@ -119,8 +172,72 @@ export async function pgPruneOldestFileRevisions(
   );
   if (rows.length === 0) return [];
   const ids = rows.map((row) => row.id);
-  await pool.query(`DELETE FROM file_revisions WHERE id = ANY($1::text[])`, [ids]);
+  await pgDeleteFileRevisionsByIdsWithSnapshots(pool, ids);
   return ids;
+}
+
+export async function pgPruneOldestFileRevisionsWithSnapshots(
+  pool: Pool,
+  projectId: string,
+  fileName: string,
+  keep: number,
+): Promise<string[]> {
+  return pgPruneOldestFileRevisions(pool, projectId, fileName, keep);
+}
+
+export async function pgCommitRevisionWithSnapshot(
+  pool: Pool,
+  input: PgFileRevisionRow,
+  compressed: Buffer,
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO file_revisions (
+        id, project_id, file_name, parent_revision_id, sequence, created_at,
+        byte_size, source, label, conversation_id, assistant_message_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      ON CONFLICT (id) DO UPDATE SET
+        project_id = EXCLUDED.project_id,
+        file_name = EXCLUDED.file_name,
+        parent_revision_id = EXCLUDED.parent_revision_id,
+        sequence = EXCLUDED.sequence,
+        created_at = EXCLUDED.created_at,
+        byte_size = EXCLUDED.byte_size,
+        source = EXCLUDED.source,
+        label = EXCLUDED.label,
+        conversation_id = EXCLUDED.conversation_id,
+        assistant_message_id = EXCLUDED.assistant_message_id`,
+      [
+        input.id,
+        input.projectId,
+        input.fileName,
+        input.parentRevisionId,
+        input.sequence,
+        input.createdAt,
+        input.byteSize,
+        input.source,
+        input.label,
+        input.conversationId,
+        input.assistantMessageId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO file_revision_snapshots (revision_id, compressed, storage_bytes)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (revision_id) DO UPDATE SET
+         compressed = EXCLUDED.compressed,
+         storage_bytes = EXCLUDED.storage_bytes`,
+      [input.id, compressed, compressed.length],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function pgUpsertFileRevisionSnapshot(

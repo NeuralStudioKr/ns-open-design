@@ -40,7 +40,7 @@ Teamver Design은 “DB가 하나”가 아니라 **역할별 저장소**가 나
         └─ open-design-daemon (EC2 pod)
               │
               ├─ ③ OD_DATA_DIR (노드 로컬)
-              │     app.sqlite — 메타 캐시·이중쓰기 (postgres 모드에서도 존재)
+              │     app.sqlite — 메타 캐시 (postgres 모드: PG head와 맞출 때까지 hydrate)
               │     ※ revision 스냅샷 BLOB은 postgres 모드에서 RDS에만 저장
               │     scratch/projects/<id>/ — agent CWD (S3 모드)
               │
@@ -56,7 +56,7 @@ daemon 프로세스는 항상 `openDatabase(..., { dataDir: OD_DATA_DIR })` 로 
 | 환경 | `app.sqlite` 역할 | revision 스냅샷 바이트 |
 |------|-------------------|------------------------|
 | 로컬 dev (`OD_DAEMON_DB` 미설정) | DaemonDb 전체 SSOT | `sqlite` 또는 `files` 모드 선택 |
-| Teamver (`OD_DAEMON_DB=postgres`) | 메타 **캐시** + 이중쓰기 버퍼 | **`postgres` 모드 → RDS `file_revision_snapshots`만** (로컬 sqlite BLOB에 쓰지 않음) |
+| Teamver (`OD_DAEMON_DB=postgres`) | 메타 **캐시** (PG head와 불일치 시 hydrate) | **`postgres` 모드 → RDS `file_revisions` + `file_revision_snapshots` SSOT** |
 
 Teamver에서 undo 히스토리를 노드 로컬 디스크에 두면 안 되는 이유: multi-node·scratch eviction 시 **노드가 바뀌면 히스토리 유실**. Postgres DaemonDb(RDS)가 노드 간 공유 SSOT이다 ([39_9](./39_9_DaemonDb_B5_잔여_plugins_후속_및_RDS.md)).
 
@@ -83,17 +83,18 @@ Teamver에서 undo 히스토리를 노드 로컬 디스크에 두면 안 되는 
 
 **Teamver 규칙:** `OD_DAEMON_DB=postgres` 이면 스냅샷은 **반드시 RDS**에 저장된다. `OD_FILE_REVISION_SNAPSHOT_STORAGE=sqlite` 로 로컬 BLOB을 쓰지 않는다 (`files`만 명시적 opt-out).
 
-공통:
+공통 (Teamver `postgres` 모드):
 
-- **메타** `file_revisions`: sqlite 캐시 + Postgres 이중쓰기 (`schedulePostgresWrite`).
-- **스냅샷** `postgres` 모드: write/read/delete 시 Postgres pool **동기 await** (undo 직후 일관성).
+- **메타+스냅샷 SSOT:** RDS `file_revisions` + `file_revision_snapshots`. push 시 `pgCommitRevisionWithSnapshot`으로 **단일 트랜잭션** 커밋 후 sqlite 미러.
+- **읽기:** `ensureFileRevisionsHydrated` — PG head revision id ≠ sqlite head 이면 PG → sqlite 전체 hydrate. `warmProjectFromPostgres`에 file_revisions warm 포함.
+- **삭제/retention/GC:** Postgres 경로가 먼저 snapshot+meta 삭제, sqlite 미러 동기화 (`durable-store.ts`).
 - **canonical 파일** (`deck.html`)은 scratch/S3 — undo와 별개.
 - legacy `.od/revisions` 파일은 read fallback + GC orphan 정리.
 - S3 materialization: `.od/revisions/**` sync 제외.
 
 Postgres 스키마: `DAEMON_DB_POSTGRES_MIGRATION_V8` — `daemon-db-postgres-schema.ts` v8.
 
-코드: `postgres-persistence.ts` · `snapshot-storage.ts` · `store.ts`
+코드: `durable-store.ts` · `postgres-persistence.ts` · `snapshot-storage.ts` · `store.ts` · `service.ts`
 
 ---
 
@@ -143,21 +144,20 @@ undo/redo **탐색만**으로는 스냅샷이 늘지 않는다. **save(push)** �
 | 변수 | 기본 | 설명 |
 |------|------|------|
 | `OD_FILE_REVISION_GC_INTERVAL_MS` | `21600000` (6h) | `0` 이면 GC 비활성 |
-| `OD_FILE_REVISION_GC_VACUUM` | sqlite 모드면 `on` | 삭제 후 SQLite `VACUUM` |
-| `OD_FILE_REVISION_FULL_SNAPSHOT_INTERVAL` | `5` | full checkpoint 주기 (diff 체인 길이) |
+| `OD_FILE_REVISION_GC_VACUUM` | sqlite dev 모드만 on | Postgres는 RDS autovacuum |
+| `OD_FILE_REVISION_FULL_SNAPSHOT_INTERVAL` | `5` | full checkpoint 주기 |
 
-프로젝트 삭제 시: `deleteProject` 가 메타 CASCADE 전에 `deleteFileRevisionSnapshotsForProject` 로 BLOB 선삭제.
+프로젝트 삭제 시: Postgres `file_revision_snapshots` 선삭제 + `file_revisions` CASCADE.
 
-### 5.3 운영자 — 수동 VACUUM
+**Postgres 용량:** daemon은 row DELETE만 수행. 디스크 회수는 RDS `autovacuum` 운영 파라미터로 관리.
 
-대량 삭제 후 즉시 파일 축소:
+### 5.3 운영자 — 로컬 dev VACUUM (sqlite 모드만)
 
 ```bash
 od daemon db vacuum --json
-# 또는 loopback POST /api/daemon/db/vacuum
 ```
 
-GC의 자동 VACUUM은 **최소 10MB reclaim 후보 + 24h 간격** (과도한 lock 방지).
+Teamver Postgres 모드에서는 위 명령이 노드 로컬 `app.sqlite`만 축소하며, revision 스냅샷 바이트와 무관하다.
 
 ---
 

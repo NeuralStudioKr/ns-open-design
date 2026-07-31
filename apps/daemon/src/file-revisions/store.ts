@@ -273,14 +273,22 @@ export async function readRevisionSnapshot(
   return load(revisionId);
 }
 
+export async function removeRevisionSnapshotFiles(
+  projectDir: string,
+  fileName: string,
+  revisionId: string,
+): Promise<void> {
+  await rm(compressedSnapshotPath(projectDir, fileName, revisionId), { force: true });
+  await rm(legacySnapshotPath(projectDir, fileName, revisionId), { force: true });
+}
+
 export async function deleteRevisionSnapshot(
   projectDir: string,
   fileName: string,
   revisionId: string,
   context?: RevisionSnapshotStoreContext,
 ): Promise<void> {
-  await rm(compressedSnapshotPath(projectDir, fileName, revisionId), { force: true });
-  await rm(legacySnapshotPath(projectDir, fileName, revisionId), { force: true });
+  await removeRevisionSnapshotFiles(projectDir, fileName, revisionId);
   await deleteFileRevisionSnapshotsDurable([revisionId], context?.db);
 }
 
