@@ -460,7 +460,9 @@ function hasVisibleAssistantTextOutput(
   const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
   const cleaned = sanitizeAssistantProseForDisplay(base, {
     streaming,
-    stripCodeFences: hideStreamingCodeFences || (hideAssistantThinkingDetails && !slideOnlyMvp),
+    // Display-only: strip fences even in slide-only MVP. Live artifact parsers
+    // keep raw fences via ProjectView buffers (`!slideOnlyMvp` there).
+    stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
   });
   const { text: visibleText, hadOpenForm } = streaming
     ? stripTrailingOpenQuestionForm(cleaned)
@@ -566,7 +568,7 @@ function AssistantMessageImpl({
       stripInternalMarkupFromProseBlocks(
         suppressDuplicateQuestionForms(rawBlocks),
         streaming,
-        hideAssistantThinkingDetails && !slideOnlyMvp,
+        hideAssistantThinkingDetails,
       ),
     );
     const visible = placeConversationTodoCard(sanitized, {
@@ -749,7 +751,7 @@ function AssistantMessageImpl({
       return hasVisibleAssistantTextOutput(b.text, {
         streaming,
         hideRecoveredHtmlFallback: teamverEmbedEnabled || message.agentId === "grok-build" || message.agentId === "claude",
-        hideStreamingCodeFences: hideAssistantThinkingDetails && !slideOnlyMvp,
+        hideStreamingCodeFences: hideAssistantThinkingDetails,
         hideAssistantThinkingDetails,
         slideOnlyMvp,
         teamverEmbedEnabled,
@@ -867,7 +869,7 @@ function AssistantMessageImpl({
                 key={i}
                 text={b.text}
                 hideRecoveredHtmlFallback={teamverEmbedEnabled || message.agentId === "grok-build" || message.agentId === "claude"}
-                hideStreamingCodeFences={hideAssistantThinkingDetails && !slideOnlyMvp}
+                hideStreamingCodeFences={hideAssistantThinkingDetails}
                 assistantMessageId={message.id}
                 isLastAssistant={!!isLast}
                 streaming={streaming}
@@ -2170,7 +2172,8 @@ function ProseBlock({
     const base = hideRecoveredHtmlFallback ? stripRecoveredHtmlFallbackForDisplay(stripped, text) : stripped;
     return sanitizeAssistantProseForDisplay(base, {
       streaming,
-      stripCodeFences: hideStreamingCodeFences || (hideAssistantThinkingDetails && !slideOnlyMvp),
+      // Display-only strip; artifact recovery keeps raw fences in ProjectView buffers.
+      stripCodeFences: hideStreamingCodeFences || hideAssistantThinkingDetails,
     });
   }, [hideAssistantThinkingDetails, hideRecoveredHtmlFallback, hideStreamingCodeFences, streaming, text]);
   // While the latest turn is still streaming a not-yet-closed question-form,

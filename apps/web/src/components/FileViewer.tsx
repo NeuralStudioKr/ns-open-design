@@ -7547,7 +7547,9 @@ function HtmlViewer({
         );
         return false;
       }
-      pinManualEditSavedSource(baseSource);
+      // Do not pin `baseSource` before history confirm — that made
+      // `manualEditHistoryConfirmTrustsLocal` always trust local and skip real
+      // external-change detection. Pin only after a successful revision save.
       if (
         !shouldSkipManualEditHistoryConfirm(manualEditMode)
         && !(await confirmManualEditHistorySource(
