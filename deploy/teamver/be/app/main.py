@@ -53,6 +53,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 register_exception_handlers(app)
 _bff_secret = (settings.design_bff_session_secret or settings.teamver_jwt_secret or "dev-bff-session-secret").strip()
+_hosted = settings.deploy_env.strip().lower() in {"staging", "production"}
 # Starlette wraps middlewares in REVERSE add order — the LAST add_middleware
 # call becomes the OUTERMOST layer. Effective execution order for this stack:
 #   request  → CORS → SlowRequest → OriginGuard → Session → endpoint
@@ -69,6 +70,9 @@ app.add_middleware(
     session_cookie=settings.design_bff_session_cookie_name,
     legacy_session_cookies=("session",),
     same_site="lax",
+    # Hosted HTTPS must mark Secure so browsers keep the BFF cookie on
+    # stg-design / design hosts after Main OAuth return (SameSite=Lax).
+    https_only=_hosted,
 )
 app.add_middleware(OriginGuardMiddleware)
 app.add_middleware(SlowRequestMiddleware)
