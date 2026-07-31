@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assistantEventsForDisplay,
   assistantMessageTextBody,
+  attachAutoContinueIncompleteOutputNotice,
   attachPersistedChatError,
   messageHasPersistedChatError,
   messageHasVisibleProse,
@@ -150,6 +151,42 @@ describe('attachPersistedChatError', () => {
     );
     expect(updated.runStatus).toBe('running');
     expect(messageHasPersistedChatError(updated)).toBe(false);
+  });
+});
+
+describe('attachAutoContinueIncompleteOutputNotice', () => {
+  it('stacks auto-continue notice on a durable incomplete_output error', () => {
+    const updated = attachAutoContinueIncompleteOutputNotice(
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'partial',
+        createdAt: 1,
+        runStatus: 'running',
+        events: [{ kind: 'text', text: 'partial' }],
+      },
+      '결과물이 완성되지 않아 자동으로 이어쓰기를 시도합니다…',
+      '슬라이드 결과물이 생성되지 않았습니다.',
+      'incomplete_output',
+    );
+    expect(updated.runStatus).toBe('failed');
+    expect(updated.resumable).toBe(true);
+    expect(updated.events).toEqual([
+      { kind: 'text', text: 'partial' },
+      {
+        kind: 'status',
+        label: 'error',
+        detail: '슬라이드 결과물이 생성되지 않았습니다.',
+        code: 'incomplete_output',
+      },
+      {
+        kind: 'status',
+        label: 'error',
+        detail: '결과물이 완성되지 않아 자동으로 이어쓰기를 시도합니다…',
+        code: AUTO_CONTINUE_STATUS_CODE,
+      },
+    ]);
+    expect(messageHasPersistedChatError(updated)).toBe(true);
   });
 });
 

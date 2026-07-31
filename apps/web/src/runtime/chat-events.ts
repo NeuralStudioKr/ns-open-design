@@ -154,6 +154,34 @@ export function attachPersistedChatError(
   };
 }
 
+/**
+ * Arm the capped automatic-continue notice while keeping a durable
+ * `incomplete_output` (or caller-supplied) error underneath.
+ *
+ * Auto-continue notices alone are non-fatal in daemon merge and were wiped by
+ * later streaming PUTs — hard reload then left only the agent header. Always
+ * persist the real deliverable failure first, then stack the notice on top for
+ * the live 600ms race window.
+ */
+export function attachAutoContinueIncompleteOutputNotice(
+  message: ChatMessage,
+  notice: string,
+  deliverableDetail: string,
+  deliverableCode = 'incomplete_output',
+): ChatMessage {
+  const hasDurableError = hasPersistedRunErrorEvent(message.events ?? []);
+  let next = hasDurableError
+    ? message
+    : attachPersistedChatError(message, deliverableDetail, deliverableCode);
+  next = appendErrorStatusEvent(next, notice, AUTO_CONTINUE_STATUS_CODE);
+  return {
+    ...next,
+    runStatus: 'failed',
+    resumable: next.resumable ?? true,
+    endedAt: next.endedAt ?? Date.now(),
+  };
+}
+
 /** True when the message carries a durable, user-facing run-error status event. */
 export function messageHasPersistedChatError(
   message: Pick<ChatMessage, 'events'>,

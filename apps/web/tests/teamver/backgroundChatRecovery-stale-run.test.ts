@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   API_RUN_STALLED_ERROR_CODE,
+  applyTerminalRunStatusToAssistant,
   patchStaleApiAssistantFailure,
   shouldForceFailStaleApiRun,
   shouldForceFailStaleDaemonRun,
@@ -96,13 +97,39 @@ describe("backgroundChatRecovery stale run helpers", () => {
       runStatus: "failed",
       endedAt: 2,
       resumable: true,
+    });
+  });
+
+  it("applies terminal status without wiping prior assistant events", () => {
+    const prev = assistant({
       events: [
-        {
-          kind: "status",
-          label: "error",
-          code: "AGENT_EXECUTION_FAILED",
-        },
+        { kind: "text", text: "partial" },
+        { kind: "tool_use", id: "t1", name: "Write", input: {} },
       ],
     });
+    const next = applyTerminalRunStatusToAssistant(prev, {
+      id: "run-1",
+      projectId: "proj-1",
+      conversationId: "conv-1",
+      assistantMessageId: prev.id,
+      agentId: "amr",
+      status: "failed",
+      createdAt: 1,
+      updatedAt: 2,
+      error: "요청을 처리하지 못했습니다.",
+      errorCode: "BAD_REQUEST",
+      resumable: true,
+    });
+    expect(next.runStatus).toBe("failed");
+    expect(next.events).toEqual([
+      { kind: "text", text: "partial" },
+      { kind: "tool_use", id: "t1", name: "Write", input: {} },
+      {
+        kind: "status",
+        label: "error",
+        detail: "요청을 처리하지 못했습니다.",
+        code: "BAD_REQUEST",
+      },
+    ]);
   });
 });

@@ -609,25 +609,50 @@ export function patchStaleApiAssistantFailure(
   );
 }
 
+/**
+ * @deprecated Prefer applyTerminalRunStatusToAssistant — this helper used to
+ * return a synthetic one-event `events` array that wiped tools/text when
+ * spread onto the real message. Kept for status-only metadata patches.
+ */
 export function terminalAssistantPatchFromRunStatus(
   status: ChatRunStatusResponse,
 ): Partial<ChatMessage> | null {
   if (!isTerminalRunStatus(status.status)) return null;
-  const base: Partial<ChatMessage> = {
+  return {
     runStatus: status.status,
     endedAt: status.updatedAt ?? Date.now(),
     ...(status.resumable !== undefined ? { resumable: status.resumable } : {}),
   };
-  const errorDetail = status.error?.trim();
-  if (!errorDetail && !status.errorCode) return base;
+}
 
-  const withError = appendErrorStatusEvent(
-    { id: "patch", role: "assistant", content: "", ...base } as ChatMessage,
+/**
+ * Apply a terminal run-status poll result onto the real assistant row.
+ * Appends status:error without wiping prior events.
+ */
+export function applyTerminalRunStatusToAssistant(
+  prev: ChatMessage,
+  status: ChatRunStatusResponse,
+): ChatMessage {
+  if (!isTerminalRunStatus(status.status)) return prev;
+  let next: ChatMessage = {
+    ...prev,
+    runStatus: status.status,
+    endedAt: status.updatedAt ?? prev.endedAt ?? Date.now(),
+    ...(status.resumable !== undefined ? { resumable: status.resumable } : {}),
+  };
+  const errorDetail = status.error?.trim();
+  if (!errorDetail && !status.errorCode) return next;
+  next = appendErrorStatusEvent(
+    next,
     errorDetail || status.errorCode || "Run failed",
     status.errorCode ?? undefined,
   );
-  return {
-    ...base,
-    ...(withError.events ? { events: withError.events } : {}),
-  };
+  if (status.status === "failed") {
+    next = {
+      ...next,
+      runStatus: "failed",
+      endedAt: next.endedAt ?? Date.now(),
+    };
+  }
+  return next;
 }

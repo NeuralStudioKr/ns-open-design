@@ -270,7 +270,7 @@ describe("ProjectView message loading", () => {
     // more source.
     const block = source.slice(start, start + 11000);
 
-    expect(block).toContain("AUTO_CONTINUE_STATUS_CODE");
+    expect(block).toContain("attachAutoContinueIncompleteOutputNotice(");
     expect(block).toContain("syncAutoContinueCountFromMessages(");
     expect(block).toContain("findIncompleteSlideAssistantForRecovery(");
     expect(block).toContain("pendingAutoContinueConversationIdRef.current === activeConversationId");
@@ -278,7 +278,7 @@ describe("ProjectView message loading", () => {
     expect(block).toContain("scopedCommentAttachmentCount:");
     expect(block).toContain("canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)");
     expect(block).toContain("formatAutoContinueIncompleteOutputNotice()");
-    expect(block).toContain("appendErrorStatusEvent(");
+    expect(block).toContain("formatProjectRunDeliverableMissingError()");
     expect(block).toContain("saveMessage(project.id, activeConversationId, updatedAssistant");
     expect(block).toContain("handleSendRef.current");
     // resolveAutoContinuePrompt replaced buildAutoContinueIncompleteOutputPrompt
@@ -407,7 +407,8 @@ describe("ProjectView message loading", () => {
     expect(autoOpenBlock).toContain("shouldAutoContinueForIncompleteOutput({");
     expect(autoOpenBlock).toContain("attemptEmergencySlideDeckRecovery(");
     expect(autoOpenBlock).toContain("formatAutoContinueIncompleteOutputNotice()");
-    expect(autoOpenBlock).toContain("AUTO_CONTINUE_STATUS_CODE");
+    expect(autoOpenBlock).toContain("attachAutoContinueIncompleteOutputNotice(");
+    expect(autoOpenBlock).toContain("attachPersistedChatError(prev, deliverableError, deliverableErrorCode)");
     // resolveAutoContinuePrompt replaces the older direct
     // buildAutoContinueIncompleteOutputPrompt call so scoped comment
     // retries can route to an element-patch specific retry prompt
@@ -858,5 +859,16 @@ describe("ProjectView message loading", () => {
     const loadStart = source.indexOf("const loadMessagesWithRetry = async () =>");
     expect(loadStart).toBeGreaterThan(0);
     expect(source.slice(loadStart, loadStart + 2200)).toContain("setError(null)");
+  });
+
+  it("delays soft-refresh on failed runs so durable status:error can win merge races", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    // Main chat path and reattach path both delay failed soft-refresh.
+    expect(source).toMatch(
+      /runStatus === 'failed'[\s\S]{0,200}window\.setTimeout\(\(\) => \{[\s\S]{0,120}scheduleConversationMessageRefresh/,
+    );
+    expect(source).toContain("applyTerminalRunStatusToAssistant");
+    expect(source).toContain("attachPersistedChatError(prev, detail, errorCode)");
+    expect(source).toContain("attachPersistedChatError(prev, msg, errorCode)");
   });
 });

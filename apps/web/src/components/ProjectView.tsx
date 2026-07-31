@@ -210,13 +210,13 @@ import {
   appendErrorStatusEvent,
   appendWarningStatusEvent,
   attachPersistedChatError,
+  attachAutoContinueIncompleteOutputNotice,
   messageHasPersistedChatError,
   messageHasVisibleProse,
 } from '../runtime/chat-events';
 import {
   AUTO_CONTINUE_ENTRY_FROM,
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
-  AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
   extractAutoContinueContextFromAssistant,
   isAutoContinueIncompleteOutputPrompt,
@@ -395,6 +395,7 @@ import {
   shouldForceFailStaleDaemonRun,
   shouldPollStaleApiRun,
   shouldForceFailStaleApiRun,
+  applyTerminalRunStatusToAssistant,
   patchStaleApiAssistantFailure,
   TEAMVER_STALE_API_RUN_POLL_MS,
   shouldClearPhantomStreamingMarker,
@@ -2525,6 +2526,8 @@ export function ProjectView({
   const autoContinueTimerRef = useRef<number | null>(null);
   /** Conversation id that owns the pending auto-continue timer (for cap rollback). */
   const pendingAutoContinueConversationIdRef = useRef<string | null>(null);
+  /** True while the 600ms auto-continue timer is armed — ChatPane hides Retry. */
+  const [autoContinuePending, setAutoContinuePending] = useState(false);
   /**
    * Live streaming buffer mutator for the in-flight assistant row. `surfaceChatVisibleError`
    * updates React `messages` + saves, but the stream scheduler persists from a separate
@@ -2539,12 +2542,14 @@ export function ProjectView({
   const clearPendingAutoContinueTimer = useCallback((options?: { rollback?: boolean }) => {
     if (autoContinueTimerRef.current === null) {
       pendingAutoContinueConversationIdRef.current = null;
+      setAutoContinuePending(false);
       return;
     }
     window.clearTimeout(autoContinueTimerRef.current);
     autoContinueTimerRef.current = null;
     const scheduledId = pendingAutoContinueConversationIdRef.current;
     pendingAutoContinueConversationIdRef.current = null;
+    setAutoContinuePending(false);
     if (options?.rollback && scheduledId) {
       rollbackAutoContinueCount(conversationAutoContinueCountRef.current, scheduledId);
     }
@@ -3264,10 +3269,10 @@ export function ProjectView({
               autoContinueCount + 1,
             );
             const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
-            const updatedAssistant = appendErrorStatusEvent(
+            const updatedAssistant = attachAutoContinueIncompleteOutputNotice(
               incompleteAssistant,
               autoContinueNotice,
-              AUTO_CONTINUE_STATUS_CODE,
+              formatProjectRunDeliverableMissingError(),
             );
             setMessages((current) =>
               current.map((message) =>
@@ -3283,9 +3288,11 @@ export function ProjectView({
             const scheduledProjectId = project.id;
             const scheduledConversationId = activeConversationId;
             pendingAutoContinueConversationIdRef.current = scheduledConversationId;
+            setAutoContinuePending(true);
             autoContinueTimerRef.current = window.setTimeout(() => {
               autoContinueTimerRef.current = null;
               pendingAutoContinueConversationIdRef.current = null;
+              setAutoContinuePending(false);
               if (project.id !== scheduledProjectId) {
                 rollbackAutoContinueCount(
                   conversationAutoContinueCountRef.current,
@@ -5282,21 +5289,6 @@ export function ProjectView({
     [updateMessageById, activeConversationId, project.id],
   );
 
-  // `code` is the structured API error code (e.g. AGENT_AUTH_REQUIRED); it
-  // rides along on the error status event so AssistantMessage can render the
-  // hosted-AMR nudge for model/auth/quota failures on non-AMR agents.
-  const appendAssistantErrorEvent = useCallback(
-    (messageId: string, message: string, code?: string) => {
-      if (!message) return;
-      updateMessageById(
-        messageId,
-        (prev) => appendErrorStatusEvent(prev, message, code),
-        true,
-      );
-    },
-    [updateMessageById],
-  );
-
   const auditDesignSystemWorkspaceAfterRun = useCallback(
     async (assistantMessageId: string) => {
       if (!isDesignSystemWorkspaceMetadata(project.metadata)) return;
@@ -5480,7 +5472,11 @@ export function ProjectView({
         if (status) {
           const patch = terminalAssistantPatchFromRunStatus(status);
           if (patch) {
-            updateMessageById(message.id, (prev) => ({ ...prev, ...patch }), true);
+            updateMessageById(
+              message.id,
+              (prev) => applyTerminalRunStatusToAssistant(prev, status),
+              true,
+            );
             clearStreamingMarker(activeConversationId);
             scheduleConversationMessageRefresh(activeConversationId);
             continue;
@@ -5490,10 +5486,9 @@ export function ProjectView({
           updateMessageById(
             message.id,
             (prev) =>
-              appendErrorStatusEvent(
+              attachPersistedChatError(
                 {
                   ...prev,
-                  runStatus: 'failed',
                   endedAt: prev.endedAt ?? Date.now(),
                 },
                 formatProjectRunErrorForUser(
@@ -5736,13 +5731,23 @@ export function ProjectView({
             scheduleReattachRetry(message.id, null);
             continue;
           }
+          // Phantom running row with no runId — must persist a durable
+          // status:error so hard reload can rebuild the Retry panel.
           updateMessageById(
             message.id,
-            (prev) => ({
-              ...prev,
-              runStatus: 'failed',
-              endedAt: prev.endedAt ?? Date.now(),
-            }),
+            (prev) =>
+              attachPersistedChatError(
+                {
+                  ...prev,
+                  endedAt: prev.endedAt ?? Date.now(),
+                },
+                formatProjectRunErrorForUser(
+                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                    code: 'AGENT_EXECUTION_FAILED',
+                  }),
+                ),
+                'AGENT_EXECUTION_FAILED',
+              ),
             true,
           );
           continue;
@@ -5790,9 +5795,23 @@ export function ProjectView({
             scheduleReattachRetry(message.id, runId);
             continue;
           }
+          // Run id existed locally but daemon has no status — persist a
+          // durable error so hard reload still rebuilds Retry UI.
           updateMessageById(
             message.id,
-            (prev) => ({ ...prev, runStatus: 'failed', endedAt: prev.endedAt ?? Date.now() }),
+            (prev) =>
+              attachPersistedChatError(
+                {
+                  ...prev,
+                  endedAt: prev.endedAt ?? Date.now(),
+                },
+                formatProjectRunErrorForUser(
+                  Object.assign(new Error('AGENT_EXECUTION_FAILED'), {
+                    code: 'AGENT_EXECUTION_FAILED',
+                  }),
+                ),
+                'AGENT_EXECUTION_FAILED',
+              ),
             true,
           );
           completedReattachRunsRef.current.add(runId);
@@ -6192,12 +6211,18 @@ export function ProjectView({
                     );
                     if (shouldFailRunForArtifactPersistResult(replayPersistResult)) {
                       const endedAt = Date.now();
+                      const detail = formatProjectRunDeliverableMissingError({
+                        kind: replayPersistResult?.kind ?? null,
+                        reason:
+                          replayPersistResult && 'reason' in replayPersistResult
+                            ? replayPersistResult.reason ?? null
+                            : null,
+                      });
                       updateMessageById(
                         message.id,
                         (prev) => ({
-                          ...prev,
+                          ...attachPersistedChatError(prev, detail, 'incomplete_output'),
                           endedAt: prev.endedAt ?? endedAt,
-                          runStatus: 'failed',
                           resumable: true,
                         }),
                         true,
@@ -6256,17 +6281,19 @@ export function ProjectView({
               textBuffer.cancel();
               unregisterTextBuffer();
               if (runMayFinalize) {
-                setError(formatProjectRunErrorForUser(err));
-                appendAssistantErrorEvent(message.id, formatProjectRunErrorForUser(err), errorCode);
+                const detail = formatProjectRunErrorForUser(err);
+                setError(detail);
+                // Single persist: durable status:error + failed (+ resumable).
+                // Do not call persistNow afterward — that can race a second
+                // PUT from a pre-error snapshot before messagesRef syncs.
                 updateMessageById(
                   message.id,
                   (prev) => ({
-                    ...prev,
-                    runStatus: 'failed',
-                    endedAt: prev.endedAt ?? Date.now(),
+                    ...attachPersistedChatError(prev, detail, errorCode),
                     resumable,
                   }),
                   true,
+                  { telemetryFinalized: true },
                 );
               }
               completedReattachRunsRef.current.add(runId);
@@ -6274,7 +6301,6 @@ export function ProjectView({
               reattachCancelControllersRef.current.delete(runId);
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
               finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
-              persistNow({ telemetryFinalized: true });
             },
           },
           onRunStatus: (runStatus) => {
@@ -6299,15 +6325,29 @@ export function ProjectView({
               clearCurrentRunStreamingMarker(reattachConversationId, controller, cancelController);
             }
             if (isTerminalRunStatus(runStatus)) {
-              persistNow(
-                runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
-              );
+              if (runStatus === 'failed') {
+                // Let onError attach status:error before the terminal persist.
+                persistSoon();
+              } else {
+                persistNow(
+                  runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
+                );
+              }
             } else {
               persistSoon();
             }
             if (isTerminalRunStatus(runStatus)) {
               finalizeRunRecoveryBannerForMessage(reattachConversationId, message.id);
-              scheduleConversationMessageRefresh(reattachConversationId);
+              // Delay soft-refresh on failed so onError's durable error wins
+              // the merge race (symmetric with the main chat path).
+              if (runStatus === 'failed') {
+                window.setTimeout(() => {
+                  if (cancelled) return;
+                  scheduleConversationMessageRefresh(reattachConversationId);
+                }, 500);
+              } else {
+                scheduleConversationMessageRefresh(reattachConversationId);
+              }
             }
           },
           onRunEventId: (lastRunEventId) => {
@@ -6327,13 +6367,10 @@ export function ProjectView({
               const resumable = (err as Error & { resumable?: boolean }).resumable === true;
               const msg = formatProjectRunErrorForUser(err);
               setError(msg);
-              appendAssistantErrorEvent(message.id, msg, errorCode);
               updateMessageById(
                 message.id,
                 (prev) => ({
-                  ...prev,
-                  runStatus: 'failed',
-                  endedAt: prev.endedAt ?? Date.now(),
+                  ...attachPersistedChatError(prev, msg, errorCode),
                   resumable,
                 }),
                 true,
@@ -6766,10 +6803,10 @@ export function ProjectView({
             autoContinueCount + 1,
           );
           const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
-          const updatedAssistant = appendErrorStatusEvent(
+          const updatedAssistant = attachAutoContinueIncompleteOutputNotice(
             incompleteAssistant,
             autoContinueNotice,
-            AUTO_CONTINUE_STATUS_CODE,
+            formatProjectRunDeliverableMissingError(),
           );
           setMessages((current) =>
             current.map((message) =>
@@ -6786,9 +6823,11 @@ export function ProjectView({
           const scheduledProjectId = project.id;
           const scheduledConversationId = recoveryConversationId;
           pendingAutoContinueConversationIdRef.current = scheduledConversationId;
+          setAutoContinuePending(true);
           autoContinueTimerRef.current = window.setTimeout(() => {
             autoContinueTimerRef.current = null;
             pendingAutoContinueConversationIdRef.current = null;
+            setAutoContinuePending(false);
             if (project.id !== scheduledProjectId) {
               rollbackAutoContinueCount(
                 conversationAutoContinueCountRef.current,
@@ -7884,16 +7923,22 @@ export function ProjectView({
                   autoContinueCount + 1,
                 );
                 const autoContinueNotice = formatAutoContinueIncompleteOutputNotice();
+                // Durable incomplete_output under the transient notice so a
+                // hard reload can rebuild Retry after AUTO_CONTINUE is no
+                // longer "pending" in this session.
                 updateAssistant((prev) => ({
-                  ...appendErrorStatusEvent(prev, autoContinueNotice, AUTO_CONTINUE_STATUS_CODE),
+                  ...attachAutoContinueIncompleteOutputNotice(
+                    prev,
+                    autoContinueNotice,
+                    deliverableError,
+                    deliverableErrorCode,
+                  ),
                   producedFiles: produced,
-                  runStatus: 'failed',
-                  resumable: true,
                   endedAt: prev.endedAt ?? endedAt,
                 }));
               } else {
                 updateAssistant((prev) => ({
-                  ...appendErrorStatusEvent(prev, deliverableError, deliverableErrorCode),
+                  ...attachPersistedChatError(prev, deliverableError, deliverableErrorCode),
                   producedFiles: produced,
                   runStatus: 'failed',
                   resumable: true,
@@ -7913,9 +7958,11 @@ export function ProjectView({
                 const scheduledProjectId = project.id;
                 const scheduledConversationId = runConversationId;
                 pendingAutoContinueConversationIdRef.current = scheduledConversationId;
+                setAutoContinuePending(true);
                 autoContinueTimerRef.current = window.setTimeout(() => {
                   autoContinueTimerRef.current = null;
                   pendingAutoContinueConversationIdRef.current = null;
+                  setAutoContinuePending(false);
                   // Abort if the user switched projects/conversations — otherwise
                   // a late timer from project A would inject the recovery prompt
                   // into project B's brand-new chat.
@@ -8487,14 +8534,16 @@ export function ProjectView({
           releaseOwnTextBuffer();
           let finalizedAssistant = latestAssistantMsg;
           if (runMayFinalize) {
-            if (runIsVisible()) setError(formatProjectRunErrorForUser(err));
+            const detail = formatProjectRunErrorForUser(err);
+            if (runIsVisible()) setError(detail);
             updateAssistant((prev) => {
+              const withError = attachPersistedChatError(prev, detail, errorCode);
               finalizedAssistant = {
-                ...appendErrorStatusEvent(prev, formatProjectRunErrorForUser(err), errorCode),
-                endedAt,
+                ...withError,
+                endedAt: withError.endedAt ?? endedAt,
                 runStatus: config.mode === 'api' || prev.runId || isActiveRunStatus(prev.runStatus)
                   ? 'failed'
-                  : prev.runStatus,
+                  : withError.runStatus,
                 resumable,
               };
               return finalizedAssistant;
@@ -8633,9 +8682,16 @@ export function ProjectView({
               textBuffer.finalizeForHistoryDisplay?.();
             }
             if (isTerminalRunStatus(runStatus) && !deferredTerminalSuccess) {
-              assistantPersist.persistNow(
-                runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
-              );
+              if (runStatus === 'failed') {
+                // Prefer onError's attachPersistedChatError + save to land first.
+                // A premature persistNow of failed-without-error races soft refresh
+                // and hard-reload windows before the status:error event exists.
+                assistantPersist.persistSoon();
+              } else {
+                assistantPersist.persistNow(
+                  runStatus === 'canceled' ? { telemetryFinalized: true } : undefined,
+                );
+              }
             } else {
               assistantPersist.persistSoon();
             }
@@ -8644,7 +8700,13 @@ export function ProjectView({
             }
             if (isTerminalRunStatus(runStatus)) {
               clearCurrentRunStreamingMarker(runConversationId, controller, cancelController);
-              scheduleConversationMessageRefresh(runConversationId);
+              if (runStatus === 'failed') {
+                window.setTimeout(() => {
+                  scheduleConversationMessageRefresh(runConversationId);
+                }, 500);
+              } else {
+                scheduleConversationMessageRefresh(runConversationId);
+              }
             }
           },
           onRunEventId: (lastRunEventId) => {
@@ -10784,6 +10846,7 @@ export function ProjectView({
               onSend={handleSend}
               onRetry={handleRetry}
               onResumeRun={handleResumeRun}
+              autoContinuePending={autoContinuePending}
               onStop={handleStop}
               onRemoveQueuedSend={removeQueuedChatSend}
               onUpdateQueuedSend={updateQueuedChatSend}

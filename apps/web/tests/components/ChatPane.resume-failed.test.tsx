@@ -101,6 +101,7 @@ function renderChat(opts: {
   onSend?: (...args: unknown[]) => void;
   activeAgentId?: string;
   messages?: ChatMessage[];
+  autoContinuePending?: boolean;
 }) {
   return render(
     <ChatPane
@@ -114,6 +115,7 @@ function renderChat(opts: {
       onStop={vi.fn()}
       onRetry={opts.onRetry}
       onResumeRun={opts.onResumeRun}
+      autoContinuePending={opts.autoContinuePending}
       conversations={[
         { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
       ]}
@@ -123,6 +125,32 @@ function renderChat(opts: {
       config={{ agentId: opts.activeAgentId ?? 'claude', agentCliEnv: {} } as unknown as AppConfig}
     />,
   );
+}
+
+function autoContinueWithDurableIncompleteMessage(): ChatMessage {
+  return {
+    id: 'msg-auto-continue-durable',
+    role: 'assistant',
+    content: 'partial',
+    createdAt: 2,
+    runStatus: 'failed',
+    resumable: true,
+    agentId: 'claude',
+    events: [
+      {
+        kind: 'status',
+        label: 'error',
+        detail: '슬라이드 결과물이 생성되지 않았습니다.',
+        code: 'incomplete_output',
+      },
+      {
+        kind: 'status',
+        label: 'error',
+        detail: 'Deliverable is incomplete — trying an automatic continue…',
+        code: 'auto_continue_incomplete_output',
+      },
+    ],
+  };
 }
 
 describe('ChatPane resume-on-failure', () => {
@@ -197,6 +225,35 @@ describe('ChatPane resume-on-failure', () => {
     expect(onResumeRun).not.toHaveBeenCalled();
     expect(onRetry).not.toHaveBeenCalled();
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('hides Retry while autoContinuePending even when durable incomplete_output is stacked', () => {
+    const onResumeRun = vi.fn();
+    const onRetry = vi.fn();
+    renderChat({
+      onResumeRun,
+      onRetry,
+      activeAgentId: 'claude',
+      autoContinuePending: true,
+      messages: [autoContinueWithDurableIncompleteMessage()],
+    });
+    expect(screen.queryByText('chat.resumeRunCta')).toBeNull();
+    expect(screen.queryByText('promptTemplates.retry')).toBeNull();
+  });
+
+  it('rebuilds Retry from durable incomplete_output after reload (auto-continue notice present, timer gone)', () => {
+    const onResumeRun = vi.fn();
+    const onRetry = vi.fn();
+    renderChat({
+      onResumeRun,
+      onRetry,
+      activeAgentId: 'claude',
+      autoContinuePending: false,
+      messages: [autoContinueWithDurableIncompleteMessage()],
+    });
+    expect(screen.getByText('슬라이드 결과물이 생성되지 않았습니다.')).toBeTruthy();
+    expect(screen.getByText('chat.resumeRunCta')).toBeTruthy();
+    expect(screen.queryByText('Deliverable is incomplete — trying an automatic continue…')).toBeNull();
   });
 
   it('does not render the model-facing automatic-continue prompt as a user bubble', () => {
