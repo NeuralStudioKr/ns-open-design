@@ -1,20 +1,88 @@
+# Docker build context (repo root → deploy/Dockerfile for open-design-daemon).
+# Exclude anything not COPY'd into the image — smaller context upload, less ENOSPC risk.
+# Note: teamver-design-api uses monorepo-parent context (../../..) and its own ignore rules.
+
+# --- VCS / IDE / local runtime ---
 .git
 .github
 .DS_Store
+.claude
+.claude-plugin
 .claude-sessions
 .cursor
 .task
+.agents
+.vaunt
 .od
+.od-e2e
 .ocd
+.tmp
+.pytest_cache
+.direnv
+.envrc
+.env.local
+.env.*.local
+
+# --- Dependencies & build outputs (rebuilt inside the image) ---
 node_modules
+**/node_modules
 dist
+**/dist
+out
+**/out
+.next
+**/.next
+**/.next-*
+**/.turbo
+**/.vite
 coverage
-*.log
 tsconfig.tsbuildinfo
-deploy/*.env
-deploy/.env
-deploy/**/*.tar
-deploy/**/*.tgz
-deploy/**/*.zip
+**/*.tsbuildinfo
+*.log
+
+# --- Docs (not shipped in the daemon image) ---
 docs
+docs-teamver
+docs-dev
 story
+
+# --- e2e: keep package.json for pnpm workspace; drop heavy UI/fixtures ---
+e2e/ui
+e2e/tests
+e2e/specs
+e2e/lib
+e2e/resources
+e2e/scripts
+e2e/reports
+e2e/node_modules
+e2e/*.md
+test-results
+playwright-report
+**/playwright-report
+**/test-results
+
+# --- Unit/integration tests under apps (not needed for prod tsc/next build) ---
+apps/**/tests
+apps/**/__tests__
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# --- Paths not COPY'd by deploy/Dockerfile ---
+# design-templates: daemon can read them if present, but image currently COPY's
+# skills/design-systems only — exclude to shrink context (~37M).
+design-templates
+# OD image does not COPY deploy/; design-api builds from parent monorepo context.
+deploy
+charts
+data
+mocks
+specs
+nix
+patches
+templates
+plugins/community
+plugins/registry
+plugins/spec
+plugins/open-design
