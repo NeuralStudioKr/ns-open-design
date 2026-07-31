@@ -164,9 +164,9 @@ import {
   getRevisionContentCache,
   prefetchRevisionContents,
   setRevisionContentCache,
+  shouldCacheRevisionContent,
 } from '../runtime/revision-content-cache';
 import { canResizeTarget } from '../edit-mode/resize-eligibility';
-import { parseManualEditStylePx } from '../edit-mode/resize-math';
 import { cacheParentRevisionOnPush, canApplyRevisionFromClientCache } from '../runtime/revision-restore';
 import {
   postDeckHostViewportToIframe,
@@ -180,6 +180,7 @@ import {
 import { withResolvedDeckSlideIndex } from '../runtime/deck-slide-index';
 import { looksLikeCompactApiStackedDeckForPreview } from '../runtime/compact-api-stacked-deck';
 import {
+  hasTweaksTemplate,
   hasUrlModeBridge,
   htmlNeedsFocusGuard,
   htmlNeedsRedirectGuard,
@@ -244,6 +245,16 @@ import {
   readManualEditOuterHtml,
   readManualEditStyles,
 } from '../edit-mode/source-patches';
+import { contentRectToHostRect } from '../edit-mode/preview-coords';
+import {
+  parseExplicitPx,
+  resizeHistoryLabel,
+} from '../edit-mode/resize-math';
+import {
+  moveHistoryLabel,
+  PROMOTE_MOVE_STYLE_KEYS,
+  viewportRectAfterMoveCommit,
+} from '../edit-mode/move-math';
 import {
   createManualEditSourcePin,
   manualEditHistoryConfirmTrustsLocal,
@@ -258,6 +269,8 @@ import {
 import { isManualEditKeyboardTextTarget } from '../edit-mode/manual-edit-keyboard';
 import {
   MANUAL_EDIT_STYLE_AUTOSAVE_MS,
+  keyedManualEditStyleRollback,
+  manualEditGestureRollbackKeys,
   restoreManualEditPendingStyleAfterFailedFlush,
   shouldFlushManualEditStylesOnTargetBoundary,
   waitForManualEditSaveIdle,
@@ -272,6 +285,11 @@ import {
   shouldHoldDiskPreviewDuringManualEdit,
   shouldSkipManualEditHistoryConfirm,
 } from '../edit-mode/manual-edit-session';
+import { diffManualEditStylePatch } from '../edit-mode/manual-edit-style-batch';
+import {
+  manualEditInspectorStyleValue,
+  manualEditStyleValuesEqual,
+} from '../edit-mode/manual-edit-style-values';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import {
@@ -480,42 +498,12 @@ function mergeManualEditInspectorStyles(
   }, {} as ManualEditStyles);
 }
 
-function manualEditInspectorStyleValue(key: keyof ManualEditStyles, value: string): string {
-  if (!value) return '';
-  if (key === 'color' || key === 'backgroundColor' || key === 'borderColor') {
-    return normalizeManualEditInspectorColor(value);
-  }
-  return value;
-}
-
-function normalizeManualEditInspectorColor(value: string): string {
-  const trimmed = value.trim();
-  if (/^#[0-9a-f]{6}$/i.test(trimmed)) return trimmed.toLowerCase();
-  if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
-    const r = trimmed[1]!, g = trimmed[2]!, b = trimmed[3]!;
-    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
-  }
-  const rgba = trimmed.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
-  if (!rgba) return trimmed;
-  if (rgba[4] !== undefined && Number(rgba[4]) === 0) return '';
-  const toHex = (raw: string) => Math.max(0, Math.min(255, Math.round(Number(raw))))
-    .toString(16)
-    .padStart(2, '0');
-  return `#${toHex(rgba[1]!)}${toHex(rgba[2]!)}${toHex(rgba[3]!)}`;
-}
-
 function manualEditPersistedValueMatchesSavedSnapshot(
   key: keyof ManualEditStyles,
   persistedValue: string,
   savedValue: string,
 ): boolean {
-  return canonicalManualEditStyleValue(key, persistedValue) === canonicalManualEditStyleValue(key, savedValue);
-}
-
-function canonicalManualEditStyleValue(key: keyof ManualEditStyles, value: string): string {
-  const normalized = manualEditInspectorStyleValue(key, value).trim();
-  if (!normalized) return '';
-  return normalized.toLowerCase();
+  return manualEditStyleValuesEqual(key, persistedValue, savedValue);
 }
 
 function getDeployProviderOption(providerId: WebDeployProviderId): DeployProviderOption {
@@ -937,16 +925,16 @@ function manualEditFloatingPanelStyle(
   previewScale: number,
   canvasSize: PreviewCanvasSize | undefined,
 ): CSSProperties {
-  const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
   const panelWidth = 320;
   const preferredPanelHeight = 380;
   const pad = 12;
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
   const panelHeight = Math.min(preferredPanelHeight, Math.max(260, canvasHeight - pad * 2));
-  const targetLeft = target.rect.x * scale;
-  const targetTop = target.rect.y * scale;
-  const targetRight = (target.rect.x + target.rect.width) * scale;
+  const hostRect = contentRectToHostRect(target.rect, previewScale);
+  const targetLeft = hostRect.x;
+  const targetTop = hostRect.y;
+  const targetRight = hostRect.x + hostRect.width;
   let left = targetRight + pad;
   if (left + panelWidth > canvasWidth - pad) {
     left = Math.max(pad, targetLeft - panelWidth - pad);
@@ -975,13 +963,13 @@ function manualEditHoverIconStyle(
   previewScale: number,
   canvasSize: PreviewCanvasSize | undefined,
 ): CSSProperties {
-  const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
   const iconSize = 26;
   const inset = 4;
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
-  const targetTop = target.rect.y * scale;
-  const targetRight = (target.rect.x + target.rect.width) * scale;
+  const hostRect = contentRectToHostRect(target.rect, previewScale);
+  const targetTop = hostRect.y;
+  const targetRight = hostRect.x + hostRect.width;
   const left = Math.max(
     inset,
     Math.min(targetRight - iconSize - inset, canvasWidth - iconSize - inset),
@@ -2830,20 +2818,24 @@ export function CommentSidePanel({
               {projectId && comment.attachments && comment.attachments.length > 0 ? (
                 <div className="comment-side-attachments">
                   {comment.attachments.map((attachment) => {
-                    const url = projectRawUrl(projectId, attachment.path);
                     return (
                       <a
                         key={attachment.path}
                         className="comment-side-attachment"
                         data-testid="comment-side-attachment"
-                        href={url}
+                        href={projectRawUrl(projectId, attachment.path)}
                         target="_blank"
                         rel="noopener noreferrer"
                         aria-label={attachment.name}
                         title={attachment.name}
                         onClick={(event) => event.stopPropagation()}
                       >
-                        <img src={url} alt={attachment.name} />
+                        <AuthenticatedProjectFileImage
+                          projectId={projectId}
+                          path={attachment.path}
+                          alt={attachment.name}
+                          trustExists
+                        />
                       </a>
                     );
                   })}
@@ -5129,7 +5121,15 @@ function HtmlViewer({
   const [manualEditSrcDocActive, setManualEditSrcDocActive] = useState(false);
   const [manualEditFrozenSource, setManualEditFrozenSource] = useState<string | null>(null);
   const [manualEditInlineTextEditing, setManualEditInlineTextEditing] = useState(false);
-  const [manualEditResizeDraft, setManualEditResizeDraft] = useState<{ widthPx: number; heightPx: number } | null>(null);
+  const [manualEditResizeDraftSize, setManualEditResizeDraftSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [manualEditMoveDraftPos, setManualEditMoveDraftPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const manualEditResizeSessionActiveRef = useRef(false);
   const manualEditModeRef = useRef(false);
   const manualEditResizePausedRef = useRef(false);
   const manualEditFrozenSourceRef = useRef<string | null>(null);
@@ -6155,6 +6155,8 @@ function HtmlViewer({
     forceInline: forceInline || needsSandboxShim,
     needsFocusGuard,
     needsRedirectGuard,
+    // Tweaks template needs the srcDoc bridge so the toolbar toggle can arm.
+    tweaksBridge: hasTweaksTemplate(source),
   }) && !manualEditRequiresSrcDoc
     && (!teamverEmbedPreviewMode || embedPreviewPrefix != null);
   const projectPreviewAssetUrl = useCallback(
@@ -6682,7 +6684,15 @@ function HtmlViewer({
     if (!win) return;
     win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
     postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null);
-  }, [manualEditMode, selectedManualEditTarget?.id, srcDoc, useUrlLoadPreview]);
+    // hostChrome tracks overlay mount: also re-post when draw / inline-text hide it.
+  }, [
+    manualEditMode,
+    selectedManualEditTarget?.id,
+    srcDoc,
+    useUrlLoadPreview,
+    manualEditInlineTextEditing,
+    drawOverlayOpen,
+  ]);
 
   const previewStyleToIframe = useCallback((id: string, styles: Partial<ManualEditStyles>, version: number) => {
     const frame = iframeRef.current;
@@ -6705,7 +6715,31 @@ function HtmlViewer({
   function postSelectedManualEditTargetToIframe(id: string | null, target: HTMLIFrameElement | null = iframeRef.current) {
     const win = target?.contentWindow;
     if (!win) return;
-    win.postMessage({ type: 'od-edit-selected-target', id }, '*');
+    // Prefer render-state over the ref: the selection-sync effect can run
+    // before the ref-sync effect after setSelectedManualEditTarget.
+    const selected = (
+      id
+      && selectedManualEditTarget
+      && selectedManualEditTarget.id === id
+    )
+      ? selectedManualEditTarget
+      : (id && selectedManualEditTargetRef.current?.id === id
+        ? selectedManualEditTargetRef.current
+        : null);
+    // Match ManualEditResizeOverlay mount: only suppress the iframe ring when
+    // the host overlay is actually painted (not during draw / inline text).
+    const hostChrome = Boolean(
+      selected
+      && !drawOverlayOpen
+      && canResizeTarget(selected, { inlineTextEditing: manualEditInlineTextEditing }),
+    );
+    win.postMessage({ type: 'od-edit-selected-target', id, hostChrome }, '*');
+  }
+
+  function requestManualEditTargetRemeasure(id: string, target: HTMLIFrameElement | null = iframeRef.current) {
+    const win = target?.contentWindow;
+    if (!win || !id) return;
+    win.postMessage({ type: 'od-edit-remeasure', id }, '*');
   }
 
   function syncBridgeModes(target: HTMLIFrameElement | null = iframeRef.current) {
@@ -6850,7 +6884,8 @@ function HtmlViewer({
     manualEditPendingStyleRef.current = null;
     clearManualEditStyleTimer();
     manualEditResizePausedRef.current = false;
-    setManualEditResizeDraft(null);
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
   }, [file.name]);
 
   const resolveRevisionSnapshotContent = useCallback(async (revisionId: string): Promise<string | null> => {
@@ -6858,7 +6893,9 @@ function HtmlViewer({
     if (cached != null) return cached;
     const response = await fetchProjectFileRevisionContent(projectId, file.name, revisionId);
     if (response?.content == null) return null;
-    setRevisionContentCache(projectId, file.name, revisionId, response.content);
+    if (shouldCacheRevisionContent(response.content)) {
+      setRevisionContentCache(projectId, file.name, revisionId, response.content);
+    }
     return response.content;
   }, [projectId, file.name]);
 
@@ -6996,7 +7033,9 @@ function HtmlViewer({
     prefetchRevisionContents(
       projectId,
       file.name,
-      [before?.id, after?.id].filter((id): id is string => Boolean(id)),
+      [before, after]
+        .filter((revision): revision is FileRevision => Boolean(revision))
+        .map((revision) => ({ revisionId: revision.id, byteSize: revision.byteSize })),
       (revisionId) => resolveRevisionSnapshotContent(revisionId),
     );
   }, [projectId, file.name, reconcileRevisionWithDisk, resolveRevisionSnapshotContent]);
@@ -7351,6 +7390,19 @@ function HtmlViewer({
         setManualEditInlineTextEditing(Boolean(data.active));
         return;
       }
+      if (data.type === 'od-edit-rect' && data.ok && data.target) {
+        const measured = data.target;
+        setSelectedManualEditTarget((current) => {
+          if (current?.id !== measured.id) return current;
+          const next = { ...current, ...measured };
+          selectedManualEditTargetRef.current = next;
+          return next;
+        });
+        setManualEditTargets((current) =>
+          current.map((item) => (item.id === measured.id ? { ...item, ...measured } : item)),
+        );
+        return;
+      }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -7437,13 +7489,244 @@ function HtmlViewer({
     previewStyleToIframe(id, styles, version);
     // Autosave shortly after the user stops tweaking — select/background/
     // exit also flush, but a remount or crash before those gestures must not
-    // be the only persistence path.
+    // be the only persistence path. Resize drag sessions pause this timer.
     clearManualEditStyleTimer();
+    if (manualEditResizeSessionActiveRef.current) return;
     manualEditStyleTimerRef.current = setTimeout(() => {
       manualEditStyleTimerRef.current = null;
       if (manualEditResizePausedRef.current) return;
       void flushManualEditStyleSave();
     }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
+  }
+
+  function handleManualEditResizeSessionChange(active: boolean) {
+    manualEditResizeSessionActiveRef.current = active;
+    manualEditResizePausedRef.current = active;
+    if (active) {
+      clearManualEditStyleTimer();
+      return;
+    }
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
+  }
+
+  function handleManualEditResizePreview(styles: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    if (!target) return;
+    const version = nextManualEditPreviewVersion();
+    const currentPending = manualEditPendingStyleRef.current;
+    const pendingStyles = currentPending?.id === target.id
+      ? { ...currentPending.styles, ...styles }
+      : styles;
+    clearManualEditStyleTimer();
+    manualEditPendingStyleRef.current = {
+      id: target.id,
+      styles: pendingStyles,
+      label: resizeHistoryLabel(target.label),
+      version,
+    };
+    setManualEditError(null);
+    previewStyleToIframe(target.id, styles, version);
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...styles },
+    }));
+    setManualEditResizeDraftSize((prev) => {
+      const width = parseExplicitPx(styles.width) ?? prev?.width ?? target.rect.width;
+      const height = parseExplicitPx(styles.height) ?? prev?.height ?? target.rect.height;
+      return { width, height };
+    });
+    // Overlay owns viewport origin via computeResize x/y (liveViewportPos).
+    // Do not map CB left/top onto manualEditMoveDraftPos.
+  }
+
+  function handleManualEditMovePreview(styles: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    if (!target) return;
+    const version = nextManualEditPreviewVersion();
+    const currentPending = manualEditPendingStyleRef.current;
+    const pendingStyles = currentPending?.id === target.id
+      ? { ...currentPending.styles, ...styles }
+      : styles;
+    clearManualEditStyleTimer();
+    manualEditPendingStyleRef.current = {
+      id: target.id,
+      styles: pendingStyles,
+      label: moveHistoryLabel(target.label),
+      version,
+    };
+    setManualEditError(null);
+    previewStyleToIframe(target.id, styles, version);
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...styles },
+    }));
+    // Overlay owns viewport position via promoteViewportDraft during body-drag.
+    // Do not map CB left/top onto manualEditMoveDraftPos (nested absolute /
+    // post-promote re-drag would jump the host box).
+  }
+
+
+  /**
+   * Keyed iframe/draft + pending rollback for a geometry gesture. Used by Esc /
+   * pointercancel and by flush-fail after commit — pending restore alone would
+   * leave the live preview on post-gesture styles while disk stayed old.
+   */
+  function rollbackManualEditGestureStyles(stylesBefore: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    clearManualEditStyleTimer();
+    manualEditResizeSessionActiveRef.current = false;
+    setManualEditMoveDraftPos(null);
+    setManualEditResizeDraftSize(null);
+    if (!target) return;
+    const cancelKeys = manualEditGestureRollbackKeys(stylesBefore, PROMOTE_MOVE_STYLE_KEYS);
+    cancelManualEditPendingStyles(target.id, cancelKeys);
+    const pending = manualEditPendingStyleRef.current;
+    if (
+      pending?.id === target.id
+      && (
+        pending.label === moveHistoryLabel(target.label)
+        || pending.label === resizeHistoryLabel(target.label)
+      )
+    ) {
+      manualEditPendingStyleRef.current = {
+        ...pending,
+        label: `Edit: ${target.label}`,
+      };
+    }
+    const reset = keyedManualEditStyleRollback(stylesBefore, cancelKeys);
+    previewStyleToIframe(target.id, reset, nextManualEditPreviewVersion());
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...reset },
+    }));
+    // Resume autosave for any non-geometry draft that survived the rollback.
+    if (manualEditPendingStyleRef.current && !manualEditResizeSessionActiveRef.current) {
+      clearManualEditStyleTimer();
+      manualEditStyleTimerRef.current = setTimeout(() => {
+        manualEditStyleTimerRef.current = null;
+        void flushManualEditStyleSave();
+      }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
+    }
+  }
+
+  async function handleManualEditResizeCommit(
+    styles: Partial<ManualEditStyles>,
+    stylesBefore: Partial<ManualEditStyles>,
+    viewport?: { x: number; y: number },
+  ) {
+    const target = selectedManualEditTarget;
+    if (!target) return;
+    handleManualEditResizePreview(styles);
+    manualEditResizeSessionActiveRef.current = false;
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
+    manualEditResizePausedRef.current = false;
+    const ok = await flushManualEditStyleSave({ force: true });
+    if (!ok) {
+      rollbackManualEditGestureStyles(stylesBefore);
+      return;
+    }
+    const width = parseExplicitPx(styles.width) ?? target.rect.width;
+    const height = parseExplicitPx(styles.height) ?? target.rect.height;
+    const leftPx = parseExplicitPx(styles.left);
+    const topPx = parseExplicitPx(styles.top);
+    setSelectedManualEditTarget((current) => {
+      if (!current || current.id !== target.id) return current;
+      const base = viewportRectAfterMoveCommit(current.rect, width, height);
+      return {
+        ...current,
+        // Apply gesture viewport immediately so the next drag does not seed
+        // startRect from a stale pre-gesture origin while remasure is in flight.
+        rect: viewport
+          ? { ...base, x: Math.round(viewport.x), y: Math.round(viewport.y) }
+          : base,
+        styles: { ...current.styles, ...styles },
+        offsetLeft: leftPx ?? current.offsetLeft,
+        offsetTop: topPx ?? current.offsetTop,
+      };
+    });
+    // Sync host overlay to the iframe's real border-box after layout settles.
+    requestManualEditTargetRemeasure(target.id);
+  }
+
+  async function handleManualEditMoveCommit(
+    styles: Partial<ManualEditStyles>,
+    stylesBefore: Partial<ManualEditStyles>,
+    viewport?: { x: number; y: number },
+  ) {
+    const target = selectedManualEditTarget;
+    if (!target) return;
+    handleManualEditMovePreview(styles);
+    manualEditResizeSessionActiveRef.current = false;
+    setManualEditMoveDraftPos(null);
+    setManualEditResizeDraftSize(null);
+    manualEditResizePausedRef.current = false;
+    const ok = await flushManualEditStyleSave({ force: true });
+    if (!ok) {
+      rollbackManualEditGestureStyles(stylesBefore);
+      return;
+    }
+    const width = parseExplicitPx(styles.width) ?? target.rect.width;
+    const height = parseExplicitPx(styles.height) ?? target.rect.height;
+    const promoted = String(styles.position || '').toLowerCase() === 'absolute';
+    const leftPx = parseExplicitPx(styles.left);
+    const topPx = parseExplicitPx(styles.top);
+    setSelectedManualEditTarget((current) => {
+      if (!current || current.id !== target.id) return current;
+      const base = viewportRectAfterMoveCommit(current.rect, width, height);
+      return {
+        ...current,
+        rect: viewport
+          ? { ...base, x: Math.round(viewport.x), y: Math.round(viewport.y) }
+          : base,
+        styles: { ...current.styles, ...styles },
+        cssPosition: promoted ? 'absolute' : current.cssPosition,
+        offsetLeft: leftPx ?? current.offsetLeft,
+        offsetTop: topPx ?? current.offsetTop,
+      };
+    });
+    requestManualEditTargetRemeasure(target.id);
+  }
+
+  function handleManualEditResizeCancel(stylesBefore: Partial<ManualEditStyles>) {
+    rollbackManualEditGestureStyles(stylesBefore);
+  }
+
+  function handleManualEditMoveCancel(stylesBefore: Partial<ManualEditStyles>) {
+    rollbackManualEditGestureStyles(stylesBefore);
+  }
+
+  function reconcileManualEditDraftAfterNoOpFlush(pending: ManualEditPendingStyleSave) {
+    const base = sourceRef.current ?? '';
+    if (!base) return;
+    const keys = Object.keys(pending.styles) as Array<keyof ManualEditStyles>;
+    if (keys.length === 0) return;
+
+    const target = pending.id === '__body__'
+      ? null
+      : selectedManualEditTargetRef.current?.id === pending.id
+        ? selectedManualEditTargetRef.current
+        : manualEditTargets.find((item) => item.id === pending.id) ?? null;
+
+    const sourceStyles = target
+      ? inspectorManualEditStyles(target, base)
+      : readManualEditStyles(base, pending.id);
+    const resetStyles = keys.reduce<Partial<ManualEditStyles>>((acc, key) => {
+      acc[key] = sourceStyles[key] ?? '';
+      return acc;
+    }, {});
+
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
+    previewStyleToIframe(pending.id, resetStyles, nextManualEditPreviewVersion());
+
+    if (!target || selectedManualEditTarget?.id === pending.id) {
+      setManualEditDraft((current) => ({
+        ...current,
+        styles: { ...current.styles, ...resetStyles },
+      }));
+    }
   }
 
   async function flushManualEditStyleSave(options?: { force?: boolean }): Promise<boolean> {
@@ -7460,8 +7743,22 @@ function HtmlViewer({
     if (manualEditSavingRef.current) return false;
     clearManualEditStyleTimer();
     manualEditPendingStyleRef.current = null;
+    const baseSource = manualEditPatchBaseSource({
+      manualEditMode,
+      frozenSource: manualEditFrozenSource,
+      liveSource: sourceRef.current,
+    });
+    if (baseSource == null) {
+      manualEditPendingStyleRef.current = pending;
+      return false;
+    }
+    const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles);
+    if (Object.keys(effectiveStyles).length === 0) {
+      reconcileManualEditDraftAfterNoOpFlush(pending);
+      return true;
+    }
     const ok = await applyManualEdit(
-      { id: pending.id, kind: 'set-style', styles: pending.styles },
+      { id: pending.id, kind: 'set-style', styles: effectiveStyles },
       pending.label,
     );
     if (!ok) {
@@ -7478,64 +7775,6 @@ function HtmlViewer({
     return flushManualEditStyleSave();
   }
 
-  function beginManualEditResizeSession() {
-    clearManualEditStyleTimer();
-    manualEditResizePausedRef.current = true;
-    setManualEditResizeDraft(null);
-  }
-
-  function handleManualEditResizePreview(styles: Partial<ManualEditStyles>) {
-    const target = selectedManualEditTargetRef.current;
-    if (!target) return;
-    const version = nextManualEditPreviewVersion();
-    previewStyleToIframe(target.id, styles, version);
-    const widthPx = styles.width != null
-      ? parseManualEditStylePx(styles.width, target.rect.width)
-      : parseManualEditStylePx(target.styles.width, target.rect.width);
-    const heightPx = styles.height != null
-      ? parseManualEditStylePx(styles.height, target.rect.height)
-      : parseManualEditStylePx(target.styles.height, target.rect.height);
-    setManualEditResizeDraft({ widthPx, heightPx });
-    setManualEditDraft((current) => ({
-      ...current,
-      styles: { ...current.styles, ...styles },
-    }));
-  }
-
-  function cancelManualEditResizeSession(stylesBefore: Partial<ManualEditStyles>) {
-    const target = selectedManualEditTargetRef.current;
-    manualEditResizePausedRef.current = false;
-    setManualEditResizeDraft(null);
-    if (!target) return;
-    previewStyleToIframe(target.id, stylesBefore, nextManualEditPreviewVersion());
-    setManualEditDraft((current) => ({
-      ...current,
-      styles: { ...current.styles, ...stylesBefore },
-    }));
-  }
-
-  async function commitManualEditResizeSession(
-    styles: Partial<ManualEditStyles>,
-    label: string,
-  ): Promise<void> {
-    const target = selectedManualEditTargetRef.current;
-    if (!target) return;
-    manualEditResizePausedRef.current = false;
-    setManualEditResizeDraft(null);
-    const version = nextManualEditPreviewVersion();
-    manualEditPendingStyleRef.current = {
-      id: target.id,
-      styles,
-      label,
-      version,
-    };
-    previewStyleToIframe(target.id, styles, version);
-    setManualEditDraft((current) => ({
-      ...current,
-      styles: { ...current.styles, ...styles },
-    }));
-    await flushManualEditStyleSave({ force: true });
-  }
 
   function cancelManualEditStyleDraft() {
     const pending = manualEditPendingStyleRef.current;
@@ -7596,11 +7835,14 @@ function HtmlViewer({
       if (!(await flushManualEditStyleSave())) return;
     }
     setManualEditPageStylesOpen(false);
-    setManualEditResizeDraft(null);
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
+    manualEditResizeSessionActiveRef.current = false;
     manualEditResizePausedRef.current = false;
     const base = sourceRef.current ?? '';
     const fields = readManualEditFields(base, target.id);
     selectedManualEditTargetIdRef.current = target.id;
+    selectedManualEditTargetRef.current = target;
     setSelectedManualEditTarget(target);
     setManualEditDraft({
       text: fields.text ?? target.fields.text ?? target.text,
@@ -7629,6 +7871,9 @@ function HtmlViewer({
     selectedManualEditTargetIdRef.current = null;
     setSelectedManualEditTarget(null);
     setManualEditPanelPosition(null);
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
+    manualEditResizeSessionActiveRef.current = false;
     setManualEditDraft(emptyManualEditDraft(sourceRef.current ?? ''));
     setManualEditError(null);
     return true;
@@ -7848,7 +8093,9 @@ function HtmlViewer({
     prefetchRevisionContents(
       projectId,
       file.name,
-      [before?.id, after?.id].filter((id): id is string => Boolean(id)),
+      [before, after]
+        .filter((revision): revision is FileRevision => Boolean(revision))
+        .map((revision) => ({ revisionId: revision.id, byteSize: revision.byteSize })),
       (revisionId) => resolveRevisionSnapshotContent(revisionId),
     );
   }
@@ -9758,23 +10005,31 @@ function HtmlViewer({
       </button>
     ) : null;
   const manualEditResizeOverlay =
-    manualEditMode &&
-    !drawOverlayOpen &&
-    selectedManualEditTarget &&
-    canResizeTarget(selectedManualEditTarget, { inlineTextEditing: manualEditInlineTextEditing }) ? (
+    manualEditMode
+    && !drawOverlayOpen
+    && selectedManualEditTarget
+    && canResizeTarget(selectedManualEditTarget, {
+      inlineTextEditing: manualEditInlineTextEditing,
+    }) ? (
       <ManualEditResizeOverlay
         target={selectedManualEditTarget}
         previewScale={overlayPreviewScale}
-        draftWidthPx={manualEditResizeDraft?.widthPx ?? null}
-        draftHeightPx={manualEditResizeDraft?.heightPx ?? null}
-        disabled={manualEditSaving || manualEditInlineTextEditing}
-        onSessionStart={beginManualEditResizeSession}
+        draftWidthPx={manualEditResizeDraftSize?.width ?? null}
+        draftHeightPx={manualEditResizeDraftSize?.height ?? null}
+        draftLeftPx={manualEditMoveDraftPos?.x ?? null}
+        draftTopPx={manualEditMoveDraftPos?.y ?? null}
+        disabled={manualEditInlineTextEditing || manualEditSaving}
+        onResizeSessionChange={handleManualEditResizeSessionChange}
         onResizePreview={handleManualEditResizePreview}
-        onResizeCommit={(styles, label) => {
-          void commitManualEditResizeSession(styles, label);
+        onResizeCommit={(styles, stylesBefore, viewport) => {
+          void handleManualEditResizeCommit(styles, stylesBefore, viewport);
         }}
-        onResizeCancel={cancelManualEditResizeSession}
-      />
+        onResizeCancel={handleManualEditResizeCancel}
+        onMovePreview={handleManualEditMovePreview}
+        onMoveCommit={(styles, stylesBefore, viewport) => {
+          void handleManualEditMoveCommit(styles, stylesBefore, viewport);
+        }}
+        onMoveCancel={handleManualEditMoveCancel}      />
     ) : null;
   const activeComposerComment = activePreviewCommentId
     ? visibleSideComments.find((comment) => comment.id === activePreviewCommentId) ?? null
@@ -11675,7 +11930,12 @@ async function fetchProjectRelativeText(
   const filePath = resolveProjectRelativePath(ownerFileName, assetRef);
   if (!filePath) return null;
   try {
-    const resp = await fetch(projectRawUrl(projectId, filePath));
+    // Teamver embed needs daemon auth / workspace / S3-prefix headers and
+    // 401 recovery — plain fetch() silently fails after auth races.
+    const resp = await fetchTeamverDaemon(projectRawUrl(projectId, filePath), {
+      cache: 'no-store',
+      teamverProjectId: projectId,
+    });
     if (!resp.ok) return null;
     return await resp.text();
   } catch {
@@ -11753,6 +12013,7 @@ function ImageViewer({
           path={file.name}
           alt={file.name}
           rev={Math.round(file.mtime)}
+          trustExists
         />
       </div>
     </div>
@@ -11947,6 +12208,7 @@ export function SvgViewer({
             path={file.name}
             alt={file.name}
             rev={`${Math.round(file.mtime)}-${reloadKey}`}
+            trustExists
           />
         ) : loadingSource ? (
           <div className="viewer-empty">{t('fileViewer.loading')}</div>

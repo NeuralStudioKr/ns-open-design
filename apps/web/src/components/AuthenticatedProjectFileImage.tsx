@@ -1,6 +1,12 @@
+import { useCallback, useState } from 'react';
+
 import { projectRawUrl } from '../providers/registry';
-import { useAuthenticatedProjectFileObjectUrl } from '../hooks/useAuthenticatedProjectFileObjectUrl';
+import {
+  loadAuthenticatedProjectFileBlob,
+  useAuthenticatedProjectFileObjectUrl,
+} from '../hooks/useAuthenticatedProjectFileObjectUrl';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { blobToImageDataUrl } from '../utils/imageBlobNormalize';
 
 type AuthenticatedProjectFileImageProps = {
   projectId: string;
@@ -11,11 +17,16 @@ type AuthenticatedProjectFileImageProps = {
   fetchEnabled?: boolean;
   /** Refetch blob when the backing file changes (e.g. file mtime). */
   rev?: string | number;
+  /**
+   * File is known to exist in the project index (design panel row, staged
+   * upload). Bypasses session 404 cache and drawing-path fetch guards.
+   */
+  trustExists?: boolean;
 };
 
 /**
  * Renders a project file image. In Teamver embed, fetches with daemon auth
- * headers and uses a blob URL so thumbnails/previews do not show broken alt text.
+ * headers and uses a data URL so thumbnails/previews do not show broken alt text.
  */
 export function AuthenticatedProjectFileImage({
   projectId,
@@ -24,15 +35,48 @@ export function AuthenticatedProjectFileImage({
   className,
   fetchEnabled = true,
   rev,
+  trustExists = false,
 }: AuthenticatedProjectFileImageProps) {
   const embed = isTeamverEmbedMode();
   const shouldFetch = fetchEnabled && embed;
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const [fallbackDataUrl, setFallbackDataUrl] = useState<string | null>(null);
   const objectUrl = useAuthenticatedProjectFileObjectUrl(
     shouldFetch ? projectId : null,
     shouldFetch ? path : null,
-    shouldFetch ? rev : null,
+    shouldFetch ? `${rev ?? ''}:${reloadNonce}` : null,
+    shouldFetch ? trustExists : false,
   );
-  const src = embed ? objectUrl : projectRawUrl(projectId, path);
-  if (!fetchEnabled || !src) return null;
-  return <img src={src} alt={alt} className={className} />;
+  const src = embed ? (fallbackDataUrl || objectUrl) : projectRawUrl(projectId, path);
+
+  const handleImageError = useCallback(() => {
+    if (!shouldFetch || fallbackDataUrl) return;
+    void (async () => {
+      const blob = await loadAuthenticatedProjectFileBlob(projectId, path, { trustExists });
+      if (!blob) {
+        setReloadNonce((value) => value + 1);
+        return;
+      }
+      const dataUrl = await blobToImageDataUrl(blob);
+      if (dataUrl) {
+        setFallbackDataUrl(dataUrl);
+        return;
+      }
+      setReloadNonce((value) => value + 1);
+    })();
+  }, [fallbackDataUrl, path, projectId, shouldFetch, trustExists]);
+
+  if (!fetchEnabled) return null;
+  if (!src) {
+    return <div className={`authenticated-project-file-image-loading${className ? ` ${className}` : ''}`} aria-hidden />;
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      decoding="async"
+      onError={shouldFetch ? handleImageError : undefined}
+    />
+  );
 }

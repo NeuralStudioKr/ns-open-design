@@ -11843,8 +11843,11 @@ export async function startServer({
         );
       }
       if (blocks.length > 0) {
+        // Keep ad-hoc blocks separate until final assembly so selected-template
+        // / deck-wrap paths cannot double-append or wrap them inside the
+        // primary visual-template guard.
         composedSkillBlocks = blocks.join('');
-        skillBody = baseBody + composedSkillBlocks;
+        skillBody = baseBody;
         if (!skillName) {
           skillName = adHocSkillIds.length === 1
             ? findSkillById(allSkills, adHocSkillIds[0])?.name ?? null
@@ -11891,7 +11894,9 @@ export async function startServer({
                 scenarioSkillName = local.name;
                 if (!activeSkillDir) activeSkillDir = local.dir;
               } else {
-                skillBody = local.body + composedSkillBlocks;
+                // Keep ad-hoc blocks out of skillBody until final assembly
+                // (same invariant as the ad-hoc compose path above).
+                skillBody = local.body;
                 skillName = local.name;
                 activeSkillDir = local.dir;
                 registerPrimarySkillMode('deck');
@@ -11909,13 +11914,25 @@ export async function startServer({
     if (selectedDeckTemplate) {
       let templateBody: string | null = null;
       try {
-        const plugin = getInstalledPlugin(db, selectedDeckTemplate.id);
-        if (plugin) {
-          const local = await loadPluginLocalSkill(plugin);
-          if (local?.body?.trim()) {
-            templateBody = local.body;
-            registerSkillDir(local.dir);
-            if (!activeSkillDir) activeSkillDir = local.dir;
+        // Mirror web/API order: skill-like / design-template body first, then
+        // community plugin local SKILL.md. Metadata-only design-template picks
+        // (skillId null) used to degrade to a title stub here.
+        const allSkills = await loadAllSkills();
+        const templateSkill = findSkillById(allSkills, selectedDeckTemplate.id);
+        if (templateSkill?.body?.trim()) {
+          templateBody = templateSkill.body;
+          registerSkillDir(templateSkill.dir);
+          if (!activeSkillDir) activeSkillDir = templateSkill.dir;
+          registerPrimarySkillMode(templateSkill.mode ?? 'deck');
+        } else {
+          const plugin = getInstalledPlugin(db, selectedDeckTemplate.id);
+          if (plugin) {
+            const local = await loadPluginLocalSkill(plugin);
+            if (local?.body?.trim()) {
+              templateBody = local.body;
+              registerSkillDir(local.dir);
+              if (!activeSkillDir) activeSkillDir = local.dir;
+            }
           }
         }
       } catch (err) {
@@ -11943,13 +11960,18 @@ export async function startServer({
         skillBody = scenarioSkillBody + composedSkillBlocks;
         skillName = scenarioSkillName ?? skillName;
         registerPrimarySkillMode('deck');
+      } else if (skillBody?.trim() || composedSkillBlocks) {
+        skillBody = (skillBody || '') + composedSkillBlocks;
       }
     } else if (skillBody?.trim() && skillMode === 'deck') {
       // No selected template — keep legacy deck skill wrap for scenario-only runs.
+      // Wrap primary only, then append ad-hoc blocks once.
       skillBody = wrapSelectedDeckTemplateSkillBody(
         skillBody,
         skillName?.trim() || 'selected deck template',
-      );
+      ) + composedSkillBlocks;
+    } else if (composedSkillBlocks) {
+      skillBody = (skillBody || '') + composedSkillBlocks;
     }
 
     let craftBody;

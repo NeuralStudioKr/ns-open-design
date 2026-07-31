@@ -109,8 +109,14 @@ export function applyManualEditPatch(
     } else {
       applyManualEditPlainText(el, patch.text);
     }
+    if (!isSafeManualEditUrl(patch.href)) {
+      return { ok: false, source, error: 'Link href uses a disallowed URL scheme.' };
+    }
     el.setAttribute('href', patch.href);
   } else if (patch.kind === 'set-image') {
+    if (!isSafeManualEditUrl(patch.src)) {
+      return { ok: false, source, error: 'Image src uses a disallowed URL scheme.' };
+    }
     el.setAttribute('src', patch.src);
     el.setAttribute('alt', patch.alt);
   } else if (patch.kind === 'set-style') {
@@ -1342,11 +1348,29 @@ function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): vo
 }
 
 function setAttributes(el: Element, attributes: Record<string, string>): void {
-  const protectedAttrs = new Set(['data-od-id', 'data-od-edit', 'data-od-label', 'data-od-runtime-id']);
+  // Keep identity / slide-scope attrs aligned with set-outer-html preservation.
+  const protectedAttrs = new Set([
+    'data-od-id',
+    'data-od-edit',
+    'data-od-label',
+    'data-od-runtime-id',
+    'data-od-source-path',
+    'data-slide-index',
+    'data-screen-label',
+  ]);
   for (const [name, value] of Object.entries(attributes)) {
-    if (!isSafeAttributeName(name) || protectedAttrs.has(name)) continue;
-    if (value.trim() === '') el.removeAttribute(name);
-    else el.setAttribute(name, value);
+    // Attribute names are case-insensitive in HTML; protect via lowercase.
+    const lower = name.toLowerCase();
+    if (!isSafeAttributeName(name) || protectedAttrs.has(lower)) continue;
+    if (value.trim() === '') {
+      el.removeAttribute(name);
+      continue;
+    }
+    // Block dangerous URL schemes on navigable / embeddable attrs.
+    if ((lower === 'href' || lower === 'src' || lower === 'xlink:href') && !isSafeManualEditUrl(value)) {
+      continue;
+    }
+    el.setAttribute(name, value);
   }
 }
 
@@ -1530,5 +1554,21 @@ function camelToKebab(value: string): string {
 }
 
 function isSafeAttributeName(value: string): boolean {
-  return /^[a-zA-Z_:][a-zA-Z0-9_:.-]*$/.test(value);
+  if (!/^[a-zA-Z_:][a-zA-Z0-9_:.-]*$/.test(value)) return false;
+  const lower = value.toLowerCase();
+  // Block event handlers and high-risk markup attrs from model set-attributes.
+  if (lower.startsWith('on')) return false;
+  if (lower === 'style' || lower === 'srcdoc') return false;
+  return true;
+}
+
+/** Reject javascript:/vbscript:/data:text/html URL schemes in manual edits. */
+export function isSafeManualEditUrl(value: string): boolean {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return true;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('javascript:')) return false;
+  if (lower.startsWith('vbscript:')) return false;
+  if (lower.startsWith('data:text/html')) return false;
+  return true;
 }

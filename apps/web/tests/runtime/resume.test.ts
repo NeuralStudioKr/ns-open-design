@@ -4,6 +4,7 @@ import {
   AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
   AUTO_CONTINUE_MAX_PER_CONVERSATION,
   AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT,
+  AUTO_CONTINUE_MAX_SCOPED_VISUAL_MARK_EDIT,
   AUTO_CONTINUE_PROMPT_SENTINEL,
   AUTO_CONTINUE_STATUS_CODE,
   RESUME_CONTINUE_PROMPT,
@@ -411,6 +412,12 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     expect(resolveAutoContinueMaxAttempts({ scopedCommentAttachmentCount: 2 })).toBe(
       AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT,
     );
+    expect(
+      resolveAutoContinueMaxAttempts({
+        scopedCommentAttachmentCount: 1,
+        visualMarkOnly: true,
+      }),
+    ).toBe(AUTO_CONTINUE_MAX_SCOPED_VISUAL_MARK_EDIT);
   });
 
   it('does NOT fire when nothing indicates content incompleteness', () => {

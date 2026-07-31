@@ -130,6 +130,30 @@ test('[P0] manual edit inspector previews and persists page and selected element
   await expect(page.getByRole('button', { name: /^Download$/ })).toBeVisible();
 });
 
+test('[P1] manual edit resize overlay appears for containers but not slide roots', async ({ page }) => {
+  await routeMockAgents(page);
+  const projectId = await createEmptyProject(page, 'Manual edit resize smoke');
+  await seedHtmlArtifact(page, projectId, 'manual-edit.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit.html`);
+  await openDesignFile(page, 'manual-edit.html');
+
+  await expect(artifactPreview(page)).toBeVisible();
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await frame.locator('[data-od-id="pair-a"]').click();
+  await expect(page.locator('.manual-edit-modal')).toContainText('SIZE');
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toBeVisible();
+  await expect(page.getByTestId('manual-edit-resize-handle-se')).toBeVisible();
+
+  await seedDeckArtifact(page, projectId, 'manual-deck-resize.html', 'Resize Deck', ['Slide One', 'Slide Two']);
+  await page.goto(`/projects/${projectId}/files/manual-deck-resize.html`);
+  await openDesignFile(page, 'manual-deck-resize.html');
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  const deckFrame = artifactPreviewFrame(page);
+  await deckFrame.locator('[data-od-id="slide-1"]').click();
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toHaveCount(0);
+});
+
 test('[P0] manual edit mode preserves preview actions after style edits', async ({ page }) => {
   await routeMockAgents(page);
   const projectId = await createEmptyProject(page, 'Manual edit smoke');
@@ -155,6 +179,772 @@ test('[P0] manual edit mode preserves preview actions after style edits', async 
   await expect(page.getByRole('button', { name: /^Comment$/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Share$/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Download$/ })).toBeVisible();
+});
+
+test('[P1] manual edit drag-resize handle persists box width to source', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  // Teamver vite-dev on 127.0.0.1 hides entry-nav-new-project; create via daemon API.
+  const projectId = await createProjectViaApi(page, 'Manual edit resize');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize.html`);
+  await openDesignFile(page, 'manual-edit-resize.html');
+
+  await expect(artifactPreview(page)).toBeVisible();
+  const frame = artifactPreviewFrame(page);
+  await expect(frame.locator('[data-od-id="resize-box"]')).toBeVisible();
+
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toBeVisible();
+
+  const handle = page.getByTestId('manual-edit-resize-handle-e');
+  await expect(handle).toBeVisible();
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 100, startY, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-resize.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const match = source.match(/data-od-id="resize-box"[^>]*style="[^"]*width:\s*(\d+)px/);
+      if (!match) return false;
+      return Number(match[1]) > 120;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit drag-resize Escape cancels without persisting width', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize escape');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize-esc.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-esc.html`);
+  await openDesignFile(page, 'manual-edit-resize-esc.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const handle = page.getByTestId('manual-edit-resize-handle-e');
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 80, startY, { steps: 6 });
+  await page.keyboard.press('Escape');
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-resize-esc.html`);
+      if (!resp.ok()) return -1;
+      const source = await resp.text();
+      const match = source.match(/data-od-id="resize-box"[^>]*style="[^"]*width:\s*(\d+)px/);
+      return match ? Number(match[1]) : -1;
+    })
+    .toBe(120);
+});
+
+test('[P1] manual edit drag-resize hides handles on deck slide root', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize slide');
+  // `data-slide` marks a slide root for canResizeTarget without enabling the deck renderer
+  // (which looks for `.slide` and can leave Preview stuck on Loading).
+  await seedHtmlArtifact(
+    page,
+    projectId,
+    'manual-edit-resize-slide.html',
+    `<!doctype html><html><body>
+      <section data-slide="0" data-od-id="slide-1" data-od-label="Slide One" style="width:640px;height:360px;background:#eee;">
+        <h1>Slide One</h1>
+      </section>
+    </body></html>`,
+  );
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-slide.html`);
+  await openDesignFile(page, 'manual-edit-resize-slide.html');
+
+  const frame = artifactPreviewFrame(page);
+  await expect(frame.getByText('Slide One')).toBeVisible();
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await frame.locator('[data-od-id="slide-1"]').click();
+  await expect(frame.locator('[data-od-id="slide-1"][data-od-edit-selected="true"]')).toHaveCount(1);
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toHaveCount(0);
+});
+
+test('[P1] manual edit drag-resize E handle updates width without changing height', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize E-only');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize-e.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-e.html`);
+  await openDesignFile(page, 'manual-edit-resize-e.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const handle = page.getByTestId('manual-edit-resize-handle-e');
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 90, startY, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-resize-e.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const width = Number(style.match(/width:\s*(\d+)px/)?.[1] ?? NaN);
+      const height = Number(style.match(/height:\s*(\d+)px/)?.[1] ?? NaN);
+      return width > 120 && height === 80;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit drag-resize hides overlay while Draw mode is active', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize draw');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize-draw.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-draw.html`);
+  await openDesignFile(page, 'manual-edit-resize-draw.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toBeVisible();
+
+  await page.getByTestId('draw-overlay-toggle').click();
+  await expect(page.getByTestId('draw-overlay-toggle')).toHaveAttribute('aria-pressed', 'true');
+  // §16: Draw mode must drop resize handles (selection/edit may also clear).
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toHaveCount(0);
+});
+
+test('[P1] manual edit drag-resize handles stay aligned at 75% zoom', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize zoom');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize-zoom.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-zoom.html`);
+  await openDesignFile(page, 'manual-edit-resize-zoom.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const zoomButton = page.locator('.viewer-toolbar-zoom .zoom-trigger');
+  await zoomButton.click();
+  const zoomMenu = page.locator('.zoom-menu-popover[role="menu"]');
+  await expect(zoomMenu).toBeVisible();
+  await zoomMenu.getByRole('menuitem', { name: '75%' }).click();
+  await expect(zoomButton).toHaveText('75%');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const handle = page.getByTestId('manual-edit-resize-handle-e');
+  await expect(overlay).toBeVisible();
+  await expect(handle).toBeVisible();
+  const overlayBox = await overlay.boundingBox();
+  const handleBox = await handle.boundingBox();
+  expect(overlayBox).toBeTruthy();
+  expect(handleBox).toBeTruthy();
+  // E handle sits on the right edge of the host overlay box (within hit padding).
+  const handleCenterX = handleBox!.x + handleBox!.width / 2;
+  expect(Math.abs(handleCenterX - (overlayBox!.x + overlayBox!.width))).toBeLessThan(12);
+  expect(overlayBox!.width).toBeGreaterThan(40);
+  expect(overlayBox!.height).toBeGreaterThan(20);
+});
+
+test('[P1] manual edit drag-resize keeps image aspect by default', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit resize image');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-resize-image.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-resize-image.html`);
+  await openDesignFile(page, 'manual-edit-resize-image.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="hero-image"]', 'IMAGE');
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toBeVisible();
+
+  const handle = page.getByTestId('manual-edit-resize-handle-se');
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  // Uneven delta — aspect lock should keep a square for the 64×64 image.
+  await page.mouse.move(startX + 80, startY + 20, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-resize-image.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="hero-image"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const width = Number(style.match(/width:\s*(\d+)px/)?.[1] ?? NaN);
+      const height = Number(style.match(/height:\s*(\d+)px/)?.[1] ?? NaN);
+      if (!Number.isFinite(width) || !Number.isFinite(height) || height <= 0) return false;
+      const ratio = width / height;
+      return width > 64 && Math.abs(ratio - 1) < 0.08;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit body-drag moves absolute box left/top in source', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit move');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move.html`);
+  await openDesignFile(page, 'manual-edit-move.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="move-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return left >= 60 && top >= 40;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit body-drag Escape cancels without persisting left/top', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit move escape');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-esc.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-esc.html`);
+  await openDesignFile(page, 'manual-edit-move-esc.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="move-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 60, startY + 40, { steps: 8 });
+  await page.keyboard.press('Escape');
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-esc.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return left === 24 && top === 24;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit body-drag Shift locks to dominant horizontal axis', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit move shift');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-shift.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-shift.html`);
+  await openDesignFile(page, 'manual-edit-move-shift.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="move-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.keyboard.down('Shift');
+  // Dominant dx — top must stay at seed 24.
+  await page.mouse.move(startX + 64, startY + 20, { steps: 8 });
+  await page.keyboard.up('Shift');
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-shift.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return left >= 70 && top === 24;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit promote reveals POSITION Left/Top fields', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit promote panel');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-promote-panel.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-promote-panel.html`);
+  await openDesignFile(page, 'manual-edit-promote-panel.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  await expect(page.getByTestId('manual-edit-position-hint')).toBeVisible();
+  await expect(page.locator('.manual-edit-modal .cc-row').filter({ hasText: 'Left' })).toHaveCount(0);
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(page.getByTestId('manual-edit-position-hint')).toHaveCount(0);
+  await expect(page.locator('.manual-edit-modal .cc-row').filter({ hasText: 'Left' })).toHaveCount(1);
+  await expect(page.locator('.manual-edit-modal .cc-row').filter({ hasText: 'Top' })).toHaveCount(1);
+});
+
+test('[P1] manual edit static target promote-on-drag writes absolute left/top', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit static promote');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-static.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-static.html`);
+  await openDesignFile(page, 'manual-edit-move-static.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+  await expect(page.getByTestId('manual-edit-position-hint')).toContainText(
+    'Drag to free this element (sets position: absolute).',
+  );
+  await expect(page.locator('.manual-edit-modal')).toContainText('POSITION');
+  await expect(page.locator('.manual-edit-modal .cc-row').filter({ hasText: 'Left' })).toHaveCount(0);
+
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-static.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const hasAbsolute = /position:\s*absolute/.test(style);
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return hasAbsolute && Number.isFinite(left) && Number.isFinite(top);
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit static promote undo restores pre-promote source', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit static promote undo');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-static-undo.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-static-undo.html`);
+  await openDesignFile(page, 'manual-edit-move-static-undo.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-static-undo.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1];
+      return !!style && /position:\s*absolute/.test(style);
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-static-undo.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1] ?? '';
+      return !/position:\s*absolute/.test(style) && !/\bleft\s*:/.test(style);
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit static promote Escape leaves source without absolute', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit static promote esc');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-static-esc.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-static-esc.html`);
+  await openDesignFile(page, 'manual-edit-move-static-esc.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="resize-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 60, startY + 40, { steps: 8 });
+  await page.keyboard.press('Escape');
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-static-esc.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="resize-box"[^>]*style="([^"]*)"/)?.[1] ?? '';
+      return !/position:\s*absolute/.test(style) && !/\bleft\s*:/.test(style);
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit relative promote uses layout coords not relative left', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit relative promote');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-relative.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-relative.html`);
+  await openDesignFile(page, 'manual-edit-move-relative.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-relative.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="relative-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style || !/position:\s*absolute/.test(style)) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      // Layout start is ~margin(40)+relative(10)=50, +~48 drag ⇒ ≥80.
+      // Using style left:10 as start would land near 58 — that must fail.
+      return Number.isFinite(left) && left >= 80;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit W-resize keeps overlay aligned on nested absolute', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit nested W resize');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-nested-w-resize.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-nested-w-resize.html`);
+  await openDesignFile(page, 'manual-edit-nested-w-resize.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  // Promote relative-box first so it becomes nested absolute under relative-host.
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  let box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 24, box!.y + box!.height / 2 + 12, { steps: 6 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-nested-w-resize.html`);
+      if (!resp.ok()) return false;
+      return /data-od-id="relative-box"[^>]*style="[^"]*position:\s*absolute/.test(await resp.text());
+    })
+    .toBe(true);
+
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
+  const handle = page.getByTestId('manual-edit-resize-handle-w');
+  await expect(handle).toBeVisible();
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).toBeTruthy();
+  await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    handleBox!.x + handleBox!.width / 2 + 32,
+    handleBox!.y + handleBox!.height / 2,
+    { steps: 6 },
+  );
+
+  const midTarget = await frame.locator('[data-od-id="relative-box"]').boundingBox();
+  const midOverlay = await overlay.boundingBox();
+  expect(midTarget).toBeTruthy();
+  expect(midOverlay).toBeTruthy();
+  expect(Math.abs(midOverlay!.x - midTarget!.x)).toBeLessThan(14);
+  expect(Math.abs(midOverlay!.y - midTarget!.y)).toBeLessThan(14);
+
+  await page.mouse.up();
+});
+
+test('[P1] manual edit post-promote re-drag keeps overlay aligned to nested CB', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit promote re-drag');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-relative-redrag.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-relative-redrag.html`);
+  await openDesignFile(page, 'manual-edit-move-relative-redrag.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+
+  // First drag: promote relative → absolute inside relative-host (CB ≠ viewport).
+  let box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 40, box!.y + box!.height / 2 + 20, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-relative-redrag.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      return /data-od-id="relative-box"[^>]*style="[^"]*position:\s*absolute/.test(source);
+    })
+    .toBe(true);
+
+  // Exit + re-enter Edit so host reselects from bridge (post-promote absolute).
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="relative-box"]', 'SIZE');
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+
+  const beforeTarget = await frame.locator('[data-od-id="relative-box"]').boundingBox();
+  const beforeOverlay = await overlay.boundingBox();
+  expect(beforeTarget).toBeTruthy();
+  expect(beforeOverlay).toBeTruthy();
+  expect(Math.abs(beforeOverlay!.x - beforeTarget!.x)).toBeLessThan(12);
+  expect(Math.abs(beforeOverlay!.y - beforeTarget!.y)).toBeLessThan(12);
+
+  // Second drag: overlay must stay glued to the element (not jump to CB left/top).
+  box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 36, box!.y + box!.height / 2 + 18, { steps: 8 });
+
+  const midTarget = await frame.locator('[data-od-id="relative-box"]').boundingBox();
+  const midOverlay = await overlay.boundingBox();
+  expect(midTarget).toBeTruthy();
+  expect(midOverlay).toBeTruthy();
+  expect(Math.abs(midOverlay!.x - midTarget!.x)).toBeLessThan(14);
+  expect(Math.abs(midOverlay!.y - midTarget!.y)).toBeLessThan(14);
+
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const targetBox = await frame.locator('[data-od-id="relative-box"]').boundingBox();
+      const overlayBox = await overlay.boundingBox();
+      if (!targetBox || !overlayBox) return false;
+      return Math.abs(overlayBox.x - targetBox.x) < 12
+        && Math.abs(overlayBox.y - targetBox.y) < 12;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit body-drag stays aligned and persists at 75% zoom', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit move zoom');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-zoom.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-zoom.html`);
+  await openDesignFile(page, 'manual-edit-move-zoom.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="move-box"]', 'SIZE');
+
+  const zoomButton = page.locator('.viewer-toolbar-zoom .zoom-trigger');
+  await zoomButton.click();
+  const zoomMenu = page.locator('.zoom-menu-popover[role="menu"]');
+  await expect(zoomMenu).toBeVisible();
+  await zoomMenu.getByRole('menuitem', { name: '75%' }).click();
+  await expect(zoomButton).toHaveText('75%');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+
+  const targetBox = await frame.locator('[data-od-id="move-box"]').boundingBox();
+  const overlayBox = await overlay.boundingBox();
+  expect(targetBox).toBeTruthy();
+  expect(overlayBox).toBeTruthy();
+  expect(Math.abs(overlayBox!.x - targetBox!.x)).toBeLessThan(12);
+  expect(Math.abs(overlayBox!.y - targetBox!.y)).toBeLessThan(12);
+  expect(Math.abs(overlayBox!.width - targetBox!.width)).toBeLessThan(12);
+  expect(Math.abs(overlayBox!.height - targetBox!.height)).toBeLessThan(12);
+
+  const startX = overlayBox!.x + overlayBox!.width / 2;
+  const startY = overlayBox!.y + overlayBox!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-zoom.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      // 75% zoom: host delta / 0.75 → content left/top must move past the seed.
+      return left >= 60 && top >= 40;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit body-drag undo restores left/top in one step', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit move undo');
+  await seedHtmlArtifact(page, projectId, 'manual-edit-move-undo.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit-move-undo.html`);
+  await openDesignFile(page, 'manual-edit-move-undo.html');
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="move-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-undo.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return left >= 60 && top >= 40;
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/manual-edit-move-undo.html`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return left === 24 && top === 24;
+    })
+    .toBe(true);
 });
 
 async function selectPreviewElementThroughBridge(
@@ -463,6 +1253,24 @@ async function createEmptyProject(page: Page, name: string): Promise<string> {
   return projectId;
 }
 
+/** Create a project without the entry-rail new-project control (hidden in Teamver embed/vite-dev). */
+async function createProjectViaApi(page: Page, name: string): Promise<string> {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await waitForLoadingToClear(page);
+  const projectId = `manual-resize-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const projectResponse = await page.request.post('/api/projects', {
+    data: {
+      id: projectId,
+      name,
+      skillId: null,
+      designSystemId: null,
+      metadata: { kind: 'prototype' },
+    },
+  });
+  expect(projectResponse.ok(), `create project: ${await projectResponse.text()}`).toBeTruthy();
+  return projectId;
+}
+
 async function gotoEntryHome(page: Page) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await waitForLoadingToClear(page);
@@ -689,6 +1497,11 @@ function manualEditHtml(): string {
         <a data-od-id="cta" data-od-label="Primary CTA" href="/start">Start now</a>
         <img data-od-id="hero-image" data-od-label="Hero image" src="/hero.png" alt="Hero" style="width:64px;height:64px;">
       </section>
+      <div data-od-id="resize-box" data-od-label="Resize box" style="width:120px;height:80px;background:#d4d4d8;">Resize me</div>
+      <div data-od-id="move-box" data-od-label="Move box" style="position:absolute;left:24px;top:24px;width:140px;height:90px;background:#93c5fd;">Move me</div>
+      <div data-od-id="relative-host" data-od-label="Relative host" style="position:relative;width:280px;height:140px;margin-top:120px;border:1px solid #e5e5e5;">
+        <div data-od-id="relative-box" data-od-label="Relative box" style="position:relative;left:10px;top:8px;margin-left:40px;width:100px;height:60px;background:#fca5a5;">Relative</div>
+      </div>
     </main>
   </body>
 </html>`;

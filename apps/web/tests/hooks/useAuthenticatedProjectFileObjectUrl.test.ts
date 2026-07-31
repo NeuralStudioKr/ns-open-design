@@ -39,4 +39,22 @@ describe('loadAuthenticatedProjectFileBlob', () => {
 
     expect(blob).toBeNull();
   });
+
+  it('accepts PNG bytes when the server returns a non-image MIME type', async () => {
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+    const wrongMimeBlob = new Blob([pngBytes], { type: 'application/json' });
+    const fetchDaemon = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => wrongMimeBlob,
+    } as Response);
+
+    const blob = await loadAuthenticatedProjectFileBlob('project-1', 'uploads/mark.png', {
+      delaysMs: [0],
+      trustExists: true,
+      fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
+      waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
+    });
+
+    expect(blob?.type).toBe('image/png');
+  });
 });

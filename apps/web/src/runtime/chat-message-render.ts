@@ -200,11 +200,12 @@ function hasEmbedVisibleProseBody(message: ChatMessage): boolean {
 }
 
 function assistantRunSucceeded(message: ChatMessage): boolean {
-  if (message.runStatus === "failed") return false;
-  return message.runStatus === "succeeded" || (!message.runStatus && !!message.endedAt);
+  if (message.runStatus === "failed" || message.runStatus === "canceled") return false;
+  if (message.runStatus === "succeeded") return true;
+  return !message.runStatus && !!message.endedAt;
 }
 
-function messageIndicatesDeckPatchArtifact(content: string): boolean {
+export function messageIndicatesDeckPatchArtifact(content: string): boolean {
   if (/<artifact\b[^>]*\stype=["'](?:deck-patch|slide-patch)["']/i.test(content)) return true;
   const openIdx = content.search(/<artifact\b/i);
   if (openIdx === -1) return false;
@@ -213,11 +214,57 @@ function messageIndicatesDeckPatchArtifact(content: string): boolean {
   return /\btype\s*=\s*["']?(?:deck-patch|slide-patch)\b/i.test(partialTag);
 }
 
-function hasTeamverCompletedArtifactLead(message: ChatMessage): boolean {
-  if (!assistantRunSucceeded(message)) return false;
+function messageHasPreTurnHtmlDeliverable(message: ChatMessage): boolean {
+  return (message.preTurnFileNames ?? []).some((name) => /\.html?$/i.test(String(name)));
+}
+
+/**
+ * Slide-edit completion copy after reload: persist sanitizer strips closed
+ * `<artifact type="deck-patch">` tags, so body detection alone is not enough.
+ * Prefer explicit deck-patch markers, else a pre-turn HTML baseline (in-place
+ * edit of an existing deck).
+ */
+export function messageLooksLikeSlideEditTurn(message: ChatMessage): boolean {
   const body = assistantMessageTextBody(message);
-  if (!/<artifact\b/i.test(body)) return false;
-  return (message.producedFiles?.length ?? 0) > 0 || messageIndicatesDeckPatchArtifact(body);
+  if (messageIndicatesDeckPatchArtifact(body)) return true;
+  return messageHasPreTurnHtmlDeliverable(message);
+}
+
+/**
+ * Whether AssistantMessage should synthesize the Teamver "slide ready / edit
+ * applied" lead after a successful artifact turn. Must survive hard reload when
+ * closed artifacts were stripped from content/events but producedFiles or
+ * preTurnFileNames remain.
+ */
+export function shouldSynthesizeTeamverCompletedArtifactLead(
+  message: ChatMessage,
+  options: {
+    streaming: boolean;
+    isLast: boolean;
+    hasVisibleAssistantText: boolean;
+  },
+): boolean {
+  if (options.streaming || options.hasVisibleAssistantText) return false;
+  if (!assistantRunSucceeded(message)) return false;
+  if (
+    isTerminalSucceededEmptyShellAnchor(message, {
+      isLast: options.isLast,
+      streaming: options.streaming,
+    })
+  ) {
+    return true;
+  }
+  if ((message.producedFiles?.length ?? 0) > 0) return true;
+  // deck-patch marker still in body, or preTurn HTML after tags were stripped.
+  return messageLooksLikeSlideEditTurn(message);
+}
+
+function hasTeamverCompletedArtifactLead(message: ChatMessage): boolean {
+  return shouldSynthesizeTeamverCompletedArtifactLead(message, {
+    streaming: false,
+    isLast: true,
+    hasVisibleAssistantText: hasEmbedVisibleProseBody(message),
+  });
 }
 
 /**

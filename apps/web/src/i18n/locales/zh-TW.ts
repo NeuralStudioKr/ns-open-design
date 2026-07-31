@@ -2046,6 +2046,8 @@ export const zhTW: Dict = {
   'manualEdit.title': '手動編輯器',
   'manualEdit.fallbackTitle': '編輯',
   'manualEdit.movePanel': '移動編輯面板',
+  'manualEdit.positionMoveRequiresAbsolute': '拖曳移動僅適用於 absolute/fixed 元素。',
+  'manualEdit.positionPromoteOnDrag': '拖曳可將此元素設為 absolute 並移動。',
   'manualEdit.editParams': '編輯參數',
   'manualEdit.closePanel': '關閉編輯面板',
   'manualEdit.selectLayer': '選取圖層',

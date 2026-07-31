@@ -1,16 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  useLayoutEffect,
-  type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MutableRefObject,
-  type PointerEvent as ReactPointerEvent,
-} from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useLayoutEffect, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence } from 'motion/react';
 import { createArtifactManifest, inferLegacyManifest } from '../artifacts/manifest';
 import type { ArtifactManifest } from '../artifacts/types';
@@ -24,7 +13,7 @@ import {
   diffDeckSlideIndexes,
   extractTopLevelSlideSections,
   isDeckPatchArtifactType,
-  parseDeckPatch,
+  parseDeckPatchWithSalvage,
 } from '../artifacts/deck-patch';
 import {
   applyElementPatches,
@@ -312,6 +301,7 @@ import {
   filterUsableCommentAttachments,
   historyWithCommentAttachmentContext,
   hydrateQueryContextCommentAttachments,
+  isScreenshotOnlyVisualCommentTarget,
   mergeAttachedComments,
   mergePreviewCommentAttachments,
   messageContentWithCommentAttachments,
@@ -1332,7 +1322,7 @@ function elementPatchTargetHintsFromCommentAttachments(
 ): ElementPatchTargetHint[] {
   const hints: ElementPatchTargetHint[] = [];
   for (const attachment of commentAttachments) {
-    if (isVisualCommentAttachment(attachment)) {
+    if (isScreenshotOnlyVisualCommentTarget(attachment)) {
       hints.push({
         targetIds: [],
         ...(typeof attachment.slideIndex === 'number' &&
@@ -1349,7 +1339,10 @@ function elementPatchTargetHintsFromCommentAttachments(
       continue;
     }
     const targetIds = scopedCommentElementIds(attachment);
-    if (targetIds.length === 0) continue;
+    if (targetIds.length === 0) {
+      // Visual+DOM without resolvable ids still contributes slide/context hints.
+      if (!isVisualCommentAttachment(attachment)) continue;
+    }
     hints.push({
       targetIds,
       ...(typeof attachment.slideIndex === 'number' &&
@@ -1487,7 +1480,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       reason: 'current deck file unreadable',
     };
   }
-  const parsed = parseDeckPatch(input.patchBody, {
+  const parsed = parseDeckPatchWithSalvage(input.patchBody, {
     fallbackSlideIndexes: input.allowedSlideIndexes,
     currentHtml,
   });
@@ -3232,6 +3225,9 @@ export function ProjectView({
               : [];
             const recoveryAutoContinueMax = resolveAutoContinueMaxAttempts({
               scopedCommentAttachmentCount: recoveryCommentAttachments.length,
+              visualMarkOnly:
+                recoveryCommentAttachments.length > 0
+                && !hasElementScopedCommentAttachments(recoveryCommentAttachments),
             });
             if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
               if (incompleteAssistant && slideOnlyMvp) {
@@ -6831,6 +6827,9 @@ export function ProjectView({
           : [];
         const recoveryAutoContinueMax = resolveAutoContinueMaxAttempts({
           scopedCommentAttachmentCount: recoveryCommentAttachments.length,
+          visualMarkOnly:
+            recoveryCommentAttachments.length > 0
+            && !hasElementScopedCommentAttachments(recoveryCommentAttachments),
         });
         if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
           if (incompleteAssistant && slideOnlyMvp) {
@@ -7934,10 +7933,17 @@ export function ProjectView({
                 retryTarget?.userMsg ?? userMsg,
                 runCommentAttachmentsRef.current,
               );
+              const visualMarkOnlyAutoContinue =
+                terminalAutoContinueCommentAttachments.length > 0
+                && !hasElementScopedCommentAttachments(terminalAutoContinueCommentAttachments);
               const canAutoContinue = shouldAutoContinueForIncompleteOutput({
                 runIsVisible: runIsVisible(),
                 autoContinueCount,
                 scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
+                maxPerConversation: resolveAutoContinueMaxAttempts({
+                  scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
+                  visualMarkOnly: visualMarkOnlyAutoContinue,
+                }),
                 terminalPersistResultKind,
                 terminalPersistResultCode:
                   terminalPersistResult?.kind === 'scope-rejected'
@@ -9157,10 +9163,19 @@ export function ProjectView({
   // without a slide index; FileWorkspace/FileViewer ignore it unless the named
   // file is the open deck.
   const armSlideNavForQueuedSend = useCallback((item: QueuedChatSend) => {
-    const target = queuedSlideNavTarget(item.commentAttachments);
+    // Screenshot-only visuals need an HTML deck fallback. Prefer entryFile
+    // (canonical deck) over an active non-HTML / wrong-sibling tab.
+    const active = openTabsStateRef.current.active?.trim() || '';
+    const entry = project.metadata?.entryFile?.trim() || '';
+    const htmlEntry = /\.html?$/i.test(entry) ? entry : '';
+    const htmlActive = /\.html?$/i.test(active) ? active : '';
+    const fallbackDeck = htmlEntry || htmlActive || null;
+    const target = queuedSlideNavTarget(item.commentAttachments, {
+      fallbackDeckFilePath: fallbackDeck,
+    });
     if (!target) return;
     setSlideNavRequest({ name: target.filePath, slideIndex: target.slideIndex, nonce: Date.now() });
-  }, []);
+  }, [project.metadata?.entryFile]);
 
   const sendQueuedChatSendNow = useCallback((id: string) => {
     const item = queuedChatSendsRef.current.find((candidate) => candidate.id === id);
@@ -11266,7 +11281,7 @@ export function ProjectView({
         />
       ) : null}
       <AnimatePresence>
-        {projectActionsToast ? (
+        {projectActionsToast && typeof document !== 'undefined' ? createPortal(
           <Toast
             message={projectActionsToast.message}
             details={projectActionsToast.details}
@@ -11274,9 +11289,11 @@ export function ProjectView({
             actionLabel={projectActionsToast.actionLabel}
             onAction={projectActionsToast.onAction}
             tone={projectActionsToast.actionLabel ? 'success' : 'default'}
+            layout={projectActionsToast.actionLabel ? 'compact' : 'default'}
             ttlMs={projectActionsToast.actionLabel ? 8000 : undefined}
             onDismiss={() => setProjectActionsToast(null)}
-          />
+          />,
+          document.body,
         ) : null}
       </AnimatePresence>
     </div>

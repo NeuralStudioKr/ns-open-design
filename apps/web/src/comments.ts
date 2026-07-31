@@ -141,21 +141,23 @@ export function commentVisibleOnDeckSlide(
   return comment.slideIndex === activeSlideIndex;
 }
 
-/** Basename of the deck HTML file a comment edit should update in place. */
+/**
+ * Project-relative HTML path a comment edit should update in place.
+ * Nested decks keep their directory (`slides/deck.html`); basenames alone
+ * are returned only for root HTML. Non-HTML paths (e.g. screenshot PNGs)
+ * are ignored so callers fall back to the open/canonical deck.
+ */
 export function resolveCommentEditPersistTargetFileName(
   commentAttachments: readonly ChatCommentAttachment[] | null | undefined,
 ): string | null {
   if (!commentAttachments?.length) return null;
   for (const attachment of commentAttachments) {
-    const filePath = attachment.filePath?.trim();
+    const filePath = attachment.filePath?.trim().replace(/\\/g, '/').replace(/^\.\//, '');
     if (!filePath) continue;
-    const baseName = filePath.split('/').filter(Boolean).pop() ?? filePath;
-    if (/\.html?$/i.test(baseName)) return baseName;
-  }
-  for (const attachment of commentAttachments) {
-    const filePath = attachment.filePath?.trim();
-    if (!filePath) continue;
-    return filePath.split('/').filter(Boolean).pop() ?? filePath;
+    // Screenshot-only visual marks store uploads/*.png as filePath. Never
+    // treat image/binary uploads as the in-place deck persist target.
+    if (!/\.html?$/i.test(filePath)) continue;
+    return filePath;
   }
   return null;
 }
@@ -168,19 +170,32 @@ export function resolveCommentEditPersistTargetFileName(
 // nothing slide-scoped to navigate to (plain prompt, free pin, missing index).
 export function queuedSlideNavTarget(
   commentAttachments: readonly ChatCommentAttachment[] | null | undefined,
+  options?: { fallbackDeckFilePath?: string | null },
 ): { filePath: string; slideIndex: number } | null {
   if (!commentAttachments) return null;
+  let slideOnly: number | null = null;
   for (const attachment of commentAttachments) {
-    const filePath = attachment.filePath?.trim();
+    const filePath = attachment.filePath?.trim().replace(/\\/g, '/').replace(/^\.\//, '');
     const slideIndex = attachment.slideIndex;
     if (
-      filePath &&
-      typeof slideIndex === 'number' &&
-      Number.isFinite(slideIndex) &&
-      slideIndex >= 0
+      typeof slideIndex !== 'number' ||
+      !Number.isFinite(slideIndex) ||
+      slideIndex < 0
     ) {
-      return { filePath, slideIndex: Math.floor(slideIndex) };
+      continue;
     }
+    const floor = Math.floor(slideIndex);
+    // Screenshot-only visuals store uploads/*.png as filePath — never treat
+    // that as a deck tab name. Keep the slide index for fallback below.
+    if (filePath && /\.html?$/i.test(filePath)) {
+      return { filePath, slideIndex: floor };
+    }
+    if (slideOnly == null) slideOnly = floor;
+  }
+  if (slideOnly == null) return null;
+  const fallback = options?.fallbackDeckFilePath?.trim().replace(/\\/g, '/').replace(/^\.\//, '') || '';
+  if (fallback && /\.html?$/i.test(fallback)) {
+    return { filePath: fallback, slideIndex: slideOnly };
   }
   return null;
 }
@@ -729,6 +744,27 @@ export function trimHtmlHint(value: string): string {
   return text.length > 180 ? `${text.slice(0, 177)}...` : text;
 }
 
+/** Inline CSS for a visual-mark overlay box (preview-capture pixel coordinates). */
+export function formatVisualMarkPlacementStyle(
+  position: PreviewComment['position'],
+): string {
+  const pos = normalizePosition(position);
+  return `position:absolute;left:${pos.x}px;top:${pos.y}px;width:${Math.max(1, pos.width)}px;height:${Math.max(1, pos.height)}px`;
+}
+
+/** Model-facing placement rules for screenshot/drawing scoped edits. */
+export function visualMarkPlacementGuidance(
+  position: PreviewComment['position'],
+): string {
+  const pos = normalizePosition(position);
+  return [
+    'Preserve the current slide HTML from disk; do not redesign unrelated layout.',
+    `Place the requested icon/shape inside the marked box at x=${pos.x} y=${pos.y} ${pos.width}x${pos.height} (slide canvas pixels; Teamver decks are 1920×1080).`,
+    `Wrap the new markup in a container with style="${formatVisualMarkPlacementStyle(position)}" inside a position:relative slide root.`,
+    'Size the icon/SVG to fill that box (width/height 100% or matching px).',
+  ].join(' ');
+}
+
 export function renderCommentAttachmentContext(
   commentAttachments: ChatCommentAttachment[],
   options?: { includeQueryComments?: boolean },
@@ -776,6 +812,7 @@ export function renderCommentAttachmentContext(
         `screenshot: ${item.screenshotPath || '(missing)'}`,
         `markKind: ${item.markKind || 'stroke'}`,
         `intent: ${item.intent || visualAnnotationIntent(item.markKind || 'stroke')}`,
+        `placement: ${visualMarkPlacementGuidance(item.pagePosition)}`,
       );
       if (item.selector) lines.push(`selector: ${item.selector}`);
     } else {
@@ -831,8 +868,14 @@ export function isScreenshotOnlyVisualCommentTarget(
     || Boolean(String(item.screenshotPath || '').trim())
     || elementId.startsWith('visual-mark-');
   if (!isVisual) return false;
-  if (elementId.startsWith('visual-mark-')) return true;
-  return !String(item.selector || '').trim() && !String(item.htmlHint || '').trim();
+  // Concrete DOM anchors: selector, htmlHint, or a real (non-synthetic) elementId.
+  // visual-mark-* alone is not an anchor — those stay screenshot-only unless
+  // selector/htmlHint are present.
+  const hasDomAnchor =
+    Boolean(String(item.selector || '').trim())
+    || Boolean(String(item.htmlHint || '').trim())
+    || (Boolean(elementId) && !elementId.startsWith('visual-mark-'));
+  return !hasDomAnchor;
 }
 
 /**
@@ -853,10 +896,8 @@ export function buildConcreteElementPatchTemplate(
       continue;
     }
     if (isScreenshotOnlyVisualCommentTarget(item)) continue;
-    const targetId = String(item.elementId || '').trim();
-    if (!targetId) continue;
-    if (isUnsafeElementPatchTargetId(targetId)) continue;
-    if (isSyntheticVisualMarkTargetId(targetId)) continue;
+    const targetIds = concreteElementPatchTargetIds(item);
+    if (targetIds.length === 0) continue;
     const slideIndex = Math.floor(item.slideIndex);
     const removal = looksLikeRemovalCommentRequest(item.comment || '');
     const layoutOnly = !removal && looksLikeMarkupLayoutCommentRequest(item.comment || '');
@@ -878,11 +919,13 @@ export function buildConcreteElementPatchTemplate(
             : null;
     const patchKind = resolvedBody === null ? 'set-text' : resolvedKind;
     const patchBody = resolvedBody ?? '(요청한 새 텍스트)';
-    blocks.push(
-      '<artifact type="element-patch" identifier="deck">',
-      `  <patch target-id="${escapeXmlAttr(targetId)}" slide-index="${slideIndex}" kind="${patchKind}">${patchBody}</patch>`,
-      '</artifact>',
-    );
+    for (const targetId of targetIds) {
+      blocks.push(
+        '<artifact type="element-patch" identifier="deck">',
+        `  <patch target-id="${escapeXmlAttr(targetId)}" slide-index="${slideIndex}" kind="${patchKind}">${patchBody}</patch>`,
+        '</artifact>',
+      );
+    }
   }
   return blocks.length > 0 ? blocks.join('\n') : null;
 }
@@ -902,11 +945,14 @@ export function buildConcreteDeckPatchTemplateForVisualMarks(
       continue;
     }
     const slideIndex = Math.floor(item.slideIndex);
+    const placementStyle = formatVisualMarkPlacementStyle(item.pagePosition);
     blocks.push(
       '<artifact type="deck-patch" identifier="deck">',
-      `  <section class="slide" data-slide-index="${slideIndex}">`,
-      '    <!-- Replace this entire slide section. Use the screenshot annotation for placement.',
-      '         For shapes/hearts, add inline SVG or appropriate markup inside the slide. -->',
+      `  <section class="slide" data-slide-index="${slideIndex}" style="position:relative">`,
+      '    <!-- COPY the existing slide HTML for this index from deck.html unchanged, then ADD: -->',
+      `    <div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center">`,
+      '      <!-- robot/icon/SVG sized to fill this box (100% width/height) -->',
+      '    </div>',
       '  </section>',
       '</artifact>',
     );
@@ -937,13 +983,48 @@ export function elementPatchCoerceHintsFromCommentAttachments(
       continue;
     }
     if (isScreenshotOnlyVisualCommentTarget(item)) continue;
-    const targetId = String(item.elementId || '').trim();
-    if (!targetId) continue;
-    if (isUnsafeElementPatchTargetId(targetId)) continue;
-    if (isSyntheticVisualMarkTargetId(targetId)) continue;
-    hints.push({ targetId, slideIndex: Math.floor(item.slideIndex) });
+    const slideIndex = Math.floor(item.slideIndex);
+    for (const targetId of concreteElementPatchTargetIds(item)) {
+      hints.push({ targetId, slideIndex });
+    }
   }
   return hints;
+}
+
+/**
+ * Resolve concrete DOM target ids for element-patch templates / coerce hints.
+ * Prefer a real elementId; otherwise extract from selector attrs (same attrs
+ * as scoped-deck-patch) so visual-mark-* + `[data-od-id=…]` still templates.
+ */
+function concreteElementPatchTargetIds(
+  item: Pick<ChatCommentAttachment, 'elementId' | 'selector'>,
+): string[] {
+  const ids: string[] = [];
+  const elementId = String(item.elementId || '').trim();
+  if (
+    elementId
+    && !isSyntheticVisualMarkTargetId(elementId)
+    && !isUnsafeElementPatchTargetId(elementId)
+  ) {
+    ids.push(elementId);
+  }
+  const selector = String(item.selector || '').trim();
+  if (selector) {
+    for (const attr of ['data-od-id', 'data-screen-label', 'data-od-source-path', 'data-od-runtime-id']) {
+      const re = new RegExp(`\\[${attr}=(?:"([^"]+)"|'([^']+)'|([^\\]\\s]+))\\]`, 'gi');
+      for (const match of selector.matchAll(re)) {
+        const value = (match[1] || match[2] || match[3] || '').trim();
+        if (
+          value
+          && !isSyntheticVisualMarkTargetId(value)
+          && !isUnsafeElementPatchTargetId(value)
+        ) {
+          ids.push(value);
+        }
+      }
+    }
+  }
+  return [...new Set(ids)];
 }
 
 function isUnsafeElementPatchTargetId(targetId: string): boolean {

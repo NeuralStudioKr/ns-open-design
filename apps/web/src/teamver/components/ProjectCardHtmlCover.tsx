@@ -2,7 +2,12 @@ import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 
 import { injectHtmlBaseHref } from "../../runtime/authenticatedHtmlSrcDoc";
+import { isTeamverEmbedMode } from "../designApiBase";
 import { fetchTeamverDaemon } from "../teamverDaemonHeaders";
+import {
+  projectScopedPreviewUrl,
+  resolveTeamverProjectPreviewPrefix,
+} from "../teamverProjectPreviewScope";
 
 const DECK_PREVIEW_WIDTH = 1280;
 const DECK_PREVIEW_HEIGHT = 720;
@@ -128,6 +133,73 @@ function AuthenticatedHtmlCover({
   );
 }
 
+/** Parse `/api/projects/:id/raw/:path` so cover base href can use scoped preview. */
+export function parseProjectRawUrl(
+  src: string,
+): { projectId: string; filePath: string } | null {
+  const match = /^\/api\/projects\/([^/]+)\/raw\/(.+)$/u.exec(String(src || "").trim());
+  if (!match) return null;
+  let projectId = match[1] || "";
+  let filePath = match[2] || "";
+  try {
+    projectId = decodeURIComponent(projectId);
+  } catch {
+    /* keep raw */
+  }
+  filePath = filePath
+    .split("/")
+    .map((seg) => {
+      try {
+        return decodeURIComponent(seg);
+      } catch {
+        return seg;
+      }
+    })
+    .filter(Boolean)
+    .join("/");
+  if (!projectId || !filePath) return null;
+  return { projectId, filePath };
+}
+
+async function resolveCoverBaseHref(
+  src: string,
+  signal?: AbortSignal,
+): Promise<{ href: string; scoped: boolean }> {
+  if (!isTeamverEmbedMode()) return { href: src, scoped: true };
+  const parsed = parseProjectRawUrl(src);
+  if (!parsed) return { href: src, scoped: false };
+  // Retry briefly — a one-shot preview-url miss must not poison the cover
+  // cache with an auth-gated /raw base that sandboxed iframes cannot load.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (signal?.aborted) break;
+    const prefix = await resolveTeamverProjectPreviewPrefix(
+      parsed.projectId,
+      parsed.filePath,
+      { signal },
+    );
+    if (prefix) {
+      return {
+        href: projectScopedPreviewUrl(prefix, parsed.filePath),
+        scoped: true,
+      };
+    }
+    if (attempt < 2) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 120 * (attempt + 1));
+        signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            resolve();
+          },
+          { once: true },
+        );
+      });
+    }
+  }
+  return { href: src, scoped: false };
+}
+
 async function loadHtmlCover(
   src: string,
   mode: "deck" | "page",
@@ -142,22 +214,24 @@ async function loadHtmlCover(
   const existing = !signal ? htmlCoverInflight.get(cacheKey) : undefined;
   if (existing) return existing;
 
-  const run = fetchTeamverDaemon(src, {
-    // Unique AbortSignal skips GET dedupe in fetchTeamverDaemon.
-    signal: signal ?? new AbortController().signal,
-  })
-    .then((res) => {
-      if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
-      return res.text();
-    })
-    .then((html) => {
-      const parsed = mode === "deck" ? deckPreviewSrcDoc(html, src) : pagePreviewSrcDoc(html, src);
-      htmlCoverCache.set(cacheKey, parsed);
-      return parsed;
-    })
-    .finally(() => {
-      htmlCoverInflight.delete(cacheKey);
+  const run = (async () => {
+    const res = await fetchTeamverDaemon(src, {
+      // Unique AbortSignal skips GET dedupe in fetchTeamverDaemon.
+      signal: signal ?? new AbortController().signal,
     });
+    if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
+    const html = await res.text();
+    const { href: baseHref, scoped } = await resolveCoverBaseHref(src, signal);
+    const parsed =
+      mode === "deck" ? deckPreviewSrcDoc(html, baseHref) : pagePreviewSrcDoc(html, baseHref);
+    // Never cache embed covers that fell back to /raw — next mount should retry.
+    if (scoped || !isTeamverEmbedMode()) {
+      htmlCoverCache.set(cacheKey, parsed);
+    }
+    return parsed;
+  })().finally(() => {
+    htmlCoverInflight.delete(cacheKey);
+  });
 
   if (!signal) htmlCoverInflight.set(cacheKey, run);
   return run;

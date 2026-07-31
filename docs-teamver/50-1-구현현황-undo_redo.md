@@ -92,12 +92,14 @@
 | 단위 테스트 | [x] | `revision-restore.test.ts` |
 | 통합 테스트 | [x] | `FileViewer.revision-client-restore.test.tsx` (jsdom 환경 이슈 시 unit으로 대체) |
 
-### Phase B — optimistic undo 확장 (진행)
+### Phase B — optimistic undo 확장 + style batch commit
 
 | 항목 | 상태 | 비고 |
 |------|------|------|
 | snapshot API fetch hit → UI 즉시 + background restore | [x] | cache miss여도 `resolveRevisionSnapshotContent` 성공 시 Phase A와 동일 경로 |
 | snapshot 없을 때만 blocking restore | [x] | fetch text fallback |
+| 연속 style flush no-op revision skip | [x] | `manual-edit-style-batch.ts` — source diff 후 push 생략 |
+| autosave debounce 유지 | [x] | `MANUAL_EDIT_STYLE_AUTOSAVE_MS` + batch diff on flush |
 
 ---
 
@@ -137,7 +139,7 @@
 | undo/redo + manual-edit regression tests | [x] |
 | daemon file-revisions tests | [x] |
 | nested markup (inline salvage + flattenNestedMarkup) | [x] |
-| revision content cache + reconcile skip + prefetch | [x] | `revision-content-cache.ts` |
+| revision content cache + reconcile skip + prefetch | [x] | `revision-content-cache.ts` — LRU 8 entries, 16MB/파일, 4MB/항목, prefetch `byteSize` skip |
 | `OD_FILE_REVISION_RETENTION_LIMIT` env | [x] | daemon `resolveFileRevisionRetentionLimit()` |
 | History panel retention hint | [x] | i18n `fileRevision.history.retentionHint` |
 | List API `retentionLimit` → History 패널 | [x] | daemon list 응답, 하드코드 제거 |

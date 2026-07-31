@@ -2046,6 +2046,8 @@ export const it: Dict = {
   'manualEdit.title': 'Editor manuale',
   'manualEdit.fallbackTitle': 'Modifica',
   'manualEdit.movePanel': 'Sposta pannello di modifica',
+  'manualEdit.positionMoveRequiresAbsolute': 'Il trascinamento della posizione richiede absolute o fixed.',
+  'manualEdit.positionPromoteOnDrag': 'Trascina per liberare l’elemento (position: absolute).',
   'manualEdit.editParams': 'Modifica parametri',
   'manualEdit.closePanel': 'Chiudi pannello di modifica',
   'manualEdit.selectLayer': 'Seleziona un livello',

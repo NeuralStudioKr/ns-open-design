@@ -9,16 +9,27 @@ export function projectFilePathExists(
   projectFileNames: ReadonlySet<string> | undefined,
   path: string,
 ): boolean {
-  const trimmed = String(path || '').trim();
+  const trimmed = String(path || '').trim().replace(/\\/g, '/');
   if (!trimmed) return false;
   if (!projectFileNames) {
     return !isEphemeralDrawingScreenshotPath(trimmed);
   }
   if (projectFileNames.has(trimmed)) return true;
   const baseName = trimmed.split('/').pop() || trimmed;
+  const hasDirectory = trimmed.includes('/');
+  // Nested paths must match the full relative path (or a suffix of it).
+  // Do not treat `assets/a.png` as proof that `uploads/a.png` exists.
+  if (hasDirectory) {
+    for (const name of projectFileNames) {
+      const normalized = String(name || '').replace(/\\/g, '/');
+      if (normalized === trimmed || normalized.endsWith(`/${trimmed}`)) return true;
+    }
+    return false;
+  }
   if (projectFileNames.has(baseName)) return true;
   for (const name of projectFileNames) {
-    if (name === baseName || name.endsWith(`/${baseName}`)) return true;
+    const normalized = String(name || '').replace(/\\/g, '/');
+    if (normalized === baseName || normalized.endsWith(`/${baseName}`)) return true;
   }
   return false;
 }

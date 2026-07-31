@@ -138,7 +138,7 @@ describe('chat assistant body pipeline', () => {
     expect(screen.queryByText('incomplete')).toBeNull();
   });
 
-  it('renders inline error detail for the last failed embed row on reload', () => {
+  it('keeps failed embed rows on reload; ChatPane owns the error card copy', () => {
     const { items } = reloadPipeline([
       { id: 'u1', role: 'user', content: 'run task', createdAt: 1 },
       {
@@ -153,7 +153,10 @@ describe('chat assistant body pipeline', () => {
     ]);
 
     expect(items.map((item) => item.message.id)).toEqual(['u1', 'a-failed']);
-    render(
+    // When ChatPane sets errorCardOwnerId, the inline StatusPill is suppressed
+    // so the diagnostic card is the single copy SSOT — the assistant row itself
+    // must still mount.
+    const { container } = render(
       <AssistantMessage
         message={items[1]!.message}
         streaming={false}
@@ -162,7 +165,8 @@ describe('chat assistant body pipeline', () => {
         errorCardOwnerId="a-failed"
       />,
     );
-    expect(screen.getByText('upstream timeout')).toBeTruthy();
+    expect(screen.queryByText('upstream timeout')).toBeNull();
+    expect(container.querySelector('[data-message-id="a-failed"]')).toBeTruthy();
   });
 
   it('does not reserve phantom rows for artifact-only shells without deliverables', () => {

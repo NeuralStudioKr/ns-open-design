@@ -3,7 +3,6 @@ import { existsSync, realpathSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readTeamverClientBuildEnv } from './src/teamver/teamverClientBuildEnv';
 
 // Daemon port the local Express server binds to (see apps/daemon/src/cli.ts). The
 // dev-all launcher overrides OD_PORT after probing for a free port; we read
@@ -161,12 +160,40 @@ function configuredAllowedDevHosts(): string[] {
 const skipNextTypecheck = process.env.OD_SKIP_NEXT_TYPECHECK === '1';
 
 const nextConfig: NextConfig = {
-  // Bake-time Teamver flags (VITE_*) must be listed here — Next.js does not
-  // expose arbitrary process.env keys to the browser client bundle.
-  env: readTeamverClientBuildEnv(),
   allowedDevOrigins: configuredAllowedDevHosts(),
   outputFileTracingRoot: WORKSPACE_ROOT,
   reactStrictMode: true,
+  // Bake-time Teamver flags (VITE_*) must be listed with static `process.env.*`
+  // access — Next does not expose arbitrary keys, and next.config.ts cannot
+  // import a sibling `.ts` helper after it is compiled to CJS.
+  // Keep `?? ''` so Playwright/local can force embed off via VITE_TEAMVER_EMBED=0.
+  env: {
+    VITE_TEAMVER_EMBED: process.env.VITE_TEAMVER_EMBED ?? '',
+    VITE_TEAMVER_BOOTSTRAP_ENABLED: process.env.VITE_TEAMVER_BOOTSTRAP_ENABLED ?? '',
+    VITE_TEAMVER_MAIN_LOGIN_URL: process.env.VITE_TEAMVER_MAIN_LOGIN_URL ?? '',
+    VITE_TEAMVER_API_PROTOCOL: process.env.VITE_TEAMVER_API_PROTOCOL ?? '',
+    VITE_TEAMVER_API_MODEL: process.env.VITE_TEAMVER_API_MODEL ?? '',
+    VITE_TEAMVER_API_BASE_URL: process.env.VITE_TEAMVER_API_BASE_URL ?? '',
+    VITE_TEAMVER_DESIGN_API_URL: process.env.VITE_TEAMVER_DESIGN_API_URL ?? '',
+    VITE_TEAMVER_MAIN_API_URL: process.env.VITE_TEAMVER_MAIN_API_URL ?? '',
+    VITE_TEAMVER_BRAND_SUBTITLE: process.env.VITE_TEAMVER_BRAND_SUBTITLE ?? '',
+    VITE_TEAMVER_BRAND_TITLE: process.env.VITE_TEAMVER_BRAND_TITLE ?? '',
+    VITE_TEAMVER_FAVICON_URL: process.env.VITE_TEAMVER_FAVICON_URL ?? '',
+    VITE_TEAMVER_LOGO_URL: process.env.VITE_TEAMVER_LOGO_URL ?? '',
+    VITE_TEAMVER_LOGO_DARK_URL: process.env.VITE_TEAMVER_LOGO_DARK_URL ?? '',
+    VITE_TEAMVER_LOGO_URL_DARK: process.env.VITE_TEAMVER_LOGO_URL_DARK ?? '',
+    VITE_TEAMVER_NAV_MARK_URL: process.env.VITE_TEAMVER_NAV_MARK_URL ?? '',
+    VITE_TEAMVER_HERO_TITLE: process.env.VITE_TEAMVER_HERO_TITLE ?? '',
+    VITE_TEAMVER_HERO_SUBTITLE: process.env.VITE_TEAMVER_HERO_SUBTITLE ?? '',
+    VITE_TEAMVER_SITE_URL: process.env.VITE_TEAMVER_SITE_URL ?? '',
+    VITE_TEAMVER_OG_IMAGE_URL: process.env.VITE_TEAMVER_OG_IMAGE_URL ?? '',
+    VITE_TEAMVER_OG_TITLE: process.env.VITE_TEAMVER_OG_TITLE ?? '',
+    VITE_TEAMVER_DRAW_ANNOTATION_ENABLE: process.env.VITE_TEAMVER_DRAW_ANNOTATION_ENABLE ?? '',
+    VITE_MESSAGE_PERSIST_THROTTLE_MS: process.env.VITE_MESSAGE_PERSIST_THROTTLE_MS ?? '',
+    VITE_TEAMVER_DRIVE_PUBLISH_FOLDER_ID: process.env.VITE_TEAMVER_DRIVE_PUBLISH_FOLDER_ID ?? '',
+    VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID:
+      process.env.VITE_TEAMVER_DRIVE_PUBLISH_SHARED_DRIVE_ID ?? '',
+  },
   // Emit browser sourcemaps so packaged-runtime exceptions can be symbolicated
   // by PostHog. `tools/pack/src/web-sourcemaps.ts` runs after `next build`
   // to inject chunk IDs, upload to PostHog, and ALWAYS delete the .map files

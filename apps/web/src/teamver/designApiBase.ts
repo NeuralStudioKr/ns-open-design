@@ -9,6 +9,9 @@ export const TEAMVER_DESIGN_APP_ID = "teamver-design";
 
 export function isTeamverEmbedMode(): boolean {
   const flag = readTeamverViteEnv("VITE_TEAMVER_EMBED")?.toLowerCase();
+  // Explicit opt-out wins so local Playwright / tools-dev can run standalone UX
+  // on 127.0.0.1 without hostname auto-embed.
+  if (flag === "0" || flag === "false" || flag === "no") return false;
   if (flag === "1" || flag === "true" || flag === "yes") return true;
   if (typeof window === "undefined") return false;
   const host = window.location.hostname.toLowerCase();

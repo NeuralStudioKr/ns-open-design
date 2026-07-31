@@ -5,6 +5,8 @@ import {
   diffDeckSlideIndexes,
   isDeckPatchArtifactType,
   parseDeckPatch,
+  parseDeckPatchWithSalvage,
+  salvageDeckPatchBodyMissingSlideWrapper,
 } from '../../src/artifacts/deck-patch';
 
 const CURRENT_DECK = [
@@ -166,6 +168,26 @@ describe('parseDeckPatch', () => {
   it('rejects an empty body (no slide sections to apply)', () => {
     const result = parseDeckPatch('   \n<!-- planning notes only -->\n');
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('salvageDeckPatchBodyMissingSlideWrapper', () => {
+  it('wraps raw SVG markup when a single scoped slide index is known', () => {
+    const body = '<svg viewBox="0 0 24 24"><path d="M12 21s-8-4.5-8-11a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 6.5-8 11-8 11z"/></svg>';
+    const salvaged = salvageDeckPatchBodyMissingSlideWrapper(body, { fallbackSlideIndexes: [1] });
+    expect(salvaged).toContain('data-slide-index="1"');
+    expect(salvaged).toContain('<svg');
+    const parsed = parseDeckPatchWithSalvage(body, { fallbackSlideIndexes: [1] });
+    expect(parsed.ok, parsed.ok ? '' : parsed.reason).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.patch.ops[0]?.slideIndex).toBe(1);
+  });
+
+  it('does not salvage when multiple scoped slide indexes are present', () => {
+    const body = '<div>shape</div>';
+    expect(
+      salvageDeckPatchBodyMissingSlideWrapper(body, { fallbackSlideIndexes: [0, 1] }),
+    ).toBeNull();
   });
 });
 

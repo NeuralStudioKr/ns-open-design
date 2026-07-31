@@ -24,6 +24,13 @@ describe('projectFilePathExists', () => {
     expect(projectFilePathExists(names, '')).toBe(false);
   });
 
+  it('does not treat a different directory with the same basename as a hit', () => {
+    const nested = new Set(['assets/a.png', 'deck.html']);
+    expect(projectFilePathExists(nested, 'uploads/a.png')).toBe(false);
+    expect(projectFilePathExists(nested, 'assets/a.png')).toBe(true);
+    expect(projectFilePathExists(nested, 'a.png')).toBe(true);
+  });
+
   it('defaults to false for ephemeral drawing screenshots when the file index is unavailable', () => {
     expect(projectFilePathExists(undefined, 'ms8hq9qu-drawing-2026-07-31T05-17-03-125Z.png')).toBe(false);
     expect(projectFilePathExists(undefined, 'references/logo.png')).toBe(true);

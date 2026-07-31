@@ -188,20 +188,22 @@ export function canvasCreateSlidesTurnMeta(
 ): {
   skillIds: string[];
   designSystemId?: string | null;
-  context: { pluginIds?: string[]; skillIds: string[] };
+  context: { pluginIds: string[]; skillIds: string[] };
 } {
   const id = templateId.trim();
   // Visual template stays in skillIds only. Scenario/applied plugins keep
   // context.pluginIds — injecting the template there shadows the scenario.
+  // Always include the deck scenario plugin so BYOK/API composition can load
+  // example-simple-deck as a secondary body when an explicit template wins.
   const priorPluginIds = (options?.mergeContext?.pluginIds ?? []).filter(
-    (pluginId) => pluginId !== id,
+    (pluginId) => pluginId !== id && pluginId !== CANVAS_CREATE_SLIDES_PLUGIN_ID,
   );
   const priorSkillIds = options?.mergeContext?.skillIds ?? [];
   return {
     skillIds: id ? [id] : [],
     ...(options?.designSystemId != null ? { designSystemId: options.designSystemId } : {}),
     context: {
-      ...(priorPluginIds.length > 0 ? { pluginIds: priorPluginIds } : {}),
+      pluginIds: [CANVAS_CREATE_SLIDES_PLUGIN_ID, ...priorPluginIds],
       skillIds: id ? [id, ...priorSkillIds.filter((skillId) => skillId !== id)] : priorSkillIds,
     },
   };

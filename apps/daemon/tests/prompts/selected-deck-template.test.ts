@@ -83,4 +83,32 @@ describe('selected-deck-template prompt helpers', () => {
     );
     expect(serverSource).toContain('secondarySkillBody: scenarioSkillBody');
   });
+
+  it('loads selected deck templates from skill-like/design-template roots before plugins', () => {
+    const start = serverSource.indexOf('if (selectedDeckTemplate) {');
+    expect(start).toBeGreaterThan(0);
+    const block = serverSource.slice(start, start + 1600);
+    expect(block).toContain('const allSkills = await loadAllSkills();');
+    expect(block).toContain('findSkillById(allSkills, selectedDeckTemplate.id)');
+    expect(block.indexOf('findSkillById(allSkills, selectedDeckTemplate.id)')).toBeLessThan(
+      block.indexOf('getInstalledPlugin(db, selectedDeckTemplate.id)'),
+    );
+  });
+
+  it('keeps ad-hoc composedSkillBlocks out of skillBody until final assembly', () => {
+    const start = serverSource.indexOf('if (adHocSkillIds.length > 0) {');
+    expect(start).toBeGreaterThan(0);
+    const block = serverSource.slice(start, start + 3200);
+    expect(block).toContain('composedSkillBlocks = blocks.join(\'\');');
+    expect(block).toContain('skillBody = baseBody;');
+    expect(block).not.toContain('skillBody = baseBody + composedSkillBlocks;');
+  });
+
+  it('keeps plugin-primary skillBody free of composedSkillBlocks until final assembly', () => {
+    const start = serverSource.indexOf('// Keep ad-hoc blocks out of skillBody until final assembly');
+    expect(start).toBeGreaterThan(0);
+    const block = serverSource.slice(start, start + 400);
+    expect(block).toContain('skillBody = local.body;');
+    expect(block).not.toContain('skillBody = local.body + composedSkillBlocks;');
+  });
 });

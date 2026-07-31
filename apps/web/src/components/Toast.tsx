@@ -37,6 +37,8 @@ export interface ToastProps {
   role?: 'status' | 'alert';
   tone?: 'default' | 'success' | 'error' | 'loading';
   placement?: 'bottom' | 'top';
+  /** Single-row layout for save confirmations with inline undo. */
+  layout?: 'default' | 'compact';
   actionLabel?: string;
   onAction?: () => void;
 }
@@ -59,7 +61,7 @@ const TONE_ICON: Record<NonNullable<ToastProps['tone']>, 'check' | 'close' | 'sp
   loading: 'spinner',
 };
 
-export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs = DEFAULT_TTL, onDismiss, role = 'status', tone = 'default', placement = 'bottom', actionLabel, onAction }: ToastProps) {
+export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs = DEFAULT_TTL, onDismiss, role = 'status', tone = 'default', placement = 'bottom', layout = 'default', actionLabel, onAction }: ToastProps) {
   // When code is present the toast is a manual-action surface; never
   // auto-dismiss it out from under the user mid-copy.
   const effectiveTtl = code ? 0 : ttlMs;
@@ -86,7 +88,7 @@ export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs 
 
   return (
     <motion.div
-      className={`od-toast tone-${tone} placement-${placement}${leaving ? ' leaving' : ''}`}
+      className={`od-toast tone-${tone} placement-${placement} layout-${layout}${leaving ? ' leaving' : ''}`}
       role={role}
       aria-live={role === 'alert' ? 'assertive' : 'polite'}
       variants={toastSlideUp}
@@ -94,6 +96,46 @@ export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs 
       animate="visible"
       exit="exit"
     >
+      {layout === 'compact' ? (
+        <div className="od-toast-compact-row">
+          <div className="od-toast-body">
+            {iconName ? (
+              <span className="od-toast-icon" aria-hidden>
+                <Icon name={iconName} size={15} />
+              </span>
+            ) : null}
+            <div className="od-toast-compact-copy">
+              <div className="od-toast-message">{message}</div>
+              {details ? <span className="od-toast-detail-chip">{details}</span> : null}
+            </div>
+          </div>
+          <div className="od-toast-compact-actions">
+            {actionLabel && onAction ? (
+              <button
+                type="button"
+                className="od-toast-action od-toast-action-inline"
+                onClick={() => {
+                  onAction();
+                  onDismiss?.();
+                }}
+              >
+                {actionLabel}
+              </button>
+            ) : null}
+            {onDismiss ? (
+              <button
+                type="button"
+                className="od-toast-dismiss od-toast-dismiss-inline"
+                onClick={onDismiss}
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : (
+        <>
       <div className="od-toast-body">
         {iconName ? (
           <span className="od-toast-icon" aria-hidden>
@@ -152,6 +194,8 @@ export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs 
           {code ? 'Dismiss' : '×'}
         </button>
       ) : null}
+        </>
+      )}
     </motion.div>
   );
 }

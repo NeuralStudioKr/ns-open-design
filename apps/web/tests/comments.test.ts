@@ -5,6 +5,8 @@ import {
   buildConcreteElementPatchTemplate,
   buildConcretePatchTemplatesForCommentAttachments,
   buildVisualAnnotationAttachment,
+  formatVisualMarkPlacementStyle,
+  visualMarkPlacementGuidance,
   chatAttachmentsFromPreviewCommentFiles,
   commentSnapshotOverlayEqual,
   commentVisibleOnDeckSlide,
@@ -178,15 +180,35 @@ describe('preview comment attachment helpers', () => {
     expect(context).toContain('member.2.scopeLock: cta');
   });
 
-  it('resolves the preview deck basename for in-place comment-edit persist', () => {
+  it('resolves the preview deck path for in-place comment-edit persist', () => {
     expect(
       resolveCommentEditPersistTargetFileName([
         commentAttachment({ id: 'c1', filePath: 'deck.html', slideIndex: 1 }),
       ]),
     ).toBe('deck.html');
+    // Nested decks keep their directory so persist does not rewrite root deck.html.
     expect(
       resolveCommentEditPersistTargetFileName([
         commentAttachment({ id: 'c1', filePath: 'refs/deck.html', slideIndex: 1 }),
+      ]),
+    ).toBe('refs/deck.html');
+  });
+
+  it('never routes screenshot-only visual marks to a PNG persist target', () => {
+    const visualOnly = buildVisualAnnotationAttachment({
+      order: 0,
+      screenshotPath: 'uploads/visual-mark-1.png',
+      markKind: 'stroke',
+      note: '여기 키워줘',
+      slideIndex: 1,
+      bounds: { x: 10, y: 20, width: 100, height: 40 },
+    });
+    expect(visualOnly.filePath).toContain('.png');
+    expect(resolveCommentEditPersistTargetFileName([visualOnly])).toBeNull();
+    expect(
+      resolveCommentEditPersistTargetFileName([
+        visualOnly,
+        commentAttachment({ id: 'c2', filePath: 'deck.html', slideIndex: 0 }),
       ]),
     ).toBe('deck.html');
   });
@@ -835,6 +857,7 @@ describe('preview comment attachment helpers', () => {
     expect(elementPatchCoerceHintsFromCommentAttachments([visualOnly])).toEqual([]);
     expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('type="deck-patch"');
     expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('data-slide-index="1"');
+    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('left:10px;top:20px;width:100px;height:40px');
     expect(buildConcretePatchTemplatesForCommentAttachments([visualOnly])).toContain('type="deck-patch"');
 
     const visualWithRealTarget = buildVisualAnnotationAttachment({
@@ -857,6 +880,49 @@ describe('preview comment attachment helpers', () => {
     });
     expect(isScreenshotOnlyVisualCommentTarget(visualWithRealTarget)).toBe(false);
     expect(buildConcreteElementPatchTemplate([visualWithRealTarget])).toContain('target-id="hero-title"');
+
+    // visual-mark-* with selector/htmlHint (no stable elementId) stays element-scoped.
+    expect(
+      isScreenshotOnlyVisualCommentTarget({
+        selectionKind: 'visual',
+        markKind: 'click',
+        screenshotPath: 'uploads/mark.png',
+        elementId: 'visual-mark-x',
+        selector: '[data-od-id="hero"]',
+        htmlHint: '<h1 data-od-id="hero">Title</h1>',
+      }),
+    ).toBe(false);
+
+    // Real elementId alone is a DOM anchor even without selector/htmlHint.
+    expect(
+      isScreenshotOnlyVisualCommentTarget({
+        selectionKind: 'visual',
+        markKind: 'click',
+        screenshotPath: 'uploads/mark.png',
+        elementId: 'hero-title',
+        selector: '',
+        htmlHint: '',
+      }),
+    ).toBe(false);
+
+    // visual-mark-* + selector still yields an element-patch template.
+    const visualMarkWithSelector = {
+      ...commentAttachment({
+        elementId: 'visual-mark-x',
+        selector: '[data-od-id="hero"]',
+        htmlHint: '<h1 data-od-id="hero">Title</h1>',
+        slideIndex: 0,
+        selectionKind: 'visual' as const,
+        screenshotPath: 'uploads/mark.png',
+        markKind: 'click' as const,
+      }),
+    };
+    expect(buildConcreteElementPatchTemplate([visualMarkWithSelector])).toContain(
+      'target-id="hero"',
+    );
+    expect(elementPatchCoerceHintsFromCommentAttachments([visualMarkWithSelector])).toEqual([
+      { targetId: 'hero', slideIndex: 0 },
+    ]);
   });
 
   it('does not render preview-comment context when target location data is missing', () => {
@@ -936,5 +1002,27 @@ describe('queuedSlideNavTarget', () => {
     expect(
       queuedSlideNavTarget([commentAttachment({ slideIndex: -1 })]),
     ).toBeNull();
+  });
+
+  it('skips screenshot PNG filePath and uses fallback deck for slide nav', () => {
+    expect(
+      queuedSlideNavTarget([
+        commentAttachment({
+          filePath: 'uploads/visual-mark-1.png',
+          slideIndex: 2,
+        }),
+      ]),
+    ).toBeNull();
+    expect(
+      queuedSlideNavTarget(
+        [
+          commentAttachment({
+            filePath: 'uploads/visual-mark-1.png',
+            slideIndex: 2,
+          }),
+        ],
+        { fallbackDeckFilePath: 'deck.html' },
+      ),
+    ).toEqual({ filePath: 'deck.html', slideIndex: 2 });
   });
 });

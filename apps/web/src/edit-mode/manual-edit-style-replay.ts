@@ -6,8 +6,9 @@
  * Diff freeze vs saved and re-post the deltas on load.
  */
 
+import { diffManualEditStylePatch } from './manual-edit-style-batch';
 import { readManualEditStyles } from './source-patches';
-import { MANUAL_EDIT_STYLE_PROPS, type ManualEditStyles } from './types';
+import type { ManualEditStyles } from './types';
 
 export type ManualEditStyleReplayPatch = {
   id: string;
@@ -27,19 +28,6 @@ function collectManualEditStyleIds(source: string): string[] {
   }
 }
 
-function styleDiff(
-  frozen: ManualEditStyles,
-  saved: ManualEditStyles,
-): Partial<ManualEditStyles> {
-  const styles: Partial<ManualEditStyles> = {};
-  for (const key of MANUAL_EDIT_STYLE_PROPS) {
-    const next = saved[key] ?? '';
-    const prev = frozen[key] ?? '';
-    if (next !== prev) styles[key] = next;
-  }
-  return styles;
-}
-
 /**
  * Returns per-target style patches that are present in `savedSource` but not
  * yet reflected in the frozen iframe HTML.
@@ -49,11 +37,20 @@ export function manualEditStyleReplayPatches(
   savedSource: string | null | undefined,
 ): ManualEditStyleReplayPatch[] {
   if (!frozenSource || !savedSource || frozenSource === savedSource) return [];
-  const ids = collectManualEditStyleIds(savedSource);
+  // Union freeze + saved ids. Preview freeze often annotates unlabeled nodes
+  // with path-N `data-od-id`s that saved HTML lacks as attributes; collecting
+  // only from saved would skip those targets after a srcDoc remount.
+  const ids = [
+    ...new Set([
+      ...collectManualEditStyleIds(savedSource),
+      ...collectManualEditStyleIds(frozenSource),
+    ]),
+  ];
   const patches: ManualEditStyleReplayPatch[] = [];
   for (const id of ids) {
-    const styles = styleDiff(
-      readManualEditStyles(frozenSource, id),
+    const styles = diffManualEditStylePatch(
+      frozenSource,
+      id,
       readManualEditStyles(savedSource, id),
     );
     if (Object.keys(styles).length === 0) continue;

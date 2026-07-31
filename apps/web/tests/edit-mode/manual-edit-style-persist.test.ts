@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { PROMOTE_MOVE_STYLE_KEYS } from '../../src/edit-mode/move-math';
 import {
+  keyedManualEditStyleRollback,
+  manualEditGestureRollbackKeys,
   restoreManualEditPendingStyleAfterFailedFlush,
   shouldFlushManualEditStylesOnTargetBoundary,
   waitForManualEditSaveIdle,
@@ -68,5 +71,41 @@ describe('manual edit style persist boundary', () => {
       now: () => now,
       sleep: async (ms) => { now += ms; },
     })).resolves.toBe(false);
+  });
+
+  it('uses promote keys when stylesBefore captured position (flush-fail / Esc)', () => {
+    expect(manualEditGestureRollbackKeys({
+      position: '',
+      left: '10px',
+      top: '20px',
+    }, PROMOTE_MOVE_STYLE_KEYS)).toEqual([...PROMOTE_MOVE_STYLE_KEYS]);
+  });
+
+  it('rolls back only recorded keys for absolute move / resize gestures', () => {
+    expect(manualEditGestureRollbackKeys({
+      left: '40px',
+      top: '60px',
+      right: '',
+      bottom: '',
+    }, PROMOTE_MOVE_STYLE_KEYS)).toEqual(['left', 'top', 'right', 'bottom']);
+    expect(keyedManualEditStyleRollback({
+      width: '200px',
+      height: '100px',
+      left: '',
+      top: '',
+    }, ['width', 'height', 'left', 'top'])).toEqual({
+      width: '200px',
+      height: '100px',
+      left: '',
+      top: '',
+    });
+  });
+
+  it('fills missing stylesBefore values with empty so preview removeProperty clears them', () => {
+    expect(keyedManualEditStyleRollback({ left: '40px' }, ['left', 'top', 'position'])).toEqual({
+      left: '40px',
+      top: '',
+      position: '',
+    });
   });
 });
