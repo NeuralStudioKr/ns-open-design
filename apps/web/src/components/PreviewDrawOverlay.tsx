@@ -869,7 +869,7 @@ export function PreviewDrawOverlay({
     setToolbarHost((wrapRef.current?.closest('.viewer-body') as HTMLElement | null) ?? null);
   }, [active]);
 
-  const overlayPointer = active ? 'auto' : 'none';
+  const overlayPointer = active && !sending ? 'auto' : 'none';
   const showCanvas = active || hasInk || hasBox;
   const canSubmit = hasInk || hasBox || Boolean(captureTarget) || captureViewport || Boolean(note.trim()) || extraFiles.length > 0;
   const activePreview = previewIndex !== null ? imagePreviews[previewIndex] ?? null : null;
@@ -878,6 +878,7 @@ export function PreviewDrawOverlay({
   const canUndo = (undoCount > 0 || hasBox) && !sending;
   const canRedo = redoCount > 0 && !sending;
   const chromeHidden = capturing || hideChrome;
+  const toolbarHidden = chromeHidden || sending;
 
   return (
     <div
@@ -891,6 +892,23 @@ export function PreviewDrawOverlay({
       }}
     >
       {children}
+      {sending ? (
+        <div
+          className="artifact-preview-streaming-veil"
+          role="status"
+          aria-live="polite"
+          data-testid="preview-draw-sending-veil"
+          style={{ zIndex: 95, pointerEvents: 'auto' }}
+        >
+          <div className="artifact-preview-streaming-veil__backdrop" aria-hidden />
+          <div className="artifact-preview-streaming-veil__card">
+            <Icon name="spinner" size={18} className="artifact-preview-streaming-veil__icon" />
+            <span className="artifact-preview-streaming-veil__label">
+              {t('chat.annotationSending')}
+            </span>
+          </div>
+        </div>
+      ) : null}
       {showCanvas ? (
         <canvas
           ref={canvasRef}
@@ -935,7 +953,7 @@ export function PreviewDrawOverlay({
                 pointerEvents: 'auto',
                 fontSize: 13,
                 lineHeight: 1.35,
-                visibility: chromeHidden ? 'hidden' : undefined,
+                visibility: toolbarHidden ? 'hidden' : undefined,
               }}
             >
               <span style={{ flex: 1, minWidth: 0 }}>{captureWarning.message}</span>
@@ -984,7 +1002,7 @@ export function PreviewDrawOverlay({
                 pointerEvents: 'auto',
                 fontSize: 12,
                 lineHeight: 1.35,
-                visibility: chromeHidden ? 'hidden' : undefined,
+                visibility: toolbarHidden ? 'hidden' : undefined,
               }}
             >
               <span>{t('chat.annotationDrawHint')}</span>
@@ -1035,7 +1053,7 @@ export function PreviewDrawOverlay({
                 backdropFilter: 'blur(8px)',
                 zIndex: 94,
                 pointerEvents: 'auto',
-                visibility: chromeHidden ? 'hidden' : undefined,
+                visibility: toolbarHidden ? 'hidden' : undefined,
               }}
             >
               {imagePreviews.map((item, i) => (
@@ -1124,7 +1142,7 @@ export function PreviewDrawOverlay({
               zIndex: 93,
               pointerEvents: 'auto',
               fontSize: 13,
-              visibility: chromeHidden ? 'hidden' : undefined,
+              visibility: toolbarHidden ? 'hidden' : undefined,
             }}
           >
           <div className="preview-draw-tool-cluster" style={drawToolbarClusterStyle}>

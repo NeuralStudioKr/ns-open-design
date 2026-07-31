@@ -48,6 +48,7 @@ export function teamverEmbedOverrides(
   overrides["chat.startTitle"] = "슬라이드 작업 시작";
   overrides["fileViewer.loading"] = "슬라이드 미리보기 불러오는 중…";
   overrides["fileViewer.updatingPreview"] = "슬라이드 업데이트 반영 중…";
+  overrides["chat.annotationSending"] = "채팅에 보내는 중…";
   overrides["fileViewer.previewUnavailable"] =
     "슬라이드 미리보기를 불러올 수 없습니다. 잠시 후 다시 시도하거나 채팅에서 생성 상태를 확인해 주세요.";
   overrides["chat.attachAria"] = "파일 첨부";
