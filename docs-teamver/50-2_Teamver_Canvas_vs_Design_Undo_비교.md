@@ -114,6 +114,7 @@ flowchart TB
 | **스택 깊이** | **파일당 30개** (기본, `FILE_REVISION_RETENTION_LIMIT_DEFAULT`) — `OD_FILE_REVISION_RETENTION_LIMIT` env로 조정; 초과 시 oldest prune (DB + 스냅샷 삭제) |
 | **서버 부하 (undo 시)** | restore마다 `writeProjectFile` + 스냅샷 read (gzip diff chain) |
 | **클라이언트 최적화 (2026-07-30)** | `revision-content-cache.ts` — restore 시 raw refetch 생략, save/restore 직후 reconcile skip, 인접 revision prefetch |
+| **Phase A fast undo (2026-07-31)** | 캐시 hit 시 프리뷰 즉시 갱신 + `POST restore` 백그라운드; push 시 parent snapshot 캐시; restore 실패 시 스택 invalidate |
 | **통합 편집 경로** | manual_edit, inspect, agent_element_patch, agent_deck_patch, … 동일 스택 |
 | **CLI** | `od project revisions list|restore` (UI/CLI dual-track) |
 
@@ -125,6 +126,7 @@ flowchart TB
 | Daemon service | `apps/daemon/src/file-revisions/service.ts` |
 | Retention | `apps/daemon/src/file-revisions/persistence.ts` — `resolveFileRevisionRetentionLimit()` |
 | Content cache | `apps/web/src/runtime/revision-content-cache.ts` |
+| Fast restore | `apps/web/src/runtime/revision-restore.ts` — client-cache hit + background disk sync |
 | Snapshot codec | `apps/daemon/src/file-revisions/snapshot-codec.ts` (gzip + prefix/suffix diff) |
 | Client stack | `apps/web/src/runtime/revision-stack.ts` |
 | 충돌 감지 | `apps/web/src/runtime/revision-conflict.ts`, `FileViewer.tsx` — `reconcileRevisionWithDisk` |
@@ -307,7 +309,7 @@ Track A 전략상 Design FE는 **OD UI embed**이고, SSOT는 open-design **daem
 | AI 덱 패치 저장 | B |
 | 사용자 “3일 전 버전” | B 범위 밖 → Drive publish / export (33 시리즈) |
 
-**향후 개선 (속도):** Layer B undo를 유지하되, 연속 manual undo 체인에서 **debounced batch restore** 또는 **클라이언트 캐시된 snapshot**으로 API 왕복을 줄이는 것은 가능. Canvas 전체 교체보다 리스크가 낮다.
+**향후 개선 (속도):** Layer B undo를 유지하되, **Phase A (2026-07-31)** 에서 클라이언트 캐시 hit 시 프리뷰를 먼저 갱신하고 disk restore는 백그라운드로 처리한다. **Phase B** — 연속 manual style 편집 debounce/batch commit, optimistic undo. Canvas 전체 교체보다 리스크가 낮다.
 
 ---
 
