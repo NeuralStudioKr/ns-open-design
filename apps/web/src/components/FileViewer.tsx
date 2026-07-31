@@ -164,6 +164,7 @@ import {
   getRevisionContentCache,
   prefetchRevisionContents,
   setRevisionContentCache,
+  shouldCacheRevisionContent,
 } from '../runtime/revision-content-cache';
 import { canResizeTarget } from '../edit-mode/resize-eligibility';
 import { parseManualEditStylePx } from '../edit-mode/resize-math';
@@ -6842,7 +6843,9 @@ function HtmlViewer({
     if (cached != null) return cached;
     const response = await fetchProjectFileRevisionContent(projectId, file.name, revisionId);
     if (response?.content == null) return null;
-    setRevisionContentCache(projectId, file.name, revisionId, response.content);
+    if (shouldCacheRevisionContent(response.content)) {
+      setRevisionContentCache(projectId, file.name, revisionId, response.content);
+    }
     return response.content;
   }, [projectId, file.name]);
 
@@ -6980,7 +6983,9 @@ function HtmlViewer({
     prefetchRevisionContents(
       projectId,
       file.name,
-      [before?.id, after?.id].filter((id): id is string => Boolean(id)),
+      [before, after]
+        .filter((revision): revision is FileRevision => Boolean(revision))
+        .map((revision) => ({ revisionId: revision.id, byteSize: revision.byteSize })),
       (revisionId) => resolveRevisionSnapshotContent(revisionId),
     );
   }, [projectId, file.name, reconcileRevisionWithDisk, resolveRevisionSnapshotContent]);
@@ -7891,7 +7896,9 @@ function HtmlViewer({
     prefetchRevisionContents(
       projectId,
       file.name,
-      [before?.id, after?.id].filter((id): id is string => Boolean(id)),
+      [before, after]
+        .filter((revision): revision is FileRevision => Boolean(revision))
+        .map((revision) => ({ revisionId: revision.id, byteSize: revision.byteSize })),
       (revisionId) => resolveRevisionSnapshotContent(revisionId),
     );
   }

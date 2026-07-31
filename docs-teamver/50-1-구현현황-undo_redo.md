@@ -139,7 +139,7 @@
 | undo/redo + manual-edit regression tests | [x] |
 | daemon file-revisions tests | [x] |
 | nested markup (inline salvage + flattenNestedMarkup) | [x] |
-| revision content cache + reconcile skip + prefetch | [x] | `revision-content-cache.ts` |
+| revision content cache + reconcile skip + prefetch | [x] | `revision-content-cache.ts` — LRU 8 entries, 16MB/파일, 4MB/항목, prefetch `byteSize` skip |
 | `OD_FILE_REVISION_RETENTION_LIMIT` env | [x] | daemon `resolveFileRevisionRetentionLimit()` |
 | History panel retention hint | [x] | i18n `fileRevision.history.retentionHint` |
 | List API `retentionLimit` → History 패널 | [x] | daemon list 응답, 하드코드 제거 |
