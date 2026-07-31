@@ -11,6 +11,7 @@ import {
   resolveScopedCommentSlideCandidates,
   scopedCommentElementIds,
   hasElementScopedCommentAttachments,
+  isVisualCommentAttachment,
 } from '../../src/edit-mode/scoped-deck-patch';
 import { parseElementPatch } from '../../src/artifacts/element-patch';
 import type { ChatCommentAttachment } from '../../src/types';
@@ -45,6 +46,27 @@ describe('hasElementScopedCommentAttachments', () => {
       selectionKind: 'visual',
       elementId: 'visual-mark-1',
     }])).toBe(false);
+  });
+
+  it('returns false when selectionKind is missing but screenshotPath marks a visual annotation', () => {
+    expect(hasElementScopedCommentAttachments([{
+      ...attachment(1),
+      selectionKind: undefined,
+      elementId: 'visual-mark-lost-kind',
+      screenshotPath: 'drawing-2026-07-31.png',
+      markKind: 'stroke',
+    }])).toBe(false);
+    expect(isVisualCommentAttachment({
+      ...attachment(1),
+      selectionKind: undefined,
+      elementId: 'visual-mark-lost-kind',
+    })).toBe(true);
+    expect(scopedCommentElementIds({
+      ...attachment(1),
+      selectionKind: undefined,
+      elementId: 'visual-mark-lost-kind',
+      screenshotPath: 'drawing-2026-07-31.png',
+    })).toEqual([]);
   });
 
   it('returns true when at least one attachment needs a concrete element target', () => {

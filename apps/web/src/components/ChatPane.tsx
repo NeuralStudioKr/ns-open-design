@@ -27,6 +27,7 @@ import {
 import type { Dict } from '../i18n/types';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
+import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -382,7 +383,13 @@ function ChatArtifactPreview({
     return <SketchPreview projectId={projectId} file={file} />;
   }
   if (file.kind === 'image' || file.kind === 'sketch') {
-    return <img src={url} alt="" loading="lazy" />;
+    return (
+      <AuthenticatedProjectFileImage
+        projectId={projectId}
+        path={file.name}
+        alt=""
+      />
+    );
   }
   if (file.kind === 'html') {
     return (
@@ -3648,7 +3655,11 @@ function UserMessageImpl({
                     {index + 1}
                   </span>
                   {a.kind === 'image' && projectId ? (
-                    <img src={projectRawUrl(projectId, a.path)} alt={a.name} />
+                    <AuthenticatedProjectFileImage
+                      projectId={projectId}
+                      path={a.path}
+                      alt={a.name}
+                    />
                   ) : (
                     <Icon name="file" size={14} />
                   )}

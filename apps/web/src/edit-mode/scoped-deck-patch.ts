@@ -39,8 +39,20 @@ export type DeckPatchMergeResult =
   | { ok: true; html: string }
   | { ok: false; code: ScopedDeckPersistFailureCode; reason: string };
 
+/** Visual marks (draw/memo screenshot) are slide-scoped, not element-id scoped. */
+export function isVisualCommentAttachment(attachment: ChatCommentAttachment): boolean {
+  if (attachment.selectionKind === 'visual') return true;
+  // Defensive: selectionKind can be dropped by stale merges; markKind/screenshotPath
+  // still identify draw-annotation attachments.
+  if (attachment.markKind) return true;
+  if (String(attachment.screenshotPath || '').trim()) return true;
+  const elementId = String(attachment.elementId || '').trim();
+  if (elementId.startsWith('visual-mark-')) return true;
+  return false;
+}
+
 export function scopedCommentElementIds(attachment: ChatCommentAttachment): string[] {
-  if (attachment.selectionKind === 'visual') return [];
+  if (isVisualCommentAttachment(attachment)) return [];
   const ids = [
     attachment.elementId,
     ...selectorCommentElementIds(attachment.selector),
@@ -63,7 +75,7 @@ export function scopedCommentElementIds(attachment: ChatCommentAttachment): stri
 export function hasElementScopedCommentAttachments(
   commentAttachments: readonly ChatCommentAttachment[] | undefined,
 ): boolean {
-  return (commentAttachments ?? []).some((attachment) => attachment.selectionKind !== 'visual');
+  return (commentAttachments ?? []).some((attachment) => !isVisualCommentAttachment(attachment));
 }
 
 export function isUnsafeCommentElementTargetId(targetId: string): boolean {

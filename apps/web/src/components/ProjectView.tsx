@@ -42,6 +42,7 @@ import {
   resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
   hasElementScopedCommentAttachments,
+  isVisualCommentAttachment,
   scopedCommentSlideIndexesFromAttachments,
   scopedCommentSlideIndexesFromDeck,
   type DeckPatchMergeResult,
@@ -1310,7 +1311,7 @@ function elementPatchTargetHintsFromCommentAttachments(
 ): ElementPatchTargetHint[] {
   const hints: ElementPatchTargetHint[] = [];
   for (const attachment of commentAttachments) {
-    if (attachment.selectionKind === 'visual') {
+    if (isVisualCommentAttachment(attachment)) {
       hints.push({
         targetIds: [],
         ...(typeof attachment.slideIndex === 'number' &&
