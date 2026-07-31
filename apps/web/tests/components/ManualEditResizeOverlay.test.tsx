@@ -61,6 +61,12 @@ describe('ManualEditResizeOverlay', () => {
     fireEvent.pointerUp(handle, { pointerId: 1, clientX: 260, clientY: 170 });
     expect(onResizeCommit).toHaveBeenCalledTimes(1);
     expect(onResizeCommit.mock.calls[0]?.[0]).toEqual(previewStyles);
+    expect(onResizeCommit.mock.calls[0]?.[1]).toEqual({
+      width: '200px',
+      height: '100px',
+      left: '',
+      top: '',
+    });
     expect(onResizeCancel).not.toHaveBeenCalled();
     expect(onResizeSessionChange).toHaveBeenCalledWith(false);
   });
@@ -170,6 +176,13 @@ describe('ManualEditResizeOverlay', () => {
     expect(onMoveCommit.mock.calls[0]?.[0]).toEqual({
       left: '80px',
       top: '80px',
+      right: '',
+      bottom: '',
+    });
+    // stylesBefore lets FileViewer keyed-rollback iframe/draft if flush fails.
+    expect(onMoveCommit.mock.calls[0]?.[1]).toEqual({
+      left: '40px',
+      top: '60px',
       right: '',
       bottom: '',
     });
@@ -306,6 +319,13 @@ describe('ManualEditResizeOverlay', () => {
       position: 'absolute',
       left: '80px',
       top: '80px',
+    });
+    expect(onMoveCommit.mock.calls[0]?.[1]).toMatchObject({
+      position: '',
+      left: '',
+      top: '',
+      width: '200px',
+      height: '100px',
     });
   });
 

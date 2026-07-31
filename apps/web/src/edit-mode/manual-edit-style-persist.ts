@@ -45,6 +45,39 @@ export function restoreManualEditPendingStyleAfterFailedFlush<T extends ManualEd
 }
 
 /**
+ * Keys to roll back when a move/promote/resize gesture flush fails (or the
+ * user cancels). Promote sessions capture `position` on `stylesBefore`; other
+ * gestures roll back only the keys they recorded at drag start.
+ */
+export function manualEditGestureRollbackKeys(
+  stylesBefore: Partial<ManualEditStyles>,
+  promoteKeys: ReadonlyArray<keyof ManualEditStyles>,
+): Array<keyof ManualEditStyles> {
+  if (Object.prototype.hasOwnProperty.call(stylesBefore, 'position')) {
+    return [...promoteKeys];
+  }
+  return (Object.keys(stylesBefore) as Array<keyof ManualEditStyles>);
+}
+
+/**
+ * Build the iframe/draft style patch that restores pre-gesture values.
+ *
+ * Invariant: restoring the pending snapshot after a failed flush is not enough
+ * — the live preview still shows post-gesture styles until this patch is
+ * previewed (and those keys are dropped or restored on pending).
+ */
+export function keyedManualEditStyleRollback(
+  stylesBefore: Partial<ManualEditStyles>,
+  keys: ReadonlyArray<keyof ManualEditStyles>,
+): Partial<ManualEditStyles> {
+  const reset: Partial<ManualEditStyles> = {};
+  for (const key of keys) {
+    reset[key] = stylesBefore[key] ?? '';
+  }
+  return reset;
+}
+
+/**
  * Wait until `isBusy()` is false, or until the timeout. Returns whether the
  * lock cleared in time.
  */

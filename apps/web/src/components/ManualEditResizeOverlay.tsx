@@ -45,12 +45,19 @@ export type ManualEditResizeOverlayProps = {
   draftTopPx?: number | null;
   disabled?: boolean;
   onResizePreview: (next: Partial<ManualEditStyles>) => void;
-  onResizeCommit: (next: Partial<ManualEditStyles>) => void;
+  /** Commit passes `stylesBefore` so a failed flush can keyed-rollback the live preview. */
+  onResizeCommit: (
+    next: Partial<ManualEditStyles>,
+    stylesBefore: Partial<ManualEditStyles>,
+  ) => void;
   onResizeCancel: (stylesBefore: Partial<ManualEditStyles>) => void;
   /** Shared with move — autosave pause while any geometry gesture is active. */
   onResizeSessionChange?: (active: boolean) => void;
   onMovePreview?: (next: Partial<ManualEditStyles>) => void;
-  onMoveCommit?: (next: Partial<ManualEditStyles>) => void;
+  onMoveCommit?: (
+    next: Partial<ManualEditStyles>,
+    stylesBefore: Partial<ManualEditStyles>,
+  ) => void;
   onMoveCancel?: (stylesBefore: Partial<ManualEditStyles>) => void;
 };
 
@@ -179,7 +186,8 @@ export function ManualEditResizeOverlay({
       onResizeSessionChangeRef.current?.(false);
       // pointercancel: never persist. pointerup commits only past the jitter
       // threshold. A plain click (no preview) must not wipe pending styles.
-      if (commit && moved) onMoveCommitRef.current?.(last);
+      // Pass stylesBefore so flush-fail can mirror Esc keyed rollback.
+      if (commit && moved) onMoveCommitRef.current?.(last, before);
       else if (previewed) onMoveCancelRef.current?.(before);
     };
 
@@ -368,7 +376,7 @@ export function ManualEditResizeOverlay({
     setDragging(false);
     setMoving(false);
     onResizeSessionChange?.(false);
-    if (commit) onResizeCommit(last);
+    if (commit) onResizeCommit(last, before);
     else onResizeCancel(before);
   };
 

@@ -260,6 +260,8 @@ import {
 import { isManualEditKeyboardTextTarget } from '../edit-mode/manual-edit-keyboard';
 import {
   MANUAL_EDIT_STYLE_AUTOSAVE_MS,
+  keyedManualEditStyleRollback,
+  manualEditGestureRollbackKeys,
   restoreManualEditPendingStyleAfterFailedFlush,
   shouldFlushManualEditStylesOnTargetBoundary,
   waitForManualEditSaveIdle,
@@ -7478,7 +7480,53 @@ function HtmlViewer({
     win.postMessage({ type: 'od-edit-remeasure', id }, '*');
   }
 
-  async function handleManualEditResizeCommit(styles: Partial<ManualEditStyles>) {
+  /**
+   * Keyed iframe/draft + pending rollback for a geometry gesture. Used by Esc /
+   * pointercancel and by flush-fail after commit — pending restore alone would
+   * leave the live preview on post-gesture styles while disk stayed old.
+   */
+  function rollbackManualEditGestureStyles(stylesBefore: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    clearManualEditStyleTimer();
+    manualEditResizeSessionActiveRef.current = false;
+    setManualEditMoveDraftPos(null);
+    setManualEditResizeDraftSize(null);
+    if (!target) return;
+    const cancelKeys = manualEditGestureRollbackKeys(stylesBefore, PROMOTE_MOVE_STYLE_KEYS);
+    cancelManualEditPendingStyles(target.id, cancelKeys);
+    const pending = manualEditPendingStyleRef.current;
+    if (
+      pending?.id === target.id
+      && (
+        pending.label === moveHistoryLabel(target.label)
+        || pending.label === resizeHistoryLabel(target.label)
+      )
+    ) {
+      manualEditPendingStyleRef.current = {
+        ...pending,
+        label: `Edit: ${target.label}`,
+      };
+    }
+    const reset = keyedManualEditStyleRollback(stylesBefore, cancelKeys);
+    previewStyleToIframe(target.id, reset, nextManualEditPreviewVersion());
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...reset },
+    }));
+    // Resume autosave for any non-geometry draft that survived the rollback.
+    if (manualEditPendingStyleRef.current && !manualEditResizeSessionActiveRef.current) {
+      clearManualEditStyleTimer();
+      manualEditStyleTimerRef.current = setTimeout(() => {
+        manualEditStyleTimerRef.current = null;
+        void flushManualEditStyleSave();
+      }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
+    }
+  }
+
+  async function handleManualEditResizeCommit(
+    styles: Partial<ManualEditStyles>,
+    stylesBefore: Partial<ManualEditStyles>,
+  ) {
     const target = selectedManualEditTarget;
     if (!target) return;
     handleManualEditResizePreview(styles);
@@ -7486,7 +7534,10 @@ function HtmlViewer({
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
     const ok = await flushManualEditStyleSave();
-    if (!ok) return;
+    if (!ok) {
+      rollbackManualEditGestureStyles(stylesBefore);
+      return;
+    }
     const width = parseExplicitPx(styles.width) ?? target.rect.width;
     const height = parseExplicitPx(styles.height) ?? target.rect.height;
     const x = parseExplicitPx(styles.left) ?? target.rect.x;
@@ -7503,7 +7554,10 @@ function HtmlViewer({
     requestManualEditRemeasure(target.id);
   }
 
-  async function handleManualEditMoveCommit(styles: Partial<ManualEditStyles>) {
+  async function handleManualEditMoveCommit(
+    styles: Partial<ManualEditStyles>,
+    stylesBefore: Partial<ManualEditStyles>,
+  ) {
     const target = selectedManualEditTarget;
     if (!target) return;
     handleManualEditMovePreview(styles);
@@ -7511,7 +7565,10 @@ function HtmlViewer({
     setManualEditMoveDraftPos(null);
     setManualEditResizeDraftSize(null);
     const ok = await flushManualEditStyleSave();
-    if (!ok) return;
+    if (!ok) {
+      rollbackManualEditGestureStyles(stylesBefore);
+      return;
+    }
     const width = parseExplicitPx(styles.width) ?? target.rect.width;
     const height = parseExplicitPx(styles.height) ?? target.rect.height;
     const promoted = String(styles.position || '').toLowerCase() === 'absolute';
@@ -7540,64 +7597,11 @@ function HtmlViewer({
   }
 
   function handleManualEditResizeCancel(stylesBefore: Partial<ManualEditStyles>) {
-    const target = selectedManualEditTarget;
-    clearManualEditStyleTimer();
-    manualEditPendingStyleRef.current = null;
-    manualEditResizeSessionActiveRef.current = false;
-    setManualEditResizeDraftSize(null);
-    setManualEditMoveDraftPos(null);
-    if (!target) return;
-    const reset: Partial<ManualEditStyles> = {
-      width: stylesBefore.width ?? '',
-      height: stylesBefore.height ?? '',
-      left: stylesBefore.left ?? '',
-      top: stylesBefore.top ?? '',
-    };
-    previewStyleToIframe(target.id, reset, nextManualEditPreviewVersion());
-    setManualEditDraft((current) => ({
-      ...current,
-      styles: { ...current.styles, ...reset },
-    }));
+    rollbackManualEditGestureStyles(stylesBefore);
   }
 
   function handleManualEditMoveCancel(stylesBefore: Partial<ManualEditStyles>) {
-    const target = selectedManualEditTarget;
-    clearManualEditStyleTimer();
-    manualEditResizeSessionActiveRef.current = false;
-    setManualEditMoveDraftPos(null);
-    setManualEditResizeDraftSize(null);
-    if (!target) return;
-    // Drop only geometry keys so unrelated panel drafts (e.g. fontSize) survive a
-    // cancelled / sub-threshold move. Promote sessions also roll back position/size.
-    const promoteCancel = Object.prototype.hasOwnProperty.call(stylesBefore, 'position');
-    const cancelKeys = promoteCancel
-      ? [...PROMOTE_MOVE_STYLE_KEYS]
-      : (['left', 'top', 'right', 'bottom'] as const);
-    cancelManualEditPendingStyles(target.id, [...cancelKeys]);
-    const pending = manualEditPendingStyleRef.current;
-    if (pending?.id === target.id && pending.label === moveHistoryLabel(target.label)) {
-      manualEditPendingStyleRef.current = {
-        ...pending,
-        label: `Edit: ${target.label}`,
-      };
-    }
-    const reset: Partial<ManualEditStyles> = {};
-    for (const key of cancelKeys) {
-      reset[key] = stylesBefore[key] ?? '';
-    }
-    previewStyleToIframe(target.id, reset, nextManualEditPreviewVersion());
-    setManualEditDraft((current) => ({
-      ...current,
-      styles: { ...current.styles, ...reset },
-    }));
-    // Resume autosave for any non-move draft that survived the cancel.
-    if (manualEditPendingStyleRef.current && !manualEditResizeSessionActiveRef.current) {
-      clearManualEditStyleTimer();
-      manualEditStyleTimerRef.current = setTimeout(() => {
-        manualEditStyleTimerRef.current = null;
-        void flushManualEditStyleSave();
-      }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
-    }
+    rollbackManualEditGestureStyles(stylesBefore);
   }
 
   async function flushManualEditStyleSave(): Promise<boolean> {
@@ -9798,13 +9802,13 @@ function HtmlViewer({
         disabled={manualEditInlineTextEditing || manualEditSaving}
         onResizeSessionChange={handleManualEditResizeSessionChange}
         onResizePreview={handleManualEditResizePreview}
-        onResizeCommit={(styles) => {
-          void handleManualEditResizeCommit(styles);
+        onResizeCommit={(styles, stylesBefore) => {
+          void handleManualEditResizeCommit(styles, stylesBefore);
         }}
         onResizeCancel={handleManualEditResizeCancel}
         onMovePreview={handleManualEditMovePreview}
-        onMoveCommit={(styles) => {
-          void handleManualEditMoveCommit(styles);
+        onMoveCommit={(styles, stylesBefore) => {
+          void handleManualEditMoveCommit(styles, stylesBefore);
         }}
         onMoveCancel={handleManualEditMoveCancel}
       />
