@@ -784,12 +784,36 @@ sudo nginx -t && sudo systemctl reload nginx
 | `/etc/nginx/teamver-design-od-daemon-peers.inc` | ✅ upstream `{ include }` |
 | `/etc/nginx/conf.d/…peers….conf` | ❌ bare `server` → nginx 파싱 실패 |
 
+### 10.12 Docker 빌드 가속 · 디스크
+
+**목표:** EC2 `deploy.sh --staging` 반복 배포에서 cold build(수 분~십수 분)를 피한다.
+
+| 수단 | 동작 |
+|------|------|
+| BuildKit cache mounts | `deploy/Dockerfile` — pnpm store + `apps/web/.next/cache` |
+| Playwright pin | `PLAYWRIGHT_INSTALL_TOKEN=playwright-core@1.60.0` (git SHA bust **금지**) |
+| `DOCKER_BUILDKIT=1` | `deploy.sh`가 export |
+
+**평소:** `--no-cache` 쓰지 말 것.  
+**Chromium 강제 재설치:** `PLAYWRIGHT_INSTALL_TOKEN=force-$(date +%s) ./deploy.sh --staging`  
+**디스크 (ENOSPC / 느린 재다운로드):**
+
+```bash
+df -h /
+cd ~/neural/ns-open-design/deploy/teamver
+bash ./scripts/prune_docker_build_disk.sh        # 기본: 168h 이상 BuildKit 캐시만 삭제
+# 최후: docker builder prune -af   ← 다음 빌드 cold
+```
+
+**다음 단계(미구현):** CI/ECR에서 이미지 빌드 후 EC2는 pull+restart만 — 배포 체감이 가장 큼.
+
 ---
 
 ## 11. 변경 이력
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-31 | §10.12 Docker 빌드 가속(BuildKit cache·Playwright pin)·디스크 prune 스크립트 |
 | 2026-07-13 | §10.11 nginx ALB apply 순서·default·empty peers·DaemonDb/RDS password 트러블슈팅 보강 |
 | 2026-07-08 | §10.9 `/api/*` 502 — `OD_DOCKER_PUBLISH_HOST=0.0.0.0` 트러블슈팅 |
 | 2026-07-08 | §10 EC2 부트스트랩·수동 복구 Runbook (D6 node2, `.env.staging`, od-data EBS, EIP quota) |
