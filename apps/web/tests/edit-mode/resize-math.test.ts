@@ -63,6 +63,49 @@ describe('resize-math', () => {
     expect(parseManualEditStylePx('auto', 88)).toBe(88);
   });
 
+  it('locks aspect for containers only when shift is held', () => {
+    const start = buildResizeSessionStart(
+      { x: 0, y: 0, width: 200, height: 100 },
+      { width: '200px', height: '100px' },
+      'se',
+      'container',
+      true,
+    );
+    expect(start.aspectLock).toBe(true);
+    const unlocked = buildResizeSessionStart(
+      { x: 0, y: 0, width: 200, height: 100 },
+      { width: '200px', height: '100px' },
+      'se',
+      'container',
+      false,
+    );
+    const result = computeResize({ ...unlocked, dx: 40, dy: 5 });
+    expect(result.widthPx).toBe(240);
+    expect(result.heightPx).toBe(105);
+  });
+
+  it('defaults image corner drags to aspect lock unless shift frees it', () => {
+    const locked = buildResizeSessionStart(
+      { x: 0, y: 0, width: 200, height: 100 },
+      { width: '200px', height: '100px' },
+      'se',
+      'image',
+      false,
+    );
+    expect(locked.aspectLock).toBe(true);
+    const unlocked = buildResizeSessionStart(
+      { x: 0, y: 0, width: 200, height: 100 },
+      { width: '200px', height: '100px' },
+      'se',
+      'image',
+      true,
+    );
+    expect(unlocked.aspectLock).toBe(false);
+    const result = computeResize({ ...unlocked, dx: 40, dy: 5 });
+    expect(result.widthPx).toBe(240);
+    expect(result.heightPx).toBe(105);
+  });
+
   it('scales host delta into content delta before resize math', () => {
     const contentDelta = hostDeltaToContentDelta(15, 7.5, 0.75);
     const start = buildResizeSessionStart(

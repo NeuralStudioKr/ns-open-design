@@ -8,6 +8,7 @@ import {
   type ResizeHandle,
   type ResizeSessionStart,
 } from '../edit-mode/resize-math';
+import { aspectLockForTarget } from '../edit-mode/resize-eligibility';
 import styles from './ManualEditResizeOverlay.module.css';
 
 const HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -77,6 +78,26 @@ export function ManualEditResizeOverlay({
     const hostDy = event.clientY - session.originY;
     if (!session.moved && Math.hypot(hostDx, hostDy) < 2) return;
     session.moved = true;
+    const nextAspectLock = aspectLockForTarget(session.kind, event.shiftKey);
+    if (nextAspectLock !== session.start.aspectLock) {
+      const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, previewScale);
+      const current = computeResize({ ...session.start, dx, dy });
+      session.start = buildResizeSessionStart(
+        {
+          ...session.start.startRect,
+          width: current.widthPx,
+          height: current.heightPx,
+        },
+        { width: `${current.widthPx}px`, height: `${current.heightPx}px` },
+        session.handle,
+        session.kind,
+        event.shiftKey,
+      );
+      session.originX = event.clientX;
+      session.originY = event.clientY;
+      onResizePreview(resizeStylesForCommit(current, session.handle));
+      return;
+    }
     const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, previewScale);
     const result = computeResize({ ...session.start, dx, dy });
     onResizePreview(resizeStylesForCommit(result, session.handle));

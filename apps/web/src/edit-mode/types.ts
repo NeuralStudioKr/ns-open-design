@@ -128,6 +128,14 @@ export interface ManualEditTextActiveMessage {
   active: boolean;
 }
 
+export interface ManualEditRectMessage {
+  type: 'od-edit-rect';
+  id: string;
+  ok: boolean;
+  target?: ManualEditTarget;
+  error?: string;
+}
+
 export type ManualEditBridgeMessage =
   | ManualEditTargetMessage
   | ManualEditSelectMessage
@@ -135,7 +143,8 @@ export type ManualEditBridgeMessage =
   | ManualEditBackgroundMessage
   | ManualEditPreviewAppliedMessage
   | ManualEditTextCommitMessage
-  | ManualEditTextActiveMessage;
+  | ManualEditTextActiveMessage
+  | ManualEditRectMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
   'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'textDecoration', 'lineHeight', 'letterSpacing',

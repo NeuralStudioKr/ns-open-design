@@ -568,6 +568,34 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('posts od-edit-rect after od-edit-remeasure for a mapped target', async () => {
+    const posts: Array<{ type?: string; id?: string; ok?: boolean; target?: { id: string; rect?: { width: number } } }> = [];
+    const dom = new JSDOM(
+      `<main><div data-od-id="card" style="width:120px;height:80px">Card</div></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const card = dom.window.document.querySelector('[data-od-id="card"]')!;
+    card.getBoundingClientRect = () => ({
+      x: 10, y: 20, width: 120, height: 80,
+      top: 20, right: 130, bottom: 100, left: 10,
+      toJSON: () => ({}),
+    } as DOMRect);
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as { type?: string; id?: string; ok?: boolean; target?: { id: string; rect?: { width: number } } });
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-remeasure', id: 'card' },
+    }));
+
+    const rectMessage = posts.find((message) => message.type === 'od-edit-rect');
+    expect(rectMessage).toMatchObject({ id: 'card', ok: true });
+    expect(rectMessage?.target?.id).toBe('card');
+    expect(rectMessage?.target?.rect?.width).toBe(120);
+
+    dom.window.close();
+  });
+
   it('blocks clicks on unmapped elements while edit mode is enabled', () => {
     const dom = new JSDOM(
       `<main><button id="cta">Launch</button></main>${buildManualEditBridge(true)}`,

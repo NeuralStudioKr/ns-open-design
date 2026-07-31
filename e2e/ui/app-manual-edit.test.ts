@@ -130,6 +130,30 @@ test('[P0] manual edit inspector previews and persists page and selected element
   await expect(page.getByRole('button', { name: /^Download$/ })).toBeVisible();
 });
 
+test('[P1] manual edit resize overlay appears for containers but not slide roots', async ({ page }) => {
+  await routeMockAgents(page);
+  const projectId = await createEmptyProject(page, 'Manual edit resize smoke');
+  await seedHtmlArtifact(page, projectId, 'manual-edit.html', manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/manual-edit.html`);
+  await openDesignFile(page, 'manual-edit.html');
+
+  await expect(artifactPreview(page)).toBeVisible();
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await frame.locator('[data-od-id="pair-a"]').click();
+  await expect(page.locator('.manual-edit-modal')).toContainText('SIZE');
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toBeVisible();
+  await expect(page.getByTestId('manual-edit-resize-handle-se')).toBeVisible();
+
+  await seedDeckArtifact(page, projectId, 'manual-deck-resize.html', 'Resize Deck', ['Slide One', 'Slide Two']);
+  await page.goto(`/projects/${projectId}/files/manual-deck-resize.html`);
+  await openDesignFile(page, 'manual-deck-resize.html');
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  const deckFrame = artifactPreviewFrame(page);
+  await deckFrame.locator('[data-od-id="slide-1"]').click();
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toHaveCount(0);
+});
+
 test('[P0] manual edit mode preserves preview actions after style edits', async ({ page }) => {
   await routeMockAgents(page);
   const projectId = await createEmptyProject(page, 'Manual edit smoke');

@@ -382,6 +382,16 @@ export function buildManualEditBridge(enabled: boolean): string {
       applyPreviewStyles(ev.data.id, ev.data.styles || {}, ev.data.version);
       return;
     }
+    if (ev.data.type === 'od-edit-remeasure') {
+      var remeasureId = ev.data.id || '';
+      var remeasureEl = findById(remeasureId);
+      if (!remeasureEl) {
+        window.parent.postMessage({ type: 'od-edit-rect', id: remeasureId, ok: false, error: 'Target not found' }, '*');
+        return;
+      }
+      window.parent.postMessage({ type: 'od-edit-rect', id: remeasureId, ok: true, target: targetFrom(remeasureEl, false) }, '*');
+      return;
+    }
   });
   document.addEventListener('click', function(ev){
     if (!enabled) return;

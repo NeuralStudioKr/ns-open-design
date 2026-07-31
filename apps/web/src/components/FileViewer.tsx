@@ -272,6 +272,7 @@ import {
   shouldHoldDiskPreviewDuringManualEdit,
   shouldSkipManualEditHistoryConfirm,
 } from '../edit-mode/manual-edit-session';
+import { diffManualEditStylePatch, isNoOpManualEditStyleFlush } from '../edit-mode/manual-edit-style-batch';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import {
@@ -6708,6 +6709,12 @@ function HtmlViewer({
     win.postMessage({ type: 'od-edit-selected-target', id }, '*');
   }
 
+  function requestManualEditTargetRemeasure(id: string, target: HTMLIFrameElement | null = iframeRef.current) {
+    const win = target?.contentWindow;
+    if (!win || !id) return;
+    win.postMessage({ type: 'od-edit-remeasure', id }, '*');
+  }
+
   function syncBridgeModes(target: HTMLIFrameElement | null = iframeRef.current) {
     const win = target?.contentWindow;
     if (!win) return;
@@ -7351,6 +7358,16 @@ function HtmlViewer({
         setManualEditInlineTextEditing(Boolean(data.active));
         return;
       }
+      if (data.type === 'od-edit-rect' && data.ok && data.target) {
+        const measured = data.target;
+        setSelectedManualEditTarget((current) =>
+          current?.id === measured.id ? { ...current, ...measured } : current,
+        );
+        setManualEditTargets((current) =>
+          current.map((item) => (item.id === measured.id ? { ...item, ...measured } : item)),
+        );
+        return;
+      }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -7460,8 +7477,21 @@ function HtmlViewer({
     if (manualEditSavingRef.current) return false;
     clearManualEditStyleTimer();
     manualEditPendingStyleRef.current = null;
+    const baseSource = manualEditPatchBaseSource({
+      manualEditMode,
+      frozenSource: manualEditFrozenSource,
+      liveSource: sourceRef.current,
+    });
+    if (baseSource == null) {
+      manualEditPendingStyleRef.current = pending;
+      return false;
+    }
+    const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles);
+    if (isNoOpManualEditStyleFlush(baseSource, pending.id, pending.styles)) {
+      return true;
+    }
     const ok = await applyManualEdit(
-      { id: pending.id, kind: 'set-style', styles: pending.styles },
+      { id: pending.id, kind: 'set-style', styles: effectiveStyles },
       pending.label,
     );
     if (!ok) {
@@ -7535,6 +7565,7 @@ function HtmlViewer({
       styles: { ...current.styles, ...styles },
     }));
     await flushManualEditStyleSave({ force: true });
+    requestManualEditTargetRemeasure(target.id);
   }
 
   function cancelManualEditStyleDraft() {
