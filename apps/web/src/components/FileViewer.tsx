@@ -180,6 +180,7 @@ import {
 import { withResolvedDeckSlideIndex } from '../runtime/deck-slide-index';
 import { looksLikeCompactApiStackedDeckForPreview } from '../runtime/compact-api-stacked-deck';
 import {
+  hasTweaksTemplate,
   hasUrlModeBridge,
   htmlNeedsFocusGuard,
   htmlNeedsRedirectGuard,
@@ -6130,6 +6131,8 @@ function HtmlViewer({
     forceInline: forceInline || needsSandboxShim,
     needsFocusGuard,
     needsRedirectGuard,
+    // Tweaks template needs the srcDoc bridge so the toolbar toggle can arm.
+    tweaksBridge: hasTweaksTemplate(source),
   }) && !manualEditRequiresSrcDoc
     && (!teamverEmbedPreviewMode || embedPreviewPrefix != null);
   const projectPreviewAssetUrl = useCallback(
@@ -11715,7 +11718,12 @@ async function fetchProjectRelativeText(
   const filePath = resolveProjectRelativePath(ownerFileName, assetRef);
   if (!filePath) return null;
   try {
-    const resp = await fetch(projectRawUrl(projectId, filePath));
+    // Teamver embed needs daemon auth / workspace / S3-prefix headers and
+    // 401 recovery — plain fetch() silently fails after auth races.
+    const resp = await fetchTeamverDaemon(projectRawUrl(projectId, filePath), {
+      cache: 'no-store',
+      teamverProjectId: projectId,
+    });
     if (!resp.ok) return null;
     return await resp.text();
   } catch {

@@ -1342,7 +1342,16 @@ function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): vo
 }
 
 function setAttributes(el: Element, attributes: Record<string, string>): void {
-  const protectedAttrs = new Set(['data-od-id', 'data-od-edit', 'data-od-label', 'data-od-runtime-id']);
+  // Keep identity / slide-scope attrs aligned with set-outer-html preservation.
+  const protectedAttrs = new Set([
+    'data-od-id',
+    'data-od-edit',
+    'data-od-label',
+    'data-od-runtime-id',
+    'data-od-source-path',
+    'data-slide-index',
+    'data-screen-label',
+  ]);
   for (const [name, value] of Object.entries(attributes)) {
     if (!isSafeAttributeName(name) || protectedAttrs.has(name)) continue;
     if (value.trim() === '') el.removeAttribute(name);
@@ -1530,5 +1539,10 @@ function camelToKebab(value: string): string {
 }
 
 function isSafeAttributeName(value: string): boolean {
-  return /^[a-zA-Z_:][a-zA-Z0-9_:.-]*$/.test(value);
+  if (!/^[a-zA-Z_:][a-zA-Z0-9_:.-]*$/.test(value)) return false;
+  const lower = value.toLowerCase();
+  // Block event handlers and high-risk markup attrs from model set-attributes.
+  if (lower.startsWith('on')) return false;
+  if (lower === 'style' || lower === 'srcdoc') return false;
+  return true;
 }

@@ -14,6 +14,7 @@ import {
   type DeckPatch,
 } from '../artifacts/deck-patch';
 import type { ChatCommentAttachment } from '../types';
+import { isScreenshotOnlyVisualCommentTarget } from '../comments';
 import { validateCommentEditIntentRespected, targetTextContentPreserved } from './comment-edit-intent';
 import {
   graftPatchedTargetElementFromSource,
@@ -52,7 +53,9 @@ export function isVisualCommentAttachment(attachment: ChatCommentAttachment): bo
 }
 
 export function scopedCommentElementIds(attachment: ChatCommentAttachment): string[] {
-  if (isVisualCommentAttachment(attachment)) return [];
+  // Screenshot-only visuals have no DOM id. Visual marks that still carry a
+  // concrete picked element (selector/htmlHint/real elementId) stay element-scoped.
+  if (isScreenshotOnlyVisualCommentTarget(attachment)) return [];
   const ids = [
     attachment.elementId,
     ...selectorCommentElementIds(attachment.selector),
@@ -67,6 +70,7 @@ export function scopedCommentElementIds(attachment: ChatCommentAttachment): stri
     ids
       .map((id) => String(id || '').trim())
       .filter((id) => id && !id.startsWith('pin-') && !id.startsWith('file-comment-'))
+      .filter((id) => !id.startsWith('visual-mark-'))
       .filter((id) => !isUnsafeCommentElementTargetId(id)),
   )];
 }
@@ -75,7 +79,10 @@ export function scopedCommentElementIds(attachment: ChatCommentAttachment): stri
 export function hasElementScopedCommentAttachments(
   commentAttachments: readonly ChatCommentAttachment[] | undefined,
 ): boolean {
-  return (commentAttachments ?? []).some((attachment) => !isVisualCommentAttachment(attachment));
+  return (commentAttachments ?? []).some(
+    (attachment) => !isScreenshotOnlyVisualCommentTarget(attachment)
+      && scopedCommentElementIds(attachment).length > 0,
+  );
 }
 
 export function isUnsafeCommentElementTargetId(targetId: string): boolean {
@@ -438,8 +445,10 @@ function tryVisualOrAnchorlessSlideSwap(input: {
     return { ok: false, reason: 'No matching targets found to merge.' };
   }
   const anchors = extractTargetIdentityAnchors(input.attachment);
+  // Only screenshot-only / truly anchorless marks may slide-swap. Visual
+  // selections that still name a concrete DOM target must merge by element.
   const allow =
-    isVisualCommentAttachment(input.attachment)
+    isScreenshotOnlyVisualCommentTarget(input.attachment)
     || anchors.length === 0;
   if (!allow) {
     return { ok: false, reason: 'No matching targets found to merge.' };
@@ -455,7 +464,7 @@ function tryVisualOrAnchorlessSlideSwap(input: {
   }
   console.warn('[deck-patch] accepted visual/anchorless slide-level swap', {
     slideIndex: input.slideIndex,
-    visual: isVisualCommentAttachment(input.attachment),
+    visual: isScreenshotOnlyVisualCommentTarget(input.attachment),
     anchorCount: anchors.length,
   });
   return { ok: true, html: swapped.html };

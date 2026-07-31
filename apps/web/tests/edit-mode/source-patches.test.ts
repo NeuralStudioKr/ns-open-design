@@ -147,6 +147,32 @@ describe('manual edit source patches', () => {
     expect(attrs['data-empty']).toBeUndefined();
   });
 
+  it('protects slide identity attrs and rejects unsafe event handlers in set-attributes', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-od-id="01 Cover" data-slide-index="0" data-screen-label="01 Cover">Cover</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: '01 Cover',
+      attributes: {
+        'data-slide-index': '',
+        'data-screen-label': '',
+        onclick: 'alert(1)',
+        style: 'display:none',
+        'aria-label': 'Cover slide',
+      },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const attrs = readManualEditAttributes(result.source, '01 Cover');
+    expect(attrs['data-slide-index']).toBe('0');
+    expect(attrs['data-screen-label']).toBe('01 Cover');
+    expect(attrs.onclick).toBeUndefined();
+    expect(attrs['aria-label']).toBe('Cover slide');
+    expect(result.source).not.toContain('onclick=');
+  });
+
   it('preserves data-od-id when selected outerHTML omits it', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',

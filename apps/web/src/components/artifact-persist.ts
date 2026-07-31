@@ -73,13 +73,20 @@ export function resolveArtifactPersistFileName(
   const ext = artifactExtensionForPersist(art);
   const existing = new Set(projectFiles.map((file) => file.name));
 
-  const preferredRaw = options?.preferredFileName?.trim();
+  const preferredRaw = options?.preferredFileName?.trim().replace(/\\/g, '/').replace(/^\.\//, '');
   if (preferredRaw) {
     const preferredBase = preferredRaw.split('/').filter(Boolean).pop() ?? preferredRaw;
     const matched = projectFiles.find(
-      (file) => file.name === preferredBase || file.path === preferredRaw,
+      (file) =>
+        file.name === preferredBase
+        || file.path === preferredRaw
+        || (file.path ?? file.name) === preferredRaw,
     );
-    if (matched) return matched.name;
+    if (matched) return matched.path?.trim() || matched.name;
+    if (preferredRaw.includes('/')) {
+      // Nested preferred path — keep directories even when the file list lags.
+      return preferredRaw;
+    }
     if (existing.has(preferredBase)) return preferredBase;
     // Preview-comment edits target a concrete open deck even if the refreshed
     // file list lags behind the tab the user is annotating.

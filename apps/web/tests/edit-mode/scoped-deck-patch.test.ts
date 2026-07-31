@@ -76,6 +76,21 @@ describe('hasElementScopedCommentAttachments', () => {
       attachment(1),
     ])).toBe(true);
   });
+
+  it('keeps visual marks with real DOM targets element-scoped', () => {
+    const visualWithTarget = {
+      ...attachment(1),
+      selectionKind: 'visual' as const,
+      elementId: 'hero-title',
+      selector: '[data-od-id="hero-title"]',
+      htmlHint: '<h1 data-od-id="hero-title">Title</h1>',
+      screenshotPath: 'uploads/mark.png',
+      markKind: 'click' as const,
+    };
+    expect(isVisualCommentAttachment(visualWithTarget)).toBe(true);
+    expect(scopedCommentElementIds(visualWithTarget)).toContain('hero-title');
+    expect(hasElementScopedCommentAttachments([visualWithTarget])).toBe(true);
+  });
 });
 
 describe('reconcileCommentAttachmentElementId', () => {

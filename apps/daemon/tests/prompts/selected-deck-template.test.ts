@@ -94,4 +94,13 @@ describe('selected-deck-template prompt helpers', () => {
       block.indexOf('getInstalledPlugin(db, selectedDeckTemplate.id)'),
     );
   });
+
+  it('keeps ad-hoc composedSkillBlocks out of skillBody until final assembly', () => {
+    const start = serverSource.indexOf('if (adHocSkillIds.length > 0) {');
+    expect(start).toBeGreaterThan(0);
+    const block = serverSource.slice(start, start + 3200);
+    expect(block).toContain('composedSkillBlocks = blocks.join(\'\');');
+    expect(block).toContain('skillBody = baseBody;');
+    expect(block).not.toContain('skillBody = baseBody + composedSkillBlocks;');
+  });
 });

@@ -178,17 +178,18 @@ describe('preview comment attachment helpers', () => {
     expect(context).toContain('member.2.scopeLock: cta');
   });
 
-  it('resolves the preview deck basename for in-place comment-edit persist', () => {
+  it('resolves the preview deck path for in-place comment-edit persist', () => {
     expect(
       resolveCommentEditPersistTargetFileName([
         commentAttachment({ id: 'c1', filePath: 'deck.html', slideIndex: 1 }),
       ]),
     ).toBe('deck.html');
+    // Nested decks keep their directory so persist does not rewrite root deck.html.
     expect(
       resolveCommentEditPersistTargetFileName([
         commentAttachment({ id: 'c1', filePath: 'refs/deck.html', slideIndex: 1 }),
       ]),
-    ).toBe('deck.html');
+    ).toBe('refs/deck.html');
   });
 
   it('never routes screenshot-only visual marks to a PNG persist target', () => {

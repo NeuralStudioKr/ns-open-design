@@ -141,19 +141,23 @@ export function commentVisibleOnDeckSlide(
   return comment.slideIndex === activeSlideIndex;
 }
 
-/** Basename of the deck HTML file a comment edit should update in place. */
+/**
+ * Project-relative HTML path a comment edit should update in place.
+ * Nested decks keep their directory (`slides/deck.html`); basenames alone
+ * are returned only for root HTML. Non-HTML paths (e.g. screenshot PNGs)
+ * are ignored so callers fall back to the open/canonical deck.
+ */
 export function resolveCommentEditPersistTargetFileName(
   commentAttachments: readonly ChatCommentAttachment[] | null | undefined,
 ): string | null {
   if (!commentAttachments?.length) return null;
   for (const attachment of commentAttachments) {
-    const filePath = attachment.filePath?.trim();
+    const filePath = attachment.filePath?.trim().replace(/\\/g, '/').replace(/^\.\//, '');
     if (!filePath) continue;
-    const baseName = filePath.split('/').filter(Boolean).pop() ?? filePath;
     // Screenshot-only visual marks store uploads/*.png as filePath. Never
-    // treat image/binary uploads as the in-place deck persist target —
-    // callers fall back to the open/canonical deck instead.
-    if (/\.html?$/i.test(baseName)) return baseName;
+    // treat image/binary uploads as the in-place deck persist target.
+    if (!/\.html?$/i.test(filePath)) continue;
+    return filePath;
   }
   return null;
 }

@@ -11843,8 +11843,11 @@ export async function startServer({
         );
       }
       if (blocks.length > 0) {
+        // Keep ad-hoc blocks separate until final assembly so selected-template
+        // / deck-wrap paths cannot double-append or wrap them inside the
+        // primary visual-template guard.
         composedSkillBlocks = blocks.join('');
-        skillBody = baseBody + composedSkillBlocks;
+        skillBody = baseBody;
         if (!skillName) {
           skillName = adHocSkillIds.length === 1
             ? findSkillById(allSkills, adHocSkillIds[0])?.name ?? null
@@ -11955,13 +11958,18 @@ export async function startServer({
         skillBody = scenarioSkillBody + composedSkillBlocks;
         skillName = scenarioSkillName ?? skillName;
         registerPrimarySkillMode('deck');
+      } else if (skillBody?.trim() || composedSkillBlocks) {
+        skillBody = (skillBody || '') + composedSkillBlocks;
       }
     } else if (skillBody?.trim() && skillMode === 'deck') {
       // No selected template — keep legacy deck skill wrap for scenario-only runs.
+      // Wrap primary only, then append ad-hoc blocks once.
       skillBody = wrapSelectedDeckTemplateSkillBody(
         skillBody,
         skillName?.trim() || 'selected deck template',
-      );
+      ) + composedSkillBlocks;
+    } else if (composedSkillBlocks) {
+      skillBody = (skillBody || '') + composedSkillBlocks;
     }
 
     let craftBody;
