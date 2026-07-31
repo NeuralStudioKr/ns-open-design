@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyManualEditPreviewStylesToDocument,
   measureManualEditTargetContentRect,
+  measureManualEditTargetHostRect,
 } from '../../src/edit-mode/manual-edit-host-preview';
 
 function makeDoc(html: string): Document {
@@ -88,5 +89,47 @@ describe('manual edit host preview fallback', () => {
       height: 80,
     });
     frame.remove();
+  });
+
+  it('projects the element into host content coordinates through iframe scale', () => {
+    const host = document.createElement('div');
+    const frame = document.createElement('iframe');
+    document.body.append(host, frame);
+    const doc = frame.contentDocument!;
+    doc.body.innerHTML = '<div data-od-id="card">Card</div>';
+    const el = doc.querySelector('[data-od-id="card"]') as HTMLElement;
+    el.getBoundingClientRect = () => ({
+      x: 20, y: 10, width: 100, height: 50,
+      top: 10, left: 20, right: 120, bottom: 60,
+      toJSON: () => ({}),
+    }) as DOMRect;
+    host.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 800, height: 600,
+      top: 0, left: 0, right: 800, bottom: 600,
+      toJSON: () => ({}),
+    }) as DOMRect;
+    frame.getBoundingClientRect = () => ({
+      x: 40, y: 80, width: 400, height: 300,
+      top: 80, left: 40, right: 440, bottom: 380,
+      toJSON: () => ({}),
+    }) as DOMRect;
+    Object.defineProperty(frame, 'offsetWidth', { value: 800 });
+    Object.defineProperty(frame, 'offsetHeight', { value: 600 });
+    Object.defineProperty(host, 'clientLeft', { value: 0 });
+    Object.defineProperty(host, 'clientTop', { value: 0 });
+    Object.defineProperty(host, 'scrollLeft', { value: 16 });
+    Object.defineProperty(host, 'scrollTop', { value: 32 });
+    Object.defineProperty(frame, 'clientLeft', { value: 0 });
+    Object.defineProperty(frame, 'clientTop', { value: 0 });
+
+    // scale 0.5: host = iframeOrigin + content*scale + scroll
+    expect(measureManualEditTargetHostRect(frame, host, 'card')).toEqual({
+      x: 40 + 20 * 0.5 + 16,
+      y: 80 + 10 * 0.5 + 32,
+      width: 50,
+      height: 25,
+    });
+    frame.remove();
+    host.remove();
   });
 });
