@@ -222,12 +222,48 @@ daemon 부팅 시 `migratePostgresDaemonSchema` 가 v8 `file_revisions` / `file_
 
 | 파일 | 역할 |
 |------|------|
+| `file-revisions/durable-store.ts` | PG SSOT, sqlite hydrate, durable delete/prune |
+| `file-revisions/postgres-lock.ts` | per-file advisory lock (push/restore) |
 | `file-revisions/snapshot-storage.ts` | BLOB CRUD, storage mode resolve |
 | `file-revisions/store.ts` | read/write, files↔sqlite 라우팅 |
 | `file-revisions/maintenance.ts` | orphan/retention sweep, disk 정리 |
 | `file-revisions/gc.ts` | periodic timer |
 | `storage/project-scratch-sync-exclude.ts` | S3 sync 제외 |
 | `db.ts` `deleteProject` | 프로젝트 삭제 시 BLOB 선삭제 |
+
+---
+
+## 11. 검증
+
+### 11.1 자동 (CI / 로컬)
+
+```bash
+pnpm --filter @open-design/daemon exec vitest run \
+  tests/file-revisions-multinode.integration.test.ts \
+  tests/file-revisions-durable-store.test.ts \
+  tests/file-revisions-postgres-lock.test.ts \
+  tests/file-revisions-maintenance.test.ts \
+  tests/file-revisions.test.ts
+```
+
+| 테스트 | 검증 시나리오 |
+|--------|---------------|
+| `file-revisions-multinode.integration.test.ts` | 노드 A push → 노드 B list/hydrate, truncate 후 stale row 제거, cross-node restore |
+| `file-revisions-durable-store.test.ts` | PG→sqlite hydrate, transactional commit, head+count stale 감지 |
+| `file-revisions-postgres-lock.test.ts` | advisory lock acquire/release, timeout, sequence conflict 감지 |
+| `file-revisions-maintenance.test.ts` | orphan BLOB, retention GC |
+| `file-revisions.test.ts` | HTTP API push/list/restore/truncate (sqlite files 모드) |
+
+### 11.2 staging 수동 (2-pod)
+
+배포 후 아래를 **서로 다른 pod**에서 교차 실행:
+
+1. Pod A: `deck.html` save (revision push)
+2. Pod B: `GET .../revisions` — A와 동일 head·개수
+3. Pod B: undo(restore parent) → Pod A에서 list 재확인
+4. (선택) Pod A·B 동시 save — 한쪽 `409 FILE_REVISION_LOCK_TIMEOUT` 또는 순차 성공
+
+데이터는 production HTTP API로만 시드한다 (테스트 backdoor 금지).
 
 ---
 

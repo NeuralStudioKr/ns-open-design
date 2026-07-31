@@ -36,7 +36,7 @@
 | Manual undo → 서버 restore 전환 | [x] | in-memory stack 제거 |
 | 키보드 ⌘Z / Ctrl+Z undo·redo | [x] | draw overlay 비활성 시에만 |
 | `od project revisions` CLI | [x] | list + restore |
-| Daemon tests | [x] | `file-revisions.test.ts` |
+| Daemon tests | [x] | `file-revisions.test.ts` + postgres multinode integration |
 
 ---
 
@@ -164,6 +164,10 @@
 pnpm --filter @open-design/web exec vitest run tests/components/FileViewer.undo-redo-toolbar.test.tsx
 
 # Phase 1+
-pnpm --filter @open-design/daemon test
+pnpm --filter @open-design/daemon exec vitest run \
+  tests/file-revisions-multinode.integration.test.ts \
+  tests/file-revisions-durable-store.test.ts \
+  tests/file-revisions-postgres-lock.test.ts \
+  tests/file-revisions.test.ts
 pnpm --filter @open-design/web test
 ```
