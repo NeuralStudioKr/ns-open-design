@@ -2046,6 +2046,8 @@ export const id: Dict = {
   'manualEdit.title': 'Editor manual',
   'manualEdit.fallbackTitle': 'Edit',
   'manualEdit.movePanel': 'Move edit panel',
+  'manualEdit.positionMoveRequiresAbsolute': 'Seret posisi hanya untuk elemen absolute/fixed.',
+  'manualEdit.positionPromoteOnDrag': 'Seret untuk melepaskan elemen (position: absolute).',
   'manualEdit.editParams': 'Edit parameter',
   'manualEdit.closePanel': 'Close edit panel',
   'manualEdit.selectLayer': 'Pilih lapisan',

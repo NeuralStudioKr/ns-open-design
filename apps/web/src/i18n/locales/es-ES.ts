@@ -2046,6 +2046,8 @@ export const esES: Dict = {
   'manualEdit.title': 'Editor manual',
   'manualEdit.fallbackTitle': 'Editar',
   'manualEdit.movePanel': 'Mover el panel de edición',
+  'manualEdit.positionMoveRequiresAbsolute': 'Arrastrar para mover requiere posición absolute o fixed.',
+  'manualEdit.positionPromoteOnDrag': 'Arrastra para liberar el elemento (position: absolute).',
   'manualEdit.editParams': 'Editar parámetros',
   'manualEdit.closePanel': 'Cerrar el panel de edición',
   'manualEdit.selectLayer': 'Selecciona una capa',

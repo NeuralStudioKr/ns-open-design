@@ -6,6 +6,9 @@ const baseURL = `http://127.0.0.1:${webPort}`;
 const namespace = process.env.OD_E2E_NAMESPACE || `playwright-${process.pid}`;
 const dataDir = process.env.OD_E2E_DATA_DIR || `e2e/ui/.od-data/${namespace}`;
 const skipWebServer = process.env.OD_SKIP_WEBSERVER === '1';
+// Default standalone so Open Design UI smokes see entry-nav-new-project.
+// Teamver embed suites set OD_PLAYWRIGHT_TEAMVER_EMBED=1.
+const teamverEmbed = process.env.OD_PLAYWRIGHT_TEAMVER_EMBED ?? '0';
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -13,7 +16,7 @@ function shellQuote(value: string): string {
 
 const webServerCommand =
   `OD_DATA_DIR=${shellQuote(dataDir)} ` +
-  `VITE_TEAMVER_EMBED=1 ` +
+  `VITE_TEAMVER_EMBED=${shellQuote(teamverEmbed)} ` +
   `pnpm --dir .. tools-dev run web --namespace ${shellQuote(namespace)} --daemon-port ${daemonPort} --web-port ${webPort}`;
 
 export default defineConfig({

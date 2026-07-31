@@ -2046,6 +2046,8 @@ export const ko: Dict = {
   'manualEdit.title': '수동 편집기',
   'manualEdit.fallbackTitle': '편집',
   'manualEdit.movePanel': '편집 패널 이동',
+  'manualEdit.positionMoveRequiresAbsolute': '위치 드래그는 absolute/fixed 요소에서만 가능합니다.',
+  'manualEdit.positionPromoteOnDrag': '드래그하면 이 요소를 absolute로 풀어 이동합니다.',
   'manualEdit.editParams': '매개변수 편집',
   'manualEdit.closePanel': '편집 패널 닫기',
   'manualEdit.selectLayer': '레이어 선택',

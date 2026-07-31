@@ -8,6 +8,33 @@ function setLocation(host: string) {
   });
 }
 
+describe("isTeamverEmbedMode", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("honors explicit VITE_TEAMVER_EMBED=0 on vite-dev localhost", async () => {
+    setLocation("127.0.0.1");
+    vi.stubEnv("VITE_TEAMVER_EMBED", "0");
+    vi.stubEnv("NODE_ENV", "development");
+    const { isTeamverEmbedMode } = await import("../src/teamver/designApiBase");
+    expect(isTeamverEmbedMode()).toBe(false);
+  });
+
+  it("keeps hostname auto-embed when the flag is unset", async () => {
+    setLocation("127.0.0.1");
+    delete process.env.VITE_TEAMVER_EMBED;
+    vi.stubEnv("NODE_ENV", "development");
+    const { isTeamverEmbedMode } = await import("../src/teamver/designApiBase");
+    expect(isTeamverEmbedMode()).toBe(true);
+  });
+});
+
 describe("resolveTeamverDesignApiBase", () => {
   beforeEach(() => {
     vi.resetModules();

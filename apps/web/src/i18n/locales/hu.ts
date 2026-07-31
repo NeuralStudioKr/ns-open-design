@@ -2046,6 +2046,8 @@ export const hu: Dict = {
   'manualEdit.title': 'Kézi szerkesztő',
   'manualEdit.fallbackTitle': 'Szerkesztés',
   'manualEdit.movePanel': 'Szerkesztőpanel áthelyezése',
+  'manualEdit.positionMoveRequiresAbsolute': 'A pozíció húzása csak absolute/fixed elemeknél működik.',
+  'manualEdit.positionPromoteOnDrag': 'Húzd a szabad mozgatáshoz (position: absolute).',
   'manualEdit.editParams': 'Paraméterek szerkesztése',
   'manualEdit.closePanel': 'Szerkesztőpanel bezárása',
   'manualEdit.selectLayer': 'Válassz egy réteget',
