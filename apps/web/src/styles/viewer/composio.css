@@ -2116,6 +2116,9 @@ button.filter-pill:hover:not(:disabled) .filter-pill-count,
 }
 .example-preview:hover .example-preview-overlay,
 .example-preview:focus-visible .example-preview-overlay { opacity: 1; }
+@media (hover: none) {
+  .example-preview-overlay { opacity: 1; }
+}
 
 /* ============================================================
    Loading primitives — spinner, skeletons, shimmer

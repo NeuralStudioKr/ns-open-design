@@ -419,9 +419,13 @@
   transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1), background 120ms var(--ease-out), color 120ms var(--ease-out);
 }
 .df-row:hover .df-row-check,
+.df-row:focus-within .df-row-check,
 .df-row-check:focus-visible,
 .df-row-check[aria-checked="true"],
 .df-panel.has-selection .df-row-check { opacity: 1; }
+@media (hover: none) {
+  .df-row-check { opacity: 1; }
+}
 .df-row-check:hover { background: var(--border); color: var(--text); }
 .df-row-check[aria-checked="true"] { color: var(--accent-strong); }
 .df-dir-row .df-row-check { cursor: default; }
@@ -521,9 +525,14 @@
   opacity: 0;
   transition: opacity 120ms var(--ease-out);
 }
-.df-row:hover .df-row-menu { opacity: 1; }
-.df-row-menu:focus { opacity: 1; }
+.df-row:hover .df-row-menu,
+.df-row:focus-within .df-row-menu,
+.df-row-menu:focus,
+.df-row-menu:focus-visible { opacity: 1; }
 .df-row-menu:hover { background: var(--border); color: var(--text); }
+@media (hover: none) {
+  .df-row-menu { opacity: 1; }
+}
 .df-row-menu-placeholder {
   pointer-events: none;
   visibility: hidden;

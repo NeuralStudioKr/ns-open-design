@@ -2598,6 +2598,12 @@
   opacity: 1;
   transform: translateY(0);
 }
+@media (hover: none) {
+  .teamver-canvas-slide-launch-template-card-overlay {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 .teamver-canvas-slide-launch-template-card-desc {
   display: -webkit-box;
   -webkit-line-clamp: 2;

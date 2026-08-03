@@ -1179,6 +1179,13 @@
   opacity: 1;
   transform: translateX(0) scale(1);
 }
+@media (hover: none) {
+  .home-hero__active-type-chip-close {
+    width: 12px;
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
 .home-hero__footer-options {
   display: contents;
 }
