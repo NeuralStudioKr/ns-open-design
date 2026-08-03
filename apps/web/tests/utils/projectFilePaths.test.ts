@@ -4,6 +4,7 @@ import {
   excludeAttachmentsBackedByVisualScreenshots,
   projectFilePathExists,
   projectFilePathsReferToSameFile,
+  projectFileResolvedPath,
 } from '../../src/utils/projectFilePaths';
 
 describe('projectFilePathExists', () => {
@@ -54,5 +55,10 @@ describe('project file path identity', () => {
       [{ screenshotPath: 'mark.png' }],
     );
     expect(attachments).toEqual([]);
+  });
+
+  it('resolves project file path from path or name', () => {
+    expect(projectFileResolvedPath({ name: 'foo.png', path: 'uploads/foo.png' })).toBe('uploads/foo.png');
+    expect(projectFileResolvedPath({ name: 'foo.png' })).toBe('foo.png');
   });
 });

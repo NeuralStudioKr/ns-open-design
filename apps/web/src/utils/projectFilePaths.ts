@@ -44,6 +44,13 @@ export function projectFilePathBasename(path: string): string {
   return trimmed.split('/').pop() || trimmed;
 }
 
+/** Prefer daemon `path` when present; fall back to flat `name`. */
+export function projectFileResolvedPath(file: { name: string; path?: string | null }): string {
+  const path = String(file.path ?? '').trim().replace(/\\/g, '/');
+  if (path) return path;
+  return String(file.name ?? '').trim();
+}
+
 /** Treat `uploads/foo.png` and bare `foo.png` as the same project file. */
 export function projectFilePathsReferToSameFile(a: string, b: string): boolean {
   const left = String(a || '').trim().replace(/\\/g, '/');
