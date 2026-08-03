@@ -481,12 +481,21 @@ export function buildManualEditBridge(enabled: boolean): string {
       window.parent.postMessage({ type: 'od-edit-background' }, '*');
       return;
     }
-    var kind = inferKind(el);
+    // Select only — text/link stay selectable for resize (wrap width) and the
+    // inspector. Inline contenteditable is double-click (51-1 §12).
     window.parent.postMessage({ type: 'od-edit-select', target: targetFrom(el, true) }, '*');
-    if (kind === 'text' || kind === 'link') {
-      makeEditable(el, ev);
-      return;
-    }
+  }, true);
+  document.addEventListener('dblclick', function(ev){
+    if (!enabled) return;
+    if (ev.target && ev.target.closest && ev.target.closest('[data-od-editing="true"]')) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    var el = closestTarget(ev);
+    if (!el) return;
+    var kind = inferKind(el);
+    if (kind !== 'text' && kind !== 'link') return;
+    window.parent.postMessage({ type: 'od-edit-select', target: targetFrom(el, true) }, '*');
+    makeEditable(el, ev);
   }, true);
   document.addEventListener('pointerover', function(ev){
     if (!enabled) return;

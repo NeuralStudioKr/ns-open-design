@@ -495,7 +495,7 @@ describe('manual edit bridge target normalization', () => {
     expect(bridge).toContain("display.indexOf('flex') >= 0 || display.indexOf('grid') >= 0");
   });
 
-  it('turns text targets into inline editors and commits changed text', () => {
+  it('single-clicks text to select without entering inline edit (resize stays available)', () => {
     const dom = new JSDOM(
       `<main><h1 data-od-id="title">Original title</h1></main>${buildManualEditBridge(true)}`,
       { runScripts: 'dangerously', url: 'http://localhost' },
@@ -504,6 +504,38 @@ describe('manual edit bridge target normalization', () => {
     const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
 
     title.dispatchEvent(new dom.window.MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 8,
+      clientY: 8,
+    }));
+
+    expect(title.hasAttribute('contenteditable')).toBe(false);
+    expect(title.hasAttribute('data-od-editing')).toBe(false);
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'od-edit-select',
+      target: expect.objectContaining({
+        id: 'title',
+        kind: 'text',
+      }),
+    }, '*');
+    expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'od-edit-text-active',
+      active: true,
+    }), '*');
+
+    dom.window.close();
+  });
+
+  it('double-clicks text targets into inline editors and commits changed text', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Original title</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+
+    title.dispatchEvent(new dom.window.MouseEvent('dblclick', {
       bubbles: true,
       cancelable: true,
       clientX: 8,
@@ -563,7 +595,7 @@ describe('manual edit bridge target normalization', () => {
     const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
     const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
 
-    title.dispatchEvent(new dom.window.MouseEvent('click', {
+    title.dispatchEvent(new dom.window.MouseEvent('dblclick', {
       bubbles: true,
       cancelable: true,
       clientX: 8,
@@ -588,7 +620,7 @@ describe('manual edit bridge target normalization', () => {
     const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
     const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
 
-    title.dispatchEvent(new dom.window.MouseEvent('click', {
+    title.dispatchEvent(new dom.window.MouseEvent('dblclick', {
       bubbles: true,
       cancelable: true,
     }));
@@ -613,7 +645,7 @@ describe('manual edit bridge target normalization', () => {
     const body = dom.window.document.querySelector('[data-od-id="body"]') as HTMLElement;
     const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
 
-    body.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    body.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     body.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
       bubbles: true,
       cancelable: true,
@@ -638,7 +670,7 @@ describe('manual edit bridge target normalization', () => {
     const body = dom.window.document.querySelector('[data-od-id="body"]') as HTMLElement;
     const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
 
-    body.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    body.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     body.textContent = 'Draft body';
     body.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
       bubbles: true,
