@@ -1852,7 +1852,7 @@ function LiveArtifactRefreshNotice({
       </span>
       {onDismiss ? (
         <button type="button" className="icon-only" onClick={onDismiss} aria-label={dismissLabel}>
-          ×
+          <Icon name="close" size={12} />
         </button>
       ) : null}
     </div>
@@ -3191,7 +3191,7 @@ function InspectPanel({
           <code title={target.selector}>{target.elementId}</code>
         </div>
         <Button variant="ghost" onClick={onClose} aria-label={embedUiLabel('Close inspect', '검사 패널 닫기')}>
-          ×
+          <Icon name="close" size={14} />
         </Button>
       </header>
 

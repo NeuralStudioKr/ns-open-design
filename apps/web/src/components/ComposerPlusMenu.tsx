@@ -569,8 +569,8 @@ export function ComposerPlusMenu({
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="MCP"
-                aria-label="MCP"
+                placeholder={t('chat.plusMenu.searchMcp')}
+                aria-label={t('chat.plusMenu.searchMcp')}
               />
             </div>
             <div className="plus-menu__list">

@@ -8,6 +8,7 @@ import type { PreviewComment, PreviewCommentMember } from '../types';
 import { isImeComposing } from '../utils/imeComposing';
 
 import { Icon } from './Icon';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
@@ -377,7 +378,7 @@ export function BoardComposerPopover({
       data-testid="comment-popover"
       role="dialog"
       aria-modal="false"
-      aria-label="Annotation"
+      aria-label={embedUiLabel('Annotation', '주석')}
       style={docked ? undefined : popoverAnchorStyle(target, scale, bounds, offset, commenting, popoverSize)}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
