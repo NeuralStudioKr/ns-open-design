@@ -431,6 +431,34 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(`${visibleProse}\n${brokenOpener}`)).toBe(visibleProse);
   });
 
+  it("strips classic function(e) keydown + half-screen click nav without .slide anchors", () => {
+    // Production leak: minified click-to-advance nav uses classic function(e)
+    // handlers and clientX>innerWidth/2 — prior scrub only matched e=> / onKey.
+    const visibleProse = "슬라이드 수정이 반영되었습니다.";
+    const leaked = [
+      "(function(){",
+      "document.addEventListener('keydown',function(e){",
+      "document.addEventListener('click',function(e){",
+      "if(e.clientX>window.innerWidth/2)go(cur+1);else",
+    ].join("\n");
+
+    for (const streaming of [true, false]) {
+      const out = sanitizeAssistantProseForDisplay(`${visibleProse}\n${leaked}`, { streaming });
+      expect(out).toBe(visibleProse);
+      expect(out).not.toContain("addEventListener");
+      expect(out).not.toContain("innerWidth");
+      expect(out).not.toContain("go(cur");
+      expect(out).not.toContain("(function(){");
+    }
+
+    const closed = `${visibleProse}\n${leaked}\ngo(cur-1);}})();`;
+    for (const streaming of [true, false]) {
+      const out = sanitizeAssistantProseForDisplay(closed, { streaming });
+      expect(out).toBe(visibleProse);
+      expect(out).not.toContain("addEventListener");
+    }
+  });
+
   it("strips orphan function go remnant ahead of truncated keydown nav", () => {
     const input = [
       "덱 완료.",

@@ -55,6 +55,22 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'){}});
     expect(isArtifactHtmlStableForPreview(repaired)).toBe(true);
   });
 
+  it("detects classic function(e) keydown + half-screen click nav as body text", () => {
+    const leaked = `<!doctype html><html><head><title>Deck</title></head><body>
+<section class="slide"><h1>Cover</h1><p>Enough slide copy for preview quality.</p></section>
+(function(){
+document.addEventListener('keydown',function(e){
+document.addEventListener('click',function(e){
+if(e.clientX>window.innerWidth/2)go(cur+1);else go(cur-1);
+}})();
+</body></html>`;
+    expect(hasArtifactPreviewBodyTextLeaks(leaked)).toBe(true);
+    const stripped = stripArtifactPreviewBodyTextLeaks(leaked);
+    expect(stripped).not.toContain("innerWidth");
+    expect(stripped).not.toContain("addEventListener");
+    expect(stripped).toContain('<section class="slide">');
+  });
+
   it("ignores the same CSS when it lives inside a closed style tag", () => {
     const html = `<!doctype html><html><head><style>
 / ── Per-deck styles ── /

@@ -284,12 +284,25 @@ export function hasArtifactPreviewBodyTextLeaks(html: string): boolean {
     return true;
   }
   if (
-    /document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*(?:onKey|e\s*=>)/i.test(scan)
-    && /ArrowRight|ArrowLeft|ArrowDown/i.test(scan)
+    /document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*(?:onKey|e\s*=>|function\s*\()/i.test(scan)
+    && (/ArrowRight|ArrowLeft|ArrowDown/i.test(scan) || /go\s*\(\s*cur/i.test(scan))
+  ) {
+    return true;
+  }
+  if (
+    /document\.addEventListener\s*\(\s*['"]click['"]\s*,\s*function\s*\(/i.test(scan)
+    && /clientX\s*>\s*window\.innerWidth\s*\/\s*2/i.test(scan)
   ) {
     return true;
   }
   if (/\(\s*\(\s*\)\s*=>\s*\{[\s\S]{0,400}?document\.querySelectorAll\(['"]\.slide['"]/i.test(scan)) {
+    return true;
+  }
+  if (
+    /\(\s*function\s*\(\s*\)\s*\{[\s\S]{0,800}?document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*function\s*\(/i.test(
+      scan,
+    )
+  ) {
     return true;
   }
   return false;
@@ -321,7 +334,9 @@ export const LEAKED_DECK_SCRIPT_SNIPPET_RE =
 const LEAKED_COMPACT_SLIDES_DECL_BODY_TEXT_RE =
   /(?:^|>)\s*(?:const|let|var)\s+slides\s*=\s*(?:Array\.prototype\.slice\.call\()?document\.querySelectorAll\(['"]\.slide['"]\)[\s\S]{0,8000}?(?=<(?:div|section|script|style|\/body|\/html)|$)/gim;
 const LEAKED_COMPACT_KEYDOWN_BODY_TEXT_RE =
-  /(?:^|>)\s*document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*e\s*=>\s*\{[\s\S]{0,4000}?(?:ArrowRight|ArrowDown)[\s\S]{0,4000}?(?=<(?:div|section|script|style|\/body|\/html)|$)/gim;
+  /(?:^|>)\s*document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*(?:e\s*=>|function\s*\(\s*\w*\s*\)\s*=>|function\s*\(\s*\w*\s*\))\s*\{[\s\S]{0,4000}?(?:ArrowRight|ArrowDown|go\s*\(\s*cur|clientX\s*>\s*window\.innerWidth)[\s\S]{0,4000}?(?=<(?:div|section|script|style|\/body|\/html)|$)/gim;
+const LEAKED_COMPACT_CLASSIC_CLICK_NAV_BODY_TEXT_RE =
+  /(?:^|>)\s*\(\s*function\s*\(\s*\)\s*\{[\s\S]{0,2000}?document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*function\s*\([\s\S]{0,8000}?(?:clientX\s*>\s*window\.innerWidth\s*\/\s*2|go\s*\(\s*cur\s*\+\s*1)[\s\S]{0,8000}?(?=<(?:div|section|script|style|\/body|\/html)|$)/gim;
 const LEAKED_COMPACT_ARROW_IIFE_BODY_TEXT_RE =
   /(?:^|>)\s*\(\s*\(\s*\)\s*=>\s*\{[\s\S]{0,400}?document\.querySelectorAll\(['"]\.slide['"][\s\S]{0,12000}?(?:\}\s*\)\s*(?:\(\s*\)\s*)?;?|(?=<(?:div|section|script|style|\/body|\/html)|$))/gim;
 
@@ -365,6 +380,7 @@ function stripLeakedPreviewTextFromUnprotectedHtml(text: string): string {
   out = stripPreviewTextLeakMatches(out, LEAKED_COMPACT_ARROW_IIFE_BODY_TEXT_RE);
   out = stripPreviewTextLeakMatches(out, LEAKED_COMPACT_SLIDES_DECL_BODY_TEXT_RE);
   out = stripPreviewTextLeakMatches(out, LEAKED_COMPACT_KEYDOWN_BODY_TEXT_RE);
+  out = stripPreviewTextLeakMatches(out, LEAKED_COMPACT_CLASSIC_CLICK_NAV_BODY_TEXT_RE);
   ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE.lastIndex = 0;
   out = out.replace(ARTIFACT_VIEWPORT_META_ATTR_LEAK_RE, (match) => (match.startsWith(">") ? ">" : ""));
   ARTIFACT_LEAKED_META_VIEWPORT_TAG_RE.lastIndex = 0;

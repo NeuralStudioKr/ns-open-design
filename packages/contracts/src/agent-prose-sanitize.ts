@@ -617,6 +617,11 @@ const DECK_NAV_BODY_FINGERPRINTS = [
   `e\\.key\\s*===\\s*['"]ArrowRight['"]`,
   `document\\.addEventListener\\(['"]touchstart['"]`,
   `document\\.addEventListener\\(['"]wheel['"]`,
+  // Classic function(e) + half-screen click nav (no .slide / ArrowRight).
+  `clientX\\s*>\\s*window\\.innerWidth\\s*/\\s*2`,
+  `go\\s*\\(\\s*cur\\s*\\+\\s*1\\s*\\)`,
+  `document\\.addEventListener\\(['"]keydown['"]\\s*,\\s*function\\s*\\(`,
+  `document\\.addEventListener\\(['"]click['"]\\s*,\\s*function\\s*\\(`,
 ].join("|");
 
 /** Loose IIFE close: bare `})` OR full `})();`. */
@@ -670,6 +675,22 @@ const LEAKED_COMPACT_ARROW_NAV_TAIL_RE = new RegExp(
 /** `window.onkeydown = e => { if (e.key === 'ArrowRight') … }` glued into prose. */
 const LEAKED_WINDOW_ONKEYDOWN_NAV_RE = new RegExp(
   `(?:^|\\n|(?<=[.。!?…])\\s*)(?:window|document)\\.onkeydown\\s*=\\s*e\\s*=>\\s*\\{(?=[\\s\\S]{0,2000}?ArrowRight)[\\s\\S]{0,4000}?\\}\\s*;?`,
+  "gi",
+);
+
+/**
+ * Classic minified click/keyboard nav IIFE without `.slide` / ArrowRight:
+ * `(function(){ document.addEventListener('keydown',function(e){ …
+ * document.addEventListener('click',function(e){ if(e.clientX>window.innerWidth/2)go(cur+1); … })();`
+ */
+const LEAKED_COMPACT_CLASSIC_CLICK_NAV_IIFE_RE = new RegExp(
+  `(?:^|\\n|(?<=[.。!?…])\\s*)\\(\\s*function\\s*\\(\\s*\\)\\s*\\{(?=[\\s\\S]{0,6000}?(?:clientX\\s*>\\s*window\\.innerWidth\\s*/\\s*2|go\\s*\\(\\s*cur\\s*\\+\\s*1\\s*\\)|document\\.addEventListener\\(['"]keydown['"]\\s*,\\s*function\\s*\\())[\\s\\S]{0,20000}${DECK_IIFE_STRICT_CLOSE_TAIL}`,
+  "gi",
+);
+
+/** Truncated/completed classic keydown+click handler tail without an IIFE opener. */
+const LEAKED_COMPACT_CLASSIC_KEYDOWN_CLICK_NAV_TAIL_RE = new RegExp(
+  `(?:^|\\n|(?<=[.。!?…])\\s*)document\\.addEventListener\\(['"]keydown['"]\\s*,\\s*function\\s*\\(\\s*\\w*\\s*\\)\\s*\\{(?=[\\s\\S]{0,8000}?(?:clientX\\s*>\\s*window\\.innerWidth|go\\s*\\(\\s*cur))[\\s\\S]{0,16000}${DECK_IIFE_STRICT_CLOSE_TAIL}`,
   "gi",
 );
 
@@ -731,7 +752,11 @@ const OPEN_DECK_NAV_SCRIPT_RE_LIST = [
   // Truncated compact nav: bare `document.addEventListener('keydown', e=>{…`
   // without deck-stage / querySelectorAll anchors (end_turn mid-script).
   // Allow same-line glue after sentence punctuation (`덱 완성. document…`).
-  /(?:^|\n|[.。!?…]\s*)document\.addEventListener\(['"]keydown['"]\s*,\s*(?:onKey|e\s*=>)/i,
+  /(?:^|\n|[.。!?…]\s*)document\.addEventListener\(['"]keydown['"]\s*,\s*(?:onKey|e\s*=>|function\s*\()/i,
+  // Classic function(e) click-to-advance nav (half-screen / go(cur±1)).
+  /(?:^|\n|[.。!?…]\s*)document\.addEventListener\(['"]click['"]\s*,\s*function\s*\(\s*\w*\s*\)\s*\{(?=[\s\S]{0,2000}?(?:clientX\s*>\s*window\.innerWidth|go\s*\(\s*cur))/i,
+  /(?:^|\n|[.。!?…]\s*)\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,4000}?document\.addEventListener\(['"]keydown['"]\s*,\s*function\s*\()/i,
+  /(?:^|\n|[.。!?…]\s*)\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,6000}?clientX\s*>\s*window\.innerWidth\s*\/\s*2)/i,
   /(?:^|\n|[.。!?…]\s*)(?:window|document)\.addEventListener\(['"](?:touchstart|touchend|wheel)['"]/i,
   /(?:^|\n|[.。!?…]\s*)(?:window|document)\.onkeydown\s*=\s*e\s*=>/i,
   /(?:^|\n)\s*if\s*\(\s*e\.key\s*===\s*['"]ArrowRight['"]\s*\|\|\s*e\.key\s*===\s*['"]ArrowDown['"]/i,
@@ -977,11 +1002,14 @@ function stripTrailingBareToolJson(
  */
 function findInlineDeckNavLeakStart(input: string): number {
   const patterns = [
-    /document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*(?:onKey|e\s*=>)/i,
+    /document\.addEventListener\s*\(\s*['"]keydown['"]\s*,\s*(?:onKey|e\s*=>|function\s*\()/i,
+    /document\.addEventListener\s*\(\s*['"]click['"]\s*,\s*function\s*\(\s*\w*\s*\)\s*\{(?=[\s\S]{0,2000}?(?:clientX\s*>\s*window\.innerWidth|go\s*\(\s*cur))/i,
     /(?:window|document)\.addEventListener\s*\(\s*['"](?:touchstart|touchend|wheel)['"]/i,
     /(?:window|document)\.onkeydown\s*=\s*e\s*=>/i,
     /\(\s*\(\s*\)\s*=>\s*\{(?=[\s\S]{0,4000}?document\.querySelectorAll\(['"]\.slide['"]\))/i,
     /\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,4000}?document\.querySelectorAll\(['"]\.slide['"]\))/i,
+    /\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,4000}?document\.addEventListener\(['"]keydown['"]\s*,\s*function\s*\()/i,
+    /\(\s*function\s*\(\s*\)\s*\{(?=[\s\S]{0,6000}?clientX\s*>\s*window\.innerWidth\s*\/\s*2)/i,
     /(?:const|let|var)\s+slides\s*=\s*(?:Array\.prototype\.slice\.call\()?document\.querySelectorAll\(['"]\.slide['"]/i,
   ] as const;
   let best = -1;
@@ -1176,6 +1204,8 @@ export function sanitizeLeakedAgentProse(
   out = out.replace(LEAKED_COMPACT_ARROW_DECK_NAV_IIFE_RE, "");
   out = out.replace(LEAKED_COMPACT_ARROW_NAV_TAIL_RE, "");
   out = out.replace(LEAKED_WINDOW_ONKEYDOWN_NAV_RE, "");
+  out = out.replace(LEAKED_COMPACT_CLASSIC_CLICK_NAV_IIFE_RE, "");
+  out = out.replace(LEAKED_COMPACT_CLASSIC_KEYDOWN_CLICK_NAV_TAIL_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_STORE_RE, "");
   out = out.replace(LEAKED_DECK_NAV_SCRIPT_MANGLED_IIFE_RE, "");
   out = stripOrphanCloseTagFamilies(out, LEAKED_AGENT_PROSE_TAG_NAMES);
