@@ -93,7 +93,8 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 3 | `29466ae40` | **리뷰 교정** + context-chip/tab/card close 터치 + background-runs `title` | **유지 (기준점)** |
 | 4 | `cf94d6655` | board-pod remove, DS card overlay 터치 | 유지 |
 | 5 | `d8975a6f4` | Design Files menu/check, template delete, library edit, example/canvas overlay, hero type-chip close | 유지 |
-| 6 | *(후속)* | DS picker preview expand 터치 (`project-ds-picker-preview-expand`) | 본 문서와 함께 기록 |
+| 6 | `5d1ba45d0` | DS picker preview expand 터치 (`project-ds-picker-preview-expand`) | 유지 |
+| 7 | `c8641fcc5` | 본 문서(53) + [00](./00_구현_내역_누적.md) 기록 | 문서 |
 
 `f97ee14ed` 메시지의 “28–32px” 방향은 **리뷰로 철회**된 부분이 있음. **유효 SSOT는 `29466ae40` 이후 원칙**.
 
