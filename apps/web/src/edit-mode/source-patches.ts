@@ -921,6 +921,14 @@ const MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS = new Set([
   'style',
 ]);
 
+const MANUAL_EDIT_SMIL_ANIM_TAGS = new Set([
+  'set',
+  'animate',
+  'animatetransform',
+  'animatemotion',
+  'animatecolor',
+]);
+
 /** Strip executable chrome tags, event handlers, and unsafe URL attrs. */
 function sanitizeManualEditReplacementTree(root: Element): void {
   const toRemove: Element[] = [];
@@ -929,6 +937,31 @@ function sanitizeManualEditReplacementTree(root: Element): void {
     if (el !== root && MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(tag)) {
       toRemove.push(el);
       return;
+    }
+    // SMIL can assign on* / style via attributeName + to/values without on* attrs.
+    if (MANUAL_EDIT_SMIL_ANIM_TAGS.has(tag)) {
+      const smilAttr = (
+        el.getAttribute('attributeName')
+        || el.getAttribute('attributename')
+        || ''
+      ).trim().toLowerCase();
+      if (smilAttr.startsWith('on')) {
+        toRemove.push(el);
+        return;
+      }
+      if (smilAttr === 'style') {
+        for (const key of ['to', 'from', 'by', 'values'] as const) {
+          const raw = el.getAttribute(key);
+          if (raw == null) continue;
+          const scrubbed = scrubUnsafeInlineStyleAttr(raw);
+          if (!scrubbed) el.removeAttribute(key);
+          else if (scrubbed !== raw) el.setAttribute(key, scrubbed);
+        }
+        if (!['to', 'from', 'by', 'values'].some((key) => el.hasAttribute(key))) {
+          toRemove.push(el);
+          return;
+        }
+      }
     }
     for (const attr of Array.from(el.attributes)) {
       const lower = attr.name.toLowerCase();
@@ -1746,7 +1779,9 @@ function scrubSalvagedStyleText(css: string): string {
 }
 
 function scrubUnsafeInlineStyleAttr(value: string): string {
-  const scrubbed = scrubUnsafeCssFunctions(String(value || '')).trim();
+  // Match salvage path: defeat CSS escapes/comments before url()/expression scrub.
+  const normalized = normalizeCssForSafetyScan(String(value || ''));
+  const scrubbed = scrubUnsafeCssFunctions(normalized).trim();
   // If anything still looks like a scriptable url, drop the whole attr.
   if (/\burl\s*\(\s*(['"]?)\s*(?:javascript|vbscript|data)\b/i.test(scrubbed)) return '';
   if (/\bexpression\s*\(/i.test(scrubbed)) return '';
@@ -1847,14 +1882,23 @@ function decodeHtmlCharacterReferences(value: string): string {
   return out;
 }
 
+/** Compact URL text for scheme checks — strip controls, ZWSP/Cf, and BOM. */
+function compactManualEditUrlForSchemeCheck(value: string): string {
+  return String(value || '')
+    .replace(/[\s\u0000-\u001f\u007f\ufeff]+/g, '')
+    // ZWSP/ZWNJ/ZWJ/word-joiner and other format chars smuggle `java\u200bscript:`.
+    .replace(/[\u200b-\u200d\u2060\ufeff]/g, '')
+    .replace(/\p{Cf}/gu, '')
+    .toLowerCase();
+}
+
 /** Reject javascript:/vbscript:/dangerous data: URL schemes in manual edits. */
 export function isSafeManualEditUrl(value: string): boolean {
   const trimmed = String(value || '').trim();
   if (!trimmed) return true;
   // Decode &#106;avascript: / javascript&#58; before scheme checks.
   const decoded = decodeHtmlCharacterReferences(trimmed);
-  // Strip whitespace + C0 controls so `java\0script:` / `data: text/html` cannot bypass.
-  const compact = decoded.replace(/[\s\u0000-\u001f\u007f\ufeff]+/g, '').toLowerCase();
+  const compact = compactManualEditUrlForSchemeCheck(decoded);
   if (compact.startsWith('javascript:')) return false;
   if (compact.startsWith('vbscript:')) return false;
   if (compact.startsWith('data:')) {
@@ -1869,6 +1913,18 @@ export function isSafeManualEditUrl(value: string): boolean {
   return true;
 }
 
+/** True when a SMIL/CSS value embeds a scriptable scheme anywhere (not only as prefix). */
+function containsUnsafeEmbeddedCssOrScheme(value: string): boolean {
+  const normalized = compactManualEditUrlForSchemeCheck(
+    normalizeCssForSafetyScan(decodeHtmlCharacterReferences(value)),
+  );
+  if (normalized.includes('javascript:')) return true;
+  if (normalized.includes('vbscript:')) return true;
+  if (/\bexpression\(/.test(normalized)) return true;
+  if (/url\((?:javascript|vbscript|data)\b/.test(normalized)) return true;
+  return false;
+}
+
 /** Validate URL attr values; `srcset`/`values` check each candidate URL. */
 export function isSafeManualEditUrlAttrValue(attr: string, value: string): boolean {
   const lower = String(attr || '').toLowerCase();
@@ -1879,10 +1935,14 @@ export function isSafeManualEditUrlAttrValue(attr: string, value: string): boole
     }
     return true;
   }
-  if (lower === 'values') {
-    for (const part of String(value || '').split(';')) {
-      const url = part.trim();
-      if (url && !isSafeManualEditUrl(url)) return false;
+  if (lower === 'to' || lower === 'from' || lower === 'by' || lower === 'values') {
+    // SMIL may carry bare URLs or CSS (`attributeName=style`) — reject either shape.
+    const pieces = lower === 'values' ? String(value || '').split(';') : [value];
+    for (const part of pieces) {
+      const piece = part.trim();
+      if (!piece) continue;
+      if (containsUnsafeEmbeddedCssOrScheme(piece)) return false;
+      if (!isSafeManualEditUrl(piece)) return false;
     }
     return true;
   }

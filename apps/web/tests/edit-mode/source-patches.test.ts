@@ -736,6 +736,97 @@ describe('manual edit source patches', () => {
     expect(html).not.toMatch(/values=["'][^"']*javascript/i);
   });
 
+  it('removes SMIL nodes that assign on* handlers via attributeName', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect width="10" height="10"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<rect width="10" height="10">',
+        '<set attributeName="onclick" to="alert(1)"></set>',
+        '<animate attributeName="onmouseover" values="alert(2);alert(3)"></animate>',
+        '</rect></svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toMatch(/attributeName=["']on/i);
+    expect(html).not.toMatch(/<set\b/i);
+    expect(html).not.toMatch(/<animate\b/i);
+  });
+
+  it('scrubs CSS-escape/comment javascript urls in inline style attrs', () => {
+    const escaped = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:url(\\6a avascript:alert(1));color:blue">Title</h1>',
+    });
+    expect(escaped.ok, escaped.error).toBe(true);
+    const escapedHtml = readManualEditOuterHtml(escaped.source, 'hero-title');
+    expect(escapedHtml).not.toMatch(/javascript/i);
+    expect(escapedHtml).toContain('color:blue');
+
+    const commented = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:url(/*x*/javascript:alert(1));color:green">Title</h1>',
+    });
+    expect(commented.ok, commented.error).toBe(true);
+    const commentedHtml = readManualEditOuterHtml(commented.source, 'hero-title');
+    expect(commentedHtml).not.toMatch(/javascript/i);
+    expect(commentedHtml).toContain('color:green');
+  });
+
+  it('rejects ZWSP-smuggled javascript: URLs in set-link', () => {
+    const denied = applyManualEditPatch(baseSource, {
+      kind: 'set-link',
+      id: 'cta',
+      text: 'Start',
+      href: 'java\u200bscript:alert(1)',
+    });
+    expect(denied.ok).toBe(false);
+    expect(readManualEditFields(baseSource, 'cta').href).toBe('/start');
+
+    const attrDenied = applyManualEditPatch(baseSource, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: { href: 'java\u200cscript:alert(1)' },
+    });
+    expect(attrDenied.ok).toBe(true);
+    expect(readManualEditAttributes(attrDenied.source, 'cta').href).toBe('/start');
+  });
+
+  it('scrubs SMIL style animations that embed javascript urls', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect width="10" height="10"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<rect width="10" height="10">',
+        '<set attributeName="style" to="background:url(javascript:alert(1));color:red"></set>',
+        '</rect></svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toMatch(/javascript/i);
+    // Either the set node is dropped or its to= value is scrubbed clean.
+    if (/<set\b/i.test(html)) {
+      expect(html).toMatch(/to=["'][^"']*color:red/i);
+      expect(html).not.toMatch(/to=["'][^"']*javascript/i);
+    }
+  });
+
   it('rejects HTML character-reference javascript: URL bypasses', () => {
     for (const href of [
       '&#106;avascript:alert(1)',

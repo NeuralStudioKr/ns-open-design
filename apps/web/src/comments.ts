@@ -476,12 +476,15 @@ function parseAttachedPreviewPodMembers(section: string): PreviewCommentMember[]
     const htmlHint = stripAttachedPreviewPlaceholder(
       parseAttachedPreviewCommentField(section, `member.${index}.htmlHint`),
     );
+    const position = parseAttachedPreviewCommentPosition(
+      parseAttachedPreviewCommentField(section, `member.${index}.position`),
+    );
     byIndex.set(index, {
       elementId,
       selector,
       label,
       text: trimContextText(text),
-      position: { x: 0, y: 0, width: 0, height: 0 },
+      position,
       htmlHint: trimHtmlHint(htmlHint),
       ...(style ? { style } : {}),
     });
@@ -967,6 +970,17 @@ export function renderCommentAttachmentContext(
         if (memberText) lines.push(`member.${memberIndex + 1}.text: ${memberText}`);
         const memberHint = trimHtmlHint(member.htmlHint || '');
         if (memberHint) lines.push(`member.${memberIndex + 1}.htmlHint: ${memberHint}`);
+        const memberPosition = normalizePosition(member.position);
+        if (
+          memberPosition.x
+          || memberPosition.y
+          || memberPosition.width
+          || memberPosition.height
+        ) {
+          lines.push(
+            `member.${memberIndex + 1}.position: x${memberPosition.x} y${memberPosition.y} ${memberPosition.width}x${memberPosition.height}`,
+          );
+        }
         const memberStyle = formatAnnotationStyle(member.style);
         if (memberStyle) lines.push(`member.${memberIndex + 1}.computedStyle: ${memberStyle}`);
       });

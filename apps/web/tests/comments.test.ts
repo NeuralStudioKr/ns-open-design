@@ -454,7 +454,9 @@ describe('preview comment attachment helpers', () => {
     expect(parsed[0]?.memberCount).toBe(2);
     expect(content).toContain('member.1.text: Hero title');
     expect(content).toContain('member.1.htmlHint: <section data-od-id="hero">');
+    expect(content).toContain('member.1.position: x10 y20 200x100');
     expect(content).toContain('member.2.text: Chart value');
+    expect(content).toContain('member.2.position: x120 y80 190x120');
     expect(parsed[0]?.podMembers).toEqual([
       expect.objectContaining({
         elementId: 'hero',
@@ -462,6 +464,7 @@ describe('preview comment attachment helpers', () => {
         label: 'section.hero',
         text: 'Hero title',
         htmlHint: '<section data-od-id="hero">',
+        position: { x: 10, y: 20, width: 200, height: 100 },
       }),
       expect.objectContaining({
         elementId: 'chart',
@@ -469,6 +472,7 @@ describe('preview comment attachment helpers', () => {
         label: 'section.chart',
         text: 'Chart value',
         htmlHint: '<section data-od-id="chart">',
+        position: { x: 120, y: 80, width: 190, height: 120 },
       }),
     ]);
   });
