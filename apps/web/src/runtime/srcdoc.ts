@@ -19,6 +19,7 @@
 import {
   buildManualEditBridge,
   buildManualEditBridgeStyle,
+  buildRevisionShortcutBridge,
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   MANUAL_EDIT_SOURCE_PATH_ATTR,
 } from '../edit-mode/bridge';
@@ -152,7 +153,8 @@ export function buildSrcdoc(
   // it to a per-call option would force iframe srcdoc regeneration (and a
   // visible flash) every time the host toggle flips.
   const withTweaks = injectTweaksBridge(withEdit);
-  return injectSrcdocTransportActivationBridge(injectSnapshotBridge(withTweaks));
+  const withRevisionShortcuts = injectBeforeBodyEnd(withTweaks, buildRevisionShortcutBridge());
+  return injectSrcdocTransportActivationBridge(injectSnapshotBridge(withRevisionShortcuts));
 }
 
 /**

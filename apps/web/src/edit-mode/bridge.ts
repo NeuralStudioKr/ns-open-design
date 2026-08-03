@@ -5,6 +5,7 @@ export const MANUAL_EDIT_HOST_NODE_SELECTOR = [
   '[data-od-deck-bridge]',
   '[data-od-comment-bridge]',
   '[data-od-edit-bridge]',
+  '[data-od-revision-shortcut-bridge]',
   '[data-od-comment-bridge-style]',
   '[data-od-edit-bridge-style]',
   '[data-od-deck-fix]',
@@ -492,6 +493,46 @@ export function buildManualEditBridge(enabled: boolean): string {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', postTargets);
   else setTimeout(postTargets, 0);
   document.documentElement.toggleAttribute('data-od-edit-mode', enabled);
+})();</script>`;
+}
+
+/** Forwards revision undo/redo shortcuts to the host when the iframe has focus. */
+export function buildRevisionShortcutBridge(): string {
+  return `<script data-od-revision-shortcut-bridge>(function(){
+  function isBlockedTarget(target){
+    if (!target || !target.closest) return false;
+    if (target.closest('[data-od-editing="true"]')) return true;
+    if (target.closest('[contenteditable]:not([contenteditable="false"])')) return true;
+    var tag = target.tagName ? String(target.tagName).toUpperCase() : '';
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  }
+  function onKeydown(ev){
+    if (!ev || ev.defaultPrevented) return;
+    if (isBlockedTarget(ev.target)) return;
+    if (document.querySelector && document.querySelector('[data-od-editing="true"]')) return;
+    var meta = !!ev.metaKey;
+    var ctrl = !!ev.ctrlKey;
+    var primary = (meta && !ctrl) || (ctrl && !meta);
+    if (!primary) return;
+    var key = String(ev.key || '').toLowerCase();
+    if (key === 'z') {
+      ev.preventDefault();
+      try {
+        window.parent.postMessage({
+          type: 'od:revision-shortcut',
+          action: ev.shiftKey ? 'redo' : 'undo'
+        }, '*');
+      } catch (_) {}
+      return;
+    }
+    if (ctrl && !meta && key === 'y') {
+      ev.preventDefault();
+      try {
+        window.parent.postMessage({ type: 'od:revision-shortcut', action: 'redo' }, '*');
+      } catch (_) {}
+    }
+  }
+  document.addEventListener('keydown', onKeydown, true);
 })();</script>`;
 }
 
