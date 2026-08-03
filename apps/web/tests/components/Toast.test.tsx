@@ -67,10 +67,18 @@ describe('Toast', () => {
     expect(screen.getByRole('button', { name: /Close/i })).not.toBeNull();
   });
 
-  it('renders a dismiss control for error toasts without code', () => {
+  it('renders an icon Close control for error toasts without code', () => {
     const onDismiss = vi.fn();
     render(<Toast message="Something failed" tone="error" onDismiss={onDismiss} />);
     fireEvent.click(screen.getByRole('button', { name: /Close/i }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the dismiss control on the same row as the message (no stacked chip)', () => {
+    const { container } = render(
+      <Toast message="Saved" tone="success" onDismiss={() => {}} />,
+    );
+    expect(container.querySelector('.od-toast-row .od-toast-dismiss')).not.toBeNull();
+    expect(container.querySelector('.od-toast-dismiss-text')).toBeNull();
   });
 });

@@ -87,6 +87,17 @@ export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs 
   }, [message, details, code, effectiveTtl, onDismiss]);
 
   const iconName = TONE_ICON[tone];
+  const closeLabel = t('common.close');
+  const dismissIconButton = onDismiss && !code ? (
+    <button
+      type="button"
+      className="od-toast-dismiss"
+      onClick={onDismiss}
+      aria-label={closeLabel}
+    >
+      <Icon name="close" size={14} />
+    </button>
+  ) : null;
 
   return (
     <motion.div
@@ -127,75 +138,78 @@ export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs 
             {onDismiss ? (
               <button
                 type="button"
-                className="od-toast-dismiss od-toast-dismiss-inline"
+                className="od-toast-dismiss"
                 onClick={onDismiss}
-                aria-label={t('common.close')}
+                aria-label={closeLabel}
               >
-                ×
+                <Icon name="close" size={14} />
               </button>
             ) : null}
           </div>
         </div>
       ) : (
         <>
-      <div className="od-toast-body">
-        {iconName ? (
-          <span className="od-toast-icon" aria-hidden>
-            <Icon name={iconName} size={14} />
-          </span>
-        ) : null}
-        <div className="od-toast-message">{message}</div>
-      </div>
-      {detailLinks && detailLinks.length > 0 ? (
-        <div className="od-toast-detail-links">
-          {detailLinks.map((link) => (
-            <a
-              key={`${link.href}-${link.label}`}
-              href={link.href}
-              target="_blank"
-              rel="noreferrer noopener"
+          <div className="od-toast-row">
+            <div className="od-toast-body">
+              {iconName ? (
+                <span className="od-toast-icon" aria-hidden>
+                  <Icon name={iconName} size={14} />
+                </span>
+              ) : null}
+              <div className="od-toast-message">{message}</div>
+            </div>
+            {dismissIconButton}
+          </div>
+          {detailLinks && detailLinks.length > 0 ? (
+            <div className="od-toast-detail-links">
+              {detailLinks.map((link) => (
+                <a
+                  key={`${link.href}-${link.label}`}
+                  href={link.href}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </div>
+          ) : null}
+          {details && !(detailLinks && detailLinks.length > 0) ? (
+            <div className="od-toast-details">
+              {detailsHref ? (
+                <a href={detailsHref} target="_blank" rel="noreferrer noopener">
+                  {details}
+                </a>
+              ) : (
+                details
+              )}
+            </div>
+          ) : null}
+          {actionLabel && onAction ? (
+            <button
+              type="button"
+              className="od-toast-action"
+              onClick={() => {
+                onAction();
+                onDismiss?.();
+              }}
             >
-              {link.label}
-            </a>
-          ))}
-        </div>
-      ) : null}
-      {details && !(detailLinks && detailLinks.length > 0) ? (
-        <div className="od-toast-details">
-          {detailsHref ? (
-            <a href={detailsHref} target="_blank" rel="noreferrer noopener">
-              {details}
-            </a>
-          ) : (
-            details
-          )}
-        </div>
-      ) : null}
-      {actionLabel && onAction ? (
-        <button
-          type="button"
-          className="od-toast-action"
-          onClick={() => {
-            onAction();
-            onDismiss?.();
-          }}
-        >
-          {actionLabel}
-        </button>
-      ) : null}
-      {code ? (
-        <pre className="od-toast-code">{code}</pre>
-      ) : null}
-      {onDismiss ? (
-        <button
-          type="button"
-          className="od-toast-dismiss"
-          onClick={onDismiss}
-          aria-label={t('common.close')}
-        >
-          {code ? t('common.close') : '×'}
-        </button>
-      ) : null}
+              {actionLabel}
+            </button>
+          ) : null}
+          {code ? (
+            <pre className="od-toast-code">{code}</pre>
+          ) : null}
+          {code && onDismiss ? (
+            <button
+              type="button"
+              className="od-toast-dismiss od-toast-dismiss-text"
+              onClick={onDismiss}
+              aria-label={closeLabel}
+            >
+              {closeLabel}
+            </button>
+          ) : null}
         </>
       )}
     </motion.div>
