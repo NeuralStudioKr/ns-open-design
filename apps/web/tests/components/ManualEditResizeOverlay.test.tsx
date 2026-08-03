@@ -852,4 +852,42 @@ describe('ManualEditResizeOverlay', () => {
     expect(onMovePreview).not.toHaveBeenCalled();
     expect(onMoveCommit).not.toHaveBeenCalled();
   });
+
+  it('E drag under deck fit-scale grows layout width instead of writing visual rect', () => {
+    // Visual gBCR is half of layout (stage transform scale 0.5). Idle overlay
+    // uses hostPaintRect (visual). First E preview must write layout+Δ, not
+    // collapse width to the transform-shrunk rect (one-char text column).
+    const onResizePreview = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          kind: 'text',
+          tagName: 'p',
+          rect: { x: 40, y: 60, width: 100, height: 50 },
+          layoutWidth: 200,
+          layoutHeight: 100,
+          styles: { ...emptyManualEditStyles(), width: '', height: '' },
+        })}
+        previewScale={1}
+        hostOffset={{ x: 0, y: 0 }}
+        hostPaintRect={{ x: 40, y: 60, width: 100, height: 50 }}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={onResizePreview}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+      />,
+    );
+
+    const handle = getByTestId('manual-edit-resize-handle-e');
+    // host +20 at paint/layout scale 0.5 → content/layout +40 → width 240
+    fireEvent.pointerDown(handle, { pointerId: 21, clientX: 140, clientY: 85, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 21, clientX: 160, clientY: 85, buttons: 1 });
+
+    expect(onResizePreview).toHaveBeenCalled();
+    const preview = onResizePreview.mock.calls.at(-1)?.[0] as { width?: string };
+    expect(preview.width).toBe('240px');
+    // Regression: writing visual start (100+…) would shrink the 200px layout box.
+    expect(Number.parseInt(preview.width!, 10)).toBeGreaterThan(200);
+  });
 });

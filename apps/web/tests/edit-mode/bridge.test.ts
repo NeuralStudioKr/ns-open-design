@@ -738,6 +738,8 @@ describe('manual edit bridge target normalization', () => {
       target?: {
         id?: string;
         rect?: { x: number; y: number; width: number; height: number };
+        layoutWidth?: number;
+        layoutHeight?: number;
         offsetLeft?: number;
         offsetTop?: number;
         cssPosition?: string;
@@ -747,12 +749,14 @@ describe('manual edit bridge target normalization', () => {
       `<main><div data-od-id="card" style="position:absolute;left:12px;top:24px">Box</div></main>${buildManualEditBridge(true)}`,
       { runScripts: 'dangerously', url: 'http://localhost' },
     );
-    const card = dom.window.document.querySelector('[data-od-id="card"]')!;
+    const card = dom.window.document.querySelector('[data-od-id="card"]') as HTMLElement;
     card.getBoundingClientRect = () => ({
-      x: 12, y: 24, width: 320, height: 180,
-      top: 24, right: 332, bottom: 204, left: 12,
+      x: 12, y: 24, width: 160, height: 90,
+      top: 24, right: 172, bottom: 114, left: 12,
       toJSON: () => ({}),
     } as DOMRect);
+    Object.defineProperty(card, 'offsetWidth', { value: 320, configurable: true });
+    Object.defineProperty(card, 'offsetHeight', { value: 180, configurable: true });
     dom.window.parent.postMessage = ((message: unknown) => {
       posts.push(message as typeof posts[number]);
     }) as typeof dom.window.parent.postMessage;
@@ -768,7 +772,9 @@ describe('manual edit bridge target normalization', () => {
       ok: true,
       target: {
         id: 'card',
-        rect: { x: 12, y: 24, width: 320, height: 180 },
+        rect: { x: 12, y: 24, width: 160, height: 90 },
+        layoutWidth: 320,
+        layoutHeight: 180,
         cssPosition: 'absolute',
       },
     });

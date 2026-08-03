@@ -222,6 +222,11 @@ export function buildManualEditBridge(enabled: boolean): string {
     } else {
       fields.text = plainTextFrom(el);
     }
+    // Layout border-box for CSS width/height writes. getBoundingClientRect
+    // follows ancestor transforms (deck-stage fit scale) and must not be
+    // persisted as width — that shrinks the box on first resize preview.
+    var layoutW = Math.round(Math.max(1, el.offsetWidth || 0));
+    var layoutH = Math.round(Math.max(1, el.offsetHeight || 0));
     return {
       id: id,
       kind: kind,
@@ -230,6 +235,8 @@ export function buildManualEditBridge(enabled: boolean): string {
       className: typeof el.className === 'string' ? el.className : '',
       text: (el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 180),
       rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
+      layoutWidth: layoutW,
+      layoutHeight: layoutH,
       fields: fields,
       attributes: attrsFor(el),
       styles: stylesFor(el),

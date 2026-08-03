@@ -98,15 +98,23 @@ export function iframeContentDocumentIfAccessible(
   }
 }
 
+export type ManualEditTargetContentMeasure = {
+  /** Visual border-box (`getBoundingClientRect`) — overlay alignment. */
+  rect: ManualEditRect;
+  /** Layout border-box (`offsetWidth`/`offsetHeight`) — CSS width/height space. */
+  layoutWidth: number;
+  layoutHeight: number;
+};
+
 /**
- * Live border-box of a manual-edit target in iframe content coordinates
- * (`getBoundingClientRect` inside the frame). Used to keep host overlay /
- * target.rect aligned with the painted element after layout settles.
+ * Live geometry of a manual-edit target in iframe coordinates.
+ * `rect` follows transforms (deck fit scale); `layoutWidth`/`layoutHeight`
+ * are the untransformed border-box used when writing CSS width/height.
  */
 export function measureManualEditTargetContentRect(
   frame: HTMLIFrameElement | null,
   id: string,
-): ManualEditRect | null {
+): ManualEditTargetContentMeasure | null {
   const doc = iframeContentDocumentIfAccessible(frame);
   if (!doc || !id) return null;
   const el = findManualEditPreviewTarget(doc, id);
@@ -114,10 +122,14 @@ export function measureManualEditTargetContentRect(
   const rect = el.getBoundingClientRect();
   if (!(rect.width >= 0) || !(rect.height >= 0)) return null;
   return {
-    x: Math.round(rect.x),
-    y: Math.round(rect.y),
-    width: Math.round(rect.width),
-    height: Math.round(rect.height),
+    rect: {
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    },
+    layoutWidth: Math.round(Math.max(1, el.offsetWidth || 0)),
+    layoutHeight: Math.round(Math.max(1, el.offsetHeight || 0)),
   };
 }
 
