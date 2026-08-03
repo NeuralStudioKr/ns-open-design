@@ -49,7 +49,7 @@ describe('DesignsTab select mode', () => {
     cleanup();
   });
 
-  it('only exposes select mode in grid view', () => {
+  it('exposes select mode on the projects grid', () => {
     render(
       <DesignsTab
         projects={[project]}
@@ -63,13 +63,11 @@ describe('DesignsTab select mode', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Select' })).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId('designs-view-kanban'));
-
-    expect(screen.queryByRole('button', { name: 'Select' })).toBeNull();
+    expect(screen.queryByTestId('designs-view-kanban')).toBeNull();
+    expect(screen.queryByTestId('designs-view-grid')).toBeNull();
   });
 
-  it('exits select mode when switching to kanban view', () => {
+  it('keeps select mode available without a view toggle', () => {
     render(
       <DesignsTab
         projects={[project]}
@@ -84,12 +82,7 @@ describe('DesignsTab select mode', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Select' }));
     expect(screen.getByText('0 selected')).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId('designs-view-kanban'));
-    fireEvent.click(screen.getByTestId('designs-view-grid'));
-
-    expect(screen.queryByText('0 selected')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Select' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
   });
 
   it('confirms bulk project deletion and shows success feedback', async () => {

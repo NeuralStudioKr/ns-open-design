@@ -1074,8 +1074,8 @@ test('[P1] home design card deletion supports cancel and confirm flows', async (
   expect(response.status()).toBe(404);
 });
 
-test('[P2] home designs view toggle switches between grid and kanban and persists', async ({ page }) => {
-  const projectName = `Home view toggle flow ${Date.now()}`;
+test('[P2] home designs page uses grid only (status-column view removed)', async ({ page }) => {
+  const projectName = `Home view grid only ${Date.now()}`;
   await page.goto('/');
   await createProject(page, projectName);
   await expectWorkspaceReady(page);
@@ -1086,25 +1086,15 @@ test('[P2] home designs view toggle switches between grid and kanban and persist
   await expect(homeDesignCard(page, projectName)).toBeVisible();
   await expect(page.locator('.design-grid')).toBeVisible();
   await expect(page.locator('.design-kanban-board')).toHaveCount(0);
-  await expect(page.getByTestId('designs-view-grid')).toHaveAttribute('aria-pressed', 'true');
-
-  await page.getByTestId('designs-view-kanban').click();
-  await expect(page.locator('.design-kanban-board')).toBeVisible();
-  await expect(page.locator('.design-grid')).toHaveCount(0);
-  await expect(page.getByTestId('designs-view-kanban')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.design-kanban-card', { hasText: projectName })).toBeVisible();
+  await expect(page.getByTestId('designs-view-kanban')).toHaveCount(0);
+  await expect(page.getByTestId('designs-view-grid')).toHaveCount(0);
 
   await page.reload();
   await expectDesignsView(page);
-  await expect(page.locator('.design-kanban-board')).toBeVisible();
-  await expect(page.getByTestId('designs-view-kanban')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.design-grid')).toBeVisible();
+  await expect(page.locator('.design-kanban-board')).toHaveCount(0);
   const projectsAfterReload = await listProjectsFromApi(page);
   expect(projectsAfterReload.some((project) => project.id === projectId && project.name === projectName)).toBe(true);
-
-  await page.getByTestId('designs-view-grid').click();
-  await expect(page.locator('.design-grid')).toBeVisible();
-  await expect(homeDesignCard(page, projectName)).toBeVisible();
-  await expect(page.getByTestId('designs-view-grid')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('[P1] home designs search filters projects and recovers from no results', async ({ page }) => {
@@ -1288,8 +1278,8 @@ test('[P1] projects select mode supports multi-select delete with cancel and con
   expect(secondResponse.status()).toBe(404);
 });
 
-test('[P1] projects kanban cards open projects and support delete cancel and confirm', async ({ page }) => {
-  const projectName = `Kanban flow ${Date.now()}`;
+test('[P1] projects grid cards open projects and support delete cancel and confirm', async ({ page }) => {
+  const projectName = `Grid flow ${Date.now()}`;
   await page.goto('/');
   await createProject(page, projectName);
   await expectWorkspaceReady(page);
@@ -1298,13 +1288,10 @@ test('[P1] projects kanban cards open projects and support delete cancel and con
   await page.getByRole('button', { name: /back to projects/i }).click();
   await expectDesignsView(page);
 
-  await page.getByTestId('designs-view-kanban').click();
-  await expect(page.locator('.design-kanban-board')).toBeVisible();
+  const designCard = homeDesignCard(page, projectName);
+  await expect(designCard).toBeVisible();
 
-  const kanbanCard = page.locator('.design-kanban-card', { hasText: projectName });
-  await expect(kanbanCard).toBeVisible();
-
-  await kanbanCard.click();
+  await designCard.click();
   await expect(page).toHaveURL(new RegExp(`/projects/${projectId}(/conversations/[^/]+)?$`));
   await expect(page.getByTestId('project-title')).toContainText(projectName);
   const openedProject = await fetchCurrentProject(page);
@@ -1312,20 +1299,24 @@ test('[P1] projects kanban cards open projects and support delete cancel and con
 
   await page.getByRole('button', { name: /back to projects/i }).click();
   await expectDesignsView(page);
-  await expect(page.locator('.design-kanban-board')).toBeVisible();
+  await expect(page.locator('.design-grid')).toBeVisible();
 
-  const kanbanCardAgain = page.locator('.design-kanban-card', { hasText: projectName });
-  await kanbanCardAgain.locator('.design-card-close').click();
+  const designCardAgain = homeDesignCard(page, projectName);
+  await designCardAgain.hover();
+  await designCardAgain.getByRole('button', { name: /more actions/i }).click();
+  await page.getByRole('menuitem', { name: /^delete$/i }).click();
   const confirmDialog = page.locator('.modal-confirm');
   await expect(confirmDialog).toBeVisible();
   await confirmDialog.getByRole('button', { name: /^cancel$/i }).click();
-  await expect(kanbanCardAgain).toBeVisible();
+  await expect(designCardAgain).toBeVisible();
 
-  await kanbanCardAgain.locator('.design-card-close').click();
+  await designCardAgain.hover();
+  await designCardAgain.getByRole('button', { name: /more actions/i }).click();
+  await page.getByRole('menuitem', { name: /^delete$/i }).click();
   const confirmDialog2 = page.locator('.modal-confirm');
   await expect(confirmDialog2).toBeVisible();
   await confirmDialog2.getByRole('button', { name: /^delete/i }).click();
-  await expect(page.locator('.design-kanban-card', { hasText: projectName })).toHaveCount(0);
+  await expect(homeDesignCard(page, projectName)).toHaveCount(0);
 
   const response = await page.request.get(`/api/projects/${projectId}`);
   expect(response.status()).toBe(404);
@@ -1423,7 +1414,7 @@ test('[P2] projects grid overflow menu closes on outside click and Escape', asyn
   await expect(menu).toHaveCount(0);
 });
 
-test('[P2] projects kanban view groups cards into status columns', async ({ page }) => {
+test('[P2] projects grid shows status labels without status-column board', async ({ page }) => {
   const now = Date.now();
   const projects = [
     makeProjectsTabProject({
@@ -1476,23 +1467,16 @@ test('[P2] projects kanban view groups cards into status columns', async ({ page
 
   await page.goto('/projects');
   await expectDesignsView(page);
-  await page.getByTestId('designs-view-kanban').click();
-  await expect(page.locator('.design-kanban-board')).toBeVisible();
+  await expect(page.locator('.design-grid')).toBeVisible();
+  await expect(page.locator('.design-kanban-board')).toHaveCount(0);
+  await expect(page.getByTestId('designs-view-kanban')).toHaveCount(0);
 
-  await expect(page.locator('.design-kanban-card.status-not_started')).toHaveCount(1);
-  await expect(page.locator('.design-kanban-card.status-running')).toHaveCount(1);
-  await expect(page.locator('.design-kanban-card.status-awaiting_input')).toHaveCount(1);
-  await expect(page.locator('.design-kanban-card.status-succeeded')).toHaveCount(1);
-  await expect(page.locator('.design-kanban-card.status-failed')).toHaveCount(1);
-  await expect(page.locator('.design-kanban-empty')).toHaveCount(1);
-
-  await expect(page.locator('.design-kanban-card.status-running')).toContainText('Running Card');
-  await expect(page.locator('.design-kanban-card.status-awaiting_input')).toContainText(
-    'Awaiting Input Card',
-  );
-  await expect(page.locator('.design-kanban-card.status-succeeded')).toContainText(
-    'Succeeded Card',
-  );
+  await expect(page.locator('.design-card', { hasText: 'Running Card' })).toBeVisible();
+  await expect(page.locator('.design-card', { hasText: 'Awaiting Input Card' })).toBeVisible();
+  await expect(page.locator('.design-card', { hasText: 'Succeeded Card' })).toBeVisible();
+  await expect(page.locator('.design-card-status-running')).toHaveCount(1);
+  await expect(page.locator('.design-card-status-awaiting_input')).toHaveCount(1);
+  await expect(page.locator('.design-card-status-succeeded')).toHaveCount(1);
 });
 
 test('[P1] projects page shows live artifact cards, supports search, and opens the live artifact project', async ({ page }) => {
@@ -1883,7 +1867,7 @@ async function expectDesignsView(page: Page) {
     await page.getByTestId('entry-nav-projects').click();
   }
   await expect(page).toHaveURL(/\/projects$/);
-  await expect(page.locator('.design-grid, .design-kanban-board')).toBeVisible();
+  await expect(page.locator('.design-grid')).toBeVisible();
 }
 
 async function openEntrySettingsDialog(page: Page, sectionName?: RegExp | string): Promise<Locator> {

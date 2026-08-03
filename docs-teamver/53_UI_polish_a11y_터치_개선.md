@@ -242,6 +242,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | Manual Edit handle | 설계서 14×14 hit 이미 충족 — 크기 변경 금지 |
 | Drive Import 하드코드 한글 ("폴더" 등) | i18n 트랙 — 본 문서 비범위일 수 있음 |
 | Drive 모달 색·여백 | **완료** — §5.4 (`tools.css`) |
+| DesignsTab status 열(kanban) | **제거** — remount→`/raw` 반복·번쩍임 (00 2026-08-03) |
 
 새 변경 시 **§3 원칙**으로 먼저 기각한 뒤 코드·본 문서 §4–5·[00](./00_구현_내역_누적.md)를 함께 갱신한다.
 

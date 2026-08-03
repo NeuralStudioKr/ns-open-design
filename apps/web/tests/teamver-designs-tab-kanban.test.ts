@@ -8,18 +8,17 @@ function readSource(relativePath: string): string {
   return readFileSync(resolve(webRoot, relativePath), "utf8");
 }
 
-describe("DesignsTab kanban lazy cover thumb", () => {
-  it("wires DesignsTabProjectThumb into kanban cards with defer-until-visible cover loader", () => {
+describe("DesignsTab view modes", () => {
+  it("does not expose status-column (kanban) view — grid only", () => {
     const designsTab = readSource("src/components/DesignsTab.tsx");
-    const drawerCss = readSource("src/styles/workspace/drawer.css");
 
-    expect(designsTab).toContain("design-kanban-card-thumb");
-    expect(designsTab).toContain("design-kanban-card-embed-chips");
+    expect(designsTab).not.toContain("designs-view-kanban");
+    expect(designsTab).not.toContain('setView("kanban")');
+    expect(designsTab).not.toContain("design-kanban-board");
+    expect(designsTab).not.toContain("design-kanban-card-thumb");
+    expect(designsTab).toContain('className="design-grid"');
     expect(designsTab).toContain("TeamverLatestPublishChip");
     expect(designsTab).not.toContain("TeamverProjectPreviewChip");
-    expect(drawerCss).toContain(".design-kanban-card-thumb");
-    expect(drawerCss).toContain(".design-card-embed-chips");
-    expect(drawerCss).toContain(".design-kanban-card-embed-chips");
   });
 
   it("lazy cover loader allows bounded /files fallback for visible cards", () => {

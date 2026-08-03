@@ -69,7 +69,9 @@ function AuthenticatedHtmlCover({
   deckLoadingClassName: string;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
-  const cacheKey = `${mode}:${src}`;
+  // Cache by path without ?v= so mtime bumps / remounts reuse HTML; still fetch
+  // the busted URL when the cache misses.
+  const cacheKey = `${mode}:${src.split(/[?#]/u, 1)[0] ?? src}`;
   const [srcDoc, setSrcDoc] = useState<string | null>(() => htmlCoverCache.get(cacheKey) ?? null);
   const [scale, setScale] = useState(1);
 
@@ -80,9 +82,9 @@ function AuthenticatedHtmlCover({
       setSrcDoc(cached);
       return;
     }
-    setSrcDoc(null);
+    // Keep prior frame while reloading — avoids flash on remount/status churn.
     const abort = new AbortController();
-    loadHtmlCover(src, mode, abort.signal)
+    loadHtmlCover(src, mode, abort.signal, cacheKey)
       .then((next) => {
         if (!cancelled) setSrcDoc(next);
       })
@@ -216,8 +218,9 @@ async function loadHtmlCover(
   src: string,
   mode: "deck" | "page",
   signal?: AbortSignal,
+  cacheKeyOverride?: string,
 ): Promise<string> {
-  const cacheKey = `${mode}:${src}`;
+  const cacheKey = cacheKeyOverride ?? `${mode}:${src.split(/[?#]/u, 1)[0] ?? src}`;
   const cached = htmlCoverCache.get(cacheKey);
   if (cached) return cached;
 
@@ -233,13 +236,12 @@ async function loadHtmlCover(
     });
     if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
     const html = await res.text();
-    const { href: baseHref, scoped } = await resolveCoverBaseHref(src, signal);
+    const { href: baseHref } = await resolveCoverBaseHref(src, signal);
     const parsed =
       mode === "deck" ? deckPreviewSrcDoc(html, baseHref) : pagePreviewSrcDoc(html, baseHref);
-    // Never cache embed covers that fell back to /raw — next mount should retry.
-    if (scoped || !isTeamverEmbedMode()) {
-      htmlCoverCache.set(cacheKey, parsed);
-    }
+    // Always cache thumb HTML. Skipping cache on unscoped embed fallback caused
+    // remount loops (e.g. former status-column churn) to refetch /raw forever.
+    htmlCoverCache.set(cacheKey, parsed);
     return parsed;
   })().finally(() => {
     htmlCoverInflight.delete(cacheKey);

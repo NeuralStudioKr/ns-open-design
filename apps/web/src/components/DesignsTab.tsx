@@ -42,7 +42,6 @@ import {
 import type { PetTaskSummary } from "./pet/PetOverlay";
 
 type SubTab = "recent" | "yours";
-type ViewMode = "grid" | "kanban";
 
 type DesignListItem =
 	| { type: "project"; project: Project; updatedAt: number; createdAt: number }
@@ -54,6 +53,7 @@ type DesignListItem =
 			createdAt: number;
 	  };
 
+/** Legacy localStorage key — status-column (kanban) view was removed; clear on mount. */
 const DESIGNS_VIEW_STORAGE_KEY = "od:designs:view";
 
 export const STATUS_ORDER = [
@@ -193,17 +193,17 @@ export function DesignsTab({
 		confirmLabel: string;
 		onConfirm: () => void;
 	} | null>(null);
-	const [view, setView] = useState<ViewMode>(() => {
-		if (typeof window === "undefined") return "grid";
+	useEffect(() => {
+		// Drop stale kanban preference so returning users land on grid only.
 		try {
-			const storedView = window.localStorage.getItem(DESIGNS_VIEW_STORAGE_KEY);
-			return storedView === "grid" || storedView === "kanban"
-				? storedView
-				: "grid";
+			const stored = window.localStorage.getItem(DESIGNS_VIEW_STORAGE_KEY);
+			if (stored === "kanban" || stored === "grid") {
+				window.localStorage.removeItem(DESIGNS_VIEW_STORAGE_KEY);
+			}
 		} catch {
-			return "grid";
+			/* ignore */
 		}
-	});
+	}, []);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -259,16 +259,6 @@ export function DesignsTab({
 			return changed ? next : curr;
 		});
 	}, [projects]);
-
-	useEffect(() => {
-		try {
-			window.localStorage.setItem(DESIGNS_VIEW_STORAGE_KEY, view);
-		} catch {}
-	}, [view]);
-
-	useEffect(() => {
-		if (view === "kanban" && selectMode) exitSelectMode();
-	}, [selectMode, view]);
 
 	const filtered = useMemo(() => {
 		const q = filter.trim().toLowerCase();
@@ -337,12 +327,11 @@ export function DesignsTab({
 
 	useEffect(() => {
 		if (!teamverEmbed || viewportPrefetchKey.length === 0) return;
-		if (view !== "grid" && view !== "kanban") return;
 		const batch = filteredProjects
 			.slice(0, PROJECT_LIST_VIEWPORT_BATCH)
 			.map((item) => item.project);
 		void prefetchDesignsTabViewport(batch);
-	}, [teamverEmbed, view, viewportPrefetchKey, filteredProjects]);
+	}, [teamverEmbed, viewportPrefetchKey, filteredProjects]);
 
 	const skillName = (id: string | null) =>
 		skills.find((s) => s.id === id)?.name ?? "";
@@ -439,9 +428,7 @@ export function DesignsTab({
 	};
 
 	return (
-		<div
-			className={`tab-panel${view === "kanban" ? " design-kanban-view" : ""}`}
-		>
+		<div className="tab-panel">
 			<div className="tab-panel-toolbar designs-toolbar">
 				<div className="toolbar-left">
 					<div
@@ -500,7 +487,7 @@ export function DesignsTab({
 							}}
 						/>
 					</div>
-					{view === "grid" && selectMode ? (
+					{selectMode ? (
 						<div className="designs-select-bar" role="group">
 							<span className="designs-select-count">
 								{t("designs.selectedCount", { n: selected.size })}
@@ -521,7 +508,7 @@ export function DesignsTab({
 								{t("designs.cancelSelect")}
 							</button>
 						</div>
-					) : view === "grid" ? (
+					) : (
 						<button
 							type="button"
 							className="designs-select-toggle"
@@ -537,47 +524,7 @@ export function DesignsTab({
 							<Icon name="check" size={13} />
 							<span>{t("designs.selectMode")}</span>
 						</button>
-					) : null}
-					<div
-						className="subtab-pill"
-						role="group"
-						aria-label={t("designs.viewToggleAria")}
-					>
-						<button
-							aria-pressed={view === "grid"}
-							className={view === "grid" ? "active" : ""}
-							onClick={() => {
-								trackProjectsListControlsClick(analytics.track, {
-									page_name: "projects",
-									area: "list_controls",
-									element: "grid_view",
-								});
-								setView("grid");
-							}}
-							title={t("designs.viewGrid")}
-							data-testid="designs-view-grid"
-						>
-							<Icon name="grid" size={14} />
-						</button>
-						<button
-							aria-pressed={view === "kanban"}
-							className={view === "kanban" ? "active" : ""}
-							onClick={() => {
-								// Kanban view substitutes for the contract's
-								// list_view element.
-								trackProjectsListControlsClick(analytics.track, {
-									page_name: "projects",
-									area: "list_controls",
-									element: "list_view",
-								});
-								setView("kanban");
-							}}
-							title={t("designs.viewKanban")}
-							data-testid="designs-view-kanban"
-						>
-							<Icon name="kanban" size={14} />
-						</button>
-					</div>
+					)}
 				</div>
 			</div>
 			{filtered.length === 0 ? (
@@ -615,7 +562,7 @@ export function DesignsTab({
 						t("designs.emptyNoMatch")
 					)}
 				</div>
-			) : view === "grid" ? (
+			) : (
 				<div className="design-grid">
 					{filtered.map((item) => {
 						const p = item.project;
@@ -865,110 +812,6 @@ export function DesignsTab({
 						);
 					})}
 				</div>
-			) : (
-				<div className="design-kanban-board">
-					{STATUS_ORDER.map((status) => {
-						const colProjects = filteredProjects.filter(
-							(item) =>
-								normalizeStatus(
-									resolveCardStatus(item.project, coverOverrides[item.project.id] ?? null),
-								) === status,
-						);
-						return (
-							<div key={status} className="design-kanban-col">
-								<div className="design-kanban-header">
-									<span>{statusLabel(status, t)}</span>
-									<span className="design-kanban-count">
-										{colProjects.length}
-									</span>
-								</div>
-								<div className="design-kanban-list">
-									{colProjects.length === 0 ? (
-										<div className="design-kanban-empty">
-											{t("designs.kanbanEmptyColumn")}
-										</div>
-									) : (
-										colProjects.map(({ project: p }) => {
-											const skill = skillName(p.skillId);
-											const ds = dsName(p.designSystemId);
-											const designSystemProject = isDesignSystemProject(p);
-											const openKanbanCard = () => {
-												onOpen(
-													p.id,
-													projectOpenOptionsFromPreviewCover(
-														p,
-														coverOverrides[p.id] ?? null,
-													),
-												);
-											};
-											return (
-												<div
-													key={p.id}
-													className={`design-kanban-card status-${status}${designSystemProject ? " is-design-system-project" : ""}`}
-													role="button"
-													tabIndex={0}
-													onClick={openKanbanCard}
-													onKeyDown={(e) => {
-														if (e.key === "Enter" || e.key === " ") {
-															e.preventDefault();
-															openKanbanCard();
-														}
-													}}
-												>
-													<button
-														className="design-card-close"
-														title={t("designs.deleteTitle")}
-														aria-label={t("designs.deleteAria", {
-															name: p.name,
-														})}
-														onClick={(e) => {
-															e.stopPropagation();
-															handleDeleteProject(p);
-														}}
-													>
-														<Icon name="close" size={12} />
-													</button>
-													<DesignsTabProjectThumb
-														project={p}
-														className="design-kanban-card-thumb"
-														onCoverOverride={(cover) => handleCoverOverride(p.id, cover)}
-													/>
-													<div
-														className="design-kanban-card-name"
-														title={p.name}
-													>
-														{p.name}
-													</div>
-													{designSystemProject ? (
-														<div className="design-card-tag-row">
-															<DesignSystemProjectTag />
-														</div>
-													) : null}
-													<div className="design-kanban-card-meta">
-														{ds ? (
-															<span className="ds">{ds}</span>
-														) : (
-															<span>{t("designs.cardFreeform")}</span>
-														)}
-														{skill ? ` · ${skill}` : ""}
-														{sub === "recent" || sub === "yours"
-															? ` · ${relativeTime(p.updatedAt, t)}`
-															: ""}
-													</div>
-													{teamverEmbed && !designSystemProject ? (
-														<div className="design-kanban-card-embed-chips">
-															<TeamverLatestPublishChip projectId={p.id} />
-														</div>
-													) : null}
-												</div>
-											);
-										})
-									)}
-								</div>
-							</div>
-						);
-					})}
-				</div>
 			)}
 			{hasMoreProjects && onLoadMoreProjects ? (
 				<div className="designs-load-more">
@@ -1064,12 +907,6 @@ export function DesignsTab({
 			</AnimatePresence>
 		</div>
 	);
-}
-
-function normalizeStatus(
-	status: ProjectDisplayStatus,
-): Exclude<ProjectDisplayStatus, "queued"> {
-	return status === "queued" ? "running" : status;
 }
 
 function statusLabel(
