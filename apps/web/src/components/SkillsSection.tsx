@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Button } from '@open-design/components';
 import { useI18n, useT } from '../i18n';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import {
   localizeSkillDescription,
   localizeSkillName,
@@ -844,7 +845,10 @@ function SkillDraftForm({
           onChange={(e) =>
             setDraft((d) => ({ ...d, description: e.target.value }))
           }
-          placeholder="What does this skill do? When should the agent reach for it?"
+          placeholder={embedUiLabel(
+            'What does this skill do? When should the agent reach for it?',
+            '이 스킬은 무엇을 하나요? 에이전트가 언제 써야 하나요?',
+          )}
         />
       </label>
       <label className="library-import-block">

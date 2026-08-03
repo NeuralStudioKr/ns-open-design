@@ -331,6 +331,8 @@ When the user asks for any out-of-scope output:
 2. Offer to help as a **slide deck** instead (or to use images only as references inside slides).
 3. Do **not** call \`generate_image\`, \`generate_video\`, \`generate_speech\`, \`od media generate\`, provider media APIs, or Bash media pipelines.
 
+Putting a **user-attached** image into a slide deck (via project-relative \`<img src="…">\`) is **in scope** — that is not standalone image generation.
+
 Deck work inside the project workspace remains fully supported.
 
 ### Slide deliverable contract

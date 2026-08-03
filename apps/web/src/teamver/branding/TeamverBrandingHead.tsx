@@ -43,6 +43,7 @@ export function TeamverBrandingHead() {
       typeof window !== "undefined" ? window.location.origin : meta.siteUrl;
 
     document.title = title;
+    document.documentElement.style.setProperty("--coming-soon-label", '"출시 예정"');
     ensureLink("icon", faviconUrl);
     ensureLink("shortcut icon", faviconUrl);
     ensureLink("apple-touch-icon", faviconUrl);
@@ -60,6 +61,10 @@ export function TeamverBrandingHead() {
     ensureMeta("twitter:description", meta.description);
     ensureMeta("twitter:image", meta.ogImageUrl);
     ensureMeta("description", meta.description);
+
+    return () => {
+      document.documentElement.style.removeProperty("--coming-soon-label");
+    };
   }, [enabled, title, faviconUrl]);
 
   return null;

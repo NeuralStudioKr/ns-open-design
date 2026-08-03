@@ -420,6 +420,8 @@ const COMMENT_EDIT_PATCH_DIRECTIVE_RE =
   /\n*\[Comment-edit patch contract\][\s\S]*$/i;
 const EXISTING_DECK_EDIT_DIRECTIVE_RE =
   /\n*\[Existing deck edit\][\s\S]*$/i;
+const ATTACHED_IMAGE_EMBED_DIRECTIVE_RE =
+  /\n*\[Attached image embed\][\s\S]*$/i;
 const ATTACHED_PREVIEW_COMMENTS_RE =
   /\n*<attached-preview-comments>[\s\S]*?<\/attached-preview-comments>\s*/gi;
 const ATTACHED_PREVIEW_COMMENTS_BLOCK_RE =
@@ -448,6 +450,76 @@ function parseAttachedPreviewCommentPosition(
   };
 }
 
+/** Rebuild pod members from `member.N: id | label | selector` history lines. */
+function parseAttachedPreviewPodMembers(section: string): PreviewCommentMember[] {
+  const byIndex = new Map<number, PreviewCommentMember>();
+  const re = /^member\.(\d+):\s*([^|]+)\|\s*([^|]*)\|\s*(.*)$/gm;
+  for (const match of section.matchAll(re)) {
+    const index = Number(match[1]);
+    if (!Number.isFinite(index) || index < 1) continue;
+    const elementId = String(match[2] || '').trim();
+    const label = stripAttachedPreviewPlaceholder(match[3]);
+    const selector = stripAttachedPreviewPlaceholder(match[4]);
+    if (!elementId || !selector) continue;
+    const style = parseAttachedPreviewComputedStyle(
+      parseAttachedPreviewCommentField(section, `member.${index}.computedStyle`),
+    );
+    const text = stripAttachedPreviewPlaceholder(
+      parseAttachedPreviewCommentField(section, `member.${index}.text`),
+    );
+    const htmlHint = stripAttachedPreviewPlaceholder(
+      parseAttachedPreviewCommentField(section, `member.${index}.htmlHint`),
+    );
+    byIndex.set(index, {
+      elementId,
+      selector,
+      label,
+      text: trimContextText(text),
+      position: { x: 0, y: 0, width: 0, height: 0 },
+      htmlHint: trimHtmlHint(htmlHint),
+      ...(style ? { style } : {}),
+    });
+  }
+  return [...byIndex.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, member]) => member);
+}
+
+/** Inverse of `formatAnnotationStyle` for history round-trip. */
+function parseAttachedPreviewComputedStyle(
+  raw: string | null | undefined,
+): PreviewAnnotationStyle | undefined {
+  const text = stripAttachedPreviewPlaceholder(raw);
+  if (!text) return undefined;
+  const style: PreviewAnnotationStyle = {};
+  for (const part of text.split(';')) {
+    const idx = part.indexOf(':');
+    if (idx < 0) continue;
+    const key = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).replace(/\s+/g, ' ').trim();
+    if (!(ANNOTATION_STYLE_KEYS as readonly string[]).includes(key) || !value) continue;
+    style[key as keyof PreviewAnnotationStyle] = value.slice(0, 120);
+  }
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
+/** Rebuild `image.N: path | name` lines written by renderCommentAttachmentContext. */
+function parseAttachedPreviewImageAttachments(section: string): PreviewCommentAttachment[] {
+  const byIndex = new Map<number, PreviewCommentAttachment>();
+  const re = /^image\.(\d+):\s*([^|]+)\|\s*(.*)$/gm;
+  for (const match of section.matchAll(re)) {
+    const index = Number(match[1]);
+    if (!Number.isFinite(index) || index < 1) continue;
+    const path = String(match[2] || '').trim();
+    if (!path) continue;
+    const name = String(match[3] || '').trim() || path.split('/').pop() || path;
+    byIndex.set(index, { path, name });
+  }
+  return [...byIndex.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, item]) => item);
+}
+
 /**
  * Rebuild `commentAttachments` from a persisted `<attached-preview-comments>`
  * block when the structured column was dropped by a stale server merge.
@@ -470,8 +542,6 @@ export function parseCommentAttachmentsFromMessageContent(
     const targetKind = parseAttachedPreviewCommentField(section, 'targetKind');
     const selectionKind =
       targetKind === 'visual' ? 'visual' : targetKind === 'pod' ? 'pod' : 'element';
-    const labelRaw = parseAttachedPreviewCommentField(section, 'label');
-    const label = labelRaw && labelRaw !== '(unlabeled)' ? labelRaw : '';
     const slideIndexRaw = parseAttachedPreviewCommentField(section, 'slideIndex');
     const slideIndex = slideIndexRaw != null ? Number(slideIndexRaw) : undefined;
     const attachment: ChatCommentAttachment = {
@@ -479,23 +549,55 @@ export function parseCommentAttachmentsFromMessageContent(
       order,
       filePath: parseAttachedPreviewCommentField(section, 'file') ?? '',
       elementId,
-      selector: parseAttachedPreviewCommentField(section, 'selector') ?? '',
-      label,
+      selector: stripAttachedPreviewPlaceholder(
+        parseAttachedPreviewCommentField(section, 'selector'),
+      ),
+      label: stripAttachedPreviewPlaceholder(
+        parseAttachedPreviewCommentField(section, 'label'),
+      ),
       comment: parseAttachedPreviewCommentField(section, 'comment') ?? '',
-      currentText: parseAttachedPreviewCommentField(section, 'currentText') ?? '',
+      currentText: stripAttachedPreviewPlaceholder(
+        parseAttachedPreviewCommentField(section, 'currentText'),
+      ),
       pagePosition: parseAttachedPreviewCommentPosition(
         parseAttachedPreviewCommentField(section, 'position'),
       ),
-      htmlHint: parseAttachedPreviewCommentField(section, 'htmlHint') ?? '',
+      htmlHint: stripAttachedPreviewPlaceholder(
+        parseAttachedPreviewCommentField(section, 'htmlHint'),
+      ),
+      style: parseAttachedPreviewComputedStyle(
+        parseAttachedPreviewCommentField(section, 'computedStyle'),
+      ),
       selectionKind,
       ...(Number.isFinite(slideIndex) ? { slideIndex } : {}),
       ...(selectionKind === 'visual'
         ? {
-            screenshotPath: parseAttachedPreviewCommentField(section, 'screenshot'),
+            screenshotPath: stripAttachedPreviewPlaceholder(
+              parseAttachedPreviewCommentField(section, 'screenshot'),
+            ) || undefined,
             markKind: parseAttachedPreviewCommentField(section, 'markKind') as PreviewVisualMarkKind | undefined,
-            intent: parseAttachedPreviewCommentField(section, 'intent'),
+            intent: stripAttachedPreviewPlaceholder(
+              parseAttachedPreviewCommentField(section, 'intent'),
+            ) || undefined,
           }
         : {}),
+      ...(selectionKind === 'pod'
+        ? (() => {
+            const podMembers = parseAttachedPreviewPodMembers(section);
+            const memberCountRaw = parseAttachedPreviewCommentField(section, 'memberCount');
+            const memberCount = memberCountRaw != null && Number.isFinite(Number(memberCountRaw))
+              ? Math.max(0, Math.floor(Number(memberCountRaw)))
+              : podMembers.length;
+            return {
+              ...(podMembers.length > 0 ? { podMembers } : {}),
+              ...(memberCount > 0 ? { memberCount } : {}),
+            };
+          })()
+        : {}),
+      ...(() => {
+        const imageAttachments = parseAttachedPreviewImageAttachments(section);
+        return imageAttachments.length > 0 ? { imageAttachments } : {};
+      })(),
     };
     if (hasUsableCommentLocationData(attachment)) out.push(attachment);
   }
@@ -556,7 +658,9 @@ export function stripUserVisibleUserMessageText(content: string | null | undefin
   let text = String(content ?? '');
   text = text.replace(ATTACHED_PREVIEW_COMMENTS_RE, '');
   text = text.replace(COMMENT_EDIT_PATCH_DIRECTIVE_RE, '');
+  // Existing-deck marker is appended after image-embed; strip it first.
   text = text.replace(EXISTING_DECK_EDIT_DIRECTIVE_RE, '');
+  text = text.replace(ATTACHED_IMAGE_EMBED_DIRECTIVE_RE, '');
   return stripUserVisibleQuestionFormProtocolText(text);
 }
 
@@ -825,6 +929,10 @@ export function renderCommentAttachmentContext(
           `member.${memberIndex + 1}: ${member.elementId} | ${member.label || '(unlabeled)'} | ${member.selector}`,
         );
         lines.push(`member.${memberIndex + 1}.scopeLock: ${member.elementId || member.selector || 'selected pod member'}`);
+        const memberText = trimContextText(member.text || '');
+        if (memberText) lines.push(`member.${memberIndex + 1}.text: ${memberText}`);
+        const memberHint = trimHtmlHint(member.htmlHint || '');
+        if (memberHint) lines.push(`member.${memberIndex + 1}.htmlHint: ${memberHint}`);
         const memberStyle = formatAnnotationStyle(member.style);
         if (memberStyle) lines.push(`member.${memberIndex + 1}.computedStyle: ${memberStyle}`);
       });
@@ -851,7 +959,7 @@ function escapeXmlAttr(value: string): string {
 
 /**
  * Screenshot-only visual marks use synthetic `visual-mark-*` ids (or have no
- * DOM selector/htmlHint). Those must not become REQUIRED element-patch
+ * extractable DOM target id). Those must not become REQUIRED element-patch
  * templates — the id is not in the deck HTML and persist cannot merge it.
  * Visual marks that still carry a real picked element target stay eligible.
  */
@@ -868,14 +976,10 @@ export function isScreenshotOnlyVisualCommentTarget(
     || Boolean(String(item.screenshotPath || '').trim())
     || elementId.startsWith('visual-mark-');
   if (!isVisual) return false;
-  // Concrete DOM anchors: selector, htmlHint, or a real (non-synthetic) elementId.
-  // visual-mark-* alone is not an anchor — those stay screenshot-only unless
-  // selector/htmlHint are present.
-  const hasDomAnchor =
-    Boolean(String(item.selector || '').trim())
-    || Boolean(String(item.htmlHint || '').trim())
-    || (Boolean(elementId) && !elementId.startsWith('visual-mark-'));
-  return !hasDomAnchor;
+  // Only extractable target ids count as DOM anchors. A bare class selector
+  // (`h1.hero`) or prose htmlHint must not flip screenshot-only off — that
+  // forces element-patch auto-continue with no concrete template.
+  return concreteElementPatchTargetIds(item).length === 0;
 }
 
 /**
@@ -993,38 +1097,52 @@ export function elementPatchCoerceHintsFromCommentAttachments(
 
 /**
  * Resolve concrete DOM target ids for element-patch templates / coerce hints.
- * Prefer a real elementId; otherwise extract from selector attrs (same attrs
- * as scoped-deck-patch) so visual-mark-* + `[data-od-id=…]` still templates.
+ * Prefer a real elementId; otherwise extract from selector / htmlHint attrs
+ * so visual-mark-* + `[data-od-id=…]` still templates.
  */
 function concreteElementPatchTargetIds(
-  item: Pick<ChatCommentAttachment, 'elementId' | 'selector'>,
+  item: Pick<ChatCommentAttachment, 'elementId' | 'selector' | 'htmlHint'>,
 ): string[] {
   const ids: string[] = [];
-  const elementId = String(item.elementId || '').trim();
-  if (
-    elementId
-    && !isSyntheticVisualMarkTargetId(elementId)
-    && !isUnsafeElementPatchTargetId(elementId)
-  ) {
-    ids.push(elementId);
-  }
-  const selector = String(item.selector || '').trim();
-  if (selector) {
+  const push = (value: string): void => {
+    const trimmed = String(value || '').trim();
+    if (
+      !trimmed
+      || isSyntheticVisualMarkTargetId(trimmed)
+      || isUnsafeElementPatchTargetId(trimmed)
+      || isAttachedPreviewPlaceholder(trimmed)
+    ) {
+      return;
+    }
+    ids.push(trimmed);
+  };
+  push(String(item.elementId || ''));
+  const sources = [String(item.selector || ''), String(item.htmlHint || '')];
+  for (const source of sources) {
+    if (!source.trim()) continue;
     for (const attr of ['data-od-id', 'data-screen-label', 'data-od-source-path', 'data-od-runtime-id']) {
-      const re = new RegExp(`\\[${attr}=(?:"([^"]+)"|'([^']+)'|([^\\]\\s]+))\\]`, 'gi');
-      for (const match of selector.matchAll(re)) {
-        const value = (match[1] || match[2] || match[3] || '').trim();
-        if (
-          value
-          && !isSyntheticVisualMarkTargetId(value)
-          && !isUnsafeElementPatchTargetId(value)
-        ) {
-          ids.push(value);
-        }
+      const re = new RegExp(`\\[${attr}=(?:"([^"]+)"|'([^']+)'|([^\\]\\s>]+))\\]`, 'gi');
+      for (const match of source.matchAll(re)) {
+        push(match[1] || match[2] || match[3] || '');
       }
+    }
+    // Bare htmlHint attributes: data-od-id="hero" without surrounding [].
+    for (const match of source.matchAll(/\bdata-od-id\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi)) {
+      push(match[1] || match[2] || match[3] || '');
     }
   }
   return [...new Set(ids)];
+}
+
+/** Serialize placeholders like `(none)` / `(empty)` must not round-trip as real data. */
+function isAttachedPreviewPlaceholder(value: string | null | undefined): boolean {
+  return /^\((?:none|empty|missing|unlabeled)\)$/i.test(String(value ?? '').trim());
+}
+
+function stripAttachedPreviewPlaceholder(value: string | null | undefined): string {
+  const raw = String(value ?? '').trim();
+  if (!raw || isAttachedPreviewPlaceholder(raw)) return '';
+  return raw;
 }
 
 function isUnsafeElementPatchTargetId(targetId: string): boolean {

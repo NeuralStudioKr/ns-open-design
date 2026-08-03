@@ -21,6 +21,8 @@ export interface ManualEditStyles {
   color: string;
   textAlign: string;
   textDecoration: string;
+  /** Layout wrap control — prompted for "한 줄로/nowrap" comment edits. */
+  whiteSpace: string;
   lineHeight: string;
   letterSpacing: string;
   width: string;
@@ -70,7 +72,19 @@ export interface ManualEditTarget {
   tagName: string;
   className: string;
   text: string;
+  /**
+   * Visual border-box in iframe viewport coordinates (`getBoundingClientRect`).
+   * Includes ancestor CSS transforms (deck-stage fit scale). Overlay chrome
+   * must track this; CSS width/height writes must NOT — use layoutWidth/Height.
+   */
   rect: ManualEditRect;
+  /**
+   * Layout border-box (`offsetWidth` / `offsetHeight`) — the space CSS
+   * `width`/`height` px values are authored in. Under deck `transform: scale`
+   * this is larger than `rect` when fit-scale < 1.
+   */
+  layoutWidth?: number;
+  layoutHeight?: number;
   fields: ManualEditFields;
   attributes: Record<string, string>;
   styles: ManualEditStyles;
@@ -163,7 +177,7 @@ export type ManualEditBridgeMessage =
   | ManualEditRectMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
-  'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'textDecoration', 'lineHeight', 'letterSpacing',
+  'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'textDecoration', 'whiteSpace', 'lineHeight', 'letterSpacing',
   'width', 'height', 'minHeight', 'maxWidth', 'maxHeight', 'position', 'left', 'top', 'right', 'bottom',
   'gap', 'flexDirection', 'justifyContent', 'alignItems',
   'backgroundColor', 'opacity',

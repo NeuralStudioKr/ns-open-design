@@ -27,6 +27,7 @@ import {
   writeProjectTextFileDetailed,
 } from '../providers/registry';
 import { useT } from '../i18n';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatProjectFileSaveResultForUser } from '../teamver/projectUploadErrors';
 import type { Dict } from '../i18n/types';
 import { captureHostIframeSnapshot, captureHostRegionSnapshot } from '../runtime/exports';
@@ -1807,25 +1808,29 @@ export function DesignBrowserPanel({
   ) : null;
 
   return (
-    <section className="design-browser" aria-label="Design Browser">
+    <section className="design-browser" aria-label={embedUiLabel('Design Browser', '디자인 브라우저')}>
       <div className="db-chrome" ref={chromeRef}>
         <div className="db-nav">
           <IconTooltipButton
-            label="Go Back"
+            label={embedUiLabel('Go Back', '뒤로')}
             disabled={!canGoBack}
             onClick={() => navigateHistoryBy(-1)}
           >
             <Icon name="chevron-left" size={16} />
           </IconTooltipButton>
           <IconTooltipButton
-            label="Go Forward"
+            label={embedUiLabel('Go Forward', '앞으로')}
             disabled={!canGoForward}
             onClick={() => navigateHistoryBy(1)}
           >
             <Icon name="chevron-right" size={16} />
           </IconTooltipButton>
           <IconTooltipButton
-            label={isLoading ? 'Loading...' : 'Reload'}
+            label={
+              isLoading
+                ? embedUiLabel('Loading...', '로딩 중...')
+                : embedUiLabel('Reload', '새로고침')
+            }
             className={isLoading ? 'is-spinning' : ''}
             disabled={isBlank}
             onClick={() => reload(false)}
@@ -1865,8 +1870,12 @@ export function DesignBrowserPanel({
                 setSuggestionsOpen(false);
                 window.setTimeout(() => setAddressEditing(false), 80);
               }}
-              placeholder={addressDisplayParts.url ? '' : 'Enter URL or search...'}
-              aria-label="Browser address"
+              placeholder={
+                addressDisplayParts.url
+                  ? ''
+                  : embedUiLabel('Enter URL or search...', 'URL 입력 또는 검색...')
+              }
+              aria-label={embedUiLabel('Browser address', '브라우저 주소')}
               autoComplete="off"
               spellCheck={false}
             />
@@ -2212,7 +2221,7 @@ function BrowserViewportControls({
         <RemixIcon name="arrow-down-s-line" size={13} />
       </IconTooltipButton>
       {open ? (
-        <div className="db-viewport-menu" role="listbox" aria-label="Browser viewport">
+        <div className="db-viewport-menu" role="listbox" aria-label={embedUiLabel('Browser viewport', '브라우저 뷰포트')}>
           {BROWSER_VIEWPORT_PRESETS.map((preset) => (
             <button
               key={preset.id}
@@ -2251,7 +2260,7 @@ function BrowserCommentMarkers({
 }) {
   if (comments.length === 0) return null;
   return (
-    <div className="db-comment-layer" aria-label="Browser comments">
+    <div className="db-comment-layer" aria-label={embedUiLabel('Browser comments', '브라우저 댓글')}>
       {comments.map((comment, index) => {
         const snapshot = liveTargets.get(`comment:${comment.id}`) ?? browserSnapshotFromComment(comment, comment.filePath);
         const bounds = browserOverlayBounds(snapshot);
@@ -2338,13 +2347,13 @@ function BrowserCommentComposer({
   target: BrowserElementSnapshot;
 }) {
   return (
-    <div className="comment-popover db-comment-popover" role="dialog" aria-label="Browser comment">
+    <div className="comment-popover db-comment-popover" role="dialog" aria-label={embedUiLabel('Browser comment', '브라우저 댓글')}>
       <div className="comment-popover-head">
         <div>
-          <strong title={target.label}>{target.label || 'Browser element'}</strong>
+          <strong title={target.label}>{target.label || embedUiLabel('Browser element', '브라우저 요소')}</strong>
           <span title={target.selector}>{target.selector}</span>
         </div>
-        <button type="button" className="ghost" onClick={onClose} aria-label="Close browser comment">
+        <button type="button" className="ghost" onClick={onClose} aria-label={embedUiLabel('Close browser comment', '브라우저 댓글 닫기')}>
           <Icon name="close" size={12} />
         </button>
       </div>
@@ -2354,35 +2363,37 @@ function BrowserCommentComposer({
             <div key={`${note}:${index}`} className="board-note-item">
               <span>{note}</span>
               <button type="button" className="ghost" onClick={() => onRemoveQueuedNote(index)}>
-                Remove
+                {embedUiLabel('Remove', '제거')}
               </button>
             </div>
           ))}
         </div>
       ) : null}
       <textarea
-        aria-label="Browser comment note"
+        aria-label={embedUiLabel('Browser comment note', '브라우저 댓글 메모')}
         value={draft}
         onChange={(event) => onDraft(event.target.value)}
-        placeholder="Describe the change or issue..."
+        placeholder={embedUiLabel('Describe the change or issue...', '변경 사항이나 이슈를 적어주세요...')}
       />
       <div className="comment-popover-actions">
         <div className="comment-popover-actions-start">
           {existing && onDeleteComment ? (
             <button type="button" className="ghost comment-popover-delete" disabled={sending} onClick={() => void onDeleteComment(existing.id)}>
-              Delete
+              {embedUiLabel('Delete', '삭제')}
             </button>
           ) : null}
           <button type="button" className="ghost" disabled={sending || !draft.trim()} onClick={onAddDraft}>
-            Add note
+            {embedUiLabel('Add note', '메모 추가')}
           </button>
         </div>
         <div className="comment-popover-actions-end">
           <button type="button" className="ghost" disabled={sending || (!draft.trim() && !existing)} onClick={onSaveComment}>
-            Save comment
+            {embedUiLabel('Save comment', '댓글 저장')}
           </button>
           <button type="button" className="primary" disabled={sending || sendDisabled || (!draft.trim() && notes.length === 0 && !existing)} onClick={onSendBatch}>
-            {sending ? 'Sending...' : 'Send to chat'}
+            {sending
+              ? embedUiLabel('Sending...', '보내는 중...')
+              : embedUiLabel('Send to chat', '채팅으로 보내기')}
           </button>
         </div>
       </div>
@@ -2420,18 +2431,22 @@ function BrowserInspectPanel({
     <aside className="inspect-panel db-inspect-panel" data-testid="browser-inspect-panel">
       <header className="inspect-panel-head">
         <div className="inspect-panel-title">
-          <strong title={target.label}>{mode === 'edit' ? 'Edit HTML element' : 'Tune browser element'}</strong>
+          <strong title={target.label}>
+            {mode === 'edit'
+              ? embedUiLabel('Edit HTML element', 'HTML 요소 편집')
+              : embedUiLabel('Tune browser element', '브라우저 요소 조정')}
+          </strong>
           <code title={target.selector}>{target.label || target.selector}</code>
         </div>
-        <button type="button" className="ghost" onClick={onClose} aria-label="Close browser tune">
+        <button type="button" className="ghost" onClick={onClose} aria-label={embedUiLabel('Close browser tune', '브라우저 조정 닫기')}>
           <Icon name="close" size={12} />
         </button>
       </header>
 
       <section className="inspect-section">
-        <div className="inspect-section-label">Colors</div>
+        <div className="inspect-section-label">{embedUiLabel('Colors', '색상')}</div>
         <div className="inspect-row">
-          <label htmlFor="db-inspect-color">Text</label>
+          <label htmlFor="db-inspect-color">{embedUiLabel('Text', '텍스트')}</label>
           <input
             id="db-inspect-color"
             type="color"
@@ -2516,7 +2531,7 @@ function BrowserInspectPanel({
         <section className="inspect-section">
           <div className="inspect-section-label">Content</div>
           <textarea
-            aria-label="Element text"
+            aria-label={embedUiLabel('Element text', '요소 텍스트')}
             className="db-inspect-text"
             value={textDraft}
             onChange={(event) => onTextDraft(event.target.value)}
@@ -2525,9 +2540,13 @@ function BrowserInspectPanel({
       ) : null}
 
       <footer className="inspect-panel-footer">
-        <button type="button" className="ghost" onClick={onClose}>Close</button>
+        <button type="button" className="ghost" onClick={onClose}>{embedUiLabel('Close', '닫기')}</button>
         <button type="button" className="primary" disabled={!canSave || saving} onClick={onSave}>
-          {saving ? 'Saving...' : canSave ? 'Save HTML' : 'Live only'}
+          {saving
+            ? embedUiLabel('Saving...', '저장 중...')
+            : canSave
+              ? embedUiLabel('Save HTML', 'HTML 저장')
+              : embedUiLabel('Live only', '라이브만')}
         </button>
       </footer>
     </aside>
@@ -2728,7 +2747,7 @@ function DesignBrowserStart({
         <div
           className="db-reference-chips"
           role="tablist"
-          aria-label="Reference category"
+          aria-label={embedUiLabel('Reference category', '레퍼런스 카테고리')}
         >
           <button
             type="button"
@@ -2780,14 +2799,14 @@ function DesignBrowserStart({
                 setQuery('');
               }
             }}
-            placeholder="Search references…"
-            aria-label="Search references"
+            placeholder={embedUiLabel('Search references…', '레퍼런스 검색…')}
+            aria-label={embedUiLabel('Search references', '레퍼런스 검색')}
           />
           {hasQuery ? (
             <button
               type="button"
               className="db-reference-search-clear"
-              aria-label="Clear search"
+              aria-label={embedUiLabel('Clear search', '검색 지우기')}
               onClick={() => {
                 setQuery('');
                 searchRef.current?.focus();

@@ -405,6 +405,34 @@ describe('buildProxyMessages', () => {
     ]);
   });
 
+  it('dedupes visual comment screenshots against attachments with different path prefixes', () => {
+    const candidates = anthropicImageCandidatesFromMessage({
+      attachments: [
+        { path: 'uploads/visual-mark-1.png', name: 'visual-mark-1.png', kind: 'image', size: 4, order: 0 },
+      ],
+      commentAttachments: [
+        {
+          id: 'visual-mark-1',
+          order: 0,
+          filePath: 'index.html',
+          elementId: 'visual-mark-1',
+          selector: '',
+          label: 'Visual mark',
+          comment: '',
+          currentText: '',
+          pagePosition: { x: 0, y: 0, width: 1, height: 1 },
+          htmlHint: '',
+          selectionKind: 'visual',
+          screenshotPath: 'visual-mark-1.png',
+          markKind: 'rect',
+        },
+      ],
+    });
+    expect(candidates).toEqual([
+      { path: 'uploads/visual-mark-1.png', name: 'visual-mark-1.png', order: 0 },
+    ]);
+  });
+
   it('skips deleted visual-mark screenshots when building proxy messages', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -462,6 +490,7 @@ describe('buildProxyMessages', () => {
     );
 
     // Bounded auth/storage retries before falling back to a text notice.
+    // Retry backoff is ~0+250+800+1600+3200ms — keep the case above that budget.
     expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(messages).toEqual([
       {
@@ -475,7 +504,7 @@ describe('buildProxyMessages', () => {
         ],
       },
     ]);
-  });
+  }, 15_000);
 
   it('rejects non-image bodies that inherit a .png extension', async () => {
     const htmlBytes = new TextEncoder().encode('<html><body>Unauthorized</body></html>');
@@ -767,22 +796,27 @@ describe('buildProxyMessages', () => {
     );
 
     expect(JSON.stringify(messages)).not.toContain('Content preview unavailable');
-    expect(messages).toEqual([
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Describe this image' },
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: 'image/png',
-              data: 'iVBORw==',
-            },
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.role).toBe('user');
+    const content = messages[0]?.content;
+    expect(Array.isArray(content)).toBe(true);
+    const parts = content as Array<Record<string, unknown>>;
+    const textPart = parts.find((part) => part.type === 'text');
+    expect(String(textPart?.text ?? '')).toContain('Describe this image');
+    expect(String(textPart?.text ?? '')).toContain('path: sketch-hero.png');
+    expect(String(textPart?.text ?? '')).toContain('<img src="sketch-hero.png"');
+    expect(parts).toEqual(
+      expect.arrayContaining([
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: 'image/png',
+            data: 'iVBORw==',
           },
-        ],
-      },
-    ]);
+        },
+      ]),
+    );
   });
 });
 

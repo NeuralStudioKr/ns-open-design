@@ -45,6 +45,12 @@ const STATIC_TEAMVER_VITE_ENV: Record<string, string | undefined> = {
     typeof process !== "undefined"
       ? process.env.VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED
       : undefined,
+  VITE_TEAMVER_DRAW_ANNOTATION_ENABLE:
+    typeof process !== "undefined" ? process.env.VITE_TEAMVER_DRAW_ANNOTATION_ENABLE : undefined,
+  VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE:
+    typeof process !== "undefined"
+      ? process.env.VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE
+      : undefined,
 };
 
 export function readTeamverViteEnv(key: string): string | undefined {

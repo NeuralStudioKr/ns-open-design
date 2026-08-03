@@ -39,6 +39,12 @@
   color: var(--text);
   background: var(--bg-subtle);
 }
+.recent-projects__view-all:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  color: var(--text);
+  background: var(--bg-subtle);
+}
 .recent-projects__empty {
   color: var(--text-muted);
   font-size: 13px;
@@ -53,23 +59,53 @@
   gap: 12px;
 }
 .recent-projects__card {
-  appearance: none;
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-panel);
+  text-align: left;
+  overflow: visible;
+  transition: border-color 120ms var(--ease-out), box-shadow 120ms var(--ease-out), transform 120ms var(--ease-out);
+}
+.recent-projects__card-open {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
   cursor: pointer;
   text-align: left;
   overflow: hidden;
-  transition: border-color 120ms var(--ease-out), box-shadow 120ms var(--ease-out), transform 120ms var(--ease-out);
+  color: inherit;
 }
 .recent-projects__card:hover {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
+}
+.recent-projects__card:hover .design-card-more,
+.recent-projects__card:focus-within .design-card-more,
+.recent-projects__card .design-card-more[aria-expanded="true"],
+.recent-projects__card .design-card-more:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .recent-projects__card .design-card-more {
+    opacity: 1;
+  }
+}
+.recent-projects__menu-anchor {
+  /* Keep kebab + open menu above the open-card hit target */
+  z-index: 6;
 }
 .recent-projects__card.is-design-system-project {
   border-color: color-mix(in srgb, var(--red) 62%, var(--border));
@@ -121,17 +157,17 @@
 .recent-projects__thumb-iframe {
   pointer-events: none;
   background: #fff;
-  /* Render the page at a desktop design width, then scale it down to the
+  /* Render the page at the Teamver slide canvas size, then scale it down to the
    * card width via a container query so non-responsive galleries don't
-   * collapse at the narrow card size. 1280x720 keeps the 16/9 thumb ratio,
-   * so the scaled iframe fills the thumb exactly. */
+   * collapse at the narrow card size. 1920×1080 matches ProjectCardHtmlCover
+   * / DECK_PREVIEW_* so the scaled iframe fills the 16/9 thumb exactly. */
   inset: auto;
   top: 0;
   left: 0;
-  width: 1280px;
-  height: 720px;
+  width: 1920px;
+  height: 1080px;
   transform-origin: 0 0;
-  transform: scale(calc(100cqw / 1280px));
+  transform: scale(calc(100cqw / 1920px));
 }
 .recent-projects__deck-frame,
 .recent-projects__deck-iframe,
@@ -144,8 +180,8 @@
   background: #fff;
 }
 .recent-projects__deck-iframe {
-  width: 1280px;
-  height: 720px;
+  width: 1920px;
+  height: 1080px;
   border: 0;
   pointer-events: none;
   transform: scale(var(--recent-deck-scale, 1));

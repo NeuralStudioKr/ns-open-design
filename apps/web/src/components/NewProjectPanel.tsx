@@ -19,6 +19,7 @@ import type {
 
 import { useT } from '../i18n';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import {
   coerceNewProjectTab,
   visibleNewProjectTabs,
@@ -804,7 +805,7 @@ export function NewProjectPanel({
           type="button"
           className={`newproj-tabs-arrow left${tabScroll.left ? '' : ' hidden'}`}
           onClick={() => scrollTabs(-1)}
-          aria-label="Scroll project types left"
+          aria-label={embedUiLabel('Scroll project types left', '프로젝트 유형 왼쪽으로')}
           tabIndex={tabScroll.left ? 0 : -1}
         >
           <Icon name="chevron-left" size={16} strokeWidth={2} />
@@ -837,7 +838,7 @@ export function NewProjectPanel({
           type="button"
           className={`newproj-tabs-arrow right${tabScroll.right ? '' : ' hidden'}`}
           onClick={() => scrollTabs(1)}
-          aria-label="Scroll project types right"
+          aria-label={embedUiLabel('Scroll project types right', '프로젝트 유형 오른쪽으로')}
           tabIndex={tabScroll.right ? 0 : -1}
         >
           <Icon name="chevron-right" size={16} strokeWidth={2} />
@@ -850,7 +851,7 @@ export function NewProjectPanel({
             // "Beta" is an internationally adopted brand-style status marker;
             // intentionally not run through t() (consistent with short product
             // status pills that read the same across our supported locales).
-            <span className="newproj-title-badge" aria-label="Beta feature">Beta</span>
+            <span className="newproj-title-badge" aria-label={embedUiLabel('Beta feature', '베타 기능')}>Beta</span>
           ) : null}
         </h3>
 
@@ -1221,7 +1222,7 @@ function PlatformPicker({
           className="ds-picker-popover"
           id={listboxId}
           role="listbox"
-          aria-label="Target platforms"
+          aria-label={t('newproj.targetPlatformsLabel')}
           aria-multiselectable="true"
         >
           <div className="ds-picker-list">

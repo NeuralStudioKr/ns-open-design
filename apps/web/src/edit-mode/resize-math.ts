@@ -14,6 +14,42 @@ export const RESIZE_HANDLES: ResizeHandle[] = [
   'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw',
 ];
 
+/**
+ * Host-space edge/corner band that must prefer resize over body-move.
+ * When the overlay drifts from the painted element, users aim at the visual
+ * edge and hit the movable body instead of the 14px handle — this slop makes
+ * the whole border act as resize.
+ */
+export const MANUAL_EDIT_RESIZE_EDGE_SLOP_PX = 14;
+
+/**
+ * Map a pointer position inside the host overlay box to a resize handle.
+ * Returns null for the interior (move zone).
+ */
+export function resizeHandleFromHostPoint(
+  localX: number,
+  localY: number,
+  width: number,
+  height: number,
+  slopPx: number = MANUAL_EDIT_RESIZE_EDGE_SLOP_PX,
+): ResizeHandle | null {
+  if (!(width > 0) || !(height > 0)) return null;
+  const slop = Math.max(4, Math.min(slopPx, width / 2, height / 2));
+  const onW = localX <= slop;
+  const onE = localX >= width - slop;
+  const onN = localY <= slop;
+  const onS = localY >= height - slop;
+  if (onN && onW) return 'nw';
+  if (onN && onE) return 'ne';
+  if (onS && onW) return 'sw';
+  if (onS && onE) return 'se';
+  if (onN) return 'n';
+  if (onS) return 's';
+  if (onW) return 'w';
+  if (onE) return 'e';
+  return null;
+}
+
 export type ResizeSessionStart = {
   startRect: ManualEditRect;
   startWidthPx: number;
@@ -134,13 +170,20 @@ export function computeResize(input: ResizeMathInput): ResizeMathResult {
   let y = startRect.y;
 
   if (anchorPosition) {
-    // Keep the opposite edge fixed: growing/shrinking from W/N moves left/top.
     // left/top are containing-block relative; x/y stay viewport (startRect + Δ).
     if (signW < 0 && startLeftPx != null) {
+      // W: move left so the opposite (E) edge stays fixed.
       leftPx = Math.round(startLeftPx + (startWidthPx - widthPx));
+    } else if (signW > 0 && startLeftPx != null) {
+      // E: pin left so clearing stylesheet `right` cannot reflow/shrink the box.
+      leftPx = startLeftPx;
     }
     if (signH < 0 && startTopPx != null) {
+      // N: move top so the opposite (S) edge stays fixed.
       topPx = Math.round(startTopPx + (startHeightPx - heightPx));
+    } else if (signH > 0 && startTopPx != null) {
+      // S: pin top so clearing stylesheet `bottom` cannot reflow/shrink the box.
+      topPx = startTopPx;
     }
   }
   const viewport = resizeViewportOrigin(startRect, startLeftPx, startTopPx, leftPx, topPx);
@@ -193,13 +236,36 @@ export function startSizeFromTarget(target: ManualEditTarget): {
   widthPx: number;
   heightPx: number;
 } {
-  const fromRectW = Math.max(1, target.rect.width);
-  const fromRectH = Math.max(1, target.rect.height);
-  const explicitW = parseExplicitPx(target.styles.width);
-  const explicitH = parseExplicitPx(target.styles.height);
+  // CSS width/height are layout px. Prefer offsetWidth/Height (layoutWidth) over
+  // getBoundingClientRect (`rect`): deck-stage `transform: scale` shrinks rect
+  // while leaving layout large — writing rect as width collapsed text boxes
+  // (grow drag → one-char-wide column). Fall back to rect when layout is absent
+  // (older bridge messages / tests). Never prefer a smaller authored style px
+  // (min-width / flex used size).
+  const widthPx = Math.round(Math.max(
+    1,
+    target.layoutWidth && target.layoutWidth >= 1 ? target.layoutWidth : target.rect.width,
+  ));
+  const heightPx = Math.round(Math.max(
+    1,
+    target.layoutHeight && target.layoutHeight >= 1 ? target.layoutHeight : target.rect.height,
+  ));
+  return { widthPx, heightPx };
+}
+
+/**
+ * Content box fed to freezeGestureHostGeom for resize: visual x/y (overlay
+ * origin) + layout w/h (CSS write / pointer→layout scale). Mixing layout size
+ * into width while keeping viewport x/y lets hostScale = paint/layout map both
+ * E-edge growth and overlay width correctly under deck fit-scale.
+ */
+export function resizeFreezeContentRect(target: ManualEditTarget): ManualEditRect {
+  const size = startSizeFromTarget(target);
   return {
-    widthPx: Math.round(explicitW ?? fromRectW),
-    heightPx: Math.round(explicitH ?? fromRectH),
+    x: target.rect.x,
+    y: target.rect.y,
+    width: size.widthPx,
+    height: size.heightPx,
   };
 }
 
@@ -242,8 +308,9 @@ export function resizeResultToStyles(
   }
   if (result.leftPx != null) styles.left = `${result.leftPx}px`;
   if (result.topPx != null) styles.top = `${result.topPx}px`;
-  // Match move: clear opposing edges so right:0 / bottom:0 cannot pin the box
-  // after an anchored W/N (or corner) resize.
+  // Unpin opposing edges whenever the axis is resized. Absolute E/S paths pin
+  // left/top above so clearing right/bottom grows the free edge instead of
+  // letting stylesheet right:0 / bottom:0 eat the width increase.
   if (result.leftPx != null || result.touchedWidth) styles.right = '';
   if (result.topPx != null || result.touchedHeight) styles.bottom = '';
   return styles;
@@ -309,10 +376,14 @@ export function parseManualEditStylePx(value: string | undefined, fallbackPx: nu
   return Math.round(fallbackPx);
 }
 
-/** Staging-compatible session builder (no CB anchor — use startAnchorFromTarget for W/N). */
+/**
+ * Staging-compatible session builder (no CB anchor — use startAnchorFromTarget for W/N).
+ * Start size is the painted/layout rect, same invariant as `startSizeFromTarget`
+ * (do not prefer a smaller authored style px).
+ */
 export function buildResizeSessionStart(
   targetRect: { x: number; y: number; width: number; height: number },
-  styles: Pick<ManualEditStyles, 'width' | 'height'>,
+  _styles: Pick<ManualEditStyles, 'width' | 'height'>,
   handle: ResizeHandle,
   kind: ManualEditKind,
   shiftKey: boolean,
@@ -321,8 +392,8 @@ export function buildResizeSessionStart(
   startLeftPx?: number | null;
   startTopPx?: number | null;
 } {
-  const startWidthPx = parseManualEditStylePx(styles.width, targetRect.width);
-  const startHeightPx = parseManualEditStylePx(styles.height, targetRect.height);
+  const startWidthPx = Math.round(Math.max(1, targetRect.width));
+  const startHeightPx = Math.round(Math.max(1, targetRect.height));
   const safeHeight = startHeightPx > 0 ? startHeightPx : MANUAL_EDIT_RESIZE_MIN_PX;
   return {
     startRect: targetRect,

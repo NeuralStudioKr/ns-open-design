@@ -4,7 +4,7 @@
 .home-view {
   display: flex;
   flex-direction: column;
-  gap: 36px;
+  gap: 32px;
 }
 /* The hero block self-constrains to a readable column even though
    its parent now stretches to ~1440px so the plugin gallery can
@@ -490,9 +490,10 @@
 }
 .home-hero__active-clear {
   appearance: none;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+  /* Match chip min-height (24px); larger boxes overflow the pill. */
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -508,10 +509,15 @@
 .home-hero__active-clear svg {
   display: block;
 }
-.home-hero__active-clear:hover {
+.home-hero__active-clear:hover,
+.home-hero__active-clear:focus-visible {
   opacity: 1;
   background: var(--red-bg);
   color: var(--red);
+}
+.home-hero__active-clear:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 1px;
 }
 .home-hero__prompt-surface {
   display: flex;
@@ -1009,6 +1015,7 @@
 .home-hero__plus-item:focus-visible {
   outline: none;
   background: var(--bg-subtle);
+  box-shadow: 0 0 0 3px var(--accent-tint);
 }
 .home-hero__plus-item-icon {
   flex: 0 0 auto;
@@ -1171,6 +1178,13 @@
   width: 12px;
   opacity: 1;
   transform: translateX(0) scale(1);
+}
+@media (hover: none) {
+  .home-hero__active-type-chip-close {
+    width: 12px;
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
 }
 .home-hero__footer-options {
   display: contents;

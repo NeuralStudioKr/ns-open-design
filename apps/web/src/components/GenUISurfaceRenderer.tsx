@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { GenUISurfaceSpec } from '@open-design/contracts';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 export interface PendingSurface {
   // The surface descriptor as declared in `od.genui.surfaces[]`.
@@ -237,7 +238,7 @@ export function GenUISurfaceRenderer(props: Props) {
             })}
             data-testid="genui-authorize"
           >
-            Authorize
+            {embedUiLabel('Authorize', '승인')}
           </button>
           {props.onSkip ? (
             <button
@@ -246,7 +247,7 @@ export function GenUISurfaceRenderer(props: Props) {
               disabled={submitting}
               onClick={props.onSkip}
             >
-              Skip
+              {embedUiLabel('Skip', '건너뛰기')}
             </button>
           ) : null}
         </div>
@@ -383,7 +384,7 @@ function DiffReviewChoiceSurface(props: {
           onClick={() => void accept()}
           data-testid="genui-diff-accept"
         >
-          Accept all
+          {embedUiLabel('Accept all', '모두 수락')}
         </button>
         <button
           type="button"
@@ -392,7 +393,7 @@ function DiffReviewChoiceSurface(props: {
           onClick={() => void reject()}
           data-testid="genui-diff-reject"
         >
-          Reject all
+          {embedUiLabel('Reject all', '모두 거절')}
         </button>
         <button
           type="button"
@@ -401,7 +402,7 @@ function DiffReviewChoiceSurface(props: {
           onClick={() => setMode('partial')}
           data-testid="genui-diff-partial"
         >
-          Partial…
+          {embedUiLabel('Partial…', '일부…')}
         </button>
         {props.onSkip ? (
           <button
@@ -410,7 +411,7 @@ function DiffReviewChoiceSurface(props: {
             disabled={props.disabled}
             onClick={props.onSkip}
           >
-            Skip
+            {embedUiLabel('Skip', '건너뛰기')}
           </button>
         ) : null}
       </div>
@@ -452,13 +453,16 @@ function DiffReviewChoiceSurface(props: {
             onClick={() => void submitPartial().catch(() => { /* surfaced via parent error */ })}
             data-testid="genui-diff-partial-submit"
           >
-            Submit partial decision
+            {embedUiLabel('Submit partial decision', '일부 결정 제출')}
           </button>
         </div>
       ) : null}
       <textarea
         className="genui-surface__textarea genui-surface__reason"
-        placeholder="Notes for the patch author (optional)"
+        placeholder={embedUiLabel(
+          'Notes for the patch author (optional)',
+          '패치 작성자용 메모 (선택)',
+        )}
         rows={2}
         value={reason}
         onChange={(e) => setReason(e.target.value)}
@@ -508,7 +512,7 @@ function GenericChoiceSurface(props: {
             disabled={props.disabled}
             onClick={props.onSkip}
           >
-            Skip
+            {embedUiLabel('Skip', '건너뛰기')}
           </button>
         ) : null}
       </div>
@@ -761,7 +765,7 @@ function JsonSchemaFormSurface(props: {
             disabled={props.disabled}
             onClick={props.onSkip}
           >
-            Skip
+            {embedUiLabel('Skip', '건너뛰기')}
           </button>
         ) : null}
       </div>
@@ -948,7 +952,7 @@ function SandboxedComponentSurface({
             disabled={busy}
             onClick={onSkip}
           >
-            Skip
+            {embedUiLabel('Skip', '건너뛰기')}
           </button>
         </div>
       ) : null}

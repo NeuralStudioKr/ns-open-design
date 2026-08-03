@@ -290,8 +290,8 @@
   letter-spacing: 0;
 }
 .workspace-tab__close {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   margin-right: 4px;
   padding: 0;
   border: 0;
@@ -305,6 +305,11 @@
   flex: 0 0 auto;
   cursor: pointer;
 }
+.workspace-tab__close:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 .workspace-tab:hover .workspace-tab__close,
 .workspace-tab.is-active .workspace-tab__close {
   opacity: 1;
@@ -312,6 +317,9 @@
 .workspace-tab__close:hover {
   color: var(--text);
   background: var(--bg-subtle);
+}
+@media (hover: none) {
+  .workspace-tab__close { opacity: 1; }
 }
 .workspace-tabs-actions {
   position: relative;
@@ -465,8 +473,8 @@
   font-size: 11px;
 }
 .workspace-tabs-list__close {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);

@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useAnalytics } from '../../analytics/provider';
 import { trackSettingsPetsClick } from '../../analytics/events';
 import { useT } from '../../i18n';
+import { embedUiLabel } from '../../teamver/embedUiLabels';
 import { Icon } from '../Icon';
 import type { AppConfig, CodexPetSummary, PetConfig, PetCustom } from '../../types';
 import { DEFAULT_PET } from '../../state/config';
@@ -912,7 +913,7 @@ export function PetSettings({ cfg, setCfg }: Props) {
               type="text"
               maxLength={32}
               value={pet.custom.name}
-              placeholder="Buddy"
+              placeholder={embedUiLabel('Buddy', '버디')}
               onChange={(e) =>
                 update({ custom: { ...pet.custom, name: e.target.value } })
               }

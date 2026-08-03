@@ -294,7 +294,9 @@ export function DesignSystemPicker({
                   onKeyDown={(event) => selectDesignSystemOnKeyDown(event, null)}
                 >
                   <div className="project-ds-picker-option-head">
-                    <span className="project-ds-picker-option-title">{t('designSystemPicker.noneTitle')}</span>
+                    <span className="project-ds-picker-option-title" title={t('designSystemPicker.noneTitle')}>
+                      {t('designSystemPicker.noneTitle')}
+                    </span>
                     {selectedId == null ? (
                       <span
                         className="project-ds-picker-option-check"
@@ -330,7 +332,9 @@ export function DesignSystemPicker({
                       data-testid={`project-ds-picker-option-${d.id}`}
                     >
                       <div className="project-ds-picker-option-head">
-                        <span className="project-ds-picker-option-title">{d.title}</span>
+                        <span className="project-ds-picker-option-title" title={d.title}>
+                          {d.title}
+                        </span>
                         {active ? (
                           <span
                             className="project-ds-picker-option-check"

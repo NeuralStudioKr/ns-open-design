@@ -26,7 +26,7 @@ describe("chat-message-render", () => {
     expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(true);
   });
 
-  it("omits trailing empty assistant shells", () => {
+  it("omits succeeded empty shells when called without turn context", () => {
     const shell: ChatMessage = {
       id: "a-shell",
       role: "assistant",
@@ -35,8 +35,28 @@ describe("chat-message-render", () => {
       endedAt: 2,
       events: [{ kind: "status", label: "requesting" }],
     };
+    // Standalone omit (no messages/index) cannot prove turn-anchor status.
     expect(shouldOmitMessageFromChatRender(shell, embedCtx)).toBe(true);
     expect(hasEmbedVisibleAssistantBody(shell)).toBe(true);
+  });
+
+  it("keeps a turn-anchored succeeded empty shell for completion lead", () => {
+    const user: ChatMessage = { id: "u1", role: "user", content: "make deck", createdAt: 1 };
+    const shell: ChatMessage = {
+      id: "a-shell",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 2,
+      createdAt: 2,
+      events: [{ kind: "status", label: "requesting" }],
+    };
+    expect(
+      shouldOmitMessageFromChatRender(shell, embedCtx, {
+        messages: [user, shell],
+        messageIndex: 1,
+      }),
+    ).toBe(false);
   });
 
   it("keeps a live streaming empty shell", () => {

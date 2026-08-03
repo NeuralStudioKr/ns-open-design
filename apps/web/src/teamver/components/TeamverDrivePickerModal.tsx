@@ -348,6 +348,7 @@ export function TeamverDrivePickerModal({
               type="button"
               role="option"
               aria-selected={selected}
+              title={target.description ? `${target.label} — ${target.description}` : target.label}
               className={`teamver-drive-import-card${selected ? " is-selected" : ""}`}
               data-testid={`${testIdPrefix}-${target.id}`}
               onClick={() => selectTarget(target)}
@@ -1109,6 +1110,7 @@ export function TeamverDrivePickerModal({
                     type="button"
                     role="option"
                     aria-selected={selected}
+                    title={searching && target.description ? `${target.label} — ${target.description}` : target.label}
                     className={`teamver-drive-picker-row${selected ? " is-selected" : ""}`}
                     data-testid={`teamver-drive-picker-target-${target.id}`}
                     onClick={() => {

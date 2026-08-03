@@ -250,7 +250,9 @@ export function TeamverDriveTargetSelect({
                   {target.label}
                 </span>
                 {target.description ? (
-                  <span className="teamver-drive-select__option-desc">{target.description}</span>
+                  <span className="teamver-drive-select__option-desc" title={target.description}>
+                    {target.description}
+                  </span>
                 ) : null}
               </li>
             );

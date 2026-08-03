@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { useI18n } from '../i18n';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { localizePluginDescription, localizePluginTitle } from './plugins-home/localization';
 import type {
   CreateRoutineRequest,
@@ -612,10 +613,10 @@ export function NewAutomationModal({
             ref={titleRef}
             type="text"
             className="automation-modal__title-input"
-            placeholder="Automation title"
+            placeholder={embedUiLabel('Automation title', '자동화 제목')}
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            aria-label="Automation title"
+            aria-label={embedUiLabel('Automation title', '자동화 제목')}
             data-testid="automation-modal-title"
           />
           <div className="automation-modal__head-actions">
@@ -641,7 +642,8 @@ export function NewAutomationModal({
               type="button"
               className="automation-modal__close"
               onClick={onClose}
-              aria-label="Close (Esc)"
+              aria-label={`${t('common.close')} (Esc)`}
+              title={`${t('common.close')} (Esc)`}
             >
               <Icon name="close" size={14} />
             </button>
@@ -653,7 +655,10 @@ export function NewAutomationModal({
             <textarea
               ref={promptRef}
               className="automation-modal__prompt"
-              placeholder="Ask the agent what to run on this schedule, or @mention context..."
+              placeholder={embedUiLabel(
+                'Ask the agent what to run on this schedule, or @mention context...',
+                '이 일정에 실행할 작업을 적거나 @멘션으로 컨텍스트를 추가하세요...',
+              )}
               value={form.prompt}
               onChange={(e) => updatePrompt(e.target.value, e.target.selectionStart ?? e.target.value.length)}
               onClick={refreshMentionFromPrompt}
@@ -672,11 +677,11 @@ export function NewAutomationModal({
               id="automation-context-picker"
               className="automation-mention-popover"
               role="listbox"
-              aria-label="Automation context results"
+              aria-label={embedUiLabel('Automation context results', '자동화 컨텍스트 결과')}
               data-testid="automation-mention-popover"
               onMouseDown={(e) => e.preventDefault()}
             >
-              <div className="automation-mention-tabs" role="tablist" aria-label="Context type">
+              <div className="automation-mention-tabs" role="tablist" aria-label={embedUiLabel('Context type', '컨텍스트 유형')}>
                 {[
                   ['all', 'All'],
                   ['skills', 'Skills'],
@@ -766,7 +771,7 @@ export function NewAutomationModal({
           ) : null}
 
           {selectedContextItems.length > 0 ? (
-            <div className="automation-selected-context" aria-label="Selected automation context">
+            <div className="automation-selected-context" aria-label={embedUiLabel('Selected automation context', '선택한 자동화 컨텍스트')}>
               {selectedContextItems.map((item) => (
                 <button
                   key={`${item.kind}-${item.id}`}
@@ -1100,7 +1105,7 @@ function SchedulePopover({
       ) : (
         <>
           {form.kind === 'weekly' ? (
-            <div className="automation-popover__weekdays" aria-label="Weekday">
+            <div className="automation-popover__weekdays" aria-label={embedUiLabel('Weekday', '요일')}>
               {WEEKDAY_LABELS.map((d) => (
                 <button
                   key={d.value}

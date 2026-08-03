@@ -1,6 +1,6 @@
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
-import type { Express, Response } from 'express';
+import type { Express, Request, Response } from 'express';
 import {
   defaultScenarioPluginIdForProjectMetadata,
   type ChatSessionMode,
@@ -38,6 +38,10 @@ import {
 } from './project-locations.js';
 import { auditDesignSystemPackage } from './tools-connectors-cli.js';
 import { createFileRevisionService, isFileRevisionSource } from './file-revisions/service.js';
+import {
+  FileRevisionLockError,
+  isFileRevisionSequenceConflict,
+} from './file-revisions/postgres-lock.js';
 import {
   isTeamverDesignManaged,
   readTeamverIdentityFromRequest,
@@ -2431,7 +2435,9 @@ export function registerProjectArtifactRoutes(app: Express, ctx: RegisterProject
 
 }
 
-export interface RegisterProjectFileRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes'> {}
+export interface RegisterProjectFileRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes'> {
+  projectStorageHooks?: ProjectStorageAccessHooks | null;
+}
 
 export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFileRoutesDeps) {
   const { db } = ctx;
@@ -2451,6 +2457,14 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     readProjectFile,
     resolveProjectDir,
   });
+  async function ensureRevisionTargetFileMaterialized(
+    req: Request,
+    projectId: string,
+    fileName: string,
+  ): Promise<void> {
+    if (!ctx.projectStorageHooks) return;
+    await ctx.projectStorageHooks.ensureFileAvailable(req, projectId, fileName);
+  }
   const projectPreviewIframeSandbox = 'allow-scripts allow-forms';
   const projectPreviewCsp = [
     `sandbox ${projectPreviewIframeSandbox}`,
@@ -2571,7 +2585,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
   function previewFilePathForProject(project: any, queryFile: unknown): string {
     if (typeof queryFile === 'string' && queryFile.trim().length > 0) {
-      return queryFile;
+      // FE cover URLs append `?v=mtime`; never treat that as part of the path.
+      const cleaned = queryFile.trim().split(/[?#]/u, 1)[0]?.trim() ?? '';
+      if (cleaned.length > 0) return cleaned;
     }
     const entryFile = project?.metadata?.entryFile;
     return typeof entryFile === 'string' && entryFile.length > 0 ? entryFile : 'index.html';
@@ -2996,7 +3012,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
-      const body = fileRevisionService.listRevisions(projectId, fileName);
+      const body = await fileRevisionService.listRevisions(projectId, fileName);
       res.json(body);
     } catch (err: any) {
       sendApiError(res, 400, 'BAD_REQUEST', String(err));
@@ -3055,6 +3071,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       }
       res.json(result);
     } catch (err: any) {
+      if (err instanceof FileRevisionLockError) {
+        return sendApiError(res, 409, err.code, err.message);
+      }
       const status = err && err.code === 'ENOENT' ? 404 : 400;
       sendApiError(
         res,
@@ -3092,27 +3111,32 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       if (typeof label !== 'string' || !label.trim()) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'label required');
       }
-      if (artifactManifest !== undefined && artifactManifest !== null) {
-        const validated = validateArtifactManifestInput(artifactManifest, fileName);
+      // Style/manual-edit clients often echo `file.artifactManifest`. A stale
+      // or partial manifest (empty title, stripped exports) must not block the
+      // content revision — drop it and leave the on-disk sidecar unchanged.
+      let pushManifest = artifactManifest ?? null;
+      if (pushManifest !== undefined && pushManifest !== null) {
+        const validated = validateArtifactManifestInput(pushManifest, fileName);
         if (!validated.ok) {
-          return sendApiError(
-            res,
-            400,
-            'BAD_REQUEST',
-            `invalid artifactManifest: ${validated.error}`,
+          console.warn(
+            `[file-revisions] ignoring invalid artifactManifest for ${projectId}/${fileName}: ${validated.error}`,
           );
+          pushManifest = null;
+        } else {
+          pushManifest = validated.value;
         }
       }
       const truncate = truncateAfterSequence === undefined || truncateAfterSequence === null
         ? undefined
         : Number(truncateAfterSequence);
+      await ensureRevisionTargetFileMaterialized(req, projectId, fileName);
       const result = await fileRevisionService.pushRevision({
         projectId,
         fileName,
         content,
         source,
         label: label.trim(),
-        artifactManifest: artifactManifest ?? null,
+        artifactManifest: pushManifest,
         ...(typeof conversationId === 'string' ? { conversationId } : {}),
         ...(typeof assistantMessageId === 'string' ? { assistantMessageId } : {}),
         ...(typeof truncate === 'number' && Number.isFinite(truncate)
@@ -3122,11 +3146,20 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       });
       res.json(result);
     } catch (err: any) {
+      if (err instanceof FileRevisionLockError) {
+        return sendApiError(res, 409, err.code, err.message);
+      }
+      if (isFileRevisionSequenceConflict(err)) {
+        return sendApiError(res, 409, 'CONFLICT', 'revision sequence conflict; retry push');
+      }
       if (err instanceof ArtifactRegressionError) {
         return sendApiError(res, 422, 'ARTIFACT_REGRESSION', err.message);
       }
       if (err instanceof ArtifactPublicationBlockedError) {
         return sendApiError(res, 422, 'ARTIFACT_PUBLICATION_BLOCKED', err.message);
+      }
+      if (err && err.code === 'ENOENT') {
+        return sendApiError(res, 404, 'FILE_NOT_FOUND', String(err));
       }
       sendApiError(res, 400, 'BAD_REQUEST', String(err));
     }

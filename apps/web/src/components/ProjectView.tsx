@@ -837,6 +837,31 @@ interface QueuedChatSend {
   createdAt: number;
 }
 
+function queuedChatSendFingerprint(
+  prompt: string,
+  attachments: ChatAttachment[],
+  commentAttachments: ChatCommentAttachment[],
+): string {
+  const attachmentPaths = attachments.map((attachment) => attachment.path).sort().join('\n');
+  const visualSemantic = commentAttachments
+    .map((attachment) => {
+      const screenshotPath = String(attachment.screenshotPath || '').trim();
+      const slideIndex =
+        typeof attachment.slideIndex === 'number' && Number.isFinite(attachment.slideIndex)
+          ? String(attachment.slideIndex)
+          : '';
+      const comment = String(attachment.comment || '').trim();
+      const markKind = String(attachment.markKind || '').trim();
+      const elementBase = String(attachment.elementId || '')
+        .trim()
+        .replace(/-visual-[a-zA-Z0-9_-]+$/, '');
+      return `${screenshotPath}\0${slideIndex}\0${comment}\0${markKind}\0${elementBase}`;
+    })
+    .sort()
+    .join('\n');
+  return `${prompt.trim()}\0${attachmentPaths}\0${visualSemantic}`;
+}
+
 interface QueuedChatSendUpdate {
   prompt: string;
   attachments: ChatAttachment[];
@@ -1056,6 +1081,40 @@ async function hydrateDeckCommentSlideIndexes(input: {
 
 const SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER = '[Deliverable instruction]';
 const EXISTING_DECK_EDIT_INSTRUCTION_MARKER = '[Existing deck edit]';
+const SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER = '[Attached image embed]';
+
+const SLIDE_IMAGE_PATH_RE = /\.(png|jpe?g|gif|webp|avif|svg)$/i;
+
+export function imageAttachmentPathsForSlideEmbed(
+  attachments: readonly ChatAttachment[],
+): string[] {
+  const seen = new Set<string>();
+  const paths: string[] = [];
+  for (const attachment of attachments) {
+    const path = attachment.path.trim();
+    if (!path || seen.has(path)) continue;
+    const isImage =
+      attachment.kind === 'image' || SLIDE_IMAGE_PATH_RE.test(path) || SLIDE_IMAGE_PATH_RE.test(attachment.name);
+    if (!isImage) continue;
+    // Auto-attached deck.html is never an embeddable image asset.
+    if (/\.html?$/i.test(path)) continue;
+    seen.add(path);
+    paths.push(path);
+    if (paths.length >= 12) break;
+  }
+  return paths;
+}
+
+function slideImageEmbedInstruction(imagePaths: readonly string[]): string {
+  return [
+    SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER,
+    'The user attached image file(s) to place into the slide deck.',
+    'Embed each image with its exact project-relative path — never invent URLs, never use data: URIs, and do not omit the images:',
+    ...imagePaths.map((path) => `- <img src="${path}" alt="" style="max-width:100%;height:auto;object-fit:contain">`),
+    'Prefer a dedicated image slide or an existing content area via deck-patch / set-outer-html / set-image (JSON `{ "src": "<path>" }`).',
+    'Keep the rest of the deck intact unless the user asks for a broader redesign.',
+  ].join('\n');
+}
 
 function slideAttachmentDeliverableInstruction(attachments: ChatAttachment[]): string {
   const files = attachments
@@ -1064,6 +1123,10 @@ function slideAttachmentDeliverableInstruction(attachments: ChatAttachment[]): s
     .slice(0, 12);
   const fileList = files.length > 0
     ? `\nReference files to read/use:\n${files.map((path) => `- ${path}`).join('\n')}`
+    : '';
+  const imagePaths = imageAttachmentPathsForSlideEmbed(attachments);
+  const imageEmbed = imagePaths.length > 0
+    ? `\n${slideImageEmbedInstruction(imagePaths)}`
     : '';
   return [
     SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER,
@@ -1074,6 +1137,7 @@ function slideAttachmentDeliverableInstruction(attachments: ChatAttachment[]): s
     + `(${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), body-first inline styles, and no \`<head>\`, nav, or print scaffolding.`,
     'Do not finish with prose only, do not stop after an outline, and do not stop before `</artifact>`.',
     fileList,
+    imageEmbed,
   ].filter(Boolean).join('\n');
 }
 
@@ -1099,7 +1163,15 @@ export function promptWithSlideAttachmentDeliverableInstruction(
 ): string {
   if (!options.slideOnlyMvp || attachments.length === 0) return prompt;
   if ((options.commentAttachmentCount ?? 0) > 0) return prompt;
-  if (options.existingDeckEdit) return prompt;
+  // Existing-deck follow-ups skip full-deck deliverable pressure, but attached
+  // images still need an embed contract or the model has no <img src> path.
+  if (options.existingDeckEdit) {
+    const imagePaths = imageAttachmentPathsForSlideEmbed(attachments);
+    if (imagePaths.length === 0) return prompt;
+    if (prompt.includes(SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER)) return prompt;
+    const visiblePrompt = prompt.trim() || '첨부 이미지를 슬라이드에 넣어줘.';
+    return `${visiblePrompt}\n\n${slideImageEmbedInstruction(imagePaths)}`;
+  }
   if (prompt.includes(SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '첨부 파일을 참고해서 슬라이드 덱을 만들어줘.';
   return `${visiblePrompt}\n\n${slideAttachmentDeliverableInstruction(attachments)}`;
@@ -1173,28 +1245,41 @@ export function promptWithSlideCommentEditPatchInstruction(
   return parts.join('\n');
 }
 
-function slideExistingDeckEditInstruction(deckPath: string): string {
-  return [
+function slideExistingDeckEditInstruction(
+  deckPath: string,
+  imagePaths: readonly string[] = [],
+): string {
+  const lines = [
     EXISTING_DECK_EDIT_INSTRUCTION_MARKER,
     `This project already has a completed slide deck saved as \`${deckPath}\` (see <attached-project-files> above).`,
     'This turn is an edit to that deck — do NOT claim there is no completed deck in this conversation.',
     'Read the attached deck HTML and apply the user request.',
     'Prefer `<artifact type="element-patch">` with `<patch target-id="…" slide-index="{N}" kind="…">` for single-element edits.',
     'Use `<artifact type="deck-patch">` only when slide structure must change; use full `<artifact type="deck">` for deck-wide edits.',
-  ].join('\n');
+  ];
+  if (imagePaths.length > 0) {
+    lines.push(
+      'When the user asks to place attached images into the deck, emit deck-patch / set-outer-html / set-image using the exact project-relative image paths from [Attached image embed] / <attached-project-files>.',
+    );
+  }
+  return lines.join('\n');
 }
 
 /** Nudges follow-up text edits when the current deck file is auto-attached for API context. */
 export function promptWithExistingDeckEditInstruction(
   prompt: string,
-  options: { slideOnlyMvp: boolean; deckPath: string },
+  options: {
+    slideOnlyMvp: boolean;
+    deckPath: string;
+    imagePaths?: readonly string[];
+  },
 ): string {
   if (!options.slideOnlyMvp) return prompt;
   const deckPath = options.deckPath.trim();
   if (!deckPath) return prompt;
   if (prompt.includes(EXISTING_DECK_EDIT_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '슬라이드 덱을 수정해줘.';
-  return `${visiblePrompt}\n\n${slideExistingDeckEditInstruction(deckPath)}`;
+  return `${visiblePrompt}\n\n${slideExistingDeckEditInstruction(deckPath, options.imagePaths ?? [])}`;
 }
 
 async function tryApplyElementPatchesAgainstCurrentDeck(input: {
@@ -6020,9 +6105,12 @@ export function ProjectView({
           markStreamingConversation(reattachConversationId);
         }
         if (needsFullReplay) {
+          // Clear stream buffers for replay, but keep producedFiles — wiping
+          // them makes the assistant row vanish in Teamver embed until SSE
+          // refills, and a failed replay leaves the bubble permanently empty.
           updateMessageById(
             message.id,
-            (prev) => ({ ...prev, content: '', events: [], producedFiles: undefined }),
+            (prev) => ({ ...prev, content: '', events: [] }),
           );
         }
 
@@ -7226,6 +7314,20 @@ export function ProjectView({
   }, [retryStaleProjectConversationData]);
 
   const enqueueChatSend = useCallback((item: QueuedChatSend) => {
+    const fingerprint = queuedChatSendFingerprint(
+      item.prompt,
+      item.attachments,
+      item.commentAttachments,
+    );
+    const duplicate = queuedChatSendsRef.current.some((existing) =>
+      existing.conversationId === item.conversationId
+      && queuedChatSendFingerprint(
+        existing.prompt,
+        existing.attachments,
+        existing.commentAttachments,
+      ) === fingerprint
+    );
+    if (duplicate) return;
     const next = [...queuedChatSendsRef.current, item];
     commitQueuedChatSends(next);
   }, [commitQueuedChatSends]);
@@ -7470,6 +7572,7 @@ export function ProjectView({
         modelPrompt = promptWithExistingDeckEditInstruction(modelPrompt, {
           slideOnlyMvp,
           deckPath: autoAttachedDeckPath,
+          imagePaths: imageAttachmentPathsForSlideEmbed(effectiveAttachments),
         });
       }
       if (!retryTarget && meta?.queueOnly) {
@@ -7488,7 +7591,8 @@ export function ProjectView({
       // its slot on a false-positive busy signal and the user is stuck with an
       // incomplete assistant row despite the "이어쓰기 시도 중" notice.
       const bypassBusyForAutoContinue = meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM && !abortRef.current;
-      if (currentConversationBusy && !bypassBusyForAutoContinue) {
+      const bypassBusyForQueuedDrain = meta?.drainQueuedSend === true;
+      if (currentConversationBusy && !bypassBusyForAutoContinue && !bypassBusyForQueuedDrain) {
         queueChatSendForCurrentConversation({
           conversationId: activeConversationId,
           prompt: modelPrompt,
@@ -9236,7 +9340,7 @@ export function ProjectView({
         item.prompt,
         item.attachments,
         item.commentAttachments,
-        item.meta,
+        { ...(item.meta ?? {}), drainQueuedSend: true },
       );
       if (started) removeQueuedChatSend(id);
     })();
@@ -9261,7 +9365,7 @@ export function ProjectView({
         next.prompt,
         next.attachments,
         next.commentAttachments,
-        next.meta,
+        { ...(next.meta ?? {}), drainQueuedSend: true },
       );
       if (!started) {
         if (startingQueuedChatSendIdRef.current === next.id) {
@@ -10934,7 +11038,7 @@ export function ProjectView({
             <div
               id={commentInspectorPortalId}
               className="comment-left-host"
-              aria-label="Comments"
+              aria-label={t('chat.tabComments')}
             />
           ) : activeConversationId || conversationLoadError ? (
               <ChatPane
@@ -11480,7 +11584,7 @@ function isQueuedChatSend(value: unknown): value is QueuedChatSend {
 
 function stripQueueOnlyFromMeta(meta: ChatSendMeta | undefined): ProjectChatSendMeta | undefined {
   if (!meta) return undefined;
-  const { queueOnly: _queueOnly, ...rest } = meta;
+  const { queueOnly: _queueOnly, drainQueuedSend: _drainQueuedSend, ...rest } = meta;
   return Object.keys(rest).length > 0 ? rest : undefined;
 }
 

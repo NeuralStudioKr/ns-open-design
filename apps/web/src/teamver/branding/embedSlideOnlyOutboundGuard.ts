@@ -33,6 +33,13 @@ export function embedBlockedComposerSlashReason(
   return "teamver Design embed에서는 Codex 펫(/pet, /hatch) 명령을 사용할 수 없습니다. 슬라이드 덱 작업만 지원합니다.";
 }
 
+function promptHasSlideDeckIntent(prompt: string): boolean {
+  return (
+    /\b(slide|slides|deck|presentation)\b/i.test(prompt)
+    || /(슬라이드|덱|발표\s*자료|피치)/u.test(prompt)
+  );
+}
+
 export function embedSlideOnlyOutboundBlockReason(
   prompt: string,
   branding: Pick<TeamverBrandingConfig, "slideOnlyMvp">,
@@ -40,12 +47,12 @@ export function embedSlideOnlyOutboundBlockReason(
   if (!branding.slideOnlyMvp) return null;
   const trimmed = prompt.trim();
   if (!trimmed) return null;
+  // Slide/deck asks win over media-generation heuristics so attach-to-slide
+  // prompts like "이 이미지로 슬라이드 만들어줘" / "make a slide with this
+  // image" are not blocked before send.
+  if (promptHasSlideDeckIntent(trimmed)) return null;
   if (MEDIA_INTENT_PATTERNS.some((pattern) => pattern.test(trimmed))) {
     return "teamver Design 1차 출시는 슬라이드(덱)만 지원합니다. 이미지·동영상·오디오·HyperFrames 생성 요청은 아직 처리할 수 없습니다. 슬라이드 덱으로 다시 요청해 주세요.";
-  }
-  // Allow when the user explicitly asks for slides even if they also mention a product surface.
-  if (/\b(slide|slides|deck|presentation)\b/i.test(trimmed) || /(슬라이드|덱|발표\s*자료|피치)/u.test(trimmed)) {
-    return null;
   }
   if (NON_DECK_ARTIFACT_PATTERNS.some((pattern) => pattern.test(trimmed))) {
     return "teamver Design 1차 출시는 슬라이드(덱)만 지원합니다. 웹 프로토타입·랜딩·대시보드·앱 UI 요청은 처리할 수 없습니다. 슬라이드 덱으로 다시 요청해 주세요.";

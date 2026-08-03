@@ -1425,12 +1425,16 @@
   transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1), color 200ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 .board-pod-chip:hover .board-pod-chip-remove,
+.board-pod-chip:focus-within .board-pod-chip-remove,
 .board-pod-chip-remove:focus-visible {
   opacity: 1;
 }
 .board-pod-chip-remove:hover,
 .board-pod-chip-remove:focus-visible {
   color: var(--text-default, var(--text-strong));
+}
+@media (hover: none) {
+  .board-pod-chip-remove { opacity: 1; }
 }
 .board-note-list {
   display: grid;

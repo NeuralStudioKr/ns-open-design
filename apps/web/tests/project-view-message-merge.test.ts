@@ -4,11 +4,16 @@ import {
   mergeMissingActiveRunAssistantMessages,
   mergeServerMessagesIntoConversation,
   orderConversationMessages,
+  imageAttachmentPathsForSlideEmbed,
   promptWithExistingDeckEditInstruction,
   promptWithSlideAttachmentDeliverableInstruction,
   promptWithSlideCommentEditPatchInstruction,
 } from "../src/components/ProjectView";
-import { messageContentWithCommentAttachments, commentsToAttachments } from "../src/comments";
+import {
+  messageContentWithCommentAttachments,
+  commentsToAttachments,
+  stripUserVisibleUserMessageText,
+} from "../src/comments";
 import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
 import type { ChatMessage } from "../src/types";
 
@@ -74,6 +79,44 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     expect(prompt).toBe("방가방가~ 를 앞에 추가");
     expect(prompt).not.toContain("[Deliverable instruction]");
   });
+
+  it("keeps an image-embed contract on existing-deck turns with attached images", () => {
+    const prompt = promptWithSlideAttachmentDeliverableInstruction(
+      "이 이미지를 슬라이드에 넣어줘",
+      [
+        { path: "deck.html", name: "deck.html", kind: "file" },
+        { path: "m1abc-photo.png", name: "m1abc-photo.png", kind: "image" },
+      ],
+      { slideOnlyMvp: true, existingDeckEdit: true },
+    );
+    expect(prompt).toContain("[Attached image embed]");
+    expect(prompt).toContain('src="m1abc-photo.png"');
+    expect(prompt).not.toContain("[Deliverable instruction]");
+    expect(stripUserVisibleUserMessageText(prompt)).toBe("이 이미지를 슬라이드에 넣어줘");
+  });
+
+  it("lists image embed paths on greenfield attachment deliverable turns", () => {
+    const prompt = promptWithSlideAttachmentDeliverableInstruction(
+      "이 사진으로 슬라이드 만들어줘",
+      [{ path: "hero.png", name: "hero.png", kind: "image" }],
+      { slideOnlyMvp: true },
+    );
+    expect(prompt).toContain("[Deliverable instruction]");
+    expect(prompt).toContain("[Attached image embed]");
+    expect(prompt).toContain('src="hero.png"');
+  });
+});
+
+describe("imageAttachmentPathsForSlideEmbed", () => {
+  it("keeps image paths and skips auto-attached deck.html", () => {
+    expect(
+      imageAttachmentPathsForSlideEmbed([
+        { path: "deck.html", name: "deck.html", kind: "file" },
+        { path: "photo.png", name: "photo.png", kind: "image" },
+        { path: "notes.md", name: "notes.md", kind: "file" },
+      ]),
+    ).toEqual(["photo.png"]);
+  });
 });
 
 describe("promptWithExistingDeckEditInstruction", () => {
@@ -86,6 +129,16 @@ describe("promptWithExistingDeckEditInstruction", () => {
     expect(prompt).toContain("deck.html");
     expect(prompt).toContain("do NOT claim there is no completed deck");
     expect(prompt).toContain("deck-patch");
+  });
+
+  it("mentions attached image paths when present", () => {
+    const prompt = promptWithExistingDeckEditInstruction("사진을 넣어줘", {
+      slideOnlyMvp: true,
+      deckPath: "deck.html",
+      imagePaths: ["photo.png"],
+    });
+    expect(prompt).toContain("exact project-relative image paths");
+    expect(prompt).toContain("[Attached image embed]");
   });
 });
 
@@ -117,7 +170,7 @@ describe("promptWithSlideCommentEditPatchInstruction", () => {
 
     expect(prompt).toContain('target-id="hero-title"');
     expect(prompt).toContain('slide-index="2"');
-    expect(prompt).toContain('Copy this template and fill in the patch body');
+    expect(prompt).toContain('REQUIRED OUTPUT — respond with ONLY this artifact block');
     expect(prompt).toContain('at least one non-empty `<patch');
     expect(prompt).toContain('Never emit an empty `<artifact type="element-patch"></artifact>`');
   });

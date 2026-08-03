@@ -1,4 +1,4 @@
-export const MANUAL_EDIT_DISCOVERY_SELECTOR = 'main, nav, section, article, header, footer, div, h1, h2, h3, p, a, button, img, strong, span';
+export const MANUAL_EDIT_DISCOVERY_SELECTOR = 'main, nav, section, article, header, footer, div, h1, h2, h3, p, a, button, img, svg, strong, span';
 export const MANUAL_EDIT_SOURCE_PATH_ATTR = 'data-od-source-path';
 export const MANUAL_EDIT_HOST_NODE_SELECTOR = [
   '[data-od-sandbox-shim]',
@@ -49,7 +49,7 @@ export function buildManualEditBridge(enabled: boolean): string {
   var discoverySelector = ${JSON.stringify(MANUAL_EDIT_DISCOVERY_SELECTOR)};
   var hostNodeSelector = ${JSON.stringify(MANUAL_EDIT_HOST_NODE_SELECTOR)};
   var sourcePathAttr = ${JSON.stringify(MANUAL_EDIT_SOURCE_PATH_ATTR)};
-  var styleProps = ['fontFamily','fontSize','fontWeight','color','textAlign','lineHeight','letterSpacing','width','height','minHeight','maxWidth','maxHeight','position','left','top','right','bottom','gap','flexDirection','justifyContent','alignItems','backgroundColor','opacity','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','margin','marginTop','marginRight','marginBottom','marginLeft','border','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderStyle','borderColor','borderRadius'];
+  var styleProps = ['fontFamily','fontSize','fontWeight','color','textAlign','textDecoration','whiteSpace','lineHeight','letterSpacing','width','height','minHeight','maxWidth','maxHeight','position','left','top','right','bottom','gap','flexDirection','justifyContent','alignItems','backgroundColor','opacity','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','margin','marginTop','marginRight','marginBottom','marginLeft','border','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderStyle','borderColor','borderRadius'];
   function isHostNode(el){
     return !!(el && el.matches && el.matches(hostNodeSelector));
   }
@@ -83,7 +83,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (explicit) return explicit;
     var tag = el.tagName ? el.tagName.toLowerCase() : '';
     if (tag === 'a') return 'link';
-    if (tag === 'img') return 'image';
+    if (tag === 'img' || tag === 'svg') return 'image';
     if (['section','main','nav','div','article','header','footer'].indexOf(tag) >= 0) return 'container';
     return 'text';
   }
@@ -222,6 +222,11 @@ export function buildManualEditBridge(enabled: boolean): string {
     } else {
       fields.text = plainTextFrom(el);
     }
+    // Layout border-box for CSS width/height writes. getBoundingClientRect
+    // follows ancestor transforms (deck-stage fit scale) and must not be
+    // persisted as width — that shrinks the box on first resize preview.
+    var layoutW = Math.round(Math.max(1, el.offsetWidth || 0));
+    var layoutH = Math.round(Math.max(1, el.offsetHeight || 0));
     return {
       id: id,
       kind: kind,
@@ -230,6 +235,8 @@ export function buildManualEditBridge(enabled: boolean): string {
       className: typeof el.className === 'string' ? el.className : '',
       text: (el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 180),
       rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
+      layoutWidth: layoutW,
+      layoutHeight: layoutH,
       fields: fields,
       attributes: attrsFor(el),
       styles: stylesFor(el),

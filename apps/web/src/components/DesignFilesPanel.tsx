@@ -930,7 +930,7 @@ export function DesignFilesPanel({
                     onClearUploadError?.();
                   }}
                 >
-                  Dismiss
+                  {t('common.close')}
                 </button>
               ) : null}
             </div>
@@ -1055,7 +1055,7 @@ export function DesignFilesPanel({
                           DIR
                         </span>
                         <span className="df-row-name-wrap">
-                          <span className="df-row-name">{folder.path}</span>
+                          <span className="df-row-name" title={folder.path}>{folder.path}</span>
                           <span className="df-row-sub">
                             {folder.fileCount} files · ready to add to My plugins
                           </span>

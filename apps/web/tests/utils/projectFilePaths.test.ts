@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { projectFilePathExists } from '../../src/utils/projectFilePaths';
+import {
+  excludeAttachmentsBackedByVisualScreenshots,
+  projectFilePathExists,
+  projectFilePathsReferToSameFile,
+  projectFileResolvedPath,
+} from '../../src/utils/projectFilePaths';
 
 describe('projectFilePathExists', () => {
   const names = new Set([
@@ -34,5 +39,26 @@ describe('projectFilePathExists', () => {
   it('defaults to false for ephemeral drawing screenshots when the file index is unavailable', () => {
     expect(projectFilePathExists(undefined, 'ms8hq9qu-drawing-2026-07-31T05-17-03-125Z.png')).toBe(false);
     expect(projectFilePathExists(undefined, 'references/logo.png')).toBe(true);
+  });
+});
+
+describe('project file path identity', () => {
+  it('treats nested and bare paths with the same basename as the same file', () => {
+    expect(projectFilePathsReferToSameFile('uploads/foo.png', 'foo.png')).toBe(true);
+    expect(projectFilePathsReferToSameFile('uploads/foo.png', 'assets/foo.png')).toBe(true);
+    expect(projectFilePathsReferToSameFile('uploads/foo.png', 'bar.png')).toBe(false);
+  });
+
+  it('excludes attachments backed by visual comment screenshots', () => {
+    const attachments = excludeAttachmentsBackedByVisualScreenshots(
+      [{ path: 'uploads/mark.png', name: 'mark.png', kind: 'image' }],
+      [{ screenshotPath: 'mark.png' }],
+    );
+    expect(attachments).toEqual([]);
+  });
+
+  it('resolves project file path from path or name', () => {
+    expect(projectFileResolvedPath({ name: 'foo.png', path: 'uploads/foo.png' })).toBe('uploads/foo.png');
+    expect(projectFileResolvedPath({ name: 'foo.png' })).toBe('foo.png');
   });
 });

@@ -179,6 +179,7 @@ export function DesignsTab({
 		});
 	}, []);
 	const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+	const [menuOpenUp, setMenuOpenUp] = useState(false);
 	const [selectMode, setSelectMode] = useState(false);
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 	const deleteToastIdRef = useRef(0);
@@ -591,6 +592,11 @@ export function DesignsTab({
 									type="button"
 									className="primary designs-empty-cta"
 									disabled={createDisabled}
+									title={
+										createDisabled
+											? t("teamver.embed.designDisabled")
+											: t("entry.navNewProject")
+									}
 									onClick={() => {
 										if (createDisabled) return;
 										trackProjectsListControlsClick(analytics.track, {
@@ -739,9 +745,12 @@ export function DesignsTab({
 											aria-expanded={menuOpenId === p.id}
 											onClick={(e) => {
 												e.stopPropagation();
+												const rect = e.currentTarget.getBoundingClientRect();
+												const openUp = window.innerHeight - rect.bottom < 120;
 												setMenuOpenId((cur) => {
 													const nextId = cur === p.id ? null : p.id;
 													if (nextId === p.id) {
+														setMenuOpenUp(openUp);
 														const projectKind = projectKindToTracking(p.metadata?.kind, p.metadata?.videoModel);
 														trackProjectsListClick(analytics.track, {
 															page_name: "projects",
@@ -750,6 +759,8 @@ export function DesignsTab({
 															project_id: p.id,
 															...(projectKind ? { project_kind: projectKind } : {}),
 														});
+													} else {
+														setMenuOpenUp(false);
 													}
 													return nextId;
 												});
@@ -759,7 +770,7 @@ export function DesignsTab({
 									</button>
 									{menuOpenId === p.id ? (
 										<div
-											className="design-card-menu"
+											className={`design-card-menu${menuOpenUp ? " design-card-menu--up" : ""}`}
 											role="menu"
 											onClick={(e) => e.stopPropagation()}
 										>

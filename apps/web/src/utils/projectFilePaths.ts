@@ -35,6 +35,58 @@ export function projectFilePathExists(
 }
 
 export function isEphemeralDrawingScreenshotPath(path: string): boolean {
-  const baseName = String(path || '').trim().split('/').pop() || '';
+  const baseName = projectFilePathBasename(path);
   return /^[a-z0-9]+-drawing-\d{4}-\d{2}-\d{2}T[\d-]+Z\.png$/i.test(baseName);
+}
+
+export function projectFilePathBasename(path: string): string {
+  const trimmed = String(path || '').trim().replace(/\\/g, '/');
+  return trimmed.split('/').pop() || trimmed;
+}
+
+/** Prefer daemon `path` when present; fall back to flat `name`. */
+export function projectFileResolvedPath(file: { name: string; path?: string | null }): string {
+  const path = String(file.path ?? '').trim().replace(/\\/g, '/');
+  if (path) return path;
+  return String(file.name ?? '').trim();
+}
+
+/** Treat `uploads/foo.png` and bare `foo.png` as the same project file. */
+export function projectFilePathsReferToSameFile(a: string, b: string): boolean {
+  const left = String(a || '').trim().replace(/\\/g, '/');
+  const right = String(b || '').trim().replace(/\\/g, '/');
+  if (!left || !right) return false;
+  if (left === right) return true;
+  return projectFilePathBasename(left) === projectFilePathBasename(right);
+}
+
+export function projectFilePathsInclude(
+  paths: Iterable<string>,
+  path: string,
+): boolean {
+  for (const candidate of paths) {
+    if (projectFilePathsReferToSameFile(candidate, path)) return true;
+  }
+  return false;
+}
+
+export function visualCommentScreenshotPaths(
+  commentAttachments: ReadonlyArray<{ screenshotPath?: string | null }>,
+): string[] {
+  return commentAttachments
+    .map((attachment) => String(attachment.screenshotPath || '').trim())
+    .filter(Boolean);
+}
+
+export function excludeAttachmentsBackedByVisualScreenshots<T extends { path: string }>(
+  attachments: readonly T[],
+  commentAttachments: ReadonlyArray<{ screenshotPath?: string | null }>,
+): T[] {
+  const screenshotPaths = visualCommentScreenshotPaths(commentAttachments);
+  if (screenshotPaths.length === 0) return [...attachments];
+  return attachments.filter((attachment) => {
+    const path = String(attachment.path || '').trim();
+    if (!path) return false;
+    return !projectFilePathsInclude(screenshotPaths, path);
+  });
 }

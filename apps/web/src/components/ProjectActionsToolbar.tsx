@@ -12,6 +12,7 @@ import { ContinueInCliButton } from './ContinueInCliButton';
 import { FinalizeDesignButton } from './FinalizeDesignButton';
 import type { DesignMdState } from '../hooks/useDesignMdState';
 import type { FinalizeStatus } from '../hooks/useFinalizeProject';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 export interface ProjectActionsToolbarProps {
   designMdState: Pick<DesignMdState, 'exists' | 'isStale' | 'staleReason'>;
@@ -35,7 +36,7 @@ export function ProjectActionsToolbar({
     <div
       className="project-actions-toolbar"
       role="toolbar"
-      aria-label="Project actions"
+      aria-label={embedUiLabel('Project actions', '프로젝트 작업')}
     >
       <FinalizeDesignButton
         designMdState={designMdState}

@@ -9,6 +9,7 @@ import {
   markProjectRawFileMissing,
 } from '../utils/projectFileFetchCache';
 import { normalizeFetchedImageBlob, blobToImageDataUrl } from '../utils/imageBlobNormalize';
+import { isEphemeralDrawingScreenshotPath } from '../utils/projectFilePaths';
 
 const FETCH_RETRY_DELAYS_MS = [0, 250, 800] as const;
 
@@ -49,6 +50,7 @@ export async function loadAuthenticatedProjectFileBlob(
   const id = projectId.trim();
   const path = filePath.trim();
   if (!id || !path) return null;
+  if (!options?.trustExists && isEphemeralDrawingScreenshotPath(path)) return null;
   if (!options?.trustExists && isProjectRawFileKnownMissing(id, path)) return null;
   if (options?.trustExists) clearProjectRawFileMissing(id, path);
 

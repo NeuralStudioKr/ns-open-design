@@ -659,7 +659,7 @@
 }
 .viewer-action[data-coming-soon='true']:hover { background: var(--bg-subtle); color: var(--text-muted); }
 .viewer-action[data-coming-soon='true']::after {
-  content: 'Coming soon';
+  content: var(--coming-soon-label, 'Coming soon');
   position: absolute;
   bottom: calc(100% + 6px);
   left: 50%;
@@ -687,7 +687,7 @@
 }
 .viewer-toggle[data-coming-soon='true']:hover { background: var(--bg-subtle); }
 .viewer-toggle[data-coming-soon='true']::after {
-  content: 'Coming soon';
+  content: var(--coming-soon-label, 'Coming soon');
   position: absolute;
   bottom: calc(100% + 6px);
   left: 50%;

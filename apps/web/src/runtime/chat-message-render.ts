@@ -231,30 +231,43 @@ export function messageLooksLikeSlideEditTurn(message: ChatMessage): boolean {
 }
 
 /**
+ * Closed `<artifact>` blocks with non-whitespace bodies. Empty wrappers like
+ * `<artifact type="deck"></artifact>` are phantom shells and must stay hidden.
+ */
+export function messageHasSubstantiveClosedArtifact(content: string): boolean {
+  const re = /<artifact\b[^>]*>([\s\S]*?)<\/artifact>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) {
+    if (match[1]?.trim()) return true;
+  }
+  return false;
+}
+
+/**
  * Whether AssistantMessage should synthesize the Teamver "slide ready / edit
  * applied" lead after a successful artifact turn. Must survive hard reload when
  * closed artifacts were stripped from content/events but producedFiles or
  * preTurnFileNames remain.
+ *
+ * Do NOT require ChatPane `isLast` — `resolveLastAssistantMessageId` may point
+ * at a superseded failed sibling, and historical turns must keep their lead
+ * after the user continues chatting.
  */
 export function shouldSynthesizeTeamverCompletedArtifactLead(
   message: ChatMessage,
   options: {
     streaming: boolean;
-    isLast: boolean;
+    isLast?: boolean;
     hasVisibleAssistantText: boolean;
   },
 ): boolean {
   if (options.streaming || options.hasVisibleAssistantText) return false;
   if (!assistantRunSucceeded(message)) return false;
-  if (
-    isTerminalSucceededEmptyShellAnchor(message, {
-      isLast: options.isLast,
-      streaming: options.streaming,
-    })
-  ) {
-    return true;
-  }
+  // Historical + auto-continue: any terminal succeeded empty shell keeps lead.
+  if (isTerminalSucceededEmptyShellForDisplay(message)) return true;
   if ((message.producedFiles?.length ?? 0) > 0) return true;
+  const body = assistantMessageTextBody(message);
+  if (messageHasSubstantiveClosedArtifact(body)) return true;
   // deck-patch marker still in body, or preTurn HTML after tags were stripped.
   return messageLooksLikeSlideEditTurn(message);
 }
@@ -262,7 +275,6 @@ export function shouldSynthesizeTeamverCompletedArtifactLead(
 function hasTeamverCompletedArtifactLead(message: ChatMessage): boolean {
   return shouldSynthesizeTeamverCompletedArtifactLead(message, {
     streaming: false,
-    isLast: true,
     hasVisibleAssistantText: hasEmbedVisibleProseBody(message),
   });
 }
@@ -284,6 +296,9 @@ export function hasEmbedVisibleAssistantBody(message: ChatMessage): boolean {
   if (hasTeamverCompletedArtifactLead(message)) return true;
   const body = assistantMessageTextBody(message);
   if (messageIndicatesDeckPatchArtifact(body)) return true;
+  if (messageHasSubstantiveClosedArtifact(body) && assistantRunSucceeded(message)) {
+    return true;
+  }
   if (wouldTerminalEmptyShellShowBody(message)) return true;
   return false;
 }
@@ -310,8 +325,12 @@ export function shouldOmitMessageFromChatRender(
   if (message.role !== "assistant") return false;
   if (isLiveStreamingAssistantTarget(message, ctx)) return false;
   if (isEmptyAssistantShell(message)) {
+    // Keep terminal succeeded shells that still anchor their visible user turn
+    // (historical completion leads). Drop same-turn shells superseded by a
+    // later assistant — those are collapsed at load, but omit is the safety net.
     if (
-      options?.messages
+      isTerminalSucceededEmptyShellForDisplay(message)
+      && options?.messages
       && typeof options.messageIndex === "number"
       && isLastAssistantInVisibleUserTurn(options.messages, options.messageIndex)
     ) {

@@ -9,8 +9,11 @@ import {
   resolveTeamverProjectPreviewPrefix,
 } from "../teamverProjectPreviewScope";
 
-const DECK_PREVIEW_WIDTH = 1280;
-const DECK_PREVIEW_HEIGHT = 720;
+// Match Teamver slide canvas (canvasSlideLaunch / TEAMVER_SLIDE_CANVAS).
+// Older 1280×720 forced absolute-px decks to clip; scripts are stripped so
+// fit() never rescales inside the thumb iframe.
+const DECK_PREVIEW_WIDTH = 1920;
+const DECK_PREVIEW_HEIGHT = 1080;
 
 const htmlCoverCache = new Map<string, string>();
 const htmlCoverInflight = new Map<string, Promise<string>>();
@@ -125,6 +128,12 @@ function AuthenticatedHtmlCover({
           loading="lazy"
           sandbox="allow-scripts"
           tabIndex={-1}
+          style={{
+            width: DECK_PREVIEW_WIDTH,
+            height: DECK_PREVIEW_HEIGHT,
+            transform: `scale(${scale})`,
+            transformOrigin: "0 0",
+          }}
         />
       ) : (
         <span className={deckLoadingClassName} aria-hidden />
@@ -137,7 +146,10 @@ function AuthenticatedHtmlCover({
 export function parseProjectRawUrl(
   src: string,
 ): { projectId: string; filePath: string } | null {
-  const match = /^\/api\/projects\/([^/]+)\/raw\/(.+)$/u.exec(String(src || "").trim());
+  // Cover media URLs append `?v=mtime` for cache-bust — strip query/hash so
+  // preview-url mint does not look up a literal `deck.html?v=…` path (404).
+  const pathOnly = String(src || "").trim().split(/[?#]/u, 1)[0] ?? "";
+  const match = /^\/api\/projects\/([^/]+)\/raw\/(.+)$/u.exec(pathOnly);
   if (!match) return null;
   let projectId = match[1] || "";
   let filePath = match[2] || "";
@@ -275,9 +287,11 @@ export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
       flex: none !important;
       scroll-snap-align: none !important;
     }
-    .slide:not(:first-of-type),
-    section[data-slide]:not(:first-of-type),
-    section[data-screen-label]:not(:first-of-type),
+    /* Sibling combinator: :first-of-type hides the real first .slide when a
+       preceding <section> sibling steals first-of-type. */
+    .slide ~ .slide,
+    section[data-slide] ~ section[data-slide],
+    section[data-screen-label] ~ section[data-screen-label],
     .deck-counter,
     .deck-controls,
     .deck-hint,

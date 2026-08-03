@@ -19,6 +19,7 @@ import {
 import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatProjectArtifactSaveFailedError } from '../teamver/projectErrorMessages';
 import {
   formatProjectFileManagerUploadError,
@@ -2363,7 +2364,7 @@ export function FileWorkspace({
               data-testid="upload-error-dismiss"
               onClick={() => setUploadError(null)}
             >
-              Dismiss
+              {t('common.close')}
             </button>
           </div>
         ) : null}
@@ -3667,17 +3668,19 @@ function designSystemSectionStatusLabel(
     case 'running':
       return designSystemSectionPhaseLabel(section, activity);
     case 'planned':
-      return 'Queued';
+      return embedUiLabel('Queued', '대기 중');
     case 'updated':
-      return 'Review updated files';
+      return embedUiLabel('Review updated files', '업데이트된 파일 검토');
     case 'approved':
-      return 'Looks good';
+      return embedUiLabel('Looks good', '문제 없음');
     case 'needs-work':
-      return 'Needs work';
+      return embedUiLabel('Needs work', '수정 필요');
     case 'needs-review':
-      return 'Needs review';
+      return embedUiLabel('Needs review', '검토 필요');
     case 'missing':
-      return section.requiredFile ? `${section.requiredFile} missing` : 'No files yet';
+      return section.requiredFile
+        ? embedUiLabel(`${section.requiredFile} missing`, `${section.requiredFile} 없음`)
+        : embedUiLabel('No files yet', '아직 파일 없음');
   }
 }
 

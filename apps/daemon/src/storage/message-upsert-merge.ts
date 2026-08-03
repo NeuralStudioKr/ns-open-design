@@ -117,8 +117,16 @@ export function mergeMessageUpsertPayload<T extends MessageUpsertRow>(
     sessionMode: incoming.sessionMode ?? existing.sessionMode,
     runContext: incoming.runContext ?? existing.runContext,
     appliedPluginSnapshot: incoming.appliedPluginSnapshot ?? existing.appliedPluginSnapshot,
-    preTurnFileNames: incoming.preTurnFileNames ?? existing.preTurnFileNames,
-    producedFiles: incoming.producedFiles ?? existing.producedFiles,
+    preTurnFileNames: mergeOptionalMessageArrayField(
+      incoming.preTurnFileNames as unknown[] | undefined,
+      existing.preTurnFileNames as unknown[] | undefined,
+    ),
+    // Empty arrays from early shells / keepalive-adjacent PUTs must not wipe
+    // durable deliverable evidence used to keep completion leads after reload.
+    producedFiles: mergeOptionalMessageArrayField(
+      incoming.producedFiles as unknown[] | undefined,
+      existing.producedFiles as unknown[] | undefined,
+    ),
     feedback: incoming.feedback ?? existing.feedback,
   };
 }

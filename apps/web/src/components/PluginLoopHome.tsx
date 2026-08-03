@@ -14,6 +14,7 @@ import {
 import { useI18n } from '../i18n';
 import { localizePluginDescription, localizePluginTitle } from './plugins-home/localization';
 import { Icon } from './Icon';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { PluginDetailsModal } from './PluginDetailsModal';
 import { TrustBadge } from './TrustBadge';
 import { authorInitials, derivePluginSourceLinks } from '../runtime/plugin-source';
@@ -176,29 +177,38 @@ export function PluginLoopHome({ onSubmit }: Props) {
   return (
     <div className="plugin-loop-home" data-testid="plugin-loop-home">
       <div className="plugin-loop-home__hero">
-        <h2 className="plugin-loop-home__title">What do you want to design?</h2>
+        <h2 className="plugin-loop-home__title">
+          {embedUiLabel('What do you want to design?', '무엇을 디자인할까요?')}
+        </h2>
         <p className="plugin-loop-home__subtitle">
-          Pick a plugin below, click <strong>Use example query</strong> to load
-          a starter prompt, then press <kbd>Enter</kbd>.
+          {embedUiLabel(
+            'Pick a plugin below, click Use example query to load a starter prompt, then press Enter.',
+            '아래 플러그인을 고른 뒤 「예제 쿼리 사용」으로 시작 프롬프트를 불러오고 Enter를 누르세요.',
+          )}
         </p>
         {active ? (
           <div className="plugin-loop-home__active" data-active-plugin-id={active.record.id}>
             <span className="plugin-loop-home__active-chip">
               <span className="plugin-loop-home__active-dot" aria-hidden />
-              <span>Plugin: {localizePluginTitle(locale, active.record)}</span>
+              <span>
+                {embedUiLabel('Plugin:', '플러그인:')} {localizePluginTitle(locale, active.record)}
+              </span>
               <button
                 type="button"
                 className="plugin-loop-home__active-clear"
                 onClick={() => { trackPluginLoopClick(analytics.track, { page_name: 'plugins', area: 'plugin_loop', element: 'clear_active', plugin_id: active?.record.id }); clearActive(); }}
-                aria-label="Clear active plugin"
-                title="Clear active plugin"
+                aria-label={embedUiLabel('Clear active plugin', '활성 플러그인 해제')}
+                title={embedUiLabel('Clear active plugin', '활성 플러그인 해제')}
               >
-                ×
+                <Icon name="close" size={11} />
               </button>
             </span>
             {active.result.contextItems && active.result.contextItems.length > 0 ? (
               <span className="plugin-loop-home__context-summary">
-                {active.result.contextItems.length} context items resolved
+                {embedUiLabel(
+                  `${active.result.contextItems.length} context items resolved`,
+                  `컨텍스트 ${active.result.contextItems.length}개 적용됨`,
+                )}
               </span>
             ) : null}
           </div>
@@ -213,8 +223,14 @@ export function PluginLoopHome({ onSubmit }: Props) {
             onKeyDown={onKeyDown}
             placeholder={
               active
-                ? 'Edit the example query or write your own…'
-                : 'Type a prompt, or pick a plugin below to load an example…'
+                ? embedUiLabel(
+                    'Edit the example query or write your own…',
+                    '예제 쿼리를 수정하거나 직접 작성하세요…',
+                  )
+                : embedUiLabel(
+                    'Type a prompt, or pick a plugin below to load an example…',
+                    '프롬프트를 입력하거나 아래 플러그인에서 예제를 불러오세요…',
+                  )
             }
             rows={3}
           />
@@ -237,18 +253,26 @@ export function PluginLoopHome({ onSubmit }: Props) {
       </div>
 
       <div className="plugin-loop-home__rail-header">
-        <span>Plugins</span>
+        <span>{embedUiLabel('Plugins', '플러그인')}</span>
         <span className="plugin-loop-home__rail-count">
-          {loading ? '…' : `${sortedPlugins.length} installed`}
+          {loading
+            ? '…'
+            : embedUiLabel(
+                `${sortedPlugins.length} installed`,
+                `${sortedPlugins.length}개 설치됨`,
+              )}
         </span>
       </div>
       <div className="plugin-loop-home__grid" role="list">
         {loading ? (
-          <div className="plugin-loop-home__empty">Loading plugins…</div>
+          <div className="plugin-loop-home__empty">
+            {embedUiLabel('Loading plugins…', '플러그인 불러오는 중…')}
+          </div>
         ) : sortedPlugins.length === 0 ? (
           <div className="plugin-loop-home__empty">
-            No plugins installed. Install one with{' '}
-            <code>od plugin install &lt;source&gt;</code>.
+            {embedUiLabel('No plugins installed. Install one with ', '설치된 플러그인이 없습니다. ')}
+            <code>od plugin install &lt;source&gt;</code>
+            {embedUiLabel('.', ' 로 설치하세요.')}
           </div>
         ) : (
           sortedPlugins.map((p) => {
@@ -266,7 +290,7 @@ export function PluginLoopHome({ onSubmit }: Props) {
                 data-plugin-id={p.id}
               >
                 <div className="plugin-loop-home__card-head">
-                  <span className="plugin-loop-home__card-title">{cardTitle}</span>
+                  <span className="plugin-loop-home__card-title" title={cardTitle}>{cardTitle}</span>
                   <TrustBadge trust={p.trust} />
                 </div>
                 {cardDescription ? (

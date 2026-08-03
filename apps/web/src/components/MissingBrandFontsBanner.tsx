@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@open-design/components';
 
 import { Icon } from './Icon';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 // Per-project dismissal of the "Missing brand fonts" banner (issue #2814).
 // Stored in localStorage keyed by project id, mirroring the per-project
@@ -65,18 +66,23 @@ export function MissingBrandFontsBanner({
     <div className={className}>
       <Icon name="help-circle" size={16} />
       <span>
-        <strong>Missing brand fonts</strong>
-        <small>Open Design is rendering typography with substitute web fonts.</small>
+        <strong>{embedUiLabel('Missing brand fonts', '브랜드 폰트 없음')}</strong>
+        <small>
+          {embedUiLabel(
+            'Open Design is rendering typography with substitute web fonts.',
+            '대체 웹 폰트로 타이포그래피를 표시하고 있습니다.',
+          )}
+        </small>
       </span>
       <div className="ds-warning-card-actions">
         {onUploadAssets ? (
           <Button variant="ghost" className="compact" onClick={onUploadAssets}>
             <Icon name="upload" size={13} />
-            Upload fonts
+            {embedUiLabel('Upload fonts', '폰트 업로드')}
           </Button>
         ) : null}
         <Button variant="ghost" className="compact" onClick={useSystemFonts}>
-          Use system fonts
+          {embedUiLabel('Use system fonts', '시스템 폰트 사용')}
         </Button>
       </div>
     </div>

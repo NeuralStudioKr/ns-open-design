@@ -1035,6 +1035,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-03 | staging 최신 merge 검토 — `teamverViteEnv.ts` 충돌은 async export flag와 staging draw/manual-edit flags를 모두 보존해 해결. async export FE flag의 타입 선언, Docker build arg, daemon runtime env, staging/production env example을 추가해 `/export/jobs` rollout 시 BE/FE flag 불일치가 생기지 않도록 보강 |
 | 2026-08-03 | Export async runner 리뷰 보강 — job TTL 만료·잘못된 job id 등으로 `markExportJobRunning`이 실패하면 Chromium render를 시작하지 않고 skip warning 후 종료하도록 수정. 상태 저장소에 남지 않는 작업이 백그라운드에서 불필요하게 렌더링되는 edge case를 테스트로 고정 |
 | 2026-08-03 | Phase 3 staging 검증 체크리스트 추가 — async export flag를 BE/FE 함께 켜는 조건, 정상 deck PDF/PPTX/HTML/ZIP job flow, 41장 이상 PPTX 제한 메시지, S3 offload required 전환 전 관찰 포인트를 문서화. 상용 체크리스트의 async job 항목은 1차 구현 완료·staging 검증 대기로 갱신 |
 | 2026-08-03 | 대형 PPTX 정책 문구 정리 — `EXPORT_DECK_TOO_LARGE` 사용자 메시지를 “PPTX 변환이 오래 걸릴 수 있음”에서 “PPTX 다운로드는 제한 장수 이하 제공, 현재 덱은 제한 초과이므로 PDF 다운로드”로 변경. daemon error message도 대형 덱용 PDF 다운로드 안내로 맞추고, 상세 장수 파싱 및 generic fallback 테스트를 추가 |

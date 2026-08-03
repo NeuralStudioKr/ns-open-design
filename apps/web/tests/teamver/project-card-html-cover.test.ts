@@ -19,6 +19,19 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(parseProjectRawUrl("https://example.com/api/projects/p1/raw/x.html")).toBeNull();
   });
 
+  it("strips cache-bust query from raw URLs before scoped preview mint", () => {
+    expect(
+      parseProjectRawUrl("/api/projects/d5dbcdc5-2152-4bc0-b142-eead945fbdd4/raw/deck.html?v=1785228266675"),
+    ).toEqual({
+      projectId: "d5dbcdc5-2152-4bc0-b142-eead945fbdd4",
+      filePath: "deck.html",
+    });
+    expect(parseProjectRawUrl("/api/projects/p1/raw/deck.html?v=1#frag")).toEqual({
+      projectId: "p1",
+      filePath: "deck.html",
+    });
+  });
+
   it("preserves relative asset resolution with a base href for page previews", () => {
     const srcDoc = pagePreviewSrcDoc(
       '<html><head><link rel="stylesheet" href="./style.css"></head><body></body></html>',
@@ -53,5 +66,16 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(srcDoc.match(/<base\b/g)).toHaveLength(1);
     expect(srcDoc).toContain('id="od-deck-card-preview"');
     expect(srcDoc).not.toContain("<script");
+  });
+
+  it("uses the 1920×1080 Teamver canvas and sibling combinators for later slides", () => {
+    const srcDoc = deckPreviewSrcDoc(
+      '<html><head></head><body><section></section><section class="slide">One</section><section class="slide">Two</section></body></html>',
+      '/api/projects/p1/raw/deck.html',
+    );
+    expect(srcDoc).toContain('width: 1920px !important');
+    expect(srcDoc).toContain('height: 1080px !important');
+    expect(srcDoc).toContain('.slide ~ .slide');
+    expect(srcDoc).not.toContain('.slide:not(:first-of-type)');
   });
 });

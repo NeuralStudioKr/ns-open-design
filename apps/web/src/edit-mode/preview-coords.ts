@@ -1,6 +1,6 @@
 import type { ManualEditRect } from './types';
 
-/** Map iframe content rect to host/canvas overlay coordinates. */
+/** Map iframe content rect to host/canvas overlay coordinates (scale only, origin 0). */
 export function contentRectToHostRect(rect: ManualEditRect, previewScale: number): ManualEditRect {
   const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
   return {
@@ -19,4 +19,108 @@ export function hostDeltaToContentDelta(
 ): { dx: number; dy: number } {
   const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
   return { dx: dx / scale, dy: dy / scale };
+}
+
+/**
+ * Actual CSS scale applied to the iframe element by ancestor transforms
+ * (toolbar zoom / manual-edit shell). Prefer this over the zoom toolbar value
+ * when mapping content ↔ host — the two can diverge (fit-scale, frozen width).
+ */
+export function measureIframeHostScale(frame: HTMLIFrameElement | null): number {
+  if (!frame) return 1;
+  const layoutW = frame.offsetWidth;
+  if (!(layoutW > 0)) return 1;
+  const visualW = frame.getBoundingClientRect().width;
+  if (!(visualW > 0)) return 1;
+  const scale = visualW / layoutW;
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+
+/**
+ * Iframe content-origin inside a host positioning ancestor
+ * (e.g. `.manual-edit-workspace`).
+ *
+ * Overlay / floating chrome use `position: absolute` under that host, so the
+ * returned point must be in the host's **content** coordinates (padding edge
+ * + scroll), not the visible viewport delta from `getBoundingClientRect`.
+ *
+ * Mobile/tablet preview sets `overflow: auto` on the workspace — ignoring
+ * `scrollLeft`/`scrollTop` shifts the drag box off the painted element, and
+ * edge hits then fall through to body-move instead of resize.
+ */
+export function measureIframeOffsetInHost(
+  frame: HTMLIFrameElement | null,
+  host: HTMLElement | null,
+): { x: number; y: number } {
+  if (!frame || !host) return { x: 0, y: 0 };
+  const iframeBox = frame.getBoundingClientRect();
+  const hostBox = host.getBoundingClientRect();
+  const scale = measureIframeHostScale(frame);
+  // Host border (clientLeft/Top) sits outside the absolute containing block.
+  // Iframe border is outside the content viewport — content rects start after it.
+  return {
+    x: iframeBox.left - hostBox.left - host.clientLeft + host.scrollLeft + frame.clientLeft * scale,
+    y: iframeBox.top - hostBox.top - host.clientTop + host.scrollTop + frame.clientTop * scale,
+  };
+}
+
+/**
+ * Map an iframe-document content rect into the host ancestor's coordinate space,
+ * accounting for the iframe's offset and any CSS scale on the frame.
+ *
+ * `el.getBoundingClientRect()` inside the iframe is layout/unscaled; the frame's
+ * own getBoundingClientRect() is already visually scaled — combine both.
+ */
+export function contentRectToHostRectInWorkspace(
+  rect: ManualEditRect,
+  frame: HTMLIFrameElement | null,
+  host: HTMLElement | null,
+  fallbackScale = 1,
+): ManualEditRect {
+  const scale = frame ? measureIframeHostScale(frame) : (
+    Number.isFinite(fallbackScale) && fallbackScale > 0 ? fallbackScale : 1
+  );
+  const origin = measureIframeOffsetInHost(frame, host);
+  return {
+    x: origin.x + rect.x * scale,
+    y: origin.y + rect.y * scale,
+    width: rect.width * scale,
+    height: rect.height * scale,
+  };
+}
+
+/**
+ * Capture host projection for a geometry gesture.
+ * Prefer the idle paint rect so the first composed frame matches what the user
+ * already sees, even when React previewScale/hostOffset state is stale.
+ */
+export function freezeGestureHostGeom(
+  contentRect: Pick<ManualEditRect, 'x' | 'y' | 'width' | 'height'>,
+  paintRect: ManualEditRect | null | undefined,
+  fallbackScale: number,
+  fallbackOffset: { x: number; y: number },
+): { hostScale: number; hostOffset: { x: number; y: number } } {
+  const scaleFallback = Number.isFinite(fallbackScale) && fallbackScale > 0 ? fallbackScale : 1;
+  if (
+    paintRect
+    && paintRect.width >= 1
+    && paintRect.height >= 1
+    && contentRect.width >= 1
+    && contentRect.height >= 1
+  ) {
+    const hostScale = paintRect.width / contentRect.width;
+    if (Number.isFinite(hostScale) && hostScale > 0) {
+      return {
+        hostScale,
+        hostOffset: {
+          x: paintRect.x - contentRect.x * hostScale,
+          y: paintRect.y - contentRect.y * hostScale,
+        },
+      };
+    }
+  }
+  return {
+    hostScale: scaleFallback,
+    hostOffset: { x: fallbackOffset.x, y: fallbackOffset.y },
+  };
 }

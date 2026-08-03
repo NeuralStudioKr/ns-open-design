@@ -12,6 +12,11 @@ import type { SkillSummary } from '../../src/types';
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  try {
+    window.localStorage.removeItem('od.chat.nextStepCollapsed');
+  } catch {
+    // ignore
+  }
 });
 
 const AUTO_MATCH_TITLE = en['chat.designToolbox.action.auto-match.title'];
@@ -234,5 +239,31 @@ describe('NextStepActions', () => {
   it('hides the toolbox rows when no toolbox handler is wired', () => {
     renderActions({ onToolboxAction: undefined });
     expect(screen.queryByTestId('next-step-toolbox-action-auto-match')).toBeNull();
+  });
+
+  it('collapses and expands the next-step panel from the header toggle', () => {
+    renderActions();
+    const toggle = screen.getByTestId('next-step-collapse-toggle');
+    expect(screen.getByTestId('next-step-toolbox')).toBeTruthy();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+    fireEvent.click(toggle);
+    expect(screen.queryByTestId('next-step-toolbox')).toBeNull();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(window.localStorage.getItem('od.chat.nextStepCollapsed')).toBe('1');
+
+    fireEvent.click(toggle);
+    expect(screen.getByTestId('next-step-toolbox')).toBeTruthy();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(window.localStorage.getItem('od.chat.nextStepCollapsed')).toBe('0');
+  });
+
+  it('restores collapsed preference from localStorage on mount', () => {
+    window.localStorage.setItem('od.chat.nextStepCollapsed', '1');
+    renderActions();
+    expect(screen.queryByTestId('next-step-toolbox')).toBeNull();
+    expect(screen.getByTestId('next-step-collapse-toggle').getAttribute('aria-expanded')).toBe(
+      'false',
+    );
   });
 });

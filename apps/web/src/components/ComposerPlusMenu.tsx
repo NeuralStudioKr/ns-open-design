@@ -458,6 +458,7 @@ export function ComposerPlusMenu({
                       close();
                       onPickConnector(connector);
                     }}
+                    title={connector.name}
                   >
                     <Icon name="link" size={15} className="plus-menu__item-icon" />
                     <span>{connector.name}</span>
@@ -525,6 +526,7 @@ export function ComposerPlusMenu({
                           close();
                           onPickPlugin(plugin);
                         }}
+                        title={localizePluginTitle(locale, plugin)}
                       >
                         <Icon name="sparkles" size={15} className="plus-menu__item-icon" />
                         <span>{localizePluginTitle(locale, plugin)}</span>
@@ -569,8 +571,8 @@ export function ComposerPlusMenu({
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="MCP"
-                aria-label="MCP"
+                placeholder={t('chat.plusMenu.searchMcp')}
+                aria-label={t('chat.plusMenu.searchMcp')}
               />
             </div>
             <div className="plus-menu__list">
@@ -588,6 +590,7 @@ export function ComposerPlusMenu({
                       close();
                       onPickMcp(server);
                     }}
+                    title={server.label || server.id}
                   >
                     <Icon name="link" size={15} className="plus-menu__item-icon" />
                     <span>{server.label || server.id}</span>

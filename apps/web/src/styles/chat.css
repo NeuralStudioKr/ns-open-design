@@ -33,6 +33,11 @@
   background: var(--bg-subtle);
   color: var(--text);
 }
+.chat-project-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  color: var(--text);
+}
 .chat-project-design-system {
   display: inline-flex;
   align-items: center;
@@ -105,8 +110,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   margin: 0;
   border: none;
@@ -185,6 +190,11 @@
   background: var(--bg-subtle);
   color: var(--text);
 }
+.chat-session-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  color: var(--text);
+}
 .chat-header-tabs { display: inline-flex; gap: 16px; flex: 1; }
 .chat-header-tab {
   background: transparent;
@@ -218,8 +228,8 @@
   color: var(--text);
 }
 .chat-active-conversation-rename {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
   background: transparent;
@@ -257,6 +267,7 @@
 }
 .chat-header-actions { display: inline-flex; gap: 4px; align-items: center; margin-left: auto; }
 .chat-header-actions .icon-only {
+  /* Keep the shared 28px control system (session trigger / composer). */
   width: 28px; height: 28px;
   padding: 0;
   background: transparent;
@@ -760,13 +771,18 @@
   white-space: nowrap;
 }
 .msg.user .user-copy-btn {
-  padding: 4px;
+  box-sizing: border-box;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 6px;
   border: none;
   background: none;
   border-radius: var(--radius-sm);
   color: var(--text-soft);
   cursor: pointer;
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: color 120ms var(--ease-out), background 120ms var(--ease-out);
 }
 .msg.user .user-copy-btn:hover {
@@ -927,7 +943,7 @@
 }
 
 .composer {
-  padding: 10px 16px;
+  padding: 10px var(--chat-composer-inline-inset, 12px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1793,6 +1809,7 @@
 
 .chat-queued-send-drag-handle,
 .chat-queued-send-action {
+  /* Must match .chat-queued-send-row grid first column (24px). */
   width: 24px;
   height: 24px;
   display: inline-flex;
@@ -2064,6 +2081,11 @@
   line-height: inherit;
   cursor: pointer;
   overflow: hidden;
+  border-radius: 4px;
+}
+.staged-context-open:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  outline-offset: 2px;
 }
 .staged-context--workspace {
   background: color-mix(in srgb, var(--bg-subtle) 48%, var(--bg-panel));
@@ -2247,6 +2269,10 @@
   height: 8px;
 }
 .staged-remove:hover { color: var(--red); background: var(--red-bg); }
+.staged-remove:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  outline-offset: 1px;
+}
 
 .linked-dirs-row {
   display: flex;

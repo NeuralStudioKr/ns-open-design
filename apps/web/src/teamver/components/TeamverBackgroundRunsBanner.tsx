@@ -52,7 +52,17 @@ export function TeamverBackgroundRunsBanner({ summaries, onOpenProject }: Props)
               ? t("teamver.backgroundRuns.titleMany", { n: summaries.length })
               : t("teamver.backgroundRuns.titleOne")}
           </span>
-          <span className="teamver-background-runs__detail">
+          <span
+            className="teamver-background-runs__detail"
+            title={[
+              t(statusLabelKey(primary.status)),
+              primary.projectName,
+              primary.count > 1 ? `(${primary.count})` : "",
+              extraCount > 0 ? t("teamver.backgroundRuns.andMore", { n: extraCount }) : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          >
             {t(statusLabelKey(primary.status))}
             {" · "}
             <span className="teamver-background-runs__project">{primary.projectName}</span>
@@ -97,6 +107,7 @@ export function TeamverBackgroundRunsBanner({ summaries, onOpenProject }: Props)
             <li key={summary.projectId}>
               <button
                 type="button"
+                title={summary.projectName}
                 onClick={() =>
                   onOpenProject(summary.projectId, {
                     conversationId: summary.conversationId ?? null,

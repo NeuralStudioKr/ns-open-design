@@ -1,16 +1,23 @@
 .overlay {
   position: absolute;
-  z-index: 30;
+  /* Host stacking SSOT: memory.css `.manual-edit-workspace > …` sets 20.
+     Keep the module default aligned so non-workspace mounts stay below panels. */
+  z-index: 20;
   pointer-events: none;
   box-sizing: border-box;
   border: 1.5px solid #2563eb;
   outline: none;
 }
 
-.movable {
+/* Interactive whenever resize is available — not only when body-move is on.
+   Edge hit-testing on the body needs pointer events even for flow boxes. */
+.interactive {
   pointer-events: auto;
-  cursor: grab;
   touch-action: none;
+}
+
+.movable {
+  cursor: grab;
 }
 
 .moving {
@@ -33,6 +40,14 @@
   touch-action: none;
 }
 
+/* Invisible hit slop so edge grabs prefer resize over body-move. */
+.handle::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  pointer-events: auto;
+}
+
 .handle::after {
   content: '';
   position: absolute;
@@ -40,6 +55,11 @@
   background: #2563eb;
   border-radius: 1px;
   pointer-events: none;
+}
+
+.handle[aria-disabled='true'] {
+  pointer-events: none;
+  opacity: 0.45;
 }
 
 .handle:focus-visible {

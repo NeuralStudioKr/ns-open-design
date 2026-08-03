@@ -6,7 +6,11 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 
-import { contentRectToHostRect, hostDeltaToContentDelta } from '../edit-mode/preview-coords';
+import {
+  contentRectToHostRect,
+  freezeGestureHostGeom,
+  hostDeltaToContentDelta,
+} from '../edit-mode/preview-coords';
 import {
   MANUAL_EDIT_MOVE_MIN_DELTA_PX,
   canMoveOrPromoteTarget,
@@ -27,18 +31,34 @@ import {
   aspectLockForTarget,
   computeResize,
   cursorForResizeHandle,
+  resizeHandleFromHostPoint,
   resizeResultToStyles,
+  resizeFreezeContentRect,
   startAnchorFromTarget,
   startSizeFromTarget,
   type ResizeHandle,
   type ResizeSessionStart,
 } from '../edit-mode/resize-math';
-import type { ManualEditStyles, ManualEditTarget } from '../edit-mode/types';
+import type { ManualEditRect, ManualEditStyles, ManualEditTarget } from '../edit-mode/types';
 import styles from './ManualEditResizeOverlay.module.css';
 
 export type ManualEditResizeOverlayProps = {
   target: ManualEditTarget;
+  /** Visual scale of the iframe inside the workspace (measured, not toolbar zoom). */
   previewScale: number;
+  /**
+   * Iframe top-left inside `.manual-edit-workspace`. Content rects are iframe-
+   * local; overlay is workspace-local — without this offset the box drifts
+   * whenever the canvas is centered / letterboxed / not at (0,0).
+   */
+  hostOffset?: { x: number; y: number };
+  /**
+   * Live host-space paint box from `measureManualEditTargetHostRect`. When set,
+   * the overlay uses this for display instead of composing
+   * `hostOffset + target.rect * previewScale` — that composition goes stale
+   * whenever scale/offset state lags the painted iframe.
+   */
+  hostPaintRect?: ManualEditRect | null;
   /** Live draft size while dragging; null uses target.rect. */
   draftWidthPx: number | null;
   draftHeightPx: number | null;
@@ -56,6 +76,16 @@ export type ManualEditResizeOverlayProps = {
   onResizeCancel: (stylesBefore: Partial<ManualEditStyles>) => void;
   /** Shared with move — autosave pause while any geometry gesture is active. */
   onResizeSessionChange?: (active: boolean) => void;
+  /**
+   * Live iframe measure at pointerdown. Prefer this over React `target` so a
+   * stale visual `rect` cannot become CSS width under deck-stage fit-scale.
+   */
+  onResolveResizeStart?: () => {
+    layoutWidth: number;
+    layoutHeight: number;
+    rect: ManualEditRect;
+    paint: ManualEditRect | null;
+  } | null;
   onMovePreview?: (next: Partial<ManualEditStyles>) => void;
   onMoveCommit?: (
     next: Partial<ManualEditStyles>,
@@ -63,6 +93,12 @@ export type ManualEditResizeOverlayProps = {
     viewport?: { x: number; y: number },
   ) => void;
   onMoveCancel?: (stylesBefore: Partial<ManualEditStyles>) => void;
+};
+
+type GestureHostGeom = {
+  /** Frozen at pointerdown — live previewScale mid-drag morphs the host box. */
+  hostScale: number;
+  hostOffset: { x: number; y: number };
 };
 
 type ResizeDragState = {
@@ -77,7 +113,7 @@ type ResizeDragState = {
   /** True after pointer moved past jitter — gates commit/Esc like move. */
   previewed: boolean;
   lastViewport: { x: number; y: number };
-};
+} & GestureHostGeom;
 
 type MoveDragState = {
   kind: 'move';
@@ -95,7 +131,7 @@ type MoveDragState = {
   /** 53: flow → absolute promote during this gesture. */
   promote: boolean;
   lastViewport: { x: number; y: number };
-};
+} & GestureHostGeom;
 
 type DragState = ResizeDragState | MoveDragState;
 
@@ -117,6 +153,8 @@ function handlePositionStyle(handle: ResizeHandle): CSSProperties {
 export function ManualEditResizeOverlay({
   target,
   previewScale,
+  hostOffset = { x: 0, y: 0 },
+  hostPaintRect = null,
   draftWidthPx,
   draftHeightPx,
   draftLeftPx = null,
@@ -126,6 +164,7 @@ export function ManualEditResizeOverlay({
   onResizeCommit,
   onResizeCancel,
   onResizeSessionChange,
+  onResolveResizeStart,
   onMovePreview,
   onMoveCommit,
   onMoveCancel,
@@ -136,7 +175,8 @@ export function ManualEditResizeOverlay({
   /** Viewport-space overlay origin during promote (CSS left/top are CB-relative). */
   const [liveViewportPos, setLiveViewportPos] = useState<{ x: number; y: number } | null>(null);
   const previewScaleRef = useRef(previewScale);
-  previewScaleRef.current = previewScale;
+  // Keep pointer→content conversion on the scale frozen at gesture start.
+  if (!dragRef.current) previewScaleRef.current = previewScale;
   const onMovePreviewRef = useRef(onMovePreview);
   onMovePreviewRef.current = onMovePreview;
   const onMoveCommitRef = useRef(onMoveCommit);
@@ -148,13 +188,43 @@ export function ManualEditResizeOverlay({
   const onResizeSessionChangeRef = useRef(onResizeSessionChange);
   onResizeSessionChangeRef.current = onResizeSessionChange;
 
+  const gestureGeom = dragRef.current;
+  const composeScale = gestureGeom?.hostScale ?? previewScale;
+  const composeOffset = gestureGeom?.hostOffset ?? hostOffset;
+  // Draft width/height are layout px (CSS write space). Prefer layout* over
+  // visual rect so composeScale = paint/layout keeps the host box aligned
+  // under deck-stage transform scale.
   const contentRect = {
     x: liveViewportPos?.x ?? draftLeftPx ?? target.rect.x,
     y: liveViewportPos?.y ?? draftTopPx ?? target.rect.y,
-    width: draftWidthPx ?? target.rect.width,
-    height: draftHeightPx ?? target.rect.height,
+    width: draftWidthPx
+      ?? (target.layoutWidth && target.layoutWidth >= 1 ? target.layoutWidth : target.rect.width),
+    height: draftHeightPx
+      ?? (target.layoutHeight && target.layoutHeight >= 1 ? target.layoutHeight : target.rect.height),
   };
-  const hostRect = contentRectToHostRect(contentRect, previewScale);
+  const scaled = contentRectToHostRect(contentRect, composeScale);
+  const composedHostRect = {
+    x: composeOffset.x + scaled.x,
+    y: composeOffset.y + scaled.y,
+    width: scaled.width,
+    height: scaled.height,
+  };
+  // Idle: prefer live DOM projection (survives stale scale/offset state).
+  // During a previewed gesture: composed draft/liveViewport math with the
+  // scale/offset frozen at pointerdown (live fit-scale remasure morphs size).
+  // pointerdown alone keeps paint until the first preview — avoids a flash
+  // from paint → composed before drafts exist.
+  const gestureComposed = liveViewportPos != null
+    || draftWidthPx != null
+    || draftHeightPx != null
+    || draftLeftPx != null
+    || draftTopPx != null;
+  const hostRect = !gestureComposed
+    && hostPaintRect
+    && hostPaintRect.width >= 1
+    && hostPaintRect.height >= 1
+    ? hostPaintRect
+    : composedHostRect;
   const movable = !disabled && canMoveOrPromoteTarget(target);
 
   useEffect(() => {
@@ -199,22 +269,27 @@ export function ManualEditResizeOverlay({
       const kind = drag.kind;
       const moved = kind === 'move' ? drag.moved : false;
       dragRef.current = null;
+      onResizeSessionChangeRef.current?.(false);
+      // Commit/cancel BEFORE clearing liveViewportPos. Commit applies an
+      // optimistic target.rect synchronously; clearing first would flash the
+      // overlay back onto the pre-gesture rect for a frame (or longer if flush
+      // awaited before the optimistic update).
+      if (kind === 'resize') {
+        // Handle click / sub-threshold jitter: no flush, no cancel wipe.
+        if (previewed) {
+          if (commit) onResizeCommitRef.current(last, before, viewport);
+          else onResizeCancelRef.current(before);
+        }
+      } else if (commit && moved) {
+        // pointercancel: never persist. pointerup commits only past the jitter
+        // threshold. A plain click (no preview) must not wipe pending styles.
+        onMoveCommitRef.current?.(last, before, viewport);
+      } else if (previewed) {
+        onMoveCancelRef.current?.(before);
+      }
       setDragging(false);
       setMoving(false);
       setLiveViewportPos(null);
-      onResizeSessionChangeRef.current?.(false);
-      if (kind === 'resize') {
-        // Handle click / sub-threshold jitter: no flush, no cancel wipe.
-        if (!previewed) return;
-        if (commit) onResizeCommitRef.current(last, before, viewport);
-        else onResizeCancelRef.current(before);
-        return;
-      }
-      // pointercancel: never persist. pointerup commits only past the jitter
-      // threshold. A plain click (no preview) must not wipe pending styles.
-      // Pass stylesBefore so flush-fail can mirror Esc keyed rollback.
-      if (commit && moved) onMoveCommitRef.current?.(last, before, viewport);
-      else if (previewed) onMoveCancelRef.current?.(before);
     };
 
     const onPointerMove = (event: PointerEvent) => {
@@ -302,12 +377,28 @@ export function ManualEditResizeOverlay({
     height: Math.max(1, hostRect.height),
   };
 
-  const beginResize = (handle: ResizeHandle, event: ReactPointerEvent<HTMLButtonElement>) => {
+  const beginResize = (
+    handle: ResizeHandle,
+    event: Pick<
+      ReactPointerEvent<Element>,
+      'pointerId' | 'clientX' | 'clientY' | 'shiftKey' | 'preventDefault' | 'stopPropagation' | 'currentTarget'
+    >,
+  ) => {
     if (disabled || dragRef.current) return;
+    // Capture-phase friendly: stop before the movable body can begin a move.
     event.preventDefault();
     event.stopPropagation();
-    const size = startSizeFromTarget(target);
-    const anchor = startAnchorFromTarget(target);
+    const live = onResolveResizeStart?.() ?? null;
+    const startTarget: ManualEditTarget = live
+      ? {
+          ...target,
+          rect: live.rect,
+          layoutWidth: live.layoutWidth,
+          layoutHeight: live.layoutHeight,
+        }
+      : target;
+    const size = startSizeFromTarget(startTarget);
+    const anchor = startAnchorFromTarget(startTarget);
     const aspect = size.heightPx > 0 ? size.widthPx / size.heightPx : 1;
     const stylesBefore: Partial<ManualEditStyles> = {
       width: cascadeRollbackStyle(target.styles.width),
@@ -325,7 +416,8 @@ export function ManualEditResizeOverlay({
       bottom: cascadeRollbackStyle(target.styles.bottom),
     };
     const session: ResizeSessionStart = {
-      startRect: { ...target.rect },
+      // Viewport origin stays visual (gBCR); startWidth/Height are layout px.
+      startRect: { ...startTarget.rect },
       startWidthPx: size.widthPx,
       startHeightPx: size.heightPx,
       aspect,
@@ -337,6 +429,14 @@ export function ManualEditResizeOverlay({
       startLeftPx: anchor.startLeftPx,
       startTopPx: anchor.startTopPx,
     };
+    // Freeze scale as paint/layout so hostΔ→contentΔ is layout px (CSS write
+    // space), not transform-shrunk gBCR px.
+    const geom = freezeGestureHostGeom(
+      resizeFreezeContentRect(startTarget),
+      live?.paint ?? hostPaintRect,
+      previewScale,
+      hostOffset,
+    );
     dragRef.current = {
       kind: 'resize',
       pointerId: event.pointerId,
@@ -347,14 +447,17 @@ export function ManualEditResizeOverlay({
       stylesBefore,
       lastStyles: {},
       previewed: false,
-      lastViewport: { x: target.rect.x, y: target.rect.y },
+      lastViewport: { x: startTarget.rect.x, y: startTarget.rect.y },
+      hostScale: geom.hostScale,
+      hostOffset: geom.hostOffset,
     };
+    previewScaleRef.current = geom.hostScale;
     setLiveViewportPos(null);
     setDragging(true);
     setMoving(false);
     onResizeSessionChange?.(true);
     try {
-      event.currentTarget.setPointerCapture?.(event.pointerId);
+      (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
     } catch {
       // jsdom / older engines may lack pointer capture
     }
@@ -362,7 +465,6 @@ export function ManualEditResizeOverlay({
 
   const beginMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!movable || dragRef.current) return;
-    if ((event.target as HTMLElement | null)?.closest?.('[data-handle]')) return;
     event.preventDefault();
     event.stopPropagation();
     const pos = startPositionFromTarget(target);
@@ -377,6 +479,7 @@ export function ManualEditResizeOverlay({
           right: cascadeRollbackStyle(target.styles.right),
           bottom: cascadeRollbackStyle(target.styles.bottom),
         };
+    const geom = freezeGestureHostGeom(target.rect, hostPaintRect, previewScale, hostOffset);
     dragRef.current = {
       kind: 'move',
       pointerId: event.pointerId,
@@ -394,7 +497,10 @@ export function ManualEditResizeOverlay({
       previewed: false,
       promote,
       lastViewport: { x: target.rect.x, y: target.rect.y },
+      hostScale: geom.hostScale,
+      hostOffset: geom.hostOffset,
     };
+    previewScaleRef.current = geom.hostScale;
     setLiveViewportPos(null);
     setDragging(true);
     setMoving(true);
@@ -406,10 +512,48 @@ export function ManualEditResizeOverlay({
     }
   };
 
+  /**
+   * Resize wins on the border band; move only in the clear interior.
+   * Box/element drift made users aim at the visual edge and hit the movable
+   * body — which felt like "resize always becomes move".
+   */
+  const onOverlayPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (disabled || dragRef.current) return;
+    if ((event.target as HTMLElement | null)?.closest?.('[data-handle]')) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const edge = resizeHandleFromHostPoint(
+      event.clientX - box.left,
+      event.clientY - box.top,
+      box.width,
+      box.height,
+    );
+    if (edge) {
+      beginResize(edge, event);
+      return;
+    }
+    if (movable) beginMove(event);
+  };
+
+  const onOverlayPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (disabled || dragRef.current || moving) return;
+    if ((event.target as HTMLElement | null)?.closest?.('[data-handle]')) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const edge = resizeHandleFromHostPoint(
+      event.clientX - box.left,
+      event.clientY - box.top,
+      box.width,
+      box.height,
+    );
+    event.currentTarget.style.cursor = edge
+      ? cursorForResizeHandle(edge)
+      : (movable ? 'grab' : 'default');
+  };
+
   return (
     <div
       className={[
         styles.overlay,
+        disabled ? '' : styles.interactive,
         movable ? styles.movable : '',
         moving ? styles.moving : '',
       ]
@@ -421,7 +565,8 @@ export function ManualEditResizeOverlay({
       data-movable={movable ? 'true' : 'false'}
       style={boxStyle}
       aria-hidden={disabled || undefined}
-      onPointerDown={movable ? beginMove : undefined}
+      onPointerDown={disabled ? undefined : onOverlayPointerDown}
+      onPointerMove={disabled ? undefined : onOverlayPointerMove}
     >
       {RESIZE_HANDLES.map((handle) => (
         <button
@@ -431,12 +576,15 @@ export function ManualEditResizeOverlay({
           data-testid={`manual-edit-resize-handle-${handle}`}
           data-handle={handle}
           aria-label={`Resize ${handle}`}
-          disabled={disabled}
+          // Avoid HTML `disabled` — it drops pointer hits through to the
+          // movable overlay body, so edge drags become moves.
+          aria-disabled={disabled || undefined}
+          tabIndex={disabled ? -1 : 0}
           style={{
             ...handlePositionStyle(handle),
             cursor: disabled ? 'default' : cursorForResizeHandle(handle),
           }}
-          onPointerDown={(event) => beginResize(handle, event)}
+          onPointerDownCapture={(event) => beginResize(handle, event)}
         />
       ))}
     </div>

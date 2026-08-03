@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n';
 import { localizeSkillDescription, localizeSkillName } from '../i18n/content';
@@ -76,6 +76,26 @@ const TOOLBOX_SUB_HEIGHT = 500;
 // making dismissal feel sticky once the pointer leaves the whole affordance.
 const FLYOUT_CLOSE_DELAY_MS = 240;
 
+const NEXT_STEP_COLLAPSED_STORAGE_KEY = 'od.chat.nextStepCollapsed';
+
+function readNextStepCollapsed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(NEXT_STEP_COLLAPSED_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeNextStepCollapsed(collapsed: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(NEXT_STEP_COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0');
+  } catch {
+    // Ignore quota / private-mode failures; in-memory state still works.
+  }
+}
+
 // Place a flyout next to an anchor rect: flip to the left when the right edge
 // would overflow, and clamp vertically so a tall flyout under a row near the
 // bottom of the viewport keeps its bottom edge on-screen. Returns viewport-fixed
@@ -114,6 +134,10 @@ export function NextStepActions({
   const { enabled: teamverBranded, slideOnlyMvp } = useTeamverBranding();
   const analytics = useAnalytics();
   const exposedRef = useRef(false);
+  const bodyId = useId();
+  // Start with the persisted preference on the client so collapsed users
+  // never flash an expanded card; SSR stays expanded (no window).
+  const [collapsed, setCollapsed] = useState(readNextStepCollapsed);
   useEffect(() => {
     if (exposedRef.current) return;
     exposedRef.current = true;
@@ -157,6 +181,18 @@ export function NextStepActions({
     }, FLYOUT_CLOSE_DELAY_MS);
   }, [cancelClose, closeAll]);
   useEffect(() => () => cancelClose(), [cancelClose]);
+
+  const toggleCollapsed = useCallback(() => {
+    const next = !collapsed;
+    writeNextStepCollapsed(next);
+    setCollapsed(next);
+    trackNextStepActionClick(analytics.track, {
+      page_name: 'chat_panel',
+      area: 'next_step',
+      element: next ? 'collapse' : 'expand',
+    });
+    closeAll();
+  }, [analytics.track, closeAll, collapsed]);
 
   const openDetail = useCallback(
     (id: DesignToolboxActionId, rect: DOMRect) => {
@@ -302,15 +338,44 @@ export function NextStepActions({
 
   // Hover handlers shared by every flyout surface: stay open while hovered.
   const keepOpen = { onMouseEnter: cancelClose, onMouseLeave: scheduleClose };
+  const rootClass = [
+    pinned ? `${styles.root} ${styles.rootPinned}` : styles.root,
+    collapsed ? styles.rootCollapsed : '',
+    collapsed ? styles.rootNoEnterAnim : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <div
-      className={pinned ? `${styles.root} ${styles.rootPinned}` : styles.root}
+      className={rootClass}
       data-testid="next-step-actions"
+      data-collapsed={collapsed ? 'true' : 'false'}
     >
-      <div className={styles.label}>{t('nextStep.title')}</div>
-      {showToolbox || hasMore ? (
-        <div className={styles.toolboxList} data-testid="next-step-toolbox">
+      <button
+        type="button"
+        className={styles.labelToggle}
+        data-testid="next-step-collapse-toggle"
+        aria-expanded={!collapsed}
+        {...(!collapsed ? { 'aria-controls': bodyId } : {})}
+        aria-label={`${t('nextStep.title')} — ${collapsed ? t('nextStep.expand') : t('nextStep.collapse')}`}
+        onClick={toggleCollapsed}
+      >
+        <span className={styles.label} aria-hidden>
+          {t('nextStep.title')}
+        </span>
+        <Icon
+          name="chevron-down"
+          size={14}
+          className={`${styles.chevron}${collapsed ? ` ${styles.chevronCollapsed}` : ''}`}
+        />
+      </button>
+      {!collapsed && (showToolbox || hasMore) ? (
+        <div
+          id={bodyId}
+          className={styles.toolboxList}
+          data-testid="next-step-toolbox"
+        >
           {showToolbox
             ? featuredToolboxActionIds.map((id) => {
                 const action = getDesignToolboxAction(id);

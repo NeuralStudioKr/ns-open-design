@@ -142,6 +142,16 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.od-toast-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.od-toast-row .od-toast-body {
+  padding-top: 2px;
 }
 .od-toast-icon {
   display: inline-flex;
@@ -195,6 +205,7 @@
 }
 .od-toast-message {
   font-weight: 500;
+  min-width: 0;
 }
 .od-toast-details {
   margin-top: 4px;
@@ -234,7 +245,7 @@
   margin: 8px 0 0;
   padding: 8px 10px;
   border-radius: var(--radius-sm, 4px);
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, currentColor 8%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   line-height: 1.45;
@@ -244,18 +255,47 @@
   overflow: auto;
   user-select: text;
 }
+/* Icon dismiss sits on the same row as the message — never a second
+   white chip that wraps under success/error toasts. */
 .od-toast-dismiss {
-  margin-top: 8px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: var(--bg, white);
-  font-size: 11.5px;
-  padding: 4px 10px;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
   border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: inherit;
+  opacity: 0.62;
   cursor: pointer;
+  line-height: 1;
 }
 .od-toast-dismiss:hover {
-  background: rgba(255, 255, 255, 0.18);
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.od-toast-dismiss:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  opacity: 1;
+}
+.od-toast-dismiss.od-toast-dismiss-text {
+  width: auto;
+  height: auto;
+  margin-top: 8px;
+  padding: 4px 10px;
+  opacity: 1;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.od-toast-dismiss.od-toast-dismiss-text:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
 }
 
 /* Compact pill toast for save confirmations (AI edit saved + undo). */
@@ -309,25 +349,10 @@
   border-radius: 999px;
   white-space: nowrap;
 }
-.od-toast-dismiss.od-toast-dismiss-inline {
-  margin-top: 0;
+.od-toast.layout-compact .od-toast-dismiss {
   width: 28px;
   height: 28px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   border-radius: 999px;
-  background: transparent;
-  border: none;
-  color: inherit;
-  opacity: 0.7;
-  font-size: 18px;
-  line-height: 1;
-}
-.od-toast-dismiss.od-toast-dismiss-inline:hover {
-  opacity: 1;
-  background: color-mix(in srgb, currentColor 10%, transparent);
 }
 
 /* ---------------- Routines (Settings → Automations) ---------------- */
@@ -951,12 +976,13 @@
   font-weight: 540;
 }
 .workspace-shell .workspace-tab__close {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   border-radius: var(--radius-sm);
 }
 .workspace-shell .workspace-tabs-new-btn,
 .workspace-shell .workspace-tabs-icon-btn {
+  /* Compact Design Files chrome (38px); do not force the global 28px size. */
   width: 24px;
   height: 24px;
   border-radius: var(--radius-sm);
@@ -1186,6 +1212,7 @@
   transition: opacity 150ms var(--ease-out);
 }
 .app .msg.assistant:hover .assistant-footer,
+.app .msg.assistant:focus-within .assistant-footer,
 .app .assistant-footer[data-streaming="true"],
 .app .assistant-footer[data-last="true"] { opacity: 1; }
 .app .assistant-footer .dot {
@@ -2902,12 +2929,19 @@
     background 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 .project-ds-picker-preview-stage:hover .project-ds-picker-preview-expand,
+.project-ds-picker-preview-stage:focus-within .project-ds-picker-preview-expand,
 .project-ds-picker-preview-expand:focus-visible {
   opacity: 1;
   transform: translate(-50%, 0);
 }
 .project-ds-picker-preview-expand:hover {
   background: var(--bg-panel);
+}
+@media (hover: none) {
+  .project-ds-picker-preview-expand {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 .project-ds-picker-preview-expand svg {
   display: block;

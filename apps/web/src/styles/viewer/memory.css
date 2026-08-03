@@ -654,7 +654,9 @@
   width: 320px;
   max-width: calc(100% - 16px);
   overflow: hidden;
-  z-index: 30;
+  /* Above resize overlay (20) and hover affordance (21) so the inspector
+     stays interactive when it overlaps the selection chrome. */
+  z-index: 40;
 }
 .manual-edit-workspace > .manual-edit-right.manual-edit-floating {
   right: auto;
@@ -678,14 +680,16 @@
 /* Hover affordance: a small "edit params" handle pinned to the hovered
    element so click-to-pin selection stays discoverable without the panel
    chasing the cursor. */
-/* Resize overlay is a sibling under .manual-edit-workspace (host layer). */
+/* Resize overlay is a sibling under .manual-edit-workspace (host layer).
+   Keep below the floating inspector — equal z-index + later DOM painted the
+   box over Font/Typography controls. */
 .manual-edit-workspace > [data-testid='manual-edit-resize-overlay'] {
-  z-index: 30;
+  z-index: 20;
 }
 
 .manual-edit-workspace > .manual-edit-hover-action {
   position: absolute;
-  z-index: 31;
+  z-index: 21;
   display: flex;
   align-items: center;
   justify-content: center;

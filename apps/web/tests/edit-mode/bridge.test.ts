@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import {
+  MANUAL_EDIT_DISCOVERY_SELECTOR,
   buildManualEditBridge,
   buildManualEditBridgeStyle,
   isMeaningfulManualEditElement,
@@ -39,6 +40,12 @@ describe('manual edit bridge target normalization', () => {
     expect(manualEditDomPathForElement(target)).toBe('path-0-0-1');
   });
 
+  it('syncs textDecoration and whiteSpace into bridge styleProps', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("'textDecoration'");
+    expect(bridge).toContain("'whiteSpace'");
+  });
+
   it('discovers meaningful elements and ignores tiny or irrelevant elements', () => {
     const dom = new JSDOM('<main><h1 data-od-source-path="path-0-0">Title</h1><script>1</script></main>');
     const title = dom.window.document.querySelector('h1')!;
@@ -47,6 +54,54 @@ describe('manual edit bridge target normalization', () => {
     expect(isMeaningfulManualEditElement(title, { width: 80, height: 24 })).toBe(true);
     expect(isMeaningfulManualEditElement(title, { width: 3, height: 24 })).toBe(false);
     expect(isMeaningfulManualEditElement(script, { width: 80, height: 24 })).toBe(false);
+  });
+
+  it('includes svg in discovery so logos are not selected as parent containers', () => {
+    expect(MANUAL_EDIT_DISCOVERY_SELECTOR.split(',').map((s) => s.trim())).toContain('svg');
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain(', svg,');
+    expect(bridge).toContain("tag === 'img' || tag === 'svg'");
+
+    const dom = new JSDOM(
+      `<main>
+        <div data-od-source-path="path-0-0" style="width:400px;height:200px">
+          <svg data-od-source-path="path-0-0-0" width="32" height="32" viewBox="0 0 32 32"><path d="M0 0h32v32z"/></svg>
+        </div>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const posts: Array<{ type?: string; target?: { id?: string; kind?: string; tagName?: string; rect?: { width: number; height: number } } }> = [];
+    const wrap = dom.window.document.querySelector('div')!;
+    const svg = dom.window.document.querySelector('svg')!;
+    const path = dom.window.document.querySelector('path')!;
+    wrap.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 400, height: 200,
+      top: 0, right: 400, bottom: 200, left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    svg.getBoundingClientRect = () => ({
+      x: 10, y: 10, width: 32, height: 32,
+      top: 10, right: 42, bottom: 42, left: 10,
+      toJSON: () => ({}),
+    } as DOMRect);
+    path.getBoundingClientRect = svg.getBoundingClientRect;
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+
+    path.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    const select = posts.find((message) => message.type === 'od-edit-select');
+    expect(select?.target?.tagName).toBe('svg');
+    expect(select?.target?.kind).toBe('image');
+    expect(select?.target?.id).toBe('path-0-0-0');
+    expect(select?.target?.rect).toMatchObject({ width: 32, height: 32 });
+
+    dom.window.close();
   });
 
   it('keeps source-mappable display:none targets available for the layers panel', async () => {
@@ -683,6 +738,8 @@ describe('manual edit bridge target normalization', () => {
       target?: {
         id?: string;
         rect?: { x: number; y: number; width: number; height: number };
+        layoutWidth?: number;
+        layoutHeight?: number;
         offsetLeft?: number;
         offsetTop?: number;
         cssPosition?: string;
@@ -692,12 +749,14 @@ describe('manual edit bridge target normalization', () => {
       `<main><div data-od-id="card" style="position:absolute;left:12px;top:24px">Box</div></main>${buildManualEditBridge(true)}`,
       { runScripts: 'dangerously', url: 'http://localhost' },
     );
-    const card = dom.window.document.querySelector('[data-od-id="card"]')!;
+    const card = dom.window.document.querySelector('[data-od-id="card"]') as HTMLElement;
     card.getBoundingClientRect = () => ({
-      x: 12, y: 24, width: 320, height: 180,
-      top: 24, right: 332, bottom: 204, left: 12,
+      x: 12, y: 24, width: 160, height: 90,
+      top: 24, right: 172, bottom: 114, left: 12,
       toJSON: () => ({}),
     } as DOMRect);
+    Object.defineProperty(card, 'offsetWidth', { value: 320, configurable: true });
+    Object.defineProperty(card, 'offsetHeight', { value: 180, configurable: true });
     dom.window.parent.postMessage = ((message: unknown) => {
       posts.push(message as typeof posts[number]);
     }) as typeof dom.window.parent.postMessage;
@@ -713,7 +772,9 @@ describe('manual edit bridge target normalization', () => {
       ok: true,
       target: {
         id: 'card',
-        rect: { x: 12, y: 24, width: 320, height: 180 },
+        rect: { x: 12, y: 24, width: 160, height: 90 },
+        layoutWidth: 320,
+        layoutHeight: 180,
         cssPosition: 'absolute',
       },
     });

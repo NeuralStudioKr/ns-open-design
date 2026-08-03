@@ -35,6 +35,14 @@ vi.mock('../../src/providers/registry', async () => {
   };
 });
 
+vi.mock('../../src/hooks/useAuthenticatedProjectFileObjectUrl', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/hooks/useAuthenticatedProjectFileObjectUrl')>();
+  return {
+    ...actual,
+    loadAuthenticatedProjectFileBlob: vi.fn(async () => new Blob(['image'], { type: 'image/png' })),
+  };
+});
+
 const mockedUploadProjectFiles = vi.mocked(uploadProjectFiles);
 
 afterEach(() => {
@@ -150,7 +158,7 @@ describe('ChatComposer /search command', () => {
     expect(onSend).toHaveBeenCalledWith('follow-up while busy', [], [], undefined);
   });
 
-  it('auto-sends concurrent queued visual annotations when streaming ends', async () => {
+  it('queues concurrent visual annotations while streaming instead of auto-sending later', async () => {
     const onSend = vi.fn();
     const firstUpload = deferred<Awaited<ReturnType<typeof uploadProjectFiles>>>();
     const secondUpload = deferred<Awaited<ReturnType<typeof uploadProjectFiles>>>();
@@ -204,8 +212,10 @@ describe('ChatComposer /search command', () => {
       await Promise.all([firstUpload.promise, secondUpload.promise]);
     });
 
-    expect(onSend).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('staged-comment-attachments')).toBeNull();
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
+    for (const call of onSend.mock.calls) {
+      expect(call[3]).toMatchObject({ queueOnly: true });
+    }
 
     rerender(
       <ChatComposer
@@ -218,22 +228,7 @@ describe('ChatComposer /search command', () => {
       />,
     );
 
-    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
-    const [prompt, attachments, commentAttachments] = onSend.mock.calls[0]! as [
-      string,
-      ChatAttachment[],
-      ChatCommentAttachment[],
-    ];
-    expect(prompt).toContain('first note');
-    expect(prompt).toContain('second note');
-    expect(attachments).toEqual([
-      { path: 'uploads/first.png', name: 'first.png', kind: 'image', order: 0 },
-      { path: 'uploads/second.png', name: 'second.png', kind: 'image', order: 1 },
-    ]);
-    expect(commentAttachments).toHaveLength(2);
-    expect(commentAttachments[0]?.screenshotPath).toBe('uploads/first.png');
-    expect(commentAttachments[1]?.screenshotPath).toBe('uploads/second.png');
-    expect(commentAttachments[0]?.id).not.toBe(commentAttachments[1]?.id);
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
   });
 
   it('sends draw annotations directly when requested', async () => {
@@ -315,7 +310,7 @@ describe('ChatComposer /search command', () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     const [prompt, attachments, commentAttachments] = onSend.mock.calls[0]!;
     expect(prompt).toBe('make this card clearer');
-    expect(attachments).toEqual([{ path: 'uploads/drawing.png', name: 'drawing.png', kind: 'image', order: 0 }]);
+    expect(attachments).toEqual([]);
     expect(commentAttachments).toHaveLength(1);
     expect(commentAttachments[0]).toMatchObject({
       selectionKind: 'visual',
@@ -368,7 +363,7 @@ describe('ChatComposer /search command', () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     const [prompt, attachments, commentAttachments] = onSend.mock.calls[0]!;
     expect(prompt).toBe('review this before sending');
-    expect(attachments).toEqual([{ path: 'uploads/drawing.png', name: 'drawing.png', kind: 'image', order: 0 }]);
+    expect(attachments).toEqual([]);
     expect(commentAttachments).toHaveLength(1);
     expect(commentAttachments[0]).toMatchObject({
       selectionKind: 'visual',
@@ -425,7 +420,7 @@ describe('ChatComposer /search command', () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     const [prompt, attachments, commentAttachments] = onSend.mock.calls[0]!;
     expect(prompt).toBe('tighten this area');
-    expect(attachments).toEqual([{ path: 'uploads/drawing.png', name: 'drawing.png', kind: 'image', order: 0 }]);
+    expect(attachments).toEqual([]);
     expect(commentAttachments).toHaveLength(1);
     expect(commentAttachments[0]).toMatchObject({
       selectionKind: 'visual',

@@ -315,9 +315,32 @@ export function dedupeConversationAssistantRows(
 }
 
 /**
+ * Failed rows that only carry an error status (no prose / files / tool ops).
+ * Auto-continue leaves these behind a later succeeded shell — they must not
+ * steal ChatPane `isLast` from the trailing completion row.
+ */
+function isErrorStatusOnlyFailedAssistant(message: ChatMessage): boolean {
+  if (message.role !== "assistant" || message.runStatus !== "failed") return false;
+  if ((message.producedFiles?.length ?? 0) > 0) return false;
+  if (assistantMessageTextBody(message).trim().length > 0) return false;
+  const events = message.events ?? [];
+  if (events.length === 0) return true;
+  return events.every((event) => {
+    if (event.kind === "usage") return true;
+    if (event.kind === "status") {
+      return event.label === "error" || HEADER_ONLY_STATUS_LABELS.has(event.label ?? "");
+    }
+    return false;
+  });
+}
+
+/**
  * Prefer the live streaming / in-flight assistant for chat anchors, then the
  * newest non-empty assistant. Falls back to the newest empty shell only when
  * that is the sole assistant (so multi-turn streams keep the new shell visible).
+ *
+ * Error-status-only failed rows are deferred behind later succeeded shells so
+ * auto-continue recovery keeps the completion lead as `isLast`.
  */
 export function resolveLastAssistantMessageId(
   messages: readonly ChatMessage[],
@@ -328,8 +351,16 @@ export function resolveLastAssistantMessageId(
     if (message?.role !== "assistant") continue;
     if (isInFlightAssistantMessage(message)) return message.id;
     // Prefer a real reply over trailing empty/thinking stubs.
-    if (!isCollapsibleAssistantStub(message)) return message.id;
-    if (fallback === undefined) fallback = message.id;
+    if (isCollapsibleAssistantStub(message)) {
+      if (fallback === undefined) fallback = message.id;
+      continue;
+    }
+    // Skip superseded incomplete_output shells when a later stub/shell exists.
+    if (isErrorStatusOnlyFailedAssistant(message)) {
+      if (fallback === undefined) fallback = message.id;
+      continue;
+    }
+    return message.id;
   }
   return fallback;
 }

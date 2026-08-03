@@ -14,6 +14,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 interface XaiAuthStatus {
   connected: boolean;
@@ -299,16 +300,20 @@ export function XaiOAuthControl() {
           <>
             <span className="mcp-oauth-dot mcp-oauth-dot-ok" aria-hidden />
             <span>
-              <strong>Signed in with X.</strong>{' '}
+              <strong>{embedUiLabel('Signed in with X.', 'X로 로그인됨.')}</strong>{' '}
               {expiresLabel ? (
                 <span className="hint">
-                  SuperGrok subscription token expires {expiresLabel}. You can
-                  close any open xAI browser tabs now.
+                  {embedUiLabel(
+                    `SuperGrok subscription token expires ${expiresLabel}. You can close any open xAI browser tabs now.`,
+                    `SuperGrok 구독 토큰이 ${expiresLabel}에 만료됩니다. 열린 xAI 탭은 닫아도 됩니다.`,
+                  )}
                 </span>
               ) : (
                 <span className="hint">
-                  SuperGrok subscription connected. You can close any open xAI
-                  browser tabs now.
+                  {embedUiLabel(
+                    'SuperGrok subscription connected. You can close any open xAI browser tabs now.',
+                    'SuperGrok 구독이 연결되었습니다. 열린 xAI 탭은 닫아도 됩니다.',
+                  )}
                 </span>
               )}
             </span>
@@ -317,11 +322,12 @@ export function XaiOAuthControl() {
           <>
             <span className="mcp-oauth-dot mcp-oauth-dot-pending" aria-hidden />
             <span>
-              <strong>Waiting for authorization…</strong>{' '}
+              <strong>{embedUiLabel('Waiting for authorization…', '승인 대기 중…')}</strong>{' '}
               <span className="hint">
-                Open Design is listening for the callback in the background.
-                This panel will switch to <em>Signed in</em> within a few
-                seconds of your approving on xAI.
+                {embedUiLabel(
+                  'Listening for the callback in the background. This panel will switch to Signed in within a few seconds of your approving on xAI.',
+                  '백그라운드에서 콜백을 기다립니다. xAI에서 승인하면 잠시 후 로그인됨으로 바뀝니다.',
+                )}
               </span>
             </span>
           </>
@@ -329,11 +335,12 @@ export function XaiOAuthControl() {
           <>
             <span className="mcp-oauth-dot" aria-hidden />
             <span>
-              <strong>Not signed in.</strong>{' '}
+              <strong>{embedUiLabel('Not signed in.', '로그인되지 않음.')}</strong>{' '}
               <span className="hint">
-                Click Sign in with X to use your SuperGrok subscription for
-                Grok image, video, and TTS in Open Design — no API key
-                needed.
+                {embedUiLabel(
+                  'Click Sign in with X to use your SuperGrok subscription for Grok image, video, and TTS — no API key needed.',
+                  'X로 로그인하면 SuperGrok 구독으로 Grok 이미지·영상·TTS를 사용할 수 있습니다. API 키는 필요 없습니다.',
+                )}
               </span>
             </span>
           </>
@@ -342,13 +349,11 @@ export function XaiOAuthControl() {
 
       {isAwaiting ? (
         <div className="xai-oauth-warning" role="status">
-          <strong>Heads up:</strong> xAI may show a page that says{' '}
-          <em>"Cannot connect to your application"</em> (or 「无法建立连接」
-          in Chinese). <strong>That is a UX bug on xAI's side</strong> — the
-          authorization is still being delivered to Open Design in the
-          background. Stay on this panel; it will switch to{' '}
-          <em>Signed in with X</em> automatically. Do not retry from xAI's
-          page.
+          <strong>{embedUiLabel('Heads up:', '안내:')}</strong>{' '}
+          {embedUiLabel(
+            'xAI may show a page that says "Cannot connect to your application". That is a UX bug on xAI\'s side — authorization is still delivered in the background. Stay on this panel; it will switch to Signed in with X automatically. Do not retry from xAI\'s page.',
+            'xAI에서 "앱에 연결할 수 없음" 같은 페이지가 보일 수 있습니다. xAI 쪽 UX 버그이며 승인은 백그라운드로 전달됩니다. 이 패널에 머무르면 자동으로 X 로그인됨으로 바뀝니다. xAI 페이지에서 재시도하지 마세요.',
+          )}
         </div>
       ) : null}
 
@@ -360,18 +365,23 @@ export function XaiOAuthControl() {
               className="primary"
               onClick={onConnect}
               disabled={busy !== 'idle' && busy !== 'refreshing'}
-              title="Re-authenticate (replaces the existing token)"
+              title={embedUiLabel(
+                'Re-authenticate (replaces the existing token)',
+                '다시 인증 (기존 토큰 교체)',
+              )}
             >
               {busy === 'starting' || busy === 'awaiting'
-                ? 'Connecting…'
-                : 'Reconnect'}
+                ? embedUiLabel('Connecting…', '연결 중…')
+                : embedUiLabel('Reconnect', '다시 연결')}
             </button>
             <button
               type="button"
               onClick={onDisconnect}
               disabled={busy !== 'idle'}
             >
-              {busy === 'disconnecting' ? 'Disconnecting…' : 'Disconnect'}
+              {busy === 'disconnecting'
+                ? embedUiLabel('Disconnecting…', '연결 해제 중…')
+                : embedUiLabel('Disconnect', '연결 해제')}
             </button>
           </>
         ) : (
@@ -382,15 +392,19 @@ export function XaiOAuthControl() {
               onClick={onConnect}
               disabled={busy !== 'idle'}
             >
-              {busy === 'starting' ? 'Opening browser…' : 'Sign in with X'}
+              {busy === 'starting'
+                ? embedUiLabel('Opening browser…', '브라우저 여는 중…')
+                : embedUiLabel('Sign in with X', 'X로 로그인')}
             </button>
             {isAwaiting ? (
               <>
                 <button type="button" onClick={onRefreshStatus} disabled={busy === 'refreshing'}>
-                  {busy === 'refreshing' ? 'Checking…' : 'Refresh status'}
+                  {busy === 'refreshing'
+                    ? embedUiLabel('Checking…', '확인 중…')
+                    : embedUiLabel('Refresh status', '상태 새로고침')}
                 </button>
                 <button type="button" onClick={onCancelPending}>
-                  Cancel
+                  {embedUiLabel('Cancel', '취소')}
                 </button>
               </>
             ) : null}
@@ -400,9 +414,9 @@ export function XaiOAuthControl() {
 
       {pendingAuthUrl && !connected ? (
         <div className="mcp-oauth-fallback hint">
-          Browser tab didn't open?{' '}
+          {embedUiLabel('Browser tab didn\'t open? ', '브라우저 탭이 안 열렸나요? ')}
           <a href={pendingAuthUrl} target="_blank" rel="noopener noreferrer">
-            Click here to open the authorize URL manually
+            {embedUiLabel('Click here to open the authorize URL manually', '여기를 눌러 승인 URL을 직접 열기')}
           </a>
           .
         </div>
@@ -411,13 +425,16 @@ export function XaiOAuthControl() {
       {isAwaiting && pendingState ? (
         <div className="xai-oauth-paste">
           <p className="hint">
-            xAI may show a code instead of redirecting back. Paste it here:
+            {embedUiLabel(
+              'xAI may show a code instead of redirecting back. Paste it here:',
+              'xAI가 리다이렉트 대신 코드를 보여줄 수 있습니다. 여기에 붙여넣으세요:',
+            )}
           </p>
           <div className="xai-oauth-paste-row">
             <input
               type="text"
               value={pasteCode}
-              placeholder="Paste auth code from xAI"
+              placeholder={embedUiLabel('Paste auth code from xAI', 'xAI 인증 코드를 붙여넣으세요')}
               onChange={(e) => setPasteCode(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && pasteCode.trim()) {
@@ -425,14 +442,16 @@ export function XaiOAuthControl() {
                 }
               }}
               disabled={busy === 'refreshing'}
-              aria-label="Paste auth code from xAI"
+              aria-label={embedUiLabel('Paste auth code from xAI', 'xAI 인증 코드를 붙여넣으세요')}
             />
             <button
               type="button"
               onClick={onPasteSubmit}
               disabled={!pasteCode.trim() || busy === 'refreshing'}
             >
-              {busy === 'refreshing' ? 'Submitting…' : 'Submit code'}
+              {busy === 'refreshing'
+                ? embedUiLabel('Submitting…', '제출 중…')
+                : embedUiLabel('Submit code', '코드 제출')}
             </button>
           </div>
         </div>
@@ -446,7 +465,7 @@ export function XaiOAuthControl() {
 
       {status?.scope ? (
         <div className="mcp-oauth-scope hint">
-          Granted scopes: <code>{status.scope}</code>
+          {embedUiLabel('Granted scopes:', '허용된 범위:')} <code>{status.scope}</code>
         </div>
       ) : null}
     </div>

@@ -2953,8 +2953,13 @@
   opacity: 0;
   transition: opacity 120ms var(--ease-out), color 120ms var(--ease-out);
 }
-.template-option:hover .template-option-delete { opacity: 1; }
+.template-option:hover .template-option-delete,
+.template-option:focus-within .template-option-delete,
+.template-option-delete:focus-visible { opacity: 1; }
 .template-option-delete:hover { color: var(--danger, #e53e3e); }
+@media (hover: none) {
+  .template-option-delete { opacity: 1; }
+}
 .template-radio {
   flex: none;
   margin-top: 2px;

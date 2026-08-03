@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 export type PaletteId =
   | 'coral'
@@ -8,14 +9,14 @@ export type PaletteId =
   | 'risograph'
   | 'mono-noir';
 
-type Swatch = { id: PaletteId; label: string; stripe: string[] };
+type Swatch = { id: PaletteId; labelEn: string; labelKo: string; stripe: string[] };
 
 const PALETTES: Swatch[] = [
-  { id: 'coral',       label: 'Coral - default', stripe: ['#ff5a3c', '#ff7a5c', '#fde2d6', '#171717'] },
-  { id: 'electric',    label: 'Electric',        stripe: ['#7c3aed', '#a855f7', '#e9d5ff', '#171717'] },
-  { id: 'acid-forest', label: 'Acid forest',     stripe: ['#16a34a', '#22c55e', '#bbf7d0', '#0f1d14'] },
-  { id: 'risograph',   label: 'Risograph',       stripe: ['#e11d48', '#2563eb', '#fde68a', '#171717'] },
-  { id: 'mono-noir',   label: 'Mono noir',       stripe: ['#0a0a0a', '#262626', '#e5e5e5', '#fafafa'] },
+  { id: 'coral',       labelEn: 'Coral - default', labelKo: '코랄 - 기본', stripe: ['#ff5a3c', '#ff7a5c', '#fde2d6', '#171717'] },
+  { id: 'electric',    labelEn: 'Electric',        labelKo: '일렉트릭', stripe: ['#7c3aed', '#a855f7', '#e9d5ff', '#171717'] },
+  { id: 'acid-forest', labelEn: 'Acid forest',     labelKo: '애시드 포레스트', stripe: ['#16a34a', '#22c55e', '#bbf7d0', '#0f1d14'] },
+  { id: 'risograph',   labelEn: 'Risograph',       labelKo: '리소그래프', stripe: ['#e11d48', '#2563eb', '#fde68a', '#171717'] },
+  { id: 'mono-noir',   labelEn: 'Mono noir',       labelKo: '모노 누아르', stripe: ['#0a0a0a', '#262626', '#e5e5e5', '#fafafa'] },
 ];
 
 type Props = {
@@ -69,10 +70,12 @@ export function PaletteTweaks({ open, selected, onChange, onPreview, onClose }: 
   const isOriginal = selected === null;
 
   return (
-    <div className="palette-tweaks" ref={rootRef} role="dialog" aria-label="Themes">
+    <div className="palette-tweaks" ref={rootRef} role="dialog" aria-label={embedUiLabel('Themes', '테마')}>
       <div className="palette-tweaks-header">
-        <span className="palette-tweaks-title">Themes</span>
-        <span className="palette-tweaks-sub">5 curated theme palettes</span>
+        <span className="palette-tweaks-title">{embedUiLabel('Themes', '테마')}</span>
+        <span className="palette-tweaks-sub">
+          {embedUiLabel('5 curated theme palettes', '큐레이션된 테마 팔레트 5종')}
+        </span>
       </div>
       <ul className="palette-tweaks-list" role="listbox">
         <li
@@ -86,7 +89,7 @@ export function PaletteTweaks({ open, selected, onChange, onPreview, onClose }: 
           <span className="palette-tweaks-stripe palette-tweaks-stripe-original" aria-hidden>
             <span className="palette-tweaks-chip palette-tweaks-chip-original" />
           </span>
-          <span className="palette-tweaks-label">Original</span>
+          <span className="palette-tweaks-label">{embedUiLabel('Original', '원본')}</span>
           {isOriginal ? (
             <span className="palette-tweaks-check" aria-hidden>
               <Icon name="check" size={12} />
@@ -114,7 +117,7 @@ export function PaletteTweaks({ open, selected, onChange, onPreview, onClose }: 
                   <span key={i} className="palette-tweaks-chip" style={{ backgroundColor: c }} />
                 ))}
               </span>
-              <span className="palette-tweaks-label">{p.label}</span>
+              <span className="palette-tweaks-label">{embedUiLabel(p.labelEn, p.labelKo)}</span>
               {isSelected ? (
                 <span className="palette-tweaks-check" aria-hidden>
                   <Icon name="check" size={12} />
