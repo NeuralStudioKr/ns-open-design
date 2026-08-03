@@ -74,7 +74,7 @@ export function SketchPreview({
         width={DEFAULT_WIDTH}
         height={DEFAULT_HEIGHT}
         role="img"
-        aria-label="Sketch preview"
+        aria-label={embedUiLabel('Sketch preview', '스케치 미리보기')}
       >
         <defs>
           <pattern id="sketch-preview-grid" width="16" height="16" patternUnits="userSpaceOnUse">

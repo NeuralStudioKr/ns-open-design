@@ -2531,7 +2531,7 @@ function BrowserInspectPanel({
         <section className="inspect-section">
           <div className="inspect-section-label">Content</div>
           <textarea
-            aria-label="Element text"
+            aria-label={embedUiLabel('Element text', '요소 텍스트')}
             className="db-inspect-text"
             value={textDraft}
             onChange={(event) => onTextDraft(event.target.value)}
@@ -2747,7 +2747,7 @@ function DesignBrowserStart({
         <div
           className="db-reference-chips"
           role="tablist"
-          aria-label="Reference category"
+          aria-label={embedUiLabel('Reference category', '레퍼런스 카테고리')}
         >
           <button
             type="button"
@@ -2806,7 +2806,7 @@ function DesignBrowserStart({
             <button
               type="button"
               className="db-reference-search-clear"
-              aria-label="Clear search"
+              aria-label={embedUiLabel('Clear search', '검색 지우기')}
               onClick={() => {
                 setQuery('');
                 searchRef.current?.focus();
