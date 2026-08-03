@@ -97,7 +97,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 7 | `c8641fcc5` | 본 문서(53) + [00](./00_구현_내역_누적.md) 기록 | 문서 |
 | 8 | `4c4d74f1f` | 53 타임라인 SHA pin | 문서 |
 | 9 | `69c688105` | escape Design Home focus 링 · assistant-footer focus-within · Drive/hero/DS/plugin `title` | 유지 |
-| 10 | *(push 후 pin)* | Drive picker/import 모달 시각 polish (색·여백·타이포) — `tools.css` only | 유지 |
+| 10 | `c525e5cce` | Drive picker/import 모달 시각 polish (색·여백·타이포) — `tools.css` only | 유지 |
 
 `f97ee14ed` 메시지의 “28–32px” 방향은 **리뷰로 철회**된 부분이 있음. **유효 SSOT는 `29466ae40` 이후 원칙**.
 
