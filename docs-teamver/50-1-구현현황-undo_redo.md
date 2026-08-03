@@ -3,6 +3,7 @@
 **문서 번호:** 50-1  
 **설계 SSOT:** [50 Undo/Redo 설계](./50_undo_redo_설계.md)  
 **비교 문서:** [50-2 Teamver Canvas vs Design Undo 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md)  
+**배포·검증 Runbook:** [50-4 staging 머지·배포·검증](./50-4_revision_staging_머지_배포_검증.md)  
 **브랜치:** `staging`  
 **최종 갱신:** 2026-07-31
 
@@ -158,6 +159,8 @@
 ---
 
 ## 검증 명령 (누적)
+
+**staging 배포 후 수동 검증:** [50-4 §8](./50-4_revision_staging_머지_배포_검증.md#8-2-pod-교차-검증-필수-게이트) (2-pod 교차 시나리오 SSOT).
 
 ```bash
 # Phase 0

@@ -3,7 +3,7 @@
 **상태:** 구현 완료 (2026-07-31)  
 **SSOT:** undo/redo 히스토리 **바이트**가 어디에 쌓이는지, Teamver **RDS**와 어떻게 다른지, 용량을 어떻게 제한·정리하는지.
 
-**관련:** [50_undo_redo_설계](./50_undo_redo_설계.md) · [50-1 구현현황](./50-1-구현현황-undo_redo.md) · [50-2 Canvas 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md) · [39_7 scratch·DaemonDb FAQ](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md) · [39_9 DaemonDb RDS](./39_9_DaemonDb_B5_잔여_plugins_후속_및_RDS.md)
+**관련:** [50_undo_redo_설계](./50_undo_redo_설계.md) · [50-1 구현현황](./50-1-구현현황-undo_redo.md) · [50-2 Canvas 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md) · [50-4 staging 머지·배포·검증 Runbook](./50-4_revision_staging_머지_배포_검증.md) · [39_7 scratch·DaemonDb FAQ](./39_7_scratch_DaemonDb_저장층_심층_FAQ.md) · [39_9 DaemonDb RDS](./39_9_DaemonDb_B5_잔여_plugins_후속_및_RDS.md)
 
 ---
 
@@ -256,7 +256,9 @@ pnpm --filter @open-design/daemon exec vitest run \
 
 ### 11.2 staging 수동 (2-pod)
 
-배포 후 아래를 **서로 다른 pod**에서 교차 실행:
+**상세 절차 SSOT:** [50-4 revision staging 머지·배포·검증 Runbook](./50-4_revision_staging_머지_배포_검증.md) §8.
+
+요약 — 배포 후 **서로 다른 pod**에서 교차 실행:
 
 1. Pod A: `deck.html` save (revision push)
 2. Pod B: `GET .../revisions` — A와 동일 head·개수
