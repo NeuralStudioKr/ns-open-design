@@ -3,15 +3,36 @@
  */
 export {
   LEAKED_AGENT_PROSE_TAG_NAMES,
-  sanitizeAssistantProseForDisplay,
   sanitizeLeakedAgentProse,
   stripTrailingOpenInternalMarkup,
   stripIncompleteTrailingMarkupToken,
   stripAssistantCodeFencesForDisplay,
   createStreamingAssistantProseGuard,
+  stripHardDeckNavJsFingerprints,
 } from "@open-design/contracts";
 
-import { sanitizeLeakedAgentProse } from "@open-design/contracts";
+import {
+  sanitizeAssistantProseForDisplay as sanitizeAssistantProseForDisplayContracts,
+  sanitizeLeakedAgentProse,
+  stripHardDeckNavJsFingerprints,
+  type SanitizeAssistantProseOptions,
+} from "@open-design/contracts";
+
+/**
+ * Display sanitizer with a web-local last pass for classic deck-nav JS.
+ *
+ * Contracts SSOT already strips these dialects; this wrapper keeps a hard
+ * fingerprint chop in the web bundle so a stale `@open-design/contracts` dist
+ * (or Next compile cache) cannot re-paint
+ * `(function(){ document.addEventListener('keydown',function(e){ …` in chat.
+ */
+export function sanitizeAssistantProseForDisplay(
+  input: string,
+  options: SanitizeAssistantProseOptions = {},
+): string {
+  const fromContracts = sanitizeAssistantProseForDisplayContracts(input, options);
+  return stripHardDeckNavJsFingerprints(fromContracts);
+}
 
 /**
  * Remove completed internal markup blocks and fake tool narration from prose.

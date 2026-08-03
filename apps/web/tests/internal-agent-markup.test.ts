@@ -10,6 +10,20 @@ import { stripLeakedPseudoToolXml } from "../src/utils/stripLeakedPseudoToolXml"
 import { sanitizeChatMessageLeakedPseudoTool } from "../src/utils/sanitizeChatMessageLeakedPseudoTool";
 
 describe("internalAgentMarkup", () => {
+  it("hard-strips classic keydown/click deck-nav JS via web display path", () => {
+    const leaked = [
+      "(function(){",
+      "document.addEventListener('keydown',function(e){",
+      "document.addEventListener('click',function(e){",
+      "if(e.clientX>window.innerWidth/2)go(cur+1);else",
+    ].join("\n");
+    for (const streaming of [true, false]) {
+      const out = sanitizeAssistantProseForDisplay(`완료.\n${leaked}`, { streaming });
+      expect(out).toBe("완료.");
+      expect(sanitizeAssistantProseForDisplay(leaked, { streaming }).trim()).toBe("");
+    }
+  });
+
   it("strips answer_operator / task_analysis from assistant prose", () => {
     const input = [
       "<answer_operator>",

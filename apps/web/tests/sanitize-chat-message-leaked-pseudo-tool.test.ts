@@ -291,4 +291,28 @@ describe("sanitizeChatMessageLeakedPseudoTool", () => {
     expect(sanitized.content).toBe(intro);
     expect(sanitized.events).toEqual([{ kind: "text", text: intro }]);
   });
+
+  it("never paints classic function(e) half-screen deck-nav JS in chat", () => {
+    const leaked = [
+      "(function(){",
+      "document.addEventListener('keydown',function(e){",
+      "document.addEventListener('click',function(e){",
+      "if(e.clientX>window.innerWidth/2)go(cur+1);else",
+    ].join("\n");
+    const message: ChatMessage = {
+      id: "m-classic-nav",
+      role: "assistant",
+      content: `슬라이드 수정이 반영되었습니다.\n${leaked}`,
+      events: [
+        { kind: "text", text: "슬라이드 수정이 반영되었습니다.\n" },
+        { kind: "text", text: leaked },
+      ],
+    };
+
+    const sanitized = sanitizeChatMessageLeakedPseudoTool(message);
+    expect(sanitized.content).toBe("슬라이드 수정이 반영되었습니다.");
+    expect(sanitized.content).not.toContain("addEventListener");
+    expect(sanitized.content).not.toContain("innerWidth");
+    expect(JSON.stringify(sanitized.events)).not.toContain("addEventListener");
+  });
 });

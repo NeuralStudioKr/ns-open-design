@@ -5,6 +5,7 @@ import {
   createStreamingAssistantProseGuard,
   sanitizeAssistantProseForDisplay,
   sanitizeLeakedAgentProse,
+  stripHardDeckNavJsFingerprints,
   stripTrailingOpenInternalMarkup,
 } from "../src/agent-prose-sanitize.js";
 
@@ -457,6 +458,27 @@ describe("agent-prose-sanitize SSOT", () => {
       expect(out).toBe(visibleProse);
       expect(out).not.toContain("addEventListener");
     }
+
+    // Exact production paste: JS-only bubble (no surrounding prose).
+    for (const streaming of [true, false]) {
+      const out = sanitizeAssistantProseForDisplay(leaked, { streaming });
+      expect(out.trim()).toBe("");
+      expect(out).not.toContain("addEventListener");
+      expect(out).not.toContain("innerWidth");
+    }
+  });
+
+  it("hard fingerprint scrub removes classic click-nav even as sole content", () => {
+    const leaked = [
+      "(function(){",
+      "document.addEventListener('keydown',function(e){",
+      "document.addEventListener('click',function(e){",
+      "if(e.clientX>window.innerWidth/2)go(cur+1);else",
+    ].join("\n");
+    expect(stripHardDeckNavJsFingerprints(leaked).trim()).toBe("");
+    expect(
+      stripHardDeckNavJsFingerprints(`완료.\n${leaked}`),
+    ).toBe("완료.");
   });
 
   it("strips orphan function go remnant ahead of truncated keydown nav", () => {

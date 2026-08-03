@@ -1044,6 +1044,51 @@ function findOpenDeckNavScriptStart(input: string): number {
   return best;
 }
 
+/**
+ * Last-resort deck-nav JS scrub. Pattern-specific open/closed matchers above
+ * can miss a dialect or lag a stale build; once prose contains both a nav
+ * listener and a slide-advance fingerprint, chop from the earliest JS opener
+ * so `(function(){ document.addEventListener('keydown',function(e){ …` never
+ * paints in chat.
+ */
+export function stripHardDeckNavJsFingerprints(input: string): string {
+  if (!input) return input;
+  const hasListener =
+    /addEventListener\s*\(\s*['"]keydown['"]/i.test(input)
+    || (
+      /addEventListener\s*\(\s*['"]click['"]/i.test(input)
+      && /clientX/i.test(input)
+    )
+    || /(?:window|document)\.onkeydown\s*=/i.test(input);
+  const hasAdvance =
+    /clientX\s*>\s*window\.innerWidth/i.test(input)
+    || /go\s*\(\s*cur\s*[+-]/i.test(input)
+    || /ArrowRight|ArrowLeft|ArrowDown|PageDown|PageUp/i.test(input)
+    || /querySelectorAll\s*\(\s*['"]\.slide['"]/i.test(input);
+  if (!hasListener || !hasAdvance) return input;
+
+  const starts: number[] = [];
+  const openStart = findOpenDeckNavScriptStart(input);
+  if (openStart !== -1) starts.push(openStart);
+  for (const pattern of [
+    /\(\s*function\s*\(\s*\)\s*\{/i,
+    /\(\s*\(\s*\)\s*=>\s*\{/i,
+    /document\.addEventListener\s*\(\s*['"](?:keydown|click)['"]/i,
+    /(?:window|document)\.onkeydown\s*=/i,
+    /(?:const|let|var)\s+slides\s*=\s*(?:Array\.prototype\.slice\.call\()?document\.querySelectorAll/i,
+    /function\s+go\s*\(\s*\w+\s*\)\s*\{/i,
+  ] as const) {
+    pattern.lastIndex = 0;
+    const match = pattern.exec(input);
+    if (match?.index !== undefined) starts.push(match.index);
+  }
+  if (starts.length === 0) {
+    // Fingerprints present but no opener — drop pure-JS blobs entirely.
+    return /^\s*(?:\(|document\.|function\s)/i.test(input) ? "" : input;
+  }
+  return input.slice(0, Math.min(...starts)).trimEnd();
+}
+
 function stripTrailingOpenDeckNavScript(
   input: string,
 ): { text: string; hadOpenInternalMarkup: boolean } {
@@ -1586,6 +1631,9 @@ export function sanitizeAssistantProseForDisplay(
     text = stripTrailingDeckFrameworkCssLeak(text);
   }
   text = stripTrailingDeckHtmlMarkupLeakRespectingArtifacts(text, preservingArtifacts);
+  // Absolute last pass: classic/minified click-nav and keydown advance must
+  // never survive a dialect miss or partial open-form match.
+  text = stripHardDeckNavJsFingerprints(text);
   return text;
 }
 
