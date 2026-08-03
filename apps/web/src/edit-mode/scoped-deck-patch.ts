@@ -19,7 +19,6 @@ import {
   formatVisualMarkPlacementStyle,
   buildVisualMarkDeckPatchInnerMarkup,
 } from '../comments';
-import { applyDeckPatch } from '../artifacts/deck-patch';
 import { validateCommentEditIntentRespected, targetTextContentPreserved } from './comment-edit-intent';
 import {
   graftPatchedTargetElementFromSource,
