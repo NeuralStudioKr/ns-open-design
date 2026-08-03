@@ -108,10 +108,6 @@
   background: color-mix(in srgb, var(--bg-panel) 72%, var(--bg-subtle));
   color: var(--text-muted);
 }
-.workspace-tabs-new-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 .workspace-tabs-icon-btn {
   width: 28px;
   height: 28px;
@@ -131,10 +127,6 @@
   color: var(--text-strong);
   background: color-mix(in srgb, var(--bg-panel) 78%, var(--bg-subtle));
   border-color: var(--border);
-}
-.workspace-tabs-icon-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 .workspace-tabs-strip {
   align-self: stretch;
@@ -326,6 +318,9 @@
   color: var(--text);
   background: var(--bg-subtle);
 }
+@media (hover: none) {
+  .workspace-tab__close { opacity: 1; }
+}
 .workspace-tabs-actions {
   position: relative;
   align-self: stretch;
@@ -478,8 +473,8 @@
   font-size: 11px;
 }
 .workspace-tabs-list__close {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
@@ -492,10 +487,6 @@
 .workspace-tabs-list__close:hover:not(:disabled) {
   color: var(--text);
   background: var(--bg-muted);
-}
-.workspace-tabs-list__close:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 .workspace-tabs-empty {
   padding: 18px 8px;
@@ -708,10 +699,6 @@
 }
 .chrome-action:hover:not(:disabled) {
   background: var(--bg-subtle);
-}
-.chrome-action:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 .chrome-action-secondary {
   border-color: var(--border);

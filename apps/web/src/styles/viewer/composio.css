@@ -2385,9 +2385,9 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
 }
 .chat-history-search input::placeholder { color: var(--text-faint); }
 .chat-history-search-clear {
-  width: 28px;
-  height: 28px;
-  margin: -5px -4px -5px 0;
+  /* Stay inside the 28px search row; negative-margin 28px spilled past the border. */
+  width: 22px;
+  height: 22px;
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
@@ -2529,8 +2529,9 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   height: 10px;
 }
 .chat-conv-item-del {
-  width: 28px;
-  height: 28px;
+  /* 24px fits the 32px row without crowding meta; keep touch/focus reveal. */
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
   background: transparent;

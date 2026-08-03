@@ -267,7 +267,8 @@
 }
 .chat-header-actions { display: inline-flex; gap: 4px; align-items: center; margin-left: auto; }
 .chat-header-actions .icon-only {
-  width: 32px; height: 32px;
+  /* Keep the shared 28px control system (session trigger / composer). */
+  width: 28px; height: 28px;
   padding: 0;
   background: transparent;
   border: none;
@@ -278,14 +279,6 @@
   justify-content: center;
 }
 .chat-header-actions .icon-only:hover { background: var(--bg-subtle); color: var(--text); }
-.chat-header-tab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.chat-header-actions .icon-only:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 
 .chat-log {
   flex: 1;
@@ -1816,8 +1809,9 @@
 
 .chat-queued-send-drag-handle,
 .chat-queued-send-action {
-  width: 28px;
-  height: 28px;
+  /* Must match .chat-queued-send-row grid first column (24px). */
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

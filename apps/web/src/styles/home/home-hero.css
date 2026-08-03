@@ -490,9 +490,10 @@
 }
 .home-hero__active-clear {
   appearance: none;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
+  /* Match chip min-height (24px); larger boxes overflow the pill. */
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -502,7 +503,6 @@
   color: inherit;
   cursor: pointer;
   padding: 0;
-  margin: -5px -4px -5px 0;
   line-height: 1;
   opacity: 0.62;
 }

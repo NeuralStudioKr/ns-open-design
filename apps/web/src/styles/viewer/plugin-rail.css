@@ -416,10 +416,14 @@
     color 140ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 .context-chip-strip__chip:hover .context-chip-strip__remove,
+.context-chip-strip__chip:focus-within .context-chip-strip__remove,
 .context-chip-strip__remove:focus-visible { opacity: 1; }
 .context-chip-strip__remove:hover {
   background: color-mix(in srgb, var(--c-hue) 16%, transparent);
   color: color-mix(in srgb, var(--c-hue) 85%, var(--text-strong));
+}
+@media (hover: none) {
+  .context-chip-strip__remove { opacity: 1; }
 }
 
 /* Plugin inputs form — appears when the active plugin declares od.inputs[]

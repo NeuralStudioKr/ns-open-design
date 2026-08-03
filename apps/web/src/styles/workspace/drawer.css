@@ -608,8 +608,8 @@
   z-index: 3;
 }
 .design-card-more {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border-radius: var(--radius-sm);
   background: var(--bg-panel);
@@ -636,6 +636,8 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 @media (hover: none) {
+  .design-card .design-card-close,
+  .design-kanban-card .design-card-close,
   .design-card .design-card-more,
   .recent-projects__card .design-card-more { opacity: 1; }
 }
@@ -1882,17 +1884,11 @@
   transform: scale(0.98);
 }
 
-.designs-empty-cta:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  outline-offset: 2px;
-}
-
 .designs-empty-cta:disabled {
   opacity: 0.55;
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
-  border-style: dashed;
 }
 
 .designs-empty-cta:disabled:hover {
