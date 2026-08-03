@@ -1134,7 +1134,7 @@
   left: 9px;
   pointer-events: none;
   user-select: none;
-  color: var(--text-faint);
+  color: var(--text-soft);
   font-size: 13.5px;
   line-height: 1.6;
   overflow: hidden;
@@ -1292,10 +1292,10 @@
 }
 .composer-row .icon-btn {
   box-sizing: border-box;
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  min-height: 32px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
   padding: 0;
   background: transparent;
   border: 1px solid transparent;
@@ -1323,12 +1323,10 @@
    The toolbar mixes five controls authored in five different components —
    the + icon (.icon-btn), the working-dir pill (.working-dir-pill-trigger),
    the agent avatar (.avatar-agent-trigger), the "Design" session-mode toggle
-   (.session-mode-toggle__trigger) and Send (.composer-send) — which had
-   drifted to three heights (28/32px) and three corner radii (full-pill / 8 /
-   6). Normalize the interactive controls to one 32px, radius-sm pill so the
-   row reads as a single system. Send keeps its accent fill and + stays a
-   ghost icon; only geometry/elevation is unified, not color. `.app` raises
-   specificity above the per-component base rules in routines/shell.css. */
+   (.session-mode-toggle__trigger) and Send (.composer-send). Base geometry
+   is the shared **28px** chrome (doc 56); `.app` raises specificity so
+   routines/shell overrides stay aligned. Send keeps its accent fill and +
+   stays a ghost icon; only geometry/elevation is unified, not color. */
 .app .composer-row .working-dir-pill-trigger,
 .app .composer-row .avatar-agent-trigger,
 .app .composer-row .session-mode-toggle__trigger,
@@ -1364,7 +1362,7 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  height: 32px;
+  height: 28px;
   min-width: 0;
   flex-shrink: 0;
 }
@@ -1391,7 +1389,7 @@
     box-shadow 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 .session-mode-toggle__trigger {
-  height: 32px;
+  height: 28px;
   max-width: 132px;
   padding: 0 8px;
   border-radius: var(--radius);
@@ -1602,7 +1600,7 @@
   flex-shrink: 0;
   white-space: nowrap;
   min-width: 0;
-  height: 32px;
+  height: 28px;
   background: var(--accent);
   border: 1px solid var(--accent);
   color: white;
@@ -1633,7 +1631,7 @@
 .composer-send.stop:hover { background: var(--text-strong); border-color: var(--text-strong); color: var(--bg-panel); }
 .composer-hint {
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-soft);
   margin: 0 8px;
 }
 

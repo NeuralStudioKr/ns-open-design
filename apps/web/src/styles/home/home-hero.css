@@ -1463,7 +1463,7 @@
 }
 .home-hero__footer-select-group-label {
   padding: 7px 4px 6px;
-  color: var(--text-faint);
+  color: var(--text-soft);
   font-size: 10.5px;
   font-weight: 750;
   letter-spacing: 0.1em;
@@ -1471,7 +1471,7 @@
 }
 .home-hero__footer-option--select[data-field-name='designSystem'] .home-hero__footer-select-group-label {
   padding: 3px 3px 5px;
-  color: color-mix(in srgb, var(--text-muted) 82%, transparent);
+  color: var(--text-soft);
   font-size: 9.5px;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -1510,7 +1510,7 @@
 }
 .home-hero__footer-select-description {
   overflow: hidden;
-  color: var(--text-muted);
+  color: var(--text-soft);
   font-size: 12.5px;
   font-weight: 550;
   line-height: 1.3;
