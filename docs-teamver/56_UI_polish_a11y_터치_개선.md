@@ -102,7 +102,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 11 | `df36b570a` | 홈 섹션 제목 sans 통일 (recent/plugins/entry) | 유지 |
 | 12 | `34b345db8` | DS fullscreen·BYOK·agent cancel 터치 · empty titles · bg-runs · user-actions 28 · plugins design sans | 유지 |
 | 13 | `09bea4edb` | publish chip · staged-remove · connector close 28 · newproj/toolbar text tokens (55 통일 보류) | 유지 |
-| 14 | `634beb435` | home-hero/recent/design-card 토큰 · composer 28 정렬 · settings/toast/run-recovery | 유지 |
+| 14 | `d500b9959` | home-hero/recent/design-card 토큰 · composer 28 정렬 · settings/toast/run-recovery | 유지 |
 
 `f97ee14ed` 메시지의 “28–32px” 방향은 **리뷰로 철회**된 부분이 있음. **유효 SSOT는 `29466ae40` 이후 원칙**.
 
