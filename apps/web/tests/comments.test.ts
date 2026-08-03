@@ -527,6 +527,18 @@ describe('preview comment attachment helpers', () => {
     expect(messageContentWithCommentAttachments('', [attachment])).not.toContain('selector: ');
   });
 
+  it('threads annotation notes into visual intent for the model', () => {
+    const attachment = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'uploads/drawing.png',
+      markKind: 'stroke',
+      note: '하트 넣어줘',
+      bounds: { x: 1, y: 2, width: 40, height: 40 },
+    });
+    expect(attachment.intent).toContain('하트 넣어줘');
+    expect(attachment.intent).toContain('drawn ink');
+  });
+
   it('keeps large queued board-note batches ordered in one send payload', () => {
     const notes = Array.from({ length: 8 }, (_, index) => `Note ${index + 1}`);
     const attachments = buildBoardCommentAttachments({

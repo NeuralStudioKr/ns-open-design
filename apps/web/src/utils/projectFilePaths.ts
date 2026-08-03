@@ -44,6 +44,12 @@ export function projectFilePathBasename(path: string): string {
   return trimmed.split('/').pop() || trimmed;
 }
 
+/** Raster/vector paths that must never be opened in the text viewer. */
+export function isRenderableImagePath(path: string): boolean {
+  const base = projectFilePathBasename(String(path || '').trim().toLowerCase());
+  return /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(base);
+}
+
 /** Prefer daemon `path` when present; fall back to flat `name`. */
 export function projectFileResolvedPath(file: { name: string; path?: string | null }): string {
   const path = String(file.path ?? '').trim().replace(/\\/g, '/');

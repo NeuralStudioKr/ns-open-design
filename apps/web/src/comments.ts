@@ -375,7 +375,7 @@ export function buildBoardCommentAttachments(input: {
 
 export function buildVisualAnnotationAttachment(input: VisualAnnotationAttachmentInput): ChatCommentAttachment {
   const target = input.target ?? null;
-  const intent = visualAnnotationIntent(input.markKind);
+  const intent = visualAnnotationIntent(input.markKind, input.note);
   const visualId = sanitizeVisualAttachmentId(input.idSeed || input.screenshotPath || String(input.order));
   const elementId = target?.elementId?.trim() || `visual-mark-${visualId}`;
   const label = target?.label?.trim() || 'Marked screenshot region';
@@ -1170,14 +1170,21 @@ function imageOnlyCommentFallback(count: number): string {
     : 'Use the attached image as the comment reference.';
 }
 
-function visualAnnotationIntent(markKind: PreviewVisualMarkKind): string {
+function visualAnnotationIntent(
+  markKind: PreviewVisualMarkKind,
+  userNote?: string,
+): string {
+  const note = String(userNote || '').trim();
+  let base: string;
   if (markKind === 'click') {
-    return 'The screenshot has a blue focus box around the picked element; modify that picked part first.';
+    base = 'The screenshot has a blue focus box around the picked element; modify that picked part first.';
+  } else if (markKind === 'click+stroke') {
+    base = 'The screenshot has a blue focus box and red strokes; together they identify the part the user wants changed.';
+  } else {
+    base = 'The screenshot has red strokes that identify the visual region the user wants changed. Treat the drawn ink as the intended shape or placement guide—not decoration.';
   }
-  if (markKind === 'click+stroke') {
-    return 'The screenshot has a blue focus box and red strokes; together they identify the part the user wants changed.';
-  }
-  return 'The screenshot has red strokes that identify the visual region the user wants changed.';
+  if (!note) return base;
+  return `User request from the annotation note: "${note}". ${base}`;
 }
 
 function normalizePosition(input: PreviewComment['position']): PreviewComment['position'] {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   excludeAttachmentsBackedByVisualScreenshots,
+  isRenderableImagePath,
   projectFilePathExists,
   projectFilePathsReferToSameFile,
   projectFileResolvedPath,
@@ -60,5 +61,10 @@ describe('project file path identity', () => {
   it('resolves project file path from path or name', () => {
     expect(projectFileResolvedPath({ name: 'foo.png', path: 'uploads/foo.png' })).toBe('uploads/foo.png');
     expect(projectFileResolvedPath({ name: 'foo.png' })).toBe('foo.png');
+  });
+
+  it('detects raster image paths by extension', () => {
+    expect(isRenderableImagePath('uploads/ms7-drawing-2026.png')).toBe(true);
+    expect(isRenderableImagePath('notes.txt')).toBe(false);
   });
 });

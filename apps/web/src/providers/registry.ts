@@ -74,6 +74,7 @@ import {
   openHostExternalUrl,
 } from '@open-design/host';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
+import { isRenderableImagePath } from '../utils/projectFilePaths';
 import {
   fetchTeamverDaemon,
   TeamverDaemonUnauthorizedError,
@@ -1823,6 +1824,8 @@ export async function fetchProjectFileText(
   name: string,
   options?: { cache?: RequestCache; cacheBustKey?: string | number; signal?: AbortSignal },
 ): Promise<string | null> {
+  if (isRenderableImagePath(name)) return null;
+
   const url = projectFileUrl(projectId, name);
   const cacheBustKey = options?.cacheBustKey;
   const requestUrl =

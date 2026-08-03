@@ -1952,14 +1952,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   orderStart,
                 );
                 const screenshot = detail.file ? uploaded[0] : null;
-                if (screenshot && detail.markKind && detail.bounds) {
+                if (screenshot && detail.markKind) {
+                  const bounds = detail.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
                   visualAttachmentInput = {
                     order: isFiniteAttachmentOrder(screenshot.order) ? screenshot.order : orderStart,
                     idSeed: screenshot.path,
                     screenshotPath: screenshot.path,
                     markKind: detail.markKind,
                     note: detail.note,
-                    bounds: detail.bounds,
+                    bounds,
                     ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
                       ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
                       : {}),

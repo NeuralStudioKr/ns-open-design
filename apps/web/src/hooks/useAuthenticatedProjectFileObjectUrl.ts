@@ -50,7 +50,13 @@ export async function loadAuthenticatedProjectFileBlob(
   const id = projectId.trim();
   const path = filePath.trim();
   if (!id || !path) return null;
-  if (!options?.trustExists && isEphemeralDrawingScreenshotPath(path)) return null;
+  if (
+    !options?.trustExists
+    && isEphemeralDrawingScreenshotPath(path)
+    && isProjectRawFileKnownMissing(id, path)
+  ) {
+    return null;
+  }
   if (!options?.trustExists && isProjectRawFileKnownMissing(id, path)) return null;
   if (options?.trustExists) clearProjectRawFileMissing(id, path);
 

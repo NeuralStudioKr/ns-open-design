@@ -124,7 +124,7 @@ import {
 } from '../runtime/exports';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { isMacPlatform } from '../utils/platform';
-import { projectFileResolvedPath } from '../utils/projectFilePaths';
+import { isRenderableImagePath, projectFileResolvedPath } from '../utils/projectFilePaths';
 import { buildReactComponentSrcdoc } from '../runtime/react-component';
 import { shouldConsumeSlideNav } from '../runtime/slide-nav';
 import { findHtmlEntriesReferencing } from '../runtime/jsx-module-refs';
@@ -1321,7 +1321,14 @@ export function FileViewer({
   if (rendererMatch?.renderer.id === 'svg') {
     return <SvgViewer projectId={projectId} file={file} />;
   }
-  if (file.kind === 'image') {
+  const resolvedFilePath = projectFileResolvedPath(file);
+  const fileMime = String(file.mime || '').toLowerCase();
+  const rasterImageViewer =
+    file.kind === 'image'
+    || (file.kind === 'sketch' && !isRenderableSketchJson(file))
+    || isRenderableImagePath(resolvedFilePath)
+    || fileMime.startsWith('image/');
+  if (rasterImageViewer) {
     return <ImageViewer projectId={projectId} file={file} />;
   }
   if (file.kind === 'video') {
@@ -1330,11 +1337,8 @@ export function FileViewer({
   if (file.kind === 'audio') {
     return <AudioViewer projectId={projectId} file={file} />;
   }
-  if (file.kind === 'sketch') {
-    if (isRenderableSketchJson(file)) {
-      return <SketchViewer projectId={projectId} file={file} />;
-    }
-    return <ImageViewer projectId={projectId} file={file} />;
+  if (file.kind === 'sketch' && isRenderableSketchJson(file)) {
+    return <SketchViewer projectId={projectId} file={file} />;
   }
   if (file.kind === 'text' || file.kind === 'code') {
     return <TextViewer projectId={projectId} file={file} />;
