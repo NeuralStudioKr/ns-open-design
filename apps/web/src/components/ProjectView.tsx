@@ -8097,6 +8097,16 @@ export function ProjectView({
             if (producedHtmlToOpen && runIsVisible()) {
               maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
               requestOpenFile(producedHtmlToOpen);
+              const navTarget = queuedSlideNavTarget(runCommentAttachmentsRef.current, {
+                fallbackDeckFilePath: producedHtmlToOpen,
+              });
+              if (navTarget) {
+                setSlideNavRequest({
+                  name: navTarget.filePath,
+                  slideIndex: navTarget.slideIndex,
+                  nonce: Date.now(),
+                });
+              }
             }
 
             if (!isLatestTerminalAutoOpen()) return;

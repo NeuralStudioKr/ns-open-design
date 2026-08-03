@@ -481,6 +481,11 @@ function rememberStablePreviewSource(projectId: string, fileName: string, source
     if (oldest != null) htmlPreviewSourceCache.delete(oldest);
   }
 }
+
+/** Drop module-level preview HTML cached before an agent/manual disk write. */
+export function invalidateCachedPreviewSource(projectId: string, fileName: string): void {
+  htmlPreviewSourceCache.delete(previewSourceCacheKey(projectId, fileName));
+}
 const MAX_CACHED_PREVIEW_VIEWPORTS = 128;
 // Grace window before the inspect hover card is torn down. Long enough to absorb
 // the async iframe mouseout (od:comment-leave) that fires when the pointer slides
@@ -5214,6 +5219,21 @@ function HtmlViewer({
   /** Draw mode remounts srcDoc; block capture until the active frame has loaded. */
   const drawCaptureReadyRef = useRef(true);
   const activatedSrcDocTransportHtmlRef = useRef<string | null>(null);
+  const prevFilesRefreshKeyRef = useRef(filesRefreshKey);
+  // Agent / manual writes bump `filesRefreshKey` before project mtimes settle.
+  // Drop cached + last-stable preview bytes so the disk refetch cannot keep
+  // painting the pre-edit deck while raw GET already shows the new HTML.
+  useEffect(() => {
+    if (filesRefreshKey <= 0 || filesRefreshKey === prevFilesRefreshKeyRef.current) return;
+    prevFilesRefreshKeyRef.current = filesRefreshKey;
+    invalidateCachedPreviewSource(projectId, file.name);
+    lastStablePreviewSourceRef.current = null;
+    manualEditPinnedSourceRef.current = null;
+    activatedSrcDocTransportHtmlRef.current = null;
+    setLiveHtmlPaintsPreview(false);
+    setSrcDocTransportResetKey((key) => key + 1);
+    setReloadKey((key) => key + 1);
+  }, [filesRefreshKey, projectId, file.name]);
   // Tracks the iframe DOM node whose dedupe ref was last reset by the
   // srcDoc onLoad handler. We reset the dedupe exactly once per freshly
   // mounted iframe (the first load is the shell HTML), and skip every
