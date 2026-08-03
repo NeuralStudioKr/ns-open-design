@@ -88,3 +88,39 @@ export function contentRectToHostRectInWorkspace(
     height: rect.height * scale,
   };
 }
+
+/**
+ * Capture host projection for a geometry gesture.
+ * Prefer the idle paint rect so the first composed frame matches what the user
+ * already sees, even when React previewScale/hostOffset state is stale.
+ */
+export function freezeGestureHostGeom(
+  contentRect: Pick<ManualEditRect, 'x' | 'y' | 'width' | 'height'>,
+  paintRect: ManualEditRect | null | undefined,
+  fallbackScale: number,
+  fallbackOffset: { x: number; y: number },
+): { hostScale: number; hostOffset: { x: number; y: number } } {
+  const scaleFallback = Number.isFinite(fallbackScale) && fallbackScale > 0 ? fallbackScale : 1;
+  if (
+    paintRect
+    && paintRect.width >= 1
+    && paintRect.height >= 1
+    && contentRect.width >= 1
+    && contentRect.height >= 1
+  ) {
+    const hostScale = paintRect.width / contentRect.width;
+    if (Number.isFinite(hostScale) && hostScale > 0) {
+      return {
+        hostScale,
+        hostOffset: {
+          x: paintRect.x - contentRect.x * hostScale,
+          y: paintRect.y - contentRect.y * hostScale,
+        },
+      };
+    }
+  }
+  return {
+    hostScale: scaleFallback,
+    hostOffset: { x: fallbackOffset.x, y: fallbackOffset.y },
+  };
+}

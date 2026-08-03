@@ -138,6 +138,64 @@ describe('ManualEditResizeOverlay', () => {
     expect(overlay.style.height).toBe('140px');
   });
 
+  it('freezes composed host size when previewScale changes mid-drag', () => {
+    const onResizePreview = vi.fn();
+    const props = {
+      target: target(),
+      previewScale: 1,
+      hostOffset: { x: 10, y: 20 },
+      hostPaintRect: { x: 50, y: 80, width: 200, height: 100 } as const,
+      draftWidthPx: null as number | null,
+      draftHeightPx: null as number | null,
+      onResizePreview,
+      onResizeCommit: vi.fn(),
+      onResizeCancel: vi.fn(),
+    };
+    const { getByTestId, rerender } = render(<ManualEditResizeOverlay {...props} />);
+
+    fireEvent.pointerDown(getByTestId('manual-edit-resize-handle-se'), {
+      pointerId: 1,
+      clientX: 240,
+      clientY: 160,
+      buttons: 1,
+    });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 260, clientY: 170, buttons: 1 });
+    expect(onResizePreview).toHaveBeenCalled();
+    const previewStyles = onResizePreview.mock.calls.at(-1)?.[0] as { width?: string; height?: string };
+    expect(previewStyles.width).toBe('220px');
+    expect(previewStyles.height).toBe('110px');
+
+    // FileViewer mirrors preview into draft props (content px).
+    rerender(
+      <ManualEditResizeOverlay
+        {...props}
+        draftWidthPx={220}
+        draftHeightPx={110}
+      />,
+    );
+    const afterDraft = getByTestId('manual-edit-resize-overlay');
+    expect(afterDraft.style.width).toBe('220px');
+    expect(afterDraft.style.height).toBe('110px');
+
+    // Parent fit-scale / host offset remasure mid-gesture (bug trigger).
+    rerender(
+      <ManualEditResizeOverlay
+        {...props}
+        previewScale={0.5}
+        hostOffset={{ x: 100, y: 200 }}
+        hostPaintRect={{ x: 50, y: 80, width: 110, height: 55 }}
+        draftWidthPx={220}
+        draftHeightPx={110}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    // Frozen scale=1 / offset=(10,20) — must not shrink to draft×0.5.
+    expect(overlay.style.width).toBe('220px');
+    expect(overlay.style.height).toBe('110px');
+    expect(Number.parseFloat(overlay.style.left)).toBeLessThan(100);
+  });
+
   it('keeps resize handles pointer-hit even when interaction is gated', () => {
     const { getByTestId } = render(
       <ManualEditResizeOverlay
