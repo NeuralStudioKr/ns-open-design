@@ -107,6 +107,16 @@ describe('promoteMoveStyles', () => {
       bottom: '',
     });
   });
+
+  it('locks promote size to layout px when visual startRect is transform-shrunk', () => {
+    const out = promoteMoveStyles(
+      { x: 40, y: 60, width: 100, height: 50 },
+      { leftPx: 40, topPx: 60, moved: true },
+      { layoutWidthPx: 200, layoutHeightPx: 100 },
+    );
+    expect(out.width).toBe('200px');
+    expect(out.height).toBe('100px');
+  });
 });
 
 describe('promote start / rollback helpers', () => {

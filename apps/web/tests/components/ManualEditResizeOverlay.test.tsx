@@ -984,4 +984,56 @@ describe('ManualEditResizeOverlay', () => {
     const preview = onResizePreview.mock.calls.at(-1)?.[0] as { width?: string };
     expect(preview.width).toBe('240px');
   });
+
+  it('body-move under deck fit-scale keeps host size (does not jump to layout px)', () => {
+    // Idle paint is visual 100×50. First move preview must not compose layout
+    // 200×100 at freeze scale≈1 (jump). Freeze must be paint/layout = 0.5.
+    const onMovePreview = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'absolute',
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+            left: '40px',
+            top: '60px',
+          },
+          rect: { x: 40, y: 60, width: 100, height: 50 },
+          layoutWidth: 200,
+          layoutHeight: 100,
+        })}
+        previewScale={1}
+        hostOffset={{ x: 0, y: 0 }}
+        hostPaintRect={{ x: 40, y: 60, width: 100, height: 50 }}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={onMovePreview}
+        onMoveCommit={vi.fn()}
+        onMoveCancel={vi.fn()}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    expect(overlay.style.width).toBe('100px');
+    expect(overlay.style.height).toBe('50px');
+    overlay.getBoundingClientRect = () => ({
+      x: 40, y: 60, width: 100, height: 50,
+      top: 60, left: 40, right: 140, bottom: 110,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+    // Interior hit → move (not edge resize).
+    fireEvent.pointerDown(overlay, { pointerId: 41, clientX: 90, clientY: 85, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 41, clientX: 110, clientY: 95, buttons: 1 });
+
+    expect(onMovePreview).toHaveBeenCalled();
+    const moved = getByTestId('manual-edit-resize-overlay');
+    expect(moved.style.width).toBe('100px');
+    expect(moved.style.height).toBe('50px');
+  });
 });

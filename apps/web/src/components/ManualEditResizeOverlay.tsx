@@ -123,6 +123,9 @@ type MoveDragState = {
   startLeftPx: number;
   startTopPx: number;
   startRect: ManualEditTarget['rect'];
+  /** Layout border-box for promote size-lock (CSS write space). */
+  layoutWidthPx: number;
+  layoutHeightPx: number;
   stylesBefore: Partial<ManualEditStyles>;
   lastStyles: Partial<ManualEditStyles>;
   moved: boolean;
@@ -358,7 +361,10 @@ export function ManualEditResizeOverlay({
       // panel SIZE drafts on a plain click (53 review).
       if (drag.promote) {
         if (!result.moved) return;
-        const preview = promoteMoveStyles(drag.startRect, result);
+        const preview = promoteMoveStyles(drag.startRect, result, {
+          layoutWidthPx: drag.layoutWidthPx,
+          layoutHeightPx: drag.layoutHeightPx,
+        });
         drag.lastStyles = preview;
         drag.previewed = true;
         drag.lastViewport = viewport;
@@ -484,10 +490,22 @@ export function ManualEditResizeOverlay({
     if (!movable || dragRef.current) return;
     event.preventDefault();
     event.stopPropagation();
-    const pos = startPositionFromTarget(target);
-    const promote = canPromoteTarget(target);
+    // Same live layout/paint seed as resize — mid-move compose uses layout w/h
+    // and requires hostScale = paint/layout (not paint/visual).
+    const live = onResolveResizeStart?.() ?? null;
+    const startTarget: ManualEditTarget = live
+      ? {
+          ...target,
+          rect: live.rect,
+          layoutWidth: live.layoutWidth,
+          layoutHeight: live.layoutHeight,
+        }
+      : target;
+    const pos = startPositionFromTarget(startTarget);
+    const size = startSizeFromTarget(startTarget);
+    const promote = canPromoteTarget(startTarget);
     const stylesBefore: Partial<ManualEditStyles> = promote
-      ? promoteMoveStylesBefore(target)
+      ? promoteMoveStylesBefore(startTarget)
       : {
           // Collapse computed auto so flush-fail / Esc removeProperty instead of
           // baking `auto !important` into the live preview.
@@ -496,7 +514,12 @@ export function ManualEditResizeOverlay({
           right: cascadeRollbackStyle(target.styles.right),
           bottom: cascadeRollbackStyle(target.styles.bottom),
         };
-    const geom = freezeGestureHostGeom(target.rect, hostPaintRect, previewScale, hostOffset);
+    const geom = freezeGestureHostGeom(
+      resizeFreezeContentRect(startTarget),
+      live?.paint ?? hostPaintRect,
+      previewScale,
+      hostOffset,
+    );
     dragRef.current = {
       kind: 'move',
       pointerId: event.pointerId,
@@ -504,7 +527,9 @@ export function ManualEditResizeOverlay({
       startClientY: event.clientY,
       startLeftPx: pos.startLeftPx,
       startTopPx: pos.startTopPx,
-      startRect: { ...target.rect },
+      startRect: { ...startTarget.rect },
+      layoutWidthPx: size.widthPx,
+      layoutHeightPx: size.heightPx,
       stylesBefore,
       lastStyles: {
         left: `${pos.startLeftPx}px`,
@@ -513,7 +538,7 @@ export function ManualEditResizeOverlay({
       moved: false,
       previewed: false,
       promote,
-      lastViewport: { x: target.rect.x, y: target.rect.y },
+      lastViewport: { x: startTarget.rect.x, y: startTarget.rect.y },
       hostScale: geom.hostScale,
       hostOffset: geom.hostOffset,
     };

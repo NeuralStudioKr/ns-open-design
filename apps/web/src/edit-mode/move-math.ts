@@ -143,13 +143,25 @@ export function movePreviewStyles(result: MoveMathResult): Partial<ManualEditSty
 /**
  * In-place absolute promote + move styles (53). Keeps DOM parent; locks box size
  * and zeroes margin so flow exit does not collapse or double-offset.
+ *
+ * Size lock must be layout px (`offsetWidth`), not visual `startRect` — under
+ * deck-stage transform, writing gBCR width as CSS collapses the box on promote.
  */
 export function promoteMoveStyles(
   startRect: ManualEditRect,
   result: MoveMathResult,
+  options?: { layoutWidthPx?: number; layoutHeightPx?: number },
 ): Partial<ManualEditStyles> {
-  const widthPx = Math.round(startRect.width);
-  const heightPx = Math.round(startRect.height);
+  const widthPx = Math.round(
+    options?.layoutWidthPx && options.layoutWidthPx >= 1
+      ? options.layoutWidthPx
+      : startRect.width,
+  );
+  const heightPx = Math.round(
+    options?.layoutHeightPx && options.layoutHeightPx >= 1
+      ? options.layoutHeightPx
+      : startRect.height,
+  );
   return {
     position: 'absolute',
     left: `${result.leftPx}px`,
