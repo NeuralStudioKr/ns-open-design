@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type http from 'node:http';
-import { mkdir, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -141,5 +141,24 @@ describe('project file revisions API', () => {
     expect(contentResp.status).toBe(200);
     const contentJson = await contentResp.json() as { content: string };
     expect(contentJson.content).toContain('gzip-v1');
+  });
+
+  it('pushes when scratch deck.html is missing but revision snapshots exist', async () => {
+    const projectsRoot = path.join(process.env.OD_DATA_DIR!, 'projects');
+    const deckPath = path.join(projectsRoot, projectId, 'deck.html');
+    await unlink(deckPath);
+
+    const push = await fetch(revisionsUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: '<!doctype html><html><body><h1>scratch-miss</h1></body></html>',
+        source: 'manual_edit',
+        label: 'After scratch evict',
+      }),
+    });
+    expect(push.status).toBe(200);
+    const pushJson = await push.json() as { revision: { label: string } };
+    expect(pushJson.revision.label).toBe('After scratch evict');
   });
 });
