@@ -308,6 +308,19 @@ export async function pgPruneOrphanFileRevisionSnapshots(pool: Pool): Promise<{
   return { removed: rows.length, reclaimedBytes };
 }
 
+export async function pgGetOldestRevisionForGlobalPrune(
+  pool: Pool,
+): Promise<{ id: string; storageBytes: number } | null> {
+  return await queryPostgresRow<{ id: string; storageBytes: number }>(
+    pool,
+    `SELECT r.id AS id, coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
+     FROM file_revisions r
+     LEFT JOIN file_revision_snapshots s ON s.revision_id = r.id
+     ORDER BY r.created_at ASC, r.sequence ASC
+     LIMIT 1`,
+  );
+}
+
 export async function pgGetFileRevisionSnapshotStorageStats(pool: Pool): Promise<{
   snapshotRowCount: number;
   orphanSnapshotRowCount: number;

@@ -24,6 +24,7 @@ import {
   pgListAllFileRevisionIds,
   pgListDistinctFileRevisionTargets,
 } from './postgres-persistence.js';
+import { enforceFileRevisionGlobalByteBudget } from './quota.js';
 import { deleteRevisionSnapshots, removeRevisionSnapshotFiles } from './store.js';
 
 export interface FileRevisionStorageStats {
@@ -51,6 +52,8 @@ export interface FileRevisionGcResult {
   orphanSnapshotsRemoved: number;
   orphanSnapshotBytesReclaimed: number;
   retentionRevisionsPruned: number;
+  globalBudgetRevisionsPruned: number;
+  globalBudgetBytesReclaimed: number;
   orphanFilesRemoved: number;
   vacuum: {
     beforeBytes: number;
@@ -231,6 +234,7 @@ export async function runFileRevisionGc(options: FileRevisionGcOptions): Promise
 
   const orphan = await pruneOrphanFileRevisionSnapshotsDurable(db);
   const retentionBatches = await enforceGlobalFileRevisionRetention(db, retentionLimit);
+  const globalBudget = await enforceFileRevisionGlobalByteBudget(db, 0);
   let retentionRevisionsPruned = 0;
   for (const batch of retentionBatches) {
     retentionRevisionsPruned += batch.revisionIds.length;
@@ -261,6 +265,8 @@ export async function runFileRevisionGc(options: FileRevisionGcOptions): Promise
     orphanSnapshotsRemoved: orphan.removed,
     orphanSnapshotBytesReclaimed: orphan.reclaimedBytes,
     retentionRevisionsPruned,
+    globalBudgetRevisionsPruned: globalBudget.pruned,
+    globalBudgetBytesReclaimed: globalBudget.bytesReclaimed,
     orphanFilesRemoved,
     vacuum,
   };

@@ -14,6 +14,7 @@ import {
   runFileRevisionGc,
   type FileRevisionGcResult,
 } from './maintenance.js';
+import { updateFileRevisionMetrics } from './metrics.js';
 import {
   resolveFileRevisionSnapshotStorage,
 } from './snapshot-storage.js';
@@ -41,6 +42,8 @@ const NOOP_HANDLE: FileRevisionGcHandle = {
     orphanSnapshotsRemoved: 0,
     orphanSnapshotBytesReclaimed: 0,
     retentionRevisionsPruned: 0,
+    globalBudgetRevisionsPruned: 0,
+    globalBudgetBytesReclaimed: 0,
     orphanFilesRemoved: 0,
     vacuum: null,
   }),
@@ -91,10 +94,11 @@ export function startFileRevisionGc(opts: FileRevisionGcWorkerOptions): FileRevi
   });
 
   const tick = () => {
-    void sweep().then((result) => {
+    void sweep().then(async (result) => {
       if (
         result.orphanSnapshotsRemoved > 0
         || result.retentionRevisionsPruned > 0
+        || result.globalBudgetRevisionsPruned > 0
         || result.orphanFilesRemoved > 0
         || result.vacuum
       ) {
@@ -102,6 +106,12 @@ export function startFileRevisionGc(opts: FileRevisionGcWorkerOptions): FileRevi
       }
       if (result.vacuum) {
         lastVacuumAtMs = Date.now();
+      }
+      try {
+        const stats = await collectFileRevisionStorageStats(opts.db);
+        updateFileRevisionMetrics(stats);
+      } catch (err) {
+        log(`[file-revisions] GC metrics update failed: ${err instanceof Error ? err.message : String(err)}`);
       }
       opts.onTick?.(result);
     }).catch((err) => {

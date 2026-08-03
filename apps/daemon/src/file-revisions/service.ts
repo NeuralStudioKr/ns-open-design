@@ -31,6 +31,14 @@ import {
 } from './store.js';
 import { usesPostgresRevisionSnapshots } from './snapshot-storage.js';
 import { withFileRevisionMutationLock } from './postgres-lock.js';
+import { FileRevisionPayloadTooLargeError } from './errors.js';
+import { FILE_REVISION_MAX_SNAPSHOT_BYTES } from './limits.js';
+import { enforceFileRevisionGlobalByteBudget } from './quota.js';
+import {
+  gzipRevisionSnapshot,
+  resolveFullSnapshotInterval,
+  shouldForceFullSnapshot,
+} from './snapshot-codec.js';
 
 type WriteProjectFile = (
   projectsRoot: string,
@@ -131,8 +139,9 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       await removeRevisionSnapshotFiles(projectDir, fileName, revisionInput.id);
       return revision;
     }
+    const revision = insertFileRevision(db, revisionInput);
     await writeRevisionSnapshot(projectDir, fileName, revisionInput.id, content, options, snapshotContext);
-    return insertFileRevision(db, revisionInput);
+    return revision;
   }
 
   async function readRevisionSnapshotContent(
@@ -273,6 +282,15 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
           metadata,
           parent,
         );
+
+        const contentBytes = Buffer.byteLength(content, 'utf8');
+        if (contentBytes > FILE_REVISION_MAX_SNAPSHOT_BYTES) {
+          throw new FileRevisionPayloadTooLargeError(FILE_REVISION_MAX_SNAPSHOT_BYTES, contentBytes);
+        }
+        const interval = resolveFullSnapshotInterval();
+        const forceFull = shouldForceFullSnapshot(sequence, interval) || parentContent == null;
+        const encoded = gzipRevisionSnapshot(content, { parentContent, forceFull });
+        await enforceFileRevisionGlobalByteBudget(db, encoded.compressed.length);
 
         const file = await writeProjectFile(
           projectsRoot,

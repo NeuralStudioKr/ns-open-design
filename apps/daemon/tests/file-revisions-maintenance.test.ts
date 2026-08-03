@@ -8,6 +8,7 @@ import {
   runFileRevisionGc,
 } from '../src/file-revisions/maintenance.js';
 import { upsertFileRevisionSnapshot, pruneOrphanFileRevisionSnapshotsDurable } from '../src/file-revisions/snapshot-storage.js';
+import { enforceFileRevisionGlobalByteBudget } from '../src/file-revisions/quota.js';
 
 const ROOT = path.join(process.cwd(), '.tmp', 'file-revisions-maintenance-test');
 
@@ -26,7 +27,9 @@ function openDb(): Database.Database {
 describe('file-revisions maintenance', () => {
   it('removes orphan snapshot rows without metadata', async () => {
     const db = openDb();
+    db.pragma('foreign_keys = OFF');
     upsertFileRevisionSnapshot(db, 'orphan-rev', Buffer.from('blob'));
+    db.pragma('foreign_keys = ON');
     const result = await pruneOrphanFileRevisionSnapshotsDurable(db);
     expect(result.removed).toBe(1);
     const stats = await collectFileRevisionStorageStats(db);
@@ -71,5 +74,32 @@ describe('file-revisions maintenance', () => {
     expect(result.orphanFilesRemoved).toBe(1);
     const stats = await collectFileRevisionStorageStats(db);
     expect(stats.snapshotRowCount).toBe(2);
+  });
+
+  it('global byte budget pruning removes oldest revisions first', async () => {
+    const db = openDb();
+    for (let sequence = 1; sequence <= 3; sequence += 1) {
+      const id = `rev-${sequence}`;
+      insertFileRevision(db, {
+        id,
+        projectId: 'proj-1',
+        fileName: 'deck.html',
+        parentRevisionId: sequence > 1 ? `rev-${sequence - 1}` : null,
+        sequence,
+        createdAt: sequence,
+        byteSize: 100,
+        source: 'manual_edit',
+        label: `v${sequence}`,
+      });
+      upsertFileRevisionSnapshot(db, id, Buffer.alloc(400, 0x62));
+    }
+
+    const budget = await enforceFileRevisionGlobalByteBudget(db, 0, 900);
+    expect(budget.pruned).toBe(1);
+    expect(budget.bytesReclaimed).toBe(400);
+
+    const stats = await collectFileRevisionStorageStats(db);
+    expect(stats.snapshotRowCount).toBe(2);
+    expect(stats.revisionRowCount).toBe(2);
   });
 });

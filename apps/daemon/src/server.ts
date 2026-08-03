@@ -207,6 +207,7 @@ import {
   searchInstalledPlugins,
 } from './plugins/index.js';
 import { startFileRevisionGc } from './file-revisions/gc.js';
+import { updateFileRevisionMetrics } from './file-revisions/metrics.js';
 import {
   filterPluginsExcludingChinesePrimaryDeck,
   isExcludedChinesePrimaryDeckPlugin,
@@ -5676,14 +5677,21 @@ export async function startServer({
     ),
     sqliteDbFile: path.join(RUNTIME_DATA_DIR, 'app.sqlite'),
   });
-  void fileRevisionGc.sweep().then((result) => {
+  void fileRevisionGc.sweep().then(async (result) => {
     if (
       result.orphanSnapshotsRemoved > 0
       || result.retentionRevisionsPruned > 0
+      || result.globalBudgetRevisionsPruned > 0
       || result.orphanFilesRemoved > 0
       || result.vacuum
     ) {
       console.info('[file-revisions] GC startup sweep', result);
+    }
+    try {
+      const stats = await fileRevisionGc.stats();
+      updateFileRevisionMetrics(stats);
+    } catch (err) {
+      console.warn(`[file-revisions] GC startup metrics failed: ${(err as Error)?.message ?? err}`);
     }
   }).catch((err) => {
     console.warn(`[file-revisions] GC startup sweep failed: ${(err)?.message ?? err}`);

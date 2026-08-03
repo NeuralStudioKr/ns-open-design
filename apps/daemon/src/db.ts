@@ -1135,18 +1135,23 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
 }
 
 export function deleteProject(db: SqliteDb, id: string) {
-  try {
-    void deleteFileRevisionSnapshotsForProjectDurable(id, db);
-  } catch {
-    // Best-effort — CASCADE on file_revisions still removes metadata.
-  }
   if (isDaemonDbPostgres()) {
     deleteCachedProject(id);
     deleteProjectRowFromSqlite(db, id);
     schedulePostgresWrite(async () => {
+      try {
+        await deleteFileRevisionSnapshotsForProjectDurable(id, db);
+      } catch {
+        // Best-effort — project row delete still proceeds.
+      }
       await pgCore.pgDeleteProject(getPostgresPool(), id);
     });
     return;
+  }
+  try {
+    void deleteFileRevisionSnapshotsForProjectDurable(id, db);
+  } catch {
+    // Best-effort — CASCADE on file_revisions still removes metadata.
   }
   db.prepare(`DELETE FROM projects WHERE id = ?`).run(id);
 }
@@ -1158,6 +1163,11 @@ export async function deleteProjectAsync(db: SqliteDb, id: string): Promise<void
     return;
   }
   deleteCachedProject(id);
+  try {
+    await deleteFileRevisionSnapshotsForProjectDurable(id, db);
+  } catch {
+    // Best-effort — pgDeleteProject still runs; v9 FK CASCADE is the backstop.
+  }
   await pgCore.pgDeleteProject(getPostgresPool(), id);
   deleteProjectRowFromSqlite(db, id);
 }

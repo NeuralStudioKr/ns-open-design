@@ -38,6 +38,7 @@ import {
 } from './project-locations.js';
 import { auditDesignSystemPackage } from './tools-connectors-cli.js';
 import { createFileRevisionService, isFileRevisionSource } from './file-revisions/service.js';
+import { FileRevisionPayloadTooLargeError } from './file-revisions/errors.js';
 import {
   FileRevisionLockError,
   isFileRevisionSequenceConflict,
@@ -3157,6 +3158,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       }
       if (err instanceof ArtifactPublicationBlockedError) {
         return sendApiError(res, 422, 'ARTIFACT_PUBLICATION_BLOCKED', err.message);
+      }
+      if (err instanceof FileRevisionPayloadTooLargeError) {
+        return sendApiError(res, 413, 'PAYLOAD_TOO_LARGE', err.message);
       }
       if (err && err.code === 'ENOENT') {
         return sendApiError(res, 404, 'FILE_NOT_FOUND', String(err));

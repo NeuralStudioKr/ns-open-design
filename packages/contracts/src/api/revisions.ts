@@ -78,3 +78,12 @@ export const REVISION_CONTENT_CACHE_MAX_ENTRY_BYTES_DEFAULT = 4 * 1024 * 1024;
 
 /** Evict LRU entries when per-file cached revision bytes exceed this budget. */
 export const REVISION_CONTENT_CACHE_MAX_BYTES_PER_FILE_DEFAULT = 16 * 1024 * 1024;
+
+/** Max uncompressed artifact bytes accepted per revision push (daemon env override). */
+export const FILE_REVISION_MAX_SNAPSHOT_BYTES_DEFAULT = 8 * 1024 * 1024;
+
+/**
+ * Max total compressed snapshot bytes stored in DaemonDb (0 = unlimited).
+ * When exceeded, oldest revisions are pruned globally before new pushes.
+ */
+export const FILE_REVISION_MAX_TOTAL_BYTES_DEFAULT = 0;
