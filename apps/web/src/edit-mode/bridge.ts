@@ -1,4 +1,4 @@
-export const MANUAL_EDIT_DISCOVERY_SELECTOR = 'main, nav, section, article, header, footer, div, h1, h2, h3, p, a, button, img, strong, span';
+export const MANUAL_EDIT_DISCOVERY_SELECTOR = 'main, nav, section, article, header, footer, div, h1, h2, h3, p, a, button, img, svg, strong, span';
 export const MANUAL_EDIT_SOURCE_PATH_ATTR = 'data-od-source-path';
 export const MANUAL_EDIT_HOST_NODE_SELECTOR = [
   '[data-od-sandbox-shim]',
@@ -83,7 +83,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (explicit) return explicit;
     var tag = el.tagName ? el.tagName.toLowerCase() : '';
     if (tag === 'a') return 'link';
-    if (tag === 'img') return 'image';
+    if (tag === 'img' || tag === 'svg') return 'image';
     if (['section','main','nav','div','article','header','footer'].indexOf(tag) >= 0) return 'container';
     return 'text';
   }

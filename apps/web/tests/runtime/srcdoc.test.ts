@@ -399,6 +399,19 @@ describe('buildSrcdoc', () => {
     expect(srcdoc.indexOf('data-od-source-path="path-0"')).toBeLessThan(srcdoc.indexOf('document.body.prepend'));
   });
 
+  it('annotates inline svg logos for manual edit discovery', () => {
+    const dom = new JSDOM('');
+    globalThis.DOMParser = dom.window.DOMParser;
+    const srcdoc = buildSrcdoc(
+      '<main><div class="logo"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M0 0h24v24z"/></svg></div></main>',
+      { editBridge: true, commentBridge: true },
+    );
+    Reflect.deleteProperty(globalThis, 'DOMParser');
+
+    expect(srcdoc).toMatch(/<svg[^>]*data-od-source-path=/);
+    expect(srcdoc).toMatch(/<svg[^>]*data-od-id=/);
+  });
+
   it('injects only the manual edit bridge when edit mode is enabled without picker bridges', () => {
     const dom = new JSDOM('');
     globalThis.DOMParser = dom.window.DOMParser;

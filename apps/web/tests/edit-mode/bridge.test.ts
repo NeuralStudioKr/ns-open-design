@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import {
+  MANUAL_EDIT_DISCOVERY_SELECTOR,
   buildManualEditBridge,
   buildManualEditBridgeStyle,
   isMeaningfulManualEditElement,
@@ -53,6 +54,54 @@ describe('manual edit bridge target normalization', () => {
     expect(isMeaningfulManualEditElement(title, { width: 80, height: 24 })).toBe(true);
     expect(isMeaningfulManualEditElement(title, { width: 3, height: 24 })).toBe(false);
     expect(isMeaningfulManualEditElement(script, { width: 80, height: 24 })).toBe(false);
+  });
+
+  it('includes svg in discovery so logos are not selected as parent containers', () => {
+    expect(MANUAL_EDIT_DISCOVERY_SELECTOR.split(',').map((s) => s.trim())).toContain('svg');
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain(', svg,');
+    expect(bridge).toContain("tag === 'img' || tag === 'svg'");
+
+    const dom = new JSDOM(
+      `<main>
+        <div data-od-source-path="path-0-0" style="width:400px;height:200px">
+          <svg data-od-source-path="path-0-0-0" width="32" height="32" viewBox="0 0 32 32"><path d="M0 0h32v32z"/></svg>
+        </div>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const posts: Array<{ type?: string; target?: { id?: string; kind?: string; tagName?: string; rect?: { width: number; height: number } } }> = [];
+    const wrap = dom.window.document.querySelector('div')!;
+    const svg = dom.window.document.querySelector('svg')!;
+    const path = dom.window.document.querySelector('path')!;
+    wrap.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 400, height: 200,
+      top: 0, right: 400, bottom: 200, left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    svg.getBoundingClientRect = () => ({
+      x: 10, y: 10, width: 32, height: 32,
+      top: 10, right: 42, bottom: 42, left: 10,
+      toJSON: () => ({}),
+    } as DOMRect);
+    path.getBoundingClientRect = svg.getBoundingClientRect;
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+
+    path.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    const select = posts.find((message) => message.type === 'od-edit-select');
+    expect(select?.target?.tagName).toBe('svg');
+    expect(select?.target?.kind).toBe('image');
+    expect(select?.target?.id).toBe('path-0-0-0');
+    expect(select?.target?.rect).toMatchObject({ width: 32, height: 32 });
+
+    dom.window.close();
   });
 
   it('keeps source-mappable display:none targets available for the layers panel', async () => {
