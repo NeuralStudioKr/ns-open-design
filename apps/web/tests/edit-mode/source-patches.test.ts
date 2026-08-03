@@ -421,6 +421,103 @@ describe('manual edit source patches', () => {
     expect(result.source).not.toContain('evil.example');
   });
 
+  it('strips CSS-escape and comment-smuggled @import from salvaged styles', () => {
+    const escaped = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>@\\69 mport url("https://evil.example/escaped.css"); .hero-pop{color:#111}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(escaped.ok, escaped.error).toBe(true);
+    expect(escaped.source).toContain('.hero-pop{color:#111}');
+    expect(escaped.source).not.toContain('evil.example');
+    expect(escaped.source).not.toMatch(/@import/i);
+
+    const commented = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>@im/**/port url("https://evil.example/comment.css"); .hero-pop{color:#222}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(commented.ok, commented.error).toBe(true);
+    expect(commented.source).toContain('.hero-pop{color:#222}');
+    expect(commented.source).not.toContain('evil.example');
+  });
+
+  it('ignores short ASCII UI labels like Done when scoring merge candidates', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<button data-od-id="done-btn">Done</button>',
+      '<p data-od-id="note" data-od-edit="text">Remember this</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<button>Done</button>',
+      '<p>Updated note copy</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetsFromSource(
+      source,
+      modelOutput,
+      ['note'],
+      { slideIndex: 0 },
+      [{
+        id: 'note',
+        currentText: 'Remember this',
+        // "Done" must not steal the pin onto the button; longer quoted phrase
+        // still guides the merge onto the paragraph.
+        instructionText: "change the text to 'Done' — write 'Updated note copy'",
+        htmlHint: '<p data-od-id="note">Remember this</p>',
+      }],
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('<p data-od-id="note" data-od-edit="text">Updated note copy</p>');
+    expect(result.source).toContain('<button data-od-id="done-btn">Done</button>');
+    expect(result.source).not.toMatch(/<button data-od-id="note"/);
+  });
+
+  it('strips nested identity attrs and refuses minting ids on path-only targets', () => {
+    const nested = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title">Safe <a data-od-id="cta" href="/phish">link</a></h1>',
+    });
+    expect(nested.ok, nested.error).toBe(true);
+    const nestedHtml = readManualEditOuterHtml(nested.source, 'hero-title');
+    expect(nestedHtml).toContain('data-od-id="hero-title"');
+    expect(nestedHtml).toContain('href="/phish"');
+    expect(nestedHtml).not.toMatch(/<a[^>]*data-od-id="cta"/i);
+    // Original CTA identity must remain unique.
+    expect(readManualEditOuterHtml(nested.source, 'cta')).toContain('href="/start"');
+
+    const unlabeledSource = [
+      '<!doctype html><html><body>',
+      '<main><p>Path only copy</p><a data-od-id="cta" href="/start">Start</a></main>',
+      '</body></html>',
+    ].join('');
+    const minted = applyManualEditPatch(unlabeledSource, {
+      kind: 'set-outer-html',
+      id: 'path-0-0',
+      html: '<p data-od-id="cta">Hijacked</p>',
+    });
+    expect(minted.ok, minted.error).toBe(true);
+    expect(minted.source).toContain('>Hijacked</p>');
+    expect(minted.source).not.toMatch(/<p[^>]*data-od-id="cta"/i);
+    expect(readManualEditOuterHtml(minted.source, 'cta')).toContain('href="/start"');
+  });
+
   it('ignores short quoted instruction terms when scoring merge candidates', () => {
     const source = [
       '<!doctype html><html><body>',
@@ -561,6 +658,38 @@ describe('manual edit source patches', () => {
       value: 'red',
     });
     expect(plainProp.ok).toBe(false);
+  });
+
+  it('rejects set-token url() values and scrubs unsafe inline style urls', () => {
+    const tokenUrl = applyManualEditPatch(baseSource, {
+      kind: 'set-token',
+      token: '--brand',
+      value: 'url(https://evil.example/token.css)',
+    });
+    expect(tokenUrl.ok).toBe(false);
+    expect(tokenUrl.source).toContain('--brand: #111;');
+
+    const styled = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:url(javascript:alert(1));color:red">Title</h1>',
+    });
+    expect(styled.ok, styled.error).toBe(true);
+    const html = readManualEditOuterHtml(styled.source, 'hero-title');
+    expect(html).toContain('color:red');
+    expect(html).not.toMatch(/javascript/i);
+
+    const siblingJs = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{background:url("javascript:alert(1)");color:#333}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(siblingJs.ok, siblingJs.error).toBe(true);
+    expect(siblingJs.source).toContain('.hero-pop{');
+    expect(siblingJs.source).not.toMatch(/javascript/i);
   });
 
   it('strips nested style tags from set-outer-html replacements', () => {

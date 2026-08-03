@@ -871,22 +871,37 @@ function findEquivalentElementByScopedPosition(
   return nextCursor;
 }
 
+const MANUAL_EDIT_IDENTITY_ATTRS = [
+  'data-od-id',
+  'data-od-runtime-id',
+  'data-od-source-path',
+  'data-od-edit',
+  'data-od-label',
+  'data-slide-index',
+  'data-screen-label',
+] as const;
+
 function preserveManualEditIdentityAttributes(currentTarget: Element, replacement: Element): void {
   // Always force current identity / slide-scope attrs onto the replacement.
   // Models often emit wrong data-slide-index / data-screen-label; filling only
   // when omitted let those wrong values win and break page-level lookup.
-  for (const attr of [
-    'data-od-id',
-    'data-od-runtime-id',
-    'data-od-source-path',
-    'data-od-edit',
-    'data-od-label',
-    'data-slide-index',
-    'data-screen-label',
-  ]) {
+  // When the current target has no durable id (path-only pins), strip any
+  // minted identity attrs so the model cannot steal future lookups.
+  for (const attr of MANUAL_EDIT_IDENTITY_ATTRS) {
     const currentValue = currentTarget.getAttribute(attr);
     if (currentValue) {
       replacement.setAttribute(attr, currentValue);
+    } else {
+      replacement.removeAttribute(attr);
+    }
+  }
+}
+
+/** Nested identity attrs collide with live querySelector targets — drop them. */
+function stripDescendantManualEditIdentityAttributes(root: Element): void {
+  for (const el of Array.from(root.querySelectorAll('*'))) {
+    for (const attr of MANUAL_EDIT_IDENTITY_ATTRS) {
+      el.removeAttribute(attr);
     }
   }
 }
@@ -921,6 +936,12 @@ function sanitizeManualEditReplacementTree(root: Element): void {
         el.removeAttribute(attr.name);
         continue;
       }
+      if (lower === 'style') {
+        const scrubbed = scrubUnsafeInlineStyleAttr(attr.value);
+        if (!scrubbed) el.removeAttribute(attr.name);
+        else if (scrubbed !== attr.value) el.setAttribute(attr.name, scrubbed);
+        continue;
+      }
       if (
         (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'values')
         && !isSafeManualEditUrlAttrValue(lower, attr.value)
@@ -936,6 +957,7 @@ function sanitizeManualEditReplacementTree(root: Element): void {
 
 function finalizeManualEditReplacement(currentTarget: Element, replacement: Element): void {
   preserveManualEditIdentityAttributes(currentTarget, replacement);
+  stripDescendantManualEditIdentityAttributes(replacement);
   sanitizeManualEditReplacementTree(replacement);
 }
 
@@ -958,17 +980,21 @@ function findReplacementCandidateByTextHint(
     const text = normalizeTextForCandidate(candidate.textContent || '');
     if (!text) continue;
     let score = 0;
-    if (candidate.tagName.toLowerCase() === currentTarget.tagName.toLowerCase()) score += 25;
+    const candidateTag = candidate.tagName.toLowerCase();
+    const currentTag = currentTarget.tagName.toLowerCase();
+    const hintedTag = /^<\s*([a-z][a-z0-9-]*)\b/i.exec(hint?.htmlHint ?? '')?.[1]?.toLowerCase();
+    const tagAgrees = candidateTag === currentTag || (Boolean(hintedTag) && candidateTag === hintedTag);
+    if (candidateTag === currentTag) score += 25;
     for (const term of instructionTerms) {
-      if (term && text.includes(term)) score += 120;
+      // Short UI labels ("Done"/"Save") used to award +120 across tags and
+      // hijack merge onto buttons — require tag agreement for the full boost.
+      if (!term || !text.includes(term)) continue;
+      score += tagAgrees ? 120 : 20;
     }
     for (const token of currentTokens) {
       if (text.includes(token)) score += 12;
     }
-    if (hint?.htmlHint) {
-      const hintedTag = /^<\s*([a-z][a-z0-9-]*)\b/i.exec(hint.htmlHint)?.[1]?.toLowerCase();
-      if (hintedTag && candidate.tagName.toLowerCase() === hintedTag) score += 12;
-    }
+    if (hintedTag && candidateTag === hintedTag) score += 12;
     if (score <= 0) continue;
     const length = text.length;
     if (!best || score > best.score || (score === best.score && length < best.length)) {
@@ -991,14 +1017,16 @@ function isReasonableTextReplacementCandidate(element: Element): boolean {
 
 /**
  * Instruction replacement terms used for merge scoring.
- * Drop short ASCII-only quotes ("OK"/"AI"/"on") that hijack +120 matches,
+ * Drop short ASCII UI labels ("OK"/"Done"/"Save"/"Next") that hijack merges,
  * while keeping short Hangul/CJK names like "김강사".
  */
 function isUsableInstructionTerm(term: string): boolean {
   if (!term) return false;
-  if (term.length >= 4) return true;
-  if (term.length < 2) return false;
-  return /[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF\u4E00-\u9FFF]/.test(term);
+  if (/[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF\u4E00-\u9FFF]/.test(term)) {
+    return term.length >= 2;
+  }
+  // ASCII-only: require longer phrases so "Done"/"Save"/"Submit" stay out.
+  return term.length >= 8;
 }
 
 function extractLikelyReplacementTerms(text: string): string[] {
@@ -1523,10 +1551,8 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
   if (styleHost) {
     for (const style of styleSiblings) {
       if (next === style || next.contains(style)) continue;
-      // Drop @import (and empty leftovers) so salvage cannot inject remote CSS.
-      const text = (style.textContent ?? '')
-        .replace(/@import\b[^;]*;?/gi, '')
-        .trim();
+      // Drop @import (incl. CSS escapes/comments) and unsafe url()/expression.
+      const text = scrubSalvagedStyleText(style.textContent ?? '');
       if (!text) continue;
       if (
         Array.from(styleHost.querySelectorAll('style')).some(
@@ -1669,13 +1695,63 @@ function isSafeCssTokenName(token: string): boolean {
   return /^--[a-zA-Z_][\w-]*$/.test(String(token || ''));
 }
 
-/** Reject CSS declaration / rule breakout in set-token values. */
+/** Reject CSS declaration / rule breakout and remote/script urls in set-token. */
 function isSafeCssTokenValue(value: string): boolean {
   const trimmed = String(value || '').trim();
   if (!trimmed) return false;
   if (/[;{}]/.test(trimmed)) return false;
   if (/<\/?style/i.test(trimmed)) return false;
+  if (/@/.test(trimmed)) return false;
+  if (/\burl\s*\(/i.test(trimmed)) return false;
+  if (/\bexpression\s*\(/i.test(trimmed)) return false;
+  if (/-moz-binding/i.test(trimmed)) return false;
   return true;
+}
+
+/**
+ * Normalize CSS enough to defeat comment / hex-escape @import smuggling
+ * (hex-escaped "@import", comment-split import) before salvage scrubbing.
+ */
+function normalizeCssForSafetyScan(css: string): string {
+  let text = String(css || '');
+  text = text.replace(/\/\*[\s\S]*?\*\//g, '');
+  text = text.replace(/\\([0-9a-fA-F]{1,6})(\r\n|[ \t\r\n\f])?/g, (_match, hex: string) => {
+    const code = Number.parseInt(hex, 16);
+    if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return '';
+    try {
+      return String.fromCodePoint(code);
+    } catch {
+      return '';
+    }
+  });
+  text = text.replace(/\\(.)/g, '$1');
+  return text;
+}
+
+function stripCssAtImports(css: string): string {
+  const normalized = normalizeCssForSafetyScan(css);
+  return normalized.replace(/@import\b[^;]*;?/gi, '').trim();
+}
+
+/** Drop javascript/vbscript/data urls and expression() from CSS text. */
+function scrubUnsafeCssFunctions(css: string): string {
+  return String(css || '')
+    .replace(/url\s*\(\s*(['"]?)\s*(?:javascript|vbscript|data)\b[^)]*\)/gi, 'url()')
+    .replace(/expression\s*\([^)]*\)/gi, 'initial')
+    .replace(/-moz-binding\s*:[^;]*/gi, '');
+}
+
+function scrubSalvagedStyleText(css: string): string {
+  return scrubUnsafeCssFunctions(stripCssAtImports(css)).trim();
+}
+
+function scrubUnsafeInlineStyleAttr(value: string): string {
+  const scrubbed = scrubUnsafeCssFunctions(String(value || '')).trim();
+  // If anything still looks like a scriptable url, drop the whole attr.
+  if (/\burl\s*\(\s*(['"]?)\s*(?:javascript|vbscript|data)\b/i.test(scrubbed)) return '';
+  if (/\bexpression\s*\(/i.test(scrubbed)) return '';
+  if (/-moz-binding/i.test(scrubbed)) return '';
+  return scrubbed;
 }
 
 function setCssToken(doc: Document, token: string, value: string): boolean {
