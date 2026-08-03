@@ -390,6 +390,8 @@ export interface ChatComposerHandle {
 
 export interface ChatSendMeta {
   queueOnly?: boolean;
+  /** Internal: auto-start is already draining this queued send — do not re-queue. */
+  drainQueuedSend?: boolean;
   research?: ResearchOptions;
   context?: RunContextSelection;
   /** Per-turn plugin inputs for scenario runs started from composer actions. */
@@ -506,8 +508,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     );
     const nextAttachmentOrderRef = useRef(0);
     const [stagedVisualComments, setStagedVisualComments] = useState<ChatCommentAttachment[]>([]);
-    const streamingAnnotationSendPendingRef = useRef(false);
-    const [streamingAnnotationSendPending, setStreamingAnnotationSendPendingState] = useState(false);
     // Skills the user has @-mentioned for this turn. We dedupe on id and
     // strip the chip when the user removes the corresponding `@<skill>`
     // token from the draft, keeping draft and chips in sync.
@@ -1204,11 +1204,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       return sortChatCommentAttachmentsByOrder([...commentAttachments, ...stagedVisualComments, ...extra]);
     }
 
-    function setStreamingAnnotationSendPending(value: boolean) {
-      streamingAnnotationSendPendingRef.current = value;
-      setStreamingAnnotationSendPendingState(value);
-    }
-
     function currentRunContextMeta(): ChatSendMeta | undefined {
       const skillIds = stagedSkills.map((s) => s.id);
       const pluginIds = activeAppliedPlugin ? [activeAppliedPlugin.pluginId] : [];
@@ -1249,7 +1244,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       nextCommentAttachments: ChatCommentAttachment[],
       meta?: ChatSendMeta,
     ): boolean {
-      setStreamingAnnotationSendPending(false);
       if (!prompt && attachments.length === 0 && nextCommentAttachments.length === 0) return false;
       const slideOnlyBlock = embedSlideOnlyOutboundBlockReason(prompt, { slideOnlyMvp });
       if (slideOnlyBlock) {
@@ -2092,12 +2086,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             }
 
             if (detail.action === 'send') {
-              if (streaming) {
-                appendAnnotationToComposer();
-                setStreamingAnnotationSendPending(true);
-                ack({ ok: true });
-                return;
-              }
               if (visualAttachmentInput) {
                 visualAttachment = buildVisualAnnotationAttachment({
                   ...visualAttachmentInput,
@@ -2107,7 +2095,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               const prompt = composeAnnotationSendPrompt(draft.trim(), detail.note, hasOutbound);
               const attachments = sortChatAttachmentsByOrder([...staged, ...uploaded]);
               const nextCommentAttachments = currentCommentAttachments(visualAttachment ? [visualAttachment] : []);
-              finishAnnotationSend(prompt, attachments, nextCommentAttachments, currentRunContextMeta());
+              const sendMeta = streaming || sendDisabled
+                ? queueMeta(currentRunContextMeta())
+                : currentRunContextMeta();
+              finishAnnotationSend(prompt, attachments, nextCommentAttachments, sendMeta);
               return;
             }
 
@@ -2141,39 +2132,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       stagedSkills,
       stagedVisualComments,
       streaming,
+      sendDisabled,
       slideOnlyMvp,
       t,
-    ]);
-
-    useEffect(() => {
-      if (!streamingAnnotationSendPending || !streamingAnnotationSendPendingRef.current) return;
-      if (streaming || sendDisabled || uploading) return;
-      // Read the ref, not the closed-over `draft`: the accumulating annotation
-      // handler writes draftRef synchronously, so the ref is authoritative even
-      // if this effect's render closure predates the last accumulation.
-      const prompt = draftRef.current.trim();
-      // Flush only staged annotation payload — do not re-attach composer
-      // commentAttachments that may have already been sent or queued.
-      const pendingVisualComments = sortChatCommentAttachmentsByOrder([...stagedVisualComments]);
-      if (!prompt && staged.length === 0 && pendingVisualComments.length === 0) {
-        setStreamingAnnotationSendPending(false);
-        return;
-      }
-      sendComposedTurn(prompt, staged, pendingVisualComments, currentRunContextMeta());
-    }, [
-      commentAttachments,
-      draft,
-      onSend,
-      selectedWorkspaceContexts,
-      sendDisabled,
-      staged,
-      stagedConnectors,
-      stagedMcpServers,
-      stagedSkills,
-      stagedVisualComments,
-      streaming,
-      streamingAnnotationSendPending,
-      uploading,
     ]);
 
     // Paste handler invoked by the editor's PastePlugin. `files` are the items
@@ -2553,7 +2514,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       const nextCommentAttachments = currentCommentAttachments();
       if (hatched) {
         if (streaming) return;
-        setStreamingAnnotationSendPending(false);
         onSend(
           hatched,
           excludeAttachmentsBackedByVisualScreenshots(staged, nextCommentAttachments),
@@ -2566,7 +2526,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       const search = researchAvailable ? expandSearchCommand(prompt) : null;
       if (search) {
         if (streaming) return;
-        setStreamingAnnotationSendPending(false);
         onSend(
           search.prompt,
           excludeAttachmentsBackedByVisualScreenshots(staged, nextCommentAttachments),

@@ -843,13 +843,23 @@ function queuedChatSendFingerprint(
   commentAttachments: ChatCommentAttachment[],
 ): string {
   const attachmentPaths = attachments.map((attachment) => attachment.path).sort().join('\n');
-  const screenshotPaths = commentAttachments
-    .map((attachment) => String(attachment.screenshotPath || '').trim())
-    .filter(Boolean)
+  const visualSemantic = commentAttachments
+    .map((attachment) => {
+      const screenshotPath = String(attachment.screenshotPath || '').trim();
+      const slideIndex =
+        typeof attachment.slideIndex === 'number' && Number.isFinite(attachment.slideIndex)
+          ? String(attachment.slideIndex)
+          : '';
+      const comment = String(attachment.comment || '').trim();
+      const markKind = String(attachment.markKind || '').trim();
+      const elementBase = String(attachment.elementId || '')
+        .trim()
+        .replace(/-visual-[a-zA-Z0-9_-]+$/, '');
+      return `${screenshotPath}\0${slideIndex}\0${comment}\0${markKind}\0${elementBase}`;
+    })
     .sort()
     .join('\n');
-  const commentIds = commentAttachments.map((attachment) => attachment.id).sort().join('\n');
-  return `${prompt.trim()}\0${attachmentPaths}\0${screenshotPaths}\0${commentIds}`;
+  return `${prompt.trim()}\0${attachmentPaths}\0${visualSemantic}`;
 }
 
 interface QueuedChatSendUpdate {
@@ -7581,7 +7591,8 @@ export function ProjectView({
       // its slot on a false-positive busy signal and the user is stuck with an
       // incomplete assistant row despite the "이어쓰기 시도 중" notice.
       const bypassBusyForAutoContinue = meta?.entryFrom === AUTO_CONTINUE_ENTRY_FROM && !abortRef.current;
-      if (currentConversationBusy && !bypassBusyForAutoContinue) {
+      const bypassBusyForQueuedDrain = meta?.drainQueuedSend === true;
+      if (currentConversationBusy && !bypassBusyForAutoContinue && !bypassBusyForQueuedDrain) {
         queueChatSendForCurrentConversation({
           conversationId: activeConversationId,
           prompt: modelPrompt,
@@ -9329,7 +9340,7 @@ export function ProjectView({
         item.prompt,
         item.attachments,
         item.commentAttachments,
-        item.meta,
+        { ...(item.meta ?? {}), drainQueuedSend: true },
       );
       if (started) removeQueuedChatSend(id);
     })();
@@ -9354,7 +9365,7 @@ export function ProjectView({
         next.prompt,
         next.attachments,
         next.commentAttachments,
-        next.meta,
+        { ...(next.meta ?? {}), drainQueuedSend: true },
       );
       if (!started) {
         if (startingQueuedChatSendIdRef.current === next.id) {
@@ -11573,7 +11584,7 @@ function isQueuedChatSend(value: unknown): value is QueuedChatSend {
 
 function stripQueueOnlyFromMeta(meta: ChatSendMeta | undefined): ProjectChatSendMeta | undefined {
   if (!meta) return undefined;
-  const { queueOnly: _queueOnly, ...rest } = meta;
+  const { queueOnly: _queueOnly, drainQueuedSend: _drainQueuedSend, ...rest } = meta;
   return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
