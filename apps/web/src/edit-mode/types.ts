@@ -19,6 +19,7 @@ export interface ManualEditStyles {
   fontSize: string;
   fontWeight: string;
   color: string;
+  display: string;
   textAlign: string;
   textDecoration: string;
   /** Layout wrap control — prompted for "한 줄로/nowrap" comment edits. */
@@ -177,7 +178,7 @@ export type ManualEditBridgeMessage =
   | ManualEditRectMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
-  'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'textDecoration', 'whiteSpace', 'lineHeight', 'letterSpacing',
+  'fontFamily', 'fontSize', 'fontWeight', 'color', 'display', 'textAlign', 'textDecoration', 'whiteSpace', 'lineHeight', 'letterSpacing',
   'width', 'height', 'minHeight', 'maxWidth', 'maxHeight', 'position', 'left', 'top', 'right', 'bottom',
   'gap', 'flexDirection', 'justifyContent', 'alignItems',
   'backgroundColor', 'opacity',

@@ -277,6 +277,8 @@ export function ManualEditResizeOverlay({
   onResizeCommitRef.current = onResizeCommit;
   const targetKindRef = useRef(target.kind);
   targetKindRef.current = target.kind;
+  const targetRef = useRef(target);
+  targetRef.current = target;
 
   useEffect(() => {
     const endDrag = (event: PointerEvent, commit: boolean) => {
@@ -328,7 +330,7 @@ export function ManualEditResizeOverlay({
           dx,
           dy,
         });
-        const next = resizeResultToStyles(result);
+        const next = resizeResultToStyles(result, targetRef.current);
         drag.lastStyles = next;
         drag.previewed = true;
         // result.x/y are viewport (CB left/top stay in leftPx/topPx only).
@@ -426,6 +428,7 @@ export function ManualEditResizeOverlay({
     const stylesBefore: Partial<ManualEditStyles> = {
       width: cascadeRollbackStyle(target.styles.width),
       height: cascadeRollbackStyle(target.styles.height),
+      display: cascadeRollbackStyle(target.styles.display),
       // resizeResultToStyles lifts max-width/height clamps — capture so Esc /
       // flush-fail can removeProperty and restore stylesheet constraints.
       maxWidth: cascadeRollbackStyle(target.styles.maxWidth),

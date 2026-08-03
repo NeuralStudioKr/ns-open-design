@@ -32,6 +32,10 @@ export function canPromoteTarget(
 ): boolean {
   if (!baseMoveEligibility(target, options)) return false;
   if (isAnchoredCssPosition(target!.cssPosition)) return false;
+  // Flow text/link boxes are primarily resized for wrapping. Promoting them to
+  // absolute on body-drag makes a missed resize handle look like an unwanted
+  // move. Already-positioned text still moves through canMoveTarget above.
+  if (target!.kind === 'text' || target!.kind === 'link') return false;
   // Images/SVGs stay in flow for resize-in-place; body drag must not promote→move.
   // Absolute/fixed images still move via canMoveTarget.
   if (target!.kind === 'image') return false;

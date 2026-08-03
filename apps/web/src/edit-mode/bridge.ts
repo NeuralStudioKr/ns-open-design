@@ -49,7 +49,7 @@ export function buildManualEditBridge(enabled: boolean): string {
   var discoverySelector = ${JSON.stringify(MANUAL_EDIT_DISCOVERY_SELECTOR)};
   var hostNodeSelector = ${JSON.stringify(MANUAL_EDIT_HOST_NODE_SELECTOR)};
   var sourcePathAttr = ${JSON.stringify(MANUAL_EDIT_SOURCE_PATH_ATTR)};
-  var styleProps = ['fontFamily','fontSize','fontWeight','color','textAlign','textDecoration','whiteSpace','lineHeight','letterSpacing','width','height','minHeight','maxWidth','maxHeight','position','left','top','right','bottom','gap','flexDirection','justifyContent','alignItems','backgroundColor','opacity','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','margin','marginTop','marginRight','marginBottom','marginLeft','border','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderStyle','borderColor','borderRadius'];
+  var styleProps = ['fontFamily','fontSize','fontWeight','color','display','textAlign','textDecoration','whiteSpace','lineHeight','letterSpacing','width','height','minHeight','maxWidth','maxHeight','position','left','top','right','bottom','gap','flexDirection','justifyContent','alignItems','backgroundColor','opacity','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','margin','marginTop','marginRight','marginBottom','marginLeft','border','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderStyle','borderColor','borderRadius'];
   function isHostNode(el){
     return !!(el && el.matches && el.matches(hostNodeSelector));
   }
@@ -109,7 +109,7 @@ export function buildManualEditBridge(enabled: boolean): string {
   // removeProperty instead of baking computed px (!important) over %/auto CSS.
   // Typography/paint still fall back to computed for the inspector.
   var geometryStyleProps = {
-    width:1, height:1, minHeight:1, maxWidth:1, maxHeight:1, position:1,
+    display:1, width:1, height:1, minHeight:1, maxWidth:1, maxHeight:1, position:1,
     left:1, top:1, right:1, bottom:1,
     margin:1, marginTop:1, marginRight:1, marginBottom:1, marginLeft:1,
     padding:1, paddingTop:1, paddingRight:1, paddingBottom:1, paddingLeft:1,

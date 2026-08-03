@@ -86,6 +86,24 @@ describe('canPromoteTarget', () => {
       cssPosition: 'static',
     }))).toBe(false);
   });
+
+  it('does not promote flow text or links on body drag', () => {
+    expect(canPromoteTarget(target({
+      kind: 'text',
+      tagName: 'h1',
+      cssPosition: 'static',
+    }))).toBe(false);
+    expect(canPromoteTarget(target({
+      kind: 'link',
+      tagName: 'a',
+      cssPosition: 'relative',
+    }))).toBe(false);
+    expect(canMoveOrPromoteTarget(target({
+      kind: 'text',
+      tagName: 'span',
+      cssPosition: 'static',
+    }))).toBe(false);
+  });
 });
 
 describe('promoteMoveStyles', () => {

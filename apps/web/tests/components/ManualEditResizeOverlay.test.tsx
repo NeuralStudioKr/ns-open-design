@@ -303,6 +303,7 @@ describe('ManualEditResizeOverlay', () => {
     expect(onResizeCommit.mock.calls[0]?.[1]).toEqual({
       width: '200px',
       height: '100px',
+      display: '',
       maxWidth: '',
       maxHeight: '',
       left: '',
@@ -340,6 +341,7 @@ describe('ManualEditResizeOverlay', () => {
     expect(onResizeCancel.mock.calls[0]?.[0]).toEqual({
       width: '200px',
       height: '100px',
+      display: '',
       maxWidth: '',
       maxHeight: '',
       left: '',
@@ -944,6 +946,104 @@ describe('ManualEditResizeOverlay', () => {
     expect(Number.parseInt(preview.width!, 10)).toBeGreaterThan(200);
   });
 
+  it('promotes inline text to inline-block during resize so width and height apply', () => {
+    const onResizePreview = vi.fn();
+    const onResizeCommit = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          kind: 'text',
+          tagName: 'span',
+          rect: { x: 40, y: 60, width: 120, height: 28 },
+          layoutWidth: 120,
+          layoutHeight: 28,
+          styles: { ...emptyManualEditStyles(), width: '', height: '', display: '' },
+        })}
+        previewScale={1}
+        hostPaintRect={{ x: 40, y: 60, width: 120, height: 28 }}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={onResizePreview}
+        onResizeCommit={onResizeCommit}
+        onResizeCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.pointerDown(getByTestId('manual-edit-resize-handle-e'), {
+      pointerId: 51,
+      clientX: 160,
+      clientY: 74,
+      buttons: 1,
+    });
+    fireEvent.pointerMove(window, { pointerId: 51, clientX: 200, clientY: 74, buttons: 1 });
+    fireEvent.pointerUp(window, { pointerId: 51, clientX: 200, clientY: 74 });
+
+    expect(onResizePreview.mock.calls.at(-1)?.[0]).toMatchObject({
+      display: 'inline-block',
+      width: '160px',
+      maxWidth: 'none',
+    });
+    expect(onResizeCommit.mock.calls.at(-1)?.[0]).toMatchObject({
+      display: 'inline-block',
+      width: '160px',
+      maxWidth: 'none',
+    });
+  });
+
+  it('uses the latest selected target when deciding inline resize promotion', () => {
+    const onResizePreview = vi.fn();
+    const props = {
+      previewScale: 1,
+      hostPaintRect: { x: 40, y: 60, width: 120, height: 28 },
+      draftWidthPx: null,
+      draftHeightPx: null,
+      onResizePreview,
+      onResizeCommit: vi.fn(),
+      onResizeCancel: vi.fn(),
+    };
+    const { getByTestId, rerender } = render(
+      <ManualEditResizeOverlay
+        {...props}
+        target={target({
+          id: 'old-card',
+          kind: 'container',
+          tagName: 'div',
+          rect: { x: 40, y: 60, width: 120, height: 28 },
+          layoutWidth: 120,
+          layoutHeight: 28,
+        })}
+      />,
+    );
+
+    rerender(
+      <ManualEditResizeOverlay
+        {...props}
+        target={target({
+          id: 'fresh-inline',
+          kind: 'text',
+          tagName: 'span',
+          rect: { x: 40, y: 60, width: 120, height: 28 },
+          layoutWidth: 120,
+          layoutHeight: 28,
+          styles: { ...emptyManualEditStyles(), width: '', height: '', display: '' },
+        })}
+      />,
+    );
+
+    fireEvent.pointerDown(getByTestId('manual-edit-resize-handle-e'), {
+      pointerId: 52,
+      clientX: 160,
+      clientY: 74,
+      buttons: 1,
+    });
+    fireEvent.pointerMove(window, { pointerId: 52, clientX: 200, clientY: 74, buttons: 1 });
+
+    expect(onResizePreview.mock.calls.at(-1)?.[0]).toMatchObject({
+      display: 'inline-block',
+      width: '160px',
+    });
+  });
+
   it('onResolveResizeStart overrides stale visual-only target at pointerdown', () => {
     const onResizePreview = vi.fn();
     const onResolveResizeStart = vi.fn(() => ({
@@ -1035,5 +1135,50 @@ describe('ManualEditResizeOverlay', () => {
     const moved = getByTestId('manual-edit-resize-overlay');
     expect(moved.style.width).toBe('100px');
     expect(moved.style.height).toBe('50px');
+  });
+
+  it('does not turn flow text interior drags into move sessions', () => {
+    const onMovePreview = vi.fn();
+    const onMoveCommit = vi.fn();
+    const onResizePreview = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          kind: 'text',
+          tagName: 'h2',
+          cssPosition: 'static',
+          rect: { x: 40, y: 60, width: 220, height: 48 },
+          layoutWidth: 220,
+          layoutHeight: 48,
+          styles: { ...emptyManualEditStyles(), width: '', height: '', display: '' },
+        })}
+        previewScale={1}
+        hostPaintRect={{ x: 40, y: 60, width: 220, height: 48 }}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={onResizePreview}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={onMovePreview}
+        onMoveCommit={onMoveCommit}
+        onMoveCancel={vi.fn()}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    overlay.getBoundingClientRect = () => ({
+      x: 40, y: 60, width: 220, height: 48,
+      top: 60, left: 40, right: 260, bottom: 108,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+    fireEvent.pointerDown(overlay, { pointerId: 61, clientX: 140, clientY: 84, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 61, clientX: 190, clientY: 104, buttons: 1 });
+    fireEvent.pointerUp(window, { pointerId: 61, clientX: 190, clientY: 104 });
+
+    expect(overlay.getAttribute('data-movable')).toBe('false');
+    expect(onMovePreview).not.toHaveBeenCalled();
+    expect(onMoveCommit).not.toHaveBeenCalled();
+    expect(onResizePreview).not.toHaveBeenCalled();
   });
 });

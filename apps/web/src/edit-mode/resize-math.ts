@@ -293,8 +293,12 @@ export function startAnchorFromTarget(target: ManualEditTarget): {
 
 export function resizeResultToStyles(
   result: ResizeMathResult,
+  target?: ManualEditTarget | null,
 ): Partial<ManualEditStyles> {
   const styles: Partial<ManualEditStyles> = {};
+  if ((result.touchedWidth || result.touchedHeight) && shouldPromoteInlineTargetForResize(target)) {
+    styles.display = 'inline-block';
+  }
   if (result.touchedWidth) {
     styles.width = `${result.widthPx}px`;
     // Responsive decks commonly ship `max-width: 100%` on images/cards.
@@ -314,6 +318,19 @@ export function resizeResultToStyles(
   if (result.leftPx != null || result.touchedWidth) styles.right = '';
   if (result.topPx != null || result.touchedHeight) styles.bottom = '';
   return styles;
+}
+
+export function shouldPromoteInlineTargetForResize(
+  target: ManualEditTarget | null | undefined,
+): boolean {
+  if (!target) return false;
+  const authoredDisplay = String(target.styles.display ?? '').trim().toLowerCase();
+  if (authoredDisplay && authoredDisplay !== 'inline') return false;
+  const tag = target.tagName.toLowerCase();
+  if (tag === 'a' || tag === 'span' || tag === 'strong' || tag === 'em' || tag === 'b' || tag === 'i' || tag === 'small') {
+    return true;
+  }
+  return target.kind === 'link';
 }
 
 /** Resize commit must flush once → one Manual Edit history entry. */
@@ -414,9 +431,13 @@ export function buildResizeSessionStart(
 export function resizeStylesForCommit(
   result: Pick<ResizeMathResult, 'widthPx' | 'heightPx'> & Partial<Pick<ResizeMathResult, 'touchedWidth' | 'touchedHeight'>>,
   handle: ResizeHandle,
+  target?: ManualEditTarget | null,
 ): Partial<ManualEditStyles> {
   const { signW, signH } = axisSigns(handle);
   const styles: Partial<ManualEditStyles> = {};
+  if ((signW !== 0 || signH !== 0 || result.touchedWidth || result.touchedHeight) && shouldPromoteInlineTargetForResize(target)) {
+    styles.display = 'inline-block';
+  }
   if (signW !== 0 || result.touchedWidth) {
     styles.width = `${result.widthPx}px`;
     styles.maxWidth = 'none';
