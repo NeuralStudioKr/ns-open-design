@@ -76,6 +76,16 @@ export type ManualEditResizeOverlayProps = {
   onResizeCancel: (stylesBefore: Partial<ManualEditStyles>) => void;
   /** Shared with move — autosave pause while any geometry gesture is active. */
   onResizeSessionChange?: (active: boolean) => void;
+  /**
+   * Live iframe measure at pointerdown. Prefer this over React `target` so a
+   * stale visual `rect` cannot become CSS width under deck-stage fit-scale.
+   */
+  onResolveResizeStart?: () => {
+    layoutWidth: number;
+    layoutHeight: number;
+    rect: ManualEditRect;
+    paint: ManualEditRect | null;
+  } | null;
   onMovePreview?: (next: Partial<ManualEditStyles>) => void;
   onMoveCommit?: (
     next: Partial<ManualEditStyles>,
@@ -154,6 +164,7 @@ export function ManualEditResizeOverlay({
   onResizeCommit,
   onResizeCancel,
   onResizeSessionChange,
+  onResolveResizeStart,
   onMovePreview,
   onMoveCommit,
   onMoveCancel,
@@ -377,8 +388,17 @@ export function ManualEditResizeOverlay({
     // Capture-phase friendly: stop before the movable body can begin a move.
     event.preventDefault();
     event.stopPropagation();
-    const size = startSizeFromTarget(target);
-    const anchor = startAnchorFromTarget(target);
+    const live = onResolveResizeStart?.() ?? null;
+    const startTarget: ManualEditTarget = live
+      ? {
+          ...target,
+          rect: live.rect,
+          layoutWidth: live.layoutWidth,
+          layoutHeight: live.layoutHeight,
+        }
+      : target;
+    const size = startSizeFromTarget(startTarget);
+    const anchor = startAnchorFromTarget(startTarget);
     const aspect = size.heightPx > 0 ? size.widthPx / size.heightPx : 1;
     const stylesBefore: Partial<ManualEditStyles> = {
       width: cascadeRollbackStyle(target.styles.width),
@@ -397,7 +417,7 @@ export function ManualEditResizeOverlay({
     };
     const session: ResizeSessionStart = {
       // Viewport origin stays visual (gBCR); startWidth/Height are layout px.
-      startRect: { ...target.rect },
+      startRect: { ...startTarget.rect },
       startWidthPx: size.widthPx,
       startHeightPx: size.heightPx,
       aspect,
@@ -412,8 +432,8 @@ export function ManualEditResizeOverlay({
     // Freeze scale as paint/layout so hostΔ→contentΔ is layout px (CSS write
     // space), not transform-shrunk gBCR px.
     const geom = freezeGestureHostGeom(
-      resizeFreezeContentRect(target),
-      hostPaintRect,
+      resizeFreezeContentRect(startTarget),
+      live?.paint ?? hostPaintRect,
       previewScale,
       hostOffset,
     );
@@ -427,7 +447,7 @@ export function ManualEditResizeOverlay({
       stylesBefore,
       lastStyles: {},
       previewed: false,
-      lastViewport: { x: target.rect.x, y: target.rect.y },
+      lastViewport: { x: startTarget.rect.x, y: startTarget.rect.y },
       hostScale: geom.hostScale,
       hostOffset: geom.hostOffset,
     };

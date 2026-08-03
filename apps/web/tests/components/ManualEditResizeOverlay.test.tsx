@@ -890,4 +890,45 @@ describe('ManualEditResizeOverlay', () => {
     // Regression: writing visual start (100+…) would shrink the 200px layout box.
     expect(Number.parseInt(preview.width!, 10)).toBeGreaterThan(200);
   });
+
+  it('onResolveResizeStart overrides stale visual-only target at pointerdown', () => {
+    const onResizePreview = vi.fn();
+    const onResolveResizeStart = vi.fn(() => ({
+      layoutWidth: 200,
+      layoutHeight: 100,
+      rect: { x: 40, y: 60, width: 100, height: 50 },
+      paint: { x: 40, y: 60, width: 100, height: 50 },
+    }));
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          kind: 'text',
+          tagName: 'p',
+          // Stale props: visual size only — would collapse without live resolve.
+          rect: { x: 40, y: 60, width: 100, height: 50 },
+          styles: { ...emptyManualEditStyles(), width: '', height: '' },
+        })}
+        previewScale={1}
+        hostPaintRect={{ x: 40, y: 60, width: 100, height: 50 }}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResolveResizeStart={onResolveResizeStart}
+        onResizePreview={onResizePreview}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.pointerDown(getByTestId('manual-edit-resize-handle-e'), {
+      pointerId: 22,
+      clientX: 140,
+      clientY: 85,
+      buttons: 1,
+    });
+    fireEvent.pointerMove(window, { pointerId: 22, clientX: 160, clientY: 85, buttons: 1 });
+
+    expect(onResolveResizeStart).toHaveBeenCalled();
+    const preview = onResizePreview.mock.calls.at(-1)?.[0] as { width?: string };
+    expect(preview.width).toBe('240px');
+  });
 });

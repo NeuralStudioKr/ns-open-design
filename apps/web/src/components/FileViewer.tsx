@@ -7757,8 +7757,15 @@ function HtmlViewer({
       styles: { ...current.styles, ...styles },
     }));
     setManualEditResizeDraftSize((prev) => {
-      const width = parseExplicitPx(styles.width) ?? prev?.width ?? target.rect.width;
-      const height = parseExplicitPx(styles.height) ?? prev?.height ?? target.rect.height;
+      // Drafts are layout px (CSS write space) — never fall back to visual rect.
+      const layoutFallbackW = target.layoutWidth && target.layoutWidth >= 1
+        ? target.layoutWidth
+        : target.rect.width;
+      const layoutFallbackH = target.layoutHeight && target.layoutHeight >= 1
+        ? target.layoutHeight
+        : target.rect.height;
+      const width = parseExplicitPx(styles.width) ?? prev?.width ?? layoutFallbackW;
+      const height = parseExplicitPx(styles.height) ?? prev?.height ?? layoutFallbackH;
       return { width, height };
     });
   }
@@ -10231,6 +10238,35 @@ function HtmlViewer({
         // pointer events through to the movable body, so resize becomes move.
         disabled={manualEditInlineTextEditing}
         onResizeSessionChange={handleManualEditResizeSessionChange}
+        onResolveResizeStart={() => {
+          const id = selectedManualEditTargetIdRef.current;
+          const frame = iframeRef.current;
+          const workspace = manualEditWorkspaceRef.current;
+          if (!id || !frame) return null;
+          const content = measureManualEditTargetContentRect(frame, id);
+          if (!content) return null;
+          const paint = workspace
+            ? measureManualEditTargetHostRect(frame, workspace, id)
+            : null;
+          // Keep React target in sync so drafts/inspector match the gesture seed.
+          setSelectedManualEditTarget((current) => {
+            if (!current || current.id !== id) return current;
+            const next = {
+              ...current,
+              rect: content.rect,
+              layoutWidth: content.layoutWidth,
+              layoutHeight: content.layoutHeight,
+            };
+            selectedManualEditTargetRef.current = next;
+            return next;
+          });
+          return {
+            layoutWidth: content.layoutWidth,
+            layoutHeight: content.layoutHeight,
+            rect: content.rect,
+            paint: paint && paint.width >= 1 && paint.height >= 1 ? paint : null,
+          };
+        }}
         onResizePreview={handleManualEditResizePreview}
         onResizeCommit={(styles, stylesBefore, viewport) => {
           void handleManualEditResizeCommit(styles, stylesBefore, viewport);
@@ -10240,7 +10276,8 @@ function HtmlViewer({
         onMoveCommit={(styles, stylesBefore, viewport) => {
           void handleManualEditMoveCommit(styles, stylesBefore, viewport);
         }}
-        onMoveCancel={handleManualEditMoveCancel}      />
+        onMoveCancel={handleManualEditMoveCancel}
+      />
     ) : null;
   const activeComposerComment = activePreviewCommentId
     ? visibleSideComments.find((comment) => comment.id === activePreviewCommentId) ?? null
