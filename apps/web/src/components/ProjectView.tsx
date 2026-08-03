@@ -837,6 +837,21 @@ interface QueuedChatSend {
   createdAt: number;
 }
 
+function queuedChatSendFingerprint(
+  prompt: string,
+  attachments: ChatAttachment[],
+  commentAttachments: ChatCommentAttachment[],
+): string {
+  const attachmentPaths = attachments.map((attachment) => attachment.path).sort().join('\n');
+  const screenshotPaths = commentAttachments
+    .map((attachment) => String(attachment.screenshotPath || '').trim())
+    .filter(Boolean)
+    .sort()
+    .join('\n');
+  const commentIds = commentAttachments.map((attachment) => attachment.id).sort().join('\n');
+  return `${prompt.trim()}\0${attachmentPaths}\0${screenshotPaths}\0${commentIds}`;
+}
+
 interface QueuedChatSendUpdate {
   prompt: string;
   attachments: ChatAttachment[];
@@ -7289,6 +7304,20 @@ export function ProjectView({
   }, [retryStaleProjectConversationData]);
 
   const enqueueChatSend = useCallback((item: QueuedChatSend) => {
+    const fingerprint = queuedChatSendFingerprint(
+      item.prompt,
+      item.attachments,
+      item.commentAttachments,
+    );
+    const duplicate = queuedChatSendsRef.current.some((existing) =>
+      existing.conversationId === item.conversationId
+      && queuedChatSendFingerprint(
+        existing.prompt,
+        existing.attachments,
+        existing.commentAttachments,
+      ) === fingerprint
+    );
+    if (duplicate) return;
     const next = [...queuedChatSendsRef.current, item];
     commitQueuedChatSends(next);
   }, [commitQueuedChatSends]);

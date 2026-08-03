@@ -124,6 +124,7 @@ import {
 } from '../runtime/exports';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { isMacPlatform } from '../utils/platform';
+import { projectFileResolvedPath } from '../utils/projectFilePaths';
 import { buildReactComponentSrcdoc } from '../runtime/react-component';
 import { shouldConsumeSlideNav } from '../runtime/slide-nav';
 import { findHtmlEntriesReferencing } from '../runtime/jsx-module-refs';
@@ -455,6 +456,31 @@ type InspectTarget = {
 
 const MAX_CACHED_SLIDE_STATES = 64;
 const htmlPreviewSlideState = new Map<string, SlideState>();
+const MAX_CACHED_PREVIEW_SOURCES = 32;
+const htmlPreviewSourceCache = new Map<string, string>();
+
+function previewSourceCacheKey(projectId: string, fileName: string): string {
+  return `${projectId}\0${fileName}`;
+}
+
+function readCachedPreviewSource(projectId: string, fileName: string): string | null {
+  const cached = htmlPreviewSourceCache.get(previewSourceCacheKey(projectId, fileName));
+  if (!cached?.trim()) return null;
+  const repaired = repairArtifactDocumentHead(cached);
+  return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+}
+
+function rememberStablePreviewSource(projectId: string, fileName: string, source: string | null | undefined) {
+  if (!source?.trim()) return;
+  const repaired = repairArtifactDocumentHead(source);
+  if (!isArtifactHtmlStableForPreview(repaired)) return;
+  const key = previewSourceCacheKey(projectId, fileName);
+  htmlPreviewSourceCache.set(key, repaired);
+  if (htmlPreviewSourceCache.size > MAX_CACHED_PREVIEW_SOURCES) {
+    const oldest = htmlPreviewSourceCache.keys().next().value;
+    if (oldest != null) htmlPreviewSourceCache.delete(oldest);
+  }
+}
 const MAX_CACHED_PREVIEW_VIEWPORTS = 128;
 // Grace window before the inspect hover card is torn down. Long enough to absorb
 // the async iframe mouseout (od:comment-leave) that fires when the pointer slides
@@ -5039,6 +5065,7 @@ function HtmlViewer({
     manualEditPinnedSourceRef.current = createManualEditSourcePin(savedSource);
     lastStablePreviewSourceRef.current = savedSource;
     exportHtmlSnapshotGateRef.current = savedSource;
+    rememberStablePreviewSource(projectId, file.name, savedSource);
   };
   const lastStablePreviewIdentityRef = useRef<string | null>(null);
   // When liveHtml is present and paints (stable or last-stable fallback),
@@ -5709,11 +5736,18 @@ function HtmlViewer({
     const artifactIdentity = `${projectId}\0${file.name}`;
     if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
       lastStablePreviewIdentityRef.current = artifactIdentity;
-      lastStablePreviewSourceRef.current = null;
+      const cachedPreview = readCachedPreviewSource(projectId, file.name);
+      lastStablePreviewSourceRef.current = cachedPreview;
       manualEditPinnedSourceRef.current = null;
-      sourceRef.current = null;
-      exportHtmlSnapshotGateRef.current = null;
-      setSource(null);
+      if (cachedPreview) {
+        setSource(cachedPreview);
+        sourceRef.current = cachedPreview;
+        exportHtmlSnapshotGateRef.current = cachedPreview;
+      } else {
+        sourceRef.current = null;
+        exportHtmlSnapshotGateRef.current = null;
+        setSource(null);
+      }
       setLiveHtmlPaintsPreview(false);
       setSourceLoadFailed(false);
       if (previewSourceWallTimerRef.current != null) {
@@ -5746,6 +5780,7 @@ function HtmlViewer({
       sourceRef.current = nextSource;
       lastStablePreviewSourceRef.current = nextSource;
       exportHtmlSnapshotGateRef.current = nextSource;
+      rememberStablePreviewSource(projectId, file.name, nextSource);
       setSourceLoadFailed(false);
       setLiveHtmlPaintsPreview(true);
       if (previewSourceWallTimerRef.current != null) {
@@ -5774,11 +5809,18 @@ function HtmlViewer({
     const artifactIdentity = `${projectId}\0${file.name}`;
     if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
       lastStablePreviewIdentityRef.current = artifactIdentity;
-      lastStablePreviewSourceRef.current = null;
+      const cachedPreview = readCachedPreviewSource(projectId, file.name);
+      lastStablePreviewSourceRef.current = cachedPreview;
       manualEditPinnedSourceRef.current = null;
-      sourceRef.current = null;
-      exportHtmlSnapshotGateRef.current = null;
-      setSource(null);
+      if (cachedPreview) {
+        setSource(cachedPreview);
+        sourceRef.current = cachedPreview;
+        exportHtmlSnapshotGateRef.current = cachedPreview;
+      } else {
+        sourceRef.current = null;
+        exportHtmlSnapshotGateRef.current = null;
+        setSource(null);
+      }
       setLiveHtmlPaintsPreview(false);
       setSourceLoadFailed(false);
       if (previewSourceWallTimerRef.current != null) {
@@ -5893,6 +5935,7 @@ function HtmlViewer({
           sourceRef.current = pinnedPreferred;
           lastStablePreviewSourceRef.current = pinnedPreferred;
           exportHtmlSnapshotGateRef.current = pinnedPreferred;
+          rememberStablePreviewSource(projectId, file.name, pinnedPreferred);
           clearPreviewSourceWall();
           setSourceLoadFailed(false);
           return;
@@ -5936,6 +5979,9 @@ function HtmlViewer({
         }
         setSource(accepted);
         sourceRef.current = accepted;
+        lastStablePreviewSourceRef.current = accepted;
+        exportHtmlSnapshotGateRef.current = accepted;
+        rememberStablePreviewSource(projectId, file.name, accepted);
         setSourceLoadFailed(false);
         clearPreviewSourceWall();
       });
@@ -12233,6 +12279,7 @@ function ImageViewer({
   file: ProjectFile;
 }) {
   const t = useTeamverT();
+  const filePath = projectFileResolvedPath(file);
   return (
     <div className="viewer image-viewer">
       <div className="viewer-toolbar">
@@ -12264,7 +12311,7 @@ function ImageViewer({
       <div className="viewer-body image-body">
         <AuthenticatedProjectFileImage
           projectId={projectId}
-          path={file.name}
+          path={filePath}
           alt={file.name}
           rev={Math.round(file.mtime)}
           trustExists
