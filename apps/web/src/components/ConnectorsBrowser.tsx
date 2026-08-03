@@ -849,7 +849,7 @@ export function ConnectorsBrowser({
           <div
             className="connectors-provider-tabs"
             role="tablist"
-            aria-label="Connector provider"
+            aria-label={t('connectors.providerLabel')}
           >
             {PROVIDER_TABS.map((provider) => {
               const active = provider.id === selectedProvider;

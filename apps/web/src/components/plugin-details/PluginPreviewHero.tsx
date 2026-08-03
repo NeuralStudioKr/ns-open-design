@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../Icon';
 import { fetchPluginExampleHtml } from '../../providers/registry';
 import { pluginPreviewSrcDoc } from '../../runtime/authenticatedHtmlSrcDoc';
+import { embedUiLabel } from '../../teamver/embedUiLabels';
 
 export interface PluginExampleEntry {
   path: string;
@@ -74,13 +75,13 @@ export function PluginPreviewHero({ pluginId, pluginTitle, examples }: Props) {
       <div className="plugin-details-modal__hero-head">
         <div className="plugin-details-modal__hero-eyebrow">
           <span className="plugin-details-modal__hero-dot" aria-hidden />
-          What it produces
+          {embedUiLabel('What it produces', '결과물')}
         </div>
         {items.length > 1 ? (
           <div
             className="plugin-details-modal__hero-tabs"
             role="tablist"
-            aria-label="Example outputs"
+            aria-label={embedUiLabel('Example outputs', '예제 결과')}
           >
             {items.map((it) => {
               const isActive = it.key === active.key;

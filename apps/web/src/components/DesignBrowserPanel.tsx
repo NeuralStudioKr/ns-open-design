@@ -2373,13 +2373,13 @@ function BrowserCommentComposer({
         aria-label={embedUiLabel('Browser comment note', '브라우저 댓글 메모')}
         value={draft}
         onChange={(event) => onDraft(event.target.value)}
-        placeholder="Describe the change or issue..."
+        placeholder={embedUiLabel('Describe the change or issue...', '변경 사항이나 이슈를 적어주세요...')}
       />
       <div className="comment-popover-actions">
         <div className="comment-popover-actions-start">
           {existing && onDeleteComment ? (
             <button type="button" className="ghost comment-popover-delete" disabled={sending} onClick={() => void onDeleteComment(existing.id)}>
-              Delete
+              {embedUiLabel('Delete', '삭제')}
             </button>
           ) : null}
           <button type="button" className="ghost" disabled={sending || !draft.trim()} onClick={onAddDraft}>

@@ -775,7 +775,10 @@ function McpRow({ row, idx, total, template, onChange, onRemove, onMoveUp, onMov
   const isHttpLike = row.transport === 'http' || row.transport === 'sse';
   const usesManagedOAuth = isHttpLike && effectiveMcpAuthMode(row) === 'oauth';
   const [expanded, setExpanded] = useState<boolean>(false);
-  const summaryTitle = row.label?.trim() || row.id || 'Unnamed MCP server';
+  const summaryTitle =
+    row.label?.trim() ||
+    row.id ||
+    embedUiLabel('Unnamed MCP server', '이름 없는 MCP 서버');
   const [showMcpExample, setShowMcpExample] = useState<boolean>(false);
   const helperId = `mcp-json-helper-panel-${row._localId}`;
 
@@ -786,12 +789,15 @@ function McpRow({ row, idx, total, template, onChange, onRemove, onMoveUp, onMov
       }`}
     >
       <div className="mcp-row-head">
-        <label className="mcp-row-toggle" title={row.enabled ? 'Enabled' : 'Disabled'}>
+        <label
+          className="mcp-row-toggle"
+          title={row.enabled ? embedUiLabel('Enabled', '사용 중') : embedUiLabel('Disabled', '사용 안 함')}
+        >
           <input
             type="checkbox"
             checked={row.enabled}
             onChange={(e) => onChange({ enabled: e.target.checked })}
-            aria-label="Enable this MCP server"
+            aria-label={embedUiLabel('Enable this MCP server', '이 MCP 서버 사용')}
           />
         </label>
         {expanded ? (
@@ -799,7 +805,7 @@ function McpRow({ row, idx, total, template, onChange, onRemove, onMoveUp, onMov
             type="text"
             className="mcp-row-label"
             value={row.label ?? ''}
-            placeholder="Display name (optional)"
+            placeholder={embedUiLabel('Display name (optional)', '표시 이름 (선택)')}
             onChange={(e) => onChange({ label: e.target.value })}
           />
         ) : (
@@ -807,7 +813,7 @@ function McpRow({ row, idx, total, template, onChange, onRemove, onMoveUp, onMov
             type="button"
             className="mcp-row-summary-title"
             onClick={() => setExpanded(true)}
-            title="Expand to edit"
+            title={embedUiLabel('Expand to edit', '펼쳐서 편집')}
           >
             <span className="mcp-row-summary-name">{summaryTitle}</span>
             <span

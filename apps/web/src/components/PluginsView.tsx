@@ -43,6 +43,7 @@ import { PluginDetailsModal } from './PluginDetailsModal';
 import { PluginsHomeSection } from './PluginsHomeSection';
 import { TrustBadge } from './TrustBadge';
 import { useI18n } from '../i18n';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { localizePluginDescription, localizePluginTitle } from './plugins-home/localization';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import type { PluginUseAction } from './plugins-home/useActions';
@@ -610,7 +611,7 @@ function PluginShareConfirmModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const details = PLUGIN_SHARE_DETAILS[action];
   const actionTitle = actionRecord ? localizePluginTitle(locale, actionRecord) : details.fallbackTitle;
   const actionDescription =
@@ -644,8 +645,8 @@ function PluginShareConfirmModal({
             className="plugin-details-modal__close"
             onClick={onClose}
             disabled={pending}
-            aria-label="Close share confirmation"
-            title="Close"
+            aria-label={embedUiLabel('Close share confirmation', '공유 확인 닫기')}
+            title={t('common.close')}
           >
             <Icon name="close" size={18} />
           </button>
@@ -655,7 +656,7 @@ function PluginShareConfirmModal({
           <section className="plugin-details-modal__section">
             <div className="plugin-details-modal__section-head">
               <h3 className="plugin-details-modal__section-title">
-                What this starts
+                {embedUiLabel('What this starts', '이렇게 시작합니다')}
               </h3>
             </div>
             <p className="plugin-details-modal__description">
@@ -1097,8 +1098,8 @@ function AvailablePluginDetailsModal({
             className="plugin-details-modal__close"
             onClick={onClose}
             disabled={pending}
-            aria-label="Close available plugin details"
-            title="Close"
+            aria-label={embedUiLabel('Close available plugin details', '플러그인 상세 닫기')}
+            title={t('common.close')}
           >
             <Icon name="close" size={18} />
           </button>
@@ -1516,6 +1517,7 @@ function PluginImportModal({
   onUploadFolder: (files: File[]) => Promise<PluginInstallOutcome>;
 }) {
   const analytics = useAnalytics();
+  const { t } = useI18n();
   const importModalViewFiredRef = useRef(false);
   useEffect(() => {
     if (importModalViewFiredRef.current) return;
@@ -1589,39 +1591,40 @@ function PluginImportModal({
       >
         <header className="plugins-import-modal__head">
           <div>
-            <p className="plugins-view__kicker">User plugins</p>
-            <h2 id="plugins-import-title">Import a plugin</h2>
+            <p className="plugins-view__kicker">{embedUiLabel('User plugins', '내 플러그인')}</p>
+            <h2 id="plugins-import-title">{embedUiLabel('Import a plugin', '플러그인 가져오기')}</h2>
           </div>
           <button
             type="button"
             className="plugins-import-modal__close"
             onClick={onClose}
-            aria-label="Close import dialog"
+            aria-label={embedUiLabel('Close import dialog', '가져오기 닫기')}
+            title={t('common.close')}
           >
             <Icon name="close" size={16} />
           </button>
         </header>
 
-        <nav className="plugins-import-modal__tabs" aria-label="Import source">
+        <nav className="plugins-import-modal__tabs" aria-label={embedUiLabel('Import source', '가져오기 소스')}>
           <ImportChoice
             active={kind === 'github'}
             icon="github"
-            title="From GitHub"
-            body="Install github:owner/repo paths."
+            title={embedUiLabel('From GitHub', 'GitHub에서')}
+            body={embedUiLabel('Install github:owner/repo paths.', 'github:owner/repo 경로로 설치합니다.')}
             onClick={() => selectKind('github')}
           />
           <ImportChoice
             active={kind === 'zip'}
             icon="upload"
-            title="Upload zip"
-            body="Upload a plugin archive."
+            title={embedUiLabel('Upload zip', 'zip 업로드')}
+            body={embedUiLabel('Upload a plugin archive.', '플러그인 압축 파일을 업로드합니다.')}
             onClick={() => selectKind('zip')}
           />
           <ImportChoice
             active={kind === 'folder'}
             icon="folder"
-            title="Upload folder"
-            body="Upload a plugin directory."
+            title={embedUiLabel('Upload folder', '폴더 업로드')}
+            body={embedUiLabel('Upload a plugin directory.', '플러그인 폴더를 업로드합니다.')}
             onClick={() => selectKind('folder')}
           />
         </nav>

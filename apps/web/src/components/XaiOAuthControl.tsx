@@ -14,6 +14,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 interface XaiAuthStatus {
   connected: boolean;
@@ -417,7 +418,7 @@ export function XaiOAuthControl() {
             <input
               type="text"
               value={pasteCode}
-              placeholder="Paste auth code from xAI"
+              placeholder={embedUiLabel('Paste auth code from xAI', 'xAI 인증 코드를 붙여넣으세요')}
               onChange={(e) => setPasteCode(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && pasteCode.trim()) {
@@ -425,7 +426,7 @@ export function XaiOAuthControl() {
                 }
               }}
               disabled={busy === 'refreshing'}
-              aria-label="Paste auth code from xAI"
+              aria-label={embedUiLabel('Paste auth code from xAI', 'xAI 인증 코드를 붙여넣으세요')}
             />
             <button
               type="button"
