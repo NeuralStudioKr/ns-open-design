@@ -1,6 +1,8 @@
 .overlay {
   position: absolute;
-  z-index: 30;
+  /* Host stacking SSOT: memory.css `.manual-edit-workspace > …` sets 20.
+     Keep the module default aligned so non-workspace mounts stay below panels. */
+  z-index: 20;
   pointer-events: none;
   box-sizing: border-box;
   border: 1.5px solid #2563eb;

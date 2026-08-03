@@ -258,6 +258,19 @@ describe('FileViewer preview scale', () => {
     expect(css).toContain('height: 38px;');
   });
 
+  it('stacks the floating inspector above the resize selection overlay', () => {
+    const css = readExpandedIndexCss();
+    const panelRule = css.match(
+      /\.manual-edit-workspace\s*>\s*\.manual-edit-right\s*\{[^}]*z-index:\s*(\d+)/,
+    );
+    const overlayRule = css.match(
+      /\.manual-edit-workspace\s*>\s*\[data-testid='manual-edit-resize-overlay'\]\s*\{[^}]*z-index:\s*(\d+)/,
+    );
+    expect(panelRule?.[1]).toBeTruthy();
+    expect(overlayRule?.[1]).toBeTruthy();
+    expect(Number(panelRule?.[1])).toBeGreaterThan(Number(overlayRule?.[1]));
+  });
+
   it('uses the requested zoom for desktop preview overlays', () => {
     expect(effectivePreviewScale('desktop', 1.5, { width: 320, height: 480 })).toBe(1.5);
   });
