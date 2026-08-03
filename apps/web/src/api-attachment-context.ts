@@ -87,7 +87,15 @@ async function buildApiAttachmentContext(
       byPath.get(attachment.path) ??
       byName.get(attachment.path) ??
       byName.get(attachment.name);
+    const order = index + 1;
     if (options.omitNativeImageAttachments && canSendNativeAnthropicImage(attachment)) {
+      // Vision pixels travel as native image blocks, but deck HTML still needs
+      // the exact project-relative path for <img src="…"> embeds.
+      const pathOnly = renderNativeImagePathBlock(attachment, file, order);
+      if (pathOnly && remaining > 0) {
+        blocks.push(pathOnly.text);
+        remaining -= pathOnly.charsUsed;
+      }
       continue;
     }
     if (remaining <= 0) {
@@ -97,7 +105,7 @@ async function buildApiAttachmentContext(
       break;
     }
 
-    const block = await renderApiAttachmentBlock(projectId, attachment, file, remaining, index + 1);
+    const block = await renderApiAttachmentBlock(projectId, attachment, file, remaining, order);
     if (!block) continue;
     blocks.push(block.text);
     remaining -= block.charsUsed;
@@ -173,6 +181,30 @@ function canSendNativeAnthropicImage(
   attachment: ChatAttachment,
 ): boolean {
   return attachment.kind === 'image' && isAnthropicSupportedImagePath(attachment.path);
+}
+
+/** Path-only metadata for images already sent as native Anthropic vision blocks. */
+function renderNativeImagePathBlock(
+  attachment: ChatAttachment,
+  file: ProjectFile | undefined,
+  order: number,
+): { text: string; charsUsed: number } | null {
+  const path = (file?.path ?? file?.name ?? attachment.path).trim();
+  const name = (file?.name ?? attachment.name).trim() || path;
+  if (!path) return null;
+  const size = file?.size ?? attachment.size;
+  const meta = [
+    `path: ${path}`,
+    'kind: image',
+    ...(typeof size === 'number' ? [`size: ${formatByteSize(size)}`] : []),
+  ].join(' | ');
+  const text = [
+    '',
+    `### Attachment ${order}: ${name}`,
+    meta,
+    `Vision pixels for this file are sent as a native image block. When embedding it in a slide deck, use the exact project-relative path in HTML: <img src="${path}" alt="${name}">. Do not invent URLs or data: URIs.`,
+  ].join('\n');
+  return { text, charsUsed: text.length };
 }
 
 function canReadRawText(kind: ProjectFileKind, path: string): boolean {

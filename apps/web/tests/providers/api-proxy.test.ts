@@ -795,22 +795,27 @@ describe('buildProxyMessages', () => {
     );
 
     expect(JSON.stringify(messages)).not.toContain('Content preview unavailable');
-    expect(messages).toEqual([
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Describe this image' },
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: 'image/png',
-              data: 'iVBORw==',
-            },
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.role).toBe('user');
+    const content = messages[0]?.content;
+    expect(Array.isArray(content)).toBe(true);
+    const parts = content as Array<Record<string, unknown>>;
+    const textPart = parts.find((part) => part.type === 'text');
+    expect(String(textPart?.text ?? '')).toContain('Describe this image');
+    expect(String(textPart?.text ?? '')).toContain('path: sketch-hero.png');
+    expect(String(textPart?.text ?? '')).toContain('<img src="sketch-hero.png"');
+    expect(parts).toEqual(
+      expect.arrayContaining([
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: 'image/png',
+            data: 'iVBORw==',
           },
-        ],
-      },
-    ]);
+        },
+      ]),
+    );
   });
 });
 

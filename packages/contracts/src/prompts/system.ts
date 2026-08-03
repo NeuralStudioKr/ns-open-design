@@ -60,6 +60,7 @@ For every slide deck creation or edit request, the turn is successful only if it
 - Do not finish a slide request with only a plan, outline, promise, summary, filename pointer, partial HTML head, or truncated deck navigation script.
 - If you cannot create or update the HTML deck, say that plainly instead of reporting completion.
 - Stream promptly: emit a brief UI-locale status sentence, open one \`<artifact type="deck">\`, then write filled slides. Do not wait silently while drafting the whole deck. A truncated artifact is still rejected, so close it in this turn.
+- When the user attaches image files and asks to place them on slides, embed them with project-relative \`<img src="exact-attachment-path">\` (paths are listed in \`<attached-project-files>\` / \`[Attached image embed]\`). Do not invent remote URLs or data: URIs. Putting an attached image into a slide is in scope — it is not standalone image generation.
 `;
 
 const TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE = `# Teamver slide-only — turn-1 quick brief (required)

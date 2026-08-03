@@ -85,7 +85,25 @@ describe('embedSlideOnlyOutboundBlockReason', () => {
       embedSlideOnlyOutboundBlockReason('generate a product video', { slideOnlyMvp: true }),
     ).toContain('슬라이드');
     expect(
+      embedSlideOnlyOutboundBlockReason('이미지 만들어줘', { slideOnlyMvp: true }),
+    ).toContain('슬라이드');
+    expect(
       embedSlideOnlyOutboundBlockReason('10-slide investor deck', { slideOnlyMvp: true }),
+    ).toBeNull();
+  });
+
+  it('allows attach-to-slide prompts that mention both images and slides', () => {
+    expect(
+      embedSlideOnlyOutboundBlockReason('이 이미지로 슬라이드 만들어줘', { slideOnlyMvp: true }),
+    ).toBeNull();
+    expect(
+      embedSlideOnlyOutboundBlockReason('첨부한 사진을 슬라이드에 넣어줘', { slideOnlyMvp: true }),
+    ).toBeNull();
+    expect(
+      embedSlideOnlyOutboundBlockReason('make a slide with this image', { slideOnlyMvp: true }),
+    ).toBeNull();
+    expect(
+      embedSlideOnlyOutboundBlockReason('put this photo into the deck', { slideOnlyMvp: true }),
     ).toBeNull();
   });
 });

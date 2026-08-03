@@ -119,7 +119,7 @@ describe('historyWithApiAttachmentContext', () => {
     expect(history[0]?.content).toContain('Content preview unavailable');
   });
 
-  it('omits image attachment metadata when the provider sends native image blocks', async () => {
+  it('keeps path-only metadata for native image blocks so decks can embed them', async () => {
     for (const path of ['hero.png', 'hero.jpg', 'hero.jpeg', 'hero.gif', 'hero.webp']) {
       const history = await historyWithApiAttachmentContext(
         [
@@ -133,13 +133,16 @@ describe('historyWithApiAttachmentContext', () => {
         { omitNativeImageAttachments: true },
       );
 
-      expect(history[0]?.content).toBe('Describe this image');
+      expect(history[0]?.content).toContain('<attached-project-files>');
+      expect(history[0]?.content).toContain(`path: ${path}`);
+      expect(history[0]?.content).toContain(`<img src="${path}"`);
+      expect(history[0]?.content).not.toContain('Content preview unavailable');
     }
     expect(mockedFetchProjectFileText).not.toHaveBeenCalled();
     expect(mockedFetchProjectFilePreview).not.toHaveBeenCalled();
   });
 
-  it('omits sketch-prefixed raster image metadata when native image blocks carry them', async () => {
+  it('keeps path-only metadata for sketch-prefixed rasters when native image blocks carry them', async () => {
     const history = await historyWithApiAttachmentContext(
       [
         userMessage('msg-1', 'Describe this image', [
@@ -152,7 +155,8 @@ describe('historyWithApiAttachmentContext', () => {
       { omitNativeImageAttachments: true },
     );
 
-    expect(history[0]?.content).toBe('Describe this image');
+    expect(history[0]?.content).toContain('path: sketch-hero.png');
+    expect(history[0]?.content).toContain('<img src="sketch-hero.png"');
     expect(mockedFetchProjectFileText).not.toHaveBeenCalled();
     expect(mockedFetchProjectFilePreview).not.toHaveBeenCalled();
   });
