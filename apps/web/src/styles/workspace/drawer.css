@@ -1289,8 +1289,12 @@
   transition: opacity 0.15s var(--ease-out);
 }
 .ds-card:hover .ds-card-thumb-overlay,
+.ds-card:focus-within .ds-card-thumb-overlay,
 .ds-card-thumb:focus-visible .ds-card-thumb-overlay {
   opacity: 1;
+}
+@media (hover: none) {
+  .ds-card-thumb-overlay { opacity: 1; }
 }
 .ds-card-meta {
   display: flex;
