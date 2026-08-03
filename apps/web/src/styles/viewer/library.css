@@ -352,6 +352,12 @@
   opacity: 1;
   pointer-events: auto;
 }
+@media (hover: none) {
+  .pet-codex-adopt-btn:not(.active) {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
 
 /* Slash-command popover in the chat composer */
 

@@ -21,7 +21,7 @@
 .plugins-home__heading {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
 }
 .plugins-home__subtitle {
@@ -68,7 +68,7 @@
 .plugins-home__search-icon {
   position: absolute;
   left: 10px;
-  color: var(--text-faint);
+  color: var(--text-soft);
   pointer-events: none;
 }
 /* The bare <input> below picks up the global `input { ... }` rule
@@ -91,7 +91,7 @@
   font-family: inherit;
 }
 .plugins-home__search-input::placeholder {
-  color: var(--text-faint);
+  color: var(--text-soft);
 }
 .plugins-home__search-input::-webkit-search-cancel-button,
 .plugins-home__search-input::-webkit-search-decoration {
@@ -274,7 +274,7 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-soft);
   font-variant-numeric: tabular-nums;
 }
 .plugins-home__facet-pills {

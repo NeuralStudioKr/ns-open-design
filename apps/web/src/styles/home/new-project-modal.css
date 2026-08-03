@@ -37,15 +37,15 @@
 }
 .new-project-modal__title {
   margin: 0;
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: 18px;
   font-weight: 600;
   color: var(--text-strong);
 }
 .new-project-modal__close {
   appearance: none;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   background: transparent;

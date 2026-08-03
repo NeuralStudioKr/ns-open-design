@@ -1838,12 +1838,12 @@
   color: var(--text-muted);
 }
 /* Dedicated icon-button shape for the modal close affordance. Matches the
-   visual language used by plugin-media-detail__close and
+   shared 28px chrome (doc 56) used by connector-drawer-close /
    new-project-modal__close so every modal closes with the same control. */
 .ds-modal-close {
   appearance: none;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-pill);
   background: transparent;
   border: 1px solid transparent;
@@ -1999,7 +1999,7 @@
   font-size: 13px;
   color: var(--text);
 }
-.examples-search input::placeholder { color: var(--text-faint); }
+.examples-search input::placeholder { color: var(--text-soft); }
 .examples-search input:focus {
   outline: none;
   border-color: var(--accent);
@@ -2010,7 +2010,7 @@
   left: 10px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--text-faint);
+  color: var(--text-soft);
   pointer-events: none;
   display: inline-flex;
   align-items: center;
@@ -2348,7 +2348,7 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   font-weight: 600;
 }
 .chat-history-menu-count {
-  color: var(--text-faint);
+  color: var(--text-soft);
   font-size: 10.5px;
   font-weight: 500;
   line-height: 1;
@@ -2363,7 +2363,7 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--bg) 88%, var(--bg-panel));
-  color: var(--text-faint);
+  color: var(--text-soft);
   transition:
     border-color 160ms cubic-bezier(0.23, 1, 0.32, 1),
     background-color 160ms cubic-bezier(0.23, 1, 0.32, 1),
@@ -2405,7 +2405,7 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   align-items: center;
   justify-content: center;
   background: transparent;
-  color: var(--text-faint);
+  color: var(--text-soft);
   transition:
     background-color 140ms cubic-bezier(0.23, 1, 0.32, 1),
     color 140ms cubic-bezier(0.23, 1, 0.32, 1);
@@ -2525,7 +2525,7 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   flex: 0 0 auto;
   font-size: 10px;
   line-height: 1;
-  color: var(--text-faint);
+  color: var(--text-soft);
   font-variant-numeric: tabular-nums;
 }
 .chat-conv-message-count {
