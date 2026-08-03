@@ -20,7 +20,9 @@ import {
   looksLikeStyleOnlyCommentRequest,
 } from './edit-mode/comment-edit-intent';
 import { isSyntheticVisualMarkTargetId } from './edit-mode/source-patches';
+import { isVisualCommentAttachment } from './edit-mode/scoped-deck-patch';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
+import { isRenderableImagePath, projectFilePathBasename } from './utils/projectFilePaths';
 
 export interface PreviewCommentSnapshot {
   filePath: string;
@@ -389,7 +391,11 @@ export function buildVisualAnnotationAttachment(input: VisualAnnotationAttachmen
   return {
     id: `${elementId}-visual-${visualId}`,
     order: input.order,
-    filePath: target?.filePath?.trim() || input.screenshotPath,
+    filePath: (() => {
+      const targetPath = target?.filePath?.trim();
+      if (targetPath && !isRenderableImagePath(targetPath)) return targetPath;
+      return input.screenshotPath;
+    })(),
     elementId,
     selector: target?.selector?.trim() || '',
     label,
@@ -704,6 +710,34 @@ export function filterUsableCommentAttachments(
   commentAttachments: readonly ChatCommentAttachment[],
 ): ChatCommentAttachment[] {
   return commentAttachments.filter(hasUsableCommentLocationData);
+}
+
+/** Collapse duplicate visual marks (same screenshot basename) and duplicate ids. */
+export function dedupeCommentAttachments(
+  attachments: readonly ChatCommentAttachment[],
+): ChatCommentAttachment[] {
+  const sorted = [...attachments].sort((left, right) => {
+    const leftOrder = typeof left.order === 'number' ? left.order : 0;
+    const rightOrder = typeof right.order === 'number' ? right.order : 0;
+    return leftOrder - rightOrder;
+  });
+  const out: ChatCommentAttachment[] = [];
+  const seenVisualBasenames = new Set<string>();
+  const seenIds = new Set<string>();
+  for (const item of sorted) {
+    if (isVisualCommentAttachment(item)) {
+      const path = String(item.screenshotPath || item.filePath || '').trim();
+      const key = path ? projectFilePathBasename(path).toLowerCase() : item.id;
+      if (!key || seenVisualBasenames.has(key)) continue;
+      seenVisualBasenames.add(key);
+      out.push(item);
+      continue;
+    }
+    if (seenIds.has(item.id)) continue;
+    seenIds.add(item.id);
+    out.push(item);
+  }
+  return out;
 }
 
 export interface ChatAttachmentsFromPreviewCommentFilesOptions {

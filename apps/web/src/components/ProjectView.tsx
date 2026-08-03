@@ -27,6 +27,7 @@ import {
   inferSlideIndexFromDeckHtml,
   mergeScopedCommentTargetsFromPatchedDeck,
   reconcileCommentAttachmentForDeck,
+  reconcileCommentAttachmentSlideIndex,
   reconcileCommentAttachmentsForDeck,
   resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
@@ -299,9 +300,11 @@ import {
   historyWithApiWebFetchContext,
 } from '../api-web-fetch-context';
 import {
+  buildConcreteDeckPatchTemplateForVisualMarks,
   buildConcretePatchTemplatesForCommentAttachments,
   chatAttachmentsFromPreviewCommentFiles,
   commentsToAttachments,
+  dedupeCommentAttachments,
   elementPatchCoerceHintsFromCommentAttachments,
   filterUsableCommentAttachments,
   historyWithCommentAttachmentContext,
@@ -1075,13 +1078,26 @@ async function hydrateDeckCommentSlideIndexes(input: {
   };
   const out: ChatCommentAttachment[] = [];
   for (const attachment of input.attachments) {
-    const filePath = String(attachment.filePath || primaryDeckPath || '').trim();
-    if (!filePath) {
+    const rawPath = String(attachment.filePath || '').trim();
+    const deckPath =
+      /\.html?$/i.test(rawPath) ? rawPath : (primaryDeckPath || rawPath);
+    if (!deckPath || !/\.html?$/i.test(deckPath)) {
       out.push(attachment);
       continue;
     }
-    const html = await readDeckHtml(filePath);
-    out.push(html ? reconcileCommentAttachmentForDeck(html, attachment) : attachment);
+    const html = await readDeckHtml(deckPath);
+    if (!html) {
+      out.push(attachment);
+      continue;
+    }
+    const reconciled = reconcileCommentAttachmentSlideIndex(
+      html,
+      reconcileCommentAttachmentForDeck(html, {
+        ...attachment,
+        filePath: deckPath,
+      }),
+    );
+    out.push(reconciled);
   }
   return out;
 }
@@ -1577,6 +1593,31 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     currentHtml,
   });
   if (!parsed.ok) {
+    const visualTemplate = input.commentAttachments
+      ? buildConcreteDeckPatchTemplateForVisualMarks(input.commentAttachments)
+      : null;
+    if (visualTemplate) {
+      const salvaged = parseDeckPatchWithSalvage(visualTemplate, {
+        fallbackSlideIndexes: input.allowedSlideIndexes,
+        currentHtml,
+      });
+      if (salvaged.ok) {
+        const salvagedResult = applyScopedDeckPatchToHtml({
+          currentHtml,
+          patch: salvaged.patch,
+          allowedSlideIndexes: input.allowedSlideIndexes,
+          commentAttachments: input.commentAttachments,
+          instructionText: input.instructionText,
+        });
+        if (salvagedResult.ok) {
+          console.warn('[deck-patch] applied client visual-mark template fallback', {
+            fileName: input.fileName,
+            parseReason: parsed.reason,
+          });
+          return salvagedResult;
+        }
+      }
+    }
     // Symmetric salvage: the model wrapped element-patch content
     // (a list of `<patch>` blocks) in a `deck-patch` artifact by
     // mistake. Route the same body through the element-patch
@@ -7548,7 +7589,9 @@ export function ProjectView({
           entryFile: project.metadata?.entryFile ?? null,
         })
         : commentAttachments;
-      const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments);
+      const scopedCommentAttachments = filterUsableCommentAttachments(
+        dedupeCommentAttachments(hydratedCommentAttachments),
+      );
       let effectiveAttachments = excludeAttachmentsBackedByVisualScreenshots(
         mergeChatAttachments(
           attachments,

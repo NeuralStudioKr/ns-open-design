@@ -45,7 +45,7 @@ import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace'
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
-import { excludeAttachmentsBackedByVisualScreenshots, projectFilePathExists } from '../utils/projectFilePaths';
+import { excludeAttachmentsBackedByVisualScreenshots, isEphemeralDrawingScreenshotPath, isRenderableImagePath, projectFilePathExists, projectFilePathsInclude, visualCommentScreenshotPaths } from '../utils/projectFilePaths';
 import {
   shouldHideTeamverToolboxPlugin,
   shouldHideTeamverToolboxSkill,
@@ -119,7 +119,13 @@ import type {
   RunContextSelection,
   WorkspaceContextItem,
 } from '@open-design/contracts';
-import { buildVisualAnnotationAttachment, commentTargetDisplayName, COMMENT_ONLY_USER_PLACEHOLDER } from '../comments';
+import {
+  buildVisualAnnotationAttachment,
+  commentTargetDisplayName,
+  COMMENT_ONLY_USER_PLACEHOLDER,
+  dedupeCommentAttachments,
+} from '../comments';
+import { isVisualCommentAttachment } from '../edit-mode/scoped-deck-patch';
 import { Icon, type IconName } from "./Icon";
 import { SessionModeToggle } from './SessionModeToggle';
 import { ComposerPlusMenu } from './ComposerPlusMenu';
@@ -153,7 +159,7 @@ import {
 import { CaretFloatingLayer } from './composer/CaretFloatingLayer';
 import { ANNOTATION_EVENT, type AnnotationEventDetail } from "./PreviewDrawOverlay";
 import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
-import { clearProjectRawFileMissing } from '../utils/projectFileFetchCache';
+import { sniffImageMime } from '../utils/imageBlobNormalize';
 import { DesignSystemSwitchPicker } from "./DesignSystemSwitchPicker";
 import { listenForConnectorsChanged } from './connectors-events';
 import { fetchConnectorCatalogSnapshot } from './connectors-state';
@@ -175,10 +181,11 @@ async function uploadedImagesReadableOnDisk(
     const blob = await loadAuthenticatedProjectFileBlob(projectId, item.path, {
       delaysMs: ANNOTATION_UPLOAD_READ_DELAYS_MS,
     });
-    if (blob) {
-      clearProjectRawFileMissing(projectId, item.path);
-      ready.push(item);
-    }
+    if (!blob) continue;
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (!sniffImageMime(bytes)) continue;
+    clearProjectRawFileMissing(projectId, item.path);
+    ready.push(item);
   }
   return ready;
 }
@@ -1238,6 +1245,36 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       return Object.keys(meta).length > 0 ? meta : undefined;
     }
 
+    function annotationOutboundAttachments(
+      uploaded: ChatAttachment[],
+      visualAttachment: ChatCommentAttachment | null,
+    ): ChatAttachment[] {
+      const screenshotBacked = visualAttachment
+        ? visualCommentScreenshotPaths([visualAttachment])
+        : [];
+      const keepStaged = staged.filter((attachment) => {
+        if (isEphemeralDrawingScreenshotPath(attachment.path)) return false;
+        if (projectFilePathsInclude(screenshotBacked, attachment.path)) return false;
+        return true;
+      });
+      const keepUploaded = uploaded.filter((attachment) => {
+        if (projectFilePathsInclude(screenshotBacked, attachment.path)) return false;
+        return true;
+      });
+      return sortChatAttachmentsByOrder([...keepStaged, ...keepUploaded]);
+    }
+
+    function annotationCommentAttachmentsForSend(
+      visualAttachment: ChatCommentAttachment | null,
+    ): ChatCommentAttachment[] {
+      const nonVisual = commentAttachments.filter((item) => !isVisualCommentAttachment(item));
+      const stagedNonVisual = stagedVisualComments.filter((item) => !isVisualCommentAttachment(item));
+      const merged = visualAttachment
+        ? [...nonVisual, ...stagedNonVisual, visualAttachment]
+        : [...nonVisual, ...stagedVisualComments];
+      return dedupeCommentAttachments(merged);
+    }
+
     function sendComposedTurn(
       prompt: string,
       attachments: ChatAttachment[],
@@ -1263,7 +1300,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           : attachments,
         nextCommentAttachments,
       );
-      onSend(prompt, nextAttachments, nextCommentAttachments, meta);
+      onSend(prompt, nextAttachments, dedupeCommentAttachments(nextCommentAttachments), meta);
       reset();
       return true;
     }
@@ -1978,7 +2015,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                             : {}),
                         }
                       : {
-                          filePath: detail.filePath || screenshot.path,
+                          filePath:
+                            detail.filePath && !isRenderableImagePath(detail.filePath)
+                              ? detail.filePath
+                              : screenshot.path,
                           position: detail.bounds,
                           ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
                             ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
@@ -2080,8 +2120,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               }
               const hasOutbound = uploaded.length > 0 || Boolean(visualAttachment);
               const prompt = composeAnnotationSendPrompt(draft.trim(), detail.note, hasOutbound);
-              const attachments = sortChatAttachmentsByOrder([...staged, ...uploaded]);
-              const nextCommentAttachments = currentCommentAttachments(visualAttachment ? [visualAttachment] : []);
+              const attachments = annotationOutboundAttachments(uploaded, visualAttachment);
+              const nextCommentAttachments = annotationCommentAttachmentsForSend(visualAttachment);
               finishAnnotationSend(prompt, attachments, nextCommentAttachments, queueMeta(currentRunContextMeta()));
               return;
             }
@@ -2094,8 +2134,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               }
               const hasOutbound = uploaded.length > 0 || Boolean(visualAttachment);
               const prompt = composeAnnotationSendPrompt(draft.trim(), detail.note, hasOutbound);
-              const attachments = sortChatAttachmentsByOrder([...staged, ...uploaded]);
-              const nextCommentAttachments = currentCommentAttachments(visualAttachment ? [visualAttachment] : []);
+              const attachments = annotationOutboundAttachments(uploaded, visualAttachment);
+              const nextCommentAttachments = annotationCommentAttachmentsForSend(visualAttachment);
               const sendMeta = streaming || sendDisabled
                 ? queueMeta(currentRunContextMeta())
                 : currentRunContextMeta();

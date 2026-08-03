@@ -35,7 +35,13 @@ describe('normalizeFetchedImageBlob', () => {
     expect(out).toBeNull();
   });
 
-  it('assumes PNG for opaque octet-stream bodies', async () => {
+  it('rejects opaque octet-stream without image magic bytes', async () => {
+    const input = new Blob(['not an image'], { type: 'application/octet-stream' });
+    const out = await normalizeFetchedImageBlob(input);
+    expect(out).toBeNull();
+  });
+
+  it('accepts PNG bytes served as octet-stream', async () => {
     const input = new Blob([PNG_HEADER, 0x01], { type: 'application/octet-stream' });
     const out = await normalizeFetchedImageBlob(input);
     expect(out?.type).toBe('image/png');

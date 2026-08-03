@@ -11,6 +11,7 @@ import {
   commentSnapshotOverlayEqual,
   commentVisibleOnDeckSlide,
   commentsToAttachments,
+  dedupeCommentAttachments,
   historyWithCommentAttachmentContext,
   hydrateQueryContextCommentAttachments,
   elementPatchCoerceHintsFromCommentAttachments,
@@ -1173,5 +1174,20 @@ describe('queuedSlideNavTarget', () => {
         { fallbackDeckFilePath: 'deck.html' },
       ),
     ).toEqual({ filePath: 'deck.html', slideIndex: 2 });
+  });
+
+  it('dedupeCommentAttachments collapses duplicate visual screenshots', () => {
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'uploads/a-drawing.png',
+      markKind: 'stroke',
+      note: '하트',
+      bounds: { x: 10, y: 20, width: 40, height: 40 },
+      slideIndex: 0,
+    });
+    const dup = { ...visual, id: `${visual.id}-dup`, order: 2 };
+    const deduped = dedupeCommentAttachments([visual, dup]);
+    expect(deduped).toHaveLength(1);
+    expect(deduped[0]?.screenshotPath).toBe('uploads/a-drawing.png');
   });
 });
