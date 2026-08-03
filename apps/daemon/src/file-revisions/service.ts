@@ -11,6 +11,7 @@ import {
   commitRevisionWithSnapshotDurable,
   deleteFileRevisionsAfterSequenceDurable,
   ensureFileRevisionsHydrated,
+  overwriteHeadRevisionSnapshotDurable,
   pruneOldestFileRevisionsDurable,
 } from './durable-store.js';
 import {
@@ -32,9 +33,15 @@ import {
 import { usesPostgresRevisionSnapshots } from './snapshot-storage.js';
 import { withFileRevisionMutationLock } from './postgres-lock.js';
 import {
-  assertRevisionSnapshotWithinAbsoluteLimit,
-  ensureRoomForIncomingRevisionSnapshot,
-} from './quota.js';
+  FILE_REVISION_COALESCE_WINDOW_MS,
+  resolveFileRevisionCoalesceWindowMs,
+  shouldCoalesceRevisionPush,
+} from './coalesce.js';
+import {
+  registerRevisionCompactionDb,
+  scheduleRevisionSnapshotCompaction,
+} from './compaction.js';
+import { assertRevisionSnapshotWithinAbsoluteLimit } from './quota.js';
 import {
   gzipRevisionSnapshot,
   resolveFullSnapshotInterval,
@@ -86,6 +93,7 @@ export interface RestoreFileRevisionInput {
 
 export function createFileRevisionService(deps: FileRevisionServiceDeps) {
   const { db, projectsRoot, writeProjectFile, resolveProjectDir } = deps;
+  registerRevisionCompactionDb(db);
   const snapshotContext: RevisionSnapshotStoreContext = { db };
   const postgresAuthority = usesPostgresRevisionSnapshots();
 
@@ -252,15 +260,6 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
             null,
           );
           assertRevisionSnapshotWithinAbsoluteLimit(Buffer.byteLength(beforeContent, 'utf8'));
-          const baselineEncoded = gzipRevisionSnapshot(beforeContent, {
-            parentContent: null,
-            forceFull: true,
-          });
-          await ensureRoomForIncomingRevisionSnapshot(db, baselineEncoded.compressed.length, {
-            projectId,
-            fileName,
-            headRevisionId: null,
-          });
           const baselineId = randomUUID();
           const createdAt = Date.now();
           parent = await persistRevisionSnapshot(
@@ -282,6 +281,55 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
           );
         }
 
+        const contentBytes = Buffer.byteLength(content, 'utf8');
+        assertRevisionSnapshotWithinAbsoluteLimit(contentBytes);
+        const coalesceWindowMs = resolveFileRevisionCoalesceWindowMs();
+        const canCoalesce = truncateAfterSequence == null
+          && shouldCoalesceRevisionPush(parent, { source }, coalesceWindowMs);
+
+        if (canCoalesce) {
+          const parentContent = parent.parentRevisionId
+            ? await readRevisionSnapshotContent(
+              projectDir,
+              projectId,
+              fileName,
+              parent.parentRevisionId,
+            )
+            : await readCurrentFileContentForRevision(
+              projectId,
+              fileName,
+              projectDir,
+              metadata,
+              parent,
+            );
+          const file = await writeProjectFile(
+            projectsRoot,
+            projectId,
+            fileName,
+            content,
+            { overwrite: true, artifactManifest },
+            metadata,
+          );
+          const createdAt = Date.now();
+          const revision = await overwriteHeadRevisionSnapshotDurable(
+            db,
+            projectDir,
+            fileName,
+            parent,
+            {
+              label,
+              byteSize: contentBytes,
+              createdAt,
+              content,
+              parentContent,
+              conversationId: conversationId ?? null,
+              assistantMessageId: assistantMessageId ?? null,
+            },
+          );
+          scheduleRevisionSnapshotCompaction();
+          return { revision, file };
+        }
+
         const sequence = parent.sequence + 1;
         const revisionId = randomUUID();
         const createdAt = Date.now();
@@ -293,17 +341,6 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
           metadata,
           parent,
         );
-
-        const contentBytes = Buffer.byteLength(content, 'utf8');
-        assertRevisionSnapshotWithinAbsoluteLimit(contentBytes);
-        const interval = resolveFullSnapshotInterval();
-        const forceFull = shouldForceFullSnapshot(sequence, interval) || parentContent == null;
-        const encoded = gzipRevisionSnapshot(content, { parentContent, forceFull });
-        await ensureRoomForIncomingRevisionSnapshot(db, encoded.compressed.length, {
-          projectId,
-          fileName,
-          headRevisionId: parent.id,
-        });
 
         const file = await writeProjectFile(
           projectsRoot,
@@ -334,6 +371,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
           { parentContent, sequence },
         );
         await enforceRetention(projectId, fileName, projectDir);
+        scheduleRevisionSnapshotCompaction();
         return { revision, file };
       });
     },

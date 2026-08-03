@@ -15,6 +15,14 @@ vi.mock('../src/file-revisions/limits.js', () => ({
   resolveFileRevisionPushPruneMax: () => 8,
 }));
 
+vi.mock('../src/file-revisions/coalesce.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/file-revisions/coalesce.js')>();
+  return {
+    ...actual,
+    resolveFileRevisionCoalesceWindowMs: () => 0,
+  };
+});
+
 const ROOT = path.join(process.cwd(), '.tmp', 'file-revisions-payload-limit-test');
 
 afterEach(async () => {
@@ -22,7 +30,7 @@ afterEach(async () => {
 });
 
 describe('file revision payload size guard', () => {
-  it('prunes older snapshots instead of rejecting a large push', async () => {
+  it('accepts large revision pushes without synchronous pruning', async () => {
     const { createFileRevisionService } = await import('../src/file-revisions/service.js');
     const { writeProjectFile, readProjectFile } = await import('../src/projects.js');
 
@@ -68,7 +76,7 @@ describe('file revision payload size guard', () => {
 
     expect(result.revision.label).toBe('Large but allowed');
     expect(db.prepare(`SELECT count(*) AS c FROM file_revisions WHERE project_id = 'proj-2'`).get())
-      .toEqual({ c: 0 });
+      .toEqual({ c: 1 });
     expect(db.prepare(`SELECT count(*) AS c FROM file_revisions WHERE project_id = 'proj-1'`).get())
       .toEqual({ c: 2 });
   });

@@ -240,6 +240,55 @@ export async function pgCommitRevisionWithSnapshot(
   }
 }
 
+export async function pgUpdateFileRevisionHead(
+  pool: Pool,
+  input: {
+    id: string;
+    label: string;
+    byteSize: number;
+    createdAt: number;
+    conversationId?: string | null;
+    assistantMessageId?: string | null;
+  },
+  compressed: Buffer,
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE file_revisions
+       SET label = $2,
+           byte_size = $3,
+           created_at = $4,
+           conversation_id = COALESCE($5, conversation_id),
+           assistant_message_id = COALESCE($6, assistant_message_id)
+       WHERE id = $1`,
+      [
+        input.id,
+        input.label,
+        input.byteSize,
+        input.createdAt,
+        input.conversationId ?? null,
+        input.assistantMessageId ?? null,
+      ],
+    );
+    await client.query(
+      `INSERT INTO file_revision_snapshots (revision_id, compressed, storage_bytes)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (revision_id) DO UPDATE SET
+         compressed = EXCLUDED.compressed,
+         storage_bytes = EXCLUDED.storage_bytes`,
+      [input.id, compressed, compressed.length],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function pgUpsertFileRevisionSnapshot(
   pool: Pool,
   revisionId: string,

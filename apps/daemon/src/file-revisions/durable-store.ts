@@ -14,6 +14,7 @@ import {
   pgListDistinctFileRevisionTargets,
   pgListFileRevisions,
   pgPruneOldestFileRevisionsWithSnapshots,
+  pgUpdateFileRevisionHead,
   type PgFileRevisionRow,
 } from './postgres-persistence.js';
 import {
@@ -21,7 +22,7 @@ import {
   resolveFullSnapshotInterval,
   shouldForceFullSnapshot,
 } from './snapshot-codec.js';
-import { usesPostgresRevisionSnapshots } from './snapshot-storage.js';
+import { usesPostgresRevisionSnapshots, upsertFileRevisionSnapshot } from './snapshot-storage.js';
 
 function rowToRevision(row: FileRevisionRow): FileRevision {
   return {
@@ -337,4 +338,70 @@ export function mirrorFileRevisionInsertToSqlite(
     conversationId: input.conversationId ?? null,
     assistantMessageId: input.assistantMessageId ?? null,
   });
+}
+
+export async function overwriteHeadRevisionSnapshotDurable(
+  db: Database.Database,
+  projectDir: string,
+  fileName: string,
+  head: FileRevision,
+  input: {
+    label: string;
+    byteSize: number;
+    createdAt: number;
+    content: string;
+    parentContent: string | null;
+    conversationId?: string | null;
+    assistantMessageId?: string | null;
+  },
+): Promise<FileRevision> {
+  const interval = resolveFullSnapshotInterval();
+  const forceFull = shouldForceFullSnapshot(head.sequence, interval) || input.parentContent == null;
+  const encoded = gzipRevisionSnapshot(input.content, {
+    parentContent: input.parentContent,
+    forceFull,
+  });
+  if (usesPostgresRevisionSnapshots()) {
+    await pgUpdateFileRevisionHead(
+      getPostgresPool(),
+      {
+        id: head.id,
+        label: input.label,
+        byteSize: input.byteSize,
+        createdAt: input.createdAt,
+        conversationId: input.conversationId ?? null,
+        assistantMessageId: input.assistantMessageId ?? null,
+      },
+      encoded.compressed,
+    );
+  }
+  const { updateFileRevisionHeadMetadata } = await import('./persistence.js');
+  const updated = updateFileRevisionHeadMetadata(db, head.id, {
+    label: input.label,
+    byteSize: input.byteSize,
+    createdAt: input.createdAt,
+    conversationId: input.conversationId ?? null,
+    assistantMessageId: input.assistantMessageId ?? null,
+  });
+  if (!updated) {
+    throw new Error(`revision not found: ${head.id}`);
+  }
+  if (!usesPostgresRevisionSnapshots()) {
+    const { resolveFileRevisionSnapshotStorage } = await import('./snapshot-storage.js');
+    const storage = resolveFileRevisionSnapshotStorage();
+    if (storage === 'sqlite') {
+      upsertFileRevisionSnapshot(db, head.id, encoded.compressed);
+    } else {
+      const { writeRevisionSnapshot } = await import('./store.js');
+      await writeRevisionSnapshot(
+        projectDir,
+        fileName,
+        head.id,
+        input.content,
+        { parentContent: input.parentContent, sequence: head.sequence },
+        { db, storage: 'files' },
+      );
+    }
+  }
+  return updated;
 }

@@ -6,7 +6,6 @@ import {
   FILE_REVISION_ABSOLUTE_MAX_SNAPSHOT_BYTES,
   FILE_REVISION_MAX_SNAPSHOT_BYTES,
   FILE_REVISION_MAX_TOTAL_BYTES,
-  FILE_REVISION_PUSH_PRUNE_MAX,
 } from './limits.js';
 import { pgListOldestRevisionsForPrune } from './postgres-persistence.js';
 import {
@@ -51,9 +50,7 @@ export async function enforceFileRevisionGlobalByteBudget(
 }
 
 /**
- * Make room for a new snapshot by pruning oldest revisions (other files first,
- * then older entries on the current file) instead of rejecting the push.
- * Deletes are batched and capped per push; remaining overflow is deferred to GC.
+ * @deprecated Push no longer prunes synchronously — use scheduleRevisionSnapshotCompaction.
  */
 export async function ensureRoomForIncomingRevisionSnapshot(
   db: Database.Database,
@@ -69,7 +66,7 @@ export async function ensureRoomForIncomingRevisionSnapshot(
     db,
     incomingCompressedBytes,
     budgetBytes,
-    { excludeRevisionIds, maxDeletes: FILE_REVISION_PUSH_PRUNE_MAX },
+    { excludeRevisionIds },
   );
 }
 

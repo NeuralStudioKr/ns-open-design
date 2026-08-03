@@ -148,6 +148,60 @@ export function insertFileRevision(db: Database.Database, input: FileRevisionIns
   return revision;
 }
 
+export function updateFileRevisionHeadMetadata(
+  db: Database.Database,
+  revisionId: string,
+  patch: {
+    label: string;
+    byteSize: number;
+    createdAt: number;
+    conversationId?: string | null;
+    assistantMessageId?: string | null;
+  },
+): FileRevision | null {
+  const existing = db.prepare(`
+    SELECT
+      id,
+      project_id AS projectId,
+      file_name AS fileName,
+      parent_revision_id AS parentRevisionId,
+      sequence,
+      created_at AS createdAt,
+      byte_size AS byteSize,
+      source,
+      label,
+      conversation_id AS conversationId,
+      assistant_message_id AS assistantMessageId
+    FROM file_revisions
+    WHERE id = ?
+  `).get(revisionId) as FileRevisionRow | undefined;
+  if (!existing) return null;
+  db.prepare(`
+    UPDATE file_revisions
+    SET label = @label,
+        byte_size = @byteSize,
+        created_at = @createdAt,
+        conversation_id = @conversationId,
+        assistant_message_id = @assistantMessageId
+    WHERE id = @id
+  `).run({
+    id: revisionId,
+    label: patch.label,
+    byteSize: patch.byteSize,
+    createdAt: patch.createdAt,
+    conversationId: patch.conversationId ?? existing.conversationId,
+    assistantMessageId: patch.assistantMessageId ?? existing.assistantMessageId,
+  });
+  return rowToRevision({
+    ...existing,
+    label: patch.label,
+    byteSize: patch.byteSize,
+    createdAt: patch.createdAt,
+    conversationId: patch.conversationId ?? existing.conversationId,
+    assistantMessageId: patch.assistantMessageId ?? existing.assistantMessageId,
+  });
+}
+
 function syncDeletedRevisionIdsToPostgres(ids: string[]): void {
   if (!isDaemonDbPostgres() || usesPostgresRevisionSnapshots() || ids.length === 0) return;
   schedulePostgresWrite(async () => {
