@@ -34,17 +34,14 @@ import {
 } from './export-cache-runtime.js';
 import {
   ExportJobStoreFullError,
-  completeExportJob,
   createExportJob,
-  failExportJob,
   isExportAsyncJobsEnabled,
-  markExportJobRunning,
   resolveExportJob,
   subscribeExportJob,
   type ExportJobFormat,
-  type ExportJobResult,
   type ExportJobSnapshot,
 } from './export-job-store.js';
+import { runExportJobInBackground } from './export-job-runner.js';
 import {
   renderHtmlExportOutcome,
   renderImageExportOutcome,
@@ -1074,122 +1071,6 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
     }
   });
 
-  async function runExportJobInBackground(options: {
-    jobId: string;
-    projectId: string;
-    workspaceId: string | null;
-    format: ExportJobFormat;
-    fileName: string;
-    deck: boolean;
-    title?: string;
-    inlineHtml?: string;
-    fresh?: boolean;
-    image?: {
-      format?: unknown;
-      slideIndex?: unknown;
-      width?: unknown;
-      height?: unknown;
-    };
-    pptx?: {
-      editable?: unknown;
-    };
-  }): Promise<void> {
-    markExportJobRunning(options.projectId, options.jobId);
-    try {
-      let outcome: ExportCacheOutcome;
-      const baseRequest = {
-        fileName: options.fileName,
-        deck: options.deck,
-        ...(options.title ? { title: options.title } : {}),
-        ...(options.inlineHtml ? { inlineHtml: options.inlineHtml } : {}),
-        ...(options.fresh ? { fresh: true } : {}),
-      };
-      if (options.format === 'pdf') {
-        outcome = (await renderPdfExportOutcome(exportRenderContext(options.projectId), baseRequest)).outcome;
-      } else if (options.format === 'html') {
-        outcome = await renderHtmlExportOutcome(exportRenderContext(options.projectId), baseRequest);
-      } else if (options.format === 'zip') {
-        outcome = await renderZipExportOutcome(exportRenderContext(options.projectId), baseRequest);
-      } else if (options.format === 'image') {
-        outcome = await renderImageExportOutcome(exportRenderContext(options.projectId), {
-          ...baseRequest,
-          format: options.image?.format,
-          slideIndex: options.image?.slideIndex,
-          width: options.image?.width,
-          height: options.image?.height,
-        });
-      } else {
-        outcome = await renderPptxExportOutcome(exportRenderContext(options.projectId), {
-          ...baseRequest,
-          deck: true,
-          editable: options.pptx?.editable,
-        });
-      }
-      const offloadPayload = await exportOffloadPayloadForWorkspace({
-        workspaceId: options.workspaceId,
-        projectId: options.projectId,
-        outcome,
-      });
-      const canRedirect =
-        'offloadKey' in offloadPayload
-        && offloadPayload.offloadKey
-        && (offloadPayload.offloadStatus === 'uploaded' || offloadPayload.offloadStatus === 'hit');
-      if (isExportOffloadRequired() && !canRedirect) {
-        failExportJob(options.projectId, options.jobId, {
-          code: 'EXPORT_OFFLOAD_UNAVAILABLE',
-          message: 'export offload is required but no S3 redirect ticket could be prepared',
-        });
-        return;
-      }
-      const ticket = await storeExportDownload({
-        projectId: options.projectId,
-        ...(outcome.filePath
-          ? { sourceFilePath: outcome.filePath }
-          : { body: outcome.body! }),
-        bytes: outcome.bytes,
-        filename: outcome.filename,
-        mime: outcome.mime,
-        ...(canRedirect
-          ? { deliveryMode: 'redirect' as const, offloadKey: offloadPayload.offloadKey }
-          : {}),
-        ...('offloadStatus' in offloadPayload && offloadPayload.offloadStatus
-          ? { offloadStatus: offloadPayload.offloadStatus }
-          : {}),
-        ...('offloadReason' in offloadPayload && offloadPayload.offloadReason
-          ? { offloadReason: offloadPayload.offloadReason }
-          : {}),
-      });
-      const result: ExportJobResult = {
-        downloadUrl: ticket.url,
-        filename: ticket.filename,
-        mime: ticket.mime,
-        bytes: ticket.bytes,
-        cache: outcome.cache,
-        deliveryMode: ticket.deliveryMode,
-        ...(ticket.offloadStatus ? { offloadStatus: ticket.offloadStatus } : {}),
-        ...(ticket.offloadReason ? { offloadReason: ticket.offloadReason } : {}),
-        expiresAt: ticket.expiresAt,
-      };
-      completeExportJob(options.projectId, options.jobId, result);
-    } catch (err: unknown) {
-      const reason = String((err as Error)?.message || err);
-      failExportJob(options.projectId, options.jobId, {
-        code: err instanceof ExportQueueFullError
-          ? err.code
-          : err instanceof DeckSlideCountLimitError
-            ? err.code
-            : 'EXPORT_FAILED',
-        message: reason,
-      });
-      console.warn('[export/job] failed', {
-        projectId: options.projectId,
-        jobId: options.jobId,
-        format: options.format,
-        reason,
-      });
-    }
-  }
-
   app.post('/api/projects/:id/export/jobs', async (req, res) => {
     try {
       if (!isExportAsyncJobsEnabled()) {
@@ -1215,19 +1096,29 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         format: exportFormat,
       });
       void runExportJobInBackground({
-        jobId: job.id,
-        projectId: req.params.id,
-        workspaceId: resolveExportOffloadWorkspaceIdFromRequest(req),
-        format: exportFormat,
-        fileName,
-        deck: exportFormat === 'pptx' ? true : deck === true,
-        ...(typeof title === 'string' ? { title } : {}),
-        ...(inlineHtml ? { inlineHtml } : {}),
-        ...(wantsFreshExport(req) ? { fresh: true } : {}),
-        ...(exportFormat === 'image'
-          ? { image: { format: req.body?.format, slideIndex, width, height } }
-          : {}),
-        ...(exportFormat === 'pptx' ? { pptx: { editable: req.body?.editable } } : {}),
+        request: {
+          jobId: job.id,
+          projectId: req.params.id,
+          workspaceId: resolveExportOffloadWorkspaceIdFromRequest(req),
+          format: exportFormat,
+          fileName,
+          deck: exportFormat === 'pptx' ? true : deck === true,
+          ...(typeof title === 'string' ? { title } : {}),
+          ...(inlineHtml ? { inlineHtml } : {}),
+          ...(wantsFreshExport(req) ? { fresh: true } : {}),
+          ...(exportFormat === 'image'
+            ? { image: { format: req.body?.format, slideIndex, width, height } }
+            : {}),
+          ...(exportFormat === 'pptx' ? { pptx: { editable: req.body?.editable } } : {}),
+        },
+        deps: {
+          renderContext: exportRenderContext,
+          prepareOffloadPayload: (jobRequest, outcome) => exportOffloadPayloadForWorkspace({
+            workspaceId: jobRequest.workspaceId,
+            projectId: jobRequest.projectId,
+            outcome,
+          }),
+        },
       });
       res.status(202).json({
         jobId: job.id,
