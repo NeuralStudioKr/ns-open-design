@@ -191,17 +191,34 @@ export function ManualEditResizeOverlay({
   const gestureGeom = dragRef.current;
   const composeScale = gestureGeom?.hostScale ?? previewScale;
   const composeOffset = gestureGeom?.hostOffset ?? hostOffset;
-  // Draft width/height are layout px (CSS write space). Prefer layout* over
-  // visual rect so composeScale = paint/layout keeps the host box aligned
-  // under deck-stage transform scale.
-  const contentRect = {
-    x: liveViewportPos?.x ?? draftLeftPx ?? target.rect.x,
-    y: liveViewportPos?.y ?? draftTopPx ?? target.rect.y,
-    width: draftWidthPx
-      ?? (target.layoutWidth && target.layoutWidth >= 1 ? target.layoutWidth : target.rect.width),
-    height: draftHeightPx
-      ?? (target.layoutHeight && target.layoutHeight >= 1 ? target.layoutHeight : target.rect.height),
-  };
+  // Two coordinate spaces must not be mixed for DISPLAY:
+  // - visual: getBoundingClientRect / hostPaintRect (deck transform applied)
+  // - layout: offsetWidth/Height + CSS width writes (untransformed)
+  // Idle fallback used to take visual x/y + layout w/h → box grew down/right
+  // under deck-stage scale while the chip sat in the top-left corner.
+  // Layout-sized compose is only valid while gestureGeom freezes
+  // hostScale = paint/layout.
+  const layoutW = target.layoutWidth && target.layoutWidth >= 1 ? target.layoutWidth : null;
+  const layoutH = target.layoutHeight && target.layoutHeight >= 1 ? target.layoutHeight : null;
+  const contentRect = gestureGeom
+    ? {
+        x: liveViewportPos?.x ?? draftLeftPx ?? target.rect.x,
+        y: liveViewportPos?.y ?? draftTopPx ?? target.rect.y,
+        width: draftWidthPx ?? layoutW ?? target.rect.width,
+        height: draftHeightPx ?? layoutH ?? target.rect.height,
+      }
+    : {
+        x: draftLeftPx ?? target.rect.x,
+        y: draftTopPx ?? target.rect.y,
+        // Prefer visual rect. If a layout draft lingers after pointerup, map it
+        // back through the visual/layout ratio instead of painting layout px.
+        width: draftWidthPx != null && layoutW
+          ? draftWidthPx * (target.rect.width / layoutW)
+          : target.rect.width,
+        height: draftHeightPx != null && layoutH
+          ? draftHeightPx * (target.rect.height / layoutH)
+          : target.rect.height,
+      };
   const scaled = contentRectToHostRect(contentRect, composeScale);
   const composedHostRect = {
     x: composeOffset.x + scaled.x,

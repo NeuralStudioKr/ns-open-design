@@ -116,16 +116,20 @@ describe('ManualEditResizeOverlay', () => {
     expect(overlay.style.height).toBe('45px');
   });
 
-  it('ignores hostPaintRect during resize drafts so the box tracks the pointer', () => {
+  it('idle compose uses visual rect, not layoutWidth (deck transform)', () => {
+    // layout 400×200 vs visual 100×50 — mixing them oversized the chrome down/right.
     const { getByTestId } = render(
       <ManualEditResizeOverlay
-        target={target({ rect: { x: 40, y: 60, width: 200, height: 100 } })}
+        target={target({
+          rect: { x: 40, y: 60, width: 100, height: 50 },
+          layoutWidth: 400,
+          layoutHeight: 200,
+        })}
         previewScale={1}
         hostOffset={{ x: 0, y: 0 }}
-        // Stale/reflowed paint that would otherwise morph the overlay mid-drag.
-        hostPaintRect={{ x: 10, y: 10, width: 400, height: 300 }}
-        draftWidthPx={260}
-        draftHeightPx={140}
+        hostPaintRect={null}
+        draftWidthPx={null}
+        draftHeightPx={null}
         onResizePreview={vi.fn()}
         onResizeCommit={vi.fn()}
         onResizeCancel={vi.fn()}
@@ -134,6 +138,55 @@ describe('ManualEditResizeOverlay', () => {
     const overlay = getByTestId('manual-edit-resize-overlay');
     expect(overlay.style.left).toBe('40px');
     expect(overlay.style.top).toBe('60px');
+    expect(overlay.style.width).toBe('100px');
+    expect(overlay.style.height).toBe('50px');
+  });
+
+  it('ignores hostPaintRect during resize drafts so the box tracks the pointer', () => {
+    const onResizePreview = vi.fn();
+    const { getByTestId, rerender } = render(
+      <ManualEditResizeOverlay
+        target={target({ rect: { x: 40, y: 60, width: 200, height: 100 } })}
+        previewScale={1}
+        hostOffset={{ x: 0, y: 0 }}
+        hostPaintRect={{ x: 40, y: 60, width: 200, height: 100 }}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={onResizePreview}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.pointerDown(getByTestId('manual-edit-resize-handle-se'), {
+      pointerId: 31,
+      clientX: 240,
+      clientY: 160,
+      buttons: 1,
+    });
+    fireEvent.pointerMove(window, { pointerId: 31, clientX: 300, clientY: 200, buttons: 1 });
+    expect(onResizePreview).toHaveBeenCalled();
+    const preview = onResizePreview.mock.calls.at(-1)?.[0] as { width?: string; height?: string };
+    expect(preview.width).toBe('260px');
+    expect(preview.height).toBe('140px');
+
+    rerender(
+      <ManualEditResizeOverlay
+        target={target({ rect: { x: 40, y: 60, width: 200, height: 100 } })}
+        previewScale={1}
+        hostOffset={{ x: 0, y: 0 }}
+        // Stale/reflowed paint mid-drag must not replace composed drafts.
+        hostPaintRect={{ x: 10, y: 10, width: 400, height: 300 }}
+        draftWidthPx={260}
+        draftHeightPx={140}
+        onResizePreview={onResizePreview}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    // Still in gesture (dragRef) — layout drafts compose; paint must not win.
     expect(overlay.style.width).toBe('260px');
     expect(overlay.style.height).toBe('140px');
   });
