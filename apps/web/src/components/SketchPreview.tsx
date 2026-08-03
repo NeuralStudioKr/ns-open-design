@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { fetchProjectFileText } from '../providers/registry';
 import type { ProjectFile } from '../types';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import {
   clampSketchNumber,
   clampSketchSize,

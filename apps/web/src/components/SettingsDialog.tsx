@@ -3123,7 +3123,7 @@ export function SettingsDialog({
         </header>
 
         <div className="modal-body">
-          <aside className="settings-sidebar" aria-label="Settings sections">
+          <aside className="settings-sidebar" aria-label={t('settings.kicker')}>
             {showSettingsNav('execution') ? (
             <button
               type="button"

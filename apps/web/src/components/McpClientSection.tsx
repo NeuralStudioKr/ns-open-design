@@ -37,6 +37,7 @@ import { fetchAgents } from '../providers/registry';
 import type { AgentInfo } from '../types';
 import { Icon } from './Icon';
 import { useT } from '../i18n';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 interface Props {
   // Receive a notification when servers list changes so the parent can
@@ -592,6 +593,7 @@ function PickerPanel({
   onPickBlank,
   onClose,
 }: PickerPanelProps) {
+  const t = useT();
   const grouped = useMemo(() => {
     const buckets = new Map<McpTemplate['category'], McpTemplate[]>();
     for (const tpl of templates) {
@@ -610,7 +612,7 @@ function PickerPanel({
   let visibleTotal = 0;
   const renderGroups = CATEGORY_ORDER.map((cat) => {
     const all = grouped.get(cat.id) ?? [];
-    const matched = all.filter((t) => templateMatchesQuery(t, trimmed));
+    const matched = all.filter((tpl) => templateMatchesQuery(tpl, trimmed));
     visibleTotal += matched.length;
     if (all.length === 0) return null;
     if (hasQuery && matched.length === 0) return null;
@@ -649,24 +651,30 @@ function PickerPanel({
     <div className="mcp-picker">
       <div className="mcp-picker-head">
         <div className="mcp-picker-head-row">
-          <strong>Pick a template</strong>
+          <strong>{embedUiLabel('Pick a template', '템플릿 선택')}</strong>
           <button
             type="button"
             className="icon-btn mcp-picker-close"
             onClick={onClose}
-            title="Close picker"
-            aria-label="Close picker"
+            title={t('common.close')}
+            aria-label={t('common.close')}
           >
-            ×
+            <Icon name="close" size={14} />
           </button>
         </div>
         <span className="hint">
-          Pre-fills the form. You can still edit any field after.
+          {embedUiLabel(
+            'Pre-fills the form. You can still edit any field after.',
+            '양식을 미리 채웁니다. 이후에도 필드를 수정할 수 있습니다.',
+          )}
         </span>
         <input
           type="search"
           className="mcp-picker-search"
-          placeholder="Filter by name, transport, capability…"
+          placeholder={embedUiLabel(
+            'Filter by name, transport, capability…',
+            '이름, 전송 방식, 기능으로 필터…',
+          )}
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           spellCheck={false}
@@ -678,8 +686,10 @@ function PickerPanel({
         {renderGroups}
         {hasQuery && visibleTotal === 0 ? (
           <div className="mcp-picker-empty hint">
-            No templates match &ldquo;{trimmed}&rdquo;. Try clearing the filter
-            or use the custom server option below.
+            {embedUiLabel(
+              `No templates match “${trimmed}”. Try clearing the filter or use the custom server option below.`,
+              `“${trimmed}”에 맞는 템플릿이 없습니다. 필터를 지우거나 아래 커스텀 서버를 사용하세요.`,
+            )}
           </div>
         ) : null}
       </div>

@@ -1808,25 +1808,29 @@ export function DesignBrowserPanel({
   ) : null;
 
   return (
-    <section className="design-browser" aria-label="Design Browser">
+    <section className="design-browser" aria-label={embedUiLabel('Design Browser', '디자인 브라우저')}>
       <div className="db-chrome" ref={chromeRef}>
         <div className="db-nav">
           <IconTooltipButton
-            label="Go Back"
+            label={embedUiLabel('Go Back', '뒤로')}
             disabled={!canGoBack}
             onClick={() => navigateHistoryBy(-1)}
           >
             <Icon name="chevron-left" size={16} />
           </IconTooltipButton>
           <IconTooltipButton
-            label="Go Forward"
+            label={embedUiLabel('Go Forward', '앞으로')}
             disabled={!canGoForward}
             onClick={() => navigateHistoryBy(1)}
           >
             <Icon name="chevron-right" size={16} />
           </IconTooltipButton>
           <IconTooltipButton
-            label={isLoading ? 'Loading...' : 'Reload'}
+            label={
+              isLoading
+                ? embedUiLabel('Loading...', '로딩 중...')
+                : embedUiLabel('Reload', '새로고침')
+            }
             className={isLoading ? 'is-spinning' : ''}
             disabled={isBlank}
             onClick={() => reload(false)}
@@ -1866,8 +1870,12 @@ export function DesignBrowserPanel({
                 setSuggestionsOpen(false);
                 window.setTimeout(() => setAddressEditing(false), 80);
               }}
-              placeholder={addressDisplayParts.url ? '' : 'Enter URL or search...'}
-              aria-label="Browser address"
+              placeholder={
+                addressDisplayParts.url
+                  ? ''
+                  : embedUiLabel('Enter URL or search...', 'URL 입력 또는 검색...')
+              }
+              aria-label={embedUiLabel('Browser address', '브라우저 주소')}
               autoComplete="off"
               spellCheck={false}
             />
@@ -2213,7 +2221,7 @@ function BrowserViewportControls({
         <RemixIcon name="arrow-down-s-line" size={13} />
       </IconTooltipButton>
       {open ? (
-        <div className="db-viewport-menu" role="listbox" aria-label="Browser viewport">
+        <div className="db-viewport-menu" role="listbox" aria-label={embedUiLabel('Browser viewport', '브라우저 뷰포트')}>
           {BROWSER_VIEWPORT_PRESETS.map((preset) => (
             <button
               key={preset.id}
@@ -2252,7 +2260,7 @@ function BrowserCommentMarkers({
 }) {
   if (comments.length === 0) return null;
   return (
-    <div className="db-comment-layer" aria-label="Browser comments">
+    <div className="db-comment-layer" aria-label={embedUiLabel('Browser comments', '브라우저 댓글')}>
       {comments.map((comment, index) => {
         const snapshot = liveTargets.get(`comment:${comment.id}`) ?? browserSnapshotFromComment(comment, comment.filePath);
         const bounds = browserOverlayBounds(snapshot);
@@ -2362,7 +2370,7 @@ function BrowserCommentComposer({
         </div>
       ) : null}
       <textarea
-        aria-label="Browser comment note"
+        aria-label={embedUiLabel('Browser comment note', '브라우저 댓글 메모')}
         value={draft}
         onChange={(event) => onDraft(event.target.value)}
         placeholder="Describe the change or issue..."
@@ -2791,8 +2799,8 @@ function DesignBrowserStart({
                 setQuery('');
               }
             }}
-            placeholder="Search references…"
-            aria-label="Search references"
+            placeholder={embedUiLabel('Search references…', '레퍼런스 검색…')}
+            aria-label={embedUiLabel('Search references', '레퍼런스 검색')}
           />
           {hasQuery ? (
             <button
