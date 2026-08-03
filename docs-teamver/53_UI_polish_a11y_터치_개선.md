@@ -100,7 +100,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 10 | `c525e5cce` | Drive picker/import 모달 시각 polish (색·여백·타이포) — `tools.css` only | 유지 |
 | 11 | `df36b570a` | 홈 섹션 제목 sans 통일 (recent/plugins/entry) | 유지 |
 | 12 | `34b345db8` | DS fullscreen·BYOK·agent cancel 터치 · empty titles · bg-runs · user-actions 28 · plugins design sans | 유지 |
-| 13 | *(push 후 pin)* | publish chip · staged-remove · connector close 28 · newproj/toolbar text tokens (55 통일 보류) | 유지 |
+| 13 | `09bea4edb` | publish chip · staged-remove · connector close 28 · newproj/toolbar text tokens (55 통일 보류) | 유지 |
 
 `f97ee14ed` 메시지의 “28–32px” 방향은 **리뷰로 철회**된 부분이 있음. **유효 SSOT는 `29466ae40` 이후 원칙**.
 
@@ -269,7 +269,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | DesignsTab status 열(kanban) | **제거** — remount→`/raw` 반복·번쩍임 (00 2026-08-03) |
 | 홈 섹션 제목 serif | **sans 통일** — recent-projects / plugins-home / entry-section (hero serif 유지) |
 | empty titles · bg-runs · user-actions | **완료** — §5.5 |
-| Main↔Design 스타일 통일 | **분석** — [55](./55_Main_Teamver_vs_Design_UI_스타일_통일_분석.md) (구현 전 합의) |
+| Main↔Design 스타일 통일 | **분석·보류** — [55](./55_Main_Teamver_vs_Design_UI_스타일_통일_분석.md) (§9) |
 
 새 변경 시 **§3 원칙**으로 먼저 기각한 뒤 코드·본 문서 §4–5·[00](./00_구현_내역_누적.md)를 함께 갱신한다.
 
