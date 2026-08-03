@@ -5427,6 +5427,8 @@ function HtmlViewer({
   const revisionSyncSuppressRef = useRef(false);
   const revisionSkipReconcileOnceRef = useRef(false);
   const revisionConflictSuppressedRef = useRef(false);
+  const revisionConflictMessageRef = useRef(t('fileRevision.conflict.message'));
+  revisionConflictMessageRef.current = t('fileRevision.conflict.message');
   const revisionDiskSyncPromiseRef = useRef<Promise<boolean> | null>(null);
   const [manualEditError, setManualEditError] = useState<string | null>(null);
   const [manualEditSaving, setManualEditSaving] = useState(false);
@@ -7026,7 +7028,9 @@ function HtmlViewer({
     return response.content;
   }, [projectId, file.name]);
 
-  const reconcileRevisionWithDisk = useCallback(async () => {
+  const reconcileRevisionWithDisk = useCallback(async (
+    preloadedList?: Awaited<ReturnType<typeof listProjectFileRevisions>>,
+  ) => {
     if (revisionSyncSuppressRef.current || manualEditSavingRef.current) return;
     const reconcileGeneration = revisionReconcileGenerationRef.current;
     const stack = revisionStackRef.current;
@@ -7040,7 +7044,7 @@ function HtmlViewer({
         cacheBustKey: Date.now(),
       }),
       resolveRevisionSnapshotContent(cursorRevisionId),
-      listProjectFileRevisions(projectId, file.name),
+      preloadedList ?? listProjectFileRevisions(projectId, file.name),
     ]);
     if (
       revisionSyncSuppressRef.current
@@ -7059,7 +7063,7 @@ function HtmlViewer({
     if (!list) {
       setRevisionStackInvalidated(true);
       if (!revisionConflictSuppressedRef.current) {
-        setRevisionConflictToast(t('fileRevision.conflict.message'));
+        setRevisionConflictToast(revisionConflictMessageRef.current);
       }
       return;
     }
@@ -7128,13 +7132,15 @@ function HtmlViewer({
       return;
     }
 
-    setSource(disk);
-    sourceRef.current = disk;
-    setInlinedSource(null);
-    setManualEditFrozenSource(disk);
-    setManualEditDraft((current) => ({ ...current, fullSource: disk }));
-    setReloadKey((k) => k + 1);
-    manualEditPendingStyleRef.current = null;
+    if (sourceRef.current !== disk) {
+      setSource(disk);
+      sourceRef.current = disk;
+      setInlinedSource(null);
+      setManualEditFrozenSource(disk);
+      setManualEditDraft((current) => ({ ...current, fullSource: disk }));
+      setReloadKey((k) => k + 1);
+      manualEditPendingStyleRef.current = null;
+    }
 
     commitRevisionStack(createRevisionStackSnapshot(
       list.revisions,
@@ -7149,9 +7155,9 @@ function HtmlViewer({
     }
     setRevisionStackInvalidated(true);
     if (!revisionConflictSuppressedRef.current) {
-      setRevisionConflictToast(t('fileRevision.conflict.message'));
+      setRevisionConflictToast(revisionConflictMessageRef.current);
     }
-  }, [projectId, file.name, resolveRevisionSnapshotContent, t]);
+  }, [projectId, file.name, resolveRevisionSnapshotContent]);
 
   const refreshRevisionStack = useCallback(async () => {
     const list = await listProjectFileRevisions(projectId, file.name);
@@ -7177,7 +7183,7 @@ function HtmlViewer({
     const skipReconcile = revisionSkipReconcileOnceRef.current;
     revisionSkipReconcileOnceRef.current = false;
     if (!skipReconcile) {
-      await reconcileRevisionWithDisk();
+      await reconcileRevisionWithDisk(list);
     }
     const before = revisionBeforeCursor(revisionStackRef.current);
     const after = revisionAfterCursor(revisionStackRef.current);
@@ -7191,10 +7197,14 @@ function HtmlViewer({
     );
   }, [projectId, file.name, reconcileRevisionWithDisk, resolveRevisionSnapshotContent]);
 
+  // Refresh when the file hydrates or external writes bump filesRefreshKey.
+  // Do not depend on `source` string identity — reconcile can call setSource /
+  // setReloadKey and would otherwise re-enter this effect in a tight loop.
+  const sourceReadyForRevisionRefresh = source !== null;
   useEffect(() => {
-    if (source === null) return;
+    if (!sourceReadyForRevisionRefresh) return;
     void refreshRevisionStack();
-  }, [source, refreshRevisionStack, filesRefreshKey]);
+  }, [projectId, file.name, filesRefreshKey, refreshRevisionStack, sourceReadyForRevisionRefresh]);
 
   // Selecting a new file or turning inspect/comment-inspect off resets the panel target.
   useEffect(() => {
