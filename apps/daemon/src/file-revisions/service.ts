@@ -31,9 +31,10 @@ import {
 } from './store.js';
 import { usesPostgresRevisionSnapshots } from './snapshot-storage.js';
 import { withFileRevisionMutationLock } from './postgres-lock.js';
-import { FileRevisionPayloadTooLargeError } from './errors.js';
-import { FILE_REVISION_MAX_SNAPSHOT_BYTES } from './limits.js';
-import { enforceFileRevisionGlobalByteBudget } from './quota.js';
+import {
+  assertRevisionSnapshotWithinAbsoluteLimit,
+  ensureRoomForIncomingRevisionSnapshot,
+} from './quota.js';
 import {
   gzipRevisionSnapshot,
   resolveFullSnapshotInterval,
@@ -250,6 +251,16 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
             metadata,
             null,
           );
+          assertRevisionSnapshotWithinAbsoluteLimit(Buffer.byteLength(beforeContent, 'utf8'));
+          const baselineEncoded = gzipRevisionSnapshot(beforeContent, {
+            parentContent: null,
+            forceFull: true,
+          });
+          await ensureRoomForIncomingRevisionSnapshot(db, baselineEncoded.compressed.length, {
+            projectId,
+            fileName,
+            headRevisionId: null,
+          });
           const baselineId = randomUUID();
           const createdAt = Date.now();
           parent = await persistRevisionSnapshot(
@@ -284,13 +295,15 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         );
 
         const contentBytes = Buffer.byteLength(content, 'utf8');
-        if (contentBytes > FILE_REVISION_MAX_SNAPSHOT_BYTES) {
-          throw new FileRevisionPayloadTooLargeError(FILE_REVISION_MAX_SNAPSHOT_BYTES, contentBytes);
-        }
+        assertRevisionSnapshotWithinAbsoluteLimit(contentBytes);
         const interval = resolveFullSnapshotInterval();
         const forceFull = shouldForceFullSnapshot(sequence, interval) || parentContent == null;
         const encoded = gzipRevisionSnapshot(content, { parentContent, forceFull });
-        await enforceFileRevisionGlobalByteBudget(db, encoded.compressed.length);
+        await ensureRoomForIncomingRevisionSnapshot(db, encoded.compressed.length, {
+          projectId,
+          fileName,
+          headRevisionId: parent.id,
+        });
 
         const file = await writeProjectFile(
           projectsRoot,

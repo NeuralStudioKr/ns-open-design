@@ -26,3 +26,6 @@ export function resolveFileRevisionMaxTotalBytes(
 
 export const FILE_REVISION_MAX_SNAPSHOT_BYTES = resolveFileRevisionMaxSnapshotBytes();
 export const FILE_REVISION_MAX_TOTAL_BYTES = resolveFileRevisionMaxTotalBytes();
+
+/** Hard safety ceiling for a single uncompressed revision push (not a soft prune target). */
+export const FILE_REVISION_ABSOLUTE_MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;

@@ -5,7 +5,7 @@ export class FileRevisionPayloadTooLargeError extends Error {
     readonly limitBytes: number,
     readonly actualBytes: number,
   ) {
-    super(`revision snapshot exceeds ${limitBytes} bytes (got ${actualBytes})`);
+    super(`revision snapshot exceeds absolute limit of ${limitBytes} bytes (got ${actualBytes})`);
     this.name = 'FileRevisionPayloadTooLargeError';
   }
 }

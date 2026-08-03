@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
-import { enforceFileRevisionGlobalByteBudget } from '../src/file-revisions/quota.js';
+import { enforceFileRevisionGlobalByteBudget, resolveFileRevisionPruneBudgetBytes } from '../src/file-revisions/quota.js';
 import { migrateFileRevisions, insertFileRevision } from '../src/file-revisions/persistence.js';
 import { upsertFileRevisionSnapshot } from '../src/file-revisions/snapshot-storage.js';
 
@@ -52,5 +52,10 @@ describe('file revision global byte budget', () => {
     expect(result.bytesReclaimed).toBe(800);
     const remaining = db.prepare(`SELECT id FROM file_revisions ORDER BY sequence ASC`).all() as Array<{ id: string }>;
     expect(remaining.map((row) => row.id)).toEqual(['rev-3']);
+  });
+
+  it('uses the soft snapshot target when no global budget is configured', () => {
+    expect(resolveFileRevisionPruneBudgetBytes(200)).toBe(8 * 1024 * 1024);
+    expect(resolveFileRevisionPruneBudgetBytes(20 * 1024 * 1024)).toBe(20 * 1024 * 1024);
   });
 });

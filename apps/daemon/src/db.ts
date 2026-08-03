@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { ProjectBrowserWorkspaceTab, ProjectTabsState } from '@open-design/contracts';
 import { migrateCritique } from './critique/persistence.js';
 import { migrateFileRevisions } from './file-revisions/persistence.js';
-import { deleteFileRevisionSnapshotsForProjectDurable } from './file-revisions/snapshot-storage.js';
+import { deleteFileRevisionSnapshotsForProjectDurable, deleteFileRevisionSnapshotsFromDb } from './file-revisions/snapshot-storage.js';
 import { migrateMediaTasks } from './media-tasks.js';
 import { migratePlugins } from './plugins/persistence.js';
 import {
@@ -1137,21 +1137,23 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
 export function deleteProject(db: SqliteDb, id: string) {
   if (isDaemonDbPostgres()) {
     deleteCachedProject(id);
-    deleteProjectRowFromSqlite(db, id);
     schedulePostgresWrite(async () => {
       try {
         await deleteFileRevisionSnapshotsForProjectDurable(id, db);
       } catch {
-        // Best-effort — project row delete still proceeds.
+        // Best-effort — v9 FK CASCADE is the backstop.
       }
       await pgCore.pgDeleteProject(getPostgresPool(), id);
     });
+    deleteProjectRowFromSqlite(db, id);
     return;
   }
-  try {
-    void deleteFileRevisionSnapshotsForProjectDurable(id, db);
-  } catch {
-    // Best-effort — CASCADE on file_revisions still removes metadata.
+  const revisionRows = db.prepare(`
+    SELECT id FROM file_revisions WHERE project_id = ?
+  `).all(id) as Array<{ id: string }>;
+  if (revisionRows.length > 0) {
+    deleteFileRevisionSnapshotsFromDb(db, revisionRows.map((row) => row.id));
+    db.prepare(`DELETE FROM file_revisions WHERE project_id = ?`).run(id);
   }
   db.prepare(`DELETE FROM projects WHERE id = ?`).run(id);
 }
