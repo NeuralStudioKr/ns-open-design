@@ -1035,6 +1035,18 @@ export function buildConcreteElementPatchTemplate(
 }
 
 /** deck-patch template for region-only visual marks (no concrete DOM target id). */
+function buildVisualMarkDeckPatchInnerMarkup(comment: string): string {
+  const normalized = String(comment || '').trim();
+  if (/하트|heart|♥|❤/iu.test(normalized)) {
+    return [
+      '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="#e11d48" aria-hidden="true">',
+      '        <path d="M12 21s-6.2-4.2-8.5-7.1C2.4 11.2 2.9 7.6 5.8 6.1c2.2-1.2 4.9-.5 6.2 1.5 1.3-2 4-2.7 6.2-1.5 2.9 1.5 3.4 5.1 1.3 7.8C18.2 16.8 12 21 12 21z"/>',
+      '      </svg>',
+    ].join('\n');
+  }
+  return '      <!-- robot/icon/SVG sized to fill this box (100% width/height) -->';
+}
+
 export function buildConcreteDeckPatchTemplateForVisualMarks(
   commentAttachments: readonly ChatCommentAttachment[],
 ): string | null {
@@ -1050,12 +1062,13 @@ export function buildConcreteDeckPatchTemplateForVisualMarks(
     }
     const slideIndex = Math.floor(item.slideIndex);
     const placementStyle = formatVisualMarkPlacementStyle(item.pagePosition);
+    const innerMarkup = buildVisualMarkDeckPatchInnerMarkup(item.comment || '');
     blocks.push(
       '<artifact type="deck-patch" identifier="deck">',
       `  <section class="slide" data-slide-index="${slideIndex}" style="position:relative">`,
       '    <!-- COPY the existing slide HTML for this index from deck.html unchanged, then ADD: -->',
       `    <div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center">`,
-      '      <!-- robot/icon/SVG sized to fill this box (100% width/height) -->',
+      innerMarkup,
       '    </div>',
       '  </section>',
       '</artifact>',

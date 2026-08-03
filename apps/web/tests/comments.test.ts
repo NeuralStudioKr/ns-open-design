@@ -539,6 +539,21 @@ describe('preview comment attachment helpers', () => {
     expect(attachment.intent).toContain('drawn ink');
   });
 
+  it('includes a heart SVG example in visual deck-patch templates', () => {
+    const template = buildConcreteDeckPatchTemplateForVisualMarks([
+      buildVisualAnnotationAttachment({
+        order: 1,
+        screenshotPath: 'uploads/drawing.png',
+        markKind: 'stroke',
+        note: '하트 넣어줘',
+        bounds: { x: 10, y: 20, width: 80, height: 80 },
+        slideIndex: 0,
+      }),
+    ]);
+    expect(template).toContain('<svg');
+    expect(template).toContain('od-visual-mark-target');
+  });
+
   it('keeps large queued board-note batches ordered in one send payload', () => {
     const notes = Array.from({ length: 8 }, (_, index) => `Note ${index + 1}`);
     const attachments = buildBoardCommentAttachments({

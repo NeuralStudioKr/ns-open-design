@@ -287,6 +287,16 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     ).toBe(true);
   });
 
+  it('fires for skipped-duplicate scoped comment edits when disk unchanged', () => {
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        scopedCommentAttachmentCount: 1,
+        terminalPersistResultKind: 'skipped-duplicate',
+      }),
+    ).toBe(true);
+  });
+
   it('does NOT fire for validation rejected artifacts', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({

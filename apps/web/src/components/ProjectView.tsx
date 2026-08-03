@@ -4300,14 +4300,24 @@ export function ProjectView({
           return { kind: 'rejected', fileName, reason: validation.reason };
         }
       }
-      if (savedArtifactRef.current === fileName) return { kind: 'skipped-duplicate', fileName };
+      const title = art.title || art.identifier || fileName;
+      const htmlBody =
+        ext === '.html' ? repairArtifactDocumentHead(artifactToPersist.html) : artifactToPersist.html;
+      if (savedArtifactRef.current === fileName) {
+        const currentHtml = await fetchProjectFileText(project.id, fileName, {
+          cache: 'no-store',
+        });
+        if (
+          normalizeHtmlForRecoveredArtifactComparison(currentHtml)
+          === normalizeHtmlForRecoveredArtifactComparison(htmlBody)
+        ) {
+          return { kind: 'skipped-duplicate', fileName };
+        }
+      }
       savedArtifactRef.current = fileName;
       if (isTeamverEmbedMode()) {
         await refreshTeamverEmbedAuthBeforeMutating({ activityStartedAt });
       }
-      const title = art.title || art.identifier || fileName;
-      const htmlBody =
-        ext === '.html' ? repairArtifactDocumentHead(artifactToPersist.html) : artifactToPersist.html;
       const contractArtifactType = normalizeSlideOnlyArtifactContractType(
         artifactToPersist.artifactType,
         slideOnlyMvp,
@@ -4435,7 +4445,7 @@ export function ProjectView({
             pushedRevision,
             'agent_persist',
           );
-          if (pushedRevision.parentRevisionId) {
+          if (pushedRevision.parentRevisionId || persistCommentAttachments.length > 0) {
             const parentRevisionId = pushedRevision.parentRevisionId;
             const restoredFileName = file.name;
             setProjectActionsToast({
@@ -6349,16 +6359,19 @@ export function ProjectView({
                   }
                   const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
                   const runStartedAt = status.createdAt || message.startedAt || message.createdAt;
+                  const reattachScopedComments = (message.commentAttachments?.length ?? 0) > 0;
                   recoveredExistingArtifact = findExistingArtifactProjectFile(
                     artifactToPersist,
                     nextFiles,
                     { minMtime: runStartedAt },
-                  ) ?? await findSameTurnHtmlWriteForRecoveredArtifact({
-                    artifactHtml: artifactToPersist.html,
-                    producedFiles: producedBeforeFallback,
-                    readProjectHtml,
-                    allowAnyHtmlWrite: message.agentId === 'claude',
-                  });
+                  ) ?? (reattachScopedComments
+                    ? null
+                    : await findSameTurnHtmlWriteForRecoveredArtifact({
+                      artifactHtml: artifactToPersist.html,
+                      producedFiles: producedBeforeFallback,
+                      readProjectHtml,
+                      allowAnyHtmlWrite: message.agentId === 'claude',
+                    }));
                   if (recoveredExistingArtifact) {
                     savedArtifactRef.current = recoveredExistingArtifact.name;
                     if (claimHtmlAutoOpenForMessage()) {
@@ -7922,12 +7935,15 @@ export function ProjectView({
             );
             if (artifactToPersist?.html) {
               const producedBeforeFallback = computeProducedFiles(beforeFileNames, nextFiles) ?? [];
-              const sameTurnHtmlWrite = await findSameTurnHtmlWriteForRecoveredArtifact({
-                artifactHtml: artifactToPersist.html,
-                producedFiles: producedBeforeFallback,
-                readProjectHtml,
-                allowAnyHtmlWrite: assistantAgentId === 'claude',
-              });
+              const scopedCommentPersist = runCommentAttachmentsRef.current.length > 0;
+              const sameTurnHtmlWrite = scopedCommentPersist
+                ? null
+                : await findSameTurnHtmlWriteForRecoveredArtifact({
+                  artifactHtml: artifactToPersist.html,
+                  producedFiles: producedBeforeFallback,
+                  readProjectHtml,
+                  allowAnyHtmlWrite: assistantAgentId === 'claude',
+                });
               if (sameTurnHtmlWrite) {
                 savedArtifactRef.current = sameTurnHtmlWrite.name;
                 if (runIsVisible()) {

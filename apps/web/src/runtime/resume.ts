@@ -294,6 +294,12 @@ export function shouldAutoContinueForIncompleteOutput(options: {
   const kind = options.terminalPersistResultKind;
   if (kind === 'skipped-incomplete') return true;
   if (
+    kind === 'skipped-duplicate'
+    && (options.scopedCommentAttachmentCount ?? 0) > 0
+  ) {
+    return true;
+  }
+  if (
     kind === 'scope-rejected'
     && (options.scopedCommentAttachmentCount ?? 0) > 0
     && options.shouldRouteScopedCommentEditToAutoContinue?.(
