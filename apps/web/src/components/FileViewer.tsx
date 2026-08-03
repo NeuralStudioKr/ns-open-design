@@ -7141,6 +7141,10 @@ function HtmlViewer({
       const frame = iframeRef.current;
       const workspace = manualEditWorkspaceRef.current;
       if (!frame || !workspace) return false;
+      // Freeze host scale/offset/paint for the whole geometry gesture.
+      // Preview styles reflow the iframe; remasuring fit-scale mid-drag morphs
+      // overlay size (draftPx × liveScale) even when content drafts are stable.
+      if (manualEditResizeSessionActiveRef.current) return true;
       const nextScale = measureIframeHostScale(frame);
       const nextOffset = measureIframeOffsetInHost(frame, workspace);
       setManualEditHostScale((prev) => (Math.abs(prev - nextScale) < 0.0005 ? prev : nextScale));
@@ -7154,9 +7158,6 @@ function HtmlViewer({
         setManualEditHostPaintRect(null);
         return true;
       }
-      // During a gesture the overlay follows draft/liveViewport composition.
-      // Refreshing hostPaintRect here fights that math (box morph / jump).
-      if (manualEditResizeSessionActiveRef.current) return true;
       const paint = measureManualEditTargetHostRect(frame, workspace, selectedId);
       if (paint && paint.width >= 1 && paint.height >= 1) {
         setManualEditHostPaintRect((prev) => (

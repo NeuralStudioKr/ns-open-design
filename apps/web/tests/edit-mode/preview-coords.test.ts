@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   contentRectToHostRect,
   contentRectToHostRectInWorkspace,
+  freezeGestureHostGeom,
   hostDeltaToContentDelta,
   measureIframeHostScale,
   measureIframeOffsetInHost,
@@ -17,6 +18,27 @@ describe('preview-coords', () => {
       0.5,
     )).toEqual({ x: 5, y: 10, width: 50, height: 25 });
     expect(hostDeltaToContentDelta(20, 10, 0.5)).toEqual({ dx: 40, dy: 20 });
+  });
+
+  it('freezes gesture host geom from the idle paint rect when scale state is stale', () => {
+    expect(freezeGestureHostGeom(
+      { x: 40, y: 60, width: 200, height: 100 },
+      { x: 30, y: 50, width: 100, height: 50 },
+      1,
+      { x: 0, y: 0 },
+    )).toEqual({
+      hostScale: 0.5,
+      hostOffset: { x: 10, y: 20 },
+    });
+    expect(freezeGestureHostGeom(
+      { x: 40, y: 60, width: 200, height: 100 },
+      null,
+      0.75,
+      { x: 8, y: 12 },
+    )).toEqual({
+      hostScale: 0.75,
+      hostOffset: { x: 8, y: 12 },
+    });
   });
 
   it('measures iframe CSS scale from visual vs layout width', () => {
