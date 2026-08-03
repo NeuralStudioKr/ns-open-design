@@ -27,6 +27,7 @@ import {
   writeProjectTextFileDetailed,
 } from '../providers/registry';
 import { useT } from '../i18n';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatProjectFileSaveResultForUser } from '../teamver/projectUploadErrors';
 import type { Dict } from '../i18n/types';
 import { captureHostIframeSnapshot, captureHostRegionSnapshot } from '../runtime/exports';
@@ -2338,13 +2339,13 @@ function BrowserCommentComposer({
   target: BrowserElementSnapshot;
 }) {
   return (
-    <div className="comment-popover db-comment-popover" role="dialog" aria-label="Browser comment">
+    <div className="comment-popover db-comment-popover" role="dialog" aria-label={embedUiLabel('Browser comment', '브라우저 댓글')}>
       <div className="comment-popover-head">
         <div>
-          <strong title={target.label}>{target.label || 'Browser element'}</strong>
+          <strong title={target.label}>{target.label || embedUiLabel('Browser element', '브라우저 요소')}</strong>
           <span title={target.selector}>{target.selector}</span>
         </div>
-        <button type="button" className="ghost" onClick={onClose} aria-label="Close browser comment">
+        <button type="button" className="ghost" onClick={onClose} aria-label={embedUiLabel('Close browser comment', '브라우저 댓글 닫기')}>
           <Icon name="close" size={12} />
         </button>
       </div>
@@ -2354,7 +2355,7 @@ function BrowserCommentComposer({
             <div key={`${note}:${index}`} className="board-note-item">
               <span>{note}</span>
               <button type="button" className="ghost" onClick={() => onRemoveQueuedNote(index)}>
-                Remove
+                {embedUiLabel('Remove', '제거')}
               </button>
             </div>
           ))}
@@ -2374,15 +2375,17 @@ function BrowserCommentComposer({
             </button>
           ) : null}
           <button type="button" className="ghost" disabled={sending || !draft.trim()} onClick={onAddDraft}>
-            Add note
+            {embedUiLabel('Add note', '메모 추가')}
           </button>
         </div>
         <div className="comment-popover-actions-end">
           <button type="button" className="ghost" disabled={sending || (!draft.trim() && !existing)} onClick={onSaveComment}>
-            Save comment
+            {embedUiLabel('Save comment', '댓글 저장')}
           </button>
           <button type="button" className="primary" disabled={sending || sendDisabled || (!draft.trim() && notes.length === 0 && !existing)} onClick={onSendBatch}>
-            {sending ? 'Sending...' : 'Send to chat'}
+            {sending
+              ? embedUiLabel('Sending...', '보내는 중...')
+              : embedUiLabel('Send to chat', '채팅으로 보내기')}
           </button>
         </div>
       </div>
@@ -2420,18 +2423,22 @@ function BrowserInspectPanel({
     <aside className="inspect-panel db-inspect-panel" data-testid="browser-inspect-panel">
       <header className="inspect-panel-head">
         <div className="inspect-panel-title">
-          <strong title={target.label}>{mode === 'edit' ? 'Edit HTML element' : 'Tune browser element'}</strong>
+          <strong title={target.label}>
+            {mode === 'edit'
+              ? embedUiLabel('Edit HTML element', 'HTML 요소 편집')
+              : embedUiLabel('Tune browser element', '브라우저 요소 조정')}
+          </strong>
           <code title={target.selector}>{target.label || target.selector}</code>
         </div>
-        <button type="button" className="ghost" onClick={onClose} aria-label="Close browser tune">
+        <button type="button" className="ghost" onClick={onClose} aria-label={embedUiLabel('Close browser tune', '브라우저 조정 닫기')}>
           <Icon name="close" size={12} />
         </button>
       </header>
 
       <section className="inspect-section">
-        <div className="inspect-section-label">Colors</div>
+        <div className="inspect-section-label">{embedUiLabel('Colors', '색상')}</div>
         <div className="inspect-row">
-          <label htmlFor="db-inspect-color">Text</label>
+          <label htmlFor="db-inspect-color">{embedUiLabel('Text', '텍스트')}</label>
           <input
             id="db-inspect-color"
             type="color"
@@ -2525,9 +2532,13 @@ function BrowserInspectPanel({
       ) : null}
 
       <footer className="inspect-panel-footer">
-        <button type="button" className="ghost" onClick={onClose}>Close</button>
+        <button type="button" className="ghost" onClick={onClose}>{embedUiLabel('Close', '닫기')}</button>
         <button type="button" className="primary" disabled={!canSave || saving} onClick={onSave}>
-          {saving ? 'Saving...' : canSave ? 'Save HTML' : 'Live only'}
+          {saving
+            ? embedUiLabel('Saving...', '저장 중...')
+            : canSave
+              ? embedUiLabel('Save HTML', 'HTML 저장')
+              : embedUiLabel('Live only', '라이브만')}
         </button>
       </footer>
     </aside>

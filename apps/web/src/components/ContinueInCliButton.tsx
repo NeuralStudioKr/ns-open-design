@@ -17,17 +17,24 @@
 // component itself.
 
 import type { DesignMdState, DesignMdStaleReason } from '../hooks/useDesignMdState';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
-const STALE_CHIP_TEXT = 'Spec is stale — regenerate?';
+const STALE_CHIP_TEXT = () =>
+  embedUiLabel('Spec is stale — regenerate?', '스펙이 오래됨 — 다시 생성할까요?');
 // Round 7 (mrcfps @ useDesignMdState.ts:160): malformed provenance
 // timestamps used to silently report fresh; they now surface as a
 // distinct chip so the user knows the freshness signal is degraded
 // rather than green.
-const UNKNOWN_PROVENANCE_CHIP_TEXT = 'Spec freshness unknown — regenerate to refresh signal';
-const DISABLED_TOOLTIP = 'Finalize the design package first.';
+const UNKNOWN_PROVENANCE_CHIP_TEXT = () =>
+  embedUiLabel(
+    'Spec freshness unknown — regenerate to refresh signal',
+    '스펙 최신 여부 불명 — 다시 생성해 신호를 갱신하세요',
+  );
+const DISABLED_TOOLTIP = () =>
+  embedUiLabel('Finalize the design package first.', '먼저 디자인 패키지를 마무리하세요.');
 
 function chipTextForReason(reason: DesignMdStaleReason): string {
-  return reason === 'unknown-provenance' ? UNKNOWN_PROVENANCE_CHIP_TEXT : STALE_CHIP_TEXT;
+  return reason === 'unknown-provenance' ? UNKNOWN_PROVENANCE_CHIP_TEXT() : STALE_CHIP_TEXT();
 }
 
 export interface ContinueInCliButtonProps {
@@ -36,6 +43,7 @@ export interface ContinueInCliButtonProps {
 }
 
 export function ContinueInCliButton({ designMdState, onClick }: ContinueInCliButtonProps) {
+  const continueLabel = embedUiLabel('Continue in CLI', 'CLI에서 이어하기');
   if (!designMdState.exists) {
     // Native `<button disabled>` does not fire hover or focus events
     // in the browsers we ship against, so a `title` tooltip on the
@@ -52,14 +60,14 @@ export function ContinueInCliButton({ designMdState, onClick }: ContinueInCliBut
           disabled
           aria-describedby="continue-in-cli-disabled-hint"
         >
-          Continue in CLI
+          {continueLabel}
         </button>
         <span
           id="continue-in-cli-disabled-hint"
           className="project-actions-disabled-hint"
           role="note"
         >
-          {DISABLED_TOOLTIP}
+          {DISABLED_TOOLTIP()}
         </span>
       </span>
     );
@@ -74,10 +82,14 @@ export function ContinueInCliButton({ designMdState, onClick }: ContinueInCliBut
           void onClick();
         }}
       >
-        Continue in CLI
+        {continueLabel}
       </button>
       {designMdState.isStale ? (
-        <span className="project-actions-chip" role="note" aria-label="Spec staleness">
+        <span
+          className="project-actions-chip"
+          role="note"
+          aria-label={embedUiLabel('Spec staleness', '스펙 상태')}
+        >
           {chipTextForReason(designMdState.staleReason)}
         </span>
       ) : null}
