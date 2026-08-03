@@ -493,8 +493,9 @@ staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으�
 - ✅ FE polling fallback backoff — SSE를 사용할 수 없는 브라우저/프록시 환경에서는 status polling으로 복구하되, 반복 대기 중에는 interval을 점진 확대해 daemon 호출량을 제한
 - ✅ FileViewer UX polish — async export 진행 중 우측 하단 progress panel을 표시하고 성공/실패/취소 시 자동 해제
 - ✅ deck slide count soft cap — PPTX export는 `OD_EXPORT_PPTX_MAX_SLIDES`를 초과하면 `EXPORT_DECK_TOO_LARGE`로 차단하고 PDF 다운로드를 유도
+- ✅ large-deck PDF fallback action — `EXPORT_DECK_TOO_LARGE` 발생 시 FE 토스트에서 PDF 다운로드 액션을 제공
 - dedicated export worker (Chromium isolate)
-- “대형 deck은 PDF만” UX 문구/대체 액션 polish
+- “대형 deck은 PDF만” 정책 문구 polish
 
 ---
 
@@ -1000,6 +1001,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-03 | 대형 PPTX 초과 시 PDF 대체 액션 추가 — web runtime이 `EXPORT_DECK_TOO_LARGE`를 안정적으로 판별하고 사용자 메시지를 PDF 안내로 매핑. FileViewer PPTX 다운로드 실패 토스트에는 기존 PDF export 경로를 재사용하는 `PDF 다운로드` 액션을 제공해 큰 deck에서도 사용자가 다시 메뉴를 찾지 않고 바로 PDF로 받을 수 있게 함 |
 | 2026-08-03 | PPTX slide count soft cap 추가 — daemon PPTX export가 `OD_EXPORT_PPTX_MAX_SLIDES`(기본 40, 0이면 해제)를 초과하는 deck을 `EXPORT_DECK_TOO_LARGE`로 차단. editable/screenshot PPTX 양쪽 headless 경로에 동일 적용하고, async job 실패 코드도 안정적으로 내려가도록 보강. compose/env 예시와 운영 ENV 표 갱신 |
 | 2026-08-03 | FileViewer async export progress panel 추가 — async export job 상태 callback을 토스트뿐 아니라 우측 하단 고정 progress panel에도 반영. 메뉴가 닫힌 뒤에도 PDF/PPTX/HTML/ZIP 다운로드 준비 상태가 보이며, export 성공/실패/취소 시 해당 format의 progress state를 정리해 stale 진행 표시가 남지 않도록 함 |
 | 2026-07-31 | FE async export polling fallback 부하 완화 — SSE unavailable/error 시 기존 status polling으로 복구하는 테스트를 추가하고, polling 대기 interval을 1.2s에서 최대 5s까지 점진 확대하도록 변경해 긴 export 작업 중 `/export/jobs/:jobId` 호출량을 줄임 |

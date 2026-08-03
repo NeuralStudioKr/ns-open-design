@@ -20,6 +20,7 @@ import {
   exportProjectAsZip,
   EXPORT_TRANSIENT_GATEWAY_MESSAGE,
   formatExportFailureMessageForUser,
+  isDeckTooLargeForPptxExportError,
   isTeamverProjectStoragePrefixRequiredError,
   openSandboxedPreviewInNewTab,
   prepareImageExportTarget,
@@ -2594,5 +2595,13 @@ describe('formatExportFailureMessageForUser', () => {
         new Error('렌더링된 PDF 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.'),
       ),
     ).toContain('렌더링된 PDF');
+  });
+
+  it('maps oversized PPTX deck errors to PDF guidance', () => {
+    const err = new Error(
+      'EXPORT_DECK_TOO_LARGE: PPTX export supports up to 40 slides; this deck has 41. Download PDF instead.',
+    );
+    expect(isDeckTooLargeForPptxExportError(err)).toBe(true);
+    expect(formatExportFailureMessageForUser(err)).toContain('PDF');
   });
 });

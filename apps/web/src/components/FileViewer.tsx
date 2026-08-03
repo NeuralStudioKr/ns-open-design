@@ -111,6 +111,7 @@ import {
   exportProjectAsPptx,
   exportProjectAsZip,
   formatExportFailureMessageForUser,
+  isDeckTooLargeForPptxExportError,
   // TEMP: used by commented-out screenshot toolbar handler
   // copyImageDataUrlToClipboard,
   exportReactComponentAsHtml,
@@ -4851,6 +4852,18 @@ function HtmlViewer({
           transientMessage: '내보내기 중 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.',
         },
       );
+      if (format === 'pptx' && isDeckTooLargeForPptxExportError(err)) {
+        setExportToast({
+          actionLabel: t('fileViewer.exportPdf'),
+          message,
+          onAction: () => {
+            fireShareExport('pdf', () => runCurrentPdfExport());
+          },
+          tone: 'error',
+          ttlMs: 9000,
+        });
+        return;
+      }
       setExportToast({ message, tone: 'error' });
     };
     // Teamver rendered exports need a stable HTML snapshot (or the daemon
@@ -4969,6 +4982,21 @@ function HtmlViewer({
       ttlMs: 0,
     });
   };
+  const runCurrentPdfExport = (options?: { fresh?: boolean }) => exportProjectAsPdf({
+    deck: effectiveDeck,
+    fallbackPdf: () => exportAsPdf(
+      source ?? lastStablePreviewSourceRef.current ?? '',
+      exportTitle,
+      { deck: effectiveDeck },
+    ),
+    filePath: file.name,
+    fresh: options?.fresh,
+    htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+    onAsyncExportStatus: showAsyncExportProgress('pdf'),
+    projectId,
+    requireRenderedExport: isTeamverEmbedMode(),
+    title: exportTitle,
+  });
   // P0 helpers — keep the artifact_id + artifact_kind derivation in one place
   // so each per-button onClick stays a one-liner. We compute lazily inside the
   // closure because `file.kind` / `file.name` can change as the user navigates
@@ -5547,6 +5575,8 @@ function HtmlViewer({
       message: string;
       tone: 'default' | 'success' | 'error' | 'loading';
       ttlMs?: number;
+      actionLabel?: string;
+      onAction?: () => void;
     } | null
   >(null);
   const [asyncExportProgress, setAsyncExportProgress] = useState<AsyncExportProgressPanelState | null>(null);
@@ -10717,21 +10747,7 @@ function HtmlViewer({
                     onOpenImageExport={openImageExportModal}
                     onOpenSaveAsTemplate={openSaveAsTemplateModal}
                     fireShareExport={fireShareExport}
-	                    exportPdf={(options) => exportProjectAsPdf({
-	                      deck: effectiveDeck,
-	                      fallbackPdf: () => exportAsPdf(
-                        source ?? lastStablePreviewSourceRef.current ?? '',
-                        exportTitle,
-                        { deck: effectiveDeck },
-                      ),
-	                      filePath: file.name,
-	                      fresh: options?.fresh,
-	                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
-	                      onAsyncExportStatus: showAsyncExportProgress('pdf'),
-	                      projectId,
-	                      requireRenderedExport: isTeamverEmbedMode(),
-	                      title: exportTitle,
-	                    })}
+	                    exportPdf={(options) => runCurrentPdfExport(options)}
                     exportPptx={() => exportProjectAsPptx({
                       deck: effectiveDeck,
                       projectId,
@@ -11100,6 +11116,8 @@ function HtmlViewer({
                           ?? (exportToast.tone === 'loading' ? 8000 : 2200)
                       }
                       placement="top"
+                      actionLabel={exportToast.actionLabel}
+                      onAction={exportToast.onAction}
                       onDismiss={() => setExportToast(null)}
                     />,
                     document.body,
