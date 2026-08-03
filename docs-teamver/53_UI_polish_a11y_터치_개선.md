@@ -99,7 +99,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 9 | `69c688105` | escape Design Home focus 링 · assistant-footer focus-within · Drive/hero/DS/plugin `title` | 유지 |
 | 10 | `c525e5cce` | Drive picker/import 모달 시각 polish (색·여백·타이포) — `tools.css` only | 유지 |
 | 11 | `df36b570a` | 홈 섹션 제목 sans 통일 (recent/plugins/entry) | 유지 |
-| 12 | *(push 후 pin)* | DS fullscreen·BYOK·agent cancel 터치 · empty titles · bg-runs · user-actions 28 · plugins design sans | 유지 |
+| 12 | `34b345db8` | DS fullscreen·BYOK·agent cancel 터치 · empty titles · bg-runs · user-actions 28 · plugins design sans | 유지 |
 
 `f97ee14ed` 메시지의 “28–32px” 방향은 **리뷰로 철회**된 부분이 있음. **유효 SSOT는 `29466ae40` 이후 원칙**.
 
