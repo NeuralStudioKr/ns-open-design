@@ -1035,6 +1035,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-03 | Export async runner 리뷰 보강 — job TTL 만료·잘못된 job id 등으로 `markExportJobRunning`이 실패하면 Chromium render를 시작하지 않고 skip warning 후 종료하도록 수정. 상태 저장소에 남지 않는 작업이 백그라운드에서 불필요하게 렌더링되는 edge case를 테스트로 고정 |
 | 2026-08-03 | Phase 3 staging 검증 체크리스트 추가 — async export flag를 BE/FE 함께 켜는 조건, 정상 deck PDF/PPTX/HTML/ZIP job flow, 41장 이상 PPTX 제한 메시지, S3 offload required 전환 전 관찰 포인트를 문서화. 상용 체크리스트의 async job 항목은 1차 구현 완료·staging 검증 대기로 갱신 |
 | 2026-08-03 | 대형 PPTX 정책 문구 정리 — `EXPORT_DECK_TOO_LARGE` 사용자 메시지를 “PPTX 변환이 오래 걸릴 수 있음”에서 “PPTX 다운로드는 제한 장수 이하 제공, 현재 덱은 제한 초과이므로 PDF 다운로드”로 변경. daemon error message도 대형 덱용 PDF 다운로드 안내로 맞추고, 상세 장수 파싱 및 generic fallback 테스트를 추가 |
 | 2026-08-03 | Export async job runner 모듈 분리 — `import-export-routes.ts` 내부 background 실행 함수를 `export-job-runner.ts`로 분리. route는 요청 검증·job 생성·URL 응답에 집중하고, runner는 렌더 선택·offload 요구 검증·download ticket 저장·job 상태 전환을 담당하도록 경계를 정리. 별도 Chromium worker 프로세스 전환 전에도 동일 실행 계약을 테스트할 수 있게 함 |

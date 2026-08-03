@@ -125,4 +125,36 @@ describe('export job runner', () => {
       message: 'PPTX export supports up to 40 slides; this deck has 41. Use PDF download for this large deck.',
     });
   });
+
+  it('does not render when the job cannot be marked running', async () => {
+    let renderCalls = 0;
+
+    await runExportJobInBackground({
+      request: {
+        jobId: '0123456789abcdef0123456789abcdef',
+        projectId: 'proj-1',
+        workspaceId: null,
+        format: 'html',
+        fileName: 'deck.html',
+        deck: true,
+      },
+      deps: {
+        renderContext: (projectId) => ({
+          daemonUrl: 'http://127.0.0.1:7456',
+          projectId,
+          projectsRoot: '/tmp/projects',
+        }),
+        prepareOffloadPayload: async () => ({}),
+        renderers: testRenderers({
+          html: async () => {
+            renderCalls += 1;
+            return htmlOutcome();
+          },
+        }),
+        logger: { warn: () => undefined },
+      },
+    });
+
+    expect(renderCalls).toBe(0);
+  });
 });

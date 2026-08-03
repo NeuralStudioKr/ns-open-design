@@ -94,7 +94,15 @@ export async function runExportJobInBackground(input: {
   const storeDownload = deps.storeDownload ?? storeExportDownload;
   const isOffloadRequired = deps.isOffloadRequired ?? isExportOffloadRequired;
   const logger = deps.logger ?? console;
-  markExportJobRunning(request.projectId, request.jobId);
+  const runningJob = markExportJobRunning(request.projectId, request.jobId);
+  if (!runningJob) {
+    logger.warn('[export/job] skipped missing job', {
+      projectId: request.projectId,
+      jobId: request.jobId,
+      format: request.format,
+    });
+    return;
+  }
   try {
     let outcome: ExportCacheOutcome;
     const baseRequest = {
