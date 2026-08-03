@@ -250,6 +250,7 @@ import {
   measureIframeHostScale,
   measureIframeOffsetInHost,
 } from '../edit-mode/preview-coords';
+import { placeManualEditFloatingPanel } from '../edit-mode/floating-panel-place';
 import {
   parseExplicitPx,
   resizeHistoryLabel,
@@ -931,39 +932,39 @@ function manualEditFloatingPanelStyle(
   previewScale: number,
   canvasSize: PreviewCanvasSize | undefined,
   hostOffset: { x: number; y: number } = { x: 0, y: 0 },
+  hostPaintRect: ManualEditRect | null = null,
 ): CSSProperties {
-  const panelWidth = 320;
-  const preferredPanelHeight = 380;
-  const pad = 12;
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
-  const panelHeight = Math.min(preferredPanelHeight, Math.max(260, canvasHeight - pad * 2));
   const scaled = contentRectToHostRect(target.rect, previewScale);
-  const hostRect = {
+  const composedHostRect = {
     x: hostOffset.x + scaled.x,
     y: hostOffset.y + scaled.y,
     width: scaled.width,
     height: scaled.height,
   };
-  const targetLeft = hostRect.x;
-  const targetTop = hostRect.y;
-  const targetRight = hostRect.x + hostRect.width;
-  let left = targetRight + pad;
-  if (left + panelWidth > canvasWidth - pad) {
-    left = Math.max(pad, targetLeft - panelWidth - pad);
-  }
-  const top = Math.max(
-    pad,
-    Math.min(targetTop, Math.max(pad, canvasHeight - panelHeight - pad)),
-  );
+  // Prefer live paint when available so placement matches the selection chrome.
+  const hostRect =
+    hostPaintRect
+    && hostPaintRect.width >= 1
+    && hostPaintRect.height >= 1
+      ? hostPaintRect
+      : composedHostRect;
+  // Prefer a non-overlapping side (right → left → below → above → dock).
+  // Wide headlines used to clamp over the target when neither flank fit 320px.
+  const placed = placeManualEditFloatingPanel({
+    target: hostRect,
+    canvasWidth,
+    canvasHeight,
+  });
   // Height is left to the content (auto): a short inspector (e.g. typography
   // only) should be a compact card, not a tall half-empty panel. The cap only
   // engages for long inspectors, at which point the scroll body takes over.
   return {
-    left,
-    top,
-    width: panelWidth,
-    maxHeight: panelHeight,
+    left: placed.left,
+    top: placed.top,
+    width: placed.width,
+    maxHeight: placed.maxHeight,
   };
 }
 
@@ -7997,6 +7998,9 @@ function HtmlViewer({
       if (!(await flushManualEditStyleSave())) return;
     }
     setManualEditPageStylesOpen(false);
+    // Re-run auto placement for the new target — keep a prior drag only while
+    // the same element stays selected.
+    setManualEditPanelPosition(null);
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
     manualEditResizeSessionActiveRef.current = false;
@@ -10132,6 +10136,7 @@ function HtmlViewer({
               manualEditHostScale,
               previewBodySize,
               manualEditHostOffset,
+              manualEditHostPaintRect,
             ),
             ...(manualEditPanelPosition ?? {}),
           }
