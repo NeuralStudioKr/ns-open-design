@@ -9,8 +9,11 @@ import {
   resolveTeamverProjectPreviewPrefix,
 } from "../teamverProjectPreviewScope";
 
-const DECK_PREVIEW_WIDTH = 1280;
-const DECK_PREVIEW_HEIGHT = 720;
+// Match Teamver slide canvas (canvasSlideLaunch / TEAMVER_SLIDE_CANVAS).
+// Older 1280×720 forced absolute-px decks to clip; scripts are stripped so
+// fit() never rescales inside the thumb iframe.
+const DECK_PREVIEW_WIDTH = 1920;
+const DECK_PREVIEW_HEIGHT = 1080;
 
 const htmlCoverCache = new Map<string, string>();
 const htmlCoverInflight = new Map<string, Promise<string>>();
@@ -125,6 +128,12 @@ function AuthenticatedHtmlCover({
           loading="lazy"
           sandbox="allow-scripts"
           tabIndex={-1}
+          style={{
+            width: DECK_PREVIEW_WIDTH,
+            height: DECK_PREVIEW_HEIGHT,
+            transform: `scale(${scale})`,
+            transformOrigin: "0 0",
+          }}
         />
       ) : (
         <span className={deckLoadingClassName} aria-hidden />
@@ -164,17 +173,40 @@ export function parseProjectRawUrl(
 async function resolveCoverBaseHref(
   src: string,
   signal?: AbortSignal,
-): Promise<string> {
-  if (!isTeamverEmbedMode()) return src;
+): Promise<{ href: string; scoped: boolean }> {
+  if (!isTeamverEmbedMode()) return { href: src, scoped: true };
   const parsed = parseProjectRawUrl(src);
-  if (!parsed) return src;
-  const prefix = await resolveTeamverProjectPreviewPrefix(
-    parsed.projectId,
-    parsed.filePath,
-    { signal },
-  );
-  if (!prefix) return src;
-  return projectScopedPreviewUrl(prefix, parsed.filePath);
+  if (!parsed) return { href: src, scoped: false };
+  // Retry briefly — a one-shot preview-url miss must not poison the cover
+  // cache with an auth-gated /raw base that sandboxed iframes cannot load.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (signal?.aborted) break;
+    const prefix = await resolveTeamverProjectPreviewPrefix(
+      parsed.projectId,
+      parsed.filePath,
+      { signal },
+    );
+    if (prefix) {
+      return {
+        href: projectScopedPreviewUrl(prefix, parsed.filePath),
+        scoped: true,
+      };
+    }
+    if (attempt < 2) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 120 * (attempt + 1));
+        signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            resolve();
+          },
+          { once: true },
+        );
+      });
+    }
+  }
+  return { href: src, scoped: false };
 }
 
 async function loadHtmlCover(
@@ -198,10 +230,13 @@ async function loadHtmlCover(
     });
     if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
     const html = await res.text();
-    const baseHref = await resolveCoverBaseHref(src, signal);
+    const { href: baseHref, scoped } = await resolveCoverBaseHref(src, signal);
     const parsed =
       mode === "deck" ? deckPreviewSrcDoc(html, baseHref) : pagePreviewSrcDoc(html, baseHref);
-    htmlCoverCache.set(cacheKey, parsed);
+    // Never cache embed covers that fell back to /raw — next mount should retry.
+    if (scoped || !isTeamverEmbedMode()) {
+      htmlCoverCache.set(cacheKey, parsed);
+    }
     return parsed;
   })().finally(() => {
     htmlCoverInflight.delete(cacheKey);
@@ -249,9 +284,11 @@ export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
       flex: none !important;
       scroll-snap-align: none !important;
     }
-    .slide:not(:first-of-type),
-    section[data-slide]:not(:first-of-type),
-    section[data-screen-label]:not(:first-of-type),
+    /* Sibling combinator: :first-of-type hides the real first .slide when a
+       preceding <section> sibling steals first-of-type. */
+    .slide ~ .slide,
+    section[data-slide] ~ section[data-slide],
+    section[data-screen-label] ~ section[data-screen-label],
     .deck-counter,
     .deck-controls,
     .deck-hint,

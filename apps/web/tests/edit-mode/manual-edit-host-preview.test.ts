@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from 'vitest';
-import { applyManualEditPreviewStylesToDocument } from '../../src/edit-mode/manual-edit-host-preview';
+import {
+  applyManualEditPreviewStylesToDocument,
+  measureManualEditTargetContentRect,
+  measureManualEditTargetHostRect,
+} from '../../src/edit-mode/manual-edit-host-preview';
 
 function makeDoc(html: string): Document {
   const doc = document.implementation.createHTMLDocument('preview');
@@ -55,5 +59,92 @@ describe('manual edit host preview fallback', () => {
 
     expect(ok).toBe(true);
     expect(doc.body.style.getPropertyValue('background-color')).toBe('rgb(0, 0, 0)');
+  });
+
+  it('resolves path-* ids via child-index walk when attrs are absent', () => {
+    const doc = makeDoc('<p>Copy</p>');
+    const ok = applyManualEditPreviewStylesToDocument(doc, 'path-0', { fontSize: '28px' });
+    const el = doc.body.children.item(0) as HTMLElement;
+
+    expect(ok).toBe(true);
+    expect(el.style.getPropertyValue('font-size')).toBe('28px');
+  });
+
+  it('skips host chrome siblings when resolving path-* ids', () => {
+    const doc = makeDoc(
+      [
+        '<script data-od-sandbox-shim></script>',
+        '<p>Copy</p>',
+        '<script data-od-edit-bridge></script>',
+      ].join(''),
+    );
+    const ok = applyManualEditPreviewStylesToDocument(doc, 'path-0', { fontSize: '30px' });
+    const el = doc.querySelector('p') as HTMLElement;
+
+    expect(ok).toBe(true);
+    expect(el.style.getPropertyValue('font-size')).toBe('30px');
+  });
+
+  it('measures selected target content rects from the iframe document', () => {
+    const frame = document.createElement('iframe');
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument!;
+    doc.body.innerHTML = '<div data-od-id="card">Card</div>';
+    const el = doc.querySelector('[data-od-id="card"]') as HTMLElement;
+    el.getBoundingClientRect = () => ({
+      x: 12, y: 24, width: 160, height: 80,
+      top: 24, left: 12, right: 172, bottom: 104,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+    expect(measureManualEditTargetContentRect(frame, 'card')).toEqual({
+      x: 12,
+      y: 24,
+      width: 160,
+      height: 80,
+    });
+    frame.remove();
+  });
+
+  it('projects the element into host content coordinates through iframe scale', () => {
+    const host = document.createElement('div');
+    const frame = document.createElement('iframe');
+    document.body.append(host, frame);
+    const doc = frame.contentDocument!;
+    doc.body.innerHTML = '<div data-od-id="card">Card</div>';
+    const el = doc.querySelector('[data-od-id="card"]') as HTMLElement;
+    el.getBoundingClientRect = () => ({
+      x: 20, y: 10, width: 100, height: 50,
+      top: 10, left: 20, right: 120, bottom: 60,
+      toJSON: () => ({}),
+    }) as DOMRect;
+    host.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 800, height: 600,
+      top: 0, left: 0, right: 800, bottom: 600,
+      toJSON: () => ({}),
+    }) as DOMRect;
+    frame.getBoundingClientRect = () => ({
+      x: 40, y: 80, width: 400, height: 300,
+      top: 80, left: 40, right: 440, bottom: 380,
+      toJSON: () => ({}),
+    }) as DOMRect;
+    Object.defineProperty(frame, 'offsetWidth', { value: 800 });
+    Object.defineProperty(frame, 'offsetHeight', { value: 600 });
+    Object.defineProperty(host, 'clientLeft', { value: 0 });
+    Object.defineProperty(host, 'clientTop', { value: 0 });
+    Object.defineProperty(host, 'scrollLeft', { value: 16 });
+    Object.defineProperty(host, 'scrollTop', { value: 32 });
+    Object.defineProperty(frame, 'clientLeft', { value: 0 });
+    Object.defineProperty(frame, 'clientTop', { value: 0 });
+
+    // scale 0.5: host = iframeOrigin + content*scale + scroll
+    expect(measureManualEditTargetHostRect(frame, host, 'card')).toEqual({
+      x: 40 + 20 * 0.5 + 16,
+      y: 80 + 10 * 0.5 + 32,
+      width: 50,
+      height: 25,
+    });
+    frame.remove();
+    host.remove();
   });
 });

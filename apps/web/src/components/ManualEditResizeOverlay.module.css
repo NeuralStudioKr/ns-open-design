@@ -1,29 +1,66 @@
-.manualEditResizeOverlay {
+.overlay {
   position: absolute;
+  z-index: 30;
+  pointer-events: none;
   box-sizing: border-box;
   border: 1.5px solid #2563eb;
-  pointer-events: none;
-  z-index: 4;
+  outline: none;
 }
 
-.handle {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  margin: -7px 0 0 -7px;
-  padding: 0;
-  border: 1px solid #2563eb;
-  border-radius: 2px;
-  background: #fff;
+/* Interactive whenever resize is available — not only when body-move is on.
+   Edge hit-testing on the body needs pointer events even for flow boxes. */
+.interactive {
   pointer-events: auto;
   touch-action: none;
 }
 
-.handleN { left: 50%; top: 0; cursor: ns-resize; }
-.handleS { left: 50%; top: 100%; cursor: ns-resize; }
-.handleE { left: 100%; top: 50%; cursor: ew-resize; }
-.handleW { left: 0; top: 50%; cursor: ew-resize; }
-.handleNE { left: 100%; top: 0; cursor: nesw-resize; }
-.handleNW { left: 0; top: 0; cursor: nwse-resize; }
-.handleSE { left: 100%; top: 100%; cursor: nwse-resize; }
-.handleSW { left: 0; top: 100%; cursor: nwse-resize; }
+.movable {
+  cursor: grab;
+}
+
+.moving {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.handle {
+  position: absolute;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  padding: 0;
+  border: 1.5px solid #2563eb;
+  border-radius: 2px;
+  background: #fff;
+  box-sizing: border-box;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+/* Invisible hit slop so edge grabs prefer resize over body-move. */
+.handle::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  pointer-events: auto;
+}
+
+.handle::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  background: #2563eb;
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+.handle[aria-disabled='true'] {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+.handle:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
+}

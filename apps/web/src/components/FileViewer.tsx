@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { Button, Input, Select } from '@open-design/components';
 import { APP_CHROME_FILE_ACTIONS_ID, APP_CHROME_FILE_ACTIONS_SELECTOR } from './AppChromeHeader';
@@ -167,7 +167,6 @@ import {
   shouldCacheRevisionContent,
 } from '../runtime/revision-content-cache';
 import { canResizeTarget } from '../edit-mode/resize-eligibility';
-import { parseManualEditStylePx } from '../edit-mode/resize-math';
 import { cacheParentRevisionOnPush, canApplyRevisionFromClientCache } from '../runtime/revision-restore';
 import {
   postDeckHostViewportToIframe,
@@ -247,6 +246,20 @@ import {
   readManualEditStyles,
 } from '../edit-mode/source-patches';
 import {
+  contentRectToHostRect,
+  measureIframeHostScale,
+  measureIframeOffsetInHost,
+} from '../edit-mode/preview-coords';
+import {
+  parseExplicitPx,
+  resizeHistoryLabel,
+} from '../edit-mode/resize-math';
+import {
+  moveHistoryLabel,
+  PROMOTE_MOVE_STYLE_KEYS,
+  viewportRectAfterMoveCommit,
+} from '../edit-mode/move-math';
+import {
   createManualEditSourcePin,
   manualEditHistoryConfirmTrustsLocal,
   preferManualEditPinnedSource,
@@ -260,6 +273,8 @@ import {
 import { isManualEditKeyboardTextTarget } from '../edit-mode/manual-edit-keyboard';
 import {
   MANUAL_EDIT_STYLE_AUTOSAVE_MS,
+  keyedManualEditStyleRollback,
+  manualEditGestureRollbackKeys,
   restoreManualEditPendingStyleAfterFailedFlush,
   shouldFlushManualEditStylesOnTargetBoundary,
   waitForManualEditSaveIdle,
@@ -268,6 +283,8 @@ import { manualEditStyleReplayPatches } from '../edit-mode/manual-edit-style-rep
 import {
   applyManualEditPreviewStylesToDocument,
   iframeContentDocumentIfAccessible,
+  measureManualEditTargetContentRect,
+  measureManualEditTargetHostRect,
 } from '../edit-mode/manual-edit-host-preview';
 import {
   manualEditPatchBaseSource,
@@ -279,7 +296,7 @@ import {
   manualEditInspectorStyleValue,
   manualEditStyleValuesEqual,
 } from '../edit-mode/manual-edit-style-values';
-import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
+import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditRect, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import {
   FILE_REVISION_RETENTION_LIMIT_DEFAULT,
@@ -913,17 +930,24 @@ function manualEditFloatingPanelStyle(
   target: ManualEditTarget,
   previewScale: number,
   canvasSize: PreviewCanvasSize | undefined,
+  hostOffset: { x: number; y: number } = { x: 0, y: 0 },
 ): CSSProperties {
-  const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
   const panelWidth = 320;
   const preferredPanelHeight = 380;
   const pad = 12;
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
   const panelHeight = Math.min(preferredPanelHeight, Math.max(260, canvasHeight - pad * 2));
-  const targetLeft = target.rect.x * scale;
-  const targetTop = target.rect.y * scale;
-  const targetRight = (target.rect.x + target.rect.width) * scale;
+  const scaled = contentRectToHostRect(target.rect, previewScale);
+  const hostRect = {
+    x: hostOffset.x + scaled.x,
+    y: hostOffset.y + scaled.y,
+    width: scaled.width,
+    height: scaled.height,
+  };
+  const targetLeft = hostRect.x;
+  const targetTop = hostRect.y;
+  const targetRight = hostRect.x + hostRect.width;
   let left = targetRight + pad;
   if (left + panelWidth > canvasWidth - pad) {
     left = Math.max(pad, targetLeft - panelWidth - pad);
@@ -951,14 +975,21 @@ function manualEditHoverIconStyle(
   target: ManualEditTarget,
   previewScale: number,
   canvasSize: PreviewCanvasSize | undefined,
+  hostOffset: { x: number; y: number } = { x: 0, y: 0 },
 ): CSSProperties {
-  const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
   const iconSize = 26;
   const inset = 4;
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
-  const targetTop = target.rect.y * scale;
-  const targetRight = (target.rect.x + target.rect.width) * scale;
+  const scaled = contentRectToHostRect(target.rect, previewScale);
+  const hostRect = {
+    x: hostOffset.x + scaled.x,
+    y: hostOffset.y + scaled.y,
+    width: scaled.width,
+    height: scaled.height,
+  };
+  const targetTop = hostRect.y;
+  const targetRight = hostRect.x + hostRect.width;
   const left = Math.max(
     inset,
     Math.min(targetRight - iconSize - inset, canvasWidth - iconSize - inset),
@@ -1821,7 +1852,7 @@ function LiveArtifactRefreshNotice({
       </span>
       {onDismiss ? (
         <button type="button" className="icon-only" onClick={onDismiss} aria-label={dismissLabel}>
-          ×
+          <Icon name="close" size={12} />
         </button>
       ) : null}
     </div>
@@ -3160,7 +3191,7 @@ function InspectPanel({
           <code title={target.selector}>{target.elementId}</code>
         </div>
         <Button variant="ghost" onClick={onClose} aria-label={embedUiLabel('Close inspect', '검사 패널 닫기')}>
-          ×
+          <Icon name="close" size={14} />
         </Button>
       </header>
 
@@ -4744,7 +4775,7 @@ function HtmlViewer({
   // template) and the Teamver Drive Publish menu item stay visible because
   // they either land on the user's machine or stay inside the Teamver
   // workspace tenant.
-  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp, hideDrawAnnotation } = useTeamverBranding();
+  const { hideExternalShareSurfaces, hideUsefulTips, slideOnlyMvp, hideDrawAnnotation, hideManualEditBoxDrag, hideFileRevisionChrome } = useTeamverBranding();
   // Kept in sync with live `source` / last-stable preview so fireShareExport
   // (declared above those hooks) can gate Teamver rendered downloads without
   // reading later const bindings.
@@ -5110,7 +5141,28 @@ function HtmlViewer({
   const [manualEditSrcDocActive, setManualEditSrcDocActive] = useState(false);
   const [manualEditFrozenSource, setManualEditFrozenSource] = useState<string | null>(null);
   const [manualEditInlineTextEditing, setManualEditInlineTextEditing] = useState(false);
-  const [manualEditResizeDraft, setManualEditResizeDraft] = useState<{ widthPx: number; heightPx: number } | null>(null);
+  const [manualEditResizeDraftSize, setManualEditResizeDraftSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [manualEditMoveDraftPos, setManualEditMoveDraftPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  /** Iframe offset inside `.manual-edit-workspace` — canvas may be centered. */
+  const [manualEditHostOffset, setManualEditHostOffset] = useState({ x: 0, y: 0 });
+  /** Measured CSS scale of the preview iframe (toolbar zoom can diverge). */
+  const [manualEditHostScale, setManualEditHostScale] = useState(1);
+  /**
+   * Live host-space paint box for the selected element. Overlay prefers this
+   * over composing target.rect × scale + offset (which goes stale when the
+   * iframe is not ready yet or zoom shell remounts).
+   */
+  const [manualEditHostPaintRect, setManualEditHostPaintRect] = useState<ManualEditRect | null>(null);
+  /** Bumped when the active preview iframe loads so geometry sync retries. */
+  const [manualEditGeomEpoch, setManualEditGeomEpoch] = useState(0);
+  const manualEditWorkspaceRef = useRef<HTMLDivElement | null>(null);
+  const manualEditResizeSessionActiveRef = useRef(false);
   const manualEditModeRef = useRef(false);
   const manualEditResizePausedRef = useRef(false);
   const manualEditFrozenSourceRef = useRef<string | null>(null);
@@ -5482,6 +5534,9 @@ function HtmlViewer({
   const [selectedSideCommentIds, setSelectedSideCommentIds] = useState<Set<string>>(() => new Set());
   const [commentSidePanelCollapsed, setCommentSidePanelCollapsed] = useState(false);
   const [revisionHistoryOpen, setRevisionHistoryOpen] = useState(false);
+  useEffect(() => {
+    if (hideFileRevisionChrome) setRevisionHistoryOpen(false);
+  }, [hideFileRevisionChrome]);
   const [revisionConflictToast, setRevisionConflictToast] = useState<string | null>(null);
   const [revisionStackInvalidated, setRevisionStackInvalidated] = useState(false);
   const [revisionRetentionLimit, setRevisionRetentionLimit] = useState(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
@@ -6665,7 +6720,15 @@ function HtmlViewer({
     if (!win) return;
     win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
     postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null);
-  }, [manualEditMode, selectedManualEditTarget?.id, srcDoc, useUrlLoadPreview]);
+    // hostChrome tracks overlay mount: also re-post when draw / inline-text hide it.
+  }, [
+    manualEditMode,
+    selectedManualEditTarget?.id,
+    srcDoc,
+    useUrlLoadPreview,
+    manualEditInlineTextEditing,
+    drawOverlayOpen,
+  ]);
 
   const previewStyleToIframe = useCallback((id: string, styles: Partial<ManualEditStyles>, version: number) => {
     const frame = iframeRef.current;
@@ -6688,7 +6751,27 @@ function HtmlViewer({
   function postSelectedManualEditTargetToIframe(id: string | null, target: HTMLIFrameElement | null = iframeRef.current) {
     const win = target?.contentWindow;
     if (!win) return;
-    win.postMessage({ type: 'od-edit-selected-target', id }, '*');
+    // Prefer render-state over the ref: the selection-sync effect can run
+    // before the ref-sync effect after setSelectedManualEditTarget.
+    const selected = (
+      id
+      && selectedManualEditTarget
+      && selectedManualEditTarget.id === id
+    )
+      ? selectedManualEditTarget
+      : (id && selectedManualEditTargetRef.current?.id === id
+        ? selectedManualEditTargetRef.current
+        : null);
+    // Match ManualEditResizeOverlay mount: only suppress the iframe ring when
+    // the host overlay is actually painted (not during draw / inline text /
+    // prod drag kill-switch).
+    const hostChrome = Boolean(
+      selected
+      && !drawOverlayOpen
+      && !hideManualEditBoxDrag
+      && canResizeTarget(selected, { inlineTextEditing: manualEditInlineTextEditing }),
+    );
+    win.postMessage({ type: 'od-edit-selected-target', id, hostChrome }, '*');
   }
 
   function requestManualEditTargetRemeasure(id: string, target: HTMLIFrameElement | null = iframeRef.current) {
@@ -6716,28 +6799,25 @@ function HtmlViewer({
   // still-pending draft so the canvas does not look reverted.
   function replayManualEditStylesToIframe(target: HTMLIFrameElement | null = iframeRef.current) {
     if (!manualEditMode) return;
-    const win = target?.contentWindow;
-    if (!win) return;
-    const patches = manualEditStyleReplayPatches(
-      manualEditFrozenSource,
-      sourceRef.current,
-    );
-    for (const patch of patches) {
-      win.postMessage({
-        type: 'od-edit-preview-style',
-        id: patch.id,
-        styles: patch.styles,
-        version: nextManualEditPreviewVersion(),
-      }, '*');
+    // Temporarily point the shared preview helper at the remounting frame so
+    // host fallback (`applyManualEditPreviewStylesToDocument`) runs too —
+    // postMessage-only misses bridge-less / late-bridge / path-* targets.
+    const previous = iframeRef.current;
+    if (target && target !== previous) iframeRef.current = target;
+    try {
+      const patches = manualEditStyleReplayPatches(
+        manualEditFrozenSource,
+        sourceRef.current,
+      );
+      for (const patch of patches) {
+        previewStyleToIframe(patch.id, patch.styles, nextManualEditPreviewVersion());
+      }
+      const pending = manualEditPendingStyleRef.current;
+      if (!pending) return;
+      previewStyleToIframe(pending.id, pending.styles, pending.version);
+    } finally {
+      if (target && target !== previous) iframeRef.current = previous;
     }
-    const pending = manualEditPendingStyleRef.current;
-    if (!pending) return;
-    win.postMessage({
-      type: 'od-edit-preview-style',
-      id: pending.id,
-      styles: pending.styles,
-      version: pending.version,
-    }, '*');
   }
 
   useEffect(() => {
@@ -6839,7 +6919,8 @@ function HtmlViewer({
     manualEditPendingStyleRef.current = null;
     clearManualEditStyleTimer();
     manualEditResizePausedRef.current = false;
-    setManualEditResizeDraft(null);
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
   }, [file.name]);
 
   const resolveRevisionSnapshotContent = useCallback(async (revisionId: string): Promise<string | null> => {
@@ -7042,6 +7123,113 @@ function HtmlViewer({
     selectedManualEditTargetIdRef.current = selectedManualEditTarget?.id ?? null;
     selectedManualEditTargetRef.current = selectedManualEditTarget;
   }, [selectedManualEditTarget?.id, selectedManualEditTarget]);
+
+  // Keep overlay geometry locked to the painted iframe element. Prefer a live
+  // host-space paint rect (DOM projection) over composing React scale/offset
+  // state — that composition stays wrong when the iframe is not ready yet
+  // (effect early-returns, scale stuck at 1) or after zoom-shell remounts.
+  useLayoutEffect(() => {
+    if (!manualEditMode) {
+      setManualEditHostOffset({ x: 0, y: 0 });
+      setManualEditHostScale(1);
+      setManualEditHostPaintRect(null);
+      return;
+    }
+    let raf = 0;
+    let alive = true;
+    const sync = () => {
+      const frame = iframeRef.current;
+      const workspace = manualEditWorkspaceRef.current;
+      if (!frame || !workspace) return false;
+      const nextScale = measureIframeHostScale(frame);
+      const nextOffset = measureIframeOffsetInHost(frame, workspace);
+      setManualEditHostScale((prev) => (Math.abs(prev - nextScale) < 0.0005 ? prev : nextScale));
+      setManualEditHostOffset((prev) => (
+        Math.abs(prev.x - nextOffset.x) < 0.5 && Math.abs(prev.y - nextOffset.y) < 0.5
+          ? prev
+          : nextOffset
+      ));
+      const selectedId = selectedManualEditTargetIdRef.current;
+      if (!selectedId) {
+        setManualEditHostPaintRect(null);
+        return true;
+      }
+      // During a gesture the overlay follows draft/liveViewport composition.
+      // Refreshing hostPaintRect here fights that math (box morph / jump).
+      if (manualEditResizeSessionActiveRef.current) return true;
+      const paint = measureManualEditTargetHostRect(frame, workspace, selectedId);
+      if (paint && paint.width >= 1 && paint.height >= 1) {
+        setManualEditHostPaintRect((prev) => (
+          prev
+          && Math.abs(prev.x - paint.x) < 0.5
+          && Math.abs(prev.y - paint.y) < 0.5
+          && Math.abs(prev.width - paint.width) < 0.5
+          && Math.abs(prev.height - paint.height) < 0.5
+            ? prev
+            : paint
+        ));
+      } else {
+        // Failed measure for this id — drop stale paint from a prior (larger)
+        // selection so the overlay cannot stay oversized.
+        setManualEditHostPaintRect(null);
+      }
+      const measured = measureManualEditTargetContentRect(frame, selectedId);
+      if (!measured || measured.width < 1 || measured.height < 1) return true;
+      setSelectedManualEditTarget((current) => {
+        if (!current || current.id !== selectedId) return current;
+        const same =
+          current.rect.x === measured.x
+          && current.rect.y === measured.y
+          && current.rect.width === measured.width
+          && current.rect.height === measured.height;
+        if (same) return current;
+        const next = { ...current, rect: measured };
+        selectedManualEditTargetRef.current = next;
+        return next;
+      });
+      return true;
+    };
+    const tick = () => {
+      if (!alive) return;
+      const ok = sync();
+      // Keep sampling while a target is selected (CSS transform / scroll can
+      // move the painted box without ResizeObserver). Also retry while the
+      // iframe/workspace are not ready — first selection often races srcDoc
+      // remount and used to leave scale stuck at 1.
+      if (!ok || selectedManualEditTargetIdRef.current) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    const frame = iframeRef.current;
+    const workspace = manualEditWorkspaceRef.current;
+    const ro = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => { sync(); })
+      : null;
+    if (frame) ro?.observe(frame);
+    if (workspace) ro?.observe(workspace);
+    // Mobile/tablet workspace scrolls; host paint rect is scroll-dependent.
+    workspace?.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+      workspace?.removeEventListener('scroll', sync);
+      window.removeEventListener('resize', sync);
+    };
+  }, [
+    manualEditMode,
+    selectedManualEditTarget?.id,
+    previewScale,
+    previewViewport,
+    manualEditViewportWidth,
+    manualEditGeomEpoch,
+    srcDoc,
+    useUrlLoadPreview,
+    previewBodySize?.width,
+    previewBodySize?.height,
+  ]);
 
   useEffect(() => {
     if (!boardMode) {
@@ -7345,6 +7533,9 @@ function HtmlViewer({
         return;
       }
       if (data.type === 'od-edit-rect' && data.ok && data.target) {
+        // Ignore remasure while a geometry gesture still owns the overlay —
+        // a stale postMessage must not yank the box mid-drag.
+        if (manualEditResizeSessionActiveRef.current) return;
         const measured = data.target;
         setSelectedManualEditTarget((current) => {
           if (current?.id !== measured.id) return current;
@@ -7443,13 +7634,228 @@ function HtmlViewer({
     previewStyleToIframe(id, styles, version);
     // Autosave shortly after the user stops tweaking — select/background/
     // exit also flush, but a remount or crash before those gestures must not
-    // be the only persistence path.
+    // be the only persistence path. Resize drag sessions pause this timer.
     clearManualEditStyleTimer();
+    if (manualEditResizeSessionActiveRef.current) return;
     manualEditStyleTimerRef.current = setTimeout(() => {
       manualEditStyleTimerRef.current = null;
       if (manualEditResizePausedRef.current) return;
       void flushManualEditStyleSave();
     }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
+  }
+
+  function handleManualEditResizeSessionChange(active: boolean) {
+    manualEditResizeSessionActiveRef.current = active;
+    manualEditResizePausedRef.current = active;
+    if (active) {
+      clearManualEditStyleTimer();
+    }
+    // Do not clear resize/move drafts here. endDrag clears liveViewport before
+    // the async flush finishes; wiping drafts in the same turn snaps the host
+    // overlay back to a stale target.rect until optimistic commit/remeasure.
+  }
+
+  function applyManualEditGestureOptimisticTarget(
+    target: ManualEditTarget,
+    styles: Partial<ManualEditStyles>,
+    viewport?: { x: number; y: number },
+    options?: { promoted?: boolean },
+  ) {
+    const width = parseExplicitPx(styles.width) ?? target.rect.width;
+    const height = parseExplicitPx(styles.height) ?? target.rect.height;
+    const leftPx = parseExplicitPx(styles.left);
+    const topPx = parseExplicitPx(styles.top);
+    setSelectedManualEditTarget((current) => {
+      if (!current || current.id !== target.id) return current;
+      const base = viewportRectAfterMoveCommit(current.rect, width, height);
+      const next: ManualEditTarget = {
+        ...current,
+        // Apply gesture viewport immediately so the overlay never falls back to
+        // the pre-gesture rect while flush/remeasure is in flight.
+        rect: viewport
+          ? { ...base, x: Math.round(viewport.x), y: Math.round(viewport.y) }
+          : base,
+        styles: { ...current.styles, ...styles },
+        offsetLeft: leftPx ?? current.offsetLeft,
+        offsetTop: topPx ?? current.offsetTop,
+        cssPosition: options?.promoted ? 'absolute' : current.cssPosition,
+      };
+      selectedManualEditTargetRef.current = next;
+      return next;
+    });
+  }
+
+  function refreshManualEditHostPaintRect(id: string | null = selectedManualEditTargetIdRef.current) {
+    if (!id) {
+      setManualEditHostPaintRect(null);
+      return;
+    }
+    // Gesture display is owned by overlay draft/liveViewport composition.
+    if (manualEditResizeSessionActiveRef.current) return;
+    const frame = iframeRef.current;
+    const workspace = manualEditWorkspaceRef.current;
+    if (!frame || !workspace) return;
+    const paint = measureManualEditTargetHostRect(frame, workspace, id);
+    if (paint && paint.width >= 1 && paint.height >= 1) {
+      setManualEditHostPaintRect(paint);
+    } else {
+      setManualEditHostPaintRect(null);
+    }
+    setManualEditHostScale(measureIframeHostScale(frame));
+    setManualEditHostOffset(measureIframeOffsetInHost(frame, workspace));
+  }
+
+  function handleManualEditResizePreview(styles: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    if (!target) return;
+    const version = nextManualEditPreviewVersion();
+    const currentPending = manualEditPendingStyleRef.current;
+    const pendingStyles = currentPending?.id === target.id
+      ? { ...currentPending.styles, ...styles }
+      : styles;
+    clearManualEditStyleTimer();
+    manualEditPendingStyleRef.current = {
+      id: target.id,
+      styles: pendingStyles,
+      label: resizeHistoryLabel(target.label),
+      version,
+    };
+    setManualEditError(null);
+    previewStyleToIframe(target.id, styles, version);
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...styles },
+    }));
+    setManualEditResizeDraftSize((prev) => {
+      const width = parseExplicitPx(styles.width) ?? prev?.width ?? target.rect.width;
+      const height = parseExplicitPx(styles.height) ?? prev?.height ?? target.rect.height;
+      return { width, height };
+    });
+  }
+
+  function handleManualEditMovePreview(styles: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    if (!target) return;
+    const version = nextManualEditPreviewVersion();
+    const currentPending = manualEditPendingStyleRef.current;
+    const pendingStyles = currentPending?.id === target.id
+      ? { ...currentPending.styles, ...styles }
+      : styles;
+    clearManualEditStyleTimer();
+    manualEditPendingStyleRef.current = {
+      id: target.id,
+      styles: pendingStyles,
+      label: moveHistoryLabel(target.label),
+      version,
+    };
+    setManualEditError(null);
+    previewStyleToIframe(target.id, styles, version);
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...styles },
+    }));
+  }
+
+
+  /**
+   * Keyed iframe/draft + pending rollback for a geometry gesture. Used by Esc /
+   * pointercancel and by flush-fail after commit — pending restore alone would
+   * leave the live preview on post-gesture styles while disk stayed old.
+   */
+  function rollbackManualEditGestureStyles(stylesBefore: Partial<ManualEditStyles>) {
+    const target = selectedManualEditTarget;
+    clearManualEditStyleTimer();
+    manualEditResizeSessionActiveRef.current = false;
+    setManualEditMoveDraftPos(null);
+    setManualEditResizeDraftSize(null);
+    if (!target) return;
+    const cancelKeys = manualEditGestureRollbackKeys(stylesBefore, PROMOTE_MOVE_STYLE_KEYS);
+    cancelManualEditPendingStyles(target.id, cancelKeys);
+    const pending = manualEditPendingStyleRef.current;
+    if (
+      pending?.id === target.id
+      && (
+        pending.label === moveHistoryLabel(target.label)
+        || pending.label === resizeHistoryLabel(target.label)
+      )
+    ) {
+      manualEditPendingStyleRef.current = {
+        ...pending,
+        label: `Edit: ${target.label}`,
+      };
+    }
+    const reset = keyedManualEditStyleRollback(stylesBefore, cancelKeys);
+    previewStyleToIframe(target.id, reset, nextManualEditPreviewVersion());
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...reset },
+    }));
+    // Resume autosave for any non-geometry draft that survived the rollback.
+    if (manualEditPendingStyleRef.current && !manualEditResizeSessionActiveRef.current) {
+      clearManualEditStyleTimer();
+      manualEditStyleTimerRef.current = setTimeout(() => {
+        manualEditStyleTimerRef.current = null;
+        void flushManualEditStyleSave();
+      }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
+    }
+  }
+
+  async function handleManualEditResizeCommit(
+    styles: Partial<ManualEditStyles>,
+    stylesBefore: Partial<ManualEditStyles>,
+    viewport?: { x: number; y: number },
+  ) {
+    const target = selectedManualEditTarget;
+    if (!target) return;
+    handleManualEditResizePreview(styles);
+    // Optimistic geometry must land before any await; otherwise clearing
+    // liveViewport/drafts snaps the overlay to the pre-gesture rect.
+    applyManualEditGestureOptimisticTarget(target, styles, viewport);
+    manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
+    const ok = await flushManualEditStyleSave({ force: true });
+    if (!ok) {
+      rollbackManualEditGestureStyles(stylesBefore);
+      return;
+    }
+    // Sync host overlay to the iframe's real border-box after layout settles.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => requestManualEditTargetRemeasure(target.id));
+    });
+  }
+
+  async function handleManualEditMoveCommit(
+    styles: Partial<ManualEditStyles>,
+    stylesBefore: Partial<ManualEditStyles>,
+    viewport?: { x: number; y: number },
+  ) {
+    const target = selectedManualEditTarget;
+    if (!target) return;
+    handleManualEditMovePreview(styles);
+    const promoted = String(styles.position || '').toLowerCase() === 'absolute';
+    applyManualEditGestureOptimisticTarget(target, styles, viewport, { promoted });
+    manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
+    setManualEditMoveDraftPos(null);
+    setManualEditResizeDraftSize(null);
+    const ok = await flushManualEditStyleSave({ force: true });
+    if (!ok) {
+      rollbackManualEditGestureStyles(stylesBefore);
+      return;
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => requestManualEditTargetRemeasure(target.id));
+    });
+  }
+
+  function handleManualEditResizeCancel(stylesBefore: Partial<ManualEditStyles>) {
+    rollbackManualEditGestureStyles(stylesBefore);
+  }
+
+  function handleManualEditMoveCancel(stylesBefore: Partial<ManualEditStyles>) {
+    rollbackManualEditGestureStyles(stylesBefore);
   }
 
   function reconcileManualEditDraftAfterNoOpFlush(pending: ManualEditPendingStyleSave) {
@@ -7472,7 +7878,8 @@ function HtmlViewer({
       return acc;
     }, {});
 
-    setManualEditResizeDraft(null);
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
     previewStyleToIframe(pending.id, resetStyles, nextManualEditPreviewVersion());
 
     if (!target || selectedManualEditTarget?.id === pending.id) {
@@ -7529,65 +7936,6 @@ function HtmlViewer({
     return flushManualEditStyleSave();
   }
 
-  function beginManualEditResizeSession() {
-    clearManualEditStyleTimer();
-    manualEditResizePausedRef.current = true;
-    setManualEditResizeDraft(null);
-  }
-
-  function handleManualEditResizePreview(styles: Partial<ManualEditStyles>) {
-    const target = selectedManualEditTargetRef.current;
-    if (!target) return;
-    const version = nextManualEditPreviewVersion();
-    previewStyleToIframe(target.id, styles, version);
-    const widthPx = styles.width != null
-      ? parseManualEditStylePx(styles.width, target.rect.width)
-      : parseManualEditStylePx(target.styles.width, target.rect.width);
-    const heightPx = styles.height != null
-      ? parseManualEditStylePx(styles.height, target.rect.height)
-      : parseManualEditStylePx(target.styles.height, target.rect.height);
-    setManualEditResizeDraft({ widthPx, heightPx });
-    setManualEditDraft((current) => ({
-      ...current,
-      styles: { ...current.styles, ...styles },
-    }));
-  }
-
-  function cancelManualEditResizeSession(stylesBefore: Partial<ManualEditStyles>) {
-    const target = selectedManualEditTargetRef.current;
-    manualEditResizePausedRef.current = false;
-    setManualEditResizeDraft(null);
-    if (!target) return;
-    previewStyleToIframe(target.id, stylesBefore, nextManualEditPreviewVersion());
-    setManualEditDraft((current) => ({
-      ...current,
-      styles: { ...current.styles, ...stylesBefore },
-    }));
-  }
-
-  async function commitManualEditResizeSession(
-    styles: Partial<ManualEditStyles>,
-    label: string,
-  ): Promise<void> {
-    const target = selectedManualEditTargetRef.current;
-    if (!target) return;
-    manualEditResizePausedRef.current = false;
-    setManualEditResizeDraft(null);
-    const version = nextManualEditPreviewVersion();
-    manualEditPendingStyleRef.current = {
-      id: target.id,
-      styles,
-      label,
-      version,
-    };
-    previewStyleToIframe(target.id, styles, version);
-    setManualEditDraft((current) => ({
-      ...current,
-      styles: { ...current.styles, ...styles },
-    }));
-    await flushManualEditStyleSave({ force: true });
-    requestManualEditTargetRemeasure(target.id);
-  }
 
   function cancelManualEditStyleDraft() {
     const pending = manualEditPendingStyleRef.current;
@@ -7648,12 +7996,20 @@ function HtmlViewer({
       if (!(await flushManualEditStyleSave())) return;
     }
     setManualEditPageStylesOpen(false);
-    setManualEditResizeDraft(null);
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
+    manualEditResizeSessionActiveRef.current = false;
     manualEditResizePausedRef.current = false;
     const base = sourceRef.current ?? '';
     const fields = readManualEditFields(base, target.id);
     selectedManualEditTargetIdRef.current = target.id;
+    selectedManualEditTargetRef.current = target;
     setSelectedManualEditTarget(target);
+    // Drop prior selection paint immediately — a larger parent's rect must not
+    // flash over a smaller newly selected child for a frame.
+    setManualEditHostPaintRect(null);
+    // Measure before paint so the overlay does not flash at scale=1 / offset=0.
+    refreshManualEditHostPaintRect(target.id);
     setManualEditDraft({
       text: fields.text ?? target.fields.text ?? target.text,
       href: fields.href ?? target.fields.href ?? '',
@@ -7681,6 +8037,10 @@ function HtmlViewer({
     selectedManualEditTargetIdRef.current = null;
     setSelectedManualEditTarget(null);
     setManualEditPanelPosition(null);
+    setManualEditResizeDraftSize(null);
+    setManualEditMoveDraftPos(null);
+    setManualEditHostPaintRect(null);
+    manualEditResizeSessionActiveRef.current = false;
     setManualEditDraft(emptyManualEditDraft(sourceRef.current ?? ''));
     setManualEditError(null);
     return true;
@@ -7769,11 +8129,13 @@ function HtmlViewer({
         ))
       ) return false;
       revisionSyncSuppressRef.current = true;
+      // Do not echo `file.artifactManifest` on manual-edit pushes. Style/text
+      // saves never update the sidecar, and a stale client manifest (empty
+      // title, stripped exports) used to 400 the whole revision POST.
       const saved = await pushProjectFileRevision(projectId, file.name, {
         content: result.source,
         source: 'manual_edit',
         label,
-        artifactManifest: file.artifactManifest,
         truncateAfterSequence: truncateAfterSequenceForStack(revisionStackRef.current),
       });
       if (!saved.ok) {
@@ -8206,7 +8568,7 @@ function HtmlViewer({
         content: next,
         source: 'inspect',
         label: embedUiLabel('Style adjustments', '스타일 조정'),
-        artifactManifest: file.artifactManifest,
+        // Inspect tweaks are content-only — avoid stale-manifest 400s.
         truncateAfterSequence: truncateAfterSequenceForStack(revisionStackRef.current),
       });
       if (!saved.ok) {
@@ -8275,6 +8637,7 @@ function HtmlViewer({
   // Revision undo/redo shortcuts (design §8.2): ⌘Z / Ctrl+Z, redo via Shift+Z or Ctrl+Y.
   useEffect(() => {
     if (mode !== 'preview' || source === null) return;
+    if (hideFileRevisionChrome) return;
     function onKey(e: KeyboardEvent) {
       if (drawOverlayOpen) return;
       const target = e.target as HTMLElement | null;
@@ -8311,7 +8674,7 @@ function HtmlViewer({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, source, drawOverlayOpen]);
+  }, [mode, source, drawOverlayOpen, hideFileRevisionChrome]);
 
   useEffect(() => {
     if (!presentMenuOpen) return;
@@ -9765,8 +10128,9 @@ function HtmlViewer({
         ? {
             ...manualEditFloatingPanelStyle(
               selectedManualEditTarget,
-              overlayPreviewScale,
+              manualEditHostScale,
               previewBodySize,
+              manualEditHostOffset,
             ),
             ...(manualEditPanelPosition ?? {}),
           }
@@ -9799,8 +10163,9 @@ function HtmlViewer({
         title={t('manualEdit.editParams')}
         style={manualEditHoverIconStyle(
           manualEditHoverTarget,
-          overlayPreviewScale,
+          manualEditHostScale,
           previewBodySize,
+          manualEditHostOffset,
         )}
         onClick={() => {
           const target = manualEditHoverTarget;
@@ -9812,23 +10177,36 @@ function HtmlViewer({
       </button>
     ) : null;
   const manualEditResizeOverlay =
-    manualEditMode &&
-    !drawOverlayOpen &&
-    selectedManualEditTarget &&
-    canResizeTarget(selectedManualEditTarget, { inlineTextEditing: manualEditInlineTextEditing }) ? (
+    manualEditMode
+    && !hideManualEditBoxDrag
+    && !drawOverlayOpen
+    && selectedManualEditTarget
+    && canResizeTarget(selectedManualEditTarget, {
+      inlineTextEditing: manualEditInlineTextEditing,
+    }) ? (
       <ManualEditResizeOverlay
         target={selectedManualEditTarget}
-        previewScale={overlayPreviewScale}
-        draftWidthPx={manualEditResizeDraft?.widthPx ?? null}
-        draftHeightPx={manualEditResizeDraft?.heightPx ?? null}
-        disabled={manualEditSaving || manualEditInlineTextEditing}
-        onSessionStart={beginManualEditResizeSession}
+        previewScale={manualEditHostScale}
+        hostOffset={manualEditHostOffset}
+        hostPaintRect={manualEditHostPaintRect}
+        draftWidthPx={manualEditResizeDraftSize?.width ?? null}
+        draftHeightPx={manualEditResizeDraftSize?.height ?? null}
+        draftLeftPx={manualEditMoveDraftPos?.x ?? null}
+        draftTopPx={manualEditMoveDraftPos?.y ?? null}
+        // Do not disable handles while saving — HTML disabled buttons drop
+        // pointer events through to the movable body, so resize becomes move.
+        disabled={manualEditInlineTextEditing}
+        onResizeSessionChange={handleManualEditResizeSessionChange}
         onResizePreview={handleManualEditResizePreview}
-        onResizeCommit={(styles, label) => {
-          void commitManualEditResizeSession(styles, label);
+        onResizeCommit={(styles, stylesBefore, viewport) => {
+          void handleManualEditResizeCommit(styles, stylesBefore, viewport);
         }}
-        onResizeCancel={cancelManualEditResizeSession}
-      />
+        onResizeCancel={handleManualEditResizeCancel}
+        onMovePreview={handleManualEditMovePreview}
+        onMoveCommit={(styles, stylesBefore, viewport) => {
+          void handleManualEditMoveCommit(styles, stylesBefore, viewport);
+        }}
+        onMoveCancel={handleManualEditMoveCancel}      />
     ) : null;
   const activeComposerComment = activePreviewCommentId
     ? visibleSideComments.find((comment) => comment.id === activePreviewCommentId) ?? null
@@ -10146,7 +10524,7 @@ function HtmlViewer({
                 </button>
               ) : null}
               <span className="viewer-toolbar-tool-divider" aria-hidden />
-              {source !== null ? (
+              {!hideFileRevisionChrome && source !== null ? (
                 <FileViewerUndoRedoToolbar
                   canUndo={revisionCanUndo}
                   canRedo={revisionCanRedo}
@@ -10162,22 +10540,24 @@ function HtmlViewer({
                   t={t}
                 />
               ) : null}
-              <button
-                type="button"
-                className={`viewer-action viewer-action-icon od-tooltip${revisionHistoryOpen ? ' active' : ''}`}
-                data-testid="file-revision-history-toggle"
-                data-tooltip={t('fileRevision.history.toggle')}
-                data-tooltip-placement="bottom"
-                title={t('fileRevision.history.toggle')}
-                aria-label={t('fileRevision.history.toggle')}
-                aria-pressed={revisionHistoryOpen}
-                onClick={() => {
-                  fireArtifactToolbarClick('revision_history');
-                  setRevisionHistoryOpen((open) => !open);
-                }}
-              >
-                <RemixIcon name="history-line" size={15} />
-              </button>
+              {!hideFileRevisionChrome ? (
+                <button
+                  type="button"
+                  className={`viewer-action viewer-action-icon od-tooltip${revisionHistoryOpen ? ' active' : ''}`}
+                  data-testid="file-revision-history-toggle"
+                  data-tooltip={t('fileRevision.history.toggle')}
+                  data-tooltip-placement="bottom"
+                  title={t('fileRevision.history.toggle')}
+                  aria-label={t('fileRevision.history.toggle')}
+                  aria-pressed={revisionHistoryOpen}
+                  onClick={() => {
+                    fireArtifactToolbarClick('revision_history');
+                    setRevisionHistoryOpen((open) => !open);
+                  }}
+                >
+                  <RemixIcon name="history-line" size={15} />
+                </button>
+              ) : null}
               <button
                 className={`viewer-action viewer-action-icon od-tooltip${manualEditMode ? ' active' : ''}`}
                 type="button"
@@ -10546,6 +10926,7 @@ function HtmlViewer({
           )
         ) : mode === 'preview' ? (
           <div
+            ref={manualEditMode ? manualEditWorkspaceRef : undefined}
             className={`${manualEditMode ? 'manual-edit-workspace' : commentPreviewLayoutClass} preview-viewport preview-viewport-${previewViewport}${drawOverlayOpen ? ' preview-draw-active' : ''}`}
             data-testid={manualEditMode ? undefined : 'comment-preview-layout'}
             style={previewViewportStyle(previewViewport, previewScale, boardPreviewCanvasSize, boardPreviewScaleOptions)}
@@ -10634,6 +11015,7 @@ function HtmlViewer({
                           onLoad={() => {
                             const frame = urlPreviewIframeRef.current;
                             if (useUrlLoadPreview) iframeRef.current = frame;
+                            setManualEditGeomEpoch((n) => n + 1);
                             setUrlSelectionBridgeReady(false);
                             dcViewportRestoreAtRef.current = Date.now();
                             frame?.contentWindow?.postMessage({
@@ -10672,6 +11054,7 @@ function HtmlViewer({
                           onLoad={() => {
                             const frame = urlPreviewIframeRef.current;
                             if (useUrlLoadPreview) iframeRef.current = frame;
+                            setManualEditGeomEpoch((n) => n + 1);
                             setUrlSelectionBridgeReady(false);
                             dcViewportRestoreAtRef.current = Date.now();
                             frame?.contentWindow?.postMessage({
@@ -10711,6 +11094,7 @@ function HtmlViewer({
                         onLoad={() => {
                           const frame = srcDocPreviewIframeRef.current;
                           if (!useUrlLoadPreview) iframeRef.current = frame;
+                          setManualEditGeomEpoch((n) => n + 1);
                           // Reset the activation dedupe exactly ONCE per
                           // freshly mounted iframe DOM node, never on the
                           // subsequent load events that the same node
@@ -10973,7 +11357,7 @@ function HtmlViewer({
                 error={inspectError}
               />
             ) : null}
-            {revisionHistoryOpen && source !== null ? (
+            {!hideFileRevisionChrome && revisionHistoryOpen && source !== null ? (
               <FileRevisionHistoryPanel
                 revisions={revisionStack.revisions}
                 cursorRevisionId={revisionStack.cursorRevisionId}

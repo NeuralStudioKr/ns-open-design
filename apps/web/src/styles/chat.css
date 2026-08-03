@@ -33,6 +33,11 @@
   background: var(--bg-subtle);
   color: var(--text);
 }
+.chat-project-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  color: var(--text);
+}
 .chat-project-design-system {
   display: inline-flex;
   align-items: center;
@@ -183,6 +188,11 @@
 .chat-session-trigger:hover,
 .chat-session-switcher.open .chat-session-trigger {
   background: var(--bg-subtle);
+  color: var(--text);
+}
+.chat-session-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
   color: var(--text);
 }
 .chat-header-tabs { display: inline-flex; gap: 16px; flex: 1; }
@@ -927,7 +937,7 @@
 }
 
 .composer {
-  padding: 10px 16px;
+  padding: 10px var(--chat-composer-inline-inset, 12px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2064,6 +2074,11 @@
   line-height: inherit;
   cursor: pointer;
   overflow: hidden;
+  border-radius: 4px;
+}
+.staged-context-open:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  outline-offset: 2px;
 }
 .staged-context--workspace {
   background: color-mix(in srgb, var(--bg-subtle) 48%, var(--bg-panel));
@@ -2247,6 +2262,10 @@
   height: 8px;
 }
 .staged-remove:hover { color: var(--red); background: var(--red-bg); }
+.staged-remove:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  outline-offset: 1px;
+}
 
 .linked-dirs-row {
   display: flex;

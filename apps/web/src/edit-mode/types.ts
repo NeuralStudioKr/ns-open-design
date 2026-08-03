@@ -21,11 +21,24 @@ export interface ManualEditStyles {
   color: string;
   textAlign: string;
   textDecoration: string;
+  /** Layout wrap control — prompted for "한 줄로/nowrap" comment edits. */
+  whiteSpace: string;
   lineHeight: string;
   letterSpacing: string;
   width: string;
   height: string;
   minHeight: string;
+  /** Cleared to `none` on drag-resize so stylesheet `max-width:100%` cannot clamp the box. */
+  maxWidth: string;
+  maxHeight: string;
+  /** Inline CSS position; used when promoting flow boxes to absolute (53). */
+  position: string;
+  /** Used by drag-resize / position-move for absolute/fixed elements. */
+  left: string;
+  top: string;
+  /** Cleared on move commit so left+right / top+bottom do not fight. */
+  right: string;
+  bottom: string;
   gap: string;
   flexDirection: string;
   justifyContent: string;
@@ -65,6 +78,11 @@ export interface ManualEditTarget {
   styles: ManualEditStyles;
   isLayoutContainer: boolean;
   isHidden?: boolean;
+  /** Computed CSS position (`static` / `absolute` / …) for resize anchoring. */
+  cssPosition?: string;
+  /** offsetParent-relative left/top for promote-on-drag (53). */
+  offsetLeft?: number;
+  offsetTop?: number;
   outerHtml: string;
 }
 
@@ -147,8 +165,8 @@ export type ManualEditBridgeMessage =
   | ManualEditRectMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
-  'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'textDecoration', 'lineHeight', 'letterSpacing',
-  'width', 'height', 'minHeight',
+  'fontFamily', 'fontSize', 'fontWeight', 'color', 'textAlign', 'textDecoration', 'whiteSpace', 'lineHeight', 'letterSpacing',
+  'width', 'height', 'minHeight', 'maxWidth', 'maxHeight', 'position', 'left', 'top', 'right', 'bottom',
   'gap', 'flexDirection', 'justifyContent', 'alignItems',
   'backgroundColor', 'opacity',
   'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',

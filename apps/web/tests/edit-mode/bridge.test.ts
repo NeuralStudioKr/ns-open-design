@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import {
   buildManualEditBridge,
+  buildManualEditBridgeStyle,
   isMeaningfulManualEditElement,
   isManualEditHostNode,
   isSourceMappableManualEditElement,
@@ -36,6 +37,12 @@ describe('manual edit bridge target normalization', () => {
 
     expect(isManualEditHostNode(dom.window.document.querySelector('[data-od-sandbox-shim]')!)).toBe(true);
     expect(manualEditDomPathForElement(target)).toBe('path-0-0-1');
+  });
+
+  it('syncs textDecoration and whiteSpace into bridge styleProps', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("'textDecoration'");
+    expect(bridge).toContain("'whiteSpace'");
   });
 
   it('discovers meaningful elements and ignores tiny or irrelevant elements', () => {
@@ -400,6 +407,36 @@ describe('manual edit bridge target normalization', () => {
     expect(bridge).toContain("attr.name === 'data-od-edit-selected'");
     expect(bridge).toContain('replace(/\\sdata-od-edit-selected="[^"]*"/g, \'\')');
     expect(bridge).toContain('[data-od-edit-selected]');
+    expect(bridge).toContain('data-od-edit-host-chrome');
+  });
+
+  it('suppresses nested rest outlines and host-chrome selected rings', () => {
+    const css = buildManualEditBridgeStyle();
+    expect(css).toContain('[data-od-source-path] [data-od-source-path] { outline-color: transparent; }');
+    expect(css).toContain('[data-od-edit-selected][data-od-edit-host-chrome]');
+    expect(css).toContain('outline: none !important');
+  });
+
+  it('marks hostChrome selection so iframe outline can yield to the overlay', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Title</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]')!;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-selected-target', id: 'title', hostChrome: true },
+    }));
+    expect(title.getAttribute('data-od-edit-selected')).toBe('true');
+    expect(title.getAttribute('data-od-edit-host-chrome')).toBe('true');
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-selected-target', id: 'title', hostChrome: false },
+    }));
+    expect(title.getAttribute('data-od-edit-selected')).toBe('true');
+    expect(title.hasAttribute('data-od-edit-host-chrome')).toBe(false);
+
+    dom.window.close();
   });
 
   it('marks flex/grid targets as layout containers', () => {
@@ -611,6 +648,147 @@ describe('manual edit bridge target normalization', () => {
     expect(result).toBe(false);
     expect(event.defaultPrevented).toBe(true);
     expect(clicked).not.toHaveBeenCalled();
+
+    dom.window.close();
+  });
+
+  it('reports geometry styles as authored/inline only (no computed bake)', async () => {
+    const posts: Array<{ type?: string; target?: { id: string; styles?: Record<string, string> } }> = [];
+    const dom = new JSDOM(
+      `<style>[data-od-id="card"] { width: 320px; }</style>
+      <main><div data-od-id="card" style="position:absolute;left:10px;height:80px">Box</div></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const cardEl = dom.window.document.querySelector('[data-od-id="card"]') as HTMLElement;
+    cardEl.getBoundingClientRect = () => ({
+      x: 10, y: 10, width: 320, height: 80,
+      top: 10, right: 330, bottom: 90, left: 10,
+      toJSON: () => ({}),
+    } as DOMRect);
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    cardEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    const select = posts.find((p) => p.type === 'od-edit-select');
+    expect(select?.target?.styles?.position).toBe('absolute');
+    expect(select?.target?.styles?.left).toBe('10px');
+    expect(select?.target?.styles?.height).toBe('80px');
+    // Stylesheet-only width must not appear as if it were inline.
+    expect(select?.target?.styles?.width).toBe('');
+
+    dom.window.close();
+  });
+
+  it('answers od-edit-remeasure with od-edit-rect for the target id', () => {
+    const posts: Array<{
+      type?: string;
+      id?: string;
+      ok?: boolean;
+      target?: {
+        id?: string;
+        rect?: { x: number; y: number; width: number; height: number };
+        offsetLeft?: number;
+        offsetTop?: number;
+        cssPosition?: string;
+      };
+    }> = [];
+    const dom = new JSDOM(
+      `<main><div data-od-id="card" style="position:absolute;left:12px;top:24px">Box</div></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const card = dom.window.document.querySelector('[data-od-id="card"]')!;
+    card.getBoundingClientRect = () => ({
+      x: 12, y: 24, width: 320, height: 180,
+      top: 24, right: 332, bottom: 204, left: 12,
+      toJSON: () => ({}),
+    } as DOMRect);
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-remeasure', id: 'card' },
+    }));
+
+    const rectMsg = posts.find((p) => p.type === 'od-edit-rect');
+    expect(rectMsg).toMatchObject({
+      type: 'od-edit-rect',
+      id: 'card',
+      ok: true,
+      target: {
+        id: 'card',
+        rect: { x: 12, y: 24, width: 320, height: 180 },
+        cssPosition: 'absolute',
+      },
+    });
+    expect(typeof rectMsg?.target?.offsetLeft).toBe('number');
+    expect(typeof rectMsg?.target?.offsetTop).toBe('number');
+
+    dom.window.close();
+  });
+
+  it('uses a transform ancestor as the absolute containing block for offsetLeft', () => {
+    const posts: Array<{
+      type?: string;
+      id?: string;
+      ok?: boolean;
+      target?: { offsetLeft?: number; offsetTop?: number };
+    }> = [];
+    const dom = new JSDOM(
+      `<main>
+        <div id="host" style="position: static;">
+          <div data-od-id="box" style="position:absolute;left:40px;top:60px;width:100px;height:50px">Box</div>
+        </div>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const host = dom.window.document.getElementById('host')!;
+    const box = dom.window.document.querySelector('[data-od-id="box"]') as HTMLElement;
+    host.getBoundingClientRect = () => ({
+      x: 100, y: 200, width: 400, height: 300,
+      top: 200, right: 500, bottom: 500, left: 100,
+      toJSON: () => ({}),
+    } as DOMRect);
+    Object.defineProperty(host, 'clientLeft', { value: 0 });
+    Object.defineProperty(host, 'clientTop', { value: 0 });
+    Object.defineProperty(host, 'scrollLeft', { value: 0 });
+    Object.defineProperty(host, 'scrollTop', { value: 0 });
+    // Force computed transform — jsdom may not parse inline transform as ≠ none.
+    const realGetComputed = dom.window.getComputedStyle.bind(dom.window);
+    dom.window.getComputedStyle = ((el: Element) => {
+      const style = realGetComputed(el);
+      if (el === host) {
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'transform') return 'matrix(1, 0, 0, 1, 0, 0)';
+            if (prop === 'position') return 'static';
+            return Reflect.get(target, prop);
+          },
+        }) as CSSStyleDeclaration;
+      }
+      return style;
+    }) as typeof dom.window.getComputedStyle;
+    box.getBoundingClientRect = () => ({
+      x: 140, y: 260, width: 100, height: 50,
+      top: 260, right: 240, bottom: 310, left: 140,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-remeasure', id: 'box' },
+    }));
+
+    const rectMsg = posts.find((p) => p.type === 'od-edit-rect');
+    // CB origin = host (100,200) → offset 40,60 — not document (0,0) → 140,260.
+    expect(rectMsg?.ok).toBe(true);
+    expect(rectMsg?.target?.offsetLeft).toBe(40);
+    expect(rectMsg?.target?.offsetTop).toBe(60);
 
     dom.window.close();
   });

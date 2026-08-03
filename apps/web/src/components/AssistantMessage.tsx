@@ -20,7 +20,9 @@ import { sanitizeAssistantProseForDisplay } from "../runtime/internalAgentMarkup
 import { isEmptyAssistantShell } from "../runtime/conversation-message-dedupe";
 import {
   hasEmbedVisibleAssistantBody,
-  isTerminalSucceededEmptyShellAnchor,
+  isTerminalSucceededEmptyShellForDisplay,
+  messageLooksLikeSlideEditTurn,
+  shouldSynthesizeTeamverCompletedArtifactLead,
   terminalSucceededAnchorLeadCopy,
 } from "../runtime/chat-message-render";
 import {
@@ -69,6 +71,7 @@ import type { DesignToolboxActionId } from "../runtime/design-toolbox";
 import { copyToClipboard } from "../lib/copy-to-clipboard";
 import { assistantEventsForDisplay, assistantMessageTextBody } from "../runtime/chat-events";
 import { useT } from "../i18n";
+import { embedUiLabel } from "../teamver/embedUiLabels";
 import { deriveFileOps, type FileOpEntry } from "../runtime/file-ops";
 import {
   isTodoWriteToolName,
@@ -765,33 +768,34 @@ function AssistantMessageImpl({
     || (!(hideAssistantThinkingDetails && streaming) && fileOps.length > 0)
     || streamingTodoProgress != null;
   const preparing = streaming && !hasContent;
-  const isDeckPatchArtifactTurn = messageIndicatesDeckPatchArtifact(assistantTextBody);
+  // After reload, closed deck-patch tags may already be stripped — fall back
+  // to preTurn HTML baseline so we keep "slide edit applied" copy, not create.
+  const isDeckPatchArtifactTurn = messageLooksLikeSlideEditTurn(message)
+    || messageIndicatesDeckPatchArtifact(assistantTextBody);
   const teamverCompletedArtifactLead = teamverCompletedArtifactLeadCopy(
     locale,
     isDeckPatchArtifactTurn,
   );
-  const terminalSucceededAnchor = isTerminalSucceededEmptyShellAnchor(message, {
-    isLast: !!isLast,
-    streaming,
-  });
+  // Completion leads must not depend on ChatPane `isLast`. Auto-continue leaves
+  // a superseded failed sibling that `resolveLastAssistantMessageId` prefers,
+  // and historical turns must keep their lead after later user messages.
+  const terminalSucceededForDisplay =
+    !streaming && isTerminalSucceededEmptyShellForDisplay(message);
   const shouldShowTerminalSucceededLead =
-    !streaming
-    && terminalSucceededAnchor
+    terminalSucceededForDisplay
     && !hasVisibleAssistantTextBlocks
     && !(slideOnlyMvp || teamverEmbedEnabled);
+  // Persist sanitizer strips closed `<artifact>` tags, so reload must not
+  // require artifact markers in the body — producedFiles / preTurn HTML /
+  // empty succeeded shells are enough to keep the completion sentence.
   const shouldShowTeamverCompletedArtifactLead =
-    !streaming
-    && runSucceeded
-    && !hasVisibleAssistantTextBlocks
+    (slideOnlyMvp || teamverEmbedEnabled)
     && !shouldShowTerminalSucceededLead
-    && (slideOnlyMvp || teamverEmbedEnabled)
-    && (
-      terminalSucceededAnchor
-      || (
-        /<artifact\b/i.test(assistantTextBody)
-        && (displayedProduced.length > 0 || isDeckPatchArtifactTurn)
-      )
-    );
+    && shouldSynthesizeTeamverCompletedArtifactLead(message, {
+      streaming,
+      isLast: !!isLast,
+      hasVisibleAssistantText: hasVisibleAssistantTextBlocks,
+    });
   const terminalSucceededLeadCopy = shouldShowTerminalSucceededLead
     ? terminalSucceededAnchorLeadCopy(locale)
     : null;
@@ -807,7 +811,11 @@ function AssistantMessageImpl({
   }
 
   if (isEmptyAssistantShell(message) && !(streaming && isLast)) {
-    if (!terminalSucceededAnchor) {
+    if (
+      !terminalSucceededForDisplay
+      && !shouldShowTeamverCompletedArtifactLead
+      && !hasEmbedVisibleAssistantBody(message)
+    ) {
       return null;
     }
   }
@@ -1958,15 +1966,20 @@ function PluginActionPanel({
   const runAction = onRunAction;
 
   return (
-    <div className="plugin-action-panel" aria-label="Plugin next actions">
+    <div className="plugin-action-panel" aria-label={embedUiLabel('Plugin next actions', '플러그인 다음 작업')}>
       <div className="plugin-action-panel__head">
         <span className="plugin-action-panel__icon" aria-hidden>
           <Icon name="sparkles" size={15} />
         </span>
         <div>
-          <div className="plugin-action-panel__title">Plugin ready</div>
+          <div className="plugin-action-panel__title">
+            {embedUiLabel('Plugin ready', '플러그인 준비됨')}
+          </div>
           <div className="plugin-action-panel__subtitle">
-            Send the next step to the agent so it can run the od CLI.
+            {embedUiLabel(
+              'Send the next step to the agent so it can run the od CLI.',
+              '다음 단계를 에이전트에 보내 od CLI를 실행하세요.',
+            )}
           </div>
         </div>
       </div>

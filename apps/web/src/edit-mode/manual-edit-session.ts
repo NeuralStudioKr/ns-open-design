@@ -1,7 +1,11 @@
 /**
  * Invariants for an active manual-edit session. While edit mode is on, the
- * iframe paints from `manualEditFrozenSource` and patches must apply to that
- * buffer — not a racy disk refetch that updated `sourceRef` in the background.
+ * iframe paints from `manualEditFrozenSource` (display freeze) while
+ * `sourceRef` / liveSource advances on every successful save. Patches must
+ * stack on the latest saved buffer — not the entry freeze — otherwise a
+ * second style/text edit re-applies against pre-style HTML and drops the
+ * first change. Disk refetches are held separately via
+ * `shouldHoldDiskPreviewDuringManualEdit`.
  */
 
 export function manualEditPatchBaseSource(input: {
@@ -9,7 +13,11 @@ export function manualEditPatchBaseSource(input: {
   frozenSource: string | null;
   liveSource: string | null;
 }): string | null {
-  if (input.manualEditMode && input.frozenSource != null) return input.frozenSource;
+  if (input.manualEditMode) {
+    // Prefer the session save buffer so successive patches compose.
+    if (input.liveSource != null) return input.liveSource;
+    if (input.frozenSource != null) return input.frozenSource;
+  }
   return input.liveSource;
 }
 

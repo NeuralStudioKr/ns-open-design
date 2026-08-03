@@ -200,11 +200,12 @@ function hasEmbedVisibleProseBody(message: ChatMessage): boolean {
 }
 
 function assistantRunSucceeded(message: ChatMessage): boolean {
-  if (message.runStatus === "failed") return false;
-  return message.runStatus === "succeeded" || (!message.runStatus && !!message.endedAt);
+  if (message.runStatus === "failed" || message.runStatus === "canceled") return false;
+  if (message.runStatus === "succeeded") return true;
+  return !message.runStatus && !!message.endedAt;
 }
 
-function messageIndicatesDeckPatchArtifact(content: string): boolean {
+export function messageIndicatesDeckPatchArtifact(content: string): boolean {
   if (/<artifact\b[^>]*\stype=["'](?:deck-patch|slide-patch)["']/i.test(content)) return true;
   const openIdx = content.search(/<artifact\b/i);
   if (openIdx === -1) return false;
@@ -213,11 +214,69 @@ function messageIndicatesDeckPatchArtifact(content: string): boolean {
   return /\btype\s*=\s*["']?(?:deck-patch|slide-patch)\b/i.test(partialTag);
 }
 
-function hasTeamverCompletedArtifactLead(message: ChatMessage): boolean {
-  if (!assistantRunSucceeded(message)) return false;
+function messageHasPreTurnHtmlDeliverable(message: ChatMessage): boolean {
+  return (message.preTurnFileNames ?? []).some((name) => /\.html?$/i.test(String(name)));
+}
+
+/**
+ * Slide-edit completion copy after reload: persist sanitizer strips closed
+ * `<artifact type="deck-patch">` tags, so body detection alone is not enough.
+ * Prefer explicit deck-patch markers, else a pre-turn HTML baseline (in-place
+ * edit of an existing deck).
+ */
+export function messageLooksLikeSlideEditTurn(message: ChatMessage): boolean {
   const body = assistantMessageTextBody(message);
-  if (!/<artifact\b/i.test(body)) return false;
-  return (message.producedFiles?.length ?? 0) > 0 || messageIndicatesDeckPatchArtifact(body);
+  if (messageIndicatesDeckPatchArtifact(body)) return true;
+  return messageHasPreTurnHtmlDeliverable(message);
+}
+
+/**
+ * Closed `<artifact>` blocks with non-whitespace bodies. Empty wrappers like
+ * `<artifact type="deck"></artifact>` are phantom shells and must stay hidden.
+ */
+export function messageHasSubstantiveClosedArtifact(content: string): boolean {
+  const re = /<artifact\b[^>]*>([\s\S]*?)<\/artifact>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) {
+    if (match[1]?.trim()) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether AssistantMessage should synthesize the Teamver "slide ready / edit
+ * applied" lead after a successful artifact turn. Must survive hard reload when
+ * closed artifacts were stripped from content/events but producedFiles or
+ * preTurnFileNames remain.
+ *
+ * Do NOT require ChatPane `isLast` — `resolveLastAssistantMessageId` may point
+ * at a superseded failed sibling, and historical turns must keep their lead
+ * after the user continues chatting.
+ */
+export function shouldSynthesizeTeamverCompletedArtifactLead(
+  message: ChatMessage,
+  options: {
+    streaming: boolean;
+    isLast?: boolean;
+    hasVisibleAssistantText: boolean;
+  },
+): boolean {
+  if (options.streaming || options.hasVisibleAssistantText) return false;
+  if (!assistantRunSucceeded(message)) return false;
+  // Historical + auto-continue: any terminal succeeded empty shell keeps lead.
+  if (isTerminalSucceededEmptyShellForDisplay(message)) return true;
+  if ((message.producedFiles?.length ?? 0) > 0) return true;
+  const body = assistantMessageTextBody(message);
+  if (messageHasSubstantiveClosedArtifact(body)) return true;
+  // deck-patch marker still in body, or preTurn HTML after tags were stripped.
+  return messageLooksLikeSlideEditTurn(message);
+}
+
+function hasTeamverCompletedArtifactLead(message: ChatMessage): boolean {
+  return shouldSynthesizeTeamverCompletedArtifactLead(message, {
+    streaming: false,
+    hasVisibleAssistantText: hasEmbedVisibleProseBody(message),
+  });
 }
 
 /**
@@ -237,6 +296,9 @@ export function hasEmbedVisibleAssistantBody(message: ChatMessage): boolean {
   if (hasTeamverCompletedArtifactLead(message)) return true;
   const body = assistantMessageTextBody(message);
   if (messageIndicatesDeckPatchArtifact(body)) return true;
+  if (messageHasSubstantiveClosedArtifact(body) && assistantRunSucceeded(message)) {
+    return true;
+  }
   if (wouldTerminalEmptyShellShowBody(message)) return true;
   return false;
 }
@@ -263,8 +325,12 @@ export function shouldOmitMessageFromChatRender(
   if (message.role !== "assistant") return false;
   if (isLiveStreamingAssistantTarget(message, ctx)) return false;
   if (isEmptyAssistantShell(message)) {
+    // Keep terminal succeeded shells that still anchor their visible user turn
+    // (historical completion leads). Drop same-turn shells superseded by a
+    // later assistant — those are collapsed at load, but omit is the safety net.
     if (
-      options?.messages
+      isTerminalSucceededEmptyShellForDisplay(message)
+      && options?.messages
       && typeof options.messageIndex === "number"
       && isLastAssistantInVisibleUserTurn(options.messages, options.messageIndex)
     ) {

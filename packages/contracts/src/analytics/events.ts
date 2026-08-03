@@ -1226,7 +1226,7 @@ export interface PrivacyModalClickProps {
 export interface RecentProjectsClickProps {
   page_name: 'home';
   area: 'recent_projects';
-  element: 'project_card' | 'view_all';
+  element: 'project_card' | 'view_all' | 'more' | 'rename' | 'delete';
   project_id?: string;
   project_kind?: TrackingProjectKind;
   project_status?: string;
@@ -1721,7 +1721,9 @@ export interface NextStepActionClickProps {
     | 'chip'
     | 'toolbox_action'
     | 'toolbox_more'
-    | 'share_to_open_design';
+    | 'share_to_open_design'
+    | 'collapse'
+    | 'expand';
   chip_id?: string;
 }
 

@@ -448,6 +448,7 @@ function buildAutoContinueVisualMarkEditPrompt(
     '</artifact>',
     '',
     '- `data-slide-index`는 `<attached-preview-comments>`의 slideIndex와 정확히 일치해야 합니다.',
+    '- `position:` / `placement:` 좌표(슬라이드 캔버스 1920×1080 픽셀)에 맞춰 새 아이콘/도형 wrapper를 `position:absolute`로 배치하세요. 슬라이드 기존 본문은 유지하고 marked box 안에만 추가/수정하세요.',
     '- target-id 기반 패치 사용 금지 (시각 마크에는 DOM element id가 없습니다).',
     '- 빈 `<artifact type="deck-patch">` 또는 slide section 없는 wrapper는 금지.',
     '',

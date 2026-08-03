@@ -2363,7 +2363,7 @@ export function FileWorkspace({
               data-testid="upload-error-dismiss"
               onClick={() => setUploadError(null)}
             >
-              Dismiss
+              {t('common.close')}
             </button>
           </div>
         ) : null}

@@ -8,16 +8,13 @@ import {
   isProjectRawFileKnownMissing,
   markProjectRawFileMissing,
 } from '../utils/projectFileFetchCache';
-import { normalizeFetchedImageBlob } from '../utils/imageBlobNormalize';
+import { normalizeFetchedImageBlob, blobToImageDataUrl } from '../utils/imageBlobNormalize';
+import { isEphemeralDrawingScreenshotPath } from '../utils/projectFilePaths';
 
 const FETCH_RETRY_DELAYS_MS = [0, 250, 800] as const;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function revokeObjectUrl(url: string | null): void {
-  if (url) URL.revokeObjectURL(url);
 }
 
 async function readResponseImageBlob(resp: Response): Promise<Blob> {
@@ -53,6 +50,7 @@ export async function loadAuthenticatedProjectFileBlob(
   const id = projectId.trim();
   const path = filePath.trim();
   if (!id || !path) return null;
+  if (!options?.trustExists && isEphemeralDrawingScreenshotPath(path)) return null;
   if (!options?.trustExists && isProjectRawFileKnownMissing(id, path)) return null;
   if (options?.trustExists) clearProjectRawFileMissing(id, path);
 
@@ -95,6 +93,8 @@ export async function loadAuthenticatedProjectFileBlob(
  * Teamver embed project files must be fetched with daemon auth headers.
  * Bare `/api/projects/.../raw/...` on `<img src>` can fail when cookies or
  * workspace headers are required for the request to succeed.
+ *
+ * Returns a data URL so `<img>` does not depend on revocable blob URLs.
  */
 export function useAuthenticatedProjectFileObjectUrl(
   projectId: string | null | undefined,
@@ -103,42 +103,31 @@ export function useAuthenticatedProjectFileObjectUrl(
   rev?: string | number | null,
   trustExists?: boolean,
 ): string | null {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
 
   useEffect(() => {
     const path = String(filePath || '').trim();
     if (!projectId || !path) {
-      setObjectUrl((prev) => {
-        revokeObjectUrl(prev);
-        return null;
-      });
+      setImageSrc(null);
       return;
     }
 
     let cancelled = false;
+    setImageSrc(null);
 
     void (async () => {
       const blob = await loadAuthenticatedProjectFileBlob(projectId, path, { trustExists });
       if (cancelled || !blob) return;
-      const nextUrl = URL.createObjectURL(blob);
-      if (cancelled) {
-        revokeObjectUrl(nextUrl);
-        return;
-      }
-      setObjectUrl((prev) => {
-        revokeObjectUrl(prev);
-        return nextUrl;
-      });
+      const dataUrl = await blobToImageDataUrl(blob);
+      if (cancelled || !dataUrl) return;
+      setImageSrc(dataUrl);
     })();
 
     return () => {
       cancelled = true;
-      setObjectUrl((prev) => {
-        revokeObjectUrl(prev);
-        return null;
-      });
+      setImageSrc(null);
     };
   }, [filePath, projectId, rev, trustExists]);
 
-  return objectUrl;
+  return imageSrc;
 }

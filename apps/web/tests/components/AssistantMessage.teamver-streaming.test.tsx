@@ -318,15 +318,51 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
   });
 
-  it('does not render a header-only assistant row superseded by a later reply', () => {
-    const { container } = render(
+  it('keeps slide-edit completion copy after reload when artifact tags were stripped', () => {
+    // saveMessage sanitizer strips closed <artifact> blocks. After hard refresh
+    // the row still has producedFiles / preTurnFileNames but no artifact markup —
+    // the completion sentence must still render.
+    render(
       <AssistantMessage
         message={{
-          id: 'a-shell',
+          ...completedMessage(''),
+          content: '',
+          events: [{ kind: 'status', label: 'requesting' }],
+          producedFiles: [
+            {
+              name: 'deck.html',
+              path: 'deck.html',
+              size: 2048,
+              mtime: 1700000005,
+              kind: 'html',
+              mime: 'text/html',
+            },
+          ],
+          preTurnFileNames: ['deck.html'],
+        }}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Slide updates have been applied.')).toBeTruthy();
+    expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
+  });
+
+  it('keeps completion lead when isLast is false (superseded failed sibling / later turn)', () => {
+    render(
+      <AssistantMessage
+        message={{
+          id: 'a-succeeded',
           role: 'assistant',
           content: '',
           runStatus: 'succeeded',
-          endedAt: Date.now(),
+          startedAt: 1700000000,
+          endedAt: 1700000005,
+          events: [{ kind: 'status', label: 'requesting' }],
+          producedFiles: [],
+          preTurnFileNames: ['deck.html'],
         }}
         streaming={false}
         isLast={false}
@@ -334,7 +370,57 @@ describe('AssistantMessage Teamver streaming visibility', () => {
       />,
     );
 
-    expect(container.firstChild).toBeNull();
+    expect(screen.getByText('Slide updates have been applied.')).toBeTruthy();
+  });
+
+  it('keeps create completion copy after reload when artifact tags were stripped', () => {
+    render(
+      <AssistantMessage
+        message={{
+          ...completedMessage(''),
+          content: '',
+          events: [{ kind: 'status', label: 'requesting' }],
+          producedFiles: [
+            {
+              name: 'deck.html',
+              path: 'deck.html',
+              size: 2048,
+              mtime: 1700000005,
+              kind: 'html',
+              mime: 'text/html',
+            },
+          ],
+          preTurnFileNames: [],
+        }}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('The slide deck draft is ready.')).toBeTruthy();
+  });
+
+  it('still paints completion lead for historical succeeded shells when isLast is false', () => {
+    // ChatPane omits same-turn superseded shells; historical turn anchors reach
+    // AssistantMessage with isLast=false and must keep the completion sentence.
+    render(
+      <AssistantMessage
+        message={{
+          id: 'a-shell',
+          role: 'assistant',
+          content: '',
+          runStatus: 'succeeded',
+          endedAt: Date.now(),
+          events: [{ kind: 'status', label: 'requesting' }],
+        }}
+        streaming={false}
+        isLast={false}
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('The slide deck draft is ready.')).toBeTruthy();
   });
 
   it('hides embed tool-only rows that would show only the assistant header', () => {

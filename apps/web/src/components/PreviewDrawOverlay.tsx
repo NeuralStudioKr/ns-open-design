@@ -8,6 +8,8 @@ import type { PreviewVisualMarkKind } from '../types';
 import { requestPreviewSnapshot } from '../runtime/exports';
 import { isImeComposing } from '../utils/imeComposing';
 import { fitPngBlobForAnthropicProxy } from '../utils/annotationImage';
+import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { scaleBoundsToSlideCanvas } from '../utils/visualMarkPlacement';
 
 interface Point { x: number; y: number }
 interface Stroke { points: Point[] }
@@ -756,9 +758,10 @@ export function PreviewDrawOverlay({
     flushSync(() => setPendingAction(action));
     try {
       let file: File | null = null;
+      let pinnedFrameRect: CaptureFrameRect | null = null;
       if (shouldCapture) {
         let blob: Blob | null = null;
-        const pinnedFrameRect = snapshotFrameRect();
+        pinnedFrameRect = snapshotFrameRect();
         const marksOnlyPromise =
           hasVisualMark || hasTarget ? compositeMarksOnly(pinnedFrameRect) : null;
         const snap = await requestSnapshot(
@@ -798,6 +801,11 @@ export function PreviewDrawOverlay({
         (index) => t('chat.annotationSlidePrefix', { n: index }),
       );
       const kind = markKind();
+      const frameForBounds = pinnedFrameRect ?? snapshotFrameRect();
+      let bounds = kind ? annotationBounds() : undefined;
+      if (bounds && frameForBounds && isTeamverEmbedMode()) {
+        bounds = scaleBoundsToSlideCanvas(bounds, frameForBounds);
+      }
       const result = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
         let settled = false;
         const finish = (next: { ok: boolean; message?: string }) => {
@@ -815,7 +823,7 @@ export function PreviewDrawOverlay({
           filePath: captureTarget?.filePath || filePath,
           slideIndex,
           markKind: kind,
-          bounds: kind ? annotationBounds() : undefined,
+          bounds,
           target: captureTarget,
           extraFiles: extraFiles.length ? extraFiles : undefined,
           ack: finish,

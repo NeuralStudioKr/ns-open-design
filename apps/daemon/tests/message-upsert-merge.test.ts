@@ -136,6 +136,25 @@ describe('message-upsert-merge', () => {
     expect(mergeMessageUpsertPayload(existing, incoming).events).toEqual(existing.events);
   });
 
+  it('does not wipe durable producedFiles when a later PUT sends an empty array', () => {
+    const existing = {
+      id: 'a',
+      runStatus: 'succeeded',
+      producedFiles: [{ name: 'deck.html', path: 'deck.html', kind: 'html', size: 12 }],
+      preTurnFileNames: ['deck.html'],
+    };
+    const incoming = {
+      id: 'a',
+      runStatus: 'succeeded',
+      content: '',
+      producedFiles: [],
+      preTurnFileNames: [],
+    };
+    const durable = mergeMessageUpsertPayload(existing, incoming);
+    expect(durable.producedFiles).toEqual(existing.producedFiles);
+    expect(durable.preTurnFileNames).toEqual(existing.preTurnFileNames);
+  });
+
   it('keeps durable errors when a late append snapshot races ahead of an error upsert', () => {
     // appendMessageAgentEvent scheduled write A (text only) after client PUT B
     // already persisted status:error on PG — merge must keep the error.

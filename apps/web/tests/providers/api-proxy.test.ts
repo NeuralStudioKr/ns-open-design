@@ -405,6 +405,34 @@ describe('buildProxyMessages', () => {
     ]);
   });
 
+  it('dedupes visual comment screenshots against attachments with different path prefixes', () => {
+    const candidates = anthropicImageCandidatesFromMessage({
+      attachments: [
+        { path: 'uploads/visual-mark-1.png', name: 'visual-mark-1.png', kind: 'image', size: 4, order: 0 },
+      ],
+      commentAttachments: [
+        {
+          id: 'visual-mark-1',
+          order: 0,
+          filePath: 'index.html',
+          elementId: 'visual-mark-1',
+          selector: '',
+          label: 'Visual mark',
+          comment: '',
+          currentText: '',
+          pagePosition: { x: 0, y: 0, width: 1, height: 1 },
+          htmlHint: '',
+          selectionKind: 'visual',
+          screenshotPath: 'visual-mark-1.png',
+          markKind: 'rect',
+        },
+      ],
+    });
+    expect(candidates).toEqual([
+      { path: 'uploads/visual-mark-1.png', name: 'visual-mark-1.png', order: 0 },
+    ]);
+  });
+
   it('skips deleted visual-mark screenshots when building proxy messages', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

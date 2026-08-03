@@ -530,6 +530,34 @@ describe("resolveLastAssistantMessageId", () => {
     expect(resolveLastAssistantMessageId(messages)).toBe("a-shell");
   });
 
+  it("prefers a trailing succeeded empty shell over an earlier error-only failure", () => {
+    const messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "make deck", createdAt: 1 },
+      {
+        id: "a-failed",
+        role: "assistant",
+        content: "",
+        runStatus: "failed",
+        resumable: true,
+        endedAt: 2,
+        createdAt: 2,
+        events: [
+          { kind: "status", label: "error", detail: "incomplete", code: "incomplete_output" },
+        ],
+      },
+      {
+        id: "a-succeeded",
+        role: "assistant",
+        content: "",
+        runStatus: "succeeded",
+        endedAt: 3,
+        createdAt: 3,
+        events: [{ kind: "status", label: "requesting" }],
+      },
+    ];
+    expect(resolveLastAssistantMessageId(messages)).toBe("a-succeeded");
+  });
+
   it("prefers a fresh in-flight empty shell over a prior completed assistant", () => {
     const messages: ChatMessage[] = [
       { id: "u1", role: "user", content: "first", createdAt: 1 },

@@ -49,7 +49,7 @@ export function buildManualEditBridge(enabled: boolean): string {
   var discoverySelector = ${JSON.stringify(MANUAL_EDIT_DISCOVERY_SELECTOR)};
   var hostNodeSelector = ${JSON.stringify(MANUAL_EDIT_HOST_NODE_SELECTOR)};
   var sourcePathAttr = ${JSON.stringify(MANUAL_EDIT_SOURCE_PATH_ATTR)};
-  var styleProps = ['fontFamily','fontSize','fontWeight','color','textAlign','lineHeight','letterSpacing','width','height','minHeight','gap','flexDirection','justifyContent','alignItems','backgroundColor','opacity','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','margin','marginTop','marginRight','marginBottom','marginLeft','border','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderStyle','borderColor','borderRadius'];
+  var styleProps = ['fontFamily','fontSize','fontWeight','color','textAlign','textDecoration','whiteSpace','lineHeight','letterSpacing','width','height','minHeight','maxWidth','maxHeight','position','left','top','right','bottom','gap','flexDirection','justifyContent','alignItems','backgroundColor','opacity','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','margin','marginTop','marginRight','marginBottom','marginLeft','border','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderStyle','borderColor','borderRadius'];
   function isHostNode(el){
     return !!(el && el.matches && el.matches(hostNodeSelector));
   }
@@ -100,15 +100,31 @@ export function buildManualEditBridge(enabled: boolean): string {
     var attrs = {};
     for (var i = 0; i < el.attributes.length; i++) {
       var attr = el.attributes[i];
-      if (!attr || attr.name.indexOf('data-od-runtime') === 0 || attr.name === 'data-od-edit-selected') continue;
+      if (!attr || attr.name.indexOf('data-od-runtime') === 0 || attr.name === 'data-od-edit-selected' || attr.name === 'data-od-edit-host-chrome') continue;
       attrs[attr.name] = attr.value;
     }
     return attrs;
   }
+  // Geometry must stay authored/inline-only so Esc / flush-fail rollback
+  // removeProperty instead of baking computed px (!important) over %/auto CSS.
+  // Typography/paint still fall back to computed for the inspector.
+  var geometryStyleProps = {
+    width:1, height:1, minHeight:1, maxWidth:1, maxHeight:1, position:1,
+    left:1, top:1, right:1, bottom:1,
+    margin:1, marginTop:1, marginRight:1, marginBottom:1, marginLeft:1,
+    padding:1, paddingTop:1, paddingRight:1, paddingBottom:1, paddingLeft:1,
+    gap:1, flexDirection:1, justifyContent:1, alignItems:1,
+    border:1, borderTopWidth:1, borderRightWidth:1, borderBottomWidth:1, borderLeftWidth:1,
+    borderStyle:1, borderColor:1, borderRadius:1,
+  };
   function stylesFor(el){
     var computed = window.getComputedStyle(el);
     var styles = {};
-    styleProps.forEach(function(prop){ styles[prop] = el.style[prop] || computed[prop] || ''; });
+    styleProps.forEach(function(prop){
+      var inline = el.style[prop] || '';
+      if (geometryStyleProps[prop]) styles[prop] = inline;
+      else styles[prop] = inline || computed[prop] || '';
+    });
     return styles;
   }
   function isLayoutContainer(el){
@@ -149,11 +165,53 @@ export function buildManualEditBridge(enabled: boolean): string {
     walk(el);
     return out.replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n');
   }
+  // Absolute CB: positioned ancestor OR transform/filter/perspective/contain.
+  // Fixed CB: viewport unless a transform-like ancestor traps it (CSS2.1/CSS transforms).
+  function isTransformContainingBlock(style){
+    if (!style) return false;
+    if (style.transform && style.transform !== 'none') return true;
+    if (style.perspective && style.perspective !== 'none') return true;
+    if (style.filter && style.filter !== 'none') return true;
+    if (style.backdropFilter && style.backdropFilter !== 'none') return true;
+    var contain = String(style.contain || '');
+    if (/\\b(paint|layout|strict|content)\\b/.test(contain)) return true;
+    var willChange = String(style.willChange || '');
+    if (/\\b(transform|perspective|filter|backdrop-filter)\\b/.test(willChange)) return true;
+    return false;
+  }
+  function isAbsoluteContainingBlock(style){
+    var pos = style && style.position ? style.position : '';
+    if (pos && pos !== 'static') return true;
+    return isTransformContainingBlock(style);
+  }
+  // Post-promote / nested absolute left/top origin (not pre-promote offsetParent).
+  function promoteCoords(el){
+    var rect = el.getBoundingClientRect();
+    var parent = null;
+    var node = el.parentElement;
+    var selfPos = (window.getComputedStyle(el).position || 'static');
+    var isFixed = selfPos === 'fixed';
+    while (node && node !== document.documentElement) {
+      var style = window.getComputedStyle(node);
+      if (isFixed ? isTransformContainingBlock(style) : isAbsoluteContainingBlock(style)) {
+        parent = node;
+        break;
+      }
+      node = node.parentElement;
+    }
+    if (!parent) parent = document.documentElement;
+    var pr = parent.getBoundingClientRect();
+    return {
+      left: Math.round(rect.left - pr.left - (parent.clientLeft || 0) + (parent.scrollLeft || 0)),
+      top: Math.round(rect.top - pr.top - (parent.clientTop || 0) + (parent.scrollTop || 0)),
+    };
+  }
   function targetFrom(el, includeOuterHtml){
     var rect = el.getBoundingClientRect();
     var kind = inferKind(el);
     var id = stableId(el);
     var hidden = isHiddenTarget(el, rect);
+    var promo = promoteCoords(el);
     var fields = {};
     if (kind === 'link') {
       fields.text = plainTextFrom(el);
@@ -177,7 +235,10 @@ export function buildManualEditBridge(enabled: boolean): string {
       styles: stylesFor(el),
       isLayoutContainer: isLayoutContainer(el),
       isHidden: hidden,
-      outerHtml: includeOuterHtml ? (el.outerHTML || '').replace(/\\sdata-od-runtime-id="[^"]*"/g, '').replace(/\\sdata-od-source-path="[^"]*"/g, '').replace(/\\sdata-od-edit-selected="[^"]*"/g, '') : ''
+      cssPosition: (window.getComputedStyle(el).position || 'static'),
+      offsetLeft: promo.left,
+      offsetTop: promo.top,
+      outerHtml: includeOuterHtml ? (el.outerHTML || '').replace(/\\sdata-od-runtime-id="[^"]*"/g, '').replace(/\\sdata-od-source-path="[^"]*"/g, '').replace(/\\sdata-od-edit-selected="[^"]*"/g, '').replace(/\\sdata-od-edit-host-chrome="[^"]*"/g, '') : ''
     };
   }
   function allTargets(){
@@ -205,13 +266,20 @@ export function buildManualEditBridge(enabled: boolean): string {
   }
   function clearSelectedTarget(){
     var selected = document.querySelectorAll('[data-od-edit-selected]');
-    for (var i = 0; i < selected.length; i++) selected[i].removeAttribute('data-od-edit-selected');
+    for (var i = 0; i < selected.length; i++) {
+      selected[i].removeAttribute('data-od-edit-selected');
+      selected[i].removeAttribute('data-od-edit-host-chrome');
+    }
   }
-  function setSelectedTarget(id){
+  function setSelectedTarget(id, hostChrome){
     clearSelectedTarget();
     if (!id) return;
     var el = findById(id);
-    if (el) el.setAttribute('data-od-edit-selected', 'true');
+    if (!el) return;
+    el.setAttribute('data-od-edit-selected', 'true');
+    // Host resize/move overlay already paints the selection ring — suppress the
+    // iframe outline/glow so users do not see a double border.
+    if (hostChrome) el.setAttribute('data-od-edit-host-chrome', 'true');
   }
   function closestTarget(event){
     var el = event.target;
@@ -369,7 +437,7 @@ export function buildManualEditBridge(enabled: boolean): string {
       return;
     }
     if (ev.data.type === 'od-edit-selected-target') {
-      setSelectedTarget(ev.data.id || null);
+      setSelectedTarget(ev.data.id || null, !!ev.data.hostChrome);
       return;
     }
     if (ev.data.type === 'od-edit-hover-reset') {
@@ -383,12 +451,13 @@ export function buildManualEditBridge(enabled: boolean): string {
       return;
     }
     if (ev.data.type === 'od-edit-remeasure') {
-      var remeasureId = ev.data.id || '';
+      var remeasureId = ev.data.id || null;
       var remeasureEl = findById(remeasureId);
       if (!remeasureEl) {
         window.parent.postMessage({ type: 'od-edit-rect', id: remeasureId, ok: false, error: 'Target not found' }, '*');
         return;
       }
+      // Staging contract: full target (includes promoteCoords offsets / cssPosition).
       window.parent.postMessage({ type: 'od-edit-rect', id: remeasureId, ok: true, target: targetFrom(remeasureEl, false) }, '*');
       return;
     }
@@ -431,18 +500,34 @@ export function buildManualEditBridgeStyle(): string {
 html[data-od-edit-mode] body * { cursor: pointer !important; }
 html[data-od-edit-mode] [data-od-id],
 html[data-od-edit-mode] [data-od-runtime-id],
-html[data-od-edit-mode] [data-od-source-path] { outline: 1px dashed rgba(37, 99, 235, 0.35); outline-offset: 3px; }
+html[data-od-edit-mode] [data-od-source-path] { outline: 1px dashed rgba(37, 99, 235, 0.35); outline-offset: 2px; }
+/* Nested editable boxes: only the outer ancestor paints at rest (avoids double dashed rings). */
+html[data-od-edit-mode] [data-od-id] [data-od-id],
+html[data-od-edit-mode] [data-od-id] [data-od-runtime-id],
+html[data-od-edit-mode] [data-od-id] [data-od-source-path],
+html[data-od-edit-mode] [data-od-runtime-id] [data-od-id],
+html[data-od-edit-mode] [data-od-runtime-id] [data-od-runtime-id],
+html[data-od-edit-mode] [data-od-runtime-id] [data-od-source-path],
+html[data-od-edit-mode] [data-od-source-path] [data-od-id],
+html[data-od-edit-mode] [data-od-source-path] [data-od-runtime-id],
+html[data-od-edit-mode] [data-od-source-path] [data-od-source-path] { outline-color: transparent; }
 html[data-od-edit-mode] [data-od-id]:hover,
 html[data-od-edit-mode] [data-od-runtime-id]:hover,
-html[data-od-edit-mode] [data-od-source-path]:hover { outline: 2px solid #2563eb; }
+html[data-od-edit-mode] [data-od-source-path]:hover { outline: 2px solid #2563eb; outline-offset: 2px; }
 html[data-od-edit-mode] [data-od-edit-selected] {
   outline: 2px solid #2563eb !important;
-  outline-offset: 4px;
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.16);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+/* Host ManualEditResizeOverlay owns the selection chrome — no iframe ring. */
+html[data-od-edit-mode] [data-od-edit-selected][data-od-edit-host-chrome] {
+  outline: none !important;
+  outline-offset: 0;
+  box-shadow: none !important;
 }
 html[data-od-edit-mode] [data-od-editing="true"] {
   outline: 2px solid #2563eb !important;
-  outline-offset: 4px;
+  outline-offset: 2px;
   background: rgba(37, 99, 235, 0.06);
   cursor: text !important;
 }

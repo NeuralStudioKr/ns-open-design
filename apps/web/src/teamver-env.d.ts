@@ -19,6 +19,8 @@ interface ImportMetaEnv {
   /** @deprecated PPTX export is always on; bake-time value ignored. */
   readonly VITE_TEAMVER_PPTX_EXPORT_ENABLE?: string;
   readonly VITE_TEAMVER_DRAW_ANNOTATION_ENABLE?: string;
+  /** Manual Edit box resize/move/promote drag. Off in prod embed unless =1. */
+  readonly VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE?: string;
   readonly VITE_TEAMVER_SITE_URL?: string;
   readonly VITE_TEAMVER_OG_IMAGE_URL?: string;
   /** BYOK streaming daemon message PUT throttle (ms). Set at Docker build via deploy .env. */

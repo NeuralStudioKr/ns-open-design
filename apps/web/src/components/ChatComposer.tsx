@@ -43,8 +43,9 @@ import { resolveProjectUploadBatchErrorMessage } from '../teamver/projectUploadE
 import { getDesignBffClient } from '../teamver/designBffClient';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
-import { projectFilePathExists } from '../utils/projectFilePaths';
+import { excludeAttachmentsBackedByVisualScreenshots, projectFilePathExists } from '../utils/projectFilePaths';
 import {
   shouldHideTeamverToolboxPlugin,
   shouldHideTeamverToolboxSkill,
@@ -1255,7 +1256,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         setUploadError(slideOnlyBlock);
         return false;
       }
-      const nextAttachments =
+      const nextAttachments = excludeAttachmentsBackedByVisualScreenshots(
         activeFileContext && !attachments.some((attachment) => attachment.path === activeFileContext)
           ? [
               {
@@ -1265,7 +1266,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               },
               ...attachments,
             ]
-          : attachments;
+          : attachments,
+        nextCommentAttachments,
+      );
       onSend(prompt, nextAttachments, nextCommentAttachments, meta);
       reset();
       return true;
@@ -1946,8 +1949,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               const readableUploaded = result.uploaded.length > 0
                 ? await uploadedImagesReadableOnDisk(id, result.uploaded)
                 : [];
-              if (readableUploaded.length > 0) {
-                uploaded = assignChatAttachmentOrders(readableUploaded, orderStart);
+              const resolvedUploaded = readableUploaded.length > 0
+                ? readableUploaded
+                : result.uploaded;
+              if (resolvedUploaded.length > 0) {
+                uploaded = assignChatAttachmentOrders(
+                  resolvedUploaded,
+                  orderStart,
+                );
                 const screenshot = detail.file ? uploaded[0] : null;
                 if (screenshot && detail.markKind && detail.bounds) {
                   visualAttachmentInput = {
@@ -1984,10 +1993,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 }
               }
               if (
-                result.uploaded.length > readableUploaded.length
+                result.uploaded.length > resolvedUploaded.length
                 || result.failed.length > 0
               ) {
-                const failedReadCount = result.uploaded.length - readableUploaded.length;
+                const failedReadCount = result.uploaded.length - resolvedUploaded.length;
                 const uploadErrorMessage = resolveProjectUploadBatchErrorMessage({
                   uploadedCount: uploaded.length,
                   failedCount: result.failed.length + failedReadCount,
@@ -2538,7 +2547,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       if (hatched) {
         if (streaming) return;
         setStreamingAnnotationSendPending(false);
-        onSend(hatched, staged, nextCommentAttachments, contextMeta);
+        onSend(
+          hatched,
+          excludeAttachmentsBackedByVisualScreenshots(staged, nextCommentAttachments),
+          nextCommentAttachments,
+          contextMeta,
+        );
         reset();
         return;
       }
@@ -2546,10 +2560,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       if (search) {
         if (streaming) return;
         setStreamingAnnotationSendPending(false);
-        onSend(search.prompt, staged, nextCommentAttachments, {
-          ...contextMeta,
-          research: { enabled: true, query: search.query },
-        });
+        onSend(
+          search.prompt,
+          excludeAttachmentsBackedByVisualScreenshots(staged, nextCommentAttachments),
+          nextCommentAttachments,
+          {
+            ...contextMeta,
+            research: { enabled: true, query: search.query },
+          },
+        );
         reset();
         return;
       }
@@ -3586,9 +3605,7 @@ function StagedRunContexts({
       {workspaceItems.map((workspaceItem) => {
         const kindLabel =
           workspaceItem.id === currentWorkspaceContextId
-            ? isTeamverEmbedMode()
-              ? '현재'
-              : 'Current'
+            ? embedUiLabel('Current', '현재')
             : workspaceContextKindLabel(workspaceItem.kind);
         return (
           <div
@@ -3841,7 +3858,7 @@ function ToolsPluginsPanel({
   onApply: (record: InstalledPluginRecord) => void | Promise<void>;
   onShowDetails: (record: InstalledPluginRecord) => void;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [source, setSource] = useState<'community' | 'mine'>('community');
   const [query, setQuery] = useState('');
@@ -3862,16 +3879,16 @@ function ToolsPluginsPanel({
   return (
     <>
       <div className="composer-tools-filter">
-        <div className="composer-tools-segments" role="tablist" aria-label="Plugin source">
+        <div className="composer-tools-segments" role="tablist" aria-label={t('chat.plusMenu.pluginSourceAria')}>
           <button
             type="button"
             role="tab"
             aria-selected={source === 'community'}
             className={`composer-tools-segment${source === 'community' ? ' active' : ''}`}
             onClick={() => setSource('community')}
-            title={`${communityPlugins.length} installed official plugins`}
+            title={`${communityPlugins.length} ${t('chat.mentionPluginOfficial')}`}
           >
-            Official
+            {t('chat.mentionPluginOfficial')}
           </button>
           <button
             type="button"
@@ -3879,30 +3896,44 @@ function ToolsPluginsPanel({
             aria-selected={source === 'mine'}
             className={`composer-tools-segment${source === 'mine' ? ' active' : ''}`}
             onClick={() => setSource('mine')}
-            title={`${userPlugins.length} installed user plugins`}
+            title={`${userPlugins.length} ${t('chat.plusMenu.pluginsMine')}`}
           >
-            My plugins
+            {t('chat.plusMenu.pluginsMine')}
           </button>
         </div>
         <input
           className="composer-tools-search"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
-          placeholder="Search plugins…"
-          aria-label="Search plugins"
+          placeholder={t('chat.plusMenu.searchPlugins')}
+          aria-label={t('chat.plusMenu.searchPlugins')}
         />
       </div>
       {visiblePlugins.length === 0 ? (
         <div className="composer-tools-empty">
           {plugins.length === 0 ? (
             <>
-              No plugins installed yet. Browse Official or add your own with{' '}
-              <code>od plugin install &lt;source&gt;</code>.
+              {embedUiLabel(
+                'No plugins installed yet. Browse Official or add your own with ',
+                '아직 설치된 플러그인이 없습니다. Official을 둘러보거나 ',
+              )}
+              <code>od plugin install &lt;source&gt;</code>
+              {embedUiLabel('.', ' 로 추가하세요.')}
             </>
           ) : query ? (
-            <>No {source === 'community' ? 'Official' : 'My plugins'} results for “{query}”.</>
+            <>
+              {embedUiLabel(
+                `No ${source === 'community' ? 'Official' : 'My plugins'} results for “${query}”.`,
+                `${source === 'community' ? 'Official' : '내 플러그인'}에서 “${query}” 결과가 없습니다.`,
+              )}
+            </>
           ) : (
-            <>No {source === 'community' ? 'Official' : 'My plugins'} plugins available.</>
+            <>
+              {embedUiLabel(
+                `No ${source === 'community' ? 'Official' : 'My plugins'} plugins available.`,
+                `${source === 'community' ? 'Official' : '내 플러그인'}에 사용 가능한 플러그인이 없습니다.`,
+              )}
+            </>
           )}
         </div>
       ) : (
@@ -3978,6 +4009,7 @@ function ToolsMcpPanel({
   onInsert: (serverId: string) => void;
   onManage: () => void;
 }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const visibleServers = useMemo(
     () => servers.filter((s) => mcpServerMatchesQuery(s, query)),
@@ -3995,19 +4027,25 @@ function ToolsMcpPanel({
           className="composer-tools-search"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
-          placeholder="Search MCP…"
-          aria-label="Search MCP servers and templates"
+          placeholder={t('chat.plusMenu.searchMcp')}
+          aria-label={t('chat.plusMenu.searchMcp')}
         />
       </div>
       {visibleServers.length === 0 ? (
         <div className="composer-tools-empty">
           {servers.length === 0
-            ? 'No enabled MCP servers configured yet.'
-            : `No configured MCP results for “${query}”.`}
+            ? embedUiLabel(
+                'No enabled MCP servers configured yet.',
+                '활성화된 MCP 서버가 아직 없습니다.',
+              )
+            : embedUiLabel(
+                `No configured MCP results for “${query}”.`,
+                `“${query}”에 맞는 MCP 결과가 없습니다.`,
+              )}
         </div>
       ) : (
         <div className="composer-tools-list">
-          <div className="composer-tools-section-label">Configured</div>
+          <div className="composer-tools-section-label">{t('settings.mediaProviderConfigured')}</div>
           {visibleServers.map((s) => (
             <button
               key={s.id}
@@ -4029,7 +4067,7 @@ function ToolsMcpPanel({
       )}
       {visibleTemplates.length > 0 ? (
         <div className="composer-tools-list">
-          <div className="composer-tools-section-label">Templates</div>
+          <div className="composer-tools-section-label">{t('chat.plusMenu.mcpTemplates')}</div>
           {visibleTemplates.map((tpl) => (
             <button
               key={tpl.id}
@@ -4385,7 +4423,7 @@ function ToolsSkillsPanel({
   currentSkillId: string | null;
   onPick: (skill: SkillSummary) => void | Promise<void>;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const [query, setQuery] = useState('');
   const [pendingId, setPendingId] = useState<string | null>(null);
   const visibleSkills = useMemo(
@@ -4399,13 +4437,18 @@ function ToolsSkillsPanel({
           className="composer-tools-search"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
-          placeholder="Search skills…"
-          aria-label="Search skills"
+          placeholder={t('chat.plusMenu.searchSkills')}
+          aria-label={t('chat.plusMenu.searchSkills')}
         />
       </div>
       {visibleSkills.length === 0 ? (
         <div className="composer-tools-empty">
-          {skills.length === 0 ? 'No skills available yet.' : `No skills found for “${query}”.`}
+          {skills.length === 0
+            ? embedUiLabel('No skills available yet.', '사용 가능한 스킬이 아직 없습니다.')
+            : embedUiLabel(
+                `No skills found for “${query}”.`,
+                `“${query}”에 맞는 스킬이 없습니다.`,
+              )}
         </div>
       ) : (
         <div className="composer-tools-list">

@@ -267,6 +267,8 @@ interface Props {
   onSubmit: (payload: PluginLoopSubmit) => Promise<boolean> | boolean | void;
   onOpenProject: (id: string, options?: { fileName?: string }) => void;
   onViewAllProjects: () => void;
+  onRenameProject?: (id: string, name: string) => void;
+  onDeleteProject?: (id: string) => Promise<boolean | void> | boolean | void;
   onBrowseRegistry?: () => void;
   onOpenIntegrations?: () => void;
   onOpenMcp?: () => void;
@@ -299,6 +301,8 @@ export function HomeView({
   onSubmit,
   onOpenProject,
   onViewAllProjects,
+  onRenameProject,
+  onDeleteProject,
   onBrowseRegistry,
   onOpenIntegrations,
   onOpenMcp,
@@ -2335,6 +2339,8 @@ export function HomeView({
           });
           onViewAllProjects();
         }}
+        {...(onRenameProject ? { onRename: onRenameProject } : {})}
+        {...(onDeleteProject ? { onDelete: onDeleteProject } : {})}
       />
 
       {showCommunityGallery ? (

@@ -54,4 +54,15 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(srcDoc).toContain('id="od-deck-card-preview"');
     expect(srcDoc).not.toContain("<script");
   });
+
+  it("uses the 1920×1080 Teamver canvas and sibling combinators for later slides", () => {
+    const srcDoc = deckPreviewSrcDoc(
+      '<html><head></head><body><section></section><section class="slide">One</section><section class="slide">Two</section></body></html>',
+      '/api/projects/p1/raw/deck.html',
+    );
+    expect(srcDoc).toContain('width: 1920px !important');
+    expect(srcDoc).toContain('height: 1080px !important');
+    expect(srcDoc).toContain('.slide ~ .slide');
+    expect(srcDoc).not.toContain('.slide:not(:first-of-type)');
+  });
 });

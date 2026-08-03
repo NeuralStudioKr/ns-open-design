@@ -833,8 +833,12 @@ export function extractTargetIdentityAnchors(attachment: ChatCommentAttachment):
   const seen = new Set<string>();
   const anchors: string[] = [];
   const push = (raw: string): void => {
-    const collapsed = collapseTargetTextForMatch(raw);
+    const text = String(raw ?? '').trim();
+    // History serialize placeholders must not become merge anchors.
+    if (/^\((?:none|empty|missing|unlabeled)\)$/i.test(text)) return;
+    const collapsed = collapseTargetTextForMatch(text);
     if (!collapsed || seen.has(collapsed)) return;
+    if (/^\((?:none|empty|missing|unlabeled)\)$/i.test(collapsed)) return;
     seen.add(collapsed);
     anchors.push(collapsed);
   };

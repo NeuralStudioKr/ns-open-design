@@ -22,8 +22,18 @@ vi.mock('../../src/components/ChatComposer', () => ({
 }));
 
 vi.mock('../../src/components/AuthenticatedProjectFileImage', () => ({
-  AuthenticatedProjectFileImage: ({ path, alt }: { path: string; alt?: string }) => (
-    <img data-testid="auth-project-image" src={`blob:${path}`} alt={alt || ''} />
+  AuthenticatedProjectFileImage: ({
+    path,
+    alt,
+    fetchEnabled,
+  }: {
+    path: string;
+    alt?: string;
+    fetchEnabled?: boolean;
+  }) => (
+    fetchEnabled === false ? null : (
+      <img data-testid="auth-project-image" src={`blob:${path}`} alt={alt || ''} />
+    )
   ),
 }));
 
@@ -72,6 +82,7 @@ describe('ChatPane visual mark history', () => {
         error={null}
         projectId="project-1"
         projectFiles={[{ name: 'uploads/visual-mark-1.png', path: 'uploads/visual-mark-1.png' } as never]}
+        projectFileNames={new Set(['uploads/visual-mark-1.png'])}
         onEnsureProject={async () => 'project-1'}
         onSend={vi.fn()}
         onStop={vi.fn()}
@@ -89,5 +100,117 @@ describe('ChatPane visual mark history', () => {
     const img = screen.getByTestId('auth-project-image') as HTMLImageElement;
     expect(img.src).toContain('uploads/visual-mark-1.png');
     expect(screen.getByText('시각 마크')).toBeTruthy();
+  });
+
+  it('does not render duplicate thumbnails when attachments and visual comments share a basename', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-visual-dup',
+        role: 'user',
+        content: '이 영역 고쳐줘',
+        createdAt: 1,
+        attachments: [
+          {
+            path: 'uploads/visual-mark-1.png',
+            name: 'visual-mark-1.png',
+            kind: 'image',
+            order: 0,
+          },
+        ],
+        commentAttachments: [
+          {
+            id: 'visual-mark-1',
+            order: 0,
+            filePath: 'index.html',
+            elementId: 'visual-mark-1',
+            selector: '',
+            label: 'Visual mark',
+            comment: '여기 텍스트 키워',
+            currentText: '',
+            pagePosition: { x: 0.2, y: 0.3 },
+            htmlHint: '',
+            selectionKind: 'visual',
+            screenshotPath: 'visual-mark-1.png',
+            markKind: 'rect',
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[{ name: 'uploads/visual-mark-1.png', path: 'uploads/visual-mark-1.png' } as never]}
+        projectFileNames={new Set(['uploads/visual-mark-1.png'])}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={[
+          { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
+        ]}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        config={{ agentId: 'claude', agentCliEnv: {} } as unknown as AppConfig}
+      />,
+    );
+
+    expect(screen.getAllByTestId('auth-project-image')).toHaveLength(1);
+    expect(screen.queryByTestId('visual-history-attachment')).toBeNull();
+  });
+
+  it('does not fetch thumbnails for deleted ephemeral drawing screenshots', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-visual-missing',
+        role: 'user',
+        content: '여기 고쳐줘',
+        createdAt: 1,
+        commentAttachments: [
+          {
+            id: 'visual-mark-missing',
+            order: 1,
+            filePath: 'ms798rzf-drawing-2026-07-30T08-31-44-563Z.png',
+            elementId: 'visual-mark-missing',
+            selector: '',
+            label: 'Visual mark',
+            comment: '여기',
+            currentText: '',
+            pagePosition: { x: 0.2, y: 0.3 },
+            htmlHint: '',
+            selectionKind: 'visual',
+            screenshotPath: 'ms798rzf-drawing-2026-07-30T08-31-44-563Z.png',
+            markKind: 'stroke',
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[]}
+        projectFileNames={new Set(['deck.html'])}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={[
+          { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
+        ]}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        config={{ agentId: 'claude', agentCliEnv: {} } as unknown as AppConfig}
+      />,
+    );
+
+    expect(screen.getByTestId('visual-history-attachment')).toBeTruthy();
+    expect(screen.queryByTestId('auth-project-image')).toBeNull();
   });
 });

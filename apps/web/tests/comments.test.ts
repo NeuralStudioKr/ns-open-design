@@ -5,6 +5,8 @@ import {
   buildConcreteElementPatchTemplate,
   buildConcretePatchTemplatesForCommentAttachments,
   buildVisualAnnotationAttachment,
+  formatVisualMarkPlacementStyle,
+  visualMarkPlacementGuidance,
   chatAttachmentsFromPreviewCommentFiles,
   commentSnapshotOverlayEqual,
   commentVisibleOnDeckSlide,
@@ -410,6 +412,64 @@ describe('preview comment attachment helpers', () => {
       comment: 'Tighten the hierarchy',
     });
     expect(messageContentWithCommentAttachments('', attachments)).toContain('memberCount: 2');
+  });
+
+  it('round-trips podMembers through attached-preview-comments history parse', () => {
+    const attachments = buildBoardCommentAttachments({
+      target: {
+        filePath: 'atlas.html',
+        elementId: 'hero',
+        selector: '[data-od-id="hero"]',
+        label: 'section.hero',
+        text: 'Hero title Chart value',
+        position: { x: 10, y: 20, width: 300, height: 200 },
+        htmlHint: '<section data-od-id="hero">',
+        selectionKind: 'pod',
+        memberCount: 2,
+        podMembers: [
+          {
+            elementId: 'hero',
+            selector: '[data-od-id="hero"]',
+            label: 'section.hero',
+            text: 'Hero title',
+            position: { x: 10, y: 20, width: 200, height: 100 },
+            htmlHint: '<section data-od-id="hero">',
+          },
+          {
+            elementId: 'chart',
+            selector: '[data-od-id="chart"]',
+            label: 'section.chart',
+            text: 'Chart value',
+            position: { x: 120, y: 80, width: 190, height: 120 },
+            htmlHint: '<section data-od-id="chart">',
+          },
+        ],
+      },
+      notes: ['Tighten the hierarchy'],
+    });
+    const content = messageContentWithCommentAttachments('Tighten the hierarchy', attachments);
+    const parsed = parseCommentAttachmentsFromMessageContent(content);
+    expect(parsed[0]?.selectionKind).toBe('pod');
+    expect(parsed[0]?.memberCount).toBe(2);
+    expect(content).toContain('member.1.text: Hero title');
+    expect(content).toContain('member.1.htmlHint: <section data-od-id="hero">');
+    expect(content).toContain('member.2.text: Chart value');
+    expect(parsed[0]?.podMembers).toEqual([
+      expect.objectContaining({
+        elementId: 'hero',
+        selector: '[data-od-id="hero"]',
+        label: 'section.hero',
+        text: 'Hero title',
+        htmlHint: '<section data-od-id="hero">',
+      }),
+      expect.objectContaining({
+        elementId: 'chart',
+        selector: '[data-od-id="chart"]',
+        label: 'section.chart',
+        text: 'Chart value',
+        htmlHint: '<section data-od-id="chart">',
+      }),
+    ]);
   });
 
   it('builds an image-only board payload when no text note was entered', () => {
@@ -855,6 +915,7 @@ describe('preview comment attachment helpers', () => {
     expect(elementPatchCoerceHintsFromCommentAttachments([visualOnly])).toEqual([]);
     expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('type="deck-patch"');
     expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('data-slide-index="1"');
+    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('left:10px;top:20px;width:100px;height:40px');
     expect(buildConcretePatchTemplatesForCommentAttachments([visualOnly])).toContain('type="deck-patch"');
 
     const visualWithRealTarget = buildVisualAnnotationAttachment({
@@ -889,6 +950,101 @@ describe('preview comment attachment helpers', () => {
         htmlHint: '<h1 data-od-id="hero">Title</h1>',
       }),
     ).toBe(false);
+
+    // Real elementId alone is a DOM anchor even without selector/htmlHint.
+    expect(
+      isScreenshotOnlyVisualCommentTarget({
+        selectionKind: 'visual',
+        markKind: 'click',
+        screenshotPath: 'uploads/mark.png',
+        elementId: 'hero-title',
+        selector: '',
+        htmlHint: '',
+      }),
+    ).toBe(false);
+
+    // Bare class selectors are NOT extractable target ids — stay screenshot-only.
+    expect(
+      isScreenshotOnlyVisualCommentTarget({
+        selectionKind: 'visual',
+        markKind: 'click',
+        screenshotPath: 'uploads/mark.png',
+        elementId: 'visual-mark-class',
+        selector: 'h1.hero',
+        htmlHint: '',
+      }),
+    ).toBe(true);
+    expect(
+      buildConcretePatchTemplatesForCommentAttachments([
+        commentAttachment({
+          elementId: 'visual-mark-class',
+          selector: 'h1.hero',
+          htmlHint: '',
+          slideIndex: 0,
+          selectionKind: 'visual',
+          screenshotPath: 'uploads/mark.png',
+          markKind: 'click',
+        }),
+      ]),
+    ).toContain('type="deck-patch"');
+
+    // visual-mark-* + attr selector still yields an element-patch template.
+    const visualMarkWithSelector = {
+      ...commentAttachment({
+        elementId: 'visual-mark-x',
+        selector: '[data-od-id="hero"]',
+        htmlHint: '<h1 data-od-id="hero">Title</h1>',
+        slideIndex: 0,
+        selectionKind: 'visual' as const,
+        screenshotPath: 'uploads/mark.png',
+        markKind: 'click' as const,
+      }),
+    };
+    expect(buildConcreteElementPatchTemplate([visualMarkWithSelector])).toContain(
+      'target-id="hero"',
+    );
+    expect(elementPatchCoerceHintsFromCommentAttachments([visualMarkWithSelector])).toEqual([
+      { targetId: 'hero', slideIndex: 0 },
+    ]);
+  });
+
+  it('round-trips computedStyle and imageAttachments through history parse', () => {
+    const attachment = commentAttachment({
+      style: { color: 'rgb(1, 2, 3)', fontSize: '18px' },
+      imageAttachments: [
+        { path: 'uploads/ref-a.png', name: 'ref-a.png' },
+        { path: 'uploads/ref-b.png', name: 'ref-b.png' },
+      ],
+    });
+    const content = messageContentWithCommentAttachments('참고 이미지 반영', [attachment]);
+    expect(content).toContain('computedStyle: color: rgb(1, 2, 3); fontSize: 18px');
+    expect(content).toContain('image.1: uploads/ref-a.png | ref-a.png');
+    const parsed = parseCommentAttachmentsFromMessageContent(content);
+    expect(parsed[0]?.style).toEqual({ color: 'rgb(1, 2, 3)', fontSize: '18px' });
+    expect(parsed[0]?.imageAttachments).toEqual([
+      { path: 'uploads/ref-a.png', name: 'ref-a.png' },
+      { path: 'uploads/ref-b.png', name: 'ref-b.png' },
+    ]);
+  });
+
+  it('strips serialize placeholders so history round-trip stays screenshot-only', () => {
+    const visualOnly = buildVisualAnnotationAttachment({
+      order: 0,
+      screenshotPath: 'uploads/visual-mark-1.png',
+      markKind: 'stroke',
+      note: '여기 키워줘',
+      slideIndex: 1,
+      bounds: { x: 10, y: 20, width: 100, height: 40 },
+    });
+    const content = messageContentWithCommentAttachments('여기 키워줘', [visualOnly]);
+    expect(content).toContain('htmlHint: (none)');
+    expect(content).toContain('currentText: (empty)');
+    const parsed = parseCommentAttachmentsFromMessageContent(content);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.htmlHint).toBe('');
+    expect(parsed[0]?.currentText).toBe('');
+    expect(isScreenshotOnlyVisualCommentTarget(parsed[0]!)).toBe(true);
+    expect(buildConcreteDeckPatchTemplateForVisualMarks(parsed)).toContain('type="deck-patch"');
   });
 
   it('does not render preview-comment context when target location data is missing', () => {

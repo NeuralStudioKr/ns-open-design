@@ -3099,15 +3099,19 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       if (typeof label !== 'string' || !label.trim()) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'label required');
       }
-      if (artifactManifest !== undefined && artifactManifest !== null) {
-        const validated = validateArtifactManifestInput(artifactManifest, fileName);
+      // Style/manual-edit clients often echo `file.artifactManifest`. A stale
+      // or partial manifest (empty title, stripped exports) must not block the
+      // content revision — drop it and leave the on-disk sidecar unchanged.
+      let pushManifest = artifactManifest ?? null;
+      if (pushManifest !== undefined && pushManifest !== null) {
+        const validated = validateArtifactManifestInput(pushManifest, fileName);
         if (!validated.ok) {
-          return sendApiError(
-            res,
-            400,
-            'BAD_REQUEST',
-            `invalid artifactManifest: ${validated.error}`,
+          console.warn(
+            `[file-revisions] ignoring invalid artifactManifest for ${projectId}/${fileName}: ${validated.error}`,
           );
+          pushManifest = null;
+        } else {
+          pushManifest = validated.value;
         }
       }
       const truncate = truncateAfterSequence === undefined || truncateAfterSequence === null
@@ -3119,7 +3123,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         content,
         source,
         label: label.trim(),
-        artifactManifest: artifactManifest ?? null,
+        artifactManifest: pushManifest,
         ...(typeof conversationId === 'string' ? { conversationId } : {}),
         ...(typeof assistantMessageId === 'string' ? { assistantMessageId } : {}),
         ...(typeof truncate === 'number' && Number.isFinite(truncate)
@@ -3140,6 +3144,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       }
       if (err instanceof ArtifactPublicationBlockedError) {
         return sendApiError(res, 422, 'ARTIFACT_PUBLICATION_BLOCKED', err.message);
+      }
+      if (err && err.code === 'ENOENT') {
+        return sendApiError(res, 404, 'FILE_NOT_FOUND', String(err));
       }
       sendApiError(res, 400, 'BAD_REQUEST', String(err));
     }

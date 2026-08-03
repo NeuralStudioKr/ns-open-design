@@ -11,9 +11,13 @@ import {
   hasEmbedVisibleAssistantBody,
   isTerminalSucceededEmptyShellAnchor,
   isTerminalSucceededEmptyShellForDisplay,
+  messageHasSubstantiveClosedArtifact,
   terminalSucceededAnchorLeadCopy,
 } from '../../src/runtime/chat-message-render';
-import { dedupeConversationAssistantRows } from '../../src/runtime/conversation-message-dedupe';
+import {
+  dedupeConversationAssistantRows,
+  resolveLastAssistantMessageId,
+} from '../../src/runtime/conversation-message-dedupe';
 import { mergeActiveRunsIntoMessages } from '../../src/teamver/backgroundChatRecovery';
 import { AUTO_CONTINUE_PROMPT_SENTINEL } from '../../src/runtime/resume';
 
@@ -42,7 +46,8 @@ function reloadPipeline(messages: ChatMessage[]) {
     dedupeConversationAssistantRows(messages.map(reconcileChatMessageOnLoad)),
     [],
   );
-  const lastAssistantId = loaded.filter((message) => message.role === 'assistant').at(-1)?.id;
+  // Production ChatPane wiring — do not hardcode last id to the trailing shell.
+  const lastAssistantId = resolveLastAssistantMessageId(loaded);
   const items = buildChatRenderItems(loaded, {
     ...embedCtx,
     lastAssistantId,
@@ -96,7 +101,7 @@ describe('chat assistant body pipeline', () => {
   });
 
   it('renders completion copy for auto-continue terminal succeeded shells', () => {
-    const { items } = reloadPipeline([
+    const { items, lastAssistantId } = reloadPipeline([
       { id: 'u1', role: 'user', content: 'make deck', createdAt: 1 },
       {
         id: 'a-failed',
@@ -126,11 +131,12 @@ describe('chat assistant body pipeline', () => {
     ]);
 
     expect(items.map((item) => item.message.id)).toEqual(['u1', 'a-succeeded']);
+    expect(lastAssistantId).toBe('a-succeeded');
     render(
       <AssistantMessage
         message={items[1]!.message}
         streaming={false}
-        isLast
+        isLast={items[1]!.message.id === lastAssistantId}
         projectId="proj-1"
       />,
     );
@@ -138,7 +144,58 @@ describe('chat assistant body pipeline', () => {
     expect(screen.queryByText('incomplete')).toBeNull();
   });
 
-  it('renders inline error detail for the last failed embed row on reload', () => {
+  it('keeps historical succeeded empty-shell completion after a later user turn', () => {
+    const { items, lastAssistantId } = reloadPipeline([
+      { id: 'u1', role: 'user', content: 'make deck', createdAt: 1 },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: '',
+        runStatus: 'succeeded',
+        endedAt: 2,
+        createdAt: 2,
+        events: [{ kind: 'status', label: 'requesting' }],
+      },
+      { id: 'u2', role: 'user', content: 'tweak colors', createdAt: 3 },
+      {
+        id: 'a2',
+        role: 'assistant',
+        content: 'Done with the palette.',
+        runStatus: 'succeeded',
+        endedAt: 4,
+        createdAt: 4,
+      },
+    ]);
+
+    expect(items.map((item) => item.message.id)).toEqual(['u1', 'a1', 'u2', 'a2']);
+    expect(lastAssistantId).toBe('a2');
+    render(
+      <AssistantMessage
+        message={items[1]!.message}
+        streaming={false}
+        isLast={items[1]!.message.id === lastAssistantId}
+        projectId="proj-1"
+      />,
+    );
+    expect(screen.getByText('The task is complete.')).toBeTruthy();
+  });
+
+  it('treats substantive closed artifacts as visible completion bodies', () => {
+    const body =
+      '<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Hi</h1></section></body></html></artifact>';
+    expect(messageHasSubstantiveClosedArtifact(body)).toBe(true);
+    expect(messageHasSubstantiveClosedArtifact('<artifact type="deck"></artifact>')).toBe(false);
+    const message: ChatMessage = {
+      id: 'a-deck',
+      role: 'assistant',
+      content: body,
+      runStatus: 'succeeded',
+      endedAt: 2,
+    };
+    expect(hasEmbedVisibleAssistantBody(message)).toBe(true);
+  });
+
+  it('keeps failed embed rows on reload; ChatPane owns the error card copy', () => {
     const { items } = reloadPipeline([
       { id: 'u1', role: 'user', content: 'run task', createdAt: 1 },
       {
@@ -153,7 +210,10 @@ describe('chat assistant body pipeline', () => {
     ]);
 
     expect(items.map((item) => item.message.id)).toEqual(['u1', 'a-failed']);
-    render(
+    // When ChatPane sets errorCardOwnerId, the inline StatusPill is suppressed
+    // so the diagnostic card is the single copy SSOT — the assistant row itself
+    // must still mount.
+    const { container } = render(
       <AssistantMessage
         message={items[1]!.message}
         streaming={false}
@@ -162,7 +222,8 @@ describe('chat assistant body pipeline', () => {
         errorCardOwnerId="a-failed"
       />,
     );
-    expect(screen.getByText('upstream timeout')).toBeTruthy();
+    expect(screen.queryByText('upstream timeout')).toBeNull();
+    expect(container.querySelector('[data-message-id="a-failed"]')).toBeTruthy();
   });
 
   it('does not reserve phantom rows for artifact-only shells without deliverables', () => {

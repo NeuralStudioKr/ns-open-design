@@ -448,7 +448,9 @@
   transition: border-color 120ms var(--ease-out), box-shadow 120ms var(--ease-out), transform 120ms var(--ease-out);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* Keep overflow visible so the kebab dropdown isn't clipped; thumbs clip
+   * their own media below. */
+  overflow: visible;
   min-height: 168px;
 }
 .design-card.is-design-system-project {
@@ -472,6 +474,8 @@
   color: var(--text-faint);
   font-size: 38px;
   position: relative;
+  overflow: hidden;
+  border-radius: var(--radius) var(--radius) 0 0;
 }
 .design-card-thumb::before {
   /* Folder-shape icon */
@@ -620,11 +624,14 @@
 }
 .design-card:hover .design-card-more,
 .design-card:focus-within .design-card-more,
+.recent-projects__card:hover .design-card-more,
+.recent-projects__card:focus-within .design-card-more,
 .design-card-more[aria-expanded="true"],
 .design-card-more:focus-visible { opacity: 1; }
 .design-card-more:hover { color: var(--text-strong); border-color: var(--border-strong); }
 @media (hover: none) {
-  .design-card .design-card-more { opacity: 1; }
+  .design-card .design-card-more,
+  .recent-projects__card .design-card-more { opacity: 1; }
 }
 .design-card-menu {
   position: absolute;
@@ -639,6 +646,10 @@
   display: flex;
   flex-direction: column;
   z-index: 50;
+}
+.design-card-menu.design-card-menu--up {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 .design-card-menu button {
   display: flex;
@@ -760,7 +771,7 @@
 }
 /*
  * Project thumb aspect lock: iframe covers below render at a fixed
- * 1280x720 desktop size and are scaled to fit via a Math.min() ratio
+ * 1920×1080 Teamver canvas and are scaled to fit via ResizeObserver
  * (see DesignsTabProjectThumb + ProjectCardHtmlCover), so if the card
  * thumb slot ends up wider than 16:9 the scale collapses on the short
  * axis and the frame's white background bleeds through on the long axis
@@ -811,8 +822,8 @@
   background: #fff;
 }
 .project-thumb-deck-iframe {
-  width: 1280px;
-  height: 720px;
+  width: 1920px;
+  height: 1080px;
   border: 0;
   pointer-events: none;
   transform: scale(var(--project-deck-scale, 1));

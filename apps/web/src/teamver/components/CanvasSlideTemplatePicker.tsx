@@ -27,6 +27,7 @@ import { PreviewSurface } from "../../components/plugins-home/cards/PreviewSurfa
 import { localizePluginDescription } from "../../components/plugins-home/localization";
 import { CANVAS_CREATE_SLIDES_PLUGIN_ID, type TeamverCanvasSlideTemplateOption } from "../canvasSlideLaunch";
 import { shouldEagerLoadCommunityPluginPreviews } from "../embedDaemonFetchPolicy";
+import { embedUiLabel } from "../embedUiLabels";
 
 type Props = {
   options: TeamverCanvasSlideTemplateOption[];
@@ -197,12 +198,12 @@ export function CanvasSlideTemplatePicker({
             <Icon name="search" size={12} aria-hidden />
             <input
               type="search"
-              placeholder="템플릿 검색"
+              placeholder={embedUiLabel('Search templates', '템플릿 검색')}
               value={query}
               disabled={disabled}
               onChange={(event) => setQuery(event.currentTarget.value)}
               data-testid="teamver-canvas-slide-launch-template-search"
-              aria-label="Search slide templates"
+              aria-label={embedUiLabel('Search slide templates', '슬라이드 템플릿 검색')}
             />
           </label>
         ) : (

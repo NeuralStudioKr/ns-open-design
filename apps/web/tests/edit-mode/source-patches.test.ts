@@ -193,6 +193,123 @@ describe('manual edit source patches', () => {
     expect(attrs['data-od-id']).toBe('01 Cover');
   });
 
+  it('rejects javascript: URLs in set-link and set-attributes href/src', () => {
+    const linkDenied = applyManualEditPatch(baseSource, {
+      kind: 'set-link',
+      id: 'cta',
+      text: 'Start',
+      href: 'javascript:alert(1)',
+    });
+    expect(linkDenied.ok).toBe(false);
+    expect(readManualEditFields(baseSource, 'cta').href).toBe('/start');
+
+    const attrDenied = applyManualEditPatch(baseSource, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: { href: 'javascript:alert(1)', 'aria-label': 'ok' },
+    });
+    expect(attrDenied.ok).toBe(true);
+    const attrs = readManualEditAttributes(attrDenied.source, 'cta');
+    expect(attrs.href).toBe('/start');
+    expect(attrs['aria-label']).toBe('ok');
+  });
+
+  it('coerces numeric set-style JSON instead of silently clearing properties', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-style',
+      id: 'hero-title',
+      styles: { fontSize: 32 as unknown as string, fontWeight: 700 as unknown as string },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const styles = readManualEditStyles(result.source, 'hero-title');
+    expect(styles.fontSize).toMatch(/32/);
+    expect(styles.fontWeight).toBe('700');
+  });
+
+  it('appends px to unitless length strings in set-style', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-style',
+      id: 'hero-title',
+      styles: { fontSize: '32', fontWeight: '700' },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const styles = readManualEditStyles(result.source, 'hero-title');
+    expect(styles.fontSize).toMatch(/32px/);
+    expect(styles.fontWeight).toBe('700');
+  });
+
+  it('rejects srcset javascript, null-byte scheme bypass, and svg data URLs', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<img data-od-id="hero-image" src="/old.png" alt="Old image">',
+      '</body></html>',
+    ].join('');
+    const srcsetDenied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'hero-image',
+      attributes: { srcset: 'javascript:alert(1)' },
+    });
+    expect(srcsetDenied.ok).toBe(true);
+    expect(readManualEditAttributes(srcsetDenied.source, 'hero-image').srcset).toBeUndefined();
+
+    const nullByteDenied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'hero-image',
+      attributes: { src: 'java\u0000script:alert(1)' },
+    });
+    expect(nullByteDenied.ok).toBe(true);
+    expect(readManualEditAttributes(nullByteDenied.source, 'hero-image').src).toBe('/old.png');
+
+    const svgDenied = applyManualEditPatch(source, {
+      kind: 'set-image',
+      id: 'hero-image',
+      src: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>',
+      alt: 'x',
+    });
+    expect(svgDenied.ok).toBe(false);
+  });
+
+  it('rejects spaced data:text/html and javascript: on action/formaction/poster', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<a data-od-id="cta" href="/start">Start</a>',
+      '<form data-od-id="form"><button data-od-id="submit">Go</button></form>',
+      '<video data-od-id="clip" poster="/thumb.png"></video>',
+      '</body></html>',
+    ].join('');
+    const spaced = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: { href: 'data: text/html,hi' },
+    });
+    expect(spaced.ok).toBe(true);
+    expect(readManualEditAttributes(spaced.source, 'cta').href).toBe('/start');
+
+    const formDenied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'form',
+      attributes: { action: 'javascript:alert(1)' },
+    });
+    expect(formDenied.ok).toBe(true);
+    expect(readManualEditAttributes(formDenied.source, 'form').action).toBeUndefined();
+
+    const formactionDenied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'submit',
+      attributes: { formaction: 'javascript:alert(1)' },
+    });
+    expect(formactionDenied.ok).toBe(true);
+    expect(readManualEditAttributes(formactionDenied.source, 'submit').formaction).toBeUndefined();
+
+    const posterDenied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'clip',
+      attributes: { poster: 'javascript:alert(1)' },
+    });
+    expect(posterDenied.ok).toBe(true);
+    expect(readManualEditAttributes(posterDenied.source, 'clip').poster).toBe('/thumb.png');
+  });
+
   it('preserves data-od-id when selected outerHTML omits it', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',
@@ -225,6 +342,143 @@ describe('manual edit source patches', () => {
     expect(html).toContain('data-slide-index="0"');
     expect(html).toContain('data-screen-label="01 Cover"');
     expect(html).toContain('class="slide replacement"');
+  });
+
+  it('forces current slide identity when model outerHTML emits wrong indexes', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-od-id="01 Cover" data-slide-index="0" data-screen-label="01 Cover">',
+      '<h1>Cover</h1>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: '01 Cover',
+      html: '<section class="slide" data-od-id="hijacked" data-slide-index="9" data-screen-label="XX"><h1>Cover</h1></section>',
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, '01 Cover');
+    expect(html).toContain('data-od-id="01 Cover"');
+    expect(html).toContain('data-slide-index="0"');
+    expect(html).toContain('data-screen-label="01 Cover"');
+    expect(html).not.toContain('data-slide-index="9"');
+  });
+
+  it('strips on* handlers from set-outer-html replacement trees', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-image',
+      html: '<img data-od-id="hero-image" src="/ok.png" onerror="alert(1)" alt="x">',
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-image');
+    expect(html).toContain('src="/ok.png"');
+    expect(html).not.toMatch(/onerror/i);
+  });
+
+  it('strips executable chrome tags nested in set-outer-html replacements', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<h1 data-od-id="hero-title">',
+        '<script>alert(1)</script>',
+        '<iframe src="https://evil.example"></iframe>',
+        'Safe title',
+        '</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).toContain('Safe title');
+    expect(html).not.toMatch(/<script\b/i);
+    expect(html).not.toMatch(/<iframe\b/i);
+  });
+
+  it('rejects set-outer-html when the sole root is a non-content chrome tag', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<script>alert(1)</script>',
+    });
+    expect(result.ok).toBe(false);
+    expect(readManualEditOuterHtml(result.source, 'hero-title')).toContain('Original title');
+  });
+
+  it('strips @import from salvaged style siblings before head inject', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>@import url("https://evil.example/x.css"); .hero-pop{color:#ef4444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('.hero-pop{color:#ef4444}');
+    expect(result.source).not.toMatch(/@import/i);
+    expect(result.source).not.toContain('evil.example');
+  });
+
+  it('ignores short quoted instruction terms when scoring merge candidates', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<button data-od-id="ok-btn">OK</button>',
+      '<strong data-od-id="instructor-name" data-od-edit="text">홍길동</strong>',
+      '<p data-od-id="body">안내 본문</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<button>OK</button>',
+      '<strong>김강사</strong>',
+      '<p>안내 본문</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetsFromSource(
+      source,
+      modelOutput,
+      ['instructor-name'],
+      { slideIndex: 0 },
+      [{
+        id: 'instructor-name',
+        currentText: '홍길동',
+        // Short "OK" must not steal the merge onto the button.
+        instructionText: "이름은 'OK' 이고 강사는 '김강사' 야",
+        htmlHint: '<strong data-od-id="instructor-name">홍길동</strong>',
+      }],
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('<strong data-od-id="instructor-name" data-od-edit="text">김강사</strong>');
+    expect(result.source).toContain('<button data-od-id="ok-btn">OK</button>');
+  });
+
+  it('allowlists set-style props and persists whiteSpace', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-style',
+      id: 'hero-title',
+      styles: {
+        whiteSpace: 'nowrap',
+        textDecoration: 'underline',
+        behavior: 'url(#xss)',
+        cssText: 'background:url(javascript:1)',
+      } as unknown as Partial<import('../../src/edit-mode/types').ManualEditStyles>,
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).toMatch(/white-space:\s*nowrap/i);
+    expect(html).toMatch(/text-decoration:\s*underline/i);
+    expect(html).not.toMatch(/behavior/i);
+    expect(html).not.toMatch(/cssText|css-text/i);
+    expect(html).not.toMatch(/javascript/i);
   });
 
   it('salvages set-outer-html when model emits style sibling + matching root', () => {

@@ -109,8 +109,14 @@ export function applyManualEditPatch(
     } else {
       applyManualEditPlainText(el, patch.text);
     }
+    if (!isSafeManualEditUrl(patch.href)) {
+      return { ok: false, source, error: 'Link href uses a disallowed URL scheme.' };
+    }
     el.setAttribute('href', patch.href);
   } else if (patch.kind === 'set-image') {
+    if (!isSafeManualEditUrl(patch.src)) {
+      return { ok: false, source, error: 'Image src uses a disallowed URL scheme.' };
+    }
     el.setAttribute('src', patch.src);
     el.setAttribute('alt', patch.alt);
   } else if (patch.kind === 'set-style') {
@@ -371,7 +377,7 @@ export function mergeManualEditTargetsFromSource(
     const currentOuter = currentTarget.outerHTML;
     const nextOuter = nextTarget.outerHTML;
     const replacement = currentDoc.importNode(nextTarget, true);
-    preserveManualEditIdentityAttributes(currentTarget, replacement);
+    finalizeManualEditReplacement(currentTarget, replacement);
     currentTarget.replaceWith(replacement);
     replacedCount += 1;
     if (currentOuter !== nextOuter) changedCount += 1;
@@ -429,7 +435,7 @@ export function graftPatchedTargetElementFromSource(
   }
 
   const replacement = currentDoc.importNode(patchedTarget, true);
-  preserveManualEditIdentityAttributes(currentTarget, replacement);
+  finalizeManualEditReplacement(currentTarget, replacement);
   currentTarget.replaceWith(replacement);
   return { ok: true, source: serializeSource(currentDoc, currentSource) };
 }
@@ -671,7 +677,9 @@ function pickBestLeafTextTarget(
     let score = text.length;
     if (hintedTag && candidate.tagName.toLowerCase() === hintedTag) score += 50;
     if (text === hintText) score += 200;
-    else if (text.includes(hintText) || hintText.includes(text)) score += 80;
+    else if (hintText.length >= 4 && (text.includes(hintText) || hintText.includes(text))) {
+      score += 40;
+    }
     if (parentText) {
       if (text === parentText) score += 120;
       else if (parentText.includes(text)) score += Math.min(60, text.length);
@@ -719,7 +727,7 @@ export function mergeManualEditTargetByHint(
   }
 
   const replacement = currentDoc.importNode(nextTarget, true);
-  preserveManualEditIdentityAttributes(currentTarget, replacement);
+  finalizeManualEditReplacement(currentTarget, replacement);
   currentTarget.replaceWith(replacement);
   return {
     ok: true,
@@ -783,7 +791,12 @@ function findElementByHint(
     let score = 0;
     if (hintedTag && candidate.tagName.toLowerCase() === hintedTag) score += 50;
     if (hintText && text === hintText) score += 200;
-    else if (hintText && text.includes(hintText)) score += 80;
+    else if (hintText && text.includes(hintText) && hintText.length >= 4) {
+      // Short substring hits (`"OK"`) used to score 80 alone and latch the
+      // shortest containing node. Require a longer hint; tag+substring can
+      // still clear the threshold.
+      score += 40;
+    }
     if (score <= 0) continue;
     const length = text.length;
     if (!best || score > best.score || (score === best.score && length < best.length)) {
@@ -856,8 +869,9 @@ function findEquivalentElementByScopedPosition(
 }
 
 function preserveManualEditIdentityAttributes(currentTarget: Element, replacement: Element): void {
-  // Slide page targets rely on data-slide-index / data-screen-label for
-  // lookup and page-level comments — keep them when the model omits them.
+  // Always force current identity / slide-scope attrs onto the replacement.
+  // Models often emit wrong data-slide-index / data-screen-label; filling only
+  // when omitted let those wrong values win and break page-level lookup.
   for (const attr of [
     'data-od-id',
     'data-od-runtime-id',
@@ -868,10 +882,56 @@ function preserveManualEditIdentityAttributes(currentTarget: Element, replacemen
     'data-screen-label',
   ]) {
     const currentValue = currentTarget.getAttribute(attr);
-    if (currentValue && !replacement.getAttribute(attr)) {
+    if (currentValue) {
       replacement.setAttribute(attr, currentValue);
     }
   }
+}
+
+/** Tags that must never persist from model set-outer-html / merge trees. */
+const MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS = new Set([
+  'script',
+  'iframe',
+  'object',
+  'embed',
+  'base',
+  'link',
+  'meta',
+  'noscript',
+  'template',
+]);
+
+/** Strip executable chrome tags, event handlers, and unsafe URL attrs. */
+function sanitizeManualEditReplacementTree(root: Element): void {
+  const toRemove: Element[] = [];
+  const walk = (el: Element): void => {
+    const tag = el.tagName.toLowerCase();
+    if (el !== root && MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(tag)) {
+      toRemove.push(el);
+      return;
+    }
+    for (const attr of Array.from(el.attributes)) {
+      const lower = attr.name.toLowerCase();
+      if (lower.startsWith('on') || lower === 'srcdoc') {
+        el.removeAttribute(attr.name);
+        continue;
+      }
+      if (
+        (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
+        && !isSafeManualEditUrlAttrValue(lower, attr.value)
+      ) {
+        el.removeAttribute(attr.name);
+      }
+    }
+    for (const child of Array.from(el.children)) walk(child);
+  };
+  walk(root);
+  for (const el of toRemove) el.remove();
+}
+
+function finalizeManualEditReplacement(currentTarget: Element, replacement: Element): void {
+  preserveManualEditIdentityAttributes(currentTarget, replacement);
+  sanitizeManualEditReplacementTree(replacement);
 }
 
 function findReplacementCandidateByTextHint(
@@ -924,16 +984,28 @@ function isReasonableTextReplacementCandidate(element: Element): boolean {
   return childTextElements.length <= 1;
 }
 
+/**
+ * Instruction replacement terms used for merge scoring.
+ * Drop short ASCII-only quotes ("OK"/"AI"/"on") that hijack +120 matches,
+ * while keeping short Hangul/CJK names like "김강사".
+ */
+function isUsableInstructionTerm(term: string): boolean {
+  if (!term) return false;
+  if (term.length >= 4) return true;
+  if (term.length < 2) return false;
+  return /[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF\u4E00-\u9FFF]/.test(term);
+}
+
 function extractLikelyReplacementTerms(text: string): string[] {
   const terms = new Set<string>();
   const source = String(text || '');
   for (const match of source.matchAll(/['"“”‘’「」『』]([^'"“”‘’「」『』\n]{1,80})['"“”‘’「」『』]/g)) {
     const term = normalizeTextForCandidate(match[1] || '');
-    if (term) terms.add(term);
+    if (isUsableInstructionTerm(term)) terms.add(term);
   }
   for (const match of source.matchAll(/(?:이름|제목|텍스트|문구|내용)[^\n]{0,20}?(?:은|는|을|를)\s*([가-힣A-Za-z0-9 _.-]{2,40}?)(?:\s*(?:이야|야|로|으로|입니다|다|\.|$))/g)) {
     const term = normalizeTextForCandidate(match[1] || '');
-    if (term) terms.add(term);
+    if (isUsableInstructionTerm(term)) terms.add(term);
   }
   return [...terms];
 }
@@ -1331,8 +1403,60 @@ export function applyManualEditPlainText(el: Element, value: string): void {
   el.innerHTML = manualEditPlainTextToHtml(String(value ?? ''));
 }
 
-function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
+/**
+ * Models often emit numeric CSS JSON (`{"fontSize":32}`). Coerce to CSS
+ * strings so set-style does not silently removeProperty on non-strings.
+ */
+const MANUAL_EDIT_UNITLESS_STYLE_PROPS = new Set([
+  'fontWeight',
+  'opacity',
+  'lineHeight',
+  'zIndex',
+  'flex',
+  'flexGrow',
+  'flexShrink',
+  'order',
+]);
+
+export function coerceManualEditStyleValue(name: string, value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return '';
+    // Models often emit unitless length strings (`"32"`). Append px so
+    // setProperty does not silently ignore invalid CSS lengths.
+    if (
+      !MANUAL_EDIT_UNITLESS_STYLE_PROPS.has(name)
+      && /^-?\d+(\.\d+)?$/.test(trimmed)
+    ) {
+      return `${trimmed}px`;
+    }
+    return trimmed;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (MANUAL_EDIT_UNITLESS_STYLE_PROPS.has(name)) return String(value);
+    return `${value}px`;
+  }
+  return null;
+}
+
+export function coerceManualEditStyleRecord(
+  styles: Record<string, unknown> | Partial<ManualEditStyles> | null | undefined,
+): Partial<ManualEditStyles> {
+  const out: Partial<ManualEditStyles> = {};
+  if (!styles) return out;
+  const allowed = new Set<string>(MANUAL_EDIT_STYLE_PROPS as readonly string[]);
   for (const [name, value] of Object.entries(styles)) {
+    if (!allowed.has(name)) continue;
+    const coerced = coerceManualEditStyleValue(name, value);
+    if (coerced == null) continue;
+    out[name as keyof ManualEditStyles] = coerced;
+  }
+  return out;
+}
+
+function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
+  const coerced = coerceManualEditStyleRecord(styles as Record<string, unknown>);
+  for (const [name, value] of Object.entries(coerced)) {
     const cssName = camelToKebab(name);
     if (typeof value !== 'string' || value.trim() === '') el.style.removeProperty(cssName);
     // Match live preview (`!important`) so brand-kit / artifact CSS rules
@@ -1354,9 +1478,20 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
   ]);
   for (const [name, value] of Object.entries(attributes)) {
     // Attribute names are case-insensitive in HTML; protect via lowercase.
-    if (!isSafeAttributeName(name) || protectedAttrs.has(name.toLowerCase())) continue;
-    if (value.trim() === '') el.removeAttribute(name);
-    else el.setAttribute(name, value);
+    const lower = name.toLowerCase();
+    if (!isSafeAttributeName(name) || protectedAttrs.has(lower)) continue;
+    if (value.trim() === '') {
+      el.removeAttribute(name);
+      continue;
+    }
+    // Block dangerous URL schemes on navigable / embeddable attrs.
+    if (
+      (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
+      && !isSafeManualEditUrlAttrValue(lower, value)
+    ) {
+      continue;
+    }
+    el.setAttribute(name, value);
   }
 }
 
@@ -1374,7 +1509,7 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
   if (!next) {
     return { ok: false, error: 'Replacement HTML must contain exactly one root element.' };
   }
-  preserveManualEditIdentityAttributes(el, next);
+  finalizeManualEditReplacement(el, next);
   el.replaceWith(next);
   // Style siblings were dropped by single-root salvage — keep their rules
   // so "make it stand out" edits that ship class + <style> still paint.
@@ -1383,16 +1518,21 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
   if (styleHost) {
     for (const style of styleSiblings) {
       if (next === style || next.contains(style)) continue;
-      const text = (style.textContent ?? '').trim();
+      // Drop @import (and empty leftovers) so salvage cannot inject remote CSS.
+      const text = (style.textContent ?? '')
+        .replace(/@import\b[^;]*;?/gi, '')
+        .trim();
+      if (!text) continue;
       if (
-        text
-        && Array.from(styleHost.querySelectorAll('style')).some(
+        Array.from(styleHost.querySelectorAll('style')).some(
           (existing) => (existing.textContent ?? '').trim() === text,
         )
       ) {
         continue;
       }
-      styleHost.appendChild(doc.importNode(style, true));
+      const clone = doc.importNode(style, true) as HTMLStyleElement;
+      clone.textContent = text;
+      styleHost.appendChild(clone);
     }
   }
   return { ok: true };
@@ -1405,6 +1545,10 @@ const NON_CONTENT_REPLACEMENT_TAGS = new Set([
   'META',
   'NOSCRIPT',
   'TEMPLATE',
+  'BASE',
+  'IFRAME',
+  'OBJECT',
+  'EMBED',
 ]);
 
 /**
@@ -1418,7 +1562,13 @@ function resolveSingleRootReplacementElement(
   template: HTMLTemplateElement,
 ): Element | null {
   const elements = Array.from(template.content.children);
-  if (elements.length === 1) return elements[0]!;
+  if (elements.length === 1) {
+    const only = elements[0]!;
+    // Lone script/meta/base/etc. must not become the replacement root.
+    if (NON_CONTENT_REPLACEMENT_TAGS.has(only.tagName)) return null;
+    if (MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(only.tagName.toLowerCase())) return null;
+    return only;
+  }
 
   if (elements.length === 0) {
     const text = (template.content.textContent ?? '').trim();
@@ -1546,4 +1696,56 @@ function isSafeAttributeName(value: string): boolean {
   if (lower.startsWith('on')) return false;
   if (lower === 'style' || lower === 'srcdoc') return false;
   return true;
+}
+
+/** Attrs whose values are treated as URLs for scheme deny-list checks. */
+const MANUAL_EDIT_URL_ATTRS = new Set([
+  'href',
+  'src',
+  'xlink:href',
+  'action',
+  'formaction',
+  'poster',
+  'cite',
+  'ping',
+  'background',
+  'dynsrc',
+  'lowsrc',
+  'srcset',
+  'data',
+]);
+
+const SAFE_MANUAL_EDIT_DATA_IMAGE_RE = /^data:image\/(png|jpe?g|gif|webp|avif|bmp)(;|,)/i;
+
+/** Reject javascript:/vbscript:/dangerous data: URL schemes in manual edits. */
+export function isSafeManualEditUrl(value: string): boolean {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return true;
+  // Strip whitespace + C0 controls so `java\0script:` / `data: text/html` cannot bypass.
+  const compact = trimmed.replace(/[\s\u0000-\u001f\u007f\ufeff]+/g, '').toLowerCase();
+  if (compact.startsWith('javascript:')) return false;
+  if (compact.startsWith('vbscript:')) return false;
+  if (compact.startsWith('data:')) {
+    if (compact.startsWith('data:text/html')) return false;
+    if (compact.startsWith('data:image/svg+xml')) return false;
+    // Allow only common raster data:image MIME types.
+    if (compact.startsWith('data:image/')) {
+      return SAFE_MANUAL_EDIT_DATA_IMAGE_RE.test(compact);
+    }
+    return false;
+  }
+  return true;
+}
+
+/** Validate URL attr values; `srcset` checks each comma-separated candidate URL. */
+export function isSafeManualEditUrlAttrValue(attr: string, value: string): boolean {
+  const lower = String(attr || '').toLowerCase();
+  if (lower === 'srcset') {
+    for (const part of String(value || '').split(',')) {
+      const url = part.trim().split(/\s+/)[0] || '';
+      if (url && !isSafeManualEditUrl(url)) return false;
+    }
+    return true;
+  }
+  return isSafeManualEditUrl(value);
 }

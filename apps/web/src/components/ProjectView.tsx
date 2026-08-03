@@ -1,16 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  useLayoutEffect,
-  type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MutableRefObject,
-  type PointerEvent as ReactPointerEvent,
-} from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useLayoutEffect, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence } from 'motion/react';
 import { createArtifactManifest, inferLegacyManifest } from '../artifacts/manifest';
 import type { ArtifactManifest } from '../artifacts/types';
@@ -6031,9 +6020,12 @@ export function ProjectView({
           markStreamingConversation(reattachConversationId);
         }
         if (needsFullReplay) {
+          // Clear stream buffers for replay, but keep producedFiles — wiping
+          // them makes the assistant row vanish in Teamver embed until SSE
+          // refills, and a failed replay leaves the bubble permanently empty.
           updateMessageById(
             message.id,
-            (prev) => ({ ...prev, content: '', events: [], producedFiles: undefined }),
+            (prev) => ({ ...prev, content: '', events: [] }),
           );
         }
 
@@ -9174,10 +9166,13 @@ export function ProjectView({
   // without a slide index; FileWorkspace/FileViewer ignore it unless the named
   // file is the open deck.
   const armSlideNavForQueuedSend = useCallback((item: QueuedChatSend) => {
-    const fallbackDeck =
-      openTabsStateRef.current.active
-      || project.metadata?.entryFile
-      || null;
+    // Screenshot-only visuals need an HTML deck fallback. Prefer entryFile
+    // (canonical deck) over an active non-HTML / wrong-sibling tab.
+    const active = openTabsStateRef.current.active?.trim() || '';
+    const entry = project.metadata?.entryFile?.trim() || '';
+    const htmlEntry = /\.html?$/i.test(entry) ? entry : '';
+    const htmlActive = /\.html?$/i.test(active) ? active : '';
+    const fallbackDeck = htmlEntry || htmlActive || null;
     const target = queuedSlideNavTarget(item.commentAttachments, {
       fallbackDeckFilePath: fallbackDeck,
     });
@@ -10942,7 +10937,7 @@ export function ProjectView({
             <div
               id={commentInspectorPortalId}
               className="comment-left-host"
-              aria-label="Comments"
+              aria-label={t('chat.tabComments')}
             />
           ) : activeConversationId || conversationLoadError ? (
               <ChatPane
@@ -11289,7 +11284,7 @@ export function ProjectView({
         />
       ) : null}
       <AnimatePresence>
-        {projectActionsToast ? (
+        {projectActionsToast && typeof document !== 'undefined' ? createPortal(
           <Toast
             message={projectActionsToast.message}
             details={projectActionsToast.details}
@@ -11297,9 +11292,11 @@ export function ProjectView({
             actionLabel={projectActionsToast.actionLabel}
             onAction={projectActionsToast.onAction}
             tone={projectActionsToast.actionLabel ? 'success' : 'default'}
+            layout={projectActionsToast.actionLabel ? 'compact' : 'default'}
             ttlMs={projectActionsToast.actionLabel ? 8000 : undefined}
             onDismiss={() => setProjectActionsToast(null)}
-          />
+          />,
+          document.body,
         ) : null}
       </AnimatePresence>
     </div>
