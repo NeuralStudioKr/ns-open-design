@@ -33,7 +33,6 @@ import {
 import { usesPostgresRevisionSnapshots } from './snapshot-storage.js';
 import { withFileRevisionMutationLock } from './postgres-lock.js';
 import {
-  FILE_REVISION_COALESCE_WINDOW_MS,
   resolveFileRevisionCoalesceWindowMs,
   shouldCoalesceRevisionPush,
 } from './coalesce.js';
