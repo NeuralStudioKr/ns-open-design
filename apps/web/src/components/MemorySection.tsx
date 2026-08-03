@@ -10,6 +10,7 @@ import { Button } from '@open-design/components';
 import { Icon, type IconName } from './Icon';
 import { ConnectorLogo, useResolvedTheme } from './ConnectorLogo';
 import { useT } from '../i18n';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 type Translate = ReturnType<typeof useT>;
 import { renderMarkdown } from '../runtime/markdown';
@@ -1403,20 +1404,20 @@ export function MemorySection({
 	  }> = [
 	    {
 	      id: 'manual',
-	      label: 'Add manually',
-	      caption: 'Write a fact or preference',
+	      label: embedUiLabel('Add manually', '직접 추가'),
+	      caption: embedUiLabel('Write a fact or preference', '사실이나 선호도를 작성'),
 	      icon: 'edit',
 	    },
 	    {
 	      id: 'chat',
-	      label: 'Learn from chats',
-	      caption: 'Capture useful context',
+	      label: embedUiLabel('Learn from chats', '채팅에서 학습'),
+	      caption: embedUiLabel('Capture useful context', '유용한 컨텍스트 수집'),
 	      icon: 'history',
 	    },
 	    {
 	      id: 'connected',
-	      label: 'Import from apps',
-	      caption: 'Scan connected tools',
+	      label: embedUiLabel('Import from apps', '앱에서 가져오기'),
+	      caption: embedUiLabel('Scan connected tools', '연결된 도구 스캔'),
 	      icon: 'link',
 	    },
 	  ];
@@ -1585,7 +1586,10 @@ export function MemorySection({
                   className="memory-info-btn"
                   onClick={() => void onCopyPath()}
                   title={rootDir}
-                  aria-label="Memory storage path — click to copy"
+                  aria-label={embedUiLabel(
+                    'Memory storage path — click to copy',
+                    '메모리 저장 경로 — 클릭하여 복사',
+                  )}
                 >
                   <Icon name="info" size={13} />
                 </button>
@@ -1630,7 +1634,7 @@ export function MemorySection({
       <div
         className="memory-source-tabs"
         role="tablist"
-        aria-label="Memory areas"
+        aria-label={embedUiLabel('Memory areas', '메모리 영역')}
       >
         {memoryTabs.map((tab) => (
           <button
@@ -1873,21 +1877,27 @@ export function MemorySection({
               <Icon name="history" size={15} />
             </span>
             <div>
-              <h4>Learn from chats</h4>
+              <h4>{embedUiLabel('Learn from chats', '채팅에서 학습')}</h4>
               <p className="hint">
-                OpenDesign can learn preferences and project facts from future
-                chat turns.
+                {embedUiLabel(
+                  'OpenDesign can learn preferences and project facts from future chat turns.',
+                  '이후 채팅에서 선호도와 프로젝트 사실을 학습할 수 있습니다.',
+                )}
               </p>
             </div>
             <label
               className="memory-source-toggle memory-chat-learning-toggle"
-              title="Learn from chat conversations"
+              title={embedUiLabel('Learn from chat conversations', '채팅 대화에서 학습')}
             >
-              <span>{chatExtractionEnabled ? 'On' : 'Off'}</span>
+              <span>
+                {chatExtractionEnabled
+                  ? embedUiLabel('On', '켜짐')
+                  : embedUiLabel('Off', '꺼짐')}
+              </span>
               <span className="toggle-switch toggle-switch-sm">
                 <input
                   type="checkbox"
-                  aria-label="Learn from chat conversations"
+                  aria-label={embedUiLabel('Learn from chat conversations', '채팅 대화에서 학습')}
                   checked={chatExtractionEnabled}
                   onChange={(e) => onToggleChatExtraction(e.target.checked)}
                   disabled={!enabled}
@@ -1936,7 +1946,7 @@ export function MemorySection({
                 {selectedConnectedConnectorIds.length} selected
               </span>
             </div>
-            <div className="memory-connector-list" aria-label="Connected memory apps">
+            <div className="memory-connector-list" aria-label={embedUiLabel('Connected memory apps', '연결된 메모리 앱')}>
               {memoryConnectors.map((connector) => {
                 const connected = connector.status === 'connected';
                 const selected = selectedConnectorIds.has(connector.id) && connected;
@@ -2134,10 +2144,13 @@ export function MemorySection({
             </div>
           ) : null}
           {connectorAttempts.length > 0 ? (
-            <div className="memory-connector-diagnostics" aria-label="Connected app read status">
+            <div className="memory-connector-diagnostics" aria-label={embedUiLabel('Connected app read status', '연결 앱 읽기 상태')}>
               <div className="memory-connector-diagnostics-head">
-                <strong>Last scan</strong>
-                <span>{formatConnectorContextBytes(connectorContextBytes)} read</span>
+                <strong>{embedUiLabel('Last scan', '최근 스캔')}</strong>
+                <span>
+                  {formatConnectorContextBytes(connectorContextBytes)}{' '}
+                  {embedUiLabel('read', '읽음')}
+                </span>
               </div>
               <div className="memory-connector-diagnostics-list">
                 {connectorAttempts.map((attempt) => (
@@ -2158,12 +2171,12 @@ export function MemorySection({
           {connectorExtractions.length > 0 ? (
             <details className="memory-scan-history">
               <summary>
-                <span>Recent scans</span>
+                <span>{embedUiLabel('Recent scans', '최근 스캔')}</span>
                 <span>{connectorExtractions.length}</span>
               </summary>
               <div
                 className="memory-connector-run-history"
-                aria-label="Connected app memory run status"
+                aria-label={embedUiLabel('Connected app memory run status', '연결 앱 메모리 실행 상태')}
               >
                 {connectorExtractions.slice(0, 4).map(renderExtractionCard)}
               </div>

@@ -110,6 +110,7 @@ import type {
   TrackingDesignSystemsEntryFrom,
 } from '@open-design/contracts/analytics';
 import { useI18n } from '../i18n';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 // Source counts the embedded DS creation flow can report back to its
 // wrapper at Generate-click time. OnboardingView uses this to emit the
@@ -788,7 +789,7 @@ export function DesignSystemCreationFlow({
           <p>Use anything that shows your current style.</p>
           <div className="ds-resource-card">
             <div className="ds-resource-row">
-              <strong>GitHub repo</strong>
+              <strong>{embedUiLabel('GitHub repo', 'GitHub 저장소')}</strong>
               <div className="ds-resource-inline">
                 <input
                   value={state.githubUrl}
@@ -801,21 +802,21 @@ export function DesignSystemCreationFlow({
                   disabled={!state.githubUrl.trim()}
                   onClick={handleAddGithubUrl}
                 >
-                  Add
+                  {embedUiLabel('Add', '추가')}
                 </button>
               </div>
               {state.githubUrls.length > 0 ? (
-                <div className="ds-github-url-list" aria-label="Added GitHub repositories">
+                <div className="ds-github-url-list" aria-label={embedUiLabel('Added GitHub repositories', '추가된 GitHub 저장소')}>
                   {state.githubUrls.map((url) => (
                     <span key={url}>
                       <Icon name="github" />
                       {githubRepoLabel(url)}
                       <button
                         type="button"
-                        aria-label={`Remove ${githubRepoLabel(url)}`}
+                        aria-label={embedUiLabel(`Remove ${githubRepoLabel(url)}`, `${githubRepoLabel(url)} 제거`)}
                         onClick={() => handleRemoveGithubUrl(url)}
                       >
-                        x
+                        ×
                       </button>
                     </span>
                   ))}
@@ -1871,11 +1872,11 @@ export function DesignSystemDetailView({
     <div className="ds-workspace">
       <aside className="ds-project-chat">
         <div className="ds-project-chat__bar">
-          <button type="button" className="icon-only" onClick={onBack} aria-label="Back">
+          <button type="button" className="icon-only" onClick={onBack} aria-label={embedUiLabel('Back', '뒤로')}>
             <Icon name="arrow-left" />
           </button>
           <strong>{system.title}</strong>
-          <span>{published ? 'Published' : 'Draft'}</span>
+          <span>{published ? embedUiLabel('Published', '게시됨') : embedUiLabel('Draft', '초안')}</span>
         </div>
         <div className="ds-project-chat__pane">
           <ChatPane
@@ -3167,7 +3168,7 @@ function GitHubRepositoryAccessPanel({
       id: 'native-oauth',
       icon: 'link',
       title: brandText('Open Design account'),
-      badge: 'Coming soon',
+      badge: embedUiLabel('Coming soon', '출시 예정'),
       tone: 'muted',
       description: brandText('Native GitHub sign-in managed by Open Design; this build does not use an OD-managed GitHub token yet.'),
     },
@@ -3207,7 +3208,9 @@ function GitHubRepositoryAccessPanel({
           }}
         >
           <Icon name={methodsExpanded ? 'chevron-down' : 'chevron-right'} />
-          {methodsExpanded ? 'Hide access methods' : 'Show access methods'}
+          {methodsExpanded
+            ? embedUiLabel('Hide access methods', '접근 방법 숨기기')
+            : embedUiLabel('Show access methods', '접근 방법 보기')}
         </button>
       </div>
       <div
@@ -3217,7 +3220,7 @@ function GitHubRepositoryAccessPanel({
         aria-hidden={!methodsExpanded}
       >
         <div className="accordion-collapsible-inner">
-          <div className="ds-github-access-methods" aria-label="GitHub repository access methods">
+          <div className="ds-github-access-methods" aria-label={embedUiLabel('GitHub repository access methods', 'GitHub 저장소 접근 방법')}>
             {methods.map((method) => (
               <div key={method.id} className="ds-github-access-method">
                 <Icon name={method.icon} />
