@@ -410,6 +410,39 @@ Worker (daemon sidecar or queue consumer):
 **1차 구현:** daemon in-memory TTL store + feature flag (`OD_EXPORT_ASYNC_JOBS_ENABLED=1`) — route timeout 회피 검증용.
 **상용 확장:** RDS `design_export_jobs` 또는 Redis (TTL) + dedicated worker.
 
+### 9.3 Staging 검증 체크리스트 (async export + 대형 PPTX)
+
+**feature flag는 BE/FE를 같이 켜서 검증한다.** daemon만 켜면 FE가 sync export를 계속 사용하고, FE만 켜면 `/export/jobs`가 `EXPORT_JOBS_DISABLED`로 떨어진 뒤 sync fallback을 탄다.
+
+```bash
+OD_EXPORT_ASYNC_JOBS_ENABLED=1
+VITE_TEAMVER_EXPORT_ASYNC_JOBS_ENABLED=1
+OD_EXPORT_PPTX_MAX_SLIDES=40
+OD_EXPORT_OFFLOAD_ENABLED=1
+OD_EXPORT_OFFLOAD_REQUIRED=0
+```
+
+**정상 deck (40장 이하):**
+
+1. PDF/PPTX/HTML/ZIP 다운로드를 각각 1회 실행한다.
+2. Network에서 `POST /api/projects/{id}/export/jobs`가 `202`를 반환하는지 확인한다.
+3. `GET /api/projects/{id}/export/jobs/{jobId}/events`가 연결되거나, 프록시/SSE 실패 시 `GET /api/projects/{id}/export/jobs/{jobId}` polling으로 fallback하는지 확인한다.
+4. ready 이후 `downloadUrl=/api/projects/{id}/export/downloads/{token}`가 열리고, token GET은 native download로 이어지는지 확인한다.
+5. 두 번째 동일 다운로드는 daemon 로그 `od_export_done`의 `cache=hit-local` 또는 `hit-memo` 비율이 올라가는지 확인한다.
+
+**대형 deck (41장 이상):**
+
+1. PPTX 다운로드는 `EXPORT_DECK_TOO_LARGE`로 실패해야 한다.
+2. 사용자 메시지는 “PPTX 다운로드는 40장 이하…, 현재 덱은 41장…, PDF로 다운로드” 형태로 제한 사유를 설명해야 한다.
+3. 실패 토스트의 `PDF 다운로드` 액션 또는 메뉴의 PDF 다운로드는 정상 성공해야 한다.
+4. 같은 대형 deck에서 PPTX 실패가 반복되어도 Chromium queue가 장시간 점유되지 않아야 한다.
+
+**offload/cache 관찰 포인트:**
+
+- `OD_EXPORT_OFFLOAD_REQUIRED=0`에서는 S3 offload 실패가 있어도 download stream fallback으로 사용자 다운로드가 막히지 않아야 한다.
+- `OD_EXPORT_OFFLOAD_REQUIRED=1`은 S3 IAM/HEAD/PUT 검증이 끝난 뒤에만 켠다. 켠 상태에서 offload ticket 준비 실패 시 `EXPORT_OFFLOAD_UNAVAILABLE`이 맞다.
+- presigned redirect 성공 시 ticket GET은 `302`를 반환하고, `X-OD-Export-Delivery-Mode=redirect`가 보인다. stream fallback이면 `200`과 `deliveryMode=stream`이 정상이다.
+
 ---
 
 ## 10. 옵션 비교표 (한눈에)
@@ -642,7 +675,7 @@ embed/Drive 품질 SSOT가 **headless flatten snapshot**이다. Vite dist·deck 
 | 5b | Publish stream (design-api RAM 이중화 제거) — §20.4 | P1 (오픈 직후) | ✅ daemon ticket stream + capped bytes fallback + failure classification |
 | 6 | FE native download (blob 이중 메모리 제거) | P1 | ✅ Phase 0 (ticket + GET) |
 | 7 | `OD_EXPORT_QUEUE_MAX` 초과 시 503 UX | P2 | ✅ Phase 0 (503 + `ExportQueueFullError`) |
-| 8 | async job (30s+ deck) | P2 | ⏳ |
+| 8 | async job (30s+ deck) | P2 | ✅ 1차 in-memory/SSE/polling 구현 — staging flag 검증 필요 |
 
 **용량 산식 (rough):**
 
@@ -1002,6 +1035,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-03 | Phase 3 staging 검증 체크리스트 추가 — async export flag를 BE/FE 함께 켜는 조건, 정상 deck PDF/PPTX/HTML/ZIP job flow, 41장 이상 PPTX 제한 메시지, S3 offload required 전환 전 관찰 포인트를 문서화. 상용 체크리스트의 async job 항목은 1차 구현 완료·staging 검증 대기로 갱신 |
 | 2026-08-03 | 대형 PPTX 정책 문구 정리 — `EXPORT_DECK_TOO_LARGE` 사용자 메시지를 “PPTX 변환이 오래 걸릴 수 있음”에서 “PPTX 다운로드는 제한 장수 이하 제공, 현재 덱은 제한 초과이므로 PDF 다운로드”로 변경. daemon error message도 대형 덱용 PDF 다운로드 안내로 맞추고, 상세 장수 파싱 및 generic fallback 테스트를 추가 |
 | 2026-08-03 | Export async job runner 모듈 분리 — `import-export-routes.ts` 내부 background 실행 함수를 `export-job-runner.ts`로 분리. route는 요청 검증·job 생성·URL 응답에 집중하고, runner는 렌더 선택·offload 요구 검증·download ticket 저장·job 상태 전환을 담당하도록 경계를 정리. 별도 Chromium worker 프로세스 전환 전에도 동일 실행 계약을 테스트할 수 있게 함 |
 | 2026-08-03 | 대형 PPTX 초과 시 PDF 대체 액션 추가 — web runtime이 `EXPORT_DECK_TOO_LARGE`를 안정적으로 판별하고 사용자 메시지를 PDF 안내로 매핑. FileViewer PPTX 다운로드 실패 토스트에는 기존 PDF export 경로를 재사용하는 `PDF 다운로드` 액션을 제공해 큰 deck에서도 사용자가 다시 메뉴를 찾지 않고 바로 PDF로 받을 수 있게 함 |
