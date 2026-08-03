@@ -913,7 +913,7 @@ export function PetSettings({ cfg, setCfg }: Props) {
               type="text"
               maxLength={32}
               value={pet.custom.name}
-              placeholder="Buddy"
+              placeholder={embedUiLabel('Buddy', '버디')}
               onChange={(e) =>
                 update({ custom: { ...pet.custom, name: e.target.value } })
               }
