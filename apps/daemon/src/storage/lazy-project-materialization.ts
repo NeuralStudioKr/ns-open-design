@@ -349,7 +349,18 @@ export function createProjectStorageAccessHooks(
     const previous = lastSyncAt.get(trimmedId) ?? 0;
     const forceRefresh = materializationRuntime.isProjectSyncFailed(trimmedId)
       || materializationRuntime.hasBootOrphanProject(trimmedId);
-    if (!forceRefresh && ttl > 0 && now - previous < ttl) return;
+    if (!forceRefresh && ttl > 0 && now - previous < ttl) {
+      // Idle scratch eviction can delete the project dir while lastSyncAt is
+      // still fresh — skipping sync-down here made revision push/read 404.
+      let scratchHasFiles = false;
+      try {
+        const localFiles = await storage.listFiles(trimmedId);
+        scratchHasFiles = localFiles.length > 0;
+      } catch {
+        scratchHasFiles = false;
+      }
+      if (scratchHasFiles) return;
+    }
 
     const pending = inflight.get(trimmedId);
     if (pending) {

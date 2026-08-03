@@ -1,6 +1,6 @@
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
-import type { Express, Response } from 'express';
+import type { Express, Request, Response } from 'express';
 import {
   defaultScenarioPluginIdForProjectMetadata,
   type ChatSessionMode,
@@ -2435,7 +2435,9 @@ export function registerProjectArtifactRoutes(app: Express, ctx: RegisterProject
 
 }
 
-export interface RegisterProjectFileRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes'> {}
+export interface RegisterProjectFileRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes'> {
+  projectStorageHooks?: ProjectStorageAccessHooks | null;
+}
 
 export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFileRoutesDeps) {
   const { db } = ctx;
@@ -2455,6 +2457,14 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     readProjectFile,
     resolveProjectDir,
   });
+  async function ensureRevisionTargetFileMaterialized(
+    req: Request,
+    projectId: string,
+    fileName: string,
+  ): Promise<void> {
+    if (!ctx.projectStorageHooks) return;
+    await ctx.projectStorageHooks.ensureFileAvailable(req, projectId, fileName);
+  }
   const projectPreviewIframeSandbox = 'allow-scripts allow-forms';
   const projectPreviewCsp = [
     `sandbox ${projectPreviewIframeSandbox}`,
@@ -3117,6 +3127,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const truncate = truncateAfterSequence === undefined || truncateAfterSequence === null
         ? undefined
         : Number(truncateAfterSequence);
+      await ensureRevisionTargetFileMaterialized(req, projectId, fileName);
       const result = await fileRevisionService.pushRevision({
         projectId,
         fileName,

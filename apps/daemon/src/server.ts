@@ -7051,6 +7051,7 @@ export async function startServer({
     documents: { buildDocumentPreview },
     artifacts: artifactDeps,
     projectPreviewScopes,
+    projectStorageHooks,
   });
 
   registerMediaRoutes(app, {

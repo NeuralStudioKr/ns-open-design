@@ -67,6 +67,9 @@ describe('createProjectStorageAccessHooks', () => {
 
     const remote = storage.flatRemote();
     const syncDown = vi.spyOn(storage, 'syncDown').mockResolvedValue({ files: 0 });
+    const listFiles = vi.spyOn(storage, 'listFiles').mockResolvedValue([
+      { path: 'deck.html', size: 12, mtimeMs: Date.now() },
+    ]);
 
     try {
       await hooks!.ensureMaterialized(mockReq('GET', '/api/projects/p1/files'), 'p1');
@@ -74,6 +77,32 @@ describe('createProjectStorageAccessHooks', () => {
 
       expect(syncDown).toHaveBeenCalledTimes(1);
       expect(syncDown.mock.calls[0]?.[1]).toBe(remote);
+      expect(listFiles).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previousTtl === undefined) delete process.env.OD_PROJECT_LAZY_SYNC_TTL_MS;
+      else process.env.OD_PROJECT_LAZY_SYNC_TTL_MS = previousTtl;
+    }
+  });
+
+  it('re-syncs within TTL when scratch project dir is empty after idle eviction', async () => {
+    const previousTtl = process.env.OD_PROJECT_LAZY_SYNC_TTL_MS;
+    process.env.OD_PROJECT_LAZY_SYNC_TTL_MS = '60000';
+    const storage = new MaterializingProjectStorage(
+      new LocalProjectStorage('/tmp/scratch'),
+      new LocalProjectStorage('/tmp/remote'),
+    );
+    const layout = resolveProjectStorageLayout({ OD_PROJECT_STORAGE: 's3' }, '/data');
+    const runtime = createProjectMaterializationRuntime(layout, storage);
+    const hooks = createProjectStorageAccessHooks(runtime);
+    const syncDown = vi.spyOn(storage, 'syncDown').mockResolvedValue({ files: 1 });
+    const listFiles = vi.spyOn(storage, 'listFiles').mockResolvedValue([]);
+
+    try {
+      await hooks!.ensureMaterialized(mockReq('POST', '/api/projects/p1/files/deck.html/revisions'), 'p1');
+      await hooks!.ensureMaterialized(mockReq('POST', '/api/projects/p1/files/deck.html/revisions'), 'p1');
+
+      expect(syncDown).toHaveBeenCalledTimes(2);
+      expect(listFiles).toHaveBeenCalledTimes(1);
     } finally {
       if (previousTtl === undefined) delete process.env.OD_PROJECT_LAZY_SYNC_TTL_MS;
       else process.env.OD_PROJECT_LAZY_SYNC_TTL_MS = previousTtl;
