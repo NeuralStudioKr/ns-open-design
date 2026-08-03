@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { useT } from '../i18n';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { isAnchoredCssPosition } from '../edit-mode/resize-math';
 import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { Icon } from './Icon';
@@ -398,6 +399,7 @@ function PageInspector({
   enabled: boolean;
   onStyleChange: (styles: Partial<ManualEditStyles>) => void;
 }) {
+  const t = useT();
   const [bg, setBg] = useState('');
   const [font, setFont] = useState('');
   const [size, setSize] = useState('');
@@ -421,15 +423,26 @@ function PageInspector({
 
   return (
     <div className="cc-inspector">
-      <Section title="PAGE">
+      <Section title={embedUiLabel('PAGE', '페이지')}>
         {enabled ? (
           <>
-            <ColorRow label="Background" value={bg} onChange={(value) => update({ bg: value })} />
+            <ColorRow label={t('manualEdit.background')} value={bg} onChange={(value) => update({ bg: value })} />
             <FontRow value={font} onChange={(value) => update({ font: value })} />
-            <UnitRow label="Base size" value={size} onChange={(value) => update({ size: value })} unit="px" autoUnit />
+            <UnitRow
+              label={embedUiLabel('Base size', '기본 크기')}
+              value={size}
+              onChange={(value) => update({ size: value })}
+              unit="px"
+              autoUnit
+            />
           </>
         ) : (
-          <p className="cc-section-hint">Page styles are available only for full HTML documents.</p>
+          <p className="cc-section-hint">
+            {embedUiLabel(
+              'Page styles are available only for full HTML documents.',
+              '페이지 스타일은 전체 HTML 문서에서만 사용할 수 있습니다.',
+            )}
+          </p>
         )}
       </Section>
     </div>
@@ -592,43 +605,43 @@ function StyleInspector({
   return (
     <div className="cc-inspector">
       {showTypography ? (
-        <Section title="TYPOGRAPHY">
+        <Section title={embedUiLabel('TYPOGRAPHY', '타이포그래피')}>
           <FontRow value={styles.fontFamily} onChange={(v) => u('fontFamily', v)} />
           <PairRow>
-            <UnitRow label="Size" value={styles.fontSize} onChange={(v) => u('fontSize', v)} unit="px" autoUnit />
-            <DropdownRow label="Weight" value={styles.fontWeight} onChange={(v) => u('fontWeight', v)} options={WEIGHT_OPTS} />
+            <UnitRow label={embedUiLabel('Size', '크기')} value={styles.fontSize} onChange={(v) => u('fontSize', v)} unit="px" autoUnit />
+            <DropdownRow label={t('manualEdit.weight')} value={styles.fontWeight} onChange={(v) => u('fontWeight', v)} options={WEIGHT_OPTS} />
           </PairRow>
           <PairRow>
-            <ColorRow label="Color" value={styles.color} onChange={(v) => u('color', v)} />
-            <DropdownRow label="Align" value={styles.textAlign} onChange={(v) => u('textAlign', v)} options={ALIGN_OPTS} />
+            <ColorRow label={embedUiLabel('Color', '색상')} value={styles.color} onChange={(v) => u('color', v)} />
+            <DropdownRow label={t('manualEdit.align')} value={styles.textAlign} onChange={(v) => u('textAlign', v)} options={ALIGN_OPTS} />
           </PairRow>
           <PairRow>
-            <UnitRow label="Line" value={styles.lineHeight} onChange={(v) => u('lineHeight', v)} unit="" />
-            <UnitRow label="Tracking" value={styles.letterSpacing} onChange={(v) => u('letterSpacing', v)} unit="px" autoUnit />
+            <UnitRow label={embedUiLabel('Line', '행간')} value={styles.lineHeight} onChange={(v) => u('lineHeight', v)} unit="" />
+            <UnitRow label={embedUiLabel('Tracking', '자간')} value={styles.letterSpacing} onChange={(v) => u('letterSpacing', v)} unit="px" autoUnit />
           </PairRow>
         </Section>
       ) : null}
 
       {showSize ? (
-        <Section title="SIZE">
+        <Section title={embedUiLabel('SIZE', '크기')}>
           <PairRow>
-            <UnitRow label="Width" value={styles.width} onChange={(v) => u('width', v)} unit="px" autoUnit />
-            <UnitRow label="Height" value={styles.height} onChange={(v) => u('height', v)} unit="px" autoUnit />
+            <UnitRow label={t('manualEdit.width')} value={styles.width} onChange={(v) => u('width', v)} unit="px" autoUnit />
+            <UnitRow label={embedUiLabel('Height', '높이')} value={styles.height} onChange={(v) => u('height', v)} unit="px" autoUnit />
           </PairRow>
         </Section>
       ) : null}
 
       {showPosition ? (
-        <Section title="POSITION">
+        <Section title={embedUiLabel('POSITION', '위치')}>
           <PairRow>
-            <UnitRow label="Left" value={styles.left} onChange={(v) => u('left', v)} unit="px" autoUnit />
-            <UnitRow label="Top" value={styles.top} onChange={(v) => u('top', v)} unit="px" autoUnit />
+            <UnitRow label={embedUiLabel('Left', '왼쪽')} value={styles.left} onChange={(v) => u('left', v)} unit="px" autoUnit />
+            <UnitRow label={embedUiLabel('Top', '위')} value={styles.top} onChange={(v) => u('top', v)} unit="px" autoUnit />
           </PairRow>
         </Section>
       ) : null}
 
       {showPositionHint ? (
-        <Section title="POSITION" inactive>
+        <Section title={embedUiLabel('POSITION', '위치')} inactive>
           <p className="cc-section-hint" data-testid="manual-edit-position-hint">
             {t('manualEdit.positionPromoteOnDrag')}
           </p>
@@ -636,42 +649,42 @@ function StyleInspector({
       ) : null}
 
       {showLayout ? (
-        <Section title="LAYOUT">
+        <Section title={embedUiLabel('LAYOUT', '레이아웃')}>
           <PairRow>
-            <UnitRow label="Gap" value={styles.gap} onChange={(v) => u('gap', v)} unit="px" autoUnit />
-            <DropdownRow label="Direction" value={styles.flexDirection} onChange={(v) => u('flexDirection', v)} options={DIRECTION_OPTS} />
+            <UnitRow label={embedUiLabel('Gap', '간격')} value={styles.gap} onChange={(v) => u('gap', v)} unit="px" autoUnit />
+            <DropdownRow label={embedUiLabel('Direction', '방향')} value={styles.flexDirection} onChange={(v) => u('flexDirection', v)} options={DIRECTION_OPTS} />
           </PairRow>
           <PairRow>
-            <DropdownRow label="Justify" value={styles.justifyContent} onChange={(v) => u('justifyContent', v)} options={JUSTIFY_OPTS} />
-            <DropdownRow label="Align" value={styles.alignItems} onChange={(v) => u('alignItems', v)} options={ITEMS_OPTS} />
+            <DropdownRow label={embedUiLabel('Justify', '주축')} value={styles.justifyContent} onChange={(v) => u('justifyContent', v)} options={JUSTIFY_OPTS} />
+            <DropdownRow label={t('manualEdit.align')} value={styles.alignItems} onChange={(v) => u('alignItems', v)} options={ITEMS_OPTS} />
           </PairRow>
         </Section>
       ) : null}
 
       {showBox ? (
-      <Section title="BOX">
+      <Section title={embedUiLabel('BOX', '박스')}>
         <PairRow>
-          <ColorRow label="Fill" value={styles.backgroundColor} onChange={(v) => u('backgroundColor', v)} />
-          <UnitRow label="Opacity" value={styles.opacity} onChange={(v) => u('opacity', v)} unit="" />
+          <ColorRow label={embedUiLabel('Fill', '채우기')} value={styles.backgroundColor} onChange={(v) => u('backgroundColor', v)} />
+          <UnitRow label={embedUiLabel('Opacity', '불투명도')} value={styles.opacity} onChange={(v) => u('opacity', v)} unit="" />
         </PairRow>
 
-        <QuadRow label="Padding" values={{
+        <QuadRow label={t('manualEdit.padding')} values={{
           t: styles.paddingTop, r: styles.paddingRight, b: styles.paddingBottom, l: styles.paddingLeft,
         }} onChange={(side, value) => u(sideToProp('padding', side), value)} />
 
-        <QuadRow label="Margin" values={{
+        <QuadRow label={t('manualEdit.margin')} values={{
           t: styles.marginTop, r: styles.marginRight, b: styles.marginBottom, l: styles.marginLeft,
         }} onChange={(side, value) => u(sideToProp('margin', side), value)} />
 
-        <QuadRow label="Border" values={{
+        <QuadRow label={t('manualEdit.border')} values={{
           t: styles.borderTopWidth, r: styles.borderRightWidth, b: styles.borderBottomWidth, l: styles.borderLeftWidth,
         }} onChange={(side, value) => u(`border${sideUpper(side)}Width` as keyof ManualEditStyles, value)} />
 
         <PairRow>
-          <DropdownRow label="Style" value={styles.borderStyle} onChange={(v) => u('borderStyle', v)} options={BORDER_STYLE_OPTS} />
-          <ColorRow label="Border" value={styles.borderColor} onChange={(v) => u('borderColor', v)} compact />
+          <DropdownRow label={embedUiLabel('Style', '스타일')} value={styles.borderStyle} onChange={(v) => u('borderStyle', v)} options={BORDER_STYLE_OPTS} />
+          <ColorRow label={t('manualEdit.border')} value={styles.borderColor} onChange={(v) => u('borderColor', v)} compact />
         </PairRow>
-        <UnitRow label="Radius" value={styles.borderRadius} onChange={(v) => u('borderRadius', v)} unit="px" autoUnit />
+        <UnitRow label={t('manualEdit.radius')} value={styles.borderRadius} onChange={(v) => u('borderRadius', v)} unit="px" autoUnit />
       </Section>
       ) : null}
     </div>
@@ -717,9 +730,9 @@ function UnitRow({ label, value, onChange, unit, autoUnit, disabled }: {
     <label className="cc-row">
       <span className="cc-label">{label}</span>
       <span className="cc-value">
-        <button type="button" className="cc-step" disabled={!canStep} aria-label={`${label} decrease`} onClick={() => stepBy(-1)}>−</button>
+        <button type="button" className="cc-step" disabled={!canStep} aria-label={embedUiLabel(`${label} decrease`, `${label} 감소`)} onClick={() => stepBy(-1)}>−</button>
         <input value={display} placeholder="" disabled={disabled} onChange={(e) => onChange(valueFromDisplay(e.currentTarget.value))} onBlur={(e) => handle(e.currentTarget.value)} />
-        <button type="button" className="cc-step" disabled={!canStep} aria-label={`${label} increase`} onClick={() => stepBy(1)}>+</button>
+        <button type="button" className="cc-step" disabled={!canStep} aria-label={embedUiLabel(`${label} increase`, `${label} 증가`)} onClick={() => stepBy(1)}>+</button>
         {unit ? <em className="cc-unit">{unit}</em> : null}
       </span>
     </label>
@@ -814,7 +827,7 @@ function ColorRow({ label, value, onChange, compact }: {
       {compact ? null : <span className="cc-label">{label}</span>}
       <span className={`cc-value cc-color ${compact ? 'cc-color-compact' : ''}`} ref={ref}>
         <button type="button" className="cc-swatch" style={{ background: value || 'transparent' }}
-          onClick={() => setOpen((v) => !v)} aria-label={`Pick ${label}`} />
+          onClick={() => setOpen((v) => !v)} aria-label={embedUiLabel(`Pick ${label}`, `${label} 선택`)} />
         <input value={value} placeholder="#000000"
           onChange={(e) => onChange(e.currentTarget.value)} onFocus={() => setOpen(true)} />
         {open ? (
@@ -871,7 +884,7 @@ function QuadCell({ axis, value, onChange }: { axis: string; value: string; onCh
   return (
     <span className="cc-quad-cell">
       <em className="cc-quad-axis">{axis}</em>
-      <button type="button" className="cc-step cc-step-quad" disabled={!canStep} aria-label={`${axis} decrease`} onClick={() => stepBy(-1)}>−</button>
+      <button type="button" className="cc-step cc-step-quad" disabled={!canStep} aria-label={embedUiLabel(`${axis} decrease`, `${axis} 감소`)} onClick={() => stepBy(-1)}>−</button>
       <input value={display} placeholder="0"
         onChange={(e) => {
           const raw = e.currentTarget.value.trim();
@@ -885,7 +898,7 @@ function QuadCell({ axis, value, onChange }: { axis: string; value: string; onCh
           const next = v && isNumericInput(v) ? `${v}px` : e.currentTarget.value;
           if (next !== value) onChange(next);
         }} />
-      <button type="button" className="cc-step cc-step-quad" disabled={!canStep} aria-label={`${axis} increase`} onClick={() => stepBy(1)}>+</button>
+      <button type="button" className="cc-step cc-step-quad" disabled={!canStep} aria-label={embedUiLabel(`${axis} increase`, `${axis} 증가`)} onClick={() => stepBy(1)}>+</button>
       <em className="cc-quad-unit">px</em>
     </span>
   );

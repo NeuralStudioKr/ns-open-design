@@ -930,7 +930,7 @@ export function DesignFilesPanel({
                     onClearUploadError?.();
                   }}
                 >
-                  Dismiss
+                  {t('common.close')}
                 </button>
               ) : null}
             </div>

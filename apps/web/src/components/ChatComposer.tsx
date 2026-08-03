@@ -43,6 +43,7 @@ import { resolveProjectUploadBatchErrorMessage } from '../teamver/projectUploadE
 import { getDesignBffClient } from '../teamver/designBffClient';
 import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { excludeAttachmentsBackedByVisualScreenshots, projectFilePathExists } from '../utils/projectFilePaths';
 import {
@@ -3604,9 +3605,7 @@ function StagedRunContexts({
       {workspaceItems.map((workspaceItem) => {
         const kindLabel =
           workspaceItem.id === currentWorkspaceContextId
-            ? isTeamverEmbedMode()
-              ? '현재'
-              : 'Current'
+            ? embedUiLabel('Current', '현재')
             : workspaceContextKindLabel(workspaceItem.kind);
         return (
           <div
@@ -3914,13 +3913,27 @@ function ToolsPluginsPanel({
         <div className="composer-tools-empty">
           {plugins.length === 0 ? (
             <>
-              No plugins installed yet. Browse Official or add your own with{' '}
-              <code>od plugin install &lt;source&gt;</code>.
+              {embedUiLabel(
+                'No plugins installed yet. Browse Official or add your own with ',
+                '아직 설치된 플러그인이 없습니다. Official을 둘러보거나 ',
+              )}
+              <code>od plugin install &lt;source&gt;</code>
+              {embedUiLabel('.', ' 로 추가하세요.')}
             </>
           ) : query ? (
-            <>No {source === 'community' ? 'Official' : 'My plugins'} results for “{query}”.</>
+            <>
+              {embedUiLabel(
+                `No ${source === 'community' ? 'Official' : 'My plugins'} results for “${query}”.`,
+                `${source === 'community' ? 'Official' : '내 플러그인'}에서 “${query}” 결과가 없습니다.`,
+              )}
+            </>
           ) : (
-            <>No {source === 'community' ? 'Official' : 'My plugins'} plugins available.</>
+            <>
+              {embedUiLabel(
+                `No ${source === 'community' ? 'Official' : 'My plugins'} plugins available.`,
+                `${source === 'community' ? 'Official' : '내 플러그인'}에 사용 가능한 플러그인이 없습니다.`,
+              )}
+            </>
           )}
         </div>
       ) : (
@@ -4021,8 +4034,14 @@ function ToolsMcpPanel({
       {visibleServers.length === 0 ? (
         <div className="composer-tools-empty">
           {servers.length === 0
-            ? 'No enabled MCP servers configured yet.'
-            : `No configured MCP results for “${query}”.`}
+            ? embedUiLabel(
+                'No enabled MCP servers configured yet.',
+                '활성화된 MCP 서버가 아직 없습니다.',
+              )
+            : embedUiLabel(
+                `No configured MCP results for “${query}”.`,
+                `“${query}”에 맞는 MCP 결과가 없습니다.`,
+              )}
         </div>
       ) : (
         <div className="composer-tools-list">
@@ -4424,7 +4443,12 @@ function ToolsSkillsPanel({
       </div>
       {visibleSkills.length === 0 ? (
         <div className="composer-tools-empty">
-          {skills.length === 0 ? 'No skills available yet.' : `No skills found for “${query}”.`}
+          {skills.length === 0
+            ? embedUiLabel('No skills available yet.', '사용 가능한 스킬이 아직 없습니다.')
+            : embedUiLabel(
+                `No skills found for “${query}”.`,
+                `“${query}”에 맞는 스킬이 없습니다.`,
+              )}
         </div>
       ) : (
         <div className="composer-tools-list">

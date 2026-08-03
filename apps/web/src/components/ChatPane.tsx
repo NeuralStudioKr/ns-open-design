@@ -32,6 +32,7 @@ import { projectFilePathExists, projectFilePathsInclude } from '../utils/project
 import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import type { TodoItem } from '../runtime/todos';
 import type { AppliedPluginSnapshot, ChatSessionMode, WorkspaceContextItem } from '@open-design/contracts';
 import type { TrackingProjectKind } from '@open-design/contracts/analytics';
@@ -3338,15 +3339,23 @@ function QueuedSendMetaChips({ item }: { item: QueuedSendItem }) {
   const mcp = ctx?.mcpServerIds?.length ?? 0;
   const connectors = ctx?.connectorIds?.length ?? 0;
   const workspace = ctx?.workspaceItems?.length ?? 0;
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const countLabel = (n: number, enOne: string, enMany: string, ko: string) =>
+    embedUiLabel(`${n} ${n === 1 ? enOne : enMany}`, `${ko} ${n}`);
   const chips: Array<{ key: string; label: string }> = [];
-  if (files > 0) chips.push({ key: 'files', label: plural(files, 'file') });
-  if (marks > 0) chips.push({ key: 'marks', label: plural(marks, 'mark') });
-  if (plugins > 0) chips.push({ key: 'plugins', label: plural(plugins, 'plugin') });
-  if (skills > 0) chips.push({ key: 'skills', label: plural(skills, 'skill') });
-  if (mcp > 0) chips.push({ key: 'mcp', label: `${mcp} MCP` });
-  if (connectors > 0) chips.push({ key: 'connectors', label: plural(connectors, 'connector') });
-  if (workspace > 0) chips.push({ key: 'workspace', label: plural(workspace, 'workspace context') });
+  if (files > 0) chips.push({ key: 'files', label: countLabel(files, 'file', 'files', '파일') });
+  if (marks > 0) chips.push({ key: 'marks', label: countLabel(marks, 'mark', 'marks', '마크') });
+  if (plugins > 0) chips.push({ key: 'plugins', label: countLabel(plugins, 'plugin', 'plugins', '플러그인') });
+  if (skills > 0) chips.push({ key: 'skills', label: countLabel(skills, 'skill', 'skills', '스킬') });
+  if (mcp > 0) chips.push({ key: 'mcp', label: embedUiLabel(`${mcp} MCP`, `MCP ${mcp}`) });
+  if (connectors > 0) {
+    chips.push({ key: 'connectors', label: countLabel(connectors, 'connector', 'connectors', '커넥터') });
+  }
+  if (workspace > 0) {
+    chips.push({
+      key: 'workspace',
+      label: countLabel(workspace, 'workspace context', 'workspace contexts', '워크스페이스'),
+    });
+  }
   if (chips.length === 0) return null;
   return (
     <div className="chat-queued-send-chips">
@@ -3918,7 +3927,7 @@ function ActivePluginChip({
     <>
       <span className="msg-plugin-chip__dot" aria-hidden />
       <span className="msg-plugin-chip__label">
-        <span className="msg-plugin-chip__kind">Plugin</span>
+        <span className="msg-plugin-chip__kind">{embedUiLabel('Plugin', '플러그인')}</span>
         <span className="msg-plugin-chip__title">{title}</span>
         {version ? (
           <span className="msg-plugin-chip__version">@{version}</span>
@@ -3976,7 +3985,10 @@ function MessageSessionModeChip({
 }
 
 function ActiveSkillChip({ skill }: { skill: SkillSummary }) {
-  const label = skill.mode === 'deck' ? '템플릿' : '스킬';
+  const label =
+    skill.mode === 'deck'
+      ? embedUiLabel('Template', '템플릿')
+      : embedUiLabel('Skill', '스킬');
   const title = skill.name;
   return (
     <div className="msg-plugin-chip msg-plugin-chip--skill" data-testid="msg-skill-chip" title={title}>
@@ -3997,7 +4009,7 @@ function ActiveTemplateChip({ title }: { title: string }) {
     <div className="msg-plugin-chip msg-plugin-chip--skill" data-testid="msg-template-chip" title={title}>
       <Icon name="file" size={12} />
       <span className="msg-plugin-chip__label">
-        <span className="msg-plugin-chip__kind">템플릿</span>
+        <span className="msg-plugin-chip__kind">{embedUiLabel('Template', '템플릿')}</span>
         <span className="msg-plugin-chip__title">{title}</span>
       </span>
       <span className="msg-plugin-chip__task">deck</span>
@@ -4016,7 +4028,7 @@ function ActiveDesignSystemChip({
     <>
       <span className="msg-plugin-chip__dot" aria-hidden />
       <span className="msg-plugin-chip__label">
-        <span className="msg-plugin-chip__kind">Design System</span>
+        <span className="msg-plugin-chip__kind">{embedUiLabel('Design System', '디자인 시스템')}</span>
         <span className="msg-plugin-chip__title">{system.title}</span>
       </span>
       {system.category ? (
@@ -4061,7 +4073,7 @@ function ActiveWorkspaceContextChip({
         <Icon name={workspaceContextIcon(item)} size={12} />
       </span>
       <span className="msg-plugin-chip__label">
-        <span className="msg-plugin-chip__kind">Current</span>
+        <span className="msg-plugin-chip__kind">{embedUiLabel('Current', '현재')}</span>
         <span className="msg-plugin-chip__title">{item.label}</span>
       </span>
     </>

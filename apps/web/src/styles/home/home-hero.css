@@ -4,7 +4,7 @@
 .home-view {
   display: flex;
   flex-direction: column;
-  gap: 36px;
+  gap: 32px;
 }
 /* The hero block self-constrains to a readable column even though
    its parent now stretches to ~1440px so the plugin gallery can

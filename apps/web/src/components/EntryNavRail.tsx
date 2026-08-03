@@ -19,6 +19,7 @@ import { useBrandLabel } from '../teamver/branding/useBrandLabel';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
 import { TeamverLogo } from '../teamver/branding/TeamverLogo';
 import { useT } from '../i18n';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 export type EntryView =
   | 'home'
@@ -102,7 +103,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject, newProjectDisab
     <nav
       ref={railRef}
       className={`entry-nav-rail${open ? ' is-open' : ''}`}
-      aria-label="Primary"
+      aria-label={embedUiLabel('Primary', '주요 메뉴')}
       aria-hidden={open ? undefined : true}
     >
       <div className="entry-nav-rail__group">

@@ -2074,6 +2074,11 @@
   line-height: inherit;
   cursor: pointer;
   overflow: hidden;
+  border-radius: 4px;
+}
+.staged-context-open:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  outline-offset: 2px;
 }
 .staged-context--workspace {
   background: color-mix(in srgb, var(--bg-subtle) 48%, var(--bg-panel));
@@ -2257,6 +2262,10 @@
   height: 8px;
 }
 .staged-remove:hover { color: var(--red); background: var(--red-bg); }
+.staged-remove:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  outline-offset: 1px;
+}
 
 .linked-dirs-row {
   display: flex;

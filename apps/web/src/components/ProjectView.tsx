@@ -10937,7 +10937,7 @@ export function ProjectView({
             <div
               id={commentInspectorPortalId}
               className="comment-left-host"
-              aria-label="Comments"
+              aria-label={t('chat.tabComments')}
             />
           ) : activeConversationId || conversationLoadError ? (
               <ChatPane

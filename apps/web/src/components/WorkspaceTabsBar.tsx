@@ -1,6 +1,7 @@
 import { type DragEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useT } from '../i18n';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { navigate, type EntryHomeView, type Route } from '../router';
 import type { Project } from '../types';
 import { stripUserVisibleQuestionFormProtocolText } from '../artifacts/question-form';
@@ -887,12 +888,12 @@ export function WorkspaceTabsBar({ route, projects, onboardingCompleted = false 
   }
 
   return (
-    <header className="app-chrome-header workspace-tabs-chrome" aria-label="Workspace tabs">
+    <header className="app-chrome-header workspace-tabs-chrome" aria-label={embedUiLabel('Workspace tabs', '워크스페이스 탭')}>
       <div className="app-chrome-traffic-space workspace-tabs-traffic" aria-hidden />
       <div
         className={`workspace-tabs-strip${tabsOverflowing ? ' is-overflowing' : ''}`}
         role="tablist"
-        aria-label="Open workspaces"
+        aria-label={t('workspace.openTabs')}
         ref={stripRef}
         onDragOver={handleStripDragOver}
         onDrop={handleStripDrop}
@@ -964,10 +965,10 @@ export function WorkspaceTabsBar({ route, projects, onboardingCompleted = false 
           type="button"
           className="workspace-tabs-new-btn od-tooltip"
           onClick={createNewTab}
-          title="New tab"
-          data-tooltip="New tab"
+          title={t('workspace.newTab')}
+          data-tooltip={t('workspace.newTab')}
           data-tooltip-placement="bottom"
-          aria-label="New tab"
+          aria-label={t('workspace.newTab')}
         >
           <Icon name="plus" size={14} />
         </button>
@@ -977,10 +978,10 @@ export function WorkspaceTabsBar({ route, projects, onboardingCompleted = false 
           type="button"
           className={`workspace-tabs-icon-btn od-tooltip${tabsMenuOpen ? ' is-active' : ''}`}
           onClick={() => setTabsMenuOpen((open) => !open)}
-          title="Search tabs"
-          data-tooltip="Search tabs"
+          title={embedUiLabel('Search tabs', '탭 검색')}
+          data-tooltip={embedUiLabel('Search tabs', '탭 검색')}
           data-tooltip-placement="bottom"
-          aria-label="Search tabs"
+          aria-label={embedUiLabel('Search tabs', '탭 검색')}
           aria-haspopup="dialog"
           aria-expanded={tabsMenuOpen}
         >
@@ -991,7 +992,7 @@ export function WorkspaceTabsBar({ route, projects, onboardingCompleted = false 
               <div
                 className="workspace-tabs-popover"
                 role="dialog"
-                aria-label="Search tabs"
+                aria-label={embedUiLabel('Search tabs', '탭 검색')}
                 ref={popoverRef}
               >
                 <div className="workspace-tabs-search">
@@ -1000,15 +1001,15 @@ export function WorkspaceTabsBar({ route, projects, onboardingCompleted = false 
                     ref={searchInputRef}
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search tabs"
-                    aria-label="Search tabs"
+                    placeholder={t('workspace.searchFilesPlaceholder')}
+                    aria-label={embedUiLabel('Search tabs', '탭 검색')}
                   />
                 </div>
                 <div className="workspace-tabs-popover__section">
-                  <span>Open tabs</span>
+                  <span>{t('workspace.openTabs')}</span>
                   <span>{state.tabs.length}</span>
                 </div>
-                <div className="workspace-tabs-list" role="listbox" aria-label="Open tabs">
+                <div className="workspace-tabs-list" role="listbox" aria-label={t('workspace.openTabs')}>
                   {filteredTabs.length > 0 ? (
                     filteredTabs.map((display) => {
                       const active = display.id === state.activeTabId;

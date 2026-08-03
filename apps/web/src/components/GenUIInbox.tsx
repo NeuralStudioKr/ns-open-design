@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 interface SurfaceRow {
   id: string;
@@ -66,19 +67,21 @@ export function GenUIInbox(props: Props) {
   return (
     <div className="genui-inbox" data-testid="genui-inbox">
       <header className="genui-inbox__header">
-        <h2>Plugin memory</h2>
+        <h2>{embedUiLabel('Plugin memory', '플러그인 메모리')}</h2>
         <button
           type="button"
           className="genui-inbox__refresh"
           onClick={refresh}
-          aria-label="Refresh"
+          aria-label={embedUiLabel('Refresh', '새로고침')}
         >
-          Refresh
+          {embedUiLabel('Refresh', '새로고침')}
         </button>
       </header>
       {error ? <div role="alert" className="genui-inbox__error">{error}</div> : null}
       {surfaces.length === 0 ? (
-        <div className="genui-inbox__empty">No persisted plugin answers.</div>
+        <div className="genui-inbox__empty">
+          {embedUiLabel('No persisted plugin answers.', '저장된 플러그인 응답이 없습니다.')}
+        </div>
       ) : (
         <ul className="genui-inbox__list">
           {surfaces.map((s) => (
@@ -89,7 +92,9 @@ export function GenUIInbox(props: Props) {
               </div>
               <div className="genui-inbox__status">
                 {s.status}
-                {s.respondedBy ? ` by ${s.respondedBy}` : ''}
+                {s.respondedBy
+                  ? embedUiLabel(` by ${s.respondedBy}`, ` · ${s.respondedBy}`)
+                  : ''}
               </div>
               {s.status === 'resolved' ? (
                 <button
@@ -98,7 +103,7 @@ export function GenUIInbox(props: Props) {
                   onClick={() => onRevoke(s.surfaceId)}
                   disabled={pendingRevoke === s.surfaceId}
                 >
-                  Revoke
+                  {embedUiLabel('Revoke', '철회')}
                 </button>
               ) : null}
             </li>
