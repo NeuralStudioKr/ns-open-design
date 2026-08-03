@@ -1,7 +1,8 @@
 # Design UI polish — a11y · hit target · 터치 hover-reveal
 
-**문서 번호:** 53  
+**문서 번호:** 56  
 **상태:** 구현 기록 SSOT (2026-08-03)  
+**번호 이력:** 구 `53_UI_polish_…` → **56** (수동편집 승격 `53-0`/`53-1`/`53-2`와 충돌 해소, 2026-08-03)  
 **브랜치:** `staging` (`NeuralStudioKr/ns-open-design`)  
 **진행 갱신:** [00 구현 내역](./00_구현_내역_누적.md)
 
@@ -94,7 +95,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 4 | `cf94d6655` | board-pod remove, DS card overlay 터치 | 유지 |
 | 5 | `d8975a6f4` | Design Files menu/check, template delete, library edit, example/canvas overlay, hero type-chip close | 유지 |
 | 6 | `5d1ba45d0` | DS picker preview expand 터치 (`project-ds-picker-preview-expand`) | 유지 |
-| 7 | `c8641fcc5` | 본 문서(53) + [00](./00_구현_내역_누적.md) 기록 | 문서 |
+| 7 | `c8641fcc5` | 본 문서(당시 53→현 **56**) + [00](./00_구현_내역_누적.md) 기록 | 문서 |
 | 8 | `4c4d74f1f` | 53 타임라인 SHA pin | 문서 |
 | 9 | `69c688105` | escape Design Home focus 링 · assistant-footer focus-within · Drive/hero/DS/plugin `title` | 유지 |
 | 10 | `c525e5cce` | Drive picker/import 모달 시각 polish (색·여백·타이포) — `tools.css` only | 유지 |

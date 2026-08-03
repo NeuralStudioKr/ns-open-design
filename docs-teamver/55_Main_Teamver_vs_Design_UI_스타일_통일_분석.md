@@ -8,14 +8,14 @@
 | 제품 | 레포 / SSOT |
 |------|-------------|
 | Main Teamver (앱) | `ns-teamver-fe-v2` — [`DESIGN.md`](../../ns-teamver-fe-v2/DESIGN.md), `web/src/app/{color-tokens,notion-colors,globals}.css` |
-| Teamver Design (OD fork) | `ns-open-design` — `apps/web/src/styles/tokens.css`, `teamver.css`, [53 polish](./53_UI_polish_a11y_터치_개선.md) |
+| Teamver Design (OD fork) | `ns-open-design` — `apps/web/src/styles/tokens.css`, `teamver.css`, [56 polish](./56_UI_polish_a11y_터치_개선.md) |
 
 **관련**
 
 | 문서 | 관계 |
 |------|------|
 | [37 embed OD branding hide](./37_embed_od_branding_hide.md) | OD 카탈로그 브랜드 노출 억제 |
-| [53 UI polish](./53_UI_polish_a11y_터치_개선.md) | Design chrome 밀도·터치·타이포 원칙 |
+| [56 UI polish](./56_UI_polish_a11y_터치_개선.md) | Design chrome 밀도·터치·타이포 원칙 |
 | FE `DESIGN.md` | Main 생김새 SSOT (토큰명 중심, hex 재정의 금지) |
 
 ---
@@ -245,15 +245,15 @@ embed에서만:
 - `ns-open-design/apps/web/src/styles/base.css` / `primitives.css`
 - `ns-open-design/apps/web/src/styles/teamver.css` / `teamver-branding.css`
 - `ns-open-design/apps/web/src/styles/viewer/tools.css` (Drive)
-- `ns-open-design/docs-teamver/53_UI_polish_a11y_터치_개선.md`
+- `ns-open-design/docs-teamver/56_UI_polish_a11y_터치_개선.md`
 
 ---
 
 ## 9. 다음 액션
 
-> **보류 (2026-08-03):** 브랜드 통일(P0+)은 잠시 중단. 다른 UI polish(53) 우선.  
+> **보류 (2026-08-03):** 브랜드 통일(P0+)은 잠시 중단. 다른 UI polish(56) 우선.  
 > 완성본 리스크·롤백은 대화 합의 — 실험은 embed 스코프 + 단계 게이트로만.
 
 1. §7 체크리스트 합의 후에만 재개.  
 2. 합의 범위로 `55-1_구현설계-embed_브랜드_토큰.md` 작성 후 P0부터 구현.  
-3. 단계마다 [00 구현 내역](./00_구현_내역_누적.md) · 필요 시 53에 “색 통일은 55 트랙” 교차 기록.
+3. 단계마다 [00 구현 내역](./00_구현_내역_누적.md) · 필요 시 56에 “색 통일은 55 트랙” 교차 기록.
