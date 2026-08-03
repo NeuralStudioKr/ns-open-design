@@ -7176,16 +7176,23 @@ function HtmlViewer({
         setManualEditHostPaintRect(null);
       }
       const measured = measureManualEditTargetContentRect(frame, selectedId);
-      if (!measured || measured.width < 1 || measured.height < 1) return true;
+      if (!measured || measured.rect.width < 1 || measured.rect.height < 1) return true;
       setSelectedManualEditTarget((current) => {
         if (!current || current.id !== selectedId) return current;
         const same =
-          current.rect.x === measured.x
-          && current.rect.y === measured.y
-          && current.rect.width === measured.width
-          && current.rect.height === measured.height;
+          current.rect.x === measured.rect.x
+          && current.rect.y === measured.rect.y
+          && current.rect.width === measured.rect.width
+          && current.rect.height === measured.rect.height
+          && current.layoutWidth === measured.layoutWidth
+          && current.layoutHeight === measured.layoutHeight;
         if (same) return current;
-        const next = { ...current, rect: measured };
+        const next = {
+          ...current,
+          rect: measured.rect,
+          layoutWidth: measured.layoutWidth,
+          layoutHeight: measured.layoutHeight,
+        };
         selectedManualEditTargetRef.current = next;
         return next;
       });
@@ -7663,13 +7670,32 @@ function HtmlViewer({
     viewport?: { x: number; y: number },
     options?: { promoted?: boolean },
   ) {
-    const width = parseExplicitPx(styles.width) ?? target.rect.width;
-    const height = parseExplicitPx(styles.height) ?? target.rect.height;
+    // Style width/height are layout px. Keep layout* in sync; scale visual rect
+    // by the pre-gesture visual/layout ratio so deck fit-scale stays coherent
+    // until remasure lands.
+    const layoutWidth = parseExplicitPx(styles.width)
+      ?? target.layoutWidth
+      ?? target.rect.width;
+    const layoutHeight = parseExplicitPx(styles.height)
+      ?? target.layoutHeight
+      ?? target.rect.height;
+    const prevLayoutW = target.layoutWidth && target.layoutWidth >= 1
+      ? target.layoutWidth
+      : target.rect.width;
+    const prevLayoutH = target.layoutHeight && target.layoutHeight >= 1
+      ? target.layoutHeight
+      : target.rect.height;
+    const visualWidth = prevLayoutW > 0
+      ? Math.round(layoutWidth * (target.rect.width / prevLayoutW))
+      : layoutWidth;
+    const visualHeight = prevLayoutH > 0
+      ? Math.round(layoutHeight * (target.rect.height / prevLayoutH))
+      : layoutHeight;
     const leftPx = parseExplicitPx(styles.left);
     const topPx = parseExplicitPx(styles.top);
     setSelectedManualEditTarget((current) => {
       if (!current || current.id !== target.id) return current;
-      const base = viewportRectAfterMoveCommit(current.rect, width, height);
+      const base = viewportRectAfterMoveCommit(current.rect, visualWidth, visualHeight);
       const next: ManualEditTarget = {
         ...current,
         // Apply gesture viewport immediately so the overlay never falls back to
@@ -7677,6 +7703,8 @@ function HtmlViewer({
         rect: viewport
           ? { ...base, x: Math.round(viewport.x), y: Math.round(viewport.y) }
           : base,
+        layoutWidth,
+        layoutHeight,
         styles: { ...current.styles, ...styles },
         offsetLeft: leftPx ?? current.offsetLeft,
         offsetTop: topPx ?? current.offsetTop,

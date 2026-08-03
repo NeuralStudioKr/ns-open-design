@@ -33,6 +33,7 @@ import {
   cursorForResizeHandle,
   resizeHandleFromHostPoint,
   resizeResultToStyles,
+  resizeFreezeContentRect,
   startAnchorFromTarget,
   startSizeFromTarget,
   type ResizeHandle,
@@ -179,11 +180,16 @@ export function ManualEditResizeOverlay({
   const gestureGeom = dragRef.current;
   const composeScale = gestureGeom?.hostScale ?? previewScale;
   const composeOffset = gestureGeom?.hostOffset ?? hostOffset;
+  // Draft width/height are layout px (CSS write space). Prefer layout* over
+  // visual rect so composeScale = paint/layout keeps the host box aligned
+  // under deck-stage transform scale.
   const contentRect = {
     x: liveViewportPos?.x ?? draftLeftPx ?? target.rect.x,
     y: liveViewportPos?.y ?? draftTopPx ?? target.rect.y,
-    width: draftWidthPx ?? target.rect.width,
-    height: draftHeightPx ?? target.rect.height,
+    width: draftWidthPx
+      ?? (target.layoutWidth && target.layoutWidth >= 1 ? target.layoutWidth : target.rect.width),
+    height: draftHeightPx
+      ?? (target.layoutHeight && target.layoutHeight >= 1 ? target.layoutHeight : target.rect.height),
   };
   const scaled = contentRectToHostRect(contentRect, composeScale);
   const composedHostRect = {
@@ -390,6 +396,7 @@ export function ManualEditResizeOverlay({
       bottom: cascadeRollbackStyle(target.styles.bottom),
     };
     const session: ResizeSessionStart = {
+      // Viewport origin stays visual (gBCR); startWidth/Height are layout px.
       startRect: { ...target.rect },
       startWidthPx: size.widthPx,
       startHeightPx: size.heightPx,
@@ -402,7 +409,14 @@ export function ManualEditResizeOverlay({
       startLeftPx: anchor.startLeftPx,
       startTopPx: anchor.startTopPx,
     };
-    const geom = freezeGestureHostGeom(target.rect, hostPaintRect, previewScale, hostOffset);
+    // Freeze scale as paint/layout so hostΔ→contentΔ is layout px (CSS write
+    // space), not transform-shrunk gBCR px.
+    const geom = freezeGestureHostGeom(
+      resizeFreezeContentRect(target),
+      hostPaintRect,
+      previewScale,
+      hostOffset,
+    );
     dragRef.current = {
       kind: 'resize',
       pointerId: event.pointerId,

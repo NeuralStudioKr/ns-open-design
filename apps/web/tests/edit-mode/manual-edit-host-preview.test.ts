@@ -97,11 +97,12 @@ describe('manual edit host preview fallback', () => {
       toJSON: () => ({}),
     }) as DOMRect;
 
+    Object.defineProperty(el, 'offsetWidth', { value: 320 });
+    Object.defineProperty(el, 'offsetHeight', { value: 160 });
     expect(measureManualEditTargetContentRect(frame, 'card')).toEqual({
-      x: 12,
-      y: 24,
-      width: 160,
-      height: 80,
+      rect: { x: 12, y: 24, width: 160, height: 80 },
+      layoutWidth: 320,
+      layoutHeight: 160,
     });
     frame.remove();
   });

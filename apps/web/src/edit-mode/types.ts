@@ -72,7 +72,19 @@ export interface ManualEditTarget {
   tagName: string;
   className: string;
   text: string;
+  /**
+   * Visual border-box in iframe viewport coordinates (`getBoundingClientRect`).
+   * Includes ancestor CSS transforms (deck-stage fit scale). Overlay chrome
+   * must track this; CSS width/height writes must NOT — use layoutWidth/Height.
+   */
   rect: ManualEditRect;
+  /**
+   * Layout border-box (`offsetWidth` / `offsetHeight`) — the space CSS
+   * `width`/`height` px values are authored in. Under deck `transform: scale`
+   * this is larger than `rect` when fit-scale < 1.
+   */
+  layoutWidth?: number;
+  layoutHeight?: number;
   fields: ManualEditFields;
   attributes: Record<string, string>;
   styles: ManualEditStyles;

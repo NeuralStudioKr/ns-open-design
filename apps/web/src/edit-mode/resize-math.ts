@@ -236,12 +236,36 @@ export function startSizeFromTarget(target: ManualEditTarget): {
   widthPx: number;
   heightPx: number;
 } {
-  // Always start from the painted border-box. Preferring an authored px that is
-  // smaller than used size (min-width, flex, intrinsic min) made the first
-  // "grow" preview apply a smaller width and shrink the element.
+  // CSS width/height are layout px. Prefer offsetWidth/Height (layoutWidth) over
+  // getBoundingClientRect (`rect`): deck-stage `transform: scale` shrinks rect
+  // while leaving layout large — writing rect as width collapsed text boxes
+  // (grow drag → one-char-wide column). Fall back to rect when layout is absent
+  // (older bridge messages / tests). Never prefer a smaller authored style px
+  // (min-width / flex used size).
+  const widthPx = Math.round(Math.max(
+    1,
+    target.layoutWidth && target.layoutWidth >= 1 ? target.layoutWidth : target.rect.width,
+  ));
+  const heightPx = Math.round(Math.max(
+    1,
+    target.layoutHeight && target.layoutHeight >= 1 ? target.layoutHeight : target.rect.height,
+  ));
+  return { widthPx, heightPx };
+}
+
+/**
+ * Content box fed to freezeGestureHostGeom for resize: visual x/y (overlay
+ * origin) + layout w/h (CSS write / pointer→layout scale). Mixing layout size
+ * into width while keeping viewport x/y lets hostScale = paint/layout map both
+ * E-edge growth and overlay width correctly under deck fit-scale.
+ */
+export function resizeFreezeContentRect(target: ManualEditTarget): ManualEditRect {
+  const size = startSizeFromTarget(target);
   return {
-    widthPx: Math.round(Math.max(1, target.rect.width)),
-    heightPx: Math.round(Math.max(1, target.rect.height)),
+    x: target.rect.x,
+    y: target.rect.y,
+    width: size.widthPx,
+    height: size.heightPx,
   };
 }
 
@@ -352,10 +376,14 @@ export function parseManualEditStylePx(value: string | undefined, fallbackPx: nu
   return Math.round(fallbackPx);
 }
 
-/** Staging-compatible session builder (no CB anchor — use startAnchorFromTarget for W/N). */
+/**
+ * Staging-compatible session builder (no CB anchor — use startAnchorFromTarget for W/N).
+ * Start size is the painted/layout rect, same invariant as `startSizeFromTarget`
+ * (do not prefer a smaller authored style px).
+ */
 export function buildResizeSessionStart(
   targetRect: { x: number; y: number; width: number; height: number },
-  styles: Pick<ManualEditStyles, 'width' | 'height'>,
+  _styles: Pick<ManualEditStyles, 'width' | 'height'>,
   handle: ResizeHandle,
   kind: ManualEditKind,
   shiftKey: boolean,
@@ -364,8 +392,8 @@ export function buildResizeSessionStart(
   startLeftPx?: number | null;
   startTopPx?: number | null;
 } {
-  const startWidthPx = parseManualEditStylePx(styles.width, targetRect.width);
-  const startHeightPx = parseManualEditStylePx(styles.height, targetRect.height);
+  const startWidthPx = Math.round(Math.max(1, targetRect.width));
+  const startHeightPx = Math.round(Math.max(1, targetRect.height));
   const safeHeight = startHeightPx > 0 ? startHeightPx : MANUAL_EDIT_RESIZE_MIN_PX;
   return {
     startRect: targetRect,

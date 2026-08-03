@@ -17,6 +17,7 @@ import {
   resizeStylesForCommit,
   resizeViewportOrigin,
   startAnchorFromTarget,
+  resizeFreezeContentRect,
   startSizeFromTarget,
   type ResizeMathInput,
 } from '../../src/edit-mode/resize-math';
@@ -207,6 +208,38 @@ describe('style helpers', () => {
       styles: { ...emptyManualEditStyles(), width: '100px', height: '50px' },
       rect: { x: 0, y: 0, width: 300, height: 150 },
     }))).toEqual({ widthPx: 300, heightPx: 150 });
+  });
+
+  it('prefers layout offset size over transform-shrunk getBoundingClientRect', () => {
+    // Deck-stage fit scale 0.5: visual rect 100×50, layout still 200×100.
+    // Writing visual as CSS width was the grow→shrink / one-char column bug.
+    expect(startSizeFromTarget(target({
+      kind: 'text',
+      tagName: 'p',
+      styles: { ...emptyManualEditStyles(), width: '', height: '' },
+      rect: { x: 40, y: 60, width: 100, height: 50 },
+      layoutWidth: 200,
+      layoutHeight: 100,
+    }))).toEqual({ widthPx: 200, heightPx: 100 });
+
+    expect(resizeFreezeContentRect(target({
+      rect: { x: 40, y: 60, width: 100, height: 50 },
+      layoutWidth: 200,
+      layoutHeight: 100,
+    }))).toEqual({ x: 40, y: 60, width: 200, height: 100 });
+
+    // East grow from layout: +40 layout px → 240, never collapses to visual 100.
+    const east = computeResize(baseInput({
+      startRect: { x: 40, y: 60, width: 100, height: 50 },
+      startWidthPx: 200,
+      startHeightPx: 100,
+      handle: 'e',
+      dx: 40,
+      dy: 0,
+    }));
+    expect(east.widthPx).toBe(240);
+    expect(east.heightPx).toBe(100);
+    expect(resizeResultToStyles(east).width).toBe('240px');
   });
 
   it('maps host overlay edge hits to resize handles (interior stays null)', () => {
