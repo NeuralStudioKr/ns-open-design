@@ -2152,7 +2152,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       // handler writes draftRef synchronously, so the ref is authoritative even
       // if this effect's render closure predates the last accumulation.
       const prompt = draftRef.current.trim();
-      sendComposedTurn(prompt, staged, currentCommentAttachments(), currentRunContextMeta());
+      // Flush only staged annotation payload — do not re-attach composer
+      // commentAttachments that may have already been sent or queued.
+      const pendingVisualComments = sortChatCommentAttachmentsByOrder([...stagedVisualComments]);
+      if (!prompt && staged.length === 0 && pendingVisualComments.length === 0) {
+        setStreamingAnnotationSendPending(false);
+        return;
+      }
+      sendComposedTurn(prompt, staged, pendingVisualComments, currentRunContextMeta());
     }, [
       commentAttachments,
       draft,
