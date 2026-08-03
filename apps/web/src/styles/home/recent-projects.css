@@ -104,8 +104,8 @@
   }
 }
 .recent-projects__menu-anchor {
-  /* Keep kebab above the open button hit target */
-  z-index: 4;
+  /* Keep kebab + open menu above the open-card hit target */
+  z-index: 6;
 }
 .recent-projects__card.is-design-system-project {
   border-color: color-mix(in srgb, var(--red) 62%, var(--border));

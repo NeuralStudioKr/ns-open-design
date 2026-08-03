@@ -592,6 +592,11 @@ export function DesignsTab({
 									type="button"
 									className="primary designs-empty-cta"
 									disabled={createDisabled}
+									title={
+										createDisabled
+											? t("teamver.embed.designDisabled")
+											: t("entry.navNewProject")
+									}
 									onClick={() => {
 										if (createDisabled) return;
 										trackProjectsListControlsClick(analytics.track, {

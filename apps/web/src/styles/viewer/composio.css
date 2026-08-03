@@ -2385,8 +2385,9 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
 }
 .chat-history-search input::placeholder { color: var(--text-faint); }
 .chat-history-search-clear {
-  width: 18px;
-  height: 18px;
+  width: 28px;
+  height: 28px;
+  margin: -5px -4px -5px 0;
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
@@ -2407,6 +2408,7 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   outline: 2px solid var(--accent);
   outline-offset: 1px;
   color: var(--text);
+  background: var(--bg-subtle);
 }
 .chat-history-new {
   display: inline-flex;
@@ -2527,8 +2529,8 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   height: 10px;
 }
 .chat-conv-item-del {
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
   background: transparent;
@@ -2543,8 +2545,19 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
     background-color 140ms cubic-bezier(0.23, 1, 0.32, 1),
     color 140ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.chat-conv-item:hover .chat-conv-item-del { opacity: 1; }
+.chat-conv-item:hover .chat-conv-item-del,
+.chat-conv-item:focus-within .chat-conv-item-del,
+.chat-conv-item-del:focus-visible { opacity: 1; }
 .chat-conv-item-del:hover { background: var(--red-bg); color: var(--red); }
+.chat-conv-item-del:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+@media (hover: none) {
+  .chat-conv-item-del { opacity: 1; }
+}
 
 /* ============================================================
    Scroll-to-bottom button (chat)

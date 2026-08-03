@@ -54,6 +54,12 @@
   text-decoration: none;
 }
 
+.teamver-embed-bar__signin:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
 .teamver-embed-bar__main-link {
   display: inline-flex;
   align-items: center;
@@ -69,13 +75,21 @@
   line-height: 1.2;
   text-decoration: none;
   white-space: nowrap;
-  transition: border-color 140ms ease, background 140ms ease;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
 
 .teamver-embed-bar__main-link:hover {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated));
   text-decoration: none;
+}
+
+.teamver-embed-bar__main-link:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent),
+    0 4px 14px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .teamver-embed-bar__main-link-icon {
@@ -289,7 +303,8 @@
   left: auto;
   min-width: 0;
   max-width: none;
-  z-index: 1000;
+  /* Above .od-toast (1000/1200) so open workspace switcher stays interactive */
+  z-index: 1300;
   transform-origin: top left;
   animation: teamver-workspace-menu-in 140ms ease-out;
 }
@@ -562,6 +577,13 @@
   border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
   background: color-mix(in srgb, var(--accent) 6%, var(--bg-elevated));
   text-decoration: none;
+}
+
+.teamver-workspace-escape__teamver-app:focus-visible {
+  outline: none;
+  color: var(--text-strong);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .teamver-embed-bar__teamver-app .teamver-embed-bar__main-link-icon {

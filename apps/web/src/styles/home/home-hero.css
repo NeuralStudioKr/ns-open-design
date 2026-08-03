@@ -490,9 +490,9 @@
 }
 .home-hero__active-clear {
   appearance: none;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -502,16 +502,22 @@
   color: inherit;
   cursor: pointer;
   padding: 0;
+  margin: -5px -4px -5px 0;
   line-height: 1;
   opacity: 0.62;
 }
 .home-hero__active-clear svg {
   display: block;
 }
-.home-hero__active-clear:hover {
+.home-hero__active-clear:hover,
+.home-hero__active-clear:focus-visible {
   opacity: 1;
   background: var(--red-bg);
   color: var(--red);
+}
+.home-hero__active-clear:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 1px;
 }
 .home-hero__prompt-surface {
   display: flex;

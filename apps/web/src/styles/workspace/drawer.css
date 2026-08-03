@@ -608,8 +608,8 @@
   z-index: 3;
 }
 .design-card-more {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border-radius: var(--radius-sm);
   background: var(--bg-panel);
@@ -620,7 +620,7 @@
   justify-content: center;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 .design-card:hover .design-card-more,
 .design-card:focus-within .design-card-more,
@@ -629,6 +629,12 @@
 .design-card-more[aria-expanded="true"],
 .design-card-more:focus-visible { opacity: 1; }
 .design-card-more:hover { color: var(--text-strong); border-color: var(--border-strong); }
+.design-card-more:focus-visible {
+  outline: none;
+  color: var(--text-strong);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
+}
 @media (hover: none) {
   .design-card .design-card-more,
   .recent-projects__card .design-card-more { opacity: 1; }
@@ -645,7 +651,7 @@
   padding: 4px;
   display: flex;
   flex-direction: column;
-  z-index: 50;
+  z-index: 80;
 }
 .design-card-menu.design-card-menu--up {
   top: auto;
@@ -1874,4 +1880,22 @@
 
 .designs-empty-cta:active {
   transform: scale(0.98);
+}
+
+.designs-empty-cta:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.designs-empty-cta:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+  border-style: dashed;
+}
+
+.designs-empty-cta:disabled:hover {
+  transform: none;
+  box-shadow: none;
 }
