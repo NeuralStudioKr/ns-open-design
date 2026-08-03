@@ -1137,6 +1137,90 @@ describe('ManualEditResizeOverlay', () => {
     expect(moved.style.height).toBe('50px');
   });
 
+  it('body-move without hostPaintRect still freezes visual/layout scale from target rect', () => {
+    const onMovePreview = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'absolute',
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+            left: '40px',
+            top: '60px',
+          },
+          rect: { x: 40, y: 60, width: 100, height: 50 },
+          layoutWidth: 200,
+          layoutHeight: 100,
+        })}
+        previewScale={1}
+        hostOffset={{ x: 0, y: 0 }}
+        hostPaintRect={null}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={onMovePreview}
+        onMoveCommit={vi.fn()}
+        onMoveCancel={vi.fn()}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    expect(overlay.style.width).toBe('100px');
+    expect(overlay.style.height).toBe('50px');
+    overlay.getBoundingClientRect = () => ({
+      x: 40, y: 60, width: 100, height: 50,
+      top: 60, left: 40, right: 140, bottom: 110,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+    fireEvent.pointerDown(overlay, { pointerId: 42, clientX: 90, clientY: 85, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 42, clientX: 110, clientY: 95, buttons: 1 });
+
+    expect(onMovePreview).toHaveBeenCalled();
+    expect(overlay.style.width).toBe('100px');
+    expect(overlay.style.height).toBe('50px');
+  });
+
+  it('resize without hostPaintRect still maps host delta through visual/layout scale', () => {
+    const onResizePreview = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          kind: 'text',
+          tagName: 'p',
+          rect: { x: 40, y: 60, width: 100, height: 50 },
+          layoutWidth: 200,
+          layoutHeight: 100,
+          styles: { ...emptyManualEditStyles(), width: '', height: '' },
+        })}
+        previewScale={1}
+        hostOffset={{ x: 0, y: 0 }}
+        hostPaintRect={null}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={onResizePreview}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.pointerDown(getByTestId('manual-edit-resize-handle-e'), {
+      pointerId: 43,
+      clientX: 140,
+      clientY: 85,
+      buttons: 1,
+    });
+    fireEvent.pointerMove(window, { pointerId: 43, clientX: 160, clientY: 85, buttons: 1 });
+
+    expect(onResizePreview).toHaveBeenCalled();
+    const preview = onResizePreview.mock.calls.at(-1)?.[0] as { width?: string };
+    expect(preview.width).toBe('240px');
+  });
+
   it('does not turn flow text interior drags into move sessions', () => {
     const onMovePreview = vi.fn();
     const onMoveCommit = vi.fn();

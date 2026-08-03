@@ -138,6 +138,37 @@ type MoveDragState = {
 
 type DragState = ResizeDragState | MoveDragState;
 
+function usablePaintRect(rect: ManualEditRect | null | undefined): ManualEditRect | null {
+  return rect && rect.width >= 1 && rect.height >= 1 ? rect : null;
+}
+
+function syntheticPaintRectFromTarget(
+  target: ManualEditTarget,
+  previewScale: number,
+  hostOffset: { x: number; y: number },
+): ManualEditRect | null {
+  if (!(target.rect.width >= 1) || !(target.rect.height >= 1)) return null;
+  const scaled = contentRectToHostRect(target.rect, previewScale);
+  return {
+    x: hostOffset.x + scaled.x,
+    y: hostOffset.y + scaled.y,
+    width: scaled.width,
+    height: scaled.height,
+  };
+}
+
+function gesturePaintRectForTarget(
+  target: ManualEditTarget,
+  livePaint: ManualEditRect | null | undefined,
+  hostPaintRect: ManualEditRect | null | undefined,
+  previewScale: number,
+  hostOffset: { x: number; y: number },
+): ManualEditRect | null {
+  return usablePaintRect(livePaint)
+    ?? usablePaintRect(hostPaintRect)
+    ?? syntheticPaintRectFromTarget(target, previewScale, hostOffset);
+}
+
 function handlePositionStyle(handle: ResizeHandle): CSSProperties {
   const mid = '50%';
   switch (handle) {
@@ -459,7 +490,7 @@ export function ManualEditResizeOverlay({
     // space), not transform-shrunk gBCR px.
     const geom = freezeGestureHostGeom(
       resizeFreezeContentRect(startTarget),
-      live?.paint ?? hostPaintRect,
+      gesturePaintRectForTarget(startTarget, live?.paint, hostPaintRect, previewScale, hostOffset),
       previewScale,
       hostOffset,
     );
@@ -519,7 +550,7 @@ export function ManualEditResizeOverlay({
         };
     const geom = freezeGestureHostGeom(
       resizeFreezeContentRect(startTarget),
-      live?.paint ?? hostPaintRect,
+      gesturePaintRectForTarget(startTarget, live?.paint, hostPaintRect, previewScale, hostOffset),
       previewScale,
       hostOffset,
     );
