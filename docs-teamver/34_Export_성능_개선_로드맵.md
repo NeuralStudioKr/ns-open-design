@@ -491,7 +491,7 @@ staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으�
 - ✅ async job SSE feed — `GET /export/jobs/:jobId/events`가 status JSON과 동일한 `export_job` 이벤트를 송신해 polling보다 빠른 진행 상태 반영을 준비
 - ✅ FE async job SSE first — job 생성 응답에 `eventsUrl`이 있으면 EventSource로 ready/failed를 먼저 수신하고, SSE unavailable/timeout 시 기존 polling으로 fallback
 - ✅ FE polling fallback backoff — SSE를 사용할 수 없는 브라우저/프록시 환경에서는 status polling으로 복구하되, 반복 대기 중에는 interval을 점진 확대해 daemon 호출량을 제한
-- FileViewer UX polish (visible background progress dialog)
+- ✅ FileViewer UX polish — async export 진행 중 우측 하단 progress panel을 표시하고 성공/실패/취소 시 자동 해제
 - dedicated export worker (Chromium isolate)
 - deck slide count soft cap + “대형 deck은 PDF만” UX
 
@@ -998,6 +998,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-03 | FileViewer async export progress panel 추가 — async export job 상태 callback을 토스트뿐 아니라 우측 하단 고정 progress panel에도 반영. 메뉴가 닫힌 뒤에도 PDF/PPTX/HTML/ZIP 다운로드 준비 상태가 보이며, export 성공/실패/취소 시 해당 format의 progress state를 정리해 stale 진행 표시가 남지 않도록 함 |
 | 2026-07-31 | FE async export polling fallback 부하 완화 — SSE unavailable/error 시 기존 status polling으로 복구하는 테스트를 추가하고, polling 대기 interval을 1.2s에서 최대 5s까지 점진 확대하도록 변경해 긴 export 작업 중 `/export/jobs/:jobId` 호출량을 줄임 |
 | 2026-07-31 | FE async export SSE 우선 연결 — web export runtime이 job 생성 응답의 `eventsUrl`을 EventSource로 구독해 `export_job` ready/failed를 먼저 처리하고, EventSource 미지원·오류·timeout 시 기존 status polling으로 fallback하도록 보강. 상태 callback은 de-dupe해 loading toast가 같은 상태로 반복 갱신되지 않도록 함 |
 | 2026-07-31 | Async export SSE feed 추가 — daemon export job store에 상태 transition subscriber를 추가하고, `GET /api/projects/:id/export/jobs/:jobId/events`에서 `export_job` SSE 이벤트로 queued/running/ready/failed snapshot을 송신하도록 구현. `POST /export/jobs` 응답에는 `eventsUrl`을 포함해 FE가 SSE 우선·polling fallback 구조로 넘어갈 수 있게 준비 |

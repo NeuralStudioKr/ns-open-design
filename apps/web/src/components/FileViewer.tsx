@@ -1156,6 +1156,10 @@ interface Props {
 }
 
 type ExportToastTranslate = (key: keyof Dict, vars?: Record<string, string | number>) => string;
+type AsyncExportProgressPanelState = {
+  format: ShareExportFormat;
+  message: string;
+};
 
 function exportInProgressToastMessage(format: ShareExportFormat, t: ExportToastTranslate): string {
   switch (format) {
@@ -1177,6 +1181,25 @@ function asyncExportProgressToastMessage(
 ): string {
   if (status === 'queued' || status === 'ready') return t('fileViewer.exportInProgress');
   return exportInProgressToastMessage(format, t);
+}
+
+function exportFormatLabel(format: ShareExportFormat): string {
+  switch (format) {
+    case 'pdf':
+      return 'PDF';
+    case 'pptx':
+      return 'PPTX';
+    case 'html':
+      return 'HTML';
+    case 'zip':
+      return 'ZIP';
+    case 'image':
+      return 'IMAGE';
+    case 'markdown':
+      return 'MD';
+    default:
+      return String(format).toUpperCase();
+  }
 }
 
 function exportSuccessToastMessage(format: ShareExportFormat, t: ExportToastTranslate): string {
@@ -4889,13 +4912,16 @@ function HtmlViewer({
                 if (result === 'cancelled') {
                   finish('cancelled');
                   if (toastFormats.has(format)) setExportToast(null);
+                  setAsyncExportProgress((current) => current?.format === format ? null : current);
                   return;
                 }
                 finish('success');
+                setAsyncExportProgress((current) => current?.format === format ? null : current);
                 showResultToast(result);
               },
               (err) => {
                 finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
+                setAsyncExportProgress((current) => current?.format === format ? null : current);
                 showExportFailureToast(err);
               },
             );
@@ -4903,13 +4929,16 @@ function HtmlViewer({
           if (out === 'cancelled') {
             finish('cancelled');
             if (toastFormats.has(format)) setExportToast(null);
+            setAsyncExportProgress((current) => current?.format === format ? null : current);
             return;
           }
           finish('success');
+          setAsyncExportProgress((current) => current?.format === format ? null : current);
           showResultToast(out);
         }
       } catch (err) {
         finish('failed', err instanceof Error ? err.name : 'UNKNOWN');
+        setAsyncExportProgress((current) => current?.format === format ? null : current);
         showExportFailureToast(err);
       }
     };
@@ -4929,8 +4958,13 @@ function HtmlViewer({
   const showAsyncExportProgress = (format: ShareExportFormat) => (
     status: AsyncExportProgressStatus,
   ) => {
+    const message = asyncExportProgressToastMessage(format, status, t);
+    setAsyncExportProgress((current) => ({
+      format,
+      message,
+    }));
     setExportToast({
-      message: asyncExportProgressToastMessage(format, status, t),
+      message,
       tone: 'loading',
       ttlMs: 0,
     });
@@ -5515,6 +5549,7 @@ function HtmlViewer({
       ttlMs?: number;
     } | null
   >(null);
+  const [asyncExportProgress, setAsyncExportProgress] = useState<AsyncExportProgressPanelState | null>(null);
   const [shareLinkFeedback, setShareLinkFeedback] = useState<'copied' | 'failed' | null>(null);
   const [shareGuideToast, setShareGuideToast] = useState<string | null>(null);
   const [selectedSideCommentIds, setSelectedSideCommentIds] = useState<Set<string>>(() => new Set());
@@ -11032,6 +11067,24 @@ function HtmlViewer({
               ) : null}
               {/* Portaled to <body> so the screenshot/export toast escapes the
                   preview pane's transform + overflow:hidden. */}
+              {asyncExportProgress
+                ? createPortal(
+                    <div className="async-export-progress-panel" role="status" aria-live="polite">
+                      <div className="async-export-progress-row">
+                        <span className="async-export-progress-spinner" aria-hidden="true" />
+                        <div className="async-export-progress-copy">
+                          <span className="async-export-progress-title">
+                            {exportFormatLabel(asyncExportProgress.format)} {t('fileViewer.download')}
+                          </span>
+                          <span className="async-export-progress-message">
+                            {asyncExportProgress.message}
+                          </span>
+                        </div>
+                      </div>
+                    </div>,
+                    document.body,
+                  )
+                : null}
               {exportToast
                 ? createPortal(
                     <Toast
