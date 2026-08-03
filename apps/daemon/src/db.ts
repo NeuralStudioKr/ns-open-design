@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { ProjectBrowserWorkspaceTab, ProjectTabsState } from '@open-design/contracts';
 import { migrateCritique } from './critique/persistence.js';
 import { migrateFileRevisions } from './file-revisions/persistence.js';
+import { deleteFileRevisionSnapshotsForProjectDurable } from './file-revisions/snapshot-storage.js';
 import { migrateMediaTasks } from './media-tasks.js';
 import { migratePlugins } from './plugins/persistence.js';
 import {
@@ -1134,6 +1135,11 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
 }
 
 export function deleteProject(db: SqliteDb, id: string) {
+  try {
+    void deleteFileRevisionSnapshotsForProjectDurable(id, db);
+  } catch {
+    // Best-effort — CASCADE on file_revisions still removes metadata.
+  }
   if (isDaemonDbPostgres()) {
     deleteCachedProject(id);
     deleteProjectRowFromSqlite(db, id);
@@ -1422,6 +1428,8 @@ export async function warmProjectFromPostgres(db: SqliteDb, projectId: string): 
   }
   const deployments = await pgCore.pgListDeployments(pool, projectId);
   setCachedDeployments(projectId, deployments as DbRow[]);
+  const { hydrateProjectFileRevisionsFromPostgres } = await import('./file-revisions/durable-store.js');
+  await hydrateProjectFileRevisionsFromPostgres(db, projectId);
 }
 
 export function getConversation(db: SqliteDb, id: string) {

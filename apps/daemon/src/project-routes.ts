@@ -39,6 +39,10 @@ import {
 import { auditDesignSystemPackage } from './tools-connectors-cli.js';
 import { createFileRevisionService, isFileRevisionSource } from './file-revisions/service.js';
 import {
+  FileRevisionLockError,
+  isFileRevisionSequenceConflict,
+} from './file-revisions/postgres-lock.js';
+import {
   isTeamverDesignManaged,
   readTeamverIdentityFromRequest,
   verifyTeamverProjectAccess,
@@ -2996,7 +3000,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
-      const body = fileRevisionService.listRevisions(projectId, fileName);
+      const body = await fileRevisionService.listRevisions(projectId, fileName);
       res.json(body);
     } catch (err: any) {
       sendApiError(res, 400, 'BAD_REQUEST', String(err));
@@ -3055,6 +3059,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       }
       res.json(result);
     } catch (err: any) {
+      if (err instanceof FileRevisionLockError) {
+        return sendApiError(res, 409, err.code, err.message);
+      }
       const status = err && err.code === 'ENOENT' ? 404 : 400;
       sendApiError(
         res,
@@ -3126,6 +3133,12 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       });
       res.json(result);
     } catch (err: any) {
+      if (err instanceof FileRevisionLockError) {
+        return sendApiError(res, 409, err.code, err.message);
+      }
+      if (isFileRevisionSequenceConflict(err)) {
+        return sendApiError(res, 409, 'CONFLICT', 'revision sequence conflict; retry push');
+      }
       if (err instanceof ArtifactRegressionError) {
         return sendApiError(res, 422, 'ARTIFACT_REGRESSION', err.message);
       }

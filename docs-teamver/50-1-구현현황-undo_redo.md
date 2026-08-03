@@ -3,6 +3,7 @@
 **문서 번호:** 50-1  
 **설계 SSOT:** [50 Undo/Redo 설계](./50_undo_redo_설계.md)  
 **비교 문서:** [50-2 Teamver Canvas vs Design Undo 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md)  
+**배포·검증 Runbook:** [50-4 staging 머지·배포·검증](./50-4_revision_staging_머지_배포_검증.md)  
 **브랜치:** `staging`  
 **최종 갱신:** 2026-07-31
 
@@ -28,14 +29,15 @@
 |------|------|------|
 | `packages/contracts/src/api/revisions.ts` | [x] | |
 | SQLite `file_revisions` 테이블 | [x] | `migrateFileRevisions` |
-| Snapshot 디렉터리 `.od/revisions/` | [x] | `file-revisions/store.ts` |
+| Snapshot 디렉터리 `.od/revisions/` | [x] | `file-revisions/store.ts` (기본 `files`) |
+| SQLite `file_revision_snapshots` BLOB | [x] | `OD_FILE_REVISION_SNAPSHOT_STORAGE=sqlite` 시 daemon DB에만 저장 |
 | `GET/POST .../revisions` API | [x] | `project-routes.ts` |
 | `POST .../revisions/:id/restore` | [x] | |
 | `RevisionController` (web) | [x] | `revision-stack.ts` + FileViewer 연동 |
 | Manual undo → 서버 restore 전환 | [x] | in-memory stack 제거 |
 | 키보드 ⌘Z / Ctrl+Z undo·redo | [x] | draw overlay 비활성 시에만 |
 | `od project revisions` CLI | [x] | list + restore |
-| Daemon tests | [x] | `file-revisions.test.ts` |
+| Daemon tests | [x] | `file-revisions.test.ts` + postgres multinode integration |
 
 ---
 
@@ -141,6 +143,12 @@
 | nested markup (inline salvage + flattenNestedMarkup) | [x] |
 | revision content cache + reconcile skip + prefetch | [x] | `revision-content-cache.ts` — LRU 8 entries, 16MB/파일, 4MB/항목, prefetch `byteSize` skip |
 | `OD_FILE_REVISION_RETENTION_LIMIT` env | [x] | daemon `resolveFileRevisionRetentionLimit()` |
+| `OD_FILE_REVISION_SNAPSHOT_STORAGE` env | [x] | `postgres` (Teamver 기본) \| `sqlite` \| `files` — [50-3](./50-3_revision_스냅샷_저장소_RDS_용량관리.md) |
+| Postgres `file_revision_snapshots` BYTEA (schema v8) | [x] | `DAEMON_DB_POSTGRES_MIGRATION_V8` |
+| Postgres durable revision SSOT (멀티노드) | [x] | `durable-store.ts` — transactional commit, head+count hydrate, warm/GC |
+| Postgres advisory lock (push/restore) | [x] | `postgres-lock.ts` — `OD_FILE_REVISION_LOCK_TIMEOUT_MS` |
+| 주기 GC + orphan 정리 | [x] | `file-revisions/gc.ts` · `OD_FILE_REVISION_GC_INTERVAL_MS` |
+| 프로젝트 삭제 시 BLOB 선삭제 | [x] | `deleteFileRevisionSnapshotsForProject` |
 | History panel retention hint | [x] | i18n `fileRevision.history.retentionHint` |
 | List API `retentionLimit` → History 패널 | [x] | daemon list 응답, 하드코드 제거 |
 | 충돌 토스트는 head ≠ disk일 때만 | [x] | cursor만 어긋나면 조용히 reset |
@@ -152,11 +160,17 @@
 
 ## 검증 명령 (누적)
 
+**staging 배포 후 수동 검증:** [50-4 §8](./50-4_revision_staging_머지_배포_검증.md#8-2-pod-교차-검증-필수-게이트) (2-pod 교차 시나리오 SSOT).
+
 ```bash
 # Phase 0
 pnpm --filter @open-design/web exec vitest run tests/components/FileViewer.undo-redo-toolbar.test.tsx
 
 # Phase 1+
-pnpm --filter @open-design/daemon test
+pnpm --filter @open-design/daemon exec vitest run \
+  tests/file-revisions-multinode.integration.test.ts \
+  tests/file-revisions-durable-store.test.ts \
+  tests/file-revisions-postgres-lock.test.ts \
+  tests/file-revisions.test.ts
 pnpm --filter @open-design/web test
 ```
