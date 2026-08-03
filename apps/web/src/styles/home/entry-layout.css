@@ -1661,7 +1661,7 @@
 }
 .entry-section__title {
   margin: 0;
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: 22px;
   font-weight: 600;
   color: var(--text-strong);

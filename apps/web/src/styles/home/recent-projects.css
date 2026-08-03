@@ -16,7 +16,7 @@
 }
 .recent-projects__title {
   margin: 0;
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: 18px;
   font-weight: 600;
   color: var(--text-strong);
@@ -196,7 +196,7 @@
   animation: recent-projects-shimmer 1.4s ease-in-out infinite;
 }
 .recent-projects__card-glyph {
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: 32px;
   font-weight: 600;
   color: var(--accent);
