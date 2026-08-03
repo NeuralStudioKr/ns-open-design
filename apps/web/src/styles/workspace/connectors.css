@@ -620,10 +620,6 @@
   background: var(--bg-subtle);
   color: var(--text-strong);
 }
-.tab-panel-toolbar .toolbar-search .toolbar-search-clear:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  outline-offset: 1px;
-}
 .tab-panel-toolbar .toolbar-search .search-icon {
   position: absolute;
   left: 9px;

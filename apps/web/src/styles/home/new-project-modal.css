@@ -37,7 +37,7 @@
 }
 .new-project-modal__title {
   margin: 0;
-  font-family: var(--sans);
+  font-family: var(--serif);
   font-size: 18px;
   font-weight: 600;
   color: var(--text-strong);

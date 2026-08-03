@@ -1631,7 +1631,7 @@
 .composer-send.stop:hover { background: var(--text-strong); border-color: var(--text-strong); color: var(--bg-panel); }
 .composer-hint {
   font-size: 11px;
-  color: var(--text-soft);
+  color: var(--text-faint);
   margin: 0 8px;
 }
 

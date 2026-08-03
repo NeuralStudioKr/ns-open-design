@@ -722,7 +722,7 @@
   flex-direction: column;
   justify-content: space-between;
   padding: 18px 18px 14px;
-  font-family: var(--sans);
+  font-family: var(--serif);
   overflow: hidden;
 }
 .plugins-home__design--showcase {

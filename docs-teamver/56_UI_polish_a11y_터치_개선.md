@@ -100,10 +100,11 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 9 | `69c688105` | escape Design Home focus 링 · assistant-footer focus-within · Drive/hero/DS/plugin `title` | 유지 |
 | 10 | `c525e5cce` | Drive picker/import 모달 시각 polish (색·여백·타이포) — `tools.css` only | 유지 |
 | 11 | `df36b570a` | 홈 섹션 제목 sans 통일 (recent/plugins/entry) | 유지 |
-| 12 | `34b345db8` | DS fullscreen·BYOK·agent cancel 터치 · empty titles · bg-runs · user-actions 28 · plugins design sans | 유지 |
-| 13 | `09bea4edb` | publish chip · staged-remove · connector close 28 · newproj/toolbar text tokens (55 통일 보류) | 유지 |
-| 14 | `d500b9959` | home-hero/recent/design-card 토큰 · composer 28 정렬 · settings/toast/run-recovery | 유지 |
-| 15 | `62fa33525` | plugins/examples/history soft · modal close 28 · newproj sans · pet adopt touch | 유지 |
+| 12 | `34b345db8` | DS fullscreen·BYOK·agent cancel 터치 · empty titles · bg-runs · user-actions 28 · plugins design sans | **부분 유지** (design showcase serif 복구 — §6) |
+| 13 | `09bea4edb` | publish chip · staged-remove · connector close 28 · newproj/toolbar text tokens (55 통일 보류) | **부분 유지** (중복 focus-visible 제거 — §6) |
+| 14 | `d500b9959` | home-hero/recent/design-card 토큰 · composer 28 정렬 · settings/toast/run-recovery | **부분 유지** (toast·hint·hero 계층 교정 — §6) |
+| 15 | `62fa33525` | plugins/examples/history soft · modal close 28 · newproj sans · pet adopt touch | **부분 유지** (newproj title serif 복구 — §6) |
+| 16 | _(본 루프)_ | **리뷰 교정** — 부적절한 polish 되돌림 · 포화 선언 | 유지 |
 
 `f97ee14ed` 메시지의 “28–32px” 방향은 **리뷰로 철회**된 부분이 있음. **유효 SSOT는 `29466ae40` 이후 원칙**.
 
@@ -201,30 +202,30 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | `.app .chat-empty-title` | `routines.css` | 14.5/600/`text-strong` (인패널 밀도 유지) |
 | `.connector-drawer-titles h2` | `drawer.css` | sans · `text-strong` |
 | `.connector-drawer-section-title` | `drawer.css` | `text-faint` → `text-soft` |
-| `.plugins-home__design` | `plugins-home.css` | serif → sans |
+| `.plugins-home__design` | `plugins-home.css` | **serif 유지** (showcase display — sans 시도 되돌림) |
 | `.msg.user .user-actions` | `chat.css` | min-height 20 → **28** (copy btn geometry) |
 | background-runs copy/detail/open | `teamver.css` | gap·font-size·open min-height 28 |
 | `.teamver-latest-publish-chip` | `teamver.css` | px·min-height 22 · focus-visible |
 | `.design-card-embed-chips` | `drawer.css` | gap/margin 6 |
 | `.staged-remove` | `chat.css` | 14→**18** (chip 22 안) · `text-soft` |
-| `.connector-drawer-close` | `drawer.css` | 32→**28** · focus ring |
+| `.connector-drawer-close` | `drawer.css` | 32→**28** (전역 focus만 — 중복 outline 제거) |
 | `.connector-drawer-eyebrow` | `drawer.css` | `text-soft` |
 | `.newproj-title` / footer | `artifacts.css` | strong / soft tokens |
-| Designs toolbar search clear/icon | `connectors.css` | soft + accent focus |
+| Designs toolbar search clear/icon | `connectors.css` | soft 토큰 (중복 focus-visible 제거) |
 | chat-history placeholder | `composio.css` | `text-soft` |
-| home-hero footer select group/desc | `home-hero.css` | group-label · description → `text-soft` |
+| home-hero footer select | `home-hero.css` | group-label **faint** · DS group **muted mix** · description **muted** (soft 일괄 되돌림) |
 | recent-projects card name/time/sep | `recent-projects.css` | name 600/`text-strong` · time/sep `text-soft` |
 | design-card meta | `drawer.css` | meta gap 2→4 · meta-time `text-soft` |
-| composer placeholder / hint / chrome | `chat.css` · `routines.css` | placeholder·hint `text-soft` · icon/send/session **32→28** (`.app` SSOT와 일치) |
+| composer placeholder / chrome | `chat.css` · `routines.css` | placeholder `text-soft` · icon/send/session **28** · hint는 **color-mix 밀도 유지** |
 | settings section / notify / language | `artifacts.css` | h3 `text-strong` · notify hint soft · language tile strong/soft |
-| toast details | `routines.css` | opacity 해킹 제거 → `text-soft` + spacing |
+| toast details | `routines.css` | **opacity 0.85 유지** (다크 toast에서 `text-soft` 강제 ❌) · margin 6 유지 |
 | run-recovery banner | `teamver.css` | title/copy bg-runs와 정렬 (`text-strong` · 0.8125rem) |
 | plugins-home search/heading/facet | `plugins-home.css` | icon·placeholder·facet `text-soft` · heading gap 2→4 |
 | plugin inputs placeholder | `plugin-rail.css` | `text-soft` |
 | examples search | `composio.css` | icon·placeholder `text-soft` |
 | chat-history chrome 잔여 | `composio.css` | search icon/clear · menu-count · conv meta → `text-soft` |
 | modal closes | `composio.css` · `new-project-modal.css` · `plugins-view.css` | ds/newproj/import close **32→28** |
-| new-project-modal title | `new-project-modal.css` | serif → sans (hero serif 유지) |
+| new-project-modal title | `new-project-modal.css` | **serif 유지** (display/ceremony — 섹션 sans와 구분) |
 | pet-codex adopt | `library.css` | `@media (hover: none)` reveal |
 
 **이미 올바르던 패턴 (참고, 본 루프 미변경)**
@@ -245,8 +246,25 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | workspace-shell tabs → 28 | 38px Design Files chrome 의도 파손 | 24 |
 | 광범위 `:focus-visible` 재선언 | `primitives.css`와 중복 노이즈 | 제거 |
 | disabled CTA `border-style: dashed` | 장식 과잉 | 제거 |
+| toast details → `text-soft` | 다크 toast(`text-strong` bg + `bg` 전경)에서 라이트 팔레트 회색 강제 | **opacity 0.85 복구** |
+| composer-hint → `text-soft` / color-mix 제거 | 의도된 밀도 디밍 상실 | **color-mix(muted) 복구** · base `text-faint` |
+| home-hero select desc/group soft 일괄 | secondary·tertiary 계층 평탄화 | description **muted** · group **faint/mix** |
+| new-project-modal title sans | display/ceremony를 섹션 chrome처럼 취급 | **serif 복구** |
+| plugins-home__design sans | showcase display 타이포 과잉 | **serif 복구** (섹션 title sans는 유지) |
+| connector-close / toolbar-clear 커스텀 focus | `primitives.css` `button:focus-visible`와 중복 | outline 블록 제거 |
+| `text-faint`→`text-soft` 추가 일괄 | 계층·전역 placeholder(`text-faint`)와 불일치 | **추가 soft 치환 중단** (검색 chrome soft는 유지) |
 
 ---
+
+## 6.1 리뷰 결론 (2026-08-03)
+
+| 판정 | 항목 |
+|------|------|
+| **KEEP** | 28px chrome(composer/modal close/connector) · touch/focus-within · Drive 모달 · 홈 섹션 sans · empty titles · bg-runs · pet adopt touch · publish chip · kanban 제거(버그픽스) |
+| **REVERT 완료** | toast soft · composer-hint soft · hero soft 일괄 · newproj/plugins design serif · 중복 focus-visible |
+| **포화** | 새 soft/28/여백 polish 패스 **중단**. 다음 작업은 §7 QA 또는 실제 회귀만. |
+
+Placeholder 정책: 전역 `input::placeholder`는 `text-faint` · **검색 필드**만 `text-soft` 허용.
 
 ## 7. 검증 체크리스트
 
@@ -288,9 +306,10 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 홈 섹션 제목 serif | **sans 통일** — recent-projects / plugins-home / entry-section (hero serif 유지) |
 | empty titles · bg-runs · user-actions | **완료** — §5.5 |
 | home/recent/composer/settings/toast | **완료** — §5.5 |
-| plugins/examples/history · modal close 28 | **완료** — §5.5 (본 루프) |
+| plugins/examples/history · modal close 28 | **부분 유지** — newproj title serif 복구 · 검색 soft·close 28·pet adopt 유지 |
 | Main↔Design 스타일 통일 | **분석·보류** — [55](./55_Main_Teamver_vs_Design_UI_스타일_통일_분석.md) (§9) |
 | entry topbar 32 | **유지** — `--entry-topbar-h: 44` 계약 |
+| 추가 soft/28 polish 패스 | **중단 (포화)** — §6.1 |
 
 새 변경 시 **§3 원칙**으로 먼저 기각한 뒤 코드·본 문서 §4–5·[00](./00_구현_내역_누적.md)를 함께 갱신한다.
 

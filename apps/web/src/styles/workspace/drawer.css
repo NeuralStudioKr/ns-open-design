@@ -104,10 +104,6 @@
   background: var(--bg-subtle);
   color: var(--text-strong);
 }
-.connector-drawer-close:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  outline-offset: 1px;
-}
 .connector-drawer-body {
   flex: 1 1 auto;
   min-height: 0;
