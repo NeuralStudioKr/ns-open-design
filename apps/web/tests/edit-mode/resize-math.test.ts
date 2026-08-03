@@ -225,9 +225,10 @@ describe('style helpers', () => {
       leftPx: null,
       topPx: null,
     });
-    expect(styles).toEqual({ width: '220px', maxWidth: 'none', right: '' });
+    // E/S-only resize must not clear right/bottom — that jumped right:0 boxes.
+    expect(styles).toEqual({ width: '220px', maxWidth: 'none' });
     // Text/fontSize and other style keys must never ride along with a box resize.
-    expect(Object.keys(styles).sort()).toEqual(['maxWidth', 'right', 'width']);
+    expect(Object.keys(styles).sort()).toEqual(['maxWidth', 'width']);
   });
 
   it('lifts max-width/height clamps so responsive CSS cannot pin used size', () => {
@@ -245,6 +246,26 @@ describe('style helpers', () => {
       height: '120px',
       maxWidth: 'none',
       maxHeight: 'none',
+    });
+  });
+
+  it('clears right/bottom only when W/N wrote the near-edge anchor', () => {
+    expect(resizeResultToStyles({
+      widthPx: 160,
+      heightPx: 80,
+      x: 50,
+      y: 40,
+      touchedWidth: true,
+      touchedHeight: true,
+      leftPx: 140,
+      topPx: 70,
+    })).toEqual({
+      width: '160px',
+      height: '80px',
+      maxWidth: 'none',
+      maxHeight: 'none',
+      left: '140px',
+      top: '70px',
       right: '',
       bottom: '',
     });
