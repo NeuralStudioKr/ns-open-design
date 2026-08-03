@@ -308,21 +308,34 @@ export async function pgPruneOrphanFileRevisionSnapshots(pool: Pool): Promise<{
   return { removed: rows.length, reclaimedBytes };
 }
 
-export async function pgGetOldestRevisionForPrune(
+export async function pgListOldestRevisionsForPrune(
   pool: Pool,
-  excludeRevisionIds: ReadonlySet<string> = new Set(),
-): Promise<{ id: string; storageBytes: number } | null> {
-  const rows = await queryPostgresRows<{ id: string; storageBytes: number }>(
+  excludeRevisionIds: ReadonlySet<string>,
+  limit: number,
+): Promise<Array<{ id: string; storageBytes: number }>> {
+  if (limit <= 0) return [];
+  const exclude = [...excludeRevisionIds];
+  if (exclude.length === 0) {
+    return await queryPostgresRows<{ id: string; storageBytes: number }>(
+      pool,
+      `SELECT r.id AS id, coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
+       FROM file_revisions r
+       LEFT JOIN file_revision_snapshots s ON s.revision_id = r.id
+       ORDER BY r.created_at ASC, r.sequence ASC
+       LIMIT $1`,
+      [limit],
+    );
+  }
+  return await queryPostgresRows<{ id: string; storageBytes: number }>(
     pool,
     `SELECT r.id AS id, coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
      FROM file_revisions r
      LEFT JOIN file_revision_snapshots s ON s.revision_id = r.id
-     ORDER BY r.created_at ASC, r.sequence ASC`,
+     WHERE NOT (r.id = ANY($1::text[]))
+     ORDER BY r.created_at ASC, r.sequence ASC
+     LIMIT $2`,
+    [exclude, limit],
   );
-  for (const row of rows) {
-    if (!excludeRevisionIds.has(row.id)) return row;
-  }
-  return null;
 }
 
 export async function pgGetFileRevisionSnapshotStorageStats(pool: Pool): Promise<{

@@ -37,7 +37,7 @@ describe('file revision global byte budget', () => {
     const db = openDb();
     insertRevision(db, 'rev-1', 1, 1000);
     const result = await enforceFileRevisionGlobalByteBudget(db, 500, 0);
-    expect(result).toEqual({ pruned: 0, bytesReclaimed: 0 });
+    expect(result).toEqual({ pruned: 0, bytesReclaimed: 0, deferredOverflowBytes: 0 });
     expect(db.prepare(`SELECT count(*) AS c FROM file_revisions`).get()).toEqual({ c: 1 });
   });
 
@@ -50,6 +50,7 @@ describe('file revision global byte budget', () => {
     const result = await enforceFileRevisionGlobalByteBudget(db, 300, 900);
     expect(result.pruned).toBe(2);
     expect(result.bytesReclaimed).toBe(800);
+    expect(result.deferredOverflowBytes).toBe(0);
     const remaining = db.prepare(`SELECT id FROM file_revisions ORDER BY sequence ASC`).all() as Array<{ id: string }>;
     expect(remaining.map((row) => row.id)).toEqual(['rev-3']);
   });
@@ -57,5 +58,25 @@ describe('file revision global byte budget', () => {
   it('uses the soft snapshot target when no global budget is configured', () => {
     expect(resolveFileRevisionPruneBudgetBytes(200)).toBe(8 * 1024 * 1024);
     expect(resolveFileRevisionPruneBudgetBytes(20 * 1024 * 1024)).toBe(20 * 1024 * 1024);
+  });
+
+  it('defers remaining overflow when synchronous delete cap is reached', async () => {
+    const db = openDb();
+    insertRevision(db, 'rev-1', 1, 400);
+    insertRevision(db, 'rev-2', 2, 400);
+    insertRevision(db, 'rev-3', 3, 400);
+
+    const result = await enforceFileRevisionGlobalByteBudget(
+      db,
+      300,
+      900,
+      new Set(['rev-3']),
+      { maxDeletes: 1 },
+    );
+    expect(result.pruned).toBe(1);
+    expect(result.bytesReclaimed).toBe(400);
+    expect(result.deferredOverflowBytes).toBe(200);
+    const remaining = db.prepare(`SELECT id FROM file_revisions ORDER BY sequence ASC`).all() as Array<{ id: string }>;
+    expect(remaining.map((row) => row.id)).toEqual(['rev-2', 'rev-3']);
   });
 });

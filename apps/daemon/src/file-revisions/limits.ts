@@ -29,3 +29,16 @@ export const FILE_REVISION_MAX_TOTAL_BYTES = resolveFileRevisionMaxTotalBytes();
 
 /** Hard safety ceiling for a single uncompressed revision push (not a soft prune target). */
 export const FILE_REVISION_ABSOLUTE_MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
+
+/** Max revision rows deleted synchronously on a single push; overflow is deferred to GC. */
+export function resolveFileRevisionPushPruneMax(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env.OD_FILE_REVISION_PUSH_PRUNE_MAX;
+  if (raw == null || raw.trim() === '') return 8;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return 8;
+  return Math.min(parsed, 100);
+}
+
+export const FILE_REVISION_PUSH_PRUNE_MAX = resolveFileRevisionPushPruneMax();

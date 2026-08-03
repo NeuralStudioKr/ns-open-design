@@ -6,6 +6,7 @@ import {
 import {
   resolveFileRevisionMaxSnapshotBytes,
   resolveFileRevisionMaxTotalBytes,
+  resolveFileRevisionPushPruneMax,
 } from '../src/file-revisions/limits.js';
 
 describe('file revision byte limits', () => {
@@ -35,5 +36,10 @@ describe('file revision byte limits', () => {
       .toBe(FILE_REVISION_MAX_TOTAL_BYTES_DEFAULT);
     expect(resolveFileRevisionMaxTotalBytes({ OD_FILE_REVISION_MAX_TOTAL_BYTES: 'abc' }))
       .toBe(FILE_REVISION_MAX_TOTAL_BYTES_DEFAULT);
+  });
+
+  it('reads OD_FILE_REVISION_PUSH_PRUNE_MAX when valid', () => {
+    expect(resolveFileRevisionPushPruneMax({})).toBe(8);
+    expect(resolveFileRevisionPushPruneMax({ OD_FILE_REVISION_PUSH_PRUNE_MAX: '3' })).toBe(3);
   });
 });

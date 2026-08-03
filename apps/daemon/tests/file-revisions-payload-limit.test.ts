@@ -9,8 +9,10 @@ vi.mock('../src/file-revisions/limits.js', () => ({
   FILE_REVISION_MAX_SNAPSHOT_BYTES: 64,
   FILE_REVISION_MAX_TOTAL_BYTES: 0,
   FILE_REVISION_ABSOLUTE_MAX_SNAPSHOT_BYTES: 256 * 1024,
+  FILE_REVISION_PUSH_PRUNE_MAX: 8,
   resolveFileRevisionMaxSnapshotBytes: () => 64,
   resolveFileRevisionMaxTotalBytes: () => 0,
+  resolveFileRevisionPushPruneMax: () => 8,
 }));
 
 const ROOT = path.join(process.cwd(), '.tmp', 'file-revisions-payload-limit-test');
