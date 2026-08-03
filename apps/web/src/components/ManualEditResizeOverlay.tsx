@@ -208,9 +208,6 @@ export function ManualEditResizeOverlay({
   const [moving, setMoving] = useState(false);
   /** Viewport-space overlay origin during promote (CSS left/top are CB-relative). */
   const [liveViewportPos, setLiveViewportPos] = useState<{ x: number; y: number } | null>(null);
-  const previewScaleRef = useRef(previewScale);
-  // Keep pointer→content conversion on the scale frozen at gesture start.
-  if (!dragRef.current) previewScaleRef.current = previewScale;
   const onMovePreviewRef = useRef(onMovePreview);
   onMovePreviewRef.current = onMovePreview;
   const onMoveCommitRef = useRef(onMoveCommit);
@@ -350,7 +347,7 @@ export function ManualEditResizeOverlay({
       if (!drag || event.pointerId !== drag.pointerId) return;
       const hostDx = event.clientX - drag.startClientX;
       const hostDy = event.clientY - drag.startClientY;
-      const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, previewScaleRef.current);
+      const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, drag.hostScale);
 
       if (drag.kind === 'resize') {
         if (Math.hypot(dx, dy) < MANUAL_EDIT_RESIZE_MIN_DELTA_PX && !drag.previewed) return;
@@ -508,7 +505,6 @@ export function ManualEditResizeOverlay({
       hostScale: geom.hostScale,
       hostOffset: geom.hostOffset,
     };
-    previewScaleRef.current = geom.hostScale;
     setLiveViewportPos(null);
     setDragging(true);
     setMoving(false);
@@ -576,7 +572,6 @@ export function ManualEditResizeOverlay({
       hostScale: geom.hostScale,
       hostOffset: geom.hostOffset,
     };
-    previewScaleRef.current = geom.hostScale;
     setLiveViewportPos(null);
     setDragging(true);
     setMoving(true);

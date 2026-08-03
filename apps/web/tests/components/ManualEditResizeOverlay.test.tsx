@@ -249,6 +249,54 @@ describe('ManualEditResizeOverlay', () => {
     expect(Number.parseFloat(overlay.style.left)).toBeLessThan(100);
   });
 
+  it('keeps resize pointer delta on the frozen gesture scale after parent scale rerenders', () => {
+    const onResizePreview = vi.fn();
+    const props = {
+      target: target({
+        kind: 'text',
+        tagName: 'p',
+        rect: { x: 40, y: 60, width: 100, height: 50 },
+        layoutWidth: 200,
+        layoutHeight: 100,
+        styles: { ...emptyManualEditStyles(), width: '', height: '' },
+      }),
+      previewScale: 1,
+      hostOffset: { x: 0, y: 0 },
+      hostPaintRect: { x: 40, y: 60, width: 100, height: 50 } as const,
+      draftWidthPx: null as number | null,
+      draftHeightPx: null as number | null,
+      onResizePreview,
+      onResizeCommit: vi.fn(),
+      onResizeCancel: vi.fn(),
+    };
+    const { getByTestId, rerender } = render(<ManualEditResizeOverlay {...props} />);
+
+    fireEvent.pointerDown(getByTestId('manual-edit-resize-handle-e'), {
+      pointerId: 71,
+      clientX: 140,
+      clientY: 85,
+      buttons: 1,
+    });
+    fireEvent.pointerMove(window, { pointerId: 71, clientX: 150, clientY: 85, buttons: 1 });
+    expect((onResizePreview.mock.calls.at(-1)?.[0] as { width?: string }).width).toBe('220px');
+
+    rerender(
+      <ManualEditResizeOverlay
+        {...props}
+        previewScale={0.25}
+        hostOffset={{ x: 120, y: 80 }}
+        hostPaintRect={{ x: 999, y: 999, width: 25, height: 12.5 }}
+        draftWidthPx={220}
+        draftHeightPx={100}
+      />,
+    );
+    fireEvent.pointerMove(window, { pointerId: 71, clientX: 160, clientY: 85, buttons: 1 });
+
+    // Frozen gesture scale is paint/layout = 0.5, so host +20 => layout +40.
+    // Regression: using the rerendered previewScale=0.25 would jump to 280px.
+    expect((onResizePreview.mock.calls.at(-1)?.[0] as { width?: string }).width).toBe('240px');
+  });
+
   it('keeps resize handles pointer-hit even when interaction is gated', () => {
     const { getByTestId } = render(
       <ManualEditResizeOverlay
@@ -515,6 +563,69 @@ describe('ManualEditResizeOverlay', () => {
     // Δ +40,+20 → viewport 200,200. Raw CSS left/top (80,80) must not drive the box.
     expect(overlay.style.left).toBe('200px');
     expect(overlay.style.top).toBe('200px');
+  });
+
+  it('keeps move pointer delta on the frozen gesture scale after parent scale rerenders', () => {
+    const onMovePreview = vi.fn();
+    const props = {
+      target: target({
+        cssPosition: 'absolute',
+        styles: {
+          ...emptyManualEditStyles(),
+          width: '200px',
+          height: '100px',
+          left: '40px',
+          top: '60px',
+        },
+        rect: { x: 40, y: 60, width: 100, height: 50 },
+        layoutWidth: 200,
+        layoutHeight: 100,
+      }),
+      previewScale: 1,
+      hostOffset: { x: 0, y: 0 },
+      hostPaintRect: { x: 40, y: 60, width: 100, height: 50 } as const,
+      draftWidthPx: null as number | null,
+      draftHeightPx: null as number | null,
+      onResizePreview: vi.fn(),
+      onResizeCommit: vi.fn(),
+      onResizeCancel: vi.fn(),
+      onMovePreview,
+      onMoveCommit: vi.fn(),
+      onMoveCancel: vi.fn(),
+    };
+    const { getByTestId, rerender } = render(<ManualEditResizeOverlay {...props} />);
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    overlay.getBoundingClientRect = () => ({
+      x: 40, y: 60, width: 100, height: 50,
+      top: 60, left: 40, right: 140, bottom: 110,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+    fireEvent.pointerDown(overlay, { pointerId: 72, clientX: 90, clientY: 85, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 72, clientX: 100, clientY: 90, buttons: 1 });
+    expect(onMovePreview.mock.calls.at(-1)?.[0]).toMatchObject({
+      left: '60px',
+      top: '70px',
+    });
+
+    rerender(
+      <ManualEditResizeOverlay
+        {...props}
+        previewScale={0.25}
+        hostOffset={{ x: 120, y: 80 }}
+        hostPaintRect={{ x: 999, y: 999, width: 25, height: 12.5 }}
+        draftLeftPx={60}
+        draftTopPx={70}
+      />,
+    );
+    fireEvent.pointerMove(window, { pointerId: 72, clientX: 110, clientY: 95, buttons: 1 });
+
+    // Frozen gesture scale is paint/layout = 0.5, so host +20/+10 => layout +40/+20.
+    // Regression: using the rerendered previewScale=0.25 would jump to 80/100.
+    expect(onMovePreview.mock.calls.at(-1)?.[0]).toMatchObject({
+      left: '80px',
+      top: '80px',
+    });
   });
 
   it('body drag moves absolute target and commits left/top once', () => {
