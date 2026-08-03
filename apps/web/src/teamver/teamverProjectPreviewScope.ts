@@ -16,6 +16,13 @@ function previewPrefixFromUrl(url: unknown): string | null {
   return match?.[1] ?? null;
 }
 
+/** Strip cache-bust / fragment so daemon resolves a real project file path. */
+export function sanitizePreviewEntryFile(entryFile?: string): string | undefined {
+  if (typeof entryFile !== "string") return undefined;
+  const cleaned = entryFile.trim().split(/[?#]/u, 1)[0]?.trim() ?? "";
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
 /**
  * Embed-only — mint (or reuse) a daemon preview scope prefix so sandboxed
  * iframe subresources load without nginx session auth_request.
@@ -33,15 +40,16 @@ export async function resolveTeamverProjectPreviewPrefix(
   const cached = prefixByProject.get(id);
   if (cached && cached.expiresAt > Date.now()) return cached.prefix;
 
-  const key = entryFile ? `${id}:${entryFile}` : id;
+  const safeEntry = sanitizePreviewEntryFile(entryFile);
+  const key = safeEntry ? `${id}:${safeEntry}` : id;
   let pending = inflight.get(key);
   if (!pending) {
     pending = (async () => {
       const timeout = new AbortController();
       const timer = setTimeout(() => timeout.abort(), PREFIX_FETCH_TIMEOUT_MS);
       try {
-        const qs = entryFile
-          ? `?file=${encodeURIComponent(entryFile)}`
+        const qs = safeEntry
+          ? `?file=${encodeURIComponent(safeEntry)}`
           : "";
         let resp: Response;
         try {

@@ -2585,7 +2585,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
   function previewFilePathForProject(project: any, queryFile: unknown): string {
     if (typeof queryFile === 'string' && queryFile.trim().length > 0) {
-      return queryFile;
+      // FE cover URLs append `?v=mtime`; never treat that as part of the path.
+      const cleaned = queryFile.trim().split(/[?#]/u, 1)[0]?.trim() ?? '';
+      if (cleaned.length > 0) return cleaned;
     }
     const entryFile = project?.metadata?.entryFile;
     return typeof entryFile === 'string' && entryFile.length > 0 ? entryFile : 'index.html';

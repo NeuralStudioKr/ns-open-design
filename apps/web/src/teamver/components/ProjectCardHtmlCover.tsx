@@ -146,7 +146,10 @@ function AuthenticatedHtmlCover({
 export function parseProjectRawUrl(
   src: string,
 ): { projectId: string; filePath: string } | null {
-  const match = /^\/api\/projects\/([^/]+)\/raw\/(.+)$/u.exec(String(src || "").trim());
+  // Cover media URLs append `?v=mtime` for cache-bust — strip query/hash so
+  // preview-url mint does not look up a literal `deck.html?v=…` path (404).
+  const pathOnly = String(src || "").trim().split(/[?#]/u, 1)[0] ?? "";
+  const match = /^\/api\/projects\/([^/]+)\/raw\/(.+)$/u.exec(pathOnly);
   if (!match) return null;
   let projectId = match[1] || "";
   let filePath = match[2] || "";

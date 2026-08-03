@@ -15,6 +15,7 @@ import {
   projectScopedPreviewUrl,
   resetTeamverProjectPreviewScopeForTests,
   resolveTeamverProjectPreviewPrefix,
+  sanitizePreviewEntryFile,
 } from '../../src/teamver/teamverProjectPreviewScope';
 
 describe('teamverProjectPreviewScope', () => {
@@ -22,6 +23,28 @@ describe('teamverProjectPreviewScope', () => {
     resetTeamverProjectPreviewScopeForTests();
     vi.mocked(isTeamverEmbedMode).mockReturnValue(false);
     vi.mocked(fetchTeamverDaemon).mockReset();
+  });
+
+  it('strips cache-bust query from entry file before minting', async () => {
+    expect(sanitizePreviewEntryFile('deck.html?v=1785228266675')).toBe('deck.html');
+    expect(sanitizePreviewEntryFile('slides/a.html#x')).toBe('slides/a.html');
+
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(fetchTeamverDaemon).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          url: '/api/projects/proj-1/preview/scope-abc/deck.html',
+          file: 'deck.html',
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await resolveTeamverProjectPreviewPrefix('proj-1', 'deck.html?v=1785228266675');
+    expect(fetchTeamverDaemon).toHaveBeenCalledWith(
+      '/api/projects/proj-1/preview-url?file=deck.html',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it('returns null outside embed mode', async () => {
