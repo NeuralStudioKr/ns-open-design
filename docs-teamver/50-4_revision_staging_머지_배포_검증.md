@@ -287,6 +287,88 @@ bash scripts/verify_od_core.sh --staging --expect-teamver-gate
 
 > **원칙:** 데이터 시드는 **production HTTP API**(브라우저 UI 또는 `curl`/`od`가 치는 동일 `/api/*`)만 사용한다. 테스트 backdoor·소스 직접 주입 금지 ([AGENTS.md Bug follow-up workflow](../AGENTS.md)).
 
+### 8.0 멀티노드 검증 모델 (list vs scratch vs UI) — **필독**
+
+staging 2-pod에서 revision 검증 시 **세 층**을 구분해야 한다. 한 층만 맞아도 다른 층은 어긋날 수 있으며, 그게 버그가 아닐 수 있다.
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ ① Postgres DaemonDb (RDS) — revision LIST / 스냅샷 SSOT      │
+│    file_revisions + file_revision_snapshots                  │
+│    → 어느 pod에서 GET .../revisions 해도 동일 (R1)            │
+├─────────────────────────────────────────────────────────────┤
+│ ② 노드 로컬 scratch — deck.html 본문 (작업 중 파일)          │
+│    OD_PROJECT_STORAGE=s3 여도 materialize scratch는 pod별    │
+│    → restore는 **그 pod의 디스크**만 즉시 변경               │
+├─────────────────────────────────────────────────────────────┤
+│ ③ 브라우저 UI — cursor + iframe srcDoc                       │
+│    History 「현재」= cursorRevisionId (head 아님)            │
+│    동일 user → nginx userId hash → **한 pod에 고정**           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+| 질문 | 답 |
+|------|-----|
+| list가 node1·node2에서 같으면 OK? | **예** — 이번 배포(Postgres SSOT)의 **핵심 게이트 (R1)** |
+| restore 후 `headRevisionId`가 내려가야 하나? | **아니요** — `restore`는 디스크만 덮음. head = 스택 최신 revision 유지 |
+| History 「현재」가 restore curl로 바뀌나? | **아니요** — 「현재」는 브라우저 **cursor**. UI Undo 또는 reconcile 후 이동 |
+| node2 curl restore → node1 브라우저가 안 바뀌면 버그? | **대개 아님** — 브라우저가 node1에 붙으면 node1 scratch는 그대로 |
+| node1 curl restore → 브라우저 반영되면 OK? | **예** — `X-OD-Node-Id`와 **같은 EC2**에서 restore 했을 때 기대 동작 |
+
+**브라우저가 붙은 노드 확인**
+
+```text
+DevTools → Network → /api/... → Response Header: X-OD-Node-Id
+```
+
+또는 EC2 SSH 후 `curl -sS http://127.0.0.1:7456/api/health | python3 -m json.tool` 의 `nodeId`와 비교.
+
+**잘못된 검증 패턴 (false alarm)**
+
+| 패턴 | 왜 misleading 한가 |
+|------|-------------------|
+| public URL만 curl (`stg-design.teamver.com`) + `OD_API_TOKEN` | nginx BFF → `session_expired` (쿠키 필요) |
+| node B restore + node A 브라우저 즉시 비교 | scratch·노드 affinity |
+| restore 후 list의 head가 parent로 이동 기대 | API 설계상 head는 최신 revision 고정 |
+
+**올바른 R1·R2 요약**
+
+| 시나리오 | 검증 방법 |
+|----------|-----------|
+| **R1** list 교차 | node1·node2 loopback `GET .../revisions` **동일** (또는 §8.8 스크립트) |
+| **R2** restore + UI | **브라우저 노드**에서 restore **또는** UI ⌘Z → 화면·raw 일치 |
+| **R2** restore + 타 노드 list | list는 여전히 head=최신 — **disk(raw)는 별도** |
+
+### 8.8 자동화 스크립트 (`verify_revision_multinode.sh`)
+
+**SSOT:** `deploy/teamver/scripts/verify_revision_multinode.sh` — `jq` 불필요, python3만 사용.
+
+```bash
+cd ~/neural/ns-open-design/deploy/teamver
+
+# R1: local + peer list 비교 (각 EC2에서 1회, --peer-url 만 상대 IP로 바꿈)
+bash scripts/verify_revision_multinode.sh --staging \
+  --project-id b4607648-c28a-4d27-bd93-4a234ab34283 \
+  --file deck.html \
+  --user-id "<X-Teamver-User-Id>" \
+  --workspace-id "<X-Teamver-Workspace-Id>" \
+  --peer-url http://10.10.101.198:7456
+
+# raw 바이트 (노드별 scratch — restore 한쪽만 하면 다를 수 있음)
+bash scripts/verify_revision_multinode.sh --staging \
+  --project-id ... --user-id ... --workspace-id ... \
+  --peer-url http://10.10.101.198:7456 --raw
+
+# 이 EC2에서 restore (브라우저 X-OD-Node-Id 와 같은 노드에서 실행)
+bash scripts/verify_revision_multinode.sh --staging \
+  --project-id ... --user-id ... --workspace-id ... \
+  --restore 2b27d20a-9443-450d-b993-bd5eba66976a --raw
+```
+
+환경 변수로도 가능: `VERIFY_REVISION_PROJECT_ID`, `TEAMVER_USER_ID`, `TEAMVER_WORKSPACE_ID`.
+
+**Pass:** `R1: local and peer revision list match` + `pass=N fail=0`.
+
 ### 8.1 사전 준비
 
 | 항목 | 값 |
@@ -310,11 +392,12 @@ curl -sS -H "Authorization: Bearer $TOKEN" -D - -o /dev/null \
   "$BASE/api/health" | grep -i x-od-node-id
 ```
 
-동일 사용자는 userId hash로 **한 노드에 고정**된다. **교차 검증**을 위해:
+동일 사용자는 userId hash로 **한 노드에 고정**된다. **교차 검증**은 §8.8 스크립트 또는 loopback curl:
 
-- **방법 A:** 서로 다른 staging 사용자 2명 (user A → node1, user B → node2에 붙는지 `X-OD-Node-Id`로 확인)
-- **방법 B:** 한 사용자로 작업하되, **pod B 검증**은 다른 노드의 **loopback**에서 동일 projectId로 API 호출 (운영자 SSH → `curl 127.0.0.1:7456` + token) — list/restore는 PG SSOT이므로 노드 무관하게 일치해야 함
-- **방법 C (권장):** UI는 user A, CLI 검증은 node2 SSH에서 `od project revisions list` (동일 token·project)
+- **R1 (list):** node1·node2 각각 `127.0.0.1:7456` + peer IP — list JSON 동일하면 Pass
+- **R2 (restore+UI):** `X-OD-Node-Id`와 **같은 EC2**에서 restore 또는 브라우저 Undo
+- **방법 A:** 서로 다른 staging 사용자 2명 — 서로 다른 `X-OD-Node-Id` 관찰 (선택)
+- **public URL:** BFF 쿠키 필요 — EC2 loopback + `OD_API_TOKEN` + `X-Teamver-*` 권장 ([§8.0](#80-멀티노드-검증-모델-list-vs-scratch-vs-ui--필독))
 
 ### 8.2 시나리오 R1 — Push on A, List on B
 
@@ -326,22 +409,32 @@ curl -sS -H "Authorization: Bearer $TOKEN" -D - -o /dev/null \
 | R1.4 | RDS | `SELECT id, sequence FROM file_revisions WHERE project_id=$1 AND file_name='deck.html' ORDER BY sequence DESC LIMIT 3` | R1.3과 일치 |
 | R1.5 | Pod B | `GET .../revisions/<headId>` | snapshot content 존재, `byteSize` > 0 |
 
-**curl 예시 (Pod B — SSH loopback):**
+**curl 예시 (Pod B — SSH loopback, python3 — `jq` 불필요):**
 
 ```bash
-curl -sS -H "Authorization: Bearer $TOKEN" \
-  "http://127.0.0.1:7456/api/projects/$PROJECT_ID/files/$ENCODED_FILE/revisions" | jq .
+curl -sS \
+  -H "Authorization: Bearer $OD_API_TOKEN" \
+  -H "X-Teamver-User-Id: $TEAMVER_USER_ID" \
+  -H "X-Teamver-Workspace-Id: $TEAMVER_WORKSPACE_ID" \
+  "http://127.0.0.1:7456/api/projects/$PROJECT_ID/files/$ENCODED_FILE/revisions" \
+  | python3 -m json.tool
 ```
 
-### 8.3 시나리오 R2 — Undo(restore) on B, List on A
+또는 §8.8 `verify_revision_multinode.sh` 한 줄 실행.
+
+### 8.3 시나리오 R2 — Restore + UI (또는 브라우저 노드 curl)
 
 | Step | 어디서 | 동작 | Pass 기준 |
 |------|--------|------|-----------|
-| R2.1 | 전제 | R1 완료 후 revision ≥ 2 (저장 2회) 또는 1회 저장 후 undo 가능 상태 |
-| R2.2 | Pod B | `POST .../revisions/<parentId>/restore` **또는** UI Undo | 200, disk·viewer 내용 이전으로 |
-| R2.3 | Pod A | `GET .../revisions` | head가 parent 쪽으로 이동했거나 cursor/head 정책에 맞게 일관 |
-| R2.4 | Pod A | UI에서 deck 내용 | B에서 restore한 내용과 동일 |
-| R2.5 | Pod A | Redo 1회 | 다시 최신 revision 내용 |
+| R2.1 | 전제 | R1 완료 후 revision ≥ 2 | — |
+| R2.2 | **브라우저가 붙은 pod** | UI **Undo(⌘Z)** **또는** loopback `POST .../revisions/<parentId>/restore` | HTTP 200; **이 노드** `raw` byte가 parent revision과 일치 |
+| R2.3 | 동일·다른 pod | `GET .../revisions` | **headRevisionId는 여전히 최신(seq 3)** — 정상. list 개수·id 동일 |
+| R2.4 | 브라우저 | deck 내용 | 이전 revision 내용으로 보임; History 「현재」cursor가 parent 쪽 |
+| R2.5 | 브라우저 | Redo 1회 | 최신 revision 내용 복귀 |
+
+> **주의:** `headRevisionId`가 parent로 **내려가지 않는 것**이 정상이다. undo 스택에서 head = 가장 최근 저장, cursor = UI가 가리키는 버전 ([§8.0](#80-멀티노드-검증-모델-list-vs-scratch-vs-ui--필독)).
+
+**잘못된 R2 판정 예:** node2에서만 restore → node1 브라우저·「현재」 불변 → **실패 아님** (§8.0).
 
 ### 8.4 시나리오 R3 — Stale sqlite hydrate (truncate 시뮬레이션)
 
@@ -475,8 +568,8 @@ staging에서 아래 **전부** 체크 후 prod:
 |---|------|:------------:|
 | G1 | §6 인프라 (v8 테이블·env) | ☐ |
 | G2 | §7 단일 pod smoke | ☐ |
-| G3 | §8 R1 Push/List 교차 | ☐ |
-| G4 | §8 R2 Restore 교차 | ☐ |
+| G3 | §8 R1 Push/List 교차 (`verify_revision_multinode.sh` 또는 수동 curl) | ☐ |
+| G4 | §8 R2 Restore — **브라우저 노드** Undo 또는 loopback restore + UI/raw | ☐ |
 | G5 | §8 R3 hydrate (QA) | ☐ |
 | G6 | §8 R4 동시 저장 | ☐ |
 | G7 | §8.7 UI 회귀 | ☐ |
@@ -542,4 +635,5 @@ Production env: [.env.production.example](../deploy/teamver/.env.production.exam
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-03 | §8.0 list/scratch/UI cursor 모델, R2 head 오해 정정, `verify_revision_multinode.sh` |
 | 2026-07-31 | 초안 — merge·rolling deploy·2-pod revision 교차 검증·롤백·prod 게이트 |

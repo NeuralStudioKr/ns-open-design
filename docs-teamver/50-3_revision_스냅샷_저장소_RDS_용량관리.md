@@ -256,9 +256,19 @@ pnpm --filter @open-design/daemon exec vitest run \
 
 ### 11.2 staging 수동 (2-pod)
 
-**상세 절차 SSOT:** [50-4 revision staging 머지·배포·검증 Runbook](./50-4_revision_staging_머지_배포_검증.md) §8.
+**상세 절차 SSOT:** [50-4 revision staging 머지·배포·검증 Runbook](./50-4_revision_staging_머지_배포_검증.md) §8 (§8.0 list vs scratch vs UI cursor, §8.8 스크립트).
 
-요약 — 배포 후 **서로 다른 pod**에서 교차 실행:
+**한 줄 R1:**
+
+```bash
+cd deploy/teamver
+bash scripts/verify_revision_multinode.sh --staging \
+  --project-id <uuid> --file deck.html \
+  --user-id <X-Teamver-User-Id> --workspace-id <X-Teamver-Workspace-Id> \
+  --peer-url http://<peer-private-ip>:7456
+```
+
+요약 — 배포 후 **서로 다른 pod** loopback에서 교차 실행:
 
 1. Pod A: `deck.html` save (revision push)
 2. Pod B: `GET .../revisions` — A와 동일 head·개수

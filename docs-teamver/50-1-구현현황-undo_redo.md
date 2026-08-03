@@ -160,7 +160,7 @@
 
 ## 검증 명령 (누적)
 
-**staging 배포 후 수동 검증:** [50-4 §8](./50-4_revision_staging_머지_배포_검증.md#8-2-pod-교차-검증-필수-게이트) (2-pod 교차 시나리오 SSOT).
+**staging 배포 후 수동 검증:** [50-4 §8](./50-4_revision_staging_머지_배포_검증.md#8-2-pod-교차-검증-필수-게이트) · 스크립트 `deploy/teamver/scripts/verify_revision_multinode.sh`
 
 ```bash
 # Phase 0
