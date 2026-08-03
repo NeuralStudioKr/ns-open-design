@@ -10,6 +10,7 @@ import {
   resolveElementPatchAllowedSlideIndexes,
   resolveScopedCommentSlideCandidates,
   scopedCommentElementIds,
+  graftVisualMarksIntoDeckHtml,
   hasElementScopedCommentAttachments,
   isVisualCommentAttachment,
 } from '../../src/edit-mode/scoped-deck-patch';
@@ -608,5 +609,25 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     if (!result.ok) return;
     expect(result.html).not.toContain('<br');
     expect(result.html).toContain('아이폰 시리즈 개요 및 발전 동향 보고서');
+  });
+
+  it('grafts heart visual marks into the scoped slide without replacing slide content', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+<section class="slide" data-slide-index="1"><p>Keep this text</p></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      note: '하트 그려줘',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 1,
+    });
+    const grafted = graftVisualMarksIntoDeckHtml(deck, [visual]);
+    expect(grafted).toContain('Keep this text');
+    expect(grafted).toContain('od-visual-mark-target');
+    expect(grafted).toContain('left:40px;top:50px;width:80px;height:60px');
+    expect(grafted).toMatch(/<svg[^>]*viewBox="0 0 24 24"/);
   });
 });

@@ -1069,7 +1069,8 @@ export function buildConcreteElementPatchTemplate(
 }
 
 /** deck-patch template for region-only visual marks (no concrete DOM target id). */
-function buildVisualMarkDeckPatchInnerMarkup(comment: string): string {
+/** Inner markup for a visual-mark deck graft / patch template. */
+export function buildVisualMarkDeckPatchInnerMarkup(comment: string): string {
   const normalized = String(comment || '').trim();
   if (/하트|heart|♥|❤/iu.test(normalized)) {
     return [

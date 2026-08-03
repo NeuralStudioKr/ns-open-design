@@ -137,6 +137,7 @@ import {
 } from '../runtime/srcdoc';
 import {
   clearActiveRevisionSequence,
+  getActiveRevisionSequence,
   setActiveRevisionSequence,
 } from '../runtime/revision-active-sequence';
 import {
@@ -5944,9 +5945,29 @@ function HtmlViewer({
       void fetchProjectFileText(projectId, file.name, {
         cacheBustKey: `${file.mtime}-${reloadKey}-${filesRefreshKey}-${embedAuthRecoveryNonce}`,
         signal: abort.signal,
-      }).then((text) => {
+      }).then(async (rawText) => {
         if (cancelled || abort.signal.aborted) return;
         if (requestGeneration !== previewSourceFetchGenerationRef.current) return;
+        let text = rawText;
+        // Agent/manual persist bumps filesRefreshKey before scratch/S3 read-after-write
+        // settles. Prefer the revision snapshot for the active sequence when raw GET lags.
+        if (filesRefreshKey > 0 && text != null) {
+          const activeSeq = getActiveRevisionSequence(projectId, file.name);
+          if (activeSeq != null) {
+            const list = await listProjectFileRevisions(projectId, file.name);
+            const revisionForActive = list?.revisions?.find(
+              (revision) => revision.sequence === activeSeq,
+            );
+            if (revisionForActive) {
+              const authoritative =
+                getRevisionContentCache(projectId, file.name, revisionForActive.id)
+                ?? await resolveRevisionSnapshotContent(revisionForActive.id);
+              if (authoritative != null && authoritative !== text) {
+                text = authoritative;
+              }
+            }
+          }
+        }
         // Manual-edit POST succeeded but GET may still return null/stale S3
         // for a few seconds — keep the pinned saved buffer instead of
         // painting the pre-edit lastStable frame (looks like "edit didn't save").
@@ -7013,12 +7034,13 @@ function HtmlViewer({
     if (!cursor) return;
     const cursorRevisionId = cursor.id;
 
-    const [disk, snapshotContent] = await Promise.all([
+    const [disk, snapshotContent, list] = await Promise.all([
       fetchProjectFileText(projectId, file.name, {
         cache: 'no-store',
         cacheBustKey: Date.now(),
       }),
       resolveRevisionSnapshotContent(cursorRevisionId),
+      listProjectFileRevisions(projectId, file.name),
     ]);
     if (
       revisionSyncSuppressRef.current
@@ -7034,7 +7056,6 @@ function HtmlViewer({
       return;
     }
 
-    const list = await listProjectFileRevisions(projectId, file.name);
     if (!list) {
       setRevisionStackInvalidated(true);
       if (!revisionConflictSuppressedRef.current) {
@@ -7044,6 +7065,30 @@ function HtmlViewer({
     }
     if (typeof list.retentionLimit === 'number') {
       setRevisionRetentionLimit(list.retentionLimit);
+    }
+
+    // Revision head snapshot is authoritative when scratch / S3 lag behind postgres.
+    if (
+      list.headRevisionId
+      && cursorRevisionId === list.headRevisionId
+      && snapshotContent !== disk
+    ) {
+      setRevisionStackInvalidated(false);
+      revisionConflictSuppressedRef.current = false;
+      setRevisionConflictToast(null);
+      if (sourceRef.current !== snapshotContent) {
+        setSource(snapshotContent);
+        sourceRef.current = snapshotContent;
+        lastStablePreviewSourceRef.current = snapshotContent;
+        rememberStablePreviewSource(projectId, file.name, snapshotContent);
+        setInlinedSource(null);
+        setManualEditFrozenSource(snapshotContent);
+        setManualEditDraft((current) => ({ ...current, fullSource: snapshotContent }));
+        setReloadKey((k) => k + 1);
+        manualEditPinnedSourceRef.current = null;
+        manualEditPendingStyleRef.current = null;
+      }
+      return;
     }
 
     const matchingRevision = await findRevisionMatchingDiskContent(

@@ -3145,6 +3145,11 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
           : {}),
         metadata: project.metadata,
       });
+      // Await S3 sync-up before 200 so a page refresh / sibling-node sync-down
+      // does not re-materialize a pre-edit snapshot over the revision we just wrote.
+      if (ctx.projectStorageHooks) {
+        await ctx.projectStorageHooks.persistAfterMutation(req, projectId, { strict: true });
+      }
       res.json(result);
     } catch (err: any) {
       if (err instanceof FileRevisionLockError) {

@@ -14,7 +14,12 @@ import {
   type DeckPatch,
 } from '../artifacts/deck-patch';
 import type { ChatCommentAttachment } from '../types';
-import { isScreenshotOnlyVisualCommentTarget } from '../comments';
+import {
+  isScreenshotOnlyVisualCommentTarget,
+  formatVisualMarkPlacementStyle,
+  buildVisualMarkDeckPatchInnerMarkup,
+} from '../comments';
+import { applyDeckPatch } from '../artifacts/deck-patch';
 import { validateCommentEditIntentRespected, targetTextContentPreserved } from './comment-edit-intent';
 import {
   graftPatchedTargetElementFromSource,
@@ -50,6 +55,38 @@ export function isVisualCommentAttachment(attachment: ChatCommentAttachment): bo
   const elementId = String(attachment.elementId || '').trim();
   if (elementId.startsWith('visual-mark-')) return true;
   return false;
+}
+
+export function graftVisualMarksIntoDeckHtml(
+  currentHtml: string,
+  commentAttachments: readonly ChatCommentAttachment[],
+): string | null {
+  let html = currentHtml;
+  let changed = false;
+  for (const attachment of commentAttachments) {
+    if (!isScreenshotOnlyVisualCommentTarget(attachment)) continue;
+    if (!hasValidDeckSlideIndex(attachment)) continue;
+    const slideIndex = Math.floor(attachment.slideIndex as number);
+    const slide = extractSlideByIndex(html, slideIndex);
+    if (!slide) continue;
+    const closingTag = '</section>';
+    const closingIndex = slide.lastIndexOf(closingTag);
+    if (closingIndex < 0) continue;
+    const placementStyle = formatVisualMarkPlacementStyle(attachment.pagePosition);
+    const innerMarkup = buildVisualMarkDeckPatchInnerMarkup(attachment.comment || '');
+    const markHtml =
+      `<div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center">${innerMarkup}</div>`;
+    const patchedSlide = slide.slice(0, closingIndex) + markHtml + slide.slice(closingIndex);
+    if (patchedSlide === slide) continue;
+    const merged = applyDeckPatch({
+      currentHtml: html,
+      patch: { ops: [{ op: 'replace', slideIndex, html: patchedSlide }] },
+    });
+    if (!merged.ok) continue;
+    html = merged.html;
+    changed = true;
+  }
+  return changed ? html : null;
 }
 
 export function scopedCommentElementIds(attachment: ChatCommentAttachment): string[] {

@@ -31,6 +31,7 @@ import {
   reconcileCommentAttachmentsForDeck,
   resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
+  graftVisualMarksIntoDeckHtml,
   hasElementScopedCommentAttachments,
   isVisualCommentAttachment,
   scopedCommentSlideIndexesFromAttachments,
@@ -1593,6 +1594,16 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     currentHtml,
   });
   if (!parsed.ok) {
+    const grafted = input.commentAttachments
+      ? graftVisualMarksIntoDeckHtml(currentHtml, input.commentAttachments)
+      : null;
+    if (grafted) {
+      console.warn('[deck-patch] applied client visual-mark graft fallback', {
+        fileName: input.fileName,
+        parseReason: parsed.reason,
+      });
+      return { ok: true, html: grafted };
+    }
     const visualTemplate = input.commentAttachments
       ? buildConcreteDeckPatchTemplateForVisualMarks(input.commentAttachments)
       : null;
