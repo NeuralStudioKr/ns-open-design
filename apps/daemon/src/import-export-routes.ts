@@ -17,7 +17,10 @@ import { sandboxImportedProjectRootUnavailableReason } from './sandbox-mode.js';
 import { parseOrchestratorWorkspace } from './workspace-contract.js';
 import type { ProjectStorageAccessHooks } from './storage/lazy-project-materialization.js';
 import { isTeamverDesignManaged } from './teamver-project-access.js';
-import { isHeadlessChromiumUnavailableExportError } from './headless-export.js';
+import {
+  DeckSlideCountLimitError,
+  isHeadlessChromiumUnavailableExportError,
+} from './headless-export.js';
 import { ExportQueueFullError } from './export-runtime.js';
 import {
   claimExportDownload,
@@ -1171,7 +1174,11 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
     } catch (err: unknown) {
       const reason = String((err as Error)?.message || err);
       failExportJob(options.projectId, options.jobId, {
-        code: err instanceof ExportQueueFullError ? err.code : 'EXPORT_FAILED',
+        code: err instanceof ExportQueueFullError
+          ? err.code
+          : err instanceof DeckSlideCountLimitError
+            ? err.code
+            : 'EXPORT_FAILED',
         message: reason,
       });
       console.warn('[export/job] failed', {
@@ -1386,6 +1393,9 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
     } catch (err: unknown) {
       if (String((err as Error)?.message || err).toLowerCase().includes('no slides')) {
         return sendApiError(res, 422, 'NO_SLIDES', 'PPTX export requires at least one slide');
+      }
+      if (err instanceof DeckSlideCountLimitError) {
+        return sendApiError(res, 422, err.code, err.message);
       }
       handleExportRouteError(res, sendApiError, 'export/pptx', req.params.id, err);
     }
