@@ -7524,6 +7524,7 @@ function HtmlViewer({
       setManualEditPageStylesOpen(false);
       setManualEditPanelPosition(null);
       selectedManualEditTargetIdRef.current = null;
+      selectedManualEditTargetRef.current = null;
       setManualEditError(null);
       manualEditPendingStyleRef.current = null;
       if (manualEditStyleTimerRef.current) {
@@ -7541,9 +7542,13 @@ function HtmlViewer({
         // Target broadcasts can be briefly empty while the iframe/save path is
         // settling; keep the user's inspector selection unless a fresh copy is
         // available to update its metadata.
-        setSelectedManualEditTarget((current) =>
-          current ? data.targets.find((target) => target.id === current.id) ?? current : current,
-        );
+        setSelectedManualEditTarget((current) => {
+          if (!current) return current;
+          const next = data.targets.find((target) => target.id === current.id) ?? current;
+          selectedManualEditTargetRef.current = next;
+          selectedManualEditTargetIdRef.current = next.id;
+          return next;
+        });
         const selectedId = selectedManualEditTargetIdRef.current;
         if (selectedId) setTimeout(() => postSelectedManualEditTargetToIframe(selectedId), 0);
         return;
@@ -7581,8 +7586,8 @@ function HtmlViewer({
         void (async () => {
           if (!(await flushManualEditStyleSave())) return;
           const targetId = String(data.id);
-          const target = selectedManualEditTarget?.id === targetId
-            ? selectedManualEditTarget
+          const target = selectedManualEditTargetRef.current?.id === targetId
+            ? selectedManualEditTargetRef.current
             : manualEditTargets.find((item) => item.id === targetId) ?? null;
           const slideIndex = effectiveDeck
             ? htmlPreviewSlideState.get(previewStateKey)?.active
@@ -7806,7 +7811,7 @@ function HtmlViewer({
   }
 
   function handleManualEditResizePreview(styles: Partial<ManualEditStyles>) {
-    const target = selectedManualEditTarget;
+    const target = selectedManualEditTargetRef.current;
     if (!target) return;
     const version = nextManualEditPreviewVersion();
     const currentPending = manualEditPendingStyleRef.current;
@@ -7841,7 +7846,7 @@ function HtmlViewer({
   }
 
   function handleManualEditMovePreview(styles: Partial<ManualEditStyles>) {
-    const target = selectedManualEditTarget;
+    const target = selectedManualEditTargetRef.current;
     if (!target) return;
     const version = nextManualEditPreviewVersion();
     const currentPending = manualEditPendingStyleRef.current;
@@ -7870,7 +7875,7 @@ function HtmlViewer({
    * leave the live preview on post-gesture styles while disk stayed old.
    */
   function rollbackManualEditGestureStyles(stylesBefore: Partial<ManualEditStyles>) {
-    const target = selectedManualEditTarget;
+    const target = selectedManualEditTargetRef.current;
     clearManualEditStyleTimer();
     manualEditResizeSessionActiveRef.current = false;
     setManualEditMoveDraftPos(null);
@@ -7912,7 +7917,7 @@ function HtmlViewer({
     stylesBefore: Partial<ManualEditStyles>,
     viewport?: { x: number; y: number },
   ) {
-    const target = selectedManualEditTarget;
+    const target = selectedManualEditTargetRef.current;
     if (!target) return;
     handleManualEditResizePreview(styles);
     // Optimistic geometry must land before any await; otherwise clearing
@@ -7938,7 +7943,7 @@ function HtmlViewer({
     stylesBefore: Partial<ManualEditStyles>,
     viewport?: { x: number; y: number },
   ) {
-    const target = selectedManualEditTarget;
+    const target = selectedManualEditTargetRef.current;
     if (!target) return;
     handleManualEditMovePreview(styles);
     const promoted = String(styles.position || '').toLowerCase() === 'absolute';
@@ -7989,7 +7994,7 @@ function HtmlViewer({
     setManualEditMoveDraftPos(null);
     previewStyleToIframe(pending.id, resetStyles, nextManualEditPreviewVersion());
 
-    if (!target || selectedManualEditTarget?.id === pending.id) {
+    if (!target || selectedManualEditTargetRef.current?.id === pending.id) {
       setManualEditDraft((current) => ({
         ...current,
         styles: { ...current.styles, ...resetStyles },
@@ -8052,8 +8057,8 @@ function HtmlViewer({
     const base = sourceRef.current ?? '';
     const target = pending.id === '__body__'
       ? null
-      : selectedManualEditTarget?.id === pending.id
-        ? selectedManualEditTarget
+      : selectedManualEditTargetRef.current?.id === pending.id
+        ? selectedManualEditTargetRef.current
         : manualEditTargets.find((item) => item.id === pending.id) ?? null;
     const sourceStyles = target
       ? inspectorManualEditStyles(target, base)
@@ -8063,7 +8068,7 @@ function HtmlViewer({
       return acc;
     }, {});
     previewStyleToIframe(pending.id, resetStyles, nextManualEditPreviewVersion());
-    if (!target || target.id === selectedManualEditTarget?.id) {
+    if (!target || target.id === selectedManualEditTargetRef.current?.id) {
       setManualEditDraft((current) => ({
         ...current,
         styles: target ? sourceStyles : current.styles,
@@ -8145,6 +8150,7 @@ function HtmlViewer({
       if (!(await flushManualEditStyleSave())) return false;
     }
     selectedManualEditTargetIdRef.current = null;
+    selectedManualEditTargetRef.current = null;
     setSelectedManualEditTarget(null);
     setManualEditPanelPosition(null);
     setManualEditResizeDraftSize(null);
