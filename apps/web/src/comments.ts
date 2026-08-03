@@ -462,13 +462,19 @@ function parseAttachedPreviewPodMembers(section: string): PreviewCommentMember[]
     const style = parseAttachedPreviewComputedStyle(
       parseAttachedPreviewCommentField(section, `member.${index}.computedStyle`),
     );
+    const text = stripAttachedPreviewPlaceholder(
+      parseAttachedPreviewCommentField(section, `member.${index}.text`),
+    );
+    const htmlHint = stripAttachedPreviewPlaceholder(
+      parseAttachedPreviewCommentField(section, `member.${index}.htmlHint`),
+    );
     byIndex.set(index, {
       elementId,
       selector,
       label,
-      text: '',
+      text: trimContextText(text),
       position: { x: 0, y: 0, width: 0, height: 0 },
-      htmlHint: '',
+      htmlHint: trimHtmlHint(htmlHint),
       ...(style ? { style } : {}),
     });
   }
@@ -919,6 +925,10 @@ export function renderCommentAttachmentContext(
           `member.${memberIndex + 1}: ${member.elementId} | ${member.label || '(unlabeled)'} | ${member.selector}`,
         );
         lines.push(`member.${memberIndex + 1}.scopeLock: ${member.elementId || member.selector || 'selected pod member'}`);
+        const memberText = trimContextText(member.text || '');
+        if (memberText) lines.push(`member.${memberIndex + 1}.text: ${memberText}`);
+        const memberHint = trimHtmlHint(member.htmlHint || '');
+        if (memberHint) lines.push(`member.${memberIndex + 1}.htmlHint: ${memberHint}`);
         const memberStyle = formatAnnotationStyle(member.style);
         if (memberStyle) lines.push(`member.${memberIndex + 1}.computedStyle: ${memberStyle}`);
       });

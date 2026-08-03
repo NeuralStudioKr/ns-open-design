@@ -451,16 +451,23 @@ describe('preview comment attachment helpers', () => {
     const parsed = parseCommentAttachmentsFromMessageContent(content);
     expect(parsed[0]?.selectionKind).toBe('pod');
     expect(parsed[0]?.memberCount).toBe(2);
+    expect(content).toContain('member.1.text: Hero title');
+    expect(content).toContain('member.1.htmlHint: <section data-od-id="hero">');
+    expect(content).toContain('member.2.text: Chart value');
     expect(parsed[0]?.podMembers).toEqual([
       expect.objectContaining({
         elementId: 'hero',
         selector: '[data-od-id="hero"]',
         label: 'section.hero',
+        text: 'Hero title',
+        htmlHint: '<section data-od-id="hero">',
       }),
       expect.objectContaining({
         elementId: 'chart',
         selector: '[data-od-id="chart"]',
         label: 'section.chart',
+        text: 'Chart value',
+        htmlHint: '<section data-od-id="chart">',
       }),
     ]);
   });

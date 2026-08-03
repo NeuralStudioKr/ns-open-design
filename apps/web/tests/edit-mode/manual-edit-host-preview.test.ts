@@ -70,6 +70,21 @@ describe('manual edit host preview fallback', () => {
     expect(el.style.getPropertyValue('font-size')).toBe('28px');
   });
 
+  it('skips host chrome siblings when resolving path-* ids', () => {
+    const doc = makeDoc(
+      [
+        '<script data-od-sandbox-shim></script>',
+        '<p>Copy</p>',
+        '<script data-od-edit-bridge></script>',
+      ].join(''),
+    );
+    const ok = applyManualEditPreviewStylesToDocument(doc, 'path-0', { fontSize: '30px' });
+    const el = doc.querySelector('p') as HTMLElement;
+
+    expect(ok).toBe(true);
+    expect(el.style.getPropertyValue('font-size')).toBe('30px');
+  });
+
   it('measures selected target content rects from the iframe document', () => {
     const frame = document.createElement('iframe');
     document.body.appendChild(frame);

@@ -39,6 +39,12 @@ describe('manual edit bridge target normalization', () => {
     expect(manualEditDomPathForElement(target)).toBe('path-0-0-1');
   });
 
+  it('syncs textDecoration and whiteSpace into bridge styleProps', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain("'textDecoration'");
+    expect(bridge).toContain("'whiteSpace'");
+  });
+
   it('discovers meaningful elements and ignores tiny or irrelevant elements', () => {
     const dom = new JSDOM('<main><h1 data-od-source-path="path-0-0">Title</h1><script>1</script></main>');
     const title = dom.window.document.querySelector('h1')!;

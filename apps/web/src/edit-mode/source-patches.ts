@@ -888,9 +888,28 @@ function preserveManualEditIdentityAttributes(currentTarget: Element, replacemen
   }
 }
 
-/** Strip event handlers / unsafe URL attrs from model-supplied replacement trees. */
+/** Tags that must never persist from model set-outer-html / merge trees. */
+const MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS = new Set([
+  'script',
+  'iframe',
+  'object',
+  'embed',
+  'base',
+  'link',
+  'meta',
+  'noscript',
+  'template',
+]);
+
+/** Strip executable chrome tags, event handlers, and unsafe URL attrs. */
 function sanitizeManualEditReplacementTree(root: Element): void {
+  const toRemove: Element[] = [];
   const walk = (el: Element): void => {
+    const tag = el.tagName.toLowerCase();
+    if (el !== root && MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(tag)) {
+      toRemove.push(el);
+      return;
+    }
     for (const attr of Array.from(el.attributes)) {
       const lower = attr.name.toLowerCase();
       if (lower.startsWith('on') || lower === 'srcdoc') {
@@ -907,6 +926,7 @@ function sanitizeManualEditReplacementTree(root: Element): void {
     for (const child of Array.from(el.children)) walk(child);
   };
   walk(root);
+  for (const el of toRemove) el.remove();
 }
 
 function finalizeManualEditReplacement(currentTarget: Element, replacement: Element): void {
@@ -964,16 +984,28 @@ function isReasonableTextReplacementCandidate(element: Element): boolean {
   return childTextElements.length <= 1;
 }
 
+/**
+ * Instruction replacement terms used for merge scoring.
+ * Drop short ASCII-only quotes ("OK"/"AI"/"on") that hijack +120 matches,
+ * while keeping short Hangul/CJK names like "김강사".
+ */
+function isUsableInstructionTerm(term: string): boolean {
+  if (!term) return false;
+  if (term.length >= 4) return true;
+  if (term.length < 2) return false;
+  return /[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF\u4E00-\u9FFF]/.test(term);
+}
+
 function extractLikelyReplacementTerms(text: string): string[] {
   const terms = new Set<string>();
   const source = String(text || '');
   for (const match of source.matchAll(/['"“”‘’「」『』]([^'"“”‘’「」『』\n]{1,80})['"“”‘’「」『』]/g)) {
     const term = normalizeTextForCandidate(match[1] || '');
-    if (term) terms.add(term);
+    if (isUsableInstructionTerm(term)) terms.add(term);
   }
   for (const match of source.matchAll(/(?:이름|제목|텍스트|문구|내용)[^\n]{0,20}?(?:은|는|을|를)\s*([가-힣A-Za-z0-9 _.-]{2,40}?)(?:\s*(?:이야|야|로|으로|입니다|다|\.|$))/g)) {
     const term = normalizeTextForCandidate(match[1] || '');
-    if (term) terms.add(term);
+    if (isUsableInstructionTerm(term)) terms.add(term);
   }
   return [...terms];
 }
@@ -1412,7 +1444,9 @@ export function coerceManualEditStyleRecord(
 ): Partial<ManualEditStyles> {
   const out: Partial<ManualEditStyles> = {};
   if (!styles) return out;
+  const allowed = new Set<string>(MANUAL_EDIT_STYLE_PROPS as readonly string[]);
   for (const [name, value] of Object.entries(styles)) {
+    if (!allowed.has(name)) continue;
     const coerced = coerceManualEditStyleValue(name, value);
     if (coerced == null) continue;
     out[name as keyof ManualEditStyles] = coerced;
@@ -1484,16 +1518,21 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
   if (styleHost) {
     for (const style of styleSiblings) {
       if (next === style || next.contains(style)) continue;
-      const text = (style.textContent ?? '').trim();
+      // Drop @import (and empty leftovers) so salvage cannot inject remote CSS.
+      const text = (style.textContent ?? '')
+        .replace(/@import\b[^;]*;?/gi, '')
+        .trim();
+      if (!text) continue;
       if (
-        text
-        && Array.from(styleHost.querySelectorAll('style')).some(
+        Array.from(styleHost.querySelectorAll('style')).some(
           (existing) => (existing.textContent ?? '').trim() === text,
         )
       ) {
         continue;
       }
-      styleHost.appendChild(doc.importNode(style, true));
+      const clone = doc.importNode(style, true) as HTMLStyleElement;
+      clone.textContent = text;
+      styleHost.appendChild(clone);
     }
   }
   return { ok: true };
@@ -1506,6 +1545,10 @@ const NON_CONTENT_REPLACEMENT_TAGS = new Set([
   'META',
   'NOSCRIPT',
   'TEMPLATE',
+  'BASE',
+  'IFRAME',
+  'OBJECT',
+  'EMBED',
 ]);
 
 /**
@@ -1519,7 +1562,13 @@ function resolveSingleRootReplacementElement(
   template: HTMLTemplateElement,
 ): Element | null {
   const elements = Array.from(template.content.children);
-  if (elements.length === 1) return elements[0]!;
+  if (elements.length === 1) {
+    const only = elements[0]!;
+    // Lone script/meta/base/etc. must not become the replacement root.
+    if (NON_CONTENT_REPLACEMENT_TAGS.has(only.tagName)) return null;
+    if (MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(only.tagName.toLowerCase())) return null;
+    return only;
+  }
 
   if (elements.length === 0) {
     const text = (template.content.textContent ?? '').trim();

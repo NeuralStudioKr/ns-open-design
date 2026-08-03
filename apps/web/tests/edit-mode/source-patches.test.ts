@@ -377,6 +377,110 @@ describe('manual edit source patches', () => {
     expect(html).not.toMatch(/onerror/i);
   });
 
+  it('strips executable chrome tags nested in set-outer-html replacements', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<h1 data-od-id="hero-title">',
+        '<script>alert(1)</script>',
+        '<iframe src="https://evil.example"></iframe>',
+        'Safe title',
+        '</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).toContain('Safe title');
+    expect(html).not.toMatch(/<script\b/i);
+    expect(html).not.toMatch(/<iframe\b/i);
+  });
+
+  it('rejects set-outer-html when the sole root is a non-content chrome tag', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<script>alert(1)</script>',
+    });
+    expect(result.ok).toBe(false);
+    expect(readManualEditOuterHtml(result.source, 'hero-title')).toContain('Original title');
+  });
+
+  it('strips @import from salvaged style siblings before head inject', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>@import url("https://evil.example/x.css"); .hero-pop{color:#ef4444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('.hero-pop{color:#ef4444}');
+    expect(result.source).not.toMatch(/@import/i);
+    expect(result.source).not.toContain('evil.example');
+  });
+
+  it('ignores short quoted instruction terms when scoring merge candidates', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<button data-od-id="ok-btn">OK</button>',
+      '<strong data-od-id="instructor-name" data-od-edit="text">홍길동</strong>',
+      '<p data-od-id="body">안내 본문</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<button>OK</button>',
+      '<strong>김강사</strong>',
+      '<p>안내 본문</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetsFromSource(
+      source,
+      modelOutput,
+      ['instructor-name'],
+      { slideIndex: 0 },
+      [{
+        id: 'instructor-name',
+        currentText: '홍길동',
+        // Short "OK" must not steal the merge onto the button.
+        instructionText: "이름은 'OK' 이고 강사는 '김강사' 야",
+        htmlHint: '<strong data-od-id="instructor-name">홍길동</strong>',
+      }],
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('<strong data-od-id="instructor-name" data-od-edit="text">김강사</strong>');
+    expect(result.source).toContain('<button data-od-id="ok-btn">OK</button>');
+  });
+
+  it('allowlists set-style props and persists whiteSpace', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-style',
+      id: 'hero-title',
+      styles: {
+        whiteSpace: 'nowrap',
+        textDecoration: 'underline',
+        behavior: 'url(#xss)',
+        cssText: 'background:url(javascript:1)',
+      } as unknown as Partial<import('../../src/edit-mode/types').ManualEditStyles>,
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).toMatch(/white-space:\s*nowrap/i);
+    expect(html).toMatch(/text-decoration:\s*underline/i);
+    expect(html).not.toMatch(/behavior/i);
+    expect(html).not.toMatch(/cssText|css-text/i);
+    expect(html).not.toMatch(/javascript/i);
+  });
+
   it('salvages set-outer-html when model emits style sibling + matching root', () => {
     // User-facing failure: deck_patch_merge_failed — Replacement HTML must
     // contain exactly one root element. Models often pair a <style> block

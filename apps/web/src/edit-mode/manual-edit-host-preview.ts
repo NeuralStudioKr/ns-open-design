@@ -10,6 +10,7 @@
  * This is preview-only. Persistence still flows through `applyManualEdit`.
  */
 
+import { isManualEditHostNode } from './bridge';
 import type { ManualEditRect, ManualEditStyles } from './types';
 
 function camelToKebab(name: string): string {
@@ -50,7 +51,13 @@ function findElementByChildPath(root: Element | null, id: string): HTMLElement |
   if (indexes.some((index) => !Number.isInteger(index) || index < 0)) return null;
   let current: Element | null = root;
   for (const index of indexes) {
-    current = current?.children.item(index) ?? null;
+    // Mirror bridge path ids — skip sandbox/shim/bridge host nodes so path-0
+    // lands on content, not an injected host chrome sibling.
+    if (!current) return null;
+    const contentChildren: Element[] = Array.from(current.children).filter(
+      (child) => !isManualEditHostNode(child),
+    );
+    current = contentChildren[index] ?? null;
     if (!current) return null;
   }
   return current as HTMLElement;
