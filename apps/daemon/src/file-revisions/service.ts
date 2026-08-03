@@ -135,6 +135,46 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
     return insertFileRevision(db, revisionInput);
   }
 
+  async function readRevisionSnapshotContent(
+    projectDir: string,
+    projectId: string,
+    fileName: string,
+    revisionId: string,
+  ): Promise<string> {
+    return readRevisionSnapshot(
+      projectDir,
+      fileName,
+      revisionId,
+      (id) => getFileRevision(db, projectId, fileName, id)?.parentRevisionId ?? null,
+      revisionMetadataLookup(projectId, fileName),
+      snapshotContext,
+    );
+  }
+
+  /**
+   * Push needs the on-disk bytes before overwrite for diff encoding. Teamver
+   * scratch can be evicted while revision snapshots remain in DaemonDb — fall
+   * back to the latest revision snapshot instead of failing with ENOENT.
+   */
+  async function readCurrentFileContentForRevision(
+    projectId: string,
+    fileName: string,
+    projectDir: string,
+    metadata: unknown,
+    latestRevision: FileRevision | null,
+  ): Promise<string> {
+    try {
+      const beforeFile = await deps.readProjectFile(projectsRoot, projectId, fileName, metadata);
+      return beforeFile.buffer.toString('utf8');
+    } catch (err) {
+      if (!err || (err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      if (latestRevision) {
+        return readRevisionSnapshotContent(projectDir, projectId, fileName, latestRevision.id);
+      }
+      return '';
+    }
+  }
+
   return {
     async listRevisions(projectId: string, fileName: string) {
       await ensureHydrated(projectId, fileName);
@@ -194,8 +234,13 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
 
         let parent = getLatestFileRevision(db, projectId, fileName);
         if (!parent) {
-          const beforeFile = await deps.readProjectFile(projectsRoot, projectId, fileName, metadata);
-          const beforeContent = beforeFile.buffer.toString('utf8');
+          const beforeContent = await readCurrentFileContentForRevision(
+            projectId,
+            fileName,
+            projectDir,
+            metadata,
+            null,
+          );
           const baselineId = randomUUID();
           const createdAt = Date.now();
           parent = await persistRevisionSnapshot(
@@ -221,8 +266,13 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         const revisionId = randomUUID();
         const createdAt = Date.now();
 
-        const beforeFile = await deps.readProjectFile(projectsRoot, projectId, fileName, metadata);
-        const parentContent = beforeFile.buffer.toString('utf8');
+        const parentContent = await readCurrentFileContentForRevision(
+          projectId,
+          fileName,
+          projectDir,
+          metadata,
+          parent,
+        );
 
         const file = await writeProjectFile(
           projectsRoot,
