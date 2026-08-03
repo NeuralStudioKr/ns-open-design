@@ -2599,9 +2599,19 @@ describe('formatExportFailureMessageForUser', () => {
 
   it('maps oversized PPTX deck errors to PDF guidance', () => {
     const err = new Error(
-      'EXPORT_DECK_TOO_LARGE: PPTX export supports up to 40 slides; this deck has 41. Download PDF instead.',
+      'EXPORT_DECK_TOO_LARGE: PPTX export supports up to 40 slides; this deck has 41. Use PDF download for this large deck.',
     );
     expect(isDeckTooLargeForPptxExportError(err)).toBe(true);
-    expect(formatExportFailureMessageForUser(err)).toContain('PDF');
+    expect(formatExportFailureMessageForUser(err)).toBe(
+      'PPTX 다운로드는 40장 이하 슬라이드에 맞춰 제공됩니다. 현재 덱은 41장이므로 PDF로 다운로드해 주세요.',
+    );
+  });
+
+  it('uses generic PDF guidance when oversized PPTX details are absent', () => {
+    const err = new Error('EXPORT_DECK_TOO_LARGE');
+    expect(isDeckTooLargeForPptxExportError(err)).toBe(true);
+    expect(formatExportFailureMessageForUser(err)).toBe(
+      'PPTX 다운로드 제한을 초과했습니다. PDF로 다운로드해 주세요.',
+    );
   });
 });

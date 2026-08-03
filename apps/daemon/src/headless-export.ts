@@ -97,7 +97,7 @@ export class DeckSlideCountLimitError extends Error {
     readonly slideCount: number,
     readonly maxSlides: number,
   ) {
-    super(`PPTX export supports up to ${maxSlides} slides; this deck has ${slideCount}. Download PDF instead.`);
+    super(`PPTX export supports up to ${maxSlides} slides; this deck has ${slideCount}. Use PDF download for this large deck.`);
     this.name = 'DeckSlideCountLimitError';
   }
 }

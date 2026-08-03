@@ -496,7 +496,7 @@ staging 배포 후 같은 프로젝트·같은 파일·같은 export 옵션으�
 - ✅ large-deck PDF fallback action — `EXPORT_DECK_TOO_LARGE` 발생 시 FE 토스트에서 PDF 다운로드 액션을 제공
 - ✅ export job runner module split — async job 실행 상태 전환·render 선택·download ticket 등록을 route 밖 `export-job-runner.ts`로 분리해 별도 worker/sidecar가 재사용할 실행 계약 확보
 - dedicated export worker process (Chromium isolate)
-- “대형 deck은 PDF만” 정책 문구 polish
+- ✅ “대형 deck은 PDF만” 정책 문구 polish — PPTX 제한 초과를 “오래 걸릴 수 있음”이 아니라 “N장 제한 초과, PDF 다운로드 권장”으로 명확히 안내
 
 ---
 
@@ -1002,6 +1002,7 @@ CloudWatch 대시보드 위젯:
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-08-03 | 대형 PPTX 정책 문구 정리 — `EXPORT_DECK_TOO_LARGE` 사용자 메시지를 “PPTX 변환이 오래 걸릴 수 있음”에서 “PPTX 다운로드는 제한 장수 이하 제공, 현재 덱은 제한 초과이므로 PDF 다운로드”로 변경. daemon error message도 대형 덱용 PDF 다운로드 안내로 맞추고, 상세 장수 파싱 및 generic fallback 테스트를 추가 |
 | 2026-08-03 | Export async job runner 모듈 분리 — `import-export-routes.ts` 내부 background 실행 함수를 `export-job-runner.ts`로 분리. route는 요청 검증·job 생성·URL 응답에 집중하고, runner는 렌더 선택·offload 요구 검증·download ticket 저장·job 상태 전환을 담당하도록 경계를 정리. 별도 Chromium worker 프로세스 전환 전에도 동일 실행 계약을 테스트할 수 있게 함 |
 | 2026-08-03 | 대형 PPTX 초과 시 PDF 대체 액션 추가 — web runtime이 `EXPORT_DECK_TOO_LARGE`를 안정적으로 판별하고 사용자 메시지를 PDF 안내로 매핑. FileViewer PPTX 다운로드 실패 토스트에는 기존 PDF export 경로를 재사용하는 `PDF 다운로드` 액션을 제공해 큰 deck에서도 사용자가 다시 메뉴를 찾지 않고 바로 PDF로 받을 수 있게 함 |
 | 2026-08-03 | PPTX slide count soft cap 추가 — daemon PPTX export가 `OD_EXPORT_PPTX_MAX_SLIDES`(기본 40, 0이면 해제)를 초과하는 deck을 `EXPORT_DECK_TOO_LARGE`로 차단. editable/screenshot PPTX 양쪽 headless 경로에 동일 적용하고, async job 실패 코드도 안정적으로 내려가도록 보강. compose/env 예시와 운영 ENV 표 갱신 |

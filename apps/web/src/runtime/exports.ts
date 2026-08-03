@@ -127,7 +127,17 @@ export function isExportQueueFullError(err: unknown): err is ExportQueueFullErro
 
 export function isDeckTooLargeForPptxExportError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err ?? '');
-  return /EXPORT_DECK_TOO_LARGE|PPTX export supports up to|Download PDF instead/i.test(message);
+  return /EXPORT_DECK_TOO_LARGE|PPTX export supports up to|Download PDF instead|Use PDF download/i.test(message);
+}
+
+function oversizedPptxDeckDetails(err: unknown): { slideCount: number; maxSlides: number } | null {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  const match = message.match(/PPTX export supports up to\s+(\d+)\s+slides;\s+this deck has\s+(\d+)/i);
+  if (!match) return null;
+  const maxSlides = Number.parseInt(match[1] ?? '', 10);
+  const slideCount = Number.parseInt(match[2] ?? '', 10);
+  if (!Number.isFinite(maxSlides) || !Number.isFinite(slideCount)) return null;
+  return { slideCount, maxSlides };
 }
 
 async function readExportTicketResponse(resp: Response): Promise<ExportTicketResponse> {
@@ -1228,7 +1238,11 @@ export function formatExportFailureMessageForUser(
   if (isExportQueueFullError(err)) return err.message;
   const message = err instanceof Error ? err.message.trim() : String(err ?? '').trim();
   if (isDeckTooLargeForPptxExportError(err)) {
-    return '슬라이드가 많아 PPTX 변환이 오래 걸릴 수 있습니다. PDF로 다운로드해 주세요.';
+    const details = oversizedPptxDeckDetails(err);
+    if (details) {
+      return `PPTX 다운로드는 ${details.maxSlides}장 이하 슬라이드에 맞춰 제공됩니다. 현재 덱은 ${details.slideCount}장이므로 PDF로 다운로드해 주세요.`;
+    }
+    return 'PPTX 다운로드 제한을 초과했습니다. PDF로 다운로드해 주세요.';
   }
   if (
     err instanceof TeamverDaemonUnauthorizedError

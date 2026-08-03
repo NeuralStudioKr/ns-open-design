@@ -52,7 +52,7 @@ describe('PPTX slide count cap', () => {
   it('surfaces a stable error code for oversized PPTX decks', () => {
     const err = new DeckSlideCountLimitError(41, 40);
     expect(err.code).toBe('EXPORT_DECK_TOO_LARGE');
-    expect(err.message).toContain('Download PDF instead');
+    expect(err.message).toContain('Use PDF download for this large deck');
   });
 });
 

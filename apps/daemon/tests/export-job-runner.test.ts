@@ -122,7 +122,7 @@ describe('export job runner', () => {
     expect(snapshot?.status).toBe('failed');
     expect(snapshot?.error).toMatchObject({
       code: 'EXPORT_DECK_TOO_LARGE',
-      message: 'PPTX export supports up to 40 slides; this deck has 41. Download PDF instead.',
+      message: 'PPTX export supports up to 40 slides; this deck has 41. Use PDF download for this large deck.',
     });
   });
 });
