@@ -490,6 +490,7 @@ describe('buildProxyMessages', () => {
     );
 
     // Bounded auth/storage retries before falling back to a text notice.
+    // Retry backoff is ~0+250+800+1600+3200ms — keep the case above that budget.
     expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(messages).toEqual([
       {
@@ -503,7 +504,7 @@ describe('buildProxyMessages', () => {
         ],
       },
     ]);
-  });
+  }, 15_000);
 
   it('rejects non-image bodies that inherit a .png extension', async () => {
     const htmlBytes = new TextEncoder().encode('<html><body>Unauthorized</body></html>');
