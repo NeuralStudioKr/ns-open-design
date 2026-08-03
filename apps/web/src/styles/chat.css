@@ -2249,24 +2249,24 @@
   line-height: 12px;
 }
 .staged-remove {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 14px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
   padding: 0;
-  color: var(--text-faint);
+  color: var(--text-soft);
   cursor: pointer;
   line-height: 1;
   border-radius: 3px;
 }
 .staged-remove svg {
   display: block;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 .staged-remove:hover { color: var(--red); background: var(--red-bg); }
 .staged-remove:focus-visible {

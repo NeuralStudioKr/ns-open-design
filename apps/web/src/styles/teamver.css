@@ -824,14 +824,16 @@
 .teamver-latest-publish-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
-  padding: 0.08rem 0.35rem;
-  border-radius: 6px;
+  gap: 4px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
   background: color-mix(in srgb, var(--accent) 6%, var(--bg-elevated));
   color: var(--accent);
-  font-size: 0.68rem;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.2;
   text-decoration: none;
   vertical-align: middle;
 }
@@ -840,4 +842,9 @@
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
   text-decoration: none;
+}
+
+.teamver-latest-publish-chip:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
 }

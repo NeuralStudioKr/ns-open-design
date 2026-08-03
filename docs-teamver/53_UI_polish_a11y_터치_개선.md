@@ -100,6 +100,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 10 | `c525e5cce` | Drive picker/import 모달 시각 polish (색·여백·타이포) — `tools.css` only | 유지 |
 | 11 | `df36b570a` | 홈 섹션 제목 sans 통일 (recent/plugins/entry) | 유지 |
 | 12 | `34b345db8` | DS fullscreen·BYOK·agent cancel 터치 · empty titles · bg-runs · user-actions 28 · plugins design sans | 유지 |
+| 13 | *(push 후 pin)* | publish chip · staged-remove · connector close 28 · newproj/toolbar text tokens (55 통일 보류) | 유지 |
 
 `f97ee14ed` 메시지의 “28–32px” 방향은 **리뷰로 철회**된 부분이 있음. **유효 SSOT는 `29466ae40` 이후 원칙**.
 
@@ -199,6 +200,14 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | `.plugins-home__design` | `plugins-home.css` | serif → sans |
 | `.msg.user .user-actions` | `chat.css` | min-height 20 → **28** (copy btn geometry) |
 | background-runs copy/detail/open | `teamver.css` | gap·font-size·open min-height 28 |
+| `.teamver-latest-publish-chip` | `teamver.css` | px·min-height 22 · focus-visible |
+| `.design-card-embed-chips` | `drawer.css` | gap/margin 6 |
+| `.staged-remove` | `chat.css` | 14→**18** (chip 22 안) · `text-soft` |
+| `.connector-drawer-close` | `drawer.css` | 32→**28** · focus ring |
+| `.connector-drawer-eyebrow` | `drawer.css` | `text-soft` |
+| `.newproj-title` / footer | `artifacts.css` | strong / soft tokens |
+| Designs toolbar search clear/icon | `connectors.css` | soft + accent focus |
+| chat-history placeholder | `composio.css` | `text-soft` |
 
 **이미 올바르던 패턴 (참고, 본 루프 미변경)**
 

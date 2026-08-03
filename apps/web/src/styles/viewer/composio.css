@@ -2393,7 +2393,7 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   font-size: 11.5px;
   line-height: 20px;
 }
-.chat-history-search input::placeholder { color: var(--text-faint); }
+.chat-history-search input::placeholder { color: var(--text-soft); }
 .chat-history-search-clear {
   /* Stay inside the 28px search row; negative-margin 28px spilled past the border. */
   width: 22px;

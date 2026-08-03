@@ -58,7 +58,7 @@
   font-weight: 500;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-soft);
 }
 .connector-drawer-titles h2 {
   margin: 0;
@@ -94,15 +94,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border-radius: var(--radius-pill);
   color: var(--text-muted);
 }
 .connector-drawer-close:hover {
   background: var(--bg-subtle);
-  color: var(--text);
+  color: var(--text-strong);
+}
+.connector-drawer-close:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
 }
 .connector-drawer-body {
   flex: 1 1 auto;
@@ -547,8 +551,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  margin-top: 2px;
+  gap: 6px;
+  margin-top: 6px;
 }
 .design-card-status {
   font-weight: 500;
