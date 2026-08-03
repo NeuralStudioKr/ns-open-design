@@ -2059,6 +2059,8 @@ export const ar: Dict = {
   'manualEdit.positionPromoteOnDrag': 'اسحب لتحرير العنصر (position: absolute).',
   'manualEdit.editParams': 'تعديل المعلمات',
   'manualEdit.closePanel': 'إغلاق لوحة التحرير',
+  'manualEdit.collapsePanel': 'طي لوحة التحرير',
+  'manualEdit.expandPanel': 'توسيع لوحة التحرير',
   'manualEdit.selectLayer': 'اختر طبقة',
   'manualEdit.empty': 'انقر على عنصر في المعاينة أو اختر طبقة.',
   'manualEdit.noEditableLayers': 'لم يتم العثور على طبقات قابلة للتحرير.',

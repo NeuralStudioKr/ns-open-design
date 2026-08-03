@@ -86,6 +86,41 @@ describe('ManualEditPanel', () => {
     expect(host.querySelector('.manual-edit-drag-handle')?.getAttribute('aria-label')).toBe('Move edit panel');
   });
 
+  it('collapses and expands the inspector body from the titlebar', () => {
+    renderPanel({ floatingStyle: { left: 20, top: 24, width: 320, maxHeight: 380 } });
+
+    const toggle = host.querySelector(
+      'button[aria-label="Collapse edit panel"]',
+    ) as HTMLButtonElement | null;
+    if (!toggle) throw new Error('Collapse toggle not found');
+
+    expect(host.querySelector('.manual-edit-scroll')).not.toBeNull();
+    expect(host.querySelector('.manual-edit-footer')).not.toBeNull();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+    act(() => {
+      toggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(host.querySelector('.manual-edit-right')?.classList.contains('manual-edit-collapsed')).toBe(true);
+    expect(host.querySelector('.manual-edit-scroll')).toBeNull();
+    expect(host.querySelector('.manual-edit-footer')).toBeNull();
+    expect(host.querySelector('.manual-edit-drag-handle')).not.toBeNull();
+    expect(host.querySelector('button[aria-label="Expand edit panel"]')?.getAttribute('aria-expanded')).toBe('false');
+
+    const expand = host.querySelector(
+      'button[aria-label="Expand edit panel"]',
+    ) as HTMLButtonElement | null;
+    if (!expand) throw new Error('Expand toggle not found');
+    act(() => {
+      expand.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(host.querySelector('.manual-edit-scroll')?.textContent).toContain('TYPOGRAPHY');
+    expect(host.querySelector('.manual-edit-footer')).not.toBeNull();
+    expect(host.querySelector('.manual-edit-right')?.classList.contains('manual-edit-collapsed')).toBe(false);
+  });
+
   it('does not show page-level controls inside an element inspector', () => {
     const onClearSelection = vi.fn();
     renderPanel({ onClearSelection });

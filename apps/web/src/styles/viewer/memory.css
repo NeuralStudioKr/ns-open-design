@@ -1094,10 +1094,52 @@
   min-height: 32px;
   padding: 8px 12px 2px;
 }
-.manual-edit-floating .manual-edit-titlebar-close {
+.manual-edit-floating .manual-edit-titlebar-close,
+.manual-edit-floating .manual-edit-titlebar-collapse {
   width: 28px;
   height: 28px;
   border-radius: var(--radius);
+}
+
+/* Collapsed inspector: titlebar chrome only so the selection stays visible. */
+.manual-edit-collapsed {
+  height: auto !important;
+  max-height: none !important;
+  bottom: auto;
+}
+.manual-edit-collapsed .manual-edit-modal.cc-panel,
+.manual-edit-modal--collapsed {
+  height: auto;
+  max-height: none;
+  padding-bottom: 4px;
+}
+.manual-edit-titlebar-collapse {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius);
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.manual-edit-titlebar-collapse:hover {
+  color: var(--text);
+  background: var(--bg-subtle);
+}
+.manual-edit-titlebar-collapse svg {
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* Expanded: chevron points up (collapse). Collapsed: points down (expand). */
+.manual-edit-titlebar-collapse[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+.manual-edit-titlebar-collapse[aria-expanded='false'] svg {
+  transform: rotate(0deg);
 }
 
 .manual-edit-titlebar {

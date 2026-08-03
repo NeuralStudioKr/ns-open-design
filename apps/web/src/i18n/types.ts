@@ -2725,6 +2725,8 @@ export interface Dict {
   'manualEdit.positionPromoteOnDrag': string;
   'manualEdit.editParams': string;
   'manualEdit.closePanel': string;
+  'manualEdit.collapsePanel': string;
+  'manualEdit.expandPanel': string;
   'manualEdit.selectLayer': string;
   'manualEdit.empty': string;
   'manualEdit.noEditableLayers': string;

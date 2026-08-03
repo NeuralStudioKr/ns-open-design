@@ -2059,6 +2059,8 @@ export const it: Dict = {
   'manualEdit.positionPromoteOnDrag': 'Trascina per liberare l’elemento (position: absolute).',
   'manualEdit.editParams': 'Modifica parametri',
   'manualEdit.closePanel': 'Chiudi pannello di modifica',
+  'manualEdit.collapsePanel': 'Comprimi pannello di modifica',
+  'manualEdit.expandPanel': 'Espandi pannello di modifica',
   'manualEdit.selectLayer': 'Seleziona un livello',
   'manualEdit.empty': 'Clicca un elemento nell\'anteprima o scegli un livello.',
   'manualEdit.noEditableLayers': 'Nessun livello modificabile trovato.',

@@ -2059,6 +2059,8 @@ export const ja: Dict = {
   'manualEdit.positionPromoteOnDrag': 'ドラッグすると absolute に切り替えて移動できます。',
   'manualEdit.editParams': 'パラメーターを編集',
   'manualEdit.closePanel': '編集パネルを閉じる',
+  'manualEdit.collapsePanel': '編集パネルを折りたたむ',
+  'manualEdit.expandPanel': '編集パネルを展開',
   'manualEdit.selectLayer': 'レイヤーを選択',
   'manualEdit.empty': 'プレビュー内の要素をクリックするか、レイヤーを選択してください。',
   'manualEdit.noEditableLayers': '編集可能なレイヤーが見つかりません。',

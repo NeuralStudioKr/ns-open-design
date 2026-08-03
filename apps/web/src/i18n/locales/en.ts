@@ -2059,6 +2059,8 @@ export const en: Dict = {
   'manualEdit.positionPromoteOnDrag': 'Drag to free this element (sets position: absolute).',
   'manualEdit.editParams': 'Edit parameters',
   'manualEdit.closePanel': 'Close edit panel',
+  'manualEdit.collapsePanel': 'Collapse edit panel',
+  'manualEdit.expandPanel': 'Expand edit panel',
   'manualEdit.selectLayer': 'Select a layer',
   'manualEdit.empty': 'Click an element in the preview or choose a layer.',
   'manualEdit.noEditableLayers': 'No editable layers found.',

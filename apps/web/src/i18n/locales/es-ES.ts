@@ -2059,6 +2059,8 @@ export const esES: Dict = {
   'manualEdit.positionPromoteOnDrag': 'Arrastra para liberar el elemento (position: absolute).',
   'manualEdit.editParams': 'Editar parámetros',
   'manualEdit.closePanel': 'Cerrar el panel de edición',
+  'manualEdit.collapsePanel': 'Contraer el panel de edición',
+  'manualEdit.expandPanel': 'Expandir el panel de edición',
   'manualEdit.selectLayer': 'Selecciona una capa',
   'manualEdit.empty': 'Haz clic en un elemento de la vista previa o elige una capa.',
   'manualEdit.noEditableLayers': 'No se encontraron capas editables.',

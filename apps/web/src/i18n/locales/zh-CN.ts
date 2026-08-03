@@ -2059,6 +2059,8 @@ export const zhCN: Dict = {
   'manualEdit.positionPromoteOnDrag': '拖动可将此元素设为 absolute 并移动。',
   'manualEdit.editParams': '编辑参数',
   'manualEdit.closePanel': '关闭编辑面板',
+  'manualEdit.collapsePanel': '折叠编辑面板',
+  'manualEdit.expandPanel': '展开编辑面板',
   'manualEdit.selectLayer': '选择图层',
   'manualEdit.empty': '在预览中点击元素,或选择一个图层。',
   'manualEdit.noEditableLayers': '未找到可编辑图层。',

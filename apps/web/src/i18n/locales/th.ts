@@ -2059,6 +2059,8 @@ export const th: Dict = {
   'manualEdit.positionPromoteOnDrag': 'ลากเพื่อปลดล็อกองค์ประกอบ (position: absolute)',
   'manualEdit.editParams': 'แก้ไขพารามิเตอร์',
   'manualEdit.closePanel': 'ปิดแผงแก้ไข',
+  'manualEdit.collapsePanel': 'ยุบแผงแก้ไข',
+  'manualEdit.expandPanel': 'ขยายแผงแก้ไข',
   'manualEdit.selectLayer': 'เลือกเลเยอร์ขึ้นมา',
   'manualEdit.empty': 'เลือกกล่องด้านบนเพื่อเปิดดู',
   'manualEdit.noEditableLayers': 'ไม่พบเลเยอร์ที่แก้ไขได้',

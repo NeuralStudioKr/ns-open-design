@@ -2059,6 +2059,8 @@ export const ru: Dict = {
   'manualEdit.positionPromoteOnDrag': 'Перетащите, чтобы освободить элемент (position: absolute).',
   'manualEdit.editParams': 'Изменить параметры',
   'manualEdit.closePanel': 'Закрыть панель редактирования',
+  'manualEdit.collapsePanel': 'Свернуть панель редактирования',
+  'manualEdit.expandPanel': 'Развернуть панель редактирования',
   'manualEdit.selectLayer': 'Выберите слой',
   'manualEdit.empty': 'Щёлкните элемент в предпросмотре или выберите слой.',
   'manualEdit.noEditableLayers': 'Редактируемые слои не найдены.',

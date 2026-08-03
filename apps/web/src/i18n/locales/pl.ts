@@ -2059,6 +2059,8 @@ export const pl: Dict = {
   'manualEdit.positionPromoteOnDrag': 'Przeciągnij, aby uwolnić element (position: absolute).',
   'manualEdit.editParams': 'Edytuj parametry',
   'manualEdit.closePanel': 'Zamknij panel edycji',
+  'manualEdit.collapsePanel': 'Zwiń panel edycji',
+  'manualEdit.expandPanel': 'Rozwiń panel edycji',
   'manualEdit.selectLayer': 'Wybierz warstwę',
   'manualEdit.empty': 'Kliknij element w podglądzie lub wybierz warstwę.',
   'manualEdit.noEditableLayers': 'Nie znaleziono edytowalnych warstw.',

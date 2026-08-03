@@ -2059,6 +2059,8 @@ export const uk: Dict = {
   'manualEdit.positionPromoteOnDrag': 'Перетягніть, щоб звільнити елемент (position: absolute).',
   'manualEdit.editParams': 'Редагувати параметри',
   'manualEdit.closePanel': 'Закрити панель редагування',
+  'manualEdit.collapsePanel': 'Згорнути панель редагування',
+  'manualEdit.expandPanel': 'Розгорнути панель редагування',
   'manualEdit.selectLayer': 'Виберіть шар',
   'manualEdit.empty': 'Клацніть елемент у попередньому перегляді або виберіть шар.',
   'manualEdit.noEditableLayers': 'Редагованих шарів не знайдено.',

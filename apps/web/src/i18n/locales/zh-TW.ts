@@ -2059,6 +2059,8 @@ export const zhTW: Dict = {
   'manualEdit.positionPromoteOnDrag': '拖曳可將此元素設為 absolute 並移動。',
   'manualEdit.editParams': '編輯參數',
   'manualEdit.closePanel': '關閉編輯面板',
+  'manualEdit.collapsePanel': '摺疊編輯面板',
+  'manualEdit.expandPanel': '展開編輯面板',
   'manualEdit.selectLayer': '選取圖層',
   'manualEdit.empty': '在預覽中點選元素，或選擇一個圖層。',
   'manualEdit.noEditableLayers': '未找到可編輯圖層。',

@@ -2059,6 +2059,8 @@ export const id: Dict = {
   'manualEdit.positionPromoteOnDrag': 'Seret untuk melepaskan elemen (position: absolute).',
   'manualEdit.editParams': 'Edit parameter',
   'manualEdit.closePanel': 'Close edit panel',
+  'manualEdit.collapsePanel': 'Collapse edit panel',
+  'manualEdit.expandPanel': 'Expand edit panel',
   'manualEdit.selectLayer': 'Pilih lapisan',
   'manualEdit.empty': 'Klik elemen di pratinjau atau pilih lapisan.',
   'manualEdit.noEditableLayers': 'Tidak ada lapisan yang dapat diedit.',

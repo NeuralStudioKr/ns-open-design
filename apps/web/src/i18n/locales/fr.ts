@@ -2059,6 +2059,8 @@ export const fr: Dict = {
   'manualEdit.positionPromoteOnDrag': 'Glisser libère l’élément (position: absolute).',
   'manualEdit.editParams': 'Modifier les paramètres',
   'manualEdit.closePanel': 'Fermer le panneau d’édition',
+  'manualEdit.collapsePanel': 'Réduire le panneau d’édition',
+  'manualEdit.expandPanel': 'Développer le panneau d’édition',
   'manualEdit.selectLayer': 'Sélectionnez un calque',
   'manualEdit.empty': 'Cliquez sur un élément dans l’aperçu ou choisissez un calque.',
   'manualEdit.noEditableLayers': 'Aucun calque modifiable trouvé.',

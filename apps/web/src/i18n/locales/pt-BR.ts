@@ -2059,6 +2059,8 @@ export const ptBR: Dict = {
   'manualEdit.positionPromoteOnDrag': 'Arraste para liberar o elemento (position: absolute).',
   'manualEdit.editParams': 'Editar parâmetros',
   'manualEdit.closePanel': 'Fechar painel de edição',
+  'manualEdit.collapsePanel': 'Recolher painel de edição',
+  'manualEdit.expandPanel': 'Expandir painel de edição',
   'manualEdit.selectLayer': 'Selecione uma camada',
   'manualEdit.empty': 'Clique em um elemento na pré-visualização ou escolha uma camada.',
   'manualEdit.noEditableLayers': 'Nenhuma camada editável encontrada.',

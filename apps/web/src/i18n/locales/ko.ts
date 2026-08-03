@@ -2059,6 +2059,8 @@ export const ko: Dict = {
   'manualEdit.positionPromoteOnDrag': '드래그하면 이 요소를 absolute로 풀어 이동합니다.',
   'manualEdit.editParams': '매개변수 편집',
   'manualEdit.closePanel': '편집 패널 닫기',
+  'manualEdit.collapsePanel': '편집 패널 접기',
+  'manualEdit.expandPanel': '편집 패널 펼치기',
   'manualEdit.selectLayer': '레이어 선택',
   'manualEdit.empty': '미리보기에서 요소를 클릭하거나 레이어를 선택하세요.',
   'manualEdit.noEditableLayers': '편집 가능한 레이어가 없습니다.',

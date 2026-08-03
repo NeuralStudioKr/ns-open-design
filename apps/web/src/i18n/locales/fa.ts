@@ -2059,6 +2059,8 @@ export const fa: Dict = {
   'manualEdit.positionPromoteOnDrag': 'برای آزاد کردن عنصر بکشید (position: absolute).',
   'manualEdit.editParams': 'ویرایش پارامترها',
   'manualEdit.closePanel': 'بستن پنل ویرایش',
+  'manualEdit.collapsePanel': 'جمع کردن پنل ویرایش',
+  'manualEdit.expandPanel': 'باز کردن پنل ویرایش',
   'manualEdit.selectLayer': 'یک لایه انتخاب کنید',
   'manualEdit.empty': 'روی یک عنصر در پیش‌نمایش کلیک کنید یا یک لایه انتخاب کنید.',
   'manualEdit.noEditableLayers': 'هیچ لایه قابل ویرایشی یافت نشد.',

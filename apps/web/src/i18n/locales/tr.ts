@@ -2059,6 +2059,8 @@ export const tr: Dict = {
   'manualEdit.positionPromoteOnDrag': 'Sürükleyerek öğeyi serbest bırakın (position: absolute).',
   'manualEdit.editParams': 'Parametreleri düzenle',
   'manualEdit.closePanel': 'Düzenleme panelini kapat',
+  'manualEdit.collapsePanel': 'Düzenleme panelini daralt',
+  'manualEdit.expandPanel': 'Düzenleme panelini genişlet',
   'manualEdit.selectLayer': 'Bir katman seç',
   'manualEdit.empty': 'Önizlemede bir öğeye tıklayın veya bir katman seçin.',
   'manualEdit.noEditableLayers': 'Düzenlenebilir katman bulunamadı.',

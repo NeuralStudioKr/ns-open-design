@@ -2059,6 +2059,8 @@ export const de: Dict = {
   'manualEdit.positionPromoteOnDrag': 'Ziehen löst das Element (setzt position: absolute).',
   'manualEdit.editParams': 'Parameter bearbeiten',
   'manualEdit.closePanel': 'Bearbeitungsfenster schließen',
+  'manualEdit.collapsePanel': 'Bearbeitungsfenster einklappen',
+  'manualEdit.expandPanel': 'Bearbeitungsfenster ausklappen',
   'manualEdit.selectLayer': 'Ebene auswählen',
   'manualEdit.empty': 'Klicken Sie auf ein Element in der Vorschau oder wählen Sie eine Ebene aus.',
   'manualEdit.noEditableLayers': 'Keine bearbeitbaren Ebenen gefunden.',

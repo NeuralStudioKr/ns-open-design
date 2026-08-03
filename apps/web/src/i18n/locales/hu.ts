@@ -2059,6 +2059,8 @@ export const hu: Dict = {
   'manualEdit.positionPromoteOnDrag': 'Húzd a szabad mozgatáshoz (position: absolute).',
   'manualEdit.editParams': 'Paraméterek szerkesztése',
   'manualEdit.closePanel': 'Szerkesztőpanel bezárása',
+  'manualEdit.collapsePanel': 'Szerkesztőpanel összecsukása',
+  'manualEdit.expandPanel': 'Szerkesztőpanel kibontása',
   'manualEdit.selectLayer': 'Válassz egy réteget',
   'manualEdit.empty': 'Kattints egy elemre az előnézetben, vagy válassz egy réteget.',
   'manualEdit.noEditableLayers': 'Nem található szerkeszthető réteg.',

@@ -73,6 +73,7 @@ export function ManualEditPanel({
   const t = useT();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const selectedTargetRef = useRef<ManualEditTarget | null>(selectedTarget);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const targetForInspector = selectedTarget;
@@ -130,12 +131,18 @@ export function ManualEditPanel({
     ownerDocument.addEventListener('pointercancel', up);
   };
 
+  const collapseLabel = collapsed ? t('manualEdit.expandPanel') : t('manualEdit.collapsePanel');
   return (
     <aside
-      className={`manual-edit-right${floatingStyle ? ' manual-edit-floating' : ''}${floatingClassName ? ` ${floatingClassName}` : ''}`}
+      className={[
+        'manual-edit-right',
+        floatingStyle ? 'manual-edit-floating' : '',
+        floatingClassName ?? '',
+        collapsed ? 'manual-edit-collapsed' : '',
+      ].filter(Boolean).join(' ')}
       style={floatingStyle}
     >
-      <section className="manual-edit-modal cc-panel">
+      <section className={`manual-edit-modal cc-panel${collapsed ? ' manual-edit-modal--collapsed' : ''}`}>
         <div className="manual-edit-titlebar">
           {floatingStyle ? (
             <button
@@ -149,6 +156,16 @@ export function ManualEditPanel({
             </button>
           ) : null}
           <span title={panelTitle}>{panelTitle}</span>
+          <button
+            type="button"
+            className="manual-edit-titlebar-collapse"
+            aria-label={collapseLabel}
+            title={collapseLabel}
+            aria-expanded={!collapsed}
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            <Icon name="chevron-down" size={16} />
+          </button>
           {onExit ? (
             <button
               type="button"
@@ -161,141 +178,145 @@ export function ManualEditPanel({
             </button>
           ) : null}
         </div>
-        <div className="manual-edit-scroll">
-          {targetForInspector ? (
-            <StyleInspector
-              targetKind={targetForInspector.kind}
-              cssPosition={targetForInspector.cssPosition}
-              styles={draft.styles}
-              layoutEnabled={targetForInspector.isLayoutContainer}
-              onChange={changeTargetStyle}
-            />
-          ) : !targetForInspector ? (
-            <PageInspector
-              enabled={pageStylesEnabled}
-              onStyleChange={(styles) => {
-                const normalized = normalizeManualEditStyles(styles, { layoutEnabled: true });
-                if (!normalized.ok) {
-                  onError('error' in normalized ? normalized.error : 'Invalid style value.');
-                  onInvalidStyle?.('__body__', Object.keys(styles) as Array<keyof ManualEditStyles>);
-                  return;
-                }
-                onError('');
-                onStyleChange?.('__body__', normalized.styles, 'Page styles');
-              }}
-            />
-          ) : null}
-
-          {targetForInspector?.kind === 'image' && onPickImage ? (
-            <div className="cc-section">
-              <header className="cc-section-head">IMAGE</header>
-              <div className="cc-section-body">
-                <button
-                  type="button"
-                  className="cc-action-btn"
-                  disabled={uploadingImage}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {uploadingImage ? t('manualEdit.uploadingImage') : t('manualEdit.uploadImage')}
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={async (e) => {
-                    const file = e.currentTarget.files?.[0];
-                    if (!file) return;
-                    e.currentTarget.value = '';
-                    setUploadingImage(true);
-                    try {
-                      const src = await onPickImage(file);
-                      if (src) {
-                        const activeTargetId = selectedTargetRef.current?.id ?? targetForInspector.id;
-                        onApplyPatch(
-                          { id: activeTargetId, kind: 'set-image', src, alt: draft.alt },
-                          t('manualEdit.uploadImage'),
-                        );
-                      } else {
-                        onError(t('manualEdit.uploadImageFailed'));
-                      }
-                    } finally {
-                      setUploadingImage(false);
+        {collapsed ? null : (
+          <>
+            <div className="manual-edit-scroll">
+              {targetForInspector ? (
+                <StyleInspector
+                  targetKind={targetForInspector.kind}
+                  cssPosition={targetForInspector.cssPosition}
+                  styles={draft.styles}
+                  layoutEnabled={targetForInspector.isLayoutContainer}
+                  onChange={changeTargetStyle}
+                />
+              ) : !targetForInspector ? (
+                <PageInspector
+                  enabled={pageStylesEnabled}
+                  onStyleChange={(styles) => {
+                    const normalized = normalizeManualEditStyles(styles, { layoutEnabled: true });
+                    if (!normalized.ok) {
+                      onError('error' in normalized ? normalized.error : 'Invalid style value.');
+                      onInvalidStyle?.('__body__', Object.keys(styles) as Array<keyof ManualEditStyles>);
+                      return;
                     }
+                    onError('');
+                    onStyleChange?.('__body__', normalized.styles, 'Page styles');
                   }}
                 />
-              </div>
-            </div>
-          ) : null}
-        </div>
+              ) : null}
 
-        <div className="manual-edit-footer">
-          <div className="manual-edit-footer-actions">
-            <div className="manual-edit-footer-left">
-              {targetForInspector ? (
-                confirmDelete ? (
-                  <div className="manual-edit-delete-confirm">
+              {targetForInspector?.kind === 'image' && onPickImage ? (
+                <div className="cc-section">
+                  <header className="cc-section-head">IMAGE</header>
+                  <div className="cc-section-body">
                     <button
                       type="button"
-                      className="manual-edit-delete-btn manual-edit-delete-confirm-action"
-                      aria-label={t('manualEdit.deleteElement')}
-                      title={canUndo ? t('manualEdit.deleteElementConfirm') : t('manualEdit.deleteElement')}
-                      disabled={busy}
-                      onClick={() => {
-                        setConfirmDelete(false);
-                        onApplyPatch(
-                          { id: targetForInspector.id, kind: 'remove-element' },
-                          t('manualEdit.deleteElement'),
-                        );
+                      className="cc-action-btn"
+                      disabled={uploadingImage}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {uploadingImage ? t('manualEdit.uploadingImage') : t('manualEdit.uploadImage')}
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={async (e) => {
+                        const file = e.currentTarget.files?.[0];
+                        if (!file) return;
+                        e.currentTarget.value = '';
+                        setUploadingImage(true);
+                        try {
+                          const src = await onPickImage(file);
+                          if (src) {
+                            const activeTargetId = selectedTargetRef.current?.id ?? targetForInspector.id;
+                            onApplyPatch(
+                              { id: activeTargetId, kind: 'set-image', src, alt: draft.alt },
+                              t('manualEdit.uploadImage'),
+                            );
+                          } else {
+                            onError(t('manualEdit.uploadImageFailed'));
+                          }
+                        } finally {
+                          setUploadingImage(false);
+                        }
                       }}
-                    >
-                      <Icon name="trash" size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      className="manual-edit-footer-btn subtle"
-                      disabled={busy}
-                      onClick={() => setConfirmDelete(false)}
-                    >
-                      {t('common.cancel')}
-                    </button>
+                    />
                   </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="manual-edit-delete-btn"
-                    aria-label={t('manualEdit.deleteElement')}
-                    title={t('manualEdit.deleteElement')}
-                    disabled={busy}
-                    onClick={() => setConfirmDelete(true)}
-                  >
-                    <Icon name="trash" size={15} />
-                  </button>
-                )
+                </div>
               ) : null}
             </div>
-            <div className="manual-edit-footer-right">
-              <button
-                type="button"
-                className="manual-edit-footer-btn subtle"
-                disabled={busy}
-                onClick={onCancelDraft}
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                type="button"
-                className="manual-edit-footer-btn primary"
-                disabled={busy}
-                onClick={onSaveDraft}
-              >
-                {t('common.save')}
-              </button>
-            </div>
-          </div>
 
-          {error ? <div className="manual-edit-error">{error}</div> : null}
-        </div>
+            <div className="manual-edit-footer">
+              <div className="manual-edit-footer-actions">
+                <div className="manual-edit-footer-left">
+                  {targetForInspector ? (
+                    confirmDelete ? (
+                      <div className="manual-edit-delete-confirm">
+                        <button
+                          type="button"
+                          className="manual-edit-delete-btn manual-edit-delete-confirm-action"
+                          aria-label={t('manualEdit.deleteElement')}
+                          title={canUndo ? t('manualEdit.deleteElementConfirm') : t('manualEdit.deleteElement')}
+                          disabled={busy}
+                          onClick={() => {
+                            setConfirmDelete(false);
+                            onApplyPatch(
+                              { id: targetForInspector.id, kind: 'remove-element' },
+                              t('manualEdit.deleteElement'),
+                            );
+                          }}
+                        >
+                          <Icon name="trash" size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="manual-edit-footer-btn subtle"
+                          disabled={busy}
+                          onClick={() => setConfirmDelete(false)}
+                        >
+                          {t('common.cancel')}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="manual-edit-delete-btn"
+                        aria-label={t('manualEdit.deleteElement')}
+                        title={t('manualEdit.deleteElement')}
+                        disabled={busy}
+                        onClick={() => setConfirmDelete(true)}
+                      >
+                        <Icon name="trash" size={15} />
+                      </button>
+                    )
+                  ) : null}
+                </div>
+                <div className="manual-edit-footer-right">
+                  <button
+                    type="button"
+                    className="manual-edit-footer-btn subtle"
+                    disabled={busy}
+                    onClick={onCancelDraft}
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    className="manual-edit-footer-btn primary"
+                    disabled={busy}
+                    onClick={onSaveDraft}
+                  >
+                    {t('common.save')}
+                  </button>
+                </div>
+              </div>
+
+              {error ? <div className="manual-edit-error">{error}</div> : null}
+            </div>
+          </>
+        )}
       </section>
     </aside>
   );
