@@ -1449,7 +1449,10 @@
   text-align: left;
 }
 .app .chat-empty-title {
-  font-size: 13.5px;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
 }
 .app .chat-empty-hint {
   font-size: 12.5px;

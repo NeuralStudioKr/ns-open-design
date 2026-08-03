@@ -1472,9 +1472,16 @@
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
 }
 .ds-modal-stage-iframe:hover .ds-modal-stage-fullscreen,
+.ds-modal-stage-iframe:focus-within .ds-modal-stage-fullscreen,
 .ds-modal-stage-fullscreen:focus-visible {
   opacity: 1;
   transform: translateY(0);
+}
+@media (hover: none) {
+  .ds-modal-stage-fullscreen {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .ds-modal-stage-fullscreen:hover {
   background: var(--bg-subtle);

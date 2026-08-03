@@ -1679,9 +1679,16 @@
   background: var(--bg-panel);
 }
 .settings-byok-info-wrap:hover .settings-byok-info-tooltip,
+.settings-byok-info-wrap:focus-within .settings-byok-info-tooltip,
 .settings-byok-info-button:focus-visible + .settings-byok-info-tooltip {
   opacity: 1;
   transform: translate(-16px, 0);
+}
+@media (hover: none) {
+  .settings-byok-info-wrap:focus-within .settings-byok-info-tooltip {
+    opacity: 1;
+    transform: translate(-16px, 0);
+  }
 }
 .settings-section-byok .field-label {
   color: var(--text);

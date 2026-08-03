@@ -1459,6 +1459,8 @@
 }
 .inline-switcher__agent:hover .inline-switcher__agent-action-label.is-cancelable
   .inline-switcher__agent-action-default,
+.inline-switcher__agent:focus-within .inline-switcher__agent-action-label.is-cancelable
+  .inline-switcher__agent-action-default,
 .inline-switcher__agent:focus-visible .inline-switcher__agent-action-label.is-cancelable
   .inline-switcher__agent-action-default {
   opacity: 0;
@@ -1466,10 +1468,22 @@
 }
 .inline-switcher__agent:hover .inline-switcher__agent-action-label.is-cancelable
   .inline-switcher__agent-action-hover,
+.inline-switcher__agent:focus-within .inline-switcher__agent-action-label.is-cancelable
+  .inline-switcher__agent-action-hover,
 .inline-switcher__agent:focus-visible .inline-switcher__agent-action-label.is-cancelable
   .inline-switcher__agent-action-hover {
   opacity: 1;
   transform: translateY(0);
+}
+@media (hover: none) {
+  .inline-switcher__agent-action-label.is-cancelable .inline-switcher__agent-action-default {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  .inline-switcher__agent-action-label.is-cancelable .inline-switcher__agent-action-hover {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Provider chips (BYOK mode) */

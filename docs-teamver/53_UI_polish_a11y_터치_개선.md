@@ -98,6 +98,8 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 8 | `4c4d74f1f` | 53 타임라인 SHA pin | 문서 |
 | 9 | `69c688105` | escape Design Home focus 링 · assistant-footer focus-within · Drive/hero/DS/plugin `title` | 유지 |
 | 10 | `c525e5cce` | Drive picker/import 모달 시각 polish (색·여백·타이포) — `tools.css` only | 유지 |
+| 11 | `df36b570a` | 홈 섹션 제목 sans 통일 (recent/plugins/entry) | 유지 |
+| 12 | *(push 후 pin)* | DS fullscreen·BYOK·agent cancel 터치 · empty titles · bg-runs · user-actions 28 · plugins design sans | 유지 |
 
 `f97ee14ed` 메시지의 “28–32px” 방향은 **리뷰로 철회**된 부분이 있음. **유효 SSOT는 `29466ae40` 이후 원칙**.
 
@@ -163,6 +165,9 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | `home-hero__active-type-chip-close` | `home-hero.css` |
 | `project-ds-picker-preview-expand` | `routines.css` |
 | `assistant-footer` (focus-within only) | `composio.css` / `routines.css` |
+| `ds-modal-stage-fullscreen` | `composio.css` (`:focus-within` + `@media (hover: none)`) |
+| BYOK info tooltip | `artifacts.css` (`:focus-within`) |
+| inline agent Cancel label | `entry-layout.css` (`:focus-within` + `@media (hover: none)`) |
 
 ### 5.4 Drive 모달 시각 polish (색 · 여백 · 타이포)
 
@@ -181,6 +186,19 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | Select option desc | `text-soft` · 11px |
 
 원칙 준수: 검색 clear/submit·modal-back **28px 유지** · 전역 focus 재선언 없음 · dashed 장식 없음.
+
+### 5.5 Empty / section title · typography · spacing (후속)
+
+| 대상 | 파일 | 변경 |
+|------|------|------|
+| `.library-empty-title` | `library.css` | 18/600/`text-strong` (designs-empty 패턴) |
+| `.df-empty-title` | `design-files.css` | 18/600/`text-strong` |
+| `.app .chat-empty-title` | `routines.css` | 14.5/600/`text-strong` (인패널 밀도 유지) |
+| `.connector-drawer-titles h2` | `drawer.css` | sans · `text-strong` |
+| `.connector-drawer-section-title` | `drawer.css` | `text-faint` → `text-soft` |
+| `.plugins-home__design` | `plugins-home.css` | serif → sans |
+| `.msg.user .user-actions` | `chat.css` | min-height 20 → **28** (copy btn geometry) |
+| background-runs copy/detail/open | `teamver.css` | gap·font-size·open min-height 28 |
 
 **이미 올바르던 패턴 (참고, 본 루프 미변경)**
 
@@ -237,13 +255,11 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 |------|------|
 | `assistant-footer` touch always-on | **하지 않음** — focus-within + data-last/streaming으로 충분 |
 | Pet Codex preview touch | 전 카드 애니 비용 vs 포커스만으로 충분한지 |
-| `ds-modal-stage-fullscreen` | focus 있음 — touch 필요성 낮음 |
-| i18n 잔여 하드코드 | **의도 비노출 제외** 후 스캔 |
-| Manual Edit handle | 설계서 14×14 hit 이미 충족 — 크기 변경 금지 |
-| Drive Import 하드코드 한글 ("폴더" 등) | i18n 트랙 — 본 문서 비범위일 수 있음 |
+| `ds-modal-stage-fullscreen` | focus 있음 — touch 필요성 낮음 → **터치 fallback 추가** (§5.3) |
 | Drive 모달 색·여백 | **완료** — §5.4 (`tools.css`) |
 | DesignsTab status 열(kanban) | **제거** — remount→`/raw` 반복·번쩍임 (00 2026-08-03) |
 | 홈 섹션 제목 serif | **sans 통일** — recent-projects / plugins-home / entry-section (hero serif 유지) |
+| empty titles · bg-runs · user-actions | **완료** — §5.5 |
 
 새 변경 시 **§3 원칙**으로 먼저 기각한 뒤 코드·본 문서 §4–5·[00](./00_구현_내역_누적.md)를 함께 갱신한다.
 
