@@ -104,7 +104,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 13 | `09bea4edb` | publish chip · staged-remove · connector close 28 · newproj/toolbar text tokens (55 통일 보류) | **부분 유지** (중복 focus-visible 제거 — §6) |
 | 14 | `d500b9959` | home-hero/recent/design-card 토큰 · composer 28 정렬 · settings/toast/run-recovery | **부분 유지** (toast·hint·hero 계층 교정 — §6) |
 | 15 | `62fa33525` | plugins/examples/history soft · modal close 28 · newproj sans · pet adopt touch | **부분 유지** (newproj title serif 복구 — §6) |
-| 16 | _(본 루프)_ | **리뷰 교정** — 부적절한 polish 되돌림 · 포화 선언 | 유지 |
+| 16 | `7897dd2d8` | **리뷰 교정** — 부적절한 polish 되돌림 · 포화 선언 | 유지 |
 
 `f97ee14ed` 메시지의 “28–32px” 방향은 **리뷰로 철회**된 부분이 있음. **유효 SSOT는 `29466ae40` 이후 원칙**.
 
