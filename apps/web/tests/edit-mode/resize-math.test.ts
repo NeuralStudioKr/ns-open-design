@@ -197,11 +197,16 @@ describe('style helpers', () => {
     expect(parseExplicitPx('50%')).toBeNull();
   });
 
-  it('starts from rect when style is auto', () => {
+  it('starts from painted rect even when authored px is smaller', () => {
     expect(startSizeFromTarget(target({
       styles: { ...emptyManualEditStyles(), width: 'auto', height: '' },
       rect: { x: 0, y: 0, width: 180, height: 90 },
     }))).toEqual({ widthPx: 180, heightPx: 90 });
+    // Authored 100px but used/min-width box is 300 — grow must start at 300.
+    expect(startSizeFromTarget(target({
+      styles: { ...emptyManualEditStyles(), width: '100px', height: '50px' },
+      rect: { x: 0, y: 0, width: 300, height: 150 },
+    }))).toEqual({ widthPx: 300, heightPx: 150 });
   });
 
   it('maps host overlay edge hits to resize handles (interior stays null)', () => {
@@ -225,10 +230,9 @@ describe('style helpers', () => {
       leftPx: null,
       topPx: null,
     });
-    // E/S-only resize must not clear right/bottom — that jumped right:0 boxes.
-    expect(styles).toEqual({ width: '220px', maxWidth: 'none' });
+    expect(styles).toEqual({ width: '220px', maxWidth: 'none', right: '' });
     // Text/fontSize and other style keys must never ride along with a box resize.
-    expect(Object.keys(styles).sort()).toEqual(['maxWidth', 'width']);
+    expect(Object.keys(styles).sort()).toEqual(['maxWidth', 'right', 'width']);
   });
 
   it('lifts max-width/height clamps so responsive CSS cannot pin used size', () => {
@@ -246,6 +250,8 @@ describe('style helpers', () => {
       height: '120px',
       maxWidth: 'none',
       maxHeight: 'none',
+      right: '',
+      bottom: '',
     });
   });
 
@@ -313,6 +319,40 @@ describe('style helpers', () => {
     expect(out.leftPx).toBeNull();
     // startRect.y=20 → viewport y = 20 + (70-50) = 40
     expect(out.y).toBe(40);
+  });
+
+  it('pins left/top on absolute E/S so grow is not eaten by right/bottom pins', () => {
+    const east = computeResize(baseInput({
+      handle: 'e',
+      dx: 40,
+      anchorPosition: true,
+      startLeftPx: 100,
+      startTopPx: 50,
+    }));
+    expect(east.widthPx).toBe(240);
+    expect(east.leftPx).toBe(100);
+    expect(east.x).toBe(10);
+    expect(resizeResultToStyles(east)).toEqual({
+      width: '240px',
+      maxWidth: 'none',
+      left: '100px',
+      right: '',
+    });
+
+    const south = computeResize(baseInput({
+      handle: 's',
+      dy: 30,
+      anchorPosition: true,
+      startLeftPx: 100,
+      startTopPx: 50,
+    }));
+    expect(south.heightPx).toBe(130);
+    expect(south.topPx).toBe(50);
+    expect(resizeResultToStyles(south)).toMatchObject({
+      height: '130px',
+      top: '50px',
+      bottom: '',
+    });
   });
 
   it('maps CB left Δ onto viewport overlay origin', () => {

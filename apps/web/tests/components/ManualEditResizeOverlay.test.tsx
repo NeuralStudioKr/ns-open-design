@@ -358,6 +358,7 @@ describe('ManualEditResizeOverlay', () => {
     expect(onResizePreview.mock.calls.at(-1)?.[0]).toEqual({
       width: '240px',
       maxWidth: 'none',
+      right: '',
     });
   });
 

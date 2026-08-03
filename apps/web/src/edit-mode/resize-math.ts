@@ -170,13 +170,20 @@ export function computeResize(input: ResizeMathInput): ResizeMathResult {
   let y = startRect.y;
 
   if (anchorPosition) {
-    // Keep the opposite edge fixed: growing/shrinking from W/N moves left/top.
     // left/top are containing-block relative; x/y stay viewport (startRect + Δ).
     if (signW < 0 && startLeftPx != null) {
+      // W: move left so the opposite (E) edge stays fixed.
       leftPx = Math.round(startLeftPx + (startWidthPx - widthPx));
+    } else if (signW > 0 && startLeftPx != null) {
+      // E: pin left so clearing stylesheet `right` cannot reflow/shrink the box.
+      leftPx = startLeftPx;
     }
     if (signH < 0 && startTopPx != null) {
+      // N: move top so the opposite (S) edge stays fixed.
       topPx = Math.round(startTopPx + (startHeightPx - heightPx));
+    } else if (signH > 0 && startTopPx != null) {
+      // S: pin top so clearing stylesheet `bottom` cannot reflow/shrink the box.
+      topPx = startTopPx;
     }
   }
   const viewport = resizeViewportOrigin(startRect, startLeftPx, startTopPx, leftPx, topPx);
@@ -229,13 +236,12 @@ export function startSizeFromTarget(target: ManualEditTarget): {
   widthPx: number;
   heightPx: number;
 } {
-  const fromRectW = Math.max(1, target.rect.width);
-  const fromRectH = Math.max(1, target.rect.height);
-  const explicitW = parseExplicitPx(target.styles.width);
-  const explicitH = parseExplicitPx(target.styles.height);
+  // Always start from the painted border-box. Preferring an authored px that is
+  // smaller than used size (min-width, flex, intrinsic min) made the first
+  // "grow" preview apply a smaller width and shrink the element.
   return {
-    widthPx: Math.round(explicitW ?? fromRectW),
-    heightPx: Math.round(explicitH ?? fromRectH),
+    widthPx: Math.round(Math.max(1, target.rect.width)),
+    heightPx: Math.round(Math.max(1, target.rect.height)),
   };
 }
 
@@ -278,12 +284,11 @@ export function resizeResultToStyles(
   }
   if (result.leftPx != null) styles.left = `${result.leftPx}px`;
   if (result.topPx != null) styles.top = `${result.topPx}px`;
-  // Clear the opposing edge ONLY when we wrote the near-edge anchor (W/N).
-  // Clearing right/bottom on every width/height touch made E/S resize of
-  // right:0 / bottom:0 (or stretch) boxes jump — the auto left/top snapped to
-  // static position while the far edge pin disappeared.
-  if (result.leftPx != null) styles.right = '';
-  if (result.topPx != null) styles.bottom = '';
+  // Unpin opposing edges whenever the axis is resized. Absolute E/S paths pin
+  // left/top above so clearing right/bottom grows the free edge instead of
+  // letting stylesheet right:0 / bottom:0 eat the width increase.
+  if (result.leftPx != null || result.touchedWidth) styles.right = '';
+  if (result.topPx != null || result.touchedHeight) styles.bottom = '';
   return styles;
 }
 
