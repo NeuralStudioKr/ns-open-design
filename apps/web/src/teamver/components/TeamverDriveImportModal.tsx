@@ -1082,6 +1082,7 @@ export function TeamverDriveImportModal({
                       type="button"
                       className="teamver-drive-picker-row"
                       data-testid={`teamver-drive-import-folder-${row.folderId}`}
+                      title={row.name}
                       disabled={confirming}
                       onClick={() => enterFolder(row)}
                     >

@@ -543,10 +543,13 @@
   white-space: nowrap;
 }
 
-.teamver-workspace-escape__design-home:hover,
-.teamver-workspace-escape__design-home:focus-visible {
+.teamver-workspace-escape__design-home:hover {
   background: var(--bg-subtle);
+}
+.teamver-workspace-escape__design-home:focus-visible {
   outline: none;
+  background: var(--bg-subtle);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .teamver-workspace-escape__spacer {

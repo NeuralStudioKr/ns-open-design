@@ -2647,6 +2647,7 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   transition: opacity 150ms var(--ease-out);
 }
 .msg.assistant:hover .assistant-footer,
+.msg.assistant:focus-within .assistant-footer,
 .assistant-footer[data-streaming="true"],
 .assistant-footer[data-last="true"] { opacity: 1; }
 .assistant-footer .dot {

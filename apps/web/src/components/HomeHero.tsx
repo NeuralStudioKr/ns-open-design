@@ -1092,7 +1092,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                           <Icon name={isImageFile(file) ? 'image' : 'file'} size={12} />
                         </span>
                       )}
-                      <span className="home-hero__active-label">{file.name}</span>
+                      <span className="home-hero__active-label" title={file.name}>{file.name}</span>
                       <span className="home-hero__active-meta">{formatFileSize(file.size)}</span>
                     </>
                   );
@@ -1145,7 +1145,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                         <span className="home-hero__active-icon" aria-hidden>
                           <Icon name="folder-filled" size={12} />
                         </span>
-                        <span className="home-hero__active-label">{label}</span>
+                        <span className="home-hero__active-label" title={label}>{label}</span>
                       </span>
                       <button
                         type="button"
@@ -1182,7 +1182,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                   <span className="home-hero__active-icon" aria-hidden>
                     <Icon name="sliders" size={12} />
                   </span>
-                  <span className="home-hero__active-label">{activePluginTitle}</span>
+                  <span className="home-hero__active-label" title={activePluginTitle}>{activePluginTitle}</span>
                 </button>
                 {activeCreateChip && !activePluginIsExplicit ? null : (
                   <button
@@ -1215,7 +1215,12 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                 <span className="home-hero__active-icon" aria-hidden>
                   <Icon name="sparkles" size={12} />
                 </span>
-                <span className="home-hero__active-label">{t('homeHero.skillPrefix', { title: activeSkillTitle })}</span>
+                <span
+                  className="home-hero__active-label"
+                  title={t('homeHero.skillPrefix', { title: activeSkillTitle })}
+                >
+                  {t('homeHero.skillPrefix', { title: activeSkillTitle })}
+                </span>
                 <button
                   type="button"
                   className="home-hero__active-clear od-tooltip"
@@ -1237,7 +1242,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                 <span className="home-hero__active-icon" aria-hidden>
                   <Icon name="sliders" size={12} />
                 </span>
-                <span className="home-hero__active-label">{plugin.title}</span>
+                <span className="home-hero__active-label" title={plugin.title}>{plugin.title}</span>
                 <button
                   type="button"
                   className="home-hero__active-clear od-tooltip"
@@ -1262,7 +1267,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                   <span className="home-hero__active-icon" aria-hidden>
                     <Icon name="sliders" size={12} />
                   </span>
-                  <span className="home-hero__active-label">{label}</span>
+                  <span className="home-hero__active-label" title={label}>{label}</span>
                   <button
                     type="button"
                     className="home-hero__active-clear od-tooltip"
@@ -1286,7 +1291,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                 <span className="home-hero__active-icon" aria-hidden>
                   <Icon name="link" size={12} />
                 </span>
-                <span className="home-hero__active-label">{connector.name}</span>
+                <span className="home-hero__active-label" title={connector.name}>{connector.name}</span>
                 <button
                   type="button"
                   className="home-hero__active-clear od-tooltip"

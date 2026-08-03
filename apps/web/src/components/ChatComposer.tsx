@@ -3588,7 +3588,7 @@ function StagedRunContexts({
             <span className="staged-icon" aria-hidden>
               <Icon name="sparkles" size={12} />
             </span>
-            <span className="staged-name">{pluginChip.title}</span>
+            <span className="staged-name" title={pluginChip.title}>{pluginChip.title}</span>
           </button>
           <button
             type="button"

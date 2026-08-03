@@ -95,6 +95,8 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 5 | `d8975a6f4` | Design Files menu/check, template delete, library edit, example/canvas overlay, hero type-chip close | 유지 |
 | 6 | `5d1ba45d0` | DS picker preview expand 터치 (`project-ds-picker-preview-expand`) | 유지 |
 | 7 | `c8641fcc5` | 본 문서(53) + [00](./00_구현_내역_누적.md) 기록 | 문서 |
+| 8 | `4c4d74f1f` | 53 타임라인 SHA pin | 문서 |
+| 9 | *(본 루프)* | escape Design Home focus 링 · assistant-footer focus-within · Drive/hero/DS/plugin `title` | 유지 |
 
 `f97ee14ed` 메시지의 “28–32px” 방향은 **리뷰로 철회**된 부분이 있음. **유효 SSOT는 `29466ae40` 이후 원칙**.
 
@@ -117,6 +119,16 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | user copy button | `styles/chat.css` | min 28×28 hit |
 | workspace tab close | `styles/shell.css` | 18 → **22** + focus 시 `opacity: 1` |
 | workspace tabs list close | `styles/shell.css` | 22 → **24** |
+| escape Design Home | `styles/teamver.css` | `outline: none`만 있던 focus → **accent box-shadow 링** 복구 |
+| assistant-footer | `composio.css` / `routines.css` | `:focus-within`으로 키보드 시 표시 (**터치 항상 on 아님**) |
+| Drive target select desc | `TeamverDriveTargetSelect.tsx` | description `title` |
+| Drive picker folder cards/rows | `TeamverDrivePickerModal.tsx` | label/description `title` |
+| Drive import folder rows | `TeamverDriveImportModal.tsx` | folder `title` |
+| home active chips | `HomeHero.tsx` | `home-hero__active-label` `title` |
+| DS picker option titles | `DesignSystemPicker.tsx` | option `title` |
+| Design Files plugin folder path | `DesignFilesPanel.tsx` | path `title` |
+| plugin loop card title | `PluginLoopHome.tsx` | card `title` |
+| staged plugin chip name | `ChatComposer.tsx` | `staged-name` `title` |
 
 ### 5.2 Hit target — 최종 수치 (교정 후)
 
@@ -149,6 +161,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | `example-preview-overlay` | `composio.css` |
 | `home-hero__active-type-chip-close` | `home-hero.css` |
 | `project-ds-picker-preview-expand` | `routines.css` |
+| `assistant-footer` (focus-within only) | `composio.css` / `routines.css` |
 
 **이미 올바르던 패턴 (참고, 본 루프 미변경)**
 
@@ -203,11 +216,12 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 
 | 후보 | 메모 |
 |------|------|
-| `assistant-footer` touch | `data-last`만으로 충분한지 실사용 확인 후 |
+| `assistant-footer` touch always-on | **하지 않음** — focus-within + data-last/streaming으로 충분 |
 | Pet Codex preview touch | 전 카드 애니 비용 vs 포커스만으로 충분한지 |
 | `ds-modal-stage-fullscreen` | focus 있음 — touch 필요성 낮음 |
 | i18n 잔여 하드코드 | **의도 비노출 제외** 후 스캔 |
 | Manual Edit handle | 설계서 14×14 hit 이미 충족 — 크기 변경 금지 |
+| Drive Import 하드코드 한글 ("폴더" 등) | i18n 트랙 — 본 문서 비범위일 수 있음 |
 
 새 변경 시 **§3 원칙**으로 먼저 기각한 뒤 코드·본 문서 §4–5·[00](./00_구현_내역_누적.md)를 함께 갱신한다.
 
@@ -218,7 +232,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 경로 | 역할 |
 |------|------|
 | `apps/web/src/styles/primitives.css` | 전역 `button:focus-visible` |
-| `apps/web/src/styles/teamver.css` | embed focus · workspace menu z-index |
+| `apps/web/src/styles/teamver.css` | embed focus · workspace menu z-index · escape Design Home focus |
 | `apps/web/src/styles/chat.css` | rename / copy / header 28 / queue 24 |
 | `apps/web/src/styles/shell.css` | tab close · list close · touch |
 | `apps/web/src/styles/home/home-hero.css` | active-clear · type-chip close |
@@ -226,15 +240,23 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | `apps/web/src/styles/workspace/drawer.css` | card kebab/close · DS overlay · empty CTA |
 | `apps/web/src/styles/workspace/design-files.css` | row menu/check |
 | `apps/web/src/styles/workspace/artifacts.css` | template delete |
-| `apps/web/src/styles/viewer/composio.css` | history clear/del · example overlay |
+| `apps/web/src/styles/viewer/composio.css` | history clear/del · example overlay · assistant-footer focus-within |
 | `apps/web/src/styles/viewer/plugin-rail.css` | context chip remove |
 | `apps/web/src/styles/viewer/core.css` | board pod remove |
 | `apps/web/src/styles/viewer/library.css` | library DS edit |
 | `apps/web/src/styles/viewer/tools.css` | canvas slide launch overlay |
-| `apps/web/src/styles/viewer/routines.css` | shell compact tabs · DS picker expand |
+| `apps/web/src/styles/viewer/routines.css` | shell compact tabs · DS picker expand · assistant-footer |
 | `apps/web/src/components/ComposerPlusMenu.tsx` | item `title` |
 | `apps/web/src/components/DesignsTab.tsx` | empty CTA `title` |
+| `apps/web/src/components/HomeHero.tsx` | active-label `title` |
+| `apps/web/src/components/DesignSystemPicker.tsx` | option `title` |
+| `apps/web/src/components/DesignFilesPanel.tsx` | folder path `title` |
+| `apps/web/src/components/PluginLoopHome.tsx` | card title `title` |
+| `apps/web/src/components/ChatComposer.tsx` | staged plugin name `title` |
 | `apps/web/src/teamver/components/TeamverBackgroundRunsBanner.tsx` | truncated `title` |
+| `apps/web/src/teamver/components/TeamverDrivePickerModal.tsx` | folder card/row `title` |
+| `apps/web/src/teamver/components/TeamverDriveImportModal.tsx` | folder row `title` |
+| `apps/web/src/teamver/components/TeamverDriveTargetSelect.tsx` | option desc `title` |
 
 ---
 

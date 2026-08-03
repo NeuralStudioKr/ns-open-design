@@ -290,7 +290,7 @@ export function PluginLoopHome({ onSubmit }: Props) {
                 data-plugin-id={p.id}
               >
                 <div className="plugin-loop-home__card-head">
-                  <span className="plugin-loop-home__card-title">{cardTitle}</span>
+                  <span className="plugin-loop-home__card-title" title={cardTitle}>{cardTitle}</span>
                   <TrustBadge trust={p.trust} />
                 </div>
                 {cardDescription ? (
