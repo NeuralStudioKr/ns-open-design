@@ -976,14 +976,14 @@
   font-weight: 540;
 }
 .workspace-shell .workspace-tab__close {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   border-radius: var(--radius-sm);
 }
 .workspace-shell .workspace-tabs-new-btn,
 .workspace-shell .workspace-tabs-icon-btn {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-sm);
 }
 
@@ -1087,9 +1087,17 @@
   box-shadow: none;
 }
 .app .chat-header-actions .icon-only {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius);
+}
+.app .chat-header-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.app .chat-header-actions .icon-only:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .app .chat-log {
   gap: 14px;
