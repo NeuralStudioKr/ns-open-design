@@ -97,6 +97,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 7 | `c8641fcc5` | 본 문서(53) + [00](./00_구현_내역_누적.md) 기록 | 문서 |
 | 8 | `4c4d74f1f` | 53 타임라인 SHA pin | 문서 |
 | 9 | `69c688105` | escape Design Home focus 링 · assistant-footer focus-within · Drive/hero/DS/plugin `title` | 유지 |
+| 10 | *(push 후 pin)* | Drive picker/import 모달 시각 polish (색·여백·타이포) — `tools.css` only | 유지 |
 
 `f97ee14ed` 메시지의 “28–32px” 방향은 **리뷰로 철회**된 부분이 있음. **유효 SSOT는 `29466ae40` 이후 원칙**.
 
@@ -163,6 +164,24 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | `project-ds-picker-preview-expand` | `routines.css` |
 | `assistant-footer` (focus-within only) | `composio.css` / `routines.css` |
 
+### 5.4 Drive 모달 시각 polish (색 · 여백 · 타이포)
+
+파일: `apps/web/src/styles/viewer/tools.css` — **CSS only**, hit-target 확대·마크업 변경 없음.
+
+| 영역 | 변경 |
+|------|------|
+| Header | padding↑ · 제목 `text-strong`/650 · 부제 `text-muted` + max-width |
+| Search | 여백·높이 · `:focus-within` accent ring · placeholder `text-soft` |
+| List/rows | gap/padding · 선택 행 soft accent · filename stem strong / ext muted |
+| Footer (picker) | soft top border · subtle bg mix · current-label uppercase |
+| Scope sidebar | ~188px · soft bg · group label uppercase `text-soft` · active item accent tint |
+| Import tabs/crumb | 여백 · active tab accent · crumb current strong / sep soft |
+| Import cards | 카드 padding·thumb 높이 · selected soft accent · name 600/`text-strong` |
+| Import footer | soft border + subtle bg · cancel muted · attach accent weight |
+| Select option desc | `text-soft` · 11px |
+
+원칙 준수: 검색 clear/submit·modal-back **28px 유지** · 전역 focus 재선언 없음 · dashed 장식 없음.
+
 **이미 올바르던 패턴 (참고, 본 루프 미변경)**
 
 - `df-preview-close` — `@media (hover: hover) and (pointer: fine)` vs `(any-pointer: coarse)` 분리
@@ -222,6 +241,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | i18n 잔여 하드코드 | **의도 비노출 제외** 후 스캔 |
 | Manual Edit handle | 설계서 14×14 hit 이미 충족 — 크기 변경 금지 |
 | Drive Import 하드코드 한글 ("폴더" 등) | i18n 트랙 — 본 문서 비범위일 수 있음 |
+| Drive 모달 색·여백 | **완료** — §5.4 (`tools.css`) |
 
 새 변경 시 **§3 원칙**으로 먼저 기각한 뒤 코드·본 문서 §4–5·[00](./00_구현_내역_누적.md)를 함께 갱신한다.
 
