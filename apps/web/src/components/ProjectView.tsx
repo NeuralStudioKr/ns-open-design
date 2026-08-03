@@ -194,6 +194,11 @@ import {
 import { cleanupByokRetryArtifacts } from '../runtime/byok-retry-artifact-gc';
 import { playSound, showCompletionNotification } from '../utils/notifications';
 import { randomUUID } from '../utils/uuid';
+import {
+  excludeAttachmentsBackedByVisualScreenshots,
+  projectFilePathBasename,
+  projectFileResolvedPath,
+} from '../utils/projectFilePaths';
 import { DEFAULT_NOTIFICATIONS } from '../state/config';
 import type { TodoItem } from '../runtime/todos';
 import {
@@ -978,8 +983,10 @@ function mergeChatAttachments(...groups: ChatAttachment[][]): ChatAttachment[] {
   for (const group of groups) {
     for (const attachment of group) {
       const path = attachment.path.trim();
-      if (!path || seen.has(path)) continue;
-      seen.add(path);
+      if (!path) continue;
+      const dedupeKey = projectFilePathBasename(path).toLowerCase();
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
       out.push({ ...attachment, path });
     }
   }
@@ -2169,16 +2176,23 @@ type ArtifactPersistResult =
   | { kind: 'auth-replay-queued'; fileName: string }
   | { kind: 'skipped-discovery-turn'; fileName: string };
 
-function shouldFailRunForArtifactPersistResult(result: ArtifactPersistResult | null): boolean {
+export function shouldFailRunForArtifactPersistResult(
+  result: ArtifactPersistResult | null,
+  options?: { scopedCommentEdit?: boolean },
+): boolean {
   // A truncated shell, a structural refusal, or a real write failure must
   // move the run into the recovery path. Auth-replay-queued keeps the run
   // as succeeded visually because memory preview + replay own that case.
+  // Scoped comment edits that hit skipped-duplicate mean the model turn
+  // produced HTML identical to disk — treat as incomplete so auto-continue
+  // can retry instead of painting "완료됨" over an unchanged slide.
   return result?.kind === 'skipped-incomplete'
     || result?.kind === 'rejected'
     || result?.kind === 'save-failed'
     || result?.kind === 'scope-rejected'
     || result?.kind === 'artifact-regression'
-    || result?.kind === 'skipped-discovery-turn';
+    || result?.kind === 'skipped-discovery-turn'
+    || (result?.kind === 'skipped-duplicate' && options?.scopedCommentEdit);
 }
 
 const ARTIFACT_REGRESSION_MIN_PRIOR_BYTES = 8192;
@@ -4303,6 +4317,25 @@ export function ProjectView({
       const title = art.title || art.identifier || fileName;
       const htmlBody =
         ext === '.html' ? repairArtifactDocumentHead(artifactToPersist.html) : artifactToPersist.html;
+      if (ext === '.html' && persistCommentAttachments.length > 0) {
+        const currentScopedHtml = await fetchProjectFileText(project.id, fileName, {
+          cache: 'no-store',
+        });
+        if (
+          currentScopedHtml
+          && normalizeHtmlForRecoveredArtifactComparison(currentScopedHtml)
+            === normalizeHtmlForRecoveredArtifactComparison(htmlBody)
+        ) {
+          console.warn('[deck-patch] scoped edit produced no disk change', {
+            fileName,
+          });
+          return {
+            kind: 'skipped-incomplete',
+            fileName,
+            reason: 'scoped comment edit did not change the deck on disk',
+          };
+        }
+      }
       if (savedArtifactRef.current === fileName) {
         const currentHtml = await fetchProjectFileText(project.id, fileName, {
           cache: 'no-store',
@@ -4690,10 +4723,18 @@ export function ProjectView({
   // Set of project file names that the chat surface uses to decide whether
   // a tool card's path is openable as a tab. Recomputed on every file-list
   // change; tool cards just read from the set.
-  const projectFileNames = useMemo(
-    () => new Set(projectFiles.map((f) => f.name)),
-    [projectFiles],
-  );
+  const projectFileNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const file of projectFiles) {
+      const name = file.name?.trim();
+      const path = file.path?.trim();
+      if (name) names.add(name);
+      if (path) names.add(path);
+      const resolved = projectFileResolvedPath(file);
+      if (resolved) names.add(resolved);
+    }
+    return names;
+  }, [projectFiles]);
   const activeProjectFileName = useMemo(
     () => (
       openTabsState.active && projectFileNames.has(openTabsState.active)
@@ -6388,7 +6429,11 @@ export function ProjectView({
                       replayedContent,
                       runStartedAt,
                     );
-                    if (shouldFailRunForArtifactPersistResult(replayPersistResult)) {
+                    if (
+                      shouldFailRunForArtifactPersistResult(replayPersistResult, {
+                        scopedCommentEdit: runCommentAttachmentsRef.current.length > 0,
+                      })
+                    ) {
                       const endedAt = Date.now();
                       const detail = encodePersistedRunErrorDetail(
                         formatProjectRunDeliverableMissingError(),
@@ -7504,12 +7549,15 @@ export function ProjectView({
         })
         : commentAttachments;
       const scopedCommentAttachments = filterUsableCommentAttachments(hydratedCommentAttachments);
-      let effectiveAttachments = mergeChatAttachments(
-        attachments,
-        chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, filesSnapshot),
-        ...scopedCommentAttachments.map((attachment) =>
-          chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
+      let effectiveAttachments = excludeAttachmentsBackedByVisualScreenshots(
+        mergeChatAttachments(
+          attachments,
+          chatAttachmentsFromPreviewCommentFiles(scopedCommentAttachments, filesSnapshot),
+          ...scopedCommentAttachments.map((attachment) =>
+            chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
+          ),
         ),
+        scopedCommentAttachments,
       );
       let autoAttachedDeckPath: string | null = null;
       // Scoped comment edits (including auto-continue retries) must keep the
@@ -7636,7 +7684,7 @@ export function ProjectView({
             attachments: instructionAttachments.length > 0
               ? instructionAttachments
               : retryTarget.userMsg.attachments,
-            ...(scopedCommentAttachments.length > 0
+            ...(scopedCommentAttachments.length > 0 && !isAutoContinueSend
               ? { commentAttachments: scopedCommentAttachments }
               : {}),
           }
@@ -7651,9 +7699,11 @@ export function ProjectView({
               : {}),
             ...(runContext ? { runContext } : {}),
             attachments: effectiveAttachments.length > 0 ? effectiveAttachments : undefined,
-            commentAttachments: scopedCommentAttachments.length > 0 ? scopedCommentAttachments : undefined,
+            ...(scopedCommentAttachments.length > 0 && !isAutoContinueSend
+              ? { commentAttachments: scopedCommentAttachments }
+              : {}),
           };
-      const runCommentAttachments = userMsg.commentAttachments ?? [];
+      const runCommentAttachments = scopedCommentAttachments;
       runCommentAttachmentsRef.current = runCommentAttachments;
       runVisiblePromptRef.current = stripUserVisibleUserMessageText(prompt).trim();
       const runAttachments = mergeChatAttachments(
@@ -7957,7 +8007,10 @@ export function ProjectView({
                   rawFinalText,
                   startedAt,
                 );
-                terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(persistResult);
+                terminalArtifactPersistFailed = shouldFailRunForArtifactPersistResult(
+                  persistResult,
+                  { scopedCommentEdit: scopedCommentPersist },
+                );
                 terminalPersistResultKind = persistResult?.kind ?? null;
                 terminalPersistResult = persistResult;
                 nextFiles = await refreshProjectFiles();
