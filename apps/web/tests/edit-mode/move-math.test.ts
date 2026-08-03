@@ -63,6 +63,29 @@ describe('canPromoteTarget', () => {
     expect(canPromoteTarget(target({ cssPosition: 'absolute' }))).toBe(false);
     expect(canMoveOrPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
   });
+
+  it('does not promote flow images/SVGs (resize-in-place; absolute images still move)', () => {
+    expect(canPromoteTarget(target({
+      kind: 'image',
+      tagName: 'svg',
+      cssPosition: 'static',
+    }))).toBe(false);
+    expect(canPromoteTarget(target({
+      kind: 'image',
+      tagName: 'img',
+      cssPosition: 'relative',
+    }))).toBe(false);
+    expect(canMoveTarget(target({
+      kind: 'image',
+      tagName: 'svg',
+      cssPosition: 'absolute',
+    }))).toBe(true);
+    expect(canMoveOrPromoteTarget(target({
+      kind: 'image',
+      tagName: 'svg',
+      cssPosition: 'static',
+    }))).toBe(false);
+  });
 });
 
 describe('promoteMoveStyles', () => {

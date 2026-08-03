@@ -478,7 +478,7 @@ function inferKind(el: Element): 'text' | 'link' | 'image' | 'container' {
   if (explicit === 'text' || explicit === 'link' || explicit === 'image' || explicit === 'container') return explicit;
   const tag = el.tagName.toLowerCase();
   if (tag === 'a') return 'link';
-  if (tag === 'img') return 'image';
+  if (tag === 'img' || tag === 'svg') return 'image';
   if (['section', 'main', 'nav', 'div', 'article', 'header', 'footer'].includes(tag)) return 'container';
   return 'text';
 }

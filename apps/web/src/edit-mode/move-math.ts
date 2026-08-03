@@ -32,6 +32,9 @@ export function canPromoteTarget(
 ): boolean {
   if (!baseMoveEligibility(target, options)) return false;
   if (isAnchoredCssPosition(target!.cssPosition)) return false;
+  // Images/SVGs stay in flow for resize-in-place; body drag must not promote→move.
+  // Absolute/fixed images still move via canMoveTarget.
+  if (target!.kind === 'image') return false;
   const value = String(target!.cssPosition ?? 'static').toLowerCase();
   return value === 'static' || value === 'relative' || value === 'sticky';
 }
