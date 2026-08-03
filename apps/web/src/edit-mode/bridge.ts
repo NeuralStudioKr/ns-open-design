@@ -414,6 +414,17 @@ export function buildManualEditBridge(enabled: boolean): string {
     }
     return null;
   }
+  var unitlessStyleProps = { fontWeight:1, opacity:1, lineHeight:1, zIndex:1, flex:1, flexGrow:1, flexShrink:1, order:1 };
+  function coercePreviewStyleValue(key, value){
+    if (typeof value === 'number' && isFinite(value)) {
+      return unitlessStyleProps[key] ? String(value) : (String(value) + 'px');
+    }
+    if (typeof value !== 'string') return null;
+    var trimmed = value.trim();
+    if (trimmed === '') return '';
+    if (!unitlessStyleProps[key] && /^-?\\d+(\\.\\d+)?$/.test(trimmed)) return trimmed + 'px';
+    return trimmed;
+  }
   function applyPreviewStyles(id, styles, version){
     var el = findById(id);
     if (!el) {
@@ -427,9 +438,10 @@ export function buildManualEditBridge(enabled: boolean): string {
       for (var i = 0; i < keys.length; i++) {
         var key = keys[i];
         if (!allowed[key]) continue;
-        var value = styles[key];
+        var value = coercePreviewStyleValue(key, styles[key]);
+        if (value == null) continue;
         var cssName = camelToKebab(key);
-        if (typeof value !== 'string' || value.trim() === '') el.style.removeProperty(cssName);
+        if (value.trim() === '') el.style.removeProperty(cssName);
         else el.style.setProperty(cssName, value.trim(), 'important');
       }
       window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id, version: Number(version) || 0, ok: true }, '*');

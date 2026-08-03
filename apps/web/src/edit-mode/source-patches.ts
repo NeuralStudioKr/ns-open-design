@@ -976,6 +976,14 @@ function sanitizeManualEditReplacementTree(root: Element): void {
         continue;
       }
       if (
+        (tag === 'use' || tag === 'image')
+        && (lower === 'href' || lower === 'xlink:href')
+        && !isSafeManualEditSvgResourceRef(attr.value)
+      ) {
+        el.removeAttribute(attr.name);
+        continue;
+      }
+      if (
         (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'values')
         && !isSafeManualEditUrlAttrValue(lower, attr.value)
       ) {
@@ -1550,6 +1558,14 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
       el.removeAttribute(name);
       continue;
     }
+    const tag = el.tagName.toLowerCase();
+    if (
+      (tag === 'use' || tag === 'image')
+      && (lower === 'href' || lower === 'xlink:href')
+      && !isSafeManualEditSvgResourceRef(value)
+    ) {
+      continue;
+    }
     // Block dangerous URL schemes on navigable / embeddable attrs.
     if (
       (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
@@ -1761,21 +1777,29 @@ function normalizeCssForSafetyScan(css: string): string {
   return text;
 }
 
-function stripCssAtImports(css: string): string {
+/** Strip @import / @namespace / @font-face from salvaged style text. */
+function stripDangerousCssAtRules(css: string): string {
   const normalized = normalizeCssForSafetyScan(css);
-  return normalized.replace(/@import\b[^;]*;?/gi, '').trim();
+  return normalized
+    .replace(/@import\b[^;]*;?/gi, '')
+    .replace(/@namespace\b[^;]*;?/gi, '')
+    .replace(/@font-face\s*\{[^}]*\}/gi, '')
+    .trim();
 }
 
-/** Drop javascript/vbscript/data urls and expression() from CSS text. */
+/** Drop javascript/vbscript/data urls, image-set strings, and expression(). */
 function scrubUnsafeCssFunctions(css: string): string {
   return String(css || '')
     .replace(/url\s*\(\s*(['"]?)\s*(?:javascript|vbscript|data)\b[^)]*\)/gi, 'url()')
+    // CSS Images string form bypasses url(): -webkit-image-set("javascript:…" 1x)
+    .replace(/-webkit-image-set\s*\([^)]*(?:javascript|vbscript|data):[^)]*\)/gi, 'none')
+    .replace(/image-set\s*\([^)]*(?:javascript|vbscript|data):[^)]*\)/gi, 'none')
     .replace(/expression\s*\([^)]*\)/gi, 'initial')
     .replace(/-moz-binding\s*:[^;]*/gi, '');
 }
 
 function scrubSalvagedStyleText(css: string): string {
-  return scrubUnsafeCssFunctions(stripCssAtImports(css)).trim();
+  return scrubUnsafeCssFunctions(stripDangerousCssAtRules(css)).trim();
 }
 
 function scrubUnsafeInlineStyleAttr(value: string): string {
@@ -1784,9 +1808,20 @@ function scrubUnsafeInlineStyleAttr(value: string): string {
   const scrubbed = scrubUnsafeCssFunctions(normalized).trim();
   // If anything still looks like a scriptable url, drop the whole attr.
   if (/\burl\s*\(\s*(['"]?)\s*(?:javascript|vbscript|data)\b/i.test(scrubbed)) return '';
+  if (/(?:-webkit-)?image-set\s*\([^)]*(?:javascript|vbscript|data):/i.test(scrubbed)) return '';
   if (/\bexpression\s*\(/i.test(scrubbed)) return '';
   if (/-moz-binding/i.test(scrubbed)) return '';
   return scrubbed;
+}
+
+/** SVG <use>/<image> may only reference same-document fragments (#id). */
+function isSafeManualEditSvgResourceRef(value: string): boolean {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return true;
+  if (!trimmed.startsWith('#')) return false;
+  // Reject `#foo:bar` / scheme-like fragments.
+  if (/[\\/]/.test(trimmed) || /^#[a-z][a-z0-9+.-]*:/i.test(trimmed)) return false;
+  return true;
 }
 
 function setCssToken(doc: Document, token: string, value: string): boolean {

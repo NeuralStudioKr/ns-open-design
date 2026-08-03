@@ -801,6 +801,72 @@ describe('manual edit source patches', () => {
     expect(readManualEditAttributes(attrDenied.source, 'cta').href).toBe('/start');
   });
 
+  it('scrubs -webkit-image-set javascript strings from inline and salvaged styles', () => {
+    const inline = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:-webkit-image-set(&quot;javascript:alert(1)&quot; 1x);color:navy">Title</h1>',
+    });
+    expect(inline.ok, inline.error).toBe(true);
+    const inlineHtml = readManualEditOuterHtml(inline.source, 'hero-title');
+    expect(inlineHtml).not.toMatch(/javascript/i);
+    expect(inlineHtml).toContain('color:navy');
+
+    const salvaged = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{background:image-set("javascript:alert(1)" 1x);color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(salvaged.ok, salvaged.error).toBe(true);
+    expect(salvaged.source).toContain('.hero-pop{');
+    expect(salvaged.source).not.toMatch(/javascript/i);
+  });
+
+  it('strips @font-face and @namespace from salvaged style siblings', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>@namespace url(http://www.w3.org/1999/xhtml);@font-face{font-family:X;src:url(https://evil.example/x.woff2)}.hero-pop{color:#555}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('.hero-pop{color:#555}');
+    expect(result.source).not.toMatch(/@namespace/i);
+    expect(result.source).not.toMatch(/@font-face/i);
+    expect(result.source).not.toContain('evil.example');
+  });
+
+  it('rejects external SVG use/image hrefs and keeps fragment refs', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><symbol id="icon"></symbol><use href="#icon"></use></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<symbol id="icon"></symbol>',
+        '<use href="https://evil.example/sprite.svg#icon"></use>',
+        '<use xlink:href="//evil.example/sprite.svg#icon"></use>',
+        '<use href="#icon"></use>',
+        '<image href="https://evil.example/x.png"></image>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).toContain('href="#icon"');
+    expect(html).not.toContain('evil.example');
+    expect(html).not.toMatch(/<image[^>]+href=/i);
+  });
+
   it('scrubs SMIL style animations that embed javascript urls', () => {
     const source = [
       '<!doctype html><html><body>',

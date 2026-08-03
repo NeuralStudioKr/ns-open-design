@@ -402,6 +402,32 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('coerces unitless preview lengths to px like persist', () => {
+    const bridge = buildManualEditBridge(true);
+    expect(bridge).toContain('coercePreviewStyleValue');
+    expect(bridge).toContain("trimmed + 'px'");
+
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="hero">Hero</h1></main>${bridge}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const hero = dom.window.document.querySelector('[data-od-id="hero"]') as HTMLElement;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: {
+        type: 'od-edit-preview-style',
+        id: 'hero',
+        styles: { fontSize: '32', fontWeight: '700' },
+        version: 4,
+      },
+    }));
+
+    expect(hero.style.getPropertyValue('font-size')).toBe('32px');
+    expect(hero.style.getPropertyValue('font-weight')).toBe('700');
+
+    dom.window.close();
+  });
+
   it('clears the important flag when a preview style value is emptied', () => {
     const dom = new JSDOM(
       `<main><h1 data-od-id="hero" style="font-size: 42px !important">Hero</h1></main>${buildManualEditBridge(true)}`,

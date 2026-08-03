@@ -43,6 +43,19 @@ describe('manual edit host preview fallback', () => {
     expect(el.style.getPropertyValue('behavior')).toBe('');
   });
 
+  it('coerces unitless length strings so preview matches persist', () => {
+    const doc = makeDoc('<main data-od-id="hero">Hero</main>');
+    const ok = applyManualEditPreviewStylesToDocument(doc, 'hero', {
+      fontSize: '32',
+      fontWeight: '700',
+    });
+    const el = doc.querySelector('[data-od-id="hero"]') as HTMLElement;
+
+    expect(ok).toBe(true);
+    expect(el.style.getPropertyValue('font-size')).toBe('32px');
+    expect(el.style.getPropertyValue('font-weight')).toBe('700');
+  });
+
   it('removes empty style values instead of writing them', () => {
     const doc = makeDoc('<main data-od-id="hero" style="font-size: 32px !important">Hero</main>');
     applyManualEditPreviewStylesToDocument(doc, 'hero', { fontSize: '' });
