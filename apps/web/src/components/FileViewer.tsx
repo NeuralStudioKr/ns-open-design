@@ -7154,6 +7154,9 @@ function HtmlViewer({
         setManualEditHostPaintRect(null);
         return true;
       }
+      // During a gesture the overlay follows draft/liveViewport composition.
+      // Refreshing hostPaintRect here fights that math (box morph / jump).
+      if (manualEditResizeSessionActiveRef.current) return true;
       const paint = measureManualEditTargetHostRect(frame, workspace, selectedId);
       if (paint && paint.width >= 1 && paint.height >= 1) {
         setManualEditHostPaintRect((prev) => (
@@ -7165,10 +7168,11 @@ function HtmlViewer({
             ? prev
             : paint
         ));
+      } else {
+        // Failed measure for this id — drop stale paint from a prior (larger)
+        // selection so the overlay cannot stay oversized.
+        setManualEditHostPaintRect(null);
       }
-      // During a gesture, drafts/optimistic rect own content-space state —
-      // still refresh paint from the live styled DOM above.
-      if (manualEditResizeSessionActiveRef.current) return true;
       const measured = measureManualEditTargetContentRect(frame, selectedId);
       if (!measured || measured.width < 1 || measured.height < 1) return true;
       setSelectedManualEditTarget((current) => {
@@ -7686,12 +7690,16 @@ function HtmlViewer({
       setManualEditHostPaintRect(null);
       return;
     }
+    // Gesture display is owned by overlay draft/liveViewport composition.
+    if (manualEditResizeSessionActiveRef.current) return;
     const frame = iframeRef.current;
     const workspace = manualEditWorkspaceRef.current;
     if (!frame || !workspace) return;
     const paint = measureManualEditTargetHostRect(frame, workspace, id);
     if (paint && paint.width >= 1 && paint.height >= 1) {
       setManualEditHostPaintRect(paint);
+    } else {
+      setManualEditHostPaintRect(null);
     }
     setManualEditHostScale(measureIframeHostScale(frame));
     setManualEditHostOffset(measureIframeOffsetInHost(frame, workspace));
@@ -7723,9 +7731,6 @@ function HtmlViewer({
       const height = parseExplicitPx(styles.height) ?? prev?.height ?? target.rect.height;
       return { width, height };
     });
-    // Re-project from the styled DOM so the overlay tracks the element even
-    // when composed scale/offset state is wrong.
-    refreshManualEditHostPaintRect(target.id);
   }
 
   function handleManualEditMovePreview(styles: Partial<ManualEditStyles>) {
@@ -7749,7 +7754,6 @@ function HtmlViewer({
       ...current,
       styles: { ...current.styles, ...styles },
     }));
-    refreshManualEditHostPaintRect(target.id);
   }
 
 
@@ -8001,6 +8005,9 @@ function HtmlViewer({
     selectedManualEditTargetIdRef.current = target.id;
     selectedManualEditTargetRef.current = target;
     setSelectedManualEditTarget(target);
+    // Drop prior selection paint immediately — a larger parent's rect must not
+    // flash over a smaller newly selected child for a frame.
+    setManualEditHostPaintRect(null);
     // Measure before paint so the overlay does not flash at scale=1 / offset=0.
     refreshManualEditHostPaintRect(target.id);
     setManualEditDraft({

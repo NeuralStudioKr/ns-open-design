@@ -95,7 +95,7 @@ describe('ManualEditResizeOverlay', () => {
     expect(overlay.style.top).toBe('76px');
   });
 
-  it('prefers live hostPaintRect over composed scale/offset math', () => {
+  it('prefers live hostPaintRect over composed scale/offset math when idle', () => {
     const { getByTestId } = render(
       <ManualEditResizeOverlay
         target={target({ rect: { x: 40, y: 60, width: 200, height: 100 } })}
@@ -114,6 +114,28 @@ describe('ManualEditResizeOverlay', () => {
     expect(overlay.style.top).toBe('80px');
     expect(overlay.style.width).toBe('90px');
     expect(overlay.style.height).toBe('45px');
+  });
+
+  it('ignores hostPaintRect during resize drafts so the box tracks the pointer', () => {
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({ rect: { x: 40, y: 60, width: 200, height: 100 } })}
+        previewScale={1}
+        hostOffset={{ x: 0, y: 0 }}
+        // Stale/reflowed paint that would otherwise morph the overlay mid-drag.
+        hostPaintRect={{ x: 10, y: 10, width: 400, height: 300 }}
+        draftWidthPx={260}
+        draftHeightPx={140}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+      />,
+    );
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    expect(overlay.style.left).toBe('40px');
+    expect(overlay.style.top).toBe('60px');
+    expect(overlay.style.width).toBe('260px');
+    expect(overlay.style.height).toBe('140px');
   });
 
   it('keeps resize handles pointer-hit even when interaction is gated', () => {
@@ -336,7 +358,6 @@ describe('ManualEditResizeOverlay', () => {
     expect(onResizePreview.mock.calls.at(-1)?.[0]).toEqual({
       width: '240px',
       maxWidth: 'none',
-      right: '',
     });
   });
 

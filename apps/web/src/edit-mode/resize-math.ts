@@ -278,10 +278,12 @@ export function resizeResultToStyles(
   }
   if (result.leftPx != null) styles.left = `${result.leftPx}px`;
   if (result.topPx != null) styles.top = `${result.topPx}px`;
-  // Match move: clear opposing edges so right:0 / bottom:0 cannot pin the box
-  // after an anchored W/N (or corner) resize.
-  if (result.leftPx != null || result.touchedWidth) styles.right = '';
-  if (result.topPx != null || result.touchedHeight) styles.bottom = '';
+  // Clear the opposing edge ONLY when we wrote the near-edge anchor (W/N).
+  // Clearing right/bottom on every width/height touch made E/S resize of
+  // right:0 / bottom:0 (or stretch) boxes jump — the auto left/top snapped to
+  // static position while the far edge pin disappeared.
+  if (result.leftPx != null) styles.right = '';
+  if (result.topPx != null) styles.bottom = '';
   return styles;
 }
 

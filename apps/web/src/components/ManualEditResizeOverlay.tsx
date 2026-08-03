@@ -178,10 +178,19 @@ export function ManualEditResizeOverlay({
     width: scaled.width,
     height: scaled.height,
   };
-  // Prefer the live DOM projection. During an in-flight gesture the parent
-  // keeps refreshing hostPaintRect after each preview style apply; fall back
-  // to composed math only when measure is unavailable (tests / cross-origin).
-  const hostRect = hostPaintRect && hostPaintRect.width >= 1 && hostPaintRect.height >= 1
+  // Idle: prefer live DOM projection (survives stale scale/offset state).
+  // During a gesture: ALWAYS use composed draft/liveViewport math. Refreshing
+  // hostPaintRect from the styled DOM mid-drag made the box morph/jump as
+  // layout reflowed (flex/centering/right:0) instead of tracking the pointer.
+  const gestureActive = dragging || moving || liveViewportPos != null
+    || draftWidthPx != null
+    || draftHeightPx != null
+    || draftLeftPx != null
+    || draftTopPx != null;
+  const hostRect = !gestureActive
+    && hostPaintRect
+    && hostPaintRect.width >= 1
+    && hostPaintRect.height >= 1
     ? hostPaintRect
     : composedHostRect;
   const movable = !disabled && canMoveOrPromoteTarget(target);
