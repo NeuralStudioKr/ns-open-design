@@ -545,6 +545,85 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('--brand: #f00;');
   });
 
+  it('rejects set-token values that break out of the CSS declaration', () => {
+    const breakout = applyManualEditPatch(baseSource, {
+      kind: 'set-token',
+      token: '--brand',
+      value: 'red; } body{background:url(https://evil.example/x)} .x{color:',
+    });
+    expect(breakout.ok).toBe(false);
+    expect(breakout.source).toContain('--brand: #111;');
+    expect(breakout.source).not.toContain('evil.example');
+
+    const plainProp = applyManualEditPatch(baseSource, {
+      kind: 'set-token',
+      token: 'color',
+      value: 'red',
+    });
+    expect(plainProp.ok).toBe(false);
+  });
+
+  it('strips nested style tags from set-outer-html replacements', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<h1 data-od-id="hero-title">',
+        '<style>@import url("https://evil.example/x.css"); .x{color:red}</style>',
+        'Safe title',
+        '</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).toContain('Safe title');
+    expect(html).not.toMatch(/<style\b/i);
+    expect(result.source).not.toContain('evil.example');
+    expect(result.source).not.toMatch(/@import/i);
+  });
+
+  it('strips SVG SMIL javascript: payloads on to/values attrs', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><a href="#x"><text>hi</text></a></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<a href="#safe"><text>hi</text>',
+        '<set attributeName="href" to="javascript:alert(4)"></set>',
+        '<animate attributeName="xlink:href" values="javascript:alert(5);#x"></animate>',
+        '</a></svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).toContain('href="#safe"');
+    expect(html).not.toMatch(/javascript:/i);
+    expect(html).not.toMatch(/\bto=["']javascript/i);
+    expect(html).not.toMatch(/values=["'][^"']*javascript/i);
+  });
+
+  it('rejects HTML character-reference javascript: URL bypasses', () => {
+    for (const href of [
+      '&#106;avascript:alert(1)',
+      'javascript&#58;alert(1)',
+      '&#x6a;avascript:alert(1)',
+    ]) {
+      const denied = applyManualEditPatch(baseSource, {
+        kind: 'set-link',
+        id: 'cta',
+        text: 'Start',
+        href,
+      });
+      expect(denied.ok, href).toBe(false);
+      expect(readManualEditFields(baseSource, 'cta').href).toBe('/start');
+    }
+  });
+
   it('preserves fragment-shaped HTML when saving patches', () => {
     const source = '<main><h1 data-od-id="hero-title">Original title</h1></main>';
     const result = applyManualEditPatch(source, { kind: 'set-text', id: 'hero-title', value: 'Edited title' });

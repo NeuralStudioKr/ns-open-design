@@ -1055,6 +1055,21 @@ describe('preview comment attachment helpers', () => {
     ]);
   });
 
+  it('round-trips whiteSpace and textDecoration through computedStyle history', () => {
+    const attachment = commentAttachment({
+      style: { whiteSpace: 'nowrap', textDecoration: 'underline', fontSize: '24px' },
+    });
+    const content = messageContentWithCommentAttachments('한 줄로 밑줄', [attachment]);
+    expect(content).toContain('whiteSpace: nowrap');
+    expect(content).toContain('textDecoration: underline');
+    const parsed = parseCommentAttachmentsFromMessageContent(content);
+    expect(parsed[0]?.style).toEqual({
+      fontSize: '24px',
+      textDecoration: 'underline',
+      whiteSpace: 'nowrap',
+    });
+  });
+
   it('strips serialize placeholders so history round-trip stays screenshot-only', () => {
     const visualOnly = buildVisualAnnotationAttachment({
       order: 0,

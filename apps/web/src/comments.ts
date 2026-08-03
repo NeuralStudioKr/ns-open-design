@@ -1313,6 +1313,8 @@ const ANNOTATION_STYLE_KEYS = [
   'fontWeight',
   'lineHeight',
   'textAlign',
+  'textDecoration',
+  'whiteSpace',
   'fontFamily',
   'paddingTop',
   'paddingRight',

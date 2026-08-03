@@ -44,6 +44,9 @@ export function applyManualEditPatch(
   if (!doc) return { ok: false, source, error: 'Could not parse source.' };
 
   if (patch.kind === 'set-token') {
+    if (!isSafeCssTokenName(patch.token) || !isSafeCssTokenValue(patch.value)) {
+      return { ok: false, source, error: 'CSS token name or value is not allowed.' };
+    }
     const changed = setCssToken(doc, patch.token, patch.value);
     return changed
       ? { ok: true, source: serializeSource(doc, source) }
@@ -899,6 +902,8 @@ const MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS = new Set([
   'meta',
   'noscript',
   'template',
+  // Nested <style> bypasses sibling-salvage @import scrub — drop from trees.
+  'style',
 ]);
 
 /** Strip executable chrome tags, event handlers, and unsafe URL attrs. */
@@ -917,7 +922,7 @@ function sanitizeManualEditReplacementTree(root: Element): void {
         continue;
       }
       if (
-        (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
+        (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'values')
         && !isSafeManualEditUrlAttrValue(lower, attr.value)
       ) {
         el.removeAttribute(attr.name);
@@ -1659,7 +1664,22 @@ function replacementTextOverlapScore(current: string, next: string): number {
   return hits;
 }
 
+/** Custom-property names only — plain props like `color` are not tokens. */
+function isSafeCssTokenName(token: string): boolean {
+  return /^--[a-zA-Z_][\w-]*$/.test(String(token || ''));
+}
+
+/** Reject CSS declaration / rule breakout in set-token values. */
+function isSafeCssTokenValue(value: string): boolean {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return false;
+  if (/[;{}]/.test(trimmed)) return false;
+  if (/<\/?style/i.test(trimmed)) return false;
+  return true;
+}
+
 function setCssToken(doc: Document, token: string, value: string): boolean {
+  if (!isSafeCssTokenName(token) || !isSafeCssTokenValue(value)) return false;
   const styles = Array.from(doc.querySelectorAll('style'));
   const pattern = new RegExp(`(${escapeRegExp(token)}\\s*:\\s*)([^;]+)(;)`);
   for (const style of styles) {
@@ -1713,16 +1733,52 @@ const MANUAL_EDIT_URL_ATTRS = new Set([
   'lowsrc',
   'srcset',
   'data',
+  // SVG SMIL can assign href via to/from/by/values without on* handlers.
+  'to',
+  'from',
+  'by',
+  'values',
 ]);
 
 const SAFE_MANUAL_EDIT_DATA_IMAGE_RE = /^data:image\/(png|jpe?g|gif|webp|avif|bmp)(;|,)/i;
+
+/** Decode numeric/hex HTML character references used to smuggle schemes. */
+function decodeHtmlCharacterReferences(value: string): string {
+  let out = String(value || '');
+  for (let i = 0; i < 3; i += 1) {
+    const next = out
+      .replace(/&#x([0-9a-fA-F]{1,6});?/g, (_match, hex: string) => {
+        const code = Number.parseInt(hex, 16);
+        if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return '';
+        try {
+          return String.fromCodePoint(code);
+        } catch {
+          return '';
+        }
+      })
+      .replace(/&#([0-9]{1,7});?/g, (_match, dec: string) => {
+        const code = Number.parseInt(dec, 10);
+        if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return '';
+        try {
+          return String.fromCodePoint(code);
+        } catch {
+          return '';
+        }
+      });
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
 
 /** Reject javascript:/vbscript:/dangerous data: URL schemes in manual edits. */
 export function isSafeManualEditUrl(value: string): boolean {
   const trimmed = String(value || '').trim();
   if (!trimmed) return true;
+  // Decode &#106;avascript: / javascript&#58; before scheme checks.
+  const decoded = decodeHtmlCharacterReferences(trimmed);
   // Strip whitespace + C0 controls so `java\0script:` / `data: text/html` cannot bypass.
-  const compact = trimmed.replace(/[\s\u0000-\u001f\u007f\ufeff]+/g, '').toLowerCase();
+  const compact = decoded.replace(/[\s\u0000-\u001f\u007f\ufeff]+/g, '').toLowerCase();
   if (compact.startsWith('javascript:')) return false;
   if (compact.startsWith('vbscript:')) return false;
   if (compact.startsWith('data:')) {
@@ -1737,12 +1793,19 @@ export function isSafeManualEditUrl(value: string): boolean {
   return true;
 }
 
-/** Validate URL attr values; `srcset` checks each comma-separated candidate URL. */
+/** Validate URL attr values; `srcset`/`values` check each candidate URL. */
 export function isSafeManualEditUrlAttrValue(attr: string, value: string): boolean {
   const lower = String(attr || '').toLowerCase();
   if (lower === 'srcset') {
     for (const part of String(value || '').split(',')) {
       const url = part.trim().split(/\s+/)[0] || '';
+      if (url && !isSafeManualEditUrl(url)) return false;
+    }
+    return true;
+  }
+  if (lower === 'values') {
+    for (const part of String(value || '').split(';')) {
+      const url = part.trim();
       if (url && !isSafeManualEditUrl(url)) return false;
     }
     return true;

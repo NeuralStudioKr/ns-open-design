@@ -420,10 +420,13 @@ export function buildManualEditBridge(enabled: boolean): string {
       window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id || '', version: Number(version) || 0, ok: false, error: 'Target not found' }, '*');
       return;
     }
+    var allowed = Object.create(null);
+    for (var p = 0; p < styleProps.length; p++) allowed[styleProps[p]] = 1;
     var keys = Object.keys(styles || {});
     try {
       for (var i = 0; i < keys.length; i++) {
         var key = keys[i];
+        if (!allowed[key]) continue;
         var value = styles[key];
         var cssName = camelToKebab(key);
         if (typeof value !== 'string' || value.trim() === '') el.style.removeProperty(cssName);

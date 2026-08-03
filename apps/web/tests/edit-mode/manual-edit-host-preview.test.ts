@@ -28,6 +28,21 @@ describe('manual edit host preview fallback', () => {
     expect(el.style.getPropertyValue('color')).toBe('rgb(0, 0, 255)');
   });
 
+  it('ignores non-allowlisted preview style keys', () => {
+    const doc = makeDoc('<main data-od-id="hero">Hero</main>');
+    const ok = applyManualEditPreviewStylesToDocument(doc, 'hero', {
+      fontSize: '28px',
+      backgroundImage: 'url(https://evil.example/x.png)',
+      behavior: 'url(#xss)',
+    } as Partial<import('../../src/edit-mode/types').ManualEditStyles>);
+    const el = doc.querySelector('[data-od-id="hero"]') as HTMLElement;
+
+    expect(ok).toBe(true);
+    expect(el.style.getPropertyValue('font-size')).toBe('28px');
+    expect(el.style.getPropertyValue('background-image')).toBe('');
+    expect(el.style.getPropertyValue('behavior')).toBe('');
+  });
+
   it('removes empty style values instead of writing them', () => {
     const doc = makeDoc('<main data-od-id="hero" style="font-size: 32px !important">Hero</main>');
     applyManualEditPreviewStylesToDocument(doc, 'hero', { fontSize: '' });

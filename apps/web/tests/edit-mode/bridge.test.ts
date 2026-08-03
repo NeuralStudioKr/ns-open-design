@@ -375,6 +375,33 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('ignores non-allowlisted keys in od-edit-preview-style', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="hero">Hero</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const hero = dom.window.document.querySelector('[data-od-id="hero"]') as HTMLElement;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: {
+        type: 'od-edit-preview-style',
+        id: 'hero',
+        styles: {
+          fontSize: '30px',
+          backgroundImage: 'url(https://evil.example/x.png)',
+          behavior: 'url(#xss)',
+        },
+        version: 3,
+      },
+    }));
+
+    expect(hero.style.getPropertyValue('font-size')).toBe('30px');
+    expect(hero.style.getPropertyValue('background-image')).toBe('');
+    expect(hero.style.getPropertyValue('behavior')).toBe('');
+
+    dom.window.close();
+  });
+
   it('clears the important flag when a preview style value is emptied', () => {
     const dom = new JSDOM(
       `<main><h1 data-od-id="hero" style="font-size: 42px !important">Hero</h1></main>${buildManualEditBridge(true)}`,

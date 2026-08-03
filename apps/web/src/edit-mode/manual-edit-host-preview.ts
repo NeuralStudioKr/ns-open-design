@@ -11,7 +11,7 @@
  */
 
 import { isManualEditHostNode } from './bridge';
-import type { ManualEditRect, ManualEditStyles } from './types';
+import { MANUAL_EDIT_STYLE_PROPS, type ManualEditRect, type ManualEditStyles } from './types';
 
 function camelToKebab(name: string): string {
   return name.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
@@ -71,7 +71,10 @@ export function applyManualEditPreviewStylesToDocument(
   if (!doc) return false;
   const el = findManualEditPreviewTarget(doc, id);
   if (!el) return false;
+  // Match persist-path allowlist so preview cannot set arbitrary CSS props.
+  const allowed = new Set<string>(MANUAL_EDIT_STYLE_PROPS as readonly string[]);
   for (const [key, rawValue] of Object.entries(styles)) {
+    if (!allowed.has(key)) continue;
     const cssName = camelToKebab(key);
     if (typeof rawValue !== 'string' || rawValue.trim() === '') {
       el.style.removeProperty(cssName);

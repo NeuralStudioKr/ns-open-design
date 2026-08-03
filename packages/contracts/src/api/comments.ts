@@ -22,6 +22,8 @@ export interface PreviewAnnotationStyle {
   fontWeight?: string;
   lineHeight?: string;
   textAlign?: string;
+  textDecoration?: string;
+  whiteSpace?: string;
   fontFamily?: string;
   paddingTop?: string;
   paddingRight?: string;
