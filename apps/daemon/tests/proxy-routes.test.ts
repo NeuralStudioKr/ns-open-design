@@ -2250,6 +2250,101 @@ describe('API proxy routes', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('streams MiniMax chat with web_fetch only and omits max_tokens extensions', async () => {
+    const upstreamChatBodies: any[] = [];
+    const fetchMock = vi.fn(async (input: FetchInput, init?: FetchInit) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) return realFetch(input, init);
+      if (url === 'https://api.minimax.io/v1/chat/completions') {
+        upstreamChatBodies.push(JSON.parse(String(init?.body || '{}')));
+        return sseResponse([
+          'data: {"choices":[{"index":0,"delta":{"content":"MiniMax ready"}}]}',
+          '',
+          'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+          '',
+          'data: [DONE]',
+          '',
+        ].join('\n'));
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await realFetch(`${baseUrl}/api/proxy/minimax/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: 'https://api.minimaxi.chat/v1',
+        apiKey: 'sk-cp-test',
+        projectId: 'test-project',
+        model: 'MiniMax-M3',
+        messages: [{ role: 'user', content: 'www.teamver.com 참고해서 슬라이드 만들어줘' }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('MiniMax ready');
+    expect(body).toContain('event: end');
+    expect(upstreamChatBodies).toHaveLength(1);
+    expect(upstreamChatBodies[0]).not.toHaveProperty('max_tokens');
+    expect(upstreamChatBodies[0]).not.toHaveProperty('stream_options');
+    expect(upstreamChatBodies[0].tools.map((tool: any) => tool.function.name)).toEqual(['web_fetch']);
+  });
+
+  it('forces the MiniMax managed key on the MiniMax proxy route even when apiProtocol is omitted', async () => {
+    const prevDesignApi = process.env.TEAMVER_DESIGN_API_URL;
+    const prevOdKey = process.env.TEAMVER_OD_API_KEY;
+    const prevMiniMaxKey = process.env.TEAMVER_MINIMAX_API_KEY;
+    process.env.TEAMVER_DESIGN_API_URL = 'http://design-api:8000';
+    process.env.TEAMVER_OD_API_KEY = 'sk-ant-should-not-be-used';
+    process.env.TEAMVER_MINIMAX_API_KEY = 'sk-cp-managed-route';
+    try {
+      const fetchMock = vi.fn(async (input: FetchInput, init?: FetchInit) => {
+        const url = String(input);
+        if (url.startsWith(baseUrl)) return realFetch(input, init);
+        expect(url).toBe('https://api.minimax.io/v1/chat/completions');
+        expect((init?.headers as Record<string, string>).Authorization).toBe(
+          'Bearer sk-cp-managed-route',
+        );
+        return sseResponse([
+          'data: {"choices":[{"index":0,"delta":{"content":"managed ok"}}]}',
+          '',
+          'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+          '',
+          'data: [DONE]',
+          '',
+        ].join('\n'));
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await realFetch(`${baseUrl}/api/proxy/minimax/stream`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-teamver-user-id': 'user-1',
+          'x-workspace-id': 'workspace-1',
+        },
+        body: JSON.stringify({
+          useManagedApiKey: true,
+          projectId: 'test-project',
+          model: 'MiniMax-M3',
+          messages: [{ role: 'user', content: 'hello' }],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      await expect(res.text()).resolves.toContain('managed ok');
+    } finally {
+      if (prevDesignApi == null) delete process.env.TEAMVER_DESIGN_API_URL;
+      else process.env.TEAMVER_DESIGN_API_URL = prevDesignApi;
+      if (prevOdKey == null) delete process.env.TEAMVER_OD_API_KEY;
+      else process.env.TEAMVER_OD_API_KEY = prevOdKey;
+      if (prevMiniMaxKey == null) delete process.env.TEAMVER_MINIMAX_API_KEY;
+      else process.env.TEAMVER_MINIMAX_API_KEY = prevMiniMaxKey;
+    }
+  });
+
   // Plan §3.A4 / spec §11.8 (e2e-7): the API-fallback proxy paths must
   // never carry plugin context. The web sidecar's fallback mode bypasses
   // the daemon snapshot bus, so any pluginId / appliedPluginSnapshotId in
@@ -2262,6 +2357,7 @@ describe('API proxy routes', () => {
       '/api/proxy/azure/stream',
       '/api/proxy/google/stream',
       '/api/proxy/senseaudio/stream',
+      '/api/proxy/minimax/stream',
     ];
 
     for (const path of proxies) {

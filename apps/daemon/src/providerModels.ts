@@ -11,6 +11,7 @@ import { isLoopbackApiHost } from '@open-design/contracts/api/connectionTest';
 import { redactSecrets, validateBaseUrlResolved } from './connectionTest.js';
 import { googleProviderModelsUrl, normalizeGoogleModelId } from './google-models.js';
 import { aihubmixHeaders, aihubmixCatalogUrl, parseAIHubMixCatalog } from './aihubmix.js';
+import { normalizeMiniMaxBaseUrl } from './minimax-runtime.js';
 
 type ProviderModelsInput = ProviderModelsRequest & {
   signal?: AbortSignal;
@@ -161,6 +162,9 @@ function providerModelsUrl(protocol: ConnectionTestProtocol, baseUrl: string, ap
   if (protocol === 'openai' || protocol === 'senseaudio') {
     return appendVersionedApiPath(baseUrl, '/models');
   }
+  if (protocol === 'minimax') {
+    return appendVersionedApiPath(normalizeMiniMaxBaseUrl(baseUrl), '/models');
+  }
   if (protocol === 'anthropic') {
     const url = new URL(appendVersionedApiPath(baseUrl, '/models'));
     url.searchParams.set('limit', '1000');
@@ -176,7 +180,7 @@ function providerModelsHeaders(
   protocol: ConnectionTestProtocol,
   apiKey: string,
 ): Record<string, string> {
-  if (protocol === 'openai' || protocol === 'senseaudio') {
+  if (protocol === 'openai' || protocol === 'senseaudio' || protocol === 'minimax') {
     return { authorization: `Bearer ${apiKey}` };
   }
   if (protocol === 'aihubmix') {
@@ -202,7 +206,7 @@ function extractModels(protocol: ConnectionTestProtocol, data: unknown): Provide
   // (e.g. gpt-image-2 → "image_generation,llm") would otherwise leak in. Those
   // belong to the dedicated image/video/audio pickers.
   if (protocol === 'aihubmix') return parseAIHubMixCatalog(data, { chatOnly: true });
-  if (protocol === 'openai' || protocol === 'senseaudio') return extractOpenAiModels(data);
+  if (protocol === 'openai' || protocol === 'senseaudio' || protocol === 'minimax') return extractOpenAiModels(data);
   if (protocol === 'anthropic') return extractAnthropicModels(data);
   if (protocol === 'google') return extractGoogleModels(data);
   return [];
