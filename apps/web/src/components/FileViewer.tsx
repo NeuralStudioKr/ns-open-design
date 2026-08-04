@@ -7563,9 +7563,10 @@ function HtmlViewer({
             : paint
         ));
       } else {
-        // Failed measure for this id — drop stale paint from a prior (larger)
-        // selection so the overlay cannot stay oversized.
-        setManualEditHostPaintRect(null);
+        // Failed measure is often a transient iframe remount after move flush.
+        // Nulling here forces hybrid/visual compose and flashes the box; keep
+        // the last good paint until a successful measure or selection clear.
+        // Selection switches clear paint via the `!selectedId` branch / select path.
       }
       const measured = measureManualEditTargetContentRect(frame, selectedId);
       if (!measured || measured.rect.width < 1 || measured.rect.height < 1) return true;
