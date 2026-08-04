@@ -1739,6 +1739,86 @@ describe('manual edit source patches', () => {
     expect(salvaged.source).not.toMatch(/javascript/i);
   });
 
+  it('drops remote image()/image-set() on resource CSS props', () => {
+    const fragment = sanitizeManualEditHtmlFragment(
+      [
+        '<div style="',
+        'filter:image(&quot;https://evil.example/f.svg&quot;);',
+        'mask-image:image-set(&quot;https://evil.example/m.svg&quot; 1x);',
+        'color:red',
+        '">x</div>',
+      ].join(''),
+    );
+    expect(fragment).toContain('color:red');
+    expect(fragment).not.toContain('evil.example');
+    expect(fragment).not.toMatch(/filter\s*:/i);
+    expect(fragment).not.toMatch(/mask-image\s*:/i);
+
+    const salvaged = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{backdrop-filter:image("https://evil.example/f.svg");color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(salvaged.ok, salvaged.error).toBe(true);
+    expect(salvaged.source).toContain('color:#444');
+    expect(salvaged.source).not.toContain('evil.example');
+  });
+
+  it('rejects set-token image()/image-set() and bare scheme strings', () => {
+    for (const value of [
+      'image("javascript:alert(1)")',
+      'image-set("javascript:alert(1)" 1x)',
+      'javascript:alert(1)',
+      'data:text/html,hi',
+    ]) {
+      const denied = applyManualEditPatch(baseSource, {
+        kind: 'set-token',
+        token: '--brand',
+        value,
+      });
+      expect(denied.ok, value).toBe(false);
+      expect(denied.source).toContain('--brand: #111;');
+    }
+  });
+
+  it('scrubs image("data:…") without leaving truncated SVG junk', () => {
+    const dataHtml = sanitizeManualEditHtmlFragment(
+      '<div style=\'background: image("data:text/html,<script>alert(1)</script>");color:navy\'>x</div>',
+    );
+    expect(dataHtml).toContain('color:navy');
+    expect(dataHtml).not.toMatch(/data:text\/html/i);
+    expect(dataHtml).not.toMatch(/<script\b/i);
+
+    const nestedParen = sanitizeManualEditHtmlFragment(
+      '<div style=\'background: -webkit-image-set("data:image/svg+xml,<svg onload=alert(1)></svg>" 1x);color:navy\'>x</div>',
+    );
+    expect(nestedParen).toContain('color:navy');
+    expect(nestedParen).not.toMatch(/onload/i);
+    expect(nestedParen).not.toMatch(/<\/svg>/i);
+    expect(nestedParen).not.toMatch(/data:image\/svg/i);
+  });
+
+  it('drops foreignObject and MathML annotation-xml HTML islands', () => {
+    const out = sanitizeManualEditFullSource([
+      '<!doctype html><html><body>',
+      '<p data-od-id="ok">safe</p>',
+      '<svg><foreignObject><form action="/api/secrets" method="post">',
+      '<input name="cookie"><button>Send</button></form></foreignObject></svg>',
+      '<math><annotation-xml encoding="text/html">',
+      '<form action="/login"><input name="password"><button>Go</button></form>',
+      '</annotation-xml></math>',
+      '</body></html>',
+    ].join(''));
+    expect(out).toContain('data-od-id="ok"');
+    expect(out.toLowerCase()).not.toContain('foreignobject');
+    expect(out.toLowerCase()).not.toContain('annotation-xml');
+    expect(out.toLowerCase()).not.toContain('<form');
+    expect(out).not.toContain('/api/secrets');
+  });
+
   it('strips @font-face and @namespace from salvaged style siblings', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',

@@ -984,6 +984,9 @@ const MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS = new Set([
   // Legacy raw-text hosts that corrupt serialization.
   'plaintext',
   'xmp',
+  // HTML islands that can host interactive markup after attr scrub.
+  'foreignobject',
+  'annotation-xml',
 ]);
 
 const MANUAL_EDIT_SMIL_ANIM_TAGS = new Set([
@@ -1876,6 +1879,8 @@ const NON_CONTENT_REPLACEMENT_TAGS = new Set([
   'WEBVIEW',
   'PLAINTEXT',
   'XMP',
+  'FOREIGNOBJECT',
+  'ANNOTATION-XML',
 ]);
 
 /**
@@ -2006,9 +2011,15 @@ function isSafeCssTokenValue(value: string): boolean {
   // Decode CSS hex escapes so `\75rl(` / `\65xpression(` cannot bypass denies.
   const normalized = normalizeCssForSafetyScan(trimmed);
   if (/\burl\s*\(/i.test(normalized)) return false;
+  // CSS Images string forms are peer URL carriers to url().
+  if (/\b(?:-webkit-)?image(?:-set)?\s*\(/i.test(normalized)) return false;
+  if (/\belement\s*\(/i.test(normalized)) return false;
   if (/\bexpression\s*\(/i.test(normalized)) return false;
   if (/-moz-binding/i.test(normalized)) return false;
   if (/\bbehavior\s*:/i.test(normalized)) return false;
+  // Bare scheme strings (not only inside url()).
+  if (containsUnsafeEmbeddedCssOrScheme(normalized)) return false;
+  if (/(?:javascript|vbscript|data):/i.test(normalized)) return false;
   return true;
 }
 
@@ -2129,35 +2140,28 @@ function isForbiddenCssUrlScheme(value: string): boolean {
   );
 }
 
-/** Drop javascript/vbscript/data urls, image-set strings, and expression(). */
+/** Drop javascript/vbscript/data urls, image()/image-set strings, and expression(). */
 function scrubUnsafeCssFunctions(css: string): string {
   let text = String(css || '');
-  // Quoted and unquoted url(...) — compact ZWSP/Cf before scheme checks.
-  text = text.replace(/url\s*\(\s*(['"])([\s\S]*?)\1\s*\)/gi, (match, _q, inner: string) => (
-    isForbiddenCssUrlScheme(inner) ? 'url()' : match
-  ));
-  text = text.replace(/url\s*\(\s*([^)'"][^)]*)\)/gi, (match, inner: string) => (
-    isForbiddenCssUrlScheme(inner) ? 'url()' : match
-  ));
-  // CSS Images string form bypasses url(): -webkit-image-set("javascript:…" 1x)
-  text = text.replace(/-webkit-image-set\s*\([^)]*(?:javascript|vbscript|data):[^)]*\)/gi, 'none');
-  text = text.replace(/image-set\s*\([^)]*(?:javascript|vbscript|data):[^)]*\)/gi, 'none');
+  // Quote-aware rewrites — regex `[^)]*` truncates on `)` inside SVG/data URLs.
+  text = rewriteCssUrlFunctions(text);
+  text = rewriteCssImageFunctions(text);
   text = text.replace(/expression\s*\([^)]*\)/gi, 'initial');
   text = text.replace(/-moz-binding\s*:[^;]*/gi, '');
   // IE/HTC binding — same threat class as -moz-binding (incl. mid-rule).
   text = text.replace(/\bbehavior\s*:[^;}]*/gi, '');
   // Legacy Opera CSS link bindings (javascript: outside url()).
   text = text.replace(/-o-link(?:-source)?\s*:[^;}]*/gi, '');
-  // SVG/CSS paint & resource properties — remote url() can fetch attacker
-  // content into preview. Keep same-document #fragment only.
+  // SVG/CSS paint & resource properties — remote url()/image() can fetch
+  // attacker content into preview. Keep same-document #fragment only.
   // Declaration-level match so `filter: blur(2px) url(https://…)` is dropped,
   // and `(?<![-\w])` avoids mangling `background-filter` / `--hero-filter`.
   // Intentionally does NOT touch background/background-image (slide imagery).
-  text = dropCssDeclsWithNonFragmentUrl(
+  text = dropCssDeclsWithNonFragmentResource(
     text,
     '(?:-webkit-)?(?:backdrop-)?filter',
   );
-  text = dropCssDeclsWithNonFragmentUrl(
+  text = dropCssDeclsWithNonFragmentResource(
     text,
     '(?:-webkit-)?(?:clip-path|mask(?:-image)?|fill|stroke|cursor|marker(?:-(?:start|mid|end))?)',
   );
@@ -2171,21 +2175,31 @@ function scrubUnsafeCssFunctions(css: string): string {
 }
 
 /**
- * Drop whole CSS declarations whose value embeds a non-fragment url(...).
+ * Drop whole CSS declarations whose value embeds a non-fragment url(...)/image(...).
  * `propPattern` is inserted after a property-name boundary lookbehind.
  */
-function dropCssDeclsWithNonFragmentUrl(css: string, propPattern: string): string {
+function dropCssDeclsWithNonFragmentResource(css: string, propPattern: string): string {
   const re = new RegExp(
     `(^|[;{])(\\s*)(?<![\\w-])(${propPattern})\\s*:\\s*([^;{}]*)`,
     'gi',
   );
   return String(css || '').replace(re, (match, prefix: string, ws: string, _prop: string, value: string) => {
-    if (!/\burl\s*\(/i.test(value)) return match;
-    if (cssDeclarationHasNonFragmentUrl(value)) {
+    const hasUrl = /\burl\s*\(/i.test(value);
+    const hasImageFn = /\b(?:-webkit-)?image(?:-set)?\s*\(/i.test(value);
+    if (!hasUrl && !hasImageFn) return match;
+    if (
+      (hasUrl && cssDeclarationHasNonFragmentUrl(value))
+      || (hasImageFn && cssDeclarationHasNonFragmentImageFn(value))
+    ) {
       return prefix === '{' ? `{${ws}` : prefix === ';' ? `;${ws}` : ws;
     }
     return match;
   });
+}
+
+/** @deprecated alias — tests / call sites may still name the url-only helper. */
+function dropCssDeclsWithNonFragmentUrl(css: string, propPattern: string): string {
+  return dropCssDeclsWithNonFragmentResource(css, propPattern);
 }
 
 /** True when a CSS declaration value contains url(...) that is not #fragment. */
@@ -2194,6 +2208,16 @@ function cssDeclarationHasNonFragmentUrl(value: string): boolean {
   if (!/\burl\s*\(/i.test(text)) return false;
   const inners = extractCssUrlInners(text);
   // Fail closed if url( is present but nothing parseable was extracted.
+  if (inners.length === 0) return true;
+  return inners.some((inner) => !isSafeManualEditSvgResourceRef(inner));
+}
+
+/** True when image()/image-set() embeds a non-fragment resource URL. */
+function cssDeclarationHasNonFragmentImageFn(value: string): boolean {
+  const text = String(value || '');
+  if (!/\b(?:-webkit-)?image(?:-set)?\s*\(/i.test(text)) return false;
+  const inners = extractCssImageFunctionUrlInners(text);
+  // Fail closed if image( is present but nothing parseable was extracted.
   if (inners.length === 0) return true;
   return inners.some((inner) => !isSafeManualEditSvgResourceRef(inner));
 }
@@ -2238,22 +2262,128 @@ function isSafeManualEditPresentationCssValue(value: string): boolean {
   // var() can hide remote url() via custom props — fail closed for paint attrs.
   if (/\bvar\s*\(/i.test(normalized)) return false;
   if (cssDeclarationHasNonFragmentUrl(normalized)) return false;
+  if (cssDeclarationHasNonFragmentImageFn(normalized)) return false;
   return true;
 }
 
-/** Quote-aware extraction of url(...) inner texts from a CSS value. */
-function extractCssUrlInners(value: string): string[] {
-  const text = String(value || '');
+/**
+ * Find the next CSS function call named `funcName` (e.g. "url", "image-set")
+ * starting at `from`. Returns absolute [start, endExclusive) spanning the call,
+ * plus the raw args interior. Quote-aware so `)` inside strings does not end
+ * the call. Returns null when the call is truncated / unclosed (fail-closed).
+ */
+function findNextCssFunctionCall(
+  text: string,
+  funcName: string,
+  from = 0,
+): { start: number; end: number; args: string } | null {
+  const lower = text.toLowerCase();
+  const needle = `${funcName.toLowerCase()}(`;
+  let search = from;
+  while (search < text.length) {
+    const idx = lower.indexOf(needle, search);
+    if (idx < 0) return null;
+    // Require a CSS ident boundary so `mask-image(` is not matched as `image(`.
+    if (idx > 0 && /[\w-]/.test(text[idx - 1]!)) {
+      search = idx + 1;
+      continue;
+    }
+    let i = idx + needle.length;
+    let depth = 1;
+    let quote: '"' | "'" | null = null;
+    while (i < text.length && depth > 0) {
+      const ch = text[i]!;
+      if (quote) {
+        if (ch === '\\') {
+          i += 2;
+          continue;
+        }
+        if (ch === quote) quote = null;
+        i += 1;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        i += 1;
+        continue;
+      }
+      if (ch === '(') depth += 1;
+      else if (ch === ')') depth -= 1;
+      i += 1;
+    }
+    if (depth !== 0) return null;
+    return {
+      start: idx,
+      end: i,
+      args: text.slice(idx + needle.length, i - 1),
+    };
+  }
+  return null;
+}
+
+/** Rewrite url(...) with forbidden schemes to url() using quote-aware scans. */
+function rewriteCssUrlFunctions(css: string): string {
+  let text = String(css || '');
+  let out = '';
+  let cursor = 0;
+  while (cursor < text.length) {
+    const call = findNextCssFunctionCall(text, 'url', cursor);
+    if (!call) {
+      out += text.slice(cursor);
+      break;
+    }
+    out += text.slice(cursor, call.start);
+    const inner = call.args.trim().replace(/^(['"])([\s\S]*)\1$/, '$2');
+    out += isForbiddenCssUrlScheme(inner) ? 'url()' : text.slice(call.start, call.end);
+    cursor = call.end;
+  }
+  return out;
+}
+
+/**
+ * Rewrite image()/image-set()/-webkit-image-set() calls that embed forbidden
+ * schemes to `none`. Truncated calls fail closed (dropped through end of value).
+ */
+function rewriteCssImageFunctions(css: string): string {
+  const names = ['-webkit-image-set', 'image-set', 'image'] as const;
+  let text = String(css || '');
+  for (const name of names) {
+    let out = '';
+    let cursor = 0;
+    while (cursor < text.length) {
+      const call = findNextCssFunctionCall(text, name, cursor);
+      if (!call) {
+        out += text.slice(cursor);
+        break;
+      }
+      out += text.slice(cursor, call.start);
+      const urls = extractUrlCandidatesFromCssFunctionArgs(call.args);
+      const unsafe = urls.some((u) => isForbiddenCssUrlScheme(u))
+        || /(?:javascript|vbscript|data):/i.test(normalizeCssForSafetyScan(call.args));
+      // Unclosed / unparsable image fn — drop the rest of this CSS chunk.
+      if (urls.length === 0 && /(?:javascript|vbscript|data):/i.test(call.args)) {
+        out += 'none';
+        cursor = text.length;
+        break;
+      }
+      out += unsafe ? 'none' : text.slice(call.start, call.end);
+      cursor = call.end;
+    }
+    text = out;
+  }
+  return text;
+}
+
+/** Pull quoted strings and url() inners from image()/image-set() args. */
+function extractUrlCandidatesFromCssFunctionArgs(args: string): string[] {
+  const text = String(args || '');
   const out: string[] = [];
+  for (const inner of extractCssUrlInners(text)) out.push(inner);
   let i = 0;
   while (i < text.length) {
-    const idx = text.slice(i).toLowerCase().indexOf('url(');
-    if (idx < 0) break;
-    i += idx + 4;
-    while (i < text.length && /\s/.test(text[i]!)) i += 1;
-    let inner = '';
-    const q = text[i];
-    if (q === '"' || q === "'") {
+    const ch = text[i]!;
+    if (ch === '"' || ch === "'") {
+      const q = ch;
       i += 1;
       let end = i;
       while (end < text.length) {
@@ -2264,16 +2394,45 @@ function extractCssUrlInners(value: string): string[] {
         if (text[end] === q) break;
         end += 1;
       }
-      inner = text.slice(i, end);
+      const inner = text.slice(i, end).trim();
+      if (inner) out.push(inner);
       i = end < text.length ? end + 1 : end;
-    } else {
-      let end = i;
-      while (end < text.length && text[end] !== ')') end += 1;
-      inner = text.slice(i, end);
-      i = end < text.length ? end + 1 : end;
+      continue;
     }
-    const trimmed = inner.trim();
-    if (trimmed) out.push(trimmed);
+    i += 1;
+  }
+  return out;
+}
+
+/** Quote-aware extraction of url(...) inner texts from a CSS value. */
+function extractCssUrlInners(value: string): string[] {
+  const text = String(value || '');
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const call = findNextCssFunctionCall(text, 'url', cursor);
+    if (!call) break;
+    const raw = call.args.trim();
+    const unquoted = raw.replace(/^(['"])([\s\S]*)\1$/, '$2').trim();
+    if (unquoted) out.push(unquoted);
+    cursor = call.end;
+  }
+  return out;
+}
+
+/** Quoted / url() resource candidates inside image()/image-set() calls. */
+function extractCssImageFunctionUrlInners(value: string): string[] {
+  const text = String(value || '');
+  const names = ['-webkit-image-set', 'image-set', 'image'] as const;
+  const out: string[] = [];
+  for (const name of names) {
+    let cursor = 0;
+    while (cursor < text.length) {
+      const call = findNextCssFunctionCall(text, name, cursor);
+      if (!call) break;
+      out.push(...extractUrlCandidatesFromCssFunctionArgs(call.args));
+      cursor = call.end;
+    }
   }
   return out;
 }
@@ -2427,13 +2586,19 @@ export function isSafeManualEditUrl(value: string): boolean {
 
 /** True when a SMIL/CSS value embeds a scriptable scheme anywhere (not only as prefix). */
 function containsUnsafeEmbeddedCssOrScheme(value: string): boolean {
-  const normalized = compactManualEditUrlForSchemeCheck(
-    normalizeCssForSafetyScan(decodeHtmlCharacterReferences(value)),
-  );
+  const scanned = normalizeCssForSafetyScan(decodeHtmlCharacterReferences(value));
+  const normalized = compactManualEditUrlForSchemeCheck(scanned);
   if (normalized.includes('javascript:')) return true;
   if (normalized.includes('vbscript:')) return true;
   if (/\bexpression\(/.test(normalized)) return true;
   if (/url\((?:javascript|vbscript|data)\b/.test(normalized)) return true;
+  // CSS Images string form — schemes may sit outside url(...).
+  if (
+    /\b(?:-webkit-)?image(?:-set)?\(/i.test(scanned)
+    && /(?:javascript|vbscript|data):/i.test(normalized)
+  ) {
+    return true;
+  }
   return false;
 }
 
