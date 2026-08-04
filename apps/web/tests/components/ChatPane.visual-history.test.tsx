@@ -47,14 +47,13 @@ afterEach(() => {
 });
 
 describe('ChatPane visual mark history', () => {
-  it('renders visual comment screenshots when normal attachments were dropped', () => {
+  it('renders visual comment marks as compact chips when attachments were dropped', () => {
     const messages: ChatMessage[] = [
       {
         id: 'user-visual',
         role: 'user',
         content: '이 영역 고쳐줘',
         createdAt: 1,
-        // attachments intentionally missing — history merge / strip race.
         commentAttachments: [
           {
             id: 'visual-mark-1',
@@ -96,13 +95,12 @@ describe('ChatPane visual mark history', () => {
       />,
     );
 
-    expect(screen.getByTestId('visual-history-attachment')).toBeTruthy();
-    const img = screen.getByTestId('auth-project-image') as HTMLImageElement;
-    expect(img.src).toContain('uploads/visual-mark-1.png');
     expect(screen.getByText('시각 마크')).toBeTruthy();
+    expect(screen.getByText('여기 텍스트 키워')).toBeTruthy();
+    expect(screen.queryByTestId('auth-project-image')).toBeNull();
   });
 
-  it('does not render duplicate thumbnails when attachments and visual comments share a basename', () => {
+  it('does not duplicate visual screenshots as file attachment rows', () => {
     const messages: ChatMessage[] = [
       {
         id: 'user-visual-dup',
@@ -158,11 +156,12 @@ describe('ChatPane visual mark history', () => {
       />,
     );
 
-    expect(screen.getAllByTestId('auth-project-image')).toHaveLength(1);
-    expect(screen.queryByTestId('visual-history-attachment')).toBeNull();
+    expect(screen.queryByTestId('auth-project-image')).toBeNull();
+    expect(screen.getByText('시각 마크')).toBeTruthy();
+    expect(screen.queryByText('visual-mark-1.png')).toBeNull();
   });
 
-  it('does not fetch thumbnails for deleted ephemeral drawing screenshots', () => {
+  it('keeps visual comment chips when the drawing screenshot file was deleted', () => {
     const messages: ChatMessage[] = [
       {
         id: 'user-visual-missing',
@@ -210,7 +209,8 @@ describe('ChatPane visual mark history', () => {
       />,
     );
 
-    expect(screen.getByTestId('visual-history-attachment')).toBeTruthy();
+    expect(screen.getByText('시각 마크')).toBeTruthy();
+    expect(screen.getByText('여기')).toBeTruthy();
     expect(screen.queryByTestId('auth-project-image')).toBeNull();
   });
 });

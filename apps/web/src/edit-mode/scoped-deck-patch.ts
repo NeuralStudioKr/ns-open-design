@@ -337,6 +337,37 @@ export function repairWipedSlidesForVisualMarks(
   return html;
 }
 
+/**
+ * Visual-mark edits must not collapse the deck or wipe slide bodies. When the
+ * model returns fewer slides or hollow sections, graft marks into the current deck.
+ */
+export function stabilizeVisualMarkDeckHtml(
+  currentHtml: string,
+  nextHtml: string,
+  commentAttachments: readonly ChatCommentAttachment[],
+): string {
+  const visualMarks = commentAttachments.filter(isScreenshotOnlyVisualCommentTarget);
+  if (visualMarks.length === 0) return nextHtml;
+
+  const currentSlides = extractTopLevelSlideSections(
+    /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i.exec(currentHtml)?.[1] ?? currentHtml,
+  );
+  const nextSlides = extractTopLevelSlideSections(
+    /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i.exec(nextHtml)?.[1] ?? nextHtml,
+  );
+
+  if (nextSlides.length < currentSlides.length) {
+    console.warn('[deck-patch] visual-mark edit reduced slide count — grafting into current deck', {
+      currentSlideCount: currentSlides.length,
+      nextSlideCount: nextSlides.length,
+    });
+    const grafted = graftVisualMarksIntoDeckHtml(currentHtml, commentAttachments);
+    return grafted ?? currentHtml;
+  }
+
+  return repairWipedSlidesForVisualMarks(currentHtml, nextHtml, commentAttachments);
+}
+
 export function applyScopedDeckPatchToHtml(input: {
   currentHtml: string;
   patchBody?: string;
@@ -410,7 +441,7 @@ export function applyScopedDeckPatchToHtml(input: {
         return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
       }
       const repairedScoped = input.commentAttachments
-        ? repairWipedSlidesForVisualMarks(currentHtml, scoped.html, input.commentAttachments)
+        ? stabilizeVisualMarkDeckHtml(currentHtml, scoped.html, input.commentAttachments)
         : scoped.html;
       return { ok: true, html: repairedScoped };
     }
@@ -434,7 +465,7 @@ export function applyScopedDeckPatchToHtml(input: {
     return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
   }
   const repairedHtml = input.commentAttachments
-    ? repairWipedSlidesForVisualMarks(currentHtml, merged.html, input.commentAttachments)
+    ? stabilizeVisualMarkDeckHtml(currentHtml, merged.html, input.commentAttachments)
     : merged.html;
   return { ok: true, html: repairedHtml };
 }

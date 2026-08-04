@@ -2799,7 +2799,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             <StagedCommentAttachments
               attachments={currentCommentAttachments()}
               onRemove={removeCommentAttachment}
-              projectId={projectId}
               t={t}
             />
           ) : null}
@@ -3821,54 +3820,36 @@ function StagedRunContexts({
 function StagedCommentAttachments({
   attachments,
   onRemove,
-  projectId,
   t,
 }: {
   attachments: ChatCommentAttachment[];
   onRemove: (id: string) => void;
-  projectId: string | null;
   t: TranslateFn;
 }) {
   if (attachments.length === 0) return null;
   return (
     <div className="staged-row comment-staged-row" data-testid="staged-comment-attachments">
-      {attachments.map((a) => {
-        const screenshotPath = String(a.screenshotPath || '').trim();
-        const showScreenshot = Boolean(projectId && screenshotPath);
-        return (
-          <div
-            key={a.id}
-            className={`staged-chip staged-comment${showScreenshot ? ' staged-comment--visual' : ''}`}
+      {attachments.map((a) => (
+        <div key={a.id} className="staged-chip staged-comment">
+          <span
+            className="staged-name"
+            title={`${a.screenshotPath ? `${a.screenshotPath}: ` : ''}${commentTargetDisplayName(a)}${a.comment ? `: ${a.comment}` : ''}`}
           >
-            {showScreenshot ? (
-              <AuthenticatedProjectFileImage
-                projectId={projectId!}
-                path={screenshotPath}
-                alt={commentTargetDisplayName(a)}
-                fetchEnabled
-                trustExists
-              />
-            ) : null}
-            <span
-              className="staged-name"
-              title={`${screenshotPath ? `${screenshotPath}: ` : ''}${commentTargetDisplayName(a)}${a.comment ? `: ${a.comment}` : ''}`}
-            >
-              <strong>{commentTargetDisplayName(a)}</strong>
-              {a.comment ? <span>{a.comment}</span> : null}
-            </span>
-            <button
-              type="button"
-              className="staged-remove od-tooltip"
-              onClick={() => onRemove(a.id)}
-              title={t('chat.comments.removeAttachment')}
-              data-tooltip={t('chat.comments.removeAttachment')}
-              aria-label={t('chat.comments.removeAttachmentAria', { name: a.elementId })}
-            >
-              <Icon name="close" size={11} />
-            </button>
-          </div>
-        );
-      })}
+            <strong>{commentTargetDisplayName(a)}</strong>
+            {a.comment ? <span>{a.comment}</span> : null}
+          </span>
+          <button
+            type="button"
+            className="staged-remove od-tooltip"
+            onClick={() => onRemove(a.id)}
+            title={t('chat.comments.removeAttachment')}
+            data-tooltip={t('chat.comments.removeAttachment')}
+            aria-label={t('chat.comments.removeAttachmentAria', { name: a.elementId })}
+          >
+            <Icon name="close" size={11} />
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

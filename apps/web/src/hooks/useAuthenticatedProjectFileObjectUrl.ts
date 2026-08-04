@@ -193,7 +193,6 @@ export function useAuthenticatedProjectFileObjectUrl(
     }
 
     let cancelled = false;
-    let objectUrl: string | null = null;
     setImageSrc(null);
     setLoading(true);
     setFailed(false);
@@ -217,13 +216,13 @@ export function useAuthenticatedProjectFileObjectUrl(
 
       if (cancelled) return;
       if (blob) {
-        objectUrl = URL.createObjectURL(blob);
-        if (cancelled) {
-          URL.revokeObjectURL(objectUrl);
-          objectUrl = null;
+        const dataUrl = await blobToImageDataUrl(blob);
+        if (cancelled || !dataUrl) {
+          if (!cancelled) setFailed(true);
+          setLoading(false);
           return;
         }
-        setImageSrc(objectUrl);
+        setImageSrc(dataUrl);
         setFailed(false);
       } else {
         setFailed(true);
@@ -233,7 +232,6 @@ export function useAuthenticatedProjectFileObjectUrl(
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
       setImageSrc(null);
       setLoading(false);
       setFailed(false);

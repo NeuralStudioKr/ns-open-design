@@ -12,6 +12,7 @@ import {
   scopedCommentElementIds,
   graftVisualMarksIntoDeckHtml,
   repairWipedSlidesForVisualMarks,
+  stabilizeVisualMarkDeckHtml,
   hasElementScopedCommentAttachments,
   isVisualCommentAttachment,
 } from '../../src/edit-mode/scoped-deck-patch';
@@ -738,5 +739,31 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(repaired).toContain('logo.png');
     expect(repaired).toContain('od-visual-mark-target');
     expect(repaired).toMatch(/<svg[^>]*viewBox="0 0 24 24"/);
+  });
+
+  it('stabilizeVisualMarkDeckHtml grafts into current deck when slide count collapses', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Slide 1</h1></section>
+<section class="slide" data-slide-index="1"><p>Keep this text</p></section>
+<section class="slide" data-slide-index="2"><p>Slide 3</p></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      note: '하트 추가',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 1,
+    });
+    const collapsed = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0" style="position:relative">
+<div class="od-visual-mark-target" style="position:absolute;left:40px;top:50px;width:80px;height:60px"></div>
+</section>
+</body></html>`;
+    const stabilized = stabilizeVisualMarkDeckHtml(deck, collapsed, [visual]);
+    expect(stabilized).toContain('Slide 1');
+    expect(stabilized).toContain('Keep this text');
+    expect(stabilized).toContain('Slide 3');
+    expect(stabilized).toContain('od-visual-mark-target');
   });
 });

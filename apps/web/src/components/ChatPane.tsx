@@ -28,7 +28,11 @@ import type { Dict } from '../i18n/types';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
-import { projectFilePathExists, projectFilePathsInclude, projectFileResolvedPath } from '../utils/projectFilePaths';
+import {
+  excludeAttachmentsBackedByVisualScreenshots,
+  projectFilePathExists,
+  projectFileResolvedPath,
+} from '../utils/projectFilePaths';
 import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -59,7 +63,6 @@ import {
   extractPersistedRunErrorDiagnostic,
 } from '../teamver/projectErrorMessages';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
-import { isVisualCommentAttachment } from '../edit-mode/scoped-deck-patch';
 import { resolveLastAssistantMessageId } from '../runtime/conversation-message-dedupe';
 import {
   shouldIncludeMessageInChatRender,
@@ -3672,16 +3675,10 @@ function UserMessageImpl({
 }) {
   const attachments = sortChatAttachmentsForDisplay(message.attachments ?? []);
   const commentAttachments = message.commentAttachments ?? [];
-  const attachmentPaths = attachments.map((item) => item.path);
-  // Visual marks are often represented twice on send (image attachment +
-  // commentAttachment). When normal attachments were dropped from history,
-  // still render the screenshot from surviving visual comment metadata.
-  const visualHistoryAttachments = commentAttachments.filter((attachment) => {
-    if (!isVisualCommentAttachment(attachment)) return false;
-    const path = String(attachment.screenshotPath || attachment.filePath || '').trim();
-    if (!path) return false;
-    return !projectFilePathsInclude(attachmentPaths, path);
-  });
+  const visibleAttachments = excludeAttachmentsBackedByVisualScreenshots(
+    attachments.filter((attachment) => projectFilePathExists(projectFileNames, attachment.path)),
+    commentAttachments,
+  );
   const workspaceItems = message.runContext?.workspaceItems ?? [];
   const messagePluginSnapshot = message.appliedPluginSnapshot ?? activePluginSnapshot ?? null;
   const hasRunContext = Boolean(
@@ -3759,13 +3756,11 @@ function UserMessageImpl({
           ) : null}
         </div>
       ) : null}
-      {attachments.length > 0 || visualHistoryAttachments.length > 0 ? (
+      {visibleAttachments.length > 0 ? (
         <div className="user-attachments">
-          {attachments.map((a, index) => {
+          {visibleAttachments.map((a, index) => {
             const baseName = a.path.split('/').pop() || a.path;
-            const openable =
-              !!onRequestOpenFile &&
-              projectFilePathExists(projectFileNames, a.path);
+            const openable = !!onRequestOpenFile;
             const handleOpen = openable
               ? () => onRequestOpenFile?.(baseName)
               : undefined;
@@ -3781,17 +3776,7 @@ function UserMessageImpl({
                   <span className="staged-order" aria-label={`Attachment ${index + 1}`}>
                     {index + 1}
                   </span>
-                  {a.kind === 'image' && projectId ? (
-                    <AuthenticatedProjectFileImage
-                      projectId={projectId}
-                      path={a.path}
-                      alt={a.name}
-                      fetchEnabled={Boolean(a.path)}
-                      trustExists
-                    />
-                  ) : (
-                    <Icon name="file" size={14} />
-                  )}
+                  <Icon name={a.kind === 'image' ? 'image' : 'file'} size={14} />
                   <span className="staged-name">{a.name}</span>
                 </button>
                 {a.source?.type === 'teamver-drive' ? (
@@ -3810,54 +3795,20 @@ function UserMessageImpl({
               </div>
             );
           })}
-          {visualHistoryAttachments.map((a, index) => {
-            const path = String(a.screenshotPath || a.filePath || '').trim();
-            const baseName = path.split('/').pop() || path;
-            const label = commentTargetDisplayName(a);
-            const openable =
-              !!onRequestOpenFile &&
-              projectFilePathExists(projectFileNames, path);
-            const handleOpen = openable
-              ? () => onRequestOpenFile?.(baseName)
-              : undefined;
-            return (
-              <div key={`visual-${a.id}`} className="user-attachment-row" data-testid="visual-history-attachment">
-                <button
-                  type="button"
-                  className={`user-attachment staged-image${openable ? ' openable' : ''}`}
-                  onClick={handleOpen}
-                  disabled={!openable}
-                  title={openable ? t('chat.openFile', { name: baseName }) : path}
-                >
-                  <span className="staged-order" aria-label={`Attachment ${attachments.length + index + 1}`}>
-                    {attachments.length + index + 1}
-                  </span>
-                  {projectId ? (
-                    <AuthenticatedProjectFileImage
-                      projectId={projectId}
-                      path={path}
-                      alt={label}
-                      fetchEnabled={Boolean(path)}
-                      trustExists
-                    />
-                  ) : (
-                    <Icon name="file" size={14} />
-                  )}
-                  <span className="staged-name" title={a.comment ? `${label}: ${a.comment}` : label}>
-                    {label}
-                    {a.comment ? <span>{a.comment}</span> : null}
-                  </span>
-                </button>
-              </div>
-            );
-          })}
         </div>
       ) : null}
-      {commentAttachments.some((attachment) => !isVisualCommentAttachment(attachment)) ? (
+      {commentAttachments.length > 0 ? (
         <div className="user-attachments comment-history-attachments">
-          {commentAttachments.filter((attachment) => !isVisualCommentAttachment(attachment)).map((a) => (
+          {commentAttachments.map((a) => (
             <span key={a.id} className="user-attachment staged-comment">
-              <span className="staged-name" title={a.comment ? `${commentTargetDisplayName(a)}: ${a.comment}` : commentTargetDisplayName(a)}>
+              <span
+                className="staged-name"
+                title={
+                  a.comment
+                    ? `${commentTargetDisplayName(a)}: ${a.comment}`
+                    : commentTargetDisplayName(a)
+                }
+              >
                 <strong>{commentTargetDisplayName(a)}</strong>
                 {a.comment ? <span>{a.comment}</span> : null}
               </span>

@@ -32,6 +32,7 @@ import {
   resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
   graftVisualMarksIntoDeckHtml,
+  stabilizeVisualMarkDeckHtml,
   hasElementScopedCommentAttachments,
   isVisualCommentAttachment,
   scopedCommentSlideIndexesFromAttachments,
@@ -1843,7 +1844,12 @@ async function trySalvageScopedFullDeckRewrite(input: {
   if (!intent.ok) {
     return { ok: false, reason: intent.reason };
   }
-  return { ok: true, html: scoped.html };
+  const stabilized = stabilizeVisualMarkDeckHtml(
+    currentHtml,
+    scoped.html,
+    input.commentAttachments,
+  );
+  return { ok: true, html: stabilized };
 }
 
 function maskScopedCommentTargets(
@@ -4390,8 +4396,23 @@ export function ProjectView({
         }
       }
       const title = art.title || art.identifier || fileName;
-      const htmlBody =
+      let htmlBody =
         ext === '.html' ? repairArtifactDocumentHead(artifactToPersist.html) : artifactToPersist.html;
+      if (
+        ext === '.html' &&
+        persistCommentAttachments.some(isVisualCommentAttachment)
+      ) {
+        const currentDeckHtml = await fetchProjectFileText(project.id, fileName, {
+          cache: 'no-store',
+        });
+        if (currentDeckHtml) {
+          htmlBody = stabilizeVisualMarkDeckHtml(
+            currentDeckHtml,
+            htmlBody,
+            persistCommentAttachments,
+          );
+        }
+      }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
         const currentScopedHtml = await fetchProjectFileText(project.id, fileName, {
           cache: 'no-store',
