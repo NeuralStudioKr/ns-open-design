@@ -381,10 +381,11 @@ export function mergeManualEditTargetsFromSource(
         ?? (hint ? findElementByHint(nextDoc, scope, hint) : null)
       : null;
     if (!currentTarget || !nextTarget) continue;
+    if (isUnsafeManualEditReplacementRoot(nextTarget)) continue;
     const currentOuter = currentTarget.outerHTML;
     const nextOuter = nextTarget.outerHTML;
     const replacement = currentDoc.importNode(nextTarget, true);
-    finalizeManualEditReplacement(currentTarget, replacement);
+    if (!finalizeManualEditReplacement(currentTarget, replacement)) continue;
     currentTarget.replaceWith(replacement);
     replacedCount += 1;
     if (currentOuter !== nextOuter) changedCount += 1;
@@ -440,9 +441,14 @@ export function graftPatchedTargetElementFromSource(
   if (currentTarget.outerHTML === patchedTarget.outerHTML) {
     return { ok: false, source: currentSource, error: 'Selected targets were unchanged.' };
   }
+  if (isUnsafeManualEditReplacementRoot(patchedTarget)) {
+    return { ok: false, source: currentSource, error: 'Replacement root element is not allowed.' };
+  }
 
   const replacement = currentDoc.importNode(patchedTarget, true);
-  finalizeManualEditReplacement(currentTarget, replacement);
+  if (!finalizeManualEditReplacement(currentTarget, replacement)) {
+    return { ok: false, source: currentSource, error: 'Replacement root element is not allowed.' };
+  }
   currentTarget.replaceWith(replacement);
   return { ok: true, source: serializeSource(currentDoc, currentSource) };
 }
@@ -732,9 +738,14 @@ export function mergeManualEditTargetByHint(
   if (currentOuter === nextOuter) {
     return { ok: false, source: currentSource, reason: 'Selected targets were unchanged.' };
   }
+  if (isUnsafeManualEditReplacementRoot(nextTarget)) {
+    return { ok: false, source: currentSource, reason: 'Replacement root element is not allowed.' };
+  }
 
   const replacement = currentDoc.importNode(nextTarget, true);
-  finalizeManualEditReplacement(currentTarget, replacement);
+  if (!finalizeManualEditReplacement(currentTarget, replacement)) {
+    return { ok: false, source: currentSource, reason: 'Replacement root element is not allowed.' };
+  }
   currentTarget.replaceWith(replacement);
   return {
     ok: true,
@@ -928,6 +939,11 @@ const MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS = new Set([
   'template',
   // Nested <style> bypasses sibling-salvage @import scrub — drop from trees.
   'style',
+  // Legacy SVG / HTML executable hosts.
+  'handler',
+  'applet',
+  'frame',
+  'frameset',
 ]);
 
 const MANUAL_EDIT_SMIL_ANIM_TAGS = new Set([
@@ -995,7 +1011,12 @@ function sanitizeManualEditReplacementTree(root: Element): void {
     }
     for (const attr of Array.from(el.attributes)) {
       const lower = attr.name.toLowerCase();
-      if (lower.startsWith('on') || lower === 'srcdoc' || lower === 'behavior') {
+      if (
+        lower.startsWith('on')
+        || lower === 'srcdoc'
+        || lower === 'behavior'
+        || lower === 'http-equiv'
+      ) {
         el.removeAttribute(attr.name);
         continue;
       }
@@ -1037,10 +1058,14 @@ function sanitizeManualEditReplacementTree(root: Element): void {
   for (const el of toRemove) el.remove();
 }
 
-function finalizeManualEditReplacement(currentTarget: Element, replacement: Element): void {
+function finalizeManualEditReplacement(currentTarget: Element, replacement: Element): boolean {
+  // Merge/graft can promote a model `<script data-od-id>` into the root;
+  // tree sanitize only strips nested dangerous tags.
+  if (isUnsafeManualEditReplacementRoot(replacement)) return false;
   preserveManualEditIdentityAttributes(currentTarget, replacement);
   stripDescendantManualEditIdentityAttributes(replacement);
   sanitizeManualEditReplacementTree(replacement);
+  return true;
 }
 
 /**
@@ -1716,7 +1741,9 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
   if (!next) {
     return { ok: false, error: 'Replacement HTML must contain exactly one root element.' };
   }
-  finalizeManualEditReplacement(el, next);
+  if (!finalizeManualEditReplacement(el, next)) {
+    return { ok: false, error: 'Replacement root element is not allowed.' };
+  }
   el.replaceWith(next);
   // Style siblings were dropped by single-root salvage — keep their rules
   // so "make it stand out" edits that ship class + <style> still paint.
@@ -1754,6 +1781,10 @@ const NON_CONTENT_REPLACEMENT_TAGS = new Set([
   'IFRAME',
   'OBJECT',
   'EMBED',
+  'HANDLER',
+  'APPLET',
+  'FRAME',
+  'FRAMESET',
 ]);
 
 /**
@@ -2077,7 +2108,14 @@ function isSafeAttributeName(value: string): boolean {
   const lower = value.toLowerCase();
   // Block event handlers and high-risk markup attrs from model set-attributes.
   if (lower.startsWith('on')) return false;
-  if (lower === 'style' || lower === 'srcdoc' || lower === 'behavior') return false;
+  if (
+    lower === 'style'
+    || lower === 'srcdoc'
+    || lower === 'behavior'
+    || lower === 'http-equiv'
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -2158,6 +2196,10 @@ export function isSafeManualEditUrl(value: string): boolean {
   if (compact.startsWith('file:')) return false;
   if (compact.startsWith('about:')) return false;
   if (compact.startsWith('filesystem:')) return false;
+  if (compact.startsWith('chrome:')) return false;
+  if (compact.startsWith('chrome-extension:')) return false;
+  if (compact.startsWith('moz-extension:')) return false;
+  if (compact.startsWith('resource:')) return false;
   if (compact.startsWith('data:')) {
     if (compact.startsWith('data:text/html')) return false;
     if (compact.startsWith('data:image/svg+xml')) return false;

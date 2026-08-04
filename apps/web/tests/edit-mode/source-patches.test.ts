@@ -683,6 +683,56 @@ describe('manual edit source patches', () => {
     }
   });
 
+  it('rejects dangerous merge/graft replacement roots', () => {
+    const current = baseSource;
+    const next = baseSource.replace(
+      '<h1 data-od-id="hero-title">Original title</h1>',
+      '<script data-od-id="hero-title" src="https://evil.example/x.js"></script>',
+    );
+    const merged = mergeManualEditTargetsFromSource(current, next, ['hero-title']);
+    expect(merged.ok).toBe(false);
+    expect(merged.source).toContain('<h1 data-od-id="hero-title">Original title</h1>');
+    expect(merged.source).not.toMatch(/<script\b/i);
+
+    const grafted = graftPatchedTargetElementFromSource(current, next, 'hero-title');
+    expect(grafted.ok).toBe(false);
+    expect(grafted.source).toContain('<h1 data-od-id="hero-title">Original title</h1>');
+  });
+
+  it('strips handler/applet tags and http-equiv attributes from fragments', () => {
+    expect(
+      sanitizeManualEditHtmlFragment(
+        '<div><handler type="application/javascript">alert(1)</handler><span>ok</span></div>',
+      ),
+    ).toBe('<div><span>ok</span></div>');
+    expect(
+      sanitizeManualEditHtmlFragment(
+        '<div><meta http-equiv="refresh" content="0;url=https://evil.example">x</div>',
+      ),
+    ).toBe('<div>x</div>');
+
+    const attrs = applyManualEditPatch(baseSource, {
+      kind: 'set-attributes',
+      id: 'hero-title',
+      attributes: { 'http-equiv': 'refresh', title: 'ok' },
+    });
+    expect(attrs.ok, attrs.error).toBe(true);
+    expect(readManualEditAttributes(attrs.source, 'hero-title')['http-equiv']).toBeUndefined();
+    expect(readManualEditAttributes(attrs.source, 'hero-title').title).toBe('ok');
+  });
+
+  it('rejects chrome/resource extension URL schemes', () => {
+    for (const href of ['chrome://settings', 'resource://gre/modules/x.js', 'moz-extension://abc/x']) {
+      const denied = applyManualEditPatch(baseSource, {
+        kind: 'set-link',
+        id: 'cta',
+        text: 'Start',
+        href,
+      });
+      expect(denied.ok, href).toBe(false);
+    }
+  });
+
   it('scrubs -o-link and remote filter urls from salvaged styles', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',
