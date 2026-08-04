@@ -45,12 +45,22 @@
 
 | 영역 | 파일 | 요지 |
 |------|------|------|
-| prefix hold | `FileViewer.tsx` | `embedPreviewPrefixSettled` 전까지 srcDoc `''`; **1.5s fail-open paint**; fail-open/회전 시에만 remount |
+| prefix hold | `FileViewer.tsx` | `embedPreviewPrefixSettled` 전까지 srcDoc `''`; **attempt0 실패 시 settle** · **2.5s hung backup**; fail-open/회전 시에만 remount |
 | base href | `file-viewer-render-mode.ts` | `resolveHtmlPreviewSrcDocBaseHref` — `about:blank`를 srcDoc base로 쓰지 않음 |
 | filesRefresh | `FileViewer.tsx` | cache invalidate + `reloadKey`만; **last-stable clear / 즉시 remount 금지** |
+| content remount | `FileViewer.tsx` | non-streaming `previewSource` 교체 시 srcDoc iframe remount (in-place srcDoc 갱신 레이스 차단) |
 | sticky fit | `FileViewer.tsx` | `deckHostViewportFitActive` — source null에도 listener·**layoutBox options** 유지 |
-| untilSized | `deckPreviewFit.ts` | delay 창 동안 매 tick post (remount 후 contentWindow 교체 대응) |
-| recovery | `FileViewer.tsx` | host ResizeObserver + `od:stacked-deck-ready` 대기 slow loop (srcDoc 토큰마다 reset하지 않음) |
+| untilSized | `deckPreviewFit.ts` | delay 창 동안 매 tick post |
+| viewport request | `FileViewer.tsx` | 요청마다 follow-up untilSized 재무장 (성공 post 직후 remount 대비) |
+| recovery | `FileViewer.tsx` | ResizeObserver + stacked-ready slow loop · **visibility/pageshow** re-nudge |
+
+### 2026-08-04 재검토 (재발 방지)
+
+잔여 레이스 추가 차단:
+1. srcDoc **속성만** 바뀌고 bridge boot이 불완전할 때 → content remount
+2. viewport request 성공 직후 remount → follow-up untilSized 항상 arm
+3. 탭 백그라운드 후 복귀 → `visibilitychange` / `pageshow` fit 복구
+4. fail-open을 attempt0 완료 후로 당겨 mid-flight paint→이중 remount 완화
 
 ---
 

@@ -6340,12 +6340,11 @@ function HtmlViewer({
       setEmbedPreviewPrefixSettled(false);
     }
     const retryDelaysMs = [0, 400, 1_200] as const;
-    // Do not leave the preview blank for the full 8s×retry budget when
-    // preview-url is hung — fail-open paint (possibly without base) and remount
-    // later if a prefix arrives.
+    // Absolute backup if attempt 0 never returns (hung fetch). Prefer settling
+    // right after attempt 0 so we do not paint mid-flight then remount twice.
     const failOpenPaintTimer = window.setTimeout(() => {
       if (!cancelled) setEmbedPreviewPrefixSettled(true);
-    }, 1_500);
+    }, 2_500);
     // Fail-open on first null so srcDoc can paint, then retry with a fresh
     // abort budget. Auth recovery bumps embedAuthRecoveryNonce and invalidates
     // the cached prefix so stale daemon scopes / 401 races do not leave deck
@@ -6379,7 +6378,12 @@ function HtmlViewer({
           setEmbedPreviewPrefixSettled(true);
           return;
         }
-        if (attempt === 0) setEmbedPreviewPrefix(null);
+        if (attempt === 0) {
+          // Allow first paint without base; a later successful retry remounts.
+          setEmbedPreviewPrefix(null);
+          setEmbedPreviewPrefixSettled(true);
+          window.clearTimeout(failOpenPaintTimer);
+        }
       }
       if (!cancelled) {
         window.clearTimeout(failOpenPaintTimer);
@@ -6534,6 +6538,37 @@ function HtmlViewer({
     activatedSrcDocTransportHtmlRef.current = null;
     setSrcDocTransportResetKey((key) => key + 1);
   }, [embedPreviewPrefix, embedPreviewPrefixSettled, teamverEmbedPreviewMode]);
+  // Agent / disk HTML replacement often updates the srcDoc attribute in place.
+  // Some browsers reuse the iframe document without a clean bridge boot, which
+  // leaves compact decks on a black letterbox until toolbar refresh. Remount
+  // once per non-streaming content change on the srcDoc transport.
+  const lastDeckPreviewSourceRef = useRef<string | null>(null);
+  useEffect(() => {
+    const identity = `${projectId}\0${file.name}`;
+    if (deckHostViewportFitIdentityRef.current !== identity) {
+      lastDeckPreviewSourceRef.current = null;
+    }
+    if (!deckHostViewportFitActive || mode !== 'preview' || useUrlLoadPreview) return;
+    if (!previewSource) return;
+    if (streaming) {
+      lastDeckPreviewSourceRef.current = previewSource;
+      return;
+    }
+    const prev = lastDeckPreviewSourceRef.current;
+    lastDeckPreviewSourceRef.current = previewSource;
+    if (prev != null && prev !== previewSource) {
+      activatedSrcDocTransportHtmlRef.current = null;
+      setSrcDocTransportResetKey((key) => key + 1);
+    }
+  }, [
+    previewSource,
+    streaming,
+    deckHostViewportFitActive,
+    mode,
+    useUrlLoadPreview,
+    projectId,
+    file.name,
+  ]);
   // Reset the shell-ready latch whenever the srcDoc iframe re-mounts. The
   // next shell will post `od:srcdoc-transport-ready` (or fire onLoad) and
   // flip this back to true. See #2253.
@@ -6799,27 +6834,27 @@ function HtmlViewer({
       if (target && target === activeTransport) {
         iframeRef.current = target;
       }
-      // Immediate post may no-op at 0×0; coalesce one retry schedule so chase
-      // spam does not stack dozens of timer chains.
-      const posted = postDeckHostViewportToIframe(target, deckPreviewFitScale, deckPreviewFitOptions);
-      if (!posted) {
-        cancelZeroSizeRetry?.();
-        cancelZeroSizeRetry = schedulePostDeckHostViewportUntilSized(
-          () =>
-            resolveDeckPreviewIframeFromSource(requestSource, [
-              srcDocPreviewIframeRef.current,
-              urlPreviewIframeRef.current,
-              presentIframeRef.current,
-              iframeRef.current,
-            ])
-            ?? (useUrlLoadPreview
-              ? urlPreviewIframeRef.current
-              : srcDocPreviewIframeRef.current)
-            ?? iframeRef.current,
-          deckPreviewFitScale,
-          deckPreviewFitOptions,
-        );
-      }
+      // Immediate post may no-op at 0×0. Always arm a short follow-up window —
+      // a successful post to a frame that remounts on the next tick otherwise
+      // leaves the replacement iframe without a host viewport.
+      postDeckHostViewportToIframe(target, deckPreviewFitScale, deckPreviewFitOptions);
+      cancelZeroSizeRetry?.();
+      cancelZeroSizeRetry = schedulePostDeckHostViewportUntilSized(
+        () =>
+          resolveDeckPreviewIframeFromSource(requestSource, [
+            srcDocPreviewIframeRef.current,
+            urlPreviewIframeRef.current,
+            presentIframeRef.current,
+            iframeRef.current,
+          ])
+          ?? (useUrlLoadPreview
+            ? urlPreviewIframeRef.current
+            : srcDocPreviewIframeRef.current)
+          ?? iframeRef.current,
+        deckPreviewFitScale,
+        [0, 32, 80, 160, 320, 640, 1_200, 2_400],
+        deckPreviewFitOptions,
+      );
     }
     window.addEventListener('message', onDeckViewportRequest);
     return () => {
@@ -6994,6 +7029,41 @@ function HtmlViewer({
     resolveActiveDeckPreviewIframe,
     isOurPreviewIframeSource,
     embedPreviewPrefixSettled,
+  ]);
+
+  // Tab blur/background can leave compact decks unfitted after the iframe
+  // throttles timers; re-nudge when the page becomes visible again.
+  useEffect(() => {
+    if (!deckHostViewportFitActive || mode !== 'preview') return;
+    let cancelUntilSized: (() => void) | null = null;
+    const recover = () => {
+      if (document.visibilityState === 'hidden') return;
+      cancelUntilSized?.();
+      nudgeDeckPreviewFit(
+        resolveActiveDeckPreviewIframe,
+        deckPreviewFitScale,
+        deckPreviewFitOptions,
+      );
+      cancelUntilSized = schedulePostDeckHostViewportUntilSized(
+        resolveActiveDeckPreviewIframe,
+        deckPreviewFitScale,
+        [0, 50, 150, 400, 900],
+        deckPreviewFitOptions,
+      );
+    };
+    document.addEventListener('visibilitychange', recover);
+    window.addEventListener('pageshow', recover);
+    return () => {
+      cancelUntilSized?.();
+      document.removeEventListener('visibilitychange', recover);
+      window.removeEventListener('pageshow', recover);
+    };
+  }, [
+    deckHostViewportFitActive,
+    mode,
+    deckPreviewFitScale,
+    deckPreviewFitOptions,
+    resolveActiveDeckPreviewIframe,
   ]);
 
   // Stream end often rebuilds srcDoc / clears liveHtml — re-nudge fit once.

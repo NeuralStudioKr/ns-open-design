@@ -34,10 +34,11 @@ describe("FileViewer streaming slide preview", () => {
     expect(block).toContain('do NOT clear last-stable');
   });
 
-  it('fail-opens prefix settle paint within 1.5s so hung preview-url cannot blank forever', () => {
+  it('fail-opens prefix settle after first attempt (or 2.5s hung backup)', () => {
     const source = readSource('src/components/FileViewer.tsx');
     expect(source).toContain('failOpenPaintTimer');
-    expect(source).toMatch(/setTimeout\(\(\) => \{\s*if \(!cancelled\) setEmbedPreviewPrefixSettled\(true\);\s*\}, 1_500\)/);
+    expect(source).toMatch(/setTimeout\(\(\) => \{\s*if \(!cancelled\) setEmbedPreviewPrefixSettled\(true\);\s*\}, 2_500\)/);
+    expect(source).toContain('Allow first paint without base; a later successful retry remounts');
   });
 
   it('keeps a host ResizeObserver fit recovery loop for intermittent letterbox', () => {
@@ -46,6 +47,26 @@ describe("FileViewer streaming slide preview", () => {
     expect(source).toContain("data?.type !== 'od:stacked-deck-ready'");
     expect(source).toContain('nudgeDeckPreviewFit');
     expect(source).toContain('Intentionally omit `srcDoc`');
+  });
+
+  it('remounts srcDoc when non-streaming deck HTML is replaced', () => {
+    const source = readSource('src/components/FileViewer.tsx');
+    expect(source).toContain('lastDeckPreviewSourceRef');
+    expect(source).toContain('once per non-streaming content change on the srcDoc transport');
+  });
+
+  it('re-nudges deck fit when the page becomes visible again', () => {
+    const source = readSource('src/components/FileViewer.tsx');
+    expect(source).toContain("document.addEventListener('visibilitychange', recover)");
+    expect(source).toContain("window.addEventListener('pageshow', recover)");
+  });
+
+  it('arms follow-up untilSized after every host-viewport request', () => {
+    const source = readSource('src/components/FileViewer.tsx');
+    expect(source).toContain('Always arm a short follow-up window');
+    expect(source).toMatch(
+      /postDeckHostViewportToIframe\(target, deckPreviewFitScale, deckPreviewFitOptions\);\s*cancelZeroSizeRetry/,
+    );
   });
 
   it("gates live iframe updates on repaired html stability during streaming", () => {
