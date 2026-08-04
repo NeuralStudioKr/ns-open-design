@@ -490,10 +490,16 @@ function tryVisualOrAnchorlessSlideSwap(input: {
   if (!allow) {
     return { ok: false, reason: 'No matching targets found to merge.' };
   }
+  // Same sanitize gate as style-only / text-preserved slide fallbacks —
+  // visual/anchorless swaps must not persist sibling script/on*.
+  const sanitizedSlide = sanitizeManualEditHtmlFragment(patchedSlide);
+  if (!sanitizedSlide.trim()) {
+    return { ok: false, reason: 'No matching targets found to merge.' };
+  }
   const swapped = applyDeckPatch({
     currentHtml: input.nextHtml,
     patch: {
-      ops: [{ op: 'replace', slideIndex: input.slideIndex, html: patchedSlide }],
+      ops: [{ op: 'replace', slideIndex: input.slideIndex, html: sanitizedSlide }],
     },
   });
   if (!swapped.ok) {
@@ -724,21 +730,24 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
     nextSlide !== patchedSlide &&
     anchors.length === 0;
   if (acceptForAnchorlessNotFound) {
-    const swapped = applyDeckPatch({
-      currentHtml: input.nextHtml,
-      patch: {
-        ops: [{ op: 'replace', slideIndex: input.slideIndex, html: patchedSlide }],
-      },
-    });
-    if (swapped.ok) {
-      console.warn('[deck-patch] accepted last-resort slide-level swap', {
-        slideIndex: input.slideIndex,
-        ids,
-        reason: merged.reason,
-        branch: 'anchor-less',
-        anchorCount: anchors.length,
+    const sanitizedSlide = sanitizeManualEditHtmlFragment(patchedSlide);
+    if (sanitizedSlide.trim()) {
+      const swapped = applyDeckPatch({
+        currentHtml: input.nextHtml,
+        patch: {
+          ops: [{ op: 'replace', slideIndex: input.slideIndex, html: sanitizedSlide }],
+        },
       });
-      return { ok: true, html: swapped.html };
+      if (swapped.ok) {
+        console.warn('[deck-patch] accepted last-resort slide-level swap', {
+          slideIndex: input.slideIndex,
+          ids,
+          reason: merged.reason,
+          branch: 'anchor-less',
+          anchorCount: anchors.length,
+        });
+        return { ok: true, html: swapped.html };
+      }
     }
   }
 

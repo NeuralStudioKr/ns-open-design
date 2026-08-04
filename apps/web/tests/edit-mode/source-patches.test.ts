@@ -633,7 +633,71 @@ describe('manual edit source patches', () => {
     const source = '<!doctype html><html><body><h1 data-od-id="hero-title">Snapshot</h1></body></html>';
     const result = applyManualEditPatch(baseSource, { kind: 'set-full-source', source });
 
-    expect(result).toEqual({ ok: true, source });
+    expect(result.ok).toBe(true);
+    expect(result.source).toContain('<h1 data-od-id="hero-title">Snapshot</h1>');
+    expect(result.source).toMatch(/<!doctype html>/i);
+  });
+
+  it('sanitizes set-full-source so script/on* cannot ride undo snapshots', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<img src="x" onerror="alert(1)">',
+      '<script src="https://evil.example/x.js"></script>',
+      '<h1 data-od-id="hero-title">Snapshot</h1>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(baseSource, { kind: 'set-full-source', source });
+    expect(result.ok).toBe(true);
+    expect(result.source).toContain('hero-title');
+    expect(result.source).not.toMatch(/<script\b/i);
+    expect(result.source).not.toMatch(/onerror/i);
+    expect(result.source).not.toContain('evil.example');
+  });
+
+  it('rejects dangerous identity-matched set-outer-html roots', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<script data-od-id="hero-title" src="https://evil.example/x.js"></script>',
+        '<h1>Fallback safe title</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).not.toMatch(/<script\b/i);
+    expect(html).not.toContain('evil.example');
+    expect(result.source).not.toMatch(/<script\b/i);
+  });
+
+  it('rejects blob/file/about URL schemes on links', () => {
+    for (const href of ['blob:https://app.example/uuid', 'file:///etc/passwd', 'about:blank']) {
+      const denied = applyManualEditPatch(baseSource, {
+        kind: 'set-link',
+        id: 'cta',
+        text: 'Start',
+        href,
+      });
+      expect(denied.ok, href).toBe(false);
+      expect(readManualEditFields(baseSource, 'cta').href).toBe('/start');
+    }
+  });
+
+  it('scrubs -o-link and remote filter urls from salvaged styles', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{-o-link:"javascript:alert(1)";filter:url(https://evil.example/f.svg#x);color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('.hero-pop{');
+    expect(result.source).toContain('color:#444');
+    expect(result.source).not.toMatch(/-o-link/i);
+    expect(result.source).not.toContain('evil.example');
+    expect(result.source).not.toMatch(/javascript/i);
   });
 
   it('updates CSS tokens in style tags', () => {

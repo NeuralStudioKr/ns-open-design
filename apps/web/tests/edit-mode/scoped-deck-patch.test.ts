@@ -360,6 +360,48 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(result.html).toContain('<h2>Title</h2>');
   });
 
+  it('sanitizes script/on* from anchor-less last-resort slide-level swaps', () => {
+    const currentHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>인트로</h1></section>
+<section class="slide" data-slide-index="1">
+  <p>어떤 본문 텍스트</p>
+</section>
+</body></html>`;
+    const patchedHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>인트로</h1></section>
+<section class="slide" data-slide-index="1">
+  <p style="color:#ef4444">어떤 본문 텍스트</p>
+  <img src="x" onerror="alert(1)">
+  <script src="https://evil.example/x.js"></script>
+</section>
+</body></html>`;
+    const anchorLessAttachment: ChatCommentAttachment = {
+      id: 'c1',
+      order: 1,
+      filePath: 'deck.html',
+      elementId: 'phantom-id-not-in-deck',
+      selector: '[data-od-id="phantom-id-not-in-deck"]',
+      label: 'p',
+      comment: '강조',
+      currentText: '',
+      htmlHint: '',
+      pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+      selectionKind: 'element',
+      slideIndex: 1,
+    };
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml,
+      patchedHtml,
+      commentAttachments: [anchorLessAttachment],
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.html).toContain('color:#ef4444');
+    expect(result.html).not.toMatch(/<script\b/i);
+    expect(result.html).not.toMatch(/onerror/i);
+    expect(result.html).not.toContain('evil.example');
+  });
+
   it('accepts an anchor-less scoped edit via the last-resort slide-level swap', () => {
     // Bug (2026-07-29): user reported "deck_patch_merge_failed — No
     // matching targets found to merge." The attachment carried a

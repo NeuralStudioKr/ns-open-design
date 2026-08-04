@@ -38,7 +38,11 @@ export function applyManualEditPatch(
   scope: ManualEditSourceScope = {},
   hint?: ManualEditMergeTargetHint,
 ): ManualEditPatchResult {
-  if (patch.kind === 'set-full-source') return { ok: true, source: patch.source };
+  if (patch.kind === 'set-full-source') {
+    // Undo / snapshot restore — still run the same tree sanitize so a
+    // mistaken or untrusted full-source payload cannot reintroduce script.
+    return { ok: true, source: sanitizeManualEditFullSource(patch.source) };
+  }
 
   const doc = parseSource(source);
   if (!doc) return { ok: false, source, error: 'Could not parse source.' };
@@ -1067,6 +1071,45 @@ export function sanitizeManualEditHtmlFragment(html: string): string {
     .join('');
 }
 
+/** True when a set-outer-html candidate must never become the replacement root. */
+function isUnsafeManualEditReplacementRoot(el: Element): boolean {
+  const tag = el.tagName.toLowerCase();
+  if (MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(tag)) return true;
+  if (NON_CONTENT_REPLACEMENT_TAGS.has(el.tagName)) return true;
+  return false;
+}
+
+/**
+ * Sanitize a full HTML document (set-full-source / undo snapshots) with the
+ * same dangerous-tag / attr / SMIL rules as fragment replacements.
+ */
+export function sanitizeManualEditFullSource(source: string): string {
+  const raw = String(source || '');
+  if (!raw.trim()) return raw;
+  const doc = parseSource(raw);
+  if (!doc) return raw;
+  const scrubHostChildren = (host: Element | null): void => {
+    if (!host) return;
+    for (const child of Array.from(host.children)) {
+      const tag = child.tagName.toLowerCase();
+      if (MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(tag) && tag !== 'style') {
+        child.remove();
+        continue;
+      }
+      if (tag === 'style') {
+        const text = scrubSalvagedStyleText(child.textContent ?? '');
+        if (!text) child.remove();
+        else child.textContent = text;
+        continue;
+      }
+      sanitizeManualEditReplacementTree(child);
+    }
+  };
+  scrubHostChildren(doc.head);
+  scrubHostChildren(doc.body);
+  return serializeSource(doc, raw);
+}
+
 function findReplacementCandidateByTextHint(
   nextDoc: Document,
   currentTarget: Element,
@@ -1744,12 +1787,14 @@ function resolveSingleRootReplacementElement(
   const odId = (el.getAttribute('data-od-id') || '').trim();
   if (odId) {
     const direct = elements.find((candidate) => candidate.getAttribute('data-od-id') === odId);
-    if (direct) return direct;
+    // Identity match must not promote script/iframe/meta into the root —
+    // sanitize only strips nested dangerous tags (el !== root).
+    if (direct && !isUnsafeManualEditReplacementRoot(direct)) return direct;
     const escaped = cssQuotedAttrValue(odId);
     for (const candidate of elements) {
       try {
         const nested = candidate.querySelector(`[data-od-id="${escaped}"]`);
-        if (nested) return nested;
+        if (nested && !isUnsafeManualEditReplacementRoot(nested)) return nested;
       } catch {
         // Invalid selector characters — fall through.
       }
@@ -1757,9 +1802,12 @@ function resolveSingleRootReplacementElement(
   }
 
   const contentRoots = elements.filter(
-    (candidate) => !NON_CONTENT_REPLACEMENT_TAGS.has(candidate.tagName),
+    (candidate) => !isUnsafeManualEditReplacementRoot(candidate),
   );
-  const pool = contentRoots.length > 0 ? contentRoots : elements;
+  const pool = contentRoots.length > 0 ? contentRoots : elements.filter(
+    (candidate) => !isUnsafeManualEditReplacementRoot(candidate),
+  );
+  if (pool.length === 0) return null;
 
   const sameTag = pool.filter((candidate) => candidate.tagName === el.tagName);
   if (sameTag.length === 1) return sameTag[0]!;
@@ -1953,11 +2001,22 @@ function scrubUnsafeCssFunctions(css: string): string {
   text = text.replace(/-moz-binding\s*:[^;]*/gi, '');
   // IE/HTC binding — same threat class as -moz-binding (incl. mid-rule).
   text = text.replace(/\bbehavior\s*:[^;}]*/gi, '');
+  // Legacy Opera CSS link bindings (javascript: outside url()).
+  text = text.replace(/-o-link(?:-source)?\s*:[^;}]*/gi, '');
+  // Remote SVG filter paint servers — keep same-document #fragment only.
+  // Negative lookbehind avoids chopping `backdrop-filter`.
+  text = text.replace(
+    /(?<!backdrop-)(?:-webkit-)?filter\s*:\s*url\s*\(\s*(['"]?)(?!#)[^)]*\1\s*\)[^;}]*/gi,
+    '',
+  );
   return text;
 }
 
 function scrubSalvagedStyleText(css: string): string {
-  return scrubUnsafeCssFunctions(stripDangerousCssAtRules(css)).trim();
+  const scrubbed = scrubUnsafeCssFunctions(stripDangerousCssAtRules(css)).trim();
+  // Fail closed if scheme text still survives after declaration scrubs.
+  if (containsUnsafeEmbeddedCssOrScheme(scrubbed)) return '';
+  return scrubbed;
 }
 
 function scrubUnsafeInlineStyleAttr(value: string): string {
@@ -2094,6 +2153,11 @@ export function isSafeManualEditUrl(value: string): boolean {
   const compact = compactManualEditUrlForSchemeCheck(decoded);
   if (compact.startsWith('javascript:')) return false;
   if (compact.startsWith('vbscript:')) return false;
+  // Local / opaque navigators — not needed for deck media and leak context.
+  if (compact.startsWith('blob:')) return false;
+  if (compact.startsWith('file:')) return false;
+  if (compact.startsWith('about:')) return false;
+  if (compact.startsWith('filesystem:')) return false;
   if (compact.startsWith('data:')) {
     if (compact.startsWith('data:text/html')) return false;
     if (compact.startsWith('data:image/svg+xml')) return false;
