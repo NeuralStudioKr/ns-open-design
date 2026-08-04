@@ -2114,6 +2114,7 @@ export const ar: Dict = {
   'manualEdit.uploadImage': 'رفع صورة',
   'manualEdit.uploadingImage': 'جارٍ رفع الصورة…',
   'manualEdit.uploadImageFailed': 'تعذّر رفع الصورة.',
+  'manualEdit.styleFlushBeforeTextFailed': 'تعذّر حفظ تغييرات النمط المعلقة قبل تطبيق تعديل النص.',
   'manualEdit.focusSlides': 'التركيز على الشرائح',
   'manualEdit.showPanels': 'إظهار اللوحات',
   'fileViewer.zoomOut': 'تصغير',

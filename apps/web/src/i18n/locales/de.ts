@@ -2114,6 +2114,7 @@ export const de: Dict = {
   'manualEdit.uploadImage': 'Bild hochladen',
   'manualEdit.uploadingImage': 'Bild wird hochgeladen…',
   'manualEdit.uploadImageFailed': 'Bild konnte nicht hochgeladen werden.',
+  'manualEdit.styleFlushBeforeTextFailed': 'Ausstehende Stiländerungen konnten vor dem Anwenden der Textbearbeitung nicht gespeichert werden.',
   'manualEdit.focusSlides': 'Folien fokussieren',
   'manualEdit.showPanels': 'Bereiche anzeigen',
   'fileViewer.zoomOut': 'Verkleinern',

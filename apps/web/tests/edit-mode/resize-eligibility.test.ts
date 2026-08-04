@@ -13,6 +13,14 @@ describe('resize-eligibility', () => {
     expect(canResizeTarget(target)).toBe(false);
   });
 
+  it('treats empty data-slide as a slide root and honors editMode', () => {
+    expect(isDeckSlideRoot(baseTarget({
+      tagName: 'section',
+      attributes: { 'data-slide': '' },
+    }))).toBe(true);
+    expect(canResizeTarget(baseTarget(), { editMode: false })).toBe(false);
+  });
+
   it('allows container targets and blocks inline text editing', () => {
     const target = baseTarget({ kind: 'container' });
     expect(canResizeTarget(target)).toBe(true);

@@ -2114,6 +2114,7 @@ export const id: Dict = {
   'manualEdit.uploadImage': 'Unggah gambar',
   'manualEdit.uploadingImage': 'Mengunggah gambar…',
   'manualEdit.uploadImageFailed': 'Tidak dapat mengunggah gambar.',
+  'manualEdit.styleFlushBeforeTextFailed': 'Could not save pending style changes before applying the text edit.',
   'manualEdit.focusSlides': 'Fokus slide',
   'manualEdit.showPanels': 'Tampilkan panel',
   'fileViewer.zoomOut': 'Perkecil',

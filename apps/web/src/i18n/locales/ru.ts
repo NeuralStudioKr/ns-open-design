@@ -2114,6 +2114,7 @@ export const ru: Dict = {
   'manualEdit.uploadImage': 'Загрузить изображение',
   'manualEdit.uploadingImage': 'Загрузка изображения…',
   'manualEdit.uploadImageFailed': 'Не удалось загрузить изображение.',
+  'manualEdit.styleFlushBeforeTextFailed': 'Не удалось сохранить ожидающие изменения стиля перед применением правки текста.',
   'manualEdit.focusSlides': 'Фокус на слайдах',
   'manualEdit.showPanels': 'Показать панели',
   'fileViewer.zoomOut': 'Уменьшить',

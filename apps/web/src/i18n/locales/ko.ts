@@ -2114,6 +2114,7 @@ export const ko: Dict = {
   'manualEdit.uploadImage': '이미지 업로드',
   'manualEdit.uploadingImage': '이미지 업로드 중…',
   'manualEdit.uploadImageFailed': '이미지를 업로드할 수 없습니다.',
+  'manualEdit.styleFlushBeforeTextFailed': '텍스트 편집을 적용하기 전에 대기 중인 스타일 변경을 저장하지 못했습니다.',
   'manualEdit.focusSlides': '슬라이드에 집중',
   'manualEdit.showPanels': '패널 표시',
   'fileViewer.zoomOut': '축소',

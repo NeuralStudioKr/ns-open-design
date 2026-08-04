@@ -2114,6 +2114,7 @@ export const th: Dict = {
   'manualEdit.uploadImage': 'อัปโหลดรูปภาพ',
   'manualEdit.uploadingImage': 'กำลังอัปโหลดรูปภาพ…',
   'manualEdit.uploadImageFailed': 'ไม่สามารถอัปโหลดรูปภาพได้',
+  'manualEdit.styleFlushBeforeTextFailed': 'ไม่สามารถบันทึกการเปลี่ยนแปลงสไตล์ที่ค้างอยู่ก่อนใช้การแก้ไขข้อความ',
   'manualEdit.focusSlides': 'โฟกัสสไลด์',
   'manualEdit.showPanels': 'แสดงแผง',
   'fileViewer.zoomOut': 'หุบมุมมอง',

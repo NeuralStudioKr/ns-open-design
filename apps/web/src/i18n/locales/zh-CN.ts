@@ -2114,6 +2114,7 @@ export const zhCN: Dict = {
   'manualEdit.uploadImage': '上传图片',
   'manualEdit.uploadingImage': '正在上传图片…',
   'manualEdit.uploadImageFailed': '无法上传图片。',
+  'manualEdit.styleFlushBeforeTextFailed': '在应用文本编辑之前，无法保存待处理的样式更改。',
   'manualEdit.focusSlides': '聚焦幻灯片',
   'manualEdit.showPanels': '显示面板',
   'fileViewer.zoomOut': '缩小',

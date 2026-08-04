@@ -2114,6 +2114,7 @@ export const en: Dict = {
   'manualEdit.uploadImage': 'Upload image',
   'manualEdit.uploadingImage': 'Uploading image…',
   'manualEdit.uploadImageFailed': 'Could not upload image.',
+  'manualEdit.styleFlushBeforeTextFailed': 'Could not save pending style changes before applying the text edit.',
   'manualEdit.focusSlides': 'Focus slides',
   'manualEdit.showPanels': 'Show panels',
   'fileViewer.zoomOut': 'Zoom out',

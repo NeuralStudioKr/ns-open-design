@@ -2780,6 +2780,7 @@ export interface Dict {
   'manualEdit.uploadImage': string;
   'manualEdit.uploadingImage': string;
   'manualEdit.uploadImageFailed': string;
+  'manualEdit.styleFlushBeforeTextFailed': string;
   'manualEdit.focusSlides': string;
   'manualEdit.showPanels': string;
   'fileViewer.zoomOut': string;

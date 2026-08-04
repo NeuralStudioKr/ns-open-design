@@ -155,6 +155,32 @@ export function withPinnedFloatingPanelPosition(
   };
 }
 
+/**
+ * Keep a pinned inspector on-canvas after zoom / viewport shrink.
+ * Uses a short height so collapsed titlebars are not pushed off the top.
+ */
+export function clampFloatingPanelPosition(
+  position: { left: number; top: number },
+  options: {
+    canvasWidth: number;
+    canvasHeight: number;
+    panelWidth?: number;
+    /** Height used only for top clamping (collapsed chrome ≈ 40). */
+    panelHeight?: number;
+    pad?: number;
+  },
+): { left: number; top: number } {
+  const panelWidth = options.panelWidth ?? DEFAULT_PANEL_WIDTH;
+  const panelHeight = options.panelHeight ?? 40;
+  const pad = options.pad ?? DEFAULT_PAD;
+  const canvasWidth = Math.max(panelWidth + pad * 2, options.canvasWidth);
+  const canvasHeight = Math.max(panelHeight + pad * 2, options.canvasHeight);
+  return {
+    left: Math.max(pad, Math.min(position.left, canvasWidth - panelWidth - pad)),
+    top: Math.max(pad, Math.min(position.top, canvasHeight - panelHeight - pad)),
+  };
+}
+
 function normalizeTarget(rect: FloatingPanelHostRect): FloatingPanelHostRect {
   return {
     x: Number.isFinite(rect.x) ? rect.x : 0,

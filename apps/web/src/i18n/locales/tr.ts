@@ -2114,6 +2114,7 @@ export const tr: Dict = {
   'manualEdit.uploadImage': 'Görsel yükle',
   'manualEdit.uploadingImage': 'Görsel yükleniyor…',
   'manualEdit.uploadImageFailed': 'Görsel yüklenemedi.',
+  'manualEdit.styleFlushBeforeTextFailed': 'Metin düzenlemesi uygulanmadan önce bekleyen stil değişiklikleri kaydedilemedi.',
   'manualEdit.focusSlides': 'Slaytlara odaklan',
   'manualEdit.showPanels': 'Panelleri göster',
   'fileViewer.zoomOut': 'Yakınlaş',

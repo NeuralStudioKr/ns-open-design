@@ -299,6 +299,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     return null;
   }
   function caretRangeFromClick(clickEvent){
+    if (!clickEvent) return null;
     try {
       if (document.caretPositionFromPoint) {
         var position = document.caretPositionFromPoint(clickEvent.clientX, clickEvent.clientY);
@@ -481,6 +482,18 @@ export function buildManualEditBridge(enabled: boolean): string {
       }
       // Staging contract: full target (includes promoteCoords offsets / cssPosition).
       window.parent.postMessage({ type: 'od-edit-rect', id: remeasureId, ok: true, target: targetFrom(remeasureEl, false) }, '*');
+      return;
+    }
+    // Host overlay covers absolute text/link; dblclick is forwarded here so
+    // inline contenteditable still works while the selection chrome is up.
+    if (ev.data.type === 'od-edit-start-text-edit') {
+      if (!enabled) return;
+      var editEl = findById(ev.data.id || null);
+      if (!editEl) return;
+      var editKind = inferKind(editEl);
+      if (editKind !== 'text' && editKind !== 'link') return;
+      setSelectedTarget(ev.data.id || null, true);
+      makeEditable(editEl, null);
       return;
     }
   });

@@ -541,6 +541,22 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('starts contenteditable from host od-edit-start-text-edit (overlay dblclick)', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Title</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]')!;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-start-text-edit', id: 'title' },
+    }));
+    expect(title.getAttribute('contenteditable')).toBe('plaintext-only');
+    expect(title.getAttribute('data-od-editing')).toBe('true');
+
+    dom.window.close();
+  });
+
   it('marks flex/grid targets as layout containers', () => {
     const bridge = buildManualEditBridge(true);
 

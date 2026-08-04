@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  clampFloatingPanelPosition,
   placeManualEditFloatingPanel,
   withPinnedFloatingPanelPosition,
 } from '../../src/edit-mode/floating-panel-place';
@@ -86,6 +87,13 @@ describe('placeManualEditFloatingPanel', () => {
     expect(pinned.top).toBe(initial.top);
     expect(pinned.width).toBe(afterMove.width);
     expect(pinned.maxHeight).toBe(afterMove.maxHeight);
+  });
+
+  it('clamps a pinned panel back onto a smaller canvas', () => {
+    expect(clampFloatingPanelPosition(
+      { left: 900, top: 700 },
+      { canvasWidth: 400, canvasHeight: 300, panelWidth: 320, panelHeight: 40, pad: 12 },
+    )).toEqual({ left: 68, top: 248 });
   });
 });
 

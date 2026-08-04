@@ -2114,6 +2114,7 @@ export const ja: Dict = {
   'manualEdit.uploadImage': '画像をアップロード',
   'manualEdit.uploadingImage': '画像をアップロード中…',
   'manualEdit.uploadImageFailed': '画像をアップロードできませんでした。',
+  'manualEdit.styleFlushBeforeTextFailed': 'テキスト編集を適用する前に、保留中のスタイル変更を保存できませんでした。',
   'manualEdit.focusSlides': 'スライドにフォーカス',
   'manualEdit.showPanels': 'パネルを表示',
   'fileViewer.zoomOut': 'ズームアウト',

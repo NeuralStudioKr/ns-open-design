@@ -2114,6 +2114,7 @@ export const it: Dict = {
   'manualEdit.uploadImage': 'Carica immagine',
   'manualEdit.uploadingImage': 'Caricamento immagine…',
   'manualEdit.uploadImageFailed': 'Impossibile caricare l\'immagine.',
+  'manualEdit.styleFlushBeforeTextFailed': 'Impossibile salvare le modifiche di stile in sospeso prima di applicare la modifica del testo.',
   'manualEdit.focusSlides': 'Concentra sulle slide',
   'manualEdit.showPanels': 'Mostra pannelli',
   'fileViewer.zoomOut': 'Riduci zoom',

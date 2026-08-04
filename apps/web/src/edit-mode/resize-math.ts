@@ -1,12 +1,20 @@
 import type { ManualEditKind, ManualEditRect, ManualEditStyles, ManualEditTarget } from './types';
 import {
   aspectLockForTarget,
+  canResizeTarget,
+  isDeckSlideRoot,
   MANUAL_EDIT_RESIZE_MIN_PX,
 } from './resize-eligibility';
 
 export type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
-export { aspectLockForTarget, MANUAL_EDIT_RESIZE_MIN_PX };
+// Single SSOT for eligibility — keep re-exports so move-math / tests stay stable.
+export {
+  aspectLockForTarget,
+  canResizeTarget,
+  isDeckSlideRoot,
+  MANUAL_EDIT_RESIZE_MIN_PX,
+};
 /** Ignore tiny handle jitter so a plain click does not flush a resize. */
 export const MANUAL_EDIT_RESIZE_MIN_DELTA_PX = 2;
 
@@ -336,30 +344,6 @@ export function shouldPromoteInlineTargetForResize(
 /** Resize commit must flush once → one Manual Edit history entry. */
 export function resizeHistoryLabel(targetLabel: string): string {
   return `Resize: ${targetLabel}`;
-}
-
-export function isDeckSlideRoot(target: ManualEditTarget): boolean {
-  const tag = target.tagName.toLowerCase();
-  const cls = ` ${target.className} `;
-  if (tag !== 'section' && tag !== 'div') return false;
-  if (/\bslide\b/.test(cls)) return true;
-  if (target.attributes['data-slide'] != null) return true;
-  if (target.attributes['data-slide-index'] != null) return true;
-  return false;
-}
-
-export function canResizeTarget(
-  target: ManualEditTarget | null | undefined,
-  options?: { inlineTextEditing?: boolean; editMode?: boolean },
-): boolean {
-  if (!target) return false;
-  if (options?.editMode === false) return false;
-  if (options?.inlineTextEditing) return false;
-  if (target.isHidden) return false;
-  if (target.kind === 'token') return false;
-  if (isDeckSlideRoot(target)) return false;
-  if (target.rect.width < 4 || target.rect.height < 4) return false;
-  return true;
 }
 
 export function cursorForResizeHandle(handle: ResizeHandle): string {

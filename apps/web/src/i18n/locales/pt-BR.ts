@@ -2114,6 +2114,7 @@ export const ptBR: Dict = {
   'manualEdit.uploadImage': 'Enviar imagem',
   'manualEdit.uploadingImage': 'Enviando imagem…',
   'manualEdit.uploadImageFailed': 'Não foi possível enviar a imagem.',
+  'manualEdit.styleFlushBeforeTextFailed': 'Não foi possível salvar as alterações de estilo pendentes antes de aplicar a edição de texto.',
   'manualEdit.focusSlides': 'Focar nos slides',
   'manualEdit.showPanels': 'Mostrar painéis',
   'fileViewer.zoomOut': 'Diminuir zoom',

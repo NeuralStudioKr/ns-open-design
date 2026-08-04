@@ -2114,6 +2114,7 @@ export const uk: Dict = {
   'manualEdit.uploadImage': 'Завантажити зображення',
   'manualEdit.uploadingImage': 'Завантаження зображення…',
   'manualEdit.uploadImageFailed': 'Не вдалося завантажити зображення.',
+  'manualEdit.styleFlushBeforeTextFailed': 'Не вдалося зберегти очікувані зміни стилю перед застосуванням редагування тексту.',
   'manualEdit.focusSlides': 'Зосередитися на слайдах',
   'manualEdit.showPanels': 'Показати панелі',
   'fileViewer.zoomOut': 'Зменшити',

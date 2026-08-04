@@ -972,6 +972,35 @@ describe('ManualEditResizeOverlay', () => {
     expect(getByTestId('manual-edit-resize-handle-se')).not.toBeNull();
   });
 
+  it('forwards dblclick on movable text to onStartTextEdit', () => {
+    const onStartTextEdit = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          kind: 'text',
+          cssPosition: 'absolute',
+          styles: {
+            ...emptyManualEditStyles(),
+            left: '40px',
+            top: '60px',
+          },
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onStartTextEdit={onStartTextEdit}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    expect(overlay.getAttribute('data-movable')).toBe('true');
+    fireEvent.doubleClick(overlay);
+    expect(onStartTextEdit).toHaveBeenCalledWith('card');
+  });
+
   it('body click without preview does not cancel (keeps unrelated pending safe)', () => {
     const onMoveCommit = vi.fn();
     const onMoveCancel = vi.fn();

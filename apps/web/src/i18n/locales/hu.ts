@@ -2114,6 +2114,7 @@ export const hu: Dict = {
   'manualEdit.uploadImage': 'Kép feltöltése',
   'manualEdit.uploadingImage': 'Kép feltöltése…',
   'manualEdit.uploadImageFailed': 'A kép feltöltése nem sikerült.',
+  'manualEdit.styleFlushBeforeTextFailed': 'A szövegszerkesztés alkalmazása előtt nem sikerült menteni a függőben lévő stílusváltoztatásokat.',
   'manualEdit.focusSlides': 'Diákra fókuszálás',
   'manualEdit.showPanels': 'Panelek megjelenítése',
   'fileViewer.zoomOut': 'Kicsinyítés',

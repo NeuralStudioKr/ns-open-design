@@ -253,7 +253,11 @@ import {
   measureIframeHostScale,
   measureIframeOffsetInHost,
 } from '../edit-mode/preview-coords';
-import { placeManualEditFloatingPanel, withPinnedFloatingPanelPosition } from '../edit-mode/floating-panel-place';
+import {
+  clampFloatingPanelPosition,
+  placeManualEditFloatingPanel,
+  withPinnedFloatingPanelPosition,
+} from '../edit-mode/floating-panel-place';
 import {
   parseExplicitPx,
   resizeHistoryLabel,
@@ -1018,18 +1022,26 @@ function manualEditHoverIconStyle(
   previewScale: number,
   canvasSize: PreviewCanvasSize | undefined,
   hostOffset: { x: number; y: number } = { x: 0, y: 0 },
+  hostPaintRect: ManualEditRect | null = null,
 ): CSSProperties {
   const iconSize = 26;
   const inset = 4;
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
   const scaled = contentRectToHostRect(target.rect, previewScale);
-  const hostRect = {
+  const composed = {
     x: hostOffset.x + scaled.x,
     y: hostOffset.y + scaled.y,
     width: scaled.width,
     height: scaled.height,
   };
+  // Prefer live paint when available so the chip matches selection chrome.
+  const hostRect =
+    hostPaintRect
+    && hostPaintRect.width >= 1
+    && hostPaintRect.height >= 1
+      ? hostPaintRect
+      : composed;
   const targetTop = hostRect.y;
   const targetRight = hostRect.x + hostRect.width;
   const left = Math.max(
@@ -5419,6 +5431,9 @@ function HtmlViewer({
   const [manualEditHoverTarget, setManualEditHoverTarget] = useState<ManualEditTarget | null>(null);
   const [manualEditPageStylesOpen, setManualEditPageStylesOpen] = useState(false);
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
+  /** Auto pin may upgrade once when first paint rect arrives; user drag freezes forever. */
+  const manualEditPanelUserPinnedRef = useRef(false);
+  const manualEditPanelPaintPinnedIdRef = useRef<string | null>(null);
   const selectedManualEditTargetIdRef = useRef<string | null>(null);
   const selectedManualEditTargetRef = useRef<ManualEditTarget | null>(null);
   const [manualEditDraft, setManualEditDraft] = useState<ManualEditDraft>(() => emptyManualEditDraft());
@@ -7403,11 +7418,55 @@ function HtmlViewer({
     previewBodySize?.height,
   ]);
 
-  // Freeze inspector left/top once per selection. Auto-placement used to follow
-  // live target/paint rects, so every resize/move preview walked the toolbar.
+  // Freeze inspector left/top per selection. Auto-placement used to follow live
+  // target/paint rects and walk the toolbar during resize/move. Upgrade the
+  // auto pin once when the first paint rect lands; user drags stay frozen.
   useLayoutEffect(() => {
-    if (!manualEditMode || !selectedManualEditTarget) return;
-    if (manualEditPanelPosition != null) return;
+    if (!manualEditMode || !selectedManualEditTarget) {
+      manualEditPanelUserPinnedRef.current = false;
+      manualEditPanelPaintPinnedIdRef.current = null;
+      return;
+    }
+    const canvasWidth = previewBodySize?.width ?? 1200;
+    const canvasHeight = previewBodySize?.height ?? 800;
+    const hasPaint = Boolean(
+      manualEditHostPaintRect
+      && manualEditHostPaintRect.width >= 1
+      && manualEditHostPaintRect.height >= 1,
+    );
+    const paintPinned = manualEditPanelPaintPinnedIdRef.current === selectedManualEditTarget.id;
+
+    if (manualEditPanelUserPinnedRef.current && manualEditPanelPosition) {
+      const clamped = clampFloatingPanelPosition(manualEditPanelPosition, {
+        canvasWidth,
+        canvasHeight,
+      });
+      if (
+        clamped.left !== manualEditPanelPosition.left
+        || clamped.top !== manualEditPanelPosition.top
+      ) {
+        setManualEditPanelPosition(clamped);
+      }
+      return;
+    }
+
+    if (manualEditPanelPosition != null && paintPinned) {
+      const clamped = clampFloatingPanelPosition(manualEditPanelPosition, {
+        canvasWidth,
+        canvasHeight,
+      });
+      if (
+        clamped.left !== manualEditPanelPosition.left
+        || clamped.top !== manualEditPanelPosition.top
+      ) {
+        setManualEditPanelPosition(clamped);
+      }
+      return;
+    }
+
+    // Keep a composed pin until paint arrives, then place once more from paint.
+    if (manualEditPanelPosition != null && !hasPaint) return;
+
     const style = manualEditFloatingPanelStyle(
       selectedManualEditTarget,
       manualEditHostScale,
@@ -7418,7 +7477,11 @@ function HtmlViewer({
     const left = typeof style.left === 'number' ? style.left : null;
     const top = typeof style.top === 'number' ? style.top : null;
     if (left == null || top == null) return;
-    setManualEditPanelPosition({ left, top });
+    const next = clampFloatingPanelPosition({ left, top }, { canvasWidth, canvasHeight });
+    setManualEditPanelPosition(next);
+    if (hasPaint) {
+      manualEditPanelPaintPinnedIdRef.current = selectedManualEditTarget.id;
+    }
   }, [
     manualEditMode,
     selectedManualEditTarget,
@@ -7642,6 +7705,8 @@ function HtmlViewer({
       setManualEditHoverTarget(null);
       setManualEditPageStylesOpen(false);
       setManualEditPanelPosition(null);
+      manualEditPanelUserPinnedRef.current = false;
+      manualEditPanelPaintPinnedIdRef.current = null;
       selectedManualEditTargetIdRef.current = null;
       selectedManualEditTargetRef.current = null;
       setManualEditError(null);
@@ -7707,7 +7772,10 @@ function HtmlViewer({
         // Text commits remount the freeze from saved source; flush style
         // drafts first or postMessage-only previews are lost on reload.
         void (async () => {
-          if (!(await flushManualEditStyleSave())) return;
+          if (!(await flushManualEditStyleSave({ force: true }))) {
+            setManualEditError(t('manualEdit.styleFlushBeforeTextFailed'));
+            return;
+          }
           const targetId = String(data.id);
           const target = selectedManualEditTargetRef.current?.id === targetId
             ? selectedManualEditTargetRef.current
@@ -8059,6 +8127,9 @@ function HtmlViewer({
     manualEditResizePausedRef.current = false;
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
+    // Drop pre-gesture paint so idle overlay uses optimistic composed rect
+    // until remasure lands (avoids a rubber-band snap to the old box).
+    setManualEditHostPaintRect(null);
     const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) {
       rollbackManualEditGestureStyles(stylesBefore);
@@ -8084,6 +8155,7 @@ function HtmlViewer({
     manualEditResizePausedRef.current = false;
     setManualEditMoveDraftPos(null);
     setManualEditResizeDraftSize(null);
+    setManualEditHostPaintRect(null);
     const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) {
       rollbackManualEditGestureStyles(stylesBefore);
@@ -8180,7 +8252,9 @@ function HtmlViewer({
   }
 
   async function settleManualEditStyleBoundary(): Promise<boolean> {
-    return flushManualEditStyleSave();
+    // History / text / patch boundaries must not soft-skip while a gesture
+    // paused autosave — that looked like a successful flush with no write.
+    return flushManualEditStyleSave({ force: true });
   }
 
 
@@ -8253,6 +8327,8 @@ function HtmlViewer({
       target.id,
     )) {
       setManualEditPanelPosition(null);
+      manualEditPanelUserPinnedRef.current = false;
+      manualEditPanelPaintPinnedIdRef.current = null;
     }
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
@@ -8296,6 +8372,8 @@ function HtmlViewer({
     selectedManualEditTargetRef.current = null;
     setSelectedManualEditTarget(null);
     setManualEditPanelPosition(null);
+    manualEditPanelUserPinnedRef.current = false;
+    manualEditPanelPaintPinnedIdRef.current = null;
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
     setManualEditHostPaintRect(null);
@@ -10394,7 +10472,12 @@ function HtmlViewer({
             manualEditPanelPosition,
           )
         : { top: 12, right: 12, width: 320 }}
-      onFloatingPositionChange={selectedManualEditTarget ? setManualEditPanelPosition : undefined}
+      onFloatingPositionChange={selectedManualEditTarget
+        ? (position) => {
+            manualEditPanelUserPinnedRef.current = true;
+            setManualEditPanelPosition(position);
+          }
+        : undefined}
       onPickImage={async (pickedFile) => {
         const result = await uploadProjectFiles(projectId, [pickedFile]);
         const uploaded = result.uploaded[0];
@@ -10425,6 +10508,12 @@ function HtmlViewer({
           manualEditHostScale,
           previewBodySize,
           manualEditHostOffset,
+          (() => {
+            const frame = iframeRef.current;
+            const workspace = manualEditWorkspaceRef.current;
+            if (!frame || !workspace) return null;
+            return measureManualEditTargetHostRect(frame, workspace, manualEditHoverTarget.id);
+          })(),
         )}
         onClick={() => {
           const target = manualEditHoverTarget;
@@ -10495,6 +10584,12 @@ function HtmlViewer({
           void handleManualEditMoveCommit(styles, stylesBefore, viewport);
         }}
         onMoveCancel={handleManualEditMoveCancel}
+        onStartTextEdit={(targetId) => {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: 'od-edit-start-text-edit', id: targetId },
+            '*',
+          );
+        }}
       />
     ) : null;
   const activeComposerComment = activePreviewCommentId

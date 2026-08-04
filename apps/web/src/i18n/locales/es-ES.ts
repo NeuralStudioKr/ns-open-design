@@ -2114,6 +2114,7 @@ export const esES: Dict = {
   'manualEdit.uploadImage': 'Subir imagen',
   'manualEdit.uploadingImage': 'Subiendo imagen…',
   'manualEdit.uploadImageFailed': 'No se pudo subir la imagen.',
+  'manualEdit.styleFlushBeforeTextFailed': 'No se pudieron guardar los cambios de estilo pendientes antes de aplicar la edición de texto.',
   'manualEdit.focusSlides': 'Enfocar diapositivas',
   'manualEdit.showPanels': 'Mostrar paneles',
   'fileViewer.zoomOut': 'Reducir zoom',

@@ -2114,6 +2114,7 @@ export const fa: Dict = {
   'manualEdit.uploadImage': 'بارگذاری تصویر',
   'manualEdit.uploadingImage': 'در حال بارگذاری تصویر…',
   'manualEdit.uploadImageFailed': 'بارگذاری تصویر ممکن نشد.',
+  'manualEdit.styleFlushBeforeTextFailed': 'نمی‌توان تغییرات سبک در انتظار را پیش از اعمال ویرایش متن ذخیره کرد.',
   'manualEdit.focusSlides': 'تمرکز روی اسلایدها',
   'manualEdit.showPanels': 'نمایش پنل‌ها',
   'fileViewer.zoomOut': 'کوچک‌نمایی',

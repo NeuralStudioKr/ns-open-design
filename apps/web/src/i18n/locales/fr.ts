@@ -2114,6 +2114,7 @@ export const fr: Dict = {
   'manualEdit.uploadImage': 'Importer une image',
   'manualEdit.uploadingImage': 'Import de l’image…',
   'manualEdit.uploadImageFailed': 'Impossible d’importer l’image.',
+  'manualEdit.styleFlushBeforeTextFailed': 'Impossible d’enregistrer les modifications de style en attente avant d’appliquer la modification du texte.',
   'manualEdit.focusSlides': 'Focaliser les slides',
   'manualEdit.showPanels': 'Afficher les panneaux',
   'fileViewer.zoomOut': 'Zoom arrière',

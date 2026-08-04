@@ -2114,6 +2114,7 @@ export const pl: Dict = {
   'manualEdit.uploadImage': 'Prześlij obraz',
   'manualEdit.uploadingImage': 'Przesyłanie obrazu…',
   'manualEdit.uploadImageFailed': 'Nie udało się przesłać obrazu.',
+  'manualEdit.styleFlushBeforeTextFailed': 'Nie udało się zapisać oczekujących zmian stylu przed zastosowaniem edycji tekstu.',
   'manualEdit.focusSlides': 'Skup się na slajdach',
   'manualEdit.showPanels': 'Pokaż panele',
   'fileViewer.zoomOut': 'Pomniejsz',

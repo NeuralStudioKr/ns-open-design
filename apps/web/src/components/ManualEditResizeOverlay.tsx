@@ -93,6 +93,11 @@ export type ManualEditResizeOverlayProps = {
     viewport?: { x: number; y: number },
   ) => void;
   onMoveCancel?: (stylesBefore: Partial<ManualEditStyles>) => void;
+  /**
+   * Absolute/fixed text stays movable (overlay body captures pointers). Forward
+   * dblclick so the iframe can still enter contenteditable.
+   */
+  onStartTextEdit?: (targetId: string) => void;
 };
 
 type GestureHostGeom = {
@@ -202,6 +207,7 @@ export function ManualEditResizeOverlay({
   onMovePreview,
   onMoveCommit,
   onMoveCancel,
+  onStartTextEdit,
 }: ManualEditResizeOverlayProps) {
   const dragRef = useRef<DragState | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -648,6 +654,13 @@ export function ManualEditResizeOverlay({
       aria-hidden={disabled || undefined}
       onPointerDown={disabled || !movable ? undefined : onOverlayPointerDown}
       onPointerMove={disabled || !movable ? undefined : onOverlayPointerMove}
+      onDoubleClick={disabled || (target.kind !== 'text' && target.kind !== 'link')
+        ? undefined
+        : (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onStartTextEdit?.(target.id);
+          }}
     >
       {RESIZE_HANDLES.map((handle) => (
         <button

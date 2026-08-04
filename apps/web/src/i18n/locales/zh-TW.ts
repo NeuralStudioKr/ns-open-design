@@ -2114,6 +2114,7 @@ export const zhTW: Dict = {
   'manualEdit.uploadImage': '上傳圖片',
   'manualEdit.uploadingImage': '上傳圖片中…',
   'manualEdit.uploadImageFailed': '無法上傳圖片。',
+  'manualEdit.styleFlushBeforeTextFailed': '在套用文字編輯之前，無法儲存待處理的樣式變更。',
   'manualEdit.focusSlides': '聚焦投影片',
   'manualEdit.showPanels': '顯示面板',
   'fileViewer.zoomOut': '縮小',
