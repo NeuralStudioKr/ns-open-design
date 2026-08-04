@@ -736,6 +736,110 @@ describe('manual edit source patches', () => {
     expect(html).not.toMatch(/\bimagesrcset=/i);
   });
 
+  it('rejects set-image on non-img hosts like script', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<script data-od-id="boot" src="/safe.js"></script>',
+      '<img data-od-id="hero-image" src="/old.png" alt="Old">',
+      '</body></html>',
+    ].join('');
+    const denied = applyManualEditPatch(source, {
+      kind: 'set-image',
+      id: 'boot',
+      src: 'https://evil.example/x.js',
+      alt: '',
+    });
+    expect(denied.ok).toBe(false);
+    expect(denied.source).toContain('src="/safe.js"');
+    expect(denied.source).not.toContain('evil.example');
+
+    const ok = applyManualEditPatch(source, {
+      kind: 'set-image',
+      id: 'hero-image',
+      src: '/new.png',
+      alt: 'New',
+    });
+    expect(ok.ok, ok.error).toBe(true);
+    expect(readManualEditFields(ok.source, 'hero-image').src).toBe('/new.png');
+  });
+
+  it('rejects set-link on link/base stylesheet hosts', () => {
+    const source = [
+      '<!doctype html><html><head>',
+      '<link data-od-id="theme" rel="stylesheet" href="/safe.css">',
+      '<base data-od-id="base" href="/">',
+      '</head><body>',
+      '<a data-od-id="cta" href="/start">Start</a>',
+      '</body></html>',
+    ].join('');
+    const linkDenied = applyManualEditPatch(source, {
+      kind: 'set-link',
+      id: 'theme',
+      text: '',
+      href: 'https://evil.example/x.css',
+    });
+    expect(linkDenied.ok).toBe(false);
+    expect(linkDenied.source).toContain('href="/safe.css"');
+
+    const baseDenied = applyManualEditPatch(source, {
+      kind: 'set-link',
+      id: 'base',
+      text: '',
+      href: 'https://evil.example/',
+    });
+    expect(baseDenied.ok).toBe(false);
+
+    const ok = applyManualEditPatch(source, {
+      kind: 'set-link',
+      id: 'cta',
+      text: 'Go',
+      href: '/next',
+    });
+    expect(ok.ok, ok.error).toBe(true);
+    expect(readManualEditFields(ok.source, 'cta').href).toBe('/next');
+  });
+
+  it('keeps SVG presentation url() same-document fragment only', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect width="10" height="10"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<rect width="10" height="10" filter="url(https://evil.example/f.svg#x)" fill="url(#ok)"></rect>',
+        '<animate attributeName="filter" to="url(https://evil.example/f.svg#x)"></animate>',
+        '<animate attributeName="fill" to="url(#ok)"></animate>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('fill="url(#ok)"');
+    expect(html).not.toMatch(/filter="url\(/i);
+  });
+
+  it('blocks set-attributes URL mutation on legacy frame hosts', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<iframe data-od-id="legacy" src="/safe.html"></iframe>',
+      '</body></html>',
+    ].join('');
+    // Use iframe (already locked) plus a synthetic frame-like path via attributes
+    // when the host tag is in the expanded no-mutation set.
+    const iframe = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'legacy',
+      attributes: { src: 'https://evil.example/frame.html' },
+    });
+    expect(iframe.ok, iframe.error).toBe(true);
+    expect(readManualEditAttributes(iframe.source, 'legacy').src).toBe('/safe.html');
+  });
+
   it('rejects dangerous identity-matched set-outer-html roots', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',

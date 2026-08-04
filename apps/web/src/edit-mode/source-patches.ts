@@ -103,6 +103,11 @@ export function applyManualEditPatch(
     }
     applyManualEditPlainText(el, patch.value);
   } else if (patch.kind === 'set-link') {
+    const linkTag = el.tagName.toLowerCase();
+    // Do not retarget <link>/<base>/SVG resource hosts via the link editor.
+    if (linkTag !== 'a' && linkTag !== 'area') {
+      return { ok: false, source, error: 'Link edits are only allowed on <a> / <area> elements.' };
+    }
     if (hasElementChildren(el)) {
       const currentText = manualEditElementToPlainText(el);
       if (patch.text === currentText) {
@@ -121,6 +126,11 @@ export function applyManualEditPatch(
     }
     el.setAttribute('href', patch.href);
   } else if (patch.kind === 'set-image') {
+    const imageTag = el.tagName.toLowerCase();
+    // Do not retarget <script>/<iframe>/etc. that happen to share an edit id.
+    if (imageTag !== 'img') {
+      return { ok: false, source, error: 'Image edits are only allowed on <img> elements.' };
+    }
     if (!isSafeManualEditUrl(patch.src)) {
       return { ok: false, source, error: 'Image src uses a disallowed URL scheme.' };
     }
@@ -983,7 +993,7 @@ function sanitizeManualEditElementAttrs(el: Element): void {
       const scrubbed = scrubUnsafeCssFunctions(
         normalizeCssForSafetyScan(attr.value),
       ).trim();
-      if (!scrubbed || containsUnsafeEmbeddedCssOrScheme(scrubbed)) {
+      if (!scrubbed || !isSafeManualEditPresentationCssValue(scrubbed)) {
         el.removeAttribute(attr.name);
       } else if (scrubbed !== attr.value) {
         el.setAttribute(attr.name, scrubbed);
@@ -1039,6 +1049,23 @@ function sanitizeManualEditReplacementTree(root: Element): void {
           const scrubbed = scrubUnsafeInlineStyleAttr(raw);
           if (!scrubbed) el.removeAttribute(key);
           else if (scrubbed !== raw) el.setAttribute(key, scrubbed);
+        }
+        if (!['to', 'from', 'by', 'values'].some((key) => el.hasAttribute(key))) {
+          toRemove.push(el);
+          return;
+        }
+      }
+      if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(smilAttr)) {
+        // animate attributeName=filter/fill/… with url(https://…) paint servers.
+        for (const key of ['to', 'from', 'by', 'values'] as const) {
+          const raw = el.getAttribute(key);
+          if (raw == null) continue;
+          const pieces = key === 'values' ? String(raw).split(';') : [raw];
+          const unsafe = pieces.some((piece) => {
+            const trimmed = piece.trim();
+            return Boolean(trimmed) && !isSafeManualEditPresentationCssValue(trimmed);
+          });
+          if (unsafe) el.removeAttribute(key);
         }
         if (!['to', 'from', 'by', 'values'].some((key) => el.hasAttribute(key))) {
           toRemove.push(el);
@@ -1714,14 +1741,14 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
     }
     if (
       MANUAL_EDIT_NO_URL_MUTATION_TAGS.has(tag)
-      && (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
+      && (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'imagesrcset')
     ) {
       // Pre-existing script/iframe/etc. must not retarget to https://evil via set-attributes.
       continue;
     }
     if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
       const scrubbed = scrubUnsafeCssFunctions(normalizeCssForSafetyScan(value)).trim();
-      if (!scrubbed || containsUnsafeEmbeddedCssOrScheme(scrubbed)) continue;
+      if (!scrubbed || !isSafeManualEditPresentationCssValue(scrubbed)) continue;
       el.setAttribute(name, scrubbed);
       continue;
     }
@@ -2025,6 +2052,12 @@ const MANUAL_EDIT_NO_URL_MUTATION_TAGS = new Set([
   'base',
   'link',
   'meta',
+  // Legacy / SVG executable hosts — same class as dangerous replacement tags.
+  'frame',
+  'frameset',
+  'applet',
+  'handler',
+  'discard',
 ]);
 
 function isForbiddenCssUrlScheme(value: string): boolean {
@@ -2090,6 +2123,23 @@ function isSafeManualEditSvgResourceRef(value: string): boolean {
   if (!trimmed.startsWith('#')) return false;
   // Reject `#foo:bar` / scheme-like fragments.
   if (/[\\/]/.test(trimmed) || /^#[a-z][a-z0-9+.-]*:/i.test(trimmed)) return false;
+  return true;
+}
+
+/**
+ * SVG presentation attr / SMIL CSS values: plain paints OK; every url(...) must
+ * be a same-document #fragment (remote SVG paint servers are blocked).
+ */
+function isSafeManualEditPresentationCssValue(value: string): boolean {
+  const normalized = normalizeCssForSafetyScan(String(value || '')).trim();
+  if (!normalized) return true;
+  if (containsUnsafeEmbeddedCssOrScheme(normalized)) return false;
+  const urlRe = /url\s*\(\s*(['"]?)([^)'"]*)\1\s*\)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = urlRe.exec(normalized))) {
+    const inner = String(match[2] || '').trim();
+    if (!isSafeManualEditSvgResourceRef(inner)) return false;
+  }
   return true;
 }
 
