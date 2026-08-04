@@ -17,6 +17,8 @@ import {
   sanitizeManualEditHtmlFragment,
   sanitizeManualEditFullSource,
   isSafeManualEditUrlAttrValue,
+  isSafeManualEditRelativeOrFragmentUrl,
+  coerceManualEditStyleValue,
 } from '../../src/edit-mode/source-patches';
 
 const baseSource = `<!doctype html>
@@ -1357,6 +1359,74 @@ describe('manual edit source patches', () => {
     expect(
       sanitizeManualEditHtmlFragment('<a href="#ok" ping="/ok #frag">x</a>'),
     ).toBe('<a href="#ok" ping="/ok #frag">x</a>');
+  });
+
+  it('rejects backslash-authority relative URLs (UNC / IE-style)', () => {
+    expect(isSafeManualEditRelativeOrFragmentUrl('\\\\evil.example\\payload')).toBe(false);
+    expect(isSafeManualEditRelativeOrFragmentUrl('\\evil.example/x')).toBe(false);
+    expect(isSafeManualEditRelativeOrFragmentUrl('//cdn.example/x')).toBe(false);
+    expect(isSafeManualEditRelativeOrFragmentUrl('https://cdn.example/x')).toBe(false);
+    expect(isSafeManualEditRelativeOrFragmentUrl('/safe/path.png')).toBe(true);
+    expect(isSafeManualEditRelativeOrFragmentUrl('assets/photo.png')).toBe(true);
+    expect(isSafeManualEditRelativeOrFragmentUrl('#hero')).toBe(true);
+
+    expect(isSafeManualEditUrlAttrValue('action', '\\\\evil.example\\x')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('ping', '/ok \\\\evil.example\\x')).toBe(false);
+  });
+
+  it('drops fencedframe, portal, webview, plaintext, and xmp hosts', () => {
+    // Keep the safe node before raw-text hosts — plaintext/xmp consume
+    // following siblings as character data in HTML parsers.
+    const html = [
+      '<!doctype html><html><body>',
+      '<p data-od-id="ok">safe</p>',
+      '<fencedframe src="https://evil.example/"></fencedframe>',
+      '<portal src="https://evil.example/"></portal>',
+      '<webview src="https://evil.example/"></webview>',
+      '<plaintext>raw<script>x()</script>',
+      '</body></html>',
+    ].join('');
+    const out = sanitizeManualEditFullSource(html);
+    expect(out.toLowerCase()).not.toContain('fencedframe');
+    expect(out.toLowerCase()).not.toContain('<portal');
+    expect(out.toLowerCase()).not.toContain('webview');
+    expect(out.toLowerCase()).not.toContain('plaintext');
+    expect(out).toContain('data-od-id="ok"');
+
+    expect(
+      sanitizeManualEditHtmlFragment(
+        '<div><fencedframe src="https://evil.example/"></fencedframe><span>ok</span></div>',
+      ),
+    ).toBe('<div><span>ok</span></div>');
+    expect(sanitizeManualEditHtmlFragment('<xmp><script>y()</script></xmp>')).not.toMatch(
+      /<xmp\b|<script\b/i,
+    );
+    expect(sanitizeManualEditHtmlFragment('<plaintext>raw</plaintext>')).not.toMatch(
+      /<plaintext\b/i,
+    );
+  });
+
+  it('rejects declaration breakout characters in coerced style values', () => {
+    expect(coerceManualEditStyleValue('color', 'red; background:url(javascript:alert(1))')).toBeNull();
+    expect(coerceManualEditStyleValue('color', '1px} body{color:red')).toBeNull();
+    expect(coerceManualEditStyleValue('color', 'red<script>')).toBeNull();
+    expect(coerceManualEditStyleValue('color', 'red\nblue')).toBeNull();
+    expect(coerceManualEditStyleValue('fontSize', '12')).toBe('12px');
+    expect(coerceManualEditStyleValue('color', 'navy')).toBe('navy');
+
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-style',
+      id: 'hero-title',
+      styles: {
+        color: 'red; background:url(javascript:alert(1))',
+        fontSize: '18',
+      },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).toMatch(/font-size:\s*18px/i);
+    expect(html).not.toMatch(/javascript/i);
+    expect(html).not.toMatch(/background:\s*url/i);
   });
 
   it('strips onload from salvaged style siblings and full-source style hosts', () => {

@@ -332,6 +332,27 @@ describe("ProjectView message loading", () => {
     );
   });
 
+  it("sanitizes every HTML artifact persist, not only deck types", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const persistStart = source.indexOf("const persistArtifact = useCallback");
+    expect(persistStart).toBeGreaterThan(0);
+    const persistBlock = source.slice(persistStart, persistStart + 20000);
+    const htmlGate = persistBlock.indexOf("if (ext === '.html')");
+    expect(htmlGate).toBeGreaterThan(0);
+    // Walk to the structural gate that previously gated sanitize on deck only.
+    const structuralGate = persistBlock.indexOf(
+      "// Pre-write structural gate for HTML artifacts",
+      htmlGate,
+    );
+    expect(structuralGate).toBeGreaterThan(htmlGate);
+    const structuralBlock = persistBlock.slice(structuralGate, structuralGate + 900);
+    expect(structuralBlock).toContain("sanitizeManualEditFullSource(artifactToPersist.html)");
+    // Must not reintroduce a deck-only sanitize gate before the full-source scrub.
+    expect(structuralBlock).not.toMatch(
+      /artifactType\s*===\s*['"]deck['"][\s\S]{0,240}sanitizeManualEditFullSource\(artifactToPersist\.html\)/,
+    );
+  });
+
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");

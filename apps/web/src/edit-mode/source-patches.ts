@@ -977,6 +977,13 @@ const MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS = new Set([
   'frameset',
   // SVG discard can delete sanitized content after persist.
   'discard',
+  // Modern / chrome embed hosts.
+  'fencedframe',
+  'portal',
+  'webview',
+  // Legacy raw-text hosts that corrupt serialization.
+  'plaintext',
+  'xmp',
 ]);
 
 const MANUAL_EDIT_SMIL_ANIM_TAGS = new Set([
@@ -1705,6 +1712,8 @@ export function coerceManualEditStyleValue(name: string, value: unknown): string
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (trimmed === '') return '';
+    // Reject declaration breakout / markup before CSSOM setProperty.
+    if (/[;{}<>\n\r]/.test(trimmed)) return null;
     // Models often emit unitless length strings (`"32"`). Append px so
     // setProperty does not silently ignore invalid CSS lengths.
     if (
@@ -1741,10 +1750,17 @@ function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): vo
   const coerced = coerceManualEditStyleRecord(styles as Record<string, unknown>);
   for (const [name, value] of Object.entries(coerced)) {
     const cssName = camelToKebab(name);
-    if (typeof value !== 'string' || value.trim() === '') el.style.removeProperty(cssName);
+    if (typeof value !== 'string' || value.trim() === '') {
+      el.style.removeProperty(cssName);
+      continue;
+    }
     // Match live preview (`!important`) so brand-kit / artifact CSS rules
     // cannot silently win after freeze remount drops postMessage styles.
-    else el.style.setProperty(cssName, value.trim(), 'important');
+    try {
+      el.style.setProperty(cssName, value.trim(), 'important');
+    } catch {
+      // Invalid CSSOM values must not throw out of applyManualEditPatch.
+    }
   }
 }
 
@@ -1855,6 +1871,11 @@ const NON_CONTENT_REPLACEMENT_TAGS = new Set([
   'FRAME',
   'FRAMESET',
   'DISCARD',
+  'FENCEDFRAME',
+  'PORTAL',
+  'WEBVIEW',
+  'PLAINTEXT',
+  'XMP',
 ]);
 
 /**
@@ -2093,6 +2114,10 @@ const MANUAL_EDIT_NO_URL_MUTATION_TAGS = new Set([
   'applet',
   'handler',
   'discard',
+  // Modern / chrome embed hosts.
+  'fencedframe',
+  'portal',
+  'webview',
 ]);
 
 function isForbiddenCssUrlScheme(value: string): boolean {
@@ -2421,6 +2446,10 @@ export function isSafeManualEditRelativeOrFragmentUrl(value: string): boolean {
   if (!trimmed) return true;
   if (!isSafeManualEditUrl(trimmed)) return false;
   const compact = compactManualEditUrlForSchemeCheck(decodeHtmlCharacterReferences(trimmed));
+  // Reject scheme / protocol-relative / backslash-authority phishing
+  // (`\\evil.example` / `\evil.example` normalize toward remote hosts in
+  // legacy IE / UNC-style URL handling).
+  if (compact.includes('\\')) return false;
   if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(compact)) return false;
   return true;
 }
