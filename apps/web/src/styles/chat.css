@@ -2092,7 +2092,7 @@
   color: var(--text-muted);
   font-weight: 650;
 }
-.staged-chip img {
+.staged-chip:not(.staged-comment--visual) img {
   display: block;
   width: 12px;
   height: 12px;
@@ -2210,25 +2210,53 @@
   border-radius: var(--radius-pill);
   padding: 3px 5px 3px 8px;
 }
+.visual-comment-attachment-chip.staged-comment--visual {
+  height: auto;
+  min-height: 0;
+  max-width: min(360px, 100%);
+  white-space: normal;
+  overflow: visible;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 5px;
+  border-radius: var(--radius);
+}
+.visual-comment-attachment-thumb-wrap {
+  flex: 0 0 auto;
+  display: block;
+  line-height: 0;
+}
 .staged-comment--visual {
-  gap: 4px;
+  gap: 8px;
   align-items: center;
 }
-.staged-comment--visual img,
-.staged-comment--visual .authenticated-project-file-image-loading,
-.staged-comment--visual .visual-comment-attachment-thumb {
-  flex: 0 0 32px;
-  width: 32px;
-  height: 32px;
+.visual-comment-attachment-thumb,
+.staged-comment--visual .visual-comment-attachment-thumb,
+.staged-comment--visual img.visual-comment-attachment-thumb {
+  display: block;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
   object-fit: cover;
   border-radius: 6px;
+  background: var(--bg-fill-secondary);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
 }
-.comment-history-attachments .staged-comment--visual img,
-.comment-history-attachments .staged-comment--visual .authenticated-project-file-image-loading,
-.comment-history-attachments .staged-comment--visual .visual-comment-attachment-thumb {
-  flex: 0 0 48px;
-  width: 48px;
-  height: 48px;
+.staged-comment--visual .authenticated-project-file-image-loading.visual-comment-attachment-thumb,
+.staged-comment--visual .authenticated-project-file-image-failed.visual-comment-attachment-thumb {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+}
+.comment-history-attachments .visual-comment-attachment-thumb,
+.comment-history-attachments .staged-comment--visual .visual-comment-attachment-thumb,
+.comment-history-attachments .staged-comment--visual img.visual-comment-attachment-thumb,
+.comment-history-attachments .staged-comment--visual .authenticated-project-file-image-loading.visual-comment-attachment-thumb,
+.comment-history-attachments .staged-comment--visual .authenticated-project-file-image-failed.visual-comment-attachment-thumb {
+  flex: 0 0 56px;
+  width: 56px;
+  height: 56px;
 }
 .user-attachment.staged-comment {
   max-width: 100%;

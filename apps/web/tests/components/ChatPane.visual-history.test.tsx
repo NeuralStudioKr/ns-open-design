@@ -211,6 +211,6 @@ describe('ChatPane visual mark history', () => {
 
     expect(screen.getByText('시각 마크')).toBeTruthy();
     expect(screen.getByText('여기')).toBeTruthy();
-    expect(screen.queryByTestId('auth-project-image')).toBeNull();
+    expect(screen.getByTestId('auth-project-image')).toBeTruthy();
   });
 });

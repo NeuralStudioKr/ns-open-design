@@ -44,6 +44,32 @@ describe('VisualCommentAttachmentChip', () => {
     expect(screen.getByText('draw a heart here')).toBeTruthy();
   });
 
+  it('still attempts drawing screenshot thumbnails when the file index is stale', () => {
+    render(
+      <VisualCommentAttachmentChip
+        attachment={{
+          id: 'visual-mark-stale',
+          order: 1,
+          filePath: 'mse7c6na-drawing-2026-08-04T05-12-44-933Z.png',
+          elementId: 'visual-mark-stale',
+          selector: '',
+          label: 'Visual mark',
+          comment: 'heart',
+          currentText: '',
+          pagePosition: { x: 0.2, y: 0.3 },
+          htmlHint: '',
+          selectionKind: 'visual',
+          screenshotPath: 'mse7c6na-drawing-2026-08-04T05-12-44-933Z.png',
+          markKind: 'stroke',
+        }}
+        projectId="project-1"
+        projectFileNames={new Set(['deck.html'])}
+      />,
+    );
+
+    expect(screen.getByTestId('auth-project-image')).toBeTruthy();
+  });
+
   it('uses local preview for pending annotation paths', () => {
     render(
       <VisualCommentAttachmentChip
