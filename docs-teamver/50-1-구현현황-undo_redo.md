@@ -5,7 +5,7 @@
 **비교 문서:** [50-2 Teamver Canvas vs Design Undo 비교](./50-2_Teamver_Canvas_vs_Design_Undo_비교.md)  
 **배포·검증 Runbook:** [50-4 staging 머지·배포·검증](./50-4_revision_staging_머지_배포_검증.md)  
 **브랜치:** `staging`  
-**최종 갱신:** 2026-07-31
+**최종 갱신:** 2026-08-04
 
 ---
 
@@ -116,8 +116,6 @@
 | Esc 취소 | [x] | disk/revision 불변 |
 | undo 1스텝 = resize 전체 | [x] | 기존 revision stack (50) |
 
-**Phase D (다음):** daemon snapshot chain 최적화
-
 ---
 
 ## Phase D — daemon snapshot chain 최적화
@@ -129,6 +127,27 @@
 | `OD_FILE_REVISION_FULL_SNAPSHOT_INTERVAL` | [x] | 기본 5, `resolveFullSnapshotInterval()` |
 | `getRevisionAncestry` (DB metadata) | [x] | read path metadata lookup |
 | 단위 테스트 | [x] | `file-revisions-store.test.ts` |
+
+---
+
+## Phase E — chain-aware retention · deferred sweep · ops metrics (2026-08)
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| `prune-chain.ts` chain-aware selection | [x] | checkpoint 보존 prune |
+| push 비동기 deferred sweep | [x] | `deferred-sweep.ts` — retention + compaction 단일 큐 |
+| `OD_FILE_REVISION_PUSH_PRUNE_MAX` | [x] | deferred 1패스 삭제 cap (기본 8) |
+| GC multi-pass uncapped retention | [x] | `enforceGlobalFileRevisionRetention` while 루프 |
+| infinite re-queue 방지 | [x] | `pruned > 0`일 때만 retention target 재스케줄 |
+| list API `retentionPending` | [x] | excess > 0 또는 count > limit |
+| History 패널 힌트 + i18n (19 locale) | [x] | `fileRevision.history.retentionPending` |
+| History 패널 poll (4s) | [x] | `FileViewer` — panel open + pending |
+| Prometheus gauge 7종 | [x] | §50-3 §6 — bytes/rows/deferred/GC |
+| stuck excess 운영 문서 | [x] | [50-3 §5.1.2](./50-3_revision_스냅샷_저장소_RDS_용량관리.md) |
+| Postgres durable prune integration test | [~] | unit `prune-chain.test.ts`만 — PG path e2e 미작성 |
+| Human verification (30+ push / 2-node) | [~] | [50-4 §8](./50-4_revision_staging_머지_배포_검증.md) |
+
+**문서 SSOT:** [50-3](./50-3_revision_스냅샷_저장소_RDS_용량관리.md) §5~§6
 
 ---
 
@@ -150,6 +169,7 @@
 | 주기 GC + orphan 정리 | [x] | `file-revisions/gc.ts` · `OD_FILE_REVISION_GC_INTERVAL_MS` |
 | 프로젝트 삭제 시 BLOB 선삭제 | [x] | `deleteFileRevisionSnapshotsForProject` |
 | History panel retention hint | [x] | i18n `fileRevision.history.retentionHint` |
+| History `retentionPending` hint + poll | [x] | i18n + 4s poll when panel open |
 | List API `retentionLimit` → History 패널 | [x] | daemon list 응답, 하드코드 제거 |
 | 충돌 토스트는 head ≠ disk일 때만 | [x] | cursor만 어긋나면 조용히 reset |
 | undo/redo 비활성 tooltip | [x] | `fileRevision.undo.unavailableTooltip` |
@@ -171,6 +191,10 @@ pnpm --filter @open-design/daemon exec vitest run \
   tests/file-revisions-multinode.integration.test.ts \
   tests/file-revisions-durable-store.test.ts \
   tests/file-revisions-postgres-lock.test.ts \
+  tests/file-revisions-prune-chain.test.ts \
+  tests/file-revisions-retention-sweep.test.ts \
+  tests/file-revisions-metrics.test.ts \
+  tests/file-revisions-maintenance.test.ts \
   tests/file-revisions.test.ts
 pnpm --filter @open-design/web test
 ```
