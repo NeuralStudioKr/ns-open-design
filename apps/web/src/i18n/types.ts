@@ -2723,6 +2723,7 @@ export interface Dict {
   'manualEdit.movePanel': string;
   'manualEdit.positionMoveRequiresAbsolute': string;
   'manualEdit.positionPromoteOnDrag': string;
+  'manualEdit.positionPromoteStickyOnDrag': string;
   'manualEdit.editParams': string;
   'manualEdit.closePanel': string;
   'manualEdit.collapsePanel': string;

@@ -609,6 +609,33 @@ describe('ManualEditPanel', () => {
     expect(manualEditPatchSummary({ kind: 'set-full-source', source })).not.toContain('x'.repeat(100));
   });
 
+  it('shows Left/Top for relative targets and a sticky promote hint for sticky', () => {
+    renderPanel({
+      selectedTarget: {
+        ...target,
+        cssPosition: 'relative',
+        styles: { ...emptyManualEditStyles(), left: '12px', top: '8px' },
+      },
+      styles: { ...emptyManualEditStyles(), left: '12px', top: '8px' },
+    });
+    expect(host.querySelector('[data-testid="manual-edit-position-hint"]')).toBeNull();
+    expect(sectionByTitle('POSITION').textContent).toContain('Left');
+    expect(sectionByTitle('POSITION').textContent).toContain('Top');
+
+    renderPanel({
+      selectedTarget: {
+        ...target,
+        cssPosition: 'sticky',
+      },
+    });
+    expect(host.querySelector('[data-testid="manual-edit-position-hint"]')?.textContent).toMatch(
+      /sticky/i,
+    );
+    expect(host.querySelector('[data-testid="manual-edit-position-hint"]')?.textContent).toMatch(
+      /absolute/i,
+    );
+  });
+
   function sectionByTitle(title: string): HTMLElement {
     const section = Array.from(host.querySelectorAll('.cc-section'))
       .find((candidate) => candidate.querySelector('.cc-section-head')?.textContent === title) as HTMLElement | undefined;

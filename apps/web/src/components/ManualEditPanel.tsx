@@ -633,7 +633,12 @@ function StyleInspector({
   const showTypography = targetKind === 'text' || targetKind === 'link' || targetKind === 'token';
   // Box width/height for containers, images, and text/link leaves (drag-resize sync).
   const showSize = targetKind !== 'token';
-  const showPosition = showSize && isAnchoredCssPosition(cssPosition);
+  // absolute/fixed (anchored) and relative (Loop14 flow offset) expose Left/Top.
+  // static/sticky stay on the promote hint until the gesture writes a movable position.
+  const positionValue = String(cssPosition ?? 'static').toLowerCase();
+  const showPosition = showSize && (
+    isAnchoredCssPosition(positionValue) || positionValue === 'relative'
+  );
   const showPositionHint = showSize && !showPosition;
   const showLayout = layoutEnabled;
   const showBox = targetKind === 'container' || targetKind === 'image' || targetKind === 'token';
@@ -681,7 +686,9 @@ function StyleInspector({
           <p className="cc-section-hint" data-testid="manual-edit-position-hint">
             {targetKind === 'image'
               ? t('manualEdit.positionMoveRequiresAbsolute')
-              : t('manualEdit.positionPromoteOnDrag')}
+              : positionValue === 'sticky'
+                ? t('manualEdit.positionPromoteStickyOnDrag')
+                : t('manualEdit.positionPromoteOnDrag')}
           </p>
         </Section>
       ) : null}
