@@ -266,6 +266,15 @@ export async function loadAuthenticatedHtmlSrcDoc(
       ?? (/(?:\/preview|\/example\/)/i.test(url)
         ? resolvePluginPreviewBaseHref(url)
         : new URL(url, typeof window !== 'undefined' ? window.location.href : 'http://localhost/').href);
+    // Multi-slide decks must isolate the first slide — same bleed class as
+    // ProjectCardHtmlCover. Dynamic import avoids a static cycle with
+    // htmlCoverSrcDoc → injectHtmlBaseHref (this module).
+    const { buildHtmlCoverSrcDoc, htmlLooksLikeMultiSlideDeck } = await import(
+      '../teamver/htmlCoverSrcDoc'
+    );
+    if (htmlLooksLikeMultiSlideDeck(text)) {
+      return { ok: true, srcDoc: buildHtmlCoverSrcDoc(text, baseHref) };
+    }
     return { ok: true, srcDoc: injectHtmlBaseHref(text, baseHref) };
   } catch {
     return { ok: false, reason: 'network' };

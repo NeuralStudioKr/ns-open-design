@@ -1,20 +1,27 @@
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 
-import { extractTopLevelSlideSections } from "../../artifacts/deck-patch";
-import { injectHtmlBaseHref } from "../../runtime/authenticatedHtmlSrcDoc";
 import { isTeamverEmbedMode } from "../designApiBase";
+import {
+  buildHtmlCoverSrcDoc,
+  HTML_COVER_CANVAS_HEIGHT,
+  HTML_COVER_CANVAS_WIDTH,
+} from "../htmlCoverSrcDoc";
 import { fetchTeamverDaemon } from "../teamverDaemonHeaders";
 import {
   projectScopedPreviewUrl,
   resolveTeamverProjectPreviewPrefix,
 } from "../teamverProjectPreviewScope";
 
-// Match Teamver slide canvas (canvasSlideLaunch / TEAMVER_SLIDE_CANVAS).
-// Older 1280×720 forced absolute-px decks to clip; scripts are stripped so
-// fit() never rescales inside the thumb iframe.
-const DECK_PREVIEW_WIDTH = 1920;
-const DECK_PREVIEW_HEIGHT = 1080;
+export {
+  buildHtmlCoverSrcDoc,
+  deckPreviewSrcDoc,
+  extractCoverSlideSections,
+  htmlLooksLikeMultiSlideDeck,
+  isolateFirstDeckSlideHtml,
+  pagePreviewSrcDoc,
+  type CoverSlideSection,
+} from "../htmlCoverSrcDoc";
 
 const htmlCoverCache = new Map<string, string>();
 const htmlCoverInflight = new Map<string, Promise<string>>();
@@ -71,8 +78,9 @@ function AuthenticatedHtmlCover({
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   // Cache by path without ?v= so mtime bumps / remounts reuse HTML; still fetch
-  // the busted URL when the cache misses.
-  const cacheKey = `${mode}:${src.split(/[?#]/u, 1)[0] ?? src}`;
+  // the busted URL when the cache misses. Prefixed with builder version so
+  // logic bumps do not serve stale full-deck thumbs from the in-memory Map.
+  const cacheKey = `v2:${mode}:${src.split(/[?#]/u, 1)[0] ?? src}`;
   const [srcDoc, setSrcDoc] = useState<string | null>(() => htmlCoverCache.get(cacheKey) ?? null);
   const [scale, setScale] = useState(1);
 
@@ -104,7 +112,7 @@ function AuthenticatedHtmlCover({
     const update = () => {
       const rect = node.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
-      setScale(Math.min(rect.width / DECK_PREVIEW_WIDTH, rect.height / DECK_PREVIEW_HEIGHT));
+      setScale(Math.min(rect.width / HTML_COVER_CANVAS_WIDTH, rect.height / HTML_COVER_CANVAS_HEIGHT));
     };
     update();
     if (typeof ResizeObserver === "undefined") {
@@ -132,8 +140,8 @@ function AuthenticatedHtmlCover({
           sandbox="allow-scripts"
           tabIndex={-1}
           style={{
-            width: DECK_PREVIEW_WIDTH,
-            height: DECK_PREVIEW_HEIGHT,
+            width: HTML_COVER_CANVAS_WIDTH,
+            height: HTML_COVER_CANVAS_HEIGHT,
             transform: `scale(${scale})`,
             transformOrigin: "0 0",
           }}
@@ -221,7 +229,7 @@ async function loadHtmlCover(
   signal?: AbortSignal,
   cacheKeyOverride?: string,
 ): Promise<string> {
-  const cacheKey = cacheKeyOverride ?? `${mode}:${src.split(/[?#]/u, 1)[0] ?? src}`;
+  const cacheKey = cacheKeyOverride ?? `v2:${mode}:${src.split(/[?#]/u, 1)[0] ?? src}`;
   const cached = htmlCoverCache.get(cacheKey);
   if (cached) return cached;
 
@@ -238,8 +246,7 @@ async function loadHtmlCover(
     if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
     const html = await res.text();
     const { href: baseHref } = await resolveCoverBaseHref(src, signal);
-    const parsed =
-      mode === "deck" ? deckPreviewSrcDoc(html, baseHref) : pagePreviewSrcDoc(html, baseHref);
+    const parsed = buildHtmlCoverSrcDoc(html, baseHref, { preferDeck: mode === "deck" });
     // Always cache thumb HTML. Skipping cache on unscoped embed fallback caused
     // remount loops (e.g. former status-column churn) to refetch /raw forever.
     htmlCoverCache.set(cacheKey, parsed);
@@ -250,140 +257,6 @@ async function loadHtmlCover(
 
   if (!signal) htmlCoverInflight.set(cacheKey, run);
   return run;
-}
-
-export function pagePreviewSrcDoc(html: string, sourceUrl: string): string {
-  const withoutScripts = stripHtmlScripts(html);
-  const style = `<style id="od-page-card-preview">
-    html,
-    body {
-      margin: 0 !important;
-      width: ${DECK_PREVIEW_WIDTH}px !important;
-      min-height: ${DECK_PREVIEW_HEIGHT}px !important;
-      overflow: hidden !important;
-    }
-  </style>`;
-  return injectPreviewHead(withoutScripts, sourceUrl, style);
-}
-
-export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
-  // Prefer DOM isolation over CSS hide: agent rules like
-  // `.slide.s-xxx { display:flex !important }` after </head> can re-show later
-  // slides. Absolute-stacked + manually moved children then bleed into the
-  // first-slide thumb (home/designs card covers).
-  const withoutScripts = stripHtmlScripts(isolateFirstDeckSlideHtml(html));
-  const style = `<style id="od-deck-card-preview">
-    html,
-    body {
-      margin: 0 !important;
-      width: ${DECK_PREVIEW_WIDTH}px !important;
-      height: ${DECK_PREVIEW_HEIGHT}px !important;
-      overflow: hidden !important;
-    }
-    body {
-      display: block !important;
-      scroll-snap-type: none !important;
-    }
-    .slide,
-    section[data-slide],
-    section[data-screen-label] {
-      position: absolute !important;
-      inset: 0 !important;
-      width: ${DECK_PREVIEW_WIDTH}px !important;
-      height: ${DECK_PREVIEW_HEIGHT}px !important;
-      flex: none !important;
-      scroll-snap-align: none !important;
-    }
-    /* Backup if isolation missed a dialect — sibling combinator: :first-of-type
-       hides the real first .slide when a preceding <section> steals it. */
-    .slide ~ .slide,
-    section[data-slide] ~ section[data-slide],
-    section[data-screen-label] ~ section[data-screen-label],
-    .deck-counter,
-    .deck-controls,
-    .deck-hint,
-    .deck-page-controls,
-    .deck-pager,
-    .deck-progress,
-    .deck-nav,
-    .deck-navigation,
-    .page-controls,
-    .page-flip-controls,
-    .page-nav,
-    .page-navigation,
-    .pagination-control,
-    .pagination-controls,
-    #deck-prev,
-    #deck-next,
-    #deck-cur,
-    #deck-total,
-    [data-deck-controls],
-    [data-page-controls],
-    [data-pagination],
-    [aria-label="Previous slide"],
-    [aria-label="Next slide"],
-    [aria-label="Deck navigation"],
-    [aria-label="Page navigation"],
-    [aria-label="Pagination"],
-    nav[aria-label*="page" i],
-    nav[aria-label*="pagination" i] {
-      display: none !important;
-      visibility: hidden !important;
-      pointer-events: none !important;
-    }
-  </style>`;
-  // Trail the doc so late author <style> blocks cannot re-show removed slides'
-  // leftovers (nav chrome, non-.slide sections).
-  const trail = `<style id="od-deck-card-preview-trail">
-    .slide ~ .slide,
-    section[data-slide] ~ section[data-slide],
-    section[data-screen-label] ~ section[data-screen-label] {
-      display: none !important;
-      visibility: hidden !important;
-      content-visibility: hidden !important;
-      pointer-events: none !important;
-    }
-  </style>`;
-  return injectBefore(
-    injectPreviewHead(withoutScripts, sourceUrl, style),
-    "</body>",
-    trail,
-  );
-}
-
-/**
- * Drop every `<section class="slide">` after the first so card thumbs cannot
- * paint later-slide absolute/manual-edit chrome over the cover.
- */
-export function isolateFirstDeckSlideHtml(html: string): string {
-  const slides = extractTopLevelSlideSections(html);
-  if (slides.length <= 1) return html;
-  let out = html;
-  for (let i = slides.length - 1; i >= 1; i -= 1) {
-    const slide = slides[i];
-    if (!slide) continue;
-    out = `${out.slice(0, slide.start)}${out.slice(slide.end)}`;
-  }
-  return out;
-}
-
-function injectPreviewHead(source: string, sourceUrl: string, style: string): string {
-  // Shared base inject also strips canvas CSP `base-uri 'none'` so srcDoc
-  // thumbs do not spam DevTools (see injectHtmlBaseHref).
-  return injectBefore(injectHtmlBaseHref(source, sourceUrl), "</head>", style);
-}
-
-function injectBefore(source: string, marker: string, addition: string): string {
-  const index = source.toLowerCase().lastIndexOf(marker);
-  if (index === -1) return `${addition}${source}`;
-  return `${source.slice(0, index)}${addition}${source.slice(index)}`;
-}
-
-/** Drop executable script tags so card thumbs stay CSS-only. */
-function stripHtmlScripts(html: string): string {
-  return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu, "")
-    .replace(/<script\b[^>]*\/>/giu, "");
 }
 
 /** @internal vitest */

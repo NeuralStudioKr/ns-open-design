@@ -7,7 +7,7 @@ import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider'
 import { partitionEmbedDesignFileSections } from '../teamver/branding/embedDeliverableFilePolicy';
 import { projectFileUrl, projectRawUrl } from '../providers/registry';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
-import { buildSrcdoc } from '../runtime/srcdoc';
+import { buildHtmlCoverSrcDoc } from '../teamver/htmlCoverSrcDoc';
 import type { LiveArtifactWorkspaceEntry, ProjectFile, ProjectFileKind, ProjectFolder } from '../types';
 import {
   createFileSystemReadError,
@@ -1358,7 +1358,9 @@ function HtmlPreviewThumbnail({
       .then((response) => (response.ok ? response.text() : null))
       .then((html) => {
         if (cancelled || html === null) return;
-        setSrcDoc(buildSrcdoc(html, { baseHref: projectRawUrl(projectId, baseDirForFile(file.name)) }));
+        setSrcDoc(
+          buildHtmlCoverSrcDoc(html, projectRawUrl(projectId, baseDirForFile(file.name))),
+        );
       })
       .catch(() => {
         if (!cancelled) setSrcDoc(null);

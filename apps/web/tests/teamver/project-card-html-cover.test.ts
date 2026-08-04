@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   deckPreviewSrcDoc,
+  extractCoverSlideSections,
+  htmlLooksLikeMultiSlideDeck,
   isolateFirstDeckSlideHtml,
   pagePreviewSrcDoc,
-  parseProjectRawUrl,
-} from "../../src/teamver/components/ProjectCardHtmlCover";
+  buildHtmlCoverSrcDoc,
+} from "../../src/teamver/htmlCoverSrcDoc";
+import { parseProjectRawUrl } from "../../src/teamver/components/ProjectCardHtmlCover";
 
 describe("ProjectCardHtmlCover srcDoc builders", () => {
   it("parses project raw URLs for scoped preview base resolution", () => {
@@ -98,5 +101,47 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(srcDoc).toContain("NeuralStudio");
     expect(srcDoc).not.toContain("AI EDUCATION");
     expect(srcDoc).toContain('id="od-deck-card-preview-trail"');
+  });
+
+  it("isolates div.slide and data-slide-index dialects", () => {
+    const divDeck = `<html><body>
+<div class="slide">Cover</div>
+<div class="slide"><div style="position:absolute">Bleed</div></div>
+</body></html>`;
+    expect(isolateFirstDeckSlideHtml(divDeck)).toContain("Cover");
+    expect(isolateFirstDeckSlideHtml(divDeck)).not.toContain("Bleed");
+
+    const indexed = `<html><body>
+<section data-slide-index="0">First</section>
+<section data-slide-index="1">Second abs</section>
+</body></html>`;
+    expect(isolateFirstDeckSlideHtml(indexed)).toContain("First");
+    expect(isolateFirstDeckSlideHtml(indexed)).not.toContain("Second abs");
+  });
+
+  it("keeps nested .slide inside the first slide when isolating", () => {
+    const html = `<html><body>
+<section class="slide">Outer<div class="slide">Nested</div></section>
+<section class="slide">LaterBleed</section>
+</body></html>`;
+    const isolated = isolateFirstDeckSlideHtml(html);
+    expect(isolated).toContain("Outer");
+    expect(isolated).toContain("Nested");
+    expect(isolated).not.toContain("LaterBleed");
+    expect(extractCoverSlideSections(html)).toHaveLength(2);
+  });
+
+  it("upgrades page-mode covers to deck isolation when HTML is multi-slide", () => {
+    const html = `<html><head></head><body>
+<section class="slide">HomeHero</section>
+<section class="slide">TrackRecord</section>
+</body></html>`;
+    expect(htmlLooksLikeMultiSlideDeck(html)).toBe(true);
+    const srcDoc = buildHtmlCoverSrcDoc(html, "/api/projects/p1/raw/deck.html", {
+      preferDeck: false,
+    });
+    expect(srcDoc).toContain("HomeHero");
+    expect(srcDoc).not.toContain("TrackRecord");
+    expect(srcDoc).toContain('id="od-deck-card-preview"');
   });
 });
