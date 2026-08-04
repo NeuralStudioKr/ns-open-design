@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 
+import { extractTopLevelSlideSections } from "../../artifacts/deck-patch";
 import { injectHtmlBaseHref } from "../../runtime/authenticatedHtmlSrcDoc";
 import { isTeamverEmbedMode } from "../designApiBase";
 import { fetchTeamverDaemon } from "../teamverDaemonHeaders";
@@ -266,7 +267,11 @@ export function pagePreviewSrcDoc(html: string, sourceUrl: string): string {
 }
 
 export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
-  const withoutScripts = stripHtmlScripts(html);
+  // Prefer DOM isolation over CSS hide: agent rules like
+  // `.slide.s-xxx { display:flex !important }` after </head> can re-show later
+  // slides. Absolute-stacked + manually moved children then bleed into the
+  // first-slide thumb (home/designs card covers).
+  const withoutScripts = stripHtmlScripts(isolateFirstDeckSlideHtml(html));
   const style = `<style id="od-deck-card-preview">
     html,
     body {
@@ -289,8 +294,8 @@ export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
       flex: none !important;
       scroll-snap-align: none !important;
     }
-    /* Sibling combinator: :first-of-type hides the real first .slide when a
-       preceding <section> sibling steals first-of-type. */
+    /* Backup if isolation missed a dialect — sibling combinator: :first-of-type
+       hides the real first .slide when a preceding <section> steals it. */
     .slide ~ .slide,
     section[data-slide] ~ section[data-slide],
     section[data-screen-label] ~ section[data-screen-label],
@@ -327,7 +332,39 @@ export function deckPreviewSrcDoc(html: string, sourceUrl: string): string {
       pointer-events: none !important;
     }
   </style>`;
-  return injectPreviewHead(withoutScripts, sourceUrl, style);
+  // Trail the doc so late author <style> blocks cannot re-show removed slides'
+  // leftovers (nav chrome, non-.slide sections).
+  const trail = `<style id="od-deck-card-preview-trail">
+    .slide ~ .slide,
+    section[data-slide] ~ section[data-slide],
+    section[data-screen-label] ~ section[data-screen-label] {
+      display: none !important;
+      visibility: hidden !important;
+      content-visibility: hidden !important;
+      pointer-events: none !important;
+    }
+  </style>`;
+  return injectBefore(
+    injectPreviewHead(withoutScripts, sourceUrl, style),
+    "</body>",
+    trail,
+  );
+}
+
+/**
+ * Drop every `<section class="slide">` after the first so card thumbs cannot
+ * paint later-slide absolute/manual-edit chrome over the cover.
+ */
+export function isolateFirstDeckSlideHtml(html: string): string {
+  const slides = extractTopLevelSlideSections(html);
+  if (slides.length <= 1) return html;
+  let out = html;
+  for (let i = slides.length - 1; i >= 1; i -= 1) {
+    const slide = slides[i];
+    if (!slide) continue;
+    out = `${out.slice(0, slide.start)}${out.slice(slide.end)}`;
+  }
+  return out;
 }
 
 function injectPreviewHead(source: string, sourceUrl: string, style: string): string {

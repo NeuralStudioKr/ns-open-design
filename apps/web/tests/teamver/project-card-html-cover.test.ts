@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   deckPreviewSrcDoc,
+  isolateFirstDeckSlideHtml,
   pagePreviewSrcDoc,
   parseProjectRawUrl,
 } from "../../src/teamver/components/ProjectCardHtmlCover";
@@ -76,6 +77,26 @@ describe("ProjectCardHtmlCover srcDoc builders", () => {
     expect(srcDoc).toContain('width: 1920px !important');
     expect(srcDoc).toContain('height: 1080px !important');
     expect(srcDoc).toContain('.slide ~ .slide');
+    expect(srcDoc).toContain('One');
+    expect(srcDoc).not.toContain('>Two<');
     expect(srcDoc).not.toContain('.slide:not(:first-of-type)');
+  });
+
+  it("removes later slides from the cover DOM so absolute/manual-edit chrome cannot bleed", () => {
+    const html = `<html><head></head><body>
+<section class="slide"><h1>NeuralStudio</h1></section>
+<section class="slide"><div style="position:absolute;left:100px;top:200px">AI EDUCATION</div>
+<div style="position:absolute">FEATURED PROJECT</div></section>
+</body></html>`;
+    const isolated = isolateFirstDeckSlideHtml(html);
+    expect(isolated).toContain("NeuralStudio");
+    expect(isolated).not.toContain("AI EDUCATION");
+    expect(isolated).not.toContain("FEATURED PROJECT");
+    expect(isolated.match(/class="slide"/g)).toHaveLength(1);
+
+    const srcDoc = deckPreviewSrcDoc(html, "/api/projects/p1/raw/deck.html");
+    expect(srcDoc).toContain("NeuralStudio");
+    expect(srcDoc).not.toContain("AI EDUCATION");
+    expect(srcDoc).toContain('id="od-deck-card-preview-trail"');
   });
 });
