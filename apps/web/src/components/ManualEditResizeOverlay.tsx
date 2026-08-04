@@ -672,10 +672,9 @@ export function ManualEditResizeOverlay({
     <div
       className={[
         styles.overlay,
-        // Resize-only (flow text/link): keep the body pass-through so dblclick
-        // reaches the iframe for inline edit. Handles stay pointer-events:auto.
-        // Movable boxes need an interactive body for interior drag-to-move.
-        disabled || !movable ? '' : styles.interactive,
+        // Resize needs pointer events on the overlay body for edge hit-testing
+        // even when the target cannot move (flow images / inline SVG).
+        disabled ? '' : styles.interactive,
         movable ? styles.movable : '',
         moving ? styles.moving : '',
       ]
@@ -687,8 +686,8 @@ export function ManualEditResizeOverlay({
       data-movable={movable ? 'true' : 'false'}
       style={boxStyle}
       aria-hidden={disabled || undefined}
-      onPointerDown={disabled || !movable ? undefined : onOverlayPointerDown}
-      onPointerMove={disabled || !movable ? undefined : onOverlayPointerMove}
+      onPointerDown={disabled ? undefined : onOverlayPointerDown}
+      onPointerMove={disabled ? undefined : onOverlayPointerMove}
       onDoubleClick={disabled || (target.kind !== 'text' && target.kind !== 'link')
         ? undefined
         : (event) => {

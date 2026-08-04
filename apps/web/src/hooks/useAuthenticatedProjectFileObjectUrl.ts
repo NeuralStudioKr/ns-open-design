@@ -10,7 +10,7 @@ import {
   isProjectRawFileKnownMissing,
   markProjectRawFileMissing,
 } from '../utils/projectFileFetchCache';
-import { normalizeFetchedImageBlob, blobToImageDataUrl } from '../utils/imageBlobNormalize';
+import { normalizeFetchedImageBlob } from '../utils/imageBlobNormalize';
 import { isEphemeralDrawingScreenshotPath, projectFilePathBasename } from '../utils/projectFilePaths';
 
 export const AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS = [0, 250, 800, 1500] as const;
@@ -152,7 +152,7 @@ export type AuthenticatedProjectFileObjectUrlState = {
  * Bare `/api/projects/.../raw/...` on `<img src>` can fail when cookies or
  * workspace headers are required for the request to succeed.
  *
- * Returns a data URL so `<img>` does not depend on revocable blob URLs.
+ * Returns a blob object URL for `<img src>` (revoked on unmount / path change).
  */
 export function useAuthenticatedProjectFileObjectUrl(
   projectId: string | null | undefined,
@@ -197,9 +197,17 @@ export function useAuthenticatedProjectFileObjectUrl(
     }
 
     let cancelled = false;
+    let activeBlobUrl: string | null = null;
     setImageSrc(null);
     setLoading(true);
     setFailed(false);
+
+    const revokeActiveBlobUrl = () => {
+      if (activeBlobUrl) {
+        URL.revokeObjectURL(activeBlobUrl);
+        activeBlobUrl = null;
+      }
+    };
 
     void (async () => {
       const tryLoad = async (): Promise<Blob | null> => {
@@ -220,13 +228,10 @@ export function useAuthenticatedProjectFileObjectUrl(
 
       if (cancelled) return;
       if (blob) {
-        const dataUrl = await blobToImageDataUrl(blob);
-        if (cancelled || !dataUrl) {
-          if (!cancelled) setFailed(true);
-          setLoading(false);
-          return;
-        }
-        setImageSrc(dataUrl);
+        revokeActiveBlobUrl();
+        const blobUrl = URL.createObjectURL(blob);
+        activeBlobUrl = blobUrl;
+        setImageSrc(blobUrl);
         setFailed(false);
       } else {
         setFailed(true);
@@ -236,6 +241,7 @@ export function useAuthenticatedProjectFileObjectUrl(
 
     return () => {
       cancelled = true;
+      revokeActiveBlobUrl();
       setImageSrc(null);
       setLoading(false);
       setFailed(false);

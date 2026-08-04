@@ -602,6 +602,7 @@ describe('manual edit bridge target normalization', () => {
     expect(css).toContain('[data-od-source-path] [data-od-source-path] { outline-color: transparent; }');
     expect(css).toContain('[data-od-edit-selected][data-od-edit-host-chrome]');
     expect(css).toContain('outline: none !important');
+    expect(css).toContain('pointer-events: none !important');
   });
 
   it('marks hostChrome selection so iframe outline can yield to the overlay', () => {

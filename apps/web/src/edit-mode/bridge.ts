@@ -712,6 +712,7 @@ html[data-od-edit-mode] [data-od-edit-selected][data-od-edit-host-chrome] {
   outline: none !important;
   outline-offset: 0;
   box-shadow: none !important;
+  pointer-events: none !important;
 }
 html[data-od-edit-mode] [data-od-editing="true"] {
   outline: 2px solid #2563eb !important;
