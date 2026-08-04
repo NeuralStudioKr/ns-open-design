@@ -28,6 +28,11 @@ import {
 import { normalizeArtifactRuntimeImports } from './artifact-runtime-compat.js';
 import { isIgnoredProjectDirName } from './project-ignored-dirs.js';
 import {
+  addDeletedProjectRelpath,
+  filterDeletedProjectRelpaths,
+  readDeletedProjectRelpaths,
+} from './project-deleted-relpaths.js';
+import {
   isSandboxImportedProjectRootAllowed,
   isSandboxModeEnabled,
   SANDBOX_IMPORTED_PROJECT_UNAVAILABLE_MESSAGE,
@@ -133,11 +138,13 @@ export async function listFiles(projectsRoot, projectId, opts = {}) {
   await collectFiles(dir, '', out, isIgnoredProjectDirName, dir);
   // Newest first — matches the visual order users expect after generating.
   out.sort((a, b) => b.mtime - a.mtime);
+  const deleted = await readDeletedProjectRelpaths(dir);
+  const visible = filterDeletedProjectRelpaths(out, deleted);
   const since = Number(opts.since);
   if (Number.isFinite(since) && since > 0) {
-    return out.filter((f) => Number(f.mtime) > since);
+    return visible.filter((f) => Number(f.mtime) > since);
   }
-  return out;
+  return visible;
 }
 
 export async function listProjectFolders(projectsRoot, projectId, opts = {}) {
@@ -956,6 +963,7 @@ export async function deleteProjectFile(projectsRoot, projectId, name, metadata?
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const file = await resolveSafeReal(dir, name);
   await unlink(file);
+  await addDeletedProjectRelpath(dir, name);
 }
 
 export async function renameProjectFile(projectsRoot, projectId, fromName, toName, metadata?) {

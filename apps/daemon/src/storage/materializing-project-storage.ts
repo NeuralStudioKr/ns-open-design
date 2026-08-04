@@ -3,6 +3,11 @@ import { promises as fsp } from 'node:fs';
 
 import { isRunTouchedProjectFile, RUN_ARTIFACT_RECONCILE_MTIME_GRACE_MS } from '../projects.js';
 import {
+  normalizeProjectRelpath,
+  readDeletedProjectRelpaths,
+  removeDeletedProjectRelpath,
+} from '../project-deleted-relpaths.js';
+import {
   LocalProjectStorage,
   S3ProjectStorage,
   StorageError,
@@ -146,9 +151,13 @@ export class MaterializingProjectStorage implements ProjectStorage {
     // overwrite here made preview/edit/download look broken until refresh.
     const localFiles = await this.scratch.listFiles(projectId);
     const localByPath = new Map(localFiles.map((file) => [file.path, file]));
+    const projectDir = path.join(this.scratch.projectsRoot, projectId);
+    const deletedRelpaths = await readDeletedProjectRelpaths(projectDir);
     let files = 0;
     let preservedNewerLocal = 0;
     for (const file of remoteFiles) {
+      const normalizedPath = normalizeProjectRelpath(file.path);
+      if (deletedRelpaths.has(normalizedPath)) continue;
       if (isProjectScratchSyncExcludedRelpath(file.path)) continue;
       const local = localByPath.get(file.path);
       if (
@@ -189,6 +198,8 @@ export class MaterializingProjectStorage implements ProjectStorage {
   ): Promise<boolean> {
     const normalized = String(relpath || '').trim().replace(/^\/+/, '');
     if (!normalized || isProjectScratchSyncExcludedRelpath(normalized)) return false;
+    const deleted = await readDeletedProjectRelpaths(path.join(this.scratch.projectsRoot, projectId));
+    if (deleted.has(normalizeProjectRelpath(normalized))) return false;
     const local = await this.scratch.statFile(projectId, normalized);
     if (local) return true;
     try {
@@ -215,13 +226,15 @@ export class MaterializingProjectStorage implements ProjectStorage {
   ): Promise<{ deleted: number; failed: number }> {
     let deleted = 0;
     let failed = 0;
+    const projectDir = path.join(this.scratch.projectsRoot, projectId);
     for (const relpath of relpaths) {
-      const normalized = String(relpath || '').trim();
+      const normalized = normalizeProjectRelpath(relpath);
       if (!normalized) continue;
       try {
         await withSyncUpRetry(async () => {
           await remote.deleteFile(projectId, normalized);
         });
+        await removeDeletedProjectRelpath(projectDir, normalized);
         deleted += 1;
       } catch (err) {
         failed += 1;
