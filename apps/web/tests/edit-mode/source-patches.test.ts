@@ -934,6 +934,119 @@ describe('manual edit source patches', () => {
     expect(readManualEditOuterHtml(outer.source, 'form')).not.toContain('evil.example');
   });
 
+  it('scrubs IE/HTC behavior: bindings from inline and salvaged styles', () => {
+    const inline = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="behavior:url(evil.htc);color:navy">Title</h1>',
+    });
+    expect(inline.ok, inline.error).toBe(true);
+    const inlineHtml = readManualEditOuterHtml(inline.source, 'hero-title');
+    expect(inlineHtml).not.toMatch(/behavior/i);
+    expect(inlineHtml).toContain('color:navy');
+
+    const salvaged = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{behavior:url(evil.htc);color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(salvaged.ok, salvaged.error).toBe(true);
+    expect(salvaged.source).toContain('.hero-pop{');
+    expect(salvaged.source).toContain('color:#444');
+    expect(salvaged.source).not.toMatch(/behavior/i);
+  });
+
+  it('strips HTML behavior attributes from fragments and set-attributes', () => {
+    expect(
+      sanitizeManualEditHtmlFragment('<div behavior="url(evil.htc)">safe</div>'),
+    ).toBe('<div>safe</div>');
+
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-attributes',
+      id: 'hero-title',
+      attributes: { behavior: 'url(evil.htc)', title: 'ok' },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const attrs = readManualEditAttributes(result.source, 'hero-title');
+    expect(attrs.behavior).toBeUndefined();
+    expect(attrs.title).toBe('ok');
+  });
+
+  it('rejects set-token values that hide url()/expression() behind CSS escapes', () => {
+    const escapedUrl = applyManualEditPatch(baseSource, {
+      kind: 'set-token',
+      token: '--brand',
+      value: '\\75rl(https://evil.example/x.png)',
+    });
+    expect(escapedUrl.ok).toBe(false);
+    expect(escapedUrl.source).toContain('--brand: #111;');
+    expect(escapedUrl.source).not.toContain('evil.example');
+
+    const escapedExpr = applyManualEditPatch(baseSource, {
+      kind: 'set-token',
+      token: '--brand',
+      value: '\\65xpression(alert(1))',
+    });
+    expect(escapedExpr.ok).toBe(false);
+    expect(escapedExpr.source).toContain('--brand: #111;');
+  });
+
+  it('removes SMIL nodes that target srcdoc or content', () => {
+    // iframe/meta roots are dropped entirely — exercise SMIL kill under a safe host.
+    const srcdoc = sanitizeManualEditHtmlFragment(
+      '<div><animate attributeName="srcdoc" to="<script>alert(1)</script>"></animate><span>ok</span></div>',
+    );
+    expect(srcdoc).toContain('<span>ok</span>');
+    expect(srcdoc).not.toMatch(/<animate\b/i);
+    expect(srcdoc).not.toMatch(/srcdoc/i);
+
+    const content = sanitizeManualEditHtmlFragment(
+      '<div><set attributeName="content" to="0;url=javascript:alert(1)"></set><span>ok</span></div>',
+    );
+    expect(content).toContain('<span>ok</span>');
+    expect(content).not.toMatch(/<set\b/i);
+    expect(content).not.toMatch(/javascript/i);
+  });
+
+  it('keeps ping on same-document relative or fragment targets only', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<a data-od-id="cta" href="#ok" ping="#local">Start</a>',
+      '</body></html>',
+    ].join('');
+    const denied = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: { ping: 'https://evil.example/track' },
+    });
+    expect(denied.ok, denied.error).toBe(true);
+    expect(readManualEditAttributes(denied.source, 'cta').ping).toBe('#local');
+
+    const outer = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'cta',
+      html: '<a data-od-id="cta" href="#ok" ping="https://evil.example/track">Start</a>',
+    });
+    expect(outer.ok, outer.error).toBe(true);
+    expect(readManualEditOuterHtml(outer.source, 'cta')).not.toContain('evil.example');
+    expect(readManualEditOuterHtml(outer.source, 'cta')).not.toMatch(/\bping=/i);
+
+    const ok = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: { ping: '/same-origin/track' },
+    });
+    expect(ok.ok, ok.error).toBe(true);
+    expect(readManualEditAttributes(ok.source, 'cta').ping).toBe('/same-origin/track');
+
+    expect(
+      sanitizeManualEditHtmlFragment('<a href="#ok" ping="#local">x</a>'),
+    ).toBe('<a href="#ok" ping="#local">x</a>');
+  });
+
   it('removes SMIL nodes that retarget href to absolute https', () => {
     const source = [
       '<!doctype html><html><body>',

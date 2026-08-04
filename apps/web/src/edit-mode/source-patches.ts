@@ -950,7 +950,12 @@ function sanitizeManualEditReplacementTree(root: Element): void {
         || el.getAttribute('attributename')
         || ''
       ).trim().toLowerCase();
-      if (smilAttr.startsWith('on')) {
+      if (
+        smilAttr.startsWith('on')
+        || smilAttr === 'srcdoc'
+        || smilAttr === 'content'
+      ) {
+        // srcdoc/content can carry HTML/script payloads via to=/values=.
         toRemove.push(el);
         return;
       }
@@ -986,7 +991,7 @@ function sanitizeManualEditReplacementTree(root: Element): void {
     }
     for (const attr of Array.from(el.attributes)) {
       const lower = attr.name.toLowerCase();
-      if (lower.startsWith('on') || lower === 'srcdoc') {
+      if (lower.startsWith('on') || lower === 'srcdoc' || lower === 'behavior') {
         el.removeAttribute(attr.name);
         continue;
       }
@@ -1828,9 +1833,12 @@ function isSafeCssTokenValue(value: string): boolean {
   if (/[;{}]/.test(trimmed)) return false;
   if (/<\/?style/i.test(trimmed)) return false;
   if (/@/.test(trimmed)) return false;
-  if (/\burl\s*\(/i.test(trimmed)) return false;
-  if (/\bexpression\s*\(/i.test(trimmed)) return false;
-  if (/-moz-binding/i.test(trimmed)) return false;
+  // Decode CSS hex escapes so `\75rl(` / `\65xpression(` cannot bypass denies.
+  const normalized = normalizeCssForSafetyScan(trimmed);
+  if (/\burl\s*\(/i.test(normalized)) return false;
+  if (/\bexpression\s*\(/i.test(normalized)) return false;
+  if (/-moz-binding/i.test(normalized)) return false;
+  if (/\bbehavior\s*:/i.test(normalized)) return false;
   return true;
 }
 
@@ -1905,6 +1913,7 @@ const MANUAL_EDIT_SMIL_NAV_ATTR_NAMES = new Set([
   'formaction',
   'poster',
   'cite',
+  'ping',
 ]);
 
 /** Tags whose URL attrs must not be mutated via set-attributes (chrome/exec). */
@@ -1942,6 +1951,8 @@ function scrubUnsafeCssFunctions(css: string): string {
   text = text.replace(/image-set\s*\([^)]*(?:javascript|vbscript|data):[^)]*\)/gi, 'none');
   text = text.replace(/expression\s*\([^)]*\)/gi, 'initial');
   text = text.replace(/-moz-binding\s*:[^;]*/gi, '');
+  // IE/HTC binding — same threat class as -moz-binding (incl. mid-rule).
+  text = text.replace(/\bbehavior\s*:[^;}]*/gi, '');
   return text;
 }
 
@@ -1952,11 +1963,12 @@ function scrubSalvagedStyleText(css: string): string {
 function scrubUnsafeInlineStyleAttr(value: string): string {
   // Match salvage path: defeat CSS escapes/comments before url()/expression scrub.
   const normalized = normalizeCssForSafetyScan(String(value || ''));
-  const scrubbed = scrubUnsafeCssFunctions(normalized).trim();
+  const scrubbed = scrubUnsafeCssFunctions(normalized).trim().replace(/^;+|;+$/g, '').trim();
   // If anything still looks like a scriptable url, drop the whole attr.
   if (containsUnsafeEmbeddedCssOrScheme(scrubbed)) return '';
   if (/\bexpression\s*\(/i.test(scrubbed)) return '';
   if (/-moz-binding/i.test(scrubbed)) return '';
+  if (/\bbehavior\s*:/i.test(scrubbed)) return '';
   return scrubbed;
 }
 
@@ -2006,7 +2018,7 @@ function isSafeAttributeName(value: string): boolean {
   const lower = value.toLowerCase();
   // Block event handlers and high-risk markup attrs from model set-attributes.
   if (lower.startsWith('on')) return false;
-  if (lower === 'style' || lower === 'srcdoc') return false;
+  if (lower === 'style' || lower === 'srcdoc' || lower === 'behavior') return false;
   return true;
 }
 
@@ -2129,7 +2141,9 @@ export function isSafeManualEditUrlAttrValue(attr: string, value: string): boole
     }
     return true;
   }
-  if (lower === 'action' || lower === 'formaction') {
+  // Form / beacon navigators — same-document relative / fragment only so a
+  // crafted action / ping cannot POST credentials or fire beacons off-origin.
+  if (lower === 'action' || lower === 'formaction' || lower === 'ping') {
     return isSafeManualEditRelativeOrFragmentUrl(value);
   }
   if (lower === 'to' || lower === 'from' || lower === 'by' || lower === 'values') {
