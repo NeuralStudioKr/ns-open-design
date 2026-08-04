@@ -5468,6 +5468,9 @@ function HtmlViewer({
     revisionReconcileGenerationRef.current += 1;
     setRevisionStack(next);
   }
+  function isStaleRevisionReconcile(reconcileGeneration: number): boolean {
+    return reconcileGeneration !== revisionReconcileGenerationRef.current;
+  }
   const revisionSyncSuppressRef = useRef(false);
   const revisionSkipReconcileOnceRef = useRef(false);
   const revisionConflictSuppressedRef = useRef(false);
@@ -7099,6 +7102,11 @@ function HtmlViewer({
     manualEditResizePausedRef.current = false;
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
+    return () => {
+      // Drop in-flight reconcile work so unmount cannot overwrite persisted
+      // revision cursor state in sessionStorage after a tab switch.
+      revisionReconcileGenerationRef.current += 1;
+    };
   }, [file.name]);
 
   const resolveRevisionSnapshotContent = useCallback(async (revisionId: string): Promise<string | null> => {
@@ -7133,7 +7141,7 @@ function HtmlViewer({
     if (
       revisionSyncSuppressRef.current
       || manualEditSavingRef.current
-      || reconcileGeneration !== revisionReconcileGenerationRef.current
+      || isStaleRevisionReconcile(reconcileGeneration)
       || revisionStackRef.current.cursorRevisionId !== cursorRevisionId
     ) {
       return;
@@ -7198,7 +7206,7 @@ function HtmlViewer({
     if (
       revisionSyncSuppressRef.current
       || manualEditSavingRef.current
-      || reconcileGeneration !== revisionReconcileGenerationRef.current
+      || isStaleRevisionReconcile(reconcileGeneration)
     ) {
       return;
     }
@@ -7218,11 +7226,28 @@ function HtmlViewer({
         return;
       }
 
+      if (
+        headRevision
+        && cursor.id !== headRevision.id
+        && cursor.sequence < headRevision.sequence
+        && matchingRevision.sequence > cursor.sequence
+      ) {
+        // Disk shows a newer revision while the user intentionally sits on an
+        // older cursor (undo). Never fast-forward the stack to head here.
+        setRevisionStackInvalidated(false);
+        revisionConflictSuppressedRef.current = false;
+        setRevisionConflictToast(null);
+        return;
+      }
+
       commitRevisionStack(createRevisionStackSnapshot(
         list.revisions,
         list.headRevisionId,
         matchingRevision.id,
       ));
+      if (isStaleRevisionReconcile(reconcileGeneration)) {
+        return;
+      }
       setActiveRevisionSequence(projectId, file.name, matchingRevision.sequence);
       setRevisionStackInvalidated(false);
       revisionConflictSuppressedRef.current = false;
@@ -7253,6 +7278,10 @@ function HtmlViewer({
       return;
     }
 
+    if (isStaleRevisionReconcile(reconcileGeneration)) {
+      return;
+    }
+
     if (sourceRef.current !== disk) {
       setSource(disk);
       sourceRef.current = disk;
@@ -7268,6 +7297,9 @@ function HtmlViewer({
       list.headRevisionId,
       list.headRevisionId,
     ));
+    if (isStaleRevisionReconcile(reconcileGeneration)) {
+      return;
+    }
     const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
     if (head) {
       setActiveRevisionSequence(projectId, file.name, head.sequence);
@@ -7286,6 +7318,7 @@ function HtmlViewer({
     if (typeof list.retentionLimit === 'number') {
       setRevisionRetentionLimit(list.retentionLimit);
     }
+    const hadRevisionCursorBeforeRefresh = revisionStackRef.current.cursorRevisionId != null;
     const nextStack = createRevisionStackSnapshot(
       list.revisions,
       list.headRevisionId,
@@ -7296,12 +7329,20 @@ function HtmlViewer({
     );
     commitRevisionStack(nextStack);
     const cursorRevision = nextStack.revisions.find((revision) => revision.id === nextStack.cursorRevisionId);
+    const headRevision = list.revisions.find((revision) => revision.id === list.headRevisionId);
     if (cursorRevision) {
       setActiveRevisionSequence(projectId, file.name, cursorRevision.sequence);
     } else {
       clearActiveRevisionSequence(projectId, file.name);
     }
-    const skipReconcile = revisionSkipReconcileOnceRef.current;
+    const hydratedUndoCursorFromSession = (
+      !hadRevisionCursorBeforeRefresh
+      && getActiveRevisionSequence(projectId, file.name) != null
+      && cursorRevision != null
+      && headRevision != null
+      && cursorRevision.sequence < headRevision.sequence
+    );
+    const skipReconcile = revisionSkipReconcileOnceRef.current || hydratedUndoCursorFromSession;
     revisionSkipReconcileOnceRef.current = false;
     if (!skipReconcile) {
       await reconcileRevisionWithDisk(list);
