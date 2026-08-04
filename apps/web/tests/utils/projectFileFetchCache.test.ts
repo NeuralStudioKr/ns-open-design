@@ -30,6 +30,14 @@ describe('projectFileFetchCache', () => {
     expect(isProjectRawFileKnownMissing(projectId, path)).toBe(false);
   });
 
+  it('does not poison the session cache for user drawing screenshots', () => {
+    resetProjectRawFileFetchCacheForTests();
+    const projectId = 'project-1';
+    const path = 'mse7c6na-drawing-2026-08-04T05-12-44-933Z.png';
+    markProjectRawFileMissing(projectId, path);
+    expect(isProjectRawFileKnownMissing(projectId, path)).toBe(false);
+  });
+
   it('keeps missing marks when the path is still absent from the index', () => {
     resetProjectRawFileFetchCacheForTests();
     const projectId = 'project-1';

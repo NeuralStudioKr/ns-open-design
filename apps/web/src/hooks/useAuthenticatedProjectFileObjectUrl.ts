@@ -14,7 +14,7 @@ import { normalizeFetchedImageBlob, blobToImageDataUrl } from '../utils/imageBlo
 import { isEphemeralDrawingScreenshotPath, projectFilePathBasename } from '../utils/projectFilePaths';
 
 export const AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS = [0, 250, 800, 1500] as const;
-const TRUSTED_BACKGROUND_RETRY_DELAYS_MS = [2000, 5000] as const;
+const TRUSTED_BACKGROUND_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -96,14 +96,11 @@ export async function loadAuthenticatedProjectFileBlob(
   const id = projectId.trim();
   const path = filePath.trim();
   if (!id || !path) return null;
-  if (
-    !options?.trustExists
-    && isEphemeralDrawingScreenshotPath(path)
-    && isProjectRawFileKnownMissing(id, path)
-  ) {
-    return null;
+  if (!options?.trustExists && isProjectRawFileKnownMissing(id, path)) {
+    // Legacy session marks for user draw screenshots are ignored — they used
+    // to poison thumbnails after a single 404 during S3 materialization.
+    if (!isEphemeralDrawingScreenshotPath(path)) return null;
   }
-  if (!options?.trustExists && isProjectRawFileKnownMissing(id, path)) return null;
   if (options?.trustExists) clearProjectRawFileMissing(id, path);
 
   const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
@@ -131,7 +128,9 @@ export async function loadAuthenticatedProjectFileBlob(
         if (trustExists || !isLastCandidate) continue;
         const isLastAttempt = attempt >= delays.length - 1;
         if (!isLastAttempt) continue;
-        if (!trustExists) markProjectRawFileMissing(id, path);
+        if (!trustExists && !isEphemeralDrawingScreenshotPath(path)) {
+          markProjectRawFileMissing(id, path);
+        }
         return null;
       }
       clearProjectRawFileMissing(id, path);

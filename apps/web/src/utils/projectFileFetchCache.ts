@@ -1,4 +1,4 @@
-import { projectFilePathExists } from './projectFilePaths';
+import { isUserAnnotationDrawingScreenshotPath, projectFilePathExists } from './projectFilePaths';
 
 const missingProjectRawFiles = new Set<string>();
 
@@ -12,6 +12,9 @@ export function isProjectRawFileKnownMissing(projectId: string, path: string): b
 }
 
 export function markProjectRawFileMissing(projectId: string, path: string): void {
+  // User draw screenshots can 404 while S3 materializes; never poison the
+  // session cache — that left thumbnails and the file viewer blank until reload.
+  if (isUserAnnotationDrawingScreenshotPath(path)) return;
   const key = projectRawFileCacheKey(projectId, path);
   if (key !== '::') missingProjectRawFiles.add(key);
 }

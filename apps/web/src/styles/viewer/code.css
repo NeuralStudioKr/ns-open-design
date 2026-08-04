@@ -240,8 +240,12 @@
   padding: 24px;
 }
 .image-body img {
+  display: block;
   max-width: 100%;
-  max-height: 100%;
+  max-height: calc(100vh - 180px);
+  min-height: 120px;
+  width: auto;
+  height: auto;
   object-fit: contain;
   background: white;
   border: 1px solid var(--border);

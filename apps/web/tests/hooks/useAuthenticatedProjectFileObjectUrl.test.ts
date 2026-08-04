@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { loadAuthenticatedProjectFileBlob } from '../../src/hooks/useAuthenticatedProjectFileObjectUrl';
-import { markProjectRawFileMissing } from '../../src/utils/projectFileFetchCache';
 
 describe('loadAuthenticatedProjectFileBlob', () => {
   it('retries after a transient non-OK raw fetch and returns the image blob', async () => {
@@ -84,18 +83,24 @@ describe('loadAuthenticatedProjectFileBlob', () => {
     expect(blob).toBe(imageBlob);
   });
 
-  it('skips ephemeral drawing screenshots when the session cache already marked them missing', async () => {
-    const path = 'ms798rzf-drawing-2026-07-30T08-31-44-563Z.png';
-    markProjectRawFileMissing('project-1', path);
-    const fetchDaemon = vi.fn();
+  it('retries ephemeral drawing screenshots without trustExists instead of skipping fetch', async () => {
+    const imageBlob = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' });
+    const fetchDaemon = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => imageBlob,
+    } as Response);
 
-    const blob = await loadAuthenticatedProjectFileBlob('project-1', path, {
-      delaysMs: [0],
-      fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
-      waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
-    });
+    const blob = await loadAuthenticatedProjectFileBlob(
+      'project-1',
+      'ms798rzf-drawing-2026-07-30T08-31-44-563Z.png',
+      {
+        delaysMs: [0],
+        fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
+        waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
+      },
+    );
 
-    expect(blob).toBeNull();
-    expect(fetchDaemon).not.toHaveBeenCalled();
+    expect(fetchDaemon).toHaveBeenCalled();
+    expect(blob).toBe(imageBlob);
   });
 });

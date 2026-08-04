@@ -75,6 +75,7 @@ import {
 } from '@open-design/host';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { isRenderableImagePath } from '../utils/projectFilePaths';
+import { clearProjectRawFileMissing } from '../utils/projectFileFetchCache';
 import {
   fetchTeamverDaemon,
   TeamverDaemonUnauthorizedError,
@@ -2216,15 +2217,16 @@ export async function uploadProjectFiles(
 
   await warmTeamverProjectUpload(projectId);
 
+  function buildUploadFormData(files: File[]): FormData {
+    const form = new FormData();
+    if (targetDir) form.append('dir', targetDir);
+    for (const f of files) form.append('files', f);
+    return form;
+  }
+
   for (let i = 0; i < uploadable.length; i += PROJECT_UPLOAD_BATCH_SIZE) {
     const batch = uploadable.slice(i, i + PROJECT_UPLOAD_BATCH_SIZE);
     const remaining = uploadable.slice(i + PROJECT_UPLOAD_BATCH_SIZE);
-    const form = new FormData();
-    // The `dir` field MUST be appended before the file parts: the daemon's
-    // multer destination resolver reads req.body.dir as each file streams in,
-    // and busboy only exposes fields parsed earlier in the multipart body.
-    if (targetDir) form.append('dir', targetDir);
-    for (const f of batch) form.append('files', f);
 
     let batchDone = false;
     for (let attempt = 0; attempt < PROJECT_UPLOAD_PREFIX_RETRY_MS.length; attempt += 1) {
@@ -2236,7 +2238,7 @@ export async function uploadProjectFiles(
       try {
         const resp = await fetchTeamverDaemon(
           `/api/projects/${encodeURIComponent(projectId)}/upload`,
-          { method: 'POST', body: form },
+          { method: 'POST', body: buildUploadFormData(batch), teamverProjectId: projectId },
         );
 
         if (!resp.ok) {
@@ -2275,6 +2277,10 @@ export async function uploadProjectFiles(
             size: f.size,
           })),
         );
+        for (const f of responseFiles) {
+          clearProjectRawFileMissing(projectId, f.path);
+          clearProjectRawFileMissing(projectId, f.name);
+        }
         // Server preserves request order; any dropped files are unmatched at the batch tail.
         if (responseFiles.length < batch.length) {
           if (responseFiles.length === 0 && attempt < PROJECT_UPLOAD_PREFIX_RETRY_MS.length - 1) {
