@@ -358,8 +358,10 @@ describe('ChatComposer /search command', () => {
 
     await waitFor(() => expect(mockedUploadProjectFiles).not.toHaveBeenCalled());
     await waitFor(() => expect(composerText()).toContain('review this before sending'));
-    expect(screen.getByText('drawing.png')).toBeTruthy();
-    expect(screen.queryByText('Visual mark')).toBeNull();
+    const commentRow = screen.getByTestId('staged-comment-attachments');
+    expect(commentRow).toBeTruthy();
+    expect(within(commentRow).getByText('review this before sending')).toBeTruthy();
+    expect(screen.queryByText('drawing.png')).toBeNull();
     expect(onSend).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId('chat-send'));
@@ -464,13 +466,13 @@ describe('ChatComposer /search command', () => {
       },
     }));
 
-    await waitFor(() => expect(screen.getByText('drawing.png')).toBeTruthy());
-    const removeButton = within(screen.getByTestId('staged-contexts')).getByRole('button', {
-      name: 'Remove drawing.png',
+    await waitFor(() => expect(screen.getByTestId('staged-comment-attachments')).toBeTruthy());
+    const removeButton = within(screen.getByTestId('staged-comment-attachments')).getByRole('button', {
+      name: /Remove comment attachment for visual-mark-/i,
     });
     fireEvent.click(removeButton);
 
-    await waitFor(() => expect(screen.queryByText('drawing.png')).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId('staged-comment-attachments')).toBeNull());
     fireEvent.click(screen.getByTestId('chat-send'));
 
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));

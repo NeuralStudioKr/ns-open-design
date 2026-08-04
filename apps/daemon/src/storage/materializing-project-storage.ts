@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 
-import { isRunTouchedProjectFile } from '../projects.js';
+import { isRunTouchedProjectFile, RUN_ARTIFACT_RECONCILE_MTIME_GRACE_MS } from '../projects.js';
 import {
   LocalProjectStorage,
   S3ProjectStorage,
@@ -266,11 +266,29 @@ export class MaterializingProjectStorage implements ProjectStorage {
         continue;
       }
       try {
+        let uploadedThisFile = false;
         await withSyncUpRetry(async () => {
+          // Non-run sync-up (runStart=0) uploads every scratch file whose
+          // mtime passes the floor — that re-PUTs unchanged objects to S3
+          // and resets LastModified on all of them, so the file panel shows
+          // "just now" for every file after a single annotation upload.
+          if (runStartTimeMs === 0) {
+            const remoteStat = await remote.statFile(projectId, file.path);
+            if (
+              remoteStat
+              && remoteStat.size === file.size
+              && Number.isFinite(remoteStat.mtimeMs)
+              && remoteStat.mtimeMs + RUN_ARTIFACT_RECONCILE_MTIME_GRACE_MS >= file.mtimeMs
+            ) {
+              return;
+            }
+          }
           const body = await this.scratch.readFile(projectId, file.path);
           await remote.writeFile(projectId, file.path, body);
+          uploadedThisFile = true;
         });
-        uploaded += 1;
+        if (uploadedThisFile) uploaded += 1;
+        else skipped += 1;
       } catch (err) {
         failed += 1;
         console.warn(

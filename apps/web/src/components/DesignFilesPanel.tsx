@@ -15,6 +15,7 @@ import {
   isFileSystemReadError,
 } from '../utils/fileSystemErrors';
 import { isVisualStabilityMode } from '../utils/visualStability';
+import { projectFileResolvedPath } from '../utils/projectFilePaths';
 import { selectInitialDesignPreviewFile } from './design-files/designArtifacts';
 import type { PluginFolderAgentAction } from './design-files/pluginFolderActions';
 import { getPluginFolderCandidates } from './design-files/pluginFolders';
@@ -1279,8 +1280,8 @@ function DfPreview({
         ) : file.kind === 'image' || file.kind === 'sketch' ? (
           <AuthenticatedProjectFileImage
             projectId={projectId}
-            path={file.name}
-            alt={file.name}
+            path={projectFileResolvedPath(file)}
+            alt=""
             rev={Math.round(file.mtime)}
             trustExists
           />

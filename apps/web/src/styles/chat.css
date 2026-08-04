@@ -2212,10 +2212,23 @@
 }
 .staged-comment--visual {
   gap: 4px;
+  align-items: center;
 }
 .staged-comment--visual img,
-.staged-comment--visual .authenticated-project-file-image-loading {
-  flex: 0 0 12px;
+.staged-comment--visual .authenticated-project-file-image-loading,
+.staged-comment--visual .visual-comment-attachment-thumb {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.comment-history-attachments .staged-comment--visual img,
+.comment-history-attachments .staged-comment--visual .authenticated-project-file-image-loading,
+.comment-history-attachments .staged-comment--visual .visual-comment-attachment-thumb {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
 }
 .user-attachment.staged-comment {
   max-width: 100%;

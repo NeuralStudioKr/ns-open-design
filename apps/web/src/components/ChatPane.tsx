@@ -28,6 +28,7 @@ import type { Dict } from '../i18n/types';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
+import { VisualCommentAttachmentChip } from './VisualCommentAttachmentChip';
 import {
   excludeAttachmentsBackedByVisualScreenshots,
   projectFilePathExists,
@@ -3800,19 +3801,12 @@ function UserMessageImpl({
       {commentAttachments.length > 0 ? (
         <div className="user-attachments comment-history-attachments">
           {commentAttachments.map((a) => (
-            <span key={a.id} className="user-attachment staged-comment">
-              <span
-                className="staged-name"
-                title={
-                  a.comment
-                    ? `${commentTargetDisplayName(a)}: ${a.comment}`
-                    : commentTargetDisplayName(a)
-                }
-              >
-                <strong>{commentTargetDisplayName(a)}</strong>
-                {a.comment ? <span>{a.comment}</span> : null}
-              </span>
-            </span>
+            <VisualCommentAttachmentChip
+              key={a.id}
+              attachment={a}
+              projectId={projectId}
+              projectFileNames={projectFileNames}
+            />
           ))}
         </div>
       ) : null}

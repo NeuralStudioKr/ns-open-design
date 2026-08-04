@@ -136,6 +136,7 @@ import {
 import { isVisualCommentAttachment } from '../edit-mode/scoped-deck-patch';
 import { Icon, type IconName } from "./Icon";
 import { SessionModeToggle } from './SessionModeToggle';
+import { VisualCommentAttachmentChip } from './VisualCommentAttachmentChip';
 import { ComposerPlusMenu } from './ComposerPlusMenu';
 import {
   DESIGN_TOOLBOX_ACTIONS,
@@ -1227,9 +1228,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       return sortChatCommentAttachmentsByOrder([...commentAttachments, ...stagedVisualComments, ...extra]);
     }
 
-    /** Visual marks ride as staged image files; show only non-visual comment chips. */
+    /** Show all comment chips, including visual marks with screenshot thumbnails. */
     function stagedVisibleCommentAttachments(extra: ChatCommentAttachment[] = []): ChatCommentAttachment[] {
-      return currentCommentAttachments(extra).filter((item) => !isVisualCommentAttachment(item));
+      return currentCommentAttachments(extra);
     }
 
     function currentRunContextMeta(): ChatSendMeta | undefined {
@@ -2937,7 +2938,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               skills={stagedSkills}
               mcpServers={stagedMcpServers}
               connectors={stagedConnectors}
-              attachments={staged}
+              attachments={excludeAttachmentsBackedByVisualScreenshots(
+                staged,
+                currentCommentAttachments(),
+              )}
               pluginChip={
                 activeAppliedPlugin
                   ? {
@@ -2978,6 +2982,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           {stagedVisibleCommentAttachments().length > 0 ? (
             <StagedCommentAttachments
               attachments={stagedVisibleCommentAttachments()}
+              projectId={projectId}
+              projectFileNames={projectFiles.map((file) => file.name)}
+              attachmentPreviewUrl={(path) => pendingAnnotationPreviewUrls[path] ?? null}
               onRemove={removeCommentAttachment}
               t={t}
             />
@@ -4010,10 +4017,16 @@ function StagedRunContexts({
 
 function StagedCommentAttachments({
   attachments,
+  projectId,
+  projectFileNames,
+  attachmentPreviewUrl,
   onRemove,
   t,
 }: {
   attachments: ChatCommentAttachment[];
+  projectId: string | null;
+  projectFileNames?: readonly string[];
+  attachmentPreviewUrl?: (path: string) => string | null;
   onRemove: (id: string) => void;
   t: TranslateFn;
 }) {
@@ -4021,25 +4034,18 @@ function StagedCommentAttachments({
   return (
     <div className="staged-row comment-staged-row" data-testid="staged-comment-attachments">
       {attachments.map((a) => (
-        <div key={a.id} className="staged-chip staged-comment">
-          <span
-            className="staged-name"
-            title={`${a.screenshotPath ? `${a.screenshotPath}: ` : ''}${commentTargetDisplayName(a)}${a.comment ? `: ${a.comment}` : ''}`}
-          >
-            <strong>{commentTargetDisplayName(a)}</strong>
-            {a.comment ? <span>{a.comment}</span> : null}
-          </span>
-          <button
-            type="button"
-            className="staged-remove od-tooltip"
-            onClick={() => onRemove(a.id)}
-            title={t('chat.comments.removeAttachment')}
-            data-tooltip={t('chat.comments.removeAttachment')}
-            aria-label={t('chat.comments.removeAttachmentAria', { name: a.elementId })}
-          >
-            <Icon name="close" size={11} />
-          </button>
-        </div>
+        <VisualCommentAttachmentChip
+          key={a.id}
+          attachment={a}
+          projectId={projectId}
+          projectFileNames={projectFileNames}
+          localPreviewUrl={
+            a.screenshotPath ? attachmentPreviewUrl?.(a.screenshotPath) ?? null : null
+          }
+          onRemove={onRemove}
+          showRemove
+          t={t}
+        />
       ))}
     </div>
   );
