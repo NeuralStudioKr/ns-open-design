@@ -1904,6 +1904,103 @@ describe('manual edit source patches', () => {
     }
   });
 
+  it('rejects named HTML-entity javascript: URL bypasses', () => {
+    for (const href of [
+      'javascript&colon;alert(1)',
+      'java&Tab;script:alert(1)',
+      'java&NewLine;script:alert(1)',
+    ]) {
+      const denied = applyManualEditPatch(baseSource, {
+        kind: 'set-link',
+        id: 'cta',
+        text: 'Start',
+        href,
+      });
+      expect(denied.ok, href).toBe(false);
+    }
+
+    const formSource = [
+      '<!doctype html><html><body>',
+      '<button data-od-id="submit" formaction="/ok">Go</button>',
+      '</body></html>',
+    ].join('');
+    const formaction = applyManualEditPatch(formSource, {
+      kind: 'set-attributes',
+      id: 'submit',
+      attributes: { formaction: 'javascript&colon;alert(1)' },
+    });
+    // Unsafe URL attrs are skipped (patch may still ok); original must remain.
+    expect(formaction.source).toContain('formaction="/ok"');
+    expect(formaction.source).not.toMatch(/javascript/i);
+    expect(formaction.source).not.toContain('&colon;');
+  });
+
+  it('drops remote url() on border-image/shape-outside/list-style resource props', () => {
+    const fragment = sanitizeManualEditHtmlFragment(
+      [
+        '<div style="',
+        'border-image-source:url(https://evil.example/x.svg);',
+        'shape-outside:url(https://evil.example/s.svg);',
+        'list-style-image:url(https://evil.example/l.svg);',
+        'offset-path:url(https://evil.example/o.svg);',
+        'color:red',
+        '">x</div>',
+      ].join(''),
+    );
+    expect(fragment).toContain('color:red');
+    expect(fragment).not.toContain('evil.example');
+    expect(fragment).not.toMatch(/border-image/i);
+    expect(fragment).not.toMatch(/shape-outside/i);
+    expect(fragment).not.toMatch(/list-style/i);
+    expect(fragment).not.toMatch(/offset-path/i);
+
+    const viaVar = sanitizeManualEditHtmlFragment(
+      '<div style="border-image-source:var(--x);color:red">x</div>',
+    );
+    expect(viaVar).toContain('color:red');
+    expect(viaVar).not.toMatch(/border-image-source/i);
+  });
+
+  it('scrubs CSS element() from inline and salvaged styles', () => {
+    const inline = sanitizeManualEditHtmlFragment(
+      '<div style="background:element(#hero);color:red">x</div>',
+    );
+    expect(inline).toContain('color:red');
+    expect(inline).not.toMatch(/\belement\s*\(/i);
+
+    const salvaged = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{background:element(#hero);color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(salvaged.ok, salvaged.error).toBe(true);
+    expect(salvaged.source).toContain('color:#444');
+    expect(salvaged.source).not.toMatch(/\belement\s*\(/i);
+  });
+
+  it('strips @counter-style and @page with remote urls from salvaged styles', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>',
+        '@counter-style x{system:cyclic;symbols:url(https://evil.example/x.svg);suffix:" "}',
+        '@page{background:url(https://evil.example/p.svg)}',
+        '.hero-pop{color:#555}',
+        '</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('.hero-pop{color:#555}');
+    expect(result.source).not.toMatch(/@counter-style/i);
+    expect(result.source).not.toMatch(/@page\b/i);
+    expect(result.source).not.toContain('evil.example');
+  });
+
   it('preserves fragment-shaped HTML when saving patches', () => {
     const source = '<main><h1 data-od-id="hero-title">Original title</h1></main>';
     const result = applyManualEditPatch(source, { kind: 'set-text', id: 'hero-title', value: 'Edited title' });

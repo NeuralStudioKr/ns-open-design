@@ -2046,15 +2046,36 @@ function normalizeCssForSafetyScan(css: string): string {
   return text;
 }
 
-/** Strip @import / @namespace / @font-face from salvaged style text. */
+/** Strip @import / @namespace / @font-face / @counter-style / @page from salvaged style text. */
 function stripDangerousCssAtRules(css: string): string {
   const normalized = normalizeCssForSafetyScan(css);
   return normalized
     .replace(/@import\b[^;]*;?/gi, '')
     .replace(/@namespace\b[^;]*;?/gi, '')
     .replace(/@font-face\s*\{[^}]*\}/gi, '')
+    // Remote symbols / page backgrounds — same fetch class as @font-face.
+    .replace(/@counter-style\b[^{]*\{[^}]*\}/gi, '')
+    .replace(/@page\b[^{;]*\{[^}]*\}/gi, '')
+    .replace(/@page\b[^;]*;?/gi, '')
     .trim();
 }
+
+/**
+ * CSS properties that may load remote paint/resources via url()/image().
+ * Shared by non-fragment drop and var() fail-closed scrub.
+ * Intentionally excludes background/background-image (slide imagery).
+ */
+const MANUAL_EDIT_CSS_RESOURCE_PROP_PATTERN = [
+  '(?:-webkit-)?(?:backdrop-)?filter',
+  '(?:-webkit-)?(?:clip-path|mask(?:-image)?|fill|stroke|cursor|marker(?:-(?:start|mid|end))?)',
+  '(?:-webkit-)?border-image(?:-source)?',
+  'mask-border(?:-source)?',
+  '-webkit-mask-box-image(?:-source)?',
+  '-webkit-box-reflect',
+  'shape-outside',
+  'offset-path',
+  'list-style(?:-image)?',
+].join('|');
 
 /** Presentation attrs that accept CSS `url()` and need the same scrub as style. */
 const MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS = new Set([
@@ -2147,6 +2168,8 @@ function scrubUnsafeCssFunctions(css: string): string {
   text = rewriteCssUrlFunctions(text);
   text = rewriteCssImageFunctions(text);
   text = text.replace(/expression\s*\([^)]*\)/gi, 'initial');
+  // Firefox element() can sample arbitrary document regions into paint.
+  text = text.replace(/\belement\s*\([^)]*\)/gi, 'none');
   text = text.replace(/-moz-binding\s*:[^;]*/gi, '');
   // IE/HTC binding — same threat class as -moz-binding (incl. mid-rule).
   text = text.replace(/\bbehavior\s*:[^;}]*/gi, '');
@@ -2159,16 +2182,15 @@ function scrubUnsafeCssFunctions(css: string): string {
   // Intentionally does NOT touch background/background-image (slide imagery).
   text = dropCssDeclsWithNonFragmentResource(
     text,
-    '(?:-webkit-)?(?:backdrop-)?filter',
-  );
-  text = dropCssDeclsWithNonFragmentResource(
-    text,
-    '(?:-webkit-)?(?:clip-path|mask(?:-image)?|fill|stroke|cursor|marker(?:-(?:start|mid|end))?)',
+    MANUAL_EDIT_CSS_RESOURCE_PROP_PATTERN,
   );
   // Resource props using var() cannot be proven fragment-safe (custom props
   // may stash remote url()). Keep --bg:url(https) for slide imagery intact.
   text = text.replace(
-    /(^|[;{])(\s*)(?<![\w-])((?:-webkit-)?(?:backdrop-)?filter|(?:-webkit-)?(?:clip-path|mask(?:-image)?|fill|stroke|cursor|marker(?:-(?:start|mid|end))?))\s*:\s*([^;{}]*\bvar\s*\([^;{}]*)/gi,
+    new RegExp(
+      `(^|[;{])(\\s*)(?<![\\w-])(${MANUAL_EDIT_CSS_RESOURCE_PROP_PATTERN})\\s*:\\s*([^;{}]*\\bvar\\s*\\([^;{}]*)`,
+      'gi',
+    ),
     '$1$2',
   );
   return text;
@@ -2515,7 +2537,22 @@ const MANUAL_EDIT_URL_ATTRS = new Set([
 
 const SAFE_MANUAL_EDIT_DATA_IMAGE_RE = /^data:image\/(png|jpe?g|gif|webp|avif|bmp)(;|,)/i;
 
-/** Decode numeric/hex HTML character references used to smuggle schemes. */
+/** Named entities commonly used to smuggle URL schemes past allowlists. */
+const MANUAL_EDIT_NAMED_HTML_ENTITIES: Record<string, string> = {
+  colon: ':',
+  tab: '\t',
+  newline: '\n',
+  lrm: '\u200e',
+  rlm: '\u200f',
+  zwj: '\u200d',
+  zwnj: '\u200c',
+  thinsp: ' ',
+  nbsp: ' ',
+  ensp: ' ',
+  emsp: ' ',
+};
+
+/** Decode numeric/hex/named HTML character references used to smuggle schemes. */
 function decodeHtmlCharacterReferences(value: string): string {
   let out = String(value || '');
   for (let i = 0; i < 3; i += 1) {
@@ -2537,6 +2574,10 @@ function decodeHtmlCharacterReferences(value: string): string {
         } catch {
           return '';
         }
+      })
+      .replace(/&([a-zA-Z][a-zA-Z0-9]+);?/g, (match, name: string) => {
+        const mapped = MANUAL_EDIT_NAMED_HTML_ENTITIES[name.toLowerCase()];
+        return mapped !== undefined ? mapped : match;
       });
     if (next === out) break;
     out = next;
@@ -2591,6 +2632,7 @@ function containsUnsafeEmbeddedCssOrScheme(value: string): boolean {
   if (normalized.includes('javascript:')) return true;
   if (normalized.includes('vbscript:')) return true;
   if (/\bexpression\(/.test(normalized)) return true;
+  if (/\belement\(/.test(normalized)) return true;
   if (/url\((?:javascript|vbscript|data)\b/.test(normalized)) return true;
   // CSS Images string form — schemes may sit outside url(...).
   if (
