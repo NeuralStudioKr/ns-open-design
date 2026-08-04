@@ -38,6 +38,8 @@ describe('buildSrcdoc', () => {
     expect(doc).toContain('data-od-preview-artifact-guard');
     expect(doc).toContain('isLeakedMetaElement');
     expect(doc).toContain('stripLeakedNodes');
+    expect(doc).toContain('data-od-revision-shortcut-bridge');
+    expect(doc).toContain("type: 'od:revision-shortcut'");
   });
 
   it('repairs corrupted viewport meta fragments in full documents', () => {

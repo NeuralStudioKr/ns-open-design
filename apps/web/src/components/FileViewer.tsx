@@ -8805,17 +8805,28 @@ function HtmlViewer({
     return () => window.removeEventListener('keydown', onKey);
   }, [effectiveDeck, manualEditMode, mode]);
 
+  function runRevisionShortcut(action: 'undo' | 'redo') {
+    if (drawOverlayOpen) return;
+    if (manualEditSavingRef.current) return;
+    if (revisionStackInvalidatedRef.current) return;
+    if (action === 'undo') {
+      if (!canUndoRevisionStack(revisionStackRef.current)) return;
+      void undoManualEdit('keyboard');
+      return;
+    }
+    if (!canRedoRevisionStack(revisionStackRef.current)) return;
+    void redoManualEdit('keyboard');
+  }
+
   // Revision undo/redo shortcuts (design §8.2): ⌘Z / Ctrl+Z, redo via Shift+Z or Ctrl+Y.
   useEffect(() => {
     if (mode !== 'preview' || source === null) return;
     if (hideFileRevisionChrome) return;
     function onKey(e: KeyboardEvent) {
       if (drawOverlayOpen) return;
+      if (manualEditInlineTextEditing) return;
       const target = e.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
-      }
+      if (isManualEditKeyboardTextTarget(target)) return;
       if (manualEditSavingRef.current) return;
       if (revisionStackInvalidatedRef.current) return;
 
@@ -8829,23 +8840,38 @@ function HtmlViewer({
         if (e.shiftKey) {
           if (!canRedoRevisionStack(revisionStackRef.current)) return;
           e.preventDefault();
-          void redoManualEdit('keyboard');
+          runRevisionShortcut('redo');
         } else {
           if (!canUndoRevisionStack(revisionStackRef.current)) return;
           e.preventDefault();
-          void undoManualEdit('keyboard');
+          runRevisionShortcut('undo');
         }
         return;
       }
       if (!isMacPlatform() && key === 'y') {
         if (!canRedoRevisionStack(revisionStackRef.current)) return;
         e.preventDefault();
-        void redoManualEdit('keyboard');
+        runRevisionShortcut('redo');
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, source, drawOverlayOpen, hideFileRevisionChrome]);
+  }, [mode, source, drawOverlayOpen, hideFileRevisionChrome, manualEditInlineTextEditing]);
+
+  // Preview iframe steals focus on click; bridge forwards undo/redo here.
+  useEffect(() => {
+    if (mode !== 'preview' || source === null) return;
+    if (hideFileRevisionChrome) return;
+    function onMessage(ev: MessageEvent) {
+      if (!isOurPreviewIframeSource(ev.source)) return;
+      const data = ev.data as { type?: string; action?: string } | null;
+      if (!data || data.type !== 'od:revision-shortcut') return;
+      if (data.action !== 'undo' && data.action !== 'redo') return;
+      runRevisionShortcut(data.action);
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [mode, source, hideFileRevisionChrome, isOurPreviewIframeSource, drawOverlayOpen]);
 
   useEffect(() => {
     if (!presentMenuOpen) return;

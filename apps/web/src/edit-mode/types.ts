@@ -159,6 +159,11 @@ export interface ManualEditTextActiveMessage {
   active: boolean;
 }
 
+export interface RevisionShortcutMessage {
+  type: 'od:revision-shortcut';
+  action: 'undo' | 'redo';
+}
+
 export interface ManualEditRectMessage {
   type: 'od-edit-rect';
   id: string;
@@ -175,7 +180,8 @@ export type ManualEditBridgeMessage =
   | ManualEditPreviewAppliedMessage
   | ManualEditTextCommitMessage
   | ManualEditTextActiveMessage
-  | ManualEditRectMessage;
+  | ManualEditRectMessage
+  | RevisionShortcutMessage;
 
 export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
   'fontFamily', 'fontSize', 'fontWeight', 'color', 'display', 'textAlign', 'textDecoration', 'whiteSpace', 'lineHeight', 'letterSpacing',

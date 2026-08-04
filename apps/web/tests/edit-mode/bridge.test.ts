@@ -4,6 +4,7 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   buildManualEditBridge,
   buildManualEditBridgeStyle,
+  buildRevisionShortcutBridge,
   isMeaningfulManualEditElement,
   isManualEditHostNode,
   isSourceMappableManualEditElement,
@@ -929,6 +930,66 @@ describe('manual edit bridge target normalization', () => {
     expect(rectMsg?.ok).toBe(true);
     expect(rectMsg?.target?.offsetLeft).toBe(40);
     expect(rectMsg?.target?.offsetTop).toBe(60);
+
+    dom.window.close();
+  });
+
+  it('forwards revision undo/redo shortcuts to the host while the iframe has focus', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Title</h1></main>${buildRevisionShortcutBridge()}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+    const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
+    title.focus();
+
+    dom.window.document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'z',
+      metaKey: true,
+    }));
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'od:revision-shortcut',
+      action: 'undo',
+    }, '*');
+
+    dom.window.document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'z',
+      metaKey: true,
+      shiftKey: true,
+    }));
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'od:revision-shortcut',
+      action: 'redo',
+    }, '*');
+
+    dom.window.close();
+  });
+
+  it('does not forward revision shortcuts during inline text editing', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Title</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+    const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
+
+    title.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    title.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'z',
+      metaKey: true,
+    }));
+
+    expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'od:revision-shortcut',
+    }), '*');
 
     dom.window.close();
   });
