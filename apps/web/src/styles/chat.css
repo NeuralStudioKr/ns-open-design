@@ -2105,6 +2105,21 @@
   border-radius: 3px;
   object-fit: cover;
 }
+.authenticated-project-file-image-loading {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  border-radius: 3px;
+  background: var(--bg-fill-secondary);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+.staged-preview-card > .authenticated-project-file-image-loading {
+  width: min(100%, 720px);
+  height: min(70vh, 640px);
+  max-height: min(70vh, 640px);
+  flex: 1 1 auto;
+}
 .staged-preview-trigger {
   display: inline-flex;
   align-items: center;
@@ -2184,6 +2199,13 @@
 .staged-comment {
   border-radius: var(--radius-pill);
   padding: 3px 5px 3px 8px;
+}
+.staged-comment--visual {
+  gap: 4px;
+}
+.staged-comment--visual img,
+.staged-comment--visual .authenticated-project-file-image-loading {
+  flex: 0 0 12px;
 }
 .user-attachment.staged-comment {
   max-width: 100%;

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { loadAuthenticatedProjectFileBlob } from '../../src/hooks/useAuthenticatedProjectFileObjectUrl';
+import { markProjectRawFileMissing } from '../../src/utils/projectFileFetchCache';
 
 describe('loadAuthenticatedProjectFileBlob', () => {
   it('retries after a transient non-OK raw fetch and returns the image blob', async () => {
@@ -20,6 +21,7 @@ describe('loadAuthenticatedProjectFileBlob', () => {
     });
 
     expect(waitForPrefix).toHaveBeenCalledWith('project-1', { quick: true });
+    expect(waitForPrefix).toHaveBeenCalledWith('project-1', { quick: false });
     expect(fetchDaemon).toHaveBeenCalledTimes(2);
     expect(blob).toBe(imageBlob);
   });
@@ -58,18 +60,40 @@ describe('loadAuthenticatedProjectFileBlob', () => {
     expect(blob?.type).toBe('image/png');
   });
 
-  it('skips ephemeral drawing screenshots unless the caller trusts they exist', async () => {
-    const fetchDaemon = vi.fn();
+  it('retries transient 404s for trusted uploads instead of poisoning the missing cache', async () => {
+    const imageBlob = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' });
+    const fetchDaemon = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 404 } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        blob: async () => imageBlob,
+      } as Response);
 
     const blob = await loadAuthenticatedProjectFileBlob(
       'project-1',
       'ms798rzf-drawing-2026-07-30T08-31-44-563Z.png',
       {
-        delaysMs: [0],
+        delaysMs: [0, 0],
+        trustExists: true,
         fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
         waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
       },
     );
+
+    expect(fetchDaemon).toHaveBeenCalledTimes(2);
+    expect(blob).toBe(imageBlob);
+  });
+
+  it('skips ephemeral drawing screenshots when the session cache already marked them missing', async () => {
+    const path = 'ms798rzf-drawing-2026-07-30T08-31-44-563Z.png';
+    markProjectRawFileMissing('project-1', path);
+    const fetchDaemon = vi.fn();
+
+    const blob = await loadAuthenticatedProjectFileBlob('project-1', path, {
+      delaysMs: [0],
+      fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
+      waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
+    });
 
     expect(blob).toBeNull();
     expect(fetchDaemon).not.toHaveBeenCalled();

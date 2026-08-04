@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 
 import { projectRawUrl } from '../providers/registry';
+import { readActiveTeamverWorkspaceId } from '../teamver/activeTeamverWorkspace';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
+import { subscribeTeamverProjectS3Prefix } from '../teamver/teamverProjectS3PrefixCache';
 import {
   clearProjectRawFileMissing,
   isProjectRawFileKnownMissing,
@@ -11,7 +13,7 @@ import {
 import { normalizeFetchedImageBlob, blobToImageDataUrl } from '../utils/imageBlobNormalize';
 import { isEphemeralDrawingScreenshotPath } from '../utils/projectFilePaths';
 
-const FETCH_RETRY_DELAYS_MS = [0, 250, 800] as const;
+const FETCH_RETRY_DELAYS_MS = [0, 250, 800, 1500] as const;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -63,22 +65,28 @@ export async function loadAuthenticatedProjectFileBlob(
   const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
   const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
   const delays = options?.delaysMs ?? FETCH_RETRY_DELAYS_MS;
-
-  try {
-    await waitForPrefix(id, { quick: true });
-  } catch {
-    // Prefix warm is best-effort; still attempt the raw fetch.
-  }
+  const trustExists = Boolean(options?.trustExists);
 
   for (let attempt = 0; attempt < delays.length; attempt += 1) {
     const delay = delays[attempt] ?? 0;
     if (delay > 0) await sleep(delay);
+
+    try {
+      await waitForPrefix(id, { quick: attempt === 0 });
+    } catch {
+      // Prefix warm is best-effort; still attempt the raw fetch.
+    }
+
     try {
       const resp = await fetchDaemon(projectRawUrl(id, path), {
         cache: 'no-store',
         teamverProjectId: id,
       });
       if (resp.status === 404) {
+        const isLastAttempt = attempt >= delays.length - 1;
+        if (trustExists || !isLastAttempt) {
+          continue;
+        }
         markProjectRawFileMissing(id, path);
         return null;
       }
@@ -110,6 +118,28 @@ export function useAuthenticatedProjectFileObjectUrl(
   trustExists?: boolean,
 ): string | null {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [prefixNonce, setPrefixNonce] = useState(0);
+
+  useEffect(() => {
+    const path = String(filePath || '').trim();
+    const id = String(projectId || '').trim();
+    if (!id || !path) return;
+
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    void readActiveTeamverWorkspaceId().then((workspaceId) => {
+      if (cancelled || !workspaceId?.trim()) return;
+      unsubscribe = subscribeTeamverProjectS3Prefix(workspaceId, id, () => {
+        if (!cancelled) setPrefixNonce((value) => value + 1);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [filePath, projectId]);
 
   useEffect(() => {
     const path = String(filePath || '').trim();
@@ -133,7 +163,7 @@ export function useAuthenticatedProjectFileObjectUrl(
       cancelled = true;
       setImageSrc(null);
     };
-  }, [filePath, projectId, rev, trustExists]);
+  }, [filePath, projectId, rev, trustExists, prefixNonce]);
 
   return imageSrc;
 }
