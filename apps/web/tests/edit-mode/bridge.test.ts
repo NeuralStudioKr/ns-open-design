@@ -104,6 +104,91 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('selects img elements annotated with data-screen-label only', () => {
+    const dom = new JSDOM(
+      `<main>
+        <div data-od-id="hero-card" style="width:400px;height:200px;padding:24px">
+          <img data-screen-label="mindmap-logo" src="logo.svg" alt="Logo" width="120" height="120" />
+        </div>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const posts: Array<{ type?: string; target?: { id?: string; kind?: string; tagName?: string } }> = [];
+    const wrap = dom.window.document.querySelector('div')!;
+    const img = dom.window.document.querySelector('img')!;
+    wrap.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 400, height: 200,
+      top: 0, right: 400, bottom: 200, left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    img.getBoundingClientRect = () => ({
+      x: 24, y: 24, width: 120, height: 120,
+      top: 24, right: 144, bottom: 144, left: 24,
+      toJSON: () => ({}),
+    } as DOMRect);
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+
+    img.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, clientX: 80, clientY: 80 }));
+
+    const select = posts.find((message) => message.type === 'od-edit-select');
+    expect(select?.target?.tagName).toBe('img');
+    expect(select?.target?.kind).toBe('image');
+    expect(select?.target?.id).toBe('mindmap-logo');
+
+    dom.window.close();
+  });
+
+  it('selects svg with pointer-events:none when edit mode re-enables hit testing', () => {
+    const dom = new JSDOM(
+      `<main>
+        <div data-od-id="diagram-wrap" style="width:400px;height:200px">
+          <svg data-screen-label="mindmap-svg" width="160" height="160" style="pointer-events:none">
+            <circle cx="80" cy="80" r="40" fill="#2563eb" />
+          </svg>
+        </div>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const posts: Array<{ type?: string; target?: { id?: string; kind?: string; tagName?: string } }> = [];
+    const svg = dom.window.document.querySelector('svg')!;
+    const circle = dom.window.document.querySelector('circle')!;
+    svg.getBoundingClientRect = () => ({
+      x: 20, y: 20, width: 160, height: 160,
+      top: 20, right: 180, bottom: 180, left: 20,
+      toJSON: () => ({}),
+    } as DOMRect);
+    circle.getBoundingClientRect = svg.getBoundingClientRect;
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+
+    circle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, clientX: 80, clientY: 80 }));
+
+    const select = posts.find((message) => message.type === 'od-edit-select');
+    expect(select?.target?.tagName).toBe('svg');
+    expect(select?.target?.kind).toBe('image');
+    expect(select?.target?.id).toBe('mindmap-svg');
+
+    dom.window.close();
+  });
+
+  it('treats data-screen-label as source-mappable for manual edit discovery', () => {
+    const dom = new JSDOM('<main><img data-screen-label="logo" src="x.svg" alt="x" /></main>');
+    const img = dom.window.document.querySelector('img')!;
+    expect(isSourceMappableManualEditElement(img)).toBe(true);
+    expect(manualEditStableIdForElement(img)).toBe('logo');
+  });
+
   it('keeps source-mappable display:none targets available for the layers panel', async () => {
     const posts: Array<{ type?: string; targets?: Array<{ id: string; isHidden?: boolean }> }> = [];
     const dom = new JSDOM(

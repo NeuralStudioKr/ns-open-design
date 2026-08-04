@@ -1,5 +1,6 @@
 export const MANUAL_EDIT_DISCOVERY_SELECTOR = 'main, nav, section, article, header, footer, div, h1, h2, h3, p, a, button, img, svg, strong, span';
 export const MANUAL_EDIT_SOURCE_PATH_ATTR = 'data-od-source-path';
+export const MANUAL_EDIT_SCREEN_LABEL_ATTR = 'data-screen-label';
 export const MANUAL_EDIT_HOST_NODE_SELECTOR = [
   '[data-od-sandbox-shim]',
   '[data-od-deck-bridge]',
@@ -30,6 +31,8 @@ export function isManualEditHostNode(el: Element): boolean {
 export function manualEditStableIdForElement(el: Element): string {
   const explicit = el.getAttribute('data-od-id');
   if (explicit) return explicit;
+  const screenLabel = el.getAttribute(MANUAL_EDIT_SCREEN_LABEL_ATTR);
+  if (screenLabel) return screenLabel;
   const generated = el.getAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR) || el.getAttribute('data-od-runtime-id') || manualEditDomPathForElement(el);
   if (generated) el.setAttribute('data-od-runtime-id', generated);
   return generated || 'unknown';
@@ -40,7 +43,11 @@ export function isMeaningfulManualEditElement(el: Element, rect: Pick<DOMRect, '
 }
 
 export function isSourceMappableManualEditElement(el: Element): boolean {
-  return el.hasAttribute('data-od-id') || el.hasAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR);
+  return (
+    el.hasAttribute('data-od-id')
+    || el.hasAttribute(MANUAL_EDIT_SCREEN_LABEL_ATTR)
+    || el.hasAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR)
+  );
 }
 
 export function buildManualEditBridge(enabled: boolean): string {
@@ -49,6 +56,7 @@ export function buildManualEditBridge(enabled: boolean): string {
   var discoverySelector = ${JSON.stringify(MANUAL_EDIT_DISCOVERY_SELECTOR)};
   var hostNodeSelector = ${JSON.stringify(MANUAL_EDIT_HOST_NODE_SELECTOR)};
   var sourcePathAttr = ${JSON.stringify(MANUAL_EDIT_SOURCE_PATH_ATTR)};
+  var screenLabelAttr = ${JSON.stringify(MANUAL_EDIT_SCREEN_LABEL_ATTR)};
   var styleProps = ['fontFamily','fontSize','fontWeight','color','display','textAlign','textDecoration','whiteSpace','lineHeight','letterSpacing','width','height','minHeight','maxWidth','maxHeight','position','left','top','right','bottom','gap','flexDirection','justifyContent','alignItems','backgroundColor','opacity','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','margin','marginTop','marginRight','marginBottom','marginLeft','border','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderStyle','borderColor','borderRadius'];
   function isHostNode(el){
     return !!(el && el.matches && el.matches(hostNodeSelector));
@@ -68,12 +76,18 @@ export function buildManualEditBridge(enabled: boolean): string {
   function stableId(el){
     var explicit = el.getAttribute('data-od-id');
     if (explicit) return explicit;
+    var screenLabel = el.getAttribute(screenLabelAttr);
+    if (screenLabel) return screenLabel;
     var generated = el.getAttribute(sourcePathAttr) || el.getAttribute('data-od-runtime-id') || domPath(el);
     if (generated) el.setAttribute('data-od-runtime-id', generated);
     return generated || 'unknown';
   }
   function isSourceMappable(el){
-    return !!(el && el.hasAttribute && (el.hasAttribute('data-od-id') || el.hasAttribute(sourcePathAttr)));
+    return !!(el && el.hasAttribute && (
+      el.hasAttribute('data-od-id')
+      || el.hasAttribute(screenLabelAttr)
+      || el.hasAttribute(sourcePathAttr)
+    ));
   }
   function isDiscoveryTarget(el){
     return !!(el && el.matches && el.matches(discoverySelector));
@@ -362,15 +376,56 @@ export function buildManualEditBridge(enabled: boolean): string {
     // iframe outline/glow so users do not see a double border.
     if (hostChrome) el.setAttribute('data-od-edit-host-chrome', 'true');
   }
-  function closestTarget(event){
-    var el = event.target;
+  function isVisibleHitTarget(el){
+    if (!el || el === document.body || el === document.documentElement) return false;
+    try {
+      var cs = window.getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    } catch (e) {}
+    return true;
+  }
+  function pickMappableTargetFrom(el){
     while (el && el !== document.documentElement) {
-      if (el !== document.body && el !== document.documentElement && isSourceMappable(el) && isDiscoveryTarget(el)) {
+      if (
+        el !== document.body
+        && el !== document.documentElement
+        && isVisibleHitTarget(el)
+        && isSourceMappable(el)
+        && isDiscoveryTarget(el)
+      ) {
         return el;
       }
       el = el.parentElement;
     }
     return null;
+  }
+  function pickTargetAtPoint(x, y){
+    var candidates = [];
+    if (typeof document.elementsFromPoint === 'function') {
+      try { candidates = document.elementsFromPoint(x, y); } catch (e) { candidates = []; }
+    }
+    if (!candidates || candidates.length === 0) {
+      var fallback = document.elementFromPoint(x, y);
+      if (fallback) candidates = [fallback];
+    }
+    for (var i = 0; i < candidates.length; i++) {
+      var hit = pickMappableTargetFrom(candidates[i]);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  function closestTarget(event){
+    var fromTarget = pickMappableTargetFrom(event.target);
+    var x = event.clientX;
+    var y = event.clientY;
+    if (typeof x === 'number' && typeof y === 'number' && typeof document.elementsFromPoint === 'function') {
+      var fromPoint = pickTargetAtPoint(x, y);
+      if (fromPoint) {
+        if (!fromTarget) return fromPoint;
+        if (fromPoint !== fromTarget && fromTarget.contains && fromTarget.contains(fromPoint)) return fromPoint;
+      }
+    }
+    return fromTarget;
   }
   function caretRangeFromClick(clickEvent){
     if (!clickEvent) return null;
@@ -472,6 +527,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (!id) return null;
     if (id === '__body__') return document.body;
     var el = document.querySelector('[data-od-id="' + cssEscapeId(id) + '"]')
+          || document.querySelector('[' + screenLabelAttr + '="' + cssEscapeId(id) + '"]')
           || document.querySelector('[data-od-runtime-id="' + cssEscapeId(id) + '"]')
           || document.querySelector('[' + sourcePathAttr + '="' + cssEscapeId(id) + '"]');
     if (el) return el;
@@ -625,7 +681,11 @@ export function buildManualEditBridge(enabled: boolean): string {
 export function buildManualEditBridgeStyle(): string {
   return `<style data-od-edit-bridge-style>
 html[data-od-edit-mode] body * { cursor: pointer !important; }
+/* Deck templates often disable pointer-events on decorative SVGs — re-enable in edit mode so logos/icons are pickable. */
+html[data-od-edit-mode] img,
+html[data-od-edit-mode] svg { pointer-events: auto !important; }
 html[data-od-edit-mode] [data-od-id],
+html[data-od-edit-mode] [data-screen-label],
 html[data-od-edit-mode] [data-od-runtime-id],
 html[data-od-edit-mode] [data-od-source-path] { outline: 1px dashed rgba(37, 99, 235, 0.35); outline-offset: 2px; }
 /* Nested editable boxes: only the outer ancestor paints at rest (avoids double dashed rings). */
@@ -639,6 +699,7 @@ html[data-od-edit-mode] [data-od-source-path] [data-od-id],
 html[data-od-edit-mode] [data-od-source-path] [data-od-runtime-id],
 html[data-od-edit-mode] [data-od-source-path] [data-od-source-path] { outline-color: transparent; }
 html[data-od-edit-mode] [data-od-id]:hover,
+html[data-od-edit-mode] [data-screen-label]:hover,
 html[data-od-edit-mode] [data-od-runtime-id]:hover,
 html[data-od-edit-mode] [data-od-source-path]:hover { outline: 2px solid #2563eb; outline-offset: 2px; }
 html[data-od-edit-mode] [data-od-edit-selected] {
