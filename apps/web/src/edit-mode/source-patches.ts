@@ -2123,10 +2123,16 @@ function scrubUnsafeCssFunctions(css: string): string {
   text = text.replace(/\bbehavior\s*:[^;}]*/gi, '');
   // Legacy Opera CSS link bindings (javascript: outside url()).
   text = text.replace(/-o-link(?:-source)?\s*:[^;}]*/gi, '');
-  // Remote SVG filter paint servers — keep same-document #fragment only.
-  // Negative lookbehind avoids chopping `backdrop-filter`.
+  // SVG/CSS paint & resource properties — remote url() can fetch attacker
+  // content into preview. Keep same-document #fragment only.
+  // Includes backdrop-filter (previously excluded by a negative lookbehind).
+  // Intentionally does NOT touch background/background-image (slide imagery).
   text = text.replace(
-    /(?<!backdrop-)(?:-webkit-)?filter\s*:\s*url\s*\(\s*(['"]?)(?!#)[^)]*\1\s*\)[^;}]*/gi,
+    /(?:-webkit-)?(?:backdrop-)?filter\s*:\s*url\s*\(\s*(['"]?)(?!#)[^)]*\1\s*\)[^;}]*/gi,
+    '',
+  );
+  text = text.replace(
+    /(?:-webkit-)?(?:clip-path|mask(?:-image)?|fill|stroke|cursor|marker(?:-(?:start|mid|end))?)\s*:[^;{}]*url\s*\(\s*(['"]?)(?!#)[^)]*\1\s*\)[^;}]*/gi,
     '',
   );
   return text;
@@ -2367,10 +2373,17 @@ export function isSafeManualEditUrlAttrValue(attr: string, value: string): boole
     }
     return true;
   }
-  // Form / beacon navigators — same-document relative / fragment only so a
-  // crafted action / ping cannot POST credentials or fire beacons off-origin.
-  if (lower === 'action' || lower === 'formaction' || lower === 'ping') {
+  // Form navigators — same-document relative / fragment only.
+  if (lower === 'action' || lower === 'formaction') {
     return isSafeManualEditRelativeOrFragmentUrl(value);
+  }
+  // `ping` is a whitespace-separated URL list — validate each token.
+  if (lower === 'ping') {
+    return String(value || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .every((part) => isSafeManualEditRelativeOrFragmentUrl(part));
   }
   if (lower === 'to' || lower === 'from' || lower === 'by' || lower === 'values') {
     // SMIL may carry bare URLs or CSS (`attributeName=style`) — reject either shape.

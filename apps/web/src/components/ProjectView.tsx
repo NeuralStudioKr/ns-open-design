@@ -4362,6 +4362,21 @@ export function ProjectView({
       // when only Edit-tool changes happened this turn. Without this guard,
       // such content lands as a phantom HTML file in the project panel.
       if (ext === '.html') {
+        // Unscoped full-deck / deck-patch persists previously skipped the
+        // manual-edit sanitizer — scrub script/on* before validation/write.
+        // (deck-patch merges already convert artifactType to 'deck'.)
+        if (
+          artifactToPersist.artifactType === 'deck'
+          || normalizeSlideOnlyArtifactContractType(
+            artifactToPersist.artifactType,
+            slideOnlyMvp,
+          ) === 'deck'
+        ) {
+          artifactToPersist = {
+            ...artifactToPersist,
+            html: sanitizeManualEditFullSource(artifactToPersist.html),
+          };
+        }
         // Mid-stream truncation (max_tokens) often leaves a multi-KB deck
         // with real <section class="slide"> content but no </html>. Closing
         // the document here salvages a previewable file instead of skipping

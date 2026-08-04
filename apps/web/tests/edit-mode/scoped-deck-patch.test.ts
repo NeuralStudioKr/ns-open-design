@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  applyScopedDeckPatchToHtml,
   coerceDeckPatchToAllowedScope,
   inferSlideIndexFromDeckHtml,
   mergeScopedCommentTargetsFromPatchedDeck,
@@ -765,6 +766,33 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(stabilized).toContain('Keep this text');
     expect(stabilized).toContain('Slide 3');
     expect(stabilized).toContain('od-visual-mark-target');
+  });
+
+  it('sanitizes on*/script from unscoped deck-patch merges', () => {
+    const currentHtml = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Old</h1></section>
+</body></html>`;
+    const result = applyScopedDeckPatchToHtml({
+      currentHtml,
+      patch: {
+        ops: [{
+          op: 'replace',
+          slideIndex: 0,
+          html: [
+            '<section class="slide" data-slide-index="0">',
+            '<h1>New</h1>',
+            '<img src="x" onerror="alert(1)">',
+            '<script>alert(2)</script>',
+            '</section>',
+          ].join(''),
+        }],
+      },
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.html).toContain('New');
+    expect(result.html).not.toMatch(/onerror/i);
+    expect(result.html).not.toMatch(/<script\b/i);
   });
 
   it('sanitizes XSS from model visual-mark HTML before wipe repair graft', () => {

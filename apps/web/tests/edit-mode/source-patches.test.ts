@@ -16,6 +16,7 @@ import {
   isEphemeralGeneratedPathId,
   sanitizeManualEditHtmlFragment,
   sanitizeManualEditFullSource,
+  isSafeManualEditUrlAttrValue,
 } from '../../src/edit-mode/source-patches';
 
 const baseSource = `<!doctype html>
@@ -1244,6 +1245,56 @@ describe('manual edit source patches', () => {
     expect(clean).toContain('Safe');
     expect(clean).not.toMatch(/onerror/i);
     expect(clean).not.toMatch(/<script\b/i);
+  });
+
+  it('scrubs remote backdrop-filter and cursor/clip-path urls from styles', () => {
+    const inline = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<h1 data-od-id="hero-title" style="',
+        'backdrop-filter:url(https://evil.example/f.svg#x);',
+        'cursor:url(https://evil.example/c.cur),auto;',
+        'clip-path:url(https://evil.example/clip.svg#x);',
+        'color:navy">Title</h1>',
+      ].join(''),
+    });
+    expect(inline.ok, inline.error).toBe(true);
+    const html = readManualEditOuterHtml(inline.source, 'hero-title');
+    expect(html).toContain('color:navy');
+    expect(html).not.toContain('evil.example');
+    expect(html).not.toMatch(/backdrop-filter/i);
+    expect(html).not.toMatch(/cursor:\s*url/i);
+    expect(html).not.toMatch(/clip-path/i);
+
+    const salvaged = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>.hero-pop{cursor:url(https://evil.example/c.cur),auto;color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(salvaged.ok, salvaged.error).toBe(true);
+    expect(salvaged.source).toContain('color:#444');
+    expect(salvaged.source).not.toContain('evil.example');
+  });
+
+  it('validates ping as a whitespace-separated relative URL list', () => {
+    expect(isSafeManualEditUrlAttrValue('ping', '/ok')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('ping', '#local')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('ping', '/ok #local')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('ping', '/ok https://evil.example/p')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('ping', 'https://evil.example/p')).toBe(false);
+
+    expect(
+      sanitizeManualEditHtmlFragment(
+        '<a href="#ok" ping="/ok https://evil.example/p">x</a>',
+      ),
+    ).toBe('<a href="#ok">x</a>');
+    expect(
+      sanitizeManualEditHtmlFragment('<a href="#ok" ping="/ok #frag">x</a>'),
+    ).toBe('<a href="#ok" ping="/ok #frag">x</a>');
   });
 
   it('strips onload from salvaged style siblings and full-source style hosts', () => {

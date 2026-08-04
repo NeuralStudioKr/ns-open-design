@@ -26,6 +26,7 @@ import {
   mergeManualEditTargetsFromSource,
   readScopedCommentTargetText,
   resolveManualEditTargetReference,
+  sanitizeManualEditFullSource,
   sanitizeManualEditHtmlFragment,
 } from './source-patches';
 
@@ -446,7 +447,8 @@ export function applyScopedDeckPatchToHtml(input: {
       const repairedScoped = input.commentAttachments
         ? stabilizeVisualMarkDeckHtml(currentHtml, scoped.html, input.commentAttachments)
         : scoped.html;
-      return { ok: true, html: repairedScoped };
+      // Unscoped slide ops can carry on*/script — sanitize the merged deck.
+      return { ok: true, html: sanitizeManualEditFullSource(repairedScoped) };
     }
     if (mergedScopeRelaxed) {
       console.warn('[deck-patch] scope-relaxed apply produced no narrowed match — rejecting', {
@@ -470,7 +472,7 @@ export function applyScopedDeckPatchToHtml(input: {
   const repairedHtml = input.commentAttachments
     ? stabilizeVisualMarkDeckHtml(currentHtml, merged.html, input.commentAttachments)
     : merged.html;
-  return { ok: true, html: repairedHtml };
+  return { ok: true, html: sanitizeManualEditFullSource(repairedHtml) };
 }
 
 function scopeRejectionCanRetry(reason: string): boolean {
