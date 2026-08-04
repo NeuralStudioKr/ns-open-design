@@ -633,7 +633,11 @@ function AssistantMessageImpl({
               fileOps,
               streaming,
             });
-      return filterEmbedDeliverableProducedFiles(base, { slideOnlyMvp }, { projectFiles });
+      return filterEmbedDeliverableProducedFiles(
+        filterImplicitProducedFiles(base),
+        { slideOnlyMvp },
+        { projectFiles },
+      );
     },
     [blocks, fileOps, message, produced, projectFiles, slideOnlyMvp, streaming],
   );

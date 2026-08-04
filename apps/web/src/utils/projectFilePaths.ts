@@ -34,9 +34,16 @@ export function projectFilePathExists(
   return false;
 }
 
+/** User annotation / draw screenshots — never assistant-produced deliverables. */
+export function isUserAnnotationDrawingScreenshotPath(path: string): boolean {
+  const baseName = projectFilePathBasename(path).toLowerCase();
+  if (!baseName.endsWith('.png')) return false;
+  if (/^drawing-\d{4}-\d{2}-\d{2}t[\d-]+z\.png$/i.test(baseName)) return true;
+  return /^[a-z0-9]+-drawing-.*\.png$/i.test(baseName);
+}
+
 export function isEphemeralDrawingScreenshotPath(path: string): boolean {
-  const baseName = projectFilePathBasename(path);
-  return /^[a-z0-9]+-drawing-\d{4}-\d{2}-\d{2}T[\d-]+Z\.png$/i.test(baseName);
+  return isUserAnnotationDrawingScreenshotPath(path);
 }
 
 export function projectFilePathBasename(path: string): string {

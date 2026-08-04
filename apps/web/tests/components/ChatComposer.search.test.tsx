@@ -356,7 +356,7 @@ describe('ChatComposer /search command', () => {
       },
     }));
 
-    await waitFor(() => expect(mockedUploadProjectFiles).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockedUploadProjectFiles).not.toHaveBeenCalled());
     await waitFor(() => expect(composerText()).toContain('review this before sending'));
     expect(screen.getByText('drawing.png')).toBeTruthy();
     expect(screen.queryByText('Visual mark')).toBeNull();
@@ -364,6 +364,7 @@ describe('ChatComposer /search command', () => {
 
     fireEvent.click(screen.getByTestId('chat-send'));
 
+    await waitFor(() => expect(mockedUploadProjectFiles).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     const [prompt, attachments, commentAttachments] = onSend.mock.calls[0]!;
     expect(prompt).toBe('review this before sending');

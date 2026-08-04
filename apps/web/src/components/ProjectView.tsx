@@ -1933,6 +1933,21 @@ function commentTaskQuery(attachment: ChatCommentAttachment): string {
   return (attachment.comment ?? '').trim();
 }
 
+/** Drawing screenshots uploaded with this user turn are not assistant output. */
+function userVisualUploadBaselineNames(
+  attachments: readonly ChatCommentAttachment[],
+): string[] {
+  const names: string[] = [];
+  for (const attachment of attachments) {
+    const screenshot = String(attachment.screenshotPath || '').trim();
+    if (screenshot) {
+      names.push(projectFilePathBasename(screenshot));
+      names.push(screenshot);
+    }
+  }
+  return names;
+}
+
 function designSystemNeedsWorkPrompt(
   sectionTitle: string,
   feedback: string,
@@ -7896,7 +7911,12 @@ export function ProjectView({
               effectiveSelectedAgentChoice?.model,
             )
           : apiProtocolModelLabel(config.apiProtocol, config.model);
-      const preTurnFileNames = projectFilesRef.current.map((f) => f.name);
+      const preTurnFileNames = [
+        ...new Set([
+          ...projectFilesRef.current.map((f) => f.name),
+          ...userVisualUploadBaselineNames(scopedCommentAttachments),
+        ]),
+      ];
       const assistantId = randomUUID();
       const assistantMsg: ChatMessage = {
         id: assistantId,

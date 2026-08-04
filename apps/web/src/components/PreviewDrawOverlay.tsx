@@ -153,7 +153,7 @@ export function PreviewDrawOverlay({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [note, setNote] = useState('');
-  const [markTool, setMarkTool] = useState<MarkTool>('box');
+  const [markTool, setMarkTool] = useState<MarkTool>('pen');
   const strokesRef = useRef<Stroke[]>([]);
   const undoneStrokesRef = useRef<Stroke[]>([]);
   const drawingRef = useRef<Stroke | null>(null);
@@ -897,7 +897,8 @@ export function PreviewDrawOverlay({
         inset: 0,
         width: '100%',
         height: '100%',
-        zIndex: 0,
+        zIndex: active ? 20 : 0,
+        pointerEvents: active ? 'none' : undefined,
       }}
     >
       {children}
@@ -921,18 +922,21 @@ export function PreviewDrawOverlay({
       {showCanvas ? (
         <canvas
           ref={canvasRef}
+          className="preview-draw-overlay-canvas"
+          data-testid="preview-draw-overlay-canvas"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
           onWheel={onCanvasWheel}
-          style={{
+            style={{
             position: 'absolute',
             inset: 0,
             pointerEvents: overlayPointer,
             cursor: active ? 'crosshair' : 'default',
             visibility: canvasHidden ? 'hidden' : 'visible',
-            zIndex: 80,
+            touchAction: active ? 'none' : undefined,
+            zIndex: 100,
           }}
         />
       ) : null}

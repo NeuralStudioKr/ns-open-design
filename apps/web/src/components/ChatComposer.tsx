@@ -47,6 +47,14 @@ import { embedUiLabel } from '../teamver/embedUiLabels';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { excludeAttachmentsBackedByVisualScreenshots, isEphemeralDrawingScreenshotPath, isRenderableImagePath, projectFilePathExists, projectFilePathsInclude, visualCommentScreenshotPaths } from '../utils/projectFilePaths';
 import {
+  attachmentsHavePendingAnnotationPaths,
+  commentAttachmentsHavePendingScreenshotPaths,
+  flushPendingAnnotationUploads,
+  isPendingAnnotationPath,
+  pendingAnnotationPathForFile,
+  remapPendingCommentScreenshotPaths,
+} from '../utils/annotationPendingUpload';
+import {
   shouldHideTeamverToolboxPlugin,
   shouldHideTeamverToolboxSkill,
   teamverToolboxPluginDescription,
@@ -515,6 +523,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       [staged],
     );
     const nextAttachmentOrderRef = useRef(0);
+    const pendingAnnotationFilesRef = useRef<Map<string, File>>(new Map());
+    const [pendingAnnotationPreviewUrls, setPendingAnnotationPreviewUrls] = useState<Record<string, string>>({});
     const [stagedVisualComments, setStagedVisualComments] = useState<ChatCommentAttachment[]>([]);
     // Skills the user has @-mentioned for this turn. We dedupe on id and
     // strip the chip when the user removes the corresponding `@<skill>`
@@ -1194,6 +1204,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       setStaged([]);
       nextAttachmentOrderRef.current = 0;
       setStagedVisualComments([]);
+      for (const url of Object.values(pendingAnnotationPreviewUrls)) {
+        URL.revokeObjectURL(url);
+      }
+      pendingAnnotationFilesRef.current.clear();
+      setPendingAnnotationPreviewUrls({});
       setStagedSkills([]);
       setStagedMcpServers([]);
       setStagedConnectors([]);
@@ -1281,6 +1296,37 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       return dedupeCommentAttachments(merged);
     }
 
+    function storePendingAnnotationFile(path: string, file: File) {
+      pendingAnnotationFilesRef.current.set(path, file);
+      setPendingAnnotationPreviewUrls((current) => {
+        const previous = current[path];
+        if (previous) URL.revokeObjectURL(previous);
+        return { ...current, [path]: URL.createObjectURL(file) };
+      });
+    }
+
+    function clearPendingAnnotationPath(path: string) {
+      pendingAnnotationFilesRef.current.delete(path);
+      setPendingAnnotationPreviewUrls((current) => {
+        if (!current[path]) return current;
+        URL.revokeObjectURL(current[path]!);
+        const next = { ...current };
+        delete next[path];
+        return next;
+      });
+    }
+
+    function clearDeferredAnnotationStaging() {
+      const pendingPaths = [...pendingAnnotationFilesRef.current.keys()];
+      if (pendingPaths.length === 0) return;
+      for (const path of pendingPaths) clearPendingAnnotationPath(path);
+      const pendingSet = new Set(pendingPaths);
+      setStaged((current) => current.filter((attachment) => !pendingSet.has(attachment.path)));
+      setStagedVisualComments((current) =>
+        current.filter((attachment) => !pendingSet.has(String(attachment.screenshotPath || ''))),
+      );
+    }
+
     function sendComposedTurn(
       prompt: string,
       attachments: ChatAttachment[],
@@ -1288,27 +1334,84 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       meta?: ChatSendMeta,
     ): boolean {
       if (!prompt && attachments.length === 0 && nextCommentAttachments.length === 0) return false;
+      void flushAndSendComposedTurn(prompt, attachments, nextCommentAttachments, meta);
+      return true;
+    }
+
+    async function flushAndSendComposedTurn(
+      prompt: string,
+      attachments: ChatAttachment[],
+      nextCommentAttachments: ChatCommentAttachment[],
+      meta?: ChatSendMeta,
+    ): Promise<void> {
       const slideOnlyBlock = embedSlideOnlyOutboundBlockReason(prompt, { slideOnlyMvp });
       if (slideOnlyBlock) {
         setUploadError(slideOnlyBlock);
-        return false;
+        return;
       }
+
+      let flushedAttachments = attachments;
+      let flushedComments = nextCommentAttachments;
+      const needsFlush =
+        attachmentsHavePendingAnnotationPaths(attachments)
+        || commentAttachmentsHavePendingScreenshotPaths(nextCommentAttachments);
+
+      if (needsFlush) {
+        const id = projectId ?? await ensureProject();
+        if (!id) {
+          setUploadError(t('chat.annotationProjectCreateFailed'));
+          return;
+        }
+        setUploading(true);
+        try {
+          const { attachments: uploadedAttachments, pathReplacements } =
+            await flushPendingAnnotationUploads(
+              id,
+              attachments,
+              pendingAnnotationFilesRef.current,
+              uploadedImagesReadableOnDisk,
+            );
+          flushedAttachments = uploadedAttachments;
+          flushedComments = remapPendingCommentScreenshotPaths(
+            nextCommentAttachments,
+            pathReplacements,
+          );
+          for (const pendingPath of pathReplacements.keys()) {
+            clearPendingAnnotationPath(pendingPath);
+          }
+          if (
+            pathReplacements.size === 0
+            && (
+              attachmentsHavePendingAnnotationPaths(attachments)
+              || commentAttachmentsHavePendingScreenshotPaths(nextCommentAttachments)
+            )
+          ) {
+            setUploadError(t('chat.annotationUploadFailed'));
+            return;
+          }
+        } catch {
+          setUploadError(t('chat.annotationUploadFailed'));
+          return;
+        } finally {
+          setUploading(false);
+        }
+      }
+
       const nextAttachments = excludeAttachmentsBackedByVisualScreenshots(
-        activeFileContext && !attachments.some((attachment) => attachment.path === activeFileContext)
+        activeFileContext && !flushedAttachments.some((attachment) => attachment.path === activeFileContext)
           ? [
               {
                 path: activeFileContext,
                 name: activeFileDisplayName ?? activeFileContext,
                 kind: 'file' as const,
               },
-              ...attachments,
+              ...flushedAttachments,
             ]
-          : attachments,
-        nextCommentAttachments,
+          : flushedAttachments,
+        flushedComments,
       );
-      onSend(prompt, nextAttachments, dedupeCommentAttachments(nextCommentAttachments), meta);
+      onSend(prompt, nextAttachments, dedupeCommentAttachments(flushedComments), meta);
       reset();
-      return true;
     }
 
     function queueMeta(meta?: ChatSendMeta): ChatSendMeta {
@@ -1976,125 +2079,151 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             );
             if (annotationFiles.length > 0) {
               const orderStart = reserveAttachmentOrders(annotationFiles.length);
-              const id = await ensureProject();
-              if (!id) {
-                ack({ ok: false, message: t('chat.annotationProjectCreateFailed') });
-                return;
-              }
-              setUploading(true);
-              const result = await uploadProjectFiles(id, annotationFiles);
-              const readableUploaded = result.uploaded.length > 0
-                ? await uploadedImagesReadableOnDisk(id, result.uploaded)
-                : [];
-              const resolvedUploaded = readableUploaded.length > 0
-                ? readableUploaded
-                : result.uploaded;
-              if (resolvedUploaded.length > 0) {
-                uploaded = assignChatAttachmentOrders(
-                  resolvedUploaded,
-                  orderStart,
-                );
+              const buildVisualAttachmentInputFromScreenshot = (
+                screenshot: ChatAttachment,
+              ): Parameters<typeof buildVisualAnnotationAttachment>[0] => {
+                const bounds = detail.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
+                const inferredMarkKind =
+                  detail.markKind
+                  ?? (detail.bounds ? 'stroke' : detail.target ? 'click' : 'stroke');
+                return {
+                  order: isFiniteAttachmentOrder(screenshot.order) ? screenshot.order : orderStart,
+                  idSeed: screenshot.path,
+                  screenshotPath: screenshot.path,
+                  markKind: inferredMarkKind,
+                  note: detail.note,
+                  bounds,
+                  ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                    ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                    : {}),
+                  target: detail.target
+                    ? {
+                        filePath: detail.target.filePath || detail.filePath || screenshot.path,
+                        elementId: detail.target.elementId,
+                        selector: detail.target.selector,
+                        label: detail.target.label,
+                        text: detail.target.text,
+                        position: detail.target.position,
+                        htmlHint: detail.target.htmlHint,
+                        ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                          ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                          : {}),
+                      }
+                    : {
+                        filePath:
+                          detail.filePath && !isRenderableImagePath(detail.filePath)
+                            ? detail.filePath
+                            : screenshot.path,
+                        position: detail.bounds,
+                        ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                          ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                          : {}),
+                      },
+                };
+              };
+
+              if (detail.action === 'draft') {
+                uploaded = annotationFiles.map((file, index) => {
+                  const path = pendingAnnotationPathForFile(file);
+                  storePendingAnnotationFile(path, file);
+                  return {
+                    path,
+                    name: file.name,
+                    kind: 'image' as const,
+                    order: orderStart + index,
+                  };
+                });
                 const screenshot = detail.file ? uploaded[0] : null;
                 if (screenshot) {
-                  const bounds = detail.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
-                  const inferredMarkKind =
-                    detail.markKind
-                    ?? (detail.bounds ? 'stroke' : detail.target ? 'click' : 'stroke');
-                  visualAttachmentInput = {
-                    order: isFiniteAttachmentOrder(screenshot.order) ? screenshot.order : orderStart,
-                    idSeed: screenshot.path,
-                    screenshotPath: screenshot.path,
-                    markKind: inferredMarkKind,
-                    note: detail.note,
-                    bounds,
-                    ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                      ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                      : {}),
-                    target: detail.target
-                      ? {
-                          filePath: detail.target.filePath || detail.filePath || screenshot.path,
-                          elementId: detail.target.elementId,
-                          selector: detail.target.selector,
-                          label: detail.target.label,
-                          text: detail.target.text,
-                          position: detail.target.position,
-                          htmlHint: detail.target.htmlHint,
-                          ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                            ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                            : {}),
-                        }
-                      : {
-                          filePath:
-                            detail.filePath && !isRenderableImagePath(detail.filePath)
-                              ? detail.filePath
-                              : screenshot.path,
-                          position: detail.bounds,
-                          ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                            ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                            : {}),
-                        },
-                  };
-                } else if (
-                  !detail.file
-                  && detail.markKind
-                  && detail.note.trim()
-                  && (detail.bounds || detail.target)
-                ) {
-                  const bounds = detail.bounds ?? detail.target?.position ?? { x: 0, y: 0, width: 0, height: 0 };
-                  visualAttachmentInput = {
-                    order: orderStart,
-                    idSeed: `${detail.markKind}-${orderStart}`,
-                    screenshotPath: '',
-                    markKind: detail.markKind,
-                    note: detail.note,
-                    bounds,
-                    ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                      ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                      : {}),
-                    target: detail.target
-                      ? {
-                          filePath: detail.target.filePath || detail.filePath || '',
-                          elementId: detail.target.elementId,
-                          selector: detail.target.selector,
-                          label: detail.target.label,
-                          text: detail.target.text,
-                          position: detail.target.position,
-                          htmlHint: detail.target.htmlHint,
-                          ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                            ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                            : {}),
-                        }
-                      : {
-                          filePath:
-                            detail.filePath && !isRenderableImagePath(detail.filePath)
-                              ? detail.filePath
-                              : '',
-                          position: bounds,
-                          ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                            ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                            : {}),
-                        },
-                  };
+                  visualAttachmentInput = buildVisualAttachmentInputFromScreenshot(screenshot);
                 }
-              }
-              if (
-                result.uploaded.length > resolvedUploaded.length
-                || result.failed.length > 0
-              ) {
-                const failedReadCount = result.uploaded.length - resolvedUploaded.length;
-                const uploadErrorMessage = resolveProjectUploadBatchErrorMessage({
-                  uploadedCount: uploaded.length,
-                  failedCount: result.failed.length + failedReadCount,
-                  error: result.error,
-                  slideOnlyMvp,
-                });
-                setUploadError(uploadErrorMessage);
-                if (uploaded.length === 0) {
-                  ack({
-                    ok: false,
-                    message: uploadErrorMessage || t('chat.annotationUploadFailed'),
-                  });
+              } else {
+                if (detail.action === 'send' || detail.action === 'queue') {
+                  clearDeferredAnnotationStaging();
+                }
+                const id = await ensureProject();
+                if (!id) {
+                  ack({ ok: false, message: t('chat.annotationProjectCreateFailed') });
                   return;
+                }
+                setUploading(true);
+                const result = await uploadProjectFiles(id, annotationFiles);
+                const readableUploaded = result.uploaded.length > 0
+                  ? await uploadedImagesReadableOnDisk(id, result.uploaded)
+                  : [];
+                const resolvedUploaded = readableUploaded.length > 0
+                  ? readableUploaded
+                  : result.uploaded;
+                if (resolvedUploaded.length > 0) {
+                  uploaded = assignChatAttachmentOrders(
+                    resolvedUploaded,
+                    orderStart,
+                  );
+                  const screenshot = detail.file ? uploaded[0] : null;
+                  if (screenshot) {
+                    visualAttachmentInput = buildVisualAttachmentInputFromScreenshot(screenshot);
+                  } else if (
+                    !detail.file
+                    && detail.markKind
+                    && detail.note.trim()
+                    && (detail.bounds || detail.target)
+                  ) {
+                    const bounds = detail.bounds ?? detail.target?.position ?? { x: 0, y: 0, width: 0, height: 0 };
+                    visualAttachmentInput = {
+                      order: orderStart,
+                      idSeed: `${detail.markKind}-${orderStart}`,
+                      screenshotPath: '',
+                      markKind: detail.markKind,
+                      note: detail.note,
+                      bounds,
+                      ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                        ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                        : {}),
+                      target: detail.target
+                        ? {
+                            filePath: detail.target.filePath || detail.filePath || '',
+                            elementId: detail.target.elementId,
+                            selector: detail.target.selector,
+                            label: detail.target.label,
+                            text: detail.target.text,
+                            position: detail.target.position,
+                            htmlHint: detail.target.htmlHint,
+                            ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                              ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                              : {}),
+                          }
+                        : {
+                            filePath:
+                              detail.filePath && !isRenderableImagePath(detail.filePath)
+                                ? detail.filePath
+                                : '',
+                            position: bounds,
+                            ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                              ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                              : {}),
+                          },
+                    };
+                  }
+                }
+                if (
+                  result.uploaded.length > resolvedUploaded.length
+                  || result.failed.length > 0
+                ) {
+                  const failedReadCount = result.uploaded.length - resolvedUploaded.length;
+                  const uploadErrorMessage = resolveProjectUploadBatchErrorMessage({
+                    uploadedCount: uploaded.length,
+                    failedCount: result.failed.length + failedReadCount,
+                    error: result.error,
+                    slideOnlyMvp,
+                  });
+                  setUploadError(uploadErrorMessage);
+                  if (uploaded.length === 0) {
+                    ack({
+                      ok: false,
+                      message: uploadErrorMessage || t('chat.annotationUploadFailed'),
+                    });
+                    return;
+                  }
                 }
               }
             }
@@ -2562,6 +2691,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     function removeStaged(p: string) {
       trackComposerBar({ element: 'context_remove', resource_kind: 'attachment', resource_id: p });
+      if (isPendingAnnotationPath(p)) clearPendingAnnotationPath(p);
       setStaged((s) => s.filter((a) => a.path !== p));
       setStagedVisualComments((current) => current.filter((attachment) => attachment.screenshotPath !== p));
       // Strip the `@<path>` token from the draft and push the result back into
@@ -2831,6 +2961,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 const record = installedPlugins.find((plugin) => plugin.id === id);
                 if (record) setDetailsRecord(record);
               }}
+              attachmentPreviewUrl={(attachment) => pendingAnnotationPreviewUrls[attachment.path] ?? null}
               t={t}
             />
           ) : null}
@@ -3580,6 +3711,7 @@ function StagedRunContexts({
   onRemoveAttachment,
   onRemovePlugin,
   onPluginDetails,
+  attachmentPreviewUrl,
   t,
 }: {
   designSystemPicker?: ReactNode;
@@ -3592,6 +3724,7 @@ function StagedRunContexts({
   pluginChip?: { id: string; title: string } | null;
   projectId: string | null;
   projectFileNames?: readonly string[];
+  attachmentPreviewUrl?: (attachment: ChatAttachment) => string | null;
   onRemoveWorkspace: (id: string) => void;
   onRemoveSkill: (id: string) => void;
   onRemoveMcp: (id: string) => void;
@@ -3762,7 +3895,8 @@ function StagedRunContexts({
         </div>
       ))}
       {attachments.map((a, index) => {
-        const canPreview = a.kind === 'image' && Boolean(projectId);
+        const localPreview = attachmentPreviewUrl?.(a) ?? null;
+        const canPreview = a.kind === 'image' && Boolean(projectId || localPreview);
         const embed = isTeamverEmbedMode();
         return (
           <div key={a.path} className={`staged-chip staged-${a.kind}`}>
@@ -3780,14 +3914,18 @@ function StagedRunContexts({
                 title={a.path}
                 aria-label={embed ? `${a.name} 미리보기` : `Preview ${a.name}`}
               >
-                <AuthenticatedProjectFileImage
-                  projectId={projectId!}
-                  path={a.path}
-                  alt=""
-                  className=""
-                  fetchEnabled
-                  trustExists
-                />
+                {localPreview ? (
+                  <img src={localPreview} alt="" decoding="async" />
+                ) : (
+                  <AuthenticatedProjectFileImage
+                    projectId={projectId!}
+                    path={a.path}
+                    alt=""
+                    className=""
+                    fetchEnabled
+                    trustExists
+                  />
+                )}
                 <span className="staged-name">{a.name}</span>
               </button>
             ) : (
@@ -3851,13 +3989,17 @@ function StagedRunContexts({
               <Icon name="close" size={14} />
             </button>
           </div>
-          <AuthenticatedProjectFileImage
-            projectId={projectId}
-            path={preview.path}
-            alt={preview.name}
-            fetchEnabled
-            trustExists
-          />
+          {attachmentPreviewUrl?.(preview) ? (
+            <img src={attachmentPreviewUrl(preview)!} alt={preview.name} decoding="async" />
+          ) : (
+            <AuthenticatedProjectFileImage
+              projectId={projectId}
+              path={preview.path}
+              alt={preview.name}
+              fetchEnabled
+              trustExists
+            />
+          )}
         </div>
       </div>,
       document.body

@@ -60,7 +60,12 @@ async function fetchAuthenticatedImageBlobAtPath(
   } catch {
     // Prefix warm is best-effort.
   }
-  const resp = await options.fetchDaemon(projectRawUrl(id, path), {
+  const rawUrl = projectRawUrl(id, path);
+  const fetchUrl =
+    typeof window !== 'undefined' && rawUrl.startsWith('/')
+      ? new URL(rawUrl, window.location.origin).href
+      : rawUrl;
+  const resp = await options.fetchDaemon(fetchUrl, {
     cache: 'no-store',
     teamverProjectId: id,
   });
