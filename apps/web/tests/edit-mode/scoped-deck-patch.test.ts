@@ -11,6 +11,7 @@ import {
   resolveScopedCommentSlideCandidates,
   scopedCommentElementIds,
   graftVisualMarksIntoDeckHtml,
+  repairWipedSlidesForVisualMarks,
   hasElementScopedCommentAttachments,
   isVisualCommentAttachment,
 } from '../../src/edit-mode/scoped-deck-patch';
@@ -711,5 +712,31 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(grafted).toContain('od-visual-mark-target');
     expect(grafted).toContain('left:40px;top:50px;width:80px;height:60px');
     expect(grafted).toMatch(/<svg[^>]*viewBox="0 0 24 24"/);
+  });
+
+  it('repairs model deck-patches that wiped slide content for visual marks', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+<section class="slide" data-slide-index="1"><p>Keep this text</p><img src="logo.png" alt="logo" /></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      note: '여기에 하트 넣어줘',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 1,
+    });
+    const wiped = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+<section class="slide" data-slide-index="1" style="position:relative">
+<div class="od-visual-mark-target" style="position:absolute;left:40px;top:50px;width:80px;height:60px"></div>
+</section>
+</body></html>`;
+    const repaired = repairWipedSlidesForVisualMarks(deck, wiped, [visual]);
+    expect(repaired).toContain('Keep this text');
+    expect(repaired).toContain('logo.png');
+    expect(repaired).toContain('od-visual-mark-target');
+    expect(repaired).toMatch(/<svg[^>]*viewBox="0 0 24 24"/);
   });
 });

@@ -11,7 +11,7 @@ import {
   markProjectRawFileMissing,
 } from '../utils/projectFileFetchCache';
 import { normalizeFetchedImageBlob, blobToImageDataUrl } from '../utils/imageBlobNormalize';
-import { isEphemeralDrawingScreenshotPath } from '../utils/projectFilePaths';
+import { isEphemeralDrawingScreenshotPath, projectFilePathBasename } from '../utils/projectFilePaths';
 
 export const AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS = [0, 250, 800, 1500] as const;
 const TRUSTED_BACKGROUND_RETRY_DELAYS_MS = [2000, 5000] as const;
@@ -32,8 +32,42 @@ async function readResponseImageBlob(resp: Response): Promise<Blob> {
   throw new Error('response body unavailable');
 }
 
-async function blobToRenderableDataUrl(blob: Blob): Promise<string | null> {
-  return await blobToImageDataUrl(blob);
+function alternateAuthenticatedRawPaths(path: string): string[] {
+  const trimmed = String(path || '').trim().replace(/\\/g, '/');
+  if (!trimmed) return [];
+  const baseName = projectFilePathBasename(trimmed);
+  const alternates: string[] = [];
+  if (baseName && baseName !== trimmed) alternates.push(baseName);
+  if (baseName && !trimmed.includes('/')) {
+    alternates.push(`uploads/${baseName}`);
+    alternates.push(`assets/${baseName}`);
+  }
+  return alternates;
+}
+
+async function fetchAuthenticatedImageBlobAtPath(
+  id: string,
+  path: string,
+  options: {
+    fetchDaemon: typeof fetchTeamverDaemon;
+    waitForPrefix: typeof waitForTeamverProjectStoragePrefix;
+    trustExists: boolean;
+    attempt: number;
+  },
+): Promise<Blob | null> {
+  try {
+    await options.waitForPrefix(id, { quick: options.attempt === 0 });
+  } catch {
+    // Prefix warm is best-effort.
+  }
+  const resp = await options.fetchDaemon(projectRawUrl(id, path), {
+    cache: 'no-store',
+    teamverProjectId: id,
+  });
+  if (resp.status === 404) return null;
+  if (!resp.ok) return null;
+  const rawBlob = await readResponseImageBlob(resp);
+  return await normalizeFetchedImageBlob(rawBlob);
 }
 
 /**
@@ -71,38 +105,33 @@ export async function loadAuthenticatedProjectFileBlob(
   const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
   const delays = options?.delaysMs ?? AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS;
   const trustExists = Boolean(options?.trustExists);
+  const pathCandidates = trustExists
+    ? [path, ...alternateAuthenticatedRawPaths(path)]
+    : [path];
 
   for (let attempt = 0; attempt < delays.length; attempt += 1) {
     const delay = delays[attempt] ?? 0;
     if (delay > 0) await sleep(delay);
 
-    try {
-      await waitForPrefix(id, { quick: attempt === 0 });
-    } catch {
-      // Prefix warm is best-effort; still attempt the raw fetch.
-    }
-
-    try {
-      const resp = await fetchDaemon(projectRawUrl(id, path), {
-        cache: 'no-store',
-        teamverProjectId: id,
+    for (let candidateIndex = 0; candidateIndex < pathCandidates.length; candidateIndex += 1) {
+      const candidatePath = pathCandidates[candidateIndex]!;
+      const isLastCandidate = candidateIndex >= pathCandidates.length - 1;
+      const blob = await fetchAuthenticatedImageBlobAtPath(id, candidatePath, {
+        fetchDaemon,
+        waitForPrefix,
+        trustExists,
+        attempt,
       });
-      if (resp.status === 404) {
+      if (!blob) {
+        if (trustExists || !isLastCandidate) continue;
         const isLastAttempt = attempt >= delays.length - 1;
-        if (trustExists || !isLastAttempt) {
-          continue;
-        }
-        markProjectRawFileMissing(id, path);
+        if (!isLastAttempt) continue;
+        if (!trustExists) markProjectRawFileMissing(id, path);
         return null;
       }
-      if (!resp.ok) continue;
-      const rawBlob = await readResponseImageBlob(resp);
-      const blob = await normalizeFetchedImageBlob(rawBlob);
-      if (!blob) continue;
       clearProjectRawFileMissing(id, path);
+      clearProjectRawFileMissing(id, candidatePath);
       return blob;
-    } catch {
-      // Auth / network race — retry remaining attempts.
     }
   }
   return null;
@@ -164,32 +193,37 @@ export function useAuthenticatedProjectFileObjectUrl(
     }
 
     let cancelled = false;
+    let objectUrl: string | null = null;
     setImageSrc(null);
     setLoading(true);
     setFailed(false);
 
     void (async () => {
-      const tryLoad = async (): Promise<string | null> => {
-        const blob = await loadAuthenticatedProjectFileBlob(projectId, path, { trustExists });
-        if (!blob) return null;
-        return await blobToRenderableDataUrl(blob);
+      const tryLoad = async (): Promise<Blob | null> => {
+        return await loadAuthenticatedProjectFileBlob(projectId, path, { trustExists });
       };
 
-      let dataUrl = await tryLoad();
+      let blob = await tryLoad();
       if (cancelled) return;
 
-      if (!dataUrl && trustExists) {
+      if (!blob && trustExists) {
         for (const waitMs of TRUSTED_BACKGROUND_RETRY_DELAYS_MS) {
           await sleep(waitMs);
           if (cancelled) return;
-          dataUrl = await tryLoad();
-          if (dataUrl) break;
+          blob = await tryLoad();
+          if (blob) break;
         }
       }
 
       if (cancelled) return;
-      if (dataUrl) {
-        setImageSrc(dataUrl);
+      if (blob) {
+        objectUrl = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl);
+          objectUrl = null;
+          return;
+        }
+        setImageSrc(objectUrl);
         setFailed(false);
       } else {
         setFailed(true);
@@ -199,6 +233,7 @@ export function useAuthenticatedProjectFileObjectUrl(
 
     return () => {
       cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
       setImageSrc(null);
       setLoading(false);
       setFailed(false);

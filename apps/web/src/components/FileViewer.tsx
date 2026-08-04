@@ -12569,14 +12569,14 @@ function ImageViewer({
         <div className="viewer-toolbar-actions">
           <a
             className="ghost-link"
-            href={projectFileUrl(projectId, file.name)}
+            href={projectFileUrl(projectId, filePath)}
             download={file.name}
           >
             {t('fileViewer.download')}
           </a>
           <a
             className="ghost-link"
-            href={projectFileUrl(projectId, file.name)}
+            href={projectFileUrl(projectId, filePath)}
             target="_blank"
             rel="noreferrer noopener"
           >

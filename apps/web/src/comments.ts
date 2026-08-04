@@ -1115,7 +1115,7 @@ export function buildConcreteDeckPatchTemplateForVisualMarks(
     blocks.push(
       '<artifact type="deck-patch" identifier="deck">',
       `  <section class="slide" data-slide-index="${slideIndex}" style="position:relative">`,
-      '    <!-- COPY the existing slide HTML for this index from deck.html unchanged, then ADD: -->',
+      '    <!-- REQUIRED: paste the FULL existing slide HTML for this index from deck.html, then ADD only this mark div before </section> -->',
       `    <div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center">`,
       innerMarkup,
       '    </div>',
@@ -1243,7 +1243,7 @@ function visualAnnotationIntent(
   } else if (markKind === 'click+stroke') {
     base = 'The screenshot has a blue focus box and red strokes; together they identify the part the user wants changed.';
   } else {
-    base = 'The screenshot has red strokes that identify the visual region the user wants changed. Treat the drawn ink as the intended shape or placement guide—not decoration.';
+    base = 'The screenshot has red strokes that identify the visual region the user wants changed. Treat the drawn ink as the intended shape or placement guide—not decoration. ADD the requested shape/icon inside that region; do NOT delete or clear the rest of the slide.';
   }
   if (!note) return base;
   return `User request from the annotation note: "${note}". ${base}`;

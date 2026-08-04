@@ -256,6 +256,87 @@ function targetElementTextPreservedAfterMerge(
   return targetTextContentPreserved(attachment, after ?? '');
 }
 
+function collapseSlideText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, '')
+    .trim();
+}
+
+function isLikelySlideContentWipe(beforeSlide: string, afterSlide: string): boolean {
+  const beforeText = collapseSlideText(beforeSlide);
+  const afterText = collapseSlideText(afterSlide);
+  const beforeTags = (beforeSlide.match(/<[^>]+>/g) ?? []).length;
+  const afterTags = (afterSlide.match(/<[^>]+>/g) ?? []).length;
+  const visualMarkAdded =
+    afterSlide.includes('od-visual-mark-target')
+    && !beforeSlide.includes('od-visual-mark-target');
+  if (visualMarkAdded && beforeText.length >= 8 && afterText.length < beforeText.length * 0.75) {
+    return true;
+  }
+  if (beforeText.length < 24) return false;
+  if (afterText.length >= beforeText.length * 0.5) return false;
+  if (beforeTags >= 4 && afterTags <= Math.max(2, Math.floor(beforeTags * 0.45))) return true;
+  return afterText.length < beforeText.length * 0.5;
+}
+
+function extractVisualMarkTargetHtml(slideHtml: string): string | null {
+  const match = slideHtml.match(/<div\s+class="od-visual-mark-target"[\s\S]*?<\/div>/i);
+  return match?.[0] ?? null;
+}
+
+function graftVisualMarkIntoSlide(slideHtml: string, markHtml: string): string | null {
+  const closingTag = '</section>';
+  const closingIndex = slideHtml.lastIndexOf(closingTag);
+  if (closingIndex < 0) return null;
+  if (slideHtml.includes(markHtml)) return slideHtml;
+  return slideHtml.slice(0, closingIndex) + markHtml + slideHtml.slice(closingIndex);
+}
+
+/**
+ * When a visual-mark deck-patch replaces an entire slide with only the mark
+ * overlay, restore the pre-patch slide and insert the mark before </section>.
+ */
+export function repairWipedSlidesForVisualMarks(
+  currentHtml: string,
+  mergedHtml: string,
+  commentAttachments: readonly ChatCommentAttachment[],
+): string {
+  let html = mergedHtml;
+  for (const attachment of commentAttachments) {
+    if (!isScreenshotOnlyVisualCommentTarget(attachment)) continue;
+    if (!hasValidDeckSlideIndex(attachment)) continue;
+    const slideIndex = Math.floor(attachment.slideIndex as number);
+    const beforeSlide = extractSlideByIndex(currentHtml, slideIndex);
+    const afterSlide = extractSlideByIndex(html, slideIndex);
+    if (!beforeSlide || !afterSlide || beforeSlide === afterSlide) continue;
+    if (!isLikelySlideContentWipe(beforeSlide, afterSlide)) continue;
+
+    let markHtml = extractVisualMarkTargetHtml(afterSlide);
+    const placementStyle = formatVisualMarkPlacementStyle(attachment.pagePosition);
+    const innerMarkup = buildVisualMarkDeckPatchInnerMarkup(attachment.comment || '');
+    if (!markHtml || !/<svg\b/i.test(markHtml)) {
+      markHtml =
+        `<div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center">${innerMarkup}</div>`;
+    }
+    const repairedSlide = graftVisualMarkIntoSlide(beforeSlide, markHtml);
+    if (!repairedSlide || repairedSlide === beforeSlide) continue;
+    const merged = applyDeckPatch({
+      currentHtml: html,
+      patch: { ops: [{ op: 'replace', slideIndex, html: repairedSlide }] },
+    });
+    if (!merged.ok) continue;
+    console.warn('[deck-patch] repaired slide content wipe for visual mark', {
+      slideIndex,
+      elementId: attachment.elementId,
+    });
+    html = merged.html;
+  }
+  return html;
+}
+
 export function applyScopedDeckPatchToHtml(input: {
   currentHtml: string;
   patchBody?: string;
@@ -328,7 +409,10 @@ export function applyScopedDeckPatchToHtml(input: {
       if (!intent.ok) {
         return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
       }
-      return { ok: true, html: scoped.html };
+      const repairedScoped = input.commentAttachments
+        ? repairWipedSlidesForVisualMarks(currentHtml, scoped.html, input.commentAttachments)
+        : scoped.html;
+      return { ok: true, html: repairedScoped };
     }
     if (mergedScopeRelaxed) {
       console.warn('[deck-patch] scope-relaxed apply produced no narrowed match — rejecting', {
@@ -349,7 +433,10 @@ export function applyScopedDeckPatchToHtml(input: {
   if (!intent.ok && input.commentAttachments?.length) {
     return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
   }
-  return { ok: true, html: merged.html };
+  const repairedHtml = input.commentAttachments
+    ? repairWipedSlidesForVisualMarks(currentHtml, merged.html, input.commentAttachments)
+    : merged.html;
+  return { ok: true, html: repairedHtml };
 }
 
 function scopeRejectionCanRetry(reason: string): boolean {

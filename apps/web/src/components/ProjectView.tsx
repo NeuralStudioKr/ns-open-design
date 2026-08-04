@@ -1254,16 +1254,36 @@ export function promptWithSlideCommentEditPatchInstruction(
   if (!options.slideOnlyMvp || options.commentAttachmentCount <= 0) return prompt;
   if (prompt.includes(SLIDE_COMMENT_EDIT_PATCH_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '이 코멘트에 맞춰 슬라이드를 수정해줘.';
+  const usableAttachments = options.commentAttachments
+    ? filterUsableCommentAttachments(options.commentAttachments)
+    : [];
+  const visualMarkOnly =
+    usableAttachments.length > 0
+    && usableAttachments.every((attachment) => isScreenshotOnlyVisualCommentTarget(attachment));
   const parts = [
     `${visiblePrompt}\n\n${slideCommentEditPatchInstruction(options.commentAttachmentCount)}`,
   ];
+  if (visualMarkOnly) {
+    parts.push(
+      '',
+      '[Visual mark edit]',
+      '- The user drew on the screenshot (red strokes) to show WHERE and WHAT shape/icon to add (e.g. a heart).',
+      '- Do NOT delete, clear, or redesign the slide. Preserve every existing element, text block, image, and style on the target slide.',
+      '- Add ONLY the requested mark (SVG/icon) inside the marked box coordinates from <attached-preview-comments>.',
+      '- Never emit a deck-patch that replaces the slide with an empty shell or a single overlay div.',
+      '- If you emit deck-patch, COPY the full current slide HTML from disk and INSERT `<div class="od-visual-mark-target">…</div>` before `</section>`.',
+      '- Do NOT use element-patch for synthetic `visual-mark-*` ids — they are not in the deck DOM.',
+    );
+  }
   const concreteTemplate = options.commentAttachments?.length
     ? buildConcretePatchTemplatesForCommentAttachments(options.commentAttachments)
     : null;
   if (concreteTemplate) {
     parts.push(
       '',
-      'REQUIRED OUTPUT — respond with ONLY this artifact block (no greeting, no question-form, no deck rewrite). Copy target-id and slide-index exactly; replace only the patch body text:',
+      visualMarkOnly
+        ? 'PREFERRED OUTPUT — deck-patch that COPIES the full existing slide section then ADDS the visual mark div (see template). Do not remove sibling content:'
+        : 'REQUIRED OUTPUT — respond with ONLY this artifact block (no greeting, no question-form, no deck rewrite). Copy target-id and slide-index exactly; replace only the patch body text:',
       concreteTemplate,
     );
   }
