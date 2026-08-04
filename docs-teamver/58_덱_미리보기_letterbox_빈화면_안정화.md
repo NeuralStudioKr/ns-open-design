@@ -62,6 +62,16 @@
 3. 탭 백그라운드 후 복귀 → `visibilitychange` / `pageshow` fit 복구
 4. fail-open을 attempt0 완료 후로 당겨 mid-flight paint→이중 remount 완화
 
+### 2026-08-04 이미지→덱 탭 복귀
+
+**증상:** Design Files에서 이미지 등을 연 뒤 덱 탭으로 돌아오면 Preview가 비어 있음.
+
+**원인:** 탭 전환 시 HtmlViewer remount마다 `embedPreviewPrefixSettled=false`로 시작해 srcDoc을 hold. 캐시된 prefix가 있어도 첫 paint가 비고, settle/fit 레이스와 겹치면 검정으로 고착.
+
+**수정:**
+- `peekTeamverProjectPreviewPrefix`로 캐시 prefix sync seed → 첫 paint에 base 포함
+- `FileViewer` / `HtmlViewer`에 `key={projectId\\0file}`로 탭 전환 remount 명확화
+
 ---
 
 ## 4. 검증

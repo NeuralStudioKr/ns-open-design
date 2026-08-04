@@ -12,6 +12,7 @@ import { isTeamverEmbedMode } from '../../src/teamver/designApiBase';
 import { fetchTeamverDaemon } from '../../src/teamver/teamverDaemonHeaders';
 import {
   invalidateTeamverProjectPreviewPrefix,
+  peekTeamverProjectPreviewPrefix,
   projectScopedPreviewUrl,
   resetTeamverProjectPreviewScopeForTests,
   resolveTeamverProjectPreviewPrefix,
@@ -75,6 +76,13 @@ describe('teamverProjectPreviewScope', () => {
     const cached = await resolveTeamverProjectPreviewPrefix('proj-1', 'other.html');
     expect(cached).toBe(prefix);
     expect(fetchTeamverDaemon).not.toHaveBeenCalled();
+    expect(peekTeamverProjectPreviewPrefix('proj-1')).toBe(prefix);
+  });
+
+  it('peek returns null when cache is cold or outside embed', () => {
+    expect(peekTeamverProjectPreviewPrefix('proj-missing')).toBeNull();
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(false);
+    expect(peekTeamverProjectPreviewPrefix('proj-1')).toBeNull();
   });
 
   it('invalidates cached prefixes so auth recovery can re-mint scopes', async () => {

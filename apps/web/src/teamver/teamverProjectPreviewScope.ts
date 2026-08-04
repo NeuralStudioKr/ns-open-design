@@ -24,6 +24,20 @@ export function sanitizePreviewEntryFile(entryFile?: string): string | undefined
 }
 
 /**
+ * Sync read of a still-valid cached preview prefix. Used to seed HtmlViewer
+ * so remounting the deck tab after an image/other file does not paint an
+ * empty srcDoc while waiting on the async resolve microtask.
+ */
+export function peekTeamverProjectPreviewPrefix(projectId: string): string | null {
+  if (!isTeamverEmbedMode()) return null;
+  const id = projectId.trim();
+  if (!id) return null;
+  const cached = prefixByProject.get(id);
+  if (cached && cached.expiresAt > Date.now()) return cached.prefix;
+  return null;
+}
+
+/**
  * Embed-only — mint (or reuse) a daemon preview scope prefix so sandboxed
  * iframe subresources load without nginx session auth_request.
  */
@@ -37,8 +51,8 @@ export async function resolveTeamverProjectPreviewPrefix(
   if (!id) return null;
   if (options?.signal?.aborted) return null;
 
-  const cached = prefixByProject.get(id);
-  if (cached && cached.expiresAt > Date.now()) return cached.prefix;
+  const peeked = peekTeamverProjectPreviewPrefix(id);
+  if (peeked) return peeked;
 
   const safeEntry = sanitizePreviewEntryFile(entryFile);
   const key = safeEntry ? `${id}:${safeEntry}` : id;

@@ -44,6 +44,7 @@ import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../teamver/teamverEm
 import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import {
   invalidateTeamverProjectPreviewPrefix,
+  peekTeamverProjectPreviewPrefix,
   projectScopedPreviewUrl,
   resolveTeamverProjectPreviewPrefix,
 } from '../teamver/teamverProjectPreviewScope';
@@ -1332,6 +1333,7 @@ export function FileViewer({
   if (rendererMatch?.renderer.id === 'html' || rendererMatch?.renderer.id === 'deck-html') {
     return (
       <HtmlViewer
+        key={`${projectId}\0${file.name}`}
         projectId={projectId}
         projectKind={projectKind}
         projectDisplayName={projectDisplayName}
@@ -6313,13 +6315,16 @@ function HtmlViewer({
     [source],
   );
   const [urlSelectionBridgeReady, setUrlSelectionBridgeReady] = useState(false);
-  const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(null);
+  const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(() =>
+    peekTeamverProjectPreviewPrefix(projectId),
+  );
   // Hold srcDoc until the scoped prefix settle finishes (or fail-open). Painting
   // without a base then remounting when the prefix arrives interrupts the compact
   // deck host-viewport handshake — black letterbox with a working 1/N counter
-  // until toolbar refresh.
+  // until toolbar refresh. Seed settled=true when a cached prefix already exists
+  // so remounting the deck tab after an image/other file does not flash empty.
   const [embedPreviewPrefixSettled, setEmbedPreviewPrefixSettled] = useState(
-    () => !isTeamverEmbedMode(),
+    () => !isTeamverEmbedMode() || peekTeamverProjectPreviewPrefix(projectId) != null,
   );
   const teamverEmbedPreviewMode = isTeamverEmbedMode();
   const embedPreviewIdentityRef = useRef<string | null>(null);
@@ -6334,10 +6339,17 @@ function HtmlViewer({
     const identity = `${projectId}\0${file.name}`;
     const identityChanged = embedPreviewIdentityRef.current !== identity;
     embedPreviewIdentityRef.current = identity;
-    // First paint / file switch: hold empty srcDoc. Auth-recovery retries keep
-    // the current paint and remount only when the resolved prefix actually rotates.
+    // First paint / file switch: hold empty srcDoc only when no cached prefix.
+    // Cached peek lets image→deck tab switches paint immediately.
     if (identityChanged) {
-      setEmbedPreviewPrefixSettled(false);
+      const peeked = peekTeamverProjectPreviewPrefix(projectId);
+      if (peeked) {
+        setEmbedPreviewPrefix(peeked);
+        setEmbedPreviewPrefixSettled(true);
+      } else {
+        setEmbedPreviewPrefix(null);
+        setEmbedPreviewPrefixSettled(false);
+      }
     }
     const retryDelaysMs = [0, 400, 1_200] as const;
     // Absolute backup if attempt 0 never returns (hung fetch). Prefer settling

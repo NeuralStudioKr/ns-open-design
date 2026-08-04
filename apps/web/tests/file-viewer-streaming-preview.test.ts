@@ -69,6 +69,18 @@ describe("FileViewer streaming slide preview", () => {
     );
   });
 
+  it('seeds embed preview prefix from cache so image→deck tab remounts do not hold empty srcDoc', () => {
+    const source = readSource('src/components/FileViewer.tsx');
+    expect(source).toContain('peekTeamverProjectPreviewPrefix');
+    expect(source).toContain('Seed settled=true when a cached prefix already exists');
+    expect(source).toContain('Cached peek lets image→deck tab switches paint immediately');
+  });
+
+  it('keys HtmlViewer by project+file so tab switches remount cleanly', () => {
+    const source = readSource('src/components/FileViewer.tsx');
+    expect(source).toMatch(/<HtmlViewer\s+key=\{`\$\{projectId\}\\0\$\{file\.name\}`\}/);
+  });
+
   it("gates live iframe updates on repaired html stability during streaming", () => {
     const source = readSource("src/components/FileViewer.tsx");
 

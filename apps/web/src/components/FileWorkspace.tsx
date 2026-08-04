@@ -2544,6 +2544,7 @@ export function FileWorkspace({
           />
         ) : resolvedPreviewFile ? (
           <FileViewer
+            key={`${projectId}\0${resolvedPreviewFile.name}`}
             projectId={projectId}
             projectKind={projectKind}
             projectDisplayName={projectDisplayName}
