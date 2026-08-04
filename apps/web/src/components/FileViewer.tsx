@@ -163,6 +163,10 @@ import {
   revisionCursorMatchesDisk,
 } from '../runtime/revision-conflict';
 import {
+  isHeadDiskSyncLag,
+  shouldPreserveCursorDuringDiskLag,
+} from '../runtime/revision-reconcile';
+import {
   clearRevisionContentCacheForFile,
   getRevisionContentCache,
   prefetchRevisionContents,
@@ -7118,6 +7122,10 @@ function HtmlViewer({
       return;
     }
     if (disk == null || snapshotContent == null) return;
+    if (revisionDiskSyncFailedTargetRef.current?.id === cursorRevisionId) {
+      setRevisionStackInvalidated(false);
+      return;
+    }
     if (revisionCursorMatchesDisk(revisionStackRef.current, disk, snapshotContent)) {
       setRevisionStackInvalidated(false);
       return;
@@ -7179,6 +7187,20 @@ function HtmlViewer({
     }
 
     if (matchingRevision) {
+      if (isHeadDiskSyncLag(
+        cursor,
+        headRevision,
+        activeSequence,
+        disk,
+        snapshotContent,
+        matchingRevision,
+      )) {
+        setRevisionStackInvalidated(false);
+        revisionConflictSuppressedRef.current = false;
+        setRevisionConflictToast(null);
+        return;
+      }
+
       commitRevisionStack(createRevisionStackSnapshot(
         list.revisions,
         list.headRevisionId,
@@ -7198,6 +7220,19 @@ function HtmlViewer({
         setReloadKey((k) => k + 1);
         manualEditPendingStyleRef.current = null;
       }
+      return;
+    }
+
+    if (shouldPreserveCursorDuringDiskLag(
+      cursor,
+      headRevision,
+      activeSequence,
+      sourceRef.current,
+      snapshotContent,
+    )) {
+      setRevisionStackInvalidated(false);
+      revisionConflictSuppressedRef.current = false;
+      setRevisionConflictToast(null);
       return;
     }
 
