@@ -253,7 +253,7 @@ import {
   measureIframeHostScale,
   measureIframeOffsetInHost,
 } from '../edit-mode/preview-coords';
-import { placeManualEditFloatingPanel } from '../edit-mode/floating-panel-place';
+import { placeManualEditFloatingPanel, withPinnedFloatingPanelPosition } from '../edit-mode/floating-panel-place';
 import {
   parseExplicitPx,
   resizeHistoryLabel,
@@ -966,6 +966,7 @@ function manualEditFloatingPanelStyle(
   canvasSize: PreviewCanvasSize | undefined,
   hostOffset: { x: number; y: number } = { x: 0, y: 0 },
   hostPaintRect: ManualEditRect | null = null,
+  pinnedPosition: { left: number; top: number } | null = null,
 ): CSSProperties {
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
@@ -985,14 +986,19 @@ function manualEditFloatingPanelStyle(
       : composedHostRect;
   // Prefer a non-overlapping side (right → left → below → above → dock).
   // Wide headlines used to clamp over the target when neither flank fit 320px.
-  const placed = placeManualEditFloatingPanel({
-    target: hostRect,
-    canvasWidth,
-    canvasHeight,
-  });
+  const placed = withPinnedFloatingPanelPosition(
+    placeManualEditFloatingPanel({
+      target: hostRect,
+      canvasWidth,
+      canvasHeight,
+    }),
+    pinnedPosition,
+  );
   // Height is left to the content (auto): a short inspector (e.g. typography
   // only) should be a compact card, not a tall half-empty panel. The cap only
   // engages for long inspectors, at which point the scroll body takes over.
+  // left/top stay pinned across resize/move geometry updates unless the user
+  // drags the panel or selects a different element.
   return {
     left: placed.left,
     top: placed.top,
@@ -7395,6 +7401,32 @@ function HtmlViewer({
     previewBodySize?.height,
   ]);
 
+  // Freeze inspector left/top once per selection. Auto-placement used to follow
+  // live target/paint rects, so every resize/move preview walked the toolbar.
+  useLayoutEffect(() => {
+    if (!manualEditMode || !selectedManualEditTarget) return;
+    if (manualEditPanelPosition != null) return;
+    const style = manualEditFloatingPanelStyle(
+      selectedManualEditTarget,
+      manualEditHostScale,
+      previewBodySize,
+      manualEditHostOffset,
+      manualEditHostPaintRect,
+    );
+    const left = typeof style.left === 'number' ? style.left : null;
+    const top = typeof style.top === 'number' ? style.top : null;
+    if (left == null || top == null) return;
+    setManualEditPanelPosition({ left, top });
+  }, [
+    manualEditMode,
+    selectedManualEditTarget,
+    manualEditPanelPosition,
+    manualEditHostScale,
+    previewBodySize,
+    manualEditHostOffset,
+    manualEditHostPaintRect,
+  ]);
+
   useEffect(() => {
     if (!boardMode) {
       setCommentCreateMode(false);
@@ -8202,8 +8234,9 @@ function HtmlViewer({
       if (!(await flushManualEditStyleSave())) return;
     }
     setManualEditPageStylesOpen(false);
-    // Re-run auto placement for the new target — keep a prior drag only while
-    // the same element stays selected.
+    // Clear the pin so layout effect re-places for the new target. Resize/move
+    // on the same selection must not clear this — that caused the toolbar to
+    // chase the changing box.
     setManualEditPanelPosition(null);
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
@@ -10335,16 +10368,14 @@ function HtmlViewer({
       }}
       floatingClassName={manualEditPageCardActive ? 'manual-edit-page-card' : undefined}
       floatingStyle={selectedManualEditTarget
-        ? {
-            ...manualEditFloatingPanelStyle(
-              selectedManualEditTarget,
-              manualEditHostScale,
-              previewBodySize,
-              manualEditHostOffset,
-              manualEditHostPaintRect,
-            ),
-            ...(manualEditPanelPosition ?? {}),
-          }
+        ? manualEditFloatingPanelStyle(
+            selectedManualEditTarget,
+            manualEditHostScale,
+            previewBodySize,
+            manualEditHostOffset,
+            manualEditHostPaintRect,
+            manualEditPanelPosition,
+          )
         : { top: 12, right: 12, width: 320 }}
       onFloatingPositionChange={selectedManualEditTarget ? setManualEditPanelPosition : undefined}
       onPickImage={async (pickedFile) => {

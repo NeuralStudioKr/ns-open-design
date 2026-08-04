@@ -139,6 +139,22 @@ export function placeManualEditFloatingPanel(
   };
 }
 
+/**
+ * Keep left/top stable across selection geometry churn (resize/move previews).
+ * Width / maxHeight may still follow the canvas.
+ */
+export function withPinnedFloatingPanelPosition(
+  placed: FloatingPanelPlaceResult,
+  pinned: { left: number; top: number } | null | undefined,
+): FloatingPanelPlaceResult {
+  if (!pinned) return placed;
+  return {
+    ...placed,
+    left: pinned.left,
+    top: pinned.top,
+  };
+}
+
 function normalizeTarget(rect: FloatingPanelHostRect): FloatingPanelHostRect {
   return {
     x: Number.isFinite(rect.x) ? rect.x : 0,

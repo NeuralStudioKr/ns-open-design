@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { placeManualEditFloatingPanel } from '../../src/edit-mode/floating-panel-place';
+import {
+  placeManualEditFloatingPanel,
+  withPinnedFloatingPanelPosition,
+} from '../../src/edit-mode/floating-panel-place';
 
 describe('placeManualEditFloatingPanel', () => {
   it('places to the right of the target when there is room', () => {
@@ -60,6 +63,29 @@ describe('placeManualEditFloatingPanel', () => {
     expect(placed.placement).toBe('dock');
     expect(placed.left).toBe(1200 - 320 - 12);
     expect(placed.top).toBe(12);
+  });
+
+  it('keeps pinned left/top when the target rect moves during resize/move', () => {
+    const initial = placeManualEditFloatingPanel({
+      target: { x: 80, y: 120, width: 200, height: 60 },
+      canvasWidth: 1200,
+      canvasHeight: 800,
+    });
+    const afterMove = placeManualEditFloatingPanel({
+      target: { x: 280, y: 220, width: 320, height: 90 },
+      canvasWidth: 1200,
+      canvasHeight: 800,
+    });
+    expect(afterMove.left).not.toBe(initial.left);
+
+    const pinned = withPinnedFloatingPanelPosition(afterMove, {
+      left: initial.left,
+      top: initial.top,
+    });
+    expect(pinned.left).toBe(initial.left);
+    expect(pinned.top).toBe(initial.top);
+    expect(pinned.width).toBe(afterMove.width);
+    expect(pinned.maxHeight).toBe(afterMove.maxHeight);
   });
 });
 
