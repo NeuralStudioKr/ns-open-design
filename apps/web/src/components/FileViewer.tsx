@@ -163,8 +163,8 @@ import {
   revisionCursorMatchesDisk,
 } from '../runtime/revision-conflict';
 import {
-  isHeadDiskSyncLag,
-  shouldPreserveCursorDuringDiskLag,
+  classifyRevisionDiskReconcile,
+  shouldApplyHeadRevisionSnapshotAuthority,
 } from '../runtime/revision-reconcile';
 import {
   clearRevisionContentCacheForFile,
@@ -7172,12 +7172,67 @@ function HtmlViewer({
     const userAtHeadRevision = activeSequence == null
       || (headRevision != null && activeSequence === headRevision.sequence);
 
+    const matchingRevision = await findRevisionMatchingDiskContent(
+      list.revisions,
+      disk,
+      resolveRevisionSnapshotContent,
+      new Set([cursorRevisionId]),
+    );
+    const anyKnownDiskRevision = await findRevisionMatchingDiskContent(
+      list.revisions,
+      disk,
+      resolveRevisionSnapshotContent,
+    );
+    if (
+      revisionSyncSuppressRef.current
+      || manualEditSavingRef.current
+      || isStaleRevisionReconcile(reconcileGeneration)
+    ) {
+      return;
+    }
+
+    if (!anyKnownDiskRevision && disk !== snapshotContent) {
+      if (isStaleRevisionReconcile(reconcileGeneration)) {
+        return;
+      }
+      if (sourceRef.current !== disk) {
+        setSource(disk);
+        sourceRef.current = disk;
+        setInlinedSource(null);
+        setManualEditFrozenSource(disk);
+        setManualEditDraft((current) => ({ ...current, fullSource: disk }));
+        setReloadKey((k) => k + 1);
+        manualEditPendingStyleRef.current = null;
+      }
+      setRevisionStackInvalidated(true);
+      if (!revisionConflictSuppressedRef.current) {
+        setRevisionConflictToast(revisionConflictMessageRef.current);
+      }
+      const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
+      if (head) {
+        setActiveRevisionSequence(projectId, file.name, head.sequence);
+      } else {
+        clearActiveRevisionSequence(projectId, file.name);
+      }
+      commitRevisionStack(createRevisionStackSnapshot(
+        list.revisions,
+        list.headRevisionId,
+        list.headRevisionId,
+      ));
+      return;
+    }
+
     // Revision head snapshot is authoritative when scratch / S3 lag behind postgres.
     if (
       list.headRevisionId
-      && cursorRevisionId === list.headRevisionId
-      && userAtHeadRevision
-      && snapshotContent !== disk
+      && shouldApplyHeadRevisionSnapshotAuthority(
+        cursor,
+        headRevision,
+        userAtHeadRevision,
+        disk,
+        snapshotContent,
+        matchingRevision,
+      )
     ) {
       setRevisionStackInvalidated(false);
       revisionConflictSuppressedRef.current = false;
@@ -7197,84 +7252,73 @@ function HtmlViewer({
       return;
     }
 
-    const matchingRevision = await findRevisionMatchingDiskContent(
-      list.revisions,
-      disk,
-      resolveRevisionSnapshotContent,
-      new Set([cursorRevisionId]),
-    );
-    if (
-      revisionSyncSuppressRef.current
-      || manualEditSavingRef.current
-      || isStaleRevisionReconcile(reconcileGeneration)
-    ) {
-      return;
-    }
-
     if (matchingRevision) {
-      if (isHeadDiskSyncLag(
+      const reconcileOutcome = classifyRevisionDiskReconcile({
         cursor,
         headRevision,
         activeSequence,
-        disk,
-        snapshotContent,
+        diskContent: disk,
+        cursorSnapshotContent: snapshotContent,
+        previewSource: sourceRef.current,
         matchingRevision,
-      )) {
-        setRevisionStackInvalidated(false);
-        revisionConflictSuppressedRef.current = false;
-        setRevisionConflictToast(null);
-        return;
-      }
+      });
 
       if (
-        headRevision
-        && cursor.id !== headRevision.id
-        && cursor.sequence < headRevision.sequence
-        && matchingRevision.sequence > cursor.sequence
+        reconcileOutcome === 'sync_lag_head_disk'
+        || reconcileOutcome === 'preserve_history_cursor'
       ) {
-        // Disk shows a newer revision while the user intentionally sits on an
-        // older cursor (undo). Never fast-forward the stack to head here.
         setRevisionStackInvalidated(false);
         revisionConflictSuppressedRef.current = false;
         setRevisionConflictToast(null);
         return;
       }
 
-      commitRevisionStack(createRevisionStackSnapshot(
-        list.revisions,
-        list.headRevisionId,
-        matchingRevision.id,
-      ));
-      if (isStaleRevisionReconcile(reconcileGeneration)) {
+      if (reconcileOutcome === 'adopt_matching_disk') {
+        commitRevisionStack(createRevisionStackSnapshot(
+          list.revisions,
+          list.headRevisionId,
+          matchingRevision.id,
+        ));
+        if (isStaleRevisionReconcile(reconcileGeneration)) {
+          return;
+        }
+        setActiveRevisionSequence(projectId, file.name, matchingRevision.sequence);
+        setRevisionStackInvalidated(false);
+        revisionConflictSuppressedRef.current = false;
+        setRevisionConflictToast(null);
+
+        if (sourceRef.current !== disk) {
+          setSource(disk);
+          sourceRef.current = disk;
+          setInlinedSource(null);
+          setManualEditFrozenSource(disk);
+          setManualEditDraft((current) => ({ ...current, fullSource: disk }));
+          setReloadKey((k) => k + 1);
+          manualEditPendingStyleRef.current = null;
+        }
         return;
       }
-      setActiveRevisionSequence(projectId, file.name, matchingRevision.sequence);
-      setRevisionStackInvalidated(false);
-      revisionConflictSuppressedRef.current = false;
-      setRevisionConflictToast(null);
-
-      if (sourceRef.current !== disk) {
-        setSource(disk);
-        sourceRef.current = disk;
-        setInlinedSource(null);
-        setManualEditFrozenSource(disk);
-        setManualEditDraft((current) => ({ ...current, fullSource: disk }));
-        setReloadKey((k) => k + 1);
-        manualEditPendingStyleRef.current = null;
-      }
-      return;
     }
 
-    if (shouldPreserveCursorDuringDiskLag(
+    const reconcileOutcomeWithoutMatch = classifyRevisionDiskReconcile({
       cursor,
       headRevision,
       activeSequence,
-      sourceRef.current,
-      snapshotContent,
-    )) {
+      diskContent: disk,
+      cursorSnapshotContent: snapshotContent,
+      previewSource: sourceRef.current,
+      matchingRevision: null,
+    });
+
+    if (reconcileOutcomeWithoutMatch === 'preserve_history_cursor') {
       setRevisionStackInvalidated(false);
       revisionConflictSuppressedRef.current = false;
       setRevisionConflictToast(null);
+      return;
+    }
+
+    if (reconcileOutcomeWithoutMatch !== 'external_conflict') {
+      setRevisionStackInvalidated(false);
       return;
     }
 
@@ -7292,13 +7336,9 @@ function HtmlViewer({
       manualEditPendingStyleRef.current = null;
     }
 
-    commitRevisionStack(createRevisionStackSnapshot(
-      list.revisions,
-      list.headRevisionId,
-      list.headRevisionId,
-    ));
-    if (isStaleRevisionReconcile(reconcileGeneration)) {
-      return;
+    setRevisionStackInvalidated(true);
+    if (!revisionConflictSuppressedRef.current) {
+      setRevisionConflictToast(revisionConflictMessageRef.current);
     }
     const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
     if (head) {
@@ -7306,10 +7346,11 @@ function HtmlViewer({
     } else {
       clearActiveRevisionSequence(projectId, file.name);
     }
-    setRevisionStackInvalidated(true);
-    if (!revisionConflictSuppressedRef.current) {
-      setRevisionConflictToast(revisionConflictMessageRef.current);
-    }
+    commitRevisionStack(createRevisionStackSnapshot(
+      list.revisions,
+      list.headRevisionId,
+      list.headRevisionId,
+    ));
   }, [projectId, file.name, resolveRevisionSnapshotContent]);
 
   const refreshRevisionStack = useCallback(async () => {

@@ -43,3 +43,108 @@ export function shouldPreserveCursorDuringDiskLag(
   if (activeSequence != null) return activeSequence < headRevision.sequence;
   return cursor.sequence < headRevision.sequence;
 }
+
+/**
+ * Disk matches a revision newer than the cursor while the user is browsing
+ * older history (undo). Do not fast-forward the stack to that newer revision.
+ */
+export function shouldSkipDiskFastForwardDuringHistoryBrowse(
+  cursor: FileRevision,
+  headRevision: FileRevision | null | undefined,
+  matchingRevision: FileRevision,
+): boolean {
+  if (!headRevision) return false;
+  if (cursor.id === headRevision.id) return false;
+  if (cursor.sequence >= headRevision.sequence) return false;
+  return matchingRevision.sequence > cursor.sequence;
+}
+
+export type RevisionDiskReconcileOutcome =
+  | 'cursor_matches_disk'
+  | 'sync_lag_head_disk'
+  | 'preserve_history_cursor'
+  | 'adopt_matching_disk'
+  | 'external_conflict';
+
+export interface RevisionDiskReconcileInput {
+  cursor: FileRevision;
+  headRevision: FileRevision | null | undefined;
+  activeSequence: number | undefined;
+  diskContent: string;
+  cursorSnapshotContent: string;
+  previewSource: string | null;
+  matchingRevision: FileRevision | null;
+}
+
+/**
+ * Classify how disk bytes relate to the active revision cursor.
+ * Distinguishes background sync lag from a true external edit conflict.
+ */
+export function classifyRevisionDiskReconcile(input: RevisionDiskReconcileInput): RevisionDiskReconcileOutcome {
+  const {
+    cursor,
+    headRevision,
+    activeSequence,
+    diskContent,
+    cursorSnapshotContent,
+    previewSource,
+    matchingRevision,
+  } = input;
+
+  if (diskContent === cursorSnapshotContent) {
+    return 'cursor_matches_disk';
+  }
+
+  if (matchingRevision) {
+    if (isHeadDiskSyncLag(
+      cursor,
+      headRevision,
+      activeSequence,
+      diskContent,
+      cursorSnapshotContent,
+      matchingRevision,
+    )) {
+      return 'sync_lag_head_disk';
+    }
+    if (shouldSkipDiskFastForwardDuringHistoryBrowse(cursor, headRevision, matchingRevision)) {
+      return 'preserve_history_cursor';
+    }
+    return 'adopt_matching_disk';
+  }
+
+  if (shouldPreserveCursorDuringDiskLag(
+    cursor,
+    headRevision,
+    activeSequence,
+    previewSource,
+    cursorSnapshotContent,
+  )) {
+    return 'preserve_history_cursor';
+  }
+
+  return 'external_conflict';
+}
+
+/** True when disk diverged from known revision history in a way that invalidates undo/redo. */
+export function isExternalRevisionDiskConflict(input: RevisionDiskReconcileInput): boolean {
+  return classifyRevisionDiskReconcile(input) === 'external_conflict';
+}
+
+/**
+ * Head revision snapshot is authoritative when scratch / object storage lags postgres
+ * but disk still reflects an older known revision — not when disk is unknown bytes.
+ */
+export function shouldApplyHeadRevisionSnapshotAuthority(
+  cursor: FileRevision,
+  headRevision: FileRevision | null | undefined,
+  userAtHeadRevision: boolean,
+  diskContent: string,
+  cursorSnapshotContent: string,
+  matchingRevision: FileRevision | null,
+): boolean {
+  if (!headRevision || !userAtHeadRevision) return false;
+  if (cursor.id !== headRevision.id) return false;
+  if (diskContent === cursorSnapshotContent) return false;
+  if (matchingRevision?.id === headRevision.id) return false;
+  return matchingRevision != null && matchingRevision.sequence < headRevision.sequence;
+}
