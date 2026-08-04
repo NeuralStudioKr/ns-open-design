@@ -1212,6 +1212,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       return sortChatCommentAttachmentsByOrder([...commentAttachments, ...stagedVisualComments, ...extra]);
     }
 
+    /** Visual marks ride as staged image files; show only non-visual comment chips. */
+    function stagedVisibleCommentAttachments(extra: ChatCommentAttachment[] = []): ChatCommentAttachment[] {
+      return currentCommentAttachments(extra).filter((item) => !isVisualCommentAttachment(item));
+    }
+
     function currentRunContextMeta(): ChatSendMeta | undefined {
       const skillIds = stagedSkills.map((s) => s.id);
       const pluginIds = activeAppliedPlugin ? [activeAppliedPlugin.pluginId] : [];
@@ -1990,13 +1995,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   orderStart,
                 );
                 const screenshot = detail.file ? uploaded[0] : null;
-                if (screenshot && detail.markKind) {
+                if (screenshot) {
                   const bounds = detail.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
+                  const inferredMarkKind =
+                    detail.markKind
+                    ?? (detail.bounds ? 'stroke' : detail.target ? 'click' : 'stroke');
                   visualAttachmentInput = {
                     order: isFiniteAttachmentOrder(screenshot.order) ? screenshot.order : orderStart,
                     idSeed: screenshot.path,
                     screenshotPath: screenshot.path,
-                    markKind: detail.markKind,
+                    markKind: inferredMarkKind,
                     note: detail.note,
                     bounds,
                     ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
@@ -2021,6 +2029,47 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                               ? detail.filePath
                               : screenshot.path,
                           position: detail.bounds,
+                          ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                            ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                            : {}),
+                        },
+                  };
+                } else if (
+                  !detail.file
+                  && detail.markKind
+                  && detail.note.trim()
+                  && (detail.bounds || detail.target)
+                ) {
+                  const bounds = detail.bounds ?? detail.target?.position ?? { x: 0, y: 0, width: 0, height: 0 };
+                  visualAttachmentInput = {
+                    order: orderStart,
+                    idSeed: `${detail.markKind}-${orderStart}`,
+                    screenshotPath: '',
+                    markKind: detail.markKind,
+                    note: detail.note,
+                    bounds,
+                    ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                      ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                      : {}),
+                    target: detail.target
+                      ? {
+                          filePath: detail.target.filePath || detail.filePath || '',
+                          elementId: detail.target.elementId,
+                          selector: detail.target.selector,
+                          label: detail.target.label,
+                          text: detail.target.text,
+                          position: detail.target.position,
+                          htmlHint: detail.target.htmlHint,
+                          ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                            ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                            : {}),
+                        }
+                      : {
+                          filePath:
+                            detail.filePath && !isRenderableImagePath(detail.filePath)
+                              ? detail.filePath
+                              : '',
+                          position: bounds,
                           ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
                             ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
                             : {}),
@@ -2795,9 +2844,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               <span className="composer-active-file__name">{activeFileContext}</span>
             </div>
           ) : null}
-          {currentCommentAttachments().length > 0 ? (
+          {stagedVisibleCommentAttachments().length > 0 ? (
             <StagedCommentAttachments
-              attachments={currentCommentAttachments()}
+              attachments={stagedVisibleCommentAttachments()}
               onRemove={removeCommentAttachment}
               t={t}
             />

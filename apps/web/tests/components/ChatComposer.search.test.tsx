@@ -261,12 +261,16 @@ describe('ChatComposer /search command', () => {
     expect(mockedUploadProjectFiles).toHaveBeenCalledWith('project-1', [
       expect.objectContaining({ name: 'drawing.png', type: 'image/png' }),
     ]);
-    expect(onSend).toHaveBeenCalledWith(
-      'please update this spot',
-      [{ path: 'uploads/drawing.png', name: 'drawing.png', kind: 'image', order: 0 }],
-      [],
-      undefined,
-    );
+    const [prompt, attachments, commentAttachments] = onSend.mock.calls[0]!;
+    expect(prompt).toBe('please update this spot');
+    expect(attachments).toEqual([]);
+    expect(commentAttachments).toHaveLength(1);
+    expect(commentAttachments[0]).toMatchObject({
+      selectionKind: 'visual',
+      screenshotPath: 'uploads/drawing.png',
+      markKind: 'stroke',
+      comment: 'please update this spot',
+    });
   });
 
   it('sends draw screenshots with paired visual target context', async () => {

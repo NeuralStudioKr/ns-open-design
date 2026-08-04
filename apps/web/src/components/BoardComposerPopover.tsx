@@ -589,8 +589,15 @@ export function BoardComposerPopover({
                 </>
               ) : (
                 <>
-                  {/* Element: comment (save) is the primary CTA (also Enter);
-                      send-to-chat is secondary. */}
+                  {/* Element: queue multiple memos before send; save persists to board. */}
+                  <Button
+                    variant="ghost"
+                    data-testid="comment-popover-add-note"
+                    disabled={!draft.trim()}
+                    onClick={onAddDraft}
+                  >
+                    {t('chat.comments.addNote')}
+                  </Button>
                   <Button
                     variant="ghost"
                     data-testid="comment-add-send"
