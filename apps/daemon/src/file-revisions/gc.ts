@@ -3,7 +3,7 @@
 // Complements per-push retention in `createFileRevisionService`. Sweeps:
 //   - orphan BLOB rows (metadata deleted, snapshot left behind)
 //   - global per-file retention safety pass
-//   - deferred snapshot byte compaction (push schedules async; GC runs uncapped)
+//   - deferred snapshot byte compaction (push schedules batched via PUSH_PRUNE_MAX; GC uncapped)
 //   - orphan `.od/revisions/*` files on disk (files mode / migration leftovers)
 //   - optional SQLite VACUUM when enough bytes were reclaimed
 //

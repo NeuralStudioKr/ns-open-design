@@ -7,7 +7,8 @@ import {
 } from '../../src/runtime/revision-conflict';
 import type { FileRevision } from '@open-design/contracts';
 
-function revision(id: string, sequence: number): FileRevision {
+function revision(id: string, sequence: number, snapshot = id): FileRevision {
+  const byteSize = new TextEncoder().encode(snapshot).length;
   return {
     id,
     projectId: 'p',
@@ -15,7 +16,7 @@ function revision(id: string, sequence: number): FileRevision {
     parentRevisionId: null,
     sequence,
     createdAt: 0,
-    byteSize: 10,
+    byteSize,
     source: 'manual_edit',
     label: id,
   };
@@ -34,7 +35,9 @@ describe('revision-conflict', () => {
   });
 
   it('finds the newest revision whose snapshot matches disk content', async () => {
-    const revisions = [revision('rev-1', 1), revision('rev-2', 2)];
+    const older = '<html>older</html>';
+    const newer = '<html>newer</html>';
+    const revisions = [revision('rev-1', 1, older), revision('rev-2', 2, newer)];
     const snapshots = new Map([
       ['rev-1', '<html>older</html>'],
       ['rev-2', '<html>newer</html>'],
@@ -48,17 +51,38 @@ describe('revision-conflict', () => {
   });
 
   it('skips revisions in the provided skip set', async () => {
-    const revisions = [revision('rev-1', 1), revision('rev-2', 2)];
+    const older = '<html>older</html>';
+    const newer = '<html>newer</html>';
+    const revisions = [revision('rev-1', 1, older), revision('rev-2', 2, newer)];
     const snapshots = new Map([
-      ['rev-1', '<html>older</html>'],
-      ['rev-2', '<html>newer</html>'],
+      ['rev-1', older],
+      ['rev-2', newer],
     ]);
     const match = await findRevisionMatchingDiskContent(
       revisions,
-      '<html>older</html>',
+      older,
       async (revisionId) => snapshots.get(revisionId) ?? null,
       new Set(['rev-1']),
     );
     expect(match).toBeNull();
+  });
+
+  it('skips snapshot fetch when byteSize does not match disk content', async () => {
+    const disk = '<html>target</html>';
+    const revisions = [
+      { ...revision('rev-1', 1, '<html>wrong-size</html>'), byteSize: 4 },
+      revision('rev-2', 2, disk),
+    ];
+    const resolveSnapshot = vi.fn(async (revisionId: string) => (
+      revisionId === 'rev-2' ? disk : '<html>wrong-size</html>'
+    ));
+    const match = await findRevisionMatchingDiskContent(
+      revisions,
+      disk,
+      resolveSnapshot,
+    );
+    expect(match?.id).toBe('rev-2');
+    expect(resolveSnapshot).toHaveBeenCalledTimes(1);
+    expect(resolveSnapshot).toHaveBeenCalledWith('rev-2');
   });
 });

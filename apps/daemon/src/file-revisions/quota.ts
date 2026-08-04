@@ -21,7 +21,7 @@ export interface FileRevisionPruneResult {
 
 interface PruneUntilBudgetOptions {
   excludeRevisionIds?: ReadonlySet<string>;
-  /** When set, caps synchronous deletes (push path). GC passes no cap. */
+  /** When set, caps deletes per pass (push-triggered compaction). GC omits this for full sweeps. */
   maxDeletes?: number;
 }
 

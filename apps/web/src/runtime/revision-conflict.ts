@@ -23,11 +23,20 @@ export async function findRevisionMatchingDiskContent(
   resolveSnapshot: (revisionId: string) => Promise<string | null>,
   skipRevisionIds: ReadonlySet<string> = new Set(),
 ): Promise<FileRevision | null> {
+  const diskByteSize = utf8ByteLength(diskContent);
   for (let index = revisions.length - 1; index >= 0; index -= 1) {
     const revision = revisions[index]!;
     if (skipRevisionIds.has(revision.id)) continue;
+    if (revision.byteSize > 0 && revision.byteSize !== diskByteSize) continue;
     const snapshot = await resolveSnapshot(revision.id);
     if (snapshot === diskContent) return revision;
   }
   return null;
+}
+
+function utf8ByteLength(value: string): number {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(value).length;
+  }
+  return value.length;
 }

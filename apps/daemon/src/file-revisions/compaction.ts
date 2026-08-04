@@ -1,11 +1,22 @@
 import type Database from 'better-sqlite3';
 import { FILE_REVISION_RETENTION_LIMIT } from './persistence.js';
 import { enforceFileRevisionGlobalByteBudget, type FileRevisionPruneResult } from './quota.js';
-import { FILE_REVISION_MAX_SNAPSHOT_BYTES, FILE_REVISION_MAX_TOTAL_BYTES } from './limits.js';
+import {
+  FILE_REVISION_MAX_SNAPSHOT_BYTES,
+  FILE_REVISION_MAX_TOTAL_BYTES,
+  FILE_REVISION_PUSH_PRUNE_MAX,
+} from './limits.js';
 import { getFileRevisionSnapshotStorageStatsDurable } from './snapshot-storage.js';
 
 let compactionDb: Database.Database | null = null;
 let compactionInFlight: Promise<void> | null = null;
+
+export interface DeferredCompactionOptions {
+  /** Caps rows deleted in one pass. Push-triggered compaction uses PUSH_PRUNE_MAX; GC omits this. */
+  maxDeletes?: number;
+  /** When true and bytes remain over budget after a capped pass, queue another compaction. */
+  rescheduleOnOverflow?: boolean;
+}
 
 export function registerRevisionCompactionDb(db: Database.Database): void {
   compactionDb = db;
@@ -17,7 +28,10 @@ export function registerRevisionCompactionDb(db: Database.Database): void {
  */
 export function scheduleRevisionSnapshotCompaction(): void {
   if (!compactionDb || compactionInFlight) return;
-  compactionInFlight = runDeferredRevisionSnapshotCompaction(compactionDb)
+  compactionInFlight = runDeferredRevisionSnapshotCompaction(compactionDb, {
+    maxDeletes: FILE_REVISION_PUSH_PRUNE_MAX,
+    rescheduleOnOverflow: true,
+  })
     .then(() => undefined)
     .catch((err) => {
       console.warn(
@@ -31,16 +45,33 @@ export function scheduleRevisionSnapshotCompaction(): void {
 
 export async function runDeferredRevisionSnapshotCompaction(
   db: Database.Database,
+  options: DeferredCompactionOptions = {},
 ): Promise<FileRevisionPruneResult> {
+  const pruneOptions = options.maxDeletes != null
+    ? { maxDeletes: options.maxDeletes }
+    : {};
+
+  let result: FileRevisionPruneResult;
   if (FILE_REVISION_MAX_TOTAL_BYTES > 0) {
-    return enforceFileRevisionGlobalByteBudget(db, 0, FILE_REVISION_MAX_TOTAL_BYTES);
+    result = await enforceFileRevisionGlobalByteBudget(
+      db,
+      0,
+      FILE_REVISION_MAX_TOTAL_BYTES,
+      new Set(),
+      pruneOptions,
+    );
+  } else {
+    const stats = await getFileRevisionSnapshotStorageStatsDurable(db);
+    const softCap = FILE_REVISION_MAX_SNAPSHOT_BYTES * Math.max(FILE_REVISION_RETENTION_LIMIT, 4);
+    if (stats.totalSnapshotBytes <= softCap) {
+      return { pruned: 0, bytesReclaimed: 0, deferredOverflowBytes: 0 };
+    }
+    result = await enforceFileRevisionGlobalByteBudget(db, 0, softCap, new Set(), pruneOptions);
   }
 
-  const stats = await getFileRevisionSnapshotStorageStatsDurable(db);
-  const softCap = FILE_REVISION_MAX_SNAPSHOT_BYTES * Math.max(FILE_REVISION_RETENTION_LIMIT, 4);
-  if (stats.totalSnapshotBytes <= softCap) {
-    return { pruned: 0, bytesReclaimed: 0, deferredOverflowBytes: 0 };
+  if (options.rescheduleOnOverflow && result.deferredOverflowBytes > 0) {
+    queueMicrotask(() => scheduleRevisionSnapshotCompaction());
   }
 
-  return enforceFileRevisionGlobalByteBudget(db, 0, softCap);
+  return result;
 }

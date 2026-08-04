@@ -5982,8 +5982,7 @@ function HtmlViewer({
         if (text != null) {
           const activeSeq = getActiveRevisionSequence(projectId, file.name);
           if (activeSeq != null) {
-            const list = await listProjectFileRevisions(projectId, file.name);
-            const revisionForActive = list?.revisions?.find(
+            const revisionForActive = revisionStackRef.current.revisions.find(
               (revision) => revision.sequence === activeSeq,
             );
             if (revisionForActive) {
