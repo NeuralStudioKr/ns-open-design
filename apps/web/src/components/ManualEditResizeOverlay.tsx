@@ -72,7 +72,7 @@ export type ManualEditResizeOverlayProps = {
     next: Partial<ManualEditStyles>,
     stylesBefore: Partial<ManualEditStyles>,
     viewport?: { x: number; y: number },
-  ) => void;
+  ) => void | Promise<void>;
   onResizeCancel: (stylesBefore: Partial<ManualEditStyles>) => void;
   /** Shared with move — autosave pause while any geometry gesture is active. */
   onResizeSessionChange?: (active: boolean) => void;
@@ -91,7 +91,7 @@ export type ManualEditResizeOverlayProps = {
     next: Partial<ManualEditStyles>,
     stylesBefore: Partial<ManualEditStyles>,
     viewport?: { x: number; y: number },
-  ) => void;
+  ) => void | Promise<void>;
   onMoveCancel?: (stylesBefore: Partial<ManualEditStyles>) => void;
   /**
    * Absolute/fixed text stays movable (overlay body captures pointers). Forward
@@ -118,6 +118,11 @@ type ResizeDragState = {
   /** True after pointer moved past jitter — gates commit/Esc like move. */
   previewed: boolean;
   lastViewport: { x: number; y: number };
+  /**
+   * pointerup/cancel started commit/cancel — keep freeze geom for overlay
+   * compose until the async host handoff finishes; ignore further moves.
+   */
+  sealed?: boolean;
 } & GestureHostGeom;
 
 type MoveDragState = {
@@ -141,6 +146,8 @@ type MoveDragState = {
   /** Pre-promote cssPosition (`static` / `relative` / `sticky`) for promote styles. */
   promoteCssPosition: string;
   lastViewport: { x: number; y: number };
+  /** See ResizeDragState.sealed. */
+  sealed?: boolean;
 } & GestureHostGeom;
 
 type DragState = ResizeDragState | MoveDragState;
@@ -239,6 +246,9 @@ export function ManualEditResizeOverlay({
   // hostScale = paint/layout.
   const layoutW = target.layoutWidth && target.layoutWidth >= 1 ? target.layoutWidth : null;
   const layoutH = target.layoutHeight && target.layoutHeight >= 1 ? target.layoutHeight : null;
+  // Move drafts are hybrid (visualStart + layoutΔ). Only compose them while
+  // gestureGeom freezes hostScale=paint/layout. Idle + hybrid×previewScale(~1)
+  // is the classic post-pointerup jump under deck fit-scale.
   const contentRect = gestureGeom
     ? {
         x: liveViewportPos?.x ?? draftLeftPx ?? target.rect.x,
@@ -247,10 +257,10 @@ export function ManualEditResizeOverlay({
         height: draftHeightPx ?? layoutH ?? target.rect.height,
       }
     : {
-        x: draftLeftPx ?? target.rect.x,
-        y: draftTopPx ?? target.rect.y,
-        // Prefer visual rect. If a layout draft lingers after pointerup, map it
-        // back through the visual/layout ratio instead of painting layout px.
+        x: target.rect.x,
+        y: target.rect.y,
+        // Prefer visual rect. If a layout size draft lingers after pointerup,
+        // map it back through the visual/layout ratio instead of painting layout px.
         width: draftWidthPx != null && layoutW
           ? draftWidthPx * (target.rect.width / layoutW)
           : target.rect.width,
@@ -270,11 +280,17 @@ export function ManualEditResizeOverlay({
   // scale/offset frozen at pointerdown (live fit-scale remasure morphs size).
   // pointerdown alone keeps paint until the first preview — avoids a flash
   // from paint → composed before drafts exist.
-  const gestureComposed = liveViewportPos != null
-    || draftWidthPx != null
-    || draftHeightPx != null
-    || draftLeftPx != null
-    || draftTopPx != null;
+  // Position drafts are hybrid — only compose them under gesture freeze.
+  // Size drafts may still compose idle (panel width/height) via visual ratio.
+  const gestureComposed = gestureGeom
+    ? (
+      liveViewportPos != null
+      || draftWidthPx != null
+      || draftHeightPx != null
+      || draftLeftPx != null
+      || draftTopPx != null
+    )
+    : (draftWidthPx != null || draftHeightPx != null);
   const hostRect = !gestureComposed
     && hostPaintRect
     && hostPaintRect.width >= 1
@@ -319,40 +335,48 @@ export function ManualEditResizeOverlay({
   useEffect(() => {
     const endDrag = (event: PointerEvent, commit: boolean) => {
       const drag = dragRef.current;
-      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag || drag.sealed || event.pointerId !== drag.pointerId) return;
       const last = drag.lastStyles;
       const before = drag.stylesBefore;
       const previewed = drag.previewed;
       const viewport = drag.lastViewport;
       const kind = drag.kind;
       const moved = kind === 'move' ? drag.moved : false;
-      dragRef.current = null;
-      onResizeSessionChangeRef.current?.(false);
-      // Commit/cancel BEFORE clearing liveViewportPos. Commit applies an
-      // optimistic target.rect synchronously; clearing first would flash the
-      // overlay back onto the pre-gesture rect for a frame (or longer if flush
-      // awaited before the optimistic update).
-      if (kind === 'resize') {
-        // Handle click / sub-threshold jitter: no flush, no cancel wipe.
-        if (previewed) {
-          if (commit) onResizeCommitRef.current(last, before, viewport);
-          else onResizeCancelRef.current(before);
+      // Seal + keep freeze/liveViewport until async host handoff finishes.
+      // Clearing dragRef first painted hybrid viewport × iframe scale (jump),
+      // and unlocking mid-await let RAF remasure clobber the optimistic box.
+      drag.sealed = true;
+      const finish = () => {
+        if (dragRef.current === drag) dragRef.current = null;
+        onResizeSessionChangeRef.current?.(false);
+        setDragging(false);
+        setMoving(false);
+        setLiveViewportPos(null);
+      };
+      void (async () => {
+        try {
+          if (kind === 'resize') {
+            // Handle click / sub-threshold jitter: no flush, no cancel wipe.
+            if (previewed) {
+              if (commit) await Promise.resolve(onResizeCommitRef.current(last, before, viewport));
+              else onResizeCancelRef.current(before);
+            }
+          } else if (commit && moved) {
+            // pointercancel: never persist. pointerup commits only past the jitter
+            // threshold. A plain click (no preview) must not wipe pending styles.
+            await Promise.resolve(onMoveCommitRef.current?.(last, before, viewport));
+          } else if (previewed) {
+            onMoveCancelRef.current?.(before);
+          }
+        } finally {
+          finish();
         }
-      } else if (commit && moved) {
-        // pointercancel: never persist. pointerup commits only past the jitter
-        // threshold. A plain click (no preview) must not wipe pending styles.
-        onMoveCommitRef.current?.(last, before, viewport);
-      } else if (previewed) {
-        onMoveCancelRef.current?.(before);
-      }
-      setDragging(false);
-      setMoving(false);
-      setLiveViewportPos(null);
+      })();
     };
 
     const onPointerMove = (event: PointerEvent) => {
       const drag = dragRef.current;
-      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag || drag.sealed || event.pointerId !== drag.pointerId) return;
       const hostDx = event.clientX - drag.startClientX;
       const hostDy = event.clientY - drag.startClientY;
       const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, drag.hostScale);
