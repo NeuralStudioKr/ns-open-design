@@ -18,6 +18,7 @@ export function VisualCommentAttachmentChip({
   localPreviewUrl,
   onRemove,
   showRemove = false,
+  variant = 'composer',
   t,
 }: {
   attachment: ChatCommentAttachment;
@@ -26,6 +27,8 @@ export function VisualCommentAttachmentChip({
   localPreviewUrl?: string | null;
   onRemove?: (id: string) => void;
   showRemove?: boolean;
+  /** Composer staging row vs chat history — both use the same compact chip layout. */
+  variant?: 'composer' | 'history';
   t?: TranslateFn;
 }) {
   const screenshotPath = String(attachment.screenshotPath || '').trim();
@@ -47,9 +50,10 @@ export function VisualCommentAttachmentChip({
     );
   const showThumb = isVisual && (canShowLocalThumb || canShowRemoteThumb);
   const thumbClass = 'visual-comment-attachment-thumb';
-  const title = attachment.comment
-    ? `${commentTargetDisplayName(attachment)}: ${attachment.comment}`
-    : commentTargetDisplayName(attachment);
+  const label = commentTargetDisplayName(attachment);
+  const comment = String(attachment.comment || '').trim();
+  const displayText = comment || label;
+  const title = comment ? `${label}: ${comment}` : label;
 
   return (
     <div
@@ -58,8 +62,10 @@ export function VisualCommentAttachmentChip({
         'staged-chip',
         'staged-comment',
         showThumb ? 'staged-comment--visual' : '',
+        variant === 'history' ? 'visual-comment-attachment-chip--history' : '',
       ].filter(Boolean).join(' ')}
       data-testid="visual-comment-attachment-chip"
+      title={title}
     >
       {showThumb ? (
         <span className="visual-comment-attachment-thumb-wrap" aria-hidden>
@@ -75,11 +81,12 @@ export function VisualCommentAttachmentChip({
             />
           ) : null}
         </span>
-      ) : null}
-      <span className="staged-name" title={title}>
-        <strong>{commentTargetDisplayName(attachment)}</strong>
-        {attachment.comment ? <span>{attachment.comment}</span> : null}
-      </span>
+      ) : (
+        <span className="visual-comment-attachment-icon" aria-hidden>
+          <Icon name="image" size={11} />
+        </span>
+      )}
+      <span className="visual-comment-attachment-label">{displayText}</span>
       {showRemove && onRemove ? (
         <button
           type="button"

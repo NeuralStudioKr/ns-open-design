@@ -42,6 +42,7 @@ describe('VisualCommentAttachmentChip', () => {
 
     expect(screen.getByTestId('auth-project-image')).toBeTruthy();
     expect(screen.getByText('draw a heart here')).toBeTruthy();
+    expect(screen.queryByText('Visual mark')).toBeNull();
   });
 
   it('still attempts drawing screenshot thumbnails when the file index is stale', () => {

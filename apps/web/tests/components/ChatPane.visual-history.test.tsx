@@ -95,7 +95,7 @@ describe('ChatPane visual mark history', () => {
       />,
     );
 
-    expect(screen.getByText('시각 마크')).toBeTruthy();
+    expect(screen.queryByText('시각 마크')).toBeNull();
     expect(screen.getByText('여기 텍스트 키워')).toBeTruthy();
     expect(screen.getByTestId('auth-project-image')).toBeTruthy();
   });
@@ -157,7 +157,8 @@ describe('ChatPane visual mark history', () => {
     );
 
     expect(screen.getByTestId('auth-project-image')).toBeTruthy();
-    expect(screen.getByText('시각 마크')).toBeTruthy();
+    expect(screen.getByText('여기 텍스트 키워')).toBeTruthy();
+    expect(screen.queryByText('시각 마크')).toBeNull();
     expect(screen.queryByText('visual-mark-1.png')).toBeNull();
   });
 
@@ -209,8 +210,8 @@ describe('ChatPane visual mark history', () => {
       />,
     );
 
-    expect(screen.getByText('시각 마크')).toBeTruthy();
     expect(screen.getByText('여기')).toBeTruthy();
+    expect(screen.queryByText('시각 마크')).toBeNull();
     expect(screen.getByTestId('auth-project-image')).toBeTruthy();
   });
 });

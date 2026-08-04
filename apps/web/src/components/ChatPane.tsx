@@ -3806,6 +3806,7 @@ function UserMessageImpl({
               attachment={a}
               projectId={projectId}
               projectFileNames={projectFileNames}
+              variant="history"
             />
           ))}
         </div>

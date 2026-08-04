@@ -2211,52 +2211,70 @@
   padding: 3px 5px 3px 8px;
 }
 .visual-comment-attachment-chip.staged-comment--visual {
-  height: auto;
-  min-height: 0;
-  max-width: min(360px, 100%);
-  white-space: normal;
-  overflow: visible;
+  box-sizing: border-box;
+  height: 22px;
+  min-height: 22px;
+  max-width: min(220px, 100%);
+  gap: 4px;
+  padding: 2px 5px 2px 2px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  overflow: hidden;
   align-items: center;
-  gap: 8px;
-  padding: 5px 8px 5px 5px;
-  border-radius: var(--radius);
+}
+.visual-comment-attachment-chip--history {
+  max-width: min(260px, 100%);
 }
 .visual-comment-attachment-thumb-wrap {
-  flex: 0 0 auto;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
   display: block;
   line-height: 0;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--bg-fill-secondary);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+.visual-comment-attachment-icon {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+.visual-comment-attachment-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 14px;
 }
 .staged-comment--visual {
-  gap: 8px;
+  gap: 4px;
   align-items: center;
 }
 .visual-comment-attachment-thumb,
 .staged-comment--visual .visual-comment-attachment-thumb,
 .staged-comment--visual img.visual-comment-attachment-thumb {
   display: block;
-  flex: 0 0 40px;
-  width: 40px;
-  height: 40px;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  border-radius: 6px;
-  background: var(--bg-fill-secondary);
-  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .staged-comment--visual .authenticated-project-file-image-loading.visual-comment-attachment-thumb,
 .staged-comment--visual .authenticated-project-file-image-failed.visual-comment-attachment-thumb {
-  flex: 0 0 40px;
-  width: 40px;
-  height: 40px;
-  border-radius: 6px;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
 }
-.comment-history-attachments .visual-comment-attachment-thumb,
-.comment-history-attachments .staged-comment--visual .visual-comment-attachment-thumb,
-.comment-history-attachments .staged-comment--visual img.visual-comment-attachment-thumb,
-.comment-history-attachments .staged-comment--visual .authenticated-project-file-image-loading.visual-comment-attachment-thumb,
-.comment-history-attachments .staged-comment--visual .authenticated-project-file-image-failed.visual-comment-attachment-thumb {
-  flex: 0 0 56px;
-  width: 56px;
-  height: 56px;
+.comment-history-attachments .visual-comment-attachment-chip.staged-comment--visual {
+  max-width: min(280px, 100%);
 }
 .user-attachment.staged-comment {
   max-width: 100%;
@@ -2274,6 +2292,9 @@
   color: var(--accent-strong);
   font-weight: 650;
   flex: 0 0 auto;
+}
+.visual-comment-attachment-chip .staged-name {
+  display: none;
 }
 .staged-comment .staged-name span {
   white-space: normal;
