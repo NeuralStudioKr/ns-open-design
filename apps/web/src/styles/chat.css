@@ -191,8 +191,6 @@
   color: var(--text);
 }
 .chat-session-trigger:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
   color: var(--text);
 }
 .chat-header-tabs { display: inline-flex; gap: 16px; flex: 1; }
@@ -243,10 +241,6 @@
 .chat-active-conversation-rename:hover {
   background: var(--bg-subtle);
   color: var(--text);
-}
-.chat-active-conversation-rename:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 .chat-active-conversation-input {
   width: 100%;

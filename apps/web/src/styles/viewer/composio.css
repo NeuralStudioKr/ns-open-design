@@ -2415,8 +2415,6 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   color: var(--text);
 }
 .chat-history-search-clear:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
   color: var(--text);
   background: var(--bg-subtle);
 }

@@ -105,6 +105,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | 14 | `d500b9959` | home-hero/recent/design-card 토큰 · composer 28 정렬 · settings/toast/run-recovery | **부분 유지** (toast·hint·hero 계층 교정 — §6) |
 | 15 | `62fa33525` | plugins/examples/history soft · modal close 28 · newproj sans · pet adopt touch | **부분 유지** (newproj title serif 복구 — §6) |
 | 16 | `426f31e7a` | **리뷰 교정** — 부적절한 polish 되돌림 · 포화 선언 | 유지 |
+| 17 | _(본 루프)_ | 보완: tab close focus-within · 중복 button focus outline 정리 · toast 주석 | 유지 |
 
 `f97ee14ed` 메시지의 “28–32px” 방향은 **리뷰로 철회**된 부분이 있음. **유효 SSOT는 `29466ae40` 이후 원칙**.
 
@@ -125,7 +126,7 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 | background runs | `TeamverBackgroundRunsBanner.tsx` | detail/list truncated `title` |
 | project/conversation rename | `styles/chat.css` | 24 → **28** (헤더 높이 여유 있음) |
 | user copy button | `styles/chat.css` | min 28×28 hit |
-| workspace tab close | `styles/shell.css` | 18 → **22** + focus 시 `opacity: 1` |
+| workspace tab close | `styles/shell.css` | 18 → **22** + hover/active/**focus-within** 시 `opacity: 1` · 전역 focus outline |
 | workspace tabs list close | `styles/shell.css` | 22 → **24** |
 | escape Design Home | `styles/teamver.css` | `outline: none`만 있던 focus → **accent box-shadow 링** 복구 |
 | assistant-footer | `composio.css` / `routines.css` | `:focus-within`으로 키보드 시 표시 (**터치 항상 on 아님**) |
@@ -266,31 +267,41 @@ i18n 상세 문자열 표는 locale 파일 diff를 SSOT로 본다 (`apps/web/src
 
 Placeholder 정책: 전역 `input::placeholder`는 `text-faint` · **검색 필드**만 `text-soft` 허용.
 
+### 6.2 리뷰 후 보완 (2026-08-04)
+
+| 항목 | 조치 |
+|------|------|
+| `.workspace-tab__close` | `:focus-within`으로 키보드 포커스 시 표시 (§7.1) · 중복 outline 제거 |
+| `.chat-session-trigger` / `.chat-active-conversation-rename` / `.chat-history-search-clear` | 전역 `button:focus-visible`와 겹치는 outline 재선언 제거 (색/bg만 유지) |
+| `.od-toast-details` | opacity 유지 이유 주석 (tone별 전경 상속) |
+
+soft/28 추가 패스는 계속 **중단**.
+
 ## 7. 검증 체크리스트
 
 ### 7.1 키보드
 
-- [ ] Tab으로 embed bar 로그인/Teamver 앱 링크 → accent ring 보임
-- [ ] 프로젝트 카드 kebab → focus 시 보임 + Enter로 메뉴
-- [ ] workspace 탭 close → focus 시 opacity 1
+- [x] Tab으로 embed bar 로그인/Teamver 앱 링크 → accent ring 보임 — **CSS 보장** (`teamver.css`)
+- [x] 프로젝트 카드 kebab → focus 시 보임 + Enter로 메뉴 — **CSS 보장** (`focus-within` / `focus-visible`)
+- [x] workspace 탭 close → focus 시 opacity 1 — **CSS 보장** (`:focus-within`, 2026-08-04 보완)
 
 ### 7.2 마우스 (회귀)
 
-- [ ] 카드 kebab/close는 hover 전 숨김 유지
-- [ ] Design Files 행 메뉴/체크는 hover 전 숨김 유지
-- [ ] composer + Send + session trigger 높이 정렬(28px)
+- [x] 카드 kebab/close는 hover 전 숨김 유지 — **CSS** (`opacity: 0` + hover)
+- [x] Design Files 행 메뉴/체크는 hover 전 숨김 유지 — **CSS**
+- [x] composer + Send + session trigger 높이 정렬(28px) — **CSS** (`chat.css` / `.app`)
 
 ### 7.3 터치 / coarse pointer
 
-- [ ] 프로젝트 카드 kebab·close 항상 탭 가능
-- [ ] Design Files ⋯ / 체크 탭 가능
-- [ ] Canvas slide launch 템플릿 카드 설명 overlay 가독
-- [ ] context chip / board pod remove 탭 가능
+- [x] 프로젝트 카드 kebab·close 항상 탭 가능 — **CSS** (`@media (hover: none)`)
+- [x] Design Files ⋯ / 체크 탭 가능 — **CSS**
+- [ ] Canvas slide launch 템플릿 카드 설명 overlay 가독 — **수동**
+- [x] context chip / board pod remove 탭 가능 — **CSS**
 
 ### 7.4 Stacking · tooltip
 
-- [ ] toast 떠 있을 때 workspace 메뉴 클릭 가능
-- [ ] plus-menu 긴 이름·background runs 긴 프로젝트명 hover/long-press `title`
+- [x] toast 떠 있을 때 workspace 메뉴 클릭 가능 — **CSS** (menu z-index 1300 > toast 1200)
+- [ ] plus-menu 긴 이름·background runs 긴 프로젝트명 hover/long-press `title` — **수동**
 
 ---
 
