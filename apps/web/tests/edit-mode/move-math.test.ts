@@ -56,10 +56,10 @@ describe('canMoveTarget', () => {
 });
 
 describe('canPromoteTarget', () => {
-  it('allows static / relative / sticky and not anchored', () => {
+  it('allows static / relative and not anchored or sticky', () => {
     expect(canPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
     expect(canPromoteTarget(target({ cssPosition: 'relative' }))).toBe(true);
-    expect(canPromoteTarget(target({ cssPosition: 'sticky' }))).toBe(true);
+    expect(canPromoteTarget(target({ cssPosition: 'sticky' }))).toBe(false);
     expect(canPromoteTarget(target({ cssPosition: 'absolute' }))).toBe(false);
     expect(canMoveOrPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
   });
@@ -135,7 +135,7 @@ describe('promoteMoveStyles', () => {
     expect(out.height).toBeUndefined();
   });
 
-  it('sticky promote uses absolute + layout size lock against scrollport CB', () => {
+  it('keeps sticky absolute promotion available only for explicit low-level callers', () => {
     const out = promoteMoveStyles(
       { x: 10, y: 10, width: 100, height: 40 },
       { leftPx: 0, topPx: 150, moved: true },
@@ -175,7 +175,7 @@ describe('promote start / rollback helpers', () => {
     }))).toEqual({ startLeftPx: 0, startTopPx: 0 });
   });
 
-  it('starts sticky promote from scrollport offset* (not sticky inset styles)', () => {
+  it('starts sticky low-level promote from scrollport offset* (not sticky inset styles)', () => {
     expect(startPositionFromTarget(target({
       cssPosition: 'sticky',
       offsetLeft: 0,

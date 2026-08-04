@@ -36,17 +36,21 @@ export function canPromoteTarget(
   // fixed images still move via canMoveTarget. Text/link promote-on-drag is
   // allowed — edge hit-slop + 2px threshold keep wrap-resize from becoming an
   // accidental move; blocking promote made flow headlines undraggable.
-  // Sticky uses absolute+scrollport CB (not relative insets) — see promoteMoveStyles.
+  // Sticky left/top are sticky insets, and absolute promotion depends on the
+  // scrollport containing block. That coordinate swap is too jump-prone for a
+  // drag gesture, so sticky stays non-movable until we have a dedicated path.
   if (target!.kind === 'image') return false;
   const value = String(target!.cssPosition ?? 'static').toLowerCase();
-  return value === 'static' || value === 'relative' || value === 'sticky';
+  return value === 'static' || value === 'relative';
 }
 
 /** Sticky cannot use relative left/top (those are sticky insets). */
 export function isStickyPromoteTarget(
   target: ManualEditTarget | null | undefined,
 ): boolean {
-  if (!canPromoteTarget(target)) return false;
+  if (!baseMoveEligibility(target)) return false;
+  if (isAnchoredCssPosition(target!.cssPosition)) return false;
+  if (target!.kind === 'image') return false;
   return String(target!.cssPosition ?? '').toLowerCase() === 'sticky';
 }
 

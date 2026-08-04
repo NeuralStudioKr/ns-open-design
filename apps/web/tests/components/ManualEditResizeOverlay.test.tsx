@@ -297,6 +297,42 @@ describe('ManualEditResizeOverlay', () => {
     expect((onResizePreview.mock.calls.at(-1)?.[0] as { width?: string }).width).toBe('240px');
   });
 
+  it('does not jump to stale hostPaintRect between resize pointerdown and first preview', () => {
+    const props = {
+      target: target({
+        rect: { x: 40, y: 60, width: 100, height: 50 },
+        layoutWidth: 200,
+        layoutHeight: 100,
+      }),
+      previewScale: 1,
+      hostOffset: { x: 0, y: 0 },
+      hostPaintRect: { x: 40, y: 60, width: 100, height: 50 } as const,
+      draftWidthPx: null as number | null,
+      draftHeightPx: null as number | null,
+      onResizePreview: vi.fn(),
+      onResizeCommit: vi.fn(),
+      onResizeCancel: vi.fn(),
+    };
+    const { getByTestId, rerender } = render(<ManualEditResizeOverlay {...props} />);
+    const handle = getByTestId('manual-edit-resize-handle-se');
+
+    fireEvent.pointerDown(handle, { pointerId: 81, clientX: 140, clientY: 110, buttons: 1 });
+    rerender(
+      <ManualEditResizeOverlay
+        {...props}
+        previewScale={0.25}
+        hostOffset={{ x: 120, y: 80 }}
+        hostPaintRect={{ x: 999, y: 999, width: 25, height: 12.5 }}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    expect(overlay.style.left).toBe('40px');
+    expect(overlay.style.top).toBe('60px');
+    expect(overlay.style.width).toBe('100px');
+    expect(overlay.style.height).toBe('50px');
+  });
+
   it('keeps resize handles pointer-hit even when interaction is gated', () => {
     const { getByTestId } = render(
       <ManualEditResizeOverlay
@@ -626,6 +662,53 @@ describe('ManualEditResizeOverlay', () => {
       left: '80px',
       top: '80px',
     });
+  });
+
+  it('does not jump to stale hostPaintRect between move pointerdown and first preview', () => {
+    const props = {
+      target: target({
+        cssPosition: 'absolute',
+        styles: {
+          ...emptyManualEditStyles(),
+          width: '200px',
+          height: '100px',
+          left: '40px',
+          top: '60px',
+        },
+        rect: { x: 40, y: 60, width: 100, height: 50 },
+        layoutWidth: 200,
+        layoutHeight: 100,
+      }),
+      previewScale: 1,
+      hostOffset: { x: 0, y: 0 },
+      hostPaintRect: { x: 40, y: 60, width: 100, height: 50 } as const,
+      draftWidthPx: null as number | null,
+      draftHeightPx: null as number | null,
+      onResizePreview: vi.fn(),
+      onResizeCommit: vi.fn(),
+      onResizeCancel: vi.fn(),
+      onMovePreview: vi.fn(),
+      onMoveCommit: vi.fn(),
+      onMoveCancel: vi.fn(),
+    };
+    const { getByTestId, rerender } = render(<ManualEditResizeOverlay {...props} />);
+    const overlay = getByTestId('manual-edit-resize-overlay');
+
+    fireEvent.pointerDown(overlay, { pointerId: 82, clientX: 90, clientY: 85, buttons: 1 });
+    rerender(
+      <ManualEditResizeOverlay
+        {...props}
+        previewScale={0.25}
+        hostOffset={{ x: 120, y: 80 }}
+        hostPaintRect={{ x: 999, y: 999, width: 25, height: 12.5 }}
+      />,
+    );
+
+    const nextOverlay = getByTestId('manual-edit-resize-overlay');
+    expect(nextOverlay.style.left).toBe('40px');
+    expect(nextOverlay.style.top).toBe('60px');
+    expect(nextOverlay.style.width).toBe('100px');
+    expect(nextOverlay.style.height).toBe('50px');
   });
 
   it('body drag moves absolute target and commits left/top once', () => {

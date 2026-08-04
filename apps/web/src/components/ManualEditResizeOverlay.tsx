@@ -521,7 +521,11 @@ export function ManualEditResizeOverlay({
       hostScale: geom.hostScale,
       hostOffset: geom.hostOffset,
     };
-    setLiveViewportPos(null);
+    // Freeze display origin immediately at pointerdown. The parent can remeasure
+    // / rerender with stale paint while the pointer is still below threshold;
+    // if hostPaintRect wins during that window the selection box appears to
+    // jump before the user has actually resized.
+    setLiveViewportPos({ x: startTarget.rect.x, y: startTarget.rect.y });
     setDragging(true);
     setMoving(false);
     onResizeSessionChange?.(true);
@@ -589,7 +593,10 @@ export function ManualEditResizeOverlay({
       hostScale: geom.hostScale,
       hostOffset: geom.hostOffset,
     };
-    setLiveViewportPos(null);
+    // Same immediate freeze as resize. Move preview starts after the jitter
+    // threshold, but the overlay must stay pinned to the pointerdown geometry
+    // through any parent fit/paint rerender before that first preview.
+    setLiveViewportPos({ x: startTarget.rect.x, y: startTarget.rect.y });
     setDragging(true);
     setMoving(true);
     onResizeSessionChange?.(true);
