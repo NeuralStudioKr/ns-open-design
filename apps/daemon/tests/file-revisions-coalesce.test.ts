@@ -24,16 +24,29 @@ describe('file revision coalesce', () => {
   });
 
   it('merges rapid manual_edit pushes into the current head', () => {
-    expect(shouldCoalesceRevisionPush(head, { source: 'manual_edit', now: 20_000 }, 30_000)).toBe(true);
+    expect(shouldCoalesceRevisionPush(head, { source: 'manual_edit', now: 20_000 })).toBe(true);
+  });
+
+  it('merges rapid agent_deck_patch pushes with the shorter agent window', () => {
+    const agentHead = { ...head, source: 'agent_deck_patch' as const };
+    expect(shouldCoalesceRevisionPush(
+      agentHead,
+      { source: 'agent_deck_patch', now: 4_000 },
+      { OD_FILE_REVISION_AGENT_COALESCE_WINDOW_MS: '5000' },
+    )).toBe(true);
+    expect(shouldCoalesceRevisionPush(
+      agentHead,
+      { source: 'agent_deck_patch', now: 6_001 },
+      { OD_FILE_REVISION_AGENT_COALESCE_WINDOW_MS: '5000' },
+    )).toBe(false);
   });
 
   it('does not coalesce across sources or into baseline/import heads', () => {
-    expect(shouldCoalesceRevisionPush(head, { source: 'inspect', now: 20_000 }, 30_000)).toBe(false);
+    expect(shouldCoalesceRevisionPush(head, { source: 'inspect', now: 20_000 })).toBe(false);
     expect(shouldCoalesceRevisionPush(
       { ...head, sequence: 1, source: 'import' },
       { source: 'manual_edit', now: 20_000 },
-      30_000,
     )).toBe(false);
-    expect(shouldCoalesceRevisionPush(head, { source: 'manual_edit', now: 40_000 }, 30_000)).toBe(false);
+    expect(shouldCoalesceRevisionPush(head, { source: 'manual_edit', now: 40_000 })).toBe(false);
   });
 });

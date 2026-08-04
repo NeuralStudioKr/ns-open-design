@@ -33,7 +33,6 @@ import {
 import { usesPostgresRevisionSnapshots } from './snapshot-storage.js';
 import { withFileRevisionMutationLock } from './postgres-lock.js';
 import {
-  resolveFileRevisionCoalesceWindowMs,
   shouldCoalesceRevisionPush,
 } from './coalesce.js';
 import {
@@ -282,9 +281,8 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
 
         const contentBytes = Buffer.byteLength(content, 'utf8');
         assertRevisionSnapshotWithinAbsoluteLimit(contentBytes);
-        const coalesceWindowMs = resolveFileRevisionCoalesceWindowMs();
         const canCoalesce = truncateAfterSequence == null
-          && shouldCoalesceRevisionPush(parent, { source }, coalesceWindowMs);
+          && shouldCoalesceRevisionPush(parent, { source });
 
         if (canCoalesce) {
           const parentContent = parent.parentRevisionId

@@ -171,6 +171,7 @@ import {
 } from '../runtime/revision-content-cache';
 import { canResizeTarget } from '../edit-mode/resize-eligibility';
 import { cacheParentRevisionOnPush, canApplyRevisionFromClientCache } from '../runtime/revision-restore';
+import { syncRevisionWithRetry } from '../runtime/revision-disk-sync';
 import {
   postDeckHostViewportToIframe,
   postDeckPreviewPanBy,
@@ -5454,6 +5455,11 @@ function HtmlViewer({
   const revisionConflictSuppressedRef = useRef(false);
   const revisionConflictMessageRef = useRef(t('fileRevision.conflict.message'));
   revisionConflictMessageRef.current = t('fileRevision.conflict.message');
+  const revisionDiskSyncMessageRef = useRef(t('fileRevision.diskSync.failedMessage'));
+  revisionDiskSyncMessageRef.current = t('fileRevision.diskSync.failedMessage');
+  const revisionDiskSyncRetryLabelRef = useRef(t('fileRevision.diskSync.retryAction'));
+  revisionDiskSyncRetryLabelRef.current = t('fileRevision.diskSync.retryAction');
+  const revisionDiskSyncFailedTargetRef = useRef<FileRevision | null>(null);
   const revisionDiskSyncPromiseRef = useRef<Promise<boolean> | null>(null);
   const [manualEditError, setManualEditError] = useState<string | null>(null);
   const [manualEditSaving, setManualEditSaving] = useState(false);
@@ -5618,6 +5624,7 @@ function HtmlViewer({
     if (hideFileRevisionChrome) setRevisionHistoryOpen(false);
   }, [hideFileRevisionChrome]);
   const [revisionConflictToast, setRevisionConflictToast] = useState<string | null>(null);
+  const [revisionDiskSyncToast, setRevisionDiskSyncToast] = useState<string | null>(null);
   const [revisionStackInvalidated, setRevisionStackInvalidated] = useState(false);
   const [revisionRetentionLimit, setRevisionRetentionLimit] = useState(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
   const revisionStackInvalidatedRef = useRef(revisionStackInvalidated);
@@ -7062,6 +7069,8 @@ function HtmlViewer({
     setRevisionHistoryOpen(false);
     setRevisionStackInvalidated(false);
     setRevisionConflictToast(null);
+    setRevisionDiskSyncToast(null);
+    revisionDiskSyncFailedTargetRef.current = null;
     revisionConflictSuppressedRef.current = false;
     setRevisionRetentionLimit(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
     manualEditPendingStyleRef.current = null;
@@ -8614,33 +8623,56 @@ function HtmlViewer({
     );
   }
 
-  async function syncRevisionToDisk(target: FileRevision): Promise<boolean> {
+  async function syncRevisionToDisk(
+    target: FileRevision,
+    options?: { quiet?: boolean },
+  ): Promise<boolean> {
     const restored = await restoreProjectFileRevision(projectId, file.name, target.id);
     if (!restored.ok) {
       if (restored.status === 401) {
         notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
       }
-      setManualEditError(
-        isTeamverEmbedMode()
-          ? formatProjectArtifactSaveFailedError(file.name, {
-              status: restored.status,
-              code: restored.code,
-              message: restored.message,
-            })
-          : embedUiLabel('Could not restore this revision.', '이 버전으로 복원하지 못했습니다.'),
-      );
+      if (!options?.quiet) {
+        setManualEditError(
+          isTeamverEmbedMode()
+            ? formatProjectArtifactSaveFailedError(file.name, {
+                status: restored.status,
+                code: restored.code,
+                message: restored.message,
+              })
+            : embedUiLabel('Could not restore this revision.', '이 버전으로 복원하지 못했습니다.'),
+        );
+      }
       return false;
     }
     return true;
   }
 
+  async function retryPendingRevisionDiskSync(): Promise<void> {
+    const target = revisionDiskSyncFailedTargetRef.current;
+    if (!target) return;
+    setRevisionDiskSyncToast(null);
+    const ok = await syncRevisionWithRetry(() => syncRevisionToDisk(target, { quiet: true }));
+    if (ok) {
+      revisionDiskSyncFailedTargetRef.current = null;
+      await onFileSaved?.();
+      return;
+    }
+    setRevisionDiskSyncToast(revisionDiskSyncMessageRef.current);
+  }
+
   async function scheduleBackgroundRevisionDiskSync(target: FileRevision): Promise<void> {
+    revisionDiskSyncFailedTargetRef.current = null;
+    setRevisionDiskSyncToast(null);
     const syncPromise = (async () => {
-      const ok = await syncRevisionToDisk(target);
+      const ok = await syncRevisionWithRetry(() => syncRevisionToDisk(target, { quiet: true }));
       if (ok) {
+        revisionDiskSyncFailedTargetRef.current = null;
+        setRevisionDiskSyncToast(null);
         await onFileSaved?.();
       } else {
-        setRevisionStackInvalidated(true);
+        revisionDiskSyncFailedTargetRef.current = target;
+        setRevisionDiskSyncToast(revisionDiskSyncMessageRef.current);
       }
       return ok;
     })();
@@ -12350,6 +12382,23 @@ function HtmlViewer({
           ttlMs={2400}
           role="alert"
           onDismiss={() => setDeployActionToast(null)}
+        />,
+        document.body,
+      ) : null}
+      {revisionDiskSyncToast && typeof document !== 'undefined' ? createPortal(
+        <Toast
+          message={revisionDiskSyncToast}
+          placement="top"
+          ttlMs={0}
+          role="alert"
+          tone="error"
+          actionLabel={revisionDiskSyncRetryLabelRef.current}
+          onAction={() => {
+            void retryPendingRevisionDiskSync();
+          }}
+          onDismiss={() => {
+            setRevisionDiskSyncToast(null);
+          }}
         />,
         document.body,
       ) : null}
