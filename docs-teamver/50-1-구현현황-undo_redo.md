@@ -144,8 +144,8 @@
 | History 패널 poll (4s) | [x] | `FileViewer` — panel open + pending |
 | Prometheus gauge 7종 | [x] | §50-3 §6 — bytes/rows/deferred/GC |
 | stuck excess 운영 문서 | [x] | [50-3 §5.1.2](./50-3_revision_스냅샷_저장소_RDS_용량관리.md) |
-| Postgres durable prune integration test | [~] | unit `prune-chain.test.ts`만 — PG path e2e 미작성 |
-| Human verification (30+ push / 2-node) | [~] | [50-4 §8](./50-4_revision_staging_머지_배포_검증.md) |
+| Postgres durable prune integration test | [x] | `file-revisions-prune-chain-durable.integration.test.ts` |
+| Human verification (30+ push / 2-node) | [~] | `verify_file_revision_retention.sh --burst` · [50-4 §8](./50-4_revision_staging_머지_배포_검증.md) |
 
 **문서 SSOT:** [50-3](./50-3_revision_스냅샷_저장소_RDS_용량관리.md) §5~§6
 

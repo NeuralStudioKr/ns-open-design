@@ -455,6 +455,13 @@ curl -sS "http://127.0.0.1:7456/api/metrics" | grep od_file_revision
 
 상세·알람 권장값: [50-3 §6](./50-3_revision_스냅샷_저장소_RDS_용량관리.md#6-모니터링).
 
+**스크립트 (metrics + optional burst):**
+
+```bash
+bash deploy/teamver/scripts/verify_file_revision_retention.sh
+VERIFY_REVISION_BURST=1 VERIFY_REVISION_PROJECT_ID=<id> bash deploy/teamver/scripts/verify_file_revision_retention.sh
+```
+
 ---
 
 ## 10. 롤백 기준·절차

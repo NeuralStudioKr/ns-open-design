@@ -341,7 +341,7 @@ daemon 부팅 시 `migratePostgresDaemonSchema` 가 v8 `file_revisions` / `file_
 | deferred sweep | push 비동기 retention + compaction 단일 큐 | [x] `deferred-sweep.ts` |
 | Prometheus metrics | 7개 gauge (bytes/rows/deferred/GC) | [x] §6 · `metrics.ts` |
 | S3 blob | 초대형 deck 전용 외부 blob 백엔드 (현재는 Postgres BYTEA로 충분) | [-] |
-| Postgres prune integration test | `pruneOldestFileRevisionsDurableLimited` e2e | [~] unit만 (`prune-chain.test.ts`) |
+| Postgres prune integration test | `pruneOldestFileRevisionsDurableLimited` e2e | [x] `file-revisions-prune-chain-durable.integration.test.ts` |
 
 ---
 
@@ -386,7 +386,7 @@ pnpm --filter @open-design/daemon exec vitest run \
 | `file-revisions-multinode.integration.test.ts` | 노드 A push → 노드 B list/hydrate, truncate 후 stale row 제거, cross-node restore |
 | `file-revisions-durable-store.test.ts` | PG→sqlite hydrate, transactional commit, head+count stale 감지 |
 | `file-revisions-postgres-lock.test.ts` | advisory lock acquire/release, timeout, sequence conflict 감지 |
-| `file-revisions-prune-chain.test.ts` | chain-aware prune — checkpoint 보존, excess 계산 |
+| `file-revisions-prune-chain-durable.integration.test.ts` | Postgres mock 경로 chain-aware durable prune |
 | `file-revisions-retention-sweep.test.ts` | deferred retention sweep, re-queue 규칙 |
 | `file-revisions-metrics.test.ts` | deferred/GC gauge 갱신 |
 | `file-revisions-compaction-integration.test.ts` | push 후 deferred compaction 패스 |
@@ -394,6 +394,14 @@ pnpm --filter @open-design/daemon exec vitest run \
 | `file-revisions.test.ts` | HTTP API push/list/restore/truncate (sqlite files 모드) |
 
 **메트릭 spot check:** §6.1 `curl .../api/metrics | grep od_file_revision`
+
+**VM 스크립트 (burst QA optional):**
+
+```bash
+bash deploy/teamver/scripts/verify_file_revision_retention.sh
+VERIFY_REVISION_BURST=1 VERIFY_REVISION_PROJECT_ID=<id> VERIFY_REVISION_FILE=deck.html \
+  bash deploy/teamver/scripts/verify_file_revision_retention.sh
+```
 
 **Web retention UX:**
 
