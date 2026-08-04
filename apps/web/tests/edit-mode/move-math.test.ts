@@ -56,10 +56,10 @@ describe('canMoveTarget', () => {
 });
 
 describe('canPromoteTarget', () => {
-  it('allows static / relative / sticky and not anchored', () => {
+  it('allows static / relative and not anchored', () => {
     expect(canPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
     expect(canPromoteTarget(target({ cssPosition: 'relative' }))).toBe(true);
-    expect(canPromoteTarget(target({ cssPosition: 'sticky' }))).toBe(true);
+    expect(canPromoteTarget(target({ cssPosition: 'sticky' }))).toBe(false);
     expect(canPromoteTarget(target({ cssPosition: 'absolute' }))).toBe(false);
     expect(canMoveOrPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
   });
@@ -107,45 +107,54 @@ describe('canPromoteTarget', () => {
 });
 
 describe('promoteMoveStyles', () => {
-  it('sets absolute + size lock + zero margins', () => {
+  it('sets relative offsets without removing the element from flow', () => {
     const out = promoteMoveStyles(
       { x: 100, y: 200, width: 120, height: 80 },
       { leftPx: 40, topPx: 50, moved: true },
     );
-    expect(out).toMatchObject({
-      position: 'absolute',
+    expect(out).toEqual({
+      position: 'relative',
       left: '40px',
       top: '50px',
-      width: '120px',
-      height: '80px',
-      maxWidth: 'none',
-      maxHeight: 'none',
-      margin: '0px',
       right: '',
       bottom: '',
     });
+    expect(out.width).toBeUndefined();
+    expect(out.height).toBeUndefined();
+    expect(out.margin).toBeUndefined();
   });
 
-  it('locks promote size to layout px when visual startRect is transform-shrunk', () => {
+  it('does not size-lock flow card moves under deck transform', () => {
     const out = promoteMoveStyles(
       { x: 40, y: 60, width: 100, height: 50 },
       { leftPx: 40, topPx: 60, moved: true },
       { layoutWidthPx: 200, layoutHeightPx: 100 },
     );
-    expect(out.width).toBe('200px');
-    expect(out.height).toBe('100px');
+    expect(out.position).toBe('relative');
+    expect(out.width).toBeUndefined();
+    expect(out.height).toBeUndefined();
   });
 });
 
 describe('promote start / rollback helpers', () => {
-  it('prefers offset over relative left/top styles for promote targets', () => {
+  it('starts from authored relative offsets for flow move targets', () => {
     expect(startPositionFromTarget(target({
       cssPosition: 'relative',
       offsetLeft: 80,
       offsetTop: 90,
       styles: { ...emptyManualEditStyles(), left: '10px', top: '5px' },
       rect: { x: 200, y: 300, width: 100, height: 50 },
-    }))).toEqual({ startLeftPx: 80, startTopPx: 90 });
+    }))).toEqual({ startLeftPx: 10, startTopPx: 5 });
+  });
+
+  it('starts static flow moves from zero offsets instead of layout position', () => {
+    expect(startPositionFromTarget(target({
+      cssPosition: 'static',
+      offsetLeft: 80,
+      offsetTop: 90,
+      styles: emptyManualEditStyles(),
+      rect: { x: 200, y: 300, width: 100, height: 50 },
+    }))).toEqual({ startLeftPx: 0, startTopPx: 0 });
   });
 
   it('rolls back static/auto to empty and keeps relative', () => {

@@ -822,7 +822,7 @@ describe('ManualEditResizeOverlay', () => {
     expect(onMoveCommit).not.toHaveBeenCalled();
   });
 
-  it('static target promote-on-drag commits position absolute', () => {
+  it('static target body-drag commits relative offsets without size-locking siblings', () => {
     const onMoveCommit = vi.fn();
     const onMovePreview = vi.fn();
     const { getByTestId } = render(
@@ -853,19 +853,21 @@ describe('ManualEditResizeOverlay', () => {
     expect(overlay.getAttribute('data-movable')).toBe('true');
     fireEvent.pointerDown(overlay, { pointerId: 12, clientX: 50, clientY: 50, buttons: 1 });
     fireEvent.pointerMove(window, { pointerId: 12, clientX: 90, clientY: 70, buttons: 1 });
-    expect(onMovePreview.mock.calls.at(-1)?.[0]).toMatchObject({
-      position: 'absolute',
-      left: '80px',
-      top: '80px',
-      width: '200px',
-      height: '100px',
+    expect(onMovePreview.mock.calls.at(-1)?.[0]).toEqual({
+      position: 'relative',
+      left: '40px',
+      top: '20px',
+      right: '',
+      bottom: '',
     });
     fireEvent.pointerUp(window, { pointerId: 12, clientX: 90, clientY: 70 });
     expect(onMoveCommit).toHaveBeenCalledTimes(1);
-    expect(onMoveCommit.mock.calls[0]?.[0]).toMatchObject({
-      position: 'absolute',
-      left: '80px',
-      top: '80px',
+    expect(onMoveCommit.mock.calls[0]?.[0]).toEqual({
+      position: 'relative',
+      left: '40px',
+      top: '20px',
+      right: '',
+      bottom: '',
     });
     expect(onMoveCommit.mock.calls[0]?.[1]).toMatchObject({
       position: '',
@@ -1478,7 +1480,7 @@ describe('ManualEditResizeOverlay', () => {
     expect(onMovePreview).toHaveBeenCalled();
     expect(onMoveCommit).toHaveBeenCalled();
     const commit = onMoveCommit.mock.calls[0]?.[0] as { position?: string; left?: string; top?: string };
-    expect(commit.position).toBe('absolute');
+    expect(commit.position).toBe('relative');
     expect(commit.left).toMatch(/px$/);
     expect(commit.top).toMatch(/px$/);
   });

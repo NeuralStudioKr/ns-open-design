@@ -8044,7 +8044,7 @@ function HtmlViewer({
     target: ManualEditTarget,
     styles: Partial<ManualEditStyles>,
     viewport?: { x: number; y: number },
-    options?: { promoted?: boolean },
+    options?: { promotedPosition?: string },
   ) {
     // Style width/height are layout px. Keep layout* in sync; scale visual rect
     // by the pre-gesture visual/layout ratio so deck fit-scale stays coherent
@@ -8084,7 +8084,7 @@ function HtmlViewer({
         styles: { ...current.styles, ...styles },
         offsetLeft: leftPx ?? current.offsetLeft,
         offsetTop: topPx ?? current.offsetTop,
-        cssPosition: options?.promoted ? 'absolute' : current.cssPosition,
+        cssPosition: options?.promotedPosition ?? current.cssPosition,
       };
       selectedManualEditTargetRef.current = next;
       return next;
@@ -8259,8 +8259,13 @@ function HtmlViewer({
     const target = selectedManualEditTargetRef.current;
     if (!target) return;
     handleManualEditMovePreview(styles, viewport);
-    const promoted = String(styles.position || '').toLowerCase() === 'absolute';
-    applyManualEditGestureOptimisticTarget(target, styles, viewport, { promoted });
+    const promotedPosition = String(styles.position || '').toLowerCase();
+    applyManualEditGestureOptimisticTarget(
+      target,
+      styles,
+      viewport,
+      promotedPosition ? { promotedPosition } : undefined,
+    );
     manualEditResizeSessionActiveRef.current = false;
     manualEditResizePausedRef.current = false;
     setManualEditMoveDraftPos(null);

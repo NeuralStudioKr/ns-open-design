@@ -25,7 +25,7 @@ export function canMoveTarget(
   return isAnchoredCssPosition(target!.cssPosition);
 }
 
-/** Flow boxes that can be freed in-place (no re-parent) then moved — 53. */
+/** Flow boxes that can be offset in-place (no re-parent) then moved — 53. */
 export function canPromoteTarget(
   target: ManualEditTarget | null | undefined,
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
@@ -38,7 +38,7 @@ export function canPromoteTarget(
   // accidental move; blocking promote made flow headlines undraggable.
   if (target!.kind === 'image') return false;
   const value = String(target!.cssPosition ?? 'static').toLowerCase();
-  return value === 'static' || value === 'relative' || value === 'sticky';
+  return value === 'static' || value === 'relative';
 }
 
 export function canMoveOrPromoteTarget(
@@ -63,8 +63,8 @@ function baseMoveEligibility(
 
 /**
  * Start left/top for a move/promote session.
- * Promote (flow) must prefer offsetParent / post-absolute CB coords — relative
- * `left`/`top` styles are deltas, not layout position (53 no-jump).
+ * Flow moves use relative `left`/`top` deltas, not layout positions. Starting
+ * from offsetLeft/rect would double-count the element's slot in flex/grid rows.
  */
 export function startPositionFromTarget(target: ManualEditTarget): {
   startLeftPx: number;
@@ -72,16 +72,8 @@ export function startPositionFromTarget(target: ManualEditTarget): {
 } {
   if (canPromoteTarget(target)) {
     return {
-      startLeftPx: Math.round(
-        target.offsetLeft
-          ?? parseExplicitPx(target.styles.left)
-          ?? target.rect.x,
-      ),
-      startTopPx: Math.round(
-        target.offsetTop
-          ?? parseExplicitPx(target.styles.top)
-          ?? target.rect.y,
-      ),
+      startLeftPx: Math.round(parseExplicitPx(target.styles.left) ?? 0),
+      startTopPx: Math.round(parseExplicitPx(target.styles.top) ?? 0),
     };
   }
   return {
@@ -143,40 +135,18 @@ export function movePreviewStyles(result: MoveMathResult): Partial<ManualEditSty
 }
 
 /**
- * In-place absolute promote + move styles (53). Keeps DOM parent; locks box size
- * and zeroes margin so flow exit does not collapse or double-offset.
- *
- * Size lock must be layout px (`offsetWidth`), not visual `startRect` — under
- * deck-stage transform, writing gBCR width as CSS collapses the box on promote.
+ * In-place flow offset + move styles (53). Keeps DOM parent and the original
+ * layout slot so grouped cards/flex items do not cause sibling reflow.
  */
 export function promoteMoveStyles(
-  startRect: ManualEditRect,
+  _startRect: ManualEditRect,
   result: MoveMathResult,
-  options?: { layoutWidthPx?: number; layoutHeightPx?: number },
+  _options?: { layoutWidthPx?: number; layoutHeightPx?: number; position?: string },
 ): Partial<ManualEditStyles> {
-  const widthPx = Math.round(
-    options?.layoutWidthPx && options.layoutWidthPx >= 1
-      ? options.layoutWidthPx
-      : startRect.width,
-  );
-  const heightPx = Math.round(
-    options?.layoutHeightPx && options.layoutHeightPx >= 1
-      ? options.layoutHeightPx
-      : startRect.height,
-  );
   return {
-    position: 'absolute',
+    position: 'relative',
     left: `${result.leftPx}px`,
     top: `${result.topPx}px`,
-    width: `${widthPx}px`,
-    height: `${heightPx}px`,
-    maxWidth: 'none',
-    maxHeight: 'none',
-    margin: '0px',
-    marginTop: '0px',
-    marginRight: '0px',
-    marginBottom: '0px',
-    marginLeft: '0px',
     right: '',
     bottom: '',
   };
@@ -201,8 +171,8 @@ export function promoteMoveStylesBefore(target: ManualEditTarget): Partial<Manua
     top: cascadeRollbackStyle(target.styles.top),
     right: cascadeRollbackStyle(target.styles.right),
     bottom: cascadeRollbackStyle(target.styles.bottom),
-    // Size/margin: prefer restoring prior non-keyword values; empty clears
-    // promote-injected locks when the source had no real inline size.
+    // Size/margin: keep rollback coverage for older previews that may already
+    // have injected locks before the relative-offset move policy.
     width: cascadeRollbackStyle(target.styles.width),
     height: cascadeRollbackStyle(target.styles.height),
     maxWidth: cascadeRollbackStyle(target.styles.maxWidth),
