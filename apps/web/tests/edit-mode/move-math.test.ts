@@ -14,6 +14,9 @@ import {
   promoteViewportDraft,
   startPositionFromTarget,
   viewportRectAfterMoveCommit,
+  hostPaintRectAfterVisualMove,
+  visualRectFromMoveViewportDraft,
+  hostPaintRectFromVisualContent,
 } from '../../src/edit-mode/move-math';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
 
@@ -214,6 +217,30 @@ describe('promote start / rollback helpers', () => {
       100,
       60,
     )).toEqual({ x: 160, y: 180, width: 100, height: 60 });
+  });
+
+  it('scales layout move delta into visual rect under deck fit-scale', () => {
+    // visual 100×50, layout 200×100 (scale 0.5). Gesture viewport mixes
+    // visualStart + layoutΔ (+40,+20) → hybrid 80,80. Idle must use visual 60,70.
+    const start = { x: 40, y: 60, width: 100, height: 50 };
+    const hybridViewport = { x: 80, y: 80 };
+    expect(visualRectFromMoveViewportDraft(start, hybridViewport, 200, 100, 100, 50)).toEqual({
+      x: 60,
+      y: 70,
+      width: 100,
+      height: 50,
+    });
+    expect(hostPaintRectFromVisualContent(
+      { x: 60, y: 70, width: 100, height: 50 },
+      1,
+      { x: 0, y: 0 },
+    )).toEqual({ x: 60, y: 70, width: 100, height: 50 });
+    // Letterboxed start paint (+12,+8) must keep offset after visual move.
+    expect(hostPaintRectAfterVisualMove(
+      { x: 52, y: 68, width: 100, height: 50 },
+      start,
+      { x: 60, y: 70, width: 100, height: 50 },
+    )).toEqual({ x: 72, y: 78, width: 100, height: 50 });
   });
 });
 

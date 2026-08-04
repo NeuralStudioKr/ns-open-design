@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ManualEditResizeOverlay } from '../../src/components/ManualEditResizeOverlay';
@@ -316,7 +316,7 @@ describe('ManualEditResizeOverlay', () => {
     expect(handle.getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('previews on move and commits once on pointerup', () => {
+  it('previews on move and commits once on pointerup', async () => {
     const onResizePreview = vi.fn();
     const onResizeCommit = vi.fn();
     const onResizeCancel = vi.fn();
@@ -346,7 +346,7 @@ describe('ManualEditResizeOverlay', () => {
     expect(previewStyles.height).toBe('110px');
 
     fireEvent.pointerUp(window, { pointerId: 1, clientX: 260, clientY: 170 });
-    expect(onResizeCommit).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onResizeCommit).toHaveBeenCalledTimes(1));
     expect(onResizeCommit.mock.calls[0]?.[0]).toEqual(previewStyles);
     expect(onResizeCommit.mock.calls[0]?.[1]).toEqual({
       width: '200px',
@@ -360,7 +360,7 @@ describe('ManualEditResizeOverlay', () => {
       bottom: '',
     });
     expect(onResizeCancel).not.toHaveBeenCalled();
-    expect(onResizeSessionChange).toHaveBeenCalledWith(false);
+    await waitFor(() => expect(onResizeSessionChange).toHaveBeenCalledWith(false));
   });
 
   it('cancels on Escape without commit', () => {
@@ -628,7 +628,7 @@ describe('ManualEditResizeOverlay', () => {
     });
   });
 
-  it('body drag moves absolute target and commits left/top once', () => {
+  it('body drag moves absolute target and commits left/top once', async () => {
     const onMovePreview = vi.fn();
     const onMoveCommit = vi.fn();
     const onMoveCancel = vi.fn();
@@ -676,7 +676,7 @@ describe('ManualEditResizeOverlay', () => {
     });
 
     fireEvent.pointerUp(window, { pointerId: 10, clientX: 140, clientY: 120 });
-    expect(onMoveCommit).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onMoveCommit).toHaveBeenCalledTimes(1));
     expect(onMoveCommit.mock.calls[0]?.[0]).toEqual({
       left: '80px',
       top: '80px',
@@ -692,7 +692,7 @@ describe('ManualEditResizeOverlay', () => {
     });
     expect(onMoveCancel).not.toHaveBeenCalled();
     expect(onResizeCommit).not.toHaveBeenCalled();
-    expect(onResizeSessionChange).toHaveBeenCalledWith(false);
+    await waitFor(() => expect(onResizeSessionChange).toHaveBeenCalledWith(false));
   });
 
   it('passes viewport draft with move preview so parent rerenders do not snap back', () => {
@@ -1297,6 +1297,46 @@ describe('ManualEditResizeOverlay', () => {
     expect(preview.width).toBe('240px');
   });
 
+  it('idle hybrid move draft does not override hostPaint under deck fit-scale', () => {
+    // Parent may still hold hybrid draftLeft/Top after seal clears dragRef.
+    // Painting draft×previewScale(~1) jumps past the visual host box.
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          cssPosition: 'absolute',
+          styles: {
+            ...emptyManualEditStyles(),
+            width: '200px',
+            height: '100px',
+            left: '80px',
+            top: '80px',
+          },
+          rect: { x: 60, y: 70, width: 100, height: 50 },
+          layoutWidth: 200,
+          layoutHeight: 100,
+        })}
+        previewScale={1}
+        hostOffset={{ x: 0, y: 0 }}
+        hostPaintRect={{ x: 60, y: 70, width: 100, height: 50 }}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        draftLeftPx={80}
+        draftTopPx={80}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={vi.fn()}
+        onMoveCommit={vi.fn()}
+        onMoveCancel={vi.fn()}
+      />,
+    );
+    const box = getByTestId('manual-edit-resize-overlay');
+    expect(box.style.left).toBe('60px');
+    expect(box.style.top).toBe('70px');
+    expect(box.style.width).toBe('100px');
+    expect(box.style.height).toBe('50px');
+  });
+
   it('body-move under deck fit-scale keeps host size (does not jump to layout px)', () => {
     // Idle paint is visual 100×50. First move preview must not compose layout
     // 200×100 at freeze scale≈1 (jump). Freeze must be paint/layout = 0.5.
@@ -1347,6 +1387,170 @@ describe('ManualEditResizeOverlay', () => {
     const moved = getByTestId('manual-edit-resize-overlay');
     expect(moved.style.width).toBe('100px');
     expect(moved.style.height).toBe('50px');
+  });
+
+  it('body-move under deck fit-scale keeps host position through pointerup handoff', async () => {
+    // Mid-drag host left/top must survive commit: parent seeds visual rect + paint
+    // (not hybrid viewport × previewScale=1, which jumped +layoutΔ).
+    const onMoveCommit = vi.fn();
+    const startTarget = target({
+      cssPosition: 'absolute',
+      styles: {
+        ...emptyManualEditStyles(),
+        width: '200px',
+        height: '100px',
+        left: '40px',
+        top: '60px',
+      },
+      rect: { x: 40, y: 60, width: 100, height: 50 },
+      layoutWidth: 200,
+      layoutHeight: 100,
+    });
+    const props = {
+      target: startTarget,
+      previewScale: 1,
+      hostOffset: { x: 0, y: 0 },
+      hostPaintRect: { x: 40, y: 60, width: 100, height: 50 } as const,
+      draftWidthPx: null as number | null,
+      draftHeightPx: null as number | null,
+      draftLeftPx: null as number | null,
+      draftTopPx: null as number | null,
+      onResizePreview: vi.fn(),
+      onResizeCommit: vi.fn(),
+      onResizeCancel: vi.fn(),
+      onMovePreview: vi.fn(),
+      onMoveCommit,
+      onMoveCancel: vi.fn(),
+    };
+    const { getByTestId, rerender } = render(<ManualEditResizeOverlay {...props} />);
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    overlay.getBoundingClientRect = () => ({
+      x: 40, y: 60, width: 100, height: 50,
+      top: 60, left: 40, right: 140, bottom: 110,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+    fireEvent.pointerDown(overlay, { pointerId: 42, clientX: 90, clientY: 85, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 42, clientX: 110, clientY: 95, buttons: 1 });
+    // hostScale 0.5 → layout Δ +40,+20; host box moves +20,+10 → left/top 60,70
+    expect(getByTestId('manual-edit-resize-overlay').style.left).toBe('60px');
+    expect(getByTestId('manual-edit-resize-overlay').style.top).toBe('70px');
+
+    onMoveCommit.mockImplementation((_styles, _before, viewport) => {
+      // Parent contract after fix: visual rect + seeded paint (not hybrid 80,80).
+      const visual = {
+        x: 60,
+        y: 70,
+        width: 100,
+        height: 50,
+      };
+      expect(viewport).toEqual({ x: 80, y: 80 }); // hybrid still reported to parent
+      rerender(
+        <ManualEditResizeOverlay
+          {...props}
+          target={{ ...startTarget, rect: visual, styles: { ...startTarget.styles, left: '80px', top: '80px' } }}
+          hostPaintRect={visual}
+          draftLeftPx={null}
+          draftTopPx={null}
+        />,
+      );
+    });
+
+    fireEvent.pointerUp(window, { pointerId: 42, clientX: 110, clientY: 95 });
+    await waitFor(() => expect(onMoveCommit).toHaveBeenCalled());
+    const after = getByTestId('manual-edit-resize-overlay');
+    expect(after.style.left).toBe('60px');
+    expect(after.style.top).toBe('70px');
+    expect(after.style.width).toBe('100px');
+    expect(after.style.height).toBe('50px');
+  });
+
+  it('keeps freeze compose through async move commit before idle paint handoff', async () => {
+    // Sticky pin / flush await used to clear liveViewport immediately → hybrid×1 jump
+    // while parent work was still in flight. Seal must hold host box until commit settles.
+    let releaseCommit!: () => void;
+    const commitGate = new Promise<void>((resolve) => {
+      releaseCommit = resolve;
+    });
+    const onMoveCommit = vi.fn(async () => {
+      await commitGate;
+    });
+    const startTarget = target({
+      cssPosition: 'absolute',
+      styles: {
+        ...emptyManualEditStyles(),
+        width: '200px',
+        height: '100px',
+        left: '40px',
+        top: '60px',
+      },
+      rect: { x: 40, y: 60, width: 100, height: 50 },
+      layoutWidth: 200,
+      layoutHeight: 100,
+    });
+    const { getByTestId, rerender } = render(
+      <ManualEditResizeOverlay
+        target={startTarget}
+        previewScale={1}
+        hostOffset={{ x: 0, y: 0 }}
+        hostPaintRect={{ x: 40, y: 60, width: 100, height: 50 }}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={vi.fn()}
+        onMoveCommit={onMoveCommit}
+        onMoveCancel={vi.fn()}
+      />,
+    );
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    overlay.getBoundingClientRect = () => ({
+      x: 40, y: 60, width: 100, height: 50,
+      top: 60, left: 40, right: 140, bottom: 110,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+    fireEvent.pointerDown(overlay, { pointerId: 43, clientX: 90, clientY: 85, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 43, clientX: 110, clientY: 95, buttons: 1 });
+    expect(getByTestId('manual-edit-resize-overlay').style.left).toBe('60px');
+
+    fireEvent.pointerUp(window, { pointerId: 43, clientX: 110, clientY: 95 });
+    await waitFor(() => expect(onMoveCommit).toHaveBeenCalled());
+    // Still sealed on freeze compose — must not snap to hybrid 80 or stale idle paint.
+    expect(getByTestId('manual-edit-resize-overlay').style.left).toBe('60px');
+    expect(getByTestId('manual-edit-resize-overlay').style.top).toBe('70px');
+
+    await act(async () => {
+      rerender(
+        <ManualEditResizeOverlay
+          target={{
+            ...startTarget,
+            rect: { x: 60, y: 70, width: 100, height: 50 },
+            styles: { ...startTarget.styles, left: '80px', top: '80px' },
+          }}
+          previewScale={1}
+          hostOffset={{ x: 0, y: 0 }}
+          hostPaintRect={{ x: 60, y: 70, width: 100, height: 50 }}
+          draftWidthPx={null}
+          draftHeightPx={null}
+          draftLeftPx={null}
+          draftTopPx={null}
+          onResizePreview={vi.fn()}
+          onResizeCommit={vi.fn()}
+          onResizeCancel={vi.fn()}
+          onMovePreview={vi.fn()}
+          onMoveCommit={onMoveCommit}
+          onMoveCancel={vi.fn()}
+        />,
+      );
+      releaseCommit();
+    });
+    await waitFor(() => {
+      const box = getByTestId('manual-edit-resize-overlay');
+      expect(box.style.left).toBe('60px');
+      expect(box.style.top).toBe('70px');
+    });
   });
 
   it('body-move without hostPaintRect still freezes visual/layout scale from target rect', () => {

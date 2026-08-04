@@ -291,6 +291,77 @@ export function viewportRectAfterMoveCommit(
   };
 }
 
+/**
+ * Convert a mid-gesture `promoteViewportDraft` origin into visual content coords
+ * for idle overlay compose.
+ *
+ * During drag, viewport = visualStart + **layout** Δ (host Δ / paint÷layout).
+ * Painting that hybrid with iframe `previewScale` (often ~1) jumps the box under
+ * deck fit-scale. Scale the layout Δ by visual/layout before writing `target.rect`.
+ */
+export function visualRectFromMoveViewportDraft(
+  startVisualRect: ManualEditRect,
+  viewport: { x: number; y: number },
+  layoutWidth: number,
+  layoutHeight: number,
+  nextVisualWidth: number,
+  nextVisualHeight: number,
+): ManualEditRect {
+  const ratioX = layoutWidth > 0 ? startVisualRect.width / layoutWidth : 1;
+  const ratioY = layoutHeight > 0 ? startVisualRect.height / layoutHeight : 1;
+  const layoutDx = viewport.x - startVisualRect.x;
+  const layoutDy = viewport.y - startVisualRect.y;
+  return {
+    x: Math.round(startVisualRect.x + layoutDx * ratioX),
+    y: Math.round(startVisualRect.y + layoutDy * ratioY),
+    width: nextVisualWidth,
+    height: nextVisualHeight,
+  };
+}
+
+/** Host-space paint box matching a visual content rect (post-commit seed). */
+export function hostPaintRectFromVisualContent(
+  visualRect: ManualEditRect,
+  hostScale: number,
+  hostOffset: { x: number; y: number },
+): ManualEditRect {
+  const scale = Number.isFinite(hostScale) && hostScale > 0 ? hostScale : 1;
+  return {
+    x: hostOffset.x + visualRect.x * scale,
+    y: hostOffset.y + visualRect.y * scale,
+    width: visualRect.width * scale,
+    height: visualRect.height * scale,
+  };
+}
+
+/**
+ * Translate a frozen start `hostPaintRect` by the visual content delta.
+ * Preserves letterbox/iframe offsets that `hostPaintRectFromVisualContent`
+ * can miss when React hostScale/offset lag the painted frame.
+ */
+export function hostPaintRectAfterVisualMove(
+  previousPaint: ManualEditRect,
+  previousVisual: ManualEditRect,
+  nextVisual: ManualEditRect,
+): ManualEditRect | null {
+  if (
+    previousPaint.width < 1
+    || previousPaint.height < 1
+    || previousVisual.width < 1
+    || previousVisual.height < 1
+  ) {
+    return null;
+  }
+  const sx = previousPaint.width / previousVisual.width;
+  const sy = previousPaint.height / previousVisual.height;
+  return {
+    x: previousPaint.x + (nextVisual.x - previousVisual.x) * sx,
+    y: previousPaint.y + (nextVisual.y - previousVisual.y) * sy,
+    width: nextVisual.width * sx,
+    height: nextVisual.height * sy,
+  };
+}
+
 /** Move commit must flush once → one Manual Edit history entry. */
 export function moveHistoryLabel(targetLabel: string): string {
   return `Move: ${targetLabel}`;

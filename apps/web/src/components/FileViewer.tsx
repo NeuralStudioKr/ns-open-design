@@ -274,7 +274,10 @@ import {
 import {
   moveHistoryLabel,
   PROMOTE_MOVE_STYLE_KEYS,
+  hostPaintRectAfterVisualMove,
+  hostPaintRectFromVisualContent,
   viewportRectAfterMoveCommit,
+  visualRectFromMoveViewportDraft,
 } from '../edit-mode/move-math';
 import {
   createManualEditSourcePin,
@@ -7939,6 +7942,9 @@ function HtmlViewer({
       if (!data?.type) return;
       if (data.type === 'od-edit-targets' && Array.isArray(data.targets)) {
         setManualEditTargets(data.targets);
+        // Geometry gestures own selection rect/paint — a mid-drag or post-commit
+        // targets scan must not clobber optimistic viewport (box flash).
+        if (manualEditResizeSessionActiveRef.current) return;
         // Target broadcasts can be briefly empty while the iframe/save path is
         // settling; keep the user's inspector selection unless a fresh copy is
         // available to update its metadata.
@@ -8147,7 +8153,7 @@ function HtmlViewer({
     styles: Partial<ManualEditStyles>,
     viewport?: { x: number; y: number },
     options?: { promotedPosition?: string },
-  ) {
+  ): ManualEditRect | null {
     // Style width/height are layout px. Keep layout* in sync; scale visual rect
     // by the pre-gesture visual/layout ratio so deck fit-scale stays coherent
     // until remasure lands.
@@ -8171,16 +8177,23 @@ function HtmlViewer({
       : layoutHeight;
     const leftPx = parseExplicitPx(styles.left);
     const topPx = parseExplicitPx(styles.top);
+    // Gesture viewport mixes visualStart + layout Δ. Convert to visual content
+    // coords before idle compose (iframe previewScale ≈ 1 under deck fit-scale).
+    const nextRect = viewport
+      ? visualRectFromMoveViewportDraft(
+          target.rect,
+          viewport,
+          prevLayoutW,
+          prevLayoutH,
+          visualWidth,
+          visualHeight,
+        )
+      : viewportRectAfterMoveCommit(target.rect, visualWidth, visualHeight);
     setSelectedManualEditTarget((current) => {
       if (!current || current.id !== target.id) return current;
-      const base = viewportRectAfterMoveCommit(current.rect, visualWidth, visualHeight);
       const next: ManualEditTarget = {
         ...current,
-        // Apply gesture viewport immediately so the overlay never falls back to
-        // the pre-gesture rect while flush/remeasure is in flight.
-        rect: viewport
-          ? { ...base, x: Math.round(viewport.x), y: Math.round(viewport.y) }
-          : base,
+        rect: nextRect,
         layoutWidth,
         layoutHeight,
         styles: { ...current.styles, ...styles },
@@ -8194,15 +8207,41 @@ function HtmlViewer({
       selectedManualEditTargetRef.current = next;
       return next;
     });
+    return nextRect;
   }
 
-  function refreshManualEditHostPaintRect(id: string | null = selectedManualEditTargetIdRef.current) {
+  /**
+   * Seed idle paint from the optimistic visual rect so pointerup never flashes
+   * null / hybrid×previewScale. Prefer translating the frozen start paint by the
+   * visual delta — letterboxed iframe offsets stay correct under deck fit-scale.
+   */
+  function seedManualEditHostPaintFromVisual(
+    visualRect: ManualEditRect | null,
+    previousVisual: ManualEditRect,
+  ) {
+    if (!visualRect || visualRect.width < 1 || visualRect.height < 1) return;
+    setManualEditHostPaintRect((prev) => {
+      const translated = prev
+        ? hostPaintRectAfterVisualMove(prev, previousVisual, visualRect)
+        : null;
+      return translated ?? hostPaintRectFromVisualContent(
+        visualRect,
+        manualEditHostScale,
+        manualEditHostOffset,
+      );
+    });
+  }
+
+  function refreshManualEditHostPaintRect(
+    id: string | null = selectedManualEditTargetIdRef.current,
+    options?: { force?: boolean },
+  ) {
     if (!id) {
       setManualEditHostPaintRect(null);
       return;
     }
     // Gesture display is owned by overlay draft/liveViewport composition.
-    if (manualEditResizeSessionActiveRef.current) return;
+    if (manualEditResizeSessionActiveRef.current && !options?.force) return;
     const frame = iframeRef.current;
     const workspace = manualEditWorkspaceRef.current;
     if (!frame || !workspace) return;
@@ -8210,10 +8249,24 @@ function HtmlViewer({
     if (paint && paint.width >= 1 && paint.height >= 1) {
       setManualEditHostPaintRect(paint);
     } else {
-      setManualEditHostPaintRect(null);
+      // Keep optimistic seed on failed measure — nulling flashes hybrid compose.
+      if (!options?.force) setManualEditHostPaintRect(null);
     }
     setManualEditHostScale(measureIframeHostScale(frame));
     setManualEditHostOffset(measureIframeOffsetInHost(frame, workspace));
+  }
+
+  /** Double-rAF after persist so iframe layout can settle before host paint unlock. */
+  function settleManualEditGeometryHandoff(id: string): Promise<void> {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          requestManualEditTargetRemeasure(id);
+          refreshManualEditHostPaintRect(id, { force: true });
+          resolve();
+        });
+      });
+    });
   }
 
   function handleManualEditResizePreview(styles: Partial<ManualEditStyles>) {
@@ -8337,23 +8390,28 @@ function HtmlViewer({
     handleManualEditResizePreview(styles);
     // Optimistic geometry must land before any await; otherwise clearing
     // liveViewport/drafts snaps the overlay to the pre-gesture rect.
-    applyManualEditGestureOptimisticTarget(target, styles, viewport);
-    manualEditResizeSessionActiveRef.current = false;
-    manualEditResizePausedRef.current = false;
+    const previousVisual = { ...target.rect };
+    const visualRect = applyManualEditGestureOptimisticTarget(target, styles, viewport);
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
-    // Drop pre-gesture paint so idle overlay uses optimistic composed rect
-    // until remasure lands (avoids a rubber-band snap to the old box).
-    setManualEditHostPaintRect(null);
-    const ok = await flushManualEditStyleSave({ force: true });
-    if (!ok) {
-      rollbackManualEditGestureStyles(stylesBefore);
-      return;
+    // Seed paint from optimistic visual box — never null (null → iframe-scale
+    // compose of hybrid coords flashes under deck fit-scale).
+    seedManualEditHostPaintFromVisual(visualRect, previousVisual);
+    // Keep geometry session locked through persist + paint settle so RAF sync /
+    // od-edit-targets / od-edit-rect cannot clobber the handoff frame.
+    manualEditResizeSessionActiveRef.current = true;
+    manualEditResizePausedRef.current = true;
+    try {
+      const ok = await flushManualEditStyleSave({ force: true });
+      if (!ok) {
+        rollbackManualEditGestureStyles(stylesBefore);
+        return;
+      }
+      await settleManualEditGeometryHandoff(target.id);
+    } finally {
+      manualEditResizeSessionActiveRef.current = false;
+      manualEditResizePausedRef.current = false;
     }
-    // Sync host overlay to the iframe's real border-box after layout settles.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => requestManualEditTargetRemeasure(target.id));
-    });
   }
 
   async function handleManualEditMoveCommit(
@@ -8369,37 +8427,42 @@ function HtmlViewer({
     const stickyScrollportId = promotedPosition === 'absolute'
       ? target.stickyScrollportId
       : undefined;
-    applyManualEditGestureOptimisticTarget(
+    const previousVisual = { ...target.rect };
+    const visualRect = applyManualEditGestureOptimisticTarget(
       target,
       styles,
       viewport,
       promotedPosition ? { promotedPosition } : undefined,
     );
-    manualEditResizeSessionActiveRef.current = false;
-    manualEditResizePausedRef.current = false;
     setManualEditMoveDraftPos(null);
     setManualEditResizeDraftSize(null);
-    setManualEditHostPaintRect(null);
-    // Pin scrollport as absolute CB before persisting promote left/top so
-    // content-relative offsets stay valid after reload (53 sticky Phase2).
-    if (stickyScrollportId) {
-      const scrollportOk = await applyManualEdit(
-        { id: stickyScrollportId, kind: 'set-style', styles: { position: 'relative' } },
-        embedUiLabel('Pin scroll container', '스크롤 컨테이너 고정'),
-      );
-      if (!scrollportOk) {
+    seedManualEditHostPaintFromVisual(visualRect, previousVisual);
+    // Keep geometry session locked through sticky pin + persist + paint settle.
+    manualEditResizeSessionActiveRef.current = true;
+    manualEditResizePausedRef.current = true;
+    try {
+      // Pin scrollport as absolute CB before persisting promote left/top so
+      // content-relative offsets stay valid after reload (53 sticky Phase2).
+      if (stickyScrollportId) {
+        const scrollportOk = await applyManualEdit(
+          { id: stickyScrollportId, kind: 'set-style', styles: { position: 'relative' } },
+          embedUiLabel('Pin scroll container', '스크롤 컨테이너 고정'),
+        );
+        if (!scrollportOk) {
+          rollbackManualEditGestureStyles(stylesBefore);
+          return;
+        }
+      }
+      const ok = await flushManualEditStyleSave({ force: true });
+      if (!ok) {
         rollbackManualEditGestureStyles(stylesBefore);
         return;
       }
+      await settleManualEditGeometryHandoff(target.id);
+    } finally {
+      manualEditResizeSessionActiveRef.current = false;
+      manualEditResizePausedRef.current = false;
     }
-    const ok = await flushManualEditStyleSave({ force: true });
-    if (!ok) {
-      rollbackManualEditGestureStyles(stylesBefore);
-      return;
-    }
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => requestManualEditTargetRemeasure(target.id));
-    });
   }
 
   function handleManualEditResizeCancel(stylesBefore: Partial<ManualEditStyles>) {
