@@ -96,6 +96,7 @@ const API_PROTOCOL_TABS: Array<{ id: ApiProtocol; title: string }> = [
   { id: 'azure', title: 'Azure' },
   { id: 'google', title: 'Google' },
   { id: 'aihubmix', title: 'AIHubMix' },
+  { id: 'minimax', title: 'MiniMax' },
 ];
 
 const AMR_REMINDER_SEEN_KEY = 'open-design:inline-amr-cli-reminder-seen:v2';

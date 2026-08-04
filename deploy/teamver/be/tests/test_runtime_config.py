@@ -14,6 +14,9 @@ from app.config import settings
 def _reset_runtime_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "teamver_od_api_key", "")
     monkeypatch.setattr(settings, "teamver_od_anthropic_api_key", "")
+    monkeypatch.setattr(settings, "teamver_minimax_api_key", "")
+    monkeypatch.setattr(settings, "od_minimax_api_key", "")
+    monkeypatch.setattr(settings, "minimax_api_key", "")
     monkeypatch.setattr(settings, "teamver_od_api_protocol", "anthropic")
     monkeypatch.setattr(settings, "teamver_od_api_base_url", "https://api.anthropic.com")
     monkeypatch.setattr(settings, "teamver_od_api_model", "claude-sonnet-4-6")
@@ -56,3 +59,29 @@ def test_runtime_config_normalizes_legacy_anthropic_model(monkeypatch: pytest.Mo
     monkeypatch.setattr(settings, "teamver_od_api_model", "claude-sonnet-4-5")
     payload = od_runtime_config.resolve_od_runtime_config_payload()
     assert payload["model"] == "claude-sonnet-4-6"
+
+
+def test_runtime_config_from_minimax_managed_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "teamver_minimax_api_key", "sk-cp-managed")
+    monkeypatch.setattr(settings, "teamver_od_api_protocol", "minimax")
+    monkeypatch.setattr(settings, "teamver_od_api_base_url", "")
+    monkeypatch.setattr(settings, "teamver_od_api_model", "")
+
+    payload = od_runtime_config.resolve_od_runtime_config_payload()
+
+    assert payload["configured"] is True
+    assert payload["apiKeyConfigured"] is True
+    assert payload["apiProtocol"] == "minimax"
+    assert payload["baseUrl"] == "https://api.minimax.io/v1"
+    assert payload["model"] == "MiniMax-M3"
+    assert "apiKey" not in payload
+
+
+def test_runtime_config_normalizes_minimax_legacy_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "teamver_minimax_api_key", "sk-cp-managed")
+    monkeypatch.setattr(settings, "teamver_od_api_protocol", "minimax")
+    monkeypatch.setattr(settings, "teamver_od_api_base_url", "https://api.minimaxi.chat/v1")
+
+    payload = od_runtime_config.resolve_od_runtime_config_payload()
+
+    assert payload["baseUrl"] == "https://api.minimax.io/v1"

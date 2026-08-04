@@ -102,6 +102,9 @@ export const SUGGESTED_MODELS_BY_PROTOCOL: Record<ApiProtocol, readonly string[]
     'deepseek-chat',
     'deepseek-reasoner',
   ],
+  minimax: [
+    'MiniMax-M3',
+  ],
   ollama: [
     'cogito-2.1:671b',
     'deepseek-v3.1:671b',
@@ -162,6 +165,7 @@ export const FAST_MODEL_BY_PROTOCOL: Record<ApiProtocol, string> = {
   ollama: 'gemma3:4b',
   senseaudio: 'senseaudio-s2-flash',
   aihubmix: 'gpt-4o-mini',
+  minimax: 'MiniMax-M3',
 };
 
 export const API_PROTOCOL_TABS: ReadonlyArray<{
@@ -175,6 +179,7 @@ export const API_PROTOCOL_TABS: ReadonlyArray<{
   { id: 'ollama', title: 'Ollama Cloud' },
   { id: 'senseaudio', title: 'SenseAudio' },
   { id: 'aihubmix', title: 'AIHubMix' },
+  { id: 'minimax', title: 'MiniMax' },
 ];
 
 export const API_PROTOCOL_LABELS: Record<ApiProtocol, string> = {
@@ -185,6 +190,7 @@ export const API_PROTOCOL_LABELS: Record<ApiProtocol, string> = {
   ollama: 'Ollama Cloud API',
   senseaudio: 'SenseAudio API',
   aihubmix: 'AIHubMix API',
+  minimax: 'MiniMax API',
 };
 
 export const API_KEY_PLACEHOLDERS: Record<ApiProtocol, string> = {
@@ -195,6 +201,7 @@ export const API_KEY_PLACEHOLDERS: Record<ApiProtocol, string> = {
   ollama: 'Ollama API key',
   senseaudio: 'SenseAudio API key',
   aihubmix: 'sk-...',
+  minimax: 'sk-cp-...',
 };
 
 // Default base URL the daemon assumes when the user leaves the field
@@ -208,6 +215,7 @@ export const DEFAULT_BASE_URL_BY_PROTOCOL: Record<ApiProtocol, string> = {
   ollama: 'https://ollama.com',
   senseaudio: 'https://api.senseaudio.cn',
   aihubmix: 'https://aihubmix.com/v1',
+  minimax: 'https://api.minimax.io/v1',
 };
 
 // Fixed-origin gateways: managed single-endpoint providers where the user only
@@ -217,6 +225,7 @@ export const DEFAULT_BASE_URL_BY_PROTOCOL: Record<ApiProtocol, string> = {
 // here when it's such a gateway.
 export const FIXED_ORIGIN_GATEWAYS: ReadonlySet<ApiProtocol> = new Set<ApiProtocol>([
   'aihubmix',
+  'minimax',
 ]);
 
 export function isFixedOriginGateway(protocol: ApiProtocol): boolean {
@@ -254,7 +263,7 @@ export const BYOK_CHAT_TOOL_NAMES: readonly string[] = [
 export function byokChatToolNamesForProtocol(
   protocol: ApiProtocol | undefined,
 ): readonly string[] | undefined {
-  if (protocol === 'senseaudio' || protocol === 'aihubmix') {
+  if (protocol === 'senseaudio' || protocol === 'aihubmix' || protocol === 'minimax') {
     return BYOK_CHAT_TOOL_NAMES;
   }
   return undefined;

@@ -155,6 +155,7 @@
 
 | 일자 | 내용 |
 |------|------|
+| 2026-08-04 | MiniMax provider skeleton 구현 착수 — 별도 worktree `ns-open-design-minimax-impl`, branch `codex/minimax-provider-skeleton` ([00](./00_구현_내역_누적.md) · [54-1 §26](./54-1_MiniMax_전환_개발설계.md#26-구현-착수-현황-2026-08-04-현재)) |
 | 2026-08-04 | Docker 문서 **52 → 57** 재번호 — 수동편집 위치이동 `52-x`와 충돌 해소 ([57-0](./57-0_Docker_배포_빌드_가속_현황.md) · [57-1](./57-1_Docker_이미지_CI_ECR_배포_설계.md)) |
 | 2026-08-03 | [54-1 MiniMax 전환 개발설계](./54-1_MiniMax_전환_개발설계.md) — 구현자용 상세 설계 · 파일별 변경점 · API/env 계약 · 테스트·배포 순서 |
 | 2026-08-03 | [54 MiniMax 전환 기획·설계](./54_MiniMax_전환_기획_설계.md) — 2026-08-03 현재 판단 · Claude 비용 절감 · server-only MiniMax 전환 로드맵 |

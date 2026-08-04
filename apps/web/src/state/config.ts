@@ -331,6 +331,13 @@ export const KNOWN_PROVIDERS: KnownProvider[] = [
       'deepseek-reasoner',
     ],
   },
+  {
+    label: 'MiniMax',
+    protocol: 'minimax',
+    baseUrl: 'https://api.minimax.io/v1',
+    model: 'MiniMax-M3',
+    models: ['MiniMax-M3'],
+  },
 ];
 
 function normalizePet(input: Partial<PetConfig> | undefined): PetConfig {
@@ -380,6 +387,9 @@ function inferApiProtocol(model: string, baseUrl: string): ApiProtocol {
     // APP-Code attribution header even though the wire shape is
     // OpenAI-compatible.
     if (normalized.includes('aihubmix.com')) return 'aihubmix';
+    // MiniMax managed chat has its own daemon route and server-side key
+    // resolver. Do not let legacy OpenAI-compatible heuristics capture it.
+    if (normalized.includes('api.minimax.io')) return 'minimax';
     return isOpenAICompatible(model, baseUrl) ? 'openai' : 'anthropic';
   } catch {
     // Preserve the rest of the user's settings even if an old saved base URL is

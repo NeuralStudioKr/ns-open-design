@@ -208,11 +208,14 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   function resolveProxyApiKeyOrSendError(
     req: Request,
     res: Response,
-    proxyBody: { apiKey?: unknown; useManagedApiKey?: unknown },
+    proxyBody: { apiKey?: unknown; useManagedApiKey?: unknown; apiProtocol?: unknown },
   ): string | null {
     const resolution = resolveProxyStreamApiKeyDetailed(req, proxyBody);
     if (resolution.ok) return resolution.apiKey;
-    const { httpStatus, code, message } = proxyApiKeyFailureToErrorCode(resolution.failure);
+    const { httpStatus, code, message } = proxyApiKeyFailureToErrorCode(
+      resolution.failure,
+      { provider: proxyBody.apiProtocol === 'minimax' ? 'minimax' : 'anthropic' },
+    );
     sendApiError(res, httpStatus, code, message);
     return null;
   }

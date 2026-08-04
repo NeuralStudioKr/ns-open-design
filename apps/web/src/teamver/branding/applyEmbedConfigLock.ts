@@ -19,6 +19,7 @@ function readFixedProtocol(): ApiProtocol | undefined {
     "ollama",
     "senseaudio",
     "aihubmix",
+    "minimax",
   ];
   return allowed.includes(raw as ApiProtocol) ? (raw as ApiProtocol) : undefined;
 }

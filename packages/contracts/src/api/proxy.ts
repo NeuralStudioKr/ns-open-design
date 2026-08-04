@@ -37,6 +37,8 @@ export interface ProxyStreamRequest {
   maxTokens?: number;
   // Azure OpenAI only. Defaults at the daemon when omitted.
   apiVersion?: string;
+  /** Provider protocol hint for managed server-side key routing. */
+  apiProtocol?: string;
 }
 
 export interface ProxyStreamStartPayload {

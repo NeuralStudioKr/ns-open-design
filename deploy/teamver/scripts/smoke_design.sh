@@ -616,7 +616,7 @@ if [[ -n "${TEAMVER_COOKIE:-}" ]]; then
         echo "✓ runtime-config configured=true (embed managed API)"
         pass=$((pass + 1))
       elif [[ "$ENV_LABEL" == "staging" && "${SMOKE_REQUIRE_MANAGED_API:-1}" == "1" ]]; then
-        echo "✗ runtime-config configured=false — TEAMVER_OD_API_KEY 미주입? (embed chat 불가)"
+        echo "✗ runtime-config configured=false — managed provider key 미주입? (TEAMVER_OD_API_KEY 또는 TEAMVER_MINIMAX_API_KEY, embed chat 불가)"
         fail=$((fail + 1))
       else
         echo "○ runtime-config configured=false"

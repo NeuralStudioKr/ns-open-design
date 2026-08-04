@@ -256,6 +256,7 @@ async function streamProxyEndpointOnce(
         baseUrl: cfg.baseUrl,
         ...(managed ? { useManagedApiKey: true } : { apiKey: cfg.apiKey }),
         model: cfg.model,
+        apiProtocol: cfg.apiProtocol,
         systemPrompt: system,
         messages,
         maxTokens: effectiveMaxTokensWithFloor(cfg, context?.minOutputTokens),

@@ -1667,3 +1667,114 @@ MiniMax P0 구현 완료 조건:
 5. runtime-config가 key 없이 MiniMax managed config를 내려주는 테스트 추가
 
 이 단계는 실제 MiniMax 호출 전 skeleton이므로 기존 Claude 동작을 깨지 않고 안전하게 먼저 들어갈 수 있습니다.
+
+---
+
+## 26. 구현 착수 현황 (2026-08-04 현재)
+
+**기준:** 2026-08-04 현재 별도 worktree `ns-open-design-minimax-impl`, branch `codex/minimax-provider-skeleton`에서 확인한 상태입니다. 아직 `staging` 기본 실행 경로로 병합하기 전 단계입니다.
+
+### 26.1 완료한 skeleton
+
+- `apps/daemon/src/minimax-runtime.ts`
+  - `MINIMAX_PROVIDER_ID=minimax`
+  - `MINIMAX_DEFAULT_BASE_URL=https://api.minimax.io/v1`
+  - `MINIMAX_DEFAULT_CHAT_MODEL=MiniMax-M3`
+  - `TEAMVER_MINIMAX_API_KEY` 우선, `OD_MINIMAX_API_KEY`, `MINIMAX_API_KEY` 호환 alias
+  - legacy host `api.minimaxi.com`, `api.minimaxi.chat` → `api.minimax.io`
+  - `MiniMax-M3` 계열 `max_tokens` 생략 판단 helper
+  - tool loop cap 기본 3, env override 최대 6
+- `apps/daemon/src/teamver-managed-api-key.ts`
+  - Anthropic 전용 resolver와 MiniMax resolver 분리
+  - proxy body의 `apiProtocol=minimax`를 보고 MiniMax env key 사용
+  - MiniMax key 누락 진단을 `MINIMAX_API_KEY_MISSING`으로 분리
+  - 브라우저 응답이나 runtime-config에는 MiniMax key를 내려주지 않는 기존 Teamver 보안 계약 유지
+- `apps/daemon/src/chat-routes.ts`
+  - proxy body에 `apiProtocol`을 포함해 managed key resolver가 provider를 식별할 수 있도록 준비
+- `apps/daemon/src/server.ts`
+  - boot marker가 `TEAMVER_DESIGN_DEFAULT_PROVIDER=minimax`인 경우 MiniMax key 기준으로 readiness를 기록
+  - Anthropic key 누락과 MiniMax key 누락 운영 로그를 분리
+- `apps/web/src/types.ts`
+  - `ApiProtocol`에 `minimax` 추가
+- `apps/web/src/state/apiProtocols.ts`
+  - MiniMax tab/label/key placeholder/default baseUrl/default model 등록
+  - fixed-origin gateway로 등록해 사용자/저장값 drift 방지
+- `apps/web/src/state/config.ts`
+  - `KNOWN_PROVIDERS`에 MiniMax canonical entry 추가
+  - `api.minimax.io`는 OpenAI-compatible heuristic이 아니라 `minimax` protocol로 식별
+- `apps/web/src/providers/api-proxy.ts`
+  - proxy body에 `apiProtocol` 포함
+- `apps/web/src/providers/minimax-compatible.ts`
+  - FE provider wrapper 추가. 향후 `/api/proxy/minimax/stream`으로 연결
+- `apps/web/src/providers/anthropic.ts`
+  - `apiProtocol=minimax`인 경우 MiniMax wrapper로 route
+- `apps/web/src/teamver/applyTeamverRuntimeConfig.ts`
+  - runtime-config가 MiniMax protocol을 key 없이 수용
+  - runtime-config에 baseUrl/model이 생략돼도 protocol별 fixed origin/model로 정규화
+- `apps/web/src/teamver/branding/pinnedExecutionConfig.ts`
+  - pinned config가 MiniMax protocol의 baseUrl/model default를 Anthropic에서 물려받지 않도록 정규화
+- `apps/web/src/teamver/branding/applyEmbedConfigLock.ts`
+  - embed lock에서 MiniMax protocol 허용
+- `packages/contracts/src/api/proxy.ts`
+  - proxy stream request contract에 `apiProtocol?: string` 추가
+
+### 26.2 추가한 회귀 테스트
+
+- `apps/daemon/tests/minimax-runtime.test.ts`
+  - env key 우선순위
+  - baseUrl alias 정규화
+  - MiniMax target 판별
+  - `max_tokens` 생략 helper
+  - tool loop cap
+- `apps/daemon/tests/teamver-managed-api-key.test.ts`
+  - MiniMax key가 Anthropic key를 재사용하지 않음
+  - proxy body `apiProtocol=minimax`에서 MiniMax env key 사용
+  - MiniMax env 누락 시 `MINIMAX_API_KEY_MISSING`
+- `apps/web/tests/state/api-protocols.test.ts`
+  - MiniMax-M3 기본 모델 등록
+  - tool-loop proxy 대상 protocol에 MiniMax 포함
+- `apps/web/tests/components/SettingsDialog.test.ts`
+  - MiniMax 설정 전환 시 fixed origin/default model 적용
+- `apps/web/tests/teamver-embed-config-lock.test.ts`
+  - runtime-config가 `apiProtocol=minimax`만 내려줘도 Anthropic baseUrl/model을 물려받지 않음
+
+### 26.3 아직 완료 전인 것
+
+- `/api/proxy/minimax/stream` 실제 daemon route
+- MiniMax OpenAI-compatible SSE parser와 chunk normalization
+- MiniMax `tool_calls` loop
+- P0 tool `web_fetch` 연결
+- MiniMax 응답의 hidden/thinking/tool markup streaming-safe sanitizer
+- MiniMax deck-only artifact validation과 incomplete_output recovery
+- staging smoke: 새 deck 생성, 기존 deck 수정, 댓글 scoped patch, 파일/Drive 첨부, URL 참조
+
+### 26.4 검증 메모
+
+2026-08-04 별도 worktree에서 `pnpm install` 후 다음을 확인했습니다.
+
+- `pnpm install` postinstall workspace build 통과
+- `pnpm --filter @open-design/daemon exec tsc -p tsconfig.json --noEmit`
+  - daemon source-only typecheck 통과
+- `pnpm --filter @open-design/daemon exec vitest run tests/minimax-runtime.test.ts tests/teamver-managed-api-key.test.ts`
+  - 2 files, 17 tests 통과
+- `pnpm --filter @open-design/web exec vitest run tests/state/api-protocols.test.ts tests/components/SettingsDialog.test.ts tests/teamver-embed-config-lock.test.ts`
+  - 3 files, 57 tests 통과
+- `PYTHONPATH=deploy/teamver/be pytest deploy/teamver/be/tests/test_runtime_config.py deploy/teamver/be/tests/test_config_hosted_guards.py`
+  - 16 tests 통과
+- `bash deploy/teamver/scripts/test_validate_deploy_env.sh`
+  - 통과
+- `git diff --check`
+  - 통과
+
+초기에는 별도 worktree에 `node_modules`가 없어 `vitest`/typecheck가 실행되지 않았고, `pnpm install --offline`은 local store에 빠진 tarball 때문에 실패했습니다. 이후 네트워크 허용 `pnpm install`로 workspace 의존성 링크와 postinstall build를 완료했습니다.
+
+참고: `pnpm --filter @open-design/daemon run typecheck` 전체 명령은 기존 `tsconfig.tests.json` 테스트 타입 오류 묶음으로 실패했습니다. 실패 위치는 `tests/aws-imds-credentials.test.ts`, `tests/file-revisions-*.test.ts`, `tests/teamver-byok-usage-bridge.test.ts` 등 기존 테스트 파일 다수이며, 이번 MiniMax 변경 파일의 source build/typecheck와 targeted vitest는 통과했습니다.
+
+### 26.5 다음 구현 순서
+
+1. daemon `/api/proxy/minimax/stream` route를 추가합니다.
+2. MiniMax request builder에서 `max_tokens`를 제외합니다.
+3. OpenAI-compatible SSE를 기존 FE `streamProxyEndpoint` 이벤트 형태로 변환합니다.
+4. `web_fetch`만 우선 tool loop에 연결합니다.
+5. streaming 중 `<think>`, `<tool>`, `<invoke>`, `<question>`, deliverable instruction이 채팅 저장/렌더에 노출되지 않도록 기존 sanitizer를 MiniMax route에도 강제합니다.
+6. route 구현 뒤에야 `TEAMVER_DESIGN_DEFAULT_PROVIDER=minimax`를 staging에서 켭니다.
