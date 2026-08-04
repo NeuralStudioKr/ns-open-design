@@ -944,6 +944,8 @@ const MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS = new Set([
   'applet',
   'frame',
   'frameset',
+  // SVG discard can delete sanitized content after persist.
+  'discard',
 ]);
 
 const MANUAL_EDIT_SMIL_ANIM_TAGS = new Set([
@@ -953,6 +955,57 @@ const MANUAL_EDIT_SMIL_ANIM_TAGS = new Set([
   'animatemotion',
   'animatecolor',
 ]);
+
+/**
+ * Scrub event-handler, style, and URL attrs on a single element (no child walk).
+ * Shared by tree sanitize and full-document html/head/body hosts.
+ */
+function sanitizeManualEditElementAttrs(el: Element): void {
+  const tag = el.tagName.toLowerCase();
+  for (const attr of Array.from(el.attributes)) {
+    const lower = attr.name.toLowerCase();
+    if (
+      lower.startsWith('on')
+      || lower === 'srcdoc'
+      || lower === 'behavior'
+      || lower === 'http-equiv'
+    ) {
+      el.removeAttribute(attr.name);
+      continue;
+    }
+    if (lower === 'style') {
+      const scrubbed = scrubUnsafeInlineStyleAttr(attr.value);
+      if (!scrubbed) el.removeAttribute(attr.name);
+      else if (scrubbed !== attr.value) el.setAttribute(attr.name, scrubbed);
+      continue;
+    }
+    if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
+      const scrubbed = scrubUnsafeCssFunctions(
+        normalizeCssForSafetyScan(attr.value),
+      ).trim();
+      if (!scrubbed || containsUnsafeEmbeddedCssOrScheme(scrubbed)) {
+        el.removeAttribute(attr.name);
+      } else if (scrubbed !== attr.value) {
+        el.setAttribute(attr.name, scrubbed);
+      }
+      continue;
+    }
+    if (
+      MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
+      && (lower === 'href' || lower === 'xlink:href')
+      && !isSafeManualEditSvgResourceRef(attr.value)
+    ) {
+      el.removeAttribute(attr.name);
+      continue;
+    }
+    if (
+      (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'values')
+      && !isSafeManualEditUrlAttrValue(lower, attr.value)
+    ) {
+      el.removeAttribute(attr.name);
+    }
+  }
+}
 
 /** Strip executable chrome tags, event handlers, and unsafe URL attrs. */
 function sanitizeManualEditReplacementTree(root: Element): void {
@@ -1009,49 +1062,7 @@ function sanitizeManualEditReplacementTree(root: Element): void {
         }
       }
     }
-    for (const attr of Array.from(el.attributes)) {
-      const lower = attr.name.toLowerCase();
-      if (
-        lower.startsWith('on')
-        || lower === 'srcdoc'
-        || lower === 'behavior'
-        || lower === 'http-equiv'
-      ) {
-        el.removeAttribute(attr.name);
-        continue;
-      }
-      if (lower === 'style') {
-        const scrubbed = scrubUnsafeInlineStyleAttr(attr.value);
-        if (!scrubbed) el.removeAttribute(attr.name);
-        else if (scrubbed !== attr.value) el.setAttribute(attr.name, scrubbed);
-        continue;
-      }
-      if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
-        const scrubbed = scrubUnsafeCssFunctions(
-          normalizeCssForSafetyScan(attr.value),
-        ).trim();
-        if (!scrubbed || containsUnsafeEmbeddedCssOrScheme(scrubbed)) {
-          el.removeAttribute(attr.name);
-        } else if (scrubbed !== attr.value) {
-          el.setAttribute(attr.name, scrubbed);
-        }
-        continue;
-      }
-      if (
-        MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
-        && (lower === 'href' || lower === 'xlink:href')
-        && !isSafeManualEditSvgResourceRef(attr.value)
-      ) {
-        el.removeAttribute(attr.name);
-        continue;
-      }
-      if (
-        (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'values')
-        && !isSafeManualEditUrlAttrValue(lower, attr.value)
-      ) {
-        el.removeAttribute(attr.name);
-      }
-    }
+    sanitizeManualEditElementAttrs(el);
     for (const child of Array.from(el.children)) walk(child);
   };
   walk(root);
@@ -1113,6 +1124,11 @@ export function sanitizeManualEditFullSource(source: string): string {
   if (!raw.trim()) return raw;
   const doc = parseSource(raw);
   if (!doc) return raw;
+  // html/head/body themselves are hosts — scrub their on*/style/URL attrs
+  // before walking children (child walk never touches the host element).
+  if (doc.documentElement) sanitizeManualEditElementAttrs(doc.documentElement);
+  if (doc.head) sanitizeManualEditElementAttrs(doc.head);
+  if (doc.body) sanitizeManualEditElementAttrs(doc.body);
   const scrubHostChildren = (host: Element | null): void => {
     if (!host) return;
     for (const child of Array.from(host.children)) {
@@ -1785,6 +1801,7 @@ const NON_CONTENT_REPLACEMENT_TAGS = new Set([
   'APPLET',
   'FRAME',
   'FRAMESET',
+  'DISCARD',
 ]);
 
 /**
@@ -1928,6 +1945,9 @@ function isSafeCssTokenValue(value: string): boolean {
 function normalizeCssForSafetyScan(css: string): string {
   let text = String(css || '');
   text = text.replace(/\/\*[\s\S]*?\*\//g, '');
+  // CSS string line continuations: "java\<newline>script:" → "javascript:"
+  // Must run before hex/char escape decode so scheme scanners see the join.
+  text = text.replace(/\\(?:\r\n|[\n\r\f])/g, '');
   text = text.replace(/\\([0-9a-fA-F]{1,6})(\r\n|[ \t\r\n\f])?/g, (_match, hex: string) => {
     const code = Number.parseInt(hex, 16);
     if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return '';
@@ -1980,6 +2000,7 @@ const MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS = new Set([
   'animate',
   'animatemotion',
   'animatetransform',
+  'animatecolor',
   'set',
 ]);
 
@@ -2133,6 +2154,13 @@ const MANUAL_EDIT_URL_ATTRS = new Set([
   'dynsrc',
   'lowsrc',
   'srcset',
+  'imagesrcset',
+  'longdesc',
+  'manifest',
+  'codebase',
+  'classid',
+  'archive',
+  'usemap',
   'data',
   // SVG SMIL can assign href via to/from/by/values without on* handlers.
   'to',
@@ -2240,10 +2268,17 @@ export function isSafeManualEditRelativeOrFragmentUrl(value: string): boolean {
 /** Validate URL attr values; `srcset`/`values` check each candidate URL. */
 export function isSafeManualEditUrlAttrValue(attr: string, value: string): boolean {
   const lower = String(attr || '').toLowerCase();
-  if (lower === 'srcset') {
+  if (lower === 'srcset' || lower === 'imagesrcset') {
     for (const part of String(value || '').split(',')) {
       const url = part.trim().split(/\s+/)[0] || '';
       if (url && !isSafeManualEditUrl(url)) return false;
+    }
+    return true;
+  }
+  if (lower === 'archive') {
+    // Space-separated legacy archive URL list.
+    for (const part of String(value || '').split(/\s+/)) {
+      if (part && !isSafeManualEditUrl(part)) return false;
     }
     return true;
   }

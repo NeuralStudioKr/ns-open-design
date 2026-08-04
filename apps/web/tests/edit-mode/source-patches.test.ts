@@ -654,6 +654,88 @@ describe('manual edit source patches', () => {
     expect(result.source).not.toContain('evil.example');
   });
 
+  it('scrubs on*/unsafe style on html/head/body hosts in set-full-source', () => {
+    const source = [
+      '<!doctype html>',
+      '<html onclick="alert(1)">',
+      '<head style="background:url(javascript:alert(2))"></head>',
+      '<body onload="alert(3)" background="javascript:alert(4)">',
+      '<h1 data-od-id="hero-title">Snapshot</h1>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(baseSource, { kind: 'set-full-source', source });
+    expect(result.ok).toBe(true);
+    expect(result.source).toContain('hero-title');
+    expect(result.source).not.toMatch(/onclick/i);
+    expect(result.source).not.toMatch(/onload/i);
+    expect(result.source).not.toMatch(/javascript/i);
+    expect(result.source).not.toMatch(/\bbackground=/i);
+  });
+
+  it('joins CSS backslash-newline continuations before scheme scrub', () => {
+    const inline = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:url(&quot;java\\\nscript:alert(1)&quot;);color:navy">Title</h1>',
+    });
+    expect(inline.ok, inline.error).toBe(true);
+    const inlineHtml = readManualEditOuterHtml(inline.source, 'hero-title');
+    expect(inlineHtml).not.toMatch(/javascript/i);
+    expect(inlineHtml).toContain('color:navy');
+
+    const imageSet = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:image-set(&quot;java\\\nscript:alert(1)&quot; 1x);color:teal">Title</h1>',
+    });
+    expect(imageSet.ok, imageSet.error).toBe(true);
+    expect(readManualEditOuterHtml(imageSet.source, 'hero-title')).not.toMatch(/javascript/i);
+  });
+
+  it('rejects external animateColor hrefs and strips discard nodes', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><circle id="c" r="2"></circle><g id="safe"><text>ok</text></g></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<circle id="c" r="2"></circle>',
+        '<g id="safe"><text>ok</text></g>',
+        '<animateColor href="https://evil.example/remote.svg#c" attributeName="fill" values="red;blue"></animateColor>',
+        '<animateColor href="#c" attributeName="fill" values="red;blue"></animateColor>',
+        '<discard href="#safe" begin="0s"></discard>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html).not.toMatch(/<discard\b/i);
+    expect(html).toContain('href="#c"');
+    expect(html).toContain('id="safe"');
+  });
+
+  it('strips javascript: from longdesc and imagesrcset', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-image',
+      html: [
+        '<img data-od-id="hero-image" src="/safe.png" alt="ok"',
+        ' longdesc="javascript:alert(1)"',
+        ' imagesrcset="javascript:alert(2) 1x, /ok.png 2x">',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-image');
+    expect(html).not.toMatch(/javascript/i);
+    expect(html).not.toMatch(/\blongdesc=/i);
+    expect(html).not.toMatch(/\bimagesrcset=/i);
+  });
+
   it('rejects dangerous identity-matched set-outer-html roots', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',
