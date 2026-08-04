@@ -21,5 +21,5 @@ Teamver Design embed 모드에서 HTML 미리보기는 `/api/projects/{id}/previ
 ## 다음 추천 작업
 
 1. `FileViewer.manual-edit` 테스트 fixture를 현재 `fetchTeamverDaemon` 요청 옵션과 보조 호출(`/teamver-bff/auth/session`, `/deployments`, `/preview-url`)에 맞게 갱신한다.
-2. preview scope prefix 발급 실패 시 srcDoc fallback이 실제 staging 프로젝트 상세 직접 진입에서도 빈 화면 없이 동작하는지 브라우저 smoke를 추가한다.
+2. preview scope prefix 발급 실패·지연 시 srcDoc fallback / settle hold가 빈 화면으로 고착되지 않는지 — **[58 letterbox 안정화](./58_덱_미리보기_letterbox_빈화면_안정화.md)** SSOT · staging smoke.
 3. `/preview-url` API 실패율을 staging smoke에 선택 항목으로 노출해 nginx/auth redirect 회귀를 조기에 확인한다.

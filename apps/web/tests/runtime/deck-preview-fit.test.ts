@@ -63,8 +63,34 @@ describe('deckPreviewFit', () => {
       '*',
     );
     vi.advanceTimersByTime(200);
-    // Already posted — further delays must not spam.
-    expect(postMessage).toHaveBeenCalledTimes(1);
+    // Keep posting across the window so a remount after the first success still
+    // receives host viewport (black letterbox until refresh).
+    expect(postMessage).toHaveBeenCalledTimes(2);
+    cancel();
+  });
+
+  it('re-posts to a remounted iframe after an early successful post', () => {
+    const postMessageA = vi.fn();
+    const postMessageB = vi.fn();
+    const frameA = {
+      contentWindow: { postMessage: postMessageA } as unknown as Window,
+      getBoundingClientRect: () => ({ width: 640, height: 480 } as DOMRect),
+    };
+    const frameB = {
+      contentWindow: { postMessage: postMessageB } as unknown as Window,
+      getBoundingClientRect: () => ({ width: 800, height: 600 } as DOMRect),
+    };
+    let current: typeof frameA | typeof frameB = frameA;
+    const cancel = schedulePostDeckHostViewportUntilSized(() => current, 1, [0, 50, 100]);
+    vi.advanceTimersByTime(0);
+    expect(postMessageA).toHaveBeenCalledTimes(1);
+    current = frameB;
+    vi.advanceTimersByTime(50);
+    expect(postMessageB).toHaveBeenCalledTimes(1);
+    expect(postMessageB).toHaveBeenCalledWith(
+      { type: 'od:deck-host-viewport', width: 800, height: 600, scale: 1, layoutFit: false },
+      '*',
+    );
     cancel();
   });
 

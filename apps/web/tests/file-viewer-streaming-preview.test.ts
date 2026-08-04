@@ -9,15 +9,43 @@ function readSource(relativePath: string): string {
 }
 
 describe("FileViewer streaming slide preview", () => {
-  it("keeps deck fit scale at 1 for compact and framework decks so host zoom does not reflow", () => {
-    const source = readSource("src/components/FileViewer.tsx");
-    expect(source).toContain("const needsDeckHostViewportFit = compactApiStackedDeck || frameworkDeckPreview");
+  it('keeps deck fit scale at 1 for compact and framework decks so host zoom does not reflow', () => {
+    const source = readSource('src/components/FileViewer.tsx');
+    expect(source).toContain('const needsDeckHostViewportFit = compactApiStackedDeck || frameworkDeckPreview');
+    expect(source).toContain('deckHostViewportFitActive');
+    expect(source).toContain('needsDeckHostViewportFitStickyRef');
     expect(source).toMatch(
-      /const deckPreviewFitScale = needsDeckHostViewportFit \? 1 : overlayPreviewScale/,
+      /const deckPreviewFitScale = deckHostViewportFitActive \? 1 : overlayPreviewScale/,
     );
     expect(source).toMatch(
-      /const deckPreviewFitOptions = needsDeckHostViewportFit[\s\S]*FIXED_STAGE_DECK_FIT_OPTIONS/,
+      /const deckPreviewFitOptions = deckHostViewportFitActive[\s\S]*FIXED_STAGE_DECK_FIT_OPTIONS/,
     );
+  });
+
+  it('does not remount or clear last-stable on filesRefreshKey churn', () => {
+    const source = readSource('src/components/FileViewer.tsx');
+    const start = source.indexOf('Agent / manual writes bump `filesRefreshKey`');
+    expect(start).toBeGreaterThan(0);
+    const block = source.slice(start, start + 900);
+    expect(block).toContain('invalidateCachedPreviewSource');
+    expect(block).toContain('setReloadKey');
+    expect(block).not.toContain('lastStablePreviewSourceRef.current = null');
+    expect(block).not.toContain('setSrcDocTransportResetKey');
+    expect(block).toContain('do NOT clear last-stable');
+  });
+
+  it('fail-opens prefix settle paint within 1.5s so hung preview-url cannot blank forever', () => {
+    const source = readSource('src/components/FileViewer.tsx');
+    expect(source).toContain('failOpenPaintTimer');
+    expect(source).toMatch(/setTimeout\(\(\) => \{\s*if \(!cancelled\) setEmbedPreviewPrefixSettled\(true\);\s*\}, 1_500\)/);
+  });
+
+  it('keeps a host ResizeObserver fit recovery loop for intermittent letterbox', () => {
+    const source = readSource('src/components/FileViewer.tsx');
+    expect(source).toContain('Persistent host→iframe fit recovery');
+    expect(source).toContain("data?.type !== 'od:stacked-deck-ready'");
+    expect(source).toContain('nudgeDeckPreviewFit');
+    expect(source).toContain('Intentionally omit `srcDoc`');
   });
 
   it("gates live iframe updates on repaired html stability during streaming", () => {

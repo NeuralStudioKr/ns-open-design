@@ -178,6 +178,7 @@ import { canResizeTarget } from '../edit-mode/resize-eligibility';
 import { cacheParentRevisionOnPush, canApplyRevisionFromClientCache } from '../runtime/revision-restore';
 import { syncRevisionWithRetry } from '../runtime/revision-disk-sync';
 import {
+  nudgeDeckPreviewFit,
   postDeckHostViewportToIframe,
   postDeckPreviewPanBy,
   resetDeckPreviewPan,
@@ -5259,17 +5260,17 @@ function HtmlViewer({
   const activatedSrcDocTransportHtmlRef = useRef<string | null>(null);
   const prevFilesRefreshKeyRef = useRef(filesRefreshKey);
   // Agent / manual writes bump `filesRefreshKey` before project mtimes settle.
-  // Drop cached + last-stable preview bytes so the disk refetch cannot keep
-  // painting the pre-edit deck while raw GET already shows the new HTML.
+  // Invalidate the disk cache and refetch — but do NOT clear last-stable or
+  // remount the iframe here. Clearing last-stable blanked the hold path on
+  // null/incomplete GETs, and an immediate remount interrupted compact-deck
+  // host-viewport fit (preview goes black with 1/N still working until refresh).
   useEffect(() => {
     if (filesRefreshKey <= 0 || filesRefreshKey === prevFilesRefreshKeyRef.current) return;
     prevFilesRefreshKeyRef.current = filesRefreshKey;
     invalidateCachedPreviewSource(projectId, file.name);
-    lastStablePreviewSourceRef.current = null;
     manualEditPinnedSourceRef.current = null;
     activatedSrcDocTransportHtmlRef.current = null;
     setLiveHtmlPaintsPreview(false);
-    setSrcDocTransportResetKey((key) => key + 1);
     setReloadKey((key) => key + 1);
   }, [filesRefreshKey, projectId, file.name]);
   // Tracks the iframe DOM node whose dedupe ref was last reset by the
@@ -6197,11 +6198,29 @@ function HtmlViewer({
     [previewSource],
   );
   const needsDeckHostViewportFit = compactApiStackedDeck || frameworkDeckPreview;
+  // Once this artifact has been classified as a fixed-stage deck, keep the
+  // host-viewport listener armed even if `previewSource` briefly goes null
+  // during refresh/auth races — otherwise chaseFirstLayout requests are dropped
+  // and the preview freezes on a black letterbox until toolbar refresh.
+  const deckHostViewportFitIdentityRef = useRef(`${projectId}\0${file.name}`);
+  const needsDeckHostViewportFitStickyRef = useRef(false);
+  {
+    const fitIdentity = `${projectId}\0${file.name}`;
+    if (deckHostViewportFitIdentityRef.current !== fitIdentity) {
+      deckHostViewportFitIdentityRef.current = fitIdentity;
+      needsDeckHostViewportFitStickyRef.current = false;
+    }
+    if (needsDeckHostViewportFit) needsDeckHostViewportFitStickyRef.current = true;
+  }
+  const deckHostViewportFitActive =
+    needsDeckHostViewportFit || needsDeckHostViewportFitStickyRef.current;
   const deckPreviewUsesFixedStage = compactApiStackedDeck;
   // Host toolbar zoom is CSS transform-only. Posting overlayPreviewScale into the
   // deck bridge refits slide layout (vw/vh, letterbox math) and makes elements
   // appear to resize with zoom — apply to compact + framework decks alike.
-  const deckPreviewFitScale = needsDeckHostViewportFit ? 1 : overlayPreviewScale;
+  // Use sticky-active so a brief null `previewSource` does not flip options to
+  // non-layoutBox and strand an already-mounted compact deck.
+  const deckPreviewFitScale = deckHostViewportFitActive ? 1 : overlayPreviewScale;
   const deckPreviewPanActive = deckPreviewUsesFixedStage
     && mode === 'preview'
     && !drawOverlayOpen
@@ -6209,7 +6228,7 @@ function HtmlViewer({
     && !manualEditMode
     && !inspectMode
     && !slideOnlyMvp;
-  const deckPreviewFitOptions = needsDeckHostViewportFit
+  const deckPreviewFitOptions = deckHostViewportFitActive
     ? FIXED_STAGE_DECK_FIT_OPTIONS
     : undefined;
   const onDeckPreviewWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
@@ -6288,14 +6307,38 @@ function HtmlViewer({
   );
   const [urlSelectionBridgeReady, setUrlSelectionBridgeReady] = useState(false);
   const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(null);
+  // Hold srcDoc until the scoped prefix settle finishes (or fail-open). Painting
+  // without a base then remounting when the prefix arrives interrupts the compact
+  // deck host-viewport handshake — black letterbox with a working 1/N counter
+  // until toolbar refresh.
+  const [embedPreviewPrefixSettled, setEmbedPreviewPrefixSettled] = useState(
+    () => !isTeamverEmbedMode(),
+  );
   const teamverEmbedPreviewMode = isTeamverEmbedMode();
+  const embedPreviewIdentityRef = useRef<string | null>(null);
   useEffect(() => {
     if (!teamverEmbedPreviewMode) {
       setEmbedPreviewPrefix(null);
+      setEmbedPreviewPrefixSettled(true);
+      embedPreviewIdentityRef.current = null;
       return;
     }
     let cancelled = false;
+    const identity = `${projectId}\0${file.name}`;
+    const identityChanged = embedPreviewIdentityRef.current !== identity;
+    embedPreviewIdentityRef.current = identity;
+    // First paint / file switch: hold empty srcDoc. Auth-recovery retries keep
+    // the current paint and remount only when the resolved prefix actually rotates.
+    if (identityChanged) {
+      setEmbedPreviewPrefixSettled(false);
+    }
     const retryDelaysMs = [0, 400, 1_200] as const;
+    // Do not leave the preview blank for the full 8s×retry budget when
+    // preview-url is hung — fail-open paint (possibly without base) and remount
+    // later if a prefix arrives.
+    const failOpenPaintTimer = window.setTimeout(() => {
+      if (!cancelled) setEmbedPreviewPrefixSettled(true);
+    }, 1_500);
     // Fail-open on first null so srcDoc can paint, then retry with a fresh
     // abort budget. Auth recovery bumps embedAuthRecoveryNonce and invalidates
     // the cached prefix so stale daemon scopes / 401 races do not leave deck
@@ -6324,15 +6367,22 @@ function HtmlViewer({
         }
         if (cancelled) return;
         if (resolved) {
+          window.clearTimeout(failOpenPaintTimer);
           setEmbedPreviewPrefix(resolved);
+          setEmbedPreviewPrefixSettled(true);
           return;
         }
         if (attempt === 0) setEmbedPreviewPrefix(null);
       }
-      if (!cancelled) setEmbedPreviewPrefix(null);
+      if (!cancelled) {
+        window.clearTimeout(failOpenPaintTimer);
+        setEmbedPreviewPrefix(null);
+        setEmbedPreviewPrefixSettled(true);
+      }
     })();
     return () => {
       cancelled = true;
+      window.clearTimeout(failOpenPaintTimer);
     };
   }, [embedAuthRecoveryNonce, file.name, projectId, teamverEmbedPreviewMode]);
   const useUrlLoadPreview = shouldUrlLoadHtmlPreview({
@@ -6422,15 +6472,24 @@ function HtmlViewer({
   }, [source, effectiveDeck, projectId, file.name, reloadKey, useUrlLoadPreview]);
 
   const srcDoc = useMemo(
-    () => (redirectLoopBlocked ? buildRedirectLoopBlockedDoc() : previewSource ? buildSrcdoc(previewSource, {
-      deck: effectiveDeck,
-      baseHref: srcDocBaseHref,
-      initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
-      selectionBridge: true,
-      editBridge: manualEditRequiresSrcDoc,
-      paletteBridge: false,
-      previewFocusGuard: true,
-    }) : ''),
+    () => {
+      // Teamver embed: do not paint deck HTML until preview-url prefix settle
+      // completes (or fail-open). Avoids no-base first paint → remount → lost fit.
+      if (teamverEmbedPreviewMode && !embedPreviewPrefixSettled) return '';
+      return redirectLoopBlocked
+        ? buildRedirectLoopBlockedDoc()
+        : previewSource
+          ? buildSrcdoc(previewSource, {
+            deck: effectiveDeck,
+            baseHref: srcDocBaseHref,
+            initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
+            selectionBridge: true,
+            editBridge: manualEditRequiresSrcDoc,
+            paletteBridge: false,
+            previewFocusGuard: true,
+          })
+          : '';
+    },
     [
       redirectLoopBlocked,
       previewSource,
@@ -6438,6 +6497,8 @@ function HtmlViewer({
       srcDocBaseHref,
       previewStateKey,
       manualEditRequiresSrcDoc,
+      teamverEmbedPreviewMode,
+      embedPreviewPrefixSettled,
     ],
   );
   const lazySrcDocTransport = useMemo(() => buildLazySrcdocTransport(), []);
@@ -6445,22 +6506,27 @@ function HtmlViewer({
   const [srcDocShellReady, setSrcDocShellReady] = useState(false);
   const wasUrlLoadPreviewRef = useRef(useUrlLoadPreview);
   const urlPreviewKeepAliveKey = previewIframeKeepAliveKey(projectId, file.name);
-  const prevEmbedPreviewPrefixRef = useRef<string | null>(null);
-  // When the scoped prefix arrives (or auth recovery rotates it), remount
-  // the srcDoc iframe so the new `<base href>` binds. Updating the srcDoc
-  // string alone is not reliable after an about:blank / no-base first paint —
-  // users otherwise need the toolbar refresh button to see the slide.
+  // undefined = never painted under current identity; null/string = last painted base.
+  const prevEmbedPreviewPrefixRef = useRef<string | null | undefined>(undefined);
+  // When the scoped prefix arrives after a fail-open paint (or auth recovery
+  // rotates it), remount so the new `<base href>` binds. Skip the first settle
+  // when we held empty srcDoc — that paint already has the correct base.
   useEffect(() => {
     if (!teamverEmbedPreviewMode) {
       prevEmbedPreviewPrefixRef.current = embedPreviewPrefix;
       return;
     }
+    if (!embedPreviewPrefixSettled) {
+      prevEmbedPreviewPrefixRef.current = undefined;
+      return;
+    }
     const prev = prevEmbedPreviewPrefixRef.current;
     prevEmbedPreviewPrefixRef.current = embedPreviewPrefix;
-    if (!embedPreviewPrefix || embedPreviewPrefix === prev) return;
+    if (prev === undefined) return;
+    if (embedPreviewPrefix === prev) return;
     activatedSrcDocTransportHtmlRef.current = null;
     setSrcDocTransportResetKey((key) => key + 1);
-  }, [embedPreviewPrefix, teamverEmbedPreviewMode]);
+  }, [embedPreviewPrefix, embedPreviewPrefixSettled, teamverEmbedPreviewMode]);
   // Reset the shell-ready latch whenever the srcDoc iframe re-mounts. The
   // next shell will post `od:srcdoc-transport-ready` (or fire onLoad) and
   // flip this back to true. See #2253.
@@ -6700,7 +6766,7 @@ function HtmlViewer({
   }, [effectiveDeck, isActivePreviewIframeSource, isOurPreviewIframeSource, previewStateKey]);
 
   useEffect(() => {
-    if (!needsDeckHostViewportFit || mode !== 'preview') return;
+    if (!deckHostViewportFitActive || mode !== 'preview') return;
     let cancelZeroSizeRetry: (() => void) | null = null;
     function onDeckViewportRequest(ev: MessageEvent) {
       // Accept any of our preview iframes — during liveHtml→disk srcDoc churn
@@ -6754,7 +6820,7 @@ function HtmlViewer({
       cancelZeroSizeRetry?.();
     };
   }, [
-    needsDeckHostViewportFit,
+    deckHostViewportFitActive,
     mode,
     isOurPreviewIframeSource,
     deckPreviewFitScale,
@@ -6816,7 +6882,7 @@ function HtmlViewer({
   }, [resolveActiveDeckPreviewIframe]);
 
   useEffect(() => {
-    if (!needsDeckHostViewportFit || mode !== 'preview') return;
+    if (!deckHostViewportFitActive || mode !== 'preview') return;
     // Resolve the iframe at fire time — stream-end / liveHtml clear remounts
     // often leave a null capture from effect start (black letterbox until refresh).
     return scheduleDeckPreviewFitNudges(
@@ -6825,7 +6891,7 @@ function HtmlViewer({
       deckPreviewFitOptions,
     );
   }, [
-    needsDeckHostViewportFit,
+    deckHostViewportFitActive,
     mode,
     zoom,
     deckPreviewFitScale,
@@ -6843,11 +6909,91 @@ function HtmlViewer({
     source,
   ]);
 
+  // Persistent host→iframe fit recovery: panel resize, sidebar drag, and
+  // mid-session remounts can strand compact decks on a black letterbox even
+  // after the initial nudge window. Re-post whenever the active frame's box
+  // changes, and keep a slow recovery loop until the bridge reports ready.
+  useEffect(() => {
+    if (!deckHostViewportFitActive || mode !== 'preview') return;
+    let cancelled = false;
+    let stackedReady = !compactApiStackedDeck;
+    const onReady = (ev: MessageEvent) => {
+      if (!isOurPreviewIframeSource(ev.source)) return;
+      const data = ev.data as { type?: string } | null;
+      if (data?.type !== 'od:stacked-deck-ready') return;
+      stackedReady = true;
+    };
+    window.addEventListener('message', onReady);
+
+    const nudge = () => {
+      if (cancelled) return;
+      nudgeDeckPreviewFit(
+        resolveActiveDeckPreviewIframe,
+        deckPreviewFitScale,
+        deckPreviewFitOptions,
+      );
+    };
+
+    let observer: ResizeObserver | null = null;
+    let observedFrame: HTMLIFrameElement | null = null;
+    const observeTarget = () => {
+      const frame = resolveActiveDeckPreviewIframe();
+      if (!frame || typeof ResizeObserver === 'undefined') return;
+      if (observer && observedFrame === frame) return;
+      observer?.disconnect();
+      observedFrame = frame;
+      observer = new ResizeObserver(() => {
+        nudge();
+      });
+      observer.observe(frame);
+      if (previewBodyRef.current) observer.observe(previewBodyRef.current);
+    };
+    observeTarget();
+
+    const cancelUntilSized = schedulePostDeckHostViewportUntilSized(
+      resolveActiveDeckPreviewIframe,
+      deckPreviewFitScale,
+      deckPreviewFitOptions,
+    );
+
+    // Slow recovery: remount/srcDoc churn can land after the fast nudge window.
+    // Do not tear down ResizeObserver every tick — only rebind when the frame node changes.
+    let slowAttempts = 0;
+    const slowTimer = window.setInterval(() => {
+      if (cancelled || stackedReady) return;
+      slowAttempts += 1;
+      observeTarget();
+      nudge();
+      if (slowAttempts >= 40) stackedReady = true; // ~20s — stop polling
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('message', onReady);
+      observer?.disconnect();
+      cancelUntilSized();
+      window.clearInterval(slowTimer);
+    };
+    // Intentionally omit `srcDoc`: token-level HTML churn would reset the recovery
+    // loop every stream tick. Remount key + transport switch are enough.
+  }, [
+    deckHostViewportFitActive,
+    mode,
+    compactApiStackedDeck,
+    srcDocTransportResetKey,
+    useUrlLoadPreview,
+    deckPreviewFitScale,
+    deckPreviewFitOptions,
+    resolveActiveDeckPreviewIframe,
+    isOurPreviewIframeSource,
+    embedPreviewPrefixSettled,
+  ]);
+
   // Stream end often rebuilds srcDoc / clears liveHtml — re-nudge fit once.
   useEffect(() => {
     const wasStreaming = wasStreamingForDeckFitRef.current;
     wasStreamingForDeckFitRef.current = streaming;
-    if (!needsDeckHostViewportFit || mode !== 'preview') return;
+    if (!deckHostViewportFitActive || mode !== 'preview') return;
     if (!(wasStreaming && !streaming)) return;
     return scheduleDeckPreviewFitNudges(
       resolveActiveDeckPreviewIframe,
@@ -6856,7 +7002,7 @@ function HtmlViewer({
     );
   }, [
     streaming,
-    needsDeckHostViewportFit,
+    deckHostViewportFitActive,
     mode,
     deckPreviewFitScale,
     deckPreviewFitOptions,
@@ -6869,7 +7015,7 @@ function HtmlViewer({
   useEffect(() => {
     const hadLive = hadLiveHtmlForDeckFitRef.current;
     hadLiveHtmlForDeckFitRef.current = hasLiveHtml;
-    if (!needsDeckHostViewportFit || mode !== 'preview') return;
+    if (!deckHostViewportFitActive || mode !== 'preview') return;
     if (!(hadLive && !hasLiveHtml)) return;
     return scheduleDeckPreviewFitNudges(
       resolveActiveDeckPreviewIframe,
@@ -6878,7 +7024,7 @@ function HtmlViewer({
     );
   }, [
     hasLiveHtml,
-    needsDeckHostViewportFit,
+    deckHostViewportFitActive,
     mode,
     deckPreviewFitScale,
     deckPreviewFitOptions,

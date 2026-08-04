@@ -20,12 +20,19 @@ describe('FileViewer embed preview prefix recovery', () => {
   it('remounts srcDoc when the scoped preview prefix arrives so entry paint is not blank', () => {
     // Page entry used to inject <base href="about:blank"> then update the
     // srcDoc string when the prefix resolved — without a remount the iframe
-    // stayed blank until toolbar refresh. Gate on the hard remount path.
+    // stayed blank until toolbar refresh. Hold srcDoc until prefix settle,
+    // skip remount on the first settle paint, and remount when a fail-open
+    // / rotated prefix changes the base.
     expect(fileViewer).toContain('resolveHtmlPreviewSrcDocBaseHref');
     expect(fileViewer).toContain('srcDocBaseHref');
+    expect(fileViewer).toContain('embedPreviewPrefixSettled');
     expect(fileViewer).toContain('prevEmbedPreviewPrefixRef');
+    expect(fileViewer).toContain('failOpenPaintTimer');
     expect(fileViewer).toMatch(
-      /if \(!embedPreviewPrefix \|\| embedPreviewPrefix === prev\) return;[\s\S]{0,200}?setSrcDocTransportResetKey/,
+      /teamverEmbedPreviewMode && !embedPreviewPrefixSettled/,
+    );
+    expect(fileViewer).toMatch(
+      /if \(prev === undefined\) return;[\s\S]{0,200}?setSrcDocTransportResetKey/,
     );
     expect(fileViewer).toMatch(
       /baseHref:\s*srcDocBaseHref/,
