@@ -96,6 +96,12 @@ export interface ManualEditTarget {
   /** offsetParent-relative left/top for promote-on-drag (53). */
   offsetLeft?: number;
   offsetTop?: number;
+  /**
+   * When sticky→absolute promote needs a static scrollport as CB, bridge
+   * reports that ancestor's stable id so the host persists `position:relative`
+   * before the promote set-style (53 Loop15).
+   */
+  stickyScrollportId?: string;
   outerHtml: string;
 }
 

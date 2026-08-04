@@ -8126,6 +8126,9 @@ function HtmlViewer({
         offsetLeft: leftPx ?? current.offsetLeft,
         offsetTop: topPx ?? current.offsetTop,
         cssPosition: options?.promotedPosition ?? current.cssPosition,
+        stickyScrollportId: options?.promotedPosition === 'absolute'
+          ? undefined
+          : current.stickyScrollportId,
       };
       selectedManualEditTargetRef.current = next;
       return next;
@@ -8301,6 +8304,10 @@ function HtmlViewer({
     if (!target) return;
     handleManualEditMovePreview(styles, viewport);
     const promotedPosition = String(styles.position || '').toLowerCase();
+    // Capture before optimistic update clears sticky metadata.
+    const stickyScrollportId = promotedPosition === 'absolute'
+      ? target.stickyScrollportId
+      : undefined;
     applyManualEditGestureOptimisticTarget(
       target,
       styles,
@@ -8312,6 +8319,18 @@ function HtmlViewer({
     setManualEditMoveDraftPos(null);
     setManualEditResizeDraftSize(null);
     setManualEditHostPaintRect(null);
+    // Pin scrollport as absolute CB before persisting promote left/top so
+    // content-relative offsets stay valid after reload (53 sticky Phase2).
+    if (stickyScrollportId) {
+      const scrollportOk = await applyManualEdit(
+        { id: stickyScrollportId, kind: 'set-style', styles: { position: 'relative' } },
+        embedUiLabel('Pin scroll container', '스크롤 컨테이너 고정'),
+      );
+      if (!scrollportOk) {
+        rollbackManualEditGestureStyles(stylesBefore);
+        return;
+      }
+    }
     const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) {
       rollbackManualEditGestureStyles(stylesBefore);

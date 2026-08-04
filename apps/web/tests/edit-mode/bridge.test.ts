@@ -948,4 +948,169 @@ describe('manual edit bridge target normalization', () => {
 
     dom.window.close();
   });
+
+  it('sticky inside static scrollport: offset* use scrollport content coords (not outer CB)', () => {
+    const posts: Array<{
+      type?: string;
+      id?: string;
+      ok?: boolean;
+      target?: {
+        offsetLeft?: number;
+        offsetTop?: number;
+        stickyScrollportId?: string;
+        cssPosition?: string;
+      };
+    }> = [];
+    const dom = new JSDOM(
+      `<main>
+        <div id="cb" style="position:relative">
+          <div id="sp" data-od-id="scrollport" style="overflow:auto;position:static;height:200px">
+            <div style="height:120px"></div>
+            <div data-od-id="sticky" style="position:sticky;top:0;width:100px;height:40px">S</div>
+            <div style="height:400px"></div>
+          </div>
+        </div>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const cb = dom.window.document.getElementById('cb')!;
+    const sp = dom.window.document.getElementById('sp')!;
+    const sticky = dom.window.document.querySelector('[data-od-id="sticky"]') as HTMLElement;
+
+    cb.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 400, height: 600,
+      top: 0, right: 400, bottom: 600, left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    Object.defineProperty(cb, 'clientLeft', { value: 0 });
+    Object.defineProperty(cb, 'clientTop', { value: 0 });
+    Object.defineProperty(cb, 'scrollLeft', { value: 0 });
+    Object.defineProperty(cb, 'scrollTop', { value: 0 });
+
+    sp.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 400, height: 200,
+      top: 0, right: 400, bottom: 200, left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    Object.defineProperty(sp, 'clientLeft', { value: 0 });
+    Object.defineProperty(sp, 'clientTop', { value: 10 });
+    Object.defineProperty(sp, 'scrollLeft', { value: 0 });
+    Object.defineProperty(sp, 'scrollTop', { value: 150 });
+
+    // Stuck sticky: visual top ≈ scrollport padding edge (clientTop).
+    sticky.getBoundingClientRect = () => ({
+      x: 0, y: 10, width: 100, height: 40,
+      top: 10, right: 100, bottom: 50, left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    const realGetComputed = dom.window.getComputedStyle.bind(dom.window);
+    dom.window.getComputedStyle = ((el: Element) => {
+      const style = realGetComputed(el);
+      if (el === sp) {
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'position') return 'static';
+            if (prop === 'overflow' || prop === 'overflowY') return 'auto';
+            if (prop === 'overflowX') return 'visible';
+            return Reflect.get(target, prop);
+          },
+        }) as CSSStyleDeclaration;
+      }
+      if (el === sticky) {
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'position') return 'sticky';
+            return Reflect.get(target, prop);
+          },
+        }) as CSSStyleDeclaration;
+      }
+      if (el === cb) {
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'position') return 'relative';
+            return Reflect.get(target, prop);
+          },
+        }) as CSSStyleDeclaration;
+      }
+      return style;
+    }) as typeof dom.window.getComputedStyle;
+
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-remeasure', id: 'sticky' },
+    }));
+
+    const rectMsg = posts.find((p) => p.type === 'od-edit-rect');
+    // Content coords vs scrollport: top = 10 - 0 - 10 + 150 = 150 (not outer CB 10).
+    expect(rectMsg?.ok).toBe(true);
+    expect(rectMsg?.target?.cssPosition).toBe('sticky');
+    expect(rectMsg?.target?.offsetLeft).toBe(0);
+    expect(rectMsg?.target?.offsetTop).toBe(150);
+    expect(rectMsg?.target?.stickyScrollportId).toBe('scrollport');
+
+    dom.window.close();
+  });
+
+  it('sticky promote preview pins static scrollport as position:relative', () => {
+    const posts: Array<{ type?: string; ok?: boolean }> = [];
+    const dom = new JSDOM(
+      `<main>
+        <div id="sp" data-od-id="scrollport" style="overflow:auto;position:static;height:200px">
+          <div data-od-id="sticky" style="position:sticky;top:0">S</div>
+        </div>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const sp = dom.window.document.getElementById('sp')!;
+    const sticky = dom.window.document.querySelector('[data-od-id="sticky"]') as HTMLElement;
+    const realGetComputed = dom.window.getComputedStyle.bind(dom.window);
+    dom.window.getComputedStyle = ((el: Element) => {
+      const style = realGetComputed(el);
+      if (el === sp) {
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'position') {
+              return sp.style.position || 'static';
+            }
+            if (prop === 'overflow' || prop === 'overflowY') return 'auto';
+            return Reflect.get(target, prop);
+          },
+        }) as CSSStyleDeclaration;
+      }
+      if (el === sticky) {
+        return new Proxy(style, {
+          get(target, prop) {
+            if (prop === 'position') {
+              return sticky.style.position || 'sticky';
+            }
+            return Reflect.get(target, prop);
+          },
+        }) as CSSStyleDeclaration;
+      }
+      return style;
+    }) as typeof dom.window.getComputedStyle;
+
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: {
+        type: 'od-edit-preview-style',
+        id: 'sticky',
+        version: 1,
+        styles: { position: 'absolute', left: '0px', top: '150px' },
+      },
+    }));
+
+    expect(posts.some((p) => p.type === 'od-edit-preview-style-applied' && p.ok)).toBe(true);
+    expect(sp.style.getPropertyValue('position')).toBe('relative');
+    expect(sp.getAttribute('data-od-sticky-scrollport-cb')).toBe('1');
+
+    dom.window.close();
+  });
 });

@@ -136,8 +136,10 @@ type MoveDragState = {
   moved: boolean;
   /** True after at least one move preview — gates cancel so jitter clicks keep pending styles. */
   previewed: boolean;
-  /** 53: flow → absolute promote during this gesture. */
+  /** 53: flow → relative/absolute promote during this gesture. */
   promote: boolean;
+  /** Pre-promote cssPosition (`static` / `relative` / `sticky`) for promote styles. */
+  promoteCssPosition: string;
   lastViewport: { x: number; y: number };
 } & GestureHostGeom;
 
@@ -400,6 +402,7 @@ export function ManualEditResizeOverlay({
         const preview = promoteMoveStyles(drag.startRect, result, {
           layoutWidthPx: drag.layoutWidthPx,
           layoutHeightPx: drag.layoutHeightPx,
+          cssPosition: drag.promoteCssPosition,
         });
         drag.lastStyles = preview;
         drag.previewed = true;
@@ -581,6 +584,7 @@ export function ManualEditResizeOverlay({
       moved: false,
       previewed: false,
       promote,
+      promoteCssPosition: String(startTarget.cssPosition ?? 'static'),
       lastViewport: { x: startTarget.rect.x, y: startTarget.rect.y },
       hostScale: geom.hostScale,
       hostOffset: geom.hostOffset,

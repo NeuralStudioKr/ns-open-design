@@ -184,6 +184,60 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (pos && pos !== 'static') return true;
     return isTransformContainingBlock(style);
   }
+  // Sticky containing block = nearest scrollport (overflow not visible).
+  function isScrollport(style){
+    if (!style) return false;
+    function axis(v){
+      v = String(v || '').toLowerCase();
+      return v === 'auto' || v === 'scroll' || v === 'overlay' || v === 'hidden';
+    }
+    return axis(style.overflowY) || axis(style.overflowX) || axis(style.overflow);
+  }
+  function findNearestScrollport(el){
+    var node = el && el.parentElement;
+    while (node && node !== document.documentElement) {
+      if (isScrollport(window.getComputedStyle(node))) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+  // Sticky→absolute: prefer scrollport as CB (pin position:relative when static)
+  // so left/top stay content-relative and further scrolling moves the box.
+  function stickyPromoteContainingBlock(el){
+    var scrollport = findNearestScrollport(el);
+    if (!scrollport) return null;
+    var node = el.parentElement;
+    while (node && node !== scrollport) {
+      if (isAbsoluteContainingBlock(window.getComputedStyle(node))) return node;
+      node = node.parentElement;
+    }
+    return scrollport;
+  }
+  function ensureStickyScrollportContainingBlock(el){
+    var scrollport = findNearestScrollport(el);
+    if (!scrollport) return null;
+    var node = el.parentElement;
+    while (node && node !== scrollport) {
+      if (isAbsoluteContainingBlock(window.getComputedStyle(node))) return null;
+      node = node.parentElement;
+    }
+    var spStyle = window.getComputedStyle(scrollport);
+    if (isAbsoluteContainingBlock(spStyle)) return null;
+    scrollport.style.setProperty('position', 'relative', 'important');
+    scrollport.setAttribute('data-od-sticky-scrollport-cb', '1');
+    return scrollport;
+  }
+  function clearStickyScrollportContainingBlock(el){
+    var node = el && el.parentElement;
+    while (node && node !== document.documentElement) {
+      if (node.getAttribute && node.getAttribute('data-od-sticky-scrollport-cb') === '1') {
+        node.style.removeProperty('position');
+        node.removeAttribute('data-od-sticky-scrollport-cb');
+        return;
+      }
+      node = node.parentElement;
+    }
+  }
   // Post-promote / nested absolute left/top origin (not pre-promote offsetParent).
   function promoteCoords(el){
     var rect = el.getBoundingClientRect();
@@ -191,13 +245,18 @@ export function buildManualEditBridge(enabled: boolean): string {
     var node = el.parentElement;
     var selfPos = (window.getComputedStyle(el).position || 'static');
     var isFixed = selfPos === 'fixed';
-    while (node && node !== document.documentElement) {
-      var style = window.getComputedStyle(node);
-      if (isFixed ? isTransformContainingBlock(style) : isAbsoluteContainingBlock(style)) {
-        parent = node;
-        break;
+    if (selfPos === 'sticky') {
+      parent = stickyPromoteContainingBlock(el);
+    }
+    if (!parent) {
+      while (node && node !== document.documentElement) {
+        var style = window.getComputedStyle(node);
+        if (isFixed ? isTransformContainingBlock(style) : isAbsoluteContainingBlock(style)) {
+          parent = node;
+          break;
+        }
+        node = node.parentElement;
       }
-      node = node.parentElement;
     }
     if (!parent) parent = document.documentElement;
     var pr = parent.getBoundingClientRect();
@@ -206,12 +265,25 @@ export function buildManualEditBridge(enabled: boolean): string {
       top: Math.round(rect.top - pr.top - (parent.clientTop || 0) + (parent.scrollTop || 0)),
     };
   }
+  function stickyScrollportIdFor(el){
+    if ((window.getComputedStyle(el).position || 'static') !== 'sticky') return '';
+    var scrollport = findNearestScrollport(el);
+    if (!scrollport) return '';
+    var node = el.parentElement;
+    while (node && node !== scrollport) {
+      if (isAbsoluteContainingBlock(window.getComputedStyle(node))) return '';
+      node = node.parentElement;
+    }
+    if (isAbsoluteContainingBlock(window.getComputedStyle(scrollport))) return '';
+    return stableId(scrollport);
+  }
   function targetFrom(el, includeOuterHtml){
     var rect = el.getBoundingClientRect();
     var kind = inferKind(el);
     var id = stableId(el);
     var hidden = isHiddenTarget(el, rect);
     var promo = promoteCoords(el);
+    var stickyScrollportId = stickyScrollportIdFor(el);
     var fields = {};
     if (kind === 'link') {
       fields.text = plainTextFrom(el);
@@ -227,7 +299,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     // persisted as width — that shrinks the box on first resize preview.
     var layoutW = Math.round(Math.max(1, el.offsetWidth || 0));
     var layoutH = Math.round(Math.max(1, el.offsetHeight || 0));
-    return {
+    var target = {
       id: id,
       kind: kind,
       label: labelFor(el, id, kind),
@@ -247,6 +319,8 @@ export function buildManualEditBridge(enabled: boolean): string {
       offsetTop: promo.top,
       outerHtml: includeOuterHtml ? (el.outerHTML || '').replace(/\\sdata-od-runtime-id="[^"]*"/g, '').replace(/\\sdata-od-source-path="[^"]*"/g, '').replace(/\\sdata-od-edit-selected="[^"]*"/g, '').replace(/\\sdata-od-edit-host-chrome="[^"]*"/g, '') : ''
     };
+    if (stickyScrollportId) target.stickyScrollportId = stickyScrollportId;
+    return target;
   }
   function allTargets(){
     var nodes = document.body ? document.body.querySelectorAll(discoverySelector) : [];
@@ -436,6 +510,15 @@ export function buildManualEditBridge(enabled: boolean): string {
     for (var p = 0; p < styleProps.length; p++) allowed[styleProps[p]] = 1;
     var keys = Object.keys(styles || {});
     try {
+      var nextPosition = Object.prototype.hasOwnProperty.call(styles || {}, 'position')
+        ? String((styles || {}).position || '').trim().toLowerCase()
+        : null;
+      var wasSticky = (window.getComputedStyle(el).position || 'static') === 'sticky';
+      if (nextPosition === 'absolute' && wasSticky) {
+        ensureStickyScrollportContainingBlock(el);
+      } else if (nextPosition != null && nextPosition !== 'absolute') {
+        clearStickyScrollportContainingBlock(el);
+      }
       for (var i = 0; i < keys.length; i++) {
         var key = keys[i];
         if (!allowed[key]) continue;

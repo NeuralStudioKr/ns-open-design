@@ -56,10 +56,10 @@ describe('canMoveTarget', () => {
 });
 
 describe('canPromoteTarget', () => {
-  it('allows static / relative and not anchored', () => {
+  it('allows static / relative / sticky and not anchored', () => {
     expect(canPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
     expect(canPromoteTarget(target({ cssPosition: 'relative' }))).toBe(true);
-    expect(canPromoteTarget(target({ cssPosition: 'sticky' }))).toBe(false);
+    expect(canPromoteTarget(target({ cssPosition: 'sticky' }))).toBe(true);
     expect(canPromoteTarget(target({ cssPosition: 'absolute' }))).toBe(false);
     expect(canMoveOrPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
   });
@@ -134,6 +134,24 @@ describe('promoteMoveStyles', () => {
     expect(out.width).toBeUndefined();
     expect(out.height).toBeUndefined();
   });
+
+  it('sticky promote uses absolute + layout size lock against scrollport CB', () => {
+    const out = promoteMoveStyles(
+      { x: 10, y: 10, width: 100, height: 40 },
+      { leftPx: 0, topPx: 150, moved: true },
+      { layoutWidthPx: 200, layoutHeightPx: 80, cssPosition: 'sticky' },
+    );
+    expect(out).toMatchObject({
+      position: 'absolute',
+      left: '0px',
+      top: '150px',
+      width: '200px',
+      height: '80px',
+      margin: '0px',
+      right: '',
+      bottom: '',
+    });
+  });
 });
 
 describe('promote start / rollback helpers', () => {
@@ -155,6 +173,16 @@ describe('promote start / rollback helpers', () => {
       styles: emptyManualEditStyles(),
       rect: { x: 200, y: 300, width: 100, height: 50 },
     }))).toEqual({ startLeftPx: 0, startTopPx: 0 });
+  });
+
+  it('starts sticky promote from scrollport offset* (not sticky inset styles)', () => {
+    expect(startPositionFromTarget(target({
+      cssPosition: 'sticky',
+      offsetLeft: 0,
+      offsetTop: 150,
+      styles: { ...emptyManualEditStyles(), top: '0px' },
+      rect: { x: 0, y: 10, width: 100, height: 40 },
+    }))).toEqual({ startLeftPx: 0, startTopPx: 150 });
   });
 
   it('rolls back static/auto to empty and keeps relative', () => {

@@ -36,9 +36,18 @@ export function canPromoteTarget(
   // fixed images still move via canMoveTarget. Text/link promote-on-drag is
   // allowed — edge hit-slop + 2px threshold keep wrap-resize from becoming an
   // accidental move; blocking promote made flow headlines undraggable.
+  // Sticky uses absolute+scrollport CB (not relative insets) — see promoteMoveStyles.
   if (target!.kind === 'image') return false;
   const value = String(target!.cssPosition ?? 'static').toLowerCase();
-  return value === 'static' || value === 'relative';
+  return value === 'static' || value === 'relative' || value === 'sticky';
+}
+
+/** Sticky cannot use relative left/top (those are sticky insets). */
+export function isStickyPromoteTarget(
+  target: ManualEditTarget | null | undefined,
+): boolean {
+  if (!canPromoteTarget(target)) return false;
+  return String(target!.cssPosition ?? '').toLowerCase() === 'sticky';
 }
 
 export function canMoveOrPromoteTarget(
@@ -63,13 +72,29 @@ function baseMoveEligibility(
 
 /**
  * Start left/top for a move/promote session.
- * Flow moves use relative `left`/`top` deltas, not layout positions. Starting
- * from offsetLeft/rect would double-count the element's slot in flex/grid rows.
+ * Static/relative flow moves use authored relative `left`/`top` deltas — not
+ * layout positions (offsetLeft/rect would double-count flex/grid slots).
+ * Sticky uses bridge scrollport content coords (`offset*`) so absolute promote
+ * does not jump and further scrolling keeps the box with content.
  */
 export function startPositionFromTarget(target: ManualEditTarget): {
   startLeftPx: number;
   startTopPx: number;
 } {
+  if (isStickyPromoteTarget(target)) {
+    return {
+      startLeftPx: Math.round(
+        target.offsetLeft
+          ?? parseExplicitPx(target.styles.left)
+          ?? target.rect.x,
+      ),
+      startTopPx: Math.round(
+        target.offsetTop
+          ?? parseExplicitPx(target.styles.top)
+          ?? target.rect.y,
+      ),
+    };
+  }
   if (canPromoteTarget(target)) {
     return {
       startLeftPx: Math.round(parseExplicitPx(target.styles.left) ?? 0),
@@ -135,14 +160,45 @@ export function movePreviewStyles(result: MoveMathResult): Partial<ManualEditSty
 }
 
 /**
- * In-place flow offset + move styles (53). Keeps DOM parent and the original
- * layout slot so grouped cards/flex items do not cause sibling reflow.
+ * In-place flow offset + move styles (53).
+ * - static/relative: `position:relative` offsets — keeps layout slot so grouped
+ *   cards/flex items do not cause sibling reflow.
+ * - sticky: `position:absolute` + size lock against the scrollport CB (relative
+ *   left/top would collide with sticky insets).
  */
 export function promoteMoveStyles(
-  _startRect: ManualEditRect,
+  startRect: ManualEditRect,
   result: MoveMathResult,
-  _options?: { layoutWidthPx?: number; layoutHeightPx?: number; position?: string },
+  options?: { layoutWidthPx?: number; layoutHeightPx?: number; cssPosition?: string },
 ): Partial<ManualEditStyles> {
+  if (String(options?.cssPosition ?? '').toLowerCase() === 'sticky') {
+    const widthPx = Math.round(
+      options?.layoutWidthPx && options.layoutWidthPx >= 1
+        ? options.layoutWidthPx
+        : startRect.width,
+    );
+    const heightPx = Math.round(
+      options?.layoutHeightPx && options.layoutHeightPx >= 1
+        ? options.layoutHeightPx
+        : startRect.height,
+    );
+    return {
+      position: 'absolute',
+      left: `${result.leftPx}px`,
+      top: `${result.topPx}px`,
+      width: `${widthPx}px`,
+      height: `${heightPx}px`,
+      maxWidth: 'none',
+      maxHeight: 'none',
+      margin: '0px',
+      marginTop: '0px',
+      marginRight: '0px',
+      marginBottom: '0px',
+      marginLeft: '0px',
+      right: '',
+      bottom: '',
+    };
+  }
   return {
     position: 'relative',
     left: `${result.leftPx}px`,
