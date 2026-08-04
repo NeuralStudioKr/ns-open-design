@@ -26,6 +26,7 @@ import {
   mergeManualEditTargetsFromSource,
   readScopedCommentTargetText,
   resolveManualEditTargetReference,
+  sanitizeManualEditHtmlFragment,
 } from './source-patches';
 
 export type ScopedDeckPersistFailureCode =
@@ -623,10 +624,14 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
   }
 
   const acceptSlideLevel = (kind: 'style-only' | 'text-preserved'): string | null => {
+    // Slide-level swap bypasses finalizeManualEditReplacement — sanitize first
+    // so sibling <script>/on* cannot ride a "style-only" acceptance.
+    const sanitizedSlide = sanitizeManualEditHtmlFragment(patchedSlide);
+    if (!sanitizedSlide.trim()) return null;
     const swapped = applyDeckPatch({
       currentHtml: input.nextHtml,
       patch: {
-        ops: [{ op: 'replace', slideIndex: input.slideIndex, html: patchedSlide }],
+        ops: [{ op: 'replace', slideIndex: input.slideIndex, html: sanitizedSlide }],
       },
     });
     if (!swapped.ok) return null;

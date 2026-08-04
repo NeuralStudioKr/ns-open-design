@@ -943,7 +943,7 @@ function sanitizeManualEditReplacementTree(root: Element): void {
       toRemove.push(el);
       return;
     }
-    // SMIL can assign on* / style via attributeName + to/values without on* attrs.
+    // SMIL can assign on* / style / href via attributeName + to/values without on* attrs.
     if (MANUAL_EDIT_SMIL_ANIM_TAGS.has(tag)) {
       const smilAttr = (
         el.getAttribute('attributeName')
@@ -961,6 +961,22 @@ function sanitizeManualEditReplacementTree(root: Element): void {
           const scrubbed = scrubUnsafeInlineStyleAttr(raw);
           if (!scrubbed) el.removeAttribute(key);
           else if (scrubbed !== raw) el.setAttribute(key, scrubbed);
+        }
+        if (!['to', 'from', 'by', 'values'].some((key) => el.hasAttribute(key))) {
+          toRemove.push(el);
+          return;
+        }
+      }
+      if (MANUAL_EDIT_SMIL_NAV_ATTR_NAMES.has(smilAttr)) {
+        for (const key of ['to', 'from', 'by', 'values'] as const) {
+          const raw = el.getAttribute(key);
+          if (raw == null) continue;
+          const pieces = key === 'values' ? String(raw).split(';') : [raw];
+          const unsafe = pieces.some((piece) => {
+            const trimmed = piece.trim();
+            return Boolean(trimmed) && !isSafeManualEditRelativeOrFragmentUrl(trimmed);
+          });
+          if (unsafe) el.removeAttribute(key);
         }
         if (!['to', 'from', 'by', 'values'].some((key) => el.hasAttribute(key))) {
           toRemove.push(el);
@@ -1016,6 +1032,34 @@ function finalizeManualEditReplacement(currentTarget: Element, replacement: Elem
   preserveManualEditIdentityAttributes(currentTarget, replacement);
   stripDescendantManualEditIdentityAttributes(replacement);
   sanitizeManualEditReplacementTree(replacement);
+}
+
+/**
+ * Sanitize a slide/fragment HTML string with the same rules as set-outer-html
+ * replacements — used by scoped slide-level merge fallbacks that skip finalize.
+ */
+export function sanitizeManualEditHtmlFragment(html: string): string {
+  const source = String(html || '');
+  const trimmed = source.trim();
+  if (!trimmed) return source;
+  const doc = parseSource('<!doctype html><html><body></body></html>');
+  if (!doc?.body) return source;
+  const template = doc.createElement('template');
+  template.innerHTML = trimmed;
+  for (const root of Array.from(template.content.children)) {
+    const tag = root.tagName.toLowerCase();
+    if (MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(tag)) {
+      root.remove();
+      continue;
+    }
+    sanitizeManualEditReplacementTree(root);
+  }
+  return Array.from(template.content.childNodes)
+    .map((node) => {
+      if (node.nodeType === 1) return (node as Element).outerHTML;
+      return node.textContent || '';
+    })
+    .join('');
 }
 
 function findReplacementCandidateByTextHint(
@@ -1575,6 +1619,10 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
       continue;
     }
     const tag = el.tagName.toLowerCase();
+    if (tag === 'meta') {
+      // meta refresh / charset must not be rewritten (content bypasses URL attrs).
+      continue;
+    }
     if (
       MANUAL_EDIT_NO_URL_MUTATION_TAGS.has(tag)
       && (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
@@ -1841,6 +1889,22 @@ const MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS = new Set([
   'lineargradient',
   'radialgradient',
   'filter',
+  // animate*/set href targets a paint/element server — keep same-document only.
+  'animate',
+  'animatemotion',
+  'animatetransform',
+  'set',
+]);
+
+/** SMIL attributeName values that assign navigable/resource URLs. */
+const MANUAL_EDIT_SMIL_NAV_ATTR_NAMES = new Set([
+  'href',
+  'xlink:href',
+  'src',
+  'action',
+  'formaction',
+  'poster',
+  'cite',
 ]);
 
 /** Tags whose URL attrs must not be mutated via set-attributes (chrome/exec). */
@@ -2042,6 +2106,19 @@ function containsUnsafeEmbeddedCssOrScheme(value: string): boolean {
   return false;
 }
 
+/**
+ * Allow relative / same-doc / fragment URLs only — block absolute http(s) and
+ * protocol-relative phishing on form action / SMIL href retargets.
+ */
+export function isSafeManualEditRelativeOrFragmentUrl(value: string): boolean {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return true;
+  if (!isSafeManualEditUrl(trimmed)) return false;
+  const compact = compactManualEditUrlForSchemeCheck(decodeHtmlCharacterReferences(trimmed));
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(compact)) return false;
+  return true;
+}
+
 /** Validate URL attr values; `srcset`/`values` check each candidate URL. */
 export function isSafeManualEditUrlAttrValue(attr: string, value: string): boolean {
   const lower = String(attr || '').toLowerCase();
@@ -2051,6 +2128,9 @@ export function isSafeManualEditUrlAttrValue(attr: string, value: string): boole
       if (url && !isSafeManualEditUrl(url)) return false;
     }
     return true;
+  }
+  if (lower === 'action' || lower === 'formaction') {
+    return isSafeManualEditRelativeOrFragmentUrl(value);
   }
   if (lower === 'to' || lower === 'from' || lower === 'by' || lower === 'values') {
     // SMIL may carry bare URLs or CSS (`attributeName=style`) — reject either shape.

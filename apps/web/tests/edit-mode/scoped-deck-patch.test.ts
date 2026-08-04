@@ -276,6 +276,46 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     }
   });
 
+  it('strips script siblings when style-only slide fallback accepts the patched slide', () => {
+    const current = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0">
+  <h1 data-od-id="hero">Hero</h1>
+</section>
+</body></html>`;
+    // Target element unchanged; sibling script would otherwise ride style-only swap.
+    const patched = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0">
+  <h1 data-od-id="hero">Hero</h1>
+  <script src="https://evil.example/x.js"></script>
+  <p onclick="alert(1)">note</p>
+</section>
+</body></html>`;
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml: current,
+      patchedHtml: patched,
+      commentAttachments: [{
+        id: 'c-style',
+        order: 1,
+        filePath: 'deck.html',
+        elementId: 'hero',
+        selector: '[data-od-id="hero"]',
+        label: 'h1',
+        comment: '스타일만 조금 손봐줘',
+        currentText: 'Hero',
+        htmlHint: '<h1 data-od-id="hero">Hero</h1>',
+        pagePosition: { x: 0, y: 0, width: 10, height: 10 },
+        selectionKind: 'element',
+        slideIndex: 0,
+      }],
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.html).not.toMatch(/<script\b/i);
+    expect(result.html).not.toContain('evil.example');
+    expect(result.html).not.toMatch(/onclick/i);
+    expect(result.html).toContain('data-od-id="hero"');
+  });
+
   it('merges framework deck comments via selector hint when stale path ids miss on disk', () => {
     const frameworkCurrent = `<!doctype html><html><body>
 <div class="deck-shell">

