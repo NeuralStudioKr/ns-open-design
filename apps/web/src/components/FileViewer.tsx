@@ -7930,7 +7930,10 @@ function HtmlViewer({
     });
   }
 
-  function handleManualEditMovePreview(styles: Partial<ManualEditStyles>) {
+  function handleManualEditMovePreview(
+    styles: Partial<ManualEditStyles>,
+    viewport?: { x: number; y: number },
+  ) {
     const target = selectedManualEditTargetRef.current;
     if (!target) return;
     const version = nextManualEditPreviewVersion();
@@ -7951,6 +7954,12 @@ function HtmlViewer({
       ...current,
       styles: { ...current.styles, ...styles },
     }));
+    if (viewport) {
+      setManualEditMoveDraftPos({
+        x: Math.round(viewport.x),
+        y: Math.round(viewport.y),
+      });
+    }
   }
 
 
@@ -8030,7 +8039,7 @@ function HtmlViewer({
   ) {
     const target = selectedManualEditTargetRef.current;
     if (!target) return;
-    handleManualEditMovePreview(styles);
+    handleManualEditMovePreview(styles, viewport);
     const promoted = String(styles.position || '').toLowerCase() === 'absolute';
     applyManualEditGestureOptimisticTarget(target, styles, viewport, { promoted });
     manualEditResizeSessionActiveRef.current = false;

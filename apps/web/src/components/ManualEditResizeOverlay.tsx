@@ -86,7 +86,7 @@ export type ManualEditResizeOverlayProps = {
     rect: ManualEditRect;
     paint: ManualEditRect | null;
   } | null;
-  onMovePreview?: (next: Partial<ManualEditStyles>) => void;
+  onMovePreview?: (next: Partial<ManualEditStyles>, viewport?: { x: number; y: number }) => void;
   onMoveCommit?: (
     next: Partial<ManualEditStyles>,
     stylesBefore: Partial<ManualEditStyles>,
@@ -399,7 +399,7 @@ export function ManualEditResizeOverlay({
         drag.previewed = true;
         drag.lastViewport = viewport;
         setLiveViewportPos(viewport);
-        onMovePreviewRef.current?.(preview);
+        onMovePreviewRef.current?.(preview, viewport);
         return;
       }
       const preview = movePreviewStyles(result);
@@ -407,7 +407,7 @@ export function ManualEditResizeOverlay({
       drag.previewed = true;
       drag.lastViewport = viewport;
       setLiveViewportPos(viewport);
-      onMovePreviewRef.current?.(preview);
+      onMovePreviewRef.current?.(preview, viewport);
     };
 
     const onPointerUp = (event: PointerEvent) => endDrag(event, true);
