@@ -1246,6 +1246,67 @@ describe('manual edit source patches', () => {
     expect(clean).not.toMatch(/<script\b/i);
   });
 
+  it('strips onload from salvaged style siblings and full-source style hosts', () => {
+    const salvaged = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style onload="alert(1)">.hero-pop{color:#444}</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(salvaged.ok, salvaged.error).toBe(true);
+    expect(salvaged.source).toContain('.hero-pop{color:#444}');
+    expect(salvaged.source).not.toMatch(/onload/i);
+
+    const full = sanitizeManualEditFullSource([
+      '<!doctype html><html><head>',
+      '<style onload="alert(1)">body{color:red}</style>',
+      '</head><body><h1>ok</h1></body></html>',
+    ].join(''));
+    expect(full).toContain('body{color:red}');
+    expect(full).not.toMatch(/onload/i);
+  });
+
+  it('rejects set-attributes that retarget SMIL attributeName to on*', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg><rect><set data-od-id="anim" attributeName="x" to="1"></set></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'anim',
+      attributes: { attributeName: 'onclick', to: 'alert(1)' },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.source).toContain('attributeName="x"');
+    expect(result.source).not.toContain('onclick');
+  });
+
+  it('strips remote url() from marker and color-profile presentation attrs', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><path d="M0 0"></path></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<path d="M0 0" marker="url(https://evil.example/m.svg#x)"></path>',
+        '<image color-profile="url(https://evil.example/profile.icc)" href="#ok"></image>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html).not.toMatch(/\bmarker=/i);
+    expect(html).not.toMatch(/color-profile=/i);
+  });
+
   it('rejects remote href on SVG cursor resource tags', () => {
     const source = [
       '<!doctype html><html><body>',

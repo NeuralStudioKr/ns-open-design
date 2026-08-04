@@ -4327,7 +4327,11 @@ export function ProjectView({
         identifier: effectiveArt.identifier,
         sourceText,
       });
-      let artifactToPersist = recoveredHtml ? { ...effectiveArt, html: recoveredHtml } : effectiveArt;
+      // Recovery can pull a preceding document that was never manual-edit
+      // sanitized — scrub before persist when we accept recovered HTML.
+      let artifactToPersist = recoveredHtml
+        ? { ...effectiveArt, html: sanitizeManualEditFullSource(recoveredHtml) }
+        : effectiveArt;
       const baseName = artifactBaseNameFor(effectiveArt);
       const ext = artifactExtensionFor(effectiveArt);
       const currentProjectFiles = projectFilesSnapshot ?? projectFilesRef.current;

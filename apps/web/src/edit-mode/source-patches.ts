@@ -979,15 +979,6 @@ const MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS = new Set([
   'discard',
 ]);
 
-/** Hosts that must not receive set-text / set-style / set-attributes mutation. */
-function isManualEditLockedHostTag(tag: string): boolean {
-  const lower = String(tag || '').toLowerCase();
-  return (
-    MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(lower)
-    || MANUAL_EDIT_NO_URL_MUTATION_TAGS.has(lower)
-  );
-}
-
 const MANUAL_EDIT_SMIL_ANIM_TAGS = new Set([
   'set',
   'animate',
@@ -995,6 +986,17 @@ const MANUAL_EDIT_SMIL_ANIM_TAGS = new Set([
   'animatemotion',
   'animatecolor',
 ]);
+
+/** Hosts that must not receive set-text / set-style / set-attributes mutation. */
+function isManualEditLockedHostTag(tag: string): boolean {
+  const lower = String(tag || '').toLowerCase();
+  return (
+    MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(lower)
+    || MANUAL_EDIT_NO_URL_MUTATION_TAGS.has(lower)
+    // SMIL nodes assign attrs via attributeName+to — block direct mutation.
+    || MANUAL_EDIT_SMIL_ANIM_TAGS.has(lower)
+  );
+}
 
 /**
  * Scrub event-handler, style, and URL attrs on a single element (no child walk).
@@ -1195,6 +1197,7 @@ export function sanitizeManualEditFullSource(source: string): string {
         continue;
       }
       if (tag === 'style') {
+        sanitizeManualEditElementAttrs(child);
         const text = scrubSalvagedStyleText(child.textContent ?? '');
         if (!text) child.remove();
         else child.textContent = text;
@@ -1827,9 +1830,10 @@ function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true 
       ) {
         continue;
       }
-      const clone = doc.importNode(style, true) as HTMLStyleElement;
-      clone.textContent = text;
-      styleHost.appendChild(clone);
+      // Recreate a clean <style> so onload/onerror attrs cannot ride salvage.
+      const clean = doc.createElement('style');
+      clean.textContent = text;
+      styleHost.appendChild(clean);
     }
   }
   return { ok: true };
@@ -2029,9 +2033,11 @@ const MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS = new Set([
   'clippath',
   'mask',
   'cursor',
+  'marker',
   'marker-start',
   'marker-mid',
   'marker-end',
+  'color-profile',
 ]);
 
 /** SVG paint-server / resource tags restricted to same-document `#fragment` refs. */
