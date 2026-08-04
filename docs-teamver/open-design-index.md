@@ -81,10 +81,14 @@ Teamver sidecar 배포: `deploy/teamver/` (daemon + **be/** + nginx).
 
 **출시 경로:** [05_OD_UI_재사용_빠른출시.md](./05_OD_UI_재사용_빠른출시.md)
 
+**공식 OD main → Teamver staging 반영 검토 SSOT:** [40_OD_upstream_main_반영_검토.md](./40_OD_upstream_main_반영_검토.md)  
+(전체 merge 금지 · 수동 포팅만 · 2026-08-04 루프 25 갱신)
+
 ---
 
 ## 변경 이력
 
 | 일자 | 내용 |
 |------|------|
+| 2026-08-04 | [40](./40_OD_upstream_main_반영_검토.md) 루프 25 링크 추가 — upstream/main `6ce4344fe` 대비 staging 반영 후보 |
 | 2026-06-15 | `open-design/01~03` 3편 스냅샷을 본 인덱스로 통합, upstream 링크 SSOT |

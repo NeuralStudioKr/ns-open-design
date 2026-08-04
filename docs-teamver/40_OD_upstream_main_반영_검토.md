@@ -1,6 +1,7 @@
 # OD upstream main 반영 검토
 
-**판단 시점:** 2026-07-23 현재.
+**판단 시점:** 2026-08-04 현재.
+**반영 갱신:** 2026-08-04 — 검토 루프 25. `upstream/main`(`nexu-io/open-design`) 최신 `6ce4344fe` 기준으로 Teamver `staging`(`c4f7b7535`)과의 divergence를 재조사했다. **코드 포팅은 수행하지 않았다**(문서·우선순위·방안만 갱신). 전체 merge/cherry-pick 금지는 유지. 07-23 이후 upstream 신규 non-merge **73개**(07-28 이후 **43개**) 중 Teamver slide MVP에 바로 쓸 만한 것은 **소형 수동 포팅 후보 6개**뿐이며, SP v2.0·수동편집 mega·BYOK/AMR 대형·packaged/landing은 전부 비적용/보류.
 **반영 갱신:** 2026-07-23 — 추가 포팅 루프 24. P0-B(`4054b5357` plain-stream artifact ring buffer)를 staging에 수동 포팅했다. `apps/daemon/src/plain-stream.ts` 신규, `server.ts`에 8MiB head-biased stdout accumulator + close-time stitch finalizer, `OD_CHAT_RUN_MAX_EVENTS` 테스트 오버라이드. 회귀: `plain-stream.test.ts`(3) + `plain-stream-artifact-event-truncation.test.ts`(5) passed.
 **반영 갱신:** 2026-07-23 — 검증 루프 23. 루프 22 변경분(P0-C·P1-A·P1-C)을 전체 회귀 검증했다. daemon `tsc -p tsconfig.json --noEmit` 통과(contracts 재빌드 후), web `tsc -b --noEmit`은 내 변경 파일에 새 에러 없음(pre-existing 파일만 실패). daemon 전체 vitest `418 pass / 8 fail`, 8개 실패는 모두 pre-existing(cloud-agent chokidar/health nodeId/preview cache-control/s3 export presigned URL). 신규 upstream 후보 재조사: `068c9ae83` BYOK URL normalize는 staging에 `byok-opencode.ts` 없어 해당 없음, `4054b5357` plain-stream은 staging에 `plain-stream.ts` 모듈 자체 없어 **보류 유지**, `50843ff14` unattributable client failures(2026-07-22, 509줄/8파일)는 대부분 packaged desktop app 특정 로직이라 embed 실용성 낮음 → **조건부 후보로만 등재**.
 **반영 갱신:** 2026-07-23 — 추가 포팅 루프 22. P0-C(`d1372da02` run terminal reconcile), P1-A(`034c3895d` empty tool status UI), P1-C(`d3e091e15` failure classification)를 staging에 수동 포팅했다. P0-B(`4054b5357` plain-stream accumulator)는 staging에 `plain-stream.ts` 모듈 자체가 없어 **별도 대형 루프 보류**. P1-B(`4fb217c95` config downgrade guard)는 staging `config.ts`에 bedrock protocol downgrade 경로가 없어 **해당 없음**.
@@ -29,16 +30,114 @@
 **반영 갱신:** 2026-07-20 — 로컬 `upstream/main` 최신 `f13ed2cb7 landing-page: enrich and redesign the codex-design page (#5872)` 기준으로 prompt/cache·작업 속도 후보를 추가 재검토했다. `9b5cdd843`의 connected-MCP directive cache 분리는 Teamver run 구조에 맞춰 수동 포팅했다. `ed48a7d22` transient ACP persistence filter는 이미 Teamver `server.ts` 경로에 반영되어 있어 중복 적용하지 않았다.
 **반영 갱신:** 2026-07-20 — `origin/main` 최신 `3447f60a3 fix packaged payload desktop handoff (#5678)` 기준으로 속도·프롬프트 관련 후보를 재검토했다. 전체 merge 금지 원칙은 유지한다. 보류했던 `4b660237c`는 문구 단위로 다시 검토해 안전한 축약 문구만 수동 포팅했다.
 **반영 갱신:** 2026-07-16 — `git fetch origin main` 후 `origin/main` 최신 상태를 재확인했다. Teamver `staging`에는 Drive 인증/HA, S3/preview/cache, background run, 다운로드 안정화 패치가 계속 누적되어 있으므로 전체 merge 위험도는 여전히 높다.
-**비교 기준:** `staging` (`ad03c0931 test(contracts): harden slide template prompt contracts`) ↔ `origin/main` (`034c3895d fix(web): hide empty tool_call/tool_call_update status rows (#4621)`).
+**비교 기준:** `staging` (`c4f7b7535 docs(56): pin review-complement timeline SHA`) ↔ `upstream/main` / `origin/main` (`6ce4344fe ci: allow open-design-crew[bot] to apply backport labels (#6398)`).
+**remote:** 공식 OD = `upstream` → `https://github.com/nexu-io/open-design.git` (`origin/main`은 동일 tip으로 sync된 상태, 2026-08-04 확인).
 **merge-base:** `f6ce40ead` (2026-06-15) — 이후 양쪽 모두 대규모 독립 변경.
-**divergence:** `git rev-list --left-right --count staging...origin/main` → **`700 / 998`** (main 700 ahead, staging 998 ahead).
-**결론:** 공식 OD 최신 `main` 전체를 Teamver `staging`에 merge하지 않는다. Teamver 기존 동작을 깨지 않도록, 필요한 커밋만 수동 포팅한다.
+**divergence:** `git rev-list --left-right --count staging...upstream/main` → **`1682 / 777`** (staging 1682 ahead, upstream/main 777 ahead). 2026-07-23의 `700 / 998`보다 **Teamver 고유 커밋이 크게 증가**했다.
+**결론:** 공식 OD 최신 `main` 전체를 Teamver `staging`에 merge하지 않는다. **기존에 잘 동작하던 embed auth / HA / S3 / background reattach / export / chat sanitizer / slide-only를 깨지 않는 것**이 최우선이다. 필요한 커밋만 **단일 테마·수동 포팅**한다.
 
 ---
 
-## 0. 2026-07-23 현재 main 상태 요약 (루프 20)
+## 0. 2026-08-04 현재 main 상태 요약 (루프 25)
 
-### 0.1 2026-07-21 이후 main 신규 커밋 (staging 미반영)
+### 0.0 원칙 (이번 루프에서도 강제)
+
+1. **전체 merge / broad cherry-pick / 대형 refactor cherry-pick 금지.**
+2. staging에 이미 있는 동작(SSO·BFF·Drive HA·S3·background run·export·markup sanitizer·managed key)을 **되돌리거나 우회하지 않는다.**
+3. upstream 파일이 Teamver에서 rename/통합된 경우(`routes/runs.ts` 없음 → `server.ts`, `byok/` 없음 → managed key) **경로 매핑 후 최소 diff만** 수동 이식.
+4. 포팅 단위마다 §0.4 회귀 체크리스트 + 해당 테마 단위 테스트를 통과한 뒤에만 다음 항목으로 진행.
+5. “좋아 보이는” prompt/UI 대형 기능(`ebcba704e` SP v2.0, `b99a9fdc3` manual-edit mega)은 **품질 이득이 있어도 회귀 위험이 크면 보류.**
+
+### 0.1 2026-07-23 이후 upstream 신규 커밋 분류
+
+`git log staging..upstream/main --since=2026-07-23 --no-merges` 기준 **73개**. 아래는 Teamver AI Design(staging) 관점 재분류.  
+이 구간에 **신규 SSRF / path-traversal / export 보안 커밋은 없음**(루프 21 보안 묶음이 여전히 최신 방어선).
+
+#### A. 적용 후보 (우선순위 표기)
+
+| 우선 | 커밋 | 날짜 | 내용 | staging 상태 | Teamver 적용 판단 | 포팅 방안 (기존 동작 보호) |
+|------|------|------|------|--------------|-------------------|---------------------------|
+| **P0** | `c3de4d5b9` | 07-27 | timeout/model 실패 시 `tool_outstanding`·`post_tool_resume` stage 분류 | **부분.** `run-failure-classification.ts`·`run-diagnostics.ts`·`decideSafeRunRetry` 있음. **`tool_outstanding` / `post_tool_resume` / `summarizeRunToolProgress` 없음**(아직 `tool_execution`으로 뭉갬) | **다음 루프 1순위.** `4f3a0b3c0`의 전제 | contracts enum 2개 + `run-diagnostics` helper + 기존 classification 테스트 확장. `server.ts` 대형 리팩터 금지. |
+| **P0** | `4f3a0b3c0` | 07-30 | tool 이후 inactivity stall → native session continue | **없음.** `decidePostToolResumeRecovery` / `POST_TOOL_RESUME_CONTINUATION_PROMPT` / `native_session_continue` **미존재**. staging retry는 first_token 계열 `decideSafeRunRetry`만 | **다음 루프 2순위.** managed Claude 장시간 tool turn “죽은 것처럼 보이는 failed” 완화 | `run-retry-policy.ts`에 recovery 함수만 추가 → `server.ts`의 **기존** retry chokepoint에 국소 분기. Teamver cancel/background/reattach 정책(`explicit Stop`만 upstream abort)과 충돌하지 않게 `cancelRequested`·sideEffects 가드 유지. **cherry-pick 금지**(7파일/497줄). |
+| **P1** | `517f39acd` | 07-31 | Continue 후 stale Todo 카드 유지 방지 | **없음.** `onContinueRemainingTasks` / PinnedTodo 존재하나 `od:chat:continued-todo:` dismissal **없음** | **권장.** unfinished-work UX와 직결 | `ChatPane.tsx` + streaming 테스트만. ProjectView 시그니처 변경 최소화. background toast/`endedWithUnfinishedWork` 경로는 건드리지 않음. |
+| **P1** | `70f395307` | 07-27 | 마지막 style 클리어 시 runtime target 선택 유지 | **없음.** `edit-mode/source-patches.ts` 존재, `isManualEditRuntimeRenderedSource` **없음** | **권장.** [53 수동편집](./53-2_수동편집_위치_승격_구현현황.md)과 정합, 3파일/76줄 | helper 1개 + FileViewer reconcile + 단위 테스트. `b99a9fdc3` mega와 **분리**해서만 가져올 것. |
+| **P2** | `f9ccdfc4e` | 07-28 | 프로젝트 삭제 시 tab localStorage prune | **없음.** `PROJECT_TABS_CACHE_PREFIX`/`tabsCacheKey` 있으나 delete 성공 시 prune **미호출** | **저위험 후보** | `projects.ts`에 `removeCachedTabs` + Teamver `fetchTeamverDaemon` delete 성공 경로에서만 호출. registry/S3 삭제 순서 변경 금지. |
+| **P2** | `1da4f9e0f` | 07-30 | Design Browser viewport localStorage 유지 | **부분.** `DesignBrowserPanel` 존재, viewport는 항상 `'desktop'` 초기화 | **후순위 UX** | load/save helper만. slide-only/embed branding과 무관. |
+| **P2** | `af2a83350` | 07-29 | AMR OpenCode stall diagnostics 풍부화 | **없음.** telemetry 필드 부재 | **관측 필요 시만** | diagnostics 필드/로그 한정. FE/auth/retry 동작 변경 금지. |
+| **P2-조건부** | `7c8c7b79f` | 07-29 | required chat question Skip/auto-skip 허용 | staging은 required를 submit 게이트로 유지 | **제품 승인 전 보류.** slide discovery 품질 붕괴 위험 | 전체 포팅 비권장. “Teamver에서 required를 스킵해도 되는가”를 먼저 결정. |
+| **P3** | `9757b2527` | 07-30 | client가 pin 생략 시 `assistantMessageId` 서버 mint | 구조 다름(`routes/runs.ts` 없음). FE는 pin **필수** 전송 | **MCP/headless 실제 사용 시에만** | web embed는 불필요. ownership 가드(루프 21)는 이미 있음. |
+| **P3** | `84d5eae2a` | 08-03 | MCP delivery hint `previewUrl` 우선 | MCP UI 비노출 | **비노출 유지 시 스킵** | 힌트 문자열만 가능. |
+| **P3** | `4d4a6596d` / `7d7c56a76` / `99c13e083` | 07-30~24 | Kiro ACP / Local Codex plugin / Codex model preflight | Teamver managed Claude 주력 | **해당 없음에 가깝게 보류** | 런타임 제품화 시에만. |
+| **P3** | `798a85e8d` / `2cbb2e46d` | 08-04 / 07-31 | New project folder i18n / dark toggle contrast | 저위험 UI | **재현 시만** | 키/CSS 한정. |
+
+#### B. 고위험 — 전체 포팅 금지
+
+| 커밋 | 규모 | 이유 |
+|------|------|------|
+| `ebcba704e` SP v2.0 on-demand discovery | **68+ 파일** | Teamver deck-only / cache / background / comment-edit prompt와 정면 충돌. `4b660237c` slim charter와 동일하게 **문구 단위 재검토만** 허용. |
+| `b99a9fdc3` manual-edit direct manipulation + history | **~60파일 / ~10k줄** | FileViewer/bridge/overlay 전면 교체. Teamver는 [53](./53-2_수동편집_위치_승격_구현현황.md) 자체 승격 중 — upstream mega와 섞지 말 것. 필요한 조각은 `70f395307`처럼 **원자 패치만**. |
+| `7787556cf` full ACP tool transcript + usage telemetry | ~20파일 / 3.6k줄 | chat event persistence·telemetry 광범위. Teamver sanitizer/persist 정책과 충돌 가능. |
+| `8518ec847` AMR late login + auth stage | ~22파일 | Teamver SSO/BFF와 **다른 제품 표면**. 반영하지 않음. |
+| `4d0376e43` + BYOK credential-service 계열 (`45d1c7ff5`, `4a6c2da73`, `dac272911`) | 대형 | staging에 `apps/daemon/src/byok/` 없음. **managed key 정책과 충돌.** |
+| landing / packaged / desktop updater / CI / plugin marketplace / message-center / Clone Audit / guided inspiration(`340cbb9b9`→`ad5a7d6ba` revert) | — | hosted web+daemon Docker에 해당 없음. |
+
+#### C. 이미 해당 없음 / skip
+
+| 커밋 | 이유 |
+|------|------|
+| `83f3d5708` preview run status overlay 제거 | staging에 `PreviewRunStatusBar` 자체가 없음 |
+| 루프 21~24 P0/P1 묶음 | cancel late-error, terminal reconcile, plain-stream, security, export viewport, empty tool status, failure classification **기초** — 이미 반영. 이번 구간의 `c3de4d5b9`는 그 **확장분**만 신규 |
+
+### 0.2 루프 25 권장 포팅 순서 (기존 동작 보호 우선)
+
+> **이번 루프(25)는 문서만.** 코드 포팅은 아래 순서의 **별도 루프**에서 1항목씩.
+
+1. **P0-1:** `c3de4d5b9` — failure stage enum/diagnostics 확장 (contracts build 포함)
+2. **P0-2:** `4f3a0b3c0` — post-tool native session continue (`run-retry-policy` + `server.ts` 국소)
+3. **P1-A:** `517f39acd` — stale Todo dismiss (`ChatPane`만)
+4. **P1-B:** `70f395307` — manual-edit runtime selection keep (`source-patches` + FileViewer)
+5. **P2-A:** `f9ccdfc4e` — deleteProject tab cache prune
+6. **P2-B:** `1da4f9e0f` — browser viewport persist
+7. **재평가만:** `7c8c7b79f`(제품 승인), `af2a83350`(관측), MCP/Codex 계열(사용 시)
+
+각 단계 후 필수 회귀(§0.4 + 테마별):
+
+| 포팅 | 추가 회귀 |
+|------|-----------|
+| P0-1/2 | 생성 중 Stop → `canceled` 유지; 탭 이탈/재진입 reattach; 장시간 tool turn 후 자동 continue가 **의도치 않은 이중 run**을 만들지 않는지; HA 2노드 |
+| P1-A | Continue remaining tasks 후 Todo 카드 사라짐; unfinished toast 회귀 없음 |
+| P1-B | 수동 스타일 클리어 후 선택 유지; deck-patch/댓글 수정 경로 무영향 |
+| P2 | 프로젝트 삭제 후 재생성 시 유령 탭 없음; Design Browser만 viewport 기억 |
+
+### 0.3 루프 25 요약
+
+- **코드 변경 없음.** 검토·문서만.
+- upstream tip `6ce4344fe`, staging tip `c4f7b7535`, divergence **`1682 / 777`**.
+- **즉시 가치 있는 것:** post-tool stall 복구 묶음(`c3de4d5b9`→`4f3a0b3c0`), Todo dismiss, 수동편집 선택 유지, tab cache prune.
+- **절대 가져오지 말 것:** SP v2.0, manual-edit mega, BYOK/AMR 대형, packaged/landing/CI.
+- 이전 루프 24까지 완료한 P0-A~E·P1 기초는 유효. §0-archive에 보관.
+
+### 0.4 회귀 검증 체크리스트 (포팅 시 필수 — 유지)
+
+| # | 시나리오 | 확인 |
+|---|----------|------|
+| 1 | embed 로그인 → 홈 → 프로젝트 생성 → 슬라이드 생성 | preview·artifact 정상 |
+| 2 | 생성 중 탭 이탈 → 재진입 | background run reattach, input 상태 |
+| 3 | 명시적 Stop | `canceled` 유지, late error로 `failed` 오인 없음 |
+| 4 | PNG/JPEG/PDF/PPTX 다운로드 | 기존 품질·파일명·auth gate |
+| 5 | Drive publish/import | 세션·workspace 정합 |
+| 6 | Network | `/api/version`, `/api/runs`, `auth/session`, message `PUT` 호출량 회귀 없음 |
+| 7 | 2노드(staging) | project hash 라우팅·daemon restart 후 run 상태 |
+| 8 | Stop mid-deck | 채팅에 `.slide {…}` CSS leak 없음 ([42](./42_chat_markup_and_preview_guard.md)) |
+| 9 | 댓글/deck-patch 수정 | merge 실패·잘못된 파일 open 없음 |
+
+---
+
+## 0-archive. 2026-07-23 현재 main 상태 요약 (루프 20~24)
+
+> 이력 보존용. **현재 SSOT는 위 §0 (루프 25)** 이다.
+
+### archive-0.1 2026-07-21 이후 main 신규 커밋 (staging 미반영, 당시)
 
 `git log staging..origin/main --since=2026-07-21` 기준 **43개** non-merge 커밋. 아래는 Teamver AI Design(staging) 관점에서 **적용 가치·위험도**를 재분류한 목록이다.
 
@@ -72,9 +171,9 @@
 | **—** | `1912c3ba9`, `5435274ab` | 신규 plugin (Atelier Zero, Humanize PPT) | **비적용.** embed slide MVP는 deck template gate·불필요 plugin 비노출. | marketplace 정책 변경 시 별도. |
 | **—** | `3162da5f2`, `910e5d338` | test·release notes | **비적용.** 문서/테스트만. | — |
 
-### 0.2 2026-07-23 권장 포팅 순서 (기존 동작 보호 우선)
+### archive-0.2 2026-07-23 권장 포팅 순서 (당시 · 이후 루프 21~24로 완료)
 
-**루프 22 완료:** P0-C, P1-A, P1-C. **루프 24 완료:** P0-B. **다음 루프:** P1 `068c9ae83` BYOK URL normalize (해당 없음 여부 재확인) 또는 조건부 `50843ff14`.
+**루프 22 완료:** P0-C, P1-A, P1-C. **루프 24 완료:** P0-B. (2026-08-04 시점의 다음 작업은 §0.2 참고)
 
 1. ~~**P0-A (run lifecycle):** `7b27d4ba6` → `34a050737`~~ ✅ 루프 21
 2. ~~**P0-B (artifact durability):** `4054b5357` — plain-stream artifact ring buffer 유실~~ ✅ 루프 24
@@ -84,14 +183,14 @@
 6. ~~**P1 (저위험 UX):** `034c3895d` → `d3e091e15`~~ ✅ 루프 22. `4fb217c95`는 해당 없음. `068c9ae83` BYOK URL normalize는 조건부 후보.
 7. **보류 유지:** `d8b6b797f`, message center, packaged, `2192a7f6b` BYOK preflight, `4ddfc6e44` media retry.
 
-### 0.3 루프 20~23 요약
+### archive-0.3 루프 20~23 요약
 
 - **루프 20:** 검토·우선순위 문서화만 (코드 없음).
 - **루프 21:** P0-A·P0-D·P0-E 코드 포팅. P0-B/C는 선행 모듈 부재로 보류.
 - **루프 22:** P0-C·P1-A·P1-C 코드 포팅. P0-B는 plain-stream 모듈 부재로 보류. P1-B는 해당 없음.
 - **루프 23:** 검증 전용. 루프 22 변경분 typecheck/vitest 회귀 통과 확인 (contracts 재빌드 필요), pre-existing daemon 실패 8건 격리, upstream 신규 후보(`50843ff14`) 조사 후 embed 실용성 낮음으로 조건부 등재만.
 
-### 0.5 루프 23 검증 상세
+### archive-0.5 루프 23 검증 상세
 
 - **daemon typecheck (src):** `npx tsc -p apps/daemon/tsconfig.json --noEmit` — pass. `TrackingRunFailureDetail` enum 신규 값이 daemon에서 참조되므로 `pnpm --filter @open-design/contracts build`가 선행 필수.
 - **daemon typecheck (tests):** `tsconfig.tests.json` — 내 신규 파일(`run-terminal-reconciliation.test.ts`, `run-cancel-late-error.test.ts` 등) 에러 없음. pre-existing 실패는 `teamver-byok-usage-bridge.test.ts`·`teamver-project-daemon-state.test.ts`·`teamver-design-bff-proxy.test.ts`·`teamver-usage-bridge.test.ts`(exactOptionalPropertyTypes/express Request 시그니처).
@@ -105,17 +204,9 @@
 - **web 관련 vitest:** `assistant-message-tool-status.test.tsx` — 1 file / 9 tests pass.
 - **daemon 관련 vitest:** `run-terminal-reconciliation.test.ts` + `run-failure-classification.test.ts` — 2 files / 42 tests pass.
 
-### 0.4 루프 20 회귀 검증 체크리스트 (포팅 시 필수)
+### archive-0.4 루프 20 회귀 체크리스트
 
-| # | 시나리오 | 확인 |
-|---|----------|------|
-| 1 | embed 로그인 → 홈 → 프로젝트 생성 → 슬라이드 생성 | preview·artifact 정상 |
-| 2 | 생성 중 탭 이탈 → 재진입 | background run reattach, input 상태 |
-| 3 | 명시적 Stop | `canceled` 유지, late error로 `failed` 오인 없음 |
-| 4 | PNG/JPEG/PDF/PPTX 다운로드 | 기존 품질·파일명·auth gate |
-| 5 | Drive publish/import | 세션·workspace 정합 |
-| 6 | Network | `/api/version`, `/api/runs`, `auth/session`, message `PUT` 호출량 회귀 없음 |
-| 7 | 2노드(staging) | project hash 라우팅·daemon restart 후 run 상태 |
+→ **현행 확장판은 §0.4** (Stop mid-deck CSS leak·deck-patch 항목 추가).
 
 ---
 
@@ -315,8 +406,12 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 | 커밋 | 내용 | 판단 |
 |------|------|------|
+| `ebcba704e` | System Prompt v2.0 on-demand discovery (68+ files) | **2026-08-04 고위험 보류.** Teamver deck-only/cache/background와 충돌. |
+| `b99a9fdc3` | manual-edit direct manipulation mega (~10k줄) | **2026-08-04 고위험 보류.** Teamver 53 루프와 분리. 원자 패치(`70f395307`)만 허용. |
+| `4d0376e43` 등 BYOK 계열 | local runtime / DPAPI / Azure UI | **비적용.** managed key 정책과 충돌. |
+| `8518ec847` | AMR late login / auth stages | **비적용.** Teamver SSO/BFF와 별개. |
 | `91f22f301` | agent-protocol 대형 refactor | 보류. daemon 구조를 크게 바꾸므로 Teamver S3/DB/run lifecycle 패치와 충돌 위험이 크다. |
-| `59bca72f7` 전체 cherry-pick | programmatic screenshot-based PPTX/PDF export 전체 커밋 | **전체 cherry-pick은 보류.** 다만 screenshot-based PPTX 최소 경로는 위 P0/P1 후보로 격상한다. desktop editable PPTX/vendor/sidecar/packaging은 후순위. |
+| `59bca72f7` 전체 cherry-pick | programmatic screenshot-based PPTX/PDF export 전체 커밋 | **전체 cherry-pick은 보류.** screenshot/editable 최소 경로는 이미 staging에 수동 반영됨. desktop/sidecar는 후순위. |
 | `7b9864614` | MiniMax image-01 provider wiring | 보류. 현재 Teamver AI Design은 slide/deck 안정화가 우선이며, image/media 기능은 embed MVP에서 낮은 우선순위 또는 비노출 영역이다. |
 | landing / SEO / updater / packaged / AMR / onboarding 계열 | 공식 OD 제품/마케팅 변경 | Teamver staging 출시 안정화와 직접 관련 낮음. 반영하지 않는다. |
 
@@ -324,17 +419,30 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 ## 4. 권장 작업 순서
 
-> **2026-07-23 갱신:** 상세 우선순위·포팅 방안은 **§0.1~0.2**를 SSOT로 한다. 아래는 요약.
+> **2026-08-04 갱신:** 최신 우선순위·포팅 방안은 **§0 (루프 25)** 를 SSOT로 한다. 아래는 요약.
 
-1. ~~**P0-A:** `7b27d4ba6` + `34a050737` — cancel/sub-agent error run lifecycle (§0.2-1).~~ ✅ 루프 21
-2. **P0-B:** `4054b5357` — plain-stream artifact ring buffer 유실 (§0.2-2).
-3. ~~**P0-C:** `d1372da02` — daemon restart run terminal reconcile (§0.2-3).~~ ✅ 루프 22
-4. ~~**P0-D:** `5c94dda27` → `cbc38a498` → `bb7a10d97` → `d997318f9` — security (§0.2-4).~~ ✅ 루프 21
-5. ~~**P0-E:** `ace06eac1` — image export viewport (§0.2-5).~~ ✅ 루프 21
-6. ~~**P1:** `034c3895d`, `d3e091e15`~~ ✅ 루프 22. `068c9ae83` BYOK URL normalize는 조건부 후보. `4fb217c95`는 해당 없음.
-7. **기존 미완료:** `24c7876b3` in-place HTML edit delivery 보존(2026-07-20 부분 반영) 잔여, `04236af50` DB latch, `bc5b6f058` FE completion UI, `4b660237c` full slim charter — 각각 별도 루프.
-8. PPTX는 일반 다운로드 editable 기본 정책을 유지한다. screenshot PPTX는 `editable:false`가 명시된 내부 조사/품질 비교 경로로만 사용한다.
-9. 모든 반영 후 `/api/version`, `/api/runs`, `auth/session`, `auth/refresh`, analytics config, message `PUT` 호출량이 회귀하지 않았는지 Network에서 확인한다.
+### 다음 포팅 (루프 25 이후, 1항목씩)
+
+1. **P0-1:** `c3de4d5b9` — failure stage `tool_outstanding` / `post_tool_resume` (§0.2)
+2. **P0-2:** `4f3a0b3c0` — post-tool native session continue (§0.2) — `server.ts` 국소만, cancel/background 정책 유지
+3. **P1-A:** `517f39acd` — stale Todo dismiss
+4. **P1-B:** `70f395307` — manual-edit runtime selection keep (53과 정합, mega `b99a9fdc3`와 분리)
+5. **P2:** `f9ccdfc4e` → `1da4f9e0f`
+
+### 이미 완료 (루프 21~24)
+
+1. ~~**P0-A:** `7b27d4ba6` + `34a050737`~~ ✅ 루프 21
+2. ~~**P0-B:** `4054b5357` plain-stream~~ ✅ 루프 24
+3. ~~**P0-C:** `d1372da02`~~ ✅ 루프 22
+4. ~~**P0-D:** security 묶음~~ ✅ 루프 21
+5. ~~**P0-E:** `ace06eac1`~~ ✅ 루프 21
+6. ~~**P1:** `034c3895d`, `d3e091e15`~~ ✅ 루프 22
+
+### 계속 보류
+
+- `ebcba704e` SP v2.0, `b99a9fdc3` manual-edit mega, `7787556cf` ACP transcript, BYOK/AMR 대형, `7c8c7b79f` required skip(제품 승인 전), `4b660237c` full slim charter, `04236af50` DB latch
+- PPTX: editable 기본 유지. screenshot은 `editable:false` 내부 경로만
+- 모든 반영 후 Network 호출량·§0.4 체크리스트 확인
 
 ---
 
@@ -350,7 +458,8 @@ Teamver에서 계속 문제가 되었던 영역과 직접 관련 있다.
 
 ## 6. 다음 추천 작업
 
-1. **P0-B (다음 루프):** `4054b5357` plain-stream artifact accumulator — `plain-stream.ts` 전체 모듈 이식 선행 필요. slide 생성 후 artifact/preview/S3 sync 회귀 테스트.
-2. **P1 조건부:** `068c9ae83` Anthropic-compatible BYOK base URL 정규화 — BYOK proxy 경로 사용 시 `byok-opencode.ts` helper만.
-3. **보류 유지:** `d8b6b797f` chat disclosure 리팩터, message center, `2192a7f6b` BYOK preflight, `4b660237c` full slim charter, `04236af50` DB latch.
-4. **운영 검증:** §0.4 체크리스트 #7 — staging 2노드 HA에서 daemon restart 후 `running` 고착 없음 확인.
+1. **루프 26 (코드, P0-1):** `c3de4d5b9` failure stage 확장 — contracts rebuild + `run-diagnostics`/`run-failure-classification` 테스트. §0.4 #1~3·#7 통과 후 push.
+2. **루프 27 (코드, P0-2):** `4f3a0b3c0` post-tool continue — `decidePostToolResumeRecovery` 수동 이식. **Stop=abort / page-exit=background drain** 정책 회귀 금지. 이중 run·무한 continue 방지 테스트 필수.
+3. **루프 28 (P1):** `517f39acd` → `70f395307` — FE 소형만. ProjectView/FileViewer 광범위 리팩터 금지.
+4. **보류 유지:** SP v2.0(`ebcba704e`), manual-edit mega(`b99a9fdc3`), BYOK/AMR 대형, required question skip(`7c8c7b79f`), message center, packaged/landing.
+5. **운영 검증:** §0.4 #7~9 — HA restart, mid-deck Stop CSS leak, deck-patch 댓글 수정.
