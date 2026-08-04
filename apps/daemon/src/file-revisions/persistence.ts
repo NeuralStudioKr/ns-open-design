@@ -358,34 +358,78 @@ export function listDistinctFileRevisionTargets(
   `).all() as Array<{ projectId: string; fileName: string }>;
 }
 
+function countFileRevisions(
+  db: Database.Database,
+  projectId: string,
+  fileName: string,
+): number {
+  return (
+    db.prepare(`SELECT count(*) AS c FROM file_revisions WHERE project_id = ? AND file_name = ?`)
+      .get(projectId, fileName) as { c: number }
+  ).c;
+}
+
+const PRUNE_OLDEST_REVISIONS_SELECT = `
+  SELECT
+    id,
+    project_id AS projectId,
+    file_name AS fileName,
+    parent_revision_id AS parentRevisionId,
+    sequence,
+    created_at AS createdAt,
+    byte_size AS byteSize,
+    source,
+    label,
+    conversation_id AS conversationId,
+    assistant_message_id AS assistantMessageId
+  FROM file_revisions
+  WHERE project_id = ? AND file_name = ?
+`;
+
 export function pruneOldestFileRevisions(
   db: Database.Database,
   projectId: string,
   fileName: string,
   keep: number,
 ): FileRevision[] {
+  return pruneOldestFileRevisionsLimited(db, projectId, fileName, keep, Number.POSITIVE_INFINITY).revisions;
+}
+
+export function pruneOldestFileRevisionsLimited(
+  db: Database.Database,
+  projectId: string,
+  fileName: string,
+  keep: number,
+  maxDeletes: number,
+): { revisions: FileRevision[]; remainingExcess: number } {
+  if (maxDeletes <= 0) {
+    return {
+      revisions: [],
+      remainingExcess: Math.max(0, countFileRevisions(db, projectId, fileName) - keep),
+    };
+  }
+
+  const excess = Math.max(0, countFileRevisions(db, projectId, fileName) - keep);
+  if (excess === 0) {
+    return { revisions: [], remainingExcess: 0 };
+  }
+
+  const deleteCount = Math.min(excess, maxDeletes);
   const rows = db.prepare(`
-    SELECT
-      id,
-      project_id AS projectId,
-      file_name AS fileName,
-      parent_revision_id AS parentRevisionId,
-      sequence,
-      created_at AS createdAt,
-      byte_size AS byteSize,
-      source,
-      label,
-      conversation_id AS conversationId,
-      assistant_message_id AS assistantMessageId
-    FROM file_revisions
-    WHERE project_id = ? AND file_name = ?
-    ORDER BY sequence DESC
-    LIMIT -1 OFFSET ?
-  `).all(projectId, fileName, keep) as FileRevisionRow[];
-  if (rows.length === 0) return [];
+    ${PRUNE_OLDEST_REVISIONS_SELECT}
+    ORDER BY sequence ASC
+    LIMIT ?
+  `).all(projectId, fileName, deleteCount) as FileRevisionRow[];
+  if (rows.length === 0) {
+    return { revisions: [], remainingExcess: excess };
+  }
+
   const ids = rows.map((row) => row.id);
   const placeholders = ids.map(() => '?').join(', ');
   db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...ids);
   syncDeletedRevisionIdsToPostgres(ids);
-  return rows.map(rowToRevision);
+  return {
+    revisions: rows.map(rowToRevision),
+    remainingExcess: Math.max(0, excess - rows.length),
+  };
 }

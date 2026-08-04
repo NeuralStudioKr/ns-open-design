@@ -1,9 +1,11 @@
 // Periodic GC for file revision snapshots (undo/redo history bytes).
 //
-// Complements per-push retention in `createFileRevisionService`. Sweeps:
+// Owns count retention, byte compaction, and orphan cleanup. Push schedules
+// batched deferred sweeps (retention + compaction via PUSH_PRUNE_MAX); this
+// worker is the authoritative safety net on a fixed interval. Sweeps:
 //   - orphan BLOB rows (metadata deleted, snapshot left behind)
-//   - global per-file retention safety pass
-//   - deferred snapshot byte compaction (push schedules batched via PUSH_PRUNE_MAX; GC uncapped)
+//   - global per-file retention (uncapped)
+//   - deferred snapshot byte compaction (uncapped)
 //   - orphan `.od/revisions/*` files on disk (files mode / migration leftovers)
 //   - optional SQLite VACUUM when enough bytes were reclaimed
 //

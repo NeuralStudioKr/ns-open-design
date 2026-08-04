@@ -13,7 +13,7 @@ import {
   pgGetLatestFileRevision,
   pgListDistinctFileRevisionTargets,
   pgListFileRevisions,
-  pgPruneOldestFileRevisionsWithSnapshots,
+  pgPruneOldestFileRevisionsCapped,
   pgUpdateFileRevisionHead,
   type PgFileRevisionRow,
 } from './postgres-persistence.js';
@@ -284,8 +284,36 @@ export async function pruneOldestFileRevisionsDurable(
   fileName: string,
   keep: number,
 ): Promise<FileRevision[]> {
+  const result = await pruneOldestFileRevisionsDurableLimited(
+    db,
+    projectId,
+    fileName,
+    keep,
+    Number.POSITIVE_INFINITY,
+  );
+  return result.revisions;
+}
+
+export async function pruneOldestFileRevisionsDurableLimited(
+  db: Database.Database,
+  projectId: string,
+  fileName: string,
+  keep: number,
+  maxDeletes: number,
+): Promise<{ revisions: FileRevision[]; remainingExcess: number }> {
   if (usesPostgresRevisionSnapshots()) {
     await ensureFileRevisionsHydrated(db, projectId, fileName);
+    const { ids, remainingExcess } = await pgPruneOldestFileRevisionsCapped(
+      getPostgresPool(),
+      projectId,
+      fileName,
+      keep,
+      maxDeletes,
+    );
+    if (ids.length === 0) {
+      return { revisions: [], remainingExcess };
+    }
+    const placeholders = ids.map(() => '?').join(', ');
     const rows = db.prepare(`
       SELECT
         id,
@@ -300,24 +328,17 @@ export async function pruneOldestFileRevisionsDurable(
         conversation_id AS conversationId,
         assistant_message_id AS assistantMessageId
       FROM file_revisions
-      WHERE project_id = ? AND file_name = ?
-      ORDER BY sequence DESC
-      LIMIT -1 OFFSET ?
-    `).all(projectId, fileName, keep) as FileRevisionRow[];
-    if (rows.length === 0) return [];
-    const prunedIds = rows.map((row) => row.id);
-    await pgPruneOldestFileRevisionsWithSnapshots(
-      getPostgresPool(),
-      projectId,
-      fileName,
-      keep,
-    );
-    const placeholders = prunedIds.map(() => '?').join(', ');
-    db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...prunedIds);
-    return rows.map(rowToRevision);
+      WHERE id IN (${placeholders})
+      ORDER BY sequence ASC
+    `).all(...ids) as FileRevisionRow[];
+    db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...ids);
+    return {
+      revisions: rows.map(rowToRevision),
+      remainingExcess,
+    };
   }
-  const { pruneOldestFileRevisions } = await import('./persistence.js');
-  return pruneOldestFileRevisions(db, projectId, fileName, keep);
+  const { pruneOldestFileRevisionsLimited } = await import('./persistence.js');
+  return pruneOldestFileRevisionsLimited(db, projectId, fileName, keep, maxDeletes);
 }
 
 export function mirrorFileRevisionInsertToSqlite(

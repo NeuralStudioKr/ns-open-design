@@ -185,6 +185,39 @@ export async function pgPruneOldestFileRevisionsWithSnapshots(
   return pgPruneOldestFileRevisions(pool, projectId, fileName, keep);
 }
 
+export async function pgPruneOldestFileRevisionsCapped(
+  pool: Pool,
+  projectId: string,
+  fileName: string,
+  keep: number,
+  maxDeletes: number,
+): Promise<{ ids: string[]; remainingExcess: number }> {
+  const countRow = await queryPostgresRow<{ c: string }>(
+    pool,
+    `SELECT count(*)::text AS c FROM file_revisions WHERE project_id = $1 AND file_name = $2`,
+    [projectId, fileName],
+  );
+  const excess = Math.max(0, Number(countRow?.c ?? 0) - keep);
+  if (excess === 0 || maxDeletes <= 0) {
+    return { ids: [], remainingExcess: excess };
+  }
+
+  const deleteCount = Math.min(excess, maxDeletes);
+  const rows = await queryPostgresRows<{ id: string }>(
+    pool,
+    `SELECT id FROM file_revisions
+     WHERE project_id = $1 AND file_name = $2
+     ORDER BY sequence ASC
+     LIMIT $3`,
+    [projectId, fileName, deleteCount],
+  );
+  const ids = rows.map((row) => row.id);
+  if (ids.length > 0) {
+    await pgDeleteFileRevisionsByIdsWithSnapshots(pool, ids);
+  }
+  return { ids, remainingExcess: Math.max(0, excess - ids.length) };
+}
+
 export async function pgCommitRevisionWithSnapshot(
   pool: Pool,
   input: PgFileRevisionRow,

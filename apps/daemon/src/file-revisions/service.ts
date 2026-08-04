@@ -12,7 +12,6 @@ import {
   deleteFileRevisionsAfterSequenceDurable,
   ensureFileRevisionsHydrated,
   overwriteHeadRevisionSnapshotDurable,
-  pruneOldestFileRevisionsDurable,
 } from './durable-store.js';
 import {
   deleteFileRevisionsAfterSequence,
@@ -21,7 +20,6 @@ import {
   getLatestFileRevision,
   insertFileRevision,
   listFileRevisions,
-  pruneOldestFileRevisions,
 } from './persistence.js';
 import {
   deleteRevisionSnapshots,
@@ -39,6 +37,10 @@ import {
   registerRevisionCompactionDb,
   scheduleRevisionSnapshotCompaction,
 } from './compaction.js';
+import {
+  registerRevisionRetentionSweep,
+  scheduleRevisionRetentionSweep,
+} from './retention-sweep.js';
 import { assertRevisionSnapshotWithinAbsoluteLimit } from './quota.js';
 import {
   gzipRevisionSnapshot,
@@ -94,6 +96,13 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
   registerRevisionCompactionDb(db);
   const snapshotContext: RevisionSnapshotStoreContext = { db };
   const postgresAuthority = usesPostgresRevisionSnapshots();
+  registerRevisionRetentionSweep({
+    db,
+    projectsRoot,
+    resolveProjectDir,
+    snapshotContext,
+    postgresAuthority,
+  });
 
   async function ensureHydrated(projectId: string, fileName: string): Promise<void> {
     if (!postgresAuthority) return;
@@ -125,13 +134,6 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       return;
     }
     await deleteRevisionSnapshots(projectDir, fileName, revisions.map((revision) => revision.id), snapshotContext);
-  }
-
-  async function enforceRetention(projectId: string, fileName: string, projectDir: string): Promise<void> {
-    const pruned = postgresAuthority
-      ? await pruneOldestFileRevisionsDurable(db, projectId, fileName, FILE_REVISION_RETENTION_LIMIT)
-      : pruneOldestFileRevisions(db, projectId, fileName, FILE_REVISION_RETENTION_LIMIT);
-    await pruneSnapshots(projectDir, fileName, pruned);
   }
 
   async function persistRevisionSnapshot(
@@ -367,7 +369,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
           content,
           { parentContent, sequence },
         );
-        await enforceRetention(projectId, fileName, projectDir);
+        scheduleRevisionRetentionSweep(projectId, fileName, metadata);
         scheduleRevisionSnapshotCompaction();
         return { revision, file };
       });

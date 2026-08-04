@@ -30,7 +30,7 @@ export const FILE_REVISION_MAX_TOTAL_BYTES = resolveFileRevisionMaxTotalBytes();
 /** Hard safety ceiling for a single uncompressed revision push (not a soft prune target). */
 export const FILE_REVISION_ABSOLUTE_MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
 
-/** Max revision rows deleted synchronously on a single push; overflow is deferred to GC. */
+/** Max revision rows deleted per deferred sweep pass (count retention + byte compaction). */
 export function resolveFileRevisionPushPruneMax(
   env: NodeJS.ProcessEnv = process.env,
 ): number {
