@@ -801,6 +801,87 @@ describe('manual edit source patches', () => {
     expect(readManualEditAttributes(attrDenied.source, 'cta').href).toBe('/start');
   });
 
+  it('scrubs ZWSP-smuggled javascript urls inside inline style url()', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="background:url(\'java\u200bscript:alert(1)\');color:teal">Title</h1>',
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-title');
+    expect(html).not.toMatch(/javascript/i);
+    expect(html).toContain('color:teal');
+  });
+
+  it('scrubs javascript urls in SVG presentation attrs like filter/fill', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect width="10" height="10"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<rect width="10" height="10" filter="url(javascript:alert(1))" fill="url(javascript:alert(2))" cursor="url(javascript:alert(3))"></rect>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toMatch(/javascript/i);
+    expect(html).not.toMatch(/\bfilter=["'][^"']*javascript/i);
+    expect(html).not.toMatch(/\bfill=["'][^"']*javascript/i);
+  });
+
+  it('rejects external feImage/mpath hrefs like use/image', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><filter id="f"><feImage href="#icon"></feImage></filter></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<filter id="f"><feImage href="https://evil.example/x.svg"></feImage></filter>',
+        '<path id="p"><animateMotion><mpath xlink:href="https://evil.example/path"></mpath></animateMotion></path>',
+        '<feImage href="#icon"></feImage>',
+        '</svg>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('href="#icon"');
+  });
+
+  it('does not retarget script/iframe src via set-attributes', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<script data-od-id="boot" src="/ok.js"></script>',
+      '<iframe data-od-id="frame" src="/frame.html"></iframe>',
+      '</body></html>',
+    ].join('');
+    const script = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'boot',
+      attributes: { src: 'https://evil.example/x.js' },
+    });
+    expect(script.ok, script.error).toBe(true);
+    expect(readManualEditAttributes(script.source, 'boot').src).toBe('/ok.js');
+
+    const frame = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'frame',
+      attributes: { src: 'https://evil.example/frame.html' },
+    });
+    expect(frame.ok, frame.error).toBe(true);
+    expect(readManualEditAttributes(frame.source, 'frame').src).toBe('/frame.html');
+  });
+
   it('scrubs -webkit-image-set javascript strings from inline and salvaged styles', () => {
     const inline = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',
@@ -1397,6 +1478,47 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('<h1 data-od-id="title" data-od-edit="text">김이박</h1>');
     expect(result.source).toContain('<p data-od-id="body">본문</p>');
     expect(result.source).not.toContain('Unexpected sibling edit');
+  });
+
+  it('rejects scoped-position matches when a sibling insert shifts tags', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<p data-od-id="note" data-od-edit="text">Remember this note</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+    // Model inserts a button before the paragraph — path-0 would land on the
+    // button if position matching ignored tags.
+    const modelOutput = [
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<button>Done</button>',
+      '<p>Remember this note — updated</p>',
+      '</section>',
+      '</body></html>',
+    ].join('');
+
+    const result = mergeManualEditTargetsFromSource(
+      source,
+      modelOutput,
+      ['note'],
+      { slideIndex: 0 },
+      [{
+        id: 'note',
+        currentText: 'Remember this note',
+        instructionText: "rewrite to 'Remember this note — updated'",
+        htmlHint: '<p data-od-id="note">Remember this note</p>',
+      }],
+    );
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    // Position walk would have landed on <button>Done</button>; tag reject +
+    // text-hint must still graft the paragraph update onto the pinned note.
+    expect(result.source).toContain('<p data-od-id="note" data-od-edit="text">Remember this note — updated</p>');
+    expect(result.source).not.toMatch(/data-od-id="note"[^>]*>Done</i);
+    expect(result.source).not.toMatch(/<button[^>]*data-od-id="note"/i);
   });
 
   it('merges selected targets by instruction text when model output restructures the slide', () => {

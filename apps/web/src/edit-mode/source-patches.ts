@@ -868,6 +868,11 @@ function findEquivalentElementByScopedPosition(
     nextCursor = child;
     if (!nextCursor) return null;
   }
+  // Sibling inserts shift child indexes — reject tag mismatches so text-hint
+  // fallback can recover instead of stamping identity onto the wrong node.
+  if (nextCursor.tagName.toLowerCase() !== currentTarget.tagName.toLowerCase()) {
+    return null;
+  }
   return nextCursor;
 }
 
@@ -975,8 +980,19 @@ function sanitizeManualEditReplacementTree(root: Element): void {
         else if (scrubbed !== attr.value) el.setAttribute(attr.name, scrubbed);
         continue;
       }
+      if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
+        const scrubbed = scrubUnsafeCssFunctions(
+          normalizeCssForSafetyScan(attr.value),
+        ).trim();
+        if (!scrubbed || containsUnsafeEmbeddedCssOrScheme(scrubbed)) {
+          el.removeAttribute(attr.name);
+        } else if (scrubbed !== attr.value) {
+          el.setAttribute(attr.name, scrubbed);
+        }
+        continue;
+      }
       if (
-        (tag === 'use' || tag === 'image')
+        MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
         && (lower === 'href' || lower === 'xlink:href')
         && !isSafeManualEditSvgResourceRef(attr.value)
       ) {
@@ -1560,7 +1576,20 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
     }
     const tag = el.tagName.toLowerCase();
     if (
-      (tag === 'use' || tag === 'image')
+      MANUAL_EDIT_NO_URL_MUTATION_TAGS.has(tag)
+      && (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
+    ) {
+      // Pre-existing script/iframe/etc. must not retarget to https://evil via set-attributes.
+      continue;
+    }
+    if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
+      const scrubbed = scrubUnsafeCssFunctions(normalizeCssForSafetyScan(value)).trim();
+      if (!scrubbed || containsUnsafeEmbeddedCssOrScheme(scrubbed)) continue;
+      el.setAttribute(name, scrubbed);
+      continue;
+    }
+    if (
+      MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
       && (lower === 'href' || lower === 'xlink:href')
       && !isSafeManualEditSvgResourceRef(value)
     ) {
@@ -1787,15 +1816,69 @@ function stripDangerousCssAtRules(css: string): string {
     .trim();
 }
 
+/** Presentation attrs that accept CSS `url()` and need the same scrub as style. */
+const MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS = new Set([
+  'filter',
+  'fill',
+  'stroke',
+  'clip-path',
+  'clippath',
+  'mask',
+  'cursor',
+  'marker-start',
+  'marker-mid',
+  'marker-end',
+]);
+
+/** SVG paint-server / resource tags restricted to same-document `#fragment` refs. */
+const MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS = new Set([
+  'use',
+  'image',
+  'feimage',
+  'mpath',
+  'textpath',
+  'pattern',
+  'lineargradient',
+  'radialgradient',
+  'filter',
+]);
+
+/** Tags whose URL attrs must not be mutated via set-attributes (chrome/exec). */
+const MANUAL_EDIT_NO_URL_MUTATION_TAGS = new Set([
+  'script',
+  'iframe',
+  'object',
+  'embed',
+  'base',
+  'link',
+  'meta',
+]);
+
+function isForbiddenCssUrlScheme(value: string): boolean {
+  const compact = compactManualEditUrlForSchemeCheck(decodeHtmlCharacterReferences(value));
+  return (
+    compact.startsWith('javascript:')
+    || compact.startsWith('vbscript:')
+    || compact.startsWith('data:')
+  );
+}
+
 /** Drop javascript/vbscript/data urls, image-set strings, and expression(). */
 function scrubUnsafeCssFunctions(css: string): string {
-  return String(css || '')
-    .replace(/url\s*\(\s*(['"]?)\s*(?:javascript|vbscript|data)\b[^)]*\)/gi, 'url()')
-    // CSS Images string form bypasses url(): -webkit-image-set("javascript:…" 1x)
-    .replace(/-webkit-image-set\s*\([^)]*(?:javascript|vbscript|data):[^)]*\)/gi, 'none')
-    .replace(/image-set\s*\([^)]*(?:javascript|vbscript|data):[^)]*\)/gi, 'none')
-    .replace(/expression\s*\([^)]*\)/gi, 'initial')
-    .replace(/-moz-binding\s*:[^;]*/gi, '');
+  let text = String(css || '');
+  // Quoted and unquoted url(...) — compact ZWSP/Cf before scheme checks.
+  text = text.replace(/url\s*\(\s*(['"])([\s\S]*?)\1\s*\)/gi, (match, _q, inner: string) => (
+    isForbiddenCssUrlScheme(inner) ? 'url()' : match
+  ));
+  text = text.replace(/url\s*\(\s*([^)'"][^)]*)\)/gi, (match, inner: string) => (
+    isForbiddenCssUrlScheme(inner) ? 'url()' : match
+  ));
+  // CSS Images string form bypasses url(): -webkit-image-set("javascript:…" 1x)
+  text = text.replace(/-webkit-image-set\s*\([^)]*(?:javascript|vbscript|data):[^)]*\)/gi, 'none');
+  text = text.replace(/image-set\s*\([^)]*(?:javascript|vbscript|data):[^)]*\)/gi, 'none');
+  text = text.replace(/expression\s*\([^)]*\)/gi, 'initial');
+  text = text.replace(/-moz-binding\s*:[^;]*/gi, '');
+  return text;
 }
 
 function scrubSalvagedStyleText(css: string): string {
@@ -1807,14 +1890,13 @@ function scrubUnsafeInlineStyleAttr(value: string): string {
   const normalized = normalizeCssForSafetyScan(String(value || ''));
   const scrubbed = scrubUnsafeCssFunctions(normalized).trim();
   // If anything still looks like a scriptable url, drop the whole attr.
-  if (/\burl\s*\(\s*(['"]?)\s*(?:javascript|vbscript|data)\b/i.test(scrubbed)) return '';
-  if (/(?:-webkit-)?image-set\s*\([^)]*(?:javascript|vbscript|data):/i.test(scrubbed)) return '';
+  if (containsUnsafeEmbeddedCssOrScheme(scrubbed)) return '';
   if (/\bexpression\s*\(/i.test(scrubbed)) return '';
   if (/-moz-binding/i.test(scrubbed)) return '';
   return scrubbed;
 }
 
-/** SVG <use>/<image> may only reference same-document fragments (#id). */
+/** SVG resource refs may only point at same-document fragments (#id). */
 function isSafeManualEditSvgResourceRef(value: string): boolean {
   const trimmed = String(value || '').trim();
   if (!trimmed) return true;
