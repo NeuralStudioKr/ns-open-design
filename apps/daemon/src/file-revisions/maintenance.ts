@@ -32,6 +32,7 @@ export interface FileRevisionStorageStats {
   snapshotRowCount: number;
   orphanSnapshotRowCount: number;
   totalSnapshotBytes: number;
+  diskSnapshotBytes?: number;
   storageMode: FileRevisionSnapshotStorage;
 }
 
@@ -65,6 +66,7 @@ export interface FileRevisionGcResult {
 
 export async function collectFileRevisionStorageStats(
   db: Database.Database,
+  projectsRoot?: string,
 ): Promise<FileRevisionStorageStats> {
   const revisionRowCount = usesPostgresRevisionSnapshots()
     ? Number((await queryPostgresRow<{ c: string }>(
@@ -75,11 +77,17 @@ export async function collectFileRevisionStorageStats(
       db.prepare(`SELECT count(*) AS c FROM file_revisions`).get() as { c: number }
     ).c;
   const snapshotStats = await getFileRevisionSnapshotStorageStatsDurable(db);
+  const diskSnapshotBytes = (
+    resolveFileRevisionSnapshotStorage() === 'files' && projectsRoot
+  )
+    ? await sumRevisionSnapshotDiskBytes(projectsRoot)
+    : 0;
   return {
     revisionRowCount,
     snapshotRowCount: snapshotStats.snapshotRowCount,
     orphanSnapshotRowCount: snapshotStats.orphanSnapshotRowCount,
     totalSnapshotBytes: snapshotStats.totalSnapshotBytes,
+    diskSnapshotBytes,
     storageMode: resolveFileRevisionSnapshotStorage(),
   };
 }
@@ -104,14 +112,19 @@ export async function enforceGlobalFileRevisionRetention(
     : listDistinctFileRevisionTargets(db);
   const batches: Array<{ projectId: string; fileName: string; revisionIds: string[] }> = [];
   for (const target of targets) {
-    const pruned = usesPostgresRevisionSnapshots()
-      ? await pruneOldestFileRevisionsDurable(db, target.projectId, target.fileName, retentionLimit)
-      : pruneOldestFileRevisions(db, target.projectId, target.fileName, retentionLimit);
-    if (pruned.length === 0) continue;
+    const revisionIds: string[] = [];
+    while (true) {
+      const pruned = usesPostgresRevisionSnapshots()
+        ? await pruneOldestFileRevisionsDurable(db, target.projectId, target.fileName, retentionLimit)
+        : pruneOldestFileRevisions(db, target.projectId, target.fileName, retentionLimit);
+      if (pruned.length === 0) break;
+      revisionIds.push(...pruned.map((revision) => revision.id));
+    }
+    if (revisionIds.length === 0) continue;
     batches.push({
       projectId: target.projectId,
       fileName: target.fileName,
-      revisionIds: pruned.map((revision) => revision.id),
+      revisionIds,
     });
   }
   return batches;
@@ -152,6 +165,38 @@ async function pruneOrphanRevisionFilesOnDisk(
     }
   }
   return removed;
+}
+
+export async function sumRevisionSnapshotDiskBytes(projectsRoot: string): Promise<number> {
+  let total = 0;
+  let projectEntries;
+  try {
+    projectEntries = await readdir(projectsRoot, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+    throw err;
+  }
+  for (const projectEntry of projectEntries) {
+    if (!projectEntry.isDirectory()) continue;
+    const revisionsRoot = path.join(projectsRoot, projectEntry.name, '.od', 'revisions');
+    let fileEntries;
+    try {
+      fileEntries = await walkRevisionSnapshotFiles(revisionsRoot);
+    } catch {
+      continue;
+    }
+    for (const absPath of fileEntries) {
+      total += statFileBytes(absPath);
+    }
+  }
+  return total;
+}
+
+export async function deleteProjectRevisionSnapshotTree(
+  projectsRoot: string,
+  projectId: string,
+): Promise<void> {
+  await rm(path.join(projectsRoot, projectId, '.od', 'revisions'), { recursive: true, force: true });
 }
 
 async function walkRevisionSnapshotFiles(root: string): Promise<string[]> {

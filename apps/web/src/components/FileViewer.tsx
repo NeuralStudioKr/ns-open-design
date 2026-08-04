@@ -5652,6 +5652,7 @@ function HtmlViewer({
   const [revisionDiskSyncToast, setRevisionDiskSyncToast] = useState<string | null>(null);
   const [revisionStackInvalidated, setRevisionStackInvalidated] = useState(false);
   const [revisionRetentionLimit, setRevisionRetentionLimit] = useState(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
+  const [revisionRetentionPending, setRevisionRetentionPending] = useState(false);
   const revisionStackInvalidatedRef = useRef(revisionStackInvalidated);
   revisionStackInvalidatedRef.current = revisionStackInvalidated;
   const [strokePoints, setStrokePoints] = useState<StrokePoint[]>([]);
@@ -7252,6 +7253,7 @@ function HtmlViewer({
     revisionDiskSyncFailedTargetRef.current = null;
     revisionConflictSuppressedRef.current = false;
     setRevisionRetentionLimit(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
+    setRevisionRetentionPending(false);
     manualEditPendingStyleRef.current = null;
     clearManualEditStyleTimer();
     manualEditResizePausedRef.current = false;
@@ -7323,8 +7325,7 @@ function HtmlViewer({
     if (typeof list.retentionLimit === 'number') {
       setRevisionRetentionLimit(list.retentionLimit);
     }
-
-    const activeSequence = getActiveRevisionSequence(projectId, file.name);
+    setRevisionRetentionPending(list.retentionPending === true);
     const headRevision = list.revisions.find((revision) => revision.id === list.headRevisionId);
     const userAtHeadRevision = activeSequence == null
       || (headRevision != null && activeSequence === headRevision.sequence);
@@ -7518,6 +7519,7 @@ function HtmlViewer({
     if (typeof list.retentionLimit === 'number') {
       setRevisionRetentionLimit(list.retentionLimit);
     }
+    setRevisionRetentionPending(list.retentionPending === true);
     const previousCursorId = revisionStackRef.current.cursorRevisionId;
     const previousCursor = previousCursorId
       ? revisionStackRef.current.revisions.find((revision) => revision.id === previousCursorId) ?? null
@@ -12188,6 +12190,7 @@ function HtmlViewer({
                 revisions={revisionStack.revisions}
                 cursorRevisionId={revisionStack.cursorRevisionId}
                 retentionLimit={revisionRetentionLimit}
+                retentionPending={revisionRetentionPending}
                 busy={manualEditSaving}
                 onRestore={(revision) => {
                   void restoreRevisionFromHistory(revision);

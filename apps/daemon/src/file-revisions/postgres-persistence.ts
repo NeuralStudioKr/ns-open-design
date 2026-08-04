@@ -394,13 +394,14 @@ export async function pgListOldestRevisionsForPrune(
   pool: Pool,
   excludeRevisionIds: ReadonlySet<string>,
   limit: number,
-): Promise<Array<{ id: string; storageBytes: number }>> {
+): Promise<Array<{ id: string; projectId: string; fileName: string; storageBytes: number }>> {
   if (limit <= 0) return [];
   const exclude = [...excludeRevisionIds];
   if (exclude.length === 0) {
-    return await queryPostgresRows<{ id: string; storageBytes: number }>(
+    return await queryPostgresRows<{ id: string; projectId: string; fileName: string; storageBytes: number }>(
       pool,
-      `SELECT r.id AS id, coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
+      `SELECT r.id AS id, r.project_id AS "projectId", r.file_name AS "fileName",
+              coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
        FROM file_revisions r
        LEFT JOIN file_revision_snapshots s ON s.revision_id = r.id
        ORDER BY r.created_at ASC, r.sequence ASC
@@ -408,9 +409,10 @@ export async function pgListOldestRevisionsForPrune(
       [limit],
     );
   }
-  return await queryPostgresRows<{ id: string; storageBytes: number }>(
+  return await queryPostgresRows<{ id: string; projectId: string; fileName: string; storageBytes: number }>(
     pool,
-    `SELECT r.id AS id, coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
+    `SELECT r.id AS id, r.project_id AS "projectId", r.file_name AS "fileName",
+            coalesce(s.storage_bytes, 0)::bigint AS "storageBytes"
      FROM file_revisions r
      LEFT JOIN file_revision_snapshots s ON s.revision_id = r.id
      WHERE NOT (r.id = ANY($1::text[]))

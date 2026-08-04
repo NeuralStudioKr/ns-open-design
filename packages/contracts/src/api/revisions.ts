@@ -31,6 +31,8 @@ export interface FileRevisionsListResponse {
   headRevisionId: string | null;
   /** Server-side retention cap for this file (matches OD_FILE_REVISION_RETENTION_LIMIT). */
   retentionLimit: number;
+  /** True when count retention sweep is still draining rows over the cap. */
+  retentionPending?: boolean;
 }
 
 /** GET /api/projects/:id/files/:name/revisions/:revId */

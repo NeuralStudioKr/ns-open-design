@@ -26,11 +26,42 @@ export const fileRevisionMetadataRows = new Gauge({
   registers: [register],
 });
 
+export const fileRevisionRetentionDeferredExcess = new Gauge({
+  name: 'od_file_revision_retention_deferred_excess',
+  help: 'Revision rows still over per-file retention after the latest deferred sweep.',
+  registers: [register],
+});
+
+export const fileRevisionDeferredSweepQueueDepth = new Gauge({
+  name: 'od_file_revision_deferred_sweep_queue_depth',
+  help: 'Pending deferred retention/compaction sweep work items.',
+  registers: [register],
+});
+
+export const fileRevisionGcLastSuccessUnix = new Gauge({
+  name: 'od_file_revision_gc_last_success_unix',
+  help: 'Unix timestamp of the last successful periodic GC sweep.',
+  registers: [register],
+});
+
 export function updateFileRevisionMetrics(stats: FileRevisionStorageStats): void {
-  fileRevisionSnapshotBytes.set(stats.totalSnapshotBytes);
+  const diskBytes = stats.diskSnapshotBytes ?? 0;
+  fileRevisionSnapshotBytes.set(stats.totalSnapshotBytes + diskBytes);
   fileRevisionSnapshotRows.set(stats.snapshotRowCount);
   fileRevisionOrphanSnapshotRows.set(stats.orphanSnapshotRowCount);
   fileRevisionMetadataRows.set(stats.revisionRowCount);
+}
+
+export function updateFileRevisionDeferredMetrics(input: {
+  queueDepth: number;
+  retentionDeferredExcess: number;
+}): void {
+  fileRevisionDeferredSweepQueueDepth.set(input.queueDepth);
+  fileRevisionRetentionDeferredExcess.set(input.retentionDeferredExcess);
+}
+
+export function markFileRevisionGcSuccess(atMs: number = Date.now()): void {
+  fileRevisionGcLastSuccessUnix.set(Math.floor(atMs / 1000));
 }
 
 export function __resetFileRevisionMetricsForTests(): void {
@@ -38,4 +69,7 @@ export function __resetFileRevisionMetricsForTests(): void {
   fileRevisionSnapshotRows.reset();
   fileRevisionOrphanSnapshotRows.reset();
   fileRevisionMetadataRows.reset();
+  fileRevisionRetentionDeferredExcess.reset();
+  fileRevisionDeferredSweepQueueDepth.reset();
+  fileRevisionGcLastSuccessUnix.reset();
 }

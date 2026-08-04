@@ -27,20 +27,9 @@ export function registerRevisionCompactionDb(db: Database.Database): void {
  * DELETE — this runs after successful pushes and from the periodic GC worker.
  */
 export function scheduleRevisionSnapshotCompaction(): void {
-  if (!compactionDb || compactionInFlight) return;
-  compactionInFlight = runDeferredRevisionSnapshotCompaction(compactionDb, {
-    maxDeletes: FILE_REVISION_PUSH_PRUNE_MAX,
-    rescheduleOnOverflow: true,
-  })
-    .then(() => undefined)
-    .catch((err) => {
-      console.warn(
-        `[file-revisions] deferred compaction failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    })
-    .finally(() => {
-      compactionInFlight = null;
-    });
+  void import('./deferred-sweep.js').then(({ scheduleRevisionDeferredSweep }) => {
+    scheduleRevisionDeferredSweep();
+  });
 }
 
 export async function runDeferredRevisionSnapshotCompaction(

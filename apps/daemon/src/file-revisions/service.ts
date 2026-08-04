@@ -34,13 +34,10 @@ import {
   shouldCoalesceRevisionPush,
 } from './coalesce.js';
 import {
-  registerRevisionCompactionDb,
-  scheduleRevisionSnapshotCompaction,
-} from './compaction.js';
-import {
-  registerRevisionRetentionSweep,
-  scheduleRevisionRetentionSweep,
-} from './retention-sweep.js';
+  isFileRevisionRetentionPending,
+  registerRevisionDeferredSweep,
+  scheduleRevisionDeferredSweep,
+} from './deferred-sweep.js';
 import { assertRevisionSnapshotWithinAbsoluteLimit } from './quota.js';
 import {
   gzipRevisionSnapshot,
@@ -93,10 +90,9 @@ export interface RestoreFileRevisionInput {
 
 export function createFileRevisionService(deps: FileRevisionServiceDeps) {
   const { db, projectsRoot, writeProjectFile, resolveProjectDir } = deps;
-  registerRevisionCompactionDb(db);
   const snapshotContext: RevisionSnapshotStoreContext = { db };
   const postgresAuthority = usesPostgresRevisionSnapshots();
-  registerRevisionRetentionSweep({
+  registerRevisionDeferredSweep({
     db,
     projectsRoot,
     resolveProjectDir,
@@ -202,6 +198,12 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         revisions,
         headRevisionId: head?.id ?? null,
         retentionLimit: FILE_REVISION_RETENTION_LIMIT,
+        retentionPending: isFileRevisionRetentionPending(
+          projectId,
+          fileName,
+          revisions.length,
+          FILE_REVISION_RETENTION_LIMIT,
+        ),
       };
     },
 
@@ -325,7 +327,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
               assistantMessageId: assistantMessageId ?? null,
             },
           );
-          scheduleRevisionSnapshotCompaction();
+          scheduleRevisionDeferredSweep();
           return { revision, file };
         }
 
@@ -369,8 +371,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
           content,
           { parentContent, sequence },
         );
-        scheduleRevisionRetentionSweep(projectId, fileName, metadata);
-        scheduleRevisionSnapshotCompaction();
+        scheduleRevisionDeferredSweep(projectId, fileName, metadata);
         return { revision, file };
       });
     },

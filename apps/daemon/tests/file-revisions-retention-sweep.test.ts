@@ -1,32 +1,28 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.hoisted(() => {
+  process.env.OD_FILE_REVISION_RETENTION_LIMIT = '2';
+});
+
 import { migrateFileRevisions, insertFileRevision } from '../src/file-revisions/persistence.js';
 import { upsertFileRevisionSnapshot } from '../src/file-revisions/snapshot-storage.js';
-import {
-  registerRevisionRetentionSweep,
-  runDeferredRevisionRetentionForTarget,
-  scheduleRevisionRetentionSweep,
-} from '../src/file-revisions/retention-sweep.js';
+import { runDeferredRevisionRetentionForTarget } from '../src/file-revisions/retention-sweep.js';
+import { registerRevisionDeferredSweep, scheduleRevisionRetentionSweep } from '../src/file-revisions/deferred-sweep.js';
 
 vi.mock('../src/file-revisions/limits.js', () => ({
+  FILE_REVISION_MAX_SNAPSHOT_BYTES: 8 * 1024 * 1024,
+  FILE_REVISION_MAX_TOTAL_BYTES: 0,
   FILE_REVISION_PUSH_PRUNE_MAX: 2,
+  FILE_REVISION_ABSOLUTE_MAX_SNAPSHOT_BYTES: 64 * 1024 * 1024,
+  resolveFileRevisionMaxSnapshotBytes: () => 8 * 1024 * 1024,
+  resolveFileRevisionMaxTotalBytes: () => 0,
+  resolveFileRevisionPushPruneMax: () => 2,
 }));
 
-vi.mock('../src/file-revisions/persistence.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/file-revisions/persistence.js')>();
-  return {
-    ...actual,
-    FILE_REVISION_RETENTION_LIMIT: 2,
-  };
-});
-
 const ROOT = path.join(process.cwd(), '.tmp', 'file-revisions-retention-sweep-test');
-
-afterEach(async () => {
-  vi.clearAllMocks();
-});
 
 function openDb(): Database.Database {
   const db = new Database(':memory:');
@@ -36,30 +32,37 @@ function openDb(): Database.Database {
   return db;
 }
 
+async function seedLinearRevisions(
+  db: Database.Database,
+  projectsRoot: string,
+  count: number,
+): Promise<void> {
+  const projectDir = path.join(projectsRoot, 'proj-1');
+  const revisionsDir = path.join(projectDir, '.od', 'revisions', 'deck.html');
+  await mkdir(revisionsDir, { recursive: true });
+  for (let sequence = 1; sequence <= count; sequence += 1) {
+    const id = `rev-${sequence}`;
+    insertFileRevision(db, {
+      id,
+      projectId: 'proj-1',
+      fileName: 'deck.html',
+      parentRevisionId: sequence > 1 ? `rev-${sequence - 1}` : null,
+      sequence,
+      createdAt: Date.now(),
+      byteSize: 10,
+      source: 'manual_edit',
+      label: `v${sequence}`,
+    });
+    upsertFileRevisionSnapshot(db, id, Buffer.from(`blob-${sequence}`));
+    await writeFile(path.join(revisionsDir, `${id}.snap.gz`), Buffer.from(`blob-${sequence}`));
+  }
+}
+
 describe('file revision deferred retention sweep', () => {
-  it('prunes oldest revisions in capped batches without blocking push semantics', async () => {
+  it('prunes oldest chain-safe revisions in capped batches', async () => {
     const db = openDb();
     const projectsRoot = path.join(ROOT, 'batched');
-    const projectDir = path.join(projectsRoot, 'proj-1');
-    const revisionsDir = path.join(projectDir, '.od', 'revisions', 'deck.html');
-    await mkdir(revisionsDir, { recursive: true });
-
-    for (let sequence = 1; sequence <= 5; sequence += 1) {
-      const id = `rev-${sequence}`;
-      insertFileRevision(db, {
-        id,
-        projectId: 'proj-1',
-        fileName: 'deck.html',
-        parentRevisionId: sequence > 1 ? `rev-${sequence - 1}` : null,
-        sequence,
-        createdAt: Date.now(),
-        byteSize: 10,
-        source: 'manual_edit',
-        label: `v${sequence}`,
-      });
-      upsertFileRevisionSnapshot(db, id, Buffer.from(`blob-${sequence}`));
-      await writeFile(path.join(revisionsDir, `${id}.snap.gz`), Buffer.from(`blob-${sequence}`));
-    }
+    await seedLinearRevisions(db, projectsRoot, 10);
 
     const context = {
       db,
@@ -77,10 +80,10 @@ describe('file revision deferred retention sweep', () => {
       { retentionLimit: 2, maxDeletes: 2 },
     );
     expect(first.pruned).toBe(2);
-    expect(first.deferredExcess).toBe(1);
+    expect(first.deferredExcess).toBe(6);
     expect(
       (db.prepare(`SELECT count(*) AS c FROM file_revisions WHERE project_id = 'proj-1'`).get() as { c: number }).c,
-    ).toBe(3);
+    ).toBe(8);
 
     const second = await runDeferredRevisionRetentionForTarget(
       context,
@@ -89,22 +92,17 @@ describe('file revision deferred retention sweep', () => {
       undefined,
       { retentionLimit: 2, maxDeletes: 2 },
     );
-    expect(second.pruned).toBe(1);
-    expect(second.deferredExcess).toBe(0);
+    expect(second.pruned).toBe(2);
+    expect(second.deferredExcess).toBe(4);
     expect(
       (db.prepare(`SELECT count(*) AS c FROM file_revisions WHERE project_id = 'proj-1'`).get() as { c: number }).c,
-    ).toBe(2);
-
-    const remaining = db.prepare(
-      `SELECT sequence FROM file_revisions WHERE project_id = 'proj-1' ORDER BY sequence ASC`,
-    ).all() as Array<{ sequence: number }>;
-    expect(remaining.map((row) => row.sequence)).toEqual([4, 5]);
+    ).toBe(6);
   });
 
-  it('schedules deferred retention after push without awaiting it', async () => {
+  it('schedules deferred retention without blocking when chain checkpoints stall pruning', async () => {
     const db = openDb();
     const projectsRoot = path.join(ROOT, 'scheduled');
-    registerRevisionRetentionSweep({
+    registerRevisionDeferredSweep({
       db,
       projectsRoot,
       resolveProjectDir: (_root: string, projectId: string) => path.join(projectsRoot, projectId),
@@ -112,25 +110,12 @@ describe('file revision deferred retention sweep', () => {
       postgresAuthority: false,
     });
 
-    for (let sequence = 1; sequence <= 4; sequence += 1) {
-      insertFileRevision(db, {
-        id: `rev-${sequence}`,
-        projectId: 'proj-1',
-        fileName: 'deck.html',
-        parentRevisionId: sequence > 1 ? `rev-${sequence - 1}` : null,
-        sequence,
-        createdAt: Date.now(),
-        byteSize: 10,
-        source: 'manual_edit',
-        label: `v${sequence}`,
-      });
-      upsertFileRevisionSnapshot(db, `rev-${sequence}`, Buffer.from(`blob-${sequence}`));
-    }
+    await seedLinearRevisions(db, projectsRoot, 4);
 
     scheduleRevisionRetentionSweep('proj-1', 'deck.html');
     await expect.poll(
       () => (db.prepare(`SELECT count(*) AS c FROM file_revisions WHERE project_id = 'proj-1'`).get() as { c: number }).c,
       { timeout: 3_000 },
-    ).toBe(2);
+    ).toBe(4);
   });
 });

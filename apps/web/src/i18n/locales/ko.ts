@@ -2091,6 +2091,7 @@ export const ko: Dict = {
   'fileRevision.history.close': '기록 닫기',
   'fileRevision.history.current': '현재',
   'fileRevision.history.retentionHint': '파일당 최근 {count}개의 편집만 보관됩니다.',
+  'fileRevision.history.retentionPending': '오래된 편집 기록을 정리하는 중입니다. 잠시 후 목록이 갱신됩니다.',
   'fileRevision.conflict.message': '파일이 예기치 않게 변경되어 실행 취소와 다시 실행을 사용할 수 없습니다. 편집 기록에서 이전 버전을 복원할 수 있습니다.',
   'fileRevision.diskSync.failedMessage': '미리보기는 업데이트됐지만 디스크에 저장하지 못했습니다. 실행 취소와 다시 실행은 계속 사용할 수 있습니다.',
   'fileRevision.diskSync.retryAction': '저장 재시도',
