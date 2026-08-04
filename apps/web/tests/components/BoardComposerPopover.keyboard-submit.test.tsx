@@ -29,6 +29,7 @@ function renderPopover({
   targetOverride = {},
   draft = 'Tighten this heading',
   existingImages = [],
+  projectId = 'project-1',
   bounds,
 }: {
   onSaveComment?: () => void;
@@ -37,7 +38,8 @@ function renderPopover({
   selectionKind?: PreviewCommentSnapshot['selectionKind'];
   targetOverride?: Partial<PreviewCommentSnapshot>;
   draft?: string;
-  existingImages?: { url: string; name: string }[];
+  existingImages?: { path: string; name: string }[];
+  projectId?: string;
   bounds?: { width: number; height: number; scrollLeft?: number; scrollTop?: number };
 } = {}) {
   return render(
@@ -54,6 +56,7 @@ function renderPopover({
       onSendBatch={onSendBatch}
       onRemoveMember={() => {}}
       existingImages={existingImages}
+      projectId={projectId}
       sending={sending}
       t={((key: string) => String(key)) as never}
       bounds={bounds}
@@ -88,7 +91,7 @@ describe('BoardComposerPopover keyboard submit', () => {
     const onSendBatch = vi.fn();
     renderPopover({
       draft: '',
-      existingImages: [{ url: '/api/projects/project-1/raw/uploads/ref.png', name: 'ref.png' }],
+      existingImages: [{ path: 'uploads/ref.png', name: 'ref.png' }],
       onSaveComment,
       onSendBatch,
     });

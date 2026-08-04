@@ -7,6 +7,7 @@ import {
 } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { blobToImageDataUrl } from '../utils/imageBlobNormalize';
+import { Icon } from './Icon';
 
 type AuthenticatedProjectFileImageProps = {
   projectId: string;
@@ -41,7 +42,7 @@ export function AuthenticatedProjectFileImage({
   const shouldFetch = fetchEnabled && embed;
   const [reloadNonce, setReloadNonce] = useState(0);
   const [fallbackDataUrl, setFallbackDataUrl] = useState<string | null>(null);
-  const objectUrl = useAuthenticatedProjectFileObjectUrl(
+  const { src: objectUrl, loading, failed } = useAuthenticatedProjectFileObjectUrl(
     shouldFetch ? projectId : null,
     shouldFetch ? path : null,
     shouldFetch ? `${rev ?? ''}:${reloadNonce}` : null,
@@ -67,9 +68,24 @@ export function AuthenticatedProjectFileImage({
   }, [fallbackDataUrl, path, projectId, shouldFetch, trustExists]);
 
   if (!fetchEnabled) return null;
+
+  const loadingClass = `authenticated-project-file-image-loading${className ? ` ${className}` : ''}`;
+
   if (!src) {
-    return <div className={`authenticated-project-file-image-loading${className ? ` ${className}` : ''}`} aria-hidden />;
+    if (shouldFetch && failed && !loading) {
+      return (
+        <span
+          className={`authenticated-project-file-image-failed${className ? ` ${className}` : ''}`}
+          role="img"
+          aria-label={alt || 'Image unavailable'}
+        >
+          <Icon name="file" size={12} />
+        </span>
+      );
+    }
+    return <div className={loadingClass} aria-hidden />;
   }
+
   return (
     <img
       src={src}

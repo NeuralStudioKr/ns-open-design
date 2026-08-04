@@ -6,7 +6,6 @@ import type {
   ProxyMessageContent,
   ProxyTextContentBlock,
 } from '@open-design/contracts';
-import { projectFileUrl } from './registry';
 import type { StreamHandlers } from './anthropic';
 import { parseSseFrame } from './sse';
 import { isAnthropicSupportedImagePath } from '../utils/apiProtocol';
@@ -24,8 +23,8 @@ import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3P
 import { projectFilePathExists, projectFilePathBasename } from '../utils/projectFilePaths';
 import {
   isProjectRawFileKnownMissing,
-  markProjectRawFileMissing,
 } from '../utils/projectFileFetchCache';
+import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 
 /** No SSE bytes for this long → surface a retryable stall error instead of infinite Working UI. */
 const PROXY_STREAM_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -763,59 +762,35 @@ async function readAnthropicImageBlock(
   path: string,
 ): Promise<ProxyImageContentBlock | null> {
   if (isProjectRawFileKnownMissing(projectId, path)) return null;
-  try {
-    await waitForTeamverProjectStoragePrefix(projectId, { quick: true });
-  } catch {
-    // Prefix warm is best-effort; still attempt the raw fetch.
+
+  const blob = await loadAuthenticatedProjectFileBlob(projectId, path, {
+    delaysMs: ANTHROPIC_IMAGE_FETCH_DELAYS_MS,
+  });
+  if (!blob) return null;
+
+  const mediaType = supportedAnthropicImageMediaType(blob.type, path);
+  if (!mediaType) return null;
+
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  if (!isValidAnthropicImageBytes(bytes, mediaType)) return null;
+  let payload = bytes;
+  if (payload.length > MAX_ANTHROPIC_PROXY_IMAGE_BYTES) {
+    const downscaled = await downscaleImageBytesForAnthropicProxy(
+      payload,
+      mediaType,
+      MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
+    );
+    if (!downscaled) return null;
+    payload = downscaled;
   }
-
-  for (let attempt = 0; attempt < ANTHROPIC_IMAGE_FETCH_DELAYS_MS.length; attempt += 1) {
-    const delay = ANTHROPIC_IMAGE_FETCH_DELAYS_MS[attempt] ?? 0;
-    if (delay > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-    try {
-      const resp = await fetchTeamverDaemon(projectFileUrl(projectId, path), {
-        cache: 'no-store',
-        teamverProjectId: projectId,
-      });
-      if (resp.status === 404) {
-        markProjectRawFileMissing(projectId, path);
-        return null;
-      }
-      if (!resp.ok) continue;
-
-      const mediaType = supportedAnthropicImageMediaType(
-        resp.headers.get('content-type') ?? '',
-        path,
-      );
-      if (!mediaType) return null;
-
-      const bytes = new Uint8Array(await resp.arrayBuffer());
-      if (!isValidAnthropicImageBytes(bytes, mediaType)) return null;
-      let payload = bytes;
-      if (payload.length > MAX_ANTHROPIC_PROXY_IMAGE_BYTES) {
-        const downscaled = await downscaleImageBytesForAnthropicProxy(
-          payload,
-          mediaType,
-          MAX_ANTHROPIC_PROXY_IMAGE_BYTES,
-        );
-        if (!downscaled) return null;
-        payload = downscaled;
-      }
-      return {
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: mediaType,
-          data: bytesToBase64(payload),
-        },
-      };
-    } catch {
-      // Auth / storage race — retry remaining attempts.
-    }
-  }
-  return null;
+  return {
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: mediaType,
+      data: bytesToBase64(payload),
+    },
+  };
 }
 
 /** Reject HTML/JSON error bodies that inherit a .png path extension. */

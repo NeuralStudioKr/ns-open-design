@@ -201,6 +201,7 @@ import {
   projectFilePathBasename,
   projectFileResolvedPath,
 } from '../utils/projectFilePaths';
+import { reconcileProjectRawFileMissingCache } from '../utils/projectFileFetchCache';
 import { DEFAULT_NOTIFICATIONS } from '../state/config';
 import type { TodoItem } from '../runtime/todos';
 import {
@@ -3935,7 +3936,9 @@ export function ProjectView({
       const cached = htmlContentCacheRef.current.get(name);
       if (cached && cached.mtime === mtime) return cached.text;
       try {
-        const response = await fetch(projectRawUrl(project.id, name));
+        const response = await fetchTeamverDaemon(projectRawUrl(project.id, name), {
+          teamverProjectId: project.id,
+        });
         const text = response.ok ? await response.text() : null;
         htmlContentCacheRef.current.set(name, { mtime, text });
         return text;
@@ -4787,6 +4790,11 @@ export function ProjectView({
     }
     return names;
   }, [projectFiles]);
+
+  useEffect(() => {
+    reconcileProjectRawFileMissingCache(project.id, projectFileNames);
+  }, [project.id, projectFileNames]);
+
   const activeProjectFileName = useMemo(
     () => (
       openTabsState.active && projectFileNames.has(openTabsState.active)

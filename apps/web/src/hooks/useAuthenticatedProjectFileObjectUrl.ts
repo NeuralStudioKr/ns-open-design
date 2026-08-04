@@ -13,7 +13,8 @@ import {
 import { normalizeFetchedImageBlob, blobToImageDataUrl } from '../utils/imageBlobNormalize';
 import { isEphemeralDrawingScreenshotPath } from '../utils/projectFilePaths';
 
-const FETCH_RETRY_DELAYS_MS = [0, 250, 800, 1500] as const;
+export const AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS = [0, 250, 800, 1500] as const;
+const TRUSTED_BACKGROUND_RETRY_DELAYS_MS = [2000, 5000] as const;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,6 +30,10 @@ async function readResponseImageBlob(resp: Response): Promise<Blob> {
     return await resp.blob();
   }
   throw new Error('response body unavailable');
+}
+
+async function blobToRenderableDataUrl(blob: Blob): Promise<string | null> {
+  return await blobToImageDataUrl(blob);
 }
 
 /**
@@ -64,7 +69,7 @@ export async function loadAuthenticatedProjectFileBlob(
 
   const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
   const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
-  const delays = options?.delaysMs ?? FETCH_RETRY_DELAYS_MS;
+  const delays = options?.delaysMs ?? AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS;
   const trustExists = Boolean(options?.trustExists);
 
   for (let attempt = 0; attempt < delays.length; attempt += 1) {
@@ -103,6 +108,12 @@ export async function loadAuthenticatedProjectFileBlob(
   return null;
 }
 
+export type AuthenticatedProjectFileObjectUrlState = {
+  src: string | null;
+  loading: boolean;
+  failed: boolean;
+};
+
 /**
  * Teamver embed project files must be fetched with daemon auth headers.
  * Bare `/api/projects/.../raw/...` on `<img src>` can fail when cookies or
@@ -116,8 +127,10 @@ export function useAuthenticatedProjectFileObjectUrl(
   /** Bust in-memory blob cache when the backing file changes (e.g. mtime). */
   rev?: string | number | null,
   trustExists?: boolean,
-): string | null {
+): AuthenticatedProjectFileObjectUrlState {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [prefixNonce, setPrefixNonce] = useState(0);
 
   useEffect(() => {
@@ -145,25 +158,52 @@ export function useAuthenticatedProjectFileObjectUrl(
     const path = String(filePath || '').trim();
     if (!projectId || !path) {
       setImageSrc(null);
+      setLoading(false);
+      setFailed(false);
       return;
     }
 
     let cancelled = false;
     setImageSrc(null);
+    setLoading(true);
+    setFailed(false);
 
     void (async () => {
-      const blob = await loadAuthenticatedProjectFileBlob(projectId, path, { trustExists });
-      if (cancelled || !blob) return;
-      const dataUrl = await blobToImageDataUrl(blob);
-      if (cancelled || !dataUrl) return;
-      setImageSrc(dataUrl);
+      const tryLoad = async (): Promise<string | null> => {
+        const blob = await loadAuthenticatedProjectFileBlob(projectId, path, { trustExists });
+        if (!blob) return null;
+        return await blobToRenderableDataUrl(blob);
+      };
+
+      let dataUrl = await tryLoad();
+      if (cancelled) return;
+
+      if (!dataUrl && trustExists) {
+        for (const waitMs of TRUSTED_BACKGROUND_RETRY_DELAYS_MS) {
+          await sleep(waitMs);
+          if (cancelled) return;
+          dataUrl = await tryLoad();
+          if (dataUrl) break;
+        }
+      }
+
+      if (cancelled) return;
+      if (dataUrl) {
+        setImageSrc(dataUrl);
+        setFailed(false);
+      } else {
+        setFailed(true);
+      }
+      setLoading(false);
     })();
 
     return () => {
       cancelled = true;
       setImageSrc(null);
+      setLoading(false);
+      setFailed(false);
     };
   }, [filePath, projectId, rev, trustExists, prefixNonce]);
 
-  return imageSrc;
+  return { src: imageSrc, loading, failed };
 }

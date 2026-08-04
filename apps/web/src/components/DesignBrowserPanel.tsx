@@ -1791,9 +1791,10 @@ export function DesignBrowserPanel({
       onDeleteComment={onRemovePreviewComment}
       images={browserImagePreviews}
       existingImages={(activeSavedComment?.attachments ?? []).map((attachment) => ({
-        url: projectRawUrl(projectId, attachment.path),
+        path: attachment.path,
         name: attachment.name,
       }))}
+      projectId={projectId}
       onAttachImages={addBrowserImages}
       onRemoveImage={removeBrowserImage}
       onPreviewImage={setBrowserPreviewIndex}

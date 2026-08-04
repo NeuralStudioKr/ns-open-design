@@ -2114,6 +2114,22 @@
   background: var(--bg-fill-secondary);
   box-shadow: inset 0 0 0 1px var(--border-subtle);
 }
+.authenticated-project-file-image-failed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  border-radius: 3px;
+  color: var(--text-faint);
+  background: var(--bg-fill-secondary);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+.authenticated-project-file-image-failed svg {
+  width: 10px;
+  height: 10px;
+}
 .staged-preview-card > .authenticated-project-file-image-loading {
   width: min(100%, 720px);
   height: min(70vh, 640px);

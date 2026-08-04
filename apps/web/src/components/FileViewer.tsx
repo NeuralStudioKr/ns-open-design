@@ -10502,10 +10502,11 @@ function HtmlViewer({
       images={boardImagePreviews}
       existingImages={
         activeComposerAttachments.map((attachment) => ({
-          url: projectRawUrl(projectId, attachment.path),
+          path: attachment.path,
           name: attachment.name,
         }))
       }
+      projectId={projectId}
       onAttachImages={addBoardImages}
       onRemoveImage={removeBoardImage}
       onPreviewImage={setBoardPreviewIndex}
