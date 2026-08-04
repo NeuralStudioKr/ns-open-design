@@ -28,7 +28,7 @@ import type { Dict } from '../i18n/types';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { projectRawUrl } from '../providers/registry';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
-import { projectFilePathExists, projectFilePathsInclude } from '../utils/projectFilePaths';
+import { projectFilePathExists, projectFilePathsInclude, projectFileResolvedPath } from '../utils/projectFilePaths';
 import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -395,7 +395,7 @@ function ChatArtifactPreview({
     return (
       <AuthenticatedProjectFileImage
         projectId={projectId}
-        path={file.name}
+        path={projectFileResolvedPath(file)}
         alt=""
         rev={Math.round(file.mtime)}
         trustExists
