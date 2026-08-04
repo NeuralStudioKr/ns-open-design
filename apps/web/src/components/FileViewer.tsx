@@ -322,6 +322,9 @@ import {
   type FileRevision,
 } from '@open-design/contracts';
 
+/** Poll revision list while deferred retention sweep is still trimming history. */
+const FILE_REVISION_RETENTION_POLL_MS = 4_000;
+
 function resolveChromeActionsHost(): HTMLElement | null {
   return document.querySelector<HTMLElement>(APP_CHROME_FILE_ACTIONS_SELECTOR)
     ?? document.getElementById(APP_CHROME_FILE_ACTIONS_ID);
@@ -7327,6 +7330,7 @@ function HtmlViewer({
     }
     setRevisionRetentionPending(list.retentionPending === true);
     const headRevision = list.revisions.find((revision) => revision.id === list.headRevisionId);
+    const activeSequence = getActiveRevisionSequence(projectId, file.name);
     const userAtHeadRevision = activeSequence == null
       || (headRevision != null && activeSequence === headRevision.sequence);
 
@@ -7617,6 +7621,19 @@ function HtmlViewer({
     if (!sourceReadyForRevisionRefresh) return;
     void refreshRevisionStack();
   }, [projectId, file.name, filesRefreshKey, refreshRevisionStack, sourceReadyForRevisionRefresh]);
+
+  useEffect(() => {
+    if (!revisionHistoryOpen || !revisionRetentionPending || !sourceReadyForRevisionRefresh) return;
+    const id = window.setInterval(() => {
+      void refreshRevisionStack();
+    }, FILE_REVISION_RETENTION_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [
+    revisionHistoryOpen,
+    revisionRetentionPending,
+    sourceReadyForRevisionRefresh,
+    refreshRevisionStack,
+  ]);
 
   // Selecting a new file or turning inspect/comment-inspect off resets the panel target.
   useEffect(() => {

@@ -8,18 +8,11 @@ import {
 } from './limits.js';
 import { getFileRevisionSnapshotStorageStatsDurable } from './snapshot-storage.js';
 
-let compactionDb: Database.Database | null = null;
-let compactionInFlight: Promise<void> | null = null;
-
 export interface DeferredCompactionOptions {
   /** Caps rows deleted in one pass. Push-triggered compaction uses PUSH_PRUNE_MAX; GC omits this. */
   maxDeletes?: number;
   /** When true and bytes remain over budget after a capped pass, queue another compaction. */
   rescheduleOnOverflow?: boolean;
-}
-
-export function registerRevisionCompactionDb(db: Database.Database): void {
-  compactionDb = db;
 }
 
 /**

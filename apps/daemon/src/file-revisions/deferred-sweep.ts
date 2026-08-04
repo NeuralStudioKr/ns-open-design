@@ -32,9 +32,6 @@ const deferredExcessByTarget = new Map<string, number>();
 
 export function registerRevisionDeferredSweep(context: RevisionDeferredSweepContext): void {
   sweepContext = context;
-  void loadCompactionModule().then(({ registerRevisionCompactionDb }) => {
-    registerRevisionCompactionDb(context.db);
-  });
 }
 
 export function scheduleRevisionDeferredSweep(

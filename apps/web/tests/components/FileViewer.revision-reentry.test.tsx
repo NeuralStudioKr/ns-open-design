@@ -81,7 +81,8 @@ describe('FileViewer revision re-entry', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(false));
+    await waitFor(() => expect(screen.getByTestId('file-viewer-redo').hasAttribute('disabled')).toBe(false));
+    expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(true);
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
