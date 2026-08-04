@@ -909,9 +909,10 @@ describe('ManualEditResizeOverlay', () => {
     expect(onMoveCommit).not.toHaveBeenCalled();
   });
 
-  it('sub-threshold body drag after preview cancels without commit', () => {
+  it('absolute sub-threshold body drag does not preview or cancel', () => {
     const onMoveCommit = vi.fn();
     const onMoveCancel = vi.fn();
+    const onMovePreview = vi.fn();
 
     const { getByTestId } = render(
       <ManualEditResizeOverlay
@@ -931,7 +932,7 @@ describe('ManualEditResizeOverlay', () => {
         onResizePreview={vi.fn()}
         onResizeCommit={vi.fn()}
         onResizeCancel={vi.fn()}
-        onMovePreview={vi.fn()}
+        onMovePreview={onMovePreview}
         onMoveCommit={onMoveCommit}
         onMoveCancel={onMoveCancel}
       />,
@@ -943,8 +944,32 @@ describe('ManualEditResizeOverlay', () => {
     fireEvent.pointerMove(window, { pointerId: 16, clientX: 51, clientY: 50, buttons: 1 });
     fireEvent.pointerUp(window, { pointerId: 16, clientX: 51, clientY: 50 });
 
-    expect(onMoveCancel).toHaveBeenCalledTimes(1);
+    expect(onMovePreview).not.toHaveBeenCalled();
+    expect(onMoveCancel).not.toHaveBeenCalled();
     expect(onMoveCommit).not.toHaveBeenCalled();
+  });
+
+  it('resize-only overlay body stays pointer-pass-through for iframe dblclick', () => {
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          kind: 'text',
+          cssPosition: 'static',
+          styles: emptyManualEditStyles(),
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    expect(overlay.getAttribute('data-movable')).toBe('false');
+    expect(overlay.className).not.toMatch(/interactive/);
+    expect(getByTestId('manual-edit-resize-handle-se')).not.toBeNull();
   });
 
   it('body click without preview does not cancel (keeps unrelated pending safe)', () => {

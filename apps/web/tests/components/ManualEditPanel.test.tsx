@@ -121,6 +121,61 @@ describe('ManualEditPanel', () => {
     expect(host.querySelector('.manual-edit-right')?.classList.contains('manual-edit-collapsed')).toBe(false);
   });
 
+  it('expands again when the selected target changes after collapse', () => {
+    renderPanel({ floatingStyle: { left: 20, top: 24, width: 320, maxHeight: 380 } });
+    const toggle = host.querySelector(
+      'button[aria-label="Collapse edit panel"]',
+    ) as HTMLButtonElement | null;
+    if (!toggle) throw new Error('Collapse toggle not found');
+    act(() => {
+      toggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+    expect(host.querySelector('.manual-edit-collapsed')).not.toBeNull();
+
+    const nextTarget = {
+      ...target,
+      id: 'other-title',
+      label: 'Other Title',
+      text: 'Other',
+      fields: { text: 'Other' },
+      attributes: { 'data-od-id': 'other-title' },
+      outerHtml: '<h1 data-od-id="other-title">Other</h1>',
+    };
+    act(() => {
+      root.render(
+        <ManualEditPanel
+          targets={[target, nextTarget]}
+          selectedTarget={nextTarget}
+          draft={{
+            ...emptyManualEditDraft('<html></html>'),
+            text: 'Other',
+            styles: emptyManualEditStyles(),
+            outerHtml: nextTarget.outerHtml,
+          }}
+          history={[]}
+          error={null}
+          canUndo={false}
+          canRedo={false}
+          onSelectTarget={vi.fn()}
+          onDraftChange={vi.fn()}
+          onStyleChange={vi.fn()}
+          onInvalidStyle={vi.fn()}
+          onApplyPatch={vi.fn()}
+          onError={vi.fn()}
+          onClearSelection={vi.fn()}
+          onCancelDraft={vi.fn()}
+          onSaveDraft={vi.fn()}
+          onUndo={vi.fn()}
+          onRedo={vi.fn()}
+          floatingStyle={{ left: 20, top: 24, width: 320, maxHeight: 380 }}
+        />,
+      );
+    });
+
+    expect(host.querySelector('.manual-edit-collapsed')).toBeNull();
+    expect(host.querySelector('.manual-edit-scroll')?.textContent).toContain('TYPOGRAPHY');
+  });
+
   it('does not show page-level controls inside an element inspector', () => {
     const onClearSelection = vi.fn();
     renderPanel({ onClearSelection });

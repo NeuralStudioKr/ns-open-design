@@ -81,6 +81,12 @@ export function ManualEditPanel({
   useEffect(() => {
     selectedTargetRef.current = selectedTarget;
   }, [selectedTarget]);
+  // New selection should open expanded with a clean delete affordance — a
+  // prior collapse/confirm must not hide SIZE/POSITION for the next element.
+  useEffect(() => {
+    setCollapsed(false);
+    setConfirmDelete(false);
+  }, [selectedTarget?.id]);
 
   const changeTargetStyle = (key: keyof ManualEditStyles, value: string) => {
     const nextStyles = { ...draft.styles, [key]: value };

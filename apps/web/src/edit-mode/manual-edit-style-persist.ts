@@ -34,6 +34,27 @@ export function shouldFlushManualEditStylesOnTargetBoundary(
 }
 
 /**
+ * Geometry gestures pause autosave so mid-drag writes do not race remasure.
+ * A non-force flush that returns success while paused is a silent no-op — exit /
+ * dismiss / selection-boundary callers must pass `{ force: true }` or pending
+ * drafts are dropped when edit mode tears down.
+ */
+export function shouldSkipManualEditStyleFlushWhilePaused(
+  paused: boolean,
+  options?: { force?: boolean },
+): boolean {
+  return paused && !options?.force;
+}
+
+/** Re-selecting the same element must keep a user/auto-pinned inspector. */
+export function shouldResetManualEditPanelPinOnSelect(
+  previousTargetId: string | null | undefined,
+  nextTargetId: string,
+): boolean {
+  return previousTargetId !== nextTargetId;
+}
+
+/**
  * After a failed flush that cleared `pending` before apply, put it back unless
  * the user already queued a newer draft during the in-flight write.
  */

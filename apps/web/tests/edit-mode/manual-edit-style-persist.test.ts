@@ -5,6 +5,8 @@ import {
   manualEditGestureRollbackKeys,
   restoreManualEditPendingStyleAfterFailedFlush,
   shouldFlushManualEditStylesOnTargetBoundary,
+  shouldResetManualEditPanelPinOnSelect,
+  shouldSkipManualEditStyleFlushWhilePaused,
   waitForManualEditSaveIdle,
 } from '../../src/edit-mode/manual-edit-style-persist';
 
@@ -19,6 +21,18 @@ describe('manual edit style persist boundary', () => {
 
   it('flushes when clearing selection while a draft is pending', () => {
     expect(shouldFlushManualEditStylesOnTargetBoundary('hero', null)).toBe(true);
+  });
+
+  it('skips soft flush while geometry gestures pause autosave', () => {
+    expect(shouldSkipManualEditStyleFlushWhilePaused(true)).toBe(true);
+    expect(shouldSkipManualEditStyleFlushWhilePaused(true, { force: true })).toBe(false);
+    expect(shouldSkipManualEditStyleFlushWhilePaused(false)).toBe(false);
+  });
+
+  it('resets the floating panel pin only when the selected id changes', () => {
+    expect(shouldResetManualEditPanelPinOnSelect('hero', 'cta')).toBe(true);
+    expect(shouldResetManualEditPanelPinOnSelect('hero', 'hero')).toBe(false);
+    expect(shouldResetManualEditPanelPinOnSelect(null, 'hero')).toBe(true);
   });
 
   it('restores the flushed draft after a failed save when nothing newer was queued', () => {

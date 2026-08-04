@@ -387,10 +387,10 @@ export function ManualEditResizeOverlay({
         drag.startTopPx,
         result,
       );
-      // Promote styles only after the move threshold — avoids flash + Esc wiping
-      // panel SIZE drafts on a plain click (53 review).
+      // Absolute and promote moves share the threshold gate — 1px jitter must
+      // not mark previewed (that made pointerup cancel wipe left/top drafts).
+      if (!result.moved) return;
       if (drag.promote) {
-        if (!result.moved) return;
         const preview = promoteMoveStyles(drag.startRect, result, {
           layoutWidthPx: drag.layoutWidthPx,
           layoutHeightPx: drag.layoutHeightPx,
@@ -403,7 +403,7 @@ export function ManualEditResizeOverlay({
         return;
       }
       const preview = movePreviewStyles(result);
-      drag.lastStyles = result.moved ? (moveResultToStyles(result) ?? preview) : preview;
+      drag.lastStyles = moveResultToStyles(result) ?? preview;
       drag.previewed = true;
       drag.lastViewport = viewport;
       setLiveViewportPos(viewport);
@@ -420,6 +420,13 @@ export function ManualEditResizeOverlay({
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
+      // Parent may unmount the overlay mid-drag (dismiss / reselect). End the
+      // session so autosave pause cannot stick; leave commit/cancel to FileViewer
+      // force-flush / discard paths.
+      if (dragRef.current) {
+        dragRef.current = null;
+        onResizeSessionChangeRef.current?.(false);
+      }
     };
   }, []);
 
@@ -624,7 +631,10 @@ export function ManualEditResizeOverlay({
     <div
       className={[
         styles.overlay,
-        disabled ? '' : styles.interactive,
+        // Resize-only (flow text/link): keep the body pass-through so dblclick
+        // reaches the iframe for inline edit. Handles stay pointer-events:auto.
+        // Movable boxes need an interactive body for interior drag-to-move.
+        disabled || !movable ? '' : styles.interactive,
         movable ? styles.movable : '',
         moving ? styles.moving : '',
       ]
@@ -636,8 +646,8 @@ export function ManualEditResizeOverlay({
       data-movable={movable ? 'true' : 'false'}
       style={boxStyle}
       aria-hidden={disabled || undefined}
-      onPointerDown={disabled ? undefined : onOverlayPointerDown}
-      onPointerMove={disabled ? undefined : onOverlayPointerMove}
+      onPointerDown={disabled || !movable ? undefined : onOverlayPointerDown}
+      onPointerMove={disabled || !movable ? undefined : onOverlayPointerMove}
     >
       {RESIZE_HANDLES.map((handle) => (
         <button

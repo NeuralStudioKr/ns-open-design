@@ -281,6 +281,8 @@ import {
   manualEditGestureRollbackKeys,
   restoreManualEditPendingStyleAfterFailedFlush,
   shouldFlushManualEditStylesOnTargetBoundary,
+  shouldResetManualEditPanelPinOnSelect,
+  shouldSkipManualEditStyleFlushWhilePaused,
   waitForManualEditSaveIdle,
 } from '../edit-mode/manual-edit-style-persist';
 import { manualEditStyleReplayPatches } from '../edit-mode/manual-edit-style-replay';
@@ -7644,6 +7646,10 @@ function HtmlViewer({
       selectedManualEditTargetRef.current = null;
       setManualEditError(null);
       manualEditPendingStyleRef.current = null;
+      manualEditResizeSessionActiveRef.current = false;
+      manualEditResizePausedRef.current = false;
+      setManualEditResizeDraftSize(null);
+      setManualEditMoveDraftPos(null);
       if (manualEditStyleTimerRef.current) {
         clearTimeout(manualEditStyleTimerRef.current);
         manualEditStyleTimerRef.current = null;
@@ -8129,7 +8135,10 @@ function HtmlViewer({
   }
 
   async function flushManualEditStyleSave(options?: { force?: boolean }): Promise<boolean> {
-    if (manualEditResizePausedRef.current && !options?.force) return true;
+    // Boundary exits must pass `{ force: true }` — see shouldSkip…WhilePaused.
+    if (shouldSkipManualEditStyleFlushWhilePaused(manualEditResizePausedRef.current, options)) {
+      return true;
+    }
     // Boundary flushes (exit / select / text commit) must not lose a race with
     // autosave: wait for the lock, then persist whatever draft remains.
     if (manualEditSavingRef.current) {
@@ -8205,8 +8214,12 @@ function HtmlViewer({
   }
 
   async function exitManualEditModeAfterFlush(): Promise<boolean> {
-    const ok = await flushManualEditStyleSave();
+    // Force: geometry gestures pause autosave; a soft flush would no-op and the
+    // mode-off effect would then drop the pending draft.
+    const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) return false;
+    manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
     setManualEditPanelPosition(null);
     setManualEditMode(false);
     return true;
@@ -8231,13 +8244,16 @@ function HtmlViewer({
       manualEditPendingStyleRef.current?.id,
       target.id,
     )) {
-      if (!(await flushManualEditStyleSave())) return;
+      if (!(await flushManualEditStyleSave({ force: true }))) return;
     }
     setManualEditPageStylesOpen(false);
-    // Clear the pin so layout effect re-places for the new target. Resize/move
-    // on the same selection must not clear this — that caused the toolbar to
-    // chase the changing box.
-    setManualEditPanelPosition(null);
+    // Same-id reselect (click again / affordance) must keep the pinned toolbar.
+    if (shouldResetManualEditPanelPinOnSelect(
+      selectedManualEditTargetIdRef.current,
+      target.id,
+    )) {
+      setManualEditPanelPosition(null);
+    }
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
     manualEditResizeSessionActiveRef.current = false;
@@ -8274,7 +8290,7 @@ function HtmlViewer({
       manualEditPendingStyleRef.current?.id,
       null,
     )) {
-      if (!(await flushManualEditStyleSave())) return false;
+      if (!(await flushManualEditStyleSave({ force: true }))) return false;
     }
     selectedManualEditTargetIdRef.current = null;
     selectedManualEditTargetRef.current = null;
@@ -8284,6 +8300,7 @@ function HtmlViewer({
     setManualEditMoveDraftPos(null);
     setManualEditHostPaintRect(null);
     manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
     setManualEditDraft(emptyManualEditDraft(sourceRef.current ?? ''));
     setManualEditError(null);
     return true;
@@ -8294,7 +8311,7 @@ function HtmlViewer({
   // the toolbar toggle's job. Dismiss flushes any in-flight tweak first so
   // nothing is lost; cancel reverts the in-flight unsaved tweak instead.
   async function dismissManualEditPanel() {
-    const ok = await flushManualEditStyleSave();
+    const ok = await flushManualEditStyleSave({ force: true });
     if (!ok) return;
     if (selectedManualEditTarget) void clearManualEditTargetSelection();
     else setManualEditPageStylesOpen(false);
