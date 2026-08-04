@@ -160,7 +160,14 @@ export function applyManualEditPatch(
   } else if (patch.kind === 'set-style') {
     setInlineStyles(el as HTMLElement, patch.styles);
   } else if (patch.kind === 'set-attributes') {
-    setAttributes(el, patch.attributes);
+    const attrResult = setAttributes(el, patch.attributes);
+    if (attrResult.attempted > 0 && attrResult.applied === 0) {
+      return {
+        ok: false,
+        source,
+        error: 'None of the requested attributes could be applied.',
+      };
+    }
   } else if (patch.kind === 'set-outer-html') {
     const replaced = replaceOuterHtml(doc, el, patch.html);
     if (!replaced.ok) {
@@ -1767,7 +1774,10 @@ function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): vo
   }
 }
 
-function setAttributes(el: Element, attributes: Record<string, string>): void {
+function setAttributes(
+  el: Element,
+  attributes: Record<string, string>,
+): { attempted: number; applied: number } {
   // Keep identity / slide-scope attrs aligned with set-outer-html preservation.
   const protectedAttrs = new Set([
     'data-od-id',
@@ -1779,21 +1789,27 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
     'data-screen-label',
   ]);
   const tag = el.tagName.toLowerCase();
+  const entries = Object.entries(attributes);
   // Deny all attr mutation on executable / chrome hosts — including empty
   // values that would remove `type` from an inert <script type="application/json">.
-  if (isManualEditLockedHostTag(tag)) return;
-  for (const [name, value] of Object.entries(attributes)) {
+  if (isManualEditLockedHostTag(tag)) {
+    return { attempted: entries.length, applied: 0 };
+  }
+  let applied = 0;
+  for (const [name, value] of entries) {
     // Attribute names are case-insensitive in HTML; protect via lowercase.
     const lower = name.toLowerCase();
     if (!isSafeAttributeName(name) || protectedAttrs.has(lower)) continue;
     if (value.trim() === '') {
       el.removeAttribute(name);
+      applied += 1;
       continue;
     }
     if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
       const scrubbed = scrubUnsafeCssFunctions(normalizeCssForSafetyScan(value)).trim();
       if (!scrubbed || !isSafeManualEditPresentationCssValue(scrubbed)) continue;
       el.setAttribute(name, scrubbed);
+      applied += 1;
       continue;
     }
     if (
@@ -1811,7 +1827,9 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
       continue;
     }
     el.setAttribute(name, value);
+    applied += 1;
   }
+  return { attempted: entries.length, applied };
 }
 
 function replaceOuterHtml(doc: Document, el: Element, html: string): { ok: true } | { ok: false; error: string } {
@@ -2046,18 +2064,98 @@ function normalizeCssForSafetyScan(css: string): string {
   return text;
 }
 
+/**
+ * Strip a block/semicolon at-rule with quote-aware brace matching so
+ * `suffix:"}"` cannot truncate `@counter-style` / `@font-face` / `@page`.
+ */
+function stripCssAtRule(css: string, ruleName: string): string {
+  const lower = css.toLowerCase();
+  const needle = `@${ruleName.toLowerCase()}`;
+  let out = '';
+  let cursor = 0;
+  while (cursor < css.length) {
+    const idx = lower.indexOf(needle, cursor);
+    if (idx < 0) {
+      out += css.slice(cursor);
+      break;
+    }
+    // Ident boundary after the rule name (`@page` vs `@pages`).
+    const afterName = idx + needle.length;
+    if (afterName < css.length && /[\w-]/.test(css[afterName]!)) {
+      out += css.slice(cursor, afterName);
+      cursor = afterName;
+      continue;
+    }
+    out += css.slice(cursor, idx);
+    let i = afterName;
+    while (i < css.length && /[\s\r\n\f]/.test(css[i]!)) i += 1;
+    // Prelude until `{` or `;` (for `@page` margin shorthands without block).
+    let quote: '"' | "'" | null = null;
+    while (i < css.length) {
+      const ch = css[i]!;
+      if (quote) {
+        if (ch === '\\') {
+          i += 2;
+          continue;
+        }
+        if (ch === quote) quote = null;
+        i += 1;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        i += 1;
+        continue;
+      }
+      if (ch === ';') {
+        i += 1;
+        break;
+      }
+      if (ch === '{') {
+        let depth = 1;
+        i += 1;
+        while (i < css.length && depth > 0) {
+          const inner = css[i]!;
+          if (quote) {
+            if (inner === '\\') {
+              i += 2;
+              continue;
+            }
+            if (inner === quote) quote = null;
+            i += 1;
+            continue;
+          }
+          if (inner === '"' || inner === "'") {
+            quote = inner;
+            i += 1;
+            continue;
+          }
+          if (inner === '{') depth += 1;
+          else if (inner === '}') depth -= 1;
+          i += 1;
+        }
+        break;
+      }
+      i += 1;
+    }
+    cursor = i;
+  }
+  return out;
+}
+
 /** Strip @import / @namespace / @font-face / @counter-style / @page from salvaged style text. */
 function stripDangerousCssAtRules(css: string): string {
-  const normalized = normalizeCssForSafetyScan(css);
-  return normalized
+  let text = normalizeCssForSafetyScan(css)
     .replace(/@import\b[^;]*;?/gi, '')
-    .replace(/@namespace\b[^;]*;?/gi, '')
-    .replace(/@font-face\s*\{[^}]*\}/gi, '')
-    // Remote symbols / page backgrounds — same fetch class as @font-face.
-    .replace(/@counter-style\b[^{]*\{[^}]*\}/gi, '')
-    .replace(/@page\b[^{;]*\{[^}]*\}/gi, '')
-    .replace(/@page\b[^;]*;?/gi, '')
-    .trim();
+    .replace(/@namespace\b[^;]*;?/gi, '');
+  // Remote symbols / page backgrounds — same fetch class as @font-face.
+  for (const rule of ['font-face', 'counter-style', 'page'] as const) {
+    text = stripCssAtRule(text, rule);
+  }
+  text = text.trim();
+  // Fail closed if a dangerous at-rule survived a truncated strip.
+  if (/@(?:font-face|counter-style|page)\b/i.test(text)) return '';
+  return text;
 }
 
 /**
@@ -2076,6 +2174,16 @@ const MANUAL_EDIT_CSS_RESOURCE_PROP_PATTERN = [
   'offset-path',
   'list-style(?:-image)?',
 ].join('|');
+
+/** Hoisted so every style attr/block does not recompile the huge alternation. */
+const MANUAL_EDIT_CSS_RESOURCE_DECL_RE = new RegExp(
+  `(^|[;{])(\\s*)(?<![\\w-])(${MANUAL_EDIT_CSS_RESOURCE_PROP_PATTERN})\\s*:\\s*([^;{}]*)`,
+  'gi',
+);
+const MANUAL_EDIT_CSS_RESOURCE_VAR_RE = new RegExp(
+  `(^|[;{])(\\s*)(?<![\\w-])(${MANUAL_EDIT_CSS_RESOURCE_PROP_PATTERN})\\s*:\\s*([^;{}]*\\bvar\\s*\\([^;{}]*)`,
+  'gi',
+);
 
 /** Presentation attrs that accept CSS `url()` and need the same scrub as style. */
 const MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS = new Set([
@@ -2167,9 +2275,9 @@ function scrubUnsafeCssFunctions(css: string): string {
   // Quote-aware rewrites — regex `[^)]*` truncates on `)` inside SVG/data URLs.
   text = rewriteCssUrlFunctions(text);
   text = rewriteCssImageFunctions(text);
-  text = text.replace(/expression\s*\([^)]*\)/gi, 'initial');
+  text = rewriteCssFunctionCalls(text, 'expression', 'initial');
   // Firefox element() can sample arbitrary document regions into paint.
-  text = text.replace(/\belement\s*\([^)]*\)/gi, 'none');
+  text = rewriteCssFunctionCalls(text, 'element', 'none');
   text = text.replace(/-moz-binding\s*:[^;]*/gi, '');
   // IE/HTC binding — same threat class as -moz-binding (incl. mid-rule).
   text = text.replace(/\bbehavior\s*:[^;}]*/gi, '');
@@ -2180,48 +2288,39 @@ function scrubUnsafeCssFunctions(css: string): string {
   // Declaration-level match so `filter: blur(2px) url(https://…)` is dropped,
   // and `(?<![-\w])` avoids mangling `background-filter` / `--hero-filter`.
   // Intentionally does NOT touch background/background-image (slide imagery).
-  text = dropCssDeclsWithNonFragmentResource(
-    text,
-    MANUAL_EDIT_CSS_RESOURCE_PROP_PATTERN,
-  );
+  text = dropCssDeclsWithNonFragmentResource(text);
   // Resource props using var() cannot be proven fragment-safe (custom props
   // may stash remote url()). Keep --bg:url(https) for slide imagery intact.
-  text = text.replace(
-    new RegExp(
-      `(^|[;{])(\\s*)(?<![\\w-])(${MANUAL_EDIT_CSS_RESOURCE_PROP_PATTERN})\\s*:\\s*([^;{}]*\\bvar\\s*\\([^;{}]*)`,
-      'gi',
-    ),
-    '$1$2',
-  );
+  MANUAL_EDIT_CSS_RESOURCE_VAR_RE.lastIndex = 0;
+  text = text.replace(MANUAL_EDIT_CSS_RESOURCE_VAR_RE, '$1$2');
   return text;
 }
 
 /**
  * Drop whole CSS declarations whose value embeds a non-fragment url(...)/image(...).
- * `propPattern` is inserted after a property-name boundary lookbehind.
  */
-function dropCssDeclsWithNonFragmentResource(css: string, propPattern: string): string {
-  const re = new RegExp(
-    `(^|[;{])(\\s*)(?<![\\w-])(${propPattern})\\s*:\\s*([^;{}]*)`,
-    'gi',
+function dropCssDeclsWithNonFragmentResource(css: string): string {
+  MANUAL_EDIT_CSS_RESOURCE_DECL_RE.lastIndex = 0;
+  return String(css || '').replace(
+    MANUAL_EDIT_CSS_RESOURCE_DECL_RE,
+    (match, prefix: string, ws: string, _prop: string, value: string) => {
+      const hasUrl = /\burl\s*\(/i.test(value);
+      const hasImageFn = /\b(?:-webkit-)?image(?:-set)?\s*\(/i.test(value);
+      if (!hasUrl && !hasImageFn) return match;
+      if (
+        (hasUrl && cssDeclarationHasNonFragmentUrl(value))
+        || (hasImageFn && cssDeclarationHasNonFragmentImageFn(value))
+      ) {
+        return prefix === '{' ? `{${ws}` : prefix === ';' ? `;${ws}` : ws;
+      }
+      return match;
+    },
   );
-  return String(css || '').replace(re, (match, prefix: string, ws: string, _prop: string, value: string) => {
-    const hasUrl = /\burl\s*\(/i.test(value);
-    const hasImageFn = /\b(?:-webkit-)?image(?:-set)?\s*\(/i.test(value);
-    if (!hasUrl && !hasImageFn) return match;
-    if (
-      (hasUrl && cssDeclarationHasNonFragmentUrl(value))
-      || (hasImageFn && cssDeclarationHasNonFragmentImageFn(value))
-    ) {
-      return prefix === '{' ? `{${ws}` : prefix === ';' ? `;${ws}` : ws;
-    }
-    return match;
-  });
 }
 
-/** @deprecated alias — tests / call sites may still name the url-only helper. */
-function dropCssDeclsWithNonFragmentUrl(css: string, propPattern: string): string {
-  return dropCssDeclsWithNonFragmentResource(css, propPattern);
+/** @deprecated alias — older call sites passed a prop pattern; pattern is now fixed. */
+function dropCssDeclsWithNonFragmentUrl(css: string, _propPattern?: string): string {
+  return dropCssDeclsWithNonFragmentResource(css);
 }
 
 /** True when a CSS declaration value contains url(...) that is not #fragment. */
@@ -2290,16 +2389,16 @@ function isSafeManualEditPresentationCssValue(value: string): boolean {
 
 /**
  * Find the next CSS function call named `funcName` (e.g. "url", "image-set")
- * starting at `from`. Returns absolute [start, endExclusive) spanning the call,
- * plus the raw args interior. Quote-aware so `)` inside strings does not end
- * the call. Returns null when the call is truncated / unclosed (fail-closed).
+ * starting at `from`. Pass `lowerHaystack` to avoid re-lowercasing large CSS
+ * on every call (hot path inside rewrite loops).
  */
 function findNextCssFunctionCall(
   text: string,
   funcName: string,
   from = 0,
+  lowerHaystack?: string,
 ): { start: number; end: number; args: string } | null {
-  const lower = text.toLowerCase();
+  const lower = lowerHaystack ?? text.toLowerCase();
   const needle = `${funcName.toLowerCase()}(`;
   let search = from;
   while (search < text.length) {
@@ -2343,13 +2442,52 @@ function findNextCssFunctionCall(
   return null;
 }
 
-/** Rewrite url(...) with forbidden schemes to url() using quote-aware scans. */
-function rewriteCssUrlFunctions(css: string): string {
-  let text = String(css || '');
+/** Earliest match among several function names (longest names should be listed first). */
+function findNextCssFunctionCallNamed(
+  text: string,
+  names: readonly string[],
+  from: number,
+  lowerHaystack: string,
+): { start: number; end: number; args: string } | null {
+  let best: { start: number; end: number; args: string } | null = null;
+  for (const name of names) {
+    const call = findNextCssFunctionCall(text, name, from, lowerHaystack);
+    if (call && (!best || call.start < best.start)) best = call;
+  }
+  return best;
+}
+
+/** Rewrite every quote-aware call of `funcName` to `replacement`. */
+function rewriteCssFunctionCalls(
+  css: string,
+  funcName: string,
+  replacement: string,
+): string {
+  const text = String(css || '');
+  const lower = text.toLowerCase();
   let out = '';
   let cursor = 0;
   while (cursor < text.length) {
-    const call = findNextCssFunctionCall(text, 'url', cursor);
+    const call = findNextCssFunctionCall(text, funcName, cursor, lower);
+    if (!call) {
+      out += text.slice(cursor);
+      break;
+    }
+    out += text.slice(cursor, call.start);
+    out += replacement;
+    cursor = call.end;
+  }
+  return out;
+}
+
+/** Rewrite url(...) with forbidden schemes to url() using quote-aware scans. */
+function rewriteCssUrlFunctions(css: string): string {
+  const text = String(css || '');
+  const lower = text.toLowerCase();
+  let out = '';
+  let cursor = 0;
+  while (cursor < text.length) {
+    const call = findNextCssFunctionCall(text, 'url', cursor, lower);
     if (!call) {
       out += text.slice(cursor);
       break;
@@ -2362,38 +2500,40 @@ function rewriteCssUrlFunctions(css: string): string {
   return out;
 }
 
+const MANUAL_EDIT_CSS_IMAGE_FN_NAMES = [
+  '-webkit-image-set',
+  'image-set',
+  'image',
+] as const;
+
 /**
  * Rewrite image()/image-set()/-webkit-image-set() calls that embed forbidden
- * schemes to `none`. Truncated calls fail closed (dropped through end of value).
+ * schemes to `none`. Single left-to-right pass (avoids 3× full rescans).
  */
 function rewriteCssImageFunctions(css: string): string {
-  const names = ['-webkit-image-set', 'image-set', 'image'] as const;
-  let text = String(css || '');
-  for (const name of names) {
-    let out = '';
-    let cursor = 0;
-    while (cursor < text.length) {
-      const call = findNextCssFunctionCall(text, name, cursor);
-      if (!call) {
-        out += text.slice(cursor);
-        break;
-      }
-      out += text.slice(cursor, call.start);
-      const urls = extractUrlCandidatesFromCssFunctionArgs(call.args);
-      const unsafe = urls.some((u) => isForbiddenCssUrlScheme(u))
-        || /(?:javascript|vbscript|data):/i.test(normalizeCssForSafetyScan(call.args));
-      // Unclosed / unparsable image fn — drop the rest of this CSS chunk.
-      if (urls.length === 0 && /(?:javascript|vbscript|data):/i.test(call.args)) {
-        out += 'none';
-        cursor = text.length;
-        break;
-      }
-      out += unsafe ? 'none' : text.slice(call.start, call.end);
-      cursor = call.end;
+  const text = String(css || '');
+  const lower = text.toLowerCase();
+  let out = '';
+  let cursor = 0;
+  while (cursor < text.length) {
+    const call = findNextCssFunctionCallNamed(
+      text,
+      MANUAL_EDIT_CSS_IMAGE_FN_NAMES,
+      cursor,
+      lower,
+    );
+    if (!call) {
+      out += text.slice(cursor);
+      break;
     }
-    text = out;
+    out += text.slice(cursor, call.start);
+    const urls = extractUrlCandidatesFromCssFunctionArgs(call.args);
+    const unsafe = urls.some((u) => isForbiddenCssUrlScheme(u))
+      || /(?:javascript|vbscript|data):/i.test(normalizeCssForSafetyScan(call.args));
+    out += unsafe ? 'none' : text.slice(call.start, call.end);
+    cursor = call.end;
   }
-  return text;
+  return out;
 }
 
 /** Pull quoted strings and url() inners from image()/image-set() args. */
@@ -2429,10 +2569,11 @@ function extractUrlCandidatesFromCssFunctionArgs(args: string): string[] {
 /** Quote-aware extraction of url(...) inner texts from a CSS value. */
 function extractCssUrlInners(value: string): string[] {
   const text = String(value || '');
+  const lower = text.toLowerCase();
   const out: string[] = [];
   let cursor = 0;
   while (cursor < text.length) {
-    const call = findNextCssFunctionCall(text, 'url', cursor);
+    const call = findNextCssFunctionCall(text, 'url', cursor, lower);
     if (!call) break;
     const raw = call.args.trim();
     const unquoted = raw.replace(/^(['"])([\s\S]*)\1$/, '$2').trim();
@@ -2445,16 +2586,19 @@ function extractCssUrlInners(value: string): string[] {
 /** Quoted / url() resource candidates inside image()/image-set() calls. */
 function extractCssImageFunctionUrlInners(value: string): string[] {
   const text = String(value || '');
-  const names = ['-webkit-image-set', 'image-set', 'image'] as const;
+  const lower = text.toLowerCase();
   const out: string[] = [];
-  for (const name of names) {
-    let cursor = 0;
-    while (cursor < text.length) {
-      const call = findNextCssFunctionCall(text, name, cursor);
-      if (!call) break;
-      out.push(...extractUrlCandidatesFromCssFunctionArgs(call.args));
-      cursor = call.end;
-    }
+  let cursor = 0;
+  while (cursor < text.length) {
+    const call = findNextCssFunctionCallNamed(
+      text,
+      MANUAL_EDIT_CSS_IMAGE_FN_NAMES,
+      cursor,
+      lower,
+    );
+    if (!call) break;
+    out.push(...extractUrlCandidatesFromCssFunctionArgs(call.args));
+    cursor = call.end;
   }
   return out;
 }

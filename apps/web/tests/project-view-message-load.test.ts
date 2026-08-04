@@ -332,24 +332,23 @@ describe("ProjectView message loading", () => {
     );
   });
 
-  it("sanitizes every HTML artifact persist, not only deck types", () => {
+  it("sanitizes every HTML artifact persist once at the terminal write gate", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 20000);
-    const htmlGate = persistBlock.indexOf("if (ext === '.html')");
-    expect(htmlGate).toBeGreaterThan(0);
-    // Walk to the structural gate that previously gated sanitize on deck only.
-    const structuralGate = persistBlock.indexOf(
-      "// Pre-write structural gate for HTML artifacts",
-      htmlGate,
+    const persistBlock = source.slice(persistStart, persistStart + 22000);
+    // Terminal scrub after salvage/repair/stabilize — not 2–4× early passes.
+    expect(persistBlock).toContain("htmlBody = sanitizeManualEditFullSource(htmlBody)");
+    expect(persistBlock).toContain("Single terminal scrub after salvage/repair/stabilize");
+    // Must not reintroduce early full-source scrubs on recovered/scoped decks.
+    expect(persistBlock).not.toContain(
+      "html: sanitizeManualEditFullSource(recoveredHtml)",
     );
-    expect(structuralGate).toBeGreaterThan(htmlGate);
-    const structuralBlock = persistBlock.slice(structuralGate, structuralGate + 900);
-    expect(structuralBlock).toContain("sanitizeManualEditFullSource(artifactToPersist.html)");
-    // Must not reintroduce a deck-only sanitize gate before the full-source scrub.
-    expect(structuralBlock).not.toMatch(
-      /artifactType\s*===\s*['"]deck['"][\s\S]{0,240}sanitizeManualEditFullSource\(artifactToPersist\.html\)/,
+    expect(persistBlock).not.toContain(
+      "html: sanitizeManualEditFullSource(artifactToPersist.html)",
+    );
+    expect(persistBlock).not.toMatch(
+      /artifactType\s*===\s*['"]deck['"][\s\S]{0,240}sanitizeManualEditFullSource/,
     );
   });
 

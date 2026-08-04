@@ -4327,25 +4327,18 @@ export function ProjectView({
               logLabel: 'deck-patch',
             });
           }
-        } else if (effectiveArt.html) {
-          // Scope guard only checks that non-target regions are unchanged —
-          // still sanitize the accepted full-deck HTML so on*/script inside
-          // the selected target cannot persist.
-          effectiveArt = {
-            ...effectiveArt,
-            html: sanitizeManualEditFullSource(effectiveArt.html),
-          };
         }
+        // Full-deck scope acceptance: terminal sanitize below covers the write.
       }
       const recoveredHtml = recoverHtmlArtifactFromPrecedingDocument({
         artifactHtml: effectiveArt.html,
         identifier: effectiveArt.identifier,
         sourceText,
       });
-      // Recovery can pull a preceding document that was never manual-edit
-      // sanitized — scrub before persist when we accept recovered HTML.
+      // Recovery may pull a preceding document — terminal sanitize below
+      // scrubs it once after salvage/repair/stabilize mutations.
       let artifactToPersist = recoveredHtml
-        ? { ...effectiveArt, html: sanitizeManualEditFullSource(recoveredHtml) }
+        ? { ...effectiveArt, html: recoveredHtml }
         : effectiveArt;
       const baseName = artifactBaseNameFor(effectiveArt);
       const ext = artifactExtensionFor(effectiveArt);
@@ -4377,17 +4370,11 @@ export function ProjectView({
       // when only Edit-tool changes happened this turn. Without this guard,
       // such content lands as a phantom HTML file in the project panel.
       if (ext === '.html') {
-        // All HTML artifact writes (deck and non-deck) previously could skip
-        // the manual-edit sanitizer — scrub script/on* before validation/write.
-        artifactToPersist = {
-          ...artifactToPersist,
-          html: sanitizeManualEditFullSource(artifactToPersist.html),
-        };
         // Mid-stream truncation (max_tokens) often leaves a multi-KB deck
         // with real <section class="slide"> content but no </html>. Closing
         // the document here salvages a previewable file instead of skipping
         // the write and burning an auto-continue turn that usually truncates
-        // again the same way.
+        // again the same way. Run BEFORE the terminal sanitize so we parse once.
         const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html);
         if (salvaged) {
           artifactToPersist = { ...artifactToPersist, html: salvaged };
@@ -4445,10 +4432,12 @@ export function ProjectView({
             htmlBody,
             persistCommentAttachments,
           );
-          // Collapse/graft can reintroduce current-disk markup that was never
-          // scrubbed — sanitize again before write.
-          htmlBody = sanitizeManualEditFullSource(htmlBody);
         }
+      }
+      if (ext === '.html') {
+        // Single terminal scrub after salvage/repair/stabilize — avoids
+        // 2–4× DOMParser passes on the same multi-KB deck per persist.
+        htmlBody = sanitizeManualEditFullSource(htmlBody);
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
         const currentScopedHtml = await fetchProjectFileText(project.id, fileName, {

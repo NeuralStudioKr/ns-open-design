@@ -192,7 +192,8 @@ describe('manual edit source patches', () => {
         'Data-Od-Id': 'hijacked',
       },
     });
-    expect(result.ok, result.error).toBe(true);
+    // Protected identity attrs are all skipped → patch fails closed.
+    expect(result.ok).toBe(false);
     const attrs = readManualEditAttributes(result.source, '01 Cover');
     expect(attrs['data-slide-index']).toBe('0');
     expect(attrs['data-od-id']).toBe('01 Cover');
@@ -254,7 +255,7 @@ describe('manual edit source patches', () => {
       id: 'hero-image',
       attributes: { srcset: 'javascript:alert(1)' },
     });
-    expect(srcsetDenied.ok).toBe(true);
+    expect(srcsetDenied.ok).toBe(false);
     expect(readManualEditAttributes(srcsetDenied.source, 'hero-image').srcset).toBeUndefined();
 
     const nullByteDenied = applyManualEditPatch(source, {
@@ -262,7 +263,7 @@ describe('manual edit source patches', () => {
       id: 'hero-image',
       attributes: { src: 'java\u0000script:alert(1)' },
     });
-    expect(nullByteDenied.ok).toBe(true);
+    expect(nullByteDenied.ok).toBe(false);
     expect(readManualEditAttributes(nullByteDenied.source, 'hero-image').src).toBe('/old.png');
 
     const svgDenied = applyManualEditPatch(source, {
@@ -287,7 +288,7 @@ describe('manual edit source patches', () => {
       id: 'cta',
       attributes: { href: 'data: text/html,hi' },
     });
-    expect(spaced.ok).toBe(true);
+    expect(spaced.ok).toBe(false);
     expect(readManualEditAttributes(spaced.source, 'cta').href).toBe('/start');
 
     const formDenied = applyManualEditPatch(source, {
@@ -295,7 +296,7 @@ describe('manual edit source patches', () => {
       id: 'form',
       attributes: { action: 'javascript:alert(1)' },
     });
-    expect(formDenied.ok).toBe(true);
+    expect(formDenied.ok).toBe(false);
     expect(readManualEditAttributes(formDenied.source, 'form').action).toBeUndefined();
 
     const formactionDenied = applyManualEditPatch(source, {
@@ -303,7 +304,7 @@ describe('manual edit source patches', () => {
       id: 'submit',
       attributes: { formaction: 'javascript:alert(1)' },
     });
-    expect(formactionDenied.ok).toBe(true);
+    expect(formactionDenied.ok).toBe(false);
     expect(readManualEditAttributes(formactionDenied.source, 'submit').formaction).toBeUndefined();
 
     const posterDenied = applyManualEditPatch(source, {
@@ -311,7 +312,7 @@ describe('manual edit source patches', () => {
       id: 'clip',
       attributes: { poster: 'javascript:alert(1)' },
     });
-    expect(posterDenied.ok).toBe(true);
+    expect(posterDenied.ok).toBe(false);
     expect(readManualEditAttributes(posterDenied.source, 'clip').poster).toBe('/thumb.png');
   });
 
@@ -1101,7 +1102,7 @@ describe('manual edit source patches', () => {
       id: 'cta',
       attributes: { href: 'java\u200cscript:alert(1)' },
     });
-    expect(attrDenied.ok).toBe(true);
+    expect(attrDenied.ok).toBe(false);
     expect(readManualEditAttributes(attrDenied.source, 'cta').href).toBe('/start');
   });
 
@@ -1524,7 +1525,7 @@ describe('manual edit source patches', () => {
       id: 'form',
       attributes: { action: 'https://evil.example/phish' },
     });
-    expect(form.ok, form.error).toBe(true);
+    expect(form.ok).toBe(false);
     expect(readManualEditAttributes(form.source, 'form').action).toBe('/submit');
 
     const button = applyManualEditPatch(source, {
@@ -1532,7 +1533,7 @@ describe('manual edit source patches', () => {
       id: 'submit',
       attributes: { formaction: 'https://evil.example/phish' },
     });
-    expect(button.ok, button.error).toBe(true);
+    expect(button.ok).toBe(false);
     expect(readManualEditAttributes(button.source, 'submit').formaction).toBe('/submit');
 
     const outer = applyManualEditPatch(source, {
@@ -1632,7 +1633,7 @@ describe('manual edit source patches', () => {
       id: 'cta',
       attributes: { ping: 'https://evil.example/track' },
     });
-    expect(denied.ok, denied.error).toBe(true);
+    expect(denied.ok).toBe(false);
     expect(readManualEditAttributes(denied.source, 'cta').ping).toBe('#local');
 
     const outer = applyManualEditPatch(source, {
@@ -1999,6 +2000,46 @@ describe('manual edit source patches', () => {
     expect(result.source).not.toMatch(/@counter-style/i);
     expect(result.source).not.toMatch(/@page\b/i);
     expect(result.source).not.toContain('evil.example');
+  });
+
+  it('strips @counter-style when suffix strings contain closing braces', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: [
+        '<style>',
+        '@counter-style x{system:cyclic;symbols:url(https://evil.example/x.svg);suffix:"}"}',
+        '.hero-pop{color:#555}',
+        '</style>',
+        '<h1 class="hero-pop" data-od-id="hero-title">Original title</h1>',
+      ].join(''),
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('.hero-pop{color:#555}');
+    expect(result.source).not.toMatch(/@counter-style/i);
+    expect(result.source).not.toContain('evil.example');
+  });
+
+  it('rejects set-attributes when every attribute is skipped as unsafe', () => {
+    const denied = applyManualEditPatch(baseSource, {
+      kind: 'set-attributes',
+      id: 'cta',
+      attributes: {
+        href: 'javascript:alert(1)',
+        onclick: 'alert(1)',
+      },
+    });
+    expect(denied.ok).toBe(false);
+    expect(denied.error).toMatch(/none of the requested attributes/i);
+    expect(readManualEditFields(denied.source, 'cta').href).toBe('/start');
+  });
+
+  it('scrubs element() with nested parentheses via quote-aware rewrite', () => {
+    const out = sanitizeManualEditHtmlFragment(
+      '<div style="background:element(#hero);filter:element(#x);color:navy">x</div>',
+    );
+    expect(out).toContain('color:navy');
+    expect(out).not.toMatch(/\belement\s*\(/i);
   });
 
   it('preserves fragment-shaped HTML when saving patches', () => {
