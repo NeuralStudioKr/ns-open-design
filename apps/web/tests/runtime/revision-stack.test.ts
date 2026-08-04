@@ -64,12 +64,29 @@ describe('revision-stack', () => {
       activeSequence: 2,
     })).toBe('rev-2');
     expect(resolveRevisionCursorId(revisions, 'rev-3', {
-      currentCursorRevisionId: 'rev-1',
-      activeSequence: 2,
-    })).toBe('rev-1');
-    expect(resolveRevisionCursorId(revisions, 'rev-3', {
       currentCursorRevisionId: 'missing',
       activeSequence: undefined,
     })).toBe('rev-3');
+  });
+
+  it('advances past an undo/restore cursor when active sequence moves to a newer tip', () => {
+    // Undo left the viewer on rev-1; agent persist truncated + pushed rev-4 and
+    // set activeSequence to the tip. Refresh must jump to the tip, not stick.
+    const revisions = [
+      revision('rev-1', 1),
+      revision('rev-4', 4),
+    ];
+    expect(resolveRevisionCursorId(revisions, 'rev-4', {
+      currentCursorRevisionId: 'rev-1',
+      activeSequence: 4,
+    })).toBe('rev-4');
+  });
+
+  it('keeps the undo cursor when active sequence still matches it', () => {
+    const revisions = [revision('rev-1', 1), revision('rev-2', 2), revision('rev-3', 3)];
+    expect(resolveRevisionCursorId(revisions, 'rev-3', {
+      currentCursorRevisionId: 'rev-1',
+      activeSequence: 1,
+    })).toBe('rev-1');
   });
 });

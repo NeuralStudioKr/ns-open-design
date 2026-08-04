@@ -53,7 +53,15 @@ export function stackWithCursor(
   return { ...stack, cursorRevisionId };
 }
 
-/** Pick the revision cursor after fetch/remount when React state was lost. */
+/**
+ * Pick the revision cursor after list refresh / remount.
+ *
+ * - Prefer `activeSequence` when it points at a newer revision than the
+ *   in-memory cursor. ProjectView sets activeSequence to the new tip after
+ *   agent persist; keeping an undo/restore cursor would rewind history.
+ * - Otherwise keep a still-valid in-memory cursor (undo/redo browsing).
+ * - Else hydrate from activeSequence, then head.
+ */
 export function resolveRevisionCursorId(
   revisions: FileRevision[],
   headRevisionId: string | null,
@@ -63,15 +71,20 @@ export function resolveRevisionCursorId(
   } = {},
 ): string | null {
   const { currentCursorRevisionId, activeSequence } = options;
-  if (
+  const preserved =
     currentCursorRevisionId
-    && revisions.some((revision) => revision.id === currentCursorRevisionId)
-  ) {
-    return currentCursorRevisionId;
+      && revisions.some((revision) => revision.id === currentCursorRevisionId)
+      ? revisions.find((revision) => revision.id === currentCursorRevisionId) ?? null
+      : null;
+  const fromSequence =
+    activeSequence != null
+      ? revisions.find((revision) => revision.sequence === activeSequence) ?? null
+      : null;
+
+  if (fromSequence && (!preserved || fromSequence.sequence > preserved.sequence)) {
+    return fromSequence.id;
   }
-  if (activeSequence != null) {
-    const fromSequence = revisions.find((revision) => revision.sequence === activeSequence);
-    if (fromSequence) return fromSequence.id;
-  }
+  if (preserved) return preserved.id;
+  if (fromSequence) return fromSequence.id;
   return headRevisionId;
 }

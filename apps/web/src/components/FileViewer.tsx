@@ -7360,13 +7360,43 @@ function HtmlViewer({
       setRevisionRetentionLimit(list.retentionLimit);
     }
     const hadRevisionCursorBeforeRefresh = revisionStackRef.current.cursorRevisionId != null;
+    const previousCursorId = revisionStackRef.current.cursorRevisionId;
+    const previousCursor = previousCursorId
+      ? revisionStackRef.current.revisions.find((revision) => revision.id === previousCursorId) ?? null
+      : null;
+    const nextCursorId = resolveRevisionCursorId(list.revisions, list.headRevisionId, {
+      currentCursorRevisionId: previousCursorId,
+      activeSequence: getActiveRevisionSequence(projectId, file.name),
+    });
+    const nextCursor = nextCursorId
+      ? list.revisions.find((revision) => revision.id === nextCursorId) ?? null
+      : null;
+    // Undo/restore pins the restored HTML. When agent persist advances the
+    // tip past that cursor, drop the pin and paint the cached tip so preview
+    // / history do not stay stuck on the restored commit.
+    const advancedPastUndo =
+      previousCursor != null
+      && nextCursor != null
+      && nextCursor.sequence > previousCursor.sequence;
+    if (advancedPastUndo) {
+      manualEditPinnedSourceRef.current = null;
+      const tipHtml = nextCursorId
+        ? getRevisionContentCache(projectId, file.name, nextCursorId)
+        : null;
+      if (tipHtml != null && sourceRef.current !== tipHtml) {
+        setSource(tipHtml);
+        sourceRef.current = tipHtml;
+        lastStablePreviewSourceRef.current = tipHtml;
+        exportHtmlSnapshotGateRef.current = tipHtml;
+        rememberStablePreviewSource(projectId, file.name, tipHtml);
+        setReloadKey((key) => key + 1);
+        revisionSkipReconcileOnceRef.current = true;
+      }
+    }
     const nextStack = createRevisionStackSnapshot(
       list.revisions,
       list.headRevisionId,
-      resolveRevisionCursorId(list.revisions, list.headRevisionId, {
-        currentCursorRevisionId: revisionStackRef.current.cursorRevisionId,
-        activeSequence: getActiveRevisionSequence(projectId, file.name),
-      }),
+      nextCursorId,
     );
     commitRevisionStack(nextStack);
     const cursorRevision = nextStack.revisions.find((revision) => revision.id === nextStack.cursorRevisionId);
