@@ -150,6 +150,7 @@ import {
   canRedoRevisionStack,
   canUndoRevisionStack,
   createRevisionStackSnapshot,
+  resolveRevisionCursorId,
   revisionAfterCursor,
   revisionBeforeCursor,
   stackWithCursor,
@@ -5975,9 +5976,10 @@ function HtmlViewer({
         if (cancelled || abort.signal.aborted) return;
         if (requestGeneration !== previewSourceFetchGenerationRef.current) return;
         let text = rawText;
-        // Agent/manual persist bumps filesRefreshKey before scratch/S3 read-after-write
-        // settles. Prefer the revision snapshot for the active sequence when raw GET lags.
-        if (filesRefreshKey > 0 && text != null) {
+        // Prefer the revision snapshot for the active cursor when raw GET lags
+        // scratch/S3 — including remount after undo/restore while filesRefreshKey
+        // is unchanged.
+        if (text != null) {
           const activeSeq = getActiveRevisionSequence(projectId, file.name);
           if (activeSeq != null) {
             const list = await listProjectFileRevisions(projectId, file.name);
@@ -7124,10 +7126,16 @@ function HtmlViewer({
       setRevisionRetentionLimit(list.retentionLimit);
     }
 
+    const activeSequence = getActiveRevisionSequence(projectId, file.name);
+    const headRevision = list.revisions.find((revision) => revision.id === list.headRevisionId);
+    const userAtHeadRevision = activeSequence == null
+      || (headRevision != null && activeSequence === headRevision.sequence);
+
     // Revision head snapshot is authoritative when scratch / S3 lag behind postgres.
     if (
       list.headRevisionId
       && cursorRevisionId === list.headRevisionId
+      && userAtHeadRevision
       && snapshotContent !== disk
     ) {
       setRevisionStackInvalidated(false);
@@ -7221,10 +7229,10 @@ function HtmlViewer({
     const nextStack = createRevisionStackSnapshot(
       list.revisions,
       list.headRevisionId,
-      revisionStackRef.current.cursorRevisionId
-        && list.revisions.some((revision) => revision.id === revisionStackRef.current.cursorRevisionId)
-        ? revisionStackRef.current.cursorRevisionId
-        : list.headRevisionId,
+      resolveRevisionCursorId(list.revisions, list.headRevisionId, {
+        currentCursorRevisionId: revisionStackRef.current.cursorRevisionId,
+        activeSequence: getActiveRevisionSequence(projectId, file.name),
+      }),
     );
     commitRevisionStack(nextStack);
     const cursorRevision = nextStack.revisions.find((revision) => revision.id === nextStack.cursorRevisionId);

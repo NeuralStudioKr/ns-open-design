@@ -52,3 +52,26 @@ export function stackWithCursor(
 ): RevisionStackSnapshot {
   return { ...stack, cursorRevisionId };
 }
+
+/** Pick the revision cursor after fetch/remount when React state was lost. */
+export function resolveRevisionCursorId(
+  revisions: FileRevision[],
+  headRevisionId: string | null,
+  options: {
+    currentCursorRevisionId?: string | null;
+    activeSequence?: number;
+  } = {},
+): string | null {
+  const { currentCursorRevisionId, activeSequence } = options;
+  if (
+    currentCursorRevisionId
+    && revisions.some((revision) => revision.id === currentCursorRevisionId)
+  ) {
+    return currentCursorRevisionId;
+  }
+  if (activeSequence != null) {
+    const fromSequence = revisions.find((revision) => revision.sequence === activeSequence);
+    if (fromSequence) return fromSequence.id;
+  }
+  return headRevisionId;
+}

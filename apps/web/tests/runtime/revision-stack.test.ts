@@ -7,6 +7,7 @@ import {
   createRevisionStackSnapshot,
   revisionAfterCursor,
   revisionBeforeCursor,
+  resolveRevisionCursorId,
   revisionCursorIndex,
   stackWithCursor,
   truncateAfterSequenceForStack,
@@ -54,5 +55,21 @@ describe('revision-stack', () => {
     expect(canUndoRevisionStack(stack)).toBe(false);
     expect(canRedoRevisionStack(stack)).toBe(true);
     expect(revisionAfterCursor(stack)?.id).toBe('rev-2');
+  });
+
+  it('hydrates cursor from active sequence when in-memory cursor is missing', () => {
+    const revisions = [revision('rev-1', 1), revision('rev-2', 2), revision('rev-3', 3)];
+    expect(resolveRevisionCursorId(revisions, 'rev-3', {
+      currentCursorRevisionId: null,
+      activeSequence: 2,
+    })).toBe('rev-2');
+    expect(resolveRevisionCursorId(revisions, 'rev-3', {
+      currentCursorRevisionId: 'rev-1',
+      activeSequence: 2,
+    })).toBe('rev-1');
+    expect(resolveRevisionCursorId(revisions, 'rev-3', {
+      currentCursorRevisionId: 'missing',
+      activeSequence: undefined,
+    })).toBe('rev-3');
   });
 });
