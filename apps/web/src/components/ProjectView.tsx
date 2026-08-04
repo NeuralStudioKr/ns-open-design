@@ -4611,7 +4611,9 @@ export function ProjectView({
             pushedRevision,
             'agent_persist',
           );
-          if (pushedRevision.parentRevisionId || persistCommentAttachments.length > 0) {
+          // Undo only when we have a real parent revision id — comments alone
+          // must not surface an action that POSTs /revisions/null/restore.
+          if (typeof pushedRevision.parentRevisionId === 'string') {
             const parentRevisionId = pushedRevision.parentRevisionId;
             const restoredFileName = file.name;
             setProjectActionsToast({
@@ -4635,7 +4637,10 @@ export function ProjectView({
                     cursorRevision,
                     'agent_toast',
                   );
+                  // Demote SSOT before refresh; drop in-memory tip HTML so
+                  // liveHtml cannot repaint the agent tip over restored disk.
                   setActiveRevisionSequence(project.id, restoredFileName, cursorRevision.sequence);
+                  setArtifact(null);
                   setFilesRefresh((count) => count + 1);
                   setProjectActionsToast(null);
                 })();

@@ -5,16 +5,40 @@ import { describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fileViewer = readFileSync(join(here, '../../src/components/FileViewer.tsx'), 'utf8');
+const projectView = readFileSync(join(here, '../../src/components/ProjectView.tsx'), 'utf8');
 
 describe('FileViewer revision tip advance after undo', () => {
-  it('clears restore pin and paints tip cache when refresh advances past undo cursor', () => {
+  it('paints target revision HTML and freeze when activeSequence moves the cursor', () => {
     const start = fileViewer.indexOf('const refreshRevisionStack = useCallback');
     expect(start).toBeGreaterThan(0);
-    const block = fileViewer.slice(start, start + 2_400);
+    const block = fileViewer.slice(start, start + 4_200);
     expect(block).toContain('resolveRevisionCursorId');
     expect(block).toContain('getActiveRevisionSequence');
-    expect(block).toContain('advancedPastUndo');
+    expect(block).toContain('cursorMovedByActiveSequence');
     expect(block).toContain('manualEditPinnedSourceRef.current = null');
-    expect(block).toContain('getRevisionContentCache');
+    expect(block).toContain('resolveRevisionSnapshotContent');
+    expect(block).toContain('setManualEditFrozenSource');
+    expect(block).toContain('activeMissingFromList');
+    expect(block).toContain('revisionRefreshGenerationRef');
+    expect(block).not.toContain('hydratedUndoCursorFromSession');
+  });
+
+  it('uses optimistic stackWithPushedRevision after manual/inspect push', () => {
+    expect(fileViewer).toContain('stackWithPushedRevision');
+    expect(fileViewer).toMatch(
+      /stackWithPushedRevision\(\s*revisionStackRef\.current,\s*saved\.revision/,
+    );
+  });
+});
+
+describe('ProjectView agent toast undo', () => {
+  it('only offers Undo when parentRevisionId is a string and clears live artifact', () => {
+    expect(projectView).toContain('typeof pushedRevision.parentRevisionId === \'string\'');
+    const start = projectView.indexOf('typeof pushedRevision.parentRevisionId === \'string\'');
+    expect(start).toBeGreaterThan(0);
+    const block = projectView.slice(start, start + 1_800);
+    expect(block).toContain('setActiveRevisionSequence');
+    expect(block).toContain('setArtifact(null)');
+    expect(block).not.toContain('persistCommentAttachments.length > 0');
   });
 });

@@ -54,13 +54,36 @@ export function stackWithCursor(
 }
 
 /**
+ * Optimistically apply a successful push before list refresh returns.
+ * Truncates the local redo branch the same way the daemon does, then
+ * appends the new tip so a rapid second save still has a valid cursor
+ * for `truncateAfterSequenceForStack`.
+ */
+export function stackWithPushedRevision(
+  stack: RevisionStackSnapshot,
+  pushed: FileRevision,
+  truncateAfterSequence: number | undefined = truncateAfterSequenceForStack(stack),
+): RevisionStackSnapshot {
+  const kept = typeof truncateAfterSequence === 'number'
+    ? stack.revisions.filter(
+      (revision) => revision.sequence <= truncateAfterSequence && revision.id !== pushed.id,
+    )
+    : stack.revisions.filter((revision) => revision.id !== pushed.id);
+  const revisions = [...kept, pushed].sort((a, b) => a.sequence - b.sequence);
+  return {
+    revisions,
+    headRevisionId: pushed.id,
+    cursorRevisionId: pushed.id,
+  };
+}
+
+/**
  * Pick the revision cursor after list refresh / remount.
  *
- * - Prefer `activeSequence` when it points at a newer revision than the
- *   in-memory cursor. ProjectView sets activeSequence to the new tip after
- *   agent persist; keeping an undo/restore cursor would rewind history.
- * - Otherwise keep a still-valid in-memory cursor (undo/redo browsing).
- * - Else hydrate from activeSequence, then head.
+ * `activeSequence` is the cross-surface SSOT (FileViewer undo/redo/history,
+ * ProjectView agent persist + toast undo). When it resolves to a revision in
+ * the list, always adopt it — both tip advance (undo → chat edit) and tip
+ * demotion (toast Undo). Fall back to a still-valid in-memory cursor, then head.
  */
 export function resolveRevisionCursorId(
   revisions: FileRevision[],
@@ -71,20 +94,15 @@ export function resolveRevisionCursorId(
   } = {},
 ): string | null {
   const { currentCursorRevisionId, activeSequence } = options;
-  const preserved =
-    currentCursorRevisionId
-      && revisions.some((revision) => revision.id === currentCursorRevisionId)
-      ? revisions.find((revision) => revision.id === currentCursorRevisionId) ?? null
-      : null;
-  const fromSequence =
-    activeSequence != null
-      ? revisions.find((revision) => revision.sequence === activeSequence) ?? null
-      : null;
-
-  if (fromSequence && (!preserved || fromSequence.sequence > preserved.sequence)) {
-    return fromSequence.id;
+  if (activeSequence != null) {
+    const fromSequence = revisions.find((revision) => revision.sequence === activeSequence);
+    if (fromSequence) return fromSequence.id;
   }
-  if (preserved) return preserved.id;
-  if (fromSequence) return fromSequence.id;
+  if (
+    currentCursorRevisionId
+    && revisions.some((revision) => revision.id === currentCursorRevisionId)
+  ) {
+    return currentCursorRevisionId;
+  }
   return headRevisionId;
 }

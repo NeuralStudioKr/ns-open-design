@@ -154,6 +154,7 @@ import {
   revisionAfterCursor,
   revisionBeforeCursor,
   stackWithCursor,
+  stackWithPushedRevision,
   truncateAfterSequenceForStack,
   type RevisionStackSnapshot,
 } from '../runtime/revision-stack';
@@ -5473,6 +5474,8 @@ function HtmlViewer({
   }
   const revisionSyncSuppressRef = useRef(false);
   const revisionSkipReconcileOnceRef = useRef(false);
+  const revisionRefreshGenerationRef = useRef(0);
+  const revisionRefreshActiveRetryRef = useRef(0);
   const revisionConflictSuppressedRef = useRef(false);
   const revisionConflictMessageRef = useRef(t('fileRevision.conflict.message'));
   revisionConflictMessageRef.current = t('fileRevision.conflict.message');
@@ -6006,13 +6009,19 @@ function HtmlViewer({
         let text = rawText;
         // Prefer the revision snapshot for the active cursor when raw GET lags
         // scratch/S3 — including remount after undo/restore while filesRefreshKey
-        // is unchanged.
+        // is unchanged. If the in-memory stack has not refreshed yet, list once.
         if (text != null) {
           const activeSeq = getActiveRevisionSequence(projectId, file.name);
           if (activeSeq != null) {
-            const revisionForActive = revisionStackRef.current.revisions.find(
+            let revisionForActive = revisionStackRef.current.revisions.find(
               (revision) => revision.sequence === activeSeq,
             );
+            if (!revisionForActive) {
+              const list = await listProjectFileRevisions(projectId, file.name);
+              revisionForActive = list?.revisions?.find(
+                (revision) => revision.sequence === activeSeq,
+              );
+            }
             if (revisionForActive) {
               const authoritative =
                 getRevisionContentCache(projectId, file.name, revisionForActive.id)
@@ -7103,9 +7112,11 @@ function HtmlViewer({
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
     return () => {
-      // Drop in-flight reconcile work so unmount cannot overwrite persisted
-      // revision cursor state in sessionStorage after a tab switch.
+      // Drop in-flight reconcile/refresh work so unmount cannot overwrite
+      // persisted revision cursor state in sessionStorage after a tab switch.
       revisionReconcileGenerationRef.current += 1;
+      revisionRefreshGenerationRef.current += 1;
+      revisionRefreshActiveRetryRef.current = 0;
     };
   }, [file.name]);
 
@@ -7354,45 +7365,69 @@ function HtmlViewer({
   }, [projectId, file.name, resolveRevisionSnapshotContent]);
 
   const refreshRevisionStack = useCallback(async () => {
+    const refreshGeneration = ++revisionRefreshGenerationRef.current;
     const list = await listProjectFileRevisions(projectId, file.name);
+    if (refreshGeneration !== revisionRefreshGenerationRef.current) return;
     if (!list || !Array.isArray(list.revisions)) return;
     if (typeof list.retentionLimit === 'number') {
       setRevisionRetentionLimit(list.retentionLimit);
     }
-    const hadRevisionCursorBeforeRefresh = revisionStackRef.current.cursorRevisionId != null;
     const previousCursorId = revisionStackRef.current.cursorRevisionId;
     const previousCursor = previousCursorId
       ? revisionStackRef.current.revisions.find((revision) => revision.id === previousCursorId) ?? null
       : null;
+    const activeSeq = getActiveRevisionSequence(projectId, file.name);
+    const activeMissingFromList = activeSeq != null
+      && !list.revisions.some((revision) => revision.sequence === activeSeq);
+    // Tip list lag: keep SSOT and retry shortly — do not fall back to an older
+    // cursor and rewrite activeSequence downward.
+    if (activeMissingFromList) {
+      if (revisionRefreshActiveRetryRef.current < 8) {
+        revisionRefreshActiveRetryRef.current += 1;
+        window.setTimeout(() => {
+          if (refreshGeneration === revisionRefreshGenerationRef.current) {
+            void refreshRevisionStack();
+          }
+        }, 250);
+      }
+      return;
+    }
+    revisionRefreshActiveRetryRef.current = 0;
     const nextCursorId = resolveRevisionCursorId(list.revisions, list.headRevisionId, {
       currentCursorRevisionId: previousCursorId,
-      activeSequence: getActiveRevisionSequence(projectId, file.name),
+      activeSequence: activeSeq,
     });
     const nextCursor = nextCursorId
       ? list.revisions.find((revision) => revision.id === nextCursorId) ?? null
       : null;
-    // Undo/restore pins the restored HTML. When agent persist advances the
-    // tip past that cursor, drop the pin and paint the cached tip so preview
-    // / history do not stay stuck on the restored commit.
-    const advancedPastUndo =
+    // activeSequence SSOT moved the cursor (agent tip advance OR toast Undo
+    // demote). Drop restore/save pin, paint the target revision HTML (cache
+    // then snapshot fetch), and sync Manual Edit freeze so preview cannot
+    // stay on the previous commit.
+    const cursorMovedByActiveSequence =
       previousCursor != null
       && nextCursor != null
-      && nextCursor.sequence > previousCursor.sequence;
-    if (advancedPastUndo) {
+      && previousCursor.id !== nextCursor.id;
+    if (cursorMovedByActiveSequence && nextCursorId) {
       manualEditPinnedSourceRef.current = null;
-      const tipHtml = nextCursorId
-        ? getRevisionContentCache(projectId, file.name, nextCursorId)
-        : null;
-      if (tipHtml != null && sourceRef.current !== tipHtml) {
-        setSource(tipHtml);
-        sourceRef.current = tipHtml;
-        lastStablePreviewSourceRef.current = tipHtml;
-        exportHtmlSnapshotGateRef.current = tipHtml;
-        rememberStablePreviewSource(projectId, file.name, tipHtml);
+      let targetHtml = getRevisionContentCache(projectId, file.name, nextCursorId);
+      if (targetHtml == null) {
+        targetHtml = await resolveRevisionSnapshotContent(nextCursorId);
+      }
+      if (refreshGeneration !== revisionRefreshGenerationRef.current) return;
+      if (targetHtml != null) {
+        setSource(targetHtml);
+        sourceRef.current = targetHtml;
+        lastStablePreviewSourceRef.current = targetHtml;
+        exportHtmlSnapshotGateRef.current = targetHtml;
+        rememberStablePreviewSource(projectId, file.name, targetHtml);
+        setManualEditFrozenSource(targetHtml);
+        setManualEditDraft((current) => ({ ...current, fullSource: targetHtml! }));
         setReloadKey((key) => key + 1);
         revisionSkipReconcileOnceRef.current = true;
       }
     }
+    if (refreshGeneration !== revisionRefreshGenerationRef.current) return;
     const nextStack = createRevisionStackSnapshot(
       list.revisions,
       list.headRevisionId,
@@ -7400,24 +7435,20 @@ function HtmlViewer({
     );
     commitRevisionStack(nextStack);
     const cursorRevision = nextStack.revisions.find((revision) => revision.id === nextStack.cursorRevisionId);
-    const headRevision = list.revisions.find((revision) => revision.id === list.headRevisionId);
     if (cursorRevision) {
       setActiveRevisionSequence(projectId, file.name, cursorRevision.sequence);
     } else {
       clearActiveRevisionSequence(projectId, file.name);
     }
-    const hydratedUndoCursorFromSession = (
-      !hadRevisionCursorBeforeRefresh
-      && getActiveRevisionSequence(projectId, file.name) != null
-      && cursorRevision != null
-      && headRevision != null
-      && cursorRevision.sequence < headRevision.sequence
-    );
-    const skipReconcile = revisionSkipReconcileOnceRef.current || hydratedUndoCursorFromSession;
+    // Do not skip reconcile solely because we hydrated an older undo cursor —
+    // classifyRevisionDiskReconcile already preserves history browse vs lag.
+    // Only honor an explicit one-shot skip (restore paint / tip advance).
+    const skipReconcile = revisionSkipReconcileOnceRef.current;
     revisionSkipReconcileOnceRef.current = false;
     if (!skipReconcile) {
       await reconcileRevisionWithDisk(list);
     }
+    if (refreshGeneration !== revisionRefreshGenerationRef.current) return;
     const before = revisionBeforeCursor(revisionStackRef.current);
     const after = revisionAfterCursor(revisionStackRef.current);
     prefetchRevisionContents(
@@ -8698,11 +8729,12 @@ function HtmlViewer({
       // Do not echo `file.artifactManifest` on manual-edit pushes. Style/text
       // saves never update the sidecar, and a stale client manifest (empty
       // title, stripped exports) used to 400 the whole revision POST.
+      const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);
       const saved = await pushProjectFileRevision(projectId, file.name, {
         content: result.source,
         source: 'manual_edit',
         label,
-        truncateAfterSequence: truncateAfterSequenceForStack(revisionStackRef.current),
+        truncateAfterSequence: truncateAfter,
       });
       if (!saved.ok) {
         const status = 'status' in saved ? saved.status : undefined;
@@ -8733,7 +8765,11 @@ function HtmlViewer({
         setManualEditFrozenSource(result.source);
         queueMicrotask(() => activateManualEditPreviewHtml(result.source));
       }
-      commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
+      commitRevisionStack(stackWithPushedRevision(
+        revisionStackRef.current,
+        saved.revision,
+        truncateAfter,
+      ));
       setRevisionContentCache(projectId, file.name, saved.revision.id, result.source);
       cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, baseSource);
       revisionSkipReconcileOnceRef.current = true;
@@ -8813,8 +8849,9 @@ function HtmlViewer({
     pinManualEditSavedSource(sourceToApply);
     setInlinedSource(null);
     setManualEditFrozenSource(sourceToApply);
-    commitRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
+    // SSOT before stack commit so a concurrent refresh cannot fall back to tip.
     setActiveRevisionSequence(projectId, file.name, target.sequence);
+    commitRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
     setManualEditDraft((current) => ({ ...current, fullSource: sourceToApply }));
     if (manualEditMode && !useUrlLoadPreview) {
       capturePreviewScrollPosition();
@@ -9153,12 +9190,13 @@ function HtmlViewer({
     try {
       const css = serializeInspectOverrides(inspectOverrides).trim();
       const next = applyInspectOverridesToSource(source, css);
+      const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);
       const saved = await pushProjectFileRevision(projectId, file.name, {
         content: next,
         source: 'inspect',
         label: embedUiLabel('Style adjustments', '스타일 조정'),
         // Inspect tweaks are content-only — avoid stale-manifest 400s.
-        truncateAfterSequence: truncateAfterSequenceForStack(revisionStackRef.current),
+        truncateAfterSequence: truncateAfter,
       });
       if (!saved.ok) {
         const status = 'status' in saved ? saved.status : undefined;
@@ -9175,7 +9213,11 @@ function HtmlViewer({
       }
       setSource(next);
       sourceRef.current = next;
-      commitRevisionStack(stackWithCursor(revisionStackRef.current, saved.revision.id));
+      commitRevisionStack(stackWithPushedRevision(
+        revisionStackRef.current,
+        saved.revision,
+        truncateAfter,
+      ));
       setRevisionContentCache(projectId, file.name, saved.revision.id, next);
       cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, source);
       revisionSkipReconcileOnceRef.current = true;
