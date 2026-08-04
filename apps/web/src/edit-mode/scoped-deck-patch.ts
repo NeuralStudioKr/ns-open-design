@@ -321,6 +321,9 @@ export function repairWipedSlidesForVisualMarks(
       markHtml =
         `<div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center">${innerMarkup}</div>`;
     }
+    // Model mark HTML can carry on*/img XSS — sanitize before grafting back.
+    markHtml = sanitizeManualEditHtmlFragment(markHtml);
+    if (!markHtml.trim()) continue;
     const repairedSlide = graftVisualMarkIntoSlide(beforeSlide, markHtml);
     if (!repairedSlide || repairedSlide === beforeSlide) continue;
     const merged = applyDeckPatch({

@@ -333,6 +333,7 @@ import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import {
   maskManualEditTargets,
   elementPatchReasonTargetsSyntheticVisualMark,
+  sanitizeManualEditFullSource,
 } from '../edit-mode/source-patches';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
@@ -4311,6 +4312,14 @@ export function ProjectView({
               logLabel: 'deck-patch',
             });
           }
+        } else if (effectiveArt.html) {
+          // Scope guard only checks that non-target regions are unchanged —
+          // still sanitize the accepted full-deck HTML so on*/script inside
+          // the selected target cannot persist.
+          effectiveArt = {
+            ...effectiveArt,
+            html: sanitizeManualEditFullSource(effectiveArt.html),
+          };
         }
       }
       const recoveredHtml = recoverHtmlArtifactFromPrecedingDocument({

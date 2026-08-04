@@ -766,4 +766,33 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(stabilized).toContain('Slide 3');
     expect(stabilized).toContain('od-visual-mark-target');
   });
+
+  it('sanitizes XSS from model visual-mark HTML before wipe repair graft', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+<section class="slide" data-slide-index="1"><p>Keep this text</p></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      note: 'mark',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 1,
+    });
+    const wiped = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+<section class="slide" data-slide-index="1" style="position:relative">
+<div class="od-visual-mark-target" style="position:absolute;left:40px;top:50px;width:80px;height:60px">
+<svg onload="alert(1)" viewBox="0 0 24 24"></svg>
+<img src="x" onerror="alert(2)">
+</div>
+</section>
+</body></html>`;
+    const repaired = repairWipedSlidesForVisualMarks(deck, wiped, [visual]);
+    expect(repaired).toContain('Keep this text');
+    expect(repaired).toContain('od-visual-mark-target');
+    expect(repaired).not.toMatch(/onload/i);
+    expect(repaired).not.toMatch(/onerror/i);
+  });
 });

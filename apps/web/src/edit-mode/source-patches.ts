@@ -61,6 +61,27 @@ export function applyManualEditPatch(
   let el = findEditableElement(doc, patch.id, scope, effectiveHint);
   if (!el) return { ok: false, source, error: `Target not found: ${patch.id}` };
 
+  const hostTag = el.tagName.toLowerCase();
+  if (
+    isManualEditLockedHostTag(hostTag)
+    && (
+      patch.kind === 'set-text'
+      || patch.kind === 'set-style'
+      || patch.kind === 'set-attributes'
+      || patch.kind === 'set-link'
+      || patch.kind === 'set-image'
+    )
+  ) {
+    // Executable hosts must not receive text/attr/style mutation (set-text
+    // would write into <script> via innerHTML; set-attributes can re-enable
+    // inert scripts by clearing type=).
+    return {
+      ok: false,
+      source,
+      error: `Edits of kind ${patch.kind} are not allowed on <${hostTag}> elements.`,
+    };
+  }
+
   if (patch.kind === 'set-text') {
     if (hasElementChildren(el) && !patch.flattenNestedMarkup) {
       // Page-level / wrapper pins resolve to a container with nested
@@ -958,6 +979,15 @@ const MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS = new Set([
   'discard',
 ]);
 
+/** Hosts that must not receive set-text / set-style / set-attributes mutation. */
+function isManualEditLockedHostTag(tag: string): boolean {
+  const lower = String(tag || '').toLowerCase();
+  return (
+    MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(lower)
+    || MANUAL_EDIT_NO_URL_MUTATION_TAGS.has(lower)
+  );
+}
+
 const MANUAL_EDIT_SMIL_ANIM_TAGS = new Set([
   'set',
   'animate',
@@ -1726,24 +1756,16 @@ function setAttributes(el: Element, attributes: Record<string, string>): void {
     'data-slide-index',
     'data-screen-label',
   ]);
+  const tag = el.tagName.toLowerCase();
+  // Deny all attr mutation on executable / chrome hosts — including empty
+  // values that would remove `type` from an inert <script type="application/json">.
+  if (isManualEditLockedHostTag(tag)) return;
   for (const [name, value] of Object.entries(attributes)) {
     // Attribute names are case-insensitive in HTML; protect via lowercase.
     const lower = name.toLowerCase();
     if (!isSafeAttributeName(name) || protectedAttrs.has(lower)) continue;
     if (value.trim() === '') {
       el.removeAttribute(name);
-      continue;
-    }
-    const tag = el.tagName.toLowerCase();
-    if (tag === 'meta') {
-      // meta refresh / charset must not be rewritten (content bypasses URL attrs).
-      continue;
-    }
-    if (
-      MANUAL_EDIT_NO_URL_MUTATION_TAGS.has(tag)
-      && (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'imagesrcset')
-    ) {
-      // Pre-existing script/iframe/etc. must not retarget to https://evil via set-attributes.
       continue;
     }
     if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
@@ -2029,6 +2051,13 @@ const MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS = new Set([
   'animatetransform',
   'animatecolor',
   'set',
+  // Legacy SVG external-resource tags.
+  'cursor',
+  'font-face-uri',
+  'altglyph',
+  'glyphref',
+  'tref',
+  'color-profile',
 ]);
 
 /** SMIL attributeName values that assign navigable/resource URLs. */

@@ -15,6 +15,7 @@ import {
   extractIdentityFromAttrSelectorId,
   isEphemeralGeneratedPathId,
   sanitizeManualEditHtmlFragment,
+  sanitizeManualEditFullSource,
 } from '../../src/edit-mode/source-patches';
 
 const baseSource = `<!doctype html>
@@ -823,21 +824,20 @@ describe('manual edit source patches', () => {
     expect(html).not.toMatch(/filter="url\(/i);
   });
 
-  it('blocks set-attributes URL mutation on legacy frame hosts', () => {
+  it('blocks set-attributes entirely on locked iframe/script hosts', () => {
     const source = [
       '<!doctype html><html><body>',
       '<iframe data-od-id="legacy" src="/safe.html"></iframe>',
       '</body></html>',
     ].join('');
-    // Use iframe (already locked) plus a synthetic frame-like path via attributes
-    // when the host tag is in the expanded no-mutation set.
     const iframe = applyManualEditPatch(source, {
       kind: 'set-attributes',
       id: 'legacy',
       attributes: { src: 'https://evil.example/frame.html' },
     });
-    expect(iframe.ok, iframe.error).toBe(true);
-    expect(readManualEditAttributes(iframe.source, 'legacy').src).toBe('/safe.html');
+    expect(iframe.ok).toBe(false);
+    expect(iframe.source).toContain('src="/safe.html"');
+    expect(iframe.source).not.toContain('evil.example');
   });
 
   it('rejects dangerous identity-matched set-outer-html roots', () => {
@@ -1159,7 +1159,7 @@ describe('manual edit source patches', () => {
     expect(html).toContain('href="#icon"');
   });
 
-  it('does not retarget script/iframe src via set-attributes', () => {
+  it('rejects set-attributes / set-text on script and iframe hosts', () => {
     const source = [
       '<!doctype html><html><body>',
       '<script data-od-id="boot" src="/ok.js"></script>',
@@ -1171,16 +1171,47 @@ describe('manual edit source patches', () => {
       id: 'boot',
       attributes: { src: 'https://evil.example/x.js' },
     });
-    expect(script.ok, script.error).toBe(true);
-    expect(readManualEditAttributes(script.source, 'boot').src).toBe('/ok.js');
+    expect(script.ok).toBe(false);
+    expect(script.source).toContain('src="/ok.js"');
 
     const frame = applyManualEditPatch(source, {
       kind: 'set-attributes',
       id: 'frame',
       attributes: { src: 'https://evil.example/frame.html' },
     });
-    expect(frame.ok, frame.error).toBe(true);
-    expect(readManualEditAttributes(frame.source, 'frame').src).toBe('/frame.html');
+    expect(frame.ok).toBe(false);
+    expect(frame.source).toContain('src="/frame.html"');
+
+    const text = applyManualEditPatch(source, {
+      kind: 'set-text',
+      id: 'boot',
+      value: 'alert(1)//',
+    });
+    expect(text.ok).toBe(false);
+    expect(text.source).not.toContain('alert(1)');
+  });
+
+  it('rejects set-attributes that would re-enable inert script hosts', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<script data-od-id="boot" type="application/json">{"x":1}</script>',
+      '</body></html>',
+    ].join('');
+    const clearType = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'boot',
+      attributes: { type: '' },
+    });
+    expect(clearType.ok).toBe(false);
+    expect(clearType.source).toContain('type="application/json"');
+
+    const moduleType = applyManualEditPatch(source, {
+      kind: 'set-attributes',
+      id: 'boot',
+      attributes: { type: 'module' },
+    });
+    expect(moduleType.ok).toBe(false);
+    expect(moduleType.source).toContain('type="application/json"');
   });
 
   it('refuses meta http-equiv/content mutations via set-attributes', () => {
@@ -1197,10 +1228,45 @@ describe('manual edit source patches', () => {
         content: '0;url=javascript:alert(1)',
       },
     });
+    expect(result.ok).toBe(false);
+    expect(result.source).toContain('content="120"');
+    expect(result.source).not.toMatch(/javascript/i);
+  });
+
+  it('sanitizes scoped full-deck HTML payloads via sanitizeManualEditFullSource', () => {
+    const dirty = [
+      '<!doctype html><html><body>',
+      '<div data-od-id="hero"><img src="x" onerror="alert(1)">Safe</div>',
+      '<script>alert(2)</script>',
+      '</body></html>',
+    ].join('');
+    const clean = sanitizeManualEditFullSource(dirty);
+    expect(clean).toContain('Safe');
+    expect(clean).not.toMatch(/onerror/i);
+    expect(clean).not.toMatch(/<script\b/i);
+  });
+
+  it('rejects remote href on SVG cursor resource tags', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect width="10" height="10"></rect></svg>',
+      '</body></html>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark">',
+        '<cursor id="c" href="https://evil.example/cursor.svg"></cursor>',
+        '<cursor id="local" href="#c"></cursor>',
+        '<rect cursor="url(#local)" width="10" height="10"></rect>',
+        '</svg>',
+      ].join(''),
+    });
     expect(result.ok, result.error).toBe(true);
-    const attrs = readManualEditAttributes(result.source, 'refresh');
-    expect(attrs.content).toBe('120');
-    expect(attrs.content).not.toMatch(/javascript/i);
+    const html = readManualEditOuterHtml(result.source, 'mark');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('href="#c"');
   });
 
   it('rejects absolute https form action/formaction phishing', () => {
