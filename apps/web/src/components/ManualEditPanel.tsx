@@ -679,7 +679,9 @@ function StyleInspector({
       {showPositionHint ? (
         <Section title={embedUiLabel('POSITION', '위치')} inactive>
           <p className="cc-section-hint" data-testid="manual-edit-position-hint">
-            {t('manualEdit.positionPromoteOnDrag')}
+            {targetKind === 'image'
+              ? t('manualEdit.positionMoveRequiresAbsolute')
+              : t('manualEdit.positionPromoteOnDrag')}
           </p>
         </Section>
       ) : null}

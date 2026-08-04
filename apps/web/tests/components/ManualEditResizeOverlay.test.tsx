@@ -949,11 +949,13 @@ describe('ManualEditResizeOverlay', () => {
     expect(onMoveCommit).not.toHaveBeenCalled();
   });
 
-  it('resize-only overlay body stays pointer-pass-through for iframe dblclick', () => {
+  it('resize-only image overlay body stays pointer-pass-through', () => {
+    // Flow images cannot promote; body must not capture so clicks reach iframe.
     const { getByTestId } = render(
       <ManualEditResizeOverlay
         target={target({
-          kind: 'text',
+          kind: 'image',
+          tagName: 'img',
           cssPosition: 'static',
           styles: emptyManualEditStyles(),
         })}
@@ -1429,7 +1431,7 @@ describe('ManualEditResizeOverlay', () => {
     expect(preview.width).toBe('240px');
   });
 
-  it('does not turn flow text interior drags into move sessions', () => {
+  it('promotes flow text on interior drag past the move threshold', () => {
     const onMovePreview = vi.fn();
     const onMoveCommit = vi.fn();
     const onResizePreview = vi.fn();
@@ -1442,6 +1444,8 @@ describe('ManualEditResizeOverlay', () => {
           rect: { x: 40, y: 60, width: 220, height: 48 },
           layoutWidth: 220,
           layoutHeight: 48,
+          offsetLeft: 40,
+          offsetTop: 60,
           styles: { ...emptyManualEditStyles(), width: '', height: '', display: '' },
         })}
         previewScale={1}
@@ -1464,13 +1468,18 @@ describe('ManualEditResizeOverlay', () => {
       toJSON: () => ({}),
     }) as DOMRect;
 
+    expect(overlay.getAttribute('data-movable')).toBe('true');
+    // Interior (not edge band) so resize handle hit does not win.
     fireEvent.pointerDown(overlay, { pointerId: 61, clientX: 140, clientY: 84, buttons: 1 });
     fireEvent.pointerMove(window, { pointerId: 61, clientX: 190, clientY: 104, buttons: 1 });
     fireEvent.pointerUp(window, { pointerId: 61, clientX: 190, clientY: 104 });
 
-    expect(overlay.getAttribute('data-movable')).toBe('false');
-    expect(onMovePreview).not.toHaveBeenCalled();
-    expect(onMoveCommit).not.toHaveBeenCalled();
     expect(onResizePreview).not.toHaveBeenCalled();
+    expect(onMovePreview).toHaveBeenCalled();
+    expect(onMoveCommit).toHaveBeenCalled();
+    const commit = onMoveCommit.mock.calls[0]?.[0] as { position?: string; left?: string; top?: string };
+    expect(commit.position).toBe('absolute');
+    expect(commit.left).toMatch(/px$/);
+    expect(commit.top).toMatch(/px$/);
   });
 });
