@@ -43,6 +43,8 @@ export function ManualEditPanel({
   floatingStyle,
   floatingClassName,
   onFloatingPositionChange,
+  collapsed: collapsedProp,
+  onCollapsedChange,
 }: {
   targets: ManualEditTarget[];
   selectedTarget: ManualEditTarget | null;
@@ -62,6 +64,9 @@ export function ManualEditPanel({
   floatingStyle?: CSSProperties;
   floatingClassName?: string;
   onFloatingPositionChange?: (position: { left: number; top: number }) => void;
+  /** Host-controlled collapse so selection changes can keep a closed panel closed. */
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
   onError: (message: string) => void;
   onClearSelection: () => void;
   onExit?: () => void;
@@ -73,7 +78,13 @@ export function ManualEditPanel({
   const t = useT();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsedState, setCollapsedState] = useState(false);
+  const collapsed = collapsedProp ?? collapsedState;
+  const setCollapsed = (next: boolean | ((prev: boolean) => boolean)) => {
+    const resolved = typeof next === 'function' ? next(collapsed) : next;
+    if (collapsedProp === undefined) setCollapsedState(resolved);
+    onCollapsedChange?.(resolved);
+  };
   const selectedTargetRef = useRef<ManualEditTarget | null>(selectedTarget);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const targetForInspector = selectedTarget;
@@ -81,10 +92,8 @@ export function ManualEditPanel({
   useEffect(() => {
     selectedTargetRef.current = selectedTarget;
   }, [selectedTarget]);
-  // New selection should open expanded with a clean delete affordance — a
-  // prior collapse/confirm must not hide SIZE/POSITION for the next element.
+  // Keep collapse sticky across selection — only clear delete confirm.
   useEffect(() => {
-    setCollapsed(false);
     setConfirmDelete(false);
   }, [selectedTarget?.id]);
 

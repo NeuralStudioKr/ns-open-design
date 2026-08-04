@@ -261,7 +261,9 @@ import {
 } from '../edit-mode/preview-coords';
 import {
   clampFloatingPanelPosition,
+  MANUAL_EDIT_PANEL_COLLAPSED_HEIGHT_PX,
   placeManualEditFloatingPanel,
+  shouldRepositionFloatingPanelForSelection,
   withPinnedFloatingPanelPosition,
 } from '../edit-mode/floating-panel-place';
 import {
@@ -291,7 +293,6 @@ import {
   manualEditGestureRollbackKeys,
   restoreManualEditPendingStyleAfterFailedFlush,
   shouldFlushManualEditStylesOnTargetBoundary,
-  shouldResetManualEditPanelPinOnSelect,
   shouldSkipManualEditStyleFlushWhilePaused,
   waitForManualEditSaveIdle,
 } from '../edit-mode/manual-edit-style-persist';
@@ -972,6 +973,27 @@ function pickLatestShareDeployment(
     .sort(compareDeploymentsByNewest)[0] ?? null;
 }
 
+function manualEditPanelHostRect(
+  target: ManualEditTarget,
+  previewScale: number,
+  hostOffset: { x: number; y: number } = { x: 0, y: 0 },
+  hostPaintRect: ManualEditRect | null = null,
+): { x: number; y: number; width: number; height: number } {
+  const scaled = contentRectToHostRect(target.rect, previewScale);
+  const composedHostRect = {
+    x: hostOffset.x + scaled.x,
+    y: hostOffset.y + scaled.y,
+    width: scaled.width,
+    height: scaled.height,
+  };
+  // Prefer live paint when available so placement matches the selection chrome.
+  return hostPaintRect
+    && hostPaintRect.width >= 1
+    && hostPaintRect.height >= 1
+    ? hostPaintRect
+    : composedHostRect;
+}
+
 function manualEditFloatingPanelStyle(
   target: ManualEditTarget,
   previewScale: number,
@@ -982,20 +1004,7 @@ function manualEditFloatingPanelStyle(
 ): CSSProperties {
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
-  const scaled = contentRectToHostRect(target.rect, previewScale);
-  const composedHostRect = {
-    x: hostOffset.x + scaled.x,
-    y: hostOffset.y + scaled.y,
-    width: scaled.width,
-    height: scaled.height,
-  };
-  // Prefer live paint when available so placement matches the selection chrome.
-  const hostRect =
-    hostPaintRect
-    && hostPaintRect.width >= 1
-    && hostPaintRect.height >= 1
-      ? hostPaintRect
-      : composedHostRect;
+  const hostRect = manualEditPanelHostRect(target, previewScale, hostOffset, hostPaintRect);
   // Prefer a non-overlapping side (right → left → below → above → dock).
   // Wide headlines used to clamp over the target when neither flank fit 320px.
   const placed = withPinnedFloatingPanelPosition(
@@ -1009,8 +1018,8 @@ function manualEditFloatingPanelStyle(
   // Height is left to the content (auto): a short inspector (e.g. typography
   // only) should be a compact card, not a tall half-empty panel. The cap only
   // engages for long inspectors, at which point the scroll body takes over.
-  // left/top stay pinned across resize/move geometry updates unless the user
-  // drags the panel or selects a different element.
+  // left/top stay pinned across resize/move and across selection changes unless
+  // the panel would cover the newly selected element.
   return {
     left: placed.left,
     top: placed.top,
@@ -5437,6 +5446,11 @@ function HtmlViewer({
   const [manualEditHoverTarget, setManualEditHoverTarget] = useState<ManualEditTarget | null>(null);
   const [manualEditPageStylesOpen, setManualEditPageStylesOpen] = useState(false);
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
+  const [manualEditPanelCollapsed, setManualEditPanelCollapsed] = useState(false);
+  const manualEditPanelPositionRef = useRef<{ left: number; top: number } | null>(null);
+  const manualEditPanelCollapsedRef = useRef(false);
+  manualEditPanelPositionRef.current = manualEditPanelPosition;
+  manualEditPanelCollapsedRef.current = manualEditPanelCollapsed;
   /** Auto pin may upgrade once when first paint rect arrives; user drag freezes forever. */
   const manualEditPanelUserPinnedRef = useRef(false);
   const manualEditPanelPaintPinnedIdRef = useRef<string | null>(null);
@@ -7065,6 +7079,9 @@ function HtmlViewer({
     setManualEditTargets([]);
     setSelectedManualEditTarget(null);
     setManualEditPanelPosition(null);
+    setManualEditPanelCollapsed(false);
+    manualEditPanelUserPinnedRef.current = false;
+    manualEditPanelPaintPinnedIdRef.current = null;
     selectedManualEditTargetIdRef.current = null;
     setManualEditDraft(emptyManualEditDraft());
     commitRevisionStack(createRevisionStackSnapshot([], null));
@@ -7756,6 +7773,7 @@ function HtmlViewer({
       setManualEditHoverTarget(null);
       setManualEditPageStylesOpen(false);
       setManualEditPanelPosition(null);
+      setManualEditPanelCollapsed(false);
       manualEditPanelUserPinnedRef.current = false;
       manualEditPanelPaintPinnedIdRef.current = null;
       selectedManualEditTargetIdRef.current = null;
@@ -8346,6 +8364,7 @@ function HtmlViewer({
     manualEditResizeSessionActiveRef.current = false;
     manualEditResizePausedRef.current = false;
     setManualEditPanelPosition(null);
+    setManualEditPanelCollapsed(false);
     setManualEditMode(false);
     return true;
   }
@@ -8372,14 +8391,36 @@ function HtmlViewer({
       if (!(await flushManualEditStyleSave({ force: true }))) return;
     }
     setManualEditPageStylesOpen(false);
-    // Same-id reselect (click again / affordance) must keep the pinned toolbar.
-    if (shouldResetManualEditPanelPinOnSelect(
-      selectedManualEditTargetIdRef.current,
-      target.id,
-    )) {
-      setManualEditPanelPosition(null);
-      manualEditPanelUserPinnedRef.current = false;
-      manualEditPanelPaintPinnedIdRef.current = null;
+    // Keep the inspector still across selection changes unless it would cover
+    // the newly selected element. Same-id reselect always keeps the pin.
+    if (selectedManualEditTargetIdRef.current !== target.id) {
+      const canvasWidth = previewBodySize?.width ?? 1200;
+      const canvasHeight = previewBodySize?.height ?? 800;
+      const hostRect = manualEditPanelHostRect(
+        target,
+        manualEditHostScale,
+        manualEditHostOffset,
+        // Selection paint still belongs to the previous id — use composed.
+        null,
+      );
+      const pinned = manualEditPanelPositionRef.current;
+      const panelHeight = manualEditPanelCollapsedRef.current
+        ? MANUAL_EDIT_PANEL_COLLAPSED_HEIGHT_PX
+        : Math.min(380, Math.max(260, canvasHeight - 24));
+      if (shouldRepositionFloatingPanelForSelection({
+        pinned,
+        target: hostRect,
+        canvasWidth,
+        canvasHeight,
+        panelHeight,
+      })) {
+        setManualEditPanelPosition(null);
+        manualEditPanelUserPinnedRef.current = false;
+        manualEditPanelPaintPinnedIdRef.current = null;
+      } else if (pinned) {
+        // Kept — treat as pinned for the new id so paint-upgrade does not move it.
+        manualEditPanelPaintPinnedIdRef.current = target.id;
+      }
     }
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
@@ -10536,6 +10577,8 @@ function HtmlViewer({
         void redoManualEdit();
       }}
       floatingClassName={manualEditPageCardActive ? 'manual-edit-page-card' : undefined}
+      collapsed={manualEditPanelCollapsed}
+      onCollapsedChange={setManualEditPanelCollapsed}
       floatingStyle={selectedManualEditTarget
         ? manualEditFloatingPanelStyle(
             selectedManualEditTarget,

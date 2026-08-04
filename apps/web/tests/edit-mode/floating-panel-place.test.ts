@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   clampFloatingPanelPosition,
+  MANUAL_EDIT_PANEL_COLLAPSED_HEIGHT_PX,
   placeManualEditFloatingPanel,
+  shouldRepositionFloatingPanelForSelection,
   withPinnedFloatingPanelPosition,
 } from '../../src/edit-mode/floating-panel-place';
 
@@ -94,6 +96,47 @@ describe('placeManualEditFloatingPanel', () => {
       { left: 900, top: 700 },
       { canvasWidth: 400, canvasHeight: 300, panelWidth: 320, panelHeight: 40, pad: 12 },
     )).toEqual({ left: 68, top: 248 });
+  });
+
+  it('keeps selection pin when the panel does not cover the new target', () => {
+    expect(shouldRepositionFloatingPanelForSelection({
+      pinned: { left: 860, top: 40 },
+      target: { x: 80, y: 120, width: 200, height: 60 },
+      canvasWidth: 1200,
+      canvasHeight: 800,
+      panelHeight: 380,
+    })).toBe(false);
+  });
+
+  it('repositions when the pinned panel covers the newly selected target', () => {
+    expect(shouldRepositionFloatingPanelForSelection({
+      pinned: { left: 100, top: 100 },
+      target: { x: 120, y: 140, width: 240, height: 80 },
+      canvasWidth: 1200,
+      canvasHeight: 800,
+      panelHeight: 380,
+    })).toBe(true);
+  });
+
+  it('uses collapsed height so a folded bar rarely forces reposition', () => {
+    // Expanded 380px panel at top would cover a tall target under it; collapsed
+    // chrome (40px) leaves the lower target free.
+    const pinned = { left: 80, top: 12 };
+    const target = { x: 90, y: 80, width: 280, height: 120 };
+    expect(shouldRepositionFloatingPanelForSelection({
+      pinned,
+      target,
+      canvasWidth: 1200,
+      canvasHeight: 800,
+      panelHeight: 380,
+    })).toBe(true);
+    expect(shouldRepositionFloatingPanelForSelection({
+      pinned,
+      target,
+      canvasWidth: 1200,
+      canvasHeight: 800,
+      panelHeight: MANUAL_EDIT_PANEL_COLLAPSED_HEIGHT_PX,
+    })).toBe(false);
   });
 });
 

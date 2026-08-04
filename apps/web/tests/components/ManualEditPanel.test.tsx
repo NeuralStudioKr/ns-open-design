@@ -121,7 +121,7 @@ describe('ManualEditPanel', () => {
     expect(host.querySelector('.manual-edit-right')?.classList.contains('manual-edit-collapsed')).toBe(false);
   });
 
-  it('expands again when the selected target changes after collapse', () => {
+  it('keeps collapse sticky when the selected target changes', () => {
     renderPanel({ floatingStyle: { left: 20, top: 24, width: 320, maxHeight: 380 } });
     const toggle = host.querySelector(
       'button[aria-label="Collapse edit panel"]',
@@ -172,8 +172,25 @@ describe('ManualEditPanel', () => {
       );
     });
 
-    expect(host.querySelector('.manual-edit-collapsed')).toBeNull();
-    expect(host.querySelector('.manual-edit-scroll')?.textContent).toContain('TYPOGRAPHY');
+    expect(host.querySelector('.manual-edit-collapsed')).not.toBeNull();
+    expect(host.querySelector('.manual-edit-scroll')).toBeNull();
+  });
+
+  it('reports collapse changes to the host when controlled', () => {
+    const onCollapsedChange = vi.fn();
+    renderPanel({
+      floatingStyle: { left: 20, top: 24, width: 320, maxHeight: 380 },
+      collapsed: false,
+      onCollapsedChange,
+    });
+    const toggle = host.querySelector(
+      'button[aria-label="Collapse edit panel"]',
+    ) as HTMLButtonElement | null;
+    if (!toggle) throw new Error('Collapse toggle not found');
+    act(() => {
+      toggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    });
+    expect(onCollapsedChange).toHaveBeenCalledWith(true);
   });
 
   it('does not show page-level controls inside an element inspector', () => {
@@ -614,6 +631,8 @@ describe('ManualEditPanel', () => {
     pageStylesEnabled = true,
     floatingStyle,
     onFloatingPositionChange,
+    collapsed,
+    onCollapsedChange,
   }: {
     onDraftChange?: OnDraftChange;
     onApplyPatch?: OnApplyPatch;
@@ -629,6 +648,8 @@ describe('ManualEditPanel', () => {
     pageStylesEnabled?: boolean;
     floatingStyle?: CSSProperties;
     onFloatingPositionChange?: (position: { left: number; top: number }) => void;
+    collapsed?: boolean;
+    onCollapsedChange?: (collapsed: boolean) => void;
   } = {}) {
     const draft = {
       ...emptyManualEditDraft('<html></html>'),
@@ -657,6 +678,8 @@ describe('ManualEditPanel', () => {
           onClearSelection={onClearSelection}
           onCancelDraft={onCancelDraft}
           onSaveDraft={onSaveDraft}
+          collapsed={collapsed}
+          onCollapsedChange={onCollapsedChange}
           onUndo={vi.fn<() => void>()}
           onRedo={vi.fn<() => void>()}
           floatingStyle={floatingStyle}
