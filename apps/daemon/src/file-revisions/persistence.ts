@@ -7,6 +7,7 @@ import {
   schedulePostgresWrite,
 } from '../storage/daemon-db-runtime.js';
 import { migrateFileRevisionSnapshots, usesPostgresRevisionSnapshots } from './snapshot-storage.js';
+import { selectChainAwarePruneIds } from './prune-chain.js';
 import {
   pgDeleteFileRevisionsAfterSequence as pgDeleteRevisionsAfterSequence,
   pgDeleteFileRevisionsByIds,
@@ -358,34 +359,6 @@ export function listDistinctFileRevisionTargets(
   `).all() as Array<{ projectId: string; fileName: string }>;
 }
 
-function countFileRevisions(
-  db: Database.Database,
-  projectId: string,
-  fileName: string,
-): number {
-  return (
-    db.prepare(`SELECT count(*) AS c FROM file_revisions WHERE project_id = ? AND file_name = ?`)
-      .get(projectId, fileName) as { c: number }
-  ).c;
-}
-
-const PRUNE_OLDEST_REVISIONS_SELECT = `
-  SELECT
-    id,
-    project_id AS projectId,
-    file_name AS fileName,
-    parent_revision_id AS parentRevisionId,
-    sequence,
-    created_at AS createdAt,
-    byte_size AS byteSize,
-    source,
-    label,
-    conversation_id AS conversationId,
-    assistant_message_id AS assistantMessageId
-  FROM file_revisions
-  WHERE project_id = ? AND file_name = ?
-`;
-
 export function pruneOldestFileRevisions(
   db: Database.Database,
   projectId: string,
@@ -402,34 +375,17 @@ export function pruneOldestFileRevisionsLimited(
   keep: number,
   maxDeletes: number,
 ): { revisions: FileRevision[]; remainingExcess: number } {
-  if (maxDeletes <= 0) {
-    return {
-      revisions: [],
-      remainingExcess: Math.max(0, countFileRevisions(db, projectId, fileName) - keep),
-    };
+  const revisions = listFileRevisions(db, projectId, fileName);
+  const selection = selectChainAwarePruneIds(revisions, keep, maxDeletes);
+  if (selection.revisionIds.length === 0) {
+    return { revisions: [], remainingExcess: selection.remainingExcess };
   }
 
-  const excess = Math.max(0, countFileRevisions(db, projectId, fileName) - keep);
-  if (excess === 0) {
-    return { revisions: [], remainingExcess: 0 };
-  }
-
-  const deleteCount = Math.min(excess, maxDeletes);
-  const rows = db.prepare(`
-    ${PRUNE_OLDEST_REVISIONS_SELECT}
-    ORDER BY sequence ASC
-    LIMIT ?
-  `).all(projectId, fileName, deleteCount) as FileRevisionRow[];
-  if (rows.length === 0) {
-    return { revisions: [], remainingExcess: excess };
-  }
-
-  const ids = rows.map((row) => row.id);
-  const placeholders = ids.map(() => '?').join(', ');
-  db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...ids);
-  syncDeletedRevisionIdsToPostgres(ids);
+  const placeholders = selection.revisionIds.map(() => '?').join(', ');
+  db.prepare(`DELETE FROM file_revisions WHERE id IN (${placeholders})`).run(...selection.revisionIds);
+  syncDeletedRevisionIdsToPostgres(selection.revisionIds);
   return {
-    revisions: rows.map(rowToRevision),
-    remainingExcess: Math.max(0, excess - rows.length),
+    revisions: selection.revisions,
+    remainingExcess: selection.remainingExcess,
   };
 }

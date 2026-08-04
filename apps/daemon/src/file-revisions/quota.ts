@@ -7,6 +7,8 @@ import {
   FILE_REVISION_MAX_SNAPSHOT_BYTES,
   FILE_REVISION_MAX_TOTAL_BYTES,
 } from './limits.js';
+import { listFileRevisions } from './persistence.js';
+import { isRevisionChainSafeToDelete } from './prune-chain.js';
 import { pgListOldestRevisionsForPrune } from './postgres-persistence.js';
 import {
   getFileRevisionSnapshotStorageStatsDurable,
@@ -93,13 +95,25 @@ async function pruneOldestRevisionSnapshotsUntilWithinBudget(
   }
 
   const deleteCap = options.maxDeletes ?? 10_000;
-  const candidates = await listOldestRevisionsForPrune(db, excludeRevisionIds, deleteCap);
+  const candidates = await listOldestRevisionsForPrune(db, excludeRevisionIds, deleteCap * 4);
+  const revisionsByTarget = new Map<string, ReturnType<typeof listFileRevisions>>();
+  const markedForDelete = new Set<string>();
 
   const idsToDelete: string[] = [];
   let bytesReclaimed = 0;
   for (const candidate of candidates) {
     if (overflowBytes <= 0 || idsToDelete.length >= deleteCap) break;
+    const targetKey = `${candidate.projectId}\0${candidate.fileName}`;
+    let revisions = revisionsByTarget.get(targetKey);
+    if (!revisions) {
+      revisions = listFileRevisions(db, candidate.projectId, candidate.fileName);
+      revisionsByTarget.set(targetKey, revisions);
+    }
+    if (!isRevisionChainSafeToDelete(revisions, candidate.id, markedForDelete)) {
+      continue;
+    }
     idsToDelete.push(candidate.id);
+    markedForDelete.add(candidate.id);
     bytesReclaimed += candidate.storageBytes;
     overflowBytes -= candidate.storageBytes;
   }
@@ -119,7 +133,7 @@ async function listOldestRevisionsForPrune(
   db: Database.Database,
   excludeRevisionIds: ReadonlySet<string>,
   limit: number,
-): Promise<Array<{ id: string; storageBytes: number }>> {
+): Promise<Array<{ id: string; projectId: string; fileName: string; storageBytes: number }>> {
   if (limit <= 0) return [];
   if (usesPostgresRevisionSnapshots()) {
     return await pgListOldestRevisionsForPrune(getPostgresPool(), excludeRevisionIds, limit);
@@ -131,24 +145,26 @@ function listOldestRevisionsForPruneSqlite(
   db: Database.Database,
   excludeRevisionIds: ReadonlySet<string>,
   limit: number,
-): Array<{ id: string; storageBytes: number }> {
+): Array<{ id: string; projectId: string; fileName: string; storageBytes: number }> {
   const exclude = [...excludeRevisionIds];
   if (exclude.length === 0) {
     return db.prepare(`
-      SELECT r.id AS id, coalesce(s.storage_bytes, 0) AS storageBytes
+      SELECT r.id AS id, r.project_id AS projectId, r.file_name AS fileName,
+             coalesce(s.storage_bytes, 0) AS storageBytes
       FROM file_revisions r
       LEFT JOIN file_revision_snapshots s ON s.revision_id = r.id
       ORDER BY r.created_at ASC, r.sequence ASC
       LIMIT ?
-    `).all(limit) as Array<{ id: string; storageBytes: number }>;
+    `).all(limit) as Array<{ id: string; projectId: string; fileName: string; storageBytes: number }>;
   }
   const placeholders = exclude.map(() => '?').join(', ');
   return db.prepare(`
-    SELECT r.id AS id, coalesce(s.storage_bytes, 0) AS storageBytes
+    SELECT r.id AS id, r.project_id AS projectId, r.file_name AS fileName,
+           coalesce(s.storage_bytes, 0) AS storageBytes
     FROM file_revisions r
     LEFT JOIN file_revision_snapshots s ON s.revision_id = r.id
     WHERE r.id NOT IN (${placeholders})
     ORDER BY r.created_at ASC, r.sequence ASC
     LIMIT ?
-  `).all(...exclude, limit) as Array<{ id: string; storageBytes: number }>;
+  `).all(...exclude, limit) as Array<{ id: string; projectId: string; fileName: string; storageBytes: number }>;
 }

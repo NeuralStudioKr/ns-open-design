@@ -61,4 +61,19 @@ describe('FileRevisionHistoryPanel', () => {
     fireEvent.click(screen.getByTestId('file-revision-restore-1'));
     expect(onRestore).toHaveBeenCalledWith(revisions[0]);
   });
+
+  it('shows retention pending hint when cleanup is still running', () => {
+    render(
+      <FileRevisionHistoryPanel
+        revisions={[revision({ id: 'rev-1', sequence: 1 })]}
+        cursorRevisionId="rev-1"
+        retentionLimit={30}
+        retentionPending
+        onRestore={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('file-revision-history-retention-hint').textContent).toContain('Trimming');
+  });
 });

@@ -2091,6 +2091,7 @@ export const zhCN: Dict = {
   'fileRevision.history.close': '关闭历史',
   'fileRevision.history.current': '当前',
   'fileRevision.history.retentionHint': '每个文件仅保留最近 {count} 条编辑记录。',
+  'fileRevision.history.retentionPending': '正在清理较早的编辑记录，列表将很快刷新。',
   'fileRevision.conflict.message': '文件发生意外更改，无法使用撤销和重做。您可以从编辑记录中恢复较早的版本。',
   'fileRevision.diskSync.failedMessage': '预览已更新，但保存到磁盘失败。您仍可使用撤销和重做。',
   'fileRevision.diskSync.retryAction': '重试保存',

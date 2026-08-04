@@ -39,6 +39,7 @@ import {
 import { auditDesignSystemPackage } from './tools-connectors-cli.js';
 import { createFileRevisionService, isFileRevisionSource } from './file-revisions/service.js';
 import { FileRevisionPayloadTooLargeError } from './file-revisions/errors.js';
+import { deleteProjectRevisionSnapshotTree } from './file-revisions/maintenance.js';
 import {
   FileRevisionLockError,
   isFileRevisionSequenceConflict,
@@ -1900,6 +1901,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         dbDeleteProject(db, projectId);
       }
       await removeProjectDir(PROJECTS_DIR, projectId).catch(() => {});
+      await deleteProjectRevisionSnapshotTree(PROJECTS_DIR, projectId).catch(() => {});
       if (ctx.projectStorageHooks) {
         await ctx.projectStorageHooks.onProjectRemoved(req, projectId);
       }

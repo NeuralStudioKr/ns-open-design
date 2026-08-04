@@ -2091,6 +2091,7 @@ export const zhTW: Dict = {
   'fileRevision.history.close': '關閉記錄',
   'fileRevision.history.current': '目前',
   'fileRevision.history.retentionHint': '每個檔案僅保留最近 {count} 條編輯記錄。',
+  'fileRevision.history.retentionPending': '正在清理較早的編輯記錄，清單將很快更新。',
   'fileRevision.conflict.message': '檔案發生意外變更，無法使用復原與重做。您可以從編輯記錄還原較早的版本。',
   'fileRevision.diskSync.failedMessage': '預覽已更新，但儲存到磁碟失敗。您仍可使用復原與重做。',
   'fileRevision.diskSync.retryAction': '重試儲存',

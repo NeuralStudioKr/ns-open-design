@@ -2757,6 +2757,7 @@ export interface Dict {
   'fileRevision.history.close': string;
   'fileRevision.history.current': string;
   'fileRevision.history.retentionHint': string;
+  'fileRevision.history.retentionPending': string;
   'fileRevision.conflict.message': string;
   'fileRevision.diskSync.failedMessage': string;
   'fileRevision.diskSync.retryAction': string;

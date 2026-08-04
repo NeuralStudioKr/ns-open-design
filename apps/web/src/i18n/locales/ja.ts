@@ -2091,6 +2091,7 @@ export const ja: Dict = {
   'fileRevision.history.close': '履歴を閉じる',
   'fileRevision.history.current': '現在',
   'fileRevision.history.retentionHint': 'ファイルごとに最新 {count} 件の編集のみ保持されます。',
+  'fileRevision.history.retentionPending': '古い編集履歴を整理しています。まもなく一覧が更新されます。',
   'fileRevision.conflict.message': 'ファイルが予期せず変更されたため、元に戻す・やり直しは使えません。編集履歴から以前のバージョンを復元できます。',
   'fileRevision.diskSync.failedMessage': 'プレビューは更新されましたが、ディスクへの保存に失敗しました。元に戻す・やり直しは引き続き使えます。',
   'fileRevision.diskSync.retryAction': '保存を再試行',
