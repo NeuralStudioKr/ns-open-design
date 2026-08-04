@@ -1,7 +1,9 @@
-# 52-1 — Docker 이미지 CI · ECR 배포 설계 (다음 단계)
+# 57-1 — Docker 이미지 CI · ECR 배포 설계 (다음 단계)
 
+**문서 번호:** 57-1  
+**번호 이력:** 구 `52-1_Docker_…` → **57-1** (수동편집 위치이동 `52-x`와 충돌 해소, 2026-08-04)  
 **상태:** 📝 설계만 (미구현)  
-**선행:** [52-0 빌드 가속 현황](./52-0_Docker_배포_빌드_가속_현황.md) Phase 0  
+**선행:** [57-0 빌드 가속 현황](./57-0_Docker_배포_빌드_가속_현황.md) Phase 0  
 **목적:** EC2에서 이미지를 **빌드하지 않고**, CI(또는 전용 빌더)에서 빌드·ECR push 후 EC2는 **pull + recreate**만 수행해 배포 wall time을 단축한다.  
 **관련:** [08 vendor·배포 §3](./08_Teamver_SDK_vendor와_배포.md) · [39_4 rolling](./39_4_배포_Terraform_운영_Runbook.md) · [31 ALB·ChunkLoad](./31_Design_Staging_vs_Production_네트워크_TLS_DNS.md) · [07 인프라](./07_VM_배포_인프라.md)
 
@@ -179,7 +181,7 @@ EC2에서 `sync-teamver-vendor.sh` 런타임 실행 **불필요**. CI checkout�
 
 | Phase | 내용 | 완료 조건 | 예상 공수 |
 |-------|------|-----------|-----------|
-| **0** | BuildKit·Playwright pin·prune ([52-0](./52-0_Docker_배포_빌드_가속_현황.md)) | ✅ | — |
+| **0** | BuildKit·Playwright pin·prune ([57-0](./57-0_Docker_배포_빌드_가속_현황.md)) | ✅ | — |
 | **1a** | ECR 리포 + TF/IAM + 수동 `docker buildx` push 1회 | staging EC2가 ECR pull로 기동 | 0.5–1d |
 | **1b** | GHA workflow (staging push) + `deploy.sh --pull-only` | staging 일상 배포 = pull | 1–2d |
 | **1c** | `rolling_deploy --image` + digest 프리플라이트 | 2노드 동일 digest | 0.5–1d |

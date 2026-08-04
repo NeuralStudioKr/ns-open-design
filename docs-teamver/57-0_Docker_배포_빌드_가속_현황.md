@@ -1,8 +1,10 @@
-# 52-0 — Design Docker 배포 빌드 가속 (현황 · 2026-07-31)
+# 57-0 — Design Docker 배포 빌드 가속 (현황 · 2026-07-31)
 
+**문서 번호:** 57-0  
+**번호 이력:** 구 `52-0_Docker_…` → **57-0** (수동편집 위치이동 `52-0`/`52-1`/`52-2`와 충돌 해소, 2026-08-04)  
 **상태:** ✅ Phase 0 구현·staging push 완료 (`cbb2a5d48`)  
 **목적:** EC2에서 `deploy.sh`로 이미지를 **매번 cold 빌드**하던 경로를 줄여, 반복 배포 체감을 낮춘다.  
-**관련:** [39_4 §10.12](./39_4_배포_Terraform_운영_Runbook.md#1012-docker-빌드-가속--디스크) · [07 VM 배포](./07_VM_배포_인프라.md) · [08 vendor·배포](./08_Teamver_SDK_vendor와_배포.md) · **다음 단계 설계:** [52-1 CI·ECR 이미지 배포](./52-1_Docker_이미지_CI_ECR_배포_설계.md)
+**관련:** [39_4 §10.12](./39_4_배포_Terraform_운영_Runbook.md#1012-docker-빌드-가속--디스크) · [07 VM 배포](./07_VM_배포_인프라.md) · [08 vendor·배포](./08_Teamver_SDK_vendor와_배포.md) · **다음 단계 설계:** [57-1 CI·ECR 이미지 배포](./57-1_Docker_이미지_CI_ECR_배포_설계.md)
 
 ---
 
@@ -10,7 +12,7 @@
 
 > **원인:** EC2 로컬에서 `pnpm install` + Next typecheck + Playwright Chromium을 거의 매 배포마다 다시 돌림.  
 > **Phase 0:** BuildKit 캐시 마운트 + Playwright 핀 + 디스크 prune 가이드로 **같은 머신·캐시가 살아 있을 때** 재빌드를 줄인다.  
-> **체감 상한:** apps 변경 시 Next 빌드는 여전히 EC2에서 돈다 → 근본 단축은 [52-1](./52-1_Docker_이미지_CI_ECR_배포_설계.md).
+> **체감 상한:** apps 변경 시 Next 빌드는 여전히 EC2에서 돈다 → 근본 단축은 [57-1](./57-1_Docker_이미지_CI_ECR_배포_설계.md).
 
 ---
 
@@ -88,7 +90,7 @@ pnpm … build  →  위 + id=od-next-cache → /app/apps/web/.next/cache
 3. **49G 루트 디스크** — 캐시를 쌓으면 다시 ENOSPC 위험 → prune 습관 필요.
 4. **ns-open-design는 ns_cicd 미등록** — FE/BE처럼 “push만 하면 빌드 서버”가 아직 없음.
 
-→ 근본 해결 설계: [52-1](./52-1_Docker_이미지_CI_ECR_배포_설계.md).
+→ 근본 해결 설계: [57-1](./57-1_Docker_이미지_CI_ECR_배포_설계.md).
 
 ---
 
@@ -117,4 +119,4 @@ pnpm … build  →  위 + id=od-next-cache → /app/apps/web/.next/cache
 
 | 날짜 | 내용 |
 |------|------|
-| 2026-07-31 | Phase 0 문서화 · 구현 `cbb2a5d48` · 다음 단계 → 52-1 |
+| 2026-07-31 | Phase 0 문서화 · 구현 `cbb2a5d48` · 다음 단계 → 57-1 |
