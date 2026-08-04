@@ -807,6 +807,7 @@ export function ChatPane({
   const { hideUsefulTips, slideOnlyMvp } = useTeamverBranding();
   const amrProfile = config?.agentCliEnv?.amr?.[AMR_PROFILE_ENV_KEY] ?? null;
   const logRef = useRef<HTMLDivElement | null>(null);
+  const chatJumpBtnRef = useRef<HTMLButtonElement | null>(null);
   const chatLogScrollIdleTimerRef = useRef<number | null>(null);
   const historyWrapRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<ChatComposerHandle | null>(null);
@@ -1707,6 +1708,11 @@ export function ChatPane({
     anchorActiveRef.current = false;
     pinnedToBottomRef.current = true;
     resetTailSpacer();
+    // Blur before scroll hides the button (`tabIndex={-1}`). Otherwise the
+    // focused control stays focused while it leaves the a11y tree and Chrome
+    // logs: "Blocked aria-hidden on an element because its descendant
+    // retained focus" (browser warning — not an app console.log).
+    chatJumpBtnRef.current?.blur();
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }
 
@@ -2315,14 +2321,18 @@ export function ChatPane({
             </div>
             {/* Always mounted so the CSS transition can play in both
                 directions; the `chat-jump-btn-active` class flips the
-                slide + opacity, and `aria-hidden` + `tabIndex={-1}`
-                keep it out of the a11y tree when it's not visible. */}
+                slide + opacity. When inactive, CSS `visibility: hidden`
+                already drops it from the a11y tree — avoid `aria-hidden`
+                on this focusable control (Chrome blocks it if focus
+                remains and logs a console warning). `tabIndex={-1}` keeps
+                it out of the tab order while hidden; jumpToBottom blurs
+                before the hide transition. */}
             <button
               type="button"
+              ref={chatJumpBtnRef}
               className={`chat-jump-btn${scrolledFromBottom ? ' chat-jump-btn-active' : ''}`}
               onClick={jumpToBottom}
               title={t('chat.scrollToLatest')}
-              aria-hidden={!scrolledFromBottom}
               tabIndex={scrolledFromBottom ? 0 : -1}
             >
               <Icon name="arrow-up" size={12} style={{ transform: 'rotate(180deg)' }} />

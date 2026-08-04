@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { forwardRef, useImperativeHandle } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -246,6 +248,12 @@ describe('ChatPane streaming state', () => {
     expect(css).toContain('.composer:has(.composer-design-toolbox-menu)');
     expect(css).toContain('.composer:has(.composer-import-menu)');
     expect(css).toContain('z-index: 80;');
+  });
+
+  it('does not aria-hide the focused jump button (Chrome a11y console warning)', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/components/ChatPane.tsx'), 'utf8');
+    expect(source).toContain('chatJumpBtnRef.current?.blur()');
+    expect(source).not.toMatch(/className=\{`chat-jump-btn[\s\S]*?aria-hidden=\{!scrolledFromBottom\}/);
   });
 
   it('exposes retry only for the last failed assistant when the pane is idle', () => {
