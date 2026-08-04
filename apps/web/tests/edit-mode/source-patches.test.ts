@@ -1280,6 +1280,68 @@ describe('manual edit source patches', () => {
     expect(salvaged.source).not.toContain('evil.example');
   });
 
+  it('drops compound filter/backdrop-filter urls and preserves false-positive neighbors', () => {
+    const compound = sanitizeManualEditHtmlFragment(
+      '<div style="filter: blur(2px) url(https://evil.example/f.svg#x);backdrop-filter: blur(2px) url(https://evil.example/b.svg#x);color:red">x</div>',
+    );
+    expect(compound).toContain('color:red');
+    expect(compound).not.toContain('evil.example');
+    expect(compound).not.toMatch(/filter\s*:/i);
+
+    const blurOnly = sanitizeManualEditHtmlFragment(
+      '<div style="filter:blur(4px);color:red">x</div>',
+    );
+    expect(blurOnly).toContain('filter:blur(4px)');
+    expect(blurOnly).toContain('color:red');
+
+    // Must not chop `background-filter` into `background-`.
+    const falsePos = sanitizeManualEditHtmlFragment(
+      '<div style="background-filter:url(https://cdn.example/bg.svg#x);color:red">x</div>',
+    );
+    expect(falsePos).toContain('background-filter:url(https://cdn.example/bg.svg#x)');
+    expect(falsePos).toContain('color:red');
+    expect(falsePos).not.toMatch(/background-;/);
+
+    const fragOk = sanitizeManualEditHtmlFragment(
+      '<div style="filter:url(#ok);color:red">x</div>',
+    );
+    expect(fragOk).toContain('filter:url(#ok)');
+  });
+
+  it('rejects filter:var() and quoted presentation url() with paren smuggling', () => {
+    const viaVar = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-title',
+      html: '<h1 data-od-id="hero-title" style="--f:url(https://evil.example/f.svg#x);filter:var(--f);color:navy">Title</h1>',
+    });
+    expect(viaVar.ok, viaVar.error).toBe(true);
+    const viaVarHtml = readManualEditOuterHtml(viaVar.source, 'hero-title');
+    expect(viaVarHtml).toContain('color:navy');
+    expect(viaVarHtml).not.toMatch(/filter\s*:\s*var/i);
+    // Custom prop for imagery may remain; filter:var must not.
+    expect(viaVarHtml).not.toMatch(/filter\s*:\s*url\(https/i);
+
+    const quoted = sanitizeManualEditHtmlFragment(
+      '<svg><rect filter="url(&quot;https://evil.example/a).svg#x&quot;)"></rect></svg>',
+    );
+    expect(quoted).not.toContain('evil.example');
+    expect(quoted).not.toMatch(/\bfilter=/i);
+  });
+
+  it('is idempotent for benign full-source decks with remote background-image', () => {
+    const once = sanitizeManualEditFullSource([
+      '<!doctype html><html><body>',
+      '<section class="slide" data-slide-index="0">',
+      '<div data-od-id="t" style="background-image:url(https://cdn.example/ok.png);color:blue">ok</div>',
+      '</section></body></html>',
+    ].join(''));
+    const twice = sanitizeManualEditFullSource(once);
+    expect(twice).toBe(once);
+    expect(once).toContain('data-od-id="t"');
+    expect(once).toContain('cdn.example/ok.png');
+    expect(once).toContain('color:blue');
+  });
+
   it('validates ping as a whitespace-separated relative URL list', () => {
     expect(isSafeManualEditUrlAttrValue('ping', '/ok')).toBe(true);
     expect(isSafeManualEditUrlAttrValue('ping', '#local')).toBe(true);

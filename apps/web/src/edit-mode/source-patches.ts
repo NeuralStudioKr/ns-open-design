@@ -2125,17 +2125,52 @@ function scrubUnsafeCssFunctions(css: string): string {
   text = text.replace(/-o-link(?:-source)?\s*:[^;}]*/gi, '');
   // SVG/CSS paint & resource properties — remote url() can fetch attacker
   // content into preview. Keep same-document #fragment only.
-  // Includes backdrop-filter (previously excluded by a negative lookbehind).
+  // Declaration-level match so `filter: blur(2px) url(https://…)` is dropped,
+  // and `(?<![-\w])` avoids mangling `background-filter` / `--hero-filter`.
   // Intentionally does NOT touch background/background-image (slide imagery).
-  text = text.replace(
-    /(?:-webkit-)?(?:backdrop-)?filter\s*:\s*url\s*\(\s*(['"]?)(?!#)[^)]*\1\s*\)[^;}]*/gi,
-    '',
+  text = dropCssDeclsWithNonFragmentUrl(
+    text,
+    '(?:-webkit-)?(?:backdrop-)?filter',
   );
+  text = dropCssDeclsWithNonFragmentUrl(
+    text,
+    '(?:-webkit-)?(?:clip-path|mask(?:-image)?|fill|stroke|cursor|marker(?:-(?:start|mid|end))?)',
+  );
+  // Resource props using var() cannot be proven fragment-safe (custom props
+  // may stash remote url()). Keep --bg:url(https) for slide imagery intact.
   text = text.replace(
-    /(?:-webkit-)?(?:clip-path|mask(?:-image)?|fill|stroke|cursor|marker(?:-(?:start|mid|end))?)\s*:[^;{}]*url\s*\(\s*(['"]?)(?!#)[^)]*\1\s*\)[^;}]*/gi,
-    '',
+    /(^|[;{])(\s*)(?<![\w-])((?:-webkit-)?(?:backdrop-)?filter|(?:-webkit-)?(?:clip-path|mask(?:-image)?|fill|stroke|cursor|marker(?:-(?:start|mid|end))?))\s*:\s*([^;{}]*\bvar\s*\([^;{}]*)/gi,
+    '$1$2',
   );
   return text;
+}
+
+/**
+ * Drop whole CSS declarations whose value embeds a non-fragment url(...).
+ * `propPattern` is inserted after a property-name boundary lookbehind.
+ */
+function dropCssDeclsWithNonFragmentUrl(css: string, propPattern: string): string {
+  const re = new RegExp(
+    `(^|[;{])(\\s*)(?<![\\w-])(${propPattern})\\s*:\\s*([^;{}]*)`,
+    'gi',
+  );
+  return String(css || '').replace(re, (match, prefix: string, ws: string, _prop: string, value: string) => {
+    if (!/\burl\s*\(/i.test(value)) return match;
+    if (cssDeclarationHasNonFragmentUrl(value)) {
+      return prefix === '{' ? `{${ws}` : prefix === ';' ? `;${ws}` : ws;
+    }
+    return match;
+  });
+}
+
+/** True when a CSS declaration value contains url(...) that is not #fragment. */
+function cssDeclarationHasNonFragmentUrl(value: string): boolean {
+  const text = String(value || '');
+  if (!/\burl\s*\(/i.test(text)) return false;
+  const inners = extractCssUrlInners(text);
+  // Fail closed if url( is present but nothing parseable was extracted.
+  if (inners.length === 0) return true;
+  return inners.some((inner) => !isSafeManualEditSvgResourceRef(inner));
 }
 
 function scrubSalvagedStyleText(css: string): string {
@@ -2175,13 +2210,47 @@ function isSafeManualEditPresentationCssValue(value: string): boolean {
   const normalized = normalizeCssForSafetyScan(String(value || '')).trim();
   if (!normalized) return true;
   if (containsUnsafeEmbeddedCssOrScheme(normalized)) return false;
-  const urlRe = /url\s*\(\s*(['"]?)([^)'"]*)\1\s*\)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = urlRe.exec(normalized))) {
-    const inner = String(match[2] || '').trim();
-    if (!isSafeManualEditSvgResourceRef(inner)) return false;
-  }
+  // var() can hide remote url() via custom props — fail closed for paint attrs.
+  if (/\bvar\s*\(/i.test(normalized)) return false;
+  if (cssDeclarationHasNonFragmentUrl(normalized)) return false;
   return true;
+}
+
+/** Quote-aware extraction of url(...) inner texts from a CSS value. */
+function extractCssUrlInners(value: string): string[] {
+  const text = String(value || '');
+  const out: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const idx = text.slice(i).toLowerCase().indexOf('url(');
+    if (idx < 0) break;
+    i += idx + 4;
+    while (i < text.length && /\s/.test(text[i]!)) i += 1;
+    let inner = '';
+    const q = text[i];
+    if (q === '"' || q === "'") {
+      i += 1;
+      let end = i;
+      while (end < text.length) {
+        if (text[end] === '\\') {
+          end += 2;
+          continue;
+        }
+        if (text[end] === q) break;
+        end += 1;
+      }
+      inner = text.slice(i, end);
+      i = end < text.length ? end + 1 : end;
+    } else {
+      let end = i;
+      while (end < text.length && text[end] !== ')') end += 1;
+      inner = text.slice(i, end);
+      i = end < text.length ? end + 1 : end;
+    }
+    const trimmed = inner.trim();
+    if (trimmed) out.push(trimmed);
+  }
+  return out;
 }
 
 function setCssToken(doc: Document, token: string, value: string): boolean {

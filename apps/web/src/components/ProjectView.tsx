@@ -4454,6 +4454,9 @@ export function ProjectView({
             htmlBody,
             persistCommentAttachments,
           );
+          // Collapse/graft can reintroduce current-disk markup that was never
+          // scrubbed — sanitize again before write.
+          htmlBody = sanitizeManualEditFullSource(htmlBody);
         }
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
