@@ -50,11 +50,14 @@ describe("FileViewer streaming slide preview", () => {
     expect(block).not.toMatch(/setSource\(null\)[\s\S]*setSource\(null\)/);
   });
 
-  it("clears stable snapshot when preview artifact identity changes", () => {
+  it("reseeds stable snapshot from preview cache when artifact identity changes", () => {
     const source = readSource("src/components/FileViewer.tsx");
     expect(source).toContain("lastStablePreviewIdentityRef");
+    expect(source).toContain("readCachedPreviewSource");
+    // Identity change must not keep the previous file's last-stable bytes;
+    // seed from the module cache for the new identity (or null).
     expect(source).toMatch(
-      /artifactIdentity[\s\S]*lastStablePreviewIdentityRef\.current !== artifactIdentity[\s\S]*lastStablePreviewSourceRef\.current = null/,
+      /lastStablePreviewIdentityRef\.current !== artifactIdentity[\s\S]*lastStablePreviewSourceRef\.current = cachedPreview/,
     );
   });
 

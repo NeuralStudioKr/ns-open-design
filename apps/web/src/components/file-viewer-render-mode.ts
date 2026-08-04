@@ -112,6 +112,27 @@ export function resolveHtmlPreviewAssetUrl(options: {
   return options.embedPreviewPrefix ? options.scopedUrl ?? 'about:blank' : 'about:blank';
 }
 
+/**
+ * `<base href>` for srcDoc deck/HTML previews.
+ *
+ * Teamver embed resolves a scoped preview prefix asynchronously. Until it
+ * arrives, `resolveHtmlPreviewAssetUrl` returns `about:blank` (correct for
+ * inactive URL-load iframes). Injecting that into srcDoc as `<base
+ * href="about:blank">` breaks relative CSS/assets and can leave the first
+ * paint blank until a toolbar remount. Return `undefined` so buildSrcdoc
+ * skips base injection until a real prefix exists.
+ */
+export function resolveHtmlPreviewSrcDocBaseHref(options: {
+  teamverEmbedMode: boolean;
+  embedPreviewPrefix: string | null | undefined;
+  rawUrl: string;
+  scopedUrl: string | null | undefined;
+}): string | undefined {
+  const href = resolveHtmlPreviewAssetUrl(options);
+  if (!href || href === 'about:blank') return undefined;
+  return href;
+}
+
 export function hasUrlModeBridge(source: string | null | undefined): boolean {
   if (!source) return false;
   return /<script\b[^>]*\bsrc\s*=\s*["'][^"']*\bod-direct-edit\.js\b[^"']*["'][^>]*>/i.test(source);

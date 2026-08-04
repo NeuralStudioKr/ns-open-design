@@ -189,6 +189,7 @@ import {
   htmlNeedsSandboxShim,
   parseForceInline,
   resolveHtmlPreviewAssetUrl,
+  resolveHtmlPreviewSrcDocBaseHref,
   shouldUrlLoadHtmlPreview,
 } from './file-viewer-render-mode';
 import { saveTemplate } from '../state/projects';
@@ -6300,6 +6301,20 @@ function HtmlViewer({
     }),
     [embedPreviewPrefix, projectId, teamverEmbedPreviewMode],
   );
+  // srcDoc `<base href>` — never inject about:blank while the Teamver
+  // preview prefix is still resolving (first paint would strand relative
+  // assets until the user hits toolbar refresh / remount).
+  const srcDocBaseHref = useMemo(
+    () => resolveHtmlPreviewSrcDocBaseHref({
+      teamverEmbedMode: teamverEmbedPreviewMode,
+      embedPreviewPrefix,
+      rawUrl: projectRawUrl(projectId, baseDirFor(file.name)),
+      scopedUrl: embedPreviewPrefix
+        ? projectScopedPreviewUrl(embedPreviewPrefix, baseDirFor(file.name))
+        : null,
+    }),
+    [embedPreviewPrefix, file.name, projectId, teamverEmbedPreviewMode],
+  );
   const basePreviewSrcUrl = useMemo(
     () => `${projectPreviewAssetUrl(file.name)}?v=${Math.round(file.mtime)}&r=${reloadKey}&odPreviewBridge=scroll&odPreviewBridge=selection&odPreviewBridge=snapshot`,
     [projectPreviewAssetUrl, file.name, file.mtime, reloadKey],
@@ -6348,7 +6363,7 @@ function HtmlViewer({
   const srcDoc = useMemo(
     () => (redirectLoopBlocked ? buildRedirectLoopBlockedDoc() : previewSource ? buildSrcdoc(previewSource, {
       deck: effectiveDeck,
-      baseHref: projectPreviewAssetUrl(baseDirFor(file.name)),
+      baseHref: srcDocBaseHref,
       initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
       selectionBridge: true,
       editBridge: manualEditRequiresSrcDoc,
@@ -6359,8 +6374,7 @@ function HtmlViewer({
       redirectLoopBlocked,
       previewSource,
       effectiveDeck,
-      projectPreviewAssetUrl,
-      file.name,
+      srcDocBaseHref,
       previewStateKey,
       manualEditRequiresSrcDoc,
     ],
@@ -6370,6 +6384,22 @@ function HtmlViewer({
   const [srcDocShellReady, setSrcDocShellReady] = useState(false);
   const wasUrlLoadPreviewRef = useRef(useUrlLoadPreview);
   const urlPreviewKeepAliveKey = previewIframeKeepAliveKey(projectId, file.name);
+  const prevEmbedPreviewPrefixRef = useRef<string | null>(null);
+  // When the scoped prefix arrives (or auth recovery rotates it), remount
+  // the srcDoc iframe so the new `<base href>` binds. Updating the srcDoc
+  // string alone is not reliable after an about:blank / no-base first paint —
+  // users otherwise need the toolbar refresh button to see the slide.
+  useEffect(() => {
+    if (!teamverEmbedPreviewMode) {
+      prevEmbedPreviewPrefixRef.current = embedPreviewPrefix;
+      return;
+    }
+    const prev = prevEmbedPreviewPrefixRef.current;
+    prevEmbedPreviewPrefixRef.current = embedPreviewPrefix;
+    if (!embedPreviewPrefix || embedPreviewPrefix === prev) return;
+    activatedSrcDocTransportHtmlRef.current = null;
+    setSrcDocTransportResetKey((key) => key + 1);
+  }, [embedPreviewPrefix, teamverEmbedPreviewMode]);
   // Reset the shell-ready latch whenever the srcDoc iframe re-mounts. The
   // next shell will post `od:srcdoc-transport-ready` (or fire onLoad) and
   // flip this back to true. See #2253.
@@ -8241,7 +8271,7 @@ function HtmlViewer({
     if (useUrlLoadPreview) return;
     const activated = buildSrcdoc(html, {
       deck: effectiveDeck,
-      baseHref: projectPreviewAssetUrl(baseDirFor(file.name)),
+      baseHref: srcDocBaseHref,
       initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
       selectionBridge: true,
       editBridge: manualEditRequiresSrcDoc,
@@ -8960,7 +8990,7 @@ function HtmlViewer({
     if (!source) return;
     openSandboxedPreviewInNewTab(source, exportTitle, {
       deck: effectiveDeck,
-      baseHref: projectPreviewAssetUrl(baseDirFor(file.name)),
+      baseHref: srcDocBaseHref,
       initialSlideIndex: htmlPreviewSlideState.get(previewStateKey)?.active ?? 0,
     });
   }

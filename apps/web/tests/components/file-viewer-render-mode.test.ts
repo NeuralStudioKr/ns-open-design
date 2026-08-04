@@ -8,6 +8,7 @@ import {
   htmlNeedsSandboxShim,
   parseForceInline,
   resolveHtmlPreviewAssetUrl,
+  resolveHtmlPreviewSrcDocBaseHref,
   shouldUrlLoadHtmlPreview,
 } from '../../src/components/file-viewer-render-mode';
 
@@ -108,6 +109,35 @@ describe('resolveHtmlPreviewAssetUrl', () => {
       rawUrl: '/api/projects/project-1/raw/page.html',
       scopedUrl: null,
     })).toBe('about:blank');
+  });
+});
+
+describe('resolveHtmlPreviewSrcDocBaseHref', () => {
+  it('omits about:blank so srcDoc does not inject a broken <base> before prefix resolves', () => {
+    expect(resolveHtmlPreviewSrcDocBaseHref({
+      teamverEmbedMode: true,
+      embedPreviewPrefix: null,
+      rawUrl: '/api/projects/project-1/raw/',
+      scopedUrl: null,
+    })).toBeUndefined();
+  });
+
+  it('returns the scoped prefix directory once Teamver preview scope is ready', () => {
+    expect(resolveHtmlPreviewSrcDocBaseHref({
+      teamverEmbedMode: true,
+      embedPreviewPrefix: '/api/projects/project-1/preview/scope-1',
+      rawUrl: '/api/projects/project-1/raw/',
+      scopedUrl: '/api/projects/project-1/preview/scope-1/',
+    })).toBe('/api/projects/project-1/preview/scope-1/');
+  });
+
+  it('keeps standalone OD raw directory URLs for srcDoc base', () => {
+    expect(resolveHtmlPreviewSrcDocBaseHref({
+      teamverEmbedMode: false,
+      embedPreviewPrefix: null,
+      rawUrl: '/api/projects/project-1/raw/',
+      scopedUrl: null,
+    })).toBe('/api/projects/project-1/raw/');
   });
 });
 

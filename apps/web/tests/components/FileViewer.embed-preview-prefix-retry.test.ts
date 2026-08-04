@@ -16,4 +16,19 @@ describe('FileViewer embed preview prefix recovery', () => {
       /\[embedAuthRecoveryNonce,\s*file\.name,\s*projectId,\s*teamverEmbedPreviewMode\]/,
     );
   });
+
+  it('remounts srcDoc when the scoped preview prefix arrives so entry paint is not blank', () => {
+    // Page entry used to inject <base href="about:blank"> then update the
+    // srcDoc string when the prefix resolved — without a remount the iframe
+    // stayed blank until toolbar refresh. Gate on the hard remount path.
+    expect(fileViewer).toContain('resolveHtmlPreviewSrcDocBaseHref');
+    expect(fileViewer).toContain('srcDocBaseHref');
+    expect(fileViewer).toContain('prevEmbedPreviewPrefixRef');
+    expect(fileViewer).toMatch(
+      /if \(!embedPreviewPrefix \|\| embedPreviewPrefix === prev\) return;[\s\S]{0,200}?setSrcDocTransportResetKey/,
+    );
+    expect(fileViewer).toMatch(
+      /baseHref:\s*srcDocBaseHref/,
+    );
+  });
 });
