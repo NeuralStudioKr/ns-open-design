@@ -1515,6 +1515,7 @@ export const ko: Dict = {
   'chat.annotationPreviewMissing': '미리보기를 캡처할 수 없습니다. 댓글 모드를 쓰거나 슬라이드 번호를 메모에 적어 주세요.',
   'chat.annotationPreviewMissingInk': '미리보기를 캡처할 수 없습니다. 수정 내용을 메모에 적거나 댓글 모드를 사용해 주세요.',
   'chat.annotationSentWithoutScreenshot': '미리보기를 캡처하지 못했어요. 메모만 전송되었습니다. 요소별 수정은 댓글 모드를 이용해 주세요.',
+  'chat.annotationSentMarksOnly': '미리보기 캡처가 지연되어 마크만 흰 배경에 담아 전송했어요.',
   'chat.annotationSentTextOnly': '슬라이드 번호와 함께 메모가 전송되었어요. 미리보기 이미지는 포함되지 않았습니다.',
   'chat.annotationTimeout': '주석 전송 시간이 초과되었습니다. 다시 시도해 주세요.',
   'chat.annotationFailed': '주석 전송에 실패했습니다. 다시 시도해 주세요.',

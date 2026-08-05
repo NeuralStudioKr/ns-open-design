@@ -213,6 +213,7 @@ import type {
 } from '../types';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { useAuthenticatedProjectFileObjectUrl } from '../hooks/useAuthenticatedProjectFileObjectUrl';
+import { useProjectFileSignedUrl } from '../hooks/useProjectFileSignedUrl';
 import { Icon } from './Icon';
 import { RemixIcon } from './RemixIcon';
 import { SocialShareGrid } from './SocialShareGrid';
@@ -10993,19 +10994,24 @@ function HtmlViewer({
     // in the browser screenshot flow (DesignBrowserPanel).
     await waitForAnimationFrame();
     await waitForAnimationFrame();
+    try {
+    const srcDocIframe = srcDocPreviewIframeRef.current;
+    const urlIframe = iframeRef.current ?? urlPreviewIframeRef.current;
+    const visibleIframe = iframeRef.current ?? srcDocIframe;
+    await ensureDeckSlideSyncedForSnapshot(visibleIframe);
+    // Host compositor capture uses on-screen iframe pixels and does not need
+    // the hidden srcDoc snapshot bridge. Attempt it before waiting on
+    // drawCaptureReady so PreviewDrawOverlay's marks-only fast fallback does
+    // not burn its budget on bridge readiness alone.
+    const hostSnapshot = await captureHostIframeSnapshot(visibleIframe);
+    if (hostSnapshot) return hostSnapshot;
+
     if (drawOverlayOpen && !drawCaptureReadyRef.current) {
       const deadline = Date.now() + 4_000;
       while (!drawCaptureReadyRef.current && Date.now() < deadline) {
         await waitForAnimationFrame();
       }
     }
-    try {
-    const srcDocIframe = srcDocPreviewIframeRef.current;
-    const urlIframe = iframeRef.current ?? urlPreviewIframeRef.current;
-    const visibleIframe = iframeRef.current ?? srcDocIframe;
-    await ensureDeckSlideSyncedForSnapshot(visibleIframe);
-    const hostSnapshot = await captureHostIframeSnapshot(visibleIframe);
-    if (hostSnapshot) return hostSnapshot;
 
     // Prefer the srcDoc transport iframe: it always carries the snapshot bridge
     // and (when draw mode is active) the full artifact HTML. URL-load frames
@@ -13709,9 +13715,14 @@ function ImageViewer({
 }) {
   const t = useTeamverT();
   const filePath = projectFileResolvedPath(file);
-  // Authenticated blob URL for Download / Open — Teamver embed strips daemon
-  // headers from `<a href>` navigations, so bare `projectFileUrl` links used
-  // to 401 while the inline image (which uses the same hook) worked.
+  // Prefer session-gated S3 GET for Open. Download still needs a same-origin
+  // (or blob) URL so the browser honors the `download` filename attribute.
+  const signed = useProjectFileSignedUrl(
+    projectId,
+    filePath,
+    Math.round(file.mtime),
+    { trustExists: true },
+  );
   const blob = useAuthenticatedProjectFileObjectUrl(
     projectId,
     filePath,
@@ -13719,10 +13730,12 @@ function ImageViewer({
     true,
     true,
   );
-  const canAct = Boolean(blob.src) && !blob.loading;
+  const openSrc = signed.src || blob.src;
+  const canOpen = Boolean(openSrc) && !signed.loading && !blob.loading;
+  const canDownload = Boolean(blob.src) && !blob.loading;
   const openInNewTab = () => {
-    if (!blob.src) return;
-    const url = blob.src;
+    if (!openSrc) return;
+    const url = openSrc;
     // Popup-blocker friendly path: synthesize an anchor with target=_blank and
     // click it inside the same user gesture. Falls back to `window.open` when
     // the anchor click is silently swallowed (e.g. some embed sandboxes).
@@ -13770,7 +13783,7 @@ function ImageViewer({
             type="button"
             className="ghost-link"
             onClick={downloadBlob}
-            disabled={!canAct}
+            disabled={!canDownload}
           >
             {t('fileViewer.download')}
           </button>
@@ -13778,7 +13791,7 @@ function ImageViewer({
             type="button"
             className="ghost-link"
             onClick={openInNewTab}
-            disabled={!canAct}
+            disabled={!canOpen}
           >
             {t('fileViewer.open')}
           </button>

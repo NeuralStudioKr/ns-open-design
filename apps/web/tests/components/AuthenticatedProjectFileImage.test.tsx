@@ -71,13 +71,61 @@ describe('AuthenticatedProjectFileImage', () => {
     expect(fetchDaemonMock).not.toHaveBeenCalled();
   });
 
-  it('still blob-fetches chat thumbnails without allowBackgroundRetry', async () => {
+  it('prefers a presigned S3 GET for chat thumbnails', async () => {
     const drawingPath = 'msees0i8-drawing-2026-08-04T08-41-03-101Z.png';
-    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
     fetchDaemonMock.mockResolvedValue({
       ok: true,
-      blob: async () => new Blob([pngBytes], { type: 'image/png' }),
+      json: async () => ({
+        status: 'ready',
+        path: drawingPath,
+        url: 'https://bucket.s3.amazonaws.com/design/ws/proj/drawing.png?X-Amz-Signature=abc',
+        expiresInSec: 120,
+        expiresAt: '2026-08-05T06:02:00.000Z',
+        rawUrl: `/api/projects/project-1/raw/${drawingPath}`,
+      }),
     } as Response);
+
+    const { container } = render(
+      <AuthenticatedProjectFileImage
+        projectId="project-1"
+        path={drawingPath}
+        trustExists
+      />,
+    );
+
+    await vi.waitFor(() => {
+      const img = container.querySelector('img');
+      expect(img?.getAttribute('src')).toBe(
+        'https://bucket.s3.amazonaws.com/design/ws/proj/drawing.png?X-Amz-Signature=abc',
+      );
+    });
+    expect(fetchDaemonMock).toHaveBeenCalledWith(
+      '/api/projects/project-1/presign-get',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('falls back to authenticated blob fetch when presign is disabled', async () => {
+    const drawingPath = 'msees0i8-drawing-2026-08-04T08-41-03-101Z.png';
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+    fetchDaemonMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/presign-get')) {
+        return {
+          ok: true,
+          json: async () => ({
+            status: 'disabled',
+            path: drawingPath,
+            rawUrl: `/api/projects/project-1/raw/${drawingPath}`,
+            reason: 'local_storage',
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        blob: async () => new Blob([pngBytes], { type: 'image/png' }),
+      } as Response;
+    });
 
     const { container } = render(
       <AuthenticatedProjectFileImage
@@ -91,6 +139,5 @@ describe('AuthenticatedProjectFileImage', () => {
       const img = container.querySelector('img');
       expect(img?.getAttribute('src')).toMatch(/^blob:/);
     });
-    expect(fetchDaemonMock).toHaveBeenCalled();
   });
 });

@@ -2163,6 +2163,7 @@ export interface Dict {
   'chat.annotationPreviewMissing': string;
   'chat.annotationPreviewMissingInk': string;
   'chat.annotationSentWithoutScreenshot': string;
+  'chat.annotationSentMarksOnly': string;
   'chat.annotationSentTextOnly': string;
   'chat.annotationTimeout': string;
   'chat.annotationFailed': string;

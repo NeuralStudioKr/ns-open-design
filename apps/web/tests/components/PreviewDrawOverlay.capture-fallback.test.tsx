@@ -231,7 +231,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     );
   });
 
-  it('does not block send on a slow captureSnapshot when marks-only is available', { timeout: 10_000 }, async () => {
+  it('does not block send on a slow captureSnapshot when marks-only is available', { timeout: 12_000 }, async () => {
     const slowCapture = vi.fn(
       () =>
         new Promise<{ dataUrl: string; w: number; h: number } | null>((resolve) => {
@@ -256,7 +256,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
         bottom: 200,
         toJSON: () => ({}),
       } as DOMRect;
-      const { container, getByRole } = render(
+      const { container, getByRole, getByText } = render(
         <PreviewDrawOverlay active captureSnapshot={slowCapture} captureFrameRect={() => frameRect}>
           <iframe title="srcdoc" data-od-render-mode="srcdoc" />
         </PreviewDrawOverlay>,
@@ -268,18 +268,95 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
       const started = performance.now();
       fireEvent.click(getByRole('button', { name: 'Send' }));
 
-      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 7_000 });
-      // Fast fallback bound: 4.5s host wait + a small overhead for the
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 9_000 });
+      // Fast fallback bound: 7s host wait + a small overhead for the
       // composite / event dispatch. Regression check for issue #4064 —
       // must not stall on the full 10s budget when marks-only is ready.
-      expect(performance.now() - started).toBeLessThan(6_000);
+      expect(performance.now() - started).toBeLessThan(8_500);
       expect(annotation.mock.calls[0]?.[0]).toMatchObject({
         detail: expect.objectContaining({
           action: 'send',
           file: expect.any(File),
         }),
       });
+      await waitFor(() =>
+        expect(
+          getByText('Preview capture was slow, so only your marks were sent on a blank background.'),
+        ).toBeTruthy(),
+      );
     } finally {
+      window.removeEventListener('opendesign:annotation', annotation);
+    }
+  });
+
+  it('prefers a full slide composite when captureSnapshot resolves within the fast budget', { timeout: 10_000 }, async () => {
+    class ImmediateImage {
+      onload: ((ev?: Event) => void) | null = null;
+      onerror: ((ev?: Event) => void) | null = null;
+      width = 320;
+      height = 200;
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      }
+    }
+    const imageSpy = vi.spyOn(globalThis, 'Image' as any).mockImplementation(function ImageMock() {
+      return new ImmediateImage();
+    } as any);
+
+    const lateButUsableCapture = vi.fn(
+      () =>
+        new Promise<{ dataUrl: string; w: number; h: number } | null>((resolve) => {
+          window.setTimeout(
+            () => resolve({ dataUrl: 'data:image/png;base64,iVBORw0KGgo=', w: 320, h: 200 }),
+            5_200,
+          );
+        }),
+    );
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
+    window.addEventListener('opendesign:annotation', annotation);
+
+    try {
+      const frameRect = {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        width: 320,
+        height: 200,
+        right: 320,
+        bottom: 200,
+        toJSON: () => ({}),
+      } as DOMRect;
+      const { container, getByRole, queryByText } = render(
+        <PreviewDrawOverlay
+          active
+          captureSnapshot={lateButUsableCapture}
+          captureFrameRect={() => frameRect}
+        >
+          <iframe title="srcdoc" data-od-render-mode="srcdoc" />
+        </PreviewDrawOverlay>,
+      );
+
+      const canvas = container.querySelector<HTMLCanvasElement>('canvas');
+      drawSelectionBox(canvas!);
+      fireEvent.click(getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 8_000 });
+      expect(lateButUsableCapture).toHaveBeenCalled();
+      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
+        detail: expect.objectContaining({
+          action: 'send',
+          file: expect.any(File),
+        }),
+      });
+      expect(
+        queryByText('Preview capture was slow, so only your marks were sent on a blank background.'),
+      ).toBeNull();
+    } finally {
+      imageSpy.mockRestore();
       window.removeEventListener('opendesign:annotation', annotation);
     }
   });

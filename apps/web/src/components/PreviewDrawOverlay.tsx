@@ -85,12 +85,12 @@ const ANNOTATION_CAPTURE_BUDGET_MS = 10_000;
  * When ink/box marks exist we prefer to wait for the full compositor capture
  * (so the sent screenshot shows the actual slide underneath the marks) but
  * still bound how long the user waits before we fall back to a marks-only
- * composite. 3s was too aggressive on staging deck srcDoc handshakes and
- * produced blank-background sends when the bridge was just a beat slow;
- * 4.5s covers the observed handshake without keeping users waiting on a
- * truly stuck iframe.
+ * composite. FileViewer may spend up to ~4s waiting for draw-capture readiness
+ * before the srcDoc bridge retries (2.5s+), so 4.5s was still racing the
+ * happy path and silently shipping white-background marks-only PNGs.
+ * 7s covers that handshake without stalling on the full 10s budget.
  */
-const ANNOTATION_CAPTURE_FAST_FALLBACK_MS = 4_500;
+const ANNOTATION_CAPTURE_FAST_FALLBACK_MS = 7_000;
 const ANNOTATION_IFRAME_SNAPSHOT_TIMEOUTS_MS = [2_500, 3_000] as const;
 
 async function raceWithBudget<T>(promise: Promise<T>, budgetMs: number): Promise<T | null> {
@@ -767,6 +767,7 @@ export function PreviewDrawOverlay({
     try {
       let file: File | null = null;
       let pinnedFrameRect: CaptureFrameRect | null = null;
+      let usedMarksOnlyFallback = false;
       if (shouldCapture) {
         let blob: Blob | null = null;
         pinnedFrameRect = snapshotFrameRect();
@@ -778,6 +779,7 @@ export function PreviewDrawOverlay({
         if (snap) blob = await compositeWithBackground(snap, pinnedFrameRect);
         if (!blob && marksOnlyPromise) {
           blob = await marksOnlyPromise;
+          usedMarksOnlyFallback = Boolean(blob && blob.size > 0);
         }
         if (blob && blob.size > 0) {
           blob = await fitPngBlobForAnthropicProxy(blob);
@@ -847,7 +849,7 @@ export function PreviewDrawOverlay({
       }
       clearInk();
       // Degraded sends keep the user honest about what the agent received:
-      // the note went out, the pixels did not.
+      // the note went out, the pixels did not — or only marks landed on white.
       setCaptureWarning(
         sentWithoutScreenshot
           ? {
@@ -857,7 +859,12 @@ export function PreviewDrawOverlay({
                   ? t('chat.annotationSentTextOnly')
                   : t('chat.annotationSentWithoutScreenshot'),
             }
-          : null,
+          : usedMarksOnlyFallback
+            ? {
+                action,
+                message: t('chat.annotationSentMarksOnly'),
+              }
+            : null,
       );
       setNote('');
       setExtraFiles([]);

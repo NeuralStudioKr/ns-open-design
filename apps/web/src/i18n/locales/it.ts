@@ -1515,6 +1515,7 @@ export const it: Dict = {
   'chat.annotationPreviewMissing': 'Impossibile acquisire l\'anteprima. Riprova.',
   'chat.annotationPreviewMissingInk': 'Impossibile acquisire l\'anteprima. Riprova per evitare di inviare solo l\'inchiostro.',
   'chat.annotationSentWithoutScreenshot': 'Preview capture failed — only your note was sent. Try Comment mode for element-specific edits, or mention the slide number.',
+  'chat.annotationSentMarksOnly': 'Preview capture was slow, so only your marks were sent on a blank background.',
   'chat.annotationSentTextOnly': 'Your note was sent with the slide number — no preview image attached.',
   'chat.annotationTimeout': 'Invio dell\'annotazione scaduto. Riprova.',
   'chat.annotationFailed': 'Invio dell\'annotazione non riuscito. Riprova.',

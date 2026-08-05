@@ -103,6 +103,26 @@ export interface ProjectPreviewUrlResponse {
   opaqueOrigin: true;
 }
 
+/**
+ * Session-gated S3 GET mint for a single project file.
+ * Browser uses `url` directly (img/open); falls back to `rawUrl` when disabled.
+ */
+export type ProjectFilePresignedGetResponse =
+  | {
+      status: 'ready';
+      path: string;
+      url: string;
+      expiresInSec: number;
+      expiresAt: string;
+      rawUrl: string;
+    }
+  | {
+      status: 'disabled';
+      path: string;
+      rawUrl: string;
+      reason: string;
+    };
+
 export interface ProjectFileResponse {
   file: ProjectFile;
 }

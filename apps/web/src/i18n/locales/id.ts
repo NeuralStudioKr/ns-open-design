@@ -1515,6 +1515,7 @@ export const id: Dict = {
   'chat.annotationPreviewMissing': 'Could not capture the preview. Try Comment mode or add a note with the slide number.',
   'chat.annotationPreviewMissingInk': 'Could not capture the preview. Add a note describing the change, or use Comment mode.',
   'chat.annotationSentWithoutScreenshot': 'Preview capture failed — only your note was sent. Try Comment mode for element-specific edits, or mention the slide number.',
+  'chat.annotationSentMarksOnly': 'Preview capture was slow, so only your marks were sent on a blank background.',
   'chat.annotationSentTextOnly': 'Your note was sent with the slide number — no preview image attached.',
   'chat.annotationTimeout': 'Annotation send timed out. Please try again.',
   'chat.annotationFailed': 'Annotation send failed. Please try again.',

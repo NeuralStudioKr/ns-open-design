@@ -50,6 +50,10 @@ import {
   verifyTeamverProjectAccess,
 } from './teamver-project-access.js';
 import {
+  mintProjectFilePresignedGetFromRequest,
+  normalizeProjectFilePresignRelpath,
+} from './project-file-presign.js';
+import {
   scheduleProjectStoragePersistAfterResponse,
   type ProjectStorageAccessHooks,
 } from './storage/lazy-project-materialization.js';
@@ -2802,6 +2806,68 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         status === 404 ? 'FILE_NOT_FOUND' : 'BAD_REQUEST',
         String(err),
       );
+    }
+  });
+
+  /**
+   * Session-gated S3 GET mint for a project file (chat thumbs / image open).
+   * Does not sync-down to scratch — HEAD + SigV4 query auth only.
+   * Materialization middleware does not match `/presign-get`.
+   */
+  app.post('/api/projects/:id/presign-get', async (req, res) => {
+    try {
+      const projectId = String(req.params.id ?? '').trim();
+      if (!projectId) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'project id required');
+      }
+      const project = getProjectAsync
+        ? await getProjectAsync(db, projectId)
+        : getProject(db, projectId);
+      if (!project) {
+        return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
+      }
+      const relpath = normalizeProjectFilePresignRelpath(
+        typeof req.body?.path === 'string' ? req.body.path : '',
+      );
+      if (!relpath) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'path required');
+      }
+      const minted = await mintProjectFilePresignedGetFromRequest(req, projectId, relpath);
+      res.setHeader('Cache-Control', 'no-store');
+      if (minted.status === 'not_found') {
+        return sendApiError(res, 404, 'FILE_NOT_FOUND', `file not found: ${relpath}`);
+      }
+      if (minted.status === 'failed') {
+        const status = minted.reason.includes('identity') ? 401 : 502;
+        return sendApiError(
+          res,
+          status,
+          status === 401 ? 'UNAUTHORIZED' : 'UPSTREAM_UNAVAILABLE',
+          minted.reason,
+        );
+      }
+      if (minted.status === 'disabled') {
+        /** @type {import('@open-design/contracts').ProjectFilePresignedGetResponse} */
+        const body = {
+          status: 'disabled' as const,
+          path: minted.path,
+          rawUrl: minted.rawUrl,
+          reason: minted.reason,
+        };
+        return res.json(body);
+      }
+      /** @type {import('@open-design/contracts').ProjectFilePresignedGetResponse} */
+      const body = {
+        status: 'ready' as const,
+        path: minted.path,
+        url: minted.url,
+        expiresInSec: minted.expiresInSec,
+        expiresAt: minted.expiresAt,
+        rawUrl: minted.rawUrl,
+      };
+      return res.json(body);
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL', err?.message || String(err));
     }
   });
 

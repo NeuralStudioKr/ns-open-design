@@ -3,6 +3,7 @@ import { projectRawUrl } from '../providers/registry';
 import {
   useAuthenticatedProjectFileObjectUrl,
 } from '../hooks/useAuthenticatedProjectFileObjectUrl';
+import { useProjectFileSignedUrl } from '../hooks/useProjectFileSignedUrl';
 import { shouldUseTeamverAuthenticatedProjectRawFetch } from '../teamver/designApiBase';
 import { buildAuthenticatedProjectRawImageUrl } from '../utils/authenticatedProjectRawImageUrl';
 import { clearProjectRawFileMissing, isProjectRawFileKnownMissing } from '../utils/projectFileFetchCache';
@@ -30,11 +31,10 @@ type AuthenticatedProjectFileImageProps = {
 const TRUSTED_IMAGE_ERROR_RETRIES = 2;
 
 /**
- * Renders a project file image. In Teamver embed, chat thumbnails fetch via
- * daemon auth + blob URL to avoid 404 console noise. Indexed design-panel /
- * file-viewer previews use the same-origin raw URL directly — the browser
- * handles cookies, 304, and image/* MIME correctly (blob normalization was
- * dropping valid 200 responses).
+ * Renders a project file image. In Teamver embed, chat thumbnails prefer a
+ * session-gated S3 presigned GET (no daemon byte proxy). Indexed design-panel /
+ * file-viewer previews keep the same-origin raw URL. Authenticated `/raw/`
+ * blob fetch remains the fallback when presign is disabled or fails.
  */
 export function AuthenticatedProjectFileImage({
   projectId,
@@ -48,6 +48,7 @@ export function AuthenticatedProjectFileImage({
 }: AuthenticatedProjectFileImageProps) {
   const useAuthenticatedFetch = shouldUseTeamverAuthenticatedProjectRawFetch();
   const [errorRetry, setErrorRetry] = useState(0);
+  const [presignImgFailed, setPresignImgFailed] = useState(false);
   const preferDirectRawUrl =
     fetchEnabled
     && useAuthenticatedFetch
@@ -59,9 +60,24 @@ export function AuthenticatedProjectFileImage({
       : null),
     [errorRetry, path, preferDirectRawUrl, projectId, rev],
   );
+
+  const shouldTryPresign = fetchEnabled
+    && useAuthenticatedFetch
+    && !preferDirectRawUrl
+    && !presignImgFailed
+    && (trustExists || !isProjectRawFileKnownMissing(projectId, path));
+  const signed = useProjectFileSignedUrl(
+    shouldTryPresign ? projectId : null,
+    shouldTryPresign ? path : null,
+    shouldTryPresign ? (rev != null ? `${rev}:${errorRetry}` : errorRetry) : null,
+    { enabled: shouldTryPresign, trustExists },
+  );
+
   const shouldBlobFetch = fetchEnabled
     && useAuthenticatedFetch
     && !preferDirectRawUrl
+    && (presignImgFailed || signed.failed)
+    && !signed.loading
     && (trustExists || !isProjectRawFileKnownMissing(projectId, path));
   const fetchRev = rev != null ? `${rev}:${errorRetry}` : errorRetry;
   const { src: objectUrl, loading, failed } = useAuthenticatedProjectFileObjectUrl(
@@ -98,21 +114,29 @@ export function AuthenticatedProjectFileImage({
   const src = preferDirectRawUrl
     ? directRawSrc
     : useAuthenticatedFetch
-      ? (objectUrl ?? fallbackDirectRawSrc)
+      ? (signed.src && !presignImgFailed
+          ? signed.src
+          : (objectUrl ?? fallbackDirectRawSrc))
       : projectRawUrl(projectId, path);
 
   const handleImageError = useCallback(() => {
+    if (signed.src && !presignImgFailed && src === signed.src) {
+      setPresignImgFailed(true);
+      return;
+    }
     if (!trustExists || errorRetry >= TRUSTED_IMAGE_ERROR_RETRIES) return;
     clearProjectRawFileMissing(projectId, path);
     setErrorRetry((count) => count + 1);
-  }, [errorRetry, path, projectId, trustExists]);
+  }, [errorRetry, path, presignImgFailed, projectId, signed.src, src, trustExists]);
 
   if (!fetchEnabled) return null;
 
   const loadingClass = `authenticated-project-file-image-loading${className ? ` ${className}` : ''}`;
+  const waitingOnPresign = shouldTryPresign && signed.loading && !signed.src;
+  const waitingOnBlob = shouldBlobFetch && loading && !objectUrl;
 
   if (!src) {
-    if (shouldBlobFetch && failed && !loading) {
+    if ((shouldBlobFetch && failed && !loading) || (shouldTryPresign && signed.failed && !shouldBlobFetch)) {
       return (
         <span
           className={`authenticated-project-file-image-failed${className ? ` ${className}` : ''}`}
@@ -122,6 +146,9 @@ export function AuthenticatedProjectFileImage({
           <Icon name="file" size={12} />
         </span>
       );
+    }
+    if (waitingOnPresign || waitingOnBlob) {
+      return <div className={loadingClass} aria-hidden />;
     }
     return <div className={loadingClass} aria-hidden />;
   }

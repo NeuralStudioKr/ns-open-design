@@ -7,9 +7,9 @@
 
 ## 0. 한 줄 결론 (헷갈릴 때 이것만)
 
-> **Design FE는 프로젝트 파일 다운로드 시 S3 presigned URL을 직접 호출하지 않는다.**  
-> 브라우저는 항상 **`/api/projects/...` (nginx → EC2 daemon)** 를 호출하고, daemon이 **필요 시 S3→scratch sync-down** 후 **scratch에서 읽거나 export를 생성**한다.  
-> 최종 저장은 브라우저가 받은 바이트를 **로컬 디스크에 저장** (`Blob` + `<a download>`).
+> **원본 다운로드·Export는 여전히 daemon(`/api/projects/...`)을 경유**한다 (sync-down → scratch 읽기 또는 Chromium 렌더).  
+> **예외(채팅 썸네일·이미지 Open):** session-gated `POST /api/projects/:id/presign-get` 으로 짧은 TTL의 S3 GET을 mint한 뒤, 브라우저가 해당 URL을 직접 로드할 수 있다. 실패 시 기존 `/raw/` 인증 fetch로 폴백한다.  
+> 파일 **다운로드(저장)** 는 계속 same-origin/`Blob` + `<a download>` 경로를 쓴다.
 
 ---
 
@@ -20,6 +20,7 @@ FileViewer·프로젝트 화면의 **Download / Export** 메뉴는 크게 세 �
 | 사용자 행동 | FE가 호출하는 API | daemon이 하는 일 | S3 직접? |
 |-------------|-------------------|------------------|----------|
 | **원본 파일 받기** (이미지·HTML·CSV 등) | `GET /api/projects/:id/raw/{path}` | sync-down → scratch에서 파일 스트리밍 | ❌ FE 직접 |
+| **채팅 썸네일 / 이미지 Open** | `POST /api/projects/:id/presign-get` → S3 GET | session/ACL 확인 + HEAD + SigV4 mint (scratch sync-down 없음) | ✅ 짧은 TTL GET |
 | **렌더링 Export** (HTML·PDF·ZIP·PNG/JPEG/WebP) | `POST /api/projects/:id/export/{html\|pdf\|zip\|image}` | sync-down → scratch 읽기 → headless Chromium 렌더 → 바이트 응답 | ❌ FE 직접 |
 | **Markdown 등 소스 그대로** | (없음 — 이미 FE에 로드된 텍스트) | 브라우저에서 Blob 생성 | ❌ |
 | **Drive에 발행** (다운로드 아님) | design-api `POST …/publish-drive` | daemon export → **Main BE Drive presigned PUT** | ❌ FE 직접 |
