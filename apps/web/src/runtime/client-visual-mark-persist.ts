@@ -7,6 +7,7 @@ import {
 } from '../comments';
 import { selectInitialDesignPreviewFile } from '../components/design-files/designArtifacts';
 import { graftVisualMarksIntoDeckHtml } from '../edit-mode/scoped-deck-patch';
+import { sanitizeManualEditFullSource } from '../edit-mode/source-patches';
 import { fetchProjectFileText, pushProjectFileRevision } from '../providers/registry';
 import { isEmbedSupportingProjectFile } from '../teamver/branding/embedDeliverableFilePolicy';
 import { reconcileProjectRawFileMissingCache } from '../utils/projectFileFetchCache';
@@ -89,7 +90,8 @@ export async function tryPersistClientVisualMarksOnSend(input: {
   const grafted = graftVisualMarksIntoDeckHtml(currentHtml, usable);
   if (!grafted) return { ok: false };
 
-  const htmlBody = repairArtifactDocumentHead(grafted);
+  // Match ProjectView terminal gate — client graft must not re-persist sibling script/on*.
+  const htmlBody = sanitizeManualEditFullSource(repairArtifactDocumentHead(grafted));
   const truncateAfter = getActiveRevisionSequence(input.projectId, deckPath);
   const saved = await pushProjectFileRevision(input.projectId, deckPath, {
     content: htmlBody,

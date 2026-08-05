@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
 import {
@@ -20,6 +23,11 @@ import {
   isSafeManualEditRelativeOrFragmentUrl,
   coerceManualEditStyleValue,
 } from '../../src/edit-mode/source-patches';
+
+const sourcePatchesSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../../src/edit-mode/source-patches.ts'),
+  'utf8',
+);
 
 const baseSource = `<!doctype html>
 <html>
@@ -1250,6 +1258,15 @@ describe('manual edit source patches', () => {
     expect(clean).toContain('Safe');
     expect(clean).not.toMatch(/onerror/i);
     expect(clean).not.toMatch(/<script\b/i);
+  });
+
+  it('fails closed with regex scrub when full-source parse returns null', () => {
+    // Avoid stubbing global DOMParser/document — that pollutes parallel suites.
+    expect(sourcePatchesSource).toContain('failClosedScrubHtmlWithoutParser');
+    expect(sourcePatchesSource).toContain(
+      'never re-persist unsanitized HTML when the parser is unavailable',
+    );
+    expect(sourcePatchesSource).toMatch(/if\s*\(\s*!doc\s*\)\s*return failClosedScrubHtmlWithoutParser/);
   });
 
   it('scrubs remote backdrop-filter and cursor/clip-path urls from styles', () => {

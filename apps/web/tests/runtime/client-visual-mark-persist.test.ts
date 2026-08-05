@@ -54,7 +54,7 @@ describe('client-visual-mark-persist', () => {
 
   it('grafts screenshot-only visual marks and pushes a revision', async () => {
     vi.mocked(fetchProjectFileText).mockResolvedValue(
-      '<html><body><section class="slide" data-slide-index="0"><h1>Title</h1></section></body></html>',
+      '<!doctype html><html><body><section class="slide" data-slide-index="0"><h1>Title</h1></section></body></html>',
     );
     vi.mocked(pushProjectFileRevision).mockResolvedValue({
       ok: true,
@@ -94,6 +94,46 @@ describe('client-visual-mark-persist', () => {
     const pushedContent = vi.mocked(pushProjectFileRevision).mock.calls[0]?.[2]?.content as string;
     expect(pushedContent).toContain('od-visual-mark-target');
     expect(pushedContent).toContain('<svg');
+  });
+
+  it('scrubs sibling script/on* before pushing client visual-mark grafts', async () => {
+    vi.mocked(fetchProjectFileText).mockResolvedValue(
+      [
+        '<!doctype html><html><body>',
+        '<section class="slide" data-slide-index="0">',
+        '<h1>Title</h1>',
+        '<img src="x" onerror="alert(1)">',
+        '<script>alert(2)</script>',
+        '</section></body></html>',
+      ].join(''),
+    );
+    vi.mocked(pushProjectFileRevision).mockResolvedValue({
+      ok: true,
+      revision: {
+        id: 'rev-3',
+        projectId: 'project-1',
+        fileName: 'deck.html',
+        parentRevisionId: 'rev-2',
+        sequence: 3,
+        createdAt: Date.now(),
+        byteSize: 120,
+        source: 'manual_edit',
+        label: 'Visual mark: heart',
+      },
+      file: { name: 'deck.html', path: 'deck.html', kind: 'html', mtime: Date.now() },
+    } as never);
+
+    const result = await tryPersistClientVisualMarksOnSend({
+      projectId: 'project-1',
+      commentAttachments: [visualAttachment()],
+      projectFiles: [{ name: 'deck.html', path: 'deck.html', kind: 'html', mtime: 1 }],
+    });
+
+    expect(result.ok).toBe(true);
+    const pushedContent = vi.mocked(pushProjectFileRevision).mock.calls[0]?.[2]?.content as string;
+    expect(pushedContent).toContain('od-visual-mark-target');
+    expect(pushedContent).not.toMatch(/onerror/i);
+    expect(pushedContent).not.toMatch(/<script\b/i);
   });
 
   it('skips element-scoped comment attachments', async () => {

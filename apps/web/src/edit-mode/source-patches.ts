@@ -1247,11 +1247,26 @@ function isUnsafeManualEditReplacementRoot(el: Element): boolean {
  * Sanitize a full HTML document (set-full-source / undo snapshots) with the
  * same dangerous-tag / attr / SMIL rules as fragment replacements.
  */
+/**
+ * Last-resort scrub when DOMParser/document are unavailable (node tests /
+ * workers). Prefer the DOM walk above; this only strips obvious executable
+ * surface so we never pass raw HTML through unchanged.
+ */
+function failClosedScrubHtmlWithoutParser(raw: string): string {
+  return String(raw || '')
+    .replace(/<(script|iframe|object|embed|foreignObject|plaintext|xmp)\b[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<(script|iframe|object|embed|foreignObject|plaintext|xmp)\b[^>]*\/?>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, '')
+    .replace(/\ssrcdoc\s*=\s*(['"]).*?\1/gi, '');
+}
+
 export function sanitizeManualEditFullSource(source: string): string {
   const raw = String(source || '');
   if (!raw.trim()) return raw;
   const doc = parseSource(raw);
-  if (!doc) return raw;
+  // Fail closed: never re-persist unsanitized HTML when the parser is unavailable.
+  if (!doc) return failClosedScrubHtmlWithoutParser(raw);
   // html/head/body themselves are hosts — scrub their on*/style/URL attrs
   // before walking children (child walk never touches the host element).
   if (doc.documentElement) sanitizeManualEditElementAttrs(doc.documentElement);

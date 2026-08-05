@@ -1339,6 +1339,8 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
   allowedSlideIndexes?: readonly number[];
   commentAttachments?: readonly ChatCommentAttachment[];
   instructionText?: string;
+  /** When set, skip a second disk fetch (persistArtifact cache). */
+  currentHtml?: string | null;
 }): Promise<DeckPatchMergeResult> {
   const resolvedBody = resolveElementPatchBodyForApply({
     patchBody: input.patchBody,
@@ -1374,6 +1376,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
         allowedSlideIndexes: input.allowedSlideIndexes,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
+        currentHtml: input.currentHtml,
       });
     }
     devLog.warn('[element-patch] parse failed', {
@@ -1383,9 +1386,11 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     });
     return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
   }
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
+  const currentHtml = input.currentHtml !== undefined
+    ? input.currentHtml
+    : await fetchProjectFileText(input.projectId, input.fileName, {
+      cache: 'no-store',
+    });
   if (!currentHtml) {
     return {
       ok: false,
@@ -1435,6 +1440,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
         allowedSlideIndexes: input.allowedSlideIndexes,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
+        currentHtml,
       });
     }
     devLog.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
@@ -1448,7 +1454,13 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
   if (!intent.ok) {
     return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
   }
-  return { ok: true, html: applied.html };
+  // Match deck-patch: stabilize visual marks before ProjectView skips a second pass.
+  const stabilized = stabilizeVisualMarkDeckHtml(
+    currentHtml,
+    applied.html,
+    input.commentAttachments ?? [],
+  );
+  return { ok: true, html: stabilized };
 }
 
 function elementPatchTargetHintsFromCommentAttachments(
@@ -1597,12 +1609,16 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   allowedSlideIndexes?: readonly number[];
   commentAttachments?: readonly ChatCommentAttachment[];
   instructionText?: string;
+  /** When set, skip a second disk fetch (persistArtifact cache). */
+  currentHtml?: string | null;
 }): Promise<DeckPatchMergeResult> {
   // Fetch current deck first so parse can recover missing
   // `data-slide-index` via data-screen-label / comment scope.
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
+  const currentHtml = input.currentHtml !== undefined
+    ? input.currentHtml
+    : await fetchProjectFileText(input.projectId, input.fileName, {
+      cache: 'no-store',
+    });
   if (!currentHtml) {
     devLog.warn('[deck-patch] current deck file unreadable', {
       projectId: input.projectId,
@@ -1673,6 +1689,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
         allowedSlideIndexes: input.allowedSlideIndexes,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
+        currentHtml,
       });
     }
     devLog.warn('[deck-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
@@ -1696,21 +1713,19 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   return result;
 }
 
-function scopedCommentSlideIndexes(
-  commentAttachments: readonly ChatCommentAttachment[],
-): number[] | undefined {
-  return scopedCommentSlideIndexesFromAttachments(commentAttachments);
-}
-
 async function resolvePersistCommentAttachments(input: {
   projectId: string;
   fileName: string;
   commentAttachments: readonly ChatCommentAttachment[];
+  /** When set, skip a second disk fetch (persistArtifact cache). */
+  currentHtml?: string | null;
 }): Promise<readonly ChatCommentAttachment[]> {
   if (input.commentAttachments.length === 0) return input.commentAttachments;
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
+  const currentHtml = input.currentHtml !== undefined
+    ? input.currentHtml
+    : await fetchProjectFileText(input.projectId, input.fileName, {
+      cache: 'no-store',
+    });
   if (!currentHtml) return input.commentAttachments;
   return reconcileCommentAttachmentsForDeck(currentHtml, input.commentAttachments);
 }
@@ -1721,10 +1736,14 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   nextHtml: string;
   allowedSlideIndexes: readonly number[];
   commentAttachments: readonly ChatCommentAttachment[];
+  /** When set, skip a second disk fetch (persistArtifact cache). */
+  currentHtml?: string | null;
 }): Promise<{ ok: true } | { ok: false; code: ScopedDeckPersistFailureCode; reason: string }> {
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
+  const currentHtml = input.currentHtml !== undefined
+    ? input.currentHtml
+    : await fetchProjectFileText(input.projectId, input.fileName, {
+      cache: 'no-store',
+    });
   if (!currentHtml) {
     devLog.warn('[deck-patch] scoped full-deck guard could not read current deck', {
       projectId: input.projectId,
@@ -1820,10 +1839,14 @@ async function trySalvageScopedFullDeckRewrite(input: {
   patchedHtml: string;
   commentAttachments: readonly ChatCommentAttachment[];
   instructionText?: string;
+  /** When set, skip a second disk fetch (persistArtifact cache). */
+  currentHtml?: string | null;
 }): Promise<{ ok: true; html: string } | { ok: false; reason: string }> {
-  const currentHtml = await fetchProjectFileText(input.projectId, input.fileName, {
-    cache: 'no-store',
-  });
+  const currentHtml = input.currentHtml !== undefined
+    ? input.currentHtml
+    : await fetchProjectFileText(input.projectId, input.fileName, {
+      cache: 'no-store',
+    });
   if (!currentHtml) {
     return { ok: false, reason: 'current deck file unreadable' };
   }
@@ -4105,13 +4128,8 @@ export function ProjectView({
         openTabsStateRef.current.active,
         { preferredFileName: runPersistTargetFileRef.current },
       );
-      const persistCommentAttachments = await resolvePersistCommentAttachments({
-        projectId: project.id,
-        fileName: targetFileName,
-        commentAttachments: runCommentAttachmentsRef.current,
-      });
-      let scopedAllowedSlideIndexes = scopedCommentSlideIndexes(persistCommentAttachments);
-      // One disk read per persist — reused for scope / stabilize / noop / duplicate.
+      // One disk read per persist — reused for reconcile / merge / scope /
+      // stabilize / noop / duplicate (helpers accept currentHtml).
       let diskHtmlCache: { fileName: string; html: string | null } | null = null;
       const readDiskHtml = async (name: string): Promise<string | null> => {
         if (diskHtmlCache?.fileName === name) return diskHtmlCache.html;
@@ -4119,19 +4137,26 @@ export function ProjectView({
         diskHtmlCache = { fileName: name, html };
         return html;
       };
-      if (persistCommentAttachments.length > 0) {
-        const currentHtmlForScope = await readDiskHtml(targetFileName);
-        if (currentHtmlForScope) {
-          const fromDeck = scopedCommentSlideIndexesFromDeck(
-            currentHtmlForScope,
-            persistCommentAttachments,
-          );
-          if (fromDeck) {
-            scopedAllowedSlideIndexes = fromDeck;
-          }
+      const diskHtmlForTarget = await readDiskHtml(targetFileName);
+      const persistCommentAttachments = await resolvePersistCommentAttachments({
+        projectId: project.id,
+        fileName: targetFileName,
+        commentAttachments: runCommentAttachmentsRef.current,
+        currentHtml: diskHtmlForTarget,
+      });
+      let scopedAllowedSlideIndexes = scopedCommentSlideIndexesFromAttachments(
+        persistCommentAttachments,
+      );
+      if (persistCommentAttachments.length > 0 && diskHtmlForTarget) {
+        const fromDeck = scopedCommentSlideIndexesFromDeck(
+          diskHtmlForTarget,
+          persistCommentAttachments,
+        );
+        if (fromDeck) {
+          scopedAllowedSlideIndexes = fromDeck;
         }
       }
-      // element-patch / deck-patch merges already run stabilizeVisualMarkDeckHtml
+      // deck-patch / element-patch merges already run stabilizeVisualMarkDeckHtml
       // when comment attachments are present — skip a second full-deck pass.
       const visualMarksAlreadyStabilized =
         isElementPatchArtifactType(art.artifactType)
@@ -4158,6 +4183,7 @@ export function ProjectView({
           allowedSlideIndexes: scopedAllowedSlideIndexes,
           commentAttachments: persistCommentAttachments,
           instructionText: runVisiblePromptRef.current,
+          currentHtml: diskHtmlForTarget,
         });
         if (!merged.ok) {
           // Empty / patch-less element-patch means the model chose the
@@ -4227,6 +4253,7 @@ export function ProjectView({
           allowedSlideIndexes: scopedAllowedSlideIndexes,
           commentAttachments: persistCommentAttachments,
           instructionText: runVisiblePromptRef.current,
+          currentHtml: diskHtmlForTarget,
         });
         if (!merged.ok) {
           const runIsScoped = persistCommentAttachments.length > 0;
@@ -4293,6 +4320,7 @@ export function ProjectView({
           nextHtml: effectiveArt.html,
           allowedSlideIndexes: scopedAllowedSlideIndexes,
           commentAttachments: persistCommentAttachments,
+          currentHtml: diskHtmlForTarget,
         });
         if (!scopeResult.ok) {
           // Model emitted a full deck on a scoped comment turn (often after
@@ -4309,6 +4337,7 @@ export function ProjectView({
               patchedHtml: effectiveArt.html,
               commentAttachments: persistCommentAttachments,
               instructionText: runVisiblePromptRef.current,
+              currentHtml: diskHtmlForTarget,
             });
             if (salvaged.ok) {
               devLog.warn('[deck-patch] salvaged scoped full-deck rewrite via narrow merge', {

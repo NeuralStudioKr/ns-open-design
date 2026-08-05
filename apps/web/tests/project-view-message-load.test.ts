@@ -369,11 +369,26 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
     expect(persistStart).toBeGreaterThan(0);
-    const persistBlock = source.slice(persistStart, persistStart + 24000);
+    const persistBlock = source.slice(persistStart, persistStart + 28000);
     expect(persistBlock).toContain("const readDiskHtml = async");
+    expect(persistBlock).toContain("diskHtmlForTarget");
+    expect(persistBlock).toContain("currentHtml: diskHtmlForTarget");
     expect(persistBlock).toContain("visualMarksAlreadyStabilized");
     expect(persistBlock).toContain("kind: 'skipped-noop'");
     expect(persistBlock).toContain("!visualMarksAlreadyStabilized");
+  });
+
+  it("threads currentHtml into merge helpers and stabilizes element-patch visual marks", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const elementStart = source.indexOf("async function tryApplyElementPatchesAgainstCurrentDeck");
+    expect(elementStart).toBeGreaterThan(0);
+    const elementBlock = source.slice(elementStart, elementStart + 6000);
+    expect(elementBlock).toContain("currentHtml?: string | null");
+    expect(elementBlock).toContain("stabilizeVisualMarkDeckHtml(");
+    const deckStart = source.indexOf("async function tryApplyDeckPatchAgainstCurrentDeck");
+    expect(deckStart).toBeGreaterThan(0);
+    expect(source.slice(deckStart, deckStart + 2500)).toContain("currentHtml?: string | null");
+    expect(source).not.toContain("function scopedCommentSlideIndexes(");
   });
 
   it("sanitizes FileViewer manual-edit saves before revision push", () => {
@@ -381,6 +396,9 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("sanitizeManualEditFullSource");
     expect(source).toContain("contentToSave");
     expect(source).toContain("sanitizeManualEditFullSource(result.source)");
+    expect(source).toContain("setSource(contentToSave)");
+    expect(source).toContain("pinManualEditSavedSource(contentToSave)");
+    expect(source).toContain("setRevisionContentCache(projectId, file.name, saved.revision.id, contentToSave)");
   });
 
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {

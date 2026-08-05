@@ -9202,7 +9202,8 @@ function HtmlViewer({
       // title, stripped exports) used to 400 the whole revision POST.
       const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);
       // Match ProjectView terminal scrub — set-style/set-text serialize the
-      // whole document and must not re-persist sibling script/on*.
+      // whole document and must not re-persist sibling script/on*. Keep the
+      // sanitized bytes as the local SSOT (pin/preview/cache), not dirty patch output.
       const contentToSave = isManualEditFullHtmlDocument(result.source)
         ? sanitizeManualEditFullSource(result.source)
         : result.source;
@@ -9229,31 +9230,31 @@ function HtmlViewer({
         );
         return false;
       }
-      setSource(result.source);
-      sourceRef.current = result.source;
-      pinManualEditSavedSource(result.source);
+      setSource(contentToSave);
+      sourceRef.current = contentToSave;
+      pinManualEditSavedSource(contentToSave);
       setInlinedSource(null);
       // Style-only saves update source/pin but leave the entry freeze alone so
       // postMessage live preview keeps working without a srcDoc remount.
       // Structural / text patches remount freeze + push updated srcDoc.
       capturePreviewScrollPosition();
       if (shouldUpdateManualEditFrozenSourceOnPatch(patch.kind)) {
-        setManualEditFrozenSource(result.source);
-        queueMicrotask(() => activateManualEditPreviewHtml(result.source));
+        setManualEditFrozenSource(contentToSave);
+        queueMicrotask(() => activateManualEditPreviewHtml(contentToSave));
       }
       commitRevisionStack(stackWithPushedRevision(
         revisionStackRef.current,
         saved.revision,
         truncateAfter,
       ));
-      setRevisionContentCache(projectId, file.name, saved.revision.id, result.source);
+      setRevisionContentCache(projectId, file.name, saved.revision.id, contentToSave);
       cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, baseSource);
       revisionSkipReconcileOnceRef.current = true;
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
       setRevisionStackInvalidated(false);
       await refreshRevisionStack();
-      setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
+      setManualEditDraft((current) => ({ ...current, fullSource: contentToSave }));
       if (patch.kind === 'set-text') {
         setSelectedManualEditTarget((current) => current?.id === patch.id
           ? { ...current, text: patch.value, fields: { ...current.fields, text: patch.value } }
@@ -9266,13 +9267,13 @@ function HtmlViewer({
         selectedManualEditTargetIdRef.current = null;
         setSelectedManualEditTarget(null);
         setManualEditTargets((current) => current.filter((target) => target.id !== patch.id));
-        setManualEditDraft(emptyManualEditDraft(result.source));
+        setManualEditDraft(emptyManualEditDraft(contentToSave));
         postSelectedManualEditTargetToIframe(null);
       } else {
-        setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
+        setManualEditDraft((current) => ({ ...current, fullSource: contentToSave }));
       }
       if (patch.kind === 'set-style') {
-        reconcileManualEditStyleSave(patch.id, patch.styles, result.source);
+        reconcileManualEditStyleSave(patch.id, patch.styles, contentToSave);
       }
       setManualEditError(null);
       await onFileSaved?.();
