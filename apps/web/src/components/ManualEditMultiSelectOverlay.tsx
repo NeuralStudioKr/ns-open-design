@@ -88,6 +88,7 @@ type MoveDragState = {
   members: GroupMoveMemberStart[];
   stylesBefore: Record<string, Partial<ManualEditStyles>>;
   hostScale: number;
+  hostOffset: { x: number; y: number };
   moved: boolean;
   previewed: boolean;
   lastUpdates: GroupMovePreviewUpdate[];
@@ -105,6 +106,7 @@ type ResizeDragState = {
   members: GroupResizeMemberStart[];
   stylesBefore: Record<string, Partial<ManualEditStyles>>;
   hostScale: number;
+  hostOffset: { x: number; y: number };
   moved: boolean;
   previewed: boolean;
   lastDx: number;
@@ -225,6 +227,8 @@ export function ManualEditMultiSelectOverlay({
   const [moving, setMoving] = useState(false);
   const [resizing, setResizing] = useState(false);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
+  const [gestureSnapScale, setGestureSnapScale] = useState<number | null>(null);
+  const [gestureSnapOffset, setGestureSnapOffset] = useState<{ x: number; y: number } | null>(null);
   const onGroupMovePreviewRef = useRef(onGroupMovePreview);
   onGroupMovePreviewRef.current = onGroupMovePreview;
   const onGroupMoveCommitRef = useRef(onGroupMoveCommit);
@@ -258,6 +262,8 @@ export function ManualEditMultiSelectOverlay({
       setMoving(false);
       setResizing(false);
       setSnapGuides([]);
+      setGestureSnapScale(null);
+      setGestureSnapOffset(null);
       onGestureSessionChangeRef.current?.(false);
       if (!previewed) return;
       if (drag.kind === 'move') {
@@ -284,6 +290,8 @@ export function ManualEditMultiSelectOverlay({
         setMoving(false);
         setResizing(false);
         setSnapGuides([]);
+        setGestureSnapScale(null);
+        setGestureSnapOffset(null);
       };
       void (async () => {
         try {
@@ -386,6 +394,9 @@ export function ManualEditMultiSelectOverlay({
       window.removeEventListener('pointercancel', onPointerCancel);
       if (dragRef.current) {
         dragRef.current = null;
+        setSnapGuides([]);
+        setGestureSnapScale(null);
+        setGestureSnapOffset(null);
         onGestureSessionChangeRef.current?.(false);
       }
     };
@@ -428,6 +439,7 @@ export function ManualEditMultiSelectOverlay({
       members,
       stylesBefore,
       hostScale,
+      hostOffset: { ...hostOffset },
       moved: false,
       previewed: false,
       lastUpdates: [],
@@ -436,6 +448,8 @@ export function ManualEditMultiSelectOverlay({
     };
     setGesturing(true);
     setMoving(true);
+    setGestureSnapScale(hostScale);
+    setGestureSnapOffset({ ...hostOffset });
     onGestureSessionChangeRef.current?.(true);
     try {
       event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -463,6 +477,7 @@ export function ManualEditMultiSelectOverlay({
       members,
       stylesBefore,
       hostScale,
+      hostOffset: { ...hostOffset },
       moved: false,
       previewed: false,
       lastDx: 0,
@@ -473,6 +488,9 @@ export function ManualEditMultiSelectOverlay({
     };
     setGesturing(true);
     setResizing(true);
+    setSnapGuides([]);
+    setGestureSnapScale(null);
+    setGestureSnapOffset(null);
     onGestureSessionChangeRef.current?.(true);
     try {
       (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
@@ -517,8 +535,8 @@ export function ManualEditMultiSelectOverlay({
     <>
     <ManualEditSnapGuides
       guides={snapGuides}
-      previewScale={previewScale}
-      hostOffset={hostOffset}
+      previewScale={gestureSnapScale ?? previewScale}
+      hostOffset={gestureSnapOffset ?? hostOffset}
     />
     <div
       className={[

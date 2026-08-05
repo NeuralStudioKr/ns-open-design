@@ -114,6 +114,29 @@ export type ManualEditTargetContentMeasure = {
  * `rect` follows transforms (deck fit scale); `layoutWidth`/`layoutHeight`
  * are the untransformed border-box used when writing CSS width/height.
  */
+export function measureManualEditContentPageBounds(
+  frame: HTMLIFrameElement | null,
+): ManualEditRect | null {
+  const doc = iframeContentDocumentIfAccessible(frame);
+  if (!doc) return null;
+  const canvas = doc.querySelector<HTMLElement>('.design-canvas');
+  if (canvas) {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width >= 1 && rect.height >= 1) {
+      return {
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      };
+    }
+  }
+  const root = doc.documentElement;
+  const width = Math.max(root.clientWidth, 1);
+  const height = Math.max(root.clientHeight, 1);
+  return { x: 0, y: 0, width, height };
+}
+
 export function measureManualEditTargetContentRect(
   frame: HTMLIFrameElement | null,
   id: string,

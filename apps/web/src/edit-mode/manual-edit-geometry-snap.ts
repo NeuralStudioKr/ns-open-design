@@ -78,10 +78,20 @@ export function collectSnapSources(
   targets: readonly ManualEditTarget[],
   excludeIds: ReadonlySet<string>,
   pageBounds?: ManualEditRect | null,
+  isDescendant?: (childId: string, ancestorId: string) => boolean,
 ): SnapSource[] {
   const out: SnapSource[] = [];
+  const excludedAncestors = isDescendant
+    ? Array.from(excludeIds)
+    : [];
   for (const target of targets) {
     if (excludeIds.has(target.id) || target.isHidden) continue;
+    if (
+      isDescendant
+      && excludedAncestors.some((ancestorId) => isDescendant(target.id, ancestorId))
+    ) {
+      continue;
+    }
     if (target.rect.width < 1 || target.rect.height < 1) continue;
     out.push({ rect: target.rect, kind: 'element' });
   }
@@ -121,8 +131,15 @@ function guideSpanForRects(
   a: ManualEditRect,
   b: ManualEditRect,
   axis: Axis,
+  pageBounds?: ManualEditRect | null,
 ): { spanStart: number; spanEnd: number } {
   const combined = unionManualEditRects(a, b);
+  if (pageBounds && pageBounds.width >= 1 && pageBounds.height >= 1) {
+    if (axis === 'x') {
+      return { spanStart: pageBounds.y, spanEnd: pageBounds.y + pageBounds.height };
+    }
+    return { spanStart: pageBounds.x, spanEnd: pageBounds.x + pageBounds.width };
+  }
   if (axis === 'x') {
     return { spanStart: combined.y, spanEnd: combined.y + combined.height };
   }
@@ -135,6 +152,7 @@ function snapAxisDelta(
   axis: Axis,
   sources: readonly SnapSource[],
   thresholdPx: number,
+  pageBounds?: ManualEditRect | null,
 ): { delta: number; guide: SnapGuide | null } {
   const draft = axis === 'x'
     ? translateManualEditRect(startRect, delta, 0)
@@ -151,7 +169,12 @@ function snapAxisDelta(
         const distance = Math.abs(movingEdge.value - targetEdge.value);
         if (distance > thresholdPx || distance >= bestDistance) continue;
         const correction = targetEdge.value - movingEdge.value;
-        const span = guideSpanForRects(draft, source.rect, axis);
+        const span = guideSpanForRects(
+          draft,
+          source.rect,
+          axis,
+          source.kind === 'page' ? source.rect : pageBounds,
+        );
         bestDistance = distance;
         bestCorrection = correction;
         bestGuide = axis === 'x'
@@ -186,20 +209,24 @@ export function snapMoveDelta(
   dx: number,
   dy: number,
   sources: readonly SnapSource[],
-  options?: { thresholdPx?: number },
+  options?: { thresholdPx?: number; pageBounds?: ManualEditRect | null },
 ): { dx: number; dy: number; guides: SnapGuide[] } {
   const thresholdPx = options?.thresholdPx ?? MANUAL_EDIT_SNAP_THRESHOLD_PX;
+  const pageBounds = options?.pageBounds
+    ?? sources.find((source) => source.kind === 'page')?.rect
+    ?? null;
   if (sources.length === 0) {
     return { dx, dy, guides: [] };
   }
 
-  const snappedX = snapAxisDelta(startRect, dx, 'x', sources, thresholdPx);
+  const snappedX = snapAxisDelta(startRect, dx, 'x', sources, thresholdPx, pageBounds);
   const snappedY = snapAxisDelta(
     translateManualEditRect(startRect, snappedX.delta, 0),
     dy,
     'y',
     sources,
     thresholdPx,
+    pageBounds,
   );
   const guides = [snappedX.guide, snappedY.guide].filter(
     (guide): guide is SnapGuide => guide != null,

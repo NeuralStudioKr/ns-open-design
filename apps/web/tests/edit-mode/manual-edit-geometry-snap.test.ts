@@ -81,6 +81,25 @@ describe('manual-edit-geometry-snap', () => {
     expect(result.guides).toHaveLength(0);
   });
 
+  it('snaps both axes independently', () => {
+    const moving = { x: 98, y: 3, width: 40, height: 40 };
+    const page = { x: 0, y: 0, width: 1200, height: 800 };
+    const sibling = { x: 100, y: 300, width: 40, height: 40 };
+    const result = snapMoveDelta(
+      moving,
+      0,
+      0,
+      [
+        { rect: sibling, kind: 'element' },
+        { rect: page, kind: 'page' },
+      ],
+      { thresholdPx: 5 },
+    );
+    expect(result.dx).toBe(2);
+    expect(result.dy).toBe(-3);
+    expect(result.guides).toHaveLength(2);
+  });
+
   it('collects element sources while excluding selected ids and hidden targets', () => {
     const visible = target('a', { x: 0, y: 0, width: 10, height: 10 });
     const hidden = { ...target('b', { x: 20, y: 0, width: 10, height: 10 }), isHidden: true };
@@ -91,6 +110,20 @@ describe('manual-edit-geometry-snap', () => {
     );
     expect(sources).toHaveLength(2);
     expect(sources.map((item) => item.kind)).toEqual(['element', 'page']);
+  });
+
+  it('excludes descendants of selected ids from element snap sources', () => {
+    const parent = target('parent', { x: 0, y: 0, width: 200, height: 200 });
+    const child = target('child', { x: 20, y: 20, width: 40, height: 40 });
+    const isDescendant = (childId: string, ancestorId: string) =>
+      childId === 'child' && ancestorId === 'parent';
+    const sources = collectSnapSources(
+      [parent, child, target('other', { x: 300, y: 0, width: 10, height: 10 })],
+      new Set(['parent']),
+      null,
+      isDescendant,
+    );
+    expect(sources.map((item) => item.kind)).toEqual(['element']);
   });
 
   it('unions member rects for group move start boxes', () => {

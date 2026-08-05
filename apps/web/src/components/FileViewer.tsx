@@ -321,6 +321,7 @@ import { manualEditStyleReplayPatches } from '../edit-mode/manual-edit-style-rep
 import {
   applyManualEditPreviewStylesToDocument,
   iframeContentDocumentIfAccessible,
+  measureManualEditContentPageBounds,
   measureManualEditTargetContentRect,
   measureManualEditTargetHostRect,
 } from '../edit-mode/manual-edit-host-preview';
@@ -5282,6 +5283,8 @@ function HtmlViewer({
   const [manualEditHostOffset, setManualEditHostOffset] = useState({ x: 0, y: 0 });
   /** Measured CSS scale of the preview iframe (toolbar zoom can diverge). */
   const [manualEditHostScale, setManualEditHostScale] = useState(1);
+  /** Iframe content-space page bounds for canvas snap guides. */
+  const [manualEditContentPageBounds, setManualEditContentPageBounds] = useState<ManualEditRect | null>(null);
   /**
    * Live host-space paint box for the selected element. Overlay prefers this
    * over composing target.rect × scale + offset (which goes stale when the
@@ -7993,6 +7996,7 @@ function HtmlViewer({
       setManualEditHostOffset({ x: 0, y: 0 });
       setManualEditHostScale(1);
       setManualEditHostPaintRect(null);
+      setManualEditContentPageBounds(null);
       return;
     }
     let raf = 0;
@@ -8013,6 +8017,18 @@ function HtmlViewer({
           ? prev
           : nextOffset
       ));
+      const pageBounds = measureManualEditContentPageBounds(frame);
+      if (pageBounds) {
+        setManualEditContentPageBounds((prev) => (
+          prev
+          && Math.abs(prev.x - pageBounds.x) < 0.5
+          && Math.abs(prev.y - pageBounds.y) < 0.5
+          && Math.abs(prev.width - pageBounds.width) < 0.5
+          && Math.abs(prev.height - pageBounds.height) < 0.5
+            ? prev
+            : pageBounds
+        ));
+      }
       const selectedId = selectedManualEditTargetIdRef.current;
       if (!selectedId) {
         setManualEditHostPaintRect(null);
@@ -12047,12 +12063,7 @@ function HtmlViewer({
     manualEditGeometryOptions,
     manualEditTargetIsDescendantOf,
   );
-  const manualEditSnapPageBounds = useMemo(() => ({
-    x: 0,
-    y: 0,
-    width: previewBodySize?.width ?? 1200,
-    height: previewBodySize?.height ?? 800,
-  }), [previewBodySize?.width, previewBodySize?.height]);
+  const manualEditSnapPageBounds = manualEditContentPageBounds;
   const manualEditSnapExcludeIds = useMemo(
     () => new Set(selectedManualEditTargetIds),
     [selectedManualEditTargetIds],
@@ -12062,8 +12073,14 @@ function HtmlViewer({
       manualEditTargets,
       manualEditSnapExcludeIds,
       manualEditSnapPageBounds,
+      manualEditTargetIsDescendantOf,
     ),
-    [manualEditTargets, manualEditSnapExcludeIds, manualEditSnapPageBounds],
+    [
+      manualEditTargets,
+      manualEditSnapExcludeIds,
+      manualEditSnapPageBounds,
+      manualEditTargetIsDescendantOf,
+    ],
   );
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;

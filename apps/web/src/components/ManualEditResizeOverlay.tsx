@@ -467,7 +467,10 @@ export function ManualEditResizeOverlay({
       );
       // Absolute and promote moves share the threshold gate — 1px jitter must
       // not mark previewed (that made pointerup cancel wipe left/top drafts).
-      if (!result.moved) return;
+      if (!result.moved) {
+        setSnapGuides([]);
+        return;
+      }
       if (drag.promote) {
         const preview = promoteMoveStyles(drag.startRect, result, {
           layoutWidthPx: drag.layoutWidthPx,
