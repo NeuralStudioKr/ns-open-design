@@ -149,6 +149,8 @@ export function validateCommentEditIntentRespected(input: {
   mergedHtml: string;
   commentAttachments: readonly ChatCommentAttachment[];
   instructionText?: string;
+  /** When set, skip a second DOMParser (deck-patch finalize / full-deck guard). */
+  parsedDoc?: Document | null;
 }): { ok: true } | { ok: false; reason: string } {
   const instruction = [
     input.instructionText,
@@ -159,7 +161,9 @@ export function validateCommentEditIntentRespected(input: {
     return { ok: true };
   }
 
-  const parsedDoc = parseManualEditSource(input.mergedHtml);
+  const parsedDoc = input.parsedDoc !== undefined
+    ? input.parsedDoc
+    : parseManualEditSource(input.mergedHtml);
   for (const attachment of input.commentAttachments) {
     if (attachment.selectionKind === 'visual') continue;
     const hint = {

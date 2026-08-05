@@ -1,8 +1,8 @@
-// @vitest-environment node
+// @vitest-environment jsdom
 
 import { describe, expect, it } from 'vitest';
-import { applyManualEditPatch } from '../../src/edit-mode/source-patches';
 import {
+  applyManualEditPatches,
   buildManualEditStylePatchesForTargets,
   manualEditSelectionIdsEqual,
   mergeInspectorStylesForTargets,
@@ -82,5 +82,21 @@ describe('manual-edit-multi-select', () => {
     expect(shouldFlushManualEditStylesOnSelectionBoundary(['title', 'body'], ['title'])).toBe(true);
     expect(shouldFlushManualEditStylesOnSelectionBoundary(['title', 'body'], ['title', 'body'])).toBe(false);
     expect(manualEditSelectionIdsEqual(['title', 'body'], ['body', 'title'])).toBe(false);
+  });
+
+  it('applies multiple style patches on one Document', () => {
+    const patches = buildManualEditStylePatchesForTargets(baseSource, ['title', 'body'], {
+      color: '#ef4444',
+    });
+    const result = applyManualEditPatches(baseSource, patches, {
+      sanitize: true,
+      captureTargetSnapshots: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain('data-od-id="title"');
+    expect(result.source).toContain('data-od-id="body"');
+    expect(result.targetSnapshots?.title).toBeTruthy();
+    expect(result.targetSnapshots?.body).toBeTruthy();
   });
 });

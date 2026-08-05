@@ -1,3 +1,4 @@
+import { filterRootTargetsForGroupGeometry } from './manual-edit-selection-ancestry';
 import {
   MANUAL_EDIT_MOVE_MIN_DELTA_PX,
   canMoveTarget,
@@ -8,6 +9,7 @@ import {
   startPositionFromTarget,
 } from './move-math';
 import { diffManualEditStylePatch } from './manual-edit-style-batch';
+import { parseManualEditSource, readManualEditStyles } from './source-patches';
 import type { ManualEditPatch, ManualEditRect, ManualEditStyles, ManualEditTarget } from './types';
 
 export type GroupMoveMemberStart = {
@@ -106,10 +108,13 @@ export function buildGroupMoveStylePatches(
   dy: number,
   shiftKey?: boolean,
 ): Array<Extract<ManualEditPatch, { kind: 'set-style' }>> {
+  // One Document for all member diffs (was N× readManualEditStyles).
+  const parsedDoc = parseManualEditSource(baseSource);
   const patches: Array<Extract<ManualEditPatch, { kind: 'set-style' }>> = [];
   for (const member of members) {
     const styles = computeGroupMoveMemberStyles(member, dx, dy, shiftKey);
-    const effective = diffManualEditStylePatch(baseSource, member.id, styles);
+    const sourceStyles = readManualEditStyles(baseSource, member.id, {}, parsedDoc);
+    const effective = diffManualEditStylePatch(baseSource, member.id, styles, { sourceStyles });
     if (Object.keys(effective).length === 0) continue;
     patches.push({ id: member.id, kind: 'set-style', styles: effective });
   }

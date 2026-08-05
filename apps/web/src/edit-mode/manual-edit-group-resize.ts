@@ -1,6 +1,7 @@
 import { filterRootTargetsForGroupGeometry } from './manual-edit-selection-ancestry';
 import { canMoveTarget, cascadeRollbackStyle, startPositionFromTarget } from './move-math';
 import { diffManualEditStylePatch } from './manual-edit-style-batch';
+import { parseManualEditSource, readManualEditStyles } from './source-patches';
 import {
   MANUAL_EDIT_RESIZE_MIN_DELTA_PX,
   MANUAL_EDIT_RESIZE_MIN_PX,
@@ -212,9 +213,14 @@ export function buildGroupResizeStylePatches(
     dy,
     shiftKey,
   );
+  // One Document for all member diffs (was N× readManualEditStyles).
+  const parsedDoc = parseManualEditSource(baseSource);
   const patches: Array<Extract<ManualEditPatch, { kind: 'set-style' }>> = [];
   for (const update of updates) {
-    const effective = diffManualEditStylePatch(baseSource, update.id, update.styles);
+    const sourceStyles = readManualEditStyles(baseSource, update.id, {}, parsedDoc);
+    const effective = diffManualEditStylePatch(baseSource, update.id, update.styles, {
+      sourceStyles,
+    });
     if (Object.keys(effective).length === 0) continue;
     patches.push({ id: update.id, kind: 'set-style', styles: effective });
   }

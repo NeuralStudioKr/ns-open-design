@@ -262,6 +262,7 @@ import { FileRevisionHistoryPanel } from './FileRevisionHistoryPanel';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
+  parseManualEditSource,
   readManualEditStyles,
   readManualEditTargetSnapshot,
 } from '../edit-mode/source-patches';
@@ -9430,9 +9431,13 @@ function HtmlViewer({
       return false;
     }
     if (pending.perTargetStyles) {
+      const parsedDoc = parseManualEditSource(baseSource);
       const patches = Object.entries(pending.perTargetStyles)
         .map(([id, styles]) => {
-          const effectiveStyles = diffManualEditStylePatch(baseSource, id, styles);
+          const sourceStyles = readManualEditStyles(baseSource, id, {}, parsedDoc);
+          const effectiveStyles = diffManualEditStylePatch(baseSource, id, styles, {
+            sourceStyles,
+          });
           if (Object.keys(effectiveStyles).length === 0) return null;
           return { id, kind: 'set-style' as const, styles: effectiveStyles };
         })
@@ -9991,7 +9996,12 @@ function HtmlViewer({
     setManualEditSaving(true);
     setManualEditError(null);
     try {
-      const result = applyManualEditPatches(baseSource, patches);
+      // One Document for all batch ops + per-id snapshots for reconcile
+      // (was N× parse/serialize via sequential applyManualEditPatch).
+      const result = applyManualEditPatches(baseSource, patches, {
+        sanitize: isManualEditFullHtmlDocument(baseSource),
+        captureTargetSnapshots: true,
+      });
       if (!result.ok) {
         setManualEditError(
           result.error ?? embedUiLabel('Could not apply edit.', '편집을 적용하지 못했습니다.'),
@@ -10057,7 +10067,12 @@ function HtmlViewer({
           : []);
       for (const patch of patches) {
         if (patch.kind === 'set-style') {
-          reconcileManualEditStyleSave(patch.id, patch.styles, result.source);
+          reconcileManualEditStyleSave(
+            patch.id,
+            patch.styles,
+            result.source,
+            result.targetSnapshots?.[patch.id],
+          );
         }
         if (pendingIds.includes(patch.id)) {
           manualEditPendingStyleRef.current = null;

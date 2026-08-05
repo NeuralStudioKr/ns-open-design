@@ -29,8 +29,10 @@ import {
   parseManualEditSource,
   readScopedCommentTargetText,
   resolveManualEditTargetReference,
+  sanitizeManualEditDocumentInPlace,
   sanitizeManualEditFullSource,
   sanitizeManualEditHtmlFragment,
+  serializeManualEditSource,
 } from './source-patches';
 import { devLog } from '../lib/devLog';
 
@@ -383,12 +385,15 @@ export function repairWipedSlidesForVisualMarks(
 ): string {
   const ops: Array<{ op: 'replace'; slideIndex: number; html: string }> = [];
   const fragmentHost = parseManualEditSource('<!doctype html><html><body></body></html>');
+  // One section materialization each (was extractSlideByIndex × attachments × 2).
+  const currentSlides = extractTopLevelSlideSections(extractDeckBodyContent(currentHtml));
+  const mergedSlides = extractTopLevelSlideSections(extractDeckBodyContent(mergedHtml));
   for (const attachment of commentAttachments) {
     if (!isScreenshotOnlyVisualCommentTarget(attachment)) continue;
     if (!hasValidDeckSlideIndex(attachment)) continue;
     const slideIndex = Math.floor(attachment.slideIndex as number);
-    const beforeSlide = extractSlideByIndex(currentHtml, slideIndex);
-    const afterSlide = extractSlideByIndex(mergedHtml, slideIndex);
+    const beforeSlide = currentSlides[slideIndex]?.outerHtml ?? null;
+    const afterSlide = mergedSlides[slideIndex]?.outerHtml ?? null;
     if (!beforeSlide || !afterSlide || beforeSlide === afterSlide) continue;
     if (!isLikelySlideContentWipe(beforeSlide, afterSlide)) continue;
 
@@ -515,19 +520,12 @@ export function applyScopedDeckPatchToHtml(input: {
       return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason };
     }
     if (scoped.narrowed) {
-      const intent = validateCommentEditIntentRespected({
+      return finalizeScopedDeckMergeHtml({
+        currentHtml,
         mergedHtml: scoped.html,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
       });
-      if (!intent.ok) {
-        return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
-      }
-      const repairedScoped = input.commentAttachments
-        ? stabilizeVisualMarkDeckHtml(currentHtml, scoped.html, input.commentAttachments)
-        : scoped.html;
-      // Fold terminal scrub here so ProjectView can skip a second full-deck parse.
-      return { ok: true, html: sanitizeManualEditFullSource(repairedScoped), sanitized: true };
     }
     if (mergedScopeRelaxed) {
       devLog.warn('[deck-patch] scope-relaxed apply produced no narrowed match — rejecting', {
@@ -540,17 +538,47 @@ export function applyScopedDeckPatchToHtml(input: {
       };
     }
   }
-  const intent = validateCommentEditIntentRespected({
+  return finalizeScopedDeckMergeHtml({
+    currentHtml,
     mergedHtml: merged.html,
     commentAttachments: input.commentAttachments ?? [],
     instructionText: input.instructionText,
+    requireIntent: Boolean(input.commentAttachments?.length),
   });
-  if (!intent.ok && input.commentAttachments?.length) {
+}
+
+/**
+ * Intent validate + stabilize + sanitize with one Document when stabilize is a
+ * no-op (common non-visual path). Avoids intent-parse then full-source re-parse.
+ */
+function finalizeScopedDeckMergeHtml(input: {
+  currentHtml: string;
+  mergedHtml: string;
+  commentAttachments: readonly ChatCommentAttachment[];
+  instructionText?: string;
+  requireIntent?: boolean;
+}): DeckPatchMergeResult {
+  const parsedDoc = parseManualEditSource(input.mergedHtml);
+  const intent = validateCommentEditIntentRespected({
+    mergedHtml: input.mergedHtml,
+    commentAttachments: input.commentAttachments,
+    instructionText: input.instructionText,
+    parsedDoc,
+  });
+  if (!intent.ok && (input.requireIntent ?? true)) {
     return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
   }
-  const repairedHtml = input.commentAttachments
-    ? stabilizeVisualMarkDeckHtml(currentHtml, merged.html, input.commentAttachments)
-    : merged.html;
+  const repairedHtml = input.commentAttachments.length > 0
+    ? stabilizeVisualMarkDeckHtml(input.currentHtml, input.mergedHtml, input.commentAttachments)
+    : input.mergedHtml;
+  if (repairedHtml === input.mergedHtml && parsedDoc) {
+    sanitizeManualEditDocumentInPlace(parsedDoc);
+    return {
+      ok: true,
+      html: serializeManualEditSource(parsedDoc, input.mergedHtml),
+      sanitized: true,
+    };
+  }
   return { ok: true, html: sanitizeManualEditFullSource(repairedHtml), sanitized: true };
 }
 

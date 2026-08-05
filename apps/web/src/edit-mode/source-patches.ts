@@ -11,6 +11,8 @@ export interface ManualEditPatchResult {
     attributes: Record<string, string>;
     outerHtml: string;
   };
+  /** When `captureTargetSnapshots` is set on a batch apply. */
+  targetSnapshots?: Record<string, ManualEditPatchResult['targetSnapshot'] & object>;
 }
 
 export type ManualEditMaskTargetsResult =
@@ -44,6 +46,11 @@ export interface ApplyManualEditPatchOptions {
   sanitize?: boolean;
   /** Capture target styles/outerHtml from the live Document before serialize. */
   captureTargetSnapshot?: boolean;
+  /**
+   * After a multi-patch batch, capture a snapshot per patched id from the live
+   * Document (FileViewer batch reconcile — skip N× re-parse).
+   */
+  captureTargetSnapshots?: boolean;
 }
 
 /**
@@ -119,7 +126,19 @@ export function applyManualEditPatches(
   if (options?.sanitize && isManualEditFullHtmlDocument(source)) {
     sanitizeManualEditDocumentInPlace(doc);
   }
-  return { ok: true, source: serializeSource(doc, source), appliedCount };
+  let targetSnapshots: ManualEditPatchResult['targetSnapshots'];
+  if (options?.captureTargetSnapshots) {
+    targetSnapshots = {};
+    for (const item of items) {
+      if (!('id' in item.patch)) continue;
+      targetSnapshots[item.patch.id] = readManualEditTargetSnapshotFromDoc(
+        doc,
+        item.patch.id,
+        item.scope ?? {},
+      );
+    }
+  }
+  return { ok: true, source: serializeSource(doc, source), appliedCount, targetSnapshots };
 }
 
 /** Mutate `doc` in place. Caller owns parse/serialize (element-patch batch). */
@@ -376,7 +395,11 @@ export function readManualEditStyles(
   source: string,
   id: string,
   scope: ManualEditSourceScope = {},
+  parsedDoc?: Document | null,
 ): ManualEditStyles {
+  if (parsedDoc) {
+    return readManualEditTargetSnapshotFromDoc(parsedDoc, id, scope).styles;
+  }
   return readManualEditTargetSnapshot(source, id, scope).styles;
 }
 

@@ -1833,9 +1833,10 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   const hasElementScopedComment = input.commentAttachments.some((attachment) =>
     scopedCommentElementIds(attachment).length > 0,
   );
-  const beforeMasked = maskScopedCommentTargets(currentHtml, input.commentAttachments);
-  const afterMasked = maskScopedCommentTargets(input.nextHtml, input.commentAttachments);
+  // Visual / id-less comments have nothing to mask — skip 2× full-deck parse.
   if (hasElementScopedComment) {
+    const beforeMasked = maskScopedCommentTargets(currentHtml, input.commentAttachments);
+    const afterMasked = maskScopedCommentTargets(input.nextHtml, input.commentAttachments);
     const targetUnresolved = !beforeMasked.ok
       || !afterMasked.ok
       || beforeMasked.maskedCount === 0
@@ -1852,22 +1853,35 @@ async function fullDeckEditStaysInsideCommentScope(input: {
         reason: 'comment target could not be resolved in the current and updated deck',
       };
     }
+    if (
+      beforeMasked.ok &&
+      afterMasked.ok &&
+      beforeMasked.maskedCount > 0 &&
+      beforeMasked.maskedCount === afterMasked.maskedCount &&
+      beforeMasked.source !== afterMasked.source
+    ) {
+      devLog.warn('[deck-patch] scoped full-deck guard rejected non-target changes inside target slide', {
+        fileName: input.fileName,
+        maskedCount: beforeMasked.maskedCount,
+      });
+      return {
+        ok: false,
+        code: 'full_deck_outside_element_scope',
+        reason: 'non-target changes inside the selected slide',
+      };
+    }
   }
-  if (
-    beforeMasked.ok &&
-    afterMasked.ok &&
-    beforeMasked.maskedCount > 0 &&
-    beforeMasked.maskedCount === afterMasked.maskedCount &&
-    beforeMasked.source !== afterMasked.source
-  ) {
-    devLog.warn('[deck-patch] scoped full-deck guard rejected non-target changes inside target slide', {
-      fileName: input.fileName,
-      maskedCount: beforeMasked.maskedCount,
-    });
+  // Match deck/element-patch: presentation-only edits must not wipe pinned text
+  // even when the full-deck rewrite stays inside slide/mask scope.
+  const intent = validateCommentEditIntentRespected({
+    mergedHtml: input.nextHtml,
+    commentAttachments: input.commentAttachments,
+  });
+  if (!intent.ok) {
     return {
       ok: false,
-      code: 'full_deck_outside_element_scope',
-      reason: 'non-target changes inside the selected slide',
+      code: 'comment_edit_intent_violated',
+      reason: intent.reason,
     };
   }
   return { ok: true };

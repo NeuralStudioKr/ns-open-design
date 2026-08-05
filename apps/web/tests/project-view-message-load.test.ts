@@ -396,6 +396,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("contentToSave");
     expect(source).toContain("sanitize: isManualEditFullHtmlDocument(baseSource)");
     expect(source).toContain("captureTargetSnapshot: patch.kind === 'set-style'");
+    expect(source).toContain("captureTargetSnapshots: true");
+    expect(source).toContain("parseManualEditSource(baseSource)");
     expect(source).toContain("const contentToSave = result.source");
     expect(source).toContain("setSource(contentToSave)");
     expect(source).toContain("pinManualEditSavedSource(contentToSave)");
@@ -415,6 +417,7 @@ describe("ProjectView message loading", () => {
     expect(viewSource).toContain("maskManualEditTargetsOnDocument");
     expect(viewSource).toContain("parseManualEditSource(source)");
     expect(viewSource).toContain("attachmentMergeHint(attachment)");
+    expect(viewSource).toContain("Visual / id-less comments have nothing to mask");
     expect(viewSource).toContain("patchHtmlAlreadySanitized");
     expect(viewSource).toContain("!patchHtmlAlreadySanitized");
     expect(viewSource).toContain("resolvePersistCommentScope");
@@ -426,6 +429,8 @@ describe("ProjectView message loading", () => {
     expect(deckSource).toContain("reconcileCommentAttachmentForDeck(deckHtml, attachment, parsedDoc");
     expect(deckSource).toContain("options?.sanitize === false");
     expect(deckSource).toContain("idBearingDocs");
+    expect(deckSource).toContain("finalizeScopedDeckMergeHtml");
+    expect(deckSource).toContain("sanitizeManualEditDocumentInPlace(parsedDoc)");
   });
 
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {
