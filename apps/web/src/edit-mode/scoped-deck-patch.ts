@@ -361,7 +361,28 @@ function isLikelySlideContentWipe(beforeSlide: string, afterSlide: string): bool
   return afterText.length < beforeText.length * 0.5;
 }
 
-function extractVisualMarkTargetHtml(slideHtml: string): string | null {
+/**
+ * Extract the first `.od-visual-mark-target` outerHTML from a slide fragment.
+ * Prefer Document querySelector so nested markup (svg/img inside the mark)
+ * is not truncated at the first `</div>` the way a shallow regex would.
+ */
+function extractVisualMarkTargetHtml(
+  slideHtml: string,
+  fragmentHost?: Document | null,
+): string | null {
+  const host = fragmentHost ?? parseManualEditSource('<!doctype html><html><body></body></html>');
+  if (host) {
+    try {
+      host.body.innerHTML = slideHtml;
+      const el = host.body.querySelector('.od-visual-mark-target');
+      const html = el?.outerHTML ?? null;
+      host.body.innerHTML = '';
+      return html;
+    } catch {
+      host.body.innerHTML = '';
+    }
+  }
+  // Parser-null / host failure — last-resort shallow match (may truncate nested divs).
   const match = slideHtml.match(/<div\s+class="od-visual-mark-target"[\s\S]*?<\/div>/i);
   return match?.[0] ?? null;
 }
@@ -397,7 +418,7 @@ export function repairWipedSlidesForVisualMarks(
     if (!beforeSlide || !afterSlide || beforeSlide === afterSlide) continue;
     if (!isLikelySlideContentWipe(beforeSlide, afterSlide)) continue;
 
-    let markHtml = extractVisualMarkTargetHtml(afterSlide);
+    let markHtml = extractVisualMarkTargetHtml(afterSlide, fragmentHost);
     const placementStyle = formatVisualMarkPlacementStyle(attachment.pagePosition);
     const innerMarkup = buildVisualMarkDeckPatchInnerMarkup(attachment.comment || '');
     if (!markHtml || !/<svg\b/i.test(markHtml)) {
@@ -591,11 +612,10 @@ function scopeRejectionCanRetry(reason: string): boolean {
   );
 }
 
-function listChangedDeckSlideIndexes(currentHtml: string, patchedHtml: string): number[] {
-  // One body-section materialization each (was list indexes + extractSlideByIndex
-  // per index — O(n) helper churn even when the section cache hits).
-  const currentSlides = extractTopLevelSlideSections(extractDeckBodyContent(currentHtml));
-  const patchedSlides = extractTopLevelSlideSections(extractDeckBodyContent(patchedHtml));
+function listChangedDeckSlideIndexesFromSections(
+  currentSlides: readonly { outerHtml: string }[],
+  patchedSlides: readonly { outerHtml: string }[],
+): number[] {
   const changed: number[] = [];
   const pushUnique = (index: number) => {
     if (Number.isInteger(index) && index >= 0 && !changed.includes(index)) {
@@ -673,9 +693,12 @@ function tryVisualOrAnchorlessSlideSwap(input: {
   patchedHtml: string;
   attachment: ChatCommentAttachment;
   slideIndex: number;
+  /** Pre-extracted slide HTML — skip extractSlideByIndex ×2 when caller has sections. */
+  nextSlide?: string | null;
+  patchedSlide?: string | null;
 }): { ok: true; html: string } | { ok: false; reason: string } {
-  const nextSlide = extractSlideByIndex(input.nextHtml, input.slideIndex);
-  const patchedSlide = extractSlideByIndex(input.patchedHtml, input.slideIndex);
+  const nextSlide = input.nextSlide ?? extractSlideByIndex(input.nextHtml, input.slideIndex);
+  const patchedSlide = input.patchedSlide ?? extractSlideByIndex(input.patchedHtml, input.slideIndex);
   if (!nextSlide || !patchedSlide || nextSlide === patchedSlide) {
     return { ok: false, reason: 'No matching targets found to merge.' };
   }
@@ -732,25 +755,34 @@ export function resolveScopedCommentSlideCandidates(input: {
   };
 
   // One section materialization each (was list indexes + extractSlideByIndex × n).
+  // When current === patched (reconcile / element-patch discovery), skip the
+  // second materialize, changed-slide walk, and duplicate verify/infer passes.
+  const sameHtml = input.currentHtml === input.patchedHtml;
   const currentSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.currentHtml));
-  const patchedSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.patchedHtml));
+  const patchedSlides = sameHtml
+    ? currentSlides
+    : extractTopLevelSlideSections(extractDeckBodyContent(input.patchedHtml));
   for (let slideIndex = 0; slideIndex < currentSlides.length; slideIndex += 1) {
     const slide = currentSlides[slideIndex]?.outerHtml;
     if (slide && targetTextPreservedInPatchedSlide(slide, input.attachment)) {
       pushUnique(verified, slideIndex);
     }
   }
-  for (let slideIndex = 0; slideIndex < patchedSlides.length; slideIndex += 1) {
-    const slide = patchedSlides[slideIndex]?.outerHtml;
-    if (slide && targetTextPreservedInPatchedSlide(slide, input.attachment)) {
-      pushUnique(verified, slideIndex);
+  if (!sameHtml) {
+    for (let slideIndex = 0; slideIndex < patchedSlides.length; slideIndex += 1) {
+      const slide = patchedSlides[slideIndex]?.outerHtml;
+      if (slide && targetTextPreservedInPatchedSlide(slide, input.attachment)) {
+        pushUnique(verified, slideIndex);
+      }
     }
   }
 
   const candidates: number[] = [...verified];
 
-  for (const slideIndex of listChangedDeckSlideIndexes(input.currentHtml, input.patchedHtml)) {
-    pushUnique(candidates, slideIndex);
+  if (!sameHtml) {
+    for (const slideIndex of listChangedDeckSlideIndexesFromSections(currentSlides, patchedSlides)) {
+      pushUnique(candidates, slideIndex);
+    }
   }
 
   if (hasValidDeckSlideIndex(input.attachment)) {
@@ -761,8 +793,10 @@ export function resolveScopedCommentSlideCandidates(input: {
   }
 
   if (candidates.length === 0) {
-    const inferred = inferSlideIndexFromDeckHtml(input.currentHtml, input.attachment)
-      ?? inferSlideIndexFromDeckHtml(input.patchedHtml, input.attachment);
+    const inferred = inferSlideIndexFromDeckHtml(input.currentHtml, input.attachment, currentSlides)
+      ?? (sameHtml
+        ? null
+        : inferSlideIndexFromDeckHtml(input.patchedHtml, input.attachment, patchedSlides));
     if (inferred != null) {
       pushUnique(candidates, inferred);
     }
@@ -838,6 +872,7 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
     return { ok: false, reason: merged.reason };
   }
 
+  // Materialize both slides once for style-only / text-preserved / last-resort.
   const nextSlide = extractSlideByIndex(input.nextHtml, input.slideIndex);
   const patchedSlide = extractSlideByIndex(input.patchedHtml, input.slideIndex);
   if (!nextSlide || !patchedSlide) {
@@ -1002,6 +1037,10 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
         const patched = parseManualEditSource(input.patchedHtml);
         return current && patched ? { current, next: patched } : undefined;
       })();
+      // One section materialization each for candidate slide swaps (avoid
+      // extractSlideByIndex × candidates × 2).
+      const nextSlides = extractTopLevelSlideSections(extractDeckBodyContent(nextHtml));
+      const patchedSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.patchedHtml));
       for (const slideIndex of slideCandidates) {
         const attempt = tryHintOnlyScopedMerge({
           nextHtml,
@@ -1031,6 +1070,8 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
             patchedHtml: input.patchedHtml,
             attachment,
             slideIndex,
+            nextSlide: nextSlides[slideIndex]?.outerHtml ?? null,
+            patchedSlide: patchedSlides[slideIndex]?.outerHtml ?? null,
           });
           if (swap.ok) {
             nextHtml = swap.html;
@@ -1165,9 +1206,12 @@ export function hasValidDeckSlideIndex(attachment: ChatCommentAttachment): boole
 export function inferSlideIndexFromDeckHtml(
   html: string,
   attachment: ChatCommentAttachment,
+  /** Pre-materialized sections — skip a second body extract when caller has them. */
+  precomputedSections?: readonly { outerHtml: string }[],
 ): number | null {
   // Always seed the shared section cache with body content (not full HTML).
-  const sections = extractTopLevelSlideSections(extractDeckBodyContent(html));
+  const sections = precomputedSections
+    ?? extractTopLevelSlideSections(extractDeckBodyContent(html));
   if (sections.length === 0) return null;
   if (sections.length === 1) return 0;
   const elementId = normalizeForSlideLookup(attachment.elementId);
@@ -1489,10 +1533,13 @@ export function resolveElementPatchAllowedSlideIndexes(input: {
     return [...input.allowedSlideIndexes];
   }
 
+  // One section materialization for model-slide text checks (was extractSlideByIndex
+  // × patches × attachments, plus resolveScopedCommentSlideCandidates rematerialize).
+  const currentSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.currentHtml));
   const discovered = new Set<number>();
   for (const attachment of input.commentAttachments) {
     for (const patch of input.patches) {
-      const modelSlide = extractSlideByIndex(input.currentHtml, patch.slideIndex);
+      const modelSlide = currentSlides[patch.slideIndex]?.outerHtml ?? null;
       if (modelSlide && targetTextPreservedInPatchedSlide(modelSlide, attachment)) {
         discovered.add(patch.slideIndex);
       }

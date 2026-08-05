@@ -7911,15 +7911,22 @@ function HtmlViewer({
       }
       if (refreshGeneration !== revisionRefreshGenerationRef.current) return;
       if (targetHtml != null) {
+        // Same HTML already painted — sync refs/stack only (skip freeze remount
+        // + style-replay tax when tip advance lands on unchanged content).
+        const contentUnchanged = targetHtml === sourceRef.current;
         setSource(targetHtml);
         sourceRef.current = targetHtml;
         lastStablePreviewSourceRef.current = targetHtml;
         exportHtmlSnapshotGateRef.current = targetHtml;
         rememberStablePreviewSource(projectId, file.name, targetHtml);
-        setManualEditFrozenSource(targetHtml);
         setManualEditDraft((current) => ({ ...current, fullSource: targetHtml! }));
-        setReloadKey((key) => key + 1);
         revisionSkipReconcileOnceRef.current = true;
+        if (!contentUnchanged) {
+          setManualEditFrozenSource(targetHtml);
+          setReloadKey((key) => key + 1);
+        } else if (manualEditFrozenSource !== targetHtml) {
+          setManualEditFrozenSource(targetHtml);
+        }
       }
     }
     if (refreshGeneration !== revisionRefreshGenerationRef.current) return;
@@ -8503,11 +8510,13 @@ function HtmlViewer({
           }
           if (nextIds.length > 1) {
             const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
             const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
               refreshed,
               (id) => inspectorManualEditStyles(
                 refreshed.find((item) => item.id === id) ?? refreshed[refreshed.length - 1]!,
                 base,
+                parsedDoc,
               ),
             );
             setManualEditMixedStyleKeys(mixedKeys);
@@ -9590,6 +9599,8 @@ function HtmlViewer({
     clearManualEditStyleTimer();
     manualEditPendingStyleRef.current = null;
     const base = sourceRef.current ?? '';
+    // One Document for all pending/selected targets (mirror no-op flush).
+    const parsedDoc = parseManualEditSource(base);
     const pendingIds = pending.targetIds ?? [pending.id];
     const pendingKeys = Object.keys(pending.styles) as Array<keyof ManualEditStyles>;
     for (const id of pendingIds) {
@@ -9598,8 +9609,8 @@ function HtmlViewer({
         : manualEditTargets.find((item) => item.id === id)
           ?? (selectedManualEditTargetRef.current?.id === id ? selectedManualEditTargetRef.current : null);
       const sourceStyles = target
-        ? inspectorManualEditStyles(target, base)
-        : readManualEditStyles(base, id);
+        ? inspectorManualEditStyles(target, base, parsedDoc)
+        : readManualEditStyles(base, id, {}, parsedDoc);
       const resetStyles = pendingKeys.reduce<Partial<ManualEditStyles>>((acc, key) => {
         acc[key] = sourceStyles[key] ?? '';
         return acc;
@@ -9613,13 +9624,19 @@ function HtmlViewer({
         refreshed,
         (id) => {
           const target = refreshed.find((item) => item.id === id) ?? null;
-          return target ? inspectorManualEditStyles(target, base) : readManualEditStyles(base, id);
+          return target
+            ? inspectorManualEditStyles(target, base, parsedDoc)
+            : readManualEditStyles(base, id, {}, parsedDoc);
         },
       );
       setManualEditMixedStyleKeys(mixedKeys);
       setManualEditDraft((current) => ({ ...current, styles, fullSource: base }));
     } else if (selectedManualEditTargetRef.current) {
-      const sourceStyles = inspectorManualEditStyles(selectedManualEditTargetRef.current, base);
+      const sourceStyles = inspectorManualEditStyles(
+        selectedManualEditTargetRef.current,
+        base,
+        parsedDoc,
+      );
       setManualEditDraft((current) => ({ ...current, styles: sourceStyles, fullSource: base }));
       setManualEditMixedStyleKeys(new Set());
     }
@@ -9774,6 +9791,8 @@ function HtmlViewer({
     manualEditResizePausedRef.current = false;
 
     const base = sourceRef.current ?? '';
+    // One Document for snapshot + multi-select inspector merge.
+    const parsedDoc = parseManualEditSource(base);
     selectedManualEditTargetIdRef.current = primary.id;
     selectedManualEditTargetRef.current = primary;
     selectedManualEditTargetIdsRef.current = nextIds;
@@ -9782,7 +9801,7 @@ function HtmlViewer({
     setManualEditHostPaintRect(null);
     if (nextTargets.length === 1) {
       refreshManualEditHostPaintRect(primary.id);
-      const snapshot = readManualEditTargetSnapshot(base, primary.id);
+      const snapshot = readManualEditTargetSnapshot(base, primary.id, {}, parsedDoc);
       setManualEditMixedStyleKeys(new Set());
       setManualEditDraft({
         text: snapshot.fields.text ?? primary.fields.text ?? primary.text,
@@ -9800,6 +9819,7 @@ function HtmlViewer({
         (id) => inspectorManualEditStyles(
           nextTargets.find((item) => item.id === id) ?? primary,
           base,
+          parsedDoc,
         ),
       );
       setManualEditMixedStyleKeys(mixedKeys);

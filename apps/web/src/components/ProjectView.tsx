@@ -38,7 +38,6 @@ import {
   isDrawnVisualMarkAttachment,
   isVisualCommentAttachment,
   scopedCommentSlideIndexesFromAttachments,
-  scopedCommentSlideIndexesFromDeck,
   type DeckPatchMergeResult,
   type ScopedDeckPersistFailureCode,
 } from '../edit-mode/scoped-deck-patch';
@@ -1836,8 +1835,11 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   }
   let allowedSlideIndexes = [...input.allowedSlideIndexes];
   if (allowedSlideIndexes.length === 0) {
-    const inferred = scopedCommentSlideIndexesFromDeck(currentHtml, input.commentAttachments);
-    if (inferred) {
+    // Prefer the same one-pass persist-scope walk used elsewhere (reconcile +
+    // candidates + infer) instead of a second scopedCommentSlideIndexesFromDeck.
+    const inferred = reconcileCommentScopeForPersist(currentHtml, input.commentAttachments)
+      .allowedSlideIndexes;
+    if (inferred && inferred.length > 0) {
       allowedSlideIndexes = inferred;
     } else {
       return {

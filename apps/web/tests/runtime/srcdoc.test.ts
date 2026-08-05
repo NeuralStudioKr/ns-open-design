@@ -1,6 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { buildSrcdoc } from '../../src/runtime/srcdoc';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const srcdocSource = readFileSync(join(here, '../../src/runtime/srcdoc.ts'), 'utf8');
 
 const deckHtml = `<!doctype html>
 <html>
@@ -538,5 +544,12 @@ describe('buildSrcdoc', () => {
     // Its direct-child divs are matched by [id] > div[class] / [id] > div[id]
     expect(srcdoc).toContain('<div class="content" data-od-id=');
     expect(srcdoc).toContain('<div id="named" data-od-id=');
+  });
+
+  it('folds od-id + source-path annotation and skips intact-head repair', () => {
+    expect(srcdocSource).toContain('annotatePreviewEditTargets');
+    expect(srcdocSource).toContain('artifactDocumentHeadLooksIntact');
+    expect(srcdocSource).toContain('annotateMissingOdIdsOnDocument');
+    expect(srcdocSource).toContain('annotateManualEditSourcePathsOnDocument');
   });
 });

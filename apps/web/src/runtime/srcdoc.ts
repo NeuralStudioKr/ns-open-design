@@ -100,15 +100,39 @@ export function buildRedirectLoopBlockedDoc(): string {
 </html>`;
 }
 
+/**
+ * Cheap gate: skip repairArtifactDocumentHead when the document already has
+ * an intact head (charset + viewport) and no common corruption prefixes.
+ * Repair remains idempotent — this only avoids the regex walk on hot paths.
+ */
+function artifactDocumentHeadLooksIntact(html: string): boolean {
+  if (!html || !/<head[\s>]/i.test(html) || !/<\/head>/i.test(html)) return false;
+  if (!/<meta\s+charset/i.test(html)) return false;
+  if (!/<meta\s+name=["']viewport["']/i.test(html)) return false;
+  // Corrupted / leaked head prefixes that repair would rewrite.
+  if (
+    /<head[^>]*>\s*(?:viewport\s*=|device-width|-width|googleapis\.com|fonts\.gstatic|css2\?family=)/i
+      .test(html)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function buildSrcdoc(
   html: string,
   options: SrcdocOptions = {}
 ): string {
-  const repaired = stripConflictingSrcDocCspBaseUri(repairArtifactDocumentHead(html));
+  const repairedHead = artifactDocumentHeadLooksIntact(html)
+    ? html
+    : repairArtifactDocumentHead(html);
+  const repaired = stripConflictingSrcDocCspBaseUri(repairedHead);
   const wrapped = wrapPreviewHtmlShell(repaired);
-  const withOdIds = annotateMissingOdIds(wrapped);
-  const withSourcePaths = options.editBridge ? annotateManualEditSourcePaths(withOdIds) : withOdIds;
-  const withBase = options.baseHref ? injectBaseHref(withSourcePaths, options.baseHref) : withSourcePaths;
+  // One DOMParser for missing od-id + optional source-path annotation (was 2×).
+  const withAnnotations = annotatePreviewEditTargets(wrapped, {
+    sourcePaths: Boolean(options.editBridge),
+  });
+  const withBase = options.baseHref ? injectBaseHref(withAnnotations, options.baseHref) : withAnnotations;
   const withShim = injectSandboxShim(withBase);
   const withRedirectGuard = options.exportDocument
     ? withShim
@@ -898,15 +922,19 @@ function injectPaletteBridge(
   return injectBeforeBodyEnd(doc, script);
 }
 
+function annotateManualEditSourcePathsOnDocument(parsed: Document): void {
+  parsed.body.querySelectorAll(MANUAL_EDIT_DISCOVERY_SELECTOR).forEach((el) => {
+    if (el.hasAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR)) return;
+    const path = sourcePathForElement(el);
+    if (path) el.setAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR, path);
+  });
+}
+
 function annotateManualEditSourcePaths(doc: string): string {
   if (typeof DOMParser === 'undefined') return doc;
   try {
     const parsed = new DOMParser().parseFromString(doc, 'text/html');
-    parsed.body.querySelectorAll(MANUAL_EDIT_DISCOVERY_SELECTOR).forEach((el) => {
-      if (el.hasAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR)) return;
-      const path = sourcePathForElement(el);
-      if (path) el.setAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR, path);
-    });
+    annotateManualEditSourcePathsOnDocument(parsed);
     return serializeHtmlDocument(parsed);
   } catch {
     return doc;
@@ -937,45 +965,66 @@ function serializeHtmlDocument(doc: Document): string {
  * generated outside of Open Design and therefore carries no OD-specific
  * annotations.
  */
+function annotateMissingOdIdsOnDocument(parsed: Document): void {
+  // Only target divs that are direct children of semantic containers or body;
+  // deeply nested layout divs (e.g. flex/grid wrappers) create noise in the
+  // selection bridge without adding meaningful pickable targets.
+  const selector = [
+    'section', 'article', 'header', 'footer', 'nav', 'main', 'aside',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'button', 'a', 'img', 'svg', '[id]',
+    'body > div[class]', 'body > div[id]',
+    'section > div[class]', 'section > div[id]',
+    'article > div[class]', 'article > div[id]',
+    'main > div[class]', 'main > div[id]',
+    'header > div[class]', 'header > div[id]',
+    'footer > div[class]', 'footer > div[id]',
+    'nav > div[class]', 'nav > div[id]',
+    'aside > div[class]', 'aside > div[id]',
+    '[id] > div[class]', '[id] > div[id]',
+  ].join(', ');
+  const skipTags = new Set(['script', 'style', 'template', 'noscript', 'iframe', 'object', 'embed']);
+  const skipDeckChrome = (el: Element): boolean => {
+    const id = el.id;
+    if (id === 'deck-stage' || id === 'od-stacked-deck-stage' || id === 'deck' || id === 'deck-track') {
+      return true;
+    }
+    return el.classList.contains('deck-shell') || el.classList.contains('deck-stage');
+  };
+  let fallbackIndex = 0;
+  parsed.body.querySelectorAll(selector).forEach((el) => {
+    if (el.hasAttribute('data-od-id') || el.hasAttribute('data-screen-label')) return;
+    const tag = el.tagName.toLowerCase();
+    if (skipTags.has(tag)) return;
+    if (skipDeckChrome(el)) return;
+    const path = sourcePathForElement(el);
+    el.setAttribute('data-od-id', path || `od-${tag}-${fallbackIndex++}`);
+  });
+}
+
 function annotateMissingOdIds(doc: string): string {
   if (typeof DOMParser === 'undefined') return doc;
   try {
     const parsed = new DOMParser().parseFromString(doc, 'text/html');
-    // Only target divs that are direct children of semantic containers or body;
-    // deeply nested layout divs (e.g. flex/grid wrappers) create noise in the
-    // selection bridge without adding meaningful pickable targets.
-    const selector = [
-      'section', 'article', 'header', 'footer', 'nav', 'main', 'aside',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'button', 'a', 'img', 'svg', '[id]',
-      'body > div[class]', 'body > div[id]',
-      'section > div[class]', 'section > div[id]',
-      'article > div[class]', 'article > div[id]',
-      'main > div[class]', 'main > div[id]',
-      'header > div[class]', 'header > div[id]',
-      'footer > div[class]', 'footer > div[id]',
-      'nav > div[class]', 'nav > div[id]',
-      'aside > div[class]', 'aside > div[id]',
-      '[id] > div[class]', '[id] > div[id]',
-    ].join(', ');
-    const skipTags = new Set(['script', 'style', 'template', 'noscript', 'iframe', 'object', 'embed']);
-    const skipDeckChrome = (el: Element): boolean => {
-      const tag = el.tagName.toLowerCase();
-      const id = el.id;
-      if (id === 'deck-stage' || id === 'od-stacked-deck-stage' || id === 'deck' || id === 'deck-track') {
-        return true;
-      }
-      return el.classList.contains('deck-shell') || el.classList.contains('deck-stage');
-    };
-    let fallbackIndex = 0;
-    parsed.body.querySelectorAll(selector).forEach((el) => {
-      if (el.hasAttribute('data-od-id') || el.hasAttribute('data-screen-label')) return;
-      const tag = el.tagName.toLowerCase();
-      if (skipTags.has(tag)) return;
-      if (skipDeckChrome(el)) return;
-      const path = sourcePathForElement(el);
-      el.setAttribute('data-od-id', path || `od-${tag}-${fallbackIndex++}`);
-    });
+    annotateMissingOdIdsOnDocument(parsed);
+    return serializeHtmlDocument(parsed);
+  } catch {
+    return doc;
+  }
+}
+
+/** Fold od-id + optional source-path annotation into one DOMParser pass. */
+function annotatePreviewEditTargets(
+  doc: string,
+  options: { sourcePaths: boolean },
+): string {
+  if (typeof DOMParser === 'undefined') return doc;
+  try {
+    const parsed = new DOMParser().parseFromString(doc, 'text/html');
+    annotateMissingOdIdsOnDocument(parsed);
+    if (options.sourcePaths) {
+      annotateManualEditSourcePathsOnDocument(parsed);
+    }
     return serializeHtmlDocument(parsed);
   } catch {
     return doc;

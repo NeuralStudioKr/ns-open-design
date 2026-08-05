@@ -20,7 +20,19 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(block).toContain('setManualEditFrozenSource');
     expect(block).toContain('activeMissingFromList');
     expect(block).toContain('revisionRefreshGenerationRef');
+    // Tip advance with identical HTML skips freeze remount / reloadKey tax.
+    expect(block).toContain('contentUnchanged');
+    expect(block).toContain('if (!contentUnchanged)');
     expect(block).not.toContain('hydratedUndoCursorFromSession');
+  });
+
+  it('shares one Document for style-cancel and multi-select inspector refresh', () => {
+    expect(fileViewer).toContain('function cancelManualEditStyleDraft()');
+    const cancelStart = fileViewer.indexOf('function cancelManualEditStyleDraft()');
+    const cancelBlock = fileViewer.slice(cancelStart, cancelStart + 1_600);
+    expect(cancelBlock).toContain('parseManualEditSource(base)');
+    expect(cancelBlock).toContain('inspectorManualEditStyles');
+    expect(fileViewer).toContain('One Document for snapshot + multi-select inspector merge');
   });
 
   it('uses optimistic stackWithPushedRevision after manual/inspect push', () => {

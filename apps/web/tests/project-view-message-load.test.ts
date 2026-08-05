@@ -400,6 +400,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("parseManualEditSource(baseSource)");
     expect(source).toContain("reconcileManualEditDraftAfterNoOpFlush");
     expect(source).toContain("One Document for all pending/selected targets");
+    expect(source).toContain("One Document for snapshot + multi-select inspector merge");
+    expect(source).toContain("contentUnchanged");
     expect(source).toContain("const contentToSave = result.source");
     expect(source).toContain("setSource(contentToSave)");
     expect(source).toContain("pinManualEditSavedSource(contentToSave)");
@@ -427,6 +429,9 @@ describe("ProjectView message loading", () => {
     expect(viewSource).toContain("finalizeScopedDeckMergeHtml");
     expect(viewSource).toContain("reconcileCommentScopeForPersist");
     expect(viewSource).toContain("patchHtmlAlreadySanitized = true");
+    expect(viewSource).toContain(
+      "Prefer the same one-pass persist-scope walk used elsewhere",
+    );
     const deckSource = readSource("src/edit-mode/scoped-deck-patch.ts");
     expect(deckSource).toContain("sanitizeManualEditFullSource(repairedHtml)");
     expect(deckSource).toContain("extractDeckBodyContent");
@@ -435,6 +440,9 @@ describe("ProjectView message loading", () => {
     expect(deckSource).toContain("idBearingDocs");
     expect(deckSource).toContain("finalizeScopedDeckMergeHtml");
     expect(deckSource).toContain("sanitizeManualEditDocumentInPlace(parsedDoc)");
+    expect(deckSource).toContain("listChangedDeckSlideIndexesFromSections");
+    expect(deckSource).toContain("sameHtml");
+    expect(deckSource).toContain("querySelector('.od-visual-mark-target')");
   });
 
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {
