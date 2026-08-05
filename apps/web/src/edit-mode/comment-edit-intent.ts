@@ -22,7 +22,21 @@ function resolveValidationSlideIndexes(
     htmlHint: attachment.htmlHint,
     selector: attachment.selector,
   };
+  const pinned =
+    typeof attachment.slideIndex === 'number'
+    && Number.isInteger(attachment.slideIndex)
+    && attachment.slideIndex >= 0
+      ? Math.floor(attachment.slideIndex)
+      : null;
+  // Prefer the pinned slide first — full-deck walk only when that miss.
+  if (pinned != null) {
+    const pinnedText = readScopedCommentTargetText(mergedHtml, { slideIndex: pinned }, hint, parsedDoc);
+    if (pinnedText !== null && targetTextContentPreserved(attachment, pinnedText)) {
+      return { verified: true };
+    }
+  }
   for (const slideIndex of slides) {
+    if (slideIndex === pinned) continue;
     const mergedText = readScopedCommentTargetText(mergedHtml, { slideIndex }, hint, parsedDoc);
     if (mergedText !== null && targetTextContentPreserved(attachment, mergedText)) {
       return { verified: true };
@@ -35,13 +49,7 @@ function resolveValidationSlideIndexes(
       candidates.push(index);
     }
   };
-  if (
-    typeof attachment.slideIndex === 'number'
-    && Number.isInteger(attachment.slideIndex)
-    && attachment.slideIndex >= 0
-  ) {
-    pushUnique(attachment.slideIndex);
-  }
+  if (pinned != null) pushUnique(pinned);
   for (const slideIndex of slides) {
     pushUnique(slideIndex);
   }

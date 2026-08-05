@@ -398,6 +398,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("captureTargetSnapshot: patch.kind === 'set-style'");
     expect(source).toContain("captureTargetSnapshots: true");
     expect(source).toContain("parseManualEditSource(baseSource)");
+    expect(source).toContain("reconcileManualEditDraftAfterNoOpFlush");
+    expect(source).toContain("One Document for all pending/selected targets");
     expect(source).toContain("const contentToSave = result.source");
     expect(source).toContain("setSource(contentToSave)");
     expect(source).toContain("pinManualEditSavedSource(contentToSave)");
@@ -421,6 +423,8 @@ describe("ProjectView message loading", () => {
     expect(viewSource).toContain("patchHtmlAlreadySanitized");
     expect(viewSource).toContain("!patchHtmlAlreadySanitized");
     expect(viewSource).toContain("resolvePersistCommentScope");
+    expect(viewSource).toContain("Group by deck path so one reconcileCommentScopeForPersist");
+    expect(viewSource).toContain("finalizeScopedDeckMergeHtml");
     expect(viewSource).toContain("reconcileCommentScopeForPersist");
     expect(viewSource).toContain("patchHtmlAlreadySanitized = true");
     const deckSource = readSource("src/edit-mode/scoped-deck-patch.ts");

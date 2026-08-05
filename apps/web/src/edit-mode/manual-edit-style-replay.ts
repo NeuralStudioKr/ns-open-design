@@ -7,7 +7,7 @@
  */
 
 import { diffManualEditStylePatch } from './manual-edit-style-batch';
-import { readManualEditStyles } from './source-patches';
+import { parseManualEditSource, readManualEditStyles } from './source-patches';
 import type { ManualEditStyles } from './types';
 
 export type ManualEditStyleReplayPatch = {
@@ -15,10 +15,9 @@ export type ManualEditStyleReplayPatch = {
   styles: Partial<ManualEditStyles>;
 };
 
-function collectManualEditStyleIds(source: string): string[] {
-  if (typeof DOMParser === 'undefined') return [];
+function collectManualEditStyleIdsFromDoc(doc: Document | null): string[] {
+  if (!doc) return [];
   try {
-    const doc = new DOMParser().parseFromString(source, 'text/html');
     const ids = Array.from(doc.querySelectorAll('[data-od-id]'))
       .map((el) => (el.getAttribute('data-od-id') || '').trim())
       .filter(Boolean);
@@ -37,18 +36,21 @@ export function manualEditStyleReplayPatches(
   savedSource: string | null | undefined,
 ): ManualEditStyleReplayPatch[] {
   if (!frozenSource || !savedSource || frozenSource === savedSource) return [];
+  // One Document each for freeze + saved (was 2× collect parse + N× style reads).
+  const frozenDoc = parseManualEditSource(frozenSource);
+  const savedDoc = parseManualEditSource(savedSource);
   // Union freeze + saved ids. Preview freeze often annotates unlabeled nodes
   // with path-N `data-od-id`s that saved HTML lacks as attributes; collecting
   // only from saved would skip those targets after a srcDoc remount.
   const ids = [
     ...new Set([
-      ...collectManualEditStyleIds(savedSource),
-      ...collectManualEditStyleIds(frozenSource),
+      ...collectManualEditStyleIdsFromDoc(savedDoc),
+      ...collectManualEditStyleIdsFromDoc(frozenDoc),
     ]),
   ];
   const patches: ManualEditStyleReplayPatch[] = [];
   for (const id of ids) {
-    const savedStyles = readManualEditStyles(savedSource, id);
+    const savedStyles = readManualEditStyles(savedSource, id, {}, savedDoc);
     // Only restore non-empty saved styles. Freeze-only ghost ids used to
     // emit clear patches (`""`) that wiped live preview on remount.
     const pending: Partial<ManualEditStyles> = {};
@@ -56,7 +58,10 @@ export function manualEditStyleReplayPatches(
       if (typeof value === 'string' && value.trim() !== '') pending[key] = value;
     }
     if (Object.keys(pending).length === 0) continue;
-    const styles = diffManualEditStylePatch(frozenSource, id, pending);
+    const frozenStyles = readManualEditStyles(frozenSource, id, {}, frozenDoc);
+    const styles = diffManualEditStylePatch(frozenSource, id, pending, {
+      sourceStyles: frozenStyles,
+    });
     const restore: Partial<ManualEditStyles> = {};
     for (const [key, value] of Object.entries(styles) as Array<[keyof ManualEditStyles, string]>) {
       if (typeof value === 'string' && value.trim() !== '') restore[key] = value;

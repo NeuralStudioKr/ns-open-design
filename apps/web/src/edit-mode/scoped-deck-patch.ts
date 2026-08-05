@@ -550,8 +550,9 @@ export function applyScopedDeckPatchToHtml(input: {
 /**
  * Intent validate + stabilize + sanitize with one Document when stabilize is a
  * no-op (common non-visual path). Avoids intent-parse then full-source re-parse.
+ * Also used by ProjectView salvage so it does not reimplement the fold.
  */
-function finalizeScopedDeckMergeHtml(input: {
+export function finalizeScopedDeckMergeHtml(input: {
   currentHtml: string;
   mergedHtml: string;
   commentAttachments: readonly ChatCommentAttachment[];
@@ -730,15 +731,17 @@ export function resolveScopedCommentSlideCandidates(input: {
     }
   };
 
-  for (const slideIndex of listDeckSlideIndexes(input.currentHtml)) {
-    const slide = extractSlideByIndex(input.currentHtml, slideIndex);
+  // One section materialization each (was list indexes + extractSlideByIndex × n).
+  const currentSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.currentHtml));
+  const patchedSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.patchedHtml));
+  for (let slideIndex = 0; slideIndex < currentSlides.length; slideIndex += 1) {
+    const slide = currentSlides[slideIndex]?.outerHtml;
     if (slide && targetTextPreservedInPatchedSlide(slide, input.attachment)) {
       pushUnique(verified, slideIndex);
     }
   }
-
-  for (const slideIndex of listDeckSlideIndexes(input.patchedHtml)) {
-    const slide = extractSlideByIndex(input.patchedHtml, slideIndex);
+  for (let slideIndex = 0; slideIndex < patchedSlides.length; slideIndex += 1) {
+    const slide = patchedSlides[slideIndex]?.outerHtml;
     if (slide && targetTextPreservedInPatchedSlide(slide, input.attachment)) {
       pushUnique(verified, slideIndex);
     }

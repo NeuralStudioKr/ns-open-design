@@ -370,8 +370,9 @@ export function readManualEditTargetSnapshot(
   source: string,
   id: string,
   scope: ManualEditSourceScope = {},
+  parsedDoc?: Document | null,
 ): ManualEditTargetSnapshot {
-  const doc = parseSource(source);
+  const doc = parsedDoc !== undefined ? parsedDoc : parseSource(source);
   if (!doc) {
     return {
       fields: {},
@@ -1457,18 +1458,26 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
   ].join('|');
   // Decode entities first so &#106;avascript: / &colon; cannot bypass scheme scrub.
   const text = decodeHtmlCharacterReferences(String(raw || ''));
-  // Align navigable/legacy URL attrs with MANUAL_EDIT_URL_ATTRS (minus SMIL to/from/by/values).
+  // Align navigable/legacy URL attrs with MANUAL_EDIT_URL_ATTRS, including SMIL
+  // to/from/by/values (DOM walk already scrubs these; fail-closed must match).
   const urlAttrs = [
     'href', 'src', 'xlink:href', 'action', 'formaction', 'poster', 'cite', 'ping',
     'background', 'dynsrc', 'lowsrc', 'srcset', 'imagesrcset', 'longdesc',
     'manifest', 'codebase', 'classid', 'archive', 'usemap', 'data',
+    'to', 'from', 'by', 'values',
   ].join('|');
+  const smil = 'animate|animatemotion|animatetransform|set|animatecolor';
   return text
     .replace(new RegExp(`<(?:${dangerous})\\b[\\s\\S]*?<\\/(?:${dangerous})\\s*>`, 'gi'), '')
     .replace(new RegExp(`<(?:${dangerous})\\b[^>]*\\/?>`, 'gi'), '')
+    // SMIL animation nodes can navigate via to/from/by/values without a DOM walk.
+    .replace(new RegExp(`<(?:${smil})\\b[\\s\\S]*?<\\/(?:${smil})\\s*>`, 'gi'), '')
+    .replace(new RegExp(`<(?:${smil})\\b[^>]*\\/?>`, 'gi'), '')
     .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
     .replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, '')
     .replace(/\ssrcdoc\s*=\s*(['"]).*?\1/gi, '')
+    // Unquoted srcdoc=… (DOM walk removes the attr; fail-closed must too).
+    .replace(/\ssrcdoc\s*=\s*[^\s>]+/gi, '')
     // Inline style can carry expression()/url(javascript:) without a DOM walk.
     .replace(/\sstyle\s*=\s*(['"])[\s\S]*?\1/gi, '')
     .replace(/\sstyle\s*=\s*[^\s>]+/gi, '')

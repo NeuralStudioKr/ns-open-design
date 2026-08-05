@@ -28,8 +28,7 @@ import {
   attachmentMergeHint,
   inferSlideIndexFromDeckHtml,
   mergeScopedCommentTargetsFromPatchedDeck,
-  reconcileCommentAttachmentForDeck,
-  reconcileCommentAttachmentSlideIndex,
+  finalizeScopedDeckMergeHtml,
   reconcileCommentScopeForPersist,
   resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
@@ -1104,28 +1103,39 @@ async function hydrateDeckCommentSlideIndexes(input: {
     htmlCache.set(normalized, html);
     return html;
   };
-  const out: ChatCommentAttachment[] = [];
-  for (const attachment of input.attachments) {
+  // Group by deck path so one reconcileCommentScopeForPersist covers all
+  // attachments on that deck (was per-attachment double slide reconcile).
+  const groups = new Map<string, { indexes: number[]; attachments: ChatCommentAttachment[] }>();
+  const passthrough: Array<{ index: number; attachment: ChatCommentAttachment }> = [];
+  input.attachments.forEach((attachment, index) => {
     const rawPath = String(attachment.filePath || '').trim();
     const deckPath =
       /\.html?$/i.test(rawPath) ? rawPath : (primaryDeckPath || rawPath);
     if (!deckPath || !/\.html?$/i.test(deckPath)) {
-      out.push(attachment);
-      continue;
+      passthrough.push({ index, attachment });
+      return;
     }
+    const group = groups.get(deckPath) ?? { indexes: [], attachments: [] };
+    group.indexes.push(index);
+    group.attachments.push({ ...attachment, filePath: deckPath });
+    groups.set(deckPath, group);
+  });
+  const out: ChatCommentAttachment[] = input.attachments.slice();
+  for (const item of passthrough) {
+    out[item.index] = item.attachment;
+  }
+  for (const [deckPath, group] of groups) {
     const html = await readDeckHtml(deckPath);
     if (!html) {
-      out.push(attachment);
+      for (let i = 0; i < group.attachments.length; i += 1) {
+        out[group.indexes[i]!] = group.attachments[i]!;
+      }
       continue;
     }
-    const reconciled = reconcileCommentAttachmentSlideIndex(
-      html,
-      reconcileCommentAttachmentForDeck(html, {
-        ...attachment,
-        filePath: deckPath,
-      }),
-    );
-    out.push(reconciled);
+    const scope = reconcileCommentScopeForPersist(html, group.attachments);
+    for (let i = 0; i < scope.attachments.length; i += 1) {
+      out[group.indexes[i]!] = scope.attachments[i]!;
+    }
   }
   return out;
 }
@@ -1468,10 +1478,13 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     devLog.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
     return { ok: false, code: 'deck_patch_merge_failed', reason: applied.reason };
   }
+  // Intent shares one Document with the no-op-stabilize fast path.
+  const intentDoc = parseManualEditSource(applied.html);
   const intent = validateCommentEditIntentRespected({
     mergedHtml: applied.html,
     commentAttachments: input.commentAttachments ?? [],
     instructionText: input.instructionText,
+    parsedDoc: intentDoc,
   });
   if (!intent.ok) {
     return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
@@ -1873,9 +1886,11 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   }
   // Match deck/element-patch: presentation-only edits must not wipe pinned text
   // even when the full-deck rewrite stays inside slide/mask scope.
+  // Parse once for intent (mask mutates its own Documents — do not reuse).
   const intent = validateCommentEditIntentRespected({
     mergedHtml: input.nextHtml,
     commentAttachments: input.commentAttachments,
+    parsedDoc: parseManualEditSource(input.nextHtml),
   });
   if (!intent.ok) {
     return {
@@ -1916,22 +1931,17 @@ async function trySalvageScopedFullDeckRewrite(input: {
   if (!scoped.narrowed) {
     return { ok: false, reason: 'full-deck rewrite produced no narrowed scoped match' };
   }
-  const intent = validateCommentEditIntentRespected({
+  // Mirror applyScopedDeckPatchToHtml finalize (intent + stabilize + sanitize fold).
+  const finalized = finalizeScopedDeckMergeHtml({
+    currentHtml,
     mergedHtml: scoped.html,
     commentAttachments: input.commentAttachments,
     instructionText: input.instructionText,
   });
-  if (!intent.ok) {
-    return { ok: false, reason: intent.reason };
+  if (!finalized.ok) {
+    return { ok: false, reason: finalized.reason };
   }
-  const stabilized = stabilizeVisualMarkDeckHtml(
-    currentHtml,
-    scoped.html,
-    input.commentAttachments,
-  );
-  // Fold terminal scrub here so persist can set patchHtmlAlreadySanitized
-  // (mirror applyScopedDeckPatchToHtml) and skip a second full-deck parse.
-  return { ok: true, html: sanitizeManualEditFullSource(stabilized), sanitized: true };
+  return { ok: true, html: finalized.html, sanitized: true };
 }
 
 function maskScopedCommentTargets(

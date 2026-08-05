@@ -8554,8 +8554,12 @@ function HtmlViewer({
     return manualEditPreviewVersionRef.current;
   }
 
-  function inspectorManualEditStyles(target: ManualEditTarget, baseSource: string): ManualEditStyles {
-    const snapshot = readManualEditTargetSnapshot(baseSource, target.id);
+  function inspectorManualEditStyles(
+    target: ManualEditTarget,
+    baseSource: string,
+    parsedDoc?: Document | null,
+  ): ManualEditStyles {
+    const snapshot = readManualEditTargetSnapshot(baseSource, target.id, {}, parsedDoc);
     return mergeManualEditInspectorStyles(snapshot.styles, target.styles);
   }
 
@@ -9357,6 +9361,8 @@ function HtmlViewer({
     const keys = Object.keys(pending.styles) as Array<keyof ManualEditStyles>;
     if (keys.length === 0) return;
 
+    // One Document for all pending/selected targets (was N× snapshot parses).
+    const parsedDoc = parseManualEditSource(base);
     const pendingIds = pending.targetIds ?? [pending.id];
     for (const id of pendingIds) {
       const target = id === '__body__'
@@ -9364,8 +9370,8 @@ function HtmlViewer({
         : manualEditTargets.find((item) => item.id === id)
           ?? (selectedManualEditTargetRef.current?.id === id ? selectedManualEditTargetRef.current : null);
       const sourceStyles = target
-        ? inspectorManualEditStyles(target, base)
-        : readManualEditStyles(base, id);
+        ? inspectorManualEditStyles(target, base, parsedDoc)
+        : readManualEditStyles(base, id, {}, parsedDoc);
       const resetStyles = keys.reduce<Partial<ManualEditStyles>>((acc, key) => {
         acc[key] = sourceStyles[key] ?? '';
         return acc;
@@ -9384,7 +9390,9 @@ function HtmlViewer({
         refreshed,
         (id) => {
           const target = refreshed.find((item) => item.id === id) ?? null;
-          return target ? inspectorManualEditStyles(target, base) : readManualEditStyles(base, id);
+          return target
+            ? inspectorManualEditStyles(target, base, parsedDoc)
+            : readManualEditStyles(base, id, {}, parsedDoc);
         },
       );
       setManualEditMixedStyleKeys(mixedKeys);
@@ -9392,7 +9400,11 @@ function HtmlViewer({
       return;
     }
     if (selectedManualEditTargetRef.current) {
-      const sourceStyles = inspectorManualEditStyles(selectedManualEditTargetRef.current, base);
+      const sourceStyles = inspectorManualEditStyles(
+        selectedManualEditTargetRef.current,
+        base,
+        parsedDoc,
+      );
       const resetStyles = keys.reduce<Partial<ManualEditStyles>>((acc, key) => {
         acc[key] = sourceStyles[key] ?? '';
         return acc;

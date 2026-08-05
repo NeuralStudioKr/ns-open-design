@@ -1283,6 +1283,13 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain("'background'");
     expect(sourcePatchesSource).toContain("'srcset'");
     expect(sourcePatchesSource).toContain("'longdesc'");
+    // SMIL to/from/by/values + unquoted srcdoc parity with DOM walk.
+    expect(sourcePatchesSource).toContain("'to'");
+    expect(sourcePatchesSource).toContain("'from'");
+    expect(sourcePatchesSource).toContain("'by'");
+    expect(sourcePatchesSource).toContain("'values'");
+    expect(sourcePatchesSource).toContain('animate|animatemotion|animatetransform|set|animatecolor');
+    expect(sourcePatchesSource).toContain('.replace(/\\ssrcdoc\\s*=\\s*[^\\s>]+/gi, \'\')');
   });
 
   it('exposes single-document mutate/batch apply helpers', () => {
