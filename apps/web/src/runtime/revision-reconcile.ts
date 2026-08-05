@@ -122,7 +122,26 @@ export function classifyRevisionDiskReconcile(input: RevisionDiskReconcileInput)
     return 'preserve_history_cursor';
   }
 
+  // Preview already shows the cursor revision while disk diverged — scratch/S3
+  // lag or byte-normalization drift, not an external edit the user can see.
+  if (isRevisionPreviewAlignedWithCursor(previewSource, cursorSnapshotContent)) {
+    return 'preserve_history_cursor';
+  }
+
   return 'external_conflict';
+}
+
+/** Preview HTML already matches the active cursor snapshot. */
+export function isRevisionPreviewAlignedWithCursor(
+  previewSource: string | null,
+  cursorSnapshotContent: string,
+  additionalAlignedSources: ReadonlyArray<string | null | undefined> = [],
+): boolean {
+  if (previewSource === cursorSnapshotContent) return true;
+  for (const candidate of additionalAlignedSources) {
+    if (candidate != null && candidate === cursorSnapshotContent) return true;
+  }
+  return false;
 }
 
 /** True when disk diverged from known revision history in a way that invalidates undo/redo. */

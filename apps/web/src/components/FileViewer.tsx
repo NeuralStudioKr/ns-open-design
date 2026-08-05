@@ -7597,11 +7597,25 @@ function HtmlViewer({
       return;
     }
 
+    const previewMatchesSnapshot = (candidate: string | null) => (
+      candidate != null
+      && (
+        candidate === snapshotContent
+        || repairArtifactDocumentHead(candidate) === repairArtifactDocumentHead(snapshotContent)
+      )
+    );
+    const previewAlignedWithCursor =
+      previewMatchesSnapshot(sourceRef.current)
+      || (
+        previewMatchesSnapshot(lastStablePreviewSourceRef.current)
+        && sourceRef.current === disk
+        && disk !== snapshotContent
+      );
+    const previewSourceForReconcile = previewAlignedWithCursor
+      ? snapshotContent
+      : sourceRef.current;
+
     if (!list) {
-      setRevisionStackInvalidated(true);
-      if (!revisionConflictSuppressedRef.current) {
-        setRevisionConflictToast(revisionConflictMessageRef.current);
-      }
       return;
     }
     if (typeof list.retentionLimit === 'number') {
@@ -7633,6 +7647,11 @@ function HtmlViewer({
     }
 
     if (!anyKnownDiskRevision && disk !== snapshotContent) {
+      if (previewAlignedWithCursor) {
+        setRevisionStackInvalidated(false);
+        setRevisionConflictToast(null);
+        return;
+      }
       if (isStaleRevisionReconcile(reconcileGeneration)) {
         return;
       }
@@ -7700,7 +7719,7 @@ function HtmlViewer({
         activeSequence,
         diskContent: disk,
         cursorSnapshotContent: snapshotContent,
-        previewSource: sourceRef.current,
+        previewSource: previewSourceForReconcile,
         matchingRevision,
       });
 
@@ -7746,7 +7765,7 @@ function HtmlViewer({
       activeSequence,
       diskContent: disk,
       cursorSnapshotContent: snapshotContent,
-      previewSource: sourceRef.current,
+      previewSource: previewSourceForReconcile,
       matchingRevision: null,
     });
 

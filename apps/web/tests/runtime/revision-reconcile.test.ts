@@ -146,7 +146,7 @@ describe('revision-reconcile', () => {
       })).toBe('adopt_matching_disk');
     });
 
-    it('flags true external conflict when disk is unknown and preview diverged', () => {
+    it('preserves cursor when preview matches despite unknown disk bytes', () => {
       expect(classifyRevisionDiskReconcile({
         cursor: head,
         headRevision: head,
@@ -155,7 +155,7 @@ describe('revision-reconcile', () => {
         cursorSnapshotContent: '<html>head</html>',
         previewSource: '<html>head</html>',
         matchingRevision: null,
-      })).toBe('external_conflict');
+      })).toBe('preserve_history_cursor');
       expect(isExternalRevisionDiskConflict({
         cursor: head,
         headRevision: head,
@@ -163,6 +163,27 @@ describe('revision-reconcile', () => {
         diskContent: '<html>external-edit</html>',
         cursorSnapshotContent: '<html>head</html>',
         previewSource: '<html>head</html>',
+        matchingRevision: null,
+      })).toBe(false);
+    });
+
+    it('flags true external conflict when disk is unknown and preview diverged', () => {
+      expect(classifyRevisionDiskReconcile({
+        cursor: head,
+        headRevision: head,
+        activeSequence: 3,
+        diskContent: '<html>external-edit</html>',
+        cursorSnapshotContent: '<html>head</html>',
+        previewSource: '<html>also-external</html>',
+        matchingRevision: null,
+      })).toBe('external_conflict');
+      expect(isExternalRevisionDiskConflict({
+        cursor: head,
+        headRevision: head,
+        activeSequence: 3,
+        diskContent: '<html>external-edit</html>',
+        cursorSnapshotContent: '<html>head</html>',
+        previewSource: '<html>also-external</html>',
         matchingRevision: null,
       })).toBe(true);
     });

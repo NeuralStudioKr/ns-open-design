@@ -30,8 +30,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('FileViewer revision conflict', () => {
-  it('shows a toast and resets undo when disk diverges from the cursor revision', async () => {
+describe('FileViewer revision entry', () => {
+  it('does not show a conflict toast on entry when preview matches head but disk bytes are unknown', async () => {
     const initialSource = heroSource();
     const { fetchMock, getPersistedSource, setPersistedSource } = createProjectFileRevisionFetchMock({
       projectId: 'project-1',
@@ -39,73 +39,12 @@ describe('FileViewer revision conflict', () => {
       initialSource,
     });
     vi.stubGlobal('fetch', vi.fn(fetchMock));
-
-    const view = render(
-      <FileViewer
-        projectId="project-1"
-        projectKind="prototype"
-        file={htmlPreviewFile()}
-        liveHtml={initialSource}
-        filesRefreshKey={0}
-      />,
-    );
-
-    fireEvent.click(screen.getByTestId('manual-edit-mode-toggle'));
-    await selectManualEditTarget();
-
-    act(() => {
-      panelState.props?.onApplyPatch(
-        { kind: 'set-style', id: 'hero', styles: { color: '#ef4444' } },
-        'Style: Hero',
-      );
-    });
-    await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
-
-    setPersistedSource(initialSource.replace('#111111', '#0000ff'));
-    const externalDiskSource = getPersistedSource();
-
-    view.unmount();
 
     render(
       <FileViewer
         projectId="project-1"
         projectKind="prototype"
         file={htmlPreviewFile()}
-        liveHtml={externalDiskSource}
-        filesRefreshKey={1}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert').textContent).toMatch(/Undo and Redo are unavailable|실행 취소와 다시 실행을 사용할 수 없/);
-    });
-    expect(screen.getByTestId('file-viewer-undo').getAttribute('data-tooltip')).toMatch(
-      /Undo and Redo are unavailable|실행 취소와 다시 실행을 사용할 수 없/,
-    );
-    expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(true);
-
-    const persistedBeforeKeyboardUndo = getPersistedSource();
-    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    });
-    expect(getPersistedSource()).toBe(persistedBeforeKeyboardUndo);
-  });
-
-  it('keeps the conflict toast dismissed after the user closes it', async () => {
-    const initialSource = heroSource();
-    const { fetchMock, getPersistedSource, setPersistedSource } = createProjectFileRevisionFetchMock({
-      projectId: 'project-1',
-      fileName: 'preview.html',
-      initialSource,
-    });
-    vi.stubGlobal('fetch', vi.fn(fetchMock));
-
-    const view = render(
-      <FileViewer
-        projectId="project-1"
-        projectKind="prototype"
-        file={htmlPreviewFile()}
         liveHtml={initialSource}
         filesRefreshKey={0}
       />,
@@ -120,46 +59,31 @@ describe('FileViewer revision conflict', () => {
         'Style: Hero',
       );
     });
+
     await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
+    const headPreview = getPersistedSource();
+    setPersistedSource('<html><body>stale scratch bytes</body></html>');
 
-    setPersistedSource(initialSource.replace('#111111', '#0000ff'));
-    const externalDiskSource = getPersistedSource();
+    cleanup();
 
-    view.unmount();
-
-    const remounted = render(
+    render(
       <FileViewer
         projectId="project-1"
         projectKind="prototype"
         file={htmlPreviewFile()}
-        liveHtml={externalDiskSource}
-        filesRefreshKey={1}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert').textContent).toMatch(/Undo and Redo are unavailable|실행 취소와 다시 실행을 사용할 수 없/);
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: /Close/i }));
-    await waitFor(() => {
-      expect(screen.queryByRole('alert')).toBeNull();
-    });
-
-    remounted.rerender(
-      <FileViewer
-        projectId="project-1"
-        projectKind="prototype"
-        file={htmlPreviewFile()}
-        liveHtml={externalDiskSource}
-        filesRefreshKey={2}
+        liveHtml={headPreview}
+        filesRefreshKey={0}
       />,
     );
 
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 150));
     });
-    expect(screen.queryByRole('alert')).toBeNull();
+
+    const conflictAlert = screen.queryAllByRole('alert').find((node) => (
+      node.textContent?.match(/Undo and Redo are unavailable|실행 취소와 다시 실행을 사용할 수 없/)
+    ));
+    expect(conflictAlert).toBeUndefined();
   });
 });
 
