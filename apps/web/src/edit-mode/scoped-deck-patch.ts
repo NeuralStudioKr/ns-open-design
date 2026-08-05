@@ -26,7 +26,6 @@ import {
   mergeManualEditTargetsFromSource,
   readScopedCommentTargetText,
   resolveManualEditTargetReference,
-  sanitizeManualEditFullSource,
   sanitizeManualEditHtmlFragment,
 } from './source-patches';
 import { devLog } from '../lib/devLog';
@@ -448,8 +447,9 @@ export function applyScopedDeckPatchToHtml(input: {
       const repairedScoped = input.commentAttachments
         ? stabilizeVisualMarkDeckHtml(currentHtml, scoped.html, input.commentAttachments)
         : scoped.html;
-      // Unscoped slide ops can carry on*/script — sanitize the merged deck.
-      return { ok: true, html: sanitizeManualEditFullSource(repairedScoped) };
+      // Full-document sanitize is owned by ProjectView's terminal persist
+      // gate — avoid a second DOMParser pass on the same multi-KB deck.
+      return { ok: true, html: repairedScoped };
     }
     if (mergedScopeRelaxed) {
       devLog.warn('[deck-patch] scope-relaxed apply produced no narrowed match — rejecting', {
@@ -473,7 +473,8 @@ export function applyScopedDeckPatchToHtml(input: {
   const repairedHtml = input.commentAttachments
     ? stabilizeVisualMarkDeckHtml(currentHtml, merged.html, input.commentAttachments)
     : merged.html;
-  return { ok: true, html: sanitizeManualEditFullSource(repairedHtml) };
+  // Terminal ProjectView sanitize is the single full-source scrub.
+  return { ok: true, html: repairedHtml };
 }
 
 function scopeRejectionCanRetry(reason: string): boolean {

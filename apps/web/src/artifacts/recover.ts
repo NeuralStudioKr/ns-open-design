@@ -258,7 +258,11 @@ export function salvageTruncatedHtmlDocument(content: string | null | undefined)
   if (!hasSalvageableSlideContent(out)) return null;
 
   if (!HAS_BODY_CLOSE_RE.test(out)) {
-    if (!/<body\b/i.test(out)) {
+    if (HAS_HTML_CLOSE_RE.test(out)) {
+      // Premature </html> without </body> — insert body closer before html
+      // closer so we never emit `</html></body>`.
+      out = out.replace(/<\/html\s*>/i, '</body></html>');
+    } else if (!/<body\b/i.test(out)) {
       // Head-only truncation with some content outside body — wrap remainder.
       const headClose = /<\/head\s*>/i.exec(out);
       if (headClose) {

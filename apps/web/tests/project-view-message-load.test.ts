@@ -352,6 +352,19 @@ describe("ProjectView message loading", () => {
     );
   });
 
+  it("rejects scoped edits that sanitize down to a no-op instead of auto-continuing", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const persistStart = source.indexOf("const persistArtifact = useCallback");
+    expect(persistStart).toBeGreaterThan(0);
+    const persistBlock = source.slice(persistStart, persistStart + 24000);
+    expect(persistBlock).toContain("htmlBodyBeforeSanitize");
+    expect(persistBlock).toContain("scoped edit scrubbed to no-op");
+    expect(persistBlock).toContain(
+      "scoped comment edit only contained unsafe markup that was scrubbed",
+    );
+    expect(persistBlock).toContain("kind: 'rejected'");
+  });
+
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");

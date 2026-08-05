@@ -4435,6 +4435,7 @@ export function ProjectView({
           );
         }
       }
+      const htmlBodyBeforeSanitize = htmlBody;
       if (ext === '.html') {
         // Single terminal scrub after salvage/repair/stabilize — avoids
         // 2–4× DOMParser passes on the same multi-KB deck per persist.
@@ -4449,6 +4450,21 @@ export function ProjectView({
           && normalizeHtmlForRecoveredArtifactComparison(currentScopedHtml)
             === normalizeHtmlForRecoveredArtifactComparison(htmlBody)
         ) {
+          // Model "edited" only unsafe markup that sanitize removed — reject
+          // explicitly instead of skipped-incomplete (auto-continue churn).
+          if (
+            normalizeHtmlForRecoveredArtifactComparison(currentScopedHtml)
+            !== normalizeHtmlForRecoveredArtifactComparison(htmlBodyBeforeSanitize)
+          ) {
+            devLog.warn('[deck-patch] scoped edit scrubbed to no-op', {
+              fileName,
+            });
+            return {
+              kind: 'rejected',
+              fileName,
+              reason: 'scoped comment edit only contained unsafe markup that was scrubbed',
+            };
+          }
           devLog.warn('[deck-patch] scoped edit produced no disk change', {
             fileName,
           });

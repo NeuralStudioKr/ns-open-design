@@ -2681,19 +2681,43 @@ const MANUAL_EDIT_URL_ATTRS = new Set([
 
 const SAFE_MANUAL_EDIT_DATA_IMAGE_RE = /^data:image\/(png|jpe?g|gif|webp|avif|bmp)(;|,)/i;
 
-/** Named entities commonly used to smuggle URL schemes past allowlists. */
+/**
+ * Named entities commonly used to smuggle URL schemes past allowlists.
+ * Soft hyphen / Cf / Zs entities decode then collapse in compact().
+ */
 const MANUAL_EDIT_NAMED_HTML_ENTITIES: Record<string, string> = {
   colon: ':',
   tab: '\t',
   newline: '\n',
+  amp: '&',
+  quot: '"',
+  apos: "'",
+  lt: '<',
+  gt: '>',
+  // Soft hyphen / format / zero-width — strip via compact after decode.
+  shy: '\u00ad',
+  wj: '\u2060',
+  zerowidthspace: '\u200b',
   lrm: '\u200e',
   rlm: '\u200f',
   zwj: '\u200d',
   zwnj: '\u200c',
+  // HTML5 space entities (collapse to whitespace, then stripped).
   thinsp: ' ',
   nbsp: ' ',
   ensp: ' ',
   emsp: ' ',
+  emsp13: ' ',
+  emsp14: ' ',
+  numsp: ' ',
+  puncsp: ' ',
+  hairsp: ' ',
+  thickspace: ' ',
+  mediumspace: ' ',
+  nnbsp: ' ',
+  negativemediumspace: '',
+  negativethinspace: '',
+  negativeverythinspace: '',
 };
 
 /** Decode numeric/hex/named HTML character references used to smuggle schemes. */
@@ -2719,9 +2743,10 @@ function decodeHtmlCharacterReferences(value: string): string {
           return '';
         }
       })
-      .replace(/&([a-zA-Z][a-zA-Z0-9]+);?/g, (match, name: string) => {
+      .replace(/&([a-zA-Z][a-zA-Z0-9]+);?/g, (_match, name: string) => {
         const mapped = MANUAL_EDIT_NAMED_HTML_ENTITIES[name.toLowerCase()];
-        return mapped !== undefined ? mapped : match;
+        // Fail closed: unknown named entities are scheme-smuggling bait.
+        return mapped !== undefined ? mapped : '';
       });
     if (next === out) break;
     out = next;
@@ -2729,13 +2754,17 @@ function decodeHtmlCharacterReferences(value: string): string {
   return out;
 }
 
-/** Compact URL text for scheme checks — strip controls, ZWSP/Cf, and BOM. */
+/**
+ * Compact URL text for scheme checks — strip controls, soft hyphen, ZWSP/Cf,
+ * and BOM. Uses an explicit smuggling-char class (not `\p{Cf}`) so CSS/URL
+ * hot paths avoid unicode-property regex cost on multi-KB style blocks.
+ */
 function compactManualEditUrlForSchemeCheck(value: string): string {
   return String(value || '')
-    .replace(/[\s\u0000-\u001f\u007f\ufeff]+/g, '')
-    // ZWSP/ZWNJ/ZWJ/word-joiner and other format chars smuggle `java\u200bscript:`.
-    .replace(/[\u200b-\u200d\u2060\ufeff]/g, '')
-    .replace(/\p{Cf}/gu, '')
+    // Controls + common Zs whitespace (incl. NBSP).
+    .replace(/[\s\u0000-\u001f\u007f\u00a0\ufeff]+/g, '')
+    // Soft hyphen, ZWSP/ZWNJ/ZWJ, LRM/RLM, word-joiner, bidi isolates/overrides.
+    .replace(/[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/g, '')
     .toLowerCase();
 }
 

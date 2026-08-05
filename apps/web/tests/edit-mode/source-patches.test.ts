@@ -1910,6 +1910,11 @@ describe('manual edit source patches', () => {
       'javascript&colon;alert(1)',
       'java&Tab;script:alert(1)',
       'java&NewLine;script:alert(1)',
+      'java&shy;script:alert(1)',
+      'java&WJ;script:alert(1)',
+      'java&ZeroWidthSpace;script:alert(1)',
+      'java&hairsp;script:alert(1)',
+      'java&ThickSpace;script:alert(1)',
     ]) {
       const denied = applyManualEditPatch(baseSource, {
         kind: 'set-link',
@@ -1919,6 +1924,10 @@ describe('manual edit source patches', () => {
       });
       expect(denied.ok, href).toBe(false);
     }
+
+    expect(
+      sanitizeManualEditHtmlFragment('<a href="java&shy;script:alert(1)">x</a>'),
+    ).not.toMatch(/javascript|shy;script/i);
 
     const formSource = [
       '<!doctype html><html><body>',
