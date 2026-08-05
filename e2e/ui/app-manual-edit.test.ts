@@ -80,7 +80,7 @@ test('[P0] manual edit inspector previews and persists page and selected element
   });
   await expect(page.locator('.manual-edit-modal')).toContainText('PAGE');
   await expect(page.locator('.manual-edit-tabs')).toHaveCount(0);
-  await expect(page.locator('.manual-edit-layer-row')).toHaveCount(0);
+  await expect(page.getByTestId('manual-edit-layers-panel')).toBeVisible();
 
   await inspectorRow(page, 'Background').locator('input').fill('#eef2ff');
   await inspectorRow(page, 'Font').locator('select').selectOption('Georgia, serif');
@@ -1214,6 +1214,76 @@ test('[P1] manual edit multi-select group move applies same delta and undo rolls
       return moveLeft === 24 && moveTop === 24 && nestedLeft === 40 && nestedTop === 20;
     })
     .toBe(true);
+});
+
+test('[P1] manual edit multi-select group resize scales both boxes and undo rolls back in one step', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit group resize');
+  const fileName = 'manual-edit-group-resize.html';
+  await seedHtmlArtifact(page, projectId, fileName, manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await frame.locator('[data-od-id="move-box"]').click();
+  await frame.locator('[data-od-id="nested-abs-box"]').click({ modifiers: ['Shift'] });
+
+  const handle = page.getByTestId('manual-edit-multi-resize-handle-se');
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 48, box!.y + box!.height / 2 + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const moveStyle = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      const nestedStyle = source.match(/data-od-id="nested-abs-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!moveStyle || !nestedStyle) return false;
+      const moveWidth = Number(moveStyle.match(/width:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const nestedWidth = Number(nestedStyle.match(/width:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return moveWidth >= 160 && nestedWidth >= 115;
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const moveStyle = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      const nestedStyle = source.match(/data-od-id="nested-abs-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!moveStyle || !nestedStyle) return false;
+      const moveWidth = Number(moveStyle.match(/width:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const nestedWidth = Number(nestedStyle.match(/width:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return moveWidth === 140 && nestedWidth === 100;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit layer list supports ctrl additive multi-select', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit layer mult');
+  const fileName = 'manual-edit-layer-mult.html';
+  await seedHtmlArtifact(page, projectId, fileName, manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await expect(page.getByTestId('manual-edit-layers-panel')).toBeVisible();
+  await page.getByTestId('manual-edit-layer-row-hero-title').click();
+  await page.getByTestId('manual-edit-layer-row-cta').click({ modifiers: ['ControlOrMeta'] });
+  await expect(page.locator('.manual-edit-modal')).toContainText('2 selected');
 });
 
 test('[P1] manual edit body-drag undo restores left/top in one step', async ({ page }) => {

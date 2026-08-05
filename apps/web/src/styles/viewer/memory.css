@@ -646,6 +646,29 @@
   min-height: 0;
   background: var(--bg);
 }
+.manual-edit-workspace > .manual-edit-layers {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  bottom: 8px;
+  width: 240px;
+  max-width: calc(100% - 16px);
+  z-index: 40;
+}
+
+.manual-edit-layer-empty {
+  margin: 0;
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.manual-edit-group-align-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .manual-edit-workspace > .manual-edit-right {
   position: absolute;
   top: 8px;

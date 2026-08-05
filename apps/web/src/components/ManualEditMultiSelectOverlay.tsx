@@ -14,12 +14,27 @@ import {
   type GroupMoveMemberStart,
   type GroupMovePreviewUpdate,
 } from '../edit-mode/manual-edit-group-move';
+import {
+  buildGroupResizeMemberStarts,
+  computeGroupResizePreviewUpdates,
+  groupResizeDeltaMoved,
+  groupResizeStylesBefore,
+  unionRectFromMemberStarts,
+  type GroupResizeMemberStart,
+  type GroupResizePreviewUpdate,
+} from '../edit-mode/manual-edit-group-resize';
 import { hostDeltaToContentDelta } from '../edit-mode/preview-coords';
 import { resolveManualEditChromeHostRect } from '../edit-mode/move-math';
+import {
+  RESIZE_HANDLES,
+  cursorForResizeHandle,
+  resizeHandleFromHostPoint,
+  type ResizeHandle,
+} from '../edit-mode/resize-math';
 import type { ManualEditRect, ManualEditStyles, ManualEditTarget } from '../edit-mode/types';
 import styles from './ManualEditResizeOverlay.module.css';
 
-export type { GroupMovePreviewUpdate };
+export type { GroupMovePreviewUpdate, GroupResizePreviewUpdate };
 
 export type ManualEditMultiSelectOverlayProps = {
   targets: ManualEditTarget[];
@@ -27,8 +42,9 @@ export type ManualEditMultiSelectOverlayProps = {
   hostOffset: { x: number; y: number };
   measureHostRect: (id: string) => ManualEditRect | null;
   movable?: boolean;
+  resizable?: boolean;
   disabled?: boolean;
-  draftViewports?: Record<string, { x: number; y: number }> | null;
+  draftMemberRects?: Record<string, ManualEditRect> | null;
   onGroupMovePreview?: (updates: GroupMovePreviewUpdate[]) => void;
   onGroupMoveCommit?: (
     updates: GroupMovePreviewUpdate[],
@@ -38,10 +54,24 @@ export type ManualEditMultiSelectOverlayProps = {
     stylesBefore: Record<string, Partial<ManualEditStyles>>,
     memberStarts: GroupMoveMemberStart[],
   ) => void;
+  onGroupResizePreview?: (updates: GroupResizePreviewUpdate[]) => void;
+  onGroupResizeCommit?: (
+    updates: GroupResizePreviewUpdate[],
+    stylesBefore: Record<string, Partial<ManualEditStyles>>,
+    handle: ResizeHandle,
+    dx: number,
+    dy: number,
+    shiftKey: boolean,
+  ) => void | Promise<void>;
+  onGroupResizeCancel?: (
+    stylesBefore: Record<string, Partial<ManualEditStyles>>,
+    memberStarts: GroupResizeMemberStart[],
+  ) => void;
   onGestureSessionChange?: (active: boolean) => void;
 };
 
-type GroupDragState = {
+type MoveDragState = {
+  kind: 'move';
   pointerId: number;
   startClientX: number;
   startClientY: number;
@@ -54,16 +84,33 @@ type GroupDragState = {
   sealed: boolean;
 };
 
+type ResizeDragState = {
+  kind: 'resize';
+  pointerId: number;
+  handle: ResizeHandle;
+  startClientX: number;
+  startClientY: number;
+  unionStart: ManualEditRect;
+  members: GroupResizeMemberStart[];
+  stylesBefore: Record<string, Partial<ManualEditStyles>>;
+  hostScale: number;
+  moved: boolean;
+  previewed: boolean;
+  lastDx: number;
+  lastDy: number;
+  lastShiftKey: boolean;
+  lastUpdates: GroupResizePreviewUpdate[];
+  sealed: boolean;
+};
+
+type MultiSelectDragState = MoveDragState | ResizeDragState;
+
 function memberContentRect(
   target: ManualEditTarget,
-  draftViewport?: { x: number; y: number } | null,
+  draftRect?: ManualEditRect | null,
 ): ManualEditRect {
-  if (!draftViewport) return target.rect;
-  return {
-    ...target.rect,
-    x: draftViewport.x,
-    y: draftViewport.y,
-  };
+  if (!draftRect) return target.rect;
+  return draftRect;
 }
 
 function unionHostRect(
@@ -71,11 +118,11 @@ function unionHostRect(
   previewScale: number,
   hostOffset: { x: number; y: number },
   measureHostRect: (id: string) => ManualEditRect | null,
-  draftViewports?: Record<string, { x: number; y: number }> | null,
+  draftMemberRects?: Record<string, ManualEditRect> | null,
 ): ManualEditRect | null {
   let union: ManualEditRect | null = null;
   for (const target of targets) {
-    const contentRect = memberContentRect(target, draftViewports?.[target.id] ?? null);
+    const contentRect = memberContentRect(target, draftMemberRects?.[target.id] ?? null);
     const paint = measureHostRect(target.id);
     const hostRect = resolveManualEditChromeHostRect(
       contentRect,
@@ -99,27 +146,54 @@ function unionHostRect(
   return union;
 }
 
+function handlePositionStyle(handle: ResizeHandle): CSSProperties {
+  const mid = '50%';
+  switch (handle) {
+    case 'n': return { left: mid, top: 0 };
+    case 's': return { left: mid, top: '100%' };
+    case 'e': return { left: '100%', top: mid };
+    case 'w': return { left: 0, top: mid };
+    case 'ne': return { left: '100%', top: 0 };
+    case 'nw': return { left: 0, top: 0 };
+    case 'se': return { left: '100%', top: '100%' };
+    case 'sw': return { left: 0, top: '100%' };
+    default: return {};
+  }
+}
+
 export function ManualEditMultiSelectOverlay({
   targets,
   previewScale,
   hostOffset,
   measureHostRect,
   movable = false,
+  resizable = false,
   disabled = false,
-  draftViewports = null,
+  draftMemberRects = null,
   onGroupMovePreview,
   onGroupMoveCommit,
   onGroupMoveCancel,
+  onGroupResizePreview,
+  onGroupResizeCommit,
+  onGroupResizeCancel,
   onGestureSessionChange,
 }: ManualEditMultiSelectOverlayProps) {
-  const dragRef = useRef<GroupDragState | null>(null);
+  const dragRef = useRef<MultiSelectDragState | null>(null);
+  const [gesturing, setGesturing] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [resizing, setResizing] = useState(false);
   const onGroupMovePreviewRef = useRef(onGroupMovePreview);
   onGroupMovePreviewRef.current = onGroupMovePreview;
   const onGroupMoveCommitRef = useRef(onGroupMoveCommit);
   onGroupMoveCommitRef.current = onGroupMoveCommit;
   const onGroupMoveCancelRef = useRef(onGroupMoveCancel);
   onGroupMoveCancelRef.current = onGroupMoveCancel;
+  const onGroupResizePreviewRef = useRef(onGroupResizePreview);
+  onGroupResizePreviewRef.current = onGroupResizePreview;
+  const onGroupResizeCommitRef = useRef(onGroupResizeCommit);
+  onGroupResizeCommitRef.current = onGroupResizeCommit;
+  const onGroupResizeCancelRef = useRef(onGroupResizeCancel);
+  onGroupResizeCancelRef.current = onGroupResizeCancel;
   const onGestureSessionChangeRef = useRef(onGestureSessionChange);
   onGestureSessionChangeRef.current = onGestureSessionChange;
 
@@ -130,14 +204,19 @@ export function ManualEditMultiSelectOverlay({
       if (!drag) return;
       event.preventDefault();
       event.stopPropagation();
-      const before = drag.stylesBefore;
-      const members = drag.members;
       const previewed = drag.previewed;
+      const stylesBefore = drag.stylesBefore;
       dragRef.current = null;
+      setGesturing(false);
       setMoving(false);
+      setResizing(false);
       onGestureSessionChangeRef.current?.(false);
       if (!previewed) return;
-      onGroupMoveCancelRef.current?.(before, members);
+      if (drag.kind === 'move') {
+        onGroupMoveCancelRef.current?.(stylesBefore, drag.members);
+      } else {
+        onGroupResizeCancelRef.current?.(stylesBefore, drag.members);
+      }
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
@@ -147,22 +226,39 @@ export function ManualEditMultiSelectOverlay({
     const endDrag = (event: PointerEvent, commit: boolean) => {
       const drag = dragRef.current;
       if (!drag || drag.sealed || event.pointerId !== drag.pointerId) return;
-      const before = drag.stylesBefore;
       const previewed = drag.previewed;
       const moved = drag.moved;
-      const updates = drag.lastUpdates;
       drag.sealed = true;
       const finish = () => {
         if (dragRef.current === drag) dragRef.current = null;
         onGestureSessionChangeRef.current?.(false);
+        setGesturing(false);
         setMoving(false);
+        setResizing(false);
       };
       void (async () => {
         try {
-          if (commit && moved && updates.length > 0) {
-            await Promise.resolve(onGroupMoveCommitRef.current?.(updates, before));
+          if (drag.kind === 'move') {
+            if (commit && moved && drag.lastUpdates.length > 0) {
+              await Promise.resolve(
+                onGroupMoveCommitRef.current?.(drag.lastUpdates, drag.stylesBefore),
+              );
+            } else if (previewed) {
+              onGroupMoveCancelRef.current?.(drag.stylesBefore, drag.members);
+            }
+          } else if (commit && moved && drag.lastUpdates.length > 0) {
+            await Promise.resolve(
+              onGroupResizeCommitRef.current?.(
+                drag.lastUpdates,
+                drag.stylesBefore,
+                drag.handle,
+                drag.lastDx,
+                drag.lastDy,
+                drag.lastShiftKey,
+              ),
+            );
           } else if (previewed) {
-            onGroupMoveCancelRef.current?.(before, drag.members);
+            onGroupResizeCancelRef.current?.(drag.stylesBefore, drag.members);
           }
         } finally {
           requestAnimationFrame(() => {
@@ -180,12 +276,37 @@ export function ManualEditMultiSelectOverlay({
       const hostDx = event.clientX - drag.startClientX;
       const hostDy = event.clientY - drag.startClientY;
       const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, drag.hostScale);
-      drag.moved = groupMoveDeltaMoved(drag.members, dx, dy, event.shiftKey);
+      if (drag.kind === 'move') {
+        drag.moved = groupMoveDeltaMoved(drag.members, dx, dy, event.shiftKey);
+        if (!drag.moved) return;
+        const updates = computeGroupMovePreviewUpdates(drag.members, dx, dy, event.shiftKey);
+        drag.lastUpdates = updates;
+        drag.previewed = true;
+        onGroupMovePreviewRef.current?.(updates);
+        return;
+      }
+      drag.moved = groupResizeDeltaMoved(
+        drag.unionStart,
+        drag.handle,
+        dx,
+        dy,
+        event.shiftKey,
+      );
       if (!drag.moved) return;
-      const updates = computeGroupMovePreviewUpdates(drag.members, dx, dy, event.shiftKey);
+      const updates = computeGroupResizePreviewUpdates(
+        drag.unionStart,
+        drag.members,
+        drag.handle,
+        dx,
+        dy,
+        event.shiftKey,
+      );
       drag.lastUpdates = updates;
+      drag.lastDx = dx;
+      drag.lastDy = dy;
+      drag.lastShiftKey = event.shiftKey;
       drag.previewed = true;
-      onGroupMovePreviewRef.current?.(updates);
+      onGroupResizePreviewRef.current?.(updates);
     };
 
     const onPointerUp = (event: PointerEvent) => endDrag(event, true);
@@ -211,11 +332,11 @@ export function ManualEditMultiSelectOverlay({
     previewScale,
     hostOffset,
     measureHostRect,
-    draftViewports,
+    draftMemberRects,
   );
   if (!hostRect || hostRect.width < 1 || hostRect.height < 1) return null;
 
-  const interactive = movable && !disabled;
+  const interactive = (movable || resizable) && !disabled;
 
   const overlayStyle: CSSProperties = {
     left: hostRect.x,
@@ -225,13 +346,14 @@ export function ManualEditMultiSelectOverlay({
   };
 
   const beginMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!interactive || dragRef.current) return;
+    if (!movable || dragRef.current) return;
     event.preventDefault();
     event.stopPropagation();
     const members = buildGroupMoveMemberStarts(targets);
     const stylesBefore = groupMoveStylesBefore(targets);
     const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
     dragRef.current = {
+      kind: 'move',
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
@@ -243,6 +365,7 @@ export function ManualEditMultiSelectOverlay({
       lastUpdates: [],
       sealed: false,
     };
+    setGesturing(true);
     setMoving(true);
     onGestureSessionChangeRef.current?.(true);
     try {
@@ -252,12 +375,81 @@ export function ManualEditMultiSelectOverlay({
     }
   };
 
+  const beginResize = (handle: ResizeHandle, event: ReactPointerEvent<Element>) => {
+    if (!resizable || dragRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const members = buildGroupResizeMemberStarts(targets);
+    const unionStart = unionRectFromMemberStarts(members);
+    if (!unionStart) return;
+    const stylesBefore = groupResizeStylesBefore(targets);
+    const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
+    dragRef.current = {
+      kind: 'resize',
+      pointerId: event.pointerId,
+      handle,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      unionStart,
+      members,
+      stylesBefore,
+      hostScale: scale,
+      moved: false,
+      previewed: false,
+      lastDx: 0,
+      lastDy: 0,
+      lastShiftKey: false,
+      lastUpdates: [],
+      sealed: false,
+    };
+    setGesturing(true);
+    setResizing(true);
+    onGestureSessionChangeRef.current?.(true);
+    try {
+      (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
+    } catch {
+      // jsdom / older engines may lack pointer capture
+    }
+  };
+
+  const onOverlayPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!interactive || dragRef.current) return;
+    if ((event.target as HTMLElement | null)?.closest?.('[data-handle]')) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const edge = resizeHandleFromHostPoint(
+      event.clientX - box.left,
+      event.clientY - box.top,
+      box.width,
+      box.height,
+    );
+    if (edge && resizable) {
+      beginResize(edge, event);
+      return;
+    }
+    if (movable) beginMove(event);
+  };
+
+  const onOverlayPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!interactive || dragRef.current || gesturing) return;
+    if ((event.target as HTMLElement | null)?.closest?.('[data-handle]')) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const edge = resizeHandleFromHostPoint(
+      event.clientX - box.left,
+      event.clientY - box.top,
+      box.width,
+      box.height,
+    );
+    event.currentTarget.style.cursor = edge
+      ? cursorForResizeHandle(edge)
+      : (movable ? 'grab' : 'default');
+  };
+
   return (
     <div
       className={[
         styles.overlay,
         interactive ? styles.interactive : '',
-        interactive ? styles.movable : '',
+        movable ? styles.movable : '',
         moving ? styles.moving : '',
       ]
         .filter(Boolean)
@@ -265,14 +457,35 @@ export function ManualEditMultiSelectOverlay({
       data-testid="manual-edit-multi-select-overlay"
       data-multi-count={targets.length}
       data-moving={moving ? 'true' : 'false'}
-      data-movable={interactive ? 'true' : 'false'}
+      data-resizing={resizing ? 'true' : 'false'}
+      data-movable={movable ? 'true' : 'false'}
+      data-resizable={resizable ? 'true' : 'false'}
       style={{
         ...overlayStyle,
         borderStyle: 'dashed',
         pointerEvents: interactive ? undefined : 'none',
         background: 'transparent',
       }}
-      onPointerDown={interactive ? beginMove : undefined}
-    />
+      onPointerDown={interactive ? onOverlayPointerDown : undefined}
+      onPointerMove={interactive ? onOverlayPointerMove : undefined}
+    >
+      {resizable ? RESIZE_HANDLES.map((handle) => (
+        <button
+          key={handle}
+          type="button"
+          className={styles.handle}
+          data-testid={`manual-edit-multi-resize-handle-${handle}`}
+          data-handle={handle}
+          aria-label={`Resize ${handle}`}
+          aria-disabled={disabled || undefined}
+          tabIndex={disabled ? -1 : 0}
+          style={{
+            ...handlePositionStyle(handle),
+            cursor: disabled ? 'default' : cursorForResizeHandle(handle),
+          }}
+          onPointerDownCapture={(event) => beginResize(handle, event)}
+        />
+      )) : null}
+    </div>
   );
 }

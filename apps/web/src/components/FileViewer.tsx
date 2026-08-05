@@ -254,6 +254,7 @@ import type {
   PreviewCommentTarget,
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
+import { ManualEditLayersPanel } from './ManualEditLayersPanel';
 import { ManualEditMultiSelectOverlay } from './ManualEditMultiSelectOverlay';
 import { ManualEditResizeOverlay } from './ManualEditResizeOverlay';
 import { FileViewerUndoRedoToolbar } from './FileViewerUndoRedoToolbar';
@@ -346,9 +347,24 @@ import {
   type GroupMovePreviewUpdate,
 } from '../edit-mode/manual-edit-group-move';
 import {
-  manualEditInspectorStyleValue,
-  manualEditStyleValuesEqual,
-} from '../edit-mode/manual-edit-style-values';
+  buildGroupResizeMemberStarts,
+  buildGroupResizeStylePatches,
+  canGroupBoundingResize,
+  groupResizeHistoryLabel,
+  type GroupResizeMemberStart,
+  type GroupResizePreviewUpdate,
+} from '../edit-mode/manual-edit-group-resize';
+import type { ResizeHandle } from '../edit-mode/resize-math';
+import {
+  buildGroupGeometryPatches,
+  canGroupAlign,
+  canGroupDistribute,
+  computeGroupAlignPreviewUpdates,
+  computeGroupDistributePreviewUpdates,
+  groupAlignHistoryLabel,
+  type GroupAlignKind,
+  type GroupDistributeKind,
+} from '../edit-mode/manual-edit-group-align';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditRect, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import {
@@ -5254,8 +5270,8 @@ function HtmlViewer({
     x: number;
     y: number;
   } | null>(null);
-  const [manualEditGroupMoveDraftRects, setManualEditGroupMoveDraftRects] = useState<
-    Record<string, { x: number; y: number }> | null
+  const [manualEditGroupDraftRects, setManualEditGroupDraftRects] = useState<
+    Record<string, ManualEditRect> | null
   >(null);
   /** Iframe offset inside `.manual-edit-workspace` — canvas may be centered. */
   const [manualEditHostOffset, setManualEditHostOffset] = useState({ x: 0, y: 0 });
@@ -7524,7 +7540,7 @@ function HtmlViewer({
     manualEditResizePausedRef.current = false;
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
-    setManualEditGroupMoveDraftRects(null);
+    setManualEditGroupDraftRects(null);
     return () => {
       // Drop in-flight reconcile/refresh work so unmount cannot overwrite
       // persisted revision cursor state in sessionStorage after a tab switch.
@@ -8356,7 +8372,7 @@ function HtmlViewer({
       manualEditResizePausedRef.current = false;
       setManualEditResizeDraftSize(null);
       setManualEditMoveDraftPos(null);
-    setManualEditGroupMoveDraftRects(null);
+    setManualEditGroupDraftRects(null);
       if (manualEditStyleTimerRef.current) {
         clearTimeout(manualEditStyleTimerRef.current);
         manualEditStyleTimerRef.current = null;
@@ -8882,7 +8898,7 @@ function HtmlViewer({
     manualEditResizeSessionActiveRef.current = false;
     manualEditResizePausedRef.current = false;
     setManualEditMoveDraftPos(null);
-    setManualEditGroupMoveDraftRects(null);
+    setManualEditGroupDraftRects(null);
     setManualEditResizeDraftSize(null);
     if (!target) return;
     const cancelKeys = manualEditGestureRollbackKeys(stylesBefore, PROMOTE_MOVE_STYLE_KEYS);
@@ -8941,7 +8957,7 @@ function HtmlViewer({
     const visualRect = applyManualEditGestureOptimisticTarget(target, styles, resizeViewport);
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
-    setManualEditGroupMoveDraftRects(null);
+    setManualEditGroupDraftRects(null);
     seedManualEditHostPaintFromVisual(visualRect, previousVisual);
     // Keep geometry session locked through persist + paint settle so RAF sync /
     // od-edit-targets / od-edit-rect cannot clobber the handoff frame.
@@ -8992,7 +9008,7 @@ function HtmlViewer({
         promotedPosition ? { promotedPosition } : undefined,
       );
       setManualEditMoveDraftPos(null);
-    setManualEditGroupMoveDraftRects(null);
+    setManualEditGroupDraftRects(null);
       setManualEditResizeDraftSize(null);
       seedManualEditHostPaintFromVisual(visualRect, previousVisual);
       const ok = await flushManualEditStyleSave({ force: true });
@@ -9014,7 +9030,9 @@ function HtmlViewer({
     rollbackManualEditGestureStyles(stylesBefore);
   }
 
-  function applyManualEditGroupMoveOptimisticRects(updates: GroupMovePreviewUpdate[]) {
+  function applyManualEditGroupOptimisticRects(
+    updates: Array<{ id: string; styles: Partial<ManualEditStyles>; rect: ManualEditRect }>,
+  ) {
     const updateMap = new Map(updates.map((update) => [update.id, update]));
     setManualEditTargets((current) =>
       current.map((item) => {
@@ -9022,9 +9040,13 @@ function HtmlViewer({
         if (!update) return item;
         const leftPx = parseExplicitPx(update.styles.left);
         const topPx = parseExplicitPx(update.styles.top);
+        const widthPx = parseExplicitPx(update.styles.width);
+        const heightPx = parseExplicitPx(update.styles.height);
         return {
           ...item,
-          rect: { ...item.rect, x: update.viewport.x, y: update.viewport.y },
+          rect: { ...update.rect },
+          layoutWidth: widthPx ?? item.layoutWidth,
+          layoutHeight: heightPx ?? item.layoutHeight,
           offsetLeft: leftPx ?? item.offsetLeft,
           offsetTop: topPx ?? item.offsetTop,
           styles: { ...item.styles, ...update.styles },
@@ -9038,9 +9060,13 @@ function HtmlViewer({
       if (!current || current.id !== primaryId) return current;
       const leftPx = parseExplicitPx(primaryUpdate.styles.left);
       const topPx = parseExplicitPx(primaryUpdate.styles.top);
+      const widthPx = parseExplicitPx(primaryUpdate.styles.width);
+      const heightPx = parseExplicitPx(primaryUpdate.styles.height);
       const next: ManualEditTarget = {
         ...current,
-        rect: { ...current.rect, x: primaryUpdate.viewport.x, y: primaryUpdate.viewport.y },
+        rect: { ...primaryUpdate.rect },
+        layoutWidth: widthPx ?? current.layoutWidth,
+        layoutHeight: heightPx ?? current.layoutHeight,
         offsetLeft: leftPx ?? current.offsetLeft,
         offsetTop: topPx ?? current.offsetTop,
         styles: { ...current.styles, ...primaryUpdate.styles },
@@ -9050,7 +9076,10 @@ function HtmlViewer({
     });
   }
 
-  function handleManualEditGroupMovePreview(updates: GroupMovePreviewUpdate[]) {
+  function handleManualEditGroupGeometryPreview(
+    updates: Array<{ id: string; styles: Partial<ManualEditStyles>; rect: ManualEditRect }>,
+    label: string,
+  ) {
     if (updates.length === 0) return;
     const version = nextManualEditPreviewVersion();
     const ids = updates.map((update) => update.id);
@@ -9065,14 +9094,18 @@ function HtmlViewer({
       targetIds: ids,
       perTargetStyles,
       styles: {},
-      label: groupMoveHistoryLabel(ids.length),
+      label,
       version,
     };
     setManualEditError(null);
-    setManualEditGroupMoveDraftRects(
-      Object.fromEntries(updates.map((update) => [update.id, update.viewport])),
+    setManualEditGroupDraftRects(
+      Object.fromEntries(updates.map((update) => [update.id, update.rect])),
     );
-    applyManualEditGroupMoveOptimisticRects(updates);
+    applyManualEditGroupOptimisticRects(updates);
+  }
+
+  function handleManualEditGroupMovePreview(updates: GroupMovePreviewUpdate[]) {
+    handleManualEditGroupGeometryPreview(updates, groupMoveHistoryLabel(updates.length));
   }
 
   function rollbackManualEditGroupGestureStyles(
@@ -9082,7 +9115,7 @@ function HtmlViewer({
     clearManualEditStyleTimer();
     manualEditResizeSessionActiveRef.current = false;
     manualEditResizePausedRef.current = false;
-    setManualEditGroupMoveDraftRects(null);
+    setManualEditGroupDraftRects(null);
     const version = nextManualEditPreviewVersion();
     for (const member of memberStarts) {
       const before = stylesBefore[member.id] ?? {};
@@ -9142,8 +9175,8 @@ function HtmlViewer({
     const dy = (parseExplicitPx(anchorUpdate.styles.top) ?? anchor.startTopPx) - anchor.startTopPx;
     manualEditResizeSessionActiveRef.current = true;
     manualEditResizePausedRef.current = true;
-    setManualEditGroupMoveDraftRects(null);
-    applyManualEditGroupMoveOptimisticRects(updates);
+    setManualEditGroupDraftRects(null);
+    applyManualEditGroupOptimisticRects(updates);
     const baseSource = manualEditPatchBaseSource({
       manualEditMode,
       frozenSource: manualEditFrozenSource,
@@ -9181,6 +9214,138 @@ function HtmlViewer({
     rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
   }
 
+  function handleManualEditGroupResizePreview(updates: GroupResizePreviewUpdate[]) {
+    handleManualEditGroupGeometryPreview(updates, groupResizeHistoryLabel(updates.length));
+  }
+
+  async function handleManualEditGroupResizeCommit(
+    updates: GroupResizePreviewUpdate[],
+    stylesBefore: Record<string, Partial<ManualEditStyles>>,
+    handle: ResizeHandle,
+    dx: number,
+    dy: number,
+    shiftKey: boolean,
+  ) {
+    const targets = resolveManualEditTargetsByIds(
+      selectedManualEditTargetIdsRef.current,
+      manualEditTargets,
+    );
+    if (targets.length < 2 || updates.length === 0) return;
+    handleManualEditGroupResizePreview(updates);
+    const memberStarts = buildGroupResizeMemberStarts(targets);
+    manualEditResizeSessionActiveRef.current = true;
+    manualEditResizePausedRef.current = true;
+    setManualEditGroupDraftRects(null);
+    applyManualEditGroupOptimisticRects(updates);
+    const baseSource = manualEditPatchBaseSource({
+      manualEditMode,
+      frozenSource: manualEditFrozenSource,
+      liveSource: sourceRef.current,
+    });
+    if (baseSource == null) {
+      rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
+      return;
+    }
+    const patches = buildGroupResizeStylePatches(
+      baseSource,
+      memberStarts,
+      handle,
+      dx,
+      dy,
+      shiftKey,
+    );
+    try {
+      const ok = await applyManualEditBatch(patches, groupResizeHistoryLabel(targets.length));
+      if (!ok) {
+        rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
+        return;
+      }
+      manualEditPendingStyleRef.current = null;
+      clearManualEditStyleTimer();
+      for (const target of targets) {
+        requestManualEditTargetRemeasure(target.id);
+      }
+      const primaryId = selectedManualEditTargetIdRef.current;
+      if (primaryId) {
+        await settleManualEditGeometryHandoff(primaryId);
+      }
+    } catch {
+      rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
+    }
+  }
+
+  function handleManualEditGroupResizeCancel(
+    stylesBefore: Record<string, Partial<ManualEditStyles>>,
+    memberStarts: GroupResizeMemberStart[],
+  ) {
+    rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
+  }
+
+  async function applyManualEditGroupGeometryAction(
+    updates: GroupMovePreviewUpdate[],
+    label: string,
+  ): Promise<boolean> {
+    const targets = resolveManualEditTargetsByIds(
+      selectedManualEditTargetIdsRef.current,
+      manualEditTargets,
+    );
+    if (targets.length < 2 || updates.length === 0) return false;
+    handleManualEditGroupGeometryPreview(updates, label);
+    const baseSource = manualEditPatchBaseSource({
+      manualEditMode,
+      frozenSource: manualEditFrozenSource,
+      liveSource: sourceRef.current,
+    });
+    if (baseSource == null) return false;
+    const patches = buildGroupGeometryPatches(baseSource, updates);
+    if (patches.length === 0) return true;
+    const ok = await applyManualEditBatch(patches, label);
+    if (!ok) return false;
+    manualEditPendingStyleRef.current = null;
+    clearManualEditStyleTimer();
+    setManualEditGroupDraftRects(null);
+    for (const target of targets) {
+      requestManualEditTargetRemeasure(target.id);
+    }
+    const primaryId = selectedManualEditTargetIdRef.current;
+    if (primaryId) {
+      await settleManualEditGeometryHandoff(primaryId);
+    }
+    return true;
+  }
+
+  async function handleManualEditGroupAlign(kind: GroupAlignKind) {
+    const targets = resolveManualEditTargetsByIds(
+      selectedManualEditTargetIdsRef.current,
+      manualEditTargets,
+    );
+    if (!canGroupAlign(targets, {
+      editMode: manualEditMode,
+      inlineTextEditing: manualEditInlineTextEditing,
+    })) return;
+    const updates = computeGroupAlignPreviewUpdates(targets, kind);
+    await applyManualEditGroupGeometryAction(
+      updates,
+      groupAlignHistoryLabel(targets.length, kind),
+    );
+  }
+
+  async function handleManualEditGroupDistribute(kind: GroupDistributeKind) {
+    const targets = resolveManualEditTargetsByIds(
+      selectedManualEditTargetIdsRef.current,
+      manualEditTargets,
+    );
+    if (!canGroupDistribute(targets, {
+      editMode: manualEditMode,
+      inlineTextEditing: manualEditInlineTextEditing,
+    })) return;
+    const updates = computeGroupDistributePreviewUpdates(targets, kind);
+    await applyManualEditGroupGeometryAction(
+      updates,
+      groupAlignHistoryLabel(targets.length, kind),
+    );
+  }
+
   function reconcileManualEditDraftAfterNoOpFlush(pending: ManualEditPendingStyleSave) {
     const base = sourceRef.current ?? '';
     if (!base) return;
@@ -9205,7 +9370,7 @@ function HtmlViewer({
 
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
-    setManualEditGroupMoveDraftRects(null);
+    setManualEditGroupDraftRects(null);
 
     const selectedIds = selectedManualEditTargetIdsRef.current;
     if (selectedIds.length > 1) {
@@ -9451,7 +9616,7 @@ function HtmlViewer({
     }
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
-    setManualEditGroupMoveDraftRects(null);
+    setManualEditGroupDraftRects(null);
     manualEditResizeSessionActiveRef.current = false;
     manualEditResizePausedRef.current = false;
 
@@ -9526,7 +9691,7 @@ function HtmlViewer({
     manualEditPanelPaintPinnedIdRef.current = null;
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
-    setManualEditGroupMoveDraftRects(null);
+    setManualEditGroupDraftRects(null);
     setManualEditHostPaintRect(null);
     manualEditResizeSessionActiveRef.current = false;
     manualEditResizePausedRef.current = false;
@@ -11768,6 +11933,18 @@ function HtmlViewer({
     editMode: manualEditMode,
     inlineTextEditing: manualEditInlineTextEditing,
   });
+  const manualEditGroupResizeEnabled = canGroupBoundingResize(selectedManualEditTargetsForPanel, {
+    editMode: manualEditMode,
+    inlineTextEditing: manualEditInlineTextEditing,
+  });
+  const manualEditGroupAlignEnabled = canGroupAlign(selectedManualEditTargetsForPanel, {
+    editMode: manualEditMode,
+    inlineTextEditing: manualEditInlineTextEditing,
+  });
+  const manualEditGroupDistributeEnabled = canGroupDistribute(selectedManualEditTargetsForPanel, {
+    editMode: manualEditMode,
+    inlineTextEditing: manualEditInlineTextEditing,
+  });
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionUndoUnavailableTooltip = revisionStackInvalidated
@@ -11792,6 +11969,14 @@ function HtmlViewer({
       onDraftChange={setManualEditDraft}
       onStyleChange={(ids, styles, label) => {
         void handleManualEditStyleChange(ids, styles, label);
+      }}
+      groupAlignEnabled={manualEditGroupAlignEnabled}
+      groupDistributeEnabled={manualEditGroupDistributeEnabled}
+      onGroupAlign={(kind) => {
+        void handleManualEditGroupAlign(kind);
+      }}
+      onGroupDistribute={(kind) => {
+        void handleManualEditGroupDistribute(kind);
       }}
       onInvalidStyle={cancelManualEditPendingStyles}
       onApplyPatch={(patch, label) => {
@@ -11969,13 +12154,26 @@ function HtmlViewer({
           return measureManualEditTargetHostRect(frame, workspace, id);
         }}
         movable={manualEditGroupMoveEnabled}
+        resizable={manualEditGroupResizeEnabled}
         disabled={manualEditInlineTextEditing}
-        draftViewports={manualEditGroupMoveDraftRects}
+        draftMemberRects={manualEditGroupDraftRects}
         onGroupMovePreview={handleManualEditGroupMovePreview}
         onGroupMoveCommit={(updates, stylesBefore) => {
           void handleManualEditGroupMoveCommit(updates, stylesBefore);
         }}
         onGroupMoveCancel={handleManualEditGroupMoveCancel}
+        onGroupResizePreview={handleManualEditGroupResizePreview}
+        onGroupResizeCommit={(updates, stylesBefore, handle, dx, dy, shiftKey) => {
+          void handleManualEditGroupResizeCommit(
+            updates,
+            stylesBefore,
+            handle,
+            dx,
+            dy,
+            shiftKey,
+          );
+        }}
+        onGroupResizeCancel={handleManualEditGroupResizeCancel}
         onGestureSessionChange={handleManualEditResizeSessionChange}
       />
     ) : null;
@@ -12704,6 +12902,15 @@ function HtmlViewer({
             style={previewViewportStyle(previewViewport, previewScale, boardPreviewCanvasSize, boardPreviewScaleOptions)}
             onMouseLeave={manualEditMode ? clearManualEditHover : undefined}
           >
+            {manualEditMode ? (
+              <ManualEditLayersPanel
+                targets={manualEditTargets}
+                selectedIds={selectedManualEditTargetIds}
+                onSelectTarget={(target, options) => {
+                  void selectManualEditTarget(target, options);
+                }}
+              />
+            ) : null}
             {manualEditPanel}
             {manualEditHoverAffordance}
             {manualEditResizeOverlay}

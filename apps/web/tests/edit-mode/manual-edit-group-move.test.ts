@@ -69,12 +69,12 @@ describe('manual-edit-group-move', () => {
     expect(updates[0]).toMatchObject({
       id: 'box-a',
       styles: { left: '34px', top: '32px' },
-      viewport: { x: 34, y: 32 },
+      rect: { x: 34, y: 32, width: 80, height: 40 },
     });
     expect(updates[1]).toMatchObject({
       id: 'box-b',
       styles: { left: '144px', top: '72px' },
-      viewport: { x: 144, y: 72 },
+      rect: { x: 144, y: 72, width: 100, height: 50 },
     });
   });
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import { useT } from '../i18n';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { isAnchoredCssPosition } from '../edit-mode/resize-math';
+import type { GroupAlignKind, GroupDistributeKind } from '../edit-mode/manual-edit-group-align';
 import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { Icon } from './Icon';
 
@@ -47,6 +48,10 @@ export function ManualEditPanel({
   onFloatingPositionChange,
   collapsed: collapsedProp,
   onCollapsedChange,
+  groupAlignEnabled = false,
+  groupDistributeEnabled = false,
+  onGroupAlign,
+  onGroupDistribute,
 }: {
   targets: ManualEditTarget[];
   selectedTarget: ManualEditTarget | null;
@@ -71,6 +76,10 @@ export function ManualEditPanel({
   /** Host-controlled collapse so selection changes can keep a closed panel closed. */
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
+  groupAlignEnabled?: boolean;
+  groupDistributeEnabled?: boolean;
+  onGroupAlign?: (kind: GroupAlignKind) => void;
+  onGroupDistribute?: (kind: GroupDistributeKind) => void;
   onError: (message: string) => void;
   onClearSelection: () => void;
   onExit?: () => void;
@@ -214,6 +223,49 @@ export function ManualEditPanel({
         {collapsed ? null : (
           <>
             <div className="manual-edit-scroll">
+              {isMultiSelect && groupAlignEnabled ? (
+                <section className="cc-section manual-edit-group-align">
+                  <header className="cc-section-head">{t('manualEdit.align')}</header>
+                  <div className="cc-section-body manual-edit-group-align-grid">
+                    <button type="button" className="cc-action-btn" onClick={() => onGroupAlign?.('left')}>
+                      {embedUiLabel('Align left', '왼쪽 정렬')}
+                    </button>
+                    <button type="button" className="cc-action-btn" onClick={() => onGroupAlign?.('center')}>
+                      {embedUiLabel('Align center', '가로 가운데')}
+                    </button>
+                    <button type="button" className="cc-action-btn" onClick={() => onGroupAlign?.('right')}>
+                      {embedUiLabel('Align right', '오른쪽 정렬')}
+                    </button>
+                    <button type="button" className="cc-action-btn" onClick={() => onGroupAlign?.('top')}>
+                      {embedUiLabel('Align top', '위 정렬')}
+                    </button>
+                    <button type="button" className="cc-action-btn" onClick={() => onGroupAlign?.('middle')}>
+                      {embedUiLabel('Align middle', '세로 가운데')}
+                    </button>
+                    <button type="button" className="cc-action-btn" onClick={() => onGroupAlign?.('bottom')}>
+                      {embedUiLabel('Align bottom', '아래 정렬')}
+                    </button>
+                    {groupDistributeEnabled ? (
+                      <>
+                        <button
+                          type="button"
+                          className="cc-action-btn"
+                          onClick={() => onGroupDistribute?.('horizontal')}
+                        >
+                          {embedUiLabel('Distribute H', '가로 분배')}
+                        </button>
+                        <button
+                          type="button"
+                          className="cc-action-btn"
+                          onClick={() => onGroupDistribute?.('vertical')}
+                        >
+                          {embedUiLabel('Distribute V', '세로 분배')}
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                </section>
+              ) : null}
               {targetForInspector ? (
                 <StyleInspector
                   targetKind={inspectorFlags.targetKind}

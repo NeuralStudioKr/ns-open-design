@@ -20,7 +20,7 @@ export type GroupMoveMemberStart = {
 export type GroupMovePreviewUpdate = {
   id: string;
   styles: Partial<ManualEditStyles>;
-  viewport: { x: number; y: number };
+  rect: ManualEditRect;
 };
 
 /** Group move commit must flush once → one Manual Edit history entry. */
@@ -145,7 +145,12 @@ export function computeGroupMovePreviewUpdates(
     return {
       id: member.id,
       styles: moveResultToStyles(result),
-      viewport,
+      rect: {
+        x: viewport.x,
+        y: viewport.y,
+        width: member.startRect.width,
+        height: member.startRect.height,
+      },
     };
   });
 }
