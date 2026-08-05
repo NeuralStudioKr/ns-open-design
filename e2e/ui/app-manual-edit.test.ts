@@ -1153,6 +1153,69 @@ test('[P1] manual edit multi-select applies batch color and undo rolls back in o
   }).toBe(true);
 });
 
+test('[P1] manual edit multi-select group move applies same delta and undo rolls back in one step', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit group move');
+  const fileName = 'manual-edit-group-move.html';
+  await seedHtmlArtifact(page, projectId, fileName, manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await frame.locator('[data-od-id="move-box"]').click();
+  await frame.locator('[data-od-id="nested-abs-box"]').click({ modifiers: ['Shift'] });
+
+  await expect(page.getByTestId('manual-edit-multi-select-overlay')).toBeVisible();
+  await expect(page.getByTestId('manual-edit-multi-select-overlay')).toHaveAttribute('data-movable', 'true');
+
+  const overlay = page.getByTestId('manual-edit-multi-select-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 48, startY + 24, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const moveStyle = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      const nestedStyle = source.match(/data-od-id="nested-abs-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!moveStyle || !nestedStyle) return false;
+      const moveLeft = Number(moveStyle.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const moveTop = Number(moveStyle.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const nestedLeft = Number(nestedStyle.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const nestedTop = Number(nestedStyle.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return moveLeft >= 60 && moveTop >= 40 && nestedLeft >= 76 && nestedTop >= 36;
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const moveStyle = source.match(/data-od-id="move-box"[^>]*style="([^"]*)"/)?.[1];
+      const nestedStyle = source.match(/data-od-id="nested-abs-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!moveStyle || !nestedStyle) return false;
+      const moveLeft = Number(moveStyle.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const moveTop = Number(moveStyle.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const nestedLeft = Number(nestedStyle.match(/left:\s*(-?\d+)px/)?.[1] ?? NaN);
+      const nestedTop = Number(nestedStyle.match(/top:\s*(-?\d+)px/)?.[1] ?? NaN);
+      return moveLeft === 24 && moveTop === 24 && nestedLeft === 40 && nestedTop === 20;
+    })
+    .toBe(true);
+});
+
 test('[P1] manual edit body-drag undo restores left/top in one step', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);
