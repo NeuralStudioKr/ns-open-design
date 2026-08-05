@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthenticatedProjectFileImage } from '../../src/components/AuthenticatedProjectFileImage';
 import {
@@ -48,10 +48,32 @@ afterEach(() => {
 });
 
 describe('AuthenticatedProjectFileImage', () => {
-  it('loads indexed drawing screenshots even when chat history poisoned the missing cache', async () => {
+  it('uses same-origin raw URL for indexed file viewer previews', () => {
+    const drawingPath = 'msfhfxov-drawing-2026-08-05T02-43-24-475Z.png';
+    markProjectRawFileMissing('project-1', drawingPath);
+
+    const { container } = render(
+      <AuthenticatedProjectFileImage
+        projectId="project-1"
+        path={drawingPath}
+        rev={1785897805135}
+        trustExists
+        allowBackgroundRetry
+      />,
+    );
+
+    const img = container.querySelector('img');
+    expect(img).toBeTruthy();
+    expect(img?.getAttribute('alt')).toBe('');
+    expect(img?.getAttribute('src')).toBe(
+      '/api/projects/project-1/raw/msfhfxov-drawing-2026-08-05T02-43-24-475Z.png?v=1785897805135',
+    );
+    expect(fetchDaemonMock).not.toHaveBeenCalled();
+  });
+
+  it('still blob-fetches chat thumbnails without allowBackgroundRetry', async () => {
     const drawingPath = 'msees0i8-drawing-2026-08-04T08-41-03-101Z.png';
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
-    markProjectRawFileMissing('project-1', drawingPath);
     fetchDaemonMock.mockResolvedValue({
       ok: true,
       blob: async () => new Blob([pngBytes], { type: 'image/png' }),
@@ -62,14 +84,11 @@ describe('AuthenticatedProjectFileImage', () => {
         projectId="project-1"
         path={drawingPath}
         trustExists
-        allowBackgroundRetry
       />,
     );
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       const img = container.querySelector('img');
-      expect(img).toBeTruthy();
-      expect(img?.getAttribute('alt')).toBe('');
       expect(img?.getAttribute('src')).toMatch(/^blob:/);
     });
     expect(fetchDaemonMock).toHaveBeenCalled();

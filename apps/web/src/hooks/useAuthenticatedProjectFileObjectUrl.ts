@@ -71,14 +71,34 @@ async function fetchAuthenticatedImageBlobAtPath(
     typeof window !== 'undefined' && rawUrl.startsWith('/')
       ? new URL(rawUrl, window.location.origin).href
       : rawUrl;
-  const resp = await options.fetchDaemon(fetchUrl, {
-    cache: 'no-store',
-    teamverProjectId: id,
-  });
-  if (resp.status === 404) return null;
-  if (!resp.ok) return null;
+  const resp = await fetchAuthenticatedRawImageResponse(fetchUrl, id, options.fetchDaemon);
+  if (!resp) return null;
   const rawBlob = await readResponseImageBlob(resp);
   return await normalizeFetchedImageBlob(rawBlob);
+}
+
+async function fetchAuthenticatedRawImageResponse(
+  fetchUrl: string,
+  projectId: string,
+  fetchDaemon: typeof fetchTeamverDaemon,
+): Promise<Response | null> {
+  let resp = await fetchDaemon(fetchUrl, {
+    cache: 'no-store',
+    teamverProjectId: projectId,
+  });
+  if (resp.status === 404) return null;
+  // Conditional GET can return 304 with an empty body — fetch treats that as
+  // !ok, which left indexed previews blank even when opening /raw in a tab
+  // returned 200 image/png. Force a full reload once.
+  if (resp.status === 304) {
+    resp = await fetchDaemon(fetchUrl, {
+      cache: 'reload',
+      teamverProjectId: projectId,
+    });
+  }
+  if (resp.status === 404) return null;
+  if (!resp.ok) return null;
+  return resp;
 }
 
 async function loadAuthenticatedProjectFileBlobInner(
