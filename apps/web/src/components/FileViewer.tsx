@@ -37,7 +37,12 @@ import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { TeamverExportMenu, type ShareExportFormat } from '../teamver/components/TeamverExportMenu';
 import { TeamverPublishDriveModal } from '../teamver/components/TeamverPublishDriveModal';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
-import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl, resolveTeamverMainOrigin } from '../teamver/designApiBase';
+import {
+  isTeamverEmbedMode,
+  resolveTeamverDriveAssetUrl,
+  resolveTeamverMainOrigin,
+  shouldUseTeamverAuthenticatedProjectRawFetch,
+} from '../teamver/designApiBase';
 import { isTeamverPptxExportEnabled } from '../teamver/pptxExportEnable';
 import { beginTeamverEmbedActiveWork, endTeamverEmbedActiveWork } from '../teamver/teamverEmbedActiveWork';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
@@ -212,7 +217,7 @@ import type {
   ProjectFile,
 } from '../types';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
-import { useAuthenticatedProjectFileObjectUrl } from '../hooks/useAuthenticatedProjectFileObjectUrl';
+import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 import { useProjectFileSignedUrl } from '../hooks/useProjectFileSignedUrl';
 import { Icon } from './Icon';
 import { RemixIcon } from './RemixIcon';
@@ -13935,6 +13940,55 @@ function escapeHtmlAttr(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function openImageViewerUrl(url: string): void {
+  // Popup-blocker friendly path: synthesize an anchor with target=_blank and
+  // click it inside the same user gesture. Falls back to `window.open` when
+  // the anchor click is silently swallowed (e.g. some embed sandboxes).
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  document.body.appendChild(link);
+  try {
+    link.click();
+  } catch {
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    if (win) {
+      try {
+        win.opener = null;
+      } catch {
+        /* some browsers throw on cross-origin opener reset */
+      }
+    }
+  } finally {
+    link.remove();
+  }
+}
+
+function triggerBlobDownload(url: string, filename: string): void {
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+/** @internal exported for ImageViewer open/download wiring tests */
+export function imageViewerCanOpen(input: {
+  useAuthenticatedFetch: boolean;
+  signedLoading: boolean;
+  signedSrc: string | null;
+  busy: boolean;
+}): boolean {
+  if (input.busy) return false;
+  if (!input.useAuthenticatedFetch) return true;
+  if (input.signedSrc) return true;
+  // Presign finished (ready/disabled/failed) — Open can fall back to a
+  // one-shot authenticated blob fetch on click.
+  return !input.signedLoading;
+}
+
 function ImageViewer({
   projectId,
   file,
@@ -13944,59 +13998,76 @@ function ImageViewer({
 }) {
   const t = useTeamverT();
   const filePath = projectFileResolvedPath(file);
-  // Prefer session-gated S3 GET for Open. Download still needs a same-origin
-  // (or blob) URL so the browser honors the `download` filename attribute.
+  const useAuthFetch = shouldUseTeamverAuthenticatedProjectRawFetch();
+  // Session-gated S3 GET for Open — do not eagerly daemon-proxy bytes just
+  // because the image viewer mounted. Download fetches a blob on click so the
+  // browser can honor the `download` filename attribute.
   const signed = useProjectFileSignedUrl(
-    projectId,
-    filePath,
+    useAuthFetch ? projectId : null,
+    useAuthFetch ? filePath : null,
     Math.round(file.mtime),
     { trustExists: true },
   );
-  const blob = useAuthenticatedProjectFileObjectUrl(
-    projectId,
-    filePath,
-    Math.round(file.mtime),
-    true,
-    true,
-  );
-  const openSrc = signed.src || blob.src;
-  const canOpen = Boolean(openSrc) && !signed.loading && !blob.loading;
-  const canDownload = Boolean(blob.src) && !blob.loading;
-  const openInNewTab = () => {
-    if (!openSrc) return;
-    const url = openSrc;
-    // Popup-blocker friendly path: synthesize an anchor with target=_blank and
-    // click it inside the same user gesture. Falls back to `window.open` when
-    // the anchor click is silently swallowed (e.g. some embed sandboxes).
-    const link = document.createElement('a');
-    link.href = url;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    document.body.appendChild(link);
+  const [busyOpen, setBusyOpen] = useState(false);
+  const [busyDownload, setBusyDownload] = useState(false);
+  const directRawUrl = `${projectFileUrl(projectId, filePath)}?v=${Math.round(file.mtime)}`;
+  const canOpen = imageViewerCanOpen({
+    useAuthenticatedFetch: useAuthFetch,
+    signedLoading: signed.loading,
+    signedSrc: signed.src,
+    busy: busyOpen,
+  });
+  const canDownload = !busyDownload;
+
+  const openInNewTab = async () => {
+    if (!canOpen) return;
+    if (!useAuthFetch) {
+      openImageViewerUrl(directRawUrl);
+      return;
+    }
+    if (signed.src) {
+      openImageViewerUrl(signed.src);
+      return;
+    }
+    setBusyOpen(true);
     try {
-      link.click();
-    } catch {
-      const win = window.open(url, '_blank', 'noopener,noreferrer');
-      if (win) {
-        try {
-          win.opener = null;
-        } catch {
-          /* some browsers throw on cross-origin opener reset */
-        }
-      }
+      const blob = await loadAuthenticatedProjectFileBlob(projectId, filePath, {
+        trustExists: true,
+        allowBackgroundRetry: true,
+      });
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      openImageViewerUrl(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } finally {
-      link.remove();
+      setBusyOpen(false);
     }
   };
-  const downloadBlob = () => {
-    if (!blob.src) return;
-    const link = document.createElement('a');
-    link.href = blob.src;
-    link.download = file.name;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+
+  const downloadBlob = async () => {
+    if (!canDownload) return;
+    setBusyDownload(true);
+    try {
+      if (!useAuthFetch) {
+        triggerBlobDownload(directRawUrl, file.name);
+        return;
+      }
+      const blob = await loadAuthenticatedProjectFileBlob(projectId, filePath, {
+        trustExists: true,
+        allowBackgroundRetry: true,
+      });
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      try {
+        triggerBlobDownload(url, file.name);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } finally {
+      setBusyDownload(false);
+    }
   };
+
   return (
     <div className="viewer image-viewer">
       <div className="viewer-toolbar">
@@ -14011,7 +14082,7 @@ function ImageViewer({
           <button
             type="button"
             className="ghost-link"
-            onClick={downloadBlob}
+            onClick={() => { void downloadBlob(); }}
             disabled={!canDownload}
           >
             {t('fileViewer.download')}
@@ -14019,7 +14090,7 @@ function ImageViewer({
           <button
             type="button"
             className="ghost-link"
-            onClick={openInNewTab}
+            onClick={() => { void openInNewTab(); }}
             disabled={!canOpen}
           >
             {t('fileViewer.open')}

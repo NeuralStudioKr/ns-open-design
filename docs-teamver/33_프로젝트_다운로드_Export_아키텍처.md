@@ -194,15 +194,19 @@ daemon export (sync-down → scratch → render)
 
 ## 6. presigned URL이 등장하는 경우 (다운로드와 구분)
 
-Design **프로젝트 다운로드**와 presigned가 겹치지 않는다. presigned는 **다른 기능**에서만 쓰인다.
+**원본 다운로드·Export 저장**은 여전히 daemon을 경유한다. presigned는 **표시/Open·Drive 연동**에서만 쓴다.
 
 | 기능 | presigned 방향 | **누가** S3/Drive URL 호출? | FE 직접? |
 |------|----------------|----------------------------|----------|
-| 프로젝트 `/raw`·`/export` 다운로드 | — | daemon (IAM/instance profile) | ❌ |
+| 프로젝트 `/raw`·`/export` **다운로드(저장)** | — | daemon (IAM/instance profile) | ❌ |
+| 채팅 썸네일 / 이미지 **Open** | GET (project object) | daemon이 mint → FE가 S3 GET | ✅ 짧은 TTL (실패 시 `/raw/` 폴백) |
 | Drive → Design **import** | GET (Drive asset) | **design-api BE** → stream → daemon upload | ❌ |
 | Design → Drive **publish** | PUT (Drive bucket) | **design-api BE** | ❌ |
 | Drive import **썸네일** | GET (object-url batch) | FE `<img src={objectUrl}>` | ✅ **표시만** (다운로드 아님) |
 | Publish history “Drive 열기” | — | Drive asset deep link (UI) | Drive 앱/웹 |
+
+**프로젝트 파일 GET mint:** `POST /api/projects/:id/presign-get` `{ path }` → `ProjectFilePresignedGetResponse`.  
+환경변수: `OD_PROJECT_FILE_PRESIGN_ENABLED` (S3일 때 기본 on, `=0`으로 끔), `OD_PROJECT_FILE_PRESIGN_TTL_SEC` (60–300, 기본 120).
 
 **import 상세:** `drive_import_service.py` — Main BE `create_download_url` → BE가 presigned GET으로 chunk stream → daemon `POST /upload` → scratch → sync-up ([14 §4.2](./14_Design_Drive_연동_설계.md)).
 
@@ -225,7 +229,9 @@ Design **프로젝트 다운로드**와 presigned가 겹치지 않는다. presig
 |------|------|
 | FE export helpers | `apps/web/src/runtime/exports.ts` |
 | FE raw URL | `apps/web/src/providers/registry.ts` — `projectRawUrl()` |
+| FE project-file presign | `apps/web/src/utils/projectFilePresign.ts` · `useProjectFileSignedUrl` |
 | FileViewer Download UI | `apps/web/src/components/FileViewer.tsx` |
+| daemon project-file presign | `apps/daemon/src/project-file-presign.ts` · `POST …/presign-get` |
 | daemon export routes | `apps/daemon/src/import-export-routes.ts` |
 | PDF/HTML input (scratch read) | `apps/daemon/src/pdf-export.ts` |
 | lazy sync-down middleware | `apps/daemon/src/storage/lazy-project-materialization.ts` |
