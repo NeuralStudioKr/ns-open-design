@@ -291,7 +291,7 @@ export function ManualEditResizeOverlay({
       || draftLeftPx != null
       || draftTopPx != null
     )
-    : (draftWidthPx != null || draftHeightPx != null);
+    : (draftWidthPx != null || draftHeightPx != null || draftLeftPx != null || draftTopPx != null);
   const hostPaintLooksStale = Boolean(
     hostPaintRect
     && hostPaintRect.width >= 1

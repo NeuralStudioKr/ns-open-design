@@ -328,6 +328,12 @@ describe('computeMove', () => {
     expect(manualEditHostPaintRectStale(letterboxed, composedLarge)).toBe(false);
   });
 
+  it('detects stale host paint that kept pre-gesture position at the same size', () => {
+    const composed = { x: 140, y: 110, width: 80, height: 40 };
+    const stale = { x: 40, y: 60, width: 80, height: 40 };
+    expect(manualEditHostPaintRectStale(stale, composed)).toBe(true);
+  });
+
   it('matches optimistic and measured geometry within tolerance', () => {
     const optimistic = target({
       rect: { x: 40, y: 60, width: 80, height: 40 },

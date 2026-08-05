@@ -399,17 +399,50 @@ export function manualEditHostPaintRectStale(
   composedHostRect: ManualEditRect,
   tolerancePx = GEOMETRY_MATCH_TOLERANCE_PX,
 ): boolean {
-  const sizeDiffers = (
-    Math.abs(hostPaintRect.width - composedHostRect.width) > tolerancePx
-    || Math.abs(hostPaintRect.height - composedHostRect.height) > tolerancePx
+  const sizeMatches = (
+    Math.abs(hostPaintRect.width - composedHostRect.width) <= tolerancePx
+    && Math.abs(hostPaintRect.height - composedHostRect.height) <= tolerancePx
   );
-  if (!sizeDiffers) return false;
   const positionMatches = (
     Math.abs(hostPaintRect.x - composedHostRect.x) <= tolerancePx
     && Math.abs(hostPaintRect.y - composedHostRect.y) <= tolerancePx
   );
-  // Letterboxed live paint shifts x/y — keep trusting hostPaintRect.
-  if (!positionMatches) return false;
-  // Same origin but pre-gesture size lingered after resize commit.
-  return true;
+  if (sizeMatches && positionMatches) return false;
+  const sizeDiffers = !sizeMatches;
+  // Letterboxed live paint shifts x/y while size tracks — trust hostPaintRect.
+  if (sizeDiffers && !positionMatches) return false;
+  // Same origin, pre-gesture size (resize snap-back).
+  if (sizeDiffers && positionMatches) return true;
+  // Same size, pre-gesture position (move snap-back).
+  return !positionMatches;
+}
+
+/** Host rect for selection chrome / panel — skip stale paint, prefer composed. */
+export function resolveManualEditChromeHostRect(
+  targetRect: ManualEditRect,
+  previewScale: number,
+  hostOffset: { x: number; y: number },
+  hostPaintRect: ManualEditRect | null,
+): ManualEditRect {
+  const scaled = {
+    x: targetRect.x * previewScale,
+    y: targetRect.y * previewScale,
+    width: targetRect.width * previewScale,
+    height: targetRect.height * previewScale,
+  };
+  const composedHostRect = {
+    x: hostOffset.x + scaled.x,
+    y: hostOffset.y + scaled.y,
+    width: scaled.width,
+    height: scaled.height,
+  };
+  if (
+    hostPaintRect
+    && hostPaintRect.width >= 1
+    && hostPaintRect.height >= 1
+    && !manualEditHostPaintRectStale(hostPaintRect, composedHostRect)
+  ) {
+    return hostPaintRect;
+  }
+  return composedHostRect;
 }

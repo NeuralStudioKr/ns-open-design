@@ -283,6 +283,7 @@ import {
   hostPaintRectAfterVisualMove,
   hostPaintRectFromVisualContent,
   manualEditGeometryRoughlyMatches,
+  resolveManualEditChromeHostRect,
   viewportRectAfterMoveCommit,
   visualRectFromMoveViewportDraft,
 } from '../edit-mode/move-math';
@@ -993,19 +994,12 @@ function manualEditPanelHostRect(
   hostOffset: { x: number; y: number } = { x: 0, y: 0 },
   hostPaintRect: ManualEditRect | null = null,
 ): { x: number; y: number; width: number; height: number } {
-  const scaled = contentRectToHostRect(target.rect, previewScale);
-  const composedHostRect = {
-    x: hostOffset.x + scaled.x,
-    y: hostOffset.y + scaled.y,
-    width: scaled.width,
-    height: scaled.height,
-  };
-  // Prefer live paint when available so placement matches the selection chrome.
-  return hostPaintRect
-    && hostPaintRect.width >= 1
-    && hostPaintRect.height >= 1
-    ? hostPaintRect
-    : composedHostRect;
+  return resolveManualEditChromeHostRect(
+    target.rect,
+    previewScale,
+    hostOffset,
+    hostPaintRect,
+  );
 }
 
 function manualEditFloatingPanelStyle(
@@ -1057,20 +1051,12 @@ function manualEditHoverIconStyle(
   const inset = 4;
   const canvasWidth = canvasSize?.width ?? 1200;
   const canvasHeight = canvasSize?.height ?? 800;
-  const scaled = contentRectToHostRect(target.rect, previewScale);
-  const composed = {
-    x: hostOffset.x + scaled.x,
-    y: hostOffset.y + scaled.y,
-    width: scaled.width,
-    height: scaled.height,
-  };
-  // Prefer live paint when available so the chip matches selection chrome.
-  const hostRect =
-    hostPaintRect
-    && hostPaintRect.width >= 1
-    && hostPaintRect.height >= 1
-      ? hostPaintRect
-      : composed;
+  const hostRect = resolveManualEditChromeHostRect(
+    target.rect,
+    previewScale,
+    hostOffset,
+    hostPaintRect,
+  );
   const targetTop = hostRect.y;
   const targetRight = hostRect.x + hostRect.width;
   const left = Math.max(
@@ -5248,6 +5234,7 @@ function HtmlViewer({
    * iframe is not ready yet or zoom shell remounts).
    */
   const [manualEditHostPaintRect, setManualEditHostPaintRect] = useState<ManualEditRect | null>(null);
+  const manualEditHostPaintRectRef = useRef<ManualEditRect | null>(null);
   /** Bumped when the active preview iframe loads so geometry sync retries. */
   const [manualEditGeomEpoch, setManualEditGeomEpoch] = useState(0);
   const manualEditWorkspaceRef = useRef<HTMLDivElement | null>(null);
@@ -7223,6 +7210,83 @@ function HtmlViewer({
     );
   }
 
+  /** Handoff settle — geometry only; never clobber flushed styles from bridge scan. */
+  function applyManualEditMeasuredGeometry(measured: ManualEditTarget) {
+    setSelectedManualEditTarget((current) => {
+      if (current?.id !== measured.id) return current;
+      const next: ManualEditTarget = {
+        ...current,
+        rect: measured.rect,
+        layoutWidth: measured.layoutWidth,
+        layoutHeight: measured.layoutHeight,
+        offsetLeft: measured.offsetLeft ?? current.offsetLeft,
+        offsetTop: measured.offsetTop ?? current.offsetTop,
+        cssPosition: measured.cssPosition ?? current.cssPosition,
+        stickyScrollportId: measured.stickyScrollportId ?? current.stickyScrollportId,
+      };
+      selectedManualEditTargetRef.current = next;
+      return next;
+    });
+    setManualEditTargets((current) =>
+      current.map((item) => {
+        if (item.id !== measured.id) return item;
+        return {
+          ...item,
+          rect: measured.rect,
+          layoutWidth: measured.layoutWidth,
+          layoutHeight: measured.layoutHeight,
+          offsetLeft: measured.offsetLeft ?? item.offsetLeft,
+          offsetTop: measured.offsetTop ?? item.offsetTop,
+          cssPosition: measured.cssPosition ?? item.cssPosition,
+          stickyScrollportId: measured.stickyScrollportId ?? item.stickyScrollportId,
+        };
+      }),
+    );
+  }
+
+  type ManualEditGestureGeometrySnapshot = {
+    rect: ManualEditRect;
+    layoutWidth?: number;
+    layoutHeight?: number;
+    hostPaintRect: ManualEditRect | null;
+  };
+
+  function captureManualEditGestureGeometrySnapshot(
+    target: ManualEditTarget,
+  ): ManualEditGestureGeometrySnapshot {
+    const paint = manualEditHostPaintRectRef.current;
+    return {
+      rect: { ...target.rect },
+      layoutWidth: target.layoutWidth,
+      layoutHeight: target.layoutHeight,
+      hostPaintRect: paint && paint.width >= 1 && paint.height >= 1
+        ? { ...paint }
+        : null,
+    };
+  }
+
+  function restoreManualEditGestureGeometry(snapshot: ManualEditGestureGeometrySnapshot) {
+    const target = selectedManualEditTargetRef.current;
+    if (!target) return;
+    setSelectedManualEditTarget((current) => {
+      if (!current || current.id !== target.id) return current;
+      const next: ManualEditTarget = {
+        ...current,
+        rect: { ...snapshot.rect },
+        layoutWidth: snapshot.layoutWidth ?? current.layoutWidth,
+        layoutHeight: snapshot.layoutHeight ?? current.layoutHeight,
+      };
+      selectedManualEditTargetRef.current = next;
+      return next;
+    });
+    if (snapshot.hostPaintRect) {
+      manualEditHostPaintRectRef.current = { ...snapshot.hostPaintRect };
+      setManualEditHostPaintRect({ ...snapshot.hostPaintRect });
+    } else {
+      refreshManualEditHostPaintRect(target.id, { force: true });
+    }
+  }
+
   function syncBridgeModes(target: HTMLIFrameElement | null = iframeRef.current) {
     const win = target?.contentWindow;
     if (!win) return;
@@ -7783,6 +7847,10 @@ function HtmlViewer({
   }, [source]);
 
   useEffect(() => {
+    manualEditHostPaintRectRef.current = manualEditHostPaintRect;
+  }, [manualEditHostPaintRect]);
+
+  useEffect(() => {
     selectedManualEditTargetIdRef.current = selectedManualEditTarget?.id ?? null;
     selectedManualEditTargetRef.current = selectedManualEditTarget;
   }, [selectedManualEditTarget?.id, selectedManualEditTarget]);
@@ -7842,14 +7910,7 @@ function HtmlViewer({
       if (!measured || measured.rect.width < 1 || measured.rect.height < 1) return true;
       setSelectedManualEditTarget((current) => {
         if (!current || current.id !== selectedId) return current;
-        const same =
-          current.rect.x === measured.rect.x
-          && current.rect.y === measured.rect.y
-          && current.rect.width === measured.rect.width
-          && current.rect.height === measured.rect.height
-          && current.layoutWidth === measured.layoutWidth
-          && current.layoutHeight === measured.layoutHeight;
-        if (same) return current;
+        if (manualEditGeometryRoughlyMatches(current, measured)) return current;
         const next = {
           ...current,
           rect: measured.rect,
@@ -8310,6 +8371,13 @@ function HtmlViewer({
         }
         if (!measured || isHandoffRect) return;
 
+        const current = selectedManualEditTargetRef.current;
+        if (
+          current?.id === measured.id
+          && !manualEditGeometryRoughlyMatches(current, measured)
+        ) {
+          return;
+        }
         applyManualEditMeasuredTarget(measured);
         return;
       }
@@ -8492,11 +8560,17 @@ function HtmlViewer({
     previousVisual: ManualEditRect,
   ) {
     if (!visualRect || visualRect.width < 1 || visualRect.height < 1) return;
+    const frame = iframeRef.current;
+    const workspace = manualEditWorkspaceRef.current;
+    const selectedId = selectedManualEditTargetIdRef.current;
+    const livePaint = frame && workspace && selectedId
+      ? measureManualEditTargetHostRect(frame, workspace, selectedId)
+      : null;
     setManualEditHostPaintRect((prev) => {
       const translated = prev
         ? hostPaintRectAfterVisualMove(prev, previousVisual, visualRect)
         : null;
-      return translated ?? hostPaintRectFromVisualContent(
+      return translated ?? livePaint ?? hostPaintRectFromVisualContent(
         visualRect,
         manualEditHostScale,
         manualEditHostOffset,
@@ -8573,7 +8647,7 @@ function HtmlViewer({
         && optimistic
         && manualEditGeometryRoughlyMatches(measured, optimistic)
       ) {
-        applyManualEditMeasuredTarget(measured);
+        applyManualEditMeasuredGeometry(measured);
       }
 
       await new Promise<void>((resolve) => {
@@ -8658,10 +8732,14 @@ function HtmlViewer({
    * pointercancel and by flush-fail after commit — pending restore alone would
    * leave the live preview on post-gesture styles while disk stayed old.
    */
-  function rollbackManualEditGestureStyles(stylesBefore: Partial<ManualEditStyles>) {
+  function rollbackManualEditGestureStyles(
+    stylesBefore: Partial<ManualEditStyles>,
+    geometryBefore?: ManualEditGestureGeometrySnapshot,
+  ) {
     const target = selectedManualEditTargetRef.current;
     clearManualEditStyleTimer();
     manualEditResizeSessionActiveRef.current = false;
+    manualEditResizePausedRef.current = false;
     setManualEditMoveDraftPos(null);
     setManualEditResizeDraftSize(null);
     if (!target) return;
@@ -8686,6 +8764,9 @@ function HtmlViewer({
       ...current,
       styles: { ...current.styles, ...reset },
     }));
+    if (geometryBefore) {
+      restoreManualEditGestureGeometry(geometryBefore);
+    }
     // Resume autosave for any non-geometry draft that survived the rollback.
     if (manualEditPendingStyleRef.current && !manualEditResizeSessionActiveRef.current) {
       clearManualEditStyleTimer();
@@ -8704,6 +8785,7 @@ function HtmlViewer({
     const target = selectedManualEditTargetRef.current;
     if (!target) return;
     handleManualEditResizePreview(styles);
+    const geometryBefore = captureManualEditGestureGeometrySnapshot(target);
     // Optimistic geometry must land before any await; otherwise clearing
     // liveViewport/drafts snaps the overlay to the pre-gesture rect.
     const previousVisual = { ...target.rect };
@@ -8717,24 +8799,18 @@ function HtmlViewer({
     const visualRect = applyManualEditGestureOptimisticTarget(target, styles, resizeViewport);
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
-    // Seed paint from optimistic visual box — never null (null → iframe-scale
-    // compose of hybrid coords flashes under deck fit-scale).
     seedManualEditHostPaintFromVisual(visualRect, previousVisual);
     // Keep geometry session locked through persist + paint settle so RAF sync /
     // od-edit-targets / od-edit-rect cannot clobber the handoff frame.
+    // Session unlock is owned by overlay finish() → onResizeSessionChange(false).
     manualEditResizeSessionActiveRef.current = true;
     manualEditResizePausedRef.current = true;
-    try {
-      const ok = await flushManualEditStyleSave({ force: true });
-      if (!ok) {
-        rollbackManualEditGestureStyles(stylesBefore);
-        return;
-      }
-      await settleManualEditGeometryHandoff(target.id);
-    } finally {
-      manualEditResizeSessionActiveRef.current = false;
-      manualEditResizePausedRef.current = false;
+    const ok = await flushManualEditStyleSave({ force: true });
+    if (!ok) {
+      rollbackManualEditGestureStyles(stylesBefore, geometryBefore);
+      return;
     }
+    await settleManualEditGeometryHandoff(target.id);
   }
 
   async function handleManualEditMoveCommit(
@@ -8746,45 +8822,43 @@ function HtmlViewer({
     if (!target) return;
     handleManualEditMovePreview(styles, viewport);
     const promotedPosition = String(styles.position || '').toLowerCase();
-    // Capture before optimistic update clears sticky metadata.
     const stickyScrollportId = promotedPosition === 'absolute'
       ? target.stickyScrollportId
       : undefined;
+    const geometryBefore = captureManualEditGestureGeometrySnapshot(target);
     const previousVisual = { ...target.rect };
-    const visualRect = applyManualEditGestureOptimisticTarget(
-      target,
-      styles,
-      viewport,
-      promotedPosition ? { promotedPosition } : undefined,
-    );
-    setManualEditMoveDraftPos(null);
-    setManualEditResizeDraftSize(null);
-    seedManualEditHostPaintFromVisual(visualRect, previousVisual);
-    // Keep geometry session locked through sticky pin + persist + paint settle.
+    // Keep geometry session locked through sticky pin / persist / paint settle.
+    // Session unlock is owned by overlay finish() → onResizeSessionChange(false).
     manualEditResizeSessionActiveRef.current = true;
     manualEditResizePausedRef.current = true;
     try {
-      // Pin scrollport as absolute CB before persisting promote left/top so
-      // content-relative offsets stay valid after reload (53 sticky Phase2).
       if (stickyScrollportId) {
         const scrollportOk = await applyManualEdit(
           { id: stickyScrollportId, kind: 'set-style', styles: { position: 'relative' } },
           embedUiLabel('Pin scroll container', '스크롤 컨테이너 고정'),
         );
         if (!scrollportOk) {
-          rollbackManualEditGestureStyles(stylesBefore);
+          rollbackManualEditGestureStyles(stylesBefore, geometryBefore);
           return;
         }
       }
+      const visualRect = applyManualEditGestureOptimisticTarget(
+        target,
+        styles,
+        viewport,
+        promotedPosition ? { promotedPosition } : undefined,
+      );
+      setManualEditMoveDraftPos(null);
+      setManualEditResizeDraftSize(null);
+      seedManualEditHostPaintFromVisual(visualRect, previousVisual);
       const ok = await flushManualEditStyleSave({ force: true });
       if (!ok) {
-        rollbackManualEditGestureStyles(stylesBefore);
+        rollbackManualEditGestureStyles(stylesBefore, geometryBefore);
         return;
       }
       await settleManualEditGeometryHandoff(target.id);
-    } finally {
-      manualEditResizeSessionActiveRef.current = false;
-      manualEditResizePausedRef.current = false;
+    } catch {
+      rollbackManualEditGestureStyles(stylesBefore, geometryBefore);
     }
   }
 
