@@ -24,17 +24,20 @@ type AuthenticatedProjectFileImageProps = {
    * retry — never set for chat-history drawing screenshots that are gone.
    */
   trustExists?: boolean;
-  /** Design panel / file viewer — use same-origin raw URL (browser cookies). */
+  /**
+   * Design panel / file viewer — allow `/raw/` scratch fallback when S3 mint
+   * 404s (upload→sync-up race). Chat history must leave this false.
+   */
   allowBackgroundRetry?: boolean;
 };
 
 const TRUSTED_IMAGE_ERROR_RETRIES = 2;
 
 /**
- * Renders a project file image. In Teamver embed, chat thumbnails prefer a
- * session-gated S3 presigned GET (no daemon byte proxy). Indexed design-panel /
- * file-viewer previews keep the same-origin raw URL. Authenticated `/raw/`
- * blob fetch remains the fallback when presign is disabled or fails.
+ * Renders a project file image. In Teamver embed, prefers a session-gated S3
+ * presigned GET so image bytes skip the daemon. `/raw/` is only a fallback when
+ * mint is disabled/unavailable, or (trusted indexed files) when S3 lags scratch.
+ * Mint 404 for untrusted chat drawings does **not** fall back to `/raw/`.
  */
 export function AuthenticatedProjectFileImage({
   projectId,
@@ -49,23 +52,11 @@ export function AuthenticatedProjectFileImage({
   const useAuthenticatedFetch = shouldUseTeamverAuthenticatedProjectRawFetch();
   const [errorRetry, setErrorRetry] = useState(0);
   const [presignImgFailed, setPresignImgFailed] = useState(false);
-  const preferDirectRawUrl =
-    fetchEnabled
-    && useAuthenticatedFetch
-    && trustExists
-    && allowBackgroundRetry;
-  const directRawSrc = useMemo(
-    () => (preferDirectRawUrl
-      ? buildAuthenticatedProjectRawImageUrl(projectId, path, { rev, retry: errorRetry })
-      : null),
-    [errorRetry, path, preferDirectRawUrl, projectId, rev],
-  );
 
-  const shouldTryPresign = fetchEnabled
-    && useAuthenticatedFetch
-    && !preferDirectRawUrl
-    && !presignImgFailed
-    && (trustExists || !isProjectRawFileKnownMissing(projectId, path));
+  // Keep projectId/path wired even after a mint 404 — the signed-url hook
+  // short-circuits on the missing cache. Passing null would reset `missing`
+  // and lose the terminal failed UI.
+  const shouldTryPresign = fetchEnabled && useAuthenticatedFetch && !presignImgFailed;
   const signed = useProjectFileSignedUrl(
     shouldTryPresign ? projectId : null,
     shouldTryPresign ? path : null,
@@ -73,11 +64,18 @@ export function AuthenticatedProjectFileImage({
     { enabled: shouldTryPresign, trustExists },
   );
 
+  // Scratch race: indexed design-panel files may exist locally before S3 HEAD.
+  // Chat-history drawings that mint-404 must not double-hit `/raw/`.
+  const allowRawFallback = signed.failed
+    && !signed.loading
+    && (
+      !signed.missing
+      || (trustExists && allowBackgroundRetry)
+    );
+
   const shouldBlobFetch = fetchEnabled
     && useAuthenticatedFetch
-    && !preferDirectRawUrl
-    && (presignImgFailed || signed.failed)
-    && !signed.loading
+    && (presignImgFailed || allowRawFallback)
     && (trustExists || !isProjectRawFileKnownMissing(projectId, path));
   const fetchRev = rev != null ? `${rev}:${errorRetry}` : errorRetry;
   const { src: objectUrl, loading, failed } = useAuthenticatedProjectFileObjectUrl(
@@ -92,32 +90,30 @@ export function AuthenticatedProjectFileImage({
       fetchEnabled
       && useAuthenticatedFetch
       && trustExists
-      && !preferDirectRawUrl
+      && allowBackgroundRetry
       && failed
       && !loading
         ? buildAuthenticatedProjectRawImageUrl(projectId, path, { rev, retry: errorRetry })
         : null
     ),
     [
+      allowBackgroundRetry,
       errorRetry,
       failed,
       fetchEnabled,
       loading,
       path,
-      preferDirectRawUrl,
       projectId,
       rev,
       trustExists,
       useAuthenticatedFetch,
     ],
   );
-  const src = preferDirectRawUrl
-    ? directRawSrc
-    : useAuthenticatedFetch
-      ? (signed.src && !presignImgFailed
-          ? signed.src
-          : (objectUrl ?? fallbackDirectRawSrc))
-      : projectRawUrl(projectId, path);
+  const src = useAuthenticatedFetch
+    ? (signed.src && !presignImgFailed
+        ? signed.src
+        : (objectUrl ?? fallbackDirectRawSrc))
+    : projectRawUrl(projectId, path);
 
   const handleImageError = useCallback(() => {
     if (signed.src && !presignImgFailed && src === signed.src) {
@@ -134,9 +130,14 @@ export function AuthenticatedProjectFileImage({
   const loadingClass = `authenticated-project-file-image-loading${className ? ` ${className}` : ''}`;
   const waitingOnPresign = shouldTryPresign && signed.loading && !signed.src;
   const waitingOnBlob = shouldBlobFetch && loading && !objectUrl;
+  const terminalMissing = signed.missing && !allowRawFallback && !signed.loading;
 
   if (!src) {
-    if ((shouldBlobFetch && failed && !loading) || (shouldTryPresign && signed.failed && !shouldBlobFetch)) {
+    if (
+      terminalMissing
+      || (shouldBlobFetch && failed && !loading)
+      || (shouldTryPresign && signed.failed && !shouldBlobFetch && !signed.loading)
+    ) {
       return (
         <span
           className={`authenticated-project-file-image-failed${className ? ` ${className}` : ''}`}

@@ -4,7 +4,7 @@ import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthenticatedProjectFileImage } from '../../src/components/AuthenticatedProjectFileImage';
 import {
-  markProjectRawFileMissing,
+  isProjectRawFileKnownMissing,
   resetProjectRawFileFetchCacheForTests,
 } from '../../src/utils/projectFileFetchCache';
 
@@ -48,9 +48,20 @@ afterEach(() => {
 });
 
 describe('AuthenticatedProjectFileImage', () => {
-  it('uses same-origin raw URL for indexed file viewer previews', () => {
+  it('prefers a presigned S3 GET for file-viewer previews too', async () => {
     const drawingPath = 'msfhfxov-drawing-2026-08-05T02-43-24-475Z.png';
-    markProjectRawFileMissing('project-1', drawingPath);
+    fetchDaemonMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: 'ready',
+        path: drawingPath,
+        url: 'https://bucket.s3.amazonaws.com/design/ws/proj/viewer.png?X-Amz-Signature=abc',
+        expiresInSec: 120,
+        expiresAt: '2026-08-05T06:02:00.000Z',
+        rawUrl: `/api/projects/project-1/raw/${drawingPath}`,
+      }),
+    } as Response);
 
     const { container } = render(
       <AuthenticatedProjectFileImage
@@ -62,19 +73,24 @@ describe('AuthenticatedProjectFileImage', () => {
       />,
     );
 
-    const img = container.querySelector('img');
-    expect(img).toBeTruthy();
-    expect(img?.getAttribute('alt')).toBe('');
-    expect(img?.getAttribute('src')).toBe(
-      '/api/projects/project-1/raw/msfhfxov-drawing-2026-08-05T02-43-24-475Z.png?v=1785897805135',
+    await vi.waitFor(() => {
+      const img = container.querySelector('img');
+      expect(img?.getAttribute('src')).toBe(
+        'https://bucket.s3.amazonaws.com/design/ws/proj/viewer.png?X-Amz-Signature=abc',
+      );
+    });
+    expect(fetchDaemonMock).toHaveBeenCalledWith(
+      '/api/projects/project-1/presign-get',
+      expect.objectContaining({ method: 'POST' }),
     );
-    expect(fetchDaemonMock).not.toHaveBeenCalled();
+    expect(fetchDaemonMock.mock.calls.some(([url]) => String(url).includes('/raw/'))).toBe(false);
   });
 
   it('prefers a presigned S3 GET for chat thumbnails', async () => {
     const drawingPath = 'msees0i8-drawing-2026-08-04T08-41-03-101Z.png';
     fetchDaemonMock.mockResolvedValue({
       ok: true,
+      status: 200,
       json: async () => ({
         status: 'ready',
         path: drawingPath,
@@ -99,10 +115,32 @@ describe('AuthenticatedProjectFileImage', () => {
         'https://bucket.s3.amazonaws.com/design/ws/proj/drawing.png?X-Amz-Signature=abc',
       );
     });
-    expect(fetchDaemonMock).toHaveBeenCalledWith(
-      '/api/projects/project-1/presign-get',
-      expect.objectContaining({ method: 'POST' }),
+  });
+
+  it('does not fall back to /raw/ when mint reports the drawing missing', async () => {
+    const drawingPath = 'msczyywd-drawing-2026-08-03T08-58-43-316Z.png';
+    fetchDaemonMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+    } as Response);
+
+    const { container } = render(
+      <AuthenticatedProjectFileImage
+        projectId="project-1"
+        path={drawingPath}
+      />,
     );
+
+    await vi.waitFor(() => {
+      expect(
+        container.querySelector('.authenticated-project-file-image-failed'),
+      ).toBeTruthy();
+    });
+    expect(isProjectRawFileKnownMissing('project-1', drawingPath)).toBe(true);
+    expect(fetchDaemonMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchDaemonMock.mock.calls[0]?.[0])).toContain('/presign-get');
+    expect(fetchDaemonMock.mock.calls.some(([url]) => String(url).includes('/raw/'))).toBe(false);
+    expect(container.querySelector('img')).toBeNull();
   });
 
   it('falls back to authenticated blob fetch when presign is disabled', async () => {
@@ -113,6 +151,7 @@ describe('AuthenticatedProjectFileImage', () => {
       if (url.includes('/presign-get')) {
         return {
           ok: true,
+          status: 200,
           json: async () => ({
             status: 'disabled',
             path: drawingPath,
@@ -123,6 +162,7 @@ describe('AuthenticatedProjectFileImage', () => {
       }
       return {
         ok: true,
+        status: 200,
         blob: async () => new Blob([pngBytes], { type: 'image/png' }),
       } as Response;
     });
