@@ -330,7 +330,7 @@ function ImportedFolderArtifacts({
             tabIndex={openable ? 0 : undefined}
             title={openLabel}
             aria-label={openLabel}
-            onDoubleClick={openable ? openFile : undefined}
+            onClick={openable ? openFile : undefined}
             onKeyDown={
               openable
                 ? (event) => {
@@ -2333,6 +2333,7 @@ export function ChatPane({
               className={`chat-jump-btn${scrolledFromBottom ? ' chat-jump-btn-active' : ''}`}
               onClick={jumpToBottom}
               title={t('chat.scrollToLatest')}
+              aria-label={t('chat.scrollToLatest')}
               tabIndex={scrolledFromBottom ? 0 : -1}
             >
               <Icon name="arrow-up" size={12} style={{ transform: 'rotate(180deg)' }} />

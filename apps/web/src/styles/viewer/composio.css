@@ -1052,12 +1052,16 @@
 /* Answered: a quiet "done" marker. No hover/click affordance, muted surface,
    and a green check in place of the question icon. */
 .questions-banner-answered,
-.questions-banner-answered:hover {
+.questions-banner-answered:hover,
+.questions-banner-answered:disabled {
   cursor: default;
   border-color: var(--border);
   background: var(--bg-panel);
   box-shadow: none;
   color: var(--text-muted);
+  /* Defeat global button:disabled { opacity: 0.5 } so the quiet "done"
+     surface is not double-muted. */
+  opacity: 1;
 }
 .questions-banner-answered .questions-banner-icon {
   background: var(--green);
@@ -2623,6 +2627,10 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
     visibility 0s linear 0s;
 }
 .chat-jump-btn:hover { background: var(--bg-subtle); border-color: var(--border-strong); }
+.chat-jump-btn:active {
+  background: var(--bg-muted);
+  border-color: var(--border-strong);
+}
 .chat-jump-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

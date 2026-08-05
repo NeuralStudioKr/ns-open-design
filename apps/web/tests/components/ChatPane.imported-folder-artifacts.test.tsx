@@ -107,11 +107,11 @@ describe('ChatPane imported folder artifacts', () => {
     expect(within(artifactGrid).queryByText('bundle.js.map')).toBeNull();
 
     const firstCard = screen.getByTestId('chat-design-artifact-0');
-    expect(firstCard.querySelector('iframe')?.getAttribute('src')).toBe(
-      '/api/projects/project-1/raw/site/index.html?v=20',
-    );
+    expect(firstCard.getAttribute('role')).toBe('button');
+    expect(firstCard.querySelector('.chat-design-artifact-preview')).not.toBeNull();
 
-    fireEvent.doubleClick(firstCard);
+    // Single click matches role=button / keyboard Enter·Space (not double-click).
+    fireEvent.click(firstCard);
     expect(onRequestOpenFile).toHaveBeenCalledTimes(1);
     expect(onRequestOpenFile).toHaveBeenCalledWith('site/index.html');
   });

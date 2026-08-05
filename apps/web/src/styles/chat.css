@@ -846,10 +846,32 @@
   font-weight: 600;
   padding: 4px 12px;
   border-radius: var(--radius-sm);
-  transition: background 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition:
+    background var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out);
 }
 .chat-error-action:hover {
   background: var(--accent-hover, var(--accent));
+  border-color: var(--accent-hover, var(--accent));
+}
+.chat-error-action:active {
+  background: var(--accent-strong, var(--accent-hover, var(--accent)));
+  border-color: var(--accent-strong, var(--accent-hover, var(--accent)));
+}
+.chat-error-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.chat-error-actions .ghost:hover:not(:disabled) {
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+.chat-error-actions .ghost:active:not(:disabled) {
+  background: var(--bg-muted);
+}
+.chat-error-actions .ghost:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* AMR guidance card under the gray error card. Theme-color tinted; two
@@ -924,11 +946,20 @@
   padding: 7px 14px;
   border-radius: var(--radius-sm);
   transition:
-    background 140ms cubic-bezier(0.23, 1, 0.32, 1),
-    border-color 140ms cubic-bezier(0.23, 1, 0.32, 1);
+    background var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out);
 }
 .amr-card__cta:hover {
   background: var(--accent-hover, var(--accent));
+  border-color: var(--accent-hover, var(--accent));
+}
+.amr-card__cta:active {
+  background: var(--accent-strong, var(--accent-hover, var(--accent)));
+  border-color: var(--accent-strong, var(--accent-hover, var(--accent)));
+}
+.amr-card__cta:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* -------- Composer -------------------------------------------------- */
@@ -1310,6 +1341,10 @@
   border-color: var(--border);
 }
 .composer-row .icon-btn:active:not(:disabled) { background: var(--bg-muted); }
+.composer-row .icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .composer-row .icon-btn:disabled { opacity: 0.45; cursor: default; }
 .composer-spacer { flex: 1; }
 
@@ -1561,8 +1596,16 @@
   padding: 4px 12px;
   font-size: 12px;
   color: var(--text-muted);
+  transition:
+    background var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
 }
-.composer-import:hover:not(:disabled) { background: var(--bg-fill-tertiary); color: var(--text); }
+.composer-import:hover:not(:disabled) { background: var(--bg-subtle); color: var(--text); }
+.composer-import:active:not(:disabled) { background: var(--bg-muted); }
+.composer-import:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .composer-research {
   display: inline-flex;
   align-items: center;
@@ -1574,8 +1617,16 @@
   font-size: 12px;
   color: var(--text-muted);
   cursor: pointer;
+  transition:
+    background var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
 }
-.composer-research:hover:not(:disabled) { background: var(--bg-fill-tertiary); color: var(--text); }
+.composer-research:hover:not(:disabled) { background: var(--bg-subtle); color: var(--text); }
+.composer-research:active:not(:disabled) { background: var(--bg-muted); }
+.composer-research:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .composer-research.on {
   background: color-mix(in oklab, var(--accent) 12%, transparent);
   color: var(--accent);

@@ -1591,11 +1591,19 @@
 .app .chat-design-artifact[role='button'] {
   cursor: pointer;
 }
-.app .chat-design-artifact:hover {
+/* Non-openable cards stay inert; only interactive roles get hover/press. */
+.app .chat-design-artifact[role='button']:hover,
+.app .chat-design-artifact-more:hover {
   border-color: var(--border-strong);
   background: var(--bg-subtle);
 }
-.app .chat-design-artifact:focus-visible {
+.app .chat-design-artifact[role='button']:active,
+.app .chat-design-artifact-more:active {
+  background: var(--bg-muted);
+  border-color: var(--border-strong);
+}
+.app .chat-design-artifact[role='button']:focus-visible,
+.app .chat-design-artifact-more:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
