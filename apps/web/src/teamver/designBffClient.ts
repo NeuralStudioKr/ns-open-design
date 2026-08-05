@@ -475,6 +475,9 @@ function markAuthRefreshDeclined(kind: "soft" | "hard"): void {
   // Dead refresh credentials: never probe nginx-gated runtime-config until
   // sticky is cleared. Do not wait for a 401 on /runtime-config itself.
   runtimeConfigAuthBlocked = true;
+  // Seed probe negative cache so sticky quiet / HA ladders do not immediately
+  // re-hit session-probe (DevTools 401 spam) after we already proved nginx dead.
+  noteSessionProbeKnownDead();
   // Drop warm /auth/session cache so focus force:false cannot keep serving
   // authenticated=true without a live cookie (DevTools 401 storms).
   cachedSession = null;
@@ -822,6 +825,18 @@ export async function refreshDesignAuthCookie(
       return true;
     }
     if (bffResult.status === 401) {
+      // HA sibling recovery only when nginx is not already known dead in this tab.
+      if (sessionProbeKnownDeadUntil > Date.now()) {
+        markAuthRefreshDeclined("soft");
+        if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
+          devLog.info(
+            '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
+            { status: bffResult.status },
+          );
+          void clearOrphanTeamverAuthCookies();
+        }
+        return false;
+      }
       const haProbe = { bypassDeclineGate: true as const, bypassNegativeCache: true as const };
       // HA rotation race: losing node returns 401 while access is still usable
       // and a sibling may already have Set-Cookie'd a fresh session. Probe /
@@ -1076,12 +1091,20 @@ export async function fetchDesignAuthSession(
     }
     const runStickyQuiet = async (): Promise<DesignAuthSession | null> => {
       try {
+        // Decline gate only — respect negative cache. Soft decline seeds
+        // known-dead; re-probing every C1 tick was the staging 401 storm.
+        const allowFreshProbe =
+          Date.now() - authRefreshStickySurvivalProbeAt
+            >= DESIGN_BFF_STICKY_SURVIVAL_PROBE_COOLDOWN_MS;
         if (!(await probeDesignBffSessionAlive({
           bypassDeclineGate: true,
-          bypassNegativeCache: true,
+          bypassNegativeCache: allowFreshProbe,
         }))) {
           cachedSession = null;
           return null;
+        }
+        if (allowFreshProbe) {
+          authRefreshStickySurvivalProbeAt = Date.now();
         }
         const client = getDesignBffClient();
         if (!client) return null;
@@ -1251,12 +1274,9 @@ export async function fetchTeamverRuntimeConfig(
           }
         }
         if (!sessionAlive) {
-          const confirmedDead = !await probeDesignBffSessionAuthenticated({
-            bypassNegativeCache: true,
-          });
-          if (confirmedDead) {
-            noteRuntimeConfigUnauthorized();
-          }
+          // confirm already networked (or hit negative cache) and ensure could
+          // not revive. Do not bypass-cache re-probe — doubles session-probe 401s.
+          noteRuntimeConfigUnauthorized();
           // Keep embed session memory — C1/passive auth reconcile probe vs
           // /auth/session. Clearing here wiped project lists (session-changed).
           return cachedRuntimeConfig?.value ?? null;

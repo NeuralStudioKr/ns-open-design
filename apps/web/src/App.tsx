@@ -1948,6 +1948,11 @@ function AppInner() {
       if (isDesignAuthRefreshDeclined() || isTeamverRuntimeConfigAuthBlocked()) {
         return;
       }
+      // Boot owns the first nginx ladder + runtime-config. session-changed
+      // during incomplete boot raced probe×2 + refresh HA (staging 401 storm).
+      if (!isTeamverEmbedBootComplete()) {
+        return;
+      }
       void (async () => {
         const detailRoute = readEmbedProjectDetailRoute(routeRef.current);
         if (detailRoute) {

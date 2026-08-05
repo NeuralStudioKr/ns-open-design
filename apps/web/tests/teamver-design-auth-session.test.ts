@@ -11,6 +11,7 @@ vi.mock("../src/teamver/teamverAuthCookieHints", () => ({
 
 vi.mock("../src/teamver/teamverEmbedSession", () => ({
   isTeamverEmbedSessionAuthenticated: vi.fn(() => false),
+  setTeamverEmbedSessionAuthenticated: vi.fn(),
 }));
 
 vi.mock("../src/teamver/designApiBase", async (importOriginal) => {

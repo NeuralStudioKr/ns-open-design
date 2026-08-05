@@ -86,7 +86,29 @@ export async function runTeamverEmbedSessionBoot(
         unlockBootIfNeeded(deps.isCancelled);
         return null;
       }
+
+      // Nginx live check BEFORE announcing authenticated. Setting the embed
+      // flag first raced App session-changed → runtime-config probe×2 while
+      // boot still ran refresh HA (refresh + probe×2) — staging 401 storm.
+      if (isTeamverRuntimeConfigAuthBlocked()) {
+        unlockBootIfNeeded(deps.isCancelled);
+        return null;
+      }
+      let nginxLive = await probeDesignBffSessionAuthenticated();
+      if (!nginxLive && !isDesignAuthRefreshDeclined()) {
+        nginxLive = await ensureDesignBffSessionAuthenticated();
+      }
+      if (!nginxLive && !isDesignAuthRefreshDeclined()) {
+        nginxLive = await refreshDesignAuthCookie();
+        if (!nginxLive) {
+          nginxLive = await probeDesignBffSessionAuthenticated();
+        }
+      }
+      if (deps.isCancelled()) return null;
+
+      // Announce after the ladder settles (live cookie or soft sticky).
       setTeamverEmbedSessionAuthenticated(true);
+
       const launchWorkspaceId = readLaunchWorkspaceIdFromBrowserUrl();
       let activeWorkspaceId: string | null = null;
       if (launchWorkspaceId) {
@@ -115,24 +137,7 @@ export async function runTeamverEmbedSessionBoot(
       consumeTeamverAuthReturnPending();
       unlockBootIfNeeded(deps.isCancelled);
 
-      // `/auth/session` may be stale-grace authenticated while nginx auth_request
-      // is already dead. Probe (and at most one refresh) before registry /
-      // runtime-config so boot does not open:
-      // GET /runtime-config 401 → POST /auth/refresh → session-probe×2.
-      if (isTeamverRuntimeConfigAuthBlocked()) {
-        return null;
-      }
-      let nginxLive = await probeDesignBffSessionAuthenticated();
-      if (!nginxLive && !isDesignAuthRefreshDeclined()) {
-        nginxLive = await ensureDesignBffSessionAuthenticated();
-      }
-      if (!nginxLive && !isDesignAuthRefreshDeclined()) {
-        nginxLive = await refreshDesignAuthCookie();
-        if (!nginxLive) {
-          nginxLive = await probeDesignBffSessionAuthenticated();
-        }
-      }
-      if (!nginxLive || deps.isCancelled()) {
+      if (!nginxLive || isTeamverRuntimeConfigAuthBlocked()) {
         return null;
       }
 
