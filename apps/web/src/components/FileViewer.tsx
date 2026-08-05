@@ -8414,8 +8414,10 @@ function HtmlViewer({
     id: string,
     savedStyles: Partial<ManualEditStyles>,
     savedSource: string,
+    /** When apply already captured styles/outerHtml, skip a third full-deck parse. */
+    capturedSnapshot?: ReturnType<typeof readManualEditTargetSnapshot>,
   ) {
-    const snapshot = readManualEditTargetSnapshot(savedSource, id);
+    const snapshot = capturedSnapshot ?? readManualEditTargetSnapshot(savedSource, id);
     if (id !== '__body__' && !snapshot.outerHtml) {
       setManualEditError(
         embedUiLabel(
@@ -8943,7 +8945,12 @@ function HtmlViewer({
       manualEditPendingStyleRef.current = pending;
       return false;
     }
-    const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles);
+    // One style read for diff — apply captures post-mutate snapshot for reconcile
+    // (was 3× full-deck parse: diff + apply + reconcile).
+    const sourceStyles = readManualEditStyles(baseSource, pending.id);
+    const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles, {
+      sourceStyles,
+    });
     if (Object.keys(effectiveStyles).length === 0) {
       reconcileManualEditDraftAfterNoOpFlush(pending);
       return true;
@@ -9178,12 +9185,16 @@ function HtmlViewer({
     try {
       // Sanitize on the live Document before serialize — avoids a second
       // full-document DOMParser pass via sanitizeManualEditFullSource.
+      // Capture target snapshot for set-style reconcile (skip a third parse).
       const result = applyManualEditPatch(
         baseSource,
         patch,
         { ...scope, targetHint: hint },
         hint,
-        { sanitize: isManualEditFullHtmlDocument(baseSource) },
+        {
+          sanitize: isManualEditFullHtmlDocument(baseSource),
+          captureTargetSnapshot: patch.kind === 'set-style',
+        },
       );
       if (!result.ok) {
         setManualEditError(
@@ -9276,7 +9287,12 @@ function HtmlViewer({
         setManualEditDraft((current) => ({ ...current, fullSource: contentToSave }));
       }
       if (patch.kind === 'set-style') {
-        reconcileManualEditStyleSave(patch.id, patch.styles, contentToSave);
+        reconcileManualEditStyleSave(
+          patch.id,
+          patch.styles,
+          contentToSave,
+          result.targetSnapshot,
+        );
       }
       setManualEditError(null);
       await onFileSaved?.();

@@ -4,6 +4,13 @@ export interface ManualEditPatchResult {
   ok: boolean;
   source: string;
   error?: string;
+  /** When `captureTargetSnapshot` is set, styles/outerHtml after mutate (skip re-parse). */
+  targetSnapshot?: {
+    fields: import('./types').ManualEditFields;
+    styles: import('./types').ManualEditStyles;
+    attributes: Record<string, string>;
+    outerHtml: string;
+  };
 }
 
 export type ManualEditMaskTargetsResult =
@@ -35,6 +42,8 @@ type ManualEditLookupRoot = (ParentNode & Element) | Document;
 export interface ApplyManualEditPatchOptions {
   /** Sanitize the live document before serialize (avoids a second full parse). */
   sanitize?: boolean;
+  /** Capture target styles/outerHtml from the live Document before serialize. */
+  captureTargetSnapshot?: boolean;
 }
 
 /**
@@ -62,7 +71,10 @@ export function applyManualEditPatch(
   if (options?.sanitize && isManualEditFullHtmlDocument(source)) {
     sanitizeManualEditDocumentInPlace(doc);
   }
-  return { ok: true, source: serializeSource(doc, source) };
+  const targetSnapshot = options?.captureTargetSnapshot && 'id' in patch
+    ? readManualEditTargetSnapshotFromDoc(doc, patch.id, scope)
+    : undefined;
+  return { ok: true, source: serializeSource(doc, source), targetSnapshot };
 }
 
 export type ManualEditPatchApplyItem = {
@@ -312,14 +324,12 @@ function readManualEditAttributesFromElement(el: Element): Record<string, string
   return attrs;
 }
 
-/** One parse → fields/styles/attrs/outerHtml (FileViewer selection hot path). */
-export function readManualEditTargetSnapshot(
-  source: string,
+function readManualEditTargetSnapshotFromDoc(
+  doc: Document,
   id: string,
   scope: ManualEditSourceScope = {},
 ): ManualEditTargetSnapshot {
-  const doc = parseSource(source);
-  const el = doc ? findEditableElement(doc, id, scope) : null;
+  const el = findEditableElement(doc, id, scope);
   if (!el) {
     return {
       fields: {},
@@ -334,6 +344,24 @@ export function readManualEditTargetSnapshot(
     attributes: readManualEditAttributesFromElement(el),
     outerHtml: el.outerHTML,
   };
+}
+
+/** One parse → fields/styles/attrs/outerHtml (FileViewer selection hot path). */
+export function readManualEditTargetSnapshot(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): ManualEditTargetSnapshot {
+  const doc = parseSource(source);
+  if (!doc) {
+    return {
+      fields: {},
+      styles: emptyManualEditStyles(),
+      attributes: {},
+      outerHtml: '',
+    };
+  }
+  return readManualEditTargetSnapshotFromDoc(doc, id, scope);
 }
 
 export function readManualEditFields(

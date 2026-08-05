@@ -65,6 +65,7 @@ export function isVisualCommentAttachment(attachment: ChatCommentAttachment): bo
 export function graftVisualMarksIntoDeckHtml(
   currentHtml: string,
   commentAttachments: readonly ChatCommentAttachment[],
+  options?: { sanitize?: boolean },
 ): string | null {
   const ops: Array<{ op: 'replace'; slideIndex: number; html: string }> = [];
   // One empty host Document for all mark fragment scrubs in this graft pass.
@@ -104,8 +105,12 @@ export function graftVisualMarksIntoDeckHtml(
     currentHtml,
     patch: { ops },
   });
-  // Full-source scrub once here — client visual-mark persist can skip a second parse.
-  return merged.ok ? sanitizeManualEditFullSource(merged.html) : null;
+  if (!merged.ok) return null;
+  // Default full-source scrub — client visual-mark persist can skip a second parse.
+  // Callers that own a terminal sanitize (stabilize → applyScoped / salvage) pass
+  // `{ sanitize: false }` so graft does not double-parse the full deck.
+  if (options?.sanitize === false) return merged.html;
+  return sanitizeManualEditFullSource(merged.html);
 }
 
 export function scopedCommentElementIds(attachment: ChatCommentAttachment): string[] {
@@ -378,7 +383,11 @@ export function stabilizeVisualMarkDeckHtml(
       currentSlideCount: currentSlides.length,
       nextSlideCount: nextSlides.length,
     });
-    const grafted = graftVisualMarksIntoDeckHtml(currentHtml, commentAttachments);
+    // Caller owns terminal full-source scrub (applyScoped / element-patch /
+    // salvage / ProjectView persist) — skip graft sanitize to avoid 2× parse.
+    const grafted = graftVisualMarksIntoDeckHtml(currentHtml, commentAttachments, {
+      sanitize: false,
+    });
     return grafted ?? currentHtml;
   }
 
@@ -497,30 +506,22 @@ function scopeRejectionCanRetry(reason: string): boolean {
 }
 
 function listChangedDeckSlideIndexes(currentHtml: string, patchedHtml: string): number[] {
-  const currentSlides = listDeckSlideIndexes(currentHtml).map((index) => ({
-    index,
-    html: extractSlideByIndex(currentHtml, index) ?? '',
-  }));
-  const patchedSlides = listDeckSlideIndexes(patchedHtml).map((index) => ({
-    index,
-    html: extractSlideByIndex(patchedHtml, index) ?? '',
-  }));
+  // One body-section materialization each (was list indexes + extractSlideByIndex
+  // per index — O(n) helper churn even when the section cache hits).
+  const currentSlides = extractTopLevelSlideSections(extractDeckBodyContent(currentHtml));
+  const patchedSlides = extractTopLevelSlideSections(extractDeckBodyContent(patchedHtml));
   const changed: number[] = [];
   const pushUnique = (index: number) => {
     if (Number.isInteger(index) && index >= 0 && !changed.includes(index)) {
       changed.push(index);
     }
   };
-  for (const current of currentSlides) {
-    const patched = patchedSlides.find((slide) => slide.index === current.index);
-    if (patched && patched.html !== current.html) {
-      pushUnique(current.index);
-    }
-  }
-  for (const patched of patchedSlides) {
-    const current = currentSlides.find((slide) => slide.index === patched.index);
-    if (!current || current.html !== patched.html) {
-      pushUnique(patched.index);
+  const maxLen = Math.max(currentSlides.length, patchedSlides.length);
+  for (let index = 0; index < maxLen; index += 1) {
+    const currentHtmlAt = currentSlides[index]?.outerHtml ?? '';
+    const patchedHtmlAt = patchedSlides[index]?.outerHtml ?? '';
+    if (currentHtmlAt !== patchedHtmlAt) {
+      pushUnique(index);
     }
   }
   return changed;
@@ -706,6 +707,8 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
   attachment: ChatCommentAttachment;
   slideIndex: number;
   instructionText?: string;
+  /** When set, reuse Document pair across slide candidates for one attachment. */
+  parsedDocs?: { current?: Document | null; next?: Document | null; patched?: Document | null };
 }): { ok: true; html: string } | { ok: false; reason: string } {
   const ids = scopedCommentElementIds(input.attachment);
   const hints = ids.map((id) => ({
@@ -713,11 +716,20 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
     ...attachmentMergeHint(input.attachment, input.instructionText),
   }));
   // One Document pair for merge → graft → hint-only salvage (was up to ~6 parses).
-  const currentDoc = parseManualEditSource(input.nextHtml);
-  const patchedDoc = parseManualEditSource(input.patchedHtml);
-  const parsedPair = currentDoc && patchedDoc
-    ? { current: currentDoc, next: patchedDoc, patched: patchedDoc }
-    : undefined;
+  // Prefer caller-shared pair when trying multiple slide candidates.
+  const parsedPair = input.parsedDocs?.current && (input.parsedDocs.next || input.parsedDocs.patched)
+    ? {
+        current: input.parsedDocs.current,
+        next: input.parsedDocs.next ?? input.parsedDocs.patched!,
+        patched: input.parsedDocs.patched ?? input.parsedDocs.next!,
+      }
+    : (() => {
+        const currentDoc = parseManualEditSource(input.nextHtml);
+        const patchedDoc = parseManualEditSource(input.patchedHtml);
+        return currentDoc && patchedDoc
+          ? { current: currentDoc, next: patchedDoc, patched: patchedDoc }
+          : undefined;
+      })();
 
   const merged = mergeManualEditTargetsFromSource(
     input.nextHtml,
@@ -961,6 +973,14 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
 
     let lastReason = 'No matching targets found to merge.';
     let mergedForAttachment = false;
+    // One Document pair across slide candidates (stale slideIndex often tries 2+).
+    let idBearingDocs = (() => {
+      const current = parseManualEditSource(nextHtml);
+      const patched = parseManualEditSource(input.patchedHtml);
+      return current && patched
+        ? { current, next: patched, patched }
+        : undefined;
+    })();
     for (const slideIndex of slideCandidates) {
       const attempt = tryMergeScopedCommentAttachmentAtSlide({
         nextHtml,
@@ -968,11 +988,13 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
         attachment,
         slideIndex,
         instructionText: input.instructionText,
+        parsedDocs: idBearingDocs,
       });
       if (attempt.ok) {
         nextHtml = attempt.html;
         narrowed = true;
         mergedForAttachment = true;
+        idBearingDocs = undefined;
         break;
       }
       lastReason = attempt.reason;
@@ -1111,6 +1133,13 @@ export function inferSlideIndexFromDeckHtml(
   return byNeedle(htmlHint) ?? byNeedle(currentText);
 }
 
+export type ReconcileCommentSlideOptions = {
+  /** Precomputed candidates — skip a second resolveScopedCommentSlideCandidates walk. */
+  candidates?: number[];
+  /** Precomputed inference — skip a second inferSlideIndexFromDeckHtml walk. */
+  inferred?: number | null;
+};
+
 /**
  * Verify or replace `attachment.slideIndex` against the current deck HTML.
  * Prefers text-verified slides, then structural inference.
@@ -1118,16 +1147,19 @@ export function inferSlideIndexFromDeckHtml(
 export function reconcileCommentAttachmentSlideIndex(
   deckHtml: string,
   attachment: ChatCommentAttachment,
+  options?: ReconcileCommentSlideOptions,
 ): ChatCommentAttachment {
   if (!deckHtml.trim()) return attachment;
 
-  const candidates = resolveScopedCommentSlideCandidates({
+  const candidates = options?.candidates ?? resolveScopedCommentSlideCandidates({
     attachment,
     currentHtml: deckHtml,
     patchedHtml: deckHtml,
   });
 
-  const inferred = inferSlideIndexFromDeckHtml(deckHtml, attachment);
+  const inferred = options && 'inferred' in options
+    ? options.inferred ?? null
+    : inferSlideIndexFromDeckHtml(deckHtml, attachment);
   if (inferred != null) {
     const inferredSlide = extractSlideByIndex(deckHtml, inferred);
     if (
@@ -1170,9 +1202,14 @@ export function reconcileCommentAttachmentElementId(
   deckHtml: string,
   attachment: ChatCommentAttachment,
   parsedDoc?: Document | null,
+  slideOptions?: ReconcileCommentSlideOptions,
 ): ChatCommentAttachment {
   if (!deckHtml.trim()) return attachment;
-  const slideReconciled = reconcileCommentAttachmentSlideIndex(deckHtml, attachment);
+  const slideReconciled = reconcileCommentAttachmentSlideIndex(
+    deckHtml,
+    attachment,
+    slideOptions,
+  );
   const slideIndex = slideReconciled.slideIndex;
   if (!(typeof slideIndex === 'number' && Number.isInteger(slideIndex) && slideIndex >= 0)) {
     return slideReconciled;
@@ -1222,18 +1259,72 @@ export function reconcileCommentAttachmentForDeck(
   deckHtml: string,
   attachment: ChatCommentAttachment,
   parsedDoc?: Document | null,
+  slideOptions?: ReconcileCommentSlideOptions,
 ): ChatCommentAttachment {
-  return reconcileCommentAttachmentElementId(deckHtml, attachment, parsedDoc);
+  return reconcileCommentAttachmentElementId(deckHtml, attachment, parsedDoc, slideOptions);
+}
+
+/**
+ * Reconcile attachments and collect allowed slide indexes in one pass.
+ * Persist used to call reconcile then `scopedCommentSlideIndexesFromDeck`
+ * (duplicate candidate/infer walks per attachment).
+ */
+export function reconcileCommentScopeForPersist(
+  deckHtml: string,
+  attachments: readonly ChatCommentAttachment[],
+): {
+  attachments: ChatCommentAttachment[];
+  allowedSlideIndexes?: number[];
+} {
+  if (attachments.length === 0) {
+    return { attachments: [] };
+  }
+  if (!deckHtml.trim()) {
+    return {
+      attachments: [...attachments],
+      allowedSlideIndexes: scopedCommentSlideIndexesFromAttachments(attachments),
+    };
+  }
+  const parsedDoc = parseManualEditSource(deckHtml);
+  const maxSlideIndex =
+    extractTopLevelSlideSections(extractDeckBodyContent(deckHtml)).length - 1;
+  const indexes = new Set<number>();
+  const reconciled = attachments.map((attachment) => {
+    const candidates = resolveScopedCommentSlideCandidates({
+      attachment,
+      currentHtml: deckHtml,
+      patchedHtml: deckHtml,
+    });
+    for (const candidate of candidates) {
+      if (candidate >= 0 && candidate <= maxSlideIndex) indexes.add(candidate);
+    }
+    const inferred = inferSlideIndexFromDeckHtml(deckHtml, attachment);
+    if (inferred != null && inferred >= 0 && inferred <= maxSlideIndex) {
+      indexes.add(inferred);
+    }
+    const next = reconcileCommentAttachmentForDeck(deckHtml, attachment, parsedDoc, {
+      candidates,
+      inferred,
+    });
+    if (
+      hasValidDeckSlideIndex(next)
+      && next.slideIndex! <= maxSlideIndex
+    ) {
+      indexes.add(next.slideIndex!);
+    }
+    return next;
+  });
+  return {
+    attachments: reconciled,
+    allowedSlideIndexes: indexes.size > 0 ? [...indexes] : undefined,
+  };
 }
 
 export function reconcileCommentAttachmentsForDeck(
   deckHtml: string,
   attachments: readonly ChatCommentAttachment[],
 ): ChatCommentAttachment[] {
-  // One DOMParser for the whole attachment list (was N× resolve parses).
-  const parsedDoc = parseManualEditSource(deckHtml);
-  return attachments.map((attachment) =>
-    reconcileCommentAttachmentForDeck(deckHtml, attachment, parsedDoc));
+  return reconcileCommentScopeForPersist(deckHtml, attachments).attachments;
 }
 
 export function scopedCommentSlideIndexesFromAttachments(
