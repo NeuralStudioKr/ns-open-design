@@ -364,6 +364,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     for (var i = 0; i < selected.length; i++) {
       selected[i].removeAttribute('data-od-edit-selected');
       selected[i].removeAttribute('data-od-edit-host-chrome');
+      selected[i].removeAttribute('data-od-edit-primary');
     }
   }
   function setSelectedTarget(id, hostChrome){
@@ -375,6 +376,20 @@ export function buildManualEditBridge(enabled: boolean): string {
     // Host resize/move overlay already paints the selection ring — suppress the
     // iframe outline/glow so users do not see a double border.
     if (hostChrome) el.setAttribute('data-od-edit-host-chrome', 'true');
+  }
+  function setSelectedTargets(ids, primaryId, hostChrome){
+    clearSelectedTarget();
+    if (!ids || !ids.length) return;
+    for (var i = 0; i < ids.length; i++) {
+      var sid = ids[i];
+      var el = findById(sid);
+      if (!el) continue;
+      el.setAttribute('data-od-edit-selected', 'true');
+      if (sid === primaryId) {
+        el.setAttribute('data-od-edit-primary', 'true');
+        if (hostChrome) el.setAttribute('data-od-edit-host-chrome', 'true');
+      }
+    }
   }
   function isVisibleHitTarget(el){
     if (!el || el === document.body || el === document.documentElement) return false;
@@ -599,7 +614,13 @@ export function buildManualEditBridge(enabled: boolean): string {
       return;
     }
     if (ev.data.type === 'od-edit-selected-target') {
-      setSelectedTarget(ev.data.id || null, !!ev.data.hostChrome);
+      var ids = ev.data.ids && ev.data.ids.length ? ev.data.ids : (ev.data.id ? [ev.data.id] : []);
+      var primaryId = ev.data.primaryId || ev.data.id || null;
+      if (ids.length > 1) {
+        setSelectedTargets(ids, primaryId, false);
+      } else {
+        setSelectedTarget(primaryId, !!ev.data.hostChrome);
+      }
       return;
     }
     if (ev.data.type === 'od-edit-hover-reset') {
@@ -650,7 +671,8 @@ export function buildManualEditBridge(enabled: boolean): string {
     }
     // Select only — text/link stay selectable for resize (wrap width) and the
     // inspector. Inline contenteditable is double-click (51-1 §12).
-    window.parent.postMessage({ type: 'od-edit-select', target: targetFrom(el, true) }, '*');
+    var additive = !!(ev.shiftKey || ev.metaKey || ev.ctrlKey);
+    window.parent.postMessage({ type: 'od-edit-select', target: targetFrom(el, true), additive: additive }, '*');
   }, true);
   document.addEventListener('dblclick', function(ev){
     if (!enabled) return;
@@ -661,7 +683,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (!el) return;
     var kind = inferKind(el);
     if (kind !== 'text' && kind !== 'link') return;
-    window.parent.postMessage({ type: 'od-edit-select', target: targetFrom(el, true) }, '*');
+    window.parent.postMessage({ type: 'od-edit-select', target: targetFrom(el, true), additive: false }, '*');
     makeEditable(el, ev);
   }, true);
   document.addEventListener('pointerover', function(ev){

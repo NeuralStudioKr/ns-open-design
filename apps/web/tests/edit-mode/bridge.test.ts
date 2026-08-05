@@ -650,6 +650,53 @@ describe('manual edit bridge target normalization', () => {
     expect(bridge).toContain("display.indexOf('flex') >= 0 || display.indexOf('grid') >= 0");
   });
 
+  it('marks multiple runtime selected targets from ids payload', () => {
+    const dom = new JSDOM(
+      `<main>
+        <h1 data-od-id="title">Title</h1>
+        <p data-od-id="body">Body</p>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]')!;
+    const body = dom.window.document.querySelector('[data-od-id="body"]')!;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-selected-target', ids: ['title', 'body'], primaryId: 'body' },
+    }));
+    expect(title.getAttribute('data-od-edit-selected')).toBe('true');
+    expect(body.getAttribute('data-od-edit-selected')).toBe('true');
+    expect(body.getAttribute('data-od-edit-primary')).toBe('true');
+    expect(title.hasAttribute('data-od-edit-primary')).toBe(false);
+
+    dom.window.close();
+  });
+
+  it('posts additive selection when shift-clicking a target', () => {
+    const dom = new JSDOM(
+      `<main><h1 data-od-id="title">Title</h1></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const title = dom.window.document.querySelector('[data-od-id="title"]') as HTMLElement;
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+
+    title.dispatchEvent(new dom.window.MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      shiftKey: true,
+      clientX: 8,
+      clientY: 8,
+    }));
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'od-edit-select',
+      target: expect.objectContaining({ id: 'title', kind: 'text' }),
+      additive: true,
+    }, '*');
+
+    dom.window.close();
+  });
+
   it('single-clicks text to select without entering inline edit (resize stays available)', () => {
     const dom = new JSDOM(
       `<main><h1 data-od-id="title">Original title</h1></main>${buildManualEditBridge(true)}`,
@@ -673,6 +720,7 @@ describe('manual edit bridge target normalization', () => {
         id: 'title',
         kind: 'text',
       }),
+      additive: false,
     }, '*');
     expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
       type: 'od-edit-text-active',
@@ -698,13 +746,14 @@ describe('manual edit bridge target normalization', () => {
     }));
     expect(title.getAttribute('contenteditable')).toBe('plaintext-only');
     expect(title.getAttribute('data-od-editing')).toBe('true');
-    expect(postMessage).toHaveBeenCalledWith({
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: 'od-edit-select',
       target: expect.objectContaining({
         id: 'title',
         kind: 'text',
       }),
-    }, '*');
+      additive: false,
+    }), '*');
 
     title.textContent = 'Edited title';
     title.dispatchEvent(new dom.window.FocusEvent('blur', { bubbles: false }));

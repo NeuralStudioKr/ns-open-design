@@ -133,6 +133,8 @@ export interface ManualEditTargetMessage {
 export interface ManualEditSelectMessage {
   type: 'od-edit-select';
   target: ManualEditTarget;
+  /** Shift / meta / ctrl — toggle membership in the current selection set. */
+  additive?: boolean;
 }
 
 export interface ManualEditHoverMessage {

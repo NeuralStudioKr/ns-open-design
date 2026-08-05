@@ -248,6 +248,7 @@ import type {
   PreviewCommentTarget,
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
+import { ManualEditMultSelectOverlay } from './ManualEditMultSelectOverlay';
 import { ManualEditResizeOverlay } from './ManualEditResizeOverlay';
 import { FileViewerUndoRedoToolbar } from './FileViewerUndoRedoToolbar';
 import { FileRevisionHistoryPanel } from './FileRevisionHistoryPanel';
@@ -322,6 +323,15 @@ import {
 } from '../edit-mode/manual-edit-session';
 import { diffManualEditStylePatch } from '../edit-mode/manual-edit-style-batch';
 import {
+  applyManualEditPatches,
+  buildManualEditStylePatchesForTargets,
+  mergeInspectorStylesForTargets,
+  manualEditSelectionIdsEqual,
+  nextManualEditSelectionIds,
+  resolveManualEditTargetsByIds,
+  shouldFlushManualEditStylesOnSelectionBoundary,
+} from '../edit-mode/manual-edit-mult-select';
+import {
   manualEditInspectorStyleValue,
   manualEditStyleValuesEqual,
 } from '../edit-mode/manual-edit-style-values';
@@ -346,6 +356,8 @@ type BoardTool = 'inspect' | 'pod';
 type StrokePoint = { x: number; y: number };
 export type ManualEditPendingStyleSave = {
   id: string;
+  /** When set, flush applies the same style diff to every id (mult select). */
+  targetIds?: string[];
   styles: Partial<ManualEditStyles>;
   label: string;
   version: number;
@@ -1075,7 +1087,9 @@ export function cancelManualEditPendingStyleSnapshot(
   id: string,
   keys: Array<keyof ManualEditStyles>,
 ): ManualEditPendingStyleSave | null {
-  if (!pending || pending.id !== id || keys.length === 0) return pending;
+  if (!pending || keys.length === 0) return pending;
+  const pendingIds = pending.targetIds ?? [pending.id];
+  if (!pendingIds.includes(id)) return pending;
   const nextStyles = { ...pending.styles };
   for (const key of keys) delete nextStyles[key];
   if (Object.keys(nextStyles).length === 0) return null;
@@ -5447,6 +5461,10 @@ function HtmlViewer({
   }, []);
   const [manualEditTargets, setManualEditTargets] = useState<ManualEditTarget[]>([]);
   const [selectedManualEditTarget, setSelectedManualEditTarget] = useState<ManualEditTarget | null>(null);
+  const [selectedManualEditTargetIds, setSelectedManualEditTargetIds] = useState<string[]>([]);
+  const [manualEditMixedStyleKeys, setManualEditMixedStyleKeys] = useState<Set<keyof ManualEditStyles>>(
+    () => new Set(),
+  );
   const [manualEditHoverTarget, setManualEditHoverTarget] = useState<ManualEditTarget | null>(null);
   const [manualEditPageStylesOpen, setManualEditPageStylesOpen] = useState(false);
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
@@ -5460,6 +5478,7 @@ function HtmlViewer({
   const manualEditPanelPaintPinnedIdRef = useRef<string | null>(null);
   const selectedManualEditTargetIdRef = useRef<string | null>(null);
   const selectedManualEditTargetRef = useRef<ManualEditTarget | null>(null);
+  const selectedManualEditTargetIdsRef = useRef<string[]>([]);
   const [manualEditDraft, setManualEditDraft] = useState<ManualEditDraft>(() => emptyManualEditDraft());
   const [revisionStack, setRevisionStack] = useState<RevisionStackSnapshot>(() => (
     createRevisionStackSnapshot([], null)
@@ -7149,11 +7168,15 @@ function HtmlViewer({
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
     win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
-    postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null);
+    postSelectedManualEditTargetsToIframe(
+      manualEditMode ? selectedManualEditTargetIds : [],
+      manualEditMode ? selectedManualEditTarget?.id ?? null : null,
+    );
     // hostChrome tracks overlay mount: also re-post when draw / inline-text hide it.
   }, [
     manualEditMode,
     selectedManualEditTarget?.id,
+    selectedManualEditTargetIds,
     srcDoc,
     useUrlLoadPreview,
     manualEditInlineTextEditing,
@@ -7178,30 +7201,45 @@ function HtmlViewer({
     return true;
   }, []);
 
-  function postSelectedManualEditTargetToIframe(id: string | null, target: HTMLIFrameElement | null = iframeRef.current) {
+  function postSelectedManualEditTargetsToIframe(
+    ids: string[],
+    primaryId: string | null,
+    target: HTMLIFrameElement | null = iframeRef.current,
+  ) {
     const win = target?.contentWindow;
     if (!win) return;
-    // Prefer render-state over the ref: the selection-sync effect can run
-    // before the ref-sync effect after setSelectedManualEditTarget.
-    const selected = (
-      id
+    const primary = (
+      primaryId
       && selectedManualEditTarget
-      && selectedManualEditTarget.id === id
+      && selectedManualEditTarget.id === primaryId
     )
       ? selectedManualEditTarget
-      : (id && selectedManualEditTargetRef.current?.id === id
+      : (primaryId && selectedManualEditTargetRef.current?.id === primaryId
         ? selectedManualEditTargetRef.current
         : null);
-    // Match ManualEditResizeOverlay mount: only suppress the iframe ring when
-    // the host overlay is actually painted (not during draw / inline text /
-    // prod drag kill-switch).
     const hostChrome = Boolean(
-      selected
+      ids.length === 1
+      && primary
       && !drawOverlayOpen
       && !hideManualEditBoxDrag
-      && canResizeTarget(selected, { inlineTextEditing: manualEditInlineTextEditing }),
+      && canResizeTarget(primary, { inlineTextEditing: manualEditInlineTextEditing }),
     );
-    win.postMessage({ type: 'od-edit-selected-target', id, hostChrome }, '*');
+    win.postMessage({
+      type: 'od-edit-selected-target',
+      id: primaryId,
+      ids,
+      primaryId,
+      hostChrome,
+    }, '*');
+  }
+
+  /** @deprecated use postSelectedManualEditTargetsToIframe */
+  function postSelectedManualEditTargetToIframe(id: string | null, target?: HTMLIFrameElement | null) {
+    postSelectedManualEditTargetsToIframe(
+      id ? [id] : [],
+      id,
+      target,
+    );
   }
 
   function requestManualEditTargetRemeasure(id: string, target: HTMLIFrameElement | null = iframeRef.current) {
@@ -7312,7 +7350,11 @@ function HtmlViewer({
       mode: boardTool,
     }, '*');
     win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
-    postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null, target);
+    postSelectedManualEditTargetsToIframe(
+      manualEditMode ? selectedManualEditTargetIdsRef.current : [],
+      manualEditMode ? selectedManualEditTargetIdRef.current : null,
+      target,
+    );
     win.postMessage({ type: 'od:inspect-mode', enabled: inspectMode }, '*');
     if (effectiveDeck && boardMode) requestSlideStateFromIframe(target);
   }
@@ -7337,7 +7379,10 @@ function HtmlViewer({
       }
       const pending = manualEditPendingStyleRef.current;
       if (!pending) return;
-      previewStyleToIframe(pending.id, pending.styles, pending.version);
+      const pendingIds = pending.targetIds ?? [pending.id];
+      for (const id of pendingIds) {
+        previewStyleToIframe(id, pending.styles, pending.version);
+      }
     } finally {
       if (target && target !== previous) iframeRef.current = previous;
     }
@@ -7428,11 +7473,15 @@ function HtmlViewer({
     setManualEditViewportWidth(null);
     setManualEditTargets([]);
     setSelectedManualEditTarget(null);
+    setSelectedManualEditTargetIds([]);
+    setManualEditMixedStyleKeys(new Set());
     setManualEditPanelPosition(null);
     setManualEditPanelCollapsed(false);
     manualEditPanelUserPinnedRef.current = false;
     manualEditPanelPaintPinnedIdRef.current = null;
     selectedManualEditTargetIdRef.current = null;
+    selectedManualEditTargetRef.current = null;
+    selectedManualEditTargetIdsRef.current = [];
     setManualEditDraft(emptyManualEditDraft());
     commitRevisionStack(createRevisionStackSnapshot([], null));
     clearRevisionContentCacheForFile(projectId, file.name);
@@ -8262,6 +8311,8 @@ function HtmlViewer({
     if (!manualEditMode) {
       setManualEditTargets([]);
       setSelectedManualEditTarget(null);
+      setSelectedManualEditTargetIds([]);
+      setManualEditMixedStyleKeys(new Set());
       setManualEditHoverTarget(null);
       setManualEditPageStylesOpen(false);
       setManualEditPanelPosition(null);
@@ -8270,6 +8321,7 @@ function HtmlViewer({
       manualEditPanelPaintPinnedIdRef.current = null;
       selectedManualEditTargetIdRef.current = null;
       selectedManualEditTargetRef.current = null;
+      selectedManualEditTargetIdsRef.current = [];
       setManualEditError(null);
       manualEditPendingStyleRef.current = null;
       manualEditRemeasureAwaiterRef.current.cancelAll();
@@ -8303,13 +8355,41 @@ function HtmlViewer({
           selectedManualEditTargetIdRef.current = next.id;
           return next;
         });
+        const currentIds = selectedManualEditTargetIdsRef.current;
+        if (currentIds.length > 0) {
+          const refreshed = resolveManualEditTargetsByIds(currentIds, data.targets);
+          const nextIds = refreshed.map((item) => item.id);
+          if (nextIds.length === 0) {
+            void clearManualEditTargetSelection();
+            return;
+          }
+          if (!manualEditSelectionIdsEqual(currentIds, nextIds)) {
+            selectedManualEditTargetIdsRef.current = nextIds;
+            setSelectedManualEditTargetIds(nextIds);
+          }
+          if (nextIds.length > 1) {
+            const base = sourceRef.current ?? '';
+            const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
+              refreshed,
+              (id) => inspectorManualEditStyles(
+                refreshed.find((item) => item.id === id) ?? refreshed[refreshed.length - 1]!,
+                base,
+              ),
+            );
+            setManualEditMixedStyleKeys(mixedKeys);
+            setManualEditDraft((current) => ({ ...current, styles: mergedStyles }));
+          }
+          const primaryId = selectedManualEditTargetIdRef.current ?? nextIds[nextIds.length - 1]!;
+          setTimeout(() => postSelectedManualEditTargetsToIframe(nextIds, primaryId), 0);
+          return;
+        }
         const selectedId = selectedManualEditTargetIdRef.current;
-        if (selectedId) setTimeout(() => postSelectedManualEditTargetToIframe(selectedId), 0);
+        if (selectedId) setTimeout(() => postSelectedManualEditTargetsToIframe([selectedId], selectedId), 0);
         return;
       }
       if (data.type === 'od-edit-select') {
         setManualEditHoverTarget(null);
-        void selectManualEditTarget(data.target);
+        void selectManualEditTarget(data.target, { additive: data.additive === true });
         return;
       }
       if (data.type === 'od-edit-hover') {
@@ -8318,7 +8398,9 @@ function HtmlViewer({
         // user clicks that affordance (or a container/image body), so moving
         // the cursor across the canvas never yanks the panel away mid-edit.
         setManualEditHoverTarget(
-          data.target.id === selectedManualEditTargetIdRef.current ? null : data.target,
+          selectedManualEditTargetIdsRef.current.includes(data.target.id)
+            ? null
+            : data.target,
         );
         return;
       }
@@ -8470,16 +8552,33 @@ function HtmlViewer({
     manualEditPendingStyleRef.current = nextPending;
   }
 
-  async function handleManualEditStyleChange(id: string, styles: Partial<ManualEditStyles>, label: string) {
+  async function handleManualEditStyleChange(
+    ids: string[],
+    styles: Partial<ManualEditStyles>,
+    label: string,
+  ) {
     const version = nextManualEditPreviewVersion();
+    const primaryId = ids[ids.length - 1] ?? ids[0];
+    if (!primaryId) return;
     const currentPending = manualEditPendingStyleRef.current;
-    const pendingStyles = currentPending?.id === id
+    const sameBatch = currentPending
+      && (currentPending.targetIds ?? [currentPending.id]).every((id, index) => ids[index] === id)
+      && ids.length === (currentPending.targetIds ?? [currentPending.id]).length;
+    const pendingStyles = sameBatch && currentPending
       ? { ...currentPending.styles, ...styles }
       : styles;
-    const pending: ManualEditPendingStyleSave = { id, styles: pendingStyles, label, version };
+    const pending: ManualEditPendingStyleSave = {
+      id: primaryId,
+      targetIds: ids.length > 1 ? ids : undefined,
+      styles: pendingStyles,
+      label,
+      version,
+    };
     manualEditPendingStyleRef.current = pending;
     setManualEditError(null);
-    previewStyleToIframe(id, styles, version);
+    for (const id of ids) {
+      previewStyleToIframe(id, styles, version);
+    }
     // Autosave shortly after the user stops tweaking — select/background/
     // exit also flush, but a remount or crash before those gestures must not
     // be the only persistence path. Resize drag sessions pause this timer.
@@ -8891,25 +8990,45 @@ function HtmlViewer({
     const keys = Object.keys(pending.styles) as Array<keyof ManualEditStyles>;
     if (keys.length === 0) return;
 
-    const target = pending.id === '__body__'
-      ? null
-      : selectedManualEditTargetRef.current?.id === pending.id
-        ? selectedManualEditTargetRef.current
-        : manualEditTargets.find((item) => item.id === pending.id) ?? null;
-
-    const sourceStyles = target
-      ? inspectorManualEditStyles(target, base)
-      : readManualEditStyles(base, pending.id);
-    const resetStyles = keys.reduce<Partial<ManualEditStyles>>((acc, key) => {
-      acc[key] = sourceStyles[key] ?? '';
-      return acc;
-    }, {});
+    const pendingIds = pending.targetIds ?? [pending.id];
+    for (const id of pendingIds) {
+      const target = id === '__body__'
+        ? null
+        : manualEditTargets.find((item) => item.id === id)
+          ?? (selectedManualEditTargetRef.current?.id === id ? selectedManualEditTargetRef.current : null);
+      const sourceStyles = target
+        ? inspectorManualEditStyles(target, base)
+        : readManualEditStyles(base, id);
+      const resetStyles = keys.reduce<Partial<ManualEditStyles>>((acc, key) => {
+        acc[key] = sourceStyles[key] ?? '';
+        return acc;
+      }, {});
+      previewStyleToIframe(id, resetStyles, nextManualEditPreviewVersion());
+    }
 
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
-    previewStyleToIframe(pending.id, resetStyles, nextManualEditPreviewVersion());
 
-    if (!target || selectedManualEditTargetRef.current?.id === pending.id) {
+    const selectedIds = selectedManualEditTargetIdsRef.current;
+    if (selectedIds.length > 1) {
+      const refreshed = resolveManualEditTargetsByIds(selectedIds, manualEditTargets);
+      const { styles, mixedKeys } = mergeInspectorStylesForTargets(
+        refreshed,
+        (id) => {
+          const target = refreshed.find((item) => item.id === id) ?? null;
+          return target ? inspectorManualEditStyles(target, base) : readManualEditStyles(base, id);
+        },
+      );
+      setManualEditMixedStyleKeys(mixedKeys);
+      setManualEditDraft((current) => ({ ...current, styles }));
+      return;
+    }
+    if (selectedManualEditTargetRef.current) {
+      const sourceStyles = inspectorManualEditStyles(selectedManualEditTargetRef.current, base);
+      const resetStyles = keys.reduce<Partial<ManualEditStyles>>((acc, key) => {
+        acc[key] = sourceStyles[key] ?? '';
+        return acc;
+      }, {});
       setManualEditDraft((current) => ({
         ...current,
         styles: { ...current.styles, ...resetStyles },
@@ -8944,6 +9063,23 @@ function HtmlViewer({
       return false;
     }
     const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles);
+    const targetIds = pending.targetIds ?? [pending.id];
+    if (targetIds.length > 1) {
+      const patches = buildManualEditStylePatchesForTargets(baseSource, targetIds, pending.styles);
+      if (patches.length === 0) {
+        reconcileManualEditDraftAfterNoOpFlush(pending);
+        return true;
+      }
+      const ok = await applyManualEditBatch(patches, pending.label);
+      if (!ok) {
+        manualEditPendingStyleRef.current = restoreManualEditPendingStyleAfterFailedFlush(
+          manualEditPendingStyleRef.current,
+          pending,
+        );
+        return false;
+      }
+      return true;
+    }
     if (Object.keys(effectiveStyles).length === 0) {
       reconcileManualEditDraftAfterNoOpFlush(pending);
       return true;
@@ -8975,25 +9111,38 @@ function HtmlViewer({
     clearManualEditStyleTimer();
     manualEditPendingStyleRef.current = null;
     const base = sourceRef.current ?? '';
-    const target = pending.id === '__body__'
-      ? null
-      : selectedManualEditTargetRef.current?.id === pending.id
-        ? selectedManualEditTargetRef.current
-        : manualEditTargets.find((item) => item.id === pending.id) ?? null;
-    const sourceStyles = target
-      ? inspectorManualEditStyles(target, base)
-      : readManualEditStyles(base, pending.id);
-    const resetStyles = MANUAL_EDIT_STYLE_PROPS.reduce<Partial<ManualEditStyles>>((acc, key) => {
-      acc[key] = sourceStyles[key] ?? '';
-      return acc;
-    }, {});
-    previewStyleToIframe(pending.id, resetStyles, nextManualEditPreviewVersion());
-    if (!target || target.id === selectedManualEditTargetRef.current?.id) {
-      setManualEditDraft((current) => ({
-        ...current,
-        styles: target ? sourceStyles : current.styles,
-        fullSource: base,
-      }));
+    const pendingIds = pending.targetIds ?? [pending.id];
+    const pendingKeys = Object.keys(pending.styles) as Array<keyof ManualEditStyles>;
+    for (const id of pendingIds) {
+      const target = id === '__body__'
+        ? null
+        : manualEditTargets.find((item) => item.id === id)
+          ?? (selectedManualEditTargetRef.current?.id === id ? selectedManualEditTargetRef.current : null);
+      const sourceStyles = target
+        ? inspectorManualEditStyles(target, base)
+        : readManualEditStyles(base, id);
+      const resetStyles = pendingKeys.reduce<Partial<ManualEditStyles>>((acc, key) => {
+        acc[key] = sourceStyles[key] ?? '';
+        return acc;
+      }, {});
+      previewStyleToIframe(id, resetStyles, nextManualEditPreviewVersion());
+    }
+    const selectedIds = selectedManualEditTargetIdsRef.current;
+    if (selectedIds.length > 1) {
+      const refreshed = resolveManualEditTargetsByIds(selectedIds, manualEditTargets);
+      const { styles, mixedKeys } = mergeInspectorStylesForTargets(
+        refreshed,
+        (id) => {
+          const target = refreshed.find((item) => item.id === id) ?? null;
+          return target ? inspectorManualEditStyles(target, base) : readManualEditStyles(base, id);
+        },
+      );
+      setManualEditMixedStyleKeys(mixedKeys);
+      setManualEditDraft((current) => ({ ...current, styles, fullSource: base }));
+    } else if (selectedManualEditTargetRef.current) {
+      const sourceStyles = inspectorManualEditStyles(selectedManualEditTargetRef.current, base);
+      setManualEditDraft((current) => ({ ...current, styles: sourceStyles, fullSource: base }));
+      setManualEditMixedStyleKeys(new Set());
     }
     setManualEditError(null);
   }
@@ -9022,27 +9171,44 @@ function HtmlViewer({
     if (win) win.postMessage({ type: 'od-edit-hover-reset' }, '*');
   }
 
-  async function selectManualEditTarget(target: ManualEditTarget) {
-    // Switching targets used to cancel the previous draft — looks like the
-    // style "didn't save". Flush the boundary first (upstream
-    // settleManualEditHistoryBoundary) and abort the switch if save fails.
-    if (shouldFlushManualEditStylesOnTargetBoundary(
-      manualEditPendingStyleRef.current?.id,
+  async function selectManualEditTarget(
+    target: ManualEditTarget,
+    options?: { additive?: boolean },
+  ) {
+    if (manualEditResizeSessionActiveRef.current || manualEditInlineTextEditing) return;
+
+    const currentIds = selectedManualEditTargetIdsRef.current;
+    const nextIds = nextManualEditSelectionIds(
+      currentIds,
       target.id,
-    )) {
+      options?.additive ?? false,
+    );
+    if (nextIds.length === 0) {
+      await clearManualEditTargetSelection();
+      return;
+    }
+
+    const pending = manualEditPendingStyleRef.current;
+    const pendingIds = pending?.targetIds ?? (pending?.id ? [pending.id] : null);
+    if (shouldFlushManualEditStylesOnSelectionBoundary(pendingIds, nextIds)) {
       if (!(await flushManualEditStyleSave({ force: true }))) return;
     }
+
+    const catalog = manualEditTargets.length > 0
+      ? manualEditTargets
+      : [target];
+    const nextTargets = resolveManualEditTargetsByIds(nextIds, catalog);
+    if (nextTargets.length === 0) return;
+    const primary = nextTargets[nextTargets.length - 1]!;
+
     setManualEditPageStylesOpen(false);
-    // Keep the inspector still across selection changes unless it would cover
-    // the newly selected element. Same-id reselect always keeps the pin.
-    if (selectedManualEditTargetIdRef.current !== target.id) {
+    if (selectedManualEditTargetIdRef.current !== primary.id) {
       const canvasWidth = previewBodySize?.width ?? 1200;
       const canvasHeight = previewBodySize?.height ?? 800;
       const hostRect = manualEditPanelHostRect(
-        target,
+        primary,
         manualEditHostScale,
         manualEditHostOffset,
-        // Selection paint still belongs to the previous id — use composed.
         null,
       );
       const pinned = manualEditPanelPositionRef.current;
@@ -9060,36 +9226,58 @@ function HtmlViewer({
         manualEditPanelUserPinnedRef.current = false;
         manualEditPanelPaintPinnedIdRef.current = null;
       } else if (pinned) {
-        // Kept — treat as pinned for the new id so paint-upgrade does not move it.
-        manualEditPanelPaintPinnedIdRef.current = target.id;
+        manualEditPanelPaintPinnedIdRef.current = primary.id;
       }
     }
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
     manualEditResizeSessionActiveRef.current = false;
     manualEditResizePausedRef.current = false;
+
     const base = sourceRef.current ?? '';
-    // One DOMParser for fields/styles/attrs/outerHtml (was 3–4× full-deck parse).
-    const snapshot = readManualEditTargetSnapshot(base, target.id);
-    selectedManualEditTargetIdRef.current = target.id;
-    selectedManualEditTargetRef.current = target;
-    setSelectedManualEditTarget(target);
-    // Drop prior selection paint immediately — a larger parent's rect must not
-    // flash over a smaller newly selected child for a frame.
+    selectedManualEditTargetIdRef.current = primary.id;
+    selectedManualEditTargetRef.current = primary;
+    selectedManualEditTargetIdsRef.current = nextIds;
+    setSelectedManualEditTargetIds(nextIds);
+    setSelectedManualEditTarget(primary);
     setManualEditHostPaintRect(null);
-    // Measure before paint so the overlay does not flash at scale=1 / offset=0.
-    refreshManualEditHostPaintRect(target.id);
-    setManualEditDraft({
-      text: snapshot.fields.text ?? target.fields.text ?? target.text,
-      href: snapshot.fields.href ?? target.fields.href ?? '',
-      src: snapshot.fields.src ?? target.fields.src ?? '',
-      alt: snapshot.fields.alt ?? target.fields.alt ?? '',
-      styles: mergeManualEditInspectorStyles(snapshot.styles, target.styles),
-      attributesText: JSON.stringify(snapshot.attributes, null, 2),
-      outerHtml: snapshot.outerHtml || target.outerHtml,
-      fullSource: base,
-    });
+    if (nextTargets.length === 1) {
+      refreshManualEditHostPaintRect(primary.id);
+      const snapshot = readManualEditTargetSnapshot(base, primary.id);
+      setManualEditMixedStyleKeys(new Set());
+      setManualEditDraft({
+        text: snapshot.fields.text ?? primary.fields.text ?? primary.text,
+        href: snapshot.fields.href ?? primary.fields.href ?? '',
+        src: snapshot.fields.src ?? primary.fields.src ?? '',
+        alt: snapshot.fields.alt ?? primary.fields.alt ?? '',
+        styles: mergeManualEditInspectorStyles(snapshot.styles, primary.styles),
+        attributesText: JSON.stringify(snapshot.attributes, null, 2),
+        outerHtml: snapshot.outerHtml || primary.outerHtml,
+        fullSource: base,
+      });
+    } else {
+      const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
+        nextTargets,
+        (id) => inspectorManualEditStyles(
+          nextTargets.find((item) => item.id === id) ?? primary,
+          base,
+        ),
+      );
+      setManualEditMixedStyleKeys(mixedKeys);
+      const snapshot = readManualEditTargetSnapshot(base, primary.id);
+      setManualEditDraft({
+        text: snapshot.fields.text ?? primary.fields.text ?? primary.text,
+        href: snapshot.fields.href ?? primary.fields.href ?? '',
+        src: snapshot.fields.src ?? primary.fields.src ?? '',
+        alt: snapshot.fields.alt ?? primary.fields.alt ?? '',
+        styles: mergedStyles,
+        attributesText: '{}',
+        outerHtml: '',
+        fullSource: base,
+      });
+    }
     setManualEditError(null);
+    postSelectedManualEditTargetsToIframe(nextIds, primary.id);
   }
 
   async function clearManualEditTargetSelection(
@@ -9097,15 +9285,21 @@ function HtmlViewer({
   ): Promise<boolean> {
     if (options?.discardPendingStyles) {
       cancelManualEditStyleDraft();
-    } else if (shouldFlushManualEditStylesOnTargetBoundary(
-      manualEditPendingStyleRef.current?.id,
-      null,
+    } else if (shouldFlushManualEditStylesOnSelectionBoundary(
+      manualEditPendingStyleRef.current?.targetIds
+        ?? (manualEditPendingStyleRef.current?.id
+          ? [manualEditPendingStyleRef.current.id]
+          : null),
+      [],
     )) {
       if (!(await flushManualEditStyleSave({ force: true }))) return false;
     }
     selectedManualEditTargetIdRef.current = null;
     selectedManualEditTargetRef.current = null;
+    selectedManualEditTargetIdsRef.current = [];
+    setSelectedManualEditTargetIds([]);
     setSelectedManualEditTarget(null);
+    setManualEditMixedStyleKeys(new Set());
     setManualEditPanelPosition(null);
     manualEditPanelUserPinnedRef.current = false;
     manualEditPanelPaintPinnedIdRef.current = null;
@@ -9116,6 +9310,7 @@ function HtmlViewer({
     manualEditResizePausedRef.current = false;
     setManualEditDraft(emptyManualEditDraft(sourceRef.current ?? ''));
     setManualEditError(null);
+    postSelectedManualEditTargetsToIframe([], null);
     return true;
   }
 
@@ -9263,21 +9458,163 @@ function HtmlViewer({
           ? { ...current, text: patch.value, fields: { ...current.fields, text: patch.value } }
           : current);
       } else if (patch.kind === 'remove-element') {
-        if (manualEditPendingStyleRef.current?.id === patch.id) {
+        const pendingIds = manualEditPendingStyleRef.current?.targetIds
+          ?? (manualEditPendingStyleRef.current?.id
+            ? [manualEditPendingStyleRef.current.id]
+            : []);
+        if (pendingIds.includes(patch.id)) {
           manualEditPendingStyleRef.current = null;
           clearManualEditStyleTimer();
         }
-        selectedManualEditTargetIdRef.current = null;
-        setSelectedManualEditTarget(null);
+        const remainingIds = selectedManualEditTargetIdsRef.current.filter((id) => id !== patch.id);
         setManualEditTargets((current) => current.filter((target) => target.id !== patch.id));
-        setManualEditDraft(emptyManualEditDraft(contentToSave));
-        postSelectedManualEditTargetToIframe(null);
+        if (remainingIds.length === 0) {
+          selectedManualEditTargetIdRef.current = null;
+          selectedManualEditTargetRef.current = null;
+          selectedManualEditTargetIdsRef.current = [];
+          setSelectedManualEditTargetIds([]);
+          setSelectedManualEditTarget(null);
+          setManualEditMixedStyleKeys(new Set());
+          setManualEditDraft(emptyManualEditDraft(contentToSave));
+          postSelectedManualEditTargetsToIframe([], null);
+        } else {
+          const refreshed = resolveManualEditTargetsByIds(
+            remainingIds,
+            manualEditTargets.filter((target) => target.id !== patch.id),
+          );
+          const nextIds = refreshed.map((item) => item.id);
+          const primary = refreshed[refreshed.length - 1]!;
+          selectedManualEditTargetIdRef.current = primary.id;
+          selectedManualEditTargetRef.current = primary;
+          selectedManualEditTargetIdsRef.current = nextIds;
+          setSelectedManualEditTargetIds(nextIds);
+          setSelectedManualEditTarget(primary);
+          if (nextIds.length > 1) {
+            const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
+              refreshed,
+              (id) => inspectorManualEditStyles(
+                refreshed.find((item) => item.id === id) ?? primary,
+                contentToSave,
+              ),
+            );
+            setManualEditMixedStyleKeys(mixedKeys);
+            setManualEditDraft((current) => ({ ...current, styles: mergedStyles, fullSource: contentToSave }));
+          } else {
+            setManualEditMixedStyleKeys(new Set());
+            setManualEditDraft(emptyManualEditDraft(contentToSave));
+          }
+          postSelectedManualEditTargetsToIframe(nextIds, primary.id);
+        }
       } else {
         setManualEditDraft((current) => ({ ...current, fullSource: contentToSave }));
       }
       if (patch.kind === 'set-style') {
         reconcileManualEditStyleSave(patch.id, patch.styles, contentToSave);
       }
+      setManualEditError(null);
+      await onFileSaved?.();
+      return true;
+    } finally {
+      revisionSyncSuppressRef.current = false;
+      manualEditSavingRef.current = false;
+      setManualEditSaving(false);
+    }
+  }
+
+  async function applyManualEditBatch(
+    patches: ManualEditPatch[],
+    label: string,
+  ): Promise<boolean> {
+    if (patches.length === 0) return true;
+    if (patches.length === 1) return applyManualEdit(patches[0]!, label);
+    if (manualEditSavingRef.current) return false;
+    const baseSource = manualEditPatchBaseSource({
+      manualEditMode,
+      frozenSource: manualEditFrozenSource,
+      liveSource: sourceRef.current,
+    });
+    if (baseSource == null) return false;
+    if (revisionDiskSyncPromiseRef.current) {
+      await revisionDiskSyncPromiseRef.current;
+    }
+    manualEditSavingRef.current = true;
+    setManualEditSaving(true);
+    setManualEditError(null);
+    try {
+      const result = applyManualEditPatches(baseSource, patches);
+      if (!result.ok) {
+        setManualEditError(
+          result.error ?? embedUiLabel('Could not apply edit.', '편집을 적용하지 못했습니다.'),
+        );
+        return false;
+      }
+      if (
+        !shouldSkipManualEditHistoryConfirm(manualEditMode)
+        && !(await confirmManualEditHistorySource(
+          baseSource,
+          embedUiLabel(
+            'The file changed outside manual edit mode. Refreshing before applying manual edits.',
+            '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
+          ),
+        ))
+      ) return false;
+      revisionSyncSuppressRef.current = true;
+      const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);
+      const saved = await pushProjectFileRevision(projectId, file.name, {
+        content: result.source,
+        source: 'manual_edit',
+        label,
+        truncateAfterSequence: truncateAfter,
+      });
+      if (!saved.ok) {
+        const status = 'status' in saved ? saved.status : undefined;
+        const code = 'code' in saved ? saved.code : undefined;
+        const message = 'message' in saved ? saved.message : 'Unknown save error';
+        if (status === 401) {
+          notifyTeamverEmbedAuthFailureIfNeeded(new TeamverDaemonUnauthorizedError(), 'daemon');
+        }
+        setManualEditError(
+          isTeamverEmbedMode()
+            ? formatProjectArtifactSaveFailedError(file.name, { status, code, message })
+            : embedUiLabel(
+                `Could not save the edited file${status ? ` (${status}${code ? ` ${code}` : ''})` : ''}: ${message}`,
+                '편집한 파일을 저장하지 못했습니다.',
+              ),
+        );
+        return false;
+      }
+      setSource(result.source);
+      sourceRef.current = result.source;
+      pinManualEditSavedSource(result.source);
+      setInlinedSource(null);
+      capturePreviewScrollPosition();
+      commitRevisionStack(stackWithPushedRevision(
+        revisionStackRef.current,
+        saved.revision,
+        truncateAfter,
+      ));
+      setRevisionContentCache(projectId, file.name, saved.revision.id, result.source);
+      cacheParentRevisionOnPush(projectId, file.name, saved.revision.parentRevisionId, baseSource);
+      revisionSkipReconcileOnceRef.current = true;
+      setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
+      emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
+      setRevisionStackInvalidated(false);
+      await refreshRevisionStack();
+      setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
+      const pendingIds = manualEditPendingStyleRef.current?.targetIds
+        ?? (manualEditPendingStyleRef.current?.id
+          ? [manualEditPendingStyleRef.current.id]
+          : []);
+      for (const patch of patches) {
+        if (patch.kind === 'set-style') {
+          reconcileManualEditStyleSave(patch.id, patch.styles, result.source);
+        }
+        if (pendingIds.includes(patch.id)) {
+          manualEditPendingStyleRef.current = null;
+          clearManualEditStyleTimer();
+        }
+      }
+      setManualEditMixedStyleKeys(new Set());
       setManualEditError(null);
       await onFileSaved?.();
       return true;
@@ -11195,6 +11532,11 @@ function HtmlViewer({
     manualEditMode && !selectedManualEditTarget && manualEditPageStylesOpen;
   const manualEditPanelActive =
     manualEditMode && (!!selectedManualEditTarget || manualEditPageCardActive);
+  const selectedManualEditTargetsForPanel = resolveManualEditTargetsByIds(
+    selectedManualEditTargetIds,
+    manualEditTargets,
+  );
+  const manualEditMultSelectActive = selectedManualEditTargetsForPanel.length > 1;
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionUndoUnavailableTooltip = revisionStackInvalidated
@@ -11204,6 +11546,8 @@ function HtmlViewer({
     <ManualEditPanel
       targets={manualEditTargets}
       selectedTarget={selectedManualEditTarget}
+      selectedTargets={selectedManualEditTargetsForPanel}
+      mixedStyleKeys={manualEditMixedStyleKeys}
       draft={manualEditDraft}
       history={[]}
       error={manualEditError}
@@ -11211,12 +11555,12 @@ function HtmlViewer({
       canRedo={revisionCanRedo}
       busy={manualEditSaving}
       pageStylesEnabled={manualEditPageStylesEnabled}
-      onSelectTarget={(target) => {
-        void selectManualEditTarget(target);
+      onSelectTarget={(target, options) => {
+        void selectManualEditTarget(target, options);
       }}
       onDraftChange={setManualEditDraft}
-      onStyleChange={(id, styles, label) => {
-        void handleManualEditStyleChange(id, styles, label);
+      onStyleChange={(ids, styles, label) => {
+        void handleManualEditStyleChange(ids, styles, label);
       }}
       onInvalidStyle={cancelManualEditPendingStyles}
       onApplyPatch={(patch, label) => {
@@ -11281,7 +11625,8 @@ function HtmlViewer({
   const manualEditHoverAffordance =
     manualEditMode &&
     manualEditHoverTarget &&
-    manualEditHoverTarget.id !== selectedManualEditTarget?.id ? (
+    manualEditHoverTarget &&
+    !selectedManualEditTargetIds.includes(manualEditHoverTarget.id) ? (
       <button
         type="button"
         className="manual-edit-hover-action"
@@ -11313,6 +11658,7 @@ function HtmlViewer({
     manualEditMode
     && !hideManualEditBoxDrag
     && !drawOverlayOpen
+    && !manualEditMultSelectActive
     && selectedManualEditTarget
     && canResizeTarget(selectedManualEditTarget, {
       inlineTextEditing: manualEditInlineTextEditing,
@@ -11374,6 +11720,22 @@ function HtmlViewer({
             { type: 'od-edit-start-text-edit', id: targetId },
             '*',
           );
+        }}
+      />
+    ) : null;
+  const manualEditMultSelectOverlay =
+    manualEditMode
+    && !drawOverlayOpen
+    && manualEditMultSelectActive ? (
+      <ManualEditMultSelectOverlay
+        targets={selectedManualEditTargetsForPanel}
+        previewScale={manualEditHostScale}
+        hostOffset={manualEditHostOffset}
+        measureHostRect={(id) => {
+          const frame = iframeRef.current;
+          const workspace = manualEditWorkspaceRef.current;
+          if (!frame || !workspace) return null;
+          return measureManualEditTargetHostRect(frame, workspace, id);
         }}
       />
     ) : null;

@@ -1114,6 +1114,45 @@ test('[P1] manual edit deck fit-scale move undo restores left/top in one step', 
     .toBe(true);
 });
 
+test('[P1] manual edit mult select applies batch color and undo rolls back in one step', async ({ page }) => {
+  test.setTimeout(60_000);
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit mult select');
+  const fileName = 'manual-edit-mult-select.html';
+  await seedHtmlArtifact(page, projectId, fileName, manualEditHtml());
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await frame.locator('[data-od-id="hero-title"]').click();
+  await frame.locator('[data-od-id="cta"]').click({ modifiers: ['Shift'] });
+
+  await expect(page.locator('.manual-edit-modal')).toContainText('2 selected');
+  await expect(page.getByTestId('manual-edit-mult-select-overlay')).toBeVisible();
+  await expect(page.getByTestId('manual-edit-resize-overlay')).toHaveCount(0);
+  await expect(frame.locator('[data-od-id="hero-title"][data-od-edit-selected="true"]')).toHaveCount(1);
+  await expect(frame.locator('[data-od-id="cta"][data-od-edit-selected="true"]')).toHaveCount(1);
+
+  await inspectorSection(page, 'TYPOGRAPHY').locator('.cc-row').filter({ hasText: 'Color' }).locator('input').fill('#ef4444');
+  await inspectSaveButton(page).click({ force: true });
+  await expectFileSource(page, projectId, fileName, [
+    'data-od-id="hero-title"',
+    'color:',
+    'data-od-id="cta"',
+  ]);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+  await expect.poll(async () => {
+    const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+    if (!resp.ok()) return false;
+    const source = await resp.text();
+    return !source.includes('color: #ef4444') && !source.includes('color:#ef4444');
+  }).toBe(true);
+});
+
 test('[P1] manual edit body-drag undo restores left/top in one step', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);
