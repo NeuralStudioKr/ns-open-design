@@ -892,12 +892,13 @@ export function PreviewDrawOverlay({
   return (
     <div
       ref={wrapRef}
+      className={active ? 'preview-draw-overlay-wrap' : undefined}
       style={{
         position: 'absolute',
         inset: 0,
         width: '100%',
         height: '100%',
-        zIndex: active ? 20 : 0,
+        zIndex: active ? 50 : 0,
         pointerEvents: active ? 'none' : undefined,
       }}
     >

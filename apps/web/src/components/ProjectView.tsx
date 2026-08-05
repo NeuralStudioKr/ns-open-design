@@ -242,6 +242,7 @@ import {
   syncAutoContinueCountFromMessages,
   verifySlideProducedHtmlDeliverable,
 } from '../runtime/slide-deliverable-recovery';
+import { tryPersistClientVisualMarksOnSend } from '../runtime/client-visual-mark-persist';
 import {
   buildDesignSystemPackageAuditRepairPrompt,
   summarizeDesignSystemPackageAudit,
@@ -7916,6 +7917,84 @@ export function ProjectView({
               effectiveSelectedAgentChoice?.model,
             )
           : apiProtocolModelLabel(config.apiProtocol, config.model);
+      if (
+        slideOnlyMvp
+        && !retryTarget
+        && !isAutoContinueSend
+        && runCommentAttachments.length > 0
+        && runCommentAttachments.every(isScreenshotOnlyVisualCommentTarget)
+      ) {
+        const clientVisual = await tryPersistClientVisualMarksOnSend({
+          projectId: project.id,
+          commentAttachments: runCommentAttachments,
+          projectFiles: filesSnapshot,
+          entryFile: project.metadata?.entryFile ?? null,
+          conversationId: runConversationId,
+        });
+        if (clientVisual.ok) {
+          const doneAt = Date.now();
+          const fastPathAssistantId = randomUUID();
+          const fastPathAssistant: ChatMessage = {
+            id: fastPathAssistantId,
+            role: 'assistant',
+            content: embedUiLabel(
+              'Added the visual mark to your slide.',
+              '슬라이드에 시각 마크를 추가했습니다.',
+            ),
+            agentId: assistantAgentId,
+            agentName: assistantAgentName,
+            createdAt: doneAt,
+            runStatus: 'succeeded',
+            startedAt,
+            endedAt: doneAt,
+            preTurnFileNames: [
+              ...new Set([
+                ...projectFilesRef.current.map((f) => f.name),
+                ...userVisualUploadBaselineNames(scopedCommentAttachments),
+              ]),
+            ],
+          };
+          const fastPathHistory = [...historyBase, userMsg];
+          setMessages(dedupeConversationAssistantRows([...fastPathHistory, fastPathAssistant]));
+          void saveMessage(project.id, runConversationId, userMsg)
+            .then(() => saveMessage(project.id, runConversationId, fastPathAssistant))
+            .catch(() => {});
+          emitRevisionPush(
+            analytics.track,
+            project.id,
+            projectKindToTracking(project.metadata?.kind, project.metadata?.videoModel),
+            clientVisual.fileName,
+            clientVisual.revision,
+            'manual_edit',
+          );
+          setFilesRefresh((count) => count + 1);
+          await refreshProjectFiles().catch(() => undefined);
+          requestOpenFile(clientVisual.fileName);
+          void patchAttachedStatuses(runCommentAttachments, 'applied');
+          const consumedCommentIds = new Set(runCommentAttachments.map((attachment) => attachment.id));
+          setAttachedComments((current) =>
+            current.filter((comment) => !consumedCommentIds.has(comment.id)),
+          );
+          setConversations((curr) =>
+            curr.map((conversation) =>
+              conversation.id === runConversationId
+                ? {
+                    ...conversation,
+                    updatedAt: doneAt,
+                    latestRun: {
+                      status: 'succeeded',
+                      startedAt,
+                      endedAt: doneAt,
+                      durationMs: Math.max(0, doneAt - startedAt),
+                    },
+                  }
+                : conversation,
+            ),
+          );
+          onTouchProject();
+          return true;
+        }
+      }
       const preTurnFileNames = [
         ...new Set([
           ...projectFilesRef.current.map((f) => f.name),
