@@ -1008,6 +1008,112 @@ test('[P1] manual edit deck fit-scale move keeps overlay position after pointeru
   await expectOverlayBoxStable(overlay, { x: mid!.x, y: mid!.y });
 });
 
+test('[P1] manual edit deck fit-scale resize undo restores width in one step', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit deck fit resize undo');
+  const fileName = 'manual-deck-fit-resize-undo.html';
+  await seedDeckFitScaleArtifact(page, projectId, fileName);
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await waitForDeckFitScaleReady(frame);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="deck-resize-box"]', 'SIZE');
+
+  const handle = page.getByTestId('manual-edit-resize-handle-se');
+  const box = await handle.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX - 60, startY - 30, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const width = Number(source.match(/data-od-id="deck-resize-box"[^>]*style="[^"]*width:\s*(\d+)px/)?.[1] ?? NaN);
+      return Number.isFinite(width) && width > 0 && width < 220;
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const width = Number(source.match(/data-od-id="deck-resize-box"[^>]*style="[^"]*width:\s*(\d+)px/)?.[1] ?? NaN);
+      return Number.isFinite(width) && width === 240;
+    })
+    .toBe(true);
+});
+
+test('[P1] manual edit deck fit-scale move undo restores left/top in one step', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit deck fit move undo');
+  const fileName = 'manual-deck-fit-move-undo.html';
+  await seedDeckFitScaleArtifact(page, projectId, fileName);
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await waitForDeckFitScaleReady(frame);
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="deck-move-box"]', 'SIZE');
+
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 56, startY + 28, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="deck-move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(\d+)px/)?.[1] ?? NaN);
+      return left > 540 && top > 380;
+    })
+    .toBe(true);
+
+  const undo = page.getByTestId('file-viewer-undo');
+  await expect(undo).toBeEnabled({ timeout: 15_000 });
+  await undo.click();
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="deck-move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(\d+)px/)?.[1] ?? NaN);
+      return left === 520 && top === 360;
+    })
+    .toBe(true);
+});
+
 test('[P1] manual edit body-drag undo restores left/top in one step', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);
