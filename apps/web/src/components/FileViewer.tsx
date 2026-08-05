@@ -274,6 +274,9 @@ import {
   resizeHistoryLabel,
 } from '../edit-mode/resize-math';
 import {
+  createManualEditRemeasureAwaiter,
+} from '../edit-mode/remeasure-await';
+import {
   moveHistoryLabel,
   PROMOTE_MOVE_STYLE_KEYS,
   hostPaintRectAfterVisualMove,
@@ -5247,6 +5250,8 @@ function HtmlViewer({
   const [manualEditGeomEpoch, setManualEditGeomEpoch] = useState(0);
   const manualEditWorkspaceRef = useRef<HTMLDivElement | null>(null);
   const manualEditResizeSessionActiveRef = useRef(false);
+  const manualEditGeometryHandoffIdRef = useRef<string | null>(null);
+  const manualEditRemeasureAwaiterRef = useRef(createManualEditRemeasureAwaiter());
   const manualEditModeRef = useRef(false);
   const manualEditResizePausedRef = useRef(false);
   const manualEditFrozenSourceRef = useRef<string | null>(null);
@@ -7200,6 +7205,22 @@ function HtmlViewer({
     win.postMessage({ type: 'od-edit-remeasure', id }, '*');
   }
 
+  function waitForManualEditTargetRemeasure(id: string, timeoutMs = 500) {
+    return manualEditRemeasureAwaiterRef.current.waitFor(id, timeoutMs);
+  }
+
+  function applyManualEditMeasuredTarget(measured: ManualEditTarget) {
+    setSelectedManualEditTarget((current) => {
+      if (current?.id !== measured.id) return current;
+      const next = { ...current, ...measured };
+      selectedManualEditTargetRef.current = next;
+      return next;
+    });
+    setManualEditTargets((current) =>
+      current.map((item) => (item.id === measured.id ? { ...item, ...measured } : item)),
+    );
+  }
+
   function syncBridgeModes(target: HTMLIFrameElement | null = iframeRef.current) {
     const win = target?.contentWindow;
     if (!win) return;
@@ -8174,6 +8195,8 @@ function HtmlViewer({
       selectedManualEditTargetRef.current = null;
       setManualEditError(null);
       manualEditPendingStyleRef.current = null;
+      manualEditRemeasureAwaiterRef.current.cancelAll();
+      manualEditGeometryHandoffIdRef.current = null;
       manualEditResizeSessionActiveRef.current = false;
       manualEditResizePausedRef.current = false;
       setManualEditResizeDraftSize(null);
@@ -8273,20 +8296,19 @@ function HtmlViewer({
         setManualEditInlineTextEditing(Boolean(data.active));
         return;
       }
-      if (data.type === 'od-edit-rect' && data.ok && data.target) {
-        // Ignore remasure while a geometry gesture still owns the overlay —
-        // a stale postMessage must not yank the box mid-drag.
-        if (manualEditResizeSessionActiveRef.current) return;
-        const measured = data.target;
-        setSelectedManualEditTarget((current) => {
-          if (current?.id !== measured.id) return current;
-          const next = { ...current, ...measured };
-          selectedManualEditTargetRef.current = next;
-          return next;
-        });
-        setManualEditTargets((current) =>
-          current.map((item) => (item.id === measured.id ? { ...item, ...measured } : item)),
-        );
+      if (data.type === 'od-edit-rect') {
+        const rectId = String(data.id ?? '');
+        const handoffId = manualEditGeometryHandoffIdRef.current;
+        const isHandoffRect = Boolean(handoffId && rectId === handoffId);
+        if (manualEditResizeSessionActiveRef.current && !isHandoffRect) return;
+
+        const measured = data.ok && data.target ? data.target : null;
+        if (rectId) {
+          manualEditRemeasureAwaiterRef.current.complete(rectId, measured);
+        }
+        if (!measured || isHandoffRect) return;
+
+        applyManualEditMeasuredTarget(measured);
         return;
       }
     }
@@ -8504,17 +8526,27 @@ function HtmlViewer({
     setManualEditHostOffset(measureIframeOffsetInHost(frame, workspace));
   }
 
-  /** Double-rAF after persist so iframe layout can settle before host paint unlock. */
-  function settleManualEditGeometryHandoff(id: string): Promise<void> {
-    return new Promise((resolve) => {
+  /** Wait for bridge remeasure + host paint sync before geometry session unlock. */
+  async function settleManualEditGeometryHandoff(id: string): Promise<void> {
+    await new Promise<void>((resolve) => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          requestManualEditTargetRemeasure(id);
-          refreshManualEditHostPaintRect(id, { force: true });
-          resolve();
-        });
+        requestAnimationFrame(() => resolve());
       });
     });
+    manualEditGeometryHandoffIdRef.current = id;
+    try {
+      requestManualEditTargetRemeasure(id);
+      const measured = await waitForManualEditTargetRemeasure(id);
+      if (measured) {
+        applyManualEditMeasuredTarget(measured);
+      }
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+      refreshManualEditHostPaintRect(id, { force: true });
+    } finally {
+      manualEditGeometryHandoffIdRef.current = null;
+    }
   }
 
   function handleManualEditResizePreview(styles: Partial<ManualEditStyles>) {
