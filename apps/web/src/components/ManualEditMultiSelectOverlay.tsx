@@ -247,6 +247,8 @@ export function ManualEditMultiSelectOverlay({
   snapSourcesRef.current = snapSources;
   const snapEnabledRef = useRef(snapEnabled);
   snapEnabledRef.current = snapEnabled;
+  const targetsByIdRef = useRef(new Map<string, ManualEditTarget>());
+  targetsByIdRef.current = new Map(targets.map((target) => [target.id, target]));
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -350,7 +352,13 @@ export function ManualEditMultiSelectOverlay({
           setSnapGuides([]);
           return;
         }
-        const updates = computeGroupMovePreviewUpdates(drag.members, dx, dy, false);
+        const updates = computeGroupMovePreviewUpdates(
+          drag.members,
+          targetsByIdRef.current,
+          dx,
+          dy,
+          false,
+        );
         drag.lastUpdates = updates;
         drag.lastGuides = guides;
         drag.previewed = true;

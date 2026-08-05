@@ -123,6 +123,52 @@ describe('ManualEditResizeOverlay', () => {
     expect(preview.height).toBe('420px');
   });
 
+  it('body pointerdown moves flow raster images via absolute promote', () => {
+    const onMovePreview = vi.fn();
+    const onMoveCommit = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          kind: 'image',
+          tagName: 'img',
+          cssPosition: 'static',
+          layoutWidth: 64,
+          layoutHeight: 64,
+          offsetLeft: 24,
+          offsetTop: 16,
+          styles: emptyManualEditStyles(),
+          rect: { x: 100, y: 80, width: 64, height: 64 },
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={onMovePreview}
+        onMoveCommit={onMoveCommit}
+        onMoveCancel={vi.fn()}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    overlay.getBoundingClientRect = () => ({
+      x: 100, y: 80, width: 64, height: 64,
+      top: 80, left: 100, right: 164, bottom: 144,
+      toJSON: () => ({}),
+    }) as DOMRect;
+    fireEvent.pointerDown(overlay, { pointerId: 52, clientX: 120, clientY: 100, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 52, clientX: 160, clientY: 130, buttons: 1 });
+    fireEvent.pointerUp(window, { pointerId: 52, clientX: 160, clientY: 130 });
+
+    expect(onMovePreview).toHaveBeenCalled();
+    expect(onMoveCommit).toHaveBeenCalledTimes(1);
+    const preview = onMovePreview.mock.calls.at(-1)?.[0] as Record<string, string>;
+    expect(preview.position).toBe('absolute');
+    expect(preview.width).toBe('64px');
+    expect(preview.height).toBe('64px');
+  });
+
   it('edge body pointerdown resizes flow images that cannot move', () => {
     const onResizePreview = vi.fn();
     const onResizeCommit = vi.fn();
@@ -1124,7 +1170,7 @@ describe('ManualEditResizeOverlay', () => {
     expect(onMoveCommit).not.toHaveBeenCalled();
   });
 
-  it('resize-only image overlay is interactive for edge resize handles', () => {
+  it('flow image overlay is interactive for resize handles and body move', () => {
     // Flow images cannot move; overlay body captures edge band so resize works
     // while host-chrome suppresses iframe pointer events on the graphic.
     const { getByTestId } = render(
@@ -1145,7 +1191,7 @@ describe('ManualEditResizeOverlay', () => {
     );
 
     const overlay = getByTestId('manual-edit-resize-overlay');
-    expect(overlay.getAttribute('data-movable')).toBe('false');
+    expect(overlay.getAttribute('data-movable')).toBe('true');
     expect(overlay.className).toMatch(/interactive/);
     expect(getByTestId('manual-edit-resize-handle-se')).not.toBeNull();
   });

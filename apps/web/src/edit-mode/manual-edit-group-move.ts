@@ -1,10 +1,15 @@
 import { filterRootTargetsForGroupGeometry } from './manual-edit-selection-ancestry';
 import {
   MANUAL_EDIT_MOVE_MIN_DELTA_PX,
+  canMoveOrPromoteTarget,
   canMoveTarget,
+  canPromoteTarget,
   cascadeRollbackStyle,
   computeMove,
+  isFlowImagePromoteTarget,
   moveResultToStyles,
+  promoteMoveStyles,
+  promoteMoveStylesBefore,
   promoteViewportDraft,
   startPositionFromTarget,
 } from './move-math';
@@ -17,6 +22,8 @@ export type GroupMoveMemberStart = {
   startLeftPx: number;
   startTopPx: number;
   startRect: ManualEditRect;
+  layoutWidthPx: number;
+  layoutHeightPx: number;
 };
 
 export type GroupMovePreviewUpdate = {
@@ -30,16 +37,17 @@ export function groupMoveHistoryLabel(count: number): string {
   return `Move: ${count} elements`;
 }
 
-/** Phase 2 — union box drag applies the same Δ only to absolute/fixed targets. */
+/** Phase 2 — union box drag applies the same Δ to every movable/promotable root. */
 export function canGroupBoundingMove(
   targets: readonly ManualEditTarget[],
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
   isDescendant?: (childId: string, ancestorId: string) => boolean,
 ): boolean {
-  const roots = resolveGroupMovableTargets(targets, options, isDescendant);
+  const roots = resolveGroupMoveTargets(targets, options, isDescendant);
   return roots.length >= 2;
 }
 
+/** Anchored-only roots — align/distribute still require absolute/fixed boxes. */
 export function resolveGroupMovableTargets(
   targets: readonly ManualEditTarget[],
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
@@ -50,22 +58,49 @@ export function resolveGroupMovableTargets(
   return filterRootTargetsForGroupGeometry(movable, isDescendant);
 }
 
+/** Union drag roots — absolute/fixed + flow promote (text, img, svg). */
+export function resolveGroupMoveTargets(
+  targets: readonly ManualEditTarget[],
+  options?: { editMode?: boolean; inlineTextEditing?: boolean },
+  isDescendant?: (childId: string, ancestorId: string) => boolean,
+): ManualEditTarget[] {
+  const movable = targets.filter((target) => canMoveOrPromoteTarget(target, options));
+  if (!isDescendant || movable.length < 2) return movable;
+  return filterRootTargetsForGroupGeometry(movable, isDescendant);
+}
+
+function layoutSizeFromTarget(target: ManualEditTarget): { widthPx: number; heightPx: number } {
+  const widthPx = Math.round(Math.max(
+    1,
+    target.layoutWidth && target.layoutWidth >= 1 ? target.layoutWidth : target.rect.width,
+  ));
+  const heightPx = Math.round(Math.max(
+    1,
+    target.layoutHeight && target.layoutHeight >= 1 ? target.layoutHeight : target.rect.height,
+  ));
+  return { widthPx, heightPx };
+}
+
 export function buildGroupMoveMemberStarts(
   targets: readonly ManualEditTarget[],
 ): GroupMoveMemberStart[] {
   return targets.map((target) => {
     const { startLeftPx, startTopPx } = startPositionFromTarget(target);
+    const size = layoutSizeFromTarget(target);
     return {
       id: target.id,
       startLeftPx,
       startTopPx,
       startRect: { ...target.rect },
+      layoutWidthPx: size.widthPx,
+      layoutHeightPx: size.heightPx,
     };
   });
 }
 
 export function computeGroupMoveMemberStyles(
   member: GroupMoveMemberStart,
+  target: ManualEditTarget,
   dx: number,
   dy: number,
   shiftKey?: boolean,
@@ -79,6 +114,20 @@ export function computeGroupMoveMemberStyles(
     dy,
     shiftKey,
   });
+  if (isFlowImagePromoteTarget(target)) {
+    return promoteMoveStyles(member.startRect, result, {
+      layoutWidthPx: member.layoutWidthPx,
+      layoutHeightPx: member.layoutHeightPx,
+      imagePromote: true,
+    });
+  }
+  if (canPromoteTarget(target)) {
+    return promoteMoveStyles(member.startRect, result, {
+      layoutWidthPx: member.layoutWidthPx,
+      layoutHeightPx: member.layoutHeightPx,
+      cssPosition: target.cssPosition,
+    });
+  }
   return moveResultToStyles(result);
 }
 
@@ -104,6 +153,7 @@ export function groupMoveDeltaMoved(
 export function buildGroupMoveStylePatches(
   baseSource: string,
   members: readonly GroupMoveMemberStart[],
+  targetsById: ReadonlyMap<string, ManualEditTarget>,
   dx: number,
   dy: number,
   shiftKey?: boolean,
@@ -112,7 +162,9 @@ export function buildGroupMoveStylePatches(
   const parsedDoc = parseManualEditSource(baseSource);
   const patches: Array<Extract<ManualEditPatch, { kind: 'set-style' }>> = [];
   for (const member of members) {
-    const styles = computeGroupMoveMemberStyles(member, dx, dy, shiftKey);
+    const target = targetsById.get(member.id);
+    if (!target) continue;
+    const styles = computeGroupMoveMemberStyles(member, target, dx, dy, shiftKey);
     const sourceStyles = readManualEditStyles(baseSource, member.id, {}, parsedDoc);
     const effective = diffManualEditStylePatch(baseSource, member.id, styles, { sourceStyles });
     if (Object.keys(effective).length === 0) continue;
@@ -126,6 +178,10 @@ export function groupMoveStylesBefore(
 ): Record<string, Partial<ManualEditStyles>> {
   const out: Record<string, Partial<ManualEditStyles>> = {};
   for (const target of targets) {
+    if (canPromoteTarget(target) || isFlowImagePromoteTarget(target)) {
+      out[target.id] = promoteMoveStylesBefore(target);
+      continue;
+    }
     out[target.id] = {
       left: cascadeRollbackStyle(target.styles.left),
       top: cascadeRollbackStyle(target.styles.top),
@@ -138,11 +194,13 @@ export function groupMoveStylesBefore(
 
 export function computeGroupMovePreviewUpdates(
   members: readonly GroupMoveMemberStart[],
+  targetsById: ReadonlyMap<string, ManualEditTarget>,
   dx: number,
   dy: number,
   shiftKey?: boolean,
 ): GroupMovePreviewUpdate[] {
   return members.map((member) => {
+    const target = targetsById.get(member.id);
     const result = computeMove({
       startLeftPx: member.startLeftPx,
       startTopPx: member.startTopPx,
@@ -158,9 +216,12 @@ export function computeGroupMovePreviewUpdates(
       member.startTopPx,
       result,
     );
+    const styles = target
+      ? computeGroupMoveMemberStyles(member, target, dx, dy, shiftKey)
+      : moveResultToStyles(result);
     return {
       id: member.id,
-      styles: moveResultToStyles(result),
+      styles,
       rect: {
         x: viewport.x,
         y: viewport.y,

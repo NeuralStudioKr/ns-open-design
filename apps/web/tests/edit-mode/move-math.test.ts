@@ -7,7 +7,7 @@ import {
   canPromoteTarget,
   cascadeRollbackStyle,
   computeMove,
-  isSvgPromoteTarget,
+  isFlowImagePromoteTarget,
   moveHistoryLabel,
   moveResultToStyles,
   promoteMoveStyles,
@@ -70,7 +70,7 @@ describe('canPromoteTarget', () => {
     expect(canMoveOrPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
   });
 
-  it('promotes flow inline SVG (not raster img) for body-drag move', () => {
+  it('promotes flow inline images and SVG for body-drag move', () => {
     expect(canPromoteTarget(target({
       kind: 'image',
       tagName: 'svg',
@@ -80,7 +80,12 @@ describe('canPromoteTarget', () => {
       kind: 'image',
       tagName: 'img',
       cssPosition: 'relative',
-    }))).toBe(false);
+    }))).toBe(true);
+    expect(isFlowImagePromoteTarget(target({
+      kind: 'image',
+      tagName: 'img',
+      cssPosition: 'static',
+    }))).toBe(true);
     expect(canMoveTarget(target({
       kind: 'image',
       tagName: 'svg',
@@ -88,7 +93,7 @@ describe('canPromoteTarget', () => {
     }))).toBe(true);
     expect(canMoveOrPromoteTarget(target({
       kind: 'image',
-      tagName: 'svg',
+      tagName: 'img',
       cssPosition: 'static',
     }))).toBe(true);
   });
@@ -159,16 +164,16 @@ describe('promoteMoveStyles', () => {
     });
   });
 
-  it('size-locks inline SVG on absolute promote', () => {
-    expect(isSvgPromoteTarget(target({
+  it('size-locks flow images on absolute promote', () => {
+    expect(isFlowImagePromoteTarget(target({
       kind: 'image',
-      tagName: 'svg',
+      tagName: 'img',
       cssPosition: 'static',
     }))).toBe(true);
     const out = promoteMoveStyles(
       { x: 40, y: 60, width: 120, height: 120 },
       { leftPx: 20, topPx: 30, moved: true },
-      { layoutWidthPx: 420, layoutHeightPx: 420, svgPromote: true },
+      { layoutWidthPx: 420, layoutHeightPx: 420, imagePromote: true },
     );
     expect(out).toMatchObject({
       position: 'absolute',

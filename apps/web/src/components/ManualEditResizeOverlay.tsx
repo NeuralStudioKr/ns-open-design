@@ -17,7 +17,7 @@ import {
   canPromoteTarget,
   cascadeRollbackStyle,
   computeMove,
-  isSvgPromoteTarget,
+  isFlowImagePromoteTarget,
   manualEditHostPaintRectStale,
   movePreviewStyles,
   moveResultToStyles,
@@ -155,8 +155,8 @@ type MoveDragState = {
   promote: boolean;
   /** Pre-promote cssPosition (`static` / `relative` / `sticky`) for promote styles. */
   promoteCssPosition: string;
-  /** Inline SVG uses absolute + size lock (not relative offsets). */
-  svgPromote: boolean;
+  /** Inline flow images use absolute + size lock (not relative offsets). */
+  imagePromote: boolean;
   lastViewport: { x: number; y: number };
   lastGuides: SnapGuide[];
   /** See ResizeDragState.sealed. */
@@ -479,7 +479,7 @@ export function ManualEditResizeOverlay({
           layoutWidthPx: drag.layoutWidthPx,
           layoutHeightPx: drag.layoutHeightPx,
           cssPosition: drag.promoteCssPosition,
-          svgPromote: drag.svgPromote,
+          imagePromote: drag.imagePromote,
         });
         drag.lastStyles = preview;
         drag.previewed = true;
@@ -631,7 +631,7 @@ export function ManualEditResizeOverlay({
     const pos = startPositionFromTarget(startTarget);
     const size = startSizeFromTarget(startTarget);
     const promote = canPromoteTarget(startTarget);
-    const svgPromote = isSvgPromoteTarget(startTarget);
+    const imagePromote = isFlowImagePromoteTarget(startTarget);
     const stylesBefore: Partial<ManualEditStyles> = promote
       ? promoteMoveStylesBefore(startTarget)
       : {
@@ -667,7 +667,7 @@ export function ManualEditResizeOverlay({
       previewed: false,
       promote,
       promoteCssPosition: String(startTarget.cssPosition ?? 'static'),
-      svgPromote,
+      imagePromote,
       lastViewport: { x: startTarget.rect.x, y: startTarget.rect.y },
       lastGuides: [],
       hostScale: geom.hostScale,

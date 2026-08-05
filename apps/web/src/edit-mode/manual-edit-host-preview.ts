@@ -11,7 +11,7 @@
  */
 
 import { isManualEditHostNode } from './bridge';
-import { coerceManualEditStyleRecord } from './source-patches';
+import { coerceManualEditStyleRecord, syncSvgDimensionAttributesFromStyles } from './source-patches';
 import type { ManualEditRect, ManualEditStyles } from './types';
 
 function camelToKebab(name: string): string {
@@ -82,6 +82,7 @@ export function applyManualEditPreviewStylesToDocument(
       el.style.setProperty(cssName, rawValue.trim(), 'important');
     }
   }
+  syncSvgDimensionAttributesFromStyles(el, styles);
   return true;
 }
 

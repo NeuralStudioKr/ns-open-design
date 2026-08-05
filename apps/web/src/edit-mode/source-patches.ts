@@ -2076,6 +2076,14 @@ function syncSvgDimensionAttributes(el: HTMLElement, styles: Partial<ManualEditS
   syncAttr('height');
 }
 
+/** Host preview + bridge preview share SVG width/height attribute sync. */
+export function syncSvgDimensionAttributesFromStyles(
+  el: HTMLElement,
+  styles: Partial<ManualEditStyles>,
+): void {
+  syncSvgDimensionAttributes(el, styles);
+}
+
 function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
   const coerced = coerceManualEditStyleRecord(styles as Record<string, unknown>);
   for (const [name, value] of Object.entries(coerced)) {

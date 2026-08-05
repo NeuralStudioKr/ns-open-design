@@ -1,6 +1,6 @@
 import {
   buildGroupMoveMemberStarts,
-  canGroupBoundingMove,
+  resolveGroupMovableTargets,
   type GroupMovePreviewUpdate,
 } from './manual-edit-group-move';
 import { diffManualEditStylePatch } from './manual-edit-style-batch';
@@ -27,7 +27,7 @@ export function canGroupAlign(
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
   isDescendant?: (childId: string, ancestorId: string) => boolean,
 ): boolean {
-  return canGroupBoundingMove(targets, options, isDescendant);
+  return resolveGroupMovableTargets(targets, options, isDescendant).length >= 2;
 }
 
 export function canGroupDistribute(
@@ -35,7 +35,8 @@ export function canGroupDistribute(
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
   isDescendant?: (childId: string, ancestorId: string) => boolean,
 ): boolean {
-  return targets.length >= 3 && canGroupBoundingMove(targets, options, isDescendant);
+  return targets.length >= 3
+    && resolveGroupMovableTargets(targets, options, isDescendant).length >= 3;
 }
 
 function alignDeltaForMember(

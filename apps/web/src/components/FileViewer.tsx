@@ -352,6 +352,7 @@ import {
   buildGroupMoveStylePatches,
   canGroupBoundingMove,
   groupMoveHistoryLabel,
+  resolveGroupMoveTargets,
   resolveGroupMovableTargets,
   type GroupMoveMemberStart,
   type GroupMovePreviewUpdate,
@@ -9279,7 +9280,8 @@ function HtmlViewer({
       rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
       return;
     }
-    const patches = buildGroupMoveStylePatches(baseSource, memberStarts, dx, dy);
+    const targetsById = new Map(targets.map((target) => [target.id, target]));
+    const patches = buildGroupMoveStylePatches(baseSource, memberStarts, targetsById, dx, dy);
     try {
       const ok = await applyManualEditBatch(patches, groupMoveHistoryLabel(targets.length));
       if (!ok) {
@@ -9402,7 +9404,7 @@ function HtmlViewer({
   }
 
   async function handleManualEditGroupAlign(kind: GroupAlignKind) {
-    const targets = resolveSelectedManualEditMoveTargets();
+    const targets = resolveSelectedManualEditAnchoredMoveTargets();
     if (!canGroupAlign(targets, selectedManualEditGeometryOptions(), manualEditTargetIsDescendantOf)) return;
     const updates = computeGroupAlignPreviewUpdates(targets, kind);
     await applyManualEditGroupGeometryAction(
@@ -9412,7 +9414,7 @@ function HtmlViewer({
   }
 
   async function handleManualEditGroupDistribute(kind: GroupDistributeKind) {
-    const targets = resolveSelectedManualEditMoveTargets();
+    const targets = resolveSelectedManualEditAnchoredMoveTargets();
     if (!canGroupDistribute(targets, selectedManualEditGeometryOptions(), manualEditTargetIsDescendantOf)) return;
     const updates = computeGroupDistributePreviewUpdates(targets, kind);
     await applyManualEditGroupGeometryAction(
@@ -9666,13 +9668,26 @@ function HtmlViewer({
     };
   }
 
-  function resolveSelectedManualEditMoveTargets(
+  function resolveSelectedManualEditAnchoredMoveTargets(
     targets: readonly ManualEditTarget[] = resolveManualEditTargetsByIds(
       selectedManualEditTargetIdsRef.current,
       manualEditTargets,
     ),
   ) {
     return resolveGroupMovableTargets(
+      targets,
+      selectedManualEditGeometryOptions(),
+      manualEditTargetIsDescendantOf,
+    );
+  }
+
+  function resolveSelectedManualEditMoveTargets(
+    targets: readonly ManualEditTarget[] = resolveManualEditTargetsByIds(
+      selectedManualEditTargetIdsRef.current,
+      manualEditTargets,
+    ),
+  ) {
+    return resolveGroupMoveTargets(
       targets,
       selectedManualEditGeometryOptions(),
       manualEditTargetIsDescendantOf,
@@ -12088,7 +12103,12 @@ function HtmlViewer({
   );
   const manualEditMultiSelectActive = selectedManualEditTargetsForPanel.length > 1;
   const manualEditGeometryOptions = selectedManualEditGeometryOptions();
-  const selectedManualEditMoveGeometryTargets = resolveGroupMovableTargets(
+  const selectedManualEditAnchoredMoveTargets = resolveGroupMovableTargets(
+    selectedManualEditTargetsForPanel,
+    manualEditGeometryOptions,
+    manualEditTargetIsDescendantOf,
+  );
+  const selectedManualEditGroupMoveTargets = resolveGroupMoveTargets(
     selectedManualEditTargetsForPanel,
     manualEditGeometryOptions,
     manualEditTargetIsDescendantOf,
@@ -12098,20 +12118,20 @@ function HtmlViewer({
     manualEditGeometryOptions,
     manualEditTargetIsDescendantOf,
   );
-  const manualEditGroupMoveEnabled = selectedManualEditMoveGeometryTargets.length >= 2;
+  const manualEditGroupMoveEnabled = selectedManualEditGroupMoveTargets.length >= 2;
   const manualEditGroupResizeEnabled = selectedManualEditResizeGeometryTargets.length >= 2;
   const manualEditMultiSelectOverlayTargets = manualEditGroupResizeEnabled
     ? selectedManualEditResizeGeometryTargets
     : manualEditGroupMoveEnabled
-      ? selectedManualEditMoveGeometryTargets
+      ? selectedManualEditGroupMoveTargets
       : selectedManualEditTargetsForPanel;
   const manualEditGroupAlignEnabled = canGroupAlign(
-    selectedManualEditMoveGeometryTargets,
+    selectedManualEditAnchoredMoveTargets,
     manualEditGeometryOptions,
     manualEditTargetIsDescendantOf,
   );
   const manualEditGroupDistributeEnabled = canGroupDistribute(
-    selectedManualEditMoveGeometryTargets,
+    selectedManualEditAnchoredMoveTargets,
     manualEditGeometryOptions,
     manualEditTargetIsDescendantOf,
   );

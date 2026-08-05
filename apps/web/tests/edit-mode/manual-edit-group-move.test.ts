@@ -10,6 +10,7 @@ import {
   groupMoveDeltaMoved,
   groupMoveHistoryLabel,
   groupMoveStylesBefore,
+  resolveGroupMoveTargets,
 } from '../../src/edit-mode/manual-edit-group-move';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
 
@@ -54,17 +55,32 @@ const flowTarget: ManualEditTarget = {
   cssPosition: 'static',
   styles: { ...emptyManualEditStyles() },
 };
+const flowImage: ManualEditTarget = {
+  ...boxA,
+  id: 'logo',
+  kind: 'image',
+  tagName: 'img',
+  cssPosition: 'static',
+  layoutWidth: 64,
+  layoutHeight: 64,
+  offsetLeft: 40,
+  offsetTop: 30,
+  styles: emptyManualEditStyles(),
+};
 
 describe('manual-edit-group-move', () => {
-  it('requires at least two movable absolute targets', () => {
+  it('requires at least two movable or promotable roots', () => {
     expect(canGroupBoundingMove([boxA, boxB])).toBe(true);
     expect(canGroupBoundingMove([boxA])).toBe(false);
-    expect(canGroupBoundingMove([boxA, flowTarget])).toBe(false);
+    expect(canGroupBoundingMove([boxA, flowTarget])).toBe(true);
+    expect(resolveGroupMoveTargets([boxA, flowTarget])).toHaveLength(2);
   });
 
   it('applies the same content delta to every member', () => {
-    const members = buildGroupMoveMemberStarts([boxA, boxB]);
-    const updates = computeGroupMovePreviewUpdates(members, 24, 12);
+    const targets = [boxA, boxB];
+    const targetsById = new Map(targets.map((target) => [target.id, target]));
+    const members = buildGroupMoveMemberStarts(targets);
+    const updates = computeGroupMovePreviewUpdates(members, targetsById, 24, 12);
     expect(updates).toHaveLength(2);
     expect(updates[0]).toMatchObject({
       id: 'box-a',
@@ -78,6 +94,22 @@ describe('manual-edit-group-move', () => {
     });
   });
 
+  it('promotes flow images to absolute during group move', () => {
+    const targets = [boxA, flowImage];
+    const targetsById = new Map(targets.map((target) => [target.id, target]));
+    const members = buildGroupMoveMemberStarts(targets);
+    const styles = computeGroupMoveMemberStyles(members[1]!, flowImage, 20, 10);
+    expect(styles).toMatchObject({
+      position: 'absolute',
+      left: '60px',
+      top: '40px',
+      width: '64px',
+      height: '64px',
+    });
+    const updates = computeGroupMovePreviewUpdates(members, targetsById, 20, 10);
+    expect(updates.find((update) => update.id === 'logo')?.styles.position).toBe('absolute');
+  });
+
   it('ignores sub-threshold jitter', () => {
     const members = buildGroupMoveMemberStarts([boxA, boxB]);
     expect(groupMoveDeltaMoved(members, 1, 0)).toBe(false);
@@ -85,8 +117,10 @@ describe('manual-edit-group-move', () => {
   });
 
   it('builds per-target style patches for batch save', () => {
-    const members = buildGroupMoveMemberStarts([boxA, boxB]);
-    const patches = buildGroupMoveStylePatches(baseSource, members, 24, 12);
+    const targets = [boxA, boxB];
+    const targetsById = new Map(targets.map((target) => [target.id, target]));
+    const members = buildGroupMoveMemberStarts(targets);
+    const patches = buildGroupMoveStylePatches(baseSource, members, targetsById, 24, 12);
     expect(patches).toHaveLength(2);
     expect(patches.map((patch) => patch.id).sort()).toEqual(['box-a', 'box-b']);
     expect(patches.find((patch) => patch.id === 'box-a')?.styles).toMatchObject({
@@ -105,8 +139,10 @@ describe('manual-edit-group-move', () => {
         ...boxA,
         styles: { ...boxA.styles, left: 'auto', top: '20px' },
       },
+      flowImage,
     ]);
     expect(before['box-a']).toEqual({ left: '', top: '20px', right: '', bottom: '' });
+    expect(before.logo).toMatchObject({ position: '' });
   });
 
   it('labels group move history with member count', () => {
@@ -115,7 +151,7 @@ describe('manual-edit-group-move', () => {
 
   it('computes member styles via shared move math', () => {
     const members = buildGroupMoveMemberStarts([boxA]);
-    const styles = computeGroupMoveMemberStyles(members[0]!, 10, 5);
+    const styles = computeGroupMoveMemberStyles(members[0]!, boxA, 10, 5);
     expect(styles).toMatchObject({ left: '20px', top: '25px' });
   });
 });

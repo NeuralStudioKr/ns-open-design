@@ -23,6 +23,20 @@ export function isInlineSvgTarget(
   return String(target?.tagName ?? '').toLowerCase() === 'svg';
 }
 
+/** Flow img/svg — promote to absolute + size lock (not relative offsets). */
+export function isFlowImagePromoteTarget(
+  target: ManualEditTarget | null | undefined,
+): boolean {
+  if (!baseMoveEligibility(target)) return false;
+  if (target!.kind !== 'image') return false;
+  if (isAnchoredCssPosition(target!.cssPosition)) return false;
+  const value = String(target!.cssPosition ?? 'static').toLowerCase();
+  return value === 'static' || value === 'relative';
+}
+
+/** @deprecated use isFlowImagePromoteTarget */
+export const isSvgPromoteTarget = isFlowImagePromoteTarget;
+
 export function canMoveTarget(
   target: ManualEditTarget | null | undefined,
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
@@ -38,15 +52,13 @@ export function canPromoteTarget(
 ): boolean {
   if (!baseMoveEligibility(target, options)) return false;
   if (isAnchoredCssPosition(target!.cssPosition)) return false;
-  // Raster images stay in flow for resize-in-place (aspect handles). Inline SVG
-  // promotes to absolute so deck icons inside flex wrappers can move. Absolute /
-  // fixed images/SVGs still move via canMoveTarget. Text/link promote-on-drag
-  // is allowed — edge hit-slop + 2px threshold keep wrap-resize from becoming
-  // an accidental move; blocking promote made flow headlines undraggable.
+  // Flow images promote to absolute on body-drag (deck icons, hero logos).
+  // Absolute/fixed images still move via canMoveTarget. Text/link promote-on-drag
+  // is allowed — edge hit-slop + 2px threshold keep wrap-resize from becoming an
+  // accidental move; blocking promote made flow headlines undraggable.
   // Sticky left/top are sticky insets, and absolute promotion depends on the
   // scrollport containing block. That coordinate swap is too jump-prone for a
   // drag gesture, so sticky stays non-movable until we have a dedicated path.
-  if (target!.kind === 'image' && !isInlineSvgTarget(target)) return false;
   const value = String(target!.cssPosition ?? 'static').toLowerCase();
   return value === 'static' || value === 'relative';
 }
@@ -57,19 +69,7 @@ export function isStickyPromoteTarget(
 ): boolean {
   if (!baseMoveEligibility(target)) return false;
   if (isAnchoredCssPosition(target!.cssPosition)) return false;
-  if (target!.kind === 'image' && !isInlineSvgTarget(target)) return false;
   return String(target!.cssPosition ?? '').toLowerCase() === 'sticky';
-}
-
-/** Inline SVG in flow/flex — promote to absolute + size lock (not relative). */
-export function isSvgPromoteTarget(
-  target: ManualEditTarget | null | undefined,
-): boolean {
-  if (!baseMoveEligibility(target)) return false;
-  if (!isInlineSvgTarget(target)) return false;
-  if (isAnchoredCssPosition(target!.cssPosition)) return false;
-  const value = String(target!.cssPosition ?? 'static').toLowerCase();
-  return value === 'static' || value === 'relative';
 }
 
 export function canMoveOrPromoteTarget(
@@ -103,7 +103,7 @@ export function startPositionFromTarget(target: ManualEditTarget): {
   startLeftPx: number;
   startTopPx: number;
 } {
-  if (isStickyPromoteTarget(target) || isSvgPromoteTarget(target)) {
+  if (isStickyPromoteTarget(target) || isFlowImagePromoteTarget(target)) {
     return {
       startLeftPx: Math.round(
         target.offsetLeft
@@ -196,10 +196,11 @@ export function promoteMoveStyles(
     layoutHeightPx?: number;
     cssPosition?: string;
     svgPromote?: boolean;
+    imagePromote?: boolean;
   },
 ): Partial<ManualEditStyles> {
   const stickyPromote = String(options?.cssPosition ?? '').toLowerCase() === 'sticky';
-  const absolutePromote = stickyPromote || options?.svgPromote === true;
+  const absolutePromote = stickyPromote || options?.imagePromote === true || options?.svgPromote === true;
   if (absolutePromote) {
     const widthPx = Math.round(
       options?.layoutWidthPx && options.layoutWidthPx >= 1
