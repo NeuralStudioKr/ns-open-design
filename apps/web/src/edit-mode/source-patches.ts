@@ -32,11 +32,21 @@ export interface ManualEditSourceScope {
 
 type ManualEditLookupRoot = (ParentNode & Element) | Document;
 
+export interface ApplyManualEditPatchOptions {
+  /** Sanitize the live document before serialize (avoids a second full parse). */
+  sanitize?: boolean;
+}
+
+/**
+ * Apply one patch. Prefer `applyManualEditPatches` when multiple ops share a deck
+ * so the document is parsed/serialized once.
+ */
 export function applyManualEditPatch(
   source: string,
   patch: ManualEditPatch,
   scope: ManualEditSourceScope = {},
   hint?: ManualEditMergeTargetHint,
+  options?: ApplyManualEditPatchOptions,
 ): ManualEditPatchResult {
   if (patch.kind === 'set-full-source') {
     // Undo / snapshot restore — still run the same tree sanitize so a
@@ -47,19 +57,93 @@ export function applyManualEditPatch(
   const doc = parseSource(source);
   if (!doc) return { ok: false, source, error: 'Could not parse source.' };
 
+  const mutated = mutateManualEditPatch(doc, patch, scope, hint);
+  if (!mutated.ok) return { ok: false, source, error: mutated.error };
+  if (options?.sanitize && isManualEditFullHtmlDocument(source)) {
+    sanitizeManualEditDocumentInPlace(doc);
+  }
+  return { ok: true, source: serializeSource(doc, source) };
+}
+
+export type ManualEditPatchApplyItem = {
+  patch: ManualEditPatch;
+  scope?: ManualEditSourceScope;
+  hint?: ManualEditMergeTargetHint;
+};
+
+/**
+ * Apply many patches against one parsed document (element-patch multi-op hot path).
+ */
+export function applyManualEditPatches(
+  source: string,
+  items: readonly ManualEditPatchApplyItem[],
+  options?: ApplyManualEditPatchOptions,
+): ManualEditPatchResult & { appliedCount: number } {
+  if (items.length === 0) return { ok: true, source, appliedCount: 0 };
+  if (items.length === 1 && items[0]!.patch.kind === 'set-full-source') {
+    const single = applyManualEditPatch(source, items[0]!.patch);
+    return { ...single, appliedCount: single.ok ? 1 : 0 };
+  }
+
+  const doc = parseSource(source);
+  if (!doc) return { ok: false, source, error: 'Could not parse source.', appliedCount: 0 };
+
+  let appliedCount = 0;
+  for (const item of items) {
+    if (item.patch.kind === 'set-full-source') {
+      return {
+        ok: false,
+        source,
+        error: 'set-full-source is not supported inside a multi-patch batch.',
+        appliedCount,
+      };
+    }
+    const mutated = mutateManualEditPatch(doc, item.patch, item.scope ?? {}, item.hint);
+    if (!mutated.ok) {
+      return { ok: false, source, error: mutated.error, appliedCount };
+    }
+    appliedCount += 1;
+  }
+  if (options?.sanitize && isManualEditFullHtmlDocument(source)) {
+    sanitizeManualEditDocumentInPlace(doc);
+  }
+  return { ok: true, source: serializeSource(doc, source), appliedCount };
+}
+
+/** Mutate `doc` in place. Caller owns parse/serialize (element-patch batch). */
+export function applyManualEditPatchMutation(
+  doc: Document,
+  patch: ManualEditPatch,
+  scope: ManualEditSourceScope = {},
+  hint?: ManualEditMergeTargetHint,
+): { ok: true } | { ok: false; error: string } {
+  return mutateManualEditPatch(doc, patch, scope, hint);
+}
+
+/** Mutate `doc` in place. Caller owns parse/serialize. */
+function mutateManualEditPatch(
+  doc: Document,
+  patch: ManualEditPatch,
+  scope: ManualEditSourceScope = {},
+  hint?: ManualEditMergeTargetHint,
+): { ok: true } | { ok: false; error: string } {
+  if (patch.kind === 'set-full-source') {
+    return { ok: false, error: 'set-full-source cannot mutate an existing document.' };
+  }
+
   if (patch.kind === 'set-token') {
     if (!isSafeCssTokenName(patch.token) || !isSafeCssTokenValue(patch.value)) {
-      return { ok: false, source, error: 'CSS token name or value is not allowed.' };
+      return { ok: false, error: 'CSS token name or value is not allowed.' };
     }
     const changed = setCssToken(doc, patch.token, patch.value);
     return changed
-      ? { ok: true, source: serializeSource(doc, source) }
-      : { ok: false, source, error: `Token not found: ${patch.token}` };
+      ? { ok: true }
+      : { ok: false, error: `Token not found: ${patch.token}` };
   }
 
   const effectiveHint = hint ?? scope.targetHint;
   let el = findEditableElement(doc, patch.id, scope, effectiveHint);
-  if (!el) return { ok: false, source, error: `Target not found: ${patch.id}` };
+  if (!el) return { ok: false, error: `Target not found: ${patch.id}` };
 
   const hostTag = el.tagName.toLowerCase();
   if (
@@ -77,7 +161,6 @@ export function applyManualEditPatch(
     // inert scripts by clearing type=).
     return {
       ok: false,
-      source,
       error: `Edits of kind ${patch.kind} are not allowed on <${hostTag}> elements.`,
     };
   }
@@ -108,7 +191,7 @@ export function applyManualEditPatch(
         // breaks have no leaf element to patch. Write plain text, mapping
         // committed `\n` back to `<br>` so intentional wraps survive.
         applyManualEditPlainText(el, patch.value);
-        return { ok: true, source: serializeSource(doc, source) };
+        return { ok: true };
       } else if (containsOnlyInlineTextFormatting(el)) {
         // Ambiguous inline siblings (e.g. `<span>Alpha</span><span>Beta</span>`,
         // gradient + label wrappers). The wrapper is a plain text container
@@ -117,9 +200,9 @@ export function applyManualEditPatch(
         // spans but keeps the edit unblocked, matching upstream v2's
         // `set-inner-html` fallback.
         applyManualEditPlainText(el, patch.value);
-        return { ok: true, source: serializeSource(doc, source) };
+        return { ok: true };
       } else {
-        return { ok: false, source, error: 'This element contains nested markup. Use the HTML tab instead.' };
+        return { ok: false, error: 'This element contains nested markup. Use the HTML tab instead.' };
       }
     }
     applyManualEditPlainText(el, patch.value);
@@ -127,7 +210,7 @@ export function applyManualEditPatch(
     const linkTag = el.tagName.toLowerCase();
     // Do not retarget <link>/<base>/SVG resource hosts via the link editor.
     if (linkTag !== 'a' && linkTag !== 'area') {
-      return { ok: false, source, error: 'Link edits are only allowed on <a> / <area> elements.' };
+      return { ok: false, error: 'Link edits are only allowed on <a> / <area> elements.' };
     }
     if (hasElementChildren(el)) {
       const currentText = manualEditElementToPlainText(el);
@@ -137,23 +220,23 @@ export function applyManualEditPatch(
       } else if (containsOnlyInlineTextFormatting(el)) {
         applyManualEditPlainText(el, patch.text);
       } else {
-        return { ok: false, source, error: 'This link contains nested markup. Use the HTML tab to change its label.' };
+        return { ok: false, error: 'This link contains nested markup. Use the HTML tab to change its label.' };
       }
     } else {
       applyManualEditPlainText(el, patch.text);
     }
     if (!isSafeManualEditUrl(patch.href)) {
-      return { ok: false, source, error: 'Link href uses a disallowed URL scheme.' };
+      return { ok: false, error: 'Link href uses a disallowed URL scheme.' };
     }
     el.setAttribute('href', patch.href);
   } else if (patch.kind === 'set-image') {
     const imageTag = el.tagName.toLowerCase();
     // Do not retarget <script>/<iframe>/etc. that happen to share an edit id.
     if (imageTag !== 'img') {
-      return { ok: false, source, error: 'Image edits are only allowed on <img> elements.' };
+      return { ok: false, error: 'Image edits are only allowed on <img> elements.' };
     }
     if (!isSafeManualEditUrl(patch.src)) {
-      return { ok: false, source, error: 'Image src uses a disallowed URL scheme.' };
+      return { ok: false, error: 'Image src uses a disallowed URL scheme.' };
     }
     el.setAttribute('src', patch.src);
     el.setAttribute('alt', patch.alt);
@@ -164,7 +247,6 @@ export function applyManualEditPatch(
     if (attrResult.attempted > 0 && attrResult.applied === 0) {
       return {
         ok: false,
-        source,
         error: 'None of the requested attributes could be applied.',
       };
     }
@@ -173,21 +255,20 @@ export function applyManualEditPatch(
     if (!replaced.ok) {
       return {
         ok: false,
-        source,
         error: 'error' in replaced ? replaced.error : 'Could not replace element HTML.',
       };
     }
   } else if (patch.kind === 'remove-element') {
     if (!el.parentElement) {
-      return { ok: false, source, error: 'Cannot remove the root element.' };
+      return { ok: false, error: 'Cannot remove the root element.' };
     }
     if (el.parentElement === doc.body && doc.body.children.length === 1) {
-      return { ok: false, source, error: 'Cannot remove the last element in the document.' };
+      return { ok: false, error: 'Cannot remove the last element in the document.' };
     }
     el.remove();
   }
 
-  return { ok: true, source: serializeSource(doc, source) };
+  return { ok: true };
 }
 
 export function readManualEditFields(
@@ -290,8 +371,10 @@ export function resolveManualEditTargetReference(
   id: string,
   scope: ManualEditSourceScope = {},
   hint?: ManualEditMergeTargetHint,
+  /** Reuse a parsed document to avoid N× DOMParser on multi-op element-patch. */
+  parsedDoc?: Document | null,
 ): string | null {
-  const doc = parseSource(source);
+  const doc = parsedDoc ?? parseSource(source);
   if (!doc) return null;
   const normalizedId = String(id || '').trim();
   const root = findScopedRoot(doc, scope);
@@ -352,33 +435,42 @@ export function maskManualEditTargets(
 ): ManualEditMaskTargetsResult {
   const doc = parseSource(source);
   if (!doc) return { ok: false, source, reason: 'Could not parse source.' };
+  const maskedCount = maskManualEditTargetsOnDocument(doc, ids, scope, hints);
+  if (maskedCount === 0) {
+    return { ok: false, source, reason: 'No targets found to mask.' };
+  }
+  return {
+    ok: true,
+    source: serializeSource(doc, source),
+    maskedCount,
+  };
+}
+
+/** Mask targets on an already-parsed document (full-deck guard multi-attachment). */
+export function maskManualEditTargetsOnDocument(
+  doc: Document,
+  ids: readonly string[],
+  scope: ManualEditSourceScope = {},
+  hints: readonly ManualEditMergeTargetHint[] = [],
+  startIndex = 0,
+): number {
   const targets = new Set<Element>();
   for (const id of ids) {
     const normalized = String(id || '').trim();
     if (!normalized) continue;
     // Accept per-id hints so the full-deck guard's target masking
     // benefits from the same hint fallback the scoped merge uses.
-    // Without this, a click id that no longer resolves structurally
-    // masks nothing → the guard reports "target unresolved" and the
-    // whole full-deck path fails while the merge path would have
-    // recovered via hint.
     const hint = hints.find((candidate) => String(candidate.id || '').trim() === normalized);
     const target = findEditableElement(doc, normalized, scope, hint);
     if (target) targets.add(target);
   }
-  if (targets.size === 0) {
-    return { ok: false, source, reason: 'No targets found to mask.' };
-  }
-  let index = 0;
+  if (targets.size === 0) return 0;
+  let index = startIndex;
   for (const target of targets) {
     target.replaceWith(doc.createComment(`od-masked-comment-target:${index}`));
     index += 1;
   }
-  return {
-    ok: true,
-    source: serializeSource(doc, source),
-    maskedCount: targets.size,
-  };
+  return targets.size;
 }
 
 export function mergeManualEditTargetsFromSource(
@@ -503,9 +595,18 @@ function parseSource(source: string): Document | null {
   return null;
 }
 
+/** Shared parse for multi-attachment mask / element-patch batch helpers. */
+export function parseManualEditSource(source: string): Document | null {
+  return parseSource(source);
+}
+
 function serializeSource(doc: Document, originalSource: string): string {
   if (!isManualEditFullHtmlDocument(originalSource)) return doc.body.innerHTML;
   return `<!doctype html>\n${doc.documentElement.outerHTML}`;
+}
+
+export function serializeManualEditSource(doc: Document, originalSource: string): string {
+  return serializeSource(doc, originalSource);
 }
 
 export function isManualEditFullHtmlDocument(source: string): boolean {
@@ -1212,7 +1313,8 @@ export function sanitizeManualEditHtmlFragment(html: string): string {
   const trimmed = source.trim();
   if (!trimmed) return source;
   const doc = parseSource('<!doctype html><html><body></body></html>');
-  if (!doc?.body) return source;
+  // Fail closed: never return raw fragment HTML when the parser is unavailable.
+  if (!doc?.body) return failClosedScrubHtmlWithoutParser(trimmed);
   const template = doc.createElement('template');
   template.innerHTML = trimmed;
   for (const root of Array.from(template.content.children)) {
@@ -1253,22 +1355,32 @@ function isUnsafeManualEditReplacementRoot(el: Element): boolean {
  * surface so we never pass raw HTML through unchanged.
  */
 function failClosedScrubHtmlWithoutParser(raw: string): string {
+  // Align with MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS (+ annotation-xml) and
+  // neutralize common URL-scheme smuggling when DOMParser is unavailable.
+  const dangerous = [
+    'script', 'iframe', 'object', 'embed', 'base', 'link', 'meta', 'noscript',
+    'template', 'style', 'handler', 'applet', 'frame', 'frameset', 'discard',
+    'fencedframe', 'portal', 'webview', 'plaintext', 'xmp', 'foreignobject',
+    'annotation-xml',
+  ].join('|');
   return String(raw || '')
-    .replace(/<(script|iframe|object|embed|foreignObject|plaintext|xmp)\b[\s\S]*?<\/\1\s*>/gi, '')
-    .replace(/<(script|iframe|object|embed|foreignObject|plaintext|xmp)\b[^>]*\/?>/gi, '')
+    .replace(new RegExp(`<(?:${dangerous})\\b[\\s\\S]*?<\\/(?:${dangerous})\\s*>`, 'gi'), '')
+    .replace(new RegExp(`<(?:${dangerous})\\b[^>]*\\/?>`, 'gi'), '')
     .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
     .replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, '')
-    .replace(/\ssrcdoc\s*=\s*(['"]).*?\1/gi, '');
+    .replace(/\ssrcdoc\s*=\s*(['"]).*?\1/gi, '')
+    .replace(
+      /\s(?:href|src|action|formaction|xlink:href|poster)\s*=\s*(['"])\s*(?:javascript|vbscript|data\s*:\s*text\s*\/\s*html)[\s\S]*?\1/gi,
+      '',
+    )
+    .replace(
+      /\s(?:href|src|action|formaction|xlink:href|poster)\s*=\s*(?:javascript|vbscript|data\s*:\s*text\s*\/\s*html)[^\s>]*/gi,
+      '',
+    );
 }
 
-export function sanitizeManualEditFullSource(source: string): string {
-  const raw = String(source || '');
-  if (!raw.trim()) return raw;
-  const doc = parseSource(raw);
-  // Fail closed: never re-persist unsanitized HTML when the parser is unavailable.
-  if (!doc) return failClosedScrubHtmlWithoutParser(raw);
-  // html/head/body themselves are hosts — scrub their on*/style/URL attrs
-  // before walking children (child walk never touches the host element).
+/** In-place full-document scrub — shared by sanitizeFullSource and apply options. */
+function sanitizeManualEditDocumentInPlace(doc: Document): void {
   if (doc.documentElement) sanitizeManualEditElementAttrs(doc.documentElement);
   if (doc.head) sanitizeManualEditElementAttrs(doc.head);
   if (doc.body) sanitizeManualEditElementAttrs(doc.body);
@@ -1289,6 +1401,15 @@ export function sanitizeManualEditFullSource(source: string): string {
   };
   scrubHostChildren(doc.head);
   scrubHostChildren(doc.body);
+}
+
+export function sanitizeManualEditFullSource(source: string): string {
+  const raw = String(source || '');
+  if (!raw.trim()) return raw;
+  const doc = parseSource(raw);
+  // Fail closed: never re-persist unsanitized HTML when the parser is unavailable.
+  if (!doc) return failClosedScrubHtmlWithoutParser(raw);
+  sanitizeManualEditDocumentInPlace(doc);
   return serializeSource(doc, raw);
 }
 
@@ -1500,7 +1621,7 @@ function queryDomSelectorWithinRoot(
  * scoped to the matching slide, strip the absolute `body > … > section:nth-of-type(N)`
  * prefix and resolve the remainder inside that slide.
  */
-export function parseAbsoluteDomSlideSelector(
+function parseAbsoluteDomSlideSelector(
   selector: string,
 ): { suffix: string; slideIndex: number } | null {
   const trimmed = String(selector || '').trim();

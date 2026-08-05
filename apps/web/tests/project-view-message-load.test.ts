@@ -393,12 +393,22 @@ describe("ProjectView message loading", () => {
 
   it("sanitizes FileViewer manual-edit saves before revision push", () => {
     const source = readSource("src/components/FileViewer.tsx");
-    expect(source).toContain("sanitizeManualEditFullSource");
     expect(source).toContain("contentToSave");
-    expect(source).toContain("sanitizeManualEditFullSource(result.source)");
+    expect(source).toContain("{ sanitize: isManualEditFullHtmlDocument(baseSource) }");
+    expect(source).toContain("const contentToSave = result.source");
     expect(source).toContain("setSource(contentToSave)");
     expect(source).toContain("pinManualEditSavedSource(contentToSave)");
     expect(source).toContain("setRevisionContentCache(projectId, file.name, saved.revision.id, contentToSave)");
+  });
+
+  it("batches element-patch apply and scoped comment mask on one Document", () => {
+    const elementSource = readSource("src/artifacts/element-patch.ts");
+    expect(elementSource).toContain("applyManualEditPatchMutation");
+    expect(elementSource).toContain("parseManualEditSource(html)");
+    expect(elementSource).toContain("serializeManualEditSource(doc, html)");
+    const viewSource = readSource("src/components/ProjectView.tsx");
+    expect(viewSource).toContain("maskManualEditTargetsOnDocument");
+    expect(viewSource).toContain("parseManualEditSource(source)");
   });
 
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {

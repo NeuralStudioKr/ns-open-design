@@ -1269,6 +1269,25 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toMatch(/if\s*\(\s*!doc\s*\)\s*return failClosedScrubHtmlWithoutParser/);
   });
 
+  it('fails closed for fragment sanitize when parser body is unavailable', () => {
+    expect(sourcePatchesSource).toContain(
+      'if (!doc?.body) return failClosedScrubHtmlWithoutParser(trimmed)',
+    );
+  });
+
+  it('hardens failClosed scrub against javascript: URL attrs and dangerous tags', () => {
+    expect(sourcePatchesSource).toContain('annotation-xml');
+    expect(sourcePatchesSource).toContain('fencedframe');
+    expect(sourcePatchesSource).toMatch(/javascript\|vbscript/);
+  });
+
+  it('exposes single-document mutate/batch apply helpers', () => {
+    expect(sourcePatchesSource).toContain('export function applyManualEditPatches');
+    expect(sourcePatchesSource).toContain('export function applyManualEditPatchMutation');
+    expect(sourcePatchesSource).toContain('sanitizeManualEditDocumentInPlace');
+    expect(sourcePatchesSource).not.toMatch(/export function parseAbsoluteDomSlideSelector/);
+  });
+
   it('scrubs remote backdrop-filter and cursor/clip-path urls from styles', () => {
     const inline = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',

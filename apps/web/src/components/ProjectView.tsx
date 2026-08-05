@@ -333,9 +333,11 @@ import {
 } from '../produced-files';
 import { buildPptxExportPrompt } from '../lib/build-pptx-export-prompt';
 import {
-  maskManualEditTargets,
+  maskManualEditTargetsOnDocument,
   elementPatchReasonTargetsSyntheticVisualMark,
+  parseManualEditSource,
   sanitizeManualEditFullSource,
+  serializeManualEditSource,
 } from '../edit-mode/source-patches';
 import { AvatarMenu } from './AvatarMenu';
 import { EntrySettingsMenu } from './EntrySettingsMenu';
@@ -1882,7 +1884,9 @@ function maskScopedCommentTargets(
   source: string,
   commentAttachments: readonly ChatCommentAttachment[],
 ): { ok: true; source: string; maskedCount: number } | { ok: false } {
-  let maskedSource = source;
+  // One DOMParser pass for all attachments (was N× parse/serialize).
+  const doc = parseManualEditSource(source);
+  if (!doc) return { ok: false };
   let maskedCount = 0;
   for (const attachment of commentAttachments) {
     if (
@@ -1906,19 +1910,20 @@ function maskScopedCommentTargets(
       instructionText: attachment.comment,
       htmlHint: attachment.htmlHint,
     }));
-    const masked = maskManualEditTargets(
-      maskedSource,
+    maskedCount += maskManualEditTargetsOnDocument(
+      doc,
       ids,
       { slideIndex: Math.floor(attachment.slideIndex) },
       hints,
+      maskedCount,
     );
-    if (!masked.ok) continue;
-    maskedSource = masked.source;
-    maskedCount += masked.maskedCount;
   }
-  return maskedCount > 0
-    ? { ok: true, source: maskedSource, maskedCount }
-    : { ok: false };
+  if (maskedCount === 0) return { ok: false };
+  return {
+    ok: true,
+    source: serializeManualEditSource(doc, source),
+    maskedCount,
+  };
 }
 
 function historyWithWorkspaceContext(

@@ -258,7 +258,6 @@ import {
   readManualEditFields,
   readManualEditOuterHtml,
   readManualEditStyles,
-  sanitizeManualEditFullSource,
 } from '../edit-mode/source-patches';
 import {
   contentRectToHostRect,
@@ -9171,11 +9170,14 @@ function HtmlViewer({
     setManualEditSaving(true);
     setManualEditError(null);
     try {
+      // Sanitize on the live Document before serialize — avoids a second
+      // full-document DOMParser pass via sanitizeManualEditFullSource.
       const result = applyManualEditPatch(
         baseSource,
         patch,
         { ...scope, targetHint: hint },
         hint,
+        { sanitize: isManualEditFullHtmlDocument(baseSource) },
       );
       if (!result.ok) {
         setManualEditError(
@@ -9201,12 +9203,7 @@ function HtmlViewer({
       // saves never update the sidecar, and a stale client manifest (empty
       // title, stripped exports) used to 400 the whole revision POST.
       const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);
-      // Match ProjectView terminal scrub — set-style/set-text serialize the
-      // whole document and must not re-persist sibling script/on*. Keep the
-      // sanitized bytes as the local SSOT (pin/preview/cache), not dirty patch output.
-      const contentToSave = isManualEditFullHtmlDocument(result.source)
-        ? sanitizeManualEditFullSource(result.source)
-        : result.source;
+      const contentToSave = result.source;
       const saved = await pushProjectFileRevision(projectId, file.name, {
         content: contentToSave,
         source: 'manual_edit',
