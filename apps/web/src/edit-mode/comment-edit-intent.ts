@@ -1,17 +1,20 @@
-import { extractTopLevelSlideSections } from '../artifacts/deck-patch';
+import { extractDeckBodyContent, extractTopLevelSlideSections } from '../artifacts/deck-patch';
 import type { ChatCommentAttachment } from '../types';
-import { readScopedCommentTargetText } from './source-patches';
+import { parseManualEditSource, readScopedCommentTargetText } from './source-patches';
 
 function listDeckSlideIndexes(html: string): number[] {
-  const bodyMatch = /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i.exec(html);
-  const scope = bodyMatch ? bodyMatch[1] ?? '' : html;
-  return extractTopLevelSlideSections(scope).map((_, index) => index);
+  return extractTopLevelSlideSections(extractDeckBodyContent(html)).map((_, index) => index);
 }
 
+/**
+ * Returns `verified` when at least one slide already preserves target text
+ * (caller must not re-parse). Otherwise returns candidate slide indexes.
+ */
 function resolveValidationSlideIndexes(
   mergedHtml: string,
   attachment: ChatCommentAttachment,
-): number[] {
+  parsedDoc?: Document | null,
+): { verified: true } | { verified: false; candidates: number[] } {
   const slides = listDeckSlideIndexes(mergedHtml);
   const hint = {
     elementId: attachment.elementId,
@@ -19,14 +22,12 @@ function resolveValidationSlideIndexes(
     htmlHint: attachment.htmlHint,
     selector: attachment.selector,
   };
-  const verified: number[] = [];
   for (const slideIndex of slides) {
-    const mergedText = readScopedCommentTargetText(mergedHtml, { slideIndex }, hint);
+    const mergedText = readScopedCommentTargetText(mergedHtml, { slideIndex }, hint, parsedDoc);
     if (mergedText !== null && targetTextContentPreserved(attachment, mergedText)) {
-      verified.push(slideIndex);
+      return { verified: true };
     }
   }
-  if (verified.length > 0) return verified;
 
   const candidates: number[] = [];
   const pushUnique = (index: number) => {
@@ -44,7 +45,7 @@ function resolveValidationSlideIndexes(
   for (const slideIndex of slides) {
     pushUnique(slideIndex);
   }
-  return candidates;
+  return { verified: false, candidates };
 }
 
 function collapseText(value: string): string {
@@ -157,6 +158,7 @@ export function validateCommentEditIntentRespected(input: {
     return { ok: true };
   }
 
+  const parsedDoc = parseManualEditSource(input.mergedHtml);
   for (const attachment of input.commentAttachments) {
     if (attachment.selectionKind === 'visual') continue;
     const hint = {
@@ -165,11 +167,17 @@ export function validateCommentEditIntentRespected(input: {
       htmlHint: attachment.htmlHint,
       selector: attachment.selector,
     };
-    const slideIndexes = resolveValidationSlideIndexes(input.mergedHtml, attachment);
-    if (slideIndexes.length === 0) continue;
+    const resolved = resolveValidationSlideIndexes(input.mergedHtml, attachment, parsedDoc);
+    if (resolved.verified) continue;
+    if (resolved.candidates.length === 0) continue;
 
-    const preserved = slideIndexes.some((slideIndex) => {
-      const mergedText = readScopedCommentTargetText(input.mergedHtml, { slideIndex }, hint);
+    const preserved = resolved.candidates.some((slideIndex) => {
+      const mergedText = readScopedCommentTargetText(
+        input.mergedHtml,
+        { slideIndex },
+        hint,
+        parsedDoc,
+      );
       return mergedText !== null && targetTextContentPreserved(attachment, mergedText);
     });
     if (!preserved) {

@@ -412,8 +412,12 @@ describe("ProjectView message loading", () => {
     const viewSource = readSource("src/components/ProjectView.tsx");
     expect(viewSource).toContain("maskManualEditTargetsOnDocument");
     expect(viewSource).toContain("parseManualEditSource(source)");
-    expect(viewSource).toContain("elementPatchAlreadySanitized");
-    expect(viewSource).toContain("!elementPatchAlreadySanitized");
+    expect(viewSource).toContain("patchHtmlAlreadySanitized");
+    expect(viewSource).toContain("!patchHtmlAlreadySanitized");
+    const deckSource = readSource("src/edit-mode/scoped-deck-patch.ts");
+    expect(deckSource).toContain("sanitizeManualEditFullSource(repairedHtml)");
+    expect(deckSource).toContain("extractDeckBodyContent");
+    expect(deckSource).toContain("reconcileCommentAttachmentForDeck(deckHtml, attachment, parsedDoc)");
   });
 
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {

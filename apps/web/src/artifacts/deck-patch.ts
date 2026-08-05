@@ -529,7 +529,7 @@ function readOp(openTag: string): DeckPatchOp | null {
  * replacement can be sliced back into the surrounding `<head>` + closing
  * boilerplate without touching them.
  */
-function findBodyContentRange(html: string): { start: number; end: number } | null {
+export function findBodyContentRange(html: string): { start: number; end: number } | null {
   // Allow `>` inside quoted body attrs (same class of bug as section/patch opens).
   const openMatch = /<body\b(?:[^>"']|"[^"]*"|'[^']*')*>/i.exec(html);
   if (!openMatch) return null;
@@ -537,6 +537,13 @@ function findBodyContentRange(html: string): { start: number; end: number } | nu
   const closeMatch = /<\/body\s*>/i.exec(html.slice(start));
   if (!closeMatch) return null;
   return { start, end: start + closeMatch.index };
+}
+
+/** Quote-aware body inner HTML — shared by applyDeckPatch / extractSlideByIndex. */
+export function extractDeckBodyContent(html: string): string {
+  const range = findBodyContentRange(html);
+  if (!range) return html;
+  return html.slice(range.start, range.end);
 }
 
 /**

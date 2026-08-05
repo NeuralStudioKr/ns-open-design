@@ -1280,6 +1280,9 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain('annotation-xml');
     expect(sourcePatchesSource).toContain('fencedframe');
     expect(sourcePatchesSource).toMatch(/javascript\|vbscript/);
+    expect(sourcePatchesSource).toContain("'background'");
+    expect(sourcePatchesSource).toContain("'srcset'");
+    expect(sourcePatchesSource).toContain("'longdesc'");
   });
 
   it('exposes single-document mutate/batch apply helpers', () => {

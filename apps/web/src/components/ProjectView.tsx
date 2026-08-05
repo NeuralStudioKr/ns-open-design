@@ -1650,7 +1650,8 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
         fileName: input.fileName,
         parseReason: parsed.reason,
       });
-      return { ok: true, html: grafted };
+      // graftVisualMarksIntoDeckHtml already full-source sanitized.
+      return { ok: true, html: grafted, sanitized: true };
     }
     const visualTemplate = input.commentAttachments
       ? buildConcreteDeckPatchTemplateForVisualMarks(input.commentAttachments)
@@ -4174,8 +4175,8 @@ export function ProjectView({
       const visualMarksAlreadyStabilized =
         isElementPatchArtifactType(art.artifactType)
         || isDeckPatchArtifactType(art.artifactType);
-      // element-patch apply sanitizes the live Document before serialize.
-      let elementPatchAlreadySanitized = false;
+      // element-patch / deck-patch apply sanitize before serialize.
+      let patchHtmlAlreadySanitized = false;
       // `deck-patch` short-circuits the full-deck emit path. Comment-driven
       // edits carry `<artifact type="deck-patch">` bodies whose sections list
       // ONLY the changed `<section class="slide">` blocks; we merge them into
@@ -4259,7 +4260,7 @@ export function ProjectView({
           });
         } else {
           effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
-          elementPatchAlreadySanitized = true;
+          patchHtmlAlreadySanitized = true;
         }
       } else if (isDeckPatchArtifactType(art.artifactType)) {
         const merged = await tryApplyDeckPatchAgainstCurrentDeck({
@@ -4328,6 +4329,7 @@ export function ProjectView({
           });
         } else {
           effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
+          patchHtmlAlreadySanitized = true;
         }
       } else if (scopedAllowedSlideIndexes && effectiveArt.html) {
         const scopeResult = await fullDeckEditStaysInsideCommentScope({
@@ -4495,10 +4497,10 @@ export function ProjectView({
         }
       }
       const htmlBodyBeforeSanitize = htmlBody;
-      if (ext === '.html' && !elementPatchAlreadySanitized) {
+      if (ext === '.html' && !patchHtmlAlreadySanitized) {
         // Single terminal scrub after salvage/repair/stabilize — avoids
         // 2–4× DOMParser passes on the same multi-KB deck per persist.
-        // element-patch success already sanitized (and re-scrubbed if stabilize mutated).
+        // element/deck-patch success already sanitized upstream.
         htmlBody = sanitizeManualEditFullSource(htmlBody);
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {

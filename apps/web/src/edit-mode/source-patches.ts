@@ -935,8 +935,9 @@ export function readScopedCommentTargetText(
   html: string,
   scope: ManualEditSourceScope,
   hint: ManualEditMergeTargetHint & { elementId?: string },
+  parsedDoc?: Document | null,
 ): string | null {
-  const doc = parseSource(html);
+  const doc = parsedDoc ?? parseSource(html);
   if (!doc) return null;
   const id = String(hint.elementId || hint.id || '').trim();
   const el = id
@@ -1404,7 +1405,13 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     'annotation-xml',
   ].join('|');
   // Decode entities first so &#106;avascript: / &colon; cannot bypass scheme scrub.
-  let text = decodeHtmlCharacterReferences(String(raw || ''));
+  const text = decodeHtmlCharacterReferences(String(raw || ''));
+  // Align navigable/legacy URL attrs with MANUAL_EDIT_URL_ATTRS (minus SMIL to/from/by/values).
+  const urlAttrs = [
+    'href', 'src', 'xlink:href', 'action', 'formaction', 'poster', 'cite', 'ping',
+    'background', 'dynsrc', 'lowsrc', 'srcset', 'imagesrcset', 'longdesc',
+    'manifest', 'codebase', 'classid', 'archive', 'usemap', 'data',
+  ].join('|');
   return text
     .replace(new RegExp(`<(?:${dangerous})\\b[\\s\\S]*?<\\/(?:${dangerous})\\s*>`, 'gi'), '')
     .replace(new RegExp(`<(?:${dangerous})\\b[^>]*\\/?>`, 'gi'), '')
@@ -1415,11 +1422,17 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     .replace(/\sstyle\s*=\s*(['"])[\s\S]*?\1/gi, '')
     .replace(/\sstyle\s*=\s*[^\s>]+/gi, '')
     .replace(
-      /\s(?:href|src|action|formaction|xlink:href|poster)\s*=\s*(['"])\s*(?:javascript|vbscript|data\s*:\s*text\s*\/\s*html)[\s\S]*?\1/gi,
+      new RegExp(
+        `\\s(?:${urlAttrs})\\s*=\\s*(['"])\\s*(?:javascript|vbscript|data\\s*:\\s*text\\s*\\/\\s*html)[\\s\\S]*?\\1`,
+        'gi',
+      ),
       '',
     )
     .replace(
-      /\s(?:href|src|action|formaction|xlink:href|poster)\s*=\s*(?:javascript|vbscript|data\s*:\s*text\s*\/\s*html)[^\s>]*/gi,
+      new RegExp(
+        `\\s(?:${urlAttrs})\\s*=\\s*(?:javascript|vbscript|data\\s*:\\s*text\\s*\\/\\s*html)[^\\s>]*`,
+        'gi',
+      ),
       '',
     );
 }

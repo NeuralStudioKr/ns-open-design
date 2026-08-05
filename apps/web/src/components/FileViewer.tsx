@@ -254,7 +254,6 @@ import { FileRevisionHistoryPanel } from './FileRevisionHistoryPanel';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
-  readManualEditOuterHtml,
   readManualEditStyles,
   readManualEditTargetSnapshot,
 } from '../edit-mode/source-patches';
@@ -8407,8 +8406,8 @@ function HtmlViewer({
   }
 
   function inspectorManualEditStyles(target: ManualEditTarget, baseSource: string): ManualEditStyles {
-    const inlineStyles = readManualEditStyles(baseSource, target.id);
-    return mergeManualEditInspectorStyles(inlineStyles, target.styles);
+    const snapshot = readManualEditTargetSnapshot(baseSource, target.id);
+    return mergeManualEditInspectorStyles(snapshot.styles, target.styles);
   }
 
   function reconcileManualEditStyleSave(
@@ -8416,7 +8415,8 @@ function HtmlViewer({
     savedStyles: Partial<ManualEditStyles>,
     savedSource: string,
   ) {
-    if (id !== '__body__' && !readManualEditOuterHtml(savedSource, id)) {
+    const snapshot = readManualEditTargetSnapshot(savedSource, id);
+    if (id !== '__body__' && !snapshot.outerHtml) {
       setManualEditError(
         embedUiLabel(
           'The selected target no longer exists in the saved source. Refreshing the preview.',
@@ -8428,7 +8428,7 @@ function HtmlViewer({
       setReloadKey((key) => key + 1);
       return;
     }
-    const sourceStyles = readManualEditStyles(savedSource, id);
+    const sourceStyles = snapshot.styles;
     const supersededStyles = manualEditPendingStyleRef.current?.id === id
       ? manualEditPendingStyleRef.current.styles
       : {};

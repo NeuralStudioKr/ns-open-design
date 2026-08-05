@@ -793,7 +793,7 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(stabilized).toContain('od-visual-mark-target');
   });
 
-  it('defers full-source sanitize of deck-patch merges to the terminal persist gate', () => {
+  it('folds full-source sanitize into deck-patch merges (ProjectView can skip terminal scrub)', () => {
     const currentHtml = `<!doctype html><html><body>
 <section class="slide" data-slide-index="0"><h1>Old</h1></section>
 </body></html>`;
@@ -815,12 +815,10 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     });
     expect(result.ok, JSON.stringify(result)).toBe(true);
     if (!result.ok) return;
-    // Slide-level fragment sanitize may already drop script; terminal full
-    // sanitize is the guaranteed ProjectView persist scrub.
-    const clean = sanitizeManualEditFullSource(result.html);
-    expect(clean).toContain('New');
-    expect(clean).not.toMatch(/onerror/i);
-    expect(clean).not.toMatch(/<script\b/i);
+    expect(result.sanitized).toBe(true);
+    expect(result.html).toContain('New');
+    expect(result.html).not.toMatch(/onerror/i);
+    expect(result.html).not.toMatch(/<script\b/i);
   });
 
   it('sanitizes XSS from model visual-mark HTML before wipe repair graft', () => {
