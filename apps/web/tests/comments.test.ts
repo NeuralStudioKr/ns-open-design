@@ -559,6 +559,17 @@ describe('preview comment attachment helpers', () => {
     expect(template).toContain('od-visual-mark-target');
   });
 
+  it('enforces a visible minimum width/height for tiny visual mark bounds', () => {
+    // A drawn box smaller than the min-touch target should still render at
+    // >=32px so users see the mark on-slide instead of a 1×1 invisible dot.
+    const style = formatVisualMarkPlacementStyle({ x: 5, y: 5, width: 4, height: 4 });
+    expect(style).toContain('width:32px');
+    expect(style).toContain('height:32px');
+    const normal = formatVisualMarkPlacementStyle({ x: 5, y: 5, width: 200, height: 120 });
+    expect(normal).toContain('width:200px');
+    expect(normal).toContain('height:120px');
+  });
+
   it.each([
     ['별 넣어줘', '<path d="M12 2'],
     ['⭐ here', '<path d="M12 2'],

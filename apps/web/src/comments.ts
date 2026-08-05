@@ -890,7 +890,12 @@ export function formatVisualMarkPlacementStyle(
   position: PreviewComment['position'],
 ): string {
   const pos = normalizePosition(position);
-  return `position:absolute;left:${pos.x}px;top:${pos.y}px;width:${Math.max(1, pos.width)}px;height:${Math.max(1, pos.height)}px`;
+  // Enforce a minimum visible mark size so tiny/degenerate bounds still render
+  // an obvious icon on the slide. Teamver decks are 1920×1080 — 32px is a
+  // reasonable minimum touch target without dwarfing the drawn area.
+  const width = Math.max(32, pos.width);
+  const height = Math.max(32, pos.height);
+  return `position:absolute;left:${pos.x}px;top:${pos.y}px;width:${width}px;height:${height}px`;
 }
 
 /** Model-facing placement rules for screenshot/drawing scoped edits. */
