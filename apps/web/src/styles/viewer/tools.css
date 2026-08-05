@@ -39,16 +39,29 @@
 }
 .op-open {
   font-size: 10.5px;
+  min-height: 28px;
   padding: 2px 8px;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: none;
   color: var(--text-muted);
   cursor: pointer;
+  transition:
+    background var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
 }
 .op-open:hover {
-  background: var(--bg-fill-tertiary);
+  background: var(--bg-subtle);
+  border-color: var(--border);
   color: var(--text);
+}
+.op-open:active {
+  background: var(--bg-muted);
+}
+.op-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .produced-files {
@@ -237,10 +250,24 @@
   font-size: 11.5px;
   font-weight: 550;
   cursor: pointer;
+  transition:
+    background var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
 }
 .plugin-action-button:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
+}
+.plugin-action-button:active:not(:disabled) {
+  background: var(--bg-muted);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.plugin-action-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .plugin-action-button:disabled {
   opacity: 0.58;
@@ -249,11 +276,18 @@
 .plugin-action-button--primary {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--bg-panel);
 }
 .plugin-action-button--primary:hover:not(:disabled) {
-  color: #fff;
-  filter: brightness(0.85);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--bg-panel);
+  filter: none;
+}
+.plugin-action-button--primary:active:not(:disabled) {
+  background: var(--accent-strong, var(--accent-hover));
+  border-color: var(--accent-strong, var(--accent-hover));
+  color: var(--bg-panel);
 }
 .plugin-action-card__notice {
   padding: 6px 8px;
@@ -301,6 +335,11 @@
   min-width: 0;
 }
 .file-ops-toggle:hover { background: var(--bg-subtle); }
+.file-ops-toggle:active { background: var(--bg-muted); }
+.file-ops-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .file-ops-icon { display: inline-flex; color: var(--text-muted); }
 .file-ops-label {
   font-size: 10.5px;

@@ -1358,6 +1358,13 @@
 .app .action-card-toggle:hover {
   background: var(--bg-fill-tertiary);
 }
+.app .action-card-toggle:active {
+  background: var(--bg-muted);
+}
+.app .action-card-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .app .action-card-status {
   width: 24px;
   height: 24px;
