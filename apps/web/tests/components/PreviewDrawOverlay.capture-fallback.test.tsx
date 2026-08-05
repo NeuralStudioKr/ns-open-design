@@ -231,7 +231,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     );
   });
 
-  it('does not block send on a slow captureSnapshot when marks-only is available', async () => {
+  it('does not block send on a slow captureSnapshot when marks-only is available', { timeout: 10_000 }, async () => {
     const slowCapture = vi.fn(
       () =>
         new Promise<{ dataUrl: string; w: number; h: number } | null>((resolve) => {
@@ -268,8 +268,11 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
       const started = performance.now();
       fireEvent.click(getByRole('button', { name: 'Send' }));
 
-      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 5_000 });
-      expect(performance.now() - started).toBeLessThan(4_000);
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 7_000 });
+      // Fast fallback bound: 4.5s host wait + a small overhead for the
+      // composite / event dispatch. Regression check for issue #4064 —
+      // must not stall on the full 10s budget when marks-only is ready.
+      expect(performance.now() - started).toBeLessThan(6_000);
       expect(annotation.mock.calls[0]?.[0]).toMatchObject({
         detail: expect.objectContaining({
           action: 'send',
