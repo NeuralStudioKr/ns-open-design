@@ -324,6 +324,7 @@ import {
   measureManualEditContentPageBounds,
   measureManualEditTargetContentRect,
   measureManualEditTargetHostRect,
+  measureManualEditViewportBounds,
 } from '../edit-mode/manual-edit-host-preview';
 import {
   manualEditPatchBaseSource,
@@ -371,6 +372,7 @@ import {
   type GroupDistributeKind,
 } from '../edit-mode/manual-edit-group-align';
 import { collectSnapSources } from '../edit-mode/manual-edit-geometry-snap';
+import { filterManualEditLayerTargets } from '../edit-mode/manual-edit-layer-targets';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditRect, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import {
@@ -5285,6 +5287,8 @@ function HtmlViewer({
   const [manualEditHostScale, setManualEditHostScale] = useState(1);
   /** Iframe content-space page bounds for canvas snap guides. */
   const [manualEditContentPageBounds, setManualEditContentPageBounds] = useState<ManualEditRect | null>(null);
+  const [manualEditViewportBounds, setManualEditViewportBounds] = useState<ManualEditRect | null>(null);
+  const [manualEditLayersPanelOpen, setManualEditLayersPanelOpen] = useState(false);
   /**
    * Live host-space paint box for the selected element. Overlay prefers this
    * over composing target.rect × scale + offset (which goes stale when the
@@ -7997,6 +8001,8 @@ function HtmlViewer({
       setManualEditHostScale(1);
       setManualEditHostPaintRect(null);
       setManualEditContentPageBounds(null);
+      setManualEditViewportBounds(null);
+      setManualEditLayersPanelOpen(false);
       return;
     }
     let raf = 0;
@@ -8027,6 +8033,16 @@ function HtmlViewer({
           && Math.abs(prev.height - pageBounds.height) < 0.5
             ? prev
             : pageBounds
+        ));
+      }
+      const viewportBounds = measureManualEditViewportBounds(frame);
+      if (viewportBounds) {
+        setManualEditViewportBounds((prev) => (
+          prev
+          && Math.abs(prev.width - viewportBounds.width) < 0.5
+          && Math.abs(prev.height - viewportBounds.height) < 0.5
+            ? prev
+            : viewportBounds
         ));
       }
       const selectedId = selectedManualEditTargetIdRef.current;
@@ -9583,6 +9599,7 @@ function HtmlViewer({
     manualEditResizePausedRef.current = false;
     setManualEditPanelPosition(null);
     setManualEditPanelCollapsed(false);
+    setManualEditLayersPanelOpen(false);
     setManualEditMode(false);
     return true;
   }
@@ -12082,6 +12099,14 @@ function HtmlViewer({
       manualEditTargetIsDescendantOf,
     ],
   );
+  const manualEditLayerPanelTargets = useMemo(
+    () => filterManualEditLayerTargets(manualEditTargets, {
+      deck: effectiveDeck,
+      activeSlideIndex: slideState?.active ?? null,
+      viewportBounds: manualEditViewportBounds,
+    }),
+    [manualEditTargets, effectiveDeck, slideState?.active, manualEditViewportBounds],
+  );
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionUndoUnavailableTooltip = revisionStackInvalidated
@@ -12680,6 +12705,23 @@ function HtmlViewer({
               >
                 <RemixIcon name="edit-line" size={15} />
               </button>
+              {manualEditMode ? (
+                <button
+                  type="button"
+                  className={`viewer-action viewer-action-icon od-tooltip${manualEditLayersPanelOpen ? ' active' : ''}`}
+                  data-testid="manual-edit-layers-toggle"
+                  data-tooltip={t('manualEdit.toggleLayers')}
+                  data-tooltip-placement="bottom"
+                  title={t('manualEdit.toggleLayers')}
+                  aria-label={t('manualEdit.toggleLayers')}
+                  aria-pressed={manualEditLayersPanelOpen}
+                  onClick={() => {
+                    setManualEditLayersPanelOpen((open) => !open);
+                  }}
+                >
+                  <RemixIcon name="stack-line" size={15} />
+                </button>
+              ) : null}
               <span className="viewer-toolbar-tool-divider" aria-hidden />
               <button
                 type="button"
@@ -13041,12 +13083,15 @@ function HtmlViewer({
             style={previewViewportStyle(previewViewport, previewScale, boardPreviewCanvasSize, boardPreviewScaleOptions)}
             onMouseLeave={manualEditMode ? clearManualEditHover : undefined}
           >
-            {manualEditMode ? (
+            {manualEditMode && manualEditLayersPanelOpen ? (
               <ManualEditLayersPanel
-                targets={manualEditTargets}
+                targets={manualEditLayerPanelTargets}
                 selectedIds={selectedManualEditTargetIds}
                 onSelectTarget={(target, options) => {
                   void selectManualEditTarget(target, options);
+                }}
+                onClose={() => {
+                  setManualEditLayersPanelOpen(false);
                 }}
               />
             ) : null}

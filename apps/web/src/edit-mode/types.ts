@@ -102,6 +102,8 @@ export interface ManualEditTarget {
    * before the promote set-style (53 Loop15).
    */
   stickyScrollportId?: string;
+  /** Deck slide index from nearest `data-slide-index` ancestor. */
+  slideIndex?: number;
   outerHtml: string;
 }
 

@@ -2717,6 +2717,9 @@ export interface Dict {
   'fileViewer.boxSelect': string;
   'fileViewer.screenshot': string;
   'manualEdit.layers': string;
+  'manualEdit.toggleLayers': string;
+  'manualEdit.closeLayers': string;
+  'manualEdit.layersHint': string;
   'manualEdit.editableCount': string;
   'manualEdit.hiddenBadge': string;
   'manualEdit.title': string;

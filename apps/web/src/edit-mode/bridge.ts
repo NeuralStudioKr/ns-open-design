@@ -291,6 +291,20 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (isAbsoluteContainingBlock(window.getComputedStyle(scrollport))) return '';
     return stableId(scrollport);
   }
+  function slideIndexFor(el){
+    var node = el;
+    while (node && node !== document.documentElement) {
+      if (node.getAttribute) {
+        var raw = node.getAttribute('data-slide-index');
+        if (raw != null && raw !== '') {
+          var idx = parseInt(raw, 10);
+          if (Number.isFinite(idx) && idx >= 0) return idx;
+        }
+      }
+      node = node.parentElement;
+    }
+    return undefined;
+  }
   function targetFrom(el, includeOuterHtml){
     var rect = el.getBoundingClientRect();
     var kind = inferKind(el);
@@ -334,6 +348,8 @@ export function buildManualEditBridge(enabled: boolean): string {
       outerHtml: includeOuterHtml ? (el.outerHTML || '').replace(/\\sdata-od-runtime-id="[^"]*"/g, '').replace(/\\sdata-od-source-path="[^"]*"/g, '').replace(/\\sdata-od-edit-selected="[^"]*"/g, '').replace(/\\sdata-od-edit-host-chrome="[^"]*"/g, '') : ''
     };
     if (stickyScrollportId) target.stickyScrollportId = stickyScrollportId;
+    var slideIndex = slideIndexFor(el);
+    if (slideIndex !== undefined) target.slideIndex = slideIndex;
     return target;
   }
   function allTargets(){

@@ -80,7 +80,7 @@ test('[P0] manual edit inspector previews and persists page and selected element
   });
   await expect(page.locator('.manual-edit-modal')).toContainText('PAGE');
   await expect(page.locator('.manual-edit-tabs')).toHaveCount(0);
-  await expect(page.getByTestId('manual-edit-layers-panel')).toBeVisible();
+  await expect(page.getByTestId('manual-edit-layers-panel')).toHaveCount(0);
 
   await inspectorRow(page, 'Background').locator('input').fill('#eef2ff');
   await inspectorRow(page, 'Font').locator('select').selectOption('Georgia, serif');
@@ -1280,6 +1280,7 @@ test('[P1] manual edit layer list supports ctrl additive multi-select', async ({
   await openDesignFile(page, fileName);
 
   await page.getByTestId('manual-edit-mode-toggle').click();
+  await page.getByTestId('manual-edit-layers-toggle').click();
   await expect(page.getByTestId('manual-edit-layers-panel')).toBeVisible();
   await page.getByTestId('manual-edit-layer-row-hero-title').click();
   await page.getByTestId('manual-edit-layer-row-cta').click({ modifiers: ['ControlOrMeta'] });

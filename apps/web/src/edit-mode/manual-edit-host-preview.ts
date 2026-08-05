@@ -137,6 +137,18 @@ export function measureManualEditContentPageBounds(
   return { x: 0, y: 0, width, height };
 }
 
+/** Visible iframe viewport in content coordinates (for layer list filtering). */
+export function measureManualEditViewportBounds(
+  frame: HTMLIFrameElement | null,
+): ManualEditRect | null {
+  const doc = iframeContentDocumentIfAccessible(frame);
+  if (!doc) return null;
+  const width = doc.documentElement.clientWidth;
+  const height = doc.documentElement.clientHeight;
+  if (width < 1 || height < 1) return null;
+  return { x: 0, y: 0, width, height };
+}
+
 export function measureManualEditTargetContentRect(
   frame: HTMLIFrameElement | null,
   id: string,
