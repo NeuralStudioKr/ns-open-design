@@ -72,6 +72,60 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.queryByText('슬라이드 초안을 작성 중입니다. 잠시만 기다려 주세요.')).toBeNull();
   });
 
+  it('uses slide-edit progress copy when a full deck streams on an existing-deck edit turn', () => {
+    render(
+      <AssistantMessage
+        message={{
+          ...streamingMessage(
+            '<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Hi',
+          ),
+          preTurnFileNames: ['deck.html'],
+        }}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Applying slide updates. Please wait a moment.')).toBeTruthy();
+    expect(screen.queryByText('Creating the slide deck now. Please wait a moment.')).toBeNull();
+  });
+
+  it('replaces model create-completion prose with edit lead on an edit turn', () => {
+    render(
+      <AssistantMessage
+        message={{
+          ...completedMessage('슬라이드 초안이 생성되었습니다.'),
+          content: '슬라이드 초안이 생성되었습니다.',
+          events: [
+            {
+              kind: 'text',
+              text: '슬라이드 초안이 생성되었습니다.',
+            } as ChatMessage['events'][number],
+          ],
+          producedFiles: [
+            {
+              name: 'deck.html',
+              path: 'deck.html',
+              size: 2048,
+              mtime: 1700000005,
+              kind: 'html',
+              mime: 'text/html',
+            },
+          ],
+          preTurnFileNames: ['deck.html'],
+        }}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Slide updates have been applied.')).toBeTruthy();
+    expect(screen.queryByText('슬라이드 초안이 생성되었습니다.')).toBeNull();
+    expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
+  });
+
   it('keeps slide-edit completion copy after an in-place deck-patch turn without producedFiles', () => {
     render(
       <AssistantMessage

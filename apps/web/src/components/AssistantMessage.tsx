@@ -59,7 +59,10 @@ import { useI18n } from "../i18n";
 import { parseSubmittedAnswers } from "./QuestionForm";
 import { splitStreamingArtifact, stripAllClosedArtifacts, stripRecoveredHtmlFallbackForDisplay } from "../artifacts/strip";
 import { isDeckPatchArtifactType } from "../artifacts/deck-patch";
-import { shouldHidePrematureDeckCompletionProse } from "../teamver/deckDeliverableProse";
+import {
+  shouldHideDeckCreateCompletionProseOnEditTurn,
+  shouldHidePrematureDeckCompletionProse,
+} from "../teamver/deckDeliverableProse";
 import {
   getPluginFolderCandidates,
   type PluginFolderCandidate,
@@ -449,6 +452,7 @@ function hasVisibleAssistantTextOutput(
     slideOnlyMvp,
     teamverEmbedEnabled,
     locale,
+    isSlideEditTurn = false,
   }: {
     streaming: boolean;
     hideRecoveredHtmlFallback: boolean;
@@ -457,6 +461,7 @@ function hasVisibleAssistantTextOutput(
     slideOnlyMvp: boolean;
     teamverEmbedEnabled: boolean;
     locale: string;
+    isSlideEditTurn?: boolean;
   },
 ): boolean {
   const stripped = stripAllClosedArtifacts(text);
@@ -486,10 +491,20 @@ function hasVisibleAssistantTextOutput(
     if (seg.kind === "form") return true;
     const visibleSegmentText = stripUserVisibleQuestionFormProtocolText(seg.text);
     if (visibleSegmentText.includes(INVALID_QUESTION_FORM_FALLBACK)) return false;
+    if (
+      shouldHideDeckCreateCompletionProseOnEditTurn({
+        text: visibleSegmentText,
+        isSlideEditTurn,
+        teamverSlideUi: slideOnlyGate,
+      })
+    ) {
+      return false;
+    }
     return visibleSegmentText.trim().length > 0;
   });
   // Premature deck completion lines are hidden only in ProseBlock while streaming
   // with an open artifact (`shouldHidePrematureDeckCompletionProse`) — not here.
+  // Live artifact progress still counts as visible activity for the footer.
   if (live) return true;
   return hasVisibleHead;
 }
@@ -751,6 +766,10 @@ function AssistantMessageImpl({
   // files) the footer shimmers "Preparing…"; the moment content lands it
   // flips to "Working". The elapsed clock stays anchored to the persisted run
   // start so switching project tabs or remounting the message cannot restart it.
+  // After reload, closed deck-patch tags may already be stripped — fall back
+  // to preTurn HTML baseline so we keep "slide edit applied" copy, not create.
+  const isDeckPatchArtifactTurn = messageLooksLikeSlideEditTurn(message)
+    || messageIndicatesDeckPatchArtifact(assistantTextBody);
   // TodoWrite alone counts as activity even when tool cards are hidden in embed.
   const hasVisibleAssistantTextBlocks = blocks.some((b) => {
       if (b.kind === "status") return false;
@@ -763,6 +782,7 @@ function AssistantMessageImpl({
         slideOnlyMvp,
         teamverEmbedEnabled,
         locale,
+        isSlideEditTurn: isDeckPatchArtifactTurn,
       });
     });
   const hasContent =
@@ -771,10 +791,6 @@ function AssistantMessageImpl({
     || (!(hideAssistantThinkingDetails && streaming) && fileOps.length > 0)
     || streamingTodoProgress != null;
   const preparing = streaming && !hasContent;
-  // After reload, closed deck-patch tags may already be stripped — fall back
-  // to preTurn HTML baseline so we keep "slide edit applied" copy, not create.
-  const isDeckPatchArtifactTurn = messageLooksLikeSlideEditTurn(message)
-    || messageIndicatesDeckPatchArtifact(assistantTextBody);
   const teamverCompletedArtifactLead = teamverCompletedArtifactLeadCopy(
     locale,
     isDeckPatchArtifactTurn,
@@ -888,6 +904,7 @@ function AssistantMessageImpl({
                 showStreamCursor={streaming && i === lastTextBlockIndex}
                 nextUserContent={nextUserContent}
                 suppressDirectionForms={suppressDirectionForms}
+                isSlideEditTurn={isDeckPatchArtifactTurn}
                 onOpenQuestions={onOpenQuestions}
                 projectId={projectId}
                 projectFileNames={projectFileNames}
@@ -2156,6 +2173,7 @@ function ProseBlock({
   showStreamCursor,
   nextUserContent,
   suppressDirectionForms,
+  isSlideEditTurn = false,
   onOpenQuestions,
   projectId,
   projectFileNames,
@@ -2170,6 +2188,8 @@ function ProseBlock({
   showStreamCursor?: boolean;
   nextUserContent?: string;
   suppressDirectionForms: boolean;
+  /** Existing deck baseline / deck-patch — prefer edit lead copy over create. */
+  isSlideEditTurn?: boolean;
   projectId?: string | null;
   projectFileNames?: Set<string>;
   onOpenQuestions?: (request?: QuestionFormOpenRequest) => void;
@@ -2284,14 +2304,29 @@ function ProseBlock({
     if (!teamverSlideUi) return renderable;
     return renderable.filter((seg) => {
       if (seg.kind !== "text") return true;
-      return !shouldHidePrematureDeckCompletionProse({
-        text: seg.text,
-        streaming,
-        liveArtifactOpen: !!live,
-        teamverSlideUi,
-      });
+      if (
+        shouldHidePrematureDeckCompletionProse({
+          text: seg.text,
+          streaming,
+          liveArtifactOpen: !!live,
+          teamverSlideUi,
+        })
+      ) {
+        return false;
+      }
+      // Edit turns: suppress "draft created" prose so synthetic edit lead wins.
+      if (
+        shouldHideDeckCreateCompletionProseOnEditTurn({
+          text: seg.text,
+          isSlideEditTurn,
+          teamverSlideUi,
+        })
+      ) {
+        return false;
+      }
+      return true;
     });
-  }, [renderable, streaming, live, slideOnlyMvp, teamverEmbedEnabled]);
+  }, [renderable, streaming, live, slideOnlyMvp, teamverEmbedEnabled, isSlideEditTurn]);
   const hasVisibleProseWhileLive = visibleRenderable.some(
     (seg) =>
       (seg.kind === "text" && seg.text.trim().length > 0)
@@ -2305,7 +2340,7 @@ function ProseBlock({
     && (slideOnlyMvp || teamverEmbedEnabled);
   const teamverLiveArtifactLead = teamverLiveArtifactLeadCopy(
     locale,
-    messageIndicatesDeckPatchArtifact(text, live?.artifactType),
+    isSlideEditTurn || messageIndicatesDeckPatchArtifact(text, live?.artifactType),
   );
   if (visibleRenderable.length === 0 && !live && !hadOpenForm) return null;
   return (

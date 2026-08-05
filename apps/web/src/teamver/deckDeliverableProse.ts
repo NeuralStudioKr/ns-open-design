@@ -59,3 +59,47 @@ export function shouldHidePrematureDeckCompletionProse(options: {
   if (!options.teamverSlideUi || !options.streaming || !options.liveArtifactOpen) return false;
   return looksLikePrematureDeckCompletionProse(options.text);
 }
+
+const DECK_EDIT_CLAIM_RE =
+  /(?:수정이\s*반영|수정을\s*반영|수정했|반영되었|반영했|\b(?:updated|edited|modified|applied)\b)/i;
+
+const DECK_CREATE_CLAIM_KO_RE =
+  /(?:초안이\s*생성|생성되었|생성했(?:어|습)?|만들(?:었(?:어|습)?|어\s*드렸)|작성했(?:어|습)?)/;
+
+/**
+ * Prose that claims a *new* deck was created (not an in-place edit).
+ * Used to suppress misleading create copy on slide-edit turns.
+ */
+export function looksLikeDeckCreateCompletionProse(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (DECK_EDIT_CLAIM_RE.test(trimmed)) return false;
+  if (
+    /슬라이드\s*초안이\s*생성되었/.test(trimmed)
+    || /The slide deck draft is ready\.?/i.test(trimmed)
+    || /Creating the slide deck now/i.test(trimmed)
+  ) {
+    return true;
+  }
+  if (!looksLikeDeckIntentProse(trimmed) && !/\bdraft\b|초안/i.test(trimmed)) {
+    return false;
+  }
+  return (
+    DECK_CREATE_CLAIM_KO_RE.test(trimmed)
+    || /\b(?:created|generated)\b/i.test(trimmed)
+    || /\bdraft\b[\s\S]{0,40}\bready\b/i.test(trimmed)
+  );
+}
+
+/**
+ * On edit turns (existing deck baseline / deck-patch), hide model or leftover
+ * "draft created" prose so the UI can show "slide updates applied" instead.
+ */
+export function shouldHideDeckCreateCompletionProseOnEditTurn(options: {
+  text: string;
+  isSlideEditTurn: boolean;
+  teamverSlideUi: boolean;
+}): boolean {
+  if (!options.teamverSlideUi || !options.isSlideEditTurn) return false;
+  return looksLikeDeckCreateCompletionProse(options.text);
+}
