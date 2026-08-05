@@ -7,6 +7,7 @@ import {
   canPromoteTarget,
   cascadeRollbackStyle,
   computeMove,
+  isSvgPromoteTarget,
   moveHistoryLabel,
   moveResultToStyles,
   promoteMoveStyles,
@@ -69,12 +70,12 @@ describe('canPromoteTarget', () => {
     expect(canMoveOrPromoteTarget(target({ cssPosition: 'static' }))).toBe(true);
   });
 
-  it('does not promote flow images/SVGs (resize-in-place; absolute images still move)', () => {
+  it('promotes flow inline SVG (not raster img) for body-drag move', () => {
     expect(canPromoteTarget(target({
       kind: 'image',
       tagName: 'svg',
       cssPosition: 'static',
-    }))).toBe(false);
+    }))).toBe(true);
     expect(canPromoteTarget(target({
       kind: 'image',
       tagName: 'img',
@@ -89,7 +90,7 @@ describe('canPromoteTarget', () => {
       kind: 'image',
       tagName: 'svg',
       cssPosition: 'static',
-    }))).toBe(false);
+    }))).toBe(true);
   });
 
   it('promotes flow text or links on body drag (resize stays on edge/handles)', () => {
@@ -155,6 +156,27 @@ describe('promoteMoveStyles', () => {
       margin: '0px',
       right: '',
       bottom: '',
+    });
+  });
+
+  it('size-locks inline SVG on absolute promote', () => {
+    expect(isSvgPromoteTarget(target({
+      kind: 'image',
+      tagName: 'svg',
+      cssPosition: 'static',
+    }))).toBe(true);
+    const out = promoteMoveStyles(
+      { x: 40, y: 60, width: 120, height: 120 },
+      { leftPx: 20, topPx: 30, moved: true },
+      { layoutWidthPx: 420, layoutHeightPx: 420, svgPromote: true },
+    );
+    expect(out).toMatchObject({
+      position: 'absolute',
+      left: '20px',
+      top: '30px',
+      width: '420px',
+      height: '420px',
+      margin: '0px',
     });
   });
 });

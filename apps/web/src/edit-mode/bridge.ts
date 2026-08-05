@@ -615,6 +615,19 @@ export function buildManualEditBridge(enabled: boolean): string {
         if (value.trim() === '') el.style.removeProperty(cssName);
         else el.style.setProperty(cssName, value.trim(), 'important');
       }
+      var tag = el.tagName ? el.tagName.toLowerCase() : '';
+      if (tag === 'svg') {
+        if (Object.prototype.hasOwnProperty.call(styles || {}, 'width')) {
+          var wv = coercePreviewStyleValue('width', (styles || {}).width);
+          if (wv != null && String(wv).trim() === '') el.removeAttribute('width');
+          else if (wv && /px$/i.test(String(wv).trim())) el.setAttribute('width', String(wv).trim().replace(/px$/i, ''));
+        }
+        if (Object.prototype.hasOwnProperty.call(styles || {}, 'height')) {
+          var hv = coercePreviewStyleValue('height', (styles || {}).height);
+          if (hv != null && String(hv).trim() === '') el.removeAttribute('height');
+          else if (hv && /px$/i.test(String(hv).trim())) el.setAttribute('height', String(hv).trim().replace(/px$/i, ''));
+        }
+      }
       window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id, version: Number(version) || 0, ok: true }, '*');
     } catch (e) {
       window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id, version: Number(version) || 0, ok: false, error: e && e.message ? String(e.message) : 'Could not apply preview styles' }, '*');

@@ -77,6 +77,52 @@ describe('ManualEditResizeOverlay', () => {
     expect(onMoveCommit).not.toHaveBeenCalled();
   });
 
+  it('body pointerdown moves flow inline SVG via absolute promote', () => {
+    const onMovePreview = vi.fn();
+    const onMoveCommit = vi.fn();
+    const { getByTestId } = render(
+      <ManualEditResizeOverlay
+        target={target({
+          kind: 'image',
+          tagName: 'svg',
+          cssPosition: 'static',
+          layoutWidth: 420,
+          layoutHeight: 420,
+          offsetLeft: 177,
+          offsetTop: 44,
+          styles: emptyManualEditStyles(),
+          rect: { x: 1032, y: 366, width: 420, height: 420 },
+        })}
+        previewScale={1}
+        draftWidthPx={null}
+        draftHeightPx={null}
+        onResizePreview={vi.fn()}
+        onResizeCommit={vi.fn()}
+        onResizeCancel={vi.fn()}
+        onMovePreview={onMovePreview}
+        onMoveCommit={onMoveCommit}
+        onMoveCancel={vi.fn()}
+      />,
+    );
+
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    overlay.getBoundingClientRect = () => ({
+      x: 1032, y: 366, width: 420, height: 420,
+      top: 366, left: 1032, right: 1452, bottom: 786,
+      toJSON: () => ({}),
+    }) as DOMRect;
+    fireEvent.pointerDown(overlay, { pointerId: 51, clientX: 1200, clientY: 500, buttons: 1 });
+    fireEvent.pointerMove(window, { pointerId: 51, clientX: 1250, clientY: 540, buttons: 1 });
+    fireEvent.pointerUp(window, { pointerId: 51, clientX: 1250, clientY: 540 });
+
+    expect(onMovePreview).toHaveBeenCalled();
+    expect(onMoveCommit).toHaveBeenCalledTimes(1);
+    const preview = onMovePreview.mock.calls.at(-1)?.[0] as Record<string, string>;
+    expect(preview.position).toBe('absolute');
+    expect(preview.width).toBe('420px');
+    expect(preview.height).toBe('420px');
+  });
+
   it('edge body pointerdown resizes flow images that cannot move', () => {
     const onResizePreview = vi.fn();
     const onResizeCommit = vi.fn();

@@ -335,6 +335,7 @@ export function shouldPromoteInlineTargetForResize(
   const authoredDisplay = String(target.styles.display ?? '').trim().toLowerCase();
   if (authoredDisplay && authoredDisplay !== 'inline') return false;
   const tag = target.tagName.toLowerCase();
+  if (tag === 'svg') return true;
   if (tag === 'a' || tag === 'span' || tag === 'strong' || tag === 'em' || tag === 'b' || tag === 'i' || tag === 'small') {
     return true;
   }

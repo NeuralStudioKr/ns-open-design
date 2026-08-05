@@ -253,6 +253,20 @@ describe('manual edit source patches', () => {
     expect(styles.fontWeight).toBe('700');
   });
 
+  it('syncs svg width/height attributes when resizing via set-style', () => {
+    const source = '<main><svg data-od-id="logo" viewBox="0 0 400 400" width="420" height="420"></svg></main>';
+    const result = applyManualEditPatch(source, {
+      kind: 'set-style',
+      id: 'logo',
+      styles: { width: '360px', height: '360px', display: 'inline-block' },
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('width="360"');
+    expect(result.source).toContain('height="360"');
+    expect(result.source).toContain('width: 360px');
+    expect(result.source).toContain('height: 360px');
+  });
+
   it('rejects srcset javascript, null-byte scheme bypass, and svg data URLs', () => {
     const source = [
       '<!doctype html><html><body>',

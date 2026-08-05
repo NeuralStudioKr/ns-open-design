@@ -2059,6 +2059,23 @@ export function coerceManualEditStyleRecord(
   return out;
 }
 
+function syncSvgDimensionAttributes(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
+  if (el.tagName.toLowerCase() !== 'svg') return;
+  const syncAttr = (key: 'width' | 'height') => {
+    if (!Object.prototype.hasOwnProperty.call(styles, key)) return;
+    const coerced = coerceManualEditStyleValue(key, styles[key]);
+    if (coerced == null || String(coerced).trim() === '') {
+      el.removeAttribute(key);
+      return;
+    }
+    const trimmed = String(coerced).trim();
+    const pxMatch = /^(-?\d+(?:\.\d+)?)px$/i.exec(trimmed);
+    if (pxMatch) el.setAttribute(key, pxMatch[1]);
+  };
+  syncAttr('width');
+  syncAttr('height');
+}
+
 function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
   const coerced = coerceManualEditStyleRecord(styles as Record<string, unknown>);
   for (const [name, value] of Object.entries(coerced)) {
@@ -2075,6 +2092,7 @@ function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): vo
       // Invalid CSSOM values must not throw out of applyManualEditPatch.
     }
   }
+  syncSvgDimensionAttributes(el, styles);
 }
 
 function setAttributes(

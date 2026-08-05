@@ -18,6 +18,7 @@ import {
   resizeViewportOrigin,
   startAnchorFromTarget,
   resizeFreezeContentRect,
+  shouldPromoteInlineTargetForResize,
   startSizeFromTarget,
   type ResizeMathInput,
 } from '../../src/edit-mode/resize-math';
@@ -192,6 +193,32 @@ describe('canResizeTarget / slide root', () => {
 });
 
 describe('style helpers', () => {
+  it('promotes inline SVG for resize so width/height CSS can apply', () => {
+    expect(shouldPromoteInlineTargetForResize(target({
+      kind: 'image',
+      tagName: 'svg',
+      styles: emptyManualEditStyles(),
+    }))).toBe(true);
+    expect(resizeResultToStyles({
+      widthPx: 360,
+      heightPx: 360,
+      x: 0,
+      y: 0,
+      touchedWidth: true,
+      touchedHeight: true,
+      leftPx: null,
+      topPx: null,
+    }, target({
+      kind: 'image',
+      tagName: 'svg',
+      styles: emptyManualEditStyles(),
+    }))).toMatchObject({
+      display: 'inline-block',
+      width: '360px',
+      height: '360px',
+    });
+  });
+
   it('parses explicit px only', () => {
     expect(parseExplicitPx('320px')).toBe(320);
     expect(parseExplicitPx('auto')).toBeNull();
