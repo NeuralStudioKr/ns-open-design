@@ -143,6 +143,44 @@ describe('AuthenticatedProjectFileImage', () => {
     expect(container.querySelector('img')).toBeNull();
   });
 
+  it('does not re-mint when trustExists remounts a known-missing drawing', async () => {
+    const drawingPath = 'msczyywd-drawing-2026-08-03T08-58-43-316Z.png';
+    fetchDaemonMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+    } as Response);
+
+    const first = render(
+      <AuthenticatedProjectFileImage
+        projectId="project-1"
+        path={drawingPath}
+        trustExists
+      />,
+    );
+    await vi.waitFor(() => {
+      expect(
+        first.container.querySelector('.authenticated-project-file-image-failed'),
+      ).toBeTruthy();
+    });
+    expect(fetchDaemonMock).toHaveBeenCalledTimes(1);
+    first.unmount();
+    fetchDaemonMock.mockClear();
+
+    const second = render(
+      <AuthenticatedProjectFileImage
+        projectId="project-1"
+        path={drawingPath}
+        trustExists
+      />,
+    );
+    await vi.waitFor(() => {
+      expect(
+        second.container.querySelector('.authenticated-project-file-image-failed'),
+      ).toBeTruthy();
+    });
+    expect(fetchDaemonMock).not.toHaveBeenCalled();
+  });
+
   it('falls back to authenticated blob fetch when presign is disabled', async () => {
     const drawingPath = 'msees0i8-drawing-2026-08-04T08-41-03-101Z.png';
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);

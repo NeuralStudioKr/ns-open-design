@@ -40,15 +40,21 @@ export function VisualCommentAttachmentChip({
         ? new Set(projectFileNames)
         : undefined;
   const canShowLocalThumb = Boolean(localPreviewUrl);
+  const filesIndexReady = nameSet !== undefined;
   const fileIndexed = projectFilePathExists(nameSet, screenshotPath);
   const isPending = isPendingAnnotationPath(screenshotPath);
-  // The project file index (`projectFileNames`) can lag behind fresh uploads
-  // (drawings are POSTed and appear in `/files` on the next refresh tick).
-  // Attempt a remote fetch even when the path isn't indexed yet — the shared
-  // 404 cache in `projectFileFetchCache` suppresses repeat calls for deleted
-  // drawings, so we don't reintroduce the 404 spam this used to cause.
+  // Composer: `/files` can lag a fresh upload — allow one remote probe (shared
+  // 404 cache stops repeats). History: never probe deleted drawings; wait for
+  // the file index and only fetch when the path is still listed.
   const canAttemptRemoteFetch =
-    Boolean(screenshotPath) && Boolean(projectId) && !isPending;
+    Boolean(screenshotPath)
+    && Boolean(projectId)
+    && !isPending
+    && (
+      variant !== 'history'
+        ? true
+        : filesIndexReady && fileIndexed
+    );
   const canShowRemoteThumb = canAttemptRemoteFetch;
   // Indexed drawing screenshots can outlive storage (GC / sync). Never
   // trustExists for them — chat thumbnails should 404 once and stop.

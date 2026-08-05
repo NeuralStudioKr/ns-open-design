@@ -5,6 +5,48 @@ import {
 } from './projectFilePaths';
 
 const missingProjectRawFiles = new Set<string>();
+const MISSING_CACHE_STORAGE_KEY = 'open-design:missing-project-raw-files:v1';
+const MISSING_CACHE_MAX_ENTRIES = 500;
+
+function canUseSessionStorage(): boolean {
+  try {
+    return typeof sessionStorage !== 'undefined';
+  } catch {
+    return false;
+  }
+}
+
+function persistMissingCache(): void {
+  if (!canUseSessionStorage()) return;
+  try {
+    const entries = [...missingProjectRawFiles];
+    const trimmed =
+      entries.length > MISSING_CACHE_MAX_ENTRIES
+        ? entries.slice(entries.length - MISSING_CACHE_MAX_ENTRIES)
+        : entries;
+    sessionStorage.setItem(MISSING_CACHE_STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+function hydrateMissingCache(): void {
+  if (!canUseSessionStorage()) return;
+  try {
+    const raw = sessionStorage.getItem(MISSING_CACHE_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return;
+    for (const entry of parsed) {
+      if (typeof entry !== 'string' || !entry.includes('::')) continue;
+      missingProjectRawFiles.add(entry);
+    }
+  } catch {
+    /* corrupt */
+  }
+}
+
+hydrateMissingCache();
 
 export function projectRawFileCacheKey(projectId: string, path: string): string {
   return `${projectId.trim()}::${path.trim().replace(/\\/g, '/')}`;
@@ -37,27 +79,39 @@ export function isProjectRawFileKnownMissing(projectId: string, path: string): b
 export function markProjectRawFileMissing(projectId: string, path: string): void {
   const id = projectId.trim();
   if (!id) return;
+  let changed = false;
   for (const candidate of missingPathVariants(path)) {
     const key = projectRawFileCacheKey(id, candidate);
-    if (key !== '::') missingProjectRawFiles.add(key);
+    if (key === '::' || missingProjectRawFiles.has(key)) continue;
+    missingProjectRawFiles.add(key);
+    changed = true;
   }
+  if (changed) persistMissingCache();
 }
 
 export function clearProjectRawFileMissing(projectId: string, path: string): void {
   const id = projectId.trim();
   if (!id) return;
+  let changed = false;
   for (const candidate of missingPathVariants(path)) {
-    missingProjectRawFiles.delete(projectRawFileCacheKey(id, candidate));
+    const key = projectRawFileCacheKey(id, candidate);
+    if (!missingProjectRawFiles.delete(key)) continue;
+    changed = true;
   }
+  if (changed) persistMissingCache();
 }
 
 /** Drop every session 404 entry for a project (e.g. after a full files refresh). */
 export function clearProjectRawFileMissingForProject(projectId: string): void {
   const prefix = `${projectId.trim()}::`;
   if (prefix === '::') return;
-  for (const key of missingProjectRawFiles) {
-    if (key.startsWith(prefix)) missingProjectRawFiles.delete(key);
+  let changed = false;
+  for (const key of [...missingProjectRawFiles]) {
+    if (!key.startsWith(prefix)) continue;
+    missingProjectRawFiles.delete(key);
+    changed = true;
   }
+  if (changed) persistMissingCache();
 }
 
 /**
@@ -90,4 +144,10 @@ export function reconcileProjectRawFileMissingCache(
 /** @internal vitest only */
 export function resetProjectRawFileFetchCacheForTests(): void {
   missingProjectRawFiles.clear();
+  if (!canUseSessionStorage()) return;
+  try {
+    sessionStorage.removeItem(MISSING_CACHE_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 }

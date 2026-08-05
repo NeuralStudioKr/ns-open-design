@@ -64,7 +64,11 @@ export function AuthenticatedProjectFileImage({
     shouldTryPresign ? projectId : null,
     shouldTryPresign ? path : null,
     shouldTryPresign ? (rev != null ? `${rev}:${errorRetry}` : errorRetry) : null,
-    { enabled: shouldTryPresign, trustExists },
+    {
+      enabled: shouldTryPresign,
+      trustExists,
+      allowBackgroundRetry,
+    },
   );
 
   // Scratch race: indexed design-panel files may exist locally before S3 HEAD.

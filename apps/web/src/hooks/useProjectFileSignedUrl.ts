@@ -20,6 +20,12 @@ export type ProjectFileSignedUrlState = {
 type HookOptions = {
   enabled?: boolean;
   trustExists?: boolean;
+  /**
+   * When true with trustExists, allow one mint retry even if the path is in
+   * the session missing cache (design-panel upload→S3 race). Chat history
+   * must leave this false.
+   */
+  allowBackgroundRetry?: boolean;
 };
 
 /**
@@ -33,6 +39,7 @@ export function useProjectFileSignedUrl(
 ): ProjectFileSignedUrlState {
   const enabled = options.enabled !== false;
   const trustExists = Boolean(options.trustExists);
+  const allowBackgroundRetry = Boolean(options.allowBackgroundRetry);
   const usePresign = enabled && shouldUseTeamverAuthenticatedProjectRawFetch();
   const [state, setState] = useState<ProjectFileSignedUrlState>({
     src: null,
@@ -49,7 +56,11 @@ export function useProjectFileSignedUrl(
       setState({ src: null, loading: false, failed: false, missing: false, expiresAt: null });
       return;
     }
-    if (!trustExists && isProjectRawFileKnownMissing(id, path)) {
+    // Honor missing cache even when trustExists — otherwise every remount
+    // re-POSTs /presign-get for deleted drawings. Only design-panel races may
+    // bypass via allowBackgroundRetry.
+    const bypassMissingCache = trustExists && allowBackgroundRetry;
+    if (!bypassMissingCache && isProjectRawFileKnownMissing(id, path)) {
       setState({ src: null, loading: false, failed: true, missing: true, expiresAt: null });
       return;
     }
@@ -85,7 +96,7 @@ export function useProjectFileSignedUrl(
     return () => {
       cancelled = true;
     };
-  }, [filePath, projectId, rev, trustExists, usePresign]);
+  }, [allowBackgroundRetry, filePath, projectId, rev, trustExists, usePresign]);
 
   return state;
 }
