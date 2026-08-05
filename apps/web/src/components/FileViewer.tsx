@@ -5972,8 +5972,13 @@ function HtmlViewer({
   // Disk / raw fetch — independent of liveHtml token identity.
   // While streaming, a stable live paint can skip disk. After stream ends,
   // always allow disk so turn-end scrubbed HTML can replace a stale live frame.
+  //
+  // Do NOT depend on `liveHtmlPaintsPreview`: incomplete→stable token flicker
+  // during a stream would abort+restart `/raw/?cacheBust=…` in a tight loop.
+  // Read the ref at schedule time; `streaming` / `hasLiveHtml` still re-enter
+  // when the stream starts or ends.
   useEffect(() => {
-    if (streaming && hasLiveHtml && liveHtmlPaintsPreview) return;
+    if (streaming && hasLiveHtml && liveHtmlPaintsPreviewRef.current) return;
 
     const artifactIdentity = `${projectId}\0${file.name}`;
     if (lastStablePreviewIdentityRef.current !== artifactIdentity) {
@@ -6196,7 +6201,6 @@ function HtmlViewer({
     };
   }, [
     hasLiveHtml,
-    liveHtmlPaintsPreview,
     streaming,
     projectId,
     file.name,

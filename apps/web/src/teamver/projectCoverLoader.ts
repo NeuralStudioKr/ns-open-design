@@ -9,6 +9,26 @@ import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
 
 const COVER_FETCH_CACHE_MS = 60_000;
 const DEFAULT_COVER_FETCH_CONCURRENCY = 4;
+/** Cap concurrent `/files` fallbacks so visible-card resolve cannot stampede. */
+const FILES_FALLBACK_CONCURRENCY = 3;
+let filesFallbackActive = 0;
+const filesFallbackWaiters: Array<() => void> = [];
+
+async function withFilesFallbackSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (filesFallbackActive >= FILES_FALLBACK_CONCURRENCY) {
+    await new Promise<void>((resolve) => {
+      filesFallbackWaiters.push(resolve);
+    });
+  }
+  filesFallbackActive += 1;
+  try {
+    return await run();
+  } finally {
+    filesFallbackActive -= 1;
+    const next = filesFallbackWaiters.shift();
+    if (next) next();
+  }
+}
 
 export type ResolveProjectCoverOptions = {
   /** When false, stop after cover-hints/metadata — skip full `/files` listing. */
@@ -183,6 +203,8 @@ function projectCoverFileEqual(
 /** @internal vitest only */
 export function resetProjectCoverLoaderStateForTests(): void {
   clearProjectCoverCache();
+  filesFallbackActive = 0;
+  filesFallbackWaiters.length = 0;
 }
 
 export async function resolveProjectCoverFile(
@@ -223,10 +245,12 @@ export async function resolveProjectCoverFile(
         return null;
       }
 
-      const files = await fetchProjectFiles(id);
-      const cover = pickProjectCoverFile(project, files);
-      coverCache.set(id, { cover, at: Date.now(), hintsOnlyMiss: false });
-      return cover;
+      return withFilesFallbackSlot(async () => {
+        const files = await fetchProjectFiles(id);
+        const cover = pickProjectCoverFile(project, files);
+        coverCache.set(id, { cover, at: Date.now(), hintsOnlyMiss: false });
+        return cover;
+      });
     } catch {
       coverCache.set(id, { cover: null, at: Date.now(), hintsOnlyMiss: false });
       return null;

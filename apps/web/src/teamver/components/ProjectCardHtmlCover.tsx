@@ -165,9 +165,11 @@ function AuthenticatedHtmlCover({
       setSrcDoc(cached);
       return;
     }
-    // Keep prior frame while reloading — avoids flash on remount/status churn.
-    const abort = new AbortController();
-    loadHtmlCover(src, mode, abort.signal, cacheKey)
+    // Fetch by stable path (cacheKey). Do not depend on `src` query (`?v=` /
+    // updatedAt) — that aborted in-flight cover GETs on every project poll.
+    // loadHtmlCover shares inflight by cacheKey; unmount only skips setState.
+    const fetchSrc = src.split(/[?#]/u, 1)[0] ?? src;
+    loadHtmlCover(fetchSrc, mode, cacheKey)
       .then((next) => {
         if (!cancelled) setSrcDoc(next);
       })
@@ -176,9 +178,8 @@ function AuthenticatedHtmlCover({
       });
     return () => {
       cancelled = true;
-      abort.abort();
     };
-  }, [cacheKey, mode, src, visible]);
+  }, [cacheKey, mode, visible]);
 
   useEffect(() => {
     const node = frameRef.current;
@@ -300,36 +301,33 @@ async function resolveCoverBaseHref(
 async function loadHtmlCover(
   src: string,
   mode: "deck" | "page",
-  signal?: AbortSignal,
   cacheKeyOverride?: string,
 ): Promise<string> {
-  const cacheKey = cacheKeyOverride ?? `v2:${mode}:${src.split(/[?#]/u, 1)[0] ?? src}`;
+  // Always strip ?v= / cacheBust so remounts and project.updatedAt churn share
+  // one GET + one in-memory srcDoc. Callers pass path-only when possible.
+  const pathOnly = src.split(/[?#]/u, 1)[0] ?? src;
+  const cacheKey = cacheKeyOverride ?? `v2:${mode}:${pathOnly}`;
   const cached = htmlCoverCache.get(cacheKey);
   if (cached) return cached;
 
-  // Do not share in-flight promises across cards: aborting one unmount must
-  // not cancel another card's cover fetch for the same URL.
-  const existing = !signal ? htmlCoverInflight.get(cacheKey) : undefined;
+  const existing = htmlCoverInflight.get(cacheKey);
   if (existing) return existing;
 
   const run = (async () => {
-    const res = await fetchTeamverDaemon(src, {
-      // Unique AbortSignal skips GET dedupe in fetchTeamverDaemon.
-      signal: signal ?? new AbortController().signal,
-    });
+    // No AbortSignal — allows fetchTeamverDaemon GET dedupe and lets sibling
+    // cards reuse the same in-flight response. Unmount only skips setState.
+    const res = await fetchTeamverDaemon(pathOnly);
     if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
     const html = await res.text();
-    const { href: baseHref } = await resolveCoverBaseHref(src, signal);
+    const { href: baseHref } = await resolveCoverBaseHref(pathOnly);
     const parsed = buildHtmlCoverSrcDoc(html, baseHref, { preferDeck: mode === "deck" });
-    // Always cache thumb HTML. Skipping cache on unscoped embed fallback caused
-    // remount loops (e.g. former status-column churn) to refetch /raw forever.
     htmlCoverCache.set(cacheKey, parsed);
     return parsed;
   })().finally(() => {
     htmlCoverInflight.delete(cacheKey);
   });
 
-  if (!signal) htmlCoverInflight.set(cacheKey, run);
+  htmlCoverInflight.set(cacheKey, run);
   return run;
 }
 
