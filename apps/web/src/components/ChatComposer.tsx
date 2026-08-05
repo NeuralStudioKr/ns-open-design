@@ -1738,7 +1738,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               slideOnlyMvp,
             }),
           );
-          console.warn('Some attachments failed to upload', result.failed);
+          console.warn('Some attachments failed to upload', {
+            failedCount: result.failed.length,
+            uploadedCount: result.uploaded.length,
+            error: result.error,
+          });
         }
         trackFileUploadResult(analytics.track, {
           page_name: 'chat_panel',

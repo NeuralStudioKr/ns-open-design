@@ -2388,7 +2388,11 @@ function AppInner() {
           // handoff as failed so the upload + auto-send branches below are
           // skipped, then surface a create-time error so the user can
           // re-pick the working directory from inside the project.
-          console.warn('Failed to set working directory for new project', userWorkingDir, err);
+          console.warn('Failed to set working directory for new project', {
+            hasWorkingDir: Boolean(userWorkingDir?.trim()),
+            workingDirLen: userWorkingDir?.trim().length ?? 0,
+            error: err instanceof Error ? err.message : String(err),
+          });
           workingDirHandoffFailed = true;
           setWorkingDirError(
             `Couldn't apply the chosen folder "${userWorkingDir}". The project was created in the default location — re-pick the working directory from the project before uploading files or sending a message.`,
@@ -2407,7 +2411,11 @@ function AppInner() {
         firstMessageAttachments = uploadResult.uploaded;
         const partial = uploadResult.failed.length > 0;
         if (partial) {
-          console.warn('Some Home attachments failed to upload', uploadResult.failed);
+          console.warn('Some Home attachments failed to upload', {
+            failedCount: uploadResult.failed.length,
+            uploadedCount: uploadResult.uploaded.length,
+            error: uploadResult.error,
+          });
           if (isTeamverEmbedMode() && uploadResult.error) {
             setWorkingDirError(
               resolveProjectUploadBatchErrorMessage({
@@ -2436,7 +2444,11 @@ function AppInner() {
           const driveAttachments = driveImportedToChatAttachments(driveResult.imported);
           firstMessageAttachments = [...firstMessageAttachments, ...driveAttachments];
           if (driveResult.partial) {
-            console.warn('Some Home Drive attachments failed to import', driveResult.failed);
+            console.warn('Some Home Drive attachments failed to import', {
+              failedCount: driveResult.failed.length,
+              importedCount: driveResult.imported.length,
+              errorCodes: [...new Set(driveResult.failed.map((item) => item.errorCode))],
+            });
             setWorkingDirError(
               `일부 Drive 파일을 가져오지 못했습니다 (${driveResult.failed.length}개). 프로젝트는 생성되었습니다.`,
             );

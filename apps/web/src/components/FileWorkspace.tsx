@@ -1128,7 +1128,11 @@ export function FileWorkspace({
           error: result.error,
         }),
       );
-      console.warn('Project upload had failures', result.failed);
+      console.warn('Project upload had failures', {
+        failedCount,
+        uploadedCount,
+        error: result.error,
+      });
       trackFileUploadResult(analytics.track, {
         page_name: 'file_manager',
         area: 'file_manager',

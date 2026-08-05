@@ -975,12 +975,14 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
     }
 
     if (!mergedForAttachment) {
+      // Do not log currentText/htmlHint — slide/comment body must not reach
+      // the browser console in staging/production.
       console.warn('[deck-patch] scoped narrow merge failed', {
         slideCandidates,
         ids,
         reason: lastReason,
-        currentText: attachment.currentText,
-        htmlHint: attachment.htmlHint?.slice(0, 120),
+        currentTextLen: attachment.currentText?.length ?? 0,
+        htmlHintLen: attachment.htmlHint?.length ?? 0,
       });
       return { ok: false, reason: lastReason };
     }

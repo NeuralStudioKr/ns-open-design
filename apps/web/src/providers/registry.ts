@@ -1841,11 +1841,9 @@ export async function fetchProjectFileText(
     const resp = await fetchTeamverDaemon(requestUrl, init);
     if (!resp.ok) {
       console.warn('[fetchProjectFileText] failed:', {
-        name,
         projectId,
         status: resp.status,
         statusText: resp.statusText,
-        url: requestUrl,
       });
       return null;
     }
@@ -1853,10 +1851,8 @@ export async function fetchProjectFileText(
   } catch (err) {
     if (options?.signal?.aborted) return null;
     console.warn('[fetchProjectFileText] failed:', {
-      error: err,
-      name,
       projectId,
-      url: requestUrl,
+      error: err instanceof Error ? err.message : String(err),
     });
     return null;
   }
