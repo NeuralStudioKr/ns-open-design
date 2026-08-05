@@ -371,7 +371,13 @@ export interface TopLevelSlideSection {
 const SECTION_OPEN_ATTRS_RE = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
 const SECTION_OPEN_RE = new RegExp(String.raw`<section\b(${SECTION_OPEN_ATTRS_RE})>`, 'gi');
 
+/** Last HTML → sections cache shared by applyDeckPatch and extractSlideByIndex. */
+let topLevelSlideSectionCache: { html: string; sections: TopLevelSlideSection[] } | null = null;
+
 export function extractTopLevelSlideSections(html: string): TopLevelSlideSection[] {
+  if (topLevelSlideSectionCache?.html === html) {
+    return topLevelSlideSectionCache.sections;
+  }
   const results: TopLevelSlideSection[] = [];
   const openRe = new RegExp(SECTION_OPEN_RE.source, 'gi');
   const closeRe = /<\/section\s*>/gi;
@@ -422,6 +428,7 @@ export function extractTopLevelSlideSections(html: string): TopLevelSlideSection
     });
     searchFrom = matchedCloseEnd;
   }
+  topLevelSlideSectionCache = { html, sections: results };
   return results;
 }
 

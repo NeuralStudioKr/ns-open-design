@@ -271,14 +271,14 @@ function mutateManualEditPatch(
   return { ok: true };
 }
 
-export function readManualEditFields(
-  source: string,
-  id: string,
-  scope: ManualEditSourceScope = {},
-): ManualEditFields {
-  const doc = parseSource(source);
-  const el = doc ? findEditableElement(doc, id, scope) : null;
-  if (!el) return {};
+export type ManualEditTargetSnapshot = {
+  fields: ManualEditFields;
+  styles: ManualEditStyles;
+  attributes: Record<string, string>;
+  outerHtml: string;
+};
+
+function readManualEditFieldsFromElement(el: Element): ManualEditFields {
   const kind = inferKind(el);
   if (kind === 'link') {
     return {
@@ -295,14 +295,7 @@ export function readManualEditFields(
   return { text: manualEditElementToPlainText(el) };
 }
 
-export function readManualEditStyles(
-  source: string,
-  id: string,
-  scope: ManualEditSourceScope = {},
-): ManualEditStyles {
-  const doc = parseSource(source);
-  const el = doc ? findEditableElement(doc, id, scope) : null;
-  if (!el) return emptyManualEditStyles();
+function readManualEditStylesFromElement(el: Element): ManualEditStyles {
   const style = (el as HTMLElement).style;
   return MANUAL_EDIT_STYLE_PROPS.reduce<ManualEditStyles>((acc, key) => {
     acc[key] = (style[key as unknown as keyof CSSStyleDeclaration] as string | undefined) ?? '';
@@ -310,14 +303,7 @@ export function readManualEditStyles(
   }, {} as ManualEditStyles);
 }
 
-export function readManualEditAttributes(
-  source: string,
-  id: string,
-  scope: ManualEditSourceScope = {},
-): Record<string, string> {
-  const doc = parseSource(source);
-  const el = doc ? findEditableElement(doc, id, scope) : null;
-  if (!el) return {};
+function readManualEditAttributesFromElement(el: Element): Record<string, string> {
   const attrs: Record<string, string> = {};
   Array.from(el.attributes).forEach((attr) => {
     if (attr.name === 'data-od-runtime-id') return;
@@ -326,13 +312,60 @@ export function readManualEditAttributes(
   return attrs;
 }
 
+/** One parse → fields/styles/attrs/outerHtml (FileViewer selection hot path). */
+export function readManualEditTargetSnapshot(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): ManualEditTargetSnapshot {
+  const doc = parseSource(source);
+  const el = doc ? findEditableElement(doc, id, scope) : null;
+  if (!el) {
+    return {
+      fields: {},
+      styles: emptyManualEditStyles(),
+      attributes: {},
+      outerHtml: '',
+    };
+  }
+  return {
+    fields: readManualEditFieldsFromElement(el),
+    styles: readManualEditStylesFromElement(el),
+    attributes: readManualEditAttributesFromElement(el),
+    outerHtml: el.outerHTML,
+  };
+}
+
+export function readManualEditFields(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): ManualEditFields {
+  return readManualEditTargetSnapshot(source, id, scope).fields;
+}
+
+export function readManualEditStyles(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): ManualEditStyles {
+  return readManualEditTargetSnapshot(source, id, scope).styles;
+}
+
+export function readManualEditAttributes(
+  source: string,
+  id: string,
+  scope: ManualEditSourceScope = {},
+): Record<string, string> {
+  return readManualEditTargetSnapshot(source, id, scope).attributes;
+}
+
 export function readManualEditOuterHtml(
   source: string,
   id: string,
   scope: ManualEditSourceScope = {},
 ): string {
-  const doc = parseSource(source);
-  return (doc ? findEditableElement(doc, id, scope)?.outerHTML : '') ?? '';
+  return readManualEditTargetSnapshot(source, id, scope).outerHtml;
 }
 
 /**
@@ -479,9 +512,10 @@ export function mergeManualEditTargetsFromSource(
   ids: readonly string[],
   scope: ManualEditSourceScope = {},
   hints: readonly ManualEditMergeTargetHint[] = [],
+  parsedDocs?: { current?: Document | null; next?: Document | null },
 ): ManualEditMergeTargetsResult {
-  const currentDoc = parseSource(currentSource);
-  const nextDoc = parseSource(nextSource);
+  const currentDoc = parsedDocs?.current ?? parseSource(currentSource);
+  const nextDoc = parsedDocs?.next ?? parseSource(nextSource);
   if (!currentDoc || !nextDoc) {
     return { ok: false, source: currentSource, reason: 'Could not parse source.' };
   }
@@ -548,9 +582,10 @@ export function graftPatchedTargetElementFromSource(
   targetId: string,
   scope: ManualEditSourceScope = {},
   hint?: ManualEditMergeTargetHint,
+  parsedDocs?: { current?: Document | null; patched?: Document | null },
 ): ManualEditPatchResult {
-  const currentDoc = parseSource(currentSource);
-  const patchedDoc = parseSource(patchedSource);
+  const currentDoc = parsedDocs?.current ?? parseSource(currentSource);
+  const patchedDoc = parsedDocs?.patched ?? parseSource(patchedSource);
   if (!currentDoc || !patchedDoc) {
     return { ok: false, source: currentSource, error: 'Could not parse source.' };
   }
@@ -850,9 +885,10 @@ export function mergeManualEditTargetByHint(
   nextSource: string,
   scope: ManualEditSourceScope = {},
   hint: ManualEditMergeTargetHint,
+  parsedDocs?: { current?: Document | null; next?: Document | null },
 ): ManualEditMergeTargetsResult {
-  const currentDoc = parseSource(currentSource);
-  const nextDoc = parseSource(nextSource);
+  const currentDoc = parsedDocs?.current ?? parseSource(currentSource);
+  const nextDoc = parsedDocs?.next ?? parseSource(nextSource);
   if (!currentDoc || !nextDoc) {
     return { ok: false, source: currentSource, reason: 'Could not parse source.' };
   }
@@ -1308,11 +1344,15 @@ function finalizeManualEditReplacement(currentTarget: Element, replacement: Elem
  * Sanitize a slide/fragment HTML string with the same rules as set-outer-html
  * replacements — used by scoped slide-level merge fallbacks that skip finalize.
  */
-export function sanitizeManualEditHtmlFragment(html: string): string {
+export function sanitizeManualEditHtmlFragment(
+  html: string,
+  /** Reuse one empty host Document across multi-mark graft/repair batches. */
+  hostDoc?: Document | null,
+): string {
   const source = String(html || '');
   const trimmed = source.trim();
   if (!trimmed) return source;
-  const doc = parseSource('<!doctype html><html><body></body></html>');
+  const doc = hostDoc ?? parseSource('<!doctype html><html><body></body></html>');
   // Fail closed: never return raw fragment HTML when the parser is unavailable.
   if (!doc?.body) return failClosedScrubHtmlWithoutParser(trimmed);
   const template = doc.createElement('template');
@@ -1363,12 +1403,17 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     'fencedframe', 'portal', 'webview', 'plaintext', 'xmp', 'foreignobject',
     'annotation-xml',
   ].join('|');
-  return String(raw || '')
+  // Decode entities first so &#106;avascript: / &colon; cannot bypass scheme scrub.
+  let text = decodeHtmlCharacterReferences(String(raw || ''));
+  return text
     .replace(new RegExp(`<(?:${dangerous})\\b[\\s\\S]*?<\\/(?:${dangerous})\\s*>`, 'gi'), '')
     .replace(new RegExp(`<(?:${dangerous})\\b[^>]*\\/?>`, 'gi'), '')
     .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
     .replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, '')
     .replace(/\ssrcdoc\s*=\s*(['"]).*?\1/gi, '')
+    // Inline style can carry expression()/url(javascript:) without a DOM walk.
+    .replace(/\sstyle\s*=\s*(['"])[\s\S]*?\1/gi, '')
+    .replace(/\sstyle\s*=\s*[^\s>]+/gi, '')
     .replace(
       /\s(?:href|src|action|formaction|xlink:href|poster)\s*=\s*(['"])\s*(?:javascript|vbscript|data\s*:\s*text\s*\/\s*html)[\s\S]*?\1/gi,
       '',
@@ -1380,7 +1425,7 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
 }
 
 /** In-place full-document scrub — shared by sanitizeFullSource and apply options. */
-function sanitizeManualEditDocumentInPlace(doc: Document): void {
+export function sanitizeManualEditDocumentInPlace(doc: Document): void {
   if (doc.documentElement) sanitizeManualEditElementAttrs(doc.documentElement);
   if (doc.head) sanitizeManualEditElementAttrs(doc.head);
   if (doc.body) sanitizeManualEditElementAttrs(doc.body);

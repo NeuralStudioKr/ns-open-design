@@ -1462,7 +1462,12 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     applied.html,
     input.commentAttachments ?? [],
   );
-  return { ok: true, html: stabilized };
+  // applyElementPatches already sanitized in-place. Re-scrub only when stabilize
+  // grafted from disk / repaired slides (may reintroduce sibling script/on*).
+  if (stabilized === applied.html) {
+    return { ok: true, html: stabilized };
+  }
+  return { ok: true, html: sanitizeManualEditFullSource(stabilized) };
 }
 
 function elementPatchTargetHintsFromCommentAttachments(
@@ -4169,6 +4174,8 @@ export function ProjectView({
       const visualMarksAlreadyStabilized =
         isElementPatchArtifactType(art.artifactType)
         || isDeckPatchArtifactType(art.artifactType);
+      // element-patch apply sanitizes the live Document before serialize.
+      let elementPatchAlreadySanitized = false;
       // `deck-patch` short-circuits the full-deck emit path. Comment-driven
       // edits carry `<artifact type="deck-patch">` bodies whose sections list
       // ONLY the changed `<section class="slide">` blocks; we merge them into
@@ -4252,6 +4259,7 @@ export function ProjectView({
           });
         } else {
           effectiveArt = { ...art, html: merged.html, artifactType: 'deck' };
+          elementPatchAlreadySanitized = true;
         }
       } else if (isDeckPatchArtifactType(art.artifactType)) {
         const merged = await tryApplyDeckPatchAgainstCurrentDeck({
@@ -4487,9 +4495,10 @@ export function ProjectView({
         }
       }
       const htmlBodyBeforeSanitize = htmlBody;
-      if (ext === '.html') {
+      if (ext === '.html' && !elementPatchAlreadySanitized) {
         // Single terminal scrub after salvage/repair/stabilize — avoids
         // 2–4× DOMParser passes on the same multi-KB deck per persist.
+        // element-patch success already sanitized (and re-scrubbed if stabilize mutated).
         htmlBody = sanitizeManualEditFullSource(htmlBody);
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {

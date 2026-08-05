@@ -22,6 +22,7 @@ import {
   isSafeManualEditUrlAttrValue,
   isSafeManualEditRelativeOrFragmentUrl,
   coerceManualEditStyleValue,
+  readManualEditTargetSnapshot,
 } from '../../src/edit-mode/source-patches';
 
 const sourcePatchesSource = readFileSync(
@@ -1286,6 +1287,16 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain('export function applyManualEditPatchMutation');
     expect(sourcePatchesSource).toContain('sanitizeManualEditDocumentInPlace');
     expect(sourcePatchesSource).not.toMatch(/export function parseAbsoluteDomSlideSelector/);
+  });
+
+  it('reads selection snapshot in one parse and hardens failClosed style/entities', () => {
+    expect(sourcePatchesSource).toContain('export function readManualEditTargetSnapshot');
+    expect(sourcePatchesSource).toContain('decodeHtmlCharacterReferences(String(raw || \'\'))');
+    expect(sourcePatchesSource).toContain('.replace(/\\sstyle\\s*=');
+    const snap = readManualEditTargetSnapshot(baseSource, 'hero-title');
+    expect(snap.fields.text).toContain('Original title');
+    expect(snap.outerHtml).toContain('data-od-id="hero-title"');
+    expect(snap.styles).toBeTruthy();
   });
 
   it('scrubs remote backdrop-filter and cursor/clip-path urls from styles', () => {

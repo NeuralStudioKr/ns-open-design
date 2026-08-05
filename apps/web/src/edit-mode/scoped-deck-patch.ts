@@ -25,6 +25,7 @@ import {
   graftPatchedTargetElementFromSource,
   mergeManualEditTargetByHint,
   mergeManualEditTargetsFromSource,
+  parseManualEditSource,
   readScopedCommentTargetText,
   resolveManualEditTargetReference,
   sanitizeManualEditHtmlFragment,
@@ -64,6 +65,8 @@ export function graftVisualMarksIntoDeckHtml(
   commentAttachments: readonly ChatCommentAttachment[],
 ): string | null {
   const ops: Array<{ op: 'replace'; slideIndex: number; html: string }> = [];
+  // One empty host Document for all mark fragment scrubs in this graft pass.
+  const fragmentHost = parseManualEditSource('<!doctype html><html><body></body></html>');
   // Work from the original slides so multi-mark grafts stay O(sections), not
   // O(marks × sections) via repeated applyDeckPatch scans.
   for (const attachment of commentAttachments) {
@@ -87,7 +90,7 @@ export function graftVisualMarksIntoDeckHtml(
     let markHtml =
       `<div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center;pointer-events:none">${innerMarkup}</div>`;
     // Match repairWipedSlidesForVisualMarks — sanitize mark fragment before splice.
-    markHtml = sanitizeManualEditHtmlFragment(markHtml);
+    markHtml = sanitizeManualEditHtmlFragment(markHtml, fragmentHost);
     if (!markHtml.trim()) continue;
     const patchedSlide = slide.slice(0, closingIndex) + markHtml + slide.slice(closingIndex);
     if (patchedSlide === slide) continue;
@@ -318,6 +321,7 @@ export function repairWipedSlidesForVisualMarks(
   commentAttachments: readonly ChatCommentAttachment[],
 ): string {
   const ops: Array<{ op: 'replace'; slideIndex: number; html: string }> = [];
+  const fragmentHost = parseManualEditSource('<!doctype html><html><body></body></html>');
   for (const attachment of commentAttachments) {
     if (!isScreenshotOnlyVisualCommentTarget(attachment)) continue;
     if (!hasValidDeckSlideIndex(attachment)) continue;
@@ -335,7 +339,7 @@ export function repairWipedSlidesForVisualMarks(
         `<div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center">${innerMarkup}</div>`;
     }
     // Model mark HTML can carry on*/img XSS — sanitize before grafting back.
-    markHtml = sanitizeManualEditHtmlFragment(markHtml);
+    markHtml = sanitizeManualEditHtmlFragment(markHtml, fragmentHost);
     if (!markHtml.trim()) continue;
     const repairedSlide = graftVisualMarkIntoSlide(beforeSlide, markHtml);
     if (!repairedSlide || repairedSlide === beforeSlide) continue;
@@ -552,6 +556,7 @@ function tryHintOnlyScopedMerge(input: {
   attachment: ChatCommentAttachment;
   slideIndex: number;
   instructionText?: string;
+  parsedDocs?: { current?: Document | null; next?: Document | null };
 }): { ok: true; html: string } | { ok: false; reason: string } {
   const hint = attachmentMergeHint(input.attachment, input.instructionText);
   if (
@@ -566,6 +571,7 @@ function tryHintOnlyScopedMerge(input: {
     input.patchedHtml,
     { slideIndex: input.slideIndex },
     hint,
+    input.parsedDocs,
   );
   if (merged.ok) {
     devLog.info('[deck-patch] accepted hint-only target fallback', {
@@ -715,6 +721,12 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
     id,
     ...attachmentMergeHint(input.attachment, input.instructionText),
   }));
+  // One Document pair for merge → graft → hint-only salvage (was up to ~6 parses).
+  const currentDoc = parseManualEditSource(input.nextHtml);
+  const patchedDoc = parseManualEditSource(input.patchedHtml);
+  const parsedPair = currentDoc && patchedDoc
+    ? { current: currentDoc, next: patchedDoc, patched: patchedDoc }
+    : undefined;
 
   const merged = mergeManualEditTargetsFromSource(
     input.nextHtml,
@@ -722,6 +734,7 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
     ids,
     { slideIndex: input.slideIndex },
     hints,
+    parsedPair,
   );
   if (merged.ok) {
     return { ok: true, html: merged.source };
@@ -785,6 +798,7 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
       id,
       { slideIndex: input.slideIndex },
       hint,
+      parsedPair,
     );
     if (graft.ok && graft.source !== input.nextHtml) {
       devLog.info('[deck-patch] accepted grafted target fallback', {
@@ -802,7 +816,7 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
   // slide-level swap below when the model kept a text/selector
   // signal in the patched slide, because it can still narrow to a
   // specific element.
-  const hintOnly = tryHintOnlyScopedMerge(input);
+  const hintOnly = tryHintOnlyScopedMerge({ ...input, parsedDocs: parsedPair });
   if (hintOnly.ok) return hintOnly;
 
   // Last-resort catch-all — apply the model's patched slide as a
@@ -1309,22 +1323,11 @@ export function resolveElementPatchAllowedSlideIndexes(input: {
   return [...input.allowedSlideIndexes];
 }
 
-/** Last HTML → sections cache for repeated extractSlideByIndex in one merge pass. */
-let slideSectionExtractCache: {
-  html: string;
-  sections: ReturnType<typeof extractTopLevelSlideSections>;
-} | null = null;
-
 export function extractSlideByIndex(html: string, slideIndex: number): string | null {
-  if (!slideSectionExtractCache || slideSectionExtractCache.html !== html) {
-    const bodyMatch = /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i.exec(html);
-    const scope = bodyMatch ? bodyMatch[1] ?? '' : html;
-    slideSectionExtractCache = {
-      html,
-      sections: extractTopLevelSlideSections(scope),
-    };
-  }
-  const section = slideSectionExtractCache.sections[slideIndex];
+  // extractTopLevelSlideSections owns the last-html cache shared with applyDeckPatch.
+  const bodyMatch = /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i.exec(html);
+  const scope = bodyMatch ? bodyMatch[1] ?? '' : html;
+  const section = extractTopLevelSlideSections(scope)[slideIndex];
   return section ? section.outerHtml : null;
 }
 

@@ -4,6 +4,7 @@ import {
   MANUAL_EDIT_SAVE_PIN_MS,
   createManualEditSourcePin,
   isManualEditSourcePinFresh,
+  manualEditHistoryConfirmCanSkipDiskFetch,
   manualEditHistoryConfirmTrustsLocal,
   preferManualEditPinnedSource,
   preferManualEditPinnedSourceOverLive,
@@ -60,5 +61,15 @@ describe('manual edit save pin', () => {
     // surface "file changed outside manual edit mode".
     expect(manualEditHistoryConfirmTrustsLocal(saved, stale, null, Date.now(), saved)).toBe(true);
     expect(manualEditHistoryConfirmTrustsLocal(saved, stale, null, Date.now(), stale)).toBe(false);
+  });
+
+  it('skips disk fetch when pin or authored already matches the save payload', () => {
+    const pinned = createManualEditSourcePin(saved, 1_000);
+    expect(manualEditHistoryConfirmCanSkipDiskFetch(saved, pinned, 1_000 + 50)).toBe(true);
+    expect(manualEditHistoryConfirmCanSkipDiskFetch(saved, null, Date.now(), saved)).toBe(true);
+    expect(manualEditHistoryConfirmCanSkipDiskFetch(saved, null, Date.now(), stale)).toBe(false);
+    expect(
+      manualEditHistoryConfirmCanSkipDiskFetch(saved, pinned, 1_000 + MANUAL_EDIT_SAVE_PIN_MAX_MS),
+    ).toBe(false);
   });
 });

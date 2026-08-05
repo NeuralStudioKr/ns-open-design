@@ -254,10 +254,9 @@ import { FileRevisionHistoryPanel } from './FileRevisionHistoryPanel';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
-  readManualEditAttributes,
-  readManualEditFields,
   readManualEditOuterHtml,
   readManualEditStyles,
+  readManualEditTargetSnapshot,
 } from '../edit-mode/source-patches';
 import {
   contentRectToHostRect,
@@ -290,6 +289,7 @@ import {
 } from '../edit-mode/move-math';
 import {
   createManualEditSourcePin,
+  manualEditHistoryConfirmCanSkipDiskFetch,
   manualEditHistoryConfirmTrustsLocal,
   preferManualEditPinnedSource,
   preferManualEditPinnedSourceOverLive,
@@ -9064,7 +9064,8 @@ function HtmlViewer({
     manualEditResizeSessionActiveRef.current = false;
     manualEditResizePausedRef.current = false;
     const base = sourceRef.current ?? '';
-    const fields = readManualEditFields(base, target.id);
+    // One DOMParser for fields/styles/attrs/outerHtml (was 3–4× full-deck parse).
+    const snapshot = readManualEditTargetSnapshot(base, target.id);
     selectedManualEditTargetIdRef.current = target.id;
     selectedManualEditTargetRef.current = target;
     setSelectedManualEditTarget(target);
@@ -9074,13 +9075,13 @@ function HtmlViewer({
     // Measure before paint so the overlay does not flash at scale=1 / offset=0.
     refreshManualEditHostPaintRect(target.id);
     setManualEditDraft({
-      text: fields.text ?? target.fields.text ?? target.text,
-      href: fields.href ?? target.fields.href ?? '',
-      src: fields.src ?? target.fields.src ?? '',
-      alt: fields.alt ?? target.fields.alt ?? '',
-      styles: inspectorManualEditStyles(target, base),
-      attributesText: JSON.stringify(readManualEditAttributes(base, target.id), null, 2),
-      outerHtml: readManualEditOuterHtml(base, target.id) || target.outerHtml,
+      text: snapshot.fields.text ?? target.fields.text ?? target.text,
+      href: snapshot.fields.href ?? target.fields.href ?? '',
+      src: snapshot.fields.src ?? target.fields.src ?? '',
+      alt: snapshot.fields.alt ?? target.fields.alt ?? '',
+      styles: mergeManualEditInspectorStyles(snapshot.styles, target.styles),
+      attributesText: JSON.stringify(snapshot.attributes, null, 2),
+      outerHtml: snapshot.outerHtml || target.outerHtml,
       fullSource: base,
     });
     setManualEditError(null);
@@ -9283,18 +9284,28 @@ function HtmlViewer({
   }
 
   async function confirmManualEditHistorySource(expectedSource: string, message: string): Promise<boolean> {
+    const authored = manualEditPinnedSourceRef.current?.source
+      ?? lastStablePreviewSourceRef.current
+      ?? sourceRef.current;
+    const now = Date.now();
+    // Skip disk GET when pin/authored already match the save payload.
+    if (manualEditHistoryConfirmCanSkipDiskFetch(
+      expectedSource,
+      manualEditPinnedSourceRef.current,
+      now,
+      authored,
+    )) {
+      return true;
+    }
     const persisted = await fetchProjectFileText(projectId, file.name, {
       cache: 'no-store',
       cacheBustKey: Date.now(),
     });
-    const authored = manualEditPinnedSourceRef.current?.source
-      ?? lastStablePreviewSourceRef.current
-      ?? sourceRef.current;
     if (manualEditHistoryConfirmTrustsLocal(
       expectedSource,
       persisted,
       manualEditPinnedSourceRef.current,
-      Date.now(),
+      now,
       authored,
     )) {
       return true;

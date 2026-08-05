@@ -26,6 +26,7 @@ import {
   isEphemeralGeneratedPathId,
   parseManualEditSource,
   resolveManualEditTargetReference,
+  sanitizeManualEditDocumentInPlace,
   serializeManualEditSource,
   type ManualEditMergeTargetHint,
   type ManualEditSourceScope,
@@ -446,7 +447,7 @@ export type ElementPatchTargetHint = ManualEditMergeTargetHint & {
 };
 
 export type ApplyElementPatchResult =
-  | { ok: true; html: string; appliedCount: number }
+  | { ok: true; html: string; appliedCount: number; sanitized?: boolean }
   | { ok: false; reason: string };
 
 export function applyElementPatches(options: ApplyElementPatchOptions): ApplyElementPatchResult {
@@ -527,7 +528,15 @@ export function applyElementPatches(options: ApplyElementPatchOptions): ApplyEle
     appliedCount += 1;
   }
 
-  return { ok: true, html: serializeManualEditSource(doc, html), appliedCount };
+  // Fold terminal scrub into the live Document (FileViewer parity) so ProjectView
+  // can skip a second full-deck sanitize parse on the element-patch success path.
+  sanitizeManualEditDocumentInPlace(doc);
+  return {
+    ok: true,
+    html: serializeManualEditSource(doc, html),
+    appliedCount,
+    sanitized: true,
+  };
 }
 
 function manualEditTargetId(patch: ManualEditPatch): string {
@@ -689,6 +698,7 @@ export function normalizeElementPatchTargetsForApply(input: {
         elementId,
         scope,
         hint,
+        parsedDoc,
       );
       if (byElementId) {
         return { ...patch, id: byElementId };

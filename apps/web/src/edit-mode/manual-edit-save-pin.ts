@@ -105,3 +105,21 @@ export function manualEditHistoryConfirmTrustsLocal(
     && pinned.source === expectedSource,
   );
 }
+
+/**
+ * True when history-confirm can skip the disk GET — an active pin or authored
+ * buffer already matches the bytes we are about to save.
+ */
+export function manualEditHistoryConfirmCanSkipDiskFetch(
+  expectedSource: string,
+  pinned: ManualEditSourcePin | null | undefined,
+  now: number = Date.now(),
+  authoredSource?: string | null,
+): boolean {
+  if (authoredSource != null && authoredSource === expectedSource) return true;
+  return Boolean(
+    isManualEditSourcePinActive(pinned, now)
+    && pinned
+    && pinned.source === expectedSource,
+  );
+}

@@ -399,6 +399,8 @@ describe("ProjectView message loading", () => {
     expect(source).toContain("setSource(contentToSave)");
     expect(source).toContain("pinManualEditSavedSource(contentToSave)");
     expect(source).toContain("setRevisionContentCache(projectId, file.name, saved.revision.id, contentToSave)");
+    expect(source).toContain("readManualEditTargetSnapshot");
+    expect(source).toContain("manualEditHistoryConfirmCanSkipDiskFetch");
   });
 
   it("batches element-patch apply and scoped comment mask on one Document", () => {
@@ -406,9 +408,12 @@ describe("ProjectView message loading", () => {
     expect(elementSource).toContain("applyManualEditPatchMutation");
     expect(elementSource).toContain("parseManualEditSource(html)");
     expect(elementSource).toContain("serializeManualEditSource(doc, html)");
+    expect(elementSource).toContain("sanitizeManualEditDocumentInPlace(doc)");
     const viewSource = readSource("src/components/ProjectView.tsx");
     expect(viewSource).toContain("maskManualEditTargetsOnDocument");
     expect(viewSource).toContain("parseManualEditSource(source)");
+    expect(viewSource).toContain("elementPatchAlreadySanitized");
+    expect(viewSource).toContain("!elementPatchAlreadySanitized");
   });
 
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {
