@@ -409,8 +409,15 @@ export function manualEditHostPaintRectStale(
   );
   if (sizeMatches && positionMatches) return false;
   const sizeDiffers = !sizeMatches;
-  // Letterboxed live paint shifts x/y while size tracks — trust hostPaintRect.
-  if (sizeDiffers && !positionMatches) return false;
+  const paintFitsWithinComposed = (
+    hostPaintRect.width <= composedHostRect.width + tolerancePx
+    && hostPaintRect.height <= composedHostRect.height + tolerancePx
+  );
+  // Letterboxed live paint shifts x/y while painting the same content at a
+  // smaller host scale — trust it. If stale paint is larger than the composed
+  // optimistic rect after resize, it leaves the selection box bigger than the
+  // actual element, so treat it as stale.
+  if (sizeDiffers && !positionMatches) return !paintFitsWithinComposed;
   // Same origin, pre-gesture size (resize snap-back).
   if (sizeDiffers && positionMatches) return true;
   // Same size, pre-gesture position (move snap-back).

@@ -328,6 +328,12 @@ describe('computeMove', () => {
     expect(manualEditHostPaintRectStale(letterboxed, composedLarge)).toBe(false);
   });
 
+  it('detects stale host paint that is larger than resized composed chrome even when position also shifted', () => {
+    const composed = { x: 100, y: 88, width: 120, height: 60 };
+    const staleLarge = { x: 96, y: 84, width: 260, height: 130 };
+    expect(manualEditHostPaintRectStale(staleLarge, composed)).toBe(true);
+  });
+
   it('detects stale host paint that kept pre-gesture position at the same size', () => {
     const composed = { x: 140, y: 110, width: 80, height: 40 };
     const stale = { x: 40, y: 60, width: 80, height: 40 };
