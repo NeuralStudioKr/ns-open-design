@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { repairArtifactDocumentHead } from '@open-design/contracts';
 import { createRevisionStackSnapshot } from '../../src/runtime/revision-stack';
 import {
   cursorRevisionFromStack,
@@ -84,5 +85,18 @@ describe('revision-conflict', () => {
     expect(match?.id).toBe('rev-2');
     expect(resolveSnapshot).toHaveBeenCalledTimes(1);
     expect(resolveSnapshot).toHaveBeenCalledWith('rev-2');
+  });
+
+  it('finds revision when disk matches snapshot after head repair normalization', async () => {
+    const corrupt = '<html><head>viewport=width=device-width, initial-scale=1" /><title>Deck</title></head><body>Hi</body></html>';
+    const canonical = repairArtifactDocumentHead(corrupt);
+    const revisions = [revision('rev-1', 1, canonical)];
+    const snapshots = new Map([['rev-1', canonical]]);
+    const match = await findRevisionMatchingDiskContent(
+      revisions,
+      corrupt,
+      async (revisionId) => snapshots.get(revisionId) ?? null,
+    );
+    expect(match?.id).toBe('rev-1');
   });
 });

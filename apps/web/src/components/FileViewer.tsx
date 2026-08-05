@@ -170,6 +170,7 @@ import {
   findRevisionMatchingDiskContent,
   revisionCursorMatchesDisk,
 } from '../runtime/revision-conflict';
+import { revisionSnapshotContentMatches } from '../runtime/revision-content-match';
 import {
   classifyRevisionDiskReconcile,
   shouldApplyHeadRevisionSnapshotAuthority,
@@ -318,6 +319,10 @@ import {
   waitForManualEditSaveIdle,
 } from '../edit-mode/manual-edit-style-persist';
 import { manualEditStyleReplayPatches } from '../edit-mode/manual-edit-style-replay';
+import {
+  manualEditInspectorStyleValue,
+  manualEditStyleValuesEqual,
+} from '../edit-mode/manual-edit-style-values';
 import {
   applyManualEditPreviewStylesToDocument,
   iframeContentDocumentIfAccessible,
@@ -5545,6 +5550,7 @@ function HtmlViewer({
   const revisionSkipReconcileOnceRef = useRef(false);
   const revisionRefreshGenerationRef = useRef(0);
   const revisionRefreshActiveRetryRef = useRef(0);
+  const revisionRefreshListRetryRef = useRef(0);
   const revisionConflictSuppressedRef = useRef(false);
   const revisionConflictMessageRef = useRef(t('fileRevision.conflict.message'));
   revisionConflictMessageRef.current = t('fileRevision.conflict.message');
@@ -7559,6 +7565,7 @@ function HtmlViewer({
       revisionReconcileGenerationRef.current += 1;
       revisionRefreshGenerationRef.current += 1;
       revisionRefreshActiveRetryRef.current = 0;
+      revisionRefreshListRetryRef.current = 0;
     };
   }, [file.name]);
 
@@ -7610,11 +7617,7 @@ function HtmlViewer({
     }
 
     const previewMatchesSnapshot = (candidate: string | null) => (
-      candidate != null
-      && (
-        candidate === snapshotContent
-        || repairArtifactDocumentHead(candidate) === repairArtifactDocumentHead(snapshotContent)
-      )
+      revisionSnapshotContentMatches(candidate, snapshotContent)
     );
     const previewAlignedWithCursor =
       previewMatchesSnapshot(sourceRef.current)
@@ -7628,8 +7631,22 @@ function HtmlViewer({
       : sourceRef.current;
 
     if (!list) {
+      if (previewAlignedWithCursor) {
+        setRevisionStackInvalidated(false);
+        setRevisionConflictToast(null);
+        return;
+      }
+      if (revisionRefreshListRetryRef.current < 8) {
+        revisionRefreshListRetryRef.current += 1;
+        window.setTimeout(() => {
+          if (!isStaleRevisionReconcile(reconcileGeneration)) {
+            void reconcileRevisionWithDisk();
+          }
+        }, 250);
+      }
       return;
     }
+    revisionRefreshListRetryRef.current = 0;
     if (typeof list.retentionLimit === 'number') {
       setRevisionRetentionLimit(list.retentionLimit);
     }
@@ -7788,7 +7805,6 @@ function HtmlViewer({
     }
 
     if (reconcileOutcomeWithoutMatch !== 'external_conflict') {
-      setRevisionStackInvalidated(false);
       return;
     }
 
@@ -7827,7 +7843,18 @@ function HtmlViewer({
     const refreshGeneration = ++revisionRefreshGenerationRef.current;
     const list = await listProjectFileRevisions(projectId, file.name);
     if (refreshGeneration !== revisionRefreshGenerationRef.current) return;
-    if (!list || !Array.isArray(list.revisions)) return;
+    if (!list || !Array.isArray(list.revisions)) {
+      if (revisionRefreshListRetryRef.current < 8) {
+        revisionRefreshListRetryRef.current += 1;
+        window.setTimeout(() => {
+          if (refreshGeneration === revisionRefreshGenerationRef.current) {
+            void refreshRevisionStack();
+          }
+        }, 250);
+      }
+      return;
+    }
+    revisionRefreshListRetryRef.current = 0;
     if (typeof list.retentionLimit === 'number') {
       setRevisionRetentionLimit(list.retentionLimit);
     }
@@ -10242,6 +10269,7 @@ function HtmlViewer({
     if (ok) {
       revisionDiskSyncFailedTargetRef.current = null;
       await onFileSaved?.();
+      await refreshRevisionStack();
       return;
     }
     setRevisionDiskSyncToast(revisionDiskSyncMessageRef.current);
