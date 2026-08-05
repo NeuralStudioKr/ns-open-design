@@ -102,4 +102,39 @@ describe('Toast', () => {
     expect(container.querySelector('.od-toast-row .od-toast-dismiss')).not.toBeNull();
     expect(container.querySelector('.od-toast-dismiss-text')).toBeNull();
   });
+
+  it('pins loading toasts open (no auto-dismiss) and marks aria-busy', () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    const { container } = render(
+      <Toast message="Exporting…" tone="loading" ttlMs={100} onDismiss={onDismiss} />,
+    );
+    expect(container.querySelector('.od-toast.tone-loading')?.getAttribute('aria-busy')).toBe('true');
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it('centers via od-toast-anchor so Motion transform cannot steal translateX', () => {
+    const { container } = render(<Toast message="Saved" tone="success" />);
+    expect(container.querySelector('.od-toast-anchor .od-toast.tone-success')).not.toBeNull();
+  });
+
+  it('invokes action then dismiss when the action button is clicked', () => {
+    const onAction = vi.fn();
+    const onDismiss = vi.fn();
+    render(
+      <Toast
+        message="Saved"
+        tone="success"
+        actionLabel="Undo"
+        onAction={onAction}
+        onDismiss={onDismiss}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
 });

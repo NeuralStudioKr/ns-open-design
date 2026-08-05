@@ -6,7 +6,6 @@ import {
   type MarkdownLinkClickHandler,
 } from "../runtime/markdown";
 import { asInProjectFilePath } from "../runtime/in-project-link";
-import { projectFileUrl } from "../providers/registry";
 import { userFacingRunErrorDetail } from "../teamver/projectErrorMessages";
 import { useAnalytics } from "../analytics/provider";
 import { useTeamverBranding } from "../teamver/branding/TeamverBrandingProvider";
@@ -969,7 +968,6 @@ function AssistantMessageImpl({
         {!streaming && displayedProduced.length > 0 && projectId ? (
           <ProducedFiles
             files={displayedProduced}
-            projectId={projectId}
             onRequestOpenFile={onRequestOpenFile}
           />
         ) : null}
@@ -1894,11 +1892,9 @@ function UnfinishedTodosPanel({
 
 function ProducedFiles({
   files,
-  projectId,
   onRequestOpenFile,
 }: {
   files: ProjectFile[];
-  projectId: string;
   onRequestOpenFile?: (name: string) => void;
 }) {
   const t = useT();
@@ -1921,17 +1917,15 @@ function ProducedFiles({
                   type="button"
                   className="ghost"
                   onClick={() => onRequestOpenFile(f.name)}
+                  title={t("tool.openInTab", { name: f.name })}
+                  aria-label={t("tool.openInTab", { name: f.name })}
                 >
                   {t("assistant.openFile")}
                 </button>
               ) : null}
-              <a
-                className="ghost-link"
-                href={projectFileUrl(projectId, f.name)}
-                download={f.name}
-              >
-                {t("assistant.downloadFile")}
-              </a>
+              {/* Download is intentionally omitted: raw HTML (and similar)
+                  blobs from this chip open without the deck/srcdoc host, so
+                  layout/fonts/assets render incorrectly. Open in the viewer. */}
             </div>
           </div>
         ))}

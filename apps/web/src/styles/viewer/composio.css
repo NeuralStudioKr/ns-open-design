@@ -1060,7 +1060,7 @@
   color: var(--text-muted);
 }
 .questions-banner-answered .questions-banner-icon {
-  background: var(--success, #16a34a);
+  background: var(--green);
 }
 .questions-banner-answered .questions-banner-label {
   font-weight: 500;
