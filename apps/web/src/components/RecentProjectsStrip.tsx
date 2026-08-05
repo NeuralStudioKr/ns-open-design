@@ -23,6 +23,7 @@ import {
   type ProjectCoverFile,
 } from '../teamver/projectPreviewFile';
 import { buildProjectCardCover } from '../teamver/projectCardCover';
+import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { prefetchHomeProjectCovers } from '../teamver/prefetchHomeProjectCovers';
 import { homePublishChipPrefetchIds } from '../teamver/embedPublishChipProjects';
 import { prefetchLatestPublishSummaries } from '../teamver/latestPublishSummary';
@@ -339,12 +340,16 @@ export function RecentProjectsStrip({
                   style={cover.style}
                   aria-hidden
                 >
-                  {(cover.kind === 'image' || cover.kind === 'logo') && cover.src ? (
-                    <img
+                  {(cover.kind === 'image' || cover.kind === 'logo') && cover.filePath ? (
+                    <AuthenticatedProjectFileImage
+                      projectId={project.id}
+                      path={cover.filePath}
+                      rev={cover.version}
                       className="recent-projects__thumb-media"
-                      src={cover.src}
-                      alt=""
-                      loading="lazy"
+                      trustExists
+                      failedFallback={
+                        <span className="recent-projects__card-glyph">{cover.initial}</span>
+                      }
                     />
                   ) : cover.kind === 'video' && cover.src ? (
                     <video

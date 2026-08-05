@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { projectRawUrl } from '../providers/registry';
 import {
   useAuthenticatedProjectFileObjectUrl,
@@ -29,6 +29,8 @@ type AuthenticatedProjectFileImageProps = {
    * 404s (upload→sync-up race). Chat history must leave this false.
    */
   allowBackgroundRetry?: boolean;
+  /** Replace the default broken-file icon when the image cannot be loaded. */
+  failedFallback?: ReactNode;
 };
 
 const TRUSTED_IMAGE_ERROR_RETRIES = 2;
@@ -48,6 +50,7 @@ export function AuthenticatedProjectFileImage({
   rev,
   trustExists = false,
   allowBackgroundRetry = false,
+  failedFallback,
 }: AuthenticatedProjectFileImageProps) {
   const useAuthenticatedFetch = shouldUseTeamverAuthenticatedProjectRawFetch();
   const [errorRetry, setErrorRetry] = useState(0);
@@ -138,6 +141,7 @@ export function AuthenticatedProjectFileImage({
       || (shouldBlobFetch && failed && !loading)
       || (shouldTryPresign && signed.failed && !shouldBlobFetch && !signed.loading)
     ) {
+      if (failedFallback !== undefined) return <>{failedFallback}</>;
       return (
         <span
           className={`authenticated-project-file-image-failed${className ? ` ${className}` : ''}`}

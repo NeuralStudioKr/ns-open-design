@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useLazyProjectCover } from "../useLazyProjectCover";
 import type { ProjectCoverFile } from "../projectPreviewFile";
 import { ProjectCardHtmlCover } from "./ProjectCardHtmlCover";
+import { AuthenticatedProjectFileImage } from "../../components/AuthenticatedProjectFileImage";
 
 type Props = {
   project: Project;
@@ -35,6 +36,8 @@ export function DesignsTabProjectThumb({
     .filter(Boolean)
     .join(" ");
 
+  const glyph = <span className="project-thumb-glyph">{cover.initial}</span>;
+
   return (
     <div
       ref={anchorRef}
@@ -42,8 +45,15 @@ export function DesignsTabProjectThumb({
       style={cover.style}
       aria-hidden
     >
-      {(cover.kind === "image" || cover.kind === "logo") && cover.src ? (
-        <img className="thumb-media" src={cover.src} alt="" loading="lazy" />
+      {(cover.kind === "image" || cover.kind === "logo") && cover.filePath ? (
+        <AuthenticatedProjectFileImage
+          projectId={project.id}
+          path={cover.filePath}
+          rev={cover.version}
+          className="thumb-media"
+          trustExists
+          failedFallback={glyph}
+        />
       ) : cover.kind === "video" && cover.src ? (
         <video className="thumb-media" src={cover.src} muted preload="metadata" playsInline />
       ) : cover.kind === "html" && cover.src ? (
@@ -52,7 +62,7 @@ export function DesignsTabProjectThumb({
           deckCoverOnly={project.metadata?.kind === "deck"}
         />
       ) : (
-        <span className="project-thumb-glyph">{cover.initial}</span>
+        glyph
       )}
       {liveCount > 0 && liveCountLabel ? (
         <span className="design-live-count">{liveCountLabel}</span>
