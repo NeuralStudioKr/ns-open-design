@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { devLog } from '../lib/devLog';
 import { createPortal, flushSync } from 'react-dom';
 import { Button, Input, Select } from '@open-design/components';
 import { APP_CHROME_FILE_ACTIONS_ID, APP_CHROME_FILE_ACTIONS_SELECTOR } from './AppChromeHeader';
@@ -10724,7 +10725,7 @@ function HtmlViewer({
         setImageExportPreparedBlob({ format, blob });
       }
     } catch (err) {
-      console.warn('[exportAsImage] failed to prepare snapshot:', err);
+      devLog.warn('[exportAsImage] failed to prepare snapshot:', err);
       if (imageExportPrepareIdRef.current === prepareId) {
         const baseMessage = t('fileViewer.exportImageFailed');
         const detail = serverFailureReason || (err instanceof Error ? err.message : null);
@@ -10800,7 +10801,7 @@ function HtmlViewer({
           : t('fileViewer.exportImageDownloadDetails', { filename: target.filename }),
       });
     } catch (err) {
-      console.warn('[exportAsImage] failed to save snapshot:', err);
+      devLog.warn('[exportAsImage] failed to save snapshot:', err);
       setImageExportError(t('fileViewer.exportImageFailed'));
     } finally {
       setImageExportBusy(false);

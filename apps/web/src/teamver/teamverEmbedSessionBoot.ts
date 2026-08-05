@@ -1,4 +1,5 @@
 import type { Project } from "../types";
+import { devLog } from '../lib/devLog';
 import {
   fetchDesignAuthSession,
   type FetchDesignAuthSessionOptions,
@@ -136,7 +137,7 @@ export async function runTeamverEmbedSessionBoot(
       }
 
       void syncAllDaemonProjectsToRegistry().catch((err) => {
-        console.warn("[teamver] embed boot registry sync failed", err);
+        devLog.warn("[teamver] embed boot registry sync failed", err);
       });
       if (detailRoute) {
         void (async () => {
@@ -147,7 +148,7 @@ export async function runTeamverEmbedSessionBoot(
             deps.onProjectPrefetched(project);
             warmEmbedProjectListCaches([project]);
           } catch (err) {
-            console.warn("[teamver] embed boot project prefetch failed", err);
+            devLog.warn("[teamver] embed boot project prefetch failed", err);
           }
         })();
       }
@@ -155,7 +156,7 @@ export async function runTeamverEmbedSessionBoot(
       try {
         return await fetchTeamverRuntimeConfig();
       } catch (err) {
-        console.warn("[teamver] embed boot runtime-config failed", err);
+        devLog.warn("[teamver] embed boot runtime-config failed", err);
         return null;
       }
     }
@@ -178,7 +179,7 @@ export async function runTeamverEmbedSessionBoot(
     // fetchTeamverRuntimeConfig is belt-and-suspenders; skip the call here.
     return null;
   } catch (err) {
-    console.warn("[teamver] embed boot session probe failed", err);
+    devLog.warn("[teamver] embed boot session probe failed", err);
     // Transient probe failure: unlock the gate without claiming a session.
     // Stale authenticated memory cache in designBffClient may still serve
     // follow-up probes (STALE_SESSION_GRACE_MS). Keep auth-return pending so

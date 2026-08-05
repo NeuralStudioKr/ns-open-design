@@ -9,6 +9,7 @@
 // preview + a generic "value-json" textarea.
 
 import { useEffect, useRef, useState } from 'react';
+import { devLog } from '../lib/devLog';
 import type { GenUISurfaceSpec } from '@open-design/contracts';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 
@@ -865,7 +866,7 @@ function FreeFormJsonForm({
         } catch (err) {
           // Invalid JSON; surface the parse error inline.
           // eslint-disable-next-line no-console
-          console.warn('GenUI form: invalid JSON', err);
+          devLog.warn('GenUI form: invalid JSON', err);
         }
       }}
     >

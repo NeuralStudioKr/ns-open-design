@@ -70,4 +70,47 @@ describe('browser console leak sanitization', () => {
     expect(app).not.toMatch(/\bconsole\.warn\(/);
     expect(app).not.toMatch(/\bconsole\.info\(/);
   });
+
+  it('routes polling / registry / export / chat-save observation logs through devLog', () => {
+    for (const rel of [
+      'src/providers/daemon.ts',
+      'src/providers/project-events.ts',
+      'src/teamver/projectRegistry.ts',
+      'src/teamver/teamverEmbedSessionBoot.ts',
+      'src/teamver/useTeamverEmbed.ts',
+      'src/runtime/exports.ts',
+      'src/state/projects.ts',
+      'src/teamver/designBffClient.ts',
+    ] as const) {
+      const source = readSrc(rel);
+      expect(source, rel).toContain('devLog');
+      expect(source, rel).not.toMatch(/\bconsole\.warn\(/);
+      expect(source, rel).not.toMatch(/\bconsole\.info\(/);
+    }
+  });
+
+  it('keeps usage/billing drop markers always-on but without workspace/run/token fields', () => {
+    const usage = readSrc('src/teamver/reportUsage.ts');
+    const usageMarker = usage.slice(
+      usage.indexOf('function emitClientUsageDropMarker'),
+      usage.indexOf('export async function reportTeamverDesignUsage'),
+    );
+    expect(usageMarker).toContain('console.warn(');
+    expect(usageMarker).toContain('usageClientErrorMetric');
+    expect(usageMarker).not.toContain('workspaceId:');
+    expect(usageMarker).not.toContain('runId:');
+    expect(usageMarker).not.toContain('inputTokens:');
+    expect(usageMarker).not.toContain('modelName:');
+
+    const billing = readSrc('src/teamver/teamverByokBilling.ts');
+    const billingMarker = billing.slice(
+      billing.indexOf('function emitByokBillingDropMarker'),
+      billing.indexOf('function normalizeByokBillingResponse'),
+    );
+    expect(billingMarker).toContain('console.warn(');
+    expect(billingMarker).toContain('teamver_usage_5xx');
+    expect(billingMarker).not.toContain('workspaceId:');
+    expect(billingMarker).not.toContain('runId:');
+    expect(billingMarker).not.toContain('modelName:');
+  });
 });

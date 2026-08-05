@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { devLog } from '../lib/devLog';
 import type { WorkspaceListItem } from "@teamver/app-sdk";
 import {
   ensureDesignBffSessionAuthenticated,
@@ -425,7 +426,7 @@ export function useTeamverEmbed(enabled: boolean): TeamverEmbedState {
         try {
           await syncAllDaemonProjectsToRegistry();
         } catch (err) {
-          console.warn("[teamver] registry sync on session refresh failed", err);
+          devLog.warn("[teamver] registry sync on session refresh failed", err);
         }
       }
 

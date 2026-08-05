@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { devLog } from '../lib/devLog';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -937,11 +938,11 @@ export function PreviewModal({
                                 if (snap) {
                                   exportAsImage(snap.dataUrl, exportTitle);
                                 } else {
-                                  console.warn('[PreviewModal] snapshot capture returned null');
+                                  devLog.warn('[PreviewModal] snapshot capture returned null');
                                   alert(t('common.exportImageFailed'));
                                 }
                               } catch (err) {
-                                console.warn('[PreviewModal] failed to convert snapshot:', err);
+                                devLog.warn('[PreviewModal] failed to convert snapshot:', err);
                                 alert(t('common.exportImageFailed'));
                               }
                             }}

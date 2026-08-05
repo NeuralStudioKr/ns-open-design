@@ -14,6 +14,7 @@
 // an explicit daemon opt-out for fidelity investigations only.
 
 import { buildSrcdoc, type SrcdocOptions } from './srcdoc';
+import { devLog } from '../lib/devLog';
 import { buildReactComponentSrcdoc } from './react-component';
 import { buildZip } from './zip';
 import { randomUUID } from '../utils/uuid';
@@ -299,10 +300,10 @@ export async function exportProjectAsHtml(opts: {
     });
   } catch (err) {
     if (opts.requireRenderedExport) {
-      console.warn('[exportProjectAsHtml] rendered HTML export failed:', err);
+      devLog.warn('[exportProjectAsHtml] rendered HTML export failed:', err);
       throw new Error('렌더링된 HTML 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
     }
-    console.warn('[exportProjectAsHtml] falling back to inline/source HTML export:', err);
+    devLog.warn('[exportProjectAsHtml] falling back to inline/source HTML export:', err);
     try {
       const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
       if (!resp.ok) throw new Error(`inline HTML export unavailable (${resp.status})`);
@@ -959,7 +960,7 @@ export function exportAsImage(dataUrl: string, title: string): void {
     const blob = dataUrlToBlob(dataUrl);
     triggerDownload(blob, `${safeFilename(title, 'artifact')}.png`);
   } catch (err) {
-    console.warn('[exportAsImage] failed to convert snapshot:', err);
+    devLog.warn('[exportAsImage] failed to convert snapshot:', err);
     // Re-throw the error to allow the caller to handle UI feedback
     throw err;
   }
@@ -1047,7 +1048,7 @@ async function withTransientExportRetry<T>(
         attempt < TEAMVER_DAEMON_EXPORT_RETRY_DELAYS_MS.length - 1
         && isRetryableRenderedExportError(err)
       ) {
-        console.info(`[${label}] retrying transient export failure (attempt %d)`, attempt + 1);
+        devLog.info(`[${label}] retrying transient export failure (attempt %d)`, attempt + 1);
         continue;
       }
       throw err;
@@ -1235,7 +1236,7 @@ export async function exportProjectAsPdf(opts: {
           && isTeamverProjectStoragePrefixRequiredError(err)
           && attempt < TEAMVER_PDF_EXPORT_RETRY_DELAYS_MS.length - 1
         ) {
-          console.info(
+          devLog.info(
             '[exportProjectAsPdf] retrying after teamver_project_s3_prefix_required (attempt %d)',
             attempt + 1,
           );
@@ -1249,7 +1250,7 @@ export async function exportProjectAsPdf(opts: {
   } catch (err) {
     if (isExportQueueFullError(err)) throw err;
     daemonErr = err;
-    console.warn('[exportProjectAsPdf] falling back to browser print:', err);
+    devLog.warn('[exportProjectAsPdf] falling back to browser print:', err);
   }
 
   if (opts.requireRenderedExport) {
@@ -1259,7 +1260,7 @@ export async function exportProjectAsPdf(opts: {
         ? daemonErr
         : new Error('렌더링된 PDF 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
     }
-    console.warn(
+    devLog.warn(
       '[exportProjectAsPdf] daemon Chromium unavailable — using browser print fallback in embed',
       daemonErr,
     );
@@ -1291,7 +1292,7 @@ export async function exportProjectAsPdf(opts: {
       sandboxedPreview: !opts.deck,
     });
   } catch (fallbackErr) {
-    console.warn('[exportProjectAsPdf] inline browser print fallback unavailable:', fallbackErr);
+    devLog.warn('[exportProjectAsPdf] inline browser print fallback unavailable:', fallbackErr);
     opts.fallbackPdf();
   }
   return 'fallback';
@@ -1330,7 +1331,7 @@ export async function exportProjectAsPptx(opts: {
           attempt < TEAMVER_PPTX_EXPORT_RETRY_DELAYS_MS.length - 1
           && isRetryableRenderedExportError(err)
         ) {
-          console.info('[exportProjectAsPptx] retrying transient export failure (attempt %d)', attempt + 1);
+          devLog.info('[exportProjectAsPptx] retrying transient export failure (attempt %d)', attempt + 1);
           continue;
         }
         throw err;
@@ -1340,7 +1341,7 @@ export async function exportProjectAsPptx(opts: {
   } catch (err) {
     if (isExportQueueFullError(err)) throw err;
     if (opts.requireRenderedExport) {
-      console.warn('[exportProjectAsPptx] rendered PPTX export failed:', err);
+      devLog.warn('[exportProjectAsPptx] rendered PPTX export failed:', err);
       throw new Error('PPTX 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
     }
     throw err;
@@ -1491,7 +1492,7 @@ export async function exportProjectImageBlob(opts: {
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    console.warn('[exportProjectImageBlob] falling back to preview snapshot:', reason);
+    devLog.warn('[exportProjectImageBlob] falling back to preview snapshot:', reason);
     return { ok: false, reason };
   }
 }
@@ -1587,10 +1588,10 @@ export async function exportProjectAsZip(opts: {
     return;
   } catch (err) {
     if (opts.requireRenderedExport) {
-      console.warn('[exportProjectAsZip] rendered ZIP export failed:', err);
+      devLog.warn('[exportProjectAsZip] rendered ZIP export failed:', err);
       throw new Error('렌더링된 ZIP 다운로드를 만들지 못했습니다. 잠시 후 다시 시도하세요.');
     }
-    console.warn('[exportProjectAsZip] falling back to project archive:', err);
+    devLog.warn('[exportProjectAsZip] falling back to project archive:', err);
   }
 
   const root = archiveRootFromFilePath(opts.filePath);
@@ -1603,7 +1604,7 @@ export async function exportProjectAsZip(opts: {
     const blob = await resp.blob();
     triggerDownload(blob, archiveFilenameFrom(resp, opts.fallbackTitle, root));
   } catch (err) {
-    console.warn('[exportProjectAsZip] falling back to single-file ZIP:', err);
+    devLog.warn('[exportProjectAsZip] falling back to single-file ZIP:', err);
     exportAsZip(opts.fallbackHtml, opts.fallbackTitle);
   }
 }

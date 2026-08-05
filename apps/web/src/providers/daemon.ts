@@ -10,6 +10,7 @@
  *                 non-zero (tail appended to the error message).
  */
 import type { AgentEvent, ChatCommentAttachment, ChatMessage } from '../types';
+import { devLog } from '../lib/devLog';
 
 import type { AmrEntryAttribution } from '../analytics/amr-attribution';
 import type {
@@ -899,7 +900,7 @@ export async function listActiveChatRuns(
     const qs = new URLSearchParams({ projectId, conversationId, status: 'active' });
     const resp = await fetchTeamverDaemon(`/api/runs?${qs.toString()}`);
     if (!resp.ok) {
-      console.warn('[teamver] listActiveChatRuns non-ok', {
+      devLog.warn('[teamver] listActiveChatRuns non-ok', {
         projectId,
         conversationId,
         status: resp.status,
@@ -910,7 +911,7 @@ export async function listActiveChatRuns(
     const body = (await resp.json()) as ChatRunListResponse;
     return body.runs ?? [];
   } catch (err) {
-    console.warn('[teamver] listActiveChatRuns failed', { projectId, conversationId, err });
+    devLog.warn('[teamver] listActiveChatRuns failed', { projectId, conversationId, err });
     return [];
   }
 }
@@ -935,7 +936,7 @@ export async function listProjectRuns(): Promise<ChatRunStatusResponse[]> {
       const resp = await fetchTeamverDaemon('/api/runs', { skipEmbedAuthRecovery: true });
       if (!resp.ok) {
         if (!(isTeamverEmbedMode() && resp.status === 401)) {
-          console.warn('[teamver] listProjectRuns non-ok', {
+          devLog.warn('[teamver] listProjectRuns non-ok', {
             status: resp.status,
             redirected: resp.type === 'opaqueredirect',
           });
@@ -945,7 +946,7 @@ export async function listProjectRuns(): Promise<ChatRunStatusResponse[]> {
       const body = (await resp.json()) as ChatRunListResponse;
       return body.runs ?? [];
     } catch (err) {
-      console.warn('[teamver] listProjectRuns failed', err);
+      devLog.warn('[teamver] listProjectRuns failed', err);
       return [];
     } finally {
       listProjectRunsInflight = null;

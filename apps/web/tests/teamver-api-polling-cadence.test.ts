@@ -43,7 +43,7 @@ describe("Teamver embed API polling cadence", () => {
     expect(source).toContain("ActiveByokProxyAuthTransientError");
     expect(source).toContain("shouldSkipByokProxyActivePoll");
     expect(source).toContain("err instanceof ActiveByokProxyAuthTransientError");
-    expect(source).toContain("? console.debug");
-    expect(source).toContain(": console.warn");
+    expect(source).toContain("? devLog.debug");
+    expect(source).toContain(": devLog.warn");
   });
 });

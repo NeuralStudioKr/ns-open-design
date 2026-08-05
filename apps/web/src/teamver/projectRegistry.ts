@@ -1,4 +1,5 @@
 import type { Project } from "../types";
+import { devLog } from '../lib/devLog';
 import { isRegistryPlaceholderTitle } from "../utils/projectName";
 import { resolveProjectDisplayName } from "./embedRegistryProjectList";
 import { sanitizeProjectForEmbed } from "./embedLocalWorkspacePolicy";
@@ -333,7 +334,7 @@ export async function registerTeamverProjectIfNeeded(
         handleEmbedPassiveUnauthorized("bff");
         throw new TeamverProjectRegistryError("teamver_project_registry_unavailable");
       }
-      console.warn("[teamver] project registry sync failed", err);
+      devLog.warn("[teamver] project registry sync failed", err);
       throw new TeamverProjectRegistryError("teamver_project_registry_sync_failed");
     }
   }
@@ -504,7 +505,7 @@ async function fetchRegistryProjectsFromBff(): Promise<{
       handleEmbedPassiveUnauthorized("bff");
       return null;
     }
-    console.warn("[teamver] project registry list failed", err);
+    devLog.warn("[teamver] project registry list failed", err);
     return null;
   }
 }
@@ -635,7 +636,7 @@ async function fetchTeamverProjectAccessOutcome(
       handleEmbedPassiveUnauthorized("bff");
       return { status: "unavailable" };
     }
-    console.warn("[teamver] project fetch failed", err);
+    devLog.warn("[teamver] project fetch failed", err);
     return { status: "unavailable" };
   }
 }
@@ -787,7 +788,7 @@ export async function unregisterTeamverProjectFromRegistryIfNeeded(
       handleEmbedPassiveUnauthorized("bff");
       return false;
     }
-    console.warn("[teamver] project registry delete failed", err);
+    devLog.warn("[teamver] project registry delete failed", err);
     return false;
   }
 }

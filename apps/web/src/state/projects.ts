@@ -21,6 +21,7 @@ import type {
   TerminalSession,
 } from '@open-design/contracts';
 import { randomUUID } from '../utils/uuid';
+import { devLog } from '../lib/devLog';
 import type {
   AgentEvent,
   ChatMessage,
@@ -932,7 +933,7 @@ export async function saveMessage(
       const essentials = projectKeepaliveEssentials(savedMessage);
       const trimmedBody = JSON.stringify(essentials);
       const trimmedSize = byteLengthUtf8(trimmedBody);
-      console.warn(
+      devLog.warn(
         '[teamver] chat-save: keepalive payload exceeded 56KiB cap; retrying with essential fields only',
         {
           projectId,
@@ -951,7 +952,7 @@ export async function saveMessage(
         // content field). Abandon the keepalive send and log — the
         // next visible session refresh triggers a full PUT via the
         // finalization effect in ProjectView.
-        console.warn(
+        devLog.warn(
           '[teamver] chat-save: essentials-only projection still over cap; skipping keepalive PUT',
           { projectId, conversationId, messageId: message.id },
         );
@@ -1005,7 +1006,7 @@ export async function saveMessage(
   }
 
   if (outcome.kind === 'error') {
-    console.warn('[teamver] chat-save: PUT threw', {
+    devLog.warn('[teamver] chat-save: PUT threw', {
       projectId,
       conversationId,
       messageId: message.id,
@@ -1016,7 +1017,7 @@ export async function saveMessage(
     return;
   }
   if (!outcome.ok) {
-    console.warn('[teamver] chat-save: PUT non-ok', {
+    devLog.warn('[teamver] chat-save: PUT non-ok', {
       projectId,
       conversationId,
       messageId: message.id,

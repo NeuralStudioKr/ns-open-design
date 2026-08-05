@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { devLog } from '../lib/devLog';
 import { useAnalytics } from '../analytics/provider';
 import { trackFileManagerClick } from '../analytics/events';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
@@ -773,7 +774,7 @@ export function DesignFilesPanel({
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
-      console.warn('[batchDownload] failed:', err);
+      devLog.warn('[batchDownload] failed:', err);
     }
   }
 

@@ -26,6 +26,7 @@
  * forms — so AssistantMessage can render the form inline.
  */
 import { parsePartialJson } from '../runtime/partial-json';
+import { devLog } from '../lib/devLog';
 
 export type QuestionType =
   | 'radio'
@@ -635,7 +636,7 @@ function recordQuestionFormParseFailure(
   tagName: string,
   body: string,
 ): void {
-  console.warn('[question-form] failed to render inline question form', {
+  devLog.warn('[question-form] failed to render inline question form', {
     reason: reason ?? 'unsupported-payload',
     tagName,
     bodyLength: body.length,

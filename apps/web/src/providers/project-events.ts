@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { devLog } from '../lib/devLog';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import type {
   LiveArtifactRefreshSsePayload,
@@ -88,14 +89,8 @@ export function createProjectEventsConnection(
         onChange(data);
       } catch (err) {
         // Ignore malformed payloads — we'll get more on the next change.
-        // Log in dev so payload-shape bugs don't go silent during testing.
-        if (
-          typeof process !== 'undefined' &&
-          process.env?.NODE_ENV === 'development'
-        ) {
-          // eslint-disable-next-line no-console
-          console.warn('[project-events] malformed file-changed payload', err);
-        }
+        // Log outside production so payload-shape bugs don't go silent.
+        devLog.warn('[project-events] malformed file-changed payload', err);
       }
     });
     const handleLiveArtifactEvent = (evt: Event) => {
@@ -103,13 +98,7 @@ export function createProjectEventsConnection(
         const data = JSON.parse((evt as MessageEvent).data) as ProjectLiveArtifactEvent;
         onChange(data);
       } catch (err) {
-        if (
-          typeof process !== 'undefined' &&
-          process.env?.NODE_ENV === 'development'
-        ) {
-          // eslint-disable-next-line no-console
-          console.warn('[project-events] malformed live-artifact payload', err);
-        }
+        devLog.warn('[project-events] malformed live-artifact payload', err);
       }
     };
     es.addEventListener('live_artifact', handleLiveArtifactEvent);
@@ -121,13 +110,7 @@ export function createProjectEventsConnection(
         ) as ProjectConversationCreatedEvent;
         onChange(data);
       } catch (err) {
-        if (
-          typeof process !== 'undefined' &&
-          process.env?.NODE_ENV === 'development'
-        ) {
-          // eslint-disable-next-line no-console
-          console.warn('[project-events] malformed conversation-created payload', err);
-        }
+        devLog.warn('[project-events] malformed conversation-created payload', err);
       }
     });
     es.addEventListener('error', () => {

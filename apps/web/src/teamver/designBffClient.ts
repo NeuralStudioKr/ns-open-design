@@ -15,6 +15,7 @@ import {
   prepareTeamverLoginNavigation,
 } from "./designApiBase";
 import { handleEmbedPassiveUnauthorized } from "./teamverEmbedPassiveAuth";
+import { devLog } from '../lib/devLog';
 import {
   clearOrphanTeamverAuthCookies,
   isOrphanTeamverJwtAuthFailure,
@@ -840,7 +841,7 @@ export async function refreshDesignAuthCookie(
       }
       markAuthRefreshDeclined("soft");
       if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
-        console.info(
+        devLog.info(
           '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
           { status: bffResult.status },
         );
@@ -854,7 +855,7 @@ export async function refreshDesignAuthCookie(
       // but must not POST /auth/refresh until resetRefreshState / sign-in.
       markAuthRefreshDeclined("hard");
       if (isOrphanTeamverJwtAuthFailure(bffResult.status, bffResult.bodyText)) {
-        console.info(
+        devLog.info(
           '[teamver] auth: orphan JWT detected on BFF refresh; clearing Main BE cookie',
           { status: bffResult.status },
         );
