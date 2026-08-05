@@ -1,9 +1,10 @@
+import { useCallback, useState } from 'react';
 import { projectRawUrl } from '../providers/registry';
 import {
   useAuthenticatedProjectFileObjectUrl,
 } from '../hooks/useAuthenticatedProjectFileObjectUrl';
-import { isTeamverEmbedMode } from '../teamver/designApiBase';
-import { isProjectRawFileKnownMissing } from '../utils/projectFileFetchCache';
+import { shouldUseTeamverAuthenticatedProjectRawFetch } from '../teamver/designApiBase';
+import { clearProjectRawFileMissing, isProjectRawFileKnownMissing } from '../utils/projectFileFetchCache';
 import { Icon } from './Icon';
 
 type AuthenticatedProjectFileImageProps = {
@@ -25,6 +26,8 @@ type AuthenticatedProjectFileImageProps = {
   allowBackgroundRetry?: boolean;
 };
 
+const TRUSTED_IMAGE_ERROR_RETRIES = 2;
+
 /**
  * Renders a project file image. In Teamver embed, fetches with daemon auth
  * headers and uses a blob URL so thumbnails do not spam raw GET 404s.
@@ -39,16 +42,26 @@ export function AuthenticatedProjectFileImage({
   trustExists = false,
   allowBackgroundRetry = false,
 }: AuthenticatedProjectFileImageProps) {
-  const embed = isTeamverEmbedMode();
-  const shouldFetch = fetchEnabled && embed && !isProjectRawFileKnownMissing(projectId, path);
+  const useAuthenticatedFetch = shouldUseTeamverAuthenticatedProjectRawFetch();
+  const [errorRetry, setErrorRetry] = useState(0);
+  const shouldFetch = fetchEnabled
+    && useAuthenticatedFetch
+    && (trustExists || !isProjectRawFileKnownMissing(projectId, path));
+  const fetchRev = rev != null ? `${rev}:${errorRetry}` : errorRetry;
   const { src: objectUrl, loading, failed } = useAuthenticatedProjectFileObjectUrl(
     shouldFetch ? projectId : null,
     shouldFetch ? path : null,
-    shouldFetch ? rev ?? null : null,
+    shouldFetch ? fetchRev : null,
     shouldFetch ? trustExists : false,
     shouldFetch ? allowBackgroundRetry : false,
   );
-  const src = embed ? objectUrl : projectRawUrl(projectId, path);
+  const src = useAuthenticatedFetch ? objectUrl : projectRawUrl(projectId, path);
+
+  const handleImageError = useCallback(() => {
+    if (!trustExists || errorRetry >= TRUSTED_IMAGE_ERROR_RETRIES) return;
+    clearProjectRawFileMissing(projectId, path);
+    setErrorRetry((count) => count + 1);
+  }, [errorRetry, path, projectId, trustExists]);
 
   if (!fetchEnabled) return null;
 
@@ -75,6 +88,7 @@ export function AuthenticatedProjectFileImage({
       alt={alt}
       className={className}
       decoding="async"
+      onError={handleImageError}
     />
   );
 }

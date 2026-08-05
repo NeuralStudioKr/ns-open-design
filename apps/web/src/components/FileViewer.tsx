@@ -13236,9 +13236,10 @@ function ImageViewer({
         <AuthenticatedProjectFileImage
           projectId={projectId}
           path={filePath}
-          alt={file.name}
+          alt=""
           rev={Math.round(file.mtime)}
           trustExists
+          allowBackgroundRetry
         />
       </div>
     </div>
@@ -13430,10 +13431,11 @@ export function SvgViewer({
         {mode === 'preview' ? (
           <AuthenticatedProjectFileImage
             projectId={projectId}
-            path={file.name}
-            alt={file.name}
+            path={projectFileResolvedPath(file)}
+            alt=""
             rev={`${Math.round(file.mtime)}-${reloadKey}`}
             trustExists
+            allowBackgroundRetry
           />
         ) : loadingSource ? (
           <div className="viewer-empty">{t('fileViewer.loading')}</div>

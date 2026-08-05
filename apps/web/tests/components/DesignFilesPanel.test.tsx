@@ -291,7 +291,10 @@ describe('DesignFilesPanel preview', () => {
       expect(container.querySelector('[data-testid="sketch-preview-svg"]')).toBeTruthy();
     });
     expect(container.querySelector('.df-preview-thumb img')).toBeNull();
-    expect(fetchMock).toHaveBeenCalledWith('/api/projects/test-project/raw/board.sketch.json', { cache: 'no-store' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/test-project/raw/board.sketch.json',
+      expect.objectContaining({ cache: 'no-store' }),
+    );
   });
 });
 

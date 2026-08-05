@@ -43,6 +43,7 @@ import {
   uploadProjectFiles,
   writeProjectTextFileDetailed,
 } from '../providers/registry';
+import { projectFileResolvedPath } from '../utils/projectFilePaths';
 import { deriveFileOps, type FileOpEntry } from '../runtime/file-ops';
 import { latestTodosFromEvents, type TodoItem } from '../runtime/todos';
 import { deliverableSlideNavForActiveFile, isSlideNavDeliverableNow } from '../runtime/slide-nav';
@@ -4176,10 +4177,11 @@ function DesignSystemInlinePreview({
   return (
     <AuthenticatedProjectFileImage
       projectId={projectId}
-      path={file.name}
-      alt={file.name}
+      path={projectFileResolvedPath(file)}
+      alt=""
       rev={Math.round(file.mtime)}
       trustExists
+      allowBackgroundRetry
     />
   );
 }

@@ -96,6 +96,28 @@ describe('loadAuthenticatedProjectFileBlob', () => {
     expect(blob).toBe(imageBlob);
   });
 
+  it('clears a poisoned missing cache when trustExists is set', async () => {
+    const drawingPath = 'msees0i8-drawing-2026-08-04T08-41-03-101Z.png';
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+    const imageBlob = new Blob([pngBytes], { type: 'image/png' });
+    markProjectRawFileMissing('project-1', drawingPath);
+    const fetchDaemon = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => imageBlob,
+    } as Response);
+
+    const blob = await loadAuthenticatedProjectFileBlob('project-1', drawingPath, {
+      delaysMs: [0],
+      trustExists: true,
+      fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
+      waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
+    });
+
+    expect(blob).toBe(imageBlob);
+    expect(isProjectRawFileKnownMissing('project-1', drawingPath)).toBe(false);
+    expect(fetchDaemon).toHaveBeenCalledTimes(1);
+  });
+
   it('marks drawing screenshots missing after a single 404 pass and skips repeat fetches', async () => {
     const fetchDaemon = vi.fn().mockResolvedValue({ ok: false, status: 404 } as Response);
 

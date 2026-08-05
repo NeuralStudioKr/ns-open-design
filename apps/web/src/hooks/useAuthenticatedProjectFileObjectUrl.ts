@@ -97,8 +97,8 @@ async function loadAuthenticatedProjectFileBlobInner(
   const id = projectId.trim();
   const path = filePath.trim();
   if (!id || !path) return null;
-  if (isProjectRawFileKnownMissing(id, path)) return null;
   if (options?.trustExists) clearProjectRawFileMissing(id, path);
+  else if (isProjectRawFileKnownMissing(id, path)) return null;
 
   const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
   const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
@@ -109,7 +109,7 @@ async function loadAuthenticatedProjectFileBlobInner(
     : [path];
 
   for (let attempt = 0; attempt < delays.length; attempt += 1) {
-    if (attempt > 0 && isProjectRawFileKnownMissing(id, path)) return null;
+    if (attempt > 0 && !trustExists && isProjectRawFileKnownMissing(id, path)) return null;
 
     const delay = delays[attempt] ?? 0;
     if (delay > 0) await sleep(delay);
@@ -182,7 +182,8 @@ export async function loadAuthenticatedProjectFileBlob(
 
     for (const waitMs of TRUSTED_BACKGROUND_RETRY_DELAYS_MS) {
       await sleep(waitMs);
-      if (isProjectRawFileKnownMissing(id, path)) return null;
+      if (options?.trustExists) clearProjectRawFileMissing(id, path);
+      else if (isProjectRawFileKnownMissing(id, path)) return null;
       blob = await loadAuthenticatedProjectFileBlobInner(id, path, options);
       if (blob) return blob;
     }
@@ -250,7 +251,7 @@ export function useAuthenticatedProjectFileObjectUrl(
       return;
     }
 
-    if (isProjectRawFileKnownMissing(projectId, path)) {
+    if (!trustExists && isProjectRawFileKnownMissing(projectId, path)) {
       setImageSrc(null);
       setLoading(false);
       setFailed(true);
