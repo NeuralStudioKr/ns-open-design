@@ -40,7 +40,13 @@ import {
   type ResizeHandle,
   type ResizeSessionStart,
 } from '../edit-mode/resize-math';
+import {
+  snapMoveDelta,
+  type SnapGuide,
+  type SnapSource,
+} from '../edit-mode/manual-edit-geometry-snap';
 import type { ManualEditRect, ManualEditStyles, ManualEditTarget } from '../edit-mode/types';
+import { ManualEditSnapGuides } from './ManualEditSnapGuides';
 import styles from './ManualEditResizeOverlay.module.css';
 
 export type ManualEditResizeOverlayProps = {
@@ -99,6 +105,8 @@ export type ManualEditResizeOverlayProps = {
    * dblclick so the iframe can still enter contenteditable.
    */
   onStartTextEdit?: (targetId: string) => void;
+  snapSources?: readonly SnapSource[];
+  snapEnabled?: boolean;
 };
 
 type GestureHostGeom = {
@@ -147,6 +155,7 @@ type MoveDragState = {
   /** Pre-promote cssPosition (`static` / `relative` / `sticky`) for promote styles. */
   promoteCssPosition: string;
   lastViewport: { x: number; y: number };
+  lastGuides: SnapGuide[];
   /** See ResizeDragState.sealed. */
   sealed?: boolean;
 } & GestureHostGeom;
@@ -218,10 +227,13 @@ export function ManualEditResizeOverlay({
   onMoveCommit,
   onMoveCancel,
   onStartTextEdit,
+  snapSources = [],
+  snapEnabled = true,
 }: ManualEditResizeOverlayProps) {
   const dragRef = useRef<DragState | null>(null);
   const [dragging, setDragging] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   /** Viewport-space overlay origin during promote (CSS left/top are CB-relative). */
   const [liveViewportPos, setLiveViewportPos] = useState<{ x: number; y: number } | null>(null);
   const onMovePreviewRef = useRef(onMovePreview);
@@ -234,6 +246,10 @@ export function ManualEditResizeOverlay({
   onResizeCancelRef.current = onResizeCancel;
   const onResizeSessionChangeRef = useRef(onResizeSessionChange);
   onResizeSessionChangeRef.current = onResizeSessionChange;
+  const snapSourcesRef = useRef(snapSources);
+  snapSourcesRef.current = snapSources;
+  const snapEnabledRef = useRef(snapEnabled);
+  snapEnabledRef.current = snapEnabled;
 
   const gestureGeom = dragRef.current;
   const composeScale = gestureGeom?.hostScale ?? previewScale;
@@ -321,6 +337,7 @@ export function ManualEditResizeOverlay({
       setDragging(false);
       setMoving(false);
       setLiveViewportPos(null);
+      setSnapGuides([]);
       onResizeSessionChangeRef.current?.(false);
       // Bare click+Esc must not wipe panel drafts / bake computed styles.
       if (!previewed) return;
@@ -360,6 +377,7 @@ export function ManualEditResizeOverlay({
         setDragging(false);
         setMoving(false);
         setLiveViewportPos(null);
+        setSnapGuides([]);
       };
       void (async () => {
         try {
@@ -392,7 +410,7 @@ export function ManualEditResizeOverlay({
       if (!drag || drag.sealed || event.pointerId !== drag.pointerId) return;
       const hostDx = event.clientX - drag.startClientX;
       const hostDy = event.clientY - drag.startClientY;
-      const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, drag.hostScale);
+      let { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, drag.hostScale);
 
       if (drag.kind === 'resize') {
         if (Math.hypot(dx, dy) < MANUAL_EDIT_RESIZE_MIN_DELTA_PX && !drag.previewed) return;
@@ -413,6 +431,21 @@ export function ManualEditResizeOverlay({
         return;
       }
 
+      if (event.shiftKey) {
+        if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
+        else dx = 0;
+      }
+      if (snapEnabledRef.current && snapSourcesRef.current.length > 0) {
+        const snapped = snapMoveDelta(drag.startRect, dx, dy, snapSourcesRef.current);
+        dx = snapped.dx;
+        dy = snapped.dy;
+        drag.lastGuides = snapped.guides;
+        setSnapGuides(snapped.guides);
+      } else {
+        drag.lastGuides = [];
+        setSnapGuides([]);
+      }
+
       const result = computeMove({
         startLeftPx: drag.startLeftPx,
         startTopPx: drag.startTopPx,
@@ -420,7 +453,7 @@ export function ManualEditResizeOverlay({
         minDeltaPx: MANUAL_EDIT_MOVE_MIN_DELTA_PX,
         dx,
         dy,
-        shiftKey: event.shiftKey,
+        shiftKey: false,
       });
       drag.moved = result.moved;
       // Viewport overlay tracks startRect+Δ for every body-drag. CSS left/top
@@ -627,6 +660,7 @@ export function ManualEditResizeOverlay({
       promote,
       promoteCssPosition: String(startTarget.cssPosition ?? 'static'),
       lastViewport: { x: startTarget.rect.x, y: startTarget.rect.y },
+      lastGuides: [],
       hostScale: geom.hostScale,
       hostOffset: geom.hostOffset,
     };
@@ -682,6 +716,12 @@ export function ManualEditResizeOverlay({
   };
 
   return (
+    <>
+    <ManualEditSnapGuides
+      guides={snapGuides}
+      previewScale={composeScale}
+      hostOffset={composeOffset}
+    />
     <div
       className={[
         styles.overlay,
@@ -729,5 +769,6 @@ export function ManualEditResizeOverlay({
         />
       ))}
     </div>
+    </>
   );
 }

@@ -368,6 +368,7 @@ import {
   type GroupAlignKind,
   type GroupDistributeKind,
 } from '../edit-mode/manual-edit-group-align';
+import { collectSnapSources } from '../edit-mode/manual-edit-geometry-snap';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditRect, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import {
@@ -12019,6 +12020,24 @@ function HtmlViewer({
     manualEditGeometryOptions,
     manualEditTargetIsDescendantOf,
   );
+  const manualEditSnapPageBounds = useMemo(() => ({
+    x: 0,
+    y: 0,
+    width: previewBodySize?.width ?? 1200,
+    height: previewBodySize?.height ?? 800,
+  }), [previewBodySize?.width, previewBodySize?.height]);
+  const manualEditSnapExcludeIds = useMemo(
+    () => new Set(selectedManualEditTargetIds),
+    [selectedManualEditTargetIds],
+  );
+  const manualEditSnapSources = useMemo(
+    () => collectSnapSources(
+      manualEditTargets,
+      manualEditSnapExcludeIds,
+      manualEditSnapPageBounds,
+    ),
+    [manualEditTargets, manualEditSnapExcludeIds, manualEditSnapPageBounds],
+  );
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionUndoUnavailableTooltip = revisionStackInvalidated
@@ -12211,6 +12230,7 @@ function HtmlViewer({
             '*',
           );
         }}
+        snapSources={manualEditSnapSources}
       />
     ) : null;
   const manualEditMultiSelectOverlay =
@@ -12249,6 +12269,7 @@ function HtmlViewer({
         }}
         onGroupResizeCancel={handleManualEditGroupResizeCancel}
         onGestureSessionChange={handleManualEditResizeSessionChange}
+        snapSources={manualEditSnapSources}
       />
     ) : null;
   const activeComposerComment = activePreviewCommentId

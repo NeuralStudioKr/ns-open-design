@@ -711,6 +711,10 @@
   z-index: 20;
 }
 
+.manual-edit-workspace > [data-testid='manual-edit-snap-guides'] {
+  z-index: 19;
+}
+
 .manual-edit-workspace > .manual-edit-hover-action {
   position: absolute;
   z-index: 21;
