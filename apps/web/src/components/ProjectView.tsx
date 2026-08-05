@@ -3390,7 +3390,10 @@ export function ProjectView({
         if (activeRuns.length > 0) {
           setReattachNonce((value) => value + 1);
         }
-        setPreviewComments(comments);
+        // Tombstone filter must apply here too: a fresh conversation reload
+        // (auth recovery / visibility retry) can otherwise resurrect a
+        // just-deleted memo while the daemon DELETE is still in flight.
+        setPreviewComments(filterLocallyDeletedPreviewComments(comments));
         setAttachedComments([]);
         setArtifact(null);
         setError(null);
@@ -5814,18 +5817,49 @@ export function ProjectView({
   const removePreviewComment = useCallback(
     async (commentId: string) => {
       if (!activeConversationId) return;
+      const removedComment = previewComments.find((comment) => comment.id === commentId);
+      const removedAttachedIndex = attachedComments.findIndex(
+        (comment) => comment.id === commentId,
+      );
+      const removedAttached = removedAttachedIndex >= 0
+        ? attachedComments[removedAttachedIndex]
+        : null;
       // Optimistic drop first, tombstone against refresh races, then daemon DELETE.
       noteLocallyDeletedPreviewComment(commentId);
       setPreviewComments((current) => current.filter((comment) => comment.id !== commentId));
       setAttachedComments((current) => removeAttachedComment(current, commentId));
       const ok = await deletePreviewComment(project.id, activeConversationId, commentId);
       if (!ok) {
-        // Rollback tombstone so a future refresh can re-render the row that
-        // survived on the daemon.
+        // Rollback: daemon still has the row. Restore local UI to match, and
+        // clear the tombstone so future refreshes will re-render it too.
         locallyDeletedPreviewCommentsRef.current.delete(commentId);
+        if (removedComment) {
+          setPreviewComments((current) =>
+            current.some((comment) => comment.id === commentId)
+              ? current
+              : [...current, removedComment],
+          );
+        }
+        if (removedAttached) {
+          setAttachedComments((current) =>
+            current.some((comment) => comment.id === commentId)
+              ? current
+              : mergeAttachedComments(current, removedAttached),
+          );
+        }
+        setError(embedUiLabel(
+          'Failed to delete the memo. Please try again.',
+          '메모를 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+        ));
       }
     },
-    [project.id, activeConversationId, noteLocallyDeletedPreviewComment],
+    [
+      project.id,
+      activeConversationId,
+      noteLocallyDeletedPreviewComment,
+      previewComments,
+      attachedComments,
+    ],
   );
 
   const attachPreviewComment = useCallback((comment: PreviewComment) => {

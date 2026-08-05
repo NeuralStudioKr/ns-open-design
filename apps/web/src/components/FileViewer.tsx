@@ -13351,12 +13351,28 @@ function ImageViewer({
   const canAct = Boolean(blob.src) && !blob.loading;
   const openInNewTab = () => {
     if (!blob.src) return;
-    const win = window.open(blob.src, '_blank', 'noopener,noreferrer');
-    if (!win) return;
+    const url = blob.src;
+    // Popup-blocker friendly path: synthesize an anchor with target=_blank and
+    // click it inside the same user gesture. Falls back to `window.open` when
+    // the anchor click is silently swallowed (e.g. some embed sandboxes).
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
     try {
-      win.opener = null;
+      link.click();
     } catch {
-      /* some browsers throw on cross-origin opener reset */
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (win) {
+        try {
+          win.opener = null;
+        } catch {
+          /* some browsers throw on cross-origin opener reset */
+        }
+      }
+    } finally {
+      link.remove();
     }
   };
   const downloadBlob = () => {
