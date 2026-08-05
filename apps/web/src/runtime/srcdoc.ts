@@ -127,11 +127,14 @@ export function buildSrcdoc(
     ? html
     : repairArtifactDocumentHead(html);
   const repaired = stripConflictingSrcDocCspBaseUri(repairedHead);
-  const wrapped = wrapPreviewHtmlShell(repaired);
-  // One DOMParser for missing od-id + optional source-path annotation (was 2×).
-  const withAnnotations = annotatePreviewEditTargets(wrapped, {
-    sourcePaths: Boolean(options.editBridge),
-  });
+  // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
+  const wrapped = wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
+  // Export docs skip od-id / source-path annotation (no selection/edit bridges).
+  const withAnnotations = options.exportDocument
+    ? wrapped
+    : annotatePreviewEditTargets(wrapped, {
+        sourcePaths: Boolean(options.editBridge),
+      });
   const withBase = options.baseHref ? injectBaseHref(withAnnotations, options.baseHref) : withAnnotations;
   const withShim = injectSandboxShim(withBase);
   const withRedirectGuard = options.exportDocument

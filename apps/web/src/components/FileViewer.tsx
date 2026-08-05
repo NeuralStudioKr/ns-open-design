@@ -9432,14 +9432,18 @@ function HtmlViewer({
     );
   }
 
-  function reconcileManualEditDraftAfterNoOpFlush(pending: ManualEditPendingStyleSave) {
+  function reconcileManualEditDraftAfterNoOpFlush(
+    pending: ManualEditPendingStyleSave,
+    sharedParsedDoc?: Document | null,
+  ) {
     const base = sourceRef.current ?? '';
     if (!base) return;
     const keys = Object.keys(pending.styles) as Array<keyof ManualEditStyles>;
     if (keys.length === 0) return;
 
     // One Document for all pending/selected targets (was N× snapshot parses).
-    const parsedDoc = parseManualEditSource(base);
+    // Prefer caller-shared doc from single-id flush (avoid parse ×2).
+    const parsedDoc = sharedParsedDoc ?? parseManualEditSource(base);
     const pendingIds = pending.targetIds ?? [pending.id];
     for (const id of pendingIds) {
       const target = id === '__body__'
@@ -9562,14 +9566,14 @@ function HtmlViewer({
       }
       return true;
     }
-    // One style read for diff — apply captures post-mutate snapshot for reconcile
-    // (was 3× full-deck parse: diff + apply + reconcile).
-    const sourceStyles = readManualEditStyles(baseSource, pending.id);
+    // One Document for style read + no-op reconcile (was parse ×2 on no-op flush).
+    const parsedDoc = parseManualEditSource(baseSource);
+    const sourceStyles = readManualEditStyles(baseSource, pending.id, {}, parsedDoc);
     const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles, {
       sourceStyles,
     });
     if (Object.keys(effectiveStyles).length === 0) {
-      reconcileManualEditDraftAfterNoOpFlush(pending);
+      reconcileManualEditDraftAfterNoOpFlush(pending, parsedDoc);
       return true;
     }
     const ok = await applyManualEdit(
@@ -9823,7 +9827,7 @@ function HtmlViewer({
         ),
       );
       setManualEditMixedStyleKeys(mixedKeys);
-      const snapshot = readManualEditTargetSnapshot(base, primary.id);
+      const snapshot = readManualEditTargetSnapshot(base, primary.id, {}, parsedDoc);
       setManualEditDraft({
         text: snapshot.fields.text ?? primary.fields.text ?? primary.text,
         href: snapshot.fields.href ?? primary.fields.href ?? '',

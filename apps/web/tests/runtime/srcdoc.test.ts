@@ -551,5 +551,19 @@ describe('buildSrcdoc', () => {
     expect(srcdocSource).toContain('artifactDocumentHeadLooksIntact');
     expect(srcdocSource).toContain('annotateMissingOdIdsOnDocument');
     expect(srcdocSource).toContain('annotateManualEditSourcePathsOnDocument');
+    expect(srcdocSource).toContain("wrapPreviewHtmlShell(repaired, { alreadyRepaired: true })");
+    expect(srcdocSource).toContain('options.exportDocument');
+    expect(srcdocSource).toContain('? wrapped');
+  });
+
+  it('skips od-id annotation for exportDocument builds', () => {
+    const dom = new JSDOM('');
+    globalThis.DOMParser = dom.window.DOMParser;
+    const srcdoc = buildSrcdoc('<section><h1>Title</h1></section>', {
+      exportDocument: true,
+    });
+    Reflect.deleteProperty(globalThis, 'DOMParser');
+    expect(srcdoc).not.toContain('data-od-id=');
+    expect(srcdoc).not.toContain('data-od-preview-redirect-guard');
   });
 });

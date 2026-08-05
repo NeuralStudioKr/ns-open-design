@@ -951,6 +951,16 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(scope.allowedSlideIndexes).toContain(1);
   });
 
+  it('reconcileCommentScopeForPersist shares one section pass across attachments', () => {
+    const scope = reconcileCommentScopeForPersist(CURRENT_HTML, [
+      attachment(0),
+      { ...attachment(1), currentText: 'Keep me', htmlHint: '' },
+    ]);
+    expect(scope.attachments).toHaveLength(2);
+    expect(scope.allowedSlideIndexes?.length).toBeGreaterThan(0);
+    expect(scope.attachments[0]?.slideIndex).toBe(1);
+  });
+
   it('merges id-bearing attachment with stale slideIndex across candidates', () => {
     const patchedHtml = CURRENT_HTML.replace(
       '뉴럴스튜디오㈜는 Agentic AI OS 기반의 AI-native 회사입니다.',

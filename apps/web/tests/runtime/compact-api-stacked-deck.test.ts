@@ -34,6 +34,16 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(looksLikeCompactApiStackedDeck(wrapPreviewHtmlShell(fragment))).toBe(true);
   });
 
+  it('supports alreadyRepaired wrap skip for buildSrcdoc hot path', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, '../../src/runtime/compact-api-stacked-deck.ts'),
+      'utf8',
+    );
+    expect(source).toContain('alreadyRepaired');
+    expect(source).toContain('WrapPreviewHtmlShellOptions');
+    expect(wrapPreviewHtmlShell('<main>x</main>', { alreadyRepaired: true })).toContain('<!doctype html>');
+  });
+
   it('rejects framework decks with #deck-stage', () => {
     const html = readFileSync(resolve(repoRoot, 'templates/deck-framework.html'), 'utf8');
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);

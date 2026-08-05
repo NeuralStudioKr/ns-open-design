@@ -1,8 +1,16 @@
 import { repairArtifactDocumentHead } from '@open-design/contracts';
 
+export type WrapPreviewHtmlShellOptions = {
+  /** Caller already ran repair (or verified intact head) — skip the first repair pass. */
+  alreadyRepaired?: boolean;
+};
+
 /** Mirror buildSrcdoc's fragment wrap so preview detection matches iframe input. */
-export function wrapPreviewHtmlShell(html: string): string {
-  const repaired = repairArtifactDocumentHead(html);
+export function wrapPreviewHtmlShell(
+  html: string,
+  options?: WrapPreviewHtmlShellOptions,
+): string {
+  const repaired = options?.alreadyRepaired ? html : repairArtifactDocumentHead(html);
   const head = repaired.trimStart().slice(0, 64).toLowerCase();
   const isFullDoc = head.startsWith('<!doctype') || head.startsWith('<html');
   if (isFullDoc) return repaired;
@@ -14,12 +22,14 @@ export function wrapPreviewHtmlShell(html: string): string {
   </head>
   <body>${repaired}</body>
 </html>`;
+  // Fragment wrap always needs a final repair pass for the new shell.
   return repairArtifactDocumentHead(wrapped);
 }
 
 /** Same repaired + wrapped HTML buildSrcdoc and the host preview use for detection. */
 export function prepareCompactStackedDeckPreviewHtml(html: string): string {
-  return wrapPreviewHtmlShell(repairArtifactDocumentHead(html));
+  const repaired = repairArtifactDocumentHead(html);
+  return wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
 }
 
 function extractCssBlocks(html: string): string {
