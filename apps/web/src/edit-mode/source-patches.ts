@@ -2084,6 +2084,28 @@ export function syncSvgDimensionAttributesFromStyles(
   syncSvgDimensionAttributes(el, styles);
 }
 
+function syncGraphicChildDimensionsFromStyles(
+  el: HTMLElement,
+  styles: Partial<ManualEditStyles>,
+): void {
+  const tag = el.tagName.toLowerCase();
+  if (tag !== 'div' && tag !== 'section' && tag !== 'article') return;
+  if (
+    !Object.prototype.hasOwnProperty.call(styles, 'width')
+    && !Object.prototype.hasOwnProperty.call(styles, 'height')
+  ) {
+    return;
+  }
+  if (el.children.length !== 1) return;
+  const child = el.children[0] as HTMLElement;
+  const childTag = child.tagName.toLowerCase();
+  if (childTag !== 'svg' && childTag !== 'img') return;
+  const childStyles: Partial<ManualEditStyles> = { display: 'block', maxWidth: 'none', maxHeight: 'none' };
+  if (Object.prototype.hasOwnProperty.call(styles, 'width')) childStyles.width = styles.width;
+  if (Object.prototype.hasOwnProperty.call(styles, 'height')) childStyles.height = styles.height;
+  setInlineStyles(child, childStyles);
+}
+
 function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
   const coerced = coerceManualEditStyleRecord(styles as Record<string, unknown>);
   for (const [name, value] of Object.entries(coerced)) {
@@ -2101,6 +2123,7 @@ function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): vo
     }
   }
   syncSvgDimensionAttributes(el, styles);
+  syncGraphicChildDimensionsFromStyles(el, styles);
 }
 
 function setAttributes(

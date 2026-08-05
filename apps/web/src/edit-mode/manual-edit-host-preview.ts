@@ -83,7 +83,36 @@ export function applyManualEditPreviewStylesToDocument(
     }
   }
   syncSvgDimensionAttributesFromStyles(el, styles);
+  syncGraphicChildPreview(el, styles);
   return true;
+}
+
+function syncGraphicChildPreview(el: HTMLElement, styles: Partial<ManualEditStyles>): void {
+  const tag = el.tagName.toLowerCase();
+  if (tag !== 'div' && tag !== 'section' && tag !== 'article') return;
+  if (
+    !Object.prototype.hasOwnProperty.call(styles, 'width')
+    && !Object.prototype.hasOwnProperty.call(styles, 'height')
+  ) {
+    return;
+  }
+  if (el.children.length !== 1) return;
+  const child = el.children[0] as HTMLElement;
+  const childTag = child.tagName.toLowerCase();
+  if (childTag !== 'svg' && childTag !== 'img') return;
+  const childStyles: Partial<ManualEditStyles> = { display: 'block', maxWidth: 'none', maxHeight: 'none' };
+  if (Object.prototype.hasOwnProperty.call(styles, 'width')) childStyles.width = styles.width;
+  if (Object.prototype.hasOwnProperty.call(styles, 'height')) childStyles.height = styles.height;
+  const coerced = coerceManualEditStyleRecord(childStyles as Record<string, unknown>);
+  for (const [key, rawValue] of Object.entries(coerced)) {
+    const cssName = camelToKebab(key);
+    if (typeof rawValue !== 'string' || rawValue.trim() === '') {
+      child.style.removeProperty(cssName);
+    } else {
+      child.style.setProperty(cssName, rawValue.trim(), 'important');
+    }
+  }
+  syncSvgDimensionAttributesFromStyles(child, childStyles);
 }
 
 /**

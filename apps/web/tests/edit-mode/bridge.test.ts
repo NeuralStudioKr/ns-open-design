@@ -4,11 +4,13 @@ import {
   MANUAL_EDIT_DISCOVERY_SELECTOR,
   buildManualEditBridge,
   buildManualEditBridgeStyle,
+  isDeckSlideRootElement,
   isMeaningfulManualEditElement,
   isManualEditHostNode,
   isSourceMappableManualEditElement,
   manualEditDomPathForElement,
   manualEditStableIdForElement,
+  resolveGraphicContainerTarget,
 } from '../../src/edit-mode/bridge';
 
 describe('manual edit bridge target normalization', () => {
@@ -54,6 +56,83 @@ describe('manual edit bridge target normalization', () => {
     expect(isMeaningfulManualEditElement(title, { width: 80, height: 24 })).toBe(true);
     expect(isMeaningfulManualEditElement(title, { width: 3, height: 24 })).toBe(false);
     expect(isMeaningfulManualEditElement(script, { width: 80, height: 24 })).toBe(false);
+  });
+
+  it('resolveGraphicContainerTarget redirects deck cover svg to absolute wrapper', () => {
+    const dom = new JSDOM(`
+      <section class="slide" data-screen-label="01 Cover">
+        <div data-od-source-path="path-0-1" style="position:absolute;left:855px;top:322px;width:775px;height:508px;display:flex;align-items:center;justify-content:center;pointer-events:none">
+          <svg data-od-source-path="path-0-1-0" viewBox="0 0 400 400" width="420" height="420">
+            <circle cx="200" cy="200" r="16" fill="#818cf8"></circle>
+            <text x="200" y="207">NS</text>
+          </svg>
+        </div>
+      </section>
+    `);
+    const wrap = dom.window.document.querySelector('div')!;
+    const svg = dom.window.document.querySelector('svg')!;
+    const circle = dom.window.document.querySelector('circle')!;
+
+    expect(isDeckSlideRootElement(dom.window.document.querySelector('section')!)).toBe(true);
+    expect(resolveGraphicContainerTarget(svg)).toBe(wrap);
+    expect(resolveGraphicContainerTarget(circle)).toBe(circle);
+    expect(resolveGraphicContainerTarget(wrap)).toBe(wrap);
+
+    dom.window.close();
+  });
+
+  it('selects absolute graphic wrapper (not inner svg) for deck cover icons', () => {
+    const dom = new JSDOM(
+      `<section class="slide" data-screen-label="01 Cover">
+        <div data-od-source-path="path-0-1" style="position:absolute;left:855px;top:322px;width:775px;height:508px;display:flex;align-items:center;justify-content:center;pointer-events:none">
+          <svg data-od-source-path="path-0-1-0" viewBox="0 0 400 400" width="420" height="420">
+            <circle cx="200" cy="200" r="16" fill="#818cf8"></circle>
+            <text x="200" y="207">NS</text>
+          </svg>
+        </div>
+      </section>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const posts: Array<{ type?: string; target?: { id?: string; kind?: string; tagName?: string; rect?: { width: number; height: number }; styles?: Record<string, string> } }> = [];
+    const wrap = dom.window.document.querySelector('div')!;
+    const svg = dom.window.document.querySelector('svg')!;
+    const circle = dom.window.document.querySelector('circle')!;
+    wrap.getBoundingClientRect = () => ({
+      x: 855, y: 322, width: 775, height: 508,
+      top: 322, right: 1630, bottom: 830, left: 855,
+      toJSON: () => ({}),
+    } as DOMRect);
+    svg.getBoundingClientRect = () => ({
+      x: 1032, y: 366, width: 420, height: 420,
+      top: 366, right: 1452, bottom: 786, left: 1032,
+      toJSON: () => ({}),
+    } as DOMRect);
+    circle.getBoundingClientRect = svg.getBoundingClientRect;
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+
+    circle.dispatchEvent(new dom.window.MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 1100,
+      clientY: 420,
+    }));
+
+    const select = posts.find((message) => message.type === 'od-edit-select');
+    expect(select?.target?.tagName).toBe('div');
+    expect(select?.target?.kind).toBe('container');
+    expect(select?.target?.id).toBe('path-0-1');
+    expect(select?.target?.styles?.position).toBe('absolute');
+    expect(select?.target?.styles?.left).toBe('855px');
+    expect(select?.target?.styles?.top).toBe('322px');
+    expect(select?.target?.rect).toMatchObject({ width: 775, height: 508 });
+
+    dom.window.close();
   });
 
   it('includes svg in discovery so logos are not selected as parent containers', () => {
