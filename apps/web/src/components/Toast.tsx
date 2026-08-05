@@ -10,7 +10,7 @@
 // explanation (e.g. Anthropic account-usage-cap reasons) can surface
 // the real upstream message alongside the daemon's category label.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 
 import { Icon } from './Icon';
@@ -68,23 +68,25 @@ export function Toast({ message, details, detailsHref, detailLinks, code, ttlMs 
   // auto-dismiss it out from under the user mid-copy.
   const effectiveTtl = code ? 0 : ttlMs;
   const [leaving, setLeaving] = useState(false);
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
 
   useEffect(() => {
     // Re-entrant: a new message reuses the same mounted toast, so clear any
     // prior leaving state before re-arming the timers.
     setLeaving(false);
-    if (!onDismiss || !Number.isFinite(effectiveTtl) || effectiveTtl <= 0) return;
+    if (!onDismissRef.current || !Number.isFinite(effectiveTtl) || effectiveTtl <= 0) return;
     // Begin the fade-out EXIT_MS before the deadline so the exit animation
     // plays within the TTL window and onDismiss (which unmounts us) lands at
     // exactly effectiveTtl. Clamp the fade start to 0 for very short TTLs.
     const fadeAt = Math.max(0, effectiveTtl - EXIT_MS);
     const fadeId = window.setTimeout(() => setLeaving(true), fadeAt);
-    const dismissId = window.setTimeout(() => onDismiss(), effectiveTtl);
+    const dismissId = window.setTimeout(() => onDismissRef.current?.(), effectiveTtl);
     return () => {
       window.clearTimeout(fadeId);
       window.clearTimeout(dismissId);
     };
-  }, [message, details, code, effectiveTtl, onDismiss]);
+  }, [message, details, code, effectiveTtl]);
 
   const iconName = TONE_ICON[tone];
   const closeLabel = t('common.close');

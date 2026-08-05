@@ -5653,6 +5653,13 @@ function HtmlViewer({
   }, [hideFileRevisionChrome]);
   const [revisionConflictToast, setRevisionConflictToast] = useState<string | null>(null);
   const [revisionDiskSyncToast, setRevisionDiskSyncToast] = useState<string | null>(null);
+  const dismissRevisionConflictToast = useCallback(() => {
+    revisionConflictSuppressedRef.current = true;
+    setRevisionConflictToast(null);
+  }, []);
+  const dismissRevisionDiskSyncToast = useCallback(() => {
+    setRevisionDiskSyncToast(null);
+  }, []);
   const [revisionStackInvalidated, setRevisionStackInvalidated] = useState(false);
   const [revisionRetentionLimit, setRevisionRetentionLimit] = useState(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
   const [revisionRetentionPending, setRevisionRetentionPending] = useState(false);
@@ -7612,7 +7619,6 @@ function HtmlViewer({
         || reconcileOutcome === 'preserve_history_cursor'
       ) {
         setRevisionStackInvalidated(false);
-        revisionConflictSuppressedRef.current = false;
         setRevisionConflictToast(null);
         return;
       }
@@ -7656,7 +7662,6 @@ function HtmlViewer({
 
     if (reconcileOutcomeWithoutMatch === 'preserve_history_cursor') {
       setRevisionStackInvalidated(false);
-      revisionConflictSuppressedRef.current = false;
       setRevisionConflictToast(null);
       return;
     }
@@ -13138,9 +13143,7 @@ function HtmlViewer({
           onAction={() => {
             void retryPendingRevisionDiskSync();
           }}
-          onDismiss={() => {
-            setRevisionDiskSyncToast(null);
-          }}
+          onDismiss={dismissRevisionDiskSyncToast}
         />,
         document.body,
       ) : null}
@@ -13151,10 +13154,7 @@ function HtmlViewer({
           ttlMs={5000}
           role="alert"
           tone="error"
-          onDismiss={() => {
-            revisionConflictSuppressedRef.current = true;
-            setRevisionConflictToast(null);
-          }}
+          onDismiss={dismissRevisionConflictToast}
         />,
         document.body,
       ) : null}

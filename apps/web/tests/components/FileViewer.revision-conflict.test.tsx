@@ -88,6 +88,73 @@ describe('FileViewer revision conflict', () => {
     });
     expect(getPersistedSource()).toBe(persistedBeforeKeyboardUndo);
   });
+
+  it('keeps the conflict toast dismissed after the user closes it', async () => {
+    const initialSource = heroSource();
+    const { fetchMock, getPersistedSource, setPersistedSource } = createProjectFileRevisionFetchMock({
+      projectId: 'project-1',
+      fileName: 'preview.html',
+      initialSource,
+    });
+    vi.stubGlobal('fetch', vi.fn(fetchMock));
+
+    const view = render(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml={initialSource}
+        filesRefreshKey={0}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('manual-edit-mode-toggle'));
+    await selectManualEditTarget();
+
+    act(() => {
+      panelState.props?.onApplyPatch(
+        { kind: 'set-style', id: 'hero', styles: { color: '#ef4444' } },
+        'Style: Hero',
+      );
+    });
+    await waitFor(() => expect(getPersistedSource()).toContain('rgb(239, 68, 68)'));
+
+    setPersistedSource(initialSource.replace('#111111', '#0000ff'));
+
+    view.rerender(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml={initialSource}
+        filesRefreshKey={1}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toMatch(/Undo and Redo are unavailable|실행 취소와 다시 실행을 사용할 수 없/);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Close/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    view.rerender(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml={initialSource}
+        filesRefreshKey={2}
+      />,
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });
 
 async function selectManualEditTarget(target = heroTarget()) {

@@ -15,6 +15,7 @@
   overflow: visible;
 }
 .viewer-toolbar {
+  --viewer-toolbar-height: 44px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -24,7 +25,7 @@
   font-size: 12.5px;
   color: var(--text-muted);
   gap: 8px;
-  min-height: 44px;
+  min-height: var(--viewer-toolbar-height);
   flex-shrink: 0;
 }
 .viewer-toolbar-left { display: inline-flex; align-items: center; gap: 8px; }

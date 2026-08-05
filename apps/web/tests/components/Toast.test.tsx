@@ -74,6 +74,19 @@ describe('Toast', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
+  it('does not reset the auto-dismiss timer when the parent passes a new onDismiss identity', () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    const { rerender } = render(
+      <Toast message="Saved" ttlMs={2000} onDismiss={onDismiss} />,
+    );
+    rerender(<Toast message="Saved" ttlMs={2000} onDismiss={() => onDismiss()} />);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the dismiss control on the same row as the message (no stacked chip)', () => {
     const { container } = render(
       <Toast message="Saved" tone="success" onDismiss={() => {}} />,

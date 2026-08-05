@@ -116,11 +116,13 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
   z-index: 1000;
   pointer-events: auto;
+  -webkit-app-region: no-drag;
 }
 .od-toast.placement-top {
-  top: 64px;
+  top: calc(var(--workspace-tabs-chrome-height, 38px) + var(--viewer-toolbar-height, 44px) + 8px);
   bottom: auto;
-  z-index: 1200;
+  /* Above workspace chrome (≤1300), staged preview modals (1200), and tooltips (4000 is pointer-events:none). */
+  z-index: 10000;
 }
 .od-toast.tone-success {
   border: 1px solid color-mix(in srgb, var(--success, #2da44e) 42%, var(--border));
@@ -261,6 +263,8 @@
 /* Icon dismiss sits on the same row as the message — never a second
    white chip that wraps under success/error toasts. */
 .od-toast-dismiss {
+  position: relative;
+  z-index: 1;
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
@@ -276,6 +280,8 @@
   opacity: 0.62;
   cursor: pointer;
   line-height: 1;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
 }
 .od-toast-dismiss:hover {
   opacity: 1;
