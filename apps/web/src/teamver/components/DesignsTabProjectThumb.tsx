@@ -13,7 +13,7 @@ type Props = {
   onCoverOverride?: (cover: ProjectCoverFile | null) => void;
 };
 
-/** DesignsTab grid card thumb — cover-hints batch; Teamver embed stays hints-only. */
+/** DesignsTab grid card thumb — cover-hints first, `/files` if hints miss (visible only). */
 export function DesignsTabProjectThumb({
   project,
   liveCount = 0,
@@ -23,6 +23,7 @@ export function DesignsTabProjectThumb({
 }: Props) {
   const { anchorRef, cover, override } = useLazyProjectCover(project, {
     deferUntilVisible: true,
+    allowFilesFallback: true,
   });
 
   useEffect(() => {

@@ -15,24 +15,26 @@ export type ResolveProjectCoverOptions = {
   allowFilesFallback?: boolean;
 };
 
-/** Embed project list cards — cover-hints + metadata only; no per-card `/files` listing. */
+/** Embed warm/prefetch may stay hints-only; visible cards still use `/files` fallback. */
 export function embedProjectCoverHintsOnly(): boolean {
   return isTeamverEmbedMode() && isTeamverEmbedDesignSurfaceEnabled();
 }
 
+/**
+ * Warm / first-viewport cover-hints batch — no `/files` fan-out.
+ * Visible DesignsTab thumbs must NOT use this (see `useLazyProjectCover`).
+ */
 export function resolveProjectCoverOptionsForListSurface(): ResolveProjectCoverOptions {
   return embedProjectCoverHintsOnly() ? { allowFilesFallback: false } : {};
 }
 
 /**
  * Home recent rail — bounded at HOME_RECENT_LIST_LIMIT.
- * Teamver embed stays hints-only (same as DesignsTab) so a single miss does not
- * fan out `GET /api/projects/:id/files` on boot. Standalone OD may fall back.
+ * Always allow `/files` after hints miss so thumbs stay painted when cover-hints
+ * are empty/fail. Concurrency is capped by HOME_COVER_FETCH_CONCURRENCY.
  */
 export function resolveProjectCoverOptionsForHomeSurface(): ResolveProjectCoverOptions {
-  return embedProjectCoverHintsOnly()
-    ? { allowFilesFallback: false }
-    : { allowFilesFallback: true };
+  return { allowFilesFallback: true };
 }
 
 type CoverCacheEntry = {

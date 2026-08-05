@@ -12,9 +12,9 @@ import { isTeamverEmbedMode } from "./designApiBase";
 
 /**
  * Home recent rail covers.
- * Cover-hints first. Teamver embed is hints-only (no per-card `/files` listing);
- * standalone OD may fall back to `/files` within HOME_RECENT_LIST_LIMIT.
- * DesignsTab keeps hints-only via resolveProjectCoverOptionsForListSurface.
+ * Cover-hints first, then `/files` within HOME_RECENT_LIST_LIMIT when hints miss.
+ * DesignsTab warm prefetch stays hints-only; visible cards use useLazyProjectCover
+ * with `/files` fallback.
  */
 export async function prefetchHomeProjectCovers(
   projects: Project[],
@@ -35,6 +35,6 @@ export async function prefetchHomeProjectCovers(
   const homeOpts = resolveProjectCoverOptionsForHomeSurface();
   return resolveProjectCoverFiles(recent, {
     concurrency: HOME_COVER_FETCH_CONCURRENCY,
-    allowFilesFallback: homeOpts.allowFilesFallback ?? true,
+    allowFilesFallback: homeOpts.allowFilesFallback !== false,
   });
 }

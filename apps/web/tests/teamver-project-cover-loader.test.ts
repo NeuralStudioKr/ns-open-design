@@ -59,15 +59,16 @@ describe("projectCoverLoader", () => {
     resetProjectCoverLoaderStateForTests();
   });
 
-  it("embed list surfaces default to hints-only cover resolve options", () => {
+  it("embed warm/list prefetch is hints-only; home visible rail keeps /files fallback", () => {
     vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(isTeamverEmbedDesignSurfaceEnabled).mockReturnValue(true);
     expect(embedProjectCoverHintsOnly()).toBe(true);
     expect(resolveProjectCoverOptionsForListSurface()).toEqual({
       allowFilesFallback: false,
     });
+    // Home is bounded (HOME_RECENT_LIST_LIMIT) — always allow /files after hints miss.
     expect(resolveProjectCoverOptionsForHomeSurface()).toEqual({
-      allowFilesFallback: false,
+      allowFilesFallback: true,
     });
 
     vi.mocked(isTeamverEmbedMode).mockReturnValue(false);

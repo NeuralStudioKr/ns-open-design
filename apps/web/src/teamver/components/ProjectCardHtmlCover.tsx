@@ -117,22 +117,44 @@ function AuthenticatedHtmlCover({
       setVisible(true);
       return;
     }
-    const node = frameRef.current;
-    if (!node) return;
-    if (typeof IntersectionObserver === "undefined" || isNearViewport(node)) {
-      setVisible(true);
-      return;
-    }
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry?.isIntersecting) return;
+    let cancelled = false;
+    let observer: IntersectionObserver | null = null;
+    let raf = 0;
+    let attempts = 0;
+    const attach = () => {
+      if (cancelled) return;
+      const node = frameRef.current;
+      if (!node) {
+        // First paint can run the effect before the frame ref is committed.
+        // Retry a few frames instead of leaving visible=false forever.
+        attempts += 1;
+        if (attempts > 8) {
+          setVisible(true);
+          return;
+        }
+        raf = requestAnimationFrame(attach);
+        return;
+      }
+      if (typeof IntersectionObserver === "undefined" || isNearViewport(node)) {
         setVisible(true);
-        observer.disconnect();
-      },
-      { rootMargin: `${VIEWPORT_ROOT_MARGIN_PX}px` },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
+        return;
+      }
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry?.isIntersecting) return;
+          setVisible(true);
+          observer?.disconnect();
+        },
+        { rootMargin: `${VIEWPORT_ROOT_MARGIN_PX}px` },
+      );
+      observer.observe(node);
+    };
+    attach();
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+      observer?.disconnect();
+    };
   }, [cacheKey, deferUntilVisible]);
 
   useEffect(() => {

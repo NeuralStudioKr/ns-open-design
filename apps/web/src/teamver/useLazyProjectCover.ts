@@ -4,13 +4,16 @@ import { buildProjectCardCover, type ProjectCardCover } from "./projectCardCover
 import {
   projectNeedsCoverFileFetch,
   resolveProjectCoverFile,
-  resolveProjectCoverOptionsForListSurface,
 } from "./projectCoverLoader";
 import type { ProjectCoverFile } from "./projectPreviewFile";
 
 type Options = {
   deferUntilVisible?: boolean;
-  /** When omitted, embed list surfaces stay hints-only; standalone may use `/files`. */
+  /**
+   * Visible cards default to `/files` after cover-hints miss.
+   * Do not inherit list-surface hints-only here — that path is for warm/prefetch
+   * only and previously blanked DesignsTab thumbs when hints were empty.
+   */
   allowFilesFallback?: boolean;
 };
 
@@ -25,11 +28,7 @@ export function useLazyProjectCover(
   project: Project,
   options: Options = {},
 ): LazyProjectCoverState {
-  const { deferUntilVisible = true, allowFilesFallback: allowFilesFallbackOption } = options;
-  const allowFilesFallback =
-    allowFilesFallbackOption
-    ?? resolveProjectCoverOptionsForListSurface().allowFilesFallback
-    ?? true;
+  const { deferUntilVisible = true, allowFilesFallback = true } = options;
   const anchorRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(!deferUntilVisible);
   const [override, setOverride] = useState<ProjectCoverFile | null>(null);
