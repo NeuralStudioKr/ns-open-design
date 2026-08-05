@@ -12,6 +12,8 @@ export type ProjectFileSignedUrlState = {
   src: string | null;
   loading: boolean;
   failed: boolean;
+  /** Object confirmed missing via mint 404 — callers must not `/raw/` fallback. */
+  missing: boolean;
   expiresAt: string | null;
 };
 
@@ -22,7 +24,6 @@ type HookOptions = {
 
 /**
  * Resolve a short-lived S3 GET URL for Teamver embed image loads.
- * Falls back to `{ src: null, failed: true }` so callers can use `/raw/` blob.
  */
 export function useProjectFileSignedUrl(
   projectId: string | null | undefined,
@@ -37,6 +38,7 @@ export function useProjectFileSignedUrl(
     src: null,
     loading: Boolean(usePresign && projectId && filePath),
     failed: false,
+    missing: false,
     expiresAt: null,
   });
 
@@ -44,34 +46,40 @@ export function useProjectFileSignedUrl(
     const id = typeof projectId === 'string' ? projectId.trim() : '';
     const path = typeof filePath === 'string' ? filePath.trim() : '';
     if (!usePresign || !id || !path) {
-      setState({ src: null, loading: false, failed: false, expiresAt: null });
+      setState({ src: null, loading: false, failed: false, missing: false, expiresAt: null });
       return;
     }
     if (!trustExists && isProjectRawFileKnownMissing(id, path)) {
-      setState({ src: null, loading: false, failed: true, expiresAt: null });
+      setState({ src: null, loading: false, failed: true, missing: true, expiresAt: null });
       return;
     }
 
     let cancelled = false;
-    setState({ src: null, loading: true, failed: false, expiresAt: null });
+    setState({ src: null, loading: true, failed: false, missing: false, expiresAt: null });
 
     void (async () => {
-      const minted = await fetchProjectFilePresignedGet(id, path);
+      const result = await fetchProjectFilePresignedGet(id, path);
       if (cancelled) return;
-      if (!minted) {
-        setState({ src: null, loading: false, failed: true, expiresAt: null });
+      if (result.kind === 'ready') {
+        clearProjectRawFileMissing(id, path);
+        setState({
+          src: result.mint.url,
+          loading: false,
+          failed: false,
+          missing: false,
+          expiresAt: result.mint.expiresAt,
+        });
         return;
       }
-      clearProjectRawFileMissing(id, path);
-      setState({
-        src: minted.url,
-        loading: false,
-        failed: false,
-        expiresAt: minted.expiresAt,
-      });
+      if (result.kind === 'missing') {
+        markProjectRawFileMissing(id, path);
+        setState({ src: null, loading: false, failed: true, missing: true, expiresAt: null });
+        return;
+      }
+      setState({ src: null, loading: false, failed: true, missing: false, expiresAt: null });
     })().catch(() => {
       if (cancelled) return;
-      setState({ src: null, loading: false, failed: true, expiresAt: null });
+      setState({ src: null, loading: false, failed: true, missing: false, expiresAt: null });
     });
 
     return () => {
@@ -80,9 +88,4 @@ export function useProjectFileSignedUrl(
   }, [filePath, projectId, rev, trustExists, usePresign]);
 
   return state;
-}
-
-/** @internal vitest helper */
-export function markPresignMissAsRawMissing(projectId: string, path: string): void {
-  markProjectRawFileMissing(projectId, path);
 }

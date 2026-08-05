@@ -149,16 +149,21 @@ export function validateCommentEditIntentRespected(input: {
   mergedHtml: string;
   commentAttachments: readonly ChatCommentAttachment[];
   instructionText?: string;
+  /** When set, skip a second DOMParser (deck-patch finalize / full-deck guard). */
+  parsedDoc?: Document | null;
 }): { ok: true } | { ok: false; reason: string } {
   const instruction = [
     input.instructionText,
     ...input.commentAttachments.map((attachment) => attachment.comment),
   ].filter(Boolean).join('\n');
-  if (!looksLikeStyleOnlyCommentRequest(instruction)) {
+  // Style ∪ layout ∪ alignment — "한 줄로" / "정렬" must not wipe pinned text either.
+  if (!looksLikePresentationTweakCommentRequest(instruction)) {
     return { ok: true };
   }
 
-  const parsedDoc = parseManualEditSource(input.mergedHtml);
+  const parsedDoc = input.parsedDoc !== undefined
+    ? input.parsedDoc
+    : parseManualEditSource(input.mergedHtml);
   for (const attachment of input.commentAttachments) {
     if (attachment.selectionKind === 'visual') continue;
     const hint = {
@@ -184,7 +189,7 @@ export function validateCommentEditIntentRespected(input: {
       return {
         ok: false,
         reason:
-          'style-only comment edit removed or emptied the pinned target text; use set-style (e.g. fontSize) and keep currentText verbatim',
+          'presentation-only comment edit removed or emptied the pinned target text; keep currentText verbatim while changing style/layout/alignment',
       };
     }
   }

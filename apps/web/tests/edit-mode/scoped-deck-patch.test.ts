@@ -8,6 +8,7 @@ import {
   mergeScopedCommentTargetsFromPatchedDeck,
   reconcileCommentAttachmentElementId,
   reconcileCommentAttachmentSlideIndex,
+  reconcileCommentScopeForPersist,
   resolveElementPatchAllowedSlideIndexes,
   resolveScopedCommentSlideCandidates,
   scopedCommentElementIds,
@@ -889,5 +890,51 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(repaired).toContain('od-visual-mark-target');
     expect(repaired).not.toMatch(/onload/i);
     expect(repaired).not.toMatch(/onerror/i);
+  });
+
+  it('skips full-source sanitize when graft is called with sanitize:false', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+<section class="slide" data-slide-index="1"><p>Keep this text</p></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      note: '하트 그려줘',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 1,
+    });
+    const raw = graftVisualMarksIntoDeckHtml(deck, [visual], { sanitize: false });
+    const scrubbed = graftVisualMarksIntoDeckHtml(deck, [visual]);
+    expect(raw).toContain('od-visual-mark-target');
+    expect(scrubbed).toContain('od-visual-mark-target');
+    // Default path still runs full-source scrub; unsanitized path is for
+    // callers that own terminal sanitize (stabilize → applyScoped / salvage).
+    expect(sanitizeManualEditFullSource(raw ?? '')).toContain('Keep this text');
+    expect(scrubbed).toContain('Keep this text');
+  });
+
+  it('reconcileCommentScopeForPersist returns attachments and slide indexes together', () => {
+    const scope = reconcileCommentScopeForPersist(CURRENT_HTML, [attachment(0)]);
+    expect(scope.attachments[0]?.slideIndex).toBe(1);
+    expect(scope.allowedSlideIndexes).toContain(1);
+  });
+
+  it('merges id-bearing attachment with stale slideIndex across candidates', () => {
+    const patchedHtml = CURRENT_HTML.replace(
+      '뉴럴스튜디오㈜는 Agentic AI OS 기반의 AI-native 회사입니다.',
+      '<strong>뉴럴스튜디오㈜</strong>는 Agentic AI OS 기반의 AI-native 회사입니다.',
+    );
+    const result = mergeScopedCommentTargetsFromPatchedDeck({
+      currentHtml: CURRENT_HTML,
+      patchedHtml,
+      commentAttachments: [attachment(0)],
+      instructionText: '회사 이름 눈에 잘 띄게 수정',
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.html).toContain('<strong>뉴럴스튜디오㈜</strong>');
+    expect(result.narrowed).toBe(true);
   });
 });

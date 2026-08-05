@@ -1,5 +1,7 @@
-import { cascadeRollbackStyle, canMoveTarget, startPositionFromTarget } from './move-math';
+import { filterRootTargetsForGroupGeometry } from './manual-edit-selection-ancestry';
+import { canMoveTarget, cascadeRollbackStyle, startPositionFromTarget } from './move-math';
 import { diffManualEditStylePatch } from './manual-edit-style-batch';
+import { parseManualEditSource, readManualEditStyles } from './source-patches';
 import {
   MANUAL_EDIT_RESIZE_MIN_DELTA_PX,
   MANUAL_EDIT_RESIZE_MIN_PX,
@@ -34,11 +36,22 @@ export function groupResizeHistoryLabel(count: number): string {
 export function canGroupBoundingResize(
   targets: readonly ManualEditTarget[],
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
+  isDescendant?: (childId: string, ancestorId: string) => boolean,
 ): boolean {
-  if (targets.length < 2) return false;
-  return targets.every(
+  const roots = resolveGroupResizableTargets(targets, options, isDescendant);
+  return roots.length >= 2;
+}
+
+export function resolveGroupResizableTargets(
+  targets: readonly ManualEditTarget[],
+  options?: { editMode?: boolean; inlineTextEditing?: boolean },
+  isDescendant?: (childId: string, ancestorId: string) => boolean,
+): ManualEditTarget[] {
+  const resizable = targets.filter(
     (target) => canMoveTarget(target, options) && canResizeTarget(target, options),
   );
+  if (!isDescendant || resizable.length < 2) return resizable;
+  return filterRootTargetsForGroupGeometry(resizable, isDescendant);
 }
 
 export function buildGroupResizeMemberStarts(
@@ -200,9 +213,14 @@ export function buildGroupResizeStylePatches(
     dy,
     shiftKey,
   );
+  // One Document for all member diffs (was N× readManualEditStyles).
+  const parsedDoc = parseManualEditSource(baseSource);
   const patches: Array<Extract<ManualEditPatch, { kind: 'set-style' }>> = [];
   for (const update of updates) {
-    const effective = diffManualEditStylePatch(baseSource, update.id, update.styles);
+    const sourceStyles = readManualEditStyles(baseSource, update.id, {}, parsedDoc);
+    const effective = diffManualEditStylePatch(baseSource, update.id, update.styles, {
+      sourceStyles,
+    });
     if (Object.keys(effective).length === 0) continue;
     patches.push({ id: update.id, kind: 'set-style', styles: effective });
   }

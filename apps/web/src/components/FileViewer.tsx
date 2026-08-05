@@ -262,6 +262,7 @@ import { FileRevisionHistoryPanel } from './FileRevisionHistoryPanel';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
+  parseManualEditSource,
   readManualEditStyles,
   readManualEditTargetSnapshot,
 } from '../edit-mode/source-patches';
@@ -336,6 +337,7 @@ import {
   manualEditSelectionIdsEqual,
   nextManualEditSelectionIds,
   resolveManualEditTargetsByIds,
+  MANUAL_EDIT_MULTI_SELECT_MAX,
   shouldFlushManualEditStylesOnSelectionBoundary,
 } from '../edit-mode/manual-edit-multi-select';
 import {
@@ -343,6 +345,7 @@ import {
   buildGroupMoveStylePatches,
   canGroupBoundingMove,
   groupMoveHistoryLabel,
+  resolveGroupMovableTargets,
   type GroupMoveMemberStart,
   type GroupMovePreviewUpdate,
 } from '../edit-mode/manual-edit-group-move';
@@ -351,6 +354,7 @@ import {
   buildGroupResizeStylePatches,
   canGroupBoundingResize,
   groupResizeHistoryLabel,
+  resolveGroupResizableTargets,
   type GroupResizeMemberStart,
   type GroupResizePreviewUpdate,
 } from '../edit-mode/manual-edit-group-resize';
@@ -365,6 +369,7 @@ import {
   type GroupAlignKind,
   type GroupDistributeKind,
 } from '../edit-mode/manual-edit-group-align';
+import { collectSnapSources } from '../edit-mode/manual-edit-geometry-snap';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditRect, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import {
@@ -8558,8 +8563,10 @@ function HtmlViewer({
     id: string,
     savedStyles: Partial<ManualEditStyles>,
     savedSource: string,
+    /** When apply already captured styles/outerHtml, skip a third full-deck parse. */
+    capturedSnapshot?: ReturnType<typeof readManualEditTargetSnapshot>,
   ) {
-    const snapshot = readManualEditTargetSnapshot(savedSource, id);
+    const snapshot = capturedSnapshot ?? readManualEditTargetSnapshot(savedSource, id);
     if (id !== '__body__' && !snapshot.outerHtml) {
       setManualEditError(
         embedUiLabel(
@@ -9181,10 +9188,7 @@ function HtmlViewer({
     updates: GroupMovePreviewUpdate[],
     stylesBefore: Record<string, Partial<ManualEditStyles>>,
   ) {
-    const targets = resolveManualEditTargetsByIds(
-      selectedManualEditTargetIdsRef.current,
-      manualEditTargets,
-    );
+    const targets = resolveSelectedManualEditMoveTargets();
     if (targets.length < 2 || updates.length === 0) return;
     handleManualEditGroupMovePreview(updates);
     const memberStarts = buildGroupMoveMemberStarts(targets);
@@ -9245,10 +9249,7 @@ function HtmlViewer({
     dy: number,
     shiftKey: boolean,
   ) {
-    const targets = resolveManualEditTargetsByIds(
-      selectedManualEditTargetIdsRef.current,
-      manualEditTargets,
-    );
+    const targets = resolveSelectedManualEditResizeTargets();
     if (targets.length < 2 || updates.length === 0) return;
     handleManualEditGroupResizePreview(updates);
     const memberStarts = buildGroupResizeMemberStarts(targets);
@@ -9304,10 +9305,7 @@ function HtmlViewer({
     updates: GroupMovePreviewUpdate[],
     label: string,
   ): Promise<boolean> {
-    const targets = resolveManualEditTargetsByIds(
-      selectedManualEditTargetIdsRef.current,
-      manualEditTargets,
-    );
+    const targets = resolveSelectedManualEditMoveTargets();
     if (targets.length < 2 || updates.length === 0) return false;
     handleManualEditGroupGeometryPreview(updates, label);
     const baseSource = manualEditPatchBaseSource({
@@ -9334,14 +9332,8 @@ function HtmlViewer({
   }
 
   async function handleManualEditGroupAlign(kind: GroupAlignKind) {
-    const targets = resolveManualEditTargetsByIds(
-      selectedManualEditTargetIdsRef.current,
-      manualEditTargets,
-    );
-    if (!canGroupAlign(targets, {
-      editMode: manualEditMode,
-      inlineTextEditing: manualEditInlineTextEditing,
-    })) return;
+    const targets = resolveSelectedManualEditMoveTargets();
+    if (!canGroupAlign(targets, selectedManualEditGeometryOptions(), manualEditTargetIsDescendantOf)) return;
     const updates = computeGroupAlignPreviewUpdates(targets, kind);
     await applyManualEditGroupGeometryAction(
       updates,
@@ -9350,14 +9342,8 @@ function HtmlViewer({
   }
 
   async function handleManualEditGroupDistribute(kind: GroupDistributeKind) {
-    const targets = resolveManualEditTargetsByIds(
-      selectedManualEditTargetIdsRef.current,
-      manualEditTargets,
-    );
-    if (!canGroupDistribute(targets, {
-      editMode: manualEditMode,
-      inlineTextEditing: manualEditInlineTextEditing,
-    })) return;
+    const targets = resolveSelectedManualEditMoveTargets();
+    if (!canGroupDistribute(targets, selectedManualEditGeometryOptions(), manualEditTargetIsDescendantOf)) return;
     const updates = computeGroupDistributePreviewUpdates(targets, kind);
     await applyManualEditGroupGeometryAction(
       updates,
@@ -9445,9 +9431,13 @@ function HtmlViewer({
       return false;
     }
     if (pending.perTargetStyles) {
+      const parsedDoc = parseManualEditSource(baseSource);
       const patches = Object.entries(pending.perTargetStyles)
         .map(([id, styles]) => {
-          const effectiveStyles = diffManualEditStylePatch(baseSource, id, styles);
+          const sourceStyles = readManualEditStyles(baseSource, id, {}, parsedDoc);
+          const effectiveStyles = diffManualEditStylePatch(baseSource, id, styles, {
+            sourceStyles,
+          });
           if (Object.keys(effectiveStyles).length === 0) return null;
           return { id, kind: 'set-style' as const, styles: effectiveStyles };
         })
@@ -9466,7 +9456,6 @@ function HtmlViewer({
       }
       return true;
     }
-    const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles);
     const targetIds = pending.targetIds ?? [pending.id];
     if (targetIds.length > 1) {
       const patches = buildManualEditStylePatchesForTargets(baseSource, targetIds, pending.styles);
@@ -9484,6 +9473,12 @@ function HtmlViewer({
       }
       return true;
     }
+    // One style read for diff — apply captures post-mutate snapshot for reconcile
+    // (was 3× full-deck parse: diff + apply + reconcile).
+    const sourceStyles = readManualEditStyles(baseSource, pending.id);
+    const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles, {
+      sourceStyles,
+    });
     if (Object.keys(effectiveStyles).length === 0) {
       reconcileManualEditDraftAfterNoOpFlush(pending);
       return true;
@@ -9575,6 +9570,49 @@ function HtmlViewer({
     if (win) win.postMessage({ type: 'od-edit-hover-reset' }, '*');
   }
 
+  function manualEditTargetIsDescendantOf(childId: string, ancestorId: string): boolean {
+    if (childId === ancestorId) return false;
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return false;
+    const child = doc.querySelector<HTMLElement>(`[data-od-id="${CSS.escape(childId)}"]`);
+    const ancestor = doc.querySelector<HTMLElement>(`[data-od-id="${CSS.escape(ancestorId)}"]`);
+    if (!child || !ancestor) return false;
+    return ancestor.contains(child);
+  }
+
+  function selectedManualEditGeometryOptions() {
+    return {
+      editMode: manualEditMode,
+      inlineTextEditing: manualEditInlineTextEditing,
+    };
+  }
+
+  function resolveSelectedManualEditMoveTargets(
+    targets: readonly ManualEditTarget[] = resolveManualEditTargetsByIds(
+      selectedManualEditTargetIdsRef.current,
+      manualEditTargets,
+    ),
+  ) {
+    return resolveGroupMovableTargets(
+      targets,
+      selectedManualEditGeometryOptions(),
+      manualEditTargetIsDescendantOf,
+    );
+  }
+
+  function resolveSelectedManualEditResizeTargets(
+    targets: readonly ManualEditTarget[] = resolveManualEditTargetsByIds(
+      selectedManualEditTargetIdsRef.current,
+      manualEditTargets,
+    ),
+  ) {
+    return resolveGroupResizableTargets(
+      targets,
+      selectedManualEditGeometryOptions(),
+      manualEditTargetIsDescendantOf,
+    );
+  }
+
   async function selectManualEditTarget(
     target: ManualEditTarget,
     options?: { additive?: boolean },
@@ -9586,6 +9624,8 @@ function HtmlViewer({
       currentIds,
       target.id,
       options?.additive ?? false,
+      MANUAL_EDIT_MULTI_SELECT_MAX,
+      manualEditTargetIsDescendantOf,
     );
     if (nextIds.length === 0) {
       await clearManualEditTargetSelection();
@@ -9779,12 +9819,16 @@ function HtmlViewer({
     try {
       // Sanitize on the live Document before serialize — avoids a second
       // full-document DOMParser pass via sanitizeManualEditFullSource.
+      // Capture target snapshot for set-style reconcile (skip a third parse).
       const result = applyManualEditPatch(
         baseSource,
         patch,
         { ...scope, targetHint: hint },
         hint,
-        { sanitize: isManualEditFullHtmlDocument(baseSource) },
+        {
+          sanitize: isManualEditFullHtmlDocument(baseSource),
+          captureTargetSnapshot: patch.kind === 'set-style',
+        },
       );
       if (!result.ok) {
         setManualEditError(
@@ -9915,7 +9959,12 @@ function HtmlViewer({
         setManualEditDraft((current) => ({ ...current, fullSource: contentToSave }));
       }
       if (patch.kind === 'set-style') {
-        reconcileManualEditStyleSave(patch.id, patch.styles, contentToSave);
+        reconcileManualEditStyleSave(
+          patch.id,
+          patch.styles,
+          contentToSave,
+          result.targetSnapshot,
+        );
       }
       setManualEditError(null);
       await onFileSaved?.();
@@ -9947,7 +9996,12 @@ function HtmlViewer({
     setManualEditSaving(true);
     setManualEditError(null);
     try {
-      const result = applyManualEditPatches(baseSource, patches);
+      // One Document for all batch ops + per-id snapshots for reconcile
+      // (was N× parse/serialize via sequential applyManualEditPatch).
+      const result = applyManualEditPatches(baseSource, patches, {
+        sanitize: isManualEditFullHtmlDocument(baseSource),
+        captureTargetSnapshots: true,
+      });
       if (!result.ok) {
         setManualEditError(
           result.error ?? embedUiLabel('Could not apply edit.', '편집을 적용하지 못했습니다.'),
@@ -10013,7 +10067,12 @@ function HtmlViewer({
           : []);
       for (const patch of patches) {
         if (patch.kind === 'set-style') {
-          reconcileManualEditStyleSave(patch.id, patch.styles, result.source);
+          reconcileManualEditStyleSave(
+            patch.id,
+            patch.styles,
+            result.source,
+            result.targetSnapshots?.[patch.id],
+          );
         }
         if (pendingIds.includes(patch.id)) {
           manualEditPendingStyleRef.current = null;
@@ -11948,22 +12007,52 @@ function HtmlViewer({
     manualEditTargets,
   );
   const manualEditMultiSelectActive = selectedManualEditTargetsForPanel.length > 1;
-  const manualEditGroupMoveEnabled = canGroupBoundingMove(selectedManualEditTargetsForPanel, {
-    editMode: manualEditMode,
-    inlineTextEditing: manualEditInlineTextEditing,
-  });
-  const manualEditGroupResizeEnabled = canGroupBoundingResize(selectedManualEditTargetsForPanel, {
-    editMode: manualEditMode,
-    inlineTextEditing: manualEditInlineTextEditing,
-  });
-  const manualEditGroupAlignEnabled = canGroupAlign(selectedManualEditTargetsForPanel, {
-    editMode: manualEditMode,
-    inlineTextEditing: manualEditInlineTextEditing,
-  });
-  const manualEditGroupDistributeEnabled = canGroupDistribute(selectedManualEditTargetsForPanel, {
-    editMode: manualEditMode,
-    inlineTextEditing: manualEditInlineTextEditing,
-  });
+  const manualEditGeometryOptions = selectedManualEditGeometryOptions();
+  const selectedManualEditMoveGeometryTargets = resolveGroupMovableTargets(
+    selectedManualEditTargetsForPanel,
+    manualEditGeometryOptions,
+    manualEditTargetIsDescendantOf,
+  );
+  const selectedManualEditResizeGeometryTargets = resolveGroupResizableTargets(
+    selectedManualEditTargetsForPanel,
+    manualEditGeometryOptions,
+    manualEditTargetIsDescendantOf,
+  );
+  const manualEditGroupMoveEnabled = selectedManualEditMoveGeometryTargets.length >= 2;
+  const manualEditGroupResizeEnabled = selectedManualEditResizeGeometryTargets.length >= 2;
+  const manualEditMultiSelectOverlayTargets = manualEditGroupResizeEnabled
+    ? selectedManualEditResizeGeometryTargets
+    : manualEditGroupMoveEnabled
+      ? selectedManualEditMoveGeometryTargets
+      : selectedManualEditTargetsForPanel;
+  const manualEditGroupAlignEnabled = canGroupAlign(
+    selectedManualEditMoveGeometryTargets,
+    manualEditGeometryOptions,
+    manualEditTargetIsDescendantOf,
+  );
+  const manualEditGroupDistributeEnabled = canGroupDistribute(
+    selectedManualEditMoveGeometryTargets,
+    manualEditGeometryOptions,
+    manualEditTargetIsDescendantOf,
+  );
+  const manualEditSnapPageBounds = useMemo(() => ({
+    x: 0,
+    y: 0,
+    width: previewBodySize?.width ?? 1200,
+    height: previewBodySize?.height ?? 800,
+  }), [previewBodySize?.width, previewBodySize?.height]);
+  const manualEditSnapExcludeIds = useMemo(
+    () => new Set(selectedManualEditTargetIds),
+    [selectedManualEditTargetIds],
+  );
+  const manualEditSnapSources = useMemo(
+    () => collectSnapSources(
+      manualEditTargets,
+      manualEditSnapExcludeIds,
+      manualEditSnapPageBounds,
+    ),
+    [manualEditTargets, manualEditSnapExcludeIds, manualEditSnapPageBounds],
+  );
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionUndoUnavailableTooltip = revisionStackInvalidated
@@ -12156,6 +12245,7 @@ function HtmlViewer({
             '*',
           );
         }}
+        snapSources={manualEditSnapSources}
       />
     ) : null;
   const manualEditMultiSelectOverlay =
@@ -12163,7 +12253,7 @@ function HtmlViewer({
     && !drawOverlayOpen
     && manualEditMultiSelectActive ? (
       <ManualEditMultiSelectOverlay
-        targets={selectedManualEditTargetsForPanel}
+        targets={manualEditMultiSelectOverlayTargets}
         previewScale={manualEditHostScale}
         hostOffset={manualEditHostOffset}
         measureHostRect={(id) => {
@@ -12194,6 +12284,7 @@ function HtmlViewer({
         }}
         onGroupResizeCancel={handleManualEditGroupResizeCancel}
         onGestureSessionChange={handleManualEditResizeSessionChange}
+        snapSources={manualEditSnapSources}
       />
     ) : null;
   const activeComposerComment = activePreviewCommentId

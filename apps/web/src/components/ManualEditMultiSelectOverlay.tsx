@@ -23,7 +23,7 @@ import {
   type GroupResizeMemberStart,
   type GroupResizePreviewUpdate,
 } from '../edit-mode/manual-edit-group-resize';
-import { hostDeltaToContentDelta } from '../edit-mode/preview-coords';
+import { hostDeltaToContentDelta, freezeGestureHostGeom } from '../edit-mode/preview-coords';
 import { resolveManualEditChromeHostRect } from '../edit-mode/move-math';
 import {
   RESIZE_HANDLES,
@@ -31,7 +31,14 @@ import {
   resizeHandleFromHostPoint,
   type ResizeHandle,
 } from '../edit-mode/resize-math';
+import {
+  snapMoveDelta,
+  unionManualEditRectsList,
+  type SnapGuide,
+  type SnapSource,
+} from '../edit-mode/manual-edit-geometry-snap';
 import type { ManualEditRect, ManualEditStyles, ManualEditTarget } from '../edit-mode/types';
+import { ManualEditSnapGuides } from './ManualEditSnapGuides';
 import styles from './ManualEditResizeOverlay.module.css';
 
 export type { GroupMovePreviewUpdate, GroupResizePreviewUpdate };
@@ -68,6 +75,8 @@ export type ManualEditMultiSelectOverlayProps = {
     memberStarts: GroupResizeMemberStart[],
   ) => void;
   onGestureSessionChange?: (active: boolean) => void;
+  snapSources?: readonly SnapSource[];
+  snapEnabled?: boolean;
 };
 
 type MoveDragState = {
@@ -75,12 +84,14 @@ type MoveDragState = {
   pointerId: number;
   startClientX: number;
   startClientY: number;
+  unionStart: ManualEditRect;
   members: GroupMoveMemberStart[];
   stylesBefore: Record<string, Partial<ManualEditStyles>>;
   hostScale: number;
   moved: boolean;
   previewed: boolean;
   lastUpdates: GroupMovePreviewUpdate[];
+  lastGuides: SnapGuide[];
   sealed: boolean;
 };
 
@@ -146,6 +157,35 @@ function unionHostRect(
   return union;
 }
 
+function resolveGestureHostScale(
+  targets: ManualEditTarget[],
+  previewScale: number,
+  hostOffset: { x: number; y: number },
+  measureHostRect: (id: string) => ManualEditRect | null,
+): number {
+  const primary = targets[targets.length - 1] ?? targets[0];
+  if (!primary) return previewScale;
+  const layoutWidth = primary.layoutWidth && primary.layoutWidth >= 1
+    ? primary.layoutWidth
+    : primary.rect.width;
+  const layoutHeight = primary.layoutHeight && primary.layoutHeight >= 1
+    ? primary.layoutHeight
+    : primary.rect.height;
+  const paint = measureHostRect(primary.id);
+  const { hostScale } = freezeGestureHostGeom(
+    {
+      x: primary.rect.x,
+      y: primary.rect.y,
+      width: layoutWidth,
+      height: layoutHeight,
+    },
+    paint,
+    previewScale,
+    hostOffset,
+  );
+  return hostScale;
+}
+
 function handlePositionStyle(handle: ResizeHandle): CSSProperties {
   const mid = '50%';
   switch (handle) {
@@ -177,11 +217,14 @@ export function ManualEditMultiSelectOverlay({
   onGroupResizeCommit,
   onGroupResizeCancel,
   onGestureSessionChange,
+  snapSources = [],
+  snapEnabled = true,
 }: ManualEditMultiSelectOverlayProps) {
   const dragRef = useRef<MultiSelectDragState | null>(null);
   const [gesturing, setGesturing] = useState(false);
   const [moving, setMoving] = useState(false);
   const [resizing, setResizing] = useState(false);
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const onGroupMovePreviewRef = useRef(onGroupMovePreview);
   onGroupMovePreviewRef.current = onGroupMovePreview;
   const onGroupMoveCommitRef = useRef(onGroupMoveCommit);
@@ -196,6 +239,10 @@ export function ManualEditMultiSelectOverlay({
   onGroupResizeCancelRef.current = onGroupResizeCancel;
   const onGestureSessionChangeRef = useRef(onGestureSessionChange);
   onGestureSessionChangeRef.current = onGestureSessionChange;
+  const snapSourcesRef = useRef(snapSources);
+  snapSourcesRef.current = snapSources;
+  const snapEnabledRef = useRef(snapEnabled);
+  snapEnabledRef.current = snapEnabled;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -210,6 +257,7 @@ export function ManualEditMultiSelectOverlay({
       setGesturing(false);
       setMoving(false);
       setResizing(false);
+      setSnapGuides([]);
       onGestureSessionChangeRef.current?.(false);
       if (!previewed) return;
       if (drag.kind === 'move') {
@@ -235,6 +283,7 @@ export function ManualEditMultiSelectOverlay({
         setGesturing(false);
         setMoving(false);
         setResizing(false);
+        setSnapGuides([]);
       };
       void (async () => {
         try {
@@ -275,13 +324,29 @@ export function ManualEditMultiSelectOverlay({
       if (!drag || drag.sealed || event.pointerId !== drag.pointerId) return;
       const hostDx = event.clientX - drag.startClientX;
       const hostDy = event.clientY - drag.startClientY;
-      const { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, drag.hostScale);
+      let { dx, dy } = hostDeltaToContentDelta(hostDx, hostDy, drag.hostScale);
+      if (event.shiftKey) {
+        if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
+        else dx = 0;
+      }
       if (drag.kind === 'move') {
-        drag.moved = groupMoveDeltaMoved(drag.members, dx, dy, event.shiftKey);
-        if (!drag.moved) return;
-        const updates = computeGroupMovePreviewUpdates(drag.members, dx, dy, event.shiftKey);
+        let guides: SnapGuide[] = [];
+        if (snapEnabledRef.current && snapSourcesRef.current.length > 0) {
+          const snapped = snapMoveDelta(drag.unionStart, dx, dy, snapSourcesRef.current);
+          dx = snapped.dx;
+          dy = snapped.dy;
+          guides = snapped.guides;
+        }
+        drag.moved = groupMoveDeltaMoved(drag.members, dx, dy, false);
+        if (!drag.moved) {
+          setSnapGuides([]);
+          return;
+        }
+        const updates = computeGroupMovePreviewUpdates(drag.members, dx, dy, false);
         drag.lastUpdates = updates;
+        drag.lastGuides = guides;
         drag.previewed = true;
+        setSnapGuides(guides);
         onGroupMovePreviewRef.current?.(updates);
         return;
       }
@@ -350,19 +415,23 @@ export function ManualEditMultiSelectOverlay({
     event.preventDefault();
     event.stopPropagation();
     const members = buildGroupMoveMemberStarts(targets);
+    const unionStart = unionManualEditRectsList(members.map((member) => member.startRect));
+    if (!unionStart) return;
     const stylesBefore = groupMoveStylesBefore(targets);
-    const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
+    const hostScale = resolveGestureHostScale(targets, previewScale, hostOffset, measureHostRect);
     dragRef.current = {
       kind: 'move',
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
+      unionStart,
       members,
       stylesBefore,
-      hostScale: scale,
+      hostScale,
       moved: false,
       previewed: false,
       lastUpdates: [],
+      lastGuides: [],
       sealed: false,
     };
     setGesturing(true);
@@ -383,7 +452,7 @@ export function ManualEditMultiSelectOverlay({
     const unionStart = unionRectFromMemberStarts(members);
     if (!unionStart) return;
     const stylesBefore = groupResizeStylesBefore(targets);
-    const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
+    const hostScale = resolveGestureHostScale(targets, previewScale, hostOffset, measureHostRect);
     dragRef.current = {
       kind: 'resize',
       pointerId: event.pointerId,
@@ -393,7 +462,7 @@ export function ManualEditMultiSelectOverlay({
       unionStart,
       members,
       stylesBefore,
-      hostScale: scale,
+      hostScale,
       moved: false,
       previewed: false,
       lastDx: 0,
@@ -445,6 +514,12 @@ export function ManualEditMultiSelectOverlay({
   };
 
   return (
+    <>
+    <ManualEditSnapGuides
+      guides={snapGuides}
+      previewScale={previewScale}
+      hostOffset={hostOffset}
+    />
     <div
       className={[
         styles.overlay,
@@ -487,5 +562,6 @@ export function ManualEditMultiSelectOverlay({
         />
       )) : null}
     </div>
+    </>
   );
 }

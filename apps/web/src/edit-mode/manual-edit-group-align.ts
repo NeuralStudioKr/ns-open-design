@@ -5,6 +5,7 @@ import {
 } from './manual-edit-group-move';
 import { diffManualEditStylePatch } from './manual-edit-style-batch';
 import { computeMove, moveResultToStyles, promoteViewportDraft } from './move-math';
+import { parseManualEditSource, readManualEditStyles } from './source-patches';
 import type { ManualEditPatch, ManualEditRect, ManualEditTarget } from './types';
 
 export type GroupAlignKind =
@@ -24,15 +25,17 @@ export function groupAlignHistoryLabel(count: number, kind: GroupAlignKind | Gro
 export function canGroupAlign(
   targets: readonly ManualEditTarget[],
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
+  isDescendant?: (childId: string, ancestorId: string) => boolean,
 ): boolean {
-  return canGroupBoundingMove(targets, options);
+  return canGroupBoundingMove(targets, options, isDescendant);
 }
 
 export function canGroupDistribute(
   targets: readonly ManualEditTarget[],
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
+  isDescendant?: (childId: string, ancestorId: string) => boolean,
 ): boolean {
-  return targets.length >= 3 && canGroupBoundingMove(targets, options);
+  return targets.length >= 3 && canGroupBoundingMove(targets, options, isDescendant);
 }
 
 function alignDeltaForMember(
@@ -210,9 +213,14 @@ export function buildGroupGeometryPatches(
   baseSource: string,
   updates: readonly GroupMovePreviewUpdate[],
 ): Array<Extract<ManualEditPatch, { kind: 'set-style' }>> {
+  // One Document for all member diffs (was N× readManualEditStyles).
+  const parsedDoc = parseManualEditSource(baseSource);
   const patches: Array<Extract<ManualEditPatch, { kind: 'set-style' }>> = [];
   for (const update of updates) {
-    const effective = diffManualEditStylePatch(baseSource, update.id, update.styles);
+    const sourceStyles = readManualEditStyles(baseSource, update.id, {}, parsedDoc);
+    const effective = diffManualEditStylePatch(baseSource, update.id, update.styles, {
+      sourceStyles,
+    });
     if (Object.keys(effective).length === 0) continue;
     patches.push({ id: update.id, kind: 'set-style', styles: effective });
   }

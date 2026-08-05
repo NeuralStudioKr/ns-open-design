@@ -14,6 +14,7 @@ describe('fetchProjectFilePresignedGet', () => {
   it('returns a ready mint from the daemon', async () => {
     fetchDaemon.mockResolvedValue({
       ok: true,
+      status: 200,
       json: async () => ({
         status: 'ready',
         path: 'drawing.png',
@@ -27,8 +28,10 @@ describe('fetchProjectFilePresignedGet', () => {
     await expect(
       fetchProjectFilePresignedGet('p1', 'drawing.png', { fetchDaemon, waitForPrefix }),
     ).resolves.toMatchObject({
-      status: 'ready',
-      url: expect.stringContaining('X-Amz-Signature='),
+      kind: 'ready',
+      mint: expect.objectContaining({
+        url: expect.stringContaining('X-Amz-Signature='),
+      }),
     });
     expect(fetchDaemon).toHaveBeenCalledWith(
       '/api/projects/p1/presign-get',
@@ -40,9 +43,10 @@ describe('fetchProjectFilePresignedGet', () => {
     );
   });
 
-  it('returns null when daemon reports disabled', async () => {
+  it('returns unavailable when daemon reports disabled (raw fallback ok)', async () => {
     fetchDaemon.mockResolvedValue({
       ok: true,
+      status: 200,
       json: async () => ({
         status: 'disabled',
         path: 'drawing.png',
@@ -52,13 +56,20 @@ describe('fetchProjectFilePresignedGet', () => {
     });
     await expect(
       fetchProjectFilePresignedGet('p1', 'drawing.png', { fetchDaemon, waitForPrefix }),
-    ).resolves.toBeNull();
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'local_storage' });
   });
 
-  it('returns null on HTTP failure', async () => {
+  it('returns missing on HTTP 404 so callers skip /raw/ double-fetch', async () => {
     fetchDaemon.mockResolvedValue({ ok: false, status: 404 });
     await expect(
       fetchProjectFilePresignedGet('p1', 'missing.png', { fetchDaemon, waitForPrefix }),
-    ).resolves.toBeNull();
+    ).resolves.toEqual({ kind: 'missing' });
+  });
+
+  it('returns unavailable on transient HTTP failure', async () => {
+    fetchDaemon.mockResolvedValue({ ok: false, status: 502 });
+    await expect(
+      fetchProjectFilePresignedGet('p1', 'drawing.png', { fetchDaemon, waitForPrefix }),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'http_502' });
   });
 });

@@ -30,6 +30,8 @@ describe("project card cover media URLs", () => {
       projectCoverMediaUrl("p-deck", "index.html", 1_700_000_123_456),
     );
     expect(card.src).toContain("?v=1700000123456");
+    expect(card.filePath).toBe("index.html");
+    expect(card.version).toBe(1_700_000_123_456);
   });
 
   it("uses project.updatedAt when metadata entryFile is set without hint version", () => {
@@ -40,5 +42,22 @@ describe("project card cover media URLs", () => {
     expect(card.src).toBe(
       projectCoverMediaUrl("p-deck", "index.html", 1_700_000_000_000),
     );
+    expect(card.filePath).toBe("index.html");
+  });
+
+  it("exposes filePath for image covers so Teamver can mint S3 GET URLs", () => {
+    const cover = projectCoverFileFromHint({
+      projectId: "p-img",
+      coverKind: "image",
+      coverPath: "msczyywd-drawing-2026-08-03T08-58-43-316Z.png",
+      coverVersion: 1_700_000_999_000,
+    });
+    const card = buildProjectCardCover(project({ id: "p-img", name: "Shot" }), cover);
+    expect(card.kind).toBe("image");
+    expect(card.filePath).toBe("msczyywd-drawing-2026-08-03T08-58-43-316Z.png");
+    expect(card.version).toBe(1_700_000_999_000);
+    // Raw URL remains for non-Teamver / video-html consumers, but thumbs must
+    // prefer filePath + AuthenticatedProjectFileImage (presign).
+    expect(card.src).toContain("/raw/msczyywd-drawing-2026-08-03T08-58-43-316Z.png");
   });
 });

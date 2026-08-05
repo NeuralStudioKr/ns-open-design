@@ -25,11 +25,12 @@ import {
 } from '../artifacts/element-patch';
 import {
   applyScopedDeckPatchToHtml,
+  attachmentMergeHint,
   inferSlideIndexFromDeckHtml,
   mergeScopedCommentTargetsFromPatchedDeck,
   reconcileCommentAttachmentForDeck,
   reconcileCommentAttachmentSlideIndex,
-  reconcileCommentAttachmentsForDeck,
+  reconcileCommentScopeForPersist,
   resolveElementPatchAllowedSlideIndexes,
   scopedCommentElementIds,
   graftVisualMarksIntoDeckHtml,
@@ -1740,21 +1741,33 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   return result;
 }
 
-async function resolvePersistCommentAttachments(input: {
+async function resolvePersistCommentScope(input: {
   projectId: string;
   fileName: string;
   commentAttachments: readonly ChatCommentAttachment[];
   /** When set, skip a second disk fetch (persistArtifact cache). */
   currentHtml?: string | null;
-}): Promise<readonly ChatCommentAttachment[]> {
-  if (input.commentAttachments.length === 0) return input.commentAttachments;
+}): Promise<{
+  attachments: readonly ChatCommentAttachment[];
+  allowedSlideIndexes?: number[];
+}> {
+  if (input.commentAttachments.length === 0) {
+    return { attachments: input.commentAttachments };
+  }
   const currentHtml = input.currentHtml !== undefined
     ? input.currentHtml
     : await fetchProjectFileText(input.projectId, input.fileName, {
       cache: 'no-store',
     });
-  if (!currentHtml) return input.commentAttachments;
-  return reconcileCommentAttachmentsForDeck(currentHtml, input.commentAttachments);
+  if (!currentHtml) {
+    return {
+      attachments: input.commentAttachments,
+      allowedSlideIndexes: scopedCommentSlideIndexesFromAttachments(input.commentAttachments),
+    };
+  }
+  // One pass: reconcile attachments + allowed slide indexes (was reconcile then
+  // scopedCommentSlideIndexesFromDeck with duplicate candidate/infer walks).
+  return reconcileCommentScopeForPersist(currentHtml, input.commentAttachments);
 }
 
 async function fullDeckEditStaysInsideCommentScope(input: {
@@ -1820,9 +1833,10 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   const hasElementScopedComment = input.commentAttachments.some((attachment) =>
     scopedCommentElementIds(attachment).length > 0,
   );
-  const beforeMasked = maskScopedCommentTargets(currentHtml, input.commentAttachments);
-  const afterMasked = maskScopedCommentTargets(input.nextHtml, input.commentAttachments);
+  // Visual / id-less comments have nothing to mask — skip 2× full-deck parse.
   if (hasElementScopedComment) {
+    const beforeMasked = maskScopedCommentTargets(currentHtml, input.commentAttachments);
+    const afterMasked = maskScopedCommentTargets(input.nextHtml, input.commentAttachments);
     const targetUnresolved = !beforeMasked.ok
       || !afterMasked.ok
       || beforeMasked.maskedCount === 0
@@ -1839,22 +1853,35 @@ async function fullDeckEditStaysInsideCommentScope(input: {
         reason: 'comment target could not be resolved in the current and updated deck',
       };
     }
+    if (
+      beforeMasked.ok &&
+      afterMasked.ok &&
+      beforeMasked.maskedCount > 0 &&
+      beforeMasked.maskedCount === afterMasked.maskedCount &&
+      beforeMasked.source !== afterMasked.source
+    ) {
+      devLog.warn('[deck-patch] scoped full-deck guard rejected non-target changes inside target slide', {
+        fileName: input.fileName,
+        maskedCount: beforeMasked.maskedCount,
+      });
+      return {
+        ok: false,
+        code: 'full_deck_outside_element_scope',
+        reason: 'non-target changes inside the selected slide',
+      };
+    }
   }
-  if (
-    beforeMasked.ok &&
-    afterMasked.ok &&
-    beforeMasked.maskedCount > 0 &&
-    beforeMasked.maskedCount === afterMasked.maskedCount &&
-    beforeMasked.source !== afterMasked.source
-  ) {
-    devLog.warn('[deck-patch] scoped full-deck guard rejected non-target changes inside target slide', {
-      fileName: input.fileName,
-      maskedCount: beforeMasked.maskedCount,
-    });
+  // Match deck/element-patch: presentation-only edits must not wipe pinned text
+  // even when the full-deck rewrite stays inside slide/mask scope.
+  const intent = validateCommentEditIntentRespected({
+    mergedHtml: input.nextHtml,
+    commentAttachments: input.commentAttachments,
+  });
+  if (!intent.ok) {
     return {
       ok: false,
-      code: 'full_deck_outside_element_scope',
-      reason: 'non-target changes inside the selected slide',
+      code: 'comment_edit_intent_violated',
+      reason: intent.reason,
     };
   }
   return { ok: true };
@@ -1868,7 +1895,7 @@ async function trySalvageScopedFullDeckRewrite(input: {
   instructionText?: string;
   /** When set, skip a second disk fetch (persistArtifact cache). */
   currentHtml?: string | null;
-}): Promise<{ ok: true; html: string } | { ok: false; reason: string }> {
+}): Promise<{ ok: true; html: string; sanitized: true } | { ok: false; reason: string }> {
   const currentHtml = input.currentHtml !== undefined
     ? input.currentHtml
     : await fetchProjectFileText(input.projectId, input.fileName, {
@@ -1902,7 +1929,9 @@ async function trySalvageScopedFullDeckRewrite(input: {
     scoped.html,
     input.commentAttachments,
   );
-  return { ok: true, html: stabilized };
+  // Fold terminal scrub here so persist can set patchHtmlAlreadySanitized
+  // (mirror applyScopedDeckPatchToHtml) and skip a second full-deck parse.
+  return { ok: true, html: sanitizeManualEditFullSource(stabilized), sanitized: true };
 }
 
 function maskScopedCommentTargets(
@@ -1926,14 +1955,12 @@ function maskScopedCommentTargets(
     const ids = scopedCommentElementIds(attachment);
     if (ids.length === 0) continue;
     // Reuse the same hint set the scoped merge uses so the mask
-    // path resolves the target via currentText/htmlHint when the
+    // path resolves the target via currentText/htmlHint/selector when the
     // click id no longer maps structurally. Symmetric with
-    // mergeScopedCommentTargetsFromPatchedDeck.
+    // mergeScopedCommentTargetsFromPatchedDeck / attachmentMergeHint.
     const hints = ids.map((id) => ({
       id,
-      currentText: attachment.currentText,
-      instructionText: attachment.comment,
-      htmlHint: attachment.htmlHint,
+      ...attachmentMergeHint(attachment),
     }));
     maskedCount += maskManualEditTargetsOnDocument(
       doc,
@@ -4171,24 +4198,15 @@ export function ProjectView({
         return html;
       };
       const diskHtmlForTarget = await readDiskHtml(targetFileName);
-      const persistCommentAttachments = await resolvePersistCommentAttachments({
+      const persistCommentScope = await resolvePersistCommentScope({
         projectId: project.id,
         fileName: targetFileName,
         commentAttachments: runCommentAttachmentsRef.current,
         currentHtml: diskHtmlForTarget,
       });
-      let scopedAllowedSlideIndexes = scopedCommentSlideIndexesFromAttachments(
-        persistCommentAttachments,
-      );
-      if (persistCommentAttachments.length > 0 && diskHtmlForTarget) {
-        const fromDeck = scopedCommentSlideIndexesFromDeck(
-          diskHtmlForTarget,
-          persistCommentAttachments,
-        );
-        if (fromDeck) {
-          scopedAllowedSlideIndexes = fromDeck;
-        }
-      }
+      const persistCommentAttachments = persistCommentScope.attachments;
+      let scopedAllowedSlideIndexes = persistCommentScope.allowedSlideIndexes
+        ?? scopedCommentSlideIndexesFromAttachments(persistCommentAttachments);
       // deck-patch / element-patch merges already run stabilizeVisualMarkDeckHtml
       // when comment attachments are present — skip a second full-deck pass.
       const visualMarksAlreadyStabilized =
@@ -4382,6 +4400,7 @@ export function ProjectView({
                 code: scopeResult.code,
               });
               effectiveArt = { ...effectiveArt, html: salvaged.html };
+              patchHtmlAlreadySanitized = true;
               scopeCheckPassed = true;
             } else if (
               shouldRouteScopedCommentEditToAutoContinue(scopeResult.code, salvaged.reason)

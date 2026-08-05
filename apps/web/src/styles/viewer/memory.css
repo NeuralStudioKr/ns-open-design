@@ -706,8 +706,13 @@
 /* Resize overlay is a sibling under .manual-edit-workspace (host layer).
    Keep below the floating inspector — equal z-index + later DOM painted the
    box over Font/Typography controls. */
-.manual-edit-workspace > [data-testid='manual-edit-resize-overlay'] {
+.manual-edit-workspace > [data-testid='manual-edit-resize-overlay'],
+.manual-edit-workspace > [data-testid='manual-edit-multi-select-overlay'] {
   z-index: 20;
+}
+
+.manual-edit-workspace > [data-testid='manual-edit-snap-guides'] {
+  z-index: 19;
 }
 
 .manual-edit-workspace > .manual-edit-hover-action {

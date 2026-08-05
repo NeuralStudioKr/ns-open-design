@@ -394,13 +394,17 @@ describe("ProjectView message loading", () => {
   it("sanitizes FileViewer manual-edit saves before revision push", () => {
     const source = readSource("src/components/FileViewer.tsx");
     expect(source).toContain("contentToSave");
-    expect(source).toContain("{ sanitize: isManualEditFullHtmlDocument(baseSource) }");
+    expect(source).toContain("sanitize: isManualEditFullHtmlDocument(baseSource)");
+    expect(source).toContain("captureTargetSnapshot: patch.kind === 'set-style'");
+    expect(source).toContain("captureTargetSnapshots: true");
+    expect(source).toContain("parseManualEditSource(baseSource)");
     expect(source).toContain("const contentToSave = result.source");
     expect(source).toContain("setSource(contentToSave)");
     expect(source).toContain("pinManualEditSavedSource(contentToSave)");
     expect(source).toContain("setRevisionContentCache(projectId, file.name, saved.revision.id, contentToSave)");
     expect(source).toContain("readManualEditTargetSnapshot");
     expect(source).toContain("manualEditHistoryConfirmCanSkipDiskFetch");
+    expect(source).toContain("result.targetSnapshot");
   });
 
   it("batches element-patch apply and scoped comment mask on one Document", () => {
@@ -412,12 +416,21 @@ describe("ProjectView message loading", () => {
     const viewSource = readSource("src/components/ProjectView.tsx");
     expect(viewSource).toContain("maskManualEditTargetsOnDocument");
     expect(viewSource).toContain("parseManualEditSource(source)");
+    expect(viewSource).toContain("attachmentMergeHint(attachment)");
+    expect(viewSource).toContain("Visual / id-less comments have nothing to mask");
     expect(viewSource).toContain("patchHtmlAlreadySanitized");
     expect(viewSource).toContain("!patchHtmlAlreadySanitized");
+    expect(viewSource).toContain("resolvePersistCommentScope");
+    expect(viewSource).toContain("reconcileCommentScopeForPersist");
+    expect(viewSource).toContain("patchHtmlAlreadySanitized = true");
     const deckSource = readSource("src/edit-mode/scoped-deck-patch.ts");
     expect(deckSource).toContain("sanitizeManualEditFullSource(repairedHtml)");
     expect(deckSource).toContain("extractDeckBodyContent");
-    expect(deckSource).toContain("reconcileCommentAttachmentForDeck(deckHtml, attachment, parsedDoc)");
+    expect(deckSource).toContain("reconcileCommentAttachmentForDeck(deckHtml, attachment, parsedDoc");
+    expect(deckSource).toContain("options?.sanitize === false");
+    expect(deckSource).toContain("idBearingDocs");
+    expect(deckSource).toContain("finalizeScopedDeckMergeHtml");
+    expect(deckSource).toContain("sanitizeManualEditDocumentInPlace(parsedDoc)");
   });
 
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {

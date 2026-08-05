@@ -208,6 +208,16 @@ daemon export (sync-down → scratch → render)
 **프로젝트 파일 GET mint:** `POST /api/projects/:id/presign-get` `{ path }` → `ProjectFilePresignedGetResponse`.  
 환경변수: `OD_PROJECT_FILE_PRESIGN_ENABLED` (S3일 때 기본 on, `=0`으로 끔), `OD_PROJECT_FILE_PRESIGN_TTL_SEC` (60–300, 기본 120).
 
+### 6.1 출시 전 전략 (GET 우선 / Upload 보류)
+
+| 항목 | 결정 | 이유 |
+|------|------|------|
+| **이미지 GET** | 프리사인 우선 (`AuthenticatedProjectFileImage`) | 채팅 썸네일·파일 뷰어·**프로젝트 카드 커버**(drawing PNG 포함) 바이트가 데몬을 건너뜀. mint 404는 `/raw/` 재시도 안 함(이중 404 방지). |
+| **`/raw/` 폴백** | mint `disabled`/일시 실패, 또는 indexed 파일의 S3←scratch 레이스 | 로컬/비-S3·업로드 직후 sync-up 지연만 허용 |
+| **Upload** | **당분간 daemon `POST /upload` 유지** | agent run이 scratch를 읽음. 프리사인 PUT은 완료 콜백·multipart·CORS·정합 리스크가 커서 출시 후 마일스톤 |
+| **HTML/iframe** | `/raw/` 또는 scoped `/preview/` 유지 | 상대 자산·CSP·same-origin 필요 |
+| **Download(저장)** | authenticated `/raw/` → blob | cross-origin S3는 `download` 파일명 불가 |
+
 **import 상세:** `drive_import_service.py` — Main BE `create_download_url` → BE가 presigned GET으로 chunk stream → daemon `POST /upload` → scratch → sync-up ([14 §4.2](./14_Design_Drive_연동_설계.md)).
 
 ---

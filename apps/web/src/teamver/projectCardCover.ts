@@ -5,7 +5,12 @@ import { projectCoverMediaUrl } from "./projectCoverMediaUrl";
 
 export type ProjectCardCover = {
   kind: "image" | "video" | "html" | "logo" | "fallback";
+  /** Same-origin `/raw/` URL — used for video/html (and non-Teamver image fallback). */
   src?: string;
+  /** Project-relative path for image/logo covers (presigned GET in Teamver). */
+  filePath?: string;
+  /** Cache-bust / remint key (mtime or coverVersion). */
+  version?: number;
   style: CSSProperties;
   initial: string;
 };
@@ -27,9 +32,12 @@ export function buildProjectCardCover(
   const initial = (trimmed ? Array.from(trimmed)[0]! : "?").toUpperCase();
 
   if (override) {
+    const version = coverVersion(override, project);
     return {
       kind: override.kind,
-      src: projectCoverMediaUrl(project.id, override.name, coverVersion(override, project)),
+      src: projectCoverMediaUrl(project.id, override.name, version),
+      filePath: override.name,
+      ...(version !== undefined ? { version } : {}),
       style,
       initial,
     };
@@ -38,10 +46,17 @@ export function buildProjectCardCover(
   const meta = project.metadata;
   const entry = meta?.entryFile;
   if (entry) {
-    const src = projectCoverMediaUrl(project.id, entry, project.updatedAt);
-    if (meta?.kind === "image") return { kind: "image", src, style, initial };
-    if (meta?.kind === "video") return { kind: "video", src, style, initial };
-    if (/\.html?$/i.test(entry)) return { kind: "html", src, style, initial };
+    const version = project.updatedAt;
+    const src = projectCoverMediaUrl(project.id, entry, version);
+    if (meta?.kind === "image") {
+      return { kind: "image", src, filePath: entry, version, style, initial };
+    }
+    if (meta?.kind === "video") {
+      return { kind: "video", src, filePath: entry, version, style, initial };
+    }
+    if (/\.html?$/i.test(entry)) {
+      return { kind: "html", src, filePath: entry, version, style, initial };
+    }
   }
 
   return { kind: "fallback", style, initial };

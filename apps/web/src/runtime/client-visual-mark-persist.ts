@@ -9,7 +9,7 @@ import { selectInitialDesignPreviewFile } from '../components/design-files/desig
 import {
   graftVisualMarksIntoDeckHtml,
   isDrawnVisualMarkAttachment,
-  reconcileCommentAttachmentSlideIndex,
+  reconcileCommentScopeForPersist,
 } from '../edit-mode/scoped-deck-patch';
 import { fetchProjectFileText, pushProjectFileRevision } from '../providers/registry';
 import { isEmbedSupportingProjectFile } from '../teamver/branding/embedDeliverableFilePolicy';
@@ -97,23 +97,23 @@ export async function tryPersistClientVisualMarksOnSend(input: {
   });
   if (!currentHtml) return { ok: false };
 
-  // Reconcile / fall back the slideIndex when missing. Without this the graft
-  // silently skips (invisible failure) — the message ships but no heart lands.
+  // One-pass reconcile (was N× reconcileCommentAttachmentSlideIndex candidate walks).
+  // Fall back the slideIndex when missing — without this the graft silently skips.
   const activeIndex = typeof input.activeDeckSlideIndex === 'number'
     && Number.isFinite(input.activeDeckSlideIndex)
     && input.activeDeckSlideIndex >= 0
     ? Math.floor(input.activeDeckSlideIndex)
     : null;
-  const withSlideIndex = usable.map((attachment) => {
-    const reconciled = reconcileCommentAttachmentSlideIndex(currentHtml, attachment);
+  const scope = reconcileCommentScopeForPersist(currentHtml, usable);
+  const withSlideIndex = scope.attachments.map((attachment) => {
     if (
-      typeof reconciled.slideIndex === 'number'
-      && Number.isInteger(reconciled.slideIndex)
-      && reconciled.slideIndex >= 0
+      typeof attachment.slideIndex === 'number'
+      && Number.isInteger(attachment.slideIndex)
+      && attachment.slideIndex >= 0
     ) {
-      return reconciled;
+      return attachment;
     }
-    return activeIndex != null ? { ...reconciled, slideIndex: activeIndex } : reconciled;
+    return activeIndex != null ? { ...attachment, slideIndex: activeIndex } : attachment;
   });
 
   const grafted = graftVisualMarksIntoDeckHtml(currentHtml, withSlideIndex);

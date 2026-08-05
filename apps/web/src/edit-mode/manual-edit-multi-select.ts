@@ -1,7 +1,13 @@
-import { readManualEditStyles } from './source-patches';
+import {
+  applyManualEditPatches as applyManualEditPatchesOnDocument,
+  isManualEditFullHtmlDocument,
+  parseManualEditSource,
+  readManualEditStyles,
+  type ManualEditPatchResult,
+} from './source-patches';
 import { manualEditStyleValuesEqual } from './manual-edit-style-values';
 import { diffManualEditStylePatch } from './manual-edit-style-batch';
-import { applyManualEditPatch } from './source-patches';
+import { pruneNestedManualEditSelectionIds } from './manual-edit-selection-ancestry';
 import { emptyManualEditStyles, MANUAL_EDIT_STYLE_PROPS, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from './types';
 
 export const MANUAL_EDIT_MULTI_SELECT_MAX = 32;
@@ -12,6 +18,7 @@ export function nextManualEditSelectionIds(
   targetId: string,
   additive: boolean,
   max = MANUAL_EDIT_MULTI_SELECT_MAX,
+  isDescendant?: (childId: string, ancestorId: string) => boolean,
 ): string[] {
   if (!targetId) return [];
   if (!additive) return [targetId];
@@ -19,7 +26,11 @@ export function nextManualEditSelectionIds(
     return currentIds.filter((id) => id !== targetId);
   }
   if (currentIds.length >= max) return [...currentIds];
-  return [...currentIds, targetId];
+  const withoutRelated = currentIds.filter(
+    (id) => !isDescendant?.(id, targetId) && !isDescendant?.(targetId, id),
+  );
+  const next = [...withoutRelated, targetId];
+  return isDescendant ? pruneNestedManualEditSelectionIds(next, isDescendant) : next;
 }
 
 export function manualEditSelectionIdsEqual(
@@ -75,28 +86,55 @@ export function buildManualEditStylePatchesForTargets(
   targetIds: readonly string[],
   pendingStyles: Partial<ManualEditStyles>,
 ): Array<Extract<ManualEditPatch, { kind: 'set-style' }>> {
+  // One Document for all target diffs (was N× readManualEditStyles parses).
+  const parsedDoc = parseManualEditSource(baseSource);
   const patches: Array<Extract<ManualEditPatch, { kind: 'set-style' }>> = [];
   for (const id of targetIds) {
-    const effectiveStyles = diffManualEditStylePatch(baseSource, id, pendingStyles);
+    const sourceStyles = readManualEditStyles(baseSource, id, {}, parsedDoc);
+    const effectiveStyles = diffManualEditStylePatch(baseSource, id, pendingStyles, {
+      sourceStyles,
+    });
     if (Object.keys(effectiveStyles).length === 0) continue;
     patches.push({ id, kind: 'set-style', styles: effectiveStyles });
   }
   return patches;
 }
 
+/**
+ * Apply many ManualEditPatch ops against one Document (multi-select / group
+ * geometry commits). Delegates to source-patches batch apply — the previous
+ * sequential `applyManualEditPatch` loop re-parsed for every target.
+ */
 export function applyManualEditPatches(
   source: string,
   patches: readonly ManualEditPatch[],
-): { ok: true; source: string } | { ok: false; source: string; error: string } {
-  let next = source;
-  for (const patch of patches) {
-    const result = applyManualEditPatch(next, patch);
-    if (!result.ok) {
-      return { ok: false, source, error: result.error ?? 'Could not apply edit.' };
-    }
-    next = result.source;
+  options?: {
+    sanitize?: boolean;
+    captureTargetSnapshots?: boolean;
+  },
+): {
+  ok: boolean;
+  source: string;
+  error?: string;
+  targetSnapshots?: ManualEditPatchResult['targetSnapshots'];
+} {
+  if (patches.length === 0) return { ok: true, source };
+  const result = applyManualEditPatchesOnDocument(
+    source,
+    patches.map((patch) => ({ patch })),
+    {
+      sanitize: options?.sanitize ?? isManualEditFullHtmlDocument(source),
+      captureTargetSnapshots: options?.captureTargetSnapshots,
+    },
+  );
+  if (!result.ok) {
+    return { ok: false, source, error: result.error ?? 'Could not apply edit.' };
   }
-  return { ok: true, source: next };
+  return {
+    ok: true,
+    source: result.source,
+    targetSnapshots: result.targetSnapshots,
+  };
 }
 
 /** True when pending mult draft must flush before replacing the selection set. */

@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   looksLikeMarkupLayoutCommentRequest,
+  looksLikePresentationTweakCommentRequest,
   looksLikeStyleOnlyCommentRequest,
   targetTextContentPreserved,
   validateCommentEditIntentRespected,
@@ -74,8 +75,38 @@ describe('validateCommentEditIntentRespected', () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toContain('style-only');
+      expect(result.reason).toContain('presentation-only');
     }
+  });
+
+  it('rejects when a layout-only request emptied the pinned target text', () => {
+    const mergedHtml = currentHtml.replace(
+      '<p data-od-id="path-1-1">뉴럴스튜디오㈜는 회사입니다.</p>',
+      '<p data-od-id="path-1-1" style="white-space:nowrap"></p>',
+    );
+    expect(looksLikePresentationTweakCommentRequest('줄바꿈 없이 한줄로 해줘')).toBe(true);
+    const result = validateCommentEditIntentRespected({
+      mergedHtml,
+      commentAttachments: [attachment({ comment: '줄바꿈 없이 한줄로 해줘' })],
+      instructionText: '줄바꿈 없이 한줄로 해줘',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain('presentation-only');
+    }
+  });
+
+  it('accepts when layout tweak kept the text', () => {
+    const mergedHtml = currentHtml.replace(
+      '<p data-od-id="path-1-1">뉴럴스튜디오㈜는 회사입니다.</p>',
+      '<p data-od-id="path-1-1" style="white-space:nowrap">뉴럴스튜디오㈜는 회사입니다.</p>',
+    );
+    const result = validateCommentEditIntentRespected({
+      mergedHtml,
+      commentAttachments: [attachment({ comment: '줄바꿈 없이 한줄로 해줘' })],
+      instructionText: '줄바꿈 없이 한줄로 해줘',
+    });
+    expect(result.ok).toBe(true);
   });
 
   it('accepts when set-style kept the text and only presentation changed', () => {
