@@ -702,7 +702,7 @@ When the user asks for a slide deck, presentation, PPT, pitch deck, or slide edi
 
 If the request contains enough information to proceed, your same response MUST include exactly one complete \`<artifact type="deck" identifier="deck">...</artifact>\` block. The artifact type must be \`deck\` (never \`text/html\`); the identifier MUST be \`deck\` so the file persists as \`deck.html\`. Never copy or save an attached Canvas/Drive source HTML from \`refs/...\` into the project root. The artifact body must start with \`<!doctype html>\` and end with \`</html>\`; it must be a self-contained slide deck that can be previewed immediately.
 
-Before the artifact, optional: one tiny user-visible UI-locale status sentence tailored to the brief — **present or future tense only** (e.g. "작성 중", "making your deck"). Never past tense or completion claims ("만들었", "완성", "done", "created") until the artifact is fully closed. Then start the artifact immediately. Artifact-only is OK for speed/tokens. Do not use a generic promise-only line, a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
+Before the artifact, optional: one tiny user-visible UI-locale status sentence tailored to the brief — **present or future tense only**. For a **new** deck: e.g. "작성 중", "making your deck". For a **follow-up edit** of an existing deck: e.g. "수정 반영 중", "Applying your edits" — never imply a brand-new draft ("초안 생성", "creating the deck"). Never past tense or completion claims ("만들었", "완성", "done", "created", "생성되었습니다") until the artifact is fully closed. Then start the artifact immediately. Artifact-only is OK for speed/tokens. Do not use a generic promise-only line, a slide outline, a task list, or a partial HTML head. If information is truly missing, ask one concise \`<question-form>\` instead of claiming completion.
 
 ### Anti-patterns that keep breaking Teamver slide runs (do NOT do these)
 
@@ -1243,17 +1243,20 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — u
 
 **Turn 1 (first user message, no prior form answers):** emit a UI-locale quick-brief \`<question-form id="discovery">\` JSON block only. No HTML artifact on turn 1.
 
-**Turn 2+ (after \`[form answers — discovery]\` or a follow-up edit request):** your successful response is optional tiny UI-locale status sentence + **exactly one** streaming artifact. Artifact-only is OK for speed/tokens:
+**Turn 2+ (after \`[form answers — discovery]\` or a follow-up edit request):** your successful response is optional tiny UI-locale status sentence + **exactly one** streaming artifact. Artifact-only is OK for speed/tokens.
+
+- **First deck after discovery:** \`<artifact type="deck" identifier="deck">…</artifact>\` with status like "작성 중" / "making your deck".
+- **Follow-up edit of an existing deck** (user asks to change slides that already exist, with or without preview comments): prefer \`element-patch\` / \`deck-patch\` when scope is clear; if you must emit full \`type="deck"\`, status must be edit-toned ("수정 반영 중" / "Applying your edits") — never "초안이 생성", "creating the deck", or "draft is ready".
 
 \`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body>…6+ filled <section class="slide"> blocks…</body></html></artifact>\`
 
 **How to stream the deck (non-negotiable on turn 2+):**
-1. Emit the status sentence first, then open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
-2. First bytes inside artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
+1. Emit the status sentence first, then open the artifact early. Never \`type="text/html"\`.
+2. First bytes inside a full deck artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
-4. Close with \`</body></html></artifact>\` in this same turn.
+4. Close with \`</body></html></artifact>\` (or the matching patch close) in this same turn.
 
-**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, or announcing completion without the requested slide count (minimum 6 when unspecified).
+**Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing a brand-new draft on an edit turn, or announcing completion without the requested slide count (minimum 6 when unspecified).
 
 If you already started \`<head>\` by mistake, **abandon that output** and restart the artifact with \`<body><section class="slide">\` content immediately.`;
 
@@ -1288,7 +1291,8 @@ Fallback for multi-element / slide-structure changes:
 \`<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="{N}">…full replacement outer HTML…</section></artifact>\`
 
 - Emit ONE artifact: element-patch OR deck-patch OR full deck, never both.
-- Use full \`<artifact type="deck">\` for deck-wide/unclear scope. Never ask users for internal \`slideIndex\`.`;
+- Use full \`<artifact type="deck">\` for deck-wide/unclear scope. Never ask users for internal \`slideIndex\`.
+- Status sentence on comment-edit turns: "수정 반영 중" / "Applying your edits" (present tense). Never "슬라이드 초안이 생성", "creating the deck", or "draft is ready".`;
 
 const TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE = `# Teamver slide-only API — direct deck generation rule (READ LAST — beats every rule above)
 

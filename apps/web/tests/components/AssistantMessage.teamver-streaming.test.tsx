@@ -91,6 +91,44 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.queryByText('Creating the slide deck now. Please wait a moment.')).toBeNull();
   });
 
+  it('keeps create progress when only leftover non-deck HTML exists pre-turn', () => {
+    render(
+      <AssistantMessage
+        message={{
+          ...streamingMessage(
+            '<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Hi',
+          ),
+          preTurnFileNames: ['about.html'],
+        }}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Creating the slide deck now. Please wait a moment.')).toBeTruthy();
+    expect(screen.queryByText('Applying slide updates. Please wait a moment.')).toBeNull();
+  });
+
+  it('hides model create-progress prose on edit turns while a full deck streams', () => {
+    render(
+      <AssistantMessage
+        message={{
+          ...streamingMessage(
+            '슬라이드 초안을 작성 중입니다.\n\n<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Hi',
+          ),
+          preTurnFileNames: ['deck.html'],
+        }}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('Applying slide updates. Please wait a moment.')).toBeTruthy();
+    expect(screen.queryByText('슬라이드 초안을 작성 중입니다.')).toBeNull();
+  });
+
   it('replaces model create-completion prose with edit lead on an edit turn', () => {
     render(
       <AssistantMessage

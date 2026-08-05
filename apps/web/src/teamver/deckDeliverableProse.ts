@@ -64,7 +64,13 @@ const DECK_EDIT_CLAIM_RE =
   /(?:수정이\s*반영|수정을\s*반영|수정했|반영되었|반영했|\b(?:updated|edited|modified|applied)\b)/i;
 
 const DECK_CREATE_CLAIM_KO_RE =
-  /(?:초안이\s*생성|생성되었|생성했(?:어|습)?|만들(?:었(?:어|습)?|어\s*드렸)|작성했(?:어|습)?)/;
+  /(?:초안이\s*생성|생성되었|생성했(?:어|습)?|만들(?:었(?:어|습)?|어\s*드렸)|작성했(?:어|습)?|완성했(?:어|습)?|준비했(?:어|습)?|완성했습니다|준비했습니다)/;
+
+const DECK_CREATE_PROGRESS_KO_RE =
+  /(?:초안을\s*작성\s*중|작성\s*중|생성\s*중|만들고\s*있|작성하고\s*있|생성하고\s*있)/;
+
+const DECK_CREATE_PROGRESS_EN_RE =
+  /\b(?:creating|building|generating|making)\b[\s\S]{0,40}\b(?:deck|slide|slides|presentation)\b|\bmaking your deck\b/i;
 
 /**
  * Prose that claims a *new* deck was created (not an in-place edit).
@@ -73,27 +79,52 @@ const DECK_CREATE_CLAIM_KO_RE =
 export function looksLikeDeckCreateCompletionProse(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
-  if (DECK_EDIT_CLAIM_RE.test(trimmed)) return false;
+  // Pure edit claims stay visible / are replaced by synthetic edit lead separately.
+  // Mixed "created and updated" still counts as create mislabel on edit turns.
+  if (DECK_EDIT_CLAIM_RE.test(trimmed) && !/\b(?:created|generated|built)\b|생성|초안이\s*생성|만들(?:었|어)/i.test(trimmed)) {
+    return false;
+  }
   if (
     /슬라이드\s*초안이\s*생성되었/.test(trimmed)
     || /The slide deck draft is ready\.?/i.test(trimmed)
     || /Creating the slide deck now/i.test(trimmed)
+    || /\bhere is your deck\b/i.test(trimmed)
+    || /\bhere(?:'s| is) the deck\b/i.test(trimmed)
   ) {
     return true;
   }
-  if (!looksLikeDeckIntentProse(trimmed) && !/\bdraft\b|초안/i.test(trimmed)) {
+  if (!looksLikeDeckIntentProse(trimmed) && !/\bdraft\b|초안|덱|presentation/i.test(trimmed)) {
     return false;
   }
   return (
     DECK_CREATE_CLAIM_KO_RE.test(trimmed)
-    || /\b(?:created|generated)\b/i.test(trimmed)
+    || /\b(?:created|generated|built|finished)\b/i.test(trimmed)
     || /\bdraft\b[\s\S]{0,40}\bready\b/i.test(trimmed)
+    || /\b(?:slides?|deck|presentation)\b[\s\S]{0,20}\bready\b/i.test(trimmed)
   );
+}
+
+/** In-flight create-toned status ("작성 중", "making your deck") on an edit turn. */
+export function looksLikeDeckCreateProgressProse(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (DECK_EDIT_CLAIM_RE.test(trimmed)) return false;
+  if (
+    /슬라이드\s*초안을\s*작성\s*중/.test(trimmed)
+    || /Creating the slide deck now/i.test(trimmed)
+    || /\bmaking your deck\b/i.test(trimmed)
+  ) {
+    return true;
+  }
+  if (!looksLikeDeckIntentProse(trimmed) && !/초안|draft/i.test(trimmed)) {
+    return DECK_CREATE_PROGRESS_KO_RE.test(trimmed) && /슬라이드|덱|발표/.test(trimmed);
+  }
+  return DECK_CREATE_PROGRESS_KO_RE.test(trimmed) || DECK_CREATE_PROGRESS_EN_RE.test(trimmed);
 }
 
 /**
  * On edit turns (existing deck baseline / deck-patch), hide model or leftover
- * "draft created" prose so the UI can show "slide updates applied" instead.
+ * "draft created" / "creating deck" prose so the UI can show edit lead copy.
  */
 export function shouldHideDeckCreateCompletionProseOnEditTurn(options: {
   text: string;
@@ -101,5 +132,8 @@ export function shouldHideDeckCreateCompletionProseOnEditTurn(options: {
   teamverSlideUi: boolean;
 }): boolean {
   if (!options.teamverSlideUi || !options.isSlideEditTurn) return false;
-  return looksLikeDeckCreateCompletionProse(options.text);
+  return (
+    looksLikeDeckCreateCompletionProse(options.text)
+    || looksLikeDeckCreateProgressProse(options.text)
+  );
 }

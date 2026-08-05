@@ -205,29 +205,62 @@ function assistantRunSucceeded(message: ChatMessage): boolean {
   return !message.runStatus && !!message.endedAt;
 }
 
-export function messageIndicatesDeckPatchArtifact(content: string): boolean {
-  if (/<artifact\b[^>]*\stype=["'](?:deck-patch|slide-patch)["']/i.test(content)) return true;
+const SLIDE_EDIT_ARTIFACT_TYPES = /^(?:deck-patch|slide-patch|element-patch)$/i;
+const SLIDE_EDIT_ARTIFACT_TYPE_ATTR =
+  /\btype\s*=\s*["']?(?:deck-patch|slide-patch|element-patch)\b/i;
+
+/**
+ * Primary Teamver deck filename convention — aligned with ProjectView
+ * `isCanonicalDeckFileName` (`deck.html`, `deck-2.html`, …).
+ */
+export function isPrimaryDeckFileName(name: string): boolean {
+  const base = (
+    String(name).replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? String(name)
+  ).toLowerCase();
+  return /^deck(?:[-_.].*)?\.html?$/.test(base);
+}
+
+/**
+ * True when the assistant turn is delivering a structured slide *edit*
+ * artifact (not a full new deck). Accepts an optional live streaming type.
+ */
+export function messageIndicatesSlideEditArtifact(
+  content: string,
+  liveArtifactType?: string | null,
+): boolean {
+  if (liveArtifactType && SLIDE_EDIT_ARTIFACT_TYPES.test(liveArtifactType)) return true;
+  if (/<artifact\b[^>]*\stype=["'](?:deck-patch|slide-patch|element-patch)["']/i.test(content)) {
+    return true;
+  }
   const openIdx = content.search(/<artifact\b/i);
   if (openIdx === -1) return false;
   const gt = content.indexOf(">", openIdx);
   const partialTag = gt === -1 ? content.slice(openIdx) : content.slice(openIdx, gt + 1);
-  return /\btype\s*=\s*["']?(?:deck-patch|slide-patch)\b/i.test(partialTag);
+  return SLIDE_EDIT_ARTIFACT_TYPE_ATTR.test(partialTag);
 }
 
-function messageHasPreTurnHtmlDeliverable(message: ChatMessage): boolean {
-  return (message.preTurnFileNames ?? []).some((name) => /\.html?$/i.test(String(name)));
+/** @deprecated Prefer messageIndicatesSlideEditArtifact — kept for call-site compat. */
+export function messageIndicatesDeckPatchArtifact(content: string): boolean {
+  return messageIndicatesSlideEditArtifact(content);
+}
+
+function messageHasPreTurnPrimaryDeck(message: ChatMessage): boolean {
+  return (message.preTurnFileNames ?? []).some((name) => isPrimaryDeckFileName(String(name)));
 }
 
 /**
  * Slide-edit completion copy after reload: persist sanitizer strips closed
- * `<artifact type="deck-patch">` tags, so body detection alone is not enough.
- * Prefer explicit deck-patch markers, else a pre-turn HTML baseline (in-place
- * edit of an existing deck).
+ * patch artifacts, so body detection alone is not enough.
+ *
+ * Prefer explicit patch/element-patch markers, then a pre-turn *primary*
+ * deck (`deck.html`) — never leftover non-deck HTML (about.html, notes.html).
+ * Produced-file ∩ preTurn alone is not used: a first create that also
+ * rewrites leftover HTML must stay a create turn.
  */
 export function messageLooksLikeSlideEditTurn(message: ChatMessage): boolean {
   const body = assistantMessageTextBody(message);
-  if (messageIndicatesDeckPatchArtifact(body)) return true;
-  return messageHasPreTurnHtmlDeliverable(message);
+  if (messageIndicatesSlideEditArtifact(body)) return true;
+  return messageHasPreTurnPrimaryDeck(message);
 }
 
 /**

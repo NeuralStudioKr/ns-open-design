@@ -20,6 +20,7 @@ import { isEmptyAssistantShell } from "../runtime/conversation-message-dedupe";
 import {
   hasEmbedVisibleAssistantBody,
   isTerminalSucceededEmptyShellForDisplay,
+  messageIndicatesSlideEditArtifact,
   messageLooksLikeSlideEditTurn,
   shouldSynthesizeTeamverCompletedArtifactLead,
   terminalSucceededAnchorLeadCopy,
@@ -58,7 +59,6 @@ import {
 import { useI18n } from "../i18n";
 import { parseSubmittedAnswers } from "./QuestionForm";
 import { splitStreamingArtifact, stripAllClosedArtifacts, stripRecoveredHtmlFallbackForDisplay } from "../artifacts/strip";
-import { isDeckPatchArtifactType } from "../artifacts/deck-patch";
 import {
   shouldHideDeckCreateCompletionProseOnEditTurn,
   shouldHidePrematureDeckCompletionProse,
@@ -101,21 +101,6 @@ type TranslateFn = (
   key: keyof Dict,
   vars?: Record<string, string | number>
 ) => string;
-
-function messageIndicatesDeckPatchArtifact(
-  content: string,
-  liveArtifactType?: string | null,
-): boolean {
-  if (isDeckPatchArtifactType(liveArtifactType)) return true;
-  if (/<artifact\b[^>]*\stype=["'](?:deck-patch|slide-patch)["']/i.test(content)) return true;
-  const openIdx = content.search(/<artifact\b/i);
-  if (openIdx === -1) return false;
-  const gt = content.indexOf(">", openIdx);
-  // Opening tag still streaming — only match an in-progress `type=` value, not
-  // unrelated attrs like identifier="deck-patch" on a full-deck artifact.
-  const partialTag = gt === -1 ? content.slice(openIdx) : content.slice(openIdx, gt + 1);
-  return /\btype\s*=\s*["']?(?:deck-patch|slide-patch)\b/i.test(partialTag);
-}
 
 function teamverLiveArtifactLeadCopy(locale: string, deckPatch: boolean): string {
   if (locale.startsWith("ko")) {
@@ -769,7 +754,7 @@ function AssistantMessageImpl({
   // After reload, closed deck-patch tags may already be stripped — fall back
   // to preTurn HTML baseline so we keep "slide edit applied" copy, not create.
   const isDeckPatchArtifactTurn = messageLooksLikeSlideEditTurn(message)
-    || messageIndicatesDeckPatchArtifact(assistantTextBody);
+    || messageIndicatesSlideEditArtifact(assistantTextBody);
   // TodoWrite alone counts as activity even when tool cards are hidden in embed.
   const hasVisibleAssistantTextBlocks = blocks.some((b) => {
       if (b.kind === "status") return false;
@@ -2340,7 +2325,7 @@ function ProseBlock({
     && (slideOnlyMvp || teamverEmbedEnabled);
   const teamverLiveArtifactLead = teamverLiveArtifactLeadCopy(
     locale,
-    isSlideEditTurn || messageIndicatesDeckPatchArtifact(text, live?.artifactType),
+    isSlideEditTurn || messageIndicatesSlideEditArtifact(text, live?.artifactType),
   );
   if (visibleRenderable.length === 0 && !live && !hadOpenForm) return null;
   return (

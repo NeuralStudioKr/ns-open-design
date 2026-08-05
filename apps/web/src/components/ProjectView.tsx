@@ -1038,6 +1038,31 @@ function isCanonicalDeckFileName(fileName: string): boolean {
   return /^deck(?:[-_.].*)?\.html?$/.test(base);
 }
 
+/**
+ * On-disk Teamver deck for *edit* auto-attach / prompt branching.
+ * Must NOT fall back to leftover non-deck HTML (about.html, etc.) — that would
+ * mark a first create as an "existing deck edit" and drive create/edit miscopy.
+ */
+export function resolveCanonicalDeckFileForEdit(
+  files: readonly ProjectFile[],
+  entryFile?: string | null,
+): ProjectFile | null {
+  const deliverables = files.filter(
+    (file) =>
+      isProjectHtmlFile(file)
+      && !isEmbedSupportingProjectFile(file, { projectFiles: files }),
+  );
+  if (deliverables.length === 0) return null;
+  const preferred = entryFile?.trim();
+  if (preferred) {
+    const match = deliverables.find(
+      (file) => file.name === preferred || file.path === preferred,
+    );
+    if (match && isCanonicalDeckFileName(match.name)) return match;
+  }
+  return deliverables.find((file) => isCanonicalDeckFileName(file.name)) ?? null;
+}
+
 function resolvePrimaryDeckFile(
   files: readonly ProjectFile[],
   entryFile?: string | null,
@@ -1337,6 +1362,7 @@ function slideExistingDeckEditInstruction(
     'Read the attached deck HTML and apply the user request.',
     'Prefer `<artifact type="element-patch">` with `<patch target-id="…" slide-index="{N}" kind="…">` for single-element edits.',
     'Use `<artifact type="deck-patch">` only when slide structure must change; use full `<artifact type="deck">` for deck-wide edits.',
+    'If you emit a short status sentence, use edit tone only ("수정 반영 중" / "Applying your edits"). Never "초안이 생성", "creating the deck", or "draft is ready".',
   ];
   if (imagePaths.length > 0) {
     lines.push(
@@ -7891,7 +7917,7 @@ export function ProjectView({
       // on-disk deck attached so the model can emit element-patch / deck-patch
       // against real target ids instead of guessing from stale chat prose.
       if (slideOnlyMvp && scopedCommentAttachments.length > 0) {
-        const existingDeck = resolvePrimaryDeckFile(
+        const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
         );
@@ -7909,14 +7935,15 @@ export function ProjectView({
           autoAttachedDeckPath = deckPath;
         }
       }
-      // Disk deck is enough — first-turn interrupt + retry often has no prior
-      // assistant in historyBase, but the project already has deck.html.
+      // Disk *canonical* deck is enough — first-turn interrupt + retry often has
+      // no prior assistant in historyBase, but the project already has deck.html.
+      // Do not treat leftover about.html / notes.html as an existing deck edit.
       if (
         slideOnlyMvp
         && !isAutoContinueSend
         && scopedCommentAttachments.length === 0
       ) {
-        const existingDeck = resolvePrimaryDeckFile(
+        const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
         );

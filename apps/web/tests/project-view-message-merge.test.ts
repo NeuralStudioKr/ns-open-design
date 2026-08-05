@@ -6,6 +6,7 @@ import {
   orderConversationMessages,
   imageAttachmentPathsForSlideEmbed,
   promptWithExistingDeckEditInstruction,
+  resolveCanonicalDeckFileForEdit,
   promptWithSlideAttachmentDeliverableInstruction,
   promptWithSlideCommentEditPatchInstruction,
 } from "../src/components/ProjectView";
@@ -119,6 +120,29 @@ describe("imageAttachmentPathsForSlideEmbed", () => {
   });
 });
 
+describe("resolveCanonicalDeckFileForEdit", () => {
+  it("ignores leftover non-deck HTML and picks deck.html", () => {
+    expect(
+      resolveCanonicalDeckFileForEdit(
+        [
+          { name: "about.html", path: "about.html", kind: "html", size: 1, mtime: 1 },
+          { name: "deck.html", path: "deck.html", kind: "html", size: 2, mtime: 2 },
+        ] as never,
+        null,
+      )?.name,
+    ).toBe("deck.html");
+  });
+
+  it("returns null when only leftover HTML exists (first create)", () => {
+    expect(
+      resolveCanonicalDeckFileForEdit(
+        [{ name: "about.html", path: "about.html", kind: "html", size: 1, mtime: 1 }] as never,
+        "about.html",
+      ),
+    ).toBeNull();
+  });
+});
+
 describe("promptWithExistingDeckEditInstruction", () => {
   it("tells the model the deck already exists and prefers deck-patch", () => {
     const prompt = promptWithExistingDeckEditInstruction("인사 앞에 방가방가 추가", {
@@ -129,6 +153,8 @@ describe("promptWithExistingDeckEditInstruction", () => {
     expect(prompt).toContain("deck.html");
     expect(prompt).toContain("do NOT claim there is no completed deck");
     expect(prompt).toContain("deck-patch");
+    expect(prompt).toContain("Applying your edits");
+    expect(prompt).toContain("Never \"초안이 생성\"");
   });
 
   it("mentions attached image paths when present", () => {
