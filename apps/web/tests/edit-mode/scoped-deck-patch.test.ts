@@ -720,6 +720,47 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(grafted).toMatch(/<svg[^>]*viewBox="0 0 24 24"/);
   });
 
+  it('ensures the slide root is position:relative for absolute mark positioning', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      note: '하트',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 0,
+    });
+    const grafted = graftVisualMarksIntoDeckHtml(deck, [visual]);
+    expect(grafted).toContain('position:relative');
+    expect(grafted).toContain('od-visual-mark-target');
+  });
+
+  it('grafts drawn visual marks even when reconciler bound a real DOM element', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1 data-od-id="title-1">Title</h1></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      note: '하트 그려줘',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 0,
+      target: {
+        filePath: 'deck.html',
+        elementId: 'title-1',
+        selector: '[data-od-id="title-1"]',
+        label: 'Title',
+        position: { x: 40, y: 50, width: 80, height: 60 },
+      },
+    });
+    const grafted = graftVisualMarksIntoDeckHtml(deck, [visual]);
+    expect(grafted).toContain('od-visual-mark-target');
+    expect(grafted).toMatch(/<svg[^>]*viewBox="0 0 24 24"/);
+  });
+
   it('inserts a visible fallback marker when no shape keyword is present', () => {
     const deck = `<!doctype html><html><body>
 <section class="slide" data-slide-index="0"><h1>Title slide</h1></section>

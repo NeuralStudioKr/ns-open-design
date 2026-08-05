@@ -136,11 +136,53 @@ describe('client-visual-mark-persist', () => {
     expect(pushedContent).not.toMatch(/<script\b/i);
   });
 
-  it('skips element-scoped comment attachments', async () => {
+  it('grafts drawn visual marks even when the reconciler bound them to a DOM element', async () => {
+    // A drawn mark's intent is to ADD a shape at the drawn position, so even
+    // when the bounds happen to overlap an existing element and the
+    // reconciler assigns a real elementId, we still graft on the client side
+    // instead of routing to the model as an element-patch.
+    vi.mocked(fetchProjectFileText).mockResolvedValue(
+      '<html><body><section class="slide" data-slide-index="0"><h1 data-od-id="title-1">Title</h1></section></body></html>',
+    );
+    vi.mocked(pushProjectFileRevision).mockResolvedValue({
+      ok: true,
+      revision: {
+        id: 'rev-3',
+        projectId: 'project-1',
+        fileName: 'deck.html',
+        parentRevisionId: 'rev-2',
+        sequence: 3,
+        createdAt: Date.now(),
+        byteSize: 200,
+        source: 'manual_edit',
+        label: 'Visual mark: heart',
+      },
+      file: { name: 'deck.html', path: 'deck.html', kind: 'html', mtime: Date.now() },
+    } as never);
+
     const result = await tryPersistClientVisualMarksOnSend({
       projectId: 'project-1',
       commentAttachments: [
         visualAttachment({
+          elementId: 'title-1',
+          selector: '[data-od-id="title-1"]',
+        }),
+      ],
+      projectFiles: [{ name: 'deck.html', path: 'deck.html', kind: 'html', mtime: 1 }],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(pushProjectFileRevision).toHaveBeenCalled();
+  });
+
+  it('skips comment attachments with no drawn mark and no screenshot', async () => {
+    const result = await tryPersistClientVisualMarksOnSend({
+      projectId: 'project-1',
+      commentAttachments: [
+        visualAttachment({
+          markKind: undefined,
+          screenshotPath: '',
+          selectionKind: 'element',
           elementId: 'title-1',
           selector: '[data-od-id="title-1"]',
         }),

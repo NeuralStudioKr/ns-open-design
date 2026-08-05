@@ -35,6 +35,7 @@ import {
   graftVisualMarksIntoDeckHtml,
   stabilizeVisualMarkDeckHtml,
   hasElementScopedCommentAttachments,
+  isDrawnVisualMarkAttachment,
   isVisualCommentAttachment,
   scopedCommentSlideIndexesFromAttachments,
   scopedCommentSlideIndexesFromDeck,
@@ -1066,6 +1067,24 @@ function resolvePrimaryDeckFilePath(
   const deck = resolvePrimaryDeckFile(files, entryFile);
   if (!deck) return null;
   return deck.path?.trim() || deck.name;
+}
+
+/**
+ * Best-effort active slide index for the client visual-mark graft when
+ * reconciliation can't infer one from the deck HTML. Falls back to the
+ * attachment's carried `slideIndex` (from the draw overlay's slide bridge)
+ * or, as a last resort, slide 0.
+ */
+function activeDeckSlideIndexForVisualMarkGraft(
+  attachments: readonly ChatCommentAttachment[],
+): number {
+  for (const attachment of attachments) {
+    const index = attachment.slideIndex;
+    if (typeof index === 'number' && Number.isFinite(index) && index >= 0) {
+      return Math.floor(index);
+    }
+  }
+  return 0;
 }
 
 async function hydrateDeckCommentSlideIndexes(input: {
@@ -8044,12 +8063,22 @@ export function ProjectView({
               effectiveSelectedAgentChoice?.model,
             )
           : apiProtocolModelLabel(config.apiProtocol, config.model);
+      // Client visual-mark fast path: any drawn mark (freehand or box) or a
+      // pure screenshot-only comment can graft locally without an AI turn.
+      // Reconciler-assigned DOM anchors no longer disqualify — the drawing
+      // intent is to ADD a shape, not modify the underlying element.
+      const runIsAllDrawnVisualMarks =
+        runCommentAttachments.length > 0
+        && runCommentAttachments.every(
+          (attachment) =>
+            isDrawnVisualMarkAttachment(attachment)
+            || isScreenshotOnlyVisualCommentTarget(attachment),
+        );
       if (
         slideOnlyMvp
         && !retryTarget
         && !isAutoContinueSend
-        && runCommentAttachments.length > 0
-        && runCommentAttachments.every(isScreenshotOnlyVisualCommentTarget)
+        && runIsAllDrawnVisualMarks
       ) {
         const clientVisual = await tryPersistClientVisualMarksOnSend({
           projectId: project.id,
@@ -8057,6 +8086,7 @@ export function ProjectView({
           projectFiles: filesSnapshot,
           entryFile: project.metadata?.entryFile ?? null,
           conversationId: runConversationId,
+          activeDeckSlideIndex: activeDeckSlideIndexForVisualMarkGraft(runCommentAttachments),
         });
         if (clientVisual.ok) {
           const doneAt = Date.now();

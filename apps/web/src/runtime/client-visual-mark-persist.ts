@@ -6,7 +6,11 @@ import {
   isScreenshotOnlyVisualCommentTarget,
 } from '../comments';
 import { selectInitialDesignPreviewFile } from '../components/design-files/designArtifacts';
-import { graftVisualMarksIntoDeckHtml } from '../edit-mode/scoped-deck-patch';
+import {
+  graftVisualMarksIntoDeckHtml,
+  isDrawnVisualMarkAttachment,
+  reconcileCommentAttachmentSlideIndex,
+} from '../edit-mode/scoped-deck-patch';
 import { fetchProjectFileText, pushProjectFileRevision } from '../providers/registry';
 import { isEmbedSupportingProjectFile } from '../teamver/branding/embedDeliverableFilePolicy';
 import { reconcileProjectRawFileMissingCache } from '../utils/projectFileFetchCache';
@@ -73,10 +77,17 @@ export async function tryPersistClientVisualMarksOnSend(input: {
   projectFiles: readonly ProjectFile[];
   entryFile?: string | null;
   conversationId?: string;
+  /** Fallback deck slide (0-based) when reconciliation cannot infer one. */
+  activeDeckSlideIndex?: number | null;
 }): Promise<ClientVisualMarkPersistResult> {
   const usable = filterUsableCommentAttachments(input.commentAttachments);
   if (usable.length === 0) return { ok: false };
-  if (!usable.every(isScreenshotOnlyVisualCommentTarget)) return { ok: false };
+  // Accept any drawn visual mark — including ones the reconciler bound to a
+  // real DOM element via bounds overlap. The user's intent is always "add a
+  // shape here", not "modify that underlying element".
+  if (!usable.every((attachment) =>
+    isDrawnVisualMarkAttachment(attachment) || isScreenshotOnlyVisualCommentTarget(attachment),
+  )) return { ok: false };
 
   const deckPath = resolvePrimaryDeckFilePath(input.projectFiles, input.entryFile);
   if (!deckPath) return { ok: false };
@@ -86,7 +97,26 @@ export async function tryPersistClientVisualMarksOnSend(input: {
   });
   if (!currentHtml) return { ok: false };
 
-  const grafted = graftVisualMarksIntoDeckHtml(currentHtml, usable);
+  // Reconcile / fall back the slideIndex when missing. Without this the graft
+  // silently skips (invisible failure) — the message ships but no heart lands.
+  const activeIndex = typeof input.activeDeckSlideIndex === 'number'
+    && Number.isFinite(input.activeDeckSlideIndex)
+    && input.activeDeckSlideIndex >= 0
+    ? Math.floor(input.activeDeckSlideIndex)
+    : null;
+  const withSlideIndex = usable.map((attachment) => {
+    const reconciled = reconcileCommentAttachmentSlideIndex(currentHtml, attachment);
+    if (
+      typeof reconciled.slideIndex === 'number'
+      && Number.isInteger(reconciled.slideIndex)
+      && reconciled.slideIndex >= 0
+    ) {
+      return reconciled;
+    }
+    return activeIndex != null ? { ...reconciled, slideIndex: activeIndex } : reconciled;
+  });
+
+  const grafted = graftVisualMarksIntoDeckHtml(currentHtml, withSlideIndex);
   if (!grafted) return { ok: false };
 
   // graftVisualMarksIntoDeckHtml already full-source sanitized — head repair only.

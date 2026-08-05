@@ -62,6 +62,51 @@ export function isVisualCommentAttachment(attachment: ChatCommentAttachment): bo
   return false;
 }
 
+/**
+ * Ensure a `<section class="slide" …>` root has `position:relative` so an
+ * absolute-positioned visual-mark child anchors to the slide instead of a
+ * further-up positioned ancestor (viewport in the worst case). Preserves
+ * any pre-existing style; skips modification when the tag already declares
+ * any explicit `position:` value.
+ */
+export function ensureSectionRelativePositioning(sectionHtml: string): string {
+  const tagMatch = sectionHtml.match(/^<section\b([^>]*)>/i);
+  if (!tagMatch) return sectionHtml;
+  const attrs = tagMatch[1] ?? '';
+  const styleMatch = attrs.match(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+  const currentStyle = styleMatch ? (styleMatch[1] ?? styleMatch[2] ?? '') : '';
+  if (/(^|;|\s)position\s*:/i.test(currentStyle)) return sectionHtml;
+  const nextStyle = currentStyle
+    ? `${currentStyle.replace(/;\s*$/, '')};position:relative`
+    : 'position:relative';
+  let nextAttrs: string;
+  if (styleMatch) {
+    nextAttrs = attrs.replace(
+      styleMatch[0],
+      `style="${nextStyle}"`,
+    );
+  } else {
+    nextAttrs = `${attrs} style="${nextStyle}"`;
+  }
+  return `<section${nextAttrs}>${sectionHtml.slice(tagMatch[0].length)}`;
+}
+
+/**
+ * True for draw-annotation attachments: the user drew ink or a box on the
+ * screenshot. These are always slide-scoped adds ("stick a heart here"),
+ * regardless of whether the reconciler later mapped their bounds to a real
+ * DOM element id — the user's intent was to ADD a shape at that location,
+ * not modify the underlying element.
+ */
+export function isDrawnVisualMarkAttachment(attachment: ChatCommentAttachment): boolean {
+  if (!isVisualCommentAttachment(attachment)) return false;
+  if (attachment.markKind === 'stroke' || attachment.markKind === 'click+stroke') return true;
+  if (attachment.selectionKind === 'visual' && Boolean(String(attachment.screenshotPath || '').trim())) {
+    return true;
+  }
+  return false;
+}
+
 export function graftVisualMarksIntoDeckHtml(
   currentHtml: string,
   commentAttachments: readonly ChatCommentAttachment[],
@@ -72,7 +117,10 @@ export function graftVisualMarksIntoDeckHtml(
   // Work from the original slides so multi-mark grafts stay O(sections), not
   // O(marks × sections) via repeated applyDeckPatch scans.
   for (const attachment of commentAttachments) {
-    if (!isScreenshotOnlyVisualCommentTarget(attachment)) continue;
+    // Accept any drawn visual mark — the reconciler may have assigned a real
+    // element id from bounds overlap, but the user's intent is still to ADD
+    // a shape at that location, so we still want the client graft.
+    if (!isDrawnVisualMarkAttachment(attachment) && !isScreenshotOnlyVisualCommentTarget(attachment)) continue;
     if (!hasValidDeckSlideIndex(attachment)) continue;
     const slideIndex = Math.floor(attachment.slideIndex as number);
     const existing = ops.find((op) => op.slideIndex === slideIndex);
@@ -90,11 +138,20 @@ export function graftVisualMarksIntoDeckHtml(
       ? buildClientVisualMarkFallbackInnerMarkup()
       : shapeMarkup;
     let markHtml =
-      `<div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center;pointer-events:none">${innerMarkup}</div>`;
+      `<div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:9999">${innerMarkup}</div>`;
     // Match repairWipedSlidesForVisualMarks — sanitize mark fragment before splice.
     markHtml = sanitizeManualEditHtmlFragment(markHtml, fragmentHost);
     if (!markHtml.trim()) continue;
-    const patchedSlide = slide.slice(0, closingIndex) + markHtml + slide.slice(closingIndex);
+    // Ensure the slide root is `position:relative` so the absolute mark div
+    // anchors to the slide instead of a distant ancestor. Skip when the
+    // opening tag already declares any explicit `position:`.
+    const slideWithRelative = ensureSectionRelativePositioning(slide);
+    const withRelativeClosingIndex = slideWithRelative.lastIndexOf(closingTag);
+    if (withRelativeClosingIndex < 0) continue;
+    const patchedSlide =
+      slideWithRelative.slice(0, withRelativeClosingIndex)
+      + markHtml
+      + slideWithRelative.slice(withRelativeClosingIndex);
     if (patchedSlide === slide) continue;
     if (existing) existing.html = patchedSlide;
     else ops.push({ op: 'replace', slideIndex, html: patchedSlide });

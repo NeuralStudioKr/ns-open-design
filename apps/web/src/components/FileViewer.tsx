@@ -13422,18 +13422,14 @@ function ImageViewer({
         </div>
       </div>
       <div className="viewer-body image-body">
-        {blob.src ? (
-          <img src={blob.src} alt="" className="viewer-image" />
-        ) : (
-          <AuthenticatedProjectFileImage
-            projectId={projectId}
-            path={filePath}
-            alt=""
-            rev={Math.round(file.mtime)}
-            trustExists
-            allowBackgroundRetry
-          />
-        )}
+        <AuthenticatedProjectFileImage
+          projectId={projectId}
+          path={filePath}
+          alt=""
+          rev={Math.round(file.mtime)}
+          trustExists
+          allowBackgroundRetry
+        />
       </div>
     </div>
   );
