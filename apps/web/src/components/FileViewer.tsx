@@ -248,7 +248,7 @@ import type {
   PreviewCommentTarget,
 } from '../types';
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
-import { ManualEditMultSelectOverlay } from './ManualEditMultSelectOverlay';
+import { ManualEditMultiSelectOverlay } from './ManualEditMultiSelectOverlay';
 import { ManualEditResizeOverlay } from './ManualEditResizeOverlay';
 import { FileViewerUndoRedoToolbar } from './FileViewerUndoRedoToolbar';
 import { FileRevisionHistoryPanel } from './FileRevisionHistoryPanel';
@@ -330,7 +330,7 @@ import {
   nextManualEditSelectionIds,
   resolveManualEditTargetsByIds,
   shouldFlushManualEditStylesOnSelectionBoundary,
-} from '../edit-mode/manual-edit-mult-select';
+} from '../edit-mode/manual-edit-multi-select';
 import {
   manualEditInspectorStyleValue,
   manualEditStyleValuesEqual,
@@ -356,7 +356,7 @@ type BoardTool = 'inspect' | 'pod';
 type StrokePoint = { x: number; y: number };
 export type ManualEditPendingStyleSave = {
   id: string;
-  /** When set, flush applies the same style diff to every id (mult select). */
+  /** When set, flush applies the same style diff to every id (multi-select). */
   targetIds?: string[];
   styles: Partial<ManualEditStyles>;
   label: string;
@@ -11536,7 +11536,7 @@ function HtmlViewer({
     selectedManualEditTargetIds,
     manualEditTargets,
   );
-  const manualEditMultSelectActive = selectedManualEditTargetsForPanel.length > 1;
+  const manualEditMultiSelectActive = selectedManualEditTargetsForPanel.length > 1;
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionUndoUnavailableTooltip = revisionStackInvalidated
@@ -11658,7 +11658,7 @@ function HtmlViewer({
     manualEditMode
     && !hideManualEditBoxDrag
     && !drawOverlayOpen
-    && !manualEditMultSelectActive
+    && !manualEditMultiSelectActive
     && selectedManualEditTarget
     && canResizeTarget(selectedManualEditTarget, {
       inlineTextEditing: manualEditInlineTextEditing,
@@ -11723,11 +11723,11 @@ function HtmlViewer({
         }}
       />
     ) : null;
-  const manualEditMultSelectOverlay =
+  const manualEditMultiSelectOverlay =
     manualEditMode
     && !drawOverlayOpen
-    && manualEditMultSelectActive ? (
-      <ManualEditMultSelectOverlay
+    && manualEditMultiSelectActive ? (
+      <ManualEditMultiSelectOverlay
         targets={selectedManualEditTargetsForPanel}
         previewScale={manualEditHostScale}
         hostOffset={manualEditHostOffset}
@@ -12467,6 +12467,7 @@ function HtmlViewer({
             {manualEditPanel}
             {manualEditHoverAffordance}
             {manualEditResizeOverlay}
+            {manualEditMultiSelectOverlay}
             <div
               className={[
                 manualEditMode ? 'manual-edit-canvas' : 'comment-preview-canvas',

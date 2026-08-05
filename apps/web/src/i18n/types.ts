@@ -2728,6 +2728,9 @@ export interface Dict {
   'manualEdit.closePanel': string;
   'manualEdit.collapsePanel': string;
   'manualEdit.expandPanel': string;
+  'manualEdit.multiSelectTitle': string;
+  'manualEdit.multiSelectStyleLabel': string;
+  'manualEdit.mixedStyleValue': string;
   'manualEdit.selectLayer': string;
   'manualEdit.empty': string;
   'manualEdit.noEditableLayers': string;

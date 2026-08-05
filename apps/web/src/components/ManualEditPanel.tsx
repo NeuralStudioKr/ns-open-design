@@ -92,11 +92,11 @@ export function ManualEditPanel({
   const selectedTargetRef = useRef<ManualEditTarget | null>(selectedTarget);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const targetForInspector = selectedTarget;
-  const multCount = selectedTargets.length;
-  const isMultSelect = multCount > 1;
-  const mixedPlaceholder = embedUiLabel('Mixed', '혼합');
-  const panelTitle = isMultSelect
-    ? embedUiLabel(`${multCount} selected`, `${multCount}개 선택`)
+  const multiCount = selectedTargets.length;
+  const isMultiSelect = multiCount > 1;
+  const mixedPlaceholder = t('manualEdit.mixedStyleValue');
+  const panelTitle = isMultiSelect
+    ? t('manualEdit.multiSelectTitle', { count: multiCount })
     : targetForInspector
       ? readableManualEditTargetName(targetForInspector)
       : t('manualEdit.fallbackTitle');
@@ -122,11 +122,11 @@ export function ManualEditPanel({
       return;
     }
     onError('');
-    const targetIds = isMultSelect
+    const targetIds = isMultiSelect
       ? selectedTargets.map((item) => item.id)
       : [targetForInspector.id];
-    const label = isMultSelect
-      ? embedUiLabel(`Style: ${multCount} elements`, `스타일: ${multCount}개 요소`)
+    const label = isMultiSelect
+      ? t('manualEdit.multiSelectStyleLabel', { count: multiCount })
       : `Style: ${targetForInspector.label}`;
     onStyleChange?.(targetIds, normalized.styles, label);
   };
@@ -246,7 +246,7 @@ export function ManualEditPanel({
                 />
               ) : null}
 
-              {!isMultSelect && targetForInspector?.kind === 'image' && onPickImage ? (
+              {!isMultiSelect && targetForInspector?.kind === 'image' && onPickImage ? (
                 <div className="cc-section">
                   <header className="cc-section-head">IMAGE</header>
                   <div className="cc-section-body">
@@ -292,7 +292,7 @@ export function ManualEditPanel({
             <div className="manual-edit-footer">
               <div className="manual-edit-footer-actions">
                 <div className="manual-edit-footer-left">
-                  {targetForInspector && !isMultSelect ? (
+                  {targetForInspector && !isMultiSelect ? (
                     confirmDelete ? (
                       <div className="manual-edit-delete-confirm">
                         <button

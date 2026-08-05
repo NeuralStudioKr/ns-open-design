@@ -1114,11 +1114,11 @@ test('[P1] manual edit deck fit-scale move undo restores left/top in one step', 
     .toBe(true);
 });
 
-test('[P1] manual edit mult select applies batch color and undo rolls back in one step', async ({ page }) => {
+test('[P1] manual edit multi-select applies batch color and undo rolls back in one step', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);
-  const projectId = await createProjectViaApi(page, 'Manual edit mult select');
-  const fileName = 'manual-edit-mult-select.html';
+  const projectId = await createProjectViaApi(page, 'Manual edit multi-select');
+  const fileName = 'manual-edit-multi-select.html';
   await seedHtmlArtifact(page, projectId, fileName, manualEditHtml());
   await page.goto(`/projects/${projectId}/files/${fileName}`);
   await openDesignFile(page, fileName);
@@ -1128,8 +1128,8 @@ test('[P1] manual edit mult select applies batch color and undo rolls back in on
   await frame.locator('[data-od-id="hero-title"]').click();
   await frame.locator('[data-od-id="cta"]').click({ modifiers: ['Shift'] });
 
-  await expect(page.locator('.manual-edit-modal')).toContainText('2 selected');
-  await expect(page.getByTestId('manual-edit-mult-select-overlay')).toBeVisible();
+  await expect(page.locator('.manual-edit-modal')).toContainText('Multi-select (2)');
+  await expect(page.getByTestId('manual-edit-multi-select-overlay')).toBeVisible();
   await expect(page.getByTestId('manual-edit-resize-overlay')).toHaveCount(0);
   await expect(frame.locator('[data-od-id="hero-title"][data-od-edit-selected="true"]')).toHaveCount(1);
   await expect(frame.locator('[data-od-id="cta"][data-od-edit-selected="true"]')).toHaveCount(1);

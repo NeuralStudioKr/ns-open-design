@@ -4,14 +4,14 @@ import { diffManualEditStylePatch } from './manual-edit-style-batch';
 import { applyManualEditPatch } from './source-patches';
 import { emptyManualEditStyles, MANUAL_EDIT_STYLE_PROPS, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from './types';
 
-export const MANUAL_EDIT_MULT_SELECT_MAX = 32;
+export const MANUAL_EDIT_MULTI_SELECT_MAX = 32;
 
 /** Next id set after a canvas click with optional additive modifier. */
 export function nextManualEditSelectionIds(
   currentIds: readonly string[],
   targetId: string,
   additive: boolean,
-  max = MANUAL_EDIT_MULT_SELECT_MAX,
+  max = MANUAL_EDIT_MULTI_SELECT_MAX,
 ): string[] {
   if (!targetId) return [];
   if (!additive) return [targetId];

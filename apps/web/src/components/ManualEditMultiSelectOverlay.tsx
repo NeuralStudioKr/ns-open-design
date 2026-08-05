@@ -4,7 +4,7 @@ import { resolveManualEditChromeHostRect } from '../edit-mode/move-math';
 import type { ManualEditRect, ManualEditTarget } from '../edit-mode/types';
 import styles from './ManualEditResizeOverlay.module.css';
 
-export type ManualEditMultSelectOverlayProps = {
+export type ManualEditMultiSelectOverlayProps = {
   targets: ManualEditTarget[];
   previewScale: number;
   hostOffset: { x: number; y: number };
@@ -42,12 +42,12 @@ function unionHostRect(
   return union;
 }
 
-export function ManualEditMultSelectOverlay({
+export function ManualEditMultiSelectOverlay({
   targets,
   previewScale,
   hostOffset,
   measureHostRect,
-}: ManualEditMultSelectOverlayProps) {
+}: ManualEditMultiSelectOverlayProps) {
   if (targets.length < 2) return null;
   const hostRect = unionHostRect(targets, previewScale, hostOffset, measureHostRect);
   if (!hostRect || hostRect.width < 1 || hostRect.height < 1) return null;
@@ -62,8 +62,8 @@ export function ManualEditMultSelectOverlay({
   return (
     <div
       className={styles.overlay}
-      data-testid="manual-edit-mult-select-overlay"
-      data-mult-count={targets.length}
+      data-testid="manual-edit-multi-select-overlay"
+      data-multi-count={targets.length}
       style={{
         ...overlayStyle,
         borderStyle: 'dashed',

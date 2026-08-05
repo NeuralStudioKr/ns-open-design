@@ -8,7 +8,7 @@ import {
   mergeInspectorStylesForTargets,
   nextManualEditSelectionIds,
   shouldFlushManualEditStylesOnSelectionBoundary,
-} from '../../src/edit-mode/manual-edit-mult-select';
+} from '../../src/edit-mode/manual-edit-multi-select';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
 
 const baseSource = `<!doctype html><html><body>
@@ -47,7 +47,7 @@ const catalog: ManualEditTarget[] = [
   },
 ];
 
-describe('manual-edit-mult-select', () => {
+describe('manual-edit-multi-select', () => {
   it('replaces selection without additive modifier', () => {
     expect(nextManualEditSelectionIds(['title'], 'body', false)).toEqual(['body']);
   });
