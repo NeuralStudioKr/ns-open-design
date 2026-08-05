@@ -74,6 +74,14 @@ describe('Toast', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
+  it('uses a warning glyph for error tone and only one close control', () => {
+    const { container } = render(
+      <Toast message="Something failed" tone="error" onDismiss={() => {}} />,
+    );
+    expect(container.querySelector('.od-toast-icon svg')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: /Close/i })).toHaveLength(1);
+  });
+
   it('does not reset the auto-dismiss timer when the parent passes a new onDismiss identity', () => {
     vi.useFakeTimers();
     const onDismiss = vi.fn();
