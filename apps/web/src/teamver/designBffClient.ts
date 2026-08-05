@@ -265,15 +265,30 @@ function resolveDesignBffSessionProbeUrl(): string {
 }
 
 const SESSION_PROBE_NEGATIVE_CACHE_MS = 60_000;
+/**
+ * Boot probe + runtime-config probe often race within the same tick window.
+ * A short positive cache collapses the duplicate `/auth/session-probe` without
+ * hiding real mid-session expiry (TTL is intentionally tight).
+ */
+const SESSION_PROBE_POSITIVE_CACHE_MS = 5_000;
 let sessionProbeKnownDeadUntil = 0;
+let sessionProbeKnownAliveUntil = 0;
+let sessionProbeInflight: Promise<boolean> | null = null;
 
 function noteSessionProbeKnownDead(): void {
   sessionProbeKnownDeadUntil = Date.now() + SESSION_PROBE_NEGATIVE_CACHE_MS;
+  sessionProbeKnownAliveUntil = 0;
   runtimeConfigAuthBlocked = true;
 }
 
 function clearSessionProbeKnownDead(): void {
   sessionProbeKnownDeadUntil = 0;
+}
+
+function noteSessionProbeKnownAlive(): void {
+  sessionProbeKnownAliveUntil = Date.now() + SESSION_PROBE_POSITIVE_CACHE_MS;
+  clearSessionProbeKnownDead();
+  runtimeConfigAuthBlocked = false;
 }
 
 async function probeDesignBffSessionAlive(options?: {
@@ -296,40 +311,60 @@ async function probeDesignBffSessionAlive(options?: {
   ) {
     return false;
   }
-  try {
-    const probeResponse = await fetch(resolveDesignBffSessionProbeUrl(), {
-      credentials: "include",
-      headers: { Accept: "application/json" },
-    });
-    // design-api session-probe: 204 = valid BFF session, 401 = expired.
-    if (probeResponse.status === 204) {
-      clearSessionProbeKnownDead();
-      runtimeConfigAuthBlocked = false;
-      return true;
-    }
-    if (probeResponse.status === 401 || probeResponse.status === 403) {
-      if (!options?.bypassNegativeCache) {
-        noteSessionProbeKnownDead();
+  if (
+    !options?.bypassNegativeCache
+    && sessionProbeKnownAliveUntil > Date.now()
+  ) {
+    return true;
+  }
+  if (sessionProbeInflight && !options?.bypassNegativeCache) {
+    return sessionProbeInflight;
+  }
+  const run = (async (): Promise<boolean> => {
+    try {
+      const probeResponse = await fetch(resolveDesignBffSessionProbeUrl(), {
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      // design-api session-probe: 204 = valid BFF session, 401 = expired.
+      if (probeResponse.status === 204) {
+        noteSessionProbeKnownAlive();
+        return true;
       }
+      if (probeResponse.status === 401 || probeResponse.status === 403) {
+        if (!options?.bypassNegativeCache) {
+          noteSessionProbeKnownDead();
+        }
+        return false;
+      }
+      if (probeResponse.ok) {
+        // Tests / transitional proxies may return JSON; prefer authenticated flag.
+        const body = (await probeResponse.json().catch(() => null)) as {
+          authenticated?: unknown;
+        } | null;
+        if (body && typeof body === "object" && "authenticated" in body) {
+          if (body.authenticated === true) {
+            noteSessionProbeKnownAlive();
+            return true;
+          }
+          return false;
+        }
+      }
+
+      // 404 / other unknown status → treat as "cannot confirm alive" without
+      // triggering ensure. Callers that need to actually refresh will escalate
+      // to ensureDesignBffSessionAuthenticated on the next ladder rung.
+      return false;
+    } catch {
       return false;
     }
-    if (probeResponse.ok) {
-      // Tests / transitional proxies may return JSON; prefer authenticated flag.
-      const body = (await probeResponse.json().catch(() => null)) as {
-        authenticated?: unknown;
-      } | null;
-      if (body && typeof body === "object" && "authenticated" in body) {
-        return body.authenticated === true;
-      }
-    }
-
-    // 404 / other unknown status → treat as "cannot confirm alive" without
-    // triggering ensure. Callers that need to actually refresh will escalate
-    // to ensureDesignBffSessionAuthenticated on the next ladder rung.
-    return false;
-  } catch {
-    return false;
+  })().finally(() => {
+    if (sessionProbeInflight === run) sessionProbeInflight = null;
+  });
+  if (!options?.bypassNegativeCache) {
+    sessionProbeInflight = run;
   }
+  return run;
 }
 
 /**
@@ -426,6 +461,8 @@ export function resetDesignAuthRefreshDeclinedForTests(): void {
   authRefreshStickySurvivalLastOk = false;
   authRefreshStickySurvivalAttempts = 0;
   clearSessionProbeKnownDead();
+  sessionProbeKnownAliveUntil = 0;
+  sessionProbeInflight = null;
   runtimeConfigAuthBlocked = false;
 }
 
@@ -1220,6 +1257,8 @@ export function resetTeamverRuntimeConfigCacheForTests(): void {
   runtimeConfigAuthBlocked = false;
   runtimeConfigSessionProbeInflight = null;
   clearSessionProbeKnownDead();
+  sessionProbeKnownAliveUntil = 0;
+  sessionProbeInflight = null;
 }
 
 async function confirmRuntimeConfigSessionAlive(): Promise<boolean> {

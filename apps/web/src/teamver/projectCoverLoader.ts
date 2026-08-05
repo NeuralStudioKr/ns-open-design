@@ -24,9 +24,15 @@ export function resolveProjectCoverOptionsForListSurface(): ResolveProjectCoverO
   return embedProjectCoverHintsOnly() ? { allowFilesFallback: false } : {};
 }
 
-/** Home recent rail — bounded at HOME_RECENT_LIST_LIMIT; may use /files when hints miss. */
+/**
+ * Home recent rail — bounded at HOME_RECENT_LIST_LIMIT.
+ * Teamver embed stays hints-only (same as DesignsTab) so a single miss does not
+ * fan out `GET /api/projects/:id/files` on boot. Standalone OD may fall back.
+ */
 export function resolveProjectCoverOptionsForHomeSurface(): ResolveProjectCoverOptions {
-  return { allowFilesFallback: true };
+  return embedProjectCoverHintsOnly()
+    ? { allowFilesFallback: false }
+    : { allowFilesFallback: true };
 }
 
 type CoverCacheEntry = {

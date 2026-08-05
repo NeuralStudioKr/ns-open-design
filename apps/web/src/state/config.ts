@@ -870,6 +870,54 @@ export async function syncMediaProvidersToDaemon(
 }
 
 let fetchDaemonConfigInflight: Promise<AppConfigPrefs | null> | null = null;
+/** Last prefs successfully PUT this session — collapses duplicate sync calls. */
+let lastSyncedAppConfigPrefsJson: string | null = null;
+
+export function appConfigPrefsPayload(config: AppConfig): AppConfigPrefs {
+  return {
+    onboardingCompleted: config.onboardingCompleted,
+    agentId: config.agentId,
+    agentModels: config.agentModels,
+    agentCliEnv: config.agentCliEnv,
+    skillId: config.skillId,
+    designSystemId: config.designSystemId,
+    disabledSkills: config.disabledSkills,
+    disabledDesignSystems: config.disabledDesignSystems,
+    orbit: normalizeOrbit(config.orbit),
+    installationId: config.installationId,
+    telemetry: config.telemetry,
+    privacyDecisionAt: config.privacyDecisionAt,
+    customInstructions: config.customInstructions ?? null,
+    projectLocations: config.projectLocations ?? [],
+    defaultProjectLocationId: config.defaultProjectLocationId ?? 'default',
+  };
+}
+
+/**
+ * True when a PUT would change daemon-owned prefs vs the last GET snapshot.
+ * Used to skip the boot echo `PUT /api/app-config` when merge→lock is a no-op.
+ */
+export function shouldSyncAppConfigPrefsToDaemon(
+  config: AppConfig,
+  daemonConfig: AppConfigPrefs | null | undefined,
+): boolean {
+  if (!daemonConfig) return true;
+  const next = appConfigPrefsPayload(config);
+  for (const key of Object.keys(next) as (keyof AppConfigPrefs)[]) {
+    const nextVal = next[key];
+    if (!Object.prototype.hasOwnProperty.call(daemonConfig, key)) {
+      // Daemon never persisted this key — push migrations (install id / privacy stamp).
+      if (key === 'installationId' && nextVal) return true;
+      if (key === 'privacyDecisionAt' && nextVal != null) return true;
+      continue;
+    }
+    const daemonVal = daemonConfig[key];
+    if (JSON.stringify(daemonVal ?? null) !== JSON.stringify(nextVal ?? null)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export async function fetchDaemonConfig(): Promise<AppConfigPrefs | null> {
   if (fetchDaemonConfigInflight) return fetchDaemonConfigInflight;
@@ -891,36 +939,42 @@ export async function fetchDaemonConfig(): Promise<AppConfigPrefs | null> {
 /** @internal vitest only */
 export function resetFetchDaemonConfigInflightForTests(): void {
   fetchDaemonConfigInflight = null;
+  lastSyncedAppConfigPrefsJson = null;
 }
 
 export async function syncConfigToDaemon(
   config: AppConfig,
-  options?: { throwOnError?: boolean },
+  options?: {
+    throwOnError?: boolean;
+    /** When set, skip PUT if prefs already match this daemon GET snapshot. */
+    baselineDaemonPrefs?: AppConfigPrefs | null;
+  },
 ): Promise<void> {
-  const prefs: AppConfigPrefs = {
-    onboardingCompleted: config.onboardingCompleted,
-    agentId: config.agentId,
-    agentModels: config.agentModels,
-    agentCliEnv: config.agentCliEnv,
-    skillId: config.skillId,
-    designSystemId: config.designSystemId,
-    disabledSkills: config.disabledSkills,
-    disabledDesignSystems: config.disabledDesignSystems,
-    orbit: normalizeOrbit(config.orbit),
-    installationId: config.installationId,
-    telemetry: config.telemetry,
-    privacyDecisionAt: config.privacyDecisionAt,
-    customInstructions: config.customInstructions ?? null,
-    projectLocations: config.projectLocations ?? [],
-    defaultProjectLocationId: config.defaultProjectLocationId ?? 'default',
-  };
+  const prefs = appConfigPrefsPayload(config);
+  let prefsJson: string;
+  try {
+    prefsJson = JSON.stringify(prefs);
+  } catch {
+    prefsJson = '';
+  }
+  if (prefsJson && prefsJson === lastSyncedAppConfigPrefsJson) {
+    return;
+  }
+  if (
+    options && 'baselineDaemonPrefs' in options
+    && !shouldSyncAppConfigPrefsToDaemon(config, options.baselineDaemonPrefs)
+  ) {
+    lastSyncedAppConfigPrefsJson = prefsJson || JSON.stringify(prefs);
+    return;
+  }
   try {
     const response = await fetch('/api/app-config', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(prefs),
+      body: prefsJson || JSON.stringify(prefs),
     });
     if (!response.ok) throw new Error(`Failed to sync app config (${response.status})`);
+    lastSyncedAppConfigPrefsJson = prefsJson || JSON.stringify(prefs);
   } catch (error) {
     if (options?.throwOnError) throw error;
     // Daemon offline; localStorage keeps the user's copy for the next save.

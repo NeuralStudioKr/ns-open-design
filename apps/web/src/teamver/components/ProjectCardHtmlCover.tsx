@@ -26,10 +26,26 @@ export {
 const htmlCoverCache = new Map<string, string>();
 const htmlCoverInflight = new Map<string, Promise<string>>();
 
+const VIEWPORT_ROOT_MARGIN_PX = 160;
+
+function isNearViewport(node: Element): boolean {
+  const rect = node.getBoundingClientRect();
+  return (
+    rect.bottom >= -VIEWPORT_ROOT_MARGIN_PX &&
+    rect.top <= window.innerHeight + VIEWPORT_ROOT_MARGIN_PX
+  );
+}
+
 export type ProjectCardHtmlCoverProps = {
   src: string;
   /** Deck projects — first-slide layout CSS; prototypes use a simpler clip. */
   deckCoverOnly?: boolean;
+  /**
+   * When true (default in Teamver embed), wait until the card is near the
+   * viewport before fetching `/raw` + minting `preview-url`. Standalone OD
+   * still loads immediately so existing thumbnails keep painting.
+   */
+  deferUntilVisible?: boolean;
   iframeClassName?: string;
   deckFrameClassName?: string;
   deckIframeClassName?: string;
@@ -47,6 +63,7 @@ export type ProjectCardHtmlCoverProps = {
 export function ProjectCardHtmlCover({
   src,
   deckCoverOnly = false,
+  deferUntilVisible = isTeamverEmbedMode(),
   iframeClassName = "thumb-iframe",
   deckFrameClassName = "project-thumb-deck-frame",
   deckIframeClassName = "project-thumb-deck-iframe",
@@ -56,6 +73,7 @@ export function ProjectCardHtmlCover({
     <AuthenticatedHtmlCover
       src={src}
       mode={deckCoverOnly ? "deck" : "page"}
+      deferUntilVisible={deferUntilVisible}
       deckFrameClassName={deckFrameClassName}
       deckIframeClassName={deckIframeClassName || iframeClassName}
       deckLoadingClassName={deckLoadingClassName}
@@ -66,12 +84,14 @@ export function ProjectCardHtmlCover({
 function AuthenticatedHtmlCover({
   src,
   mode,
+  deferUntilVisible,
   deckFrameClassName,
   deckIframeClassName,
   deckLoadingClassName,
 }: {
   src: string;
   mode: "deck" | "page";
+  deferUntilVisible: boolean;
   deckFrameClassName: string;
   deckIframeClassName: string;
   deckLoadingClassName: string;
@@ -81,10 +101,42 @@ function AuthenticatedHtmlCover({
   // the busted URL when the cache misses. Prefixed with builder version so
   // logic bumps do not serve stale full-deck thumbs from the in-memory Map.
   const cacheKey = `v2:${mode}:${src.split(/[?#]/u, 1)[0] ?? src}`;
+  const [visible, setVisible] = useState(() => {
+    if (!deferUntilVisible) return true;
+    return htmlCoverCache.has(cacheKey);
+  });
   const [srcDoc, setSrcDoc] = useState<string | null>(() => htmlCoverCache.get(cacheKey) ?? null);
   const [scale, setScale] = useState(1);
 
   useEffect(() => {
+    if (!deferUntilVisible) {
+      setVisible(true);
+      return;
+    }
+    if (htmlCoverCache.has(cacheKey)) {
+      setVisible(true);
+      return;
+    }
+    const node = frameRef.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined" || isNearViewport(node)) {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setVisible(true);
+        observer.disconnect();
+      },
+      { rootMargin: `${VIEWPORT_ROOT_MARGIN_PX}px` },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [cacheKey, deferUntilVisible]);
+
+  useEffect(() => {
+    if (!visible) return;
     let cancelled = false;
     const cached = htmlCoverCache.get(cacheKey);
     if (cached) {
@@ -104,7 +156,7 @@ function AuthenticatedHtmlCover({
       cancelled = true;
       abort.abort();
     };
-  }, [cacheKey, mode, src]);
+  }, [cacheKey, mode, src, visible]);
 
   useEffect(() => {
     const node = frameRef.current;

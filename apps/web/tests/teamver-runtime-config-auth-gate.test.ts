@@ -127,6 +127,38 @@ describe("fetchTeamverRuntimeConfig auth gate (docs-teamver/43)", () => {
     ).toHaveLength(1);
   });
 
+  it("coalesces concurrent alive session-probe calls and short-caches 204", async () => {
+    const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =
+      await import("../src/teamver/teamverEmbedSession");
+    const {
+      probeDesignBffSessionAuthenticated,
+      resetDesignAuthRefreshDeclinedForTests,
+      resetTeamverRuntimeConfigCacheForTests,
+    } = await import("../src/teamver/designBffClient");
+
+    resetTeamverEmbedSessionRelayForTests();
+    resetDesignAuthRefreshDeclinedForTests();
+    resetTeamverRuntimeConfigCacheForTests();
+    setTeamverEmbedSessionAuthenticated(true);
+
+    const fetchMock = stubSessionProbe(204);
+
+    const [a, b] = await Promise.all([
+      probeDesignBffSessionAuthenticated(),
+      probeDesignBffSessionAuthenticated(),
+    ]);
+    expect(a).toBe(true);
+    expect(b).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
+    ).toHaveLength(1);
+
+    await expect(probeDesignBffSessionAuthenticated()).resolves.toBe(true);
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/auth/session-probe")),
+    ).toHaveLength(1);
+  });
+
   it("blocks opportunistic refetch after 401 until session re-auth", async () => {
     const { NetworkError } = await import("@teamver/app-sdk");
     const { setTeamverEmbedSessionAuthenticated, resetTeamverEmbedSessionRelayForTests } =

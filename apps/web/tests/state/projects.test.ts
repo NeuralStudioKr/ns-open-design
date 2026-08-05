@@ -122,7 +122,7 @@ describe('listPlugins', () => {
     brandingSpy.mockRestore();
   });
 
-  it('uses the deck catalog instead of plugin detail in embed slide-only mode', async () => {
+  it('uses plugin detail GET in embed slide-only mode (no catalog fan-out)', async () => {
     const designApiBase = await import('../../src/teamver/designApiBase');
     const branding = await import('../../src/teamver/branding/config');
     const embedSession = await import('../../src/teamver/teamverEmbedSession');
@@ -135,9 +135,9 @@ describe('listPlugins', () => {
       manifest: { od: { mode: 'deck' } },
     };
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
-      expect(String(input)).not.toBe('/api/plugins/example-simple-deck');
+      expect(String(input)).toBe('/api/plugins/example-simple-deck');
       return new Response(
-        JSON.stringify({ plugins: [plugin] }),
+        JSON.stringify(plugin),
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
     });
@@ -145,7 +145,10 @@ describe('listPlugins', () => {
 
     await expect(getInstalledPlugin('example-simple-deck', { includeHidden: true })).resolves.toEqual(plugin);
 
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins?mode=deck&limit=48');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins/example-simple-deck');
+    expect(
+      fetchMock.mock.calls.some((call) => String(call[0]).includes('/api/plugins?mode=deck')),
+    ).toBe(false);
     embedSpy.mockRestore();
     sessionSpy.mockRestore();
     brandingSpy.mockRestore();

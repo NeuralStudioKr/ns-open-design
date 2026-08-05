@@ -132,6 +132,25 @@ describe('HtmlSurface authenticated srcDoc', () => {
     expect(fetchBlock).toContain('skipTeamverWorkspaceHeaders: true');
   });
 
+  it('does not auto-fetch plugin preview on inView in Teamver embed (hover arms load)', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const fetchMock = vi.fn().mockResolvedValue(htmlResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+      />,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(container.querySelector('iframe')).toBeNull();
+    embedSpy.mockRestore();
+  });
+
   it('renders an iframe with srcDoc once HTML loads (not bare src)', async () => {
     const fetchMock = vi.fn().mockResolvedValue(htmlResponse());
     vi.stubGlobal('fetch', fetchMock);

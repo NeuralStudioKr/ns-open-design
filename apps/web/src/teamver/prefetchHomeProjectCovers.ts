@@ -12,9 +12,9 @@ import { isTeamverEmbedMode } from "./designApiBase";
 
 /**
  * Home recent rail covers.
- * Cover-hints first; when hints miss (registry row not in daemon sqlite), a bounded
- * `/files` fallback is allowed because HOME_RECENT_LIST_LIMIT caps fan-out.
- * DesignsTab keeps hints-only policy via resolveProjectCoverOptionsForListSurface.
+ * Cover-hints first. Teamver embed is hints-only (no per-card `/files` listing);
+ * standalone OD may fall back to `/files` within HOME_RECENT_LIST_LIMIT.
+ * DesignsTab keeps hints-only via resolveProjectCoverOptionsForListSurface.
  */
 export async function prefetchHomeProjectCovers(
   projects: Project[],

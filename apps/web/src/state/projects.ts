@@ -67,8 +67,6 @@ import {
 } from '../comments';
 import { reconcileChatMessageOnLoad } from '../runtime/chat-events';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
-import { normalizePluginApiId } from '../plugins/pluginIds';
-
 function sanitizeChatMessageForPersist(message: ChatMessage): ChatMessage {
   const hideInternal = resolveTeamverBranding().hideAssistantThinkingDetails;
   const reconciled = reconcileUserCommentAttachments(message);
@@ -1328,17 +1326,8 @@ export async function getInstalledPlugin(
   const id = pluginId.trim();
   if (!id) return null;
   const slideOnly = isTeamverEmbedMode() && resolveTeamverBranding().slideOnlyMvp;
-  if (slideOnly) {
-    const listed = (await listPluginsPage({ mode: 'deck', limit: 48, includeHidden: true }))
-      .plugins
-      .find((plugin) => plugin.id === id || normalizePluginApiId(plugin.id) === id);
-    if (listed) {
-      const visible = pluginsForSlideOnlyMvp([listed], { slideOnlyMvp: true });
-      if (visible.length === 0) return null;
-      if (!options.includeHidden && !isVisiblePlugin(listed)) return null;
-      return listed;
-    }
-  }
+  // Prefer single-plugin GET. Avoid a second catalog fan-out (`limit=48`) on
+  // home boot when the community gallery already loaded `limit=24`.
   try {
     const resp = await fetchPluginsCatalog(`/api/plugins/${encodeURIComponent(id)}`);
     if (!resp?.ok) return null;

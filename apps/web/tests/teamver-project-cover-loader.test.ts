@@ -26,6 +26,7 @@ import {
   resetProjectCoverLoaderStateForTests,
   resolveProjectCoverFile,
   resolveProjectCoverFiles,
+  resolveProjectCoverOptionsForHomeSurface,
   resolveProjectCoverOptionsForListSurface,
   seedProjectCoverHints,
 } from "../src/teamver/projectCoverLoader";
@@ -65,10 +66,16 @@ describe("projectCoverLoader", () => {
     expect(resolveProjectCoverOptionsForListSurface()).toEqual({
       allowFilesFallback: false,
     });
+    expect(resolveProjectCoverOptionsForHomeSurface()).toEqual({
+      allowFilesFallback: false,
+    });
 
     vi.mocked(isTeamverEmbedMode).mockReturnValue(false);
     expect(embedProjectCoverHintsOnly()).toBe(false);
     expect(resolveProjectCoverOptionsForListSurface()).toEqual({});
+    expect(resolveProjectCoverOptionsForHomeSurface()).toEqual({
+      allowFilesFallback: true,
+    });
   });
 
   it("skips fetch when metadata entryFile is present", async () => {

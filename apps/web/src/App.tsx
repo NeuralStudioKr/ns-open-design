@@ -1298,7 +1298,9 @@ function AppInner() {
             daemonProviders: daemonMediaProvidersLoaded,
           });
         }
-        void syncConfigToDaemon(lockedNext);
+        // Skip echo PUT when merge→lock did not change daemon-owned prefs
+        // (home boot was always doing GET /api/app-config + PUT /api/app-config).
+        void syncConfigToDaemon(lockedNext, { baselineDaemonPrefs: daemonConfig });
         // Embed: Composio UI is hidden; daemon PUT is loopback-only (403 on remote staging).
         if (!isTeamverEmbedMode()) {
           void syncComposioConfigToDaemon(lockedNext.composio);

@@ -33,6 +33,7 @@ import {
   looksLikeHtmlDocument,
   pluginPreviewSrcDoc,
 } from '../../../runtime/authenticatedHtmlSrcDoc';
+import { isTeamverEmbedMode } from '../../../teamver/designApiBase';
 import { fetchTeamverDaemon } from '../../../teamver/teamverDaemonHeaders';
 import type { HtmlPreviewSpec } from '../preview';
 
@@ -167,6 +168,10 @@ export function HtmlSurface({
       setShouldLoad(true);
       return;
     }
+    // Teamver embed: do not auto-probe `/api/plugins/.../preview` just because
+    // the tile scrolled into view — home boot was fanning out 4+ preview GETs.
+    // Hover (onMouseEnter) or instantMount still arms the fetch.
+    if (isTeamverEmbedMode() && !eager) return;
     const id = window.setTimeout(() => setShouldLoad(true), eager ? 60 : 520);
     return () => window.clearTimeout(id);
   }, [inView, preview.src, eager, instantMount]);
