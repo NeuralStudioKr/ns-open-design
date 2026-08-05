@@ -2062,8 +2062,6 @@ export const ja: Dict = {
   'manualEdit.closePanel': '編集パネルを閉じる',
   'manualEdit.collapsePanel': '編集パネルを折りたたむ',
   'manualEdit.expandPanel': '編集パネルを展開',
-  'manualEdit.multiSelectTitle': 'マルチ選択 {count}件',
-  'manualEdit.multiSelectStyleLabel': 'スタイル: {count}要素',
   'manualEdit.mixedStyleValue': '混合',
   'manualEdit.selectLayer': 'レイヤーを選択',
   'manualEdit.empty': 'プレビュー内の要素をクリックするか、レイヤーを選択してください。',

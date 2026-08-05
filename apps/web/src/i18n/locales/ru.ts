@@ -2062,8 +2062,6 @@ export const ru: Dict = {
   'manualEdit.closePanel': 'Закрыть панель редактирования',
   'manualEdit.collapsePanel': 'Свернуть панель редактирования',
   'manualEdit.expandPanel': 'Развернуть панель редактирования',
-  'manualEdit.multiSelectTitle': 'Множественный выбор ({count})',
-  'manualEdit.multiSelectStyleLabel': 'Стиль: {count} элементов',
   'manualEdit.mixedStyleValue': 'Смешанный',
   'manualEdit.selectLayer': 'Выберите слой',
   'manualEdit.empty': 'Щёлкните элемент в предпросмотре или выберите слой.',

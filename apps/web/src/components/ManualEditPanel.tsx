@@ -96,7 +96,7 @@ export function ManualEditPanel({
   const isMultiSelect = multiCount > 1;
   const mixedPlaceholder = t('manualEdit.mixedStyleValue');
   const panelTitle = isMultiSelect
-    ? t('manualEdit.multiSelectTitle', { count: multiCount })
+    ? embedUiLabel(`${multiCount} selected`, `${multiCount}개 선택`)
     : targetForInspector
       ? readableManualEditTargetName(targetForInspector)
       : t('manualEdit.fallbackTitle');
@@ -126,7 +126,7 @@ export function ManualEditPanel({
       ? selectedTargets.map((item) => item.id)
       : [targetForInspector.id];
     const label = isMultiSelect
-      ? t('manualEdit.multiSelectStyleLabel', { count: multiCount })
+      ? embedUiLabel(`Style: ${multiCount} elements`, `스타일: ${multiCount}개 요소`)
       : `Style: ${targetForInspector.label}`;
     onStyleChange?.(targetIds, normalized.styles, label);
   };

@@ -2062,8 +2062,6 @@ export const esES: Dict = {
   'manualEdit.closePanel': 'Cerrar el panel de edición',
   'manualEdit.collapsePanel': 'Contraer el panel de edición',
   'manualEdit.expandPanel': 'Expandir el panel de edición',
-  'manualEdit.multiSelectTitle': 'Selección múltiple ({count})',
-  'manualEdit.multiSelectStyleLabel': 'Estilo: {count} elementos',
   'manualEdit.mixedStyleValue': 'Mixto',
   'manualEdit.selectLayer': 'Selecciona una capa',
   'manualEdit.empty': 'Haz clic en un elemento de la vista previa o elige una capa.',

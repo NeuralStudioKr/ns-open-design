@@ -2062,8 +2062,6 @@ export const zhCN: Dict = {
   'manualEdit.closePanel': '关闭编辑面板',
   'manualEdit.collapsePanel': '折叠编辑面板',
   'manualEdit.expandPanel': '展开编辑面板',
-  'manualEdit.multiSelectTitle': '多选 ({count})',
-  'manualEdit.multiSelectStyleLabel': '样式: {count} 个元素',
   'manualEdit.mixedStyleValue': '混合',
   'manualEdit.selectLayer': '选择图层',
   'manualEdit.empty': '在预览中点击元素,或选择一个图层。',

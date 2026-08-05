@@ -1128,7 +1128,7 @@ test('[P1] manual edit multi-select applies batch color and undo rolls back in o
   await frame.locator('[data-od-id="hero-title"]').click();
   await frame.locator('[data-od-id="cta"]').click({ modifiers: ['Shift'] });
 
-  await expect(page.locator('.manual-edit-modal')).toContainText('Multi-select (2)');
+  await expect(page.locator('.manual-edit-modal')).toContainText('2 selected');
   await expect(page.getByTestId('manual-edit-multi-select-overlay')).toBeVisible();
   await expect(page.getByTestId('manual-edit-resize-overlay')).toHaveCount(0);
   await expect(frame.locator('[data-od-id="hero-title"][data-od-edit-selected="true"]')).toHaveCount(1);

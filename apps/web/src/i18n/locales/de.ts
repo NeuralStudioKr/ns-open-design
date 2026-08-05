@@ -2062,8 +2062,6 @@ export const de: Dict = {
   'manualEdit.closePanel': 'Bearbeitungsfenster schließen',
   'manualEdit.collapsePanel': 'Bearbeitungsfenster einklappen',
   'manualEdit.expandPanel': 'Bearbeitungsfenster ausklappen',
-  'manualEdit.multiSelectTitle': 'Mehrfachauswahl ({count})',
-  'manualEdit.multiSelectStyleLabel': 'Stil: {count} Elemente',
   'manualEdit.mixedStyleValue': 'Gemischt',
   'manualEdit.selectLayer': 'Ebene auswählen',
   'manualEdit.empty': 'Klicken Sie auf ein Element in der Vorschau oder wählen Sie eine Ebene aus.',

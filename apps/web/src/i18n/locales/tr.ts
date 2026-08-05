@@ -2062,8 +2062,6 @@ export const tr: Dict = {
   'manualEdit.closePanel': 'Düzenleme panelini kapat',
   'manualEdit.collapsePanel': 'Düzenleme panelini daralt',
   'manualEdit.expandPanel': 'Düzenleme panelini genişlet',
-  'manualEdit.multiSelectTitle': 'Multi-select ({count})',
-  'manualEdit.multiSelectStyleLabel': 'Style: {count} elements',
   'manualEdit.mixedStyleValue': 'Mixed',
   'manualEdit.selectLayer': 'Bir katman seç',
   'manualEdit.empty': 'Önizlemede bir öğeye tıklayın veya bir katman seçin.',

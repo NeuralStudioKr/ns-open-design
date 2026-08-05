@@ -2062,8 +2062,6 @@ export const ar: Dict = {
   'manualEdit.closePanel': 'إغلاق لوحة التحرير',
   'manualEdit.collapsePanel': 'طي لوحة التحرير',
   'manualEdit.expandPanel': 'توسيع لوحة التحرير',
-  'manualEdit.multiSelectTitle': 'Multi-select ({count})',
-  'manualEdit.multiSelectStyleLabel': 'Style: {count} elements',
   'manualEdit.mixedStyleValue': 'Mixed',
   'manualEdit.selectLayer': 'اختر طبقة',
   'manualEdit.empty': 'انقر على عنصر في المعاينة أو اختر طبقة.',

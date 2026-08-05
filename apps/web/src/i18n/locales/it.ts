@@ -2062,8 +2062,6 @@ export const it: Dict = {
   'manualEdit.closePanel': 'Chiudi pannello di modifica',
   'manualEdit.collapsePanel': 'Comprimi pannello di modifica',
   'manualEdit.expandPanel': 'Espandi pannello di modifica',
-  'manualEdit.multiSelectTitle': 'Selezione multipla ({count})',
-  'manualEdit.multiSelectStyleLabel': 'Stile: {count} elementi',
   'manualEdit.mixedStyleValue': 'Misto',
   'manualEdit.selectLayer': 'Seleziona un livello',
   'manualEdit.empty': 'Clicca un elemento nell\'anteprima o scegli un livello.',

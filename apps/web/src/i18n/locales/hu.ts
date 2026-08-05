@@ -2062,8 +2062,6 @@ export const hu: Dict = {
   'manualEdit.closePanel': 'Szerkesztőpanel bezárása',
   'manualEdit.collapsePanel': 'Szerkesztőpanel összecsukása',
   'manualEdit.expandPanel': 'Szerkesztőpanel kibontása',
-  'manualEdit.multiSelectTitle': 'Multi-select ({count})',
-  'manualEdit.multiSelectStyleLabel': 'Style: {count} elements',
   'manualEdit.mixedStyleValue': 'Mixed',
   'manualEdit.selectLayer': 'Válassz egy réteget',
   'manualEdit.empty': 'Kattints egy elemre az előnézetben, vagy válassz egy réteget.',

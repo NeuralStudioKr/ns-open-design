@@ -2062,8 +2062,6 @@ export const fr: Dict = {
   'manualEdit.closePanel': 'Fermer le panneau d’édition',
   'manualEdit.collapsePanel': 'Réduire le panneau d’édition',
   'manualEdit.expandPanel': 'Développer le panneau d’édition',
-  'manualEdit.multiSelectTitle': 'Sélection multiple ({count})',
-  'manualEdit.multiSelectStyleLabel': 'Style : {count} éléments',
   'manualEdit.mixedStyleValue': 'Mixte',
   'manualEdit.selectLayer': 'Sélectionnez un calque',
   'manualEdit.empty': 'Cliquez sur un élément dans l’aperçu ou choisissez un calque.',

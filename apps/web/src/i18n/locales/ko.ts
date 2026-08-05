@@ -2062,8 +2062,6 @@ export const ko: Dict = {
   'manualEdit.closePanel': '편집 패널 닫기',
   'manualEdit.collapsePanel': '편집 패널 접기',
   'manualEdit.expandPanel': '편집 패널 펼치기',
-  'manualEdit.multiSelectTitle': '멀티 선택 {count}개',
-  'manualEdit.multiSelectStyleLabel': '스타일: {count}개 요소',
   'manualEdit.mixedStyleValue': '혼합',
   'manualEdit.selectLayer': '레이어 선택',
   'manualEdit.empty': '미리보기에서 요소를 클릭하거나 레이어를 선택하세요.',

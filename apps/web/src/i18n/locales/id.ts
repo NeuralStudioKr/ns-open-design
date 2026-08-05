@@ -2062,8 +2062,6 @@ export const id: Dict = {
   'manualEdit.closePanel': 'Close edit panel',
   'manualEdit.collapsePanel': 'Collapse edit panel',
   'manualEdit.expandPanel': 'Expand edit panel',
-  'manualEdit.multiSelectTitle': 'Multi-select ({count})',
-  'manualEdit.multiSelectStyleLabel': 'Style: {count} elements',
   'manualEdit.mixedStyleValue': 'Mixed',
   'manualEdit.selectLayer': 'Pilih lapisan',
   'manualEdit.empty': 'Klik elemen di pratinjau atau pilih lapisan.',

@@ -2062,8 +2062,6 @@ export const th: Dict = {
   'manualEdit.closePanel': 'ปิดแผงแก้ไข',
   'manualEdit.collapsePanel': 'ยุบแผงแก้ไข',
   'manualEdit.expandPanel': 'ขยายแผงแก้ไข',
-  'manualEdit.multiSelectTitle': 'Multi-select ({count})',
-  'manualEdit.multiSelectStyleLabel': 'Style: {count} elements',
   'manualEdit.mixedStyleValue': 'Mixed',
   'manualEdit.selectLayer': 'เลือกเลเยอร์ขึ้นมา',
   'manualEdit.empty': 'เลือกกล่องด้านบนเพื่อเปิดดู',

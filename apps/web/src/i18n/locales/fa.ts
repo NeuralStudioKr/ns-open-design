@@ -2062,8 +2062,6 @@ export const fa: Dict = {
   'manualEdit.closePanel': 'بستن پنل ویرایش',
   'manualEdit.collapsePanel': 'جمع کردن پنل ویرایش',
   'manualEdit.expandPanel': 'باز کردن پنل ویرایش',
-  'manualEdit.multiSelectTitle': 'Multi-select ({count})',
-  'manualEdit.multiSelectStyleLabel': 'Style: {count} elements',
   'manualEdit.mixedStyleValue': 'Mixed',
   'manualEdit.selectLayer': 'یک لایه انتخاب کنید',
   'manualEdit.empty': 'روی یک عنصر در پیش‌نمایش کلیک کنید یا یک لایه انتخاب کنید.',
