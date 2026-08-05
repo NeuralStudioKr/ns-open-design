@@ -159,7 +159,10 @@ export async function runTeamverEmbedSessionBoot(
       }
 
       try {
-        return await fetchTeamverRuntimeConfig();
+        // nginxLive already probed above — skip the duplicate session-probe.
+        return await fetchTeamverRuntimeConfig({
+          sessionAlreadyProbedAlive: nginxLive,
+        });
       } catch (err) {
         devLog.warn("[teamver] embed boot runtime-config failed", err);
         return null;

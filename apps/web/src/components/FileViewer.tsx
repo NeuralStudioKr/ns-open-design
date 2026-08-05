@@ -2987,7 +2987,10 @@ export function CommentSidePanel({
                           projectId={projectId}
                           path={attachment.path}
                           alt={attachment.name}
-                          trustExists
+                          // Comment-side thumbs are not an authoritative file
+                          // index — never trustExists (deleted drawings must
+                          // 404 once via missing cache, not remount-/raw/).
+                          trustExists={false}
                         />
                       </a>
                     );

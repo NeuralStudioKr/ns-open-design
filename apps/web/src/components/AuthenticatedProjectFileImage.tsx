@@ -7,6 +7,7 @@ import { useProjectFileSignedUrl } from '../hooks/useProjectFileSignedUrl';
 import { shouldUseTeamverAuthenticatedProjectRawFetch } from '../teamver/designApiBase';
 import { buildAuthenticatedProjectRawImageUrl } from '../utils/authenticatedProjectRawImageUrl';
 import { clearProjectRawFileMissing, isProjectRawFileKnownMissing } from '../utils/projectFileFetchCache';
+import { isEphemeralDrawingScreenshotPath } from '../utils/projectFilePaths';
 import { Icon } from './Icon';
 
 type AuthenticatedProjectFileImageProps = {
@@ -55,6 +56,9 @@ export function AuthenticatedProjectFileImage({
   const useAuthenticatedFetch = shouldUseTeamverAuthenticatedProjectRawFetch();
   const [errorRetry, setErrorRetry] = useState(0);
   const [presignImgFailed, setPresignImgFailed] = useState(false);
+  // Capture missing-at-mount so remounts of deleted files never re-enter the
+  // scratch-race `/raw/` path (refs reset on remount; session cache does not).
+  const [startedKnownMissing] = useState(() => isProjectRawFileKnownMissing(projectId, path));
 
   // Keep projectId/path wired even after a mint 404 — the signed-url hook
   // short-circuits on the missing cache. Passing null would reset `missing`
@@ -67,23 +71,35 @@ export function AuthenticatedProjectFileImage({
     {
       enabled: shouldTryPresign,
       trustExists,
-      allowBackgroundRetry,
+      // Remounts that already knew the file was missing must not bypass the
+      // session cache (would re-POST /presign-get on every open).
+      allowBackgroundRetry: allowBackgroundRetry && !startedKnownMissing,
     },
   );
 
-  // Scratch race: indexed design-panel files may exist locally before S3 HEAD.
-  // Chat-history drawings that mint-404 must not double-hit `/raw/`.
+  // Mint unavailable (disabled/5xx): `/raw/` is appropriate.
+  // Mint 404 scratch race (indexed file, S3 lag): one `/raw/` attempt only when
+  // this mount did not start already-known-missing. Remounts stay quiet.
+  const allowScratchRaceRaw =
+    signed.missing
+    && trustExists
+    && allowBackgroundRetry
+    && !startedKnownMissing;
   const allowRawFallback = signed.failed
     && !signed.loading
     && (
       !signed.missing
-      || (trustExists && allowBackgroundRetry)
+      || allowScratchRaceRaw
     );
 
   const shouldBlobFetch = fetchEnabled
     && useAuthenticatedFetch
     && (presignImgFailed || allowRawFallback)
-    && (trustExists || !isProjectRawFileKnownMissing(projectId, path));
+    && !startedKnownMissing
+    && (trustExists || !isProjectRawFileKnownMissing(projectId, path))
+    // Chat-history drawings: never `/raw/` fallback (mint unavailable or 404).
+    // Presign miss → failed glyph; avoids N× daemon proxy for GC'd screenshots.
+    && !(!trustExists && isEphemeralDrawingScreenshotPath(path));
   const fetchRev = rev != null ? `${rev}:${errorRetry}` : errorRetry;
   const { src: objectUrl, loading, failed } = useAuthenticatedProjectFileObjectUrl(
     shouldBlobFetch ? projectId : null,
@@ -98,6 +114,7 @@ export function AuthenticatedProjectFileImage({
       && useAuthenticatedFetch
       && trustExists
       && allowBackgroundRetry
+      && !startedKnownMissing
       && failed
       && !loading
         ? buildAuthenticatedProjectRawImageUrl(projectId, path, { rev, retry: errorRetry })
@@ -112,6 +129,7 @@ export function AuthenticatedProjectFileImage({
       path,
       projectId,
       rev,
+      startedKnownMissing,
       trustExists,
       useAuthenticatedFetch,
     ],
@@ -137,13 +155,17 @@ export function AuthenticatedProjectFileImage({
   const loadingClass = `authenticated-project-file-image-loading${className ? ` ${className}` : ''}`;
   const waitingOnPresign = shouldTryPresign && signed.loading && !signed.src;
   const waitingOnBlob = shouldBlobFetch && loading && !objectUrl;
-  const terminalMissing = signed.missing && !allowRawFallback && !signed.loading;
+  const terminalMissing =
+    (startedKnownMissing || signed.missing)
+    && !allowRawFallback
+    && !signed.loading;
 
   if (!src) {
     if (
       terminalMissing
       || (shouldBlobFetch && failed && !loading)
       || (shouldTryPresign && signed.failed && !shouldBlobFetch && !signed.loading)
+      || (startedKnownMissing && !signed.loading)
     ) {
       if (failedFallback !== undefined) return <>{failedFallback}</>;
       return (

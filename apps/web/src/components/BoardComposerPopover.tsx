@@ -459,7 +459,9 @@ export function BoardComposerPopover({
                         projectId={projectId}
                         path={item.path}
                         alt=""
-                        trustExists
+                        // Existing board images may already be GC'd — do not
+                        // force scratch `/raw/` retries via trustExists.
+                        trustExists={false}
                       />
                     ) : null}
                   </a>

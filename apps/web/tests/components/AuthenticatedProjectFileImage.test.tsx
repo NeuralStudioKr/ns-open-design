@@ -181,6 +181,33 @@ describe('AuthenticatedProjectFileImage', () => {
     expect(fetchDaemonMock).not.toHaveBeenCalled();
   });
 
+  it('does not /raw/ fallback on remount even with allowBackgroundRetry after mint 404', async () => {
+    const drawingPath = 'msczyywd-drawing-2026-08-03T08-58-43-316Z.png';
+    const {
+      markProjectRawFileMissing,
+    } = await import('../../src/utils/projectFileFetchCache');
+    markProjectRawFileMissing('project-1', drawingPath);
+    fetchDaemonMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+    } as Response);
+
+    const { container } = render(
+      <AuthenticatedProjectFileImage
+        projectId="project-1"
+        path={drawingPath}
+        trustExists
+        allowBackgroundRetry
+      />,
+    );
+    await vi.waitFor(() => {
+      expect(
+        container.querySelector('.authenticated-project-file-image-failed'),
+      ).toBeTruthy();
+    });
+    expect(fetchDaemonMock).not.toHaveBeenCalled();
+  });
+
   it('falls back to authenticated blob fetch when presign is disabled', async () => {
     const drawingPath = 'msees0i8-drawing-2026-08-04T08-41-03-101Z.png';
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);

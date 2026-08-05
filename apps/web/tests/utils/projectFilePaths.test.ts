@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   excludeAttachmentsBackedByVisualScreenshots,
+  isEphemeralDrawingScreenshotPath,
   isRenderableImagePath,
   projectFilePathExists,
   projectFilePathsReferToSameFile,
@@ -66,5 +67,11 @@ describe('project file path identity', () => {
   it('detects raster image paths by extension', () => {
     expect(isRenderableImagePath('uploads/ms7-drawing-2026.png')).toBe(true);
     expect(isRenderableImagePath('notes.txt')).toBe(false);
+  });
+
+  it('treats visual-mark uploads as ephemeral annotation screenshots', () => {
+    expect(isEphemeralDrawingScreenshotPath('uploads/visual-mark-1.png')).toBe(true);
+    expect(isEphemeralDrawingScreenshotPath('visual-mark_foo.png')).toBe(true);
+    expect(isEphemeralDrawingScreenshotPath('references/logo.png')).toBe(false);
   });
 });

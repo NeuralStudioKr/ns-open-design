@@ -39,7 +39,10 @@ export function isUserAnnotationDrawingScreenshotPath(path: string): boolean {
   const baseName = projectFilePathBasename(path).toLowerCase();
   if (!baseName.endsWith('.png')) return false;
   if (/^drawing-\d{4}-\d{2}-\d{2}t[\d-]+z\.png$/i.test(baseName)) return true;
-  return /^[a-z0-9]+-drawing-.*\.png$/i.test(baseName);
+  if (/^[a-z0-9]+-drawing-.*\.png$/i.test(baseName)) return true;
+  // Older / alternate visual-mark uploads (still GC'd independently of deliverables).
+  if (/^visual-mark[-_].*\.png$/i.test(baseName)) return true;
+  return false;
 }
 
 export function isEphemeralDrawingScreenshotPath(path: string): boolean {

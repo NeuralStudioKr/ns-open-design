@@ -3935,7 +3935,10 @@ function StagedRunContexts({
                     alt=""
                     className=""
                     fetchEnabled
-                    trustExists
+                    // Fresh staged uploads may race `/files`; non-drawing
+                    // attachments can trustExists. Ephemeral drawings rely on
+                    // localPreview above or a single missing-cached probe.
+                    trustExists={!isEphemeralDrawingScreenshotPath(a.path)}
                   />
                 )}
                 <span className="staged-name">{a.name}</span>

@@ -117,20 +117,27 @@ async function loadAuthenticatedProjectFileBlobInner(
   const id = projectId.trim();
   const path = filePath.trim();
   if (!id || !path) return null;
-  if (options?.trustExists) clearProjectRawFileMissing(id, path);
-  else if (isProjectRawFileKnownMissing(id, path)) return null;
+  const trustExists = Boolean(options?.trustExists);
+  const allowBackgroundRetry = Boolean(options?.allowBackgroundRetry);
+  const alreadyMissing = isProjectRawFileKnownMissing(id, path);
+  // Honor missing cache. Scratch-race callers (trustExists + allowBackgroundRetry)
+  // may proceed once — AuthenticatedProjectFileImage blocks remounts via
+  // startedKnownMissing so this does not re-spam `/raw/` for deleted files.
+  if (alreadyMissing && !(trustExists && allowBackgroundRetry)) {
+    return null;
+  }
 
   const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
   const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
-  const trustExists = Boolean(options?.trustExists);
-  const delays = options?.delaysMs ?? AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS;
+  // Already-missing scratch race: one shot only (no delay ladder spam).
+  const delays = alreadyMissing
+    ? [0]
+    : (options?.delaysMs ?? AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS);
   const pathCandidates = trustExists
     ? [path, ...alternateAuthenticatedRawPaths(path)]
     : [path];
 
   for (let attempt = 0; attempt < delays.length; attempt += 1) {
-    if (attempt > 0 && !trustExists && isProjectRawFileKnownMissing(id, path)) return null;
-
     const delay = delays[attempt] ?? 0;
     if (delay > 0) await sleep(delay);
 
@@ -202,9 +209,14 @@ export async function loadAuthenticatedProjectFileBlob(
 
     for (const waitMs of TRUSTED_BACKGROUND_RETRY_DELAYS_MS) {
       await sleep(waitMs);
-      if (options?.trustExists) clearProjectRawFileMissing(id, path);
-      else if (isProjectRawFileKnownMissing(id, path)) return null;
-      blob = await loadAuthenticatedProjectFileBlobInner(id, path, options);
+      if (isProjectRawFileKnownMissing(id, path)) return null;
+      // Brief S3 lag after a failed first pass — clear only for this opted-in
+      // background retry window, then re-check.
+      clearProjectRawFileMissing(id, path);
+      blob = await loadAuthenticatedProjectFileBlobInner(id, path, {
+        ...options,
+        // Inner no longer clears missing; we cleared above for this retry only.
+      });
       if (blob) return blob;
     }
     return null;

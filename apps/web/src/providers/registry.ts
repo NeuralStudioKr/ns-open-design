@@ -1531,15 +1531,34 @@ export async function createSocialSharePayload(
 
 // Project files — all paths are scoped under .od/projects/<id>/ on disk.
 
+const projectFilesInflight = new Map<string, Promise<ProjectFile[]>>();
+
+/** @internal vitest */
+export function resetFetchProjectFilesInflightForTests(): void {
+  projectFilesInflight.clear();
+}
+
 export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[]> {
-  try {
-    const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(projectId)}/files`);
-    if (!resp.ok) return [];
-    const json = (await resp.json()) as { files: ProjectFile[] };
-    return json.files ?? [];
-  } catch {
-    return [];
-  }
+  const key = projectId.trim();
+  if (!key) return [];
+  const pending = projectFilesInflight.get(key);
+  if (pending) return pending;
+
+  const run = (async (): Promise<ProjectFile[]> => {
+    try {
+      const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(key)}/files`);
+      if (!resp.ok) return [];
+      const json = (await resp.json()) as { files: ProjectFile[] };
+      return json.files ?? [];
+    } catch {
+      return [];
+    } finally {
+      projectFilesInflight.delete(key);
+    }
+  })();
+
+  projectFilesInflight.set(key, run);
+  return run;
 }
 
 export async function fetchProjectFolders(projectId: string): Promise<ProjectFolder[]> {

@@ -270,7 +270,8 @@ const SESSION_PROBE_NEGATIVE_CACHE_MS = 60_000;
  * A short positive cache collapses the duplicate `/auth/session-probe` without
  * hiding real mid-session expiry (TTL is intentionally tight).
  */
-const SESSION_PROBE_POSITIVE_CACHE_MS = 5_000;
+/** Boot probe → workspace sync → runtime-config can exceed 5s on slow networks. */
+const SESSION_PROBE_POSITIVE_CACHE_MS = 30_000;
 let sessionProbeKnownDeadUntil = 0;
 let sessionProbeKnownAliveUntil = 0;
 let sessionProbeInflight: Promise<boolean> | null = null;
@@ -1222,6 +1223,11 @@ export async function fetchDesignAuthSession(
 export type FetchTeamverRuntimeConfigOptions = {
   /** Bypass short-lived cache — workspace switch / explicit reload. */
   force?: boolean;
+  /**
+   * Boot already proved nginx session alive — skip the duplicate
+   * `/auth/session-probe` that used to race the boot probe across workspace sync.
+   */
+  sessionAlreadyProbedAlive?: boolean;
 };
 
 let runtimeConfigInflight: Promise<TeamverRuntimeConfigResponse | null> | null = null;
@@ -1303,13 +1309,17 @@ export async function fetchTeamverRuntimeConfig(
   const run = (async (): Promise<TeamverRuntimeConfigResponse | null> => {
     try {
       if (isTeamverEmbedMode()) {
-        let sessionAlive = await confirmRuntimeConfigSessionAlive();
+        let sessionAlive = options?.sessionAlreadyProbedAlive === true;
+        if (sessionAlive) {
+          noteSessionProbeKnownAlive();
+        } else {
+          sessionAlive = await confirmRuntimeConfigSessionAlive();
+        }
         if (!sessionAlive) {
           // Probe is read-only; near/past-skew access may still revive via ensure.
           sessionAlive = await ensureDesignBffSessionAuthenticated();
           if (sessionAlive) {
-            clearSessionProbeKnownDead();
-            runtimeConfigAuthBlocked = false;
+            noteSessionProbeKnownAlive();
           }
         }
         if (!sessionAlive) {

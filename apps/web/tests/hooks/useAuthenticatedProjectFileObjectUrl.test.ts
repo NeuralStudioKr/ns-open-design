@@ -117,7 +117,27 @@ describe('loadAuthenticatedProjectFileBlob', () => {
     expect(blob).toBe(imageBlob);
   });
 
-  it('clears a poisoned missing cache when trustExists is set', async () => {
+  it('does not clear missing cache for trustExists alone (prevents remount /raw/ spam)', async () => {
+    const drawingPath = 'msees0i8-drawing-2026-08-04T08-41-03-101Z.png';
+    markProjectRawFileMissing('project-1', drawingPath);
+    const fetchDaemon = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob([new Uint8Array([1])], { type: 'image/png' }),
+    } as Response);
+
+    const blob = await loadAuthenticatedProjectFileBlob('project-1', drawingPath, {
+      delaysMs: [0],
+      trustExists: true,
+      fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
+      waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
+    });
+
+    expect(blob).toBeNull();
+    expect(fetchDaemon).not.toHaveBeenCalled();
+    expect(isProjectRawFileKnownMissing('project-1', drawingPath)).toBe(true);
+  });
+
+  it('allows one scratch-race raw read when trustExists + allowBackgroundRetry', async () => {
     const drawingPath = 'msees0i8-drawing-2026-08-04T08-41-03-101Z.png';
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
     const imageBlob = new Blob([pngBytes], { type: 'image/png' });
@@ -130,6 +150,7 @@ describe('loadAuthenticatedProjectFileBlob', () => {
     const blob = await loadAuthenticatedProjectFileBlob('project-1', drawingPath, {
       delaysMs: [0],
       trustExists: true,
+      allowBackgroundRetry: true,
       fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
       waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
     });

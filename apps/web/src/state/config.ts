@@ -872,6 +872,9 @@ export async function syncMediaProvidersToDaemon(
 let fetchDaemonConfigInflight: Promise<AppConfigPrefs | null> | null = null;
 /** Last prefs successfully PUT this session — collapses duplicate sync calls. */
 let lastSyncedAppConfigPrefsJson: string | null = null;
+/** Short GET cache — React Strict Mode remounts must not double-hit `/api/app-config`. */
+const FETCH_DAEMON_CONFIG_CACHE_MS = 15_000;
+let cachedDaemonConfig: { value: AppConfigPrefs | null; at: number } | null = null;
 
 export function appConfigPrefsPayload(config: AppConfig): AppConfigPrefs {
   return {
@@ -921,12 +924,20 @@ export function shouldSyncAppConfigPrefsToDaemon(
 
 export async function fetchDaemonConfig(): Promise<AppConfigPrefs | null> {
   if (fetchDaemonConfigInflight) return fetchDaemonConfigInflight;
+  if (
+    cachedDaemonConfig
+    && Date.now() - cachedDaemonConfig.at < FETCH_DAEMON_CONFIG_CACHE_MS
+  ) {
+    return cachedDaemonConfig.value;
+  }
   fetchDaemonConfigInflight = (async () => {
     try {
       const res = await fetch('/api/app-config');
       if (!res.ok) return null;
       const data = await res.json();
-      return data?.config ?? null;
+      const prefs = (data?.config ?? null) as AppConfigPrefs | null;
+      cachedDaemonConfig = { value: prefs, at: Date.now() };
+      return prefs;
     } catch {
       return null;
     } finally {
@@ -940,6 +951,7 @@ export async function fetchDaemonConfig(): Promise<AppConfigPrefs | null> {
 export function resetFetchDaemonConfigInflightForTests(): void {
   fetchDaemonConfigInflight = null;
   lastSyncedAppConfigPrefsJson = null;
+  cachedDaemonConfig = null;
 }
 
 export async function syncConfigToDaemon(
@@ -975,6 +987,10 @@ export async function syncConfigToDaemon(
     });
     if (!response.ok) throw new Error(`Failed to sync app config (${response.status})`);
     lastSyncedAppConfigPrefsJson = prefsJson || JSON.stringify(prefs);
+    cachedDaemonConfig = {
+      value: prefs,
+      at: Date.now(),
+    };
   } catch (error) {
     if (options?.throwOnError) throw error;
     // Daemon offline; localStorage keeps the user's copy for the next save.

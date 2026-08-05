@@ -69,7 +69,9 @@ export function useProjectFileSignedUrl(
     setState({ src: null, loading: true, failed: false, missing: false, expiresAt: null });
 
     void (async () => {
-      const result = await fetchProjectFilePresignedGet(id, path);
+      const result = await fetchProjectFilePresignedGet(id, path, {
+        bypassMissingCache,
+      });
       if (cancelled) return;
       if (result.kind === 'ready') {
         clearProjectRawFileMissing(id, path);
