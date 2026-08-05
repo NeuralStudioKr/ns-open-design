@@ -2266,6 +2266,8 @@ type ArtifactPersistResult =
   | { kind: 'pointer'; fileName: string }
   | { kind: 'skipped-duplicate'; fileName: string }
   | { kind: 'skipped-incomplete'; fileName: string; reason?: string }
+  /** Benign no-op (post-sanitize equals disk) — must not arm auto-continue. */
+  | { kind: 'skipped-noop'; fileName: string; reason?: string }
   | { kind: 'scope-rejected'; fileName: string; code: ScopedDeckPersistFailureCode; reason: string }
   | { kind: 'artifact-regression'; fileName: string; reason: string }
   | { kind: 'rejected'; fileName: string; reason: string }
@@ -2283,6 +2285,7 @@ export function shouldFailRunForArtifactPersistResult(
   // Scoped comment edits that hit skipped-duplicate mean the model turn
   // produced HTML identical to disk — treat as incomplete so auto-continue
   // can retry instead of painting "완료됨" over an unchanged slide.
+  // skipped-noop is intentionally excluded: the edit was a calm no-op.
   return result?.kind === 'skipped-incomplete'
     || result?.kind === 'rejected'
     || result?.kind === 'save-failed'
@@ -4108,10 +4111,16 @@ export function ProjectView({
         commentAttachments: runCommentAttachmentsRef.current,
       });
       let scopedAllowedSlideIndexes = scopedCommentSlideIndexes(persistCommentAttachments);
+      // One disk read per persist — reused for scope / stabilize / noop / duplicate.
+      let diskHtmlCache: { fileName: string; html: string | null } | null = null;
+      const readDiskHtml = async (name: string): Promise<string | null> => {
+        if (diskHtmlCache?.fileName === name) return diskHtmlCache.html;
+        const html = await fetchProjectFileText(project.id, name, { cache: 'no-store' });
+        diskHtmlCache = { fileName: name, html };
+        return html;
+      };
       if (persistCommentAttachments.length > 0) {
-        const currentHtmlForScope = await fetchProjectFileText(project.id, targetFileName, {
-          cache: 'no-store',
-        });
+        const currentHtmlForScope = await readDiskHtml(targetFileName);
         if (currentHtmlForScope) {
           const fromDeck = scopedCommentSlideIndexesFromDeck(
             currentHtmlForScope,
@@ -4122,6 +4131,11 @@ export function ProjectView({
           }
         }
       }
+      // element-patch / deck-patch merges already run stabilizeVisualMarkDeckHtml
+      // when comment attachments are present — skip a second full-deck pass.
+      const visualMarksAlreadyStabilized =
+        isElementPatchArtifactType(art.artifactType)
+        || isDeckPatchArtifactType(art.artifactType);
       // `deck-patch` short-circuits the full-deck emit path. Comment-driven
       // edits carry `<artifact type="deck-patch">` bodies whose sections list
       // ONLY the changed `<section class="slide">` blocks; we merge them into
@@ -4422,12 +4436,11 @@ export function ProjectView({
       let htmlBody =
         ext === '.html' ? repairArtifactDocumentHead(artifactToPersist.html) : artifactToPersist.html;
       if (
-        ext === '.html' &&
-        persistCommentAttachments.some(isVisualCommentAttachment)
+        ext === '.html'
+        && persistCommentAttachments.some(isVisualCommentAttachment)
+        && !visualMarksAlreadyStabilized
       ) {
-        const currentDeckHtml = await fetchProjectFileText(project.id, fileName, {
-          cache: 'no-store',
-        });
+        const currentDeckHtml = await readDiskHtml(fileName);
         if (currentDeckHtml) {
           htmlBody = stabilizeVisualMarkDeckHtml(
             currentDeckHtml,
@@ -4443,9 +4456,7 @@ export function ProjectView({
         htmlBody = sanitizeManualEditFullSource(htmlBody);
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
-        const currentScopedHtml = await fetchProjectFileText(project.id, fileName, {
-          cache: 'no-store',
-        });
+        const currentScopedHtml = await readDiskHtml(fileName);
         if (
           currentScopedHtml
           && normalizeHtmlForRecoveredArtifactComparison(currentScopedHtml)
@@ -4470,16 +4481,14 @@ export function ProjectView({
             fileName,
           });
           return {
-            kind: 'skipped-incomplete',
+            kind: 'skipped-noop',
             fileName,
             reason: 'scoped comment edit did not change the deck on disk',
           };
         }
       }
       if (savedArtifactRef.current === fileName) {
-        const currentHtml = await fetchProjectFileText(project.id, fileName, {
-          cache: 'no-store',
-        });
+        const currentHtml = await readDiskHtml(fileName);
         if (
           normalizeHtmlForRecoveredArtifactComparison(currentHtml)
           === normalizeHtmlForRecoveredArtifactComparison(htmlBody)

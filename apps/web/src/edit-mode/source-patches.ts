@@ -1039,10 +1039,12 @@ function sanitizeManualEditElementAttrs(el: Element): void {
       continue;
     }
     if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
-      const scrubbed = scrubUnsafeCssFunctions(
-        normalizeCssForSafetyScan(attr.value),
-      ).trim();
-      if (!scrubbed || !isSafeManualEditPresentationCssValue(scrubbed)) {
+      const normalized = normalizeCssForSafetyScan(attr.value);
+      const scrubbed = scrubUnsafeCssFunctions(normalized).trim();
+      if (
+        !scrubbed
+        || !isSafeManualEditPresentationCssValue(scrubbed, { alreadyNormalized: true })
+      ) {
         el.removeAttribute(attr.name);
       } else if (scrubbed !== attr.value) {
         el.setAttribute(attr.name, scrubbed);
@@ -1120,16 +1122,47 @@ function sanitizeManualEditReplacementTree(root: Element): void {
         }
       }
       if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(smilAttr)) {
-        // animate attributeName=filter/fill/… with url(https://…) paint servers.
+        // Same scrub-then-isSafe pipeline as presentation attrs (not boolean-only).
         for (const key of ['to', 'from', 'by', 'values'] as const) {
           const raw = el.getAttribute(key);
           if (raw == null) continue;
-          const pieces = key === 'values' ? String(raw).split(';') : [raw];
-          const unsafe = pieces.some((piece) => {
-            const trimmed = piece.trim();
-            return Boolean(trimmed) && !isSafeManualEditPresentationCssValue(trimmed);
-          });
-          if (unsafe) el.removeAttribute(key);
+          if (key === 'values') {
+            const pieces = String(raw).split(';');
+            let dropped = false;
+            const nextPieces: string[] = [];
+            for (const piece of pieces) {
+              const trimmed = piece.trim();
+              if (!trimmed) {
+                nextPieces.push('');
+                continue;
+              }
+              const scrubbed = scrubUnsafeCssFunctions(
+                normalizeCssForSafetyScan(trimmed),
+              ).trim();
+              if (
+                !scrubbed
+                || !isSafeManualEditPresentationCssValue(scrubbed, { alreadyNormalized: true })
+              ) {
+                dropped = true;
+                break;
+              }
+              nextPieces.push(scrubbed);
+            }
+            if (dropped) el.removeAttribute(key);
+            else el.setAttribute(key, nextPieces.join(';'));
+            continue;
+          }
+          const scrubbed = scrubUnsafeCssFunctions(
+            normalizeCssForSafetyScan(raw),
+          ).trim();
+          if (
+            !scrubbed
+            || !isSafeManualEditPresentationCssValue(scrubbed, { alreadyNormalized: true })
+          ) {
+            el.removeAttribute(key);
+          } else if (scrubbed !== raw) {
+            el.setAttribute(key, scrubbed);
+          }
         }
         if (!['to', 'from', 'by', 'values'].some((key) => el.hasAttribute(key))) {
           toRemove.push(el);
@@ -1823,7 +1856,12 @@ function setAttributes(
     }
     if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
       const scrubbed = scrubUnsafeCssFunctions(normalizeCssForSafetyScan(value)).trim();
-      if (!scrubbed || !isSafeManualEditPresentationCssValue(scrubbed)) continue;
+      if (
+        !scrubbed
+        || !isSafeManualEditPresentationCssValue(scrubbed, { alreadyNormalized: true })
+      ) {
+        continue;
+      }
       el.setAttribute(name, scrubbed);
       applied += 1;
       continue;
@@ -2052,7 +2090,7 @@ function isSafeCssTokenValue(value: string): boolean {
   if (/-moz-binding/i.test(normalized)) return false;
   if (/\bbehavior\s*:/i.test(normalized)) return false;
   // Bare scheme strings (not only inside url()).
-  if (containsUnsafeEmbeddedCssOrScheme(normalized)) return false;
+  if (containsUnsafeEmbeddedCssOrScheme(normalized, { alreadyNormalized: true })) return false;
   if (/(?:javascript|vbscript|data):/i.test(normalized)) return false;
   return true;
 }
@@ -2334,11 +2372,6 @@ function dropCssDeclsWithNonFragmentResource(css: string): string {
   );
 }
 
-/** @deprecated alias — older call sites passed a prop pattern; pattern is now fixed. */
-function dropCssDeclsWithNonFragmentUrl(css: string, _propPattern?: string): string {
-  return dropCssDeclsWithNonFragmentResource(css);
-}
-
 /** True when a CSS declaration value contains url(...) that is not #fragment. */
 function cssDeclarationHasNonFragmentUrl(value: string): boolean {
   const text = String(value || '');
@@ -2360,9 +2393,10 @@ function cssDeclarationHasNonFragmentImageFn(value: string): boolean {
 }
 
 function scrubSalvagedStyleText(css: string): string {
+  // stripDangerousCssAtRules already normalizes for safety scan.
   const scrubbed = scrubUnsafeCssFunctions(stripDangerousCssAtRules(css)).trim();
   // Fail closed if scheme text still survives after declaration scrubs.
-  if (containsUnsafeEmbeddedCssOrScheme(scrubbed)) return '';
+  if (containsUnsafeEmbeddedCssOrScheme(scrubbed, { alreadyNormalized: true })) return '';
   return scrubbed;
 }
 
@@ -2371,7 +2405,7 @@ function scrubUnsafeInlineStyleAttr(value: string): string {
   const normalized = normalizeCssForSafetyScan(String(value || ''));
   const scrubbed = scrubUnsafeCssFunctions(normalized).trim().replace(/^;+|;+$/g, '').trim();
   // If anything still looks like a scriptable url, drop the whole attr.
-  if (containsUnsafeEmbeddedCssOrScheme(scrubbed)) return '';
+  if (containsUnsafeEmbeddedCssOrScheme(scrubbed, { alreadyNormalized: true })) return '';
   if (/\bexpression\s*\(/i.test(scrubbed)) return '';
   if (/-moz-binding/i.test(scrubbed)) return '';
   if (/\bbehavior\s*:/i.test(scrubbed)) return '';
@@ -2391,11 +2425,17 @@ function isSafeManualEditSvgResourceRef(value: string): boolean {
 /**
  * SVG presentation attr / SMIL CSS values: plain paints OK; every url(...) must
  * be a same-document #fragment (remote SVG paint servers are blocked).
+ * Pass `alreadyNormalized` when the caller already ran `normalizeCssForSafetyScan`.
  */
-function isSafeManualEditPresentationCssValue(value: string): boolean {
-  const normalized = normalizeCssForSafetyScan(String(value || '')).trim();
+function isSafeManualEditPresentationCssValue(
+  value: string,
+  options?: { alreadyNormalized?: boolean },
+): boolean {
+  const normalized = options?.alreadyNormalized
+    ? String(value || '').trim()
+    : normalizeCssForSafetyScan(String(value || '')).trim();
   if (!normalized) return true;
-  if (containsUnsafeEmbeddedCssOrScheme(normalized)) return false;
+  if (containsUnsafeEmbeddedCssOrScheme(normalized, { alreadyNormalized: true })) return false;
   // var() can hide remote url() via custom props — fail closed for paint attrs.
   if (/\bvar\s*\(/i.test(normalized)) return false;
   if (cssDeclarationHasNonFragmentUrl(normalized)) return false;
@@ -2819,8 +2859,15 @@ export function isSafeManualEditUrl(value: string): boolean {
  * Avoids false positives on selectors like `.javascript:hover` or path segments
  * such as `/assets/javascript:docs.png` after url() rewrite.
  */
-function containsUnsafeEmbeddedCssOrScheme(value: string): boolean {
-  const scanned = normalizeCssForSafetyScan(decodeHtmlCharacterReferences(value));
+function containsUnsafeEmbeddedCssOrScheme(
+  value: string,
+  options?: { alreadyNormalized?: boolean },
+): boolean {
+  // `alreadyNormalized` skips CSS escape/comment rewrite only. HTML entities
+  // (`&#106;avascript:`) must still decode before scheme scans.
+  const scanned = options?.alreadyNormalized
+    ? decodeHtmlCharacterReferences(String(value || ''))
+    : normalizeCssForSafetyScan(decodeHtmlCharacterReferences(value));
   if (/\bexpression\s*\(/i.test(scanned)) return true;
   if (/\belement\s*\(/i.test(scanned)) return true;
   for (const inner of extractCssUrlInners(scanned)) {

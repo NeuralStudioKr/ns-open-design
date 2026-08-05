@@ -2079,6 +2079,29 @@ describe('manual edit source patches', () => {
     expect(full).toContain('.hero-pop{color:#123456}');
   });
 
+  it('scrubs SMIL presentation values instead of boolean-only reject', () => {
+    const source = [
+      '<!doctype html><html><body>',
+      '<svg data-od-id="mark"><rect>',
+      '<set data-od-id="anim" attributeName="filter" to="url(#ok) blur(1px)"></set>',
+      '</rect></svg>',
+      '</body></html>',
+    ].join('');
+    // Remote url in a compound presentation value — scrub/drop unsafe piece path.
+    const dirty = applyManualEditPatch(source, {
+      kind: 'set-outer-html',
+      id: 'mark',
+      html: [
+        '<svg data-od-id="mark"><rect>',
+        '<set data-od-id="anim" attributeName="filter" to="url(https://evil.example/f.svg#x)"></set>',
+        '</rect></svg>',
+      ].join(''),
+    });
+    expect(dirty.ok, dirty.error).toBe(true);
+    const html = readManualEditOuterHtml(dirty.source, 'mark');
+    expect(html).not.toContain('evil.example');
+  });
+
   it('does not drop whole style blocks for .javascript:hover selectors', () => {
     const out = sanitizeManualEditHtmlFragment(
       '<div><style>.javascript:hover{color:red}.btn{color:blue}</style><span>ok</span></div>',

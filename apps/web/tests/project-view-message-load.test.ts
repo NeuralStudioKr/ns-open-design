@@ -365,6 +365,24 @@ describe("ProjectView message loading", () => {
     expect(persistBlock).toContain("kind: 'rejected'");
   });
 
+  it("reuses one disk HTML fetch and skips double visual-mark stabilize", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    const persistStart = source.indexOf("const persistArtifact = useCallback");
+    expect(persistStart).toBeGreaterThan(0);
+    const persistBlock = source.slice(persistStart, persistStart + 24000);
+    expect(persistBlock).toContain("const readDiskHtml = async");
+    expect(persistBlock).toContain("visualMarksAlreadyStabilized");
+    expect(persistBlock).toContain("kind: 'skipped-noop'");
+    expect(persistBlock).toContain("!visualMarksAlreadyStabilized");
+  });
+
+  it("sanitizes FileViewer manual-edit saves before revision push", () => {
+    const source = readSource("src/components/FileViewer.tsx");
+    expect(source).toContain("sanitizeManualEditFullSource");
+    expect(source).toContain("contentToSave");
+    expect(source).toContain("sanitizeManualEditFullSource(result.source)");
+  });
+
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const persistStart = source.indexOf("const persistArtifact = useCallback");
@@ -376,8 +394,9 @@ describe("ProjectView message loading", () => {
     // deck-patch → auto-continue routing widened the prelude further, then
     // 16000 for the client-side artifact-regression pre-write guard, then
     // 18000 when the empty-element-patch → auto-continue routing
-    // (without client-side fast-path salvage) landed.
-    const persistBlock = source.slice(persistStart, persistStart + 18000);
+    // (without client-side fast-path salvage) landed, then 24000 for
+    // readDiskHtml cache + visualMarksAlreadyStabilized + skipped-noop.
+    const persistBlock = source.slice(persistStart, persistStart + 24000);
 
     expect(persistBlock).toContain("Promise<ArtifactPersistResult>");
     expect(persistBlock).toContain("preferDeck: slideOnlyMvp");
