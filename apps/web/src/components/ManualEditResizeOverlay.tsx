@@ -17,6 +17,7 @@ import {
   canPromoteTarget,
   cascadeRollbackStyle,
   computeMove,
+  manualEditHostPaintRectStale,
   movePreviewStyles,
   moveResultToStyles,
   promoteMoveStyles,
@@ -291,10 +292,17 @@ export function ManualEditResizeOverlay({
       || draftTopPx != null
     )
     : (draftWidthPx != null || draftHeightPx != null);
+  const hostPaintLooksStale = Boolean(
+    hostPaintRect
+    && hostPaintRect.width >= 1
+    && hostPaintRect.height >= 1
+    && manualEditHostPaintRectStale(hostPaintRect, composedHostRect),
+  );
   const hostRect = !gestureComposed
     && hostPaintRect
     && hostPaintRect.width >= 1
     && hostPaintRect.height >= 1
+    && !hostPaintLooksStale
     ? hostPaintRect
     : composedHostRect;
   const movable = !disabled && canMoveOrPromoteTarget(target);
@@ -369,7 +377,12 @@ export function ManualEditResizeOverlay({
             onMoveCancelRef.current?.(before);
           }
         } finally {
-          finish();
+          // Let the parent commit hostPaintRect / target.rect before idle compose.
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              finish();
+            });
+          });
         }
       })();
     };

@@ -17,6 +17,8 @@ import {
   hostPaintRectAfterVisualMove,
   visualRectFromMoveViewportDraft,
   hostPaintRectFromVisualContent,
+  manualEditGeometryRoughlyMatches,
+  manualEditHostPaintRectStale,
 } from '../../src/edit-mode/move-math';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
 
@@ -315,5 +317,35 @@ describe('computeMove', () => {
       offsetTop: 16,
       rect: { x: 100, y: 200, width: 80, height: 40 },
     }))).toEqual({ startLeftPx: 8, startTopPx: 16 });
+  });
+
+  it('detects stale host paint that kept pre-gesture size at the same origin', () => {
+    const composed = { x: 40, y: 60, width: 80, height: 40 };
+    const stale = { x: 40, y: 60, width: 200, height: 100 };
+    expect(manualEditHostPaintRectStale(stale, composed)).toBe(true);
+    const letterboxed = { x: 120, y: 80, width: 90, height: 45 };
+    const composedLarge = { x: 40, y: 60, width: 200, height: 100 };
+    expect(manualEditHostPaintRectStale(letterboxed, composedLarge)).toBe(false);
+  });
+
+  it('matches optimistic and measured geometry within tolerance', () => {
+    const optimistic = target({
+      rect: { x: 40, y: 60, width: 80, height: 40 },
+      layoutWidth: 160,
+      layoutHeight: 80,
+    });
+    const measured = {
+      ...optimistic,
+      rect: { x: 41, y: 61, width: 81, height: 41 },
+      layoutWidth: 161,
+      layoutHeight: 81,
+    };
+    expect(manualEditGeometryRoughlyMatches(optimistic, measured)).toBe(true);
+    expect(manualEditGeometryRoughlyMatches(optimistic, {
+      ...optimistic,
+      rect: { x: 40, y: 60, width: 200, height: 100 },
+      layoutWidth: 400,
+      layoutHeight: 200,
+    })).toBe(false);
   });
 });

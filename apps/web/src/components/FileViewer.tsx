@@ -281,6 +281,7 @@ import {
   PROMOTE_MOVE_STYLE_KEYS,
   hostPaintRectAfterVisualMove,
   hostPaintRectFromVisualContent,
+  manualEditGeometryRoughlyMatches,
   viewportRectAfterMoveCommit,
   visualRectFromMoveViewportDraft,
 } from '../edit-mode/move-math';
@@ -8535,11 +8536,45 @@ function HtmlViewer({
     });
     manualEditGeometryHandoffIdRef.current = id;
     try {
-      requestManualEditTargetRemeasure(id);
-      const measured = await waitForManualEditTargetRemeasure(id);
-      if (measured) {
+      const optimistic = selectedManualEditTargetRef.current;
+      const frame = iframeRef.current;
+      const workspace = manualEditWorkspaceRef.current;
+      let measured: ManualEditTarget | null = null;
+
+      if (frame && workspace && optimistic?.id === id) {
+        const content = measureManualEditTargetContentRect(frame, id);
+        if (content) {
+          measured = {
+            ...optimistic,
+            rect: content.rect,
+            layoutWidth: content.layoutWidth,
+            layoutHeight: content.layoutHeight,
+          };
+        }
+      }
+
+      if (
+        !measured
+        || (optimistic && !manualEditGeometryRoughlyMatches(measured, optimistic))
+      ) {
+        requestManualEditTargetRemeasure(id);
+        const bridgeMeasured = await waitForManualEditTargetRemeasure(id);
+        if (
+          bridgeMeasured
+          && (!optimistic || manualEditGeometryRoughlyMatches(bridgeMeasured, optimistic))
+        ) {
+          measured = bridgeMeasured;
+        }
+      }
+
+      if (
+        measured
+        && optimistic
+        && manualEditGeometryRoughlyMatches(measured, optimistic)
+      ) {
         applyManualEditMeasuredTarget(measured);
       }
+
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => resolve());
       });
@@ -8671,7 +8706,14 @@ function HtmlViewer({
     // Optimistic geometry must land before any await; otherwise clearing
     // liveViewport/drafts snaps the overlay to the pre-gesture rect.
     const previousVisual = { ...target.rect };
-    const visualRect = applyManualEditGestureOptimisticTarget(target, styles, viewport);
+    const resizeViewport = viewport
+      && (
+        parseExplicitPx(styles.left) !== parseExplicitPx(stylesBefore.left)
+        || parseExplicitPx(styles.top) !== parseExplicitPx(stylesBefore.top)
+      )
+      ? viewport
+      : undefined;
+    const visualRect = applyManualEditGestureOptimisticTarget(target, styles, resizeViewport);
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
     // Seed paint from optimistic visual box — never null (null → iframe-scale

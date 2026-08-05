@@ -370,3 +370,46 @@ export function hostPaintRectAfterVisualMove(
 export function moveHistoryLabel(targetLabel: string): string {
   return `Move: ${targetLabel}`;
 }
+
+const GEOMETRY_MATCH_TOLERANCE_PX = 3;
+
+/** Whether two manual-edit geometry snapshots are close enough to treat as the same box. */
+export function manualEditGeometryRoughlyMatches(
+  a: Pick<ManualEditTarget, 'rect' | 'layoutWidth' | 'layoutHeight'>,
+  b: Pick<ManualEditTarget, 'rect' | 'layoutWidth' | 'layoutHeight'>,
+  tolerancePx = GEOMETRY_MATCH_TOLERANCE_PX,
+): boolean {
+  const aLw = a.layoutWidth && a.layoutWidth >= 1 ? a.layoutWidth : a.rect.width;
+  const aLh = a.layoutHeight && a.layoutHeight >= 1 ? a.layoutHeight : a.rect.height;
+  const bLw = b.layoutWidth && b.layoutWidth >= 1 ? b.layoutWidth : b.rect.width;
+  const bLh = b.layoutHeight && b.layoutHeight >= 1 ? b.layoutHeight : b.rect.height;
+  return (
+    Math.abs(a.rect.x - b.rect.x) <= tolerancePx
+    && Math.abs(a.rect.y - b.rect.y) <= tolerancePx
+    && Math.abs(a.rect.width - b.rect.width) <= tolerancePx
+    && Math.abs(a.rect.height - b.rect.height) <= tolerancePx
+    && Math.abs(aLw - bLw) <= tolerancePx
+    && Math.abs(aLh - bLh) <= tolerancePx
+  );
+}
+
+/** True when idle host paint disagrees with target.rect compose (stale paint). */
+export function manualEditHostPaintRectStale(
+  hostPaintRect: ManualEditRect,
+  composedHostRect: ManualEditRect,
+  tolerancePx = GEOMETRY_MATCH_TOLERANCE_PX,
+): boolean {
+  const sizeDiffers = (
+    Math.abs(hostPaintRect.width - composedHostRect.width) > tolerancePx
+    || Math.abs(hostPaintRect.height - composedHostRect.height) > tolerancePx
+  );
+  if (!sizeDiffers) return false;
+  const positionMatches = (
+    Math.abs(hostPaintRect.x - composedHostRect.x) <= tolerancePx
+    && Math.abs(hostPaintRect.y - composedHostRect.y) <= tolerancePx
+  );
+  // Letterboxed live paint shifts x/y — keep trusting hostPaintRect.
+  if (!positionMatches) return false;
+  // Same origin but pre-gesture size lingered after resize commit.
+  return true;
+}

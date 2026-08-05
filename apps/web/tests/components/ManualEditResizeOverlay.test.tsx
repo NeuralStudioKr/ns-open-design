@@ -1816,4 +1816,79 @@ describe('ManualEditResizeOverlay', () => {
     expect(commit.left).toMatch(/px$/);
     expect(commit.top).toMatch(/px$/);
   });
+
+  it('ignores stale hostPaintRect after resize commit and uses composed target size', async () => {
+    let releaseCommit!: () => void;
+    const commitGate = new Promise<void>((resolve) => {
+      releaseCommit = resolve;
+    });
+    const onResizeCommit = vi.fn(async () => {
+      await commitGate;
+    });
+    const startTarget = target({
+      rect: { x: 40, y: 60, width: 200, height: 100 },
+      layoutWidth: 400,
+      layoutHeight: 200,
+      styles: { ...emptyManualEditStyles(), width: '400px', height: '200px' },
+    });
+    const shrunkVisual = { x: 40, y: 60, width: 120, height: 60 };
+    const props = {
+      target: startTarget,
+      previewScale: 1,
+      hostOffset: { x: 0, y: 0 },
+      hostPaintRect: { x: 40, y: 60, width: 200, height: 100 } as const,
+      draftWidthPx: null as number | null,
+      draftHeightPx: null as number | null,
+      onResizePreview: vi.fn(),
+      onResizeCommit,
+      onResizeCancel: vi.fn(),
+    };
+    const { getByTestId, rerender } = render(<ManualEditResizeOverlay {...props} />);
+    const overlay = getByTestId('manual-edit-resize-overlay');
+    overlay.getBoundingClientRect = () => ({
+      x: 40, y: 60, width: 200, height: 100,
+      top: 60, left: 40, right: 240, bottom: 160,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+    fireEvent.pointerDown(getByTestId('manual-edit-resize-handle-se'), {
+      pointerId: 90,
+      clientX: 240,
+      clientY: 160,
+      buttons: 1,
+    });
+    fireEvent.pointerMove(window, { pointerId: 90, clientX: 160, clientY: 120, buttons: 1 });
+    fireEvent.pointerUp(window, { pointerId: 90, clientX: 160, clientY: 120 });
+
+    await waitFor(() => expect(onResizeCommit).toHaveBeenCalled());
+    // Parent still reports pre-resize paint while commit is in flight.
+    rerender(
+      <ManualEditResizeOverlay
+        {...props}
+        target={{ ...startTarget, rect: shrunkVisual, layoutWidth: 240, layoutHeight: 120 }}
+        hostPaintRect={{ x: 40, y: 60, width: 200, height: 100 }}
+        draftWidthPx={null}
+        draftHeightPx={null}
+      />,
+    );
+    const mid = getByTestId('manual-edit-resize-overlay');
+    expect(mid.style.width).toBe('120px');
+    expect(mid.style.height).toBe('60px');
+
+    releaseCommit();
+    await waitFor(() => {
+      rerender(
+        <ManualEditResizeOverlay
+          {...props}
+          target={{ ...startTarget, rect: shrunkVisual, layoutWidth: 240, layoutHeight: 120 }}
+          hostPaintRect={{ x: 40, y: 60, width: 120, height: 60 }}
+          draftWidthPx={null}
+          draftHeightPx={null}
+        />,
+      );
+    });
+    const after = getByTestId('manual-edit-resize-overlay');
+    expect(after.style.width).toBe('120px');
+    expect(after.style.height).toBe('60px');
+  });
 });
