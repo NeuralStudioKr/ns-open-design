@@ -905,6 +905,109 @@ test('[P1] manual edit body-drag stays aligned and persists at 75% zoom', async 
     .toBe(true);
 });
 
+test('[P1] manual edit deck fit-scale resize keeps overlay size after pointerup', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit deck fit resize');
+  const fileName = 'manual-deck-fit-resize.html';
+  await seedDeckFitScaleArtifact(page, projectId, fileName);
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await waitForDeckFitScaleReady(frame);
+  await expectDeckFitScaleActive(frame, '[data-od-id="deck-resize-box"]');
+  await expect(page.locator('.viewer-toolbar-zoom .zoom-trigger')).toHaveText('100%');
+
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="deck-resize-box"]', 'SIZE');
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toBeVisible();
+
+  const before = await overlay.boundingBox();
+  expect(before).toBeTruthy();
+  const handle = page.getByTestId('manual-edit-resize-handle-se');
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).toBeTruthy();
+  const startX = handleBox!.x + handleBox!.width / 2;
+  const startY = handleBox!.y + handleBox!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX - 60, startY - 30, { steps: 8 });
+  await page.mouse.up();
+
+  const mid = await overlay.boundingBox();
+  expect(mid).toBeTruthy();
+  expect(mid!.width).toBeLessThan(before!.width - 12);
+  expect(mid!.height).toBeLessThan(before!.height - 8);
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="deck-resize-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const width = Number(style.match(/width:\s*(\d+)px/)?.[1] ?? NaN);
+      return Number.isFinite(width) && width > 0 && width < 220;
+    })
+    .toBe(true);
+
+  await expectOverlayBoxStable(overlay, { width: mid!.width, height: mid!.height });
+});
+
+test('[P1] manual edit deck fit-scale move keeps overlay position after pointerup', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await routeMockAgents(page);
+  const projectId = await createProjectViaApi(page, 'Manual edit deck fit move');
+  const fileName = 'manual-deck-fit-move.html';
+  await seedDeckFitScaleArtifact(page, projectId, fileName);
+  await page.goto(`/projects/${projectId}/files/${fileName}`);
+  await openDesignFile(page, fileName);
+
+  const frame = artifactPreviewFrame(page);
+  await waitForDeckFitScaleReady(frame);
+  await expectDeckFitScaleActive(frame, '[data-od-id="deck-move-box"]');
+  await expect(page.locator('.viewer-toolbar-zoom .zoom-trigger')).toHaveText('100%');
+
+  await page.getByTestId('manual-edit-mode-toggle').click();
+  await selectPreviewElementThroughBridge(page, frame, '[data-od-id="deck-move-box"]', 'SIZE');
+  const overlay = page.getByTestId('manual-edit-resize-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toHaveAttribute('data-movable', 'true');
+
+  const before = await overlay.boundingBox();
+  expect(before).toBeTruthy();
+  const startX = before!.x + before!.width / 2;
+  const startY = before!.y + before!.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 56, startY + 28, { steps: 8 });
+  await page.mouse.up();
+
+  const mid = await overlay.boundingBox();
+  expect(mid).toBeTruthy();
+  expect(mid!.x).toBeGreaterThan(before!.x + 20);
+  expect(mid!.y).toBeGreaterThan(before!.y + 10);
+
+  await expect
+    .poll(async () => {
+      const resp = await page.request.get(`/api/projects/${projectId}/files/${fileName}`);
+      if (!resp.ok()) return false;
+      const source = await resp.text();
+      const style = source.match(/data-od-id="deck-move-box"[^>]*style="([^"]*)"/)?.[1];
+      if (!style) return false;
+      const left = Number(style.match(/left:\s*(\d+)px/)?.[1] ?? NaN);
+      const top = Number(style.match(/top:\s*(\d+)px/)?.[1] ?? NaN);
+      return Number.isFinite(left) && Number.isFinite(top) && left > 540 && top > 380;
+    })
+    .toBe(true);
+
+  await expectOverlayBoxStable(overlay, { x: mid!.x, y: mid!.y });
+});
+
 test('[P1] manual edit body-drag undo restores left/top in one step', async ({ page }) => {
   test.setTimeout(60_000);
   await routeMockAgents(page);
@@ -1417,6 +1520,65 @@ async function seedDeckArtifact(
   expect(resp.ok()).toBeTruthy();
 }
 
+async function seedDeckFitScaleArtifact(page: Page, projectId: string, fileName: string) {
+  const resp = await page.request.post(
+    `/api/projects/${projectId}/files`,
+    {
+      data: {
+        name: fileName,
+        content: manualEditDeckFitScaleHtml(),
+        artifactManifest: {
+          version: 1,
+          kind: 'deck',
+          title: 'Manual Edit Deck Fit Scale',
+          entry: fileName,
+          renderer: 'deck-html',
+          exports: ['html', 'pptx'],
+        },
+      },
+      timeout: 15_000,
+    },
+  );
+  expect(resp.ok()).toBeTruthy();
+}
+
+async function waitForDeckFitScaleReady(frame: ReturnType<Page['frameLocator']>) {
+  await expect(frame.locator('html[data-od-compact-stacked]')).toHaveCount(1, { timeout: 20_000 });
+  await expect(frame.locator('[data-od-id="deck-resize-box"]')).toBeVisible();
+  await expect(frame.locator('[data-od-id="deck-move-box"]')).toBeVisible();
+}
+
+async function expectDeckFitScaleActive(
+  frame: ReturnType<Page['frameLocator']>,
+  selector: string,
+) {
+  await expect.poll(async () => {
+    const ratio = await frame.locator(selector).evaluate((el) => {
+      const visual = el.getBoundingClientRect().width;
+      const layout = Number.parseFloat(getComputedStyle(el).width);
+      return layout > 0 ? visual / layout : 1;
+    });
+    return ratio < 0.85 && ratio > 0.2;
+  }).toBe(true);
+}
+
+async function expectOverlayBoxStable(
+  overlay: ReturnType<Page['getByTestId']>,
+  expected: { width?: number; height?: number; x?: number; y?: number },
+  tolerancePx = 8,
+) {
+  const assertNear = (actual: number, target: number) => Math.abs(actual - target) <= tolerancePx;
+  await expect.poll(async () => {
+    const box = await overlay.boundingBox();
+    if (!box) return false;
+    if (expected.width != null && !assertNear(box.width, expected.width)) return false;
+    if (expected.height != null && !assertNear(box.height, expected.height)) return false;
+    if (expected.x != null && !assertNear(box.x, expected.x)) return false;
+    if (expected.y != null && !assertNear(box.y, expected.y)) return false;
+    return true;
+  }, { timeout: 3_000, intervals: [50, 100, 150, 200] }).toBe(true);
+}
+
 async function openDesignFile(page: Page, fileName: string) {
   const preview = artifactPreview(page);
   try {
@@ -1516,6 +1678,39 @@ function manualEditHtml(): string {
       </div>
     </main>
   </body>
+</html>`;
+}
+
+function manualEditDeckFitScaleHtml(): string {
+  return `<!doctype html>
+<html lang="ko">
+<head>
+  <style>
+    body { margin: 0; background: #0f172a; }
+    .slide {
+      width: 1920px;
+      height: 1080px;
+      box-sizing: border-box;
+      position: relative;
+      overflow: hidden;
+      color: #fff;
+      padding: 48px;
+    }
+  </style>
+</head>
+<body>
+  <section class="slide" data-od-id="slide-1">
+    <h1>Deck fit-scale</h1>
+    <div data-od-id="deck-resize-box" data-od-label="Deck resize box"
+      style="position:absolute;left:200px;top:200px;width:240px;height:120px;background:#93c5fd;">
+      Resize
+    </div>
+    <div data-od-id="deck-move-box" data-od-label="Deck move box"
+      style="position:absolute;left:520px;top:360px;width:200px;height:100px;background:#fca5a5;">
+      Move
+    </div>
+  </section>
+</body>
 </html>`;
 }
 
