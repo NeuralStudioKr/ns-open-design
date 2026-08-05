@@ -45,7 +45,7 @@ describe('VisualCommentAttachmentChip', () => {
     expect(screen.queryByText('Visual mark')).toBeNull();
   });
 
-  it('still attempts drawing screenshot thumbnails when the file index is stale', () => {
+  it('does not fetch drawing screenshots when the project index is stale', () => {
     render(
       <VisualCommentAttachmentChip
         attachment={{
@@ -68,7 +68,8 @@ describe('VisualCommentAttachmentChip', () => {
       />,
     );
 
-    expect(screen.getByTestId('auth-project-image')).toBeTruthy();
+    expect(screen.queryByTestId('auth-project-image')).toBeNull();
+    expect(screen.getByText('heart')).toBeTruthy();
   });
 
   it('uses local preview for pending annotation paths', () => {

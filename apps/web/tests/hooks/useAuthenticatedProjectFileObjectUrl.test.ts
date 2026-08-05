@@ -1,8 +1,21 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { loadAuthenticatedProjectFileBlob } from '../../src/hooks/useAuthenticatedProjectFileObjectUrl';
+import {
+  loadAuthenticatedProjectFileBlob,
+  resetInflightProjectFileBlobLoadsForTests,
+} from '../../src/hooks/useAuthenticatedProjectFileObjectUrl';
+import {
+  isProjectRawFileKnownMissing,
+  markProjectRawFileMissing,
+  resetProjectRawFileFetchCacheForTests,
+} from '../../src/utils/projectFileFetchCache';
 
 describe('loadAuthenticatedProjectFileBlob', () => {
+  beforeEach(() => {
+    resetProjectRawFileFetchCacheForTests();
+    resetInflightProjectFileBlobLoadsForTests();
+  });
+
   it('retries after a transient non-OK raw fetch and returns the image blob', async () => {
     const imageBlob = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' });
     const fetchDaemon = vi.fn()
@@ -83,16 +96,12 @@ describe('loadAuthenticatedProjectFileBlob', () => {
     expect(blob).toBe(imageBlob);
   });
 
-  it('retries ephemeral drawing screenshots without trustExists instead of skipping fetch', async () => {
-    const imageBlob = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' });
-    const fetchDaemon = vi.fn().mockResolvedValue({
-      ok: true,
-      blob: async () => imageBlob,
-    } as Response);
+  it('marks drawing screenshots missing after a single 404 pass and skips repeat fetches', async () => {
+    const fetchDaemon = vi.fn().mockResolvedValue({ ok: false, status: 404 } as Response);
 
     const blob = await loadAuthenticatedProjectFileBlob(
       'project-1',
-      'ms798rzf-drawing-2026-07-30T08-31-44-563Z.png',
+      'mse1zt0l-drawing-2026-08-04T02-43-07-413Z.png',
       {
         delaysMs: [0],
         fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
@@ -100,7 +109,65 @@ describe('loadAuthenticatedProjectFileBlob', () => {
       },
     );
 
-    expect(fetchDaemon).toHaveBeenCalled();
-    expect(blob).toBe(imageBlob);
+    expect(blob).toBeNull();
+    expect(fetchDaemon).toHaveBeenCalledTimes(1);
+    expect(isProjectRawFileKnownMissing('project-1', 'mse1zt0l-drawing-2026-08-04T02-43-07-413Z.png')).toBe(true);
+    expect(isProjectRawFileKnownMissing('project-1', 'uploads/mse1zt0l-drawing-2026-08-04T02-43-07-413Z.png')).toBe(true);
+
+    const again = await loadAuthenticatedProjectFileBlob(
+      'project-1',
+      'mse1zt0l-drawing-2026-08-04T02-43-07-413Z.png',
+      {
+        delaysMs: [0],
+        fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
+        waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
+      },
+    );
+
+    expect(again).toBeNull();
+    expect(fetchDaemon).toHaveBeenCalledTimes(1);
+  });
+
+  it('tries alternate paths only on the first pass when trustExists is set', async () => {
+    const fetchDaemon = vi.fn().mockResolvedValue({ ok: false, status: 404 } as Response);
+
+    await loadAuthenticatedProjectFileBlob(
+      'project-1',
+      'mse1zt0l-drawing-2026-08-04T02-43-07-413Z.png',
+      {
+        delaysMs: [0, 0],
+        trustExists: true,
+        fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
+        waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
+      },
+    );
+
+    // primary + uploads + assets on attempt 0 (basename equals primary), then primary only on attempt 1
+    expect(fetchDaemon).toHaveBeenCalledTimes(4);
+  });
+
+  it('dedupes concurrent loads for the same project/path', async () => {
+    const imageBlob = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' });
+    const fetchDaemon = vi.fn().mockImplementation(async () => ({
+      ok: true,
+      blob: async () => imageBlob,
+    } as Response));
+
+    const [a, b] = await Promise.all([
+      loadAuthenticatedProjectFileBlob('project-1', 'mark.png', {
+        delaysMs: [0],
+        fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
+        waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
+      }),
+      loadAuthenticatedProjectFileBlob('project-1', 'mark.png', {
+        delaysMs: [0],
+        fetchDaemon: fetchDaemon as typeof import('../../src/teamver/teamverDaemonHeaders').fetchTeamverDaemon,
+        waitForPrefix: vi.fn().mockResolvedValue(null) as typeof import('../../src/teamver/teamverProjectS3PrefixResolve').waitForTeamverProjectStoragePrefix,
+      }),
+    ]);
+
+    expect(a).toBe(imageBlob);
+    expect(b).toBe(imageBlob);
+    expect(fetchDaemon).toHaveBeenCalledTimes(1);
   });
 });

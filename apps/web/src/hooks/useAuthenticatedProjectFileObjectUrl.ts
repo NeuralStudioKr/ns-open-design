@@ -11,10 +11,17 @@ import {
   markProjectRawFileMissing,
 } from '../utils/projectFileFetchCache';
 import { normalizeFetchedImageBlob } from '../utils/imageBlobNormalize';
-import { isEphemeralDrawingScreenshotPath, projectFilePathBasename } from '../utils/projectFilePaths';
+import { projectFilePathBasename } from '../utils/projectFilePaths';
 
 export const AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS = [0, 250, 800, 1500] as const;
 const TRUSTED_BACKGROUND_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
+
+const inflightProjectFileBlobLoads = new Map<string, Promise<Blob | null>>();
+
+/** @internal vitest only */
+export function resetInflightProjectFileBlobLoadsForTests(): void {
+  inflightProjectFileBlobLoads.clear();
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -51,7 +58,6 @@ async function fetchAuthenticatedImageBlobAtPath(
   options: {
     fetchDaemon: typeof fetchTeamverDaemon;
     waitForPrefix: typeof waitForTeamverProjectStoragePrefix;
-    trustExists: boolean;
     attempt: number;
   },
 ): Promise<Blob | null> {
@@ -75,6 +81,68 @@ async function fetchAuthenticatedImageBlobAtPath(
   return await normalizeFetchedImageBlob(rawBlob);
 }
 
+async function loadAuthenticatedProjectFileBlobInner(
+  projectId: string,
+  filePath: string,
+  options?: {
+    delaysMs?: readonly number[];
+    fetchDaemon?: typeof fetchTeamverDaemon;
+    waitForPrefix?: typeof waitForTeamverProjectStoragePrefix;
+    /** File is listed in the project index — try basename/uploads/assets alternates. */
+    trustExists?: boolean;
+    /** Retry briefly after the first pass (design panel / staged upload only). */
+    allowBackgroundRetry?: boolean;
+  },
+): Promise<Blob | null> {
+  const id = projectId.trim();
+  const path = filePath.trim();
+  if (!id || !path) return null;
+  if (isProjectRawFileKnownMissing(id, path)) return null;
+  if (options?.trustExists) clearProjectRawFileMissing(id, path);
+
+  const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
+  const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
+  const delays = options?.delaysMs ?? AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS;
+  const trustExists = Boolean(options?.trustExists);
+  const pathCandidates = trustExists
+    ? [path, ...alternateAuthenticatedRawPaths(path)]
+    : [path];
+
+  for (let attempt = 0; attempt < delays.length; attempt += 1) {
+    if (attempt > 0 && isProjectRawFileKnownMissing(id, path)) return null;
+
+    const delay = delays[attempt] ?? 0;
+    if (delay > 0) await sleep(delay);
+
+    // Alternate paths are probed once — retries only hit the primary path so a
+    // deleted drawing screenshot cannot spam uploads/ + assets/ on every delay.
+    const candidatesThisAttempt = attempt === 0 ? pathCandidates : [path];
+
+    for (let candidateIndex = 0; candidateIndex < candidatesThisAttempt.length; candidateIndex += 1) {
+      const candidatePath = candidatesThisAttempt[candidateIndex]!;
+      const isLastCandidate = candidateIndex >= candidatesThisAttempt.length - 1;
+      const blob = await fetchAuthenticatedImageBlobAtPath(id, candidatePath, {
+        fetchDaemon,
+        waitForPrefix,
+        attempt,
+      });
+      if (!blob) {
+        if (!isLastCandidate) continue;
+        const isLastAttempt = attempt >= delays.length - 1;
+        if (!isLastAttempt) continue;
+        markProjectRawFileMissing(id, path);
+        return null;
+      }
+      clearProjectRawFileMissing(id, path);
+      clearProjectRawFileMissing(id, candidatePath);
+      return blob;
+    }
+  }
+
+  markProjectRawFileMissing(id, path);
+  return null;
+}
+
 /**
  * Fetch a project raw file as an image blob with bounded retry.
  *
@@ -89,56 +157,44 @@ export async function loadAuthenticatedProjectFileBlob(
     delaysMs?: readonly number[];
     fetchDaemon?: typeof fetchTeamverDaemon;
     waitForPrefix?: typeof waitForTeamverProjectStoragePrefix;
-    /** Skip session 404 cache — use when the file is listed in the project index. */
     trustExists?: boolean;
+    allowBackgroundRetry?: boolean;
   },
 ): Promise<Blob | null> {
   const id = projectId.trim();
   const path = filePath.trim();
   if (!id || !path) return null;
-  if (!options?.trustExists && isProjectRawFileKnownMissing(id, path)) {
-    // Legacy session marks for user draw screenshots are ignored — they used
-    // to poison thumbnails after a single 404 during S3 materialization.
-    if (!isEphemeralDrawingScreenshotPath(path)) return null;
-  }
-  if (options?.trustExists) clearProjectRawFileMissing(id, path);
 
-  const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
-  const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
-  const delays = options?.delaysMs ?? AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS;
-  const trustExists = Boolean(options?.trustExists);
-  const pathCandidates = trustExists
-    ? [path, ...alternateAuthenticatedRawPaths(path)]
-    : [path];
+  const inflightKey = `${id}::${path}::${options?.trustExists ? '1' : '0'}`;
+  const inflight = inflightProjectFileBlobLoads.get(inflightKey);
+  if (inflight) return inflight;
 
-  for (let attempt = 0; attempt < delays.length; attempt += 1) {
-    const delay = delays[attempt] ?? 0;
-    if (delay > 0) await sleep(delay);
-
-    for (let candidateIndex = 0; candidateIndex < pathCandidates.length; candidateIndex += 1) {
-      const candidatePath = pathCandidates[candidateIndex]!;
-      const isLastCandidate = candidateIndex >= pathCandidates.length - 1;
-      const blob = await fetchAuthenticatedImageBlobAtPath(id, candidatePath, {
-        fetchDaemon,
-        waitForPrefix,
-        trustExists,
-        attempt,
-      });
-      if (!blob) {
-        if (trustExists || !isLastCandidate) continue;
-        const isLastAttempt = attempt >= delays.length - 1;
-        if (!isLastAttempt) continue;
-        if (!trustExists && !isEphemeralDrawingScreenshotPath(path)) {
-          markProjectRawFileMissing(id, path);
-        }
-        return null;
-      }
-      clearProjectRawFileMissing(id, path);
-      clearProjectRawFileMissing(id, candidatePath);
+  const task = (async () => {
+    let blob = await loadAuthenticatedProjectFileBlobInner(id, path, options);
+    if (
+      blob
+      || !options?.allowBackgroundRetry
+      || !options?.trustExists
+      || isProjectRawFileKnownMissing(id, path)
+    ) {
       return blob;
     }
+
+    for (const waitMs of TRUSTED_BACKGROUND_RETRY_DELAYS_MS) {
+      await sleep(waitMs);
+      if (isProjectRawFileKnownMissing(id, path)) return null;
+      blob = await loadAuthenticatedProjectFileBlobInner(id, path, options);
+      if (blob) return blob;
+    }
+    return null;
+  })();
+
+  inflightProjectFileBlobLoads.set(inflightKey, task);
+  try {
+    return await task;
+  } finally {
+    inflightProjectFileBlobLoads.delete(inflightKey);
   }
-  return null;
 }
 
 export type AuthenticatedProjectFileObjectUrlState = {
@@ -149,9 +205,6 @@ export type AuthenticatedProjectFileObjectUrlState = {
 
 /**
  * Teamver embed project files must be fetched with daemon auth headers.
- * Bare `/api/projects/.../raw/...` on `<img src>` can fail when cookies or
- * workspace headers are required for the request to succeed.
- *
  * Returns a blob object URL for `<img src>` (revoked on unmount / path change).
  */
 export function useAuthenticatedProjectFileObjectUrl(
@@ -160,6 +213,7 @@ export function useAuthenticatedProjectFileObjectUrl(
   /** Bust in-memory blob cache when the backing file changes (e.g. mtime). */
   rev?: string | number | null,
   trustExists?: boolean,
+  allowBackgroundRetry?: boolean,
 ): AuthenticatedProjectFileObjectUrlState {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -196,6 +250,13 @@ export function useAuthenticatedProjectFileObjectUrl(
       return;
     }
 
+    if (isProjectRawFileKnownMissing(projectId, path)) {
+      setImageSrc(null);
+      setLoading(false);
+      setFailed(true);
+      return;
+    }
+
     let cancelled = false;
     let activeBlobUrl: string | null = null;
     setImageSrc(null);
@@ -210,23 +271,12 @@ export function useAuthenticatedProjectFileObjectUrl(
     };
 
     void (async () => {
-      const tryLoad = async (): Promise<Blob | null> => {
-        return await loadAuthenticatedProjectFileBlob(projectId, path, { trustExists });
-      };
-
-      let blob = await tryLoad();
+      const blob = await loadAuthenticatedProjectFileBlob(projectId, path, {
+        trustExists,
+        allowBackgroundRetry,
+      });
       if (cancelled) return;
 
-      if (!blob && trustExists) {
-        for (const waitMs of TRUSTED_BACKGROUND_RETRY_DELAYS_MS) {
-          await sleep(waitMs);
-          if (cancelled) return;
-          blob = await tryLoad();
-          if (blob) break;
-        }
-      }
-
-      if (cancelled) return;
       if (blob) {
         revokeActiveBlobUrl();
         const blobUrl = URL.createObjectURL(blob);
@@ -246,7 +296,7 @@ export function useAuthenticatedProjectFileObjectUrl(
       setLoading(false);
       setFailed(false);
     };
-  }, [filePath, projectId, rev, trustExists, prefixNonce]);
+  }, [allowBackgroundRetry, filePath, projectId, rev, trustExists, prefixNonce]);
 
   return { src: imageSrc, loading, failed };
 }

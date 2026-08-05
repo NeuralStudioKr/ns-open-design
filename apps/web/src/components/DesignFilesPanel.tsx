@@ -1284,6 +1284,7 @@ function DfPreview({
             alt=""
             rev={Math.round(file.mtime)}
             trustExists
+            allowBackgroundRetry
           />
         ) : file.kind === 'html' ? (
           <HtmlPreviewThumbnail projectId={projectId} file={file} />

@@ -3,7 +3,6 @@ import { commentTargetDisplayName } from '../comments';
 import { isVisualCommentAttachment } from '../edit-mode/scoped-deck-patch';
 import { isPendingAnnotationPath } from '../utils/annotationPendingUpload';
 import {
-  isUserAnnotationDrawingScreenshotPath,
   projectFilePathExists,
 } from '../utils/projectFilePaths';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
@@ -40,14 +39,13 @@ export function VisualCommentAttachmentChip({
         ? new Set(projectFileNames)
         : undefined;
   const canShowLocalThumb = Boolean(localPreviewUrl);
+  const fileIndexed = projectFilePathExists(nameSet, screenshotPath);
+  const isPending = isPendingAnnotationPath(screenshotPath);
   const canShowRemoteThumb =
     Boolean(screenshotPath)
     && Boolean(projectId)
-    && (
-      isPendingAnnotationPath(screenshotPath)
-      || isUserAnnotationDrawingScreenshotPath(screenshotPath)
-      || projectFilePathExists(nameSet, screenshotPath)
-    );
+    && (isPending || fileIndexed);
+  const trustExists = isPending || fileIndexed;
   const showThumb = isVisual && (canShowLocalThumb || canShowRemoteThumb);
   const thumbClass = 'visual-comment-attachment-thumb';
   const label = commentTargetDisplayName(attachment);
@@ -77,7 +75,7 @@ export function VisualCommentAttachmentChip({
               path={screenshotPath}
               alt=""
               className={thumbClass}
-              trustExists
+              trustExists={trustExists}
             />
           ) : null}
         </span>
