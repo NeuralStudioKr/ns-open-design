@@ -314,10 +314,12 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     });
     expect(result.ok, JSON.stringify(result)).toBe(true);
     if (!result.ok) return;
-    expect(result.html).not.toMatch(/<script\b/i);
-    expect(result.html).not.toContain('evil.example');
-    expect(result.html).not.toMatch(/onclick/i);
-    expect(result.html).toContain('data-od-id="hero"');
+    // Slide swaps defer full-source scrub to ProjectView terminal sanitize.
+    const clean = sanitizeManualEditFullSource(result.html);
+    expect(clean).not.toMatch(/<script\b/i);
+    expect(clean).not.toContain('evil.example');
+    expect(clean).not.toMatch(/onclick/i);
+    expect(clean).toContain('data-od-id="hero"');
   });
 
   it('merges framework deck comments via selector hint when stale path ids miss on disk', () => {
@@ -401,9 +403,10 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(result.ok, JSON.stringify(result)).toBe(true);
     if (!result.ok) return;
     expect(result.html).toContain('color:#ef4444');
-    expect(result.html).not.toMatch(/<script\b/i);
-    expect(result.html).not.toMatch(/onerror/i);
-    expect(result.html).not.toContain('evil.example');
+    const clean = sanitizeManualEditFullSource(result.html);
+    expect(clean).not.toMatch(/<script\b/i);
+    expect(clean).not.toMatch(/onerror/i);
+    expect(clean).not.toContain('evil.example');
   });
 
   it('accepts an anchor-less scoped edit via the last-resort slide-level swap', () => {

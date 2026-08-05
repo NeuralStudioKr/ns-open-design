@@ -1066,11 +1066,26 @@ function sanitizeManualEditElementAttrs(el: Element): void {
   }
 }
 
+/** Scrub a <style> host in-place; return false when it should be removed. */
+function scrubManualEditStyleElement(el: Element): boolean {
+  sanitizeManualEditElementAttrs(el);
+  const text = scrubSalvagedStyleText(el.textContent ?? '');
+  if (!text) return false;
+  el.textContent = text;
+  return true;
+}
+
 /** Strip executable chrome tags, event handlers, and unsafe URL attrs. */
 function sanitizeManualEditReplacementTree(root: Element): void {
   const toRemove: Element[] = [];
   const walk = (el: Element): void => {
     const tag = el.tagName.toLowerCase();
+    // Nested slide <style> must survive comment "make it stand out" edits —
+    // scrub like head/body style hosts instead of dropping the whole node.
+    if (el !== root && tag === 'style') {
+      if (!scrubManualEditStyleElement(el)) toRemove.push(el);
+      return;
+    }
     if (el !== root && MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(tag)) {
       toRemove.push(el);
       return;
@@ -1169,6 +1184,10 @@ export function sanitizeManualEditHtmlFragment(html: string): string {
   template.innerHTML = trimmed;
   for (const root of Array.from(template.content.children)) {
     const tag = root.tagName.toLowerCase();
+    if (tag === 'style') {
+      if (!scrubManualEditStyleElement(root)) root.remove();
+      continue;
+    }
     if (MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(tag)) {
       root.remove();
       continue;
@@ -1214,10 +1233,7 @@ export function sanitizeManualEditFullSource(source: string): string {
         continue;
       }
       if (tag === 'style') {
-        sanitizeManualEditElementAttrs(child);
-        const text = scrubSalvagedStyleText(child.textContent ?? '');
-        if (!text) child.remove();
-        else child.textContent = text;
+        if (!scrubManualEditStyleElement(child)) child.remove();
         continue;
       }
       sanitizeManualEditReplacementTree(child);
@@ -2798,22 +2814,27 @@ export function isSafeManualEditUrl(value: string): boolean {
   return true;
 }
 
-/** True when a SMIL/CSS value embeds a scriptable scheme anywhere (not only as prefix). */
+/**
+ * True when a SMIL/CSS value embeds a scriptable scheme in a URL/value position.
+ * Avoids false positives on selectors like `.javascript:hover` or path segments
+ * such as `/assets/javascript:docs.png` after url() rewrite.
+ */
 function containsUnsafeEmbeddedCssOrScheme(value: string): boolean {
   const scanned = normalizeCssForSafetyScan(decodeHtmlCharacterReferences(value));
-  const normalized = compactManualEditUrlForSchemeCheck(scanned);
-  if (normalized.includes('javascript:')) return true;
-  if (normalized.includes('vbscript:')) return true;
-  if (/\bexpression\(/.test(normalized)) return true;
-  if (/\belement\(/.test(normalized)) return true;
-  if (/url\((?:javascript|vbscript|data)\b/.test(normalized)) return true;
-  // CSS Images string form — schemes may sit outside url(...).
-  if (
-    /\b(?:-webkit-)?image(?:-set)?\(/i.test(scanned)
-    && /(?:javascript|vbscript|data):/i.test(normalized)
-  ) {
+  if (/\bexpression\s*\(/i.test(scanned)) return true;
+  if (/\belement\s*\(/i.test(scanned)) return true;
+  for (const inner of extractCssUrlInners(scanned)) {
+    if (isForbiddenCssUrlScheme(inner)) return true;
+  }
+  for (const inner of extractCssImageFunctionUrlInners(scanned)) {
+    if (isForbiddenCssUrlScheme(inner)) return true;
+  }
+  // Bare scheme as a declaration value (`content:javascript:…`), not a selector.
+  if (/(?:^|[;{])\s*[^:{}]+?:\s*(?:javascript|vbscript|data):/i.test(scanned)) {
     return true;
   }
+  // Quoted string values carrying schemes outside url()/image().
+  if (/['"](?:javascript|vbscript|data):/i.test(scanned)) return true;
   return false;
 }
 

@@ -997,7 +997,7 @@ describe('manual edit source patches', () => {
     expect(siblingJs.source).not.toMatch(/javascript/i);
   });
 
-  it('strips nested style tags from set-outer-html replacements', () => {
+  it('scrubs nested style tags in set-outer-html instead of dropping the host', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',
       id: 'hero-title',
@@ -1011,7 +1011,9 @@ describe('manual edit source patches', () => {
     expect(result.ok, result.error).toBe(true);
     const html = readManualEditOuterHtml(result.source, 'hero-title');
     expect(html).toContain('Safe title');
-    expect(html).not.toMatch(/<style\b/i);
+    // Nested style hosts are scrub-kept so slide "stand out" edits survive.
+    expect(html).toContain('<style>');
+    expect(html).toContain('.x{color:red}');
     expect(result.source).not.toContain('evil.example');
     expect(result.source).not.toMatch(/@import/i);
   });
@@ -2049,6 +2051,48 @@ describe('manual edit source patches', () => {
     );
     expect(out).toContain('color:navy');
     expect(out).not.toMatch(/\belement\s*\(/i);
+  });
+
+  it('keeps scrubbed nested slide <style> instead of dropping the host', () => {
+    const fragment = sanitizeManualEditHtmlFragment([
+      '<section class="slide">',
+      '<style>.hero-pop{font-size:40px;color:#ef4444;background:url(javascript:alert(1))}</style>',
+      '<h1 class="hero-pop" data-od-id="hero-title">Title</h1>',
+      '</section>',
+    ].join(''));
+    expect(fragment).toContain('<style>');
+    expect(fragment).toContain('.hero-pop{');
+    expect(fragment).toContain('font-size:40px');
+    expect(fragment).toContain('color:#ef4444');
+    expect(fragment).not.toMatch(/javascript/i);
+    expect(fragment).toContain('data-od-id="hero-title"');
+
+    const full = sanitizeManualEditFullSource([
+      '<!doctype html><html><body>',
+      '<section class="slide">',
+      '<style>.hero-pop{color:#123456}</style>',
+      '<h1 class="hero-pop">Title</h1>',
+      '</section>',
+      '</body></html>',
+    ].join(''));
+    expect(full).toContain('<style>');
+    expect(full).toContain('.hero-pop{color:#123456}');
+  });
+
+  it('does not drop whole style blocks for .javascript:hover selectors', () => {
+    const out = sanitizeManualEditHtmlFragment(
+      '<div><style>.javascript:hover{color:red}.btn{color:blue}</style><span>ok</span></div>',
+    );
+    expect(out).toContain('<style>');
+    expect(out).toContain('.javascript:hover{color:red}');
+    expect(out).toContain('.btn{color:blue}');
+    expect(out).toContain('<span>ok</span>');
+
+    const pathSeg = sanitizeManualEditHtmlFragment(
+      '<div style="background:url(/assets/javascript:docs.png);color:navy">x</div>',
+    );
+    expect(pathSeg).toContain('color:navy');
+    expect(pathSeg).toContain('/assets/javascript:docs.png');
   });
 
   it('preserves fragment-shaped HTML when saving patches', () => {

@@ -1,4 +1,7 @@
-import { stripTrailingUnclosedRawBlocks } from '@open-design/contracts';
+import {
+  stripIncompleteOpenTags,
+  stripTrailingUnclosedRawBlocks,
+} from '@open-design/contracts';
 import { validateHtmlArtifact, isIncompleteHtmlDocumentShell } from './validate';
 import { hasSalvageableDeckSlideContent } from './deck-html-content';
 
@@ -255,6 +258,9 @@ export function salvageTruncatedHtmlDocument(content: string | null | undefined)
   // before <body>/slides) before appending document closers — otherwise
   // salvage writes permanently preview-unstable HTML to disk.
   out = stripTrailingUnclosedRawBlocks(out);
+  // Collapse stutter openers (`<section class="\n<section class="slide"`)
+  // left by mid-stream truncation so salvage does not persist ghost nesting.
+  out = stripIncompleteOpenTags(out);
   if (!hasSalvageableSlideContent(out)) return null;
 
   if (!HAS_BODY_CLOSE_RE.test(out)) {

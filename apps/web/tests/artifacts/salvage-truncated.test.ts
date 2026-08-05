@@ -45,6 +45,22 @@ describe("salvageTruncatedHtmlDocument", () => {
     expect(salvageTruncatedHtmlDocument(complete)).toBeNull();
   });
 
+  it("strips stutter open tags before closing a truncated deck", () => {
+    const stutter = `<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8" /><title>AI 도입 효과</title>
+<style>.slide{padding:40px}</style></head>
+<body>
+<section class="
+<section class="slide"><h1>기업 AI 도입 효과</h1><p>개요 설명입니다.</p></section>
+<section class="slide"><h2>생산성</h2><ul><li>업무 자동화</li><li>의사결정 지원</li></ul></section>`;
+    const salvaged = salvageTruncatedHtmlDocument(stutter);
+    expect(salvaged).toBeTruthy();
+    expect(salvaged).not.toMatch(/<section class="\s*<section/i);
+    expect(salvaged).toMatch(/<\/body>\s*<\/html>\s*$/i);
+    expect(isIncompleteHtmlDocumentShell(salvaged!)).toBe(false);
+  });
+
   it("inserts </body> before a premature </html> instead of appending after it", () => {
     const prematureHtml = `<!doctype html>
 <html lang="ko">

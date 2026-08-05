@@ -615,16 +615,15 @@ function tryVisualOrAnchorlessSlideSwap(input: {
   if (!allow) {
     return { ok: false, reason: 'No matching targets found to merge.' };
   }
-  // Same sanitize gate as style-only / text-preserved slide fallbacks —
-  // visual/anchorless swaps must not persist sibling script/on*.
-  const sanitizedSlide = sanitizeManualEditHtmlFragment(patchedSlide);
-  if (!sanitizedSlide.trim()) {
+  // Full-source sanitize is owned by ProjectView's terminal persist gate —
+  // skip a second DOMParser on multi-KB slides here.
+  if (!patchedSlide.trim()) {
     return { ok: false, reason: 'No matching targets found to merge.' };
   }
   const swapped = applyDeckPatch({
     currentHtml: input.nextHtml,
     patch: {
-      ops: [{ op: 'replace', slideIndex: input.slideIndex, html: sanitizedSlide }],
+      ops: [{ op: 'replace', slideIndex: input.slideIndex, html: patchedSlide }],
     },
   });
   if (!swapped.ok) {
@@ -755,14 +754,13 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
   }
 
   const acceptSlideLevel = (kind: 'style-only' | 'text-preserved'): string | null => {
-    // Slide-level swap bypasses finalizeManualEditReplacement — sanitize first
-    // so sibling <script>/on* cannot ride a "style-only" acceptance.
-    const sanitizedSlide = sanitizeManualEditHtmlFragment(patchedSlide);
-    if (!sanitizedSlide.trim()) return null;
+    // Slide-level swap bypasses finalizeManualEditReplacement — ProjectView
+    // terminal sanitize scrubs sibling <script>/on* once at persist time.
+    if (!patchedSlide.trim()) return null;
     const swapped = applyDeckPatch({
       currentHtml: input.nextHtml,
       patch: {
-        ops: [{ op: 'replace', slideIndex: input.slideIndex, html: sanitizedSlide }],
+        ops: [{ op: 'replace', slideIndex: input.slideIndex, html: patchedSlide }],
       },
     });
     if (!swapped.ok) return null;
@@ -854,25 +852,22 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
     merged.reason === 'No matching targets found to merge.' &&
     nextSlide !== patchedSlide &&
     anchors.length === 0;
-  if (acceptForAnchorlessNotFound) {
-    const sanitizedSlide = sanitizeManualEditHtmlFragment(patchedSlide);
-    if (sanitizedSlide.trim()) {
-      const swapped = applyDeckPatch({
-        currentHtml: input.nextHtml,
-        patch: {
-          ops: [{ op: 'replace', slideIndex: input.slideIndex, html: sanitizedSlide }],
-        },
+  if (acceptForAnchorlessNotFound && patchedSlide.trim()) {
+    const swapped = applyDeckPatch({
+      currentHtml: input.nextHtml,
+      patch: {
+        ops: [{ op: 'replace', slideIndex: input.slideIndex, html: patchedSlide }],
+      },
+    });
+    if (swapped.ok) {
+      devLog.warn('[deck-patch] accepted last-resort slide-level swap', {
+        slideIndex: input.slideIndex,
+        idCount: ids.length,
+        reason: merged.reason,
+        branch: 'anchor-less',
+        anchorCount: anchors.length,
       });
-      if (swapped.ok) {
-        devLog.warn('[deck-patch] accepted last-resort slide-level swap', {
-          slideIndex: input.slideIndex,
-          idCount: ids.length,
-          reason: merged.reason,
-          branch: 'anchor-less',
-          anchorCount: anchors.length,
-        });
-        return { ok: true, html: swapped.html };
-      }
+      return { ok: true, html: swapped.html };
     }
   }
 
