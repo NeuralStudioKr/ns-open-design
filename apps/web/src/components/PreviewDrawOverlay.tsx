@@ -81,8 +81,15 @@ const TARGET_COLOR = '#1677ff';
 const DRAW_HINT_STORAGE_KEY = 'open-design:annotation-draw-hint-dismissed';
 /** Max wait for a full compositor/iframe capture before marks-only or degraded send. */
 const ANNOTATION_CAPTURE_BUDGET_MS = 10_000;
-/** When ink/box marks exist, prefer marks-only over waiting for a slow full capture. */
-const ANNOTATION_CAPTURE_FAST_FALLBACK_MS = 3_000;
+/**
+ * When ink/box marks exist we prefer to wait for the full compositor capture
+ * (so the sent screenshot shows the actual slide underneath the marks) but
+ * still bound how long the user waits before we fall back to a marks-only
+ * composite. Empirically 6s covers deck srcDoc handshake + rasterization on
+ * staging; 3s was too aggressive and produced blank-background sends when
+ * the srcDoc bridge was just a beat slow.
+ */
+const ANNOTATION_CAPTURE_FAST_FALLBACK_MS = 6_000;
 const ANNOTATION_IFRAME_SNAPSHOT_TIMEOUTS_MS = [2_500, 3_000] as const;
 
 async function raceWithBudget<T>(promise: Promise<T>, budgetMs: number): Promise<T | null> {

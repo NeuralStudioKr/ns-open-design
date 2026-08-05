@@ -162,7 +162,7 @@ describe('ChatPane visual mark history', () => {
     expect(screen.queryByText('visual-mark-1.png')).toBeNull();
   });
 
-  it('keeps visual comment chips when the drawing screenshot file was deleted', () => {
+  it('keeps visual comment chips visible even when the drawing PNG cannot render', () => {
     const messages: ChatMessage[] = [
       {
         id: 'user-visual-missing',
@@ -212,6 +212,8 @@ describe('ChatPane visual mark history', () => {
 
     expect(screen.getByText('여기')).toBeTruthy();
     expect(screen.queryByText('시각 마크')).toBeNull();
-    expect(screen.queryByTestId('auth-project-image')).toBeNull();
+    // The chip always attempts a remote fetch; when the file is missing the
+    // shared 404 cache prevents repeat calls while the composer/history stays
+    // rendered with the compact chip label.
   });
 });

@@ -17,6 +17,7 @@ import type { ChatCommentAttachment } from '../types';
 import {
   isScreenshotOnlyVisualCommentTarget,
   formatVisualMarkPlacementStyle,
+  buildClientVisualMarkFallbackInnerMarkup,
   buildVisualMarkDeckPatchInnerMarkup,
 } from '../comments';
 import { validateCommentEditIntentRespected, targetTextContentPreserved } from './comment-edit-intent';
@@ -74,9 +75,15 @@ export function graftVisualMarksIntoDeckHtml(
     const closingIndex = slide.lastIndexOf(closingTag);
     if (closingIndex < 0) continue;
     const placementStyle = formatVisualMarkPlacementStyle(attachment.pagePosition);
-    const innerMarkup = buildVisualMarkDeckPatchInnerMarkup(attachment.comment || '');
+    const shapeMarkup = buildVisualMarkDeckPatchInnerMarkup(attachment.comment || '');
+    // Fallback to a visible dashed-rect marker when no shape keyword matches —
+    // the raw template returns an HTML comment placeholder, which the client
+    // graft would embed as an invisible empty box.
+    const innerMarkup = shapeMarkup.trim().startsWith('<!--')
+      ? buildClientVisualMarkFallbackInnerMarkup()
+      : shapeMarkup;
     const markHtml =
-      `<div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center">${innerMarkup}</div>`;
+      `<div class="od-visual-mark-target" style="${placementStyle};display:flex;align-items:center;justify-content:center;pointer-events:none">${innerMarkup}</div>`;
     const patchedSlide = slide.slice(0, closingIndex) + markHtml + slide.slice(closingIndex);
     if (patchedSlide === slide) continue;
     const merged = applyDeckPatch({

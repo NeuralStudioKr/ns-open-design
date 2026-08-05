@@ -559,6 +559,27 @@ describe('preview comment attachment helpers', () => {
     expect(template).toContain('od-visual-mark-target');
   });
 
+  it.each([
+    ['별 넣어줘', '<path d="M12 2'],
+    ['⭐ here', '<path d="M12 2'],
+    ['체크 표시', 'polyline points="4,12'],
+    ['빨간 동그라미', '<circle'],
+    ['화살표 이렇게', '<polyline points="14,6'],
+    ['x표 해줘', '<line x1="5" y1="5"'],
+  ])('renders a shape SVG for keyword "%s"', (note, fragment) => {
+    const template = buildConcreteDeckPatchTemplateForVisualMarks([
+      buildVisualAnnotationAttachment({
+        order: 1,
+        screenshotPath: 'uploads/drawing.png',
+        markKind: 'stroke',
+        note,
+        bounds: { x: 10, y: 20, width: 80, height: 80 },
+        slideIndex: 0,
+      }),
+    ]);
+    expect(template).toContain(fragment);
+  });
+
   it('keeps large queued board-note batches ordered in one send payload', () => {
     const notes = Array.from({ length: 8 }, (_, index) => `Note ${index + 1}`);
     const attachments = buildBoardCommentAttachments({

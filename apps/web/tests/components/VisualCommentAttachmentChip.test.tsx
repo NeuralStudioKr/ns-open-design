@@ -45,7 +45,12 @@ describe('VisualCommentAttachmentChip', () => {
     expect(screen.queryByText('Visual mark')).toBeNull();
   });
 
-  it('does not fetch drawing screenshots when the project index is stale', () => {
+  it('still attempts a remote fetch when the file index lags fresh uploads', () => {
+    // The project file index (`projectFileNames`) refreshes on a slower tick
+    // than fresh uploads. We rely on the shared 404 cache to suppress repeat
+    // calls for genuinely deleted paths — allowing the initial fetch attempt
+    // means freshly-uploaded drawings still render a thumb before the index
+    // catches up.
     render(
       <VisualCommentAttachmentChip
         attachment={{
@@ -68,7 +73,7 @@ describe('VisualCommentAttachmentChip', () => {
       />,
     );
 
-    expect(screen.queryByTestId('auth-project-image')).toBeNull();
+    expect(screen.getByTestId('auth-project-image')).toBeTruthy();
     expect(screen.getByText('heart')).toBeTruthy();
   });
 

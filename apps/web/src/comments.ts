@@ -1093,7 +1093,57 @@ export function buildVisualMarkDeckPatchInnerMarkup(comment: string): string {
       '      </svg>',
     ].join('\n');
   }
+  if (/별|star|⭐|★/iu.test(normalized)) {
+    return [
+      '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="#f59e0b" aria-hidden="true">',
+      '        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14 2 9.27l6.91-1.01L12 2z"/>',
+      '      </svg>',
+    ].join('\n');
+  }
+  if (/체크|check|✔|✓/iu.test(normalized)) {
+    return [
+      '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="#16a34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">',
+      '        <polyline points="4,12 10,18 20,6"/>',
+      '      </svg>',
+    ].join('\n');
+  }
+  if (/원|동그라미|circle|⭕|○/iu.test(normalized)) {
+    return [
+      '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="#ef4444" stroke-width="3" aria-hidden="true">',
+      '        <circle cx="12" cy="12" r="9"/>',
+      '      </svg>',
+    ].join('\n');
+  }
+  if (/화살표|arrow|→|➡|↗|↘/iu.test(normalized)) {
+    return [
+      '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">',
+      '        <line x1="4" y1="12" x2="20" y2="12"/>',
+      '        <polyline points="14,6 20,12 14,18"/>',
+      '      </svg>',
+    ].join('\n');
+  }
+  if (/x표|엑스|cross|✕|✖|❌/iu.test(normalized)) {
+    return [
+      '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="#dc2626" stroke-width="3" stroke-linecap="round" aria-hidden="true">',
+      '        <line x1="5" y1="5" x2="19" y2="19"/>',
+      '        <line x1="19" y1="5" x2="5" y2="19"/>',
+      '      </svg>',
+    ].join('\n');
+  }
   return '      <!-- robot/icon/SVG sized to fill this box (100% width/height) -->';
+}
+
+/**
+ * Visible fallback marker used by the client visual-mark graft when the user
+ * did not include a recognizable shape keyword. Without this, the mark div
+ * renders as an empty box (invisible) and the send looks like it did nothing.
+ */
+export function buildClientVisualMarkFallbackInnerMarkup(): string {
+  return [
+    '      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="#ff3b30" stroke-width="2" stroke-dasharray="4 3" aria-hidden="true">',
+    '        <rect x="2" y="2" width="20" height="20" rx="3"/>',
+    '      </svg>',
+  ].join('\n');
 }
 
 export function buildConcreteDeckPatchTemplateForVisualMarks(

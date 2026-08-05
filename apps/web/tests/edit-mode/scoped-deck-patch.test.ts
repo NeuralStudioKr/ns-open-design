@@ -720,6 +720,27 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(grafted).toMatch(/<svg[^>]*viewBox="0 0 24 24"/);
   });
 
+  it('inserts a visible fallback marker when no shape keyword is present', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="0"><h1>Title slide</h1></section>
+<section class="slide" data-slide-index="1"><p>Keep this text</p></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'annotations/test.png',
+      markKind: 'stroke',
+      // Deliberately vague note — the client graft used to embed an empty
+      // HTML comment div (invisible) for these; now falls back to a dashed
+      // marker so the user sees where the mark landed.
+      note: '이거 좀 봐줘',
+      bounds: { x: 40, y: 50, width: 80, height: 60 },
+      slideIndex: 1,
+    });
+    const grafted = graftVisualMarksIntoDeckHtml(deck, [visual]);
+    expect(grafted).toContain('od-visual-mark-target');
+    expect(grafted).toMatch(/<svg[^>]*stroke-dasharray/);
+  });
+
   it('repairs model deck-patches that wiped slide content for visual marks', () => {
     const deck = `<!doctype html><html><body>
 <section class="slide" data-slide-index="0"><h1>Title slide</h1></section>

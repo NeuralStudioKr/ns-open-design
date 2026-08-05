@@ -41,10 +41,14 @@ export function VisualCommentAttachmentChip({
   const canShowLocalThumb = Boolean(localPreviewUrl);
   const fileIndexed = projectFilePathExists(nameSet, screenshotPath);
   const isPending = isPendingAnnotationPath(screenshotPath);
-  const canShowRemoteThumb =
-    Boolean(screenshotPath)
-    && Boolean(projectId)
-    && (isPending || fileIndexed);
+  // The project file index (`projectFileNames`) can lag behind fresh uploads
+  // (drawings are POSTed and appear in `/files` on the next refresh tick).
+  // Attempt a remote fetch even when the path isn't indexed yet — the shared
+  // 404 cache in `projectFileFetchCache` suppresses repeat calls for deleted
+  // drawings, so we don't reintroduce the 404 spam this used to cause.
+  const canAttemptRemoteFetch =
+    Boolean(screenshotPath) && Boolean(projectId) && !isPending;
+  const canShowRemoteThumb = canAttemptRemoteFetch;
   const trustExists = isPending || fileIndexed;
   const showThumb = isVisual && (canShowLocalThumb || canShowRemoteThumb);
   const thumbClass = 'visual-comment-attachment-thumb';

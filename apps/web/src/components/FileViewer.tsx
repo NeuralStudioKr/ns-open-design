@@ -212,6 +212,7 @@ import type {
   ProjectFile,
 } from '../types';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
+import { useAuthenticatedProjectFileObjectUrl } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 import { Icon } from './Icon';
 import { RemixIcon } from './RemixIcon';
 import { SocialShareGrid } from './SocialShareGrid';
@@ -6901,13 +6902,22 @@ function HtmlViewer({
       return;
     }
     drawCaptureReadyRef.current = false;
-    const iframe = srcDocPreviewIframeRef.current;
-    if (!iframe) {
-      drawCaptureReadyRef.current = true;
-      return;
-    }
     let cancelled = false;
     void (async () => {
+      // Draw mode forces srcDoc; the srcDoc iframe may not be mounted on the
+      // very first frame after the toggle. Poll briefly before falling back
+      // to "ready" so capture cannot race an unmounted iframe.
+      const start = Date.now();
+      let iframe = srcDocPreviewIframeRef.current;
+      while (!iframe && !cancelled && Date.now() - start < 1_500) {
+        await waitForAnimationFrame();
+        iframe = srcDocPreviewIframeRef.current;
+      }
+      if (cancelled) return;
+      if (!iframe) {
+        drawCaptureReadyRef.current = true;
+        return;
+      }
       await waitForIframeLoadOrTimeout(iframe, 5_000);
       await waitForAnimationFrame();
       await waitForAnimationFrame();
@@ -13327,6 +13337,36 @@ function ImageViewer({
 }) {
   const t = useTeamverT();
   const filePath = projectFileResolvedPath(file);
+  // Authenticated blob URL for Download / Open — Teamver embed strips daemon
+  // headers from `<a href>` navigations, so bare `projectFileUrl` links used
+  // to 401 while the inline image (which uses the same hook) worked.
+  const blob = useAuthenticatedProjectFileObjectUrl(
+    projectId,
+    filePath,
+    Math.round(file.mtime),
+    true,
+    true,
+  );
+  const canAct = Boolean(blob.src) && !blob.loading;
+  const openInNewTab = () => {
+    if (!blob.src) return;
+    const win = window.open(blob.src, '_blank', 'noopener,noreferrer');
+    if (!win) return;
+    try {
+      win.opener = null;
+    } catch {
+      /* some browsers throw on cross-origin opener reset */
+    }
+  };
+  const downloadBlob = () => {
+    if (!blob.src) return;
+    const link = document.createElement('a');
+    link.href = blob.src;
+    link.download = file.name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
   return (
     <div className="viewer image-viewer">
       <div className="viewer-toolbar">
@@ -13338,32 +13378,37 @@ function ImageViewer({
           </span>
         </div>
         <div className="viewer-toolbar-actions">
-          <a
+          <button
+            type="button"
             className="ghost-link"
-            href={projectFileUrl(projectId, filePath)}
-            download={file.name}
+            onClick={downloadBlob}
+            disabled={!canAct}
           >
             {t('fileViewer.download')}
-          </a>
-          <a
+          </button>
+          <button
+            type="button"
             className="ghost-link"
-            href={projectFileUrl(projectId, filePath)}
-            target="_blank"
-            rel="noreferrer noopener"
+            onClick={openInNewTab}
+            disabled={!canAct}
           >
             {t('fileViewer.open')}
-          </a>
+          </button>
         </div>
       </div>
       <div className="viewer-body image-body">
-        <AuthenticatedProjectFileImage
-          projectId={projectId}
-          path={filePath}
-          alt=""
-          rev={Math.round(file.mtime)}
-          trustExists
-          allowBackgroundRetry
-        />
+        {blob.src ? (
+          <img src={blob.src} alt="" className="viewer-image" />
+        ) : (
+          <AuthenticatedProjectFileImage
+            projectId={projectId}
+            path={filePath}
+            alt=""
+            rev={Math.round(file.mtime)}
+            trustExists
+            allowBackgroundRetry
+          />
+        )}
       </div>
     </div>
   );

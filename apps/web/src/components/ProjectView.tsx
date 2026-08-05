@@ -5707,16 +5707,39 @@ export function ProjectView({
     [project.id, project.metadata, updateMessageById],
   );
 
+  // Preview-comment DELETE and status PATCH can race the periodic refresh:
+  // if the fetch begins before DELETE lands on the daemon, the deleted row
+  // returns in `next` and would resurrect in the side panel. Track locally
+  // deleted ids for a short window and drop them from any refresh merge.
+  const locallyDeletedPreviewCommentsRef = useRef<Map<string, number>>(new Map());
+  const noteLocallyDeletedPreviewComment = useCallback((commentId: string) => {
+    locallyDeletedPreviewCommentsRef.current.set(commentId, Date.now());
+  }, []);
+  const filterLocallyDeletedPreviewComments = useCallback(
+    (comments: readonly PreviewComment[]): PreviewComment[] => {
+      const tombstones = locallyDeletedPreviewCommentsRef.current;
+      if (tombstones.size === 0) return comments as PreviewComment[];
+      const now = Date.now();
+      for (const [id, at] of tombstones) {
+        if (now - at > 60_000) tombstones.delete(id);
+      }
+      if (tombstones.size === 0) return comments as PreviewComment[];
+      return comments.filter((comment) => !tombstones.has(comment.id));
+    },
+    [],
+  );
+
   const refreshPreviewComments = useCallback(async () => {
     if (!activeConversationId) return;
-    const next = await fetchPreviewComments(project.id, activeConversationId);
+    const raw = await fetchPreviewComments(project.id, activeConversationId);
+    const next = filterLocallyDeletedPreviewComments(raw);
     setPreviewComments(next);
     setAttachedComments((current) =>
       current
         .map((attached) => next.find((comment) => comment.id === attached.id))
         .filter((comment): comment is PreviewComment => Boolean(comment)),
     );
-  }, [project.id, activeConversationId]);
+  }, [project.id, activeConversationId, filterLocallyDeletedPreviewComments]);
 
   const savePreviewComment = useCallback(
     async (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images: File[] = []) => {
@@ -5730,8 +5753,18 @@ export function ProjectView({
         throwIfProjectCommentUploadIncomplete(result, images.length);
         uploadedAttachments = result.uploaded.map((file) => ({ path: file.path, name: file.name }));
       }
+      // Existing lookup MUST match slideIndex too: the daemon uniqueness key is
+      // (conversation, filePath, elementId, slideIndex), so two comments with
+      // the same elementId on different deck slides are distinct rows. Merging
+      // attachments across slides used to cross-pollinate uploads.
+      const targetSlideIndex = typeof target.slideIndex === 'number' && Number.isFinite(target.slideIndex)
+        ? Math.floor(target.slideIndex)
+        : undefined;
       const existing = previewComments.find(
-        (comment) => comment.filePath === target.filePath && comment.elementId === target.elementId,
+        (comment) =>
+          comment.filePath === target.filePath
+          && comment.elementId === target.elementId
+          && (targetSlideIndex === undefined || comment.slideIndex === targetSlideIndex),
       );
       const attachments = mergePreviewCommentAttachments(existing?.attachments, uploadedAttachments);
       const saved = await upsertPreviewComment(project.id, activeConversationId, {
@@ -5752,12 +5785,18 @@ export function ProjectView({
   const removePreviewComment = useCallback(
     async (commentId: string) => {
       if (!activeConversationId) return;
-      const ok = await deletePreviewComment(project.id, activeConversationId, commentId);
-      if (!ok) return;
+      // Optimistic drop first, tombstone against refresh races, then daemon DELETE.
+      noteLocallyDeletedPreviewComment(commentId);
       setPreviewComments((current) => current.filter((comment) => comment.id !== commentId));
       setAttachedComments((current) => removeAttachedComment(current, commentId));
+      const ok = await deletePreviewComment(project.id, activeConversationId, commentId);
+      if (!ok) {
+        // Rollback tombstone so a future refresh can re-render the row that
+        // survived on the daemon.
+        locallyDeletedPreviewCommentsRef.current.delete(commentId);
+      }
     },
-    [project.id, activeConversationId],
+    [project.id, activeConversationId, noteLocallyDeletedPreviewComment],
   );
 
   const attachPreviewComment = useCallback((comment: PreviewComment) => {
@@ -7979,7 +8018,7 @@ export function ProjectView({
           setFilesRefresh((count) => count + 1);
           await refreshProjectFiles().catch(() => undefined);
           requestOpenFile(clientVisual.fileName);
-          void patchAttachedStatuses(runCommentAttachments, 'applied');
+          void patchAttachedStatuses(runCommentAttachments, 'resolved');
           const consumedCommentIds = new Set(runCommentAttachments.map((attachment) => attachment.id));
           setAttachedComments((current) =>
             current.filter((comment) => !consumedCommentIds.has(comment.id)),
