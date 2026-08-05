@@ -161,7 +161,7 @@
 | daemon file-revisions tests | [x] |
 | nested markup (inline salvage + flattenNestedMarkup) | [x] |
 | revision content cache + reconcile skip + prefetch | [x] | `revision-content-cache.ts` — LRU 8 entries, 16MB/파일, 4MB/항목, prefetch `byteSize` skip |
-| `OD_FILE_REVISION_RETENTION_LIMIT` env | [x] | daemon `resolveFileRevisionRetentionLimit()` |
+| `OD_FILE_REVISION_RETENTION_LIMIT` env | [x] | daemon `resolveFileRevisionRetentionLimit()` — **권장** dev 30 · Teamver 20 ([50-3 §7.1](./50-3_revision_스냅샷_저장소_RDS_용량관리.md#71-스택-깊이-od_file_revision_retention_limit-권장값)) |
 | `OD_FILE_REVISION_SNAPSHOT_STORAGE` env | [x] | `postgres` (Teamver 기본) \| `sqlite` \| `files` — [50-3](./50-3_revision_스냅샷_저장소_RDS_용량관리.md) |
 | Postgres `file_revision_snapshots` BYTEA (schema v8) | [x] | `DAEMON_DB_POSTGRES_MIGRATION_V8` |
 | Postgres durable revision SSOT (멀티노드) | [x] | `durable-store.ts` — transactional commit, head+count hydrate, warm/GC |
@@ -191,6 +191,7 @@ pnpm --filter @open-design/daemon exec vitest run \
   tests/file-revisions-multinode.integration.test.ts \
   tests/file-revisions-durable-store.test.ts \
   tests/file-revisions-postgres-lock.test.ts \
+  tests/file-revisions-prune-chain-durable.integration.test.ts \
   tests/file-revisions-prune-chain.test.ts \
   tests/file-revisions-retention-sweep.test.ts \
   tests/file-revisions-metrics.test.ts \

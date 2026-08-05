@@ -312,6 +312,24 @@ list API `retentionPending: true`일 때 History 패널이 “정리 중” 힌�
 
 ## 7. Teamver 배포 (필수 env)
 
+**env example SSOT:** [`.env.staging.example`](../deploy/teamver/.env.staging.example) · [`.env.production.example`](../deploy/teamver/.env.production.example) · 로컬 [`.env.example`](../deploy/.env.example)
+
+### 7.1 스택 깊이 (`OD_FILE_REVISION_RETENTION_LIMIT`) 권장값
+
+| 환경 | 권장 | 비고 |
+|------|------|------|
+| **local dev** | **30** (미설정 = 코드 기본) | undo 여유, `deploy/.env.example` |
+| **Teamver staging** | **20** | 용량·QA 균형 |
+| **Teamver production** | **20** (시작) | `od_file_revision_snapshot_bytes` 모니터 후 **15~30** 조정 |
+| runbook 하한 | **15** | 그 이하 → checkpoint **stuck excess**·`retentionPending` 빈번 |
+
+- **범위:** 2~200 (`resolveFileRevisionRetentionLimit`)
+- **의미:** 파일당 서버에 남기는 revision row 수 = History 패널 “서버 보관 N개”
+- **용량 감:** deck ~80KB × N ≈ N×80KB/파일 (diff 압축 시 더 작음)
+- **byte 상한과 병행:** count만으로 부족하면 `OD_FILE_REVISION_MAX_TOTAL_BYTES` 설정
+
+### 7.2 env 블록 (staging / production)
+
 ```env
 OD_DAEMON_DB=postgres
 OD_PG_DATABASE=teamver_design_daemon_staging   # 환경별
@@ -321,13 +339,19 @@ OD_PG_PASSWORD=...
 # 스냅샷 — OD_DAEMON_DB=postgres 이면 기본 postgres (별도 설정 불필요)
 # OD_FILE_REVISION_SNAPSHOT_STORAGE=postgres
 
-OD_FILE_REVISION_RETENTION_LIMIT=15
+# undo/redo 스택 깊이 (파일당) — §7.1 권장 20
+OD_FILE_REVISION_RETENTION_LIMIT=20
 OD_FILE_REVISION_PUSH_PRUNE_MAX=8
 OD_FILE_REVISION_GC_INTERVAL_MS=21600000
 OD_FILE_REVISION_LOCK_TIMEOUT_MS=15000
+# OD_FILE_REVISION_FULL_SNAPSHOT_INTERVAL=5
+# OD_FILE_REVISION_MAX_TOTAL_BYTES=0
+# OD_FILE_REVISION_MAX_SNAPSHOT_BYTES=8388608
 ```
 
 daemon 부팅 시 `migratePostgresDaemonSchema` 가 v8 `file_revisions` / `file_revision_snapshots` 테이블을 생성한다.
+
+**검증:** `bash deploy/teamver/scripts/verify_file_revision_retention.sh` (metrics · optional burst)
 
 ---
 
@@ -373,6 +397,7 @@ pnpm --filter @open-design/daemon exec vitest run \
   tests/file-revisions-multinode.integration.test.ts \
   tests/file-revisions-durable-store.test.ts \
   tests/file-revisions-postgres-lock.test.ts \
+  tests/file-revisions-prune-chain-durable.integration.test.ts \
   tests/file-revisions-prune-chain.test.ts \
   tests/file-revisions-retention-sweep.test.ts \
   tests/file-revisions-metrics.test.ts \
@@ -387,6 +412,7 @@ pnpm --filter @open-design/daemon exec vitest run \
 | `file-revisions-durable-store.test.ts` | PG→sqlite hydrate, transactional commit, head+count stale 감지 |
 | `file-revisions-postgres-lock.test.ts` | advisory lock acquire/release, timeout, sequence conflict 감지 |
 | `file-revisions-prune-chain-durable.integration.test.ts` | Postgres mock 경로 chain-aware durable prune |
+| `file-revisions-prune-chain.test.ts` | unit — checkpoint 보존, excess 계산 |
 | `file-revisions-retention-sweep.test.ts` | deferred retention sweep, re-queue 규칙 |
 | `file-revisions-metrics.test.ts` | deferred/GC gauge 갱신 |
 | `file-revisions-compaction-integration.test.ts` | push 후 deferred compaction 패스 |

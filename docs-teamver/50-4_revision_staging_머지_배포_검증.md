@@ -107,9 +107,11 @@ OD_PG_PASSWORD=<POSTGRES_PASSWD 와 동일>
 OD_PG_SSL_MODE=require
 
 # --- revision 용량·동시성 (권장 staging 값) ---
-OD_FILE_REVISION_RETENTION_LIMIT=15
+OD_FILE_REVISION_RETENTION_LIMIT=20
+OD_FILE_REVISION_PUSH_PRUNE_MAX=8
 OD_FILE_REVISION_GC_INTERVAL_MS=21600000
 OD_FILE_REVISION_LOCK_TIMEOUT_MS=15000
+# OD_FILE_REVISION_FULL_SNAPSHOT_INTERVAL=5
 # OD_FILE_REVISION_SNAPSHOT_STORAGE=postgres  # 미설정 시 OD_DAEMON_DB=postgres 이면 자동 postgres
 ```
 
@@ -251,7 +253,7 @@ docker compose --env-file .env.staging exec open-design-daemon \
 |------|--------|
 | `OD_DAEMON_DB` | `postgres` |
 | `OD_PG_DATABASE` | `teamver_design_daemon_staging` |
-| `OD_FILE_REVISION_RETENTION_LIMIT` | `15` (또는 팀이 정한 값) |
+| `OD_FILE_REVISION_RETENTION_LIMIT` | `20` (권장; 하한 15 · 기본 30) |
 | `OD_FILE_REVISION_SNAPSHOT_STORAGE` | 비어 있거나 `postgres` |
 
 ### 6.3 2노드 네트워크 sanity
