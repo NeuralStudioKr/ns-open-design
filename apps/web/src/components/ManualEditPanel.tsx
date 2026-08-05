@@ -223,6 +223,19 @@ export function ManualEditPanel({
         {collapsed ? null : (
           <>
             <div className="manual-edit-scroll">
+              {isMultiSelect && !groupAlignEnabled ? (
+                <section className="cc-section manual-edit-group-align">
+                  <header className="cc-section-head">{t('manualEdit.align')}</header>
+                  <div className="cc-section-body">
+                    <p className="manual-edit-layer-empty">
+                      {embedUiLabel(
+                        'Group move needs 2+ absolute/fixed elements. Flow or nested selections cannot be dragged together.',
+                        '그룹 이동은 absolute/fixed 요소 2개 이상에서만 가능합니다. flow 요소나 부모·자식 중복 선택은 함께 드래그할 수 없습니다.',
+                      )}
+                    </p>
+                  </div>
+                </section>
+              ) : null}
               {isMultiSelect && groupAlignEnabled ? (
                 <section className="cc-section manual-edit-group-align">
                   <header className="cc-section-head">{t('manualEdit.align')}</header>

@@ -2,6 +2,7 @@ import { readManualEditStyles } from './source-patches';
 import { manualEditStyleValuesEqual } from './manual-edit-style-values';
 import { diffManualEditStylePatch } from './manual-edit-style-batch';
 import { applyManualEditPatch } from './source-patches';
+import { filterRootTargetsForGroupGeometry, pruneNestedManualEditSelectionIds } from './manual-edit-selection-ancestry';
 import { emptyManualEditStyles, MANUAL_EDIT_STYLE_PROPS, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from './types';
 
 export const MANUAL_EDIT_MULTI_SELECT_MAX = 32;
@@ -12,6 +13,7 @@ export function nextManualEditSelectionIds(
   targetId: string,
   additive: boolean,
   max = MANUAL_EDIT_MULTI_SELECT_MAX,
+  isDescendant?: (childId: string, ancestorId: string) => boolean,
 ): string[] {
   if (!targetId) return [];
   if (!additive) return [targetId];
@@ -19,7 +21,11 @@ export function nextManualEditSelectionIds(
     return currentIds.filter((id) => id !== targetId);
   }
   if (currentIds.length >= max) return [...currentIds];
-  return [...currentIds, targetId];
+  const withoutRelated = currentIds.filter(
+    (id) => !isDescendant?.(id, targetId) && !isDescendant?.(targetId, id),
+  );
+  const next = [...withoutRelated, targetId];
+  return isDescendant ? pruneNestedManualEditSelectionIds(next, isDescendant) : next;
 }
 
 export function manualEditSelectionIdsEqual(

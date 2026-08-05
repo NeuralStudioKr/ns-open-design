@@ -24,15 +24,17 @@ export function groupAlignHistoryLabel(count: number, kind: GroupAlignKind | Gro
 export function canGroupAlign(
   targets: readonly ManualEditTarget[],
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
+  isDescendant?: (childId: string, ancestorId: string) => boolean,
 ): boolean {
-  return canGroupBoundingMove(targets, options);
+  return canGroupBoundingMove(targets, options, isDescendant);
 }
 
 export function canGroupDistribute(
   targets: readonly ManualEditTarget[],
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
+  isDescendant?: (childId: string, ancestorId: string) => boolean,
 ): boolean {
-  return targets.length >= 3 && canGroupBoundingMove(targets, options);
+  return targets.length >= 3 && canGroupBoundingMove(targets, options, isDescendant);
 }
 
 function alignDeltaForMember(

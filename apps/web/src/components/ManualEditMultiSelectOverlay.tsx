@@ -23,7 +23,7 @@ import {
   type GroupResizeMemberStart,
   type GroupResizePreviewUpdate,
 } from '../edit-mode/manual-edit-group-resize';
-import { hostDeltaToContentDelta } from '../edit-mode/preview-coords';
+import { hostDeltaToContentDelta, freezeGestureHostGeom } from '../edit-mode/preview-coords';
 import { resolveManualEditChromeHostRect } from '../edit-mode/move-math';
 import {
   RESIZE_HANDLES,
@@ -144,6 +144,35 @@ function unionHostRect(
     };
   }
   return union;
+}
+
+function resolveGestureHostScale(
+  targets: ManualEditTarget[],
+  previewScale: number,
+  hostOffset: { x: number; y: number },
+  measureHostRect: (id: string) => ManualEditRect | null,
+): number {
+  const primary = targets[targets.length - 1] ?? targets[0];
+  if (!primary) return previewScale;
+  const layoutWidth = primary.layoutWidth && primary.layoutWidth >= 1
+    ? primary.layoutWidth
+    : primary.rect.width;
+  const layoutHeight = primary.layoutHeight && primary.layoutHeight >= 1
+    ? primary.layoutHeight
+    : primary.rect.height;
+  const paint = measureHostRect(primary.id);
+  const { hostScale } = freezeGestureHostGeom(
+    {
+      x: primary.rect.x,
+      y: primary.rect.y,
+      width: layoutWidth,
+      height: layoutHeight,
+    },
+    paint,
+    previewScale,
+    hostOffset,
+  );
+  return hostScale;
 }
 
 function handlePositionStyle(handle: ResizeHandle): CSSProperties {
@@ -351,7 +380,7 @@ export function ManualEditMultiSelectOverlay({
     event.stopPropagation();
     const members = buildGroupMoveMemberStarts(targets);
     const stylesBefore = groupMoveStylesBefore(targets);
-    const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
+    const hostScale = resolveGestureHostScale(targets, previewScale, hostOffset, measureHostRect);
     dragRef.current = {
       kind: 'move',
       pointerId: event.pointerId,
@@ -359,7 +388,7 @@ export function ManualEditMultiSelectOverlay({
       startClientY: event.clientY,
       members,
       stylesBefore,
-      hostScale: scale,
+      hostScale,
       moved: false,
       previewed: false,
       lastUpdates: [],
@@ -383,7 +412,7 @@ export function ManualEditMultiSelectOverlay({
     const unionStart = unionRectFromMemberStarts(members);
     if (!unionStart) return;
     const stylesBefore = groupResizeStylesBefore(targets);
-    const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
+    const hostScale = resolveGestureHostScale(targets, previewScale, hostOffset, measureHostRect);
     dragRef.current = {
       kind: 'resize',
       pointerId: event.pointerId,
@@ -393,7 +422,7 @@ export function ManualEditMultiSelectOverlay({
       unionStart,
       members,
       stylesBefore,
-      hostScale: scale,
+      hostScale,
       moved: false,
       previewed: false,
       lastDx: 0,

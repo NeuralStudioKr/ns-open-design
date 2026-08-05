@@ -32,9 +32,20 @@ export function groupMoveHistoryLabel(count: number): string {
 export function canGroupBoundingMove(
   targets: readonly ManualEditTarget[],
   options?: { editMode?: boolean; inlineTextEditing?: boolean },
+  isDescendant?: (childId: string, ancestorId: string) => boolean,
 ): boolean {
-  if (targets.length < 2) return false;
-  return targets.every((target) => canMoveTarget(target, options));
+  const roots = resolveGroupMovableTargets(targets, options, isDescendant);
+  return roots.length >= 2;
+}
+
+export function resolveGroupMovableTargets(
+  targets: readonly ManualEditTarget[],
+  options?: { editMode?: boolean; inlineTextEditing?: boolean },
+  isDescendant?: (childId: string, ancestorId: string) => boolean,
+): ManualEditTarget[] {
+  const movable = targets.filter((target) => canMoveTarget(target, options));
+  if (!isDescendant || movable.length < 2) return movable;
+  return filterRootTargetsForGroupGeometry(movable, isDescendant);
 }
 
 export function buildGroupMoveMemberStarts(
