@@ -1,4 +1,8 @@
-import { projectFilePathBasename, projectFilePathExists } from './projectFilePaths';
+import {
+  isEphemeralDrawingScreenshotPath,
+  projectFilePathBasename,
+  projectFilePathExists,
+} from './projectFilePaths';
 
 const missingProjectRawFiles = new Set<string>();
 
@@ -71,7 +75,10 @@ export function reconcileProjectRawFileMissingCache(
   for (const key of missingProjectRawFiles) {
     if (!key.startsWith(prefix)) continue;
     const path = key.slice(prefix.length);
-    if (projectFilePathExists(knownPaths, path)) {
+    if (
+      projectFilePathExists(knownPaths, path)
+      && !isEphemeralDrawingScreenshotPath(path)
+    ) {
       pathsToClear.add(path);
     }
   }

@@ -122,8 +122,8 @@ async function loadAuthenticatedProjectFileBlobInner(
 
   const waitForPrefix = options?.waitForPrefix ?? waitForTeamverProjectStoragePrefix;
   const fetchDaemon = options?.fetchDaemon ?? fetchTeamverDaemon;
-  const delays = options?.delaysMs ?? AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS;
   const trustExists = Boolean(options?.trustExists);
+  const delays = options?.delaysMs ?? AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS;
   const pathCandidates = trustExists
     ? [path, ...alternateAuthenticatedRawPaths(path)]
     : [path];

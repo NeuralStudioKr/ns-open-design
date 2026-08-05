@@ -3,6 +3,7 @@ import { commentTargetDisplayName } from '../comments';
 import { isVisualCommentAttachment } from '../edit-mode/scoped-deck-patch';
 import { isPendingAnnotationPath } from '../utils/annotationPendingUpload';
 import {
+  isEphemeralDrawingScreenshotPath,
   projectFilePathExists,
 } from '../utils/projectFilePaths';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
@@ -49,7 +50,11 @@ export function VisualCommentAttachmentChip({
   const canAttemptRemoteFetch =
     Boolean(screenshotPath) && Boolean(projectId) && !isPending;
   const canShowRemoteThumb = canAttemptRemoteFetch;
-  const trustExists = isPending || fileIndexed;
+  // Indexed drawing screenshots can outlive storage (GC / sync). Never
+  // trustExists for them — chat thumbnails should 404 once and stop.
+  const trustExists =
+    isPending
+    || (fileIndexed && !isEphemeralDrawingScreenshotPath(screenshotPath));
   const showThumb = isVisual && (canShowLocalThumb || canShowRemoteThumb);
   const thumbClass = 'visual-comment-attachment-thumb';
   const label = commentTargetDisplayName(attachment);

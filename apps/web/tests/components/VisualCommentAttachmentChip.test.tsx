@@ -6,8 +6,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { VisualCommentAttachmentChip } from '../../src/components/VisualCommentAttachmentChip';
 
 vi.mock('../../src/components/AuthenticatedProjectFileImage', () => ({
-  AuthenticatedProjectFileImage: ({ path }: { path: string }) => (
-    <img data-testid="auth-project-image" src={`blob:${path}`} alt="" />
+  AuthenticatedProjectFileImage: ({
+    path,
+    trustExists,
+  }: {
+    path: string;
+    trustExists?: boolean;
+  }) => (
+    <img
+      data-testid="auth-project-image"
+      data-trust-exists={trustExists ? '1' : '0'}
+      src={`blob:${path}`}
+      alt=""
+    />
   ),
 }));
 
@@ -40,7 +51,9 @@ describe('VisualCommentAttachmentChip', () => {
       />,
     );
 
-    expect(screen.getByTestId('auth-project-image')).toBeTruthy();
+    const img = screen.getByTestId('auth-project-image');
+    expect(img).toBeTruthy();
+    expect(img.getAttribute('data-trust-exists')).toBe('0');
     expect(screen.getByText('draw a heart here')).toBeTruthy();
     expect(screen.queryByText('Visual mark')).toBeNull();
   });

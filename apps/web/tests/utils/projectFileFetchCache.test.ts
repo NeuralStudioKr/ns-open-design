@@ -40,6 +40,17 @@ describe('projectFileFetchCache', () => {
     clearProjectRawFileMissing(projectId, path);
   });
 
+  it('keeps missing marks for indexed drawing screenshots', () => {
+    resetProjectRawFileFetchCacheForTests();
+    const projectId = 'project-1';
+    const path = 'mse7c6na-drawing-2026-08-04T05-12-44-933Z.png';
+    markProjectRawFileMissing(projectId, path);
+
+    reconcileProjectRawFileMissingCache(projectId, new Set([path]));
+    expect(isProjectRawFileKnownMissing(projectId, path)).toBe(true);
+    clearProjectRawFileMissing(projectId, path);
+  });
+
   it('keeps missing marks when the path is still absent from the index', () => {
     resetProjectRawFileFetchCacheForTests();
     const projectId = 'project-1';
