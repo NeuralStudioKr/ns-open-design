@@ -154,7 +154,8 @@ export function validateCommentEditIntentRespected(input: {
     input.instructionText,
     ...input.commentAttachments.map((attachment) => attachment.comment),
   ].filter(Boolean).join('\n');
-  if (!looksLikeStyleOnlyCommentRequest(instruction)) {
+  // Style ∪ layout ∪ alignment — "한 줄로" / "정렬" must not wipe pinned text either.
+  if (!looksLikePresentationTweakCommentRequest(instruction)) {
     return { ok: true };
   }
 
@@ -184,7 +185,7 @@ export function validateCommentEditIntentRespected(input: {
       return {
         ok: false,
         reason:
-          'style-only comment edit removed or emptied the pinned target text; use set-style (e.g. fontSize) and keep currentText verbatim',
+          'presentation-only comment edit removed or emptied the pinned target text; keep currentText verbatim while changing style/layout/alignment',
       };
     }
   }
