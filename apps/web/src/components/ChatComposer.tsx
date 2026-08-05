@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { devLog } from '../lib/devLog';
 import { createPortal } from 'react-dom';
 import { Button } from '@open-design/components';
 import { useI18n } from '../i18n';
@@ -1738,7 +1739,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               slideOnlyMvp,
             }),
           );
-          console.warn('Some attachments failed to upload', {
+          devLog.warn('Some attachments failed to upload', {
             failedCount: result.failed.length,
             uploadedCount: result.uploaded.length,
             error: result.error,
@@ -2055,7 +2056,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         await uploadFiles(files);
         return true;
       } catch (err) {
-        console.warn('Could not read image from clipboard', err);
+        devLog.warn('Could not read image from clipboard', err);
         return false;
       }
     }
@@ -2335,7 +2336,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
             ack({ ok: false, message: t('chat.annotationFailed') });
           } catch (err) {
-            console.warn('Could not send annotation', err);
+            devLog.warn('Could not send annotation', err);
             setUploadError(slideOnlyMvp ? t('chat.annotationFailed') : (err instanceof Error ? err.message : t('chat.annotationFailed')));
             ack({ ok: false, message: t('chat.annotationFailed') });
           } finally {

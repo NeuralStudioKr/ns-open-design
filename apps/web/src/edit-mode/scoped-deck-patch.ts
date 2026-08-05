@@ -29,6 +29,7 @@ import {
   sanitizeManualEditFullSource,
   sanitizeManualEditHtmlFragment,
 } from './source-patches';
+import { devLog } from '../lib/devLog';
 
 export type ScopedDeckPersistFailureCode =
   | 'deck_patch_parse_failed'
@@ -332,7 +333,7 @@ export function repairWipedSlidesForVisualMarks(
       patch: { ops: [{ op: 'replace', slideIndex, html: repairedSlide }] },
     });
     if (!merged.ok) continue;
-    console.warn('[deck-patch] repaired slide content wipe for visual mark', {
+    devLog.warn('[deck-patch] repaired slide content wipe for visual mark', {
       slideIndex,
       elementId: attachment.elementId,
     });
@@ -361,7 +362,7 @@ export function stabilizeVisualMarkDeckHtml(
   );
 
   if (nextSlides.length < currentSlides.length) {
-    console.warn('[deck-patch] visual-mark edit reduced slide count — grafting into current deck', {
+    devLog.warn('[deck-patch] visual-mark edit reduced slide count — grafting into current deck', {
       currentSlideCount: currentSlides.length,
       nextSlideCount: nextSlides.length,
     });
@@ -414,7 +415,7 @@ export function applyScopedDeckPatchToHtml(input: {
       patch: parsed.patch,
     });
     if (relaxed.ok) {
-      console.warn('[deck-patch] strict scope apply rejected — retrying without scope guard', {
+      devLog.warn('[deck-patch] strict scope apply rejected — retrying without scope guard', {
         strictReason: strictScopeApply.reason,
         allowedSlideIndexes: input.allowedSlideIndexes,
       });
@@ -451,7 +452,7 @@ export function applyScopedDeckPatchToHtml(input: {
       return { ok: true, html: sanitizeManualEditFullSource(repairedScoped) };
     }
     if (mergedScopeRelaxed) {
-      console.warn('[deck-patch] scope-relaxed apply produced no narrowed match — rejecting', {
+      devLog.warn('[deck-patch] scope-relaxed apply produced no narrowed match — rejecting', {
         allowedSlideIndexes: input.allowedSlideIndexes,
       });
       return {
@@ -550,7 +551,7 @@ function tryAnchorlessSlideLevelSwap(input: {
   if (!swapped.ok) {
     return { ok: false, reason: swapped.reason ?? 'No matching targets found to merge.' };
   }
-  console.info('[deck-patch] accepted anchor-less slide-level swap', {
+  devLog.info('[deck-patch] accepted anchor-less slide-level swap', {
     slideIndex: input.slideIndex,
     branch: input.logContext ?? 'anchor-less',
   });
@@ -579,7 +580,7 @@ function tryHintOnlyScopedMerge(input: {
     hint,
   );
   if (merged.ok) {
-    console.info('[deck-patch] accepted hint-only target fallback', {
+    devLog.info('[deck-patch] accepted hint-only target fallback', {
       slideIndex: input.slideIndex,
       selector: hint.selector,
     });
@@ -628,7 +629,7 @@ function tryVisualOrAnchorlessSlideSwap(input: {
   if (!swapped.ok) {
     return { ok: false, reason: swapped.reason || 'No matching targets found to merge.' };
   }
-  console.warn('[deck-patch] accepted visual/anchorless slide-level swap', {
+  devLog.warn('[deck-patch] accepted visual/anchorless slide-level swap', {
     slideIndex: input.slideIndex,
     visual: isScreenshotOnlyVisualCommentTarget(input.attachment),
     anchorCount: anchors.length,
@@ -764,7 +765,7 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
       },
     });
     if (!swapped.ok) return null;
-    console.info('[deck-patch] accepted slide-level fallback', {
+    devLog.info('[deck-patch] accepted slide-level fallback', {
       slideIndex: input.slideIndex,
       fallback: kind,
       reason: merged.reason,
@@ -800,7 +801,7 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
       hint,
     );
     if (graft.ok && graft.source !== input.nextHtml) {
-      console.info('[deck-patch] accepted grafted target fallback', {
+      devLog.info('[deck-patch] accepted grafted target fallback', {
         slideIndex: input.slideIndex,
         targetId: id,
         reason: merged.reason,
@@ -862,9 +863,9 @@ function tryMergeScopedCommentAttachmentAtSlide(input: {
         },
       });
       if (swapped.ok) {
-        console.warn('[deck-patch] accepted last-resort slide-level swap', {
+        devLog.warn('[deck-patch] accepted last-resort slide-level swap', {
           slideIndex: input.slideIndex,
-          ids,
+          idCount: ids.length,
           reason: merged.reason,
           branch: 'anchor-less',
           anchorCount: anchors.length,
@@ -977,9 +978,9 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
     if (!mergedForAttachment) {
       // Do not log currentText/htmlHint — slide/comment body must not reach
       // the browser console in staging/production.
-      console.warn('[deck-patch] scoped narrow merge failed', {
+      devLog.warn('[deck-patch] scoped narrow merge failed', {
         slideCandidates,
-        ids,
+        idCount: ids.length,
         reason: lastReason,
         currentTextLen: attachment.currentText?.length ?? 0,
         htmlHintLen: attachment.htmlHint?.length ?? 0,

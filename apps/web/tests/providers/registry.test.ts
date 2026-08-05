@@ -564,6 +564,7 @@ describe('fetchProjectFileText', () => {
         statusText: 'Not Found',
       }),
     );
+    // Emitted via devLog (NODE_ENV=test); production builds stay silent.
     expect(warn.mock.calls[0]?.[1]).not.toHaveProperty('url');
     expect(warn.mock.calls[0]?.[1]).not.toHaveProperty('name');
   });

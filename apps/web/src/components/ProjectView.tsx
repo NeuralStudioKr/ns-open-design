@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useLayoutEffect, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
+import { devLog } from '../lib/devLog';
 import { createPortal } from 'react-dom';
 import { AnimatePresence } from 'motion/react';
 import { createArtifactManifest, inferLegacyManifest } from '../artifacts/manifest';
@@ -1345,7 +1346,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     instructionText: input.instructionText,
   });
   if (resolvedBody !== input.patchBody) {
-    console.warn('[element-patch] salvaged patch body from assistant output', {
+    devLog.warn('[element-patch] salvaged patch body from assistant output', {
       fileName: input.fileName,
       beforeLength: (input.patchBody ?? '').length,
       afterLength: resolvedBody.length,
@@ -1361,7 +1362,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     // model glitch where the artifact type is off-by-one for the
     // content shape.
     if (elementPatchBodyLooksLikeDeckPatch(resolvedBody)) {
-      console.warn('[element-patch] body looks like deck-patch — falling back', {
+      devLog.warn('[element-patch] body looks like deck-patch — falling back', {
         fileName: input.fileName,
         parseReason: parsed.reason,
       });
@@ -1374,7 +1375,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
         instructionText: input.instructionText,
       });
     }
-    console.warn('[element-patch] parse failed', {
+    devLog.warn('[element-patch] parse failed', {
       fileName: input.fileName,
       reason: parsed.reason,
       bodyLength: (resolvedBody ?? '').length,
@@ -1422,7 +1423,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
       elementPatchReasonTargetsSyntheticVisualMark(applied.reason)
       && elementPatchBodyLooksLikeDeckPatch(resolvedBody)
     ) {
-      console.warn('[element-patch] visual-mark target — falling back to deck-patch', {
+      devLog.warn('[element-patch] visual-mark target — falling back to deck-patch', {
         fileName: input.fileName,
         reason: applied.reason,
       });
@@ -1435,7 +1436,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
         instructionText: input.instructionText,
       });
     }
-    console.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
+    devLog.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
     return { ok: false, code: 'deck_patch_merge_failed', reason: applied.reason };
   }
   const intent = validateCommentEditIntentRespected({
@@ -1526,7 +1527,7 @@ function routeScopedCommentPersistFailure(input: {
   logLabel: string;
 }): Extract<ArtifactPersistResult, { kind: 'skipped-incomplete' | 'scope-rejected' }> {
   if (input.runIsScoped && shouldRouteScopedCommentEditToAutoContinue(input.code, input.reason)) {
-    console.warn(`[${input.logLabel}] routing scoped edit to auto-continue`, {
+    devLog.warn(`[${input.logLabel}] routing scoped edit to auto-continue`, {
       fileName: input.fileName,
       code: input.code,
       reason: input.reason,
@@ -1602,7 +1603,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     cache: 'no-store',
   });
   if (!currentHtml) {
-    console.warn('[deck-patch] current deck file unreadable', {
+    devLog.warn('[deck-patch] current deck file unreadable', {
       projectId: input.projectId,
       fileName: input.fileName,
     });
@@ -1621,7 +1622,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
       ? graftVisualMarksIntoDeckHtml(currentHtml, input.commentAttachments)
       : null;
     if (grafted) {
-      console.warn('[deck-patch] applied client visual-mark graft fallback', {
+      devLog.warn('[deck-patch] applied client visual-mark graft fallback', {
         fileName: input.fileName,
         parseReason: parsed.reason,
       });
@@ -1644,7 +1645,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
           instructionText: input.instructionText,
         });
         if (salvagedResult.ok) {
-          console.warn('[deck-patch] applied client visual-mark template fallback', {
+          devLog.warn('[deck-patch] applied client visual-mark template fallback', {
             fileName: input.fileName,
             parseReason: parsed.reason,
           });
@@ -1660,7 +1661,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     // `elementPatchBodyLooksLikeDeckPatch` salvage in
     // `tryApplyElementPatchesAgainstCurrentDeck`.
     if (deckPatchBodyLooksLikeElementPatch(input.patchBody)) {
-      console.warn('[deck-patch] body looks like element-patch — falling back', {
+      devLog.warn('[deck-patch] body looks like element-patch — falling back', {
         fileName: input.fileName,
         parseReason: parsed.reason,
       });
@@ -1673,7 +1674,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
         instructionText: input.instructionText,
       });
     }
-    console.warn('[deck-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
+    devLog.warn('[deck-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
     return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
   }
   const result = applyScopedDeckPatchToHtml({
@@ -1684,7 +1685,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     instructionText: input.instructionText,
   });
   if (!result.ok) {
-    console.warn('[deck-patch] scoped deck patch failed', {
+    devLog.warn('[deck-patch] scoped deck patch failed', {
       fileName: input.fileName,
       code: result.code,
       reason: result.reason,
@@ -1724,7 +1725,7 @@ async function fullDeckEditStaysInsideCommentScope(input: {
     cache: 'no-store',
   });
   if (!currentHtml) {
-    console.warn('[deck-patch] scoped full-deck guard could not read current deck', {
+    devLog.warn('[deck-patch] scoped full-deck guard could not read current deck', {
       projectId: input.projectId,
       fileName: input.fileName,
     });
@@ -1749,7 +1750,7 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   }
   const diff = diffDeckSlideIndexes(currentHtml, input.nextHtml);
   if (!diff.ok) {
-    console.warn('[deck-patch] scoped full-deck guard could not diff deck', {
+    devLog.warn('[deck-patch] scoped full-deck guard could not diff deck', {
       fileName: input.fileName,
       reason: diff.reason,
     });
@@ -1758,7 +1759,7 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   const allowed = new Set(allowedSlideIndexes);
   const outsideScope = diff.changedSlideIndexes.filter((slideIndex) => !allowed.has(slideIndex));
   if (outsideScope.length > 0) {
-    console.warn('[deck-patch] scoped full-deck guard rejected outside-scope changes', {
+    devLog.warn('[deck-patch] scoped full-deck guard rejected outside-scope changes', {
       fileName: input.fileName,
       changedSlideIndexes: diff.changedSlideIndexes,
       allowedSlideIndexes,
@@ -1780,7 +1781,7 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       || beforeMasked.maskedCount === 0
       || beforeMasked.maskedCount !== afterMasked.maskedCount;
     if (targetUnresolved) {
-      console.warn('[deck-patch] scoped full-deck guard rejected unresolved comment target', {
+      devLog.warn('[deck-patch] scoped full-deck guard rejected unresolved comment target', {
         fileName: input.fileName,
         beforeMaskedCount: beforeMasked.ok ? beforeMasked.maskedCount : 0,
         afterMaskedCount: afterMasked.ok ? afterMasked.maskedCount : 0,
@@ -1799,7 +1800,7 @@ async function fullDeckEditStaysInsideCommentScope(input: {
     beforeMasked.maskedCount === afterMasked.maskedCount &&
     beforeMasked.source !== afterMasked.source
   ) {
-    console.warn('[deck-patch] scoped full-deck guard rejected non-target changes inside target slide', {
+    devLog.warn('[deck-patch] scoped full-deck guard rejected non-target changes inside target slide', {
       fileName: input.fileName,
       maskedCount: beforeMasked.maskedCount,
     });
@@ -2825,7 +2826,7 @@ export function ProjectView({
     queuedChatSendsRef.current = restored;
     setQueuedChatSends(restored);
     if (restored.length > 0) {
-      console.info(
+      devLog.info(
         '[teamver] chat-queue: restored on project mount',
         { projectId: project.id, count: restored.length },
       );
@@ -3307,7 +3308,7 @@ export function ProjectView({
         try {
           return await fetchPreviewComments(project.id, activeConversationId);
         } catch (err) {
-          console.debug('[project] preview comments load skipped', err);
+          devLog.debug('[project] preview comments load skipped', err);
           return [];
         }
       };
@@ -3316,7 +3317,7 @@ export function ProjectView({
         try {
           return await listActiveChatRuns(project.id, activeConversationId);
         } catch (err) {
-          console.debug('[project] active daemon runs load skipped', err);
+          devLog.debug('[project] active daemon runs load skipped', err);
           return [];
         }
       };
@@ -4171,7 +4172,7 @@ export function ProjectView({
             (isElementPatchEmptyBody(merged.reason) ||
               shouldRouteScopedCommentEditToAutoContinue(merged.code, merged.reason))
           ) {
-            console.warn('[element-patch] routing scoped edit to auto-continue', {
+            devLog.warn('[element-patch] routing scoped edit to auto-continue', {
               fileName: targetFileName,
               code: merged.code,
               reason: merged.reason,
@@ -4182,7 +4183,7 @@ export function ProjectView({
               reason: merged.reason,
             };
           } else if (isElementPatchEmptyBody(merged.reason) && !runIsScoped) {
-            console.warn('[element-patch] rejecting unscoped empty artifact', {
+            devLog.warn('[element-patch] rejecting unscoped empty artifact', {
               fileName: targetFileName,
               reason: merged.reason,
             });
@@ -4218,7 +4219,7 @@ export function ProjectView({
             runIsScoped &&
             shouldRouteScopedCommentEditToAutoContinue(merged.code, merged.reason)
           ) {
-            console.warn('[deck-patch] scoped merge missed comment target — routing to auto-continue', {
+            devLog.warn('[deck-patch] scoped merge missed comment target — routing to auto-continue', {
               fileName: targetFileName,
               code: merged.code,
               reason: merged.reason,
@@ -4239,7 +4240,7 @@ export function ProjectView({
             isDeckPatchEmptyBody(art.html ?? '', merged.reason)
           ) {
             if (runIsScoped) {
-              console.warn('[deck-patch] routing scoped empty deck-patch to auto-continue', {
+              devLog.warn('[deck-patch] routing scoped empty deck-patch to auto-continue', {
                 fileName: targetFileName,
                 reason: merged.reason,
               });
@@ -4249,7 +4250,7 @@ export function ProjectView({
                 reason: merged.reason,
               };
             }
-            console.warn('[deck-patch] rejecting unscoped empty deck-patch', {
+            devLog.warn('[deck-patch] rejecting unscoped empty deck-patch', {
               fileName: targetFileName,
               reason: merged.reason,
             });
@@ -4295,7 +4296,7 @@ export function ProjectView({
               instructionText: runVisiblePromptRef.current,
             });
             if (salvaged.ok) {
-              console.warn('[deck-patch] salvaged scoped full-deck rewrite via narrow merge', {
+              devLog.warn('[deck-patch] salvaged scoped full-deck rewrite via narrow merge', {
                 fileName: targetFileName,
                 code: scopeResult.code,
               });
@@ -4305,7 +4306,7 @@ export function ProjectView({
               shouldRouteScopedCommentEditToAutoContinue(scopeResult.code, salvaged.reason)
               || shouldRouteScopedCommentEditToAutoContinue(scopeResult.code, scopeResult.reason)
             ) {
-              console.warn('[deck-patch] routing scoped full-deck rewrite to auto-continue', {
+              devLog.warn('[deck-patch] routing scoped full-deck rewrite to auto-continue', {
                 fileName: targetFileName,
                 code: scopeResult.code,
                 reason: salvaged.reason,
@@ -4448,7 +4449,7 @@ export function ProjectView({
           && normalizeHtmlForRecoveredArtifactComparison(currentScopedHtml)
             === normalizeHtmlForRecoveredArtifactComparison(htmlBody)
         ) {
-          console.warn('[deck-patch] scoped edit produced no disk change', {
+          devLog.warn('[deck-patch] scoped edit produced no disk change', {
             fileName,
           });
           return {
@@ -4508,7 +4509,7 @@ export function ProjectView({
         projectFiles: currentProjectFiles,
       });
       if (regression) {
-        console.warn('[teamver] blocked placeholder artifact regression before save', {
+        devLog.warn('[teamver] blocked placeholder artifact regression before save', {
           fileName: regression.fileName,
           priorSize: regression.priorSize,
           newSize: regression.newSize,
@@ -4675,7 +4676,7 @@ export function ProjectView({
             // inside the preview-file tab slot in the render ladder.
             requestOpenFile(fileName);
           } else {
-            console.warn('[teamver] failed to stash artifact for auth-recovery replay', {
+            devLog.warn('[teamver] failed to stash artifact for auth-recovery replay', {
               projectId: project.id,
               fileName,
               htmlLength: htmlBody.length,
@@ -4777,7 +4778,7 @@ export function ProjectView({
           } else if (result.status !== 401) {
             // Non-auth failure — the retry will never help; drop the stash.
             clearPendingArtifactWrite(entry.projectId, entry.fileName);
-            console.warn('[teamver] pending artifact replay failed non-401; dropping', {
+            devLog.warn('[teamver] pending artifact replay failed non-401; dropping', {
               projectId: entry.projectId,
               fileName: entry.fileName,
               status: result.status,
@@ -4789,7 +4790,7 @@ export function ProjectView({
         } catch (err) {
           if (cancelled) return;
           anyRemaining = true;
-          console.warn('[teamver] pending artifact replay threw', {
+          devLog.warn('[teamver] pending artifact replay threw', {
             projectId: entry.projectId,
             fileName: entry.fileName,
             err,
@@ -5457,7 +5458,7 @@ export function ProjectView({
         setMessagesConversationId(conversationId);
         setFailedMessagesConversationId(null);
       } catch (err) {
-        console.warn('Failed to refresh conversation messages after run completion', err);
+        devLog.warn('Failed to refresh conversation messages after run completion', err);
       }
     },
     [project.id],
@@ -5936,7 +5937,7 @@ export function ProjectView({
       try {
         activeRuns = await listActiveChatRuns(project.id, reattachConversationId);
       } catch (err) {
-        console.debug('[project] active daemon runs reattach probe skipped', err);
+        devLog.debug('[project] active daemon runs reattach probe skipped', err);
       }
       let messagesSnapshot = messages;
       if ((activeRuns?.length ?? 0) > 0) {
@@ -6022,7 +6023,7 @@ export function ProjectView({
       const missingRunIdMessages = recoverableMessages.filter((m) => !m.runId);
       const historicalRuns = missingRunIdMessages.length > 0
         ? (await listProjectRuns().catch((err) => {
-            console.debug('[project] daemon run history reattach probe skipped', err);
+            devLog.debug('[project] daemon run history reattach probe skipped', err);
             return [];
           })).filter(
             (run) => run.projectId === project.id && run.conversationId === reattachConversationId,
@@ -6795,7 +6796,7 @@ export function ProjectView({
       try {
         activeStreams = await listActiveByokProxyStreams(project.id);
       } catch (err) {
-        console.debug('[teamver] api background recovery stream probe skipped', {
+        devLog.debug('[teamver] api background recovery stream probe skipped', {
           projectId: project.id,
           conversationId: recoveryConversationId,
           error: err,
@@ -7000,11 +7001,11 @@ export function ProjectView({
         activeStreams = await listActiveByokProxyStreams(project.id);
       } catch (err) {
         const isAuthTransient = err instanceof ActiveByokProxyAuthTransientError;
-        const log = isAuthTransient ? console.debug : console.warn;
+        const log = isAuthTransient ? devLog.debug : devLog.warn;
         log('[teamver] api background recovery stream poll failed', {
           projectId: project.id,
           conversationId: recoveryConversationId,
-          error: err,
+          error: err instanceof Error ? err.message : String(err),
         });
         scheduleNextPoll(
           isAuthTransient
@@ -7067,7 +7068,7 @@ export function ProjectView({
       try {
         nextFiles = await refreshProjectFiles();
       } catch (err) {
-        console.warn('[teamver] api background recovery file refresh failed', {
+        devLog.warn('[teamver] api background recovery file refresh failed', {
           projectId: project.id,
           conversationId: recoveryConversationId,
           error: err,
@@ -7414,7 +7415,7 @@ export function ProjectView({
       // resume dispatch. Log preservation for observability.
       const preservedCount = queuedChatSendsRef.current.length;
       if (preservedCount > 0) {
-        console.info(
+        devLog.info(
           '[teamver] chat-queue: preserved across session expiry',
           { projectId: project.id, count: preservedCount },
         );
@@ -8039,7 +8040,7 @@ export function ProjectView({
           }).then((patched) => {
             if (patched && isTeamverEmbedMode()) {
               void registerTeamverProjectIfNeeded(patched).catch((err) => {
-                console.warn('[teamver] registry sync after prompt rename failed', err);
+                devLog.warn('[teamver] registry sync after prompt rename failed', err);
               });
             }
           });
@@ -9199,7 +9200,7 @@ export function ProjectView({
               }),
             });
             if (memoryResponse.status === 401) {
-              console.debug('[teamver] pre-turn memory extraction skipped after daemon 401');
+              devLog.debug('[teamver] pre-turn memory extraction skipped after daemon 401');
             }
           } catch {
             // Best-effort: memory extraction must never block the
@@ -9412,7 +9413,7 @@ export function ProjectView({
           }
         })
         .catch((err) => {
-          console.warn('[teamver] explicit proxy stop active stream lookup failed', {
+          devLog.warn('[teamver] explicit proxy stop active stream lookup failed', {
             projectId: project.id,
             conversationId: conversationForStop,
             error: err,
@@ -9676,10 +9677,10 @@ export function ProjectView({
         // Surface the daemon-side reason so the user knows whether
         // the spawn failed because of missing osascript / unsupported
         // platform / etc. instead of silently swallowing it.
-        console.warn('[antigravity] oauth-launch failed:', result.error);
+        devLog.warn('[antigravity] oauth-launch failed:', result.error);
       }
     } catch (err) {
-      console.warn('[antigravity] oauth-launch threw:', err);
+      devLog.warn('[antigravity] oauth-launch threw:', err);
     }
   }, []);
   // Poll the AMR login status while a retry is armed, rather than only reacting

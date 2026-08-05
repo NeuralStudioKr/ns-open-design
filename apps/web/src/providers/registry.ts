@@ -75,6 +75,7 @@ import {
 } from '@open-design/host';
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { isRenderableImagePath } from '../utils/projectFilePaths';
+import { devLog } from '../lib/devLog';
 import { clearProjectRawFileMissing } from '../utils/projectFileFetchCache';
 import {
   fetchTeamverDaemon,
@@ -1840,7 +1841,7 @@ export async function fetchProjectFileText(
   try {
     const resp = await fetchTeamverDaemon(requestUrl, init);
     if (!resp.ok) {
-      console.warn('[fetchProjectFileText] failed:', {
+      devLog.warn('[fetchProjectFileText] failed:', {
         projectId,
         status: resp.status,
         statusText: resp.statusText,
@@ -1850,7 +1851,7 @@ export async function fetchProjectFileText(
     return await resp.text();
   } catch (err) {
     if (options?.signal?.aborted) return null;
-    console.warn('[fetchProjectFileText] failed:', {
+    devLog.warn('[fetchProjectFileText] failed:', {
       projectId,
       error: err instanceof Error ? err.message : String(err),
     });

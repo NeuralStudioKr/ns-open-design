@@ -7,6 +7,7 @@ import {
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from 'react';
+import { devLog } from '../lib/devLog';
 import { Button } from '@open-design/components';
 import type { TrackingProjectKind } from '@open-design/contracts/analytics';
 import { useAnalytics } from '../analytics/provider';
@@ -1128,7 +1129,7 @@ export function FileWorkspace({
           error: result.error,
         }),
       );
-      console.warn('Project upload had failures', {
+      devLog.warn('Project upload had failures', {
         failedCount,
         uploadedCount,
         error: result.error,

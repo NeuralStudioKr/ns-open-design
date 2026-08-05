@@ -7,16 +7,20 @@ function readSrc(rel: string): string {
 }
 
 describe('browser console leak sanitization', () => {
-  it('does not log slide/comment body fields from scoped deck-patch failures', () => {
+  it('does not log slide/comment body fields or raw element ids from scoped deck-patch failures', () => {
     const source = readSrc('src/edit-mode/scoped-deck-patch.ts');
-    expect(source).toContain("console.warn('[deck-patch] scoped narrow merge failed'");
+    expect(source).toContain("devLog.warn('[deck-patch] scoped narrow merge failed'");
     expect(source).toContain('currentTextLen:');
     expect(source).toContain('htmlHintLen:');
+    expect(source).toContain('idCount: ids.length');
     expect(source).not.toMatch(
       /scoped narrow merge failed',\s*\{[\s\S]*?currentText:\s*attachment\.currentText/,
     );
     expect(source).not.toMatch(
       /scoped narrow merge failed',\s*\{[\s\S]*?htmlHint:\s*attachment\.htmlHint/,
+    );
+    expect(source).not.toMatch(
+      /scoped narrow merge failed',\s*\{[\s\S]*?\bids,\s/,
     );
   });
 
@@ -46,9 +50,24 @@ describe('browser console leak sanitization', () => {
 
   it('does not log fetchProjectFileText request URLs', () => {
     const source = readSrc('src/providers/registry.ts');
-    expect(source).toContain("console.warn('[fetchProjectFileText] failed:'");
+    expect(source).toContain("devLog.warn('[fetchProjectFileText] failed:'");
     expect(source).not.toMatch(
       /\[fetchProjectFileText\] failed:[\s\S]{0,200}url:\s*requestUrl/,
     );
+  });
+
+  it('routes ProjectView / App observation logs through production-silent devLog', () => {
+    const projectView = readSrc('src/components/ProjectView.tsx');
+    expect(projectView).toContain("from '../lib/devLog'");
+    expect(projectView).toContain("devLog.warn('[deck-patch]");
+    expect(projectView).toContain("devLog.warn('[element-patch]");
+    expect(projectView).not.toMatch(/\bconsole\.warn\(/);
+    expect(projectView).not.toMatch(/\bconsole\.info\(/);
+
+    const app = readSrc('src/App.tsx');
+    expect(app).toContain("from './lib/devLog'");
+    expect(app).toContain("devLog.info('[teamver] home-nav:");
+    expect(app).not.toMatch(/\bconsole\.warn\(/);
+    expect(app).not.toMatch(/\bconsole\.info\(/);
   });
 });

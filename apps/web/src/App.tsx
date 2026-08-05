@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { devLog } from './lib/devLog';
 import { flushSync } from 'react-dom';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useAnalytics } from './analytics/provider';
@@ -730,7 +731,7 @@ function AppInner() {
       latestPersistedConfigRef.current = locked;
       setConfig(locked);
     } catch (err) {
-      console.warn("[teamver] runtime-config reload failed", err);
+      devLog.warn("[teamver] runtime-config reload failed", err);
     }
   }, []);
 
@@ -741,7 +742,7 @@ function AppInner() {
       && embedActiveWorkspaceIdRef.current
       && request.workspaceId !== embedActiveWorkspaceIdRef.current
     ) {
-      console.info('[teamver] project list response ignored after workspace changed', {
+      devLog.info('[teamver] project list response ignored after workspace changed', {
         requestWorkspaceId: request.workspaceId,
         activeWorkspaceId: embedActiveWorkspaceIdRef.current,
       });
@@ -1751,7 +1752,7 @@ function AppInner() {
       setBackgroundRunSummaries([]);
       const current = routeRef.current;
       if (current.kind !== 'project') return;
-      console.info('[teamver] home-nav: design app disabled mid-session', {
+      devLog.info('[teamver] home-nav: design app disabled mid-session', {
         projectId: current.projectId,
         reason: detail.appDisabledReason ?? null,
       });
@@ -1809,7 +1810,7 @@ function AppInner() {
           try {
             await syncAllDaemonProjectsToRegistry();
           } catch (err) {
-            console.warn("[teamver] registry sync on workspace switch failed", err);
+            devLog.warn("[teamver] registry sync on workspace switch failed", err);
           }
           void reloadTeamverRuntimeConfig({ force: true });
           const request = beginProjectListRequest();
@@ -1845,13 +1846,13 @@ function AppInner() {
                 await assertTeamverProjectAccessIfNeeded(currentProjectId)
               : false;
             if (allowed) {
-              console.info('[teamver] workspace switch — project missing from list but access confirmed', {
+              devLog.info('[teamver] workspace switch — project missing from list but access confirmed', {
                 projectId: currentProjectId,
                 workspaceId: trimmed,
               });
               return;
             }
-            console.info('[teamver] home-nav: workspace switch — project not in new list', {
+            devLog.info('[teamver] home-nav: workspace switch — project not in new list', {
               projectId: currentProjectId,
               workspaceId: trimmed,
             });
@@ -2388,7 +2389,7 @@ function AppInner() {
           // handoff as failed so the upload + auto-send branches below are
           // skipped, then surface a create-time error so the user can
           // re-pick the working directory from inside the project.
-          console.warn('Failed to set working directory for new project', {
+          devLog.warn('Failed to set working directory for new project', {
             hasWorkingDir: Boolean(userWorkingDir?.trim()),
             workingDirLen: userWorkingDir?.trim().length ?? 0,
             error: err instanceof Error ? err.message : String(err),
@@ -2411,7 +2412,7 @@ function AppInner() {
         firstMessageAttachments = uploadResult.uploaded;
         const partial = uploadResult.failed.length > 0;
         if (partial) {
-          console.warn('Some Home attachments failed to upload', {
+          devLog.warn('Some Home attachments failed to upload', {
             failedCount: uploadResult.failed.length,
             uploadedCount: uploadResult.uploaded.length,
             error: uploadResult.error,
@@ -2444,7 +2445,7 @@ function AppInner() {
           const driveAttachments = driveImportedToChatAttachments(driveResult.imported);
           firstMessageAttachments = [...firstMessageAttachments, ...driveAttachments];
           if (driveResult.partial) {
-            console.warn('Some Home Drive attachments failed to import', {
+            devLog.warn('Some Home Drive attachments failed to import', {
               failedCount: driveResult.failed.length,
               importedCount: driveResult.imported.length,
               errorCodes: [...new Set(driveResult.failed.map((item) => item.errorCode))],
@@ -2454,7 +2455,7 @@ function AppInner() {
             );
           }
         } catch (err) {
-          console.warn('Home Drive import failed for new project', err);
+          devLog.warn('Home Drive import failed for new project', err);
           if (isMainSsoUserMismatchError(err)) {
             void beginMainSsoMismatchRecovery();
             setWorkingDirError(null);
@@ -2480,7 +2481,7 @@ function AppInner() {
             return false;
           }
           canvasImportFailed = true;
-          console.warn('Home Canvas import-canvas failed for new project', err);
+          devLog.warn('Home Canvas import-canvas failed for new project', err);
           trackProjectCreateResult(
             analytics.track,
             {
@@ -2669,7 +2670,7 @@ function AppInner() {
         await registerTeamverProjectIfNeeded(project);
       } catch (err) {
         if (err instanceof TeamverProjectRegistryError) {
-          console.info('[teamver] home-nav: project registry error on import', {
+          devLog.info('[teamver] home-nav: project registry error on import', {
             projectId: result.projectId,
             code: err.code,
           });
@@ -2779,7 +2780,7 @@ function AppInner() {
         allowed = await assertTeamverProjectAccessIfNeeded(activeProjectRouteId);
       }
       if (cancelled || allowed) return;
-      console.info('[teamver] home-nav: project access denied on route mount', {
+      devLog.info('[teamver] home-nav: project access denied on route mount', {
         projectId: activeProjectRouteId,
       });
       if (isTeamverEmbedMode()) {
@@ -2878,11 +2879,11 @@ function AppInner() {
               } catch (err) {
                 streamPollFailed = true;
                 const log = err instanceof ActiveByokProxyAuthTransientError
-                  ? console.debug
-                  : console.warn;
+                  ? devLog.debug
+                  : devLog.warn;
                 log("[teamver] byok background stream poll failed", {
                   projectId,
-                  error: err,
+                  error: err instanceof Error ? err.message : String(err),
                 });
               }
             }),
@@ -3109,7 +3110,7 @@ function AppInner() {
       runsPollInFlight = true;
       void refresh()
         .catch((err) => {
-          console.warn("[teamver] runs poll failed", err);
+          devLog.warn("[teamver] runs poll failed", err);
         })
         .finally(() => {
           runsPollInFlight = false;
@@ -3230,7 +3231,7 @@ function AppInner() {
     try {
       await registerTeamverProjectIfNeeded(updated, { reactivateIfDeleted: false });
     } catch (err) {
-      console.warn('[teamver] registry sync after project rename failed', err);
+      devLog.warn('[teamver] registry sync after project rename failed', err);
     }
   }, []);
 
@@ -3386,7 +3387,7 @@ function AppInner() {
       try {
         await ensureTeamverProjectRegisteredById(route.projectId);
       } catch (err) {
-        console.warn('[teamver] home-nav: deep-linked project registry preflight failed', {
+        devLog.warn('[teamver] home-nav: deep-linked project registry preflight failed', {
           projectId: route.projectId,
           error: err,
         });
@@ -3409,7 +3410,7 @@ function AppInner() {
           try {
             allowed = await assertTeamverProjectAccessIfNeeded(route.projectId);
           } catch (err) {
-            console.warn('[teamver] home-nav: deep-linked project access check failed', {
+            devLog.warn('[teamver] home-nav: deep-linked project access check failed', {
               projectId: route.projectId,
               error: err,
             });
@@ -3440,7 +3441,7 @@ function AppInner() {
       const detailRoute = readEmbedProjectDetailRoute(route);
       if (detailRoute) {
         if (!pendingLocalProjectIdsRef.current.has(detailRoute.projectId)) {
-          console.info('[teamver] home-nav: deep-linked project not found (detail route)', {
+          devLog.info('[teamver] home-nav: deep-linked project not found (detail route)', {
             projectId: detailRoute.projectId,
           });
           if (isTeamverEmbedMode()) {
@@ -3470,7 +3471,7 @@ function AppInner() {
       const knownLocalProject =
         staleRequest && pendingLocalProjectIdsRef.current.has(route.projectId);
       if (!fetchedProject && !knownLocalProject) {
-        console.info('[teamver] home-nav: deep-linked project missing after list refresh', {
+        devLog.info('[teamver] home-nav: deep-linked project missing after list refresh', {
           projectId: route.projectId,
         });
         if (isTeamverEmbedMode()) {
@@ -3480,7 +3481,7 @@ function AppInner() {
       }
     })().catch((err) => {
       if (cancelled) return;
-      console.warn('[teamver] home-nav: deep-linked project hydration failed', {
+      devLog.warn('[teamver] home-nav: deep-linked project hydration failed', {
         projectId: route.projectId,
         error: err,
       });
