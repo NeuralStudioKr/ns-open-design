@@ -1698,19 +1698,20 @@ export function FileWorkspace({
   );
 
   useEffect(() => {
-    if (!memoryOnlyPreview || !teamverEmbedPreviewMode) {
-      setMemoryPreviewPrefix(peekTeamverProjectPreviewPrefix(projectId));
-      setMemoryPreviewPrefixSettled(!teamverEmbedPreviewMode);
+    if (!memoryOnlyPreview) return;
+    if (!teamverEmbedPreviewMode) {
+      setMemoryPreviewPrefix(null);
+      setMemoryPreviewPrefixSettled(true);
       return;
     }
     let cancelled = false;
-    setMemoryPreviewPrefixSettled(false);
     const cached = peekTeamverProjectPreviewPrefix(projectId);
     if (cached) {
       setMemoryPreviewPrefix(cached);
       setMemoryPreviewPrefixSettled(true);
       return;
     }
+    setMemoryPreviewPrefixSettled(false);
     void resolveTeamverProjectPreviewPrefix(
       projectId,
       memoryOnlyPreview.fileName ?? 'deck.html',
