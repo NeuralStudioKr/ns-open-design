@@ -205,6 +205,7 @@ import {
 } from '../utils/projectFilePaths';
 import { reconcileProjectRawFileMissingCache } from '../utils/projectFileFetchCache';
 import { rewriteAttachmentImageSrcs } from '../utils/rewriteAttachmentImageSrcs';
+import { uploadedImagesReadableOnDisk } from '../utils/uploadedImagesReadable';
 import { DEFAULT_NOTIFICATIONS } from '../state/config';
 import type { TodoItem } from '../runtime/todos';
 import {
@@ -1253,10 +1254,10 @@ export function promptWithSlideAttachmentDeliverableInstruction(
   },
 ): string {
   if (!options.slideOnlyMvp || attachments.length === 0) return prompt;
-  if ((options.commentAttachmentCount ?? 0) > 0) return prompt;
-  // Existing-deck follow-ups skip full-deck deliverable pressure, but attached
-  // images still need an embed contract or the model has no <img src> path.
-  if (options.existingDeckEdit) {
+  // Comment edits suppress full-deck deliverable pressure (scope block wins),
+  // but attached images still need an exact <img src> contract — otherwise
+  // board/memo "이 이미지 넣어줘" turns have no path to copy.
+  if ((options.commentAttachmentCount ?? 0) > 0 || options.existingDeckEdit) {
     const imagePaths = imageAttachmentPathsForSlideEmbed(attachments);
     if (imagePaths.length === 0) return prompt;
     if (prompt.includes(SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER)) return prompt;
@@ -1370,8 +1371,11 @@ function slideExistingDeckEditInstruction(
     'If you emit a short status sentence, use edit tone only ("수정 반영 중" / "Applying your edits"). Never "초안이 생성", "creating the deck", or "draft is ready".',
   ];
   if (imagePaths.length > 0) {
+    // Prefer the dedicated [Attached image embed] block when present; otherwise
+    // list exact paths so comment/existing-deck turns still have copyable srcs.
     lines.push(
-      'When the user asks to place attached images into the deck, emit deck-patch / set-outer-html / set-image using the exact project-relative image paths from [Attached image embed] / <attached-project-files>.',
+      'When the user asks to place attached images into the deck, emit deck-patch / set-outer-html / set-image using these exact project-relative paths (copy characters verbatim):',
+      ...imagePaths.map((path) => `- ${path}`),
     );
   }
   return lines.join('\n');
@@ -7915,6 +7919,11 @@ export function ProjectView({
             Boolean(attachment.markKind)
             || String(attachment.screenshotPath || '').trim().length > 0,
         )
+        || attachments.some(
+          (attachment) =>
+            attachment.kind === 'image'
+            || /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(attachment.path),
+        )
       ) {
         filesSnapshot = await refreshProjectFiles().catch(() => projectFiles);
       }
@@ -10085,7 +10094,9 @@ export function ProjectView({
       if (images.length > 0) {
         const result = await uploadProjectFiles(project.id, images);
         throwIfProjectCommentUploadIncomplete(result, images.length);
-        uploaded = result.uploaded;
+        const ready = await uploadedImagesReadableOnDisk(project.id, result.uploaded);
+        uploaded = ready.length > 0 ? ready : result.uploaded;
+        await refreshProjectFiles().catch(() => undefined);
       }
       const queueBoardSend = currentConversationBusy;
       if (commentAttachments.length === 0) {
@@ -10117,7 +10128,7 @@ export function ProjectView({
       }
       return true;
     },
-    [handleSend, project.id, currentConversationQueueDisabled, currentConversationBusy],
+    [handleSend, project.id, currentConversationQueueDisabled, currentConversationBusy, refreshProjectFiles],
   );
   const commentQueueOnSend = currentConversationBusy && !currentConversationQueueDisabled;
 

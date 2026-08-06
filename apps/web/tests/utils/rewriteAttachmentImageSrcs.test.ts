@@ -54,6 +54,18 @@ describe('rewriteAttachmentImageSrcs', () => {
     const html = '<img src="https://example.com/a.png"><img src="data:image/png;base64,xx">';
     expect(rewriteAttachmentImageSrcs(html, ['msh9y0i9-a.png'])).toBe(html);
   });
+
+  it('strips a leading slash from project-relative image srcs', () => {
+    const stored = 'refs/drive/msh5lhfh-hero.png';
+    const html = `<img src="/${stored}" alt="">`;
+    expect(rewriteAttachmentImageSrcs(html, [stored])).toContain(`src="${stored}"`);
+  });
+
+  it('rewrites CSS background-image urls that used a basename', () => {
+    const stored = 'refs/drive/msh5lhfh-hero.png';
+    const html = '<div style="background-image:url(\'hero.png\')"></div>';
+    expect(rewriteAttachmentImageSrcs(html, [stored])).toContain(`url('${stored}')`);
+  });
 });
 
 describe('sanitizeUploadFilename / stripUploadTimestampPrefix', () => {

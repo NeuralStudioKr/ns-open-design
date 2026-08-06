@@ -181,11 +181,18 @@ export function collectRelativeProjectAssetPaths(html: string): string[] {
   const push = (raw: string | undefined) => {
     const value = String(raw || '').trim();
     if (!value) return;
-    if (/^(?:https?:|data:|blob:|mailto:|tel:|#|\/\/|\/)/i.test(value)) return;
+    if (/^(?:https?:|data:|blob:|mailto:|tel:|#)/i.test(value)) return;
+    if (value.startsWith('//')) return;
     // Drop query/hash — scratch paths are plain relpaths.
     const cleaned = value.split(/[?#]/u, 1)[0]?.trim() ?? '';
     if (!cleaned || cleaned.includes('..')) return;
-    const normalized = cleaned.replace(/^\/+/, '').replace(/\\/g, '/');
+    let normalized = cleaned.replace(/\\/g, '/');
+    // Models sometimes emit `/refs/drive/…` — accept a single leading slash
+    // but never daemon `/api/…` routes.
+    if (normalized.startsWith('/')) {
+      if (normalized.startsWith('/api/')) return;
+      normalized = normalized.replace(/^\/+/, '');
+    }
     if (!normalized || seen.has(normalized)) return;
     seen.add(normalized);
     out.push(normalized);

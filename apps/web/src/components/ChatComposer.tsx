@@ -168,39 +168,13 @@ import {
 } from './composer/LexicalComposerInput';
 import { CaretFloatingLayer } from './composer/CaretFloatingLayer';
 import { ANNOTATION_EVENT, type AnnotationEventDetail } from "./PreviewDrawOverlay";
-import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
 import { clearProjectRawFileMissing } from '../utils/projectFileFetchCache';
-import { sniffImageMime } from '../utils/imageBlobNormalize';
+import { uploadedImagesReadableOnDisk } from '../utils/uploadedImagesReadable';
 import { DesignSystemSwitchPicker } from "./DesignSystemSwitchPicker";
 import { listenForConnectorsChanged } from './connectors-events';
 import { fetchConnectorCatalogSnapshot } from './connectors-state';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
-
-const ANNOTATION_UPLOAD_READ_DELAYS_MS = [0, 250, 800, 1500, 2500] as const;
-
-async function uploadedImagesReadableOnDisk(
-  projectId: string,
-  uploaded: ChatAttachment[],
-): Promise<ChatAttachment[]> {
-  const ready: ChatAttachment[] = [];
-  for (const item of uploaded) {
-    if (item.kind !== 'image') {
-      ready.push(item);
-      continue;
-    }
-    const blob = await loadAuthenticatedProjectFileBlob(projectId, item.path, {
-      delaysMs: ANNOTATION_UPLOAD_READ_DELAYS_MS,
-      trustExists: true,
-    });
-    if (!blob) continue;
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    if (!sniffImageMime(bytes)) continue;
-    clearProjectRawFileMissing(projectId, item.path);
-    ready.push(item);
-  }
-  return ready;
-}
 
 type ToolsTab = 'plugins' | 'skills' | 'mcp' | 'import';
 
@@ -1728,7 +1702,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       try {
         const result = await uploadProjectFiles(id, allowedFiles);
         if (result.uploaded.length > 0) {
-          const orderedUploaded = assignChatAttachmentOrders(result.uploaded, orderStart);
+          for (const item of result.uploaded) {
+            clearProjectRawFileMissing(id, item.path);
+          }
+          const ready = await uploadedImagesReadableOnDisk(id, result.uploaded);
+          const staged = ready.length > 0 ? ready : result.uploaded;
+          const orderedUploaded = assignChatAttachmentOrders(staged, orderStart);
           appendOrderedStagedAttachments(orderedUploaded);
         }
         const partial = result.failed.length > 0;

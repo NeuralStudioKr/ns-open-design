@@ -39,31 +39,80 @@ export function rewriteAttachmentImageSrcs(
 
   if (byExact.size === 0) return html;
 
-  return html.replace(
+  const resolve = (rawSrc: string): string | null => {
+    const normalized = normalizeProjectRelativeImageSrc(rawSrc);
+    if (!normalized) return null;
+    if (byExact.has(normalized)) return normalized;
+
+    const base = projectFilePathBasename(normalized);
+    const candidates =
+      byBasename.get(base.toLowerCase())
+      ?? bySanitizedStem.get(base.toLowerCase())
+      ?? bySanitizedStem.get(sanitizeUploadFilename(base).toLowerCase())
+      ?? bySanitizedStem.get(sanitizeUploadFilename(normalized).toLowerCase())
+      ?? byLettersOnly.get(lettersOnlyImageStem(base));
+
+    return pickUniqueRewriteCandidate(candidates, normalized);
+  };
+
+  let next = html.replace(
     /(<img\b[^>]*?\bsrc\s*=\s*)(["'])([^"']+)\2/gi,
     (full, prefix: string, quote: string, rawSrc: string) => {
-      const src = String(rawSrc || '').trim();
-      if (!src || /^(?:https?:|data:|blob:|mailto:|tel:|#|\/\/|\/)/i.test(src)) {
+      const resolved = resolve(rawSrc);
+      if (!resolved) return full;
+      const normalized = normalizeProjectRelativeImageSrc(rawSrc);
+      if (!normalized || resolved === normalized) {
+        // Still rewrite leading-slash exact hits to the bare project path.
+        const trimmed = String(rawSrc || '').trim();
+        if (normalized && trimmed.replace(/^\/+/, '') === normalized && trimmed.startsWith('/')) {
+          return `${prefix}${quote}${resolved}${quote}`;
+        }
         return full;
       }
-      const cleaned = src.split(/[?#]/u, 1)[0]?.trim() ?? '';
-      if (!cleaned || cleaned.includes('..')) return full;
-      const normalized = cleaned.replace(/^\/+/, '').replace(/\\/g, '/');
-      if (byExact.has(normalized)) return full;
-
-      const base = projectFilePathBasename(normalized);
-      const candidates =
-        byBasename.get(base.toLowerCase())
-        ?? bySanitizedStem.get(base.toLowerCase())
-        ?? bySanitizedStem.get(sanitizeUploadFilename(base).toLowerCase())
-        ?? bySanitizedStem.get(sanitizeUploadFilename(normalized).toLowerCase())
-        ?? byLettersOnly.get(lettersOnlyImageStem(base));
-
-      const resolved = pickUniqueRewriteCandidate(candidates, normalized);
-      if (!resolved || resolved === normalized) return full;
       return `${prefix}${quote}${resolved}${quote}`;
     },
   );
+
+  // Models sometimes put images in CSS background-image instead of <img>.
+  next = next.replace(
+    /(url\(\s*)(['"]?)([^'")]+)\2(\s*\))/gi,
+    (full, prefix: string, quote: string, rawSrc: string, suffix: string) => {
+      if (!isImagePath(String(rawSrc || ''))) return full;
+      const resolved = resolve(rawSrc);
+      if (!resolved) return full;
+      const normalized = normalizeProjectRelativeImageSrc(rawSrc);
+      if (!normalized || resolved === normalized) {
+        const trimmed = String(rawSrc || '').trim();
+        if (normalized && trimmed.replace(/^\/+/, '') === normalized && trimmed.startsWith('/')) {
+          return `${prefix}${quote}${resolved}${quote}${suffix}`;
+        }
+        return full;
+      }
+      return `${prefix}${quote}${resolved}${quote}${suffix}`;
+    },
+  );
+
+  return next;
+}
+
+/**
+ * Accept project-relative image srcs, including a single leading `/`
+ * (`/refs/drive/a.png`). Reject absolute URLs, protocol-relative `//`, and
+ * daemon API paths (`/api/...`).
+ */
+export function normalizeProjectRelativeImageSrc(src: string): string | null {
+  const trimmed = String(src || '').trim();
+  if (!trimmed) return null;
+  if (/^(?:https?:|data:|blob:|mailto:|tel:|#)/i.test(trimmed)) return null;
+  if (trimmed.startsWith('//')) return null;
+  const cleaned = trimmed.split(/[?#]/u, 1)[0]?.trim() ?? '';
+  if (!cleaned || cleaned.includes('..')) return null;
+  let normalized = cleaned.replace(/\\/g, '/');
+  if (normalized.startsWith('/')) {
+    if (normalized.startsWith('/api/')) return null;
+    normalized = normalized.replace(/^\/+/, '');
+  }
+  return normalized || null;
 }
 
 function isImagePath(path: string): boolean {

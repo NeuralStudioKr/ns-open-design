@@ -52,12 +52,12 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     ).toHaveLength(1);
   });
 
-  it("suppresses the hidden contract on comment-driven edits so the scope block wins", () => {
+  it("suppresses full-deck deliverable pressure on comment edits but keeps image embed", () => {
     // Comment edits already carry `<attached-preview-comments>` telling the
     // model to change ONLY the pinned elements; layering the "emit ONE
     // complete deck" pressure on top forced full-deck regeneration on every
-    // one-element edit (2+ minute round-trips). See ProjectView.handleSend
-    // for the paired change that plumbs commentAttachments.length through.
+    // one-element edit (2+ minute round-trips). Image attaches still need an
+    // exact <img src> contract for board/memo "넣어줘" turns.
     const prompt = promptWithSlideAttachmentDeliverableInstruction(
       "이 텍스트를 '안녕'으로 바꿔줘",
       [
@@ -67,8 +67,21 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
       { slideOnlyMvp: true, commentAttachmentCount: 1 },
     );
 
+    expect(prompt).toContain("[Attached image embed]");
+    expect(prompt).toContain('src="uploads/ref.png"');
+    expect(prompt).not.toContain("[Deliverable instruction]");
+    expect(stripUserVisibleUserMessageText(prompt)).toBe("이 텍스트를 '안녕'으로 바꿔줘");
+  });
+
+  it("keeps comment-only text edits free of deliverable and embed noise", () => {
+    const prompt = promptWithSlideAttachmentDeliverableInstruction(
+      "이 텍스트를 '안녕'으로 바꿔줘",
+      [{ path: "deck.html", name: "deck.html", kind: "file" }],
+      { slideOnlyMvp: true, commentAttachmentCount: 1 },
+    );
     expect(prompt).toBe("이 텍스트를 '안녕'으로 바꿔줘");
     expect(prompt).not.toContain("[Deliverable instruction]");
+    expect(prompt).not.toContain("[Attached image embed]");
   });
 
   it("suppresses full-deck deliverable pressure when editing an existing deck", () => {
@@ -166,8 +179,8 @@ describe("promptWithExistingDeckEditInstruction", () => {
       deckPath: "deck.html",
       imagePaths: ["photo.png"],
     });
-    expect(prompt).toContain("exact project-relative image paths");
-    expect(prompt).toContain("[Attached image embed]");
+    expect(prompt).toContain("exact project-relative paths");
+    expect(prompt).toContain("- photo.png");
   });
 });
 

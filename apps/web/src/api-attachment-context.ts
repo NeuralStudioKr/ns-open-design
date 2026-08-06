@@ -129,8 +129,9 @@ async function renderApiAttachmentBlock(
   budget: number,
   order: number,
 ): Promise<{ text: string; charsUsed: number } | null> {
-  const path = file?.path ?? file?.name ?? attachment.path;
-  const name = file?.name ?? attachment.name;
+  const path = (file?.path ?? file?.name ?? attachment.path).trim();
+  // Heading identity must be the on-disk path — never a friendlier display name.
+  const basename = path.split('/').pop() || path || attachment.name;
   const kind = file?.kind ?? inferProjectFileKind(path);
   const size = file?.size ?? attachment.size;
   const meta = [
@@ -164,7 +165,15 @@ async function renderApiAttachmentBlock(
     if (previewText) body = clipAttachmentText(previewText, maxContentChars);
   }
 
-  const lines = ['', `### Attachment ${order}: ${name}`, meta];
+  const lines = ['', `### Attachment ${order}: ${basename}`, meta];
+  if (
+    (attachment.kind === 'image' || kind === 'image' || isAnthropicSupportedImagePath(path))
+    && /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(path)
+  ) {
+    lines.push(
+      `When embedding this image in a slide deck, use the exact project-relative path: <img src="${path}" alt="">.`,
+    );
+  }
   if (body) {
     lines.push('```' + language);
     lines.push(escapeMarkdownFence(body));

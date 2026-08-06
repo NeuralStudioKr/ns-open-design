@@ -213,6 +213,7 @@ import {
 } from './state/config';
 import { playSound, showCompletionNotification } from './utils/notifications';
 import { clearProjectRawFileMissing } from './utils/projectFileFetchCache';
+import { uploadedImagesReadableOnDisk } from './utils/uploadedImagesReadable';
 import { applyAppearanceToDocument } from './state/appearance';
 import { isMacPlatform } from './utils/platform';
 import {
@@ -2447,7 +2448,14 @@ function AppInner() {
         // file_manager Upload button and the chat_panel composer.
         const cohort = deriveUploadCohort(pendingFiles);
         const uploadResult = await uploadProjectFiles(result.project.id, pendingFiles);
-        firstMessageAttachments = uploadResult.uploaded;
+        for (const item of uploadResult.uploaded) {
+          clearProjectRawFileMissing(result.project.id, item.path);
+        }
+        const readyLocal = await uploadedImagesReadableOnDisk(
+          result.project.id,
+          uploadResult.uploaded,
+        );
+        firstMessageAttachments = readyLocal.length > 0 ? readyLocal : uploadResult.uploaded;
         const partial = uploadResult.failed.length > 0;
         if (partial) {
           devLog.warn('Some Home attachments failed to upload', {
@@ -2484,7 +2492,14 @@ function AppInner() {
             clearProjectRawFileMissing(result.project.id, item.path);
           }
           const driveAttachments = driveImportedToChatAttachments(driveResult.imported);
-          firstMessageAttachments = [...firstMessageAttachments, ...driveAttachments];
+          const readyDrive = await uploadedImagesReadableOnDisk(
+            result.project.id,
+            driveAttachments,
+          );
+          firstMessageAttachments = [
+            ...firstMessageAttachments,
+            ...(readyDrive.length > 0 ? readyDrive : driveAttachments),
+          ];
           if (driveResult.partial) {
             devLog.warn('Some Home Drive attachments failed to import', {
               failedCount: driveResult.failed.length,

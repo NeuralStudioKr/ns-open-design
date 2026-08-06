@@ -30,7 +30,7 @@ describe('annotationPendingUpload', () => {
       uploaded: [
         {
           path: 'mse2lcw6-drawing-2026-08-04T05-14-00-000Z.png',
-          name: file.name,
+          name: 'mse2lcw6-drawing-2026-08-04T05-14-00-000Z.png',
           kind: 'image' as const,
         },
       ],
@@ -39,7 +39,7 @@ describe('annotationPendingUpload', () => {
     const readable = vi.fn().mockResolvedValue([
       {
         path: 'mse2lcw6-drawing-2026-08-04T05-14-00-000Z.png',
-        name: file.name,
+        name: 'mse2lcw6-drawing-2026-08-04T05-14-00-000Z.png',
         kind: 'image' as const,
       },
     ]);

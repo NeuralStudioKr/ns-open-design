@@ -515,13 +515,20 @@ function parseAttachedPreviewComputedStyle(
 /** Rebuild `image.N: path | name` lines written by renderCommentAttachmentContext. */
 function parseAttachedPreviewImageAttachments(section: string): PreviewCommentAttachment[] {
   const byIndex = new Map<number, PreviewCommentAttachment>();
-  const re = /^image\.(\d+):\s*([^|]+)\|\s*(.*)$/gm;
+  // Accept `path | name` (preferred) and path-only legacy/hardened lines.
+  const re = /^image\.(\d+):\s*(.+)$/gm;
   for (const match of section.matchAll(re)) {
     const index = Number(match[1]);
     if (!Number.isFinite(index) || index < 1) continue;
-    const path = String(match[2] || '').trim();
+    const raw = String(match[2] || '').trim();
+    if (!raw) continue;
+    const pipe = raw.indexOf('|');
+    const path = (pipe >= 0 ? raw.slice(0, pipe) : raw).trim();
     if (!path) continue;
-    const name = String(match[3] || '').trim() || path.split('/').pop() || path;
+    const nameToken = pipe >= 0 ? raw.slice(pipe + 1).trim() : '';
+    const basename = path.split('/').pop() || path;
+    // Prefer on-disk basename over a drifted display name when they differ.
+    const name = nameToken && nameToken === basename ? nameToken : basename;
     byIndex.set(index, { path, name });
   }
   return [...byIndex.entries()]
@@ -994,7 +1001,10 @@ export function renderCommentAttachmentContext(
     if (imageAttachments.length > 0) {
       lines.push(`imageAttachments: ${imageAttachments.length}`);
       imageAttachments.forEach((attachment, attachmentIndex) => {
-        lines.push(`image.${attachmentIndex + 1}: ${attachment.path} | ${attachment.name}`);
+        // Second token must stay parseable (`path | name`) but must equal the
+        // on-disk basename — never a friendlier display name models copy into src.
+        const basename = String(attachment.path || '').split('/').pop() || attachment.path;
+        lines.push(`image.${attachmentIndex + 1}: ${attachment.path} | ${basename}`);
       });
     }
   });

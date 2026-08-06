@@ -11973,7 +11973,7 @@ function HtmlViewer({
         // Prefer live source; if a post-write refresh briefly cleared it,
         // fall back to the last accepted preview HTML so export/download
         // does not fail until the user hard-refreshes.
-        htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+        htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
         projectId,
         slideIndex: effectiveDeck ? slideState?.active : undefined,
         title: exportTitle,
@@ -12017,7 +12017,7 @@ function HtmlViewer({
         setImageExportPreparing(false);
       }
     }
-  }, [captureExportImageSnapshot, effectiveDeck, exportTitle, file.name, previewViewport, projectId, slideState?.active, t]);
+  }, [captureExportImageSnapshot, effectiveDeck, exportTitle, file.name, livePreviewSource, previewViewport, projectId, slideState?.active, source, t]);
 
   const openImageExportModal = async () => {
     flushSync(() => {

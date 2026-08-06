@@ -169,6 +169,7 @@ describe('collectRelativeProjectAssetPaths / warmExportRelativeAssets', () => {
     const html = `
       <section class="slide">
         <img src="refs/drive/msh5lhfh-놀란고양이-_1_.jpeg" alt="cat">
+        <img src="/refs/drive/leading-slash.png" alt="slash">
         <img src="/api/projects/p/raw/skip.png">
         <img src="data:image/png;base64,xx">
         <img src="https://cdn.example/remote.png">
@@ -176,6 +177,7 @@ describe('collectRelativeProjectAssetPaths / warmExportRelativeAssets', () => {
       </section>`;
     expect(collectRelativeProjectAssetPaths(html)).toEqual([
       'refs/drive/msh5lhfh-놀란고양이-_1_.jpeg',
+      'refs/drive/leading-slash.png',
       'uploads/hero.png',
     ]);
   });
