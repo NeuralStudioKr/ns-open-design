@@ -1,7 +1,7 @@
 import { findManualEditPreviewTarget } from './manual-edit-host-preview';
 import { isManualEditKeyboardTextTarget } from './manual-edit-keyboard';
 import { isMacPlatform } from '../utils/platform';
-import type { ManualEditStyles } from './types';
+import type { ManualEditStyles, ManualEditTarget } from './types';
 
 export type ZOrderAction = 'forward' | 'backward' | 'front' | 'back';
 
@@ -15,6 +15,18 @@ export type ZOrderCapabilities = {
   backward: boolean;
   front: boolean;
   back: boolean;
+};
+
+export const DISABLED_Z_ORDER_CAPABILITIES: ZOrderCapabilities = {
+  forward: false,
+  backward: false,
+  front: false,
+  back: false,
+};
+
+export type ZOrderResolveOptions = {
+  deck?: boolean;
+  activeSlideIndex?: number | null;
 };
 
 export function isZOrderEligiblePosition(cssPosition: string | null | undefined): boolean {
@@ -161,6 +173,60 @@ export function computeZOrderStyleForElement(
   action: ZOrderAction,
 ): string | null {
   return computeZOrderPatchForElement(el, action)?.zIndex ?? null;
+}
+
+export function collectZStackEntriesFromTargets(
+  targets: readonly ManualEditTarget[],
+  targetId: string,
+  options?: ZOrderResolveOptions,
+): { entries: ZStackEntry[]; domIndex: number } | null {
+  const target = targets.find((item) => item.id === targetId);
+  if (!target?.parentKey || !canAdjustZOrderTarget(target.cssPosition)) return null;
+  const siblings = targets.filter((item) => {
+    if (!canAdjustZOrderTarget(item.cssPosition)) return false;
+    if (item.parentKey !== target.parentKey) return false;
+    if (options?.deck && typeof options.activeSlideIndex === 'number') {
+      return item.slideIndex === undefined || item.slideIndex === options.activeSlideIndex;
+    }
+    return true;
+  });
+  if (siblings.length === 0) return null;
+  const entries = siblings.map((item) => ({
+    domIndex: item.siblingIndex ?? 0,
+    z: item.stackZ ?? readStackZFromZIndexStyle(item.styles.zIndex),
+  }));
+  const domIndex = target.siblingIndex ?? siblings.findIndex((item) => item.id === targetId);
+  if (domIndex < 0) return null;
+  return { entries, domIndex };
+}
+
+export function resolveZOrderContextFromTargets(
+  targets: readonly ManualEditTarget[],
+  targetId: string,
+  options?: ZOrderResolveOptions,
+): {
+  capabilities: ZOrderCapabilities;
+  domIndex: number;
+} | null {
+  const collected = collectZStackEntriesFromTargets(targets, targetId, options);
+  if (!collected) return null;
+  return {
+    capabilities: zOrderCapabilities(collected.entries, collected.domIndex),
+    domIndex: collected.domIndex,
+  };
+}
+
+export function resolveZOrderContextWithFallback(
+  doc: Document | null | undefined,
+  targets: readonly ManualEditTarget[],
+  targetId: string,
+  options?: ZOrderResolveOptions,
+): {
+  capabilities: ZOrderCapabilities;
+  domIndex: number;
+} | null {
+  return resolveZOrderContext(doc, targetId)
+    ?? resolveZOrderContextFromTargets(targets, targetId, options);
 }
 
 export function resolveZOrderContext(

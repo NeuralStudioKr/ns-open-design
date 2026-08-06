@@ -2,6 +2,7 @@ import { useState, type DragEvent } from 'react';
 import { useT } from '../i18n';
 import type { ManualEditTarget } from '../edit-mode/types';
 import type { ZOrderAction, ZOrderCapabilities } from '../edit-mode/manual-edit-z-order';
+import { DISABLED_Z_ORDER_CAPABILITIES } from '../edit-mode/manual-edit-z-order';
 import {
   canDragLayerRow,
   canDropLayerOnTarget,
@@ -45,7 +46,7 @@ export function ManualEditLayersPanel({
 }: ManualEditLayersPanelProps) {
   const t = useT();
   const primaryId = selectedIds.length === 1 ? selectedIds[0] : null;
-  const showZOrder = Boolean(zOrderCapabilities && onZOrder);
+  const showZOrder = Boolean(onZOrder) && selectedIds.length > 0;
   const reorderOptions = { deck, activeSlideIndex };
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropBeforeId, setDropBeforeId] = useState<string | null | undefined>(undefined);
@@ -105,7 +106,7 @@ export function ManualEditLayersPanel({
           </button>
         </div>
       </div>
-      {showZOrder && zOrderCapabilities ? (
+      {showZOrder ? (
         <div className="manual-edit-layers-arrange" data-testid="manual-edit-layers-arrange">
           <span className="manual-edit-layers-arrange-label">{t('manualEdit.arrange')}</span>
           {selectedIds.length > 1 ? (
@@ -114,7 +115,7 @@ export function ManualEditLayersPanel({
           <ManualEditZOrderControls
             compact
             disabled={zOrderBusy}
-            capabilities={zOrderCapabilities}
+            capabilities={zOrderCapabilities ?? DISABLED_Z_ORDER_CAPABILITIES}
             onZOrder={onZOrder!}
           />
         </div>

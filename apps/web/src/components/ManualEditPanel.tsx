@@ -2,10 +2,9 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import { useT } from '../i18n';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { isAnchoredCssPosition } from '../edit-mode/resize-math';
-import { canAdjustZOrderTarget } from '../edit-mode/manual-edit-z-order';
+import { canAdjustZOrderTarget, DISABLED_Z_ORDER_CAPABILITIES, type ZOrderAction, type ZOrderCapabilities } from '../edit-mode/manual-edit-z-order';
 import { normalizeManualEditZIndexValue } from '../edit-mode/manual-edit-style-values';
 import type { GroupAlignKind, GroupDistributeKind } from '../edit-mode/manual-edit-group-align';
-import type { ZOrderAction, ZOrderCapabilities } from '../edit-mode/manual-edit-z-order';
 import { ManualEditZOrderControls } from './ManualEditZOrderControls';
 import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { Icon } from './Icon';
@@ -321,15 +320,15 @@ export function ManualEditPanel({
                 />
               ) : null}
 
-              {inspectorFlags.showZOrder && zOrderCapabilities && onZOrder ? (
-                <section className="cc-section manual-edit-zorder-section">
+              {inspectorFlags.showZOrder && onZOrder ? (
+                <section className="cc-section manual-edit-zorder-section" data-testid="manual-edit-arrange-section">
                   <header className="cc-section-head">{t('manualEdit.arrange')}</header>
                   <div className="cc-section-body">
                     {isMultiSelect ? (
                       <p className="cc-section-hint">{t('manualEdit.arrangeMultiHint')}</p>
                     ) : null}
                     <ManualEditZOrderControls
-                      capabilities={zOrderCapabilities}
+                      capabilities={zOrderCapabilities ?? DISABLED_Z_ORDER_CAPABILITIES}
                       disabled={zOrderBusy}
                       onZOrder={onZOrder}
                     />
@@ -879,6 +878,15 @@ function StyleInspector({
             <UnitRow label={embedUiLabel('Left', '왼쪽')} value={styles.left} placeholder={placeholderFor('left')} onChange={(v) => u('left', v)} unit="px" autoUnit />
             <UnitRow label={embedUiLabel('Top', '위')} value={styles.top} placeholder={placeholderFor('top')} onChange={(v) => u('top', v)} unit="px" autoUnit />
           </PairRow>
+          {canAdjustZOrderTarget(positionValue) ? (
+            <UnitRow
+              label={t('manualEdit.zIndex')}
+              value={zIndexInputValue(styles.zIndex)}
+              placeholder={mixedKeys?.has('zIndex') && !styles.zIndex ? mixedPlaceholder : t('manualEdit.zIndexAuto')}
+              onChange={(v) => u('zIndex', v)}
+              unit=""
+            />
+          ) : null}
         </Section>
       ) : null}
 

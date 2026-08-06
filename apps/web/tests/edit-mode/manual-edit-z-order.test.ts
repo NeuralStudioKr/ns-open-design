@@ -14,6 +14,8 @@ import {
   readEffectiveZIndex,
   readStackZFromZIndexStyle,
   resolveZOrderContext,
+  resolveZOrderContextFromTargets,
+  resolveZOrderContextWithFallback,
   resolveZOrderKeyboardAction,
   sortZStack,
   zOrderCapabilities,
@@ -175,6 +177,43 @@ describe('manual-edit-z-order', () => {
     expect(readStackZFromZIndexStyle('5')).toBe(5);
     expect(readStackZFromZIndexStyle('-2')).toBe(-2);
     expect(readStackZFromZIndexStyle('nope')).toBe(0);
+  });
+
+  it('resolves capabilities from target catalog when live DOM is unavailable', () => {
+    const targets = [
+      {
+        id: 'back',
+        parentKey: 'slide',
+        cssPosition: 'absolute',
+        siblingIndex: 0,
+        stackZ: 1,
+        styles: { zIndex: '1' },
+      },
+      {
+        id: 'front',
+        parentKey: 'slide',
+        cssPosition: 'absolute',
+        siblingIndex: 1,
+        stackZ: 3,
+        styles: { zIndex: '3' },
+      },
+    ] as const;
+
+    const ctx = resolveZOrderContextFromTargets(targets, 'back');
+    expect(ctx?.capabilities).toMatchObject({
+      forward: true,
+      backward: false,
+      front: true,
+      back: false,
+    });
+
+    const fallback = resolveZOrderContextWithFallback(null, targets, 'front');
+    expect(fallback?.capabilities).toMatchObject({
+      forward: false,
+      backward: true,
+      front: false,
+      back: true,
+    });
   });
 
   it('maps bracket shortcuts to z-order actions', () => {

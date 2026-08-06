@@ -402,7 +402,7 @@ import {
   computeZOrderPatchForTargetId,
   mergeZOrderCapabilities,
   readStackZFromZIndexStyle,
-  resolveZOrderContext,
+  resolveZOrderContextWithFallback,
   resolveZOrderKeyboardAction,
   zOrderHistoryLabel,
   type ZOrderAction,
@@ -10905,10 +10905,18 @@ function HtmlViewer({
       const targets = resolveManualEditZOrderTargets();
       if (targets.length === 0) return;
       const doc = iframeContentDocumentIfAccessible(iframeRef.current);
-      if (!doc) return;
+      const reorderOptions = {
+        deck: effectiveDeck,
+        activeSlideIndex: slideState?.active ?? null,
+      };
       const capabilities = mergeZOrderCapabilities(
         targets
-          .map((target) => resolveZOrderContext(doc, target.id)?.capabilities)
+          .map((target) => resolveZOrderContextWithFallback(
+            doc,
+            manualEditTargets,
+            target.id,
+            reorderOptions,
+          )?.capabilities)
           .filter((cap): cap is NonNullable<typeof cap> => Boolean(cap)),
       );
       if (!capabilities?.[action]) return;
@@ -12391,7 +12399,10 @@ function HtmlViewer({
   );
   const manualEditZOrderCapabilities = useMemo(() => {
     const doc = iframeContentDocumentIfAccessible(iframeRef.current);
-    if (!doc) return null;
+    const reorderOptions = {
+      deck: effectiveDeck,
+      activeSlideIndex: slideState?.active ?? null,
+    };
     const targets = resolveManualEditTargetsByIds(
       selectedManualEditTargetIds,
       manualEditTargets,
@@ -12401,7 +12412,12 @@ function HtmlViewer({
       : targets;
     if (roots.length === 0) return null;
     const capabilities = roots
-      .map((target) => resolveZOrderContext(doc, target.id)?.capabilities)
+      .map((target) => resolveZOrderContextWithFallback(
+        doc,
+        manualEditTargets,
+        target.id,
+        reorderOptions,
+      )?.capabilities)
       .filter((cap): cap is NonNullable<typeof cap> => Boolean(cap));
     return mergeZOrderCapabilities(capabilities);
   }, [
@@ -12412,6 +12428,8 @@ function HtmlViewer({
     manualEditTargets,
     manualEditTargetIsDescendantOf,
     srcDoc,
+    effectiveDeck,
+    slideState?.active,
   ]);
 
   function collectZIndexTargetsFromPending(pending: ManualEditPendingStyleSave): string[] {
