@@ -65,6 +65,8 @@ import {
   shouldFetchAgentRegistryOnBoot,
   shouldFetchAmrIntegrationApis,
   shouldFetchAppVersionAboutPanel,
+  scheduleWhenIdle,
+  shouldDeferNonCriticalEntryCatalogsOnBoot,
   shouldFetchEntryCatalogsOnBoot,
   shouldFetchHomeProjectsOnBoot,
   shouldFetchMediaProviderConfig,
@@ -1063,6 +1065,7 @@ function AppInner() {
   // gate every tab including the ones that don't need agents at all.
   useEffect(() => {
     let cancelled = false;
+    let cancelSecondaryCatalogIdle: (() => void) | undefined;
     const agentStreamAbort = new AbortController();
     (async () => {
       const bootRouteKind = routeRef.current.kind;
@@ -1151,18 +1154,42 @@ function AppInner() {
       // gate `skillsLoading` together so the EntryView stops rendering
       // its loader once both registries respond — neither tab would have
       // a complete picture if we cleared the flag on the first reply.
-      let functionalReady = false;
+      // Slide-only embed: defer skills/design-systems/listTemplates to idle;
+      // `skillsLoading` waits on design-templates only.
+      const deferSecondaryCatalogs =
+        fetchEntryCatalogs && shouldDeferNonCriticalEntryCatalogsOnBoot();
+      let functionalReady = deferSecondaryCatalogs;
       let templatesReady = false;
       const maybeClearLoading = () => {
         if (functionalReady && templatesReady) setSkillsLoading(false);
       };
-      if (fetchEntryCatalogs) {
+      const loadSecondaryEntryCatalogs = () => {
+        if (cancelled) return;
         void fetchSkills().then((list) => {
           if (cancelled) return;
           setSkills(list);
           functionalReady = true;
           maybeClearLoading();
         });
+        void fetchDesignSystems().then((list) => {
+          if (cancelled) return;
+          setDesignSystems(list);
+          setDsLoading(false);
+        });
+        void listTemplates().then((list) => {
+          if (cancelled) return;
+          setTemplates(list);
+        });
+      };
+      if (fetchEntryCatalogs) {
+        if (!deferSecondaryCatalogs) {
+          void fetchSkills().then((list) => {
+            if (cancelled) return;
+            setSkills(list);
+            functionalReady = true;
+            maybeClearLoading();
+          });
+        }
 
         void fetchDesignTemplatesForCurrentBranding().then((list) => {
           if (cancelled) return;
@@ -1171,11 +1198,20 @@ function AppInner() {
           maybeClearLoading();
         });
 
-        void fetchDesignSystems().then((list) => {
-          if (cancelled) return;
-          setDesignSystems(list);
-          setDsLoading(false);
-        });
+        if (deferSecondaryCatalogs) {
+          // dsLoading stays true until idle fetch lands (Settings DS tab).
+          cancelSecondaryCatalogIdle = scheduleWhenIdle(loadSecondaryEntryCatalogs);
+        } else {
+          void fetchDesignSystems().then((list) => {
+            if (cancelled) return;
+            setDesignSystems(list);
+            setDsLoading(false);
+          });
+          void listTemplates().then((list) => {
+            if (cancelled) return;
+            setTemplates(list);
+          });
+        }
       } else {
         setSkills([]);
         setDesignTemplates([]);
@@ -1205,13 +1241,6 @@ function AppInner() {
         })();
       } else {
         setProjectsLoading(false);
-      }
-
-      if (fetchEntryCatalogs) {
-        void listTemplates().then((list) => {
-          if (cancelled) return;
-          setTemplates(list);
-        });
       }
 
       if (shouldFetchPromptTemplateCatalog()) {
@@ -1325,6 +1354,7 @@ function AppInner() {
     return () => {
       cancelled = true;
       agentStreamAbort.abort();
+      cancelSecondaryCatalogIdle?.();
     };
   }, [
     beginAgentStreamRequest,
