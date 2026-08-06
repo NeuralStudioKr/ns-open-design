@@ -47,6 +47,48 @@ describe('PreviewModal sandbox isolation', () => {
     expect(markup).toContain('od:slide');
   });
 
+  it('renders host prev/next slide chrome for deck community template previews', () => {
+    const markup = renderToStaticMarkup(
+      <PreviewModal
+        title="Community template"
+        views={[
+          {
+            id: 'preview',
+            label: 'Preview',
+            html: '<section class="slide">one</section><section class="slide">two</section>',
+            deck: true,
+          },
+        ]}
+        exportTitleFor={() => 'community-template'}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(markup).toContain('preview-modal-deck-nav');
+    expect(markup).toContain('preview-modal-deck-prev');
+    expect(markup).toContain('preview-modal-deck-next');
+    expect(markup).toContain('preview-modal-deck-counter');
+  });
+
+  it('hides host slide chrome for non-deck previews', () => {
+    const markup = renderToStaticMarkup(
+      <PreviewModal
+        title="Plain preview"
+        views={[
+          {
+            id: 'preview',
+            label: 'Preview',
+            html: '<div>hello</div>',
+          },
+        ]}
+        exportTitleFor={() => 'plain'}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(markup).not.toContain('preview-modal-deck-nav');
+  });
+
   it('includes popup flags in the sandbox attribute', () => {
     const markup = renderToStaticMarkup(
       <PreviewModal

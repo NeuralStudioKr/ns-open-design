@@ -92,7 +92,15 @@ export function PluginExampleDetail({
   }, [load]);
 
   const description = localizePluginDescription(locale, record);
-  const isDeck = record.manifest?.od?.mode === 'deck';
+  // Community gallery templates are almost always decks; also treat `template`
+  // mode and html preview entries as deck so host slide chrome appears even
+  // when the shipped page has no in-document prev/next buttons.
+  const odMode = record.manifest?.od?.mode;
+  const previewBlock = record.manifest?.od?.preview as { type?: unknown } | undefined;
+  const isDeck =
+    odMode === 'deck' ||
+    odMode === 'template' ||
+    previewBlock?.type === 'html';
 
   return (
     <PreviewModal

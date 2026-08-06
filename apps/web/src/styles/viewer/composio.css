@@ -1410,6 +1410,36 @@
   flex-wrap: wrap;
   margin-left: auto;
 }
+/* Host deck chrome for community/template PreviewModal (FileViewer .deck-nav reused). */
+.ds-modal-actions .ds-modal-deck-nav {
+  border-left: none;
+  margin-left: 0;
+  margin-right: 2px;
+  padding-left: 0;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+  height: 32px;
+}
+.ds-modal-actions .ds-modal-deck-nav .icon-only {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.ds-modal-actions .ds-modal-deck-nav .icon-only:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-subtle);
+}
+.ds-modal-actions .ds-modal-deck-nav .icon-only:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
 /* Keep individual action labels (Use plugin / DESIGN.md / Fullscreen /
    Share / etc.) on a single line; the toolbar row itself can wrap to a
    second visual line only at very narrow widths via flex-wrap above. */

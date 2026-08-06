@@ -287,6 +287,9 @@ export function PreviewModal({
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(
     sidebar?.defaultOpen ?? false,
   );
+  const [slideState, setSlideState] = useState<{ active: number; count: number } | null>(
+    null,
+  );
   const templateShareRef = useRef<HTMLDivElement | null>(null);
   const primaryMenuRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -473,6 +476,67 @@ export function PreviewModal({
     () => (activeHtml ? buildSrcdoc(activeHtml, { deck: activeDeck }) : ''),
     [activeHtml, activeDeck],
   );
+
+  function postSlide(action: 'next' | 'prev' | 'first' | 'last') {
+    const win = previewIframeRef.current?.contentWindow;
+    if (!win || !activeDeck) return;
+    win.postMessage({ type: 'od:slide', action }, '*');
+  }
+
+  function requestSlideState() {
+    const win = previewIframeRef.current?.contentWindow;
+    if (!win || !activeDeck) return;
+    win.postMessage({ type: 'od:slide-state-request' }, '*');
+  }
+
+  // Reset / listen for deck slide index from the srcdoc bridge (same contract as FileViewer).
+  useEffect(() => {
+    setSlideState(null);
+  }, [activeId, activeHtml, activeDeck]);
+
+  useEffect(() => {
+    if (!activeDeck || !activeHtml) return;
+    function onMessage(ev: MessageEvent) {
+      if (ev.source !== previewIframeRef.current?.contentWindow) return;
+      const data = ev.data as { type?: string; active?: number; count?: number } | null;
+      if (!data || data.type !== 'od:slide-state') return;
+      if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
+      if (!Number.isFinite(data.active) || !Number.isFinite(data.count) || data.count < 1) return;
+      setSlideState({
+        active: Math.max(0, Math.min(data.count - 1, Math.floor(data.active))),
+        count: Math.floor(data.count),
+      });
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [activeDeck, activeHtml, activeId, srcDoc]);
+
+  // Host ArrowLeft/Right for decks — iframe often lacks focus in the modal.
+  useEffect(() => {
+    if (!activeDeck || !activeHtml) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        e.preventDefault();
+        postSlide('next');
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        postSlide('prev');
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [activeDeck, activeHtml, activeId]);
   const exportTitle = exportTitleFor(activeView?.id ?? '');
   const canExportFiles = Boolean(activeHtml);
   const previewShareTitle = shareTarget?.title || exportTitle || title;
@@ -620,6 +684,52 @@ export function PreviewModal({
               </div>
             ) : null}
             <div className="ds-modal-actions">
+              {activeDeck && typeof activeHtml === 'string' ? (
+                <span
+                  className="deck-nav ds-modal-deck-nav"
+                  role="group"
+                  aria-label={t('fileViewer.slideNavAria')}
+                  data-testid="preview-modal-deck-nav"
+                >
+                  <button
+                    type="button"
+                    className="icon-only od-tooltip"
+                    onClick={() => postSlide('prev')}
+                    title={t('fileViewer.previousSlide')}
+                    data-tooltip={t('fileViewer.previousSlide')}
+                    data-tooltip-placement="bottom"
+                    aria-label={t('fileViewer.previousSlide')}
+                    data-testid="preview-modal-deck-prev"
+                    disabled={slideState !== null && slideState.active <= 0}
+                  >
+                    <Icon
+                      name="chevron-right"
+                      size={14}
+                      style={{ transform: 'rotate(180deg)' }}
+                    />
+                  </button>
+                  <span className="deck-nav-counter" data-testid="preview-modal-deck-counter">
+                    {slideState
+                      ? `${slideState.active + 1} / ${slideState.count}`
+                      : '— / —'}
+                  </span>
+                  <button
+                    type="button"
+                    className="icon-only od-tooltip"
+                    onClick={() => postSlide('next')}
+                    title={t('fileViewer.nextSlide')}
+                    data-tooltip={t('fileViewer.nextSlide')}
+                    data-tooltip-placement="bottom"
+                    aria-label={t('fileViewer.nextSlide')}
+                    data-testid="preview-modal-deck-next"
+                    disabled={
+                      slideState !== null && slideState.active >= slideState.count - 1
+                    }
+                  >
+                    <Icon name="chevron-right" size={14} />
+                  </button>
+                </span>
+              ) : null}
               {primaryAction ? (
                 primaryAction.menu && primaryAction.menu.length > 0 ? (
                   <div
@@ -1121,6 +1231,12 @@ export function PreviewModal({
                       activeCompactStackedDeck ? 1 : scale,
                       activeCompactStackedDeck ? { useLayoutBox: true } : { layoutFit: true },
                     );
+                    // Ask the deck bridge for active/count so the host chrome can enable.
+                    event.currentTarget.contentWindow?.postMessage(
+                      { type: 'od:slide-state-request' },
+                      '*',
+                    );
+                    window.setTimeout(() => requestSlideState(), 120);
                   }}
                 />
               </div>
