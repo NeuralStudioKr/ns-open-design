@@ -273,6 +273,23 @@ describe("projectCoverLoader", () => {
     expect(fetchProjectFilesMock).toHaveBeenCalledTimes(1);
   });
 
+  it("seeds empty hint results so prefetch does not re-batch within TTL", async () => {
+    fetchCoverHintsMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ hints: [] }),
+    });
+
+    const projects = [
+      project({ id: "p1", metadata: { kind: "deck" } }),
+      project({ id: "p2", metadata: { kind: "deck" } }),
+    ];
+
+    await prefetchProjectCoverHintsForProjects(projects);
+    await prefetchProjectCoverHintsForProjects(projects);
+
+    expect(fetchCoverHintsMock).toHaveBeenCalledTimes(1);
+  });
+
   it("replaces a cached hints-only miss when a later cover hint appears", async () => {
     vi.useFakeTimers();
     fetchCoverHintsMock.mockResolvedValueOnce({

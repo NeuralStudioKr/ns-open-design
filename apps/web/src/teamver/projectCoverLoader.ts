@@ -125,6 +125,13 @@ export function seedProjectCoverHints(covers: Record<string, ProjectCoverFile | 
  * (max PROJECT_LIST_VIEWPORT_BATCH per HTTP). Prefetch + lazy resolve share
  * the same queue so warmEmbed cannot double-hit /cover-hints.
  */
+function coverHintCacheFresh(cached: CoverCacheEntry | undefined): boolean {
+  if (!cached) return false;
+  if (Date.now() - cached.at >= COVER_FETCH_CACHE_MS) return false;
+  // Positive cover or an explicit hints-only miss both count as "already hinted".
+  return Boolean(cached.cover) || Boolean(cached.hintsOnlyMiss);
+}
+
 export async function prefetchProjectCoverHintsForProjects(
   projects: Project[],
 ): Promise<void> {
@@ -132,22 +139,17 @@ export async function prefetchProjectCoverHintsForProjects(
     if (!projectNeedsCoverFileFetch(project)) continue;
     const id = project.id.trim();
     if (!id || hintsCheckedRecently(id)) continue;
-    const cached = coverCache.get(id);
-    if (cached?.cover && Date.now() - cached.at < COVER_FETCH_CACHE_MS) continue;
+    if (coverHintCacheFresh(coverCache.get(id))) continue;
     pendingHintIds.add(id);
   }
   if (pendingHintIds.size === 0) return;
   await ensureCoverHintBatch();
 }
 
-function seedPositiveCoverHints(hints: Record<string, ProjectCoverFile | null>): void {
-  const positive: Record<string, ProjectCoverFile | null> = {};
-  for (const [projectId, cover] of Object.entries(hints)) {
-    if (cover) positive[projectId] = cover;
-  }
-  if (Object.keys(positive).length > 0) {
-    seedProjectCoverHints(positive);
-  }
+/** Seed batch results including null → hintsOnlyMiss (avoids ambiguous cache gaps). */
+function seedCoverHintResults(hints: Record<string, ProjectCoverFile | null>): void {
+  if (Object.keys(hints).length === 0) return;
+  seedProjectCoverHints(hints);
 }
 
 async function drainCoverHintBatch(): Promise<void> {
@@ -155,8 +157,7 @@ async function drainCoverHintBatch(): Promise<void> {
     const missing = [...pendingHintIds]
       .filter((id) => {
         if (hintsCheckedRecently(id)) return false;
-        const cached = coverCache.get(id);
-        return !cached?.cover || Date.now() - cached.at >= COVER_FETCH_CACHE_MS;
+        return !coverHintCacheFresh(coverCache.get(id));
       })
       .slice(0, PROJECT_LIST_VIEWPORT_BATCH);
     for (const id of missing) {
@@ -169,7 +170,7 @@ async function drainCoverHintBatch(): Promise<void> {
 
     const hints = await fetchProjectCoverHints(missing);
     markHintsChecked(missing);
-    seedPositiveCoverHints(
+    seedCoverHintResults(
       Object.fromEntries(
         missing.map((id) => [id, hints[id] ? projectCoverFileFromHint(hints[id]!) : null] as const),
       ),

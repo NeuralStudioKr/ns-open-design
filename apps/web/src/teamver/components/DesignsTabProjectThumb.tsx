@@ -63,6 +63,9 @@ export function DesignsTabProjectThumb({
         <ProjectCardHtmlCover
           src={cover.src}
           deckCoverOnly={project.metadata?.kind === "deck"}
+          // Parent useLazyProjectCover already defers until the card is near
+          // the viewport — a second IntersectionObserver only delayed /raw.
+          deferUntilVisible={false}
         />
       ) : (
         glyph
