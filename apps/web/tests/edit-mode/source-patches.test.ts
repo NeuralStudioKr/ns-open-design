@@ -644,6 +644,23 @@ describe('manual edit source patches', () => {
     expect(html).not.toMatch(/javascript/i);
   });
 
+  it('persists zIndex via set-style for positioned elements', () => {
+    const source = `<!doctype html>
+<html><body>
+  <main>
+    <div data-od-id="logo-wrap" style="position:absolute;left:100px;top:50px;width:200px;height:120px">Logo</div>
+  </main>
+</body></html>`;
+    const result = applyManualEditPatch(source, {
+      kind: 'set-style',
+      id: 'logo-wrap',
+      styles: { zIndex: '5' },
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'logo-wrap');
+    expect(html).toMatch(/z-index:\s*5/i);
+  });
+
   it('salvages set-outer-html when model emits style sibling + matching root', () => {
     // User-facing failure: deck_patch_merge_failed — Replacement HTML must
     // contain exactly one root element. Models often pair a <style> block

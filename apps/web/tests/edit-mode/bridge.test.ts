@@ -1367,4 +1367,94 @@ describe('manual edit bridge target normalization', () => {
 
     dom.window.close();
   });
+
+  it('includes stack metadata on positioned targets', async () => {
+    const posts: Array<{
+      type?: string;
+      targets?: Array<{
+        id: string;
+        stackZ?: number;
+        siblingIndex?: number;
+        parentKey?: string;
+        parentStackZ?: number;
+        parentSiblingIndex?: number;
+      }>;
+    }> = [];
+    const dom = new JSDOM(
+      `<main>
+        <section data-od-source-path="path-0-0">
+          <div data-od-source-path="path-0-0-0" style="position:absolute;left:0;top:0;width:40px;height:40px;z-index:3"></div>
+          <div data-od-source-path="path-0-0-1" style="position:absolute;left:10px;top:10px;width:40px;height:40px"></div>
+        </section>
+      </main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const section = dom.window.document.querySelector('section')!;
+    const front = dom.window.document.querySelector('[data-od-source-path="path-0-0-0"]') as HTMLElement;
+    const back = dom.window.document.querySelector('[data-od-source-path="path-0-0-1"]') as HTMLElement;
+    for (const el of [section, front, back]) {
+      el.getBoundingClientRect = () => ({
+        x: 0, y: 0, width: 40, height: 40,
+        top: 0, right: 40, bottom: 40, left: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+    }
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+    const frontTarget = posts
+      .find((message) => message.type === 'od-edit-targets')
+      ?.targets
+      ?.find((target) => target.id === 'path-0-0-0');
+    const backTarget = posts
+      .find((message) => message.type === 'od-edit-targets')
+      ?.targets
+      ?.find((target) => target.id === 'path-0-0-1');
+    expect(frontTarget?.stackZ).toBe(3);
+    expect(frontTarget?.siblingIndex).toBe(0);
+    expect(frontTarget?.parentKey).toBe('path-0-0');
+    expect(backTarget?.stackZ).toBe(0);
+    expect(backTarget?.siblingIndex).toBe(1);
+
+    dom.window.close();
+  });
+
+  it('refreshes target catalog when host posts od-edit-refresh-targets', async () => {
+    const posts: Array<{ type?: string }> = [];
+    const dom = new JSDOM(
+      `<main><p data-od-source-path="path-0-0">Hello</p></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const paragraph = dom.window.document.querySelector('p')!;
+    paragraph.getBoundingClientRect = () => ({
+      x: 0, y: 0, width: 80, height: 24,
+      top: 0, right: 80, bottom: 24, left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as { type?: string });
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+    const before = posts.filter((message) => message.type === 'od-edit-targets').length;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-refresh-targets' },
+    }));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+    const after = posts.filter((message) => message.type === 'od-edit-targets').length;
+    expect(after).toBe(before + 1);
+
+    dom.window.close();
+  });
 });

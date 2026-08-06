@@ -79,9 +79,10 @@ export function ManualEditLayersPanel({
           aria-multiselectable="true"
           aria-label={t('manualEdit.layers')}
         >
-          {[...targets].reverse().map((target) => {
+          {[...targets].map((target) => {
             const selected = selectedIds.includes(target.id);
             const primary = selectedIds[selectedIds.length - 1] === target.id;
+            const showStackZ = (target.stackZ ?? 0) !== 0;
             return (
               <button
                 key={target.id}
@@ -105,6 +106,7 @@ export function ManualEditLayersPanel({
                 <span>
                   {target.tagName.toLowerCase()}
                   {target.cssPosition ? ` · ${target.cssPosition}` : ''}
+                  {showStackZ ? ` · z ${target.stackZ}` : ''}
                 </span>
               </button>
             );

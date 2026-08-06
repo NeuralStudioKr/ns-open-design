@@ -382,7 +382,7 @@ import {
   type GroupDistributeKind,
 } from '../edit-mode/manual-edit-group-align';
 import { collectSnapSources } from '../edit-mode/manual-edit-geometry-snap';
-import { filterManualEditLayerTargets } from '../edit-mode/manual-edit-layer-targets';
+import { filterManualEditLayerTargets, sortManualEditLayerTargetsByPaintOrder } from '../edit-mode/manual-edit-layer-targets';
 import {
   canAdjustZOrderTarget,
   computeZOrderStyleForTargetId,
@@ -7327,6 +7327,12 @@ function HtmlViewer({
     );
   }
 
+  function requestManualEditTargetsRefresh(target: HTMLIFrameElement | null = iframeRef.current) {
+    const win = target?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: 'od-edit-refresh-targets' }, '*');
+  }
+
   function requestManualEditTargetRemeasure(id: string, target: HTMLIFrameElement | null = iframeRef.current) {
     const win = target?.contentWindow;
     if (!win || !id) return;
@@ -12250,11 +12256,13 @@ function HtmlViewer({
     ],
   );
   const manualEditLayerPanelTargets = useMemo(
-    () => filterManualEditLayerTargets(manualEditTargets, {
-      deck: effectiveDeck,
-      activeSlideIndex: slideState?.active ?? null,
-      viewportBounds: manualEditViewportBounds,
-    }),
+    () => sortManualEditLayerTargetsByPaintOrder(
+      filterManualEditLayerTargets(manualEditTargets, {
+        deck: effectiveDeck,
+        activeSlideIndex: slideState?.active ?? null,
+        viewportBounds: manualEditViewportBounds,
+      }),
+    ),
     [manualEditTargets, effectiveDeck, slideState?.active, manualEditViewportBounds],
   );
   const manualEditZOrderCapabilities = useMemo(() => {
@@ -12277,7 +12285,28 @@ function HtmlViewer({
     if (!target || !doc) return;
     const nextZ = computeZOrderStyleForTargetId(doc, target.id, action);
     if (!nextZ) return;
+    const parsedZ = Number.parseInt(nextZ, 10);
     void handleManualEditStyleChange([target.id], { zIndex: nextZ }, zOrderHistoryLabel(action));
+    setManualEditTargets((current) => current.map((item) => (
+      item.id === target.id
+        ? {
+            ...item,
+            styles: { ...item.styles, zIndex: nextZ },
+            stackZ: Number.isFinite(parsedZ) ? parsedZ : item.stackZ,
+          }
+        : item
+    )));
+    setSelectedManualEditTarget((current) => (
+      current?.id === target.id
+        ? {
+            ...current,
+            styles: { ...current.styles, zIndex: nextZ },
+            stackZ: Number.isFinite(parsedZ) ? parsedZ : current.stackZ,
+          }
+        : current
+    ));
+    requestManualEditTargetRemeasure(target.id);
+    requestManualEditTargetsRefresh();
   }
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;

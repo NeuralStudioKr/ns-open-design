@@ -106,6 +106,16 @@ export interface ManualEditTarget {
   stickyScrollportId?: string;
   /** Deck slide index from nearest `data-slide-index` ancestor. */
   slideIndex?: number;
+  /** Parent stable id for layer paint-order sorting. */
+  parentKey?: string;
+  /** Parent's index among its parent's element children. */
+  parentSiblingIndex?: number;
+  /** Parent effective z-index when positioned. */
+  parentStackZ?: number;
+  /** Effective z-index when positioned (absolute/fixed). */
+  stackZ?: number;
+  /** Index among parent's element children. */
+  siblingIndex?: number;
   outerHtml: string;
 }
 

@@ -1,5 +1,35 @@
 import type { ManualEditRect, ManualEditTarget } from './types';
 
+export type ManualEditLayerPaintSortKey = Pick<
+  ManualEditTarget,
+  'parentSiblingIndex' | 'parentStackZ' | 'stackZ' | 'siblingIndex' | 'label'
+>;
+
+/** Front-most layers first (top of the panel = painted on top). */
+export function compareManualEditLayerPaintOrder(
+  a: ManualEditLayerPaintSortKey,
+  b: ManualEditLayerPaintSortKey,
+): number {
+  const fields: Array<keyof ManualEditLayerPaintSortKey> = [
+    'parentSiblingIndex',
+    'parentStackZ',
+    'stackZ',
+    'siblingIndex',
+  ];
+  for (const field of fields) {
+    const av = Number(a[field] ?? 0);
+    const bv = Number(b[field] ?? 0);
+    if (av !== bv) return bv - av;
+  }
+  return String(a.label ?? '').localeCompare(String(b.label ?? ''));
+}
+
+export function sortManualEditLayerTargetsByPaintOrder(
+  targets: readonly ManualEditTarget[],
+): ManualEditTarget[] {
+  return [...targets].sort(compareManualEditLayerPaintOrder);
+}
+
 export function rectsIntersect(a: ManualEditRect, b: ManualEditRect): boolean {
   return (
     a.x + a.width > b.x

@@ -316,6 +316,35 @@ export function buildManualEditBridge(enabled: boolean): string {
     }
     return undefined;
   }
+  function readPositionedZIndex(el){
+    var cs = window.getComputedStyle(el);
+    var pos = (cs.position || 'static').toLowerCase();
+    if (pos !== 'absolute' && pos !== 'fixed') return 0;
+    var raw = cs.zIndex;
+    if (!raw || raw === 'auto') return 0;
+    var parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  function stackMetaFor(el){
+    var parent = el.parentElement;
+    var parentKey = '';
+    var parentSiblingIndex = 0;
+    var parentStackZ = 0;
+    if (parent && parent !== document.documentElement) {
+      parentKey = stableId(parent);
+      if (parent.parentElement) {
+        parentSiblingIndex = Array.prototype.indexOf.call(parent.parentElement.children, parent);
+      }
+      parentStackZ = readPositionedZIndex(parent);
+    }
+    return {
+      parentKey: parentKey,
+      parentSiblingIndex: parentSiblingIndex,
+      parentStackZ: parentStackZ,
+      stackZ: readPositionedZIndex(el),
+      siblingIndex: parent ? Array.prototype.indexOf.call(parent.children, el) : 0,
+    };
+  }
   function targetFrom(el, includeOuterHtml){
     var rect = el.getBoundingClientRect();
     var kind = inferKind(el);
@@ -338,6 +367,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     // persisted as width — that shrinks the box on first resize preview.
     var layoutW = Math.round(Math.max(1, el.offsetWidth || 0));
     var layoutH = Math.round(Math.max(1, el.offsetHeight || 0));
+    var stackMeta = stackMetaFor(el);
     var target = {
       id: id,
       kind: kind,
@@ -356,6 +386,11 @@ export function buildManualEditBridge(enabled: boolean): string {
       cssPosition: (window.getComputedStyle(el).position || 'static'),
       offsetLeft: promo.left,
       offsetTop: promo.top,
+      parentKey: stackMeta.parentKey,
+      parentSiblingIndex: stackMeta.parentSiblingIndex,
+      parentStackZ: stackMeta.parentStackZ,
+      stackZ: stackMeta.stackZ,
+      siblingIndex: stackMeta.siblingIndex,
       outerHtml: includeOuterHtml ? (el.outerHTML || '').replace(/\\sdata-od-runtime-id="[^"]*"/g, '').replace(/\\sdata-od-source-path="[^"]*"/g, '').replace(/\\sdata-od-edit-selected="[^"]*"/g, '').replace(/\\sdata-od-edit-host-chrome="[^"]*"/g, '') : ''
     };
     if (stickyScrollportId) target.stickyScrollportId = stickyScrollportId;
@@ -729,6 +764,10 @@ export function buildManualEditBridge(enabled: boolean): string {
     }
     if (ev.data.type === 'od-edit-preview-style') {
       applyPreviewStyles(ev.data.id, ev.data.styles || {}, ev.data.version);
+      return;
+    }
+    if (ev.data.type === 'od-edit-refresh-targets') {
+      postTargets();
       return;
     }
     if (ev.data.type === 'od-edit-remeasure') {
