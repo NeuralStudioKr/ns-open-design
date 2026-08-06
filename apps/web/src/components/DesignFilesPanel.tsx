@@ -1277,7 +1277,27 @@ function DfPreview({
       >
         <Icon name="close" size={13} />
       </button>
-      <div className={`df-preview-thumb${thumbCanOpen ? ' is-openable' : ''}`}>
+      {/*
+        Do not stack a transparent absolute <button> over the thumb. In
+        Chromium/Electron that overlay blanks <img> (and used to flash iframe
+        white) on hover — Design Files right-rail preview looked like a black
+        box with only the accent border. Open via the thumb container instead;
+        iframe/img keep pointer-events: none so clicks hit this host.
+      */}
+      <div
+        className={`df-preview-thumb${thumbCanOpen ? ' is-openable' : ''}`}
+        onClick={thumbCanOpen ? onOpen : undefined}
+        onKeyDown={thumbCanOpen ? (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onOpen();
+          }
+        } : undefined}
+        role={thumbCanOpen ? 'button' : undefined}
+        tabIndex={thumbCanOpen ? 0 : undefined}
+        title={thumbCanOpen ? openPreviewLabel : undefined}
+        aria-label={thumbCanOpen ? openPreviewLabel : undefined}
+      >
         {rendersSketchJson ? (
           <SketchPreview projectId={projectId} file={file} />
         ) : file.kind === 'image' || file.kind === 'sketch' ? (
@@ -1315,15 +1335,6 @@ function DfPreview({
             {categoryGlyph(fileCategory(file))}
           </div>
         )}
-        {thumbCanOpen ? (
-          <button
-            type="button"
-            className="df-preview-thumb-open"
-            onClick={onOpen}
-            title={openPreviewLabel}
-            aria-label={openPreviewLabel}
-          />
-        ) : null}
       </div>
       <div className="df-preview-meta" data-testid="design-file-preview">
         <button type="button" className="df-preview-open-cta" onClick={onOpen}>

@@ -257,6 +257,21 @@ describe('DesignFilesPanel preview', () => {
     expect(stats).toContain('PNG');
   });
 
+  it('opens image preview without a transparent overlay button that blanks the img on hover', () => {
+    const { container, onOpenFile } = renderPanel([
+      file({ name: 'chart.png', kind: 'image', size: 4096 }),
+    ]);
+    fireEvent.click(container.querySelector('.df-file-row .df-row-icon')!);
+
+    const thumb = container.querySelector('.df-preview-thumb.is-openable');
+    expect(thumb).toBeTruthy();
+    expect(container.querySelector('.df-preview-thumb-open')).toBeNull();
+    expect(thumb?.getAttribute('role')).toBe('button');
+
+    fireEvent.click(thumb!);
+    expect(onOpenFile).toHaveBeenCalledWith('chart.png');
+  });
+
   it('renders sketch files with the static sketch preview instead of a broken image', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       version: 1,
