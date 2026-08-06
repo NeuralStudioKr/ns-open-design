@@ -15,6 +15,7 @@ import type {
   ChatMessageFeedbackRating,
   ChatMessageFeedbackReasonCode,
   ChatMessage,
+  ChatSlideTurnKind,
   ConnectionTestKind,
   ConnectionTestProtocol,
   ConnectionTestRequest,
@@ -479,6 +480,7 @@ export type {
   ChatMessage,
   ChatMessageFeedbackRating,
   ChatMessageFeedbackReasonCode,
+  ChatSlideTurnKind,
 };
 
 export type {

@@ -249,16 +249,36 @@ function messageHasPreTurnPrimaryDeck(message: ChatMessage): boolean {
 }
 
 /**
+ * Resolve durable create/edit label at send time (Teamver slide-only).
+ * Prefer an auto-attached canonical deck, else preTurn primary deck names.
+ */
+export function resolveSlideTurnKindForSend(options: {
+  slideOnlyMvp: boolean;
+  preTurnFileNames: readonly string[];
+  existingDeckAttached?: boolean;
+}): "create" | "edit" | undefined {
+  if (!options.slideOnlyMvp) return undefined;
+  if (options.existingDeckAttached) return "edit";
+  if (options.preTurnFileNames.some((name) => isPrimaryDeckFileName(String(name)))) {
+    return "edit";
+  }
+  return "create";
+}
+
+/**
  * Slide-edit completion copy after reload: persist sanitizer strips closed
  * patch artifacts, so body detection alone is not enough.
  *
- * Prefer explicit patch/element-patch markers, then a pre-turn *primary*
+ * Prefer durable `slideTurnKind`, then patch markers, then pre-turn primary
  * deck (`deck.html`) — never leftover non-deck HTML (about.html, notes.html).
- * Produced-file ∩ preTurn alone is not used: a first create that also
- * rewrites leftover HTML must stay a create turn.
  */
 export function messageLooksLikeSlideEditTurn(message: ChatMessage): boolean {
   const body = assistantMessageTextBody(message);
+  if (message.slideTurnKind === "edit") return true;
+  if (message.slideTurnKind === "create") {
+    // Model may still emit element-patch / deck-patch on a create-labeled send.
+    return messageIndicatesSlideEditArtifact(body);
+  }
   if (messageIndicatesSlideEditArtifact(body)) return true;
   return messageHasPreTurnPrimaryDeck(message);
 }

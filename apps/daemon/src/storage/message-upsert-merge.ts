@@ -18,9 +18,19 @@ export type MessageUpsertRow = {
   appliedPluginSnapshot?: unknown;
   preTurnFileNames?: unknown[] | undefined;
   producedFiles?: unknown[] | undefined;
+  slideTurnKind?: unknown;
   feedback?: unknown;
   [key: string]: unknown;
 };
+
+function mergeSlideTurnKind(
+  incoming: unknown,
+  existing: unknown,
+): 'create' | 'edit' | undefined {
+  if (incoming === 'create' || incoming === 'edit') return incoming;
+  if (existing === 'create' || existing === 'edit') return existing;
+  return undefined;
+}
 
 /** Non-fatal status:error codes that must not force runStatus back to failed. */
 export const NON_FATAL_CHAT_ERROR_CODES = new Set([
@@ -127,6 +137,7 @@ export function mergeMessageUpsertPayload<T extends MessageUpsertRow>(
       incoming.producedFiles as unknown[] | undefined,
       existing.producedFiles as unknown[] | undefined,
     ),
+    slideTurnKind: mergeSlideTurnKind(incoming.slideTurnKind, existing.slideTurnKind),
     feedback: incoming.feedback ?? existing.feedback,
   };
 }

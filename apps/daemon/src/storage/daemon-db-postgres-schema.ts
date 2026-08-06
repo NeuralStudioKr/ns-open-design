@@ -366,6 +366,11 @@ BEGIN
 END $$;
 `;
 
+export const DAEMON_DB_POSTGRES_MIGRATION_V10 = `
+ALTER TABLE messages
+  ADD COLUMN IF NOT EXISTS slide_turn_kind TEXT;
+`;
+
 export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   version: number;
   sql: string;
@@ -379,4 +384,5 @@ export const DAEMON_DB_POSTGRES_MIGRATIONS: ReadonlyArray<{
   { version: 7, sql: DAEMON_DB_POSTGRES_MIGRATION_V7 },
   { version: 8, sql: DAEMON_DB_POSTGRES_MIGRATION_V8 },
   { version: 9, sql: DAEMON_DB_POSTGRES_MIGRATION_V9 },
+  { version: 10, sql: DAEMON_DB_POSTGRES_MIGRATION_V10 },
 ];

@@ -243,6 +243,7 @@ import {
   verifySlideProducedHtmlDeliverable,
 } from '../runtime/slide-deliverable-recovery';
 import { tryPersistClientVisualMarksOnSend } from '../runtime/client-visual-mark-persist';
+import { resolveSlideTurnKindForSend } from '../runtime/chat-message-render';
 import {
   buildDesignSystemPackageAuditRepairPrompt,
   summarizeDesignSystemPackageAudit,
@@ -565,6 +566,9 @@ function mergeServerMessageWithLocal(server: ChatMessage, local?: ChatMessage): 
   }
   if (!server.preTurnFileNames?.length && local.preTurnFileNames?.length) {
     merged.preTurnFileNames = local.preTurnFileNames;
+  }
+  if (!server.slideTurnKind && local.slideTurnKind) {
+    merged.slideTurnKind = local.slideTurnKind;
   }
   if (!server.lastRunEventId && local.lastRunEventId) {
     merged.lastRunEventId = local.lastRunEventId;
@@ -8179,6 +8183,7 @@ export function ProjectView({
                 ...userVisualUploadBaselineNames(scopedCommentAttachments),
               ]),
             ],
+            ...(slideOnlyMvp ? { slideTurnKind: 'edit' as const } : {}),
           };
           const fastPathHistory = [...historyBase, userMsg];
           setMessages(dedupeConversationAssistantRows([...fastPathHistory, fastPathAssistant]));
@@ -8227,6 +8232,11 @@ export function ProjectView({
           ...userVisualUploadBaselineNames(scopedCommentAttachments),
         ]),
       ];
+      const slideTurnKind = resolveSlideTurnKindForSend({
+        slideOnlyMvp,
+        preTurnFileNames,
+        existingDeckAttached: autoAttachedDeckPath != null,
+      });
       const assistantId = randomUUID();
       const assistantMsg: ChatMessage = {
         id: assistantId,
@@ -8241,6 +8251,7 @@ export function ProjectView({
         runStatus: config.mode === 'daemon' ? 'running' : undefined,
         startedAt,
         preTurnFileNames,
+        ...(slideTurnKind ? { slideTurnKind } : {}),
       };
       let latestAssistantMsg: ChatMessage = assistantMsg;
       const updateConversationLatestRun = (

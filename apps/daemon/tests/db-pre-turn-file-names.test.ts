@@ -97,4 +97,27 @@ describe('preTurnFileNames persistence', () => {
     expect(msg).toBeDefined();
     expect(msg!.preTurnFileNames).toBeUndefined();
   });
+
+  it('round-trips slideTurnKind and preserves it when omitted on UPDATE (0806-N04)', () => {
+    const db = openDatabase(tempDir, { dataDir: tempDir });
+    const now = seedConversation(db);
+    upsertMessage(db, 'conv-1', {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: '',
+      runStatus: 'running',
+      startedAt: now,
+      slideTurnKind: 'edit',
+    });
+    expect(listMessages(db, 'conv-1')[0]!.slideTurnKind).toBe('edit');
+
+    upsertMessage(db, 'conv-1', {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'streamed',
+      runStatus: 'running',
+      startedAt: now,
+    });
+    expect(listMessages(db, 'conv-1')[0]!.slideTurnKind).toBe('edit');
+  });
 });

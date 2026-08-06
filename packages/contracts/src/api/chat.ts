@@ -428,6 +428,9 @@ export type PersistedAgentEvent =
     }
   | { kind: 'raw'; line: string };
 
+/** Teamver slide-only: whether this assistant turn creates or edits a deck. */
+export type ChatSlideTurnKind = 'create' | 'edit';
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -454,6 +457,11 @@ export interface ChatMessage {
   producedFiles?: ProjectFile[];
   // Diff baseline so reattach can rebuild producedFiles after reload.
   preTurnFileNames?: string[];
+  /**
+   * Durable create vs edit label for Teamver slide completion copy.
+   * Set at send time; survives reload when patch artifacts are stripped.
+   */
+  slideTurnKind?: ChatSlideTurnKind;
   feedback?: ChatMessageFeedback;
   /**
    * Request-only marker for the final assistant-message persistence pass.

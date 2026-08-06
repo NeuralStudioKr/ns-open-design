@@ -228,6 +228,7 @@ async function migrateMessages(
               run_id, run_status, last_run_event_id,
               events_json, attachments_json, comment_attachments_json,
               produced_files_json, feedback_json, pre_turn_file_names_json,
+              slide_turn_kind,
               session_mode, run_context_json, applied_plugin_snapshot_json,
               telemetry_finalized_at, started_at, ended_at, position, created_at
          FROM messages
@@ -244,10 +245,10 @@ async function migrateMessages(
          (id, conversation_id, role, content, agent_id, agent_name,
           run_id, run_status, last_run_event_id, events_json,
           attachments_json, comment_attachments_json, produced_files_json,
-          feedback_json, pre_turn_file_names_json,
+          feedback_json, pre_turn_file_names_json, slide_turn_kind,
           session_mode, run_context_json, applied_plugin_snapshot_json,
           telemetry_finalized_at, started_at, ended_at, position, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
        ON CONFLICT (id) DO UPDATE
          SET role = EXCLUDED.role,
              content = EXCLUDED.content,
@@ -262,6 +263,7 @@ async function migrateMessages(
              produced_files_json = EXCLUDED.produced_files_json,
              feedback_json = EXCLUDED.feedback_json,
              pre_turn_file_names_json = EXCLUDED.pre_turn_file_names_json,
+             slide_turn_kind = EXCLUDED.slide_turn_kind,
              session_mode = EXCLUDED.session_mode,
              run_context_json = EXCLUDED.run_context_json,
              applied_plugin_snapshot_json = EXCLUDED.applied_plugin_snapshot_json,
@@ -285,6 +287,7 @@ async function migrateMessages(
         r.produced_files_json ?? null,
         r.feedback_json ?? null,
         r.pre_turn_file_names_json ?? null,
+        r.slide_turn_kind ?? null,
         r.session_mode ?? null,
         r.run_context_json ?? null,
         r.applied_plugin_snapshot_json ?? null,

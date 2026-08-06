@@ -5,6 +5,7 @@ import {
   isPrimaryDeckFileName,
   messageIndicatesSlideEditArtifact,
   messageLooksLikeSlideEditTurn,
+  resolveSlideTurnKindForSend,
 } from '../../src/runtime/chat-message-render';
 
 function assistant(partial: Partial<ChatMessage>): ChatMessage {
@@ -113,6 +114,57 @@ describe('slide edit turn detection (0805-N05)', () => {
               mime: 'text/html',
             },
           ],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('prefers durable slideTurnKind over preTurn heuristics (0806-N04)', () => {
+    expect(
+      resolveSlideTurnKindForSend({
+        slideOnlyMvp: true,
+        preTurnFileNames: [],
+        existingDeckAttached: true,
+      }),
+    ).toBe('edit');
+    expect(
+      resolveSlideTurnKindForSend({
+        slideOnlyMvp: true,
+        preTurnFileNames: ['about.html'],
+      }),
+    ).toBe('create');
+    expect(
+      resolveSlideTurnKindForSend({
+        slideOnlyMvp: false,
+        preTurnFileNames: ['deck.html'],
+      }),
+    ).toBeUndefined();
+
+    expect(
+      messageLooksLikeSlideEditTurn(
+        assistant({
+          content: '',
+          slideTurnKind: 'edit',
+          preTurnFileNames: [],
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      messageLooksLikeSlideEditTurn(
+        assistant({
+          content: '',
+          slideTurnKind: 'create',
+          preTurnFileNames: ['deck.html'],
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      messageLooksLikeSlideEditTurn(
+        assistant({
+          content:
+            '<artifact type="element-patch" identifier="deck"><patch target-id="t1" slide-index="0" kind="set-text">Hi</patch></artifact>',
+          slideTurnKind: 'create',
+          preTurnFileNames: [],
         }),
       ),
     ).toBe(true);

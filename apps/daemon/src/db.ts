@@ -148,6 +148,7 @@ function migrate(db: SqliteDb): void {
       produced_files_json TEXT,
       feedback_json TEXT,
       pre_turn_file_names_json TEXT,
+      slide_turn_kind TEXT,
       session_mode TEXT,
       run_context_json TEXT,
       applied_plugin_snapshot_json TEXT,
@@ -316,6 +317,9 @@ function migrate(db: SqliteDb): void {
   }
   if (!messageCols.some((c: DbRow) => c.name === 'pre_turn_file_names_json')) {
     db.exec(`ALTER TABLE messages ADD COLUMN pre_turn_file_names_json TEXT`);
+  }
+  if (!messageCols.some((c: DbRow) => c.name === 'slide_turn_kind')) {
+    db.exec(`ALTER TABLE messages ADD COLUMN slide_turn_kind TEXT`);
   }
   if (!messageCols.some((c: DbRow) => c.name === 'session_mode')) {
     db.exec(`ALTER TABLE messages ADD COLUMN session_mode TEXT`);
@@ -1858,6 +1862,7 @@ export function listMessages(db: SqliteDb, conversationId: string) {
               produced_files_json AS producedFilesJson,
               feedback_json AS feedbackJson,
               pre_turn_file_names_json AS preTurnFileNamesJson,
+              slide_turn_kind AS slideTurnKind,
               session_mode AS sessionMode,
               run_context_json AS runContextJson,
               applied_plugin_snapshot_json AS appliedPluginSnapshotJson,
@@ -1905,6 +1910,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
       producedFilesJson: merged.producedFiles ? JSON.stringify(merged.producedFiles) : null,
       feedbackJson: merged.feedback ? JSON.stringify(merged.feedback) : null,
       preTurnFileNamesJson: merged.preTurnFileNames ? JSON.stringify(merged.preTurnFileNames) : null,
+      slideTurnKind: merged.slideTurnKind ?? null,
       sessionMode: merged.sessionMode ?? null,
       runContextJson: merged.runContext ? JSON.stringify(merged.runContext) : null,
       appliedPluginSnapshotJson: merged.appliedPluginSnapshot ? JSON.stringify(merged.appliedPluginSnapshot) : null,
@@ -1946,6 +1952,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
               produced_files_json AS producedFilesJson,
               feedback_json AS feedbackJson,
               pre_turn_file_names_json AS preTurnFileNamesJson,
+              slide_turn_kind AS slideTurnKind,
               session_mode AS sessionMode,
               run_context_json AS runContextJson,
               applied_plugin_snapshot_json AS appliedPluginSnapshotJson,
@@ -1970,6 +1977,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
               comment_attachments_json = COALESCE(?, comment_attachments_json),
               produced_files_json = COALESCE(?, produced_files_json), feedback_json = ?,
               pre_turn_file_names_json = COALESCE(?, pre_turn_file_names_json),
+              slide_turn_kind = COALESCE(?, slide_turn_kind),
               session_mode = ?, run_context_json = ?, applied_plugin_snapshot_json = ?,
               telemetry_finalized_at = CASE
                 WHEN ? THEN COALESCE(telemetry_finalized_at, ?)
@@ -1991,6 +1999,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
       merged.producedFiles ? JSON.stringify(merged.producedFiles) : null,
       merged.feedback ? JSON.stringify(merged.feedback) : null,
       merged.preTurnFileNames ? JSON.stringify(merged.preTurnFileNames) : null,
+      normalizeSlideTurnKindForStorage(merged.slideTurnKind),
       normalizeMessageSessionModeForStorage(merged.sessionMode),
       merged.runContext ? JSON.stringify(merged.runContext) : null,
       merged.appliedPluginSnapshot ? JSON.stringify(merged.appliedPluginSnapshot) : null,
@@ -2007,10 +2016,10 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
       )
       .get(conversationId) as DbRow | undefined;
     const position = (max?.m ?? -1) + 1;
-    // 23 values: id, conversation_id, role, content, agent_id, agent_name,
+    // 24 values: id, conversation_id, role, content, agent_id, agent_name,
     // run_id, run_status, last_run_event_id, events_json, attachments_json,
     // comment_attachments_json, produced_files_json, feedback_json,
-    // pre_turn_file_names_json, session_mode, run_context_json,
+    // pre_turn_file_names_json, slide_turn_kind, session_mode, run_context_json,
     // applied_plugin_snapshot_json, telemetry_finalized_at, started_at,
     // ended_at, position, created_at.
     db.prepare(
@@ -2018,10 +2027,10 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
          (id, conversation_id, role, content, agent_id, agent_name,
           run_id, run_status, last_run_event_id, events_json,
           attachments_json, comment_attachments_json, produced_files_json,
-          feedback_json, pre_turn_file_names_json,
+          feedback_json, pre_turn_file_names_json, slide_turn_kind,
           session_mode, run_context_json, applied_plugin_snapshot_json,
           telemetry_finalized_at, started_at, ended_at, position, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       merged.id,
       conversationId,
@@ -2038,6 +2047,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
       merged.producedFiles ? JSON.stringify(merged.producedFiles) : null,
       merged.feedback ? JSON.stringify(merged.feedback) : null,
       merged.preTurnFileNames ? JSON.stringify(merged.preTurnFileNames) : null,
+      normalizeSlideTurnKindForStorage(merged.slideTurnKind),
       normalizeMessageSessionModeForStorage(merged.sessionMode),
       merged.runContext ? JSON.stringify(merged.runContext) : null,
       merged.appliedPluginSnapshot ? JSON.stringify(merged.appliedPluginSnapshot) : null,
@@ -2064,6 +2074,7 @@ export function upsertMessage(db: SqliteDb, conversationId: string, m: DbRow) {
               produced_files_json AS producedFilesJson,
               feedback_json AS feedbackJson,
               pre_turn_file_names_json AS preTurnFileNamesJson,
+              slide_turn_kind AS slideTurnKind,
               session_mode AS sessionMode,
               run_context_json AS runContextJson,
               applied_plugin_snapshot_json AS appliedPluginSnapshotJson,
@@ -2608,6 +2619,7 @@ function normalizeMessage(row: DbRow) {
     producedFiles: parseJsonOrUndef(row.producedFilesJson),
     feedback: parseJsonOrUndef(row.feedbackJson),
     preTurnFileNames: parseJsonOrUndef(row.preTurnFileNamesJson),
+    slideTurnKind: normalizeSlideTurnKind(row.slideTurnKind),
     sessionMode: normalizeMessageSessionMode(row.sessionMode),
     runContext: parseJsonOrUndef(row.runContextJson),
     appliedPluginSnapshot: parseJsonOrUndef(row.appliedPluginSnapshotJson),
@@ -2615,6 +2627,14 @@ function normalizeMessage(row: DbRow) {
     startedAt: row.startedAt ?? undefined,
     endedAt: row.endedAt ?? undefined,
   };
+}
+
+function normalizeSlideTurnKind(value: unknown): 'create' | 'edit' | undefined {
+  return value === 'create' || value === 'edit' ? value : undefined;
+}
+
+function normalizeSlideTurnKindForStorage(value: unknown): 'create' | 'edit' | null {
+  return value === 'create' || value === 'edit' ? value : null;
 }
 
 function normalizeMessageSessionMode(value: unknown): ChatSessionMode | undefined {
@@ -3015,6 +3035,7 @@ function messageRowForPgUpsert(messageId: string, merged: DbRow, events: DbRow[]
     producedFiles: merged.producedFiles,
     feedback: merged.feedback,
     preTurnFileNames: merged.preTurnFileNames,
+    slideTurnKind: merged.slideTurnKind,
     sessionMode: merged.sessionMode,
     runContext: merged.runContext,
     appliedPluginSnapshot: merged.appliedPluginSnapshot,
@@ -3057,6 +3078,7 @@ async function upsertMessageRowToPostgresMerged(
     preTurnFileNamesJson: durable.preTurnFileNames
       ? JSON.stringify(durable.preTurnFileNames)
       : null,
+    slideTurnKind: durable.slideTurnKind ?? null,
     sessionMode: durable.sessionMode ?? null,
     runContextJson: durable.runContext ? JSON.stringify(durable.runContext) : null,
     appliedPluginSnapshotJson: durable.appliedPluginSnapshot
