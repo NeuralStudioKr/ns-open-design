@@ -3,6 +3,7 @@ import { useT } from '../i18n';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { isAnchoredCssPosition } from '../edit-mode/resize-math';
 import { canAdjustZOrderTarget } from '../edit-mode/manual-edit-z-order';
+import { normalizeManualEditZIndexValue } from '../edit-mode/manual-edit-style-values';
 import type { GroupAlignKind, GroupDistributeKind } from '../edit-mode/manual-edit-group-align';
 import type { ZOrderAction, ZOrderCapabilities } from '../edit-mode/manual-edit-z-order';
 import { ManualEditZOrderControls } from './ManualEditZOrderControls';
@@ -332,6 +333,15 @@ export function ManualEditPanel({
                       disabled={zOrderBusy}
                       onZOrder={onZOrder}
                     />
+                    {!isMultiSelect && targetForInspector ? (
+                      <UnitRow
+                        label={t('manualEdit.zIndex')}
+                        value={zIndexInputValue(draft.styles.zIndex)}
+                        placeholder={t('manualEdit.zIndexAuto')}
+                        onChange={(value) => changeTargetStyle('zIndex', value)}
+                        unit=""
+                      />
+                    ) : null}
                   </div>
                 </section>
               ) : null}
@@ -784,6 +794,10 @@ function normalizeHexColor(value: string): string | null {
 
 function styleLabel(key: keyof ManualEditStyles): string {
   return key.replace(/[A-Z]/g, (match) => ` ${match.toLowerCase()}`);
+}
+
+function zIndexInputValue(value: string | undefined): string {
+  return normalizeManualEditZIndexValue(value ?? '');
 }
 
 function StyleInspector({

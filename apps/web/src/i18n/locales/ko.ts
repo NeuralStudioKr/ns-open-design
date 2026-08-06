@@ -2057,6 +2057,8 @@ export const ko: Dict = {
   'manualEdit.layersDragHint': '레이어를 위아래로 드래그해 앞에 보일 요소를 바꿀 수 있습니다.',
   'manualEdit.arrange': '순서',
   'manualEdit.arrangeMultiHint': '선택한 레이어마다 각자의 겹침 그룹 안에서 앞뒤 순서를 바꿉니다.',
+  'manualEdit.zIndex': 'Z-index',
+  'manualEdit.zIndexAuto': 'auto',
   'manualEdit.editableCount': '{count}개 편집 가능',
   'manualEdit.hiddenBadge': '숨김',
   'manualEdit.title': '수동 편집기',

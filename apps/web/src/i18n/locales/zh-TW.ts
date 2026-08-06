@@ -2057,6 +2057,8 @@ export const zhTW: Dict = {
   'manualEdit.layersDragHint': 'Drag layers up or down to change which element appears in front.',
   'manualEdit.arrange': 'Arrange',
   'manualEdit.arrangeMultiHint': 'Changes front/back order for each selected layer within its own group.',
+  'manualEdit.zIndex': 'Z-index',
+  'manualEdit.zIndexAuto': 'auto',
   'manualEdit.editableCount': '{count} 個可編輯',
   'manualEdit.hiddenBadge': '隱藏',
   'manualEdit.title': '手動編輯器',

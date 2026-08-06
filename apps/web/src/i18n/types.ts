@@ -2723,6 +2723,8 @@ export interface Dict {
   'manualEdit.layersDragHint': string;
   'manualEdit.arrange': string;
   'manualEdit.arrangeMultiHint': string;
+  'manualEdit.zIndex': string;
+  'manualEdit.zIndexAuto': string;
   'manualEdit.editableCount': string;
   'manualEdit.hiddenBadge': string;
   'manualEdit.title': string;

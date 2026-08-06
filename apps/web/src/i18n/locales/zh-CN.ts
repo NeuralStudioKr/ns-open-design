@@ -2057,6 +2057,8 @@ export const zhCN: Dict = {
   'manualEdit.layersDragHint': 'Drag layers up or down to change which element appears in front.',
   'manualEdit.arrange': 'Arrange',
   'manualEdit.arrangeMultiHint': 'Changes front/back order for each selected layer within its own group.',
+  'manualEdit.zIndex': 'Z-index',
+  'manualEdit.zIndexAuto': 'auto',
   'manualEdit.editableCount': '{count} 个可编辑元素',
   'manualEdit.hiddenBadge': '隐藏',
   'manualEdit.title': '手动编辑器',
