@@ -262,4 +262,36 @@ describe('teamverProjectPreviewScope', () => {
     );
     expect(fetchTeamverDaemon).not.toHaveBeenCalled();
   });
+
+  it('coalesces parallel warmTeamverProjectPreviewPrefixes into one POST', async () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    let resolveBatch!: (value: Response) => void;
+    vi.mocked(fetchTeamverDaemon).mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveBatch = resolve;
+        }),
+    );
+
+    const first = warmTeamverProjectPreviewPrefixes([{ projectId: 'a', file: 'a.html' }]);
+    const second = warmTeamverProjectPreviewPrefixes([{ projectId: 'b', file: 'b.html' }]);
+    for (let i = 0; i < 20 && vi.mocked(fetchTeamverDaemon).mock.calls.length === 0; i += 1) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+    resolveBatch(
+      new Response(
+        JSON.stringify({
+          results: [
+            { projectId: 'a', ok: true, url: '/api/projects/a/preview/s/a.html', file: 'a.html' },
+            { projectId: 'b', ok: true, url: '/api/projects/b/preview/s/b.html', file: 'b.html' },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    await Promise.all([first, second]);
+    expect(peekTeamverProjectPreviewPrefix('a')).toBe('/api/projects/a/preview/s');
+    expect(peekTeamverProjectPreviewPrefix('b')).toBe('/api/projects/b/preview/s');
+  });
 });

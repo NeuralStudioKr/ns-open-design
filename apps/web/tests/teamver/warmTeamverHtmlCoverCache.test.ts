@@ -19,12 +19,16 @@ import {
   resetTeamverProjectPreviewScopeForTests,
   seedTeamverProjectPreviewPrefixForTests,
 } from '../../src/teamver/teamverProjectPreviewScope';
-import { warmTeamverHtmlCoverCache } from '../../src/teamver/warmTeamverHtmlCoverCache';
+import {
+  __resetWarmTeamverHtmlCoverCacheForTests,
+  warmTeamverHtmlCoverCache,
+} from '../../src/teamver/warmTeamverHtmlCoverCache';
 
 describe('warmTeamverHtmlCoverCache (0806-N07)', () => {
   afterEach(() => {
     clearHtmlCoverCacheStoreForTests();
     resetTeamverProjectPreviewScopeForTests();
+    __resetWarmTeamverHtmlCoverCacheForTests();
     vi.mocked(isTeamverEmbedMode).mockReturnValue(false);
     vi.mocked(fetchTeamverDaemon).mockReset();
   });

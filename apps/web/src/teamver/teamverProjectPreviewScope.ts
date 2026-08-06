@@ -131,51 +131,71 @@ export type WarmPreviewPrefixItem = {
   file?: string;
 };
 
+/** Pending items + single drain — concurrent warmers share one POST. */
+let previewPrefixWarmPending: WarmPreviewPrefixItem[] = [];
+let previewPrefixWarmInflight: Promise<void> | null = null;
+
+async function drainPreviewPrefixWarm(): Promise<void> {
+  while (previewPrefixWarmPending.length > 0) {
+    const queued = previewPrefixWarmPending;
+    previewPrefixWarmPending = [];
+    const need: WarmPreviewPrefixItem[] = [];
+    const seen = new Set<string>();
+    for (const item of queued) {
+      const id = item.projectId?.trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      if (peekTeamverProjectPreviewPrefix(id)) continue;
+      need.push({
+        projectId: id,
+        ...(sanitizePreviewEntryFile(item.file)
+          ? { file: sanitizePreviewEntryFile(item.file) }
+          : {}),
+      });
+      if (need.length >= BATCH_MAX) break;
+    }
+    if (need.length === 0) continue;
+
+    try {
+      const resp = await fetchTeamverDaemon("/api/projects/preview-url-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: need }),
+      });
+      if (!resp.ok) continue;
+      let body: ProjectPreviewUrlBatchResponse;
+      try {
+        body = (await resp.json()) as ProjectPreviewUrlBatchResponse;
+      } catch {
+        continue;
+      }
+      for (const row of body.results ?? []) {
+        if (!row || row.ok !== true) continue;
+        seedPrefix(row.projectId, row.url);
+      }
+    } catch {
+      // Soft-fail — cards fall back to per-project GET mint.
+    }
+  }
+}
+
 /**
  * Warm many preview prefixes with one POST (home Recent HTML covers).
  * Seeds `prefixByProject` so subsequent resolve calls skip per-card GETs.
+ * Concurrent callers coalesce onto one in-flight drain (N05 ×1 baseline).
  */
 export async function warmTeamverProjectPreviewPrefixes(
   items: readonly WarmPreviewPrefixItem[],
 ): Promise<void> {
   if (!isTeamverEmbedMode()) return;
-  const need: WarmPreviewPrefixItem[] = [];
-  const seen = new Set<string>();
-  for (const item of items) {
-    const id = item.projectId?.trim();
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    if (peekTeamverProjectPreviewPrefix(id)) continue;
-    need.push({
-      projectId: id,
-      ...(sanitizePreviewEntryFile(item.file)
-        ? { file: sanitizePreviewEntryFile(item.file) }
-        : {}),
+  if (items.length === 0) return;
+  previewPrefixWarmPending.push(...items);
+  if (!previewPrefixWarmInflight) {
+    previewPrefixWarmInflight = drainPreviewPrefixWarm().finally(() => {
+      previewPrefixWarmInflight = null;
     });
-    if (need.length >= BATCH_MAX) break;
   }
-  if (need.length === 0) return;
-
-  try {
-    const resp = await fetchTeamverDaemon("/api/projects/preview-url-batch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items: need }),
-    });
-    if (!resp.ok) return;
-    let body: ProjectPreviewUrlBatchResponse;
-    try {
-      body = (await resp.json()) as ProjectPreviewUrlBatchResponse;
-    } catch {
-      return;
-    }
-    for (const row of body.results ?? []) {
-      if (!row || row.ok !== true) continue;
-      seedPrefix(row.projectId, row.url);
-    }
-  } catch {
-    // Soft-fail — cards fall back to per-project GET mint.
-  }
+  await previewPrefixWarmInflight;
 }
 
 export function projectScopedPreviewUrl(prefix: string, filePath: string): string {
@@ -200,6 +220,8 @@ export function invalidateTeamverProjectPreviewPrefix(projectId?: string): void 
 export function resetTeamverProjectPreviewScopeForTests(): void {
   prefixByProject.clear();
   inflight.clear();
+  previewPrefixWarmPending = [];
+  previewPrefixWarmInflight = null;
 }
 
 /** @internal vitest only — seed cache without minting. */
