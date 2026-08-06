@@ -4491,7 +4491,10 @@ const HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS = 200;
 /** Wall-clock deadline so hung GETs cannot leave "loading…" forever. */
 const HTML_PREVIEW_SOURCE_WALL_MS = 30_000;
 const HTML_PREVIEW_SOURCE_FIRST_RETRY_MS = 400;
-const HTML_PREVIEW_SOURCE_RETRY_MS = 1_200;
+/** Soft-retry backoff ceiling (exponential from FIRST, ×2 each attempt). */
+const HTML_PREVIEW_SOURCE_RETRY_MAX_MS = 5_000;
+/** Cap soft retries even when the wall has not elapsed (~0.4+0.8+1.6+3.2+5+5s). */
+const HTML_PREVIEW_SOURCE_MAX_SOFT_RETRIES = 6;
 
 const DECK_SLIDE_MARKUP_RE =
   /<(?:section|div)\b[^>]*\b(?:class\s*=\s*["'][^"']*\bslide\b|data-slide)/i;
@@ -6035,6 +6038,7 @@ function HtmlViewer({
     }
     const retryUntil = previewSourceRetryUntilRef.current.until;
     let nextSoftRetryDelay = HTML_PREVIEW_SOURCE_FIRST_RETRY_MS;
+    let softRetryCount = 0;
 
     const clearPreviewSourceWall = () => {
       if (previewSourceWallTimerRef.current != null) {
@@ -6082,13 +6086,21 @@ function HtmlViewer({
           armPreviewSourceWall();
           return false;
         }
+        if (softRetryCount >= HTML_PREVIEW_SOURCE_MAX_SOFT_RETRIES) {
+          armPreviewSourceWall();
+          return false;
+        }
         if (streamingRef.current && liveHtmlPaintsPreviewRef.current) {
           return false;
         }
         setSourceLoadFailed(false);
         armPreviewSourceWall();
+        softRetryCount += 1;
         const delay = nextSoftRetryDelay;
-        nextSoftRetryDelay = HTML_PREVIEW_SOURCE_RETRY_MS;
+        nextSoftRetryDelay = Math.min(
+          nextSoftRetryDelay * 2,
+          HTML_PREVIEW_SOURCE_RETRY_MAX_MS,
+        );
         softRetryTimer = setTimeout(runFetch, delay);
         return true;
       };

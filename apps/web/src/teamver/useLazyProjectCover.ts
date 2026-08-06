@@ -30,9 +30,21 @@ export function useLazyProjectCover(
 ): LazyProjectCoverState {
   const { deferUntilVisible = true, allowFilesFallback = true } = options;
   const anchorRef = useRef<HTMLDivElement>(null);
+  const projectRef = useRef(project);
+  projectRef.current = project;
+
+  const projectId = project.id;
+  const entryFile = project.metadata?.entryFile ?? "";
+
   const [visible, setVisible] = useState(!deferUntilVisible);
   const [override, setOverride] = useState<ProjectCoverFile | null>(null);
   const [fetched, setFetched] = useState(() => !projectNeedsCoverFileFetch(project));
+
+  // New project row (or entryFile identity) — drop prior override so we re-resolve.
+  useEffect(() => {
+    setOverride(null);
+    setFetched(!projectNeedsCoverFileFetch(projectRef.current));
+  }, [projectId, entryFile]);
 
   useEffect(() => {
     if (!deferUntilVisible) return;
@@ -51,16 +63,17 @@ export function useLazyProjectCover(
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [deferUntilVisible, project.id]);
+  }, [deferUntilVisible, projectId]);
 
   useEffect(() => {
     if (!visible || fetched) return;
-    if (!projectNeedsCoverFileFetch(project)) {
+    const current = projectRef.current;
+    if (!projectNeedsCoverFileFetch(current)) {
       setFetched(true);
       return;
     }
     let cancelled = false;
-    void resolveProjectCoverFile(project, { allowFilesFallback }).then((next) => {
+    void resolveProjectCoverFile(current, { allowFilesFallback }).then((next) => {
       if (cancelled) return;
       setOverride(next);
       setFetched(true);
@@ -68,7 +81,9 @@ export function useLazyProjectCover(
     return () => {
       cancelled = true;
     };
-  }, [allowFilesFallback, project, visible, fetched]);
+    // Intentionally omit full `project` — list polls create new object identities
+    // and would cancel+restart /files cover resolve for every card.
+  }, [allowFilesFallback, projectId, entryFile, visible, fetched]);
 
   return {
     anchorRef,

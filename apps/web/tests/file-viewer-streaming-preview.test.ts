@@ -134,9 +134,13 @@ describe("FileViewer streaming slide preview", () => {
     );
     expect(source).toContain("previewSourceFetchGenerationRef");
     expect(source).toContain("Debounce refresh-key churn so soft-sticky auth recovery");
-    // Disk effect must not list liveHtml itself — only paint gate + streaming.
+    // Disk effect must not list liveHtml / liveHtmlPaintsPreview — paint gate via ref.
     expect(source).toMatch(
-      /hasLiveHtml,\s*\n\s*liveHtmlPaintsPreview,\s*\n\s*streaming,\s*\n\s*projectId,/,
+      /hasLiveHtml,\s*\n\s*streaming,\s*\n\s*projectId,/,
+    );
+    expect(source).toContain("liveHtmlPaintsPreviewRef.current");
+    expect(source).not.toMatch(
+      /hasLiveHtml,\s*\n\s*liveHtmlPaintsPreview,\s*\n\s*streaming,/,
     );
     expect(source).toMatch(/setTimeout\(runFetch, HTML_PREVIEW_DISK_FETCH_DEBOUNCE_MS\)/);
   });
@@ -174,7 +178,7 @@ describe("FileViewer streaming slide preview", () => {
     );
     expect(source).toContain("scheduleSoftRetry");
     expect(source).toContain(
-      "if (streaming && hasLiveHtml && liveHtmlPaintsPreview) return",
+      "if (streaming && hasLiveHtml && liveHtmlPaintsPreviewRef.current) return",
     );
     expect(source).toContain("Clear sticky unavailable for this attempt");
   });
@@ -183,9 +187,11 @@ describe("FileViewer streaming slide preview", () => {
     const source = readSource("src/components/FileViewer.tsx");
     expect(source).toContain("Auth blip / S3-read lag / unlink+add race");
     expect(source).toContain("HTML_PREVIEW_SOURCE_FIRST_RETRY_MS");
-    expect(source).toContain("HTML_PREVIEW_SOURCE_RETRY_MS");
+    expect(source).toContain("HTML_PREVIEW_SOURCE_RETRY_MAX_MS");
+    expect(source).toContain("HTML_PREVIEW_SOURCE_MAX_SOFT_RETRIES");
     expect(source).toContain("previewSourceRetryUntilRef");
     expect(source).toContain("softRetryTimer");
+    expect(source).toContain("softRetryCount");
     expect(source).toContain("abort.signal.aborted");
     expect(source).toContain("liveHtmlPaintsPreviewRef");
     expect(source).toContain(
