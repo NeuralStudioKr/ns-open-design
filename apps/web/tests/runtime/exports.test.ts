@@ -50,6 +50,18 @@ describe('exportAsHtml / exportAsZip lean srcdoc', () => {
       /exportAsZip[\s\S]*?buildSrcdoc\(html,\s*\{\s*exportDocument:\s*true\s*\}\)/,
     );
   });
+
+  it('avoids double repairArtifactDocumentHead on PDF export srcdoc path', () => {
+    expect(exportsSource).toContain(
+      'Single repair via buildSrcdoc intact-head / repair gate',
+    );
+    expect(exportsSource).toContain(
+      'buildBlobSafeSrcdoc(patchArtifactDeckPrintCss(html)',
+    );
+    expect(exportsSource).not.toMatch(
+      /buildBlobSafeSrcdoc\(\s*repairArtifactDocumentHead\(\s*patchArtifactDeckPrintCss/,
+    );
+  });
 });
 
 describe('resolveExportDownloadTitle', () => {

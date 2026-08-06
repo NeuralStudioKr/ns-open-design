@@ -1398,6 +1398,8 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
   instructionText?: string;
   /** When set, skip a second disk fetch (persistArtifact cache). */
   currentHtml?: string | null;
+  /** Pre-materialized sections from persist reconcile. */
+  currentSlides?: readonly { outerHtml: string; openTag: string }[];
 }): Promise<DeckPatchMergeResult> {
   const resolvedBody = resolveElementPatchBodyForApply({
     patchBody: input.patchBody,
@@ -1471,6 +1473,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     patches: parsed.patches,
     allowedSlideIndexes: input.allowedSlideIndexes,
     commentAttachments: input.commentAttachments,
+    currentSlides: input.currentSlides,
   });
   const applied = applyElementPatches({
     currentHtml,
@@ -1676,6 +1679,8 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   instructionText?: string;
   /** When set, skip a second disk fetch (persistArtifact cache). */
   currentHtml?: string | null;
+  /** Pre-materialized sections from persist reconcile. */
+  currentSlides?: readonly { outerHtml: string; openTag: string }[];
 }): Promise<DeckPatchMergeResult> {
   // Fetch current deck first so parse can recover missing
   // `data-slide-index` via data-screen-label / comment scope.
@@ -1767,6 +1772,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
     allowedSlideIndexes: input.allowedSlideIndexes,
     commentAttachments: input.commentAttachments,
     instructionText: input.instructionText,
+    currentSlides: input.currentSlides,
   });
   if (!result.ok) {
     devLog.warn('[deck-patch] scoped deck patch failed', {
@@ -1788,6 +1794,7 @@ async function resolvePersistCommentScope(input: {
 }): Promise<{
   attachments: readonly ChatCommentAttachment[];
   allowedSlideIndexes?: number[];
+  sections?: readonly { outerHtml: string; openTag: string }[];
 }> {
   if (input.commentAttachments.length === 0) {
     return { attachments: input.commentAttachments };
@@ -4245,6 +4252,8 @@ export function ProjectView({
       const persistCommentAttachments = persistCommentScope.attachments;
       let scopedAllowedSlideIndexes = persistCommentScope.allowedSlideIndexes
         ?? scopedCommentSlideIndexesFromAttachments(persistCommentAttachments);
+      // Reuse reconcile sections for applyScoped / element-patch rediscovery.
+      const persistCommentSections = persistCommentScope.sections;
       // deck-patch / element-patch merges already run stabilizeVisualMarkDeckHtml
       // when comment attachments are present — skip a second full-deck pass.
       const visualMarksAlreadyStabilized =
@@ -4275,6 +4284,7 @@ export function ProjectView({
           commentAttachments: persistCommentAttachments,
           instructionText: runVisiblePromptRef.current,
           currentHtml: diskHtmlForTarget,
+          currentSlides: persistCommentSections,
         });
         if (!merged.ok) {
           // Empty / patch-less element-patch means the model chose the
@@ -4346,6 +4356,7 @@ export function ProjectView({
           commentAttachments: persistCommentAttachments,
           instructionText: runVisiblePromptRef.current,
           currentHtml: diskHtmlForTarget,
+          currentSlides: persistCommentSections,
         });
         if (!merged.ok) {
           const runIsScoped = persistCommentAttachments.length > 0;

@@ -1346,6 +1346,10 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain('.replace(/\\shttp-equiv\\s*=');
     expect(sourcePatchesSource).toContain("'color-profile'");
     expect(sourcePatchesSource).toContain('presentationAttrs');
+    // Fail-closed URL/presentation deny widened (blob/file/data/protocol-relative + url()/var()).
+    expect(sourcePatchesSource).toContain('blob\\\\s*:|file\\\\s*:|data\\\\s*:|//');
+    expect(sourcePatchesSource).toContain('\\\\burl\\\\s*\\\\(|\\\\bvar\\\\s*\\\\(');
+    expect(sourcePatchesSource).toContain('options?.parsedDoc ?? parseSource(source)');
   });
 
   it('exposes single-document mutate/batch apply helpers', () => {

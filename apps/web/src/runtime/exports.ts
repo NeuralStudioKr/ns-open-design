@@ -1865,7 +1865,8 @@ export async function exportAsPdf(
   // Generate a per-export nonce so the print-ready handshake is resistant to
   // spoofing by untrusted scripts inside the exported artifact.
   const nonce = randomUUID();
-  let doc = buildBlobSafeSrcdoc(repairArtifactDocumentHead(patchArtifactDeckPrintCss(html)), {
+  // Single repair via buildSrcdoc intact-head / repair gate (was repair then rebuild).
+  let doc = buildBlobSafeSrcdoc(patchArtifactDeckPrintCss(html), {
     ...opts,
     exportDocument: true,
     deck: false,

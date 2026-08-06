@@ -75,7 +75,7 @@ export function applyManualEditPatch(
     return { ok: true, source: sanitizeManualEditFullSource(patch.source) };
   }
 
-  const doc = parseSource(source);
+  const doc = options?.parsedDoc ?? parseSource(source);
   if (!doc) return { ok: false, source, error: 'Could not parse source.' };
 
   const mutated = mutateManualEditPatch(doc, patch, scope, hint);
@@ -1499,31 +1499,33 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     // Inline style can carry expression()/url(javascript:) without a DOM walk.
     .replace(/\sstyle\s*=\s*(['"])[\s\S]*?\1/gi, '')
     .replace(/\sstyle\s*=\s*[^\s>]+/gi, '')
-    // SVG presentation attrs with javascript/vbscript/remote url() paint servers.
+    // SVG presentation attrs — fail closed on any url()/var()/expression()/scheme
+    // (DOM walk uses isSafeManualEditPresentationCssValue; regex cannot be as precise).
     .replace(
       new RegExp(
-        `\\s(?:${presentationAttrs})\\s*=\\s*(['"])[\\s\\S]*?(?:javascript|vbscript|expression\\s*\\(|url\\s*\\(\\s*['"]?\\s*https?:)[\\s\\S]*?\\1`,
+        `\\s(?:${presentationAttrs})\\s*=\\s*(['"])[\\s\\S]*?(?:javascript|vbscript|expression\\s*\\(|\\burl\\s*\\(|\\bvar\\s*\\()[\\s\\S]*?\\1`,
         'gi',
       ),
       '',
     )
     .replace(
       new RegExp(
-        `\\s(?:${presentationAttrs})\\s*=\\s*(?:javascript|vbscript|expression\\s*\\(|url\\s*\\(\\s*https?:)[^\\s>]*`,
+        `\\s(?:${presentationAttrs})\\s*=\\s*(?:javascript|vbscript|expression\\s*\\(|url\\s*\\(|var\\s*\\()[^\\s>]*`,
+        'gi',
+      ),
+      '',
+    )
+    // Navigable URL attrs — align deny list with isSafeManualEditUrl (blob/file/data/protocol-relative).
+    .replace(
+      new RegExp(
+        `\\s(?:${urlAttrs})\\s*=\\s*(['"])\\s*(?:javascript|vbscript|blob\\s*:|file\\s*:|data\\s*:|//)[\\s\\S]*?\\1`,
         'gi',
       ),
       '',
     )
     .replace(
       new RegExp(
-        `\\s(?:${urlAttrs})\\s*=\\s*(['"])\\s*(?:javascript|vbscript|data\\s*:\\s*text\\s*\\/\\s*html)[\\s\\S]*?\\1`,
-        'gi',
-      ),
-      '',
-    )
-    .replace(
-      new RegExp(
-        `\\s(?:${urlAttrs})\\s*=\\s*(?:javascript|vbscript|data\\s*:\\s*text\\s*\\/\\s*html)[^\\s>]*`,
+        `\\s(?:${urlAttrs})\\s*=\\s*(?:javascript|vbscript|blob\\s*:|file\\s*:|data\\s*:|//)[^\\s>]*`,
         'gi',
       ),
       '',

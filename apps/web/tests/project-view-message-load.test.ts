@@ -448,6 +448,9 @@ describe("ProjectView message loading", () => {
     expect(deckSource).toContain("One section materialization for text-verify + label conflict");
     expect(deckSource).toContain("sharedCurrentSlides");
     expect(deckSource).toContain("allPatchesVerified");
+    expect(deckSource).toContain("refreshSectionsIfNeeded");
+    expect(viewSource).toContain("persistCommentSections");
+    expect(viewSource).toContain("currentSlides: persistCommentSections");
   });
 
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {

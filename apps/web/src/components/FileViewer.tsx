@@ -9590,7 +9590,7 @@ function HtmlViewer({
       }
       return true;
     }
-    // One Document for style read + no-op reconcile (was parse ×2 on no-op flush).
+    // One Document for style read + no-op reconcile + apply (was parse ×2/×3).
     const parsedDoc = parseManualEditSource(baseSource);
     const sourceStyles = readManualEditStyles(baseSource, pending.id, {}, parsedDoc);
     const effectiveStyles = diffManualEditStylePatch(baseSource, pending.id, pending.styles, {
@@ -9603,6 +9603,9 @@ function HtmlViewer({
     const ok = await applyManualEdit(
       { id: pending.id, kind: 'set-style', styles: effectiveStyles },
       pending.label,
+      undefined,
+      undefined,
+      parsedDoc,
     );
     if (!ok) {
       manualEditPendingStyleRef.current = restoreManualEditPendingStyleAfterFailedFlush(
@@ -9949,6 +9952,7 @@ function HtmlViewer({
     label: string,
     scope?: { slideIndex?: number },
     hint?: { id?: string; currentText?: string; htmlHint?: string; selector?: string },
+    sharedParsedDoc?: Document | null,
   ): Promise<boolean> {
     if (manualEditSavingRef.current) return false;
     const baseSource = manualEditPatchBaseSource({
@@ -9967,6 +9971,7 @@ function HtmlViewer({
       // Sanitize on the live Document before serialize — avoids a second
       // full-document DOMParser pass via sanitizeManualEditFullSource.
       // Capture target snapshot for set-style reconcile (skip a third parse).
+      // Prefer flush-shared Document when style-diff already parsed the deck.
       const result = applyManualEditPatch(
         baseSource,
         patch,
@@ -9975,6 +9980,7 @@ function HtmlViewer({
         {
           sanitize: isManualEditFullHtmlDocument(baseSource),
           captureTargetSnapshot: patch.kind === 'set-style',
+          parsedDoc: sharedParsedDoc,
         },
       );
       if (!result.ok) {
@@ -10129,7 +10135,9 @@ function HtmlViewer({
     sharedParsedDoc?: Document | null,
   ): Promise<boolean> {
     if (patches.length === 0) return true;
-    if (patches.length === 1) return applyManualEdit(patches[0]!, label);
+    if (patches.length === 1) {
+      return applyManualEdit(patches[0]!, label, undefined, undefined, sharedParsedDoc);
+    }
     if (manualEditSavingRef.current) return false;
     const baseSource = manualEditPatchBaseSource({
       manualEditMode,

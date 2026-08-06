@@ -112,7 +112,11 @@ export function isDrawnVisualMarkAttachment(attachment: ChatCommentAttachment): 
 export function graftVisualMarksIntoDeckHtml(
   currentHtml: string,
   commentAttachments: readonly ChatCommentAttachment[],
-  options?: { sanitize?: boolean },
+  options?: {
+    sanitize?: boolean;
+    /** Pre-materialized current sections — skip body extract when stabilize shares them. */
+    currentSlides?: readonly { outerHtml: string }[];
+  },
 ): string | null {
   const ops: Array<{ op: 'replace'; slideIndex: number; html: string }> = [];
   // One empty host Document for all mark fragment scrubs in this graft pass.
@@ -120,7 +124,8 @@ export function graftVisualMarksIntoDeckHtml(
   // One section materialization (was extractSlideByIndex × marks).
   // Work from the original slides so multi-mark grafts stay O(sections), not
   // O(marks × sections) via repeated applyDeckPatch scans.
-  const currentSlides = extractTopLevelSlideSections(extractDeckBodyContent(currentHtml));
+  const currentSlides = options?.currentSlides
+    ?? extractTopLevelSlideSections(extractDeckBodyContent(currentHtml));
   for (const attachment of commentAttachments) {
     // Accept any drawn visual mark — the reconciler may have assigned a real
     // element id from bounds overlap, but the user's intent is still to ADD
@@ -412,12 +417,18 @@ export function repairWipedSlidesForVisualMarks(
   currentHtml: string,
   mergedHtml: string,
   commentAttachments: readonly ChatCommentAttachment[],
+  options?: {
+    currentSlides?: readonly { outerHtml: string }[];
+    mergedSlides?: readonly { outerHtml: string }[];
+  },
 ): string {
   const ops: Array<{ op: 'replace'; slideIndex: number; html: string }> = [];
   const fragmentHost = parseManualEditSource('<!doctype html><html><body></body></html>');
   // One section materialization each (was extractSlideByIndex × attachments × 2).
-  const currentSlides = extractTopLevelSlideSections(extractDeckBodyContent(currentHtml));
-  const mergedSlides = extractTopLevelSlideSections(extractDeckBodyContent(mergedHtml));
+  const currentSlides = options?.currentSlides
+    ?? extractTopLevelSlideSections(extractDeckBodyContent(currentHtml));
+  const mergedSlides = options?.mergedSlides
+    ?? extractTopLevelSlideSections(extractDeckBodyContent(mergedHtml));
   for (const attachment of commentAttachments) {
     if (!isScreenshotOnlyVisualCommentTarget(attachment)) continue;
     if (!hasValidDeckSlideIndex(attachment)) continue;
@@ -479,11 +490,15 @@ export function stabilizeVisualMarkDeckHtml(
     // salvage / ProjectView persist) — skip graft sanitize to avoid 2× parse.
     const grafted = graftVisualMarksIntoDeckHtml(currentHtml, commentAttachments, {
       sanitize: false,
+      currentSlides,
     });
     return grafted ?? currentHtml;
   }
 
-  return repairWipedSlidesForVisualMarks(currentHtml, nextHtml, commentAttachments);
+  return repairWipedSlidesForVisualMarks(currentHtml, nextHtml, commentAttachments, {
+    currentSlides,
+    mergedSlides: nextSlides,
+  });
 }
 
 export function applyScopedDeckPatchToHtml(input: {
@@ -493,6 +508,8 @@ export function applyScopedDeckPatchToHtml(input: {
   allowedSlideIndexes?: readonly number[];
   commentAttachments?: readonly ChatCommentAttachment[];
   instructionText?: string;
+  /** Pre-materialized current sections from persist reconcile — skip rematerialize. */
+  currentSlides?: readonly { outerHtml: string; openTag: string }[];
 }): DeckPatchMergeResult {
   const parsed = input.patch
     ? { ok: true as const, patch: input.patch }
@@ -506,9 +523,10 @@ export function applyScopedDeckPatchToHtml(input: {
   const currentHtml = input.currentHtml;
   // One section materialization shared by coerce + narrow merge (was coerce
   // then merge each rematerializing current/patched bodies).
-  const sharedCurrentSlides = input.allowedSlideIndexes && input.commentAttachments?.length
-    ? extractTopLevelSlideSections(extractDeckBodyContent(currentHtml))
-    : null;
+  const sharedCurrentSlides = input.currentSlides
+    ?? (input.allowedSlideIndexes && input.commentAttachments?.length
+      ? extractTopLevelSlideSections(extractDeckBodyContent(currentHtml))
+      : null);
   const patchForScope = coerceDeckPatchToAllowedScope(
     parsed.patch,
     input.allowedSlideIndexes,
@@ -1045,12 +1063,20 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
 }): { ok: true; html: string; narrowed: boolean } | { ok: false; reason: string } {
   let nextHtml = input.currentHtml;
   let narrowed = false;
-  // Materialize once for candidates + slide swaps; refresh nextSlides after mutate.
+  // Materialize once for candidates + slide swaps; refresh only when later
+  // attachments remain (single-attachment persist is the common path).
   let nextSlides = input.currentSlides
     ?? extractTopLevelSlideSections(extractDeckBodyContent(nextHtml));
   const patchedSlides = input.patchedSlides
     ?? extractTopLevelSlideSections(extractDeckBodyContent(input.patchedHtml));
-  for (const attachment of input.commentAttachments) {
+  const attachments = input.commentAttachments;
+  for (let attachmentIndex = 0; attachmentIndex < attachments.length; attachmentIndex += 1) {
+    const attachment = attachments[attachmentIndex]!;
+    const refreshSectionsIfNeeded = () => {
+      if (attachmentIndex < attachments.length - 1) {
+        nextSlides = extractTopLevelSlideSections(extractDeckBodyContent(nextHtml));
+      }
+    };
     const ids = scopedCommentElementIds(attachment);
     if (ids.length === 0) {
       const slideCandidates = resolveScopedCommentSlideCandidates({
@@ -1087,9 +1113,8 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
           nextHtml = attempt.html;
           narrowed = true;
           hintMerged = true;
-          // Refresh current doc/sections after successful mutate for later attachments.
           idLessDocs = undefined;
-          nextSlides = extractTopLevelSlideSections(extractDeckBodyContent(nextHtml));
+          refreshSectionsIfNeeded();
           break;
         }
         lastReason = attempt.reason;
@@ -1099,19 +1124,27 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
         // resolve an element target — fall back to slide-level swap when
         // the model produced a real slide diff on a candidate slide.
         for (const slideIndex of slideCandidates) {
+          const patchedOuter = patchedSlides[slideIndex]?.outerHtml ?? null;
           const swap = tryVisualOrAnchorlessSlideSwap({
             nextHtml,
             patchedHtml: input.patchedHtml,
             attachment,
             slideIndex,
             nextSlide: nextSlides[slideIndex]?.outerHtml ?? null,
-            patchedSlide: patchedSlides[slideIndex]?.outerHtml ?? null,
+            patchedSlide: patchedOuter,
           });
           if (swap.ok) {
             nextHtml = swap.html;
             narrowed = true;
             hintMerged = true;
-            nextSlides = extractTopLevelSlideSections(extractDeckBodyContent(nextHtml));
+            // Slide-level swap — patch local cache without full rematerialize.
+            if (patchedOuter && nextSlides[slideIndex] && attachmentIndex < attachments.length - 1) {
+              nextSlides = nextSlides.map((slide, index) =>
+                index === slideIndex ? { ...slide, outerHtml: patchedOuter } : slide,
+              );
+            } else {
+              refreshSectionsIfNeeded();
+            }
             break;
           }
           lastReason = swap.reason;
@@ -1163,7 +1196,7 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
         narrowed = true;
         mergedForAttachment = true;
         idBearingDocs = undefined;
-        nextSlides = extractTopLevelSlideSections(extractDeckBodyContent(nextHtml));
+        refreshSectionsIfNeeded();
         break;
       }
       lastReason = attempt.reason;
@@ -1453,6 +1486,8 @@ export function reconcileCommentScopeForPersist(
 ): {
   attachments: ChatCommentAttachment[];
   allowedSlideIndexes?: number[];
+  /** Shared section materialization for applyScoped / element-patch rediscovery. */
+  sections?: ReturnType<typeof extractTopLevelSlideSections>;
 } {
   if (attachments.length === 0) {
     return { attachments: [] };
@@ -1500,6 +1535,7 @@ export function reconcileCommentScopeForPersist(
   return {
     attachments: reconciled,
     allowedSlideIndexes: indexes.size > 0 ? [...indexes] : undefined,
+    sections,
   };
 }
 

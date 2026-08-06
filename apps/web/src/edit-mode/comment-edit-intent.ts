@@ -2,7 +2,22 @@ import { extractDeckBodyContent, extractTopLevelSlideSections } from '../artifac
 import type { ChatCommentAttachment } from '../types';
 import { parseManualEditSource, readScopedCommentTargetText } from './source-patches';
 
-function listDeckSlideIndexes(html: string): number[] {
+/** Mirror findScopedRoot slide discovery so Document path stays selector-parity. */
+const INTENT_STRUCTURED_SLIDE_SELECTOR =
+  '.deck > .slide, .deck-stage > .slide, .deck-shell > .slide, #od-stacked-deck-stage > .slide, body > .slide, body > section.slide, body > section[class~="slide"]';
+
+function listDeckSlideIndexes(html: string, parsedDoc?: Document | null): number[] {
+  // When finalize already shared a Document, derive indexes without body extract.
+  if (parsedDoc) {
+    const structured = parsedDoc.querySelectorAll(INTENT_STRUCTURED_SLIDE_SELECTOR);
+    if (structured.length > 0) {
+      return Array.from({ length: structured.length }, (_, index) => index);
+    }
+    const anySlide = parsedDoc.querySelectorAll('.slide');
+    if (anySlide.length > 0) {
+      return Array.from({ length: anySlide.length }, (_, index) => index);
+    }
+  }
   return extractTopLevelSlideSections(extractDeckBodyContent(html)).map((_, index) => index);
 }
 
@@ -15,7 +30,7 @@ function resolveValidationSlideIndexes(
   attachment: ChatCommentAttachment,
   parsedDoc?: Document | null,
 ): { verified: true } | { verified: false; candidates: number[] } {
-  const slides = listDeckSlideIndexes(mergedHtml);
+  const slides = listDeckSlideIndexes(mergedHtml, parsedDoc);
   const hint = {
     elementId: attachment.elementId,
     currentText: attachment.currentText,

@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   looksLikeMarkupLayoutCommentRequest,
@@ -9,6 +12,11 @@ import {
   validateCommentEditIntentRespected,
 } from '../../src/edit-mode/comment-edit-intent';
 import type { ChatCommentAttachment } from '../../src/types';
+
+const intentSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../../src/edit-mode/comment-edit-intent.ts'),
+  'utf8',
+);
 
 function attachment(overrides: Partial<ChatCommentAttachment> = {}): ChatCommentAttachment {
   return {
@@ -146,5 +154,13 @@ describe('targetTextContentPreserved', () => {
       { currentText: '뉴럴스튜디오㈜는 회사입니다.' },
       '',
     )).toBe(false);
+  });
+});
+
+describe('comment-edit-intent Document slide list', () => {
+  it('derives slide indexes from parsedDoc without body extract', () => {
+    expect(intentSource).toContain('INTENT_STRUCTURED_SLIDE_SELECTOR');
+    expect(intentSource).toContain('listDeckSlideIndexes(mergedHtml, parsedDoc)');
+    expect(intentSource).toContain('When finalize already shared a Document');
   });
 });
