@@ -88,6 +88,7 @@ import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3P
 import { resolveTeamverBranding } from '../teamver/branding/config';
 import { skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { normalizePluginApiId } from '../plugins/pluginIds';
+import { isUnauthorizedHtmlBody } from '../runtime/authenticatedHtmlSrcDoc';
 
 export const DEFAULT_DEPLOY_PROVIDER_ID = 'vercel-self';
 export const CLOUDFLARE_PAGES_PROVIDER_ID = 'cloudflare-pages';
@@ -2593,6 +2594,8 @@ export async function fetchPluginPreviewHtml(
 ): Promise<SkillExampleResult> {
   const apiId = normalizePluginApiId(id);
   try {
+    // Detail / ↗ opens must run the full embed auth recovery ladder — do not
+    // share gallery thumb policy (skipEmbedAuthRecovery).
     const resp = await fetchTeamverDaemon(
       `/api/plugins/${encodeURIComponent(apiId)}/preview`,
     );
@@ -2602,10 +2605,7 @@ export async function fetchPluginPreviewHtml(
     }
     const html = await resp.text();
     const contentType = resp.headers.get('content-type');
-    if (
-      (contentType || '').toLowerCase().includes('application/json')
-      || (html.trim().startsWith('{') && /"detail"\s*:/.test(html.slice(0, 200)))
-    ) {
+    if (isUnauthorizedHtmlBody(html, contentType)) {
       return { error: 'HTTP 401' };
     }
     return { html };
@@ -2633,10 +2633,7 @@ export async function fetchPluginExampleHtml(
     }
     const html = await resp.text();
     const contentType = resp.headers.get('content-type');
-    if (
-      (contentType || '').toLowerCase().includes('application/json')
-      || (html.trim().startsWith('{') && /"detail"\s*:/.test(html.slice(0, 200)))
-    ) {
+    if (isUnauthorizedHtmlBody(html, contentType)) {
       return { error: 'HTTP 401' };
     }
     return { html };

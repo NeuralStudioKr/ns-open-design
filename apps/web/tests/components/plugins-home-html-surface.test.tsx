@@ -131,6 +131,7 @@ describe('HtmlSurface authenticated srcDoc', () => {
       source.indexOf('if (!res.ok)'),
     );
     expect(fetchBlock).toContain('skipEmbedAuthRecovery: true');
+    expect(fetchBlock).toContain('skipEmbedUnauthorizedNotify: true');
     expect(fetchBlock).toContain('skipTeamverWorkspaceHeaders: true');
     // Shared inflight / no per-card AbortSignal (N07 cover pattern).
     expect(source).toContain('pluginPreviewCacheKey');

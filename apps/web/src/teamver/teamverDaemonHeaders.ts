@@ -81,6 +81,14 @@ export type TeamverDaemonFetchInit = RequestInit & {
    */
   skipEmbedAuthRecovery?: boolean;
   /**
+   * With {@link skipEmbedAuthRecovery}, still defaults to notifying the embed
+   * passive-auth banner on 401 (background polls like `/api/proxy/active`).
+   * Set true for non-critical UI (Community gallery `/preview` thumbs) so a
+   * stampede of card 401s cannot trip soft-sticky and poison later detail
+   * fetches that need a real session.
+   */
+  skipEmbedUnauthorizedNotify?: boolean;
+  /**
    * Best-effort daemon endpoints such as memory extraction still need cookie
    * auth recovery, but must not trigger active-workspace BFF lookups before a
    * chat run starts.
@@ -110,6 +118,7 @@ function daemonGetInflightKey(
   input: RequestInfo | URL,
   init: RequestInit,
   headers: Record<string, string>,
+  policyKey = "",
 ): string | null {
   const method = (init.method || "GET").toUpperCase();
   if (method !== "GET") return null;
@@ -124,7 +133,10 @@ function daemonGetInflightKey(
     .sort()
     .map((key) => `${key}:${headers[key]}`)
     .join("\n");
-  return `${url}\n${headerKey}`;
+  // Auth policy must participate in the key: a gallery thumb that skips
+  // recovery must never share an in-flight promise with a detail modal fetch
+  // that needs the full refresh ladder.
+  return `${url}\n${headerKey}\n${policyKey}`;
 }
 
 function embedDaemonAuthRecoveryEnabled(_init?: RequestInit): boolean {
@@ -197,7 +209,7 @@ function shouldFailFastDaemonGetWhileSticky(init: RequestInit): boolean {
 async function fetchDaemonWithEmbedAuthRecovery(
   input: RequestInfo | URL,
   init: RequestInit,
-  options?: { skipAuthRecovery?: boolean },
+  options?: { skipAuthRecovery?: boolean; skipUnauthorizedNotify?: boolean },
 ): Promise<Response> {
   // Soft/hard sticky: skip doomed background GETs entirely. Mutations still
   // hit the network once so callers get a definitive 401 for UX, without
@@ -221,8 +233,10 @@ async function fetchDaemonWithEmbedAuthRecovery(
   }
   if (options?.skipAuthRecovery || !shouldRecoverEmbedDaemonUnauthorized(input, resp, init)) {
     // Hard sticky / unauthenticated / explicit skip: surface banner without
-    // probing. Background polls must take the skip path.
-    noteEmbedDaemonUnauthorized(input, resp);
+    // probing — unless the caller opted out (non-critical gallery thumbs).
+    if (!options?.skipUnauthorizedNotify) {
+      noteEmbedDaemonUnauthorized(input, resp);
+    }
     return resp;
   }
 
@@ -323,6 +337,7 @@ export async function fetchTeamverDaemon(
   const {
     teamverProjectId,
     skipEmbedAuthRecovery,
+    skipEmbedUnauthorizedNotify,
     skipTeamverWorkspaceHeaders,
     ...requestInit
   } = init;
@@ -347,8 +362,14 @@ export async function fetchTeamverDaemon(
   const redirect =
     requestInit.redirect ?? (isTeamverEmbedMode() && isLikelyDaemonApiRequest(input) ? "manual" : undefined);
   const nextInit = { ...requestInit, headers, credentials, ...(redirect ? { redirect } : {}) };
-  const recoveryOpts = skipEmbedAuthRecovery ? { skipAuthRecovery: true } : undefined;
-  const dedupeKey = daemonGetInflightKey(input, requestInit, headers);
+  const recoveryOpts = {
+    ...(skipEmbedAuthRecovery ? { skipAuthRecovery: true as const } : {}),
+    ...(skipEmbedUnauthorizedNotify ? { skipUnauthorizedNotify: true as const } : {}),
+  };
+  const policyKey = `authRec=${skipEmbedAuthRecovery ? "0" : "1"};unauthNote=${
+    skipEmbedUnauthorizedNotify ? "0" : "1"
+  }`;
+  const dedupeKey = daemonGetInflightKey(input, requestInit, headers, policyKey);
   if (!dedupeKey) {
     const resp = await fetchDaemonWithEmbedAuthRecovery(input, nextInit, recoveryOpts);
     return finalizeDaemonFetch(input, resp);

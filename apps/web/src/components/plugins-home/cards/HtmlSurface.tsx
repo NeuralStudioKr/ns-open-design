@@ -174,8 +174,11 @@ async function loadPluginPreviewHtml(url: string): Promise<string> {
     const res = await fetchTeamverDaemon(cacheKey, {
       method: 'GET',
       // Plugin preview thumbs are non-critical, retryable UI. Do not make a
-      // card fetch wake Teamver auth/session refresh or active-workspace reads.
+      // card fetch wake Teamver auth/session refresh, active-workspace reads,
+      // or the embed passive-auth / soft-sticky ladder — a viewport of 401s
+      // used to poison later detail-modal `/preview` fetches.
       skipEmbedAuthRecovery: true,
+      skipEmbedUnauthorizedNotify: true,
       skipTeamverWorkspaceHeaders: true,
     });
     if (!res.ok) {
