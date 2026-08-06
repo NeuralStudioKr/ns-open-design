@@ -131,7 +131,11 @@ import {
 } from '../runtime/exports';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { isMacPlatform } from '../utils/platform';
-import { isRenderableImagePath, projectFileResolvedPath } from '../utils/projectFilePaths';
+import {
+  isEphemeralDrawingScreenshotPath,
+  isRenderableImagePath,
+  projectFileResolvedPath,
+} from '../utils/projectFilePaths';
 import { buildReactComponentSrcdoc } from '../runtime/react-component';
 import { shouldConsumeSlideNav } from '../runtime/slide-nav';
 import { findHtmlEntriesReferencing } from '../runtime/jsx-module-refs';
@@ -3016,10 +3020,11 @@ export function CommentSidePanel({
                           projectId={projectId}
                           path={attachment.path}
                           alt={attachment.name}
-                          // Comment-side thumbs are not an authoritative file
-                          // index — never trustExists (deleted drawings must
-                          // 404 once via missing cache, not remount-/raw/).
-                          trustExists={false}
+                          // Durable memo/board uploads: trustExists + retry for
+                          // S3 lag. Ephemeral drawings stay missing-cache-only
+                          // so deleted screenshots do not remount-/raw/.
+                          trustExists={!isEphemeralDrawingScreenshotPath(attachment.path)}
+                          allowBackgroundRetry={!isEphemeralDrawingScreenshotPath(attachment.path)}
                         />
                       </a>
                     );

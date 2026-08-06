@@ -26,13 +26,24 @@ vi.mock('../../src/components/AuthenticatedProjectFileImage', () => ({
     path,
     alt,
     fetchEnabled,
+    trustExists,
+    allowBackgroundRetry,
   }: {
     path: string;
     alt?: string;
     fetchEnabled?: boolean;
+    trustExists?: boolean;
+    allowBackgroundRetry?: boolean;
   }) => (
     fetchEnabled === false ? null : (
-      <img data-testid="auth-project-image" src={`blob:${path}`} alt={alt || ''} />
+      <img
+        data-testid="auth-project-image"
+        data-path={path}
+        data-trust-exists={trustExists ? '1' : '0'}
+        data-allow-background-retry={allowBackgroundRetry ? '1' : '0'}
+        src={`blob:${path}`}
+        alt={alt || ''}
+      />
     )
   ),
 }));
@@ -160,6 +171,52 @@ describe('ChatPane visual mark history', () => {
     expect(screen.getByText('여기 텍스트 키워')).toBeTruthy();
     expect(screen.queryByText('시각 마크')).toBeNull();
     expect(screen.queryByText('visual-mark-1.png')).toBeNull();
+  });
+
+  it('renders durable memo/board image attachments as thumbs (not title-only)', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-memo-image',
+        role: 'user',
+        content: '이 참고 이미지 반영해줘',
+        createdAt: 1,
+        attachments: [
+          {
+            path: 'uploads/ref-memo.png',
+            name: 'ref-memo.png',
+            kind: 'image',
+            order: 0,
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[{ name: 'uploads/ref-memo.png', path: 'uploads/ref-memo.png' } as never]}
+        projectFileNames={new Set(['uploads/ref-memo.png'])}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={[
+          { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
+        ]}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        config={{ agentId: 'claude', agentCliEnv: {} } as unknown as AppConfig}
+      />,
+    );
+
+    const img = screen.getByTestId('auth-project-image');
+    expect(img.getAttribute('data-path')).toBe('uploads/ref-memo.png');
+    expect(img.getAttribute('data-trust-exists')).toBe('1');
+    expect(img.getAttribute('data-allow-background-retry')).toBe('1');
+    expect(screen.getByText('ref-memo.png')).toBeTruthy();
   });
 
   it('keeps visual comment chips visible even when the drawing PNG cannot render', () => {

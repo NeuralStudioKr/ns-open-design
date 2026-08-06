@@ -31,6 +31,7 @@ import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { VisualCommentAttachmentChip } from './VisualCommentAttachmentChip';
 import {
   excludeAttachmentsBackedByVisualScreenshots,
+  isEphemeralDrawingScreenshotPath,
   projectFilePathExists,
   projectFileResolvedPath,
 } from '../utils/projectFilePaths';
@@ -3788,7 +3789,19 @@ function UserMessageImpl({
                   <span className="staged-order" aria-label={`Attachment ${index + 1}`}>
                     {index + 1}
                   </span>
-                  <Icon name={a.kind === 'image' ? 'image' : 'file'} size={14} />
+                  {a.kind === 'image' && projectId ? (
+                    <AuthenticatedProjectFileImage
+                      projectId={projectId}
+                      path={a.path}
+                      alt=""
+                      // Durable memo/board uploads should show a real thumb.
+                      // Ephemeral drawing screenshots stay in VisualComment chips.
+                      trustExists={!isEphemeralDrawingScreenshotPath(a.path)}
+                      allowBackgroundRetry={!isEphemeralDrawingScreenshotPath(a.path)}
+                    />
+                  ) : (
+                    <Icon name={a.kind === 'image' ? 'image' : 'file'} size={14} />
+                  )}
                   <span className="staged-name">{a.name}</span>
                 </button>
                 {a.source?.type === 'teamver-drive' ? (

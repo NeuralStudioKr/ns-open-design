@@ -29,6 +29,8 @@ vi.mock('../../src/teamver/designApiBase', async () => {
   return {
     ...actual,
     isTeamverEmbedMode: vi.fn(() => false),
+    // FileViewer unit tests assert sync /raw/ img src; keep auth/presign path off.
+    shouldUseTeamverAuthenticatedProjectRawFetch: vi.fn(() => false),
   };
 });
 
@@ -69,6 +71,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.mocked(designApiBase.isTeamverEmbedMode).mockReturnValue(false);
+  vi.mocked(designApiBase.shouldUseTeamverAuthenticatedProjectRawFetch).mockReturnValue(false);
   vi.unstubAllGlobals();
   Reflect.deleteProperty(navigator, 'clipboard');
   Reflect.deleteProperty(document, 'execCommand');
