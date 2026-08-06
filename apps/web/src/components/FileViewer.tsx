@@ -383,9 +383,12 @@ import {
 } from '../edit-mode/manual-edit-group-align';
 import { collectSnapSources } from '../edit-mode/manual-edit-geometry-snap';
 import { filterManualEditLayerTargets, sortManualEditLayerTargetsByPaintOrder } from '../edit-mode/manual-edit-layer-targets';
+import { filterRootTargetsForGroupGeometry } from '../edit-mode/manual-edit-selection-ancestry';
 import {
+  buildZOrderStylePatch,
   canAdjustZOrderTarget,
-  computeZOrderStyleForTargetId,
+  computeZOrderPatchForTargetId,
+  mergeZOrderCapabilities,
   readStackZFromZIndexStyle,
   resolveZOrderContext,
   resolveZOrderKeyboardAction,
@@ -8752,6 +8755,57 @@ function HtmlViewer({
     const version = nextManualEditPreviewVersion();
     const primaryId = ids[ids.length - 1] ?? ids[0];
     if (!primaryId) return;
+    const resolveTarget = (id: string) => (
+      manualEditTargets.find((item) => item.id === id)
+      ?? (selectedManualEditTargetRef.current?.id === id ? selectedManualEditTargetRef.current : null)
+    );
+
+    if (styles.zIndex !== undefined) {
+      const patches = ids.map((id) => ({
+        id,
+        styles: promoteZIndexStylesForTarget(resolveTarget(id), styles),
+      }));
+      for (const patch of patches) {
+        previewStyleToIframe(patch.id, patch.styles, version);
+      }
+      applyManualEditZOrderOptimistic(patches);
+      const currentPending = manualEditPendingStyleRef.current;
+      const sameBatch = currentPending
+        && (currentPending.targetIds ?? [currentPending.id]).every((id, index) => ids[index] === id)
+        && ids.length === (currentPending.targetIds ?? [currentPending.id]).length;
+      if (ids.length > 1) {
+        const perTargetStyles = Object.fromEntries(
+          patches.map((patch) => [patch.id, patch.styles]),
+        );
+        manualEditPendingStyleRef.current = {
+          id: primaryId,
+          perTargetStyles,
+          styles: {},
+          label,
+          version,
+        };
+      } else {
+        const promoted = patches[0]!.styles;
+        manualEditPendingStyleRef.current = {
+          id: primaryId,
+          styles: sameBatch && currentPending
+            ? { ...currentPending.styles, ...promoted }
+            : promoted,
+          label,
+          version,
+        };
+      }
+      setManualEditError(null);
+      clearManualEditStyleTimer();
+      if (manualEditResizeSessionActiveRef.current) return;
+      manualEditStyleTimerRef.current = setTimeout(() => {
+        manualEditStyleTimerRef.current = null;
+        if (manualEditResizePausedRef.current) return;
+        void flushManualEditStyleSave();
+      }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
+      return;
+    }
+
     const currentPending = manualEditPendingStyleRef.current;
     const sameBatch = currentPending
       && (currentPending.targetIds ?? [currentPending.id]).every((id, index) => ids[index] === id)
@@ -8770,9 +8824,6 @@ function HtmlViewer({
     setManualEditError(null);
     for (const id of ids) {
       previewStyleToIframe(id, styles, version);
-    }
-    if (styles.zIndex !== undefined) {
-      applyManualEditStackZOptimistic(ids, styles.zIndex);
     }
     // Autosave shortly after the user stops tweaking — select/background/
     // exit also flush, but a remount or crash before those gestures must not
@@ -10815,12 +10866,16 @@ function HtmlViewer({
       const action = resolveZOrderKeyboardAction(e);
       if (!action) return;
       if (manualEditSavingRef.current) return;
-      const target = selectedManualEditTargetRef.current;
-      if (!target || !canAdjustZOrderTarget(target.cssPosition)) return;
+      const targets = resolveManualEditZOrderTargets();
+      if (targets.length === 0) return;
       const doc = iframeContentDocumentIfAccessible(iframeRef.current);
       if (!doc) return;
-      const caps = resolveZOrderContext(doc, target.id)?.capabilities;
-      if (!caps?.[action]) return;
+      const capabilities = mergeZOrderCapabilities(
+        targets
+          .map((target) => resolveZOrderContext(doc, target.id)?.capabilities)
+          .filter((cap): cap is NonNullable<typeof cap> => Boolean(cap)),
+      );
+      if (!capabilities?.[action]) return;
       e.preventDefault();
       manualEditZOrderHandlerRef.current?.(action);
     }
@@ -12299,16 +12354,27 @@ function HtmlViewer({
     [manualEditTargets, effectiveDeck, slideState?.active, manualEditViewportBounds],
   );
   const manualEditZOrderCapabilities = useMemo(() => {
-    const target = selectedManualEditTarget;
-    if (!target || !canAdjustZOrderTarget(target.cssPosition)) return null;
     const doc = iframeContentDocumentIfAccessible(iframeRef.current);
     if (!doc) return null;
-    return resolveZOrderContext(doc, target.id)?.capabilities ?? null;
+    const targets = resolveManualEditTargetsByIds(
+      selectedManualEditTargetIds,
+      manualEditTargets,
+    ).filter((target) => canAdjustZOrderTarget(target.cssPosition));
+    const roots = targets.length > 1
+      ? filterRootTargetsForGroupGeometry(targets, manualEditTargetIsDescendantOf)
+      : targets;
+    if (roots.length === 0) return null;
+    const capabilities = roots
+      .map((target) => resolveZOrderContext(doc, target.id)?.capabilities)
+      .filter((cap): cap is NonNullable<typeof cap> => Boolean(cap));
+    return mergeZOrderCapabilities(capabilities);
   }, [
+    selectedManualEditTargetIds,
     selectedManualEditTarget?.id,
     selectedManualEditTarget?.cssPosition,
     manualEditDraft.styles.zIndex,
     manualEditTargets,
+    manualEditTargetIsDescendantOf,
     srcDoc,
   ]);
 
@@ -12330,37 +12396,112 @@ function HtmlViewer({
     requestManualEditTargetsRefresh();
   }
 
-  function applyManualEditStackZOptimistic(ids: readonly string[], zIndex: string) {
-    const stackZ = readStackZFromZIndexStyle(zIndex);
-    setManualEditTargets((current) => current.map((item) => (
-      ids.includes(item.id)
-        ? { ...item, styles: { ...item.styles, zIndex }, stackZ }
-        : item
-    )));
+  function promoteZIndexStylesForTarget(
+    target: ManualEditTarget | null | undefined,
+    styles: Partial<ManualEditStyles>,
+  ): Partial<ManualEditStyles> {
+    if (styles.zIndex === undefined) return styles;
+    return {
+      ...styles,
+      ...buildZOrderStylePatch(target?.cssPosition, styles.zIndex),
+    };
+  }
+
+  function applyManualEditZOrderOptimistic(
+    patches: Array<{ id: string; styles: Partial<ManualEditStyles> }>,
+  ) {
+    const patchMap = new Map(patches.map((patch) => [patch.id, patch.styles]));
+    setManualEditTargets((current) => current.map((item) => {
+      const styles = patchMap.get(item.id);
+      if (!styles) return item;
+      const stackZ = styles.zIndex !== undefined
+        ? readStackZFromZIndexStyle(styles.zIndex)
+        : item.stackZ;
+      return {
+        ...item,
+        styles: { ...item.styles, ...styles },
+        stackZ,
+        cssPosition: styles.position ?? item.cssPosition,
+      };
+    }));
     const primaryId = selectedManualEditTargetIdRef.current;
-    if (!primaryId || !ids.includes(primaryId)) return;
+    const primaryStyles = primaryId ? patchMap.get(primaryId) : null;
+    if (!primaryId || !primaryStyles) return;
     setSelectedManualEditTarget((current) => {
       if (!current || current.id !== primaryId) return current;
       const next: ManualEditTarget = {
         ...current,
-        styles: { ...current.styles, zIndex },
-        stackZ,
+        styles: { ...current.styles, ...primaryStyles },
+        stackZ: primaryStyles.zIndex !== undefined
+          ? readStackZFromZIndexStyle(primaryStyles.zIndex)
+          : current.stackZ,
+        cssPosition: primaryStyles.position ?? current.cssPosition,
       };
       selectedManualEditTargetRef.current = next;
       return next;
     });
   }
 
-  function handleManualEditZOrder(action: ZOrderAction) {
-    const target = selectedManualEditTarget;
-    const doc = iframeContentDocumentIfAccessible(iframeRef.current);
-    if (!target || !doc) return;
-    const nextZ = computeZOrderStyleForTargetId(doc, target.id, action);
-    if (!nextZ) return;
-    void handleManualEditStyleChange([target.id], { zIndex: nextZ }, zOrderHistoryLabel(action));
-    applyManualEditStackZOptimistic([target.id], nextZ);
-    requestManualEditTargetRemeasure(target.id);
+  function resolveManualEditZOrderTargets(): ManualEditTarget[] {
+    const ids = selectedManualEditTargetIdsRef.current;
+    const catalog = manualEditTargets;
+    const resolved = ids.length > 0
+      ? resolveManualEditTargetsByIds(ids, catalog)
+      : (selectedManualEditTargetRef.current ? [selectedManualEditTargetRef.current] : []);
+    const eligible = resolved.filter((target) => canAdjustZOrderTarget(target.cssPosition));
+    if (eligible.length <= 1) return eligible;
+    return filterRootTargetsForGroupGeometry(eligible, manualEditTargetIsDescendantOf);
+  }
+
+  function queueManualEditZOrderPatches(
+    patches: Array<{ id: string; styles: Partial<ManualEditStyles> }>,
+    label: string,
+  ) {
+    if (patches.length === 0) return;
+    const version = nextManualEditPreviewVersion();
+    const perTargetStyles: Record<string, Partial<ManualEditStyles>> = {};
+    for (const patch of patches) {
+      perTargetStyles[patch.id] = patch.styles;
+      previewStyleToIframe(patch.id, patch.styles, version);
+    }
+    clearManualEditStyleTimer();
+    manualEditPendingStyleRef.current = {
+      id: patches[patches.length - 1]!.id,
+      perTargetStyles,
+      styles: {},
+      label,
+      version,
+    };
+    setManualEditError(null);
+    applyManualEditZOrderOptimistic(patches);
+    for (const patch of patches) {
+      requestManualEditTargetRemeasure(patch.id);
+    }
     requestManualEditTargetsRefresh();
+    if (manualEditResizeSessionActiveRef.current) return;
+    manualEditStyleTimerRef.current = setTimeout(() => {
+      manualEditStyleTimerRef.current = null;
+      if (manualEditResizePausedRef.current) return;
+      void flushManualEditStyleSave();
+    }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
+  }
+
+  function handleManualEditZOrder(action: ZOrderAction) {
+    const doc = iframeContentDocumentIfAccessible(iframeRef.current);
+    if (!doc) return;
+    const targets = resolveManualEditZOrderTargets();
+    if (targets.length === 0) return;
+    const patches: Array<{ id: string; styles: Partial<ManualEditStyles> }> = [];
+    for (const target of targets) {
+      const patch = computeZOrderPatchForTargetId(doc, target.id, action);
+      if (!patch || Object.keys(patch).length === 0) continue;
+      patches.push({ id: target.id, styles: patch });
+    }
+    if (patches.length === 0) return;
+    const label = patches.length > 1
+      ? `Z-order: ${patches.length} elements`
+      : zOrderHistoryLabel(action);
+    queueManualEditZOrderPatches(patches, label);
   }
   manualEditZOrderHandlerRef.current = handleManualEditZOrder;
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;

@@ -320,10 +320,18 @@ export function ManualEditPanel({
                 />
               ) : null}
 
-              {!isMultiSelect && inspectorFlags.showZOrder && zOrderCapabilities && onZOrder ? (
+              {inspectorFlags.showZOrder && zOrderCapabilities && onZOrder ? (
                 <section className="cc-section manual-edit-zorder-section">
                   <header className="cc-section-head">{embedUiLabel('ARRANGE', '순서')}</header>
                   <div className="cc-section-body">
+                    {isMultiSelect ? (
+                      <p className="cc-section-hint">
+                        {embedUiLabel(
+                          'Applies to each selected layer in its own stack.',
+                          '선택한 레이어마다 각자의 쌓임 맥락에서 순서를 조정합니다.',
+                        )}
+                      </p>
+                    ) : null}
                     <ManualEditZOrderControls
                       capabilities={zOrderCapabilities}
                       disabled={zOrderBusy}
@@ -489,7 +497,7 @@ function resolveManualEditInspectorFlags(
     showPositionHint: showSize && !showPosition,
     showLayout: selectedTargets.some((target) => target.isLayoutContainer),
     showBox: kinds.some((kind) => kind === 'container' || kind === 'image' || kind === 'token'),
-    showZOrder: false,
+    showZOrder: selectedTargets.some((target) => canAdjustZOrderTarget(target.cssPosition)),
   };
 }
 
@@ -861,7 +869,7 @@ function StyleInspector({
             <UnitRow label={embedUiLabel('Left', '왼쪽')} value={styles.left} placeholder={placeholderFor('left')} onChange={(v) => u('left', v)} unit="px" autoUnit />
             <UnitRow label={embedUiLabel('Top', '위')} value={styles.top} placeholder={placeholderFor('top')} onChange={(v) => u('top', v)} unit="px" autoUnit />
           </PairRow>
-          {isAnchoredCssPosition(positionValue) ? (
+          {canAdjustZOrderTarget(positionValue) ? (
             <UnitRow
               label={embedUiLabel('Z-index', 'Z-index')}
               value={styles.zIndex}

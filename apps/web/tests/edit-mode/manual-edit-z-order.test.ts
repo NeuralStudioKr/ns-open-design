@@ -3,9 +3,14 @@
 import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
 import {
+  buildZOrderStylePatch,
+  canAdjustZOrderTarget,
   collectZStackEntries,
+  computeZOrderPatchForElement,
   computeZOrderStyleForElement,
   computeZOrderValue,
+  isZOrderEligiblePosition,
+  mergeZOrderCapabilities,
   readEffectiveZIndex,
   readStackZFromZIndexStyle,
   resolveZOrderContext,
@@ -85,6 +90,46 @@ describe('manual-edit-z-order', () => {
     });
 
     dom.window.close();
+  });
+
+  it('supports relative and static siblings in the z stack', () => {
+    expect(canAdjustZOrderTarget('relative')).toBe(true);
+    expect(canAdjustZOrderTarget('sticky')).toBe(true);
+    expect(canAdjustZOrderTarget('static')).toBe(true);
+    expect(isZOrderEligiblePosition('absolute')).toBe(true);
+
+    const dom = new JSDOM(`
+      <section>
+        <div id="flow-a" style="position:relative;width:80px;height:80px"></div>
+        <div id="flow-b" style="position:relative;width:80px;height:80px;z-index:2"></div>
+      </section>
+    `);
+    const doc = dom.window.document;
+    const section = doc.querySelector('section')!;
+    const flowA = doc.getElementById('flow-a') as HTMLElement;
+    const entries = collectZStackEntries(section, dom.window);
+    expect(entries).toHaveLength(2);
+    expect(computeZOrderPatchForElement(flowA, 'forward')).toEqual({
+      zIndex: '3',
+    });
+    expect(buildZOrderStylePatch('static', '4')).toEqual({
+      position: 'relative',
+      zIndex: '4',
+    });
+
+    dom.window.close();
+  });
+
+  it('merges z-order capabilities across multiple targets', () => {
+    expect(mergeZOrderCapabilities([
+      { forward: true, backward: false, front: true, back: false },
+      { forward: false, backward: true, front: false, back: true },
+    ])).toEqual({
+      forward: true,
+      backward: true,
+      front: true,
+      back: true,
+    });
   });
 
   it('reads stack z from z-index style values', () => {

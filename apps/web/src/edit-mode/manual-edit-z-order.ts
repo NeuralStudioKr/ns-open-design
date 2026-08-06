@@ -1,7 +1,7 @@
 import { findManualEditPreviewTarget } from './manual-edit-host-preview';
 import { isManualEditKeyboardTextTarget } from './manual-edit-keyboard';
-import { isAnchoredCssPosition } from './resize-math';
 import { isMacPlatform } from '../utils/platform';
+import type { ManualEditStyles } from './types';
 
 export type ZOrderAction = 'forward' | 'backward' | 'front' | 'back';
 
@@ -17,13 +17,31 @@ export type ZOrderCapabilities = {
   back: boolean;
 };
 
+export function isZOrderEligiblePosition(cssPosition: string | null | undefined): boolean {
+  const value = String(cssPosition ?? 'static').toLowerCase();
+  return (
+    value === 'absolute'
+    || value === 'fixed'
+    || value === 'relative'
+    || value === 'sticky'
+    || value === 'static'
+  );
+}
+
 export function canAdjustZOrderTarget(cssPosition: string | null | undefined): boolean {
-  return isAnchoredCssPosition(cssPosition);
+  return isZOrderEligiblePosition(cssPosition);
 }
 
 export function isZStackParticipant(el: Element, view: Window): boolean {
+  if (!(el instanceof view.HTMLElement)) return false;
   const pos = view.getComputedStyle(el).position;
-  return pos === 'absolute' || pos === 'fixed';
+  return (
+    pos === 'absolute'
+    || pos === 'fixed'
+    || pos === 'relative'
+    || pos === 'sticky'
+    || pos === 'static'
+  );
 }
 
 export function readEffectiveZIndex(el: Element, view: Window): number {
@@ -100,10 +118,33 @@ export function computeZOrderValue(
   }
 }
 
-export function computeZOrderStyleForElement(
+export function buildZOrderStylePatch(
+  cssPosition: string | null | undefined,
+  zIndex: string,
+): Partial<ManualEditStyles> {
+  const value = String(cssPosition ?? 'static').toLowerCase();
+  if (value === 'static') {
+    return { position: 'relative', zIndex };
+  }
+  return { zIndex };
+}
+
+export function mergeZOrderCapabilities(
+  capabilities: readonly ZOrderCapabilities[],
+): ZOrderCapabilities | null {
+  if (capabilities.length === 0) return null;
+  return {
+    forward: capabilities.some((cap) => cap.forward),
+    backward: capabilities.some((cap) => cap.backward),
+    front: capabilities.some((cap) => cap.front),
+    back: capabilities.some((cap) => cap.back),
+  };
+}
+
+export function computeZOrderPatchForElement(
   el: HTMLElement,
   action: ZOrderAction,
-): string | null {
+): Partial<ManualEditStyles> | null {
   const view = el.ownerDocument?.defaultView;
   const parent = el.parentElement;
   if (!view || !parent) return null;
@@ -111,7 +152,16 @@ export function computeZOrderStyleForElement(
   const domIndex = Array.from(parent.children).indexOf(el);
   if (domIndex < 0) return null;
   const entries = collectZStackEntries(parent, view);
-  return computeZOrderValue(entries, domIndex, action);
+  const zIndex = computeZOrderValue(entries, domIndex, action);
+  if (!zIndex) return null;
+  return buildZOrderStylePatch(view.getComputedStyle(el).position, zIndex);
+}
+
+export function computeZOrderStyleForElement(
+  el: HTMLElement,
+  action: ZOrderAction,
+): string | null {
+  return computeZOrderPatchForElement(el, action)?.zIndex ?? null;
 }
 
 export function resolveZOrderContext(
@@ -136,15 +186,23 @@ export function resolveZOrderContext(
   };
 }
 
+export function computeZOrderPatchForTargetId(
+  doc: Document | null | undefined,
+  targetId: string,
+  action: ZOrderAction,
+): Partial<ManualEditStyles> | null {
+  if (!doc || !targetId) return null;
+  const el = findManualEditPreviewTarget(doc, targetId);
+  if (!el) return null;
+  return computeZOrderPatchForElement(el, action);
+}
+
 export function computeZOrderStyleForTargetId(
   doc: Document | null | undefined,
   targetId: string,
   action: ZOrderAction,
 ): string | null {
-  if (!doc || !targetId) return null;
-  const el = findManualEditPreviewTarget(doc, targetId);
-  if (!el) return null;
-  return computeZOrderStyleForElement(el, action);
+  return computeZOrderPatchForTargetId(doc, targetId, action)?.zIndex ?? null;
 }
 
 export function zOrderHistoryLabel(action: ZOrderAction): string {

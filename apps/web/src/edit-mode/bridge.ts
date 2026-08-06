@@ -319,7 +319,7 @@ export function buildManualEditBridge(enabled: boolean): string {
   function readPositionedZIndex(el){
     var cs = window.getComputedStyle(el);
     var pos = (cs.position || 'static').toLowerCase();
-    if (pos !== 'absolute' && pos !== 'fixed') return 0;
+    if (pos !== 'absolute' && pos !== 'fixed' && pos !== 'relative' && pos !== 'sticky' && pos !== 'static') return 0;
     var raw = cs.zIndex;
     if (!raw || raw === 'auto') return 0;
     var parsed = parseInt(raw, 10);
