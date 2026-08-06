@@ -392,6 +392,10 @@ describe('ManualEditPanel', () => {
       ok: true,
       styles: { fontSize: '', color: '' },
     });
+    expect(normalizeManualEditStyles({ zIndex: 'auto' }, { layoutEnabled: true })).toEqual({
+      ok: true,
+      styles: { zIndex: '' },
+    });
   });
 
   it('does not validate unchanged computed line-height values on blur', () => {

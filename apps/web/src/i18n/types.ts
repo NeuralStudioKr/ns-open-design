@@ -2720,6 +2720,9 @@ export interface Dict {
   'manualEdit.toggleLayers': string;
   'manualEdit.closeLayers': string;
   'manualEdit.layersHint': string;
+  'manualEdit.layersDragHint': string;
+  'manualEdit.arrange': string;
+  'manualEdit.arrangeMultiHint': string;
   'manualEdit.editableCount': string;
   'manualEdit.hiddenBadge': string;
   'manualEdit.title': string;

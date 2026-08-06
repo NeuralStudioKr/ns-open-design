@@ -1,18 +1,12 @@
 import { useState, type DragEvent } from 'react';
 import { useT } from '../i18n';
 import type { ManualEditTarget } from '../edit-mode/types';
-import {
-  canAdjustZOrderTarget,
-  readStackZFromZIndexStyle,
-  type ZOrderAction,
-  type ZOrderCapabilities,
-} from '../edit-mode/manual-edit-z-order';
+import type { ZOrderAction, ZOrderCapabilities } from '../edit-mode/manual-edit-z-order';
 import {
   canDragLayerRow,
   canDropLayerOnTarget,
 } from '../edit-mode/manual-edit-layer-reorder';
 import { ManualEditZOrderControls } from './ManualEditZOrderControls';
-import { embedUiLabel } from '../teamver/embedUiLabels';
 
 export type ManualEditLayersPanelProps = {
   targets: ManualEditTarget[];
@@ -93,12 +87,7 @@ export function ManualEditLayersPanel({
           <h3>{t('manualEdit.layers')}</h3>
           <p className="manual-edit-layers-hint">{t('manualEdit.layersHint')}</p>
           {onLayerReorder ? (
-            <p className="manual-edit-layers-hint">
-              {embedUiLabel(
-                'Drag layers to reorder siblings (z-index).',
-                '레이어를 드래그해 형제 요소의 겹침 순서(z-index)를 바꿉니다.',
-              )}
-            </p>
+            <p className="manual-edit-layers-hint">{t('manualEdit.layersDragHint')}</p>
           ) : null}
         </div>
         <div className="manual-edit-layers-head-actions">
@@ -118,16 +107,9 @@ export function ManualEditLayersPanel({
       </div>
       {showZOrder && zOrderCapabilities ? (
         <div className="manual-edit-layers-arrange" data-testid="manual-edit-layers-arrange">
-          <span className="manual-edit-layers-arrange-label">
-            {embedUiLabel('Arrange', '순서')}
-          </span>
+          <span className="manual-edit-layers-arrange-label">{t('manualEdit.arrange')}</span>
           {selectedIds.length > 1 ? (
-            <p className="manual-edit-layers-hint">
-              {embedUiLabel(
-                'Applies to each selected layer in its own stack.',
-                '선택한 레이어마다 각자의 쌓임 맥락에서 순서를 조정합니다.',
-              )}
-            </p>
+            <p className="manual-edit-layers-hint">{t('manualEdit.arrangeMultiHint')}</p>
           ) : null}
           <ManualEditZOrderControls
             compact
@@ -158,14 +140,6 @@ export function ManualEditLayersPanel({
               && !zOrderBusy
               && canDragLayerRow(target, targets, allTargets, reorderOptions),
             );
-            const showStackZ = canAdjustZOrderTarget(target.cssPosition);
-            const stackZLabel = showStackZ
-              ? (
-                target.styles.zIndex?.trim()
-                  ? `z ${readStackZFromZIndexStyle(target.styles.zIndex)}`
-                  : embedUiLabel('z auto', 'z auto')
-              )
-              : '';
             const showDropMarker = draggingId && dropBeforeId === target.id;
             return (
               <div key={target.id} className="manual-edit-layer-row-wrap">
@@ -207,7 +181,6 @@ export function ManualEditLayersPanel({
                     <span>
                       {target.tagName.toLowerCase()}
                       {target.cssPosition ? ` · ${target.cssPosition}` : ''}
-                      {stackZLabel ? ` · ${stackZLabel}` : ''}
                     </span>
                   </span>
                 </button>

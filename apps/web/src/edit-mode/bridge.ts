@@ -135,7 +135,7 @@ export function buildManualEditBridge(enabled: boolean): string {
   // Typography/paint still fall back to computed for the inspector.
   var geometryStyleProps = {
     display:1, width:1, height:1, minHeight:1, maxWidth:1, maxHeight:1, position:1,
-    left:1, top:1, right:1, bottom:1,
+    left:1, top:1, right:1, bottom:1, zIndex:1,
     margin:1, marginTop:1, marginRight:1, marginBottom:1, marginLeft:1,
     padding:1, paddingTop:1, paddingRight:1, paddingBottom:1, paddingLeft:1,
     gap:1, flexDirection:1, justifyContent:1, alignItems:1,

@@ -322,33 +322,16 @@ export function ManualEditPanel({
 
               {inspectorFlags.showZOrder && zOrderCapabilities && onZOrder ? (
                 <section className="cc-section manual-edit-zorder-section">
-                  <header className="cc-section-head">{embedUiLabel('ARRANGE', '순서')}</header>
+                  <header className="cc-section-head">{t('manualEdit.arrange')}</header>
                   <div className="cc-section-body">
                     {isMultiSelect ? (
-                      <p className="cc-section-hint">
-                        {embedUiLabel(
-                          'Applies to each selected layer in its own stack.',
-                          '선택한 레이어마다 각자의 쌓임 맥락에서 순서를 조정합니다.',
-                        )}
-                      </p>
+                      <p className="cc-section-hint">{t('manualEdit.arrangeMultiHint')}</p>
                     ) : null}
                     <ManualEditZOrderControls
                       capabilities={zOrderCapabilities}
                       disabled={zOrderBusy}
                       onZOrder={onZOrder}
                     />
-                    {!isMultiSelect
-                    && inspectorFlags.showZOrder
-                    && targetForInspector
-                    && String(targetForInspector.cssPosition ?? 'static').toLowerCase() === 'static' ? (
-                      <UnitRow
-                        label={embedUiLabel('Z-index', 'Z-index')}
-                        value={draft.styles.zIndex}
-                        placeholder={targetForInspector.styles.zIndex || 'auto'}
-                        onChange={(value) => changeTargetStyle('zIndex', value)}
-                        unit=""
-                      />
-                    ) : null}
                   </div>
                 </section>
               ) : null}
@@ -747,10 +730,11 @@ export function normalizeManualEditStyles(
       continue;
     }
     if (rawKey === 'zIndex') {
-      if (!/^-?\d+$/.test(value)) {
-        return { ok: false, error: 'Z-index must be an integer.' };
+      const zIndex = value.toLowerCase() === 'auto' ? '' : value;
+      if (zIndex !== '' && !/^-?\d+$/.test(zIndex)) {
+        return { ok: false, error: 'Layer order must be a whole number.' };
       }
-      normalized.zIndex = value;
+      normalized.zIndex = zIndex;
       continue;
     }
     if (rawKey === 'lineHeight') {
@@ -881,15 +865,6 @@ function StyleInspector({
             <UnitRow label={embedUiLabel('Left', '왼쪽')} value={styles.left} placeholder={placeholderFor('left')} onChange={(v) => u('left', v)} unit="px" autoUnit />
             <UnitRow label={embedUiLabel('Top', '위')} value={styles.top} placeholder={placeholderFor('top')} onChange={(v) => u('top', v)} unit="px" autoUnit />
           </PairRow>
-          {canAdjustZOrderTarget(positionValue) ? (
-            <UnitRow
-              label={embedUiLabel('Z-index', 'Z-index')}
-              value={styles.zIndex}
-              placeholder={placeholderFor('zIndex')}
-              onChange={(v) => u('zIndex', v)}
-              unit=""
-            />
-          ) : null}
         </Section>
       ) : null}
 
