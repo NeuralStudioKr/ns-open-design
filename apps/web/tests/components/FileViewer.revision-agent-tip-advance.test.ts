@@ -20,10 +20,29 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(block).toContain('setManualEditFrozenSource');
     expect(block).toContain('activeMissingFromList');
     expect(block).toContain('revisionRefreshGenerationRef');
-    // Tip advance with identical HTML skips freeze remount / reloadKey tax.
+    // Tip advance with identical HTML skips freeze remount / reloadKey /
+    // repair-cache / draft churn.
     expect(block).toContain('contentUnchanged');
     expect(block).toContain('if (!contentUnchanged)');
+    expect(block).toContain('rememberStablePreviewSource(projectId, file.name, targetHtml)');
+    const unchangedGuard = block.indexOf('if (!contentUnchanged)');
+    expect(unchangedGuard).toBeGreaterThan(0);
+    expect(block.indexOf('rememberStablePreviewSource(projectId, file.name, targetHtml)')).toBeGreaterThan(
+      unchangedGuard,
+    );
+    expect(block).toContain('current.fullSource === targetHtml');
     expect(block).not.toContain('hydratedUndoCursorFromSession');
+    // Group geometry builders forward their shared Document into batch apply.
+    expect(fileViewer).toContain('buildGroupMoveStylePatches(');
+    expect(fileViewer).toContain('buildGroupResizeStylePatches(');
+    expect(fileViewer).toContain('buildGroupGeometryPatches(baseSource, updates)');
+    expect(fileViewer).toMatch(
+      /applyManualEditBatch\(\s*patches,\s*groupMoveHistoryLabel\(targets\.length\),\s*parsedDoc/,
+    );
+    expect(fileViewer).toMatch(
+      /applyManualEditBatch\(\s*patches,\s*groupResizeHistoryLabel\(targets\.length\),\s*parsedDoc/,
+    );
+    expect(fileViewer).toContain('applyManualEditBatch(patches, label, parsedDoc)');
   });
 
   it('shares one Document for style-cancel and multi-select inspector refresh', () => {

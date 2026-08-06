@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyDeckPatch,
   diffDeckSlideIndexes,
+  extractTopLevelSlideSections,
   isDeckPatchArtifactType,
   parseDeckPatch,
   parseDeckPatchWithSalvage,
@@ -346,6 +347,16 @@ describe('diffDeckSlideIndexes', () => {
   it('reports only the changed slide indexes between two full deck documents', () => {
     const next = CURRENT_DECK.replace('<h2>Numbers</h2>', '<h2>Numbers v2</h2>');
     const diff = diffDeckSlideIndexes(CURRENT_DECK, next);
+    expect(diff.ok).toBe(true);
+    if (!diff.ok) return;
+    expect(diff.changedSlideIndexes).toEqual([1]);
+  });
+
+  it('accepts pre-materialized beforeSlides without rematerializing', () => {
+    const next = CURRENT_DECK.replace('<h2>Numbers</h2>', '<h2>Numbers v2</h2>');
+    const beforeBody = CURRENT_DECK.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? '';
+    const beforeSlides = extractTopLevelSlideSections(beforeBody);
+    const diff = diffDeckSlideIndexes('<!-- no body -->', next, { beforeSlides });
     expect(diff.ok).toBe(true);
     if (!diff.ok) return;
     expect(diff.changedSlideIndexes).toEqual([1]);

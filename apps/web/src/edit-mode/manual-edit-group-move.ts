@@ -150,6 +150,12 @@ export function groupMoveDeltaMoved(
   return probe.moved;
 }
 
+export type GroupStylePatchesResult = {
+  patches: Array<Extract<ManualEditPatch, { kind: 'set-style' }>>;
+  /** Shared Document from style diffs — forward into applyManualEditBatch. */
+  parsedDoc: Document | null;
+};
+
 export function buildGroupMoveStylePatches(
   baseSource: string,
   members: readonly GroupMoveMemberStart[],
@@ -157,7 +163,7 @@ export function buildGroupMoveStylePatches(
   dx: number,
   dy: number,
   shiftKey?: boolean,
-): Array<Extract<ManualEditPatch, { kind: 'set-style' }>> {
+): GroupStylePatchesResult {
   // One Document for all member diffs (was N× readManualEditStyles).
   const parsedDoc = parseManualEditSource(baseSource);
   const patches: Array<Extract<ManualEditPatch, { kind: 'set-style' }>> = [];
@@ -170,7 +176,7 @@ export function buildGroupMoveStylePatches(
     if (Object.keys(effective).length === 0) continue;
     patches.push({ id: member.id, kind: 'set-style', styles: effective });
   }
-  return patches;
+  return { patches, parsedDoc };
 }
 
 export function groupMoveStylesBefore(

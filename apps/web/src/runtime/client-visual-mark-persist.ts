@@ -116,7 +116,10 @@ export async function tryPersistClientVisualMarksOnSend(input: {
     return activeIndex != null ? { ...attachment, slideIndex: activeIndex } : attachment;
   });
 
-  const grafted = graftVisualMarksIntoDeckHtml(currentHtml, withSlideIndex);
+  // Reuse reconcile sections (was graft rematerializing the same deck body).
+  const grafted = graftVisualMarksIntoDeckHtml(currentHtml, withSlideIndex, {
+    currentSlides: scope.sections,
+  });
   if (!grafted) return { ok: false };
 
   // graftVisualMarksIntoDeckHtml already full-source sanitized — head repair only.

@@ -202,9 +202,12 @@ export function buildGroupResizeStylePatches(
   dx: number,
   dy: number,
   shiftKey?: boolean,
-): Array<Extract<ManualEditPatch, { kind: 'set-style' }>> {
+): {
+  patches: Array<Extract<ManualEditPatch, { kind: 'set-style' }>>;
+  parsedDoc: Document | null;
+} {
   const unionStart = unionRectFromMemberStarts(members);
-  if (!unionStart) return [];
+  if (!unionStart) return { patches: [], parsedDoc: null };
   const updates = computeGroupResizePreviewUpdates(
     unionStart,
     members,
@@ -224,5 +227,5 @@ export function buildGroupResizeStylePatches(
     if (Object.keys(effective).length === 0) continue;
     patches.push({ id: update.id, kind: 'set-style', styles: effective });
   }
-  return patches;
+  return { patches, parsedDoc };
 }

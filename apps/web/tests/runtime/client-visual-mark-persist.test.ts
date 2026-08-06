@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatCommentAttachment } from '@open-design/contracts';
@@ -6,6 +9,12 @@ import {
   deriveClientVisualMarkRevisionLabel,
   tryPersistClientVisualMarksOnSend,
 } from '../../src/runtime/client-visual-mark-persist';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const persistSource = readFileSync(
+  join(here, '../../src/runtime/client-visual-mark-persist.ts'),
+  'utf8',
+);
 
 vi.mock('../../src/providers/registry', () => ({
   fetchProjectFileText: vi.fn(),
@@ -46,6 +55,11 @@ function visualAttachment(overrides: Partial<ChatCommentAttachment> = {}): ChatC
 describe('client-visual-mark-persist', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('reuses reconcile sections when grafting visual marks', () => {
+    expect(persistSource).toContain('currentSlides: scope.sections');
+    expect(persistSource).toContain('graftVisualMarksIntoDeckHtml(currentHtml, withSlideIndex, {');
   });
 
   it('labels heart visual marks for revision history', () => {

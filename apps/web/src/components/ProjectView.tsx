@@ -1510,29 +1510,16 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
     devLog.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
     return { ok: false, code: 'deck_patch_merge_failed', reason: applied.reason };
   }
-  // Intent shares one Document with the no-op-stabilize fast path.
-  const intentDoc = parseManualEditSource(applied.html);
-  const intent = validateCommentEditIntentRespected({
+  // Mirror deck-patch finalize (intent + stabilize + conditional sanitize).
+  // applyElementPatches already sanitized — skip no-op-stabilize re-scrub.
+  return finalizeScopedDeckMergeHtml({
+    currentHtml,
     mergedHtml: applied.html,
     commentAttachments: input.commentAttachments ?? [],
     instructionText: input.instructionText,
-    parsedDoc: intentDoc,
+    currentSlides: input.currentSlides,
+    alreadySanitized: true,
   });
-  if (!intent.ok) {
-    return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
-  }
-  // Match deck-patch: stabilize visual marks before ProjectView skips a second pass.
-  const stabilized = stabilizeVisualMarkDeckHtml(
-    currentHtml,
-    applied.html,
-    input.commentAttachments ?? [],
-  );
-  // applyElementPatches already sanitized in-place. Re-scrub only when stabilize
-  // grafted from disk / repaired slides (may reintroduce sibling script/on*).
-  if (stabilized === applied.html) {
-    return { ok: true, html: stabilized };
-  }
-  return { ok: true, html: sanitizeManualEditFullSource(stabilized) };
 }
 
 function elementPatchTargetHintsFromCommentAttachments(
@@ -1845,11 +1832,15 @@ async function fullDeckEditStaysInsideCommentScope(input: {
     };
   }
   let allowedSlideIndexes = [...input.allowedSlideIndexes];
+  // When empty, reconcile once and reuse its sections for the slide diff
+  // (was reconcile then diffDeckSlideIndexes rematerializing before+after).
+  let beforeSlides: ReturnType<typeof reconcileCommentScopeForPersist>['sections'] | undefined;
   if (allowedSlideIndexes.length === 0) {
     // Prefer the same one-pass persist-scope walk used elsewhere (reconcile +
     // candidates + infer) instead of a second scopedCommentSlideIndexesFromDeck.
-    const inferred = reconcileCommentScopeForPersist(currentHtml, input.commentAttachments)
-      .allowedSlideIndexes;
+    const scope = reconcileCommentScopeForPersist(currentHtml, input.commentAttachments);
+    const inferred = scope.allowedSlideIndexes;
+    beforeSlides = scope.sections;
     if (inferred && inferred.length > 0) {
       allowedSlideIndexes = inferred;
     } else {
@@ -1860,7 +1851,9 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       };
     }
   }
-  const diff = diffDeckSlideIndexes(currentHtml, input.nextHtml);
+  const diff = diffDeckSlideIndexes(currentHtml, input.nextHtml, {
+    beforeSlides,
+  });
   if (!diff.ok) {
     devLog.warn('[deck-patch] scoped full-deck guard could not diff deck', {
       fileName: input.fileName,

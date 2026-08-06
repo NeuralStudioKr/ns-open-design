@@ -7942,14 +7942,24 @@ function HtmlViewer({
         sourceRef.current = targetHtml;
         lastStablePreviewSourceRef.current = targetHtml;
         exportHtmlSnapshotGateRef.current = targetHtml;
-        rememberStablePreviewSource(projectId, file.name, targetHtml);
-        setManualEditDraft((current) => ({ ...current, fullSource: targetHtml! }));
         revisionSkipReconcileOnceRef.current = true;
         if (!contentUnchanged) {
+          // Changed tip content — repair/cache + draft + freeze remount.
+          rememberStablePreviewSource(projectId, file.name, targetHtml);
+          setManualEditDraft((current) => ({ ...current, fullSource: targetHtml! }));
           setManualEditFrozenSource(targetHtml);
           setReloadKey((key) => key + 1);
-        } else if (manualEditFrozenSource !== targetHtml) {
-          setManualEditFrozenSource(targetHtml);
+        } else {
+          // Identical HTML already painted — skip repair/cache churn; keep
+          // freeze/draft in sync only when refs drifted.
+          if (manualEditFrozenSource !== targetHtml) {
+            setManualEditFrozenSource(targetHtml);
+          }
+          setManualEditDraft((current) =>
+            current.fullSource === targetHtml
+              ? current
+              : { ...current, fullSource: targetHtml! },
+          );
         }
       }
     }
@@ -9314,9 +9324,19 @@ function HtmlViewer({
       return;
     }
     const targetsById = new Map(targets.map((target) => [target.id, target]));
-    const patches = buildGroupMoveStylePatches(baseSource, memberStarts, targetsById, dx, dy);
+    const { patches, parsedDoc } = buildGroupMoveStylePatches(
+      baseSource,
+      memberStarts,
+      targetsById,
+      dx,
+      dy,
+    );
     try {
-      const ok = await applyManualEditBatch(patches, groupMoveHistoryLabel(targets.length));
+      const ok = await applyManualEditBatch(
+        patches,
+        groupMoveHistoryLabel(targets.length),
+        parsedDoc,
+      );
       if (!ok) {
         rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
         return;
@@ -9371,7 +9391,7 @@ function HtmlViewer({
       rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
       return;
     }
-    const patches = buildGroupResizeStylePatches(
+    const { patches, parsedDoc } = buildGroupResizeStylePatches(
       baseSource,
       memberStarts,
       handle,
@@ -9380,7 +9400,11 @@ function HtmlViewer({
       shiftKey,
     );
     try {
-      const ok = await applyManualEditBatch(patches, groupResizeHistoryLabel(targets.length));
+      const ok = await applyManualEditBatch(
+        patches,
+        groupResizeHistoryLabel(targets.length),
+        parsedDoc,
+      );
       if (!ok) {
         rollbackManualEditGroupGestureStyles(stylesBefore, memberStarts);
         return;
@@ -9419,9 +9443,9 @@ function HtmlViewer({
       liveSource: sourceRef.current,
     });
     if (baseSource == null) return false;
-    const patches = buildGroupGeometryPatches(baseSource, updates);
+    const { patches, parsedDoc } = buildGroupGeometryPatches(baseSource, updates);
     if (patches.length === 0) return true;
-    const ok = await applyManualEditBatch(patches, label);
+    const ok = await applyManualEditBatch(patches, label, parsedDoc);
     if (!ok) return false;
     manualEditPendingStyleRef.current = null;
     clearManualEditStyleTimer();

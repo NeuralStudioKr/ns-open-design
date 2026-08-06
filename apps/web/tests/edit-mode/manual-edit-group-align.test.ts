@@ -65,8 +65,9 @@ describe('manual-edit-group-align', () => {
 
   it('builds geometry patches for align actions', () => {
     const updates = computeGroupAlignPreviewUpdates([boxA, boxB], 'top');
-    const patches = buildGroupGeometryPatches(baseSource, updates);
+    const { patches, parsedDoc } = buildGroupGeometryPatches(baseSource, updates);
     expect(patches).toHaveLength(2);
+    expect({ patches, parsedDoc }).toHaveProperty('parsedDoc');
     expect(patches.every((patch) => patch.kind === 'set-style')).toBe(true);
   });
 

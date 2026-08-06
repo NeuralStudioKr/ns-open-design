@@ -319,14 +319,29 @@ function normalizeAllowedSlideIndexes(indexes: readonly number[] | undefined): S
 export function diffDeckSlideIndexes(
   beforeHtml: string,
   afterHtml: string,
+  options?: {
+    /** Pre-materialized before sections (e.g. persist reconcile). */
+    beforeSlides?: readonly { outerHtml: string }[];
+    /** Pre-materialized after sections. */
+    afterSlides?: readonly { outerHtml: string }[];
+  },
 ): DeckSlideDiffSuccess | DeckSlideDiffFailure {
-  const beforeBody = findBodyContentRange(beforeHtml);
-  const afterBody = findBodyContentRange(afterHtml);
-  if (!beforeBody || !afterBody) {
-    return { ok: false, reason: 'deck diff requires <body>…</body> in both documents' };
+  let beforeSlides = options?.beforeSlides;
+  let afterSlides = options?.afterSlides;
+  if (!beforeSlides) {
+    const beforeBody = findBodyContentRange(beforeHtml);
+    if (!beforeBody) {
+      return { ok: false, reason: 'deck diff requires <body>…</body> in both documents' };
+    }
+    beforeSlides = extractTopLevelSlideSections(beforeHtml.slice(beforeBody.start, beforeBody.end));
   }
-  const beforeSlides = extractTopLevelSlideSections(beforeHtml.slice(beforeBody.start, beforeBody.end));
-  const afterSlides = extractTopLevelSlideSections(afterHtml.slice(afterBody.start, afterBody.end));
+  if (!afterSlides) {
+    const afterBody = findBodyContentRange(afterHtml);
+    if (!afterBody) {
+      return { ok: false, reason: 'deck diff requires <body>…</body> in both documents' };
+    }
+    afterSlides = extractTopLevelSlideSections(afterHtml.slice(afterBody.start, afterBody.end));
+  }
   if (beforeSlides.length === 0 || afterSlides.length === 0) {
     return { ok: false, reason: 'deck diff requires slide sections in both documents' };
   }

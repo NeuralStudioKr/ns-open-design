@@ -384,11 +384,19 @@ describe("ProjectView message loading", () => {
     expect(elementStart).toBeGreaterThan(0);
     const elementBlock = source.slice(elementStart, elementStart + 6000);
     expect(elementBlock).toContain("currentHtml?: string | null");
-    expect(elementBlock).toContain("stabilizeVisualMarkDeckHtml(");
+    // Element-patch folds through finalize (intent + stabilize + conditional scrub).
+    expect(elementBlock).toContain("finalizeScopedDeckMergeHtml({");
+    expect(elementBlock).toContain("alreadySanitized: true");
+    expect(elementBlock).toContain("currentSlides: input.currentSlides");
     const deckStart = source.indexOf("async function tryApplyDeckPatchAgainstCurrentDeck");
     expect(deckStart).toBeGreaterThan(0);
     expect(source.slice(deckStart, deckStart + 2500)).toContain("currentHtml?: string | null");
     expect(source).not.toContain("function scopedCommentSlideIndexes(");
+    const guardStart = source.indexOf("async function fullDeckEditStaysInsideCommentScope");
+    expect(guardStart).toBeGreaterThan(0);
+    const guardBlock = source.slice(guardStart, guardStart + 3500);
+    expect(guardBlock).toContain("beforeSlides");
+    expect(guardBlock).toContain("diffDeckSlideIndexes(currentHtml, input.nextHtml, {");
   });
 
   it("sanitizes FileViewer manual-edit saves before revision push", () => {
@@ -447,6 +455,10 @@ describe("ProjectView message loading", () => {
     expect(deckSource).toContain("currentSlides: sections");
     expect(deckSource).toContain("One section materialization for text-verify + label conflict");
     expect(deckSource).toContain("sharedCurrentSlides");
+    expect(deckSource).toContain("sharedPatchedSlides");
+    expect(deckSource).toContain("patchedSlides: sharedPatchedSlides");
+    expect(deckSource).toContain("alreadySanitized?: boolean");
+    expect(deckSource).toContain("mergedSlides?: readonly { outerHtml: string }[]");
     expect(deckSource).toContain("allPatchesVerified");
     expect(deckSource).toContain("refreshSectionsIfNeeded");
     expect(viewSource).toContain("persistCommentSections");

@@ -96,8 +96,15 @@ describe('manual-edit-group-resize', () => {
 
   it('builds per-target resize patches for batch save', () => {
     const members = buildGroupResizeMemberStarts([boxA, boxB]);
-    const patches = buildGroupResizeStylePatches(baseSource, members, 'se', 42, 18);
+    const { patches, parsedDoc } = buildGroupResizeStylePatches(
+      baseSource,
+      members,
+      'se',
+      42,
+      18,
+    );
     expect(patches).toHaveLength(2);
+    expect({ patches, parsedDoc }).toHaveProperty('parsedDoc');
     expect(patches.find((patch) => patch.id === 'box-a')?.styles).toMatchObject({
       width: '96px',
       height: '48px',

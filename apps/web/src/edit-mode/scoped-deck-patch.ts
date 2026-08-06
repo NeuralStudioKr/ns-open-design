@@ -474,12 +474,20 @@ export function stabilizeVisualMarkDeckHtml(
   currentHtml: string,
   nextHtml: string,
   commentAttachments: readonly ChatCommentAttachment[],
+  options?: {
+    /** Pre-materialized current sections — skip rematerialize when finalize/apply shares them. */
+    currentSlides?: readonly { outerHtml: string }[];
+    /** Pre-materialized next/merged sections. */
+    mergedSlides?: readonly { outerHtml: string }[];
+  },
 ): string {
   const visualMarks = commentAttachments.filter(isScreenshotOnlyVisualCommentTarget);
   if (visualMarks.length === 0) return nextHtml;
 
-  const currentSlides = extractTopLevelSlideSections(extractDeckBodyContent(currentHtml));
-  const nextSlides = extractTopLevelSlideSections(extractDeckBodyContent(nextHtml));
+  const currentSlides = options?.currentSlides
+    ?? extractTopLevelSlideSections(extractDeckBodyContent(currentHtml));
+  const nextSlides = options?.mergedSlides
+    ?? extractTopLevelSlideSections(extractDeckBodyContent(nextHtml));
 
   if (nextSlides.length < currentSlides.length) {
     devLog.warn('[deck-patch] visual-mark edit reduced slide count — grafting into current deck', {
@@ -563,6 +571,10 @@ export function applyScopedDeckPatchToHtml(input: {
   if (!merged.ok) {
     return { ok: false, code: 'deck_patch_merge_failed', reason: merged.reason };
   }
+  // One patched-section materialization shared by scoped merge + finalize stabilize.
+  const sharedPatchedSlides = input.commentAttachments?.length
+    ? extractTopLevelSlideSections(extractDeckBodyContent(merged.html))
+    : undefined;
   if (input.allowedSlideIndexes && input.commentAttachments?.length) {
     const scoped = mergeScopedCommentTargetsFromPatchedDeck({
       currentHtml,
@@ -570,6 +582,7 @@ export function applyScopedDeckPatchToHtml(input: {
       commentAttachments: input.commentAttachments,
       instructionText: input.instructionText,
       currentSlides: sharedCurrentSlides ?? undefined,
+      patchedSlides: sharedPatchedSlides,
     });
     if (!scoped.ok) {
       return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason };
@@ -580,6 +593,7 @@ export function applyScopedDeckPatchToHtml(input: {
         mergedHtml: scoped.html,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
+        currentSlides: sharedCurrentSlides ?? undefined,
       });
     }
     if (mergedScopeRelaxed) {
@@ -599,6 +613,8 @@ export function applyScopedDeckPatchToHtml(input: {
     commentAttachments: input.commentAttachments ?? [],
     instructionText: input.instructionText,
     requireIntent: Boolean(input.commentAttachments?.length),
+    currentSlides: sharedCurrentSlides ?? undefined,
+    mergedSlides: sharedPatchedSlides,
   });
 }
 
@@ -613,6 +629,15 @@ export function finalizeScopedDeckMergeHtml(input: {
   commentAttachments: readonly ChatCommentAttachment[];
   instructionText?: string;
   requireIntent?: boolean;
+  /** Pre-materialized current sections for stabilize (applyScoped / element-patch). */
+  currentSlides?: readonly { outerHtml: string }[];
+  /** Pre-materialized merged/patched sections for stabilize. */
+  mergedSlides?: readonly { outerHtml: string }[];
+  /**
+   * When true and stabilize is a no-op, skip re-scrub (element-patch already
+   * sanitized in-place). Graft/repair paths still full-source sanitize.
+   */
+  alreadySanitized?: boolean;
 }): DeckPatchMergeResult {
   const parsedDoc = parseManualEditSource(input.mergedHtml);
   const intent = validateCommentEditIntentRespected({
@@ -625,15 +650,28 @@ export function finalizeScopedDeckMergeHtml(input: {
     return { ok: false, code: 'comment_edit_intent_violated', reason: intent.reason };
   }
   const repairedHtml = input.commentAttachments.length > 0
-    ? stabilizeVisualMarkDeckHtml(input.currentHtml, input.mergedHtml, input.commentAttachments)
+    ? stabilizeVisualMarkDeckHtml(
+      input.currentHtml,
+      input.mergedHtml,
+      input.commentAttachments,
+      {
+        currentSlides: input.currentSlides,
+        mergedSlides: input.mergedSlides,
+      },
+    )
     : input.mergedHtml;
-  if (repairedHtml === input.mergedHtml && parsedDoc) {
-    sanitizeManualEditDocumentInPlace(parsedDoc);
-    return {
-      ok: true,
-      html: serializeManualEditSource(parsedDoc, input.mergedHtml),
-      sanitized: true,
-    };
+  if (repairedHtml === input.mergedHtml) {
+    if (input.alreadySanitized) {
+      return { ok: true, html: input.mergedHtml, sanitized: true };
+    }
+    if (parsedDoc) {
+      sanitizeManualEditDocumentInPlace(parsedDoc);
+      return {
+        ok: true,
+        html: serializeManualEditSource(parsedDoc, input.mergedHtml),
+        sanitized: true,
+      };
+    }
   }
   return { ok: true, html: sanitizeManualEditFullSource(repairedHtml), sanitized: true };
 }

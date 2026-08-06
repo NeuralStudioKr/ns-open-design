@@ -165,8 +165,16 @@ describe('manual-edit-group-move', () => {
     const targets = [boxA, boxB];
     const targetsById = new Map(targets.map((target) => [target.id, target]));
     const members = buildGroupMoveMemberStarts(targets);
-    const patches = buildGroupMoveStylePatches(baseSource, members, targetsById, 24, 12);
+    const { patches, parsedDoc } = buildGroupMoveStylePatches(
+      baseSource,
+      members,
+      targetsById,
+      24,
+      12,
+    );
     expect(patches).toHaveLength(2);
+    // parsedDoc may be null outside jsdom — shape still forwards into batch apply.
+    expect({ patches, parsedDoc }).toHaveProperty('parsedDoc');
     expect(patches.map((patch) => patch.id).sort()).toEqual(['box-a', 'box-b']);
     expect(patches.find((patch) => patch.id === 'box-a')?.styles).toMatchObject({
       left: '34px',

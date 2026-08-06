@@ -213,7 +213,10 @@ export function computeGroupDistributePreviewUpdates(
 export function buildGroupGeometryPatches(
   baseSource: string,
   updates: readonly GroupMovePreviewUpdate[],
-): Array<Extract<ManualEditPatch, { kind: 'set-style' }>> {
+): {
+  patches: Array<Extract<ManualEditPatch, { kind: 'set-style' }>>;
+  parsedDoc: Document | null;
+} {
   // One Document for all member diffs (was N× readManualEditStyles).
   const parsedDoc = parseManualEditSource(baseSource);
   const patches: Array<Extract<ManualEditPatch, { kind: 'set-style' }>> = [];
@@ -225,5 +228,5 @@ export function buildGroupGeometryPatches(
     if (Object.keys(effective).length === 0) continue;
     patches.push({ id: update.id, kind: 'set-style', styles: effective });
   }
-  return patches;
+  return { patches, parsedDoc };
 }

@@ -18,6 +18,10 @@ import {
   hasElementScopedCommentAttachments,
   isVisualCommentAttachment,
 } from '../../src/edit-mode/scoped-deck-patch';
+import {
+  extractDeckBodyContent,
+  extractTopLevelSlideSections,
+} from '../../src/artifacts/deck-patch';
 import { parseElementPatch } from '../../src/artifacts/element-patch';
 import type { ChatCommentAttachment } from '../../src/types';
 import { buildVisualAnnotationAttachment } from '../../src/comments';
@@ -833,6 +837,14 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(stabilized).toContain('Keep this text');
     expect(stabilized).toContain('Slide 3');
     expect(stabilized).toContain('od-visual-mark-target');
+    // Shared sections path must match cold materialize (finalize/applyScoped).
+    const currentSlides = extractTopLevelSlideSections(extractDeckBodyContent(deck));
+    const mergedSlides = extractTopLevelSlideSections(extractDeckBodyContent(collapsed));
+    const shared = stabilizeVisualMarkDeckHtml(deck, collapsed, [visual], {
+      currentSlides,
+      mergedSlides,
+    });
+    expect(shared).toBe(stabilized);
   });
 
   it('folds full-source sanitize into deck-patch merges (ProjectView can skip terminal scrub)', () => {

@@ -1515,19 +1515,40 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
       ),
       '',
     )
-    // Navigable URL attrs — align deny list with isSafeManualEditUrl (blob/file/data/protocol-relative).
+    // Navigable URL attrs — align deny list with isSafeManualEditUrl
+    // (blob/file/data/about/filesystem/protocol-relative + common extension schemes).
     .replace(
       new RegExp(
-        `\\s(?:${urlAttrs})\\s*=\\s*(['"])\\s*(?:javascript|vbscript|blob\\s*:|file\\s*:|data\\s*:|//)[\\s\\S]*?\\1`,
+        `\\s(?:${urlAttrs})\\s*=\\s*(['"])\\s*(?:javascript|vbscript|blob\\s*:|file\\s*:|data\\s*:|about\\s*:|filesystem\\s*:|chrome(?:-extension)?\\s*:|moz-extension\\s*:|resource\\s*:|//)[\\s\\S]*?\\1`,
         'gi',
       ),
       '',
     )
     .replace(
       new RegExp(
-        `\\s(?:${urlAttrs})\\s*=\\s*(?:javascript|vbscript|blob\\s*:|file\\s*:|data\\s*:|//)[^\\s>]*`,
+        `\\s(?:${urlAttrs})\\s*=\\s*(?:javascript|vbscript|blob\\s*:|file\\s*:|data\\s*:|about\\s*:|filesystem\\s*:|chrome(?:-extension)?\\s*:|moz-extension\\s*:|resource\\s*:|//)[^\\s>]*`,
         'gi',
       ),
+      '',
+    )
+    // Form navigators — relative/fragment only (DOM: isSafeManualEditRelativeOrFragmentUrl).
+    // Absolute https://… survives the prefix deny above; strip any scheme / //.
+    .replace(
+      /\s(?:action|formaction)\s*=\s*(['"])\s*(?:[a-z][a-z0-9+.-]*\s*:|\/\/)[\s\S]*?\1/gi,
+      '',
+    )
+    .replace(
+      /\s(?:action|formaction)\s*=\s*(?:[a-z][a-z0-9+.-]*\s*:|\/\/)[^\s>]*/gi,
+      '',
+    )
+    // Multi-token URL lists — drop attr when ANY candidate matches the deny list
+    // (prefix-of-whole-value misses `srcset="/ok.png, javascript:…"`).
+    .replace(
+      /\s(?:srcset|imagesrcset|archive|ping|values)\s*=\s*(['"])[\s\S]*?(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|\/\/)[\s\S]*?\1/gi,
+      '',
+    )
+    .replace(
+      /\s(?:srcset|imagesrcset|archive|ping|values)\s*=\s*[^\s>]*(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|\/\/)[^\s>]*/gi,
       '',
     );
 }
