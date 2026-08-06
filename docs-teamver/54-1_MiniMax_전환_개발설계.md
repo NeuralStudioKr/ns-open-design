@@ -1779,6 +1779,11 @@ MiniMax P0 구현 완료 조건:
 - 실제 MiniMax usage 응답 형식 확인 후 비용/usage 기록 정책 확정
 - 장시간 작업 중 페이지 이탈/재진입/중지 동작을 MiniMax provider에서 staging 브라우저로 확인
 
+**2026-08-06 staging canary 준비 (코드):**
+- design-api `runtime-config`가 `TEAMVER_OD_API_PROTOCOL` 미설정 시 `TEAMVER_DESIGN_DEFAULT_PROVIDER=minimax`를 상속.
+- `deploy/teamver/scripts/smoke_minimax_staging.sh` + `smoke_design.sh` `SMOKE_EXPECT_MINIMAX=1` 옵션.
+- 실제 MiniMax key가 있는 staging 호스트에서만 browser/curl smoke를 완료할 수 있음 (cloud agent VM에는 credential 없음).
+
 ### 26.5 검증 메모
 
 2026-08-04 별도 worktree에서 `pnpm install` 후 skeleton과 1차 route 구현에 대해 다음을 확인했습니다.
@@ -1805,9 +1810,10 @@ MiniMax P0 구현 완료 조건:
 
 ### 26.6 다음 구현 순서
 
-1. staging에 실제 MiniMax key를 넣고 `TEAMVER_DESIGN_DEFAULT_PROVIDER=minimax`를 제한적으로 켜 smoke합니다.
-2. URL 참조 생성에서 `web_fetch` 호출 여부와 SSRF 차단 로그를 확인합니다.
-3. streaming 중 `<think>`, `<tool>`, `<invoke>`, `<question>`, deliverable instruction이 채팅 저장/렌더에 노출되지 않도록 MiniMax 실제 응답으로 QA합니다.
-4. 파일/Drive 첨부 기반 생성과 댓글 scoped patch 수정이 기존 Claude path와 동일하게 S3/DB 저장되는지 확인합니다.
-5. incomplete_output/auto-continue 횟수와 prompt verbosity를 실제 MiniMax 응답 기준으로 튜닝합니다.
-6. 위 smoke가 통과하기 전에는 production default provider를 MiniMax로 전환하지 않습니다.
+1. staging에 실제 MiniMax key를 넣고 `TEAMVER_DESIGN_DEFAULT_PROVIDER=minimax`를 제한적으로 켜 smoke합니다. (`TEAMVER_OD_API_PROTOCOL`을 비워두면 design-api가 default provider를 상속합니다. 명시하려면 `TEAMVER_OD_API_PROTOCOL=minimax`도 함께 설정.)
+2. `TEAMVER_COOKIE=... bash deploy/teamver/scripts/smoke_minimax_staging.sh` 로 runtime-config canary를 확인한 뒤, 브라우저 P0 QA 체크리스트를 수행합니다.
+3. URL 참조 생성에서 `web_fetch` 호출 여부와 SSRF 차단 로그를 확인합니다.
+4. streaming 중 `<think>`, `<tool>`, `<invoke>`, `<question>`, deliverable instruction이 채팅 저장/렌더에 노출되지 않도록 MiniMax 실제 응답으로 QA합니다.
+5. 파일/Drive 첨부 기반 생성과 댓글 scoped patch 수정이 기존 Claude path와 동일하게 S3/DB 저장되는지 확인합니다.
+6. incomplete_output/auto-continue 횟수와 prompt verbosity를 실제 MiniMax 응답 기준으로 튜닝합니다.
+7. 위 smoke가 통과하기 전에는 production default provider를 MiniMax로 전환하지 않습니다.

@@ -106,7 +106,9 @@ class Settings(BaseModel):
     design_model_prices_json: str = os.getenv("DESIGN_MODEL_PRICES_JSON", "")
 
     # Embed managed API mode — server env only (never VITE_* / git)
-    teamver_od_api_protocol: str = os.getenv("TEAMVER_OD_API_PROTOCOL", "anthropic")
+    # Empty means "inherit TEAMVER_DESIGN_DEFAULT_PROVIDER when set".
+    teamver_od_api_protocol: str = os.getenv("TEAMVER_OD_API_PROTOCOL", "")
+    teamver_design_default_provider: str = os.getenv("TEAMVER_DESIGN_DEFAULT_PROVIDER", "")
     teamver_od_api_base_url: str = os.getenv(
         "TEAMVER_OD_API_BASE_URL", "https://api.anthropic.com"
     )

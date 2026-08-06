@@ -18,6 +18,7 @@ def _reset_runtime_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "od_minimax_api_key", "")
     monkeypatch.setattr(settings, "minimax_api_key", "")
     monkeypatch.setattr(settings, "teamver_od_api_protocol", "anthropic")
+    monkeypatch.setattr(settings, "teamver_design_default_provider", "")
     monkeypatch.setattr(settings, "teamver_od_api_base_url", "https://api.anthropic.com")
     monkeypatch.setattr(settings, "teamver_od_api_model", "claude-sonnet-4-6")
 
@@ -75,6 +76,36 @@ def test_runtime_config_from_minimax_managed_key(monkeypatch: pytest.MonkeyPatch
     assert payload["baseUrl"] == "https://api.minimax.io/v1"
     assert payload["model"] == "MiniMax-M3"
     assert "apiKey" not in payload
+
+
+def test_runtime_config_from_minimax_default_provider_without_explicit_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "teamver_minimax_api_key", "sk-cp-managed")
+    monkeypatch.setattr(settings, "teamver_od_api_protocol", "")
+    monkeypatch.setattr(settings, "teamver_design_default_provider", "minimax")
+    monkeypatch.setattr(settings, "teamver_od_api_base_url", "https://api.anthropic.com")
+    monkeypatch.setattr(settings, "teamver_od_api_model", "claude-sonnet-4-6")
+
+    payload = od_runtime_config.resolve_od_runtime_config_payload()
+
+    assert payload["configured"] is True
+    assert payload["apiProtocol"] == "minimax"
+    assert payload["baseUrl"] == "https://api.minimax.io/v1"
+    assert payload["model"] == "MiniMax-M3"
+    assert "apiKey" not in payload
+
+
+def test_runtime_config_explicit_protocol_overrides_default_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "teamver_od_api_key", "sk-teamver-managed")
+    monkeypatch.setattr(settings, "teamver_od_api_protocol", "anthropic")
+    monkeypatch.setattr(settings, "teamver_design_default_provider", "minimax")
+
+    payload = od_runtime_config.resolve_od_runtime_config_payload()
+
+    assert payload["apiProtocol"] == "anthropic"
 
 
 def test_runtime_config_normalizes_minimax_legacy_host(monkeypatch: pytest.MonkeyPatch) -> None:
