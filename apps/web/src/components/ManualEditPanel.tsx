@@ -337,6 +337,18 @@ export function ManualEditPanel({
                       disabled={zOrderBusy}
                       onZOrder={onZOrder}
                     />
+                    {!isMultiSelect
+                    && inspectorFlags.showZOrder
+                    && targetForInspector
+                    && String(targetForInspector.cssPosition ?? 'static').toLowerCase() === 'static' ? (
+                      <UnitRow
+                        label={embedUiLabel('Z-index', 'Z-index')}
+                        value={draft.styles.zIndex}
+                        placeholder={targetForInspector.styles.zIndex || 'auto'}
+                        onChange={(value) => changeTargetStyle('zIndex', value)}
+                        unit=""
+                      />
+                    ) : null}
                   </div>
                 </section>
               ) : null}

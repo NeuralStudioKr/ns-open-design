@@ -6,8 +6,10 @@ import {
   canDragLayerRow,
   layerReorderGroupFrontFirstIds,
   layerReorderInsertIndex,
+  mergeVisibleLayerReorderIntoStack,
   reorderLayerPaintOrder,
   resolveLayerReorderSiblings,
+  resolveLayerReorderStackSiblings,
 } from '../../src/edit-mode/manual-edit-layer-reorder';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
 
@@ -111,5 +113,24 @@ describe('manual-edit-layer-reorder', () => {
     const order = ['top', 'middle', 'bottom'];
     expect(layerReorderInsertIndex(order, 'bottom', 'top')).toBe(0);
     expect(layerReorderInsertIndex(order, 'top', null)).toBe(2);
+  });
+
+  it('keeps hidden siblings interleaved when visible layers reorder', () => {
+    const stack = [
+      target('visible-top', { parentKey: 'slide', stackZ: 3, siblingIndex: 2 }),
+      target('hidden', { parentKey: 'slide', stackZ: 2, siblingIndex: 1, cssPosition: 'absolute' }),
+      target('visible-bottom', { parentKey: 'slide', stackZ: 1, siblingIndex: 0 }),
+    ];
+    stack[1]!.isHidden = true;
+    const visible = resolveLayerReorderSiblings(stack, 'visible-bottom');
+    const visibleFrontFirst = layerReorderGroupFrontFirstIds(visible);
+    const visibleNext = reorderLayerPaintOrder(visibleFrontFirst, 'visible-bottom', 0);
+    const merged = mergeVisibleLayerReorderIntoStack(stack, visibleFrontFirst, visibleNext);
+    expect(merged).toEqual(['visible-bottom', 'hidden', 'visible-top']);
+    const patches = buildLayerReorderZIndexPatches(
+      resolveLayerReorderStackSiblings(stack, 'visible-bottom'),
+      merged,
+    );
+    expect(patches.length).toBeGreaterThan(0);
   });
 });

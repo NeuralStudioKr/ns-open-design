@@ -51,7 +51,7 @@ export function ManualEditLayersPanel({
 }: ManualEditLayersPanelProps) {
   const t = useT();
   const primaryId = selectedIds.length === 1 ? selectedIds[0] : null;
-  const showZOrder = Boolean(primaryId && zOrderCapabilities && onZOrder);
+  const showZOrder = Boolean(zOrderCapabilities && onZOrder);
   const reorderOptions = { deck, activeSlideIndex };
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropBeforeId, setDropBeforeId] = useState<string | null | undefined>(undefined);
@@ -121,6 +121,14 @@ export function ManualEditLayersPanel({
           <span className="manual-edit-layers-arrange-label">
             {embedUiLabel('Arrange', '순서')}
           </span>
+          {selectedIds.length > 1 ? (
+            <p className="manual-edit-layers-hint">
+              {embedUiLabel(
+                'Applies to each selected layer in its own stack.',
+                '선택한 레이어마다 각자의 쌓임 맥락에서 순서를 조정합니다.',
+              )}
+            </p>
+          ) : null}
           <ManualEditZOrderControls
             compact
             disabled={zOrderBusy}

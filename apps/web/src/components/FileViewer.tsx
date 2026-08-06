@@ -314,6 +314,8 @@ import {
   keyedManualEditStyleRollback,
   manualEditGestureRollbackKeys,
   restoreManualEditPendingStyleAfterFailedFlush,
+  manualEditPendingAffectedIds,
+  manualEditPendingStyleEntries,
   shouldFlushManualEditStylesOnTargetBoundary,
   shouldSkipManualEditStyleFlushWhilePaused,
   waitForManualEditSaveIdle,
@@ -389,6 +391,8 @@ import {
   layerReorderInsertIndex,
   reorderLayerPaintOrder,
   resolveLayerReorderSiblings,
+  mergeVisibleLayerReorderIntoStack,
+  resolveLayerReorderStackSiblings,
 } from '../edit-mode/manual-edit-layer-reorder';
 import { filterManualEditLayerTargets, sortManualEditLayerTargetsByPaintOrder } from '../edit-mode/manual-edit-layer-targets';
 import { filterRootTargetsForGroupGeometry } from '../edit-mode/manual-edit-selection-ancestry';
@@ -8805,6 +8809,10 @@ function HtmlViewer({
       }
       setManualEditError(null);
       clearManualEditStyleTimer();
+      for (const id of ids) {
+        requestManualEditTargetRemeasure(id);
+      }
+      requestManualEditTargetsRefresh();
       if (manualEditResizeSessionActiveRef.current) return;
       manualEditStyleTimerRef.current = setTimeout(() => {
         manualEditStyleTimerRef.current = null;
@@ -9551,20 +9559,14 @@ function HtmlViewer({
     );
   }
 
-  function reconcileManualEditDraftAfterNoOpFlush(
+  function revertManualEditPendingStylePreview(
     pending: ManualEditPendingStyleSave,
-    sharedParsedDoc?: Document | null,
+    parsedDoc: Document,
+    base: string,
   ) {
-    const base = sourceRef.current ?? '';
-    if (!base) return;
-    const keys = Object.keys(pending.styles) as Array<keyof ManualEditStyles>;
-    if (keys.length === 0) return;
-
-    // One Document for all pending/selected targets (was N× snapshot parses).
-    // Prefer caller-shared doc from single-id flush (avoid parse ×2).
-    const parsedDoc = sharedParsedDoc ?? parseManualEditSource(base);
-    const pendingIds = pending.targetIds ?? [pending.id];
-    for (const id of pendingIds) {
+    for (const { id, styles } of manualEditPendingStyleEntries(pending)) {
+      const keys = Object.keys(styles) as Array<keyof ManualEditStyles>;
+      if (keys.length === 0) continue;
       const target = id === '__body__'
         ? null
         : manualEditTargets.find((item) => item.id === id)
@@ -9578,10 +9580,52 @@ function HtmlViewer({
       }, {});
       previewStyleToIframe(id, resetStyles, nextManualEditPreviewVersion());
     }
-
+    const affectedIds = manualEditPendingAffectedIds(pending).filter((id) => id !== '__body__');
+    const touchesZOrder = manualEditPendingStyleEntries(pending).some(
+      ({ styles }) => styles.zIndex !== undefined || styles.position !== undefined,
+    );
+    if (touchesZOrder && affectedIds.length > 0) {
+      setManualEditTargets((current) => current.map((item) => {
+        if (!affectedIds.includes(item.id)) return item;
+        const target = item;
+        const sourceStyles = inspectorManualEditStyles(target, base, parsedDoc);
+        return {
+          ...item,
+          styles: {
+            ...item.styles,
+            zIndex: sourceStyles.zIndex ?? '',
+            position: sourceStyles.position ?? item.styles.position,
+          },
+          stackZ: readStackZFromZIndexStyle(sourceStyles.zIndex),
+          cssPosition: sourceStyles.position || item.cssPosition,
+        };
+      }));
+      for (const id of affectedIds) {
+        requestManualEditTargetRemeasure(id);
+      }
+      requestManualEditTargetsRefresh();
+    }
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
     setManualEditGroupDraftRects(null);
+  }
+
+  function reconcileManualEditDraftAfterNoOpFlush(
+    pending: ManualEditPendingStyleSave,
+    sharedParsedDoc?: Document | null,
+  ) {
+    const base = sourceRef.current ?? '';
+    if (!base) return;
+    const entries = manualEditPendingStyleEntries(pending);
+    if (entries.length === 0) return;
+
+    const parsedDoc = sharedParsedDoc ?? parseManualEditSource(base);
+    revertManualEditPendingStylePreview(pending, parsedDoc, base);
+
+    const keys = Array.from(new Set(
+      entries.flatMap(({ styles }) => Object.keys(styles) as Array<keyof ManualEditStyles>),
+    ));
+    if (keys.length === 0) return;
 
     const selectedIds = selectedManualEditTargetIdsRef.current;
     if (selectedIds.length > 1) {
@@ -9739,24 +9783,8 @@ function HtmlViewer({
     clearManualEditStyleTimer();
     manualEditPendingStyleRef.current = null;
     const base = sourceRef.current ?? '';
-    // One Document for all pending/selected targets (mirror no-op flush).
     const parsedDoc = parseManualEditSource(base);
-    const pendingIds = pending.targetIds ?? [pending.id];
-    const pendingKeys = Object.keys(pending.styles) as Array<keyof ManualEditStyles>;
-    for (const id of pendingIds) {
-      const target = id === '__body__'
-        ? null
-        : manualEditTargets.find((item) => item.id === id)
-          ?? (selectedManualEditTargetRef.current?.id === id ? selectedManualEditTargetRef.current : null);
-      const sourceStyles = target
-        ? inspectorManualEditStyles(target, base, parsedDoc)
-        : readManualEditStyles(base, id, {}, parsedDoc);
-      const resetStyles = pendingKeys.reduce<Partial<ManualEditStyles>>((acc, key) => {
-        acc[key] = sourceStyles[key] ?? '';
-        return acc;
-      }, {});
-      previewStyleToIframe(id, resetStyles, nextManualEditPreviewVersion());
-    }
+    revertManualEditPendingStylePreview(pending, parsedDoc, base);
     const selectedIds = selectedManualEditTargetIdsRef.current;
     if (selectedIds.length > 1) {
       const refreshed = resolveManualEditTargetsByIds(selectedIds, manualEditTargets);
@@ -12387,13 +12415,9 @@ function HtmlViewer({
   ]);
 
   function collectZIndexTargetsFromPending(pending: ManualEditPendingStyleSave): string[] {
-    if (pending.perTargetStyles) {
-      return Object.entries(pending.perTargetStyles)
-        .filter(([, styles]) => styles.zIndex !== undefined)
-        .map(([id]) => id);
-    }
-    if (pending.styles.zIndex === undefined) return [];
-    return [...(pending.targetIds ?? [pending.id])];
+    return manualEditPendingStyleEntries(pending)
+      .filter(({ styles }) => styles.zIndex !== undefined)
+      .map(({ id }) => id);
   }
 
   function afterManualEditZIndexPersist(targetIds: readonly string[]) {
@@ -12513,16 +12537,23 @@ function HtmlViewer({
   }
 
   function handleManualEditLayerReorder(draggedId: string, insertBeforeId: string | null) {
-    const siblings = resolveLayerReorderSiblings(manualEditTargets, draggedId, {
+    const reorderOptions = {
       deck: effectiveDeck,
       activeSlideIndex: slideState?.active ?? null,
-    });
-    if (siblings.length < 2) return;
-    const frontFirst = layerReorderGroupFrontFirstIds(siblings);
-    const insertIndex = layerReorderInsertIndex(frontFirst, draggedId, insertBeforeId);
+    };
+    const visibleSiblings = resolveLayerReorderSiblings(manualEditTargets, draggedId, reorderOptions);
+    if (visibleSiblings.length < 2) return;
+    const stackSiblings = resolveLayerReorderStackSiblings(manualEditTargets, draggedId, reorderOptions);
+    const visibleFrontFirst = layerReorderGroupFrontFirstIds(visibleSiblings);
+    const insertIndex = layerReorderInsertIndex(visibleFrontFirst, draggedId, insertBeforeId);
     if (insertIndex === null) return;
-    const nextOrder = reorderLayerPaintOrder(frontFirst, draggedId, insertIndex);
-    const patches = buildLayerReorderZIndexPatches(siblings, nextOrder);
+    const visibleNextOrder = reorderLayerPaintOrder(visibleFrontFirst, draggedId, insertIndex);
+    const nextOrder = mergeVisibleLayerReorderIntoStack(
+      stackSiblings,
+      visibleFrontFirst,
+      visibleNextOrder,
+    );
+    const patches = buildLayerReorderZIndexPatches(stackSiblings, nextOrder);
     if (patches.length === 0) return;
     queueManualEditZOrderPatches(patches, layerReorderHistoryLabel(patches.length));
   }

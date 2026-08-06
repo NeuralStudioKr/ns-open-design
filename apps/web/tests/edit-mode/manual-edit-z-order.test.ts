@@ -125,11 +125,48 @@ describe('manual-edit-z-order', () => {
       { forward: true, backward: false, front: true, back: false },
       { forward: false, backward: true, front: false, back: true },
     ])).toEqual({
-      forward: true,
-      backward: true,
-      front: true,
-      back: true,
+      forward: false,
+      backward: false,
+      front: false,
+      back: false,
     });
+    expect(mergeZOrderCapabilities([
+      { forward: true, backward: true, front: true, back: true },
+      { forward: true, backward: false, front: true, back: false },
+    ])).toEqual({
+      forward: true,
+      backward: false,
+      front: true,
+      back: false,
+    });
+  });
+
+  it('allows z-index 0 as a valid step result', () => {
+    const dom = new JSDOM(`
+      <section>
+        <div id="a" style="position:absolute;left:0;top:0;width:40px;height:40px;z-index:1"></div>
+        <div id="b" style="position:absolute;left:10px;top:10px;width:40px;height:40px;z-index:2"></div>
+        <div id="c" style="position:absolute;left:20px;top:20px;width:40px;height:40px;z-index:3"></div>
+      </section>
+    `);
+    const doc = dom.window.document;
+    const b = doc.getElementById('b')!;
+    expect(computeZOrderPatchForElement(b, 'backward')).toEqual({ zIndex: '0' });
+
+    dom.window.close();
+  });
+
+  it('includes svg siblings in the z stack', () => {
+    const dom = new JSDOM(`
+      <section>
+        <svg id="icon" style="position:absolute;left:0;top:0;width:40px;height:40px;z-index:3"></svg>
+        <div id="box" style="position:absolute;left:10px;top:10px;width:40px;height:40px"></div>
+      </section>
+    `);
+    const section = dom.window.document.querySelector('section')!;
+    expect(collectZStackEntries(section, dom.window)).toHaveLength(2);
+
+    dom.window.close();
   });
 
   it('reads stack z from z-index style values', () => {

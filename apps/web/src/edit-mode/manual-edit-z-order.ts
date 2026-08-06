@@ -33,7 +33,7 @@ export function canAdjustZOrderTarget(cssPosition: string | null | undefined): b
 }
 
 export function isZStackParticipant(el: Element, view: Window): boolean {
-  if (!(el instanceof view.HTMLElement)) return false;
+  if (!(el instanceof view.HTMLElement) && !(el instanceof view.SVGElement)) return false;
   const pos = view.getComputedStyle(el).position;
   return (
     pos === 'absolute'
@@ -59,7 +59,6 @@ export function sortZStack(entries: readonly ZStackEntry[]): ZStackEntry[] {
 export function collectZStackEntries(parent: Element, view: Window): ZStackEntry[] {
   const entries: ZStackEntry[] = [];
   Array.from(parent.children).forEach((child, domIndex) => {
-    if (!(child instanceof view.HTMLElement)) return;
     if (!isZStackParticipant(child, view)) return;
     entries.push({ domIndex, z: readEffectiveZIndex(child, view) });
   });
@@ -134,15 +133,15 @@ export function mergeZOrderCapabilities(
 ): ZOrderCapabilities | null {
   if (capabilities.length === 0) return null;
   return {
-    forward: capabilities.some((cap) => cap.forward),
-    backward: capabilities.some((cap) => cap.backward),
-    front: capabilities.some((cap) => cap.front),
-    back: capabilities.some((cap) => cap.back),
+    forward: capabilities.every((cap) => cap.forward),
+    backward: capabilities.every((cap) => cap.backward),
+    front: capabilities.every((cap) => cap.front),
+    back: capabilities.every((cap) => cap.back),
   };
 }
 
 export function computeZOrderPatchForElement(
-  el: HTMLElement,
+  el: Element,
   action: ZOrderAction,
 ): Partial<ManualEditStyles> | null {
   const view = el.ownerDocument?.defaultView;
@@ -153,7 +152,7 @@ export function computeZOrderPatchForElement(
   if (domIndex < 0) return null;
   const entries = collectZStackEntries(parent, view);
   const zIndex = computeZOrderValue(entries, domIndex, action);
-  if (!zIndex) return null;
+  if (zIndex === null) return null;
   return buildZOrderStylePatch(view.getComputedStyle(el).position, zIndex);
 }
 
@@ -234,7 +233,7 @@ export type ZOrderKeyboardInput = Pick<
 >;
 
 /**
- * Layer z-order shortcuts (manual edit, single anchored target):
+ * Layer z-order shortcuts (manual edit, selected roots):
  * `]` forward · `[` backward · ⌘/Ctrl+`]` front · ⌘/Ctrl+`[` back.
  */
 export function resolveZOrderKeyboardAction(event: ZOrderKeyboardInput): ZOrderAction | null {

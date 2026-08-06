@@ -25,6 +25,38 @@ export function resolveLayerReorderSiblings(
   });
 }
 
+/** Includes hidden siblings so z-index renumbering preserves true paint order. */
+export function resolveLayerReorderStackSiblings(
+  targets: readonly ManualEditTarget[],
+  draggedId: string,
+  options?: { activeSlideIndex?: number | null; deck?: boolean },
+): ManualEditTarget[] {
+  const dragged = targets.find((target) => target.id === draggedId);
+  if (!dragged?.parentKey || !canAdjustZOrderTarget(dragged.cssPosition)) return [];
+  return targets.filter((target) => {
+    if (!canAdjustZOrderTarget(target.cssPosition)) return false;
+    if (target.parentKey !== dragged.parentKey) return false;
+    if (options?.deck && typeof options.activeSlideIndex === 'number') {
+      return target.slideIndex === undefined || target.slideIndex === options.activeSlideIndex;
+    }
+    return true;
+  });
+}
+
+export function mergeVisibleLayerReorderIntoStack(
+  stackSiblings: readonly ManualEditTarget[],
+  visibleFrontFirst: readonly string[],
+  visibleNextOrder: readonly string[],
+): string[] {
+  const visibleSet = new Set(visibleFrontFirst);
+  const stackFrontFirst = layerReorderGroupFrontFirstIds(stackSiblings);
+  const visibleQueue = [...visibleNextOrder];
+  return stackFrontFirst.map((id) => {
+    if (!visibleSet.has(id)) return id;
+    return visibleQueue.shift() ?? id;
+  });
+}
+
 export function layerReorderGroupFrontFirstIds(siblings: readonly ManualEditTarget[]): string[] {
   return sortManualEditLayerTargetsByPaintOrder(siblings).map((target) => target.id);
 }
