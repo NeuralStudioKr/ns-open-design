@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { buildDesktopPdfExportInput } from '../src/pdf-export.js';
+import {
+  buildDesktopPdfExportInput,
+  collectRelativeProjectAssetPaths,
+  warmExportRelativeAssets,
+} from '../src/pdf-export.js';
 import { startServer } from '../src/server.js';
 
 describe('buildDesktopPdfExportInput', () => {
@@ -157,6 +161,37 @@ describe('buildDesktopPdfExportInput', () => {
     expect(built.input.html).toContain('built');
     // Cache key SSOT: mtime tracks the dist file, not the dev shell (§20.1).
     expect(built.source.relPath).toBe('deck/dist/index.html');
+  });
+});
+
+describe('collectRelativeProjectAssetPaths / warmExportRelativeAssets', () => {
+  it('collects Drive/composer relative imgs and css urls, skips absolute/data', () => {
+    const html = `
+      <section class="slide">
+        <img src="refs/drive/msh5lhfh-놀란고양이-_1_.jpeg" alt="cat">
+        <img src="/api/projects/p/raw/skip.png">
+        <img src="data:image/png;base64,xx">
+        <img src="https://cdn.example/remote.png">
+        <div style="background-image:url('uploads/hero.png')"></div>
+      </section>`;
+    expect(collectRelativeProjectAssetPaths(html)).toEqual([
+      'refs/drive/msh5lhfh-놀란고양이-_1_.jpeg',
+      'uploads/hero.png',
+    ]);
+  });
+
+  it('point-gets collected relative assets before Chromium export', async () => {
+    const called: string[] = [];
+    const warmed = await warmExportRelativeAssets({
+      projectId: 'proj-1',
+      html: '<img src="refs/drive/a.png"><img src="photo.jpeg">',
+      ensureFileAvailable: async (_id, relpath) => {
+        called.push(relpath);
+        return true;
+      },
+    });
+    expect(called.sort()).toEqual(['photo.jpeg', 'refs/drive/a.png']);
+    expect(warmed.sort()).toEqual(['photo.jpeg', 'refs/drive/a.png']);
   });
 });
 

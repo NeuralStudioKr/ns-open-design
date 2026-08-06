@@ -56,6 +56,7 @@ import {
   putExportOffloadObject,
 } from './export-offload-store.js';
 import { readTeamverIdentityFromRequest } from './teamver-project-access.js';
+import { warmExportRelativeAssets } from './pdf-export.js';
 
 export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -139,6 +140,26 @@ export function readInlineHtmlFromBody(
   const raw = (body as Record<string, unknown>)['html'];
   if (typeof raw !== 'string') return null;
   return raw.trim().length > 0 ? raw : null;
+}
+
+/**
+ * Inline-HTML export skips full S3 sync-down so a transient `/access` deny
+ * cannot gate downloads. Still point-get relative imgs (refs/drive/, root
+ * uploads) into scratch with the caller's identity before Chromium fetches
+ * `/raw/…` without Teamver JWT headers.
+ */
+async function warmInlineExportAssets(
+  req: Request,
+  projectId: string,
+  html: string | undefined,
+  hooks: ProjectStorageAccessHooks | null | undefined,
+): Promise<void> {
+  if (!hooks || !html || !html.trim()) return;
+  await warmExportRelativeAssets({
+    html,
+    projectId,
+    ensureFileAvailable: (id, relpath) => hooks.ensureFileAvailable(req, id, relpath),
+  });
 }
 
 function wantsFreshExport(req: {
@@ -841,7 +862,9 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
 
 }
 
-export interface RegisterProjectExportRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'projectStore' | 'exports' | 'projectFiles' | 'validation'> {}
+export interface RegisterProjectExportRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'projectStore' | 'exports' | 'projectFiles' | 'validation'> {
+  projectStorageHooks?: ProjectStorageAccessHooks | null;
+}
 
 export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectExportRoutesDeps) {
   const { db } = ctx;
@@ -858,6 +881,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
     daemonUrlRef,
     sanitizeArchiveFilename,
   } = ctx.exports;
+  const projectStorageHooks = ctx.projectStorageHooks;
   // Streams a ZIP of the project's on-disk tree so the "Download as .zip"
   // share menu can hand the user the actual files they uploaded — e.g. the
   // imported `ui-design/` folder — instead of a one-file snapshot of the
@@ -1054,6 +1078,12 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await warmInlineExportAssets(
+        req,
+        req.params.id,
+        built.input.html,
+        projectStorageHooks,
+      );
       if (typeof desktopPdfExporter === 'function') {
         const result = await desktopPdfExporter(built.input);
         res.json(result);
@@ -1118,6 +1148,12 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await warmInlineExportAssets(
+        req,
+        req.params.id,
+        built.input.html,
+        projectStorageHooks,
+      );
       const extension =
         imageFormat === 'jpeg' ? 'jpg' : imageFormat === 'webp' ? 'webp' : 'png';
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
@@ -1184,6 +1220,12 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await warmInlineExportAssets(
+        req,
+        req.params.id,
+        built.input.html,
+        projectStorageHooks,
+      );
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const filename = `${base}.pptx`;
       const mime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
@@ -1251,6 +1293,12 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await warmInlineExportAssets(
+        req,
+        req.params.id,
+        built.input.html,
+        projectStorageHooks,
+      );
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const outcome = await runCachedExport(
         { format: 'html', deck: deck === true, projectId: req.params.id },
@@ -1314,6 +1362,12 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         title: typeof title === 'string' ? title : undefined,
         ...(inlineHtml ? { inlineHtml } : {}),
       });
+      await warmInlineExportAssets(
+        req,
+        req.params.id,
+        built.input.html,
+        projectStorageHooks,
+      );
       const base = built.input.defaultFilename.replace(/\.pdf$/i, '') || 'artifact';
       const outcome = await runCachedExport(
         { format: 'zip', deck: deck === true, projectId: req.params.id },

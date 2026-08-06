@@ -7047,6 +7047,7 @@ export async function startServer({
     exports: projectExportDeps,
     projectFiles: projectFileDeps,
     validation: validationDeps,
+    projectStorageHooks,
   });
   registerProjectFileRoutes(app, {
     db,

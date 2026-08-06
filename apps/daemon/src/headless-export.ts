@@ -1792,7 +1792,13 @@ async function inlineRenderedResources(page: Page): Promise<void> {
           if (!src || /^data:/i.test(src)) return;
           const href = absolutize(src);
           if (!href) return;
-          const resp = await fetch(href, { credentials: 'include' });
+          // One short retry covers sibling-pod S3 point-get / warm races that
+          // finish just after the first Chromium fetch for refs/drive imgs.
+          let resp = await fetch(href, { credentials: 'include' });
+          if (!resp.ok) {
+            await new Promise((r) => setTimeout(r, 400));
+            resp = await fetch(href, { credentials: 'include', cache: 'reload' });
+          }
           if (!resp.ok) return;
           img.setAttribute('src', await blobToDataUrl(await resp.blob()));
           img.removeAttribute('srcset');

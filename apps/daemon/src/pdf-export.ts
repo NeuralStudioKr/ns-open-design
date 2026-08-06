@@ -168,6 +168,67 @@ function rawBaseHref(daemonUrl: string, projectId: string, fileName: string): st
   return `${rawBase}${encodePathSegments(dir)}/`;
 }
 
+/**
+ * Collect project-relative asset paths referenced by export HTML so the
+ * daemon can point-get them into scratch before Chromium loads
+ * `/api/projects/:id/raw/…`. Inline-HTML export intentionally skips full
+ * sync-down (S3-prefix-free), but Drive/composer images under `refs/drive/`
+ * still need to be local for HTML/PDF/PPTX rendering.
+ */
+export function collectRelativeProjectAssetPaths(html: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (raw: string | undefined) => {
+    const value = String(raw || '').trim();
+    if (!value) return;
+    if (/^(?:https?:|data:|blob:|mailto:|tel:|#|\/\/|\/)/i.test(value)) return;
+    // Drop query/hash — scratch paths are plain relpaths.
+    const cleaned = value.split(/[?#]/u, 1)[0]?.trim() ?? '';
+    if (!cleaned || cleaned.includes('..')) return;
+    const normalized = cleaned.replace(/^\/+/, '').replace(/\\/g, '/');
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    out.push(normalized);
+  };
+  const attrRe = /\s(?:src|href)\s*=\s*(["'])([^"']+)\1/gi;
+  let match: RegExpExecArray | null;
+  while ((match = attrRe.exec(html)) !== null) {
+    push(match[2]);
+  }
+  const cssUrlRe = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
+  while ((match = cssUrlRe.exec(html)) !== null) {
+    push(match[2]);
+  }
+  // Cap — pathological docs must not fan out hundreds of S3 GETs.
+  return out.slice(0, 48);
+}
+
+export async function warmExportRelativeAssets(options: {
+  html: string;
+  projectId: string;
+  ensureFileAvailable?:
+    | ((projectId: string, relpath: string) => Promise<boolean>)
+    | null;
+}): Promise<string[]> {
+  const ensure = options.ensureFileAvailable;
+  if (!ensure) return [];
+  const paths = collectRelativeProjectAssetPaths(options.html);
+  if (paths.length === 0) return [];
+  const warmed: string[] = [];
+  await Promise.all(
+    paths.map(async (relpath) => {
+      try {
+        const ok = await ensure(options.projectId, relpath);
+        if (ok) warmed.push(relpath);
+      } catch {
+        // Soft-fail — Chromium /raw/ may still succeed if sync-down already
+        // populated scratch, and missing deleted assets must not abort export.
+      }
+    }),
+  );
+  return warmed;
+}
+
 function encodePathSegments(value: string): string {
   return value
     .split('/')

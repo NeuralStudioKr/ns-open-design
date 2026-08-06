@@ -25,6 +25,7 @@ import {
 } from '@open-design/host';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { projectRawUrl } from '../providers/registry';
 import { refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
 import { formatTeamverEmbedAuthRequiredMessage, formatTeamverEmbedOperationFailureMessage } from '../teamver/teamverBffAuthError';
 import { TeamverDaemonUnauthorizedError } from '../teamver/teamverDaemonHeaders';
@@ -1286,6 +1287,9 @@ export async function exportProjectAsPdf(opts: {
     }
     await exportAsPdf(renderedHtml, opts.title, {
       deck: opts.deck,
+      // Resolve relative Drive/composer imgs against the project /raw/ root
+      // instead of window.location.origin (which cannot see refs/drive/…).
+      baseHref: projectRawUrl(opts.projectId, ''),
       // Browser print measures the top-level document, not the sandboxed
       // iframe content. Printing deck exports through the wrapper produces
       // scrollbars, browser headers, and often a blank second page. The daemon

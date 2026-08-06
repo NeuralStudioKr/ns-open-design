@@ -401,6 +401,11 @@ describe('buildDesignHandoffContent', () => {
 });
 
 describe('exportProjectAsPdf', () => {
+  it('scopes browser-print fallback baseHref to project /raw/ for relative Drive imgs', () => {
+    expect(exportsSource).toContain("baseHref: projectRawUrl(opts.projectId, '')");
+    expect(exportsSource).toContain("import { projectRawUrl } from '../providers/registry'");
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
