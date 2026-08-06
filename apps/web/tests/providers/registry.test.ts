@@ -994,8 +994,33 @@ describe('uploadProjectFiles', () => {
     expect(result.uploaded).toHaveLength(1);
     expect(result.uploaded[0]).toMatchObject({
       path: 'mxk7-test.pdf',
-      name: decomposed,
+      // Attachment identity must be the on-disk basename (not originalName).
+      name: 'mxk7-test.pdf',
       size: 5,
+    });
+  });
+
+  it('uses the stored timestamped basename as ChatAttachment.name for local uploads', async () => {
+    const file = new File(['img'], '놀란 고양이 (1).jpeg', { type: 'image/jpeg' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({
+        files: [
+          {
+            name: 'msh9y0i9-놀란-고양이-_1_.jpeg',
+            path: 'msh9y0i9-놀란-고양이-_1_.jpeg',
+            size: 3,
+            originalName: '놀란 고양이 (1).jpeg',
+          },
+        ],
+      }), { status: 200 })),
+    );
+
+    const result = await uploadProjectFiles('project-1', [file]);
+    expect(result.uploaded[0]).toMatchObject({
+      path: 'msh9y0i9-놀란-고양이-_1_.jpeg',
+      name: 'msh9y0i9-놀란-고양이-_1_.jpeg',
+      kind: 'image',
     });
   });
 

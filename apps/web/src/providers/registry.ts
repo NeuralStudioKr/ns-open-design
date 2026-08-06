@@ -2287,12 +2287,20 @@ export async function uploadProjectFiles(
         };
         const responseFiles = json.files ?? [];
         uploaded.push(
-          ...responseFiles.map((f) => ({
-            path: f.path,
-            name: f.originalName ?? f.name,
-            kind: looksLikeImage(f.name) ? ('image' as const) : ('file' as const),
-            size: f.size,
-          })),
+          ...responseFiles.map((f) => {
+            // Prefer the on-disk basename (`f.name` / path) over `originalName`.
+            // Local uploads store `<timestamp>-<sanitizedOriginal>` while keeping
+            // the human filename in `originalName`. Using originalName as `name`
+            // previously taught the model to emit `<img src="놀란 고양이.jpeg">`
+            // which 404s; only the timestamped path exists.
+            const storedName = String(f.name || f.path.split('/').pop() || '').trim();
+            return {
+              path: f.path,
+              name: storedName || (f.originalName ?? f.name),
+              kind: looksLikeImage(f.name || f.path) ? ('image' as const) : ('file' as const),
+              size: f.size,
+            };
+          }),
         );
         for (const f of responseFiles) {
           clearProjectRawFileMissing(projectId, f.path);

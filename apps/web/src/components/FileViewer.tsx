@@ -136,6 +136,7 @@ import {
   isRenderableImagePath,
   projectFileResolvedPath,
 } from '../utils/projectFilePaths';
+import { rewriteAttachmentImageSrcs } from '../utils/rewriteAttachmentImageSrcs';
 import { buildReactComponentSrcdoc } from '../runtime/react-component';
 import { shouldConsumeSlideNav } from '../runtime/slide-nav';
 import { findHtmlEntriesReferencing } from '../runtime/jsx-module-refs';
@@ -1333,6 +1334,8 @@ interface Props {
   // Bumped nonce asking a deck preview to flip to `slideIndex` (a queued chat
   // send for this file just started processing).
   slideNavRequest?: { slideIndex: number; nonce: number } | null;
+  /** Project-relative paths for healing wrong local-upload <img src> in preview. */
+  projectFilePaths?: readonly string[];
 }
 
 type ExportToastTranslate = (key: keyof Dict, vars?: Record<string, string | number>) => string;
@@ -1392,6 +1395,7 @@ export function FileViewer({
   shareRequest,
   downloadRequest,
   slideNavRequest,
+  projectFilePaths,
 }: Props) {
   const rendererMatch = artifactRendererRegistry.resolve({
     file,
@@ -1423,6 +1427,7 @@ export function FileViewer({
         file={file}
         liveHtml={liveHtml}
         filesRefreshKey={filesRefreshKey}
+        projectFilePaths={projectFilePaths}
         isDeck={rendererMatch.renderer.id === 'deck-html'}
         onExportAsPptx={onExportAsPptx}
         streaming={Boolean(streaming)}
@@ -4901,6 +4906,7 @@ function HtmlViewer({
   file,
   liveHtml,
   filesRefreshKey = 0,
+  projectFilePaths,
   isDeck,
   onExportAsPptx,
   streaming,
@@ -4923,6 +4929,7 @@ function HtmlViewer({
   file: ProjectFile;
   liveHtml?: string;
   filesRefreshKey?: number;
+  projectFilePaths?: readonly string[];
   isDeck: boolean;
   onExportAsPptx?: ((fileName: string) => void) | undefined;
   streaming: boolean;
@@ -6309,7 +6316,16 @@ function HtmlViewer({
     );
   }, [source]);
   const effectiveDeck = isDeck || looksLikeDeck;
-  const livePreviewSource = inlinedSource ?? source;
+  const rawLivePreviewSource = inlinedSource ?? source;
+  const livePreviewSource = useMemo(() => {
+    if (!rawLivePreviewSource || !projectFilePaths?.length) return rawLivePreviewSource;
+    return rewriteAttachmentImageSrcs(rawLivePreviewSource, projectFilePaths);
+  }, [rawLivePreviewSource, projectFilePaths]);
+  const attachmentImageSrcRewritten = Boolean(
+    rawLivePreviewSource
+    && livePreviewSource
+    && rawLivePreviewSource !== livePreviewSource,
+  );
   // Freeze the iframe input on the snapshot taken at Edit-mode entry. Any
   // source rewrite during edit (1.5s debounced set-style patches) stays
   // invisible to the iframe — live updates flow through od-edit-preview-style
@@ -6553,7 +6569,10 @@ function HtmlViewer({
     // Tweaks template needs the srcDoc bridge so the toolbar toggle can arm.
     tweaksBridge: hasTweaksTemplate(source),
   }) && !manualEditRequiresSrcDoc
-    && (!teamverEmbedPreviewMode || embedPreviewPrefix != null);
+    && (!teamverEmbedPreviewMode || embedPreviewPrefix != null)
+    // Wrong local-upload src only heals in the srcDoc path; URL-load serves
+    // disk HTML verbatim and would keep showing alt-only broken images.
+    && !attachmentImageSrcRewritten;
   const projectPreviewAssetUrl = useCallback(
     (filePath: string) => resolveHtmlPreviewAssetUrl({
       teamverEmbedMode: teamverEmbedPreviewMode,
@@ -13518,13 +13537,13 @@ function HtmlViewer({
 	                    exportPdf={(options) => exportProjectAsPdf({
 	                      deck: effectiveDeck,
 	                      fallbackPdf: () => exportAsPdf(
-                        source ?? lastStablePreviewSourceRef.current ?? '',
+                        livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
                         exportTitle,
                         { deck: effectiveDeck },
                       ),
 	                      filePath: file.name,
 	                      fresh: options?.fresh,
-	                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+	                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
 	                      projectId,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                      title: exportTitle,
@@ -13534,29 +13553,29 @@ function HtmlViewer({
                       projectId,
                       filePath: file.name,
                       title: exportTitle,
-                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
                       requireRenderedExport: isTeamverEmbedMode(),
                     })}
 	                    exportHtml={() => exportProjectAsHtml({
 	                      deck: effectiveDeck,
 	                      projectId,
 	                      filePath: file.name,
-	                      fallbackHtml: source ?? lastStablePreviewSourceRef.current ?? '',
+	                      fallbackHtml: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
 	                      fallbackTitle: exportTitle,
-	                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+	                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
 	                    exportZip={() => exportProjectAsZip({
 	                      deck: effectiveDeck,
 	                      projectId,
 	                      filePath: file.name,
-	                      fallbackHtml: source ?? lastStablePreviewSourceRef.current ?? '',
+	                      fallbackHtml: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
 	                      fallbackTitle: exportTitle,
-	                      htmlSnapshot: source ?? lastStablePreviewSourceRef.current ?? null,
+	                      htmlSnapshot: livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? null,
 	                      requireRenderedExport: isTeamverEmbedMode(),
 	                    })}
                     exportMarkdown={() => exportAsMd(
-                      source ?? lastStablePreviewSourceRef.current ?? '',
+                      livePreviewSource ?? source ?? lastStablePreviewSourceRef.current ?? '',
                       exportTitle,
                     )}
                   />

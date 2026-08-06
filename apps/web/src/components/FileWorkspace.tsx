@@ -2556,6 +2556,7 @@ export function FileWorkspace({
             projectDisplayName={projectDisplayName}
             file={resolvedPreviewFile}
             filesRefreshKey={filesRefreshKey}
+            projectFilePaths={visibleFiles.map((entry) => entry.path || entry.name)}
             isDeck={isDeck}
             onExportAsPptx={onExportAsPptx}
             streaming={previewStreaming ?? false}

@@ -190,8 +190,12 @@ function renderNativeImagePathBlock(
   order: number,
 ): { text: string; charsUsed: number } | null {
   const path = (file?.path ?? file?.name ?? attachment.path).trim();
-  const name = (file?.name ?? attachment.name).trim() || path;
   if (!path) return null;
+  // Identity for model prompts MUST be the on-disk path, not a human display
+  // name. Local uploads store `<timestamp>-<sanitized>` while ChatAttachment.name
+  // historically carried originalName — advertising that as heading/alt caused
+  // models to emit broken <img src>.
+  const basename = path.split('/').pop() || path;
   const size = file?.size ?? attachment.size;
   const meta = [
     `path: ${path}`,
@@ -200,9 +204,9 @@ function renderNativeImagePathBlock(
   ].join(' | ');
   const text = [
     '',
-    `### Attachment ${order}: ${name}`,
+    `### Attachment ${order}: ${basename}`,
     meta,
-    `Vision pixels for this file are sent as a native image block. When embedding it in a slide deck, use the exact project-relative path in HTML: <img src="${path}" alt="${name}">. Do not invent URLs or data: URIs.`,
+    `Vision pixels for this file are sent as a native image block. When embedding it in a slide deck, use the exact project-relative path in HTML: <img src="${path}" alt="">. Do not invent URLs, data: URIs, or friendlier filenames.`,
   ].join('\n');
   return { text, charsUsed: text.length };
 }

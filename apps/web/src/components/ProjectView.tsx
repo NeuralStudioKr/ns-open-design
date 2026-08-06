@@ -204,6 +204,7 @@ import {
   projectFileResolvedPath,
 } from '../utils/projectFilePaths';
 import { reconcileProjectRawFileMissingCache } from '../utils/projectFileFetchCache';
+import { rewriteAttachmentImageSrcs } from '../utils/rewriteAttachmentImageSrcs';
 import { DEFAULT_NOTIFICATIONS } from '../state/config';
 import type { TodoItem } from '../runtime/todos';
 import {
@@ -4587,6 +4588,15 @@ export function ProjectView({
         // 2–4× DOMParser passes on the same multi-KB deck per persist.
         // element/deck-patch success already sanitized upstream.
         htmlBody = sanitizeManualEditFullSource(htmlBody);
+      }
+      if (ext === '.html') {
+        // Heal model-emitted <img src> that used a human/original filename
+        // (or sanitized basename without the upload timestamp prefix) instead
+        // of the real on-disk path from /upload.
+        const projectPaths = currentProjectFiles.map(
+          (file) => String(file.path || file.name || '').trim(),
+        ).filter(Boolean);
+        htmlBody = rewriteAttachmentImageSrcs(htmlBody, projectPaths);
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
         const currentScopedHtml = await readDiskHtml(fileName);
