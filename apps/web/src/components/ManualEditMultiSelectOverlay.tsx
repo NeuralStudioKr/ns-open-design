@@ -128,19 +128,20 @@ function memberContentRect(
 
 function unionHostRect(
   targets: ManualEditTarget[],
-  previewScale: number,
-  hostOffset: { x: number; y: number },
+  composeScale: number,
+  composeOffset: { x: number; y: number },
   measureHostRect: (id: string) => ManualEditRect | null,
   draftMemberRects?: Record<string, ManualEditRect> | null,
+  preferComposed = false,
 ): ManualEditRect | null {
   let union: ManualEditRect | null = null;
   for (const target of targets) {
     const contentRect = memberContentRect(target, draftMemberRects?.[target.id] ?? null);
-    const paint = measureHostRect(target.id);
+    const paint = preferComposed ? null : measureHostRect(target.id);
     const hostRect = resolveManualEditChromeHostRect(
       contentRect,
-      previewScale,
-      hostOffset,
+      composeScale,
+      composeOffset,
       paint,
     );
     if (!union) {
@@ -411,12 +412,18 @@ export function ManualEditMultiSelectOverlay({
   }, []);
 
   if (targets.length < 2) return null;
+  const gestureComposed = Boolean(
+    draftMemberRects && Object.keys(draftMemberRects).length > 0,
+  );
+  const composeScale = gestureSnapScale ?? previewScale;
+  const composeOffset = gestureSnapOffset ?? hostOffset;
   const hostRect = unionHostRect(
     targets,
-    previewScale,
-    hostOffset,
+    composeScale,
+    composeOffset,
     measureHostRect,
     draftMemberRects,
+    gestureComposed,
   );
   if (!hostRect || hostRect.width < 1 || hostRect.height < 1) return null;
 
@@ -497,8 +504,8 @@ export function ManualEditMultiSelectOverlay({
     setGesturing(true);
     setResizing(true);
     setSnapGuides([]);
-    setGestureSnapScale(null);
-    setGestureSnapOffset(null);
+    setGestureSnapScale(hostScale);
+    setGestureSnapOffset({ ...hostOffset });
     onGestureSessionChangeRef.current?.(true);
     try {
       (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
