@@ -152,8 +152,9 @@ export function shouldFetchHomeProjectsOnBoot(routeKind: string): boolean {
 }
 
 /**
- * Community gallery HTML iframe probes (`GET …/preview`) on home boot.
- * Embed defers to in-view / hover so boot does not fan out plugin previews.
+ * Community gallery HTML preview probes — wide IntersectionObserver rootMargin
+ * (eager). Embed keeps this false so only ~120px in-view cards fetch; HtmlSurface
+ * still arms those visible tiles (not hover-only).
  */
 export function shouldEagerLoadCommunityPluginPreviews(): boolean {
   return !isTeamverEmbedMode();

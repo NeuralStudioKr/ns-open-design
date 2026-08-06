@@ -33,9 +33,14 @@ import {
   looksLikeHtmlDocument,
   pluginPreviewSrcDoc,
 } from '../../../runtime/authenticatedHtmlSrcDoc';
-import { isTeamverEmbedMode } from '../../../teamver/designApiBase';
 import { fetchTeamverDaemon } from '../../../teamver/teamverDaemonHeaders';
 import type { HtmlPreviewSpec } from '../preview';
+
+/** Linger before inView preview GET — short enough for gallery UX, long enough to skip scroll-by. */
+const IN_VIEW_PREVIEW_LINGER_MS = 120;
+const EAGER_PREVIEW_LINGER_MS = 60;
+/** After HTML lands, wait briefly before mounting the iframe (scroll-past skip). */
+const IN_VIEW_IFRAME_ARM_MS = 180;
 
 interface Props {
   preview: HtmlPreviewSpec;
@@ -174,11 +179,12 @@ export function HtmlSurface({
       setShouldLoad(true);
       return;
     }
-    // Teamver embed: do not auto-probe `/api/plugins/.../preview` just because
-    // the tile scrolled into view — home boot was fanning out 4+ preview GETs.
-    // Hover (onMouseEnter) or instantMount still arms the fetch.
-    if (isTeamverEmbedMode() && !eager) return;
-    const id = window.setTimeout(() => setShouldLoad(true), eager ? 60 : 520);
+    // In-view linger loads thumbs for visible gallery cards (incl. Teamver
+    // embed). Boot fan-out is still avoided via eager=false + tight
+    // IntersectionObserver rootMargin on PreviewSurface — not by blocking
+    // inView entirely (that left hover-only empty skeletons).
+    const lingerMs = eager ? EAGER_PREVIEW_LINGER_MS : IN_VIEW_PREVIEW_LINGER_MS;
+    const id = window.setTimeout(() => setShouldLoad(true), lingerMs);
     return () => window.clearTimeout(id);
   }, [inView, preview.src, eager, instantMount]);
 
@@ -231,7 +237,7 @@ export function HtmlSurface({
     }
     const id = window.setTimeout(() => {
       if (inView) setArmed(true);
-    }, 720);
+    }, IN_VIEW_IFRAME_ARM_MS);
     return () => window.clearTimeout(id);
   }, [inView, loadState, eager, instantMount]);
 

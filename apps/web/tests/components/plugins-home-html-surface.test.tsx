@@ -135,7 +135,7 @@ describe('HtmlSurface authenticated srcDoc', () => {
     expect(source).not.toMatch(/loadPluginPreviewHtml\([^)]*abort\.signal/);
   });
 
-  it('does not auto-fetch plugin preview on inView in Teamver embed (hover arms load)', async () => {
+  it('fetches plugin preview on inView in Teamver embed (linger, not hover-only)', async () => {
     const designApiBase = await import('../../src/teamver/designApiBase');
     const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
     const fetchMock = vi.fn().mockResolvedValue(htmlResponse());
@@ -148,10 +148,30 @@ describe('HtmlSurface authenticated srcDoc', () => {
         inView
       />,
     );
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(container.querySelector('iframe')).toBeNull();
+    await waitFor(
+      () => {
+        expect(fetchMock).toHaveBeenCalled();
+      },
+      { timeout: 2000 },
+    );
+    await waitFor(
+      () => {
+        expect(container.querySelector('iframe')).toBeTruthy();
+      },
+      { timeout: 2000 },
+    );
     embedSpy.mockRestore();
+  });
+
+  it('keeps community preview eager off in embed policy (tight rootMargin)', async () => {
+    const source = await readFile(
+      join(process.cwd(), 'src/teamver/embedDaemonFetchPolicy.ts'),
+      'utf8',
+    );
+    expect(source).toContain('shouldEagerLoadCommunityPluginPreviews');
+    expect(source).toMatch(
+      /function shouldEagerLoadCommunityPluginPreviews\(\)[\s\S]*?return !isTeamverEmbedMode\(\);/,
+    );
   });
 
   it('renders an iframe with srcDoc once HTML loads (not bare src)', async () => {
