@@ -91,6 +91,7 @@ import {
 import { PluginDetailsModal } from './PluginDetailsModal';
 import { HomeTemplatesReveal } from './HomeTemplatesReveal';
 import { PluginsHomeSection } from './PluginsHomeSection';
+import { Toast } from './Toast';
 import type { PluginLoopSubmit } from './PluginLoopHome';
 import { localizePluginTitle } from './plugins-home/localization';
 import type { PluginUseAction } from './plugins-home/useActions';
@@ -381,6 +382,9 @@ export function HomeView({
   const [canvasSlideQuickSettings, setCanvasSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
     DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   );
+  const [communityExternalPreviewError, setCommunityExternalPreviewError] = useState<string | null>(
+    null,
+  );
   const teamverDriveImportEnabled = useMemo(() => getDesignBffClient() !== null, []);
   const teamverDriveImportAllowed = useMemo(
     () =>
@@ -390,15 +394,6 @@ export function HomeView({
         snapshotAppEnabled: isTeamverEmbedDesignSurfaceEnabled(),
       }),
     [designAccessTick, teamverDriveImportEnabled, teamverWorkspaceId],
-  );
-  const { options: canvasSlideTemplates, loading: canvasSlideTemplatesLoading } =
-    useCanvasSlideLaunchTemplates({
-      active: canvasSlideLaunch !== null,
-      locale,
-    });
-  const selectedCanvasSlideTemplate = useMemo(
-    () => resolveCanvasSlideTemplate(canvasSlideTemplates, canvasSlideTemplateId),
-    [canvasSlideTemplates, canvasSlideTemplateId],
   );
   useEffect(() => {
     if (!teamverDriveImportEnabled) return;
@@ -573,7 +568,10 @@ export function HomeView({
       // drops embed session cookies and lands on session_expired.
       void (async () => {
         const result = await fetchPluginPreviewHtml(record.id);
-        if (!('html' in result) || !result.html) return;
+        if (!('html' in result) || !result.html) {
+          setCommunityExternalPreviewError(t('preview.errorBody'));
+          return;
+        }
         const odMode = record.manifest?.od?.mode;
         const previewBlock = record.manifest?.od?.preview as { type?: unknown } | undefined;
         const isDeck =
@@ -587,7 +585,7 @@ export function HomeView({
         );
       })();
     },
-    [analytics.track, locale],
+    [analytics.track, locale, t],
   );
   const inputRef = useRef<HomeHeroHandle | null>(null);
   const homeViewRef = useRef<HTMLDivElement | null>(null);
@@ -889,6 +887,19 @@ export function HomeView({
   const communityPlugins = useMemo(
     () => pluginsForSlideOnlyMvp(plugins, { slideOnlyMvp }),
     [plugins, slideOnlyMvp],
+  );
+
+  // Merge Home's already-loaded deck plugins so Canvas launch doesn't wait
+  // on a cold cache miss / skeleton when the Community gallery is warm.
+  const { options: canvasSlideTemplates, loading: canvasSlideTemplatesLoading } =
+    useCanvasSlideLaunchTemplates({
+      active: canvasSlideLaunch !== null,
+      callerPlugins: communityPlugins,
+      locale,
+    });
+  const selectedCanvasSlideTemplate = useMemo(
+    () => resolveCanvasSlideTemplate(canvasSlideTemplates, canvasSlideTemplateId),
+    [canvasSlideTemplates, canvasSlideTemplateId],
   );
 
   const showCommunityGallery = shouldShowHomeCommunityGallery({
@@ -2383,6 +2394,16 @@ export function HomeView({
             : {})}
         />
       </HomeTemplatesReveal>
+      ) : null}
+
+      {communityExternalPreviewError ? (
+        <Toast
+          message={communityExternalPreviewError}
+          tone="error"
+          role="alert"
+          ttlMs={3200}
+          onDismiss={() => setCommunityExternalPreviewError(null)}
+        />
       ) : null}
 
       <AnimatePresence>

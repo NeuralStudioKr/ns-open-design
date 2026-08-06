@@ -325,6 +325,9 @@ describe("TeamverCanvasSlideLaunchModal", () => {
     fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-footer-next"));
     fireEvent.click(screen.getByTestId("teamver-canvas-slide-launch-footer-next"));
     expect(screen.getByTestId("teamver-canvas-slide-launch-template-skeleton")).toBeTruthy();
+    expect(
+      (screen.getByTestId("teamver-canvas-slide-launch-confirm") as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it("uses wide wizard on multi-template launches (studio layout removed)", () => {

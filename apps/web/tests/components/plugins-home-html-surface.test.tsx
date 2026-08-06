@@ -340,6 +340,31 @@ describe('HtmlSurface authenticated srcDoc', () => {
     expect(container.textContent).not.toContain('session_expired');
   });
 
+  it('retries preview GET after embed passive-auth recovered', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonUnauthorizedResponse())
+      .mockResolvedValueOnce(htmlResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="plugins-home-html-fallback"]')).toBeTruthy();
+    });
+    window.dispatchEvent(new Event('teamver:embed-passive-auth-recovered'));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(container.querySelector('iframe')).toBeTruthy();
+    });
+  });
+
   it('caps the preview HTML cache and evicts the oldest preview URL', async () => {
     window.localStorage.setItem('open-design:visual-stability', '1');
     const fetchMock = vi.fn().mockImplementation(async (url: string) => htmlResponse(`<html>${url}</html>`));

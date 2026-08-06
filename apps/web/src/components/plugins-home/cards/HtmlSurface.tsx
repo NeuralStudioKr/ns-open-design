@@ -34,6 +34,7 @@ import {
   pluginPreviewSrcDoc,
 } from '../../../runtime/authenticatedHtmlSrcDoc';
 import { fetchTeamverDaemon } from '../../../teamver/teamverDaemonHeaders';
+import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../../../teamver/teamverEmbedPassiveAuth';
 import type { HtmlPreviewSpec } from '../preview';
 
 /** Linger before inView preview GET — short enough for gallery UX, long enough to skip scroll-by. */
@@ -83,6 +84,19 @@ function rememberPreviewHtml(url: string, html: string): void {
 function rememberUnreachable(url: string): void {
   // Negative cache uses empty string sentinel distinct from real HTML.
   rememberPreviewHtml(url, '');
+}
+
+/** Drop a single preview cache entry so a later GET can retry (auth recovery). */
+function forgetPluginPreviewHtml(url: string): void {
+  const cacheKey = pluginPreviewCacheKey(url);
+  previewHtmlCache.delete(cacheKey);
+  previewInflight.delete(cacheKey);
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.removeItem(sessionPreviewKey(cacheKey));
+  } catch {
+    // ignore
+  }
 }
 
 function sessionPreviewKey(cacheKey: string): string {
@@ -213,6 +227,9 @@ export function HtmlSurface({
 }: Props) {
   const [armed, setArmed] = useState(() => instantMount);
   const [shouldLoad, setShouldLoad] = useState(() => isVisualStabilityMode() || instantMount);
+  // Bumped on auth recovery / explicit retry so a prior 401 fallback can
+  // re-fetch without remounting the whole gallery.
+  const [reloadToken, setReloadToken] = useState(0);
   const [loadState, setLoadState] = useState<LoadState>(() => {
     const cached = previewHtmlCache.get(pluginPreviewCacheKey(preview.src));
     if (cached === undefined) return instantMount ? 'loading' : 'idle';
@@ -222,6 +239,19 @@ export function HtmlSurface({
     const cached = previewHtmlCache.get(pluginPreviewCacheKey(preview.src));
     return cached || null;
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onRecovered = () => {
+      forgetPluginPreviewHtml(preview.src);
+      setShouldLoad(true);
+      setReloadToken((token) => token + 1);
+    };
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onRecovered);
+    return () => {
+      window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, onRecovered);
+    };
+  }, [preview.src]);
 
   useEffect(() => {
     setArmed(instantMount);
@@ -292,7 +322,7 @@ export function HtmlSurface({
     return () => {
       cancelled = true;
     };
-  }, [preview.src, shouldLoad]);
+  }, [preview.src, shouldLoad, reloadToken]);
 
   // Arm the iframe after a short visibility window so the user can
   // scroll past tiles without paying for an iframe per tile, but tiles
@@ -313,6 +343,15 @@ export function HtmlSurface({
     return () => window.clearTimeout(id);
   }, [inView, loadState, eager, instantMount]);
 
+  function retryPreviewLoad(options?: { force?: boolean }) {
+    const cacheKey = pluginPreviewCacheKey(preview.src);
+    // Sticky 404 sentinel — hover must not re-stampede missing assets.
+    if (!options?.force && previewHtmlCache.get(cacheKey) === '') return;
+    forgetPluginPreviewHtml(preview.src);
+    setShouldLoad(true);
+    setReloadToken((token) => token + 1);
+  }
+
   if (loadState === 'unreachable') {
     return (
       <UnreachableFallback
@@ -320,6 +359,7 @@ export function HtmlSurface({
         pluginTitle={pluginTitle}
         preview={preview}
         eager={eager}
+        onRetry={retryPreviewLoad}
       />
     );
   }
@@ -372,6 +412,7 @@ interface UnreachableFallbackProps {
   pluginTitle: string;
   preview: HtmlPreviewSpec;
   eager?: boolean;
+  onRetry?: () => void;
 }
 
 // Stable colour from the plugin id so adjacent fallback tiles stay
@@ -384,7 +425,13 @@ function hueFor(id: string): number {
   return hash % 360;
 }
 
-function UnreachableFallback({ pluginId, pluginTitle, preview, eager = false }: UnreachableFallbackProps) {
+function UnreachableFallback({
+  pluginId,
+  pluginTitle,
+  preview,
+  eager = false,
+  onRetry,
+}: UnreachableFallbackProps) {
   const trimmed = pluginTitle.trim();
   const cp = trimmed.codePointAt(0) ?? 0x2022;
   const glyph = cp === 0x2022 ? '·' : String.fromCodePoint(cp).toUpperCase();
@@ -399,6 +446,7 @@ function UnreachableFallback({ pluginId, pluginTitle, preview, eager = false }: 
       data-testid="plugins-home-html-fallback"
       style={style}
       aria-hidden
+      onMouseEnter={() => onRetry?.()}
     >
       <div className="plugins-home__html-fallback-glyph">{glyph}</div>
       {eager ? null : (

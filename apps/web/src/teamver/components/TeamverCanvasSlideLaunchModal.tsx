@@ -651,15 +651,17 @@ export function TeamverCanvasSlideLaunchModal({
               <button
                 type="button"
                 className="teamver-drive-import-attach teamver-canvas-slide-launch-confirm"
-                disabled={confirming}
+                disabled={confirming || templatesLoading}
                 data-testid="teamver-canvas-slide-launch-confirm"
                 onClick={() => void onConfirm()}
               >
                 {confirming
                   ? t("teamver.canvasSlideLaunch.working")
-                  : errorMessage
-                    ? t("teamver.canvasSlideLaunch.retry")
-                    : t("teamver.canvasSlideLaunch.confirm")}
+                  : templatesLoading
+                    ? t("teamver.canvasSlideLaunch.working")
+                    : errorMessage
+                      ? t("teamver.canvasSlideLaunch.retry")
+                      : t("teamver.canvasSlideLaunch.confirm")}
               </button>
             ) : (
               <button
