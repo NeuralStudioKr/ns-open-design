@@ -64,6 +64,8 @@ export interface ManualEditStyles {
   borderStyle: string;
   borderColor: string;
   borderRadius: string;
+  /** Stacking among positioned siblings (absolute/fixed). */
+  zIndex: string;
 }
 
 export interface ManualEditTarget {
@@ -195,7 +197,7 @@ export const MANUAL_EDIT_STYLE_PROPS: readonly (keyof ManualEditStyles)[] = [
   'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'border', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
-  'borderStyle', 'borderColor', 'borderRadius',
+  'borderStyle', 'borderColor', 'borderRadius', 'zIndex',
 ];
 
 export function emptyManualEditStyles(): ManualEditStyles {

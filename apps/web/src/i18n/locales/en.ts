@@ -2053,7 +2053,7 @@ export const en: Dict = {
   'manualEdit.layers': 'Layers',
   'manualEdit.toggleLayers': 'Layers',
   'manualEdit.closeLayers': 'Close layers',
-  'manualEdit.layersHint': 'Pick elements here or on the canvas. ⌘/Ctrl+click for multi-select.',
+  'manualEdit.layersHint': 'Pick elements here or on the canvas. ⌘/Ctrl+click for multi-select. Use Arrange for absolute/fixed stacking.',
   'manualEdit.editableCount': '{count} editable',
   'manualEdit.hiddenBadge': 'Hidden',
   'manualEdit.title': 'Manual editor',

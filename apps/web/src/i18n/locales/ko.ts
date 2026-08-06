@@ -2053,7 +2053,7 @@ export const ko: Dict = {
   'manualEdit.layers': '레이어',
   'manualEdit.toggleLayers': '레이어',
   'manualEdit.closeLayers': '레이어 닫기',
-  'manualEdit.layersHint': '여기서 고르거나 캔버스에서 선택하세요. ⌘/Ctrl+클릭으로 다중 선택.',
+  'manualEdit.layersHint': '여기서 고르거나 캔버스에서 선택하세요. ⌘/Ctrl+클릭으로 다중 선택. absolute/fixed 요소는 순서 버튼으로 앞뒤를 조정할 수 있습니다.',
   'manualEdit.editableCount': '{count}개 편집 가능',
   'manualEdit.hiddenBadge': '숨김',
   'manualEdit.title': '수동 편집기',

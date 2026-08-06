@@ -1,11 +1,17 @@
 import { useT } from '../i18n';
 import type { ManualEditTarget } from '../edit-mode/types';
+import type { ZOrderAction, ZOrderCapabilities } from '../edit-mode/manual-edit-z-order';
+import { ManualEditZOrderControls } from './ManualEditZOrderControls';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 export type ManualEditLayersPanelProps = {
   targets: ManualEditTarget[];
   selectedIds: string[];
   onSelectTarget: (target: ManualEditTarget, options?: { additive?: boolean }) => void;
   onClose: () => void;
+  zOrderCapabilities?: ZOrderCapabilities | null;
+  onZOrder?: (action: ZOrderAction) => void;
+  zOrderBusy?: boolean;
 };
 
 function layerLabel(target: ManualEditTarget): string {
@@ -21,8 +27,13 @@ export function ManualEditLayersPanel({
   selectedIds,
   onSelectTarget,
   onClose,
+  zOrderCapabilities = null,
+  onZOrder,
+  zOrderBusy = false,
 }: ManualEditLayersPanelProps) {
   const t = useT();
+  const primaryId = selectedIds.length === 1 ? selectedIds[0] : null;
+  const showZOrder = Boolean(primaryId && zOrderCapabilities && onZOrder);
 
   return (
     <aside className="manual-edit-layers" data-testid="manual-edit-layers-panel">
@@ -46,6 +57,19 @@ export function ManualEditLayersPanel({
           </button>
         </div>
       </div>
+      {showZOrder && zOrderCapabilities ? (
+        <div className="manual-edit-layers-arrange" data-testid="manual-edit-layers-arrange">
+          <span className="manual-edit-layers-arrange-label">
+            {embedUiLabel('Arrange', '순서')}
+          </span>
+          <ManualEditZOrderControls
+            compact
+            disabled={zOrderBusy}
+            capabilities={zOrderCapabilities}
+            onZOrder={onZOrder!}
+          />
+        </div>
+      ) : null}
       {targets.length === 0 ? (
         <p className="manual-edit-layer-empty">{t('manualEdit.noEditableLayers')}</p>
       ) : (

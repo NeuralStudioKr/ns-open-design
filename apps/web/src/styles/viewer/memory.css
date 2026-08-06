@@ -1049,6 +1049,37 @@
   font-size: 11px;
 }
 
+.manual-edit-layers-arrange {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.manual-edit-layers-arrange-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.manual-edit-zorder-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.manual-edit-zorder-grid--compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.manual-edit-zorder-btn {
+  min-height: 30px;
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
 .manual-edit-right {
   display: flex;
   flex-direction: column;

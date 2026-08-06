@@ -383,6 +383,13 @@ import {
 } from '../edit-mode/manual-edit-group-align';
 import { collectSnapSources } from '../edit-mode/manual-edit-geometry-snap';
 import { filterManualEditLayerTargets } from '../edit-mode/manual-edit-layer-targets';
+import {
+  canAdjustZOrderTarget,
+  computeZOrderStyleForTargetId,
+  resolveZOrderContext,
+  zOrderHistoryLabel,
+  type ZOrderAction,
+} from '../edit-mode/manual-edit-z-order';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditRect, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import {
@@ -12226,6 +12233,28 @@ function HtmlViewer({
     }),
     [manualEditTargets, effectiveDeck, slideState?.active, manualEditViewportBounds],
   );
+  const manualEditZOrderCapabilities = useMemo(() => {
+    const target = selectedManualEditTarget;
+    if (!target || !canAdjustZOrderTarget(target.cssPosition)) return null;
+    const doc = iframeContentDocumentIfAccessible(iframeRef.current);
+    if (!doc) return null;
+    return resolveZOrderContext(doc, target.id)?.capabilities ?? null;
+  }, [
+    selectedManualEditTarget?.id,
+    selectedManualEditTarget?.cssPosition,
+    manualEditDraft.styles.zIndex,
+    manualEditTargets,
+    srcDoc,
+  ]);
+
+  function handleManualEditZOrder(action: ZOrderAction) {
+    const target = selectedManualEditTarget;
+    const doc = iframeContentDocumentIfAccessible(iframeRef.current);
+    if (!target || !doc) return;
+    const nextZ = computeZOrderStyleForTargetId(doc, target.id, action);
+    if (!nextZ) return;
+    void handleManualEditStyleChange([target.id], { zIndex: nextZ }, zOrderHistoryLabel(action));
+  }
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionUndoUnavailableTooltip = revisionStackInvalidated
@@ -12259,6 +12288,9 @@ function HtmlViewer({
       onGroupDistribute={(kind) => {
         void handleManualEditGroupDistribute(kind);
       }}
+      zOrderCapabilities={manualEditZOrderCapabilities}
+      onZOrder={handleManualEditZOrder}
+      zOrderBusy={manualEditSaving}
       onInvalidStyle={cancelManualEditPendingStyles}
       onApplyPatch={(patch, label) => {
         void (async () => {
@@ -13212,6 +13244,9 @@ function HtmlViewer({
                 onClose={() => {
                   setManualEditLayersPanelOpen(false);
                 }}
+                zOrderCapabilities={manualEditZOrderCapabilities}
+                onZOrder={handleManualEditZOrder}
+                zOrderBusy={manualEditSaving}
               />
             ) : null}
             {manualEditPanel}

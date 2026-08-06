@@ -2,7 +2,10 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import { useT } from '../i18n';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { isAnchoredCssPosition } from '../edit-mode/resize-math';
+import { canAdjustZOrderTarget } from '../edit-mode/manual-edit-z-order';
 import type { GroupAlignKind, GroupDistributeKind } from '../edit-mode/manual-edit-group-align';
+import type { ZOrderAction, ZOrderCapabilities } from '../edit-mode/manual-edit-z-order';
+import { ManualEditZOrderControls } from './ManualEditZOrderControls';
 import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { Icon } from './Icon';
 
@@ -52,6 +55,9 @@ export function ManualEditPanel({
   groupDistributeEnabled = false,
   onGroupAlign,
   onGroupDistribute,
+  zOrderCapabilities = null,
+  onZOrder,
+  zOrderBusy = false,
 }: {
   targets: ManualEditTarget[];
   selectedTarget: ManualEditTarget | null;
@@ -80,6 +86,9 @@ export function ManualEditPanel({
   groupDistributeEnabled?: boolean;
   onGroupAlign?: (kind: GroupAlignKind) => void;
   onGroupDistribute?: (kind: GroupDistributeKind) => void;
+  zOrderCapabilities?: ZOrderCapabilities | null;
+  onZOrder?: (action: ZOrderAction) => void;
+  zOrderBusy?: boolean;
   onError: (message: string) => void;
   onClearSelection: () => void;
   onExit?: () => void;
@@ -311,6 +320,19 @@ export function ManualEditPanel({
                 />
               ) : null}
 
+              {!isMultiSelect && inspectorFlags.showZOrder && zOrderCapabilities && onZOrder ? (
+                <section className="cc-section manual-edit-zorder-section">
+                  <header className="cc-section-head">{embedUiLabel('ARRANGE', '순서')}</header>
+                  <div className="cc-section-body">
+                    <ManualEditZOrderControls
+                      capabilities={zOrderCapabilities}
+                      disabled={zOrderBusy}
+                      onZOrder={onZOrder}
+                    />
+                  </div>
+                </section>
+              ) : null}
+
               {!isMultiSelect && targetForInspector?.kind === 'image' && onPickImage ? (
                 <div className="cc-section">
                   <header className="cc-section-head">IMAGE</header>
@@ -448,6 +470,7 @@ function resolveManualEditInspectorFlags(
       showPositionHint: showSize && !showPosition,
       showLayout: primary.isLayoutContainer,
       showBox: primary.kind === 'container' || primary.kind === 'image' || primary.kind === 'token',
+      showZOrder: canAdjustZOrderTarget(positionValue),
     };
   }
   const kinds = selectedTargets.map((target) => target.kind);
@@ -466,6 +489,7 @@ function resolveManualEditInspectorFlags(
     showPositionHint: showSize && !showPosition,
     showLayout: selectedTargets.some((target) => target.isLayoutContainer),
     showBox: kinds.some((kind) => kind === 'container' || kind === 'image' || kind === 'token'),
+    showZOrder: false,
   };
 }
 
@@ -702,6 +726,13 @@ export function normalizeManualEditStyles(
       normalized.opacity = String(Math.max(0, Math.min(1, n)));
       continue;
     }
+    if (rawKey === 'zIndex') {
+      if (!/^-?\d+$/.test(value)) {
+        return { ok: false, error: 'Z-index must be an integer.' };
+      }
+      normalized.zIndex = value;
+      continue;
+    }
     if (rawKey === 'lineHeight') {
       const lineHeight = normalizeLineHeightValue(value);
       if (!lineHeight) return { ok: false, error: 'Line height must be a positive number or px value.' };
@@ -830,6 +861,15 @@ function StyleInspector({
             <UnitRow label={embedUiLabel('Left', '왼쪽')} value={styles.left} placeholder={placeholderFor('left')} onChange={(v) => u('left', v)} unit="px" autoUnit />
             <UnitRow label={embedUiLabel('Top', '위')} value={styles.top} placeholder={placeholderFor('top')} onChange={(v) => u('top', v)} unit="px" autoUnit />
           </PairRow>
+          {isAnchoredCssPosition(positionValue) ? (
+            <UnitRow
+              label={embedUiLabel('Z-index', 'Z-index')}
+              value={styles.zIndex}
+              placeholder={placeholderFor('zIndex')}
+              onChange={(v) => u('zIndex', v)}
+              unit=""
+            />
+          ) : null}
         </Section>
       ) : null}
 
