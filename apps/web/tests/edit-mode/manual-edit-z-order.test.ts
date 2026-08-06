@@ -7,6 +7,7 @@ import {
   canAdjustZOrderTarget,
   collectZStackEntries,
   computeZOrderPatchForElement,
+  computeZOrderPatchForTargetWithFallback,
   computeZOrderStyleForElement,
   computeZOrderValue,
   isZOrderEligiblePosition,
@@ -213,6 +214,34 @@ describe('manual-edit-z-order', () => {
       backward: true,
       front: false,
       back: true,
+    });
+  });
+
+  it('computes z-order patches from target catalog when DOM is unavailable', () => {
+    const targets = [
+      {
+        id: 'back',
+        parentKey: 'slide',
+        cssPosition: 'absolute',
+        siblingIndex: 0,
+        stackZ: 1,
+        styles: { zIndex: '1' },
+      },
+      {
+        id: 'front',
+        parentKey: 'slide',
+        cssPosition: 'absolute',
+        siblingIndex: 1,
+        stackZ: 3,
+        styles: { zIndex: '3' },
+      },
+    ] as const;
+
+    expect(computeZOrderPatchForTargetWithFallback(null, targets, 'back', 'forward')).toEqual({
+      zIndex: '4',
+    });
+    expect(computeZOrderPatchForTargetWithFallback(null, targets, 'front', 'backward')).toEqual({
+      zIndex: '0',
     });
   });
 

@@ -875,6 +875,7 @@ function StyleInspector({
               placeholder={mixedKeys?.has('zIndex') && !styles.zIndex ? mixedPlaceholder : t('manualEdit.zIndexAuto')}
               onChange={(v) => u('zIndex', v)}
               unit=""
+              integerStep
             />
           ) : null}
         </Section>
@@ -955,6 +956,7 @@ function StyleInspector({
               placeholder={mixedKeys?.has('zIndex') && !styles.zIndex ? mixedPlaceholder : t('manualEdit.zIndexAuto')}
               onChange={(v) => u('zIndex', v)}
               unit=""
+              integerStep
             />
           ) : null}
         </Section>
@@ -981,12 +983,13 @@ function PairRow({ children }: { children: React.ReactNode }) {
   return <div className="cc-pair">{children}</div>;
 }
 
-function UnitRow({ label, value, onChange, unit, autoUnit, disabled, placeholder }: {
+function UnitRow({ label, value, onChange, unit, autoUnit, disabled, placeholder, integerStep }: {
   label: string; value: string; onChange: (v: string) => void;
   unit: string; autoUnit?: boolean; disabled?: boolean; placeholder?: string;
+  integerStep?: boolean;
 }) {
   const display = unit === 'px' ? stripPxUnit(value) : value;
-  const step = unit === 'px' ? 1 : 0.1;
+  const step = integerStep ? 1 : (unit === 'px' ? 1 : 0.1);
   const canStep = !disabled && isNumericInput(display);
   const valueFromDisplay = (raw: string) => {
     const trimmed = raw.trim();
@@ -1000,6 +1003,12 @@ function UnitRow({ label, value, onChange, unit, autoUnit, disabled, placeholder
   };
   const stepBy = (direction: -1 | 1) => {
     if (!canStep) return;
+    if (integerStep) {
+      const current = Number.parseInt(display, 10);
+      if (!Number.isFinite(current)) return;
+      onChange(String(current + direction * step));
+      return;
+    }
     const next = formatSteppedNumber(Number(display) + direction * step, display, step);
     onChange(valueFromDisplay(next));
   };

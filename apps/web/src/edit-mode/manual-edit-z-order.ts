@@ -262,6 +262,29 @@ export function computeZOrderPatchForTargetId(
   return computeZOrderPatchForElement(el, action);
 }
 
+export function computeZOrderPatchForTargetWithFallback(
+  doc: Document | null | undefined,
+  targets: readonly ManualEditTarget[],
+  targetId: string,
+  action: ZOrderAction,
+  options?: ZOrderResolveOptions,
+): Partial<ManualEditStyles> | null {
+  if (!targetId) return null;
+  if (doc) {
+    const el = findManualEditPreviewTarget(doc, targetId);
+    if (el) {
+      const patch = computeZOrderPatchForElement(el, action);
+      if (patch) return patch;
+    }
+  }
+  const collected = collectZStackEntriesFromTargets(targets, targetId, options);
+  const target = targets.find((item) => item.id === targetId);
+  if (!collected || !target) return null;
+  const zIndex = computeZOrderValue(collected.entries, collected.domIndex, action);
+  if (zIndex === null) return null;
+  return buildZOrderStylePatch(target.cssPosition, zIndex);
+}
+
 export function computeZOrderStyleForTargetId(
   doc: Document | null | undefined,
   targetId: string,

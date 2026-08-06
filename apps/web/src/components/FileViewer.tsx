@@ -399,7 +399,7 @@ import { filterRootTargetsForGroupGeometry } from '../edit-mode/manual-edit-sele
 import {
   buildZOrderStylePatch,
   canAdjustZOrderTarget,
-  computeZOrderPatchForTargetId,
+  computeZOrderPatchForTargetWithFallback,
   mergeZOrderCapabilities,
   readStackZFromZIndexStyle,
   resolveZOrderContextWithFallback,
@@ -12490,6 +12490,10 @@ function HtmlViewer({
       selectedManualEditTargetRef.current = next;
       return next;
     });
+    setManualEditDraft((current) => ({
+      ...current,
+      styles: { ...current.styles, ...primaryStyles },
+    }));
   }
 
   function resolveManualEditZOrderTargets(): ManualEditTarget[] {
@@ -12538,12 +12542,21 @@ function HtmlViewer({
 
   function handleManualEditZOrder(action: ZOrderAction) {
     const doc = iframeContentDocumentIfAccessible(iframeRef.current);
-    if (!doc) return;
+    const reorderOptions = {
+      deck: effectiveDeck,
+      activeSlideIndex: slideState?.active ?? null,
+    };
     const targets = resolveManualEditZOrderTargets();
     if (targets.length === 0) return;
     const patches: Array<{ id: string; styles: Partial<ManualEditStyles> }> = [];
     for (const target of targets) {
-      const patch = computeZOrderPatchForTargetId(doc, target.id, action);
+      const patch = computeZOrderPatchForTargetWithFallback(
+        doc,
+        manualEditTargets,
+        target.id,
+        action,
+        reorderOptions,
+      );
       if (!patch || Object.keys(patch).length === 0) continue;
       patches.push({ id: target.id, styles: patch });
     }
