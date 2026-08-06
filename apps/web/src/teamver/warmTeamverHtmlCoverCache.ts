@@ -1,0 +1,85 @@
+import type { ProjectCoverHtmlBatchResponse } from "@open-design/contracts";
+
+import { buildHtmlCoverSrcDoc } from "./htmlCoverSrcDoc";
+import { projectCoverMediaUrl } from "./projectCoverMediaUrl";
+import { isTeamverEmbedMode } from "./designApiBase";
+import { fetchTeamverDaemon } from "./teamverDaemonHeaders";
+import {
+  htmlCoverCacheKey,
+  peekHtmlCoverCache,
+  seedHtmlCoverCache,
+} from "./htmlCoverCacheStore";
+import {
+  peekTeamverProjectPreviewPrefix,
+  projectScopedPreviewUrl,
+  sanitizePreviewEntryFile,
+} from "./teamverProjectPreviewScope";
+
+const BATCH_MAX = 12;
+
+export type WarmHtmlCoverItem = {
+  projectId: string;
+  file: string;
+  /** Matches ProjectCardHtmlCover mode (deckCoverOnly). */
+  mode: "deck" | "page";
+};
+
+/**
+ * Warm HTML card srcDoc cache with one POST (home Recent).
+ * Requires preview prefixes already warmed (0806-N06) for scoped `<base href>`.
+ */
+export async function warmTeamverHtmlCoverCache(
+  items: readonly WarmHtmlCoverItem[],
+): Promise<void> {
+  if (!isTeamverEmbedMode()) return;
+
+  const need: WarmHtmlCoverItem[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const id = item.projectId?.trim();
+    const file = sanitizePreviewEntryFile(item.file);
+    if (!id || !file || seen.has(id)) continue;
+    seen.add(id);
+    const rawUrl = projectCoverMediaUrl(id, file);
+    const key = htmlCoverCacheKey(item.mode, rawUrl);
+    if (peekHtmlCoverCache(key)) continue;
+    need.push({ projectId: id, file, mode: item.mode });
+    if (need.length >= BATCH_MAX) break;
+  }
+  if (need.length === 0) return;
+
+  try {
+    const resp = await fetchTeamverDaemon("/api/projects/cover-html-batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: need.map(({ projectId, file }) => ({ projectId, file })),
+      }),
+    });
+    if (!resp.ok) return;
+    let body: ProjectCoverHtmlBatchResponse;
+    try {
+      body = (await resp.json()) as ProjectCoverHtmlBatchResponse;
+    } catch {
+      return;
+    }
+
+    const modeById = new Map(need.map((row) => [row.projectId, row.mode]));
+    for (const row of body.results ?? []) {
+      if (!row || row.ok !== true || !row.html?.trim()) continue;
+      const mode = modeById.get(row.projectId) ?? "page";
+      const file = sanitizePreviewEntryFile(row.file) ?? row.file;
+      const rawUrl = projectCoverMediaUrl(row.projectId, file);
+      const prefix = peekTeamverProjectPreviewPrefix(row.projectId);
+      const baseHref = prefix
+        ? projectScopedPreviewUrl(prefix, file)
+        : rawUrl;
+      const srcDoc = buildHtmlCoverSrcDoc(row.html, baseHref, {
+        preferDeck: mode === "deck",
+      });
+      seedHtmlCoverCache(htmlCoverCacheKey(mode, rawUrl), srcDoc);
+    }
+  } catch {
+    // Soft-fail — cards fall back to per-card /raw.
+  }
+}

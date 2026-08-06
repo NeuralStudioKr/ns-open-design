@@ -201,3 +201,13 @@ export function resetTeamverProjectPreviewScopeForTests(): void {
   prefixByProject.clear();
   inflight.clear();
 }
+
+/** @internal vitest only — seed cache without minting. */
+export function seedTeamverProjectPreviewPrefixForTests(
+  projectId: string,
+  prefix: string,
+): void {
+  const id = projectId.trim();
+  if (!id || !prefix.trim()) return;
+  prefixByProject.set(id, { prefix, expiresAt: Date.now() + TTL_MS });
+}

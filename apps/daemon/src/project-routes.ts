@@ -64,12 +64,17 @@ import {
   reportByokTeamverUsageAndBillingFromDaemon,
 } from './teamver-byok-usage-bridge.js';
 import { resolveProjectCoverHint } from './project-cover-hints.js';
+import { prepareCoverHtmlBatchBody } from './cover-html-isolate.js';
 
 const PROJECT_COVER_HINTS_BATCH_MAX = 12;
 /** Status/metadata enrichment for registry-backed lists (home + projects tab). */
 const PROJECT_STATUS_HINTS_BATCH_MAX = 48;
 /** Home Recent HTML covers warm preview scopes in one POST. */
 const PROJECT_PREVIEW_URL_BATCH_MAX = 12;
+/** Home Recent HTML cover bodies in one POST (first-slide isolated). */
+const PROJECT_COVER_HTML_BATCH_MAX = 12;
+/** Soft cap — oversized decks fall back to per-card /raw. */
+const PROJECT_COVER_HTML_BATCH_MAX_BYTES = 900_000;
 
 export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'telemetry' | 'appConfig' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -2872,6 +2877,94 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       }
 
       /** @type {import('@open-design/contracts').ProjectPreviewUrlBatchResponse} */
+      const body = { results };
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(body);
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err));
+    }
+  });
+
+  /**
+   * Home / list HTML covers: return first-slide HTML for many projects in one
+   * POST so visible cards do not each GET /raw/deck.html.
+   */
+  app.post('/api/projects/cover-html-batch', async (req, res) => {
+    try {
+      const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+      const seen = new Set<string>();
+      /** @type {{ projectId: string; file?: string }[]} */
+      const items = [];
+      for (const raw of rawItems) {
+        if (!raw || typeof raw !== 'object') continue;
+        const projectId =
+          typeof (raw as { projectId?: unknown }).projectId === 'string'
+            ? (raw as { projectId: string }).projectId.trim()
+            : '';
+        if (!isSafeId(projectId) || seen.has(projectId)) continue;
+        seen.add(projectId);
+        const fileRaw = (raw as { file?: unknown }).file;
+        const file =
+          typeof fileRaw === 'string' && fileRaw.trim().length > 0
+            ? fileRaw.trim().split(/[?#]/u, 1)[0]?.trim()
+            : undefined;
+        items.push(file ? { projectId, file } : { projectId });
+        if (items.length >= PROJECT_COVER_HTML_BATCH_MAX) break;
+      }
+
+      /** @type {import('@open-design/contracts').ProjectCoverHtmlBatchResult[]} */
+      const results = [];
+      for (const item of items) {
+        try {
+          if (ctx.projectStorageHooks?.ensureMaterialized) {
+            await ctx.projectStorageHooks.ensureMaterialized(req, item.projectId);
+          }
+          const project = getProjectAsync
+            ? await getProjectAsync(db, item.projectId)
+            : getProject(db, item.projectId);
+          if (!project) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
+          const requestedPath = previewFilePathForProject(project, item.file);
+          const file = await readProjectFile(
+            PROJECTS_DIR,
+            project.id,
+            requestedPath,
+            project.metadata,
+          );
+          if (!/^text\/html(?:;|$)/i.test(String(file.mime ?? ''))) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
+          if (
+            typeof file.size === 'number'
+            && file.size > PROJECT_COVER_HTML_BATCH_MAX_BYTES
+          ) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
+          const rawHtml = file.buffer.toString('utf8');
+          const html = prepareCoverHtmlBatchBody(rawHtml);
+          if (
+            !html.trim()
+            || Buffer.byteLength(html, 'utf8') > PROJECT_COVER_HTML_BATCH_MAX_BYTES
+          ) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
+          results.push({
+            projectId: project.id,
+            ok: true,
+            html,
+            file: typeof file.name === 'string' && file.name ? file.name : requestedPath,
+          });
+        } catch {
+          results.push({ projectId: item.projectId, ok: false });
+        }
+      }
+
+      /** @type {import('@open-design/contracts').ProjectCoverHtmlBatchResponse} */
       const body = { results };
       res.setHeader('Cache-Control', 'no-store');
       res.json(body);

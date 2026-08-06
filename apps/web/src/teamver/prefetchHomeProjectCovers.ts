@@ -11,6 +11,7 @@ import { buildProjectCardCover } from "./projectCardCover";
 import { isTeamverEmbedDesignSurfaceEnabled } from "./teamverDesignAccess";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { warmTeamverProjectPreviewPrefixes } from "./teamverProjectPreviewScope";
+import { warmTeamverHtmlCoverCache } from "./warmTeamverHtmlCoverCache";
 
 /**
  * Home recent rail covers.
@@ -18,8 +19,8 @@ import { warmTeamverProjectPreviewPrefixes } from "./teamverProjectPreviewScope"
  * DesignsTab warm prefetch stays hints-only; visible cards use useLazyProjectCover
  * with `/files` fallback.
  *
- * Embed: after cover paths resolve, batch-warm preview-url prefixes so HTML
- * thumbs do not each GET /preview-url (0806-N06).
+ * Embed: after cover paths resolve, batch-warm preview-url prefixes (0806-N06)
+ * then first-slide HTML into htmlCoverCache (0806-N07) so cards skip /raw.
  */
 export async function prefetchHomeProjectCovers(
   projects: Project[],
@@ -47,10 +48,17 @@ export async function prefetchHomeProjectCovers(
     const htmlItems = recent.flatMap((project) => {
       const cover = buildProjectCardCover(project, entries[project.id] ?? null);
       if (cover.kind !== "html" || !cover.filePath) return [];
-      return [{ projectId: project.id, file: cover.filePath }];
+      return [{
+        projectId: project.id,
+        file: cover.filePath,
+        mode: (project.metadata?.kind === "deck" ? "deck" : "page") as "deck" | "page",
+      }];
     });
     if (htmlItems.length > 0) {
-      await warmTeamverProjectPreviewPrefixes(htmlItems);
+      await warmTeamverProjectPreviewPrefixes(
+        htmlItems.map(({ projectId, file }) => ({ projectId, file })),
+      );
+      await warmTeamverHtmlCoverCache(htmlItems);
     }
   }
 

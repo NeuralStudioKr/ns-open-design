@@ -7,6 +7,15 @@ import {
   HTML_COVER_CANVAS_HEIGHT,
   HTML_COVER_CANVAS_WIDTH,
 } from "../htmlCoverSrcDoc";
+import {
+  clearHtmlCoverCacheStoreForTests,
+  deleteHtmlCoverInflight,
+  getHtmlCoverInflight,
+  htmlCoverCacheKey,
+  peekHtmlCoverCache,
+  seedHtmlCoverCache,
+  setHtmlCoverInflight,
+} from "../htmlCoverCacheStore";
 import { fetchTeamverDaemon } from "../teamverDaemonHeaders";
 import {
   projectScopedPreviewUrl,
@@ -23,8 +32,11 @@ export {
   type CoverSlideSection,
 } from "../htmlCoverSrcDoc";
 
-const htmlCoverCache = new Map<string, string>();
-const htmlCoverInflight = new Map<string, Promise<string>>();
+export {
+  htmlCoverCacheKey,
+  peekHtmlCoverCache,
+  seedHtmlCoverCache,
+} from "../htmlCoverCacheStore";
 
 const VIEWPORT_ROOT_MARGIN_PX = 160;
 
@@ -100,12 +112,12 @@ function AuthenticatedHtmlCover({
   // Cache by path without ?v= so mtime bumps / remounts reuse HTML; still fetch
   // the busted URL when the cache misses. Prefixed with builder version so
   // logic bumps do not serve stale full-deck thumbs from the in-memory Map.
-  const cacheKey = `v2:${mode}:${src.split(/[?#]/u, 1)[0] ?? src}`;
+  const cacheKey = htmlCoverCacheKey(mode, src);
   const [visible, setVisible] = useState(() => {
     if (!deferUntilVisible) return true;
-    return htmlCoverCache.has(cacheKey);
+    return peekHtmlCoverCache(cacheKey) != null;
   });
-  const [srcDoc, setSrcDoc] = useState<string | null>(() => htmlCoverCache.get(cacheKey) ?? null);
+  const [srcDoc, setSrcDoc] = useState<string | null>(() => peekHtmlCoverCache(cacheKey));
   const [scale, setScale] = useState(1);
 
   useEffect(() => {
@@ -113,7 +125,7 @@ function AuthenticatedHtmlCover({
       setVisible(true);
       return;
     }
-    if (htmlCoverCache.has(cacheKey)) {
+    if (peekHtmlCoverCache(cacheKey)) {
       setVisible(true);
       return;
     }
@@ -160,7 +172,7 @@ function AuthenticatedHtmlCover({
   useEffect(() => {
     if (!visible) return;
     let cancelled = false;
-    const cached = htmlCoverCache.get(cacheKey);
+    const cached = peekHtmlCoverCache(cacheKey);
     if (cached) {
       setSrcDoc(cached);
       return;
@@ -306,11 +318,11 @@ async function loadHtmlCover(
   // Always strip ?v= / cacheBust so remounts and project.updatedAt churn share
   // one GET + one in-memory srcDoc. Callers pass path-only when possible.
   const pathOnly = src.split(/[?#]/u, 1)[0] ?? src;
-  const cacheKey = cacheKeyOverride ?? `v2:${mode}:${pathOnly}`;
-  const cached = htmlCoverCache.get(cacheKey);
+  const cacheKey = cacheKeyOverride ?? htmlCoverCacheKey(mode, pathOnly);
+  const cached = peekHtmlCoverCache(cacheKey);
   if (cached) return cached;
 
-  const existing = htmlCoverInflight.get(cacheKey);
+  const existing = getHtmlCoverInflight(cacheKey);
   if (existing) return existing;
 
   const run = (async () => {
@@ -321,18 +333,17 @@ async function loadHtmlCover(
     const html = await res.text();
     const { href: baseHref } = await resolveCoverBaseHref(pathOnly);
     const parsed = buildHtmlCoverSrcDoc(html, baseHref, { preferDeck: mode === "deck" });
-    htmlCoverCache.set(cacheKey, parsed);
+    seedHtmlCoverCache(cacheKey, parsed);
     return parsed;
   })().finally(() => {
-    htmlCoverInflight.delete(cacheKey);
+    deleteHtmlCoverInflight(cacheKey);
   });
 
-  htmlCoverInflight.set(cacheKey, run);
+  setHtmlCoverInflight(cacheKey, run);
   return run;
 }
 
 /** @internal vitest */
 export function clearProjectDeckCoverCacheForTests(): void {
-  htmlCoverCache.clear();
-  htmlCoverInflight.clear();
+  clearHtmlCoverCacheStoreForTests();
 }

@@ -11,6 +11,7 @@ describe("teamverProjectCollectionRouteSlugs", () => {
       "recent",
       "cover-hints",
       "preview-url-batch",
+      "cover-html-batch",
     ]);
   });
 
@@ -19,6 +20,7 @@ describe("teamverProjectCollectionRouteSlugs", () => {
     expect(isTeamverProjectCollectionRouteSlug("RECENT")).toBe(true);
     expect(isTeamverProjectCollectionRouteSlug("cover-hints")).toBe(true);
     expect(isTeamverProjectCollectionRouteSlug("preview-url-batch")).toBe(true);
+    expect(isTeamverProjectCollectionRouteSlug("cover-html-batch")).toBe(true);
     expect(isTeamverProjectCollectionRouteSlug("proj-uuid-1")).toBe(false);
     expect(isTeamverProjectCollectionRouteSlug("")).toBe(false);
   });

@@ -130,6 +130,32 @@ export interface ProjectPreviewUrlBatchResponse {
   results: ProjectPreviewUrlBatchResult[];
 }
 
+/** Batch first-slide HTML for home / list card covers — one POST instead of N /raw. */
+export interface ProjectCoverHtmlBatchItem {
+  projectId: string;
+  file?: string;
+}
+
+export interface ProjectCoverHtmlBatchRequest {
+  items: ProjectCoverHtmlBatchItem[];
+}
+
+export type ProjectCoverHtmlBatchResult =
+  | {
+      projectId: string;
+      ok: true;
+      html: string;
+      file: string;
+    }
+  | {
+      projectId: string;
+      ok: false;
+    };
+
+export interface ProjectCoverHtmlBatchResponse {
+  results: ProjectCoverHtmlBatchResult[];
+}
+
 /**
  * Session-gated S3 GET mint for a single project file.
  * Browser uses `url` directly (img/open); falls back to `rawUrl` when disabled.

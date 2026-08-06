@@ -88,6 +88,7 @@ const PROJECT_COLLECTION_ROUTE_SLUGS = new Set([
   'cover-hints',
   'status-hints',
   'preview-url-batch',
+  'cover-html-batch',
 ]);
 
 export function isTeamverProjectCollectionRouteSlug(projectId: string): boolean {

@@ -1,0 +1,46 @@
+/**
+ * Shared in-memory HTML cover srcDoc cache (home batch warm + card mounts).
+ */
+
+const htmlCoverCache = new Map<string, string>();
+const htmlCoverInflight = new Map<string, Promise<string>>();
+
+/** Stable in-memory cache key — path only (no ?v=). */
+export function htmlCoverCacheKey(mode: "deck" | "page", src: string): string {
+  const pathOnly = src.split(/[?#]/u, 1)[0] ?? src;
+  return `v2:${mode}:${pathOnly}`;
+}
+
+export function peekHtmlCoverCache(cacheKey: string): string | null {
+  return htmlCoverCache.get(cacheKey) ?? null;
+}
+
+/** Prefetch / batch warm — skip per-card /raw when srcDoc is already built. */
+export function seedHtmlCoverCache(cacheKey: string, srcDoc: string): void {
+  const key = cacheKey.trim();
+  if (!key || !srcDoc.trim()) return;
+  htmlCoverCache.set(key, srcDoc);
+}
+
+export function getHtmlCoverInflight(
+  cacheKey: string,
+): Promise<string> | undefined {
+  return htmlCoverInflight.get(cacheKey);
+}
+
+export function setHtmlCoverInflight(
+  cacheKey: string,
+  pending: Promise<string>,
+): void {
+  htmlCoverInflight.set(cacheKey, pending);
+}
+
+export function deleteHtmlCoverInflight(cacheKey: string): void {
+  htmlCoverInflight.delete(cacheKey);
+}
+
+/** @internal vitest */
+export function clearHtmlCoverCacheStoreForTests(): void {
+  htmlCoverCache.clear();
+  htmlCoverInflight.clear();
+}
