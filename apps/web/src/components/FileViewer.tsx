@@ -382,6 +382,14 @@ import {
   type GroupDistributeKind,
 } from '../edit-mode/manual-edit-group-align';
 import { collectSnapSources } from '../edit-mode/manual-edit-geometry-snap';
+import {
+  buildLayerReorderZIndexPatches,
+  layerReorderGroupFrontFirstIds,
+  layerReorderHistoryLabel,
+  layerReorderInsertIndex,
+  reorderLayerPaintOrder,
+  resolveLayerReorderSiblings,
+} from '../edit-mode/manual-edit-layer-reorder';
 import { filterManualEditLayerTargets, sortManualEditLayerTargetsByPaintOrder } from '../edit-mode/manual-edit-layer-targets';
 import { filterRootTargetsForGroupGeometry } from '../edit-mode/manual-edit-selection-ancestry';
 import {
@@ -12503,6 +12511,21 @@ function HtmlViewer({
       : zOrderHistoryLabel(action);
     queueManualEditZOrderPatches(patches, label);
   }
+
+  function handleManualEditLayerReorder(draggedId: string, insertBeforeId: string | null) {
+    const siblings = resolveLayerReorderSiblings(manualEditTargets, draggedId, {
+      deck: effectiveDeck,
+      activeSlideIndex: slideState?.active ?? null,
+    });
+    if (siblings.length < 2) return;
+    const frontFirst = layerReorderGroupFrontFirstIds(siblings);
+    const insertIndex = layerReorderInsertIndex(frontFirst, draggedId, insertBeforeId);
+    if (insertIndex === null) return;
+    const nextOrder = reorderLayerPaintOrder(frontFirst, draggedId, insertIndex);
+    const patches = buildLayerReorderZIndexPatches(siblings, nextOrder);
+    if (patches.length === 0) return;
+    queueManualEditZOrderPatches(patches, layerReorderHistoryLabel(patches.length));
+  }
   manualEditZOrderHandlerRef.current = handleManualEditZOrder;
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
@@ -13486,6 +13509,9 @@ function HtmlViewer({
             {manualEditMode && manualEditLayersPanelOpen ? (
               <ManualEditLayersPanel
                 targets={manualEditLayerPanelTargets}
+                allTargets={manualEditTargets}
+                deck={effectiveDeck}
+                activeSlideIndex={slideState?.active ?? null}
                 selectedIds={selectedManualEditTargetIds}
                 onSelectTarget={(target, options) => {
                   void selectManualEditTarget(target, options);
@@ -13495,6 +13521,7 @@ function HtmlViewer({
                 }}
                 zOrderCapabilities={manualEditZOrderCapabilities}
                 onZOrder={handleManualEditZOrder}
+                onLayerReorder={handleManualEditLayerReorder}
                 zOrderBusy={manualEditSaving}
               />
             ) : null}
