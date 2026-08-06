@@ -1,6 +1,7 @@
 // Skill registry. Scans one or more on-disk roots for SKILL.md files, parses
-// front-matter, returns listing. No watching in this MVP — re-scans on every
-// GET /api/skills, which is fine for dozens of skills.
+// front-matter, returns listing. Results are TTL-cached per roots key so
+// GET /api/design-templates (and /api/skills) do not re-walk ~100 folders
+// on every home boot. Mutations call invalidateListSkillsCache().
 //
 // Roots are passed in priority order: the first one wins on `id` collisions
 // so user-imported skills under USER_SKILLS_DIR can shadow a built-in skill
@@ -138,6 +139,32 @@ export function findSkillById(skills: unknown, id: unknown): SkillInfo | undefin
   return (skills as SkillInfo[]).find((s) => s.id === canonical);
 }
 
+/** Default TTL for in-process skill/design-template catalog scans. */
+export const LIST_SKILLS_CACHE_MS = 30_000;
+
+type ListSkillsCacheEntry = {
+  at: number;
+  value: SkillInfo[];
+};
+
+const listSkillsCache = new Map<string, ListSkillsCacheEntry>();
+const listSkillsInflight = new Map<string, Promise<SkillInfo[]>>();
+
+function listSkillsRootsKey(roots: readonly string[]): string {
+  return roots.join("\0");
+}
+
+/** Drop cached catalog scans (import / update / delete / tests). */
+export function invalidateListSkillsCache(): void {
+  listSkillsCache.clear();
+  listSkillsInflight.clear();
+}
+
+/** @internal vitest */
+export function resetListSkillsCacheForTests(): void {
+  invalidateListSkillsCache();
+}
+
 // Accept either a single root path or an array. When given multiple roots,
 // the first one wins on id collisions so user-imported skills under
 // USER_SKILLS_DIR can shadow a built-in skill of the same name without
@@ -148,6 +175,27 @@ export async function listSkills(
   skillsRoots: string | readonly string[],
 ): Promise<SkillInfo[]> {
   const roots = Array.isArray(skillsRoots) ? skillsRoots : [skillsRoots];
+  const key = listSkillsRootsKey(roots);
+  const cached = listSkillsCache.get(key);
+  if (cached && Date.now() - cached.at < LIST_SKILLS_CACHE_MS) {
+    return cached.value;
+  }
+  const inflight = listSkillsInflight.get(key);
+  if (inflight) return inflight;
+
+  const promise = listSkillsFromDisk(roots)
+    .then((value) => {
+      listSkillsCache.set(key, { at: Date.now(), value });
+      return value;
+    })
+    .finally(() => {
+      listSkillsInflight.delete(key);
+    });
+  listSkillsInflight.set(key, promise);
+  return promise;
+}
+
+async function listSkillsFromDisk(roots: readonly string[]): Promise<SkillInfo[]> {
   const out: SkillInfo[] = [];
   const seenIds = new Set<string>();
   for (let rootIdx = 0; rootIdx < roots.length; rootIdx += 1) {
@@ -853,6 +901,7 @@ export async function importUserSkill(
   await mkdir(dir, { recursive: true });
   const md = buildSkillMarkdown({ name, description, body, triggers });
   await writeFile(path.join(dir, "SKILL.md"), md, "utf8");
+  invalidateListSkillsCache();
   return { id: name, slug, dir };
 }
 
@@ -940,6 +989,7 @@ export async function updateUserSkill(
   }
   const md = buildSkillMarkdown({ name, description, body, triggers });
   await writeFile(path.join(dir, "SKILL.md"), md, "utf8");
+  invalidateListSkillsCache();
   return { id: name, slug, dir };
 }
 
@@ -1057,4 +1107,5 @@ export async function deleteUserSkill(
     throw err;
   }
   await rm(target, { recursive: true, force: true });
+  invalidateListSkillsCache();
 }

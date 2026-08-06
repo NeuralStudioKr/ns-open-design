@@ -16977,6 +16977,9 @@ export async function startServer({
       } catch {
         // never block boot on observability
       }
+      // Warm design-template catalog so the first home GET hits TTL cache
+      // instead of scanning ~100 SKILL.md files on the critical path (N05).
+      void listAllDesignTemplates().catch(() => undefined);
       server.once('listening', () => {
         // Widen the between-request idle window so kept-alive sockets
         // belonging to chat/SSE clients survive the gaps between bursts.
