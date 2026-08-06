@@ -13,9 +13,10 @@ describe('preview-url-batch route wiring (0806-N06)', () => {
     const batchAt = projectRoutes.indexOf("app.post('/api/projects/preview-url-batch'");
     expect(getAt).toBeGreaterThan(0);
     expect(batchAt).toBeGreaterThan(getAt);
-    const block = projectRoutes.slice(batchAt, batchAt + 3_800);
+    const block = projectRoutes.slice(batchAt, batchAt + 4_200);
     expect(block).toContain('PROJECT_PREVIEW_URL_BATCH_MAX');
     expect(block).toContain('projectPreviewScopes.mint');
+    expect(block).toContain('teamverBatchProjectAccessOk');
     expect(block).toContain('ok: false');
     expect(block).toContain("Cache-Control', 'no-store'");
   });

@@ -1,24 +1,11 @@
 # 0806-N07-2 구현설계 — home cover-html batch
 
-## API
+**상태:** ship됨 · harden [N08](./0806-N08-1-상위설계-[cover%20batch%20harden].md).
 
-```http
-POST /api/projects/cover-html-batch
-{ "items": [ { "projectId", "file"? } ] }  // max 12
-→ { "results": [ { projectId, ok: true, html, file } | { projectId, ok: false } ] }
-```
+| 층 | 위치 |
+|----|------|
+| API | `POST /api/projects/cover-html-batch` · contracts `ProjectCoverHtmlBatch*` |
+| daemon | `cover-html-isolate.ts` · `project-routes.ts` |
+| FE | `warmTeamverHtmlCoverCache` · `htmlCoverCacheStore` · RecentProjectsStrip ready gate (N08) |
 
-- read file → `isolateFirstDeckSlideHtml` (daemon port) → strip scripts
-- size gate: skip oversized files (soft `ok: false`)
-- collection slug: `cover-html-batch`
-
-## FE
-
-- `seedHtmlCoverCache` / `htmlCoverCacheKey` export (`ProjectCardHtmlCover`)
-- `warmTeamverHtmlCoverCache(items)` → batch → `buildHtmlCoverSrcDoc` + peeked preview base → seed
-- `prefetchHomeProjectCovers`: preview warm 후 HTML warm
-
-## 성공 지표 (N=6)
-
-- `/raw` GET ×6 → 0 (batch hit)
-- `cover-html-batch` ×1 · `preview-url-batch` ×1
+상위: [N07-1](./0806-N07-1-상위설계-[home%20cover-html%20batch].md)

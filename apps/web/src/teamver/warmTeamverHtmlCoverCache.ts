@@ -74,9 +74,9 @@ export async function warmTeamverHtmlCoverCache(
       const baseHref = prefix
         ? projectScopedPreviewUrl(prefix, file)
         : rawUrl;
-      const srcDoc = buildHtmlCoverSrcDoc(row.html, baseHref, {
-        preferDeck: mode === "deck",
-      });
+      // Batch HTML is first-slide isolated on the daemon — always use deck
+      // preview CSS so page-mode multi-slide decks match /raw fallback (N08).
+      const srcDoc = buildHtmlCoverSrcDoc(row.html, baseHref, { preferDeck: true });
       seedHtmlCoverCache(htmlCoverCacheKey(mode, rawUrl), srcDoc);
     }
   } catch {

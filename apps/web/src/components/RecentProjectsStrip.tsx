@@ -95,22 +95,34 @@ export function RecentProjectsStrip({
   const [coverByProject, setCoverByProject] = useState<
     Record<string, ProjectCoverFile | null>
   >({});
+  /**
+   * Embed: wait for prefetch + preview/html batch warm before mounting
+   * ProjectCardHtmlCover — otherwise entryFile cards fire /raw before cache seed (0806-N08).
+   */
+  const [homeCoversReady, setHomeCoversReady] = useState(() => !isTeamverEmbedMode());
   const showOverflowMenu = Boolean(onRename || onDelete);
 
   useEffect(() => {
     setCoverByProject({});
+    setHomeCoversReady(!isTeamverEmbedMode());
   }, [workspaceScopeKey]);
 
   useEffect(() => {
     let cancelled = false;
     if (recent.length === 0) {
       setCoverByProject({});
+      setHomeCoversReady(true);
       return;
+    }
+
+    if (isTeamverEmbedMode()) {
+      setHomeCoversReady(false);
     }
 
     void prefetchHomeProjectCovers(recent).then((entries) => {
       if (cancelled) return;
       setCoverByProject(entries);
+      setHomeCoversReady(true);
     });
 
     return () => {
@@ -360,14 +372,21 @@ export function RecentProjectsStrip({
                       playsInline
                     />
                   ) : cover.kind === 'html' && cover.src ? (
-                    <ProjectCardHtmlCover
-                      src={cover.src}
-                      deckCoverOnly={project.metadata?.kind === 'deck'}
-                      iframeClassName="recent-projects__thumb-iframe"
-                      deckFrameClassName="recent-projects__deck-frame"
-                      deckIframeClassName="recent-projects__deck-iframe"
-                      deckLoadingClassName="recent-projects__deck-cover-loading"
-                    />
+                    homeCoversReady ? (
+                      <ProjectCardHtmlCover
+                        src={cover.src}
+                        deckCoverOnly={project.metadata?.kind === 'deck'}
+                        iframeClassName="recent-projects__thumb-iframe"
+                        deckFrameClassName="recent-projects__deck-frame"
+                        deckIframeClassName="recent-projects__deck-iframe"
+                        deckLoadingClassName="recent-projects__deck-cover-loading"
+                      />
+                    ) : (
+                      <span
+                        className="recent-projects__deck-cover-loading"
+                        aria-hidden
+                      />
+                    )
                   ) : (
                     <span className="recent-projects__card-glyph">{cover.initial}</span>
                   )}

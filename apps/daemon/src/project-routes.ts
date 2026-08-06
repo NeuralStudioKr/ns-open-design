@@ -2816,6 +2816,17 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     }
   });
 
+  async function teamverBatchProjectAccessOk(
+    req: Request,
+    projectId: string,
+  ): Promise<boolean> {
+    if (!isTeamverDesignManaged()) return true;
+    const identity = readTeamverIdentityFromRequest(req);
+    if (!identity) return false;
+    const access = await verifyTeamverProjectAccess(projectId, identity);
+    return access.ok;
+  }
+
   /**
    * Home / list HTML covers: mint many project preview scopes in one POST
    * so visible cards do not each GET /preview-url.
@@ -2847,6 +2858,10 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const results = [];
       for (const item of items) {
         try {
+          if (!(await teamverBatchProjectAccessOk(req, item.projectId))) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
           if (ctx.projectStorageHooks?.ensureMaterialized) {
             await ctx.projectStorageHooks.ensureMaterialized(req, item.projectId);
           }
@@ -2916,6 +2931,10 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const results = [];
       for (const item of items) {
         try {
+          if (!(await teamverBatchProjectAccessOk(req, item.projectId))) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
           if (ctx.projectStorageHooks?.ensureMaterialized) {
             await ctx.projectStorageHooks.ensureMaterialized(req, item.projectId);
           }
@@ -2927,23 +2946,30 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             continue;
           }
           const requestedPath = previewFilePathForProject(project, item.file);
-          const file = await readProjectFile(
+          // Size/mime before full buffer read (N08).
+          const meta = await resolveProjectFilePath(
             PROJECTS_DIR,
             project.id,
             requestedPath,
             project.metadata,
           );
-          if (!/^text\/html(?:;|$)/i.test(String(file.mime ?? ''))) {
+          if (!/^text\/html(?:;|$)/i.test(String(meta.mime ?? ''))) {
             results.push({ projectId: item.projectId, ok: false });
             continue;
           }
           if (
-            typeof file.size === 'number'
-            && file.size > PROJECT_COVER_HTML_BATCH_MAX_BYTES
+            typeof meta.size === 'number'
+            && meta.size > PROJECT_COVER_HTML_BATCH_MAX_BYTES
           ) {
             results.push({ projectId: item.projectId, ok: false });
             continue;
           }
+          const file = await readProjectFile(
+            PROJECTS_DIR,
+            project.id,
+            meta.name,
+            project.metadata,
+          );
           const rawHtml = file.buffer.toString('utf8');
           const html = prepareCoverHtmlBatchBody(rawHtml);
           if (
@@ -2957,7 +2983,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             projectId: project.id,
             ok: true,
             html,
-            file: typeof file.name === 'string' && file.name ? file.name : requestedPath,
+            file: typeof file.name === 'string' && file.name ? file.name : meta.name,
           });
         } catch {
           results.push({ projectId: item.projectId, ok: false });

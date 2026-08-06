@@ -13,10 +13,12 @@ describe('cover-html-batch route wiring (0806-N07)', () => {
     const coverBatchAt = projectRoutes.indexOf("app.post('/api/projects/cover-html-batch'");
     expect(previewBatchAt).toBeGreaterThan(0);
     expect(coverBatchAt).toBeGreaterThan(previewBatchAt);
-    const block = projectRoutes.slice(coverBatchAt, coverBatchAt + 4_200);
+    const block = projectRoutes.slice(coverBatchAt, coverBatchAt + 5_200);
     expect(block).toContain('PROJECT_COVER_HTML_BATCH_MAX');
     expect(block).toContain('prepareCoverHtmlBatchBody');
+    expect(block).toContain('resolveProjectFilePath');
     expect(block).toContain('readProjectFile');
+    expect(block).toContain('teamverBatchProjectAccessOk');
     expect(block).toContain("Cache-Control', 'no-store'");
   });
 
