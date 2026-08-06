@@ -2833,6 +2833,8 @@ export function ProjectView({
   const runPersistTargetFileRef = useRef<string | null>(null);
   /** Deck-patch from comment edits may only touch slides named by these attachments. */
   const runCommentAttachmentsRef = useRef<ChatCommentAttachment[]>([]);
+  /** Image/file attachments for the active run — used to heal <img src> when /files lags. */
+  const runAttachmentsRef = useRef<ChatAttachment[]>([]);
   /** User-visible text for the active run; model-only prompt suffixes are excluded. */
   const runVisiblePromptRef = useRef<string>('');
   const htmlAutoOpenTimerRef = useRef<number | null>(null);
@@ -4592,10 +4594,14 @@ export function ProjectView({
       if (ext === '.html') {
         // Heal model-emitted <img src> that used a human/original filename
         // (or sanitized basename without the upload timestamp prefix) instead
-        // of the real on-disk path from /upload.
-        const projectPaths = currentProjectFiles.map(
-          (file) => String(file.path || file.name || '').trim(),
-        ).filter(Boolean);
+        // of the real on-disk path from /upload. Union turn attachments so
+        // Drive `refs/drive/…` heals even when /files has not refreshed yet.
+        const projectPaths = [
+          ...currentProjectFiles.map(
+            (file) => String(file.path || file.name || '').trim(),
+          ),
+          ...runAttachmentsRef.current.map((attachment) => attachment.path.trim()),
+        ].filter(Boolean);
         htmlBody = rewriteAttachmentImageSrcs(htmlBody, projectPaths);
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
@@ -8087,6 +8093,7 @@ export function ProjectView({
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),
       );
+      runAttachmentsRef.current = runAttachments;
       const commentPersistTarget = resolveCommentEditPersistTargetFileName(
         runCommentAttachments,
       );

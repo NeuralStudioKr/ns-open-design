@@ -360,6 +360,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(assistant).toContain("hideAssistantThinkingDetails && streaming");
     expect(designFiles).toContain("partitionEmbedDesignFileSections");
     expect(designFiles).toContain("designFiles.sectionSupporting");
+    expect(designFiles).toContain("setSupportingExpanded] = useState(true)");
     expect(autoOpen).toContain("shouldDeclineEmbedAutoOpen");
   });
 });

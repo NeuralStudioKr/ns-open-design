@@ -308,7 +308,9 @@ export function DesignFilesPanel({
   const t = useTeamverT();
   const analytics = useAnalytics();
   const { hideUsefulTips, slideOnlyMvp } = useTeamverBranding();
-  const [supportingExpanded, setSupportingExpanded] = useState(false);
+  // refs/Drive imports land in the supporting bucket under slide-only MVP;
+  // default open so users don't have to click '지원 파일' after drilling into refs/Drive.
+  const [supportingExpanded, setSupportingExpanded] = useState(true);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [dropReadError, setDropReadError] = useState<string | null>(null);
   const dragDepthRef = useRef(0);

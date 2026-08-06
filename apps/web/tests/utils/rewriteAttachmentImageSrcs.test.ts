@@ -35,6 +35,21 @@ describe('rewriteAttachmentImageSrcs', () => {
     expect(next).toBe(html);
   });
 
+  it('prefers the unique refs/drive path when a stem collides with a root upload', () => {
+    const html = '<img src="hero.png" alt="hero">';
+    const next = rewriteAttachmentImageSrcs(html, [
+      'msh9y0i9-hero.png',
+      'refs/drive/msh5lhfh-hero.png',
+    ]);
+    expect(next).toContain('src="refs/drive/msh5lhfh-hero.png"');
+  });
+
+  it('rewrites Drive basename-only src using attachment paths alone', () => {
+    const stored = 'refs/drive/msh5lhfh-놀란고양이-_1_.jpeg';
+    const html = '<img src="놀란고양이.jpeg" alt="놀란고양이">';
+    expect(rewriteAttachmentImageSrcs(html, [stored])).toContain(`src="${stored}"`);
+  });
+
   it('ignores absolute and data URIs', () => {
     const html = '<img src="https://example.com/a.png"><img src="data:image/png;base64,xx">';
     expect(rewriteAttachmentImageSrcs(html, ['msh9y0i9-a.png'])).toBe(html);

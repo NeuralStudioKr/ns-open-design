@@ -215,14 +215,21 @@ function attachmentKindFromMime(mimeType: string): ChatAttachment["kind"] {
 export function driveImportedToChatAttachments(
   imported: TeamverDriveImportedAsset[],
 ): ChatAttachment[] {
-  return imported.map((item) => ({
-    path: item.path,
-    name: item.name,
-    kind: attachmentKindFromMime(item.mimeType || ""),
-    size: item.sizeBytes,
-    source: {
-      type: "teamver-drive",
-      assetId: item.assetId,
-    },
-  }));
+  return imported.map((item) => {
+    const path = String(item.path || "").trim();
+    // Identity for model prompts must be the on-disk path. BFF `name` can
+    // drift toward a display filename; using that taught models to emit
+    // `<img src="hero.jpeg">` without the `refs/drive/<timestamp>-` prefix.
+    const basename = path.split("/").filter(Boolean).pop() || path || item.name;
+    return {
+      path,
+      name: basename,
+      kind: attachmentKindFromMime(item.mimeType || ""),
+      size: item.sizeBytes,
+      source: {
+        type: "teamver-drive" as const,
+        assetId: item.assetId,
+      },
+    };
+  });
 }

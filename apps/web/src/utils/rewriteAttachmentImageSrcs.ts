@@ -19,6 +19,7 @@ export function rewriteAttachmentImageSrcs(
   const byExact = new Set<string>();
   const byBasename = new Map<string, string[]>();
   const bySanitizedStem = new Map<string, string[]>();
+  const byLettersOnly = new Map<string, string[]>();
 
   for (const raw of projectFilePaths) {
     const path = String(raw || '').trim().replace(/\\/g, '/');
@@ -32,6 +33,8 @@ export function rewriteAttachmentImageSrcs(
       pushMap(bySanitizedStem, sanitizeUploadFilename(stem).toLowerCase(), path);
     }
     pushMap(bySanitizedStem, sanitizeUploadFilename(base).toLowerCase(), path);
+    const letters = lettersOnlyImageStem(stem || base);
+    if (letters) pushMap(byLettersOnly, letters, path);
   }
 
   if (byExact.size === 0) return html;
@@ -53,11 +56,11 @@ export function rewriteAttachmentImageSrcs(
         byBasename.get(base.toLowerCase())
         ?? bySanitizedStem.get(base.toLowerCase())
         ?? bySanitizedStem.get(sanitizeUploadFilename(base).toLowerCase())
-        ?? bySanitizedStem.get(sanitizeUploadFilename(normalized).toLowerCase());
+        ?? bySanitizedStem.get(sanitizeUploadFilename(normalized).toLowerCase())
+        ?? byLettersOnly.get(lettersOnlyImageStem(base));
 
-      if (!candidates || candidates.length !== 1) return full;
-      const resolved = candidates[0]!;
-      if (resolved === normalized) return full;
+      const resolved = pickUniqueRewriteCandidate(candidates, normalized);
+      if (!resolved || resolved === normalized) return full;
       return `${prefix}${quote}${resolved}${quote}`;
     },
   );
@@ -85,6 +88,14 @@ export function stripUploadTimestampPrefix(filename: string): string {
   return match?.[1] || base;
 }
 
+/** `놀란고양이-_1_.jpeg` / `놀란 고양이.jpeg` → `놀란고양이` for fuzzy unique match. */
+export function lettersOnlyImageStem(filename: string): string {
+  return projectFilePathBasename(filename)
+    .replace(/\.[^.]+$/, '')
+    .replace(/[^\p{L}]+/gu, '')
+    .toLowerCase();
+}
+
 function pushMap(map: Map<string, string[]>, key: string, value: string): void {
   if (!key) return;
   const list = map.get(key);
@@ -93,4 +104,19 @@ function pushMap(map: Map<string, string[]>, key: string, value: string): void {
     return;
   }
   if (!list.includes(value)) list.push(value);
+}
+
+function pickUniqueRewriteCandidate(
+  candidates: string[] | undefined,
+  normalizedSrc: string,
+): string | null {
+  if (!candidates || candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0] ?? null;
+  // When root upload + Drive share a stem, prefer the Drive path if the model
+  // omitted a directory (the common broken case for Drive attaches).
+  if (!normalizedSrc.includes('/')) {
+    const driveOnly = candidates.filter((path) => path.startsWith('refs/drive/'));
+    if (driveOnly.length === 1) return driveOnly[0] ?? null;
+  }
+  return null;
 }

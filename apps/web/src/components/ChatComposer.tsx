@@ -169,6 +169,7 @@ import {
 import { CaretFloatingLayer } from './composer/CaretFloatingLayer';
 import { ANNOTATION_EVENT, type AnnotationEventDetail } from "./PreviewDrawOverlay";
 import { loadAuthenticatedProjectFileBlob } from '../hooks/useAuthenticatedProjectFileObjectUrl';
+import { clearProjectRawFileMissing } from '../utils/projectFileFetchCache';
 import { sniffImageMime } from '../utils/imageBlobNormalize';
 import { DesignSystemSwitchPicker } from "./DesignSystemSwitchPicker";
 import { listenForConnectorsChanged } from './connectors-events';
@@ -1809,8 +1810,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       try {
         const result = await importTeamverDriveAssets(id, allowedAssets);
         if (result.imported.length > 0) {
+          for (const item of result.imported) {
+            clearProjectRawFileMissing(id, item.path);
+          }
           const attachments = driveImportedToChatAttachments(result.imported);
-          appendOrderedStagedAttachments(assignChatAttachmentOrders(attachments, orderStart));
+          // Wait for S3/scratch materialization before staging so preview +
+          // vision blocks do not race a cold refs/drive path.
+          const ready = await uploadedImagesReadableOnDisk(id, attachments);
+          const stagedAttachments = ready.length > 0 ? ready : attachments;
+          appendOrderedStagedAttachments(assignChatAttachmentOrders(stagedAttachments, orderStart));
         }
         if (result.partial) {
           const failedById = new Map(result.failed.map((item) => [item.assetId, item.errorCode]));
@@ -1957,8 +1965,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setCanvasSlideLaunchError(formatDriveImportErrorForUser(errorCode));
           return;
         }
+        for (const item of result.imported) {
+          clearProjectRawFileMissing(id, item.path);
+        }
+        const importedAttachments = driveImportedToChatAttachments(result.imported);
+        const readyImported = await uploadedImagesReadableOnDisk(id, importedAttachments);
         const attachments = assignChatAttachmentOrders(
-          driveImportedToChatAttachments(result.imported),
+          readyImported.length > 0 ? readyImported : importedAttachments,
           Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged)),
         );
         const designSystemIdForRun =

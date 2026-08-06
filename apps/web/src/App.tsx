@@ -212,6 +212,7 @@ import {
   syncMediaProvidersToDaemon,
 } from './state/config';
 import { playSound, showCompletionNotification } from './utils/notifications';
+import { clearProjectRawFileMissing } from './utils/projectFileFetchCache';
 import { applyAppearanceToDocument } from './state/appearance';
 import { isMacPlatform } from './utils/platform';
 import {
@@ -2479,6 +2480,9 @@ function AppInner() {
       if (!workingDirHandoffFailed && pendingDriveAssets.length > 0) {
         try {
           const driveResult = await importTeamverDriveAssets(result.project.id, pendingDriveAssets);
+          for (const item of driveResult.imported) {
+            clearProjectRawFileMissing(result.project.id, item.path);
+          }
           const driveAttachments = driveImportedToChatAttachments(driveResult.imported);
           firstMessageAttachments = [...firstMessageAttachments, ...driveAttachments];
           if (driveResult.partial) {

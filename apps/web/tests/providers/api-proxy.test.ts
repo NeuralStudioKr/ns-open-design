@@ -471,6 +471,22 @@ describe('buildProxyMessages', () => {
     expect(candidates).toEqual([{ path: 'deck.html', name: 'deck.html' }]);
   });
 
+  it('keeps fresh Drive/local upload images when /files index is still stale', () => {
+    const candidates = filterAnthropicImageCandidatesByProjectFiles(
+      [
+        { path: 'refs/drive/msh5lhfh-hero.png', name: 'msh5lhfh-hero.png' },
+        { path: 'msh9y0i9-local.jpeg', name: 'msh9y0i9-local.jpeg' },
+        { path: 'ms8hq9qu-drawing-2026-07-31T05-17-03-125Z.png', name: 'mark.png' },
+      ],
+      'project-1',
+      new Set(['deck.html']),
+    );
+    expect(candidates.map((item) => item.path)).toEqual([
+      'refs/drive/msh5lhfh-hero.png',
+      'msh9y0i9-local.jpeg',
+    ]);
+  });
+
   it('keeps a text fallback when a supported Anthropic image cannot be read', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
