@@ -2084,7 +2084,8 @@ export function syncSvgDimensionAttributesFromStyles(
   syncSvgDimensionAttributes(el, styles);
 }
 
-function syncGraphicChildDimensionsFromStyles(
+/** Mirror wrapper width/height onto a lone svg/img child (persist + tests). */
+export function syncGraphicChildDimensionsFromStyles(
   el: HTMLElement,
   styles: Partial<ManualEditStyles>,
 ): void {

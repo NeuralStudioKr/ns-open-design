@@ -69,6 +69,51 @@ const flowImage: ManualEditTarget = {
 };
 
 describe('manual-edit-group-move', () => {
+  it('filters nested graphic wrapper and inner svg for group move', () => {
+    const wrapper: ManualEditTarget = {
+      ...boxA,
+      id: 'path-0-1',
+      kind: 'container',
+      tagName: 'div',
+      attributes: { 'data-od-source-path': 'path-0-1' },
+    };
+    const innerSvg: ManualEditTarget = {
+      ...flowImage,
+      id: 'path-0-1-0',
+      tagName: 'svg',
+      attributes: { 'data-od-source-path': 'path-0-1-0' },
+    };
+    const isDescendant = (child: string, ancestor: string) => (
+      child === 'path-0-1-0' && ancestor === 'path-0-1'
+    );
+    expect(resolveGroupMoveTargets([wrapper, innerSvg], undefined, isDescendant)).toEqual([wrapper]);
+  });
+
+  it('moves absolute graphic wrappers via left/top without promote', () => {
+    const wrapper: ManualEditTarget = {
+      ...boxA,
+      id: 'path-0-1',
+      kind: 'container',
+      tagName: 'div',
+      rect: { x: 855, y: 322, width: 775, height: 508 },
+      styles: {
+        ...emptyManualEditStyles(),
+        position: 'absolute',
+        left: '855px',
+        top: '322px',
+        width: '775px',
+        height: '508px',
+      },
+    };
+    const members = buildGroupMoveMemberStarts([wrapper]);
+    const styles = computeGroupMoveMemberStyles(members[0]!, wrapper, 24, 12);
+    expect(styles).toMatchObject({
+      left: '879px',
+      top: '334px',
+    });
+    expect(styles.position).toBeUndefined();
+  });
+
   it('requires at least two movable or promotable roots', () => {
     expect(canGroupBoundingMove([boxA, boxB])).toBe(true);
     expect(canGroupBoundingMove([boxA])).toBe(false);

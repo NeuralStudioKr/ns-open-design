@@ -135,6 +135,46 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('lists absolute graphic wrapper in od-edit-targets but not inner svg', async () => {
+    const posts: Array<{ type?: string; targets?: Array<{ id: string; tagName?: string }> }> = [];
+    const dom = new JSDOM(
+      `<section class="slide" data-screen-label="01 Cover">
+        <div data-od-source-path="path-0-1" style="position:absolute;left:855px;top:322px;width:775px;height:508px;display:flex;pointer-events:none">
+          <svg data-od-source-path="path-0-1-0" width="420" height="420"><circle cx="200" cy="200" r="16" /></svg>
+        </div>
+      </section>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const wrap = dom.window.document.querySelector('div')!;
+    const svg = dom.window.document.querySelector('svg')!;
+    wrap.getBoundingClientRect = () => ({
+      x: 855, y: 322, width: 775, height: 508,
+      top: 322, right: 1630, bottom: 830, left: 855,
+      toJSON: () => ({}),
+    } as DOMRect);
+    svg.getBoundingClientRect = () => ({
+      x: 1032, y: 366, width: 420, height: 420,
+      top: 366, right: 1452, bottom: 786, left: 1032,
+      toJSON: () => ({}),
+    } as DOMRect);
+    dom.window.parent.postMessage = ((message: unknown) => {
+      posts.push(message as typeof posts[number]);
+    }) as typeof dom.window.parent.postMessage;
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'od-edit-mode', enabled: true },
+    }));
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+    const targetsMessage = posts.find((message) => message.type === 'od-edit-targets');
+    const ids = targetsMessage?.targets?.map((item) => item.id) ?? [];
+    expect(ids).toContain('path-0-1');
+    expect(ids).not.toContain('path-0-1-0');
+    expect(wrap.getAttribute('data-od-edit-graphic-wrapper')).toBe('true');
+
+    dom.window.close();
+  });
+
   it('includes svg in discovery so logos are not selected as parent containers', () => {
     expect(MANUAL_EDIT_DISCOVERY_SELECTOR.split(',').map((s) => s.trim())).toContain('svg');
     const bridge = buildManualEditBridge(true);
@@ -476,10 +516,10 @@ describe('manual edit bridge target normalization', () => {
   it('omits selected outerHTML from bulk target posts but includes it for selected targets', () => {
     const bridge = buildManualEditBridge(true);
 
-    expect(bridge).toContain('targets.push(targetFrom(nodes[i], false))');
+    expect(bridge).toContain('targets.push(targetFrom(resolved, false))');
     expect(bridge).toContain("target: targetFrom(el, true)");
-    expect(bridge).toContain('if (!isSourceMappable(nodes[i])) continue;');
-    expect(bridge).toContain('return el;');
+    expect(bridge).toContain('if (!isSourceMappable(node)) continue;');
+    expect(bridge).toContain('resolveGraphicContainerTarget(node)');
     expect(bridge).not.toContain('if (isPrimaryTarget(el)) return el;');
   });
 

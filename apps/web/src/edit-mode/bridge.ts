@@ -420,19 +420,43 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (slideIndex !== undefined) target.slideIndex = slideIndex;
     return target;
   }
+  function markGraphicWrapperHints(){
+    var marked = document.querySelectorAll('[data-od-edit-graphic-wrapper]');
+    for (var mi = 0; mi < marked.length; mi++) {
+      marked[mi].removeAttribute('data-od-edit-graphic-wrapper');
+    }
+    if (!enabled) return;
+    var nodes = document.body ? document.body.querySelectorAll(discoverySelector) : [];
+    for (var ni = 0; ni < nodes.length; ni++) {
+      var node = nodes[ni];
+      var ntag = node.tagName ? node.tagName.toLowerCase() : '';
+      if (ntag !== 'img' && ntag !== 'svg') continue;
+      var wrap = resolveGraphicContainerTarget(node);
+      if (wrap && wrap !== node) wrap.setAttribute('data-od-edit-graphic-wrapper', 'true');
+    }
+  }
   function allTargets(){
     var nodes = document.body ? document.body.querySelectorAll(discoverySelector) : [];
     var targets = [];
+    var seenIds = Object.create(null);
     for (var i = 0; i < nodes.length; i++) {
-      var rect = nodes[i].getBoundingClientRect();
-      if (!isSourceMappable(nodes[i])) continue;
-      if (!isHiddenTarget(nodes[i], rect) && (rect.width < 4 || rect.height < 4)) continue;
-      targets.push(targetFrom(nodes[i], false));
+      var node = nodes[i];
+      if (!isSourceMappable(node)) continue;
+      var resolved = resolveGraphicContainerTarget(node);
+      var nodeTag = node.tagName ? node.tagName.toLowerCase() : '';
+      if ((nodeTag === 'img' || nodeTag === 'svg') && resolved !== node) continue;
+      var rect = resolved.getBoundingClientRect();
+      if (!isHiddenTarget(resolved, rect) && (rect.width < 4 || rect.height < 4)) continue;
+      var rid = stableId(resolved);
+      if (seenIds[rid]) continue;
+      seenIds[rid] = 1;
+      targets.push(targetFrom(resolved, false));
     }
     return targets;
   }
   function postTargets(){
     if (!enabled) return;
+    markGraphicWrapperHints();
     window.parent.postMessage({ type: 'od-edit-targets', targets: allTargets() }, '*');
   }
   var lastHoverId = null;
@@ -837,6 +861,8 @@ html[data-od-edit-mode] body * { cursor: pointer !important; }
 /* Deck templates often disable pointer-events on decorative SVGs — re-enable in edit mode so logos/icons are pickable. */
 html[data-od-edit-mode] img,
 html[data-od-edit-mode] svg { pointer-events: auto !important; }
+/* Absolute graphic wrappers (deck cover logos) also use pointer-events:none — restore hits on the full box. */
+html[data-od-edit-mode] [data-od-edit-graphic-wrapper] { pointer-events: auto !important; }
 html[data-od-edit-mode] [data-od-id],
 html[data-od-edit-mode] [data-screen-label],
 html[data-od-edit-mode] [data-od-runtime-id],

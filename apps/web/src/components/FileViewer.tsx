@@ -332,6 +332,10 @@ import {
   measureManualEditViewportBounds,
 } from '../edit-mode/manual-edit-host-preview';
 import {
+  manualEditTargetIsDescendantOfInDocument,
+  resolveManualEditGraphicContainerId,
+} from '../edit-mode/manual-edit-target-resolve';
+import {
   manualEditPatchBaseSource,
   shouldHoldDiskPreviewDuringManualEdit,
   shouldSkipManualEditHistoryConfirm,
@@ -9686,13 +9690,11 @@ function HtmlViewer({
   }
 
   function manualEditTargetIsDescendantOf(childId: string, ancestorId: string): boolean {
-    if (childId === ancestorId) return false;
-    const doc = iframeRef.current?.contentDocument;
-    if (!doc) return false;
-    const child = doc.querySelector<HTMLElement>(`[data-od-id="${CSS.escape(childId)}"]`);
-    const ancestor = doc.querySelector<HTMLElement>(`[data-od-id="${CSS.escape(ancestorId)}"]`);
-    if (!child || !ancestor) return false;
-    return ancestor.contains(child);
+    return manualEditTargetIsDescendantOfInDocument(
+      iframeContentDocumentIfAccessible(iframeRef.current),
+      childId,
+      ancestorId,
+    );
   }
 
   function selectedManualEditGeometryOptions() {
@@ -9747,10 +9749,17 @@ function HtmlViewer({
   ) {
     if (manualEditResizeSessionActiveRef.current || manualEditInlineTextEditing) return;
 
+    const doc = iframeContentDocumentIfAccessible(iframeRef.current);
+    const resolvedId = resolveManualEditGraphicContainerId(doc, target.id);
+    const catalog = manualEditTargets.length > 0 ? manualEditTargets : [target];
+    const resolvedTarget = resolvedId !== target.id
+      ? (catalog.find((item) => item.id === resolvedId) ?? { ...target, id: resolvedId })
+      : target;
+
     const currentIds = selectedManualEditTargetIdsRef.current;
     const nextIds = nextManualEditSelectionIds(
       currentIds,
-      target.id,
+      resolvedTarget.id,
       options?.additive ?? false,
       MANUAL_EDIT_MULTI_SELECT_MAX,
       manualEditTargetIsDescendantOf,
@@ -9766,10 +9775,10 @@ function HtmlViewer({
       if (!(await flushManualEditStyleSave({ force: true }))) return;
     }
 
-    const catalog = manualEditTargets.length > 0
+    const catalogForResolve = manualEditTargets.length > 0
       ? manualEditTargets
-      : [target];
-    const nextTargets = resolveManualEditTargetsByIds(nextIds, catalog);
+      : [resolvedTarget];
+    const nextTargets = resolveManualEditTargetsByIds(nextIds, catalogForResolve);
     if (nextTargets.length === 0) return;
     const primary = nextTargets[nextTargets.length - 1]!;
 
