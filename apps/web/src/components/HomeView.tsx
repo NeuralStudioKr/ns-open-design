@@ -66,7 +66,7 @@ import { inlineMentionToken, mentionTokenPresent } from '../utils/inlineMentions
 import { smoothScrollToTop } from '../utils/smoothScrollToTop';
 import { missingRequiredInputs, pluginInputsAreValid } from '../utils/pluginRequiredInputs';
 import { HomeHero, type ExamplePromptInfo, type HomeHeroHandle } from './HomeHero';
-import { findChip, pluginIdsBoundToHomeHeroChips, type HomeHeroChip } from './home-hero/chips';
+import { findChip, type HomeHeroChip } from './home-hero/chips';
 import {
   buildHomeMediaComposer,
   homeMediaSurfaceForChipId,
@@ -632,45 +632,9 @@ export function HomeView({
     });
   }, [communityPluginQuery, pluginsLoadingMore, pluginsNextOffset, slideOnlyMvp]);
 
-  const chipBoundPluginIds = useMemo(
-    () => pluginIdsBoundToHomeHeroChips([
-      ...homeHeroChipsForGroup('create', { slideOnlyMvp }),
-      ...homeHeroChipsForGroup('migrate', { slideOnlyMvp }),
-    ]),
-    [slideOnlyMvp],
-  );
-
-  const missingChipBoundPluginIds = useMemo(
-    () => chipBoundPluginIds.filter(
-      (id) => !plugins.some((plugin) => plugin.id === id),
-    ),
-    [chipBoundPluginIds, plugins],
-  );
-
-  useEffect(() => {
-    if (pluginsLoading || missingChipBoundPluginIds.length === 0) return;
-    let cancelled = false;
-    void Promise.all(
-      missingChipBoundPluginIds.map((id) => getInstalledPlugin(id)),
-    ).then((records) => {
-      if (cancelled) return;
-      const resolved = records.filter((record): record is InstalledPluginRecord => record != null);
-      if (resolved.length === 0) return;
-      setPlugins((current) => {
-        const seen = new Set(current.map((plugin) => plugin.id));
-        const next = [...current];
-        for (const record of resolved) {
-          if (seen.has(record.id)) continue;
-          seen.add(record.id);
-          next.push(record);
-        }
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [missingChipBoundPluginIds, pluginsLoading]);
+  // Chip-bound plugins (e.g. example-simple-deck) are often outside the first
+  // Community page (title ASC + limit=24). Do not boot-prefetch detail GETs —
+  // pickChip / handoff already lazy-load via getInstalledPlugin (0806-N09).
 
   useEffect(() => {
     if (hideComposerIntegrations) {

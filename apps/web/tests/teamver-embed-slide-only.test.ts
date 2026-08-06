@@ -289,7 +289,10 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(projectView).toContain('normalizeSlideOnlyArtifactContractType');
     expect(projectView).toContain('preferDeck: slideOnlyMvp');
     expect(projectView).toContain("project.metadata?.kind === 'deck'");
-    expect(homeView).toContain('pluginIdsBoundToHomeHeroChips');
+    // Chip-bound detail is lazy (click/handoff) — no boot prefetch of
+    // example-simple-deck (0806-N09).
+    expect(homeView).not.toContain('pluginIdsBoundToHomeHeroChips');
+    expect(homeView).not.toContain('missingChipBoundPluginIds');
     expect(homeView).toContain('HOME_COMMUNITY_PLUGIN_PAGE_SIZE');
     expect(homeView).toContain('query: communityPluginQuery.trim()');
     expect(homeView).not.toContain('void listPlugins().then((rows) =>');
