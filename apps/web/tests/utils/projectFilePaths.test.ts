@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  chatAttachmentVisibleInProjectFiles,
   excludeAttachmentsBackedByVisualScreenshots,
   isEphemeralDrawingScreenshotPath,
+  isLikelyDurableUploadedImagePath,
   isRenderableImagePath,
   projectFilePathExists,
   projectFilePathsReferToSameFile,
@@ -73,5 +75,21 @@ describe('project file path identity', () => {
     expect(isEphemeralDrawingScreenshotPath('uploads/visual-mark-1.png')).toBe(true);
     expect(isEphemeralDrawingScreenshotPath('visual-mark_foo.png')).toBe(true);
     expect(isEphemeralDrawingScreenshotPath('references/logo.png')).toBe(false);
+  });
+});
+
+describe('chatAttachmentVisibleInProjectFiles', () => {
+  it('keeps durable Drive/local upload chips visible when /files is stale', () => {
+    const stale = new Set(['deck.html']);
+    expect(chatAttachmentVisibleInProjectFiles(stale, 'refs/drive/msh5lhfh-hero.png')).toBe(true);
+    expect(chatAttachmentVisibleInProjectFiles(stale, 'msh9y0i9-local.jpeg')).toBe(true);
+    expect(isLikelyDurableUploadedImagePath('refs/drive/msh5lhfh-hero.png')).toBe(true);
+  });
+
+  it('still hides ephemeral drawing screenshots missing from the index', () => {
+    const stale = new Set(['deck.html']);
+    expect(
+      chatAttachmentVisibleInProjectFiles(stale, 'ms8hq9qu-drawing-2026-07-31T05-17-03-125Z.png'),
+    ).toBe(false);
   });
 });

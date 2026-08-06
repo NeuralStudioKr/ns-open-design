@@ -106,3 +106,26 @@ export function excludeAttachmentsBackedByVisualScreenshots<T extends { path: st
     return !projectFilePathsInclude(screenshotPaths, path);
   });
 }
+
+/** Fresh Drive (`refs/…`) or timestamped root uploads that /files may lag on. */
+export function isLikelyDurableUploadedImagePath(path: string): boolean {
+  const normalized = String(path || '').trim().replace(/\\/g, '/');
+  if (!normalized || !/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(normalized)) return false;
+  if (normalized === 'refs' || normalized.startsWith('refs/')) return true;
+  const base = projectFilePathBasename(normalized);
+  return /^[a-z0-9]{6,12}-.+/i.test(base);
+}
+
+/**
+ * Whether a chat attachment chip should stay visible for this project file
+ * index. Ephemeral drawing screenshots remain index-gated; durable Drive/local
+ * uploads stay visible when /files is stale after refresh.
+ */
+export function chatAttachmentVisibleInProjectFiles(
+  projectFileNames: ReadonlySet<string> | undefined,
+  path: string,
+): boolean {
+  if (projectFilePathExists(projectFileNames, path)) return true;
+  if (isEphemeralDrawingScreenshotPath(path)) return false;
+  return isLikelyDurableUploadedImagePath(path);
+}

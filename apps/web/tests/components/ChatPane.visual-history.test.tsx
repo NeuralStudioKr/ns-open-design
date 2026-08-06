@@ -173,6 +173,52 @@ describe('ChatPane visual mark history', () => {
     expect(screen.queryByText('visual-mark-1.png')).toBeNull();
   });
 
+  it('keeps Drive/local upload chips visible after refresh when /files index is stale', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-drive-image',
+        role: 'user',
+        content: '이 이미지 넣어줘',
+        createdAt: 1,
+        attachments: [
+          {
+            path: 'refs/drive/msh5lhfh-놀란고양이-_1_.jpeg',
+            name: 'msh5lhfh-놀란고양이-_1_.jpeg',
+            kind: 'image',
+            order: 0,
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[{ name: 'deck.html', path: 'deck.html' } as never]}
+        projectFileNames={new Set(['deck.html'])}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={[
+          { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
+        ]}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        config={{ agentId: 'claude', agentCliEnv: {} } as unknown as AppConfig}
+      />,
+    );
+
+    expect(screen.getByTestId('auth-project-image')).toBeTruthy();
+    expect(screen.getByTestId('auth-project-image').getAttribute('data-path')).toBe(
+      'refs/drive/msh5lhfh-놀란고양이-_1_.jpeg',
+    );
+    expect(screen.getByText('msh5lhfh-놀란고양이-_1_.jpeg')).toBeTruthy();
+  });
+
   it('renders durable memo/board image attachments as thumbs (not title-only)', () => {
     const messages: ChatMessage[] = [
       {

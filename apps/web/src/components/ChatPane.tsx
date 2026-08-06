@@ -30,6 +30,7 @@ import { projectRawUrl } from '../providers/registry';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { VisualCommentAttachmentChip } from './VisualCommentAttachmentChip';
 import {
+  chatAttachmentVisibleInProjectFiles,
   excludeAttachmentsBackedByVisualScreenshots,
   isEphemeralDrawingScreenshotPath,
   projectFilePathExists,
@@ -3688,8 +3689,13 @@ function UserMessageImpl({
 }) {
   const attachments = sortChatAttachmentsForDisplay(message.attachments ?? []);
   const commentAttachments = message.commentAttachments ?? [];
+  // After refresh, /files can lag behind durable Drive/local uploads that are
+  // still on disk. Keep those chips visible; only ephemeral drawings stay
+  // strictly index-gated so deleted marks do not resurrect.
   const visibleAttachments = excludeAttachmentsBackedByVisualScreenshots(
-    attachments.filter((attachment) => projectFilePathExists(projectFileNames, attachment.path)),
+    attachments.filter((attachment) =>
+      chatAttachmentVisibleInProjectFiles(projectFileNames, attachment.path),
+    ),
     commentAttachments,
   );
   const workspaceItems = message.runContext?.workspaceItems ?? [];
@@ -3774,8 +3780,9 @@ function UserMessageImpl({
           {visibleAttachments.map((a, index) => {
             const baseName = a.path.split('/').pop() || a.path;
             const openable = !!onRequestOpenFile;
+            // Prefer the full project-relative path so refs/drive/… opens correctly.
             const handleOpen = openable
-              ? () => onRequestOpenFile?.(baseName)
+              ? () => onRequestOpenFile?.(a.path || baseName)
               : undefined;
             return (
               <div key={a.path} className="user-attachment-row">

@@ -22,6 +22,7 @@ import { COMMENT_ONLY_USER_PLACEHOLDER } from '../comments';
 import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
 import {
   isEphemeralDrawingScreenshotPath,
+  isLikelyDurableUploadedImagePath,
   projectFilePathExists,
   projectFilePathBasename,
 } from '../utils/projectFilePaths';
@@ -709,15 +710,6 @@ export function filterAnthropicImageCandidatesByProjectFiles(
     if (isEphemeralDrawingScreenshotPath(candidate.path)) return false;
     return isLikelyDurableUploadedImagePath(candidate.path);
   });
-}
-
-/** Fresh Drive (`refs/…`) or timestamped root uploads that /files may lag on. */
-export function isLikelyDurableUploadedImagePath(path: string): boolean {
-  const normalized = String(path || '').trim().replace(/\\/g, '/');
-  if (!normalized || !/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(normalized)) return false;
-  if (normalized === 'refs' || normalized.startsWith('refs/')) return true;
-  const base = projectFilePathBasename(normalized);
-  return /^[a-z0-9]{6,12}-.+/i.test(base);
 }
 
 async function buildAnthropicMessageContent(
