@@ -82,4 +82,30 @@ describe("resolveProjectCoverHint", () => {
       }),
     ).resolves.toBeNull();
   });
+
+  it("returns metadata entryFile hint without a local project directory", async () => {
+    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "od-cover-hint-"));
+    const projectId = "proj-cold-node";
+    // No mkdir — cold scratch / pre-materialize.
+
+    const hint = await resolveProjectCoverHint(tmpRoot, projectId, {
+      metadata: { kind: "deck", entryFile: "deck.html" },
+    });
+
+    expect(hint).toEqual({
+      entryFile: "deck.html",
+      coverKind: "html",
+      coverPath: "deck.html",
+    });
+  });
+
+  it("still rejects unsafe entryFile when the project directory is missing", async () => {
+    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "od-cover-hint-"));
+
+    await expect(
+      resolveProjectCoverHint(tmpRoot, "proj-missing", {
+        metadata: { kind: "deck", entryFile: "../escape.html" },
+      }),
+    ).resolves.toBeNull();
+  });
 });

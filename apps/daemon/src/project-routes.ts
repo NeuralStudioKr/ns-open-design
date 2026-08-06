@@ -1372,15 +1372,19 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       /** @type {import('@open-design/contracts').ProjectCoverHint[]} */
       const hints = [];
       for (const projectId of projectIds) {
-        const project = getProject(db, projectId);
+        // PG project-row warm only (no ensureMaterialized / full warmProjectFromPostgres).
+        // Cold nodes often lack sqlite cache; metadata.entryFile is enough for a hint.
+        const project = getProjectAsync
+          ? await getProjectAsync(db, projectId)
+          : getProject(db, projectId);
         if (project && !projectVisibleForLocations(project, locations)) continue;
         if (!project && teamverManaged) {
           if (!teamverIdentity) continue;
           const access = await verifyTeamverProjectAccess(projectId, teamverIdentity);
           if (!access.ok) continue;
         }
-        // Registry-first embed lists may reference ids not yet materialized in
-        // local sqlite — still resolve from on-disk project dir when present.
+        // Registry-first embed lists may reference ids not yet on disk —
+        // metadata.entryFile resolves disk-free; otherwise shallow scan when present.
         const resolved = await resolveProjectCoverHint(
           PROJECTS_DIR,
           projectId,

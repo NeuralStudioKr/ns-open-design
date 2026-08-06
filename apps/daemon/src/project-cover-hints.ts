@@ -71,7 +71,13 @@ async function detectLogoCoverPath(projectDir: string): Promise<string | null> {
   return null;
 }
 
-/** Lightweight cover hint from sqlite metadata + shallow directory scan (no full /files). */
+/**
+ * Lightweight cover hint from sqlite/PG metadata + shallow directory scan
+ * (no full /files, no S3 materialize).
+ *
+ * `metadata.entryFile` may resolve without a local project dir so cold-node
+ * cover-hints can hit before lazy materialize — FE then skips `/files`.
+ */
 export async function resolveProjectCoverHint(
   projectsRoot: string,
   projectId: string,
@@ -81,18 +87,33 @@ export async function resolveProjectCoverHint(
     entryFile?: unknown;
     kind?: unknown;
   };
+
+  const metadataEntry =
+    typeof metadata.entryFile === "string" && metadata.entryFile.trim()
+      ? metadata.entryFile.trim()
+      : "";
+  const metadataHint = metadataEntry
+    ? coverHintFromEntry(metadataEntry, metadata.kind)
+    : null;
+  // Unsafe paths (traversal / URL) → null; do not fall through to disk scan
+  // with a poisoned entryFile still present in metadata.
+  if (metadataEntry && !metadataHint) return null;
+
   const projectDir = resolveProjectDir(projectsRoot, projectId, project.metadata);
+  let dirReady = false;
   try {
     await stat(projectDir);
+    dirReady = true;
   } catch {
-    return null;
+    dirReady = false;
   }
 
-  if (typeof metadata.entryFile === "string" && metadata.entryFile.trim()) {
-    const hint = coverHintFromEntry(metadata.entryFile.trim(), metadata.kind);
-    if (!hint) return null;
-    return withCoverVersion(projectDir, hint);
+  if (metadataHint) {
+    if (!dirReady) return metadataHint;
+    return withCoverVersion(projectDir, metadataHint);
   }
+
+  if (!dirReady) return null;
 
   const entryFile = await detectEntryFile(projectDir);
   if (entryFile) {
