@@ -44,6 +44,11 @@ import {
   writeProjectTextFileDetailed,
 } from '../providers/registry';
 import { projectFileResolvedPath } from '../utils/projectFilePaths';
+import { prepareMemoryOnlySlidePreviewSrcDoc } from '../utils/prepareMemoryOnlySlidePreviewSrcDoc';
+import {
+  peekTeamverProjectPreviewPrefix,
+  resolveTeamverProjectPreviewPrefix,
+} from '../teamver/teamverProjectPreviewScope';
 import { deriveFileOps, type FileOpEntry } from '../runtime/file-ops';
 import { latestTodosFromEvents, type TodoItem } from '../runtime/todos';
 import { deliverableSlideNavForActiveFile, isSlideNavDeliverableNow } from '../runtime/slide-nav';
@@ -212,6 +217,12 @@ interface Props {
   onWorkspaceContextsChange?: (contexts: WorkspaceContextItem[]) => void;
   messages?: ChatMessage[];
   artifactHtml?: string | null;
+  /**
+   * Image/file paths from the active (or latest) chat turn. Unioned into the
+   * preview heal index so wrong model `<img src>` still resolves when `/files`
+   * lags behind a composer upload.
+   */
+  previewHealAttachmentPaths?: readonly string[];
   // Session-scoped fallback preview. Populated by ProjectView when a run's
   // HTML artifact could not be persisted (daemon 401 mid-run) — carries the
   // exact bytes so the workspace can render an iframe instead of an empty
@@ -459,8 +470,9 @@ export function FileWorkspace({
   onWorkspaceContextsChange,
   messages = [],
   artifactHtml = null,
+  previewHealAttachmentPaths = [],
   pendingArtifactRecovery = null,
-  conversationId,
+  conversationId;
   headerActions,
   questionForm = null,
   questionFormPreview = null,
@@ -1667,6 +1679,75 @@ export function FileWorkspace({
     preferredPreviewFile,
   ]);
 
+  const previewHealPaths = useMemo(() => {
+    const fromFiles = visibleFiles
+      .map((entry) => String(entry.path || entry.name || '').trim())
+      .filter(Boolean);
+    const fromAttachments = previewHealAttachmentPaths
+      .map((path) => String(path || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set([...fromFiles, ...fromAttachments]));
+  }, [previewHealAttachmentPaths, visibleFiles]);
+
+  const teamverEmbedPreviewMode = isTeamverEmbedMode();
+  const [memoryPreviewPrefix, setMemoryPreviewPrefix] = useState<string | null>(() =>
+    peekTeamverProjectPreviewPrefix(projectId),
+  );
+  const [memoryPreviewPrefixSettled, setMemoryPreviewPrefixSettled] = useState(
+    () => !teamverEmbedPreviewMode || peekTeamverProjectPreviewPrefix(projectId) != null,
+  );
+
+  useEffect(() => {
+    if (!memoryOnlyPreview || !teamverEmbedPreviewMode) {
+      setMemoryPreviewPrefix(peekTeamverProjectPreviewPrefix(projectId));
+      setMemoryPreviewPrefixSettled(!teamverEmbedPreviewMode);
+      return;
+    }
+    let cancelled = false;
+    setMemoryPreviewPrefixSettled(false);
+    const cached = peekTeamverProjectPreviewPrefix(projectId);
+    if (cached) {
+      setMemoryPreviewPrefix(cached);
+      setMemoryPreviewPrefixSettled(true);
+      return;
+    }
+    void resolveTeamverProjectPreviewPrefix(
+      projectId,
+      memoryOnlyPreview.fileName ?? 'deck.html',
+    ).then((prefix) => {
+      if (cancelled) return;
+      setMemoryPreviewPrefix(prefix);
+      setMemoryPreviewPrefixSettled(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [memoryOnlyPreview, projectId, teamverEmbedPreviewMode]);
+
+  const memoryOnlyPreviewSrcDoc = useMemo(() => {
+    if (!memoryOnlyPreview) return '';
+    // Teamver embed: wait for preview-scope mint (or fail-open) so we never
+    // paint relative images against about:srcdoc without a usable base.
+    if (teamverEmbedPreviewMode && !memoryPreviewPrefixSettled) return '';
+    return prepareMemoryOnlySlidePreviewSrcDoc({
+      html: memoryOnlyPreview.html,
+      projectId,
+      fileName: memoryOnlyPreview.fileName,
+      projectFilePaths: previewHealPaths,
+      preferredAttachmentPaths: previewHealAttachmentPaths,
+      teamverEmbedMode: teamverEmbedPreviewMode,
+      embedPreviewPrefix: memoryPreviewPrefix,
+    });
+  }, [
+    memoryOnlyPreview,
+    memoryPreviewPrefix,
+    memoryPreviewPrefixSettled,
+    previewHealAttachmentPaths,
+    previewHealPaths,
+    projectId,
+    teamverEmbedPreviewMode,
+  ]);
+
   // Pending ghost tabs: the file list can lag behind a deep-linked tab or a
   // chat chip open. Poll raw GET directly so preview does not strand on
   // "loading…" while chokidar/registry refresh catches up.
@@ -2556,7 +2637,8 @@ export function FileWorkspace({
             projectDisplayName={projectDisplayName}
             file={resolvedPreviewFile}
             filesRefreshKey={filesRefreshKey}
-            projectFilePaths={visibleFiles.map((entry) => entry.path || entry.name)}
+            projectFilePaths={previewHealPaths}
+            preferredAttachmentPaths={previewHealAttachmentPaths}
             isDeck={isDeck}
             onExportAsPptx={onExportAsPptx}
             streaming={previewStreaming ?? false}
@@ -2602,9 +2684,9 @@ export function FileWorkspace({
             ) : null}
             <div className="viewer-memory-preview__frame-host">
               <iframe
-                key={memoryOnlyPreview.fileName ?? 'memory-preview'}
+                key={`${memoryOnlyPreview.fileName ?? 'memory-preview'}:${memoryPreviewPrefix ?? 'nobase'}`}
                 className="viewer-memory-preview__frame"
-                srcDoc={memoryOnlyPreview.html}
+                srcDoc={memoryOnlyPreviewSrcDoc || undefined}
                 sandbox="allow-scripts"
                 title={memoryOnlyPreview.fileName ?? 'preview'}
               />

@@ -2839,6 +2839,8 @@ export function ProjectView({
   const runCommentAttachmentsRef = useRef<ChatCommentAttachment[]>([]);
   /** Image/file attachments for the active run — used to heal <img src> when /files lags. */
   const runAttachmentsRef = useRef<ChatAttachment[]>([]);
+  /** Reactive copy of run attachment paths for FileWorkspace/FileViewer preview heal. */
+  const [previewHealAttachmentPaths, setPreviewHealAttachmentPaths] = useState<string[]>([]);
   /** User-visible text for the active run; model-only prompt suffixes are excluded. */
   const runVisiblePromptRef = useRef<string>('');
   const htmlAutoOpenTimerRef = useRef<number | null>(null);
@@ -4600,13 +4602,18 @@ export function ProjectView({
         // (or sanitized basename without the upload timestamp prefix) instead
         // of the real on-disk path from /upload. Union turn attachments so
         // Drive `refs/drive/…` heals even when /files has not refreshed yet.
+        const attachmentPaths = runAttachmentsRef.current
+          .map((attachment) => attachment.path.trim())
+          .filter(Boolean);
         const projectPaths = [
           ...currentProjectFiles.map(
             (file) => String(file.path || file.name || '').trim(),
           ),
-          ...runAttachmentsRef.current.map((attachment) => attachment.path.trim()),
+          ...attachmentPaths,
         ].filter(Boolean);
-        htmlBody = rewriteAttachmentImageSrcs(htmlBody, projectPaths);
+        htmlBody = rewriteAttachmentImageSrcs(htmlBody, projectPaths, {
+          preferredPaths: attachmentPaths,
+        });
       }
       if (ext === '.html' && persistCommentAttachments.length > 0) {
         const currentScopedHtml = await readDiskHtml(fileName);
@@ -8103,6 +8110,11 @@ export function ProjectView({
         ),
       );
       runAttachmentsRef.current = runAttachments;
+      setPreviewHealAttachmentPaths(
+        runAttachments
+          .map((attachment) => attachment.path.trim())
+          .filter(Boolean),
+      );
       const commentPersistTarget = resolveCommentEditPersistTargetFileName(
         runCommentAttachments,
       );
@@ -11636,6 +11648,9 @@ export function ProjectView({
               projectFileNames={projectFileNames}
               skills={chatComposerSkills}
               onEnsureProject={handleEnsureProject}
+              onProjectFilesMaybeChanged={() => {
+                void refreshWorkspaceItems().catch(() => undefined);
+              }}
               previewComments={previewComments}
               attachedComments={attachedComments}
               onAttachComment={attachPreviewComment}
@@ -11891,6 +11906,7 @@ export function ProjectView({
           onWorkspaceContextsChange={handleWorkspaceContextsChange}
           messages={messages}
           artifactHtml={artifact?.html}
+          previewHealAttachmentPaths={previewHealAttachmentPaths}
           pendingArtifactRecovery={pendingRecoveryPreview}
           conversationError={error}
           onRetry={handleRetry}

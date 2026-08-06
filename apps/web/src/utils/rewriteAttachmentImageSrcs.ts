@@ -13,8 +13,15 @@ import { projectFilePathBasename } from './projectFilePaths';
 export function rewriteAttachmentImageSrcs(
   html: string,
   projectFilePaths: readonly string[],
+  options?: { preferredPaths?: readonly string[] },
 ): string {
   if (!html || projectFilePaths.length === 0) return html;
+
+  const preferred = new Set(
+    (options?.preferredPaths ?? [])
+      .map((path) => String(path || '').trim().replace(/\\/g, '/'))
+      .filter(Boolean),
+  );
 
   const byExact = new Set<string>();
   const byBasename = new Map<string, string[]>();
@@ -52,7 +59,7 @@ export function rewriteAttachmentImageSrcs(
       ?? bySanitizedStem.get(sanitizeUploadFilename(normalized).toLowerCase())
       ?? byLettersOnly.get(lettersOnlyImageStem(base));
 
-    return pickUniqueRewriteCandidate(candidates, normalized);
+    return pickUniqueRewriteCandidate(candidates, normalized, preferred);
   };
 
   let next = html.replace(
@@ -158,14 +165,47 @@ function pushMap(map: Map<string, string[]>, key: string, value: string): void {
 function pickUniqueRewriteCandidate(
   candidates: string[] | undefined,
   normalizedSrc: string,
+  preferredPaths?: ReadonlySet<string>,
 ): string | null {
   if (!candidates || candidates.length === 0) return null;
   if (candidates.length === 1) return candidates[0] ?? null;
+
+  if (preferredPaths && preferredPaths.size > 0) {
+    const preferredHits = candidates.filter((path) => preferredPaths.has(path));
+    if (preferredHits.length === 1) return preferredHits[0] ?? null;
+  }
+
   // When root upload + Drive share a stem, prefer the Drive path if the model
   // omitted a directory (the common broken case for Drive attaches).
   if (!normalizedSrc.includes('/')) {
     const driveOnly = candidates.filter((path) => path.startsWith('refs/drive/'));
     if (driveOnly.length === 1) return driveOnly[0] ?? null;
+
+    // Multiple local composer uploads can sanitize to the same stem
+    // (`aaa-photo.jpeg`, `bbb-photo.jpeg`). Prefer the newest timestamp prefix
+    // so a bare `src="photo.jpeg"` still heals to the latest attach.
+    const rootUploads = candidates.filter((path) => !path.includes('/'));
+    const newest = pickNewestTimestampedUpload(rootUploads);
+    if (newest) return newest;
   }
   return null;
+}
+
+/** `msh9y0i9-photo.jpeg` wins over an older `msh8abcd-photo.jpeg`. */
+function pickNewestTimestampedUpload(paths: readonly string[]): string | null {
+  if (paths.length === 0) return null;
+  let best: string | null = null;
+  let bestStamp = -1;
+  for (const path of paths) {
+    const base = projectFilePathBasename(path);
+    const match = /^([a-z0-9]{6,12})-(.+)$/i.exec(base);
+    if (!match) continue;
+    const stamp = Number.parseInt(match[1]!, 36);
+    if (!Number.isFinite(stamp)) continue;
+    if (!best || stamp > bestStamp) {
+      best = path;
+      bestStamp = stamp;
+    }
+  }
+  return best;
 }

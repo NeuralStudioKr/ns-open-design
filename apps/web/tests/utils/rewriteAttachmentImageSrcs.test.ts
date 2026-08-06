@@ -26,13 +26,23 @@ describe('rewriteAttachmentImageSrcs', () => {
     expect(rewriteAttachmentImageSrcs(html, [stored])).toBe(html);
   });
 
-  it('does not rewrite when multiple candidates collide', () => {
+  it('prefers the newest timestamped local upload when multiple stems collide', () => {
     const html = '<img src="photo.jpeg" alt="">';
     const next = rewriteAttachmentImageSrcs(html, [
       'aaa111-photo.jpeg',
       'bbb222-photo.jpeg',
     ]);
-    expect(next).toBe(html);
+    expect(next).toContain('src="bbb222-photo.jpeg"');
+  });
+
+  it('prefers the current-turn attachment path when stems collide', () => {
+    const html = '<img src="photo.jpeg" alt="">';
+    const next = rewriteAttachmentImageSrcs(
+      html,
+      ['aaa111-photo.jpeg', 'bbb222-photo.jpeg'],
+      { preferredPaths: ['aaa111-photo.jpeg'] },
+    );
+    expect(next).toContain('src="aaa111-photo.jpeg"');
   });
 
   it('prefers the unique refs/drive path when a stem collides with a root upload', () => {

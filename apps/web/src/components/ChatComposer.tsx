@@ -256,6 +256,8 @@ interface Props {
   // project folder exists on disk before files land in it. Returns the
   // project id when ready.
   onEnsureProject: () => Promise<string | null>;
+  /** Refresh project `/files` after a composer upload so preview heal sees new images. */
+  onProjectFilesMaybeChanged?: () => void;
   commentAttachments?: ChatCommentAttachment[];
   onRemoveCommentAttachment?: (id: string) => void;
   // Available skills the user can compose into a turn via @<skill>. The
@@ -426,6 +428,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       initialDraft,
       draftStorageKey,
       onEnsureProject,
+      onProjectFilesMaybeChanged,
       commentAttachments = [],
       onRemoveCommentAttachment,
       skills = [],
@@ -1713,6 +1716,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           const staged = ready.length > 0 ? ready : result.uploaded;
           const orderedUploaded = assignChatAttachmentOrders(staged, orderStart);
           appendOrderedStagedAttachments(orderedUploaded);
+          // Keep Design Files / preview heal index in sync with on-disk uploads
+          // before the next send refreshes `/files`.
+          onProjectFilesMaybeChanged?.();
         }
         const partial = result.failed.length > 0;
         if (partial) {
@@ -2162,6 +2168,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                     resolvedUploaded,
                     orderStart,
                   );
+                  onProjectFilesMaybeChanged?.();
                   const screenshot = detail.file ? uploaded[0] : null;
                   if (screenshot) {
                     visualAttachmentInput = buildVisualAttachmentInputFromScreenshot(screenshot);

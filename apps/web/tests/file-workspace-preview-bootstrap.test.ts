@@ -42,4 +42,14 @@ describe("FileWorkspace preview bootstrap", () => {
     expect(source).toContain("liveHtml={artifactHtml?.trim() ? artifactHtml : undefined}");
     expect(source).not.toContain("liveHtml={streaming && artifactHtml ? artifactHtml : undefined}");
   });
+
+  it("heals attachment image srcs and injects base href for memory-only preview", () => {
+    const source = readSource("src/components/FileWorkspace.tsx");
+    expect(source).toContain("prepareMemoryOnlySlidePreviewSrcDoc");
+    expect(source).toContain("previewHealAttachmentPaths");
+    expect(source).toContain("memoryOnlyPreviewSrcDoc");
+    expect(source).not.toMatch(
+      /viewer-memory-preview__frame[\s\S]*srcDoc=\{memoryOnlyPreview\.html\}/,
+    );
+  });
 });

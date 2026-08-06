@@ -492,6 +492,7 @@ interface Props {
   // set to decide whether a path can be opened as a tab.
   projectFileNames?: Set<string>;
   onEnsureProject: () => Promise<string | null>;
+  onProjectFilesMaybeChanged?: () => void;
   previewComments?: PreviewComment[];
   attachedComments?: PreviewComment[];
   onAttachComment?: (comment: PreviewComment) => void;
@@ -717,6 +718,7 @@ export function ChatPane({
   activeDesignSystem = null,
   projectFileNames,
   onEnsureProject,
+  onProjectFilesMaybeChanged,
   previewComments = [],
   attachedComments = [],
   onAttachComment,
@@ -1820,6 +1822,7 @@ export function ChatPane({
       initialDraft={initialDraft}
       draftStorageKey={composerDraftStorageKey}
       onEnsureProject={onEnsureProject}
+      onProjectFilesMaybeChanged={onProjectFilesMaybeChanged}
       commentAttachments={commentsToAttachments(attachedComments)}
       onRemoveCommentAttachment={onDetachComment}
       onSend={(prompt, attachments, commentAttachments, meta) => {

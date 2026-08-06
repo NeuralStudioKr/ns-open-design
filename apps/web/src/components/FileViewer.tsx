@@ -1336,6 +1336,8 @@ interface Props {
   slideNavRequest?: { slideIndex: number; nonce: number } | null;
   /** Project-relative paths for healing wrong local-upload <img src> in preview. */
   projectFilePaths?: readonly string[];
+  /** Current-turn attachment paths — preferred when stem collisions occur. */
+  preferredAttachmentPaths?: readonly string[];
 }
 
 type ExportToastTranslate = (key: keyof Dict, vars?: Record<string, string | number>) => string;
@@ -1396,6 +1398,7 @@ export function FileViewer({
   downloadRequest,
   slideNavRequest,
   projectFilePaths,
+  preferredAttachmentPaths,
 }: Props) {
   const rendererMatch = artifactRendererRegistry.resolve({
     file,
@@ -1428,6 +1431,7 @@ export function FileViewer({
         liveHtml={liveHtml}
         filesRefreshKey={filesRefreshKey}
         projectFilePaths={projectFilePaths}
+        preferredAttachmentPaths={preferredAttachmentPaths}
         isDeck={rendererMatch.renderer.id === 'deck-html'}
         onExportAsPptx={onExportAsPptx}
         streaming={Boolean(streaming)}
@@ -4907,6 +4911,7 @@ function HtmlViewer({
   liveHtml,
   filesRefreshKey = 0,
   projectFilePaths,
+  preferredAttachmentPaths,
   isDeck,
   onExportAsPptx,
   streaming,
@@ -4930,6 +4935,7 @@ function HtmlViewer({
   liveHtml?: string;
   filesRefreshKey?: number;
   projectFilePaths?: readonly string[];
+  preferredAttachmentPaths?: readonly string[];
   isDeck: boolean;
   onExportAsPptx?: ((fileName: string) => void) | undefined;
   streaming: boolean;
@@ -6319,8 +6325,10 @@ function HtmlViewer({
   const rawLivePreviewSource = inlinedSource ?? source;
   const livePreviewSource = useMemo(() => {
     if (!rawLivePreviewSource || !projectFilePaths?.length) return rawLivePreviewSource;
-    return rewriteAttachmentImageSrcs(rawLivePreviewSource, projectFilePaths);
-  }, [rawLivePreviewSource, projectFilePaths]);
+    return rewriteAttachmentImageSrcs(rawLivePreviewSource, projectFilePaths, {
+      preferredPaths: preferredAttachmentPaths,
+    });
+  }, [preferredAttachmentPaths, projectFilePaths, rawLivePreviewSource]);
   const attachmentImageSrcRewritten = Boolean(
     rawLivePreviewSource
     && livePreviewSource
