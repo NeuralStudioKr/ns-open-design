@@ -1418,17 +1418,23 @@
   padding-left: 0;
   padding-right: 8px;
   border-right: 1px solid var(--border);
-  height: 32px;
+  height: 36px;
+  gap: 2px;
+}
+.ds-modal-actions .ds-modal-deck-nav .deck-nav-counter {
+  min-width: 4.5ch;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 .ds-modal-actions .ds-modal-deck-nav .icon-only {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text);
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
@@ -1570,8 +1576,8 @@
 .ds-modal-stage-handle {
   position: absolute;
   top: 50%;
-  width: 18px;
-  height: 56px;
+  width: 28px;
+  height: 64px;
   transform: translateY(-50%);
   background: var(--bg-panel);
   border: 1px solid var(--border);

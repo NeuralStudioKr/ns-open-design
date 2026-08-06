@@ -70,6 +70,30 @@ describe('PreviewModal sandbox isolation', () => {
     expect(markup).toContain('preview-modal-deck-counter');
   });
 
+  it('uses panel icon for sidebar stage handle (not page-turn chevrons)', () => {
+    const markup = renderToStaticMarkup(
+      <PreviewModal
+        title="Template with sidebar"
+        views={[
+          {
+            id: 'preview',
+            label: 'Preview',
+            html: '<section class="slide">one</section><section class="slide">two</section>',
+            deck: true,
+          },
+        ]}
+        sidebar={{ label: 'Details', content: <div>meta</div> }}
+        exportTitleFor={() => 'template'}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(markup).toContain('ds-modal-stage-handle');
+    // ‹/› looked like slide prev/next on the canvas edge.
+    expect(markup).not.toMatch(/>‹</);
+    expect(markup).not.toMatch(/>›</);
+  });
+
   it('hides host slide chrome for non-deck previews', () => {
     const markup = renderToStaticMarkup(
       <PreviewModal

@@ -3164,6 +3164,52 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     }
     return -1;
   }
+  function clearInlineSlideHide(el){
+    if (!el || !el.style) return;
+    el.style.removeProperty('display');
+    el.style.removeProperty('pointer-events');
+    el.style.removeProperty('visibility');
+  }
+  function syncPaginationControls(target, count){
+    try {
+      var groups = [
+        document.querySelectorAll('#nav-dots > *'),
+        document.querySelectorAll('.nav-dots > *'),
+        document.querySelectorAll('.dots > *'),
+        document.querySelectorAll('[data-deck-dots] > *'),
+        document.querySelectorAll('.pagination > *')
+      ];
+      for (var g=0; g<groups.length; g++) {
+        var nodes = groups[g];
+        if (!nodes || nodes.length < count) continue;
+        for (var i=0; i<count; i++) {
+          var node = nodes[i];
+          if (!node || !node.classList) continue;
+          var on = i === target;
+          node.classList.toggle('is-active', on);
+          node.classList.toggle('active', on);
+          node.classList.toggle('current', on);
+          if (on) node.setAttribute('aria-current', 'true');
+          else node.removeAttribute('aria-current');
+        }
+      }
+    } catch (_) {}
+  }
+  function syncTransformStripActive(list, target){
+    if (!list || !list.length) return;
+    var activeClass = activeClassName(list);
+    for (var k=0; k<list.length; k++) {
+      // Prior forceReveal/setActive may have collapsed the strip with
+      // display:none !important — clear so translateX(-N00vw) still lands
+      // on a real slide (Grove / horizontal #deck).
+      clearInlineSlideHide(list[k]);
+      if (list[k].classList) {
+        list[k].classList.remove('active', 'is-active', 'current');
+        if (k === target) list[k].classList.add(activeClass);
+      }
+    }
+    syncPaginationControls(target, list.length);
+  }
   function transformGo(i){
     var list = slides();
     var track = transformTrack(list);
@@ -3171,8 +3217,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     var target = Math.max(0, Math.min(list.length - 1, i));
     var unit = /translateX\\(\\s*-?[0-9.]+\\s*%\\s*\\)/i.test(track.style.transform || '') ? '%' : 'vw';
     track.style.transform = 'translateX(' + (-target * 100) + unit + ')';
+    syncTransformStripActive(list, target);
     updateDeckChrome(target, list.length);
     report();
+    nudgeDeckFit();
     return true;
   }
   var hostNativeClickInFlight = false;
@@ -3255,6 +3303,13 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
     if (!el || !el.style) return;
     var parent = el.parentElement;
     var stacked = !!(parent && (parent.id === 'od-stacked-deck-stage' || parent.getAttribute('data-od-stacked-deck-stage') !== null));
+    // Horizontal translate strips keep every slide in document flow.
+    // Collapsing siblings with display:none shortens the track so
+    // translateX(-N00vw) paints empty canvas (community Grove templates).
+    if (!stacked && transformTrack(slides())) {
+      clearInlineSlideHide(el);
+      return;
+    }
     if (visible) {
       if (stacked) {
         // Stacked stage owns layout — force a flex box onto the active slide.
@@ -3341,6 +3396,10 @@ html[data-od-compact-stacked]:not([data-od-stacked-deck]) .slide ~ .slide {
   function repairOverlappingSlides(preferredIndex) {
     var list = slides();
     if (list.length < 2) return false;
+    // Translate-strip decks intentionally keep all slides painted in a
+    // row; "many visible" is not overlap. forceReveal would collapse the
+    // strip and break host/native page turns.
+    if (transformTrack(list)) return false;
     if (countVisibleSlides(list) <= 1) return false;
     var target = typeof preferredIndex === 'number'
       ? Math.max(0, Math.min(list.length - 1, preferredIndex))

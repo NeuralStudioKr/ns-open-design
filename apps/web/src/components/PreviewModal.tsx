@@ -704,7 +704,7 @@ export function PreviewModal({
                   >
                     <Icon
                       name="chevron-right"
-                      size={14}
+                      size={20}
                       style={{ transform: 'rotate(180deg)' }}
                     />
                   </button>
@@ -726,7 +726,7 @@ export function PreviewModal({
                       slideState !== null && slideState.active >= slideState.count - 1
                     }
                   >
-                    <Icon name="chevron-right" size={14} />
+                    <Icon name="chevron-right" size={20} />
                   </button>
                 </span>
               ) : null}
@@ -1252,7 +1252,12 @@ export function PreviewModal({
                 title={t('preview.showSidebar', { label: sidebar.label })}
                 aria-label={t('preview.showSidebar', { label: sidebar.label })}
               >
-                <span aria-hidden="true">‹</span>
+                <Icon
+                  name="panel-left"
+                  size={16}
+                  style={{ transform: 'scaleX(-1)' }}
+                  aria-hidden="true"
+                />
               </button>
             ) : null}
           </div>
@@ -1268,7 +1273,7 @@ export function PreviewModal({
                 title={t('preview.hideSidebar', { label: sidebar.label })}
                 aria-label={t('preview.hideSidebar', { label: sidebar.label })}
               >
-                <span aria-hidden="true">›</span>
+                <Icon name="panel-left" size={16} aria-hidden="true" />
               </button>
               {sidebar.content}
             </aside>
