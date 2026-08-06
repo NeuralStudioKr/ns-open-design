@@ -13,7 +13,9 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   HtmlSurface,
+  __clearHtmlSurfaceMemoryCacheForTests,
   __htmlSurfaceProbeCacheSizeForTests,
+  __pluginPreviewFetchConcurrencyForTests,
   __resetHtmlSurfaceProbeCacheForTests,
   isPluginPreviewUnauthorizedBody,
   looksLikePluginPreviewHtml,
@@ -172,6 +174,90 @@ describe('HtmlSurface authenticated srcDoc', () => {
     expect(source).toMatch(
       /function shouldEagerLoadCommunityPluginPreviews\(\)[\s\S]*?return !isTeamverEmbedMode\(\);/,
     );
+  });
+
+  it('caps concurrent plugin preview GETs to avoid daemon stampede', async () => {
+    const limit = __pluginPreviewFetchConcurrencyForTests();
+    expect(limit).toBe(3);
+    let inFlight = 0;
+    let peak = 0;
+    const releasers: Array<() => void> = [];
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          releasers.push(() => {
+            inFlight -= 1;
+            resolve(htmlResponse());
+          });
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const cards = Array.from({ length: 5 }, (_, i) => ({
+      ...PREVIEW,
+      src: `/api/plugins/example-html-ppt-${i}/preview`,
+    }));
+    for (const preview of cards) {
+      render(
+        <HtmlSurface
+          preview={preview}
+          pluginId={preview.src}
+          pluginTitle="Html Ppt"
+          inView
+          eager
+        />,
+      );
+    }
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(limit);
+    });
+    expect(peak).toBeLessThanOrEqual(limit);
+
+    // Release first wave so queued cards can proceed.
+    for (const release of releasers.splice(0, limit)) release();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(cards.length);
+    });
+    for (const release of releasers) release();
+    await waitFor(() => {
+      expect(peak).toBeLessThanOrEqual(limit);
+    });
+  });
+
+  it('reuses sessionStorage preview HTML without a second network GET', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(htmlResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { unmount } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    unmount();
+    __clearHtmlSurfaceMemoryCacheForTests();
+    expect(
+      sessionStorage.getItem('od:plugin-preview:v1:/api/plugins/example-html-ppt/preview'),
+    ).toBeTruthy();
+    render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(() => {
+      expect(document.querySelector('iframe[title="Html Ppt preview"]')).toBeTruthy();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('renders an iframe with srcDoc once HTML loads (not bare src)', async () => {

@@ -58,8 +58,16 @@ interface Props {
 type LoadState = 'idle' | 'loading' | 'ok' | 'unreachable';
 
 const PREVIEW_CACHE_LIMIT = 256;
+/** Cap concurrent `/preview` GETs so a viewport of cards cannot stampede the daemon. */
+const PREVIEW_FETCH_CONCURRENCY = 3;
+const SESSION_PREVIEW_PREFIX = 'od:plugin-preview:v1:';
+const SESSION_PREVIEW_MAX_ENTRY_CHARS = 180_000;
+const SESSION_PREVIEW_MAX_ENTRIES = 16;
+
 const previewHtmlCache = new Map<string, string>();
 const previewInflight = new Map<string, Promise<string>>();
+let previewFetchActive = 0;
+const previewFetchWaiters: Array<() => void> = [];
 
 function rememberPreviewHtml(url: string, html: string): void {
   previewHtmlCache.delete(url);
@@ -69,11 +77,65 @@ function rememberPreviewHtml(url: string, html: string): void {
     if (!oldest) break;
     previewHtmlCache.delete(oldest);
   }
+  writeSessionPreviewHtml(url, html);
 }
 
 function rememberUnreachable(url: string): void {
   // Negative cache uses empty string sentinel distinct from real HTML.
   rememberPreviewHtml(url, '');
+}
+
+function sessionPreviewKey(cacheKey: string): string {
+  return `${SESSION_PREVIEW_PREFIX}${cacheKey}`;
+}
+
+function readSessionPreviewHtml(cacheKey: string): string | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(sessionPreviewKey(cacheKey));
+    if (raw == null) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionPreviewHtml(cacheKey: string, html: string): void {
+  if (typeof sessionStorage === 'undefined') return;
+  // Skip huge decks / empty negative sentinels — memory cache is enough.
+  if (!html || html.length > SESSION_PREVIEW_MAX_ENTRY_CHARS) return;
+  try {
+    const key = sessionPreviewKey(cacheKey);
+    sessionStorage.setItem(key, html);
+    const indexKey = `${SESSION_PREVIEW_PREFIX}__index`;
+    const prev = sessionStorage.getItem(indexKey);
+    const order: string[] = prev ? (JSON.parse(prev) as string[]) : [];
+    const next = order.filter((entry) => entry !== cacheKey);
+    next.push(cacheKey);
+    while (next.length > SESSION_PREVIEW_MAX_ENTRIES) {
+      const evicted = next.shift();
+      if (evicted) sessionStorage.removeItem(sessionPreviewKey(evicted));
+    }
+    sessionStorage.setItem(indexKey, JSON.stringify(next));
+  } catch {
+    // Quota / private mode — ignore; memory cache still works.
+  }
+}
+
+async function withPreviewFetchSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (previewFetchActive >= PREVIEW_FETCH_CONCURRENCY) {
+    await new Promise<void>((resolve) => {
+      previewFetchWaiters.push(resolve);
+    });
+  }
+  previewFetchActive += 1;
+  try {
+    return await run();
+  } finally {
+    previewFetchActive -= 1;
+    const next = previewFetchWaiters.shift();
+    if (next) next();
+  }
 }
 
 // Re-export helpers for existing tests / callers.
@@ -98,10 +160,17 @@ async function loadPluginPreviewHtml(url: string): Promise<string> {
     return cached;
   }
 
+  const fromSession = readSessionPreviewHtml(cacheKey);
+  if (fromSession !== null && fromSession.length > 0) {
+    // Memory only — session already holds the bytes.
+    previewHtmlCache.set(cacheKey, fromSession);
+    return fromSession;
+  }
+
   const existing = previewInflight.get(cacheKey);
   if (existing) return existing;
 
-  const run = (async () => {
+  const run = withPreviewFetchSlot(async () => {
     const res = await fetchTeamverDaemon(cacheKey, {
       method: 'GET',
       // Plugin preview thumbs are non-critical, retryable UI. Do not make a
@@ -123,7 +192,7 @@ async function loadPluginPreviewHtml(url: string): Promise<string> {
     const srcDoc = pluginPreviewSrcDoc(text, cacheKey);
     rememberPreviewHtml(cacheKey, srcDoc);
     return srcDoc;
-  })().finally(() => {
+  }).finally(() => {
     previewInflight.delete(cacheKey);
   });
 
@@ -343,9 +412,34 @@ function UnreachableFallback({ pluginId, pluginTitle, preview, eager = false }: 
 
 // Test seam — exposed so unit tests can reset the preview cache between
 // scenarios without leaking state across files.
+/** @internal vitest — memory + session + fetch slots. */
 export function __resetHtmlSurfaceProbeCacheForTests(): void {
+  __clearHtmlSurfaceMemoryCacheForTests();
+  if (typeof sessionStorage !== 'undefined') {
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i += 1) {
+        const key = sessionStorage.key(i);
+        if (key?.startsWith(SESSION_PREVIEW_PREFIX)) keys.push(key);
+      }
+      for (const key of keys) sessionStorage.removeItem(key);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/** @internal vitest — leave sessionStorage so revisit-without-GET can be asserted. */
+export function __clearHtmlSurfaceMemoryCacheForTests(): void {
   previewHtmlCache.clear();
   previewInflight.clear();
+  previewFetchActive = 0;
+  previewFetchWaiters.length = 0;
+}
+
+/** @internal vitest */
+export function __pluginPreviewFetchConcurrencyForTests(): number {
+  return PREVIEW_FETCH_CONCURRENCY;
 }
 
 export function __htmlSurfaceProbeCacheSizeForTests(): number {

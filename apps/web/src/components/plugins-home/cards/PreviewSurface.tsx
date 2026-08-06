@@ -48,6 +48,9 @@ export function PreviewSurface({
   //    running simultaneous decodes.
   const { ref: nearRef, inView } = useInView<HTMLDivElement>({
     rootMargin: instantMount ? '0px' : eager ? '480px' : '120px',
+    // Embed gallery (!eager): require a meaningful slice visible so barely
+    // peeking cards do not each open a heavy /preview GET.
+    threshold: instantMount || eager ? 0 : 0.2,
     once: instantMount,
   });
   const { ref: mediaRef, inView: mediaReady } = useInView<HTMLDivElement>({

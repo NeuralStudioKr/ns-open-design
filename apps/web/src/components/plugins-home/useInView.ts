@@ -14,6 +14,8 @@ export interface UseInViewOptions {
   rootMargin?: string;
   /** Stop observing after the first time the node becomes visible. */
   once?: boolean;
+  /** Fraction of the target that must be visible (0–1). */
+  threshold?: number;
 }
 
 export function useInView<T extends Element = HTMLElement>(
@@ -44,11 +46,14 @@ export function useInView<T extends Element = HTMLElement>(
           }
         }
       },
-      { rootMargin: options.rootMargin ?? '240px' },
+      {
+        rootMargin: options.rootMargin ?? '240px',
+        ...(typeof options.threshold === 'number' ? { threshold: options.threshold } : {}),
+      },
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [options.once, options.rootMargin]);
+  }, [options.once, options.rootMargin, options.threshold]);
 
   return { ref, inView };
 }
