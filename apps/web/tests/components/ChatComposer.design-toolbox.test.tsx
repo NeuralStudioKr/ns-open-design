@@ -166,9 +166,17 @@ function openToolbox(ref: { current: ChatComposerHandle | null }) {
   });
 }
 
+function fetchHref(url: RequestInfo | URL): string {
+  if (typeof url === 'string') return url;
+  if (url instanceof URL) return url.toString();
+  if (url instanceof Request) return url.url;
+  return String(url);
+}
+
 beforeEach(() => {
-  fetchMock = vi.fn(async (url: string) => {
-    if (url === '/api/mcp/servers') {
+  fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+    const href = fetchHref(url);
+    if (href === '/api/mcp/servers' || href.endsWith('/api/mcp/servers')) {
       return new Response(JSON.stringify({
         servers: [HIGGSFIELD_MCP],
         templates: [
@@ -185,31 +193,39 @@ beforeEach(() => {
         headers: { 'content-type': 'application/json' },
       });
     }
-    if (url === '/api/plugins') {
+    // listPlugins uses query params (mode/limit); match the path prefix.
+    if (href.includes('/api/plugins')) {
       return new Response(JSON.stringify({ plugins: [RESEARCH_PLUGIN] }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
     }
-    if (url === '/api/connectors') {
-      return new Response(JSON.stringify({ connectors: [FIGMA_CONNECTOR] }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-    if (url === '/api/connectors/status') {
-      return new Response(JSON.stringify({ statuses: { figma: { status: 'connected' } } }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-    if (url === '/api/connectors/discovery?refresh=true') {
+    if (href.includes('/api/connectors/discovery')) {
       return new Response(JSON.stringify({ connectors: [FIGMA_CONNECTOR, GMAIL_CONNECTOR] }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
     }
-    throw new Error(`unexpected fetch ${url}`);
+    if (href.includes('/api/connectors/status')) {
+      return new Response(JSON.stringify({ statuses: { figma: { status: 'connected' } } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (href.includes('/api/connectors')) {
+      return new Response(JSON.stringify({ connectors: [FIGMA_CONNECTOR] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    // Teamver embed/dev stages image thumbs via authenticated /raw/ fetches.
+    if (href.includes('/api/projects/') && href.includes('/raw/')) {
+      return new Response(new Uint8Array([0x52, 0x49, 0x46, 0x46]), {
+        status: 200,
+        headers: { 'content-type': 'image/webp' },
+      });
+    }
+    throw new Error(`unexpected fetch ${href}`);
   });
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -262,11 +278,19 @@ describe('ChatComposer design toolbox', () => {
 
     openToolbox(ref);
 
+    // Wait for async catalog fetches (plugins/MCP/connectors) before searching.
+    // In Teamver embed/dev some OpenDesign-branded plugins are hidden from the
+    // toolbox UI, so probe a connector/MCP that always remains searchable.
+    await waitFor(() => {
+      expect(screen.getByText('Figma')).toBeTruthy();
+      expect(screen.getByText('Higgsfield Video MCP')).toBeTruthy();
+    });
+
     const search = screen.getByLabelText('Search design toolbox resources');
-    fireEvent.change(search, { target: { value: 'research' } });
+    fireEvent.change(search, { target: { value: 'proof' } });
 
     await waitFor(() => {
-      expect(screen.getByText('Research Asset Plugin')).toBeTruthy();
+      expect(screen.getByText('data/proof.csv')).toBeTruthy();
     });
 
     fireEvent.change(search, { target: { value: '' } });
@@ -276,12 +300,66 @@ describe('ChatComposer design toolbox', () => {
       expect(composerText()).toContain('@creative-director');
       expect(composerText()).toContain('Global resource index');
       expect(composerText()).toContain('spreadsheet-ops');
-      expect(composerText()).toContain('Research Asset Plugin');
       expect(composerText()).toContain('Higgsfield Video MCP');
       expect(composerText()).toContain('Figma');
       expect(composerText()).toContain('data/proof.csv');
       expect(composerText()).toContain('Do not only use design toolbox recommendations');
     });
+  });
+
+  it('stages a design-file image as an attachment without dumping resource-index boilerplate', async () => {
+    const onSend = vi.fn();
+    const { ref } = renderComposer({
+      onSend,
+      projectFiles: [
+        {
+          name: 'index.html',
+          path: 'index.html',
+          type: 'file',
+          size: 1024,
+          mtime: 0,
+          kind: 'html',
+          mime: 'text/html',
+        },
+        {
+          name: 'msh9rso1-serving-goldfish.webp',
+          path: 'msh9rso1-serving-goldfish.webp',
+          type: 'file',
+          size: 2048,
+          mtime: 0,
+          kind: 'image',
+          mime: 'image/webp',
+        },
+      ],
+    });
+    await flushMounts();
+
+    openToolbox(ref);
+
+    const search = screen.getByLabelText('Search design toolbox resources');
+    fireEvent.change(search, { target: { value: 'goldfish' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('msh9rso1-serving-goldfish.webp')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText('msh9rso1-serving-goldfish.webp'));
+
+    await waitFor(() => {
+      expect(composerText()).toContain('@msh9rso1-serving-goldfish.webp');
+    });
+    expect(composerText()).not.toContain('Global resource index');
+    expect(composerText()).not.toContain('Workflow rule');
+    expect(composerText()).not.toContain('Reference design files');
+    expect(composerText()).not.toContain('Searchable plugins');
+
+    fireEvent.click(screen.getByTestId('chat-send'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    const attachments = onSend.mock.calls[0]?.[1] as Array<{ path: string; kind: string }>;
+    expect(attachments.some((item) => item.path === 'msh9rso1-serving-goldfish.webp')).toBe(true);
   });
 
   it('refreshes connected connectors when connector auth changes in another surface', async () => {

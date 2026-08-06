@@ -1558,6 +1558,17 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         return;
       }
 
+      if (resource.kind === 'file') {
+        const path = resource.file.path ?? resource.file.name;
+        // Stage as a composer attachment chip + short @mention only.
+        // Do NOT dump the global resource index / workflow boilerplate into
+        // the visible draft — that text is noisy for uploaded images and
+        // unnecessary because the attachment already rides with the turn.
+        insertMention(path);
+        editorRef.current?.focus();
+        return;
+      }
+
       const prompt = designToolboxResourcePrompt({
         resource,
         workspaceItem: visibleWorkspaceContext,
@@ -1596,13 +1607,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             : [...current, resource.connector],
         );
         applyDesignToolboxDraft(`${inlineMentionToken(resource.connector.name)}\n${prompt}`);
-        return;
-      }
-
-      if (resource.kind === 'file') {
-        const path = resource.file.path ?? resource.file.name;
-        appendContextAttachment(path);
-        applyDesignToolboxDraft(`${inlineMentionToken(path)}\n${prompt}`);
         return;
       }
 
@@ -5247,8 +5251,15 @@ function designToolboxResourcePrompt({
         t('chat.designToolbox.prompt.connectorResource'),
       ].join('\n');
     case 'file':
+      // Kept for callers/tests that still build a file resource prompt, but
+      // the composer UX stages the file as an attachment instead of pasting
+      // this block into the draft (see applyDesignToolboxResource).
       return [
-        ...base,
+        t('chat.designToolbox.prompt.selectedResource', {
+          kind: designToolboxResourceKindLabel(resource.kind, t),
+          title: resource.title,
+          id: resource.id,
+        }),
         t('chat.designToolbox.prompt.fileResource'),
       ].join('\n');
   }
