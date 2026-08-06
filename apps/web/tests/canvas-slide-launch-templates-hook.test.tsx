@@ -40,12 +40,13 @@ const { __resetCanvasSlideTemplatePluginsCacheForTests, CANVAS_CREATE_SLIDES_PLU
   await import("../src/teamver/canvasSlideLaunch");
 
 type Options = Parameters<typeof useCanvasSlideLaunchTemplates>[0];
+type HookOut = ReturnType<typeof useCanvasSlideLaunchTemplates>;
 
 // Tiny probe component that surfaces the hook output through the DOM so the
 // tests can inspect it without pulling in `@testing-library/react-hooks`.
-function Probe({ options, onRender }: { options: Options; onRender: (out: unknown[]) => void }) {
-  const templates = useCanvasSlideLaunchTemplates(options);
-  onRender(templates);
+function Probe({ options, onRender }: { options: Options; onRender: (out: HookOut) => void }) {
+  const result = useCanvasSlideLaunchTemplates(options);
+  onRender(result);
   return null;
 }
 
@@ -68,7 +69,7 @@ describe("useCanvasSlideLaunchTemplates", () => {
   });
 
   it("returns only the fallback tile when `active` is false — no fetch fires", async () => {
-    const latest: unknown[][] = [];
+    const latest: HookOut[] = [];
     render(
       <Probe
         options={{ active: false, locale: "ko" }}
@@ -77,11 +78,12 @@ describe("useCanvasSlideLaunchTemplates", () => {
     );
     await flushMicrotasks();
     expect(cachedFetch).not.toHaveBeenCalled();
-    const last = latest.at(-1) as { id: string }[];
-    expect(last.map((option) => option.id)).toEqual([CANVAS_CREATE_SLIDES_PLUGIN_ID]);
+    const last = latest.at(-1)!;
+    expect(last.loading).toBe(false);
+    expect(last.options.map((option) => option.id)).toEqual([CANVAS_CREATE_SLIDES_PLUGIN_ID]);
   });
 
-  it("fetches the deck-plugin cache once when active, then dedupes with caller plugins", async () => {
+  it("reports loading until the deck-plugin cache settles, then merges caller plugins", async () => {
     const callerPlugins: InstalledPluginRecord[] = [
       {
         id: "html-ppt-hermes",
@@ -90,7 +92,7 @@ describe("useCanvasSlideLaunchTemplates", () => {
       } as unknown as InstalledPluginRecord,
     ];
 
-    const latest: unknown[][] = [];
+    const latest: HookOut[] = [];
     let currentActive = true;
     const { rerender } = render(
       <Probe
@@ -98,6 +100,9 @@ describe("useCanvasSlideLaunchTemplates", () => {
         onRender={(out) => latest.push(out)}
       />,
     );
+
+    expect(latest[0]?.loading).toBe(true);
+
     await flushMicrotasks();
 
     // Force a re-render after the cache settles so we can read the merged output.
@@ -112,9 +117,10 @@ describe("useCanvasSlideLaunchTemplates", () => {
     });
 
     expect(cachedFetch).toHaveBeenCalledTimes(1);
-    const last = latest.at(-1) as { id: string }[];
+    const last = latest.at(-1)!;
+    expect(last.loading).toBe(false);
     // Fallback + hermes (from caller) + cobalt (from cache). No duplicated hermes.
-    expect(last.map((option) => option.id)).toEqual([
+    expect(last.options.map((option) => option.id)).toEqual([
       CANVAS_CREATE_SLIDES_PLUGIN_ID,
       "html-ppt-hermes",
       "html-ppt-cobalt-grid",
@@ -127,7 +133,7 @@ describe("useCanvasSlideLaunchTemplates", () => {
       title: "Hermes — caller wins",
       manifest: { title: "Hermes", od: { mode: "deck" } },
     } as unknown as InstalledPluginRecord;
-    const latest: unknown[][] = [];
+    const latest: HookOut[] = [];
     const { rerender } = render(
       <Probe
         options={{ active: true, callerPlugins: [callerHermes], locale: "ko" }}
@@ -143,9 +149,35 @@ describe("useCanvasSlideLaunchTemplates", () => {
       );
       await flushMicrotasks();
     });
-    const last = latest.at(-1) as { id: string; title: string }[];
-    const hermes = last.find((option) => option.id === "html-ppt-hermes");
+    const last = latest.at(-1)!;
+    const hermes = last.options.find((option) => option.id === "html-ppt-hermes");
     expect(hermes).toBeDefined();
     expect(hermes?.title).toBe("Hermes — caller wins");
+  });
+
+  it("skips the loading flicker when the TTL cache is already warm", async () => {
+    // Warm the shared cache first.
+    const { fetchCanvasSlideTemplatePlugins } = await import("../src/teamver/canvasSlideLaunch");
+    await fetchCanvasSlideTemplatePlugins();
+    cachedFetch.mockClear();
+
+    const latest: HookOut[] = [];
+    render(
+      <Probe
+        options={{ active: true, locale: "ko" }}
+        onRender={(out) => latest.push(out)}
+      />,
+    );
+
+    expect(latest[0]?.loading).toBe(false);
+    expect(latest[0]?.options.map((option) => option.id)).toEqual([
+      CANVAS_CREATE_SLIDES_PLUGIN_ID,
+      "html-ppt-hermes",
+      "html-ppt-cobalt-grid",
+    ]);
+
+    await flushMicrotasks();
+    // Warm cache: fetch resolves from memory; listPluginsPage should not re-fire.
+    expect(cachedFetch).not.toHaveBeenCalled();
   });
 });

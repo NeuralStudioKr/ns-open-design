@@ -391,10 +391,11 @@ export function HomeView({
       }),
     [designAccessTick, teamverDriveImportEnabled, teamverWorkspaceId],
   );
-  const canvasSlideTemplates = useCanvasSlideLaunchTemplates({
-    active: canvasSlideLaunch !== null,
-    locale,
-  });
+  const { options: canvasSlideTemplates, loading: canvasSlideTemplatesLoading } =
+    useCanvasSlideLaunchTemplates({
+      active: canvasSlideLaunch !== null,
+      locale,
+    });
   const selectedCanvasSlideTemplate = useMemo(
     () => resolveCanvasSlideTemplate(canvasSlideTemplates, canvasSlideTemplateId),
     [canvasSlideTemplates, canvasSlideTemplateId],
@@ -2272,6 +2273,7 @@ export function HomeView({
           confirming={canvasSlideLaunchBusy}
           errorMessage={canvasSlideLaunchError}
           templateOptions={canvasSlideTemplates}
+          templatesLoading={canvasSlideTemplatesLoading}
           selectedTemplateId={selectedCanvasSlideTemplate.id}
           onTemplateChange={setCanvasSlideTemplateId}
           userPrompt={canvasSlideUserPrompt}

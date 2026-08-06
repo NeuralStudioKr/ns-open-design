@@ -349,6 +349,20 @@ export function __resetCanvasSlideTemplatePluginsCacheForTests(): void {
 }
 
 /**
+ * Synchronous read of a still-fresh deck-template cache entry.
+ * Used by the launch-modal hook so the first paint can skip the
+ * fallback-only → full-list flicker when a prior open (or home boot)
+ * already warmed the TTL cache.
+ */
+export function peekCanvasSlideTemplatePlugins(): readonly InstalledPluginRecord[] | null {
+  if (!deckTemplateCache) return null;
+  if (Date.now() - deckTemplateCache.fetchedAt >= DECK_TEMPLATE_CACHE_TTL_MS) {
+    return null;
+  }
+  return deckTemplateCache.plugins;
+}
+
+/**
  * Resolve the effective slide-template selection for the Canvas → Design
  * launch flow. Falls through the same 3-level ladder the modal and composer
  * previously duplicated:

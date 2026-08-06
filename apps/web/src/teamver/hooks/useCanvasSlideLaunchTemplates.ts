@@ -13,17 +13,20 @@
 // only the built-in "기본 슬라이드 템플릿" fallback. This hook centralizes
 // that:
 //   1. Merges any caller-supplied plugin records (e.g. composer's own state).
-//    2. When the launch is active, kicks off / awaits the TTL-cached
-//     `fetchCanvasSlideTemplatePlugins()` so the picker never renders with
-//     just the fallback tile even if the caller hasn't fetched yet.
+//   2. When the launch is active, kicks off / awaits the TTL-cached
+//      `fetchCanvasSlideTemplatePlugins()` so the picker never settles with
+//      just the fallback tile even if the caller hasn't fetched yet.
 //   3. Returns the option list already localized + deduped via the existing
-//     `canvasSlideTemplateOptions` transform.
+//      `canvasSlideTemplateOptions` transform, plus a `loading` flag so the
+//      modal can reserve the template wizard step (and show a skeleton)
+//      instead of flickering 2→3 steps when the fetch completes.
 
 import { useEffect, useMemo, useState } from "react";
 import type { InstalledPluginRecord } from "@open-design/contracts";
 import {
   canvasSlideTemplateOptions,
   fetchCanvasSlideTemplatePlugins,
+  peekCanvasSlideTemplatePlugins,
   type TeamverCanvasSlideTemplateOption,
 } from "../canvasSlideLaunch";
 
@@ -43,25 +46,47 @@ interface Options {
   locale: string;
 }
 
+export type CanvasSlideLaunchTemplatesResult = {
+  options: TeamverCanvasSlideTemplateOption[];
+  /** True while an active launch is waiting on the deck-plugin cache. */
+  loading: boolean;
+};
+
 export function useCanvasSlideLaunchTemplates(
   options: Options,
-): TeamverCanvasSlideTemplateOption[] {
+): CanvasSlideLaunchTemplatesResult {
   const { active, callerPlugins, locale } = options;
-  const [cachedPlugins, setCachedPlugins] = useState<readonly InstalledPluginRecord[]>([]);
+  const [cachedPlugins, setCachedPlugins] = useState<readonly InstalledPluginRecord[]>(
+    () => peekCanvasSlideTemplatePlugins() ?? [],
+  );
+  const [loading, setLoading] = useState(
+    () => active && peekCanvasSlideTemplatePlugins() === null,
+  );
 
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      setLoading(false);
+      return;
+    }
+    const peeked = peekCanvasSlideTemplatePlugins();
+    if (peeked) {
+      setCachedPlugins(peeked);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     let cancelled = false;
     void fetchCanvasSlideTemplatePlugins().then((plugins) => {
       if (cancelled) return;
       setCachedPlugins(plugins);
+      setLoading(false);
     });
     return () => {
       cancelled = true;
     };
   }, [active]);
 
-  return useMemo(() => {
+  const mergedOptions = useMemo(() => {
     // Prefer caller plugins first so a composer / project that has already
     // loaded a page picks up freshly installed deck plugins immediately;
     // fall back to the cached page for the empty-initial-state case. The
@@ -83,4 +108,6 @@ export function useCanvasSlideLaunchTemplates(
     }
     return canvasSlideTemplateOptions(merged, locale);
   }, [cachedPlugins, callerPlugins, locale]);
+
+  return { options: mergedOptions, loading: active ? loading : false };
 }

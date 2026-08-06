@@ -593,11 +593,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // deck-plugin cache — so even if the Canvas handoff lands before the
     // composer's own fetch settles, the picker still surfaces every deck
     // template instead of only the fallback tile.
-    const canvasSlideTemplates = useCanvasSlideLaunchTemplates({
-      active: canvasSlideLaunch !== null,
-      callerPlugins: installedPlugins,
-      locale,
-    });
+    const { options: canvasSlideTemplates, loading: canvasSlideTemplatesLoading } =
+      useCanvasSlideLaunchTemplates({
+        active: canvasSlideLaunch !== null,
+        callerPlugins: installedPlugins,
+        locale,
+      });
     const selectedCanvasSlideTemplate = useMemo(
       () => resolveCanvasSlideTemplate(canvasSlideTemplates, canvasSlideTemplateId),
       [canvasSlideTemplates, canvasSlideTemplateId],
@@ -3361,6 +3362,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             confirming={canvasSlideLaunchBusy}
             errorMessage={canvasSlideLaunchError}
             templateOptions={canvasSlideTemplates}
+            templatesLoading={canvasSlideTemplatesLoading}
             selectedTemplateId={selectedCanvasSlideTemplate.id}
             onTemplateChange={setCanvasSlideTemplateId}
             userPrompt={canvasSlideUserPrompt}

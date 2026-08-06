@@ -32,6 +32,12 @@ type Props = {
   /** When set with an error, show Main re-login CTA (Main SSO gate). */
   onRelogin?: (() => void) | null;
   templateOptions?: TeamverCanvasSlideTemplateOption[];
+  /**
+   * True while the deck-template catalog is still loading. Reserves the
+   * optional template wizard step (and wide modal chrome) so the stepper
+   * does not jump 2→3 when the fetch settles.
+   */
+  templatesLoading?: boolean;
   selectedTemplateId?: string;
   onTemplateChange?: (templateId: string) => void;
   /** Optional user instruction merged into the first Design turn prompt. */
@@ -130,6 +136,7 @@ export function TeamverCanvasSlideLaunchModal({
   errorMessage = null,
   onRelogin = null,
   templateOptions = [],
+  templatesLoading = false,
   selectedTemplateId,
   onTemplateChange,
   userPrompt = "",
@@ -145,14 +152,28 @@ export function TeamverCanvasSlideLaunchModal({
   );
   const [enriching, setEnriching] = useState(false);
   const [activeStepId, setActiveStepId] = useState<CanvasSlideLaunchWizardStepId>("document");
+  // Once the template step has been shown for this open cycle, keep it so a
+  // late empty settle cannot collapse 3→2 after the user already saw step 3.
+  const [latchedTemplateStep, setLatchedTemplateStep] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const includeTemplateStep = templateOptions.length > 1;
+  const includeTemplateStep =
+    templatesLoading || templateOptions.length > 1 || latchedTemplateStep;
   const wizardStepOrder = useMemo(
     () => buildWizardStepOrder(includeTemplateStep),
     [includeTemplateStep],
   );
+
+  useEffect(() => {
+    if (!open) {
+      setLatchedTemplateStep(false);
+      return;
+    }
+    if (templatesLoading || templateOptions.length > 1) {
+      setLatchedTemplateStep(true);
+    }
+  }, [open, templatesLoading, templateOptions.length]);
 
   const resolvedActiveStepId: CanvasSlideLaunchWizardStepId = wizardStepOrder.includes(
     activeStepId,
@@ -406,19 +427,32 @@ export function TeamverCanvasSlideLaunchModal({
     </div>
   );
 
-  const templatePanelInner =
-    templateOptions.length > 0 ? (
-      <CanvasSlideTemplatePicker
-        options={templateOptions}
-        selectedTemplateId={selectedTemplate?.id ?? ""}
-        disabled={confirming}
-        onSelect={(id) => onTemplateChange?.(id)}
-      />
-    ) : (
-      <p className="teamver-canvas-slide-launch-template-fallback">
-        {t("teamver.canvasSlideLaunch.templateFallback")}
-      </p>
-    );
+  const templatePanelInner = templatesLoading ? (
+    <div
+      className="teamver-canvas-slide-launch-template-skeleton"
+      data-testid="teamver-canvas-slide-launch-template-skeleton"
+      aria-busy="true"
+      aria-label={t("teamver.canvasSlideLaunch.stepTemplate")}
+    >
+      {Array.from({ length: 4 }, (_, index) => (
+        <span
+          key={index}
+          className="teamver-canvas-slide-launch-skeleton teamver-canvas-slide-launch-template-skeleton-card"
+        />
+      ))}
+    </div>
+  ) : templateOptions.length > 0 ? (
+    <CanvasSlideTemplatePicker
+      options={templateOptions}
+      selectedTemplateId={selectedTemplate?.id ?? ""}
+      disabled={confirming}
+      onSelect={(id) => onTemplateChange?.(id)}
+    />
+  ) : (
+    <p className="teamver-canvas-slide-launch-template-fallback">
+      {t("teamver.canvasSlideLaunch.templateFallback")}
+    </p>
+  );
 
   const templatePanel = (
     <div className="teamver-canvas-slide-launch-template-section">
