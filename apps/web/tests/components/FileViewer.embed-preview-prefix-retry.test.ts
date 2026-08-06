@@ -15,6 +15,10 @@ describe('FileViewer embed preview prefix recovery', () => {
     expect(fileViewer).toMatch(
       /\[embedAuthRecoveryNonce,\s*file\.name,\s*projectId,\s*teamverEmbedPreviewMode\]/,
     );
+    // Valid cache must short-circuit the mint/retry loop (no per-attempt invalidate).
+    expect(fileViewer).toContain('peekTeamverProjectPreviewPrefix');
+    expect(fileViewer).toMatch(/Valid cache: paint immediately/);
+    expect(fileViewer).toMatch(/Do not invalidate between attempts/);
   });
 
   it('remounts srcDoc when the scoped preview prefix arrives so entry paint is not blank', () => {

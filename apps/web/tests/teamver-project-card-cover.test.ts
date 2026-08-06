@@ -34,15 +34,25 @@ describe("project card cover media URLs", () => {
     expect(card.version).toBe(1_700_000_123_456);
   });
 
-  it("uses project.updatedAt when metadata entryFile is set without hint version", () => {
+  it("does not bust metadata entryFile covers with project.updatedAt", () => {
     const card = buildProjectCardCover(
       project({ metadata: { kind: "deck", entryFile: "index.html" } }),
       null,
     );
-    expect(card.src).toBe(
-      projectCoverMediaUrl("p-deck", "index.html", 1_700_000_000_000),
-    );
+    expect(card.src).toBe(projectCoverMediaUrl("p-deck", "index.html"));
+    expect(card.src).not.toContain("?v=");
+    expect(card.version).toBeUndefined();
     expect(card.filePath).toBe("index.html");
+  });
+
+  it("does not fall back image cover version to project.updatedAt", () => {
+    const card = buildProjectCardCover(project({ id: "p-img", name: "Shot" }), {
+      kind: "image",
+      name: "cover.png",
+    });
+    expect(card.kind).toBe("image");
+    expect(card.version).toBeUndefined();
+    expect(card.src).toBe(projectCoverMediaUrl("p-img", "cover.png"));
   });
 
   it("exposes filePath for image covers so Teamver can mint S3 GET URLs", () => {

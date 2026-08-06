@@ -125,11 +125,14 @@ describe('HtmlSurface authenticated srcDoc', () => {
       'utf8',
     );
     const fetchBlock = source.slice(
-      source.indexOf('await fetchTeamverDaemon(url, {'),
+      source.indexOf('await fetchTeamverDaemon(cacheKey, {'),
       source.indexOf('if (!res.ok)'),
     );
     expect(fetchBlock).toContain('skipEmbedAuthRecovery: true');
     expect(fetchBlock).toContain('skipTeamverWorkspaceHeaders: true');
+    // Shared inflight / no per-card AbortSignal (N07 cover pattern).
+    expect(source).toContain('pluginPreviewCacheKey');
+    expect(source).not.toMatch(/loadPluginPreviewHtml\([^)]*abort\.signal/);
   });
 
   it('does not auto-fetch plugin preview on inView in Teamver embed (hover arms load)', async () => {

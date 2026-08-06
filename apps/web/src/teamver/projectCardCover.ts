@@ -32,7 +32,9 @@ export function buildProjectCardCover(
   const initial = (trimmed ? Array.from(trimmed)[0]! : "?").toUpperCase();
 
   if (override) {
-    const version = coverVersion(override, project);
+    // Only file mtime / cover-hints coverVersion — never project.updatedAt.
+    // List polls bump updatedAt and would remint S3 GETs for every image thumb.
+    const version = override.version;
     return {
       kind: override.kind,
       src: projectCoverMediaUrl(project.id, override.name, version),
@@ -46,22 +48,19 @@ export function buildProjectCardCover(
   const meta = project.metadata;
   const entry = meta?.entryFile;
   if (entry) {
-    const version = project.updatedAt;
-    const src = projectCoverMediaUrl(project.id, entry, version);
+    // Path-stable URL (no ?v=updatedAt). Html covers cache by path; image
+    // thumbs mint once until an override with coverVersion arrives.
+    const src = projectCoverMediaUrl(project.id, entry);
     if (meta?.kind === "image") {
-      return { kind: "image", src, filePath: entry, version, style, initial };
+      return { kind: "image", src, filePath: entry, style, initial };
     }
     if (meta?.kind === "video") {
-      return { kind: "video", src, filePath: entry, version, style, initial };
+      return { kind: "video", src, filePath: entry, style, initial };
     }
     if (/\.html?$/i.test(entry)) {
-      return { kind: "html", src, filePath: entry, version, style, initial };
+      return { kind: "html", src, filePath: entry, style, initial };
     }
   }
 
   return { kind: "fallback", style, initial };
-}
-
-function coverVersion(override: ProjectCoverFile, project: Project): number | undefined {
-  return override.version ?? project.updatedAt;
 }

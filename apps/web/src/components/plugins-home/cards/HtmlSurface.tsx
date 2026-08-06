@@ -79,20 +79,26 @@ export {
 } from '../../../runtime/authenticatedHtmlSrcDoc';
 export { resolvePluginPreviewBaseHref } from '../../../runtime/authenticatedHtmlSrcDoc';
 
-async function loadPluginPreviewHtml(url: string, signal?: AbortSignal): Promise<string> {
-  const cached = previewHtmlCache.get(url);
+function pluginPreviewCacheKey(url: string): string {
+  return url.split(/[?#]/u, 1)[0] ?? url;
+}
+
+async function loadPluginPreviewHtml(url: string): Promise<string> {
+  // Path-only key + shared inflight (no AbortSignal). Per-card abort used to
+  // skip fetchTeamverDaemon GET dedupe and cancel sibling tiles on remount.
+  const cacheKey = pluginPreviewCacheKey(url);
+  const cached = previewHtmlCache.get(cacheKey);
   if (cached !== undefined) {
     if (!cached) throw new Error('plugin_preview_unreachable');
     return cached;
   }
 
-  const existing = !signal ? previewInflight.get(url) : undefined;
+  const existing = previewInflight.get(cacheKey);
   if (existing) return existing;
 
   const run = (async () => {
-    const res = await fetchTeamverDaemon(url, {
+    const res = await fetchTeamverDaemon(cacheKey, {
       method: 'GET',
-      signal: signal ?? new AbortController().signal,
       // Plugin preview thumbs are non-critical, retryable UI. Do not make a
       // card fetch wake Teamver auth/session refresh or active-workspace reads.
       skipEmbedAuthRecovery: true,
@@ -101,7 +107,7 @@ async function loadPluginPreviewHtml(url: string, signal?: AbortSignal): Promise
     if (!res.ok) {
       // Only sticky-cache missing assets. Auth failures must remain retryable
       // after cookie recovery / soft sticky clear.
-      if (res.status === 404) rememberUnreachable(url);
+      if (res.status === 404) rememberUnreachable(cacheKey);
       throw new Error(`plugin_preview_http_${res.status}`);
     }
     const text = await res.text();
@@ -109,14 +115,14 @@ async function loadPluginPreviewHtml(url: string, signal?: AbortSignal): Promise
     if (isUnauthorizedHtmlBody(text, contentType) || !looksLikeHtmlDocument(text)) {
       throw new Error('plugin_preview_not_html');
     }
-    const srcDoc = pluginPreviewSrcDoc(text, url);
-    rememberPreviewHtml(url, srcDoc);
+    const srcDoc = pluginPreviewSrcDoc(text, cacheKey);
+    rememberPreviewHtml(cacheKey, srcDoc);
     return srcDoc;
   })().finally(() => {
-    previewInflight.delete(url);
+    previewInflight.delete(cacheKey);
   });
 
-  if (!signal) previewInflight.set(url, run);
+  previewInflight.set(cacheKey, run);
   return run;
 }
 
@@ -131,19 +137,19 @@ export function HtmlSurface({
   const [armed, setArmed] = useState(() => instantMount);
   const [shouldLoad, setShouldLoad] = useState(() => isVisualStabilityMode() || instantMount);
   const [loadState, setLoadState] = useState<LoadState>(() => {
-    const cached = previewHtmlCache.get(preview.src);
+    const cached = previewHtmlCache.get(pluginPreviewCacheKey(preview.src));
     if (cached === undefined) return instantMount ? 'loading' : 'idle';
     return cached ? 'ok' : 'unreachable';
   });
   const [srcDoc, setSrcDoc] = useState<string | null>(() => {
-    const cached = previewHtmlCache.get(preview.src);
+    const cached = previewHtmlCache.get(pluginPreviewCacheKey(preview.src));
     return cached || null;
   });
 
   useEffect(() => {
     setArmed(instantMount);
     setShouldLoad(isVisualStabilityMode() || instantMount);
-    const cached = previewHtmlCache.get(preview.src);
+    const cached = previewHtmlCache.get(pluginPreviewCacheKey(preview.src));
     if (cached === undefined) {
       setSrcDoc(null);
       setLoadState(instantMount ? 'loading' : 'idle');
@@ -164,7 +170,7 @@ export function HtmlSurface({
       setShouldLoad(true);
       return;
     }
-    if (previewHtmlCache.has(preview.src)) {
+    if (previewHtmlCache.has(pluginPreviewCacheKey(preview.src))) {
       setShouldLoad(true);
       return;
     }
@@ -178,7 +184,8 @@ export function HtmlSurface({
 
   useEffect(() => {
     if (!shouldLoad) return;
-    const cached = previewHtmlCache.get(preview.src);
+    const cacheKey = pluginPreviewCacheKey(preview.src);
+    const cached = previewHtmlCache.get(cacheKey);
     if (cached !== undefined) {
       if (cached) {
         setSrcDoc(cached);
@@ -191,9 +198,9 @@ export function HtmlSurface({
     }
 
     let cancelled = false;
-    const abort = new AbortController();
     setLoadState('loading');
-    loadPluginPreviewHtml(preview.src, abort.signal)
+    // Unmount only skips setState — do not abort the shared network GET.
+    loadPluginPreviewHtml(preview.src)
       .then((html) => {
         if (cancelled) return;
         setSrcDoc(html);
@@ -206,7 +213,6 @@ export function HtmlSurface({
       });
     return () => {
       cancelled = true;
-      abort.abort();
     };
   }, [preview.src, shouldLoad]);
 

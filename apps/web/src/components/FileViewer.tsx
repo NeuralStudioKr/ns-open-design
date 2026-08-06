@@ -6422,15 +6422,22 @@ function HtmlViewer({
     embedPreviewIdentityRef.current = identity;
     // First paint / file switch: hold empty srcDoc only when no cached prefix.
     // Cached peek lets image→deck tab switches paint immediately.
-    if (identityChanged) {
+    // Auth recovery bumps embedAuthRecoveryNonce and must remint scopes so
+    // relative assets do not resolve against a stale/unauthorized prefix.
+    if (embedAuthRecoveryNonce > 0) {
+      invalidateTeamverProjectPreviewPrefix(projectId);
+    } else {
+      // Valid cache: paint immediately and skip the retry/mint loop entirely.
       const peeked = peekTeamverProjectPreviewPrefix(projectId);
       if (peeked) {
         setEmbedPreviewPrefix(peeked);
         setEmbedPreviewPrefixSettled(true);
-      } else {
-        setEmbedPreviewPrefix(null);
-        setEmbedPreviewPrefixSettled(false);
+        return;
       }
+    }
+    if (identityChanged && embedAuthRecoveryNonce === 0) {
+      setEmbedPreviewPrefix(null);
+      setEmbedPreviewPrefixSettled(false);
     }
     const retryDelaysMs = [0, 400, 1_200] as const;
     // Absolute backup if attempt 0 never returns (hung fetch). Prefer settling
@@ -6438,13 +6445,6 @@ function HtmlViewer({
     const failOpenPaintTimer = window.setTimeout(() => {
       if (!cancelled) setEmbedPreviewPrefixSettled(true);
     }, 2_500);
-    // Fail-open on first null so srcDoc can paint, then retry with a fresh
-    // abort budget. Auth recovery bumps embedAuthRecoveryNonce and invalidates
-    // the cached prefix so stale daemon scopes / 401 races do not leave deck
-    // relative assets resolving against about:blank forever.
-    if (embedAuthRecoveryNonce > 0) {
-      invalidateTeamverProjectPreviewPrefix(projectId);
-    }
     void (async () => {
       for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
         if (cancelled) return;
@@ -6452,7 +6452,8 @@ function HtmlViewer({
         if (delay > 0) {
           await new Promise((settle) => window.setTimeout(settle, delay));
           if (cancelled) return;
-          invalidateTeamverProjectPreviewPrefix(projectId);
+          // Do not invalidate between attempts — that forced up to 3 preview-url
+          // mints. resolveTeamverProjectPreviewPrefix already reuses cache/inflight.
         }
         const abort = new AbortController();
         const failOpenTimer = window.setTimeout(() => abort.abort(), 8_000);
