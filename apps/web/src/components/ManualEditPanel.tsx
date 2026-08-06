@@ -303,6 +303,11 @@ export function ManualEditPanel({
                   showPositionHint={inspectorFlags.showPositionHint}
                   showLayout={inspectorFlags.showLayout}
                   showBox={inspectorFlags.showBox}
+                  showArrange={inspectorFlags.showZOrder && Boolean(onZOrder)}
+                  isMultiSelect={isMultiSelect}
+                  zOrderCapabilities={zOrderCapabilities}
+                  onZOrder={onZOrder}
+                  zOrderBusy={zOrderBusy}
                 />
               ) : !targetForInspector ? (
                 <PageInspector
@@ -318,31 +323,6 @@ export function ManualEditPanel({
                     onStyleChange?.(['__body__'], normalized.styles, 'Page styles');
                   }}
                 />
-              ) : null}
-
-              {inspectorFlags.showZOrder && onZOrder ? (
-                <section className="cc-section manual-edit-zorder-section" data-testid="manual-edit-arrange-section">
-                  <header className="cc-section-head">{t('manualEdit.arrange')}</header>
-                  <div className="cc-section-body">
-                    {isMultiSelect ? (
-                      <p className="cc-section-hint">{t('manualEdit.arrangeMultiHint')}</p>
-                    ) : null}
-                    <ManualEditZOrderControls
-                      capabilities={zOrderCapabilities ?? DISABLED_Z_ORDER_CAPABILITIES}
-                      disabled={zOrderBusy}
-                      onZOrder={onZOrder}
-                    />
-                    {!isMultiSelect && targetForInspector ? (
-                      <UnitRow
-                        label={t('manualEdit.zIndex')}
-                        value={zIndexInputValue(draft.styles.zIndex)}
-                        placeholder={t('manualEdit.zIndexAuto')}
-                        onChange={(value) => changeTargetStyle('zIndex', value)}
-                        unit=""
-                      />
-                    ) : null}
-                  </div>
-                </section>
               ) : null}
 
               {!isMultiSelect && targetForInspector?.kind === 'image' && onPickImage ? (
@@ -813,6 +793,11 @@ function StyleInspector({
   showPositionHint: showPositionHintProp,
   showLayout: showLayoutProp,
   showBox: showBoxProp,
+  showArrange = false,
+  isMultiSelect = false,
+  zOrderCapabilities = null,
+  onZOrder,
+  zOrderBusy = false,
 }: {
   targetKind: ManualEditTarget['kind'];
   cssPosition?: string;
@@ -827,6 +812,11 @@ function StyleInspector({
   showPositionHint?: boolean;
   showLayout?: boolean;
   showBox?: boolean;
+  showArrange?: boolean;
+  isMultiSelect?: boolean;
+  zOrderCapabilities?: ZOrderCapabilities | null;
+  onZOrder?: (action: ZOrderAction) => void;
+  zOrderBusy?: boolean;
 }) {
   const t = useT();
   const u = (key: keyof ManualEditStyles, value: string) => onChange(key, value);
@@ -947,13 +937,40 @@ function StyleInspector({
         <UnitRow label={t('manualEdit.radius')} value={styles.borderRadius} placeholder={placeholderFor('borderRadius')} onChange={(v) => u('borderRadius', v)} unit="px" autoUnit />
       </Section>
       ) : null}
+
+      {showArrange && onZOrder ? (
+        <Section title={t('manualEdit.arrange')} testId="manual-edit-arrange-section">
+          {isMultiSelect ? (
+            <p className="cc-section-hint">{t('manualEdit.arrangeMultiHint')}</p>
+          ) : null}
+          <ManualEditZOrderControls
+            capabilities={zOrderCapabilities ?? DISABLED_Z_ORDER_CAPABILITIES}
+            disabled={zOrderBusy}
+            onZOrder={onZOrder}
+          />
+          {!isMultiSelect && !showPosition && canAdjustZOrderTarget(positionValue) ? (
+            <UnitRow
+              label={t('manualEdit.zIndex')}
+              value={zIndexInputValue(styles.zIndex)}
+              placeholder={mixedKeys?.has('zIndex') && !styles.zIndex ? mixedPlaceholder : t('manualEdit.zIndexAuto')}
+              onChange={(v) => u('zIndex', v)}
+              unit=""
+            />
+          ) : null}
+        </Section>
+      ) : null}
     </div>
   );
 }
 
-function Section({ title, children, inactive }: { title: string; children: React.ReactNode; inactive?: boolean }) {
+function Section({ title, children, inactive, testId }: {
+  title: string;
+  children: React.ReactNode;
+  inactive?: boolean;
+  testId?: string;
+}) {
   return (
-    <section className={`cc-section${inactive ? ' cc-section-inactive' : ''}`}>
+    <section className={`cc-section${inactive ? ' cc-section-inactive' : ''}`} data-testid={testId}>
       <header className="cc-section-head">{title}</header>
       <div className="cc-section-body">{children}</div>
     </section>

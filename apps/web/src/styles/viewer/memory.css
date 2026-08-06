@@ -742,7 +742,11 @@
 .manual-edit-group-align-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 4px;
+}
+
+.manual-edit-scroll > .cc-section.manual-edit-group-align {
+  padding: 0 12px;
 }
 
 .manual-edit-workspace > .manual-edit-right {
@@ -1115,7 +1119,7 @@
 .manual-edit-zorder-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
 }
 
 .manual-edit-zorder-grid--compact {
