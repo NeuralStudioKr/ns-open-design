@@ -1,5 +1,7 @@
 import { findManualEditPreviewTarget } from './manual-edit-host-preview';
+import { isManualEditKeyboardTextTarget } from './manual-edit-keyboard';
 import { isAnchoredCssPosition } from './resize-math';
+import { isMacPlatform } from '../utils/platform';
 
 export type ZOrderAction = 'forward' | 'backward' | 'front' | 'back';
 
@@ -158,4 +160,32 @@ export function zOrderHistoryLabel(action: ZOrderAction): string {
     default:
       return 'Z-order';
   }
+}
+
+/** Effective stack z for layer sort badges — `auto`/empty → 0. */
+export function readStackZFromZIndexStyle(value: string | null | undefined): number {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed || trimmed === 'auto') return 0;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export type ZOrderKeyboardInput = Pick<
+  KeyboardEvent,
+  'altKey' | 'ctrlKey' | 'key' | 'metaKey' | 'repeat' | 'shiftKey' | 'target'
+>;
+
+/**
+ * Layer z-order shortcuts (manual edit, single anchored target):
+ * `]` forward · `[` backward · ⌘/Ctrl+`]` front · ⌘/Ctrl+`[` back.
+ */
+export function resolveZOrderKeyboardAction(event: ZOrderKeyboardInput): ZOrderAction | null {
+  if (event.altKey || event.shiftKey || event.repeat) return null;
+  if (isManualEditKeyboardTextTarget(event.target)) return null;
+  const primary = isMacPlatform()
+    ? event.metaKey && !event.ctrlKey
+    : event.ctrlKey && !event.metaKey;
+  if (event.key === ']') return primary ? 'front' : 'forward';
+  if (event.key === '[') return primary ? 'back' : 'backward';
+  return null;
 }

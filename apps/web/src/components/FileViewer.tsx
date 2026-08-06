@@ -386,7 +386,9 @@ import { filterManualEditLayerTargets, sortManualEditLayerTargetsByPaintOrder } 
 import {
   canAdjustZOrderTarget,
   computeZOrderStyleForTargetId,
+  readStackZFromZIndexStyle,
   resolveZOrderContext,
+  resolveZOrderKeyboardAction,
   zOrderHistoryLabel,
   type ZOrderAction,
 } from '../edit-mode/manual-edit-z-order';
@@ -5581,6 +5583,7 @@ function HtmlViewer({
   const [manualEditError, setManualEditError] = useState<string | null>(null);
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const manualEditSavingRef = useRef(false);
+  const manualEditZOrderHandlerRef = useRef<((action: ZOrderAction) => void) | null>(null);
   const manualEditPendingStyleRef = useRef<ManualEditPendingStyleSave | null>(null);
   const manualEditStyleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const manualEditPreviewVersionRef = useRef(0);
@@ -8768,6 +8771,9 @@ function HtmlViewer({
     for (const id of ids) {
       previewStyleToIframe(id, styles, version);
     }
+    if (styles.zIndex !== undefined) {
+      applyManualEditStackZOptimistic(ids, styles.zIndex);
+    }
     // Autosave shortly after the user stops tweaking — select/background/
     // exit also flush, but a remount or crash before those gestures must not
     // be the only persistence path. Resize drag sessions pause this timer.
@@ -9567,6 +9573,7 @@ function HtmlViewer({
     if (!pending) return true;
     if (manualEditSavingRef.current) return false;
     clearManualEditStyleTimer();
+    const zIndexTargetIds = collectZIndexTargetsFromPending(pending);
     manualEditPendingStyleRef.current = null;
     const baseSource = manualEditPatchBaseSource({
       manualEditMode,
@@ -9591,6 +9598,7 @@ function HtmlViewer({
         .filter((patch): patch is Extract<ManualEditPatch, { kind: 'set-style' }> => patch !== null);
       if (patches.length === 0) {
         reconcileManualEditDraftAfterNoOpFlush(pending, parsedDoc);
+        afterManualEditZIndexPersist(zIndexTargetIds);
         return true;
       }
       const ok = await applyManualEditBatch(patches, pending.label, parsedDoc);
@@ -9601,6 +9609,7 @@ function HtmlViewer({
         );
         return false;
       }
+      afterManualEditZIndexPersist(zIndexTargetIds);
       return true;
     }
     const targetIds = pending.targetIds ?? [pending.id];
@@ -9615,6 +9624,7 @@ function HtmlViewer({
       );
       if (patches.length === 0) {
         reconcileManualEditDraftAfterNoOpFlush(pending, parsedDoc);
+        afterManualEditZIndexPersist(zIndexTargetIds);
         return true;
       }
       const ok = await applyManualEditBatch(patches, pending.label, parsedDoc);
@@ -9625,6 +9635,7 @@ function HtmlViewer({
         );
         return false;
       }
+      afterManualEditZIndexPersist(zIndexTargetIds);
       return true;
     }
     // One Document for style read + no-op reconcile + apply (was parse ×2/×3).
@@ -9635,6 +9646,7 @@ function HtmlViewer({
     });
     if (Object.keys(effectiveStyles).length === 0) {
       reconcileManualEditDraftAfterNoOpFlush(pending, parsedDoc);
+      afterManualEditZIndexPersist(zIndexTargetIds);
       return true;
     }
     const ok = await applyManualEdit(
@@ -9651,6 +9663,7 @@ function HtmlViewer({
       );
       return false;
     }
+    afterManualEditZIndexPersist(zIndexTargetIds);
     return true;
   }
 
@@ -10794,6 +10807,26 @@ function HtmlViewer({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [mode, source, drawOverlayOpen, hideFileRevisionChrome]);
+
+  // Layer z-order: `]` / `[` step, ⌘/Ctrl+`]` / `[` front/back (single anchored target).
+  useEffect(() => {
+    if (!manualEditMode || drawOverlayOpen) return;
+    function onKey(e: KeyboardEvent) {
+      const action = resolveZOrderKeyboardAction(e);
+      if (!action) return;
+      if (manualEditSavingRef.current) return;
+      const target = selectedManualEditTargetRef.current;
+      if (!target || !canAdjustZOrderTarget(target.cssPosition)) return;
+      const doc = iframeContentDocumentIfAccessible(iframeRef.current);
+      if (!doc) return;
+      const caps = resolveZOrderContext(doc, target.id)?.capabilities;
+      if (!caps?.[action]) return;
+      e.preventDefault();
+      manualEditZOrderHandlerRef.current?.(action);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [manualEditMode, drawOverlayOpen]);
 
   useEffect(() => {
     if (!presentMenuOpen) return;
@@ -12279,35 +12312,57 @@ function HtmlViewer({
     srcDoc,
   ]);
 
+  function collectZIndexTargetsFromPending(pending: ManualEditPendingStyleSave): string[] {
+    if (pending.perTargetStyles) {
+      return Object.entries(pending.perTargetStyles)
+        .filter(([, styles]) => styles.zIndex !== undefined)
+        .map(([id]) => id);
+    }
+    if (pending.styles.zIndex === undefined) return [];
+    return [...(pending.targetIds ?? [pending.id])];
+  }
+
+  function afterManualEditZIndexPersist(targetIds: readonly string[]) {
+    if (targetIds.length === 0) return;
+    for (const id of targetIds) {
+      requestManualEditTargetRemeasure(id);
+    }
+    requestManualEditTargetsRefresh();
+  }
+
+  function applyManualEditStackZOptimistic(ids: readonly string[], zIndex: string) {
+    const stackZ = readStackZFromZIndexStyle(zIndex);
+    setManualEditTargets((current) => current.map((item) => (
+      ids.includes(item.id)
+        ? { ...item, styles: { ...item.styles, zIndex }, stackZ }
+        : item
+    )));
+    const primaryId = selectedManualEditTargetIdRef.current;
+    if (!primaryId || !ids.includes(primaryId)) return;
+    setSelectedManualEditTarget((current) => {
+      if (!current || current.id !== primaryId) return current;
+      const next: ManualEditTarget = {
+        ...current,
+        styles: { ...current.styles, zIndex },
+        stackZ,
+      };
+      selectedManualEditTargetRef.current = next;
+      return next;
+    });
+  }
+
   function handleManualEditZOrder(action: ZOrderAction) {
     const target = selectedManualEditTarget;
     const doc = iframeContentDocumentIfAccessible(iframeRef.current);
     if (!target || !doc) return;
     const nextZ = computeZOrderStyleForTargetId(doc, target.id, action);
     if (!nextZ) return;
-    const parsedZ = Number.parseInt(nextZ, 10);
     void handleManualEditStyleChange([target.id], { zIndex: nextZ }, zOrderHistoryLabel(action));
-    setManualEditTargets((current) => current.map((item) => (
-      item.id === target.id
-        ? {
-            ...item,
-            styles: { ...item.styles, zIndex: nextZ },
-            stackZ: Number.isFinite(parsedZ) ? parsedZ : item.stackZ,
-          }
-        : item
-    )));
-    setSelectedManualEditTarget((current) => (
-      current?.id === target.id
-        ? {
-            ...current,
-            styles: { ...current.styles, zIndex: nextZ },
-            stackZ: Number.isFinite(parsedZ) ? parsedZ : current.stackZ,
-          }
-        : current
-    ));
+    applyManualEditStackZOptimistic([target.id], nextZ);
     requestManualEditTargetRemeasure(target.id);
     requestManualEditTargetsRefresh();
   }
+  manualEditZOrderHandlerRef.current = handleManualEditZOrder;
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionUndoUnavailableTooltip = revisionStackInvalidated

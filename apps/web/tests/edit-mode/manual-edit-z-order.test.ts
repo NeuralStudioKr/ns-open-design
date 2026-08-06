@@ -7,7 +7,9 @@ import {
   computeZOrderStyleForElement,
   computeZOrderValue,
   readEffectiveZIndex,
+  readStackZFromZIndexStyle,
   resolveZOrderContext,
+  resolveZOrderKeyboardAction,
   sortZStack,
   zOrderCapabilities,
 } from '../../src/edit-mode/manual-edit-z-order';
@@ -83,5 +85,55 @@ describe('manual-edit-z-order', () => {
     });
 
     dom.window.close();
+  });
+
+  it('reads stack z from z-index style values', () => {
+    expect(readStackZFromZIndexStyle('')).toBe(0);
+    expect(readStackZFromZIndexStyle('auto')).toBe(0);
+    expect(readStackZFromZIndexStyle('5')).toBe(5);
+    expect(readStackZFromZIndexStyle('-2')).toBe(-2);
+    expect(readStackZFromZIndexStyle('nope')).toBe(0);
+  });
+
+  it('maps bracket shortcuts to z-order actions', () => {
+    const input = document.createElement('input');
+    expect(resolveZOrderKeyboardAction({
+      key: ']',
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      repeat: false,
+      target: document.body,
+    })).toBe('forward');
+    expect(resolveZOrderKeyboardAction({
+      key: '[',
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      repeat: false,
+      target: document.body,
+    })).toBe('backward');
+    const primary = { metaKey: false, ctrlKey: true, altKey: false, shiftKey: false, repeat: false };
+    expect(resolveZOrderKeyboardAction({
+      key: ']',
+      ...primary,
+      target: document.body,
+    })).toBe('front');
+    expect(resolveZOrderKeyboardAction({
+      key: '[',
+      ...primary,
+      target: document.body,
+    })).toBe('back');
+    expect(resolveZOrderKeyboardAction({
+      key: ']',
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      repeat: false,
+      target: input,
+    })).toBeNull();
   });
 });

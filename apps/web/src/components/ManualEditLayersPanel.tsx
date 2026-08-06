@@ -1,6 +1,11 @@
 import { useT } from '../i18n';
 import type { ManualEditTarget } from '../edit-mode/types';
-import type { ZOrderAction, ZOrderCapabilities } from '../edit-mode/manual-edit-z-order';
+import {
+  canAdjustZOrderTarget,
+  readStackZFromZIndexStyle,
+  type ZOrderAction,
+  type ZOrderCapabilities,
+} from '../edit-mode/manual-edit-z-order';
 import { ManualEditZOrderControls } from './ManualEditZOrderControls';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 
@@ -82,7 +87,14 @@ export function ManualEditLayersPanel({
           {[...targets].map((target) => {
             const selected = selectedIds.includes(target.id);
             const primary = selectedIds[selectedIds.length - 1] === target.id;
-            const showStackZ = (target.stackZ ?? 0) !== 0;
+            const showStackZ = canAdjustZOrderTarget(target.cssPosition);
+            const stackZLabel = showStackZ
+              ? (
+                target.styles.zIndex?.trim()
+                  ? `z ${readStackZFromZIndexStyle(target.styles.zIndex)}`
+                  : embedUiLabel('z auto', 'z auto')
+              )
+              : '';
             return (
               <button
                 key={target.id}
@@ -106,7 +118,7 @@ export function ManualEditLayersPanel({
                 <span>
                   {target.tagName.toLowerCase()}
                   {target.cssPosition ? ` · ${target.cssPosition}` : ''}
-                  {showStackZ ? ` · z ${target.stackZ}` : ''}
+                  {stackZLabel ? ` · ${stackZLabel}` : ''}
                 </span>
               </button>
             );
