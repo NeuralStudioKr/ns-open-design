@@ -1323,6 +1323,11 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain("'values'");
     expect(sourcePatchesSource).toContain('animate|animatemotion|animatetransform|set|animatecolor');
     expect(sourcePatchesSource).toContain('.replace(/\\ssrcdoc\\s*=\\s*[^\\s>]+/gi, \'\')');
+    // behavior / http-equiv / presentation-attr parity with DOM walk.
+    expect(sourcePatchesSource).toContain('.replace(/\\sbehavior\\s*=');
+    expect(sourcePatchesSource).toContain('.replace(/\\shttp-equiv\\s*=');
+    expect(sourcePatchesSource).toContain("'color-profile'");
+    expect(sourcePatchesSource).toContain('presentationAttrs');
   });
 
   it('exposes single-document mutate/batch apply helpers', () => {
@@ -1712,6 +1717,22 @@ describe('manual edit source patches', () => {
     expect(content).toContain('<span>ok</span>');
     expect(content).not.toMatch(/<set\b/i);
     expect(content).not.toMatch(/javascript/i);
+  });
+
+  it('removes SMIL nodes that assign behavior or http-equiv', () => {
+    const behavior = sanitizeManualEditHtmlFragment(
+      '<div><set attributeName="behavior" to="url(evil.htc)"></set><span>ok</span></div>',
+    );
+    expect(behavior).toContain('<span>ok</span>');
+    expect(behavior).not.toMatch(/<set\b/i);
+    expect(behavior).not.toMatch(/behavior/i);
+
+    const httpEquiv = sanitizeManualEditHtmlFragment(
+      '<div><animate attributeName="http-equiv" to="refresh"></animate><span>ok</span></div>',
+    );
+    expect(httpEquiv).toContain('<span>ok</span>');
+    expect(httpEquiv).not.toMatch(/<animate\b/i);
+    expect(httpEquiv).not.toMatch(/http-equiv/i);
   });
 
   it('keeps ping on same-document relative or fragment targets only', () => {

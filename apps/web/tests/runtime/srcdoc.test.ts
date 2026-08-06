@@ -549,11 +549,11 @@ describe('buildSrcdoc', () => {
   it('folds od-id + source-path annotation and skips intact-head repair', () => {
     expect(srcdocSource).toContain('annotatePreviewEditTargets');
     expect(srcdocSource).toContain('artifactDocumentHeadLooksIntact');
+    expect(srcdocSource).toContain('shouldAnnotatePreviewEditTargets');
     expect(srcdocSource).toContain('annotateMissingOdIdsOnDocument');
     expect(srcdocSource).toContain('annotateManualEditSourcePathsOnDocument');
     expect(srcdocSource).toContain("wrapPreviewHtmlShell(repaired, { alreadyRepaired: true })");
     expect(srcdocSource).toContain('options.exportDocument');
-    expect(srcdocSource).toContain('? wrapped');
   });
 
   it('skips od-id annotation for exportDocument builds', () => {
@@ -565,5 +565,20 @@ describe('buildSrcdoc', () => {
     Reflect.deleteProperty(globalThis, 'DOMParser');
     expect(srcdoc).not.toContain('data-od-id=');
     expect(srcdoc).not.toContain('data-od-preview-redirect-guard');
+  });
+
+  it('skips annotate when structural opens already carry data-od-id', () => {
+    const dom = new JSDOM('');
+    globalThis.DOMParser = dom.window.DOMParser;
+    const html = [
+      '<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>',
+      '<body><section data-od-id="s0"><h1 data-od-id="h0">Title</h1></section></body></html>',
+    ].join('');
+    const srcdoc = buildSrcdoc(html, {});
+    Reflect.deleteProperty(globalThis, 'DOMParser');
+    expect(srcdoc).toContain('data-od-id="s0"');
+    expect(srcdoc).toContain('data-od-id="h0"');
+    // No fallback od-* ids injected for already-annotated structural opens.
+    expect(srcdoc).not.toMatch(/data-od-id="od-/);
   });
 });

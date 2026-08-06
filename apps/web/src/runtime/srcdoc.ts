@@ -101,6 +101,22 @@ export function buildRedirectLoopBlockedDoc(): string {
 }
 
 /**
+ * Cheap gate: skip od-id / source-path annotation when OD-authored HTML already
+ * carries them on structural opens. Imported HTML without annotations still
+ * pays the DOMParser walk. Conservative — any bare section/main open forces annotate.
+ */
+function shouldAnnotatePreviewEditTargets(html: string, sourcePaths: boolean): boolean {
+  if (!/data-od-id=/i.test(html)) return true;
+  if (sourcePaths && !/data-od-source-path=/i.test(html)) return true;
+  const structuralOpens = html.match(/<(?:section|main)\b[^>]*>/gi) ?? [];
+  if (structuralOpens.length === 0) return true;
+  for (const tag of structuralOpens) {
+    if (!/data-od-id=/i.test(tag) && !/data-screen-label=/i.test(tag)) return true;
+  }
+  return false;
+}
+
+/**
  * Cheap gate: skip repairArtifactDocumentHead when the document already has
  * an intact head (charset + viewport) and no common corruption prefixes.
  * Repair remains idempotent — this only avoids the regex walk on hot paths.
@@ -130,11 +146,12 @@ export function buildSrcdoc(
   // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
   const wrapped = wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
   // Export docs skip od-id / source-path annotation (no selection/edit bridges).
+  // OD-authored decks that already carry annotations skip the DOMParser walk.
+  const sourcePaths = Boolean(options.editBridge);
   const withAnnotations = options.exportDocument
+    || !shouldAnnotatePreviewEditTargets(wrapped, sourcePaths)
     ? wrapped
-    : annotatePreviewEditTargets(wrapped, {
-        sourcePaths: Boolean(options.editBridge),
-      });
+    : annotatePreviewEditTargets(wrapped, { sourcePaths });
   const withBase = options.baseHref ? injectBaseHref(withAnnotations, options.baseHref) : withAnnotations;
   const withShim = injectSandboxShim(withBase);
   const withRedirectGuard = options.exportDocument

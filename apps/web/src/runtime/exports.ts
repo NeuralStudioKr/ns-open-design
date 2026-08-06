@@ -259,7 +259,8 @@ function projectExportInlineUrl(projectId: string, filePath: string): string {
 }
 
 export function exportAsHtml(html: string, title: string): void {
-  const doc = buildSrcdoc(html);
+  // Lean export — skip preview annotate / redirect-guard DOM tax.
+  const doc = buildSrcdoc(html, { exportDocument: true });
   const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
   triggerDownload(blob, `${safeFilename(title, 'artifact')}.html`);
 }
@@ -551,7 +552,8 @@ ${list(assetFiles)}
 }
 
 export function exportAsZip(html: string, title: string): void {
-  const doc = buildSrcdoc(html);
+  // Lean export — skip preview annotate / redirect-guard DOM tax.
+  const doc = buildSrcdoc(html, { exportDocument: true });
   exportRenderedHtmlAsZip(doc, title, 'index.html');
 }
 

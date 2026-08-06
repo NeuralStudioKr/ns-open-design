@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installMockOpenDesignHost } from '@open-design/host/testing';
 import {
@@ -30,6 +33,24 @@ import {
 function mockResponse(headers: Record<string, string>): Response {
   return { headers: new Headers(headers) } as Response;
 }
+
+const exportsSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../../src/runtime/exports.ts'),
+  'utf8',
+);
+
+describe('exportAsHtml / exportAsZip lean srcdoc', () => {
+  it('builds HTML/ZIP exports with exportDocument to skip preview annotate tax', () => {
+    expect(exportsSource).toContain('export function exportAsHtml');
+    expect(exportsSource).toContain('export function exportAsZip');
+    expect(exportsSource).toMatch(
+      /exportAsHtml[\s\S]*?buildSrcdoc\(html,\s*\{\s*exportDocument:\s*true\s*\}\)/,
+    );
+    expect(exportsSource).toMatch(
+      /exportAsZip[\s\S]*?buildSrcdoc\(html,\s*\{\s*exportDocument:\s*true\s*\}\)/,
+    );
+  });
+});
 
 describe('resolveExportDownloadTitle', () => {
   it('prefers the project display name over the artifact slug', () => {

@@ -51,6 +51,11 @@ export interface ApplyManualEditPatchOptions {
    * Document (FileViewer batch reconcile — skip N× re-parse).
    */
   captureTargetSnapshots?: boolean;
+  /**
+   * Pre-parsed Document (e.g. from style-diff). Mutated in place — caller must
+   * not reuse after apply. Skips a second full-deck parse on the apply path.
+   */
+  parsedDoc?: Document | null;
 }
 
 /**
@@ -104,7 +109,7 @@ export function applyManualEditPatches(
     return { ...single, appliedCount: single.ok ? 1 : 0 };
   }
 
-  const doc = parseSource(source);
+  const doc = options?.parsedDoc ?? parseSource(source);
   if (!doc) return { ok: false, source, error: 'Could not parse source.', appliedCount: 0 };
 
   let appliedCount = 0;
@@ -1293,8 +1298,11 @@ function sanitizeManualEditReplacementTree(root: Element): void {
         smilAttr.startsWith('on')
         || smilAttr === 'srcdoc'
         || smilAttr === 'content'
+        || smilAttr === 'behavior'
+        || smilAttr === 'http-equiv'
       ) {
-        // srcdoc/content can carry HTML/script payloads via to=/values=.
+        // srcdoc/content/behavior/http-equiv can carry HTML/script/HTC/refresh
+        // payloads via to=/values= — drop the SMIL node (parity with HTML attrs).
         toRemove.push(el);
         return;
       }
@@ -1467,6 +1475,11 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     'to', 'from', 'by', 'values',
   ].join('|');
   const smil = 'animate|animatemotion|animatetransform|set|animatecolor';
+  // Align with MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS (DOM walk scrubs these).
+  const presentationAttrs = [
+    'filter', 'fill', 'stroke', 'clip-path', 'clippath', 'mask', 'cursor',
+    'marker', 'marker-start', 'marker-mid', 'marker-end', 'color-profile',
+  ].join('|');
   return text
     .replace(new RegExp(`<(?:${dangerous})\\b[\\s\\S]*?<\\/(?:${dangerous})\\s*>`, 'gi'), '')
     .replace(new RegExp(`<(?:${dangerous})\\b[^>]*\\/?>`, 'gi'), '')
@@ -1478,9 +1491,29 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     .replace(/\ssrcdoc\s*=\s*(['"]).*?\1/gi, '')
     // Unquoted srcdoc=… (DOM walk removes the attr; fail-closed must too).
     .replace(/\ssrcdoc\s*=\s*[^\s>]+/gi, '')
+    // IE/HTC behavior + meta http-equiv (DOM walk removes these attrs).
+    .replace(/\sbehavior\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\sbehavior\s*=\s*[^\s>]+/gi, '')
+    .replace(/\shttp-equiv\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\shttp-equiv\s*=\s*[^\s>]+/gi, '')
     // Inline style can carry expression()/url(javascript:) without a DOM walk.
     .replace(/\sstyle\s*=\s*(['"])[\s\S]*?\1/gi, '')
     .replace(/\sstyle\s*=\s*[^\s>]+/gi, '')
+    // SVG presentation attrs with javascript/vbscript/remote url() paint servers.
+    .replace(
+      new RegExp(
+        `\\s(?:${presentationAttrs})\\s*=\\s*(['"])[\\s\\S]*?(?:javascript|vbscript|expression\\s*\\(|url\\s*\\(\\s*['"]?\\s*https?:)[\\s\\S]*?\\1`,
+        'gi',
+      ),
+      '',
+    )
+    .replace(
+      new RegExp(
+        `\\s(?:${presentationAttrs})\\s*=\\s*(?:javascript|vbscript|expression\\s*\\(|url\\s*\\(\\s*https?:)[^\\s>]*`,
+        'gi',
+      ),
+      '',
+    )
     .replace(
       new RegExp(
         `\\s(?:${urlAttrs})\\s*=\\s*(['"])\\s*(?:javascript|vbscript|data\\s*:\\s*text\\s*\\/\\s*html)[\\s\\S]*?\\1`,

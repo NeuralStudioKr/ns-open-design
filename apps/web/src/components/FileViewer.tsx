@@ -9553,10 +9553,10 @@ function HtmlViewer({
         })
         .filter((patch): patch is Extract<ManualEditPatch, { kind: 'set-style' }> => patch !== null);
       if (patches.length === 0) {
-        reconcileManualEditDraftAfterNoOpFlush(pending);
+        reconcileManualEditDraftAfterNoOpFlush(pending, parsedDoc);
         return true;
       }
-      const ok = await applyManualEditBatch(patches, pending.label);
+      const ok = await applyManualEditBatch(patches, pending.label, parsedDoc);
       if (!ok) {
         manualEditPendingStyleRef.current = restoreManualEditPendingStyleAfterFailedFlush(
           manualEditPendingStyleRef.current,
@@ -9568,12 +9568,19 @@ function HtmlViewer({
     }
     const targetIds = pending.targetIds ?? [pending.id];
     if (targetIds.length > 1) {
-      const patches = buildManualEditStylePatchesForTargets(baseSource, targetIds, pending.styles);
+      // One Document for multi-target diff + no-op reconcile / apply.
+      const parsedDoc = parseManualEditSource(baseSource);
+      const patches = buildManualEditStylePatchesForTargets(
+        baseSource,
+        targetIds,
+        pending.styles,
+        parsedDoc,
+      );
       if (patches.length === 0) {
-        reconcileManualEditDraftAfterNoOpFlush(pending);
+        reconcileManualEditDraftAfterNoOpFlush(pending, parsedDoc);
         return true;
       }
-      const ok = await applyManualEditBatch(patches, pending.label);
+      const ok = await applyManualEditBatch(patches, pending.label, parsedDoc);
       if (!ok) {
         manualEditPendingStyleRef.current = restoreManualEditPendingStyleAfterFailedFlush(
           manualEditPendingStyleRef.current,
@@ -10119,6 +10126,7 @@ function HtmlViewer({
   async function applyManualEditBatch(
     patches: ManualEditPatch[],
     label: string,
+    sharedParsedDoc?: Document | null,
   ): Promise<boolean> {
     if (patches.length === 0) return true;
     if (patches.length === 1) return applyManualEdit(patches[0]!, label);
@@ -10138,9 +10146,11 @@ function HtmlViewer({
     try {
       // One Document for all batch ops + per-id snapshots for reconcile
       // (was N× parse/serialize via sequential applyManualEditPatch).
+      // Prefer flush-shared Document when style-diff already parsed the deck.
       const result = applyManualEditPatches(baseSource, patches, {
         sanitize: isManualEditFullHtmlDocument(baseSource),
         captureTargetSnapshots: true,
+        parsedDoc: sharedParsedDoc,
       });
       if (!result.ok) {
         setManualEditError(

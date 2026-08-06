@@ -85,12 +85,14 @@ export function buildManualEditStylePatchesForTargets(
   baseSource: string,
   targetIds: readonly string[],
   pendingStyles: Partial<ManualEditStyles>,
+  /** Shared Document from flush — skip a second parse when apply reuses it. */
+  parsedDoc?: Document | null,
 ): Array<Extract<ManualEditPatch, { kind: 'set-style' }>> {
   // One Document for all target diffs (was N× readManualEditStyles parses).
-  const parsedDoc = parseManualEditSource(baseSource);
+  const doc = parsedDoc ?? parseManualEditSource(baseSource);
   const patches: Array<Extract<ManualEditPatch, { kind: 'set-style' }>> = [];
   for (const id of targetIds) {
-    const sourceStyles = readManualEditStyles(baseSource, id, {}, parsedDoc);
+    const sourceStyles = readManualEditStyles(baseSource, id, {}, doc);
     const effectiveStyles = diffManualEditStylePatch(baseSource, id, pendingStyles, {
       sourceStyles,
     });
@@ -111,6 +113,8 @@ export function applyManualEditPatches(
   options?: {
     sanitize?: boolean;
     captureTargetSnapshots?: boolean;
+    /** Pre-parsed Document from style-diff — skip apply re-parse. */
+    parsedDoc?: Document | null;
   },
 ): {
   ok: boolean;
@@ -125,6 +129,7 @@ export function applyManualEditPatches(
     {
       sanitize: options?.sanitize ?? isManualEditFullHtmlDocument(source),
       captureTargetSnapshots: options?.captureTargetSnapshots,
+      parsedDoc: options?.parsedDoc,
     },
   );
   if (!result.ok) {

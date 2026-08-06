@@ -36,6 +36,8 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('One Document for style read + no-op reconcile');
     expect(fileViewer).toContain('reconcileManualEditDraftAfterNoOpFlush(pending, parsedDoc)');
     expect(fileViewer).toContain('readManualEditTargetSnapshot(base, primary.id, {}, parsedDoc)');
+    expect(fileViewer).toContain('One Document for multi-target diff + no-op reconcile / apply');
+    expect(fileViewer).toContain('applyManualEditBatch(patches, pending.label, parsedDoc)');
   });
 
   it('uses optimistic stackWithPushedRevision after manual/inspect push', () => {

@@ -445,8 +445,9 @@ describe("ProjectView message loading", () => {
     expect(deckSource).toContain("querySelector('.od-visual-mark-target')");
     expect(deckSource).toContain("One section materialization for all attachments");
     expect(deckSource).toContain("currentSlides: sections");
-    expect(deckSource).toContain("idBearingNextSlides");
     expect(deckSource).toContain("One section materialization for text-verify + label conflict");
+    expect(deckSource).toContain("sharedCurrentSlides");
+    expect(deckSource).toContain("allPatchesVerified");
   });
 
   it("does not finalize an incomplete HTML artifact shell as a successful run", () => {
