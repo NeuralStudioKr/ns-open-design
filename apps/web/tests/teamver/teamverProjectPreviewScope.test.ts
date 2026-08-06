@@ -17,6 +17,7 @@ import {
   resetTeamverProjectPreviewScopeForTests,
   resolveTeamverProjectPreviewPrefix,
   sanitizePreviewEntryFile,
+  warmTeamverProjectPreviewPrefixes,
 } from '../../src/teamver/teamverProjectPreviewScope';
 
 describe('teamverProjectPreviewScope', () => {
@@ -178,5 +179,87 @@ describe('teamverProjectPreviewScope', () => {
       ),
     );
     await expect(kept).resolves.toBe('/api/projects/proj-1/preview/scope-abc');
+  });
+
+  it('coalesces concurrent mints for the same project across different files (0806-N06)', async () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    let resolveFetch!: (value: Response) => void;
+    vi.mocked(fetchTeamverDaemon).mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    const a = resolveTeamverProjectPreviewPrefix('proj-1', 'deck.html');
+    const b = resolveTeamverProjectPreviewPrefix('proj-1', 'slides/deck.html');
+    expect(fetchTeamverDaemon).toHaveBeenCalledTimes(1);
+
+    resolveFetch(
+      new Response(
+        JSON.stringify({
+          url: '/api/projects/proj-1/preview/scope-abc/deck.html',
+          file: 'deck.html',
+        }),
+        { status: 200 },
+      ),
+    );
+    await expect(a).resolves.toBe('/api/projects/proj-1/preview/scope-abc');
+    await expect(b).resolves.toBe('/api/projects/proj-1/preview/scope-abc');
+  });
+
+  it('warms multiple prefixes with one preview-url-batch POST (0806-N06)', async () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(fetchTeamverDaemon).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          results: [
+            {
+              projectId: 'p1',
+              ok: true,
+              url: '/api/projects/p1/preview/s1/deck.html',
+              file: 'deck.html',
+            },
+            {
+              projectId: 'p2',
+              ok: true,
+              url: '/api/projects/p2/preview/s2/deck.html',
+              file: 'deck.html',
+            },
+            { projectId: 'p3', ok: false },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await warmTeamverProjectPreviewPrefixes([
+      { projectId: 'p1', file: 'deck.html' },
+      { projectId: 'p2', file: 'deck.html?v=1' },
+      { projectId: 'p3', file: 'deck.html' },
+    ]);
+
+    expect(fetchTeamverDaemon).toHaveBeenCalledWith(
+      '/api/projects/preview-url-batch',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          items: [
+            { projectId: 'p1', file: 'deck.html' },
+            { projectId: 'p2', file: 'deck.html' },
+            { projectId: 'p3', file: 'deck.html' },
+          ],
+        }),
+      }),
+    );
+    expect(peekTeamverProjectPreviewPrefix('p1')).toBe('/api/projects/p1/preview/s1');
+    expect(peekTeamverProjectPreviewPrefix('p2')).toBe('/api/projects/p2/preview/s2');
+    expect(peekTeamverProjectPreviewPrefix('p3')).toBeNull();
+
+    vi.mocked(fetchTeamverDaemon).mockClear();
+    await expect(resolveTeamverProjectPreviewPrefix('p1', 'deck.html')).resolves.toBe(
+      '/api/projects/p1/preview/s1',
+    );
+    expect(fetchTeamverDaemon).not.toHaveBeenCalled();
   });
 });

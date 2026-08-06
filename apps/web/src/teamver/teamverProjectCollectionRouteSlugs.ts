@@ -11,6 +11,7 @@
 export const TEAMVER_PROJECT_COLLECTION_ROUTE_SLUGS = [
   "recent",
   "cover-hints",
+  "preview-url-batch",
 ] as const;
 
 const SLUG_SET = new Set<string>(

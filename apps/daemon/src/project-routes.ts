@@ -68,6 +68,8 @@ import { resolveProjectCoverHint } from './project-cover-hints.js';
 const PROJECT_COVER_HINTS_BATCH_MAX = 12;
 /** Status/metadata enrichment for registry-backed lists (home + projects tab). */
 const PROJECT_STATUS_HINTS_BATCH_MAX = 48;
+/** Home Recent HTML covers warm preview scopes in one POST. */
+const PROJECT_PREVIEW_URL_BATCH_MAX = 12;
 
 export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'telemetry' | 'appConfig' | 'validation'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
@@ -2806,6 +2808,75 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         status === 404 ? 'FILE_NOT_FOUND' : 'BAD_REQUEST',
         String(err),
       );
+    }
+  });
+
+  /**
+   * Home / list HTML covers: mint many project preview scopes in one POST
+   * so visible cards do not each GET /preview-url.
+   */
+  app.post('/api/projects/preview-url-batch', async (req, res) => {
+    try {
+      const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+      const seen = new Set<string>();
+      /** @type {{ projectId: string; file?: string }[]} */
+      const items = [];
+      for (const raw of rawItems) {
+        if (!raw || typeof raw !== 'object') continue;
+        const projectId =
+          typeof (raw as { projectId?: unknown }).projectId === 'string'
+            ? (raw as { projectId: string }).projectId.trim()
+            : '';
+        if (!isSafeId(projectId) || seen.has(projectId)) continue;
+        seen.add(projectId);
+        const fileRaw = (raw as { file?: unknown }).file;
+        const file =
+          typeof fileRaw === 'string' && fileRaw.trim().length > 0
+            ? fileRaw.trim().split(/[?#]/u, 1)[0]?.trim()
+            : undefined;
+        items.push(file ? { projectId, file } : { projectId });
+        if (items.length >= PROJECT_PREVIEW_URL_BATCH_MAX) break;
+      }
+
+      /** @type {import('@open-design/contracts').ProjectPreviewUrlBatchResult[]} */
+      const results = [];
+      for (const item of items) {
+        try {
+          if (ctx.projectStorageHooks?.ensureMaterialized) {
+            await ctx.projectStorageHooks.ensureMaterialized(req, item.projectId);
+          }
+          const project = getProjectAsync
+            ? await getProjectAsync(db, item.projectId)
+            : getProject(db, item.projectId);
+          if (!project) {
+            results.push({ projectId: item.projectId, ok: false });
+            continue;
+          }
+          const requestedPath = previewFilePathForProject(project, item.file);
+          const meta = await resolveProjectFilePath(
+            PROJECTS_DIR,
+            project.id,
+            requestedPath,
+            project.metadata,
+          );
+          const scope = projectPreviewScopes.mint(project.id);
+          results.push({
+            projectId: project.id,
+            ok: true,
+            url: `/api/projects/${encodeURIComponent(project.id)}/preview/${scope}/${encodeProjectPathForUrl(meta.name)}`,
+            file: meta.name,
+          });
+        } catch {
+          results.push({ projectId: item.projectId, ok: false });
+        }
+      }
+
+      /** @type {import('@open-design/contracts').ProjectPreviewUrlBatchResponse} */
+      const body = { results };
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(body);
+    } catch (err: any) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', String(err));
     }
   });
 

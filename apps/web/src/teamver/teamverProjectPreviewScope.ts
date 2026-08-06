@@ -1,4 +1,7 @@
-import type { ProjectPreviewUrlResponse } from "@open-design/contracts";
+import type {
+  ProjectPreviewUrlBatchResponse,
+  ProjectPreviewUrlResponse,
+} from "@open-design/contracts";
 
 import { isTeamverEmbedMode } from "./designApiBase";
 import { fetchTeamverDaemon } from "./teamverDaemonHeaders";
@@ -6,7 +9,9 @@ import { fetchTeamverDaemon } from "./teamverDaemonHeaders";
 const TTL_MS = 50 * 60 * 1000;
 /** Bound hung preview-url GETs so HtmlViewer fail-open can settle. */
 const PREFIX_FETCH_TIMEOUT_MS = 8_000;
+const BATCH_MAX = 12;
 const prefixByProject = new Map<string, { prefix: string; expiresAt: number }>();
+/** Inflight is always project-scoped — file only validates existence on the server. */
 const inflight = new Map<string, Promise<string | null>>();
 
 function previewPrefixFromUrl(url: unknown): string | null {
@@ -14,6 +19,13 @@ function previewPrefixFromUrl(url: unknown): string | null {
   if (!raw) return null;
   const match = /^(\/api\/projects\/[^/]+\/preview\/[^/]+)/u.exec(raw);
   return match?.[1] ?? null;
+}
+
+function seedPrefix(projectId: string, url: unknown): string | null {
+  const prefix = previewPrefixFromUrl(url);
+  if (!prefix) return null;
+  prefixByProject.set(projectId, { prefix, expiresAt: Date.now() + TTL_MS });
+  return prefix;
 }
 
 /** Strip cache-bust / fragment so daemon resolves a real project file path. */
@@ -55,7 +67,8 @@ export async function resolveTeamverProjectPreviewPrefix(
   if (peeked) return peeked;
 
   const safeEntry = sanitizePreviewEntryFile(entryFile);
-  const key = safeEntry ? `${id}:${safeEntry}` : id;
+  // Project-scoped inflight: cover + FileViewer with different ?file= share one mint.
+  const key = id;
   let pending = inflight.get(key);
   if (!pending) {
     pending = (async () => {
@@ -81,10 +94,7 @@ export async function resolveTeamverProjectPreviewPrefix(
         } catch {
           return null;
         }
-        const prefix = previewPrefixFromUrl(body.url);
-        if (!prefix) return null;
-        prefixByProject.set(id, { prefix, expiresAt: Date.now() + TTL_MS });
-        return prefix;
+        return seedPrefix(id, body.url);
       } finally {
         clearTimeout(timer);
         inflight.delete(key);
@@ -114,6 +124,58 @@ export async function resolveTeamverProjectPreviewPrefix(
     }
     void pending.then(finish, () => finish(null));
   });
+}
+
+export type WarmPreviewPrefixItem = {
+  projectId: string;
+  file?: string;
+};
+
+/**
+ * Warm many preview prefixes with one POST (home Recent HTML covers).
+ * Seeds `prefixByProject` so subsequent resolve calls skip per-card GETs.
+ */
+export async function warmTeamverProjectPreviewPrefixes(
+  items: readonly WarmPreviewPrefixItem[],
+): Promise<void> {
+  if (!isTeamverEmbedMode()) return;
+  const need: WarmPreviewPrefixItem[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const id = item.projectId?.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    if (peekTeamverProjectPreviewPrefix(id)) continue;
+    need.push({
+      projectId: id,
+      ...(sanitizePreviewEntryFile(item.file)
+        ? { file: sanitizePreviewEntryFile(item.file) }
+        : {}),
+    });
+    if (need.length >= BATCH_MAX) break;
+  }
+  if (need.length === 0) return;
+
+  try {
+    const resp = await fetchTeamverDaemon("/api/projects/preview-url-batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: need }),
+    });
+    if (!resp.ok) return;
+    let body: ProjectPreviewUrlBatchResponse;
+    try {
+      body = (await resp.json()) as ProjectPreviewUrlBatchResponse;
+    } catch {
+      return;
+    }
+    for (const row of body.results ?? []) {
+      if (!row || row.ok !== true) continue;
+      seedPrefix(row.projectId, row.url);
+    }
+  } catch {
+    // Soft-fail — cards fall back to per-project GET mint.
+  }
 }
 
 export function projectScopedPreviewUrl(prefix: string, filePath: string): string {

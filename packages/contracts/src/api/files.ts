@@ -103,6 +103,33 @@ export interface ProjectPreviewUrlResponse {
   opaqueOrigin: true;
 }
 
+/** Batch mint for home / list HTML covers — one POST instead of N GETs. */
+export interface ProjectPreviewUrlBatchItem {
+  projectId: string;
+  /** Optional entry path; daemon falls back to metadata.entryFile / index.html. */
+  file?: string;
+}
+
+export interface ProjectPreviewUrlBatchRequest {
+  items: ProjectPreviewUrlBatchItem[];
+}
+
+export type ProjectPreviewUrlBatchResult =
+  | {
+      projectId: string;
+      ok: true;
+      url: string;
+      file: string;
+    }
+  | {
+      projectId: string;
+      ok: false;
+    };
+
+export interface ProjectPreviewUrlBatchResponse {
+  results: ProjectPreviewUrlBatchResult[];
+}
+
 /**
  * Session-gated S3 GET mint for a single project file.
  * Browser uses `url` directly (img/open); falls back to `rawUrl` when disabled.
