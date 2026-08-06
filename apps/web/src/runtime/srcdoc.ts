@@ -153,7 +153,8 @@ export function buildSrcdoc(
     ? wrapped
     : annotatePreviewEditTargets(wrapped, { sourcePaths });
   const withBase = options.baseHref ? injectBaseHref(withAnnotations, options.baseHref) : withAnnotations;
-  const withShim = injectSandboxShim(withBase);
+  const withImageRetry = injectPreviewImageRetryBridge(withBase);
+  const withShim = injectSandboxShim(withImageRetry);
   const withRedirectGuard = options.exportDocument
     ? withShim
     : injectPreviewRedirectGuard(withShim, {
@@ -1198,6 +1199,101 @@ function injectSandboxShim(doc: string): string {
   if (/<body[^>]*>/i.test(doc))
     return doc.replace(/<body[^>]*>/i, (m) => `${m}${shim}`);
   return shim + doc;
+}
+
+/**
+ * Retry failed project-relative image loads inside the deck iframe.
+ *
+ * Composer / Drive-imported images the model embeds as
+ * `<img src="refs/drive/…">` can race against:
+ *   - S3 sync-down on the serving pod (file uploaded on a different pod).
+ *   - Teamver preview-scope prefix minting (fail-open first paint has no
+ *     `<base href>`, so the first fetch resolves against the parent doc URL
+ *     and 404s until the deck srcdoc rebuilds with a real base).
+ *
+ * Without retry the user sees the browser's broken-image placeholder + alt
+ * text (visually "the slide only has the image title") even after the file
+ * becomes reachable a moment later. This helper listens for `error` on any
+ * `<img>` with a same-origin / relative src and retries with a cache-bust up
+ * to a few times, spaced to cover S3 lag and prefix retry cadence.
+ */
+function injectPreviewImageRetryBridge(doc: string): string {
+  const script = `<script data-od-preview-image-retry>(function(){
+  var MAX_RETRIES = 3;
+  var RETRY_DELAYS_MS = [400, 1200, 3000];
+  var STATE = new WeakMap();
+  function shouldRetry(img){
+    var raw = img.getAttribute('src');
+    if (!raw) return false;
+    var trimmed = String(raw).trim();
+    if (!trimmed) return false;
+    if (/^(?:data:|blob:|about:|javascript:)/i.test(trimmed)) return false;
+    if (/^https?:/i.test(trimmed)) {
+      try {
+        var abs = new URL(trimmed, location.href);
+        return abs.origin === location.origin;
+      } catch (_) { return false; }
+    }
+    return true;
+  }
+  function bump(url, nonce){
+    var sep = url.indexOf('?') >= 0 ? '&' : '?';
+    return url + sep + '_odr=' + nonce;
+  }
+  function retry(img){
+    if (!img || !img.isConnected) return;
+    if (!shouldRetry(img)) return;
+    var state = STATE.get(img);
+    if (!state) {
+      var original = img.getAttribute('src') || '';
+      state = { original: original, attempts: 0 };
+      STATE.set(img, state);
+    }
+    if (state.attempts >= MAX_RETRIES) return;
+    var delay = RETRY_DELAYS_MS[state.attempts] || 3000;
+    state.attempts += 1;
+    setTimeout(function(){
+      if (!img.isConnected) return;
+      var complete = img.complete && img.naturalWidth > 0;
+      if (complete) return;
+      try {
+        img.src = bump(state.original, 'r' + state.attempts + '-' + Date.now());
+      } catch (_) {}
+    }, delay);
+  }
+  function onError(event){
+    var img = event && event.target;
+    if (!img || img.tagName !== 'IMG') return;
+    retry(img);
+  }
+  document.addEventListener('error', onError, true);
+  try {
+    var mo = new MutationObserver(function(mutations){
+      for (var i = 0; i < mutations.length; i++) {
+        var added = mutations[i].addedNodes;
+        for (var j = 0; j < added.length; j++) {
+          var node = added[j];
+          if (!node || node.nodeType !== 1) continue;
+          if (node.tagName === 'IMG') {
+            if (node.complete && node.naturalWidth === 0) retry(node);
+          } else if (node.querySelectorAll) {
+            var imgs = node.querySelectorAll('img');
+            for (var k = 0; k < imgs.length; k++) {
+              var img = imgs[k];
+              if (img.complete && img.naturalWidth === 0) retry(img);
+            }
+          }
+        }
+      }
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (_) {}
+})();</script>`;
+  if (/<head[^>]*>/i.test(doc))
+    return doc.replace(/<head[^>]*>/i, (m) => `${m}${script}`);
+  if (/<body[^>]*>/i.test(doc))
+    return doc.replace(/<body[^>]*>/i, (m) => `${m}${script}`);
+  return script + doc;
 }
 
 function injectPreviewFocusGuard(doc: string): string {
