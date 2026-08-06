@@ -92,6 +92,8 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     );
     expect(prompt).toContain("[Attached image embed]");
     expect(prompt).toContain('src="m1abc-photo.png"');
+    expect(prompt).toContain("exact project-relative path");
+    expect(prompt).toContain("never strip directory prefixes");
     expect(prompt).not.toContain("[Deliverable instruction]");
     expect(stripUserVisibleUserMessageText(prompt)).toBe("이 이미지를 슬라이드에 넣어줘");
   });
@@ -99,12 +101,13 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
   it("lists image embed paths on greenfield attachment deliverable turns", () => {
     const prompt = promptWithSlideAttachmentDeliverableInstruction(
       "이 사진으로 슬라이드 만들어줘",
-      [{ path: "hero.png", name: "hero.png", kind: "image" }],
+      [{ path: "refs/drive/msh5lhfh-hero.png", name: "hero.png", kind: "image" }],
       { slideOnlyMvp: true },
     );
     expect(prompt).toContain("[Deliverable instruction]");
     expect(prompt).toContain("[Attached image embed]");
-    expect(prompt).toContain('src="hero.png"');
+    expect(prompt).toContain('src="refs/drive/msh5lhfh-hero.png"');
+    expect(prompt).toContain("never strip directory prefixes");
   });
 });
 

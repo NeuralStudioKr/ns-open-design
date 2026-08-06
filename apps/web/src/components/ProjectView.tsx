@@ -1198,9 +1198,10 @@ function slideImageEmbedInstruction(imagePaths: readonly string[]): string {
   return [
     SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER,
     'The user attached image file(s) to place into the slide deck.',
-    'Embed each image with its exact project-relative path — never invent URLs, never use data: URIs, and do not omit the images:',
+    'Embed each image with its exact project-relative path (copy the path characters verbatim, including any `refs/drive/` or timestamp prefix).',
+    'Never invent URLs, never use data: URIs, never strip directory prefixes, never rename the file, and do not omit the images:',
     ...imagePaths.map((path) => `- <img src="${path}" alt="" style="max-width:100%;height:auto;object-fit:contain">`),
-    'Prefer a dedicated image slide or an existing content area via deck-patch / set-outer-html / set-image (JSON `{ "src": "<path>" }`).',
+    'Prefer a dedicated image slide or an existing content area via deck-patch / set-outer-html / set-image (JSON `{ "src": "<exact-path-above>" }`).',
     'Keep the rest of the deck intact unless the user asks for a broader redesign.',
   ].join('\n');
 }

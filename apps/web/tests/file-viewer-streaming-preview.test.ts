@@ -34,11 +34,14 @@ describe("FileViewer streaming slide preview", () => {
     expect(block).toContain('do NOT clear last-stable');
   });
 
-  it('fail-opens prefix settle after first attempt (or 2.5s hung backup)', () => {
+  it('holds srcDoc until preview prefix settles (no early no-base paint)', () => {
     const source = readSource('src/components/FileViewer.tsx');
     expect(source).toContain('failOpenPaintTimer');
-    expect(source).toMatch(/setTimeout\(\(\) => \{\s*if \(!cancelled\) setEmbedPreviewPrefixSettled\(true\);\s*\}, 2_500\)/);
-    expect(source).toContain('Allow first paint without base; a later successful retry remounts');
+    // Terminal hung-mint backup only — never fail-open after attempt 0 while
+    // relative refs/drive|assets imgs still need a scoped <base href>.
+    expect(source).toMatch(/setTimeout\(\(\) => \{\s*if \(!cancelled\) setEmbedPreviewPrefixSettled\(true\);\s*\}, 10_000\)/);
+    expect(source).not.toContain('Allow first paint without base; a later successful retry remounts');
+    expect(source).toContain('Do NOT fail-open after');
   });
 
   it('keeps a host ResizeObserver fit recovery loop for intermittent letterbox', () => {

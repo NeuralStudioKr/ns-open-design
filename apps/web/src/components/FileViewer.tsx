@@ -6472,6 +6472,10 @@ function HtmlViewer({
     // relative assets do not resolve against a stale/unauthorized prefix.
     if (embedAuthRecoveryNonce > 0) {
       invalidateTeamverProjectPreviewPrefix(projectId);
+      // Auth recovery must hold empty srcDoc (no relative-asset paint against a
+      // stale/unauthorized prefix) until a fresh mint settles.
+      setEmbedPreviewPrefix(null);
+      setEmbedPreviewPrefixSettled(false);
     } else {
       // Valid cache: paint immediately and skip the retry/mint loop entirely.
       const peeked = peekTeamverProjectPreviewPrefix(projectId);
@@ -6481,16 +6485,19 @@ function HtmlViewer({
         return;
       }
     }
-    if (identityChanged && embedAuthRecoveryNonce === 0) {
+    if (identityChanged || embedAuthRecoveryNonce > 0) {
       setEmbedPreviewPrefix(null);
       setEmbedPreviewPrefixSettled(false);
     }
     const retryDelaysMs = [0, 400, 1_200] as const;
-    // Absolute backup if attempt 0 never returns (hung fetch). Prefer settling
-    // right after attempt 0 so we do not paint mid-flight then remount twice.
+    // Absolute backup if a hung mint never returns. Do NOT fail-open after
+    // attempt 0 — painting relative refs/drive|assets|uploads imgs without
+    // <base href> leaves broken-image + alt text until remount (or forever if
+    // mint never recovers). Hold empty srcDoc until a real prefix or this
+    // terminal budget.
     const failOpenPaintTimer = window.setTimeout(() => {
       if (!cancelled) setEmbedPreviewPrefixSettled(true);
-    }, 2_500);
+    }, 10_000);
     void (async () => {
       for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
         if (cancelled) return;
@@ -6517,12 +6524,6 @@ function HtmlViewer({
           setEmbedPreviewPrefix(resolved);
           setEmbedPreviewPrefixSettled(true);
           return;
-        }
-        if (attempt === 0) {
-          // Allow first paint without base; a later successful retry remounts.
-          setEmbedPreviewPrefix(null);
-          setEmbedPreviewPrefixSettled(true);
-          window.clearTimeout(failOpenPaintTimer);
         }
       }
       if (!cancelled) {

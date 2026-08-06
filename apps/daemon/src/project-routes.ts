@@ -2535,6 +2535,44 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     return false;
   }
 
+  async function resolveProjectFilePathWithPointGet(
+    req: any,
+    projectId: string,
+    relPath: string,
+    metadata?: unknown,
+  ) {
+    try {
+      return await resolveProjectFilePath(
+        PROJECTS_DIR,
+        projectId,
+        relPath,
+        metadata,
+      );
+    } catch (err: any) {
+      // Sibling-node uploads / Drive import can land in S3 while this node's
+      // lazy sync-down TTL still skips a full refresh. Deck iframes load via
+      // /preview/:scope/* (not chat thumbs), so without a point-get heal the
+      // relative <img src="refs/drive/..."> stays 404 forever. Deleted /
+      // never-uploaded paths still return false and rethrow ENOENT.
+      if (err && err.code === 'ENOENT' && ctx.projectStorageHooks) {
+        const filled = await ctx.projectStorageHooks.ensureFileAvailable(
+          req,
+          projectId,
+          relPath,
+        );
+        if (filled) {
+          return await resolveProjectFilePath(
+            PROJECTS_DIR,
+            projectId,
+            relPath,
+            metadata,
+          );
+        }
+      }
+      throw err;
+    }
+  }
+
   async function sendProjectFile(
     req: any,
     res: Response,
@@ -2544,8 +2582,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     beforeSend?: (mime: string) => void,
     transformFile?: (file: { mime: string; buffer: Buffer }) => Buffer | string | Promise<Buffer | string>,
   ) {
-    const meta = await resolveProjectFilePath(
-      PROJECTS_DIR,
+    const meta = await resolveProjectFilePathWithPointGet(
+      req,
       projectId,
       relPath,
       metadata,

@@ -1222,7 +1222,20 @@ function injectPreviewImageRetryBridge(doc: string): string {
   var MAX_RETRIES = 3;
   var RETRY_DELAYS_MS = [400, 1200, 3000];
   var STATE = new WeakMap();
+  function hasScopedBase(){
+    try {
+      var base = document.querySelector('base[href]');
+      if (!base) return false;
+      var href = base.getAttribute('href') || '';
+      if (!href || href === 'about:blank') return false;
+      // Relative project assets need a project-scoped /raw/ or /preview/ base.
+      return /\\/(?:raw|preview)\\//.test(href) || href.indexOf('/api/projects/') === 0;
+    } catch (_) { return false; }
+  }
   function shouldRetry(img){
+    // Without <base href> relative src resolves against about:srcdoc — burn
+    // the retry budget only after a scoped base is present (S3 lag case).
+    if (!hasScopedBase()) return false;
     var raw = img.getAttribute('src');
     if (!raw) return false;
     var trimmed = String(raw).trim();
@@ -1246,6 +1259,8 @@ function injectPreviewImageRetryBridge(doc: string): string {
     var state = STATE.get(img);
     if (!state) {
       var original = img.getAttribute('src') || '';
+      // Strip prior _odr cache-bust so we retry from the clean project path.
+      original = original.replace(/([?&])_odr=[^&]*/g, '$1').replace(/[?&]$/, '');
       state = { original: original, attempts: 0 };
       STATE.set(img, state);
     }
@@ -1254,6 +1269,7 @@ function injectPreviewImageRetryBridge(doc: string): string {
     state.attempts += 1;
     setTimeout(function(){
       if (!img.isConnected) return;
+      if (!hasScopedBase()) return;
       var complete = img.complete && img.naturalWidth > 0;
       if (complete) return;
       try {

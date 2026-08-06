@@ -42,4 +42,20 @@ describe('FileViewer embed preview prefix recovery', () => {
       /baseHref:\s*srcDocBaseHref/,
     );
   });
+
+  it('holds empty srcDoc through mint retries (no attempt-0 no-base paint)', () => {
+    // Early fail-open painted relative Drive/composer imgs without <base>,
+    // which showed broken-image + alt ("title only") until remount.
+    expect(fileViewer).not.toMatch(
+      /if \(attempt === 0\) \{\s*\/\/ Allow first paint without base/,
+    );
+    expect(fileViewer).toContain('Do NOT fail-open after');
+    expect(fileViewer).toMatch(/10_000/);
+  });
+
+  it('clears prefix and holds settle on auth recovery remint', () => {
+    expect(fileViewer).toMatch(
+      /if \(embedAuthRecoveryNonce > 0\) \{[\s\S]{0,300}?setEmbedPreviewPrefixSettled\(false\)/,
+    );
+  });
 });

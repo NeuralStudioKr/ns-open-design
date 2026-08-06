@@ -15,6 +15,10 @@ describe('preview image retry bridge', () => {
     // Cache-bust query prefix is `_odr=` so we do not overwrite artifact
     // query params like `?v=<mtime>` when the retry fires.
     expect(doc).toContain('_odr=');
+    // Burn the retry budget only once a scoped <base href> exists — without
+    // it relative src resolves against about:srcdoc and can never succeed.
+    expect(doc).toContain('hasScopedBase');
+    expect(doc).toMatch(/\/(?:raw|preview)\//);
   });
 
   it('keeps the retry bridge off data: / blob: / cross-origin sources', () => {
@@ -40,6 +44,8 @@ describe('preview image retry bridge', () => {
       { deck: true },
     );
     expect(doc).toContain('data-od-preview-image-retry');
-    expect(doc).not.toContain('<base');
+    // No document <base href> is injected when callers omit baseHref — the
+    // retry bridge still installs (and gates on hasScopedBase at runtime).
+    expect(doc).not.toMatch(/<base\s+href=/i);
   });
 });

@@ -151,6 +151,16 @@ describe('teamverProjectPreviewScope', () => {
     expect(url).toBe('/api/projects/p1/preview/s1/assets/logo.png');
   });
 
+  it('percent-encodes Korean / special path segments for scoped preview URLs', () => {
+    const url = projectScopedPreviewUrl(
+      '/api/projects/p1/preview/s1',
+      'refs/drive/msh5lhfh-놀란고양이-_1_.jpeg',
+    );
+    expect(url).toBe(
+      '/api/projects/p1/preview/s1/refs/drive/msh5lhfh-%EB%86%80%EB%9E%80%EA%B3%A0%EC%96%91%EC%9D%B4-_1_.jpeg',
+    );
+  });
+
   it('returns null when the caller aborts without canceling shared inflight', async () => {
     vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
     let resolveFetch!: (value: Response) => void;
