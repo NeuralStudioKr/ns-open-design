@@ -53,7 +53,14 @@ import {
   mergeAihubmixImageModels,
   useAIHubMixImageModels,
 } from '../media/aihubmix-image-models';
-import { openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir } from '../providers/registry';
+import {
+  openFolderDialog,
+  fetchRecentLinkedDirs,
+  pushRecentLinkedDir,
+  fetchPluginPreviewHtml,
+} from '../providers/registry';
+import { openSandboxedPreviewInNewTab } from '../runtime/exports';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 import { isOpenDesignHostAvailable, pickHostWorkingDir } from '@open-design/host';
 import type {
   DesignSystemSummary,
@@ -560,8 +567,26 @@ export function HomeView({
         plugin_id: record.sourceMarketplaceEntryName ?? record.id,
         plugin_type: record.marketplaceTrust ?? 'official',
       });
+      // Fetch HTML via the authenticated API client, then open a sandboxed
+      // blob tab. A raw `/api/plugins/.../preview` top-level navigation
+      // drops embed session cookies and lands on session_expired.
+      void (async () => {
+        const result = await fetchPluginPreviewHtml(record.id);
+        if (!('html' in result) || !result.html) return;
+        const odMode = record.manifest?.od?.mode;
+        const previewBlock = record.manifest?.od?.preview as { type?: unknown } | undefined;
+        const isDeck =
+          odMode === 'deck' ||
+          odMode === 'template' ||
+          previewBlock?.type === 'html';
+        openSandboxedPreviewInNewTab(
+          result.html,
+          localizePluginTitle(locale, record),
+          { deck: isDeck },
+        );
+      })();
     },
-    [analytics.track],
+    [analytics.track, locale],
   );
   const inputRef = useRef<HomeHeroHandle | null>(null);
   const homeViewRef = useRef<HTMLDivElement | null>(null);
@@ -2332,6 +2357,28 @@ export function HomeView({
           loadingMorePlugins={pluginsLoadingMore}
           onLoadMorePlugins={loadMoreCommunityPlugins}
           cardLayout="gallery"
+          {...(slideOnlyMvp
+            ? {
+                title: embedUiLabel('Slide templates', '슬라이드 템플릿'),
+                subtitle: embedUiLabel(
+                  'Pick a template to start a new slide deck.',
+                  '템플릿을 골라 새 슬라이드 덱을 시작하세요.',
+                ),
+                searchPlaceholder: embedUiLabel('Search templates…', '템플릿 검색…'),
+                emptyMessage: embedUiLabel(
+                  'No slide templates yet.',
+                  '슬라이드 템플릿이 없습니다.',
+                ),
+                emptyFilteredMessage: embedUiLabel(
+                  'No templates match the current filters.',
+                  '현재 필터와 일치하는 템플릿이 없습니다.',
+                ),
+                emptyFilteredSearchMessage: embedUiLabel(
+                  'No templates match your search.',
+                  '검색과 일치하는 템플릿이 없습니다.',
+                ),
+              }
+            : {})}
         />
       </HomeTemplatesReveal>
       ) : null}

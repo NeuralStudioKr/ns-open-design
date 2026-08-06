@@ -45,9 +45,10 @@ interface Props {
   // is the minimal live-preview tile: a top bar (dot + name + open
   // fullscreen) over an eagerly-rendered example.html iframe.
   layout?: 'rich' | 'gallery';
-  // Gallery only: the ↗ that opens the real example page in a new tab.
-  // Fired alongside the default anchor navigation so analytics can tell
-  // "opened the finished page" apart from "opened the detail modal".
+  // Gallery only: the ↗ that opens the preview in a new tab. Prefer a
+  // button + handler (fetch HTML → sandboxed blob) over a raw
+  // `/api/plugins/.../preview` anchor — embed sessions cannot rely on
+  // cookie-auth for a top-level navigation to that URL.
   onOpenExternal?: (record: InstalledPluginRecord) => void;
 }
 
@@ -141,7 +142,20 @@ export function PluginCard({
           >
             {title}
           </button>
-          {previewSrc ? (
+          {previewSrc && onOpenExternal ? (
+            <button
+              type="button"
+              className="plugins-home__gallery-open"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenExternal(record);
+              }}
+              aria-label={`Open ${title} in a new tab`}
+              data-testid={`plugins-home-open-${record.id}`}
+            >
+              <Icon name="external-link" size={12} />
+            </button>
+          ) : previewSrc ? (
             <a
               className="plugins-home__gallery-open"
               href={previewSrc}
@@ -149,7 +163,6 @@ export function PluginCard({
               rel="noreferrer"
               onClick={(event) => {
                 event.stopPropagation();
-                onOpenExternal?.(record);
               }}
               aria-label={`Open ${title} in a new tab`}
               data-testid={`plugins-home-open-${record.id}`}

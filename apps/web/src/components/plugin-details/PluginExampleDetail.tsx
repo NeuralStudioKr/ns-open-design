@@ -19,6 +19,7 @@ import { buildPluginShareUrl } from './PluginShareMenu';
 import { PluginMetaSections } from './PluginMetaSections';
 import { buildPluginUseMenu, pluginUsePrimaryAction } from './pluginUseMenu';
 import type { PluginUseAction } from '../plugins-home/useActions';
+import { embedUiLabel } from '../../teamver/embedUiLabels';
 
 interface Props {
   record: InstalledPluginRecord;
@@ -101,6 +102,26 @@ export function PluginExampleDetail({
     odMode === 'deck' ||
     odMode === 'template' ||
     previewBlock?.type === 'html';
+  const infoLabel = isDeck
+    ? embedUiLabel('Template info', '템플릿 정보')
+    : embedUiLabel('Plugin info', '플러그인 정보');
+  const primary = pluginUsePrimaryAction(record, t);
+  const primaryLabel = isDeck ? t('automations.useTemplate') : primary.label;
+  const useMenu = buildPluginUseMenu(record, onUse, t);
+  const templateUseMenu = isDeck && useMenu
+    ? useMenu.map((item, index) =>
+        index === 0
+          ? {
+              ...item,
+              label: embedUiLabel('Use template only', '템플릿만 사용'),
+              description: embedUiLabel(
+                'Use the template structure and write the content yourself',
+                '템플릿 구조만 적용하고 내용은 직접 작성',
+              ),
+            }
+          : item,
+      )
+    : useMenu;
 
   return (
     <PreviewModal
@@ -139,7 +160,7 @@ export function PluginExampleDetail({
         // developer manifest detail tucked behind a "Developer details"
         // disclosure (variant="minimal"). Fullscreen still gives an
         // immersive view when needed.
-        label: 'Plugin info',
+        label: infoLabel,
         defaultOpen: false,
         contentKey: record.id,
         content: (
@@ -148,7 +169,7 @@ export function PluginExampleDetail({
               record={record}
               omit={{ description: true }}
               compact
-              heading="Plugin info"
+              heading={infoLabel}
               variant="minimal"
             />
           </div>
@@ -157,12 +178,12 @@ export function PluginExampleDetail({
       primaryAction={hideUseAction
         ? undefined
         : {
-            label: pluginUsePrimaryAction(record, t).label,
-            onClick: () => onUse(record, pluginUsePrimaryAction(record, t).action),
+            label: primaryLabel,
+            onClick: () => onUse(record, primary.action),
             busy: !!isApplying,
-            busyLabel: 'Applying…',
+            busyLabel: t('homeHero.applying'),
             testId: `plugin-details-use-${record.id}`,
-            menu: buildPluginUseMenu(record, onUse, t),
+            menu: templateUseMenu,
           }}
       hideSidebarToggle
       onSharePopoverItemClick={onSharePopoverItemClick}

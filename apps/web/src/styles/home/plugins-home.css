@@ -429,6 +429,16 @@
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 16px;
 }
+@media (max-width: 900px) {
+  .plugins-home__grid--gallery {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .plugins-home__grid--gallery {
+    grid-template-columns: 1fr;
+  }
+}
 @media (min-width: 1400px) {
   .plugins-home__grid--gallery {
     grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
@@ -492,6 +502,10 @@
   justify-content: center;
   width: 22px;
   height: 22px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
   border-radius: 6px;
   color: var(--text-muted);
   text-decoration: none;
