@@ -1,4 +1,13 @@
+import {
+  buildGraphicContainerBridgeSnippet,
+  isDeckSlideRootElement,
+  resolveGraphicContainerTarget,
+} from './manual-edit-graphic-container';
+
+export { isDeckSlideRootElement, resolveGraphicContainerTarget };
+
 export const MANUAL_EDIT_DISCOVERY_SELECTOR = 'main, nav, section, article, header, footer, div, h1, h2, h3, p, a, button, img, svg, strong, span';
+
 export const MANUAL_EDIT_SOURCE_PATH_ATTR = 'data-od-source-path';
 export const MANUAL_EDIT_SCREEN_LABEL_ATTR = 'data-screen-label';
 export const MANUAL_EDIT_HOST_NODE_SELECTOR = [
@@ -50,45 +59,8 @@ export function isSourceMappableManualEditElement(el: Element): boolean {
   );
 }
 
-/** Deck slide roots must not be selected as graphic-wrapper parents. */
-export function isDeckSlideRootElement(el: Element): boolean {
-  const tag = el.tagName.toLowerCase();
-  if (tag !== 'section' && tag !== 'div') return false;
-  const cls = ` ${typeof el.className === 'string' ? el.className : ''} `;
-  if (/\bslide\b/.test(cls)) return true;
-  if (el.hasAttribute('data-slide')) return true;
-  if (el.hasAttribute('data-slide-index')) return true;
-  return false;
-}
-
-/**
- * Deck cover icons: inline SVG/img inside an absolute/fixed positioning wrapper.
- * Select the wrapper so left/top on the slide move the whole logo, not the
- * centered child trapped in a flex slot.
- */
-export function resolveGraphicContainerTarget(el: Element): Element {
-  const tag = el.tagName.toLowerCase();
-  if (tag !== 'img' && tag !== 'svg') return el;
-  const parent = el.parentElement;
-  if (!parent) return el;
-  const position = String(parent.ownerDocument?.defaultView?.getComputedStyle(parent).position ?? 'static').toLowerCase();
-  if (position !== 'absolute' && position !== 'fixed') return el;
-  if (!isSourceMappableManualEditElement(parent) || !parent.matches(MANUAL_EDIT_DISCOVERY_SELECTOR)) return el;
-  if (isDeckSlideRootElement(parent)) return el;
-  let graphicCount = 0;
-  for (const child of Array.from(parent.children)) {
-    const childTag = child.tagName.toLowerCase();
-    if (childTag === 'img' || childTag === 'svg') {
-      graphicCount += 1;
-      continue;
-    }
-    if (childTag === 'br' || childTag === 'wbr') continue;
-    if ((child.textContent || '').replace(/\s+/g, '').length > 0) return el;
-  }
-  return graphicCount >= 1 ? parent : el;
-}
-
 export function buildManualEditBridge(enabled: boolean): string {
+  const graphicContainerSnippet = buildGraphicContainerBridgeSnippet();
   return `<script data-od-edit-bridge>(function(){
   var enabled = ${JSON.stringify(enabled)};
   var discoverySelector = ${JSON.stringify(MANUAL_EDIT_DISCOVERY_SELECTOR)};
@@ -130,36 +102,7 @@ export function buildManualEditBridge(enabled: boolean): string {
   function isDiscoveryTarget(el){
     return !!(el && el.matches && el.matches(discoverySelector));
   }
-  function isDeckSlideRootEl(el){
-    if (!el || !el.tagName) return false;
-    var tag = el.tagName.toLowerCase();
-    if (tag !== 'section' && tag !== 'div') return false;
-    var cls = ' ' + (typeof el.className === 'string' ? el.className : '') + ' ';
-    if (/\\bslide\\b/.test(cls)) return true;
-    if (el.getAttribute('data-slide') != null) return true;
-    if (el.getAttribute('data-slide-index') != null) return true;
-    return false;
-  }
-  function resolveGraphicContainerTarget(el){
-    if (!el || !el.tagName) return el;
-    var tag = el.tagName.toLowerCase();
-    if (tag !== 'img' && tag !== 'svg') return el;
-    var parent = el.parentElement;
-    if (!parent) return el;
-    var pos = (window.getComputedStyle(parent).position || 'static').toLowerCase();
-    if (pos !== 'absolute' && pos !== 'fixed') return el;
-    if (!isSourceMappable(parent) || !isDiscoveryTarget(parent)) return el;
-    if (isDeckSlideRootEl(parent)) return el;
-    var kids = parent.children;
-    var graphicCount = 0;
-    for (var gi = 0; gi < kids.length; gi++) {
-      var childTag = kids[gi].tagName ? kids[gi].tagName.toLowerCase() : '';
-      if (childTag === 'img' || childTag === 'svg') { graphicCount++; continue; }
-      if (childTag === 'br' || childTag === 'wbr') continue;
-      if ((kids[gi].textContent || '').replace(/\\s+/g, '').length > 0) return el;
-    }
-    return graphicCount >= 1 ? parent : el;
-  }
+  ${graphicContainerSnippet}
   function inferKind(el){
     var explicit = el.getAttribute('data-od-edit');
     if (explicit) return explicit;

@@ -1002,6 +1002,8 @@ function annotateMissingOdIdsOnDocument(parsed: Document): void {
     'nav > div[class]', 'nav > div[id]',
     'aside > div[class]', 'aside > div[id]',
     '[id] > div[class]', '[id] > div[id]',
+    // Deck slide icons / positioned chrome often ship as bare <div style="...">.
+    'section.slide > div[style]', 'section[class~="slide"] > div[style]',
   ].join(', ');
   const skipTags = new Set(['script', 'style', 'template', 'noscript', 'iframe', 'object', 'embed']);
   const skipDeckChrome = (el: Element): boolean => {

@@ -286,6 +286,24 @@ describe('manual edit source patches', () => {
     expect(result.source).toContain('height="400"');
   });
 
+  it('persists move left/top on absolute graphic wrapper', () => {
+    const source = [
+      '<section class="slide">',
+      '<div data-od-source-path="path-0-1" style="position:absolute;left:855px;top:322px;width:775px;height:508px">',
+      '<svg data-od-source-path="path-0-1-0" viewBox="0 0 400 400" width="420" height="420"></svg>',
+      '</div></section>',
+    ].join('');
+    const result = applyManualEditPatch(source, {
+      kind: 'set-style',
+      id: 'path-0-1',
+      styles: { left: '900px', top: '350px' },
+    });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.source).toContain('left: 900px');
+    expect(result.source).toContain('top: 350px');
+    expect(result.source).not.toContain('left: 855px');
+  });
+
   it('rejects srcset javascript, null-byte scheme bypass, and svg data URLs', () => {
     const source = [
       '<!doctype html><html><body>',

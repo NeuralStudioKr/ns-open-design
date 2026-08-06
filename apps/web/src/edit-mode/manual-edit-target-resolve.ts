@@ -1,7 +1,7 @@
 import {
   manualEditStableIdForElement,
-  resolveGraphicContainerTarget,
 } from './bridge';
+import { resolveGraphicContainerTarget } from './manual-edit-graphic-container';
 import { findManualEditPreviewTarget } from './manual-edit-host-preview';
 
 /** DOM ancestry for manual-edit ids (data-od-id, source-path, screen-label, path-*). */
