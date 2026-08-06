@@ -312,7 +312,7 @@ import {
   shouldClearManualEditFrozenSourceOnModeChange,
   shouldUpdateManualEditFrozenSourceOnPatch,
 } from '../edit-mode/manual-edit-freeze';
-import { isManualEditKeyboardTextTarget } from '../edit-mode/manual-edit-keyboard';
+import { isManualEditKeyboardTextTarget, resolveManualEditDeleteKeyboardAction } from '../edit-mode/manual-edit-keyboard';
 import {
   MANUAL_EDIT_STYLE_AUTOSAVE_MS,
   keyedManualEditStyleRollback,
@@ -5604,6 +5604,7 @@ function HtmlViewer({
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const manualEditSavingRef = useRef(false);
   const manualEditZOrderHandlerRef = useRef<((action: ZOrderAction) => void) | null>(null);
+  const manualEditDeleteHandlerRef = useRef<(() => void) | null>(null);
   const manualEditPendingStyleRef = useRef<ManualEditPendingStyleSave | null>(null);
   const manualEditStyleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const manualEditPreviewVersionRef = useRef(0);
@@ -10933,6 +10934,22 @@ function HtmlViewer({
     return () => window.removeEventListener('keydown', onKey);
   }, [manualEditMode, drawOverlayOpen]);
 
+  // Delete / Backspace removes the selected manual-edit target.
+  useEffect(() => {
+    if (!manualEditMode || drawOverlayOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (!resolveManualEditDeleteKeyboardAction(e)) return;
+      if (manualEditSavingRef.current) return;
+      if (manualEditInlineTextEditing) return;
+      if (manualEditResizeSessionActiveRef.current) return;
+      if (selectedManualEditTargetIdsRef.current.length !== 1) return;
+      e.preventDefault();
+      manualEditDeleteHandlerRef.current?.();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [manualEditMode, drawOverlayOpen, manualEditInlineTextEditing]);
+
   useEffect(() => {
     if (!presentMenuOpen) return;
     const onPointer = (e: MouseEvent) => {
@@ -12546,6 +12563,17 @@ function HtmlViewer({
     }, MANUAL_EDIT_STYLE_AUTOSAVE_MS);
   }
 
+  async function handleManualEditDeleteSelected() {
+    if (manualEditInlineTextEditing) return;
+    if (manualEditResizeSessionActiveRef.current) return;
+    if (manualEditSavingRef.current) return;
+    const ids = selectedManualEditTargetIdsRef.current;
+    if (ids.length !== 1) return;
+    const id = ids[0]!;
+    if (!(await settleManualEditStyleBoundary())) return;
+    await applyManualEdit({ id, kind: 'remove-element' }, t('manualEdit.deleteElement'));
+  }
+
   function handleManualEditZOrder(action: ZOrderAction) {
     const doc = iframeContentDocumentIfAccessible(iframeRef.current);
     const reorderOptions = {
@@ -12595,6 +12623,9 @@ function HtmlViewer({
     queueManualEditZOrderPatches(patches, layerReorderHistoryLabel(patches.length));
   }
   manualEditZOrderHandlerRef.current = handleManualEditZOrder;
+  manualEditDeleteHandlerRef.current = () => {
+    void handleManualEditDeleteSelected();
+  };
   const revisionCanUndo = canUndoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionCanRedo = canRedoRevisionStack(revisionStack) && !revisionStackInvalidated;
   const revisionUndoUnavailableTooltip = revisionStackInvalidated

@@ -21,3 +21,18 @@ export function isManualEditKeyboardTextTarget(target: EventTarget | null | unde
     || el.closest('[contenteditable]:not([contenteditable="false"])'),
   );
 }
+
+export type ManualEditDeleteKeyboardInput = Pick<
+  KeyboardEvent,
+  'altKey' | 'ctrlKey' | 'key' | 'metaKey' | 'repeat' | 'shiftKey' | 'target'
+>;
+
+/** Delete / Backspace removes the selected manual-edit target (when not typing). */
+export function resolveManualEditDeleteKeyboardAction(
+  event: ManualEditDeleteKeyboardInput,
+): boolean {
+  if (event.repeat) return false;
+  if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
+  if (isManualEditKeyboardTextTarget(event.target)) return false;
+  return event.key === 'Delete' || event.key === 'Backspace';
+}

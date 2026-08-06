@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from 'vitest';
-import { isManualEditKeyboardTextTarget } from '../../src/edit-mode/manual-edit-keyboard';
+import {
+  isManualEditKeyboardTextTarget,
+  resolveManualEditDeleteKeyboardAction,
+} from '../../src/edit-mode/manual-edit-keyboard';
 
 describe('manual edit keyboard text target', () => {
   it('treats plaintext-only editing hosts as text targets even without isContentEditable', () => {
@@ -31,5 +34,36 @@ describe('manual edit keyboard text target', () => {
     document.body.append(node);
     expect(isManualEditKeyboardTextTarget(node)).toBe(false);
     node.remove();
+  });
+
+  it('maps delete/backspace to element removal when not typing', () => {
+    const input = document.createElement('input');
+    expect(resolveManualEditDeleteKeyboardAction({
+      key: 'Delete',
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      repeat: false,
+      target: document.body,
+    })).toBe(true);
+    expect(resolveManualEditDeleteKeyboardAction({
+      key: 'Backspace',
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      repeat: false,
+      target: document.body,
+    })).toBe(true);
+    expect(resolveManualEditDeleteKeyboardAction({
+      key: 'Delete',
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      repeat: false,
+      target: input,
+    })).toBe(false);
   });
 });
