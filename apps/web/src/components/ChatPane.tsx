@@ -33,9 +33,17 @@ import {
   chatAttachmentVisibleInProjectFiles,
   excludeAttachmentsBackedByVisualScreenshots,
   isEphemeralDrawingScreenshotPath,
+  isRenderableImagePath,
+  projectFilePathBasename,
   projectFilePathExists,
   projectFileResolvedPath,
 } from '../utils/projectFilePaths';
+import { recoverChatAttachmentsFromMentions } from '../utils/recoverChatAttachmentsFromMentions';
+import {
+  buildInlineMentionParts,
+  inlineMentionToken,
+  type InlineMentionEntity,
+} from '../utils/inlineMentions';
 import { resolveTeamverDriveAssetUrl } from '../teamver/designApiBase';
 import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider';
@@ -3690,8 +3698,12 @@ function UserMessageImpl({
   activeTemplateTitle?: string | null;
   activeDesignSystem?: DesignSystemSummary | null;
 }) {
-  const attachments = sortChatAttachmentsForDisplay(message.attachments ?? []);
-  const commentAttachments = message.commentAttachments ?? [];
+  // Recover `@image.webp` mentions into attachment chips when attachments_json
+  // was dropped by a partial upsert / older client — otherwise refresh leaves
+  // only plain `@filename` text in the bubble.
+  const messageWithRecoveredAttachments = recoverChatAttachmentsFromMentions(message);
+  const attachments = sortChatAttachmentsForDisplay(messageWithRecoveredAttachments.attachments ?? []);
+  const commentAttachments = messageWithRecoveredAttachments.commentAttachments ?? [];
   // After refresh, /files can lag behind durable Drive/local uploads that are
   // still on disk. Keep those chips visible; only ephemeral drawings stay
   // strictly index-gated so deleted marks do not resurrect.
@@ -3739,6 +3751,10 @@ function UserMessageImpl({
     strippedUserContent === COMMENT_ONLY_USER_PLACEHOLDER && commentAttachments.length > 0
       ? ''
       : strippedUserContent;
+  const userMentionEntities = useMemo(
+    () => mentionEntitiesForUserMessage(visibleAttachments, visibleUserContent),
+    [visibleAttachments, visibleUserContent],
+  );
   const ts = messageTime(message);
 
   return (
@@ -3859,7 +3875,12 @@ function UserMessageImpl({
         </div>
       ) : visibleUserContent ? (
         <div className="user-text-wrap">
-          <div className="user-text user-bubble">{visibleUserContent}</div>
+          <div className="user-text user-bubble">
+            <UserMessageInlineContent
+              text={visibleUserContent}
+              entities={userMentionEntities}
+            />
+          </div>
           <div className="user-actions">
             {ts ? (
               <time
@@ -3883,6 +3904,85 @@ function UserMessageImpl({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function mentionEntitiesForUserMessage(
+  attachments: readonly ChatAttachment[],
+  visibleText: string,
+): InlineMentionEntity[] {
+  const entities: InlineMentionEntity[] = [];
+  const seen = new Set<string>();
+  const pushFile = (path: string) => {
+    const trimmed = path.trim().replace(/\\/g, '/');
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    const base = projectFilePathBasename(trimmed);
+    entities.push({
+      id: trimmed,
+      kind: 'file',
+      label: base,
+      token: inlineMentionToken(trimmed),
+      title: `File: ${trimmed}`,
+    });
+    if (base !== trimmed && !seen.has(base)) {
+      seen.add(base);
+      entities.push({
+        id: trimmed,
+        kind: 'file',
+        label: base,
+        token: inlineMentionToken(base),
+        title: `File: ${trimmed}`,
+      });
+    }
+  };
+  for (const attachment of attachments) {
+    pushFile(attachment.path);
+  }
+  // Promote leftover `@*.webp` tokens even when attachment recovery failed so
+  // the bubble still matches the composer chip look.
+  if (visibleText.includes('@')) {
+    const parts = buildInlineMentionParts(visibleText, entities, { highlightUnknown: true });
+    for (const part of parts ?? []) {
+      if (part.kind !== 'mention' || part.entity.kind !== 'unknown') continue;
+      const label = part.entity.label.trim().replace(/\\/g, '/');
+      if (!isRenderableImagePath(label) || isEphemeralDrawingScreenshotPath(label)) continue;
+      pushFile(label);
+    }
+  }
+  return entities;
+}
+
+function UserMessageInlineContent({
+  text,
+  entities,
+}: {
+  text: string;
+  entities: InlineMentionEntity[];
+}) {
+  const parts = buildInlineMentionParts(text, entities, { highlightUnknown: false });
+  if (!parts) return <>{text}</>;
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (part.kind === 'text') {
+          return <Fragment key={`t-${index}`}>{part.text}</Fragment>;
+        }
+        return (
+          <span
+            key={`m-${index}-${part.entity.id}`}
+            className={`composer-inline-mention composer-inline-mention--${part.entity.kind}`}
+            data-mention=""
+            data-mention-id={part.entity.id}
+            data-mention-kind={part.entity.kind}
+            data-testid="user-inline-mention"
+            title={part.entity.title ?? part.entity.label}
+          >
+            {part.text}
+          </span>
+        );
+      })}
+    </>
   );
 }
 

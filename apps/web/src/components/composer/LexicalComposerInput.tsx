@@ -177,7 +177,7 @@ export interface LexicalComposerInputProps {
 // but expressed in Lexical terms.
 export interface LexicalComposerInputHandle {
   getText(): string;
-  setText(text: string): void;
+  setText(text: string, entities?: InlineMentionEntity[]): void;
   clear(): void;
   focus(): void;
   insertText(text: string): void;
@@ -693,10 +693,10 @@ export const LexicalComposerInput = forwardRef<
           '\n',
         );
       },
-      setText(text: string) {
+      setText(text: string, entities?: InlineMentionEntity[]) {
         const editor = editorRef.current;
         if (!editor) return;
-        setComposerFromText(editor, text, knownEntitiesRef.current);
+        setComposerFromText(editor, text, entities ?? knownEntitiesRef.current);
       },
       clear() {
         const editor = editorRef.current;

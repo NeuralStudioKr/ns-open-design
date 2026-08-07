@@ -22,7 +22,6 @@ import { COMMENT_ONLY_USER_PLACEHOLDER } from '../comments';
 import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
 import {
   isEphemeralDrawingScreenshotPath,
-  isLikelyDurableUploadedImagePath,
   projectFilePathExists,
   projectFilePathBasename,
 } from '../utils/projectFilePaths';
@@ -705,10 +704,10 @@ export function filterAnthropicImageCandidatesByProjectFiles(
     if (isProjectRawFileKnownMissing(projectId, candidate.path)) return false;
     if (!projectFileNames || projectFilePathExists(projectFileNames, candidate.path)) return true;
     // Ephemeral annotation drawings must stay gated by the file index so
-    // deleted marks do not spam raw GETs. Durable Drive/local uploads may
-    // race ahead of /files refresh — still allow vision for those paths.
+    // deleted marks do not spam raw GETs. Other message attachments may race
+    // ahead of /files refresh — still allow vision for those paths.
     if (isEphemeralDrawingScreenshotPath(candidate.path)) return false;
-    return isLikelyDurableUploadedImagePath(candidate.path);
+    return true;
   });
 }
 

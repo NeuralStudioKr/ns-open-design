@@ -7,6 +7,20 @@ import {
 } from 'lexical';
 import { $createMentionNode } from './MentionNode';
 import { buildInlineMentionParts, type InlineMentionEntity } from '../../utils/inlineMentions';
+import {
+  isEphemeralDrawingScreenshotPath,
+  isRenderableImagePath,
+} from '../../utils/projectFilePaths';
+
+/** Promote `@file.webp` tokens to file pills even when /files has not loaded yet. */
+export function isPromotableFileMentionLabel(label: string): boolean {
+  const trimmed = String(label || '').trim().replace(/\\/g, '/');
+  if (!trimmed || trimmed.includes(' ')) return false;
+  if (isEphemeralDrawingScreenshotPath(trimmed)) return false;
+  if (isRenderableImagePath(trimmed)) return true;
+  // Non-image project files commonly mentioned from the toolbox / @ picker.
+  return /\.(html?|md|txt|csv|json|pdf)$/i.test(trimmed);
+}
 
 // Rebuild the whole editor from a plain `@token` string. Known `@token`
 // runs (matched against `entities`) become atomic MentionNodes; everything
@@ -32,7 +46,9 @@ export function setComposerFromText(
       lines.forEach((line, i) => {
         if (i > 0) p.append($createLineBreakNode());
         if (!line) return;
-        const parts = buildInlineMentionParts(line, entities, { highlightUnknown: false });
+        // highlightUnknown so `@msh9….webp` can be promoted to a file pill
+        // before projectFiles / staged entities arrive after refresh.
+        const parts = buildInlineMentionParts(line, entities, { highlightUnknown: true });
         if (!parts) {
           p.append($createTextNode(line));
           return;
@@ -46,6 +62,21 @@ export function setComposerFromText(
                 token: part.text,
                 label: part.entity.label,
                 title: part.entity.title,
+              }),
+            );
+          } else if (
+            part.kind === 'mention'
+            && part.entity.kind === 'unknown'
+            && isPromotableFileMentionLabel(part.entity.label)
+          ) {
+            const label = part.entity.label.trim().replace(/\\/g, '/');
+            p.append(
+              $createMentionNode({
+                mentionId: label,
+                mentionKind: 'file',
+                token: part.text,
+                label,
+                title: `File: ${label}`,
               }),
             );
           } else if (part.text) {

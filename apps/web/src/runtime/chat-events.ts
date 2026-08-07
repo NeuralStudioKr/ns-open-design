@@ -1,6 +1,7 @@
 import type { AgentEvent, ChatMessage } from '../types';
 import { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from '../artifacts/emergency-deck';
 import { reconcileUserCommentAttachments } from '../comments';
+import { recoverChatAttachmentsFromMentions } from '../utils/recoverChatAttachmentsFromMentions';
 import { AUTO_CONTINUE_STATUS_CODE } from './resume';
 
 function joinedTextFromEvents(events: AgentEvent[]): string {
@@ -94,7 +95,9 @@ function hasPersistedRunErrorEvent(events: AgentEvent[]): boolean {
  * metadata gaps that would hide error cards after reload.
  */
 export function reconcileChatMessageOnLoad(message: ChatMessage): ChatMessage {
-  let reconciled = reconcileUserCommentAttachments(message);
+  let reconciled = recoverChatAttachmentsFromMentions(
+    reconcileUserCommentAttachments(message),
+  );
   const events = reconciled.events ?? [];
   if (!hasPersistedRunErrorEvent(events)) return reconciled;
   if (reconciled.runStatus === 'failed' || reconciled.runStatus === 'canceled') return reconciled;

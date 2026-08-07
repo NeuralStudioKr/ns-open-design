@@ -118,8 +118,10 @@ export function isLikelyDurableUploadedImagePath(path: string): boolean {
 
 /**
  * Whether a chat attachment chip should stay visible for this project file
- * index. Ephemeral drawing screenshots remain index-gated; durable Drive/local
- * uploads stay visible when /files is stale after refresh.
+ * index. Ephemeral drawing screenshots remain index-gated so GC'd marks do not
+ * resurrect after refresh. Every other persisted message attachment is
+ * authoritative — `/files` lag must not hide Drive/local/board image chips
+ * (including non-timestamp names like `uploads/ref-memo.png`).
  */
 export function chatAttachmentVisibleInProjectFiles(
   projectFileNames: ReadonlySet<string> | undefined,
@@ -127,5 +129,5 @@ export function chatAttachmentVisibleInProjectFiles(
 ): boolean {
   if (projectFilePathExists(projectFileNames, path)) return true;
   if (isEphemeralDrawingScreenshotPath(path)) return false;
-  return isLikelyDurableUploadedImagePath(path);
+  return true;
 }

@@ -1128,28 +1128,26 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           // since queueing) are skipped rather than crashing. The applied
           // plugin is restored from its full snapshot, so it needs no lookup.
           const ctx = meta?.context;
-          setStagedSkills(
-            ctx?.skillIds
-              ? ctx.skillIds
-                  .map((id) => skills.find((s) => s.id === id))
-                  .filter((s): s is SkillSummary => Boolean(s))
-              : [],
-          );
-          setStagedMcpServers(
-            ctx?.mcpServerIds
-              ? ctx.mcpServerIds
-                  .map((id) => mcpServers.find((s) => s.id === id))
-                  .filter((s): s is McpServerConfig => Boolean(s))
-              : [],
-          );
-          setStagedConnectors(
-            ctx?.connectorIds
-              ? ctx.connectorIds
-                  .map((id) => connectors.find((c) => c.id === id))
-                  .filter((c): c is ConnectorDetail => Boolean(c))
-              : [],
-          );
-          setStagedWorkspaceContexts(ctx?.workspaceItems ?? []);
+          const restoredSkills = ctx?.skillIds
+            ? ctx.skillIds
+                .map((id) => skills.find((s) => s.id === id))
+                .filter((s): s is SkillSummary => Boolean(s))
+            : [];
+          const restoredMcpServers = ctx?.mcpServerIds
+            ? ctx.mcpServerIds
+                .map((id) => mcpServers.find((s) => s.id === id))
+                .filter((s): s is McpServerConfig => Boolean(s))
+            : [];
+          const restoredConnectors = ctx?.connectorIds
+            ? ctx.connectorIds
+                .map((id) => connectors.find((c) => c.id === id))
+                .filter((c): c is ConnectorDetail => Boolean(c))
+            : [];
+          const restoredWorkspace = ctx?.workspaceItems ?? [];
+          setStagedSkills(restoredSkills);
+          setStagedMcpServers(restoredMcpServers);
+          setStagedConnectors(restoredConnectors);
+          setStagedWorkspaceContexts(restoredWorkspace);
           const restoredAppliedPlugin = meta?.appliedPluginSnapshot ?? null;
           setActiveAppliedPlugin(restoredAppliedPlugin);
           inlineBackedPluginRef.current = inlineBackedPluginFromRestoredDraft(
@@ -1160,7 +1158,21 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setUploadError(null);
           setMention(null);
           setSlash(null);
-          editorRef.current?.setText(text);
+          // Seed with attachment/file entities in the same tick — otherwise
+          // setText runs before React applies `staged` and `@file.webp` stays
+          // plain text instead of a chip.
+          editorRef.current?.setText(
+            text,
+            buildComposerMentionEntities({
+              connectors: restoredConnectors.length > 0 ? restoredConnectors : connectors,
+              files: projectFiles,
+              mcpServers: restoredMcpServers.length > 0 ? restoredMcpServers : enabledMcpServers,
+              plugins: pluginsForComposer,
+              skills: restoredSkills.length > 0 ? restoredSkills : skillsForComposer,
+              staged: orderedAttachments,
+              workspaceContexts: restoredWorkspace,
+            }),
+          );
           editorRef.current?.focus();
           seededRef.current = true;
         },
@@ -1180,7 +1192,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           setDesignToolboxOpen(true);
         },
       }),
-      [connectors, mcpServers, pluginsForComposer, skills]
+      [
+        connectors,
+        enabledMcpServers,
+        mcpServers,
+        pluginsForComposer,
+        projectFiles,
+        skills,
+        skillsForComposer,
+      ]
     );
 
     function reset() {

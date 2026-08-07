@@ -219,6 +219,46 @@ describe('ChatPane visual mark history', () => {
     expect(screen.getByText('msh5lhfh-놀란고양이-_1_.jpeg')).toBeTruthy();
   });
 
+  it('recovers attachment chips + @mention pills from content when attachments were dropped', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-mention-only',
+        role: 'user',
+        content: '이 이미지 2페이지에 넣어줘 @msh9rso1-서빙하는-금붕어.webp',
+        createdAt: 1,
+      },
+    ];
+
+    render(
+      <ChatPane
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[{ name: 'deck.html', path: 'deck.html' } as never]}
+        projectFileNames={new Set(['deck.html'])}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={[
+          { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
+        ]}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        config={{ agentId: 'claude', agentCliEnv: {} } as unknown as AppConfig}
+      />,
+    );
+
+    expect(screen.getByTestId('auth-project-image').getAttribute('data-path')).toBe(
+      'msh9rso1-서빙하는-금붕어.webp',
+    );
+    expect(screen.getByText('msh9rso1-서빙하는-금붕어.webp')).toBeTruthy();
+    const mention = screen.getByTestId('user-inline-mention');
+    expect(mention.getAttribute('data-mention-kind')).toBe('file');
+    expect(mention.textContent).toBe('@msh9rso1-서빙하는-금붕어.webp');
+  });
+
   it('renders durable memo/board image attachments as thumbs (not title-only)', () => {
     const messages: ChatMessage[] = [
       {

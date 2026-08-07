@@ -83,6 +83,8 @@ describe('chatAttachmentVisibleInProjectFiles', () => {
     const stale = new Set(['deck.html']);
     expect(chatAttachmentVisibleInProjectFiles(stale, 'refs/drive/msh5lhfh-hero.png')).toBe(true);
     expect(chatAttachmentVisibleInProjectFiles(stale, 'msh9y0i9-local.jpeg')).toBe(true);
+    expect(chatAttachmentVisibleInProjectFiles(stale, 'msh9rso1-서빙하는-금붕어.webp')).toBe(true);
+    expect(chatAttachmentVisibleInProjectFiles(stale, 'uploads/ref-memo.png')).toBe(true);
     expect(isLikelyDurableUploadedImagePath('refs/drive/msh5lhfh-hero.png')).toBe(true);
   });
 

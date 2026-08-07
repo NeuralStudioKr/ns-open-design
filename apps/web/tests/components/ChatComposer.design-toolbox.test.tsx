@@ -351,6 +351,12 @@ describe('ChatComposer design toolbox', () => {
     expect(composerText()).not.toContain('Workflow rule');
     expect(composerText()).not.toContain('Reference design files');
     expect(composerText()).not.toContain('Searchable plugins');
+    await waitFor(() => {
+      const pill = document.querySelector(
+        '.composer-inline-mention--file[data-mention-id="msh9rso1-serving-goldfish.webp"]',
+      );
+      expect(pill).toBeTruthy();
+    });
 
     fireEvent.click(screen.getByTestId('chat-send'));
     await act(async () => {
