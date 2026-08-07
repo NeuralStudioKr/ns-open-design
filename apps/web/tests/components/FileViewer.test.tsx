@@ -5071,6 +5071,17 @@ describe('serializeInspectOverrides', () => {
     expect(out).not.toContain('expression');
   });
 
+  it('drops inspect values with vbscript:', () => {
+    const out = serializeInspectOverrides({
+      hero: {
+        selector: '[data-od-id="hero"]',
+        props: { color: 'vbscript:msgbox(1)' },
+      },
+    });
+    expect(out).toBe('');
+    expect(out).not.toContain('vbscript');
+  });
+
   // The vulnerability we're regression-testing: artifact code rendered with
   // scripts enabled can call window.parent.postMessage({ type:
   // 'od:inspect-overrides', overrides, css: '</style><script>...</script>' })

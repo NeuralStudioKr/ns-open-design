@@ -98,11 +98,22 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Single-select: identity field change');
     expect(fileViewer).toContain('Already painting the pinned frame — skip srcdoc tear');
     expect(fileViewer).toContain('warmRevisionListSoftCacheFromStack');
-    expect(fileViewer).toContain('url\\s*\\(|expression\\s*\\(|javascript\\s*:');
+    expect(fileViewer).toContain('url\\s*\\(|expression\\s*\\(|javascript\\s*:|vbscript\\s*:');
     expect(fileViewer).toContain('Geometry-only rebroadcasts for the same id skip React churn');
     expect(fileViewer).toContain('const contentUnchanged = sourceRef.current === nextSource');
     expect(fileViewer).toContain('if (sourceRef.current !== pinnedPreferred)');
     expect(fileViewer).toContain('if (sourceRef.current !== accepted)');
+    expect(fileViewer).toContain('Idle remeasure: skip equal geometry churn and reject wild jumps');
+    expect(fileViewer).toContain('applyManualEditMeasuredGeometry(measured)');
+    expect(fileViewer).toContain('live→raw hold: skip setSource when already painting stable');
+    expect(fileViewer).toContain('Undo demotes activeSeq — warm soft-cache for the restored tip');
+    expect(fileViewer).toContain('srcdoc path updates via setSource; URL-load still needs reloadKey bust');
+    expect(fileViewer).toContain('if (useUrlLoadPreview)');
+    const restoreStart = fileViewer.indexOf('function applyRestoredSourceToViewer');
+    expect(restoreStart).toBeGreaterThan(0);
+    const restoreBlock = fileViewer.slice(restoreStart, restoreStart + 1_800);
+    expect(restoreBlock).toContain('const contentUnchanged = sourceRef.current === sourceToApply');
+    expect(restoreBlock).toContain('warmRevisionListSoftCacheFromStack');
   });
 });
 

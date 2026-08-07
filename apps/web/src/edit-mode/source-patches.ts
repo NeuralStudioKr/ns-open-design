@@ -1374,7 +1374,10 @@ function sanitizeManualEditReplacementTree(root: Element): void {
           const pieces = key === 'values' ? String(raw).split(';') : [raw];
           const unsafe = pieces.some((piece) => {
             const trimmed = piece.trim();
-            return Boolean(trimmed) && !isSafeManualEditRelativeOrFragmentUrl(trimmed);
+            if (!trimmed) return false;
+            // usemap is #fragment-only (parity with isSafeManualEditUrlAttrValue).
+            if (smilAttr === 'usemap') return !isSafeManualEditSvgResourceRef(trimmed);
+            return !isSafeManualEditRelativeOrFragmentUrl(trimmed);
           });
           if (unsafe) el.removeAttribute(key);
         }
@@ -1643,6 +1646,15 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     )
     .replace(
       /\susemap\s*=\s*(['"])#[a-z][a-z0-9+.-]*:[^'"]*\1/gi,
+      '',
+    )
+    // Unquoted unsafe usemap fragments (`usemap=#/x`, `usemap=#foo:bar`).
+    .replace(
+      /\susemap\s*=\s*#[^\s>]*[\\/][^\s>]*/gi,
+      '',
+    )
+    .replace(
+      /\susemap\s*=\s*#[a-z][a-z0-9+.-]*:[^\s>]*/gi,
       '',
     );
 }

@@ -3663,7 +3663,7 @@ const HOST_ALLOWED_INSPECT_PROPS = new Set([
 // surrounding <style> block — semicolons, braces, angle brackets, and
 // newlines — plus CSS url()/expression()/javascript: (XSS via inspect CSS).
 // Mirrors the bridge's UNSAFE_VALUE regex.
-const HOST_UNSAFE_INSPECT_VALUE = /[;{}<>\n\r]|url\s*\(|expression\s*\(|javascript\s*:/i;
+const HOST_UNSAFE_INSPECT_VALUE = /[;{}<>\n\r]|url\s*\(|expression\s*\(|javascript\s*:|vbscript\s*:/i;
 
 // Reject elementIds whose characters could break out of `[attr="..."]`
 // inside a <style> block. Forbidden:
@@ -6158,8 +6158,11 @@ function HtmlViewer({
       setSourceLoadFailed(false);
       const stable = lastStablePreviewSourceRef.current;
       if (stable) {
-        setSource(stable);
-        sourceRef.current = stable;
+        // live→raw hold: skip setSource when already painting stable.
+        if (sourceRef.current !== stable) {
+          setSource(stable);
+          sourceRef.current = stable;
+        }
         exportHtmlSnapshotGateRef.current = stable;
       } else {
         setSource(null);
@@ -8890,13 +8893,12 @@ function HtmlViewer({
         if (!measured || isHandoffRect) return;
 
         const current = selectedManualEditTargetRef.current;
-        if (
-          current?.id === measured.id
-          && !manualEditGeometryRoughlyMatches(current, measured)
-        ) {
+        if (current?.id === measured.id) {
+          // Idle remeasure: skip equal geometry churn and reject wild jumps.
+          // Handoff settle uses applyManualEditMeasuredGeometry on its own path.
           return;
         }
-        applyManualEditMeasuredTarget(measured);
+        applyManualEditMeasuredGeometry(measured);
         return;
       }
     }
@@ -10687,20 +10689,37 @@ function HtmlViewer({
 
   function applyRestoredSourceToViewer(sourceToApply: string, target: FileRevision): void {
     revisionSkipReconcileOnceRef.current = true;
-    setSource(sourceToApply);
-    sourceRef.current = sourceToApply;
+    const contentUnchanged = sourceRef.current === sourceToApply;
+    if (!contentUnchanged) {
+      setSource(sourceToApply);
+      sourceRef.current = sourceToApply;
+    }
     pinManualEditSavedSource(sourceToApply);
     setInlinedSource(null);
-    setManualEditFrozenSource(sourceToApply);
+    if (!contentUnchanged || manualEditFrozenSourceRef.current !== sourceToApply) {
+      setManualEditFrozenSource(sourceToApply);
+    }
     // SSOT before stack commit so a concurrent refresh cannot fall back to tip.
     setActiveRevisionSequence(projectId, file.name, target.sequence);
     commitRevisionStack(stackWithCursor(revisionStackRef.current, target.id));
-    setManualEditDraft((current) => ({ ...current, fullSource: sourceToApply }));
-    if (manualEditMode && !useUrlLoadPreview) {
-      capturePreviewScrollPosition();
-      queueMicrotask(() => activateManualEditPreviewHtml(sourceToApply));
-    } else {
-      setReloadKey((k) => k + 1);
+    // Undo demotes activeSeq — warm soft-cache for the restored tip.
+    warmRevisionListSoftCacheFromStack(
+      projectId,
+      file.name,
+      revisionStackRef.current,
+      target.sequence,
+      revisionRetentionLimit,
+    );
+    setManualEditDraft((current) => (
+      current.fullSource === sourceToApply ? current : { ...current, fullSource: sourceToApply }
+    ));
+    if (!contentUnchanged) {
+      if (manualEditMode && !useUrlLoadPreview) {
+        capturePreviewScrollPosition();
+        queueMicrotask(() => activateManualEditPreviewHtml(sourceToApply));
+      } else {
+        setReloadKey((k) => k + 1);
+      }
     }
     setRevisionStackInvalidated(false);
     const before = revisionBeforeCursor(revisionStackRef.current);
@@ -11078,7 +11097,10 @@ function HtmlViewer({
         revisionRetentionLimit,
       );
       setInspectSavedAt(Date.now());
-      setReloadKey((k) => k + 1);
+      // srcdoc path updates via setSource; URL-load still needs reloadKey bust.
+      if (useUrlLoadPreview) {
+        setReloadKey((k) => k + 1);
+      }
     } catch (err) {
       const msg = isTeamverEmbedMode()
         ? '소스에 저장하지 못했습니다.'
