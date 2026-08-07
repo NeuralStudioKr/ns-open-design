@@ -1011,17 +1011,40 @@ function parseManifest(raw) {
 export async function deleteProjectFile(projectsRoot, projectId, name, metadata?) {
   assertVisibleForImportedProject(name, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
-  const file = await resolveSafeReal(dir, name);
-  await unlink(file);
-  await addDeletedProjectRelpath(dir, name);
+  // NFC/NFD fallback: user-visible delete of an NFC-request name must still
+  // find the actual NFD-stored file (macOS legacy uploads). Also tombstone
+  // BOTH forms so sync-down cannot resurrect the file under the sibling
+  // Unicode variant.
+  const candidates = uniquePathCandidates(name);
+  let deletedPath: string | null = null;
+  let lastErr: any = null;
+  for (const candidate of candidates) {
+    try {
+      const file = await resolveSafeReal(dir, candidate);
+      await unlink(file);
+      deletedPath = candidate;
+      break;
+    } catch (err: any) {
+      if (!err || err.code !== 'ENOENT') throw err;
+      lastErr = err;
+    }
+  }
+  if (!deletedPath) {
+    throw lastErr || Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+  }
+  // Record BOTH Unicode forms so a sibling-node sync-down of the alternate-
+  // encoded S3 object cannot resurrect a user-deleted file after a refresh.
+  for (const candidate of candidates) {
+    await addDeletedProjectRelpath(dir, candidate);
+  }
 }
 
 export async function renameProjectFile(projectsRoot, projectId, fromName, toName, metadata?) {
   assertVisibleForImportedProject(fromName, metadata);
   assertVisibleForImportedProject(toName, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
-  const oldName = validateProjectPath(fromName);
-  const newName = sanitizePath(toName);
+  const requestedOld = validateProjectPath(fromName);
+  const newName = sanitizePath(toName); // sanitizePath already NFC-normalizes
   try {
     await stat(dir);
   } catch (err) {
@@ -1032,8 +1055,28 @@ export async function renameProjectFile(projectsRoot, projectId, fromName, toNam
     }
     throw err;
   }
-  const source = await resolveSafeReal(dir, oldName);
-  const sourceStat = await stat(source);
+  // NFC/NFD fallback for the source path — user-visible name may be NFC while
+  // disk stores NFD (macOS legacy). Try both forms.
+  let source: string | null = null;
+  let oldName: string = requestedOld;
+  let sourceStat: any = null;
+  {
+    let lastErr: any = null;
+    for (const candidate of uniquePathCandidates(requestedOld)) {
+      try {
+        const attempt = await resolveSafeReal(dir, candidate);
+        const st = await stat(attempt);
+        source = attempt;
+        oldName = candidate;
+        sourceStat = st;
+        break;
+      } catch (err: any) {
+        if (!err || err.code !== 'ENOENT') throw err;
+        lastErr = err;
+      }
+    }
+    if (!source) throw lastErr || Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+  }
   if (!sourceStat.isFile()) {
     const err = new Error('source is not a regular file');
     err.code = 'EISDIR';
