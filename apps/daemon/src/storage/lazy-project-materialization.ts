@@ -675,19 +675,29 @@ export function createProjectStorageAccessHooks(
     const normalized = String(relpath || '').trim().replace(/^\/+/, '');
     if (!trimmedId || !normalized) return false;
     await awaitPendingPersist(trimmedId);
-    const local = await storage.statFile(trimmedId, normalized);
-    if (local) return true;
+    // Probe primary + NFC + NFD forms — macOS uploads persisted NFD before the
+    // sanitizeName NFC pass, and old projects still hold those bytes on disk.
+    const candidates = ensureFileUnicodeCandidates(normalized);
+    for (const candidate of candidates) {
+      const local = await storage.statFile(trimmedId, candidate);
+      if (local) return true;
+    }
     try {
       const remote = await resolveRemote(req, trimmedId);
-      const pulled = await storage.pullRemoteFileIfMissing(trimmedId, remote, normalized);
-      if (pulled && process.env.OD_S3_SYNC_UP_METRICS === '1') {
-        console.info(JSON.stringify({
-          metric: 'od_s3_point_get_scratch_fill',
-          projectId: trimmedId,
-          path: normalized,
-        }));
+      for (const candidate of candidates) {
+        const pulled = await storage.pullRemoteFileIfMissing(trimmedId, remote, candidate);
+        if (pulled) {
+          if (process.env.OD_S3_SYNC_UP_METRICS === '1') {
+            console.info(JSON.stringify({
+              metric: 'od_s3_point_get_scratch_fill',
+              projectId: trimmedId,
+              path: candidate,
+            }));
+          }
+          return true;
+        }
       }
-      return pulled;
+      return false;
     } catch (err) {
       console.warn(
         `[project-materialization] point-get fill failed for ${trimmedId}/${normalized}:`,
@@ -695,6 +705,20 @@ export function createProjectStorageAccessHooks(
       );
       return false;
     }
+  }
+
+  function ensureFileUnicodeCandidates(relpath: string): string[] {
+    const primary = String(relpath || '');
+    const out = new Set<string>([primary]);
+    try {
+      const nfc = primary.normalize('NFC');
+      if (nfc !== primary) out.add(nfc);
+    } catch { /* ignore */ }
+    try {
+      const nfd = primary.normalize('NFD');
+      if (nfd !== primary) out.add(nfd);
+    } catch { /* ignore */ }
+    return [...out];
   }
 
   return {

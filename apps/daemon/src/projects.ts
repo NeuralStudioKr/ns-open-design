@@ -733,12 +733,63 @@ ${list(assetFiles)}
 `;
 }
 
+/**
+ * NFC/NFD-tolerant file resolution: /raw/, /preview/<scope>/, and PDF/HTML
+ * export subresource fetches all pass byte-exact paths through this helper.
+ * A file uploaded as NFD (macOS drag-drop) but requested as NFC (or vice
+ * versa) would otherwise ENOENT. Try the alternate Unicode form when the
+ * primary lookup fails.
+ */
+async function readFileWithUnicodeFallback(
+  dir,
+  requestedName,
+) {
+  const candidates = uniquePathCandidates(requestedName);
+  let lastErr = null;
+  for (const candidate of candidates) {
+    try {
+      const file = await resolveSafeReal(dir, candidate);
+      const buf = await readFile(file);
+      const st = await stat(file);
+      return { file, buf, st };
+    } catch (err) {
+      if (!err || err.code !== 'ENOENT') throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+}
+
+async function statFileWithUnicodeFallback(dir, requestedName) {
+  const candidates = uniquePathCandidates(requestedName);
+  let lastErr = null;
+  for (const candidate of candidates) {
+    try {
+      const file = await resolveSafeReal(dir, candidate);
+      const st = await stat(file);
+      return { file, st };
+    } catch (err) {
+      if (!err || err.code !== 'ENOENT') throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+}
+
+function uniquePathCandidates(requestedName) {
+  const primary = String(requestedName ?? '');
+  const nfc = projectRelpathNfcVariant(primary);
+  const nfd = projectRelpathNfdVariant(primary);
+  const out = [primary];
+  if (nfc) out.push(nfc);
+  if (nfd && !out.includes(nfd)) out.push(nfd);
+  return [...new Set(out.filter(Boolean))];
+}
+
 export async function readProjectFile(projectsRoot, projectId, name, metadata?) {
   assertVisibleForImportedProject(name, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
-  const file = await resolveSafeReal(dir, name);
-  const buf = await readFile(file);
-  const st = await stat(file);
+  const { file, buf, st } = await readFileWithUnicodeFallback(dir, name);
   const rootReal = await realpath(dir).catch(() => dir);
   const rel = toProjectPath(path.relative(rootReal, file));
   const manifest = await readManifestForPath(dir, rel);
@@ -760,8 +811,7 @@ export async function readProjectFile(projectsRoot, projectId, name, metadata?) 
 export async function resolveProjectFilePath(projectsRoot, projectId, name, metadata?) {
   assertVisibleForImportedProject(name, metadata);
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
-  const file = await resolveSafeReal(dir, name);
-  const st = await stat(file);
+  const { file, st } = await statFileWithUnicodeFallback(dir, name);
   const rootReal = await realpath(dir).catch(() => dir);
   const rel = toProjectPath(path.relative(rootReal, file));
   return {
@@ -1433,7 +1483,54 @@ export function sanitizeName(raw) {
     .replace(/[^\p{L}\p{N}._-]/gu, '_')
     .replace(/^\.+/, '_')
     .trim();
-  return cleaned || `file-${Date.now()}`;
+  // NFC-normalize so macOS NFD Hangul uploads stay reachable via the NFC
+  // request paths our FE / model / preview / export pipeline all use.
+  // Prior NFD-on-disk vs NFC-in-URL mismatch broke /raw/, presign-get,
+  // preview subresources, and PDF/HTML export image loading.
+  const nfc = safeNormalizeFilename(cleaned);
+  return nfc || `file-${Date.now()}`;
+}
+
+function safeNormalizeFilename(value) {
+  const source = String(value ?? '');
+  if (!source) return source;
+  try {
+    return source.normalize('NFC');
+  } catch {
+    return source;
+  }
+}
+
+/**
+ * Return NFD form of a project-relative path, or empty when normalization
+ * would be a no-op. Used to probe alternate Unicode forms when the primary
+ * (usually NFC) path is not on scratch — macOS uploaders historically stored
+ * NFD, and existing on-disk / S3 objects predate the ingestion NFC pass.
+ */
+export function projectRelpathNfdVariant(relpath) {
+  const source = String(relpath ?? '').trim();
+  if (!source) return '';
+  try {
+    const nfd = source.normalize('NFD');
+    return nfd === source ? '' : nfd;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Return NFC form of a project-relative path, or empty when it already is.
+ * Symmetric helper to {@link projectRelpathNfdVariant}.
+ */
+export function projectRelpathNfcVariant(relpath) {
+  const source = String(relpath ?? '').trim();
+  if (!source) return '';
+  try {
+    const nfc = source.normalize('NFC');
+    return nfc === source ? '' : nfc;
+  } catch {
+    return '';
+  }
 }
 
 // multer@1 decodes multipart filenames as latin1, which mangles any
