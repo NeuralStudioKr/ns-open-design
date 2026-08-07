@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  alternateAuthenticatedRawPaths,
   loadAuthenticatedProjectFileBlob,
   resetInflightProjectFileBlobLoadsForTests,
 } from '../../src/hooks/useAuthenticatedProjectFileObjectUrl';
@@ -9,6 +10,32 @@ import {
   markProjectRawFileMissing,
   resetProjectRawFileFetchCacheForTests,
 } from '../../src/utils/projectFileFetchCache';
+
+describe('alternateAuthenticatedRawPaths', () => {
+  it('probes refs/drive for basename-only recovered mention paths', () => {
+    expect(alternateAuthenticatedRawPaths('msh9rso1-서빙하는-금붕어.webp')).toEqual(
+      expect.arrayContaining([
+        'refs/drive/msh9rso1-서빙하는-금붕어.webp',
+        'uploads/msh9rso1-서빙하는-금붕어.webp',
+        'assets/msh9rso1-서빙하는-금붕어.webp',
+      ]),
+    );
+  });
+
+  it('probes NFC form when Drive path is Hangul NFD', () => {
+    const nfdName = '금붕어'.normalize('NFD');
+    const nfcName = '금붕어'.normalize('NFC');
+    expect(nfdName).not.toBe(nfcName);
+    const nfdPath = `refs/drive/msh9rso1-${nfdName}.webp`;
+    expect(alternateAuthenticatedRawPaths(nfdPath)).toEqual(
+      expect.arrayContaining([
+        `refs/drive/msh9rso1-${nfcName}.webp`,
+        `msh9rso1-${nfcName}.webp`,
+        `uploads/msh9rso1-${nfcName}.webp`,
+      ]),
+    );
+  });
+});
 
 describe('loadAuthenticatedProjectFileBlob', () => {
   beforeEach(() => {
@@ -206,8 +233,8 @@ describe('loadAuthenticatedProjectFileBlob', () => {
       },
     );
 
-    // primary + uploads + assets on attempt 0 (basename equals primary), then primary only on attempt 1
-    expect(fetchDaemon).toHaveBeenCalledTimes(4);
+    // primary + refs/drive + refs + uploads + assets on attempt 0, then primary only on attempt 1
+    expect(fetchDaemon).toHaveBeenCalledTimes(6);
   });
 
   it('dedupes concurrent loads for the same project/path', async () => {

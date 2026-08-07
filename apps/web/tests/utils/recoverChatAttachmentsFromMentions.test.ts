@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ensureDurableImageEmbedContract,
   extractImageMentionPathsFromUserText,
   mergeImageMentionAttachments,
   recoverChatAttachmentsFromMentions,
@@ -51,6 +52,36 @@ describe('mergeImageMentionAttachments', () => {
         order: 0,
       },
     ]);
+  });
+});
+
+describe('ensureDurableImageEmbedContract', () => {
+  it('appends a recoverable embed block when attachments exist but content lacks one', () => {
+    const next = ensureDurableImageEmbedContract('이 이미지 넣어줘', [
+      {
+        path: 'refs/drive/msh9rso1-서빙하는-금붕어.webp',
+        name: 'msh9rso1-서빙하는-금붕어.webp',
+        kind: 'image',
+        order: 0,
+      },
+    ]);
+    expect(next).toContain('[Attached image embed]');
+    expect(next).toContain('src="refs/drive/msh9rso1-서빙하는-금붕어.webp"');
+    expect(extractImageMentionPathsFromUserText(next)).toEqual([
+      'refs/drive/msh9rso1-서빙하는-금붕어.webp',
+    ]);
+  });
+
+  it('does not duplicate an existing embed block', () => {
+    const content = [
+      '넣어줘',
+      '',
+      '[Attached image embed]',
+      '- <img src="goldfish.webp" alt="">',
+    ].join('\n');
+    expect(ensureDurableImageEmbedContract(content, [
+      { path: 'goldfish.webp', name: 'goldfish.webp', kind: 'image', order: 0 },
+    ])).toBe(content);
   });
 });
 

@@ -1124,7 +1124,20 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       () => ({
         setDraft: (text: string) => {
           setDraft(text);
-          editorRef.current?.setText(text);
+          // Keep `@file.webp` / skill pills when an external surface reseeds
+          // the composer — plain setText demotes file mentions to TextNodes.
+          editorRef.current?.setText(
+            text,
+            buildComposerMentionEntities({
+              connectors,
+              files: projectFiles,
+              mcpServers: enabledMcpServers,
+              plugins: pluginsForComposer,
+              skills: skillsForComposer,
+              staged,
+              workspaceContexts,
+            }),
+          );
           editorRef.current?.focus();
           seededRef.current = true;
         },
@@ -1213,6 +1226,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         projectFiles,
         skills,
         skillsForComposer,
+        staged,
+        workspaceContexts,
       ]
     );
 
@@ -1498,7 +1513,18 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     function replaceEditorDraft(text: string) {
       draftRef.current = text;
       setDraft(text);
-      editorRef.current?.setText(text);
+      editorRef.current?.setText(
+        text,
+        buildComposerMentionEntities({
+          connectors,
+          files: projectFiles,
+          mcpServers: enabledMcpServers,
+          plugins: pluginsForComposer,
+          skills: skillsForComposer,
+          staged,
+          workspaceContexts,
+        }),
+      );
     }
 
     async function insertSkillMention(skill: SkillSummary) {
@@ -2391,13 +2417,33 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 // of both starting from the same stale closure. Mirror the
                 // result into the editor with setText so the now-non-empty
                 // editor does not fire an onChange('') that would clobber the
-                // accumulated draft back to empty.
+                // accumulated draft back to empty. Pass staged entities so
+                // concurrent `@image` pills are not demoted to plain text.
                 const nextDraft = draftRef.current
                   ? `${draftRef.current}\n${detail.note}`
                   : detail.note;
                 draftRef.current = nextDraft;
                 setDraft(nextDraft);
-                editorRef.current?.setText(nextDraft);
+                const stagedForSeed = (() => {
+                  if (uploaded.length === 0) return staged;
+                  const known = new Set(staged.map((item) => item.path));
+                  return sortChatAttachmentsByOrder([
+                    ...staged,
+                    ...uploaded.filter((item) => !known.has(item.path)),
+                  ]);
+                })();
+                editorRef.current?.setText(
+                  nextDraft,
+                  buildComposerMentionEntities({
+                    connectors,
+                    files: projectFiles,
+                    mcpServers: enabledMcpServers,
+                    plugins: pluginsForComposer,
+                    skills: skillsForComposer,
+                    staged: stagedForSeed,
+                    workspaceContexts,
+                  }),
+                );
               }
               editorRef.current?.focus();
             };

@@ -246,6 +246,53 @@ describe("findClientSlideCountRegression", () => {
       }),
     ).toBeNull();
   });
+
+  it("strict mode blocks soft shrink on existing-deck / image-embed turns", () => {
+    const priorHtml = Array.from(
+      { length: 8 },
+      (_, i) => `<section class="slide" data-slide-index="${i}">slide ${i + 1}</section>`,
+    ).join("\n");
+    const soft = Array.from(
+      { length: 6 },
+      (_, i) => `<section class="slide" data-slide-index="${i}">slide ${i + 1}</section>`,
+    ).join("\n");
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: soft,
+        priorHtml,
+      }),
+    ).toBeNull();
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: soft,
+        priorHtml,
+        strict: true,
+      }),
+    ).toMatchObject({ priorCount: 8, newCount: 6 });
+  });
+
+  it("counts slides even when open-tags contain quoted '>' in style attrs", () => {
+    const priorHtml = Array.from({ length: 8 }, (_, i) =>
+      i === 0
+        ? `<section class="slide" style="content: '>'" data-slide-index="${i}">hero</section>`
+        : `<section class="slide" data-slide-index="${i}">slide ${i + 1}</section>`,
+    ).join("\n");
+    const soft = Array.from(
+      { length: 6 },
+      (_, i) => `<section class="slide" data-slide-index="${i}">slide ${i + 1}</section>`,
+    ).join("\n");
+    // Naive [^>]* open-tag regexes undercount prior to 1 and skip the guard.
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: soft,
+        priorHtml,
+        strict: true,
+      }),
+    ).toMatchObject({ priorCount: 8, newCount: 6 });
+  });
 });
 
 describe("promptWithSlideCommentEditPatchInstruction", () => {

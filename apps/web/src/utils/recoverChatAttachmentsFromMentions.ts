@@ -3,6 +3,7 @@ import { stripUserVisibleUserMessageText } from '../comments';
 import {
   isEphemeralDrawingScreenshotPath,
   isRenderableImagePath,
+  normalizeProjectFilePath,
   projectFilePathBasename,
   projectFilePathsReferToSameFile,
 } from './projectFilePaths';
@@ -15,7 +16,7 @@ const ATTACHED_IMAGE_EMBED_BLOCK_RE =
   /\[Attached image embed\]([\s\S]*?)(?=\n\[|\n*<attached-preview-comments>|$)/i;
 
 function pushUniqueImagePath(path: string, out: string[], seen: Set<string>): void {
-  const normalized = String(path || '').trim().replace(/\\/g, '/');
+  const normalized = normalizeProjectFilePath(path);
   if (!normalized || seen.has(normalized)) return;
   if (isEphemeralDrawingScreenshotPath(normalized)) return;
   if (!isRenderableImagePath(normalized)) return;
@@ -90,6 +91,37 @@ export function mergeImageMentionAttachments(
     changed = true;
   }
   return changed ? existing : [...(attachments ?? [])];
+}
+
+/**
+ * Persist a durable `[Attached image embed]` recovery block when comment
+ * sanitizers / visible-text helpers would otherwise strip it. History chips
+ * and auto-continue can still rebuild attachments from the `<img src>` lines
+ * if `attachments_json` is later dropped by a partial upsert.
+ */
+export function ensureDurableImageEmbedContract(
+  content: string | null | undefined,
+  attachments: readonly ChatAttachment[] | null | undefined,
+): string {
+  const text = String(content ?? '');
+  const imagePaths = (attachments ?? [])
+    .map((attachment) => normalizeProjectFilePath(attachment.path))
+    .filter((path) => path && isRenderableImagePath(path) && !isEphemeralDrawingScreenshotPath(path));
+  if (imagePaths.length === 0) return text;
+  if (ATTACHED_IMAGE_EMBED_BLOCK_RE.test(text)) return text;
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const path of imagePaths) {
+    if (seen.has(path)) continue;
+    seen.add(path);
+    unique.push(path);
+  }
+  const block = [
+    '[Attached image embed]',
+    ...unique.map((path) => `- <img src="${path}" alt="">`),
+  ].join('\n');
+  const trimmed = text.trimEnd();
+  return trimmed ? `${trimmed}\n\n${block}` : block;
 }
 
 /**

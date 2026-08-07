@@ -67,6 +67,10 @@ import {
 } from '../comments';
 import { reconcileChatMessageOnLoad } from '../runtime/chat-events';
 import { sanitizeChatMessageLeakedPseudoTool } from '../utils/sanitizeChatMessageLeakedPseudoTool';
+import {
+  ensureDurableImageEmbedContract,
+  mergeImageMentionAttachments,
+} from '../utils/recoverChatAttachmentsFromMentions';
 function sanitizeChatMessageForPersist(message: ChatMessage): ChatMessage {
   const hideInternal = resolveTeamverBranding().hideAssistantThinkingDetails;
   const reconciled = reconcileUserCommentAttachments(message);
@@ -78,16 +82,44 @@ function sanitizeChatMessageForPersist(message: ChatMessage): ChatMessage {
   // echoes; for user turns that block is the durable recovery path when
   // `comment_attachments_json` is dropped by a partial upsert.
   if (reconciled.role !== 'user') return sanitized;
+  // Heal attachments_json from `@image` / embed-contract paths BEFORE stripping
+  // model-only suffixes — comment+image turns used to lose the embed block and
+  // leave empty attachments after refresh.
+  const healedAttachments = mergeImageMentionAttachments(
+    sanitized.attachments ?? reconciled.attachments,
+    reconciled.content ?? sanitized.content,
+  );
   const commentAttachments = hydrateQueryContextCommentAttachments(
     reconciled.commentAttachments ?? [],
     visibleCommentEditInstruction(sanitized.content ?? ''),
   );
-  if (commentAttachments.length === 0) return sanitized;
+  if (commentAttachments.length === 0) {
+    const withEmbed = ensureDurableImageEmbedContract(
+      sanitized.content ?? '',
+      healedAttachments,
+    );
+    if (
+      healedAttachments.length === (sanitized.attachments?.length ?? 0)
+      && withEmbed === (sanitized.content ?? '')
+    ) {
+      return sanitized;
+    }
+    return {
+      ...sanitized,
+      attachments: healedAttachments,
+      content: withEmbed,
+    };
+  }
   const visibleContent = visibleCommentEditInstruction(sanitized.content ?? '');
+  // Re-attach a durable embed recovery block after visibleCommentEditInstruction
+  // strips model-only suffixes — otherwise a later partial upsert that drops
+  // attachments_json cannot rebuild image chips / auto-continue vision.
+  const withEmbed = ensureDurableImageEmbedContract(visibleContent, healedAttachments);
   return {
     ...sanitized,
+    attachments: healedAttachments.length > 0 ? healedAttachments : sanitized.attachments,
     commentAttachments,
-    content: messageContentWithCommentAttachments(visibleContent, commentAttachments),
+    content: messageContentWithCommentAttachments(withEmbed, commentAttachments),
   };
 }
 export type { PluginInstallOutcome } from '@open-design/contracts';

@@ -15,6 +15,7 @@ import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { mergeRegister } from '@lexical/utils';
 import {
+  $createTextNode,
   $getRoot,
   $getSelection,
   $isRangeSelection,
@@ -35,18 +36,23 @@ import {
   INSERT_LINE_BREAK_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
   PASTE_COMMAND,
+  TextNode,
   type LexicalEditor,
   type LexicalNode,
   type RangeSelection,
-  type TextNode,
 } from 'lexical';
 import { MentionNode, $createMentionNode, $isMentionNode } from './MentionNode';
 import { serializeComposer } from './serialize';
 import { isPromotableFileMentionLabel, setComposerFromText } from './deserialize';
 import {
   buildInlineMentionParts,
+  inlineMentionToken,
   type InlineMentionEntity,
 } from '../../utils/inlineMentions';
+
+/** Completed `@file.ext` followed by end/whitespace/punctuation — safe to pill. */
+const PROMOTABLE_FILE_MENTION_IN_TEXT_RE =
+  /(^|[\s([{"'])(@[^\s@]+\.(?:png|jpe?g|gif|webp|avif|bmp|svg|html?|md|txt|csv|json|pdf))(?=$|[\s.,;:!?)}\]"'])/i;
 
 // A serializable caret box the host portal positions against. Sampled from the
 // live DOM selection at trigger-detection time (same tick as detection) so it
@@ -655,6 +661,50 @@ function SeedingPlugin({
   return null;
 }
 
+/**
+ * Live-promote typed/pasted `@goldfish.webp` TextNodes into MentionNodes once
+ * the token is complete (boundary after the extension). Skips nodes that are
+ * already mentions and avoids touching in-progress `@gol` queries.
+ */
+function FileMentionPromotePlugin() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => {
+    return editor.registerNodeTransform(TextNode, (node) => {
+      if (!$isTextNode(node) || $isMentionNode(node)) return;
+      if (node.hasFormat('code')) return;
+      const text = node.getTextContent();
+      if (!text.includes('@') || !text.includes('.')) return;
+      const match = PROMOTABLE_FILE_MENTION_IN_TEXT_RE.exec(text);
+      if (!match) return;
+      const prefix = match[1] ?? '';
+      const token = match[2] ?? '';
+      const label = token.slice(1);
+      if (!isPromotableFileMentionLabel(label)) return;
+      const start = match.index + prefix.length;
+      const end = start + token.length;
+      const before = text.slice(0, start);
+      const after = text.slice(end);
+      const mention = $createMentionNode({
+        mentionId: label,
+        mentionKind: 'file',
+        token: inlineMentionToken(label),
+        label,
+        title: `File: ${label}`,
+      });
+      if (before) {
+        node.setTextContent(before);
+        node.insertAfter(mention);
+      } else {
+        node.replace(mention);
+      }
+      if (after) {
+        mention.insertAfter($createTextNode(after));
+      }
+    });
+  }, [editor]);
+  return null;
+}
+
 export const LexicalComposerInput = forwardRef<
   LexicalComposerInputHandle,
   LexicalComposerInputProps & { draft: string }
@@ -816,6 +866,7 @@ export const LexicalComposerInput = forwardRef<
         onPopoverKey={onPopoverKey}
       />
       <PastePlugin onPasteFiles={onPasteFiles} />
+      <FileMentionPromotePlugin />
       <SeedingPlugin draft={draft} entities={knownEntities} />
     </LexicalComposer>
   );

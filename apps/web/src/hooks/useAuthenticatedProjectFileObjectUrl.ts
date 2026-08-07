@@ -11,7 +11,7 @@ import {
   markProjectRawFileMissing,
 } from '../utils/projectFileFetchCache';
 import { normalizeFetchedImageBlob } from '../utils/imageBlobNormalize';
-import { projectFilePathBasename } from '../utils/projectFilePaths';
+import { normalizeProjectFilePath, projectFilePathBasename } from '../utils/projectFilePaths';
 
 export const AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS = [0, 250, 800, 1500] as const;
 const TRUSTED_BACKGROUND_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
@@ -39,17 +39,35 @@ async function readResponseImageBlob(resp: Response): Promise<Blob> {
   throw new Error('response body unavailable');
 }
 
-function alternateAuthenticatedRawPaths(path: string): string[] {
-  const trimmed = String(path || '').trim().replace(/\\/g, '/');
-  if (!trimmed) return [];
-  const baseName = projectFilePathBasename(trimmed);
+/** @internal exported for tests */
+export function alternateAuthenticatedRawPaths(path: string): string[] {
+  const raw = String(path || '').trim().replace(/\\/g, '/');
+  const trimmed = normalizeProjectFilePath(path);
+  if (!trimmed && !raw) return [];
+  const baseName = projectFilePathBasename(trimmed || raw);
   const alternates: string[] = [];
+  // Hangul / macOS NFD path → also probe NFC form of the full relative path.
+  if (raw && trimmed && raw !== trimmed) alternates.push(trimmed);
   if (baseName && baseName !== trimmed) alternates.push(baseName);
-  if (baseName && !trimmed.includes('/')) {
+  if (baseName && !(trimmed || raw).includes('/')) {
+    // Recovered mention-only history often stores basename while the file
+    // lives under Drive / uploads / assets after refresh.
+    alternates.push(`refs/drive/${baseName}`);
+    alternates.push(`refs/${baseName}`);
     alternates.push(`uploads/${baseName}`);
     alternates.push(`assets/${baseName}`);
+  } else if (baseName && (trimmed || raw).startsWith('uploads/')) {
+    alternates.push(`refs/drive/${baseName}`);
+    alternates.push(baseName);
+  } else if (baseName && (trimmed || raw).startsWith('refs/drive/')) {
+    alternates.push(baseName);
+    alternates.push(`uploads/${baseName}`);
+    if (raw && trimmed && raw !== trimmed) {
+      // Also try NFC basename under the Drive prefix when full-path NFC differed.
+      alternates.push(`refs/drive/${baseName}`);
+    }
   }
-  return alternates;
+  return [...new Set(alternates.filter(Boolean))];
 }
 
 async function fetchAuthenticatedImageBlobAtPath(
@@ -115,11 +133,13 @@ async function loadAuthenticatedProjectFileBlobInner(
   },
 ): Promise<Blob | null> {
   const id = projectId.trim();
-  const path = filePath.trim();
+  const rawPath = String(filePath || '').trim().replace(/\\/g, '/');
+  const path = normalizeProjectFilePath(filePath) || rawPath;
   if (!id || !path) return null;
   const trustExists = Boolean(options?.trustExists);
   const allowBackgroundRetry = Boolean(options?.allowBackgroundRetry);
-  const alreadyMissing = isProjectRawFileKnownMissing(id, path);
+  const alreadyMissing = isProjectRawFileKnownMissing(id, path)
+    || (rawPath !== path && isProjectRawFileKnownMissing(id, rawPath));
   // Honor missing cache. Scratch-race callers (trustExists + allowBackgroundRetry)
   // may proceed once — AuthenticatedProjectFileImage blocks remounts via
   // startedKnownMissing so this does not re-spam `/raw/` for deleted files.
@@ -133,9 +153,15 @@ async function loadAuthenticatedProjectFileBlobInner(
   const delays = alreadyMissing
     ? [0]
     : (options?.delaysMs ?? AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS);
-  const pathCandidates = trustExists
-    ? [path, ...alternateAuthenticatedRawPaths(path)]
-    : [path];
+  // Always probe NFC primary; when trustExists also try Drive/uploads alternates
+  // (and NFD raw form when it differs — Hangul macOS paths).
+  const pathCandidates = [
+    ...new Set([
+      path,
+      ...(rawPath && rawPath !== path ? [rawPath] : []),
+      ...(trustExists ? alternateAuthenticatedRawPaths(rawPath || path) : []),
+    ]),
+  ];
 
   for (let attempt = 0; attempt < delays.length; attempt += 1) {
     const delay = delays[attempt] ?? 0;
@@ -158,15 +184,18 @@ async function loadAuthenticatedProjectFileBlobInner(
         const isLastAttempt = attempt >= delays.length - 1;
         if (!isLastAttempt) continue;
         markProjectRawFileMissing(id, path);
+        if (rawPath && rawPath !== path) markProjectRawFileMissing(id, rawPath);
         return null;
       }
       clearProjectRawFileMissing(id, path);
+      if (rawPath && rawPath !== path) clearProjectRawFileMissing(id, rawPath);
       clearProjectRawFileMissing(id, candidatePath);
       return blob;
     }
   }
 
   markProjectRawFileMissing(id, path);
+  if (rawPath && rawPath !== path) markProjectRawFileMissing(id, rawPath);
   return null;
 }
 

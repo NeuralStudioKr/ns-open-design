@@ -749,6 +749,71 @@ describe('conversation daemon auth', () => {
     fetchDaemonSpy.mockRestore();
   });
 
+  it('saveMessage heals image attachments and keeps embed contract on comment+image turns', async () => {
+    let capturedBody = '';
+    const fetchDaemonSpy = vi.spyOn(
+      await import('../../src/teamver/teamverDaemonHeaders'),
+      'fetchTeamverDaemon',
+    ).mockImplementation(async (_url, init) => {
+      capturedBody = String(init?.body ?? '');
+      return new Response('{}', { status: 200 });
+    });
+    const { commentsToAttachments, messageContentWithCommentAttachments } = await import('../../src/comments');
+    const { saveMessage } = await import('../../src/state/projects');
+    const commentAttachments = commentsToAttachments([
+      {
+        id: 'c1',
+        projectId: 'project-1',
+        conversationId: 'conv-1',
+        filePath: 'deck.html',
+        elementId: 'hero-title',
+        selector: '[data-od-id="hero-title"]',
+        label: 'h2',
+        text: 'Title',
+        position: { x: 1, y: 2, width: 3, height: 4 },
+        htmlHint: '<h2>',
+        note: '이미지 넣어',
+        status: 'open',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+    // Visible content keeps @mention; full model prompt had an embed that
+    // visibleCommentEditInstruction would strip — persist must heal both.
+    const content = messageContentWithCommentAttachments(
+      [
+        '이 이미지 넣어줘 @msh9rso1-서빙하는-금붕어.webp',
+        '',
+        '[Attached image embed]',
+        '- <img src="refs/drive/msh9rso1-서빙하는-금붕어.webp" alt="">',
+      ].join('\n'),
+      commentAttachments,
+    );
+
+    await saveMessage('project-1', 'conv-1', {
+      id: 'msg-user-comment-image',
+      role: 'user',
+      content,
+      createdAt: Date.now(),
+      commentAttachments,
+      // Simulate partial upsert that dropped attachments_json.
+      attachments: [],
+    });
+
+    const payload = JSON.parse(capturedBody) as {
+      content?: string;
+      attachments?: Array<{ path?: string }>;
+      commentAttachments?: unknown[];
+    };
+    expect(payload.commentAttachments).toHaveLength(1);
+    expect(payload.attachments?.some((item) =>
+      String(item.path ?? '').includes('msh9rso1-서빙하는-금붕어.webp'),
+    )).toBe(true);
+    expect(payload.content).toContain('[Attached image embed]');
+    expect(payload.content).toContain('<attached-preview-comments>');
+    fetchDaemonSpy.mockRestore();
+  });
+
   it('saveMessage keepalive trims heavy fields but preserves error status events', async () => {
     let capturedBody = '';
     const fetchDaemonSpy = vi.spyOn(

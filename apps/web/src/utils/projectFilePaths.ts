@@ -9,7 +9,7 @@ export function projectFilePathExists(
   projectFileNames: ReadonlySet<string> | undefined,
   path: string,
 ): boolean {
-  const trimmed = String(path || '').trim().replace(/\\/g, '/');
+  const trimmed = normalizeProjectFilePath(path);
   if (!trimmed) return false;
   if (!projectFileNames) {
     return !isEphemeralDrawingScreenshotPath(trimmed);
@@ -21,14 +21,14 @@ export function projectFilePathExists(
   // Do not treat `assets/a.png` as proof that `uploads/a.png` exists.
   if (hasDirectory) {
     for (const name of projectFileNames) {
-      const normalized = String(name || '').replace(/\\/g, '/');
+      const normalized = normalizeProjectFilePath(name);
       if (normalized === trimmed || normalized.endsWith(`/${trimmed}`)) return true;
     }
     return false;
   }
   if (projectFileNames.has(baseName)) return true;
   for (const name of projectFileNames) {
-    const normalized = String(name || '').replace(/\\/g, '/');
+    const normalized = normalizeProjectFilePath(name);
     if (normalized === baseName || normalized.endsWith(`/${baseName}`)) return true;
   }
   return false;
@@ -49,8 +49,19 @@ export function isEphemeralDrawingScreenshotPath(path: string): boolean {
   return isUserAnnotationDrawingScreenshotPath(path);
 }
 
-export function projectFilePathBasename(path: string): string {
+/** Normalize project-relative paths for compare (NFC + slash). */
+export function normalizeProjectFilePath(path: string): string {
   const trimmed = String(path || '').trim().replace(/\\/g, '/');
+  if (!trimmed) return '';
+  try {
+    return trimmed.normalize('NFC');
+  } catch {
+    return trimmed;
+  }
+}
+
+export function projectFilePathBasename(path: string): string {
+  const trimmed = normalizeProjectFilePath(path);
   return trimmed.split('/').pop() || trimmed;
 }
 
@@ -69,8 +80,8 @@ export function projectFileResolvedPath(file: { name: string; path?: string | nu
 
 /** Treat `uploads/foo.png` and bare `foo.png` as the same project file. */
 export function projectFilePathsReferToSameFile(a: string, b: string): boolean {
-  const left = String(a || '').trim().replace(/\\/g, '/');
-  const right = String(b || '').trim().replace(/\\/g, '/');
+  const left = normalizeProjectFilePath(a);
+  const right = normalizeProjectFilePath(b);
   if (!left || !right) return false;
   if (left === right) return true;
   return projectFilePathBasename(left) === projectFilePathBasename(right);

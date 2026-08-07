@@ -6,6 +6,7 @@ import {
   isEphemeralDrawingScreenshotPath,
   isLikelyDurableUploadedImagePath,
   isRenderableImagePath,
+  normalizeProjectFilePath,
   projectFilePathExists,
   projectFilePathsReferToSameFile,
   projectFileResolvedPath,
@@ -51,6 +52,15 @@ describe('project file path identity', () => {
     expect(projectFilePathsReferToSameFile('uploads/foo.png', 'foo.png')).toBe(true);
     expect(projectFilePathsReferToSameFile('uploads/foo.png', 'assets/foo.png')).toBe(true);
     expect(projectFilePathsReferToSameFile('uploads/foo.png', 'bar.png')).toBe(false);
+  });
+
+  it('treats NFC and NFD Hangul filenames as the same project file', () => {
+    const nfc = 'msh9rso1-서빙하는-금붕어.webp';
+    const nfd = nfc.normalize('NFD');
+    expect(nfd).not.toBe(nfc);
+    expect(normalizeProjectFilePath(nfd)).toBe(nfc);
+    expect(projectFilePathsReferToSameFile(nfc, nfd)).toBe(true);
+    expect(projectFilePathsReferToSameFile(`refs/drive/${nfc}`, nfd)).toBe(true);
   });
 
   it('excludes attachments backed by visual comment screenshots', () => {

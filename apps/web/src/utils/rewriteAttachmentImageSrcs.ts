@@ -1,4 +1,4 @@
-import { projectFilePathBasename } from './projectFilePaths';
+import { normalizeProjectFilePath, projectFilePathBasename } from './projectFilePaths';
 
 /**
  * Heal deck HTML where the model embedded a human/original filename (or the
@@ -19,7 +19,7 @@ export function rewriteAttachmentImageSrcs(
 
   const preferred = new Set(
     (options?.preferredPaths ?? [])
-      .map((path) => String(path || '').trim().replace(/\\/g, '/'))
+      .map((path) => normalizeProjectFilePath(path))
       .filter(Boolean),
   );
 
@@ -29,7 +29,7 @@ export function rewriteAttachmentImageSrcs(
   const byLettersOnly = new Map<string, string[]>();
 
   for (const raw of projectFilePaths) {
-    const path = String(raw || '').trim().replace(/\\/g, '/');
+    const path = normalizeProjectFilePath(raw);
     if (!path || !isImagePath(path)) continue;
     byExact.add(path);
     const base = projectFilePathBasename(path);
@@ -67,15 +67,10 @@ export function rewriteAttachmentImageSrcs(
     (full, prefix: string, quote: string, rawSrc: string) => {
       const resolved = resolve(rawSrc);
       if (!resolved) return full;
-      const normalized = normalizeProjectRelativeImageSrc(rawSrc);
-      if (!normalized || resolved === normalized) {
-        // Still rewrite leading-slash exact hits to the bare project path.
-        const trimmed = String(rawSrc || '').trim();
-        if (normalized && trimmed.replace(/^\/+/, '') === normalized && trimmed.startsWith('/')) {
-          return `${prefix}${quote}${resolved}${quote}`;
-        }
-        return full;
-      }
+      const trimmed = String(rawSrc || '').trim();
+      // Rewrite when the literal attribute differs from the canonical on-disk
+      // path — including Hangul NFD→NFC and leading-slash project paths.
+      if (trimmed === resolved) return full;
       return `${prefix}${quote}${resolved}${quote}`;
     },
   );
@@ -87,14 +82,8 @@ export function rewriteAttachmentImageSrcs(
       if (!isImagePath(String(rawSrc || ''))) return full;
       const resolved = resolve(rawSrc);
       if (!resolved) return full;
-      const normalized = normalizeProjectRelativeImageSrc(rawSrc);
-      if (!normalized || resolved === normalized) {
-        const trimmed = String(rawSrc || '').trim();
-        if (normalized && trimmed.replace(/^\/+/, '') === normalized && trimmed.startsWith('/')) {
-          return `${prefix}${quote}${resolved}${quote}${suffix}`;
-        }
-        return full;
-      }
+      const trimmed = String(rawSrc || '').trim();
+      if (trimmed === resolved) return full;
       return `${prefix}${quote}${resolved}${quote}${suffix}`;
     },
   );
@@ -128,7 +117,8 @@ export function normalizeProjectRelativeImageSrc(src: string): string | null {
       // Keep the encoded form and let exact/fuzzy maps miss rather than throw.
     }
   }
-  return normalized || null;
+  // Hangul / macOS NFD ↔ NFC so Drive embeds match on-disk NFC keys.
+  return normalizeProjectFilePath(normalized) || null;
 }
 
 function isImagePath(path: string): boolean {

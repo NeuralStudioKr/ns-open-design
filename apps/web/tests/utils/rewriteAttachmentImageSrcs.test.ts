@@ -26,6 +26,15 @@ describe('rewriteAttachmentImageSrcs', () => {
     expect(rewriteAttachmentImageSrcs(html, [stored])).toBe(html);
   });
 
+  it('rewrites Hangul NFD src to on-disk NFC Drive path', () => {
+    const nfd = '금붕어'.normalize('NFD');
+    const nfc = '금붕어'.normalize('NFC');
+    expect(nfd).not.toBe(nfc);
+    const stored = `refs/drive/msh9rso1-${nfc}.webp`;
+    const html = `<img src="refs/drive/msh9rso1-${nfd}.webp" alt="">`;
+    expect(rewriteAttachmentImageSrcs(html, [stored])).toContain(`src="${stored}"`);
+  });
+
   it('prefers the newest timestamped local upload when multiple stems collide', () => {
     const html = '<img src="photo.jpeg" alt="">';
     const next = rewriteAttachmentImageSrcs(html, [

@@ -2548,8 +2548,9 @@ const ARTIFACT_REGRESSION_MIN_PRIOR_BYTES = 8192;
 const ARTIFACT_REGRESSION_MIN_RATIO = 0.35;
 
 function countDeckSlideSections(html: string): number {
-  const matches = html.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b[^"']*["'][^>]*>/gi);
-  return matches?.length ?? 0;
+  // Must match applyDeckPatch / extractSlideByIndex: naive `[^>]*` regexes undercount
+  // when slide open-tags contain `>` inside quoted attrs (style calc/content).
+  return extractTopLevelSlideSections(extractDeckBodyContent(html)).length;
 }
 
 function findClientArtifactRegression(input: {
@@ -2584,6 +2585,12 @@ export function findClientSlideCountRegression(input: {
   fileName: string;
   htmlBody: string;
   priorHtml: string | null | undefined;
+  /**
+   * Existing-deck / image-embed / comment-scoped turns: reject ANY slide drop
+   * (8→6 still destroys content). Greenfield generates keep the hard-collapse
+   * threshold so intentional shorter drafts are not over-blocked.
+   */
+  strict?: boolean;
 }): { fileName: string; priorCount: number; newCount: number; reason: string } | null {
   const fileName = input.fileName.trim();
   if (!fileName.toLowerCase().endsWith('.html')) return null;
@@ -2594,7 +2601,9 @@ export function findClientSlideCountRegression(input: {
   if (priorCount < 3 || newCount <= 0) return null;
   if (newCount >= priorCount) return null;
   const dropped = priorCount - newCount;
-  const collapsedHard = newCount <= Math.floor(priorCount * 0.5) || dropped >= 3;
+  const collapsedHard = input.strict
+    ? dropped >= 1
+    : newCount <= Math.floor(priorCount * 0.5) || dropped >= 3;
   if (!collapsedHard) return null;
   return {
     fileName,
@@ -4885,14 +4894,21 @@ export function ProjectView({
       // Dense 2-slide rewrites can pass the byte-size check while destroying
       // an 8-slide deck after an image-insert turn. Block slide-count collapse
       // even on comment-scoped persists (image+pin turns previously skipped
-      // this guard and still collapsed 8→2).
+      // this guard and still collapsed 8→2). Existing-deck / image-embed turns
+      // use strict mode so soft shrink (8→6) is also rejected.
       if (ext === '.html') {
         try {
           const priorHtml = await readDiskHtml(fileName);
+          const runImagePaths = imageAttachmentPathsForSlideEmbed(runAttachmentsRef.current);
+          const strictSlideCount =
+            persistCommentAttachments.length > 0
+            || runImagePaths.length > 0
+            || Boolean(runPersistTargetFileRef.current);
           const slideRegression = findClientSlideCountRegression({
             fileName,
             htmlBody,
             priorHtml,
+            strict: strictSlideCount,
           });
           if (slideRegression) {
             devLog.warn('[teamver] blocked slide-count collapse before save', {
@@ -4900,6 +4916,7 @@ export function ProjectView({
               priorCount: slideRegression.priorCount,
               newCount: slideRegression.newCount,
               commentScoped: persistCommentAttachments.length > 0,
+              strict: strictSlideCount,
             });
             surfaceChatVisibleError(
               formatProjectArtifactRegressionRejectedError(slideRegression.fileName),
