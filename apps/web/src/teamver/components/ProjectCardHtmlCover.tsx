@@ -328,7 +328,15 @@ async function loadHtmlCover(
   const run = (async () => {
     // No AbortSignal — allows fetchTeamverDaemon GET dedupe and lets sibling
     // cards reuse the same in-flight response. Unmount only skips setState.
-    const res = await fetchTeamverDaemon(pathOnly);
+    //
+    // `?inlineAssets=1` asks the daemon to rewrite `<img src>` / CSS `url(...)`
+    // relative refs into inline `data:` URIs before responding, so the sandbox
+    // iframe never has to make a subresource GET. Without this a Hangul NFC/NFD
+    // mismatch or a basename-only `<img src>` collapses the card thumb to
+    // alt-only text ("파일명만 보임"). Cache key stays path-only above so the
+    // cover cache still dedupes across cards.
+    const inlineUrl = appendInlineAssetsQuery(pathOnly);
+    const res = await fetchTeamverDaemon(inlineUrl);
     if (!res.ok) throw new Error(`Failed to load project cover: ${res.status}`);
     const html = await res.text();
     const { href: baseHref } = await resolveCoverBaseHref(pathOnly);
@@ -341,6 +349,12 @@ async function loadHtmlCover(
 
   setHtmlCoverInflight(cacheKey, run);
   return run;
+}
+
+function appendInlineAssetsQuery(rawUrl: string): string {
+  const trimmed = String(rawUrl || "").trim();
+  if (!trimmed) return trimmed;
+  return `${trimmed}${trimmed.includes("?") ? "&" : "?"}inlineAssets=1`;
 }
 
 /** @internal vitest */

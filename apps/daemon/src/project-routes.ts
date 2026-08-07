@@ -3067,7 +3067,24 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             project.metadata,
           );
           const rawHtml = file.buffer.toString('utf8');
-          const html = prepareCoverHtmlBatchBody(rawHtml);
+          const isolatedHtml = prepareCoverHtmlBatchBody(rawHtml);
+          // Inline first-slide images so batch-fed cards render without a
+          // subresource GET storm. Falls back to per-card `/raw?inlineAssets=1`
+          // when the inlined body exceeds the batch cap (per-card path also
+          // inlines via the same daemon transform, so the visual result is
+          // identical — just one more round trip per oversized cover).
+          const html = await (async () => {
+            try {
+              return await inlineProjectImagesFromScratch({
+                html: isolatedHtml,
+                projectId: project.id,
+                projectsRoot: PROJECTS_DIR,
+                metadata: project.metadata,
+              });
+            } catch {
+              return isolatedHtml;
+            }
+          })();
           if (
             !html.trim()
             || Buffer.byteLength(html, 'utf8') > PROJECT_COVER_HTML_BATCH_MAX_BYTES
