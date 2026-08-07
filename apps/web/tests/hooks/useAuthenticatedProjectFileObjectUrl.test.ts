@@ -35,6 +35,19 @@ describe('alternateAuthenticatedRawPaths', () => {
       ]),
     );
   });
+
+  it('probes NFD form when caller provides an NFC Hangul basename', () => {
+    const nfc = 'msh9rso1-서빙하는-금붕어.webp';
+    const nfd = nfc.normalize('NFD');
+    expect(nfc).not.toBe(nfd);
+    const alternates = alternateAuthenticatedRawPaths(nfc);
+    // macOS-stored NFD file must be reachable when the mention is NFC.
+    expect(alternates).toEqual(expect.arrayContaining([
+      nfd,
+      `refs/drive/${nfd}`,
+      `uploads/${nfd}`,
+    ]));
+  });
 });
 
 describe('loadAuthenticatedProjectFileBlob', () => {

@@ -782,8 +782,12 @@ async function readAnthropicImageBlock(
 ): Promise<ProxyImageContentBlock | null> {
   if (isProjectRawFileKnownMissing(projectId, path)) return null;
 
+  // Enable Drive/NFD alternates for vision fetch — the message attachment path
+  // is often a canonical NFC form while the daemon has the NFD-encoded file
+  // (macOS uploads) or moved it under refs/drive/.
   const blob = await loadAuthenticatedProjectFileBlob(projectId, path, {
     delaysMs: ANTHROPIC_IMAGE_FETCH_DELAYS_MS,
+    trustExists: true,
   });
   if (!blob) return null;
 

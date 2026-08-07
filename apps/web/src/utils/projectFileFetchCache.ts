@@ -1,7 +1,9 @@
 import {
   isEphemeralDrawingScreenshotPath,
+  normalizeProjectFilePath,
   projectFilePathBasename,
   projectFilePathExists,
+  projectFilePathToNfd,
 } from './projectFilePaths';
 
 const missingProjectRawFiles = new Set<string>();
@@ -53,14 +55,30 @@ export function projectRawFileCacheKey(projectId: string, path: string): string 
 }
 
 function missingPathVariants(path: string): string[] {
-  const normalized = String(path || '').trim().replace(/\\/g, '/');
-  if (!normalized) return [];
-  const out = new Set<string>([normalized]);
-  const baseName = projectFilePathBasename(normalized);
-  if (baseName && baseName !== normalized) out.add(baseName);
-  if (baseName && !normalized.includes('/')) {
+  const raw = String(path || '').trim().replace(/\\/g, '/');
+  const nfc = normalizeProjectFilePath(path);
+  const nfd = projectFilePathToNfd(path);
+  if (!raw && !nfc) return [];
+  const out = new Set<string>();
+  if (raw) out.add(raw);
+  if (nfc) out.add(nfc);
+  if (nfd) out.add(nfd);
+  const primary = nfc || raw;
+  const baseName = projectFilePathBasename(primary);
+  const baseNameNfd = projectFilePathToNfd(baseName);
+  if (baseName && baseName !== primary) out.add(baseName);
+  if (baseNameNfd && baseNameNfd !== baseName) out.add(baseNameNfd);
+  if (baseName && !primary.includes('/')) {
+    // Match alternateAuthenticatedRawPaths so a truly missing file (all probed
+    // 404) short-circuits on next remount without re-storming refs/drive etc.
+    out.add(`refs/drive/${baseName}`);
+    out.add(`refs/${baseName}`);
     out.add(`uploads/${baseName}`);
     out.add(`assets/${baseName}`);
+    if (baseNameNfd && baseNameNfd !== baseName) {
+      out.add(`refs/drive/${baseNameNfd}`);
+      out.add(`uploads/${baseNameNfd}`);
+    }
   }
   return [...out];
 }

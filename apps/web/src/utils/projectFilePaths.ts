@@ -60,6 +60,22 @@ export function normalizeProjectFilePath(path: string): string {
   }
 }
 
+/**
+ * macOS HFS+ / user-agent uploads can persist Hangul filenames in NFD form
+ * while our FE canonicalizes to NFC. The daemon `/raw/` path lookup is
+ * byte-exact — if the disk has one form and we request the other, we 404.
+ * Return the NFD variant when it differs from NFC so callers can probe both.
+ */
+export function projectFilePathToNfd(path: string): string {
+  const trimmed = String(path || '').trim().replace(/\\/g, '/');
+  if (!trimmed) return '';
+  try {
+    return trimmed.normalize('NFD');
+  } catch {
+    return trimmed;
+  }
+}
+
 export function projectFilePathBasename(path: string): string {
   const trimmed = normalizeProjectFilePath(path);
   return trimmed.split('/').pop() || trimmed;

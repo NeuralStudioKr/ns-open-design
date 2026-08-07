@@ -11,7 +11,11 @@ import {
   markProjectRawFileMissing,
 } from '../utils/projectFileFetchCache';
 import { normalizeFetchedImageBlob } from '../utils/imageBlobNormalize';
-import { normalizeProjectFilePath, projectFilePathBasename } from '../utils/projectFilePaths';
+import {
+  normalizeProjectFilePath,
+  projectFilePathBasename,
+  projectFilePathToNfd,
+} from '../utils/projectFilePaths';
 
 export const AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS = [0, 250, 800, 1500] as const;
 const TRUSTED_BACKGROUND_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
@@ -42,30 +46,39 @@ async function readResponseImageBlob(resp: Response): Promise<Blob> {
 /** @internal exported for tests */
 export function alternateAuthenticatedRawPaths(path: string): string[] {
   const raw = String(path || '').trim().replace(/\\/g, '/');
-  const trimmed = normalizeProjectFilePath(path);
-  if (!trimmed && !raw) return [];
-  const baseName = projectFilePathBasename(trimmed || raw);
+  const nfc = normalizeProjectFilePath(path);
+  const nfd = projectFilePathToNfd(path);
+  if (!nfc && !raw) return [];
+  const primary = nfc || raw;
+  const baseName = projectFilePathBasename(primary);
+  const baseNameNfd = projectFilePathToNfd(baseName);
   const alternates: string[] = [];
-  // Hangul / macOS NFD path → also probe NFC form of the full relative path.
-  if (raw && trimmed && raw !== trimmed) alternates.push(trimmed);
-  if (baseName && baseName !== trimmed) alternates.push(baseName);
-  if (baseName && !(trimmed || raw).includes('/')) {
+  // Hangul: probe both NFC and NFD forms of the full relative path so a disk
+  // stored in one Unicode form matches even when the chat/deck path uses the
+  // other. The daemon does byte-exact lookup on /raw/.
+  if (raw && nfc && raw !== nfc) alternates.push(nfc);
+  if (nfd && nfd !== primary && nfd !== raw) alternates.push(nfd);
+  if (baseName && baseName !== primary) alternates.push(baseName);
+  if (baseNameNfd && baseNameNfd !== baseName) alternates.push(baseNameNfd);
+  const pushDrivePrefix = (prefix: string) => {
+    if (baseName) alternates.push(`${prefix}${baseName}`);
+    if (baseNameNfd && baseNameNfd !== baseName) alternates.push(`${prefix}${baseNameNfd}`);
+  };
+  if (baseName && !primary.includes('/')) {
     // Recovered mention-only history often stores basename while the file
     // lives under Drive / uploads / assets after refresh.
-    alternates.push(`refs/drive/${baseName}`);
-    alternates.push(`refs/${baseName}`);
-    alternates.push(`uploads/${baseName}`);
-    alternates.push(`assets/${baseName}`);
-  } else if (baseName && (trimmed || raw).startsWith('uploads/')) {
-    alternates.push(`refs/drive/${baseName}`);
+    pushDrivePrefix('refs/drive/');
+    pushDrivePrefix('refs/');
+    pushDrivePrefix('uploads/');
+    pushDrivePrefix('assets/');
+  } else if (baseName && primary.startsWith('uploads/')) {
+    pushDrivePrefix('refs/drive/');
     alternates.push(baseName);
-  } else if (baseName && (trimmed || raw).startsWith('refs/drive/')) {
+    if (baseNameNfd && baseNameNfd !== baseName) alternates.push(baseNameNfd);
+  } else if (baseName && primary.startsWith('refs/drive/')) {
     alternates.push(baseName);
-    alternates.push(`uploads/${baseName}`);
-    if (raw && trimmed && raw !== trimmed) {
-      // Also try NFC basename under the Drive prefix when full-path NFC differed.
-      alternates.push(`refs/drive/${baseName}`);
-    }
+    if (baseNameNfd && baseNameNfd !== baseName) alternates.push(baseNameNfd);
+    pushDrivePrefix('uploads/');
   }
   return [...new Set(alternates.filter(Boolean))];
 }
@@ -183,8 +196,11 @@ async function loadAuthenticatedProjectFileBlobInner(
         if (!isLastCandidate) continue;
         const isLastAttempt = attempt >= delays.length - 1;
         if (!isLastAttempt) continue;
-        markProjectRawFileMissing(id, path);
-        if (rawPath && rawPath !== path) markProjectRawFileMissing(id, rawPath);
+        // Mark EVERY probed alternate missing so remounts short-circuit —
+        // otherwise a re-render fires the full 5-alternate 404 storm again.
+        for (const probed of pathCandidates) {
+          markProjectRawFileMissing(id, probed);
+        }
         return null;
       }
       clearProjectRawFileMissing(id, path);
@@ -194,8 +210,9 @@ async function loadAuthenticatedProjectFileBlobInner(
     }
   }
 
-  markProjectRawFileMissing(id, path);
-  if (rawPath && rawPath !== path) markProjectRawFileMissing(id, rawPath);
+  for (const probed of pathCandidates) {
+    markProjectRawFileMissing(id, probed);
+  }
   return null;
 }
 

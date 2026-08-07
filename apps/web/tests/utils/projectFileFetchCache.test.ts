@@ -79,4 +79,27 @@ describe('projectFileFetchCache', () => {
     expect(isProjectRawFileKnownMissing(projectId, path)).toBe(true);
     clearProjectRawFileMissing(projectId, path);
   });
+
+  it('short-circuits refs/drive alternate probing once basename is missing', () => {
+    resetProjectRawFileFetchCacheForTests();
+    const projectId = 'project-1';
+    const basename = 'msh9rso1-서빙하는-금붕어.webp';
+    markProjectRawFileMissing(projectId, basename);
+    // Chat send / preview upgrade may probe under refs/drive/ or uploads/ later —
+    // those variants must also short-circuit without a fresh 404 storm.
+    expect(isProjectRawFileKnownMissing(projectId, `refs/drive/${basename}`)).toBe(true);
+    expect(isProjectRawFileKnownMissing(projectId, `refs/${basename}`)).toBe(true);
+    expect(isProjectRawFileKnownMissing(projectId, `uploads/${basename}`)).toBe(true);
+  });
+
+  it('short-circuits NFC/NFD sibling paths after either form was marked missing', () => {
+    resetProjectRawFileFetchCacheForTests();
+    const projectId = 'project-1';
+    const nfc = 'msh9rso1-서빙하는-금붕어.webp';
+    const nfd = nfc.normalize('NFD');
+    expect(nfc).not.toBe(nfd);
+    markProjectRawFileMissing(projectId, nfc);
+    expect(isProjectRawFileKnownMissing(projectId, nfd)).toBe(true);
+    expect(isProjectRawFileKnownMissing(projectId, `refs/drive/${nfd}`)).toBe(true);
+  });
 });
