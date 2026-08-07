@@ -250,13 +250,38 @@ export function startSizeFromTarget(target: ManualEditTarget): {
   // (grow drag → one-char-wide column). Fall back to rect when layout is absent
   // (older bridge messages / tests). Never prefer a smaller authored style px
   // (min-width / flex used size).
+  //
+  // Broken-image / not-yet-loaded <img>: both offsetWidth and getBoundingClientRect
+  // can collapse to 0 while `styles.width` still holds the authored px. Falling
+  // through to width=1 there gives a 1×1 resize overlay that jumps to any real
+  // dimension on the first drag delta — visually the "drag box weird" symptom.
+  // Recover the authored style px so the overlay starts at the same size the
+  // user sees for the intended slot.
+  const styleWidthPx = target.kind === 'image'
+    ? parseExplicitPx(target.styles.width)
+    : null;
+  const styleHeightPx = target.kind === 'image'
+    ? parseExplicitPx(target.styles.height)
+    : null;
+  const preferLayoutWidth =
+    target.layoutWidth && target.layoutWidth >= 1 ? target.layoutWidth : null;
+  const preferLayoutHeight =
+    target.layoutHeight && target.layoutHeight >= 1 ? target.layoutHeight : null;
+  const preferRectWidth = target.rect.width >= 1 ? target.rect.width : null;
+  const preferRectHeight = target.rect.height >= 1 ? target.rect.height : null;
   const widthPx = Math.round(Math.max(
     1,
-    target.layoutWidth && target.layoutWidth >= 1 ? target.layoutWidth : target.rect.width,
+    preferLayoutWidth
+      ?? preferRectWidth
+      ?? (styleWidthPx && styleWidthPx >= 1 ? styleWidthPx : 0)
+      ?? 0,
   ));
   const heightPx = Math.round(Math.max(
     1,
-    target.layoutHeight && target.layoutHeight >= 1 ? target.layoutHeight : target.rect.height,
+    preferLayoutHeight
+      ?? preferRectHeight
+      ?? (styleHeightPx && styleHeightPx >= 1 ? styleHeightPx : 0)
+      ?? 0,
   ));
   return { widthPx, heightPx };
 }
