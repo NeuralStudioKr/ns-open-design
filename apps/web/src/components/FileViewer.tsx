@@ -6864,8 +6864,19 @@ function HtmlViewer({
       // inline so the primary /raw fetch already covered the paint.
       if (!hasRelativeImageRefs(source)) return;
       let cancelled = false;
+      // Content-derived fingerprint: file.mtime lags behind Manual Edit
+      // set-image saves (source updates locally before the /files list
+      // refresh bumps mtime), and reloadKey does not tick on manual patches.
+      // Without something that varies with source bytes the browser serves
+      // the previous /raw?inlineAssets=1 response — the srcdoc iframe then
+      // paints an old inlined deck whose data-URI images do not match the
+      // just-updated `<img src>` refs in `source` (image "flies away" and
+      // only alt is visible). Length + first / last 64 chars is cheap and
+      // deterministic; combined with mtime + reloadKey it covers all three
+      // invalidation triggers (external write, reload, in-session patch).
+      const inlineContentKey = manualEditPreviewInlineContentKey(source);
       void fetchProjectFileText(projectId, file.name, {
-        cacheBustKey: `${file.mtime}-${reloadKey}-preview-inline`,
+        cacheBustKey: `${file.mtime}-${reloadKey}-${inlineContentKey}-preview-inline`,
         inlineAssetsForPreview: true,
       }).then((next) => {
         if (cancelled || next == null) return;
@@ -15287,6 +15298,22 @@ function hasRelativeAssetRefs(html: string): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * Cheap content fingerprint (length + first / last 64 chars) used as the
+ * cache-bust suffix for the deck-preview inline-assets fetch. Manual Edit
+ * set-image / element-patch saves update `source` locally before the
+ * /files list refresh bumps `file.mtime`, so a mtime-only key hits the
+ * browser cache and paints a stale inlined deck.
+ */
+function manualEditPreviewInlineContentKey(source: string): string {
+  const value = String(source ?? '');
+  const head = value.length > 64 ? value.slice(0, 64) : value;
+  const tail = value.length > 64 ? value.slice(-64) : '';
+  // Percent-encode any non-ASCII so the value is safe to stuff into a query
+  // string (matches how the rest of `cacheBust` values are serialized).
+  return `${value.length}-${encodeURIComponent(head + tail).slice(0, 96)}`;
 }
 
 /**
