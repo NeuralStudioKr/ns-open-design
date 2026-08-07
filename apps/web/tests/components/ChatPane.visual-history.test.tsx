@@ -259,6 +259,54 @@ describe('ChatPane visual mark history', () => {
     expect(mention.textContent).toBe('@msh9rso1-서빙하는-금붕어.webp');
   });
 
+  it('renders @mention pills for NFD Hangul filenames against NFC attachment paths', () => {
+    const nfc = '서빙하는-금붕어'.normalize('NFC');
+    const nfd = '서빙하는-금붕어'.normalize('NFD');
+    expect(nfc).not.toBe(nfd);
+    const basename = `msh9rso1-${nfc}.webp`;
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-nfd-mention',
+        role: 'user',
+        content: `이 이미지 2페이지에 넣어줘 @msh9rso1-${nfd}.webp`,
+        createdAt: 1,
+        attachments: [
+          {
+            path: `refs/drive/${basename}`,
+            name: basename,
+            kind: 'image',
+            order: 0,
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ChatPane
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[{ name: 'deck.html', path: 'deck.html' } as never]}
+        projectFileNames={new Set(['deck.html', `refs/drive/${basename}`])}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={[
+          { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
+        ]}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        config={{ agentId: 'claude', agentCliEnv: {} } as unknown as AppConfig}
+      />,
+    );
+
+    const mention = screen.getByTestId('user-inline-mention');
+    expect(mention.getAttribute('data-mention-kind')).toBe('file');
+    expect(mention.textContent).toBe(`@${basename}`);
+  });
+
   it('renders durable memo/board image attachments as thumbs (not title-only)', () => {
     const messages: ChatMessage[] = [
       {

@@ -34,11 +34,15 @@ import {
   excludeAttachmentsBackedByVisualScreenshots,
   isEphemeralDrawingScreenshotPath,
   isRenderableImagePath,
+  normalizeProjectFilePath,
   projectFilePathBasename,
   projectFilePathExists,
   projectFileResolvedPath,
 } from '../utils/projectFilePaths';
-import { recoverChatAttachmentsFromMentions } from '../utils/recoverChatAttachmentsFromMentions';
+import {
+  extractImageMentionPathsFromUserText,
+  recoverChatAttachmentsFromMentions,
+} from '../utils/recoverChatAttachmentsFromMentions';
 import {
   buildInlineMentionParts,
   inlineMentionToken,
@@ -3914,7 +3918,7 @@ function mentionEntitiesForUserMessage(
   const entities: InlineMentionEntity[] = [];
   const seen = new Set<string>();
   const pushFile = (path: string) => {
-    const trimmed = path.trim().replace(/\\/g, '/');
+    const trimmed = normalizeProjectFilePath(path);
     if (!trimmed || seen.has(trimmed)) return;
     seen.add(trimmed);
     const base = projectFilePathBasename(trimmed);
@@ -3940,15 +3944,12 @@ function mentionEntitiesForUserMessage(
     pushFile(attachment.path);
   }
   // Promote leftover `@*.webp` tokens even when attachment recovery failed so
-  // the bubble still matches the composer chip look.
-  if (visibleText.includes('@')) {
-    const parts = buildInlineMentionParts(visibleText, entities, { highlightUnknown: true });
-    for (const part of parts ?? []) {
-      if (part.kind !== 'mention' || part.entity.kind !== 'unknown') continue;
-      const label = part.entity.label.trim().replace(/\\/g, '/');
-      if (!isRenderableImagePath(label) || isEphemeralDrawingScreenshotPath(label)) continue;
-      pushFile(label);
-    }
+  // the bubble still matches the composer chip look. Do NOT scan via
+  // buildInlineMentionParts here — that WeakMap-caches an incomplete trie on
+  // this same array before we pushFile, leaving history pills as plain text.
+  for (const path of extractImageMentionPathsFromUserText(visibleText)) {
+    if (!isRenderableImagePath(path) || isEphemeralDrawingScreenshotPath(path)) continue;
+    pushFile(path);
   }
   return entities;
 }
