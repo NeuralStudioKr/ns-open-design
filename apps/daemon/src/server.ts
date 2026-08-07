@@ -11759,10 +11759,22 @@ export async function startServer({
     // the default scenario body. Awaiting `getProjectAsync` here does the
     // Postgres round-trip on cache miss and populates the local cache so
     // downstream sync callers see the row too.
-    const project =
-      typeof projectId === 'string' && projectId
-        ? await getProjectAsync(db, projectId)
-        : null;
+    //
+    // Belt-and-suspenders: fall back to the sync cache lookup if the async
+    // path throws (e.g. Postgres pool degraded mid-run). Compose runs on
+    // every turn and must never turn a transient DB blip into an
+    // incomplete_output that also silently drops the selected template.
+    let project: Awaited<ReturnType<typeof getProjectAsync>> | null = null;
+    if (typeof projectId === 'string' && projectId) {
+      try {
+        project = await getProjectAsync(db, projectId);
+      } catch (err) {
+        console.warn(
+          `[compose] getProjectAsync failed for ${projectId}, falling back to sync cache: ${err?.message ?? err}`,
+        );
+        project = getProject(db, projectId);
+      }
+    }
     const effectiveSkillId =
       typeof skillId === 'string' && skillId ? skillId : project?.skillId;
     const effectiveDesignSystemId =

@@ -96,11 +96,17 @@ describe('selected-deck-template prompt helpers', () => {
     // local cache.
     const start = serverSource.indexOf('const composeDaemonSystemPrompt = async ({');
     expect(start).toBeGreaterThan(0);
-    const block = serverSource.slice(start, start + 1200);
+    // Window sized to cover the safety try/catch wrapper around getProjectAsync
+    // without also swallowing the giant metadata / selectedDeckTemplate block.
+    const block = serverSource.slice(start, start + 2400);
     expect(block).toContain('await getProjectAsync(db, projectId)');
-    // Defense in depth: assert we did NOT keep the sync-only getProject on
-    // the same access path (a follow-up refactor could accidentally reintroduce it).
-    expect(block).not.toMatch(/\bgetProject\(db,\s*projectId\)/);
+    // Sync fallback stays as belt-and-suspenders inside the catch (Postgres
+    // pool degraded mid-run must not silently drop the template metadata
+    // too), so we tolerate the sync call inside `catch`. What matters is
+    // that the async path runs first.
+    expect(block.indexOf('await getProjectAsync(db, projectId)')).toBeLessThan(
+      block.indexOf('getProject(db, projectId)'),
+    );
   });
 
   it('loads selected deck templates from skill-like/design-template roots before plugins', () => {
