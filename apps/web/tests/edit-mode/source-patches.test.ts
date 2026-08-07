@@ -19,6 +19,7 @@ import {
   isEphemeralGeneratedPathId,
   sanitizeManualEditHtmlFragment,
   sanitizeManualEditFullSource,
+  isSafeManualEditUrl,
   isSafeManualEditUrlAttrValue,
   isSafeManualEditRelativeOrFragmentUrl,
   coerceManualEditStyleValue,
@@ -1378,6 +1379,14 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain("(?!#[^\\\\\\\\/:'\"]*)");
     expect(sourcePatchesSource).toContain("'lineargradient', 'radialgradient', 'filter'");
     expect(sourcePatchesSource).toContain('isSafeManualEditSvgResourceRef');
+    // General URL-attr backslash-authority deny (DOM isSafeManualEditUrl).
+    expect(sourcePatchesSource).toContain("if (compact.includes('\\\\')) return false;");
+    expect(sourcePatchesSource).toContain('Backslash-authority on general URL attrs');
+    // SMIL nav attributeName covers remaining MANUAL_EDIT_URL_ATTRS.
+    expect(sourcePatchesSource).toContain("'background'");
+    expect(sourcePatchesSource).toContain("'imagesrcset'");
+    expect(sourcePatchesSource).toContain("'usemap'");
+    expect(sourcePatchesSource).toContain('Align with MANUAL_EDIT_URL_ATTRS — SMIL can retarget');
   });
 
   it('exposes single-document mutate/batch apply helpers', () => {
@@ -1520,6 +1529,12 @@ describe('manual edit source patches', () => {
 
     expect(isSafeManualEditUrlAttrValue('action', '\\\\evil.example\\x')).toBe(false);
     expect(isSafeManualEditUrlAttrValue('ping', '/ok \\\\evil.example\\x')).toBe(false);
+    // General URL attrs share the same backslash deny as relative-only.
+    expect(isSafeManualEditUrl('\\\\evil.example\\payload')).toBe(false);
+    expect(isSafeManualEditUrl('\\evil.example/x')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('href', '\\\\evil.example\\x')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('src', '\\evil.example/x')).toBe(false);
+    expect(isSafeManualEditUrl('/safe/path.png')).toBe(true);
   });
 
   it('drops fencedframe, portal, webview, plaintext, and xmp hosts', () => {

@@ -86,6 +86,16 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toMatch(
       /stackWithPushedRevision\(\s*revisionStackRef\.current,\s*saved\.revision/,
     );
+    // Local tip push skips immediate list GET (optimistic stack already matches).
+    expect(fileViewer).toContain('Optimistic tip already matches the push — skip immediate list GET');
+    expect(fileViewer).toContain('pinManualEditSavedSource(next)');
+    expect(fileViewer).toContain('isManualEditSourcePinActive(manualEditPinnedSourceRef.current)');
+    expect(fileViewer).toContain('Warm soft-cache so tip-lag disk soft-retries reuse this list');
+    expect(fileViewer).toContain('revisionListSoftCache.set(key, { activeSeq: softSeq, list, at: Date.now() })');
+    expect(fileViewer).toContain('Cheap preflight — most decks never host inspect overrides');
+    expect(fileViewer).toContain('\\bdata-od-inspect-overrides\\b');
+    expect(fileViewer).toContain('Echo selected-target only when membership changes');
+    expect(fileViewer).toContain('Single-select: identity field change');
   });
 });
 

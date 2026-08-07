@@ -1531,6 +1531,21 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
       ),
       '',
     )
+    // Backslash-authority on general URL attrs (DOM: isSafeManualEditUrl).
+    .replace(
+      new RegExp(
+        `\\s(?:${urlAttrs})\\s*=\\s*(['"])[\\s\\S]*?\\\\[\\s\\S]*?\\1`,
+        'gi',
+      ),
+      '',
+    )
+    .replace(
+      new RegExp(
+        `\\s(?:${urlAttrs})\\s*=\\s*[^\\s>]*\\\\[^\\s>]*`,
+        'gi',
+      ),
+      '',
+    )
     // Form navigators + ping + SMIL to/from/by/values — relative/fragment only
     // when used as URL retargets (DOM: isSafeManualEditRelativeOrFragmentUrl).
     // Absolute https://… and backslash-authority survive the prefix deny above.
@@ -2688,6 +2703,19 @@ const MANUAL_EDIT_SMIL_NAV_ATTR_NAMES = new Set([
   'poster',
   'cite',
   'ping',
+  // Align with MANUAL_EDIT_URL_ATTRS — SMIL can retarget these via to/values.
+  'background',
+  'dynsrc',
+  'lowsrc',
+  'srcset',
+  'imagesrcset',
+  'longdesc',
+  'manifest',
+  'codebase',
+  'classid',
+  'archive',
+  'usemap',
+  'data',
 ]);
 
 /** Tags whose URL attrs must not be mutated via set-attributes (chrome/exec). */
@@ -3228,6 +3256,8 @@ export function isSafeManualEditUrl(value: string): boolean {
   // Decode &#106;avascript: / javascript&#58; before scheme checks.
   const decoded = decodeHtmlCharacterReferences(trimmed);
   const compact = compactManualEditUrlForSchemeCheck(decoded);
+  // UNC / backslash-authority phishing (`\\evil.example`) — align relative-only.
+  if (compact.includes('\\')) return false;
   if (compact.startsWith('javascript:')) return false;
   if (compact.startsWith('vbscript:')) return false;
   // Local / opaque navigators — not needed for deck media and leak context.

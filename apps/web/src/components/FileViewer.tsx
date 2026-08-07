@@ -310,6 +310,7 @@ import {
   createManualEditSourcePin,
   manualEditHistoryConfirmCanSkipDiskFetch,
   manualEditHistoryConfirmTrustsLocal,
+  isManualEditSourcePinActive,
   preferManualEditPinnedSource,
   preferManualEditPinnedSourceOverLive,
   type ManualEditSourcePin,
@@ -3760,6 +3761,8 @@ export function updateInspectOverride(
 export function parseInspectOverridesFromSource(source: string): InspectOverrideMap {
   const map: InspectOverrideMap = {};
   if (!source) return map;
+  // Cheap preflight — most decks never host inspect overrides; skip the walker.
+  if (!/\bdata-od-inspect-overrides\b/i.test(source)) return map;
   for (const body of stripInspectOverridesAndIndex(source).bodies) {
     const ruleRe = /(\[data-(?:od-id|screen-label)="([^"]*)"\])\s*\{\s*([^}]*)\}/g;
     let ruleMatch: RegExpExecArray | null;
@@ -5440,7 +5443,16 @@ function HtmlViewer({
     if (filesRefreshKey <= 0 || filesRefreshKey === prevFilesRefreshKeyRef.current) return;
     prevFilesRefreshKeyRef.current = filesRefreshKey;
     invalidateCachedPreviewSource(projectId, file.name);
-    manualEditPinnedSourceRef.current = null;
+    // Keep an active save-pin through chokidar refresh storms so disk lag
+    // cannot restore the pre-edit frame; re-seed the module cache from pin.
+    if (isManualEditSourcePinActive(manualEditPinnedSourceRef.current)) {
+      const pinned = manualEditPinnedSourceRef.current;
+      if (pinned?.source) {
+        rememberStablePreviewSource(projectId, file.name, pinned.source);
+      }
+    } else {
+      manualEditPinnedSourceRef.current = null;
+    }
     activatedSrcDocTransportHtmlRef.current = null;
     setLiveHtmlPaintsPreview(false);
     setReloadKey((key) => key + 1);
@@ -8017,6 +8029,15 @@ function HtmlViewer({
       return;
     }
     revisionRefreshListRetryRef.current = 0;
+    // Warm soft-cache so tip-lag disk soft-retries reuse this list.
+    {
+      const softSeq = getActiveRevisionSequence(projectId, file.name)
+        ?? list.revisions[0]?.sequence;
+      if (typeof softSeq === 'number') {
+        const key = revisionListSoftCacheKey(projectId, file.name);
+        revisionListSoftCache.set(key, { activeSeq: softSeq, list, at: Date.now() });
+      }
+    }
     if (typeof list.retentionLimit === 'number') {
       setRevisionRetentionLimit(list.retentionLimit);
     }
@@ -8654,10 +8675,11 @@ function HtmlViewer({
       const data = ev.data as ManualEditBridgeMessage | null;
       if (!data?.type) return;
       if (data.type === 'od-edit-targets' && Array.isArray(data.targets)) {
-        // Skip React state when identity is unchanged (geometry-only rebroadcasts
-        // still refresh the selected target below for overlay sync).
+        // Skip React state when identity is unchanged (geometry-only rebroadcasts).
         const targetsFingerprint = manualEditTargetsIdentityFingerprint(data.targets);
-        if (targetsFingerprint !== manualEditTargetsIdentityFingerprintRef.current) {
+        const targetsIdentityChanged =
+          targetsFingerprint !== manualEditTargetsIdentityFingerprintRef.current;
+        if (targetsIdentityChanged) {
           manualEditTargetsIdentityFingerprintRef.current = targetsFingerprint;
           setManualEditTargets(data.targets);
         }
@@ -8667,13 +8689,22 @@ function HtmlViewer({
         // Target broadcasts can be briefly empty while the iframe/save path is
         // settling; keep the user's inspector selection unless a fresh copy is
         // available to update its metadata.
-        setSelectedManualEditTarget((current) => {
-          if (!current) return current;
-          const next = data.targets.find((target) => target.id === current.id) ?? current;
-          selectedManualEditTargetRef.current = next;
-          selectedManualEditTargetIdRef.current = next.id;
-          return next;
-        });
+        const selectedIdBefore = selectedManualEditTargetIdRef.current;
+        const selectedNext = selectedIdBefore
+          ? data.targets.find((target) => target.id === selectedIdBefore) ?? null
+          : null;
+        if (selectedNext) {
+          const selectedIdentityChanged = manualEditTargetsIdentityFingerprint([selectedNext])
+            !== manualEditTargetsIdentityFingerprint(
+              selectedManualEditTargetRef.current ? [selectedManualEditTargetRef.current] : [],
+            );
+          selectedManualEditTargetRef.current = selectedNext;
+          selectedManualEditTargetIdRef.current = selectedNext.id;
+          // Geometry-only: update ref for overlay consumers; skip React churn.
+          if (selectedIdentityChanged || targetsIdentityChanged) {
+            setSelectedManualEditTarget(selectedNext);
+          }
+        }
         const currentIds = selectedManualEditTargetIdsRef.current;
         if (currentIds.length > 0) {
           const refreshed = resolveManualEditTargetsByIds(currentIds, data.targets);
@@ -8702,13 +8733,40 @@ function HtmlViewer({
             );
             setManualEditMixedStyleKeys(mixedKeys);
             setManualEditDraft((current) => ({ ...current, styles: mergedStyles }));
+          } else if (
+            nextIds.length === 1
+            && !selectionIdsChanged
+            && targetsIdentityChanged
+            && selectedNext
+          ) {
+            // Single-select: identity field change (text/href/…) reseeds draft.
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            const snapshot = readManualEditTargetSnapshot(
+              base,
+              selectedNext.id,
+              {},
+              parsedDoc,
+            );
+            setManualEditDraft((current) => ({
+              ...current,
+              text: snapshot.fields.text ?? selectedNext.fields.text ?? selectedNext.text,
+              href: snapshot.fields.href ?? selectedNext.fields.href ?? '',
+              src: snapshot.fields.src ?? selectedNext.fields.src ?? '',
+              alt: snapshot.fields.alt ?? selectedNext.fields.alt ?? '',
+              styles: mergeManualEditInspectorStyles(snapshot.styles, selectedNext.styles),
+              attributesText: JSON.stringify(snapshot.attributes, null, 2),
+              outerHtml: snapshot.outerHtml || selectedNext.outerHtml,
+            }));
           }
-          const primaryId = selectedManualEditTargetIdRef.current ?? nextIds[nextIds.length - 1]!;
-          setTimeout(() => postSelectedManualEditTargetsToIframe(nextIds, primaryId), 0);
+          // Echo selected-target only when membership changes — geometry storms
+          // must not ping-pong postSelected back into the iframe.
+          if (selectionIdsChanged) {
+            const primaryId = selectedManualEditTargetIdRef.current ?? nextIds[nextIds.length - 1]!;
+            setTimeout(() => postSelectedManualEditTargetsToIframe(nextIds, primaryId), 0);
+          }
           return;
         }
-        const selectedId = selectedManualEditTargetIdRef.current;
-        if (selectedId) setTimeout(() => postSelectedManualEditTargetsToIframe([selectedId], selectedId), 0);
         return;
       }
       if (data.type === 'od-edit-select') {
@@ -10314,7 +10372,8 @@ function HtmlViewer({
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
       setRevisionStackInvalidated(false);
-      await refreshRevisionStack();
+      // Optimistic tip already matches the push — skip immediate list GET.
+      // Conflict/retention refresh still runs via filesRefreshKey / undo.
       setManualEditDraft((current) => ({ ...current, fullSource: contentToSave }));
       if (patch.kind === 'set-text') {
         setSelectedManualEditTarget((current) => current?.id === patch.id
@@ -10497,7 +10556,7 @@ function HtmlViewer({
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
       setRevisionStackInvalidated(false);
-      await refreshRevisionStack();
+      // Optimistic tip already matches the push — skip immediate list GET.
       setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
       const pendingIds = manualEditPendingStyleRef.current?.targetIds
         ?? (manualEditPendingStyleRef.current?.id
@@ -10944,6 +11003,7 @@ function HtmlViewer({
       }
       setSource(next);
       sourceRef.current = next;
+      pinManualEditSavedSource(next);
       commitRevisionStack(stackWithPushedRevision(
         revisionStackRef.current,
         saved.revision,
@@ -10955,7 +11015,7 @@ function HtmlViewer({
       setActiveRevisionSequence(projectId, file.name, saved.revision.sequence);
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'inspect_save');
       setRevisionStackInvalidated(false);
-      await refreshRevisionStack();
+      // Optimistic tip already matches the push — skip immediate list GET.
       setInspectSavedAt(Date.now());
       setReloadKey((k) => k + 1);
     } catch (err) {
