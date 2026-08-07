@@ -692,6 +692,12 @@ function warmRevisionListSoftCacheFromList(
   });
 }
 
+/** Style keys that track box geometry — idle remasure owns these, not inspector identity. */
+const MANUAL_EDIT_GEOMETRY_STYLE_PROP_KEYS = new Set<keyof ManualEditStyles>([
+  'width', 'height', 'minHeight', 'maxWidth', 'maxHeight',
+  'left', 'top', 'right', 'bottom',
+]);
+
 /** Identity fingerprint for od-edit-targets — skips geometry-only rebroadcasts. */
 function manualEditTargetsIdentityFingerprint(targets: ManualEditTarget[]): string {
   return targets.map((target) => [
@@ -705,8 +711,12 @@ function manualEditTargetsIdentityFingerprint(targets: ManualEditTarget[]): stri
     target.fields?.alt ?? '',
     target.outerHtml?.length ?? 0,
     target.isHidden ? '1' : '0',
-    // Style identity (no rect) so mixed inspector reseeds on style-only bridge.
-    MANUAL_EDIT_STYLE_PROPS.map((key) => target.styles?.[key] ?? '').join('\x1e'),
+    // Style identity without box geometry so idle remasure / move / resize
+    // do not force mixed-inspector reseed (기획 59 + 51–53).
+    MANUAL_EDIT_STYLE_PROPS
+      .filter((key) => !MANUAL_EDIT_GEOMETRY_STYLE_PROP_KEYS.has(key))
+      .map((key) => target.styles?.[key] ?? '')
+      .join('\x1e'),
   ].join('\0')).join('\n');
 }
 const MAX_CACHED_PREVIEW_VIEWPORTS = 128;
@@ -5516,8 +5526,14 @@ function HtmlViewer({
         const tipCached = tipRevision
           ? getRevisionContentCache(projectId, file.name, tipRevision.id)
           : null;
+        const activeSeqMissingFromStack = activeSeq != null
+          && !stack.revisions.some((revision) => revision.sequence === activeSeq);
         if (tipCached != null && tipCached !== pinned.source) {
+          // Warm tip cache already diverges — drop pin and remount.
           manualEditPinnedSourceRef.current = null;
+        } else if (activeSeqMissingFromStack) {
+          // Tip seq advanced but stack/cache still cold — remount so refresh
+          // can adopt; pin stays so preferManualEditPinnedSource guards stale GET.
         } else {
           rememberStablePreviewSource(projectId, file.name, pinned.source);
           // Active pin owns the painted frame — adopt pin if paint drifted;
@@ -5750,6 +5766,7 @@ function HtmlViewer({
   const revisionSyncSuppressRef = useRef(false);
   const revisionSkipReconcileOnceRef = useRef(false);
   const revisionRefreshGenerationRef = useRef(0);
+  const deferredRevisionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revisionRefreshActiveRetryRef = useRef(0);
   const revisionRefreshListRetryRef = useRef(0);
   const revisionConflictSuppressedRef = useRef(false);
@@ -8305,6 +8322,24 @@ function HtmlViewer({
     );
   }, [projectId, file.name, reconcileRevisionWithDisk, resolveRevisionSnapshotContent, useUrlLoadPreview]);
 
+  /** Coalesce tip-push deferred list GET; clear on artifact switch / unmount. */
+  const scheduleDeferredRevisionStackRefresh = useCallback(() => {
+    if (deferredRevisionRefreshTimerRef.current) {
+      clearTimeout(deferredRevisionRefreshTimerRef.current);
+    }
+    deferredRevisionRefreshTimerRef.current = setTimeout(() => {
+      deferredRevisionRefreshTimerRef.current = null;
+      void refreshRevisionStack();
+    }, 250);
+  }, [refreshRevisionStack]);
+
+  useEffect(() => () => {
+    if (deferredRevisionRefreshTimerRef.current) {
+      clearTimeout(deferredRevisionRefreshTimerRef.current);
+      deferredRevisionRefreshTimerRef.current = null;
+    }
+  }, [projectId, file.name]);
+
   // Refresh when the file hydrates or external writes bump filesRefreshKey.
   // Do not depend on `source` string identity — reconcile can call setSource /
   // setReloadKey and would otherwise re-enter this effect in a tight loop.
@@ -8869,9 +8904,17 @@ function HtmlViewer({
             selectedManualEditTargetIdsRef.current = nextIds;
             setSelectedManualEditTargetIds(nextIds);
           }
+          // Pending style draft owns the inspector — do not clobber with source
+          // merge while a flush/timer is in flight (기획 59).
+          const styleDraftPending = Boolean(
+            manualEditPendingStyleRef.current || manualEditStyleTimerRef.current,
+          );
           // Multi-select inspector: reparse on id-set OR identity change
           // (59 mixed styles). Geometry-only broadcasts keep fingerprint equal.
-          if (nextIds.length > 1 && (selectionIdsChanged || targetsIdentityChanged)) {
+          if (
+            nextIds.length > 1
+            && (selectionIdsChanged || (targetsIdentityChanged && !styleDraftPending))
+          ) {
             const base = sourceRef.current ?? '';
             const parsedDoc = parseManualEditSource(base);
             const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
@@ -8888,6 +8931,7 @@ function HtmlViewer({
             nextIds.length === 1
             && !selectionIdsChanged
             && targetsIdentityChanged
+            && !styleDraftPending
             && selectedNext
           ) {
             // Single-select: identity field change (text/href/…) reseeds draft.
@@ -10544,9 +10588,7 @@ function HtmlViewer({
         saved.revision.sequence,
         revisionRetentionLimit,
       );
-      window.setTimeout(() => {
-        void refreshRevisionStack();
-      }, 250);
+      scheduleDeferredRevisionStackRefresh();
       setManualEditDraft((current) => (
         current.fullSource === contentToSave ? current : { ...current, fullSource: contentToSave }
       ));
@@ -10740,9 +10782,7 @@ function HtmlViewer({
         saved.revision.sequence,
         revisionRetentionLimit,
       );
-      window.setTimeout(() => {
-        void refreshRevisionStack();
-      }, 250);
+      scheduleDeferredRevisionStackRefresh();
       setManualEditDraft((current) => (
         current.fullSource === result.source ? current : { ...current, fullSource: result.source }
       ));
@@ -11237,9 +11277,7 @@ function HtmlViewer({
         saved.revision.sequence,
         revisionRetentionLimit,
       );
-      window.setTimeout(() => {
-        void refreshRevisionStack();
-      }, 250);
+      scheduleDeferredRevisionStackRefresh();
       setInspectSavedAt(Date.now());
       // srcdoc path updates via setSource; URL-load still needs reloadKey bust.
       if (useUrlLoadPreview) {

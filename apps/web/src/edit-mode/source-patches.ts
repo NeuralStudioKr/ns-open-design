@@ -1520,18 +1520,37 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
         isSafeManualEditPresentationCssValue(value) ? full : ''
       ),
     )
-    // Navigable URL attrs — align deny list with isSafeManualEditUrl
-    // (blob/file/data/about/filesystem/protocol-relative + common extension schemes).
+    // Navigable URL attrs — same gate as DOM isSafeManualEditUrlAttrValue
+    // (ZWSP/soft-hyphen compact, data MIME allow-list, srcset/ping token rules).
     .replace(
       new RegExp(
-        `\\s(?:${urlAttrs})\\s*=\\s*(['"])\\s*(?:javascript|vbscript|blob\\s*:|file\\s*:|data\\s*:|about\\s*:|filesystem\\s*:|chrome(?:-extension)?\\s*:|moz-extension\\s*:|resource\\s*:|view-source\\s*:|ms-appx(?:-web)?\\s*:|//)[\\s\\S]*?\\1`,
+        `\\s(${urlAttrs})\\s*=\\s*(['"])([\\s\\S]*?)\\2`,
+        'gi',
+      ),
+      (full, attr: string, _quote: string, value: string) => (
+        isSafeManualEditUrlAttrValue(attr, value) ? full : ''
+      ),
+    )
+    .replace(
+      new RegExp(
+        `\\s(${urlAttrs})\\s*=\\s*([^\\s>]+)`,
+        'gi',
+      ),
+      (full, attr: string, value: string) => (
+        isSafeManualEditUrlAttrValue(attr, value) ? full : ''
+      ),
+    )
+    // Protocol-relative residual — isSafeManualEditUrl allows //cdn… media.
+    .replace(
+      new RegExp(
+        `\\s(?:${urlAttrs})\\s*=\\s*(['"])\\s*//[\\s\\S]*?\\1`,
         'gi',
       ),
       '',
     )
     .replace(
       new RegExp(
-        `\\s(?:${urlAttrs})\\s*=\\s*(?:javascript|vbscript|blob\\s*:|file\\s*:|data\\s*:|about\\s*:|filesystem\\s*:|chrome(?:-extension)?\\s*:|moz-extension\\s*:|resource\\s*:|view-source\\s*:|ms-appx(?:-web)?\\s*:|//)[^\\s>]*`,
+        `\\s(?:${urlAttrs})\\s*=\\s*//[^\\s>]*`,
         'gi',
       ),
       '',

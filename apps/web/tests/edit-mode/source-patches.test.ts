@@ -1365,10 +1365,10 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain('.replace(/\\shttp-equiv\\s*=');
     expect(sourcePatchesSource).toContain("'color-profile'");
     expect(sourcePatchesSource).toContain('presentationAttrs');
-    // Fail-closed URL deny widened (blob/file/data/about/filesystem); presentation via isSafe gate.
-    expect(sourcePatchesSource).toContain(
-      'blob\\\\s*:|file\\\\s*:|data\\\\s*:|about\\\\s*:|filesystem\\\\s*:',
-    );
+    // Fail-closed URL/presentation via isSafe gates (ZWSP compact + presentation normalize).
+    expect(sourcePatchesSource).toContain('same gate as DOM isSafeManualEditUrlAttrValue');
+    expect(sourcePatchesSource).toContain('isSafeManualEditUrlAttrValue(attr, value) ? full : \'\'');
+    expect(sourcePatchesSource).toContain('Protocol-relative residual');
     expect(sourcePatchesSource).toContain('same gate as DOM isSafeManualEditPresentationCssValue');
     expect(sourcePatchesSource).toContain('isSafeManualEditPresentationCssValue(value) ? full : \'\'');
     expect(sourcePatchesSource).toContain('options?.parsedDoc ?? parseSource(source)');
@@ -1560,6 +1560,22 @@ describe('manual edit source patches', () => {
     expect(isSafeManualEditUrl('ms-appx://evil')).toBe(false);
     expect(isSafeManualEditUrl('ms-appx-web://evil')).toBe(false);
     expect(isSafeManualEditUrl('https://cdn.example/a.png')).toBe(true);
+    // Cf / soft-hyphen smuggling — compactManualEditUrlForSchemeCheck.
+    expect(isSafeManualEditUrl('java\u200bscript:alert(1)')).toBe(false);
+    expect(isSafeManualEditUrl('java\u00adscript:alert(1)')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('href', 'java\u200bscript:alert(1)')).toBe(false);
+  });
+
+  it('failClosed strips ZWSP-smuggled javascript: URL attrs without DOMParser', () => {
+    Reflect.deleteProperty(globalThis, 'DOMParser');
+    const out = sanitizeManualEditFullSource(
+      '<!doctype html><html><body><a href="java\u200bscript:alert(1)">x</a>'
+      + '<img src="java\u00adscript:alert(2)"></body></html>',
+    );
+    expect(out.toLowerCase()).not.toContain('javascript');
+    expect(out).not.toMatch(/\shref\s*=/i);
+    expect(out).not.toMatch(/\ssrc\s*=/i);
+    expect(sourcePatchesSource).toContain('same gate as DOM isSafeManualEditUrlAttrValue');
   });
 
   it('rejects bare data:/blob: presentation paints and keeps named colors', () => {
