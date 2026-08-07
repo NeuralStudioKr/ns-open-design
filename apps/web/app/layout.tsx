@@ -8,6 +8,7 @@ import {
   isTeamverEmbedBuild,
 } from '../src/teamver/branding/siteMetadata';
 import { TEAMVER_EMBED_LOADING_BG, TEAMVER_EMBED_LOADING_TEXT } from '../src/teamver/branding/loadingShellLabel';
+import { TeamverSentryBootstrap } from '../src/teamver/sentry/TeamverSentryBootstrap';
 import '../src/index.css';
 import '../src/styles/home/index.css';
 
@@ -59,6 +60,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         style={embedBuild ? { backgroundColor: TEAMVER_EMBED_LOADING_BG } : undefined}
       >
         <TeamverBrandingProvider>
+          <TeamverSentryBootstrap />
           <I18nProvider>
             <AnalyticsProvider>{children}</AnalyticsProvider>
           </I18nProvider>

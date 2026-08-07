@@ -14,11 +14,12 @@
 
 ## 2. FE (`apps/web`)
 
-- `instrumentation-client.ts` / server·edge config (teamver-web 동형)
-- `next.config.ts`에 `withSentryConfig({ org: "neuralstudio", project: "teamver-design" })` — **Teamver 서버 빌드 경로만** (static export 충돌 주의)
-- `environment`: 호스트 `stg-design*` → `staging`, `design.teamver.com` → `production`, 그 외 `local`
-- `beforeSend`: 136 Exclude (auth/network) — fe-v2 `sentryEventFilters` 패턴 이식 또는 공유 vendor
-- 검증: embed `/sentry-example` 또는 임시 debug 라우트
+- **SDK:** `@sentry/react` (Docker static export — `@sentry/nextjs`/SSR 경로 비사용)
+- `src/teamver/sentry/*` — environment · eventFilters · initClient · TeamverSentryBootstrap
+- `app/layout.tsx` bootstrap + `global-error.tsx` `captureException`
+- `environment`: `NEXT_PUBLIC_SENTRY_ENVIRONMENT` → `VITE_TEAMVER_SITE_URL` → hostname
+- `beforeSend`: 136 Exclude (auth/network)
+- Bake: `NEXT_PUBLIC_SENTRY_*` via `deploy/Dockerfile` ARG + compose build args
 
 ## 3. API (`deploy/teamver/be`)
 

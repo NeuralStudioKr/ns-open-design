@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
   embedFatalErrorButtonStyle,
@@ -13,6 +13,7 @@ import {
   TEAMVER_EMBED_LOADING_BG,
   TEAMVER_EMBED_LOADING_TEXT,
 } from '../src/teamver/branding/loadingShellLabel';
+import { captureTeamverDesignException } from '../src/teamver/sentry/initClient';
 
 export default function GlobalError({
   error,
@@ -24,6 +25,10 @@ export default function GlobalError({
   const embed = isTeamverEmbedBuild();
   const [autoReloading] = useState(() => maybeReloadOnChunkError(error));
   const chunk = isChunkLoadError(error);
+
+  useEffect(() => {
+    captureTeamverDesignException(error);
+  }, [error]);
 
   return (
     <html lang={embed ? 'ko' : 'en'}>

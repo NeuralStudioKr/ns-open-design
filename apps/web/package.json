@@ -41,6 +41,7 @@
     "@open-design/platform": "workspace:*",
     "@open-design/sidecar": "workspace:*",
     "@open-design/sidecar-proto": "workspace:*",
+    "@sentry/react": "10.69.0",
     "@teamver/app-sdk": "file:../../vendor/teamver/app-sdk.tgz",
     "@xterm/addon-fit": "0.10.0",
     "@xterm/xterm": "5.5.0",
