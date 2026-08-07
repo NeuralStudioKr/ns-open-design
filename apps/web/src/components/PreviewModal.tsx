@@ -297,8 +297,15 @@ export function PreviewModal({
   );
   const templateShareRef = useRef<HTMLDivElement | null>(null);
   const primaryMenuRef = useRef<HTMLDivElement | null>(null);
+  const primaryCaretRef = useRef<HTMLButtonElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const closePrimaryMenu = () => {
+    setPrimaryMenuOpen(false);
+    window.requestAnimationFrame(() => {
+      primaryCaretRef.current?.focus();
+    });
+  };
   const stageRef = useRef<HTMLDivElement | null>(null);
   const stageFrameRef = useRef<HTMLDivElement | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -355,7 +362,7 @@ export function PreviewModal({
       if (e.key !== 'Escape') return;
       if (primaryMenuOpen) {
         e.preventDefault();
-        setPrimaryMenuOpen(false);
+        closePrimaryMenu();
         return;
       }
       if (templateShareOpen) {
@@ -365,6 +372,10 @@ export function PreviewModal({
       }
       if (fullscreen) {
         e.preventDefault();
+        // Match the chrome exit path — clear native fullscreen + React state.
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
         setFullscreen(false);
         return;
       }
@@ -413,7 +424,7 @@ export function PreviewModal({
     const onDoc = (e: MouseEvent) => {
       const target = e.target as Node;
       if (!primaryMenuRef.current?.contains(target)) {
-        setPrimaryMenuOpen(false);
+        closePrimaryMenu();
       }
     };
     document.addEventListener('mousedown', onDoc);
@@ -831,8 +842,18 @@ export function PreviewModal({
                     </button>
                     <button
                       type="button"
+                      ref={primaryCaretRef}
                       className="ds-modal-primary-action ds-modal-primary-action-caret"
-                      onClick={() => setPrimaryMenuOpen((v) => !v)}
+                      onClick={() =>
+                        setPrimaryMenuOpen((v) => {
+                          if (v) {
+                            window.requestAnimationFrame(() => {
+                              primaryCaretRef.current?.focus();
+                            });
+                          }
+                          return !v;
+                        })
+                      }
                       disabled={primaryAction.disabled || primaryAction.busy}
                       aria-haspopup="menu"
                       aria-expanded={primaryMenuOpen}
@@ -859,7 +880,7 @@ export function PreviewModal({
                             className="share-menu-item ds-modal-primary-action-option"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
-                              setPrimaryMenuOpen(false);
+                              closePrimaryMenu();
                               item.onClick();
                             }}
                             {...(item.testId

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -186,6 +188,17 @@ describe('PreviewModal sandbox isolation', () => {
     // Close stays on the title row, not inside the actions toolbar.
     expect(markup).toMatch(
       /ds-modal-header-top[\s\S]*ds-modal-close[\s\S]*ds-modal-header-toolbar/,
+    );
+  });
+
+  it('hides compact+icon sidebar toggle on desktop via CSS cascade', () => {
+    const css = readFileSync(
+      join(process.cwd(), 'src/styles/viewer/composio.css'),
+      'utf8',
+    );
+    // --icon must not override --compact-only { display:none } on desktop.
+    expect(css).toMatch(
+      /\.ds-modal-sidebar-toggle--compact-only\.ds-modal-sidebar-toggle--icon\s*\{\s*display:\s*none;/,
     );
   });
 

@@ -1994,13 +1994,17 @@
 .ds-modal-sidebar-toggle--compact-only {
   display: none;
 }
+/* Sizing only — do not set display here or it overrides --compact-only's
+   desktop hide (same specificity, later source order). */
 .ds-modal-sidebar-toggle--icon {
   width: 36px;
   height: 36px;
   padding: 0;
-  display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+.ds-modal-sidebar-toggle--compact-only.ds-modal-sidebar-toggle--icon {
+  display: none;
 }
 
 @media (max-width: 760px) {
@@ -2024,7 +2028,10 @@
   /* On stacked layout the side handles (which assume horizontal split)
      would float over content awkwardly — fall back to the header toggle. */
   .ds-modal-stage-handle { display: none; }
-  .ds-modal-sidebar-toggle--compact-only { display: inline-flex; }
+  .ds-modal-sidebar-toggle--compact-only,
+  .ds-modal-sidebar-toggle--compact-only.ds-modal-sidebar-toggle--icon {
+    display: inline-flex;
+  }
 }
 
 /* Examples gallery toolbar — filter pills + richer card metadata */

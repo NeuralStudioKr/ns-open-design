@@ -751,11 +751,15 @@
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
-.plugins-home__html-fallback-retry:hover,
-.plugins-home__html-fallback-retry:focus-visible {
+.plugins-home__html-fallback-retry:hover {
   background: rgba(0, 0, 0, 0.62);
   border-color: rgba(255, 255, 255, 0.45);
-  outline: none;
+}
+.plugins-home__html-fallback-retry:focus-visible {
+  background: rgba(0, 0, 0, 0.62);
+  border-color: rgba(255, 255, 255, 0.55);
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
 }
 .plugins-home__html--fallback .plugins-home__html-chrome {
   background: rgba(0, 0, 0, 0.32);
