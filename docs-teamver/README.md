@@ -12,6 +12,7 @@
 
 | 문서 | 내용 |
 |------|------|
+| **[60 Sentry 연동](./60-0-상위설계-[Sentry_연동].md)** | **Sentry 프로젝트·Slack/이메일 · [60-1 알림](./60-1-구현현황-[Sentry_프로젝트_알림].md) · [60-2 SDK](./60-2-구현설계-[Sentry_SDK_코드연결].md)** |
 | **[09 저장소·격리 출시 게이트](./09_Design_저장소_격리_출시게이트.md)** | **Prod blocker — S3 · Litestream · registry · 진행 표** |
 | **[10 세션·OD패치 보강](./10_세션·OD패치_보강.md)** | **세션·인증 · embed 브랜딩 · upstream 패치** |
 | **[11 Usage·Drive Publish](./11_Usage·Drive_Publish_보강.md)** | **usage wiring · Drive Publish v1 · billing** |
