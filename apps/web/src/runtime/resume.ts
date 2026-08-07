@@ -185,7 +185,10 @@ export function buildAutoContinueIncompleteOutputPrompt(
     parts.push(
       `\n\n[이 프로젝트에 이미 저장된 슬라이드 덱: \`${existingDeckPath}\`. `
         + '직전 turn이 incomplete_output이어도 "완성된 덱이 없다"고 말하지 마세요. '
-        + '디스크의 덱을 기준으로 이어서 완성하거나 필요한 슬라이드만 deck-patch/deck artifact로 수정하세요.]',
+        + '디스크의 덱을 기준으로 이어서 완성하거나 필요한 슬라이드만 deck-patch로 수정하세요. '
+        + '첨부 이미지를 넣는 요청이면 전체 덱을 2~3장으로 새로 만들지 말고, '
+        + '대상 슬라이드 HTML을 복사한 뒤 `<img src="정확한경로">`만 삽입하는 deck-patch를 쓰세요. '
+        + '슬라이드 장수를 줄이는 것은 금지입니다.]',
     );
   }
 

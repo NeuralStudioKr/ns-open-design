@@ -254,6 +254,9 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     });
     expect(prompt).toContain('deck.html');
     expect(prompt).toContain('완성된 덱이 없다');
+    expect(prompt).toContain('deck-patch');
+    expect(prompt).toContain('전체 덱을 2~3장으로 새로 만들지 말고');
+    expect(prompt).toContain('슬라이드 장수를 줄이는 것은 금지입니다');
   });
 });
 

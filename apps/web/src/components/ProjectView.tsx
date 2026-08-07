@@ -1202,15 +1202,41 @@ export function imageAttachmentPathsForSlideEmbed(
   return paths;
 }
 
+/** Keep image + deck.html attachments across auto-continue so embed contracts survive retries. */
+export function chatAttachmentsForAutoContinueImageEmbed(
+  originUser: { attachments?: readonly ChatAttachment[] | null } | null | undefined,
+): ChatAttachment[] {
+  const attachments = originUser?.attachments ?? [];
+  const out: ChatAttachment[] = [];
+  const seen = new Set<string>();
+  for (const attachment of attachments) {
+    const path = attachment.path.trim();
+    if (!path || seen.has(path)) continue;
+    const isHtml = /\.html?$/i.test(path);
+    const isImage =
+      attachment.kind === 'image'
+      || SLIDE_IMAGE_PATH_RE.test(path)
+      || SLIDE_IMAGE_PATH_RE.test(attachment.name);
+    if (!isHtml && !isImage) continue;
+    seen.add(path);
+    out.push(attachment);
+    if (out.length >= 16) break;
+  }
+  return out;
+}
+
 function slideImageEmbedInstruction(imagePaths: readonly string[]): string {
   return [
     SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER,
     'The user attached image file(s) to place into the slide deck.',
+    'This is a surgical insert into the EXISTING deck — do NOT regenerate a new short deck.',
     'Embed each image with its exact project-relative path (copy the path characters verbatim, including any `refs/drive/` or timestamp prefix).',
     'Never invent URLs, never use data: URIs, never strip directory prefixes, never rename the file, and do not omit the images:',
     ...imagePaths.map((path) => `- <img src="${path}" alt="" style="max-width:100%;height:auto;object-fit:contain">`),
-    'Prefer a dedicated image slide or an existing content area via deck-patch / set-outer-html / set-image (JSON `{ "src": "<exact-path-above>" }`).',
-    'Keep the rest of the deck intact unless the user asks for a broader redesign.',
+    'Preferred deliverable: `<artifact type="deck-patch">` with one `<section class="slide" data-slide-index="{N}">` that COPIES the full current target slide HTML from the attached deck, then INSERTS the `<img>` above.',
+    'Use `set-image` only when replacing an existing `<img>` element. Use `set-outer-html` only for a local container that already exists on that slide.',
+    'Hard rule: NEVER reduce the number of `<section class="slide">` blocks vs the attached on-disk deck (e.g. do not turn 8 slides into 2).',
+    'Do NOT emit a greenfield 2-slide wireframe. Keep every other slide unchanged unless the user explicitly asks for a redesign.',
   ].join('\n');
 }
 
@@ -1373,14 +1399,16 @@ function slideExistingDeckEditInstruction(
     'This turn is an edit to that deck — do NOT claim there is no completed deck in this conversation.',
     'Read the attached deck HTML and apply the user request.',
     'Prefer `<artifact type="element-patch">` with `<patch target-id="…" slide-index="{N}" kind="…">` for single-element edits.',
-    'Use `<artifact type="deck-patch">` only when slide structure must change; use full `<artifact type="deck">` for deck-wide edits.',
+    'Use `<artifact type="deck-patch">` when inserting images or changing slide structure; COPY the full current target slide HTML then apply the minimal change.',
+    'Full `<artifact type="deck">` only for explicit redesigns — and you MUST keep at least the same slide count as the attached deck.',
+    'Hard rule: NEVER collapse the deck (e.g. 8 slides → 2). Preserving every existing slide is more important than polish.',
     'If you emit a short status sentence, use edit tone only ("수정 반영 중" / "Applying your edits"). Never "초안이 생성", "creating the deck", or "draft is ready".',
   ];
   if (imagePaths.length > 0) {
     // Prefer the dedicated [Attached image embed] block when present; otherwise
     // list exact paths so comment/existing-deck turns still have copyable srcs.
     lines.push(
-      'When the user asks to place attached images into the deck, emit deck-patch / set-outer-html / set-image using these exact project-relative paths (copy characters verbatim):',
+      'When the user asks to place attached images into the deck, emit deck-patch that copies the target slide and inserts `<img>` using these exact project-relative paths (copy characters verbatim):',
       ...imagePaths.map((path) => `- ${path}`),
     );
   }
@@ -2466,6 +2494,11 @@ export function shouldFailRunForArtifactPersistResult(
 const ARTIFACT_REGRESSION_MIN_PRIOR_BYTES = 8192;
 const ARTIFACT_REGRESSION_MIN_RATIO = 0.35;
 
+function countDeckSlideSections(html: string): number {
+  const matches = html.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b[^"']*["'][^>]*>/gi);
+  return matches?.length ?? 0;
+}
+
 function findClientArtifactRegression(input: {
   fileName: string;
   htmlBody: string;
@@ -2490,6 +2523,33 @@ function findClientArtifactRegression(input: {
     reason:
       `New artifact body for "${fileName}" is ${newSize} bytes, but the current file is ${priorSize} bytes. ` +
       'This looks like a placeholder/regression and was not written over the existing deck.',
+  };
+}
+
+/** Block full-deck writes that collapse slide count (e.g. 8 → 2) even when byte size looks fine. */
+export function findClientSlideCountRegression(input: {
+  fileName: string;
+  htmlBody: string;
+  priorHtml: string | null | undefined;
+}): { fileName: string; priorCount: number; newCount: number; reason: string } | null {
+  const fileName = input.fileName.trim();
+  if (!fileName.toLowerCase().endsWith('.html')) return null;
+  const priorHtml = input.priorHtml?.trim();
+  if (!priorHtml) return null;
+  const priorCount = countDeckSlideSections(priorHtml);
+  const newCount = countDeckSlideSections(input.htmlBody);
+  if (priorCount < 3 || newCount <= 0) return null;
+  if (newCount >= priorCount) return null;
+  const dropped = priorCount - newCount;
+  const collapsedHard = newCount <= Math.floor(priorCount * 0.5) || dropped >= 3;
+  if (!collapsedHard) return null;
+  return {
+    fileName,
+    priorCount,
+    newCount,
+    reason:
+      `New artifact for "${fileName}" has ${newCount} slides, but the current deck has ${priorCount}. ` +
+      'Slide-count collapse was blocked so the existing deck is preserved.',
   };
 }
 
@@ -3775,15 +3835,13 @@ export function ProjectView({
                   ...autoContinueCtx,
                 },
               });
-              // Comment scope must survive the retry — see the sibling
-              // scheduleStreamRunHtmlAutoOpen auto-continue for the
-              // full rationale. Empty commentAttachments here caused
-              // the deck-patch / full-deck scope guards to fall
-              // silent on retry, letting the model overwrite the
-              // whole deck with a small placeholder.
+              // Comment scope + image/deck attachments must survive the retry.
+              // Empty attachments here caused image-embed turns to lose their
+              // exact src paths and fall through to greenfield full-deck
+              // regeneration (often collapsing 8 slides → 2).
               const started = sendNow(
                 autoContinuePrompt,
-                [],
+                chatAttachmentsForAutoContinueImageEmbed(autoContinueOriginUser),
                 autoContinueCommentAttachments,
                 { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
               );
@@ -4767,6 +4825,36 @@ export function ProjectView({
           fileName: regression.fileName,
           reason: regression.reason,
         };
+      }
+      // Dense 2-slide rewrites can pass the byte-size check while destroying
+      // an 8-slide deck after an image-insert turn. Block slide-count collapse.
+      if (ext === '.html' && !persistCommentAttachments.length) {
+        try {
+          const priorHtml = await readDiskHtml(fileName);
+          const slideRegression = findClientSlideCountRegression({
+            fileName,
+            htmlBody,
+            priorHtml,
+          });
+          if (slideRegression) {
+            devLog.warn('[teamver] blocked slide-count collapse before save', {
+              fileName: slideRegression.fileName,
+              priorCount: slideRegression.priorCount,
+              newCount: slideRegression.newCount,
+            });
+            surfaceChatVisibleError(
+              formatProjectArtifactRegressionRejectedError(slideRegression.fileName),
+              'artifact_regression',
+            );
+            return {
+              kind: 'artifact-regression',
+              fileName: slideRegression.fileName,
+              reason: slideRegression.reason,
+            };
+          }
+        } catch {
+          // Soft-fail — missing prior HTML should not block otherwise-valid saves.
+        }
       }
       const truncateAfterSequence = getActiveRevisionSequence(project.id, fileName);
       const assistantMessageId = [...messagesRef.current]
@@ -7606,14 +7694,11 @@ export function ProjectView({
                 ...autoContinueCtx,
               },
             });
-            // See scheduleStreamRunHtmlAutoOpen — passing [] here strips
-            // comment scope from the retry and the deck-patch /
-            // full-deck scope guards fall silent. Preserve the
-            // originating user turn's attachments so the retry stays
-            // scoped to the same target.
+            // Preserve comment scope + image/deck attachments so image-embed
+            // retries keep exact src paths and existing-deck edit contracts.
             const started = sendNow(
               autoContinuePrompt,
-              [],
+              chatAttachmentsForAutoContinueImageEmbed(autoContinueOriginUser),
               autoContinueCommentAttachments,
               { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
             );
@@ -8057,11 +8142,7 @@ export function ProjectView({
       // Disk *canonical* deck is enough — first-turn interrupt + retry often has
       // no prior assistant in historyBase, but the project already has deck.html.
       // Do not treat leftover about.html / notes.html as an existing deck edit.
-      if (
-        slideOnlyMvp
-        && !isAutoContinueSend
-        && scopedCommentAttachments.length === 0
-      ) {
+      if (slideOnlyMvp && scopedCommentAttachments.length === 0) {
         const existingDeck = resolveCanonicalDeckFileForEdit(
           filesSnapshot,
           project.metadata?.entryFile ?? null,
@@ -8076,8 +8157,12 @@ export function ProjectView({
               effectiveAttachments,
               [chatAttachmentForProjectFile(existingDeck)],
             );
-            autoAttachedDeckPath = deckPath;
           }
+          // Always mark existing-deck edit — even when deck.html was already
+          // in attachments, and even on auto-continue retries — so image-insert
+          // turns get the surgical contract instead of greenfield full-deck
+          // pressure (which collapses 8-slide decks to 2).
+          autoAttachedDeckPath = deckPath;
         }
       }
       const instructionAttachments = retryTarget
@@ -8966,19 +9051,12 @@ export function ProjectView({
                       }),
                     },
                   });
-                  // Preserve the failed turn's `commentAttachments`
-                  // on the auto-continue call. Without this the retry
-                  // runs as an unscoped edit — the deck-patch /
-                  // full-deck scope guards go quiet (no
-                  // scopedAllowedSlideIndexes), the model rewrites
-                  // the whole deck at will, and the resulting
-                  // slide-1 replacement clobbers the entire 8-slide
-                  // deck as an accepted save. Piping the original
-                  // attachments back through keeps the scope block
-                  // intact across the retry.
+                  // Preserve comment scope + image/deck attachments on retry.
+                  // Without file attachments, image-embed contracts vanish and
+                  // the model regenerates a short greenfield deck (8→2).
                   const started = sendNow(
                     autoContinuePrompt,
-                    [],
+                    chatAttachmentsForAutoContinueImageEmbed(originatingUserMsg),
                     autoContinueCommentAttachments,
                     { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
                   );

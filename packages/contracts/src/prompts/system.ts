@@ -712,6 +712,14 @@ Before the artifact, optional: one tiny user-visible UI-locale status sentence t
 - ❌ Announcing the deck as done (\"완료\", \"완성했습니다\", \"here it is\", etc.) in the prose while the artifact body is empty or shell-only. If you cannot finish the deck this turn, say so plainly instead — a partial artifact + confident prose is the worst outcome for the user.
 
 **Minimum body contract:** each \`<section class="slide">\` MUST contain at least one real text node whose \`textContent.trim()\` is non-empty and is NOT the SLOT comment. If your response ends without meeting this bar, retry inside the same turn instead of emitting.
+
+### Existing-deck edits (overrides the "complete deck" pressure above)
+
+When the user message includes \`[Existing deck edit]\` and/or \`[Attached image embed]\` (or attaches the current \`deck.html\`):
+
+- The preferred final answer is a non-empty \`<artifact type="deck-patch">\` or \`<artifact type="element-patch">\` that changes only the requested slide/element.
+- Emitting a full \`<artifact type="deck">\` that drops slides from the attached on-disk deck (e.g. rewriting an 8-slide deck as 2 slides) is a **critical failure**.
+- Do NOT treat the compact 2-slide wireframe example as a literal template for edit turns — preserve the attached deck's slide count and content.
 `;
 
 const TEAMVER_API_DECK_FRAMEWORK_OVERRIDE = `
@@ -1271,6 +1279,27 @@ When the user's message starts with \`[form answers — discovery]\`, treat ever
 
 If a field was skipped, choose a sensible default and proceed — do not emit another discovery form. Preserve the active template/design-system feel, and vary slide layouts per the compact inline vocabulary (split, stat, timeline, quote, column); do not output 6 identical white boxes.`;
 
+const TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE = `# Teamver slide-only API — existing-deck image embed (READ LAST)
+
+If the turn carries \`[Attached image embed]\` and/or \`[Existing deck edit]\` (or an attached \`deck.html\`):
+
+**Preferred deliverable — surgical insert, NOT a full rewrite:**
+
+\`\`\`
+<artifact type="deck-patch" identifier="deck">
+  <section class="slide" data-slide-index="{N}">…COPY the FULL current slide outer HTML from the attached deck, then INSERT <img src="{exact-path-from-embed-block}" alt="" style="max-width:100%;height:auto;object-fit:contain">…</section>
+</artifact>
+\`\`\`
+
+Hard rules:
+- **NEVER reduce** the number of \`<section class="slide">\` blocks vs the attached on-disk deck (do not turn an 8-slide deck into 2 slides).
+- **NEVER** emit a greenfield 2-slide wireframe as a replacement for an existing multi-slide deck.
+- Prefer \`deck-patch\` that copies the target slide HTML and inserts the image. Use \`set-image\` only when replacing an existing \`<img>\` element.
+- Full \`<artifact type="deck">\` is allowed ONLY if the user explicitly asks for a redesign/new deck — and even then you MUST keep at least the same slide count as the attached deck and include every attached image with its exact \`src\` path.
+- Copy \`src\` paths from \`[Attached image embed]\` character-for-character (including \`refs/drive/\` and timestamp prefixes). Never invent friendlier filenames.
+- Status sentence: "수정 반영 중" / "Applying your edits" — never "초안 생성" / "creating the deck".
+`;
+
 const TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE = `# Teamver slide-only API — comment-edit patch (READ LAST)
 
 If the turn carries \`<attached-preview-comments>\`, prefer a structured element patch over a full deck rewrite:
@@ -1422,6 +1451,10 @@ export function composeTeamverSlideApiPrompt({
   // gives the model a fast partial-deck path that saves 60–120s of output
   // tokens versus regenerating the whole deck.
   parts.push(TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE);
+  // Same pattern for image-on-existing-deck turns: without this, the model
+  // obeys the greenfield "MUST emit complete deck" + 2-slide wireframe and
+  // collapses 8-slide decks to 2 while dropping the attached image.
+  parts.push(TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE);
 
   return parts.join('\n\n---\n\n');
 }

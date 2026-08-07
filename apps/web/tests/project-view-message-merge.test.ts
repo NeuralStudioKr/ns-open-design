@@ -5,6 +5,8 @@ import {
   mergeServerMessagesIntoConversation,
   orderConversationMessages,
   imageAttachmentPathsForSlideEmbed,
+  chatAttachmentsForAutoContinueImageEmbed,
+  findClientSlideCountRegression,
   promptWithExistingDeckEditInstruction,
   resolveCanonicalDeckFileForEdit,
   promptWithSlideAttachmentDeliverableInstruction,
@@ -107,6 +109,10 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     expect(prompt).toContain('src="m1abc-photo.png"');
     expect(prompt).toContain("exact project-relative path");
     expect(prompt).toContain("never strip directory prefixes");
+    expect(prompt).toContain("surgical insert into the EXISTING deck");
+    expect(prompt).toContain("NEVER reduce the number of `<section class=\"slide\">` blocks");
+    expect(prompt).toContain("deck-patch");
+    expect(prompt).toContain("Do NOT emit a greenfield 2-slide wireframe");
     expect(prompt).not.toContain("[Deliverable instruction]");
     expect(stripUserVisibleUserMessageText(prompt)).toBe("이 이미지를 슬라이드에 넣어줘");
   });
@@ -121,6 +127,7 @@ describe("promptWithSlideAttachmentDeliverableInstruction", () => {
     expect(prompt).toContain("[Attached image embed]");
     expect(prompt).toContain('src="refs/drive/msh5lhfh-hero.png"');
     expect(prompt).toContain("never strip directory prefixes");
+    expect(prompt).toContain("NEVER reduce the number of `<section class=\"slide\">` blocks");
   });
 });
 
@@ -171,6 +178,8 @@ describe("promptWithExistingDeckEditInstruction", () => {
     expect(prompt).toContain("deck-patch");
     expect(prompt).toContain("Applying your edits");
     expect(prompt).toContain("Never \"초안이 생성\"");
+    expect(prompt).toContain("NEVER collapse the deck");
+    expect(prompt).toContain("keep at least the same slide count");
   });
 
   it("mentions attached image paths when present", () => {
@@ -181,6 +190,50 @@ describe("promptWithExistingDeckEditInstruction", () => {
     });
     expect(prompt).toContain("exact project-relative paths");
     expect(prompt).toContain("- photo.png");
+    expect(prompt).toContain("COPY the full current target slide HTML");
+  });
+});
+
+describe("chatAttachmentsForAutoContinueImageEmbed", () => {
+  it("keeps image + deck.html attachments across auto-continue so embed work is not dropped", () => {
+    const kept = chatAttachmentsForAutoContinueImageEmbed({
+      attachments: [
+        { path: "uploads/goldfish.webp", name: "goldfish.webp", kind: "image" },
+        { path: "deck.html", name: "deck.html", kind: "file" },
+        { path: "notes.md", name: "notes.md", kind: "file" },
+      ],
+    });
+    expect(kept.map((item) => item.path)).toEqual(["uploads/goldfish.webp", "deck.html"]);
+  });
+});
+
+describe("findClientSlideCountRegression", () => {
+  it("detects hard slide-count collapse that byte-size alone can miss", () => {
+    const priorHtml = Array.from(
+      { length: 8 },
+      (_, i) => `<section class="slide" data-slide-index="${i}">slide ${i + 1} with plenty of copy</section>`,
+    ).join("\n");
+    const nextHtml = [
+      '<section class="slide" data-slide-index="0">a</section>',
+      '<section class="slide" data-slide-index="1">b</section>',
+    ].join("\n");
+    const regression = findClientSlideCountRegression({
+      fileName: "deck.html",
+      htmlBody: nextHtml,
+      priorHtml,
+    });
+    expect(regression).toMatchObject({
+      fileName: "deck.html",
+      priorCount: 8,
+      newCount: 2,
+    });
+    expect(
+      findClientSlideCountRegression({
+        fileName: "deck.html",
+        htmlBody: priorHtml,
+        priorHtml,
+      }),
+    ).toBeNull();
   });
 });
 

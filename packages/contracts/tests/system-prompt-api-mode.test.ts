@@ -158,10 +158,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('never `<head>`');
       expect(prompt).toContain('<body><section class="slide"');
       expect(prompt).not.toContain('Copy the canonical skeleton below as index.html');
-      // Ceiling grew by ~700 chars when the comment-edit patch contract
-      // landed; that contract cuts a 60–120s round-trip on one-element
-      // comment edits down to 2–8s, so the cost is worth it.
-      expect(prompt.length).toBeLessThan(20_500);
+      // Ceiling grew again for existing-deck image/surgical-edit rules so
+      // "put this image on page N" does not greenfield a 2-slide rewrite.
+      expect(prompt.length).toBeLessThan(26_000);
     });
 
     it('keeps compact deck for skill-seed projects without raw template copy workflow', () => {
@@ -331,11 +330,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('# OD core directives');
       expect(prompt).not.toContain('Artifact handoff');
       expect(prompt).not.toContain('Read `assets/template.html`');
-      // Budget guard for the lean slide-only API composer. Measured ~21.3k
-      // after comment-edit patch + compact layout vocabulary landed; those
-      // contracts cut 60–120s full-deck rewrites on one-element edits, so
-      // the cost is intentional. Keep a small headroom for copy tweaks.
-      expect(prompt.length).toBeLessThan(22_000);
+      // Budget guard for the lean slide-only API composer. Measured ~25k
+      // after existing-deck image embed + comment-edit patch contracts landed;
+      // those prevent 8→2 slide collapse / 60–120s full-deck rewrites, so the
+      // cost is intentional. Keep a small headroom for copy tweaks.
+      expect(prompt.length).toBeLessThan(27_000);
       expect(prompt.length).toBeGreaterThan(18_000);
     });
 
@@ -447,8 +446,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         prompt.indexOf('Slide deck — API compact contract'),
       );
       expect(prompt).not.toContain('Do not paste this exact headline');
-      // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
-      expect(prompt.length).toBeLessThan(20_500);
+      // Ceiling grew for existing-deck image/surgical-edit rules.
+      expect(prompt.length).toBeLessThan(26_000);
     });
 
     it('keeps quick brief available when a selected template supplies style but not content brief', () => {
@@ -505,8 +504,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt.indexOf('Visual style reference — Html Ppt Hermes Cyber Terminal')).toBeLessThan(
         prompt.indexOf('Slide deck — API compact contract'),
       );
-      // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
-      expect(prompt.length).toBeLessThan(20_500);
+      // Ceiling grew for existing-deck image/surgical-edit rules.
+      expect(prompt.length).toBeLessThan(26_000);
     });
 
     it('keeps richer visual template rules while stripping unavailable copy workflows', () => {
@@ -534,8 +533,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       );
       expect(prompt).not.toContain('Read assets/template.html and copy the skeleton');
       expect(prompt).not.toContain('Use references/layouts.md for exact slots');
-      // Ceiling grew by ~700 chars when the comment-edit patch contract landed.
-      expect(prompt.length).toBeLessThan(20_500);
+      // Ceiling grew for existing-deck image/surgical-edit rules.
+      expect(prompt.length).toBeLessThan(26_000);
     });
 
     it('carries the comment-edit element-patch contract so scoped edits skip full deck rewrites', () => {
@@ -556,6 +555,28 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         expect(prompt).toContain('slide-index');
         expect(prompt).toContain('<artifact type="deck-patch"');
         expect(prompt).toContain('<artifact type="deck">');
+      }
+    });
+
+    it('forces existing-deck image edits to preserve all slides via deck-patch', () => {
+      const unified = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck' },
+      });
+      const direct = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+      for (const prompt of [unified, direct]) {
+        expect(prompt).toContain('existing-deck image embed');
+        expect(prompt).toContain('Existing-deck edits');
+        expect(prompt).toContain('NEVER reduce');
+        expect(prompt).toContain('do not turn an 8-slide deck into 2 slides');
+        expect(prompt).toContain('greenfield 2-slide wireframe');
+        expect(prompt).toContain('[Attached image embed]');
+        expect(prompt).toContain('[Existing deck edit]');
       }
     });
   });
