@@ -87,6 +87,22 @@ describe('selected-deck-template prompt helpers', () => {
     expect(serverSource).toContain('secondarySkillBody: scenarioSkillBody');
   });
 
+  it('resolves project metadata through the Postgres async fallback so cold nodes see selectedDeckTemplateId', () => {
+    // Cache-only getProject on Postgres nodes silently dropped the selected
+    // deck template when the run landed on a different pod than the create
+    // (metadata invisible → template body never loaded → Canvas → Slide
+    // came back looking like the default deck). Compose must await
+    // getProjectAsync so a cold-node lookup hits Postgres and re-warms the
+    // local cache.
+    const start = serverSource.indexOf('const composeDaemonSystemPrompt = async ({');
+    expect(start).toBeGreaterThan(0);
+    const block = serverSource.slice(start, start + 1200);
+    expect(block).toContain('await getProjectAsync(db, projectId)');
+    // Defense in depth: assert we did NOT keep the sync-only getProject on
+    // the same access path (a follow-up refactor could accidentally reintroduce it).
+    expect(block).not.toMatch(/\bgetProject\(db,\s*projectId\)/);
+  });
+
   it('loads selected deck templates from skill-like/design-template roots before plugins', () => {
     const start = serverSource.indexOf('if (selectedDeckTemplate) {');
     expect(start).toBeGreaterThan(0);

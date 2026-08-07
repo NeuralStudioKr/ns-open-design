@@ -11749,9 +11749,19 @@ export async function startServer({
     appliedPluginSnapshotId,
     mediaExecution,
   }) => {
+    // Multi-node Teamver / Postgres-backed deploys: `getProject` returns
+    // cache-only in Postgres mode. If the create request landed on Node A
+    // (populating that cache with the freshly-inserted project metadata,
+    // including `selectedDeckTemplateId`) and the run request lands on Node
+    // B (cold cache), the sync lookup returns null → metadata is invisible
+    // → selectedDeckTemplate goes unset → the picked Canvas → Slide
+    // template is silently dropped and the deck comes back looking like
+    // the default scenario body. Awaiting `getProjectAsync` here does the
+    // Postgres round-trip on cache miss and populates the local cache so
+    // downstream sync callers see the row too.
     const project =
       typeof projectId === 'string' && projectId
-        ? getProject(db, projectId)
+        ? await getProjectAsync(db, projectId)
         : null;
     const effectiveSkillId =
       typeof skillId === 'string' && skillId ? skillId : project?.skillId;
@@ -11966,6 +11976,7 @@ export async function startServer({
 
     if (selectedDeckTemplate) {
       let templateBody: string | null = null;
+      let templateSource: 'skill' | 'design-template' | 'plugin-local' | null = null;
       try {
         // Mirror web/API order: skill-like / design-template body first, then
         // community plugin local SKILL.md. Metadata-only design-template picks
@@ -11974,6 +11985,9 @@ export async function startServer({
         const templateSkill = findSkillById(allSkills, selectedDeckTemplate.id);
         if (templateSkill?.body?.trim()) {
           templateBody = templateSkill.body;
+          templateSource = templateSkill.source === 'user'
+            ? 'skill'
+            : (templateSkill.mode === 'deck' ? 'design-template' : 'skill');
           registerSkillDir(templateSkill.dir);
           if (!activeSkillDir) activeSkillDir = templateSkill.dir;
           registerPrimarySkillMode(templateSkill.mode ?? 'deck');
@@ -11983,14 +11997,37 @@ export async function startServer({
             const local = await loadPluginLocalSkill(plugin);
             if (local?.body?.trim()) {
               templateBody = local.body;
+              templateSource = 'plugin-local';
               registerSkillDir(local.dir);
               if (!activeSkillDir) activeSkillDir = local.dir;
+            } else {
+              console.warn(
+                `[selected-deck-template] plugin ${selectedDeckTemplate.id} found in installed_plugins but SKILL.md body is empty / unreadable — falling back to title stub`,
+              );
             }
+          } else {
+            // No global skill / design-template row AND no installed plugin
+            // matches this id. On multi-node deploys this used to hit here
+            // because the cache-only getProject race dropped metadata; the
+            // async fallback above closes that. Log so a real missing id
+            // (e.g. template was uninstalled after the user picked it) is
+            // visible in ops logs instead of degrading silently.
+            console.warn(
+              `[selected-deck-template] id ${selectedDeckTemplate.id} not found in skills/design-templates/installed_plugins — deck will use title stub only (visual template will look generic)`,
+            );
           }
         }
       } catch (err) {
         console.warn(
           `[plugins] selectedDeckTemplate load failed: ${err?.message ?? err}`,
+        );
+      }
+      if (templateBody && templateSource) {
+        // Positive signal so ops can grep for the successful template load
+        // path alongside the negative signals above. Cheap: fires once per
+        // run, and only when a template was actually picked.
+        console.log(
+          `[selected-deck-template] loaded id=${selectedDeckTemplate.id} via=${templateSource} bytes=${templateBody.length}`,
         );
       }
       const preferred = preferSelectedDeckTemplateSkill({
