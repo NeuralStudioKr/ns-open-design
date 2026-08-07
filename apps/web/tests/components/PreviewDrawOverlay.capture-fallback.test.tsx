@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PreviewDrawOverlay } from '../../src/components/PreviewDrawOverlay';
 import { requestPreviewSnapshot } from '../../src/runtime/exports';
+import * as annotationSnapshotQuality from '../../src/utils/annotationSnapshotQuality';
 
 vi.mock('../../src/runtime/exports', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/runtime/exports')>();
@@ -61,6 +62,16 @@ beforeEach(() => {
     setLineDash: vi.fn(),
     stroke: vi.fn(),
     strokeRect: vi.fn(),
+    getImageData: vi.fn((_x: number, _y: number, w: number, h: number) => {
+      const data = new Uint8ClampedArray(Math.max(1, w * h * 4));
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = 80;
+        data[i + 1] = 110;
+        data[i + 2] = 150;
+        data[i + 3] = 255;
+      }
+      return { data, width: w, height: h };
+    }),
     fillStyle: '',
     font: '',
     strokeStyle: '',
@@ -509,6 +520,55 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
       ).toBeNull();
     } finally {
       imageSpy.mockRestore();
+      window.removeEventListener('opendesign:annotation', annotation);
+    }
+  });
+
+  it('treats blank snapshot as failed capture for box+note annotations', async () => {
+    const blankSpy = vi.spyOn(annotationSnapshotQuality, 'isPreviewSnapshotMostlyBlank').mockResolvedValue(true);
+    const whiteDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const blankCapture = vi.fn(async () => ({ dataUrl: whiteDataUrl, w: 320, h: 200 }));
+    const annotation = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
+      detail.ack?.({ ok: true });
+    });
+    window.addEventListener('opendesign:annotation', annotation);
+
+    try {
+      const frameRect = {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        width: 320,
+        height: 200,
+        right: 320,
+        bottom: 200,
+        toJSON: () => ({}),
+      } as DOMRect;
+      const { container, getByRole } = render(
+        <PreviewDrawOverlay active captureSnapshot={blankCapture} captureFrameRect={() => frameRect}>
+          <iframe title="srcdoc" data-od-render-mode="srcdoc" />
+        </PreviewDrawOverlay>,
+      );
+
+      selectBoxTool(container);
+      const canvas = container.querySelector<HTMLCanvasElement>('canvas');
+      drawSelectionBox(canvas!);
+      const input = container.querySelector<HTMLInputElement>('.preview-draw-note-input');
+      fireEvent.change(input!, { target: { value: 'Shrink this title' } });
+      fireEvent.click(getByRole('button', { name: 'Send' }));
+
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 5_000 });
+      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
+        detail: expect.objectContaining({
+          file: null,
+          note: 'Shrink this title',
+          markKind: 'box',
+        }),
+      });
+    } finally {
+      blankSpy.mockRestore();
       window.removeEventListener('opendesign:annotation', annotation);
     }
   });

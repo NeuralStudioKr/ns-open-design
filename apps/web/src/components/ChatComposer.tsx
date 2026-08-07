@@ -2151,6 +2151,51 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           let visualAttachmentInput: Parameters<typeof buildVisualAnnotationAttachment>[0] | null = null;
           let visualAttachment: ChatCommentAttachment | null = null;
           try {
+            const buildVisualAttachmentInputFromAnnotationDetail = (
+              order: number,
+              idSeed: string,
+              screenshotPath: string,
+            ): Parameters<typeof buildVisualAnnotationAttachment>[0] => {
+              const bounds = detail.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
+              const inferredMarkKind =
+                detail.markKind
+                ?? (detail.bounds ? 'stroke' : detail.target ? 'click' : 'stroke');
+              return {
+                order,
+                idSeed,
+                screenshotPath,
+                markKind: inferredMarkKind,
+                note: detail.note,
+                bounds,
+                ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                  ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                  : {}),
+                target: detail.target
+                  ? {
+                      filePath: detail.target.filePath || detail.filePath || screenshotPath,
+                      elementId: detail.target.elementId,
+                      selector: detail.target.selector,
+                      label: detail.target.label,
+                      text: detail.target.text,
+                      position: detail.target.position,
+                      htmlHint: detail.target.htmlHint,
+                      ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                        ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                        : {}),
+                    }
+                  : {
+                      filePath:
+                        detail.filePath && !isRenderableImagePath(detail.filePath)
+                          ? detail.filePath
+                          : screenshotPath,
+                      position: detail.bounds ?? bounds,
+                      ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
+                        ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
+                        : {}),
+                    },
+              };
+            };
+
             // Upload the annotation screenshot together with any images the
             // user attached in the markup composer. The screenshot (when
             // present) is first so it keeps backing the structured visual
@@ -2162,46 +2207,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               const orderStart = reserveAttachmentOrders(annotationFiles.length);
               const buildVisualAttachmentInputFromScreenshot = (
                 screenshot: ChatAttachment,
-              ): Parameters<typeof buildVisualAnnotationAttachment>[0] => {
-                const bounds = detail.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
-                const inferredMarkKind =
-                  detail.markKind
-                  ?? (detail.bounds ? 'stroke' : detail.target ? 'click' : 'stroke');
-                return {
-                  order: isFiniteAttachmentOrder(screenshot.order) ? screenshot.order : orderStart,
-                  idSeed: screenshot.path,
-                  screenshotPath: screenshot.path,
-                  markKind: inferredMarkKind,
-                  note: detail.note,
-                  bounds,
-                  ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                    ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                    : {}),
-                  target: detail.target
-                    ? {
-                        filePath: detail.target.filePath || detail.filePath || screenshot.path,
-                        elementId: detail.target.elementId,
-                        selector: detail.target.selector,
-                        label: detail.target.label,
-                        text: detail.target.text,
-                        position: detail.target.position,
-                        htmlHint: detail.target.htmlHint,
-                        ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                          ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                          : {}),
-                      }
-                    : {
-                        filePath:
-                          detail.filePath && !isRenderableImagePath(detail.filePath)
-                            ? detail.filePath
-                            : screenshot.path,
-                        position: detail.bounds,
-                        ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                          ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                          : {}),
-                      },
-                };
-              };
+              ): Parameters<typeof buildVisualAnnotationAttachment>[0] =>
+                buildVisualAttachmentInputFromAnnotationDetail(
+                  isFiniteAttachmentOrder(screenshot.order) ? screenshot.order : orderStart,
+                  screenshot.path,
+                  screenshot.path,
+                );
 
               if (detail.action === 'draft') {
                 uploaded = annotationFiles.map((file, index) => {
@@ -2259,41 +2270,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                     && detail.note.trim()
                     && (detail.bounds || detail.target)
                   ) {
-                    const bounds = detail.bounds ?? detail.target?.position ?? { x: 0, y: 0, width: 0, height: 0 };
-                    visualAttachmentInput = {
-                      order: orderStart,
-                      idSeed: `${detail.markKind}-${orderStart}`,
-                      screenshotPath: '',
-                      markKind: detail.markKind,
-                      note: detail.note,
-                      bounds,
-                      ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                        ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                        : {}),
-                      target: detail.target
-                        ? {
-                            filePath: detail.target.filePath || detail.filePath || '',
-                            elementId: detail.target.elementId,
-                            selector: detail.target.selector,
-                            label: detail.target.label,
-                            text: detail.target.text,
-                            position: detail.target.position,
-                            htmlHint: detail.target.htmlHint,
-                            ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                              ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                              : {}),
-                          }
-                        : {
-                            filePath:
-                              detail.filePath && !isRenderableImagePath(detail.filePath)
-                                ? detail.filePath
-                                : '',
-                            position: bounds,
-                            ...(typeof detail.slideIndex === 'number' && Number.isFinite(detail.slideIndex)
-                              ? { slideIndex: Math.max(0, Math.floor(detail.slideIndex)) }
-                              : {}),
-                          },
-                    };
+                    visualAttachmentInput = buildVisualAttachmentInputFromAnnotationDetail(
+                      orderStart,
+                      `${detail.markKind}-${orderStart}`,
+                      '',
+                    );
                   }
                 }
                 if (
@@ -2318,6 +2299,23 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 }
               }
             }
+
+            // Capture degraded to bounds + note (no screenshot bytes): still stage
+            // structured visual comment so graft / fast-path get pagePosition.
+            if (
+              !visualAttachmentInput
+              && !detail.file
+              && detail.markKind
+              && (detail.bounds || detail.target)
+            ) {
+              const orderStart = reserveAttachmentOrders(1);
+              visualAttachmentInput = buildVisualAttachmentInputFromAnnotationDetail(
+                orderStart,
+                `${detail.markKind}-${orderStart}`,
+                '',
+              );
+            }
+
             setUploading(false);
 
             const appendAnnotationToComposer = () => {

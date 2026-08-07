@@ -8,6 +8,7 @@ import type { PreviewVisualMarkKind } from '../types';
 import { requestPreviewSnapshot } from '../runtime/exports';
 import { isImeComposing } from '../utils/imeComposing';
 import { fitPngBlobForAnthropicProxy } from '../utils/annotationImage';
+import { isPreviewSnapshotMostlyBlank } from '../utils/annotationSnapshotQuality';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { scaleBoundsToSlideCanvas } from '../utils/visualMarkPlacement';
 import {
@@ -789,7 +790,11 @@ export function PreviewDrawOverlay({
             ? ANNOTATION_CAPTURE_FAST_FALLBACK_MS
             : ANNOTATION_CAPTURE_BUDGET_MS;
         const snap = await requestSnapshot(captureBudgetMs);
-        if (snap) blob = await compositeWithBackground(snap, pinnedFrameRect);
+        let usableSnap = snap;
+        if (usableSnap && needsFullSlideCapture && await isPreviewSnapshotMostlyBlank(usableSnap)) {
+          usableSnap = null;
+        }
+        if (usableSnap) blob = await compositeWithBackground(usableSnap, pinnedFrameRect);
         if (!blob && needsFullSlideCapture && (hasVisualMark || hasTarget)) {
           // Typed notes and box marks carry placement via bounds — do not attach
           // a misleading marks-only PNG that hides which slide region was marked.

@@ -16,6 +16,7 @@ import {
   repairWipedSlidesForVisualMarks,
   stabilizeVisualMarkDeckHtml,
   hasElementScopedCommentAttachments,
+  isDrawnVisualMarkAttachment,
   isVisualCommentAttachment,
 } from '../../src/edit-mode/scoped-deck-patch';
 import {
@@ -61,6 +62,18 @@ describe('hasElementScopedCommentAttachments', () => {
       screenshotPath: 'uploads/visual-mark-1.png',
       markKind: 'stroke',
     }])).toBe(false);
+  });
+
+  it('treats box markKind as a drawn visual mark for client graft', () => {
+    expect(isDrawnVisualMarkAttachment({
+      ...attachment(1),
+      selectionKind: 'visual',
+      elementId: 'visual-mark-box-1',
+      selector: '',
+      htmlHint: '',
+      screenshotPath: '',
+      markKind: 'box',
+    })).toBe(true);
   });
 
   it('returns false when selectionKind is missing but screenshotPath marks a visual annotation', () => {

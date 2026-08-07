@@ -1190,6 +1190,28 @@ describe('queuedSlideNavTarget', () => {
     ).toEqual({ filePath: 'deck.html', slideIndex: 2 });
   });
 
+  it('builds box mark intent for memo-style annotations', () => {
+    const attachment = buildVisualAnnotationAttachment({
+      order: 1,
+      idSeed: 'box-1',
+      screenshotPath: '',
+      markKind: 'box',
+      note: 'Shrink this title',
+      bounds: { x: 40, y: 30, width: 200, height: 80 },
+      target: {
+        filePath: 'deck.html',
+        position: { x: 40, y: 30, width: 200, height: 80 },
+        slideIndex: 1,
+      },
+    });
+
+    expect(attachment.markKind).toBe('box');
+    expect(attachment.intent).toContain('red selection box');
+    expect(attachment.comment).toBe('Shrink this title');
+    expect(attachment.pagePosition).toEqual({ x: 40, y: 30, width: 200, height: 80 });
+    expect(attachment.slideIndex).toBe(1);
+  });
+
   it('returns null when nothing is slide-scoped', () => {
     expect(queuedSlideNavTarget(undefined)).toBeNull();
     expect(queuedSlideNavTarget(null)).toBeNull();
