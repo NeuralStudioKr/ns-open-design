@@ -166,13 +166,29 @@ export function canvasCreateSlidesRunPrompt(
   quickSettings?: Partial<CanvasSlideQuickSettings> | null,
 ): string {
   const title = templateTitle?.trim();
-  const templateHint = title ? `\nSelected slide template/style: ${title}.` : "";
+  const isDefaultTemplate = !title || title === "기본 슬라이드 템플릿";
+  // Weak inline hint for the default template (there is no explicit visual
+  // spec to preserve). For a user-picked template we surface a dedicated
+  // `[Selected slide template]` block so the model cannot bury it under the
+  // deliverable / source brief scaffolding — this used to be a single line
+  // and the model would ignore it whenever the source material did not
+  // suggest the template's theme.
+  const templateHint = isDefaultTemplate
+    ? (title ? `\nSelected slide template/style: ${title}.` : "")
+    : "";
+  const templateBlock = !isDefaultTemplate && title
+    ? [
+      "\n\n[Selected slide template]",
+      `The user picked "${title}" as the deck template. Match its visual identity — palette, typography, layout, and motif — as closely as the template specification in the system prompt allows.`,
+      "Do not fall back to a neutral / default deck styling just because the source material is unrelated to the template's theme.",
+    ].join("\n")
+    : "";
   const brief = compactCanvasBriefValue(sourceBrief ?? "", 900);
   const sourceHint = brief ? `\n\n[Source brief]\n${brief}` : "";
   const user = compactCanvasBriefValue(userInstruction ?? "", 600);
   const userHint = user ? `\n\n[User instruction]\n${user}` : "";
   const quickHint = `\n\n[Quick settings]\n${canvasSlideQuickSettingsInstruction(quickSettings)}`;
-  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${quickHint}${sourceHint}${userHint}`;
+  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${templateBlock}${quickHint}${sourceHint}${userHint}`;
 }
 
 /** Per-turn meta so API/daemon runs compose the selected deck template into the system prompt. */

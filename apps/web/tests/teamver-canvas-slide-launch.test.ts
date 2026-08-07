@@ -111,7 +111,14 @@ describe("canvasSlideLaunch", () => {
     );
     expect(runPrompt).toContain(CANVAS_CREATE_SLIDES_PROMPT);
     expect(runPrompt).toContain(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION);
-    expect(runPrompt).toContain("Selected slide template/style: Hermes Cyber Terminal.");
+    // User-picked template gets a dedicated block instead of the weaker
+    // one-liner hint (that lived inside the deliverable body and was routinely
+    // ignored when the source material did not suggest the template's theme).
+    expect(runPrompt).toContain("[Selected slide template]");
+    expect(runPrompt).toContain('The user picked "Hermes Cyber Terminal"');
+    // Weak one-liner is intentionally NOT emitted for a non-default template
+    // — the block above supersedes it.
+    expect(runPrompt).not.toContain("Selected slide template/style: Hermes Cyber Terminal.");
     expect(runPrompt).toContain("[Quick settings]");
     expect(runPrompt).toContain("Transform mode: Rebuild as a presentation");
     expect(runPrompt).toContain("[Source brief]");
@@ -119,6 +126,19 @@ describe("canvasSlideLaunch", () => {
     expect(runPrompt).toContain("[User instruction]");
     expect(runPrompt).toContain("8 slides, friendly tone for new hires.");
     expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).toBe(CANVAS_CREATE_SLIDES_PROMPT);
+  });
+
+  it("keeps the weak one-liner (no [Selected slide template] block) for the default template", () => {
+    // The default template has no explicit visual specification loaded on the
+    // daemon side; we intentionally omit the forceful block so the model isn't
+    // told to preserve a template that doesn't have a body to reproduce.
+    const runPrompt = canvasCreateSlidesRunPrompt(
+      "기본 슬라이드 템플릿",
+      null,
+      null,
+    );
+    expect(runPrompt).not.toContain("[Selected slide template]");
+    expect(runPrompt).not.toContain('The user picked "기본 슬라이드 템플릿"');
   });
 
   it("binds selected deck template into per-turn skillIds for system prompt composition", () => {

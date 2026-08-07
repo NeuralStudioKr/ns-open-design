@@ -58,7 +58,10 @@ describe('selected-deck-template prompt helpers', () => {
       currentSkillBody: '# scenario',
     });
     expect(preferred?.skillBody).toContain('Template: Hermes');
-    expect(preferred?.skillBody).toContain('Match this selected deck template');
+    // The title stub explicitly names the fallback so operators can grep for it
+    // in prompt captures when a template body fails to load. Assert on that
+    // stable header (the surrounding copy is intentionally free to iterate).
+    expect(preferred?.skillBody).toContain('title-only fallback');
   });
 
   it('does not treat missing title as fatal when template body is present', () => {

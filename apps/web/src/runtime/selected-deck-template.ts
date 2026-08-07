@@ -90,12 +90,22 @@ export function wrapSelectedDeckTemplateSkillBody(
 ): string {
   const title = templateTitle.trim() || 'selected deck template';
   return [
-    '# Teamver selected deck template guard',
+    '# Teamver selected deck template guard (MUST FOLLOW)',
     '',
     `Template: ${title}`,
-    'Treat this template as the primary visual contract for this run.',
-    'Preserve its palette, typography, layout rhythm, spacing, motif language, and first-slide mood in the generated deck.',
-    "If an active design system is also present, use it only as secondary brand context; do not replace the selected template's visual language with the design system default.",
+    '',
+    'The user explicitly picked this template in the Canvas → Slide launch step.',
+    'It is NOT a suggestion — it is the primary visual contract for this run.',
+    'REQUIRED:',
+    "- Reproduce this template's exact color palette, background treatment, typography (fonts / weights / sizes), grid, spacing rhythm, icon / motif language, and first-slide mood.",
+    '- Match the same slide chrome, section markers, footers, page numbers, and text-block shapes described below.',
+    "- If example HTML is included below, USE IT as the layout scaffold — do not invent a generic dark/light deck.",
+    'FORBIDDEN:',
+    "- Do not fall back to a default / neutral deck look because the source material is unrelated to the template's theme; adapt the content to the template, not the template to the content.",
+    "- Do not replace this template's visual language with an active design system's default styling; the design system (if any) is secondary brand context, not the primary look.",
+    '- Do not silently ignore the specification below because a section feels long — every clause is binding.',
+    '',
+    '--- Template specification follows ---',
     '',
     skillBody.trim(),
   ].join('\n');
