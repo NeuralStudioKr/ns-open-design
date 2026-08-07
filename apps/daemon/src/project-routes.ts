@@ -54,6 +54,7 @@ import {
   normalizeProjectFilePresignRelpath,
 } from './project-file-presign.js';
 import {
+  markRequestExplicitDeletedPaths,
   scheduleProjectStoragePersistAfterResponse,
   type ProjectStorageAccessHooks,
 } from './storage/lazy-project-materialization.js';
@@ -3659,6 +3660,17 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         to,
         project?.metadata,
       );
+      // Enqueue explicit remote deletion for BOTH Unicode forms of the source
+      // path so a legacy NFD S3 object is purged after rename — otherwise the
+      // orphan sits on S3 until the next full sync purge (or never, when
+      // OD_S3_PURGE_ON_DELETE=0).
+      if (result.oldName && result.newName !== result.oldName) {
+        const oldPaths = new Set<string>();
+        oldPaths.add(result.oldName);
+        try { oldPaths.add(result.oldName.normalize('NFC')); } catch { /* ignore */ }
+        try { oldPaths.add(result.oldName.normalize('NFD')); } catch { /* ignore */ }
+        markRequestExplicitDeletedPaths(req, [...oldPaths]);
+      }
       /** @type {import('@open-design/contracts').RenameProjectFileResponse} */
       const body = result;
       res.json(body);

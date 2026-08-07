@@ -155,6 +155,44 @@ function isMutatingMethod(method: string): boolean {
 }
 
 /**
+ * Marker attached by a route handler (rename etc.) when the mutation removes
+ * additional S3 keys the middleware could not derive from the URL. Includes
+ * both Unicode forms of a Hangul rename source so an alternate-encoded
+ * legacy S3 object is purged instead of resurfacing on next sync-down.
+ */
+export const REQUEST_EXPLICIT_DELETED_PATHS_KEY = '_odExplicitDeletedRelpaths';
+
+export function markRequestExplicitDeletedPaths(
+  req: unknown,
+  paths: readonly string[],
+): void {
+  if (!paths.length || !req || typeof req !== 'object') return;
+  const bag = req as Record<string, unknown>;
+  const existing = Array.isArray(bag[REQUEST_EXPLICIT_DELETED_PATHS_KEY])
+    ? (bag[REQUEST_EXPLICIT_DELETED_PATHS_KEY] as string[])
+    : [];
+  const merged = [...existing];
+  for (const raw of paths) {
+    const trimmed = String(raw || '').trim();
+    if (!trimmed || merged.includes(trimmed)) continue;
+    merged.push(trimmed);
+  }
+  bag[REQUEST_EXPLICIT_DELETED_PATHS_KEY] = merged;
+}
+
+function readRequestExplicitDeletedPaths(req: unknown): string[] {
+  if (!req || typeof req !== 'object') return [];
+  const bag = req as Record<string, unknown>;
+  const value = bag[REQUEST_EXPLICIT_DELETED_PATHS_KEY];
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === 'string' && entry) out.push(entry);
+  }
+  return out;
+}
+
+/**
  * Relpath for an explicit user file delete (Design Files row delete, MCP, etc.).
  * Mounted middleware sees `/raw/...`; unmounted tests may pass absolute paths.
  */
@@ -889,13 +927,23 @@ export function createLazyProjectMaterializationMiddleware(
           releaseEarlyPersistGate?.();
           return;
         }
+        // Rename routes may stash the OLD source paths on the request so we
+        // enqueue an explicit remote delete of the pre-rename S3 keys (both
+        // Unicode forms). Otherwise the alternate-encoded old object stays
+        // orphaned on S3 until the next full-project sync purge.
+        const routeExplicitDeletes = readRequestExplicitDeletedPaths(req);
+        const explicitDeletedPaths: string[] = [];
+        if (explicitDeletedRelpath) explicitDeletedPaths.push(explicitDeletedRelpath);
+        for (const extra of routeExplicitDeletes) {
+          if (extra && !explicitDeletedPaths.includes(extra)) explicitDeletedPaths.push(extra);
+        }
         void (async () => {
           try {
             await hooks.persistAfterMutation(
               req,
               projectId,
-              explicitDeletedRelpath
-                ? { explicitDeletedPaths: [explicitDeletedRelpath] }
+              explicitDeletedPaths.length > 0
+                ? { explicitDeletedPaths }
                 : undefined,
             );
           } finally {
