@@ -1812,11 +1812,35 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             // Chips are staged optimistically; send-time / preview fetch retries
             // with NFC/NFD + Drive alternates. Show an info banner so the user
             // knows to wait a moment before sending if S3 sync is still catching up.
-            setUploadError(
-              slideOnlyMvp
-                ? `이미지 ${coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`
-                : `${coldImageCount} image(s) are still syncing — wait a moment before sending.`,
+            const banner = slideOnlyMvp
+              ? `이미지 ${coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`
+              : `${coldImageCount} image(s) are still syncing — wait a moment before sending.`;
+            setUploadError(banner);
+            // Background poll — once every cold image becomes readable, clear
+            // the banner so the user is not left with a stale warning after
+            // sync-down catches up. Bounded to ~15s (5 retries × 3s) so a
+            // truly stuck upload eventually stops re-checking.
+            const coldItems = result.uploaded.filter(
+              (item) => item.kind === 'image' && !ready.some((r) => r.path === item.path),
             );
+            if (coldItems.length > 0) {
+              void (async () => {
+                for (let attempt = 0; attempt < 5; attempt += 1) {
+                  await new Promise((resolve) => setTimeout(resolve, 3000));
+                  const stillCold = await uploadedImagesReadableOnDisk(
+                    id,
+                    coldItems,
+                    [0],
+                  );
+                  if (stillCold.length === coldItems.length) {
+                    // All previously-cold images now readable — clear only if
+                    // the banner we set is still the current error.
+                    setUploadError((current) => (current === banner ? null : current));
+                    return;
+                  }
+                }
+              })();
+            }
           }
         }
         const partial = result.failed.length > 0;

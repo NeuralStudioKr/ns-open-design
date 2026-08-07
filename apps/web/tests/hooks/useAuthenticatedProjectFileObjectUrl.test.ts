@@ -48,6 +48,29 @@ describe('alternateAuthenticatedRawPaths', () => {
       `uploads/${nfd}`,
     ]));
   });
+
+  it('does NOT expand refs/uploads/assets alternates for non-image files', () => {
+    // Regression: deck.html requests were fanning out to
+    //   /raw/refs/deck.html, /raw/uploads/deck.html, /raw/assets/deck.html
+    // producing 404 spam and potentially colliding with unrelated basenames.
+    // Only image mentions (with a Drive/uploads/assets home) should probe.
+    const alternates = alternateAuthenticatedRawPaths('deck.html');
+    expect(alternates).not.toContain('refs/deck.html');
+    expect(alternates).not.toContain('uploads/deck.html');
+    expect(alternates).not.toContain('assets/deck.html');
+    expect(alternates).not.toContain('refs/drive/deck.html');
+  });
+
+  it('does NOT expand alternates for text/markdown/json files', () => {
+    for (const path of ['README.md', 'design.json', 'notes.txt', 'app.tsx']) {
+      const alternates = alternateAuthenticatedRawPaths(path);
+      for (const alt of alternates) {
+        expect(alt.startsWith('refs/')).toBe(false);
+        expect(alt.startsWith('uploads/')).toBe(false);
+        expect(alt.startsWith('assets/')).toBe(false);
+      }
+    }
+  });
 });
 
 describe('loadAuthenticatedProjectFileBlob', () => {

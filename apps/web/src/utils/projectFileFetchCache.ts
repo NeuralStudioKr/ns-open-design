@@ -54,6 +54,8 @@ export function projectRawFileCacheKey(projectId: string, path: string): string 
   return `${projectId.trim()}::${path.trim().replace(/\\/g, '/')}`;
 }
 
+const MISSING_IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|bmp|svg|ico|heic|heif)$/i;
+
 function missingPathVariants(path: string): string[] {
   const raw = String(path || '').trim().replace(/\\/g, '/');
   const nfc = normalizeProjectFilePath(path);
@@ -66,18 +68,26 @@ function missingPathVariants(path: string): string[] {
   const primary = nfc || raw;
   const baseName = projectFilePathBasename(primary);
   const baseNameNfd = projectFilePathToNfd(baseName);
-  if (baseName && baseName !== primary) out.add(baseName);
-  if (baseNameNfd && baseNameNfd !== baseName) out.add(baseNameNfd);
-  if (baseName && !primary.includes('/')) {
-    // Match alternateAuthenticatedRawPaths so a truly missing file (all probed
-    // 404) short-circuits on next remount without re-storming refs/drive etc.
-    out.add(`refs/drive/${baseName}`);
-    out.add(`refs/${baseName}`);
-    out.add(`uploads/${baseName}`);
-    out.add(`assets/${baseName}`);
-    if (baseNameNfd && baseNameNfd !== baseName) {
-      out.add(`refs/drive/${baseNameNfd}`);
-      out.add(`uploads/${baseNameNfd}`);
+  // Cross-directory basename equivalence (marking `deck.html` matches
+  // `refs/deck.html`) only makes sense for images that could genuinely have
+  // moved into refs/drive/uploads/assets after mention recovery. Text/HTML/JSON
+  // files with the same basename in different directories are separate assets;
+  // treating them as the same one causes false 404 cross-poisoning.
+  const isImagePath = MISSING_IMAGE_EXT_RE.test(baseName || primary);
+  if (isImagePath) {
+    if (baseName && baseName !== primary) out.add(baseName);
+    if (baseNameNfd && baseNameNfd !== baseName) out.add(baseNameNfd);
+    if (baseName && !primary.includes('/')) {
+      // Match alternateAuthenticatedRawPaths so a truly missing image file
+      // (all probed 404) short-circuits without re-storming refs/drive.
+      out.add(`refs/drive/${baseName}`);
+      out.add(`refs/${baseName}`);
+      out.add(`uploads/${baseName}`);
+      out.add(`assets/${baseName}`);
+      if (baseNameNfd && baseNameNfd !== baseName) {
+        out.add(`refs/drive/${baseNameNfd}`);
+        out.add(`uploads/${baseNameNfd}`);
+      }
     }
   }
   return [...out];
