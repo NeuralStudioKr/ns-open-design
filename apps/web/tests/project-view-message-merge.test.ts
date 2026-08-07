@@ -205,6 +205,17 @@ describe("chatAttachmentsForAutoContinueImageEmbed", () => {
     });
     expect(kept.map((item) => item.path)).toEqual(["uploads/goldfish.webp", "deck.html"]);
   });
+
+  it("recovers image attachments from @mentions when origin attachments were dropped", () => {
+    const kept = chatAttachmentsForAutoContinueImageEmbed({
+      content: "이 이미지 2페이지에 넣어줘 @msh9rso1-서빙하는-금붕어.webp",
+      attachments: [{ path: "deck.html", name: "deck.html", kind: "file" }],
+    });
+    expect(kept.map((item) => item.path)).toEqual([
+      "deck.html",
+      "msh9rso1-서빙하는-금붕어.webp",
+    ]);
+  });
 });
 
 describe("findClientSlideCountRegression", () => {

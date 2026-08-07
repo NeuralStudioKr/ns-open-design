@@ -22,9 +22,11 @@ import { COMMENT_ONLY_USER_PLACEHOLDER } from '../comments';
 import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
 import {
   isEphemeralDrawingScreenshotPath,
+  isRenderableImagePath,
   projectFilePathExists,
   projectFilePathBasename,
 } from '../utils/projectFilePaths';
+import { mergeImageMentionAttachments } from '../utils/recoverChatAttachmentsFromMentions';
 import {
   isProjectRawFileKnownMissing,
 } from '../utils/projectFileFetchCache';
@@ -659,10 +661,19 @@ type AnthropicImageCandidate = {
  * dropped — still emit native Anthropic image blocks for those paths.
  */
 export function anthropicImageCandidatesFromMessage(
-  message: Pick<ChatMessage, 'attachments' | 'commentAttachments'>,
+  message: Pick<ChatMessage, 'attachments' | 'commentAttachments' | 'content' | 'role'>,
 ): AnthropicImageCandidate[] {
+  // Rebuild chips from `@image` / embed-contract paths when attachments_json
+  // was dropped — otherwise BYOK vision silently becomes text-only after refresh.
+  const recoveredAttachments = mergeImageMentionAttachments(
+    message.attachments,
+    message.content,
+  );
   const imageAttachments = sortAttachmentsByUserOrder(
-    (message.attachments ?? []).filter((attachment) => attachment.kind === 'image'),
+    recoveredAttachments.filter(
+      (attachment) =>
+        attachment.kind === 'image' || isRenderableImagePath(attachment.path),
+    ),
   );
   const seen = new Set(imageAttachments.map((attachment) => projectFilePathBasename(attachment.path)));
   const fromAttachments: AnthropicImageCandidate[] = imageAttachments.map((attachment) => ({

@@ -459,6 +459,15 @@ describe('buildProxyMessages', () => {
     ]);
   });
 
+  it('recovers vision candidates from @image mentions when attachments were dropped', () => {
+    const candidates = anthropicImageCandidatesFromMessage({
+      role: 'user',
+      content: '이 이미지 넣어줘 @msh9rso1-서빙하는-금붕어.webp',
+      attachments: [],
+    });
+    expect(candidates.map((item) => item.path)).toEqual(['msh9rso1-서빙하는-금붕어.webp']);
+  });
+
   it('filters image candidates against the project file index', () => {
     const candidates = filterAnthropicImageCandidatesByProjectFiles(
       [

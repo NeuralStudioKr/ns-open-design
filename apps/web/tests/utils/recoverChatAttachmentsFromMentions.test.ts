@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   extractImageMentionPathsFromUserText,
+  mergeImageMentionAttachments,
   recoverChatAttachmentsFromMentions,
 } from '../../src/utils/recoverChatAttachmentsFromMentions';
 import type { ChatMessage } from '../../src/types';
@@ -15,17 +16,41 @@ describe('extractImageMentionPathsFromUserText', () => {
     ).toEqual(['msh9rso1-서빙하는-금붕어.webp']);
   });
 
-  it('ignores model-only embed suffixes and ephemeral drawings', () => {
+  it('recovers paths from [Attached image embed] even without @mentions', () => {
     expect(
       extractImageMentionPathsFromUserText(
         [
-          '@hero.png and @ms8hq9qu-drawing-2026-07-31T05-17-03-125Z.png',
+          '이 이미지 넣어줘',
           '',
           '[Attached image embed]',
-          '- <img src="hero.png">',
+          'The user attached image file(s) to place into the slide deck.',
+          '- <img src="refs/drive/msh9rso1-서빙하는-금붕어.webp" alt="">',
         ].join('\n'),
       ),
+    ).toEqual(['refs/drive/msh9rso1-서빙하는-금붕어.webp']);
+  });
+
+  it('ignores ephemeral drawings while keeping durable @mentions', () => {
+    expect(
+      extractImageMentionPathsFromUserText(
+        '@hero.png and @ms8hq9qu-drawing-2026-07-31T05-17-03-125Z.png',
+      ),
     ).toEqual(['hero.png']);
+  });
+});
+
+describe('mergeImageMentionAttachments', () => {
+  it('hydrates empty staged lists from @mentions for send/auto-continue', () => {
+    expect(
+      mergeImageMentionAttachments([], '넣어줘 @msh9rso1-서빙하는-금붕어.webp'),
+    ).toEqual([
+      {
+        path: 'msh9rso1-서빙하는-금붕어.webp',
+        name: 'msh9rso1-서빙하는-금붕어.webp',
+        kind: 'image',
+        order: 0,
+      },
+    ]);
   });
 });
 

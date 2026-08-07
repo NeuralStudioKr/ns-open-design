@@ -47,6 +47,7 @@ import { isTeamverEmbedMode, resolveTeamverDriveAssetUrl } from '../teamver/desi
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { AuthenticatedProjectFileImage } from './AuthenticatedProjectFileImage';
 import { excludeAttachmentsBackedByVisualScreenshots, isEphemeralDrawingScreenshotPath, isRenderableImagePath, projectFilePathExists, projectFilePathsInclude, visualCommentScreenshotPaths } from '../utils/projectFilePaths';
+import { mergeImageMentionAttachments } from '../utils/recoverChatAttachmentsFromMentions';
 import {
   attachmentsHavePendingAnnotationPaths,
   commentAttachmentsHavePendingScreenshotPaths,
@@ -486,7 +487,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         ? activeProjectFileName
         : null;
     const activeFileDisplayName = activeFileContext ? lastPathSegment(activeFileContext) : null;
-    const [draft, setDraft] = useState(() => initialDraft ?? loadComposerDraft(draftStorageKey) ?? "");
+    const persistedComposerDraft = useMemo(
+      () => loadComposerDraftState(draftStorageKey),
+      // Only seed from storage on mount / storage-key change — not every render.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [draftStorageKey],
+    );
+    const [draft, setDraft] = useState(
+      () => initialDraft ?? persistedComposerDraft.text,
+    );
     const composerRootRef = useRef<HTMLDivElement | null>(null);
     // Synchronous mirror of `draft`. Event handlers that mutate the draft off
     // a captured render closure (notably the annotation listener, where two
@@ -500,12 +509,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // conversation switches) so the event measures real chat-panel
     // entries rather than ChatComposer remounts. See PR #2285 review
     // 2026-05-20 04:08 for the rationale.
-    const [staged, setStaged] = useState<ChatAttachment[]>([]);
+    const [staged, setStaged] = useState<ChatAttachment[]>(
+      () => persistedComposerDraft.attachments,
+    );
     const attachedDriveAssetIds = useMemo(
       () => teamverDriveAssetIdsFromChatAttachments(staged),
       [staged],
     );
-    const nextAttachmentOrderRef = useRef(0);
+    const nextAttachmentOrderRef = useRef(
+      nextChatAttachmentOrder(persistedComposerDraft.attachments),
+    );
     const pendingAnnotationFilesRef = useRef<Map<string, File>>(new Map());
     const [pendingAnnotationPreviewUrls, setPendingAnnotationPreviewUrls] = useState<Record<string, string>>({});
     const [stagedVisualComments, setStagedVisualComments] = useState<ChatCommentAttachment[]>([]);
@@ -782,8 +795,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     }, [initialDraft, draft]);
 
     useEffect(() => {
-      saveComposerDraft(draftStorageKey, draft);
-    }, [draftStorageKey, draft]);
+      saveComposerDraftState(draftStorageKey, draft, staged);
+    }, [draftStorageKey, draft, staged]);
 
     useEffect(() => {
       if (previousWorkspaceContextIdRef.current === activeWorkspaceContextId) return;
@@ -1401,17 +1414,21 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         }
       }
 
+      // After refresh, draft may still have `@image.webp` pills while `staged`
+      // was empty (legacy text-only localStorage). Rehydrate before send so
+      // vision + `[Attached image embed]` contracts are not dropped.
+      const hydratedFromMentions = mergeImageMentionAttachments(flushedAttachments, prompt);
       const nextAttachments = excludeAttachmentsBackedByVisualScreenshots(
-        activeFileContext && !flushedAttachments.some((attachment) => attachment.path === activeFileContext)
+        activeFileContext && !hydratedFromMentions.some((attachment) => attachment.path === activeFileContext)
           ? [
               {
                 path: activeFileContext,
                 name: activeFileDisplayName ?? activeFileContext,
                 kind: 'file' as const,
               },
-              ...flushedAttachments,
+              ...hydratedFromMentions,
             ]
-          : flushedAttachments,
+          : hydratedFromMentions,
         flushedComments,
       );
       onSend(prompt, nextAttachments, dedupeCommentAttachments(flushedComments), meta);
@@ -1430,17 +1447,35 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
 
     function appendOrderedStagedAttachments(attachments: ChatAttachment[]) {
       if (attachments.length === 0) return;
+      const knownPaths = new Set(staged.map((attachment) => attachment.path));
+      const nextAttachments = attachments.filter((attachment) => !knownPaths.has(attachment.path));
       setStaged((current) => {
-        const knownPaths = new Set(current.map((attachment) => attachment.path));
-        const nextAttachments = attachments.filter((attachment) => !knownPaths.has(attachment.path));
-        if (nextAttachments.length === 0) return current;
-        const next = sortChatAttachmentsByOrder([...current, ...nextAttachments]);
+        const currentPaths = new Set(current.map((attachment) => attachment.path));
+        const additions = attachments.filter((attachment) => !currentPaths.has(attachment.path));
+        if (additions.length === 0) return current;
+        const next = sortChatAttachmentsByOrder([...current, ...additions]);
         nextAttachmentOrderRef.current = Math.max(
           nextAttachmentOrderRef.current,
           nextChatAttachmentOrder(next),
         );
         return next;
       });
+      // Keep durable `@path` mentions alongside chips (paperclip / Drive /
+      // annotation uploads). Refresh recovery scans content when
+      // attachments_json is empty.
+      const insertedTokens = new Set<string>();
+      for (const item of nextAttachments) {
+        if (item.kind !== 'image' && !looksLikeImage(item.path)) continue;
+        const path = item.path.trim();
+        if (!path) continue;
+        const token = inlineMentionToken(path);
+        if (draftRef.current.includes(token) || insertedTokens.has(token)) continue;
+        insertedTokens.add(token);
+        editorRef.current?.insertMention({
+          token,
+          entity: { id: path, kind: 'file', label: path, title: `File: ${path}` },
+        });
+      }
     }
 
     function appendContextAttachment(filePath: string) {
@@ -2583,6 +2618,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       setStagedWorkspaceContexts((prev) =>
         prev.filter((item) => set.has(`workspace:${item.id}`)),
       );
+      // Typed/pasted `@goldfish.webp` (or restored pills) should rehydrate the
+      // staged attachment chips so send/vision do not depend on paperclip alone.
+      const mentionedImages = mergeImageMentionAttachments([], text);
+      if (mentionedImages.length > 0) {
+        setStaged((current) => {
+          const merged = mergeImageMentionAttachments(current, text);
+          return merged.length === current.length ? current : sortChatAttachmentsByOrder(merged);
+        });
+      }
     }
 
     // Lexical reports the active @/slash trigger derived from the caret. The
@@ -5932,23 +5976,66 @@ function stripInlineMentionLabels(text: string, labels: string[]): string {
   );
 }
 
-function loadComposerDraft(key?: string): string | null {
-  if (!key || typeof window === 'undefined') return null;
+type PersistedComposerDraftV1 = {
+  v: 1;
+  text: string;
+  attachments: ChatAttachment[];
+};
+
+function isStoredComposerAttachment(value: unknown): value is ChatAttachment {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Partial<ChatAttachment>;
+  return typeof row.path === 'string'
+    && row.path.trim().length > 0
+    && typeof row.name === 'string'
+    && (row.kind === 'image' || row.kind === 'file');
+}
+
+function loadComposerDraftState(key?: string): { text: string; attachments: ChatAttachment[] } {
+  if (!key || typeof window === 'undefined') return { text: '', attachments: [] };
   try {
-    return window.localStorage.getItem(key);
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return { text: '', attachments: [] };
+    try {
+      const parsed = JSON.parse(raw) as Partial<PersistedComposerDraftV1>;
+      if (parsed && parsed.v === 1 && typeof parsed.text === 'string') {
+        const attachments = Array.isArray(parsed.attachments)
+          ? normalizeChatAttachmentOrders(parsed.attachments.filter(isStoredComposerAttachment))
+          : [];
+        return { text: parsed.text, attachments };
+      }
+    } catch {
+      // Legacy plain-text drafts remain supported.
+    }
+    return { text: raw, attachments: [] };
   } catch {
-    return null;
+    return { text: '', attachments: [] };
   }
 }
 
-function saveComposerDraft(key: string | undefined, draft: string) {
+function saveComposerDraftState(
+  key: string | undefined,
+  draft: string,
+  attachments: readonly ChatAttachment[],
+) {
   if (!key || typeof window === 'undefined') return;
   try {
-    if (draft) {
-      window.localStorage.setItem(key, draft);
-    } else {
+    if (!draft && attachments.length === 0) {
       window.localStorage.removeItem(key);
+      return;
     }
+    const payload: PersistedComposerDraftV1 = {
+      v: 1,
+      text: draft,
+      attachments: normalizeChatAttachmentOrders(
+        attachments
+          .filter((item) => item.path.trim().length > 0)
+          // Pending annotation blobs are session-only — do not revive after refresh.
+          .filter((item) => !isPendingAnnotationPath(item.path))
+          .slice(0, 16),
+      ),
+    };
+    window.localStorage.setItem(key, JSON.stringify(payload));
   } catch {
     // Storage can be unavailable in privacy modes; the composer should still work.
   }

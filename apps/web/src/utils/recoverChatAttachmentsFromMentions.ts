@@ -9,21 +9,44 @@ import {
 
 const IMAGE_MENTION_PATH_RE =
   /(?:^|[\s([{"'])@([^\s@]+\.(?:png|jpe?g|gif|webp|avif|bmp|svg))\b/gi;
+const IMAGE_EMBED_SRC_RE =
+  /src=["']([^"']+\.(?:png|jpe?g|gif|webp|avif|bmp|svg))["']/gi;
+const ATTACHED_IMAGE_EMBED_BLOCK_RE =
+  /\[Attached image embed\]([\s\S]*?)(?=\n\[|\n*<attached-preview-comments>|$)/i;
 
-/** Extract `@image.webp` paths from visible user text (composer mention leftovers). */
+function pushUniqueImagePath(path: string, out: string[], seen: Set<string>): void {
+  const normalized = String(path || '').trim().replace(/\\/g, '/');
+  if (!normalized || seen.has(normalized)) return;
+  if (isEphemeralDrawingScreenshotPath(normalized)) return;
+  if (!isRenderableImagePath(normalized)) return;
+  seen.add(normalized);
+  out.push(normalized);
+}
+
+/** Extract image paths from `@mentions` and durable `[Attached image embed]` blocks. */
 export function extractImageMentionPathsFromUserText(content: string | null | undefined): string[] {
-  const visible = stripUserVisibleUserMessageText(content);
-  if (!visible.includes('@')) return [];
+  const raw = String(content ?? '');
   const out: string[] = [];
   const seen = new Set<string>();
-  IMAGE_MENTION_PATH_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = IMAGE_MENTION_PATH_RE.exec(visible)) !== null) {
-    const path = String(match[1] || '').trim().replace(/\\/g, '/');
-    if (!path || seen.has(path) || isEphemeralDrawingScreenshotPath(path)) continue;
-    if (!isRenderableImagePath(path)) continue;
-    seen.add(path);
-    out.push(path);
+
+  // Prefer the durable embed contract block (stripped from visible chat text)
+  // so refresh recovery still works when `@path` was never written into prose.
+  const embedBlock = raw.match(ATTACHED_IMAGE_EMBED_BLOCK_RE)?.[1] ?? '';
+  if (embedBlock) {
+    IMAGE_EMBED_SRC_RE.lastIndex = 0;
+    let srcMatch: RegExpExecArray | null;
+    while ((srcMatch = IMAGE_EMBED_SRC_RE.exec(embedBlock)) !== null) {
+      pushUniqueImagePath(srcMatch[1] ?? '', out, seen);
+    }
+  }
+
+  const visible = stripUserVisibleUserMessageText(raw);
+  if (visible.includes('@')) {
+    IMAGE_MENTION_PATH_RE.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = IMAGE_MENTION_PATH_RE.exec(visible)) !== null) {
+      pushUniqueImagePath(match[1] ?? '', out, seen);
+    }
   }
   return out;
 }
@@ -35,25 +58,29 @@ function attachmentsAlreadyCoverPath(
   return attachments.some((attachment) => projectFilePathsReferToSameFile(attachment.path, path));
 }
 
-/**
- * After refresh, some older / partial upserts keep `@goldfish.webp` in content
- * but drop `attachments_json`. Rebuild image attachment chips from those
- * mentions so history does not degrade to plain `@filename` text only.
- */
-export function recoverChatAttachmentsFromMentions(message: ChatMessage): ChatMessage {
-  if (message.role !== 'user') return message;
-  const mentioned = extractImageMentionPathsFromUserText(message.content);
-  if (mentioned.length === 0) return message;
-  const existing = message.attachments ?? [];
-  const recovered: ChatAttachment[] = [...existing];
-  let order = recovered.reduce((max, item) => {
+function nextAttachmentOrder(attachments: readonly ChatAttachment[]): number {
+  return attachments.reduce((max, item) => {
     const value = typeof item.order === 'number' && Number.isFinite(item.order) ? item.order : -1;
     return Math.max(max, value);
   }, -1) + 1;
+}
+
+/**
+ * Merge image paths discovered in user text / embed contracts into an
+ * attachment list. Used by history recovery, composer send, and auto-continue.
+ */
+export function mergeImageMentionAttachments(
+  attachments: readonly ChatAttachment[] | null | undefined,
+  content: string | null | undefined,
+): ChatAttachment[] {
+  const existing = [...(attachments ?? [])];
+  const mentioned = extractImageMentionPathsFromUserText(content);
+  if (mentioned.length === 0) return existing;
+  let order = nextAttachmentOrder(existing);
   let changed = false;
   for (const path of mentioned) {
-    if (attachmentsAlreadyCoverPath(recovered, path)) continue;
-    recovered.push({
+    if (attachmentsAlreadyCoverPath(existing, path)) continue;
+    existing.push({
       path,
       name: projectFilePathBasename(path),
       kind: 'image',
@@ -62,6 +89,23 @@ export function recoverChatAttachmentsFromMentions(message: ChatMessage): ChatMe
     order += 1;
     changed = true;
   }
-  if (!changed) return message;
-  return { ...message, attachments: recovered };
+  return changed ? existing : [...(attachments ?? [])];
+}
+
+/**
+ * After refresh, some older / partial upserts keep `@goldfish.webp` in content
+ * (or only inside `[Attached image embed]`) but drop `attachments_json`.
+ * Rebuild image attachment chips so history / vision / auto-continue keep
+ * working.
+ */
+export function recoverChatAttachmentsFromMentions(message: ChatMessage): ChatMessage {
+  if (message.role !== 'user') return message;
+  const existing = message.attachments ?? [];
+  const mentioned = extractImageMentionPathsFromUserText(message.content);
+  if (mentioned.length === 0) return message;
+  if (mentioned.every((path) => attachmentsAlreadyCoverPath(existing, path))) return message;
+  return {
+    ...message,
+    attachments: mergeImageMentionAttachments(existing, message.content),
+  };
 }

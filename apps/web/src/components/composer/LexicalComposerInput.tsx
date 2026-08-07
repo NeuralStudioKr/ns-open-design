@@ -42,7 +42,7 @@ import {
 } from 'lexical';
 import { MentionNode, $createMentionNode, $isMentionNode } from './MentionNode';
 import { serializeComposer } from './serialize';
-import { setComposerFromText } from './deserialize';
+import { isPromotableFileMentionLabel, setComposerFromText } from './deserialize';
 import {
   buildInlineMentionParts,
   type InlineMentionEntity,
@@ -602,15 +602,28 @@ function foldPresentEntities(
 ): InlineMentionEntity[] {
   const result: InlineMentionEntity[] = [...present];
   const seen = new Set(present.map((e) => `${e.kind}:${e.id}`));
-  const parts = buildInlineMentionParts(text, known, { highlightUnknown: false });
+  // highlightUnknown so typed `@file.webp` (not yet a MentionNode) still folds
+  // into present and can rehydrate staged attachment chips on send.
+  const parts = buildInlineMentionParts(text, known, { highlightUnknown: true });
   if (parts) {
     for (const part of parts) {
-      if (part.kind === 'mention' && part.entity.kind !== 'unknown') {
-        const key = `${part.entity.kind}:${part.entity.id}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          result.push(part.entity);
-        }
+      if (part.kind !== 'mention') continue;
+      let entity = part.entity;
+      if (entity.kind === 'unknown' && isPromotableFileMentionLabel(entity.label)) {
+        const label = entity.label.trim().replace(/\\/g, '/');
+        entity = {
+          id: label,
+          kind: 'file',
+          label,
+          token: part.text,
+          title: `File: ${label}`,
+        };
+      }
+      if (entity.kind === 'unknown') continue;
+      const key = `${entity.kind}:${entity.id}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(entity);
       }
     }
   }

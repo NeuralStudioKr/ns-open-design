@@ -208,6 +208,7 @@ import {
 import { reconcileProjectRawFileMissingCache } from '../utils/projectFileFetchCache';
 import { rewriteAttachmentImageSrcs } from '../utils/rewriteAttachmentImageSrcs';
 import { healDiskHtmlAttachmentImageSrcs } from '../utils/healDiskHtmlAttachmentImageSrcs';
+import { mergeImageMentionAttachments } from '../utils/recoverChatAttachmentsFromMentions';
 import {
   stageReadableUploadedAttachments,
   uploadedImagesReadableOnDisk,
@@ -1205,9 +1206,17 @@ export function imageAttachmentPathsForSlideEmbed(
 
 /** Keep image + deck.html attachments across auto-continue so embed contracts survive retries. */
 export function chatAttachmentsForAutoContinueImageEmbed(
-  originUser: { attachments?: readonly ChatAttachment[] | null } | null | undefined,
+  originUser: {
+    attachments?: readonly ChatAttachment[] | null;
+    content?: string | null;
+  } | null | undefined,
 ): ChatAttachment[] {
-  const attachments = originUser?.attachments ?? [];
+  // Recover `@image` / `[Attached image embed]` paths when attachments_json
+  // lagged — otherwise retries lose the embed contract and greenfield 8→2.
+  const attachments = mergeImageMentionAttachments(
+    originUser?.attachments,
+    originUser?.content,
+  );
   const out: ChatAttachment[] = [];
   const seen = new Set<string>();
   for (const attachment of attachments) {
@@ -4863,8 +4872,10 @@ export function ProjectView({
         };
       }
       // Dense 2-slide rewrites can pass the byte-size check while destroying
-      // an 8-slide deck after an image-insert turn. Block slide-count collapse.
-      if (ext === '.html' && !persistCommentAttachments.length) {
+      // an 8-slide deck after an image-insert turn. Block slide-count collapse
+      // even on comment-scoped persists (image+pin turns previously skipped
+      // this guard and still collapsed 8→2).
+      if (ext === '.html') {
         try {
           const priorHtml = await readDiskHtml(fileName);
           const slideRegression = findClientSlideCountRegression({
@@ -4877,6 +4888,7 @@ export function ProjectView({
               fileName: slideRegression.fileName,
               priorCount: slideRegression.priorCount,
               newCount: slideRegression.newCount,
+              commentScoped: persistCommentAttachments.length > 0,
             });
             surfaceChatVisibleError(
               formatProjectArtifactRegressionRejectedError(slideRegression.fileName),

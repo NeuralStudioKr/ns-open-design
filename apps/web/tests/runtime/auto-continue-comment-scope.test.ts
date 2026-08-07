@@ -71,6 +71,18 @@ describe('findPrecedingUserMessage', () => {
     const found = findPrecedingUserMessage(messages, 'a1');
     expect(found?.commentAttachments?.length).toBe(1);
   });
+
+  it('recovers image attachments from @mentions when attachments_json was dropped', () => {
+    const messages = [
+      userMessage('u1', '넣어줘 @msh9rso1-서빙하는-금붕어.webp'),
+      assistantMessage('a1'),
+    ];
+    const found = findPrecedingUserMessage(messages, 'a1');
+    expect(found?.id).toBe('u1');
+    expect(found?.attachments?.map((item) => item.path)).toEqual([
+      'msh9rso1-서빙하는-금붕어.webp',
+    ]);
+  });
 });
 
 describe('extractCommentAttachmentsForAutoContinue', () => {
