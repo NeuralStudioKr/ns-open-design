@@ -1,4 +1,5 @@
 import type { ProjectFile } from '../../types';
+import { projectFilePathsReferToSameFile } from '../../utils/projectFilePaths';
 
 export function listDesignArtifactCandidates(
   files: ProjectFile[],
@@ -25,7 +26,10 @@ export function selectInitialDesignPreviewFile(
 
 function designPreviewRank(file: ProjectFile, preferredName?: string | null): number {
   if (isProcessArtifactFileName(file.name)) return Number.POSITIVE_INFINITY;
-  if (preferredName && file.name === preferredName) return 0;
+  // NFC-tolerant match — metadata.entryFile is typically NFC while a listFiles
+  // path can be NFD (macOS legacy upload). Byte-exact `===` picked the wrong
+  // deck → wrong `<base href>` → subresource 404s.
+  if (preferredName && projectFilePathsReferToSameFile(file.name, preferredName)) return 0;
   if (file.kind === 'html') return 10 + htmlPreviewNameRank(file.name);
   if (file.kind === 'image') return 30 + visualAssetNameRank(file.name);
   if (file.kind === 'sketch') return 40;

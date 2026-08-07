@@ -15176,6 +15176,13 @@ function baseDirFor(fileName: string): string {
 }
 
 function toOwnerRelativePath(ownerFileName: string, targetPath: string): string {
+  const nfcSegment = (value: string) => {
+    try {
+      return value.normalize('NFC');
+    } catch {
+      return value;
+    }
+  };
   const normalize = (value: string) => decodeURIComponent(value).replace(/^\/+/, '');
   const squash = (parts: string[]) => {
     const out: string[] = [];
@@ -15198,7 +15205,10 @@ function toOwnerRelativePath(ownerFileName: string, targetPath: string): string 
   while (
     common < ownerParts.length &&
     common < targetParts.length &&
-    ownerParts[common] === targetParts[common]
+    // NFC-tolerant segment compare: owner file may be NFD on disk while the
+    // target upload came in as NFC — byte-exact `===` split the common
+    // prefix at the wrong depth and produced a wrong-directory `../` walk.
+    nfcSegment(ownerParts[common]!) === nfcSegment(targetParts[common]!)
   ) {
     common += 1;
   }
@@ -15284,18 +15294,31 @@ async function fetchProjectRelativeText(
 ): Promise<string | null> {
   const filePath = resolveProjectRelativePath(ownerFileName, assetRef);
   if (!filePath) return null;
+  // Probe NFC and NFD forms so macOS-uploaded relative asset paths (NFD) still
+  // resolve when the deck / owner HTML references NFC (typical model output).
+  const candidates: string[] = [filePath];
   try {
-    // Teamver embed needs daemon auth / workspace / S3-prefix headers and
-    // 401 recovery — plain fetch() silently fails after auth races.
-    const resp = await fetchTeamverDaemon(projectRawUrl(projectId, filePath), {
-      cache: 'no-store',
-      teamverProjectId: projectId,
-    });
-    if (!resp.ok) return null;
-    return await resp.text();
-  } catch {
-    return null;
+    const nfc = filePath.normalize('NFC');
+    if (nfc !== filePath) candidates.push(nfc);
+  } catch { /* ignore */ }
+  try {
+    const nfd = filePath.normalize('NFD');
+    if (nfd !== filePath && !candidates.includes(nfd)) candidates.push(nfd);
+  } catch { /* ignore */ }
+  for (const candidate of candidates) {
+    try {
+      // Teamver embed needs daemon auth / workspace / S3-prefix headers and
+      // 401 recovery — plain fetch() silently fails after auth races.
+      const resp = await fetchTeamverDaemon(projectRawUrl(projectId, candidate), {
+        cache: 'no-store',
+        teamverProjectId: projectId,
+      });
+      if (resp.ok) return await resp.text();
+    } catch {
+      // Continue to the next candidate.
+    }
   }
+  return null;
 }
 
 function resolveProjectRelativePath(ownerFileName: string, assetRef: string): string | null {

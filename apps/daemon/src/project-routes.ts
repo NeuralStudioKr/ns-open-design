@@ -3489,12 +3489,38 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const projectId = String(params[0] ?? '');
       const fileSplat = String(params[1] ?? '');
       const project = getProject(db, projectId);
-      const file = await readProjectFile(
-        PROJECTS_DIR,
-        projectId,
-        fileSplat,
-        project?.metadata,
-      );
+      // Mirror /raw/: on ENOENT try S3 point-get before failing. Direct
+      // file GET on a cold sibling pod otherwise 404s even when the object
+      // exists on S3.
+      let file;
+      try {
+        file = await readProjectFile(
+          PROJECTS_DIR,
+          projectId,
+          fileSplat,
+          project?.metadata,
+        );
+      } catch (err: any) {
+        if (err && err.code === 'ENOENT' && ctx.projectStorageHooks) {
+          const filled = await ctx.projectStorageHooks.ensureFileAvailable(
+            req,
+            projectId,
+            fileSplat,
+          );
+          if (filled) {
+            file = await readProjectFile(
+              PROJECTS_DIR,
+              projectId,
+              fileSplat,
+              project?.metadata,
+            );
+          } else {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
       res.type(file.mime).send(file.buffer);
     } catch (err: any) {
       const status = err && err.code === 'ENOENT' ? 404 : 400;

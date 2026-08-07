@@ -1238,6 +1238,17 @@ function injectPreviewImageRetryBridge(doc: string): string {
     var sep = url.indexOf('?') >= 0 ? '&' : '?';
     return url + sep + '_odr=' + nonce;
   }
+  function unicodeVariants(url){
+    // Try alternate NFC / NFD forms after byte-exact same-URL retries fail.
+    // Hangul filenames uploaded from macOS often persist in one Unicode form
+    // while the HTML references the other — swapping fixes preview 404s
+    // without a page reload.
+    var out = [];
+    if (!url) return out;
+    try { var nfc = url.normalize('NFC'); if (nfc !== url) out.push(nfc); } catch (_) {}
+    try { var nfd = url.normalize('NFD'); if (nfd !== url && out.indexOf(nfd) < 0) out.push(nfd); } catch (_) {}
+    return out;
+  }
   function retry(img){
     if (!img || !img.isConnected) return;
     if (!shouldRetry(img)) return;
@@ -1246,10 +1257,25 @@ function injectPreviewImageRetryBridge(doc: string): string {
       var original = img.getAttribute('src') || '';
       // Strip prior _odr cache-bust so we retry from the clean project path.
       original = original.replace(/([?&])_odr=[^&]*/g, '$1').replace(/[?&]$/, '');
-      state = { original: original, attempts: 0 };
+      state = { original: original, attempts: 0, variants: null, variantIndex: -1 };
       STATE.set(img, state);
     }
-    if (state.attempts >= MAX_RETRIES) return;
+    if (state.attempts >= MAX_RETRIES) {
+      // After same-URL budget is spent, try one Unicode variant (NFC↔NFD) as
+      // a last-ditch swap for Hangul filename mismatches.
+      if (state.variants === null) state.variants = unicodeVariants(state.original);
+      state.variantIndex += 1;
+      if (state.variantIndex >= state.variants.length) return;
+      var swap = state.variants[state.variantIndex];
+      setTimeout(function(){
+        if (!img.isConnected) return;
+        if (!hasScopedBase()) return;
+        try {
+          img.src = bump(swap, 'u' + state.variantIndex + '-' + Date.now());
+        } catch (_) {}
+      }, 400);
+      return;
+    }
     var delay = RETRY_DELAYS_MS[state.attempts] || 3000;
     state.attempts += 1;
     setTimeout(function(){

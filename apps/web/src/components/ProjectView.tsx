@@ -203,6 +203,7 @@ import { randomUUID } from '../utils/uuid';
 import {
   excludeAttachmentsBackedByVisualScreenshots,
   projectFilePathBasename,
+  projectFilePathsReferToSameFile,
   projectFileResolvedPath,
 } from '../utils/projectFilePaths';
 import { reconcileProjectRawFileMissingCache } from '../utils/projectFileFetchCache';
@@ -1072,8 +1073,12 @@ export function resolveCanonicalDeckFileForEdit(
   if (deliverables.length === 0) return null;
   const preferred = entryFile?.trim();
   if (preferred) {
+    // NFC-tolerant match: metadata.entryFile may be NFC while listFiles bytes
+    // are NFD (macOS legacy). Byte-exact `===` selected the wrong deck.
     const match = deliverables.find(
-      (file) => file.name === preferred || file.path === preferred,
+      (file) =>
+        projectFilePathsReferToSameFile(file.name, preferred)
+        || projectFilePathsReferToSameFile(file.path, preferred),
     );
     if (match && isCanonicalDeckFileName(match.name)) return match;
   }
@@ -1093,7 +1098,9 @@ function resolvePrimaryDeckFile(
   const preferred = entryFile?.trim();
   if (preferred) {
     const match = deliverables.find(
-      (file) => file.name === preferred || file.path === preferred,
+      (file) =>
+        projectFilePathsReferToSameFile(file.name, preferred)
+        || projectFilePathsReferToSameFile(file.path, preferred),
     );
     if (match) return match;
   }
@@ -4307,21 +4314,43 @@ export function ProjectView({
   );
   const readProjectHtml = useCallback(
     async (name: string): Promise<string | null> => {
-      const file = projectFilesRef.current.find((entry) => entry.name === name);
+      // NFC-tolerant `/files` lookup: metadata / model paths are NFC while
+      // listFiles disk bytes can be NFD. Byte-exact `entry.name === name`
+      // otherwise ignored mtime cache and forced a raw fetch every time.
+      const file = projectFilesRef.current.find((entry) =>
+        projectFilePathsReferToSameFile(entry.name, name)
+        || projectFilePathsReferToSameFile(entry.path, name),
+      );
       const mtime = file?.mtime ?? 0;
       const cached = htmlContentCacheRef.current.get(name);
       if (cached && cached.mtime === mtime) return cached.text;
+      // Probe raw + NFC + NFD forms so an NFC caller can reach an NFD-on-disk
+      // deck.html (macOS legacy). Return the first form that returns 200.
+      const candidates: string[] = [name];
       try {
-        const response = await fetchTeamverDaemon(projectRawUrl(project.id, name), {
-          teamverProjectId: project.id,
-        });
-        const text = response.ok ? await response.text() : null;
-        htmlContentCacheRef.current.set(name, { mtime, text });
-        return text;
-      } catch {
-        htmlContentCacheRef.current.set(name, { mtime, text: null });
-        return null;
+        const nfc = name.normalize('NFC');
+        if (nfc !== name) candidates.push(nfc);
+      } catch { /* ignore */ }
+      try {
+        const nfd = name.normalize('NFD');
+        if (nfd !== name && !candidates.includes(nfd)) candidates.push(nfd);
+      } catch { /* ignore */ }
+      for (const candidate of candidates) {
+        try {
+          const response = await fetchTeamverDaemon(projectRawUrl(project.id, candidate), {
+            teamverProjectId: project.id,
+          });
+          if (response.ok) {
+            const text = await response.text();
+            htmlContentCacheRef.current.set(name, { mtime, text });
+            return text;
+          }
+        } catch {
+          // Try next candidate.
+        }
       }
+      htmlContentCacheRef.current.set(name, { mtime, text: null });
+      return null;
     },
     [project.id],
   );

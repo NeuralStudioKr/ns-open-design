@@ -372,11 +372,36 @@ export async function buildBatchArchive(projectsRoot, projectId, fileNames, meta
   const rejected = [];
 
   for (const name of fileNames) {
+    // NFC/NFD fallback: caller may send NFC (metadata / model / MCP) while
+    // disk has NFD (macOS legacy upload). Pick whichever Unicode form
+    // actually exists on scratch so batch downloads do not silently drop
+    // Hangul-named files.
     let filePath;
-    try {
-      filePath = resolveSafe(projectRoot, name);
-    } catch (err) {
-      rejected.push({ name, reason: `invalid path: ${err?.message || err}` });
+    let effectiveName = name;
+    let resolveErr = null;
+    for (const candidate of uniquePathCandidates(name)) {
+      try {
+        const attempt = resolveSafe(projectRoot, candidate);
+        try {
+          await lstat(attempt);
+        } catch (probeErr) {
+          if (!probeErr || probeErr.code !== 'ENOENT') throw probeErr;
+          resolveErr = probeErr;
+          continue;
+        }
+        filePath = attempt;
+        effectiveName = candidate;
+        resolveErr = null;
+        break;
+      } catch (err) {
+        resolveErr = err;
+      }
+    }
+    if (!filePath) {
+      const reason = resolveErr
+        ? `invalid path: ${resolveErr.message || resolveErr}`
+        : 'invalid path';
+      rejected.push({ name, reason });
       continue;
     }
 
@@ -450,7 +475,9 @@ export async function buildBatchArchive(projectsRoot, projectId, fileNames, meta
     }
 
     const buf = await readFile(filePath);
-    zip.file(name, buf, {
+    // Emit the on-disk (resolved) name in the archive so downstream tooling
+    // sees the actual bytes rather than the alternate Unicode form.
+    zip.file(effectiveName, buf, {
       date: new Date(st.mtimeMs),
       binary: true,
     });
