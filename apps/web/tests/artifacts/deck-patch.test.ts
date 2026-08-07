@@ -362,6 +362,16 @@ describe('diffDeckSlideIndexes', () => {
     expect(diff.changedSlideIndexes).toEqual([1]);
   });
 
+  it('accepts pre-materialized afterSlides without rematerializing', () => {
+    const next = CURRENT_DECK.replace('<h2>Numbers</h2>', '<h2>Numbers v2</h2>');
+    const afterBody = next.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? '';
+    const afterSlides = extractTopLevelSlideSections(afterBody);
+    const diff = diffDeckSlideIndexes(CURRENT_DECK, '<!-- no body -->', { afterSlides });
+    expect(diff.ok).toBe(true);
+    if (!diff.ok) return;
+    expect(diff.changedSlideIndexes).toEqual([1]);
+  });
+
   it('fails when a full deck fallback changes the slide count', () => {
     const next = CURRENT_DECK.replace(
       '<script>/* deck runtime */</script>',

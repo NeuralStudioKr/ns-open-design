@@ -382,21 +382,41 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const elementStart = source.indexOf("async function tryApplyElementPatchesAgainstCurrentDeck");
     expect(elementStart).toBeGreaterThan(0);
-    const elementBlock = source.slice(elementStart, elementStart + 6000);
+    const elementBlock = source.slice(elementStart, elementStart + 6500);
     expect(elementBlock).toContain("currentHtml?: string | null");
     // Element-patch folds through finalize (intent + stabilize + conditional scrub).
     expect(elementBlock).toContain("finalizeScopedDeckMergeHtml({");
     expect(elementBlock).toContain("alreadySanitized: true");
     expect(elementBlock).toContain("currentSlides: input.currentSlides");
+    expect(elementBlock).toContain("mergedSlides");
     const deckStart = source.indexOf("async function tryApplyDeckPatchAgainstCurrentDeck");
     expect(deckStart).toBeGreaterThan(0);
-    expect(source.slice(deckStart, deckStart + 2500)).toContain("currentHtml?: string | null");
+    const deckBlock = source.slice(deckStart, deckStart + 4500);
+    expect(deckBlock).toContain("currentHtml?: string | null");
+    // Parse-fail fallbacks reuse persist sections (graft / template / element).
+    expect(deckBlock).toContain("currentSlides: input.currentSlides");
+    expect(deckBlock).toContain("graftVisualMarksIntoDeckHtml(currentHtml, input.commentAttachments, {");
     expect(source).not.toContain("function scopedCommentSlideIndexes(");
     const guardStart = source.indexOf("async function fullDeckEditStaysInsideCommentScope");
     expect(guardStart).toBeGreaterThan(0);
-    const guardBlock = source.slice(guardStart, guardStart + 3500);
+    const guardBlock = source.slice(guardStart, guardStart + 4000);
     expect(guardBlock).toContain("beforeSlides");
+    expect(guardBlock).toContain("afterSlides");
     expect(guardBlock).toContain("diffDeckSlideIndexes(currentHtml, input.nextHtml, {");
+    const salvageStart = source.indexOf("async function trySalvageScopedFullDeckRewrite");
+    expect(salvageStart).toBeGreaterThan(0);
+    const salvageBlock = source.slice(salvageStart, salvageStart + 2500);
+    expect(salvageBlock).toContain("currentSlides?: readonly");
+    expect(salvageBlock).toContain("patchedSlides");
+    expect(salvageBlock).toContain("finalizeScopedDeckMergeHtml({");
+    expect(salvageBlock).toContain("mergedSlides");
+    expect(source).toContain("beforeSlides: persistCommentSections");
+    expect(source).toContain("currentSlides: persistCommentSections");
+    expect(source).toContain("stabilizeVisualMarkDeckHtml(");
+    expect(source).toContain("currentSlides: persistCommentSections");
+    expect(source).toMatch(
+      /stabilizeVisualMarkDeckHtml\(\s*currentDeckHtml,\s*htmlBody,\s*persistCommentAttachments,\s*\{/,
+    );
   });
 
   it("sanitizes FileViewer manual-edit saves before revision push", () => {
@@ -457,6 +477,8 @@ describe("ProjectView message loading", () => {
     expect(deckSource).toContain("sharedCurrentSlides");
     expect(deckSource).toContain("sharedPatchedSlides");
     expect(deckSource).toContain("patchedSlides: sharedPatchedSlides");
+    expect(deckSource).toContain("narrowedSlides");
+    expect(deckSource).toContain("mergedSlides: narrowedSlides");
     expect(deckSource).toContain("alreadySanitized?: boolean");
     expect(deckSource).toContain("mergedSlides?: readonly { outerHtml: string }[]");
     expect(deckSource).toContain("allPatchesVerified");

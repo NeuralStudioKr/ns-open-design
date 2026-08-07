@@ -12,6 +12,7 @@ import {
 } from '../artifacts/validate';
 import {
   diffDeckSlideIndexes,
+  extractDeckBodyContent,
   extractTopLevelSlideSections,
   isDeckPatchArtifactType,
   parseDeckPatchWithSalvage,
@@ -1450,6 +1451,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
         currentHtml: input.currentHtml,
+        currentSlides: input.currentSlides,
       });
     }
     devLog.warn('[element-patch] parse failed', {
@@ -1515,6 +1517,7 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
         currentHtml,
+        currentSlides: input.currentSlides,
       });
     }
     devLog.warn('[element-patch] apply failed', { fileName: input.fileName, reason: applied.reason });
@@ -1522,12 +1525,16 @@ async function tryApplyElementPatchesAgainstCurrentDeck(input: {
   }
   // Mirror deck-patch finalize (intent + stabilize + conditional sanitize).
   // applyElementPatches already sanitized — skip no-op-stabilize re-scrub.
+  const mergedSlides = (input.commentAttachments?.length ?? 0) > 0
+    ? extractTopLevelSlideSections(extractDeckBodyContent(applied.html))
+    : undefined;
   return finalizeScopedDeckMergeHtml({
     currentHtml,
     mergedHtml: applied.html,
     commentAttachments: input.commentAttachments ?? [],
     instructionText: input.instructionText,
     currentSlides: input.currentSlides,
+    mergedSlides,
     alreadySanitized: true,
   });
 }
@@ -1707,7 +1714,9 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
   });
   if (!parsed.ok) {
     const grafted = input.commentAttachments
-      ? graftVisualMarksIntoDeckHtml(currentHtml, input.commentAttachments)
+      ? graftVisualMarksIntoDeckHtml(currentHtml, input.commentAttachments, {
+        currentSlides: input.currentSlides,
+      })
       : null;
     if (grafted) {
       devLog.warn('[deck-patch] applied client visual-mark graft fallback', {
@@ -1732,6 +1741,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
           allowedSlideIndexes: input.allowedSlideIndexes,
           commentAttachments: input.commentAttachments,
           instructionText: input.instructionText,
+          currentSlides: input.currentSlides,
         });
         if (salvagedResult.ok) {
           devLog.warn('[deck-patch] applied client visual-mark template fallback', {
@@ -1762,6 +1772,7 @@ async function tryApplyDeckPatchAgainstCurrentDeck(input: {
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
         currentHtml,
+        currentSlides: input.currentSlides,
       });
     }
     devLog.warn('[deck-patch] parse failed', { fileName: input.fileName, reason: parsed.reason });
@@ -1824,6 +1835,8 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   commentAttachments: readonly ChatCommentAttachment[];
   /** When set, skip a second disk fetch (persistArtifact cache). */
   currentHtml?: string | null;
+  /** Pre-materialized current sections from persist reconcile. */
+  beforeSlides?: readonly { outerHtml: string }[];
 }): Promise<{ ok: true } | { ok: false; code: ScopedDeckPersistFailureCode; reason: string }> {
   const currentHtml = input.currentHtml !== undefined
     ? input.currentHtml
@@ -1842,15 +1855,14 @@ async function fullDeckEditStaysInsideCommentScope(input: {
     };
   }
   let allowedSlideIndexes = [...input.allowedSlideIndexes];
-  // When empty, reconcile once and reuse its sections for the slide diff
-  // (was reconcile then diffDeckSlideIndexes rematerializing before+after).
-  let beforeSlides: ReturnType<typeof reconcileCommentScopeForPersist>['sections'] | undefined;
+  // Prefer persist-reconcile sections; empty-allowed still reconciles once.
+  let beforeSlides = input.beforeSlides;
   if (allowedSlideIndexes.length === 0) {
     // Prefer the same one-pass persist-scope walk used elsewhere (reconcile +
     // candidates + infer) instead of a second scopedCommentSlideIndexesFromDeck.
     const scope = reconcileCommentScopeForPersist(currentHtml, input.commentAttachments);
     const inferred = scope.allowedSlideIndexes;
-    beforeSlides = scope.sections;
+    beforeSlides = beforeSlides ?? scope.sections;
     if (inferred && inferred.length > 0) {
       allowedSlideIndexes = inferred;
     } else {
@@ -1861,8 +1873,11 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       };
     }
   }
+  // Materialize after once; share before+after into the slide diff.
+  const afterSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.nextHtml));
   const diff = diffDeckSlideIndexes(currentHtml, input.nextHtml, {
     beforeSlides,
+    afterSlides,
   });
   if (!diff.ok) {
     devLog.warn('[deck-patch] scoped full-deck guard could not diff deck', {
@@ -1952,6 +1967,8 @@ async function trySalvageScopedFullDeckRewrite(input: {
   instructionText?: string;
   /** When set, skip a second disk fetch (persistArtifact cache). */
   currentHtml?: string | null;
+  /** Pre-materialized current sections from persist reconcile. */
+  currentSlides?: readonly { outerHtml: string; openTag?: string }[];
 }): Promise<{ ok: true; html: string; sanitized: true } | { ok: false; reason: string }> {
   const currentHtml = input.currentHtml !== undefined
     ? input.currentHtml
@@ -1961,11 +1978,17 @@ async function trySalvageScopedFullDeckRewrite(input: {
   if (!currentHtml) {
     return { ok: false, reason: 'current deck file unreadable' };
   }
+  // One patched-section materialization shared by merge + finalize stabilize.
+  const patchedSlides = extractTopLevelSlideSections(
+    extractDeckBodyContent(input.patchedHtml),
+  );
   const scoped = mergeScopedCommentTargetsFromPatchedDeck({
     currentHtml,
     patchedHtml: input.patchedHtml,
     commentAttachments: input.commentAttachments,
     instructionText: input.instructionText,
+    currentSlides: input.currentSlides,
+    patchedSlides,
   });
   if (!scoped.ok) {
     return { ok: false, reason: scoped.reason };
@@ -1974,11 +1997,14 @@ async function trySalvageScopedFullDeckRewrite(input: {
     return { ok: false, reason: 'full-deck rewrite produced no narrowed scoped match' };
   }
   // Mirror applyScopedDeckPatchToHtml finalize (intent + stabilize + sanitize fold).
+  const mergedSlides = extractTopLevelSlideSections(extractDeckBodyContent(scoped.html));
   const finalized = finalizeScopedDeckMergeHtml({
     currentHtml,
     mergedHtml: scoped.html,
     commentAttachments: input.commentAttachments,
     instructionText: input.instructionText,
+    currentSlides: input.currentSlides,
+    mergedSlides,
   });
   if (!finalized.ok) {
     return { ok: false, reason: finalized.reason };
@@ -4436,6 +4462,7 @@ export function ProjectView({
           allowedSlideIndexes: scopedAllowedSlideIndexes,
           commentAttachments: persistCommentAttachments,
           currentHtml: diskHtmlForTarget,
+          beforeSlides: persistCommentSections,
         });
         if (!scopeResult.ok) {
           // Model emitted a full deck on a scoped comment turn (often after
@@ -4453,6 +4480,7 @@ export function ProjectView({
               commentAttachments: persistCommentAttachments,
               instructionText: runVisiblePromptRef.current,
               currentHtml: diskHtmlForTarget,
+              currentSlides: persistCommentSections,
             });
             if (salvaged.ok) {
               devLog.warn('[deck-patch] salvaged scoped full-deck rewrite via narrow merge', {
@@ -4591,6 +4619,10 @@ export function ProjectView({
             currentDeckHtml,
             htmlBody,
             persistCommentAttachments,
+            {
+              currentSlides: persistCommentSections,
+              mergedSlides: extractTopLevelSlideSections(extractDeckBodyContent(htmlBody)),
+            },
           );
         }
       }

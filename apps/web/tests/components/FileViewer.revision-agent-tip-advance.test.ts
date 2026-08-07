@@ -20,14 +20,18 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(block).toContain('setManualEditFrozenSource');
     expect(block).toContain('activeMissingFromList');
     expect(block).toContain('revisionRefreshGenerationRef');
-    // Tip advance with identical HTML skips freeze remount / reloadKey /
-    // repair-cache / draft churn.
+    // Tip advance with identical HTML skips setSource/ref/gate + freeze remount /
+    // reloadKey / repair-cache / draft churn.
     expect(block).toContain('contentUnchanged');
     expect(block).toContain('if (!contentUnchanged)');
     expect(block).toContain('rememberStablePreviewSource(projectId, file.name, targetHtml)');
     const unchangedGuard = block.indexOf('if (!contentUnchanged)');
     expect(unchangedGuard).toBeGreaterThan(0);
     expect(block.indexOf('rememberStablePreviewSource(projectId, file.name, targetHtml)')).toBeGreaterThan(
+      unchangedGuard,
+    );
+    expect(block.indexOf('setSource(targetHtml)')).toBeGreaterThan(unchangedGuard);
+    expect(block.indexOf('exportHtmlSnapshotGateRef.current = targetHtml')).toBeGreaterThan(
       unchangedGuard,
     );
     expect(block).toContain('current.fullSource === targetHtml');

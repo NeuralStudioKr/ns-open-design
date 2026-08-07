@@ -1531,24 +1531,33 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
       ),
       '',
     )
-    // Form navigators — relative/fragment only (DOM: isSafeManualEditRelativeOrFragmentUrl).
-    // Absolute https://… survives the prefix deny above; strip any scheme / //.
+    // Form navigators + ping — relative/fragment only
+    // (DOM: isSafeManualEditRelativeOrFragmentUrl). Absolute https://… and
+    // backslash-authority phishing survive the prefix deny above.
     .replace(
-      /\s(?:action|formaction)\s*=\s*(['"])\s*(?:[a-z][a-z0-9+.-]*\s*:|\/\/)[\s\S]*?\1/gi,
+      /\s(?:action|formaction|ping)\s*=\s*(['"])\s*(?:[a-z][a-z0-9+.-]*\s*:|\/\/)[\s\S]*?\1/gi,
       '',
     )
     .replace(
-      /\s(?:action|formaction)\s*=\s*(?:[a-z][a-z0-9+.-]*\s*:|\/\/)[^\s>]*/gi,
+      /\s(?:action|formaction|ping)\s*=\s*(?:[a-z][a-z0-9+.-]*\s*:|\/\/)[^\s>]*/gi,
+      '',
+    )
+    .replace(
+      /\s(?:action|formaction|ping)\s*=\s*(['"])[\s\S]*?\\[\s\S]*?\1/gi,
+      '',
+    )
+    .replace(
+      /\s(?:action|formaction|ping)\s*=\s*[^\s>]*\\[^\s>]*/gi,
       '',
     )
     // Multi-token URL lists — drop attr when ANY candidate matches the deny list
     // (prefix-of-whole-value misses `srcset="/ok.png, javascript:…"`).
     .replace(
-      /\s(?:srcset|imagesrcset|archive|ping|values)\s*=\s*(['"])[\s\S]*?(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|\/\/)[\s\S]*?\1/gi,
+      /\s(?:srcset|imagesrcset|archive|values)\s*=\s*(['"])[\s\S]*?(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|\/\/)[\s\S]*?\1/gi,
       '',
     )
     .replace(
-      /\s(?:srcset|imagesrcset|archive|ping|values)\s*=\s*[^\s>]*(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|\/\/)[^\s>]*/gi,
+      /\s(?:srcset|imagesrcset|archive|values)\s*=\s*[^\s>]*(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|\/\/)[^\s>]*/gi,
       '',
     );
 }

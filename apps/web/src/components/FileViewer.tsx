@@ -8014,20 +8014,20 @@ function HtmlViewer({
         // Same HTML already painted — sync refs/stack only (skip freeze remount
         // + style-replay tax when tip advance lands on unchanged content).
         const contentUnchanged = targetHtml === sourceRef.current;
-        setSource(targetHtml);
-        sourceRef.current = targetHtml;
-        lastStablePreviewSourceRef.current = targetHtml;
-        exportHtmlSnapshotGateRef.current = targetHtml;
         revisionSkipReconcileOnceRef.current = true;
         if (!contentUnchanged) {
-          // Changed tip content — repair/cache + draft + freeze remount.
+          // Changed tip content — paint + repair/cache + draft + freeze remount.
+          setSource(targetHtml);
+          sourceRef.current = targetHtml;
+          lastStablePreviewSourceRef.current = targetHtml;
+          exportHtmlSnapshotGateRef.current = targetHtml;
           rememberStablePreviewSource(projectId, file.name, targetHtml);
           setManualEditDraft((current) => ({ ...current, fullSource: targetHtml! }));
           setManualEditFrozenSource(targetHtml);
           setReloadKey((key) => key + 1);
         } else {
-          // Identical HTML already painted — skip repair/cache churn; keep
-          // freeze/draft in sync only when refs drifted.
+          // Identical HTML already painted — skip setSource/ref/gate churn;
+          // keep freeze/draft in sync only when they drifted.
           if (manualEditFrozenSource !== targetHtml) {
             setManualEditFrozenSource(targetHtml);
           }

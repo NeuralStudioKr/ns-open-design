@@ -589,12 +589,17 @@ export function applyScopedDeckPatchToHtml(input: {
       return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason };
     }
     if (scoped.narrowed) {
+      // Narrowed HTML differs from patched apply — materialize once for stabilize.
+      const narrowedSlides = extractTopLevelSlideSections(
+        extractDeckBodyContent(scoped.html),
+      );
       return finalizeScopedDeckMergeHtml({
         currentHtml,
         mergedHtml: scoped.html,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
         currentSlides: sharedCurrentSlides ?? undefined,
+        mergedSlides: narrowedSlides,
       });
     }
     if (mergedScopeRelaxed) {
