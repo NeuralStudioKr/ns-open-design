@@ -137,6 +137,56 @@ describe('PreviewModal sandbox isolation', () => {
 
     expect(markup).not.toContain('template-share-menu');
     expect(markup).not.toContain('template-share-trigger');
+    // Keep a dedicated open-in-new-tab affordance after Share is hidden.
+    expect(markup).toContain('preview-modal-open-in-new-tab');
+  });
+
+  it('disables deck prev/next until slide-state arrives', () => {
+    const markup = renderToStaticMarkup(
+      <PreviewModal
+        title="Deck waiting for bridge"
+        views={[
+          {
+            id: 'preview',
+            label: 'Preview',
+            html: '<section class="slide">one</section><section class="slide">two</section>',
+            deck: true,
+          },
+        ]}
+        exportTitleFor={() => 'deck'}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(markup).toMatch(
+      /data-testid="preview-modal-deck-prev"[^>]*\bdisabled\b/,
+    );
+    expect(markup).toMatch(
+      /data-testid="preview-modal-deck-next"[^>]*\bdisabled\b/,
+    );
+  });
+
+  it('uses a two-row header with toolbar for actions', () => {
+    const markup = renderToStaticMarkup(
+      <PreviewModal
+        title="Toolbar layout"
+        views={[
+          {
+            id: 'preview',
+            label: 'Preview',
+            html: '<div>hello</div>',
+          },
+        ]}
+        exportTitleFor={() => 'plain'}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(markup).toContain('ds-modal-header-toolbar');
+    // Close stays on the title row, not inside the actions toolbar.
+    expect(markup).toMatch(
+      /ds-modal-header-top[\s\S]*ds-modal-close[\s\S]*ds-modal-header-toolbar/,
+    );
   });
 
   it('includes popup flags in the sandbox attribute', () => {

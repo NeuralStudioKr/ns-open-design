@@ -20,6 +20,7 @@ import type { PluginShareAction } from '../../state/projects';
 import { Icon } from '../Icon';
 import { TrustBadge } from '../TrustBadge';
 import { shouldEagerLoadCommunityPluginPreviews } from '../../teamver/embedDaemonFetchPolicy';
+import { embedUiLabel } from '../../teamver/embedUiLabels';
 import { PreviewSurface } from './cards/PreviewSurface';
 import { localizePluginDescription, localizePluginTitle } from './localization';
 import { inferPluginPreview } from './preview';
@@ -131,7 +132,10 @@ export function PluginCard({
             type="button"
             className="plugins-home__gallery-name"
             title={title}
-            aria-label={`Open ${title} details`}
+            aria-label={embedUiLabel(
+              `Open ${title} details`,
+              `${title} 상세 열기`,
+            )}
             onClick={(event) => {
               event.stopPropagation();
               onOpenDetails(record);
@@ -150,7 +154,10 @@ export function PluginCard({
                 event.stopPropagation();
                 onOpenExternal(record);
               }}
-              aria-label={`Open ${title} in a new tab`}
+              aria-label={embedUiLabel(
+                `Open ${title} in a new tab`,
+                `${title} 새 탭에서 열기`,
+              )}
               data-testid={`plugins-home-open-${record.id}`}
             >
               <Icon name="external-link" size={12} />
@@ -164,7 +171,10 @@ export function PluginCard({
               onClick={(event) => {
                 event.stopPropagation();
               }}
-              aria-label={`Open ${title} in a new tab`}
+              aria-label={embedUiLabel(
+                `Open ${title} in a new tab`,
+                `${title} 새 탭에서 열기`,
+              )}
               data-testid={`plugins-home-open-${record.id}`}
             >
               <Icon name="external-link" size={12} />

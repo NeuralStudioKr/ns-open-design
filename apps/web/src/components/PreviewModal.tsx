@@ -16,6 +16,7 @@ import { buildSrcdoc } from '../runtime/srcdoc';
 import { looksLikeCompactApiStackedDeckForPreview } from '../runtime/compact-api-stacked-deck';
 import { postDeckHostViewportToIframe, scheduleDeckPreviewFitNudges } from '../runtime/deckPreviewFit';
 import { Icon } from './Icon';
+import { embedUiLabel } from '../teamver/embedUiLabels';
 
 export interface PreviewView {
   id: string;
@@ -673,6 +674,17 @@ export function PreviewModal({
                 <div className="ds-modal-subtitle">{subtitle}</div>
               ) : null}
             </div>
+            <button
+              type="button"
+              className="ds-modal-close"
+              onClick={onClose}
+              title={t('preview.closeTitle')}
+              aria-label={t('common.close')}
+            >
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+          <div className="ds-modal-header-toolbar">
             {showTabs ? (
               <div className="ds-modal-tabs" role="tablist">
                 {views.map((v) => (
@@ -705,7 +717,7 @@ export function PreviewModal({
                     data-tooltip-placement="bottom"
                     aria-label={t('fileViewer.previousSlide')}
                     data-testid="preview-modal-deck-prev"
-                    disabled={slideState !== null && slideState.active <= 0}
+                    disabled={slideState === null || slideState.active <= 0}
                   >
                     <Icon
                       name="chevron-right"
@@ -728,7 +740,8 @@ export function PreviewModal({
                     aria-label={t('fileViewer.nextSlide')}
                     data-testid="preview-modal-deck-next"
                     disabled={
-                      slideState !== null && slideState.active >= slideState.count - 1
+                      slideState === null ||
+                      slideState.active >= slideState.count - 1
                     }
                   >
                     <Icon name="chevron-right" size={20} />
@@ -762,7 +775,10 @@ export function PreviewModal({
                       disabled={primaryAction.disabled || primaryAction.busy}
                       aria-haspopup="menu"
                       aria-expanded={primaryMenuOpen}
-                      aria-label={`More ways to ${primaryAction.label}`}
+                      aria-label={embedUiLabel(
+                        `More ways to ${primaryAction.label}`,
+                        `${primaryAction.label} 다른 방법`,
+                      )}
                       {...(primaryAction.testId
                         ? { 'data-testid': `${primaryAction.testId}-menu` }
                         : {})}
@@ -823,8 +839,11 @@ export function PreviewModal({
               ) : null}
               {sidebar ? (
                 <button
+                  type="button"
                   className={`ghost ${sidebarOpen ? 'is-active' : ''}${
-                    hideSidebarToggle ? ' ds-modal-sidebar-toggle--compact-only' : ''
+                    hideSidebarToggle
+                      ? ' ds-modal-sidebar-toggle--compact-only ds-modal-sidebar-toggle--icon'
+                      : ''
                   }`}
                   onClick={() => {
                     setSidebarOpen((v) => {
@@ -835,8 +854,35 @@ export function PreviewModal({
                   }}
                   aria-pressed={sidebarOpen}
                   title={sidebar.label}
+                  aria-label={sidebar.label}
                 >
-                  {sidebar.label}
+                  {hideSidebarToggle ? (
+                    <Icon
+                      name="panel-left"
+                      size={16}
+                      style={{ transform: 'scaleX(-1)' }}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    sidebar.label
+                  )}
+                </button>
+              ) : null}
+              {hideShareMenu && canExportFiles ? (
+                <button
+                  type="button"
+                  className="ghost icon-only od-tooltip"
+                  onClick={() => {
+                    onSharePopoverItemClick?.('open_in_new_tab');
+                    openInNewTab();
+                  }}
+                  title={t('preview.openInNewTab')}
+                  data-tooltip={t('preview.openInNewTab')}
+                  data-tooltip-placement="bottom"
+                  aria-label={t('preview.openInNewTab')}
+                  data-testid="preview-modal-open-in-new-tab"
+                >
+                  <Icon name="external-link" size={16} />
                 </button>
               ) : null}
               {showTemplateShareMenu ? (
@@ -1090,15 +1136,6 @@ export function PreviewModal({
               ) : null}
               {headerExtras}
             </div>
-            <button
-              type="button"
-              className="ds-modal-close"
-              onClick={onClose}
-              title={t('preview.closeTitle')}
-              aria-label={t('common.close')}
-            >
-              <Icon name="close" size={14} />
-            </button>
           </div>
         </header>
         <div

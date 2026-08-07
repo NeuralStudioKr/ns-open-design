@@ -108,25 +108,24 @@ export function PluginExampleDetail({
   const primary = pluginUsePrimaryAction(record, t);
   const primaryLabel = isDeck ? t('automations.useTemplate') : primary.label;
   const useMenu = buildPluginUseMenu(record, onUse, t);
+  // Primary CTA already runs `use`. Drop the duplicate structure-only row from
+  // the caret so templates only offer the distinct "use with query" path.
   const templateUseMenu = isDeck && useMenu
-    ? useMenu.map((item, index) =>
-        index === 0
-          ? {
-              ...item,
-              label: embedUiLabel('Use template only', '템플릿만 사용'),
-              description: embedUiLabel(
-                'Use the template structure and write the content yourself',
-                '템플릿 구조만 적용하고 내용은 직접 작성',
-              ),
-            }
-          : item,
-      )
+    ? useMenu
+        .filter((item) => item.testId?.includes('use-with-query'))
+        .map((item) => ({
+          ...item,
+          label: embedUiLabel('Start with this design', '이 디자인으로 시작'),
+          description: embedUiLabel(
+            'Apply the template and load the example prompt into chat',
+            '템플릿을 적용하고 예시 프롬프트를 채팅에 불러옵니다',
+          ),
+        }))
     : useMenu;
 
   return (
     <PreviewModal
       title={localizedTitle}
-      subtitle={description || undefined}
       views={[
         {
           id: 'preview',
@@ -156,10 +155,9 @@ export function PluginExampleDetail({
         // the rendered HTML preview. Designers are the primary audience
         // here, so the sidebar starts COLLAPSED — the preview is the
         // hero and gets the full stage by default — and when opened it
-        // shows a designer-first slice (author + example query) with the
-        // developer manifest detail tucked behind a "Developer details"
-        // disclosure (variant="minimal"). Fullscreen still gives an
-        // immersive view when needed.
+        // shows a designer-first slice (description + author + example
+        // query) with the developer manifest detail tucked behind a
+        // "Developer details" disclosure (variant="minimal").
         label: infoLabel,
         defaultOpen: false,
         contentKey: record.id,
@@ -167,7 +165,6 @@ export function PluginExampleDetail({
           <div className="plugin-info-pane">
             <PluginMetaSections
               record={record}
-              omit={{ description: true }}
               compact
               heading={infoLabel}
               variant="minimal"
@@ -183,7 +180,11 @@ export function PluginExampleDetail({
             busy: !!isApplying,
             busyLabel: t('homeHero.applying'),
             testId: `plugin-details-use-${record.id}`,
-            menu: templateUseMenu,
+            // Empty caret menu → plain primary button (no split).
+            menu:
+              templateUseMenu && templateUseMenu.length > 0
+                ? templateUseMenu
+                : undefined,
           }}
       hideSidebarToggle
       // Temporarily hide Share until the template export/share menu is redesigned.

@@ -1328,14 +1328,12 @@
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
 }
-/* One row: title + description stacked on the left, action buttons and
-   close on the right. Vertically centering the right cluster against the
-   two-line title block drops the buttons down so they sit balanced with
-   the description instead of hugging the top edge. */
+/* Row 1: title (+ optional subtitle) + close. Row 2 (toolbar): tabs +
+   actions so deck-nav / CTA no longer compete with a long title on one line. */
 .ds-modal-header-top {
   display: flex;
-  align-items: center;
-  gap: 20px;
+  align-items: flex-start;
+  gap: 16px;
 }
 .ds-modal-title-block {
   flex: 1 1 auto;
@@ -1349,6 +1347,18 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+.ds-modal-header-toolbar .ds-modal-actions {
+  margin-left: auto;
+}
+.ds-modal-header-toolbar .ds-modal-actions .ghost.icon-only {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text);
 }
 .ds-modal-title {
   font-size: 16px;
@@ -1981,11 +1991,23 @@
 .ds-modal-sidebar-toggle--compact-only {
   display: none;
 }
+.ds-modal-sidebar-toggle--icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 
 @media (max-width: 760px) {
   .ds-modal-backdrop { padding: 0; }
   .ds-modal { border-radius: 0; }
   .ds-modal-header { gap: 10px; padding: 12px 14px; }
+  .ds-modal-header-toolbar .ds-modal-actions {
+    margin-left: 0;
+    justify-content: flex-start;
+  }
   .ds-modal-actions { justify-content: flex-start; }
   .ds-modal-stage { flex-direction: column; }
   .ds-modal-stage.has-sidebar .ds-modal-stage-iframe { flex: 1 1 50%; }
