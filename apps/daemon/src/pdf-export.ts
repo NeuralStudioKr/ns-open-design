@@ -159,11 +159,14 @@ export async function inlineProjectImagesFromScratch(options: {
         if (file.buffer.length > INLINE_IMAGE_MAX_BYTES) return;
         dataByPath.set(relpath, `data:${mime};base64,${file.buffer.toString('base64')}`);
       } catch {
-        // Missing / ENOENT / permission — queue a basename-suffix fallback for
-        // basename-only refs. Models occasionally emit `<img src="민들레.png">`
-        // when the on-disk file is `msXXXX-민들레.png`; without this the preview
-        // regresses to alt-only text (broken image icon + filename).
-        if (!relpath.includes('/')) missingBasenames.push(relpath);
+        // Missing / ENOENT / permission — queue a basename-suffix fallback.
+        // Models occasionally emit `<img src="민들레.png">` (bare) or
+        // `<img src="refs/drive/민들레.png">` (right dir, wrong-cased name)
+        // when the on-disk file is `refs/drive/msh9rso1-민들레.png`; without
+        // this the preview regresses to alt-only text (broken image icon +
+        // filename). We match by basename below so a wrong parent dir does
+        // not block the recovery.
+        missingBasenames.push(relpath);
       }
     }),
   );
@@ -239,8 +242,14 @@ async function loadBasenameFallback(options: {
     }
   }
   if (byLowerBase.size === 0 && bySuffixBase.size === 0) return null;
-  const resolveOne = (basename: string): string | null => {
-    if (!basename) return null;
+  const resolveOne = (requested: string): string | null => {
+    const trimmed = String(requested || '').trim();
+    if (!trimmed) return null;
+    // The caller may pass either a bare basename ("민들레.png") or a nested
+    // path ("refs/drive/민들레.png") when the on-disk file lives under a
+    // different parent. Reduce to basename before matching so we recover the
+    // real file either way.
+    const basename = trimmed.split('/').pop() || trimmed;
     const nfc = safeNormalize(basename, 'NFC');
     const nfd = safeNormalize(basename, 'NFD');
     const candidates = [basename, nfc, nfd];

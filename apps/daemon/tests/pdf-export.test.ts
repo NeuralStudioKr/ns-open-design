@@ -242,6 +242,19 @@ describe('inlineProjectImagesFromScratch', () => {
     const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
     expect(out).toMatch(/src="data:image\/webp;base64,/);
   });
+
+  it('basename-fallback recovers wrong-directory refs (e.g., <img src="refs/drive/bare.png">)', async () => {
+    // Model sometimes types the right parent dir but forgets the id prefix.
+    // Without a nested-path fallback the preview still collapses to alt only.
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7]);
+    await writeFile(
+      path.join(projectsRoot, projectId, 'refs', 'drive', 'msh9rso1-hero.png'),
+      png,
+    );
+    const html = '<img src="refs/drive/hero.png" alt="hero">';
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toMatch(/src="data:image\/png;base64,/);
+  });
 });
 
 describe('collectRelativeProjectAssetPaths / warmExportRelativeAssets', () => {
