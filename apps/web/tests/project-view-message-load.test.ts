@@ -138,7 +138,9 @@ describe("ProjectView message loading", () => {
     expect(start).toBeGreaterThan(0);
     const block = source.slice(start, start + 1800);
 
-    expect(block).toContain("mediaExecution: mediaExecutionPolicyForProjectMetadata(project.metadata");
+    // composeMetadata merges this-turn Canvas/Drive template pins so the
+    // first send is not stuck on stale React project.metadata.
+    expect(block).toContain("mediaExecution: mediaExecutionPolicyForProjectMetadata(composeMetadata");
     expect(block).toContain("slideOnlyMvp");
     expect(block).toContain("streamFormat: config.mode === 'api' ? 'plain' : undefined");
   });
@@ -164,12 +166,14 @@ describe("ProjectView message loading", () => {
     const source = readSource("src/components/ProjectView.tsx");
     const signature = source.indexOf("skillIdOverride?: string | null");
     expect(signature).toBeGreaterThan(0);
-    const composeBlock = source.slice(signature, signature + 5600);
+    const composeBlock = source.slice(signature, signature + 12000);
 
     expect(composeBlock).toContain("const effectiveSkillId = skillIdOverride ?? project.skillId");
     expect(composeBlock).toContain("skills.find((s) => s.id === effectiveSkillId)");
     expect(composeBlock).toContain("await fetchDesignTemplate(effectiveSkillId)");
-    expect(composeBlock).toContain("selectedDeckTemplateMetadata(project.metadata)");
+    expect(composeBlock).toContain("selectedDeckTemplateMetadata(");
+    expect(composeBlock).toContain("turnDeckTemplateMeta");
+    expect(composeBlock).toContain("composeMetadata");
     expect(composeBlock).toContain("primaryDeckSkillId");
     expect(composeBlock).toContain("pluginIdForLocalSkill !== primaryDeckSkillId");
     expect(composeBlock).toContain("secondaryScenarioSkillBody");
@@ -178,10 +182,12 @@ describe("ProjectView message loading", () => {
 
     const callStart = source.indexOf("const effectiveSkillId = resolveDeckTemplateSkillId(project.metadata, meta)");
     expect(callStart).toBeGreaterThan(0);
-    const callBlock = source.slice(callStart, callStart + 1200);
+    const callBlock = source.slice(callStart, callStart + 1600);
     expect(callBlock).toContain("resolveDeckTemplateSkillId(project.metadata, meta)");
     expect(callBlock).toContain("resolveScenarioPluginIdForLocalSkill(");
     expect(callBlock).toContain("composedSystemPrompt(");
+    expect(callBlock).toContain("selectedDeckTemplateId: meta.selectedDeckTemplateId");
+    expect(callBlock).toContain("skipDiscoveryBrief: true");
   });
 
   it("passes design templates into the project chat composer skill picker", () => {

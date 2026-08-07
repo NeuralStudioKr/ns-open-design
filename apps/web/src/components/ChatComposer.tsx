@@ -408,6 +408,14 @@ export interface ChatSendMeta {
   skillIds?: string[];
   /** Per-turn design system override (embed slide defaults, canvas one-confirm). */
   designSystemId?: string | null;
+  /**
+   * Canvas/Drive → Slide one-confirm pins. Surfaced on the turn meta so the
+   * first send can compose against the picked template even when React
+   * `project.metadata` has not yet refreshed after `patchProject`.
+   */
+  selectedDeckTemplateId?: string;
+  selectedDeckTemplateTitle?: string;
+  skipDiscoveryBrief?: boolean;
 }
 
 /**
@@ -2067,6 +2075,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             {
               ...baseMeta,
               ...canvasMeta,
+              // Race-safe: patchProject metadata may not be in React state yet.
+              skipDiscoveryBrief: true,
+              ...(templateBinding.projectMetadata.selectedDeckTemplateId
+                ? {
+                    selectedDeckTemplateId:
+                      templateBinding.projectMetadata.selectedDeckTemplateId,
+                    selectedDeckTemplateTitle:
+                      templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                  }
+                : {}),
               pluginInputs: {
                 ...canvasCreateSlidesPluginInputs(
                   handoff.title?.trim()
@@ -2177,6 +2195,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             {
               ...baseMeta,
               ...canvasMeta,
+              // Race-safe: patchProject metadata may not be in React state yet.
+              skipDiscoveryBrief: true,
+              ...(templateBinding.projectMetadata.selectedDeckTemplateId
+                ? {
+                    selectedDeckTemplateId:
+                      templateBinding.projectMetadata.selectedDeckTemplateId,
+                    selectedDeckTemplateTitle:
+                      templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                  }
+                : {}),
               pluginInputs: {
                 ...canvasCreateSlidesPluginInputs(
                   asset.filename ?? asset.assetId,

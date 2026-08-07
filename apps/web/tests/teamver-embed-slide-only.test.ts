@@ -234,15 +234,20 @@ describe('Teamver embed slide-only MVP policy', () => {
     const helper = readSource('src/runtime/selected-deck-template.ts');
     expect(helper).toContain('Teamver selected deck template guard');
     expect(helper).toContain('primary visual contract');
-    expect(helper).toContain('use it only as secondary brand context');
+    expect(helper).toContain('use it only as secondary brand');
+    expect(helper).toContain('secondary brand');
   });
 
   it('loads selected deck template metadata when project skillId is intentionally empty', () => {
     const projectView = readSource('src/components/ProjectView.tsx');
-    expect(projectView).toContain('selectedDeckTemplateMetadata(project.metadata)');
+    expect(projectView).toContain('selectedDeckTemplateMetadata(');
+    expect(projectView).toContain('turnDeckTemplateMeta');
     expect(projectView).toContain('enrichChatSendMetaWithProjectDeckTemplate');
     expect(projectView).toContain('fetchPluginLocalSkill(selectedTemplate.id)');
     expect(projectView).toContain('Selected visual template');
+    const chatComposer = readSource('src/components/ChatComposer.tsx');
+    expect(chatComposer).toContain('selectedDeckTemplateId:');
+    expect(chatComposer).toContain('skipDiscoveryBrief: true');
   });
 
   it('wires slide-only gates into entry and composer surfaces', () => {

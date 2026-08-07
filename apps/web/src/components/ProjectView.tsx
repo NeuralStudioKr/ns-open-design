@@ -5571,6 +5571,10 @@ export function ProjectView({
     skillIdOverride?: string | null,
     pluginIdForLocalSkill?: string | null,
     pluginBlock?: string | null,
+    turnDeckTemplateMeta?: Pick<
+      ProjectChatSendMeta,
+      'selectedDeckTemplateId' | 'selectedDeckTemplateTitle' | 'skipDiscoveryBrief'
+    > | null,
   ): Promise<string> => {
     let skillBody: string | undefined;
     let skillName: string | undefined;
@@ -5578,7 +5582,14 @@ export function ProjectView({
     let designSystemBody: string | undefined;
     let designSystemTitle: string | undefined;
 
-    const selectedTemplate = selectedDeckTemplateMetadata(project.metadata);
+    // Prefer persisted project metadata, then this-turn Canvas/Drive pin.
+    // Confirm flows `patchProject` then send immediately; React state can
+    // still be stale on the first compose, which previously dropped the
+    // selected template and re-summarized the visual contract away.
+    const selectedTemplate = selectedDeckTemplateMetadata(
+      project.metadata,
+      turnDeckTemplateMeta,
+    );
     if (selectedTemplate) {
       const cached = pluginSkillCache.current.get(selectedTemplate.id);
       if (cached !== undefined) {
@@ -5791,6 +5802,25 @@ export function ProjectView({
     } else {
       setAudioVoiceOptionsError(null);
     }
+    const composeMetadata = {
+      ...(project.metadata ?? {}),
+      ...(turnDeckTemplateMeta?.skipDiscoveryBrief === true
+        ? { kind: 'deck' as const, skipDiscoveryBrief: true }
+        : {}),
+      ...(selectedTemplate
+        ? {
+            selectedDeckTemplateId: selectedTemplate.id,
+            ...(selectedTemplate.title || skillName
+              ? {
+                  selectedDeckTemplateTitle:
+                    selectedTemplate.title
+                    || skillName
+                    || undefined,
+                }
+              : {}),
+          }
+        : {}),
+    };
     return composeSystemPrompt({
       skillBody,
       skillName,
@@ -5798,7 +5828,7 @@ export function ProjectView({
       designSystemBody,
       designSystemTitle,
       memoryBody,
-      metadata: project.metadata,
+      metadata: composeMetadata,
       template,
       pluginBlock: pluginBlock ?? undefined,
       audioVoiceOptions,
@@ -5808,7 +5838,7 @@ export function ProjectView({
         config.mode === 'api'
           ? byokChatToolNamesForProtocol(config.apiProtocol)
           : undefined,
-      mediaExecution: mediaExecutionPolicyForProjectMetadata(project.metadata, {
+      mediaExecution: mediaExecutionPolicyForProjectMetadata(composeMetadata, {
         slideOnlyMvp,
       }),
       sessionMode: sessionModeOverride,
@@ -9990,6 +10020,15 @@ export function ProjectView({
           effectiveSkillId,
           pluginIdForLocalSkill,
           pluginBlock ?? null,
+          {
+            ...(meta?.selectedDeckTemplateId
+              ? {
+                  selectedDeckTemplateId: meta.selectedDeckTemplateId,
+                  selectedDeckTemplateTitle: meta.selectedDeckTemplateTitle,
+                }
+              : {}),
+            ...(meta?.skipDiscoveryBrief === true ? { skipDiscoveryBrief: true } : {}),
+          },
         );
         const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);
         const apiHistory = await historyWithApiAttachmentContext(

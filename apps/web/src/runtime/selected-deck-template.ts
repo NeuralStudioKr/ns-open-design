@@ -7,6 +7,15 @@ export type SelectedDeckTemplateMetadata = {
 
 export type DeckTemplateSendMeta = {
   skillIds?: string[];
+  /**
+   * Per-turn pin from Canvas/Drive → Slide confirm. Required because
+   * `patchProject({ selectedDeckTemplateId })` can land after the first
+   * send already composed against a stale React `project.metadata`.
+   */
+  selectedDeckTemplateId?: string;
+  selectedDeckTemplateTitle?: string;
+  /** Per-turn overlay so first-turn Canvas launches skip discovery even if project metadata is stale. */
+  skipDiscoveryBrief?: boolean;
   context?: {
     pluginIds?: string[];
     skillIds?: string[];
@@ -15,11 +24,19 @@ export type DeckTemplateSendMeta = {
 
 export function selectedDeckTemplateMetadata(
   metadata: ProjectMetadata | null | undefined,
+  turnMeta?: Pick<DeckTemplateSendMeta, 'selectedDeckTemplateId' | 'selectedDeckTemplateTitle'> | null,
 ): SelectedDeckTemplateMetadata | null {
-  const id = metadata?.selectedDeckTemplateId?.trim();
-  if (!id) return null;
-  const title = metadata?.selectedDeckTemplateTitle?.trim() || undefined;
-  return { id, title };
+  const fromProject = metadata?.selectedDeckTemplateId?.trim();
+  if (fromProject) {
+    const title = metadata?.selectedDeckTemplateTitle?.trim() || undefined;
+    return { id: fromProject, title };
+  }
+  const fromTurn = turnMeta?.selectedDeckTemplateId?.trim();
+  if (fromTurn) {
+    const title = turnMeta?.selectedDeckTemplateTitle?.trim() || undefined;
+    return { id: fromTurn, title };
+  }
+  return null;
 }
 
 /**
@@ -32,7 +49,7 @@ export function enrichChatSendMetaWithProjectDeckTemplate<T extends DeckTemplate
   meta: T | undefined,
   metadata: ProjectMetadata | null | undefined,
 ): T | undefined {
-  const selected = selectedDeckTemplateMetadata(metadata);
+  const selected = selectedDeckTemplateMetadata(metadata, meta);
   if (!selected) return meta;
   const existingSkillIds = meta?.skillIds ?? [];
   const priorPluginIds = (meta?.context?.pluginIds ?? []).filter((id) => id !== selected.id);
@@ -59,7 +76,7 @@ export function resolveDeckTemplateSkillId(
   metadata: ProjectMetadata | null | undefined,
   meta?: DeckTemplateSendMeta,
 ): string | null {
-  const fromMetadata = selectedDeckTemplateMetadata(metadata)?.id ?? null;
+  const fromMetadata = selectedDeckTemplateMetadata(metadata, meta)?.id ?? null;
   if (fromMetadata) return fromMetadata;
   const fromSkillIds = meta?.skillIds?.find((id) => id.trim()) ?? null;
   if (fromSkillIds) return fromSkillIds.trim();
@@ -73,7 +90,7 @@ export function resolveScenarioPluginIdForLocalSkill(
   meta: DeckTemplateSendMeta | undefined,
   appliedPluginSnapshotPluginId?: string | null,
 ): string | null {
-  const templateId = selectedDeckTemplateMetadata(metadata)?.id ?? null;
+  const templateId = selectedDeckTemplateMetadata(metadata, meta)?.id ?? null;
   const snapshotId = appliedPluginSnapshotPluginId?.trim() || null;
   if (snapshotId && snapshotId !== templateId) return snapshotId;
   const pluginIds = meta?.context?.pluginIds ?? [];

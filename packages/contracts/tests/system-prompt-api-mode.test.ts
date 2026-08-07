@@ -635,6 +635,37 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Selected deck template — Simple Deck');
     });
 
+    it('keeps the FULL template body when Visual summary is present even if selectedDeckTemplateId is missing (metadata race)', () => {
+      // Canvas/Drive confirm patches project metadata then sends on the same
+      // tick. React `project.metadata` can still lack selectedDeckTemplateId
+      // while the FE has already loaded the template body (with the
+      // frontmatter visual summary prepended). Summarizing in that window
+      // is what made "템플릿 적용 안 됨" survive the metadata-only guard.
+      const wrappedSkillBody = [
+        '# Teamver selected deck template guard',
+        '',
+        'Template: Html Ppt Hermes Cyber Terminal',
+        '',
+        '--- Template specification follows ---',
+        '',
+        '## Visual summary (from template frontmatter)',
+        '',
+        '暗终端 honest-review deck — #0a0c10 黑底 + 薄荷绿 #7ed3a4 + JetBrains Mono.',
+        '',
+        '# HTML PPT · hermes',
+      ].join('\n');
+      const prompt = composeTeamverSlideApiPrompt({
+        skillName: 'Html Ppt Hermes Cyber Terminal',
+        skillBody: wrappedSkillBody,
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+      expect(prompt).toContain('## Selected deck template — Html Ppt Hermes Cyber Terminal — MUST MATCH THIS VISUAL SPEC');
+      expect(prompt).toContain('## Visual summary (from template frontmatter)');
+      expect(prompt).toContain('#0a0c10');
+      expect(prompt).toContain('#7ed3a4');
+      expect(prompt).not.toContain('Visual style reference — Html Ppt Hermes Cyber Terminal');
+    });
+
     it('forces existing-deck image edits to preserve all slides via deck-patch', () => {
       const unified = composeTeamverSlideApiPrompt({
         skillBody: simpleDeckSkill,

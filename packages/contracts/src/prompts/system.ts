@@ -1445,9 +1445,16 @@ export function composeTeamverSlideApiPrompt({
     // contract survives. For runs without a picked template (default
     // scenario body only), keep the summarized path — those bodies
     // contain skeleton copy workflows that ARE noise for API mode.
+    //
+    // Also treat the body itself as authoritative when it already carries
+    // the frontmatter visual summary: Canvas/Drive confirm can
+    // `patchProject` then send on the same tick while React
+    // `project.metadata` is still stale, so `selectedDeckTemplateId` may
+    // be missing even though the FE already loaded + wrapped the template.
     const hasSelectedTemplate =
-      typeof metadata?.selectedDeckTemplateId === 'string'
-      && metadata.selectedDeckTemplateId.trim().length > 0;
+      (typeof metadata?.selectedDeckTemplateId === 'string'
+        && metadata.selectedDeckTemplateId.trim().length > 0)
+      || /## Visual summary \(from template frontmatter\)/i.test(skillBody);
     if (hasSelectedTemplate) {
       parts.push(
         `## Selected deck template${skillName ? ` — ${skillName}` : ''} — MUST MATCH THIS VISUAL SPEC\n\n`
