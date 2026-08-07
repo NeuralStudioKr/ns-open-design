@@ -664,6 +664,17 @@ function warmRevisionListSoftCacheFromStack(
     headRevisionId: stack.headRevisionId ?? stack.cursorRevisionId,
     retentionLimit,
   };
+  warmRevisionListSoftCacheFromList(projectId, fileName, activeSeq, list);
+}
+
+/** Re-key soft-cache after adopt/head seq changes using an already-fetched list. */
+function warmRevisionListSoftCacheFromList(
+  projectId: string,
+  fileName: string,
+  activeSeq: number,
+  list: Awaited<ReturnType<typeof listProjectFileRevisions>>,
+): void {
+  if (!list || typeof activeSeq !== 'number') return;
   const key = revisionListSoftCacheKey(projectId, fileName);
   revisionListSoftCache.set(key, { activeSeq, list, at: Date.now() });
 }
@@ -5400,6 +5411,8 @@ function HtmlViewer({
   const [manualEditSrcDocActive, setManualEditSrcDocActive] = useState(false);
   const [manualEditFrozenSource, setManualEditFrozenSource] = useState<string | null>(null);
   const [manualEditInlineTextEditing, setManualEditInlineTextEditing] = useState(false);
+  const manualEditInlineTextEditingRef = useRef(false);
+  manualEditInlineTextEditingRef.current = manualEditInlineTextEditing;
   const [manualEditResizeDraftSize, setManualEditResizeDraftSize] = useState<{
     width: number;
     height: number;
@@ -7902,7 +7915,7 @@ function HtmlViewer({
         setInlinedSource(null);
         setManualEditFrozenSource(disk);
         setManualEditDraft((current) => ({ ...current, fullSource: disk }));
-        setReloadKey((k) => k + 1);
+        if (useUrlLoadPreview) setReloadKey((k) => k + 1);
         manualEditPendingStyleRef.current = null;
       }
       setRevisionStackInvalidated(true);
@@ -7912,6 +7925,7 @@ function HtmlViewer({
       const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
       if (head) {
         setActiveRevisionSequence(projectId, file.name, head.sequence);
+        warmRevisionListSoftCacheFromList(projectId, file.name, head.sequence, list);
       } else {
         clearActiveRevisionSequence(projectId, file.name);
       }
@@ -7946,7 +7960,7 @@ function HtmlViewer({
         setInlinedSource(null);
         setManualEditFrozenSource(snapshotContent);
         setManualEditDraft((current) => ({ ...current, fullSource: snapshotContent }));
-        setReloadKey((k) => k + 1);
+        if (useUrlLoadPreview) setReloadKey((k) => k + 1);
         manualEditPinnedSourceRef.current = null;
         manualEditPendingStyleRef.current = null;
       }
@@ -7983,6 +7997,12 @@ function HtmlViewer({
           return;
         }
         setActiveRevisionSequence(projectId, file.name, matchingRevision.sequence);
+        warmRevisionListSoftCacheFromList(
+          projectId,
+          file.name,
+          matchingRevision.sequence,
+          list,
+        );
         setRevisionStackInvalidated(false);
         revisionConflictSuppressedRef.current = false;
         setRevisionConflictToast(null);
@@ -7993,7 +8013,7 @@ function HtmlViewer({
           setInlinedSource(null);
           setManualEditFrozenSource(disk);
           setManualEditDraft((current) => ({ ...current, fullSource: disk }));
-          setReloadKey((k) => k + 1);
+          if (useUrlLoadPreview) setReloadKey((k) => k + 1);
           manualEditPendingStyleRef.current = null;
         }
         return;
@@ -8030,7 +8050,7 @@ function HtmlViewer({
       setInlinedSource(null);
       setManualEditFrozenSource(disk);
       setManualEditDraft((current) => ({ ...current, fullSource: disk }));
-      setReloadKey((k) => k + 1);
+      if (useUrlLoadPreview) setReloadKey((k) => k + 1);
       manualEditPendingStyleRef.current = null;
     }
 
@@ -8041,6 +8061,7 @@ function HtmlViewer({
     const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
     if (head) {
       setActiveRevisionSequence(projectId, file.name, head.sequence);
+      warmRevisionListSoftCacheFromList(projectId, file.name, head.sequence, list);
     } else {
       clearActiveRevisionSequence(projectId, file.name);
     }
@@ -8049,7 +8070,7 @@ function HtmlViewer({
       list.headRevisionId,
       list.headRevisionId,
     ));
-  }, [projectId, file.name, resolveRevisionSnapshotContent]);
+  }, [projectId, file.name, resolveRevisionSnapshotContent, useUrlLoadPreview]);
 
   const refreshRevisionStack = useCallback(async () => {
     const refreshGeneration = ++revisionRefreshGenerationRef.current;
@@ -8137,7 +8158,8 @@ function HtmlViewer({
           rememberStablePreviewSource(projectId, file.name, targetHtml);
           setManualEditDraft((current) => ({ ...current, fullSource: targetHtml! }));
           setManualEditFrozenSource(targetHtml);
-          setReloadKey((key) => key + 1);
+          // srcdoc updates via setSource; URL-load still needs reloadKey bust.
+          if (useUrlLoadPreview) setReloadKey((key) => key + 1);
         } else {
           // Identical HTML already painted — skip setSource/reloadKey;
           // sync drifted freeze/gate/stable/draft without remount tax.
@@ -8191,7 +8213,7 @@ function HtmlViewer({
         .map((revision) => ({ revisionId: revision.id, byteSize: revision.byteSize })),
       (revisionId) => resolveRevisionSnapshotContent(revisionId),
     );
-  }, [projectId, file.name, reconcileRevisionWithDisk, resolveRevisionSnapshotContent]);
+  }, [projectId, file.name, reconcileRevisionWithDisk, resolveRevisionSnapshotContent, useUrlLoadPreview]);
 
   // Refresh when the file hydrates or external writes bump filesRefreshKey.
   // Do not depend on `source` string identity — reconcile can call setSource /
@@ -8877,7 +8899,10 @@ function HtmlViewer({
         return;
       }
       if (data.type === 'od-edit-text-active') {
-        setManualEditInlineTextEditing(Boolean(data.active));
+        const nextActive = Boolean(data.active);
+        if (nextActive === manualEditInlineTextEditingRef.current) return;
+        manualEditInlineTextEditingRef.current = nextActive;
+        setManualEditInlineTextEditing(nextActive);
         return;
       }
       if (data.type === 'od-edit-rect') {
@@ -11053,6 +11078,11 @@ function HtmlViewer({
     try {
       const css = serializeInspectOverrides(inspectOverrides).trim();
       const next = applyInspectOverridesToSource(source, css);
+      // No-op save — skip push / paint / reloadKey churn.
+      if (next === source || next === sourceRef.current) {
+        setInspectSavedAt(Date.now());
+        return;
+      }
       const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);
       const saved = await pushProjectFileRevision(projectId, file.name, {
         content: next,

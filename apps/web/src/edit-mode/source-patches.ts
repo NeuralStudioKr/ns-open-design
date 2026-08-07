@@ -1375,9 +1375,7 @@ function sanitizeManualEditReplacementTree(root: Element): void {
           const unsafe = pieces.some((piece) => {
             const trimmed = piece.trim();
             if (!trimmed) return false;
-            // usemap is #fragment-only (parity with isSafeManualEditUrlAttrValue).
-            if (smilAttr === 'usemap') return !isSafeManualEditSvgResourceRef(trimmed);
-            return !isSafeManualEditRelativeOrFragmentUrl(trimmed);
+            return !isSafeManualEditSmilNavValue(smilAttr, trimmed);
           });
           if (unsafe) el.removeAttribute(key);
         }
@@ -1656,6 +1654,31 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     .replace(
       /\susemap\s*=\s*#[a-z][a-z0-9+.-]*:[^\s>]*/gi,
       '',
+    )
+    // Unquoted unsafe SVG href/xlink:href fragments (parity with quoted strips).
+    .replace(
+      new RegExp(
+        `(<(?:${[
+          'use', 'image', 'feimage', 'mpath', 'textpath', 'pattern',
+          'lineargradient', 'radialgradient', 'filter',
+          'animate', 'animatemotion', 'animatetransform', 'animatecolor', 'set',
+          'cursor', 'font-face-uri', 'altglyph', 'glyphref', 'tref', 'color-profile',
+        ].join('|')})\\b[^>]*?)\\s(?:href|xlink:href)\\s*=\\s*#[^\\s>]*[\\\\/][^\\s>]*`,
+        'gi',
+      ),
+      '$1',
+    )
+    .replace(
+      new RegExp(
+        `(<(?:${[
+          'use', 'image', 'feimage', 'mpath', 'textpath', 'pattern',
+          'lineargradient', 'radialgradient', 'filter',
+          'animate', 'animatemotion', 'animatetransform', 'animatecolor', 'set',
+          'cursor', 'font-face-uri', 'altglyph', 'glyphref', 'tref', 'color-profile',
+        ].join('|')})\\b[^>]*?)\\s(?:href|xlink:href)\\s*=\\s*#[a-z][a-z0-9+.-]*:[^\\s>]*`,
+        'gi',
+      ),
+      '$1',
     );
 }
 
@@ -3381,6 +3404,32 @@ export function isSafeManualEditRelativeOrFragmentUrl(value: string): boolean {
   if (compact.includes('\\')) return false;
   if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(compact)) return false;
   return true;
+}
+
+/**
+ * SMIL attributeName=to/from/by/values — per-attr token rules.
+ * href/xlink:href/usemap are #fragment-only; ping/archive/srcset split tokens.
+ */
+function isSafeManualEditSmilNavValue(attr: string, value: string): boolean {
+  const lower = String(attr || '').toLowerCase();
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return true;
+  if (lower === 'usemap' || lower === 'href' || lower === 'xlink:href') {
+    return isSafeManualEditSvgResourceRef(trimmed);
+  }
+  if (lower === 'ping' || lower === 'archive') {
+    return trimmed
+      .split(/\s+/)
+      .filter(Boolean)
+      .every((part) => isSafeManualEditRelativeOrFragmentUrl(part));
+  }
+  if (lower === 'srcset' || lower === 'imagesrcset') {
+    return trimmed.split(',').every((part) => {
+      const url = part.trim().split(/\s+/)[0] || '';
+      return !url || isSafeManualEditRelativeOrFragmentUrl(url);
+    });
+  }
+  return isSafeManualEditRelativeOrFragmentUrl(trimmed);
 }
 
 /** Validate URL attr values; `srcset`/`values` check each candidate URL. */

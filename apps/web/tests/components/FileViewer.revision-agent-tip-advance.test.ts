@@ -109,11 +109,19 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Undo demotes activeSeq — warm soft-cache for the restored tip');
     expect(fileViewer).toContain('srcdoc path updates via setSource; URL-load still needs reloadKey bust');
     expect(fileViewer).toContain('if (useUrlLoadPreview)');
+    expect(fileViewer).toContain('if (useUrlLoadPreview) setReloadKey');
+    expect(fileViewer).toContain('warmRevisionListSoftCacheFromList');
+    expect(fileViewer).toContain('No-op save — skip push / paint / reloadKey churn');
+    expect(fileViewer).toContain('nextActive === manualEditInlineTextEditingRef.current');
     const restoreStart = fileViewer.indexOf('function applyRestoredSourceToViewer');
     expect(restoreStart).toBeGreaterThan(0);
     const restoreBlock = fileViewer.slice(restoreStart, restoreStart + 1_800);
     expect(restoreBlock).toContain('const contentUnchanged = sourceRef.current === sourceToApply');
     expect(restoreBlock).toContain('warmRevisionListSoftCacheFromStack');
+    const tipStart = fileViewer.indexOf('const contentUnchanged = targetHtml === sourceRef.current');
+    expect(tipStart).toBeGreaterThan(0);
+    const tipBlock = fileViewer.slice(tipStart, tipStart + 900);
+    expect(tipBlock).toContain('if (useUrlLoadPreview) setReloadKey');
   });
 });
 
