@@ -2707,9 +2707,15 @@ export async function fetchPluginAssetText(
   relpath: string,
 ): Promise<string | null> {
   try {
-    const resp = await fetch(
-      `/api/plugins/${encodeURIComponent(pluginId)}/asset/${encodePluginAssetPath(relpath)}`,
-    );
+    const url = `/api/plugins/${encodeURIComponent(pluginId)}/asset/${encodePluginAssetPath(relpath)}`;
+    // Teamver embed proxies plugin routes through a daemon that requires
+    // X-Teamver-* identity headers; plain fetch() returns 401 there and
+    // callers silently fall back to a placeholder (which is how the Canvas →
+    // Slide template picker used to look "selected but not applied").
+    // Route through the shared header helper in embed mode.
+    const resp = isTeamverEmbedMode()
+      ? await fetchTeamverDaemon(url, { skipEmbedAuthRecovery: true })
+      : await fetch(url);
     if (!resp.ok) return null;
     return await resp.text();
   } catch {

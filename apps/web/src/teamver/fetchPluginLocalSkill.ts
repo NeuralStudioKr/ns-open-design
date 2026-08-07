@@ -1,6 +1,8 @@
 import type { InstalledPluginRecord, PluginManifest } from '@open-design/contracts';
 
 import { getInstalledPlugin } from '../state/projects';
+import { isTeamverEmbedMode } from './designApiBase';
+import { fetchTeamverDaemon } from './teamverDaemonHeaders';
 
 export type PluginLocalSkillSummary = {
   body: string;
@@ -49,9 +51,16 @@ export async function readPluginLocalSkillFromRecord(
   const relpath = pickFirstLocalSkillPath(plugin.manifest);
   if (!relpath) return null;
   try {
-    const resp = await fetch(
-      `/api/plugins/${encodeURIComponent(plugin.id)}/asset/${encodeURIComponent(relpath)}`,
-    );
+    // Teamver embed: plugin-asset routes go through the daemon proxy that
+    // demands X-Teamver-* identity headers; a plain fetch() returns 401 (which
+    // we swallow as null → template body silently missing → Canvas → Slide
+    // "template selection has no visible effect" regression the user hits).
+    // Route through the shared teamver header helper in embed mode; keep the
+    // plain fetch for standalone OD desktop where those headers do not exist.
+    const url = `/api/plugins/${encodeURIComponent(plugin.id)}/asset/${encodeURIComponent(relpath)}`;
+    const resp = isTeamverEmbedMode()
+      ? await fetchTeamverDaemon(url, { skipEmbedAuthRecovery: true })
+      : await fetch(url);
     if (!resp.ok) return null;
     const raw = await resp.text();
     const body = stripFrontmatter(raw).trim();
