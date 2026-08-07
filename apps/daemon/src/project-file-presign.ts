@@ -94,6 +94,25 @@ export function normalizeProjectFilePresignRelpath(relpath: unknown): string | n
 }
 
 /**
+ * NFC/NFD path candidates for byte-exact S3 lookups. Hangul filenames uploaded
+ * from macOS often persist NFD, while the FE / model / URL pipeline uses NFC —
+ * probing both forms lets old objects presign successfully.
+ */
+function presignPathCandidates(relpath: string): string[] {
+  const raw = String(relpath || '');
+  const out = new Set<string>([raw]);
+  try {
+    const nfc = raw.normalize('NFC');
+    if (nfc !== raw) out.add(nfc);
+  } catch { /* ignore */ }
+  try {
+    const nfd = raw.normalize('NFD');
+    if (nfd !== raw) out.add(nfd);
+  } catch { /* ignore */ }
+  return [...out];
+}
+
+/**
  * Project-file image/media GET presign. Enabled whenever project storage is S3
  * unless explicitly disabled via OD_PROJECT_FILE_PRESIGN_ENABLED=0.
  */
@@ -191,23 +210,36 @@ export async function mintProjectFilePresignedGet(input: {
     );
 
     const remote = resolved.remote;
-    const existing = input.statRemoteFile
-      ? await input.statRemoteFile(path)
-      : await remote.statFile(input.projectId, path);
-    if (!existing) {
+    // Probe NFC and NFD variants — S3 keys are byte-exact, so a Hangul NFD
+    // uploaded object stays invisible to a NFC request (and vice versa).
+    // sanitizeName now NFC-normalizes new uploads; older objects predate that
+    // and still live at NFD keys, so both forms must resolve.
+    const candidates = presignPathCandidates(path);
+    let matched: { relpath: string; size: number } | null = null;
+    for (const candidate of candidates) {
+      const existing = input.statRemoteFile
+        ? await input.statRemoteFile(candidate)
+        : await remote.statFile(input.projectId, candidate);
+      if (existing) {
+        matched = { relpath: candidate, size: existing.size };
+        break;
+      }
+    }
+    if (!matched) {
       return { status: 'not_found', path, rawUrl };
     }
 
+    const effectivePath = matched.relpath;
     const key = input.resolveObjectKey
       ? input.resolveObjectKey({
           storage,
           projectId: input.projectId,
-          relpath: path,
+          relpath: effectivePath,
           s3Prefix: resolved.s3Prefix,
         })
       : remote instanceof TenantScopedProjectStorage
-        ? storage.objectKeyForPrefixAndRel(remote.objectPrefix, path)
-        : storage.keyFor(input.projectId, path);
+        ? storage.objectKeyForPrefixAndRel(remote.objectPrefix, effectivePath)
+        : storage.keyFor(input.projectId, effectivePath);
 
     const credentials = await credentialProvider.getCredentials();
     const now = input.now ?? new Date();
@@ -225,12 +257,14 @@ export async function mintProjectFilePresignedGet(input: {
     const expiresAt = new Date(now.getTime() + config.presignTtlSec * 1000).toISOString();
     return {
       status: 'ready',
-      path,
+      // Report the on-disk / on-S3 form so the FE `<img src>` stays consistent
+      // with what /raw/ will accept on subsequent fetches.
+      path: effectivePath,
       key,
       url,
       expiresInSec: config.presignTtlSec,
       expiresAt,
-      rawUrl,
+      rawUrl: buildRawUrl(input.projectId, effectivePath),
     };
   } catch (err) {
     if (err instanceof TeamverTenantStorageResolutionError) {

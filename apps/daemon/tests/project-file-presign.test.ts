@@ -97,6 +97,46 @@ describe('project file presign', () => {
     expect(result.rawUrl).toContain('/api/projects/proj_abc/raw/');
   });
 
+  it('falls back to NFD S3 key when caller requested NFC Hangul path', async () => {
+    const nfc = 'msilvcf5-다운로드.jpeg'.normalize('NFC');
+    const nfd = 'msilvcf5-다운로드.jpeg'.normalize('NFD');
+    expect(nfc).not.toBe(nfd);
+    const stats = vi.fn(async (relpath: string) => {
+      // S3 only has the NFD-encoded object (older upload predating sanitizeName NFC).
+      return relpath === nfd ? { size: 512 } : null;
+    });
+    const result = await mintProjectFilePresignedGet({
+      projectId: 'proj_abc',
+      relpath: nfc,
+      identity: { userId: 'u1', workspaceId: 'ws_1' },
+      env: {
+        OD_PROJECT_STORAGE: 's3',
+        OD_S3_BUCKET: 'teamver-design-data',
+        OD_S3_REGION: 'ap-northeast-2',
+        OD_S3_ACCESS_KEY_ID: 'AKIATEST',
+        OD_S3_SECRET_ACCESS_KEY: 'secret',
+      },
+      credentialProvider: {
+        usesImds: false,
+        invalidate: () => undefined,
+        getCredentials: async () => ({
+          accessKeyId: 'AKIATEST',
+          secretAccessKey: 'secret',
+        }),
+      },
+      statRemoteFile: stats,
+    });
+
+    expect(stats.mock.calls.map((call) => call[0])).toEqual([nfc, nfd]);
+    expect(result.status).toBe('ready');
+    if (result.status !== 'ready') return;
+    // Presign key + response path reflect the actual on-S3 form so the FE
+    // uses that same form for /raw/ subsequent fetches.
+    expect(result.path).toBe(nfd);
+    expect(result.key).toContain(nfd);
+    expect(result.rawUrl).toContain(encodeURIComponent(nfd));
+  });
+
   it('returns not_found when the object is missing', async () => {
     const result = await mintProjectFilePresignedGet({
       projectId: 'proj_abc',
