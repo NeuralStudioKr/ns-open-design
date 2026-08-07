@@ -147,12 +147,17 @@ async function loadAuthenticatedProjectFileBlobInner(
 ): Promise<Blob | null> {
   const id = projectId.trim();
   const rawPath = String(filePath || '').trim().replace(/\\/g, '/');
-  const path = normalizeProjectFilePath(filePath) || rawPath;
-  if (!id || !path) return null;
+  const nfcPath = normalizeProjectFilePath(filePath);
+  const nfdPath = projectFilePathToNfd(filePath);
+  // Probe the caller's exact byte form first so daemon disk lookup (byte-exact
+  // on Linux) matches macOS NFD uploads without an unnecessary 404 round-trip.
+  const primary = rawPath || nfcPath;
+  if (!id || !primary) return null;
   const trustExists = Boolean(options?.trustExists);
   const allowBackgroundRetry = Boolean(options?.allowBackgroundRetry);
-  const alreadyMissing = isProjectRawFileKnownMissing(id, path)
-    || (rawPath !== path && isProjectRawFileKnownMissing(id, rawPath));
+  const alreadyMissing = isProjectRawFileKnownMissing(id, primary)
+    || (nfcPath && nfcPath !== primary && isProjectRawFileKnownMissing(id, nfcPath))
+    || (nfdPath && nfdPath !== primary && isProjectRawFileKnownMissing(id, nfdPath));
   // Honor missing cache. Scratch-race callers (trustExists + allowBackgroundRetry)
   // may proceed once — AuthenticatedProjectFileImage blocks remounts via
   // startedKnownMissing so this does not re-spam `/raw/` for deleted files.
@@ -166,13 +171,15 @@ async function loadAuthenticatedProjectFileBlobInner(
   const delays = alreadyMissing
     ? [0]
     : (options?.delaysMs ?? AUTHENTICATED_PROJECT_FILE_FETCH_DELAYS_MS);
-  // Always probe NFC primary; when trustExists also try Drive/uploads alternates
-  // (and NFD raw form when it differs — Hangul macOS paths).
+  // Always try raw + NFC + NFD (in that order) — Hangul filenames may be
+  // stored on disk in either Unicode form depending on the upload client's OS.
+  // When trustExists also probe Drive/uploads/assets basename alternates.
   const pathCandidates = [
     ...new Set([
-      path,
-      ...(rawPath && rawPath !== path ? [rawPath] : []),
-      ...(trustExists ? alternateAuthenticatedRawPaths(rawPath || path) : []),
+      primary,
+      ...(nfcPath && nfcPath !== primary ? [nfcPath] : []),
+      ...(nfdPath && nfdPath !== primary && nfdPath !== nfcPath ? [nfdPath] : []),
+      ...(trustExists ? alternateAuthenticatedRawPaths(primary) : []),
     ]),
   ];
 
@@ -182,7 +189,7 @@ async function loadAuthenticatedProjectFileBlobInner(
 
     // Alternate paths are probed once — retries only hit the primary path so a
     // deleted drawing screenshot cannot spam uploads/ + assets/ on every delay.
-    const candidatesThisAttempt = attempt === 0 ? pathCandidates : [path];
+    const candidatesThisAttempt = attempt === 0 ? pathCandidates : [primary];
 
     for (let candidateIndex = 0; candidateIndex < candidatesThisAttempt.length; candidateIndex += 1) {
       const candidatePath = candidatesThisAttempt[candidateIndex]!;
@@ -203,8 +210,9 @@ async function loadAuthenticatedProjectFileBlobInner(
         }
         return null;
       }
-      clearProjectRawFileMissing(id, path);
-      if (rawPath && rawPath !== path) clearProjectRawFileMissing(id, rawPath);
+      clearProjectRawFileMissing(id, primary);
+      if (nfcPath && nfcPath !== primary) clearProjectRawFileMissing(id, nfcPath);
+      if (nfdPath && nfdPath !== primary && nfdPath !== nfcPath) clearProjectRawFileMissing(id, nfdPath);
       clearProjectRawFileMissing(id, candidatePath);
       return blob;
     }

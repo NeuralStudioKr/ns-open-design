@@ -3,6 +3,7 @@ import type { ProjectFilePresignedGetResponse } from '@open-design/contracts';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
 import { waitForTeamverProjectStoragePrefix } from '../teamver/teamverProjectS3PrefixResolve';
 import { isProjectRawFileKnownMissing, markProjectRawFileMissing } from './projectFileFetchCache';
+import { normalizeProjectFilePath, projectFilePathToNfd } from './projectFilePaths';
 
 export type ProjectFilePresignReady = Extract<ProjectFilePresignedGetResponse, { status: 'ready' }>;
 
@@ -36,14 +37,28 @@ export async function fetchProjectFilePresignedGet(
   } = {},
 ): Promise<ProjectFilePresignFetchResult> {
   const id = String(projectId || '').trim();
-  const relpath = String(path || '').trim().replace(/\\/g, '/').replace(/^\/+/, '');
-  if (!id || !relpath) return { kind: 'unavailable', reason: 'invalid_path' };
+  const rawRel = String(path || '').trim().replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!id || !rawRel) return { kind: 'unavailable', reason: 'invalid_path' };
 
-  if (!options.bypassMissingCache && isProjectRawFileKnownMissing(id, relpath)) {
-    return { kind: 'missing' };
+  const nfc = normalizeProjectFilePath(rawRel);
+  const nfd = projectFilePathToNfd(rawRel);
+  const candidates = [
+    ...new Set([
+      rawRel,
+      ...(nfc && nfc !== rawRel ? [nfc] : []),
+      ...(nfd && nfd !== rawRel && nfd !== nfc ? [nfd] : []),
+    ]),
+  ];
+
+  if (!options.bypassMissingCache) {
+    // Only short-circuit when EVERY Unicode form is cached missing — otherwise a
+    // stale NFC cache mark would block a valid NFD mint after re-upload.
+    if (candidates.every((candidate) => isProjectRawFileKnownMissing(id, candidate))) {
+      return { kind: 'missing' };
+    }
   }
 
-  const key = presignCacheKey(id, relpath);
+  const key = presignCacheKey(id, rawRel);
   const existing = presignInflight.get(key);
   if (existing) return existing;
 
@@ -57,34 +72,38 @@ export async function fetchProjectFilePresignedGet(
       // Prefix warm is best-effort — mint still carries identity headers.
     }
 
-    try {
-      const resp = await fetchDaemon(`/api/projects/${encodeURIComponent(id)}/presign-get`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: relpath }),
-        teamverProjectId: id,
-      });
-      if (resp.status === 404) {
-        markProjectRawFileMissing(id, relpath);
-        return { kind: 'missing' };
+    let lastMissing = false;
+    for (const candidate of candidates) {
+      try {
+        const resp = await fetchDaemon(`/api/projects/${encodeURIComponent(id)}/presign-get`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: candidate }),
+          teamverProjectId: id,
+        });
+        if (resp.status === 404) {
+          markProjectRawFileMissing(id, candidate);
+          lastMissing = true;
+          continue;
+        }
+        if (!resp.ok) {
+          return { kind: 'unavailable', reason: `http_${resp.status}` };
+        }
+        const body = (await resp.json()) as ProjectFilePresignedGetResponse;
+        if (body?.status === 'ready' && typeof body.url === 'string' && body.url) {
+          return { kind: 'ready', mint: body };
+        }
+        if (body?.status === 'disabled') {
+          return { kind: 'unavailable', reason: body.reason || 'disabled' };
+        }
+      } catch (err) {
+        return {
+          kind: 'unavailable',
+          reason: err instanceof Error ? err.message : 'fetch_failed',
+        };
       }
-      if (!resp.ok) {
-        return { kind: 'unavailable', reason: `http_${resp.status}` };
-      }
-      const body = (await resp.json()) as ProjectFilePresignedGetResponse;
-      if (body?.status === 'ready' && typeof body.url === 'string' && body.url) {
-        return { kind: 'ready', mint: body };
-      }
-      if (body?.status === 'disabled') {
-        return { kind: 'unavailable', reason: body.reason || 'disabled' };
-      }
-      return { kind: 'unavailable', reason: 'unexpected_body' };
-    } catch (err) {
-      return {
-        kind: 'unavailable',
-        reason: err instanceof Error ? err.message : 'fetch_failed',
-      };
     }
+    return lastMissing ? { kind: 'missing' } : { kind: 'unavailable', reason: 'unexpected_body' };
   })().finally(() => {
     if (presignInflight.get(key) === run) presignInflight.delete(key);
   });

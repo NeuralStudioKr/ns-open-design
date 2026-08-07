@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { normalizeProjectFilePath, projectFilePathToNfd } from '../../src/utils/projectFilePaths';
 
 import {
   fetchProjectFilePresignedGet,
@@ -73,6 +74,37 @@ describe('fetchProjectFilePresignedGet', () => {
     await expect(
       fetchProjectFilePresignedGet('p1', 'missing.png', { fetchDaemon, waitForPrefix }),
     ).resolves.toEqual({ kind: 'missing' });
+  });
+
+  it('falls back to NFD candidate on 404 for Hangul NFC path', async () => {
+    const nfc = 'msilvcf5-' + '다운로드'.normalize('NFC') + '.jpeg';
+    const nfd = projectFilePathToNfd(nfc);
+    expect(nfd).not.toBe(nfc);
+    expect(normalizeProjectFilePath(nfd)).toBe(nfc);
+    fetchDaemon
+      // NFC probe misses
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+      // NFD probe hits
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: 'ready',
+          path: nfd,
+          url: `https://bucket/${encodeURIComponent(nfd)}?sig`,
+          expiresInSec: 60,
+          expiresAt: '2026-08-05T06:02:00.000Z',
+          rawUrl: `/api/projects/p1/raw/${nfd}`,
+        }),
+      });
+    const result = await fetchProjectFilePresignedGet('p1', nfc, { fetchDaemon, waitForPrefix });
+    expect(result).toMatchObject({ kind: 'ready' });
+    expect(fetchDaemon).toHaveBeenCalledTimes(2);
+    const bodies = fetchDaemon.mock.calls.map((call) => JSON.parse(String((call[1] as any)?.body ?? '{}')));
+    expect(bodies).toEqual([
+      { path: nfc },
+      { path: nfd },
+    ]);
   });
 
   it('skips network when the session missing cache already knows the path', async () => {
