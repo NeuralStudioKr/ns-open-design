@@ -37,9 +37,12 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(block).toContain('exportHtmlSnapshotGateRef.current !== targetHtml');
     expect(block).toContain('current.fullSource === targetHtml');
     expect(block).not.toContain('hydratedUndoCursorFromSession');
-    // liveHtml mount shares one repair across source/stable/paints init.
+    // liveHtml mount shares one intact-gated repair across source/stable/paints.
     expect(fileViewer).toContain('initialLiveHtmlRepaired');
-    expect(fileViewer).toContain('One repair for liveHtml init');
+    expect(fileViewer).toContain('repairArtifactDocumentHeadIfNeeded');
+    expect(fileViewer).toContain('readCachedPreviewSource');
+    expect(fileViewer).toContain('rememberStablePreviewSource');
+    expect(fileViewer).toContain('acceptPreviewHtmlCandidate');
     // remove-element remaining multi-select shares one Document.
     expect(fileViewer).toContain('One Document for remaining multi-select inspector after remove');
     expect(fileViewer).toContain('remainingDoc');

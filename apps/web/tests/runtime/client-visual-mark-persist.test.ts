@@ -60,7 +60,7 @@ describe('client-visual-mark-persist', () => {
   it('reuses reconcile sections when grafting visual marks', () => {
     expect(persistSource).toContain('currentSlides: scope.sections');
     expect(persistSource).toContain('graftVisualMarksIntoDeckHtml(currentHtml, withSlideIndex, {');
-    expect(persistSource).toContain('artifactDocumentHeadLooksIntact(grafted)');
+    expect(persistSource).toContain('repairArtifactDocumentHeadIfNeeded(grafted)');
   });
 
   it('labels heart visual marks for revision history', () => {

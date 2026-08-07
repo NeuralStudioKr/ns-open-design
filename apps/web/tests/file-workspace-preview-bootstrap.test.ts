@@ -27,6 +27,7 @@ describe("FileWorkspace preview bootstrap", () => {
     expect(source).toContain("cannot immediately settle the next pending tab");
     expect(source).toContain("visibleFilesSignature");
     expect(source).toContain("pendingTabDiskHtml");
+    expect(source).toContain("repairArtifactDocumentHeadIfNeeded(text)");
     expect(source).toContain("reason: 'disk-bootstrap'");
     expect(source).toMatch(/visibleFilesSignature,\s*\n\s*\]\);/);
     // Pending tab shows loading only — ghost resolve retargets/closes; do not

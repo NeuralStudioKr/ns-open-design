@@ -1,4 +1,4 @@
-import { repairArtifactDocumentHead } from '@open-design/contracts';
+import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
 
 /** True when two revision snapshots are the same bytes or equivalent after head repair. */
 export function revisionSnapshotContentMatches(
@@ -7,5 +7,6 @@ export function revisionSnapshotContentMatches(
 ): boolean {
   if (left == null || right == null) return false;
   if (left === right) return true;
-  return repairArtifactDocumentHead(left) === repairArtifactDocumentHead(right);
+  return repairArtifactDocumentHeadIfNeeded(left)
+    === repairArtifactDocumentHeadIfNeeded(right);
 }

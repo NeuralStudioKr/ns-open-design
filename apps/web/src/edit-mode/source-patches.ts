@@ -1531,24 +1531,24 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
       ),
       '',
     )
-    // Form navigators + ping + SMIL to/from/by — relative/fragment only when
-    // used as URL retargets (DOM: isSafeManualEditRelativeOrFragmentUrl).
+    // Form navigators + ping + SMIL to/from/by/values — relative/fragment only
+    // when used as URL retargets (DOM: isSafeManualEditRelativeOrFragmentUrl).
     // Absolute https://… and backslash-authority survive the prefix deny above.
-    // Numeric SMIL (`to="10"`) has no scheme and is preserved.
+    // Numeric SMIL (`to="10"` / `values="0;1"`) has no scheme and is preserved.
     .replace(
-      /\s(?:action|formaction|ping|to|from|by)\s*=\s*(['"])\s*(?:[a-z][a-z0-9+.-]*\s*:|\/\/)[\s\S]*?\1/gi,
+      /\s(?:action|formaction|ping|to|from|by|values)\s*=\s*(['"])\s*(?:[a-z][a-z0-9+.-]*\s*:|\/\/)[\s\S]*?\1/gi,
       '',
     )
     .replace(
-      /\s(?:action|formaction|ping|to|from|by)\s*=\s*(?:[a-z][a-z0-9+.-]*\s*:|\/\/)[^\s>]*/gi,
+      /\s(?:action|formaction|ping|to|from|by|values)\s*=\s*(?:[a-z][a-z0-9+.-]*\s*:|\/\/)[^\s>]*/gi,
       '',
     )
     .replace(
-      /\s(?:action|formaction|ping|to|from|by)\s*=\s*(['"])[\s\S]*?\\[\s\S]*?\1/gi,
+      /\s(?:action|formaction|ping|to|from|by|values)\s*=\s*(['"])[\s\S]*?\\[\s\S]*?\1/gi,
       '',
     )
     .replace(
-      /\s(?:action|formaction|ping|to|from|by)\s*=\s*[^\s>]*\\[^\s>]*/gi,
+      /\s(?:action|formaction|ping|to|from|by|values)\s*=\s*[^\s>]*\\[^\s>]*/gi,
       '',
     )
     // Multi-token URL lists — drop attr when ANY candidate matches the deny list

@@ -53,6 +53,7 @@ import { deriveFileOps, type FileOpEntry } from '../runtime/file-ops';
 import { latestTodosFromEvents, type TodoItem } from '../runtime/todos';
 import { deliverableSlideNavForActiveFile, isSlideNavDeliverableNow } from '../runtime/slide-nav';
 import { buildSrcdoc } from '../runtime/srcdoc';
+import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
 import {
   type AgentEvent,
   type AgentInfo,
@@ -81,7 +82,6 @@ import {
 import type { ChatSessionMode, WorkspaceContextItem } from '@open-design/contracts';
 import {
   isArtifactHtmlStableForPreview,
-  repairArtifactDocumentHead,
 } from '@open-design/contracts';
 import { createTerminal, killTerminal } from '../state/projects';
 import type { QuestionForm } from '../artifacts/question-form';
@@ -1800,7 +1800,7 @@ export function FileWorkspace({
           scheduleRetry(400);
           return;
         }
-        const repaired = repairArtifactDocumentHead(text);
+        const repaired = repairArtifactDocumentHeadIfNeeded(text);
         if (!isArtifactHtmlStableForPreview(repaired)) {
           scheduleRetry(1_200);
           return;

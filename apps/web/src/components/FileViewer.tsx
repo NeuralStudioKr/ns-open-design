@@ -7,7 +7,6 @@ import {
   buildSocialSharePayload,
   OPEN_DESIGN_GITHUB_REPO_URL,
   isArtifactHtmlStableForPreview,
-  repairArtifactDocumentHead,
   type SocialShareRequest,
   type SocialShareResponse,
 } from '@open-design/contracts';
@@ -147,6 +146,7 @@ import {
   canActivateSrcDocTransport,
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
+import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
 import {
   clearActiveRevisionSequence,
   getActiveRevisionSequence,
@@ -592,13 +592,13 @@ function previewSourceCacheKey(projectId: string, fileName: string): string {
 function readCachedPreviewSource(projectId: string, fileName: string): string | null {
   const cached = htmlPreviewSourceCache.get(previewSourceCacheKey(projectId, fileName));
   if (!cached?.trim()) return null;
-  const repaired = repairArtifactDocumentHead(cached);
+  const repaired = repairArtifactDocumentHeadIfNeeded(cached);
   return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
 }
 
 function rememberStablePreviewSource(projectId: string, fileName: string, source: string | null | undefined) {
   if (!source?.trim()) return;
-  const repaired = repairArtifactDocumentHead(source);
+  const repaired = repairArtifactDocumentHeadIfNeeded(source);
   if (!isArtifactHtmlStableForPreview(repaired)) return;
   const key = previewSourceCacheKey(projectId, fileName);
   htmlPreviewSourceCache.set(key, repaired);
@@ -4550,7 +4550,7 @@ function acceptPreviewHtmlCandidate(
   lastStableRef: { current: string | null },
 ): string | null {
   if (candidate == null) return null;
-  const repaired = repairArtifactDocumentHead(candidate);
+  const repaired = repairArtifactDocumentHeadIfNeeded(candidate);
   if (isArtifactHtmlStableForPreview(repaired)) {
     // Repair can theoretically close/strip into a slide-less shell that still
     // tag-balances. Never pin that as last-stable when the candidate itself
@@ -5207,11 +5207,11 @@ function HtmlViewer({
     });
   };
   const [mode, setMode] = useState<'preview' | 'source'>('preview');
-  // One repair for liveHtml init (was 3× repairArtifactDocumentHead on mount).
+  // One intact-gated repair for liveHtml init (was 3× ungated repair on mount).
   const initialLiveHtmlRepaired = liveHtml == null
     ? null
     : (() => {
-      const repaired = repairArtifactDocumentHead(liveHtml);
+      const repaired = repairArtifactDocumentHeadIfNeeded(liveHtml);
       return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
     })();
   const [source, setSource] = useState<string | null>(() => initialLiveHtmlRepaired);
@@ -12384,7 +12384,7 @@ function HtmlViewer({
   const liveHtmlUnstableForPreview = Boolean(
     streaming
     && liveHtml?.trim()
-    && !isArtifactHtmlStableForPreview(repairArtifactDocumentHead(liveHtml)),
+    && !isArtifactHtmlStableForPreview(repairArtifactDocumentHeadIfNeeded(liveHtml)),
   );
   const showStreamingAwaitingLiveHtml = Boolean(streaming && !liveHtml?.trim());
   // Empty branch used to never render the veil (it lived under source !== null).

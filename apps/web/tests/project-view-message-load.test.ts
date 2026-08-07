@@ -414,8 +414,11 @@ describe("ProjectView message loading", () => {
     expect(salvageBlock).toContain("patchedSlides");
     expect(salvageBlock).toContain("finalizeScopedDeckMergeHtml({");
     expect(salvageBlock).toContain("mergedSlides: scoped.sections");
+    expect(salvageBlock).toContain("patchedSlides?: readonly");
     expect(source).toContain("beforeSlides: persistCommentSections");
     expect(source).toContain("currentSlides: persistCommentSections");
+    expect(source).toContain("patchedSlides: scopeResult.afterSlides");
+    expect(source).toContain("repairArtifactDocumentHeadIfNeeded(artifactToPersist.html)");
     expect(source).toContain("stabilizeVisualMarkDeckHtml(");
     expect(source).toMatch(
       /stabilizeVisualMarkDeckHtml\(\s*currentDeckHtml,\s*htmlBody,\s*persistCommentAttachments,\s*\{/,

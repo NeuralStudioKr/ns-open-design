@@ -1,5 +1,5 @@
-import { repairArtifactDocumentHead } from '@open-design/contracts';
 import type { FileRevision } from '@open-design/contracts';
+import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
 import { revisionSnapshotContentMatches } from './revision-content-match';
 import type { RevisionStackSnapshot } from './revision-stack';
 
@@ -26,7 +26,9 @@ export async function findRevisionMatchingDiskContent(
   skipRevisionIds: ReadonlySet<string> = new Set(),
 ): Promise<FileRevision | null> {
   const diskByteSize = utf8ByteLength(diskContent);
-  const repairedDiskByteSize = utf8ByteLength(repairArtifactDocumentHead(diskContent));
+  // One intact-gated repair for byte-size probe + content match.
+  const repairedDisk = repairArtifactDocumentHeadIfNeeded(diskContent);
+  const repairedDiskByteSize = utf8ByteLength(repairedDisk);
   for (let index = revisions.length - 1; index >= 0; index -= 1) {
     const revision = revisions[index]!;
     if (skipRevisionIds.has(revision.id)) continue;
@@ -38,7 +40,7 @@ export async function findRevisionMatchingDiskContent(
       continue;
     }
     const snapshot = await resolveSnapshot(revision.id);
-    if (revisionSnapshotContentMatches(snapshot, diskContent)) return revision;
+    if (revisionSnapshotContentMatches(snapshot, repairedDisk)) return revision;
   }
   return null;
 }

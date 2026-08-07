@@ -116,32 +116,17 @@ function shouldAnnotatePreviewEditTargets(html: string, sourcePaths: boolean): b
   return false;
 }
 
-/**
- * Cheap gate: skip repairArtifactDocumentHead when the document already has
- * an intact head (charset + viewport) and no common corruption prefixes.
- * Repair remains idempotent — this only avoids the regex walk on hot paths.
- */
-export function artifactDocumentHeadLooksIntact(html: string): boolean {
-  if (!html || !/<head[\s>]/i.test(html) || !/<\/head>/i.test(html)) return false;
-  if (!/<meta\s+charset/i.test(html)) return false;
-  if (!/<meta\s+name=["']viewport["']/i.test(html)) return false;
-  // Corrupted / leaked head prefixes that repair would rewrite.
-  if (
-    /<head[^>]*>\s*(?:viewport\s*=|device-width|-width|googleapis\.com|fonts\.gstatic|css2\?family=)/i
-      .test(html)
-  ) {
-    return false;
-  }
-  return true;
-}
+export {
+  artifactDocumentHeadLooksIntact,
+  repairArtifactDocumentHeadIfNeeded,
+} from './artifact-document-head';
+import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
 
 export function buildSrcdoc(
   html: string,
   options: SrcdocOptions = {}
 ): string {
-  const repairedHead = artifactDocumentHeadLooksIntact(html)
-    ? html
-    : repairArtifactDocumentHead(html);
+  const repairedHead = repairArtifactDocumentHeadIfNeeded(html);
   const repaired = stripConflictingSrcDocCspBaseUri(repairedHead);
   // alreadyRepaired: avoid wrapPreviewHtmlShell re-running repair on full docs.
   const wrapped = wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });

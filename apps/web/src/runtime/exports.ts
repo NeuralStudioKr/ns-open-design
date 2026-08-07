@@ -13,7 +13,8 @@
 // path asks the daemon for editable PowerPoint objects; screenshot PPTX remains
 // an explicit daemon opt-out for fidelity investigations only.
 
-import { artifactDocumentHeadLooksIntact, buildSrcdoc, type SrcdocOptions } from './srcdoc';
+import { buildSrcdoc, type SrcdocOptions } from './srcdoc';
+import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
 import { devLog } from '../lib/devLog';
 import { buildReactComponentSrcdoc } from './react-component';
 import { buildZip } from './zip';
@@ -35,7 +36,6 @@ import {
 import {
   injectDeckFlattenScript,
   patchArtifactDeckPrintCss,
-  repairArtifactDocumentHead,
   buildDeckPrintCss,
 } from '@open-design/contracts';
 
@@ -1086,9 +1086,7 @@ function inlineExportHtmlPayload(htmlSnapshot?: string | null): Record<string, s
   const trimmed = htmlSnapshot.trim();
   if (trimmed.length === 0) return {};
   // Skip repair when head already looks intact (srcdoc buildSrcdoc parity).
-  const html = artifactDocumentHeadLooksIntact(htmlSnapshot)
-    ? htmlSnapshot
-    : repairArtifactDocumentHead(htmlSnapshot);
+  const html = repairArtifactDocumentHeadIfNeeded(htmlSnapshot);
   return { html: patchArtifactDeckPrintCss(html) };
 }
 

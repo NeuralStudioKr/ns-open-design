@@ -1,4 +1,5 @@
 import { repairArtifactDocumentHead } from '@open-design/contracts';
+import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
 
 export type WrapPreviewHtmlShellOptions = {
   /** Caller already ran repair (or verified intact head) — skip the first repair pass. */
@@ -10,7 +11,7 @@ export function wrapPreviewHtmlShell(
   html: string,
   options?: WrapPreviewHtmlShellOptions,
 ): string {
-  const repaired = options?.alreadyRepaired ? html : repairArtifactDocumentHead(html);
+  const repaired = options?.alreadyRepaired ? html : repairArtifactDocumentHeadIfNeeded(html);
   const head = repaired.trimStart().slice(0, 64).toLowerCase();
   const isFullDoc = head.startsWith('<!doctype') || head.startsWith('<html');
   if (isFullDoc) return repaired;
@@ -28,7 +29,8 @@ export function wrapPreviewHtmlShell(
 
 /** Same repaired + wrapped HTML buildSrcdoc and the host preview use for detection. */
 export function prepareCompactStackedDeckPreviewHtml(html: string): string {
-  const repaired = repairArtifactDocumentHead(html);
+  // Intact full docs skip the first repair (hot preview-detection path).
+  const repaired = repairArtifactDocumentHeadIfNeeded(html);
   return wrapPreviewHtmlShell(repaired, { alreadyRepaired: true });
 }
 

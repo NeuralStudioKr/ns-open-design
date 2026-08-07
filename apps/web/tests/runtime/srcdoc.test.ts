@@ -549,6 +549,7 @@ describe('buildSrcdoc', () => {
   it('folds od-id + source-path annotation and skips intact-head repair', () => {
     expect(srcdocSource).toContain('annotatePreviewEditTargets');
     expect(srcdocSource).toContain('artifactDocumentHeadLooksIntact');
+    expect(srcdocSource).toContain('repairArtifactDocumentHeadIfNeeded');
     expect(srcdocSource).toContain('shouldAnnotatePreviewEditTargets');
     expect(srcdocSource).toContain('annotateMissingOdIdsOnDocument');
     expect(srcdocSource).toContain('annotateManualEditSourcePathsOnDocument');

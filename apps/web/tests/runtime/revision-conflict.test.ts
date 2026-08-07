@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { repairArtifactDocumentHead } from '@open-design/contracts';
 import { createRevisionStackSnapshot } from '../../src/runtime/revision-stack';
@@ -7,6 +10,16 @@ import {
   revisionCursorMatchesDisk,
 } from '../../src/runtime/revision-conflict';
 import type { FileRevision } from '@open-design/contracts';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const conflictSource = readFileSync(
+  join(here, '../../src/runtime/revision-conflict.ts'),
+  'utf8',
+);
+const matchSource = readFileSync(
+  join(here, '../../src/runtime/revision-content-match.ts'),
+  'utf8',
+);
 
 function revision(id: string, sequence: number, snapshot = id): FileRevision {
   const byteSize = new TextEncoder().encode(snapshot).length;
@@ -24,6 +37,18 @@ function revision(id: string, sequence: number, snapshot = id): FileRevision {
 }
 
 describe('revision-conflict', () => {
+  it('uses intact-gated repair for disk byte-size probe and content match', () => {
+    expect(conflictSource).toContain('repairArtifactDocumentHeadIfNeeded');
+    expect(conflictSource).toContain(
+      'const repairedDisk = repairArtifactDocumentHeadIfNeeded(diskContent)',
+    );
+    expect(conflictSource).toContain(
+      'revisionSnapshotContentMatches(snapshot, repairedDisk)',
+    );
+    expect(matchSource).toContain('repairArtifactDocumentHeadIfNeeded(left)');
+    expect(matchSource).toContain('repairArtifactDocumentHeadIfNeeded(right)');
+  });
+
   it('detects when disk content diverges from the cursor revision snapshot', () => {
     const stack = createRevisionStackSnapshot(
       [revision('rev-1', 1)],

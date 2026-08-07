@@ -41,6 +41,8 @@ describe('looksLikeCompactApiStackedDeck', () => {
     );
     expect(source).toContain('alreadyRepaired');
     expect(source).toContain('WrapPreviewHtmlShellOptions');
+    expect(source).toContain('repairArtifactDocumentHeadIfNeeded');
+    expect(source).toContain('prepareCompactStackedDeckPreviewHtml');
     expect(wrapPreviewHtmlShell('<main>x</main>', { alreadyRepaired: true })).toContain('<!doctype html>');
   });
 

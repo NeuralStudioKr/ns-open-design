@@ -134,12 +134,12 @@ import { useProjectFileEvents, type ProjectEvent } from '../providers/project-ev
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   composeSystemPrompt,
-  repairArtifactDocumentHead,
   renderPluginBlock,
   type AudioVoiceOption,
   type MemorySystemPromptResponse,
   type ResearchOptions,
 } from '@open-design/contracts';
+import { repairArtifactDocumentHeadIfNeeded } from '../runtime/artifact-document-head';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import {
   deriveAgentRevisionLabel,
@@ -1866,7 +1866,16 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   currentHtml?: string | null;
   /** Pre-materialized current sections from persist reconcile. */
   beforeSlides?: readonly { outerHtml: string }[];
-}): Promise<{ ok: true } | { ok: false; code: ScopedDeckPersistFailureCode; reason: string }> {
+}): Promise<
+  | { ok: true; afterSlides: ReturnType<typeof extractTopLevelSlideSections> }
+  | {
+    ok: false;
+    code: ScopedDeckPersistFailureCode;
+    reason: string;
+    /** Present once nextHtml sections were materialized (salvage reuse). */
+    afterSlides?: ReturnType<typeof extractTopLevelSlideSections>;
+  }
+> {
   const currentHtml = input.currentHtml !== undefined
     ? input.currentHtml
     : await fetchProjectFileText(input.projectId, input.fileName, {
@@ -1902,7 +1911,7 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       };
     }
   }
-  // Materialize after once; share before+after into the slide diff.
+  // Materialize after once; share into slide diff + salvage on reject.
   const afterSlides = extractTopLevelSlideSections(extractDeckBodyContent(input.nextHtml));
   const diff = diffDeckSlideIndexes(currentHtml, input.nextHtml, {
     beforeSlides,
@@ -1913,7 +1922,7 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       fileName: input.fileName,
       reason: diff.reason,
     });
-    return { ok: false, code: 'full_deck_diff_failed', reason: diff.reason };
+    return { ok: false, code: 'full_deck_diff_failed', reason: diff.reason, afterSlides };
   }
   const allowed = new Set(allowedSlideIndexes);
   const outsideScope = diff.changedSlideIndexes.filter((slideIndex) => !allowed.has(slideIndex));
@@ -1927,6 +1936,7 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       ok: false,
       code: 'full_deck_outside_slide_scope',
       reason: `changed slides outside comment scope: ${outsideScope.join(', ')}`,
+      afterSlides,
     };
   }
   const hasElementScopedComment = input.commentAttachments.some((attachment) =>
@@ -1959,6 +1969,7 @@ async function fullDeckEditStaysInsideCommentScope(input: {
         ok: false,
         code: 'full_deck_comment_target_unresolved',
         reason: 'comment target could not be resolved in the current and updated deck',
+        afterSlides,
       };
     }
     if (
@@ -1976,6 +1987,7 @@ async function fullDeckEditStaysInsideCommentScope(input: {
         ok: false,
         code: 'full_deck_outside_element_scope',
         reason: 'non-target changes inside the selected slide',
+        afterSlides,
       };
     }
   }
@@ -1991,9 +2003,10 @@ async function fullDeckEditStaysInsideCommentScope(input: {
       ok: false,
       code: 'comment_edit_intent_violated',
       reason: intent.reason,
+      afterSlides,
     };
   }
-  return { ok: true };
+  return { ok: true, afterSlides };
 }
 
 async function trySalvageScopedFullDeckRewrite(input: {
@@ -2006,6 +2019,8 @@ async function trySalvageScopedFullDeckRewrite(input: {
   currentHtml?: string | null;
   /** Pre-materialized current sections from persist reconcile. */
   currentSlides?: readonly { outerHtml: string; openTag?: string }[];
+  /** Pre-materialized patched sections from full-deck guard (avoid rematerialize). */
+  patchedSlides?: readonly { outerHtml: string; openTag?: string }[];
 }): Promise<{ ok: true; html: string; sanitized: true } | { ok: false; reason: string }> {
   const currentHtml = input.currentHtml !== undefined
     ? input.currentHtml
@@ -2015,10 +2030,9 @@ async function trySalvageScopedFullDeckRewrite(input: {
   if (!currentHtml) {
     return { ok: false, reason: 'current deck file unreadable' };
   }
-  // One patched-section materialization shared by merge + finalize stabilize.
-  const patchedSlides = extractTopLevelSlideSections(
-    extractDeckBodyContent(input.patchedHtml),
-  );
+  // Prefer guard-shared sections; otherwise materialize once for merge + finalize.
+  const patchedSlides = input.patchedSlides
+    ?? extractTopLevelSlideSections(extractDeckBodyContent(input.patchedHtml));
   const scoped = mergeScopedCommentTargetsFromPatchedDeck({
     currentHtml,
     patchedHtml: input.patchedHtml,
@@ -4549,6 +4563,7 @@ export function ProjectView({
               instructionText: runVisiblePromptRef.current,
               currentHtml: diskHtmlForTarget,
               currentSlides: persistCommentSections,
+              patchedSlides: scopeResult.afterSlides,
             });
             if (salvaged.ok) {
               devLog.warn('[deck-patch] salvaged scoped full-deck rewrite via narrow merge', {
@@ -4675,7 +4690,9 @@ export function ProjectView({
       }
       const title = art.title || art.identifier || fileName;
       let htmlBody =
-        ext === '.html' ? repairArtifactDocumentHead(artifactToPersist.html) : artifactToPersist.html;
+        ext === '.html'
+          ? repairArtifactDocumentHeadIfNeeded(artifactToPersist.html)
+          : artifactToPersist.html;
       if (
         ext === '.html'
         && persistCommentAttachments.some(isVisualCommentAttachment)
