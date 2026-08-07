@@ -297,6 +297,8 @@ export function PreviewModal({
   );
   const templateShareRef = useRef<HTMLDivElement | null>(null);
   const primaryMenuRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const stageFrameRef = useRef<HTMLDivElement | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -327,6 +329,25 @@ export function PreviewModal({
   useEffect(() => {
     onView?.(activeId);
   }, [activeId, onView]);
+
+  // Move focus into the dialog on open and restore it on close so Tab/AT
+  // do not linger on the gallery tile behind the modal.
+  useEffect(() => {
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const id = window.setTimeout(() => {
+      closeButtonRef.current?.focus();
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      const prev = previouslyFocusedRef.current;
+      if (prev && typeof prev.focus === 'function' && document.contains(prev)) {
+        prev.focus();
+      }
+    };
+  }, []);
 
   // Close on Escape. Popovers → fullscreen → modal, one layer per keystroke.
   useEffect(() => {
@@ -546,6 +567,40 @@ export function PreviewModal({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [activeDeck, activeHtml, activeId, slideState, primaryMenuOpen, templateShareOpen]);
+
+  // Keyboard navigation inside the Use caret menu (slide arrows stay idle
+  // while the menu is open — see effect above).
+  useEffect(() => {
+    if (!primaryMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') {
+        return;
+      }
+      const root = primaryMenuRef.current;
+      if (!root) return;
+      const items = Array.from(
+        root.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
+      ).filter((el) => !el.disabled);
+      if (!items.length) return;
+      e.preventDefault();
+      const active = document.activeElement;
+      const index = items.findIndex((el) => el === active);
+      let next = 0;
+      if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = items.length - 1;
+      else if (e.key === 'ArrowDown') next = index < 0 ? 0 : (index + 1) % items.length;
+      else next = index < 0 ? items.length - 1 : (index - 1 + items.length) % items.length;
+      items[next]?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    // Focus the first item when the menu opens.
+    const first = primaryMenuRef.current?.querySelector<HTMLButtonElement>(
+      '[role="menuitem"]',
+    );
+    first?.focus();
+    return () => document.removeEventListener('keydown', onKey);
+  }, [primaryMenuOpen]);
+
   const exportTitle = exportTitleFor(activeView?.id ?? '');
   const canExportFiles = Boolean(activeHtml);
   const previewShareTitle = shareTarget?.title || exportTitle || title;
@@ -680,10 +735,12 @@ export function PreviewModal({
             </div>
             <button
               type="button"
+              ref={closeButtonRef}
               className="ds-modal-close"
               onClick={onClose}
               title={t('preview.closeTitle')}
               aria-label={t('common.close')}
+              data-testid="preview-modal-close"
             >
               <Icon name="close" size={14} />
             </button>
@@ -1264,7 +1321,10 @@ export function PreviewModal({
                 <iframe
                   key={activeView?.id ?? 'view'}
                   ref={previewIframeRef}
-                  title={`${title} ${activeView?.label ?? ''}`}
+                  title={embedUiLabel(
+                    `${title} preview`,
+                    `${title} 미리보기`,
+                  )}
                   sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
                   srcDoc={srcDoc}
                   onLoad={(event) => {

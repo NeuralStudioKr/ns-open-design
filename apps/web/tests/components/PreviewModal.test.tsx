@@ -208,7 +208,9 @@ describe('PreviewModal sandbox isolation', () => {
     );
 
     expect(markup).toContain('preview-modal-open-in-new-tab');
+    expect(markup).toContain('preview-modal-close');
     expect(markup).toMatch(/aria-label="(Cobalt Grid preview|Cobalt Grid 미리보기)"/);
+    expect(markup).toMatch(/title="(Cobalt Grid preview|Cobalt Grid 미리보기)"/);
   });
 
   it('includes popup flags in the sandbox attribute', () => {

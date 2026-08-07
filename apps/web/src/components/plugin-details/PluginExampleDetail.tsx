@@ -47,18 +47,20 @@ export function PluginExampleDetail({
   const [html, setHtml] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [unavailableKind, setUnavailableKind] = useState<string | null>(null);
-  const inFlightRef = useRef(false);
+  // Generation token so Retry during an in-flight fetch is not a silent
+  // no-op — the latest request wins and stale responses are discarded.
+  const loadGenRef = useRef(0);
 
   const load = useCallback(async () => {
-    if (inFlightRef.current) return;
-    inFlightRef.current = true;
+    const gen = ++loadGenRef.current;
+    setHtml(null);
+    setError(null);
+    setUnavailableKind(null);
     try {
-      setHtml(null);
-      setError(null);
-      setUnavailableKind(null);
       const result: SkillExampleResult = exampleStem
         ? await fetchPluginExampleHtml(record.id, exampleStem)
         : await fetchPluginPreviewHtml(record.id);
+      if (gen !== loadGenRef.current) return;
       if ('html' in result) {
         setHtml(result.html);
       } else if ('error' in result) {
@@ -77,10 +79,12 @@ export function PluginExampleDetail({
         setUnavailableKind(result.kind);
         setHtml(undefined);
       }
-    } finally {
-      inFlightRef.current = false;
+    } catch {
+      if (gen !== loadGenRef.current) return;
+      setError(t('preview.errorBody'));
+      setHtml(undefined);
     }
-  }, [record.id, exampleStem]);
+  }, [record.id, exampleStem, t]);
 
   useEffect(() => {
     void load();
@@ -168,6 +172,7 @@ export function PluginExampleDetail({
               compact
               heading={infoLabel}
               variant="minimal"
+              surfaceNoun={isDeck ? 'template' : 'plugin'}
             />
           </div>
         ),

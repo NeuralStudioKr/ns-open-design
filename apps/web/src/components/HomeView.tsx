@@ -567,22 +567,26 @@ export function HomeView({
       // blob tab. A raw `/api/plugins/.../preview` top-level navigation
       // drops embed session cookies and lands on session_expired.
       void (async () => {
-        const result = await fetchPluginPreviewHtml(record.id);
-        if (!('html' in result) || !result.html) {
+        try {
+          const result = await fetchPluginPreviewHtml(record.id);
+          if (!('html' in result) || !result.html) {
+            setCommunityExternalPreviewError(t('preview.errorBody'));
+            return;
+          }
+          const odMode = record.manifest?.od?.mode;
+          const previewBlock = record.manifest?.od?.preview as { type?: unknown } | undefined;
+          const isDeck =
+            odMode === 'deck' ||
+            odMode === 'template' ||
+            previewBlock?.type === 'html';
+          openSandboxedPreviewInNewTab(
+            result.html,
+            localizePluginTitle(locale, record),
+            { deck: isDeck },
+          );
+        } catch {
           setCommunityExternalPreviewError(t('preview.errorBody'));
-          return;
         }
-        const odMode = record.manifest?.od?.mode;
-        const previewBlock = record.manifest?.od?.preview as { type?: unknown } | undefined;
-        const isDeck =
-          odMode === 'deck' ||
-          odMode === 'template' ||
-          previewBlock?.type === 'html';
-        openSandboxedPreviewInNewTab(
-          result.html,
-          localizePluginTitle(locale, record),
-          { deck: isDeck },
-        );
       })();
     },
     [analytics.track, locale, t],

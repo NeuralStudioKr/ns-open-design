@@ -79,9 +79,18 @@ interface Props {
    * variants keep their existing flat inspector.
    */
   variant?: 'full' | 'minimal';
+  /** Noun for example-query hint copy (template vs plugin). */
+  surfaceNoun?: 'template' | 'plugin';
 }
 
-export function PluginMetaSections({ record, omit, compact, heading, variant = 'full' }: Props) {
+export function PluginMetaSections({
+  record,
+  omit,
+  compact,
+  heading,
+  variant = 'full',
+  surfaceNoun = 'plugin',
+}: Props) {
   const { locale } = useI18n();
   const [copied, setCopied] = useState(false);
 
@@ -216,10 +225,17 @@ export function PluginMetaSections({ record, omit, compact, heading, variant = '
       {showQuery ? (
         <Section
           title={embedUiLabel('Example query', '예시 프롬프트')}
-          hint={embedUiLabel(
-            'Inserted into the prompt textarea when you apply this plugin.',
-            '이 템플릿을 적용하면 프롬프트 입력창에 삽입됩니다.',
-          )}
+          hint={
+            surfaceNoun === 'template'
+              ? embedUiLabel(
+                  'Inserted into the prompt textarea when you apply this template.',
+                  '이 템플릿을 적용하면 프롬프트 입력창에 삽입됩니다.',
+                )
+              : embedUiLabel(
+                  'Inserted into the prompt textarea when you apply this plugin.',
+                  '이 플러그인을 적용하면 프롬프트 입력창에 삽입됩니다.',
+                )
+          }
           action={
             <button
               type="button"
