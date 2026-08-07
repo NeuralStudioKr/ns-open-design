@@ -62,6 +62,7 @@ import { splitStreamingArtifact, stripAllClosedArtifacts, stripRecoveredHtmlFall
 import {
   shouldHideDeckCreateCompletionProseOnEditTurn,
   shouldHidePrematureDeckCompletionProse,
+  stripDeckInFlightStatusResidue,
 } from "../teamver/deckDeliverableProse";
 import {
   getPluginFolderCandidates,
@@ -476,16 +477,19 @@ function hasVisibleAssistantTextOutput(
     if (seg.kind === "form") return true;
     const visibleSegmentText = stripUserVisibleQuestionFormProtocolText(seg.text);
     if (visibleSegmentText.includes(INVALID_QUESTION_FORM_FALLBACK)) return false;
+    const settledText = !streaming && slideOnlyGate
+      ? stripDeckInFlightStatusResidue(visibleSegmentText)
+      : visibleSegmentText;
     if (
       shouldHideDeckCreateCompletionProseOnEditTurn({
-        text: visibleSegmentText,
+        text: settledText,
         isSlideEditTurn,
         teamverSlideUi: slideOnlyGate,
       })
     ) {
       return false;
     }
-    return visibleSegmentText.trim().length > 0;
+    return settledText.trim().length > 0;
   });
   // Premature deck completion lines are hidden only in ProseBlock while streaming
   // with an open artifact (`shouldHidePrematureDeckCompletionProse`) — not here.
@@ -2287,8 +2291,8 @@ function ProseBlock({
   const visibleRenderable = useMemo(() => {
     const teamverSlideUi = slideOnlyMvp || teamverEmbedEnabled;
     if (!teamverSlideUi) return renderable;
-    return renderable.filter((seg) => {
-      if (seg.kind !== "text") return true;
+    return renderable.flatMap((seg) => {
+      if (seg.kind !== "text") return [seg];
       if (
         shouldHidePrematureDeckCompletionProse({
           text: seg.text,
@@ -2297,19 +2301,24 @@ function ProseBlock({
           teamverSlideUi,
         })
       ) {
-        return false;
+        return [];
       }
+      // Settled: strip bare "작성 중" / live-lead residue lines; keep explanations.
+      const text = !streaming
+        ? stripDeckInFlightStatusResidue(seg.text)
+        : seg.text;
+      if (!text.trim()) return [];
       // Edit turns: suppress "draft created" prose so synthetic edit lead wins.
       if (
         shouldHideDeckCreateCompletionProseOnEditTurn({
-          text: seg.text,
+          text,
           isSlideEditTurn,
           teamverSlideUi,
         })
       ) {
-        return false;
+        return [];
       }
-      return true;
+      return text === seg.text ? [seg] : [{ ...seg, text }];
     });
   }, [renderable, streaming, live, slideOnlyMvp, teamverEmbedEnabled, isSlideEditTurn]);
   const hasVisibleProseWhileLive = visibleRenderable.some(

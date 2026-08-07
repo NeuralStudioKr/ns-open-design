@@ -104,11 +104,25 @@ export function looksLikeDeckCreateCompletionProse(text: string): boolean {
   );
 }
 
+/**
+ * Short UI-locale status lines the model is prompted to emit before an artifact
+ * (e.g. bare "작성 중"). These must count as create-progress even without deck
+ * keywords — otherwise they stick after the run completes and block the
+ * synthetic "draft ready" lead.
+ */
+const DECK_CREATE_PROGRESS_STATUS_ONLY_RE =
+  /^(?:작성\s*중\.?|생성\s*중\.?|만들고\s*있(?:습니다)?\.?|작성하고\s*있(?:습니다)?\.?|생성하고\s*있(?:습니다)?\.?|Writing\.?|Creating\.{0,3}|Building\.{0,3}|Generating\.{0,3})$/i;
+
+/** Edit-turn status lines from the same prompt contract ("수정 반영 중"). */
+const DECK_EDIT_PROGRESS_STATUS_ONLY_RE =
+  /^(?:수정\s*반영\s*중\.?|반영\s*중\.?|Applying your edits\.?|Applying\.{0,3})$/i;
+
 /** In-flight create-toned status ("작성 중", "making your deck") on an edit turn. */
 export function looksLikeDeckCreateProgressProse(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
   if (DECK_EDIT_CLAIM_RE.test(trimmed)) return false;
+  if (DECK_CREATE_PROGRESS_STATUS_ONLY_RE.test(trimmed)) return true;
   if (
     /슬라이드\s*초안을\s*작성\s*중/.test(trimmed)
     || /Creating the slide deck now/i.test(trimmed)
@@ -120,6 +134,58 @@ export function looksLikeDeckCreateProgressProse(text: string): boolean {
     return DECK_CREATE_PROGRESS_KO_RE.test(trimmed) && /슬라이드|덱|발표/.test(trimmed);
   }
   return DECK_CREATE_PROGRESS_KO_RE.test(trimmed) || DECK_CREATE_PROGRESS_EN_RE.test(trimmed);
+}
+
+/**
+ * Narrow leftover in-flight status that must not survive a settled Teamver
+ * slide turn. Intentionally tighter than `looksLikeDeckCreateProgressProse`:
+ * long explanatory prose that merely uses progressive tense stays visible.
+ */
+export function looksLikeDeckInFlightStatusResidue(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (DECK_CREATE_PROGRESS_STATUS_ONLY_RE.test(trimmed)) return true;
+  if (DECK_EDIT_PROGRESS_STATUS_ONLY_RE.test(trimmed)) return true;
+  // Synthetic live-lead copy (ko/en) left in message.content after stream end.
+  if (
+    /^슬라이드\s*초안을\s*작성\s*중/.test(trimmed)
+    || /^슬라이드\s*수정을\s*반영하고\s*있/.test(trimmed)
+    || /^Creating the slide deck now/i.test(trimmed)
+    || /^Applying slide updates/i.test(trimmed)
+    || /^making your deck\b/i.test(trimmed)
+    || /^Applying your edits\b/i.test(trimmed)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Drop per-line in-flight status residue (bare "작성 중", live-lead copy) while
+ * keeping explanatory lines. Empty result ⇒ whole segment should be hidden.
+ */
+export function stripDeckInFlightStatusResidue(text: string): string {
+  const kept = text.split("\n").filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return true;
+    return !looksLikeDeckInFlightStatusResidue(trimmed);
+  });
+  return kept.join("\n").replace(/^\n+|\n+$/g, "").trim();
+}
+
+/**
+ * After the run settles, hide leftover in-flight status residue so the
+ * Teamver completed-artifact lead (or real completion copy) can take over.
+ * Does not hide long progressive-tense explanations.
+ */
+export function shouldHideDeckCreateProgressProseWhenSettled(options: {
+  text: string;
+  streaming: boolean;
+  teamverSlideUi: boolean;
+}): boolean {
+  if (!options.teamverSlideUi || options.streaming) return false;
+  return stripDeckInFlightStatusResidue(options.text).length === 0
+    && options.text.trim().length > 0;
 }
 
 /**

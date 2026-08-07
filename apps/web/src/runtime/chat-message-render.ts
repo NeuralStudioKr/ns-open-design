@@ -1,5 +1,6 @@
 import type { ChatMessage } from "../types";
 import { stripAllClosedArtifacts } from "../artifacts/strip";
+import { stripDeckInFlightStatusResidue } from "../teamver/deckDeliverableProse";
 import { assistantMessageTextBody, messageHasVisibleProse } from "./chat-events";
 import { isEmptyAssistantShell } from "./conversation-message-dedupe";
 import { deriveFileOps } from "./file-ops";
@@ -196,7 +197,14 @@ function hasEmbedVisibleProseBody(message: ChatMessage): boolean {
   const stripped = stripAllClosedArtifacts(body)
     .replace(/<artifact\b[\s\S]*$/i, "")
     .trim();
-  return stripped.length > 0;
+  if (!stripped) return false;
+  // Settled runs: leftover in-flight status ("작성 중" / live-lead copy) must
+  // not count as visible prose — otherwise completed-artifact lead is blocked.
+  // Strip residue lines so long progressive explanations still count as visible.
+  if (assistantRunSucceeded(message)) {
+    return stripDeckInFlightStatusResidue(stripped).length > 0;
+  }
+  return true;
 }
 
 function assistantRunSucceeded(message: ChatMessage): boolean {

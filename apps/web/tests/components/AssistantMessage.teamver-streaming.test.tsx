@@ -295,6 +295,75 @@ describe('AssistantMessage Teamver streaming visibility', () => {
     expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
   });
 
+  it('replaces leftover bare create-progress status with the completed draft lead', () => {
+    render(
+      <AssistantMessage
+        message={completedMessage(
+          '작성 중\n\n<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Done</h1></section></body></html></artifact>',
+        )}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.queryByText('작성 중')).toBeNull();
+    expect(screen.getByText('The slide deck draft is ready.')).toBeTruthy();
+  });
+
+  it('strips bare status but keeps explanatory prose after the turn completes', () => {
+    render(
+      <AssistantMessage
+        message={completedMessage(
+          '작성 중\n\n표지 다음에 문제 정의를 두었어요.\n\n<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Done</h1></section></body></html></artifact>',
+        )}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.queryByText('작성 중')).toBeNull();
+    expect(screen.getByText(/표지 다음에 문제 정의를 두었어요/)).toBeTruthy();
+    expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
+  });
+
+  it('still shows bare create-progress status while the create turn streams', () => {
+    render(
+      <AssistantMessage
+        message={streamingMessage(
+          '작성 중\n\n<artifact type="deck" identifier="deck"><!doctype html><html><body><section class="slide"><h1>Draft',
+        )}
+        streaming
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.getByText('작성 중')).toBeTruthy();
+    expect(screen.queryByText('The slide deck draft is ready.')).toBeNull();
+  });
+
+  it('replaces leftover edit status residue with the edit completed lead', () => {
+    render(
+      <AssistantMessage
+        message={{
+          ...completedMessage(
+            '수정 반영 중\n\n<artifact type="deck-patch" identifier="deck"><section class="slide" data-slide-index="0"><h1>Hi</h1></section></artifact>',
+          ),
+          producedFiles: [],
+          preTurnFileNames: ['deck.html'],
+        }}
+        streaming={false}
+        isLast
+        projectId="proj-1"
+      />,
+    );
+
+    expect(screen.queryByText('수정 반영 중')).toBeNull();
+    expect(screen.getByText('Slide updates have been applied.')).toBeTruthy();
+  });
+
   it('renders assistant prose from message.content when text events were not persisted', () => {
     render(
       <AssistantMessage
