@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { DesktopExportPdfInput } from '@open-design/sidecar-proto';
 import { repairArtifactDocumentHead } from '@open-design/contracts';
 
-import { readProjectFile } from './projects.js';
+import { listFiles, readProjectFile } from './projects.js';
 
 export interface BuildDesktopPdfExportInputOptions {
   daemonUrl: string;
@@ -126,15 +126,24 @@ function imageMimeForRelpath(relpath: string): string | null {
  * inside headless Chromium never need to carry Teamver identity headers to
  * `/raw/`. Preserves the relative `<img src>` when the file cannot be read so
  * Chromium can still attempt a live fetch (last resort).
+ *
+ * Reused by the FE live-preview / `/raw` HTML routes so the browser inside the
+ * `srcdoc` iframe never has to make a subresource GET for `refs/drive/…` and
+ * Hangul filenames — a single byte-form mismatch in the `<img src>` used to
+ * degrade the preview into alt-only text (see the Aug 7 image-attachment
+ * regression audit).
  */
 export async function inlineProjectImagesFromScratch(options: {
   html: string;
   projectId: string;
   projectsRoot: string;
+  metadata?: unknown;
 }): Promise<string> {
   const paths = collectRelativeProjectAssetPaths(options.html);
   if (paths.length === 0) return options.html;
   const dataByPath = new Map<string, string>();
+  let basenameFallback: BasenameFallback | null = null;
+  const missingBasenames: string[] = [];
   await Promise.all(
     paths.slice(0, INLINE_IMAGE_MAX_UNIQUE).map(async (relpath) => {
       const mime = imageMimeForRelpath(relpath);
@@ -144,18 +153,119 @@ export async function inlineProjectImagesFromScratch(options: {
           options.projectsRoot,
           options.projectId,
           relpath,
+          options.metadata,
         );
         if (!file.buffer || file.buffer.length === 0) return;
         if (file.buffer.length > INLINE_IMAGE_MAX_BYTES) return;
         dataByPath.set(relpath, `data:${mime};base64,${file.buffer.toString('base64')}`);
       } catch {
-        // Missing / ENOENT / permission — Chromium base-href fetch keeps a
-        // fighting chance (or the image ends up alt-only when truly gone).
+        // Missing / ENOENT / permission — queue a basename-suffix fallback for
+        // basename-only refs. Models occasionally emit `<img src="민들레.png">`
+        // when the on-disk file is `msXXXX-민들레.png`; without this the preview
+        // regresses to alt-only text (broken image icon + filename).
+        if (!relpath.includes('/')) missingBasenames.push(relpath);
       }
     }),
   );
+  if (missingBasenames.length > 0) {
+    basenameFallback = await loadBasenameFallback(options).catch(() => null);
+    if (basenameFallback) {
+      await Promise.all(
+        missingBasenames.map(async (relpath) => {
+          const mime = imageMimeForRelpath(relpath);
+          if (!mime) return;
+          const resolved = basenameFallback!.resolve(relpath);
+          if (!resolved) return;
+          try {
+            const file = await readProjectFile(
+              options.projectsRoot,
+              options.projectId,
+              resolved,
+              options.metadata,
+            );
+            if (!file.buffer || file.buffer.length === 0) return;
+            if (file.buffer.length > INLINE_IMAGE_MAX_BYTES) return;
+            dataByPath.set(relpath, `data:${mime};base64,${file.buffer.toString('base64')}`);
+          } catch {
+            // Give up silently — same as the primary attempt.
+          }
+        }),
+      );
+    }
+  }
   if (dataByPath.size === 0) return options.html;
   return rewriteRelativeImageSrcs(options.html, dataByPath);
+}
+
+interface BasenameFallback {
+  resolve(basename: string): string | null;
+}
+
+/**
+ * Build a case-insensitive, Unicode-tolerant lookup from image basenames to
+ * their on-disk project-relative paths. Used only when the primary
+ * `readProjectFile` pass ENOENTs for basename-only `<img src>` refs.
+ */
+async function loadBasenameFallback(options: {
+  projectId: string;
+  projectsRoot: string;
+  metadata?: unknown;
+}): Promise<BasenameFallback | null> {
+  let files: Array<{ path?: string; name?: string; kind?: string }>;
+  try {
+    files = await listFiles(options.projectsRoot, options.projectId, {
+      metadata: options.metadata,
+    });
+  } catch {
+    return null;
+  }
+  // Newest-first (listFiles sorts by mtime desc) so recent uploads win any
+  // basename-suffix contest.
+  const byLowerBase = new Map<string, string>();
+  const bySuffixBase = new Map<string, string>();
+  for (const entry of files) {
+    const relpath = String(entry?.path ?? entry?.name ?? '').trim();
+    if (!relpath || !imageMimeForRelpath(relpath)) continue;
+    const base = relpath.split('/').pop() || relpath;
+    const lower = base.toLowerCase();
+    if (!byLowerBase.has(lower)) byLowerBase.set(lower, relpath);
+    // Suffix key: strip the `msXXXX-` id prefix (or any leading token followed
+    // by `-`) so a model-emitted `민들레.png` maps to `msh9rso1-민들레.png` on
+    // disk. Only files at the project root or under a single-level dir compete.
+    const stripped = base.replace(/^[a-z0-9]{4,12}-/i, '');
+    if (stripped && stripped !== base) {
+      const suffixKey = stripped.toLowerCase();
+      if (!bySuffixBase.has(suffixKey)) bySuffixBase.set(suffixKey, relpath);
+    }
+  }
+  if (byLowerBase.size === 0 && bySuffixBase.size === 0) return null;
+  const resolveOne = (basename: string): string | null => {
+    if (!basename) return null;
+    const nfc = safeNormalize(basename, 'NFC');
+    const nfd = safeNormalize(basename, 'NFD');
+    const candidates = [basename, nfc, nfd];
+    for (const cand of candidates) {
+      if (!cand) continue;
+      const lower = cand.toLowerCase();
+      const exact = byLowerBase.get(lower);
+      if (exact) return exact;
+    }
+    for (const cand of candidates) {
+      if (!cand) continue;
+      const suffix = bySuffixBase.get(cand.toLowerCase());
+      if (suffix) return suffix;
+    }
+    return null;
+  };
+  return { resolve: resolveOne };
+}
+
+function safeNormalize(value: string, form: 'NFC' | 'NFD'): string {
+  try {
+    return value.normalize(form);
+  } catch {
+    return value;
+  }
 }
 
 function rewriteRelativeImageSrcs(

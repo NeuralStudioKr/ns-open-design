@@ -214,6 +214,34 @@ describe('inlineProjectImagesFromScratch', () => {
     const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
     expect(out).toBe(html);
   });
+
+  it('basename-fallback resolves a bare filename to the timestamp-prefixed disk file', async () => {
+    // Model sometimes emits `<img src="민들레.png">` while the on-disk file is
+    // `msh9rso1-민들레.png` (staged with a session id prefix). Without this
+    // fallback the preview iframe collapses to alt-only text ("민들레") — the
+    // exact regression the user reports.
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 42]);
+    await writeFile(
+      path.join(projectsRoot, projectId, 'msh9rso1-민들레.png'),
+      png,
+    );
+    const html = '<img src="민들레.png" alt="민들레">';
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toMatch(/src="data:image\/png;base64,/);
+    expect(out).toContain('alt="민들레"');
+  });
+
+  it('basename-fallback tolerates NFC/NFD mismatch when the disk file uses the alternate form', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1]);
+    // Disk stores NFD (macOS drag-drop pre-NFC-normalization).
+    const diskNameNfd = 'msh9rso1-서빙하는-금붕어.webp'.normalize('NFD');
+    // Model emits NFC bare basename without the id prefix.
+    const bareNfc = '서빙하는-금붕어.webp'.normalize('NFC');
+    await writeFile(path.join(projectsRoot, projectId, diskNameNfd), png);
+    const html = `<img src="${bareNfc}" alt="fish">`;
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toMatch(/src="data:image\/webp;base64,/);
+  });
 });
 
 describe('collectRelativeProjectAssetPaths / warmExportRelativeAssets', () => {
