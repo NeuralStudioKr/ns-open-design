@@ -44,6 +44,7 @@ import {
   resolveFullSnapshotInterval,
   shouldForceFullSnapshot,
 } from './snapshot-codec.js';
+import { normalizeArtifactRuntimeImports } from '../artifact-runtime-compat.js';
 
 type WriteProjectFile = (
   projectsRoot: string,
@@ -232,7 +233,7 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       const {
         projectId,
         fileName,
-        content,
+        content: rawContent,
         source,
         label,
         artifactManifest = null,
@@ -241,6 +242,20 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
         truncateAfterSequence,
         metadata,
       } = input;
+      // Normalize ONCE here so the bytes we hand to `writeProjectFile` and the
+      // bytes we persist as a revision snapshot are byte-identical. Before this
+      // fix the disk write ran `normalizeArtifactRuntimeImports` implicitly
+      // inside `writeProjectFile` while the snapshot store received the raw
+      // input `content`; on next entry the FE reconcile saw disk ≠ snapshot
+      // and fired a spurious "file was changed unexpectedly" conflict toast
+      // (undo/redo also got locked out until dismiss). Motion/framer-motion
+      // decks are the common trigger, but the pattern applies to any
+      // future write-side normalizer added to `writeProjectFile`.
+      const normalizedContent = coerceNormalizedContent(
+        fileName,
+        rawContent,
+      );
+      const content = normalizedContent;
       return withFileRevisionMutationLock(projectId, fileName, async () => {
         const projectDir = resolveProjectDir(projectsRoot, projectId, metadata);
         await ensureHydrated(projectId, fileName);
@@ -391,11 +406,17 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
           revisionMetadataLookup(projectId, fileName),
           snapshotContext,
         );
+        // Pre-normalize so we write bytes that match what `writeProjectFile`
+        // would have written from the original push. If the snapshot itself
+        // was pushed via our normalize-first `pushRevision` above this is a
+        // no-op; the guard is here so legacy snapshots stored pre-normalize
+        // do not put disk out of sync with the current head after restore.
+        const normalizedContent = coerceNormalizedContent(fileName, content);
         const file = await writeProjectFile(
           projectsRoot,
           projectId,
           fileName,
-          content,
+          normalizedContent,
           { overwrite: true },
           metadata,
         );
@@ -403,6 +424,22 @@ export function createFileRevisionService(deps: FileRevisionServiceDeps) {
       });
     },
   };
+}
+
+/**
+ * Apply the same write-side transforms `writeProjectFile` runs so the bytes
+ * we persist as a revision snapshot stay byte-identical to the on-disk copy.
+ * Currently only `normalizeArtifactRuntimeImports` (Motion / framer-motion
+ * UMD script repair) mutates HTML bodies, but if a future write path adds
+ * another normalizer this helper is the single place to keep in sync.
+ */
+function coerceNormalizedContent(fileName: string, content: string): string {
+  const out = normalizeArtifactRuntimeImports(fileName, content);
+  if (typeof out === 'string') return out;
+  if (Buffer.isBuffer(out) || out instanceof Uint8Array) {
+    return Buffer.from(out).toString('utf8');
+  }
+  return content;
 }
 
 export function isFileRevisionSource(value: unknown): value is FileRevisionSource {
