@@ -472,7 +472,7 @@ export function FileWorkspace({
   artifactHtml = null,
   previewHealAttachmentPaths = [],
   pendingArtifactRecovery = null,
-  conversationId;
+  conversationId,
   headerActions,
   questionForm = null,
   questionFormPreview = null,
