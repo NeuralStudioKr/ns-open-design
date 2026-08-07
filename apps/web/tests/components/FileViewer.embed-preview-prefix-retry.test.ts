@@ -32,8 +32,12 @@ describe('FileViewer embed preview prefix recovery', () => {
     expect(fileViewer).toContain('embedPreviewPrefixSettled');
     expect(fileViewer).toContain('prevEmbedPreviewPrefixRef');
     expect(fileViewer).toContain('failOpenPaintTimer');
+    // Guard was widened from `!embedPreviewPrefixSettled` to also cover the
+    // brief window where settle already fired but the prefix cache was
+    // invalidated (auth recovery / rotation). Match either shape so the
+    // regression assert stays honest without churning on unrelated tightening.
     expect(fileViewer).toMatch(
-      /teamverEmbedPreviewMode && !embedPreviewPrefixSettled/,
+      /teamverEmbedPreviewMode\s*&&\s*\(?\s*!embedPreviewPrefixSettled/,
     );
     expect(fileViewer).toMatch(
       /if \(prev === undefined\) return;[\s\S]{0,200}?setSrcDocTransportResetKey/,
