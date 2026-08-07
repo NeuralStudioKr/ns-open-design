@@ -1365,11 +1365,12 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain('.replace(/\\shttp-equiv\\s*=');
     expect(sourcePatchesSource).toContain("'color-profile'");
     expect(sourcePatchesSource).toContain('presentationAttrs');
-    // Fail-closed URL/presentation deny widened (blob/file/data/about/filesystem + url()/var()).
+    // Fail-closed URL deny widened (blob/file/data/about/filesystem); presentation via isSafe gate.
     expect(sourcePatchesSource).toContain(
       'blob\\\\s*:|file\\\\s*:|data\\\\s*:|about\\\\s*:|filesystem\\\\s*:',
     );
-    expect(sourcePatchesSource).toContain('\\\\burl\\\\s*\\\\(|\\\\bvar\\\\s*\\\\(');
+    expect(sourcePatchesSource).toContain('same gate as DOM isSafeManualEditPresentationCssValue');
+    expect(sourcePatchesSource).toContain('isSafeManualEditPresentationCssValue(value) ? full : \'\'');
     expect(sourcePatchesSource).toContain('options?.parsedDoc ?? parseSource(source)');
     // Absolute action/formaction/ping/SMIL to|from|by|values + backslash + multi-token residual.
     expect(sourcePatchesSource).toContain('/\\s(?:action|formaction|ping|to|from|by|values)\\s*=');
@@ -1568,7 +1569,19 @@ describe('manual edit source patches', () => {
       .not.toContain('blob:');
     expect(sanitizeManualEditHtmlFragment('<rect fill="red" data-od-id="a" />'))
       .toContain('fill="red"');
-    expect(sourcePatchesSource).toContain('Bare data:/blob: as presentation value');
+    // CSS-escape / comment-smuggled bare schemes — failClosed uses isSafe parity.
+    expect(sanitizeManualEditHtmlFragment('<rect fill="d\\61ta:image/svg+xml,<svg></svg>" data-od-id="a" />'))
+      .not.toMatch(/d\\61ta:|data:/i);
+    expect(sanitizeManualEditHtmlFragment('<rect fill="/**/data:image/svg+xml,<svg></svg>" data-od-id="a" />'))
+      .not.toContain('data:');
+    expect(sanitizeManualEditHtmlFragment(
+      '<rect fill=\'image-set("https://evil.example/a.png" 1x)\' data-od-id="a" />',
+    )).not.toContain('image-set');
+    expect(sanitizeManualEditHtmlFragment(
+      '<rect fill="-moz-binding:url(#x)" data-od-id="a" />',
+    )).not.toContain('-moz-binding');
+    expect(sourcePatchesSource).toContain('same gate as DOM isSafeManualEditPresentationCssValue');
+    expect(sourcePatchesSource).toContain('image-set / element / -moz-binding are never safe');
     expect(sourcePatchesSource).toContain("^(?:javascript|vbscript|data|blob)\\s*:");
   });
 

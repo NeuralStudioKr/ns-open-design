@@ -1500,36 +1500,25 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     // Inline style can carry expression()/url(javascript:) without a DOM walk.
     .replace(/\sstyle\s*=\s*(['"])[\s\S]*?\1/gi, '')
     .replace(/\sstyle\s*=\s*[^\s>]+/gi, '')
-    // SVG presentation attrs — fail closed on any url()/var()/expression()/scheme
-    // (DOM walk uses isSafeManualEditPresentationCssValue; regex cannot be as precise).
+    // SVG presentation attrs — same gate as DOM isSafeManualEditPresentationCssValue
+    // (normalize/escape, bare data|blob, url/var/expression, image-set/element/-moz-binding).
     .replace(
       new RegExp(
-        `\\s(?:${presentationAttrs})\\s*=\\s*(['"])[\\s\\S]*?(?:javascript|vbscript|expression\\s*\\(|\\burl\\s*\\(|\\bvar\\s*\\()[\\s\\S]*?\\1`,
+        `\\s(?:${presentationAttrs})\\s*=\\s*(['"])([\\s\\S]*?)\\1`,
         'gi',
       ),
-      '',
+      (full, _quote: string, value: string) => (
+        isSafeManualEditPresentationCssValue(value) ? full : ''
+      ),
     )
     .replace(
       new RegExp(
-        `\\s(?:${presentationAttrs})\\s*=\\s*(?:javascript|vbscript|expression\\s*\\(|url\\s*\\(|var\\s*\\()[^\\s>]*`,
+        `\\s(?:${presentationAttrs})\\s*=\\s*([^\\s>]+)`,
         'gi',
       ),
-      '',
-    )
-    // Bare data:/blob: as presentation value (DOM isSafeManualEditPresentationCssValue).
-    .replace(
-      new RegExp(
-        `\\s(?:${presentationAttrs})\\s*=\\s*(['"])\\s*(?:data|blob)\\s*:[\\s\\S]*?\\1`,
-        'gi',
+      (full, value: string) => (
+        isSafeManualEditPresentationCssValue(value) ? full : ''
       ),
-      '',
-    )
-    .replace(
-      new RegExp(
-        `\\s(?:${presentationAttrs})\\s*=\\s*(?:data|blob)\\s*:[^\\s>]*`,
-        'gi',
-      ),
-      '',
     )
     // Navigable URL attrs — align deny list with isSafeManualEditUrl
     // (blob/file/data/about/filesystem/protocol-relative + common extension schemes).
@@ -2965,6 +2954,10 @@ function isSafeManualEditPresentationCssValue(
   if (!normalized) return true;
   // Bare scheme as the whole presentation value (`fill="data:image/svg+xml,…"`).
   if (/^(?:javascript|vbscript|data|blob)\s*:/i.test(normalized)) return false;
+  // image-set / element / -moz-binding are never safe paint-server values.
+  if (/\b(?:-webkit-)?image-set\s*\(/i.test(normalized)) return false;
+  if (/\belement\s*\(/i.test(normalized)) return false;
+  if (/-moz-binding/i.test(normalized)) return false;
   if (containsUnsafeEmbeddedCssOrScheme(normalized, { alreadyNormalized: true })) return false;
   // var() can hide remote url() via custom props — fail closed for paint attrs.
   if (/\bvar\s*\(/i.test(normalized)) return false;

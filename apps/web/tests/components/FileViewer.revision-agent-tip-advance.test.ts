@@ -88,8 +88,13 @@ describe('FileViewer revision tip advance after undo', () => {
     );
     // Local tip push skips immediate list GET (optimistic stack already matches).
     expect(fileViewer).toContain('Optimistic tip already matches the push — skip immediate list GET');
+    expect(fileViewer).toContain('Deferred refresh catches retention/conflict shortly after');
+    expect(fileViewer).toContain('REVISION_LIST_SOFT_CACHE_OPTIMISTIC_TTL_MS');
+    expect(fileViewer).toContain('{ optimistic: true }');
     expect(fileViewer).toContain('pinManualEditSavedSource(next)');
     expect(fileViewer).toContain('isManualEditSourcePinActive(manualEditPinnedSourceRef.current)');
+    expect(fileViewer).toContain('When tip content cache already differs from the pin');
+    expect(fileViewer).toContain('getRevisionContentCache(projectId, file.name, tipRevision.id)');
     expect(fileViewer).toContain('Warm soft-cache so tip-lag disk soft-retries reuse this list');
     expect(fileViewer).toContain('Prefer active → head → tip');
     expect(fileViewer).toContain('warmRevisionListSoftCacheFromList(projectId, file.name, softSeq, list)');
@@ -109,7 +114,9 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('const contentUnchanged = sourceRef.current === nextSource');
     expect(fileViewer).toContain('if (sourceRef.current !== pinnedPreferred)');
     expect(fileViewer).toContain('if (sourceRef.current !== accepted)');
-    expect(fileViewer).toContain('Idle remeasure: skip equal geometry churn and reject wild jumps');
+    expect(fileViewer).toContain('Style identity (no rect) so mixed inspector reseeds');
+    expect(fileViewer).toContain('MANUAL_EDIT_STYLE_PROPS.map');
+    expect(fileViewer).toContain('Idle remeasure: applyManualEditMeasuredGeometry skips equal geometry');
     expect(fileViewer).toContain('applyManualEditMeasuredGeometry(measured)');
     expect(fileViewer).toContain('live→raw hold: skip setSource when already painting stable');
     expect(fileViewer).toContain('Undo demotes activeSeq — warm soft-cache for the restored tip');

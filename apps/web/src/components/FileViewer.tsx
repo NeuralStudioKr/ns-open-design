@@ -620,8 +620,11 @@ type RevisionListSoftCacheEntry = {
   activeSeq: number;
   list: Awaited<ReturnType<typeof listProjectFileRevisions>>;
   at: number;
+  /** Stack-warmed lists are shorter-lived than server-fetched lists. */
+  optimistic?: boolean;
 };
 const REVISION_LIST_SOFT_CACHE_TTL_MS = 4_000;
+const REVISION_LIST_SOFT_CACHE_OPTIMISTIC_TTL_MS = 1_000;
 const revisionListSoftCache = new Map<string, RevisionListSoftCacheEntry>();
 
 function revisionListSoftCacheKey(projectId: string, fileName: string): string {
@@ -636,15 +639,18 @@ async function listProjectFileRevisionsSoftCached(
 ): Promise<Awaited<ReturnType<typeof listProjectFileRevisions>>> {
   const key = revisionListSoftCacheKey(projectId, fileName);
   const cached = revisionListSoftCache.get(key);
+  const ttl = cached?.optimistic
+    ? REVISION_LIST_SOFT_CACHE_OPTIMISTIC_TTL_MS
+    : REVISION_LIST_SOFT_CACHE_TTL_MS;
   if (
     cached
     && cached.activeSeq === activeSeq
-    && Date.now() - cached.at < REVISION_LIST_SOFT_CACHE_TTL_MS
+    && Date.now() - cached.at < ttl
   ) {
     return cached.list;
   }
   const list = await listProjectFileRevisions(projectId, fileName);
-  revisionListSoftCache.set(key, { activeSeq, list, at: Date.now() });
+  revisionListSoftCache.set(key, { activeSeq, list, at: Date.now(), optimistic: false });
   if (revisionListSoftCache.size > 64) {
     const oldest = revisionListSoftCache.keys().next().value;
     if (oldest != null) revisionListSoftCache.delete(oldest);
@@ -665,7 +671,7 @@ function warmRevisionListSoftCacheFromStack(
     headRevisionId: stack.headRevisionId ?? stack.cursorRevisionId,
     retentionLimit,
   };
-  warmRevisionListSoftCacheFromList(projectId, fileName, activeSeq, list);
+  warmRevisionListSoftCacheFromList(projectId, fileName, activeSeq, list, { optimistic: true });
 }
 
 /** Re-key soft-cache after adopt/head seq changes using an already-fetched list. */
@@ -674,10 +680,16 @@ function warmRevisionListSoftCacheFromList(
   fileName: string,
   activeSeq: number,
   list: Awaited<ReturnType<typeof listProjectFileRevisions>>,
+  options?: { optimistic?: boolean },
 ): void {
   if (!list || typeof activeSeq !== 'number') return;
   const key = revisionListSoftCacheKey(projectId, fileName);
-  revisionListSoftCache.set(key, { activeSeq, list, at: Date.now() });
+  revisionListSoftCache.set(key, {
+    activeSeq,
+    list,
+    at: Date.now(),
+    optimistic: options?.optimistic === true,
+  });
 }
 
 /** Identity fingerprint for od-edit-targets — skips geometry-only rebroadcasts. */
@@ -693,6 +705,8 @@ function manualEditTargetsIdentityFingerprint(targets: ManualEditTarget[]): stri
     target.fields?.alt ?? '',
     target.outerHtml?.length ?? 0,
     target.isHidden ? '1' : '0',
+    // Style identity (no rect) so mixed inspector reseeds on style-only bridge.
+    MANUAL_EDIT_STYLE_PROPS.map((key) => target.styles?.[key] ?? '').join('\x1e'),
   ].join('\0')).join('\n');
 }
 const MAX_CACHED_PREVIEW_VIEWPORTS = 128;
@@ -5484,19 +5498,38 @@ function HtmlViewer({
     invalidateCachedPreviewSource(projectId, file.name);
     // Keep an active save-pin through chokidar refresh storms so disk lag
     // cannot restore the pre-edit frame; re-seed the module cache from pin.
+    // When tip content cache already differs from the pin (agent tip landed),
+    // clear the pin and fall through so the newer tip can remount.
     if (isManualEditSourcePinActive(manualEditPinnedSourceRef.current)) {
       const pinned = manualEditPinnedSourceRef.current;
       if (pinned?.source) {
-        rememberStablePreviewSource(projectId, file.name, pinned.source);
-        // Active pin owns the painted frame — adopt pin if paint drifted;
-        // never tear srcdoc / bust reloadKey while the pin is live.
-        if (sourceRef.current !== pinned.source) {
-          setSource(pinned.source);
-          sourceRef.current = pinned.source;
-          lastStablePreviewSourceRef.current = pinned.source;
-          exportHtmlSnapshotGateRef.current = pinned.source;
+        const stack = revisionStackRef.current;
+        const activeSeq = getActiveRevisionSequence(projectId, file.name);
+        const tipRevision = (
+          activeSeq != null
+            ? stack.revisions.find((revision) => revision.sequence === activeSeq)
+            : null
+        )
+          ?? stack.revisions.find((revision) => revision.id === stack.headRevisionId)
+          ?? stack.revisions.at(-1)
+          ?? null;
+        const tipCached = tipRevision
+          ? getRevisionContentCache(projectId, file.name, tipRevision.id)
+          : null;
+        if (tipCached != null && tipCached !== pinned.source) {
+          manualEditPinnedSourceRef.current = null;
+        } else {
+          rememberStablePreviewSource(projectId, file.name, pinned.source);
+          // Active pin owns the painted frame — adopt pin if paint drifted;
+          // never tear srcdoc / bust reloadKey while the pin is live.
+          if (sourceRef.current !== pinned.source) {
+            setSource(pinned.source);
+            sourceRef.current = pinned.source;
+            lastStablePreviewSourceRef.current = pinned.source;
+            exportHtmlSnapshotGateRef.current = pinned.source;
+          }
+          return;
         }
-        return;
       }
     } else {
       manualEditPinnedSourceRef.current = null;
@@ -8982,12 +9015,9 @@ function HtmlViewer({
         }
         if (!measured || isHandoffRect) return;
 
-        const current = selectedManualEditTargetRef.current;
-        if (current?.id === measured.id) {
-          // Idle remeasure: skip equal geometry churn and reject wild jumps.
-          // Handoff settle uses applyManualEditMeasuredGeometry on its own path.
-          return;
-        }
+        // Idle remeasure: applyManualEditMeasuredGeometry skips equal geometry
+        // (roughlyMatches + offsets) and updates when idle bounds actually moved.
+        // Handoff settle uses the same helper on its own path.
         applyManualEditMeasuredGeometry(measured);
         return;
       }
@@ -10506,7 +10536,7 @@ function HtmlViewer({
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
       setRevisionStackInvalidated(false);
       // Optimistic tip already matches the push — skip immediate list GET.
-      // Conflict/retention refresh still runs via filesRefreshKey / undo.
+      // Deferred refresh catches retention/conflict shortly after (not only filesRefresh).
       warmRevisionListSoftCacheFromStack(
         projectId,
         file.name,
@@ -10514,6 +10544,9 @@ function HtmlViewer({
         saved.revision.sequence,
         revisionRetentionLimit,
       );
+      window.setTimeout(() => {
+        void refreshRevisionStack();
+      }, 250);
       setManualEditDraft((current) => (
         current.fullSource === contentToSave ? current : { ...current, fullSource: contentToSave }
       ));
@@ -10699,6 +10732,7 @@ function HtmlViewer({
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
       setRevisionStackInvalidated(false);
       // Optimistic tip already matches the push — skip immediate list GET.
+      // Deferred refresh catches retention/conflict shortly after (not only filesRefresh).
       warmRevisionListSoftCacheFromStack(
         projectId,
         file.name,
@@ -10706,6 +10740,9 @@ function HtmlViewer({
         saved.revision.sequence,
         revisionRetentionLimit,
       );
+      window.setTimeout(() => {
+        void refreshRevisionStack();
+      }, 250);
       setManualEditDraft((current) => (
         current.fullSource === result.source ? current : { ...current, fullSource: result.source }
       ));
@@ -11192,6 +11229,7 @@ function HtmlViewer({
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'inspect_save');
       setRevisionStackInvalidated(false);
       // Optimistic tip already matches the push — skip immediate list GET.
+      // Deferred refresh catches retention/conflict shortly after (not only filesRefresh).
       warmRevisionListSoftCacheFromStack(
         projectId,
         file.name,
@@ -11199,6 +11237,9 @@ function HtmlViewer({
         saved.revision.sequence,
         revisionRetentionLimit,
       );
+      window.setTimeout(() => {
+        void refreshRevisionStack();
+      }, 250);
       setInspectSavedAt(Date.now());
       // srcdoc path updates via setSource; URL-load still needs reloadKey bust.
       if (useUrlLoadPreview) {
