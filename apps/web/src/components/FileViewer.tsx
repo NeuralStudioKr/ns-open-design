@@ -6840,7 +6840,34 @@ function HtmlViewer({
   useEffect(() => {
     setInlinedSource(null);
     if (useUrlLoadPreview) return;
-    if (!source || effectiveDeck || !hasRelativeAssetRefs(source)) return;
+    if (!source) return;
+    if (effectiveDeck) {
+      // Decks: fetch the daemon-side inlined form so `<img>` subresource GETs
+      // inside the srcdoc iframe never race Hangul NFC/NFD filename mismatches,
+      // transient /preview 404s, or missing preview-scope auth headers. The
+      // primary `source` state stays raw (used by manual edit, model context
+      // retry payloads, element-patch diff, and export snapshots — all of
+      // which must see the on-disk bytes, not multi-MB data URIs).
+      //
+      // Gate on the presence of an inline-able <img>. Skip when nothing to
+      // inline so the primary /raw fetch already covered the paint.
+      if (!hasRelativeImageRefs(source)) return;
+      let cancelled = false;
+      void fetchProjectFileText(projectId, file.name, {
+        cacheBustKey: `${file.mtime}-${reloadKey}-preview-inline`,
+        inlineAssetsForPreview: true,
+      }).then((next) => {
+        if (cancelled || next == null) return;
+        setInlinedSource(next);
+      }).catch(() => {
+        // Silently fall back to the raw source — the iframe will still attempt
+        // live subresource GETs and my daemon /preview NFC/NFD fallback path.
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (!hasRelativeAssetRefs(source)) return;
     let cancelled = false;
     void inlineRelativeAssets(source, projectId, file.name).then((next) => {
       if (!cancelled) setInlinedSource(next);
@@ -15232,6 +15259,32 @@ function hasRelativeAssetRefs(html: string): boolean {
     if (!value) continue;
     if (/^(?:https?:|data:|blob:|mailto:|tel:|#|\/)/i.test(value)) continue;
     return true;
+  }
+  return false;
+}
+
+/**
+ * True when the HTML has at least one `<img src="…">` (or CSS `url(…)`) that
+ * is a relative path — the kind that the daemon-side inline pass can turn
+ * into a `data:` URI. Used to decide whether it's worth doing the extra
+ * `?inlineAssets=1` round trip for deck previews.
+ */
+function hasRelativeImageRefs(html: string): boolean {
+  const imgRe = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi;
+  const cssUrlRe = /url\(\s*['"]?([^'")]+)['"]?\s*\)/gi;
+  const isRelative = (value: string | undefined): boolean => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return false;
+    if (/^(?:https?:|data:|blob:|mailto:|tel:|#|\/\/)/i.test(trimmed)) return false;
+    if (trimmed.startsWith('/api/')) return false;
+    return true;
+  };
+  let match: RegExpExecArray | null;
+  while ((match = imgRe.exec(html)) !== null) {
+    if (isRelative(match[1])) return true;
+  }
+  while ((match = cssUrlRe.exec(html)) !== null) {
+    if (isRelative(match[1])) return true;
   }
   return false;
 }

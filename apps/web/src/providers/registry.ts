@@ -1876,16 +1876,30 @@ export async function fetchProjectFilePreview(
 export async function fetchProjectFileText(
   projectId: string,
   name: string,
-  options?: { cache?: RequestCache; cacheBustKey?: string | number; signal?: AbortSignal },
+  options?: {
+    cache?: RequestCache;
+    cacheBustKey?: string | number;
+    signal?: AbortSignal;
+    /**
+     * Ask the daemon to rewrite `<img src>` / CSS `url(...)` refs in HTML
+     * responses into inline `data:` URIs before serving. Use ONLY for preview
+     * rendering — model context / retry payloads / manual raw editor must see
+     * the original bytes so token budgets, saved bytes-on-disk, and
+     * element-patch diffs stay correct.
+     */
+    inlineAssetsForPreview?: boolean;
+  },
 ): Promise<string | null> {
   if (isRenderableImagePath(name)) return null;
 
   const url = projectFileUrl(projectId, name);
   const cacheBustKey = options?.cacheBustKey;
-  const requestUrl =
-    cacheBustKey == null
-      ? url
-      : `${url}${url.includes('?') ? '&' : '?'}cacheBust=${encodeURIComponent(String(cacheBustKey))}`;
+  const params: string[] = [];
+  if (cacheBustKey != null) params.push(`cacheBust=${encodeURIComponent(String(cacheBustKey))}`);
+  if (options?.inlineAssetsForPreview) params.push('inlineAssets=1');
+  const requestUrl = params.length === 0
+    ? url
+    : `${url}${url.includes('?') ? '&' : '?'}${params.join('&')}`;
   const init: RequestInit = {};
   if (options?.cache) init.cache = options.cache;
   if (options?.signal) init.signal = options.signal;

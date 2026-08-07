@@ -66,6 +66,7 @@ import {
 } from './teamver-byok-usage-bridge.js';
 import { resolveProjectCoverHint } from './project-cover-hints.js';
 import { prepareCoverHtmlBatchBody } from './cover-html-isolate.js';
+import { inlineProjectImagesFromScratch } from './pdf-export.js';
 
 const PROJECT_COVER_HINTS_BATCH_MAX = 12;
 /** Status/metadata enrichment for registry-backed lists (home + projects tab). */
@@ -2668,6 +2669,49 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     return repairArtifactDocumentHead(html);
   }
 
+  /**
+   * Opt-in flag on `/raw/*.html` that asks the daemon to rewrite subresource
+   * `<img src>` / CSS `url(...)` refs into inline `data:` URIs before responding.
+   * Turned on by the FE preview `source` fetch only — all other consumers must
+   * see the original bytes (see `maybeInlineImagesForServedHtml` comment).
+   */
+  function wantsInlineAssets(value: unknown): boolean {
+    if (value == null) return false;
+    if (Array.isArray(value)) return value.some(wantsInlineAssets);
+    const str = String(value).trim().toLowerCase();
+    return str === '1' || str === 'true' || str === 'yes' || str === 'on';
+  }
+
+  /**
+   * Rewrite `<img src>` / CSS `url(...)` refs in served HTML into `data:` URIs
+   * by reading the referenced files directly from local scratch. This makes the
+   * FE live-preview / `/raw/*.html` route immune to subresource fetch failures
+   * inside the srcdoc iframe (Hangul NFC/NFD mismatches, transient /raw 404s,
+   * missing `X-Teamver-*` headers on secondary requests, etc.). Only applied
+   * to `text/html`; other MIME types pass through unchanged.
+   *
+   * Failures are swallowed — the original HTML is returned so the browser can
+   * still attempt a live subresource fetch as a last resort.
+   */
+  async function maybeInlineImagesForServedHtml(
+    file: { mime: string; buffer: Buffer },
+    html: string,
+    projectId: string,
+    metadata?: unknown,
+  ): Promise<string> {
+    if (!/^text\/html(?:;|$)/i.test(file.mime)) return html;
+    try {
+      return await inlineProjectImagesFromScratch({
+        html,
+        projectId,
+        projectsRoot: PROJECTS_DIR,
+        metadata,
+      });
+    } catch {
+      return html;
+    }
+  }
+
   async function maybeResolveVitePreviewHtml({
     file,
     projectId,
@@ -3174,7 +3218,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             transformed = html;
           }
           const servedHtml = Buffer.isBuffer(transformed) ? transformed.toString('utf8') : transformed;
-          return maybeRepairServedHtml(file, servedHtml);
+          const repaired = maybeRepairServedHtml(file, servedHtml);
+          return maybeInlineImagesForServedHtml(file, repaired, project.id, project.metadata);
         },
       );
     } catch (err: any) {
@@ -3252,7 +3297,14 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             transformed = html;
           }
           const servedHtml = Buffer.isBuffer(transformed) ? transformed.toString('utf8') : transformed;
-          return maybeRepairServedHtml(file, servedHtml);
+          const repaired = maybeRepairServedHtml(file, servedHtml);
+          // Only inline images when caller explicitly opts in (`?inlineAssets=1`).
+          // Other /raw consumers — model context, retry / auto-continue payloads,
+          // manual raw editor, plain-file downloads — must receive the original
+          // bytes; data-URI bloat there would blow token budgets, poison saves,
+          // and break element-patch structural diffs.
+          if (!wantsInlineAssets(req.query.inlineAssets)) return repaired;
+          return maybeInlineImagesForServedHtml(file, repaired, projectId, project?.metadata);
         },
       );
     } catch (err: any) {
