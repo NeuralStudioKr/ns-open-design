@@ -11863,7 +11863,10 @@ function HtmlViewer({
     if (hostSnapshot) return hostSnapshot;
 
     if (drawOverlayOpen && !drawCaptureReadyRef.current) {
-      const deadline = Date.now() + 4_000;
+      // Match draw-overlay readiness polling (~1.5s mount + up to 5s load +
+      // optional 2s non-URL preview) so annotation capture does not fall back to
+      // marks-only while the srcDoc transport is still spinning up.
+      const deadline = Date.now() + 8_500;
       while (!drawCaptureReadyRef.current && Date.now() < deadline) {
         await waitForAnimationFrame();
       }

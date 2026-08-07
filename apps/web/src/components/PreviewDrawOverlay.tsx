@@ -82,13 +82,15 @@ const DRAW_HINT_STORAGE_KEY = 'open-design:annotation-draw-hint-dismissed';
 /** Max wait for a full compositor/iframe capture before marks-only or degraded send. */
 const ANNOTATION_CAPTURE_BUDGET_MS = 10_000;
 /**
- * When ink/box marks exist we prefer to wait for the full compositor capture
- * (so the sent screenshot shows the actual slide underneath the marks) but
- * still bound how long the user waits before we fall back to a marks-only
- * composite. FileViewer may spend up to ~4s waiting for draw-capture readiness
- * before the srcDoc bridge retries (2.5s+), so 4.5s was still racing the
- * happy path and silently shipping white-background marks-only PNGs.
- * 7s covers that handshake without stalling on the full 10s budget.
+ * Box marks and typed notes need the slide visible under the mark — the agent
+ * cannot infer "which text" or "which region" from a box on white. FileViewer
+ * may wait up to ~8.5s for draw-mode iframe readiness, then ~2.5s+ on the
+ * srcDoc snapshot bridge, so the slide-context budget must cover that pipeline.
+ */
+const ANNOTATION_CAPTURE_SLIDE_CONTEXT_BUDGET_MS = 12_000;
+/**
+ * Pen-only ink (no box, no note) can fall back sooner: the user is usually
+ * circling a region and bounds still carry placement when capture is slow.
  */
 const ANNOTATION_CAPTURE_FAST_FALLBACK_MS = 7_000;
 const ANNOTATION_IFRAME_SNAPSHOT_TIMEOUTS_MS = [2_500, 3_000] as const;
@@ -771,13 +773,35 @@ export function PreviewDrawOverlay({
       if (shouldCapture) {
         let blob: Blob | null = null;
         pinnedFrameRect = snapshotFrameRect();
-        const marksOnlyPromise =
-          hasVisualMark || hasTarget ? compositeMarksOnly(pinnedFrameRect) : null;
-        const snap = await requestSnapshot(
-          marksOnlyPromise ? ANNOTATION_CAPTURE_FAST_FALLBACK_MS : ANNOTATION_CAPTURE_BUDGET_MS,
-        );
+        const hasTypedNote = Boolean(note.trim());
+        // Memo/box annotations and note+mark combos need the slide in the PNG;
+        // racing marks-only at 7s was shipping white-background boxes while
+        // captureExportImageSnapshot was still waiting on draw-mode readiness.
+        const needsFullSlideCapture =
+          hasTarget ||
+          hasBox ||
+          Boolean(selectionBoxRef.current) ||
+          (hasInk && hasTypedNote);
+        const allowFastMarksOnlyFallback =
+          (hasVisualMark || hasTarget) && !needsFullSlideCapture;
+        const marksOnlyPromise = allowFastMarksOnlyFallback
+          ? compositeMarksOnly(pinnedFrameRect)
+          : null;
+        const captureBudgetMs = needsFullSlideCapture
+          ? ANNOTATION_CAPTURE_SLIDE_CONTEXT_BUDGET_MS
+          : marksOnlyPromise
+            ? ANNOTATION_CAPTURE_FAST_FALLBACK_MS
+            : ANNOTATION_CAPTURE_BUDGET_MS;
+        const snap = await requestSnapshot(captureBudgetMs);
         if (snap) blob = await compositeWithBackground(snap, pinnedFrameRect);
-        if (!blob && marksOnlyPromise) {
+        if (!blob && needsFullSlideCapture && (hasVisualMark || hasTarget)) {
+          // A typed note still carries intent with bounds — do not attach a
+          // misleading marks-only PNG that hides which slide region was marked.
+          if (!hasTypedNote) {
+            blob = await compositeMarksOnly(pinnedFrameRect);
+            usedMarksOnlyFallback = Boolean(blob && blob.size > 0);
+          }
+        } else if (!blob && marksOnlyPromise) {
           blob = await marksOnlyPromise;
           usedMarksOnlyFallback = Boolean(blob && blob.size > 0);
         }
