@@ -558,6 +558,83 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       }
     });
 
+    it('emits the FULL wrapped template body under Selected deck template (not the 18-line summary) when metadata pins selectedDeckTemplateId', () => {
+      // Regression: the previous compose called summarizeApiModeSkillBody
+      // for every skillBody in this dedicated Teamver slide-only API path
+      // — that helper strips lines matching copy/paste/read + reprioritizes
+      // + truncates to 18 lines. For Canvas → Slide runs the FE has
+      // already wrapped the picked template's SKILL.md body (with a
+      // `## Visual summary` block sourced from the SKILL.md frontmatter
+      // description) as skillBody, and the summarizer routinely dropped
+      // the palette / typography / motif spec. Result: the deck came back
+      // looking generic even though [selected-deck-template] logs said
+      // the body 'loaded'.
+      const wrappedSkillBody = [
+        '# Teamver selected deck template guard',
+        '',
+        'Template: Html Ppt Hermes Cyber Terminal',
+        '',
+        '--- Template specification follows ---',
+        '',
+        '## Visual summary (from template frontmatter)',
+        '',
+        '暗终端 honest-review deck — #0a0c10 黑底 + 56px 赛博网格 + CRT 暗角 + 扫描线、`$` 命令行标题、薄荷绿 #7ed3a4 大字、JetBrains Mono、stroke-only 柱状图、blinking 光标。',
+        '',
+        '# HTML PPT · 암터미널 측평',
+        '',
+        '## How to author the deck',
+        '',
+        '1. Read the master skill first.',
+        '2. Start from templates/full-decks/hermes-cyber-terminal/ — copy index.html.',
+        '3. Bring the shared runtime: copy assets/base.css, assets/runtime.js.',
+      ].join('\n');
+      const prompt = composeTeamverSlideApiPrompt({
+        skillName: 'Html Ppt Hermes Cyber Terminal',
+        skillBody: wrappedSkillBody,
+        metadata: {
+          kind: 'deck',
+          skipDiscoveryBrief: true,
+          selectedDeckTemplateId: 'example-html-ppt-hermes-cyber-terminal',
+          selectedDeckTemplateTitle: 'Html Ppt Hermes Cyber Terminal',
+        },
+      });
+
+      // The dedicated `## Selected deck template` header replaces the
+      // generic `## Visual summary style reference` header when metadata
+      // pins a template — this is what tells the model 'this is the
+      // primary visual contract, match it exactly'.
+      expect(prompt).toContain('## Selected deck template — Html Ppt Hermes Cyber Terminal — MUST MATCH THIS VISUAL SPEC');
+      // The visual summary — including the CJK description — must survive
+      // verbatim so the model has the concrete palette / typography /
+      // motif spec to reproduce.
+      expect(prompt).toContain('## Visual summary (from template frontmatter)');
+      expect(prompt).toContain('#0a0c10');
+      expect(prompt).toContain('#7ed3a4');
+      expect(prompt).toContain('JetBrains Mono');
+      expect(prompt).toContain('赛博网格');
+      // The wrap guard prose survives verbatim (was dropped by the
+      // summarizer's 18-line ceiling).
+      expect(prompt).toContain('# Teamver selected deck template guard');
+      expect(prompt).toContain('--- Template specification follows ---');
+      // Old summarized header must NOT appear when a template is pinned —
+      // otherwise the model sees two competing visual references.
+      expect(prompt).not.toContain('Visual style reference — Html Ppt Hermes Cyber Terminal');
+    });
+
+    it('falls back to the summarized `Visual style reference` header when no selectedDeckTemplateId is set (default scenario path)', () => {
+      // Default scenario body (simple-deck etc.) still runs through the
+      // summarizer — those bodies do contain 'copy assets/template.html'
+      // workflow noise that would confuse the API-mode model, so
+      // summarization is still the right default.
+      const prompt = composeTeamverSlideApiPrompt({
+        skillName: 'Simple Deck',
+        skillBody: 'Palette: navy #0a1930 with white text. Typography: elegant serif.',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+      expect(prompt).toContain('Visual style reference — Simple Deck');
+      expect(prompt).not.toContain('Selected deck template — Simple Deck');
+    });
+
     it('forces existing-deck image edits to preserve all slides via deck-patch', () => {
       const unified = composeTeamverSlideApiPrompt({
         skillBody: simpleDeckSkill,

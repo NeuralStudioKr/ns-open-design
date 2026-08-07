@@ -1430,10 +1430,35 @@ export function composeTeamverSlideApiPrompt({
   }
 
   if (skillBody?.trim()) {
-    parts.push(
-      `## Visual style reference${skillName ? ` — ${skillName}` : ''}\n\n`
-        + summarizeApiModeSkillBody(skillBody),
-    );
+    // Canvas → Slide with an explicitly picked template writes
+    // `selectedDeckTemplateId` into metadata and the composer wraps that
+    // template's SKILL.md body (with a prepended `## Visual summary` block
+    // sourced from the SKILL.md frontmatter description) as the skillBody.
+    // For those runs the wrap is the ONLY concrete visual contract the
+    // model gets — running `summarizeApiModeSkillBody` here strips the
+    // wrap header, re-orders lines by regex, and truncates to 18 lines,
+    // which routinely drops the palette + typography spec. Result: the
+    // deck comes back looking generic ("템플릿 적용 안 됨").
+    //
+    // When a selected deck template is present, emit the wrapped body
+    // verbatim under a `## Selected deck template` header so the visual
+    // contract survives. For runs without a picked template (default
+    // scenario body only), keep the summarized path — those bodies
+    // contain skeleton copy workflows that ARE noise for API mode.
+    const hasSelectedTemplate =
+      typeof metadata?.selectedDeckTemplateId === 'string'
+      && metadata.selectedDeckTemplateId.trim().length > 0;
+    if (hasSelectedTemplate) {
+      parts.push(
+        `## Selected deck template${skillName ? ` — ${skillName}` : ''} — MUST MATCH THIS VISUAL SPEC\n\n`
+          + skillBody.trim(),
+      );
+    } else {
+      parts.push(
+        `## Visual style reference${skillName ? ` — ${skillName}` : ''}\n\n`
+          + summarizeApiModeSkillBody(skillBody),
+      );
+    }
   }
 
   parts.push(DECK_FRAMEWORK_DIRECTIVE_COMPACT);
