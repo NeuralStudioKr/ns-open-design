@@ -121,7 +121,7 @@ function shouldAnnotatePreviewEditTargets(html: string, sourcePaths: boolean): b
  * an intact head (charset + viewport) and no common corruption prefixes.
  * Repair remains idempotent — this only avoids the regex walk on hot paths.
  */
-function artifactDocumentHeadLooksIntact(html: string): boolean {
+export function artifactDocumentHeadLooksIntact(html: string): boolean {
   if (!html || !/<head[\s>]/i.test(html) || !/<\/head>/i.test(html)) return false;
   if (!/<meta\s+charset/i.test(html)) return false;
   if (!/<meta\s+name=["']viewport["']/i.test(html)) return false;

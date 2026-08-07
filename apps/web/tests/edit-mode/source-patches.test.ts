@@ -1369,8 +1369,8 @@ describe('manual edit source patches', () => {
     );
     expect(sourcePatchesSource).toContain('\\\\burl\\\\s*\\\\(|\\\\bvar\\\\s*\\\\(');
     expect(sourcePatchesSource).toContain('options?.parsedDoc ?? parseSource(source)');
-    // Absolute action/formaction/ping + backslash phishing + multi-token list residual.
-    expect(sourcePatchesSource).toContain('/\\s(?:action|formaction|ping)\\s*=');
+    // Absolute action/formaction/ping/SMIL to|from|by + backslash + multi-token residual.
+    expect(sourcePatchesSource).toContain('/\\s(?:action|formaction|ping|to|from|by)\\s*=');
     expect(sourcePatchesSource).toContain('[\\s\\S]*?\\\\[\\s\\S]*?');
     expect(sourcePatchesSource).toContain('srcset|imagesrcset|archive|values');
   });

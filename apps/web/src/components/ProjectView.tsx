@@ -1903,10 +1903,19 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   const hasElementScopedComment = input.commentAttachments.some((attachment) =>
     scopedCommentElementIds(attachment).length > 0,
   );
+  // One parse of nextHtml for intent; mask mutates a clone when element-scoped.
+  const nextDoc = parseManualEditSource(input.nextHtml);
   // Visual / id-less comments have nothing to mask — skip 2× full-deck parse.
   if (hasElementScopedComment) {
     const beforeMasked = maskScopedCommentTargets(currentHtml, input.commentAttachments);
-    const afterMasked = maskScopedCommentTargets(input.nextHtml, input.commentAttachments);
+    const afterMaskDoc = nextDoc
+      ? (nextDoc.cloneNode(true) as Document)
+      : null;
+    const afterMasked = maskScopedCommentTargets(
+      input.nextHtml,
+      input.commentAttachments,
+      afterMaskDoc,
+    );
     const targetUnresolved = !beforeMasked.ok
       || !afterMasked.ok
       || beforeMasked.maskedCount === 0
@@ -1943,11 +1952,10 @@ async function fullDeckEditStaysInsideCommentScope(input: {
   }
   // Match deck/element-patch: presentation-only edits must not wipe pinned text
   // even when the full-deck rewrite stays inside slide/mask scope.
-  // Parse once for intent (mask mutates its own Documents — do not reuse).
   const intent = validateCommentEditIntentRespected({
     mergedHtml: input.nextHtml,
     commentAttachments: input.commentAttachments,
-    parsedDoc: parseManualEditSource(input.nextHtml),
+    parsedDoc: nextDoc,
   });
   if (!intent.ok) {
     return {
@@ -1997,14 +2005,13 @@ async function trySalvageScopedFullDeckRewrite(input: {
     return { ok: false, reason: 'full-deck rewrite produced no narrowed scoped match' };
   }
   // Mirror applyScopedDeckPatchToHtml finalize (intent + stabilize + sanitize fold).
-  const mergedSlides = extractTopLevelSlideSections(extractDeckBodyContent(scoped.html));
   const finalized = finalizeScopedDeckMergeHtml({
     currentHtml,
     mergedHtml: scoped.html,
     commentAttachments: input.commentAttachments,
     instructionText: input.instructionText,
     currentSlides: input.currentSlides,
-    mergedSlides,
+    mergedSlides: scoped.sections,
   });
   if (!finalized.ok) {
     return { ok: false, reason: finalized.reason };
@@ -2015,9 +2022,11 @@ async function trySalvageScopedFullDeckRewrite(input: {
 function maskScopedCommentTargets(
   source: string,
   commentAttachments: readonly ChatCommentAttachment[],
+  /** When set, mutate this Document (caller may pass a clone of a shared parse). */
+  parsedDoc?: Document | null,
 ): { ok: true; source: string; maskedCount: number } | { ok: false } {
   // One DOMParser pass for all attachments (was N× parse/serialize).
-  const doc = parseManualEditSource(source);
+  const doc = parsedDoc ?? parseManualEditSource(source);
   if (!doc) return { ok: false };
   let maskedCount = 0;
   for (const attachment of commentAttachments) {

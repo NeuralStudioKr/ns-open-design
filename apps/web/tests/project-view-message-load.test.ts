@@ -399,21 +399,24 @@ describe("ProjectView message loading", () => {
     expect(source).not.toContain("function scopedCommentSlideIndexes(");
     const guardStart = source.indexOf("async function fullDeckEditStaysInsideCommentScope");
     expect(guardStart).toBeGreaterThan(0);
-    const guardBlock = source.slice(guardStart, guardStart + 4000);
+    const guardBlock = source.slice(guardStart, guardStart + 5500);
     expect(guardBlock).toContain("beforeSlides");
     expect(guardBlock).toContain("afterSlides");
     expect(guardBlock).toContain("diffDeckSlideIndexes(currentHtml, input.nextHtml, {");
+    // Full-deck guard: one nextHtml parse → mask clone + intent.
+    expect(guardBlock).toContain("const nextDoc = parseManualEditSource(input.nextHtml)");
+    expect(guardBlock).toContain("nextDoc.cloneNode(true)");
+    expect(guardBlock).toMatch(/parsedDoc:\s*nextDoc/);
     const salvageStart = source.indexOf("async function trySalvageScopedFullDeckRewrite");
     expect(salvageStart).toBeGreaterThan(0);
     const salvageBlock = source.slice(salvageStart, salvageStart + 2500);
     expect(salvageBlock).toContain("currentSlides?: readonly");
     expect(salvageBlock).toContain("patchedSlides");
     expect(salvageBlock).toContain("finalizeScopedDeckMergeHtml({");
-    expect(salvageBlock).toContain("mergedSlides");
+    expect(salvageBlock).toContain("mergedSlides: scoped.sections");
     expect(source).toContain("beforeSlides: persistCommentSections");
     expect(source).toContain("currentSlides: persistCommentSections");
     expect(source).toContain("stabilizeVisualMarkDeckHtml(");
-    expect(source).toContain("currentSlides: persistCommentSections");
     expect(source).toMatch(
       /stabilizeVisualMarkDeckHtml\(\s*currentDeckHtml,\s*htmlBody,\s*persistCommentAttachments,\s*\{/,
     );
@@ -477,8 +480,9 @@ describe("ProjectView message loading", () => {
     expect(deckSource).toContain("sharedCurrentSlides");
     expect(deckSource).toContain("sharedPatchedSlides");
     expect(deckSource).toContain("patchedSlides: sharedPatchedSlides");
-    expect(deckSource).toContain("narrowedSlides");
-    expect(deckSource).toContain("mergedSlides: narrowedSlides");
+    expect(deckSource).toContain("mergedSlides: scoped.sections");
+    expect(deckSource).toContain("sections: nextSlides");
+    expect(deckSource).toContain("any comment scope");
     expect(deckSource).toContain("alreadySanitized?: boolean");
     expect(deckSource).toContain("mergedSlides?: readonly { outerHtml: string }[]");
     expect(deckSource).toContain("allPatchesVerified");

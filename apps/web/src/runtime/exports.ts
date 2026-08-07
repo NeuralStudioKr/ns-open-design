@@ -13,7 +13,7 @@
 // path asks the daemon for editable PowerPoint objects; screenshot PPTX remains
 // an explicit daemon opt-out for fidelity investigations only.
 
-import { buildSrcdoc, type SrcdocOptions } from './srcdoc';
+import { artifactDocumentHeadLooksIntact, buildSrcdoc, type SrcdocOptions } from './srcdoc';
 import { devLog } from '../lib/devLog';
 import { buildReactComponentSrcdoc } from './react-component';
 import { buildZip } from './zip';
@@ -1085,7 +1085,11 @@ function inlineExportHtmlPayload(htmlSnapshot?: string | null): Record<string, s
   if (typeof htmlSnapshot !== 'string') return {};
   const trimmed = htmlSnapshot.trim();
   if (trimmed.length === 0) return {};
-  return { html: patchArtifactDeckPrintCss(repairArtifactDocumentHead(htmlSnapshot)) };
+  // Skip repair when head already looks intact (srcdoc buildSrcdoc parity).
+  const html = artifactDocumentHeadLooksIntact(htmlSnapshot)
+    ? htmlSnapshot
+    : repairArtifactDocumentHead(htmlSnapshot);
+  return { html: patchArtifactDeckPrintCss(html) };
 }
 
 async function performPdfExportRequest(opts: {

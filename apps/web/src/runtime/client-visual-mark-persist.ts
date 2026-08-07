@@ -1,4 +1,5 @@
 import { repairArtifactDocumentHead } from '@open-design/contracts';
+import { artifactDocumentHeadLooksIntact } from './srcdoc';
 import type { ChatCommentAttachment, FileRevision, ProjectFile } from '@open-design/contracts';
 
 import {
@@ -122,8 +123,11 @@ export async function tryPersistClientVisualMarksOnSend(input: {
   });
   if (!grafted) return { ok: false };
 
-  // graftVisualMarksIntoDeckHtml already full-source sanitized — head repair only.
-  const htmlBody = repairArtifactDocumentHead(grafted);
+  // graftVisualMarksIntoDeckHtml already full-source sanitized — head repair
+  // only when the intact-head gate fails (export/srcdoc parity).
+  const htmlBody = artifactDocumentHeadLooksIntact(grafted)
+    ? grafted
+    : repairArtifactDocumentHead(grafted);
   const truncateAfter = getActiveRevisionSequence(input.projectId, deckPath);
   const saved = await pushProjectFileRevision(input.projectId, deckPath, {
     content: htmlBody,

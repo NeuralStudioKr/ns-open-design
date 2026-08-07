@@ -62,6 +62,16 @@ describe('exportAsHtml / exportAsZip lean srcdoc', () => {
       /buildBlobSafeSrcdoc\(\s*repairArtifactDocumentHead\(\s*patchArtifactDeckPrintCss/,
     );
   });
+
+  it('skips repair in inlineExportHtmlPayload when head looks intact', () => {
+    expect(exportsSource).toContain('artifactDocumentHeadLooksIntact');
+    expect(exportsSource).toContain(
+      'Skip repair when head already looks intact (srcdoc buildSrcdoc parity).',
+    );
+    expect(exportsSource).toMatch(
+      /artifactDocumentHeadLooksIntact\(htmlSnapshot\)\s*\?\s*htmlSnapshot\s*:\s*repairArtifactDocumentHead\(htmlSnapshot\)/,
+    );
+  });
 });
 
 describe('resolveExportDownloadTitle', () => {

@@ -11,7 +11,7 @@ describe('FileViewer revision tip advance after undo', () => {
   it('paints target revision HTML and freeze when activeSequence moves the cursor', () => {
     const start = fileViewer.indexOf('const refreshRevisionStack = useCallback');
     expect(start).toBeGreaterThan(0);
-    const block = fileViewer.slice(start, start + 4_200);
+    const block = fileViewer.slice(start, start + 5_500);
     expect(block).toContain('resolveRevisionCursorId');
     expect(block).toContain('getActiveRevisionSequence');
     expect(block).toContain('cursorMovedByActiveSequence');
@@ -31,11 +31,18 @@ describe('FileViewer revision tip advance after undo', () => {
       unchangedGuard,
     );
     expect(block.indexOf('setSource(targetHtml)')).toBeGreaterThan(unchangedGuard);
-    expect(block.indexOf('exportHtmlSnapshotGateRef.current = targetHtml')).toBeGreaterThan(
-      unchangedGuard,
-    );
+    // Unchanged branch syncs drifted freeze/gate/stable via refs (not stale state).
+    expect(block).toContain('manualEditFrozenSourceRef.current !== targetHtml');
+    expect(block).toContain('lastStablePreviewSourceRef.current !== targetHtml');
+    expect(block).toContain('exportHtmlSnapshotGateRef.current !== targetHtml');
     expect(block).toContain('current.fullSource === targetHtml');
     expect(block).not.toContain('hydratedUndoCursorFromSession');
+    // liveHtml mount shares one repair across source/stable/paints init.
+    expect(fileViewer).toContain('initialLiveHtmlRepaired');
+    expect(fileViewer).toContain('One repair for liveHtml init');
+    // remove-element remaining multi-select shares one Document.
+    expect(fileViewer).toContain('One Document for remaining multi-select inspector after remove');
+    expect(fileViewer).toContain('remainingDoc');
     // Group geometry builders forward their shared Document into batch apply.
     expect(fileViewer).toContain('buildGroupMoveStylePatches(');
     expect(fileViewer).toContain('buildGroupResizeStylePatches(');

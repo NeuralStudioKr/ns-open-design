@@ -5207,20 +5207,16 @@ function HtmlViewer({
     });
   };
   const [mode, setMode] = useState<'preview' | 'source'>('preview');
-  const [source, setSource] = useState<string | null>(() => {
-    if (liveHtml == null) return null;
-    const repaired = repairArtifactDocumentHead(liveHtml);
-    return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
-  });
+  // One repair for liveHtml init (was 3× repairArtifactDocumentHead on mount).
+  const initialLiveHtmlRepaired = liveHtml == null
+    ? null
+    : (() => {
+      const repaired = repairArtifactDocumentHead(liveHtml);
+      return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
+    })();
+  const [source, setSource] = useState<string | null>(() => initialLiveHtmlRepaired);
   const [sourceLoadFailed, setSourceLoadFailed] = useState(false);
-  const lastStablePreviewSourceRef = useRef<string | null>(
-    liveHtml
-      ? (() => {
-        const repaired = repairArtifactDocumentHead(liveHtml);
-        return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
-      })()
-      : null,
-  );
+  const lastStablePreviewSourceRef = useRef<string | null>(initialLiveHtmlRepaired);
   // After POST /files succeeds, pin the saved HTML so onFileSaved → disk
   // refetch cannot briefly restore the pre-edit snapshot (S3/lazy race).
   const manualEditPinnedSourceRef = useRef<ManualEditSourcePin | null>(null);
@@ -5233,11 +5229,9 @@ function HtmlViewer({
   const lastStablePreviewIdentityRef = useRef<string | null>(null);
   // When liveHtml is present and paints (stable or last-stable fallback),
   // skip disk fetch. Token churn must NOT cancel an in-flight disk debounce.
-  const [liveHtmlPaintsPreview, setLiveHtmlPaintsPreview] = useState(() => {
-    if (liveHtml == null) return false;
-    const repaired = repairArtifactDocumentHead(liveHtml);
-    return isArtifactHtmlStableForPreview(repaired);
-  });
+  const [liveHtmlPaintsPreview, setLiveHtmlPaintsPreview] = useState(
+    () => initialLiveHtmlRepaired != null,
+  );
   const hasLiveHtml = liveHtml !== undefined;
   // Disk-fetch callbacks read streaming via ref so soft-retry / wall decisions
   // stay correct without re-subscribing on every liveHtml token.
@@ -8026,10 +8020,17 @@ function HtmlViewer({
           setManualEditFrozenSource(targetHtml);
           setReloadKey((key) => key + 1);
         } else {
-          // Identical HTML already painted — skip setSource/ref/gate churn;
-          // keep freeze/draft in sync only when they drifted.
-          if (manualEditFrozenSource !== targetHtml) {
+          // Identical HTML already painted — skip setSource/reloadKey;
+          // sync drifted freeze/gate/stable/draft without remount tax.
+          // Use frozen ref (callback may close over a stale freeze state).
+          if (manualEditFrozenSourceRef.current !== targetHtml) {
             setManualEditFrozenSource(targetHtml);
+          }
+          if (lastStablePreviewSourceRef.current !== targetHtml) {
+            lastStablePreviewSourceRef.current = targetHtml;
+          }
+          if (exportHtmlSnapshotGateRef.current !== targetHtml) {
+            exportHtmlSnapshotGateRef.current = targetHtml;
           }
           setManualEditDraft((current) =>
             current.fullSource === targetHtml
@@ -10282,11 +10283,14 @@ function HtmlViewer({
           setSelectedManualEditTargetIds(nextIds);
           setSelectedManualEditTarget(primary);
           if (nextIds.length > 1) {
+            // One Document for remaining multi-select inspector after remove.
+            const remainingDoc = parseManualEditSource(contentToSave);
             const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
               refreshed,
               (id) => inspectorManualEditStyles(
                 refreshed.find((item) => item.id === id) ?? primary,
                 contentToSave,
+                remainingDoc,
               ),
             );
             setManualEditMixedStyleKeys(mixedKeys);

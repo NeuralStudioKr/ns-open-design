@@ -530,10 +530,10 @@ export function applyScopedDeckPatchToHtml(input: {
     return { ok: false, code: 'deck_patch_parse_failed', reason: parsed.reason };
   }
   const currentHtml = input.currentHtml;
-  // One section materialization shared by coerce + narrow merge (was coerce
-  // then merge each rematerializing current/patched bodies).
+  // One section materialization shared by coerce + narrow merge + finalize
+  // (any comment scope — not only when allowedSlideIndexes is pre-filled).
   const sharedCurrentSlides = input.currentSlides
-    ?? (input.allowedSlideIndexes && input.commentAttachments?.length
+    ?? (input.commentAttachments?.length
       ? extractTopLevelSlideSections(extractDeckBodyContent(currentHtml))
       : null);
   const patchForScope = coerceDeckPatchToAllowedScope(
@@ -589,17 +589,14 @@ export function applyScopedDeckPatchToHtml(input: {
       return { ok: false, code: 'deck_patch_merge_failed', reason: scoped.reason };
     }
     if (scoped.narrowed) {
-      // Narrowed HTML differs from patched apply — materialize once for stabilize.
-      const narrowedSlides = extractTopLevelSlideSections(
-        extractDeckBodyContent(scoped.html),
-      );
+      // Merge returns final sections after last mutate — skip rematerialize.
       return finalizeScopedDeckMergeHtml({
         currentHtml,
         mergedHtml: scoped.html,
         commentAttachments: input.commentAttachments,
         instructionText: input.instructionText,
         currentSlides: sharedCurrentSlides ?? undefined,
-        mergedSlides: narrowedSlides,
+        mergedSlides: scoped.sections,
       });
     }
     if (mergedScopeRelaxed) {
@@ -1104,7 +1101,13 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
   currentSlides?: readonly { outerHtml: string; openTag?: string }[];
   /** Pre-materialized patched sections. */
   patchedSlides?: readonly { outerHtml: string; openTag?: string }[];
-}): { ok: true; html: string; narrowed: boolean } | { ok: false; reason: string } {
+}): {
+  ok: true;
+  html: string;
+  narrowed: boolean;
+  /** Final nextHtml sections for finalize stabilize (refreshed after last mutate). */
+  sections: readonly { outerHtml: string; openTag?: string }[];
+} | { ok: false; reason: string } {
   let nextHtml = input.currentHtml;
   let narrowed = false;
   // Materialize once for candidates + slide swaps; refresh only when later
@@ -1259,7 +1262,11 @@ export function mergeScopedCommentTargetsFromPatchedDeck(input: {
       return { ok: false, reason: lastReason };
     }
   }
-  return { ok: true, html: nextHtml, narrowed };
+  // Last mutate skips mid-loop refresh — refresh once for finalize stabilize.
+  if (narrowed) {
+    nextSlides = extractTopLevelSlideSections(extractDeckBodyContent(nextHtml));
+  }
+  return { ok: true, html: nextHtml, narrowed, sections: nextSlides };
 }
 
 export function targetTextPreservedInPatchedSlide(
