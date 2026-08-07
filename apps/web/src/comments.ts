@@ -1372,6 +1372,15 @@ export function shouldClientGraftVisualMarkWithoutAi(
   return true;
 }
 
+/** True when every usable attachment is a placement-only visual mark (client graft / deck-patch icon). */
+export function isVisualMarkPlacementOnlyCommentAttachments(
+  commentAttachments: readonly ChatCommentAttachment[],
+): boolean {
+  const usable = filterUsableCommentAttachments(commentAttachments);
+  if (usable.length === 0) return false;
+  return usable.every((attachment) => shouldClientGraftVisualMarkWithoutAi(attachment));
+}
+
 export function visualAnnotationIntentForMarkKind(
   markKind: PreviewVisualMarkKind | string | undefined,
   userNote?: string,

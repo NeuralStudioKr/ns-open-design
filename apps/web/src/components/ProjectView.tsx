@@ -326,6 +326,7 @@ import {
   historyWithCommentAttachmentContext,
   hydrateQueryContextCommentAttachments,
   isScreenshotOnlyVisualCommentTarget,
+  isVisualMarkPlacementOnlyCommentAttachments,
   mergeAttachedComments,
   mergePreviewCommentAttachments,
   messageContentWithCommentAttachments,
@@ -1123,6 +1124,16 @@ function activeDeckSlideIndexForVisualMarkGraft(
     }
   }
   return 0;
+}
+
+function visualAnnotationAutoContinueFlags(
+  attachments: readonly ChatCommentAttachment[],
+): { visualMarkOnly: boolean; visualAnnotationEdit: boolean } {
+  const usable = filterUsableCommentAttachments(attachments);
+  return {
+    visualMarkOnly: isVisualMarkPlacementOnlyCommentAttachments(usable),
+    visualAnnotationEdit: usable.some(hasUserTypedVisualAnnotationRequest),
+  };
 }
 
 async function hydrateDeckCommentSlideIndexes(input: {
@@ -3701,9 +3712,7 @@ export function ProjectView({
               : [];
             const recoveryAutoContinueMax = resolveAutoContinueMaxAttempts({
               scopedCommentAttachmentCount: recoveryCommentAttachments.length,
-              visualMarkOnly:
-                recoveryCommentAttachments.length > 0
-                && !hasElementScopedCommentAttachments(recoveryCommentAttachments),
+              visualMarkOnly: visualAnnotationAutoContinueFlags(recoveryCommentAttachments).visualMarkOnly,
             });
             if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
               if (incompleteAssistant && slideOnlyMvp) {
@@ -3856,11 +3865,13 @@ export function ProjectView({
                 autoContinueCommentAttachments.length > 0
                   ? buildConcretePatchTemplatesForCommentAttachments(autoContinueCommentAttachments)
                   : null;
+              const autoContinueVisualFlags = visualAnnotationAutoContinueFlags(
+                autoContinueCommentAttachments,
+              );
               const autoContinuePrompt = resolveAutoContinuePrompt({
                 commentAttachmentCount: autoContinueCommentAttachments.length,
-                visualMarkOnly:
-                  autoContinueCommentAttachments.length > 0
-                  && !hasElementScopedCommentAttachments(autoContinueCommentAttachments),
+                visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
+                visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
                 scopedCommentContext,
                 scopedUserInstruction: autoContinueOriginUser
                   ? stripUserVisibleUserMessageText(autoContinueOriginUser.content).trim()
@@ -7574,9 +7585,7 @@ export function ProjectView({
           : [];
         const recoveryAutoContinueMax = resolveAutoContinueMaxAttempts({
           scopedCommentAttachmentCount: recoveryCommentAttachments.length,
-          visualMarkOnly:
-            recoveryCommentAttachments.length > 0
-            && !hasElementScopedCommentAttachments(recoveryCommentAttachments),
+          visualMarkOnly: visualAnnotationAutoContinueFlags(recoveryCommentAttachments).visualMarkOnly,
         });
         if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
           if (incompleteAssistant && slideOnlyMvp) {
@@ -7721,11 +7730,13 @@ export function ProjectView({
               autoContinueCommentAttachments.length > 0
                 ? buildConcretePatchTemplatesForCommentAttachments(autoContinueCommentAttachments)
                 : null;
+            const autoContinueVisualFlags = visualAnnotationAutoContinueFlags(
+              autoContinueCommentAttachments,
+            );
             const autoContinuePrompt = resolveAutoContinuePrompt({
               commentAttachmentCount: autoContinueCommentAttachments.length,
-              visualMarkOnly:
-                autoContinueCommentAttachments.length > 0
-                && !hasElementScopedCommentAttachments(autoContinueCommentAttachments),
+              visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
+              visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
               scopedCommentContext,
               scopedUserInstruction: autoContinueOriginUser
                 ? stripUserVisibleUserMessageText(autoContinueOriginUser.content).trim()
@@ -8855,16 +8866,16 @@ export function ProjectView({
                 retryTarget?.userMsg ?? userMsg,
                 runCommentAttachmentsRef.current,
               );
-              const visualMarkOnlyAutoContinue =
-                terminalAutoContinueCommentAttachments.length > 0
-                && !hasElementScopedCommentAttachments(terminalAutoContinueCommentAttachments);
+              const terminalAutoContinueVisualFlags = visualAnnotationAutoContinueFlags(
+                terminalAutoContinueCommentAttachments,
+              );
               const canAutoContinue = shouldAutoContinueForIncompleteOutput({
                 runIsVisible: runIsVisible(),
                 autoContinueCount,
                 scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
                 maxPerConversation: resolveAutoContinueMaxAttempts({
                   scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
-                  visualMarkOnly: visualMarkOnlyAutoContinue,
+                  visualMarkOnly: terminalAutoContinueVisualFlags.visualMarkOnly,
                 }),
                 terminalPersistResultKind,
                 terminalPersistResultCode:
@@ -9075,11 +9086,13 @@ export function ProjectView({
                     || terminalPersistResult?.kind === 'scope-rejected'
                       ? terminalPersistResult.reason ?? null
                       : null;
+                  const autoContinueVisualFlags = visualAnnotationAutoContinueFlags(
+                    autoContinueCommentAttachments,
+                  );
                   const autoContinuePrompt = resolveAutoContinuePrompt({
                     commentAttachmentCount: autoContinueCommentAttachments.length,
-                    visualMarkOnly:
-                      autoContinueCommentAttachments.length > 0
-                      && !hasElementScopedCommentAttachments(autoContinueCommentAttachments),
+                    visualMarkOnly: autoContinueVisualFlags.visualMarkOnly,
+                    visualAnnotationEdit: autoContinueVisualFlags.visualAnnotationEdit,
                     scopedCommentEditFailureReason: scopedFailureReason,
                     scopedCommentContext,
                     scopedUserInstruction,

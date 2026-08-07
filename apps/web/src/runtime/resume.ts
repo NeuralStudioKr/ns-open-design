@@ -398,8 +398,10 @@ export type ScopedCommentEditAutoContinueContext = {
   commentContext?: string | null;
   userInstruction?: string | null;
   concretePatchTemplate?: string | null;
-  /** Screenshot/draw visual marks have no DOM target id — deck-patch only. */
+  /** Screenshot/draw placement-only marks (heart icon, etc.) — deck-patch graft, not element-patch. */
   visualMarkOnly?: boolean;
+  /** Box tool or typed overlay note — edit real slide content, never decorative overlays. */
+  visualAnnotationEdit?: boolean;
 };
 
 function appendScopedCommentEditRetryContext(
@@ -473,6 +475,42 @@ function buildAutoContinueVisualMarkEditPrompt(
   return parts.join('\n');
 }
 
+function buildAutoContinueVisualAnnotationEditPrompt(
+  context: ScopedCommentEditAutoContinueContext,
+): string {
+  const attempt = Math.max(1, Math.floor(context.attempt));
+  const parts: string[] = [
+    AUTO_CONTINUE_PROMPT_SENTINEL,
+    attempt >= 2 ? '[FINAL RETRY] ' : '',
+    '직전 응답은 **박스/메모 시각 주석이 붙은 영역 편집** turn이었지만, 유효한 patch deliverable을 만들지 못했습니다.',
+    '장식용 overlay (`od-visual-mark-target`, 하트 SVG wrapper 등)를 추가하지 마세요. 디스크 deck.html의 실제 텍스트/스타일만 수정하세요.',
+    '전체 덱을 새로 쓰거나 `<artifact type="deck">` 전체 교체를 하지 마세요.',
+    '',
+    '이번 응답은 반드시 non-empty `<artifact type="element-patch" identifier="deck">` 하나만 출력하세요:',
+    '',
+    '<artifact type="element-patch" identifier="deck">',
+    '  <patch target-id="{real data-od-id from deck HTML}" slide-index="{slideIndex from attached-preview-comments}" kind="set-style">{"fontSize":"32px"}</patch>',
+    '</artifact>',
+    '',
+    '- `<attached-preview-comments>`의 `visual-mark-*` / synthetic id는 deck DOM에 없습니다 — 디스크 HTML에서 boxed `pagePosition` 영역과 겹치는 실제 `data-od-id`를 찾아 `target-id`에 넣으세요.',
+    '- `slide-index`는 주석의 slideIndex와 정확히 일치해야 합니다.',
+    '- 크기/색/강조 ("크게", "키워", font size): `kind="set-style"` JSON (`fontSize`, `fontWeight`, `color`). `currentText`는 그대로.',
+    '- 문구 교체: `kind="set-text"`에 새 문구만.',
+    '- 장식 overlay div 추가 금지 — 사용자가 명시적으로 도형/아이콘을 요청한 경우에만 예외.',
+    '- 빈 `<artifact type="element-patch">` 또는 patch 없는 wrapper는 금지.',
+    '',
+    '(English: visual annotation edit retry — resolve real element ids from the boxed region; emit element-patch style/text edits, not decorative overlays.)',
+  ];
+  appendScopedCommentEditRetryContext(parts, context);
+  if (attempt >= 3) {
+    parts.push(
+      '',
+      '[최종 시도] boxed 영역의 텍스트를 찾지 못하면 `<artifact type="deck-patch" identifier="deck">`에 해당 slide `<section>` 전체 HTML을 복사한 뒤 그 영역의 `font-size`/`style`만 조정하세요. overlay div 추가 금지.',
+    );
+  }
+  return parts.join('\n');
+}
+
 /**
  * Auto-continue prompt for scoped preview-comment edits. Unlike the
  * generic incomplete-output prompt (which demands a full
@@ -486,6 +524,9 @@ export function buildAutoContinueScopedCommentEditPrompt(
   const attempt = Math.max(1, Math.floor(context.attempt));
   if (context.visualMarkOnly) {
     return buildAutoContinueVisualMarkEditPrompt(context);
+  }
+  if (context.visualAnnotationEdit) {
+    return buildAutoContinueVisualAnnotationEditPrompt(context);
   }
   const parts: string[] = [
     AUTO_CONTINUE_PROMPT_SENTINEL,
@@ -528,6 +569,7 @@ export function resolveAutoContinuePrompt(options: {
   scopedUserInstruction?: string | null;
   concretePatchTemplate?: string | null;
   visualMarkOnly?: boolean;
+  visualAnnotationEdit?: boolean;
 }): string {
   if (options.commentAttachmentCount > 0) {
     return buildAutoContinueScopedCommentEditPrompt({
@@ -537,6 +579,7 @@ export function resolveAutoContinuePrompt(options: {
       userInstruction: options.scopedUserInstruction,
       concretePatchTemplate: options.concretePatchTemplate,
       visualMarkOnly: options.visualMarkOnly,
+      visualAnnotationEdit: options.visualAnnotationEdit,
     });
   }
   return buildAutoContinueIncompleteOutputPrompt(options.incompleteOutput);

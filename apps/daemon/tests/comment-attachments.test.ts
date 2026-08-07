@@ -624,6 +624,29 @@ describe('preview comment agent payload', () => {
     expect(hint).toContain('marked region');
     expect(hint).not.toContain('selector: ');
   });
+
+  it('threads box annotation notes into visual intent when intent is missing', () => {
+    const normalized = normalizeCommentAttachments([
+      commentAttachment({
+        id: 'visual-box-1',
+        elementId: 'visual-mark-box-1',
+        selector: '',
+        label: 'Marked screenshot region',
+        comment: '슬라이드 2 이 글씨들 더 크게',
+        selectionKind: 'visual',
+        screenshotPath: 'uploads/drawing-box.png',
+        markKind: 'box',
+        slideIndex: 1,
+      }),
+    ]);
+
+    const hint = renderCommentAttachmentHint(normalized);
+
+    expect(normalized[0]?.intent).toContain('슬라이드 2 이 글씨들 더 크게');
+    expect(normalized[0]?.intent).toContain('red selection box');
+    expect(hint).toContain('markKind: box');
+    expect(hint).toContain('슬라이드 2 이 글씨들 더 크게');
+  });
 });
 
 function seededDb() {

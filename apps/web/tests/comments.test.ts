@@ -15,6 +15,7 @@ import {
   historyWithCommentAttachmentContext,
   hasUserTypedVisualAnnotationRequest,
   shouldClientGraftVisualMarkWithoutAi,
+  isVisualMarkPlacementOnlyCommentAttachments,
   hydrateQueryContextCommentAttachments,
   elementPatchCoerceHintsFromCommentAttachments,
   isScreenshotOnlyVisualCommentTarget,
@@ -1232,6 +1233,28 @@ describe('queuedSlideNavTarget', () => {
     });
     expect(shouldClientGraftVisualMarkWithoutAi(placement)).toBe(true);
     expect(shouldClientGraftVisualMarkWithoutAi(boxEdit)).toBe(false);
+  });
+
+  it('detects placement-only batches for auto-continue routing', () => {
+    const placement = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'uploads/drawing.png',
+      markKind: 'stroke',
+      note: '하트 넣어줘',
+      bounds: { x: 1, y: 2, width: 40, height: 40 },
+      slideIndex: 0,
+    });
+    const boxEdit = buildVisualAnnotationAttachment({
+      order: 2,
+      screenshotPath: 'drawing-1.png',
+      markKind: 'box',
+      note: '슬라이드 2 이 글씨들 더 크게',
+      bounds: { x: 40, y: 30, width: 200, height: 80 },
+      slideIndex: 1,
+    });
+    expect(isVisualMarkPlacementOnlyCommentAttachments([placement])).toBe(true);
+    expect(isVisualMarkPlacementOnlyCommentAttachments([boxEdit])).toBe(false);
+    expect(isVisualMarkPlacementOnlyCommentAttachments([placement, boxEdit])).toBe(false);
   });
 
   it('detects typed overlay notes even when intent field is missing', () => {

@@ -1029,7 +1029,7 @@ export function normalizeCommentAttachments(input) {
         screenshotPath: selectionKind === 'visual' ? screenshotPath : undefined,
         markKind: selectionKind === 'visual' ? markKind : undefined,
         intent: selectionKind === 'visual'
-          ? intent || visualAnnotationIntent(markKind)
+          ? intent || visualAnnotationIntent(markKind, comment)
           : undefined,
         imageAttachments: imageAttachments.length > 0 ? imageAttachments : undefined,
         commentContext,
@@ -1073,7 +1073,7 @@ export function renderCommentAttachmentHint(commentAttachments) {
       lines.push(
         `screenshot: ${item.screenshotPath}`,
         `markKind: ${item.markKind || 'stroke'}`,
-        `intent: ${item.intent || visualAnnotationIntent(item.markKind || 'stroke')}`,
+        `intent: ${item.intent || visualAnnotationIntent(item.markKind || 'stroke', item.comment)}`,
       );
       if (item.selector) lines.push(`selector: ${item.selector}`);
     } else {
@@ -1135,20 +1135,25 @@ function normalizeVisualMarkKind(value) {
     : 'stroke';
 }
 
-function visualAnnotationIntent(markKind) {
+function visualAnnotationIntent(markKind, userNote) {
+  const note = cleanString(userNote);
+  let base;
   if (markKind === 'click') {
-    return 'The screenshot has a blue focus box around the picked element; modify that picked part first.';
+    base = 'The screenshot has a blue focus box around the picked element; modify that picked part first.';
+  } else if (markKind === 'click+box') {
+    base =
+      'The screenshot has a blue focus box around the picked element and a red selection box; the red box outlines the region the user wants changed.';
+  } else if (markKind === 'click+stroke') {
+    base = 'The screenshot has a blue focus box and red strokes; together they identify the part the user wants changed.';
+  } else if (markKind === 'box') {
+    base =
+      'The screenshot has a red selection box that outlines the region the user wants changed. Treat the box as the intended target area—not decoration.';
+  } else {
+    base =
+      'The screenshot has red strokes that identify the visual region the user wants changed. Treat the drawn ink as the intended shape or placement guide—not decoration. ADD the requested shape/icon inside that region; do NOT delete or clear the rest of the slide.';
   }
-  if (markKind === 'click+box') {
-    return 'The screenshot has a blue focus box around the picked element and a red selection box; the red box outlines the region the user wants changed.';
-  }
-  if (markKind === 'click+stroke') {
-    return 'The screenshot has a blue focus box and red strokes; together they identify the part the user wants changed.';
-  }
-  if (markKind === 'box') {
-    return 'The screenshot has a red selection box that outlines the region the user wants changed. Treat the box as the intended target area—not decoration.';
-  }
-  return 'The screenshot has red strokes that identify the visual region the user wants changed.';
+  if (!note) return base;
+  return `User request from the annotation note: "${note}". ${base}`;
 }
 
 function compactString(value, max) {

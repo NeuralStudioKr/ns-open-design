@@ -123,6 +123,22 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(visual).toContain('no <section class="slide"> blocks in deck-patch body');
   });
 
+  it('uses element-patch guidance for box/edit visual annotation retries', () => {
+    const edit = resolveAutoContinuePrompt({
+      commentAttachmentCount: 1,
+      visualMarkOnly: false,
+      visualAnnotationEdit: true,
+      incompleteOutput: { attempt: 2 },
+      scopedCommentEditFailureReason: 'No matching targets found to merge.',
+      scopedUserInstruction: '슬라이드 2 이 글씨들 더 크게',
+    });
+    expect(edit).toContain('element-patch');
+    expect(edit).toContain('박스/메모 시각 주석');
+    expect(edit).toContain('od-visual-mark-target');
+    expect(edit).not.toContain('하트·도형은 inline SVG');
+    expect(edit).toContain('슬라이드 2 이 글씨들 더 크게');
+  });
+
   it('keeps the generic full-deck auto-continue prompt when no comment attachments exist', () => {
     const generic = resolveAutoContinuePrompt({
       commentAttachmentCount: 0,
