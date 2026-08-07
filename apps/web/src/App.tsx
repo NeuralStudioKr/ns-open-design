@@ -213,7 +213,10 @@ import {
 } from './state/config';
 import { playSound, showCompletionNotification } from './utils/notifications';
 import { clearProjectRawFileMissing } from './utils/projectFileFetchCache';
-import { uploadedImagesReadableOnDisk } from './utils/uploadedImagesReadable';
+import {
+  stageReadableUploadedAttachments,
+  uploadedImagesReadableOnDisk,
+} from './utils/uploadedImagesReadable';
 import { applyAppearanceToDocument } from './state/appearance';
 import { isMacPlatform } from './utils/platform';
 import {
@@ -2455,7 +2458,16 @@ function AppInner() {
           result.project.id,
           uploadResult.uploaded,
         );
-        firstMessageAttachments = readyLocal.length > 0 ? readyLocal : uploadResult.uploaded;
+        const stagedLocal = stageReadableUploadedAttachments(
+          uploadResult.uploaded,
+          readyLocal,
+        );
+        firstMessageAttachments = stagedLocal.staged;
+        if (stagedLocal.coldImageCount > 0 && stagedLocal.readyImageCount === 0) {
+          setWorkingDirError(
+            '업로드한 이미지를 아직 읽을 수 없습니다. 프로젝트는 생성되었으니 채팅에서 다시 첨부해 주세요.',
+          );
+        }
         const partial = uploadResult.failed.length > 0;
         if (partial) {
           devLog.warn('Some Home attachments failed to upload', {
@@ -2496,10 +2508,19 @@ function AppInner() {
             result.project.id,
             driveAttachments,
           );
+          const stagedDrive = stageReadableUploadedAttachments(
+            driveAttachments,
+            readyDrive,
+          );
           firstMessageAttachments = [
             ...firstMessageAttachments,
-            ...(readyDrive.length > 0 ? readyDrive : driveAttachments),
+            ...stagedDrive.staged,
           ];
+          if (stagedDrive.coldImageCount > 0 && stagedDrive.readyImageCount === 0) {
+            setWorkingDirError(
+              'Drive에서 가져온 이미지를 아직 읽을 수 없습니다. 프로젝트는 생성되었으니 채팅에서 다시 첨부해 주세요.',
+            );
+          }
           if (driveResult.partial) {
             devLog.warn('Some Home Drive attachments failed to import', {
               failedCount: driveResult.failed.length,
@@ -2524,8 +2545,27 @@ function AppInner() {
       if (!workingDirHandoffFailed && pendingCanvasHandoff) {
         try {
           const canvasResult = await importTeamverCanvas(result.project.id, pendingCanvasHandoff);
+          for (const item of canvasResult.imported) {
+            clearProjectRawFileMissing(result.project.id, item.path);
+          }
           const canvasAttachments = canvasImportedToChatAttachments(canvasResult.imported);
-          firstMessageAttachments = [...firstMessageAttachments, ...canvasAttachments];
+          const readyCanvas = await uploadedImagesReadableOnDisk(
+            result.project.id,
+            canvasAttachments,
+          );
+          const stagedCanvas = stageReadableUploadedAttachments(
+            canvasAttachments,
+            readyCanvas,
+          );
+          firstMessageAttachments = [
+            ...firstMessageAttachments,
+            ...stagedCanvas.staged,
+          ];
+          if (stagedCanvas.coldImageCount > 0 && stagedCanvas.readyImageCount === 0) {
+            setWorkingDirError(
+              'Canvas에서 가져온 이미지를 아직 읽을 수 없습니다. 프로젝트는 생성되었으니 채팅에서 다시 첨부해 주세요.',
+            );
+          }
           // Drop URL handoff once import succeeded so ProjectView does not
           // re-open one-confirm while auto-send is queued.
           consumeTeamverCanvasLaunchHandoff();

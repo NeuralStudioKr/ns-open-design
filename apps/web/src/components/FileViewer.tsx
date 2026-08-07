@@ -6324,8 +6324,17 @@ function HtmlViewer({
   const effectiveDeck = isDeck || looksLikeDeck;
   const rawLivePreviewSource = inlinedSource ?? source;
   const livePreviewSource = useMemo(() => {
-    if (!rawLivePreviewSource || !projectFilePaths?.length) return rawLivePreviewSource;
-    return rewriteAttachmentImageSrcs(rawLivePreviewSource, projectFilePaths, {
+    if (!rawLivePreviewSource) return rawLivePreviewSource;
+    const healPaths = Array.from(
+      new Set([
+        ...(projectFilePaths ?? []).map((path) => String(path || '').trim()).filter(Boolean),
+        ...(preferredAttachmentPaths ?? [])
+          .map((path) => String(path || '').trim())
+          .filter(Boolean),
+      ]),
+    );
+    if (healPaths.length === 0) return rawLivePreviewSource;
+    return rewriteAttachmentImageSrcs(rawLivePreviewSource, healPaths, {
       preferredPaths: preferredAttachmentPaths,
     });
   }, [preferredAttachmentPaths, projectFilePaths, rawLivePreviewSource]);
@@ -6655,7 +6664,11 @@ function HtmlViewer({
     () => {
       // Teamver embed: do not paint deck HTML until preview-url prefix settle
       // completes (or fail-open). Avoids no-base first paint → remount → lost fit.
-      if (teamverEmbedPreviewMode && !embedPreviewPrefixSettled) return '';
+      // Never paint Teamver decks without a scoped base — relative composer/
+      // Drive images resolve against about:srcdoc and show as alt-only.
+      if (teamverEmbedPreviewMode && (!embedPreviewPrefixSettled || !embedPreviewPrefix)) {
+        return '';
+      }
       return redirectLoopBlocked
         ? buildRedirectLoopBlockedDoc()
         : previewSource
@@ -6678,6 +6691,7 @@ function HtmlViewer({
       previewStateKey,
       manualEditRequiresSrcDoc,
       teamverEmbedPreviewMode,
+      embedPreviewPrefix,
       embedPreviewPrefixSettled,
     ],
   );

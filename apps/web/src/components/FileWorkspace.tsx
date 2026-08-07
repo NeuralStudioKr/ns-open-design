@@ -1711,15 +1711,35 @@ export function FileWorkspace({
       setMemoryPreviewPrefixSettled(true);
       return;
     }
+    setMemoryPreviewPrefix(null);
     setMemoryPreviewPrefixSettled(false);
-    void resolveTeamverProjectPreviewPrefix(
-      projectId,
-      memoryOnlyPreview.fileName ?? 'deck.html',
-    ).then((prefix) => {
-      if (cancelled) return;
-      setMemoryPreviewPrefix(prefix);
-      setMemoryPreviewPrefixSettled(true);
-    });
+    const retryDelaysMs = [0, 400, 1_200, 2_500] as const;
+    void (async () => {
+      for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
+        if (cancelled) return;
+        const delay = retryDelaysMs[attempt] ?? 0;
+        if (delay > 0) {
+          await new Promise((settle) => window.setTimeout(settle, delay));
+          if (cancelled) return;
+        }
+        const resolved = await resolveTeamverProjectPreviewPrefix(
+          projectId,
+          memoryOnlyPreview.fileName ?? 'deck.html',
+        );
+        if (cancelled) return;
+        if (resolved) {
+          setMemoryPreviewPrefix(resolved);
+          setMemoryPreviewPrefixSettled(true);
+          return;
+        }
+      }
+      // Keep unsettled so we never paint relative imgs without a scoped base.
+      // A later cache hit / remount can still recover.
+      if (!cancelled) {
+        setMemoryPreviewPrefix(null);
+        setMemoryPreviewPrefixSettled(false);
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -1727,9 +1747,11 @@ export function FileWorkspace({
 
   const memoryOnlyPreviewSrcDoc = useMemo(() => {
     if (!memoryOnlyPreview) return '';
-    // Teamver embed: wait for preview-scope mint (or fail-open) so we never
-    // paint relative images against about:srcdoc without a usable base.
-    if (teamverEmbedPreviewMode && !memoryPreviewPrefixSettled) return '';
+    // Teamver embed: never paint without a real scoped base — otherwise
+    // relative composer/Drive images resolve against about:srcdoc (alt-only).
+    if (teamverEmbedPreviewMode && (!memoryPreviewPrefixSettled || !memoryPreviewPrefix)) {
+      return '';
+    }
     return prepareMemoryOnlySlidePreviewSrcDoc({
       html: memoryOnlyPreview.html,
       projectId,

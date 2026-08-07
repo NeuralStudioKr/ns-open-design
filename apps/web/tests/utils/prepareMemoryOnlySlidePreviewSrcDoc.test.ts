@@ -36,6 +36,9 @@ describe('prepareMemoryOnlySlidePreviewSrcDoc', () => {
     expect(srcDoc).not.toMatch(/<base\s+href=/i);
   });
 
+  // Callers (FileWorkspace / FileViewer) must keep srcDoc empty while prefix
+  // is null; this helper itself still heals srcs for when a prefix arrives.
+
   it('uses the scoped Teamver preview prefix for base href when present', () => {
     const html = '<section class="slide"><img src="photo.jpeg" alt=""></section>';
     const srcDoc = prepareMemoryOnlySlidePreviewSrcDoc({

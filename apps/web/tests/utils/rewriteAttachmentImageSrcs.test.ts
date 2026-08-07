@@ -76,6 +76,28 @@ describe('rewriteAttachmentImageSrcs', () => {
     const html = '<div style="background-image:url(\'hero.png\')"></div>';
     expect(rewriteAttachmentImageSrcs(html, [stored])).toContain(`url('${stored}')`);
   });
+
+  it('decodes percent-encoded project-relative image srcs', () => {
+    const stored = 'msh9y0i9-놀란-고양이.jpeg';
+    const encoded = encodeURIComponent('놀란 고양이.jpeg');
+    const html = `<img src="${encoded}" alt="">`;
+    expect(rewriteAttachmentImageSrcs(html, [stored])).toContain(`src="${stored}"`);
+  });
+
+  it('strips a leading ./ from project-relative image srcs', () => {
+    const stored = 'msh9y0i9-photo.jpeg';
+    const html = '<img src="./photo.jpeg" alt="">';
+    expect(rewriteAttachmentImageSrcs(html, [stored])).toContain(`src="${stored}"`);
+  });
+
+  it('prefers the newest refs/drive candidate when multiple Drive stems collide', () => {
+    const html = '<img src="hero.png" alt="">';
+    const next = rewriteAttachmentImageSrcs(html, [
+      'refs/drive/aaa111-hero.png',
+      'refs/drive/bbb222-hero.png',
+    ]);
+    expect(next).toContain('src="refs/drive/bbb222-hero.png"');
+  });
 });
 
 describe('sanitizeUploadFilename / stripUploadTimestampPrefix', () => {

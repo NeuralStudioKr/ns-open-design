@@ -205,7 +205,11 @@ import {
 } from '../utils/projectFilePaths';
 import { reconcileProjectRawFileMissingCache } from '../utils/projectFileFetchCache';
 import { rewriteAttachmentImageSrcs } from '../utils/rewriteAttachmentImageSrcs';
-import { uploadedImagesReadableOnDisk } from '../utils/uploadedImagesReadable';
+import { healDiskHtmlAttachmentImageSrcs } from '../utils/healDiskHtmlAttachmentImageSrcs';
+import {
+  stageReadableUploadedAttachments,
+  uploadedImagesReadableOnDisk,
+} from '../utils/uploadedImagesReadable';
 import { DEFAULT_NOTIFICATIONS } from '../state/config';
 import type { TodoItem } from '../runtime/todos';
 import {
@@ -5911,7 +5915,10 @@ export function ProjectView({
       if (images.length > 0) {
         const result = await uploadProjectFiles(project.id, images);
         throwIfProjectCommentUploadIncomplete(result, images.length);
-        uploadedAttachments = result.uploaded.map((file) => ({ path: file.path, name: file.name }));
+        const ready = await uploadedImagesReadableOnDisk(project.id, result.uploaded);
+        const staged = stageReadableUploadedAttachments(result.uploaded, ready);
+        uploadedAttachments = staged.staged.map((file) => ({ path: file.path, name: file.name }));
+        await refreshProjectFiles().catch(() => undefined);
       }
       // Existing lookup MUST match slideIndex too: the daemon uniqueness key is
       // (conversation, filePath, elementId, slideIndex), so two comments with
@@ -5939,7 +5946,7 @@ export function ProjectView({
       );
       return saved;
     },
-    [project.id, activeConversationId, previewComments],
+    [project.id, activeConversationId, previewComments, refreshProjectFiles],
   );
 
   const removePreviewComment = useCallback(
@@ -6804,6 +6811,33 @@ export function ProjectView({
                     }));
                   if (recoveredExistingArtifact) {
                     savedArtifactRef.current = recoveredExistingArtifact.name;
+                    try {
+                      const diskHtml = await readProjectHtml(recoveredExistingArtifact.name);
+                      if (diskHtml) {
+                        const attachmentPaths = runAttachmentsRef.current
+                          .map((attachment) => attachment.path.trim())
+                          .filter(Boolean);
+                        const projectPaths = [
+                          ...nextFiles.map((file) => String(file.path || file.name || '').trim()),
+                          ...attachmentPaths,
+                        ].filter(Boolean);
+                        const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
+                          html: diskHtml,
+                          projectFilePaths: projectPaths,
+                          preferredAttachmentPaths: attachmentPaths,
+                        });
+                        if (changed) {
+                          await writeProjectTextFileDetailed(
+                            project.id,
+                            recoveredExistingArtifact.name,
+                            healed,
+                          );
+                          nextFiles = await refreshProjectFiles();
+                        }
+                      }
+                    } catch {
+                      // Soft-fail — preview heal may still cover this turn.
+                    }
                     if (claimHtmlAutoOpenForMessage()) {
                       maybeArmTeamverPublishMenuAfterRunSuccess(
                         project.id,
@@ -8500,6 +8534,35 @@ export function ProjectView({
                 });
               if (sameTurnHtmlWrite) {
                 savedArtifactRef.current = sameTurnHtmlWrite.name;
+                // Write-tool short-circuit skips persistArtifact's img-src heal.
+                // Heal on disk now so reload/export do not keep alt-only paths.
+                try {
+                  const diskHtml = await readProjectHtml(sameTurnHtmlWrite.name);
+                  if (diskHtml) {
+                    const attachmentPaths = runAttachmentsRef.current
+                      .map((attachment) => attachment.path.trim())
+                      .filter(Boolean);
+                    const projectPaths = [
+                      ...nextFiles.map((file) => String(file.path || file.name || '').trim()),
+                      ...attachmentPaths,
+                    ].filter(Boolean);
+                    const { html: healed, changed } = await healDiskHtmlAttachmentImageSrcs({
+                      html: diskHtml,
+                      projectFilePaths: projectPaths,
+                      preferredAttachmentPaths: attachmentPaths,
+                    });
+                    if (changed) {
+                      await writeProjectTextFileDetailed(
+                        project.id,
+                        sameTurnHtmlWrite.name,
+                        healed,
+                      );
+                      nextFiles = await refreshProjectFiles();
+                    }
+                  }
+                } catch {
+                  // Soft-fail — FileViewer preview heal may still cover this turn.
+                }
                 if (runIsVisible()) {
                   maybeArmTeamverPublishMenuAfterRunSuccess(project.id, sameTurnHtmlWrite.name);
                   requestOpenFile(sameTurnHtmlWrite.name);
@@ -10107,7 +10170,8 @@ export function ProjectView({
         const result = await uploadProjectFiles(project.id, images);
         throwIfProjectCommentUploadIncomplete(result, images.length);
         const ready = await uploadedImagesReadableOnDisk(project.id, result.uploaded);
-        uploaded = ready.length > 0 ? ready : result.uploaded;
+        const staged = stageReadableUploadedAttachments(result.uploaded, ready);
+        uploaded = staged.staged;
         await refreshProjectFiles().catch(() => undefined);
       }
       const queueBoardSend = currentConversationBusy;

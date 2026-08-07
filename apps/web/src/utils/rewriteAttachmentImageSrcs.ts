@@ -119,6 +119,15 @@ export function normalizeProjectRelativeImageSrc(src: string): string | null {
     if (normalized.startsWith('/api/')) return null;
     normalized = normalized.replace(/^\/+/, '');
   }
+  // Models sometimes emit `./photo.jpeg` or percent-encoded CJK basenames.
+  normalized = normalized.replace(/^\.\//, '');
+  if (/%[0-9A-Fa-f]{2}/.test(normalized)) {
+    try {
+      normalized = decodeURIComponent(normalized);
+    } catch {
+      // Keep the encoded form and let exact/fuzzy maps miss rather than throw.
+    }
+  }
   return normalized || null;
 }
 
@@ -173,6 +182,8 @@ function pickUniqueRewriteCandidate(
   if (preferredPaths && preferredPaths.size > 0) {
     const preferredHits = candidates.filter((path) => preferredPaths.has(path));
     if (preferredHits.length === 1) return preferredHits[0] ?? null;
+    const newestPreferred = pickNewestTimestampedUpload(preferredHits);
+    if (newestPreferred) return newestPreferred;
   }
 
   // When root upload + Drive share a stem, prefer the Drive path if the model
@@ -180,6 +191,12 @@ function pickUniqueRewriteCandidate(
   if (!normalizedSrc.includes('/')) {
     const driveOnly = candidates.filter((path) => path.startsWith('refs/drive/'));
     if (driveOnly.length === 1) return driveOnly[0] ?? null;
+    const newestDrive = pickNewestTimestampedUpload(driveOnly);
+    if (newestDrive) return newestDrive;
+
+    const refsOnly = candidates.filter((path) => path.startsWith('refs/'));
+    const newestRefs = pickNewestTimestampedUpload(refsOnly);
+    if (newestRefs) return newestRefs;
 
     // Multiple local composer uploads can sanitize to the same stem
     // (`aaa-photo.jpeg`, `bbb-photo.jpeg`). Prefer the newest timestamp prefix

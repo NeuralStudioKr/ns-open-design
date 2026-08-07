@@ -169,7 +169,10 @@ import {
 import { CaretFloatingLayer } from './composer/CaretFloatingLayer';
 import { ANNOTATION_EVENT, type AnnotationEventDetail } from "./PreviewDrawOverlay";
 import { clearProjectRawFileMissing } from '../utils/projectFileFetchCache';
-import { uploadedImagesReadableOnDisk } from '../utils/uploadedImagesReadable';
+import {
+  stageReadableUploadedAttachments,
+  uploadedImagesReadableOnDisk,
+} from '../utils/uploadedImagesReadable';
 import { DesignSystemSwitchPicker } from "./DesignSystemSwitchPicker";
 import { listenForConnectorsChanged } from './connectors-events';
 import { fetchConnectorCatalogSnapshot } from './connectors-state';
@@ -1713,12 +1716,30 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             clearProjectRawFileMissing(id, item.path);
           }
           const ready = await uploadedImagesReadableOnDisk(id, result.uploaded);
-          const staged = ready.length > 0 ? ready : result.uploaded;
-          const orderedUploaded = assignChatAttachmentOrders(staged, orderStart);
-          appendOrderedStagedAttachments(orderedUploaded);
+          const { staged, coldImageCount } = stageReadableUploadedAttachments(
+            result.uploaded,
+            ready,
+          );
+          if (staged.length > 0) {
+            const orderedUploaded = assignChatAttachmentOrders(staged, orderStart);
+            appendOrderedStagedAttachments(orderedUploaded);
+          }
           // Keep Design Files / preview heal index in sync with on-disk uploads
           // before the next send refreshes `/files`.
           onProjectFilesMaybeChanged?.();
+          if (coldImageCount > 0 && staged.length === 0) {
+            setUploadError(
+              slideOnlyMvp
+                ? '업로드한 이미지를 아직 읽을 수 없습니다. 잠시 후 다시 첨부해 주세요.'
+                : `Uploaded image(s) are not readable yet (${coldImageCount}). Retry in a moment.`,
+            );
+          } else if (coldImageCount > 0) {
+            setUploadError(
+              slideOnlyMvp
+                ? `일부 이미지 ${coldImageCount}개를 아직 읽을 수 없어 제외했습니다.`
+                : `${coldImageCount} image(s) were not readable yet and were skipped.`,
+            );
+          }
         }
         const partial = result.failed.length > 0;
         if (partial) {
@@ -1806,8 +1827,23 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           // Wait for S3/scratch materialization before staging so preview +
           // vision blocks do not race a cold refs/drive path.
           const ready = await uploadedImagesReadableOnDisk(id, attachments);
-          const stagedAttachments = ready.length > 0 ? ready : attachments;
-          appendOrderedStagedAttachments(assignChatAttachmentOrders(stagedAttachments, orderStart));
+          const { staged: stagedAttachments, coldImageCount } =
+            stageReadableUploadedAttachments(attachments, ready);
+          if (stagedAttachments.length > 0) {
+            appendOrderedStagedAttachments(
+              assignChatAttachmentOrders(stagedAttachments, orderStart),
+            );
+          }
+          onProjectFilesMaybeChanged?.();
+          if (coldImageCount > 0 && stagedAttachments.length === 0) {
+            setUploadError(
+              'Drive에서 가져온 이미지를 아직 읽을 수 없습니다. 잠시 후 다시 시도해 주세요.',
+            );
+          } else if (coldImageCount > 0) {
+            setUploadError(
+              `Drive 이미지 ${coldImageCount}개를 아직 읽을 수 없어 제외했습니다.`,
+            );
+          }
         }
         if (result.partial) {
           const failedById = new Map(result.failed.map((item) => [item.assetId, item.errorCode]));
@@ -1867,10 +1903,29 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           const handoff = canvasSlideLaunch.handoff;
           const promptForRun = canvasSlideUserPrompt;
           const result = await importTeamverCanvas(id, handoff);
+          for (const item of result.imported) {
+            clearProjectRawFileMissing(id, item.path);
+          }
+          const importedAttachments = canvasImportedToChatAttachments(result.imported);
+          const readyCanvas = await uploadedImagesReadableOnDisk(id, importedAttachments);
+          const { staged: readableCanvas, coldImageCount: coldCanvasImages } =
+            stageReadableUploadedAttachments(importedAttachments, readyCanvas);
+          if (importedAttachments.some((item) => item.kind === 'image') && readableCanvas.every((item) => item.kind !== 'image')) {
+            setCanvasSlideLaunchError(
+              'Canvas에서 가져온 이미지를 아직 읽을 수 없습니다. 잠시 후 다시 시도해 주세요.',
+            );
+            return;
+          }
+          if (coldCanvasImages > 0) {
+            setCanvasSlideLaunchError(
+              `Canvas 이미지 ${coldCanvasImages}개를 아직 읽을 수 없어 제외하고 계속합니다.`,
+            );
+          }
           const attachments = assignChatAttachmentOrders(
-            canvasImportedToChatAttachments(result.imported),
+            readableCanvas,
             Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged)),
           );
+          onProjectFilesMaybeChanged?.();
           const designSystemIdForRun =
             currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null;
           const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
@@ -1959,10 +2014,27 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         }
         const importedAttachments = driveImportedToChatAttachments(result.imported);
         const readyImported = await uploadedImagesReadableOnDisk(id, importedAttachments);
+        const { staged: readableImported, coldImageCount: coldDriveImages } =
+          stageReadableUploadedAttachments(importedAttachments, readyImported);
+        if (
+          importedAttachments.some((item) => item.kind === 'image')
+          && readableImported.every((item) => item.kind !== 'image')
+        ) {
+          setCanvasSlideLaunchError(
+            'Drive에서 가져온 이미지를 아직 읽을 수 없습니다. 잠시 후 다시 시도해 주세요.',
+          );
+          return;
+        }
         const attachments = assignChatAttachmentOrders(
-          readyImported.length > 0 ? readyImported : importedAttachments,
+          readableImported,
           Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged)),
         );
+        onProjectFilesMaybeChanged?.();
+        if (coldDriveImages > 0) {
+          setCanvasSlideLaunchError(
+            `Drive 이미지 ${coldDriveImages}개를 아직 읽을 수 없어 제외하고 계속합니다.`,
+          );
+        }
         const designSystemIdForRun =
           currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null;
         const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
@@ -2160,15 +2232,24 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 const readableUploaded = result.uploaded.length > 0
                   ? await uploadedImagesReadableOnDisk(id, result.uploaded)
                   : [];
-                const resolvedUploaded = readableUploaded.length > 0
-                  ? readableUploaded
-                  : result.uploaded;
+                const { staged: resolvedUploaded, coldImageCount: coldAnnotationImages } =
+                  stageReadableUploadedAttachments(result.uploaded, readableUploaded);
                 if (resolvedUploaded.length > 0) {
                   uploaded = assignChatAttachmentOrders(
                     resolvedUploaded,
                     orderStart,
                   );
                   onProjectFilesMaybeChanged?.();
+                } else if (coldAnnotationImages > 0) {
+                  ack({
+                    ok: false,
+                    message: slideOnlyMvp
+                      ? '업로드한 이미지를 아직 읽을 수 없습니다. 잠시 후 다시 시도해 주세요.'
+                      : 'Uploaded image(s) are not readable yet. Retry in a moment.',
+                  });
+                  return;
+                }
+                if (resolvedUploaded.length > 0) {
                   const screenshot = detail.file ? uploaded[0] : null;
                   if (screenshot) {
                     visualAttachmentInput = buildVisualAttachmentInputFromScreenshot(screenshot);

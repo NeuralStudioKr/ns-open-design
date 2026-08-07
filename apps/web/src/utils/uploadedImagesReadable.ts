@@ -33,3 +33,30 @@ export async function uploadedImagesReadableOnDisk(
   }
   return ready;
 }
+
+/**
+ * Prefer readable attachments for staging. Never fall back to cold images —
+ * that used to advertise paths that still 404 in vision/preview/export.
+ *
+ * Non-image files from `ready` are kept. Cold images are dropped and counted.
+ */
+export function stageReadableUploadedAttachments(
+  uploaded: readonly ChatAttachment[],
+  ready: readonly ChatAttachment[],
+): { staged: ChatAttachment[]; coldImageCount: number; readyImageCount: number } {
+  const uploadedImages = uploaded.filter((item) => item.kind === 'image');
+  const readyImages = ready.filter((item) => item.kind === 'image');
+  const coldImageCount = Math.max(0, uploadedImages.length - readyImages.length);
+  if (uploadedImages.length > 0 && readyImages.length === 0) {
+    return {
+      staged: ready.filter((item) => item.kind !== 'image'),
+      coldImageCount: uploadedImages.length,
+      readyImageCount: 0,
+    };
+  }
+  return {
+    staged: [...ready],
+    coldImageCount,
+    readyImageCount: readyImages.length,
+  };
+}

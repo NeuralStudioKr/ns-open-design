@@ -51,5 +51,14 @@ describe("FileWorkspace preview bootstrap", () => {
     expect(source).not.toMatch(
       /viewer-memory-preview__frame[\s\S]*srcDoc=\{memoryOnlyPreview\.html\}/,
     );
+    // Teamver: never settle/paint memory-only without a scoped preview prefix.
+    expect(source).toContain("!memoryPreviewPrefixSettled || !memoryPreviewPrefix");
+    expect(source).toContain("retryDelaysMs");
+  });
+
+  it("heals Write-tool short-circuit disk HTML before open", () => {
+    const source = readSource("src/components/ProjectView.tsx");
+    expect(source).toContain("healDiskHtmlAttachmentImageSrcs");
+    expect(source).toContain("Write-tool short-circuit skips persistArtifact");
   });
 });
