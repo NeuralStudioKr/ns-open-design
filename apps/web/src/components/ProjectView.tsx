@@ -321,6 +321,7 @@ import {
   dedupeCommentAttachments,
   elementPatchCoerceHintsFromCommentAttachments,
   filterUsableCommentAttachments,
+  hasUserTypedVisualAnnotationRequest,
   historyWithCommentAttachmentContext,
   hydrateQueryContextCommentAttachments,
   isScreenshotOnlyVisualCommentTarget,
@@ -1356,13 +1357,31 @@ export function promptWithSlideCommentEditPatchInstruction(
   const usableAttachments = options.commentAttachments
     ? filterUsableCommentAttachments(options.commentAttachments)
     : [];
-  const visualMarkOnly =
+  const visualMarkPlacementOnly =
     usableAttachments.length > 0
-    && usableAttachments.every((attachment) => isScreenshotOnlyVisualCommentTarget(attachment));
+    && usableAttachments.every(
+      (attachment) =>
+        isScreenshotOnlyVisualCommentTarget(attachment)
+        && shouldClientGraftVisualMarkWithoutAi(attachment),
+    );
+  const visualAnnotationEdit = usableAttachments.some(
+    (attachment) => hasUserTypedVisualAnnotationRequest(attachment),
+  );
   const parts = [
     `${visiblePrompt}\n\n${slideCommentEditPatchInstruction(options.commentAttachmentCount)}`,
   ];
-  if (visualMarkOnly) {
+  if (visualAnnotationEdit) {
+    parts.push(
+      '',
+      '[Visual annotation edit]',
+      '- The user drew a box or typed a note on the screenshot to show WHICH content to change (font size, color, copy, layout).',
+      '- Do NOT add decorative overlay divs (`od-visual-mark-target`) or paste icons unless the note explicitly asks for a shape.',
+      '- Apply the annotation note to the real slide content inside the boxed region from <attached-preview-comments> (use pagePosition bounds and slideIndex).',
+      '- Prefer element-patch set-style / set-text on elements overlapping that region; preserve all other slide content.',
+      '- Do NOT use element-patch for synthetic `visual-mark-*` ids — resolve real `data-od-id` targets from the deck HTML.',
+    );
+  }
+  if (visualMarkPlacementOnly) {
     parts.push(
       '',
       '[Visual mark edit]',
@@ -1380,7 +1399,7 @@ export function promptWithSlideCommentEditPatchInstruction(
   if (concreteTemplate) {
     parts.push(
       '',
-      visualMarkOnly
+      visualMarkPlacementOnly
         ? 'PREFERRED OUTPUT — deck-patch that COPIES the full existing slide section then ADDS the visual mark div (see template). Do not remove sibling content:'
         : 'REQUIRED OUTPUT — respond with ONLY this artifact block (no greeting, no question-form, no deck rewrite). Copy target-id and slide-index exactly; replace only the patch body text:',
       concreteTemplate,

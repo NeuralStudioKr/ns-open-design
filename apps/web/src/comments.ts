@@ -20,7 +20,6 @@ import {
   looksLikeStyleOnlyCommentRequest,
 } from './edit-mode/comment-edit-intent';
 import { isSyntheticVisualMarkTargetId } from './edit-mode/source-patches';
-import { isVisualCommentAttachment } from './edit-mode/scoped-deck-patch';
 import { isTeamverEmbedMode } from './teamver/designApiBase';
 import { isRenderableImagePath, projectFilePathBasename } from './utils/projectFilePaths';
 
@@ -1167,6 +1166,7 @@ export function buildConcreteDeckPatchTemplateForVisualMarks(
   const blocks: string[] = [];
   for (const item of commentAttachments) {
     if (!isScreenshotOnlyVisualCommentTarget(item)) continue;
+    if (hasUserTypedVisualAnnotationRequest(item)) continue;
     if (
       typeof item.slideIndex !== 'number'
       || !Number.isFinite(item.slideIndex)
@@ -1295,6 +1295,102 @@ function imageOnlyCommentFallback(count: number): string {
   return count > 1
     ? `Use the ${count} attached images as the comment reference.`
     : 'Use the attached image as the comment reference.';
+}
+
+export const VISUAL_ANNOTATION_USER_REQUEST_INTENT_PREFIX =
+  'User request from the annotation note:';
+
+function normalizeVisualMarkKindForIntent(
+  markKind: string | undefined | null,
+): PreviewVisualMarkKind {
+  const kind = String(markKind || 'stroke').trim();
+  if (
+    kind === 'click' || kind === 'click+stroke' || kind === 'stroke'
+    || kind === 'box' || kind === 'click+box'
+  ) {
+    return kind;
+  }
+  return 'stroke';
+}
+
+/**
+ * True when the user typed an overlay note or used the box tool — the request
+ * is "edit this region" (font size, copy, …), not "graft a decorative mark".
+ */
+export function hasUserTypedVisualAnnotationRequest(
+  attachment: Pick<ChatCommentAttachment, 'markKind' | 'comment' | 'intent'>,
+): boolean {
+  const markKind = normalizeVisualMarkKindForIntent(attachment.markKind);
+  if (markKind === 'box' || markKind === 'click+box') return true;
+  const comment = String(attachment.comment || '').trim();
+  if (!comment) return false;
+  if (looksLikePlacementOnlyVisualMarkRequest(comment)) return false;
+  return looksLikeVisualMarkEditRequest(comment);
+}
+
+/** Draw/memo screenshot attachments — not plain element picks without ink. */
+export function isVisualCommentAttachment(attachment: ChatCommentAttachment): boolean {
+  if (attachment.selectionKind === 'visual') return true;
+  if (attachment.markKind) return true;
+  if (String(attachment.screenshotPath || '').trim()) return true;
+  const elementId = String(attachment.elementId || '').trim();
+  if (elementId.startsWith('visual-mark-')) return true;
+  return false;
+}
+
+/**
+ * True for draw-annotation attachments: ink strokes or selection boxes on the
+ * screenshot. Reconciler may later bind bounds to a real DOM id — intent is still
+ * region/mark scoped, not "modify that element id" by default.
+ */
+export function isDrawnVisualMarkAttachment(attachment: ChatCommentAttachment): boolean {
+  if (!isVisualCommentAttachment(attachment)) return false;
+  if (
+    attachment.markKind === 'stroke' || attachment.markKind === 'click+stroke'
+    || attachment.markKind === 'box' || attachment.markKind === 'click+box'
+  ) {
+    return true;
+  }
+  if (attachment.selectionKind === 'visual' && Boolean(String(attachment.screenshotPath || '').trim())) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Client graft adds a decorative overlay without an AI turn. Only placement-only
+ * marks (pen + heart keyword, empty overlay note). Box marks and typed edit notes
+ * route to the model.
+ */
+export function shouldClientGraftVisualMarkWithoutAi(
+  attachment: ChatCommentAttachment,
+): boolean {
+  if (!isDrawnVisualMarkAttachment(attachment) && !isScreenshotOnlyVisualCommentTarget(attachment)) {
+    return false;
+  }
+  if (hasUserTypedVisualAnnotationRequest(attachment)) return false;
+  return true;
+}
+
+export function visualAnnotationIntentForMarkKind(
+  markKind: PreviewVisualMarkKind | string | undefined,
+  userNote?: string,
+): string {
+  return visualAnnotationIntent(normalizeVisualMarkKindForIntent(markKind), userNote);
+}
+
+/** Shape/icon placement requests can still use the client graft fast path. */
+function looksLikePlacementOnlyVisualMarkRequest(comment: string): boolean {
+  return /하트|heart|♥|❤|별|star|⭐|★|체크|check|✔|✓|원|동그라미|circle|⭕|○|화살표|arrow|→|➡|↗|↘|x표|엑스|cross|✕|✖|❌/iu.test(
+    comment,
+  );
+}
+
+/** Resize / style / copy edits must reach the model — never client graft overlays. */
+function looksLikeVisualMarkEditRequest(comment: string): boolean {
+  return /크게|더\s*크|키워|늘려|작게|줄여|작아|커게|폰트|font|size|색|color|bold|굵게|얇게|align|정렬|텍스트|text|글씨|문구|제목|title|heading|바꿔|수정|변경/iu.test(
+    comment,
+  );
 }
 
 function visualAnnotationIntent(

@@ -320,6 +320,39 @@ describe("promptWithSlideCommentEditPatchInstruction", () => {
     });
     expect(second).toBe(first);
   });
+
+  it("nudges box/edit visual annotations toward element edits instead of decorative graft marks", () => {
+    const prompt = promptWithSlideCommentEditPatchInstruction(
+      "슬라이드 2 이 글씨들 더 크게",
+      {
+        slideOnlyMvp: true,
+        commentAttachmentCount: 1,
+        commentAttachments: [
+          {
+            id: 'visual-box-1',
+            order: 1,
+            filePath: 'deck.html',
+            elementId: 'visual-mark-box-1',
+            selector: '',
+            label: 'Marked screenshot region',
+            comment: '슬라이드 2 이 글씨들 더 크게',
+            currentText: '',
+            pagePosition: { x: 40, y: 50, width: 200, height: 80 },
+            htmlHint: '',
+            selectionKind: 'visual',
+            screenshotPath: 'drawing-1.png',
+            markKind: 'box',
+            slideIndex: 1,
+          },
+        ],
+      },
+    );
+
+    expect(prompt).toContain('[Visual annotation edit]');
+    expect(prompt).toContain('Do NOT add decorative overlay divs');
+    expect(prompt).not.toContain('[Visual mark edit]');
+    expect(prompt).not.toContain('ADD the requested mark (SVG/icon)');
+  });
 });
 
 describe("mergeServerMessagesIntoConversation", () => {

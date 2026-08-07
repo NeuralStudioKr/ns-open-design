@@ -84,6 +84,21 @@ describe('hasElementScopedCommentAttachments', () => {
     })).toBe(true);
   });
 
+  it('does not graft box marks into deck html', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="1"><p>Keep this text</p></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'drawing-1.png',
+      markKind: 'box',
+      note: '슬라이드 2 이 글씨들 더 크게',
+      bounds: { x: 40, y: 50, width: 200, height: 80 },
+      slideIndex: 1,
+    });
+    expect(graftVisualMarksIntoDeckHtml(deck, [visual])).toBeNull();
+  });
+
   it('returns false when selectionKind is missing but screenshotPath marks a visual annotation', () => {
     expect(hasElementScopedCommentAttachments([{
       ...attachment(1),
@@ -832,6 +847,27 @@ describe('mergeScopedCommentTargetsFromPatchedDeck', () => {
     expect(repaired).toContain('logo.png');
     expect(repaired).toContain('od-visual-mark-target');
     expect(repaired).toMatch(/<svg[^>]*viewBox="0 0 24 24"/);
+  });
+
+  it('does not repair wiped slides for box/edit annotations — those are model edits, not graft marks', () => {
+    const deck = `<!doctype html><html><body>
+<section class="slide" data-slide-index="1"><p>Keep this text</p></section>
+</body></html>`;
+    const visual = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'drawing-1.png',
+      markKind: 'box',
+      note: '슬라이드 2 이 글씨들 더 크게',
+      bounds: { x: 40, y: 50, width: 200, height: 80 },
+      slideIndex: 1,
+    });
+    const wiped = `<!doctype html><html><body>
+<section class="slide" data-slide-index="1" style="position:relative">
+<div class="od-visual-mark-target" style="position:absolute;left:40px;top:50px;width:200px;height:80px"></div>
+</section>
+</body></html>`;
+    const repaired = repairWipedSlidesForVisualMarks(deck, wiped, [visual]);
+    expect(repaired).toBe(wiped);
   });
 
   it('stabilizeVisualMarkDeckHtml grafts into current deck when slide count collapses', () => {

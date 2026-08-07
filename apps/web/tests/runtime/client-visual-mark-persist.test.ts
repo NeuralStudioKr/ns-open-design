@@ -90,6 +90,23 @@ describe('client-visual-mark-persist', () => {
     expect(pushProjectFileRevision).not.toHaveBeenCalled();
   });
 
+  it('does not graft stroke marks with typed resize requests when intent is missing', async () => {
+    const result = await tryPersistClientVisualMarksOnSend({
+      projectId: 'project-1',
+      commentAttachments: [
+        visualAttachment({
+          markKind: 'stroke',
+          comment: '슬라이드 2 이 글씨들 더 크게',
+          slideIndex: 1,
+        }),
+      ],
+      projectFiles: [{ name: 'deck.html', path: 'deck.html', kind: 'html', mtime: 1 }],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(pushProjectFileRevision).not.toHaveBeenCalled();
+  });
+
   it('grafts screenshot-only visual marks and pushes a revision', async () => {
     vi.mocked(fetchProjectFileText).mockResolvedValue(
       '<!doctype html><html><body><section class="slide" data-slide-index="0"><h1>Title</h1></section></body></html>',

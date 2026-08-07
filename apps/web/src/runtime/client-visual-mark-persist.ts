@@ -4,12 +4,12 @@ import type { ChatCommentAttachment, FileRevision, ProjectFile } from '@open-des
 import {
   filterUsableCommentAttachments,
   isScreenshotOnlyVisualCommentTarget,
+  shouldClientGraftVisualMarkWithoutAi,
 } from '../comments';
 import { selectInitialDesignPreviewFile } from '../components/design-files/designArtifacts';
 import {
   graftVisualMarksIntoDeckHtml,
   reconcileCommentScopeForPersist,
-  shouldClientGraftVisualMarkWithoutAi,
 } from '../edit-mode/scoped-deck-patch';
 import { fetchProjectFileText, pushProjectFileRevision } from '../providers/registry';
 import { isEmbedSupportingProjectFile } from '../teamver/branding/embedDeliverableFilePolicy';

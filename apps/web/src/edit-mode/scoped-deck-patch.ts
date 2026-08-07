@@ -20,6 +20,7 @@ import {
   formatVisualMarkPlacementStyle,
   buildClientVisualMarkFallbackInnerMarkup,
   buildVisualMarkDeckPatchInnerMarkup,
+  shouldClientGraftVisualMarkWithoutAi,
 } from '../comments';
 import { validateCommentEditIntentRespected, targetTextContentPreserved } from './comment-edit-intent';
 import {
@@ -36,6 +37,12 @@ import {
 } from './source-patches';
 import { devLog } from '../lib/devLog';
 
+export {
+  isDrawnVisualMarkAttachment,
+  isVisualCommentAttachment,
+  shouldClientGraftVisualMarkWithoutAi,
+} from '../comments';
+
 export type ScopedDeckPersistFailureCode =
   | 'deck_patch_parse_failed'
   | 'deck_patch_current_unreadable'
@@ -51,18 +58,6 @@ export type ScopedDeckPersistFailureCode =
 export type DeckPatchMergeResult =
   | { ok: true; html: string; sanitized?: boolean }
   | { ok: false; code: ScopedDeckPersistFailureCode; reason: string };
-
-/** Visual marks (draw/memo screenshot) are slide-scoped, not element-id scoped. */
-export function isVisualCommentAttachment(attachment: ChatCommentAttachment): boolean {
-  if (attachment.selectionKind === 'visual') return true;
-  // Defensive: selectionKind can be dropped by stale merges; markKind/screenshotPath
-  // still identify draw-annotation attachments.
-  if (attachment.markKind) return true;
-  if (String(attachment.screenshotPath || '').trim()) return true;
-  const elementId = String(attachment.elementId || '').trim();
-  if (elementId.startsWith('visual-mark-')) return true;
-  return false;
-}
 
 /**
  * Ensure a `<section class="slide" …>` root has `position:relative` so an
@@ -93,44 +88,6 @@ export function ensureSectionRelativePositioning(sectionHtml: string): string {
   return `<section${nextAttrs}>${sectionHtml.slice(tagMatch[0].length)}`;
 }
 
-/**
- * True for draw-annotation attachments: the user drew ink or a box on the
- * screenshot. These are always slide-scoped adds ("stick a heart here"),
- * regardless of whether the reconciler later mapped their bounds to a real
- * DOM element id — the user's intent was to ADD a shape at that location,
- * not modify the underlying element.
- */
-export function isDrawnVisualMarkAttachment(attachment: ChatCommentAttachment): boolean {
-  if (!isVisualCommentAttachment(attachment)) return false;
-  if (attachment.markKind === 'stroke' || attachment.markKind === 'click+stroke'
-    || attachment.markKind === 'box' || attachment.markKind === 'click+box') return true;
-  if (attachment.selectionKind === 'visual' && Boolean(String(attachment.screenshotPath || '').trim())) {
-    return true;
-  }
-  return false;
-}
-
-const VISUAL_ANNOTATION_USER_REQUEST_INTENT_PREFIX = 'User request from the annotation note:';
-
-/**
- * Client graft adds a decorative overlay (heart icon, dashed box div) without an
- * AI turn. That is only appropriate for placement-only marks (e.g. pen + "add
- * heart" with no typed overlay note). Box marks always mean "edit this region";
- * typed overlay notes mean "do what the user asked" (font size, copy, …) → AI.
- */
-export function shouldClientGraftVisualMarkWithoutAi(
-  attachment: ChatCommentAttachment,
-): boolean {
-  if (!isDrawnVisualMarkAttachment(attachment) && !isScreenshotOnlyVisualCommentTarget(attachment)) {
-    return false;
-  }
-  const markKind = String(attachment.markKind || '').trim();
-  if (markKind === 'box' || markKind === 'click+box') return false;
-  const intent = String(attachment.intent || '').trim();
-  if (intent.includes(VISUAL_ANNOTATION_USER_REQUEST_INTENT_PREFIX)) return false;
-  return true;
-}
-
 export function graftVisualMarksIntoDeckHtml(
   currentHtml: string,
   commentAttachments: readonly ChatCommentAttachment[],
@@ -149,10 +106,7 @@ export function graftVisualMarksIntoDeckHtml(
   const currentSlides = options?.currentSlides
     ?? extractTopLevelSlideSections(extractDeckBodyContent(currentHtml));
   for (const attachment of commentAttachments) {
-    // Accept any drawn visual mark — the reconciler may have assigned a real
-    // element id from bounds overlap, but the user's intent is still to ADD
-    // a shape at that location, so we still want the client graft.
-    if (!isDrawnVisualMarkAttachment(attachment) && !isScreenshotOnlyVisualCommentTarget(attachment)) continue;
+    if (!shouldClientGraftVisualMarkWithoutAi(attachment)) continue;
     if (!hasValidDeckSlideIndex(attachment)) continue;
     const slideIndex = Math.floor(attachment.slideIndex as number);
     const existing = ops.find((op) => op.slideIndex === slideIndex);
@@ -452,7 +406,7 @@ export function repairWipedSlidesForVisualMarks(
   const mergedSlides = options?.mergedSlides
     ?? extractTopLevelSlideSections(extractDeckBodyContent(mergedHtml));
   for (const attachment of commentAttachments) {
-    if (!isScreenshotOnlyVisualCommentTarget(attachment)) continue;
+    if (!shouldClientGraftVisualMarkWithoutAi(attachment)) continue;
     if (!hasValidDeckSlideIndex(attachment)) continue;
     const slideIndex = Math.floor(attachment.slideIndex as number);
     const beforeSlide = currentSlides[slideIndex]?.outerHtml ?? null;

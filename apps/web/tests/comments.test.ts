@@ -13,6 +13,8 @@ import {
   commentsToAttachments,
   dedupeCommentAttachments,
   historyWithCommentAttachmentContext,
+  hasUserTypedVisualAnnotationRequest,
+  shouldClientGraftVisualMarkWithoutAi,
   hydrateQueryContextCommentAttachments,
   elementPatchCoerceHintsFromCommentAttachments,
   isScreenshotOnlyVisualCommentTarget,
@@ -977,10 +979,8 @@ describe('preview comment attachment helpers', () => {
 
     expect(buildConcreteElementPatchTemplate([visualOnly])).toBeNull();
     expect(elementPatchCoerceHintsFromCommentAttachments([visualOnly])).toEqual([]);
-    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('type="deck-patch"');
-    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('data-slide-index="1"');
-    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toContain('left:10px;top:20px;width:100px;height:40px');
-    expect(buildConcretePatchTemplatesForCommentAttachments([visualOnly])).toContain('type="deck-patch"');
+    expect(buildConcreteDeckPatchTemplateForVisualMarks([visualOnly])).toBeNull();
+    expect(buildConcretePatchTemplatesForCommentAttachments([visualOnly])).toBeNull();
 
     const visualWithRealTarget = buildVisualAnnotationAttachment({
       order: 1,
@@ -1123,7 +1123,7 @@ describe('preview comment attachment helpers', () => {
     expect(parsed[0]?.htmlHint).toBe('');
     expect(parsed[0]?.currentText).toBe('');
     expect(isScreenshotOnlyVisualCommentTarget(parsed[0]!)).toBe(true);
-    expect(buildConcreteDeckPatchTemplateForVisualMarks(parsed)).toContain('type="deck-patch"');
+    expect(buildConcreteDeckPatchTemplateForVisualMarks(parsed)).toBeNull();
   });
 
   it('does not render preview-comment context when target location data is missing', () => {
@@ -1210,6 +1210,56 @@ describe('queuedSlideNavTarget', () => {
     expect(attachment.comment).toBe('Shrink this title');
     expect(attachment.pagePosition).toEqual({ x: 40, y: 30, width: 200, height: 80 });
     expect(attachment.slideIndex).toBe(1);
+    expect(hasUserTypedVisualAnnotationRequest(attachment)).toBe(true);
+  });
+
+  it('routes graft eligibility through shouldClientGraftVisualMarkWithoutAi', () => {
+    const placement = buildVisualAnnotationAttachment({
+      order: 1,
+      screenshotPath: 'uploads/drawing.png',
+      markKind: 'stroke',
+      note: '하트 넣어줘',
+      bounds: { x: 1, y: 2, width: 40, height: 40 },
+      slideIndex: 0,
+    });
+    const boxEdit = buildVisualAnnotationAttachment({
+      order: 2,
+      screenshotPath: 'drawing-1.png',
+      markKind: 'box',
+      note: '슬라이드 2 이 글씨들 더 크게',
+      bounds: { x: 40, y: 30, width: 200, height: 80 },
+      slideIndex: 1,
+    });
+    expect(shouldClientGraftVisualMarkWithoutAi(placement)).toBe(true);
+    expect(shouldClientGraftVisualMarkWithoutAi(boxEdit)).toBe(false);
+  });
+
+  it('detects typed overlay notes even when intent field is missing', () => {
+    expect(
+      hasUserTypedVisualAnnotationRequest({
+        markKind: 'stroke',
+        comment: '슬라이드 2 이 글씨들 더 크게',
+      }),
+    ).toBe(true);
+    expect(
+      hasUserTypedVisualAnnotationRequest({
+        markKind: 'stroke',
+        comment:
+          'The screenshot has red strokes that identify the visual region the user wants changed. Treat the drawn ink as the intended shape or placement guide—not decoration. ADD the requested shape/icon inside that region; do NOT delete or clear the rest of the slide.',
+      }),
+    ).toBe(false);
+    expect(
+      hasUserTypedVisualAnnotationRequest({
+        markKind: 'stroke',
+        comment: '하트 넣어줘',
+      }),
+    ).toBe(false);
+    expect(
+      hasUserTypedVisualAnnotationRequest({
+        markKind: 'stroke',
+        comment: '이거 좀 봐줘',
+      }),
+    ).toBe(false);
   });
 
   it('returns null when nothing is slide-scoped', () => {
