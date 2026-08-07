@@ -72,13 +72,23 @@ export async function buildDesktopPdfExportInput(
           allowVersionedDistLookup: true,
         });
       })();
+  // Inline `<img src>` (+ CSS `url(...)`) images from local scratch so headless
+  // Chromium never has to fetch `/raw/` (which in Teamver-managed mode requires
+  // `X-Teamver-*` identity headers Chromium cannot mint). Falls back to leaving
+  // the relative src alone when the file is truly missing on disk / S3, so
+  // Chromium's own base-href fetch still gets a last-chance retry.
+  const inlinedHtml = await inlineProjectImagesFromScratch({
+    html: source.html,
+    projectId: options.projectId,
+    projectsRoot: options.projectsRoot,
+  });
   const title = displayTitle(options.title, options.fileName);
   return {
     input: {
       baseHref: rawBaseHref(options.daemonUrl, options.projectId, source.fileName),
       deck: options.deck === true,
       defaultFilename: `${safeFilename(title, 'artifact')}.pdf`,
-      html: source.html,
+      html: inlinedHtml,
       title,
     },
     source: {
@@ -86,6 +96,123 @@ export async function buildDesktopPdfExportInput(
       mtimeMs: source.mtimeMs,
     },
   };
+}
+
+const INLINE_IMAGE_EXT_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
+  '.ico': 'image/x-icon',
+};
+
+const INLINE_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+/** Cap so a pathological deck cannot spawn hundreds of point-get reads. */
+const INLINE_IMAGE_MAX_UNIQUE = 32;
+
+function imageMimeForRelpath(relpath: string): string | null {
+  const dot = relpath.lastIndexOf('.');
+  if (dot < 0) return null;
+  return INLINE_IMAGE_EXT_MIME[relpath.slice(dot).toLowerCase()] ?? null;
+}
+
+/**
+ * Inline every image reference the export HTML can resolve to a local project
+ * file. Runs on the daemon side ahead of Chromium so subresource fetches
+ * inside headless Chromium never need to carry Teamver identity headers to
+ * `/raw/`. Preserves the relative `<img src>` when the file cannot be read so
+ * Chromium can still attempt a live fetch (last resort).
+ */
+export async function inlineProjectImagesFromScratch(options: {
+  html: string;
+  projectId: string;
+  projectsRoot: string;
+}): Promise<string> {
+  const paths = collectRelativeProjectAssetPaths(options.html);
+  if (paths.length === 0) return options.html;
+  const dataByPath = new Map<string, string>();
+  await Promise.all(
+    paths.slice(0, INLINE_IMAGE_MAX_UNIQUE).map(async (relpath) => {
+      const mime = imageMimeForRelpath(relpath);
+      if (!mime) return;
+      try {
+        const file = await readProjectFile(
+          options.projectsRoot,
+          options.projectId,
+          relpath,
+        );
+        if (!file.buffer || file.buffer.length === 0) return;
+        if (file.buffer.length > INLINE_IMAGE_MAX_BYTES) return;
+        dataByPath.set(relpath, `data:${mime};base64,${file.buffer.toString('base64')}`);
+      } catch {
+        // Missing / ENOENT / permission — Chromium base-href fetch keeps a
+        // fighting chance (or the image ends up alt-only when truly gone).
+      }
+    }),
+  );
+  if (dataByPath.size === 0) return options.html;
+  return rewriteRelativeImageSrcs(options.html, dataByPath);
+}
+
+function rewriteRelativeImageSrcs(
+  html: string,
+  dataByPath: ReadonlyMap<string, string>,
+): string {
+  const resolveDataForAttr = (rawValue: string): string | null => {
+    const trimmed = String(rawValue || '').trim();
+    if (!trimmed) return null;
+    if (/^(?:https?:|data:|blob:|mailto:|tel:|#)/i.test(trimmed)) return null;
+    if (trimmed.startsWith('//')) return null;
+    const cleaned = trimmed.split(/[?#]/u, 1)[0]?.trim() ?? '';
+    if (!cleaned || cleaned.includes('..')) return null;
+    let normalized = cleaned.replace(/\\/g, '/');
+    if (normalized.startsWith('/')) {
+      if (normalized.startsWith('/api/')) return null;
+      normalized = normalized.replace(/^\/+/, '');
+    }
+    normalized = normalized.replace(/^\.\//, '');
+    if (dataByPath.has(normalized)) return dataByPath.get(normalized) ?? null;
+    // Percent-encoded variants (`msh…-%EC%84%9C%EB%B9%99…`) — decode once.
+    if (/%[0-9A-Fa-f]{2}/.test(normalized)) {
+      try {
+        const decoded = decodeURIComponent(normalized);
+        if (dataByPath.has(decoded)) return dataByPath.get(decoded) ?? null;
+      } catch {
+        // Leave the encoded form as-is.
+      }
+    }
+    return null;
+  };
+
+  let out = html.replace(
+    /(<img\b[^>]*?\bsrc\s*=\s*)(["'])([^"']+)\2/gi,
+    (full, prefix: string, quote: string, rawSrc: string) => {
+      const dataUrl = resolveDataForAttr(rawSrc);
+      if (!dataUrl) return full;
+      // Also drop srcset — it would re-fetch the original relative URL.
+      return `${prefix}${quote}${dataUrl}${quote}`;
+    },
+  );
+  // Drop srcset when the sibling src was rewritten to a data URI.
+  out = out.replace(
+    /(<img\b[^>]*?\bsrc\s*=\s*)(["'])(data:image\/[^"']+)\2([^>]*?)\bsrcset\s*=\s*(["'])[^"']*\5/gi,
+    (_full, prefix: string, quote: string, dataUrl: string, mid: string, _sq: string) =>
+      `${prefix}${quote}${dataUrl}${quote}${mid}`,
+  );
+  // CSS url(...) rewrites.
+  out = out.replace(
+    /(url\(\s*)(['"]?)([^'")]+)\2(\s*\))/gi,
+    (full, prefix: string, quote: string, rawSrc: string, suffix: string) => {
+      const dataUrl = resolveDataForAttr(rawSrc);
+      if (!dataUrl) return full;
+      return `${prefix}${quote}${dataUrl}${quote}${suffix}`;
+    },
+  );
+  return out;
 }
 
 /**

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   buildDesktopPdfExportInput,
   collectRelativeProjectAssetPaths,
+  inlineProjectImagesFromScratch,
   warmExportRelativeAssets,
 } from '../src/pdf-export.js';
 import { startServer } from '../src/server.js';
@@ -161,6 +162,57 @@ describe('buildDesktopPdfExportInput', () => {
     expect(built.input.html).toContain('built');
     // Cache key SSOT: mtime tracks the dist file, not the dev shell (§20.1).
     expect(built.source.relPath).toBe('deck/dist/index.html');
+  });
+});
+
+describe('inlineProjectImagesFromScratch', () => {
+  let projectsRoot = '';
+  const projectId = 'proj-inline-fs';
+
+  beforeEach(async () => {
+    projectsRoot = mkdtempSync(path.join(tmpdir(), 'od-inline-fs-'));
+    await mkdir(path.join(projectsRoot, projectId, 'refs', 'drive'), { recursive: true });
+  });
+
+  afterEach(() => {
+    if (projectsRoot) rmSync(projectsRoot, { recursive: true, force: true });
+  });
+
+  it('replaces relative <img src> with data URIs read from scratch', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    await writeFile(path.join(projectsRoot, projectId, 'refs', 'drive', 'a.png'), png);
+    const html = '<img src="refs/drive/a.png" alt="a" srcset="refs/drive/a.png 2x">';
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toContain('src="data:image/png;base64,iVBORw0KGgo=');
+    // Sibling srcset must be dropped once src became a data URI so Chromium
+    // does not re-fetch the relative URL for a higher-DPR variant.
+    expect(out).not.toMatch(/srcset\s*=/);
+  });
+
+  it('resolves NFC img src against NFD on-disk file (Hangul filenames)', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1]);
+    const nfd = 'msh9rso1-서빙하는-금붕어.webp'.normalize('NFD');
+    const nfc = 'msh9rso1-서빙하는-금붕어.webp'.normalize('NFC');
+    await writeFile(path.join(projectsRoot, projectId, 'refs', 'drive', nfd), png);
+    const html = `<img src="refs/drive/${nfc}" alt="fish">`;
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toMatch(/src="data:image\/webp;base64,/);
+  });
+
+  it('leaves external / data / api URLs unchanged', async () => {
+    const html = [
+      '<img src="https://cdn.example/a.png">',
+      '<img src="data:image/png;base64,xx">',
+      '<img src="/api/projects/p/raw/skip.png">',
+    ].join('');
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toBe(html);
+  });
+
+  it('leaves relative src alone when file is missing on disk', async () => {
+    const html = '<img src="uploads/missing.png" alt="?">';
+    const out = await inlineProjectImagesFromScratch({ html, projectId, projectsRoot });
+    expect(out).toBe(html);
   });
 });
 

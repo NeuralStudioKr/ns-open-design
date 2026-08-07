@@ -4122,6 +4122,11 @@ function StagedRunContexts({
                     // attachments can trustExists. Ephemeral drawings rely on
                     // localPreview above or a single missing-cached probe.
                     trustExists={!isEphemeralDrawingScreenshotPath(a.path)}
+                    // HA pod S3 sync-up→sync-down race for freshly-uploaded
+                    // images: opt into the brief background retry ladder so
+                    // the chip does not settle on the failed glyph before
+                    // scratch fills. Chat history chips already do this.
+                    allowBackgroundRetry={!isEphemeralDrawingScreenshotPath(a.path)}
                   />
                 )}
                 <span className="staged-name">{a.name}</span>

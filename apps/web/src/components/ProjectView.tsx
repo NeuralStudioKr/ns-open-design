@@ -1230,6 +1230,7 @@ export function chatAttachmentsForAutoContinueImageEmbed(
     attachments?: readonly ChatAttachment[] | null;
     content?: string | null;
   } | null | undefined,
+  projectFilePaths?: readonly string[],
 ): ChatAttachment[] {
   // Recover `@image` / `[Attached image embed]` paths when attachments_json
   // lagged — otherwise retries lose the embed contract and greenfield 8→2.
@@ -1237,11 +1238,18 @@ export function chatAttachmentsForAutoContinueImageEmbed(
     originUser?.attachments,
     originUser?.content,
   );
+  const index = projectFilePaths ?? [];
   const out: ChatAttachment[] = [];
   const seen = new Set<string>();
   for (const attachment of attachments) {
-    const path = attachment.path.trim();
-    if (!path || seen.has(path)) continue;
+    const rawPath = attachment.path.trim();
+    if (!rawPath) continue;
+    // Upgrade basename mentions to refs/drive/… so retries advertise the
+    // exact on-disk path (matches what persist heal writes to deck.html).
+    const path = index.length > 0
+      ? resolveCanonicalProjectImagePath(rawPath, index)
+      : rawPath;
+    if (seen.has(path)) continue;
     const isHtml = /\.html?$/i.test(path);
     const isImage =
       attachment.kind === 'image'
@@ -1249,7 +1257,8 @@ export function chatAttachmentsForAutoContinueImageEmbed(
       || SLIDE_IMAGE_PATH_RE.test(attachment.name);
     if (!isHtml && !isImage) continue;
     seen.add(path);
-    out.push(attachment);
+    const name = attachment.name?.trim() || path.split('/').pop() || attachment.name;
+    out.push(path === rawPath ? attachment : { ...attachment, path, name });
     if (out.length >= 16) break;
   }
   return out;
@@ -3928,7 +3937,7 @@ export function ProjectView({
               // regeneration (often collapsing 8 slides → 2).
               const started = sendNow(
                 autoContinuePrompt,
-                chatAttachmentsForAutoContinueImageEmbed(autoContinueOriginUser),
+                chatAttachmentsForAutoContinueImageEmbed(autoContinueOriginUser, projectFilesRef.current.map((file) => String(file.path || file.name || "").trim()).filter(Boolean)),
                 autoContinueCommentAttachments,
                 { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
               );
@@ -7799,7 +7808,7 @@ export function ProjectView({
             // retries keep exact src paths and existing-deck edit contracts.
             const started = sendNow(
               autoContinuePrompt,
-              chatAttachmentsForAutoContinueImageEmbed(autoContinueOriginUser),
+              chatAttachmentsForAutoContinueImageEmbed(autoContinueOriginUser, projectFilesRef.current.map((file) => String(file.path || file.name || "").trim()).filter(Boolean)),
               autoContinueCommentAttachments,
               { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
             );
@@ -9176,7 +9185,7 @@ export function ProjectView({
                   // the model regenerates a short greenfield deck (8→2).
                   const started = sendNow(
                     autoContinuePrompt,
-                    chatAttachmentsForAutoContinueImageEmbed(originatingUserMsg),
+                    chatAttachmentsForAutoContinueImageEmbed(originatingUserMsg, projectFilesRef.current.map((file) => String(file.path || file.name || "").trim()).filter(Boolean)),
                     autoContinueCommentAttachments,
                     { entryFrom: AUTO_CONTINUE_ENTRY_FROM },
                   );
