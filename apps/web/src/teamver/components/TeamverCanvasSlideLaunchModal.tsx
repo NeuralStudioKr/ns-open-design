@@ -19,6 +19,7 @@ import {
   type CanvasSlideLaunchWizardStep,
   type CanvasSlideLaunchWizardStepId,
 } from "./CanvasSlideLaunchStepWizard";
+import { formatTeamverTimestampKst } from "../teamverTimestamp";
 
 export type TeamverCanvasSlideLaunchSource =
   | { kind: "drive"; asset: TeamverDriveImportAsset }
@@ -93,18 +94,9 @@ const QUICK_SETTING_GROUPS = [
   },
 ] as const;
 
-function formatUpdatedAt(raw: string | undefined, locale: string): string | null {
-  if (!raw?.trim()) return null;
-  const ms = Date.parse(raw);
-  if (!Number.isFinite(ms)) return raw.trim();
-  try {
-    return new Intl.DateTimeFormat(locale || "ko", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(ms));
-  } catch {
-    return raw.trim();
-  }
+function formatUpdatedAt(raw: string | undefined): string | null {
+  // Never fall back to revision ids — Date.parse fails and used to echo raw UUID/rev.
+  return formatTeamverTimestampKst(raw, "ko");
 }
 
 function sourceHeadline(
@@ -246,7 +238,8 @@ export function TeamverCanvasSlideLaunchModal({
   const sectionCount = isCanvas ? handoff?.sectionCount : undefined;
   const headings = isCanvas ? handoff?.headings ?? [] : [];
   const updatedLabel = isCanvas
-    ? formatUpdatedAt(handoff?.updatedAt || handoff?.revision, "ko")
+    ? formatUpdatedAt(handoff?.updatedAt)
+      ?? (formatTeamverTimestampKst(handoff?.revision) ? formatUpdatedAt(handoff?.revision) : null)
     : null;
   const iconName =
     source.kind === "drive"

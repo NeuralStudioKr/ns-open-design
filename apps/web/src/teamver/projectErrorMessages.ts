@@ -333,6 +333,9 @@ export function formatProjectRunErrorForUser(err: unknown): string {
   if (code === "INTERNAL_ERROR") {
     return "실행 중 내부 오류가 발생했습니다. 다시 시도하세요.";
   }
+  if (code === "PROJECT_NOT_FOUND" || code === "NOT_FOUND") {
+    return "이 슬라이드 프로젝트를 찾을 수 없습니다. 페이지를 새로고침한 뒤 다시 시도하세요.";
+  }
   if (code === "AGENT_EXECUTION_STALLED") {
     return formatProjectRunStalledErrorForUser();
   }

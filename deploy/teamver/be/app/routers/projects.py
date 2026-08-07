@@ -20,6 +20,7 @@ from ..auth_context import AuthContext, require_auth, require_workspace_context
 from ..db.connection import get_async_session
 from ..db.crud import design_output_crud, design_project_crud
 from ..db.models import DesignOutput, DesignProject
+from ..db.models.base import utcnow
 from ..errors import ApiError, BadGatewayError, ForbiddenError, NotFoundError, UnauthorizedError
 from ..schemas.design_project import (
     CreateDesignProjectBody,
@@ -169,10 +170,12 @@ async def _resolve_existing_registry_row(
     )
     if merged_title is not None:
         row.title = merged_title
-        await db.flush()
-        await db.refresh(row)
-        return row, True
-    return row, False
+    # Touch updated_at on every successful register hit so Home relative
+    # times reflect recent activity (not a stale create from days ago).
+    row.updated_at = utcnow()
+    await db.flush()
+    await db.refresh(row)
+    return row, True
 
 
 async def _sync_daemon_scratch_for_od_project(

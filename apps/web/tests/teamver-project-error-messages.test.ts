@@ -204,6 +204,12 @@ describe("project conversation error messages", () => {
     internalErr.code = "INTERNAL_ERROR";
     expect(formatProjectRunErrorForUser(internalErr)).toContain("내부 오류");
     expect(formatProjectRunErrorForUser(internalErr)).not.toContain("AI 서비스");
+    const missingProjectErr = new Error("daemon 404: PROJECT_NOT_FOUND project not found") as Error & {
+      code?: string;
+    };
+    missingProjectErr.code = "PROJECT_NOT_FOUND";
+    expect(formatProjectRunErrorForUser(missingProjectErr)).toContain("프로젝트를 찾을 수 없");
+    expect(formatProjectRunErrorForUser(missingProjectErr)).not.toContain("슬라이드 실행 중 오류");
     expect(
       formatProjectRunErrorForUser(
         new Error("Your authentication token has expired. Please sign in again."),

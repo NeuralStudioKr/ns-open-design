@@ -1989,8 +1989,11 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     res.json({ conversations: list });
   });
 
-  app.post('/api/projects/:id/conversations', (req, res) => {
-    if (!getProject(db, req.params.id)) {
+  app.post('/api/projects/:id/conversations', async (req, res) => {
+    const conversationProject = getProjectAsync
+      ? await getProjectAsync(db, req.params.id)
+      : getProject(db, req.params.id);
+    if (!conversationProject) {
       return res.status(404).json({ error: 'project not found' });
     }
     const { title, seedFromConversationId, forkAfterMessageId } = req.body || {};
@@ -2475,6 +2478,12 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     readProjectFile,
     resolveProjectDir,
   });
+  /** Cold node / projectId-hash peer: cache miss must read shared Postgres. */
+  async function resolveProjectRow(projectId: string) {
+    return getProjectAsync
+      ? await getProjectAsync(db, projectId)
+      : getProject(db, projectId);
+  }
   async function ensureRevisionTargetFileMaterialized(
     req: Request,
     projectId: string,
@@ -2741,7 +2750,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
   app.get('/api/projects/:id/folders', async (req, res) => {
     try {
-      const project = getProject(db, req.params.id);
+      const project = await resolveProjectRow(req.params.id);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -2762,7 +2771,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       if (typeof name !== 'string' || !name.trim()) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'name required');
       }
-      const project = getProject(db, req.params.id);
+      const project = await resolveProjectRow(req.params.id);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -2786,7 +2795,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       if (typeof folderPath !== 'string' || !folderPath.trim()) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'path required');
       }
-      const project = getProject(db, req.params.id);
+      const project = await resolveProjectRow(req.params.id);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -2806,7 +2815,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
   app.get('/api/projects/:id/design-system-package-audit', async (req, res) => {
     try {
-      const project = getProject(db, req.params.id);
+      const project = await resolveProjectRow(req.params.id);
       if (!project) {
         sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
         return;
@@ -3309,7 +3318,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const params = req.params as unknown as { 0?: string; 1?: string };
       const projectId = String(params[0] ?? '');
       const fileName = String(params[1] ?? '');
-      const project = getProject(db, projectId);
+      const project = await resolveProjectRow(projectId);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -3326,7 +3335,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const projectId = String(params[0] ?? '');
       const fileName = String(params[1] ?? '');
       const revisionId = String(params[2] ?? '');
-      const project = getProject(db, projectId);
+      const project = await resolveProjectRow(projectId);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -3357,7 +3366,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const projectId = String(params[0] ?? '');
       const fileName = String(params[1] ?? '');
       const revisionId = String(params[2] ?? '');
-      const project = getProject(db, projectId);
+      const project = await resolveProjectRow(projectId);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -3390,7 +3399,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       const params = req.params as unknown as { 0?: string; 1?: string };
       const projectId = String(params[0] ?? '');
       const fileName = String(params[1] ?? '');
-      const project = getProject(db, projectId);
+      const project = await resolveProjectRow(projectId);
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
@@ -3511,7 +3520,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     },
     async (req, res) => {
       try {
-        const uploadProject = getProject(db, req.params.id);
+        const uploadProject = await resolveProjectRow(req.params.id);
         await ensureProject(PROJECTS_DIR, req.params.id, uploadProject?.metadata);
         if (req.file) {
           const buf = await fs.promises.readFile(req.file.path);

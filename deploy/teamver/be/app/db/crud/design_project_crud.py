@@ -135,6 +135,8 @@ async def areactivate_by_od_id(
     od_project_id: str,
     title: str | None = None,
 ) -> DesignProject | None:
+    from ..models.base import utcnow
+
     row = await aget_project_by_od_id(db, od_project_id=od_project_id)
     if row is None or row.status != "deleted":
         return row
@@ -142,6 +144,7 @@ async def areactivate_by_od_id(
     cleaned_title = (title or "").strip()
     if cleaned_title:
         row.title = cleaned_title
+    row.updated_at = utcnow()
     await db.flush()
     await db.refresh(row)
     return row

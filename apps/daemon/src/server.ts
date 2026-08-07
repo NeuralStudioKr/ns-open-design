@@ -7141,14 +7141,20 @@ export async function startServer({
   // ---- Conversations --------------------------------------------------------
 
   app.get('/api/projects/:id/conversations', async (req, res) => {
-    if (!getProject(db, req.params.id)) {
+    const conversationProject = getProjectAsync
+      ? await getProjectAsync(db, req.params.id)
+      : getProject(db, req.params.id);
+    if (!conversationProject) {
       return res.status(404).json({ error: 'project not found' });
     }
     res.json({ conversations: await listConversationsAsync(db, req.params.id) });
   });
 
-  app.post('/api/projects/:id/conversations', (req, res) => {
-    if (!getProject(db, req.params.id)) {
+  app.post('/api/projects/:id/conversations', async (req, res) => {
+    const conversationProject = getProjectAsync
+      ? await getProjectAsync(db, req.params.id)
+      : getProject(db, req.params.id);
+    if (!conversationProject) {
       return res.status(404).json({ error: 'project not found' });
     }
     const { title, seedFromConversationId, forkAfterMessageId } = req.body || {};

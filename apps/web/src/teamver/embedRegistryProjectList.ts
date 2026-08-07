@@ -22,6 +22,7 @@ import { PROJECT_LIST_PAGE_SIZE } from "./projectListLimits";
 import type { ProjectsListPageResult } from "../state/projects";
 import { isTeamverProjectDeletedTombstoned } from "./deletedProjectTombstones";
 import { resolveActiveTeamverWorkspaceId } from "./activeTeamverWorkspace";
+import { parseTeamverTimestampMs } from "./teamverTimestamp";
 
 type ProjectListCursor = { updatedAt: number; id: string };
 
@@ -44,12 +45,7 @@ export function resolveProjectDisplayName(
 }
 
 function parseRegistryTimestamp(raw: unknown, fallback = 0): number {
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  if (typeof raw === "string" && raw.trim()) {
-    const parsed = Date.parse(raw);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
+  return parseTeamverTimestampMs(raw, fallback);
 }
 
 function normalizeRegistryDisplayStatus(raw: unknown): Project["status"] | undefined {
@@ -140,7 +136,8 @@ export function mergeDaemonFieldsOntoRegistryProjects(
       status: mergeProjectDisplayStatus(registry.status, daemon.status),
       metadata: daemon.metadata ?? registry.metadata,
       createdAt: registry.createdAt || daemon.createdAt,
-      updatedAt: Math.max(registry.updatedAt, daemon.updatedAt),
+      // Prefer the fresher of registry vs daemon; ignore zero placeholders.
+      updatedAt: Math.max(registry.updatedAt || 0, daemon.updatedAt || 0),
     });
   });
 }
