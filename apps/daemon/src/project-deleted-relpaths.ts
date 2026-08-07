@@ -8,6 +8,21 @@ export function normalizeProjectRelpath(relpath: string): string {
   return String(relpath || '').trim().replace(/\\/g, '/').replace(/^\/+/, '');
 }
 
+function unicodeVariants(relpath: string): string[] {
+  const raw = String(relpath || '');
+  const out = new Set<string>();
+  if (raw) out.add(raw);
+  try {
+    const nfc = raw.normalize('NFC');
+    if (nfc && nfc !== raw) out.add(nfc);
+  } catch { /* ignore */ }
+  try {
+    const nfd = raw.normalize('NFD');
+    if (nfd && nfd !== raw) out.add(nfd);
+  } catch { /* ignore */ }
+  return [...out];
+}
+
 export async function readDeletedProjectRelpaths(projectDir: string): Promise<Set<string>> {
   const manifestPath = path.join(projectDir, PROJECT_DELETED_RELPATHS_MANIFEST);
   try {
@@ -17,7 +32,13 @@ export async function readDeletedProjectRelpaths(projectDir: string): Promise<Se
     const out = new Set<string>();
     for (const entry of parsed.paths) {
       const normalized = normalizeProjectRelpath(String(entry ?? ''));
-      if (normalized) out.add(normalized);
+      if (!normalized) continue;
+      // Add all Unicode variants so a tombstone written under one form (NFC)
+      // still blocks a sync-down of the alternate form (NFD) from S3 —
+      // otherwise the deleted file resurrects on the next sibling-node pull.
+      for (const variant of unicodeVariants(normalized)) {
+        out.add(variant);
+      }
     }
     return out;
   } catch (err) {
