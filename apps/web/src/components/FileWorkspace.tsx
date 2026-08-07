@@ -90,7 +90,7 @@ import { DesignBrowserPanel, labelFromUrl, type BrowserPageInfo } from './Design
 import type { PluginFolderAgentAction } from './design-files/pluginFolderActions';
 import { designSystemGithubEvidenceState, repoConnectCopy } from './design-system-github-evidence';
 import { APP_CHROME_FILE_ACTIONS_ID } from './AppChromeHeader';
-import { FileViewer, LiveArtifactViewer } from './FileViewer';
+import { FileViewer, LiveArtifactViewer, rememberStablePreviewSource } from './FileViewer';
 import {
   findProjectFileByTabName,
   previewFileMatchesTab,
@@ -1805,6 +1805,8 @@ export function FileWorkspace({
           scheduleRetry(1_200);
           return;
         }
+        // Seed the module preview cache so FileViewer remount skips a cold GET.
+        rememberStablePreviewSource(projectId, activeTab, repaired);
         setPendingTabDiskHtml({ tab: activeTab, html: repaired });
       });
     };
@@ -2707,7 +2709,8 @@ export function FileWorkspace({
             ) : null}
             <div className="viewer-memory-preview__frame-host">
               <iframe
-                key={`${memoryOnlyPreview.fileName ?? 'memory-preview'}:${memoryPreviewPrefix ?? 'nobase'}`}
+                // Prefix settles via srcDoc in place — do not remount on base href.
+                key={memoryOnlyPreview.fileName ?? 'memory-preview'}
                 className="viewer-memory-preview__frame"
                 srcDoc={memoryOnlyPreviewSrcDoc || undefined}
                 sandbox="allow-scripts"

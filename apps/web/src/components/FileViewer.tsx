@@ -596,7 +596,8 @@ function readCachedPreviewSource(projectId: string, fileName: string): string | 
   return isArtifactHtmlStableForPreview(repaired) ? repaired : null;
 }
 
-function rememberStablePreviewSource(projectId: string, fileName: string, source: string | null | undefined) {
+/** Cache stable preview HTML for remount / pending-tab bootstrap (module-level). */
+export function rememberStablePreviewSource(projectId: string, fileName: string, source: string | null | undefined) {
   if (!source?.trim()) return;
   const repaired = repairArtifactDocumentHeadIfNeeded(source);
   if (!isArtifactHtmlStableForPreview(repaired)) return;
@@ -611,6 +612,58 @@ function rememberStablePreviewSource(projectId: string, fileName: string, source
 /** Drop module-level preview HTML cached before an agent/manual disk write. */
 export function invalidateCachedPreviewSource(projectId: string, fileName: string): void {
   htmlPreviewSourceCache.delete(previewSourceCacheKey(projectId, fileName));
+}
+
+type RevisionListSoftCacheEntry = {
+  activeSeq: number;
+  list: Awaited<ReturnType<typeof listProjectFileRevisions>>;
+  at: number;
+};
+const REVISION_LIST_SOFT_CACHE_TTL_MS = 4_000;
+const revisionListSoftCache = new Map<string, RevisionListSoftCacheEntry>();
+
+function revisionListSoftCacheKey(projectId: string, fileName: string): string {
+  return `${projectId}\0${fileName}`;
+}
+
+/** Soft-retry disk fetch: reuse list for the same activeSeq within a short TTL. */
+async function listProjectFileRevisionsSoftCached(
+  projectId: string,
+  fileName: string,
+  activeSeq: number,
+): Promise<Awaited<ReturnType<typeof listProjectFileRevisions>>> {
+  const key = revisionListSoftCacheKey(projectId, fileName);
+  const cached = revisionListSoftCache.get(key);
+  if (
+    cached
+    && cached.activeSeq === activeSeq
+    && Date.now() - cached.at < REVISION_LIST_SOFT_CACHE_TTL_MS
+  ) {
+    return cached.list;
+  }
+  const list = await listProjectFileRevisions(projectId, fileName);
+  revisionListSoftCache.set(key, { activeSeq, list, at: Date.now() });
+  if (revisionListSoftCache.size > 64) {
+    const oldest = revisionListSoftCache.keys().next().value;
+    if (oldest != null) revisionListSoftCache.delete(oldest);
+  }
+  return list;
+}
+
+/** Identity fingerprint for od-edit-targets — skips geometry-only rebroadcasts. */
+function manualEditTargetsIdentityFingerprint(targets: ManualEditTarget[]): string {
+  return targets.map((target) => [
+    target.id,
+    target.kind,
+    target.tagName,
+    target.className,
+    target.text,
+    target.fields?.href ?? '',
+    target.fields?.src ?? '',
+    target.fields?.alt ?? '',
+    target.outerHtml?.length ?? 0,
+    target.isHidden ? '1' : '0',
+  ].join('\0')).join('\n');
 }
 const MAX_CACHED_PREVIEW_VIEWPORTS = 128;
 // Grace window before the inspect hover card is torn down. Long enough to absorb
@@ -5582,6 +5635,7 @@ function HtmlViewer({
   const selectedManualEditTargetIdRef = useRef<string | null>(null);
   const selectedManualEditTargetRef = useRef<ManualEditTarget | null>(null);
   const selectedManualEditTargetIdsRef = useRef<string[]>([]);
+  const manualEditTargetsIdentityFingerprintRef = useRef<string>('');
   const [manualEditDraft, setManualEditDraft] = useState<ManualEditDraft>(() => emptyManualEditDraft());
   const [revisionStack, setRevisionStack] = useState<RevisionStackSnapshot>(() => (
     createRevisionStackSnapshot([], null)
@@ -6167,7 +6221,12 @@ function HtmlViewer({
               (revision) => revision.sequence === activeSeq,
             );
             if (!revisionForActive) {
-              const list = await listProjectFileRevisions(projectId, file.name);
+              // Soft-retry storms share one list for (file, activeSeq).
+              const list = await listProjectFileRevisionsSoftCached(
+                projectId,
+                file.name,
+                activeSeq,
+              );
               revisionForActive = list?.revisions?.find(
                 (revision) => revision.sequence === activeSeq,
               );
@@ -7633,6 +7692,7 @@ function HtmlViewer({
     setManualEditFrozenSource(null);
     setManualEditViewportWidth(null);
     setManualEditTargets([]);
+    manualEditTargetsIdentityFingerprintRef.current = '';
     setSelectedManualEditTarget(null);
     setSelectedManualEditTargetIds([]);
     setManualEditMixedStyleKeys(new Set());
@@ -8561,6 +8621,7 @@ function HtmlViewer({
   useEffect(() => {
     if (!manualEditMode) {
       setManualEditTargets([]);
+      manualEditTargetsIdentityFingerprintRef.current = '';
       setSelectedManualEditTarget(null);
       setSelectedManualEditTargetIds([]);
       setManualEditMixedStyleKeys(new Set());
@@ -8593,7 +8654,13 @@ function HtmlViewer({
       const data = ev.data as ManualEditBridgeMessage | null;
       if (!data?.type) return;
       if (data.type === 'od-edit-targets' && Array.isArray(data.targets)) {
-        setManualEditTargets(data.targets);
+        // Skip React state when identity is unchanged (geometry-only rebroadcasts
+        // still refresh the selected target below for overlay sync).
+        const targetsFingerprint = manualEditTargetsIdentityFingerprint(data.targets);
+        if (targetsFingerprint !== manualEditTargetsIdentityFingerprintRef.current) {
+          manualEditTargetsIdentityFingerprintRef.current = targetsFingerprint;
+          setManualEditTargets(data.targets);
+        }
         // Geometry gestures own selection rect/paint — a mid-drag or post-commit
         // targets scan must not clobber optimistic viewport (box flash).
         if (manualEditResizeSessionActiveRef.current) return;
@@ -8615,11 +8682,14 @@ function HtmlViewer({
             void clearManualEditTargetSelection();
             return;
           }
-          if (!manualEditSelectionIdsEqual(currentIds, nextIds)) {
+          const selectionIdsChanged = !manualEditSelectionIdsEqual(currentIds, nextIds);
+          if (selectionIdsChanged) {
             selectedManualEditTargetIdsRef.current = nextIds;
             setSelectedManualEditTargetIds(nextIds);
           }
-          if (nextIds.length > 1) {
+          // Multi-select inspector parse only when the id set changes —
+          // geometry-only od-edit-targets must not re-parse the full deck.
+          if (nextIds.length > 1 && selectionIdsChanged) {
             const base = sourceRef.current ?? '';
             const parsedDoc = parseManualEditSource(base);
             const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
@@ -10296,8 +10366,25 @@ function HtmlViewer({
             setManualEditMixedStyleKeys(mixedKeys);
             setManualEditDraft((current) => ({ ...current, styles: mergedStyles, fullSource: contentToSave }));
           } else {
+            // 2→1: seed inspector from the remaining target snapshot (not empty).
+            const remainingDoc = parseManualEditSource(contentToSave);
+            const snapshot = readManualEditTargetSnapshot(
+              contentToSave,
+              primary.id,
+              {},
+              remainingDoc,
+            );
             setManualEditMixedStyleKeys(new Set());
-            setManualEditDraft(emptyManualEditDraft(contentToSave));
+            setManualEditDraft({
+              text: snapshot.fields.text ?? primary.fields.text ?? primary.text,
+              href: snapshot.fields.href ?? primary.fields.href ?? '',
+              src: snapshot.fields.src ?? primary.fields.src ?? '',
+              alt: snapshot.fields.alt ?? primary.fields.alt ?? '',
+              styles: mergeManualEditInspectorStyles(snapshot.styles, primary.styles),
+              attributesText: JSON.stringify(snapshot.attributes, null, 2),
+              outerHtml: snapshot.outerHtml || primary.outerHtml,
+              fullSource: contentToSave,
+            });
           }
           postSelectedManualEditTargetsToIframe(nextIds, primary.id);
         }

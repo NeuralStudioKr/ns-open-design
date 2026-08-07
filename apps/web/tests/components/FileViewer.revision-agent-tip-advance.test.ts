@@ -46,6 +46,12 @@ describe('FileViewer revision tip advance after undo', () => {
     // remove-element remaining multi-select shares one Document.
     expect(fileViewer).toContain('One Document for remaining multi-select inspector after remove');
     expect(fileViewer).toContain('remainingDoc');
+    // remove-element 2→1 seeds inspector from remaining snapshot (not empty draft).
+    expect(fileViewer).toContain('2→1: seed inspector from the remaining target snapshot');
+    expect(fileViewer).toContain('manualEditTargetsIdentityFingerprint');
+    expect(fileViewer).toContain('listProjectFileRevisionsSoftCached');
+    expect(fileViewer).toContain('geometry-only od-edit-targets must not re-parse');
+    expect(fileViewer).toContain('export function rememberStablePreviewSource');
     // Group geometry builders forward their shared Document into batch apply.
     expect(fileViewer).toContain('buildGroupMoveStylePatches(');
     expect(fileViewer).toContain('buildGroupResizeStylePatches(');

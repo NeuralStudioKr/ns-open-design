@@ -1560,6 +1560,33 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     .replace(
       /\s(?:srcset|imagesrcset|archive|values)\s*=\s*[^\s>]*(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|\/\/)[^\s>]*/gi,
       '',
+    )
+    // SVG paint/resource tags — fail closed to same-document #fragment only
+    // (DOM: MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS + isSafeManualEditSvgResourceRef).
+    // Absolute https://… / path / backslash survive generic URL-attr deny above.
+    .replace(
+      new RegExp(
+        `(<(?:${[
+          'use', 'image', 'feimage', 'mpath', 'textpath', 'pattern',
+          'lineargradient', 'radialgradient', 'filter',
+          'animate', 'animatemotion', 'animatetransform', 'animatecolor', 'set',
+          'cursor', 'font-face-uri', 'altglyph', 'glyphref', 'tref', 'color-profile',
+        ].join('|')})\\b[^>]*?)\\s(?:href|xlink:href)\\s*=\\s*(['"])(?!#[^\\\\/:'"]*)[\\s\\S]*?\\2`,
+        'gi',
+      ),
+      '$1',
+    )
+    .replace(
+      new RegExp(
+        `(<(?:${[
+          'use', 'image', 'feimage', 'mpath', 'textpath', 'pattern',
+          'lineargradient', 'radialgradient', 'filter',
+          'animate', 'animatemotion', 'animatetransform', 'animatecolor', 'set',
+          'cursor', 'font-face-uri', 'altglyph', 'glyphref', 'tref', 'color-profile',
+        ].join('|')})\\b[^>]*?)\\s(?:href|xlink:href)\\s*=\\s*(?!['"]|#)[^\\s>]*`,
+        'gi',
+      ),
+      '$1',
     );
 }
 

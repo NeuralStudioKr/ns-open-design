@@ -1373,6 +1373,11 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain('/\\s(?:action|formaction|ping|to|from|by|values)\\s*=');
     expect(sourcePatchesSource).toContain('[\\s\\S]*?\\\\[\\s\\S]*?');
     expect(sourcePatchesSource).toContain('srcset|imagesrcset|archive|values');
+    // SVG fragment-only href/xlink:href (use/image/… + isSafeManualEditSvgResourceRef).
+    expect(sourcePatchesSource).toContain('SVG paint/resource tags — fail closed');
+    expect(sourcePatchesSource).toContain("(?!#[^\\\\\\\\/:'\"]*)");
+    expect(sourcePatchesSource).toContain("'lineargradient', 'radialgradient', 'filter'");
+    expect(sourcePatchesSource).toContain('isSafeManualEditSvgResourceRef');
   });
 
   it('exposes single-document mutate/batch apply helpers', () => {

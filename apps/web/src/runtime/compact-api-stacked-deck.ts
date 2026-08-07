@@ -1,4 +1,3 @@
-import { repairArtifactDocumentHead } from '@open-design/contracts';
 import { repairArtifactDocumentHeadIfNeeded } from './artifact-document-head';
 
 export type WrapPreviewHtmlShellOptions = {
@@ -23,8 +22,8 @@ export function wrapPreviewHtmlShell(
   </head>
   <body>${repaired}</body>
 </html>`;
-  // Fragment wrap always needs a final repair pass for the new shell.
-  return repairArtifactDocumentHead(wrapped);
+  // Fragment wrap builds a fresh shell — intact-gated (charset+viewport already set).
+  return repairArtifactDocumentHeadIfNeeded(wrapped);
 }
 
 /** Same repaired + wrapped HTML buildSrcdoc and the host preview use for detection. */

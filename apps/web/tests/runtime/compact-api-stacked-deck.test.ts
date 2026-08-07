@@ -43,6 +43,9 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(source).toContain('WrapPreviewHtmlShellOptions');
     expect(source).toContain('repairArtifactDocumentHeadIfNeeded');
     expect(source).toContain('prepareCompactStackedDeckPreviewHtml');
+    // Fragment shell final pass is intact-gated (not always repairArtifactDocumentHead).
+    expect(source).toContain('return repairArtifactDocumentHeadIfNeeded(wrapped)');
+    expect(source).not.toContain('return repairArtifactDocumentHead(wrapped)');
     expect(wrapPreviewHtmlShell('<main>x</main>', { alreadyRepaired: true })).toContain('<!doctype html>');
   });
 

@@ -28,6 +28,7 @@ describe("FileWorkspace preview bootstrap", () => {
     expect(source).toContain("visibleFilesSignature");
     expect(source).toContain("pendingTabDiskHtml");
     expect(source).toContain("repairArtifactDocumentHeadIfNeeded(text)");
+    expect(source).toContain("rememberStablePreviewSource(projectId, activeTab, repaired)");
     expect(source).toContain("reason: 'disk-bootstrap'");
     expect(source).toMatch(/visibleFilesSignature,\s*\n\s*\]\);/);
     // Pending tab shows loading only — ghost resolve retargets/closes; do not
@@ -35,6 +36,11 @@ describe("FileWorkspace preview bootstrap", () => {
     expect(source).toMatch(/pendingPreviewTab \? \([\s\S]*fileViewer\.loading/);
     expect(source).not.toMatch(
       /pendingPreviewTab \? \([\s\S]*fileViewer\.previewUnavailable/,
+    );
+    // Memory-only iframe key is fileName only — srcDoc updates prefix in place.
+    expect(source).toContain("key={memoryOnlyPreview.fileName ?? 'memory-preview'}");
+    expect(source).not.toMatch(
+      /key=\{`\$\{memoryOnlyPreview\.fileName[^`]*memoryPreviewPrefix/,
     );
   });
 
