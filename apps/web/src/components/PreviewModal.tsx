@@ -328,11 +328,18 @@ export function PreviewModal({
     onView?.(activeId);
   }, [activeId, onView]);
 
-  // Close on Escape. If we're in fullscreen, exit fullscreen first instead
-  // of dismissing the whole modal in one keystroke.
+  // Close on Escape. Popovers → fullscreen → modal, one layer per keystroke.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      if (primaryMenuOpen) {
+        setPrimaryMenuOpen(false);
+        return;
+      }
+      if (templateShareOpen) {
+        setTemplateShareOpen(false);
+        return;
+      }
       if (fullscreen) {
         setFullscreen(false);
         return;
@@ -341,7 +348,7 @@ export function PreviewModal({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose, fullscreen]);
+  }, [onClose, fullscreen, primaryMenuOpen, templateShareOpen]);
 
   // Mirror native fullscreen state into React. Without this, a user in
   // browser fullscreen has to press Esc twice: the first Esc exits the
@@ -368,20 +375,14 @@ export function PreviewModal({
         setTemplateShareOpen(false);
       }
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setTemplateShareOpen(false);
-      }
-    };
     document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('mousedown', onDoc);
-      document.removeEventListener('keydown', onKey);
     };
   }, [templateShareOpen]);
 
-  // Same outside-click / Escape dismissal for the primary-action split menu.
+  // Outside-click dismissal for the primary-action split menu (Escape is
+  // handled by the layered modal Escape effect above).
   useEffect(() => {
     if (!primaryMenuOpen) return;
     const onDoc = (e: MouseEvent) => {
@@ -390,16 +391,9 @@ export function PreviewModal({
         setPrimaryMenuOpen(false);
       }
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setPrimaryMenuOpen(false);
-      }
-    };
     document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('mousedown', onDoc);
-      document.removeEventListener('keydown', onKey);
     };
   }, [primaryMenuOpen]);
 
@@ -517,10 +511,13 @@ export function PreviewModal({
   }, [activeDeck, activeHtml, activeId, srcDoc]);
 
   // Host ArrowLeft/Right for decks — iframe often lacks focus in the modal.
+  // Match the chrome button guards so keys cannot fire before slide-state
+  // arrives or past the first/last slide.
   useEffect(() => {
     if (!activeDeck || !activeHtml) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (slideState === null) return;
       const target = e.target as HTMLElement | null;
       if (
         target &&
@@ -532,16 +529,18 @@ export function PreviewModal({
         return;
       }
       if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        if (slideState.active >= slideState.count - 1) return;
         e.preventDefault();
         postSlide('next');
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        if (slideState.active <= 0) return;
         e.preventDefault();
         postSlide('prev');
       }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [activeDeck, activeHtml, activeId]);
+  }, [activeDeck, activeHtml, activeId, slideState]);
   const exportTitle = exportTitleFor(activeView?.id ?? '');
   const canExportFiles = Boolean(activeHtml);
   const previewShareTitle = shareTarget?.title || exportTitle || title;
@@ -661,7 +660,7 @@ export function PreviewModal({
       className="ds-modal-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label={`${title} preview`}
+      aria-label={embedUiLabel(`${title} preview`, `${title} 미리보기`)}
     >
       <div
         className={`ds-modal ${fullscreen ? 'ds-modal-fullscreen' : ''}`}

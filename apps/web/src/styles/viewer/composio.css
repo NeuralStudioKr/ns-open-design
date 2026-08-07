@@ -1582,6 +1582,9 @@
   .ds-modal-sidebar {
     animation: none;
   }
+  .ds-modal-sidebar .plugin-info-pane {
+    animation: none;
+  }
 }
 .ds-modal-stage-handle {
   position: absolute;

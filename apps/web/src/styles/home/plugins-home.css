@@ -468,6 +468,14 @@
   border-radius: 50%;
   background: #3ad29f;
 }
+/* Mute the “live” dot when the thumb is still loading or unreachable. */
+.plugins-home__card--gallery:has(.plugins-home__html-skeleton.is-active) .plugins-home__gallery-dot {
+  background: #c4a35a;
+}
+.plugins-home__card--gallery:has(.plugins-home__html--fallback) .plugins-home__gallery-dot {
+  background: var(--text-muted, #8a8f98);
+  opacity: 0.7;
+}
 .plugins-home__gallery-name {
   flex: 1;
   min-width: 0;
@@ -500,8 +508,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border: 0;
   padding: 0;
   background: transparent;
@@ -701,6 +709,7 @@
    strip) so the row keeps a uniform rhythm, but pretends the iframe
    is a glyph patch so the tile never paints empty white. */
 .plugins-home__html--fallback {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -718,6 +727,31 @@
   text-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
   user-select: none;
   font-weight: 600;
+}
+.plugins-home__html-fallback-retry {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 2;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  padding: 6px 14px;
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.plugins-home__html-fallback-retry:hover,
+.plugins-home__html-fallback-retry:focus-visible {
+  background: rgba(0, 0, 0, 0.62);
+  border-color: rgba(255, 255, 255, 0.45);
+  outline: none;
 }
 .plugins-home__html--fallback .plugins-home__html-chrome {
   background: rgba(0, 0, 0, 0.32);

@@ -189,6 +189,28 @@ describe('PreviewModal sandbox isolation', () => {
     );
   });
 
+  it('keeps open-in-new-tab and localized dialog label for template chrome', () => {
+    const markup = renderToStaticMarkup(
+      <PreviewModal
+        title="Cobalt Grid"
+        views={[
+          {
+            id: 'preview',
+            label: 'Preview',
+            html: '<section class="slide">one</section>',
+            deck: true,
+          },
+        ]}
+        hideShareMenu
+        exportTitleFor={() => 'cobalt'}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(markup).toContain('preview-modal-open-in-new-tab');
+    expect(markup).toMatch(/aria-label="(Cobalt Grid preview|Cobalt Grid 미리보기)"/);
+  });
+
   it('includes popup flags in the sandbox attribute', () => {
     const markup = renderToStaticMarkup(
       <PreviewModal

@@ -36,6 +36,7 @@ import { TrustBadge } from '../TrustBadge';
 import { authorInitials, derivePluginSourceLinks } from '../../runtime/plugin-source';
 import { resolvePluginQueryFallback } from '../../state/projects';
 import { useI18n } from '../../i18n';
+import { embedUiLabel } from '../../teamver/embedUiLabels';
 import { localizePluginDescription } from '../plugins-home/localization';
 
 export interface PluginMetaOmit {
@@ -161,7 +162,7 @@ export function PluginMetaSections({ record, omit, compact, heading, variant = '
         </header>
       ) : null}
       {!omit?.byline && hasAuthorBlock ? (
-        <Section title="Author">
+        <Section title={embedUiLabel('Author', '작성자')}>
           <div
             className="plugin-details-modal__byline"
             data-testid="plugin-details-author"
@@ -173,7 +174,9 @@ export function PluginMetaSections({ record, omit, compact, heading, variant = '
             <div className="plugin-details-modal__byline-meta">
               {links.authorName ? (
                 <div className="plugin-details-modal__byline-name">
-                  <span className="plugin-details-modal__byline-prefix">by</span>
+                  <span className="plugin-details-modal__byline-prefix">
+                    {embedUiLabel('by', 'by')}
+                  </span>
                   <span className="plugin-details-modal__author-name">
                     {links.authorName}
                   </span>
@@ -195,7 +198,7 @@ export function PluginMetaSections({ record, omit, compact, heading, variant = '
                     icon="external-link"
                     testId="plugin-details-author-homepage"
                   >
-                    Homepage
+                    {embedUiLabel('Homepage', '홈페이지')}
                   </ExternalLink>
                 ) : null}
               </div>
@@ -205,15 +208,18 @@ export function PluginMetaSections({ record, omit, compact, heading, variant = '
       ) : null}
 
       {showDescription ? (
-        <Section title="About">
+        <Section title={embedUiLabel('About', '소개')}>
           <p className="plugin-details-modal__description">{description}</p>
         </Section>
       ) : null}
 
       {showQuery ? (
         <Section
-          title="Example query"
-          hint="Inserted into the prompt textarea when you apply this plugin."
+          title={embedUiLabel('Example query', '예시 프롬프트')}
+          hint={embedUiLabel(
+            'Inserted into the prompt textarea when you apply this plugin.',
+            '이 템플릿을 적용하면 프롬프트 입력창에 삽입됩니다.',
+          )}
           action={
             <button
               type="button"
@@ -221,7 +227,9 @@ export function PluginMetaSections({ record, omit, compact, heading, variant = '
               onClick={copyQuery}
             >
               <Icon name="copy" size={12} />
-              {copied ? 'Copied' : 'Copy'}
+              {copied
+                ? embedUiLabel('Copied', '복사됨')
+                : embedUiLabel('Copy', '복사')}
             </button>
           }
         >
@@ -236,7 +244,7 @@ export function PluginMetaSections({ record, omit, compact, heading, variant = '
             data-testid="plugin-meta-advanced"
           >
             <summary className="plugin-meta-sections__advanced-summary">
-              Developer details
+              {embedUiLabel('Developer details', '개발자 정보')}
             </summary>
             {advanced}
           </details>

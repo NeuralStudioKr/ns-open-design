@@ -314,6 +314,10 @@ describe('HtmlSurface authenticated srcDoc', () => {
     expect(
       container.querySelector('.plugins-home__html-fallback-glyph')?.textContent,
     ).toBe('H');
+    // Touch/click path — hover-only retry left mobile thumbs stuck.
+    expect(
+      container.querySelector('[data-testid="plugins-home-html-fallback-retry"]'),
+    ).toBeTruthy();
   });
 
   it('renders the typographic fallback for session_expired JSON (never paints JSON thumb)', async () => {

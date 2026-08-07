@@ -35,6 +35,7 @@ import {
 } from '../../../runtime/authenticatedHtmlSrcDoc';
 import { fetchTeamverDaemon } from '../../../teamver/teamverDaemonHeaders';
 import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../../../teamver/teamverEmbedPassiveAuth';
+import { embedUiLabel } from '../../../teamver/embedUiLabels';
 import type { HtmlPreviewSpec } from '../preview';
 
 /** Linger before inView preview GET — short enough for gallery UX, long enough to skip scroll-by. */
@@ -439,18 +440,38 @@ function UnreachableFallback({
   const style = {
     background: `linear-gradient(135deg, hsl(${hue} 60% 18%), hsl(${(hue + 24) % 360} 50% 9%))`,
   };
+  const retryLabel = embedUiLabel(
+    `Retry ${pluginTitle} preview`,
+    `${pluginTitle} 미리보기 다시 시도`,
+  );
   return (
     <div
       className="plugins-home__html plugins-home__html--fallback"
       data-plugin-id={pluginId}
       data-testid="plugins-home-html-fallback"
       style={style}
-      aria-hidden
       onMouseEnter={() => onRetry?.()}
     >
-      <div className="plugins-home__html-fallback-glyph">{glyph}</div>
+      <div className="plugins-home__html-fallback-glyph" aria-hidden>
+        {glyph}
+      </div>
+      {onRetry ? (
+        <button
+          type="button"
+          className="plugins-home__html-fallback-retry"
+          data-testid="plugins-home-html-fallback-retry"
+          onClick={(event) => {
+            // Gallery tiles open details on card click — keep retry local.
+            event.stopPropagation();
+            onRetry();
+          }}
+          aria-label={retryLabel}
+        >
+          {embedUiLabel('Retry', '다시 시도')}
+        </button>
+      ) : null}
       {eager ? null : (
-        <div className="plugins-home__html-chrome">
+        <div className="plugins-home__html-chrome" aria-hidden>
           <span className="plugins-home__html-dot" />
           <span className="plugins-home__html-dot" />
           <span className="plugins-home__html-dot" />
