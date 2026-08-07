@@ -1,5 +1,10 @@
 import { normalizeProjectFilePath, projectFilePathBasename } from './projectFilePaths';
 
+/** Trim + normalize slashes only — never NFC-normalize output paths. */
+function toRawPath(value: string): string {
+  return String(value ?? '').trim().replace(/\\/g, '/');
+}
+
 /**
  * Upgrade a basename-only attachment / mention path to the real nested
  * project path (`refs/drive/…`, `uploads/…`) when the file index knows it.
@@ -10,19 +15,19 @@ export function resolveCanonicalProjectImagePath(
   path: string,
   projectFilePaths: readonly string[],
 ): string {
-  const normalized = normalizeProjectFilePath(path);
-  if (!normalized || !isImagePath(normalized)) return normalized || String(path || '').trim();
-  if (projectFilePaths.length === 0) return normalized;
+  const raw = toRawPath(path);
+  if (!raw || !isImagePath(raw)) return raw;
+  if (projectFilePaths.length === 0) return raw;
   // Reuse the HTML healer on a one-img document so basename→Drive upgrades
   // stay in one place (including preferred-path poison handling).
-  const safe = normalized.replace(/"/g, '');
+  const safe = raw.replace(/"/g, '');
   const healed = rewriteAttachmentImageSrcs(
     `<img src="${safe}">`,
     projectFilePaths,
-    { preferredPaths: [normalized] },
+    { preferredPaths: [raw] },
   );
   const match = /src="([^"]+)"/i.exec(healed);
-  return match?.[1] ? normalizeProjectFilePath(match[1]) || normalized : normalized;
+  return match?.[1] ? toRawPath(match[1]) : raw;
 }
 
 /**
@@ -34,6 +39,12 @@ export function resolveCanonicalProjectImagePath(
  * project root. FE used to keep `ChatAttachment.name = originalName`, so
  * model-facing prompts advertised `photo.jpeg` while the file was
  * `msh9y0i9-photo.jpeg` — broken <img> + alt-only in preview/export.
+ *
+ * Preserves the exact byte form the daemon returned in `projectFilePaths`
+ * (NFC vs NFD). The daemon `/raw/` route is byte-exact on Linux disks — if
+ * the file is stored NFD (macOS upload) and we output NFC, subresources
+ * 404 under the preview `<base href>`. Matching uses NFC-tolerant compare
+ * keys, but the rewritten `src` is always the daemon-reported form.
  */
 export function rewriteAttachmentImageSrcs(
   html: string,
@@ -44,32 +55,53 @@ export function rewriteAttachmentImageSrcs(
 
   const preferred = new Set(
     (options?.preferredPaths ?? [])
-      .map((path) => normalizeProjectFilePath(path))
+      .map((path) => toRawPath(path))
       .filter(Boolean),
   );
 
-  const byExact = new Set<string>();
+  const rawByCompareKey = new Map<string, string>();
+  const rememberRaw = (rawPath: string): void => {
+    if (!rawPath || rawByCompareKey.has(rawPath)) return;
+    rawByCompareKey.set(rawPath, rawPath);
+    const nfc = normalizeProjectFilePath(rawPath);
+    if (nfc && nfc !== rawPath && !rawByCompareKey.has(nfc)) {
+      rawByCompareKey.set(nfc, rawPath);
+    }
+  };
+  const toDiskPath = (candidate: string | undefined | null): string | null => {
+    if (!candidate) return null;
+    const raw = toRawPath(candidate);
+    if (rawByCompareKey.has(raw)) return rawByCompareKey.get(raw)!;
+    const nfc = normalizeProjectFilePath(raw);
+    if (nfc && rawByCompareKey.has(nfc)) return rawByCompareKey.get(nfc)!;
+    return raw;
+  };
+
+  const exactKeys = new Set<string>();
   const byBasename = new Map<string, string[]>();
   const bySanitizedStem = new Map<string, string[]>();
   const byLettersOnly = new Map<string, string[]>();
 
-  for (const raw of projectFilePaths) {
-    const path = normalizeProjectFilePath(raw);
-    if (!path || !isImagePath(path)) continue;
-    byExact.add(path);
-    const base = projectFilePathBasename(path);
-    pushMap(byBasename, base.toLowerCase(), path);
+  for (const source of projectFilePaths) {
+    const raw = toRawPath(source);
+    if (!raw || !isImagePath(raw)) continue;
+    rememberRaw(raw);
+    const nfcPath = normalizeProjectFilePath(raw) || raw;
+    exactKeys.add(nfcPath);
+    exactKeys.add(raw);
+    const base = projectFilePathBasename(nfcPath);
+    pushMap(byBasename, base.toLowerCase(), raw);
     const stem = stripUploadTimestampPrefix(base);
     if (stem && stem !== base) {
-      pushMap(bySanitizedStem, stem.toLowerCase(), path);
-      pushMap(bySanitizedStem, sanitizeUploadFilename(stem).toLowerCase(), path);
+      pushMap(bySanitizedStem, stem.toLowerCase(), raw);
+      pushMap(bySanitizedStem, sanitizeUploadFilename(stem).toLowerCase(), raw);
     }
-    pushMap(bySanitizedStem, sanitizeUploadFilename(base).toLowerCase(), path);
+    pushMap(bySanitizedStem, sanitizeUploadFilename(base).toLowerCase(), raw);
     const letters = lettersOnlyImageStem(stem || base);
-    if (letters) pushMap(byLettersOnly, letters, path);
+    if (letters) pushMap(byLettersOnly, letters, raw);
   }
 
-  if (byExact.size === 0) return html;
+  if (exactKeys.size === 0) return html;
 
   const resolve = (rawSrc: string): string | null => {
     const normalized = normalizeProjectRelativeImageSrc(rawSrc);
@@ -83,18 +115,18 @@ export function rewriteAttachmentImageSrcs(
       ?? bySanitizedStem.get(sanitizeUploadFilename(normalized).toLowerCase())
       ?? byLettersOnly.get(lettersOnlyImageStem(base));
 
-    // Nested exact path is already on-disk-correct.
-    if (byExact.has(normalized) && normalized.includes('/')) {
-      return normalized;
+    // Nested exact path is already on-disk-correct → map back to daemon-form.
+    if (exactKeys.has(normalized) && normalized.includes('/')) {
+      return toDiskPath(normalized);
     }
 
     // Basename-only exact hits are NOT terminal: mention recovery / preferredPaths
     // often poison the index with `msh9….webp` while the real file lives under
     // `refs/drive/`. Always try an upgrade before accepting the bare name.
-    if (byExact.has(normalized) && !normalized.includes('/')) {
+    if (exactKeys.has(normalized) && !normalized.includes('/')) {
       const upgraded = pickUniqueRewriteCandidate(candidates, normalized, preferred);
       if (upgraded) return upgraded;
-      return normalized;
+      return toDiskPath(normalized);
     }
 
     return pickUniqueRewriteCandidate(candidates, normalized, preferred);
@@ -155,8 +187,9 @@ export function normalizeProjectRelativeImageSrc(src: string): string | null {
       // Keep the encoded form and let exact/fuzzy maps miss rather than throw.
     }
   }
-  // Hangul / macOS NFD ↔ NFC so Drive embeds match on-disk NFC keys.
-  return normalizeProjectFilePath(normalized) || null;
+  // Note: NFC-normalize is deferred to the resolver's compare keys so we do
+  // NOT overwrite Hangul NFD paths that the daemon literally stored on disk.
+  return normalized || null;
 }
 
 function isImagePath(path: string): boolean {

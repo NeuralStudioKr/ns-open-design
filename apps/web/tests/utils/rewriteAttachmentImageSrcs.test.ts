@@ -36,6 +36,29 @@ describe('rewriteAttachmentImageSrcs', () => {
     expect(rewriteAttachmentImageSrcs(html, [stored])).toContain(`src="${stored}"`);
   });
 
+  it('preserves the daemon-reported NFD path (does NOT rewrite to NFC)', () => {
+    // Daemon stored the file NFD on disk (macOS upload); the preview base
+    // href resolves subresources byte-exact, so rewriting to NFC would 404.
+    const nfd = 'refs/drive/msh9rso1-' + '금붕어'.normalize('NFD') + '.webp';
+    const nfc = 'refs/drive/msh9rso1-' + '금붕어'.normalize('NFC') + '.webp';
+    expect(nfd).not.toBe(nfc);
+    const html = `<img src="${nfc}" alt="">`;
+    // Only the NFD form is in the file listing (what daemon returned).
+    const out = rewriteAttachmentImageSrcs(html, [nfd]);
+    expect(out).toContain(`src="${nfd}"`);
+  });
+
+  it('upgrades basename to daemon-reported NFD Drive path (not NFC-mangled)', () => {
+    const nfd = 'refs/drive/msh9rso1-' + '금붕어'.normalize('NFD') + '.webp';
+    const basename = 'msh9rso1-' + '금붕어'.normalize('NFC') + '.webp';
+    const html = `<img src="${basename}" alt="">`;
+    const out = rewriteAttachmentImageSrcs(html, [nfd, basename], {
+      preferredPaths: [basename],
+    });
+    // Must upgrade to daemon path preserving NFD.
+    expect(out).toContain(`src="${nfd}"`);
+  });
+
   it('prefers the newest timestamped local upload when multiple stems collide', () => {
     const html = '<img src="photo.jpeg" alt="">';
     const next = rewriteAttachmentImageSrcs(html, [
