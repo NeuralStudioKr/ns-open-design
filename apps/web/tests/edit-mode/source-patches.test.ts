@@ -1397,6 +1397,7 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain('Unquoted unsafe SVG href/xlink:href fragments');
     expect(sourcePatchesSource).toContain("lower === 'usemap' || lower === 'href' || lower === 'xlink:href'");
     expect(sourcePatchesSource).toContain("lower === 'srcset' || lower === 'imagesrcset'");
+    expect(sourcePatchesSource).toContain('Multi-token ping — drop when ANY whitespace token');
   });
 
   it('exposes single-document mutate/batch apply helpers', () => {

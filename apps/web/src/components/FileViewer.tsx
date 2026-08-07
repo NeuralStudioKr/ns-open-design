@@ -3674,7 +3674,7 @@ const HOST_ALLOWED_INSPECT_PROPS = new Set([
 // surrounding <style> block — semicolons, braces, angle brackets, and
 // newlines — plus CSS url()/expression()/javascript: (XSS via inspect CSS).
 // Mirrors the bridge's UNSAFE_VALUE regex.
-const HOST_UNSAFE_INSPECT_VALUE = /[;{}<>\n\r]|url\s*\(|expression\s*\(|javascript\s*:|vbscript\s*:/i;
+const HOST_UNSAFE_INSPECT_VALUE = /[;{}<>\n\r]|url\s*\(|expression\s*\(|javascript\s*:|vbscript\s*:|data\s*:/i;
 
 // Reject elementIds whose characters could break out of `[attr="..."]`
 // inside a <style> block. Forbidden:
@@ -5480,8 +5480,15 @@ function HtmlViewer({
       const pinned = manualEditPinnedSourceRef.current;
       if (pinned?.source) {
         rememberStablePreviewSource(projectId, file.name, pinned.source);
-        // Already painting the pinned frame — skip srcdoc tear / remount flash.
-        if (sourceRef.current === pinned.source) return;
+        // Active pin owns the painted frame — adopt pin if paint drifted;
+        // never tear srcdoc / bust reloadKey while the pin is live.
+        if (sourceRef.current !== pinned.source) {
+          setSource(pinned.source);
+          sourceRef.current = pinned.source;
+          lastStablePreviewSourceRef.current = pinned.source;
+          exportHtmlSnapshotGateRef.current = pinned.source;
+        }
+        return;
       }
     } else {
       manualEditPinnedSourceRef.current = null;
@@ -5668,6 +5675,8 @@ function HtmlViewer({
   );
   const [manualEditHoverTarget, setManualEditHoverTarget] = useState<ManualEditTarget | null>(null);
   const [manualEditPageStylesOpen, setManualEditPageStylesOpen] = useState(false);
+  const manualEditPageStylesOpenRef = useRef(false);
+  manualEditPageStylesOpenRef.current = manualEditPageStylesOpen;
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
   const [manualEditPanelCollapsed, setManualEditPanelCollapsed] = useState(false);
   const manualEditPanelPositionRef = useRef<{ left: number; top: number } | null>(null);
@@ -6332,8 +6341,11 @@ function HtmlViewer({
         // shell stays on prior frame. Keep the last good text instead.
         if (text == null) {
           if (lastStablePreviewSourceRef.current) {
-            setSource(lastStablePreviewSourceRef.current);
-            sourceRef.current = lastStablePreviewSourceRef.current;
+            const stable = lastStablePreviewSourceRef.current;
+            if (sourceRef.current !== stable) {
+              setSource(stable);
+              sourceRef.current = stable;
+            }
             clearPreviewSourceWall();
             setSourceLoadFailed(false);
             return;
@@ -8089,12 +8101,13 @@ function HtmlViewer({
     }
     revisionRefreshListRetryRef.current = 0;
     // Warm soft-cache so tip-lag disk soft-retries reuse this list.
+    // Prefer active → head → tip (revisions ascend; [0] is oldest).
     {
       const softSeq = getActiveRevisionSequence(projectId, file.name)
-        ?? list.revisions[0]?.sequence;
+        ?? list.revisions.find((revision) => revision.id === list.headRevisionId)?.sequence
+        ?? list.revisions.at(-1)?.sequence;
       if (typeof softSeq === 'number') {
-        const key = revisionListSoftCacheKey(projectId, file.name);
-        revisionListSoftCache.set(key, { activeSeq: softSeq, list, at: Date.now() });
+        warmRevisionListSoftCacheFromList(projectId, file.name, softSeq, list);
       }
     }
     if (typeof list.retentionLimit === 'number') {
@@ -8191,6 +8204,13 @@ function HtmlViewer({
     const cursorRevision = nextStack.revisions.find((revision) => revision.id === nextStack.cursorRevisionId);
     if (cursorRevision) {
       setActiveRevisionSequence(projectId, file.name, cursorRevision.sequence);
+      // Re-key soft-cache to the cursor/tip seq (not the oldest fallback).
+      warmRevisionListSoftCacheFromList(
+        projectId,
+        file.name,
+        cursorRevision.sequence,
+        list,
+      );
     } else {
       clearActiveRevisionSequence(projectId, file.name);
     }
@@ -8855,7 +8875,15 @@ function HtmlViewer({
         // Clicking empty canvas deselects and opens the compact page-styles
         // card — only meaningful for full HTML documents. Flush pending
         // styles first so a background click does not discard unsaved tweaks.
+        manualEditHoverTargetIdRef.current = null;
         setManualEditHoverTarget(null);
+        // Already on empty page-styles — skip clear/draft wipe churn.
+        if (
+          !selectedManualEditTargetIdRef.current
+          && manualEditPageStylesOpenRef.current
+        ) {
+          return;
+        }
         if (typeof source === 'string' && isManualEditFullHtmlDocument(source)) {
           void clearManualEditTargetSelection().then((ok) => {
             if (ok) setManualEditPageStylesOpen(true);
@@ -8962,7 +8990,8 @@ function HtmlViewer({
       );
       setSelectedManualEditTarget(null);
       setManualEditFrozenSource(null);
-      setReloadKey((key) => key + 1);
+      // Manual-edit is srcdoc — URL-load only needs reloadKey bust.
+      if (useUrlLoadPreview) setReloadKey((key) => key + 1);
       return;
     }
     const sourceStyles = snapshot.styles;
@@ -10739,9 +10768,12 @@ function HtmlViewer({
       current.fullSource === sourceToApply ? current : { ...current, fullSource: sourceToApply }
     ));
     if (!contentUnchanged) {
-      if (manualEditMode && !useUrlLoadPreview) {
-        capturePreviewScrollPosition();
-        queueMicrotask(() => activateManualEditPreviewHtml(sourceToApply));
+      if (!useUrlLoadPreview) {
+        // srcdoc (edit or preview) updates via setSource / freeze activate.
+        if (manualEditMode) {
+          capturePreviewScrollPosition();
+          queueMicrotask(() => activateManualEditPreviewHtml(sourceToApply));
+        }
       } else {
         setReloadKey((k) => k + 1);
       }

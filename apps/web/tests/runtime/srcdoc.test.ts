@@ -373,7 +373,7 @@ describe('buildSrcdoc', () => {
 
     // Value sanitizer drops any character that could close the declaration,
     // the rule, or the <style> element.
-    expect(srcdoc).toContain('var UNSAFE_VALUE = /[;{}<>\\n\\r]|url\\s*\\(|expression\\s*\\(|javascript\\s*:|vbscript\\s*:/i;');
+    expect(srcdoc).toContain('var UNSAFE_VALUE = /[;{}<>\\n\\r]|url\\s*\\(|expression\\s*\\(|javascript\\s*:|vbscript\\s*:|data\\s*:/i;');
     expect(srcdoc).toContain('UNSAFE_VALUE.test(v)');
     expect(srcdoc).toContain('Mirror HOST_UNSAFE_INSPECT_VALUE');
 

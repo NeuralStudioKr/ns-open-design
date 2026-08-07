@@ -1604,7 +1604,7 @@ function injectSelectionBridge(
   // semicolons (extra declarations), braces (close the rule), angle
   // brackets (close the <style> tag), and newlines (defense in depth).
   // Mirror HOST_UNSAFE_INSPECT_VALUE — block url()/expression()/javascript:.
-  var UNSAFE_VALUE = /[;{}<>\\n\\r]|url\\s*\\(|expression\\s*\\(|javascript\\s*:|vbscript\\s*:/i;
+  var UNSAFE_VALUE = /[;{}<>\\n\\r]|url\\s*\\(|expression\\s*\\(|javascript\\s*:|vbscript\\s*:|data\\s*:/i;
   function active(){ return commentEnabled || inspectEnabled; }
   function deckSlideIndexForPayload(anchorEl){
     // Prefer the slide that actually contains the clicked element. The

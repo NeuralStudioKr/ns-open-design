@@ -1577,6 +1577,16 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
       /\s(?:srcset|imagesrcset|archive|values)\s*=\s*[^\s>]*(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|\/\/)[^\s>]*/gi,
       '',
     )
+    // Multi-token ping — drop when ANY whitespace token is absolute/proto/\\.
+    // (DOM: isSafeManualEditUrlAttrValue('ping') per-token relative-only.)
+    .replace(
+      /\sping\s*=\s*(['"])[\s\S]*?(?:\s(?:[a-z][a-z0-9+.-]*\s*:|\/\/)|\\)[\s\S]*?\1/gi,
+      '',
+    )
+    .replace(
+      /\sping\s*=\s*[^\s>]*(?:\s(?:[a-z][a-z0-9+.-]*\s*:|\/\/)|\\)[^\s>]*/gi,
+      '',
+    )
     // SVG paint/resource tags — fail closed to same-document #fragment only
     // (DOM: MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS + isSafeManualEditSvgResourceRef).
     // Absolute https://… / path / backslash survive generic URL-attr deny above.
