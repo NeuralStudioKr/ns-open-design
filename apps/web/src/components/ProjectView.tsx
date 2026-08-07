@@ -8302,6 +8302,34 @@ export function ProjectView({
           // turns get the surgical contract instead of greenfield full-deck
           // pressure (which collapses 8-slide decks to 2).
           autoAttachedDeckPath = deckPath;
+        } else if (slideOnlyMvp) {
+          // Fallback root-cause guard: `/files` may 502 or hydrate empty on
+          // a cold sibling pod, so `filesSnapshot` is empty even though the
+          // project already has a deck. If the SEND ATTACHMENTS themselves
+          // reference a canonical deck HTML (composer auto-attach, previous
+          // assistant echo, auto-continue seed), treat this turn as an
+          // existing-deck edit — otherwise the greenfield instruction slips
+          // through and the model regenerates a fresh 2-slide placeholder
+          // (which stub-guard then correctly rejects, but the whole turn is
+          // wasted).
+          const attachedDeck = effectiveAttachments.find((attachment) => {
+            const attachPath = String(attachment.path || attachment.name || '').trim();
+            return attachPath && isCanonicalDeckFileName(attachPath);
+          });
+          if (attachedDeck) {
+            autoAttachedDeckPath = attachedDeck.path?.trim() || attachedDeck.name;
+          } else if (retryTarget || isAutoContinueSend) {
+            // On auto-continue / retry, the failed assistant's origin user
+            // typically had a deck attachment or the project already had a
+            // deck. Refusing to mark existing-deck-edit here loops the same
+            // greenfield → 2-slide → stub-guard reject failure on every retry.
+            const historyDeck = (retryTarget?.userMsg.attachments ?? []).find(
+              (attachment) => isCanonicalDeckFileName(String(attachment.path || attachment.name || '')),
+            );
+            if (historyDeck) {
+              autoAttachedDeckPath = historyDeck.path?.trim() || historyDeck.name;
+            }
+          }
         }
       }
       const instructionAttachments = retryTarget
