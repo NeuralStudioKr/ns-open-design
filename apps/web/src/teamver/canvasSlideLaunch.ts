@@ -180,7 +180,7 @@ export function canvasCreateSlidesRunPrompt(
     ? [
       "\n\n[Selected slide template]",
       `The user picked "${title}" as the deck template. Match its visual identity — palette, typography, layout, and motif — as closely as the template specification in the system prompt allows.`,
-      "Do not fall back to a neutral / default deck styling just because the source material is unrelated to the template's theme.",
+      "If the source material's topic doesn't fit the template's theme (e.g. business content picked with a terminal template), restyle the content into this template's visual language anyway. Do NOT return an empty deck because of the mismatch; an imperfect visual match is better than no deck.",
     ].join("\n")
     : "";
   const brief = compactCanvasBriefValue(sourceBrief ?? "", 900);
