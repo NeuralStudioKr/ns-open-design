@@ -186,6 +186,8 @@ export function PluginExampleDetail({
             menu: templateUseMenu,
           }}
       hideSidebarToggle
+      // Temporarily hide Share until the template export/share menu is redesigned.
+      hideShareMenu
       onSharePopoverItemClick={onSharePopoverItemClick}
     />
   );

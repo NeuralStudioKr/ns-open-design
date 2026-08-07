@@ -113,6 +113,32 @@ describe('PreviewModal sandbox isolation', () => {
     expect(markup).not.toContain('preview-modal-deck-nav');
   });
 
+  it('hides the share menu when hideShareMenu is set', () => {
+    const markup = renderToStaticMarkup(
+      <PreviewModal
+        title="Template detail"
+        views={[
+          {
+            id: 'preview',
+            label: 'Preview',
+            html: '<section class="slide">one</section>',
+            deck: true,
+          },
+        ]}
+        shareTarget={{
+          title: 'Template detail',
+          url: 'https://example.com/templates/demo',
+        }}
+        hideShareMenu
+        exportTitleFor={() => 'template'}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(markup).not.toContain('template-share-menu');
+    expect(markup).not.toContain('template-share-trigger');
+  });
+
   it('includes popup flags in the sandbox attribute', () => {
     const markup = renderToStaticMarkup(
       <PreviewModal
