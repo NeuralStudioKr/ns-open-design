@@ -272,6 +272,21 @@ describe('DesignFilesPanel preview', () => {
     expect(onOpenFile).toHaveBeenCalledWith('chart.png');
   });
 
+  it('renders deck.html preview with a scaled HTML cover frame (not a stretched black clip)', () => {
+    const { container } = renderPanel([
+      file({ name: 'deck.html', kind: 'html', size: 26_600 }),
+    ]);
+    fireEvent.click(container.querySelector('.df-file-row .df-row-name-btn')!);
+
+    const frame = container.querySelector('.df-preview-html-frame');
+    expect(frame).toBeTruthy();
+    // Loading shimmer or scaled iframe — never a bare 100%-stretched iframe alone.
+    expect(
+      container.querySelector('.df-preview-html-loading, .df-preview-html-iframe'),
+    ).toBeTruthy();
+    expect(container.querySelector('.df-preview-thumb > iframe')).toBeNull();
+  });
+
   it('renders sketch files with the static sketch preview instead of a broken image', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       version: 1,

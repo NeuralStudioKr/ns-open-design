@@ -8,7 +8,7 @@ import { useTeamverBranding } from '../teamver/branding/TeamverBrandingProvider'
 import { partitionEmbedDesignFileSections } from '../teamver/branding/embedDeliverableFilePolicy';
 import { projectFileUrl, projectRawUrl } from '../providers/registry';
 import { fetchTeamverDaemon } from '../teamver/teamverDaemonHeaders';
-import { buildHtmlCoverSrcDoc } from '../teamver/htmlCoverSrcDoc';
+import { ProjectCardHtmlCover } from '../teamver/components/ProjectCardHtmlCover';
 import type { LiveArtifactWorkspaceEntry, ProjectFile, ProjectFileKind, ProjectFolder } from '../types';
 import {
   createFileSystemReadError,
@@ -1366,38 +1366,22 @@ function HtmlPreviewThumbnail({
   projectId: string;
   file: ProjectFile;
 }) {
-  const url = projectFileUrl(projectId, file.name);
-  const [srcDoc, setSrcDoc] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void fetch(`${url}?v=${Math.round(file.mtime)}`)
-      .then((response) => (response.ok ? response.text() : null))
-      .then((html) => {
-        if (cancelled || html === null) return;
-        setSrcDoc(
-          buildHtmlCoverSrcDoc(html, projectRawUrl(projectId, baseDirForFile(file.name))),
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setSrcDoc(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [file.mtime, file.name, projectId, url]);
-
+  // Reuse ProjectCardHtmlCover: authenticated fetch + scoped preview base +
+  // 1920×1080 → thumb scale. The previous bare iframe stretched to the thumb
+  // box clipped the top-left of a dark cover slide (looked like a black void).
+  const path = projectFileResolvedPath(file) || file.name;
+  const src = `${projectRawUrl(projectId, path)}?v=${Math.round(file.mtime)}`;
+  const deckCoverOnly = /(^|\/)deck[^/]*\.html?$/i.test(path);
   return (
-    <iframe
-      title={file.name}
-      srcDoc={srcDoc ?? undefined}
-      sandbox="allow-scripts allow-downloads"
+    <ProjectCardHtmlCover
+      src={src}
+      deckCoverOnly={deckCoverOnly}
+      deferUntilVisible={false}
+      deckFrameClassName="df-preview-html-frame"
+      deckIframeClassName="df-preview-html-iframe"
+      deckLoadingClassName="df-preview-html-loading"
     />
   );
-}
-
-function baseDirForFile(name: string): string {
-  const index = name.lastIndexOf('/');
-  return index >= 0 ? name.slice(0, index + 1) : '';
 }
 
 function fileExtensionLabel(name: string): string {
