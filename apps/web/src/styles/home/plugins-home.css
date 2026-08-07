@@ -522,6 +522,10 @@
   background: var(--bg-panel);
   color: var(--accent);
 }
+.plugins-home__gallery-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .plugins-home__gallery-frame {
   position: relative;
   height: 300px;
@@ -1236,6 +1240,15 @@ button.home-templates-reveal__hint:focus-visible {
   }
   .home-templates-reveal__body {
     transition: none;
+  }
+  .plugins-home__card--gallery .plugins-home__html-iframe,
+  .plugins-home__card--gallery:hover .plugins-home__html-iframe {
+    transition: none;
+    top: 0;
+  }
+  .plugins-home__html-skeleton.is-active span,
+  .plugins-home__media-skeleton.is-active {
+    animation: none;
   }
 }
 

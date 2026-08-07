@@ -377,7 +377,10 @@ export function HtmlSurface({
       <div className="plugins-home__html-frame">
         {armed && srcDoc ? (
           <iframe
-            title={`${pluginTitle} preview`}
+            title={embedUiLabel(
+              `${pluginTitle} preview`,
+              `${pluginTitle} 미리보기`,
+            )}
             srcDoc={srcDoc}
             sandbox="allow-scripts"
             loading="lazy"
@@ -413,7 +416,7 @@ interface UnreachableFallbackProps {
   pluginTitle: string;
   preview: HtmlPreviewSpec;
   eager?: boolean;
-  onRetry?: () => void;
+  onRetry?: (options?: { force?: boolean }) => void;
 }
 
 // Stable colour from the plugin id so adjacent fallback tiles stay
@@ -463,7 +466,9 @@ function UnreachableFallback({
           onClick={(event) => {
             // Gallery tiles open details on card click — keep retry local.
             event.stopPropagation();
-            onRetry();
+            // Force bypasses the sticky-404 empty-string cache that would
+            // otherwise make an explicit Retry a silent no-op.
+            onRetry({ force: true });
           }}
           aria-label={retryLabel}
         >

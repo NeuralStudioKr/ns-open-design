@@ -256,7 +256,9 @@ describe('HtmlSurface authenticated srcDoc', () => {
       />,
     );
     await waitFor(() => {
-      expect(document.querySelector('iframe[title="Html Ppt preview"]')).toBeTruthy();
+      const iframe = document.querySelector('iframe.plugins-home__html-iframe');
+      expect(iframe).toBeTruthy();
+      expect(iframe?.getAttribute('title')).toMatch(/Html Ppt (preview|미리보기)/);
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -318,6 +320,44 @@ describe('HtmlSurface authenticated srcDoc', () => {
     expect(
       container.querySelector('[data-testid="plugins-home-html-fallback-retry"]'),
     ).toBeTruthy();
+  });
+
+  it('force-retries sticky 404 cache when Retry is clicked', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(notFoundResponse())
+      .mockResolvedValueOnce(htmlResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(
+      <HtmlSurface
+        preview={PREVIEW}
+        pluginId="example-html-ppt"
+        pluginTitle="Html Ppt"
+        inView
+        eager
+      />,
+    );
+    await waitFor(
+      () => {
+        expect(
+          container.querySelector('[data-testid="plugins-home-html-fallback-retry"]'),
+        ).toBeTruthy();
+      },
+      { timeout: 2000 },
+    );
+    const callsAfter404 = fetchMock.mock.calls.length;
+    (
+      container.querySelector(
+        '[data-testid="plugins-home-html-fallback-retry"]',
+      ) as HTMLButtonElement
+    ).click();
+    await waitFor(
+      () => {
+        expect(fetchMock.mock.calls.length).toBeGreaterThan(callsAfter404);
+        expect(container.querySelector('iframe')).toBeTruthy();
+      },
+      { timeout: 2000 },
+    );
   });
 
   it('renders the typographic fallback for session_expired JSON (never paints JSON thumb)', async () => {

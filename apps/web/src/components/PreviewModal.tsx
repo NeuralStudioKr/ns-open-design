@@ -333,17 +333,21 @@ export function PreviewModal({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (primaryMenuOpen) {
+        e.preventDefault();
         setPrimaryMenuOpen(false);
         return;
       }
       if (templateShareOpen) {
+        e.preventDefault();
         setTemplateShareOpen(false);
         return;
       }
       if (fullscreen) {
+        e.preventDefault();
         setFullscreen(false);
         return;
       }
+      e.preventDefault();
       onClose();
     };
     document.addEventListener('keydown', onKey);
@@ -517,6 +521,7 @@ export function PreviewModal({
     if (!activeDeck || !activeHtml) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (primaryMenuOpen || templateShareOpen) return;
       if (slideState === null) return;
       const target = e.target as HTMLElement | null;
       if (
@@ -540,7 +545,7 @@ export function PreviewModal({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [activeDeck, activeHtml, activeId, slideState]);
+  }, [activeDeck, activeHtml, activeId, slideState, primaryMenuOpen, templateShareOpen]);
   const exportTitle = exportTitleFor(activeView?.id ?? '');
   const canExportFiles = Boolean(activeHtml);
   const previewShareTitle = shareTarget?.title || exportTitle || title;
