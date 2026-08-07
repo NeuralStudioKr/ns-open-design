@@ -141,6 +141,15 @@ describe("imageAttachmentPathsForSlideEmbed", () => {
       ]),
     ).toEqual(["photo.png"]);
   });
+
+  it("upgrades basename mentions to refs/drive when the file index knows it", () => {
+    expect(
+      imageAttachmentPathsForSlideEmbed(
+        [{ path: "msh9rso1-서빙하는-금붕어.webp", name: "서빙하는-금붕어.webp", kind: "image" }],
+        ["refs/drive/msh9rso1-서빙하는-금붕어.webp", "deck.html"],
+      ),
+    ).toEqual(["refs/drive/msh9rso1-서빙하는-금붕어.webp"]);
+  });
 });
 
 describe("resolveCanonicalDeckFileForEdit", () => {

@@ -1,6 +1,31 @@
 import { normalizeProjectFilePath, projectFilePathBasename } from './projectFilePaths';
 
 /**
+ * Upgrade a basename-only attachment / mention path to the real nested
+ * project path (`refs/drive/…`, `uploads/…`) when the file index knows it.
+ * Used so embed instructions and heal preferredPaths do not advertise a
+ * root-relative src that 404s under the deck `<base href>`.
+ */
+export function resolveCanonicalProjectImagePath(
+  path: string,
+  projectFilePaths: readonly string[],
+): string {
+  const normalized = normalizeProjectFilePath(path);
+  if (!normalized || !isImagePath(normalized)) return normalized || String(path || '').trim();
+  if (projectFilePaths.length === 0) return normalized;
+  // Reuse the HTML healer on a one-img document so basename→Drive upgrades
+  // stay in one place (including preferred-path poison handling).
+  const safe = normalized.replace(/"/g, '');
+  const healed = rewriteAttachmentImageSrcs(
+    `<img src="${safe}">`,
+    projectFilePaths,
+    { preferredPaths: [normalized] },
+  );
+  const match = /src="([^"]+)"/i.exec(healed);
+  return match?.[1] ? normalizeProjectFilePath(match[1]) || normalized : normalized;
+}
+
+/**
  * Heal deck HTML where the model embedded a human/original filename (or the
  * sanitized basename without the upload timestamp prefix) instead of the
  * real project-relative path returned by `/upload`.
@@ -49,7 +74,6 @@ export function rewriteAttachmentImageSrcs(
   const resolve = (rawSrc: string): string | null => {
     const normalized = normalizeProjectRelativeImageSrc(rawSrc);
     if (!normalized) return null;
-    if (byExact.has(normalized)) return normalized;
 
     const base = projectFilePathBasename(normalized);
     const candidates =
@@ -58,6 +82,20 @@ export function rewriteAttachmentImageSrcs(
       ?? bySanitizedStem.get(sanitizeUploadFilename(base).toLowerCase())
       ?? bySanitizedStem.get(sanitizeUploadFilename(normalized).toLowerCase())
       ?? byLettersOnly.get(lettersOnlyImageStem(base));
+
+    // Nested exact path is already on-disk-correct.
+    if (byExact.has(normalized) && normalized.includes('/')) {
+      return normalized;
+    }
+
+    // Basename-only exact hits are NOT terminal: mention recovery / preferredPaths
+    // often poison the index with `msh9….webp` while the real file lives under
+    // `refs/drive/`. Always try an upgrade before accepting the bare name.
+    if (byExact.has(normalized) && !normalized.includes('/')) {
+      const upgraded = pickUniqueRewriteCandidate(candidates, normalized, preferred);
+      if (upgraded) return upgraded;
+      return normalized;
+    }
 
     return pickUniqueRewriteCandidate(candidates, normalized, preferred);
   };
@@ -170,31 +208,58 @@ function pickUniqueRewriteCandidate(
   if (candidates.length === 1) return candidates[0] ?? null;
 
   if (preferredPaths && preferredPaths.size > 0) {
-    const preferredHits = candidates.filter((path) => preferredPaths.has(path));
-    if (preferredHits.length === 1) return preferredHits[0] ?? null;
+    // Match preferred by exact path OR basename identity so a recovered
+    // `@msh9….webp` attachment still selects `refs/drive/msh9….webp`.
+    const preferredHits = candidates.filter((path) => {
+      if (preferredPaths.has(path)) return true;
+      const base = projectFilePathBasename(path).toLowerCase();
+      for (const pref of preferredPaths) {
+        if (projectFilePathBasename(pref).toLowerCase() === base) return true;
+      }
+      return false;
+    });
+    const preferredNested = preferNestedImagePath(preferredHits, normalizedSrc);
+    if (preferredNested) return preferredNested;
     const newestPreferred = pickNewestTimestampedUpload(preferredHits);
     if (newestPreferred) return newestPreferred;
   }
 
-  // When root upload + Drive share a stem, prefer the Drive path if the model
-  // omitted a directory (the common broken case for Drive attaches).
-  if (!normalizedSrc.includes('/')) {
-    const driveOnly = candidates.filter((path) => path.startsWith('refs/drive/'));
-    if (driveOnly.length === 1) return driveOnly[0] ?? null;
-    const newestDrive = pickNewestTimestampedUpload(driveOnly);
-    if (newestDrive) return newestDrive;
+  return preferNestedImagePath(candidates, normalizedSrc);
+}
 
-    const refsOnly = candidates.filter((path) => path.startsWith('refs/'));
-    const newestRefs = pickNewestTimestampedUpload(refsOnly);
-    if (newestRefs) return newestRefs;
+/**
+ * For directory-less model srcs, prefer `refs/drive/` (then other nested paths)
+ * over a bare basename that only exists because mention recovery poisoned the
+ * heal index / preferredPaths.
+ */
+function preferNestedImagePath(
+  candidates: readonly string[],
+  normalizedSrc: string,
+): string | null {
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0] ?? null;
+  if (normalizedSrc.includes('/')) return null;
 
-    // Multiple local composer uploads can sanitize to the same stem
-    // (`aaa-photo.jpeg`, `bbb-photo.jpeg`). Prefer the newest timestamp prefix
-    // so a bare `src="photo.jpeg"` still heals to the latest attach.
-    const rootUploads = candidates.filter((path) => !path.includes('/'));
-    const newest = pickNewestTimestampedUpload(rootUploads);
-    if (newest) return newest;
-  }
+  const driveOnly = candidates.filter((path) => path.startsWith('refs/drive/'));
+  if (driveOnly.length === 1) return driveOnly[0] ?? null;
+  const newestDrive = pickNewestTimestampedUpload(driveOnly);
+  if (newestDrive) return newestDrive;
+
+  const refsOnly = candidates.filter((path) => path.startsWith('refs/'));
+  const newestRefs = pickNewestTimestampedUpload(refsOnly);
+  if (newestRefs) return newestRefs;
+
+  const nested = candidates.filter((path) => path.includes('/'));
+  if (nested.length === 1) return nested[0] ?? null;
+  const newestNested = pickNewestTimestampedUpload(nested);
+  if (newestNested) return newestNested;
+
+  // Multiple local composer uploads can sanitize to the same stem
+  // (`aaa-photo.jpeg`, `bbb-photo.jpeg`). Prefer the newest timestamp prefix
+  // so a bare `src="photo.jpeg"` still heals to the latest attach.
+  const rootUploads = candidates.filter((path) => !path.includes('/'));
+  const newest = pickNewestTimestampedUpload(rootUploads);
+  if (newest) return newest;
   return null;
 }
 

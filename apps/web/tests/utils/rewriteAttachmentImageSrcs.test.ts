@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  resolveCanonicalProjectImagePath,
   rewriteAttachmentImageSrcs,
   sanitizeUploadFilename,
   stripUploadTimestampPrefix,
@@ -67,6 +68,27 @@ describe('rewriteAttachmentImageSrcs', () => {
     const stored = 'refs/drive/msh5lhfh-놀란고양이-_1_.jpeg';
     const html = '<img src="놀란고양이.jpeg" alt="놀란고양이">';
     expect(rewriteAttachmentImageSrcs(html, [stored])).toContain(`src="${stored}"`);
+  });
+
+  it('upgrades timestamped basename src to refs/drive even when preferredPaths poison exact match', () => {
+    // Mention recovery stores ChatAttachment.path as the bare @mention basename
+    // and unions it into the heal index — previously byExact short-circuited
+    // and left preview resolving `{base}/msh9….webp` (404 → alt/filename only).
+    const drive = 'refs/drive/msh9rso1-서빙하는-금붕어.webp';
+    const basename = 'msh9rso1-서빙하는-금붕어.webp';
+    const html = `<img src="${basename}" alt="서빙하는 금붕어">`;
+    expect(
+      rewriteAttachmentImageSrcs(html, [drive, basename], {
+        preferredPaths: [basename],
+      }),
+    ).toContain(`src="${drive}"`);
+  });
+
+  it('resolveCanonicalProjectImagePath upgrades basename mentions to Drive', () => {
+    const drive = 'refs/drive/msh9rso1-서빙하는-금붕어.webp';
+    expect(
+      resolveCanonicalProjectImagePath('msh9rso1-서빙하는-금붕어.webp', [drive]),
+    ).toBe(drive);
   });
 
   it('ignores absolute and data URIs', () => {

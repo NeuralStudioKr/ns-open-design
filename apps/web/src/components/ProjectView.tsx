@@ -206,7 +206,10 @@ import {
   projectFileResolvedPath,
 } from '../utils/projectFilePaths';
 import { reconcileProjectRawFileMissingCache } from '../utils/projectFileFetchCache';
-import { rewriteAttachmentImageSrcs } from '../utils/rewriteAttachmentImageSrcs';
+import {
+  resolveCanonicalProjectImagePath,
+  rewriteAttachmentImageSrcs,
+} from '../utils/rewriteAttachmentImageSrcs';
 import { healDiskHtmlAttachmentImageSrcs } from '../utils/healDiskHtmlAttachmentImageSrcs';
 import { mergeImageMentionAttachments } from '../utils/recoverChatAttachmentsFromMentions';
 import {
@@ -1197,11 +1200,17 @@ const SLIDE_IMAGE_PATH_RE = /\.(png|jpe?g|gif|webp|avif|svg)$/i;
 
 export function imageAttachmentPathsForSlideEmbed(
   attachments: readonly ChatAttachment[],
+  projectFilePaths?: readonly string[],
 ): string[] {
   const seen = new Set<string>();
   const paths: string[] = [];
+  const index = projectFilePaths ?? [];
   for (const attachment of attachments) {
-    const path = attachment.path.trim();
+    const rawPath = attachment.path.trim();
+    if (!rawPath) continue;
+    const path = index.length > 0
+      ? resolveCanonicalProjectImagePath(rawPath, index)
+      : rawPath;
     if (!path || seen.has(path)) continue;
     const isImage =
       attachment.kind === 'image' || SLIDE_IMAGE_PATH_RE.test(path) || SLIDE_IMAGE_PATH_RE.test(attachment.name);
@@ -1261,15 +1270,23 @@ function slideImageEmbedInstruction(imagePaths: readonly string[]): string {
   ].join('\n');
 }
 
-function slideAttachmentDeliverableInstruction(attachments: ChatAttachment[]): string {
+function slideAttachmentDeliverableInstruction(
+  attachments: ChatAttachment[],
+  projectFilePaths?: readonly string[],
+): string {
+  const index = projectFilePaths ?? [];
   const files = attachments
-    .map((attachment) => attachment.path.trim())
+    .map((attachment) => {
+      const raw = attachment.path.trim();
+      if (!raw) return '';
+      return index.length > 0 ? resolveCanonicalProjectImagePath(raw, index) : raw;
+    })
     .filter(Boolean)
     .slice(0, 12);
   const fileList = files.length > 0
     ? `\nReference files to read/use:\n${files.map((path) => `- ${path}`).join('\n')}`
     : '';
-  const imagePaths = imageAttachmentPathsForSlideEmbed(attachments);
+  const imagePaths = imageAttachmentPathsForSlideEmbed(attachments, projectFilePaths);
   const imageEmbed = imagePaths.length > 0
     ? `\n${slideImageEmbedInstruction(imagePaths)}`
     : '';
@@ -1304,6 +1321,8 @@ export function promptWithSlideAttachmentDeliverableInstruction(
     commentAttachmentCount?: number;
     /** Follow-up edit with the current deck auto-attached — not a greenfield generate. */
     existingDeckEdit?: boolean;
+    /** Current `/files` paths — upgrade basename attachments to refs/drive/… */
+    projectFilePaths?: readonly string[];
   },
 ): string {
   if (!options.slideOnlyMvp || attachments.length === 0) return prompt;
@@ -1311,7 +1330,10 @@ export function promptWithSlideAttachmentDeliverableInstruction(
   // but attached images still need an exact <img src> contract — otherwise
   // board/memo "이 이미지 넣어줘" turns have no path to copy.
   if ((options.commentAttachmentCount ?? 0) > 0 || options.existingDeckEdit) {
-    const imagePaths = imageAttachmentPathsForSlideEmbed(attachments);
+    const imagePaths = imageAttachmentPathsForSlideEmbed(
+      attachments,
+      options.projectFilePaths,
+    );
     if (imagePaths.length === 0) return prompt;
     if (prompt.includes(SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER)) return prompt;
     const visiblePrompt = prompt.trim() || '첨부 이미지를 슬라이드에 넣어줘.';
@@ -1319,7 +1341,10 @@ export function promptWithSlideAttachmentDeliverableInstruction(
   }
   if (prompt.includes(SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER)) return prompt;
   const visiblePrompt = prompt.trim() || '첨부 파일을 참고해서 슬라이드 덱을 만들어줘.';
-  return `${visiblePrompt}\n\n${slideAttachmentDeliverableInstruction(attachments)}`;
+  return `${visiblePrompt}\n\n${slideAttachmentDeliverableInstruction(
+    attachments,
+    options.projectFilePaths,
+  )}`;
 }
 
 /**
@@ -8244,6 +8269,9 @@ export function ProjectView({
       const instructionAttachments = retryTarget
         ? mergeChatAttachments(retryTarget.userMsg.attachments ?? [], effectiveAttachments)
         : effectiveAttachments;
+      const projectFilePathsForEmbed = projectFilesRef.current.map((file) =>
+        String(file.path || file.name || '').trim(),
+      ).filter(Boolean);
       const modelPromptBase = promptWithSlideAttachmentDeliverableInstruction(
         retryTarget ? retryTarget.userMsg.content || prompt : prompt,
         instructionAttachments,
@@ -8251,6 +8279,7 @@ export function ProjectView({
           slideOnlyMvp,
           commentAttachmentCount: scopedCommentAttachments.length,
           existingDeckEdit: autoAttachedDeckPath != null,
+          projectFilePaths: projectFilePathsForEmbed,
         },
       );
       // On Teamver slide-only comment edits, nudge the model into the
@@ -8340,12 +8369,25 @@ export function ProjectView({
       const runCommentAttachments = scopedCommentAttachments;
       runCommentAttachmentsRef.current = runCommentAttachments;
       runVisiblePromptRef.current = stripUserVisibleUserMessageText(prompt).trim();
-      const runAttachments = mergeChatAttachments(
+      const runAttachmentsRaw = mergeChatAttachments(
         userMsg.attachments ?? [],
         ...runCommentAttachments.map((attachment) =>
           chatAttachmentsFromPreviewCommentImages(attachment.imageAttachments),
         ),
       );
+      // Upgrade basename-only recovered mentions to refs/drive/… so persist +
+      // preview heal preferredPaths do not poison exact-match against a 404 root src.
+      const runAttachments = runAttachmentsRaw.map((attachment) => {
+        const raw = attachment.path.trim();
+        if (!raw || !SLIDE_IMAGE_PATH_RE.test(raw)) return attachment;
+        const canonical = resolveCanonicalProjectImagePath(raw, projectFilePathsForEmbed);
+        if (!canonical || canonical === raw) return attachment;
+        return {
+          ...attachment,
+          path: canonical,
+          name: attachment.name?.trim() || projectFilePathBasename(canonical),
+        };
+      });
       runAttachmentsRef.current = runAttachments;
       setPreviewHealAttachmentPaths(
         runAttachments
