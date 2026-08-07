@@ -1516,18 +1516,33 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
       ),
       '',
     )
-    // Navigable URL attrs — align deny list with isSafeManualEditUrl
-    // (blob/file/data/about/filesystem/protocol-relative + common extension schemes).
+    // Bare data:/blob: as presentation value (DOM isSafeManualEditPresentationCssValue).
     .replace(
       new RegExp(
-        `\\s(?:${urlAttrs})\\s*=\\s*(['"])\\s*(?:javascript|vbscript|blob\\s*:|file\\s*:|data\\s*:|about\\s*:|filesystem\\s*:|chrome(?:-extension)?\\s*:|moz-extension\\s*:|resource\\s*:|//)[\\s\\S]*?\\1`,
+        `\\s(?:${presentationAttrs})\\s*=\\s*(['"])\\s*(?:data|blob)\\s*:[\\s\\S]*?\\1`,
         'gi',
       ),
       '',
     )
     .replace(
       new RegExp(
-        `\\s(?:${urlAttrs})\\s*=\\s*(?:javascript|vbscript|blob\\s*:|file\\s*:|data\\s*:|about\\s*:|filesystem\\s*:|chrome(?:-extension)?\\s*:|moz-extension\\s*:|resource\\s*:|//)[^\\s>]*`,
+        `\\s(?:${presentationAttrs})\\s*=\\s*(?:data|blob)\\s*:[^\\s>]*`,
+        'gi',
+      ),
+      '',
+    )
+    // Navigable URL attrs — align deny list with isSafeManualEditUrl
+    // (blob/file/data/about/filesystem/protocol-relative + common extension schemes).
+    .replace(
+      new RegExp(
+        `\\s(?:${urlAttrs})\\s*=\\s*(['"])\\s*(?:javascript|vbscript|blob\\s*:|file\\s*:|data\\s*:|about\\s*:|filesystem\\s*:|chrome(?:-extension)?\\s*:|moz-extension\\s*:|resource\\s*:|view-source\\s*:|ms-appx(?:-web)?\\s*:|//)[\\s\\S]*?\\1`,
+        'gi',
+      ),
+      '',
+    )
+    .replace(
+      new RegExp(
+        `\\s(?:${urlAttrs})\\s*=\\s*(?:javascript|vbscript|blob\\s*:|file\\s*:|data\\s*:|about\\s*:|filesystem\\s*:|chrome(?:-extension)?\\s*:|moz-extension\\s*:|resource\\s*:|view-source\\s*:|ms-appx(?:-web)?\\s*:|//)[^\\s>]*`,
         'gi',
       ),
       '',
@@ -1570,11 +1585,11 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     // Multi-token URL lists — drop attr when ANY candidate matches the deny list
     // (prefix-of-whole-value misses `srcset="/ok.png, javascript:…"`).
     .replace(
-      /\s(?:srcset|imagesrcset|archive|values)\s*=\s*(['"])[\s\S]*?(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|\/\/)[\s\S]*?\1/gi,
+      /\s(?:srcset|imagesrcset|archive|values)\s*=\s*(['"])[\s\S]*?(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|chrome(?:-extension)?\s*:|moz-extension\s*:|resource\s*:|view-source\s*:|ms-appx(?:-web)?\s*:|\/\/)[\s\S]*?\1/gi,
       '',
     )
     .replace(
-      /\s(?:srcset|imagesrcset|archive|values)\s*=\s*[^\s>]*(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|\/\/)[^\s>]*/gi,
+      /\s(?:srcset|imagesrcset|archive|values)\s*=\s*[^\s>]*(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|chrome(?:-extension)?\s*:|moz-extension\s*:|resource\s*:|view-source\s*:|ms-appx(?:-web)?\s*:|\/\/)[^\s>]*/gi,
       '',
     )
     // Multi-token ping — drop when ANY whitespace token is absolute/proto/\\.
@@ -2598,7 +2613,8 @@ function isSafeCssTokenValue(value: string): boolean {
  * Normalize CSS enough to defeat comment / hex-escape @import smuggling
  * (hex-escaped "@import", comment-split import) before salvage scrubbing.
  */
-function normalizeCssForSafetyScan(css: string): string {
+/** Normalize CSS enough to defeat comment / hex-escape smuggling before scans. */
+export function normalizeCssForSafetyScan(css: string): string {
   let text = String(css || '');
   text = text.replace(/\/\*[\s\S]*?\*\//g, '');
   // CSS string line continuations: "java\<newline>script:" → "javascript:"
@@ -2947,6 +2963,8 @@ function isSafeManualEditPresentationCssValue(
     ? String(value || '').trim()
     : normalizeCssForSafetyScan(String(value || '')).trim();
   if (!normalized) return true;
+  // Bare scheme as the whole presentation value (`fill="data:image/svg+xml,…"`).
+  if (/^(?:javascript|vbscript|data|blob)\s*:/i.test(normalized)) return false;
   if (containsUnsafeEmbeddedCssOrScheme(normalized, { alreadyNormalized: true })) return false;
   // var() can hide remote url() via custom props — fail closed for paint attrs.
   if (/\bvar\s*\(/i.test(normalized)) return false;
@@ -3356,6 +3374,10 @@ export function isSafeManualEditUrl(value: string): boolean {
   if (compact.startsWith('chrome-extension:')) return false;
   if (compact.startsWith('moz-extension:')) return false;
   if (compact.startsWith('resource:')) return false;
+  // Browser / OS navigators that are not deck media.
+  if (compact.startsWith('view-source:')) return false;
+  if (compact.startsWith('ms-appx:')) return false;
+  if (compact.startsWith('ms-appx-web:')) return false;
   if (compact.startsWith('data:')) {
     if (compact.startsWith('data:text/html')) return false;
     if (compact.startsWith('data:image/svg+xml')) return false;

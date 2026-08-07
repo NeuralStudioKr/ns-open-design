@@ -373,8 +373,10 @@ describe('buildSrcdoc', () => {
 
     // Value sanitizer drops any character that could close the declaration,
     // the rule, or the <style> element.
-    expect(srcdoc).toContain('var UNSAFE_VALUE = /[;{}<>\\n\\r]|url\\s*\\(|expression\\s*\\(|javascript\\s*:|vbscript\\s*:|data\\s*:/i;');
-    expect(srcdoc).toContain('UNSAFE_VALUE.test(v)');
+    expect(srcdoc).toContain('var UNSAFE_VALUE = /[;{}<>\\n\\r]|url\\s*\\(|expression\\s*\\(|image-set\\s*\\(|element\\s*\\(|-moz-binding|javascript\\s*:|vbscript\\s*:|data\\s*:/i;');
+    expect(srcdoc).toContain('function normalizeInspectCssValue(css)');
+    expect(srcdoc).toContain('function inspectValueUnsafe(v)');
+    expect(srcdoc).toContain('inspectValueUnsafe(v)');
     expect(srcdoc).toContain('Mirror HOST_UNSAFE_INSPECT_VALUE');
 
     // Selector is recomputed from elementId, not echoed back from the

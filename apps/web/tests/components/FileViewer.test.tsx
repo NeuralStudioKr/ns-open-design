@@ -5093,6 +5093,28 @@ describe('serializeInspectOverrides', () => {
     expect(out).not.toContain('data:');
   });
 
+  it('drops inspect values with comment-smuggled url( and image-set(', () => {
+    expect(serializeInspectOverrides({
+      hero: {
+        selector: '[data-od-id="hero"]',
+        props: { color: 'url/**/(javascript:alert(1))' },
+      },
+    })).toBe('');
+    expect(serializeInspectOverrides({
+      hero: {
+        selector: '[data-od-id="hero"]',
+        props: { color: 'image-set(url(https://evil.example/a.png) 1x)' },
+      },
+    })).toBe('');
+    // Legitimate allow-listed color still serializes.
+    expect(serializeInspectOverrides({
+      hero: {
+        selector: '[data-od-id="hero"]',
+        props: { color: '#112233' },
+      },
+    })).toContain('color: #112233 !important');
+  });
+
   // The vulnerability we're regression-testing: artifact code rendered with
   // scripts enabled can call window.parent.postMessage({ type:
   // 'od:inspect-overrides', overrides, css: '</style><script>...</script>' })

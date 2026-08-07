@@ -273,6 +273,7 @@ import { FileRevisionHistoryPanel } from './FileRevisionHistoryPanel';
 import {
   applyManualEditPatch,
   isManualEditFullHtmlDocument,
+  normalizeCssForSafetyScan,
   parseManualEditSource,
   readManualEditStyles,
   readManualEditTargetSnapshot,
@@ -3674,7 +3675,14 @@ const HOST_ALLOWED_INSPECT_PROPS = new Set([
 // surrounding <style> block — semicolons, braces, angle brackets, and
 // newlines — plus CSS url()/expression()/javascript: (XSS via inspect CSS).
 // Mirrors the bridge's UNSAFE_VALUE regex.
-const HOST_UNSAFE_INSPECT_VALUE = /[;{}<>\n\r]|url\s*\(|expression\s*\(|javascript\s*:|vbscript\s*:|data\s*:/i;
+const HOST_UNSAFE_INSPECT_VALUE = /[;{}<>\n\r]|url\s*\(|expression\s*\(|image-set\s*\(|element\s*\(|-moz-binding|javascript\s*:|vbscript\s*:|data\s*:/i;
+
+/** Normalize then deny — blocks comment/escape smuggling of unsafe CSS. */
+function inspectOverrideValueIsUnsafe(value: string): boolean {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return false;
+  return HOST_UNSAFE_INSPECT_VALUE.test(normalizeCssForSafetyScan(trimmed));
+}
 
 // Reject elementIds whose characters could break out of `[attr="..."]`
 // inside a <style> block. Forbidden:
@@ -3723,7 +3731,7 @@ export function serializeInspectOverrides(overrides: unknown): string {
       const name = rawName.toLowerCase();
       if (!HOST_ALLOWED_INSPECT_PROPS.has(name)) continue;
       const value = rawValue.trim();
-      if (!value || HOST_UNSAFE_INSPECT_VALUE.test(value)) continue;
+      if (!value || inspectOverrideValueIsUnsafe(value)) continue;
       decls.push(`${name}: ${value} !important`);
     }
     if (!decls.length) continue;
@@ -3748,7 +3756,7 @@ export function updateInspectOverride(
   const propName = String(prop || '').toLowerCase();
   if (!HOST_ALLOWED_INSPECT_PROPS.has(propName)) return map;
   const trimmed = String(value ?? '').trim();
-  if (trimmed && HOST_UNSAFE_INSPECT_VALUE.test(trimmed)) return map;
+  if (trimmed && inspectOverrideValueIsUnsafe(trimmed)) return map;
   const existing = map[elementId];
   const nextProps: Record<string, string> = { ...(existing?.props ?? {}) };
   if (!trimmed) {
@@ -3808,7 +3816,7 @@ export function parseInspectOverridesFromSource(source: string): InspectOverride
         const name = raw.slice(0, colon).trim().toLowerCase();
         if (!HOST_ALLOWED_INSPECT_PROPS.has(name)) continue;
         const value = raw.slice(colon + 1).replace(/!important/gi, '').trim();
-        if (!value || HOST_UNSAFE_INSPECT_VALUE.test(value)) continue;
+        if (!value || inspectOverrideValueIsUnsafe(value)) continue;
         props[name] = value;
       }
       if (Object.keys(props).length) {
@@ -7557,15 +7565,29 @@ function HtmlViewer({
   function applyManualEditMeasuredGeometry(measured: ManualEditTarget) {
     setSelectedManualEditTarget((current) => {
       if (current?.id !== measured.id) return current;
+      const nextOffsetLeft = measured.offsetLeft ?? current.offsetLeft;
+      const nextOffsetTop = measured.offsetTop ?? current.offsetTop;
+      const nextCssPosition = measured.cssPosition ?? current.cssPosition;
+      const nextSticky = measured.stickyScrollportId ?? current.stickyScrollportId;
+      // Equal geometry — keep prior reference (no selection/overlay churn).
+      if (
+        manualEditGeometryRoughlyMatches(current, measured)
+        && current.offsetLeft === nextOffsetLeft
+        && current.offsetTop === nextOffsetTop
+        && current.cssPosition === nextCssPosition
+        && current.stickyScrollportId === nextSticky
+      ) {
+        return current;
+      }
       const next: ManualEditTarget = {
         ...current,
         rect: measured.rect,
         layoutWidth: measured.layoutWidth,
         layoutHeight: measured.layoutHeight,
-        offsetLeft: measured.offsetLeft ?? current.offsetLeft,
-        offsetTop: measured.offsetTop ?? current.offsetTop,
-        cssPosition: measured.cssPosition ?? current.cssPosition,
-        stickyScrollportId: measured.stickyScrollportId ?? current.stickyScrollportId,
+        offsetLeft: nextOffsetLeft,
+        offsetTop: nextOffsetTop,
+        cssPosition: nextCssPosition,
+        stickyScrollportId: nextSticky,
       };
       selectedManualEditTargetRef.current = next;
       return next;
@@ -7573,15 +7595,28 @@ function HtmlViewer({
     setManualEditTargets((current) =>
       current.map((item) => {
         if (item.id !== measured.id) return item;
+        const nextOffsetLeft = measured.offsetLeft ?? item.offsetLeft;
+        const nextOffsetTop = measured.offsetTop ?? item.offsetTop;
+        const nextCssPosition = measured.cssPosition ?? item.cssPosition;
+        const nextSticky = measured.stickyScrollportId ?? item.stickyScrollportId;
+        if (
+          manualEditGeometryRoughlyMatches(item, measured)
+          && item.offsetLeft === nextOffsetLeft
+          && item.offsetTop === nextOffsetTop
+          && item.cssPosition === nextCssPosition
+          && item.stickyScrollportId === nextSticky
+        ) {
+          return item;
+        }
         return {
           ...item,
           rect: measured.rect,
           layoutWidth: measured.layoutWidth,
           layoutHeight: measured.layoutHeight,
-          offsetLeft: measured.offsetLeft ?? item.offsetLeft,
-          offsetTop: measured.offsetTop ?? item.offsetTop,
-          cssPosition: measured.cssPosition ?? item.cssPosition,
-          stickyScrollportId: measured.stickyScrollportId ?? item.stickyScrollportId,
+          offsetLeft: nextOffsetLeft,
+          offsetTop: nextOffsetTop,
+          cssPosition: nextCssPosition,
+          stickyScrollportId: nextSticky,
         };
       }),
     );
@@ -8169,7 +8204,9 @@ function HtmlViewer({
           lastStablePreviewSourceRef.current = targetHtml;
           exportHtmlSnapshotGateRef.current = targetHtml;
           rememberStablePreviewSource(projectId, file.name, targetHtml);
-          setManualEditDraft((current) => ({ ...current, fullSource: targetHtml! }));
+          setManualEditDraft((current) => (
+            current.fullSource === targetHtml ? current : { ...current, fullSource: targetHtml! }
+          ));
           setManualEditFrozenSource(targetHtml);
           // srcdoc updates via setSource; URL-load still needs reloadKey bust.
           if (useUrlLoadPreview) setReloadKey((key) => key + 1);
@@ -8799,9 +8836,9 @@ function HtmlViewer({
             selectedManualEditTargetIdsRef.current = nextIds;
             setSelectedManualEditTargetIds(nextIds);
           }
-          // Multi-select inspector parse only when the id set changes —
-          // geometry-only od-edit-targets must not re-parse the full deck.
-          if (nextIds.length > 1 && selectionIdsChanged) {
+          // Multi-select inspector: reparse on id-set OR identity change
+          // (59 mixed styles). Geometry-only broadcasts keep fingerprint equal.
+          if (nextIds.length > 1 && (selectionIdsChanged || targetsIdentityChanged)) {
             const base = sourceRef.current ?? '';
             const parsedDoc = parseManualEditSource(base);
             const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
@@ -10477,7 +10514,9 @@ function HtmlViewer({
         saved.revision.sequence,
         revisionRetentionLimit,
       );
-      setManualEditDraft((current) => ({ ...current, fullSource: contentToSave }));
+      setManualEditDraft((current) => (
+        current.fullSource === contentToSave ? current : { ...current, fullSource: contentToSave }
+      ));
       if (patch.kind === 'set-text') {
         setSelectedManualEditTarget((current) => current?.id === patch.id
           ? { ...current, text: patch.value, fields: { ...current.fields, text: patch.value } }
@@ -10667,7 +10706,9 @@ function HtmlViewer({
         saved.revision.sequence,
         revisionRetentionLimit,
       );
-      setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
+      setManualEditDraft((current) => (
+        current.fullSource === result.source ? current : { ...current, fullSource: result.source }
+      ));
       const pendingIds = manualEditPendingStyleRef.current?.targetIds
         ?? (manualEditPendingStyleRef.current?.id
           ? [manualEditPendingStyleRef.current.id]

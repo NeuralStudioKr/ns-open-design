@@ -22,6 +22,7 @@ import {
   isSafeManualEditUrl,
   isSafeManualEditUrlAttrValue,
   isSafeManualEditRelativeOrFragmentUrl,
+  normalizeCssForSafetyScan,
   coerceManualEditStyleValue,
   readManualEditTargetSnapshot,
 } from '../../src/edit-mode/source-patches';
@@ -1398,6 +1399,8 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain("lower === 'usemap' || lower === 'href' || lower === 'xlink:href'");
     expect(sourcePatchesSource).toContain("lower === 'srcset' || lower === 'imagesrcset'");
     expect(sourcePatchesSource).toContain('Multi-token ping — drop when ANY whitespace token');
+    expect(sourcePatchesSource).toContain('view-source');
+    expect(sourcePatchesSource).toContain('ms-appx(?:-web)?');
   });
 
   it('exposes single-document mutate/batch apply helpers', () => {
@@ -1551,6 +1554,27 @@ describe('manual edit source patches', () => {
     expect(isSafeManualEditUrlAttrValue('usemap', 'https://evil.example/m')).toBe(false);
     expect(isSafeManualEditUrlAttrValue('usemap', '#foo:bar')).toBe(false);
     expect(isSafeManualEditUrlAttrValue('usemap', '#/x')).toBe(false);
+    // Browser/OS navigators — not deck media.
+    expect(isSafeManualEditUrl('view-source:https://evil.example')).toBe(false);
+    expect(isSafeManualEditUrl('ms-appx://evil')).toBe(false);
+    expect(isSafeManualEditUrl('ms-appx-web://evil')).toBe(false);
+    expect(isSafeManualEditUrl('https://cdn.example/a.png')).toBe(true);
+  });
+
+  it('rejects bare data:/blob: presentation paints and keeps named colors', () => {
+    expect(sanitizeManualEditHtmlFragment('<rect fill="data:image/svg+xml,<svg></svg>" data-od-id="a" />'))
+      .not.toContain('data:');
+    expect(sanitizeManualEditHtmlFragment('<rect fill="blob:https://x/1" data-od-id="a" />'))
+      .not.toContain('blob:');
+    expect(sanitizeManualEditHtmlFragment('<rect fill="red" data-od-id="a" />'))
+      .toContain('fill="red"');
+    expect(sourcePatchesSource).toContain('Bare data:/blob: as presentation value');
+    expect(sourcePatchesSource).toContain("^(?:javascript|vbscript|data|blob)\\s*:");
+  });
+
+  it('exports normalizeCssForSafetyScan for inspect escape parity', () => {
+    expect(normalizeCssForSafetyScan('url/**/(javascript:x)')).toBe('url(javascript:x)');
+    expect(sourcePatchesSource).toContain('export function normalizeCssForSafetyScan');
   });
 
   it('drops fencedframe, portal, webview, plaintext, and xmp hosts', () => {

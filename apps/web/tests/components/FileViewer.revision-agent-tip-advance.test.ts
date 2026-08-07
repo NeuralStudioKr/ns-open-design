@@ -50,7 +50,7 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('2→1: seed inspector from the remaining target snapshot');
     expect(fileViewer).toContain('manualEditTargetsIdentityFingerprint');
     expect(fileViewer).toContain('listProjectFileRevisionsSoftCached');
-    expect(fileViewer).toContain('geometry-only od-edit-targets must not re-parse');
+    expect(fileViewer).toContain('Multi-select inspector: reparse on id-set OR identity change');
     expect(fileViewer).toContain('export function rememberStablePreviewSource');
     // Group geometry builders forward their shared Document into batch apply.
     expect(fileViewer).toContain('buildGroupMoveStylePatches(');
@@ -99,7 +99,12 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Single-select: identity field change');
     expect(fileViewer).toContain('Active pin owns the painted frame — adopt pin if paint drifted');
     expect(fileViewer).toContain('warmRevisionListSoftCacheFromStack');
-    expect(fileViewer).toContain('url\\s*\\(|expression\\s*\\(|javascript\\s*:|vbscript\\s*:|data\\s*:');
+    expect(fileViewer).toContain('image-set\\s*\\(|element\\s*\\(|-moz-binding|javascript\\s*:|vbscript\\s*:|data\\s*:');
+    expect(fileViewer).toContain('inspectOverrideValueIsUnsafe');
+    expect(fileViewer).toContain('normalizeCssForSafetyScan');
+    expect(fileViewer).toContain('Multi-select inspector: reparse on id-set OR identity change');
+    expect(fileViewer).toContain('Equal geometry — keep prior reference');
+    expect(fileViewer).toContain('current.fullSource === contentToSave ? current');
     expect(fileViewer).toContain('Geometry-only rebroadcasts for the same id skip React churn');
     expect(fileViewer).toContain('const contentUnchanged = sourceRef.current === nextSource');
     expect(fileViewer).toContain('if (sourceRef.current !== pinnedPreferred)');

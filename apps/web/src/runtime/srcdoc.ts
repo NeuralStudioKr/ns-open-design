@@ -1603,8 +1603,25 @@ function injectSelectionBridge(
   // Reject any value that could break out of a 'prop: value' declaration:
   // semicolons (extra declarations), braces (close the rule), angle
   // brackets (close the <style> tag), and newlines (defense in depth).
-  // Mirror HOST_UNSAFE_INSPECT_VALUE — block url()/expression()/javascript:.
-  var UNSAFE_VALUE = /[;{}<>\\n\\r]|url\\s*\\(|expression\\s*\\(|javascript\\s*:|vbscript\\s*:|data\\s*:/i;
+  // Mirror HOST_UNSAFE_INSPECT_VALUE — block url()/expression()/javascript:/….
+  var UNSAFE_VALUE = /[;{}<>\\n\\r]|url\\s*\\(|expression\\s*\\(|image-set\\s*\\(|element\\s*\\(|-moz-binding|javascript\\s*:|vbscript\\s*:|data\\s*:/i;
+  function normalizeInspectCssValue(css){
+    var text = String(css || '');
+    text = text.replace(/\\/\\*[\\s\\S]*?\\*\\//g, '');
+    text = text.replace(/\\\\(?:\\r\\n|[\\n\\r\\f])/g, '');
+    text = text.replace(/\\\\([0-9a-fA-F]{1,6})(\\r\\n|[ \\t\\r\\n\\f])?/g, function(_m, hex){
+      var code = parseInt(hex, 16);
+      if (!isFinite(code) || code < 0 || code > 0x10ffff) return '';
+      try { return String.fromCodePoint(code); } catch (_e) { return ''; }
+    });
+    text = text.replace(/\\\\(.)/g, '$1');
+    return text;
+  }
+  function inspectValueUnsafe(v){
+    var trimmed = String(v || '').trim();
+    if (!trimmed) return false;
+    return UNSAFE_VALUE.test(normalizeInspectCssValue(trimmed));
+  }
   function active(){ return commentEnabled || inspectEnabled; }
   function deckSlideIndexForPayload(anchorEl){
     // Prefer the slide that actually contains the clicked element. The
@@ -1705,7 +1722,7 @@ function injectSelectionBridge(
         var name = raw.slice(0, colon).trim().toLowerCase();
         if (!Object.prototype.hasOwnProperty.call(ALLOWED_PROPS, name)) continue;
         var value = raw.slice(colon + 1).replace(/!important/i, '').trim();
-        if (!value || UNSAFE_VALUE.test(value)) continue;
+        if (!value || inspectValueUnsafe(value)) continue;
         props[name] = value;
       }
       if (Object.keys(props).length) {
@@ -2122,7 +2139,7 @@ function meaningfulDomFallbackTarget(el) {
     var safeSelector = safeSelectorFor(elementId, selector);
     if (!safeSelector) return;
     var v = (value == null) ? '' : String(value).trim();
-    if (v && UNSAFE_VALUE.test(v)) return;
+    if (v && inspectValueUnsafe(v)) return;
     var entry = overrides[elementId];
     if (!entry) {
       entry = { selector: safeSelector, props: Object.create(null) };
@@ -2227,7 +2244,7 @@ function meaningfulDomFallbackTarget(el) {
           var rawValue = entry.props[pkeys[p]];
           if (rawValue == null) continue;
           var v = String(rawValue).trim();
-          if (!v || UNSAFE_VALUE.test(v)) continue;
+          if (!v || inspectValueUnsafe(v)) continue;
           clean[name] = v;
         }
         if (Object.keys(clean).length) overrides[id] = { selector: safeSelector, props: clean };
