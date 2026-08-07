@@ -10,6 +10,11 @@ import { isImeComposing } from '../utils/imeComposing';
 import { fitPngBlobForAnthropicProxy } from '../utils/annotationImage';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import { scaleBoundsToSlideCanvas } from '../utils/visualMarkPlacement';
+import {
+  ANNOTATION_CAPTURE_BUDGET_MS,
+  ANNOTATION_CAPTURE_FAST_FALLBACK_MS,
+  ANNOTATION_SLIDE_CONTEXT_CAPTURE_BUDGET_MS,
+} from '../utils/annotationCaptureBudget';
 
 interface Point { x: number; y: number }
 interface Stroke { points: Point[] }
@@ -79,20 +84,6 @@ const STROKE_COLOR = '#ff3b30';
 const STROKE_WIDTH = 4;
 const TARGET_COLOR = '#1677ff';
 const DRAW_HINT_STORAGE_KEY = 'open-design:annotation-draw-hint-dismissed';
-/** Max wait for a full compositor/iframe capture before marks-only or degraded send. */
-const ANNOTATION_CAPTURE_BUDGET_MS = 10_000;
-/**
- * Box marks and typed notes need the slide visible under the mark — the agent
- * cannot infer "which text" or "which region" from a box on white. FileViewer
- * may wait up to ~8.5s for draw-mode iframe readiness, then ~2.5s+ on the
- * srcDoc snapshot bridge, so the slide-context budget must cover that pipeline.
- */
-const ANNOTATION_CAPTURE_SLIDE_CONTEXT_BUDGET_MS = 12_000;
-/**
- * Pen-only ink (no box, no note) can fall back sooner: the user is usually
- * circling a region and bounds still carry placement when capture is slow.
- */
-const ANNOTATION_CAPTURE_FAST_FALLBACK_MS = 7_000;
 const ANNOTATION_IFRAME_SNAPSHOT_TIMEOUTS_MS = [2_500, 3_000] as const;
 
 async function raceWithBudget<T>(promise: Promise<T>, budgetMs: number): Promise<T | null> {
@@ -569,11 +560,16 @@ export function PreviewDrawOverlay({
   }
 
   function markKind(): PreviewVisualMarkKind | undefined {
+    const hasBoxMark = hasBox || Boolean(selectionBoxRef.current);
+    const hasStrokeInk = hasInk || strokesRef.current.length > 0;
     const hasTarget = Boolean(captureTarget);
-    const hasVisualMark = hasInk || hasBox;
-    if (hasTarget && hasVisualMark) return 'click+stroke';
+    if (hasTarget && (hasStrokeInk || hasBoxMark)) {
+      if (hasBoxMark && !hasStrokeInk) return 'click+box';
+      return 'click+stroke';
+    }
     if (hasTarget) return 'click';
-    if (hasVisualMark) return 'stroke';
+    if (hasBoxMark) return 'box';
+    if (hasStrokeInk) return 'stroke';
     return undefined;
   }
 
@@ -774,13 +770,13 @@ export function PreviewDrawOverlay({
         let blob: Blob | null = null;
         pinnedFrameRect = snapshotFrameRect();
         const hasTypedNote = Boolean(note.trim());
+        const hasBoxMark = hasBox || Boolean(selectionBoxRef.current);
         // Memo/box annotations and note+mark combos need the slide in the PNG;
         // racing marks-only at 7s was shipping white-background boxes while
         // captureExportImageSnapshot was still waiting on draw-mode readiness.
         const needsFullSlideCapture =
           hasTarget ||
-          hasBox ||
-          Boolean(selectionBoxRef.current) ||
+          hasBoxMark ||
           (hasInk && hasTypedNote);
         const allowFastMarksOnlyFallback =
           (hasVisualMark || hasTarget) && !needsFullSlideCapture;
@@ -788,16 +784,16 @@ export function PreviewDrawOverlay({
           ? compositeMarksOnly(pinnedFrameRect)
           : null;
         const captureBudgetMs = needsFullSlideCapture
-          ? ANNOTATION_CAPTURE_SLIDE_CONTEXT_BUDGET_MS
+          ? ANNOTATION_SLIDE_CONTEXT_CAPTURE_BUDGET_MS
           : marksOnlyPromise
             ? ANNOTATION_CAPTURE_FAST_FALLBACK_MS
             : ANNOTATION_CAPTURE_BUDGET_MS;
         const snap = await requestSnapshot(captureBudgetMs);
         if (snap) blob = await compositeWithBackground(snap, pinnedFrameRect);
         if (!blob && needsFullSlideCapture && (hasVisualMark || hasTarget)) {
-          // A typed note still carries intent with bounds — do not attach a
-          // misleading marks-only PNG that hides which slide region was marked.
-          if (!hasTypedNote) {
+          // Typed notes and box marks carry placement via bounds — do not attach
+          // a misleading marks-only PNG that hides which slide region was marked.
+          if (!hasTypedNote && !hasBoxMark) {
             blob = await compositeMarksOnly(pinnedFrameRect);
             usedMarksOnlyFallback = Boolean(blob && blob.size > 0);
           }

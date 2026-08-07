@@ -229,6 +229,11 @@ import { Icon } from './Icon';
 import { RemixIcon } from './RemixIcon';
 import { SocialShareGrid } from './SocialShareGrid';
 import { Toast } from './Toast';
+import {
+  ANNOTATION_LAZY_SHELL_WAIT_MS,
+  ANNOTATION_SNAPSHOT_BRIDGE_RETRY_MS,
+  DRAW_CAPTURE_READY_DEADLINE_MS,
+} from '../utils/annotationCaptureBudget';
 import { PreviewDrawOverlay, type DrawToolbarElement } from './PreviewDrawOverlay';
 import {
   buildBoardCommentAttachments,
@@ -1274,7 +1279,6 @@ function temporarilyExposeIframeForSnapshot(iframe: HTMLIFrameElement): () => vo
   };
 }
 
-const ANNOTATION_SNAPSHOT_RETRY_MS = [2_500, 3_000] as const;
 const EXPORT_SNAPSHOT_RETRY_MS = [1500, 3000, 6000] as const;
 
 async function requestPreviewSnapshotWithRetry(
@@ -11859,14 +11863,13 @@ function HtmlViewer({
     // the hidden srcDoc snapshot bridge. Attempt it before waiting on
     // drawCaptureReady so PreviewDrawOverlay's marks-only fast fallback does
     // not burn its budget on bridge readiness alone.
+    // Worst-case timing is mirrored in `annotationCaptureBudget.ts`
+    // (ANNOTATION_SLIDE_CONTEXT_CAPTURE_BUDGET_MS).
     const hostSnapshot = await captureHostIframeSnapshot(visibleIframe);
     if (hostSnapshot) return hostSnapshot;
 
     if (drawOverlayOpen && !drawCaptureReadyRef.current) {
-      // Match draw-overlay readiness polling (~1.5s mount + up to 5s load +
-      // optional 2s non-URL preview) so annotation capture does not fall back to
-      // marks-only while the srcDoc transport is still spinning up.
-      const deadline = Date.now() + 8_500;
+      const deadline = Date.now() + DRAW_CAPTURE_READY_DEADLINE_MS;
       while (!drawCaptureReadyRef.current && Date.now() < deadline) {
         await waitForAnimationFrame();
       }
@@ -11877,7 +11880,7 @@ function HtmlViewer({
     // often lack the bridge and fail capture on web embeds.
     if (srcDocIframe?.contentWindow) {
       if (useLazySrcDocTransport && !srcDocShellReady) {
-        await waitForIframeLoadOrTimeout(srcDocIframe, 500);
+        await waitForIframeLoadOrTimeout(srcDocIframe, ANNOTATION_LAZY_SHELL_WAIT_MS);
       }
       if (useLazySrcDocTransport && activateSrcDocSnapshotTransport(srcDocIframe)) {
         await waitForIframeLoadOrTimeout(srcDocIframe);
@@ -11888,7 +11891,10 @@ function HtmlViewer({
       try {
         await ensureDeckSlideSyncedForSnapshot(srcDocIframe);
         await waitForAnimationFrame();
-        const srcDocSnapshot = await requestPreviewSnapshotWithRetry(srcDocIframe, ANNOTATION_SNAPSHOT_RETRY_MS);
+        const srcDocSnapshot = await requestPreviewSnapshotWithRetry(
+          srcDocIframe,
+          ANNOTATION_SNAPSHOT_BRIDGE_RETRY_MS,
+        );
         if (srcDocSnapshot) return srcDocSnapshot;
       } finally {
         restoreVisibility();

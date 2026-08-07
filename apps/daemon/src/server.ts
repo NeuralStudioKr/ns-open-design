@@ -1130,6 +1130,7 @@ function imageOnlyCommentFallback(count) {
 
 function normalizeVisualMarkKind(value) {
   return value === 'click' || value === 'click+stroke' || value === 'stroke'
+    || value === 'box' || value === 'click+box'
     ? value
     : 'stroke';
 }
@@ -1138,8 +1139,14 @@ function visualAnnotationIntent(markKind) {
   if (markKind === 'click') {
     return 'The screenshot has a blue focus box around the picked element; modify that picked part first.';
   }
+  if (markKind === 'click+box') {
+    return 'The screenshot has a blue focus box around the picked element and a red selection box; the red box outlines the region the user wants changed.';
+  }
   if (markKind === 'click+stroke') {
     return 'The screenshot has a blue focus box and red strokes; together they identify the part the user wants changed.';
+  }
+  if (markKind === 'box') {
+    return 'The screenshot has a red selection box that outlines the region the user wants changed. Treat the box as the intended target area—not decoration.';
   }
   return 'The screenshot has red strokes that identify the visual region the user wants changed.';
 }

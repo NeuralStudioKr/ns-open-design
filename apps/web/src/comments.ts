@@ -1305,8 +1305,14 @@ function visualAnnotationIntent(
   let base: string;
   if (markKind === 'click') {
     base = 'The screenshot has a blue focus box around the picked element; modify that picked part first.';
+  } else if (markKind === 'click+box') {
+    base =
+      'The screenshot has a blue focus box around the picked element and a red selection box; the red box outlines the region the user wants changed.';
   } else if (markKind === 'click+stroke') {
     base = 'The screenshot has a blue focus box and red strokes; together they identify the part the user wants changed.';
+  } else if (markKind === 'box') {
+    base =
+      'The screenshot has a red selection box that outlines the region the user wants changed. Treat the box as the intended target area—not decoration.';
   } else {
     base = 'The screenshot has red strokes that identify the visual region the user wants changed. Treat the drawn ink as the intended shape or placement guide—not decoration. ADD the requested shape/icon inside that region; do NOT delete or clear the rest of the slide.';
   }

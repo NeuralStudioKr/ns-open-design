@@ -178,7 +178,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     }
   });
 
-  it('sends a box-only mark as a marks-only image when the snapshot fails', async () => {
+  it('blocks box-only send when capture fails instead of marks-only on white', async () => {
     const annotation = vi.fn((event: Event) => {
       const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
       detail.ack?.({ ok: true });
@@ -197,7 +197,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
         bottom: 200,
         toJSON: () => ({}),
       } as DOMRect;
-      const { container, getByRole } = render(
+      const { container, getByRole, getByText } = render(
         <PreviewDrawOverlay active captureFrameRect={() => frameRect}>
           <iframe title="srcdoc" data-od-render-mode="srcdoc" />
         </PreviewDrawOverlay>,
@@ -210,13 +210,12 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
 
       fireEvent.click(getByRole('button', { name: 'Send' }));
 
-      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1));
-      expect(annotation.mock.calls[0]?.[0]).toMatchObject({
-        detail: expect.objectContaining({
-          action: 'send',
-          file: expect.any(File),
-        }),
-      });
+      await waitFor(() =>
+        expect(
+          getByText('Could not capture the preview. Add a note describing the change, or use Comment mode.'),
+        ).toBeTruthy(),
+      );
+      expect(annotation).not.toHaveBeenCalled();
     } finally {
       window.removeEventListener('opendesign:annotation', annotation);
     }
@@ -379,7 +378,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     }
   });
 
-  it('sends a box+note without a misleading marks-only PNG when capture never resolves', { timeout: 14_000 }, async () => {
+  it('sends a box+note without a misleading marks-only PNG when capture never resolves', { timeout: 16_000 }, async () => {
     const annotation = vi.fn((event: Event) => {
       const detail = (event as CustomEvent<{ ack?: (result: { ok: boolean }) => void }>).detail;
       detail.ack?.({ ok: true });
@@ -419,7 +418,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
 
       fireEvent.click(getByRole('button', { name: 'Send' }));
 
-      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 14_000 });
+      await waitFor(() => expect(annotation).toHaveBeenCalledTimes(1), { timeout: 15_500 });
       expect(annotation.mock.calls[0]?.[0]).toMatchObject({
         detail: expect.objectContaining({
           action: 'send',

@@ -102,7 +102,8 @@ export function ensureSectionRelativePositioning(sectionHtml: string): string {
  */
 export function isDrawnVisualMarkAttachment(attachment: ChatCommentAttachment): boolean {
   if (!isVisualCommentAttachment(attachment)) return false;
-  if (attachment.markKind === 'stroke' || attachment.markKind === 'click+stroke') return true;
+  if (attachment.markKind === 'stroke' || attachment.markKind === 'click+stroke'
+    || attachment.markKind === 'box' || attachment.markKind === 'click+box') return true;
   if (attachment.selectionKind === 'visual' && Boolean(String(attachment.screenshotPath || '').trim())) {
     return true;
   }
