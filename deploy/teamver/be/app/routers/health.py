@@ -57,9 +57,3 @@ async def healthz_deps() -> dict[str, object]:
     if isinstance(result, dict) and "node_id" not in result:
         result["node_id"] = _resolve_node_id()
     return result
-
-
-@router.get("/sentry-debug")
-async def sentry_debug() -> None:
-    """Intentional error for Sentry smoke tests (docs-teamver/60)."""
-    _ = 1 / 0

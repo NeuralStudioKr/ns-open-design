@@ -26,8 +26,6 @@ services:
         VITE_TEAMVER_PPTX_EXPORT_ENABLE: ${VITE_TEAMVER_PPTX_EXPORT_ENABLE:-true}
         VITE_TEAMVER_DRAW_ANNOTATION_ENABLE: ${VITE_TEAMVER_DRAW_ANNOTATION_ENABLE:-}
         VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE: ${VITE_TEAMVER_MANUAL_EDIT_BOX_DRAG_ENABLE:-}
-        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
-        NEXT_PUBLIC_SENTRY_ENVIRONMENT: ${NEXT_PUBLIC_SENTRY_ENVIRONMENT:-}
         # Busts Playwright chromium install only when the pin changes.
         # Default matches deploy/Dockerfile playwright-core@… (not git SHA).
         # Force reinstall: PLAYWRIGHT_INSTALL_TOKEN=force-$(date +%s) deploy.sh …
@@ -289,11 +287,6 @@ services:
       # both surfaces share the same EC2 instance id. deploy.sh injects
       # from EC2 IMDS at compose-up time; local dev leaves it empty.
       TEAMVER_DESIGN_NODE_ID: ${OD_NODE_ID:-}
-      # Sentry (docs-teamver/60) — project teamver-design-api
-      SENTRY_DSN: ${SENTRY_DSN:-}
-      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
-      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-}
-      TEAMVER_DEPLOY_ENV: ${ENV:-local}
     ports:
       - "127.0.0.1:${BE_PORT:-16000}:8000"
     depends_on:

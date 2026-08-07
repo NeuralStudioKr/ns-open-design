@@ -7,10 +7,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .sentry_init import init_sentry
-
-init_sentry()
-
 from .config import settings
 from .cors import build_fastapi_cors_kwargs
 from .db.connection import async_engine
