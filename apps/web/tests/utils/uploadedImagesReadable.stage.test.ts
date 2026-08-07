@@ -11,21 +11,35 @@ function file(path: string): ChatAttachment {
 }
 
 describe('stageReadableUploadedAttachments', () => {
-  it('never falls back to cold images when none are readable', () => {
+  it('stages cold images optimistically so send-time retry has a chance', () => {
     const uploaded = [img('a.png'), img('b.png'), file('notes.txt')];
     const ready = [file('notes.txt')];
     const result = stageReadableUploadedAttachments(uploaded, ready);
-    expect(result.staged).toEqual([file('notes.txt')]);
+    // Chips appear immediately; user gets an info banner about sync lag.
+    expect(result.staged).toEqual([
+      file('notes.txt'),
+      img('a.png'),
+      img('b.png'),
+    ]);
     expect(result.coldImageCount).toBe(2);
     expect(result.readyImageCount).toBe(0);
   });
 
-  it('stages only readable images on partial readiness', () => {
+  it('stages ready + cold on partial readiness without duplicating', () => {
     const uploaded = [img('a.png'), img('b.png')];
     const ready = [img('a.png')];
     const result = stageReadableUploadedAttachments(uploaded, ready);
-    expect(result.staged).toEqual([img('a.png')]);
+    expect(result.staged).toEqual([img('a.png'), img('b.png')]);
     expect(result.coldImageCount).toBe(1);
     expect(result.readyImageCount).toBe(1);
+  });
+
+  it('preserves fully-ready pass-through', () => {
+    const uploaded = [img('a.png'), img('b.png')];
+    const ready = [img('a.png'), img('b.png')];
+    const result = stageReadableUploadedAttachments(uploaded, ready);
+    expect(result.staged).toEqual([img('a.png'), img('b.png')]);
+    expect(result.coldImageCount).toBe(0);
+    expect(result.readyImageCount).toBe(2);
   });
 });

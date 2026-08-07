@@ -1808,17 +1808,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           // Keep Design Files / preview heal index in sync with on-disk uploads
           // before the next send refreshes `/files`.
           onProjectFilesMaybeChanged?.();
-          if (coldImageCount > 0 && staged.length === 0) {
+          if (coldImageCount > 0) {
+            // Chips are staged optimistically; send-time / preview fetch retries
+            // with NFC/NFD + Drive alternates. Show an info banner so the user
+            // knows to wait a moment before sending if S3 sync is still catching up.
             setUploadError(
               slideOnlyMvp
-                ? '업로드한 이미지를 아직 읽을 수 없습니다. 잠시 후 다시 첨부해 주세요.'
-                : `Uploaded image(s) are not readable yet (${coldImageCount}). Retry in a moment.`,
-            );
-          } else if (coldImageCount > 0) {
-            setUploadError(
-              slideOnlyMvp
-                ? `일부 이미지 ${coldImageCount}개를 아직 읽을 수 없어 제외했습니다.`
-                : `${coldImageCount} image(s) were not readable yet and were skipped.`,
+                ? `이미지 ${coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`
+                : `${coldImageCount} image(s) are still syncing — wait a moment before sending.`,
             );
           }
         }
@@ -1916,13 +1913,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             );
           }
           onProjectFilesMaybeChanged?.();
-          if (coldImageCount > 0 && stagedAttachments.length === 0) {
+          if (coldImageCount > 0) {
             setUploadError(
-              'Drive에서 가져온 이미지를 아직 읽을 수 없습니다. 잠시 후 다시 시도해 주세요.',
-            );
-          } else if (coldImageCount > 0) {
-            setUploadError(
-              `Drive 이미지 ${coldImageCount}개를 아직 읽을 수 없어 제외했습니다.`,
+              `Drive 이미지 ${coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`,
             );
           }
         }
@@ -2332,14 +2325,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                     orderStart,
                   );
                   onProjectFilesMaybeChanged?.();
-                } else if (coldAnnotationImages > 0) {
-                  ack({
-                    ok: false,
-                    message: slideOnlyMvp
-                      ? '업로드한 이미지를 아직 읽을 수 없습니다. 잠시 후 다시 시도해 주세요.'
-                      : 'Uploaded image(s) are not readable yet. Retry in a moment.',
-                  });
-                  return;
+                  if (coldAnnotationImages > 0) {
+                    // Chips are staged optimistically; do not block the ack.
+                    // Send-time / preview fetch retries via NFC/NFD ladder.
+                  }
                 }
                 if (resolvedUploaded.length > 0) {
                   const screenshot = detail.file ? uploaded[0] : null;

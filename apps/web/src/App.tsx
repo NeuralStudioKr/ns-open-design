@@ -2463,9 +2463,9 @@ function AppInner() {
           readyLocal,
         );
         firstMessageAttachments = stagedLocal.staged;
-        if (stagedLocal.coldImageCount > 0 && stagedLocal.readyImageCount === 0) {
+        if (stagedLocal.coldImageCount > 0) {
           setWorkingDirError(
-            '업로드한 이미지를 아직 읽을 수 없습니다. 프로젝트는 생성되었으니 채팅에서 다시 첨부해 주세요.',
+            `이미지 ${stagedLocal.coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`,
           );
         }
         const partial = uploadResult.failed.length > 0;
@@ -2516,9 +2516,9 @@ function AppInner() {
             ...firstMessageAttachments,
             ...stagedDrive.staged,
           ];
-          if (stagedDrive.coldImageCount > 0 && stagedDrive.readyImageCount === 0) {
+          if (stagedDrive.coldImageCount > 0) {
             setWorkingDirError(
-              'Drive에서 가져온 이미지를 아직 읽을 수 없습니다. 프로젝트는 생성되었으니 채팅에서 다시 첨부해 주세요.',
+              `Drive 이미지 ${stagedDrive.coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`,
             );
           }
           if (driveResult.partial) {
@@ -2561,9 +2561,9 @@ function AppInner() {
             ...firstMessageAttachments,
             ...stagedCanvas.staged,
           ];
-          if (stagedCanvas.coldImageCount > 0 && stagedCanvas.readyImageCount === 0) {
+          if (stagedCanvas.coldImageCount > 0) {
             setWorkingDirError(
-              'Canvas에서 가져온 이미지를 아직 읽을 수 없습니다. 프로젝트는 생성되었으니 채팅에서 다시 첨부해 주세요.',
+              `Canvas 이미지 ${stagedCanvas.coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`,
             );
           }
           // Drop URL handoff once import succeeded so ProjectView does not
