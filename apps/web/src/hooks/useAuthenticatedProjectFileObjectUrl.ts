@@ -43,6 +43,8 @@ async function readResponseImageBlob(resp: Response): Promise<Blob> {
   throw new Error('response body unavailable');
 }
 
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|bmp|svg|ico|heic|heif)$/i;
+
 /** @internal exported for tests */
 export function alternateAuthenticatedRawPaths(path: string): string[] {
   const raw = String(path || '').trim().replace(/\\/g, '/');
@@ -60,6 +62,13 @@ export function alternateAuthenticatedRawPaths(path: string): string[] {
   if (nfd && nfd !== primary && nfd !== raw) alternates.push(nfd);
   if (baseName && baseName !== primary) alternates.push(baseName);
   if (baseNameNfd && baseNameNfd !== baseName) alternates.push(baseNameNfd);
+  // Drive / uploads / assets alternates were designed for IMAGE mention
+  // recovery only — a basename-only `@goldfish.webp` might live under
+  // `refs/drive/`. Probing them for arbitrary files (deck.html, README.md,
+  // etc.) produces 404 spam and, worse, could accidentally match an unrelated
+  // asset with the same basename.
+  const isImagePath = IMAGE_EXT_RE.test(baseName || primary);
+  if (!isImagePath) return [...new Set(alternates.filter(Boolean))];
   const pushDrivePrefix = (prefix: string) => {
     if (baseName) alternates.push(`${prefix}${baseName}`);
     if (baseNameNfd && baseNameNfd !== baseName) alternates.push(`${prefix}${baseNameNfd}`);

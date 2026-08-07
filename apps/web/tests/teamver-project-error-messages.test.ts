@@ -145,9 +145,14 @@ describe("project conversation error messages", () => {
       message:
         'New artifact body for identifier "deck" is 1279 bytes, but the largest prior sibling "deck.html" is 21918 bytes.',
     });
-    expect(regression).toContain("플레이스홀더");
+    expect(regression).toContain("짧은 초안");
     expect(regression).toContain("기존 슬라이드는 그대로");
-    expect(regression).toContain("OD_ARTIFACT_STUB_GUARD=warn");
+    // User-facing copy must NEVER mention internal env vars / ops toggles.
+    expect(regression).not.toContain("OD_ARTIFACT_STUB_GUARD");
+    expect(regression).not.toContain("daemon");
+    // Filename does not have to appear — the reassurance is about the current
+    // deck; leaking bare "deck.html" adds noise without user value.
+    expect(regression).not.toContain("플레이스홀더");
     // The bare generic "저장에 실패" copy must not fire when we can
     // recognise the ARTIFACT_REGRESSION code — otherwise the improved
     // reassurance-banner regresses to the mystery banner.

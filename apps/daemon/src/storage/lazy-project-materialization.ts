@@ -155,6 +155,44 @@ function isMutatingMethod(method: string): boolean {
 }
 
 /**
+ * Marker attached by a route handler (rename etc.) when the mutation removes
+ * additional S3 keys the middleware could not derive from the URL. Includes
+ * both Unicode forms of a Hangul rename source so an alternate-encoded
+ * legacy S3 object is purged instead of resurfacing on next sync-down.
+ */
+export const REQUEST_EXPLICIT_DELETED_PATHS_KEY = '_odExplicitDeletedRelpaths';
+
+export function markRequestExplicitDeletedPaths(
+  req: unknown,
+  paths: readonly string[],
+): void {
+  if (!paths.length || !req || typeof req !== 'object') return;
+  const bag = req as Record<string, unknown>;
+  const existing = Array.isArray(bag[REQUEST_EXPLICIT_DELETED_PATHS_KEY])
+    ? (bag[REQUEST_EXPLICIT_DELETED_PATHS_KEY] as string[])
+    : [];
+  const merged = [...existing];
+  for (const raw of paths) {
+    const trimmed = String(raw || '').trim();
+    if (!trimmed || merged.includes(trimmed)) continue;
+    merged.push(trimmed);
+  }
+  bag[REQUEST_EXPLICIT_DELETED_PATHS_KEY] = merged;
+}
+
+function readRequestExplicitDeletedPaths(req: unknown): string[] {
+  if (!req || typeof req !== 'object') return [];
+  const bag = req as Record<string, unknown>;
+  const value = bag[REQUEST_EXPLICIT_DELETED_PATHS_KEY];
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === 'string' && entry) out.push(entry);
+  }
+  return out;
+}
+
+/**
  * Relpath for an explicit user file delete (Design Files row delete, MCP, etc.).
  * Mounted middleware sees `/raw/...`; unmounted tests may pass absolute paths.
  */
@@ -808,6 +846,14 @@ export function createLazyProjectMaterializationMiddleware(
       const isPrefixDeny =
         err instanceof TeamverTenantStorageResolutionError
         && err.message === 'teamver_project_s3_prefix_required';
+      // Identity deny: nginx auth was accepted but the daemon did not see
+      // the X-Teamver-* identity headers (session mid-race, transient
+      // hydrate best-effort call, background job without a real request
+      // context). For READ routes we can still serve scratch bytes —
+      // access was already verified when those files were first written.
+      const isIdentityDeny =
+        err instanceof TeamverTenantStorageResolutionError
+        && err.message === 'teamver_project_identity_required';
 
       // Inline-HTML export path: the daemon can render from body bytes
       // without touching scratch or S3, so a prefix deny MUST NOT surface
@@ -815,13 +861,17 @@ export function createLazyProjectMaterializationMiddleware(
       // `daemon PDF export 502: teamver_project_s3_prefix_required` in
       // BYOK + fresh-scratch scenarios (post-deploy, idle-evict, cache
       // miss on the BFF prefix registry, etc.).
-      if (isPrefixDeny && isProjectExportOrArchivePath(req.path) && exportRequestHasInlineHtml(req)) {
+      if (
+        (isPrefixDeny || isIdentityDeny)
+        && isProjectExportOrArchivePath(req.path)
+        && exportRequestHasInlineHtml(req)
+      ) {
         console.info(
           JSON.stringify({
             metric: 'od_s3_export_inline_html_bypass',
             projectId,
             path: req.path,
-            reason: 'teamver_project_s3_prefix_required',
+            reason: err.message,
           }),
         );
         return true;
@@ -830,7 +880,7 @@ export function createLazyProjectMaterializationMiddleware(
       const canSoftFallback =
         (req.method === 'GET' || req.method === 'HEAD' || isProjectExportOrArchivePath(req.path))
         && isProjectScratchReadFallbackPath(req.path)
-        && isPrefixDeny;
+        && (isPrefixDeny || isIdentityDeny);
       if (canSoftFallback) {
         let hasScratch = false;
         try {
@@ -843,10 +893,12 @@ export function createLazyProjectMaterializationMiddleware(
         if (hasScratch) {
           console.info(
             JSON.stringify({
-              metric: 'od_s3_export_scratch_only_fallback',
+              metric: isIdentityDeny
+                ? 'od_s3_scratch_read_identity_fallback'
+                : 'od_s3_export_scratch_only_fallback',
               projectId,
               path: req.path,
-              reason: 'teamver_project_s3_prefix_required',
+              reason: err instanceof Error ? err.message : String(err),
             }),
           );
           return true;
@@ -889,13 +941,23 @@ export function createLazyProjectMaterializationMiddleware(
           releaseEarlyPersistGate?.();
           return;
         }
+        // Rename routes may stash the OLD source paths on the request so we
+        // enqueue an explicit remote delete of the pre-rename S3 keys (both
+        // Unicode forms). Otherwise the alternate-encoded old object stays
+        // orphaned on S3 until the next full-project sync purge.
+        const routeExplicitDeletes = readRequestExplicitDeletedPaths(req);
+        const explicitDeletedPaths: string[] = [];
+        if (explicitDeletedRelpath) explicitDeletedPaths.push(explicitDeletedRelpath);
+        for (const extra of routeExplicitDeletes) {
+          if (extra && !explicitDeletedPaths.includes(extra)) explicitDeletedPaths.push(extra);
+        }
         void (async () => {
           try {
             await hooks.persistAfterMutation(
               req,
               projectId,
-              explicitDeletedRelpath
-                ? { explicitDeletedPaths: [explicitDeletedRelpath] }
+              explicitDeletedPaths.length > 0
+                ? { explicitDeletedPaths }
                 : undefined,
             );
           } finally {

@@ -102,4 +102,17 @@ describe('projectFileFetchCache', () => {
     expect(isProjectRawFileKnownMissing(projectId, nfd)).toBe(true);
     expect(isProjectRawFileKnownMissing(projectId, `refs/drive/${nfd}`)).toBe(true);
   });
+
+  it('never expands Drive/uploads/assets missing variants for non-image files', () => {
+    // Regression: marking `deck.html` missing must not falsely mark
+    // `refs/deck.html`, `uploads/deck.html`, `assets/deck.html` as missing.
+    // Those are unrelated files, and cross-poisoning breaks a real fetch.
+    resetProjectRawFileFetchCacheForTests();
+    const projectId = 'project-1';
+    markProjectRawFileMissing(projectId, 'deck.html');
+    expect(isProjectRawFileKnownMissing(projectId, 'refs/deck.html')).toBe(false);
+    expect(isProjectRawFileKnownMissing(projectId, 'uploads/deck.html')).toBe(false);
+    expect(isProjectRawFileKnownMissing(projectId, 'assets/deck.html')).toBe(false);
+    expect(isProjectRawFileKnownMissing(projectId, 'refs/drive/deck.html')).toBe(false);
+  });
 });

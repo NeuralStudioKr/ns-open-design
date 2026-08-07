@@ -1539,6 +1539,13 @@ export function resetFetchProjectFilesInflightForTests(): void {
   projectFilesInflight.clear();
 }
 
+/** Last-known `/files` payload per project — used to survive daemon 502 without
+ *  wiping the FE state to `[]` (which turns image-attach turns into greenfield
+ *  generate and collapses 8-slide decks to 2). Populated only on 2xx. */
+const projectFilesLastKnown = new Map<string, ProjectFile[]>();
+
+const PROJECT_FILES_RETRY_5XX_DELAYS_MS = [250, 1000] as const;
+
 export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[]> {
   const key = projectId.trim();
   if (!key) return [];
@@ -1547,11 +1554,36 @@ export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[
 
   const run = (async (): Promise<ProjectFile[]> => {
     try {
-      const resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(key)}/files`);
-      if (!resp.ok) return [];
-      const json = (await resp.json()) as { files: ProjectFile[] };
-      return json.files ?? [];
-    } catch {
+      let resp: Response | null = null;
+      // Retry transient 5xx once — sibling-pod lazy sync-down denies can
+      // recover within a few hundred ms and the FE keeps working. Only after
+      // the retry ladder is exhausted do we fall back to the last-known list
+      // instead of wiping FE state to [].
+      for (let attempt = 0; attempt <= PROJECT_FILES_RETRY_5XX_DELAYS_MS.length; attempt += 1) {
+        if (attempt > 0) {
+          const delay = PROJECT_FILES_RETRY_5XX_DELAYS_MS[attempt - 1] ?? 0;
+          if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+        try {
+          resp = await fetchTeamverDaemon(`/api/projects/${encodeURIComponent(key)}/files`);
+        } catch (err) {
+          resp = null;
+        }
+        if (resp && resp.ok) break;
+        if (resp && resp.status < 500) break;
+      }
+      if (resp && resp.ok) {
+        const json = (await resp.json()) as { files: ProjectFile[] };
+        const files = json.files ?? [];
+        projectFilesLastKnown.set(key, files);
+        return files;
+      }
+      // 5xx / network exhaustion: prefer the last-known non-empty snapshot
+      // so callers that rely on the file list (existing-deck edit detection,
+      // preview heal, refs/drive/basename upgrade) do not fall back to
+      // greenfield behaviour on a transient daemon flap.
+      const cached = projectFilesLastKnown.get(key);
+      if (cached && cached.length > 0) return cached;
       return [];
     } finally {
       projectFilesInflight.delete(key);

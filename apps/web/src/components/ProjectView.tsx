@@ -1319,6 +1319,21 @@ function slideAttachmentDeliverableInstruction(
   ].filter(Boolean).join('\n');
 }
 
+/**
+ * Strip a previously-injected `[Deliverable instruction]` (greenfield block)
+ * from a persisted prompt. Retry / auto-continue turns re-play the failed
+ * user message content; without this the greenfield contract survives even
+ * after we've learned this is actually an existing-deck edit — the model
+ * then sees conflicting "emit ONE complete deck" + "edit the existing deck"
+ * instructions and defaults back to a fresh short deck, tripping stub-guard
+ * on every retry.
+ */
+export function stripGreenfieldDeliverableInstruction(prompt: string): string {
+  const idx = prompt.indexOf(`\n\n${SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER}`);
+  if (idx < 0) return prompt;
+  return prompt.slice(0, idx).trimEnd();
+}
+
 export function promptWithSlideAttachmentDeliverableInstruction(
   prompt: string,
   attachments: ChatAttachment[],
@@ -1346,13 +1361,19 @@ export function promptWithSlideAttachmentDeliverableInstruction(
   // but attached images still need an exact <img src> contract — otherwise
   // board/memo "이 이미지 넣어줘" turns have no path to copy.
   if ((options.commentAttachmentCount ?? 0) > 0 || options.existingDeckEdit) {
+    // Retry / auto-continue path: the persisted first-turn content may already
+    // carry a stale `[Deliverable instruction]` from the failed greenfield
+    // send. Strip it now that we know this is really an existing-deck edit,
+    // otherwise the model sees two conflicting contracts and regenerates a
+    // fresh short deck (same failure as the first turn — infinite retry loop).
+    const cleanedPrompt = stripGreenfieldDeliverableInstruction(prompt);
     const imagePaths = imageAttachmentPathsForSlideEmbed(
       attachments,
       options.projectFilePaths,
     );
-    if (imagePaths.length === 0) return prompt;
-    if (prompt.includes(SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER)) return prompt;
-    const visiblePrompt = prompt.trim() || '첨부 이미지를 슬라이드에 넣어줘.';
+    if (imagePaths.length === 0) return cleanedPrompt;
+    if (cleanedPrompt.includes(SLIDE_IMAGE_EMBED_INSTRUCTION_MARKER)) return cleanedPrompt;
+    const visiblePrompt = cleanedPrompt.trim() || '첨부 이미지를 슬라이드에 넣어줘.';
     return `${visiblePrompt}\n\n${slideImageEmbedInstruction(imagePaths)}`;
   }
   if (prompt.includes(SLIDE_ATTACHMENT_DELIVERABLE_INSTRUCTION_MARKER)) return prompt;
@@ -8302,12 +8323,49 @@ export function ProjectView({
           // turns get the surgical contract instead of greenfield full-deck
           // pressure (which collapses 8-slide decks to 2).
           autoAttachedDeckPath = deckPath;
+        } else if (slideOnlyMvp) {
+          // Fallback root-cause guard: `/files` may 502 or hydrate empty on
+          // a cold sibling pod, so `filesSnapshot` is empty even though the
+          // project already has a deck. If the SEND ATTACHMENTS themselves
+          // reference a canonical deck HTML (composer auto-attach, previous
+          // assistant echo, auto-continue seed), treat this turn as an
+          // existing-deck edit — otherwise the greenfield instruction slips
+          // through and the model regenerates a fresh 2-slide placeholder
+          // (which stub-guard then correctly rejects, but the whole turn is
+          // wasted).
+          const attachedDeck = effectiveAttachments.find((attachment) => {
+            const attachPath = String(attachment.path || attachment.name || '').trim();
+            return attachPath && isCanonicalDeckFileName(attachPath);
+          });
+          if (attachedDeck) {
+            autoAttachedDeckPath = attachedDeck.path?.trim() || attachedDeck.name;
+          } else if (retryTarget || isAutoContinueSend) {
+            // On auto-continue / retry, the failed assistant's origin user
+            // typically had a deck attachment or the project already had a
+            // deck. Refusing to mark existing-deck-edit here loops the same
+            // greenfield → 2-slide → stub-guard reject failure on every retry.
+            const historyDeck = (retryTarget?.userMsg.attachments ?? []).find(
+              (attachment) => isCanonicalDeckFileName(String(attachment.path || attachment.name || '')),
+            );
+            if (historyDeck) {
+              autoAttachedDeckPath = historyDeck.path?.trim() || historyDeck.name;
+            }
+          }
         }
       }
       const instructionAttachments = retryTarget
         ? mergeChatAttachments(retryTarget.userMsg.attachments ?? [], effectiveAttachments)
         : effectiveAttachments;
-      const projectFilePathsForEmbed = projectFilesRef.current.map((file) =>
+      // Prefer this-turn's filesSnapshot over the ref (which may have been
+      // wiped by a mid-flight /files 502 into projectFilesRef state). Falls
+      // back to the ref only when the snapshot is empty AND the ref has
+      // stuff — that combination should never happen because the snapshot
+      // is `refreshProjectFiles().catch(() => projectFiles)` earlier, but
+      // the guard costs nothing and matches the existing-deck fallback.
+      const filesSnapshotForEmbed = filesSnapshot.length > 0
+        ? filesSnapshot
+        : projectFilesRef.current;
+      const projectFilePathsForEmbed = filesSnapshotForEmbed.map((file) =>
         String(file.path || file.name || '').trim(),
       ).filter(Boolean);
       const modelPromptBase = promptWithSlideAttachmentDeliverableInstruction(
