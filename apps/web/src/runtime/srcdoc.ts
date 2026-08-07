@@ -1603,7 +1603,8 @@ function injectSelectionBridge(
   // Reject any value that could break out of a 'prop: value' declaration:
   // semicolons (extra declarations), braces (close the rule), angle
   // brackets (close the <style> tag), and newlines (defense in depth).
-  var UNSAFE_VALUE = /[;{}<>\\n\\r]/;
+  // Mirror HOST_UNSAFE_INSPECT_VALUE — block url()/expression()/javascript:.
+  var UNSAFE_VALUE = /[;{}<>\\n\\r]|url\\s*\\(|expression\\s*\\(|javascript\\s*:/i;
   function active(){ return commentEnabled || inspectEnabled; }
   function deckSlideIndexForPayload(anchorEl){
     // Prefer the slide that actually contains the clicked element. The

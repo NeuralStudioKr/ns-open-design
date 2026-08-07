@@ -1602,6 +1602,48 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
         'gi',
       ),
       '$1',
+    )
+    // Unsafe #fragments (`#/x`, `#foo:bar`) — DOM isSafeManualEditSvgResourceRef.
+    .replace(
+      new RegExp(
+        `(<(?:${[
+          'use', 'image', 'feimage', 'mpath', 'textpath', 'pattern',
+          'lineargradient', 'radialgradient', 'filter',
+          'animate', 'animatemotion', 'animatetransform', 'animatecolor', 'set',
+          'cursor', 'font-face-uri', 'altglyph', 'glyphref', 'tref', 'color-profile',
+        ].join('|')})\\b[^>]*?)\\s(?:href|xlink:href)\\s*=\\s*(['"])#[^'"]*[\\\\/][^'"]*\\2`,
+        'gi',
+      ),
+      '$1',
+    )
+    .replace(
+      new RegExp(
+        `(<(?:${[
+          'use', 'image', 'feimage', 'mpath', 'textpath', 'pattern',
+          'lineargradient', 'radialgradient', 'filter',
+          'animate', 'animatemotion', 'animatetransform', 'animatecolor', 'set',
+          'cursor', 'font-face-uri', 'altglyph', 'glyphref', 'tref', 'color-profile',
+        ].join('|')})\\b[^>]*?)\\s(?:href|xlink:href)\\s*=\\s*(['"])#[a-z][a-z0-9+.-]*:[^'"]*\\2`,
+        'gi',
+      ),
+      '$1',
+    )
+    // usemap — same-document #fragment only (DOM isSafeManualEditSvgResourceRef).
+    .replace(
+      /\susemap\s*=\s*(['"])(?!#[^\\/:'"]*)[\s\S]*?\1/gi,
+      '',
+    )
+    .replace(
+      /\susemap\s*=\s*(?!['"]|#)[^\s>]*/gi,
+      '',
+    )
+    .replace(
+      /\susemap\s*=\s*(['"])#[^'"]*[\\/][^'"]*\1/gi,
+      '',
+    )
+    .replace(
+      /\susemap\s*=\s*(['"])#[a-z][a-z0-9+.-]*:[^'"]*\1/gi,
+      '',
     );
 }
 
@@ -3349,6 +3391,10 @@ export function isSafeManualEditUrlAttrValue(attr: string, value: string): boole
   // Form navigators — same-document relative / fragment only.
   if (lower === 'action' || lower === 'formaction') {
     return isSafeManualEditRelativeOrFragmentUrl(value);
+  }
+  // HTML usemap must reference a same-document map name (`#name`).
+  if (lower === 'usemap') {
+    return isSafeManualEditSvgResourceRef(value);
   }
   // `ping` is a whitespace-separated URL list — validate each token.
   if (lower === 'ping') {

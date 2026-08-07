@@ -651,6 +651,23 @@ async function listProjectFileRevisionsSoftCached(
   return list;
 }
 
+/** Warm soft-cache from an optimistic local tip push (skips immediate list GET). */
+function warmRevisionListSoftCacheFromStack(
+  projectId: string,
+  fileName: string,
+  stack: RevisionStackSnapshot,
+  activeSeq: number,
+  retentionLimit: number,
+): void {
+  const list: NonNullable<Awaited<ReturnType<typeof listProjectFileRevisions>>> = {
+    revisions: stack.revisions,
+    headRevisionId: stack.headRevisionId ?? stack.cursorRevisionId,
+    retentionLimit,
+  };
+  const key = revisionListSoftCacheKey(projectId, fileName);
+  revisionListSoftCache.set(key, { activeSeq, list, at: Date.now() });
+}
+
 /** Identity fingerprint for od-edit-targets — skips geometry-only rebroadcasts. */
 function manualEditTargetsIdentityFingerprint(targets: ManualEditTarget[]): string {
   return targets.map((target) => [
@@ -3644,8 +3661,9 @@ const HOST_ALLOWED_INSPECT_PROPS = new Set([
 
 // Reject values that could break out of `prop: value` and into the
 // surrounding <style> block — semicolons, braces, angle brackets, and
-// newlines. Mirrors the bridge's UNSAFE_VALUE regex.
-const HOST_UNSAFE_INSPECT_VALUE = /[;{}<>\n\r]/;
+// newlines — plus CSS url()/expression()/javascript: (XSS via inspect CSS).
+// Mirrors the bridge's UNSAFE_VALUE regex.
+const HOST_UNSAFE_INSPECT_VALUE = /[;{}<>\n\r]|url\s*\(|expression\s*\(|javascript\s*:/i;
 
 // Reject elementIds whose characters could break out of `[attr="..."]`
 // inside a <style> block. Forbidden:
@@ -5449,6 +5467,8 @@ function HtmlViewer({
       const pinned = manualEditPinnedSourceRef.current;
       if (pinned?.source) {
         rememberStablePreviewSource(projectId, file.name, pinned.source);
+        // Already painting the pinned frame — skip srcdoc tear / remount flash.
+        if (sourceRef.current === pinned.source) return;
       }
     } else {
       manualEditPinnedSourceRef.current = null;
@@ -5648,6 +5668,7 @@ function HtmlViewer({
   const selectedManualEditTargetRef = useRef<ManualEditTarget | null>(null);
   const selectedManualEditTargetIdsRef = useRef<string[]>([]);
   const manualEditTargetsIdentityFingerprintRef = useRef<string>('');
+  const manualEditHoverTargetIdRef = useRef<string | null>(null);
   const [manualEditDraft, setManualEditDraft] = useState<ManualEditDraft>(() => emptyManualEditDraft());
   const [revisionStack, setRevisionStack] = useState<RevisionStackSnapshot>(() => (
     createRevisionStackSnapshot([], null)
@@ -6061,11 +6082,21 @@ function HtmlViewer({
       const nextSource = pinnedOverLive ?? accepted;
       // Keep the pin after a matching fetch — a later stale GET in the same
       // session must still lose to history-confirm / prefer-pin.
-      setSource(nextSource);
-      sourceRef.current = nextSource;
-      lastStablePreviewSourceRef.current = nextSource;
-      exportHtmlSnapshotGateRef.current = nextSource;
-      rememberStablePreviewSource(projectId, file.name, nextSource);
+      const contentUnchanged = sourceRef.current === nextSource;
+      if (!contentUnchanged) {
+        setSource(nextSource);
+        sourceRef.current = nextSource;
+        lastStablePreviewSourceRef.current = nextSource;
+        exportHtmlSnapshotGateRef.current = nextSource;
+        rememberStablePreviewSource(projectId, file.name, nextSource);
+      } else {
+        if (lastStablePreviewSourceRef.current !== nextSource) {
+          lastStablePreviewSourceRef.current = nextSource;
+        }
+        if (exportHtmlSnapshotGateRef.current !== nextSource) {
+          exportHtmlSnapshotGateRef.current = nextSource;
+        }
+      }
       setSourceLoadFailed(false);
       setLiveHtmlPaintsPreview(true);
       if (previewSourceWallTimerRef.current != null) {
@@ -6261,11 +6292,13 @@ function HtmlViewer({
           text,
         );
         if (pinnedPreferred != null) {
-          setSource(pinnedPreferred);
-          sourceRef.current = pinnedPreferred;
-          lastStablePreviewSourceRef.current = pinnedPreferred;
-          exportHtmlSnapshotGateRef.current = pinnedPreferred;
-          rememberStablePreviewSource(projectId, file.name, pinnedPreferred);
+          if (sourceRef.current !== pinnedPreferred) {
+            setSource(pinnedPreferred);
+            sourceRef.current = pinnedPreferred;
+            lastStablePreviewSourceRef.current = pinnedPreferred;
+            exportHtmlSnapshotGateRef.current = pinnedPreferred;
+            rememberStablePreviewSource(projectId, file.name, pinnedPreferred);
+          }
           clearPreviewSourceWall();
           setSourceLoadFailed(false);
           return;
@@ -6307,11 +6340,13 @@ function HtmlViewer({
           armPreviewSourceWall();
           return;
         }
-        setSource(accepted);
-        sourceRef.current = accepted;
-        lastStablePreviewSourceRef.current = accepted;
-        exportHtmlSnapshotGateRef.current = accepted;
-        rememberStablePreviewSource(projectId, file.name, accepted);
+        if (sourceRef.current !== accepted) {
+          setSource(accepted);
+          sourceRef.current = accepted;
+          lastStablePreviewSourceRef.current = accepted;
+          exportHtmlSnapshotGateRef.current = accepted;
+          rememberStablePreviewSource(projectId, file.name, accepted);
+        }
         setSourceLoadFailed(false);
         clearPreviewSourceWall();
       });
@@ -8646,6 +8681,7 @@ function HtmlViewer({
       setSelectedManualEditTarget(null);
       setSelectedManualEditTargetIds([]);
       setManualEditMixedStyleKeys(new Set());
+      manualEditHoverTargetIdRef.current = null;
       setManualEditHoverTarget(null);
       setManualEditPageStylesOpen(false);
       setManualEditPanelPosition(null);
@@ -8770,6 +8806,7 @@ function HtmlViewer({
         return;
       }
       if (data.type === 'od-edit-select') {
+        manualEditHoverTargetIdRef.current = null;
         setManualEditHoverTarget(null);
         void selectManualEditTarget(data.target, { additive: data.additive === true });
         return;
@@ -8779,11 +8816,14 @@ function HtmlViewer({
         // NOT switch the pinned inspector. The panel changes only when the
         // user clicks that affordance (or a container/image body), so moving
         // the cursor across the canvas never yanks the panel away mid-edit.
-        setManualEditHoverTarget(
-          selectedManualEditTargetIdsRef.current.includes(data.target.id)
-            ? null
-            : data.target,
-        );
+        const nextHover = selectedManualEditTargetIdsRef.current.includes(data.target.id)
+          ? null
+          : data.target;
+        const nextHoverId = nextHover?.id ?? null;
+        // Geometry-only rebroadcasts for the same id skip React churn.
+        if (nextHoverId === manualEditHoverTargetIdRef.current) return;
+        manualEditHoverTargetIdRef.current = nextHoverId;
+        setManualEditHoverTarget(nextHover);
         return;
       }
       if (data.type === 'od-edit-background') {
@@ -10374,6 +10414,13 @@ function HtmlViewer({
       setRevisionStackInvalidated(false);
       // Optimistic tip already matches the push — skip immediate list GET.
       // Conflict/retention refresh still runs via filesRefreshKey / undo.
+      warmRevisionListSoftCacheFromStack(
+        projectId,
+        file.name,
+        revisionStackRef.current,
+        saved.revision.sequence,
+        revisionRetentionLimit,
+      );
       setManualEditDraft((current) => ({ ...current, fullSource: contentToSave }));
       if (patch.kind === 'set-text') {
         setSelectedManualEditTarget((current) => current?.id === patch.id
@@ -10557,6 +10604,13 @@ function HtmlViewer({
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'manual_edit');
       setRevisionStackInvalidated(false);
       // Optimistic tip already matches the push — skip immediate list GET.
+      warmRevisionListSoftCacheFromStack(
+        projectId,
+        file.name,
+        revisionStackRef.current,
+        saved.revision.sequence,
+        revisionRetentionLimit,
+      );
       setManualEditDraft((current) => ({ ...current, fullSource: result.source }));
       const pendingIds = manualEditPendingStyleRef.current?.targetIds
         ?? (manualEditPendingStyleRef.current?.id
@@ -11016,6 +11070,13 @@ function HtmlViewer({
       emitRevisionPush(analytics.track, projectId, projectKind, file.name, saved.revision, 'inspect_save');
       setRevisionStackInvalidated(false);
       // Optimistic tip already matches the push — skip immediate list GET.
+      warmRevisionListSoftCacheFromStack(
+        projectId,
+        file.name,
+        revisionStackRef.current,
+        saved.revision.sequence,
+        revisionRetentionLimit,
+      );
       setInspectSavedAt(Date.now());
       setReloadKey((k) => k + 1);
     } catch (err) {

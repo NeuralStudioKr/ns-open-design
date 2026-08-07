@@ -96,6 +96,13 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('\\bdata-od-inspect-overrides\\b');
     expect(fileViewer).toContain('Echo selected-target only when membership changes');
     expect(fileViewer).toContain('Single-select: identity field change');
+    expect(fileViewer).toContain('Already painting the pinned frame — skip srcdoc tear');
+    expect(fileViewer).toContain('warmRevisionListSoftCacheFromStack');
+    expect(fileViewer).toContain('url\\s*\\(|expression\\s*\\(|javascript\\s*:');
+    expect(fileViewer).toContain('Geometry-only rebroadcasts for the same id skip React churn');
+    expect(fileViewer).toContain('const contentUnchanged = sourceRef.current === nextSource');
+    expect(fileViewer).toContain('if (sourceRef.current !== pinnedPreferred)');
+    expect(fileViewer).toContain('if (sourceRef.current !== accepted)');
   });
 });
 

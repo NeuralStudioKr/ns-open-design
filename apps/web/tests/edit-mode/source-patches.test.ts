@@ -1387,6 +1387,11 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain("'imagesrcset'");
     expect(sourcePatchesSource).toContain("'usemap'");
     expect(sourcePatchesSource).toContain('Align with MANUAL_EDIT_URL_ATTRS — SMIL can retarget');
+    // usemap fragment-only + unsafe #fragment parity with SVG helper.
+    expect(sourcePatchesSource).toContain("if (lower === 'usemap')");
+    expect(sourcePatchesSource).toContain('return isSafeManualEditSvgResourceRef(value)');
+    expect(sourcePatchesSource).toContain('usemap — same-document #fragment only');
+    expect(sourcePatchesSource).toContain('Unsafe #fragments');
   });
 
   it('exposes single-document mutate/batch apply helpers', () => {
@@ -1535,6 +1540,11 @@ describe('manual edit source patches', () => {
     expect(isSafeManualEditUrlAttrValue('href', '\\\\evil.example\\x')).toBe(false);
     expect(isSafeManualEditUrlAttrValue('src', '\\evil.example/x')).toBe(false);
     expect(isSafeManualEditUrl('/safe/path.png')).toBe(true);
+    // usemap is same-document #fragment only.
+    expect(isSafeManualEditUrlAttrValue('usemap', '#map1')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('usemap', 'https://evil.example/m')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('usemap', '#foo:bar')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('usemap', '#/x')).toBe(false);
   });
 
   it('drops fencedframe, portal, webview, plaintext, and xmp hosts', () => {

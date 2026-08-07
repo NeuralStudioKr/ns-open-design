@@ -5055,6 +5055,22 @@ describe('serializeInspectOverrides', () => {
     expect(out).toBe('');
   });
 
+  it('drops inspect values with url()/expression()/javascript:', () => {
+    const out = serializeInspectOverrides({
+      hero: {
+        selector: '[data-od-id="hero"]',
+        props: {
+          color: 'url(javascript:alert(1))',
+          'background-color': 'expression(alert(1))',
+          'font-family': 'javascript:alert(1)',
+        },
+      },
+    });
+    expect(out).toBe('');
+    expect(out).not.toContain('javascript');
+    expect(out).not.toContain('expression');
+  });
+
   // The vulnerability we're regression-testing: artifact code rendered with
   // scripts enabled can call window.parent.postMessage({ type:
   // 'od:inspect-overrides', overrides, css: '</style><script>...</script>' })
@@ -5075,7 +5091,7 @@ describe('serializeInspectOverrides', () => {
         selector: '[data-od-id="x"]',
         props: { color: '#fff' },
       },
-      // Hostile value: rejected by UNSAFE_VALUE.
+      // Hostile value: rejected by HOST_UNSAFE_INSPECT_VALUE.
       villain: {
         selector: '[data-od-id="villain"]',
         props: { color: '</style><script>alert(3)</script>' },
