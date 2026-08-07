@@ -11,6 +11,7 @@ import {
   resolveCanonicalDeckFileForEdit,
   promptWithSlideAttachmentDeliverableInstruction,
   promptWithSlideCommentEditPatchInstruction,
+  stripGreenfieldDeliverableInstruction,
 } from "../src/components/ProjectView";
 import {
   messageContentWithCommentAttachments,
@@ -19,6 +20,47 @@ import {
 } from "../src/comments";
 import { stripUserVisibleQuestionFormProtocolText } from "../src/artifacts/question-form";
 import type { ChatMessage } from "../src/types";
+
+describe("stripGreenfieldDeliverableInstruction", () => {
+  it("removes a trailing [Deliverable instruction] block", () => {
+    const stale =
+      '이미지 넣어줘\n\n[Deliverable instruction]\nSLIDE ATTACHMENT DELIVERABLE INSTRUCTION\nEmit ONE complete Teamver compact deck...';
+    expect(stripGreenfieldDeliverableInstruction(stale)).toBe('이미지 넣어줘');
+  });
+
+  it("leaves prompts without the marker unchanged", () => {
+    expect(stripGreenfieldDeliverableInstruction('이미지 넣어줘')).toBe('이미지 넣어줘');
+  });
+
+  it("does not remove other markers or user text", () => {
+    const prompt = '이미지 넣어줘\n\n[Attached image embed]\n- <img src="a.png" alt="">';
+    expect(stripGreenfieldDeliverableInstruction(prompt)).toBe(prompt);
+  });
+});
+
+describe("promptWithSlideAttachmentDeliverableInstruction", () => {
+  it("strips a stale [Deliverable instruction] on existing-deck edit retries", () => {
+    // First-turn failure baked in [Deliverable instruction] before we knew
+    // this was actually an existing-deck edit. On retry with existingDeckEdit
+    // now true, the persisted greenfield block must be removed so the model
+    // does not see conflicting "emit ONE complete deck" + "edit existing" —
+    // that combo was the infinite-loop cause of stub-guard rejects.
+    const stale =
+      '이 이미지 1페이지에 넣어줘\n\n[Deliverable instruction]\nEmit ONE complete Teamver compact deck.';
+    const prompt = promptWithSlideAttachmentDeliverableInstruction(
+      stale,
+      [
+        { path: 'deck.html', name: 'deck.html', kind: 'file' },
+        { path: 'refs/drive/m1abc-photo.png', name: 'photo.png', kind: 'image' },
+      ],
+      { slideOnlyMvp: true, existingDeckEdit: true },
+    );
+    expect(prompt).not.toContain('[Deliverable instruction]');
+    expect(prompt).toContain('[Attached image embed]');
+    expect(prompt).toContain('surgical insert into the EXISTING deck');
+    expect(prompt.startsWith('이 이미지 1페이지에 넣어줘')).toBe(true);
+  });
+});
 
 describe("promptWithSlideAttachmentDeliverableInstruction", () => {
   it("adds a hidden deliverable contract for slide-only attachment runs", () => {
