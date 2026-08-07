@@ -110,6 +110,27 @@ export function isDrawnVisualMarkAttachment(attachment: ChatCommentAttachment): 
   return false;
 }
 
+const VISUAL_ANNOTATION_USER_REQUEST_INTENT_PREFIX = 'User request from the annotation note:';
+
+/**
+ * Client graft adds a decorative overlay (heart icon, dashed box div) without an
+ * AI turn. That is only appropriate for placement-only marks (e.g. pen + "add
+ * heart" with no typed overlay note). Box marks always mean "edit this region";
+ * typed overlay notes mean "do what the user asked" (font size, copy, …) → AI.
+ */
+export function shouldClientGraftVisualMarkWithoutAi(
+  attachment: ChatCommentAttachment,
+): boolean {
+  if (!isDrawnVisualMarkAttachment(attachment) && !isScreenshotOnlyVisualCommentTarget(attachment)) {
+    return false;
+  }
+  const markKind = String(attachment.markKind || '').trim();
+  if (markKind === 'box' || markKind === 'click+box') return false;
+  const intent = String(attachment.intent || '').trim();
+  if (intent.includes(VISUAL_ANNOTATION_USER_REQUEST_INTENT_PREFIX)) return false;
+  return true;
+}
+
 export function graftVisualMarksIntoDeckHtml(
   currentHtml: string,
   commentAttachments: readonly ChatCommentAttachment[],

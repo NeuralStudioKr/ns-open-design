@@ -37,6 +37,7 @@ import {
   stabilizeVisualMarkDeckHtml,
   hasElementScopedCommentAttachments,
   isDrawnVisualMarkAttachment,
+  shouldClientGraftVisualMarkWithoutAi,
   isVisualCommentAttachment,
   scopedCommentSlideIndexesFromAttachments,
   type DeckPatchMergeResult,
@@ -8243,22 +8244,19 @@ export function ProjectView({
               effectiveSelectedAgentChoice?.model,
             )
           : apiProtocolModelLabel(config.apiProtocol, config.model);
-      // Client visual-mark fast path: any drawn mark (freehand or box) or a
-      // pure screenshot-only comment can graft locally without an AI turn.
-      // Reconciler-assigned DOM anchors no longer disqualify — the drawing
-      // intent is to ADD a shape, not modify the underlying element.
-      const runIsAllDrawnVisualMarks =
+      // Client visual-mark fast path: placement-only marks (pen heart, etc.) graft
+      // locally. Box marks and typed overlay notes route to AI — they mean
+      // "change this region" (font size, copy, layout), not "paste a decoration".
+      const runIsAllClientGraftVisualMarks =
         runCommentAttachments.length > 0
-        && runCommentAttachments.every(
-          (attachment) =>
-            isDrawnVisualMarkAttachment(attachment)
-            || isScreenshotOnlyVisualCommentTarget(attachment),
+        && runCommentAttachments.every((attachment) =>
+          shouldClientGraftVisualMarkWithoutAi(attachment),
         );
       if (
         slideOnlyMvp
         && !retryTarget
         && !isAutoContinueSend
-        && runIsAllDrawnVisualMarks
+        && runIsAllClientGraftVisualMarks
       ) {
         const clientVisual = await tryPersistClientVisualMarksOnSend({
           projectId: project.id,

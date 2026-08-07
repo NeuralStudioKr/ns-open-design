@@ -17,6 +17,7 @@ import {
   stabilizeVisualMarkDeckHtml,
   hasElementScopedCommentAttachments,
   isDrawnVisualMarkAttachment,
+  shouldClientGraftVisualMarkWithoutAi,
   isVisualCommentAttachment,
 } from '../../src/edit-mode/scoped-deck-patch';
 import {
@@ -64,14 +65,21 @@ describe('hasElementScopedCommentAttachments', () => {
     }])).toBe(false);
   });
 
-  it('treats box markKind as a drawn visual mark for client graft', () => {
-    expect(isDrawnVisualMarkAttachment({
+  it('does not client-graft box marks — they select a region to edit via AI', () => {
+    expect(shouldClientGraftVisualMarkWithoutAi({
       ...attachment(1),
       selectionKind: 'visual',
       elementId: 'visual-mark-box-1',
       selector: '',
       htmlHint: '',
-      screenshotPath: '',
+      screenshotPath: 'drawing-1.png',
+      markKind: 'box',
+      comment: '슬라이드 2 이 글씨들 더 크게',
+      intent: 'User request from the annotation note: "슬라이드 2 이 글씨들 더 크게". The screenshot has a red selection box...',
+    })).toBe(false);
+    expect(isDrawnVisualMarkAttachment({
+      ...attachment(1),
+      selectionKind: 'visual',
       markKind: 'box',
     })).toBe(true);
   });

@@ -67,6 +67,29 @@ describe('client-visual-mark-persist', () => {
     expect(deriveClientVisualMarkRevisionLabel([visualAttachment()])).toBe('Visual mark: heart');
   });
 
+  it('does not client-graft box marks with typed edit requests', async () => {
+    vi.mocked(fetchProjectFileText).mockResolvedValue(
+      '<!doctype html><html><body><section class="slide" data-slide-index="1"><h1>Title</h1></section></body></html>',
+    );
+
+    const result = await tryPersistClientVisualMarksOnSend({
+      projectId: 'project-1',
+      commentAttachments: [
+        visualAttachment({
+          markKind: 'box',
+          comment: '슬라이드 2 이 글씨들 더 크게',
+          intent:
+            'User request from the annotation note: "슬라이드 2 이 글씨들 더 크게". The screenshot has a red selection box that outlines the region the user wants changed.',
+          slideIndex: 1,
+        }),
+      ],
+      projectFiles: [{ name: 'deck.html', path: 'deck.html', kind: 'html', mtime: 1 }],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(pushProjectFileRevision).not.toHaveBeenCalled();
+  });
+
   it('grafts screenshot-only visual marks and pushes a revision', async () => {
     vi.mocked(fetchProjectFileText).mockResolvedValue(
       '<!doctype html><html><body><section class="slide" data-slide-index="0"><h1>Title</h1></section></body></html>',

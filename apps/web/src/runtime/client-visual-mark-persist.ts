@@ -9,8 +9,8 @@ import {
 import { selectInitialDesignPreviewFile } from '../components/design-files/designArtifacts';
 import {
   graftVisualMarksIntoDeckHtml,
-  isDrawnVisualMarkAttachment,
   reconcileCommentScopeForPersist,
+  shouldClientGraftVisualMarkWithoutAi,
 } from '../edit-mode/scoped-deck-patch';
 import { fetchProjectFileText, pushProjectFileRevision } from '../providers/registry';
 import { isEmbedSupportingProjectFile } from '../teamver/branding/embedDeliverableFilePolicy';
@@ -86,9 +86,9 @@ export async function tryPersistClientVisualMarksOnSend(input: {
   // Accept any drawn visual mark — including ones the reconciler bound to a
   // real DOM element via bounds overlap. The user's intent is always "add a
   // shape here", not "modify that underlying element".
-  if (!usable.every((attachment) =>
-    isDrawnVisualMarkAttachment(attachment) || isScreenshotOnlyVisualCommentTarget(attachment),
-  )) return { ok: false };
+  if (!usable.every((attachment) => shouldClientGraftVisualMarkWithoutAi(attachment))) {
+    return { ok: false };
+  }
 
   const deckPath = resolvePrimaryDeckFilePath(input.projectFiles, input.entryFile);
   if (!deckPath) return { ok: false };
