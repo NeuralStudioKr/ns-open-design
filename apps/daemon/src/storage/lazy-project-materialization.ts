@@ -846,6 +846,14 @@ export function createLazyProjectMaterializationMiddleware(
       const isPrefixDeny =
         err instanceof TeamverTenantStorageResolutionError
         && err.message === 'teamver_project_s3_prefix_required';
+      // Identity deny: nginx auth was accepted but the daemon did not see
+      // the X-Teamver-* identity headers (session mid-race, transient
+      // hydrate best-effort call, background job without a real request
+      // context). For READ routes we can still serve scratch bytes —
+      // access was already verified when those files were first written.
+      const isIdentityDeny =
+        err instanceof TeamverTenantStorageResolutionError
+        && err.message === 'teamver_project_identity_required';
 
       // Inline-HTML export path: the daemon can render from body bytes
       // without touching scratch or S3, so a prefix deny MUST NOT surface
@@ -853,13 +861,17 @@ export function createLazyProjectMaterializationMiddleware(
       // `daemon PDF export 502: teamver_project_s3_prefix_required` in
       // BYOK + fresh-scratch scenarios (post-deploy, idle-evict, cache
       // miss on the BFF prefix registry, etc.).
-      if (isPrefixDeny && isProjectExportOrArchivePath(req.path) && exportRequestHasInlineHtml(req)) {
+      if (
+        (isPrefixDeny || isIdentityDeny)
+        && isProjectExportOrArchivePath(req.path)
+        && exportRequestHasInlineHtml(req)
+      ) {
         console.info(
           JSON.stringify({
             metric: 'od_s3_export_inline_html_bypass',
             projectId,
             path: req.path,
-            reason: 'teamver_project_s3_prefix_required',
+            reason: err.message,
           }),
         );
         return true;
@@ -868,7 +880,7 @@ export function createLazyProjectMaterializationMiddleware(
       const canSoftFallback =
         (req.method === 'GET' || req.method === 'HEAD' || isProjectExportOrArchivePath(req.path))
         && isProjectScratchReadFallbackPath(req.path)
-        && isPrefixDeny;
+        && (isPrefixDeny || isIdentityDeny);
       if (canSoftFallback) {
         let hasScratch = false;
         try {
@@ -881,10 +893,12 @@ export function createLazyProjectMaterializationMiddleware(
         if (hasScratch) {
           console.info(
             JSON.stringify({
-              metric: 'od_s3_export_scratch_only_fallback',
+              metric: isIdentityDeny
+                ? 'od_s3_scratch_read_identity_fallback'
+                : 'od_s3_export_scratch_only_fallback',
               projectId,
               path: req.path,
-              reason: 'teamver_project_s3_prefix_required',
+              reason: err instanceof Error ? err.message : String(err),
             }),
           );
           return true;
