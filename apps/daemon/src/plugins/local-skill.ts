@@ -48,8 +48,20 @@ export async function loadPluginLocalSkill(
   } catch {
     return null;
   }
-  const body = stripFrontmatter(raw).trim();
-  if (!body) return null;
+  const bodyOnly = stripFrontmatter(raw).trim();
+  if (!bodyOnly) return null;
+  // Recovery hint: several bundled deck templates (Hermes cyber terminal,
+  // Graphify dark graph, zhangzara biennale, etc.) put the actual visual
+  // specification — palette hex codes, typography, motif language — in the
+  // frontmatter `description` field. The body under the frontmatter is
+  // meta-instructions ('read master skill, copy from templates folder')
+  // that the model cannot follow at runtime because those companion files
+  // are not mounted into the project workspace. Stripping the frontmatter
+  // therefore stripped the ONLY authoritative visual spec the model gets
+  // for those templates → deck came back looking generic even though the
+  // template body was 'loaded'. Prepend the frontmatter description /
+  // manifest description so the visual contract survives.
+  const body = withFrontmatterDescriptionHeader(bodyOnly, raw, manifest);
   const name = (manifest.title ?? manifest.name ?? plugin.id).toString();
   return {
     body,
@@ -72,4 +84,50 @@ function stripFrontmatter(raw: string): string {
   if (closeIdx === -1) return raw;
   const after = raw.slice(closeIdx + 4);
   return after.replace(/^\r?\n/, '');
+}
+
+/**
+ * If the SKILL.md frontmatter (or the plugin manifest, as a fallback)
+ * carries a rich `description`, prepend it to the body as a `## Visual
+ * summary` block. Idempotent: if the body already contains that summary
+ * (author-authored, or a prior invocation persisted it), we leave the
+ * body alone.
+ *
+ * Motivation: bundled deck templates put the concrete visual spec in the
+ * frontmatter and reserve the body for cross-file authoring instructions.
+ * Without this, the composer feeds the model only the instructions and
+ * loses the palette / typography / motif contract entirely.
+ */
+function withFrontmatterDescriptionHeader(
+  bodyOnly: string,
+  raw: string,
+  manifest: InstalledPluginRecord['manifest'],
+): string {
+  const description = readSkillFrontmatterDescription(raw)
+    ?? (typeof manifest?.description === 'string' ? manifest.description.trim() : '');
+  if (!description) return bodyOnly;
+  if (bodyOnly.includes(description)) return bodyOnly;
+  const summary = [
+    '## Visual summary (from template frontmatter)',
+    '',
+    description,
+  ].join('\n');
+  return `${summary}\n\n${bodyOnly}`;
+}
+
+function readSkillFrontmatterDescription(raw: string): string | null {
+  if (!raw.startsWith('---')) return null;
+  const closeIdx = raw.indexOf('\n---', 3);
+  if (closeIdx === -1) return null;
+  const frontmatter = raw.slice(3, closeIdx);
+  // Grab the `description:` field, tolerating quoted / unquoted values and
+  // multi-line YAML block scalars folded onto the next line. YAML libs live
+  // outside this module's boundary (atom-bodies + this file are the lone
+  // frontmatter readers in the daemon), so we do a targeted regex that
+  // handles the shapes bundled decks actually use.
+  const match =
+    /(^|\n)description\s*:\s*(?:"([^"]+)"|'([^']+)'|([^\n]+))/u.exec(frontmatter);
+  if (!match) return null;
+  const value = (match[2] ?? match[3] ?? match[4] ?? '').trim();
+  return value || null;
 }

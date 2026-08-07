@@ -35,6 +35,40 @@ function stripFrontmatter(raw: string): string {
   return raw.slice(closeIdx + 4).replace(/^\r?\n/, '');
 }
 
+function readFrontmatterDescription(raw: string): string | null {
+  if (!raw.startsWith('---')) return null;
+  const closeIdx = raw.indexOf('\n---', 3);
+  if (closeIdx === -1) return null;
+  const frontmatter = raw.slice(3, closeIdx);
+  const match =
+    /(^|\n)description\s*:\s*(?:"([^"]+)"|'([^']+)'|([^\n]+))/u.exec(frontmatter);
+  if (!match) return null;
+  const value = (match[2] ?? match[3] ?? match[4] ?? '').trim();
+  return value || null;
+}
+
+/**
+ * Mirror of the daemon-side `withFrontmatterDescriptionHeader` in
+ * `apps/daemon/src/plugins/local-skill.ts`. Bundled deck templates
+ * (Hermes cyber terminal, Graphify dark graph, etc.) put the visual
+ * spec — palette hex codes, typography, motif — in the frontmatter
+ * `description`. The body under the frontmatter is meta-instructions
+ * that reference companion files not mounted at runtime. Without this
+ * prepend, BYOK / API-mode compose loses the visual contract for those
+ * templates and the deck comes back looking generic.
+ */
+function withFrontmatterDescriptionHeader(
+  bodyOnly: string,
+  raw: string,
+  manifest: PluginManifest | undefined,
+): string {
+  const description = readFrontmatterDescription(raw)
+    ?? (typeof manifest?.description === 'string' ? manifest.description.trim() : '');
+  if (!description) return bodyOnly;
+  if (bodyOnly.includes(description)) return bodyOnly;
+  return `## Visual summary (from template frontmatter)\n\n${description}\n\n${bodyOnly}`;
+}
+
 export async function fetchPluginLocalSkill(
   pluginId: string,
 ): Promise<PluginLocalSkillSummary | null> {
@@ -63,9 +97,10 @@ export async function readPluginLocalSkillFromRecord(
       : await fetch(url);
     if (!resp.ok) return null;
     const raw = await resp.text();
-    const body = stripFrontmatter(raw).trim();
-    if (!body) return null;
+    const bodyOnly = stripFrontmatter(raw).trim();
+    if (!bodyOnly) return null;
     const manifest = plugin.manifest;
+    const body = withFrontmatterDescriptionHeader(bodyOnly, raw, manifest);
     const name = (manifest?.title ?? manifest?.name ?? plugin.id).toString();
     return { body, name };
   } catch {
