@@ -5770,6 +5770,17 @@ function HtmlViewer({
   const revisionRefreshActiveRetryRef = useRef(0);
   const revisionRefreshListRetryRef = useRef(0);
   const revisionConflictSuppressedRef = useRef(false);
+  // First reconcile after mount / file-switch. Suppress the scary "file was
+  // changed unexpectedly" toast on this pass because:
+  //   * The user just arrived at this file — they cannot have observed any
+  //     mid-session mutation, so a toast on entry always reads as spurious.
+  //   * Common causes of disk↔snapshot drift on entry are structural
+  //     (folder-import wrote without pushing a revision, an old file predates
+  //     the revision system, restoreRevision path applied a daemon-side
+  //     content transform, etc.), not something the user did.
+  // We still perform the state updates that mark the stack as invalidated so
+  // undo/redo stays honestly disabled — only the toast is quiet.
+  const revisionInitialReconcileRef = useRef(true);
   const revisionConflictMessageRef = useRef(t('fileRevision.conflict.message'));
   revisionConflictMessageRef.current = t('fileRevision.conflict.message');
   const revisionDiskSyncMessageRef = useRef(t('fileRevision.diskSync.failedMessage'));
@@ -7900,6 +7911,7 @@ function HtmlViewer({
     setRevisionDiskSyncToast(null);
     revisionDiskSyncFailedTargetRef.current = null;
     revisionConflictSuppressedRef.current = false;
+    revisionInitialReconcileRef.current = true;
     setRevisionRetentionLimit(FILE_REVISION_RETENTION_LIMIT_DEFAULT);
     setRevisionRetentionPending(false);
     manualEditPendingStyleRef.current = null;
@@ -7938,6 +7950,12 @@ function HtmlViewer({
     const cursor = cursorRevisionFromStack(stack);
     if (!cursor) return;
     const cursorRevisionId = cursor.id;
+    // Consume the "first reconcile after mount" flag once — the ref flips
+    // regardless of which reconcile branch we take, so a benign initial
+    // reconcile (cursor already matches disk) still hands the toast privilege
+    // over to whatever the NEXT reconcile decides.
+    const isInitialReconcile = revisionInitialReconcileRef.current;
+    revisionInitialReconcileRef.current = false;
 
     const [disk, snapshotContent, list] = await Promise.all([
       fetchProjectFileText(projectId, file.name, {
@@ -8043,7 +8061,11 @@ function HtmlViewer({
         manualEditPendingStyleRef.current = null;
       }
       setRevisionStackInvalidated(true);
-      if (!revisionConflictSuppressedRef.current) {
+      // Silent on the first reconcile after mount — see
+      // revisionInitialReconcileRef declaration for rationale. Undo/redo still
+      // gets disabled (setRevisionStackInvalidated above) so the user cannot
+      // accidentally overwrite disk with a stale snapshot.
+      if (!revisionConflictSuppressedRef.current && !isInitialReconcile) {
         setRevisionConflictToast(revisionConflictMessageRef.current);
       }
       const head = list.revisions.find((revision) => revision.id === list.headRevisionId);
@@ -8179,7 +8201,11 @@ function HtmlViewer({
     }
 
     setRevisionStackInvalidated(true);
-    if (!revisionConflictSuppressedRef.current) {
+    // Silent on the first reconcile after mount — see the sibling
+    // `!anyKnownDiskRevision` branch above for the same rationale. Undo/redo
+    // still gets disabled so the user cannot overwrite disk with a stale
+    // snapshot; only the toast is suppressed on entry.
+    if (!revisionConflictSuppressedRef.current && !isInitialReconcile) {
       setRevisionConflictToast(revisionConflictMessageRef.current);
     }
     const head = list.revisions.find((revision) => revision.id === list.headRevisionId);

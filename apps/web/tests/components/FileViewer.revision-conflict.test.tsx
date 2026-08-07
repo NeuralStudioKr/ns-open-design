@@ -66,13 +66,36 @@ describe('FileViewer revision conflict', () => {
 
     view.unmount();
 
-    render(
+    // First reconcile after a fresh mount is silent by policy — a page-entry
+    // toast would always read as spurious to the user (they cannot have
+    // observed any mid-session mutation). Undo/redo must still be disabled
+    // though, which is what the assertion below verifies.
+    const remount = render(
       <FileViewer
         projectId="project-1"
         projectKind="prototype"
         file={htmlPreviewFile()}
         liveHtml={externalDiskSource}
         filesRefreshKey={1}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(true);
+    });
+    // Entry-time toast MUST NOT appear even though disk diverged from history.
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    // A subsequent reconcile (external files-refresh signal, e.g. a chokidar
+    // notify / poll bump) is where the toast surfaces — this is the mid-
+    // session external-change path the guard is designed for.
+    remount.rerender(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml={externalDiskSource}
+        filesRefreshKey={2}
       />,
     );
 
@@ -127,6 +150,10 @@ describe('FileViewer revision conflict', () => {
 
     view.unmount();
 
+    // Fresh mount reconcile is silent (page-entry policy) even with the disk
+    // diverged, so we bump filesRefreshKey again to trigger the second
+    // reconcile — that is where the toast surfaces and the dismiss guard
+    // this test protects can be exercised.
     const remounted = render(
       <FileViewer
         projectId="project-1"
@@ -134,6 +161,21 @@ describe('FileViewer revision conflict', () => {
         file={htmlPreviewFile()}
         liveHtml={externalDiskSource}
         filesRefreshKey={1}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('file-viewer-undo').hasAttribute('disabled')).toBe(true);
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    remounted.rerender(
+      <FileViewer
+        projectId="project-1"
+        projectKind="prototype"
+        file={htmlPreviewFile()}
+        liveHtml={externalDiskSource}
+        filesRefreshKey={2}
       />,
     );
 
@@ -152,7 +194,7 @@ describe('FileViewer revision conflict', () => {
         projectKind="prototype"
         file={htmlPreviewFile()}
         liveHtml={externalDiskSource}
-        filesRefreshKey={2}
+        filesRefreshKey={3}
       />,
     );
 
