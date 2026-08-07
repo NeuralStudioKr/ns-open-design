@@ -443,7 +443,7 @@ describe('ChatPane streaming state', () => {
   });
 
   it('formats run error diagnostics with a distinct run id when present', () => {
-    expect(buildRunErrorDiagnosticText({
+    const out = buildRunErrorDiagnosticText({
       message: 'Service unavailable. Try again.',
       rawMessage: 'json-rpc id 4: Connection reset by server',
       errorCode: 'UPSTREAM_UNAVAILABLE',
@@ -453,7 +453,11 @@ describe('ChatPane streaming state', () => {
       conversationId: 'conv-1',
       assistantMessageId: 'assistant-1',
       agentId: 'amr',
-    })).toContain('run_id: run-real-123');
+    });
+    expect(out).toContain('run_id: run-real-123');
+    // Support-ticket header — never leaks unrelated product brand.
+    expect(out.startsWith('Teamver Design run error diagnostics')).toBe(true);
+    expect(out).not.toContain('Open Design run error diagnostics');
   });
 
   it('falls back to trace id for legacy diagnostics without a run id', () => {

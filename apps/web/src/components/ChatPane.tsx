@@ -3550,8 +3550,11 @@ export function isAssistantMessageStreaming(
 }
 
 export function buildRunErrorDiagnosticText(input: RunErrorDiagnosticInput): string {
+  // Branding-neutral header — the diagnostic gets copied into support tickets
+  // by the "copy diagnostic" button. Ops needs the internal ids below; the
+  // header name is not user-facing surface.
   const lines = [
-    'Open Design run error diagnostics',
+    'Teamver Design run error diagnostics',
     `trace_id: ${input.traceId ?? 'n/a'}`,
     `run_id: ${input.runId ?? input.traceId ?? 'n/a'}`,
     `error_code: ${input.errorCode ?? 'n/a'}`,

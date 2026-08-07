@@ -84,15 +84,19 @@ const UPSTREAM_ERROR_CODES = new Set([
  * `save-failed` + code=ARTIFACT_REGRESSION. Both paths detect the
  * same failure — the model emitted a placeholder instead of a real
  * deck — and the user must see a single consistent copy explaining:
- *   (1) what happened (small placeholder detected)
- *   (2) that their existing deck is safe on disk
- *   (3) how to relax the guard for a deliberate small edit
+ *   (1) what happened in user-friendly language
+ *   (2) that their existing deck is safe (data-loss reassurance)
+ *   (3) what to do next (just retry)
+ *
+ * Never mention internal env vars or daemon-side toggle names to the
+ * end user — those belong in ops docs. A prior version leaked
+ * `OD_ARTIFACT_STUB_GUARD=warn` into the visible banner.
  */
-export function formatProjectArtifactRegressionRejectedError(fileName: string): string {
+export function formatProjectArtifactRegressionRejectedError(_fileName: string): string {
   const embed = isTeamverEmbedMode();
   return embed
-    ? `모델이 실제 슬라이드 대신 훨씬 작은 플레이스홀더를 보내서 "${fileName}" 저장을 거부했습니다. 기존 슬라이드는 그대로 남아 있으니 다시 시도해 주세요. (의도적으로 짧게 만든 편집이었다면 OD_ARTIFACT_STUB_GUARD=warn 으로 완화할 수 있습니다.)`
-    : `Refused to save "${fileName}" because the model returned a much smaller placeholder instead of the real slide deck. Your existing deck is preserved on disk — retry the request. (If this was a deliberate small edit, relax via OD_ARTIFACT_STUB_GUARD=warn.)`;
+    ? 'AI가 이번 응답에서 완성된 슬라이드 대신 짧은 초안만 반환해 저장하지 않았습니다. 기존 슬라이드는 그대로 유지되어 있으니 다시 요청해 주세요.'
+    : 'The AI returned a short draft instead of a full slide deck, so it was not saved. Your existing deck is preserved — please try again.';
 }
 
 export function formatProjectArtifactSaveFailedError(
