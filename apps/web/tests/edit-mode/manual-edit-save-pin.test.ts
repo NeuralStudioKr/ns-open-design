@@ -86,4 +86,16 @@ describe('manual edit save pin', () => {
     expect(preferManualEditPinnedSource(pinned, saved, 1_000 + 100, tip)).toBeNull();
     expect(preferManualEditPinnedSourceOverLive(pinned, tip, 1_000 + 100, tip)).toBeNull();
   });
+
+  it('after tip yield, history confirm does not trust a stale expected save over tip disk', () => {
+    const pinned = createManualEditSourcePin(saved, 1_000);
+    const tip = '<html><body><h1>Agent tip</h1></body></html>';
+    expect(preferManualEditPinnedSource(pinned, tip, 1_000 + 100, tip)).toBeNull();
+    // Caller cleared pin; authored/disk are tip — undo/edit expected tip trusts local.
+    expect(manualEditHistoryConfirmTrustsLocal(tip, stale, null, 1_000 + 100, tip, tip)).toBe(true);
+    // Stale expected save must not win when disk already shows tip.
+    expect(manualEditHistoryConfirmTrustsLocal(saved, tip, null, 1_000 + 100, tip, tip)).toBe(false);
+    // Without tipContent arg, authored===expected still trusts (legacy path).
+    expect(manualEditHistoryConfirmTrustsLocal(tip, stale, null, 1_000 + 100, tip)).toBe(true);
+  });
 });

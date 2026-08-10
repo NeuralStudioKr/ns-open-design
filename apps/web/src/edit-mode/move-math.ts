@@ -398,8 +398,25 @@ export function moveHistoryLabel(targetLabel: string): string {
 }
 
 const GEOMETRY_MATCH_TOLERANCE_PX = 3;
-/** Idle od-edit-rect jumps beyond this are treated as bad remasures (not layout). */
+/** Idle od-edit-rect jumps beyond this floor are treated as bad remasures (not layout). */
 export const MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX = 480;
+/** Large targets may move farther in one layout pass — scale threshold by box span. */
+export const MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_SPAN_FACTOR = 1.5;
+
+/**
+ * Content-space wild-jump threshold: max(base floor, 1.5× larger side of `reference`).
+ * Keeps small elements strict while large slides tolerate bigger reflows.
+ */
+export function manualEditIdleRemeasureWildJumpThresholdPx(
+  reference: Pick<ManualEditTarget, 'rect'>,
+  basePx = MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX,
+  spanFactor = MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_SPAN_FACTOR,
+): number {
+  const span = Math.max(reference.rect.width, reference.rect.height, 1);
+  const scaled = span * (Number.isFinite(spanFactor) && spanFactor > 0 ? spanFactor : 1.5);
+  const floor = Number.isFinite(basePx) && basePx > 0 ? basePx : MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX;
+  return Math.max(floor, scaled);
+}
 
 /** Whether two manual-edit geometry snapshots are close enough to treat as the same box. */
 export function manualEditGeometryRoughlyMatches(
@@ -424,11 +441,12 @@ export function manualEditGeometryRoughlyMatches(
 /**
  * Idle remasure wild-jump — center or size delta far beyond normal layout churn.
  * Gesture/handoff paths own large intentional moves; idle rect must not teleport.
+ * Default threshold scales with the prior box span (see threshold helper).
  */
 export function manualEditGeometryIsWildJump(
   a: Pick<ManualEditTarget, 'rect'>,
   b: Pick<ManualEditTarget, 'rect'>,
-  thresholdPx = MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX,
+  thresholdPx: number = manualEditIdleRemeasureWildJumpThresholdPx(a),
 ): boolean {
   const aCx = a.rect.x + a.rect.width / 2;
   const aCy = a.rect.y + a.rect.height / 2;

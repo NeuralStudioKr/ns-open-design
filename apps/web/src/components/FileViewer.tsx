@@ -320,6 +320,7 @@ import {
   shouldReleaseManualEditSavePinForTip,
   type ManualEditSourcePin,
 } from '../edit-mode/manual-edit-save-pin';
+import { manualEditTargetsIdentityFingerprint } from '../edit-mode/manual-edit-targets-identity';
 import {
   shouldClearManualEditFrozenSourceOnModeChange,
   shouldUpdateManualEditFrozenSourceOnPatch,
@@ -694,34 +695,6 @@ function warmRevisionListSoftCacheFromList(
     at: Date.now(),
     optimistic: options?.optimistic === true,
   });
-}
-
-/** Style keys that track box geometry — idle remasure owns these, not inspector identity. */
-const MANUAL_EDIT_GEOMETRY_STYLE_PROP_KEYS = new Set<keyof ManualEditStyles>([
-  'width', 'height', 'minHeight', 'maxWidth', 'maxHeight',
-  'left', 'top', 'right', 'bottom',
-]);
-
-/** Identity fingerprint for od-edit-targets — skips geometry-only rebroadcasts. */
-function manualEditTargetsIdentityFingerprint(targets: ManualEditTarget[]): string {
-  return targets.map((target) => [
-    target.id,
-    target.kind,
-    target.tagName,
-    target.className,
-    target.text,
-    target.fields?.href ?? '',
-    target.fields?.src ?? '',
-    target.fields?.alt ?? '',
-    target.outerHtml?.length ?? 0,
-    target.isHidden ? '1' : '0',
-    // Style identity without box geometry so idle remasure / move / resize
-    // do not force mixed-inspector reseed (기획 59 + 51–53).
-    MANUAL_EDIT_STYLE_PROPS
-      .filter((key) => !MANUAL_EDIT_GEOMETRY_STYLE_PROP_KEYS.has(key))
-      .map((key) => target.styles?.[key] ?? '')
-      .join('\x1e'),
-  ].join('\0')).join('\n');
 }
 
 /** Warm tip revision HTML for pin tip≠ yield (active → head → tip). */
@@ -6388,6 +6361,8 @@ function HtmlViewer({
         if (cancelled || abort.signal.aborted) return;
         if (requestGeneration !== previewSourceFetchGenerationRef.current) return;
         let text = rawText;
+        // Authoritative tip HTML resolved for the active cursor (cold-cache path).
+        let activeTipResolvedHtml: string | null = null;
         // Prefer the revision snapshot for the active cursor when raw GET lags
         // scratch/S3 — including remount after undo/restore while filesRefreshKey
         // is unchanged. If the in-memory stack has not refreshed yet, list once.
@@ -6412,8 +6387,10 @@ function HtmlViewer({
               const authoritative =
                 getRevisionContentCache(projectId, file.name, revisionForActive.id)
                 ?? await resolveRevisionSnapshotContent(revisionForActive.id);
-              if (authoritative != null && authoritative !== text) {
-                text = authoritative;
+              if (authoritative != null) {
+                if (authoritative !== text) text = authoritative;
+                // Cold tip cache: snapshot/cache resolve IS tip content for pin yield.
+                activeTipResolvedHtml = authoritative;
               }
             }
           }
@@ -6427,7 +6404,7 @@ function HtmlViewer({
           projectId,
           file.name,
           revisionStackRef.current,
-        );
+        ) ?? activeTipResolvedHtml;
         if (shouldReleaseManualEditSavePinForTip(
           manualEditPinnedSourceRef.current,
           text,
@@ -9140,6 +9117,29 @@ function HtmlViewer({
             setManualEditMixedStyleKeys(mixedKeys);
             setManualEditDraft((current) => ({ ...current, styles: mergedStyles }));
           } else if (
+            nextIds.length > 1
+            && !selectionIdsChanged
+            && selectedTargetsIdentityChanged
+            && styleDraftPending
+            && selectedNext
+          ) {
+            // Multi + pending: keep mixed styles; refresh primary field identity only.
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            const snapshot = readManualEditTargetSnapshot(
+              base,
+              selectedNext.id,
+              {},
+              parsedDoc,
+            );
+            setManualEditDraft((current) => ({
+              ...current,
+              text: snapshot.fields.text ?? selectedNext.fields.text ?? selectedNext.text,
+              href: snapshot.fields.href ?? selectedNext.fields.href ?? '',
+              src: snapshot.fields.src ?? selectedNext.fields.src ?? '',
+              alt: snapshot.fields.alt ?? selectedNext.fields.alt ?? '',
+            }));
+          } else if (
             nextIds.length === 1
             && !selectionIdsChanged
             && selectedTargetsIdentityChanged
@@ -11075,12 +11075,18 @@ function HtmlViewer({
       cache: 'no-store',
       cacheBustKey: Date.now(),
     });
+    const tipContent = tipContentForManualEditSavePin(
+      projectId,
+      file.name,
+      revisionStackRef.current,
+    );
     if (manualEditHistoryConfirmTrustsLocal(
       expectedSource,
       persisted,
       manualEditPinnedSourceRef.current,
       now,
       authored,
+      tipContent,
     )) {
       return true;
     }

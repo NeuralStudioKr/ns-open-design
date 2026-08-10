@@ -1570,16 +1570,15 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
       ),
       '',
     )
-    // Form navigators + ping + SMIL to/from/by/values — relative/fragment only
-    // when used as URL retargets (DOM: isSafeManualEditRelativeOrFragmentUrl).
-    // Absolute https://… and backslash-authority survive the prefix deny above.
-    // Numeric SMIL (`to="10"` / `values="0;1"`) has no scheme and is preserved.
+    // Form navigators + ping — absolute/proto residual (SMIL to/from/by/values
+    // already gated by isSafeManualEditUrlAttrValue above; do not treat CSS
+    // paints like `color:red` as URL schemes in failClosed).
     .replace(
-      /\s(?:action|formaction|ping|to|from|by|values)\s*=\s*(['"])\s*(?:[a-z][a-z0-9+.-]*\s*:|\/\/)[\s\S]*?\1/gi,
+      /\s(?:action|formaction|ping)\s*=\s*(['"])\s*(?:(?:https?|javascript|vbscript|data|blob|file|about|filesystem|chrome(?:-extension)?|moz-extension|resource|view-source|ms-appx(?:-web)?)\s*:|\/\/)[\s\S]*?\1/gi,
       '',
     )
     .replace(
-      /\s(?:action|formaction|ping|to|from|by|values)\s*=\s*(?:[a-z][a-z0-9+.-]*\s*:|\/\/)[^\s>]*/gi,
+      /\s(?:action|formaction|ping)\s*=\s*(?:(?:https?|javascript|vbscript|data|blob|file|about|filesystem|chrome(?:-extension)?|moz-extension|resource|view-source|ms-appx(?:-web)?)\s*:|\/\/)[^\s>]*/gi,
       '',
     )
     .replace(

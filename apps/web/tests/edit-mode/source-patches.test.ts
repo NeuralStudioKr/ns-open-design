@@ -1372,7 +1372,9 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain('same gate as DOM isSafeManualEditPresentationCssValue');
     expect(sourcePatchesSource).toContain('isSafeManualEditPresentationCssValue(value) ? full : \'\'');
     expect(sourcePatchesSource).toContain('options?.parsedDoc ?? parseSource(source)');
-    // Absolute action/formaction/ping/SMIL to|from|by|values + backslash + multi-token residual.
+    // Absolute action/formaction/ping residual (SMIL via isSafe; CSS color: not stripped).
+    expect(sourcePatchesSource).toContain('/\\s(?:action|formaction|ping)\\s*=');
+    expect(sourcePatchesSource).toContain('do not treat CSS');
     expect(sourcePatchesSource).toContain('/\\s(?:action|formaction|ping|to|from|by|values)\\s*=');
     expect(sourcePatchesSource).toContain('[\\s\\S]*?\\\\[\\s\\S]*?');
     expect(sourcePatchesSource).toContain('srcset|imagesrcset|archive|values');

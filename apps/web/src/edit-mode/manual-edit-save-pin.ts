@@ -123,8 +123,18 @@ export function manualEditHistoryConfirmTrustsLocal(
   pinned: ManualEditSourcePin | null | undefined,
   now: number = Date.now(),
   authoredSource?: string | null,
+  tipContent?: string | null,
 ): boolean {
   if (persisted == null || persisted === expectedSource) return true;
+  // Disk already shows a warmer tip — do not trust a stale expected local save
+  // after pin tip-yield cleared the save pin (기획 50 undo / tip advance).
+  if (
+    tipContent != null
+    && persisted === tipContent
+    && tipContent !== expectedSource
+  ) {
+    return false;
+  }
   if (authoredSource != null && authoredSource === expectedSource) return true;
   return Boolean(
     isManualEditSourcePinActive(pinned, now)

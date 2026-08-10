@@ -22,6 +22,7 @@ import {
   manualEditGeometryIsWildJump,
   manualEditGeometryRoughlyMatches,
   manualEditHostPaintRectStale,
+  manualEditIdleRemeasureWildJumpThresholdPx,
 } from '../../src/edit-mode/move-math';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
 
@@ -392,6 +393,7 @@ describe('computeMove', () => {
 
   it('flags idle remasure wild jumps beyond the teleport threshold', () => {
     const base = { rect: { x: 40, y: 60, width: 80, height: 40 } };
+    expect(manualEditIdleRemeasureWildJumpThresholdPx(base)).toBe(MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX);
     expect(manualEditGeometryIsWildJump(base, {
       rect: { x: 45, y: 65, width: 82, height: 42 },
     })).toBe(false);
@@ -402,6 +404,18 @@ describe('computeMove', () => {
         width: 80,
         height: 40,
       },
+    })).toBe(true);
+  });
+
+  it('scales idle wild-jump threshold with large target span', () => {
+    const large = { rect: { x: 0, y: 0, width: 400, height: 400 } };
+    const threshold = manualEditIdleRemeasureWildJumpThresholdPx(large);
+    expect(threshold).toBe(600);
+    expect(manualEditGeometryIsWildJump(large, {
+      rect: { x: 500, y: 0, width: 400, height: 400 },
+    })).toBe(false);
+    expect(manualEditGeometryIsWildJump(large, {
+      rect: { x: 601, y: 0, width: 400, height: 400 },
     })).toBe(true);
   });
 });
