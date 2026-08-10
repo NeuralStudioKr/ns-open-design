@@ -130,6 +130,28 @@ describe("canvasSlideLaunch", () => {
     expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).toBe(CANVAS_CREATE_SLIDES_PROMPT);
   });
 
+  it("explicitly rules out carrying over the attached source Canvas's own visual styling", () => {
+    // Canvas → Slide runs attach the source HTML as a reference file. When
+    // the source page has its own strong styling (e.g. a warm yellow-green
+    // Italy travel gradient with emoji-chip buttons), the model was copying
+    // that source aesthetic instead of the picked template — Daisy Days
+    // came back looking nothing like Daisy Days.
+    const runPrompt = canvasCreateSlidesRunPrompt(
+      "Html Ppt Zhangzara Daisy Days",
+      "Canvas title: 여행자를 위한 이탈리아 기본 지식",
+      null,
+    );
+    // Deliverable instruction must call out that the source's visual styling
+    // does NOT cross over — only content/structure does.
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/Do NOT preserve the source's visual styling/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/come exclusively from the Selected deck template/i);
+    // [Selected slide template] block must reinforce this on the user side.
+    const templateBlock = runPrompt.slice(runPrompt.indexOf("[Selected slide template]"));
+    expect(templateBlock).toMatch(/Template palette \/ fonts \/ borders \/ motif WIN/i);
+    expect(templateBlock).toMatch(/source['\u2019]s own visual styling/i);
+    expect(templateBlock).toMatch(/Do NOT carry over the source['\u2019]s colors/i);
+  });
+
   it("keeps the weak one-liner (no [Selected slide template] block) for the default template", () => {
     // The default template has no explicit visual specification loaded on the
     // daemon side; we intentionally omit the forceful block so the model isn't

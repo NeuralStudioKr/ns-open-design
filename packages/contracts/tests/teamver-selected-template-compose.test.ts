@@ -144,6 +144,14 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     // Teamver skip-discovery must not re-open Site-ref discovery.
     expect(prompt).not.toContain('Site-ref:');
     expect(prompt).toContain('width:1920px;height:1080px');
+    // Attached-source styling must be explicitly ruled out — otherwise Canvas
+    // → Slide runs copied the source Canvas's own gradient/font palette
+    // (e.g. warm yellow-green Italy travel style) instead of Daisy Days.
+    const readLastSection = prompt.slice(
+      prompt.indexOf('Selected deck template visual — READ LAST'),
+    );
+    expect(readLastSection).toMatch(/attached\s+source|Canvas\s*\/\s*Drive/i);
+    expect(readLastSection).toMatch(/source(?:'s)?\s+palette|source\s+HTML/i);
   });
 
   it('keeps Coral / Bebas visual contract and demotes Simple Deck plugin ownership', () => {

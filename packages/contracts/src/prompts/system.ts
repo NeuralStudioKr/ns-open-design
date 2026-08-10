@@ -1408,8 +1408,10 @@ Hard requirements for every slide:
 - Bind kit hex colors, font-family names, border widths/radii, and offset shadows from the kit (inline styles or one short body \`<style>\` + optional font \`@import\`).
 - Keep decorative density the kit shows (chunky cards, daisies/stars, pastel badges, etc.). Sparse title-only slides that ignore the kit are a failure.
 - **Forbidden:** Neutral Modern / Starter look — slate covers \`#0f172a\` / \`#1e293b\` / \`#111827\`, Inter-only or system-ui-only typography, empty gradient corporate title slides, "no ornament" subtractive layouts from any design-system prose.
+- **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. The attached Canvas / Drive HTML has its own background colors, gradients, font-families, and decorative accents (e.g. warm yellow-green travel gradient with emoji-chip buttons, editorial serif Italy covers, etc.). Those belong to the source page — NOT to this deck. Palette, typography, borders, and motif MUST come from the kit above, not from the attached source HTML. The source contributes TEXT and structure only.
 
-If any earlier compact wireframe sample conflicts with the kit, **ignore the sample colors** and follow the kit.`;
+If any earlier compact wireframe sample conflicts with the kit, **ignore the sample colors** and follow the kit.
+If the attached source's palette conflicts with the kit, **ignore the source's palette** and follow the kit.`;
 
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT = `# Selected deck template visual — READ LAST (highest visual priority)
 
@@ -1419,6 +1421,7 @@ Hard requirements for every slide:
 - Match the Selected deck template **Visual summary / title / prose cues** (palette names, fonts, motif) as closely as possible.
 - If any hex codes or font names appear in the Selected section, bind them with inline styles or one short body \`<style>\`.
 - Do **not** invent a sparse Neutral Modern slate cover (\`#0f172a\` / Inter-only) when the template name or summary implies pastel, cream, playful, coral, terminal, editorial, etc.
+- Do **not** carry over the attached source file's own visual styling either — the source HTML's palette / fonts / gradients belong to the source page, not to this deck. Even without a concrete kit, prefer the template name/summary mood over the source's colors.
 - Prefer recognizable template mood over a generic corporate title slide.`;
 
 /**
