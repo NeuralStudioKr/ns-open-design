@@ -4,10 +4,13 @@ import {
   type DesignFileSection,
   filterEmbedDeliverableProducedFiles,
   isEmbedSupportingProjectFile,
+  listRootHtmlMatchingReferenceSources,
   partitionEmbedDesignFileSections,
+  projectHasCanonicalDeckDeliverable,
   shouldDeclineEmbedAutoOpen,
   shouldMinimizeEmbedLiveToolCode,
 } from "../src/teamver/branding/embedDeliverableFilePolicy";
+import { cleanupRootHtmlReferenceLeaks } from "../src/teamver/branding/cleanupRootHtmlReferenceLeaks";
 
 describe("embedDeliverableFilePolicy", () => {
   it("treats deck stylesheets and sibling scripts as supporting assets", () => {
@@ -133,5 +136,47 @@ describe("embedDeliverableFilePolicy", () => {
     );
     expect(deliverableSections).toEqual([["html", [{ name: "index.html", mtime: 2 }]]]);
     expect(supportingFiles.map((f) => f.name)).toEqual(["refs/drive/canvas.html", "css/deck.css"]);
+  });
+
+  it("lists root HTML leaks that duplicate refs sources", () => {
+    const projectFiles = [
+      { name: "refs/drive/canvas.html", path: "refs/drive/canvas.html" },
+      { name: "canvas.html" },
+      { name: "deck.html" },
+      { name: "notes.html" },
+    ];
+    expect(listRootHtmlMatchingReferenceSources(projectFiles)).toEqual(["canvas.html"]);
+    expect(projectHasCanonicalDeckDeliverable(projectFiles)).toBe(true);
+  });
+
+  it("deletes root Canvas HTML leaks only after a deck deliverable exists", async () => {
+    const deleted: string[] = [];
+    const files = [
+      { name: "refs/drive/canvas.html", path: "refs/drive/canvas.html" },
+      { name: "canvas.html" },
+      { name: "deck.html" },
+    ];
+    const cleaned = await cleanupRootHtmlReferenceLeaks({
+      projectId: "p1",
+      files,
+      slideOnlyMvp: true,
+      deleteFile: async (_projectId, name) => {
+        deleted.push(name);
+        return true;
+      },
+    });
+    expect(cleaned).toEqual(["canvas.html"]);
+    expect(deleted).toEqual(["canvas.html"]);
+
+    const skipped = await cleanupRootHtmlReferenceLeaks({
+      projectId: "p1",
+      files: [
+        { name: "refs/drive/canvas.html", path: "refs/drive/canvas.html" },
+        { name: "canvas.html" },
+      ],
+      slideOnlyMvp: true,
+      deleteFile: async () => true,
+    });
+    expect(skipped).toEqual([]);
   });
 });

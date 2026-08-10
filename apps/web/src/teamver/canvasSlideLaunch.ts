@@ -310,6 +310,8 @@ export function isCanvasSlideOneConfirmLaunch(
  */
 const DECK_TEMPLATE_CACHE_TTL_MS = 60_000;
 const DECK_TEMPLATE_CACHE_LIMIT = 24;
+/** Hard stop so a buggy nextOffset cannot loop forever. 40 × 24 ≈ full catalog. */
+const DECK_TEMPLATE_MAX_PAGES = 40;
 
 type DeckTemplateCacheEntry = {
   fetchedAt: number;
@@ -321,9 +323,11 @@ let deckTemplateInflight: Promise<readonly InstalledPluginRecord[]> | null = nul
 
 /**
  * Fetches (or reuses) the deck-template plugin list used by the Canvas →
- * Design slide-template picker. Multiple concurrent callers share the same
+ * Design slide-template picker. Pages through the catalog until `nextOffset`
+ * is exhausted so the modal matches the root Community gallery (which loads
+ * more than the first page of 24). Multiple concurrent callers share the same
  * in-flight promise so opening the modal 3 times in a row still fires one
- * request.
+ * walk.
  */
 export async function fetchCanvasSlideTemplatePlugins(options?: {
   force?: boolean;
@@ -339,12 +343,26 @@ export async function fetchCanvasSlideTemplatePlugins(options?: {
   if (deckTemplateInflight) return deckTemplateInflight;
   deckTemplateInflight = (async () => {
     try {
-      const page = await listPluginsPage({
-        mode: "deck",
-        limit: DECK_TEMPLATE_CACHE_LIMIT,
-      });
-      deckTemplateCache = { fetchedAt: Date.now(), plugins: page.plugins };
-      return page.plugins;
+      const all: InstalledPluginRecord[] = [];
+      const seen = new Set<string>();
+      let offset = 0;
+      for (let pageNum = 0; pageNum < DECK_TEMPLATE_MAX_PAGES; pageNum += 1) {
+        const page = await listPluginsPage({
+          mode: "deck",
+          limit: DECK_TEMPLATE_CACHE_LIMIT,
+          ...(offset > 0 ? { offset } : {}),
+        });
+        for (const plugin of page.plugins) {
+          const id = plugin.id?.trim();
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          all.push(plugin);
+        }
+        if (page.nextOffset == null || page.plugins.length === 0) break;
+        offset = page.nextOffset;
+      }
+      deckTemplateCache = { fetchedAt: Date.now(), plugins: all };
+      return all;
     } catch {
       // `listPluginsPage` already swallows fetch errors and returns an empty
       // page; guard anyway so the picker keeps working with just the

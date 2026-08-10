@@ -138,6 +138,13 @@ describe('detectEntryFile', () => {
     expect(await detectEntryFile(dir)).toBe('index.html');
   });
 
+  it('prefers deck.html over index.html for Teamver slide covers', async () => {
+    await writeFile(path.join(dir, 'index.html'), '<!doctype html>');
+    await writeFile(path.join(dir, 'deck.html'), '<!doctype html>');
+    await writeFile(path.join(dir, 'canvas.html'), '<!doctype html>');
+    expect(await detectEntryFile(dir)).toBe('deck.html');
+  });
+
   it('returns the first .html file when no index.html is present', async () => {
     await writeFile(path.join(dir, 'about.html'), '<!doctype html>');
     const result = await detectEntryFile(dir);

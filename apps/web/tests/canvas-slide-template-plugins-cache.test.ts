@@ -48,6 +48,32 @@ describe("fetchCanvasSlideTemplatePlugins (in-memory TTL cache)", () => {
     expect(listPluginsPage).toHaveBeenCalledWith({ mode: "deck", limit: 24 });
   });
 
+  it("pages through the catalog until nextOffset is exhausted", async () => {
+    const page = (ids: string[], nextOffset: number | null) => ({
+      plugins: ids.map((id) => ({
+        id,
+        title: id,
+        manifest: { title: id, od: { mode: "deck" } },
+      })) as unknown as import("@open-design/contracts").InstalledPluginRecord[],
+      total: 3,
+      limit: 24,
+      offset: nextOffset === 24 ? 0 : nextOffset === null ? 24 : 0,
+      nextOffset,
+    });
+    (listPluginsPage as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(page(["a", "b"], 24))
+      .mockResolvedValueOnce(page(["c"], null));
+    const plugins = await fetchCanvasSlideTemplatePlugins();
+    expect(plugins.map((p) => p.id)).toEqual(["a", "b", "c"]);
+    expect(listPluginsPage).toHaveBeenCalledTimes(2);
+    expect(listPluginsPage).toHaveBeenNthCalledWith(1, { mode: "deck", limit: 24 });
+    expect(listPluginsPage).toHaveBeenNthCalledWith(2, {
+      mode: "deck",
+      limit: 24,
+      offset: 24,
+    });
+  });
+
   it("returns the cached list on the second call without hitting the API again", async () => {
     const first = await fetchCanvasSlideTemplatePlugins();
     const second = await fetchCanvasSlideTemplatePlugins();

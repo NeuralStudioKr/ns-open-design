@@ -1,5 +1,9 @@
 import { isDesignSystemProject } from "../components/design-system-project";
 import type { Project, ProjectFile } from "../types";
+import {
+  isEmbedReferenceSourceFile,
+  isRootHtmlMatchingReferenceSource,
+} from "./branding/embedDeliverableFilePolicy";
 
 export type ProjectCoverFile = {
   kind: "html" | "image" | "video" | "logo";
@@ -26,6 +30,24 @@ export function findDesignSystemLogoFile(files: ProjectFile[]): ProjectFile | nu
   );
 }
 
+function coverHtmlPath(file: ProjectFile): string {
+  return (file.path ?? file.name).replace(/\\/g, "/").replace(/^\.\/+/, "");
+}
+
+function isExcludedProjectCoverHtml(
+  file: ProjectFile,
+  files: readonly ProjectFile[],
+): boolean {
+  if (isEmbedReferenceSourceFile(file)) return true;
+  if (isRootHtmlMatchingReferenceSource(file, files)) return true;
+  return false;
+}
+
+function isDeckCoverHtml(file: ProjectFile): boolean {
+  const base = basename(coverHtmlPath(file)).toLowerCase();
+  return /^deck(?:[-_.].*)?\.html?$/.test(base);
+}
+
 /** Latest cover candidate for project cards (HTML/image/video/logo). */
 export function pickProjectCoverFile(
   project: Project,
@@ -42,13 +64,18 @@ export function pickProjectCoverFile(
     return null;
   }
 
+  const htmlCandidates = files.filter(
+    (file) => file.kind === "html" && !isExcludedProjectCoverHtml(file, files),
+  );
+  const deckHtml = htmlCandidates
+    .filter(isDeckCoverHtml)
+    .sort((a, b) => b.mtime - a.mtime)[0];
   const html =
-    files.find((file) => (file.path ?? file.name) === "index.html") ??
-    files
-      .filter((file) => file.kind === "html")
-      .sort((a, b) => b.mtime - a.mtime)[0];
+    deckHtml
+    ?? htmlCandidates.find((file) => coverHtmlPath(file) === "index.html")
+    ?? htmlCandidates.sort((a, b) => b.mtime - a.mtime)[0];
   if (html) {
-    return { kind: "html", name: html.path ?? html.name };
+    return { kind: "html", name: coverHtmlPath(html) };
   }
 
   const image = files

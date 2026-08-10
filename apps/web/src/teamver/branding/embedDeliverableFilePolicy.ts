@@ -54,7 +54,7 @@ export function isRootHtmlMatchingReferenceSource(
   const base = filePathBasename(rel).toLowerCase();
   // Canonical slide deliverable names stay deliverables even if a refs copy exists.
   // `index.html` is NOT exempt — Canvas exports often use that basename and leak to root.
-  if (!base || base === "deck.html" || base === "deck.htm") {
+  if (!base || /^deck(?:[-_.].*)?\.html?$/.test(base)) {
     return false;
   }
   for (const candidate of projectFiles) {
@@ -64,6 +64,38 @@ export function isRootHtmlMatchingReferenceSource(
     if (filePathBasename(candidateRel).toLowerCase() === base) return true;
   }
   return false;
+}
+
+/** Root-level HTML paths that duplicate a `refs/…` Canvas/Drive source basename. */
+export function listRootHtmlMatchingReferenceSources(
+  projectFiles: readonly { name: string; path?: string }[],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const file of projectFiles) {
+    if (!isRootHtmlMatchingReferenceSource(file, projectFiles)) continue;
+    const rel = projectRelativePath(file).replace(/\\/g, "/").replace(/^\.\/+/, "");
+    if (!rel || seen.has(rel)) continue;
+    seen.add(rel);
+    out.push(rel);
+  }
+  return out;
+}
+
+function isCanonicalDeckBasename(path: string): boolean {
+  const base = filePathBasename(path).toLowerCase();
+  return /^deck(?:[-_.].*)?\.html?$/.test(base);
+}
+
+/** True when the project already has a real slide deliverable (not a refs leak). */
+export function projectHasCanonicalDeckDeliverable(
+  projectFiles: readonly { name: string; path?: string }[],
+): boolean {
+  return projectFiles.some((file) => {
+    if (isEmbedReferenceSourceFile(file)) return false;
+    if (isRootHtmlMatchingReferenceSource(file, projectFiles)) return false;
+    return isCanonicalDeckBasename(projectRelativePath(file));
+  });
 }
 
 export type EmbedSupportingFileOptions = {

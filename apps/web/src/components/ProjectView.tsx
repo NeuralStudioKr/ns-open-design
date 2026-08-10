@@ -129,6 +129,7 @@ import {
   uploadProjectFiles,
   upsertPreviewComment,
   writeProjectTextFileDetailed,
+  deleteProjectFile,
 } from '../providers/registry';
 import { useProjectFileEvents, type ProjectEvent } from '../providers/project-events';
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
@@ -475,6 +476,8 @@ import {
 } from './auto-open-file';
 import { selectInitialDesignPreviewFile } from './design-files/designArtifacts';
 import { isEmbedSupportingProjectFile } from '../teamver/branding/embedDeliverableFilePolicy';
+import { cleanupRootHtmlReferenceLeaks } from '../teamver/branding/cleanupRootHtmlReferenceLeaks';
+import { clearProjectCoverCache } from '../teamver/projectCoverLoader';
 import {
   artifactBaseNameForPersist,
   artifactVersionTabsToClose,
@@ -4340,6 +4343,57 @@ export function ProjectView({
     return next;
   }, [project.id]);
 
+  /**
+   * Canvas→Slide: pin metadata.entryFile to the real deck and delete root HTML
+   * that only duplicates an imported refs/ Canvas source (so project cards and
+   * the file tree stop treating the Canvas copy as the deliverable).
+   */
+  const finalizeSlideOnlyDeckArtifacts = useCallback(
+    async (
+      filesSnapshot: ProjectFile[],
+      deckFileName?: string | null,
+    ): Promise<ProjectFile[]> => {
+      if (!slideOnlyMvp) return filesSnapshot;
+      const candidate = (deckFileName ?? '').trim();
+      const deckBase = candidate.split('/').pop() ?? candidate;
+      if (candidate && isCanonicalDeckFileName(deckBase)) {
+        const currentEntry = project.metadata?.entryFile?.trim() ?? '';
+        const currentBase = currentEntry.split('/').pop() ?? currentEntry;
+        if (!currentEntry || !isCanonicalDeckFileName(currentBase)) {
+          const metadata = {
+            ...(project.metadata ?? {}),
+            kind: 'deck' as const,
+            entryFile: candidate.includes('/') ? deckBase : candidate,
+          };
+          const updated: Project = {
+            ...project,
+            metadata,
+            updatedAt: Date.now(),
+          };
+          onProjectChange(updated);
+          clearProjectCoverCache(project.id);
+          void patchProject(project.id, { metadata });
+        }
+      }
+      const deleted = await cleanupRootHtmlReferenceLeaks({
+        projectId: project.id,
+        files: filesSnapshot,
+        slideOnlyMvp: true,
+        deleteFile: deleteProjectFile,
+      });
+      if (deleted.length === 0) return filesSnapshot;
+      removeProjectFilesLocally(deleted);
+      return refreshProjectFiles();
+    },
+    [
+      slideOnlyMvp,
+      project,
+      onProjectChange,
+      removeProjectFilesLocally,
+      refreshProjectFiles,
+    ],
+  );
+
   useEffect(() => {
     projectFilesRef.current = projectFiles;
   }, [projectFiles]);
@@ -6067,6 +6121,7 @@ export function ProjectView({
       if (slideOnlyMvp) {
         htmlToOpen = await verifySlideProducedHtmlDeliverable(htmlToOpen, readProjectHtml);
         if (!htmlToOpen) continue;
+        await finalizeSlideOnlyDeckArtifacts([...filesSnapshot], htmlToOpen);
       }
       htmlAutoOpenClaimedRef.current.add(assistantMessageId);
       maybeArmTeamverPublishMenuAfterRunSuccess(project.id, htmlToOpen);
@@ -6082,7 +6137,14 @@ export function ProjectView({
       return true;
     }
     return false;
-  }, [project.id, readProjectHtml, requestOpenFile, slideOnlyMvp, updateMessageById]);
+  }, [
+    project.id,
+    readProjectHtml,
+    requestOpenFile,
+    slideOnlyMvp,
+    updateMessageById,
+    finalizeSlideOnlyDeckArtifacts,
+  ]);
 
   const markStreamingConversation = useCallback((conversationId: string) => {
     streamingConversationIdRef.current = conversationId;
@@ -7276,6 +7338,10 @@ export function ProjectView({
                     replayPersistResult,
                     readProjectHtml,
                   );
+                  nextFiles = await finalizeSlideOnlyDeckArtifacts(
+                    nextFiles,
+                    producedHtmlToOpen,
+                  );
                 }
                 produced = mergeRecoveredArtifact(
                   produced,
@@ -7448,6 +7514,7 @@ export function ProjectView({
     scheduleConversationMessageRefresh,
     reattachNonce,
     slideOnlyMvp,
+    finalizeSlideOnlyDeckArtifacts,
   ]);
 
   useEffect(() => {
@@ -9026,6 +9093,10 @@ export function ProjectView({
                 terminalPersistResult,
                 readProjectHtml,
               );
+              nextFiles = await finalizeSlideOnlyDeckArtifacts(
+                nextFiles,
+                producedHtmlToOpen,
+              );
             }
             produced = mergeRecoveredArtifact(
               produced,
@@ -10237,6 +10308,7 @@ export function ProjectView({
       onProjectsRefresh,
       onProjectChange,
       slideOnlyMvp,
+      finalizeSlideOnlyDeckArtifacts,
     ],
   );
 

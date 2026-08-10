@@ -241,19 +241,25 @@ export async function deleteProjectFolder(projectsRoot, projectId, name, metadat
   await rm(target, { recursive: true, force: true });
 }
 
-// Best-effort entry-file detector — looks for index.html at the root,
-// then any *.html file. Returns null if nothing obvious is found, in
-// which case the project simply opens to the file panel with no
-// auto-selected tab.
+// Best-effort entry-file detector — prefer a root deck*.html (Teamver slide
+// deliverable), then index.html, then any other root *.html. Returns null if
+// nothing obvious is found, in which case the project simply opens to the
+// file panel with no auto-selected tab.
+//
+// Canvas→Slide imports often leave a root near-copy of the refs source
+// (index.html / canvas.html). Preferring deck*.html keeps cover-hints and
+// auto-open on the real slide deliverable instead of the Canvas HTML leak.
 export async function detectEntryFile(dir: string): Promise<string | null> {
   try {
-    await stat(path.join(dir, 'index.html'));
-    return 'index.html';
-  } catch { /* not found */ }
-  try {
     const entries = await readdir(dir, { withFileTypes: true });
-    const htmlFile = entries.find((e) => e.isFile() && /\.html?$/i.test(e.name));
-    if (htmlFile) return htmlFile.name;
+    const htmlFiles = entries
+      .filter((e) => e.isFile() && /\.html?$/i.test(e.name))
+      .map((e) => e.name);
+    const deck = htmlFiles.find((name) => /^deck(?:[-_.].*)?\.html?$/i.test(name));
+    if (deck) return deck;
+    const index = htmlFiles.find((name) => name.toLowerCase() === 'index.html');
+    if (index) return index;
+    if (htmlFiles[0]) return htmlFiles[0];
   } catch { /* ignore */ }
   return null;
 }
