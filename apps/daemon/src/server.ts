@@ -12273,7 +12273,13 @@ export async function startServer({
     ) {
       try {
         const snap = getSnapshot(db, appliedPluginSnapshotId);
-        if (snap) pluginBlock = pluginPromptBlock(snap);
+        // Mirror web BYOK: when a Canvas→Slide visual template is selected,
+        // the applied scenario plugin must not claim visual ownership.
+        if (snap) {
+          pluginBlock = pluginPromptBlock(snap, {
+            role: selectedDeckTemplate ? 'scenario-only' : 'primary',
+          });
+        }
       } catch (err) {
         console.warn(
           `[plugins] pluginBlock build failed: ${err?.message ?? err}`,

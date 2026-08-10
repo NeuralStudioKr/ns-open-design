@@ -26,15 +26,18 @@ export function selectedDeckTemplateMetadata(
   metadata: ProjectMetadata | null | undefined,
   turnMeta?: Pick<DeckTemplateSendMeta, 'selectedDeckTemplateId' | 'selectedDeckTemplateTitle'> | null,
 ): SelectedDeckTemplateMetadata | null {
-  const fromProject = metadata?.selectedDeckTemplateId?.trim();
-  if (fromProject) {
-    const title = metadata?.selectedDeckTemplateTitle?.trim() || undefined;
-    return { id: fromProject, title };
-  }
+  // Per-turn pin wins over project metadata. Canvas/Drive confirm can
+  // `patchProject` then send on the same tick while React still holds a
+  // previous template id — turn meta is the user's latest pick.
   const fromTurn = turnMeta?.selectedDeckTemplateId?.trim();
   if (fromTurn) {
     const title = turnMeta?.selectedDeckTemplateTitle?.trim() || undefined;
     return { id: fromTurn, title };
+  }
+  const fromProject = metadata?.selectedDeckTemplateId?.trim();
+  if (fromProject) {
+    const title = metadata?.selectedDeckTemplateTitle?.trim() || undefined;
+    return { id: fromProject, title };
   }
   return null;
 }

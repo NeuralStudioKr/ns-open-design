@@ -9,6 +9,7 @@ import {
 import { fetchTeamverCanvasPreview } from "../fetchCanvasPreview";
 import { driveImportAssetIconName } from "../driveFileVisual";
 import {
+  CANVAS_CREATE_SLIDES_PLUGIN_ID,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   type CanvasSlideQuickSettings,
   type TeamverCanvasSlideTemplateOption,
@@ -265,6 +266,17 @@ export function TeamverCanvasSlideLaunchModal({
     ?? (selectedTemplateId?.trim()
       ? { id: selectedTemplateId, title: selectedTemplateId, record: null }
       : templateOptions[0] ?? null);
+  // Block confirm while the pick is only a title===id stub (catalog miss /
+  // still loading). Persisting the raw plugin id as selectedDeckTemplateTitle
+  // poisons designSystem / visualTemplate inputs.
+  const selectedTemplateReady =
+    !templatesLoading
+    && Boolean(selectedTemplate)
+    && (
+      selectedTemplate!.id === CANVAS_CREATE_SLIDES_PLUGIN_ID
+      || Boolean(selectedTemplate!.record)
+      || selectedTemplate!.title.trim() !== selectedTemplate!.id.trim()
+    );
   const showTemplateGrid = includeTemplateStep;
   const stepDocumentTitle = t("teamver.canvasSlideLaunch.stepDocument");
   const stepPromptTitle = t("teamver.canvasSlideLaunch.stepPrompt");
@@ -647,13 +659,13 @@ export function TeamverCanvasSlideLaunchModal({
               <button
                 type="button"
                 className="teamver-drive-import-attach teamver-canvas-slide-launch-confirm"
-                disabled={confirming || templatesLoading}
+                disabled={confirming || !selectedTemplateReady}
                 data-testid="teamver-canvas-slide-launch-confirm"
                 onClick={() => void onConfirm()}
               >
                 {confirming
                   ? t("teamver.canvasSlideLaunch.working")
-                  : templatesLoading
+                  : !selectedTemplateReady
                     ? t("teamver.canvasSlideLaunch.working")
                     : errorMessage
                       ? t("teamver.canvasSlideLaunch.retry")

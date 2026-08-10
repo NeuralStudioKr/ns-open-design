@@ -4393,9 +4393,13 @@ export function ProjectView({
           };
           onProjectChange(updated);
           clearProjectCoverCache(project.id);
-          void patchProject(project.id, { metadata }).catch(() => {
-            // Best-effort — local state already pinned the deck entry.
-          });
+          try {
+            // Await so DesignsTab / cover-hints see entryFile before the user
+            // lands back on the project list (fire-and-forget left Canvas pins).
+            await patchProject(project.id, { metadata });
+          } catch {
+            // Local state already pinned the deck entry.
+          }
         }
       }
       const deleted = await cleanupRootHtmlReferenceLeaks({
@@ -6147,11 +6151,24 @@ export function ProjectView({
         ?? selectTouchedHtmlOutputFromEvents(message.events, filesSnapshot, {
           branding: { slideOnlyMvp },
         });
-      if (!htmlToOpen) continue;
       if (slideOnlyMvp) {
-        htmlToOpen = await verifySlideProducedHtmlDeliverable(htmlToOpen, readProjectHtml);
+        if (htmlToOpen) {
+          htmlToOpen = await resolveSlideProducedHtmlToOpen(
+            htmlToOpen,
+            null,
+            readProjectHtml,
+          );
+        }
+        if (!htmlToOpen) {
+          const deckPath = resolveCanonicalDeckEntryPath(filesSnapshot);
+          if (deckPath) {
+            htmlToOpen = await verifySlideProducedHtmlDeliverable(deckPath, readProjectHtml);
+          }
+        }
         if (!htmlToOpen) continue;
         await finalizeSlideOnlyDeckArtifacts([...filesSnapshot], htmlToOpen);
+      } else if (!htmlToOpen) {
+        continue;
       }
       htmlAutoOpenClaimedRef.current.add(assistantMessageId);
       maybeArmTeamverPublishMenuAfterRunSuccess(project.id, htmlToOpen);

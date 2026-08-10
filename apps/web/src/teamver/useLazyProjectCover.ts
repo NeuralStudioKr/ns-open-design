@@ -4,6 +4,7 @@ import { buildProjectCardCover, type ProjectCardCover } from "./projectCardCover
 import {
   projectNeedsCoverFileFetch,
   resolveProjectCoverFile,
+  subscribeProjectCoverClear,
 } from "./projectCoverLoader";
 import type { ProjectCoverFile } from "./projectPreviewFile";
 
@@ -35,16 +36,25 @@ export function useLazyProjectCover(
 
   const projectId = project.id;
   const entryFile = project.metadata?.entryFile ?? "";
+  const [clearNonce, setClearNonce] = useState(0);
 
   const [visible, setVisible] = useState(!deferUntilVisible);
   const [override, setOverride] = useState<ProjectCoverFile | null>(null);
   const [fetched, setFetched] = useState(() => !projectNeedsCoverFileFetch(project));
 
-  // New project row (or entryFile identity) — drop prior override so we re-resolve.
+  useEffect(() => {
+    return subscribeProjectCoverClear((clearedId) => {
+      if (clearedId !== null && clearedId !== projectId) return;
+      setClearNonce((value) => value + 1);
+    });
+  }, [projectId]);
+
+  // New project row, entryFile identity, or explicit cover-cache clear — drop
+  // prior override so we re-resolve (deck edits keep the same entryFile).
   useEffect(() => {
     setOverride(null);
     setFetched(!projectNeedsCoverFileFetch(projectRef.current));
-  }, [projectId, entryFile]);
+  }, [projectId, entryFile, clearNonce]);
 
   useEffect(() => {
     if (!deferUntilVisible) return;
@@ -83,7 +93,7 @@ export function useLazyProjectCover(
     };
     // Intentionally omit full `project` — list polls create new object identities
     // and would cancel+restart /files cover resolve for every card.
-  }, [allowFilesFallback, projectId, entryFile, visible, fetched]);
+  }, [allowFilesFallback, projectId, entryFile, visible, fetched, clearNonce]);
 
   return {
     anchorRef,

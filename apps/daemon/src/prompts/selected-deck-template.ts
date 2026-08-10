@@ -67,9 +67,12 @@ export function selectedDeckTemplateTitleStub(templateTitle: string): string {
 
 /**
  * When project metadata names a visual template, that body owns the primary
- * skill slot. Scenario/plugin snapshot skills must not overwrite it — but
- * their body is kept as a secondary composed skill so deck structure /
- * deliverable contracts from example-simple-deck are not lost.
+ * skill slot. Scenario/plugin snapshot skills must not overwrite it.
+ *
+ * Do not append the full Simple Deck (or other scenario) body as a secondary
+ * composed skill — that historically reclaimed visuals over the selected
+ * template. Deck structure / deliverable contracts already live in the Teamver
+ * compact deck rules and scenario-only plugin block.
  */
 export function preferSelectedDeckTemplateSkill(input: {
   selected: SelectedDeckTemplateMetadata | null;
@@ -85,17 +88,7 @@ export function preferSelectedDeckTemplateSkill(input: {
     || (selected.title ? selectedDeckTemplateTitleStub(selected.title) : '');
   if (!templateBody) return null;
   const title = selected.title?.trim() || input.currentSkillName?.trim() || selected.id;
-  let skillBody = wrapSelectedDeckTemplateSkillBody(templateBody, title);
-  const secondary = input.secondarySkillBody?.trim() || '';
-  if (
-    secondary
-    && secondary !== templateBody
-    && !skillBody.includes(secondary)
-  ) {
-    const secondaryName =
-      input.secondarySkillName?.trim() || input.currentSkillName?.trim() || 'scenario';
-    skillBody += `\n\n---\n\n## Composed skill — ${secondaryName}\n\n${secondary}`;
-  }
+  const skillBody = wrapSelectedDeckTemplateSkillBody(templateBody, title);
   return {
     skillBody,
     skillName: title,

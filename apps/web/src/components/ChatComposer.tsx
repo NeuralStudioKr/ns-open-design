@@ -2055,17 +2055,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             if (patched) onActiveDesignSystemChange?.(patched);
           }
           const sourceBrief = canvasCreateSlidesSourceBrief(handoff);
-          consumeTeamverCanvasLaunchHandoff();
-          setCanvasSlideLaunch(null);
-          setCanvasSlideLaunchError(null);
-          setCanvasSlideUserPrompt('');
-          setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
             designSystemId: designSystemIdForRun,
             mergeContext: baseMeta?.context,
           });
-          sendComposedTurn(
+          const sent = sendComposedTurn(
             canvasCreateSlidesRunPrompt(
               selectedCanvasSlideTemplate.title,
               sourceBrief,
@@ -2107,6 +2102,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               },
             },
           );
+          // Consume handoff only after send is accepted so a failed compose
+          // keeps the modal/URL token for retry (aligned with HomeView).
+          if (sent) {
+            consumeTeamverCanvasLaunchHandoff();
+            setCanvasSlideLaunch(null);
+            setCanvasSlideLaunchError(null);
+            setCanvasSlideUserPrompt('');
+            setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+          }
           return;
         }
 
@@ -2174,18 +2178,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           if (patched) onActiveDesignSystemChange?.(patched);
         }
         const sourceBrief = driveCreateSlidesSourceBrief(asset);
-        consumeTeamverDriveLaunchHandoff();
-        setCanvasSlideLaunch(null);
-        setCanvasSlideLaunchError(null);
-        setCanvasSlideUserPrompt('');
-        setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
         {
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
             designSystemId: designSystemIdForRun,
             mergeContext: baseMeta?.context,
           });
-          sendComposedTurn(
+          const sent = sendComposedTurn(
             canvasCreateSlidesRunPrompt(
               selectedCanvasSlideTemplate.title,
               sourceBrief,
@@ -2223,6 +2222,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               },
             },
           );
+          if (sent) {
+            consumeTeamverDriveLaunchHandoff();
+            setCanvasSlideLaunch(null);
+            setCanvasSlideLaunchError(null);
+            setCanvasSlideUserPrompt('');
+            setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+          }
         }
       } catch (err) {
         if (isMainSsoUserMismatchError(err)) {

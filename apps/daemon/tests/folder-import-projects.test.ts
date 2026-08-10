@@ -158,6 +158,15 @@ describe('detectEntryFile', () => {
     expect(await detectEntryFile(dir)).toBeNull();
   });
 
+  it('finds a shallow nested deck.html when root only has Canvas leaks', async () => {
+    await mkdir(path.join(dir, 'refs', 'drive'), { recursive: true });
+    await mkdir(path.join(dir, 'slides'), { recursive: true });
+    await writeFile(path.join(dir, 'refs', 'drive', 'index.html'), '<!doctype html>');
+    await writeFile(path.join(dir, 'index.html'), '<!doctype html>');
+    await writeFile(path.join(dir, 'slides', 'deck.html'), '<!doctype html>');
+    expect(await detectEntryFile(dir)).toBe('slides/deck.html');
+  });
+
   it('returns the first .html file when no index.html is present', async () => {
     await writeFile(path.join(dir, 'about.html'), '<!doctype html>');
     const result = await detectEntryFile(dir);

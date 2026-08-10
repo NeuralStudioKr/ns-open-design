@@ -83,6 +83,39 @@ describe('selected-deck-template runtime helpers', () => {
     expect(enriched?.skillIds).toEqual(['html-ppt-hermes', 'example-simple-deck']);
   });
 
+  it('prefers per-turn template over a stale project template id', () => {
+    expect(
+      resolveDeckTemplateSkillId(
+        {
+          kind: 'deck',
+          selectedDeckTemplateId: 'html-ppt-old',
+          selectedDeckTemplateTitle: 'Old Template',
+        },
+        {
+          selectedDeckTemplateId: 'html-ppt-hermes',
+          selectedDeckTemplateTitle: 'Hermes',
+          skillIds: ['html-ppt-hermes'],
+        },
+      ),
+    ).toBe('html-ppt-hermes');
+
+    const enriched = enrichChatSendMetaWithProjectDeckTemplate(
+      {
+        selectedDeckTemplateId: 'html-ppt-hermes',
+        selectedDeckTemplateTitle: 'Hermes',
+        skillIds: ['example-simple-deck'],
+      },
+      {
+        kind: 'deck',
+        selectedDeckTemplateId: 'html-ppt-old',
+        selectedDeckTemplateTitle: 'Old Template',
+      },
+    );
+    expect(enriched?.selectedDeckTemplateId).toBe('html-ppt-hermes');
+    expect(enriched?.selectedDeckTemplateTitle).toBe('Hermes');
+    expect(enriched?.skillIds).toEqual(['html-ppt-hermes', 'example-simple-deck']);
+  });
+
   it('routes scenario plugin fallback separately from the selected visual template', () => {
     expect(
       resolveScenarioPluginIdForLocalSkill(

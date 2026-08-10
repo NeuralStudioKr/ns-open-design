@@ -94,9 +94,17 @@ export function projectHasRefsHtmlSource(
 }
 
 /**
- * Root non-deck HTML while a refs HTML source is present. Canvas→Slide models
- * often Write `index.html` / `export.html` even when the refs basename differs
- * — treat those as source leaks, not slide deliverables.
+ * Known Canvas-shaped root basenames. Models often Write these even when the
+ * refs import was renamed (`refs/drive/canvas-rev-9.html` → root `index.html`).
+ * Do NOT treat arbitrary root HTML (`notes.html`, `about.html`) as leaks — those
+ * may be user-authored.
+ */
+const CANVAS_SHAPED_ROOT_BASENAME_RE =
+  /^(index|export|canvas)(?:[-_.].*)?\.html?$/i;
+
+/**
+ * Root Canvas-shaped HTML while a refs HTML source is present. Basename-matched
+ * refs leaks are handled separately by `isRootHtmlMatchingReferenceSource`.
  */
 export function isRootNonDeckHtmlWhenRefsPresent(
   file: { name: string; path?: string },
@@ -105,14 +113,13 @@ export function isRootNonDeckHtmlWhenRefsPresent(
   const rel = projectRelativePath(file).replace(/\\/g, "/").replace(/^\.\/+/, "");
   if (!rel || rel.includes("/") || isEmbedReferenceSourceFile(file)) return false;
   if (!isHtmlProjectPath(rel) || isCanonicalDeckProjectPath(rel)) return false;
+  if (!CANVAS_SHAPED_ROOT_BASENAME_RE.test(filePathBasename(rel))) return false;
   return projectHasRefsHtmlSource(projectFiles);
 }
 
 /**
  * Root HTML cleanup candidates after a real deck exists: basename-matched refs
- * leaks, plus any other root non-deck HTML when refs HTML sources are present
- * (Canvas exports commonly land as index.html / export.html even when the
- * refs path was renamed).
+ * leaks, plus known Canvas-shaped root names when refs HTML sources are present.
  */
 export function listRootHtmlCanvasLeakCleanupTargets(
   projectFiles: readonly { name: string; path?: string }[],

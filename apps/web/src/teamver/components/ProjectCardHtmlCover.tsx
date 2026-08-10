@@ -109,9 +109,8 @@ function AuthenticatedHtmlCover({
   deckLoadingClassName: string;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
-  // Cache by path without ?v= so mtime bumps / remounts reuse HTML; still fetch
-  // the busted URL when the cache misses. Prefixed with builder version so
-  // logic bumps do not serve stale full-deck thumbs from the in-memory Map.
+  // Cache key keeps ?v=/coverVersion so deck edits bust stale first-slide
+  // srcDoc. Prefixed with builder version so logic bumps do not serve old thumbs.
   const cacheKey = htmlCoverCacheKey(mode, src);
   const [visible, setVisible] = useState(() => {
     if (!deferUntilVisible) return true;

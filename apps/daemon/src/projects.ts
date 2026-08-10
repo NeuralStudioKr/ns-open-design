@@ -261,10 +261,35 @@ async function collectRefHtmlBasenames(refsDir: string, out: Set<string>): Promi
   }
 }
 
+async function findNestedDeckHtml(dir: string, relDir = '', depth = 0): Promise<string | null> {
+  if (depth > 2) return null;
+  let entries = [];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const dirs = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    if (entry.name === 'refs' || entry.name === 'node_modules') continue;
+    const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
+    if (entry.isFile() && /^deck(?:[-_.].*)?\.html?$/i.test(entry.name)) {
+      return rel;
+    }
+    if (entry.isDirectory()) dirs.push({ full: path.join(dir, entry.name), rel });
+  }
+  for (const child of dirs) {
+    const nested = await findNestedDeckHtml(child.full, child.rel, depth + 1);
+    if (nested) return nested;
+  }
+  return null;
+}
+
 // Best-effort entry-file detector — prefer a root deck*.html (Teamver slide
-// deliverable), then index.html, then any other root *.html. Returns null if
-// nothing obvious is found, in which case the project simply opens to the
-// file panel with no auto-selected tab.
+// deliverable), then a shallow nested deck*.html, then index.html, then any
+// other root *.html. Returns null if nothing obvious is found, in which case
+// the project simply opens to the file panel with no auto-selected tab.
 //
 // Canvas→Slide imports often leave a root near-copy of the refs source
 // (index.html / canvas.html). Preferring deck*.html and excluding refs
@@ -277,6 +302,9 @@ export async function detectEntryFile(dir: string): Promise<string | null> {
       .map((e) => e.name);
     const deck = htmlFiles.find((name) => /^deck(?:[-_.].*)?\.html?$/i.test(name));
     if (deck) return deck;
+
+    const nestedDeck = await findNestedDeckHtml(dir);
+    if (nestedDeck) return nestedDeck;
 
     const refsBasenames = new Set();
     await collectRefHtmlBasenames(path.join(dir, 'refs'), refsBasenames);

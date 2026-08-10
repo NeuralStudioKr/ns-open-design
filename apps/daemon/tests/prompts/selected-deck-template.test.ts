@@ -31,7 +31,7 @@ describe('selected-deck-template prompt helpers', () => {
     expect(wrapped).toContain('body');
   });
 
-  it('prefers selected template body and keeps scenario skill as secondary', () => {
+  it('prefers selected template body and does not append Simple Deck as secondary', () => {
     const preferred = preferSelectedDeckTemplateSkill({
       selected: { id: 'html-ppt-hermes', title: 'Hermes' },
       templateBody: '# Hermes visual rules\npalette: cyan',
@@ -43,12 +43,10 @@ describe('selected-deck-template prompt helpers', () => {
     expect(preferred?.skillName).toBe('Hermes');
     expect(preferred?.skillBody).toContain('# Teamver selected deck template guard');
     expect(preferred?.skillBody).toContain('# Hermes visual rules');
-    expect(preferred?.skillBody).toContain('## Composed skill — Simple Deck');
-    expect(preferred?.skillBody).toContain('compact deck rules');
-    // Template guard section comes before the secondary scenario block.
-    expect(preferred?.skillBody.indexOf('Hermes visual rules')).toBeLessThan(
-      preferred?.skillBody.indexOf('compact deck rules') ?? -1,
-    );
+    // Secondary Simple Deck body historically reclaimed visuals over the
+    // selected template — structure lives in compact deck rules instead.
+    expect(preferred?.skillBody).not.toContain('## Composed skill — Simple Deck');
+    expect(preferred?.skillBody).not.toContain('compact deck rules');
   });
 
   it('falls back to a title stub when template body is missing', () => {
@@ -73,7 +71,7 @@ describe('selected-deck-template prompt helpers', () => {
     });
     expect(preferred?.skillName).toBe('html-ppt-hermes');
     expect(preferred?.skillBody).toContain('# Hermes body');
-    expect(preferred?.skillBody).toContain('## Composed skill — Simple Deck');
+    expect(preferred?.skillBody).not.toContain('## Composed skill — Simple Deck');
   });
 
   it('pins daemon compose to keep ad-hoc skill stack when template wins', () => {

@@ -233,19 +233,20 @@ describe("embedDeliverableFilePolicy", () => {
     ).toBe("deck.html");
   });
 
-  it("treats all root non-deck HTML as Canvas leak cleanup targets once a deck exists", () => {
+  it("treats Canvas-shaped root HTML as leak cleanup targets but keeps user notes", () => {
     const projectFiles = [
       { name: "refs/drive/export-abc.html", path: "refs/drive/export-abc.html" },
       { name: "index.html" },
       { name: "export.html" },
+      { name: "canvas-copy.html" },
       { name: "deck.html" },
       { name: "notes.html" },
     ];
     expect(listRootHtmlMatchingReferenceSources(projectFiles)).toEqual([]);
     expect(listRootHtmlCanvasLeakCleanupTargets(projectFiles).sort()).toEqual([
+      "canvas-copy.html",
       "export.html",
       "index.html",
-      "notes.html",
     ]);
   });
 

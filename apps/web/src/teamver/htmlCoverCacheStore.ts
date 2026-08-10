@@ -5,10 +5,14 @@
 const htmlCoverCache = new Map<string, string>();
 const htmlCoverInflight = new Map<string, Promise<string>>();
 
-/** Stable in-memory cache key — path only (no ?v=). */
+/**
+ * In-memory cache key for HTML cover srcDoc. Keep `?v=` / coverVersion so a
+ * deck edit that bumps mtime does not reuse a stale first-slide snapshot.
+ * Fragments (`#…`) are still stripped.
+ */
 export function htmlCoverCacheKey(mode: "deck" | "page", src: string): string {
-  const pathOnly = src.split(/[?#]/u, 1)[0] ?? src;
-  return `v2:${mode}:${pathOnly}`;
+  const withoutHash = (src.split(/#/u, 1)[0] ?? src).trim();
+  return `v3:${mode}:${withoutHash}`;
 }
 
 export function peekHtmlCoverCache(cacheKey: string): string | null {

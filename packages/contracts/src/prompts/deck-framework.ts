@@ -529,7 +529,7 @@ Use a 56–72px blockquote/principle sentence with small attribution.
 **Closing** — recap CTA:
 \`<section class="slide" style="min-height:100vh;padding:96px 88px;box-sizing:border-box;background:#1e293b;color:#fff;display:flex;flex-direction:column;justify-content:center"><h2 style="margin:0 0 20px;font:700 56px/1.1 sans-serif;max-width:16ch">다음 단계</h2><p style="margin:0;font:26px/1.5 sans-serif;max-width:40rem">행동을 유도하는 마무리 한두 문장.</p></section>\`
 
-Quality bar: match the requested slide count (see slide-count rule below); each slide needs a distinct layout role (cover → split/body/stat/timeline/quote/column mixes → closing). Bind active design-system colors into these inline styles when provided. Do not use the example colors literally when an active design system or selected template supplies a stronger visual direction.
+Quality bar: match the requested slide count (see slide-count rule below); each slide needs a distinct layout role (cover → split/body/stat/timeline/quote/column mixes → closing). When a Selected deck template is active, bind its visual-kit colors/fonts — design-system tokens are secondary brand context only. Do not use the example colors literally when a selected template (or, if none, an active design system) supplies a stronger visual direction.
 `;
 
 /** Compact API decks: honor user/plugin/brief counts; 6–8 is only the unspecified default. */

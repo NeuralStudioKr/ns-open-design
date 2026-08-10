@@ -96,6 +96,29 @@ export function projectNeedsCoverFileFetch(project: Project): boolean {
   return false;
 }
 
+type ProjectCoverClearListener = (projectId: string | null) => void;
+const projectCoverClearListeners = new Set<ProjectCoverClearListener>();
+
+/** Subscribe to cover-cache clears so list cards can drop stale overrides. */
+export function subscribeProjectCoverClear(
+  listener: ProjectCoverClearListener,
+): () => void {
+  projectCoverClearListeners.add(listener);
+  return () => {
+    projectCoverClearListeners.delete(listener);
+  };
+}
+
+function notifyProjectCoverClear(projectId: string | null): void {
+  for (const listener of projectCoverClearListeners) {
+    try {
+      listener(projectId);
+    } catch {
+      // Listener failures must not break cache maintenance.
+    }
+  }
+}
+
 export function clearProjectCoverCache(projectId?: string): void {
   if (projectId?.trim()) {
     const id = projectId.trim();
@@ -103,6 +126,7 @@ export function clearProjectCoverCache(projectId?: string): void {
     inflight.delete(id);
     pendingHintIds.delete(id);
     hintCheckedAt.delete(id);
+    notifyProjectCoverClear(id);
     return;
   }
   coverCache.clear();
@@ -110,6 +134,7 @@ export function clearProjectCoverCache(projectId?: string): void {
   pendingHintIds.clear();
   hintCheckedAt.clear();
   activeHintBatch = null;
+  notifyProjectCoverClear(null);
 }
 
 /** Apply batch cover-hints (metadata / shallow scan) without listing all files. */
