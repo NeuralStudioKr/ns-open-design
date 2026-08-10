@@ -552,7 +552,7 @@ Rules:
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete compact deck over a giant framework. Do not add \`<head>\`, \`<style>\`, keyboard nav, transform scale scripts, or print CSS in API mode.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. A short static deck is better than a beautiful truncated \`<head>\`.
 5. Vary slide layouts using the inline layout vocabulary below — do not repeat the same padding/background/composition on every slide.
-6. Preserve the selected template/design-system feel: palette, typography mood, density, accent treatment, and slide rhythm must be recognizable even in compact inline HTML.
+6. Preserve the Selected deck template look (design system is secondary brand context only): palette, typography mood, density, accent treatment, and slide rhythm must be recognizable even in compact inline HTML.
 7. When the user attaches images to place on slides, include \`<img src="exact-project-relative-path" alt="…" style="max-width:100%;height:auto;object-fit:contain">\` using the paths from the attachment context. Prefer a dedicated image slide or a content area; never invent remote URLs or data: URIs.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY}

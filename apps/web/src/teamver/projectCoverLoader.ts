@@ -1,7 +1,6 @@
 import { isDesignSystemProject } from "../components/design-system-project";
 import { fetchProjectFiles } from "../providers/registry";
 import type { Project } from "../types";
-import { isTrustedDeckEntryFile } from "./branding/embedDeliverableFilePolicy";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { fetchProjectCoverHints, projectCoverFileFromHint } from "./projectCoverHints";
 import { PROJECT_LIST_VIEWPORT_BATCH } from "./projectListLimits";
@@ -88,9 +87,11 @@ export function projectNeedsCoverFileFetch(project: Project): boolean {
   if (!entry) return true;
   const isDeckProject =
     project.metadata?.kind === "deck" || project.metadata?.skipDiscoveryBrief === true;
-  // Bad Canvas entryFile pins must re-resolve via hints /files so deck wins.
+  // Deck HTML covers always fetch cover-hints for `coverVersion` cache-busting
+  // (trusted entryFile alone yields a stale path-stable thumb after edits).
+  // Bad Canvas entry pins also re-resolve so deck*.html can win.
   if (isDeckProject && /\.html?$/i.test(entry)) {
-    return !isTrustedDeckEntryFile(entry);
+    return true;
   }
   return false;
 }

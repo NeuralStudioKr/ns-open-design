@@ -4,7 +4,7 @@ import {
   isCanonicalDeckProjectPath,
   isEmbedReferenceSourceFile,
   isRootHtmlMatchingReferenceSource,
-  isTrustedDeckEntryFile,
+  isRootNonDeckHtmlWhenRefsPresent,
 } from "./branding/embedDeliverableFilePolicy";
 
 export type ProjectCoverFile = {
@@ -42,6 +42,7 @@ function isExcludedProjectCoverHtml(
 ): boolean {
   if (isEmbedReferenceSourceFile(file)) return true;
   if (isRootHtmlMatchingReferenceSource(file, files)) return true;
+  if (isRootNonDeckHtmlWhenRefsPresent(file, files)) return true;
   return false;
 }
 
@@ -55,23 +56,20 @@ export function pickProjectCoverFile(
   files: ProjectFile[],
 ): ProjectCoverFile | null {
   const designSystemProject = isDesignSystemProject(project);
-  // Only trust a pinned entryFile when it is a real deck deliverable. Canvas
-  // leaks (`index.html` / `canvas.html`) must fall through to file heuristics.
-  const trustedEntry =
-    !designSystemProject
-    && (
-      project.metadata?.kind === "deck"
-      || project.metadata?.skipDiscoveryBrief === true
-    )
-      ? isTrustedDeckEntryFile(project.metadata?.entryFile)
-      : Boolean(project.metadata?.entryFile?.trim());
-  if (trustedEntry && !designSystemProject) return null;
-
   if (designSystemProject) {
     const logo = findDesignSystemLogoFile(files);
     if (logo) {
       return { kind: "logo", name: logo.path ?? logo.name };
     }
+    return null;
+  }
+
+  // Non-deck projects with a pinned entryFile resolve the cover from metadata.
+  // Deck projects always pick from files (prefer deck*.html, exclude Canvas
+  // leaks) so cover-hints /files can supply coverVersion + correct path.
+  const isDeckProject =
+    project.metadata?.kind === "deck" || project.metadata?.skipDiscoveryBrief === true;
+  if (!isDeckProject && project.metadata?.entryFile?.trim()) {
     return null;
   }
 

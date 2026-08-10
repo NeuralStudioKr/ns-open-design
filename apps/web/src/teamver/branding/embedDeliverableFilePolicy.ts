@@ -82,27 +82,49 @@ export function listRootHtmlMatchingReferenceSources(
   return out;
 }
 
+/** True when any imported Canvas/Drive HTML source exists under `refs/`. */
+export function projectHasRefsHtmlSource(
+  projectFiles: readonly { name: string; path?: string }[],
+): boolean {
+  return projectFiles.some(
+    (file) =>
+      isEmbedReferenceSourceFile(file)
+      && isHtmlProjectPath(projectRelativePath(file)),
+  );
+}
+
+/**
+ * Root non-deck HTML while a refs HTML source is present. Canvas→Slide models
+ * often Write `index.html` / `export.html` even when the refs basename differs
+ * — treat those as source leaks, not slide deliverables.
+ */
+export function isRootNonDeckHtmlWhenRefsPresent(
+  file: { name: string; path?: string },
+  projectFiles: readonly { name: string; path?: string }[],
+): boolean {
+  const rel = projectRelativePath(file).replace(/\\/g, "/").replace(/^\.\/+/, "");
+  if (!rel || rel.includes("/") || isEmbedReferenceSourceFile(file)) return false;
+  if (!isHtmlProjectPath(rel) || isCanonicalDeckProjectPath(rel)) return false;
+  return projectHasRefsHtmlSource(projectFiles);
+}
+
 /**
  * Root HTML cleanup candidates after a real deck exists: basename-matched refs
- * leaks, plus root `index.html` when any refs HTML source is present (Canvas
- * exports commonly land as index.html even when the refs path was renamed).
+ * leaks, plus any other root non-deck HTML when refs HTML sources are present
+ * (Canvas exports commonly land as index.html / export.html even when the
+ * refs path was renamed).
  */
 export function listRootHtmlCanvasLeakCleanupTargets(
   projectFiles: readonly { name: string; path?: string }[],
 ): string[] {
   const out = listRootHtmlMatchingReferenceSources(projectFiles);
   const seen = new Set(out);
-  const hasRefsHtml = projectFiles.some(
-    (file) =>
-      isEmbedReferenceSourceFile(file)
-      && isHtmlProjectPath(projectRelativePath(file)),
-  );
-  if (!hasRefsHtml || !projectHasCanonicalDeckDeliverable(projectFiles)) return out;
+  if (!projectHasRefsHtmlSource(projectFiles)) return out;
+  if (!projectHasCanonicalDeckDeliverable(projectFiles)) return out;
   for (const file of projectFiles) {
+    if (!isRootNonDeckHtmlWhenRefsPresent(file, projectFiles)) continue;
     const rel = projectRelativePath(file).replace(/\\/g, "/").replace(/^\.\/+/, "");
-    if (!rel || rel.includes("/") || seen.has(rel)) continue;
-    if (rel.toLowerCase() !== "index.html") continue;
-    if (isCanonicalDeckProjectPath(rel)) continue;
+    if (!rel || seen.has(rel)) continue;
     seen.add(rel);
     out.push(rel);
   }
@@ -174,11 +196,9 @@ export function isEmbedSupportingProjectFile(
   options?: EmbedSupportingFileOptions,
 ): boolean {
   if (isEmbedReferenceSourceFile(file)) return true;
-  if (
-    options?.projectFiles
-    && isRootHtmlMatchingReferenceSource(file, options.projectFiles)
-  ) {
-    return true;
+  if (options?.projectFiles) {
+    if (isRootHtmlMatchingReferenceSource(file, options.projectFiles)) return true;
+    if (isRootNonDeckHtmlWhenRefsPresent(file, options.projectFiles)) return true;
   }
   return EMBED_SUPPORTING_EXTENSIONS.has(filePathExtension(projectRelativePath(file)));
 }

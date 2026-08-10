@@ -123,16 +123,20 @@ describe("embedDeliverableFilePolicy", () => {
       { name: "css/deck.css" },
       { name: "refs/drive/canvas.html" },
       { name: "hero.png" },
+      { name: "deck.html" },
     ];
     expect(filterEmbedDeliverableProducedFiles(files, { slideOnlyMvp: true })).toEqual([
-      { name: "index.html" },
       { name: "hero.png" },
+      { name: "deck.html" },
     ]);
   });
 
   it("partitions design file sections into deliverable vs supporting buckets", () => {
     const sections = [
-      ["html", [{ name: "index.html", mtime: 2 }]],
+      ["html", [
+        { name: "index.html", mtime: 2 },
+        { name: "deck.html", mtime: 4 },
+      ]],
       ["references", [{ name: "refs/drive/canvas.html", mtime: 3 }]],
       ["stylesheet", [{ name: "css/deck.css", mtime: 1 }]],
     ] satisfies readonly DesignFileSection<string, { name: string; mtime: number }>[];
@@ -140,8 +144,12 @@ describe("embedDeliverableFilePolicy", () => {
       sections,
       { slideOnlyMvp: true },
     );
-    expect(deliverableSections).toEqual([["html", [{ name: "index.html", mtime: 2 }]]]);
-    expect(supportingFiles.map((f) => f.name)).toEqual(["refs/drive/canvas.html", "css/deck.css"]);
+    expect(deliverableSections).toEqual([["html", [{ name: "deck.html", mtime: 4 }]]]);
+    expect(supportingFiles.map((f) => f.name)).toEqual([
+      "refs/drive/canvas.html",
+      "index.html",
+      "css/deck.css",
+    ]);
   });
 
   it("lists root HTML leaks that duplicate refs sources", () => {
@@ -225,14 +233,33 @@ describe("embedDeliverableFilePolicy", () => {
     ).toBe("deck.html");
   });
 
-  it("treats root index.html as a Canvas leak cleanup target once a deck exists", () => {
+  it("treats all root non-deck HTML as Canvas leak cleanup targets once a deck exists", () => {
     const projectFiles = [
       { name: "refs/drive/export-abc.html", path: "refs/drive/export-abc.html" },
       { name: "index.html" },
+      { name: "export.html" },
       { name: "deck.html" },
       { name: "notes.html" },
     ];
     expect(listRootHtmlMatchingReferenceSources(projectFiles)).toEqual([]);
-    expect(listRootHtmlCanvasLeakCleanupTargets(projectFiles)).toEqual(["index.html"]);
+    expect(listRootHtmlCanvasLeakCleanupTargets(projectFiles).sort()).toEqual([
+      "export.html",
+      "index.html",
+      "notes.html",
+    ]);
+  });
+
+  it("hides root non-deck HTML from deliverables when refs HTML is present", () => {
+    const projectFiles = [
+      { name: "refs/drive/canvas-rev-9.html", path: "refs/drive/canvas-rev-9.html" },
+      { name: "index.html" },
+      { name: "deck.html" },
+    ];
+    expect(
+      isEmbedSupportingProjectFile({ name: "index.html" }, { projectFiles }),
+    ).toBe(true);
+    expect(
+      isEmbedSupportingProjectFile({ name: "deck.html" }, { projectFiles }),
+    ).toBe(false);
   });
 });

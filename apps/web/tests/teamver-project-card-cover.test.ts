@@ -34,15 +34,23 @@ describe("project card cover media URLs", () => {
     expect(card.version).toBe(1_700_000_123_456);
   });
 
-  it("does not bust metadata entryFile covers with project.updatedAt", () => {
+  it("does not thumb a bad Canvas entryFile pin for deck projects without an override", () => {
     const card = buildProjectCardCover(
       project({ metadata: { kind: "deck", entryFile: "index.html" } }),
       null,
     );
-    expect(card.src).toBe(projectCoverMediaUrl("p-deck", "index.html"));
-    expect(card.src).not.toContain("?v=");
-    expect(card.version).toBeUndefined();
-    expect(card.filePath).toBe("index.html");
+    expect(card.kind).toBe("fallback");
+    expect(card.src).toBeUndefined();
+  });
+
+  it("uses cover-hints version to cache-bust trusted deck.html thumbs", () => {
+    const card = buildProjectCardCover(
+      project({ metadata: { kind: "deck", entryFile: "deck.html" } }),
+      { kind: "html", name: "deck.html", version: 1_700_000_555_000 },
+    );
+    expect(card.src).toBe(projectCoverMediaUrl("p-deck", "deck.html", 1_700_000_555_000));
+    expect(card.src).toContain("?v=1700000555000");
+    expect(card.version).toBe(1_700_000_555_000);
   });
 
   it("does not fall back image cover version to project.updatedAt", () => {

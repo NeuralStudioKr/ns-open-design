@@ -354,7 +354,8 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('Artifact-only is OK for speed/tokens');
       expect(prompt).toContain('inline layout vocabulary');
       expect(prompt).toContain('split thesis, timeline, quote');
-      expect(prompt).toContain('template/design-system feel');
+      expect(prompt).toContain('Selected deck template look');
+      expect(prompt).toContain('secondary brand context only');
       expect(prompt).toContain('bind quick-brief answers');
       expect(prompt).toContain('Alternate light/dark');
       expect(prompt).not.toContain('assets/template.html');
@@ -495,8 +496,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('class/style cues: slide, terminal, scanline');
       expect(prompt).toContain('layout cues: display:grid, letter-spacing, text-transform');
       expect(prompt).toContain('Must match template palette');
-      expect(prompt).toContain('apply it with inline styles');
-      expect(prompt).toContain('do not merely describe it');
+      expect(prompt).toContain('match its visual kit');
+      expect(prompt).toContain('must not override the template look');
+      expect(prompt).toContain('do not merely describe the template');
       expect(prompt).toContain('Template is the visual contract');
       expect(prompt.indexOf('Selected design template visual signature — Html Ppt Hermes Cyber Terminal')).toBeLessThan(
         prompt.indexOf('Slide deck — API compact contract'),

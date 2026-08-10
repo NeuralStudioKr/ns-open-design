@@ -1,5 +1,6 @@
 import {
   isRootHtmlMatchingReferenceSource,
+  isRootNonDeckHtmlWhenRefsPresent,
   listRootHtmlCanvasLeakCleanupTargets,
   listRootHtmlMatchingReferenceSources,
   projectHasCanonicalDeckDeliverable,
@@ -73,7 +74,10 @@ export async function deleteRootHtmlReferenceLeakIfPresent(input: {
     );
   });
   if (!match) return null;
-  if (!isRootHtmlMatchingReferenceSource(match, input.files)) return null;
+  const isLeak =
+    isRootHtmlMatchingReferenceSource(match, input.files)
+    || isRootNonDeckHtmlWhenRefsPresent(match, input.files);
+  if (!isLeak) return null;
   const rel = projectRelativePath(match).replace(/\\/g, "/").replace(/^\.\/+/, "");
   try {
     if (await input.deleteFile(input.projectId, rel)) return rel;

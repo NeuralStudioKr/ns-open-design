@@ -1233,7 +1233,7 @@ function summarizeApiModeSkillBody(skillBody: string): string {
     summary || 'Use the active deck skill only as broad visual inspiration.',
     'Template is the visual contract; compact samples are only structure.',
     'Alternate light/dark; never repeat one background/composition 3+ slides.',
-    'Preserve template/design-system palette, type mood, density, accents, and rhythm visibly.',
+    'Preserve the selected template palette, type mood, density, accents, and rhythm visibly (design system is secondary brand context only).',
     'Implement with inline styles or one short body `<style>` after slide 1; never start with `<head>` or long CSS.',
     'Build a slide arc: cover, 4–6 varied evidence/story slides, closing; avoid generic title-plus-bullets.',
     'Output compact no-head deck HTML with varied inline layouts and visible content first.',
@@ -1261,7 +1261,7 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — u
 **How to stream the deck (non-negotiable on turn 2+):**
 1. Emit the status sentence first, then open the artifact early. Never \`type="text/html"\`.
 2. First bytes inside a full deck artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
-3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
+3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` after slide 1 — design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` (or the matching patch close) in this same turn.
 
 **Forbidden on deck turns:** outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing a brand-new draft on an edit turn, or announcing completion without the requested slide count (minimum 6 when unspecified).
@@ -1277,7 +1277,7 @@ When the user's message starts with \`[form answers — discovery]\`, treat ever
 - **scale** / **slideCount** — emit exactly the requested number of slides (parse ranges like "8~10장" or "10-15 pages" to the upper bound when a single target is needed).
 - **must_include** — each requested topic gets at least one dedicated slide or clearly labeled section; do not omit user-named items.
 
-If a field was skipped, choose a sensible default and proceed — do not emit another discovery form. Preserve the active template/design-system feel, and vary slide layouts per the compact inline vocabulary (split, stat, timeline, quote, column); do not output 6 identical white boxes.`;
+If a field was skipped, choose a sensible default and proceed — do not emit another discovery form. Preserve the Selected deck template look (design system is secondary brand context only), and vary slide layouts per the compact inline vocabulary (split, stat, timeline, quote, column); do not output 6 identical white boxes.`;
 
 const TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE = `# Teamver slide-only API — existing-deck image embed (READ LAST)
 
@@ -1334,10 +1334,10 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
 **How to stream the deck (non-negotiable):**
 1. Emit the status sentence first, then open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
 2. First bytes inside artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
-3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a template/design system is active, apply it with inline styles or one short body \`<style>\` after slide 1; do not merely describe it.
+3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` after slide 1 — design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` in this same turn.
 
-**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing completion without the requested slide count (minimum 6 when unspecified), or repeating the same layout/background/composition on every slide. Preserve template/design-system feel and vary layouts per the compact inline layout vocabulary.`;
+**Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing completion without the requested slide count (minimum 6 when unspecified), or repeating the same layout/background/composition on every slide. Preserve the Selected deck template look (design system is secondary brand context only) and vary layouts per the compact inline layout vocabulary.`;
 
 /**
  * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.

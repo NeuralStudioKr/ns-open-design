@@ -130,6 +130,9 @@ import { subscribeTeamverWorkspaceChanged } from '../teamver/teamverWorkspaceEve
 import type { TeamverDriveImportAsset } from '../teamver/importDriveAssets';
 import { formatDriveImportErrorForUser } from '../teamver/importDriveAssets';
 import { formatTeamverCanvasImportErrorMessage } from '../teamver/importCanvas';
+import { redirectToTeamverLoginFromEmbed } from '../teamver/teamverBffAuthError';
+import { isMainSsoRequiredError, isMainSsoUserMismatchError } from '../teamver/teamverMainSsoGate';
+import { beginMainSsoMismatchRecovery } from '../teamver/mainSsoMismatchRecovery';
 import { TeamverDriveImportModal } from '../teamver/components/TeamverDriveImportModal';
 import { teamverDriveAssetIdsFromImportAssets } from '../teamver/driveImportAttachedIds';
 import {
@@ -377,6 +380,7 @@ export function HomeView({
   const [canvasSlideLaunch, setCanvasSlideLaunch] = useState<TeamverCanvasSlideLaunchSource | null>(null);
   const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
   const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
+  const [canvasSlideLaunchAuthRelogin, setCanvasSlideLaunchAuthRelogin] = useState(false);
   const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
   const [canvasSlideUserPrompt, setCanvasSlideUserPrompt] = useState('');
   const [canvasSlideQuickSettings, setCanvasSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
@@ -1784,6 +1788,7 @@ export function HomeView({
     }
     setCanvasSlideLaunchBusy(true);
     setCanvasSlideLaunchError(null);
+    setCanvasSlideLaunchAuthRelogin(false);
     setError(null);
     try {
       if (canvasSlideLaunch.kind === 'canvas') {
@@ -1907,13 +1912,20 @@ export function HomeView({
       setCanvasSlideUserPrompt('');
       setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
     } catch (err) {
-      const message =
-        canvasSlideLaunch.kind === 'canvas'
-          ? formatTeamverCanvasImportErrorMessage(err)
-          : formatDriveImportErrorForUser(
-              err instanceof Error ? err.message : String(err),
-            );
-      setCanvasSlideLaunchError(message);
+      if (isMainSsoUserMismatchError(err)) {
+        void beginMainSsoMismatchRecovery();
+        setCanvasSlideLaunchError(null);
+        setCanvasSlideLaunchAuthRelogin(false);
+      } else {
+        const message =
+          canvasSlideLaunch.kind === 'canvas'
+            ? formatTeamverCanvasImportErrorMessage(err)
+            : formatDriveImportErrorForUser(
+                err instanceof Error ? err.message : String(err),
+              );
+        setCanvasSlideLaunchError(message);
+        setCanvasSlideLaunchAuthRelogin(isMainSsoRequiredError(err));
+      }
     } finally {
       setCanvasSlideLaunchBusy(false);
     }
@@ -2295,6 +2307,9 @@ export function HomeView({
           onUserPromptChange={setCanvasSlideUserPrompt}
           quickSettings={canvasSlideQuickSettings}
           onQuickSettingsChange={setCanvasSlideQuickSettings}
+          onRelogin={
+            canvasSlideLaunchAuthRelogin ? redirectToTeamverLoginFromEmbed : null
+          }
           onClose={() => {
             if (!canvasSlideLaunchBusy) {
               if (canvasSlideLaunch.kind === 'canvas') {
@@ -2304,6 +2319,7 @@ export function HomeView({
               }
               setCanvasSlideLaunch(null);
               setCanvasSlideLaunchError(null);
+              setCanvasSlideLaunchAuthRelogin(false);
               setCanvasSlideUserPrompt('');
               setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
             }

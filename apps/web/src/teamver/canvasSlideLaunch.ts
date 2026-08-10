@@ -518,12 +518,17 @@ export function canvasCreateSlidesPluginInputs(
   const brief = sourceBrief?.trim();
   const user = userInstruction?.trim();
   const normalizedQuickSettings = normalizeCanvasSlideQuickSettings(quickSettings);
+  const visualTemplate =
+    (templateTitle ?? "").trim() || "기본 슬라이드 템플릿";
   return {
     deckType: "presentation from source material",
     topic,
     audience: "stakeholders",
     speakerNotes: "no speaker notes",
-    designSystem: (templateTitle ?? "").trim() || "the active project design system",
+    // Keep designSystem for scenario schema compatibility, but point it at the
+    // visual template title so Neutral Modern / Simple Deck cannot reclaim look.
+    designSystem: visualTemplate,
+    visualTemplate,
     ...(brief ? { sourceBrief: brief } : {}),
     ...(user ? { userInstruction: user } : {}),
     quickSettings: normalizedQuickSettings,

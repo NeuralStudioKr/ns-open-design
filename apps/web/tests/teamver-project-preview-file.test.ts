@@ -60,7 +60,7 @@ describe("projectPreviewFile", () => {
     expect(cover).toEqual({ kind: "html", name: "deck.html" });
   });
 
-  it("ignores refs/ and root Canvas basename leaks when picking cover html", () => {
+  it("ignores refs/ and all root non-deck HTML when refs sources exist", () => {
     const files = [
       file({
         name: "refs/drive/index.html",
@@ -70,9 +70,10 @@ describe("projectPreviewFile", () => {
       }),
       file({ name: "index.html", kind: "html", mtime: 98 }),
       file({ name: "about.html", kind: "html", mtime: 1 }),
+      file({ name: "deck.html", kind: "html", mtime: 10 }),
     ];
     const cover = pickProjectCoverFile(project({ metadata: { kind: "deck" } }), files);
-    expect(cover).toEqual({ kind: "html", name: "about.html" });
+    expect(cover).toEqual({ kind: "html", name: "deck.html" });
   });
 
   it("does not short-circuit on a bad Canvas entryFile pin for deck projects", () => {
