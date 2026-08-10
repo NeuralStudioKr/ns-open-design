@@ -304,6 +304,7 @@ import {
   PROMOTE_MOVE_STYLE_KEYS,
   hostPaintRectAfterVisualMove,
   hostPaintRectFromVisualContent,
+  manualEditGeometryIsWildJump,
   manualEditGeometryRoughlyMatches,
   resolveManualEditChromeHostRect,
   viewportRectAfterMoveCommit,
@@ -316,6 +317,7 @@ import {
   isManualEditSourcePinActive,
   preferManualEditPinnedSource,
   preferManualEditPinnedSourceOverLive,
+  shouldReleaseManualEditSavePinForTip,
   type ManualEditSourcePin,
 } from '../edit-mode/manual-edit-save-pin';
 import {
@@ -720,6 +722,26 @@ function manualEditTargetsIdentityFingerprint(targets: ManualEditTarget[]): stri
       .map((key) => target.styles?.[key] ?? '')
       .join('\x1e'),
   ].join('\0')).join('\n');
+}
+
+/** Warm tip revision HTML for pin tip≠ yield (active → head → tip). */
+function tipContentForManualEditSavePin(
+  projectId: string,
+  fileName: string,
+  stack: { revisions: Array<{ id: string; sequence: number }>; headRevisionId: string | null },
+): string | null {
+  const activeSeq = getActiveRevisionSequence(projectId, fileName);
+  const tipRevision = (
+    activeSeq != null
+      ? stack.revisions.find((revision) => revision.sequence === activeSeq)
+      : null
+  )
+    ?? stack.revisions.find((revision) => revision.id === stack.headRevisionId)
+    ?? stack.revisions.at(-1)
+    ?? null;
+  return tipRevision
+    ? getRevisionContentCache(projectId, fileName, tipRevision.id)
+    : null;
 }
 const MAX_CACHED_PREVIEW_VIEWPORTS = 128;
 // Grace window before the inspect hover card is torn down. Long enough to absorb
@@ -5749,6 +5771,8 @@ function HtmlViewer({
   const selectedManualEditTargetRef = useRef<ManualEditTarget | null>(null);
   const selectedManualEditTargetIdsRef = useRef<string[]>([]);
   const manualEditTargetsIdentityFingerprintRef = useRef<string>('');
+  /** Selected-set identity only — multi inspector reseed must not follow unselected churn. */
+  const manualEditSelectedIdentityFingerprintRef = useRef<string>('');
   const manualEditHoverTargetIdRef = useRef<string | null>(null);
   const [manualEditDraft, setManualEditDraft] = useState<ManualEditDraft>(() => emptyManualEditDraft());
   const [revisionStack, setRevisionStack] = useState<RevisionStackSnapshot>(() => (
@@ -6168,9 +6192,23 @@ function HtmlViewer({
     if (accepted != null) {
       // A lagging parent liveHtml token must not clobber a just-saved pin
       // (S3/lazy race + ProjectView still holding the pre-edit buffer).
+      const tipContent = tipContentForManualEditSavePin(
+        projectId,
+        file.name,
+        revisionStackRef.current,
+      );
+      if (shouldReleaseManualEditSavePinForTip(
+        manualEditPinnedSourceRef.current,
+        accepted,
+        tipContent,
+      )) {
+        manualEditPinnedSourceRef.current = null;
+      }
       const pinnedOverLive = preferManualEditPinnedSourceOverLive(
         manualEditPinnedSourceRef.current,
         accepted,
+        Date.now(),
+        tipContent,
       );
       const nextSource = pinnedOverLive ?? accepted;
       // Keep the pin after a matching fetch — a later stale GET in the same
@@ -6383,9 +6421,25 @@ function HtmlViewer({
         // Manual-edit POST succeeded but GET may still return null/stale S3
         // for a few seconds — keep the pinned saved buffer instead of
         // painting the pre-edit lastStable frame (looks like "edit didn't save").
+        // When tip cache already equals fetch and differs from pin, release pin
+        // so agent tips paint (preferManualEditPinnedSource tipContent yield).
+        const tipContent = tipContentForManualEditSavePin(
+          projectId,
+          file.name,
+          revisionStackRef.current,
+        );
+        if (shouldReleaseManualEditSavePinForTip(
+          manualEditPinnedSourceRef.current,
+          text,
+          tipContent,
+        )) {
+          manualEditPinnedSourceRef.current = null;
+        }
         const pinnedPreferred = preferManualEditPinnedSource(
           manualEditPinnedSourceRef.current,
           text,
+          Date.now(),
+          tipContent,
         );
         if (pinnedPreferred != null) {
           if (sourceRef.current !== pinnedPreferred) {
@@ -7987,6 +8041,7 @@ function HtmlViewer({
     setManualEditViewportWidth(null);
     setManualEditTargets([]);
     manualEditTargetsIdentityFingerprintRef.current = '';
+    manualEditSelectedIdentityFingerprintRef.current = '';
     setSelectedManualEditTarget(null);
     setSelectedManualEditTargetIds([]);
     setManualEditMixedStyleKeys(new Set());
@@ -8977,6 +9032,7 @@ function HtmlViewer({
     if (!manualEditMode) {
       setManualEditTargets([]);
       manualEditTargetsIdentityFingerprintRef.current = '';
+      manualEditSelectedIdentityFingerprintRef.current = '';
       setSelectedManualEditTarget(null);
       setSelectedManualEditTargetIds([]);
       setManualEditMixedStyleKeys(new Set());
@@ -9058,11 +9114,18 @@ function HtmlViewer({
           const styleDraftPending = Boolean(
             manualEditPendingStyleRef.current || manualEditStyleTimerRef.current,
           );
-          // Multi-select inspector: reparse on id-set OR identity change
+          // Multi-select reseed follows selected-set identity only (not unselected churn).
+          const selectedIdentityFingerprint = manualEditTargetsIdentityFingerprint(refreshed);
+          const selectedTargetsIdentityChanged =
+            selectedIdentityFingerprint !== manualEditSelectedIdentityFingerprintRef.current;
+          if (selectionIdsChanged || selectedTargetsIdentityChanged) {
+            manualEditSelectedIdentityFingerprintRef.current = selectedIdentityFingerprint;
+          }
+          // Multi-select inspector: reparse on id-set OR selected identity change
           // (59 mixed styles). Geometry-only broadcasts keep fingerprint equal.
           if (
             nextIds.length > 1
-            && (selectionIdsChanged || (targetsIdentityChanged && !styleDraftPending))
+            && (selectionIdsChanged || (selectedTargetsIdentityChanged && !styleDraftPending))
           ) {
             const base = sourceRef.current ?? '';
             const parsedDoc = parseManualEditSource(base);
@@ -9079,7 +9142,7 @@ function HtmlViewer({
           } else if (
             nextIds.length === 1
             && !selectionIdsChanged
-            && targetsIdentityChanged
+            && selectedTargetsIdentityChanged
             && !styleDraftPending
             && selectedNext
           ) {
@@ -9101,6 +9164,29 @@ function HtmlViewer({
               styles: mergeManualEditInspectorStyles(snapshot.styles, selectedNext.styles),
               attributesText: JSON.stringify(snapshot.attributes, null, 2),
               outerHtml: snapshot.outerHtml || selectedNext.outerHtml,
+            }));
+          } else if (
+            nextIds.length === 1
+            && !selectionIdsChanged
+            && selectedTargetsIdentityChanged
+            && styleDraftPending
+            && selectedNext
+          ) {
+            // Pending styles own the panel — refresh field identity only (기획 59).
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            const snapshot = readManualEditTargetSnapshot(
+              base,
+              selectedNext.id,
+              {},
+              parsedDoc,
+            );
+            setManualEditDraft((current) => ({
+              ...current,
+              text: snapshot.fields.text ?? selectedNext.fields.text ?? selectedNext.text,
+              href: snapshot.fields.href ?? selectedNext.fields.href ?? '',
+              src: snapshot.fields.src ?? selectedNext.fields.src ?? '',
+              alt: snapshot.fields.alt ?? selectedNext.fields.alt ?? '',
             }));
           }
           // Echo selected-target only when membership changes — geometry storms
@@ -9208,9 +9294,15 @@ function HtmlViewer({
         }
         if (!measured || isHandoffRect) return;
 
-        // Idle remeasure: applyManualEditMeasuredGeometry skips equal geometry
-        // (roughlyMatches + offsets) and updates when idle bounds actually moved.
-        // Handoff settle uses the same helper on its own path.
+        // Idle remasure: reject wild jumps; equal geometry skips inside apply.
+        // Handoff settle uses applyManualEditMeasuredGeometry on its own path.
+        const current = selectedManualEditTargetRef.current;
+        if (
+          current?.id === measured.id
+          && manualEditGeometryIsWildJump(current, measured)
+        ) {
+          return;
+        }
         applyManualEditMeasuredGeometry(measured);
         return;
       }
@@ -10566,6 +10658,7 @@ function HtmlViewer({
     selectedManualEditTargetIdRef.current = null;
     selectedManualEditTargetRef.current = null;
     selectedManualEditTargetIdsRef.current = [];
+    manualEditSelectedIdentityFingerprintRef.current = '';
     setSelectedManualEditTargetIds([]);
     setSelectedManualEditTarget(null);
     setManualEditMixedStyleKeys(new Set());

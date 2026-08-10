@@ -18,6 +18,8 @@ import {
   hostPaintRectAfterVisualMove,
   visualRectFromMoveViewportDraft,
   hostPaintRectFromVisualContent,
+  MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX,
+  manualEditGeometryIsWildJump,
   manualEditGeometryRoughlyMatches,
   manualEditHostPaintRectStale,
 } from '../../src/edit-mode/move-math';
@@ -386,5 +388,20 @@ describe('computeMove', () => {
       layoutWidth: 400,
       layoutHeight: 200,
     })).toBe(false);
+  });
+
+  it('flags idle remasure wild jumps beyond the teleport threshold', () => {
+    const base = { rect: { x: 40, y: 60, width: 80, height: 40 } };
+    expect(manualEditGeometryIsWildJump(base, {
+      rect: { x: 45, y: 65, width: 82, height: 42 },
+    })).toBe(false);
+    expect(manualEditGeometryIsWildJump(base, {
+      rect: {
+        x: 40 + MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX + 1,
+        y: 60,
+        width: 80,
+        height: 40,
+      },
+    })).toBe(true);
   });
 });

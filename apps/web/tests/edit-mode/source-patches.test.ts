@@ -1564,6 +1564,14 @@ describe('manual edit source patches', () => {
     expect(isSafeManualEditUrl('java\u200bscript:alert(1)')).toBe(false);
     expect(isSafeManualEditUrl('java\u00adscript:alert(1)')).toBe(false);
     expect(isSafeManualEditUrlAttrValue('href', 'java\u200bscript:alert(1)')).toBe(false);
+    // SMIL to/from absolute/proto tokens are relative/fragment only; CSS paints stay.
+    expect(isSafeManualEditUrlAttrValue('to', 'https://evil.example/phish')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('from', '//evil.example/x')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('to', '10')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('to', 'red')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('to', 'color:red')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('to', '#frag')).toBe(true);
+    expect(sourcePatchesSource).toContain('do not treat `color:` as a URL scheme');
   });
 
   it('failClosed strips ZWSP-smuggled javascript: URL attrs without DOMParser', () => {

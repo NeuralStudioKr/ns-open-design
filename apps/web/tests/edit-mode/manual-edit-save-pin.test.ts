@@ -8,6 +8,7 @@ import {
   manualEditHistoryConfirmTrustsLocal,
   preferManualEditPinnedSource,
   preferManualEditPinnedSourceOverLive,
+  shouldReleaseManualEditSavePinForTip,
 } from '../../src/edit-mode/manual-edit-save-pin';
 
 describe('manual edit save pin', () => {
@@ -71,5 +72,18 @@ describe('manual edit save pin', () => {
     expect(
       manualEditHistoryConfirmCanSkipDiskFetch(saved, pinned, 1_000 + MANUAL_EDIT_SAVE_PIN_MAX_MS),
     ).toBe(false);
+  });
+
+  it('yields pin when tip content already matches fetch and differs from pin', () => {
+    const pinned = createManualEditSourcePin(saved, 1_000);
+    const tip = '<html><body><h1>Agent tip</h1></body></html>';
+    expect(shouldReleaseManualEditSavePinForTip(pinned, tip, tip, 1_000 + 100)).toBe(true);
+    expect(preferManualEditPinnedSource(pinned, tip, 1_000 + 100, tip)).toBeNull();
+    // Stale fetch that is not the tip still loses to the pin.
+    expect(preferManualEditPinnedSource(pinned, stale, 1_000 + 100, tip)).toBe(saved);
+    expect(shouldReleaseManualEditSavePinForTip(pinned, stale, tip, 1_000 + 100)).toBe(false);
+    // Matching pin is unchanged.
+    expect(preferManualEditPinnedSource(pinned, saved, 1_000 + 100, tip)).toBeNull();
+    expect(preferManualEditPinnedSourceOverLive(pinned, tip, 1_000 + 100, tip)).toBeNull();
   });
 });

@@ -50,7 +50,7 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('2→1: seed inspector from the remaining target snapshot');
     expect(fileViewer).toContain('manualEditTargetsIdentityFingerprint');
     expect(fileViewer).toContain('listProjectFileRevisionsSoftCached');
-    expect(fileViewer).toContain('Multi-select inspector: reparse on id-set OR identity change');
+    expect(fileViewer).toContain('Multi-select inspector: reparse on id-set OR selected identity change');
     expect(fileViewer).toContain('export function rememberStablePreviewSource');
     // Group geometry builders forward their shared Document into batch apply.
     expect(fileViewer).toContain('buildGroupMoveStylePatches(');
@@ -97,9 +97,13 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('isManualEditSourcePinActive(manualEditPinnedSourceRef.current)');
     expect(fileViewer).toContain('When tip content cache already differs from the pin');
     expect(fileViewer).toContain('activeSeqMissingFromStack');
-    expect(fileViewer).toContain('getRevisionContentCache(projectId, file.name, tipRevision.id)');
+    expect(fileViewer).toContain('tipContentForManualEditSavePin');
+    expect(fileViewer).toContain('shouldReleaseManualEditSavePinForTip');
     expect(fileViewer).toContain('styleDraftPending');
     expect(fileViewer).toContain('Pending style draft owns the inspector');
+    expect(fileViewer).toContain('Pending styles own the panel — refresh field identity only');
+    expect(fileViewer).toContain('selectedTargetsIdentityChanged');
+    expect(fileViewer).toContain('manualEditSelectedIdentityFingerprintRef');
     expect(fileViewer).toContain('MANUAL_EDIT_GEOMETRY_STYLE_PROP_KEYS');
     expect(fileViewer).toContain('Style identity without box geometry');
     expect(fileViewer).toContain('Warm soft-cache so tip-lag disk soft-retries reuse this list');
@@ -114,14 +118,15 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('image-set\\s*\\(|element\\s*\\(|-moz-binding|javascript\\s*:|vbscript\\s*:|data\\s*:');
     expect(fileViewer).toContain('inspectOverrideValueIsUnsafe');
     expect(fileViewer).toContain('normalizeCssForSafetyScan');
-    expect(fileViewer).toContain('Multi-select inspector: reparse on id-set OR identity change');
+    expect(fileViewer).toContain('Multi-select inspector: reparse on id-set OR selected identity change');
     expect(fileViewer).toContain('Equal geometry — keep prior reference');
     expect(fileViewer).toContain('current.fullSource === contentToSave ? current');
     expect(fileViewer).toContain('Geometry-only rebroadcasts for the same id skip React churn');
     expect(fileViewer).toContain('const contentUnchanged = sourceRef.current === nextSource');
     expect(fileViewer).toContain('if (sourceRef.current !== pinnedPreferred)');
     expect(fileViewer).toContain('if (sourceRef.current !== accepted)');
-    expect(fileViewer).toContain('Idle remeasure: applyManualEditMeasuredGeometry skips equal geometry');
+    expect(fileViewer).toContain('Idle remasure: reject wild jumps');
+    expect(fileViewer).toContain('manualEditGeometryIsWildJump');
     expect(fileViewer).toContain('applyManualEditMeasuredGeometry(measured)');
     expect(fileViewer).toContain('live→raw hold: skip setSource when already painting stable');
     expect(fileViewer).toContain('Undo demotes activeSeq — warm soft-cache for the restored tip');

@@ -50,20 +50,46 @@ export function isManualEditSourcePinActive(
 }
 
 /**
+ * True when an authoritative tip already matches `fetched` and differs from
+ * the pin — the agent tip landed; callers should clear the pin and paint tip.
+ */
+export function shouldReleaseManualEditSavePinForTip(
+  pinned: ManualEditSourcePin | null | undefined,
+  fetched: string | null,
+  tipContent: string | null | undefined,
+  now: number = Date.now(),
+): boolean {
+  if (!isManualEditSourcePinActive(pinned, now) || !pinned) return false;
+  return (
+    fetched != null
+    && tipContent != null
+    && fetched === tipContent
+    && fetched !== pinned.source
+  );
+}
+
+/**
  * When a disk refetch races our save, return the pinned source to keep.
  * Returns null when the fetch should proceed normally (no pin, hard-expired,
- * or fetch already matches the pin).
+ * fetch already matches the pin, or tip content already matches fetch).
  *
  * Soft-expired pins still win while fetch is null/stale so a late S3 lag
  * after 15s cannot restore the pre-edit snapshot.
+ *
+ * `tipContent` is the in-memory tip revision HTML (when warm). When it equals
+ * `fetched` and differs from the pin, yield so agent tips are not held back.
  */
 export function preferManualEditPinnedSource(
   pinned: ManualEditSourcePin | null | undefined,
   fetched: string | null,
   now: number = Date.now(),
+  tipContent?: string | null,
 ): string | null {
   if (!isManualEditSourcePinActive(pinned, now) || !pinned) return null;
   if (fetched != null && fetched === pinned.source) return null;
+  if (shouldReleaseManualEditSavePinForTip(pinned, fetched, tipContent, now)) {
+    return null;
+  }
   if (fetched == null || fetched !== pinned.source) return pinned.source;
   return null;
 }
@@ -76,8 +102,9 @@ export function preferManualEditPinnedSourceOverLive(
   pinned: ManualEditSourcePin | null | undefined,
   liveCandidate: string | null,
   now: number = Date.now(),
+  tipContent?: string | null,
 ): string | null {
-  return preferManualEditPinnedSource(pinned, liveCandidate, now);
+  return preferManualEditPinnedSource(pinned, liveCandidate, now, tipContent);
 }
 
 /**

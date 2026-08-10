@@ -398,6 +398,8 @@ export function moveHistoryLabel(targetLabel: string): string {
 }
 
 const GEOMETRY_MATCH_TOLERANCE_PX = 3;
+/** Idle od-edit-rect jumps beyond this are treated as bad remasures (not layout). */
+export const MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX = 480;
 
 /** Whether two manual-edit geometry snapshots are close enough to treat as the same box. */
 export function manualEditGeometryRoughlyMatches(
@@ -416,6 +418,27 @@ export function manualEditGeometryRoughlyMatches(
     && Math.abs(a.rect.height - b.rect.height) <= tolerancePx
     && Math.abs(aLw - bLw) <= tolerancePx
     && Math.abs(aLh - bLh) <= tolerancePx
+  );
+}
+
+/**
+ * Idle remasure wild-jump — center or size delta far beyond normal layout churn.
+ * Gesture/handoff paths own large intentional moves; idle rect must not teleport.
+ */
+export function manualEditGeometryIsWildJump(
+  a: Pick<ManualEditTarget, 'rect'>,
+  b: Pick<ManualEditTarget, 'rect'>,
+  thresholdPx = MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX,
+): boolean {
+  const aCx = a.rect.x + a.rect.width / 2;
+  const aCy = a.rect.y + a.rect.height / 2;
+  const bCx = b.rect.x + b.rect.width / 2;
+  const bCy = b.rect.y + b.rect.height / 2;
+  return (
+    Math.abs(aCx - bCx) > thresholdPx
+    || Math.abs(aCy - bCy) > thresholdPx
+    || Math.abs(a.rect.width - b.rect.width) > thresholdPx
+    || Math.abs(a.rect.height - b.rect.height) > thresholdPx
   );
 }
 

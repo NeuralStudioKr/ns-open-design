@@ -3511,12 +3511,21 @@ export function isSafeManualEditUrlAttrValue(attr: string, value: string): boole
   }
   if (lower === 'to' || lower === 'from' || lower === 'by' || lower === 'values') {
     // SMIL may carry bare URLs or CSS (`attributeName=style`) — reject either shape.
+    // Absolute / protocol-relative / backslash tokens are relative/fragment only
+    // (https://… retargets blocked). CSS paints (`color:red`, `10`) keep the
+    // general isSafeManualEditUrl gate — do not treat `color:` as a URL scheme.
     const pieces = lower === 'values' ? String(value || '').split(';') : [value];
     for (const part of pieces) {
       const piece = part.trim();
       if (!piece) continue;
       if (containsUnsafeEmbeddedCssOrScheme(piece)) return false;
-      if (!isSafeManualEditUrl(piece)) return false;
+      const absoluteOrProto = /^(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)/i.test(piece)
+        || piece.includes('\\');
+      if (absoluteOrProto) {
+        if (!isSafeManualEditRelativeOrFragmentUrl(piece)) return false;
+      } else if (!isSafeManualEditUrl(piece)) {
+        return false;
+      }
     }
     return true;
   }
