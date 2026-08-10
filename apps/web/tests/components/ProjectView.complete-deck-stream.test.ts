@@ -149,5 +149,20 @@ describe('developer portfolio deck stream (turn-1 complete artifact)', () => {
         { slideOnlyMvp: true, hasCompleteHtmlArtifact: true },
       ),
     ).toBe(false);
+    expect(parsed.length).toBeGreaterThan(64);
+  });
+
+  it('does not defer discovery persist for truncated turn-1 HTML either', () => {
+    const truncated = html.replace(/<\/body><\/html>$/i, '');
+    expect(
+      shouldDeferSlideOnlyDiscoveryArtifactPersist(
+        [{ id: 'u1', role: 'user', content: '개발자 포트폴리오 2장 만들어줘', createdAt: 1 }],
+        {
+          slideOnlyMvp: true,
+          hasArtifactHtml: truncated.trim().length > 0,
+          hasCompleteHtmlArtifact: false,
+        },
+      ),
+    ).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import {
   normalizeSlideOnlyArtifactContractType,
   preferredArtifactVersionTab,
   resolveArtifactPersistFileName,
+  resolveSlideOnlySkipDiscoveryBrief,
   shouldDeferSlideOnlyDiscoveryArtifactPersist,
 } from '../../src/components/artifact-persist';
 
@@ -258,5 +259,46 @@ describe('shouldDeferSlideOnlyDiscoveryArtifactPersist', () => {
         hasCompleteHtmlArtifact: true,
       }),
     ).toBe(false);
+    expect(completeDeck.length).toBeGreaterThan(64);
+  });
+
+  it('does not defer turn-1 persist when truncated HTML was streamed', () => {
+    // Truncation must reach salvage / skipped-incomplete → auto-continue,
+    // not fail as skipped-discovery-turn → incomplete_output.
+    const truncated =
+      '<!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>'
+      + '<section class="slide"><h1>Cover</h1><p>Intro copy that is long enough</p></section>'
+      + '<section class="slide"><h2>Agenda</h2>';
+    const messages = [
+      { id: 'u1', role: 'user' as const, content: '온보딩 덱 만들어줘' },
+    ];
+    expect(
+      shouldDeferSlideOnlyDiscoveryArtifactPersist(messages, {
+        slideOnlyMvp: true,
+        hasArtifactHtml: truncated.trim().length > 0,
+        hasCompleteHtmlArtifact: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('resolveSlideOnlySkipDiscoveryBrief', () => {
+  it('is false when no deck/template/skip signals are present', () => {
+    expect(resolveSlideOnlySkipDiscoveryBrief({})).toBe(false);
+  });
+
+  it('honors project skipDiscoveryBrief, deck kind, template id, and run pin', () => {
+    expect(
+      resolveSlideOnlySkipDiscoveryBrief({ projectSkipDiscoveryBrief: true }),
+    ).toBe(true);
+    expect(resolveSlideOnlySkipDiscoveryBrief({ projectKind: 'deck' })).toBe(true);
+    expect(
+      resolveSlideOnlySkipDiscoveryBrief({
+        selectedDeckTemplateId: 'html-ppt-zhangzara-daisy-days',
+      }),
+    ).toBe(true);
+    expect(
+      resolveSlideOnlySkipDiscoveryBrief({ runSkipDiscoveryBrief: true }),
+    ).toBe(true);
   });
 });

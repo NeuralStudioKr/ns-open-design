@@ -455,6 +455,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P1 | edit 계약을 greenfield에서 FE 플래그로 gate | **완료** — `includeCommentEditPatchRule` / `includeExistingDeckImageEditRule` |
 | P1 | 다른 Zhangzara SKILL.md에 Teamver API 노트 | **완료** — 31개 Zhangzara + Daisy Days |
 | P2 | kit fetch 5xx/network 1회 재시도 | **완료** (`fetchPluginAssetText`) |
+| P0 | truncated HTML → `skipped-discovery-turn` → `incomplete_output` 오판 | **완료** — `hasArtifactHtml` + `resolveSlideOnlySkipDiscoveryBrief` + run pin ref |
 | P2 | READ LAST 통합 / Final authority 섹션 | 미착수 |
 | P2 | kit fetch 실패 UX(사용자 알림) | 미착수 |
 | P2 | motif 구현 힌트 · Google Fonts `@import` 레시피 일반화 | 미착수 |
@@ -478,3 +479,4 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 |------|------|
 | 2026-08-10 | 초안 — Daisy Days Neutral 덮어쓰기 RCA · compose SSOT · 3커밋 타임라인 · 회귀 검토 · 검증 체크리스트 |
 | 2026-08-10 | 후속 — edit-contract FE gate · Zhangzara×31 Teamver 노트 · kit asset 5xx retry |
+| 2026-08-10 | 핫픽스 — turn-1 truncated HTML을 discovery skip하지 않음; Canvas skipDiscovery persist 레이스 방어 |

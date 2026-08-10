@@ -491,6 +491,7 @@ import {
   collapseArtifactVersionOpenTabs,
   normalizeSlideOnlyArtifactContractType,
   resolveArtifactPersistFileName,
+  resolveSlideOnlySkipDiscoveryBrief,
   shouldDeferSlideOnlyDiscoveryArtifactPersist,
 } from './artifact-persist';
 import { buildRepoImportPrompt, designSystemNeedsRepoConnect } from './design-system-github-evidence';
@@ -3087,6 +3088,12 @@ export function ProjectView({
   const htmlAutoOpenFinalizeInProgressRef = useRef<Set<string>>(new Set());
   /** Preview-comment edits must update the annotated deck file, not mint siblings. */
   const runPersistTargetFileRef = useRef<string | null>(null);
+  /**
+   * Per-run skip-discovery pin from turn meta / Canvas template pick.
+   * Persist must not wait on React `project.metadata` settling — a stale false
+   * here turns truncated turn-1 HTML into `skipped-discovery-turn`.
+   */
+  const runSkipDiscoveryBriefRef = useRef(false);
   /** Deck-patch from comment edits may only touch slides named by these attachments. */
   const runCommentAttachmentsRef = useRef<ChatCommentAttachment[]>([]);
   /** Image/file attachments for the active run — used to heal <img src> when /files lags. */
@@ -3157,6 +3164,7 @@ export function ProjectView({
     runCommentAttachmentsRef.current = [];
     runVisiblePromptRef.current = '';
     runPersistTargetFileRef.current = null;
+    runSkipDiscoveryBriefRef.current = false;
     conversationRecoveryAttemptedRef.current.clear();
     conversationAutoContinueCountRef.current.clear();
     if (htmlAutoOpenTimerRef.current !== null) {
@@ -4563,18 +4571,33 @@ export function ProjectView({
       sourceText?: string,
       activityStartedAt?: number,
     ): Promise<ArtifactPersistResult> => {
-      if (
-        shouldDeferSlideOnlyDiscoveryArtifactPersist(messagesRef.current, {
-          slideOnlyMvp,
-          skipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
-          hasCompleteHtmlArtifact: Boolean(
-            art.html
-              && !isIncompleteHtmlDocumentShell(art.html)
-              && validateHtmlArtifact(art.html).ok,
-          ),
-        })
-      ) {
-        return { kind: 'skipped-discovery-turn', fileName: artifactBaseNameForPersist(art) };
+      {
+        const artifactHtml = typeof art.html === 'string' ? art.html.trim() : '';
+        const selectedTemplateId =
+          selectedDeckTemplateMetadata(project.metadata)?.id
+          ?? project.metadata?.selectedDeckTemplateId
+          ?? null;
+        if (
+          shouldDeferSlideOnlyDiscoveryArtifactPersist(messagesRef.current, {
+            slideOnlyMvp,
+            skipDiscoveryBrief: resolveSlideOnlySkipDiscoveryBrief({
+              projectSkipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
+              projectKind: project.metadata?.kind ?? null,
+              selectedDeckTemplateId: selectedTemplateId,
+              runSkipDiscoveryBrief: runSkipDiscoveryBriefRef.current,
+            }),
+            // Any streamed HTML (including truncated shells) means generation
+            // started — never discovery-skip; let salvage / auto-continue run.
+            hasArtifactHtml: artifactHtml.length > 0,
+            hasCompleteHtmlArtifact: Boolean(
+              artifactHtml
+                && !isIncompleteHtmlDocumentShell(art.html)
+                && validateHtmlArtifact(art.html).ok,
+            ),
+          })
+        ) {
+          return { kind: 'skipped-discovery-turn', fileName: artifactBaseNameForPersist(art) };
+        }
       }
       let effectiveArt = art;
       const currentProjectFilesForPatch = projectFilesSnapshot ?? projectFilesRef.current;
@@ -5307,6 +5330,8 @@ export function ProjectView({
       project.designSystemId,
       project.skillId,
       project.metadata?.skipDiscoveryBrief,
+      project.metadata?.kind,
+      project.metadata?.selectedDeckTemplateId,
       requestOpenFile,
       slideOnlyMvp,
       activeConversationId,
@@ -8714,6 +8739,16 @@ export function ProjectView({
           .map((attachment) => attachment.path.trim())
           .filter(Boolean),
       );
+      runSkipDiscoveryBriefRef.current = resolveSlideOnlySkipDiscoveryBrief({
+        projectSkipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
+        projectKind: project.metadata?.kind ?? null,
+        selectedDeckTemplateId:
+          selectedDeckTemplateMetadata(project.metadata, meta)?.id
+          ?? meta?.selectedDeckTemplateId
+          ?? project.metadata?.selectedDeckTemplateId
+          ?? null,
+        runSkipDiscoveryBrief: meta?.skipDiscoveryBrief === true,
+      });
       const commentPersistTarget = resolveCommentEditPersistTargetFileName(
         runCommentAttachments,
       );
@@ -9550,6 +9585,7 @@ export function ProjectView({
                 return;
               }
               runPersistTargetFileRef.current = null;
+              runSkipDiscoveryBriefRef.current = false;
               runCommentAttachmentsRef.current = [];
               clearStreamingMarker(runConversationId);
               if (apiBackgroundRecoveryRef.current) {
@@ -9945,6 +9981,7 @@ export function ProjectView({
             );
             if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
             runPersistTargetFileRef.current = null;
+            runSkipDiscoveryBriefRef.current = false;
             runCommentAttachmentsRef.current = [];
             void refreshProjectFiles();
             onProjectsRefresh();
@@ -10015,6 +10052,7 @@ export function ProjectView({
           );
           if (ownsCurrentRun) updateConversationLatestRun('failed', endedAt);
           runPersistTargetFileRef.current = null;
+          runSkipDiscoveryBriefRef.current = false;
           runCommentAttachmentsRef.current = [];
           void saveMessage(project.id, runConversationId, finalizedAssistant, {
             telemetryFinalized: true,
@@ -10267,7 +10305,12 @@ export function ProjectView({
                     meta?.selectedDeckTemplateTitle || selectedDeckTemplateForTurn?.title,
                 }
               : {}),
-            ...(meta?.skipDiscoveryBrief === true || project.metadata?.skipDiscoveryBrief === true
+            ...(resolveSlideOnlySkipDiscoveryBrief({
+              projectSkipDiscoveryBrief: project.metadata?.skipDiscoveryBrief === true,
+              projectKind: project.metadata?.kind ?? null,
+              selectedDeckTemplateId: selectedDeckTemplateForTurn?.id ?? null,
+              runSkipDiscoveryBrief: meta?.skipDiscoveryBrief === true,
+            })
               ? { skipDiscoveryBrief: true }
               : {}),
           },

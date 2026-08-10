@@ -212,18 +212,49 @@ export function collapseArtifactVersionOpenTabs(
   return tabs.filter((tab) => !toClose.has(tab));
 }
 
-/** Block turn-1 deck writes while Quick brief is still outstanding. */
+/**
+ * Whether this slide-only run should skip Quick brief discovery defer.
+ *
+ * Canvas→Slide / selected-template launches pin `skipDiscoveryBrief` on project
+ * metadata, but React state can lag the first persist. Treat deck kind and a
+ * selected visual template as the same skip signal, and honor a per-run pin
+ * from `handleSend` turn meta.
+ */
+export function resolveSlideOnlySkipDiscoveryBrief(options: {
+  projectSkipDiscoveryBrief?: boolean;
+  projectKind?: string | null;
+  selectedDeckTemplateId?: string | null;
+  runSkipDiscoveryBrief?: boolean;
+}): boolean {
+  if (options.runSkipDiscoveryBrief === true) return true;
+  if (options.projectSkipDiscoveryBrief === true) return true;
+  if (options.projectKind === 'deck') return true;
+  if (options.selectedDeckTemplateId?.trim()) return true;
+  return false;
+}
+
+/**
+ * Block turn-1 deck writes while Quick brief is still outstanding.
+ *
+ * Important: any streamed HTML body (complete OR truncated) means generation
+ * already started. Never treat that as a discovery turn — incomplete shells
+ * must reach salvage / `skipped-incomplete` so auto-continue can recover
+ * instead of failing as `skipped-discovery-turn` → `incomplete_output`.
+ */
 export function shouldDeferSlideOnlyDiscoveryArtifactPersist(
   messages: readonly ChatMessage[],
   options: {
     slideOnlyMvp: boolean;
     skipDiscoveryBrief?: boolean;
+    /** True when the artifact carries any non-empty HTML (even truncated). */
+    hasArtifactHtml?: boolean;
     hasCompleteHtmlArtifact?: boolean;
   },
 ): boolean {
   if (!options.slideOnlyMvp) return false;
   if (options.skipDiscoveryBrief) return false;
-  if (options.hasCompleteHtmlArtifact) return false;
+  // Truncated/incomplete HTML is still a generation attempt — not discovery.
+  if (options.hasArtifactHtml || options.hasCompleteHtmlArtifact) return false;
   const hasFormAnswers = messages.some(
     (message) =>
       message.role === 'user'
