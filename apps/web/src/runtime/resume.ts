@@ -103,17 +103,23 @@ export type AutoContinuePromptContext = {
   existingDeckPath?: string | null;
 };
 
-// Cap on automatic continue attempts inside a single conversation. Three
-// retries covers plan-only → partial shell → truncated head patterns
-// observed in Teamver embed API runs without burning unbounded tokens.
-// Manual retry stays available beyond the cap via the failed-run affordance.
-export const AUTO_CONTINUE_MAX_PER_CONVERSATION = 3;
+// Cap on automatic continue attempts inside a single conversation.
+//
+// Five retries covers plan-only → partial shell → truncated head → shortened
+// head → almost-complete-but-cut patterns observed on Teamver embed API runs.
+// Earlier cap was three, but Canvas → Slide launches consistently landed on
+// `incomplete_output` after the model produced a truncated deck the first
+// pass and the retry budget ran out before salvage / stream-close converged.
+// The exposure surface is bounded: cap is per-conversation, escalated
+// wording after attempt 2 short-circuits obvious shell-only regressions,
+// and the manual retry affordance remains beyond the cap.
+export const AUTO_CONTINUE_MAX_PER_CONVERSATION = 5;
 
-/** Scoped preview-comment edits salvage client-side first — two auto retries max. */
-export const AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT = 2;
+/** Scoped preview-comment edits salvage client-side first — three auto retries max. */
+export const AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT = 3;
 
 /** Visual-mark scoped edits (no DOM target id) get one extra retry. */
-export const AUTO_CONTINUE_MAX_SCOPED_VISUAL_MARK_EDIT = 3;
+export const AUTO_CONTINUE_MAX_SCOPED_VISUAL_MARK_EDIT = 4;
 
 export function resolveAutoContinueMaxAttempts(options: {
   scopedCommentAttachmentCount: number;

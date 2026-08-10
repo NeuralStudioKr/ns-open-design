@@ -274,9 +274,12 @@ describe('findIncompleteSlideAssistantForRecovery', () => {
 
 describe('canFireAutoContinueForConversation', () => {
   it('allows attempts below the cap', () => {
+    // Bumped cap from 3 to 5 so Canvas → Slide launches get enough auto
+    // retries before surfacing the failure banner; still bounded per
+    // conversation and beaten by the manual retry affordance.
     expect(canFireAutoContinueForConversation(0)).toBe(true);
-    expect(canFireAutoContinueForConversation(2)).toBe(true);
-    expect(canFireAutoContinueForConversation(3)).toBe(false);
+    expect(canFireAutoContinueForConversation(4)).toBe(true);
+    expect(canFireAutoContinueForConversation(5)).toBe(false);
   });
 });
 

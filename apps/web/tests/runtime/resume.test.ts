@@ -26,8 +26,12 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT.length).toBeGreaterThan(0);
   });
 
-  it('scopes the auto-continue cap to three retries per conversation', () => {
-    expect(AUTO_CONTINUE_MAX_PER_CONVERSATION).toBe(3);
+  it('scopes the auto-continue cap to five retries per conversation', () => {
+    // Bumped from three to five: Canvas → Slide launches on Teamver embed
+    // consistently landed on `incomplete_output` after the model produced a
+    // truncated deck the first pass and the retry budget ran out before
+    // salvage / stream-close could converge.
+    expect(AUTO_CONTINUE_MAX_PER_CONVERSATION).toBe(5);
     expect(Number.isInteger(AUTO_CONTINUE_MAX_PER_CONVERSATION)).toBe(true);
     expect(AUTO_CONTINUE_MAX_PER_CONVERSATION).toBeGreaterThanOrEqual(1);
   });
@@ -432,7 +436,7 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     ).toBe(true);
   });
 
-  it('caps scoped preview-comment edits at two auto-continues', () => {
+  it('caps scoped preview-comment edits at the scoped comment-edit budget', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({
         ...base,
