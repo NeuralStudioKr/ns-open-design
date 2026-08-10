@@ -1,5 +1,10 @@
 import type { InstalledPluginRecord, PluginManifest } from '@open-design/contracts';
-import { readSkillFrontmatterDescription } from '@open-design/contracts';
+import {
+  appendTemplateVisualKit,
+  extractTemplateVisualKitFromHtml,
+  pickPluginPreviewHtmlPath,
+  readSkillFrontmatterDescription,
+} from '@open-design/contracts';
 
 import { getInstalledPlugin } from '../state/projects';
 import { isTeamverEmbedMode } from './designApiBase';
@@ -74,29 +79,47 @@ export async function fetchPluginLocalSkill(
   return readPluginLocalSkillFromRecord(plugin);
 }
 
+async function fetchPluginAssetText(pluginId: string, relpath: string): Promise<string | null> {
+  const url = `/api/plugins/${encodeURIComponent(pluginId)}/asset/${encodeURIComponent(relpath)}`;
+  // Teamver embed: plugin-asset routes go through the daemon proxy that
+  // demands X-Teamver-* identity headers; a plain fetch() returns 401.
+  const resp = isTeamverEmbedMode()
+    ? await fetchTeamverDaemon(url, { skipEmbedAuthRecovery: true })
+    : await fetch(url);
+  if (!resp.ok) return null;
+  return resp.text();
+}
+
 export async function readPluginLocalSkillFromRecord(
   plugin: InstalledPluginRecord,
 ): Promise<PluginLocalSkillSummary | null> {
   const relpath = pickFirstLocalSkillPath(plugin.manifest);
   if (!relpath) return null;
   try {
-    // Teamver embed: plugin-asset routes go through the daemon proxy that
-    // demands X-Teamver-* identity headers; a plain fetch() returns 401 (which
-    // we swallow as null → template body silently missing → Canvas → Slide
-    // "template selection has no visible effect" regression the user hits).
-    // Route through the shared teamver header helper in embed mode; keep the
-    // plain fetch for standalone OD desktop where those headers do not exist.
-    const url = `/api/plugins/${encodeURIComponent(plugin.id)}/asset/${encodeURIComponent(relpath)}`;
-    const resp = isTeamverEmbedMode()
-      ? await fetchTeamverDaemon(url, { skipEmbedAuthRecovery: true })
-      : await fetch(url);
-    if (!resp.ok) return null;
-    const raw = await resp.text();
+    const raw = await fetchPluginAssetText(plugin.id, relpath);
+    if (raw == null) return null;
     const bodyOnly = stripFrontmatter(raw).trim();
     if (!bodyOnly) return null;
     const manifest = plugin.manifest;
-    const body = withFrontmatterDescriptionHeader(bodyOnly, raw, manifest);
     const name = (manifest?.title ?? manifest?.name ?? plugin.id).toString();
+    let body = withFrontmatterDescriptionHeader(bodyOnly, raw, manifest);
+    // Pull concrete CSS tokens / fonts from example.html so BYOK compose
+    // can match Daisy Days (cream + Fredoka + chunky borders) instead of
+    // inventing a sparse dark Neutral Modern look from the design system.
+    const previewPath = pickPluginPreviewHtmlPath(manifest);
+    if (previewPath && previewPath !== relpath) {
+      try {
+        const previewHtml = await fetchPluginAssetText(plugin.id, previewPath);
+        if (previewHtml) {
+          body = appendTemplateVisualKit(
+            body,
+            extractTemplateVisualKitFromHtml(previewHtml, { title: name }),
+          );
+        }
+      } catch {
+        // Preview kit is best-effort; SKILL.md visual summary still helps.
+      }
+    }
     return { body, name };
   } catch {
     return null;

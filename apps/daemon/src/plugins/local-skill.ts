@@ -17,7 +17,12 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import type { InstalledPluginRecord } from '@open-design/contracts';
-import { readSkillFrontmatterDescription } from '@open-design/contracts';
+import {
+  appendTemplateVisualKit,
+  extractTemplateVisualKitFromHtml,
+  pickPluginPreviewHtmlPath,
+  readSkillFrontmatterDescription,
+} from '@open-design/contracts';
 import { pickFirstLocalSkillPath } from './apply.js';
 
 export interface PluginLocalSkill {
@@ -62,8 +67,24 @@ export async function loadPluginLocalSkill(
   // for those templates → deck came back looking generic even though the
   // template body was 'loaded'. Prepend the frontmatter description /
   // manifest description so the visual contract survives.
-  const body = withFrontmatterDescriptionHeader(bodyOnly, raw, manifest);
   const name = (manifest.title ?? manifest.name ?? plugin.id).toString();
+  let body = withFrontmatterDescriptionHeader(bodyOnly, raw, manifest);
+  // BYOK / API-mode cannot Read companion files. Attach a compact visual kit
+  // from example.html so selected Zhangzara templates keep cream/pastel
+  // tokens instead of collapsing to the Active design system look.
+  const previewRel = pickPluginPreviewHtmlPath(manifest);
+  if (previewRel && previewRel !== safeRel) {
+    try {
+      const previewAbs = path.join(plugin.fsPath, previewRel);
+      const previewHtml = await fsp.readFile(previewAbs, 'utf8');
+      body = appendTemplateVisualKit(
+        body,
+        extractTemplateVisualKitFromHtml(previewHtml, { title: name }),
+      );
+    } catch {
+      // Best-effort — SKILL.md visual summary still applies.
+    }
+  }
   return {
     body,
     name,

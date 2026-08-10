@@ -149,6 +149,56 @@ describe('loadPluginLocalSkill', () => {
     }
   });
 
+  it('appends a compact visual kit from example.html next to the SKILL.md body', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'od-plugin-local-skill-'));
+    try {
+      await writeFile(
+        path.join(dir, 'SKILL.md'),
+        [
+          '---',
+          'name: html-ppt-zhangzara-daisy-days',
+          'description: |',
+          '  Daisy Days — Cheerful pastel deck with hand-drawn daisies.',
+          '---',
+          '',
+          '# Daisy Days',
+          '',
+          'Clone example.html.',
+        ].join('\n'),
+        'utf8',
+      );
+      await writeFile(
+        path.join(dir, 'example.html'),
+        [
+          '<!DOCTYPE html><html><head>',
+          '<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Quicksand&display=swap" rel="stylesheet">',
+          '<style>:root{--cream:#F5F0E6;--turquoise:#7ECDC0;--font-display:\'Fredoka One\',cursive}</style>',
+          '</head><body><section class="slide slide-title"><h1>Daisy</h1></section></body></html>',
+        ].join(''),
+        'utf8',
+      );
+      const manifest = {
+        ...manifestWithSkills([{ path: './SKILL.md' }]),
+        od: {
+          ...(manifestWithSkills([{ path: './SKILL.md' }]).od ?? {}),
+          preview: { type: 'html', entry: './example.html' },
+          context: {
+            skills: [{ path: './SKILL.md' }],
+            assets: ['./example.html'],
+          },
+        },
+      };
+      const local = await loadPluginLocalSkill(pluginRecord(dir, manifest));
+      expect(local).not.toBeNull();
+      expect(local!.body).toContain('## Visual summary');
+      expect(local!.body).toContain('## Template visual kit (from example.html)');
+      expect(local!.body).toContain('#F5F0E6');
+      expect(local!.body).toContain('Fredoka One');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('prepends YAML block-literal frontmatter descriptions (Zhangzara / description: |)', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'od-plugin-local-skill-'));
     try {

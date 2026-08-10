@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { renderPluginBlock } from '../src/prompts/plugin-block.js';
 import { composeSystemPrompt } from '../src/prompts/system.js';
 import { readSkillFrontmatterDescription } from '../src/skill-frontmatter.js';
+import {
+  appendTemplateVisualKit,
+  extractTemplateVisualKitFromHtml,
+} from '../src/template-visual-kit.js';
 import type { AppliedPluginSnapshot } from '../src/plugins/apply.js';
 
 /**
@@ -75,6 +79,53 @@ const SIMPLE_DECK_SNAPSHOT = {
 } as AppliedPluginSnapshot;
 
 describe('Teamver selected deck template compose (BYOK slide-only)', () => {
+  it('keeps Daisy Days visual kit and demotes Neutral Modern design system', async () => {
+    const html = await (await import('node:fs/promises')).readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const loadedBody = appendTemplateVisualKit(
+      withFrontmatterVisualSummary(CORAL_SKILL_MD.replace(/Coral/g, 'Daisy Days').replace(/coral/g, 'daisy-days')),
+      extractTemplateVisualKitFromHtml(html, { title: 'Html Ppt Zhangzara Daisy Days' }),
+    );
+    const skillBody = wrapSelectedDeckTemplateSkillBody(
+      loadedBody,
+      'Html Ppt Zhangzara Daisy Days',
+    );
+    const prompt = composeSystemPrompt({
+      skillBody,
+      skillName: 'Html Ppt Zhangzara Daisy Days',
+      skillMode: 'deck',
+      designSystemBody: '# Neutral Modern\n\nUse dark forest greens and sparse covers.',
+      designSystemTitle: 'Neutral Modern | Starter',
+      metadata: {
+        kind: 'deck',
+        skipDiscoveryBrief: true,
+        selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+        selectedDeckTemplateTitle: 'Html Ppt Zhangzara Daisy Days',
+      },
+      pluginBlock: renderPluginBlock(SIMPLE_DECK_SNAPSHOT, { role: 'scenario-only' }),
+      streamFormat: 'plain',
+      mediaExecution: { mode: 'disabled' },
+      sessionMode: 'design',
+    });
+
+    expect(prompt).toContain('## Selected deck template — Html Ppt Zhangzara Daisy Days — MUST MATCH THIS VISUAL SPEC');
+    expect(prompt).toContain('## Template visual kit (from example.html)');
+    expect(prompt).toContain('#F5F0E6');
+    expect(prompt).toContain('Fredoka One');
+    expect(prompt).toContain('SECONDARY — brand context only');
+    expect(prompt).toContain('Never turn a cheerful pastel / cream template into a dark Neutral Modern gradient');
+    expect(prompt).not.toContain('**Mandatory:** bind these tokens into every slide');
+    // Design-system dark guidance must not outrank the template kit.
+    expect(prompt.indexOf('## Selected deck template')).toBeGreaterThan(
+      prompt.indexOf('SECONDARY — brand context only'),
+    );
+  });
+
   it('keeps Coral / Bebas visual contract and demotes Simple Deck plugin ownership', () => {
     const loadedBody = withFrontmatterVisualSummary(CORAL_SKILL_MD);
     const skillBody = wrapSelectedDeckTemplateSkillBody(

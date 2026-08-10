@@ -1398,12 +1398,34 @@ export function composeTeamverSlideApiPrompt({
       `## Custom instructions (project-level)\n\n${projectInstructions.trim()}`,
     );
   }
+  // Selected deck template wins over Active design system for look.
+  // Embed often auto-binds Neutral Modern | Starter; if that stays
+  // "Mandatory", Daisy Days / Zhangzara pastels get rewritten into a dark
+  // sparse corporate deck ("기본 템플릿처럼 보임").
+  const hasSelectedTemplate =
+    (typeof metadata?.selectedDeckTemplateId === 'string'
+      && metadata.selectedDeckTemplateId.trim().length > 0)
+    || /## Visual summary \(from template frontmatter\)/i.test(skillBody ?? '')
+    || /## Template visual kit \(from example\.html\)/i.test(skillBody ?? '');
+
   if (activeDesignSystemBody) {
-    parts.push(
-      `## Active design system${designSystemTitle ? ` — ${designSystemTitle}` : ''}\n\n`
-        + '**Mandatory:** bind these tokens into every slide\'s inline styles (background, text, accent, borders). Do not fall back to generic #fff/#111 when tokens exist.\n\n'
-        + activeDesignSystemBody,
-    );
+    if (hasSelectedTemplate) {
+      parts.push(
+        `## Active design system${designSystemTitle ? ` — ${designSystemTitle}` : ''} (SECONDARY — brand context only)\n\n`
+          + 'A selected deck template is the PRIMARY visual contract for this run. '
+          + 'Use the design system only for optional brand names / logos / product wording. '
+          + 'Do NOT replace the template palette, fonts, density, borders, decorative motif, '
+          + 'or light/dark scheme with design-system tokens. '
+          + 'Never turn a cheerful pastel / cream template into a dark Neutral Modern gradient.\n\n'
+          + activeDesignSystemBody,
+      );
+    } else {
+      parts.push(
+        `## Active design system${designSystemTitle ? ` — ${designSystemTitle}` : ''}\n\n`
+          + '**Mandatory:** bind these tokens into every slide\'s inline styles (background, text, accent, borders). Do not fall back to generic #fff/#111 when tokens exist.\n\n'
+          + activeDesignSystemBody,
+      );
+    }
   }
 
   const metaBlock = renderMetadataBlock(
@@ -1447,17 +1469,17 @@ export function composeTeamverSlideApiPrompt({
     // contain skeleton copy workflows that ARE noise for API mode.
     //
     // Also treat the body itself as authoritative when it already carries
-    // the frontmatter visual summary: Canvas/Drive confirm can
-    // `patchProject` then send on the same tick while React
-    // `project.metadata` is still stale, so `selectedDeckTemplateId` may
-    // be missing even though the FE already loaded + wrapped the template.
-    const hasSelectedTemplate =
-      (typeof metadata?.selectedDeckTemplateId === 'string'
-        && metadata.selectedDeckTemplateId.trim().length > 0)
-      || /## Visual summary \(from template frontmatter\)/i.test(skillBody);
+    // the frontmatter visual summary / example.html visual kit: Canvas/Drive
+    // confirm can `patchProject` then send on the same tick while React
+    // `project.metadata` is still stale.
     if (hasSelectedTemplate) {
       parts.push(
         `## Selected deck template${skillName ? ` — ${skillName}` : ''} — MUST MATCH THIS VISUAL SPEC\n\n`
+          + 'Hard requirements:\n'
+          + '- Match the Template visual kit tokens (palette hex, fonts, borders, shadows) exactly.\n'
+          + '- Keep decorative density from the template (daisies/stars/chunky cards when present) — not a sparse title slide.\n'
+          + '- Active design system is secondary brand context only; template look wins.\n'
+          + '- Prefer rich multi-region layouts from the template vocabulary over empty gradient covers.\n\n'
           + skillBody.trim(),
       );
     } else {

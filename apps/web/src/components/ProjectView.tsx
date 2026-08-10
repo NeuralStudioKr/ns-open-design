@@ -5610,15 +5610,19 @@ export function ProjectView({
     );
     if (selectedTemplate) {
       const cached = pluginSkillCache.current.get(selectedTemplate.id);
-      if (cached !== undefined) {
+      // Bust pre-kit caches so Daisy Days / Zhangzara templates reload with
+      // example.html CSS tokens instead of a prose-only visual summary.
+      const cachedLooksRich =
+        typeof cached === 'string'
+        && cached.includes('## Template visual kit (from example.html)');
+      if (cached !== undefined && cachedLooksRich) {
         skillBody = cached;
         skillName = selectedTemplate.title ?? skillName;
         skillMode = 'deck';
       } else {
         // Picker ids are plugin install ids (`example-html-ppt-…`). Prefer the
-        // plugin-local SKILL (with frontmatter visual summary) before the
-        // design-template registry, whose body strips frontmatter without
-        // reattaching the palette/type contract.
+        // plugin-local SKILL (with frontmatter visual summary + example.html
+        // visual kit) before the design-template registry.
         const local = await fetchPluginLocalSkill(selectedTemplate.id);
         if (local) {
           skillBody = local.body;
