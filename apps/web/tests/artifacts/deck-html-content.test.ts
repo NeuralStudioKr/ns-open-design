@@ -4,6 +4,7 @@ import {
   closeUnclosedSlideSectionsForSalvage,
   hasFilledSlideSection,
   hasSalvageableDeckSlideContent,
+  isClosedSoftSalvageDeckHtml,
   isDeckStatusProseOnlyBody,
   meetsMinimumDeckDeliverableQuality,
   meetsTruncationSalvageQuality,
@@ -75,6 +76,20 @@ describe("deck-html-content", () => {
     expect(meetsTruncationSalvageQuality(`<!doctype html><html><body>${closed}</body></html>`)).toBe(
       true,
     );
+  });
+
+  it("recognizes already-closed soft-salvage decks that strict incomplete still rejects", () => {
+    const html =
+      "<!doctype html><html lang=\"ko\"><body>"
+      + "<section class=\"slide\"><h1>커버 전략 발표</h1><p>이번 분기 핵심 메시지와 실행 계획을 공유합니다.</p></section>"
+      + "<section class=\"slide\"></section>"
+      + "<section class=\"slide\"></section>"
+      + "<section class=\"slide\"></section>"
+      + "<section class=\"slide\"></section>"
+      + "</body></html>";
+    expect(meetsMinimumDeckDeliverableQuality(html)).toBe(false);
+    expect(isIncompleteHtmlDocumentShell(html)).toBe(true);
+    expect(isClosedSoftSalvageDeckHtml(html)).toBe(true);
   });
 
   it("rejects outline-only heading slides without body copy", () => {

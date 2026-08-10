@@ -27,6 +27,19 @@ describe("salvageTruncatedHtmlDocument", () => {
     expect(salvaged!.length).toBeGreaterThan(128);
   });
 
+  it("salvages a truncated deck even when a later empty closed document poisons the tail", () => {
+    const text =
+      '작성 중\n'
+      + '<!doctype html><html lang="ko"><head><meta charset="utf-8" /><title>NS</title></head><body>'
+      + '<section class="slide"><h1>NeuralStudio</h1><p>회사 소개 개요입니다.</p></section>'
+      + '<section class="slide"><h2>제품</h2><p>핵심 제품 라인업을 소개합니다.'
+      + '\n\n<!doctype html><html><body></body></html>';
+    const recovered = recoverBestHtmlDocumentFromText(text);
+    expect(recovered).toBeTruthy();
+    expect(recovered).toContain('NeuralStudio');
+    expect(recovered).toMatch(/<\/body>\s*<\/html>\s*$/i);
+  });
+
   it("auto-closes mid-first-slide truncation so previewable HTML can persist", () => {
     // Previously failed because only </section>-closed slides counted as content.
     const truncated = `<!doctype html>

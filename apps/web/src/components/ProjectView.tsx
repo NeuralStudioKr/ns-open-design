@@ -62,6 +62,7 @@ import {
   peekLatestPendingArtifactWrite,
   stashPendingArtifactWrite,
 } from '../artifacts/pendingWriteRecovery';
+import { isClosedSoftSalvageDeckHtml } from '../artifacts/deck-html-content';
 import {
   recoverBestHtmlDocumentFromText,
   recoverHtmlArtifactFromPrecedingDocument,
@@ -226,6 +227,7 @@ import {
   appendWarningStatusEvent,
   attachPersistedChatError,
   attachAutoContinueIncompleteOutputNotice,
+  clearDurableDeliverableErrorsAfterRecovery,
   messageHasPersistedChatError,
   messageHasVisibleProse,
 } from '../runtime/chat-events';
@@ -3827,59 +3829,62 @@ export function ProjectView({
               scopedCommentAttachmentCount: recoveryCommentAttachments.length,
               visualMarkOnly: visualAnnotationAutoContinueFlags(recoveryCommentAttachments).visualMarkOnly,
             });
-            if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
-              if (incompleteAssistant && slideOnlyMvp) {
-                const incompleteIndex = mergedMessages.findIndex(
-                  (message) => message.id === incompleteAssistant.id,
+            // Prefer emergency salvage BEFORE burning auto-continue slots when
+            // the stream already contains model-authored HTML (matches live finalize).
+            if (incompleteAssistant && slideOnlyMvp) {
+              const incompleteIndex = mergedMessages.findIndex(
+                (message) => message.id === incompleteAssistant.id,
+              );
+              const beforeFileNames = resolveTurnStartFileBaseline(
+                incompleteAssistant.preTurnFileNames,
+                filesForRecovery,
+              );
+              const emergency = await attemptEmergencySlideDeckRecovery({
+                slideOnlyMvp,
+                producedHtmlToOpen: null,
+                scopedCommentAttachmentCount: recoveryCommentAttachments.length,
+                outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
+                finalText: incompleteAssistant.content,
+                projectFiles: filesForRecovery,
+                beforeFileNames,
+                startedAt: incompleteAssistant.startedAt ?? incompleteAssistant.createdAt ?? Date.now(),
+                persistArtifact,
+                refreshProjectFiles,
+                readProjectHtml,
+                computeProducedFiles,
+              });
+              if (emergency.recovered && emergency.htmlToOpen) {
+                const emergencyNotice = formatEmergencyDeckFallbackNotice();
+                const updatedAssistant = {
+                  ...appendWarningStatusEvent(
+                    clearDurableDeliverableErrorsAfterRecovery(incompleteAssistant),
+                    emergencyNotice,
+                    EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+                  ),
+                  producedFiles: emergency.produced,
+                  runStatus: 'succeeded' as const,
+                  resumable: false,
+                  endedAt: incompleteAssistant.endedAt ?? Date.now(),
+                };
+                setMessages((current) =>
+                  current.map((message) =>
+                    message.id === updatedAssistant.id ? updatedAssistant : message,
+                  ),
                 );
-                const beforeFileNames = resolveTurnStartFileBaseline(
-                  incompleteAssistant.preTurnFileNames,
-                  filesForRecovery,
-                );
-                const emergency = await attemptEmergencySlideDeckRecovery({
-                  slideOnlyMvp,
-                  producedHtmlToOpen: null,
-                  scopedCommentAttachmentCount: recoveryCommentAttachments.length,
-                  outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
-                  finalText: incompleteAssistant.content,
-                  projectFiles: filesForRecovery,
-                  beforeFileNames,
-                  startedAt: incompleteAssistant.startedAt ?? incompleteAssistant.createdAt ?? Date.now(),
-                  persistArtifact,
-                  refreshProjectFiles,
-                  readProjectHtml,
-                  computeProducedFiles,
+                void saveMessage(project.id, activeConversationId, updatedAssistant, {
+                  telemetryFinalized: true,
                 });
-                if (emergency.recovered && emergency.htmlToOpen) {
-                  const emergencyNotice = formatEmergencyDeckFallbackNotice();
-                  const updatedAssistant = {
-                    ...appendWarningStatusEvent(
-                      incompleteAssistant,
-                      emergencyNotice,
-                      EMERGENCY_DECK_FALLBACK_STATUS_CODE,
-                    ),
-                    producedFiles: emergency.produced,
-                    runStatus: 'succeeded' as const,
-                    resumable: false,
-                    endedAt: incompleteAssistant.endedAt ?? Date.now(),
-                  };
-                  setMessages((current) =>
-                    current.map((message) =>
-                      message.id === updatedAssistant.id ? updatedAssistant : message,
-                    ),
-                  );
-                  void saveMessage(project.id, activeConversationId, updatedAssistant, {
-                    telemetryFinalized: true,
-                  });
-                  const filesAfterEmergency = await refreshProjectFiles();
-                  await finalizeSlideOnlyDeckArtifactsRef.current(
-                    filesAfterEmergency,
-                    emergency.htmlToOpen,
-                  );
-                  maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
-                  requestOpenFile(emergency.htmlToOpen);
-                }
+                const filesAfterEmergency = await refreshProjectFiles();
+                await finalizeSlideOnlyDeckArtifactsRef.current(
+                  filesAfterEmergency,
+                  emergency.htmlToOpen,
+                );
+                maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+                requestOpenFile(emergency.htmlToOpen);
+                return;
               }
+            }
+            if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
               return;
             }
             if (!incompleteAssistant) return;
@@ -4914,15 +4919,21 @@ export function ProjectView({
         // stricter incomplete/low-substance gates or previewable salvage is
         // thrown away and the user only sees incomplete_output.
         const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html);
-        const wasTruncationSalvaged = Boolean(salvaged);
         if (salvaged) {
           artifactToPersist = { ...artifactToPersist, html: salvaged };
         }
+        // Upstream resolveTerminal / bestArtifact may already have closed the
+        // truncated body. Re-running salvage then returns null — still trust
+        // closed soft-quality decks so strict incomplete/low-substance cannot
+        // throw away the same previewable HTML.
+        const trustSoftTruncationSalvage =
+          Boolean(salvaged)
+          || isClosedSoftSalvageDeckHtml(artifactToPersist.html);
         // Empty scaffolds can pass the 64-char length gate once a charset
         // meta is present — still skip silently so we never write phantoms
         // or flash 「저장을 거부했습니다」 during deck generation.
         if (
-          !wasTruncationSalvaged
+          !trustSoftTruncationSalvage
           && isIncompleteHtmlDocumentShell(artifactToPersist.html)
         ) {
           // Quiet skip — do NOT setError here. The terminal auto-open path
@@ -4937,7 +4948,7 @@ export function ProjectView({
           slideOnlyMvp,
         );
         if (
-          !wasTruncationSalvaged
+          !trustSoftTruncationSalvage
           && normalizedArtifactType === 'deck'
           && isLowSubstanceSlideDeckArtifact(artifactToPersist.html)
         ) {
@@ -7942,62 +7953,66 @@ export function ProjectView({
           scopedCommentAttachmentCount: recoveryCommentAttachments.length,
           visualMarkOnly: visualAnnotationAutoContinueFlags(recoveryCommentAttachments).visualMarkOnly,
         });
-        if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
-          if (incompleteAssistant && slideOnlyMvp) {
-            const incompleteIndex = mergedMessages.findIndex(
-              (message) => message.id === incompleteAssistant.id,
+        // Prefer emergency salvage before auto-continue (same as live finalize / reload).
+        if (incompleteAssistant && slideOnlyMvp) {
+          const incompleteIndex = mergedMessages.findIndex(
+            (message) => message.id === incompleteAssistant.id,
+          );
+          const beforeFileNames = resolveTurnStartFileBaseline(
+            incompleteAssistant.preTurnFileNames,
+            nextFiles,
+          );
+          const emergency = await attemptEmergencySlideDeckRecovery({
+            slideOnlyMvp,
+            producedHtmlToOpen: null,
+            scopedCommentAttachmentCount: recoveryCommentAttachments.length,
+            outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
+            finalText: incompleteAssistant.content,
+            projectFiles: nextFiles,
+            beforeFileNames,
+            startedAt: incompleteAssistant.startedAt ?? incompleteAssistant.createdAt ?? Date.now(),
+            persistArtifact,
+            refreshProjectFiles,
+            readProjectHtml,
+            computeProducedFiles,
+          });
+          if (emergency.recovered && emergency.htmlToOpen) {
+            const emergencyNotice = formatEmergencyDeckFallbackNotice();
+            const updatedAssistant = {
+              ...appendWarningStatusEvent(
+                clearDurableDeliverableErrorsAfterRecovery(incompleteAssistant),
+                emergencyNotice,
+                EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+              ),
+              producedFiles: emergency.produced,
+              runStatus: 'succeeded' as const,
+              resumable: false,
+              endedAt: incompleteAssistant.endedAt ?? Date.now(),
+            };
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === updatedAssistant.id ? updatedAssistant : message,
+              ),
             );
-            const beforeFileNames = resolveTurnStartFileBaseline(
-              incompleteAssistant.preTurnFileNames,
-              nextFiles,
-            );
-            const emergency = await attemptEmergencySlideDeckRecovery({
-              slideOnlyMvp,
-              producedHtmlToOpen: null,
-              scopedCommentAttachmentCount: recoveryCommentAttachments.length,
-              outlineMessages: mergedMessages.slice(0, incompleteIndex + 1),
-              finalText: incompleteAssistant.content,
-              projectFiles: nextFiles,
-              beforeFileNames,
-              startedAt: incompleteAssistant.startedAt ?? incompleteAssistant.createdAt ?? Date.now(),
-              persistArtifact,
-              refreshProjectFiles,
-              readProjectHtml,
-              computeProducedFiles,
+            void saveMessage(project.id, recoveryConversationId, updatedAssistant, {
+              telemetryFinalized: true,
             });
-            if (emergency.recovered && emergency.htmlToOpen) {
-              const emergencyNotice = formatEmergencyDeckFallbackNotice();
-              const updatedAssistant = {
-                ...appendWarningStatusEvent(
-                  incompleteAssistant,
-                  emergencyNotice,
-                  EMERGENCY_DECK_FALLBACK_STATUS_CODE,
-                ),
-                producedFiles: emergency.produced,
-                runStatus: 'succeeded' as const,
-                resumable: false,
-                endedAt: incompleteAssistant.endedAt ?? Date.now(),
-              };
-              setMessages((current) =>
-                current.map((message) =>
-                  message.id === updatedAssistant.id ? updatedAssistant : message,
-                ),
-              );
-              void saveMessage(project.id, recoveryConversationId, updatedAssistant, {
-                telemetryFinalized: true,
-              });
-              const filesAfterEmergency = await refreshProjectFiles();
-              await finalizeSlideOnlyDeckArtifacts(
-                filesAfterEmergency,
-                emergency.htmlToOpen,
-              );
-              maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
-              requestOpenFile(emergency.htmlToOpen);
-              finishRecovery();
-              return;
-            }
+            const filesAfterEmergency = await refreshProjectFiles();
+            await finalizeSlideOnlyDeckArtifacts(
+              filesAfterEmergency,
+              emergency.htmlToOpen,
+            );
+            maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+            requestOpenFile(emergency.htmlToOpen);
+            finishRecovery();
+            return;
           }
-        } else if (incompleteAssistant) {
+        }
+        if (!canFireAutoContinueForConversation(autoContinueCount, recoveryAutoContinueMax)) {
+          finishRecovery();
+          return;
+        }
+        if (incompleteAssistant) {
           conversationAutoContinueCountRef.current.set(
             recoveryConversationId,
             autoContinueCount + 1,
@@ -9228,6 +9243,12 @@ export function ProjectView({
             if (shouldFailMissingSlideHtml) {
               terminalArtifactPersistFailed = true;
             }
+            // Persist already failed ⇒ shouldFailSlideRunForMissingHtmlDeliverable
+            // returns false (double-count guard). Still treat "no HTML on disk"
+            // as a missing-slide signal so rejected / discovery-skip can arm AC.
+            const missingSlideDeliverableForAutoContinue =
+              shouldFailMissingSlideHtml
+              || (slideOnlyMvp && !producedHtmlToOpen && terminalArtifactPersistFailed);
 
             if (producedHtmlToOpen && runIsVisible()) {
               maybeArmTeamverPublishMenuAfterRunSuccess(project.id, producedHtmlToOpen);
@@ -9315,7 +9336,7 @@ export function ProjectView({
                     ? terminalPersistResult.reason ?? null
                     : null,
                 hadIncompleteParsedArtifact,
-                shouldFailMissingSlideHtml,
+                shouldFailMissingSlideHtml: missingSlideDeliverableForAutoContinue,
                 shouldRouteScopedCommentEditToAutoContinue,
               });
 
@@ -9367,7 +9388,7 @@ export function ProjectView({
                 const emergencyNotice = formatEmergencyDeckFallbackNotice();
                 updateAssistant((prev) => ({
                   ...appendWarningStatusEvent(
-                    prev,
+                    clearDurableDeliverableErrorsAfterRecovery(prev),
                     emergencyNotice,
                     EMERGENCY_DECK_FALLBACK_STATUS_CODE,
                   ),
@@ -13205,6 +13226,8 @@ function isUsableDeckHtmlArtifact(html: string | null | undefined): boolean {
   const trimmed = String(html ?? '').trim();
   if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
   if (!isIncompleteHtmlDocumentShell(trimmed)) return true;
+  // Already-closed soft salvage returns null from salvageTruncated — still usable.
+  if (isClosedSoftSalvageDeckHtml(trimmed)) return true;
   return Boolean(salvageTruncatedHtmlDocument(trimmed));
 }
 

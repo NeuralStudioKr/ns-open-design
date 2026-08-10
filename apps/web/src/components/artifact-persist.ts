@@ -215,20 +215,21 @@ export function collapseArtifactVersionOpenTabs(
 /**
  * Whether this slide-only run should skip Quick brief discovery defer.
  *
- * Canvas→Slide / selected-template launches pin `skipDiscoveryBrief` on project
- * metadata, but React state can lag the first persist. Treat deck kind and a
- * selected visual template as the same skip signal, and honor a per-run pin
- * from `handleSend` turn meta.
+ * Canvas→Slide launches pin `skipDiscoveryBrief` on project metadata / turn
+ * meta. React state can lag the first persist, so also honor a per-run pin and
+ * an explicit selected visual template. Do NOT treat bare `kind: 'deck'` as
+ * skip — home freeform slide projects always use that kind and must still get
+ * Quick brief discovery on turn 1.
  */
 export function resolveSlideOnlySkipDiscoveryBrief(options: {
   projectSkipDiscoveryBrief?: boolean;
+  /** @deprecated Ignored — `kind: 'deck'` alone must not skip discovery. */
   projectKind?: string | null;
   selectedDeckTemplateId?: string | null;
   runSkipDiscoveryBrief?: boolean;
 }): boolean {
   if (options.runSkipDiscoveryBrief === true) return true;
   if (options.projectSkipDiscoveryBrief === true) return true;
-  if (options.projectKind === 'deck') return true;
   if (options.selectedDeckTemplateId?.trim()) return true;
   return false;
 }

@@ -2044,12 +2044,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           if (designSystemIdForRun && !currentDesignSystemId) {
             projectPatch.designSystemId = designSystemIdForRun;
           }
-          if (templateBinding.projectMetadata.selectedDeckTemplateId) {
-            projectPatch.metadata = {
-              ...(projectMetadata ?? {}),
-              ...templateBinding.projectMetadata,
-            };
-          }
+          // Always persist Canvas→Slide skipDiscovery / kind / template pins.
+          // Default template launches have no selectedDeckTemplateId but still
+          // must keep skipDiscoveryBrief after reload/reattach.
+          projectPatch.metadata = {
+            ...(projectMetadata ?? {}),
+            ...templateBinding.projectMetadata,
+          };
           if (Object.keys(projectPatch).length > 0) {
             const patched = await patchProject(id, projectPatch);
             if (patched) onActiveDesignSystemChange?.(patched);
@@ -2167,12 +2168,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         if (designSystemIdForRun && !currentDesignSystemId) {
           projectPatch.designSystemId = designSystemIdForRun;
         }
-        if (templateBinding.projectMetadata.selectedDeckTemplateId) {
-          projectPatch.metadata = {
-            ...(projectMetadata ?? {}),
-            ...templateBinding.projectMetadata,
-          };
-        }
+        // Always persist Canvas→Slide skipDiscovery / kind / template pins
+        // (including default template launches without selectedDeckTemplateId).
+        projectPatch.metadata = {
+          ...(projectMetadata ?? {}),
+          ...templateBinding.projectMetadata,
+        };
         if (Object.keys(projectPatch).length > 0) {
           const patched = await patchProject(id, projectPatch);
           if (patched) onActiveDesignSystemChange?.(patched);

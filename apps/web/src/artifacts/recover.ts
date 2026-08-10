@@ -6,6 +6,7 @@ import { validateHtmlArtifact, isIncompleteHtmlDocumentShell } from './validate'
 import {
   closeUnclosedSlideSectionsForSalvage,
   hasSalvageableDeckSlideContent,
+  isClosedSoftSalvageDeckHtml,
   meetsTruncationSalvageQuality,
 } from './deck-html-content';
 
@@ -164,17 +165,32 @@ export function recoverBestHtmlDocumentFromText(
 }
 
 function collectTruncatedHtmlDocumentsFromText(sourceText: string, candidates: string[]): void {
-  const doctypeTail = sourceText.match(/<!doctype\s+html[\s\S]*/i)?.[0];
-  if (!doctypeTail) return;
-  const salvaged = salvageTruncatedHtmlDocument(doctypeTail);
-  if (salvaged) candidates.push(salvaged);
+  // Split on each doctype so a later empty closed `</html>` artifact cannot
+  // poison salvage of an earlier truncated deck (or vice versa).
+  const segments = sourceText.match(/<!doctype\s+html[\s\S]*?(?=(?:<!doctype\s+html)|$)/gi) ?? [];
+  if (segments.length === 0) {
+    const doctypeTail = sourceText.match(/<!doctype\s+html[\s\S]*/i)?.[0];
+    if (!doctypeTail) return;
+    const salvaged = salvageTruncatedHtmlDocument(doctypeTail);
+    if (salvaged) candidates.push(salvaged);
+    return;
+  }
+  for (const segment of segments) {
+    const salvaged = salvageTruncatedHtmlDocument(segment);
+    if (salvaged) candidates.push(salvaged);
+  }
 }
 
 function collectCompleteHtmlDocumentsFromText(sourceText: string, candidates: string[]): void {
   const addCandidate = (candidate: string) => {
     const normalized = candidate.replace(/^﻿/, '').trim();
     if (/<\/?artifact\b/i.test(normalized)) return;
-    if (validateHtmlArtifact(normalized).ok && !isIncompleteHtmlDocumentShell(normalized)) {
+    if (!validateHtmlArtifact(normalized).ok) return;
+    // Include closed soft-salvage decks (strict incomplete ratio still fails).
+    if (
+      !isIncompleteHtmlDocumentShell(normalized)
+      || isClosedSoftSalvageDeckHtml(normalized)
+    ) {
       candidates.push(normalized);
     }
   };

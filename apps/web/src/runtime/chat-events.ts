@@ -94,11 +94,49 @@ function hasPersistedRunErrorEvent(events: AgentEvent[]): boolean {
  * Display-time sanitization stays in AssistantMessage; this only repairs
  * metadata gaps that would hide error cards after reload.
  */
+/**
+ * After emergency salvage marks a run succeeded, drop durable incomplete /
+ * auto-continue error events so reload cannot flip `succeeded` → `failed`
+ * via `reconcileChatMessageOnLoad`.
+ */
+export function clearDurableDeliverableErrorsAfterRecovery(
+  message: ChatMessage,
+): ChatMessage {
+  const events = message.events ?? [];
+  const nextEvents = events.filter(
+    (event) =>
+      !(
+        event.kind === 'status'
+        && event.label === 'error'
+        && (
+          event.code === 'incomplete_output'
+          || event.code === AUTO_CONTINUE_STATUS_CODE
+        )
+      ),
+  );
+  if (nextEvents.length === events.length) return message;
+  return { ...message, events: nextEvents };
+}
+
 export function reconcileChatMessageOnLoad(message: ChatMessage): ChatMessage {
   let reconciled = recoverChatAttachmentsFromMentions(
     reconcileUserCommentAttachments(message),
   );
   const events = reconciled.events ?? [];
+  const hasEmergencySuccess =
+    reconciled.runStatus === 'succeeded'
+    && events.some(
+      (event) =>
+        event.kind === 'status'
+        && (
+          event.label === 'warning'
+          || event.label === 'error'
+        )
+        && event.code === EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+    );
+  if (hasEmergencySuccess) {
+    return clearDurableDeliverableErrorsAfterRecovery(reconciled);
+  }
   if (!hasPersistedRunErrorEvent(events)) return reconciled;
   if (reconciled.runStatus === 'failed' || reconciled.runStatus === 'canceled') return reconciled;
   return {

@@ -2,6 +2,7 @@ import type { Artifact, ChatMessage, ProjectFile } from '../types';
 import { selectAutoOpenProducedHtml } from '../components/auto-open-file';
 import type { computeProducedFiles as computeProducedFilesFn } from '../produced-files';
 import { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from '../artifacts/emergency-deck';
+import { isClosedSoftSalvageDeckHtml } from '../artifacts/deck-html-content';
 import { recoverBestHtmlDocumentFromText } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
 import { resolveLastSubstantiveAssistantMessageId } from './conversation-message-dedupe';
@@ -176,7 +177,8 @@ export async function verifySlideProducedHtmlDeliverable(
   if (!fileName) return null;
   const html = await readProjectHtml(fileName);
   if (!html) return null;
-  if (isIncompleteHtmlDocumentShell(html) || !validateHtmlArtifact(html).ok) return null;
+  if (!validateHtmlArtifact(html).ok) return null;
+  if (isIncompleteHtmlDocumentShell(html) && !isClosedSoftSalvageDeckHtml(html)) return null;
   return fileName;
 }
 
@@ -295,11 +297,10 @@ export function recoverEmergencyDeckHtmlFromStream(options: {
 }): string | null {
   for (const text of collectEmergencyHtmlSalvageTexts(options)) {
     const recovered = recoverBestHtmlDocumentFromText(text);
-    if (
-      recovered
-      && validateHtmlArtifact(recovered).ok
-      && !isIncompleteHtmlDocumentShell(recovered)
-    ) {
+    if (!recovered || !validateHtmlArtifact(recovered).ok) continue;
+    // Soft-salvaged sparse decks may still trip the strict incomplete shell
+    // ratio — accept them for emergency persist the same way as live salvage.
+    if (!isIncompleteHtmlDocumentShell(recovered) || isClosedSoftSalvageDeckHtml(recovered)) {
       return recovered;
     }
   }

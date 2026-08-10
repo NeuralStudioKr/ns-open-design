@@ -287,11 +287,10 @@ describe('resolveSlideOnlySkipDiscoveryBrief', () => {
     expect(resolveSlideOnlySkipDiscoveryBrief({})).toBe(false);
   });
 
-  it('honors project skipDiscoveryBrief, deck kind, template id, and run pin', () => {
+  it('honors project skipDiscoveryBrief, template id, and run pin', () => {
     expect(
       resolveSlideOnlySkipDiscoveryBrief({ projectSkipDiscoveryBrief: true }),
     ).toBe(true);
-    expect(resolveSlideOnlySkipDiscoveryBrief({ projectKind: 'deck' })).toBe(true);
     expect(
       resolveSlideOnlySkipDiscoveryBrief({
         selectedDeckTemplateId: 'html-ppt-zhangzara-daisy-days',
@@ -299,6 +298,19 @@ describe('resolveSlideOnlySkipDiscoveryBrief', () => {
     ).toBe(true);
     expect(
       resolveSlideOnlySkipDiscoveryBrief({ runSkipDiscoveryBrief: true }),
+    ).toBe(true);
+  });
+
+  it('does NOT treat bare kind:deck as skip (home Quick brief must still run)', () => {
+    expect(resolveSlideOnlySkipDiscoveryBrief({ projectKind: 'deck' })).toBe(false);
+    expect(
+      shouldDeferSlideOnlyDiscoveryArtifactPersist(
+        [{ id: 'u1', role: 'user', content: '온보딩 ppt 만들어줘' }],
+        {
+          slideOnlyMvp: true,
+          skipDiscoveryBrief: resolveSlideOnlySkipDiscoveryBrief({ projectKind: 'deck' }),
+        },
+      ),
     ).toBe(true);
   });
 });

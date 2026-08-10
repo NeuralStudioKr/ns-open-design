@@ -149,6 +149,20 @@ export function hasSalvageableDeckSlideContent(html: string): boolean {
 }
 
 /**
+ * True when HTML is already closed but only passes the soft truncation bar
+ * (strict incomplete/low-substance would still reject). Used so upstream
+ * salvage → persist does not re-fail the same body after `salvageTruncated`
+ * returns null on already-closed documents.
+ */
+export function isClosedSoftSalvageDeckHtml(html: string): boolean {
+  const trimmed = String(html ?? "").replace(/^﻿/, "").trim();
+  if (trimmed.length < 128) return false;
+  if (!/<\/html\s*>/i.test(trimmed) || !/<\/body\s*>/i.test(trimmed)) return false;
+  if (!documentContainsSlideSection(trimmed)) return false;
+  return meetsTruncationSalvageQuality(trimmed);
+}
+
+/**
  * Softer quality bar used ONLY while closing mid-stream truncated decks
  * (`salvageTruncatedHtmlDocument`). A max_tokens cut often leaves 1–2 strong
  * filled slides plus empty trailing placeholders — the strict 34% multi-slide
