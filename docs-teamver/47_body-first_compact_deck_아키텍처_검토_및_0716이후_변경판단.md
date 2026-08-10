@@ -11,7 +11,8 @@
 | 1 | [29 BYOK api mode vs runs](./29_BYOK_api_mode_vs_runs_아키텍처.md) | embed가 `POST /api/runs`를 쓰지 않는 이유 |
 | 2 | [46 embed 슬라이드 품질 원인분석](./46_embed_슬라이드_품질_원인분석_개선로드맵.md) | 품질 trade-off·Phase 1~3 로드맵 |
 | 3 | **이 문서 (47)** | body-first 결정·0716 이후 변경 판단·유지/롤백 매트릭스 |
-| 4 | [00 구현 내역 누적](./00_구현_내역_누적.md) | 날짜별 커밋·검증 기록 |
+| 4 | [60 Canvas→Slide 시스템 프롬프트·템플릿](./60_Canvas_Slide_시스템_프롬프트_템플릿적용_개선.md) | 템플릿 kit vs Neutral compact · FE compose · 퀵설정 · 회귀 방어 |
+| 5 | [00 구현 내역 누적](./00_구현_내역_누적.md) | 날짜별 커밋·검증 기록 |
 
 ---
 

@@ -103,6 +103,7 @@
 | 57-0 | **[Docker 배포 빌드 가속 현황](./57-0_Docker_배포_빌드_가속_현황.md)** — Phase 0 BuildKit·Playwright (구 52-0 Docker) |
 | 57-1 | **[Docker 이미지 CI·ECR 배포 설계](./57-1_Docker_이미지_CI_ECR_배포_설계.md)** — 다음 단계 (미구현 · 구 52-1 Docker) |
 | 58 | **[덱 Preview letterbox / 빈 화면](./58_덱_미리보기_letterbox_빈화면_안정화.md)** — 재진입·사용 중 검정 Preview · host-viewport |
+| 60 | **[Canvas→Slide 시스템 프롬프트·템플릿 적용](./60_Canvas_Slide_시스템_프롬프트_템플릿적용_개선.md)** — Daisy Days→Neutral RCA · compose SSOT |
 | 46 | **[embed 슬라이드 품질 원인분석·로드맵](./46_embed_슬라이드_품질_원인분석_개선로드맵.md)** — Phase 1~3 |
 | 47 | **[body-first compact deck 검토·0716 이후 판단](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)** — 유지/롤백 SSOT |
 | 17 | **[Production 출시 작업 순서](./17_Production_출시_작업_순서.md)** |
