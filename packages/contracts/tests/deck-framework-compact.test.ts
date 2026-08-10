@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DECK_COMPACT_INLINE_LAYOUT_VOCABULARY,
+  DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE,
   DECK_FRAMEWORK_DIRECTIVE_COMPACT,
+  DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE,
 } from '../src/prompts/deck-framework.js';
 
 describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
@@ -30,5 +32,24 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('designed presentation');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('1920×1080');
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY).toContain('72px/1.05');
+  });
+
+  it('selected-template compact contract omits Neutral sample colors', () => {
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      'API compact contract with Selected deck template',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE,
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).not.toContain(
+      'background:#0f172a;color:#f8fafc',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).not.toContain(
+      'background:#1e293b;color:#fff',
+    );
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain(
+      'MUST come from the Selected deck template',
+    );
+    expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain('#0f172a');
   });
 });

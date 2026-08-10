@@ -34,7 +34,12 @@ import type { MediaExecutionPolicy } from '../api/media.js';
 import type { ProjectMetadata, ProjectTemplate } from '../api/projects.js';
 import { OFFICIAL_DESIGNER_PROMPT } from './official-system.js';
 import { DISCOVERY_AND_PHILOSOPHY } from './discovery.js';
-import { DECK_FRAMEWORK_DIRECTIVE, DECK_FRAMEWORK_DIRECTIVE_COMPACT, COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from './deck-framework.js';
+import {
+  DECK_FRAMEWORK_DIRECTIVE,
+  DECK_FRAMEWORK_DIRECTIVE_COMPACT,
+  DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE,
+  COMPACT_DECK_SLIDE_COUNT_GUIDANCE,
+} from './deck-framework.js';
 import { MEDIA_GENERATION_CONTRACT } from './media-contract.js';
 
 export const BASE_SYSTEM_PROMPT = OFFICIAL_DESIGNER_PROMPT;
@@ -1340,6 +1345,21 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
 **Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing completion without the requested slide count (minimum 6 when unspecified), or repeating the same layout/background/composition on every slide. Preserve the Selected deck template look (design system is secondary brand context only) and vary layouts per the compact inline layout vocabulary.`;
 
 /**
+ * Final visual authority when Canvas → Slide (or equivalent) pinned a template.
+ * Placed after compact + streaming rules so kit tokens beat Neutral samples.
+ */
+const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST = `# Selected deck template visual — READ LAST (highest visual priority)
+
+A Selected deck template is active for this run. The Template visual kit / Visual summary earlier in this prompt is the **only** allowed palette, typography, border, shadow, and motif language.
+
+Hard requirements for every slide:
+- Bind kit hex colors, font-family names, border widths/radii, and offset shadows from the kit (inline styles or one short body \`<style>\` + optional font \`@import\`).
+- Keep decorative density the kit shows (chunky cards, daisies/stars, pastel badges, etc.). Sparse title-only slides that ignore the kit are a failure.
+- **Forbidden** when the kit is present: Neutral Modern / Starter look — slate covers \`#0f172a\` / \`#1e293b\` / \`#111827\`, Inter-only or system-ui-only typography, empty gradient corporate title slides, "no ornament" subtractive layouts from any design-system prose.
+
+If any earlier compact wireframe sample conflicts with the kit, **ignore the sample colors** and follow the kit.`;
+
+/**
  * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.
  * Avoids discovery, BASE_SYSTEM_PROMPT artifact-handoff, and raw skill seed
  * copy workflows that cannot run without daemon tools.
@@ -1399,9 +1419,9 @@ export function composeTeamverSlideApiPrompt({
     );
   }
   // Selected deck template wins over Active design system for look.
-  // Embed often auto-binds Neutral Modern | Starter; if that stays
-  // "Mandatory", Daisy Days / Zhangzara pastels get rewritten into a dark
-  // sparse corporate deck ("기본 템플릿처럼 보임").
+  // Embed often auto-binds Neutral Modern | Starter. Even when labeled
+  // SECONDARY, shipping the full DESIGN.md ("No ornament", Inter, slate)
+  // still steers the model — omit the body entirely when a template is set.
   const hasSelectedTemplate =
     (typeof metadata?.selectedDeckTemplateId === 'string'
       && metadata.selectedDeckTemplateId.trim().length > 0)
@@ -1417,7 +1437,7 @@ export function composeTeamverSlideApiPrompt({
           + 'Do NOT replace the template palette, fonts, density, borders, decorative motif, '
           + 'or light/dark scheme with design-system tokens. '
           + 'Never turn a cheerful pastel / cream template into a dark Neutral Modern gradient.\n\n'
-          + activeDesignSystemBody,
+          + '*(Full DESIGN.md omitted on purpose — template visual kit owns colors/fonts/density.)*',
       );
     } else {
       parts.push(
@@ -1490,7 +1510,14 @@ export function composeTeamverSlideApiPrompt({
     }
   }
 
-  parts.push(DECK_FRAMEWORK_DIRECTIVE_COMPACT);
+  // When a visual template is selected, do NOT append the Neutral-colored
+  // compact wireframe (`#0f172a` / Inter). Models overweight the last concrete
+  // HTML samples and rewrite Daisy Days / Zhangzara kits into sparse corporate.
+  parts.push(
+    hasSelectedTemplate
+      ? DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE
+      : DECK_FRAMEWORK_DIRECTIVE_COMPACT,
+  );
   parts.push(TEAMVER_API_DECK_FRAMEWORK_OVERRIDE.trim());
   if (!directDeckGeneration) {
     parts.push(TEAMVER_SLIDE_API_DISCOVERY_BINDING_RULE);
@@ -1509,6 +1536,9 @@ export function composeTeamverSlideApiPrompt({
   // obeys the greenfield "MUST emit complete deck" + 2-slide wireframe and
   // collapses 8-slide decks to 2 while dropping the attached image.
   parts.push(TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE);
+  if (hasSelectedTemplate) {
+    parts.push(TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST);
+  }
 
   return parts.join('\n\n---\n\n');
 }

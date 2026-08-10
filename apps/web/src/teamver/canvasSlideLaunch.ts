@@ -38,6 +38,22 @@ export const CANVAS_CREATE_SLIDES_PLUGIN_ID =
   defaultScenarioPluginIdForKind("deck") ?? "example-simple-deck";
 
 /**
+ * True when the Canvas → Slide modal picked a real visual template (Zhangzara,
+ * etc.) rather than the default scenario / "basic" option. Explicit templates
+ * must not auto-bind Neutral Modern as `designSystemId` — that DESIGN.md was
+ * still injected into the BYOK system prompt and overrode cream/pastel kits.
+ */
+export function isExplicitCanvasSlideVisualTemplate(
+  template: { id: string } | null | undefined,
+): boolean {
+  const id = template?.id?.trim() ?? "";
+  if (!id) return false;
+  if (id === CANVAS_CREATE_SLIDES_PLUGIN_ID) return false;
+  if (id === DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID) return false;
+  return true;
+}
+
+/**
  * Slide-generation prompt paired with Canvas → Design handoff (`teamverDriveIntent=create-slides`).
  * The attached file is a **source document**, not the deliverable — the agent must build a new
  * compact API deck artifact, not leave/copy the source HTML as the project output.

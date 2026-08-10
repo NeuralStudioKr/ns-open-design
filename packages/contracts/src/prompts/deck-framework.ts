@@ -532,6 +532,33 @@ Use a 56–72px blockquote/principle sentence with small attribution.
 Quality bar: match the requested slide count (see slide-count rule below); each slide needs a distinct layout role (cover → split/body/stat/timeline/quote/column mixes → closing). When a Selected deck template is active, bind its visual-kit colors/fonts — design-system tokens are secondary brand context only. Do not use the example colors literally when a selected template (or, if none, an active design system) supplies a stronger visual direction.
 `;
 
+/**
+ * Structure-only layout roles for Canvas → Slide runs with an explicit
+ * selected deck template. Hard-coded Neutral slate/navy samples (`#0f172a`,
+ * `#1e293b`, Inter/system-ui) are intentionally omitted — models copy the
+ * last concrete HTML samples, which previously overrode Daisy Days / Zhangzara
+ * kits into a sparse corporate "Neutral Modern" look.
+ */
+export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE = `# Compact API — inline layout vocabulary with Selected deck template (structure only)
+
+Each slide is rendered on a **1920×1080** canvas. Use large presentation typography, fill the canvas, and center content vertically with flex plus generous padding (64–96px).
+
+**Colors, fonts, borders, shadows, and decorative density MUST come from the Selected deck template / Template visual kit above.** Do not invent a slate/navy corporate palette. Forbidden fallbacks when a kit is present: \`#0f172a\`, \`#1e293b\`, \`#111827\`, \`#f8fafc\` + Inter-only sparse covers.
+
+Do not invent one identical empty box for every slide. Pick the closest layout role below and vary **composition** and **density** across slides (never 3+ identical slides in a row). Bind kit tokens into every \`style=\` / short body \`<style>\`.
+
+**Cover** — big title + one lead line; kit background + kit display font; keep template motif density (daisies/stars/chunky cards when the kit shows them).
+**Body** — eyebrow + headline + paragraph or bullets on a kit surface (not plain white Inter).
+**Big stat** — one number + caption centered; kit accent for the numeral.
+**Three-column** — headline + 3 short points (flex/grid); kit card borders/shadows when the kit uses chunky cards.
+**Split thesis** — left headline, right evidence cards (CSS grid ~.9fr/1.1fr).
+**Timeline / pipeline** — 4 numbered horizontal steps.
+**Quote / principle** — one strong 56–72px sentence with small attribution.
+**Closing** — recap CTA on a kit accent or cream/pastel surface — not a dark slate wall.
+
+Quality bar: match the requested slide count; each slide needs a distinct layout role. The finished deck must be recognizable as the selected template (palette hex, fonts, borders, motif) — not Neutral Modern.
+`;
+
 /** Compact API decks: honor user/plugin/brief counts; 6–8 is only the unspecified default. */
 export const COMPACT_DECK_SLIDE_COUNT_GUIDANCE =
   'Honor slideCount (Project metadata / Plugin inputs), quick-brief `scale`, or an explicit user count; use 6–8 slides only when none is specified.';
@@ -556,4 +583,33 @@ Rules:
 7. When the user attaches images to place on slides, include \`<img src="exact-project-relative-path" alt="…" style="max-width:100%;height:auto;object-fit:contain">\` using the paths from the attachment context. Prefer a dedicated image slide or a content area; never invent remote URLs or data: URIs.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY}
+`;
+
+/**
+ * Compact contract used when Canvas → Slide (or equivalent) pinned an explicit
+ * visual template. Same structural rules as {@link DECK_FRAMEWORK_DIRECTIVE_COMPACT}
+ * but without Neutral Modern sample colors that models otherwise copy last.
+ */
+export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE = `# Slide deck — API compact contract with Selected deck template (overrides the long skeleton copy workflow)
+
+You are in API mode. **Do NOT paste or recreate a large framework skeleton.** Do NOT spend tokens copying scale-to-fit JS, print CSS, chrome counters, or keyboard handlers.
+
+A **Selected deck template** (and usually a Template visual kit from example.html) is already in this prompt. That kit is the PRIMARY visual contract. The wireframe below is structure only — **never** copy slate/navy corporate colors from generic examples.
+
+When the brief is ready, emit ONE \`<artifact type="deck" identifier="deck">\` with a complete \`<!doctype html>…</html>\` in this same response. Prefer starting \`<body>\` immediately with visible slides. You MAY include one short body \`<style>\` (and optional Google Fonts \`@import\` / \`link\`) solely to bind kit fonts/tokens — then continue with filled slides.
+
+Required wireframe (structure only — replace EVERY color/font with Selected template kit tokens):
+
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><!-- optional short style with kit @import/fonts/tokens --><section class="slide" style="min-height:100vh;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;/* kit background + kit text + kit display font */"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" style="min-height:100vh;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;/* another kit surface */"><h1 style="margin:0 0 20px">실제 제목</h1><ul style="margin:0;padding-left:1.35rem"><li>실제 불릿</li></ul></section></body></html></artifact>\`
+
+Rules:
+1. On deck-delivery turns, optional: one tiny brief-specific UI-locale status sentence, then start the artifact. Artifact-only is OK for speed/tokens.
+2. Every \`<section class="slide">\` must contain real text. Empty sections or \`<!-- SLOT -->\` comments are failures.
+3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete compact deck over a giant framework.
+4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn.
+5. Vary slide layouts using the template-aware vocabulary below — do not repeat the same padding/background/composition on every slide.
+6. **Hard visual rule:** palette hex, fonts, border width/radius, shadows, and motif density from the Selected deck template kit MUST be recognizable on every slide. Sparse Neutral Modern / Inter / \`#0f172a\` covers are a critical failure when a kit is present.
+7. When the user attaches images, include \`<img src="exact-project-relative-path" …>\` using attachment paths.
+
+${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
 `;

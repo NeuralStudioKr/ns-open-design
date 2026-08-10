@@ -147,6 +147,7 @@ import {
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
   buildSlideOnlyDeckTemplateCreateBinding,
+  isExplicitCanvasSlideVisualTemplate,
   readTeamverCreateSlidesLaunchFromUrl,
   resolveCanvasSlideTemplate,
   driveCreateSlidesSourceBrief,
@@ -1792,13 +1793,17 @@ export function HomeView({
     setError(null);
     try {
       if (canvasSlideLaunch.kind === 'canvas') {
-        const submittedDesignSystemId = slideOnlyMvp
-          ? resolveEmbedSlideDesignSystemId({
-              explicitId: null,
-              workspaceDefaultId: defaultDesignSystemId,
-              designSystems: designSystemPickerSystems,
-            })
-          : null;
+        // Explicit visual templates (Daisy Days, etc.) own the look via
+        // selectedDeckTemplate* + example.html kit. Do not auto-bind Neutral
+        // Modern — its DESIGN.md was still landing in the BYOK system prompt.
+        const submittedDesignSystemId =
+          slideOnlyMvp && !isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+            ? resolveEmbedSlideDesignSystemId({
+                explicitId: null,
+                workspaceDefaultId: defaultDesignSystemId,
+                designSystems: designSystemPickerSystems,
+              })
+            : null;
         const topicHint =
           canvasSlideLaunch.handoff.title?.trim() ||
           canvasSlideLaunch.handoff.threadTitle?.trim() ||
@@ -1887,13 +1892,14 @@ export function HomeView({
           },
           projectKind: 'deck',
           projectMetadata: templateBinding.projectMetadata,
-          designSystemId: slideOnlyMvp
-            ? resolveEmbedSlideDesignSystemId({
-                explicitId: null,
-                workspaceDefaultId: defaultDesignSystemId,
-                designSystems: designSystemPickerSystems,
-              })
-            : null,
+          designSystemId:
+            slideOnlyMvp && !isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+              ? resolveEmbedSlideDesignSystemId({
+                  explicitId: null,
+                  workspaceDefaultId: defaultDesignSystemId,
+                  designSystems: designSystemPickerSystems,
+                })
+              : null,
           contextPlugins: [],
           contextMcpServers: [],
           contextConnectors: [],

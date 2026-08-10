@@ -5885,7 +5885,14 @@ export function ProjectView({
       const secondaryName = secondaryScenarioSkillName?.trim() || 'scenario';
       skillBody += `\n\n---\n\n## Composed skill — ${secondaryName}\n\n${secondary}`;
     }
-    if (designSystemIdOverride ?? project.designSystemId) {
+    // Selected visual template owns palette/fonts via example.html kit.
+    // Skip loading Neutral Modern (or any DS) body into BYOK compose — even a
+    // "SECONDARY" DESIGN.md still steers the model toward sparse corporate.
+    const omitDesignSystemForSelectedTemplate =
+      Boolean(selectedTemplate)
+      && slideOnlyMvp
+      && config.mode === 'api';
+    if (!omitDesignSystemForSelectedTemplate && (designSystemIdOverride ?? project.designSystemId)) {
       const effectiveDesignSystemId = designSystemIdOverride ?? project.designSystemId;
       const summary = designSystems.find((d) => d.id === effectiveDesignSystemId);
       designSystemTitle = summary?.title;

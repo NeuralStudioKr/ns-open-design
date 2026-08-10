@@ -119,10 +119,23 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     expect(prompt).toContain('Fredoka One');
     expect(prompt).toContain('SECONDARY — brand context only');
     expect(prompt).toContain('Never turn a cheerful pastel / cream template into a dark Neutral Modern gradient');
+    expect(prompt).toContain('Selected deck template visual — READ LAST');
+    expect(prompt).toContain('API compact contract with Selected deck template');
     expect(prompt).not.toContain('**Mandatory:** bind these tokens into every slide');
-    // Design-system dark guidance must not outrank the template kit.
+    // Full Neutral Modern DESIGN.md must not ship — only the demotion stub.
+    expect(prompt).not.toContain('Use dark forest greens and sparse covers.');
+    expect(prompt).toContain('Full DESIGN.md omitted on purpose');
+    // Compact Neutral wireframe samples must not appear after the kit
+    // (models copy last concrete HTML and ignore Daisy Days tokens).
+    expect(prompt).not.toContain('background:#0f172a;color:#f8fafc');
+    expect(prompt).not.toContain('background:#1e293b;color:#fff');
+    // Design-system demotion stub must precede the selected template kit.
     expect(prompt.indexOf('## Selected deck template')).toBeGreaterThan(
       prompt.indexOf('SECONDARY — brand context only'),
+    );
+    // READ LAST visual rule must be after compact contract.
+    expect(prompt.indexOf('Selected deck template visual — READ LAST')).toBeGreaterThan(
+      prompt.indexOf('API compact contract with Selected deck template'),
     );
   });
 

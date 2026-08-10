@@ -2310,13 +2310,23 @@ function AppInner() {
           return false;
         }
       }
-      const resolvedDesignSystemId = isTeamverEmbedMode()
-        ? resolveEmbedSlideDesignSystemId({
-            explicitId: input.designSystemId,
-            workspaceDefaultId: config.designSystemId,
-            designSystems,
-          })
-        : input.designSystemId;
+      // Canvas → Slide with an explicit visual template pins
+      // `selectedDeckTemplateId`. Honor a null/empty designSystemId there —
+      // re-resolving to Neutral Modern | Starter re-injected DESIGN.md into
+      // BYOK compose and overrode Daisy Days / Zhangzara kits.
+      const selectedDeckTemplateId =
+        typeof input.metadata?.selectedDeckTemplateId === 'string'
+          ? input.metadata.selectedDeckTemplateId.trim()
+          : '';
+      const resolvedDesignSystemId = !isTeamverEmbedMode()
+        ? input.designSystemId
+        : selectedDeckTemplateId
+          ? (input.designSystemId?.trim() || null)
+          : resolveEmbedSlideDesignSystemId({
+              explicitId: input.designSystemId,
+              workspaceDefaultId: config.designSystemId,
+              designSystems,
+            });
       let result;
       try {
         result = await createProject({
