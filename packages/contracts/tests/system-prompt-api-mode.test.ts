@@ -368,7 +368,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
         metadata: { kind: 'deck', skipDiscoveryBrief: true },
       });
 
-      expect(prompt).toContain(SKIP_DISCOVERY_BRIEF_OVERRIDE);
+      // Teamver uses a dedicated skip-discovery block (no Site-ref exception
+      // that fights DIRECT_STREAMING's "do NOT emit question-form").
+      expect(prompt).toContain('Canvas → Slide / Drive → Slide / automated brief');
+      expect(prompt).not.toContain('Site-ref:');
+      expect(prompt).not.toContain('URL-only deck asks missing audience/purpose/tone/count/topics');
       expect(prompt).toContain('direct deck generation rule');
       expect(prompt).toContain('inline layout vocabulary');
       expect(prompt).toContain('optional tiny UI-locale status sentence');
@@ -377,9 +381,11 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).toContain('<artifact type="deck" identifier="deck">');
       expect(prompt).toContain('Never `type="text/html"`');
       expect(prompt).toContain('choose reasonable defaults and proceed without asking a discovery form');
-      expect(prompt).toContain('URL-only deck asks missing audience/purpose/tone/count/topics');
       expect(prompt).toContain('use 6-8 slides only if no Plugin inputs / user brief specifies a count');
       expect(prompt).toContain('omit unless requested');
+      expect(prompt).toContain('width:1920px;height:1080px');
+      expect(prompt).toContain('Stream promptly');
+      expect(prompt).not.toContain('until the complete filled deck is ready in one shot');
       expect(prompt).not.toContain('unified streaming rule');
       expect(prompt).not.toContain('Turn 1 (first user message, no prior form answers)');
       expect(prompt).not.toContain('unknown — ask');
@@ -472,7 +478,9 @@ describe('composeSystemPrompt — API mode (#313)', () => {
 
       expect(prompt).toContain('Selected template visual signature — Html Ppt Zhangzara Capsule');
       expect(prompt).toContain('Style only');
-      expect(prompt).toContain('ask quick brief first');
+      expect(prompt).toContain('content brief comes from the user message / Plugin inputs / discovery answers');
+      // Discovery still comes from Teamver turn-1 / unified rules — not from
+      // a conflicting "ask quick brief" line inside the visual signature.
       expect(prompt).toContain('unified streaming rule');
       expect(prompt).toContain('question-form id="discovery"');
       expect(prompt).not.toContain('direct deck generation rule');

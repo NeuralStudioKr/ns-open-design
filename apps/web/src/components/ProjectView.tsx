@@ -5858,13 +5858,10 @@ export function ProjectView({
         || selectedTemplate?.title
         || 'selected deck template';
       skillBody = wrapSelectedDeckTemplateSkillBody(skillBody!, title);
-    } else if (skillBody?.trim() && skillMode === 'deck') {
-      // Non-template deck skills keep the prior wrap so API/daemon stay aligned.
-      skillBody = wrapSelectedDeckTemplateSkillBody(
-        skillBody,
-        skillName?.trim() || 'selected deck template',
-      );
     }
+    // Do NOT wrap every deck skill as "user explicitly picked this template".
+    // That false framing ran for default Simple Deck / no-template paths and
+    // fought the summarized Visual style reference + Neutral compact contract.
     const secondary = secondaryScenarioSkillBody?.trim();
     // Teamver slide-only BYOK: never splice the default scenario SKILL
     // (example-simple-deck) into the selected visual template body. That

@@ -48,11 +48,13 @@ describe("canvasSlideLaunch", () => {
       topic: "canvas",
       deckType: "presentation from source material",
       designSystem: "Template",
+      audience: "infer from source material",
+      tone: "infer from source/template",
+      slideCount: "6-8",
       quickSettings: DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
       quickSettingsInstruction: expect.stringContaining("Transform mode: Rebuild as a presentation"),
       sourceHandlingInstruction: CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION,
     });
-    expect(canvasCreateSlidesPluginInputs("canvas", "Template")).not.toHaveProperty("slideCount");
   });
 
   it("builds a compact Canvas source brief for plugin inputs", () => {
@@ -269,14 +271,14 @@ describe("canvasSlideLaunch", () => {
     };
     const instruction = canvasSlideQuickSettingsInstruction(quickSettings);
     expect(instruction).toContain("Education/training audience");
-    expect(instruction).toContain("Short deck");
+    expect(instruction).toContain("Short deck (about 5–6 slides)");
     expect(instruction).toContain("Summarize and prioritize");
     expect(instruction).toContain("Friendly");
 
     const runPrompt = canvasCreateSlidesRunPrompt("Template", "brief", "", quickSettings);
     expect(runPrompt).toContain("[Quick settings]");
     expect(runPrompt).toContain("Audience: Education/training audience.");
-    expect(runPrompt).toContain("Length: Short deck.");
+    expect(runPrompt).toContain("Length: Short deck (about 5–6 slides).");
     expect(runPrompt).toContain("Transform mode: Summarize and prioritize key messages.");
     expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).toBe(CANVAS_CREATE_SLIDES_PROMPT);
 
@@ -285,6 +287,9 @@ describe("canvasSlideLaunch", () => {
     ).toMatchObject({
       quickSettings,
       quickSettingsInstruction: instruction,
+      audience: "education / training audience",
+      tone: "friendly",
+      slideCount: "5-6",
     });
   });
 
@@ -301,7 +306,7 @@ describe("canvasSlideLaunch", () => {
     );
     const instruction = canvasSlideQuickSettingsInstruction(invalidSettings);
     expect(instruction).toContain("Audience: Infer audience from the source.");
-    expect(instruction).toContain("Length: Infer slide count from the source.");
+    expect(instruction).toContain("Length: Infer slide count from the source (default 6–8 if unclear).");
     expect(instruction).toContain("Transform mode: Rebuild as a presentation");
     expect(instruction).toContain("Tone: Infer tone from the source/template.");
     expect(instruction).not.toContain("undefined");

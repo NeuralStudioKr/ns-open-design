@@ -180,6 +180,37 @@ function renderUiLocalePrompt(locale: string | undefined): string {
   return lines.join('\n');
 }
 
+/** Lean locale block for Teamver slide-only (no OD task-type / mismatched discovery schema). */
+function renderTeamverSlideUiLocalePrompt(
+  locale: string | undefined,
+  options: { discoveryActive: boolean },
+): string {
+  const normalized = locale?.trim();
+  if (!normalized || normalized.toLowerCase() === 'en') return '';
+  const languageName = normalized === 'zh-CN'
+    ? 'Simplified Chinese'
+    : normalized === 'zh-TW'
+      ? 'Traditional Chinese'
+      : normalized;
+  const lines = [
+    '# UI locale override (Teamver slide-only)',
+    '',
+    `UI locale: \`${normalized}\` (${languageName}). Localize user-visible chat status prose and any \`<question-form>\` labels to this locale. Keep machine-readable ids / option \`value\` fields in English.`,
+    'This project is always a slide deck — never emit Prototype / Live artifact / Image / Video / Audio task-type routing.',
+  ];
+  if (options.discoveryActive && (normalized === 'ko' || normalized === 'ko-KR')) {
+    lines.push(
+      '',
+      'If emitting Teamver discovery (`audience` / `tone` / `must_include`), use Korean labels such as:',
+      '- title: `간단한 정보 확인 — 30초`',
+      '- audience: `대상 독자`',
+      '- tone: `시각적 톤`',
+      '- must_include: `반드시 포함할 내용`',
+    );
+  }
+  return lines.join('\n');
+}
+
 function normalizePromptText(value: string): string {
   return value
     .replace(/[\r\n]+/g, ' ')
@@ -239,7 +270,7 @@ function renderTeamverVisualSignatureBlock({
     classes.length > 0 ? `class/style cues: ${classes.join(', ')}` : '',
     layoutHints.length > 0 ? `layout cues: ${layoutHints.join(', ')}` : '',
     'Must match template palette, type, density, accents, rhythm.',
-    'Style only; if brief lacks audience/purpose/tone/count/topics and discovery not skipped, ask quick brief first.',
+    'Style only — content brief comes from the user message / Plugin inputs / discovery answers.',
     'Template beats samples; never fall back to navy/white.',
     'Use inline styles or one short body `<style>` after slide 1. No `<head>` first.',
     'Do not copy full skeleton or emit long CSS/head/script.',
@@ -729,17 +760,21 @@ When the user message includes \`[Existing deck edit]\` and/or \`[Attached image
 
 const TEAMVER_API_DECK_FRAMEWORK_OVERRIDE = `
 
-## Teamver API — deck framework emission override (read last — overrides daemon workflow above)
+## Teamver API — deck framework emission override (overrides daemon workflow above)
 
 The deck framework workflow above assumes TodoWrite and filesystem copies. **In this API run, override it:**
 
-- Do NOT open \`<artifact type="deck">\` until the complete filled deck is ready in one shot.
-- Do NOT emit a head-only scaffold (\`<!doctype html><html><head>\` with no body slides) and stop — that is always rejected.
-- Do NOT paste the long canonical skeleton / scale-to-fit JS / print CSS. In API mode, avoid \`<head>\` and \`<style>\` entirely unless absolutely necessary; write visible \`<body><section class="slide">...\` content first.
-- Your response should contain exactly ONE \`<artifact type="deck" identifier="...">...</artifact>\` block whose body is the full \`<!doctype html>…</html>\` document with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).
-- Prefer starting directly with \`<artifact type="deck"\` (at most one short sentence before it). Never start a Teamver deck with \`<artifact type="text/html"\`.
-- The artifact MUST end with \`</html>\` and \`</artifact>\` in this same turn.
+- Stream promptly: optional tiny status sentence, then open \`<artifact type="deck">\` early and write filled slides. Do **not** wait until a private full draft is finished before opening the artifact.
+- Still close \`</html></artifact>\` in this same turn — truncated head-only shells are always rejected.
+- Do NOT paste the long canonical skeleton / scale-to-fit JS / print CSS. Prefer visible \`<body><section class="slide">...\` content first. A short body \`<style>\` / font \`@import\` is OK when a Selected deck template kit requires fonts/tokens.
+- Your response should contain exactly ONE \`<artifact type="deck" identifier="deck">...</artifact>\` block with every \`<section class="slide">\` filled with real copy (never \`<!-- SLOT: ... -->\` placeholders).
+- Never start a Teamver deck with \`<artifact type="text/html"\`.
 `;
+
+/** Teamver slide-only skip-discovery: no site-ref exception (that fights DIRECT_STREAMING). */
+const SKIP_DISCOVERY_BRIEF_OVERRIDE_TEAMVER_SLIDE = `# Automated project mode — skip discovery form
+
+This project was created with \`skipDiscoveryBrief: true\` (Canvas → Slide / Drive → Slide / automated brief). Override discovery rules: do NOT emit \`<question-form id="discovery">\`, do NOT show "Quick brief — 30 seconds", and do NOT ask a first-turn clarification form. Do not emit any question form or choice card, and do not wait for user input. Treat the user's first message, Plugin inputs (including slideCount / audience / tone), Quick settings, and project metadata as the brief; choose reasonable defaults for any remaining gaps; then emit the deck artifact in this same turn.`;
 
 const TEAMVER_API_SKILL_SEED_OVERRIDE = `
 
@@ -1338,8 +1373,8 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
 
 **How to stream the deck (non-negotiable):**
 1. Emit the status sentence first, then open \`<artifact type="deck">\` early. Never \`type="text/html"\`.
-2. First bytes inside artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
-3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` after slide 1 — design system is brand context only and must not override the template look; do not merely describe the template.
+2. First bytes inside artifact: \`<!doctype html><html><body>\` then either a short kit \`<style>\`/\`@import\` (Selected template fonts only) or \`<section class="slide">\` with real copy — never an empty shell or long \`<head>\` chrome.
+3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. Prefer fixed Teamver canvas sizing on each slide: \`width:1920px;height:1080px;box-sizing:border-box;overflow:hidden\` (not viewport-only \`min-height:100vh\` typography). If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` — design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` in this same turn.
 
 **Forbidden:** "바로 만들어 드리겠습니다" / "I'll make it" promise-only replies, question-form, outlines, plans, TodoWrite, \`[读取 template.html]\`, SLOT comments, a second artifact, stopping after \`<head>\`, announcing completion without the requested slide count (minimum 6 when unspecified), or repeating the same layout/background/composition on every slide. Preserve the Selected deck template look (design system is secondary brand context only) and vary layouts per the compact inline layout vocabulary.`;
@@ -1400,12 +1435,15 @@ export function composeTeamverSlideApiPrompt({
   parts.push(API_MODE_OVERRIDE({ teamverSlideOnly: true }));
   parts.push(TEAMVER_SLIDE_ONLY_SCOPE.trim());
   if (directDeckGeneration) {
-    parts.push(SKIP_DISCOVERY_BRIEF_OVERRIDE);
+    // Teamver-specific: omit Site-ref discovery exception (fights DIRECT_STREAMING).
+    parts.push(SKIP_DISCOVERY_BRIEF_OVERRIDE_TEAMVER_SLIDE);
   } else {
     parts.push(TEAMVER_SLIDE_ONLY_FIRST_TURN_OVERRIDE.trim());
   }
 
-  const localePrompt = renderUiLocalePrompt(locale);
+  const localePrompt = renderTeamverSlideUiLocalePrompt(locale, {
+    discoveryActive: !directDeckGeneration,
+  });
   if (localePrompt) parts.push(localePrompt);
 
   if (userInstructions?.trim()) {
@@ -1466,9 +1504,14 @@ export function composeTeamverSlideApiPrompt({
     parts.push(templateVisualSignature);
   }
 
-  const skillVisualSignature = renderTeamverSkillVisualSignature(skillBody, skillName);
-  if (skillVisualSignature) {
-    parts.push(skillVisualSignature);
+  // When the full Selected deck template (often with example.html kit) is
+  // about to be emitted verbatim, skip the cue-extraction signature — it
+  // duplicates palette/font lines and adds a stale "ask quick brief" line.
+  if (!hasSelectedTemplate) {
+    const skillVisualSignature = renderTeamverSkillVisualSignature(skillBody, skillName);
+    if (skillVisualSignature) {
+      parts.push(skillVisualSignature);
+    }
   }
 
   if (skillBody?.trim()) {

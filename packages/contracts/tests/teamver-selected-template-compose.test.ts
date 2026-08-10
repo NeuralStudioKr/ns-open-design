@@ -137,6 +137,11 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     expect(prompt.indexOf('Selected deck template visual — READ LAST')).toBeGreaterThan(
       prompt.indexOf('API compact contract with Selected deck template'),
     );
+    // Cue-extraction signature is redundant when the full kit is present.
+    expect(prompt).not.toContain('Selected design template visual signature');
+    // Teamver skip-discovery must not re-open Site-ref discovery.
+    expect(prompt).not.toContain('Site-ref:');
+    expect(prompt).toContain('width:1920px;height:1080px');
   });
 
   it('keeps Coral / Bebas visual contract and demotes Simple Deck plugin ownership', () => {

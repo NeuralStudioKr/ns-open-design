@@ -541,7 +541,7 @@ Quality bar: match the requested slide count (see slide-count rule below); each 
  */
 export const DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE = `# Compact API — inline layout vocabulary with Selected deck template (structure only)
 
-Each slide is rendered on a **1920×1080** canvas. Use large presentation typography, fill the canvas, and center content vertically with flex plus generous padding (64–96px).
+Each slide is a **fixed 1920×1080** Teamver canvas. Prefer \`style="width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;..."\` on every \`<section class="slide">\` (not viewport-only \`min-height:100vh\` sizing). Use large presentation typography, fill the canvas, and center content vertically with flex plus generous padding (64–96px).
 
 **Colors, fonts, borders, shadows, and decorative density MUST come from the Selected deck template / Template visual kit above.** Do not invent a slate/navy corporate palette. Forbidden fallbacks when a kit is present: \`#0f172a\`, \`#1e293b\`, \`#111827\`, \`#f8fafc\` + Inter-only sparse covers.
 

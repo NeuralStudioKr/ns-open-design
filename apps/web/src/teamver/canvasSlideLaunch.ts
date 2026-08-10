@@ -110,10 +110,10 @@ const QUICK_SETTING_PROMPT_LABELS = {
     business: "Business/investor audience",
   },
   length: {
-    auto: "Infer slide count from the source",
-    short: "Short deck",
-    standard: "Standard deck",
-    detailed: "Detailed deck",
+    auto: "Infer slide count from the source (default 6–8 if unclear)",
+    short: "Short deck (about 5–6 slides)",
+    standard: "Standard deck (about 8–10 slides)",
+    detailed: "Detailed deck (about 12–15 slides)",
   },
   transformMode: {
     presentation: "Rebuild as a presentation, not a literal page copy",
@@ -128,6 +128,57 @@ const QUICK_SETTING_PROMPT_LABELS = {
     impact: "Impact-focused",
   },
 } as const;
+
+/** Authoritative Plugin-input slideCount from Canvas quick length. */
+export function canvasSlideQuickLengthToSlideCount(
+  length: CanvasSlideLength,
+): string {
+  switch (length) {
+    case "short":
+      return "5-6";
+    case "standard":
+      return "8-10";
+    case "detailed":
+      return "12-15";
+    case "auto":
+    default:
+      return "6-8";
+  }
+}
+
+function canvasSlideQuickAudienceToPluginValue(
+  audience: CanvasSlideAudience,
+): string {
+  switch (audience) {
+    case "internal":
+      return "internal team / report";
+    case "client":
+      return "client / proposal stakeholders";
+    case "education":
+      return "education / training audience";
+    case "business":
+      return "business / investor audience";
+    case "auto":
+    default:
+      return "infer from source material";
+  }
+}
+
+function canvasSlideQuickToneToPluginValue(tone: CanvasSlideTone): string {
+  switch (tone) {
+    case "professional":
+      return "professional";
+    case "modern":
+      return "modern";
+    case "friendly":
+      return "friendly";
+    case "impact":
+      return "impact-focused";
+    case "auto":
+    default:
+      return "infer from source/template";
+  }
+}
 
 function normalizeQuickSettingValue<T extends string>(
   value: T | undefined,
@@ -536,10 +587,16 @@ export function canvasCreateSlidesPluginInputs(
   const normalizedQuickSettings = normalizeCanvasSlideQuickSettings(quickSettings);
   const visualTemplate =
     (templateTitle ?? "").trim() || "기본 슬라이드 템플릿";
+  // slideCount / audience / tone must be authoritative Plugin inputs so the
+  // system compact contract and plugin-block "treat inputs as hard constraints"
+  // language agree with the Canvas modal Quick settings (not a stale
+  // "stakeholders" default fighting "Client/education" prose).
   return {
     deckType: "presentation from source material",
     topic,
-    audience: "stakeholders",
+    audience: canvasSlideQuickAudienceToPluginValue(normalizedQuickSettings.audience),
+    tone: canvasSlideQuickToneToPluginValue(normalizedQuickSettings.tone),
+    slideCount: canvasSlideQuickLengthToSlideCount(normalizedQuickSettings.length),
     speakerNotes: "no speaker notes",
     // Keep designSystem for scenario schema compatibility, but point it at the
     // visual template title so Neutral Modern / Simple Deck cannot reclaim look.
