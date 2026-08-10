@@ -209,8 +209,10 @@ import {
   htmlNeedsRedirectGuard,
   htmlNeedsSandboxShim,
   parseForceInline,
+  isEmbedPreviewAwaitingScopedPrefix,
   resolveHtmlPreviewAssetUrl,
   resolveHtmlPreviewSrcDocBaseHref,
+  resolveSrcDocPreviewMountKey,
   shouldUrlLoadHtmlPreview,
 } from './file-viewer-render-mode';
 import { saveTemplate } from '../state/projects';
@@ -6500,9 +6502,21 @@ function HtmlViewer({
 
   useEffect(() => {
     if (!isTeamverEmbedMode()) return;
-    const bump = () => setEmbedAuthRecoveryNonce((value) => value + 1);
+    // Passive recovery may dispatch session(forceEvent) + recovered together;
+    // explicit 「다시 시도」 (useTeamverEmbed) often fires only forceEvent while
+    // the memory flag stayed true — still must remint preview scopes.
+    let coalesceScheduled = false;
+    const bump = () => {
+      if (coalesceScheduled) return;
+      coalesceScheduled = true;
+      queueMicrotask(() => {
+        coalesceScheduled = false;
+        setEmbedAuthRecoveryNonce((value) => value + 1);
+      });
+    };
     window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, bump);
     const unsubscribe = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
+      // Includes forceEvent reaffirm while already authenticated.
       if (authenticated) bump();
     });
     return () => {
@@ -6680,16 +6694,21 @@ function HtmlViewer({
   const [embedPreviewPrefix, setEmbedPreviewPrefix] = useState<string | null>(() =>
     peekTeamverProjectPreviewPrefix(projectId),
   );
-  // Hold srcDoc until the scoped prefix settle finishes (or fail-open). Painting
-  // without a base then remounting when the prefix arrives interrupts the compact
-  // deck host-viewport handshake — black letterbox with a working 1/N counter
-  // until toolbar refresh. Seed settled=true when a cached prefix already exists
+  // Hold srcDoc until the scoped prefix settle finishes. Painting without a
+  // base then updating srcDoc in place on the same iframe node interrupts the
+  // compact deck host-viewport handshake — black letterbox with a working 1/N
+  // counter until toolbar refresh. Seed settled=true when a cached prefix already exists
   // so remounting the deck tab after an image/other file does not flash empty.
+  // Never "fail-open" settled=true with a null prefix: srcDoc still requires a
+  // real base, and that dead state left a permanent blank canvas until manual remount.
   const [embedPreviewPrefixSettled, setEmbedPreviewPrefixSettled] = useState(
     () => !isTeamverEmbedMode() || peekTeamverProjectPreviewPrefix(projectId) != null,
   );
   const teamverEmbedPreviewMode = isTeamverEmbedMode();
   const embedPreviewIdentityRef = useRef<string | null>(null);
+  // Edge-trigger remint: sticky `nonce > 0` used to invalidate+hold on every
+  // file switch after the first recovery, killing cached peek paint.
+  const lastProcessedAuthRecoveryNonceRef = useRef(0);
   useEffect(() => {
     if (!teamverEmbedPreviewMode) {
       setEmbedPreviewPrefix(null);
@@ -6698,14 +6717,22 @@ function HtmlViewer({
       return;
     }
     let cancelled = false;
+    let backgroundRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    let fastRetryDelayTimer: ReturnType<typeof setTimeout> | null = null;
+    let settleFastRetryDelay: (() => void) | null = null;
     const identity = `${projectId}\0${file.name}`;
     const identityChanged = embedPreviewIdentityRef.current !== identity;
     embedPreviewIdentityRef.current = identity;
+    const authRemintRequested =
+      embedAuthRecoveryNonce > lastProcessedAuthRecoveryNonceRef.current;
+    if (authRemintRequested) {
+      lastProcessedAuthRecoveryNonceRef.current = embedAuthRecoveryNonce;
+    }
     // First paint / file switch: hold empty srcDoc only when no cached prefix.
     // Cached peek lets image→deck tab switches paint immediately.
-    // Auth recovery bumps embedAuthRecoveryNonce and must remint scopes so
-    // relative assets do not resolve against a stale/unauthorized prefix.
-    if (embedAuthRecoveryNonce > 0) {
+    // Auth recovery (nonce edge) must remint scopes so relative assets do not
+    // resolve against a stale/unauthorized prefix.
+    if (authRemintRequested) {
       invalidateTeamverProjectPreviewPrefix(projectId);
       // Auth recovery must hold empty srcDoc (no relative-asset paint against a
       // stale/unauthorized prefix) until a fresh mint settles.
@@ -6720,58 +6747,96 @@ function HtmlViewer({
         return;
       }
     }
-    if (identityChanged || embedAuthRecoveryNonce > 0) {
+    if (identityChanged || authRemintRequested) {
       setEmbedPreviewPrefix(null);
       setEmbedPreviewPrefixSettled(false);
     }
     const retryDelaysMs = [0, 400, 1_200] as const;
-    // Absolute backup if a hung mint never returns. Do NOT fail-open after
-    // attempt 0 — painting relative refs/drive|assets|uploads imgs without
-    // <base href> leaves broken-image + alt text until remount (or forever if
-    // mint never recovers). Hold empty srcDoc until a real prefix or this
-    // terminal budget.
-    const failOpenPaintTimer = window.setTimeout(() => {
-      if (!cancelled) setEmbedPreviewPrefixSettled(true);
-    }, 10_000);
+    // Do NOT fail-open after attempt 0 — painting relative refs/drive|assets|
+    // uploads imgs without <base href> leaves broken-image + alt text until
+    // remount (or forever if mint never recovers). Hold empty srcDoc until a
+    // real prefix arrives; keep soft background remint after the fast window.
+    const adoptPrefix = (resolved: string) => {
+      if (cancelled) return;
+      setEmbedPreviewPrefix(resolved);
+      setEmbedPreviewPrefixSettled(true);
+    };
+    const mintOnce = async (): Promise<string | null> => {
+      const peeked = peekTeamverProjectPreviewPrefix(projectId);
+      if (peeked) return peeked;
+      const abort = new AbortController();
+      const mintAbortTimer = window.setTimeout(() => abort.abort(), 8_000);
+      try {
+        return await resolveTeamverProjectPreviewPrefix(projectId, file.name, {
+          signal: abort.signal,
+        });
+      } finally {
+        window.clearTimeout(mintAbortTimer);
+      }
+    };
+    const scheduleBackgroundRemint = (delayMs: number) => {
+      backgroundRetryTimer = setTimeout(() => {
+        backgroundRetryTimer = null;
+        if (cancelled) return;
+        void (async () => {
+          const resolved = await mintOnce();
+          if (cancelled) return;
+          if (resolved) {
+            adoptPrefix(resolved);
+            return;
+          }
+          scheduleBackgroundRemint(Math.min(Math.round(delayMs * 1.5), 15_000));
+        })();
+      }, delayMs);
+    };
     void (async () => {
       for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
         if (cancelled) return;
         const delay = retryDelaysMs[attempt] ?? 0;
         if (delay > 0) {
-          await new Promise((settle) => window.setTimeout(settle, delay));
+          await new Promise<void>((settle) => {
+            settleFastRetryDelay = settle;
+            fastRetryDelayTimer = setTimeout(() => {
+              fastRetryDelayTimer = null;
+              settleFastRetryDelay = null;
+              settle();
+            }, delay);
+          });
+          settleFastRetryDelay = null;
           if (cancelled) return;
           // Do not invalidate between attempts — that forced up to 3 preview-url
           // mints. resolveTeamverProjectPreviewPrefix already reuses cache/inflight.
         }
-        const abort = new AbortController();
-        const failOpenTimer = window.setTimeout(() => abort.abort(), 8_000);
-        let resolved: string | null = null;
-        try {
-          resolved = await resolveTeamverProjectPreviewPrefix(projectId, file.name, {
-            signal: abort.signal,
-          });
-        } finally {
-          window.clearTimeout(failOpenTimer);
-        }
+        const resolved = await mintOnce();
         if (cancelled) return;
         if (resolved) {
-          window.clearTimeout(failOpenPaintTimer);
-          setEmbedPreviewPrefix(resolved);
-          setEmbedPreviewPrefixSettled(true);
+          adoptPrefix(resolved);
           return;
         }
       }
-      if (!cancelled) {
-        window.clearTimeout(failOpenPaintTimer);
-        setEmbedPreviewPrefix(null);
-        setEmbedPreviewPrefixSettled(true);
-      }
+      if (cancelled) return;
+      // Stay unsettled — never paint without a scoped base. Soft remint picks
+      // up late auth recovery / warm batch seeds without toolbar refresh.
+      setEmbedPreviewPrefix(null);
+      setEmbedPreviewPrefixSettled(false);
+      scheduleBackgroundRemint(2_500);
     })();
     return () => {
       cancelled = true;
-      window.clearTimeout(failOpenPaintTimer);
+      if (backgroundRetryTimer != null) clearTimeout(backgroundRetryTimer);
+      if (fastRetryDelayTimer != null) {
+        clearTimeout(fastRetryDelayTimer);
+        fastRetryDelayTimer = null;
+      }
+      settleFastRetryDelay?.();
     };
   }, [embedAuthRecoveryNonce, file.name, projectId, teamverEmbedPreviewMode]);
+  const embedPreviewAwaitingPrefix = isEmbedPreviewAwaitingScopedPrefix({
+    teamverEmbedMode: teamverEmbedPreviewMode,
+    hasSource: source != null,
+    embedPreviewPrefix,
+    embedPreviewPrefixSettled,
+  });
   const useUrlLoadPreview = shouldUrlLoadHtmlPreview({
     mode,
     isDeck: effectiveDeck,
@@ -6902,7 +6967,8 @@ function HtmlViewer({
   const srcDoc = useMemo(
     () => {
       // Teamver embed: do not paint deck HTML until preview-url prefix settle
-      // completes (or fail-open). Avoids no-base first paint → remount → lost fit.
+      // completes with a real scoped base. Avoids no-base first paint → remount
+      // → lost fit. Hold empty srcDoc (never settle without a prefix).
       // Never paint Teamver decks without a scoped base — relative composer/
       // Drive images resolve against about:srcdoc and show as alt-only.
       if (teamverEmbedPreviewMode && (!embedPreviewPrefixSettled || !embedPreviewPrefix)) {
@@ -6936,20 +7002,31 @@ function HtmlViewer({
   );
   const lazySrcDocTransport = useMemo(() => buildLazySrcdocTransport(), []);
   const [srcDocTransportResetKey, setSrcDocTransportResetKey] = useState(0);
+  // Include settled prefix in the mount key so hold→paint is a fresh iframe
+  // mount (never an in-place ''→HTML srcDoc attribute update that strands
+  // deck fit until toolbar refresh).
+  const srcDocPreviewMountKey = resolveSrcDocPreviewMountKey({
+    transportResetKey: srcDocTransportResetKey,
+    teamverEmbedMode: teamverEmbedPreviewMode,
+    embedPreviewPrefix,
+    embedPreviewPrefixSettled,
+  });
   const [srcDocShellReady, setSrcDocShellReady] = useState(false);
   const wasUrlLoadPreviewRef = useRef(useUrlLoadPreview);
   const urlPreviewKeepAliveKey = previewIframeKeepAliveKey(projectId, file.name);
   // undefined = never painted under current identity; null/string = last painted base.
   const prevEmbedPreviewPrefixRef = useRef<string | null | undefined>(undefined);
-  // When the scoped prefix arrives after a fail-open paint (or auth recovery
-  // rotates it), remount so the new `<base href>` binds. Skip the first settle
-  // when we held empty srcDoc — that paint already has the correct base.
+  // When the scoped prefix rotates after a settled paint (auth recovery remint),
+  // clear activation dedupe. Hold→first-paint remount is owned by
+  // `srcDocPreviewMountKey` (prefix in the React key) so we do NOT skip or
+  // specially handle `prev === undefined` here — that skip used to leave the
+  // empty-hold iframe in place and strand compact decks blank.
   useEffect(() => {
     if (!teamverEmbedPreviewMode) {
       prevEmbedPreviewPrefixRef.current = embedPreviewPrefix;
       return;
     }
-    if (!embedPreviewPrefixSettled) {
+    if (!embedPreviewPrefixSettled || !embedPreviewPrefix) {
       prevEmbedPreviewPrefixRef.current = undefined;
       return;
     }
@@ -6963,22 +7040,29 @@ function HtmlViewer({
   // Agent / disk HTML replacement often updates the srcDoc attribute in place.
   // Some browsers reuse the iframe document without a clean bridge boot, which
   // leaves compact decks on a black letterbox until toolbar refresh. Remount
-  // once per non-streaming content change on the srcDoc transport.
+  // once per non-streaming content change on the srcDoc transport — and once
+  // when leaving a stream (content may be identical bytes but the live→disk
+  // handoff still needs a clean bridge boot).
   const lastDeckPreviewSourceRef = useRef<string | null>(null);
+  const wasStreamingDeckPreviewRef = useRef(false);
   useEffect(() => {
     const identity = `${projectId}\0${file.name}`;
     if (deckHostViewportFitIdentityRef.current !== identity) {
       lastDeckPreviewSourceRef.current = null;
+      wasStreamingDeckPreviewRef.current = false;
     }
     if (!deckHostViewportFitActive || mode !== 'preview' || useUrlLoadPreview) return;
     if (!previewSource) return;
     if (streaming) {
       lastDeckPreviewSourceRef.current = previewSource;
+      wasStreamingDeckPreviewRef.current = true;
       return;
     }
     const prev = lastDeckPreviewSourceRef.current;
+    const leftStreaming = wasStreamingDeckPreviewRef.current;
+    wasStreamingDeckPreviewRef.current = false;
     lastDeckPreviewSourceRef.current = previewSource;
-    if (prev != null && prev !== previewSource) {
+    if (leftStreaming || (prev != null && prev !== previewSource)) {
       activatedSrcDocTransportHtmlRef.current = null;
       setSrcDocTransportResetKey((key) => key + 1);
     }
@@ -6993,10 +7077,11 @@ function HtmlViewer({
   ]);
   // Reset the shell-ready latch whenever the srcDoc iframe re-mounts. The
   // next shell will post `od:srcdoc-transport-ready` (or fire onLoad) and
-  // flip this back to true. See #2253.
+  // flip this back to true. See #2253. Use mount key (includes prefix settle)
+  // so hold→paint remounts reset the latch too.
   useEffect(() => {
     setSrcDocShellReady(false);
-  }, [srcDocTransportResetKey]);
+  }, [srcDocPreviewMountKey]);
   // Listen for the shell's ready handshake. Gating activation on this is
   // what fixes the #2253 race: opening Tweaks right after a key-driven
   // re-mount used to post `activate` before the shell's listener was
@@ -7344,7 +7429,7 @@ function HtmlViewer({
     return () => {
       cancelled = true;
     };
-  }, [drawOverlayOpen, srcDocTransportResetKey, srcDoc, useUrlLoadPreview]);
+  }, [drawOverlayOpen, srcDocPreviewMountKey, srcDoc, useUrlLoadPreview]);
 
   const resolveAnnotationCaptureFrameRect = useCallback(() => {
     const iframe = resolveActiveDeckPreviewIframe();
@@ -7374,7 +7459,7 @@ function HtmlViewer({
     srcDoc,
     previewStateKey,
     useUrlLoadPreview,
-    srcDocTransportResetKey,
+    srcDocPreviewMountKey,
     resolveActiveDeckPreviewIframe,
     // Terminal: liveHtml clear / streaming off rebuilds srcDoc — re-nudge fit.
     streaming,
@@ -7453,7 +7538,7 @@ function HtmlViewer({
     deckHostViewportFitActive,
     mode,
     compactApiStackedDeck,
-    srcDocTransportResetKey,
+    srcDocPreviewMountKey,
     useUrlLoadPreview,
     deckPreviewFitScale,
     deckPreviewFitOptions,
@@ -7542,7 +7627,7 @@ function HtmlViewer({
   useEffect(() => {
     if (!compactApiStackedDeck || previewScale !== 1) return;
     resetDeckPreviewPan(iframeRef.current);
-  }, [compactApiStackedDeck, previewScale, previewStateKey, srcDocTransportResetKey]);
+  }, [compactApiStackedDeck, previewScale, previewStateKey, srcDocPreviewMountKey]);
 
   useEffect(() => {
     const win = iframeRef.current?.contentWindow;
@@ -11869,6 +11954,12 @@ function HtmlViewer({
     capturePreviewScrollPosition();
     imageExportSnapshotDataUrlRef.current = null;
     setInlinedSource(null);
+    // Explicit refresh must remint Teamver preview scope — a dead/null prefix
+    // leaves srcDoc held empty forever, and reloadKey alone cannot recover.
+    if (isTeamverEmbedMode()) {
+      invalidateTeamverProjectPreviewPrefix(projectId);
+      setEmbedAuthRecoveryNonce((value) => value + 1);
+    }
     setReloadKey((key) => key + 1);
     if (!useUrlLoadPreview) {
       activatedSrcDocTransportHtmlRef.current = null;
@@ -14200,7 +14291,7 @@ function HtmlViewer({
                     <div
                       className={[
                         'artifact-preview-transport-stack',
-                        showStreamingPreviewVeil ? 'is-streaming-unstable' : '',
+                        showStreamingPreviewVeil || embedPreviewAwaitingPrefix ? 'is-streaming-unstable' : '',
                       ].filter(Boolean).join(' ')}
                     >
                       {showStreamingPreviewVeil ? (
@@ -14219,6 +14310,25 @@ function HtmlViewer({
                             />
                             <span className="artifact-preview-streaming-veil__label">
                               {t('fileViewer.updatingPreview')}
+                            </span>
+                          </div>
+                        </div>
+                      ) : embedPreviewAwaitingPrefix ? (
+                        <div
+                          className="artifact-preview-streaming-veil"
+                          role="status"
+                          aria-live="polite"
+                          data-testid="artifact-preview-prefix-settle-veil"
+                        >
+                          <div className="artifact-preview-streaming-veil__backdrop" aria-hidden />
+                          <div className="artifact-preview-streaming-veil__card">
+                            <Icon
+                              name="spinner"
+                              size={18}
+                              className="artifact-preview-streaming-veil__icon"
+                            />
+                            <span className="artifact-preview-streaming-veil__label">
+                              {t('fileViewer.loading')}
                             </span>
                           </div>
                         </div>
@@ -14304,7 +14414,7 @@ function HtmlViewer({
                         />
                       )}
                       <iframe
-                        key={srcDocTransportResetKey}
+                        key={srcDocPreviewMountKey}
                         ref={srcDocPreviewIframeRef}
                         data-testid={useUrlLoadPreview ? 'artifact-preview-frame-srcdoc' : 'artifact-preview-frame'}
                         data-od-render-mode="srcdoc"
@@ -14624,6 +14734,7 @@ function HtmlViewer({
             />
           ) : (
             <iframe
+              key={`present:${srcDocPreviewMountKey}`}
               ref={presentIframeRef}
               title="present"
               sandbox="allow-scripts allow-downloads"

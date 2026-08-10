@@ -26,22 +26,43 @@ describe("FileViewer streaming slide preview", () => {
     const source = readSource('src/components/FileViewer.tsx');
     const start = source.indexOf('Agent / manual writes bump `filesRefreshKey`');
     expect(start).toBeGreaterThan(0);
-    const block = source.slice(start, start + 900);
+    const effectEnd = source.indexOf('}, [filesRefreshKey, projectId, file.name]);', start);
+    expect(effectEnd).toBeGreaterThan(start);
+    const block = source.slice(start, effectEnd);
     expect(block).toContain('invalidateCachedPreviewSource');
     expect(block).toContain('setReloadKey');
     expect(block).not.toContain('lastStablePreviewSourceRef.current = null');
-    expect(block).not.toContain('setSrcDocTransportResetKey');
+    // Immediate remount on every filesRefresh is forbidden; reloadKey refetch only.
+    expect(block).not.toMatch(/setSrcDocTransportResetKey\(\(key\) => key \+ 1\)/);
     expect(block).toContain('do NOT clear last-stable');
   });
 
   it('holds srcDoc until preview prefix settles (no early no-base paint)', () => {
     const source = readSource('src/components/FileViewer.tsx');
-    expect(source).toContain('failOpenPaintTimer');
-    // Terminal hung-mint backup only — never fail-open after attempt 0 while
-    // relative refs/drive|assets imgs still need a scoped <base href>.
-    expect(source).toMatch(/setTimeout\(\(\) => \{\s*if \(!cancelled\) setEmbedPreviewPrefixSettled\(true\);\s*\}, 10_000\)/);
+    // Never settle=true with a null prefix (that left a permanent blank canvas).
+    // Soft background remint recovers late auth/warm seeds without toolbar refresh.
+    expect(source).toContain('scheduleBackgroundRemint');
+    expect(source).toContain('Stay unsettled — never paint without a scoped base');
     expect(source).not.toContain('Allow first paint without base; a later successful retry remounts');
     expect(source).toContain('Do NOT fail-open after');
+    expect(source).not.toMatch(
+      /setTimeout\(\(\) => \{\s*if \(!cancelled\) setEmbedPreviewPrefixSettled\(true\);\s*\}, 10_000\)/,
+    );
+  });
+
+  it('remounts srcDoc on hold→paint via mount key (never in-place empty→HTML)', () => {
+    const source = readSource('src/components/FileViewer.tsx');
+    expect(source).toContain('resolveSrcDocPreviewMountKey');
+    expect(source).toContain('srcDocPreviewMountKey');
+    expect(source).toContain('key={srcDocPreviewMountKey}');
+    expect(source).toContain('hold→paint is a fresh iframe');
+    expect(source).toContain('Explicit refresh must remint Teamver preview scope');
+    expect(source).toMatch(
+      /function reloadHtmlPreview\(\) \{[\s\S]{0,500}?invalidateTeamverProjectPreviewPrefix\(projectId\)/,
+    );
+    expect(source).toMatch(
+      /function reloadHtmlPreview\(\) \{[\s\S]{0,500}?setEmbedAuthRecoveryNonce/,
+    );
   });
 
   it('keeps a host ResizeObserver fit recovery loop for intermittent letterbox', () => {
@@ -56,6 +77,8 @@ describe("FileViewer streaming slide preview", () => {
     const source = readSource('src/components/FileViewer.tsx');
     expect(source).toContain('lastDeckPreviewSourceRef');
     expect(source).toContain('once per non-streaming content change on the srcDoc transport');
+    expect(source).toContain('wasStreamingDeckPreviewRef');
+    expect(source).toContain('leftStreaming');
   });
 
   it('re-nudges deck fit when the page becomes visible again', () => {
@@ -87,9 +110,9 @@ describe("FileViewer streaming slide preview", () => {
   it("gates live iframe updates on repaired html stability during streaming", () => {
     const source = readSource("src/components/FileViewer.tsx");
 
-    expect(source).toContain("repairArtifactDocumentHead(candidate)");
+    expect(source).toContain("repairArtifactDocumentHeadIfNeeded(candidate)");
     expect(source).toContain("isArtifactHtmlStableForPreview(repaired)");
-    expect(source).toContain("repairArtifactDocumentHead(liveHtml)");
+    expect(source).toContain("repairArtifactDocumentHeadIfNeeded(liveHtml)");
     expect(source).toContain("scheduleDeckPreviewFitNudges");
     expect(source).toContain("if (needsDeckHostViewportFit) {");
     expect(source).toContain("schedulePostDeckHostViewportUntilSized(");

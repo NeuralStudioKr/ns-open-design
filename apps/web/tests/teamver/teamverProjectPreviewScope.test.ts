@@ -118,6 +118,46 @@ describe('teamverProjectPreviewScope', () => {
     expect(fetchTeamverDaemon).toHaveBeenCalledTimes(2);
   });
 
+  it('drops in-flight mint seeds after invalidate so stale scopes cannot re-poison cache', async () => {
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    let releaseStale: ((value: Response) => void) | null = null;
+    const staleResponse = new Promise<Response>((resolve) => {
+      releaseStale = resolve;
+    });
+    vi.mocked(fetchTeamverDaemon)
+      .mockImplementationOnce(() => staleResponse)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            url: '/api/projects/proj-1/preview/scope-fresh/deck.html',
+            file: 'deck.html',
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const staleWaiter = resolveTeamverProjectPreviewPrefix('proj-1', 'deck.html');
+    // Allow the first mint to register inflight before invalidate.
+    await Promise.resolve();
+    invalidateTeamverProjectPreviewPrefix('proj-1');
+    const fresh = await resolveTeamverProjectPreviewPrefix('proj-1', 'deck.html');
+    expect(fresh).toBe('/api/projects/proj-1/preview/scope-fresh');
+
+    releaseStale?.(
+      new Response(
+        JSON.stringify({
+          url: '/api/projects/proj-1/preview/scope-stale/deck.html',
+          file: 'deck.html',
+        }),
+        { status: 200 },
+      ),
+    );
+    await expect(staleWaiter).resolves.toBeNull();
+    expect(peekTeamverProjectPreviewPrefix('proj-1')).toBe(
+      '/api/projects/proj-1/preview/scope-fresh',
+    );
+  });
+
   it('treats malformed preview-url responses as unavailable without throwing', async () => {
     vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
     vi.mocked(fetchTeamverDaemon).mockResolvedValue(

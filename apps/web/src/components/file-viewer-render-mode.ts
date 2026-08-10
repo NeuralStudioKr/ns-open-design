@@ -133,6 +133,46 @@ export function resolveHtmlPreviewSrcDocBaseHref(options: {
   return href;
 }
 
+/**
+ * Mount key for the srcDoc preview iframe.
+ *
+ * Teamver embed holds `srcDoc=""` until a scoped preview prefix settles.
+ * If the iframe DOM node is reused across that hold→paint transition,
+ * React only updates the `srcDoc` attribute in place — compact/framework
+ * decks then lose the `od:deck-host-viewport` handshake and stay blank
+ * until toolbar refresh remounts the frame.
+ *
+ * Including the settled prefix in the key forces a fresh mount on the
+ * first paintable document (same commit as non-empty srcDoc).
+ */
+export function resolveSrcDocPreviewMountKey(options: {
+  transportResetKey: number;
+  teamverEmbedMode: boolean;
+  embedPreviewPrefix: string | null | undefined;
+  embedPreviewPrefixSettled: boolean;
+}): string {
+  if (!options.teamverEmbedMode) return String(options.transportResetKey);
+  const prefix = typeof options.embedPreviewPrefix === 'string'
+    ? options.embedPreviewPrefix.trim()
+    : '';
+  const scope = options.embedPreviewPrefixSettled && prefix ? prefix : 'hold';
+  return `${options.transportResetKey}:${scope}`;
+}
+
+/** True while Teamver embed has HTML source but must not paint without a scoped base. */
+export function isEmbedPreviewAwaitingScopedPrefix(options: {
+  teamverEmbedMode: boolean;
+  hasSource: boolean;
+  embedPreviewPrefix: string | null | undefined;
+  embedPreviewPrefixSettled: boolean;
+}): boolean {
+  if (!options.teamverEmbedMode || !options.hasSource) return false;
+  const prefix = typeof options.embedPreviewPrefix === 'string'
+    ? options.embedPreviewPrefix.trim()
+    : '';
+  return !options.embedPreviewPrefixSettled || !prefix;
+}
+
 export function hasUrlModeBridge(source: string | null | undefined): boolean {
   if (!source) return false;
   return /<script\b[^>]*\bsrc\s*=\s*["'][^"']*\bod-direct-edit\.js\b[^"']*["'][^>]*>/i.test(source);

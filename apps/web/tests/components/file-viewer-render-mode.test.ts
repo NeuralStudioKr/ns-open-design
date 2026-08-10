@@ -6,9 +6,11 @@ import {
   htmlNeedsFocusGuard,
   htmlNeedsRedirectGuard,
   htmlNeedsSandboxShim,
+  isEmbedPreviewAwaitingScopedPrefix,
   parseForceInline,
   resolveHtmlPreviewAssetUrl,
   resolveHtmlPreviewSrcDocBaseHref,
+  resolveSrcDocPreviewMountKey,
   shouldUrlLoadHtmlPreview,
 } from '../../src/components/file-viewer-render-mode';
 
@@ -138,6 +140,76 @@ describe('resolveHtmlPreviewSrcDocBaseHref', () => {
       rawUrl: '/api/projects/project-1/raw/',
       scopedUrl: null,
     })).toBe('/api/projects/project-1/raw/');
+  });
+});
+
+describe('resolveSrcDocPreviewMountKey', () => {
+  it('stays on transport reset key alone outside Teamver embed', () => {
+    expect(resolveSrcDocPreviewMountKey({
+      transportResetKey: 3,
+      teamverEmbedMode: false,
+      embedPreviewPrefix: null,
+      embedPreviewPrefixSettled: true,
+    })).toBe('3');
+  });
+
+  it('uses hold scope until a settled prefix is ready so React remounts on first paint', () => {
+    expect(resolveSrcDocPreviewMountKey({
+      transportResetKey: 0,
+      teamverEmbedMode: true,
+      embedPreviewPrefix: null,
+      embedPreviewPrefixSettled: false,
+    })).toBe('0:hold');
+    expect(resolveSrcDocPreviewMountKey({
+      transportResetKey: 0,
+      teamverEmbedMode: true,
+      embedPreviewPrefix: '/api/projects/p/preview/s',
+      embedPreviewPrefixSettled: false,
+    })).toBe('0:hold');
+  });
+
+  it('includes the settled prefix so hold→paint changes the iframe key', () => {
+    expect(resolveSrcDocPreviewMountKey({
+      transportResetKey: 1,
+      teamverEmbedMode: true,
+      embedPreviewPrefix: '/api/projects/p/preview/s',
+      embedPreviewPrefixSettled: true,
+    })).toBe('1:/api/projects/p/preview/s');
+  });
+});
+
+describe('isEmbedPreviewAwaitingScopedPrefix', () => {
+  it('is true only when embed has source but no settled scoped prefix', () => {
+    expect(isEmbedPreviewAwaitingScopedPrefix({
+      teamverEmbedMode: true,
+      hasSource: true,
+      embedPreviewPrefix: null,
+      embedPreviewPrefixSettled: false,
+    })).toBe(true);
+    expect(isEmbedPreviewAwaitingScopedPrefix({
+      teamverEmbedMode: true,
+      hasSource: true,
+      embedPreviewPrefix: null,
+      embedPreviewPrefixSettled: true,
+    })).toBe(true);
+    expect(isEmbedPreviewAwaitingScopedPrefix({
+      teamverEmbedMode: true,
+      hasSource: true,
+      embedPreviewPrefix: '/api/projects/p/preview/s',
+      embedPreviewPrefixSettled: true,
+    })).toBe(false);
+    expect(isEmbedPreviewAwaitingScopedPrefix({
+      teamverEmbedMode: false,
+      hasSource: true,
+      embedPreviewPrefix: null,
+      embedPreviewPrefixSettled: false,
+    })).toBe(false);
+    expect(isEmbedPreviewAwaitingScopedPrefix({
+      teamverEmbedMode: true,
+      hasSource: false,
+      embedPreviewPrefix: null,
+      embedPreviewPrefixSettled: false,
+    })).toBe(false);
   });
 });
 

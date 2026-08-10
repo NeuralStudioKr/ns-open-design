@@ -1,6 +1,6 @@
 # 덱 미리보기 letterbox / 빈 화면 안정화
 
-**상태:** 2026-08-04 staging 반영 준비  
+**상태:** 2026-08-10 재발 근본 수정  
 **관련:** [00](./00_구현_내역_누적.md) · [44 preview scope](./44_preview_scope_fallback_안정화.md) · [47 body-first compact](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md) · [41 authenticated srcDoc](./41_authenticated_html_preview_srcdoc.md)
 
 ---
@@ -9,16 +9,17 @@
 
 | 항목 | 내용 |
 |------|------|
-| **증상** | Preview가 검정(`#0b0c10`)이고 슬라이드 카운터 `1/N`만 동작. 툴바 새로고침 후 복구 |
-| **재현** | (1) 프로젝트 재진입 (2) 편집 중 `filesRefresh`/에이전트 쓰기 후 간헐 |
-| **근본** | Compact stacked deck은 host `od:deck-host-viewport` 없이 fit하면 1920 letterbox 좌상단만 보임 |
-| **금지** | prefix 도착 전 no-base paint → remount로 fit handshake 끊기 · refresh마다 last-stable clear+즉시 remount |
+| **증상** | Preview가 검정/`로딩`이고 슬라이드 카운터만 동작하거나 비어 있음. **툴바 새로고침 후 복구** |
+| **재현** | (1) 프로젝트 재진입 (2) prefix 캐시 miss + deck srcDoc (3) auth recovery 후 |
+| **근본** | Teamver deck은 항상 **srcDoc** 경로. prefix settle 동안 `srcDoc=''`로 마운트된 iframe에 나중에 HTML을 **in-place attribute 갱신**하면 compact/framework deck의 `od:deck-host-viewport` handshake가 끊김 |
+| **금지** | hold→paint를 같은 iframe 노드에서 srcDoc 속성만 바꾸기 · `settled=true` + `prefix=null` fail-open(영구 빈 화면) · refresh가 remint 없이 reloadKey만 bump |
 
 ---
 
 ## 1. 증상 판별
 
 - 카운터/툴바는 살아 있고 **캔버스만 검정** → letterbox / host-viewport fit 실패 (이 문서 범위)
+- source는 있는데 prefix hold 중 → `artifact-preview-prefix-settle-veil` 로딩 (정상 대기)
 - 카운터도 없고 “미리보기 불가” → source fetch / auth / S3 (별 경로)
 - 썸네일·카드 cover만 깨짐 → [32](./32_프로젝트_썸네일_커버_로딩_개선.md) / cover isolate 경로
 
@@ -26,18 +27,24 @@
 
 ## 2. 원인 맵
 
-### 2.1 진입 (prefix settle)
+### 2.1 진입 (prefix settle) — 재발 핵심
 
 1. Teamver embed의 `embedPreviewPrefix`는 `/preview-url` 비동기
-2. prefix 전 srcDoc에 `about:blank` base 또는 no-base로 paint하면 relative CSS/asset 깨짐
-3. prefix 도착 후 **문자열만 갱신**하면 iframe이 빈 첫 paint에 남을 수 있음 → `97fc53ea4` remount
-4. remount만으로는 부족: remount가 compact deck의 host-viewport handshake를 끊고, `untilSized`가 **첫 성공 post 후 중단**하면 교체 iframe이 letterbox로 고착
+2. Deck은 `shouldUrlLoadHtmlPreview`에서 **항상 srcDoc** (`isDeck → false`)
+3. prefix 전 `srcDoc=''`로 iframe 마운트 → prefix 도착 후 **같은 DOM 노드**에 srcDoc 문자열만 갱신
+4. 예전 코드는 “첫 settle remount skip” + mount key가 `srcDocTransportResetKey`만이라 **hold→paint remount가 없음**
+5. compact deck fit이 빈 문서(또는 불완전 boot) 기준으로 멈추고 **툴바 새로고침(강제 remount) 전까지 검정**
 
-### 2.2 사용 중 (filesRefresh / source churn)
+### 2.2 fail-open 데드락
 
-1. `filesRefreshKey`마다 last-stable clear + iframe 즉시 remount → fit 중단
-2. `previewSource` 순간 null → `needsDeckHostViewportFit` false → listener 해제 → chase 요청 drop
-3. sticky 없이 fit options가 non-layoutBox로 바뀌면 이미 마운트된 compact deck이 다시 깨질 수 있음
+- `settled=true` + `prefix=null` 로 “fail-open”해도 srcDoc 가드는 여전히 `!prefix → ''`
+- → **영구 빈 화면**. 백그라운드 remint / refresh remint 없이는 회복 불가
+
+### 2.3 사용 중 (filesRefresh / source churn)
+
+1. `filesRefreshKey`마다 last-stable clear + iframe 즉시 remount → fit 중단 (이미 금지)
+2. `previewSource` 순간 null → sticky fit 유지 필요
+3. auth recovery nonce → invalidate + remint (의도)
 
 ---
 
@@ -45,32 +52,23 @@
 
 | 영역 | 파일 | 요지 |
 |------|------|------|
-| prefix hold | `FileViewer.tsx` | `embedPreviewPrefixSettled` 전까지 srcDoc `''`; **attempt0 실패 시 settle** · **2.5s hung backup**; fail-open/회전 시에만 remount |
-| base href | `file-viewer-render-mode.ts` | `resolveHtmlPreviewSrcDocBaseHref` — `about:blank`를 srcDoc base로 쓰지 않음 |
-| filesRefresh | `FileViewer.tsx` | cache invalidate + `reloadKey`만; **last-stable clear / 즉시 remount 금지** |
-| content remount | `FileViewer.tsx` | non-streaming `previewSource` 교체 시 srcDoc iframe remount (in-place srcDoc 갱신 레이스 차단) |
-| sticky fit | `FileViewer.tsx` | `deckHostViewportFitActive` — source null에도 listener·**layoutBox options** 유지 |
-| untilSized | `deckPreviewFit.ts` | delay 창 동안 매 tick post |
-| viewport request | `FileViewer.tsx` | 요청마다 follow-up untilSized 재무장 (성공 post 직후 remount 대비) |
-| recovery | `FileViewer.tsx` | ResizeObserver + stacked-ready slow loop · **visibility/pageshow** re-nudge |
+| **mount key** | `file-viewer-render-mode.ts` `resolveSrcDocPreviewMountKey` | embed에서 settled prefix를 key에 포함 → hold→paint = **새 iframe 마운트** |
+| iframe | `FileViewer.tsx` | `key={srcDocPreviewMountKey}` |
+| prefix mint | `FileViewer.tsx` | 빠른 retry 후 **unsettled 유지** + `scheduleBackgroundRemint` (영구 null settle 금지) |
+| refresh | `FileViewer.tsx` `reloadHtmlPreview` | invalidate prefix + `embedAuthRecoveryNonce` remint |
+| UX | `FileViewer.tsx` | source 있는데 prefix hold 중 → loading veil (`artifact-preview-prefix-settle-veil`) |
+| fit recovery | `FileViewer.tsx` / `deckPreviewFit.ts` | untilSized · ResizeObserver · visibility/pageshow (기존 유지) |
+| base href | `file-viewer-render-mode.ts` | `about:blank`를 srcDoc base로 쓰지 않음 |
 
-### 2026-08-04 재검토 (재발 방지)
+### 2026-08-10 재발 차단 + 다회 검토 보강
 
-잔여 레이스 추가 차단:
-1. srcDoc **속성만** 바뀌고 bridge boot이 불완전할 때 → content remount
-2. viewport request 성공 직후 remount → follow-up untilSized 항상 arm
-3. 탭 백그라운드 후 복귀 → `visibilitychange` / `pageshow` fit 복구
-4. fail-open을 attempt0 완료 후로 당겨 mid-flight paint→이중 remount 완화
-
-### 2026-08-04 이미지→덱 탭 복귀
-
-**증상:** Design Files에서 이미지 등을 연 뒤 덱 탭으로 돌아오면 Preview가 비어 있음.
-
-**원인:** 탭 전환 시 HtmlViewer remount마다 `embedPreviewPrefixSettled=false`로 시작해 srcDoc을 hold. 캐시된 prefix가 있어도 첫 paint가 비고, settle/fit 레이스와 겹치면 검정으로 고착.
-
-**수정:**
-- `peekTeamverProjectPreviewPrefix`로 캐시 prefix sync seed → 첫 paint에 base 포함
-- `FileViewer` / `HtmlViewer`에 `key={projectId\\0file}`로 탭 전환 remount 명확화
+1. **hold→paint remount를 React key로 강제** — in-place srcDoc 갱신 경로 제거 (`resolveSrcDocPreviewMountKey`)
+2. **settled+null fail-open 제거** — soft background remint
+3. **툴바 새로고침 = remint** — reloadKey만으로는 죽은 prefix 회복 불가였던 구멍 차단
+4. **auth remint edge-trigger** — sticky `nonce > 0`가 탭 전환마다 invalidate하던 회귀 차단; passive bump coalesce; session `authenticated`(+forceEvent 재확인) remint so explicit 「다시 시도」도 복구
+5. **invalidate + mint epoch** — in-flight mint/warm이 stale scope를 재-seed하지 못함
+6. Present iframe mount key · streaming→idle remount · memory-only auth remint 정렬
+7. 단위 테스트: mount key · awaiting helper · auth edge · inflight invalidate · source guards
 
 ---
 
@@ -81,28 +79,30 @@ cd apps/web && npx vitest run \
   tests/runtime/deck-preview-fit.test.ts \
   tests/components/FileViewer.embed-preview-prefix-retry.test.ts \
   tests/file-viewer-streaming-preview.test.ts \
-  tests/components/file-viewer-render-mode.test.ts
+  tests/components/file-viewer-render-mode.test.ts \
+  tests/teamver/teamverProjectPreviewScope.test.ts
 ```
 
 **Staging smoke**
 
-1. 기존 deck 프로젝트 재진입 → Preview 즉시(또는 ≤1.5s) 슬라이드 표시, 새로고침 불필요
-2. 채팅으로 소수정 후 `filesRefresh` → 검정으로 고착되지 않음
+1. prefix 캐시 cold인 deck 프로젝트 재진입 → 로딩 veil 후 **자동** 슬라이드 표시 (새로고침 불필요)
+2. 채팅으로 소수정 후 `filesRefresh` → 검정 고착 없음
 3. 사이드바 리사이즈 / 배율 100% ↔ 75% → letterbox 유지
-4. preview-url 지연·실패 시에도 영구 빈 화면이 되지 않음 (fail-open)
+4. preview-url 지연·401 후 세션 회복 → 백그라운드 remint로 자동 복구
+5. 의도적 툴바 새로고침 → remint + remount 후 정상
 
 ---
 
 ## 5. 롤백 힌트
 
-- prefix hold가 진입 지연을 키우면 `1_500` fail-open만 조정 (hold 자체 제거는 회귀 위험)
-- filesRefresh remount를 되살리면 last-stable clear와 함께 **다시 넣지 말 것**
+- mount key에서 prefix를 빼면 **즉시** hold→paint 재발
+- `settled=true`+null fail-open을 되살리면 영구 빈 화면 재발
 - untilSized “첫 성공 후 stop” 복원은 remount 레이스에 취약
 
 ---
 
 ## 6. 다음 추천
 
-1. staging에서 §4 smoke 체크리스트 수행
-2. [44](./44_preview_scope_fallback_안정화.md) preview-url 실패율 모니터링과 연계
-3. Manual Edit / Comment 토글 직후 letterbox 잔존 시 recovery deps에 모드 플래그 추가 검토
+1. staging §4 smoke
+2. [44](./44_preview_scope_fallback_안정화.md) preview-url 실패율 모니터링
+3. memory-only preview(`FileWorkspace`)도 동일 mount-key 패턴 적용 여부 점검

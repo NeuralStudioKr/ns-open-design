@@ -20,6 +20,8 @@ import {
 import { deriveUploadCohort } from '../analytics/upload-tracking';
 import { useTeamverT } from '../teamver/branding/useTeamverT';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
+import { TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT } from '../teamver/teamverEmbedPassiveAuth';
+import { subscribeTeamverEmbedSessionChanged } from '../teamver/teamverEmbedSession';
 import { embedUiLabel } from '../teamver/embedUiLabels';
 import { formatProjectArtifactSaveFailedError } from '../teamver/projectErrorMessages';
 import {
@@ -46,9 +48,11 @@ import {
 import { projectFileResolvedPath } from '../utils/projectFilePaths';
 import { prepareMemoryOnlySlidePreviewSrcDoc } from '../utils/prepareMemoryOnlySlidePreviewSrcDoc';
 import {
+  invalidateTeamverProjectPreviewPrefix,
   peekTeamverProjectPreviewPrefix,
   resolveTeamverProjectPreviewPrefix,
 } from '../teamver/teamverProjectPreviewScope';
+import { resolveSrcDocPreviewMountKey } from './file-viewer-render-mode';
 import { deriveFileOps, type FileOpEntry } from '../runtime/file-ops';
 import { latestTodosFromEvents, type TodoItem } from '../runtime/todos';
 import { deliverableSlideNavForActiveFile, isSlideNavDeliverableNow } from '../runtime/slide-nav';
@@ -1696,6 +1700,30 @@ export function FileWorkspace({
   const [memoryPreviewPrefixSettled, setMemoryPreviewPrefixSettled] = useState(
     () => !teamverEmbedPreviewMode || peekTeamverProjectPreviewPrefix(projectId) != null,
   );
+  const [memoryAuthRecoveryNonce, setMemoryAuthRecoveryNonce] = useState(0);
+  const lastProcessedMemoryAuthNonceRef = useRef(0);
+
+  useEffect(() => {
+    if (!teamverEmbedPreviewMode) return;
+    let coalesceScheduled = false;
+    const bump = () => {
+      if (coalesceScheduled) return;
+      coalesceScheduled = true;
+      queueMicrotask(() => {
+        coalesceScheduled = false;
+        setMemoryAuthRecoveryNonce((value) => value + 1);
+      });
+    };
+    window.addEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, bump);
+    const unsubscribe = subscribeTeamverEmbedSessionChanged(({ authenticated }) => {
+      // Includes forceEvent reaffirm (explicit 「다시 시도」) while already true.
+      if (authenticated) bump();
+    });
+    return () => {
+      window.removeEventListener(TEAMVER_EMBED_PASSIVE_AUTH_RECOVERED_EVENT, bump);
+      unsubscribe();
+    };
+  }, [teamverEmbedPreviewMode]);
 
   useEffect(() => {
     if (!memoryOnlyPreview) return;
@@ -1705,45 +1733,96 @@ export function FileWorkspace({
       return;
     }
     let cancelled = false;
-    const cached = peekTeamverProjectPreviewPrefix(projectId);
-    if (cached) {
-      setMemoryPreviewPrefix(cached);
-      setMemoryPreviewPrefixSettled(true);
-      return;
+    let backgroundRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    let fastRetryDelayTimer: ReturnType<typeof setTimeout> | null = null;
+    let settleFastRetryDelay: (() => void) | null = null;
+    const authRemintRequested =
+      memoryAuthRecoveryNonce > lastProcessedMemoryAuthNonceRef.current;
+    if (authRemintRequested) {
+      lastProcessedMemoryAuthNonceRef.current = memoryAuthRecoveryNonce;
+      invalidateTeamverProjectPreviewPrefix(projectId);
+      setMemoryPreviewPrefix(null);
+      setMemoryPreviewPrefixSettled(false);
+    } else {
+      const cached = peekTeamverProjectPreviewPrefix(projectId);
+      if (cached) {
+        setMemoryPreviewPrefix(cached);
+        setMemoryPreviewPrefixSettled(true);
+        return;
+      }
     }
     setMemoryPreviewPrefix(null);
     setMemoryPreviewPrefixSettled(false);
     const retryDelaysMs = [0, 400, 1_200, 2_500] as const;
+    const adoptPrefix = (resolved: string) => {
+      if (cancelled) return;
+      setMemoryPreviewPrefix(resolved);
+      setMemoryPreviewPrefixSettled(true);
+    };
+    const mintOnce = async (): Promise<string | null> => {
+      const peeked = peekTeamverProjectPreviewPrefix(projectId);
+      if (peeked) return peeked;
+      return resolveTeamverProjectPreviewPrefix(
+        projectId,
+        memoryOnlyPreview.fileName ?? 'deck.html',
+      );
+    };
+    const scheduleBackgroundRemint = (delayMs: number) => {
+      backgroundRetryTimer = setTimeout(() => {
+        backgroundRetryTimer = null;
+        if (cancelled) return;
+        void (async () => {
+          const resolved = await mintOnce();
+          if (cancelled) return;
+          if (resolved) {
+            adoptPrefix(resolved);
+            return;
+          }
+          scheduleBackgroundRemint(Math.min(Math.round(delayMs * 1.5), 15_000));
+        })();
+      }, delayMs);
+    };
     void (async () => {
       for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
         if (cancelled) return;
         const delay = retryDelaysMs[attempt] ?? 0;
         if (delay > 0) {
-          await new Promise((settle) => window.setTimeout(settle, delay));
+          await new Promise<void>((settle) => {
+            settleFastRetryDelay = settle;
+            fastRetryDelayTimer = setTimeout(() => {
+              fastRetryDelayTimer = null;
+              settleFastRetryDelay = null;
+              settle();
+            }, delay);
+          });
+          settleFastRetryDelay = null;
           if (cancelled) return;
         }
-        const resolved = await resolveTeamverProjectPreviewPrefix(
-          projectId,
-          memoryOnlyPreview.fileName ?? 'deck.html',
-        );
+        const resolved = await mintOnce();
         if (cancelled) return;
         if (resolved) {
-          setMemoryPreviewPrefix(resolved);
-          setMemoryPreviewPrefixSettled(true);
+          adoptPrefix(resolved);
           return;
         }
       }
       // Keep unsettled so we never paint relative imgs without a scoped base.
-      // A later cache hit / remount can still recover.
+      // Soft background remint recovers late auth/warm seeds without refresh.
       if (!cancelled) {
         setMemoryPreviewPrefix(null);
         setMemoryPreviewPrefixSettled(false);
+        scheduleBackgroundRemint(2_500);
       }
     })();
     return () => {
       cancelled = true;
+      if (backgroundRetryTimer != null) clearTimeout(backgroundRetryTimer);
+      if (fastRetryDelayTimer != null) {
+        clearTimeout(fastRetryDelayTimer);
+        fastRetryDelayTimer = null;
+      }
+      settleFastRetryDelay?.();
     };
-  }, [memoryOnlyPreview, projectId, teamverEmbedPreviewMode]);
+  }, [memoryAuthRecoveryNonce, memoryOnlyPreview, projectId, teamverEmbedPreviewMode]);
 
   const memoryOnlyPreviewSrcDoc = useMemo(() => {
     if (!memoryOnlyPreview) return '';
@@ -1770,6 +1849,12 @@ export function FileWorkspace({
     projectId,
     teamverEmbedPreviewMode,
   ]);
+  const memoryOnlyPreviewMountKey = resolveSrcDocPreviewMountKey({
+    transportResetKey: 0,
+    teamverEmbedMode: teamverEmbedPreviewMode,
+    embedPreviewPrefix: memoryPreviewPrefix,
+    embedPreviewPrefixSettled: memoryPreviewPrefixSettled,
+  });
 
   // Pending ghost tabs: the file list can lag behind a deep-linked tab or a
   // chat chip open. Poll raw GET directly so preview does not strand on
@@ -2709,8 +2794,9 @@ export function FileWorkspace({
             ) : null}
             <div className="viewer-memory-preview__frame-host">
               <iframe
-                // Prefix settles via srcDoc in place — do not remount on base href.
-                key={memoryOnlyPreview.fileName ?? 'memory-preview'}
+                // Hold→paint must remount (prefix in key). In-place srcDoc
+                // updates strand deck fit the same way as FileViewer.
+                key={`${memoryOnlyPreview.fileName ?? 'memory-preview'}:${memoryOnlyPreviewMountKey}`}
                 className="viewer-memory-preview__frame"
                 srcDoc={memoryOnlyPreviewSrcDoc || undefined}
                 sandbox="allow-scripts"
