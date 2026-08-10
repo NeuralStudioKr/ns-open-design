@@ -200,15 +200,18 @@ describe("canvasSlideLaunch", () => {
 
     // (1) Explicit templateId maps to a visible option.
     expect(resolveCanvasSlideTemplate(options, "html-ppt-hermes").id).toBe("html-ppt-hermes");
-    // (2) Unknown templateId falls back to the first option (the default fallback tile).
+    // (2) Unknown non-default templateId is preserved (catalog still loading /
+    //     briefly shrinks) — must NOT snap back to 기본 and lose the pick.
     expect(resolveCanvasSlideTemplate(options, "html-ppt-does-not-exist").id).toBe(
-      CANVAS_CREATE_SLIDES_PLUGIN_ID,
+      "html-ppt-does-not-exist",
     );
-    // (3) Empty options list still yields the hard-coded default so callers never
-    //     have to null-check the return value.
-    const hardDefault = resolveCanvasSlideTemplate([], "html-ppt-hermes");
+    // (3) Empty / default id still falls back to the first option / hard default.
+    expect(resolveCanvasSlideTemplate(options, "").id).toBe(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    const hardDefault = resolveCanvasSlideTemplate([], "");
     expect(hardDefault.id).toBe(CANVAS_CREATE_SLIDES_PLUGIN_ID);
     expect(hardDefault.title).toBe("기본 슬라이드 템플릿");
+    // Explicit pick survives an empty options list too (loading race).
+    expect(resolveCanvasSlideTemplate([], "html-ppt-hermes").id).toBe("html-ppt-hermes");
   });
 
   it("exposes each deck plugin record alongside its title so the picker can render previews", () => {

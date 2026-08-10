@@ -1353,7 +1353,14 @@ export async function listPlugins(
 
 export async function getInstalledPlugin(
   pluginId: string,
-  options: Pick<ListPluginsOptions, 'includeHidden'> = {},
+  options: Pick<ListPluginsOptions, 'includeHidden'> & {
+    /**
+     * Targeted loads for an already-selected deck template must not re-apply
+     * the slide-only Chinese/catalog denylist. That filter is for pickers;
+     * applying it here returned null → ProjectView fell back to Simple Deck.
+     */
+    bypassSlideOnlyCatalogFilter?: boolean;
+  } = {},
 ): Promise<InstalledPluginRecord | null> {
   const id = pluginId.trim();
   if (!id) return null;
@@ -1364,7 +1371,7 @@ export async function getInstalledPlugin(
     const resp = await fetchPluginsCatalog(`/api/plugins/${encodeURIComponent(id)}`);
     if (!resp?.ok) return null;
     const plugin = (await resp.json()) as InstalledPluginRecord;
-    if (slideOnly) {
+    if (slideOnly && !options.bypassSlideOnlyCatalogFilter) {
       const visible = pluginsForSlideOnlyMvp([plugin], { slideOnlyMvp: true });
       if (visible.length === 0) return null;
     }

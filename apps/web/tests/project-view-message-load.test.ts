@@ -184,11 +184,13 @@ describe("ProjectView message loading", () => {
 
     const callStart = source.indexOf("const effectiveSkillId = resolveDeckTemplateSkillId(project.metadata, meta)");
     expect(callStart).toBeGreaterThan(0);
-    const callBlock = source.slice(callStart, callStart + 1600);
+    const callBlock = source.slice(callStart, callStart + 2400);
     expect(callBlock).toContain("resolveDeckTemplateSkillId(project.metadata, meta)");
     expect(callBlock).toContain("resolveScenarioPluginIdForLocalSkill(");
     expect(callBlock).toContain("composedSystemPrompt(");
-    expect(callBlock).toContain("selectedDeckTemplateId: meta.selectedDeckTemplateId");
+    expect(callBlock).toContain("selectedDeckTemplateForTurn");
+    expect(callBlock).toContain("scenario-only");
+    expect(callBlock).toContain("meta?.selectedDeckTemplateId || selectedDeckTemplateForTurn");
     expect(callBlock).toContain("skipDiscoveryBrief: true");
   });
 

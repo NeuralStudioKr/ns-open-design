@@ -397,6 +397,13 @@ export function resolveCanvasSlideTemplate(
 ): TeamverCanvasSlideTemplateOption {
   const explicit = options.find((option) => option.id === templateId);
   if (explicit) return explicit;
+  // Preserve an explicit non-default pick while the catalog is still loading
+  // or briefly shrinks. Falling back to options[0] ("기본 슬라이드 템플릿")
+  // here + the picker auto-reset rewrote the user's selection before confirm.
+  const trimmed = templateId.trim();
+  if (trimmed && trimmed !== CANVAS_CREATE_SLIDES_PLUGIN_ID) {
+    return { id: trimmed, title: trimmed, record: null };
+  }
   const first = options[0];
   if (first) return first;
   return { id: CANVAS_CREATE_SLIDES_PLUGIN_ID, title: "기본 슬라이드 템플릿", record: null };

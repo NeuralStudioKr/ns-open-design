@@ -163,13 +163,13 @@ export function CanvasSlideTemplatePicker({
     [disabled, filtered, focusCard, moveSelection, onSelect],
   );
 
-  // If the current selection is filtered out (e.g. by a search query) auto
-  // fall back to the first visible option so the CTA reflects reality.
+  // Only seed a default when nothing is selected yet. Never rewrite an
+  // explicit pick just because search filtered it out or the catalog is
+  // still loading — that race reset users to "기본 슬라이드 템플릿".
   useEffect(() => {
     if (filtered.length === 0) return;
-    if (!filtered.some((option) => option.id === selectedTemplateId)) {
-      onSelect(filtered[0]!.id);
-    }
+    if (selectedTemplateId.trim()) return;
+    onSelect(filtered[0]!.id);
   }, [filtered, onSelect, selectedTemplateId]);
 
   if (options.length === 0) return null;

@@ -5713,8 +5713,14 @@ export function ProjectView({
     ) {
       const cached = pluginSkillCache.current.get(pluginIdForLocalSkill);
       if (cached !== undefined) {
-        if (!skillBody?.trim()) {
+        if (!skillBody?.trim() && !selectedTemplate) {
+          // Never promote the scenario (simple-deck) body into the primary
+          // slot when a visual template was selected — that made the wrapped
+          // "Selected deck template" section contain Simple Deck itself.
           skillBody = cached;
+        } else if (skillBody?.trim()) {
+          secondaryScenarioSkillBody = cached;
+          secondaryScenarioSkillName = pluginIdForLocalSkill;
         } else {
           secondaryScenarioSkillBody = cached;
           secondaryScenarioSkillName = pluginIdForLocalSkill;
@@ -5723,7 +5729,7 @@ export function ProjectView({
         const local = await fetchPluginLocalSkill(pluginIdForLocalSkill);
         if (local) {
           pluginSkillCache.current.set(pluginIdForLocalSkill, local.body);
-          if (!skillBody?.trim()) {
+          if (!skillBody?.trim() && !selectedTemplate) {
             skillBody = local.body;
             skillName = local.name;
           } else {
@@ -5733,14 +5739,15 @@ export function ProjectView({
         }
       }
     }
-    if (!skillBody?.trim() && selectedTemplate?.title) {
+    if (!skillBody?.trim() && selectedTemplate) {
       skillBody = [
         `# Selected visual template`,
         ``,
-        `Template: ${selectedTemplate.title}`,
+        `Template: ${selectedTemplate.title?.trim() || selectedTemplate.id}`,
         `Match this selected deck template's visible style as closely as possible.`,
+        `Do not fall back to the default simple-deck / scenario look.`,
       ].join('\n');
-      skillName = selectedTemplate.title;
+      skillName = selectedTemplate.title?.trim() || selectedTemplate.id;
       skillMode = 'deck';
     }
     const shouldWrapSelectedTemplate =
@@ -10050,14 +10057,19 @@ export function ProjectView({
         }
         const effectiveDesignSystemId = meta?.designSystemId ?? project.designSystemId ?? null;
         const effectiveSkillId = resolveDeckTemplateSkillId(project.metadata, meta);
+        const selectedDeckTemplateForTurn = selectedDeckTemplateMetadata(project.metadata, meta);
         let pluginBlock: string | undefined;
         let appliedSnapshotPluginId = meta?.appliedPluginSnapshot?.pluginId ?? null;
+        const pluginBlockRole =
+          selectedDeckTemplateForTurn && slideOnlyMvp
+            ? ('scenario-only' as const)
+            : ('primary' as const);
         if (meta?.appliedPluginSnapshot) {
-          pluginBlock = renderPluginBlock(meta.appliedPluginSnapshot);
+          pluginBlock = renderPluginBlock(meta.appliedPluginSnapshot, { role: pluginBlockRole });
         } else if (project.appliedPluginSnapshotId) {
           const snap = await fetchAppliedPluginSnapshot(project.appliedPluginSnapshotId);
           appliedSnapshotPluginId = snap?.pluginId ?? null;
-          if (snap) pluginBlock = renderPluginBlock(snap);
+          if (snap) pluginBlock = renderPluginBlock(snap, { role: pluginBlockRole });
         }
         const pluginIdForLocalSkill = resolveScenarioPluginIdForLocalSkill(
           project.metadata,
@@ -10071,13 +10083,17 @@ export function ProjectView({
           pluginIdForLocalSkill,
           pluginBlock ?? null,
           {
-            ...(meta?.selectedDeckTemplateId
+            ...(meta?.selectedDeckTemplateId || selectedDeckTemplateForTurn
               ? {
-                  selectedDeckTemplateId: meta.selectedDeckTemplateId,
-                  selectedDeckTemplateTitle: meta.selectedDeckTemplateTitle,
+                  selectedDeckTemplateId:
+                    meta?.selectedDeckTemplateId || selectedDeckTemplateForTurn?.id,
+                  selectedDeckTemplateTitle:
+                    meta?.selectedDeckTemplateTitle || selectedDeckTemplateForTurn?.title,
                 }
               : {}),
-            ...(meta?.skipDiscoveryBrief === true ? { skipDiscoveryBrief: true } : {}),
+            ...(meta?.skipDiscoveryBrief === true || project.metadata?.skipDiscoveryBrief === true
+              ? { skipDiscoveryBrief: true }
+              : {}),
           },
         );
         const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);

@@ -64,7 +64,12 @@ export async function fetchPluginLocalSkill(
 ): Promise<PluginLocalSkillSummary | null> {
   const id = pluginId.trim();
   if (!id) return null;
-  const plugin = await getInstalledPlugin(id, { includeHidden: true });
+  const plugin = await getInstalledPlugin(id, {
+    includeHidden: true,
+    // Selected-template compose must still load a denylisted-from-picker id
+    // if metadata already pins it (or tests / deep links pass one).
+    bypassSlideOnlyCatalogFilter: true,
+  });
   if (!plugin) return null;
   return readPluginLocalSkillFromRecord(plugin);
 }

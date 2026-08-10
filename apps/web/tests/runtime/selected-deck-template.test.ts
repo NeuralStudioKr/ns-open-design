@@ -43,6 +43,22 @@ describe('selected-deck-template runtime helpers', () => {
     ).toBe('html-ppt-hermes');
   });
 
+  it('copies selectedDeckTemplateId onto turn meta when enriching from project metadata', () => {
+    const enriched = enrichChatSendMetaWithProjectDeckTemplate(
+      { skillIds: ['example-simple-deck'] },
+      {
+        kind: 'deck',
+        skipDiscoveryBrief: true,
+        selectedDeckTemplateId: 'html-ppt-hermes',
+        selectedDeckTemplateTitle: 'Hermes',
+      },
+    );
+    expect(enriched?.selectedDeckTemplateId).toBe('html-ppt-hermes');
+    expect(enriched?.selectedDeckTemplateTitle).toBe('Hermes');
+    expect(enriched?.skipDiscoveryBrief).toBe(true);
+    expect(enriched?.skillIds).toEqual(['html-ppt-hermes', 'example-simple-deck']);
+  });
+
   it('uses per-turn selectedDeckTemplateId when project metadata is still stale', () => {
     expect(
       resolveDeckTemplateSkillId(

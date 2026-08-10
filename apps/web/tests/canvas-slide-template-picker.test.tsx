@@ -109,7 +109,7 @@ describe("CanvasSlideTemplatePicker", () => {
     expect(onSelect).toHaveBeenCalled();
   });
 
-  it("filters cards by search query and falls back to the first visible option", () => {
+  it("filters cards by search query without rewriting an explicit selection", () => {
     const onSelect = vi.fn();
     render(
       <CanvasSlideTemplatePicker
@@ -129,9 +129,9 @@ describe("CanvasSlideTemplatePicker", () => {
     expect(
       screen.getByTestId("teamver-canvas-slide-launch-template-card-html-ppt-cobalt-grid"),
     ).toBeTruthy();
-    // The previously selected id was filtered out → picker asked the parent to
-    // fall back to the only visible card.
-    expect(onSelect).toHaveBeenCalledWith("html-ppt-cobalt-grid");
+    // Search filter must NOT reset the parent selection to the first visible
+    // card — that race snapped Canvas → Slide picks back to 기본.
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("announces the filtered count via a polite aria-live region", () => {

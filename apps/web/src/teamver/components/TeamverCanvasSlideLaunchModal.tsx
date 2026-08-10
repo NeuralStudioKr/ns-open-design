@@ -261,7 +261,10 @@ export function TeamverCanvasSlideLaunchModal({
   const showTitleSkeleton = isCanvas && enriching && !handoff?.title?.trim();
   const showPreviewSkeleton = isCanvas && enriching && !preview;
   const selectedTemplate =
-    templateOptions.find((option) => option.id === selectedTemplateId) ?? templateOptions[0] ?? null;
+    templateOptions.find((option) => option.id === selectedTemplateId)
+    ?? (selectedTemplateId?.trim()
+      ? { id: selectedTemplateId, title: selectedTemplateId, record: null }
+      : templateOptions[0] ?? null);
   const showTemplateGrid = includeTemplateStep;
   const stepDocumentTitle = t("teamver.canvasSlideLaunch.stepDocument");
   const stepPromptTitle = t("teamver.canvasSlideLaunch.stepPrompt");

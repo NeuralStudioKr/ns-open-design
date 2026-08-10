@@ -288,6 +288,33 @@ describe('getInstalledPlugin', () => {
     sessionSpy.mockRestore();
     brandingSpy.mockRestore();
   });
+
+  it('loads a catalog-filtered plugin when bypassSlideOnlyCatalogFilter is set (selected-template compose)', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const branding = await import('../../src/teamver/branding/config');
+    const embedSession = await import('../../src/teamver/teamverEmbedSession');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const sessionSpy = vi.spyOn(embedSession, 'isTeamverEmbedSessionAuthenticated').mockReturnValue(true);
+    const brandingSpy = vi.spyOn(branding, 'resolveTeamverBranding').mockReturnValue({ slideOnlyMvp: true } as never);
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({
+        id: 'example-guizang-ppt',
+        title: 'Guizang PPT',
+        manifest: { od: { mode: 'deck' } },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+
+    const plugin = await getInstalledPlugin('example-guizang-ppt', {
+      includeHidden: true,
+      bypassSlideOnlyCatalogFilter: true,
+    });
+
+    expect(plugin?.id).toBe('example-guizang-ppt');
+    embedSpy.mockRestore();
+    sessionSpy.mockRestore();
+    brandingSpy.mockRestore();
+  });
 });
 
 describe('installGeneratedPluginFolder', () => {

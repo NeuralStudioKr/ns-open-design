@@ -60,9 +60,19 @@ export function enrichChatSendMetaWithProjectDeckTemplate<T extends DeckTemplate
     ...priorContextSkillIds.filter((id) => id !== selected.id),
   ];
   const { pluginIds: _dropTemplateFromPlugins, ...restContext } = meta?.context ?? {};
+  const selectedTitle =
+    selected.title
+    || meta?.selectedDeckTemplateTitle?.trim()
+    || metadata?.selectedDeckTemplateTitle?.trim()
+    || undefined;
   return {
     ...(meta ?? ({} as T)),
     skillIds,
+    selectedDeckTemplateId: selected.id,
+    ...(selectedTitle ? { selectedDeckTemplateTitle: selectedTitle } : {}),
+    ...(meta?.skipDiscoveryBrief === true || metadata?.skipDiscoveryBrief === true
+      ? { skipDiscoveryBrief: true }
+      : {}),
     context: {
       ...restContext,
       ...(priorPluginIds.length > 0 ? { pluginIds: priorPluginIds } : {}),
