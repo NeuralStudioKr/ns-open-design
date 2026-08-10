@@ -120,6 +120,8 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     expect(prompt).toContain('SECONDARY — brand context only');
     expect(prompt).toContain('Never turn a cheerful pastel / cream template into a dark Neutral Modern gradient');
     expect(prompt).toContain('Selected deck template visual — READ LAST');
+    expect(prompt).toContain('Template visual kit (from example.html)');
+    expect(prompt).toContain('**only** allowed palette');
     expect(prompt).toContain('API compact contract with Selected deck template');
     expect(prompt).not.toContain('**Mandatory:** bind these tokens into every slide');
     // Full Neutral Modern DESIGN.md must not ship — only the demotion stub.
@@ -211,6 +213,12 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     });
     expect(prompt).toContain('Do not fall back to the default simple-deck');
     expect(prompt).not.toContain('copying the seed assets/template.html');
+    // Kit-miss path: do NOT claim a missing kit is the only palette; use the
+    // softened READ LAST so Neutral slate is still discouraged.
+    expect(prompt).not.toContain('**only** allowed palette');
+    expect(prompt).toContain('Template visual kit may be incomplete');
+    expect(prompt).toContain('Visual summary / title / prose cues');
+    expect(prompt).toContain('Do **not** invent a sparse Neutral Modern slate cover');
   });
 
   it('parses real Zhangzara coral SKILL.md block-literal description', async () => {

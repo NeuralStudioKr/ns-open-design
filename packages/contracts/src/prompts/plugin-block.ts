@@ -57,8 +57,8 @@ export function renderPluginBlock(
     lines.push('');
     lines.push(
       scenarioOnly
-        ? 'Treat these as authoritative brief answers (topic, audience, slide count). They are NOT a visual template.'
-        : 'Treat these as authoritative answers to questions the plugin author baked into the brief — do not re-ask the user about them.',
+        ? 'Treat these as authoritative brief answers (topic, audience, slide count) unless the user message / [User instruction] explicitly requests a different slide count — then the user count wins. They are NOT a visual template.'
+        : 'Treat these as authoritative answers to questions the plugin author baked into the brief — do not re-ask the user about them. If the user message explicitly requests a different slide count, the user count wins.',
     );
     lines.push('');
     for (const key of inputKeys) {

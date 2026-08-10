@@ -274,6 +274,7 @@ describe("canvasSlideLaunch", () => {
     expect(instruction).toContain("Short deck (about 5–6 slides)");
     expect(instruction).toContain("Summarize and prioritize");
     expect(instruction).toContain("Friendly");
+    expect(instruction).toContain("that count wins over Length");
 
     const runPrompt = canvasCreateSlidesRunPrompt("Template", "brief", "", quickSettings);
     expect(runPrompt).toContain("[Quick settings]");
@@ -291,6 +292,33 @@ describe("canvasSlideLaunch", () => {
       tone: "friendly",
       slideCount: "5-6",
     });
+  });
+
+  it("lets free-text slide counts override quick Length in Plugin inputs", () => {
+    const quickSettings = {
+      audience: "auto" as const,
+      length: "short" as const,
+      transformMode: "presentation" as const,
+      tone: "auto" as const,
+    };
+    expect(
+      canvasCreateSlidesPluginInputs(
+        "Topic",
+        "Template",
+        "brief",
+        "15 slides, friendly tone for new hires.",
+        quickSettings,
+      ),
+    ).toMatchObject({ slideCount: "15" });
+    expect(
+      canvasCreateSlidesPluginInputs(
+        "Topic",
+        "Template",
+        "brief",
+        "슬라이드 10장으로 요약해줘",
+        quickSettings,
+      ),
+    ).toMatchObject({ slideCount: "10" });
   });
 
   it("normalizes invalid quick settings before composing hidden model instructions", () => {

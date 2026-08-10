@@ -1300,7 +1300,7 @@ const TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE = `# Teamver slide-only API — u
 
 **How to stream the deck (non-negotiable on turn 2+):**
 1. Emit the status sentence first, then open the artifact early. Never \`type="text/html"\`.
-2. First bytes inside a full deck artifact: \`<!doctype html><html><body><section class="slide">\` with real copy — never \`<head>\`, \`<style>\`, or empty shell.
+2. First bytes inside a full deck artifact: \`<!doctype html><html><body>\` then either a short kit \`<style>\`/\`@import\` (Selected template fonts only) or \`<section class="slide">\` with real copy — never an empty shell or long \`<head>\` chrome.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Write one filled \`<section class="slide">\` per requested slide. If a Selected deck template is active, match its visual kit (palette/fonts/density) with inline styles or one short body \`<style>\` after slide 1 — design system is brand context only and must not override the template look; do not merely describe the template.
 4. Close with \`</body></html></artifact>\` (or the matching patch close) in this same turn.
 
@@ -1383,16 +1383,26 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
  * Final visual authority when Canvas → Slide (or equivalent) pinned a template.
  * Placed after compact + streaming rules so kit tokens beat Neutral samples.
  */
-const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST = `# Selected deck template visual — READ LAST (highest visual priority)
+const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT = `# Selected deck template visual — READ LAST (highest visual priority)
 
-A Selected deck template is active for this run. The Template visual kit / Visual summary earlier in this prompt is the **only** allowed palette, typography, border, shadow, and motif language.
+A Selected deck template is active and a **Template visual kit (from example.html)** is present. That kit is the **only** allowed palette, typography, border, shadow, and motif language.
 
 Hard requirements for every slide:
 - Bind kit hex colors, font-family names, border widths/radii, and offset shadows from the kit (inline styles or one short body \`<style>\` + optional font \`@import\`).
 - Keep decorative density the kit shows (chunky cards, daisies/stars, pastel badges, etc.). Sparse title-only slides that ignore the kit are a failure.
-- **Forbidden** when the kit is present: Neutral Modern / Starter look — slate covers \`#0f172a\` / \`#1e293b\` / \`#111827\`, Inter-only or system-ui-only typography, empty gradient corporate title slides, "no ornament" subtractive layouts from any design-system prose.
+- **Forbidden:** Neutral Modern / Starter look — slate covers \`#0f172a\` / \`#1e293b\` / \`#111827\`, Inter-only or system-ui-only typography, empty gradient corporate title slides, "no ornament" subtractive layouts from any design-system prose.
 
 If any earlier compact wireframe sample conflicts with the kit, **ignore the sample colors** and follow the kit.`;
+
+const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT = `# Selected deck template visual — READ LAST (highest visual priority)
+
+A Selected deck template is active, but a concrete Template visual kit may be incomplete this turn.
+
+Hard requirements for every slide:
+- Match the Selected deck template **Visual summary / title / prose cues** (palette names, fonts, motif) as closely as possible.
+- If any hex codes or font names appear in the Selected section, bind them with inline styles or one short body \`<style>\`.
+- Do **not** invent a sparse Neutral Modern slate cover (\`#0f172a\` / Inter-only) when the template name or summary implies pastel, cream, playful, coral, terminal, editorial, etc.
+- Prefer recognizable template mood over a generic corporate title slide.`;
 
 /**
  * Lean system prompt for Teamver embed slide-only + anthropic-api / BYOK proxy.
@@ -1460,11 +1470,15 @@ export function composeTeamverSlideApiPrompt({
   // Embed often auto-binds Neutral Modern | Starter. Even when labeled
   // SECONDARY, shipping the full DESIGN.md ("No ornament", Inter, slate)
   // still steers the model — omit the body entirely when a template is set.
+  const hasTemplateVisualKit =
+    /## Template visual kit \(from example\.html\)/i.test(skillBody ?? '');
+  const hasTemplateVisualSummary =
+    /## Visual summary \(from template frontmatter\)/i.test(skillBody ?? '');
   const hasSelectedTemplate =
     (typeof metadata?.selectedDeckTemplateId === 'string'
       && metadata.selectedDeckTemplateId.trim().length > 0)
-    || /## Visual summary \(from template frontmatter\)/i.test(skillBody ?? '')
-    || /## Template visual kit \(from example\.html\)/i.test(skillBody ?? '');
+    || hasTemplateVisualSummary
+    || hasTemplateVisualKit;
 
   if (activeDesignSystemBody) {
     if (hasSelectedTemplate) {
@@ -1475,7 +1489,9 @@ export function composeTeamverSlideApiPrompt({
           + 'Do NOT replace the template palette, fonts, density, borders, decorative motif, '
           + 'or light/dark scheme with design-system tokens. '
           + 'Never turn a cheerful pastel / cream template into a dark Neutral Modern gradient.\n\n'
-          + '*(Full DESIGN.md omitted on purpose — template visual kit owns colors/fonts/density.)*',
+          + (hasTemplateVisualKit
+            ? '*(Full DESIGN.md omitted on purpose — template visual kit owns colors/fonts/density.)*'
+            : '*(Full DESIGN.md omitted on purpose — follow the Selected deck template Visual summary / title cues for look.)*'),
       );
     } else {
       parts.push(
@@ -1504,10 +1520,10 @@ export function composeTeamverSlideApiPrompt({
     parts.push(templateVisualSignature);
   }
 
-  // When the full Selected deck template (often with example.html kit) is
-  // about to be emitted verbatim, skip the cue-extraction signature — it
-  // duplicates palette/font lines and adds a stale "ask quick brief" line.
-  if (!hasSelectedTemplate) {
+  // Skip cue-extraction signature only when example.html kit is already in
+  // the Selected body. On kit-miss / title-stub turns the signature is the
+  // remaining palette/font cue extractor — keep it.
+  if (!(hasSelectedTemplate && hasTemplateVisualKit)) {
     const skillVisualSignature = renderTeamverSkillVisualSignature(skillBody, skillName);
     if (skillVisualSignature) {
       parts.push(skillVisualSignature);
@@ -1536,13 +1552,24 @@ export function composeTeamverSlideApiPrompt({
     // confirm can `patchProject` then send on the same tick while React
     // `project.metadata` is still stale.
     if (hasSelectedTemplate) {
-      parts.push(
-        `## Selected deck template${skillName ? ` — ${skillName}` : ''} — MUST MATCH THIS VISUAL SPEC\n\n`
-          + 'Hard requirements:\n'
+      const hardRequirements = hasTemplateVisualKit
+        ? (
+          'Hard requirements:\n'
           + '- Match the Template visual kit tokens (palette hex, fonts, borders, shadows) exactly.\n'
           + '- Keep decorative density from the template (daisies/stars/chunky cards when present) — not a sparse title slide.\n'
           + '- Active design system is secondary brand context only; template look wins.\n'
           + '- Prefer rich multi-region layouts from the template vocabulary over empty gradient covers.\n\n'
+        )
+        : (
+          'Hard requirements:\n'
+          + '- Match the Selected deck template Visual summary / title / prose cues (palette names, fonts, motif).\n'
+          + '- A Template visual kit may be missing this turn — still do NOT fall back to Neutral Modern slate `#0f172a` / Inter-only covers when the template implies pastel, cream, playful, coral, terminal, etc.\n'
+          + '- Active design system is secondary brand context only; template look wins.\n'
+          + '- Prefer rich multi-region layouts over empty gradient covers.\n\n'
+        );
+      parts.push(
+        `## Selected deck template${skillName ? ` — ${skillName}` : ''} — MUST MATCH THIS VISUAL SPEC\n\n`
+          + hardRequirements
           + skillBody.trim(),
       );
     } else {
@@ -1580,7 +1607,11 @@ export function composeTeamverSlideApiPrompt({
   // collapses 8-slide decks to 2 while dropping the attached image.
   parts.push(TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE);
   if (hasSelectedTemplate) {
-    parts.push(TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST);
+    parts.push(
+      hasTemplateVisualKit
+        ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT
+        : TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT,
+    );
   }
 
   return parts.join('\n\n---\n\n');

@@ -225,7 +225,39 @@ export function canvasSlideQuickSettingsInstruction(
     `Length: ${QUICK_SETTING_PROMPT_LABELS.length[normalized.length]}.`,
     `Transform mode: ${QUICK_SETTING_PROMPT_LABELS.transformMode[normalized.transformMode]}.`,
     `Tone: ${QUICK_SETTING_PROMPT_LABELS.tone[normalized.tone]}.`,
+    "If [User instruction] specifies an exact slide count (e.g. \"15 slides\", \"10장\"), that count wins over Length.",
   ].join("\n");
+}
+
+/**
+ * Parse an explicit slide/page count from free-text so it can override the
+ * Canvas quick-length mapping (short→5-6) when the user typed e.g. "15 slides".
+ */
+export function parseExplicitSlideCountFromText(
+  text: string | null | undefined,
+): string | null {
+  const raw = text?.trim();
+  if (!raw) return null;
+  const range = raw.match(
+    /(\d{1,2})\s*[~\-–—]\s*(\d{1,2})\s*(?:장|slides?|pages?)?/i,
+  );
+  if (range?.[1] && range[2]) {
+    const a = Number(range[1]);
+    const b = Number(range[2]);
+    if (a >= 1 && b >= a && b <= 40) return `${a}-${b}`;
+  }
+  // Korean "10장" / "슬라이드 10장으로" — avoid \\b after Hangul (no word boundary).
+  const korean = raw.match(/(\d{1,2})\s*장/);
+  if (korean?.[1]) {
+    const n = Number(korean[1]);
+    if (Number.isFinite(n) && n >= 1 && n <= 40) return String(n);
+  }
+  const english = raw.match(
+    /(?:^|[^\d])(\d{1,2})\s*(?:slides?|pages?)\b|\b(?:slides?|pages?)\s*[:：]?\s*(\d{1,2})\b/i,
+  );
+  const n = Number(english?.[1] || english?.[2] || NaN);
+  if (Number.isFinite(n) && n >= 1 && n <= 40) return String(n);
+  return null;
 }
 
 export function canvasCreateSlidesRunPrompt(
@@ -591,12 +623,19 @@ export function canvasCreateSlidesPluginInputs(
   // system compact contract and plugin-block "treat inputs as hard constraints"
   // language agree with the Canvas modal Quick settings (not a stale
   // "stakeholders" default fighting "Client/education" prose).
+  // Free-text counts in userInstruction win over quick Length (e.g. short +
+  // "15 slides" must not pin slideCount to 5-6).
+  const slideCountFromUser =
+    parseExplicitSlideCountFromText(user)
+    ?? parseExplicitSlideCountFromText(brief);
   return {
     deckType: "presentation from source material",
     topic,
     audience: canvasSlideQuickAudienceToPluginValue(normalizedQuickSettings.audience),
     tone: canvasSlideQuickToneToPluginValue(normalizedQuickSettings.tone),
-    slideCount: canvasSlideQuickLengthToSlideCount(normalizedQuickSettings.length),
+    slideCount:
+      slideCountFromUser
+      ?? canvasSlideQuickLengthToSlideCount(normalizedQuickSettings.length),
     speakerNotes: "no speaker notes",
     // Keep designSystem for scenario schema compatibility, but point it at the
     // visual template title so Neutral Modern / Simple Deck cannot reclaim look.

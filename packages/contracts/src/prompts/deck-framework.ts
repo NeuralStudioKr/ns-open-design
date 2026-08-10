@@ -561,7 +561,7 @@ Quality bar: match the requested slide count; each slide needs a distinct layout
 
 /** Compact API decks: honor user/plugin/brief counts; 6–8 is only the unspecified default. */
 export const COMPACT_DECK_SLIDE_COUNT_GUIDANCE =
-  'Honor slideCount (Project metadata / Plugin inputs), quick-brief `scale`, or an explicit user count; use 6–8 slides only when none is specified.';
+  'Honor an explicit user slide count in the user message / [User instruction] first; then Plugin inputs slideCount / Project metadata / quick-brief `scale`; use 6–8 slides only when none is specified.';
 
 export const DECK_FRAMEWORK_DIRECTIVE_COMPACT = `# Slide deck — API compact contract (overrides the long skeleton copy workflow)
 
@@ -598,9 +598,9 @@ A **Selected deck template** (and usually a Template visual kit from example.htm
 
 When the brief is ready, emit ONE \`<artifact type="deck" identifier="deck">\` with a complete \`<!doctype html>…</html>\` in this same response. Prefer starting \`<body>\` immediately with visible slides. You MAY include one short body \`<style>\` (and optional Google Fonts \`@import\` / \`link\`) solely to bind kit fonts/tokens — then continue with filled slides.
 
-Required wireframe (structure only — replace EVERY color/font with Selected template kit tokens):
+Required wireframe (structure only — replace EVERY color/font with Selected template tokens; fixed Teamver canvas):
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><!-- optional short style with kit @import/fonts/tokens --><section class="slide" style="min-height:100vh;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;/* kit background + kit text + kit display font */"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" style="min-height:100vh;padding:80px 88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;/* another kit surface */"><h1 style="margin:0 0 20px">실제 제목</h1><ul style="margin:0;padding-left:1.35rem"><li>실제 불릿</li></ul></section></body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><!-- optional short style with kit @import/fonts/tokens --><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center;/* kit background + kit text + kit display font */"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center;/* another kit surface */"><h1 style="margin:0 0 20px">실제 제목</h1><ul style="margin:0;padding-left:1.35rem"><li>실제 불릿</li></ul></section></body></html></artifact>\`
 
 Rules:
 1. On deck-delivery turns, optional: one tiny brief-specific UI-locale status sentence, then start the artifact. Artifact-only is OK for speed/tokens.
@@ -608,7 +608,7 @@ Rules:
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete compact deck over a giant framework.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn.
 5. Vary slide layouts using the template-aware vocabulary below — do not repeat the same padding/background/composition on every slide.
-6. **Hard visual rule:** palette hex, fonts, border width/radius, shadows, and motif density from the Selected deck template kit MUST be recognizable on every slide. Sparse Neutral Modern / Inter / \`#0f172a\` covers are a critical failure when a kit is present.
+6. **Hard visual rule:** when a Template visual kit is present, bind its palette hex/fonts/borders/shadows/motif on every slide. When only a Visual summary / title cue is present, match that prose and still avoid inventing sparse Neutral Modern / Inter / \`#0f172a\` covers for cheerful/pastel/playful templates.
 7. When the user attaches images, include \`<img src="exact-project-relative-path" …>\` using attachment paths.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
