@@ -148,6 +148,73 @@ export function hasSalvageableDeckSlideContent(html: string): boolean {
   return true;
 }
 
+/**
+ * Softer quality bar used ONLY while closing mid-stream truncated decks
+ * (`salvageTruncatedHtmlDocument`). A max_tokens cut often leaves 1–2 strong
+ * filled slides plus empty trailing placeholders — the strict 34% multi-slide
+ * ratio would discard previewable content. Already-closed "success" persists
+ * still use `meetsMinimumDeckDeliverableQuality`.
+ */
+export function meetsTruncationSalvageQuality(html: string): boolean {
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+  if (!documentContainsSlideSection(withoutComments)) {
+    return hasSalvageableDeckSlideContent(html);
+  }
+  const filledSlides = countFilledSlideSections(withoutComments);
+  if (filledSlides === 0) return false;
+  const totalText = totalFilledSlideVisibleText(withoutComments);
+  if (filledSlides === 1) {
+    return totalText >= 12;
+  }
+  return totalText >= MIN_TWO_SLIDE_TOTAL_TEXT;
+}
+
+/**
+ * Close unmatched `<section class="slide">` openers so a max_tokens cut in the
+ * middle of the first (or last) slide can still be content-scored and persisted.
+ * Nested non-slide `<section>` tags inside a slide are depth-counted.
+ */
+export function closeUnclosedSlideSectionsForSalvage(html: string): string {
+  if (!html) return html;
+  const openRe =
+    /<section\b[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'|[^\s"'`=<>]*\bslide\b[^\s"'`=<>]*)[^>]*>/gi;
+  const opens: { openStart: number; contentStart: number }[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(html)) !== null) {
+    opens.push({ openStart: match.index, contentStart: match.index + match[0].length });
+  }
+  if (opens.length === 0) return html;
+
+  const insertions: { at: number; text: string }[] = [];
+  for (let i = 0; i < opens.length; i += 1) {
+    const contentStart = opens[i]!.contentStart;
+    const contentEnd = i + 1 < opens.length ? opens[i + 1]!.openStart : html.length;
+    const chunk = html.slice(contentStart, contentEnd);
+    let depth = 1;
+    const tagRe = /<\/?section\b[^>]*>/gi;
+    let tagMatch: RegExpExecArray | null;
+    while ((tagMatch = tagRe.exec(chunk)) !== null) {
+      if (/^<\/section/i.test(tagMatch[0])) {
+        depth -= 1;
+        if (depth === 0) break;
+      } else if (!/^<\//.test(tagMatch[0])) {
+        depth += 1;
+      }
+    }
+    if (depth > 0) {
+      insertions.push({ at: contentEnd, text: "</section>".repeat(depth) });
+    }
+  }
+  if (insertions.length === 0) return html;
+
+  let out = html;
+  for (let i = insertions.length - 1; i >= 0; i -= 1) {
+    const { at, text } = insertions[i]!;
+    out = `${out.slice(0, at)}${text}${out.slice(at)}`;
+  }
+  return out;
+}
+
 export function isDeckStatusProseOnlyBody(html: string): boolean {
   const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
   if (documentContainsSlideSection(withoutComments)) {

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  closeUnclosedSlideSectionsForSalvage,
   hasFilledSlideSection,
   hasSalvageableDeckSlideContent,
   isDeckStatusProseOnlyBody,
   meetsMinimumDeckDeliverableQuality,
+  meetsTruncationSalvageQuality,
 } from "../../src/artifacts/deck-html-content";
 import {
   normalizeBodyFirstHtmlDocument,
@@ -61,6 +63,18 @@ describe("deck-html-content", () => {
       + "</body></html>";
     expect(meetsMinimumDeckDeliverableQuality(html)).toBe(false);
     expect(isIncompleteHtmlDocumentShell(html)).toBe(true);
+    // Truncation salvage may still keep the strong slide for preview.
+    expect(meetsTruncationSalvageQuality(html)).toBe(true);
+  });
+
+  it("closes an unclosed trailing slide section for salvage scoring", () => {
+    const open =
+      "<section class=\"slide\"><h1>커버</h1><p>첫날 목표를 설명합니다.";
+    const closed = closeUnclosedSlideSectionsForSalvage(open);
+    expect(closed).toMatch(/<\/section>\s*$/);
+    expect(meetsTruncationSalvageQuality(`<!doctype html><html><body>${closed}</body></html>`)).toBe(
+      true,
+    );
   });
 
   it("rejects outline-only heading slides without body copy", () => {

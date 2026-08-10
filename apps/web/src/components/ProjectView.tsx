@@ -4908,14 +4908,23 @@ export function ProjectView({
         // the document here salvages a previewable file instead of skipping
         // the write and burning an auto-continue turn that usually truncates
         // again the same way. Run BEFORE the terminal sanitize so we parse once.
+        // Auto-repair truncated max_tokens decks: close unmatched slides +
+        // </body></html> when real slide copy already exists. Soft truncation
+        // quality is applied inside salvage — do NOT re-reject with the
+        // stricter incomplete/low-substance gates or previewable salvage is
+        // thrown away and the user only sees incomplete_output.
         const salvaged = salvageTruncatedHtmlDocument(artifactToPersist.html);
+        const wasTruncationSalvaged = Boolean(salvaged);
         if (salvaged) {
           artifactToPersist = { ...artifactToPersist, html: salvaged };
         }
         // Empty scaffolds can pass the 64-char length gate once a charset
         // meta is present — still skip silently so we never write phantoms
         // or flash 「저장을 거부했습니다」 during deck generation.
-        if (isIncompleteHtmlDocumentShell(artifactToPersist.html)) {
+        if (
+          !wasTruncationSalvaged
+          && isIncompleteHtmlDocumentShell(artifactToPersist.html)
+        ) {
           // Quiet skip — do NOT setError here. The terminal auto-open path
           // owns user-facing messaging (deliverable-missing banner and/or
           // the automatic-continue notice). Flashing 「저장을 거부했습니다:
@@ -4928,8 +4937,9 @@ export function ProjectView({
           slideOnlyMvp,
         );
         if (
-          normalizedArtifactType === 'deck' &&
-          isLowSubstanceSlideDeckArtifact(artifactToPersist.html)
+          !wasTruncationSalvaged
+          && normalizedArtifactType === 'deck'
+          && isLowSubstanceSlideDeckArtifact(artifactToPersist.html)
         ) {
           return {
             kind: 'skipped-incomplete',
@@ -9109,7 +9119,7 @@ export function ProjectView({
             const effectiveParsedArtifact: Artifact | null =
               hadIncompleteParsedArtifact
                 && bestArtifactSoFar?.html
-                && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html)
+                && isUsableDeckHtmlArtifact(bestArtifactSoFar.html)
                 ? bestArtifactSoFar
                 : parsedArtifact;
 
@@ -9479,7 +9489,7 @@ export function ProjectView({
                   // partial HTML for the model to complete instead of writing
                   // from scratch.
                   const partialHtmlForAutoContinue =
-                    (bestArtifactSoFar?.html && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html)
+                    (bestArtifactSoFar?.html && isUsableDeckHtmlArtifact(bestArtifactSoFar.html)
                       ? bestArtifactSoFar.html
                       : parsedArtifact?.html)
                     ?? liveHtml
@@ -9810,11 +9820,11 @@ export function ProjectView({
               const effective = salvagedHtml && candidate
                 ? { ...candidate, html: salvagedHtml }
                 : candidate;
-              const candidateOk =
-                !!effective?.html && !isIncompleteHtmlDocumentShell(effective.html);
-              const bestOk =
-                !!bestArtifactSoFar?.html
-                && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html);
+              // Soft-salvaged decks count as usable even when the stricter
+              // incomplete-shell ratio still flags empty trailing placeholders.
+              const candidateOk = isUsableDeckHtmlArtifact(effective?.html)
+                || Boolean(salvagedHtml);
+              const bestOk = isUsableDeckHtmlArtifact(bestArtifactSoFar?.html);
               if (candidateOk && (!bestOk || (effective?.html?.length ?? 0) > (bestArtifactSoFar?.html?.length ?? 0))) {
                 bestArtifactSoFar = effective;
               } else if (!bestArtifactSoFar && effective) {
@@ -9933,11 +9943,9 @@ export function ProjectView({
                 const effective = salvagedHtml && candidate
                   ? { ...candidate, html: salvagedHtml }
                   : candidate;
-                const candidateOk =
-                  !!effective?.html && !isIncompleteHtmlDocumentShell(effective.html);
-                const bestOk =
-                  !!bestArtifactSoFar?.html
-                  && !isIncompleteHtmlDocumentShell(bestArtifactSoFar.html);
+                const candidateOk = isUsableDeckHtmlArtifact(effective?.html)
+                  || Boolean(salvagedHtml);
+                const bestOk = isUsableDeckHtmlArtifact(bestArtifactSoFar?.html);
                 if (candidateOk && (!bestOk || (effective?.html?.length ?? 0) > (bestArtifactSoFar?.html?.length ?? 0))) {
                   bestArtifactSoFar = effective;
                 } else if (!bestArtifactSoFar && effective) {
@@ -13184,14 +13192,20 @@ const DOCTYPE_HTML_TAIL_RE = /<!doctype\s+html[\s\S]*/i;
 
 function artifactFromSalvagedHtml(html: string, base: Artifact): Artifact | null {
   const salvaged = salvageTruncatedHtmlDocument(html);
-  if (
-    salvaged
-    && !isIncompleteHtmlDocumentShell(salvaged)
-    && validateHtmlArtifact(salvaged).ok
-  ) {
+  // Soft truncation salvage already quality-gated. Do not re-reject with the
+  // stricter incomplete-shell ratio (empty placeholders + 1–2 filled slides).
+  if (salvaged && validateHtmlArtifact(salvaged).ok) {
     return { ...base, html: salvaged };
   }
   return null;
+}
+
+/** True when HTML is strictly complete, or is a soft-salvaged truncated deck. */
+function isUsableDeckHtmlArtifact(html: string | null | undefined): boolean {
+  const trimmed = String(html ?? '').trim();
+  if (!trimmed || !validateHtmlArtifact(trimmed).ok) return false;
+  if (!isIncompleteHtmlDocumentShell(trimmed)) return true;
+  return Boolean(salvageTruncatedHtmlDocument(trimmed));
 }
 
 /** Pick the best HTML artifact candidate for terminal persist / auto-open. */

@@ -316,13 +316,30 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     ).toBe(true);
   });
 
-  it('does NOT fire for validation rejected artifacts', () => {
+  it('does NOT fire for validation rejected artifacts without incompleteness signals', () => {
     expect(
       shouldAutoContinueForIncompleteOutput({
         ...base,
         terminalPersistResultKind: 'rejected',
       }),
     ).toBe(false);
+  });
+
+  it('fires for rejected / skipped-discovery-turn when incomplete or missing-slide signals are set', () => {
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        terminalPersistResultKind: 'rejected',
+        hadIncompleteParsedArtifact: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        terminalPersistResultKind: 'skipped-discovery-turn',
+        shouldFailMissingSlideHtml: true,
+      }),
+    ).toBe(true);
   });
 
   it('fires when no persist ran but slide-missing / incomplete signals are set', () => {

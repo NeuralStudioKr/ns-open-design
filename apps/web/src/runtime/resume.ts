@@ -296,6 +296,15 @@ export function shouldAutoContinueForIncompleteOutput(options: {
 
   const kind = options.terminalPersistResultKind;
   if (kind === 'skipped-incomplete') return true;
+  // Validation refusal / residual discovery-skip with incomplete or missing
+  // slide signals — content never landed; let the capped continue retry.
+  // Infra `save-failed` still must not regenerate the same write path.
+  if (
+    (kind === 'rejected' || kind === 'skipped-discovery-turn')
+    && (options.hadIncompleteParsedArtifact || options.shouldFailMissingSlideHtml)
+  ) {
+    return true;
+  }
   if (
     kind === 'skipped-duplicate'
     && (options.scopedCommentAttachmentCount ?? 0) > 0

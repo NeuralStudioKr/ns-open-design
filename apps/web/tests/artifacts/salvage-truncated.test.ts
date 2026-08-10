@@ -20,8 +20,41 @@ describe("salvageTruncatedHtmlDocument", () => {
 
     const salvaged = salvageTruncatedHtmlDocument(truncated);
     expect(salvaged).toBeTruthy();
-    expect(salvaged).toMatch(/<\/body>\s*<\/html>\s*$/i);
+    expect(salvaged).toContain('기업 AI 도입 효과');
+    expect(salvaged).toMatch(/<\/section>\s*<\/body>\s*<\/html>\s*$/i);
+    // Soft salvage may still trip the strict multi-slide incomplete ratio when
+    // the trailing cut slide is short; persist trusts salvage quality instead.
+    expect(salvaged!.length).toBeGreaterThan(128);
+  });
+
+  it("auto-closes mid-first-slide truncation so previewable HTML can persist", () => {
+    // Previously failed because only </section>-closed slides counted as content.
+    const truncated = `<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8" /><title>온보딩</title></head>
+<body>
+<section class="slide"><h1>신입사원 온보딩</h1><p>첫날 목표와 팀 문화를 설명하는 커버 슬라이드입니다.`;
+    const salvaged = salvageTruncatedHtmlDocument(truncated);
+    expect(salvaged).toBeTruthy();
+    expect(salvaged).toContain('신입사원 온보딩');
+    expect(salvaged).toMatch(/<\/section>\s*<\/body>\s*<\/html>\s*$/i);
     expect(isIncompleteHtmlDocumentShell(salvaged!)).toBe(false);
+  });
+
+  it("salvages a truncated deck with one strong slide among empty placeholders", () => {
+    const truncated = `<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8" /><title>Deck</title></head>
+<body>
+<section class="slide"><h1>커버 전략 발표</h1><p>이번 분기의 핵심 메시지와 실행 계획을 공유합니다.</p></section>
+<section class="slide"></section>
+<section class="slide"></section>
+<section class="slide"></section>
+<section class="slide"><h2>다음 단계</h2><p>담당자별 액션 아이템을 정리합니다.`;
+    const salvaged = salvageTruncatedHtmlDocument(truncated);
+    expect(salvaged).toBeTruthy();
+    expect(salvaged).toContain('커버 전략 발표');
+    expect(salvaged).toMatch(/<\/body>\s*<\/html>\s*$/i);
   });
 
   it("does not salvage an empty head-only shell", () => {
