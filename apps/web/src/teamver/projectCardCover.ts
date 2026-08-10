@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Project } from "../types";
+import { isTrustedDeckEntryFile } from "./branding/embedDeliverableFilePolicy";
 import type { ProjectCoverFile } from "./projectPreviewFile";
 import { projectCoverMediaUrl } from "./projectCoverMediaUrl";
 
@@ -46,8 +47,13 @@ export function buildProjectCardCover(
   }
 
   const meta = project.metadata;
-  const entry = meta?.entryFile;
+  const entry = meta?.entryFile?.trim();
   if (entry) {
+    const isDeckProject = meta?.kind === "deck" || meta?.skipDiscoveryBrief === true;
+    // Deck projects must not thumb Canvas HTML pinned as entryFile.
+    if (isDeckProject && /\.html?$/i.test(entry) && !isTrustedDeckEntryFile(entry)) {
+      return { kind: "fallback", style, initial };
+    }
     // Path-stable URL (no ?v=updatedAt). Html covers cache by path; image
     // thumbs mint once until an override with coverVersion arrives.
     const src = projectCoverMediaUrl(project.id, entry);

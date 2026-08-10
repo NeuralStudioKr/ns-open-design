@@ -1,8 +1,10 @@
 import { isDesignSystemProject } from "../components/design-system-project";
 import type { Project, ProjectFile } from "../types";
 import {
+  isCanonicalDeckProjectPath,
   isEmbedReferenceSourceFile,
   isRootHtmlMatchingReferenceSource,
+  isTrustedDeckEntryFile,
 } from "./branding/embedDeliverableFilePolicy";
 
 export type ProjectCoverFile = {
@@ -44,8 +46,7 @@ function isExcludedProjectCoverHtml(
 }
 
 function isDeckCoverHtml(file: ProjectFile): boolean {
-  const base = basename(coverHtmlPath(file)).toLowerCase();
-  return /^deck(?:[-_.].*)?\.html?$/.test(base);
+  return isCanonicalDeckProjectPath(coverHtmlPath(file));
 }
 
 /** Latest cover candidate for project cards (HTML/image/video/logo). */
@@ -54,7 +55,17 @@ export function pickProjectCoverFile(
   files: ProjectFile[],
 ): ProjectCoverFile | null {
   const designSystemProject = isDesignSystemProject(project);
-  if (project.metadata?.entryFile && !designSystemProject) return null;
+  // Only trust a pinned entryFile when it is a real deck deliverable. Canvas
+  // leaks (`index.html` / `canvas.html`) must fall through to file heuristics.
+  const trustedEntry =
+    !designSystemProject
+    && (
+      project.metadata?.kind === "deck"
+      || project.metadata?.skipDiscoveryBrief === true
+    )
+      ? isTrustedDeckEntryFile(project.metadata?.entryFile)
+      : Boolean(project.metadata?.entryFile?.trim());
+  if (trustedEntry && !designSystemProject) return null;
 
   if (designSystemProject) {
     const logo = findDesignSystemLogoFile(files);

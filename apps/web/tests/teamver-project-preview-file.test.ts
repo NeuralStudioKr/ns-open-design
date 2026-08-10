@@ -75,6 +75,18 @@ describe("projectPreviewFile", () => {
     expect(cover).toEqual({ kind: "html", name: "about.html" });
   });
 
+  it("does not short-circuit on a bad Canvas entryFile pin for deck projects", () => {
+    const files = [
+      file({ name: "deck.html", kind: "html", mtime: 10 }),
+      file({ name: "index.html", kind: "html", mtime: 99 }),
+    ];
+    const cover = pickProjectCoverFile(
+      project({ metadata: { kind: "deck", entryFile: "index.html", skipDiscoveryBrief: true } }),
+      files,
+    );
+    expect(cover).toEqual({ kind: "html", name: "deck.html" });
+  });
+
   it("uses entry html when cover override is absent", () => {
     expect(
       projectPreviewDeepLinkFileName(

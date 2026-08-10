@@ -1,6 +1,7 @@
 import { isDesignSystemProject } from "../components/design-system-project";
 import { fetchProjectFiles } from "../providers/registry";
 import type { Project } from "../types";
+import { isTrustedDeckEntryFile } from "./branding/embedDeliverableFilePolicy";
 import { isTeamverEmbedMode } from "./designApiBase";
 import { fetchProjectCoverHints, projectCoverFileFromHint } from "./projectCoverHints";
 import { PROJECT_LIST_VIEWPORT_BATCH } from "./projectListLimits";
@@ -83,7 +84,15 @@ function markHintsChecked(ids: string[]): void {
 /** True when project card cover cannot be resolved from metadata alone. */
 export function projectNeedsCoverFileFetch(project: Project): boolean {
   if (isDesignSystemProject(project)) return true;
-  return !project.metadata?.entryFile;
+  const entry = project.metadata?.entryFile?.trim();
+  if (!entry) return true;
+  const isDeckProject =
+    project.metadata?.kind === "deck" || project.metadata?.skipDiscoveryBrief === true;
+  // Bad Canvas entryFile pins must re-resolve via hints /files so deck wins.
+  if (isDeckProject && /\.html?$/i.test(entry)) {
+    return !isTrustedDeckEntryFile(entry);
+  }
+  return false;
 }
 
 export function clearProjectCoverCache(projectId?: string): void {

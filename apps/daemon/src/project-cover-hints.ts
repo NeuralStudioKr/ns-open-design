@@ -59,6 +59,11 @@ function isSafeProjectRelativePath(value: string): boolean {
   return parts.every((part) => part && part !== "." && part !== "..");
 }
 
+function isTrustedDeckEntryFile(entryFile: string): boolean {
+  const base = entryFile.split(/[\\/]+/u).filter(Boolean).pop() ?? entryFile;
+  return /^deck(?:[-_.].*)?\.html?$/i.test(base);
+}
+
 async function detectLogoCoverPath(projectDir: string): Promise<string | null> {
   for (const logoPath of ["assets/logo.svg", "assets/logo.png", "assets/logo.webp"]) {
     try {
@@ -86,18 +91,31 @@ export async function resolveProjectCoverHint(
   const metadata = (project.metadata ?? {}) as {
     entryFile?: unknown;
     kind?: unknown;
+    skipDiscoveryBrief?: unknown;
   };
 
   const metadataEntry =
     typeof metadata.entryFile === "string" && metadata.entryFile.trim()
       ? metadata.entryFile.trim()
       : "";
-  const metadataHint = metadataEntry
-    ? coverHintFromEntry(metadataEntry, metadata.kind)
-    : null;
   // Unsafe paths (traversal / URL) → null; do not fall through to disk scan
   // with a poisoned entryFile still present in metadata.
-  if (metadataEntry && !metadataHint) return null;
+  if (metadataEntry && !isSafeProjectRelativePath(metadataEntry)) return null;
+
+  const isDeckProject =
+    metadata.kind === "deck" || metadata.skipDiscoveryBrief === true;
+  // Canvas→Slide often pins a non-deck HTML entry (index/canvas). Ignore those
+  // for deck projects so shallow detectEntryFile / FE /files can prefer deck*.html.
+  const ignoreAsCanvasLeak =
+    isDeckProject
+    && /\.html?$/i.test(metadataEntry)
+    && !isTrustedDeckEntryFile(metadataEntry);
+  const trustedMetadataEntry =
+    metadataEntry && !ignoreAsCanvasLeak ? metadataEntry : "";
+  const metadataHint = trustedMetadataEntry
+    ? coverHintFromEntry(trustedMetadataEntry, metadata.kind)
+    : null;
+  if (trustedMetadataEntry && !metadataHint) return null;
 
   const projectDir = resolveProjectDir(projectsRoot, projectId, project.metadata);
   let dirReady = false;

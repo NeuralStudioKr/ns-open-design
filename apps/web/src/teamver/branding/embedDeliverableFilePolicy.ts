@@ -82,9 +82,48 @@ export function listRootHtmlMatchingReferenceSources(
   return out;
 }
 
-function isCanonicalDeckBasename(path: string): boolean {
+/**
+ * Root HTML cleanup candidates after a real deck exists: basename-matched refs
+ * leaks, plus root `index.html` when any refs HTML source is present (Canvas
+ * exports commonly land as index.html even when the refs path was renamed).
+ */
+export function listRootHtmlCanvasLeakCleanupTargets(
+  projectFiles: readonly { name: string; path?: string }[],
+): string[] {
+  const out = listRootHtmlMatchingReferenceSources(projectFiles);
+  const seen = new Set(out);
+  const hasRefsHtml = projectFiles.some(
+    (file) =>
+      isEmbedReferenceSourceFile(file)
+      && isHtmlProjectPath(projectRelativePath(file)),
+  );
+  if (!hasRefsHtml || !projectHasCanonicalDeckDeliverable(projectFiles)) return out;
+  for (const file of projectFiles) {
+    const rel = projectRelativePath(file).replace(/\\/g, "/").replace(/^\.\/+/, "");
+    if (!rel || rel.includes("/") || seen.has(rel)) continue;
+    if (rel.toLowerCase() !== "index.html") continue;
+    if (isCanonicalDeckProjectPath(rel)) continue;
+    seen.add(rel);
+    out.push(rel);
+  }
+  return out;
+}
+
+/** True when a project-relative path is a canonical Teamver slide deliverable. */
+export function isCanonicalDeckProjectPath(path: string): boolean {
   const base = filePathBasename(path).toLowerCase();
   return /^deck(?:[-_.].*)?\.html?$/.test(base);
+}
+
+/**
+ * Whether metadata.entryFile is safe to trust as a deck project cover/entry.
+ * Canvas→Slide leaks often pin `index.html` / `canvas.html` — those must not
+ * short-circuit cover resolution past the real deck.
+ */
+export function isTrustedDeckEntryFile(entryFile?: string | null): boolean {
+  const trimmed = entryFile?.trim() ?? "";
+  if (!trimmed) return false;
+  return isCanonicalDeckProjectPath(trimmed);
 }
 
 /** True when the project already has a real slide deliverable (not a refs leak). */
@@ -94,8 +133,31 @@ export function projectHasCanonicalDeckDeliverable(
   return projectFiles.some((file) => {
     if (isEmbedReferenceSourceFile(file)) return false;
     if (isRootHtmlMatchingReferenceSource(file, projectFiles)) return false;
-    return isCanonicalDeckBasename(projectRelativePath(file));
+    return isCanonicalDeckProjectPath(projectRelativePath(file));
   });
+}
+
+/**
+ * Best on-disk deck path for entryFile pinning / cover. Prefers root
+ * `deck.html`, then other root `deck*.html`, then nested decks.
+ */
+export function resolveCanonicalDeckEntryPath(
+  projectFiles: readonly { name: string; path?: string }[],
+): string | null {
+  const decks: string[] = [];
+  for (const file of projectFiles) {
+    if (isEmbedReferenceSourceFile(file)) continue;
+    if (isRootHtmlMatchingReferenceSource(file, projectFiles)) continue;
+    const rel = projectRelativePath(file).replace(/\\/g, "/").replace(/^\.\/+/, "");
+    if (!rel || !isCanonicalDeckProjectPath(rel)) continue;
+    decks.push(rel);
+  }
+  if (decks.length === 0) return null;
+  const rootExact = decks.find((p) => !p.includes("/") && p.toLowerCase() === "deck.html");
+  if (rootExact) return rootExact;
+  const rootAny = decks.find((p) => !p.includes("/"));
+  if (rootAny) return rootAny;
+  return decks.sort((a, b) => a.localeCompare(b))[0] ?? null;
 }
 
 export type EmbedSupportingFileOptions = {

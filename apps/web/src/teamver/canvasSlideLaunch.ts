@@ -48,6 +48,8 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "Do NOT use the source file itself as the deliverable, " +
   "do not copy/rename/save the source HTML (or any near-copy of it) into the project root, " +
   "and do not merely lightly restyle the source page. " +
+  "If you use the Write/Edit tool, the ONLY root HTML file you may create or overwrite is `deck.html` — " +
+  "never Write `index.html`, `canvas.html`, or any other root HTML that mirrors a `refs/...` source basename. " +
   "The only HTML deliverable must be a rebuilt slide deck saved as `deck.html` " +
   "via exactly one `<artifact type=\"deck\" identifier=\"deck\">` (identifier MUST be `deck`). " +
   "Preserve the source structure, headings, callouts, tables, images, and smart blocks " +
@@ -342,9 +344,9 @@ export async function fetchCanvasSlideTemplatePlugins(options?: {
   }
   if (deckTemplateInflight) return deckTemplateInflight;
   deckTemplateInflight = (async () => {
+    const all: InstalledPluginRecord[] = [];
+    const seen = new Set<string>();
     try {
-      const all: InstalledPluginRecord[] = [];
-      const seen = new Set<string>();
       let offset = 0;
       for (let pageNum = 0; pageNum < DECK_TEMPLATE_MAX_PAGES; pageNum += 1) {
         const page = await listPluginsPage({
@@ -358,17 +360,26 @@ export async function fetchCanvasSlideTemplatePlugins(options?: {
           seen.add(id);
           all.push(plugin);
         }
-        if (page.nextOffset == null || page.plugins.length === 0) break;
+        // Client-side denylist / hidden filters can empty a server page while
+        // nextOffset still advances. Keep walking so the modal matches Home's
+        // load-more catalog instead of caching a truncated first page.
+        if (page.nextOffset == null) break;
+        if (page.nextOffset === offset) break;
         offset = page.nextOffset;
       }
       deckTemplateCache = { fetchedAt: Date.now(), plugins: all };
       return all;
     } catch {
-      // `listPluginsPage` already swallows fetch errors and returns an empty
-      // page; guard anyway so the picker keeps working with just the
-      // built-in "기본 슬라이드 템플릿" fallback.
-      deckTemplateCache = { fetchedAt: Date.now(), plugins: [] };
-      return [];
+      // Keep a partial walk if we already collected plugins; otherwise preserve
+      // any warmer cache and only seed [] when nothing else is available.
+      if (all.length > 0) {
+        deckTemplateCache = { fetchedAt: Date.now(), plugins: all };
+        return all;
+      }
+      if (!deckTemplateCache) {
+        deckTemplateCache = { fetchedAt: Date.now(), plugins: [] };
+      }
+      return deckTemplateCache.plugins;
     } finally {
       deckTemplateInflight = null;
     }

@@ -475,8 +475,15 @@ import {
   selectAutoOpenProducedHtml,
 } from './auto-open-file';
 import { selectInitialDesignPreviewFile } from './design-files/designArtifacts';
-import { isEmbedSupportingProjectFile } from '../teamver/branding/embedDeliverableFilePolicy';
-import { cleanupRootHtmlReferenceLeaks } from '../teamver/branding/cleanupRootHtmlReferenceLeaks';
+import {
+  cleanupRootHtmlReferenceLeaks,
+  deleteRootHtmlReferenceLeakIfPresent,
+} from '../teamver/branding/cleanupRootHtmlReferenceLeaks';
+import {
+  isCanonicalDeckProjectPath,
+  isEmbedSupportingProjectFile,
+  resolveCanonicalDeckEntryPath,
+} from '../teamver/branding/embedDeliverableFilePolicy';
 import { clearProjectCoverCache } from '../teamver/projectCoverLoader';
 import {
   artifactBaseNameForPersist,
@@ -3184,6 +3191,12 @@ export function ProjectView({
   // the agent's Write actually completes, without the previous synthetic
   // "live" tab that was causing flicker against manual opens.
   const pendingWritesRef = useRef<Map<string, string>>(new Map());
+  // Filled after `finalizeSlideOnlyDeckArtifacts` is defined — early message-load
+  // emergency recovery calls through this ref so it never closes over a stale
+  // or TDZ callback.
+  const finalizeSlideOnlyDeckArtifactsRef = useRef<
+    (filesSnapshot: ProjectFile[], deckFileName?: string | null) => Promise<ProjectFile[]>
+  >(async (files) => files);
   // Track which conversation the current messages belong to, so we can
   // correctly gate new-conversation creation even during async loads.
   const messagesConversationIdRef = useRef<string | null>(null);
@@ -3850,6 +3863,11 @@ export function ProjectView({
                   void saveMessage(project.id, activeConversationId, updatedAssistant, {
                     telemetryFinalized: true,
                   });
+                  const filesAfterEmergency = await refreshProjectFiles();
+                  await finalizeSlideOnlyDeckArtifactsRef.current(
+                    filesAfterEmergency,
+                    emergency.htmlToOpen,
+                  );
                   maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
                   requestOpenFile(emergency.htmlToOpen);
                 }
@@ -4355,15 +4373,18 @@ export function ProjectView({
     ): Promise<ProjectFile[]> => {
       if (!slideOnlyMvp) return filesSnapshot;
       const candidate = (deckFileName ?? '').trim();
-      const deckBase = candidate.split('/').pop() ?? candidate;
-      if (candidate && isCanonicalDeckFileName(deckBase)) {
+      const fromCandidate =
+        candidate && isCanonicalDeckProjectPath(candidate) ? candidate.replace(/\\/g, '/') : null;
+      const entryPath =
+        fromCandidate
+        ?? resolveCanonicalDeckEntryPath(filesSnapshot);
+      if (entryPath) {
         const currentEntry = project.metadata?.entryFile?.trim() ?? '';
-        const currentBase = currentEntry.split('/').pop() ?? currentEntry;
-        if (!currentEntry || !isCanonicalDeckFileName(currentBase)) {
+        if (currentEntry !== entryPath) {
           const metadata = {
             ...(project.metadata ?? {}),
             kind: 'deck' as const,
-            entryFile: candidate.includes('/') ? deckBase : candidate,
+            entryFile: entryPath,
           };
           const updated: Project = {
             ...project,
@@ -4372,7 +4393,9 @@ export function ProjectView({
           };
           onProjectChange(updated);
           clearProjectCoverCache(project.id);
-          void patchProject(project.id, { metadata });
+          void patchProject(project.id, { metadata }).catch(() => {
+            // Best-effort — local state already pinned the deck entry.
+          });
         }
       }
       const deleted = await cleanupRootHtmlReferenceLeaks({
@@ -4393,6 +4416,7 @@ export function ProjectView({
       refreshProjectFiles,
     ],
   );
+  finalizeSlideOnlyDeckArtifactsRef.current = finalizeSlideOnlyDeckArtifacts;
 
   useEffect(() => {
     projectFilesRef.current = projectFiles;
@@ -4554,7 +4578,10 @@ export function ProjectView({
         art,
         currentProjectFilesForPatch,
         openTabsStateRef.current.active,
-        { preferredFileName: runPersistTargetFileRef.current },
+        {
+          preferredFileName: runPersistTargetFileRef.current,
+          slideOnlyMvp,
+        },
       );
       // One disk read per persist — reused for reconcile / merge / scope /
       // stabilize / noop / duplicate (helpers accept currentHtml).
@@ -4823,7 +4850,10 @@ export function ProjectView({
         artifactToPersist,
         currentProjectFiles,
         openTabsStateRef.current.active,
-        { preferredFileName: runPersistTargetFileRef.current },
+        {
+          preferredFileName: runPersistTargetFileRef.current,
+          slideOnlyMvp,
+        },
       );
       if (ext === '.html') {
         const pointerTarget = resolveHtmlPointerArtifactTarget({
@@ -7890,6 +7920,11 @@ export function ProjectView({
               void saveMessage(project.id, recoveryConversationId, updatedAssistant, {
                 telemetryFinalized: true,
               });
+              const filesAfterEmergency = await refreshProjectFiles();
+              await finalizeSlideOnlyDeckArtifacts(
+                filesAfterEmergency,
+                emergency.htmlToOpen,
+              );
               maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
               requestOpenFile(emergency.htmlToOpen);
               finishRecovery();
@@ -9240,9 +9275,15 @@ export function ProjectView({
                 });
                 emergencyRecovered = emergency.recovered;
                 emergencyProduced = emergency.produced;
-                if (emergency.htmlToOpen && runIsVisible()) {
-                  maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
-                  requestOpenFile(emergency.htmlToOpen);
+                if (emergency.htmlToOpen) {
+                  nextFiles = await finalizeSlideOnlyDeckArtifacts(
+                    await refreshProjectFiles(),
+                    emergency.htmlToOpen,
+                  );
+                  if (runIsVisible()) {
+                    maybeArmTeamverPublishMenuAfterRunSuccess(project.id, emergency.htmlToOpen);
+                    requestOpenFile(emergency.htmlToOpen);
+                  }
                 }
               }
 
@@ -9599,6 +9640,35 @@ export function ProjectView({
               // file list — otherwise an out-of-project Write (e.g. an
               // upstream repo edit) would spawn a permanent placeholder tab.
               void refreshProjectFiles().then(async (nextFiles) => {
+                // Canvas→Slide: delete root HTML that only copies a refs/
+                // source as soon as Write lands — do not wait for deck.html.
+                if (slideOnlyMvp) {
+                  const deletedLeak = await deleteRootHtmlReferenceLeakIfPresent({
+                    projectId: project.id,
+                    files: nextFiles,
+                    slideOnlyMvp: true,
+                    writtenPath: filePath,
+                    deleteFile: deleteProjectFile,
+                  });
+                  if (deletedLeak) {
+                    removeProjectFilesLocally([deletedLeak]);
+                    nextFiles = await refreshProjectFiles();
+                  } else {
+                    const writtenRel = nextFiles.find((file) => {
+                      const rel = (file.path ?? file.name).replace(/\\/g, '/');
+                      return (
+                        filePath === rel
+                        || (filePath.length > rel.length && filePath.endsWith(`/${rel}`))
+                      );
+                    });
+                    const deckRel = writtenRel
+                      ? (writtenRel.path?.trim() || writtenRel.name)
+                      : null;
+                    if (deckRel && isCanonicalDeckProjectPath(deckRel)) {
+                      nextFiles = await finalizeSlideOnlyDeckArtifacts(nextFiles, deckRel);
+                    }
+                  }
+                }
                 // A .jsx/.tsx loaded by a sibling HTML entry is a module of a
                 // multi-file React prototype, not a standalone page — don't
                 // strand the user on a dead-end preview tab. Issue #2744.

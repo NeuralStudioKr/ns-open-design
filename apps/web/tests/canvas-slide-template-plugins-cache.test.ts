@@ -74,6 +74,31 @@ describe("fetchCanvasSlideTemplatePlugins (in-memory TTL cache)", () => {
     });
   });
 
+  it("continues paging when a filtered page is empty but nextOffset remains", async () => {
+    const page = (
+      ids: string[],
+      offset: number,
+      nextOffset: number | null,
+    ) => ({
+      plugins: ids.map((id) => ({
+        id,
+        title: id,
+        manifest: { title: id, od: { mode: "deck" } },
+      })) as unknown as import("@open-design/contracts").InstalledPluginRecord[],
+      total: 2,
+      limit: 24,
+      offset,
+      nextOffset,
+    });
+    (listPluginsPage as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(page(["a"], 0, 24))
+      .mockResolvedValueOnce(page([], 24, 48))
+      .mockResolvedValueOnce(page(["b"], 48, null));
+    const plugins = await fetchCanvasSlideTemplatePlugins();
+    expect(plugins.map((p) => p.id)).toEqual(["a", "b"]);
+    expect(listPluginsPage).toHaveBeenCalledTimes(3);
+  });
+
   it("returns the cached list on the second call without hitting the API again", async () => {
     const first = await fetchCanvasSlideTemplatePlugins();
     const second = await fetchCanvasSlideTemplatePlugins();

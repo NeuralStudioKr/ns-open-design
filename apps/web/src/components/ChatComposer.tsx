@@ -95,6 +95,7 @@ import {
   buildSlideOnlyDeckTemplateCreateBinding,
   canvasCreateSlidesTurnMeta,
   driveCreateSlidesSourceBrief,
+  fetchCanvasSlideTemplatePlugins,
   readTeamverCreateSlidesLaunchFromUrl,
   resolveCanvasSlideTemplate,
   type CanvasSlideQuickSettings,
@@ -116,7 +117,6 @@ import { embedBlockedComposerSlashReason, embedSlideOnlyOutboundBlockReason } fr
 import { patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig, McpTemplate } from "../state/mcp";
-import { listPlugins } from "../state/projects";
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, Project, ProjectFile, ProjectMetadata, SkillSummary } from "../types";
 import type {
   ContextItem,
@@ -847,13 +847,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // here to avoid showing skills the user has disabled via Settings.
 
     // Lazy-fetch installed plugins once on mount; the tools-menu Plugins
-    // tab and the @-mention picker both consume this list.
+    // tab and the @-mention picker both consume this list. Page through the
+    // same deck catalog the Canvas→Slide modal uses so the picker is not
+    // capped at the first Community page of 24.
     useEffect(() => {
       if (!projectId || !composerEngaged) return;
       let cancelled = false;
-      void listPlugins({ mode: 'deck', limit: 24 }).then((rows) => {
+      void fetchCanvasSlideTemplatePlugins().then((rows) => {
         if (cancelled) return;
-        setInstalledPlugins(rows);
+        setInstalledPlugins([...rows]);
       });
       return () => {
         cancelled = true;

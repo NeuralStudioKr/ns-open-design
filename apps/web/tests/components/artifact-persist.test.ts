@@ -75,6 +75,20 @@ describe('resolveArtifactPersistFileName', () => {
     expect(fileName).toBe('other-deck.html');
   });
 
+  it('forces slide-only persists to deck.html instead of a Canvas identifier', () => {
+    const fileName = resolveArtifactPersistFileName(
+      {
+        identifier: 'canvas',
+        title: 'Canvas Export',
+        artifactType: 'deck',
+      },
+      [],
+      null,
+      { slideOnlyMvp: true },
+    );
+    expect(fileName).toBe('deck.html');
+  });
+
   it('increments numbered siblings only when no reuse target exists', () => {
     const fileName = resolveArtifactPersistFileName(
       {

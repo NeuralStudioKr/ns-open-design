@@ -4,13 +4,19 @@ import {
   type DesignFileSection,
   filterEmbedDeliverableProducedFiles,
   isEmbedSupportingProjectFile,
+  isTrustedDeckEntryFile,
+  listRootHtmlCanvasLeakCleanupTargets,
   listRootHtmlMatchingReferenceSources,
   partitionEmbedDesignFileSections,
   projectHasCanonicalDeckDeliverable,
+  resolveCanonicalDeckEntryPath,
   shouldDeclineEmbedAutoOpen,
   shouldMinimizeEmbedLiveToolCode,
 } from "../src/teamver/branding/embedDeliverableFilePolicy";
-import { cleanupRootHtmlReferenceLeaks } from "../src/teamver/branding/cleanupRootHtmlReferenceLeaks";
+import {
+  cleanupRootHtmlReferenceLeaks,
+  deleteRootHtmlReferenceLeakIfPresent,
+} from "../src/teamver/branding/cleanupRootHtmlReferenceLeaks";
 
 describe("embedDeliverableFilePolicy", () => {
   it("treats deck stylesheets and sibling scripts as supporting assets", () => {
@@ -178,5 +184,55 @@ describe("embedDeliverableFilePolicy", () => {
       deleteFile: async () => true,
     });
     expect(skipped).toEqual([]);
+  });
+
+  it("can delete a mid-turn Write leak before deck.html exists", async () => {
+    const files = [
+      { name: "refs/drive/canvas.html", path: "refs/drive/canvas.html" },
+      { name: "canvas.html" },
+    ];
+    const deleted = await deleteRootHtmlReferenceLeakIfPresent({
+      projectId: "p1",
+      files,
+      slideOnlyMvp: true,
+      writtenPath: "canvas.html",
+      deleteFile: async () => true,
+    });
+    expect(deleted).toBe("canvas.html");
+    expect(
+      await cleanupRootHtmlReferenceLeaks({
+        projectId: "p1",
+        files,
+        slideOnlyMvp: true,
+        requireDeckDeliverable: false,
+        deleteFile: async () => true,
+      }),
+    ).toEqual(["canvas.html"]);
+  });
+
+  it("resolves trusted deck entry paths and rejects Canvas entry pins", () => {
+    expect(isTrustedDeckEntryFile("deck.html")).toBe(true);
+    expect(isTrustedDeckEntryFile("slides/deck.html")).toBe(true);
+    expect(isTrustedDeckEntryFile("index.html")).toBe(false);
+    expect(isTrustedDeckEntryFile("canvas.html")).toBe(false);
+    expect(
+      resolveCanonicalDeckEntryPath([
+        { name: "refs/drive/canvas.html", path: "refs/drive/canvas.html" },
+        { name: "canvas.html" },
+        { name: "slides/deck.html", path: "slides/deck.html" },
+        { name: "deck.html" },
+      ]),
+    ).toBe("deck.html");
+  });
+
+  it("treats root index.html as a Canvas leak cleanup target once a deck exists", () => {
+    const projectFiles = [
+      { name: "refs/drive/export-abc.html", path: "refs/drive/export-abc.html" },
+      { name: "index.html" },
+      { name: "deck.html" },
+      { name: "notes.html" },
+    ];
+    expect(listRootHtmlMatchingReferenceSources(projectFiles)).toEqual([]);
+    expect(listRootHtmlCanvasLeakCleanupTargets(projectFiles)).toEqual(["index.html"]);
   });
 });

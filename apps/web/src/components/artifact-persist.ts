@@ -67,10 +67,17 @@ export function resolveArtifactPersistFileName(
   art: ArtifactPersistShape,
   projectFiles: readonly ProjectFile[],
   activeTabName: string | null | undefined,
-  options?: { preferredFileName?: string | null },
+  options?: { preferredFileName?: string | null; slideOnlyMvp?: boolean },
 ): string {
-  const baseName = artifactBaseNameForPersist(art);
   const ext = artifactExtensionForPersist(art);
+  // Slide-only Canvas→Slide must never persist the artifact under a Canvas
+  // basename (`canvas.html` / `index.html`) — force the canonical deck name
+  // unless an explicit preferred deck target is already set.
+  const slideOnlyForceDeck =
+    options?.slideOnlyMvp === true
+    && ext === '.html'
+    && !options?.preferredFileName?.trim();
+  const baseName = slideOnlyForceDeck ? 'deck' : artifactBaseNameForPersist(art);
   const existing = new Set(projectFiles.map((file) => file.name));
 
   const preferredRaw = options?.preferredFileName?.trim().replace(/\\/g, '/').replace(/^\.\//, '');

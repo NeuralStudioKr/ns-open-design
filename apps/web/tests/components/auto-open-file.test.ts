@@ -228,6 +228,14 @@ describe('selectAutoOpenProducedHtml', () => {
     expect(result).toBe('deck.html');
   });
 
+  it('prefers deck.html over a newer non-deck html even when both are deliverables', () => {
+    const result = selectAutoOpenProducedHtml([
+      { name: 'deck.html', path: 'deck.html', kind: 'html', mtime: 10 },
+      { name: 'summary.html', path: 'summary.html', kind: 'html', mtime: 99 },
+    ]);
+    expect(result).toBe('deck.html');
+  });
+
   it('returns null when the produced files are not html previews', () => {
     const result = selectAutoOpenProducedHtml([
       { name: 'deck.pptx', path: 'deck.pptx', kind: 'presentation', mtime: 30 },

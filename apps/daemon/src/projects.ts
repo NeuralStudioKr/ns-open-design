@@ -241,14 +241,34 @@ export async function deleteProjectFolder(projectsRoot, projectId, name, metadat
   await rm(target, { recursive: true, force: true });
 }
 
+async function collectRefHtmlBasenames(refsDir: string, out: Set<string>): Promise<void> {
+  let entries = [];
+  try {
+    entries = await readdir(refsDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const full = path.join(refsDir, entry.name);
+    if (entry.isDirectory()) {
+      await collectRefHtmlBasenames(full, out);
+      continue;
+    }
+    if (entry.isFile() && /\.html?$/i.test(entry.name)) {
+      out.add(entry.name.toLowerCase());
+    }
+  }
+}
+
 // Best-effort entry-file detector — prefer a root deck*.html (Teamver slide
 // deliverable), then index.html, then any other root *.html. Returns null if
 // nothing obvious is found, in which case the project simply opens to the
 // file panel with no auto-selected tab.
 //
 // Canvas→Slide imports often leave a root near-copy of the refs source
-// (index.html / canvas.html). Preferring deck*.html keeps cover-hints and
-// auto-open on the real slide deliverable instead of the Canvas HTML leak.
+// (index.html / canvas.html). Preferring deck*.html and excluding refs
+// basename leaks keeps cover-hints on the real slide deliverable.
 export async function detectEntryFile(dir: string): Promise<string | null> {
   try {
     const entries = await readdir(dir, { withFileTypes: true });
@@ -257,9 +277,17 @@ export async function detectEntryFile(dir: string): Promise<string | null> {
       .map((e) => e.name);
     const deck = htmlFiles.find((name) => /^deck(?:[-_.].*)?\.html?$/i.test(name));
     if (deck) return deck;
-    const index = htmlFiles.find((name) => name.toLowerCase() === 'index.html');
+
+    const refsBasenames = new Set();
+    await collectRefHtmlBasenames(path.join(dir, 'refs'), refsBasenames);
+    const nonLeak = htmlFiles.filter((name) => !refsBasenames.has(name.toLowerCase()));
+
+    const index = nonLeak.find((name) => name.toLowerCase() === 'index.html');
     if (index) return index;
-    if (htmlFiles[0]) return htmlFiles[0];
+    if (nonLeak[0]) return nonLeak[0];
+    // Every root HTML duplicates a refs source — do not advertise Canvas HTML
+    // as the project entry/cover.
+    return null;
   } catch { /* ignore */ }
   return null;
 }
