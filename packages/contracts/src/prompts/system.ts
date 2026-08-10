@@ -447,6 +447,19 @@ export interface ComposeInput {
   // Free-form instructions the user set on this specific project.
   // Injected after user-level instructions and before the design system.
   projectInstructions?: string | undefined;
+  /**
+   * Teamver slide-only: include the comment-edit element-patch contract.
+   * FE sets true when the turn carries `<attached-preview-comments>`.
+   * Default false so greenfield Canvas→Slide creates do not pay ~2KB of
+   * edit-only READ LAST rules.
+   */
+  includeCommentEditPatchRule?: boolean | undefined;
+  /**
+   * Teamver slide-only: include the existing-deck / image-embed surgical
+   * contract. FE sets true when a canonical deck.html is attached or the
+   * turn embeds images onto an existing deck. Default false for greenfield.
+   */
+  includeExistingDeckImageEditRule?: boolean | undefined;
 }
 
 export function composeSystemPrompt({
@@ -469,6 +482,8 @@ export function composeSystemPrompt({
   locale,
   userInstructions,
   projectInstructions,
+  includeCommentEditPatchRule,
+  includeExistingDeckImageEditRule,
 }: ComposeInput): string {
   // Discovery + philosophy goes FIRST so its hard rules ("emit a form on
   // turn 1", "branch on brand on turn 2", "TodoWrite on turn 3", run
@@ -512,6 +527,8 @@ export function composeSystemPrompt({
       locale,
       userInstructions,
       projectInstructions,
+      includeCommentEditPatchRule,
+      includeExistingDeckImageEditRule,
     });
   }
 
@@ -1422,6 +1439,8 @@ export function composeTeamverSlideApiPrompt({
   locale,
   userInstructions,
   projectInstructions,
+  includeCommentEditPatchRule,
+  includeExistingDeckImageEditRule,
 }: Pick<
   ComposeInput,
   | 'skillBody'
@@ -1436,6 +1455,8 @@ export function composeTeamverSlideApiPrompt({
   | 'locale'
   | 'userInstructions'
   | 'projectInstructions'
+  | 'includeCommentEditPatchRule'
+  | 'includeExistingDeckImageEditRule'
 >): string {
   const parts: string[] = [];
   const activeDesignSystemBody = designSystemBody?.trim();
@@ -1597,15 +1618,15 @@ export function composeTeamverSlideApiPrompt({
       ? TEAMVER_SLIDE_API_DIRECT_STREAMING_RULE
       : TEAMVER_SLIDE_API_UNIFIED_STREAMING_RULE,
   );
-  // Always append the comment-edit patch contract — it is a no-op when the
-  // turn has no `<attached-preview-comments>` block, but on edit turns it
-  // gives the model a fast partial-deck path that saves 60–120s of output
-  // tokens versus regenerating the whole deck.
-  parts.push(TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE);
-  // Same pattern for image-on-existing-deck turns: without this, the model
-  // obeys the greenfield "MUST emit complete deck" + 2-slide wireframe and
-  // collapses 8-slide decks to 2 while dropping the attached image.
-  parts.push(TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE);
+  // Edit contracts are turn-gated: greenfield Canvas→Slide creates must not
+  // pay ~3–4KB of patch/image READ LAST rules. FE sets these when the turn
+  // carries preview comments and/or an existing deck / image embed.
+  if (includeCommentEditPatchRule === true) {
+    parts.push(TEAMVER_SLIDE_API_COMMENT_EDIT_PATCH_RULE);
+  }
+  if (includeExistingDeckImageEditRule === true) {
+    parts.push(TEAMVER_SLIDE_API_EXISTING_DECK_IMAGE_EDIT_RULE);
+  }
   if (hasSelectedTemplate) {
     parts.push(
       hasTemplateVisualKit

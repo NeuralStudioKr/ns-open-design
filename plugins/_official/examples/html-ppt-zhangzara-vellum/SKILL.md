@@ -52,7 +52,16 @@ Contexts that need visual heat or pop — the navy + warm-yellow italic-Cormoran
 
 ## Workflow
 
-1. **Clone `example.html`** into the user's workspace as the working file.
+> **Teamver / API mode:** there is no filesystem clone step. Reproduce this
+> template with compact inline HTML (and one short body `<style>` / font
+> `@import` if needed). Match the `:root` tokens / visual identity from
+> `example.html` (palette, fonts, borders, motif density). Emit
+> `<artifact type="deck" identifier="deck">` — never `type="text/html"`.
+> Do **not** fall back to a sparse Neutral Modern / slate `#0f172a` cover.
+
+1. **Clone `example.html`** into the user's workspace as the working file
+   (daemon / local skill runs with tools). In Teamver API mode, skip clone —
+   bind the visual kit tokens instead.
 2. **Replace placeholder content** with the user's real headlines, body copy,
    numbers, names, dates, and section labels. Match existing dimensions when
    swapping image placeholders.
@@ -75,11 +84,22 @@ Contexts that need visual heat or pop — the navy + warm-yellow italic-Cormoran
 Emit between `<artifact>` tags:
 
 ```
+<!-- Daemon / local skill runs may use type="text/html". -->
 <artifact identifier="zhangzara-vellum" type="text/html" title="Deck Title">
 <!doctype html>
 <html>...</html>
 </artifact>
 ```
+
+Teamver slide-only API runs must use:
+
+```
+<artifact type="deck" identifier="deck">
+<!doctype html>
+<html lang="ko"><body>…filled slides matching this template's visual kit…</body></html>
+</artifact>
+```
+
 
 ## Source & license
 

@@ -160,7 +160,7 @@ streamFormat === 'plain'
 | 14 | Framework emission override (open-early) | 항상 |
 | 15 | Discovery binding | discovery만 |
 | 16a/b | Direct / Unified streaming (READ LAST) | 분기 |
-| 17–18 | Comment-edit / existing-deck image 계약 | 현재 항상 (마커 없으면 no-op) |
+| 17–18 | Comment-edit / existing-deck image 계약 | **FE 플래그 true일 때만** (greenfield 생략) |
 | 19 | Selected template visual READ LAST | 템플릿 있음 · **kit 유무에 문구 분기** |
 
 ### 4.1 `hasSelectedTemplate` 판정
@@ -452,12 +452,23 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | Neutral wireframe/DS가 selected template을 덮지 않게 | **완료** (`4e4d69bae`) |
 | P0 | 퀵설정·우선순위·locale·skipDiscovery 정렬 | **완료** (`7a9a39085`) |
 | P0 | kit-miss · 유저 장수 회귀 방어 | **완료** (`745a89fd7`) |
-| P1 | edit 계약을 greenfield에서 FE 플래그로 gate | 미착수 |
-| P1 | 다른 Zhangzara SKILL.md에 Teamver API 노트 | 부분(Daisy Days만) |
+| P1 | edit 계약을 greenfield에서 FE 플래그로 gate | **완료** — `includeCommentEditPatchRule` / `includeExistingDeckImageEditRule` |
+| P1 | 다른 Zhangzara SKILL.md에 Teamver API 노트 | **완료** — 31개 Zhangzara + Daisy Days |
+| P2 | kit fetch 5xx/network 1회 재시도 | **완료** (`fetchPluginAssetText`) |
 | P2 | READ LAST 통합 / Final authority 섹션 | 미착수 |
-| P2 | kit fetch 실패 UX · 캐시 재시도 | 미착수 |
+| P2 | kit fetch 실패 UX(사용자 알림) | 미착수 |
 | P2 | motif 구현 힌트 · Google Fonts `@import` 레시피 일반화 | 미착수 |
 | P2 | lean compose에 slide-safe `web_fetch` 노출 여부 | 제품 결정 |
+
+### 12.1 Edit-contract gating (상세)
+
+| 플래그 | FE가 true로 주는 때 |
+|--------|---------------------|
+| `includeCommentEditPatchRule` | `runCommentAttachments.length > 0` |
+| `includeExistingDeckImageEditRule` | `autoAttachedDeckPath != null` 또는 slide image embed paths 존재 |
+
+Greenfield Canvas→Slide create는 둘 다 false → 시스템 프롬프트에서 comment-edit / existing-deck image **READ LAST 블록 생략** (~3–4KB 절감).  
+User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입은 기존대로 유지.
 
 ---
 
@@ -466,3 +477,4 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | 날짜 | 내용 |
 |------|------|
 | 2026-08-10 | 초안 — Daisy Days Neutral 덮어쓰기 RCA · compose SSOT · 3커밋 타임라인 · 회귀 검토 · 검증 체크리스트 |
+| 2026-08-10 | 후속 — edit-contract FE gate · Zhangzara×31 Teamver 노트 · kit asset 5xx retry |

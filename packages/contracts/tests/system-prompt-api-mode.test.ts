@@ -548,16 +548,32 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt.length).toBeLessThan(26_000);
     });
 
-    it('carries the comment-edit element-patch contract so scoped edits skip full deck rewrites', () => {
+    it('omits comment-edit / existing-deck contracts on greenfield turns', () => {
+      const prompt = composeTeamverSlideApiPrompt({
+        skillBody: simpleDeckSkill,
+        skillName: 'simple-deck',
+        metadata: { kind: 'deck', skipDiscoveryBrief: true },
+      });
+      // Full READ LAST edit contracts are gated off; deliverable override may
+      // still mention patch types briefly for existing-deck anti-patterns.
+      expect(prompt).not.toContain('comment-edit patch');
+      expect(prompt).not.toContain('existing-deck image embed');
+      expect(prompt).not.toContain('Teamver slide-only API — comment-edit patch');
+      expect(prompt).not.toContain('Teamver slide-only API — existing-deck image embed');
+    });
+
+    it('carries the comment-edit element-patch contract when FE gates it on', () => {
       const unified = composeTeamverSlideApiPrompt({
         skillBody: simpleDeckSkill,
         skillName: 'simple-deck',
         metadata: { kind: 'deck' },
+        includeCommentEditPatchRule: true,
       });
       const direct = composeTeamverSlideApiPrompt({
         skillBody: simpleDeckSkill,
         skillName: 'simple-deck',
         metadata: { kind: 'deck', skipDiscoveryBrief: true },
+        includeCommentEditPatchRule: true,
       });
       for (const prompt of [unified, direct]) {
         expect(prompt).toContain('comment-edit patch');
@@ -677,16 +693,18 @@ describe('composeSystemPrompt — API mode (#313)', () => {
       expect(prompt).not.toContain('Visual style reference — Html Ppt Hermes Cyber Terminal');
     });
 
-    it('forces existing-deck image edits to preserve all slides via deck-patch', () => {
+    it('forces existing-deck image edits to preserve all slides via deck-patch when gated on', () => {
       const unified = composeTeamverSlideApiPrompt({
         skillBody: simpleDeckSkill,
         skillName: 'simple-deck',
         metadata: { kind: 'deck' },
+        includeExistingDeckImageEditRule: true,
       });
       const direct = composeTeamverSlideApiPrompt({
         skillBody: simpleDeckSkill,
         skillName: 'simple-deck',
         metadata: { kind: 'deck', skipDiscoveryBrief: true },
+        includeExistingDeckImageEditRule: true,
       });
       for (const prompt of [unified, direct]) {
         expect(prompt).toContain('existing-deck image embed');

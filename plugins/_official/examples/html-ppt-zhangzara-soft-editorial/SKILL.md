@@ -53,6 +53,13 @@ Decks that need visual heat or punch — the warm-paper palette and Cormorant se
 
 ## Workflow
 
+> **Teamver / API mode:** there is no filesystem clone step. Reproduce this
+> template with compact inline HTML (and one short body `<style>` / font
+> `@import` if needed). Match the `:root` tokens / visual identity from
+> `example.html` (palette, fonts, borders, motif density). Emit
+> `<artifact type="deck" identifier="deck">` — never `type="text/html"`.
+> Do **not** fall back to a sparse Neutral Modern / slate `#0f172a` cover.
+
 1. **Clone `example.html` AND the `assets/` folder** into the user's workspace.
    This template ships an `assets/deck-stage.js` runtime (keyboard navigation,
    stage rendering); the HTML references it as `assets/deck-stage.js`, so the
@@ -82,11 +89,22 @@ Decks that need visual heat or punch — the warm-paper palette and Cormorant se
 Emit between `<artifact>` tags:
 
 ```
+<!-- Daemon / local skill runs may use type="text/html". -->
 <artifact identifier="zhangzara-soft-editorial" type="text/html" title="Deck Title">
 <!doctype html>
 <html>...</html>
 </artifact>
 ```
+
+Teamver slide-only API runs must use:
+
+```
+<artifact type="deck" identifier="deck">
+<!doctype html>
+<html lang="ko"><body>…filled slides matching this template's visual kit…</body></html>
+</artifact>
+```
+
 
 ## Source & license
 

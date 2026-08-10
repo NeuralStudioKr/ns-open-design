@@ -5681,6 +5681,10 @@ export function ProjectView({
       ProjectChatSendMeta,
       'selectedDeckTemplateId' | 'selectedDeckTemplateTitle' | 'skipDiscoveryBrief'
     > | null,
+    slideEditContracts?: {
+      includeCommentEditPatchRule?: boolean;
+      includeExistingDeckImageEditRule?: boolean;
+    } | null,
   ): Promise<string> => {
     let skillBody: string | undefined;
     let skillName: string | undefined;
@@ -5997,6 +6001,12 @@ export function ProjectView({
       sessionMode: sessionModeOverride,
       locale,
       userInstructions: config.customInstructions,
+      ...(slideEditContracts?.includeCommentEditPatchRule === true
+        ? { includeCommentEditPatchRule: true }
+        : {}),
+      ...(slideEditContracts?.includeExistingDeckImageEditRule === true
+        ? { includeExistingDeckImageEditRule: true }
+        : {}),
     });
   }, [
     project.skillId,
@@ -10260,6 +10270,12 @@ export function ProjectView({
             ...(meta?.skipDiscoveryBrief === true || project.metadata?.skipDiscoveryBrief === true
               ? { skipDiscoveryBrief: true }
               : {}),
+          },
+          {
+            includeCommentEditPatchRule: runCommentAttachments.length > 0,
+            includeExistingDeckImageEditRule:
+              autoAttachedDeckPath != null
+              || imageAttachmentPathsForSlideEmbed(effectiveAttachments).length > 0,
           },
         );
         const webFetchContexts = await fetchApiWebFetchContexts(userMsg.content);

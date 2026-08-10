@@ -149,4 +149,33 @@ describe('fetchPluginLocalSkill', () => {
 
     await expect(readPluginLocalSkillFromRecord(plugin)).resolves.toBeNull();
   });
+
+  it('retries once on transient 5xx before giving up on SKILL.md', async () => {
+    const plugin = {
+      id: 'example-html-ppt-zhangzara-coral',
+      manifest: {
+        name: 'example-html-ppt-zhangzara-coral',
+        title: 'Html Ppt Zhangzara Coral',
+        od: {
+          context: {
+            skills: [{ path: './SKILL.md' }],
+          },
+        },
+      },
+    } as InstalledPluginRecord;
+
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) return new Response('boom', { status: 502 });
+        return new Response('---\nname: coral\n---\n\nCoral body', { status: 200 });
+      }),
+    );
+
+    const local = await readPluginLocalSkillFromRecord(plugin);
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(local).toEqual({ body: 'Coral body', name: 'Html Ppt Zhangzara Coral' });
+  });
 });

@@ -83,11 +83,31 @@ async function fetchPluginAssetText(pluginId: string, relpath: string): Promise<
   const url = `/api/plugins/${encodeURIComponent(pluginId)}/asset/${encodeURIComponent(relpath)}`;
   // Teamver embed: plugin-asset routes go through the daemon proxy that
   // demands X-Teamver-* identity headers; a plain fetch() returns 401.
-  const resp = isTeamverEmbedMode()
-    ? await fetchTeamverDaemon(url, { skipEmbedAuthRecovery: true })
-    : await fetch(url);
-  if (!resp.ok) return null;
-  return resp.text();
+  const attempt = async (): Promise<Response> => (
+    isTeamverEmbedMode()
+      ? await fetchTeamverDaemon(url, { skipEmbedAuthRecovery: true })
+      : await fetch(url)
+  );
+  try {
+    let resp = await attempt();
+    // One retry on transient 5xx / network flaps — kit miss makes Daisy Days
+    // fall back to Neutral-looking decks even when the template was selected.
+    if (resp.status >= 500) {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      resp = await attempt();
+    }
+    if (!resp.ok) return null;
+    return resp.text();
+  } catch {
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      const retry = await attempt();
+      if (!retry.ok) return null;
+      return retry.text();
+    } catch {
+      return null;
+    }
+  }
 }
 
 export async function readPluginLocalSkillFromRecord(
