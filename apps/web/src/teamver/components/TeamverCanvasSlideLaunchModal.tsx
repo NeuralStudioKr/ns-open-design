@@ -266,16 +266,21 @@ export function TeamverCanvasSlideLaunchModal({
     ?? (selectedTemplateId?.trim()
       ? { id: selectedTemplateId, title: selectedTemplateId, record: null }
       : templateOptions[0] ?? null);
-  // Block confirm while the pick is only a title===id stub (catalog miss /
+  // Block confirm ONLY when the pick is a title===id stub (catalog miss /
   // still loading). Persisting the raw plugin id as selectedDeckTemplateTitle
   // poisons designSystem / visualTemplate inputs.
+  //
+  // Callers that omit templateOptions/selectedTemplateId (Drive flow with no
+  // picker, embed tests) leave selectedTemplate null — there is nothing to
+  // block in that case; confirm must proceed with the parent's fallback
+  // create-slides binding.
   const selectedTemplateReady =
     !templatesLoading
-    && Boolean(selectedTemplate)
     && (
-      selectedTemplate!.id === CANVAS_CREATE_SLIDES_PLUGIN_ID
-      || Boolean(selectedTemplate!.record)
-      || selectedTemplate!.title.trim() !== selectedTemplate!.id.trim()
+      !selectedTemplate
+      || selectedTemplate.id === CANVAS_CREATE_SLIDES_PLUGIN_ID
+      || Boolean(selectedTemplate.record)
+      || selectedTemplate.title.trim() !== selectedTemplate.id.trim()
     );
   const showTemplateGrid = includeTemplateStep;
   const stepDocumentTitle = t("teamver.canvasSlideLaunch.stepDocument");
