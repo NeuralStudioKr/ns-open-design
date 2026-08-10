@@ -17,6 +17,7 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import type { InstalledPluginRecord } from '@open-design/contracts';
+import { readSkillFrontmatterDescription } from '@open-design/contracts';
 import { pickFirstLocalSkillPath } from './apply.js';
 
 export interface PluginLocalSkill {
@@ -113,21 +114,4 @@ function withFrontmatterDescriptionHeader(
     description,
   ].join('\n');
   return `${summary}\n\n${bodyOnly}`;
-}
-
-function readSkillFrontmatterDescription(raw: string): string | null {
-  if (!raw.startsWith('---')) return null;
-  const closeIdx = raw.indexOf('\n---', 3);
-  if (closeIdx === -1) return null;
-  const frontmatter = raw.slice(3, closeIdx);
-  // Grab the `description:` field, tolerating quoted / unquoted values and
-  // multi-line YAML block scalars folded onto the next line. YAML libs live
-  // outside this module's boundary (atom-bodies + this file are the lone
-  // frontmatter readers in the daemon), so we do a targeted regex that
-  // handles the shapes bundled decks actually use.
-  const match =
-    /(^|\n)description\s*:\s*(?:"([^"]+)"|'([^']+)'|([^\n]+))/u.exec(frontmatter);
-  if (!match) return null;
-  const value = (match[2] ?? match[3] ?? match[4] ?? '').trim();
-  return value || null;
 }

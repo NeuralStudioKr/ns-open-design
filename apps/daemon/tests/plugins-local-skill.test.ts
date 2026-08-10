@@ -149,6 +149,38 @@ describe('loadPluginLocalSkill', () => {
     }
   });
 
+  it('prepends YAML block-literal frontmatter descriptions (Zhangzara / description: |)', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'od-plugin-local-skill-'));
+    try {
+      const skillPath = path.join(dir, 'SKILL.md');
+      await writeFile(
+        skillPath,
+        [
+          '---',
+          'name: html-ppt-zhangzara-coral',
+          'description: |',
+          '  Coral — Cream and coral on near-black, set in oversized Bebas Neue.',
+          '  Warm-graphic editorial deck for fashion / beauty / F&B.',
+          '---',
+          '',
+          '# Coral',
+          '',
+          '1. Copy from the matching template folder.',
+        ].join('\n'),
+        'utf8',
+      );
+      const manifest = manifestWithSkills([{ path: './SKILL.md' }]);
+      const local = await loadPluginLocalSkill(pluginRecord(dir, manifest));
+      expect(local).not.toBeNull();
+      expect(local!.body).toContain('## Visual summary');
+      expect(local!.body).toContain('Cream and coral on near-black');
+      expect(local!.body).toContain('Bebas Neue');
+      expect(local!.body).not.toMatch(/## Visual summary \(from template frontmatter\)\n\n\|/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('prepends the frontmatter description as a visual-summary header so deck templates keep their visual contract', async () => {
     // Regression: bundled deck templates (Hermes cyber terminal, Graphify
     // dark graph, etc.) put the concrete visual spec — palette hex codes,

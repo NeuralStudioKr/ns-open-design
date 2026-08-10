@@ -1,4 +1,5 @@
 import type { InstalledPluginRecord, PluginManifest } from '@open-design/contracts';
+import { readSkillFrontmatterDescription } from '@open-design/contracts';
 
 import { getInstalledPlugin } from '../state/projects';
 import { isTeamverEmbedMode } from './designApiBase';
@@ -35,34 +36,23 @@ function stripFrontmatter(raw: string): string {
   return raw.slice(closeIdx + 4).replace(/^\r?\n/, '');
 }
 
-function readFrontmatterDescription(raw: string): string | null {
-  if (!raw.startsWith('---')) return null;
-  const closeIdx = raw.indexOf('\n---', 3);
-  if (closeIdx === -1) return null;
-  const frontmatter = raw.slice(3, closeIdx);
-  const match =
-    /(^|\n)description\s*:\s*(?:"([^"]+)"|'([^']+)'|([^\n]+))/u.exec(frontmatter);
-  if (!match) return null;
-  const value = (match[2] ?? match[3] ?? match[4] ?? '').trim();
-  return value || null;
-}
-
 /**
  * Mirror of the daemon-side `withFrontmatterDescriptionHeader` in
  * `apps/daemon/src/plugins/local-skill.ts`. Bundled deck templates
- * (Hermes cyber terminal, Graphify dark graph, etc.) put the visual
- * spec — palette hex codes, typography, motif — in the frontmatter
- * `description`. The body under the frontmatter is meta-instructions
- * that reference companion files not mounted at runtime. Without this
- * prepend, BYOK / API-mode compose loses the visual contract for those
- * templates and the deck comes back looking generic.
+ * (Hermes cyber terminal, Graphify dark graph, Zhangzara, etc.) put the
+ * visual spec — palette hex codes, typography, motif — in the frontmatter
+ * `description` (often as a YAML `description: |` block scalar). The body
+ * under the frontmatter is meta-instructions that reference companion
+ * files not mounted at runtime. Without this prepend, BYOK / API-mode
+ * compose loses the visual contract for those templates and the deck
+ * comes back looking like the default simple-deck.
  */
 function withFrontmatterDescriptionHeader(
   bodyOnly: string,
   raw: string,
   manifest: PluginManifest | undefined,
 ): string {
-  const description = readFrontmatterDescription(raw)
+  const description = readSkillFrontmatterDescription(raw)
     ?? (typeof manifest?.description === 'string' ? manifest.description.trim() : '');
   if (!description) return bodyOnly;
   if (bodyOnly.includes(description)) return bodyOnly;

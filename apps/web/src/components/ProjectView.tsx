@@ -161,6 +161,7 @@ import {
   selectedDeckTemplateMetadata,
   wrapSelectedDeckTemplateSkillBody,
 } from '../runtime/selected-deck-template';
+import { CANVAS_CREATE_SLIDES_PLUGIN_ID } from '../teamver/canvasSlideLaunch';
 import {
   anonymizeArtifactId,
   artifactKindToTracking,
@@ -2302,6 +2303,23 @@ function saveChatPanelWidth(width: number): void {
   } catch {
     // localStorage can be unavailable in hardened browser contexts.
   }
+}
+
+/** Reattach design-template / skill registry description lost at frontmatter strip. */
+function prependSkillDetailVisualSummary(
+  body: string,
+  description: string | null | undefined,
+): string {
+  const trimmedBody = body.trim();
+  const desc = typeof description === 'string' ? description.trim() : '';
+  if (!trimmedBody || !desc) return trimmedBody;
+  if (
+    trimmedBody.includes('## Visual summary (from template frontmatter)')
+    || trimmedBody.includes(desc)
+  ) {
+    return trimmedBody;
+  }
+  return `## Visual summary (from template frontmatter)\n\n${desc}\n\n${trimmedBody}`;
 }
 
 function autoSendFirstMessageKey(projectId: string): string {
@@ -5597,24 +5615,41 @@ export function ProjectView({
         skillName = selectedTemplate.title ?? skillName;
         skillMode = 'deck';
       } else {
-        const summary =
-          skills.find((s) => s.id === selectedTemplate.id) ??
-          designTemplates.find((s) => s.id === selectedTemplate.id);
-        skillName = selectedTemplate.title ?? summary?.name;
-        skillMode = summary?.mode ?? 'deck';
-        const detail =
-          (await fetchSkill(selectedTemplate.id)) ??
-          (await fetchDesignTemplate(selectedTemplate.id));
-        if (detail) {
-          skillBody = detail.body;
-          pluginSkillCache.current.set(selectedTemplate.id, detail.body);
+        // Picker ids are plugin install ids (`example-html-ppt-…`). Prefer the
+        // plugin-local SKILL (with frontmatter visual summary) before the
+        // design-template registry, whose body strips frontmatter without
+        // reattaching the palette/type contract.
+        const local = await fetchPluginLocalSkill(selectedTemplate.id);
+        if (local) {
+          skillBody = local.body;
+          skillName = selectedTemplate.title ?? local.name;
+          skillMode = 'deck';
+          pluginSkillCache.current.set(selectedTemplate.id, local.body);
         } else {
-          const local = await fetchPluginLocalSkill(selectedTemplate.id);
-          if (local) {
-            skillBody = local.body;
-            skillName = selectedTemplate.title ?? local.name;
-            skillMode = 'deck';
-            pluginSkillCache.current.set(selectedTemplate.id, local.body);
+          const bareDesignTemplateId = selectedTemplate.id.startsWith('example-')
+            ? selectedTemplate.id.slice('example-'.length)
+            : null;
+          const summary =
+            skills.find((s) => s.id === selectedTemplate.id) ??
+            designTemplates.find((s) => s.id === selectedTemplate.id) ??
+            (bareDesignTemplateId
+              ? designTemplates.find((s) => s.id === bareDesignTemplateId)
+              : undefined);
+          skillName = selectedTemplate.title ?? summary?.name;
+          skillMode = summary?.mode ?? 'deck';
+          const detail =
+            (await fetchSkill(selectedTemplate.id)) ??
+            (await fetchDesignTemplate(selectedTemplate.id)) ??
+            (bareDesignTemplateId
+              ? await fetchDesignTemplate(bareDesignTemplateId)
+              : null);
+          if (detail) {
+            const detailBody = prependSkillDetailVisualSummary(
+              detail.body,
+              detail.description,
+            );
+            skillBody = detailBody;
+            pluginSkillCache.current.set(selectedTemplate.id, detailBody);
           }
         }
       }
@@ -5732,7 +5767,22 @@ export function ProjectView({
       );
     }
     const secondary = secondaryScenarioSkillBody?.trim();
-    if (skillBody?.trim() && secondary && !skillBody.includes(secondary)) {
+    // Teamver slide-only BYOK: never splice the default scenario SKILL
+    // (example-simple-deck) into the selected visual template body. That
+    // append lived under `## Selected deck template — MUST MATCH`, so the
+    // model treated Simple Deck's light/dark hero rhythm as the visual
+    // contract ("기본 템플릿이 이용되고 있다") even when the picked
+    // template had loaded. Compact deck framework already covers structure.
+    const omitSecondaryScenarioForSelectedTemplate =
+      Boolean(selectedTemplate)
+      && slideOnlyMvp
+      && config.mode === 'api';
+    if (
+      skillBody?.trim()
+      && secondary
+      && !skillBody.includes(secondary)
+      && !omitSecondaryScenarioForSelectedTemplate
+    ) {
       const secondaryName = secondaryScenarioSkillName?.trim() || 'scenario';
       skillBody += `\n\n---\n\n## Composed skill — ${secondaryName}\n\n${secondary}`;
     }
@@ -11956,7 +12006,25 @@ export function ProjectView({
     }
     clearAutoSendSession(project.id);
     autoSendAttachmentsRef.current = [];
-    void handleSend(seed, attachments, []);
+    // Home Canvas/Drive → create pins selectedDeckTemplate* on project
+    // metadata, but also pass them on this-turn meta so the first BYOK
+    // compose cannot lose the pick if React state is still settling.
+    const selected = selectedDeckTemplateMetadata(project.metadata);
+    void handleSend(seed, attachments, [], {
+      skipDiscoveryBrief:
+        project.metadata?.skipDiscoveryBrief === true || Boolean(selected),
+      ...(selected
+        ? {
+            selectedDeckTemplateId: selected.id,
+            selectedDeckTemplateTitle: selected.title,
+            skillIds: [selected.id],
+            context: {
+              pluginIds: [CANVAS_CREATE_SLIDES_PLUGIN_ID],
+              skillIds: [selected.id],
+            },
+          }
+        : {}),
+    });
   }, [
     activeConversationId,
     messagesInitialized,

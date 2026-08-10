@@ -177,8 +177,10 @@ describe("ProjectView message loading", () => {
     expect(composeBlock).toContain("primaryDeckSkillId");
     expect(composeBlock).toContain("pluginIdForLocalSkill !== primaryDeckSkillId");
     expect(composeBlock).toContain("secondaryScenarioSkillBody");
+    expect(composeBlock).toContain("omitSecondaryScenarioForSelectedTemplate");
     expect(composeBlock).toContain("shouldWrapSelectedTemplate");
     expect(composeBlock).toContain("await fetchPluginLocalSkill(pluginIdForLocalSkill)");
+    expect(composeBlock).toContain("fetchPluginLocalSkill(selectedTemplate.id)");
 
     const callStart = source.indexOf("const effectiveSkillId = resolveDeckTemplateSkillId(project.metadata, meta)");
     expect(callStart).toBeGreaterThan(0);
