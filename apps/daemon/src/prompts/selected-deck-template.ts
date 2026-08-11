@@ -47,6 +47,9 @@ export function wrapSelectedDeckTemplateSkillBody(
     "If an active design system is also present, use it only as secondary brand",
     "context; do not silently replace this template's visual language with the",
     'design system default.',
+    'Do not substitute drawn template motifs with emoji or generic Unicode',
+    'symbols. If the preview uses SVG daisies, stars, stickers, badges, frames,',
+    'or chunky CSS borders, reproduce those with SVG/CSS/HTML shapes.',
     '',
     '--- Template specification follows ---',
     '',
@@ -62,6 +65,7 @@ export function selectedDeckTemplateTitleStub(templateTitle: string): string {
     "The user explicitly picked this template but its full specification could not be loaded on this run.",
     "Match this template's visible style as closely as your prior knowledge of it allows and infer palette / typography / layout tokens from the title if unknown.",
     "Do not default to a neutral dark/light deck if you have any signal about this template's identity.",
+    "Do not replace template motif cues with emoji; approximate them with CSS/SVG/HTML shapes.",
   ].join('\n');
 }
 

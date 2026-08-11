@@ -25,6 +25,10 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toContain('#7ECDC0');
     expect(kit).toContain('Fredoka One');
     expect(kit).toContain('Quicksand');
+    expect(kit).toContain('Decoration CSS');
+    expect(kit).toContain('--shadow');
+    expect(kit).toContain('Motif sprites');
+    expect(kit).toContain('Do not invent emoji flowers');
     expect(kit).toContain('Do NOT replace them with an active design-system palette');
     // Hard anti-emoji rules must appear (not truncated away).
     expect(kit).toMatch(/Forbidden motif substitutes/i);

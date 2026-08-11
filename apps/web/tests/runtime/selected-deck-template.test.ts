@@ -135,6 +135,7 @@ describe('selected-deck-template runtime helpers', () => {
     const wrapped = wrapSelectedDeckTemplateSkillBody('body', 'Hermes');
     expect(wrapped).toContain('Template: Hermes');
     expect(wrapped).toContain('body');
+    expect(wrapped).toContain('Do not substitute drawn template motifs with emoji');
   });
 
   it('does not invent pluginIds when enriching a send with no context', () => {

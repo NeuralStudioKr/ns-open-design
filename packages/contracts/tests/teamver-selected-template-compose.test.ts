@@ -117,6 +117,8 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     expect(prompt).toContain('## Template visual kit (from example.html)');
     expect(prompt).toContain('#F5F0E6');
     expect(prompt).toContain('Fredoka One');
+    expect(prompt).toContain('Motif sprites');
+    expect(prompt).toContain('Do not invent emoji flowers');
     expect(prompt).toContain('SECONDARY — brand context only');
     expect(prompt).toContain('Never turn a cheerful pastel / cream template into a dark Neutral Modern gradient');
     expect(prompt).toContain('Selected deck template visual — READ LAST');
