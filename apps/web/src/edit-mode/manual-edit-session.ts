@@ -21,9 +21,27 @@ export function manualEditPatchBaseSource(input: {
   return input.liveSource;
 }
 
-/** Disk history-confirm races our own save; trust the frozen session while editing. */
-export function shouldSkipManualEditHistoryConfirm(manualEditMode: boolean): boolean {
-  return manualEditMode;
+/**
+ * Disk history-confirm races our own save; trust the frozen session while editing.
+ *
+ * When warm tip HTML already differs from the save base / authored buffer,
+ * do NOT skip — tip advance must run confirm tip≠expected gates (기획 50).
+ */
+export function shouldSkipManualEditHistoryConfirm(
+  manualEditMode: boolean,
+  options?: {
+    expectedSource?: string | null;
+    tipContent?: string | null;
+    authoredSource?: string | null;
+  },
+): boolean {
+  if (!manualEditMode) return false;
+  const tip = options?.tipContent;
+  const expected = options?.expectedSource;
+  if (tip != null && expected != null && tip !== expected) return false;
+  const authored = options?.authoredSource;
+  if (tip != null && authored != null && tip !== authored) return false;
+  return true;
 }
 
 /** Hold disk refetches from clobbering the frozen canvas while edit mode is on. */

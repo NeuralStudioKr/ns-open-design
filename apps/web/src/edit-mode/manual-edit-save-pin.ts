@@ -108,6 +108,77 @@ export function preferManualEditPinnedSourceOverLive(
 }
 
 /**
+ * When warm tip already differs from the pin, paint tip and clear the pin —
+ * even if live/disk candidate is still the pre-tip buffer (liveHtml lag).
+ */
+export function preferManualEditTipOverPinnedSave(
+  pinned: ManualEditSourcePin | null | undefined,
+  tipContent: string | null | undefined,
+  now: number = Date.now(),
+): string | null {
+  if (!isManualEditSourcePinActive(pinned, now) || !pinned) return null;
+  if (tipContent == null || tipContent === pinned.source) return null;
+  return tipContent;
+}
+
+export type ManualEditPinTipResolveResult = {
+  source: string | null;
+  clearPin: boolean;
+};
+
+/**
+ * Resolve a live/disk candidate against save pin + warm tip.
+ *
+ * - Tip≠pin → paint tip, clear pin (candidate may still be stale).
+ * - Classic tip yield when candidate===tip≠pin.
+ * - Otherwise prefer pin over lagging candidate.
+ * - `preferTipWhenCandidateLags` (disk): with no pin, paint tip over lagging GET.
+ *   Leave false for liveHtml so streaming tokens are not blocked by tip cache.
+ */
+export function resolveManualEditSourceAgainstPinAndTip(input: {
+  pinned: ManualEditSourcePin | null | undefined;
+  candidate: string | null;
+  tipContent: string | null | undefined;
+  now?: number;
+  preferTipWhenCandidateLags?: boolean;
+}): ManualEditPinTipResolveResult {
+  const now = input.now ?? Date.now();
+  const tipOverPin = preferManualEditTipOverPinnedSave(
+    input.pinned,
+    input.tipContent,
+    now,
+  );
+  if (tipOverPin != null) {
+    return { source: tipOverPin, clearPin: true };
+  }
+  if (shouldReleaseManualEditSavePinForTip(
+    input.pinned,
+    input.candidate,
+    input.tipContent,
+    now,
+  )) {
+    return { source: input.candidate, clearPin: true };
+  }
+  const preferred = preferManualEditPinnedSource(
+    input.pinned,
+    input.candidate,
+    now,
+    input.tipContent,
+  );
+  if (preferred != null) {
+    return { source: preferred, clearPin: false };
+  }
+  if (
+    input.preferTipWhenCandidateLags
+    && input.tipContent != null
+    && (input.candidate == null || input.candidate !== input.tipContent)
+  ) {
+    return { source: input.tipContent, clearPin: false };
+  }
+  return { source: input.candidate, clearPin: false };
+}
+
+/**
  * History confirm fetches disk before undo/redo/next edit. If that GET is
  * still the pre-write snapshot while `expectedSource` is our local save,
  * trust the local buffer instead of wiping history / blocking the edit.

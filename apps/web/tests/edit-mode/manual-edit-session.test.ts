@@ -36,6 +36,26 @@ describe('manual edit session', () => {
     expect(shouldSkipManualEditHistoryConfirm(false)).toBe(false);
   });
 
+  it('does not skip history confirm in edit mode when tip is warmer than save base', () => {
+    const tip = '<html>tip</html>';
+    const base = '<html>save-base</html>';
+    expect(shouldSkipManualEditHistoryConfirm(true, {
+      expectedSource: base,
+      tipContent: tip,
+      authoredSource: base,
+    })).toBe(false);
+    expect(shouldSkipManualEditHistoryConfirm(true, {
+      expectedSource: tip,
+      tipContent: tip,
+      authoredSource: tip,
+    })).toBe(true);
+    expect(shouldSkipManualEditHistoryConfirm(true, {
+      expectedSource: base,
+      tipContent: tip,
+      authoredSource: tip,
+    })).toBe(false);
+  });
+
   it('holds disk preview refresh while the freeze is active', () => {
     expect(shouldHoldDiskPreviewDuringManualEdit(true, '<html/>')).toBe(true);
     expect(shouldHoldDiskPreviewDuringManualEdit(true, null)).toBe(false);

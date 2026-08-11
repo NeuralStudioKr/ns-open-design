@@ -315,9 +315,7 @@ import {
   manualEditHistoryConfirmCanSkipDiskFetch,
   manualEditHistoryConfirmTrustsLocal,
   isManualEditSourcePinActive,
-  preferManualEditPinnedSource,
-  preferManualEditPinnedSourceOverLive,
-  shouldReleaseManualEditSavePinForTip,
+  resolveManualEditSourceAgainstPinAndTip,
   tipContentForManualEditSavePin,
   type ManualEditSourcePin,
 } from '../edit-mode/manual-edit-save-pin';
@@ -366,6 +364,7 @@ import {
   buildManualEditStylePatchesForTargets,
   mergeInspectorStylesForTargets,
   mixedKeysForPendingStyleDraft,
+  planManualEditMultiInspectorReseed,
   manualEditSelectionIdsEqual,
   nextManualEditSelectionIds,
   resolveManualEditTargetsByIds,
@@ -5495,17 +5494,12 @@ function HtmlViewer({
       if (pinned?.source) {
         const stack = revisionStackRef.current;
         const activeSeq = getActiveRevisionSequence(projectId, file.name);
-        const tipRevision = (
-          activeSeq != null
-            ? stack.revisions.find((revision) => revision.sequence === activeSeq)
-            : null
-        )
-          ?? stack.revisions.find((revision) => revision.id === stack.headRevisionId)
-          ?? stack.revisions.at(-1)
-          ?? null;
-        const tipCached = tipRevision
-          ? getRevisionContentCache(projectId, file.name, tipRevision.id)
-          : null;
+        // activeSeq miss → null (no HEAD fallback) so cold tip remount can adopt.
+        const tipCached = tipContentForManualEditSavePin(
+          stack,
+          activeSeq,
+          (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
+        );
         const activeSeqMissingFromStack = activeSeq != null
           && !stack.revisions.some((revision) => revision.sequence === activeSeq);
         if (tipCached != null && tipCached !== pinned.source) {
@@ -5513,7 +5507,7 @@ function HtmlViewer({
           manualEditPinnedSourceRef.current = null;
         } else if (activeSeqMissingFromStack) {
           // Tip seq advanced but stack/cache still cold — remount so refresh
-          // can adopt; pin stays so preferManualEditPinnedSource guards stale GET.
+          // can adopt; pin stays so resolveManualEditSourceAgainstPinAndTip guards stale GET.
         } else {
           rememberStablePreviewSource(projectId, file.name, pinned.source);
           // Active pin owns the painted frame — adopt pin if paint drifted;
@@ -6153,20 +6147,18 @@ function HtmlViewer({
         getActiveRevisionSequence(projectId, file.name),
         (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
       );
-      if (shouldReleaseManualEditSavePinForTip(
-        manualEditPinnedSourceRef.current,
-        accepted,
+      // Tip≠pin paints tip even when liveHtml is still the pre-tip buffer.
+      const resolvedLive = resolveManualEditSourceAgainstPinAndTip({
+        pinned: manualEditPinnedSourceRef.current,
+        candidate: accepted,
         tipContent,
-      )) {
+        // Do not prefer tip over streaming live when pin is inactive.
+        preferTipWhenCandidateLags: false,
+      });
+      if (resolvedLive.clearPin) {
         manualEditPinnedSourceRef.current = null;
       }
-      const pinnedOverLive = preferManualEditPinnedSourceOverLive(
-        manualEditPinnedSourceRef.current,
-        accepted,
-        Date.now(),
-        tipContent,
-      );
-      const nextSource = pinnedOverLive ?? accepted;
+      const nextSource = resolvedLive.source ?? accepted;
       // Keep the pin after a matching fetch — a later stale GET in the same
       // session must still lose to history-confirm / prefer-pin.
       const contentUnchanged = sourceRef.current === nextSource;
@@ -6390,26 +6382,27 @@ function HtmlViewer({
           (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
           activeTipResolvedHtml,
         );
-        if (shouldReleaseManualEditSavePinForTip(
-          manualEditPinnedSourceRef.current,
-          text,
+        const resolvedDisk = resolveManualEditSourceAgainstPinAndTip({
+          pinned: manualEditPinnedSourceRef.current,
+          candidate: text,
           tipContent,
-        )) {
+          // Disk: active tip cache wins over lagging GET / missing stack tip.
+          preferTipWhenCandidateLags: true,
+        });
+        if (resolvedDisk.clearPin) {
           manualEditPinnedSourceRef.current = null;
         }
-        const pinnedPreferred = preferManualEditPinnedSource(
-          manualEditPinnedSourceRef.current,
-          text,
-          Date.now(),
-          tipContent,
-        );
-        if (pinnedPreferred != null) {
-          if (sourceRef.current !== pinnedPreferred) {
-            setSource(pinnedPreferred);
-            sourceRef.current = pinnedPreferred;
-            lastStablePreviewSourceRef.current = pinnedPreferred;
-            exportHtmlSnapshotGateRef.current = pinnedPreferred;
-            rememberStablePreviewSource(projectId, file.name, pinnedPreferred);
+        // Tip yield / pin prefer — paint before edit-mode disk hold.
+        if (
+          resolvedDisk.source != null
+          && (resolvedDisk.clearPin || resolvedDisk.source !== text)
+        ) {
+          if (sourceRef.current !== resolvedDisk.source) {
+            setSource(resolvedDisk.source);
+            sourceRef.current = resolvedDisk.source;
+            lastStablePreviewSourceRef.current = resolvedDisk.source;
+            exportHtmlSnapshotGateRef.current = resolvedDisk.source;
+            rememberStablePreviewSource(projectId, file.name, resolvedDisk.source);
           }
           clearPreviewSourceWall();
           setSourceLoadFailed(false);
@@ -10414,18 +10407,21 @@ function HtmlViewer({
     revertManualEditPendingStylePreview(pending, parsedDoc, base);
     const selectedIds = selectedManualEditTargetIdsRef.current;
     if (selectedIds.length > 1) {
-      const refreshed = resolveManualEditTargetsByIds(selectedIds, manualEditTargets);
-      const { styles, mixedKeys } = mergeInspectorStylesForTargets(
-        refreshed,
-        (id) => {
-          const target = refreshed.find((item) => item.id === id) ?? null;
+      const reseed = planManualEditMultiInspectorReseed({
+        selectedIds,
+        readStyles: (id) => {
+          const target = resolveManualEditTargetsByIds([id], manualEditTargets)[0] ?? null;
           return target
             ? inspectorManualEditStyles(target, base, parsedDoc)
             : readManualEditStyles(base, id, {}, parsedDoc);
         },
-      );
-      setManualEditMixedStyleKeys(mixedKeys);
-      setManualEditDraft((current) => ({ ...current, styles, fullSource: base }));
+      });
+      setManualEditMixedStyleKeys(reseed.mixedKeys);
+      setManualEditDraft((current) => ({
+        ...current,
+        styles: reseed.styles ?? current.styles,
+        fullSource: base,
+      }));
     } else if (selectedManualEditTargetRef.current) {
       const sourceStyles = inspectorManualEditStyles(
         selectedManualEditTargetRef.current,
@@ -10757,16 +10753,31 @@ function HtmlViewer({
       // Do not pin `baseSource` before history confirm — that made
       // `manualEditHistoryConfirmTrustsLocal` always trust local and skip real
       // external-change detection. Pin only after a successful revision save.
-      if (
-        !shouldSkipManualEditHistoryConfirm(manualEditMode)
-        && !(await confirmManualEditHistorySource(
-          baseSource,
-          embedUiLabel(
-            'The file changed outside manual edit mode. Refreshing before applying manual edits.',
-            '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
-          ),
-        ))
-      ) return false;
+      // Tip≠expected forces confirm even in edit mode (기획 50 tip advance).
+      {
+        const tipForConfirm = tipContentForManualEditSavePin(
+          revisionStackRef.current,
+          getActiveRevisionSequence(projectId, file.name),
+          (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
+        );
+        const authoredForConfirm = manualEditPinnedSourceRef.current?.source
+          ?? lastStablePreviewSourceRef.current
+          ?? sourceRef.current;
+        if (
+          !shouldSkipManualEditHistoryConfirm(manualEditMode, {
+            expectedSource: baseSource,
+            tipContent: tipForConfirm,
+            authoredSource: authoredForConfirm,
+          })
+          && !(await confirmManualEditHistorySource(
+            baseSource,
+            embedUiLabel(
+              'The file changed outside manual edit mode. Refreshing before applying manual edits.',
+              '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
+            ),
+          ))
+        ) return false;
+      }
       revisionSyncSuppressRef.current = true;
       // Do not echo `file.artifactManifest` on manual-edit pushes. Style/text
       // saves never update the sidecar, and a stale client manifest (empty
@@ -10962,16 +10973,31 @@ function HtmlViewer({
         );
         return false;
       }
-      if (
-        !shouldSkipManualEditHistoryConfirm(manualEditMode)
-        && !(await confirmManualEditHistorySource(
-          baseSource,
-          embedUiLabel(
-            'The file changed outside manual edit mode. Refreshing before applying manual edits.',
-            '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
-          ),
-        ))
-      ) return false;
+      // Tip≠expected forces confirm even in edit mode (기획 50 tip advance).
+      {
+        const tipForConfirm = tipContentForManualEditSavePin(
+          revisionStackRef.current,
+          getActiveRevisionSequence(projectId, file.name),
+          (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
+        );
+        const authoredForConfirm = manualEditPinnedSourceRef.current?.source
+          ?? lastStablePreviewSourceRef.current
+          ?? sourceRef.current;
+        if (
+          !shouldSkipManualEditHistoryConfirm(manualEditMode, {
+            expectedSource: baseSource,
+            tipContent: tipForConfirm,
+            authoredSource: authoredForConfirm,
+          })
+          && !(await confirmManualEditHistorySource(
+            baseSource,
+            embedUiLabel(
+              'The file changed outside manual edit mode. Refreshing before applying manual edits.',
+              '수동 편집 모드 밖에서 파일이 변경되었습니다. 편집 적용 전에 새로고침합니다.',
+            ),
+          ))
+        ) return false;
+      }
       revisionSyncSuppressRef.current = true;
       const truncateAfter = truncateAfterSequenceForStack(revisionStackRef.current);
       const saved = await pushProjectFileRevision(projectId, file.name, {
@@ -11041,38 +11067,19 @@ function HtmlViewer({
       const selectedIdsAfterBatch = selectedManualEditTargetIdsRef.current;
       if (selectedIdsAfterBatch.length > 1) {
         const batchDoc = parseManualEditSource(result.source);
-        const idTargets = selectedIdsAfterBatch.map((id) => ({ id }));
-        const readSourceStyles = (id: string) => readManualEditStyles(
-          result.source,
-          id,
-          {},
-          batchDoc,
-        );
-        if (concurrentPending) {
-          // Keep concurrent draft.styles; refresh Mixed excluding draft keys.
-          setManualEditMixedStyleKeys(mixedKeysForPendingStyleDraft(
-            idTargets,
-            readSourceStyles,
-            concurrentPending.styles,
-            { perTargetStyles: concurrentPending.perTargetStyles },
-          ));
-          setManualEditDraft((current) => (
-            current.fullSource === result.source
+        const reseed = planManualEditMultiInspectorReseed({
+          selectedIds: selectedIdsAfterBatch,
+          readStyles: (id) => readManualEditStyles(result.source, id, {}, batchDoc),
+          concurrentPending,
+        });
+        setManualEditMixedStyleKeys(reseed.mixedKeys);
+        setManualEditDraft((current) => (
+          reseed.styles
+            ? { ...current, styles: reseed.styles, fullSource: result.source }
+            : (current.fullSource === result.source
               ? current
-              : { ...current, fullSource: result.source }
-          ));
-        } else {
-          const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
-            idTargets,
-            readSourceStyles,
-          );
-          setManualEditMixedStyleKeys(mixedKeys);
-          setManualEditDraft((current) => ({
-            ...current,
-            styles: mergedStyles,
-            fullSource: result.source,
-          }));
-        }
+              : { ...current, fullSource: result.source })
+        ));
       } else if (!concurrentPending) {
         setManualEditMixedStyleKeys(new Set());
         setManualEditDraft((current) => (

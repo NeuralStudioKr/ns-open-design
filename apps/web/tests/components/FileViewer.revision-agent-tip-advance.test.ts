@@ -99,13 +99,18 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('activeSeqMissingFromStack');
     expect(fileViewer).toContain('tipContentForManualEditSavePin');
     expect(fileViewer).not.toContain('readTipContentForManualEditSavePin');
-    expect(fileViewer).toContain('shouldReleaseManualEditSavePinForTip');
+    expect(fileViewer).toContain('resolveManualEditSourceAgainstPinAndTip');
+    expect(fileViewer).toContain('preferTipWhenCandidateLags: false');
+    expect(fileViewer).toContain('preferTipWhenCandidateLags: true');
+    expect(fileViewer).toContain('Tip yield / pin prefer — paint before edit-mode disk hold');
     expect(fileViewer).toContain('activeTipResolvedHtml');
     expect(fileViewer).toContain('Cold tip cache: snapshot/cache resolve IS tip content');
     expect(fileViewer).toContain('manualEditHistoryConfirmTrustsLocal(');
     expect(fileViewer).toContain('manualEditHistoryConfirmCanSkipDiskFetch(');
     expect(fileViewer).toContain('Tip≠expected forces GET');
+    expect(fileViewer).toContain('Tip≠expected forces confirm even in edit mode');
     expect(fileViewer).toContain('no false "external change"');
+    expect(fileViewer).toContain('planManualEditMultiInspectorReseed');
     expect(fileViewer).toContain('styleDraftPending');
     expect(fileViewer).toContain('Pending style draft owns the inspector');
     expect(fileViewer).toContain('Pending styles own the panel — refresh field identity only');
@@ -115,7 +120,7 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Multi-select: recompute mixedKeys from saved source');
     expect(fileViewer).toContain('concurrentPending');
     expect(fileViewer).toContain('Source-only styles');
-    expect(fileViewer).toContain('Keep concurrent draft.styles');
+    expect(fileViewer).toContain('planManualEditMultiInspectorReseed');
     expect(fileViewer).toContain('selectedTargetsIdentityChanged');
     expect(fileViewer).toContain('manualEditSelectedIdentityFingerprintRef');
     expect(fileViewer).toContain("from '../edit-mode/manual-edit-targets-identity'");
@@ -137,7 +142,7 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('current.fullSource === contentToSave ? current');
     expect(fileViewer).toContain('Geometry-only rebroadcasts for the same id skip React churn');
     expect(fileViewer).toContain('const contentUnchanged = sourceRef.current === nextSource');
-    expect(fileViewer).toContain('if (sourceRef.current !== pinnedPreferred)');
+    expect(fileViewer).toContain('if (sourceRef.current !== resolvedDisk.source)');
     expect(fileViewer).toContain('if (sourceRef.current !== accepted)');
     expect(fileViewer).toContain('Idle remasure only: reject wild jumps');
     expect(fileViewer).toContain('manualEditGeometryIsWildJump');

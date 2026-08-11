@@ -9,6 +9,7 @@ import {
   collectPendingManualEditStyleDraftKeys,
   mixedKeysForPendingStyleDraft,
   nextManualEditSelectionIds,
+  planManualEditMultiInspectorReseed,
   shouldFlushManualEditStylesOnSelectionBoundary,
 } from '../../src/edit-mode/manual-edit-multi-select';
 import { emptyManualEditStyles, type ManualEditTarget } from '../../src/edit-mode/types';
@@ -106,6 +107,28 @@ describe('manual-edit-multi-select', () => {
       styles: { color: '#fff' },
       perTargetStyles: { title: { left: '10px' } },
     }).has('left')).toBe(true);
+  });
+
+  it('plans multi inspector reseed with concurrent pending keeping draft styles', () => {
+    const read = (id: string) => ({
+      ...emptyManualEditStyles(),
+      color: id === 'title' ? '#111111' : '#222222',
+      fontSize: '16px',
+    });
+    const full = planManualEditMultiInspectorReseed({
+      selectedIds: ['title', 'body'],
+      readStyles: read,
+    });
+    expect(full.styles?.color).toBe('');
+    expect(full.mixedKeys.has('color')).toBe(true);
+    expect(full.mixedKeys.has('fontSize')).toBe(false);
+    const concurrent = planManualEditMultiInspectorReseed({
+      selectedIds: ['title', 'body'],
+      readStyles: read,
+      concurrentPending: { styles: { color: '#ef4444' } },
+    });
+    expect(concurrent.styles).toBeNull();
+    expect(concurrent.mixedKeys.has('color')).toBe(false);
   });
 
   it('builds one set-style patch per changed target', () => {

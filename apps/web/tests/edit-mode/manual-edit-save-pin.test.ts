@@ -8,7 +8,9 @@ import {
   manualEditHistoryConfirmTrustsLocal,
   preferManualEditPinnedSource,
   preferManualEditPinnedSourceOverLive,
+  preferManualEditTipOverPinnedSave,
   resolveManualEditSavePinTipRevision,
+  resolveManualEditSourceAgainstPinAndTip,
   shouldReleaseManualEditSavePinForTip,
   tipContentForManualEditSavePin,
 } from '../../src/edit-mode/manual-edit-save-pin';
@@ -166,5 +168,37 @@ describe('manual edit save pin', () => {
     expect(manualEditHistoryConfirmTrustsLocal(saved, null, null, 1_000 + 100, saved, tip)).toBe(false);
     // Authored already at tip — stale expected must not win.
     expect(manualEditHistoryConfirmTrustsLocal(saved, stale, null, 1_000 + 100, tip, tip)).toBe(false);
+  });
+
+  it('yields warm tip over pin even when live/disk candidate is still stale', () => {
+    const pinned = createManualEditSourcePin(saved, 1_000);
+    const tip = '<html><body><h1>Agent tip</h1></body></html>';
+    expect(preferManualEditTipOverPinnedSave(pinned, tip, 1_000 + 100)).toBe(tip);
+    expect(preferManualEditTipOverPinnedSave(pinned, saved, 1_000 + 100)).toBeNull();
+    // Live: tip≠pin paints tip (not stale accepted), clears pin.
+    const live = resolveManualEditSourceAgainstPinAndTip({
+      pinned,
+      candidate: stale,
+      tipContent: tip,
+      now: 1_000 + 100,
+      preferTipWhenCandidateLags: false,
+    });
+    expect(live).toEqual({ source: tip, clearPin: true });
+    // Live without pin keeps streaming candidate (do not block with tip cache).
+    expect(resolveManualEditSourceAgainstPinAndTip({
+      pinned: null,
+      candidate: stale,
+      tipContent: tip,
+      now: 1_000 + 100,
+      preferTipWhenCandidateLags: false,
+    })).toEqual({ source: stale, clearPin: false });
+    // Disk without pin prefers tip over lagging GET.
+    expect(resolveManualEditSourceAgainstPinAndTip({
+      pinned: null,
+      candidate: stale,
+      tipContent: tip,
+      now: 1_000 + 100,
+      preferTipWhenCandidateLags: true,
+    })).toEqual({ source: tip, clearPin: false });
   });
 });

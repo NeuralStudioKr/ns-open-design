@@ -126,6 +126,43 @@ export function mixedKeysForPendingStyleDraft(
   return mixedKeys;
 }
 
+export type ManualEditMultiInspectorReseedPlan = {
+  /** null → keep current draft.styles (concurrent pending owns the panel). */
+  styles: ManualEditStyles | null;
+  mixedKeys: Set<keyof ManualEditStyles>;
+};
+
+/**
+ * Plan multi-select inspector reseed after save/cancel from source styles.
+ * Concurrent pending keeps draft styles and only refreshes Mixed (excluding draft keys).
+ */
+export function planManualEditMultiInspectorReseed(input: {
+  selectedIds: readonly string[];
+  readStyles: (id: string) => ManualEditStyles;
+  concurrentPending?: {
+    styles?: Partial<ManualEditStyles> | null;
+    perTargetStyles?: Record<string, Partial<ManualEditStyles>> | null;
+  } | null;
+}): ManualEditMultiInspectorReseedPlan {
+  const idTargets = input.selectedIds.map((id) => ({ id }));
+  if (idTargets.length === 0) {
+    return { styles: emptyManualEditStyles(), mixedKeys: new Set() };
+  }
+  if (input.concurrentPending) {
+    return {
+      styles: null,
+      mixedKeys: mixedKeysForPendingStyleDraft(
+        idTargets,
+        input.readStyles,
+        input.concurrentPending.styles,
+        { perTargetStyles: input.concurrentPending.perTargetStyles },
+      ),
+    };
+  }
+  const { styles, mixedKeys } = mergeInspectorStylesForTargets(idTargets, input.readStyles);
+  return { styles, mixedKeys };
+}
+
 export function buildManualEditStylePatchesForTargets(
   baseSource: string,
   targetIds: readonly string[],
