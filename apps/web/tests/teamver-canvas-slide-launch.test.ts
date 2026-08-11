@@ -127,6 +127,12 @@ describe("canvasSlideLaunch", () => {
     expect(runPrompt).toContain("Canvas title: Onboarding");
     expect(runPrompt).toContain("[User instruction]");
     expect(runPrompt).toContain("8 slides, friendly tone for new hires.");
+    expect(runPrompt).toContain("[Selected slide template priority]");
+    expect(runPrompt).toContain("Selected template visual contract — READ LAST");
+    expect(runPrompt).toContain("Do not substitute template motifs with emoji");
+    expect(runPrompt.lastIndexOf("[Selected slide template priority]")).toBeGreaterThan(
+      runPrompt.indexOf("[User instruction]"),
+    );
     expect(stripUserVisibleQuestionFormProtocolText(runPrompt)).toBe(CANVAS_CREATE_SLIDES_PROMPT);
   });
 
@@ -150,6 +156,14 @@ describe("canvasSlideLaunch", () => {
     expect(templateBlock).toMatch(/Template palette \/ fonts \/ borders \/ motif WIN/i);
     expect(templateBlock).toMatch(/source['\u2019]s own visual styling/i);
     expect(templateBlock).toMatch(/Do NOT carry over the source['\u2019]s colors/i);
+    const priorityBlock = runPrompt.slice(runPrompt.indexOf("[Selected slide template priority]"));
+    expect(priorityBlock).toMatch(/READ LAST/i);
+    expect(priorityBlock).toMatch(/drawn CSS\/SVG motifs/i);
+    expect(priorityBlock).toMatch(/Do not substitute template motifs with emoji/i);
+    expect(priorityBlock).toMatch(/never fall back to Neutral Modern, Simple Deck/i);
+    expect(runPrompt.lastIndexOf("[Selected slide template priority]")).toBeGreaterThan(
+      runPrompt.indexOf("[Source brief]"),
+    );
   });
 
   it("keeps the weak one-liner (no [Selected slide template] block) for the default template", () => {
@@ -162,6 +176,7 @@ describe("canvasSlideLaunch", () => {
       null,
     );
     expect(runPrompt).not.toContain("[Selected slide template]");
+    expect(runPrompt).not.toContain("[Selected slide template priority]");
     expect(runPrompt).not.toContain('The user picked "기본 슬라이드 템플릿"');
   });
 
@@ -206,6 +221,11 @@ describe("canvasSlideLaunch", () => {
     expect(binding.pluginInputsPatch).toMatchObject({
       designSystem: "Hermes",
       visualTemplate: "Hermes",
+      selectedDeckTemplateId: "html-ppt-hermes",
+      selectedDeckTemplateTitle: "Hermes",
+      selectedTemplatePriorityInstruction: expect.stringContaining(
+        "Selected template visual contract",
+      ),
     });
   });
 

@@ -266,6 +266,16 @@ export function parseExplicitSlideCountFromText(
   return null;
 }
 
+function selectedSlideTemplatePriorityInstruction(title: string): string {
+  return [
+    "**Selected template visual contract — READ LAST.**",
+    `The user explicitly selected "${title}" as the deck template. This selected template is the visual source of truth and outranks the Canvas / Drive source styling, quick settings, default design systems, scenario examples, and any generic slide examples.`,
+    "Do not infer only from the template name. Use the selected template's concrete visual kit from the system prompt / local skill: exact palette, font families, border weights, shadow tokens, layout rhythm, and drawn CSS/SVG motifs.",
+    "Do not substitute template motifs with emoji or generic Unicode symbols. Reuse or approximate the template's drawn CSS/SVG motif language instead.",
+    "If the concrete kit is incomplete or temporarily unavailable, make a conservative CSS/SVG approximation of the selected template's visible preview; never fall back to Neutral Modern, Simple Deck, generic pastel circles, or source-page decorations.",
+  ].join("\n");
+}
+
 export function canvasCreateSlidesRunPrompt(
   templateTitle?: string | null,
   sourceBrief?: string | null,
@@ -291,12 +301,15 @@ export function canvasCreateSlidesRunPrompt(
       "If the source material's topic doesn't fit the template's theme (e.g. business content picked with a terminal template), restyle the content into this template's visual language anyway. Do NOT return an empty deck because of the mismatch; an imperfect visual match is better than no deck.",
     ].join("\n")
     : "";
+  const templatePriorityBlock = !isDefaultTemplate && title
+    ? `\n\n[Selected slide template priority]\n${selectedSlideTemplatePriorityInstruction(title)}`
+    : "";
   const brief = compactCanvasBriefValue(sourceBrief ?? "", 900);
   const sourceHint = brief ? `\n\n[Source brief]\n${brief}` : "";
   const user = compactCanvasBriefValue(userInstruction ?? "", 600);
   const userHint = user ? `\n\n[User instruction]\n${user}` : "";
   const quickHint = `\n\n[Quick settings]\n${canvasSlideQuickSettingsInstruction(quickSettings)}`;
-  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${templateBlock}${quickHint}${sourceHint}${userHint}`;
+  return `${CANVAS_CREATE_SLIDES_PROMPT}\n\n[Deliverable instruction]\n${CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION}${templateHint}${templateBlock}${quickHint}${sourceHint}${userHint}${templatePriorityBlock}`;
 }
 
 /** Per-turn meta so API/daemon runs compose the selected deck template into the system prompt. */
@@ -376,6 +389,10 @@ export function buildSlideOnlyDeckTemplateCreateBinding(
       ? {
           designSystem: template.title,
           visualTemplate: template.title,
+          selectedDeckTemplateId: explicitTemplateId,
+          selectedDeckTemplateTitle: template.title,
+          selectedTemplatePriorityInstruction:
+            selectedSlideTemplatePriorityInstruction(template.title),
         }
       : {},
   };
