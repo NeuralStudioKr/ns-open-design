@@ -13,7 +13,13 @@
  * `.deco` CSS + hard anti-emoji rules placed before any large cue.
  */
 
-const DEFAULT_MAX_CHARS = 5_200;
+// Raised from 5 200 to 6 800 so a real Zhangzara daisy sprite (~2 KB after
+// comment strip) can co-exist with the star, rainbow, tokens, decoration
+// CSS, and first-slide structure cue without truncating any of them. The
+// motif sprites are the single biggest anti-emoji signal we can hand the
+// model — clipping them was the reason Daisy Days kept coming back as 🌸
+// emoji clusters despite every prompt-level ban we added.
+const DEFAULT_MAX_CHARS = 6_800;
 
 function uniquePreserveOrder(values: string[]): string[] {
   const out: string[] = [];
@@ -102,16 +108,130 @@ function extractDecorationCss(html: string, budget: number): string | null {
 }
 
 function classifySvg(svg: string): 'daisy' | 'star' | 'rainbow' | 'sun' | 'cloud' | 'other' {
-  const s = svg.toLowerCase();
-  if (/rainbow|arc/.test(s) || (s.includes('stroke-linecap') && /m\d+.+\d+q/i.test(svg))) {
-    if (/rainbow/i.test(svg) || (svg.match(/path/gi) ?? []).length >= 3) return 'rainbow';
+  // Real Zhangzara Daisy Days daisy sprites are multi-petal flowers: 8+ path
+  // elements laid out radially around a center square viewBox. A "face"-shaped
+  // SVG (circle + ellipse + eyes + smile) previously slipped into the 'daisy'
+  // bucket just because it used soft-pink fill, and the model then saw no
+  // real daisy in the kit and reached for 🌸 emoji. Same for the 4-arc
+  // rainbow (wide viewBox, 4 paths, distinct RYGB colors) — earlier logic
+  // routed it to 'daisy' because mint (#8DE3B7) matched a loose palette gate.
+  const pathCount = (svg.match(/<path\b/gi) ?? []).length;
+  const circleCount = (svg.match(/<circle\b/gi) ?? []).length;
+  const ellipseCount = (svg.match(/<ellipse\b/gi) ?? []).length;
+  const hasFace = circleCount >= 2 && (ellipseCount >= 1 || /q\s*\d/i.test(svg));
+  const viewBox =
+    /viewbox\s*=\s*"([^"]+)"/i.exec(svg)?.[1]
+    ?? /viewbox\s*=\s*'([^']+)'/i.exec(svg)?.[1]
+    ?? '';
+  const [vbW = 0, vbH = 0] = viewBox
+    .trim()
+    .split(/\s+/)
+    .slice(2, 4)
+    .map((n) => Number(n) || 0);
+  const isSquareCanvas = vbW > 0 && vbH > 0 && Math.abs(vbW - vbH) / Math.max(vbW, vbH) < 0.1;
+  const isWideCanvas = vbW > 0 && vbH > 0 && vbW / vbH >= 1.25;
+  // Multi-petal daisy: 6+ petal paths radiating from a square canvas, uses
+  // the daisy petal palette (white / butter yellow / dark ink).
+  if (
+    pathCount >= 6
+    && !hasFace
+    && isSquareCanvas
+    && /#f{3,6}(?![0-9a-f])|#fcdf6c/i.test(svg)
+  ) {
+    return 'daisy';
   }
-  if (/viewbox="0 0 100 98/i.test(svg) || /star/i.test(svg)) return 'star';
-  if (/circle[^>]+r="18"|#f7c8d4|#ffcd57|#d4a5e8|#8de3b7/i.test(svg)) return 'daisy';
+  // Rainbow: wide viewBox with a small stack of concentric arc paths in
+  // 3–4 distinct pastel/warm hues (coral, butter, mint, sky).
+  if (
+    isWideCanvas
+    && pathCount >= 3
+    && pathCount <= 6
+    && /#f8635f|#fde366|#8de3b7|#85c5fe|rainbow/i.test(svg)
+  ) {
+    return 'rainbow';
+  }
+  if (/rainbow/i.test(svg)) return 'rainbow';
+  // Star: iconic 5-point star viewBox from the Zhangzara star export.
+  if (/viewbox="0 0 100 98/i.test(svg) || /\bstar\b/i.test(svg)) return 'star';
+  // Loose daisy fallback for the pastel-flower-face style ONLY when the
+  // canvas is square (single flower head) and there are no facial features.
+  if (
+    isSquareCanvas
+    && !hasFace
+    && pathCount >= 4
+    && /#f7c8d4|#ffcd57|#d4a5e8/i.test(svg)
+  ) {
+    return 'daisy';
+  }
   if (/sun|#ffcd57.*circle|circle.*#ffcd57/i.test(svg) && svg.length < 800) return 'sun';
   if (/cloud/i.test(svg)) return 'cloud';
   return 'other';
 }
+
+/**
+ * Slim an SVG down so the real Daisy Days / Zhangzara sprites can survive
+ * the sprite size gate. QuiverAI-exported SVGs ship:
+ *   - an Adobe attribution `<!-- SVG created with Arrow, by QuiverAI … -->`
+ *     comment (~60 chars each),
+ *   - a `<style>` block with `.cls-N { fill / stroke / stroke-linecap / … }`
+ *     rules,
+ *   - `<path class="cls-N">` consumers.
+ *
+ * The comment is safe to drop unconditionally. Whether to inline the class
+ * rules depends on cost: expanding every `class="cls-N"` into a full inline
+ * `style="…"` can BLOAT a 2 KB daisy to 2.6 KB because the same 100-char
+ * declaration list is duplicated across a dozen paths. Keep the `<style>`
+ * block whenever the inlined output would be larger — models can copy the
+ * whole SVG including the tiny leading `<style>` just fine.
+ */
+function inlineSvgStyleBlock(svg: string): string {
+  const withoutComments = svg.replace(/<!--[\s\S]*?-->/g, '');
+  const commentStripped = compressCss(withoutComments);
+  const styleMatch = /<style\b[^>]*>([\s\S]*?)<\/style>/i.exec(commentStripped);
+  if (!styleMatch?.[0] || !styleMatch[1]) return commentStripped;
+  const rules = new Map<string, string>();
+  for (const rule of styleMatch[1].matchAll(
+    /\.([a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g,
+  )) {
+    const cls = rule[1];
+    const decls = rule[2]
+      ?.split(';')
+      .map((d) => d.trim())
+      .filter(Boolean);
+    if (!cls || !decls || decls.length === 0) continue;
+    rules.set(cls, decls.join(';'));
+  }
+  let inlined = commentStripped.replace(styleMatch[0], '');
+  inlined = inlined.replace(/(<[^>]*?)\bclass=(?:"([^"]*)"|'([^']*)')/gi, (_match, prefix, dq, sq) => {
+    const classes = (dq ?? sq ?? '').split(/\s+/).filter(Boolean);
+    if (classes.length === 0) return prefix;
+    const style = classes
+      .map((cls: string) => rules.get(cls) ?? '')
+      .filter(Boolean)
+      .join(';');
+    if (!style) return prefix;
+    if (/\bstyle\s*=/.test(prefix)) {
+      return prefix.replace(
+        /\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/,
+        (_m: string, e1?: string, e2?: string) => `style="${style};${e1 ?? e2 ?? ''}"`,
+      );
+    }
+    return `${prefix} style="${style}"`;
+  });
+  inlined = compressCss(inlined);
+  // Keep whichever variant is smaller. Class-rule inlining loses to shared
+  // `<style>` when the same declaration list is duplicated across many paths
+  // (typical Zhangzara daisy = 12 paths sharing one 100-char rule).
+  return inlined.length < commentStripped.length ? inlined : commentStripped;
+}
+
+const SPRITE_MIN_CHARS = 80;
+// Bumped from 720 to 2400 so the real Daisy Days daisy SVG (raw ~2040 chars,
+// ~1980 chars after comment strip when keeping the shared `<style>` block)
+// can survive the sprite gate. Cat / bear face sprites at ~320 chars still
+// fit — the tightened classifier prevents them from claiming the 'daisy'
+// slot even at this ceiling.
+const SPRITE_MAX_CHARS = 2400;
 
 /**
  * Pick a few SMALL complete SVGs as pasteable motif sprites.
@@ -119,8 +239,8 @@ function classifySvg(svg: string): 'daisy' | 'star' | 'rainbow' | 'sun' | 'cloud
  */
 function extractMotifSprites(html: string, budget: number): string[] {
   const svgs = [...html.matchAll(/<svg\b[\s\S]*?<\/svg>/gi)]
-    .map((match) => compressCss(match[0] ?? ''))
-    .filter((svg) => svg.length >= 80 && svg.length <= 720);
+    .map((match) => inlineSvgStyleBlock(match[0] ?? ''))
+    .filter((svg) => svg.length >= SPRITE_MIN_CHARS && svg.length <= SPRITE_MAX_CHARS);
 
   const byKind: Partial<Record<ReturnType<typeof classifySvg>, string>> = {};
   for (const svg of svgs) {
@@ -271,7 +391,9 @@ export function extractTemplateVisualKitFromHtml(
   }
 
   used = lines.join('\n').length;
-  const spriteBudget = Math.min(1_800, Math.max(400, maxChars - used - 700));
+  // Ceiling raised so a real daisy sprite (~2 KB) fits alongside star +
+  // rainbow. The lower bound stays generous for the small structure-cue tail.
+  const spriteBudget = Math.min(3_400, Math.max(400, maxChars - used - 700));
   const sprites = extractMotifSprites(source, spriteBudget);
   if (sprites.length > 0) {
     lines.push(

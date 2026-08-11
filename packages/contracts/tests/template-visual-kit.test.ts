@@ -40,6 +40,27 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toMatch(/<svg\b[\s\S]*?<\/svg>/i);
     expect(kit).not.toMatch(/<svg\b[^>]*>[^<]*…/);
     expect(kit).toContain('use Motif sprites SVG inside .deco');
+    // The classifier must ship at least ONE real multi-petal daisy sprite,
+    // not just the small bear-face or the 4-arc rainbow. Zhangzara Daisy
+    // Days ships 10-path SVGs on a 150×150 square viewBox with white petals
+    // and a butter-yellow center. Prior classifier bugs bucketed those as
+    // non-daisy and picked the 300-char pink-face SVG instead — the model
+    // then had no real daisy to copy and fell back to 🌸 emoji.
+    expect(kit).not.toBeNull();
+    const spriteBlockStart = kit!.indexOf('### Motif sprites');
+    const spriteBlock = kit!.slice(spriteBlockStart);
+    const spriteSvgs = spriteBlock.match(/<svg\b[\s\S]*?<\/svg>/gi) ?? [];
+    expect(spriteSvgs.length).toBeGreaterThanOrEqual(2);
+    const hasRealPetalSprite = spriteSvgs.some((svg) => {
+      const pathCount = (svg.match(/<path\b/gi) ?? []).length;
+      const vb = /viewBox\s*=\s*"([^"]+)"/i.exec(svg)?.[1]?.split(/\s+/).map(Number);
+      if (!vb || vb.length < 4) return false;
+      const w = vb[2] ?? 0;
+      const h = vb[3] ?? 0;
+      const square = w > 0 && h > 0 && Math.abs(w - h) / Math.max(w, h) < 0.1;
+      return pathCount >= 6 && square;
+    });
+    expect(hasRealPetalSprite).toBe(true);
   });
 
   it('appendTemplateVisualKit is idempotent', () => {
