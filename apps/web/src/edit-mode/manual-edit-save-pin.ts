@@ -194,12 +194,15 @@ export function resolveManualEditSavePinTipRevision(
 /**
  * Warm tip revision HTML for pin tip≠ yield (active → head → tip).
  * `readContent` is the host revision content cache lookup.
+ * `coldFallback` covers snapshot/resolve when the in-memory tip cache is cold.
  */
 export function tipContentForManualEditSavePin(
   stack: ManualEditSavePinTipStack,
   activeSeq: number | null | undefined,
   readContent: (revisionId: string) => string | null,
+  coldFallback?: string | null,
 ): string | null {
   const tipRevision = resolveManualEditSavePinTipRevision(stack, activeSeq);
-  return tipRevision ? readContent(tipRevision.id) : null;
+  if (!tipRevision) return coldFallback ?? null;
+  return readContent(tipRevision.id) ?? coldFallback ?? null;
 }

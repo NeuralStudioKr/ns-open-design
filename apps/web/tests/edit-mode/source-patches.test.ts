@@ -1591,6 +1591,28 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain('same gate as DOM isSafeManualEditUrlAttrValue');
   });
 
+  it('failClosed values path uses isSafe (SMIL drop + CSS paint keep) without DOMParser', () => {
+    Reflect.deleteProperty(globalThis, 'DOMParser');
+    // SMIL nodes are failClosed-stripped entirely; values residual is isSafe-owned.
+    const smil = sanitizeManualEditFullSource([
+      '<!doctype html><html><body>',
+      '<animate attributeName="href" values="javascript:alert(1);#ok"></animate>',
+      '<set attributeName="xlink:href" values="https://evil.example/x;#f"></set>',
+      '<p data-od-id="ok">safe</p>',
+      '</body></html>',
+    ].join(''));
+    expect(smil.toLowerCase()).not.toContain('animate');
+    expect(smil.toLowerCase()).not.toContain('<set');
+    expect(smil.toLowerCase()).not.toContain('javascript');
+    expect(smil).not.toContain('evil.example');
+    expect(smil).toContain('data-od-id="ok"');
+    // Bare CSS paints on SMIL-style attrs survive isSafe when not absolute schemes.
+    expect(isSafeManualEditUrlAttrValue('values', '0;color:red;10')).toBe(true);
+    expect(isSafeManualEditUrlAttrValue('values', 'javascript:alert(1);#x')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('values', 'https://evil.example/a;#x')).toBe(false);
+    expect(sourcePatchesSource).toContain('SMIL `values` is gated by isSafeManualEditUrlAttrValue');
+  });
+
   it('rejects bare data:/blob: presentation paints and keeps named colors', () => {
     expect(sanitizeManualEditHtmlFragment('<rect fill="data:image/svg+xml,<svg></svg>" data-od-id="a" />'))
       .not.toContain('data:');

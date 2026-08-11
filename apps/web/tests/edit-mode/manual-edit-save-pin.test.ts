@@ -132,6 +132,10 @@ describe('manual edit save pin', () => {
     expect(tipContentForManualEditSavePin(stack, null, read)).toBe(tip);
     expect(tipContentForManualEditSavePin(stack, 99, read)).toBe(tip);
     expect(tipContentForManualEditSavePin({ revisions: [], headRevisionId: null }, 1, read)).toBeNull();
+    // Cold fallback when tip cache misses (active tip snapshot resolve).
+    const cold = '<html><body><h1>Cold tip</h1></body></html>';
+    expect(tipContentForManualEditSavePin(stack, 2, () => null, cold)).toBe(cold);
+    expect(tipContentForManualEditSavePin({ revisions: [], headRevisionId: null }, 1, read, cold)).toBe(cold);
   });
 
   it('tip yield × undo retention: skipDiskFetch and trustsLocal agree on tip≠expected', () => {

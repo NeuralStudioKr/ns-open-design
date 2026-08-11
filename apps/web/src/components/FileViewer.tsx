@@ -699,18 +699,6 @@ function warmRevisionListSoftCacheFromList(
   });
 }
 
-/** Warm tip revision HTML for pin tip≠ yield (active → head → tip). */
-function readTipContentForManualEditSavePin(
-  projectId: string,
-  fileName: string,
-  stack: { revisions: Array<{ id: string; sequence: number }>; headRevisionId: string | null },
-): string | null {
-  return tipContentForManualEditSavePin(
-    stack,
-    getActiveRevisionSequence(projectId, fileName),
-    (revisionId) => getRevisionContentCache(projectId, fileName, revisionId),
-  );
-}
 const MAX_CACHED_PREVIEW_VIEWPORTS = 128;
 // Grace window before the inspect hover card is torn down. Long enough to absorb
 // the async iframe mouseout (od:comment-leave) that fires when the pointer slides
@@ -6160,10 +6148,10 @@ function HtmlViewer({
     if (accepted != null) {
       // A lagging parent liveHtml token must not clobber a just-saved pin
       // (S3/lazy race + ProjectView still holding the pre-edit buffer).
-      const tipContent = readTipContentForManualEditSavePin(
-        projectId,
-        file.name,
+      const tipContent = tipContentForManualEditSavePin(
         revisionStackRef.current,
+        getActiveRevisionSequence(projectId, file.name),
+        (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
       );
       if (shouldReleaseManualEditSavePinForTip(
         manualEditPinnedSourceRef.current,
@@ -6395,11 +6383,13 @@ function HtmlViewer({
         // painting the pre-edit lastStable frame (looks like "edit didn't save").
         // When tip cache already equals fetch and differs from pin, release pin
         // so agent tips paint (preferManualEditPinnedSource tipContent yield).
-        const tipContent = readTipContentForManualEditSavePin(
-          projectId,
-          file.name,
+        // Cold tip cache: snapshot/cache resolve IS tip content for pin yield.
+        const tipContent = tipContentForManualEditSavePin(
           revisionStackRef.current,
-        ) ?? activeTipResolvedHtml;
+          getActiveRevisionSequence(projectId, file.name),
+          (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
+          activeTipResolvedHtml,
+        );
         if (shouldReleaseManualEditSavePinForTip(
           manualEditPinnedSourceRef.current,
           text,
@@ -9134,6 +9124,8 @@ function HtmlViewer({
                 base,
                 parsedDoc,
               ),
+              // Suppress Mixed on keys the user is actively drafting (59).
+              manualEditPendingStyleRef.current?.styles,
             ));
             setManualEditDraft((current) => ({
               ...current,
@@ -9289,18 +9281,18 @@ function HtmlViewer({
         const rectId = String(data.id ?? '');
         const handoffId = manualEditGeometryHandoffIdRef.current;
         const isHandoffRect = Boolean(handoffId && rectId === handoffId);
-        if (manualEditResizeSessionActiveRef.current && !isHandoffRect) return;
-
         const measured = data.ok && data.target ? data.target : null;
+        // Always complete awaiters (gesture waiters); paint path is gated below.
         if (rectId) {
           manualEditRemeasureAwaiterRef.current.complete(rectId, measured);
         }
+        // Gesture session: awaiter done; never idle remasure / wild-jump (51–53).
+        if (manualEditResizeSessionActiveRef.current && !isHandoffRect) return;
         if (!measured || isHandoffRect) return;
 
         // Idle remasure only: reject wild jumps; equal geometry skips inside apply.
-        // Gesture/handoff never reach this guard — isHandoffRect returned above,
-        // and settleManualEditGeometryHandoff calls applyManualEditMeasuredGeometry
-        // on its own path (기획 51–53).
+        // Gesture/handoff never reach this guard — resize session / isHandoffRect
+        // returned above; settleManualEditGeometryHandoff applies on its own path.
         const current = selectedManualEditTargetRef.current;
         if (
           current?.id === measured.id
@@ -11051,7 +11043,29 @@ function HtmlViewer({
           clearManualEditStyleTimer();
         }
       }
-      setManualEditMixedStyleKeys(new Set());
+      // Multi-select: recompute mixedKeys from saved source (do not wipe all Mixed).
+      const selectedIdsAfterBatch = selectedManualEditTargetIdsRef.current;
+      if (selectedIdsAfterBatch.length > 1) {
+        const batchDoc = parseManualEditSource(result.source);
+        const refreshed = resolveManualEditTargetsByIds(selectedIdsAfterBatch, manualEditTargets);
+        const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
+          refreshed.length > 0 ? refreshed : selectedIdsAfterBatch.map((id) => ({ id })),
+          (id) => {
+            const target = refreshed.find((item) => item.id === id) ?? null;
+            return target
+              ? inspectorManualEditStyles(target, result.source, batchDoc)
+              : readManualEditStyles(result.source, id, {}, batchDoc);
+          },
+        );
+        setManualEditMixedStyleKeys(mixedKeys);
+        setManualEditDraft((current) => ({
+          ...current,
+          styles: mergedStyles,
+          fullSource: result.source,
+        }));
+      } else {
+        setManualEditMixedStyleKeys(new Set());
+      }
       setManualEditError(null);
       await onFileSaved?.();
       return true;
@@ -11067,10 +11081,12 @@ function HtmlViewer({
       ?? lastStablePreviewSourceRef.current
       ?? sourceRef.current;
     const now = Date.now();
-    const tipContent = readTipContentForManualEditSavePin(
-      projectId,
-      file.name,
+    // Tip + pin/authored gates share one tipContent (no false "external change"
+    // after tip yield when expected already matches tip — 기획 50).
+    const tipContent = tipContentForManualEditSavePin(
       revisionStackRef.current,
+      getActiveRevisionSequence(projectId, file.name),
+      (revisionId) => getRevisionContentCache(projectId, file.name, revisionId),
     );
     // Skip disk GET when pin/authored already match the save payload.
     // Tip≠expected forces GET (parity with trustsLocal tip yield gate).

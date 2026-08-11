@@ -98,18 +98,21 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('When tip content cache already differs from the pin');
     expect(fileViewer).toContain('activeSeqMissingFromStack');
     expect(fileViewer).toContain('tipContentForManualEditSavePin');
-    expect(fileViewer).toContain('readTipContentForManualEditSavePin');
+    expect(fileViewer).not.toContain('readTipContentForManualEditSavePin');
     expect(fileViewer).toContain('shouldReleaseManualEditSavePinForTip');
     expect(fileViewer).toContain('activeTipResolvedHtml');
     expect(fileViewer).toContain('Cold tip cache: snapshot/cache resolve IS tip content');
     expect(fileViewer).toContain('manualEditHistoryConfirmTrustsLocal(');
     expect(fileViewer).toContain('manualEditHistoryConfirmCanSkipDiskFetch(');
     expect(fileViewer).toContain('Tip≠expected forces GET');
+    expect(fileViewer).toContain('no false "external change"');
     expect(fileViewer).toContain('styleDraftPending');
     expect(fileViewer).toContain('Pending style draft owns the inspector');
     expect(fileViewer).toContain('Pending styles own the panel — refresh field identity only');
     expect(fileViewer).toContain('Multi + pending: keep draft styles; refresh fields + mixedKeys only');
     expect(fileViewer).toContain('mixedKeysForPendingStyleDraft');
+    expect(fileViewer).toContain('Suppress Mixed on keys the user is actively drafting');
+    expect(fileViewer).toContain('Multi-select: recompute mixedKeys from saved source');
     expect(fileViewer).toContain('selectedTargetsIdentityChanged');
     expect(fileViewer).toContain('manualEditSelectedIdentityFingerprintRef');
     expect(fileViewer).toContain("from '../edit-mode/manual-edit-targets-identity'");
@@ -138,8 +141,17 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('applyManualEditMeasuredGeometry(measured)');
     expect(fileViewer).toContain('isHandoffRect');
     expect(fileViewer).toContain('if (!measured || isHandoffRect) return');
-    expect(fileViewer).toContain('Gesture/handoff never reach this guard');
+    expect(fileViewer).toContain('Always complete awaiters (gesture waiters)');
+    expect(fileViewer).toContain('Gesture session: awaiter done; never idle remasure / wild-jump');
     expect(fileViewer).toContain('settleManualEditGeometryHandoff');
+    const confirmStart = fileViewer.indexOf('async function confirmManualEditHistorySource');
+    expect(confirmStart).toBeGreaterThan(0);
+    const confirmBlock = fileViewer.slice(confirmStart, confirmStart + 1_200);
+    expect(confirmBlock.indexOf('tipContentForManualEditSavePin')).toBeLessThan(
+      confirmBlock.indexOf('manualEditHistoryConfirmCanSkipDiskFetch'),
+    );
+    expect(confirmBlock).toContain('manualEditHistoryConfirmTrustsLocal(');
+    expect(confirmBlock).toContain('tipContent');
     expect(fileViewer).toContain('live→raw hold: skip setSource when already painting stable');
     expect(fileViewer).toContain('Undo demotes activeSeq — warm soft-cache for the restored tip');
     expect(fileViewer).toContain('srcdoc path updates via setSource; URL-load still needs reloadKey bust');

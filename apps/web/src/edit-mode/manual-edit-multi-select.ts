@@ -84,12 +84,21 @@ export function mergeInspectorStylesForTargets(
 /**
  * While a style draft is pending, recompute mixedKeys from live targets without
  * returning merged styles that would clobber the pending inspector draft.
+ *
+ * Keys present on `pendingStyles` are excluded — the user is actively drafting
+ * those fields, so the Mixed placeholder must not fight the draft value (59).
  */
 export function mixedKeysForPendingStyleDraft(
   targets: readonly { id: string }[],
   readStyles: (id: string) => ManualEditStyles,
+  pendingStyles?: Partial<ManualEditStyles> | null,
 ): Set<keyof ManualEditStyles> {
-  return mergeInspectorStylesForTargets(targets, readStyles).mixedKeys;
+  const mixedKeys = mergeInspectorStylesForTargets(targets, readStyles).mixedKeys;
+  if (!pendingStyles) return mixedKeys;
+  for (const key of Object.keys(pendingStyles) as Array<keyof ManualEditStyles>) {
+    if (pendingStyles[key] !== undefined) mixedKeys.delete(key);
+  }
+  return mixedKeys;
 }
 
 export function buildManualEditStylePatchesForTargets(

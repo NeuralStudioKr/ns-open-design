@@ -83,6 +83,17 @@ describe('manual-edit-multi-select', () => {
     expect(mixedKeysForPendingStyleDraft([], read).size).toBe(0);
   });
 
+  it('excludes pending draft keys from mixedKeys so Mixed does not fight the draft', () => {
+    const read = (id: string) => ({
+      ...emptyManualEditStyles(),
+      color: id === 'title' ? '#111111' : '#222222',
+      fontSize: id === 'title' ? '24px' : '16px',
+    });
+    const mixed = mixedKeysForPendingStyleDraft(catalog, read, { color: '#ef4444' });
+    expect(mixed.has('color')).toBe(false);
+    expect(mixed.has('fontSize')).toBe(true);
+  });
+
   it('builds one set-style patch per changed target', () => {
     const patches = buildManualEditStylePatchesForTargets(baseSource, ['title', 'body'], {
       color: '#ef4444',
