@@ -32,7 +32,7 @@ export function wrapSelectedDeckTemplateSkillBody(
     'The user explicitly picked this template in the Canvas → Slide launch step.',
     'Treat it as the primary visual contract for this deck: reproduce the palette,',
     "background treatment, typography (fonts / weights / sizes), grid, spacing rhythm,",
-    'motif language, and first-slide mood described in the specification below.',
+    'motif sprites / decoration CSS (not emoji ornaments), and first-slide mood described in the specification below.',
     'If an example HTML scaffold is included below, prefer it over inventing new',
     'layout markup so the deck actually looks like the template the user picked.',
     '',

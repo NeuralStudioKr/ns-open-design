@@ -8,7 +8,7 @@ import {
 } from '../src/template-visual-kit.js';
 
 describe('extractTemplateVisualKitFromHtml', () => {
-  it('extracts Daisy Days cream/pastel tokens and fonts from example.html', async () => {
+  it('extracts Daisy Days cream/pastel tokens, deco CSS, and complete motif sprites', async () => {
     const html = await readFile(
       new URL(
         '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
@@ -26,6 +26,16 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toContain('Fredoka One');
     expect(kit).toContain('Quicksand');
     expect(kit).toContain('Do NOT replace them with an active design-system palette');
+    // Hard anti-emoji rules must appear (not truncated away).
+    expect(kit).toMatch(/Forbidden motif substitutes/i);
+    expect(kit).toMatch(/🌼|emoji/i);
+    // Usable motif implementation, not a mid-cut first-slide SVG dump.
+    expect(kit).toContain('### Motif sprites');
+    expect(kit).toContain('### Decoration CSS');
+    expect(kit).toContain('.deco{');
+    expect(kit).toMatch(/<svg\b[\s\S]*?<\/svg>/i);
+    expect(kit).not.toMatch(/<svg\b[^>]*>[^<]*…/);
+    expect(kit).toContain('use Motif sprites SVG inside .deco');
   });
 
   it('appendTemplateVisualKit is idempotent', () => {

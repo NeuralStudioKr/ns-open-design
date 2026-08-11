@@ -58,7 +58,9 @@ Contexts where the audience explicitly expects authority and precision — the h
 > template with compact inline HTML (and one short body `<style>` / font
 > `@import` if needed). Match the `:root` tokens from `example.html`
 > (cream `#F5F0E6`, turquoise `#7ECDC0`, Fredoka One + Quicksand, 3px chunky
-> borders, offset shadows, daisy/star motif density). Emit
+> borders, offset shadows). Copy **Motif sprites** (complete daisy/star SVGs)
+> from the Template visual kit into corner `<div class="deco …">` wrappers —
+> do **not** fake the identity with flower/star emoji (🌼🌸⭐🌈). Emit
 > `<artifact type="deck" identifier="deck">` — never `type="text/html"`.
 > Do **not** fall back to a sparse Neutral Modern / slate `#0f172a` cover.
 

@@ -547,7 +547,7 @@ Each slide is a **fixed 1920×1080** Teamver canvas. Prefer \`style="width:1920p
 
 Do not invent one identical empty box for every slide. Pick the closest layout role below and vary **composition** and **density** across slides (never 3+ identical slides in a row). Bind kit tokens into every \`style=\` / short body \`<style>\`.
 
-**Cover** — big title + one lead line; kit background + kit display font; keep template motif density (daisies/stars/chunky cards when the kit shows them).
+**Cover** — big title + one lead line; kit background + kit display font; place 2–4 kit Motif sprites in corner \`.deco\` wrappers (or chunky kit cards) — never emoji flower/star rows.
 **Body** — eyebrow + headline + paragraph or bullets on a kit surface (not plain white Inter).
 **Big stat** — one number + caption centered; kit accent for the numeral.
 **Three-column** — headline + 3 short points (flex/grid); kit card borders/shadows when the kit uses chunky cards.
@@ -556,7 +556,7 @@ Do not invent one identical empty box for every slide. Pick the closest layout r
 **Quote / principle** — one strong 56–72px sentence with small attribution.
 **Closing** — recap CTA on a kit accent or cream/pastel surface — not a dark slate wall.
 
-Quality bar: match the requested slide count; each slide needs a distinct layout role. The finished deck must be recognizable as the selected template (palette hex, fonts, borders, motif) — not Neutral Modern.
+Quality bar: match the requested slide count; each slide needs a distinct layout role. The finished deck must be recognizable as the selected template (palette hex, fonts, borders, SVG/\`.deco\` motif) — not Neutral Modern and not emoji ornaments.
 `;
 
 /** Compact API decks: honor user/plugin/brief counts; 6–8 is only the unspecified default. */
@@ -608,7 +608,7 @@ Rules:
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete compact deck over a giant framework.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn.
 5. Vary slide layouts using the template-aware vocabulary below — do not repeat the same padding/background/composition on every slide.
-6. **Hard visual rule:** when a Template visual kit is present, bind its palette hex/fonts/borders/shadows/motif on every slide. When only a Visual summary / title cue is present, match that prose and still avoid inventing sparse Neutral Modern / Inter / \`#0f172a\` covers for cheerful/pastel/playful templates.
+6. **Hard visual rule:** when a Template visual kit is present, bind its palette hex/fonts/borders/shadows and Motif sprites/\`.deco\` CSS on every slide. Never substitute emoji flowers/stars for kit SVG motifs. When only a Visual summary / title cue is present, match that prose and still avoid inventing sparse Neutral Modern / Inter / \`#0f172a\` covers (or emoji ornament rows) for cheerful/pastel/playful templates.
 7. When the user attaches images, include \`<img src="exact-project-relative-path" …>\` using attachment paths.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}

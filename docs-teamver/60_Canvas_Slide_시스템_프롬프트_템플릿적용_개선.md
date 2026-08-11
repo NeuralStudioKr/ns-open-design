@@ -478,7 +478,8 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | `skipped-incomplete` hard fail (CSS/title truncation · AC head fence · 비가시) | **완료** — title salvage · body excerpt · BODY-FIRST · AC cap 4 · background AC |
 | P2 | READ LAST 통합 / Final authority 섹션 | 미착수 |
 | P2 | kit fetch 실패 UX(사용자 알림) | 미착수 |
-| P2 | motif 구현 힌트 · Google Fonts `@import` 레시피 일반화 | 미착수 |
+| P0 | motif 구현 — kit에 작은 complete SVG sprite + `.deco` CSS · emoji 대체 금지 | **완료** — `extractTemplateVisualKitFromHtml` 재작성 + READ LAST/vocab/SKILL |
+| P2 | motif 구현 힌트 · Google Fonts `@import` 레시피 일반화 | **부분 완료** — kit에 `@import` 레시피 + Motif sprites; 추가 템플릿별 튜닝은 후속 |
 | P2 | lean compose에 slide-safe `web_fetch` 노출 여부 | 제품 결정 |
 
 ### 12.1 Edit-contract gating (상세)

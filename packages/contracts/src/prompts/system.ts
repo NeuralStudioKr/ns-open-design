@@ -1406,7 +1406,8 @@ A Selected deck template is active and a **Template visual kit (from example.htm
 
 Hard requirements for every slide:
 - Bind kit hex colors, font-family names, border widths/radii, and offset shadows from the kit (inline styles or one short body \`<style>\` + optional font \`@import\`).
-- Keep decorative density the kit shows (chunky cards, daisies/stars, pastel badges, etc.). Sparse title-only slides that ignore the kit are a failure.
+- Keep decorative density the kit shows via **kit Motif sprites / Decoration CSS** (chunky cards, corner \`.deco\` SVG daisies/stars, pastel badges). Sparse title-only slides that ignore the kit are a failure.
+- **Forbidden motif substitutes:** do **not** fake the template with unicode/emoji ornaments (🌼🌸🌺🌻⭐✨🌈 etc.). Motif must be the kit's SVG/\`.deco\` patterns (or chunky borders when the kit has no sprites).
 - **Forbidden:** Neutral Modern / Starter look — slate covers \`#0f172a\` / \`#1e293b\` / \`#111827\`, Inter-only or system-ui-only typography, empty gradient corporate title slides, "no ornament" subtractive layouts from any design-system prose.
 - **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. The attached Canvas / Drive HTML has its own background colors, gradients, font-families, and decorative accents (e.g. warm yellow-green travel gradient with emoji-chip buttons, editorial serif Italy covers, etc.). Those belong to the source page — NOT to this deck. Palette, typography, borders, and motif MUST come from the kit above, not from the attached source HTML. The source contributes TEXT and structure only.
 
@@ -1421,6 +1422,7 @@ Hard requirements for every slide:
 - Match the Selected deck template **Visual summary / title / prose cues** (palette names, fonts, motif) as closely as possible.
 - If any hex codes or font names appear in the Selected section, bind them with inline styles or one short body \`<style>\`.
 - Do **not** invent a sparse Neutral Modern slate cover (\`#0f172a\` / Inter-only) when the template name or summary implies pastel, cream, playful, coral, terminal, editorial, etc.
+- Do **not** fake floral/playful templates with emoji flowers/stars (🌼🌸⭐🌈). Prefer simple CSS shapes / chunky borders in the template palette over emoji ornament rows.
 - Do **not** carry over the attached source file's own visual styling either — the source HTML's palette / fonts / gradients belong to the source page, not to this deck. Even without a concrete kit, prefer the template name/summary mood over the source's colors.
 - Prefer recognizable template mood over a generic corporate title slide.`;
 
@@ -1580,7 +1582,7 @@ export function composeTeamverSlideApiPrompt({
         ? (
           'Hard requirements:\n'
           + '- Match the Template visual kit tokens (palette hex, fonts, borders, shadows) exactly.\n'
-          + '- Keep decorative density from the template (daisies/stars/chunky cards when present) — not a sparse title slide.\n'
+          + '- Keep decorative density via kit Motif sprites / Decoration CSS (corner SVG `.deco`, chunky cards) — not a sparse title slide and not emoji flowers/stars.\n'
           + '- Active design system is secondary brand context only; template look wins.\n'
           + '- Prefer rich multi-region layouts from the template vocabulary over empty gradient covers.\n\n'
         )
@@ -1588,6 +1590,7 @@ export function composeTeamverSlideApiPrompt({
           'Hard requirements:\n'
           + '- Match the Selected deck template Visual summary / title / prose cues (palette names, fonts, motif).\n'
           + '- A Template visual kit may be missing this turn — still do NOT fall back to Neutral Modern slate `#0f172a` / Inter-only covers when the template implies pastel, cream, playful, coral, terminal, etc.\n'
+          + '- Do NOT fake the template with emoji ornaments (🌼🌸⭐🌈); use palette + chunky borders instead.\n'
           + '- Active design system is secondary brand context only; template look wins.\n'
           + '- Prefer rich multi-region layouts over empty gradient covers.\n\n'
         );

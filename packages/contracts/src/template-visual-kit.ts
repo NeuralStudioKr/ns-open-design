@@ -3,13 +3,17 @@
  * `example.html` (or similar preview entry).
  *
  * Zhangzara / html-ppt templates put the real palette + type + motif in the
- * demo HTML `:root` tokens. SKILL.md frontmatter only has a short prose blurb
- * ("Cheerful pastel deck…") — not enough for BYOK models that cannot Read
- * companion files. Without this kit, Active design system tokens (e.g.
- * Neutral Modern dark) win and the deck looks like the default template.
+ * demo HTML `:root` tokens and decorative SVG system. SKILL.md frontmatter
+ * only has a short prose blurb ("Cheerful pastel deck…") — not enough for
+ * BYOK models that cannot Read companion files.
+ *
+ * Critical: do NOT dump a truncated first-slide with huge incomplete SVGs.
+ * That used to demand "daisies/stars" while giving no pasteable sprites, so
+ * models substituted flower/star emoji. Prefer small complete motif SVGs +
+ * `.deco` CSS + hard anti-emoji rules placed before any large cue.
  */
 
-const DEFAULT_MAX_CHARS = 3_600;
+const DEFAULT_MAX_CHARS = 5_200;
 
 function uniquePreserveOrder(values: string[]): string[] {
   const out: string[] = [];
@@ -21,13 +25,17 @@ function uniquePreserveOrder(values: string[]): string[] {
   return out;
 }
 
-function extractRootCssBlock(html: string): string | null {
-  const rootMatch = /:root\s*\{([\s\S]*?)\}/i.exec(html);
-  if (!rootMatch?.[1]) return null;
-  const inner = rootMatch[1]
+function compressCss(css: string): string {
+  return css
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function extractRootCssBlock(html: string): string | null {
+  const rootMatch = /:root\s*\{([\s\S]*?)\}/i.exec(html);
+  if (!rootMatch?.[1]) return null;
+  const inner = compressCss(rootMatch[1]);
   if (!inner) return null;
   return `:root{ ${inner} }`;
 }
@@ -53,7 +61,128 @@ function extractHexColors(html: string): string[] {
   ).slice(0, 16);
 }
 
-function extractFirstSlideSnippet(html: string, budget: number): string | null {
+function extractStyleSheets(html: string): string {
+  return [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]
+    .map((match) => match[1] ?? '')
+    .join('\n');
+}
+
+/** Compact decoration / card CSS the model can paste into a short body style. */
+function extractDecorationCss(html: string, budget: number): string | null {
+  const sheet = extractStyleSheets(html);
+  if (!sheet.trim()) return null;
+  const rules = [...sheet.matchAll(/[^{}@][^{]*\{[^}]+\}/g)]
+    .map((match) => compressCss(match[0] ?? ''))
+    .filter(Boolean);
+  const prioritized = rules.filter((rule) =>
+    /\.deco\b|\.card\b|\.badge\b|\.slide\b|--border|--shadow|--radius|font-display|font-body/i.test(
+      rule,
+    ),
+  );
+  // Prefer .deco* and .card/.badge before generic .slide sizing rules.
+  prioritized.sort((a, b) => {
+    const score = (rule: string) => {
+      if (/\.deco\b/i.test(rule)) return 0;
+      if (/\.card\b|\.badge\b/i.test(rule)) return 1;
+      if (/--border|--shadow|--radius/i.test(rule)) return 2;
+      return 3;
+    };
+    return score(a) - score(b);
+  });
+  const picked: string[] = [];
+  let used = 0;
+  for (const rule of prioritized) {
+    if (picked.length >= 18) break;
+    if (used + rule.length + 1 > budget) continue;
+    picked.push(rule);
+    used += rule.length + 1;
+  }
+  if (picked.length === 0) return null;
+  return picked.join('\n');
+}
+
+function classifySvg(svg: string): 'daisy' | 'star' | 'rainbow' | 'sun' | 'cloud' | 'other' {
+  const s = svg.toLowerCase();
+  if (/rainbow|arc/.test(s) || (s.includes('stroke-linecap') && /m\d+.+\d+q/i.test(svg))) {
+    if (/rainbow/i.test(svg) || (svg.match(/path/gi) ?? []).length >= 3) return 'rainbow';
+  }
+  if (/viewbox="0 0 100 98/i.test(svg) || /star/i.test(svg)) return 'star';
+  if (/circle[^>]+r="18"|#f7c8d4|#ffcd57|#d4a5e8|#8de3b7/i.test(svg)) return 'daisy';
+  if (/sun|#ffcd57.*circle|circle.*#ffcd57/i.test(svg) && svg.length < 800) return 'sun';
+  if (/cloud/i.test(svg)) return 'cloud';
+  return 'other';
+}
+
+/**
+ * Pick a few SMALL complete SVGs as pasteable motif sprites.
+ * Avoid the multi-KB QuiverAI paths that blow the kit budget and truncate.
+ */
+function extractMotifSprites(html: string, budget: number): string[] {
+  const svgs = [...html.matchAll(/<svg\b[\s\S]*?<\/svg>/gi)]
+    .map((match) => compressCss(match[0] ?? ''))
+    .filter((svg) => svg.length >= 80 && svg.length <= 720);
+
+  const byKind: Partial<Record<ReturnType<typeof classifySvg>, string>> = {};
+  for (const svg of svgs) {
+    const kind = classifySvg(svg);
+    if (kind === 'other') continue;
+    if (!byKind[kind] || svg.length < (byKind[kind]?.length ?? Infinity)) {
+      byKind[kind] = svg;
+    }
+  }
+
+  const order: Array<ReturnType<typeof classifySvg>> = [
+    'daisy',
+    'star',
+    'rainbow',
+    'sun',
+    'cloud',
+  ];
+  const out: string[] = [];
+  let used = 0;
+  for (const kind of order) {
+    const svg = byKind[kind];
+    if (!svg) continue;
+    if (used + svg.length + 40 > budget) continue;
+    out.push(svg);
+    used += svg.length + 40;
+    if (out.length >= 3) break;
+  }
+
+  // Fallback: smallest complete SVGs if classifiers missed.
+  if (out.length === 0) {
+    const smallest = [...svgs].sort((a, b) => a.length - b.length);
+    for (const svg of smallest) {
+      if (used + svg.length > budget) break;
+      out.push(svg);
+      used += svg.length;
+      if (out.length >= 2) break;
+    }
+  }
+  return out;
+}
+
+function extractFontImportHint(html: string, fonts: string[]): string | null {
+  const linkMatch =
+    /href=("|\')([^"']*fonts\.googleapis\.com\/css2\?[^"']+)\1/i.exec(html)
+    ?? /href=("|\')([^"']*fonts\.googleapis\.com\/css\?[^"']+)\1/i.exec(html);
+  if (linkMatch?.[2]) {
+    return `@import url('${linkMatch[2]}');`;
+  }
+  if (fonts.length === 0) return null;
+  const families = fonts
+    .map((font) => font.replace(/['"]/g, '').split(',')[0]?.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  if (families.length === 0) return null;
+  const familyParam = families
+    .map((name) => `family=${encodeURIComponent(name!).replace(/%20/g, '+')}:wght@400;700`)
+    .join('&');
+  return `@import url('https://fonts.googleapis.com/css2?${familyParam}&display=swap');`;
+}
+
+/** Structure cue without embedding huge/truncated SVG markup. */
+function extractFirstSlideStructureCue(html: string, budget: number): string | null {
   const sectionMatch =
     /<section\b[^>]*class=["'][^"']*slide[^"']*["'][^>]*>[\s\S]*?<\/section>/i.exec(
       html,
@@ -61,11 +190,21 @@ function extractFirstSlideSnippet(html: string, budget: number): string | null {
   if (!sectionMatch?.[0]) return null;
   const snippet = sectionMatch[0]
     .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, '<!-- use Motif sprites SVG inside .deco -->')
     .replace(/\s+/g, ' ')
     .trim();
   if (!snippet) return null;
   return snippet.length > budget ? `${snippet.slice(0, budget)}…` : snippet;
 }
+
+const HARD_RULES = [
+  'Hard rules (non-negotiable):',
+  '- Keep the template scheme (light pastel stays light; dark terminal stays dark).',
+  '- Motif MUST be SVG/CSS from **Motif sprites** / **Decoration CSS** below (e.g. `<div class="deco deco-daisy-tl">…svg…</div>`).',
+  '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration — no 🌼 🌸 🌺 🌻 🌹 ⭐ ✨ 🌟 🌈 ☀️ or similar flower/star/rainbow emoji rows pretending to be the template identity.',
+  '- Preserve chunky cards/borders/offset shadows when Decoration CSS shows them.',
+  '- Vary slide layouts using the template vocabulary; do not emit sparse title-only Neutral Modern slides.',
+];
 
 /**
  * Build a markdown block describing the template's concrete visual system.
@@ -84,12 +223,17 @@ export function extractTemplateVisualKitFromHtml(
   if (!root && colors.length === 0 && fonts.length === 0) return null;
 
   const title = options.title?.trim() || 'selected deck template';
-  const lines = [
+  const fontImport = extractFontImportHint(source, fonts);
+
+  // Build with hard rules + tokens first so they cannot be truncated away.
+  const lines: string[] = [
     `## Template visual kit (from example.html) — ${title}`,
     '',
     'This is the authoritative visual system for the selected deck template.',
     'Reproduce these tokens with inline styles (or one short body `<style>` after slide 1).',
     'Do NOT replace them with an active design-system palette or a dark corporate default.',
+    '',
+    ...HARD_RULES,
     '',
   ];
   if (root) {
@@ -98,23 +242,66 @@ export function extractTemplateVisualKitFromHtml(
   if (fonts.length > 0) {
     lines.push(`### Fonts: ${fonts.join(' | ')}`, '');
   }
+  if (fontImport) {
+    lines.push(
+      '### Font import (put inside the short body `<style>`)',
+      '',
+      '```css',
+      fontImport,
+      '```',
+      '',
+    );
+  }
   if (colors.length > 0) {
     lines.push(`### Palette cues: ${colors.join(', ')}`, '');
   }
-  const used = lines.join('\n').length;
-  const slideBudget = Math.max(400, maxChars - used - 80);
-  const slide = extractFirstSlideSnippet(source, slideBudget);
-  if (slide) {
-    lines.push('### First-slide structure cue (abbreviated)', '', '```html', slide, '```', '');
+
+  let used = lines.join('\n').length;
+  const decoBudget = Math.min(1_100, Math.max(320, maxChars - used - 1_800));
+  const deco = extractDecorationCss(source, decoBudget);
+  if (deco) {
+    lines.push(
+      '### Decoration CSS (paste into the short body `<style>`)',
+      '',
+      '```css',
+      deco,
+      '```',
+      '',
+    );
   }
-  lines.push(
-    'Hard rules: keep the template scheme (light pastel stays light; dark terminal stays dark).',
-    'Preserve decorative motif density (daisies/stars/borders/chunky shadows when present).',
-    'Vary slide layouts using the template vocabulary; do not emit sparse title-only slides.',
-  );
+
+  used = lines.join('\n').length;
+  const spriteBudget = Math.min(1_800, Math.max(400, maxChars - used - 700));
+  const sprites = extractMotifSprites(source, spriteBudget);
+  if (sprites.length > 0) {
+    lines.push(
+      '### Motif sprites (complete SVGs — copy into corner `<div class="deco …">` wrappers)',
+      '',
+      'Use 2–4 of these per slide at corners/edges via absolute `.deco` positioning. Do not invent emoji flowers.',
+      '',
+    );
+    for (let i = 0; i < sprites.length; i += 1) {
+      lines.push(`\`\`\`html`, sprites[i]!, `\`\`\``, '');
+    }
+  }
+
+  used = lines.join('\n').length;
+  const slideBudget = Math.max(280, maxChars - used - 40);
+  const slide = extractFirstSlideStructureCue(source, slideBudget);
+  if (slide) {
+    lines.push(
+      '### First-slide structure cue (SVGs omitted — use Motif sprites above)',
+      '',
+      '```html',
+      slide,
+      '```',
+      '',
+    );
+  }
 
   let out = lines.join('\n').trim();
   if (out.length > maxChars) {
+    // Prefer keeping hard rules + tokens + sprites; trim from the end.
     out = `${out.slice(0, maxChars - 1)}…`;
   }
   return out;

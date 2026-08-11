@@ -154,6 +154,7 @@ describe("canvasSlideLaunch", () => {
     // [Selected slide template] block must reinforce this on the user side.
     const templateBlock = runPrompt.slice(runPrompt.indexOf("[Selected slide template]"));
     expect(templateBlock).toMatch(/Template palette \/ fonts \/ borders \/ motif WIN/i);
+    expect(templateBlock).toMatch(/never substitute emoji flowers\/stars/i);
     expect(templateBlock).toMatch(/source['\u2019]s own visual styling/i);
     expect(templateBlock).toMatch(/Do NOT carry over the source['\u2019]s colors/i);
     const priorityBlock = runPrompt.slice(runPrompt.indexOf("[Selected slide template priority]"));

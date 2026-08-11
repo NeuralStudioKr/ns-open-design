@@ -296,8 +296,8 @@ export function canvasCreateSlidesRunPrompt(
   const templateBlock = !isDefaultTemplate && title
     ? [
       "\n\n[Selected slide template]",
-      `The user picked "${title}" as the deck template. Match its visual identity — palette, typography, layout, and motif — as closely as the template specification in the system prompt allows.`,
-      "**Template palette / fonts / borders / motif WIN over the attached source's own visual styling.** The Canvas / Drive source HTML may have its own background gradients, fonts, and decorative accents (e.g. warm yellow-green travel styling); those are content references only. Do NOT carry over the source's colors, gradients, fonts, or decorative gradients into the deck. Copy the template kit's palette hex values, font-families, and border/shadow tokens verbatim; only the source's TEXT (headings, body copy, section names) crosses over.",
+      `The user picked "${title}" as the deck template. Match its visual identity — palette, typography, layout, and kit Motif sprites / decoration CSS — as closely as the template specification in the system prompt allows.`,
+      "**Template palette / fonts / borders / motif WIN over the attached source's own visual styling.** The Canvas / Drive source HTML may have its own background gradients, fonts, and decorative accents (e.g. warm yellow-green travel styling); those are content references only. Do NOT carry over the source's colors, gradients, fonts, or decorative gradients into the deck. Copy the template kit's palette hex values, font-families, border/shadow tokens, and Motif sprites verbatim — never substitute emoji flowers/stars for the kit SVG motifs. Only the source's TEXT (headings, body copy, section names) crosses over.",
       "If the source material's topic doesn't fit the template's theme (e.g. business content picked with a terminal template), restyle the content into this template's visual language anyway. Do NOT return an empty deck because of the mismatch; an imperfect visual match is better than no deck.",
     ].join("\n")
     : "";
