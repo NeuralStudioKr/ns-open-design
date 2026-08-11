@@ -10,6 +10,7 @@ import {
   RESUME_CONTINUE_PROMPT,
   buildAutoContinueIncompleteOutputPrompt,
   buildAutoContinueScopedCommentEditPrompt,
+  excerptPartialHtmlForAutoContinue,
   extractAutoContinueContextFromAssistant,
   isAutoContinueIncompleteOutputPrompt,
   isLiveLocalStreamBlockingAutoContinue,
@@ -166,8 +167,35 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
       planOutline: '슬라이드 구성:\n01 표지',
     });
     expect(prompt).toContain('```html');
-    expect(prompt).toContain('<!doctype html>');
+    // Fence prefers <body>/slides over a CSS-heavy doctype head prefix.
+    expect(prompt).toContain('<h1>Partial</h1>');
     expect(prompt).toContain('슬라이드 구성');
+  });
+
+  it('excerpts body/slides instead of a CSS-heavy head prefix for auto-continue', () => {
+    const css = '<style>' + '.x{color:red}'.repeat(400) + '</style>';
+    const html =
+      `<!doctype html><html><head><meta charset="utf-8"/>${css}</head><body>`
+      + '<section class="slide"><h1>Cover</h1><p>Body copy that must survive the excerpt.</p></section>';
+    const excerpt = excerptPartialHtmlForAutoContinue(html);
+    expect(excerpt).toContain('<body');
+    expect(excerpt).toContain('Body copy that must survive');
+    expect(excerpt).not.toContain('.x{color:red}'.repeat(50));
+  });
+
+  it('forces body-first guidance for large head-only truncations', () => {
+    const headOnly =
+      '<!doctype html><html><head><meta charset="utf-8"/><title>Deck</title><style>'
+      + '.slide{padding:40px}'.repeat(120)
+      + '</style></head>';
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      truncatedByMaxTokens: true,
+      partialHtml: headOnly,
+    });
+    expect(prompt).toContain('BODY-FIRST');
+    expect(prompt).toContain('Do NOT regenerate');
+    expect(prompt).not.toContain('```html');
   });
 
   it('threads original reference files into the auto-continue prompt', () => {
@@ -409,12 +437,22 @@ describe('shouldAutoContinueForIncompleteOutput', () => {
     ).toBe(false);
   });
 
-  it('does NOT fire when the run is not visible', () => {
+  it('still fires content-incomplete continues when the run is not visible', () => {
+    // Leaving the tab mid-finalize must not strand skipped-incomplete as a
+    // hard incomplete_output with zero automatic recovery.
     expect(
       shouldAutoContinueForIncompleteOutput({
         ...base,
         runIsVisible: false,
         terminalPersistResultKind: 'skipped-incomplete',
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoContinueForIncompleteOutput({
+        ...base,
+        runIsVisible: false,
+        terminalPersistResultKind: 'save-failed',
+        hadIncompleteParsedArtifact: true,
       }),
     ).toBe(false);
   });

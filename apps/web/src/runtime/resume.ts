@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../types';
+import { documentContainsSlideSection } from '../artifacts/deck-html-content';
 import { salvageTruncatedHtmlDocument } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell } from '../artifacts/validate';
 import { COMPACT_DECK_SLIDE_COUNT_GUIDANCE } from './deckGuidance';
@@ -89,6 +90,32 @@ const AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED =
 const AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT = 4000;
 const AUTO_CONTINUE_MAX_PLAN_OUTLINE_EXCERPT = 2000;
 
+/**
+ * Prefer slide `<body>` (or salvaged closed HTML) over a CSS-heavy `<head>`
+ * prefix so auto-continue does not re-anchor the model on kit chrome.
+ */
+export function excerptPartialHtmlForAutoContinue(html: string): string {
+  const trimmed = html.replace(/^﻿/, '').trim();
+  if (!trimmed) return '';
+  const salvaged = salvageTruncatedHtmlDocument(trimmed);
+  const source = salvaged ?? trimmed;
+  const bodyIdx = source.search(/<body\b/i);
+  const fromBody = bodyIdx >= 0 ? source.slice(bodyIdx) : source;
+  if (fromBody.length <= AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT) {
+    return fromBody;
+  }
+  // Keep the tail (latest slides), not the head (kit CSS).
+  return fromBody.slice(-AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT);
+}
+
+const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
+  '\n\nCRITICAL: The previous turn burned its output budget on `<head>` / kit CSS '
+  + 'and never produced filled `<section class="slide">` bodies. '
+  + 'Do NOT regenerate Daisy Days / Zhangzara / Neutral chrome or large `<style>` blocks. '
+  + 'Emit BODY-FIRST: start the artifact with `<body>` (or the first `<section class="slide">`), '
+  + 'use only tiny inline style tokens, and fill every slide with real title + 2–4 bullets NOW. '
+  + 'A compact static deck beats another CSS-only truncation.';
+
 export type AutoContinuePromptContext = {
   /** 1-based attempt index for this automatic continue fire. */
   attempt: number;
@@ -105,14 +132,9 @@ export type AutoContinuePromptContext = {
 
 // Cap on automatic continue attempts inside a single conversation.
 //
-// Five retries covers plan-only → partial shell → truncated head → shortened
-// head → almost-complete-but-cut patterns observed on Teamver embed API runs.
-// Earlier cap was three, but Canvas → Slide launches consistently landed on
-// `incomplete_output` after the model produced a truncated deck the first
-// pass and the retry budget ran out before salvage / stream-close converged.
-// The exposure surface is bounded: cap is per-conversation, escalated
-// wording after attempt 2 short-circuits obvious shell-only regressions,
-// and the manual retry affordance remains beyond the cap.
+// Five retries covers plan-only → CSS-head truncation → body-first compact →
+// almost-complete-but-cut patterns on Teamver embed API runs. Bounded per
+// conversation; escalated wording after attempt 2; manual retry beyond cap.
 export const AUTO_CONTINUE_MAX_PER_CONVERSATION = 5;
 
 /** Scoped preview-comment edits salvage client-side first — three auto retries max. */
@@ -148,9 +170,20 @@ export function buildAutoContinueIncompleteOutputPrompt(
     );
   }
 
+  const partialRaw = context.partialHtml?.trim() ?? '';
+  const partialSalvaged = partialRaw ? salvageTruncatedHtmlDocument(partialRaw) : null;
+  // Only treat as empty shell when salvage cannot recover any slide copy.
+  // Contentful truncations (missing </html> but real slides) must NOT jump
+  // straight to FINAL RETRY — that discards useful partial HTML.
   const partialShellOnly = Boolean(
-    context.partialHtml?.trim()
-    && isIncompleteHtmlDocumentShell(context.partialHtml),
+    partialRaw
+    && isIncompleteHtmlDocumentShell(partialRaw)
+    && !partialSalvaged,
+  );
+  const headOnlyHeavy = Boolean(
+    partialShellOnly
+    && partialRaw.length >= 2048
+    && !documentContainsSlideSection(partialRaw),
   );
   // Head-only shells burn auto-continue slots without progress — escalate
   // immediately instead of waiting for attempt 2.
@@ -159,6 +192,9 @@ export function buildAutoContinueIncompleteOutputPrompt(
       ? AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT_ESCALATED
       : AUTO_CONTINUE_INCOMPLETE_OUTPUT_PROMPT,
   );
+  if (headOnlyHeavy || (context.truncatedByMaxTokens && partialShellOnly)) {
+    parts.push(AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST);
+  }
 
   const outline = context.planOutline?.trim();
   if (outline) {
@@ -198,17 +234,17 @@ export function buildAutoContinueIncompleteOutputPrompt(
     );
   }
 
-  let partial = context.partialHtml?.trim();
+  let partial = partialRaw;
   if (partial && isIncompleteHtmlDocumentShell(partial)) {
     // Truncated decks with real slide copy are still worth fencing so the
     // model can continue from the cut. Empty / SLOT-only shells must not be
     // re-fed — that anchors the next turn to the same blank deliverable.
-    const salvaged = salvageTruncatedHtmlDocument(partial);
-    if (salvaged) {
+    if (partialSalvaged) {
+      const excerpt = excerptPartialHtmlForAutoContinue(partial);
       parts.push(
         '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
           + '```html\n'
-          + partial.slice(0, AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT)
+          + excerpt
           + '\n```',
       );
     } else {
@@ -221,10 +257,11 @@ export function buildAutoContinueIncompleteOutputPrompt(
       );
     }
   } else if (partial && partial.length >= 128) {
+    const excerpt = excerptPartialHtmlForAutoContinue(partial);
     parts.push(
       '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
         + '```html\n'
-        + partial.slice(0, AUTO_CONTINUE_MAX_PARTIAL_HTML_EXCERPT)
+        + excerpt
         + '\n```',
     );
   } else if (partial) {
@@ -293,7 +330,6 @@ export function shouldAutoContinueForIncompleteOutput(options: {
     reason: string,
   ) => boolean;
 }): boolean {
-  if (!options.runIsVisible) return false;
   const max = options.maxPerConversation
     ?? (options.scopedCommentAttachmentCount && options.scopedCommentAttachmentCount > 0
       ? AUTO_CONTINUE_MAX_SCOPED_COMMENT_EDIT
@@ -301,34 +337,36 @@ export function shouldAutoContinueForIncompleteOutput(options: {
   if (options.autoContinueCount >= max) return false;
 
   const kind = options.terminalPersistResultKind;
-  if (kind === 'skipped-incomplete') return true;
-  // Validation refusal / residual discovery-skip with incomplete or missing
-  // slide signals — content never landed; let the capped continue retry.
-  // Infra `save-failed` still must not regenerate the same write path.
-  if (
-    (kind === 'rejected' || kind === 'skipped-discovery-turn')
-    && (options.hadIncompleteParsedArtifact || options.shouldFailMissingSlideHtml)
-  ) {
-    return true;
-  }
-  if (
-    kind === 'skipped-duplicate'
-    && (options.scopedCommentAttachmentCount ?? 0) > 0
-  ) {
-    return true;
-  }
-  if (
-    kind === 'scope-rejected'
-    && (options.scopedCommentAttachmentCount ?? 0) > 0
-    && options.shouldRouteScopedCommentEditToAutoContinue?.(
-      options.terminalPersistResultCode,
-      options.terminalPersistResultReason ?? '',
+  const contentIncomplete =
+    kind === 'skipped-incomplete'
+    || (
+      (kind === 'rejected' || kind === 'skipped-discovery-turn')
+      && (options.hadIncompleteParsedArtifact || options.shouldFailMissingSlideHtml)
     )
-  ) {
-    return true;
-  }
-  if (kind !== null) return false;
-  return options.hadIncompleteParsedArtifact || options.shouldFailMissingSlideHtml;
+    || (
+      kind === 'skipped-duplicate'
+      && (options.scopedCommentAttachmentCount ?? 0) > 0
+    )
+    || (
+      kind === 'scope-rejected'
+      && (options.scopedCommentAttachmentCount ?? 0) > 0
+      && Boolean(
+        options.shouldRouteScopedCommentEditToAutoContinue?.(
+          options.terminalPersistResultCode,
+          options.terminalPersistResultReason ?? '',
+        ),
+      )
+    )
+    || (
+      kind === null
+      && (options.hadIncompleteParsedArtifact || options.shouldFailMissingSlideHtml)
+    );
+
+  // Content-incomplete greenfield/truncated runs must still auto-continue in
+  // the background when the user briefly leaves the conversation — otherwise
+  // skipped-incomplete becomes a hard incomplete_output with no retry.
+  if (!options.runIsVisible && !contentIncomplete) return false;
+  return contentIncomplete;
 }
 
 /** True when a live local AbortController (or another conversation's stream)

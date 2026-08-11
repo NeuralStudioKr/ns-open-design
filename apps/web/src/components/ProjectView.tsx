@@ -4942,7 +4942,11 @@ export function ProjectView({
           // the automatic-continue notice). Flashing 「저장을 거부했습니다:
           // incomplete HTML document shell」 mid/end-turn contradicted the
           // auto-continue banner and looked like a product failure during demos.
-          return { kind: 'skipped-incomplete', fileName };
+          return {
+            kind: 'skipped-incomplete',
+            fileName,
+            reason: 'incomplete-html-document-shell',
+          };
         }
         const normalizedArtifactType = normalizeSlideOnlyArtifactContractType(
           artifactToPersist.artifactType,

@@ -163,6 +163,21 @@ export function isClosedSoftSalvageDeckHtml(html: string): boolean {
 }
 
 /**
+ * Truncation-only content sniff. Accepts short real titles the strict
+ * deliverable bar rejects (e.g. "온보딩 킥오프") so a max_tokens cut on the
+ * cover slide can persist. Still refuses status prose, SLOT/empty bodies, and
+ * generic outline-only headings ("표지" / "발표 개요") that are not a deck.
+ */
+function slideInnerHasTruncationSalvageCopy(innerHtml: string): boolean {
+  if (slideSectionInnerLooksLikeStatusOnly(innerHtml)) return false;
+  if (HAS_MEDIA_CONTENT_RE.test(innerHtml)) return true;
+  const text = visibleTextFromHtmlFragment(innerHtml);
+  if (text.length < 2) return false;
+  if (GENERIC_OUTLINE_HEADING_RE.test(text)) return false;
+  return true;
+}
+
+/**
  * Softer quality bar used ONLY while closing mid-stream truncated decks
  * (`salvageTruncatedHtmlDocument`). A max_tokens cut often leaves 1–2 strong
  * filled slides plus empty trailing placeholders — the strict 34% multi-slide
@@ -174,13 +189,18 @@ export function meetsTruncationSalvageQuality(html: string): boolean {
   if (!documentContainsSlideSection(withoutComments)) {
     return hasSalvageableDeckSlideContent(html);
   }
-  const filledSlides = countFilledSlideSections(withoutComments);
-  if (filledSlides === 0) return false;
-  const totalText = totalFilledSlideVisibleText(withoutComments);
-  if (filledSlides === 1) {
-    return totalText >= 12;
+  const inners = listSlideSectionInners(withoutComments);
+  const salvageable = inners.filter(slideInnerHasTruncationSalvageCopy);
+  if (salvageable.length === 0) return false;
+  const totalText = salvageable.reduce(
+    (sum, inner) => sum + visibleTextFromHtmlFragment(inner).length,
+    0,
+  );
+  if (salvageable.length === 1) {
+    return totalText >= 2;
   }
-  return totalText >= MIN_TWO_SLIDE_TOTAL_TEXT;
+  // Prefer any two titled slides over incomplete_output, even when copy is thin.
+  return totalText >= 8;
 }
 
 /**

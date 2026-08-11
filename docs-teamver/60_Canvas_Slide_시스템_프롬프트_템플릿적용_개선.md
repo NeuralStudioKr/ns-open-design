@@ -458,6 +458,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | truncated HTML → `skipped-discovery-turn` → `incomplete_output` 오판 | **완료** — `hasArtifactHtml` + `resolveSlideOnlySkipDiscoveryBrief` + run pin ref |
 | P0 | 잘린 HTML 자동 보완(salvage) — mid-slide close · soft quality · persist 신뢰 | **완료** — `closeUnclosedSlideSectionsForSalvage` + truncation soft bar + salvage 재거부 제거 |
 | P0 | soft re-reject · `kind:deck` discovery 회귀 · emergency UI/order · doctype poison | **완료** — 다회 감사 핫픽스 (`isClosedSoftSalvageDeckHtml` 등) |
+| P0 | `skipped-incomplete` hard fail (CSS/title truncation · AC head fence · 비가시) | **완료** — title salvage · body excerpt · BODY-FIRST · AC cap 4 · background AC |
 | P2 | READ LAST 통합 / Final authority 섹션 | 미착수 |
 | P2 | kit fetch 실패 UX(사용자 알림) | 미착수 |
 | P2 | motif 구현 힌트 · Google Fonts `@import` 레시피 일반화 | 미착수 |

@@ -54,6 +54,21 @@ describe("salvageTruncatedHtmlDocument", () => {
     expect(isIncompleteHtmlDocumentShell(salvaged!)).toBe(false);
   });
 
+  it("salvages title-only cover slides cut at max_tokens (avoids skipped-incomplete)", () => {
+    // Strict deliverable bar rejects short titles; truncation salvage must not
+    // (generic outline-only labels like "표지"/"발표 개요" still refuse).
+    const truncated = `<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8" /><title>Deck</title>
+<style>.slide{padding:40px;min-height:100vh}</style></head>
+<body>
+<section class="slide"><h1>온보딩 킥오프</h1>`;
+    const salvaged = salvageTruncatedHtmlDocument(truncated);
+    expect(salvaged).toBeTruthy();
+    expect(salvaged).toContain('온보딩 킥오프');
+    expect(salvaged).toMatch(/<\/section>\s*<\/body>\s*<\/html>\s*$/i);
+  });
+
   it("salvages a truncated deck with one strong slide among empty placeholders", () => {
     const truncated = `<!doctype html>
 <html lang="ko">
