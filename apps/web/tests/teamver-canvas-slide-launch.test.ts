@@ -393,6 +393,8 @@ describe("canvasSlideLaunch", () => {
     expect(composer).toContain("buildSlideOnlyDeckTemplateCreateBinding(");
     expect(composer).toContain("selectedDeckTemplateId");
     expect(composer).toContain("await patchProject(id, projectPatch)");
+    expect(projectView).toContain("selectedDeckTemplateId: meta?.selectedDeckTemplateId ?? null");
+    expect(projectView).toContain("selectedDeckTemplateTitle: meta?.selectedDeckTemplateTitle ?? null");
     expect(composer).toContain("const sourceBrief = canvasCreateSlidesSourceBrief(handoff)");
     expect(composer).toContain("const sourceBrief = driveCreateSlidesSourceBrief(asset)");
     expect(composer).toContain("promptForRun");

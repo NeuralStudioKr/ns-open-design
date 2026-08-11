@@ -6013,7 +6013,10 @@ export function ProjectView({
     } else {
       setAudioVoiceOptionsError(null);
     }
-    const composeMetadata = {
+    const composeMetadata: ProjectMetadata = {
+      kind: project.metadata?.kind ?? (selectedTemplate || turnDeckTemplateMeta?.skipDiscoveryBrief === true
+        ? 'deck'
+        : 'prototype'),
       ...(project.metadata ?? {}),
       ...(turnDeckTemplateMeta?.skipDiscoveryBrief === true
         ? { kind: 'deck' as const, skipDiscoveryBrief: true }
@@ -10236,6 +10239,8 @@ export function ProjectView({
           context: runContext,
           pluginInputs: meta?.pluginInputs,
           designSystemId: meta?.designSystemId ?? project.designSystemId ?? null,
+          selectedDeckTemplateId: meta?.selectedDeckTemplateId ?? null,
+          selectedDeckTemplateTitle: meta?.selectedDeckTemplateTitle ?? null,
           attachments: runAttachments.map((a) => a.path),
           commentAttachments: runCommentAttachments,
           sessionMode: runSessionMode,

@@ -51,7 +51,7 @@ export function selectedDeckTemplateMetadata(
 export function enrichChatSendMetaWithProjectDeckTemplate<T extends DeckTemplateSendMeta>(
   meta: T | undefined,
   metadata: ProjectMetadata | null | undefined,
-): T | undefined {
+): (T & DeckTemplateSendMeta) | undefined {
   const selected = selectedDeckTemplateMetadata(metadata, meta);
   if (!selected) return meta;
   const existingSkillIds = meta?.skillIds ?? [];

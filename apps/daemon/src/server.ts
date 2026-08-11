@@ -11742,6 +11742,8 @@ export async function startServer({
     skillId,
     skillIds,
     designSystemId,
+    selectedDeckTemplateId,
+    selectedDeckTemplateTitle,
     streamFormat,
     locale,
     sessionMode,
@@ -11846,7 +11848,17 @@ export async function startServer({
     };
     // Read early so ad-hoc skill composition can skip the visual template
     // (it becomes the primary body below) without losing other skillIds.
-    const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);
+    const selectedDeckTemplateFromRun =
+      typeof selectedDeckTemplateId === 'string' && selectedDeckTemplateId.trim()
+        ? {
+            id: selectedDeckTemplateId.trim(),
+            ...(typeof selectedDeckTemplateTitle === 'string' && selectedDeckTemplateTitle.trim()
+              ? { title: selectedDeckTemplateTitle.trim() }
+              : {}),
+          }
+        : null;
+    const selectedDeckTemplate =
+      selectedDeckTemplateFromRun ?? readSelectedDeckTemplateFromMetadata(metadata);
 
     if (effectiveSkillId) {
       // Span both functional skills and design templates so a project
@@ -12858,6 +12870,8 @@ export async function startServer({
         skillId,
         skillIds,
         designSystemId,
+        selectedDeckTemplateId,
+        selectedDeckTemplateTitle,
         streamFormat: def?.streamFormat ?? 'plain',
         locale,
         sessionMode: runSessionMode,

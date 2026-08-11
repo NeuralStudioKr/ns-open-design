@@ -76,7 +76,7 @@ describe('selected-deck-template prompt helpers', () => {
 
   it('pins daemon compose to keep ad-hoc skill stack when template wins', () => {
     expect(serverSource).toContain(
-      'const selectedDeckTemplate = readSelectedDeckTemplateFromMetadata(metadata);',
+      'selectedDeckTemplateFromRun ?? readSelectedDeckTemplateFromMetadata(metadata);',
     );
     expect(serverSource).toContain('if (selectedDeckTemplate?.id) seen.add(selectedDeckTemplate.id);');
     expect(serverSource).toContain(
@@ -105,6 +105,24 @@ describe('selected-deck-template prompt helpers', () => {
     expect(block.indexOf('await getProjectAsync(db, projectId)')).toBeLessThan(
       block.indexOf('getProject(db, projectId)'),
     );
+  });
+
+  it('accepts run-scoped selectedDeckTemplateId so metadata patch races cannot drop the picked template', () => {
+    const composeStart = serverSource.indexOf('const composeDaemonSystemPrompt = async ({');
+    expect(composeStart).toBeGreaterThan(0);
+    const composeBlock = serverSource.slice(composeStart, composeStart + 5600);
+    expect(composeBlock).toContain('selectedDeckTemplateId,');
+    expect(composeBlock).toContain('selectedDeckTemplateTitle,');
+    expect(composeBlock).toContain('const selectedDeckTemplateFromRun');
+    expect(composeBlock).toMatch(
+      /selectedDeckTemplate\s*=\s*selectedDeckTemplateFromRun\s*\?\?\s*readSelectedDeckTemplateFromMetadata\(metadata\)/,
+    );
+
+    const callStart = serverSource.indexOf('await composeDaemonSystemPrompt({');
+    expect(callStart).toBeGreaterThan(0);
+    const callBlock = serverSource.slice(callStart, callStart + 900);
+    expect(callBlock).toContain('selectedDeckTemplateId,');
+    expect(callBlock).toContain('selectedDeckTemplateTitle,');
   });
 
   it('loads selected deck templates from skill-like/design-template roots before plugins', () => {

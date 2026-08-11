@@ -36,6 +36,13 @@ export interface ChatRequest {
   // a single turn without binding the project to one of them.
   skillIds?: string[];
   designSystemId?: string | null;
+  /**
+   * Run-scoped deck template pin. Canvas/Drive → Slide may patch the project
+   * metadata and immediately start a daemon run; on multi-node deploys that
+   * metadata can lag. Keep the picked visual template on the run request too.
+   */
+  selectedDeckTemplateId?: string | null;
+  selectedDeckTemplateTitle?: string | null;
   attachments?: string[];
   commentAttachments?: ChatCommentAttachment[];
   model?: string | null;
@@ -45,6 +52,8 @@ export interface ChatRequest {
   research?: ResearchOptions;
   context?: RunContextSelection;
   appliedPluginSnapshotId?: string | null;
+  /** Run-scoped plugin inputs used by scenario/template launches. */
+  pluginInputs?: Record<string, unknown>;
   /**
    * Run-scoped media execution policy. Omitted means current Open Design
    * behavior: media generation is enabled and OD may execute its configured
