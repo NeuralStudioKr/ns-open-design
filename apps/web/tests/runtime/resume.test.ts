@@ -198,6 +198,24 @@ describe('runtime/resume shell/no-HTML recovery constants', () => {
     expect(prompt).not.toContain('```html');
   });
 
+  it('treats selected-template css shells as a restart with slide content first', () => {
+    const shell =
+      '<!doctype html><html><head><meta charset="utf-8"/><title>Daisy Days</title><style>'
+      + '.deco-daisy{position:absolute;background:#F5F0E6;border:3px solid #222}'.repeat(80)
+      + '</style>';
+    const prompt = buildAutoContinueIncompleteOutputPrompt({
+      attempt: 1,
+      partialHtml: shell,
+      planOutline: '슬라이드 구성:\n01 표지\n02 핵심 요약',
+    });
+    expect(prompt).toContain('FINAL RETRY');
+    expect(prompt).toContain('빈 document shell');
+    expect(prompt).toContain('위 shell을 복사하지 말고');
+    expect(prompt).toContain('새 complete HTML deck artifact');
+    expect(prompt).not.toContain('```html');
+    expect(prompt).not.toContain('.deco-daisy{position:absolute');
+  });
+
   it('threads original reference files into the auto-continue prompt', () => {
     const prompt = buildAutoContinueIncompleteOutputPrompt({
       attempt: 1,

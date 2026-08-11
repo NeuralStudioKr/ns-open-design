@@ -116,6 +116,13 @@ const AUTO_CONTINUE_HEAD_ONLY_BODY_FIRST =
   + 'use only tiny inline style tokens, and fill every slide with real title + 2–4 bullets NOW. '
   + 'A compact static deck beats another CSS-only truncation.';
 
+function previewDiscardedHtmlShellForAutoContinue(html: string): string {
+  return html
+    .replace(/<style\b[^>]*>[\s\S]*$/i, '<style>…')
+    .replace(/<script\b[^>]*>[\s\S]*$/i, '<script>…')
+    .slice(0, 160);
+}
+
 export type AutoContinuePromptContext = {
   /** 1-based attempt index for this automatic continue fire. */
   attempt: number;
@@ -172,13 +179,16 @@ export function buildAutoContinueIncompleteOutputPrompt(
 
   const partialRaw = context.partialHtml?.trim() ?? '';
   const partialSalvaged = partialRaw ? salvageTruncatedHtmlDocument(partialRaw) : null;
+  const partialSalvagedHasSlide = Boolean(
+    partialSalvaged && documentContainsSlideSection(partialSalvaged),
+  );
   // Only treat as empty shell when salvage cannot recover any slide copy.
   // Contentful truncations (missing </html> but real slides) must NOT jump
   // straight to FINAL RETRY — that discards useful partial HTML.
   const partialShellOnly = Boolean(
     partialRaw
     && isIncompleteHtmlDocumentShell(partialRaw)
-    && !partialSalvaged,
+    && !partialSalvagedHasSlide,
   );
   const headOnlyHeavy = Boolean(
     partialShellOnly
@@ -239,7 +249,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
     // Truncated decks with real slide copy are still worth fencing so the
     // model can continue from the cut. Empty / SLOT-only shells must not be
     // re-fed — that anchors the next turn to the same blank deliverable.
-    if (partialSalvaged) {
+    if (partialSalvagedHasSlide) {
       const excerpt = excerptPartialHtmlForAutoContinue(partial);
       parts.push(
         '\n\n[이 대화에서 시작했지만 미완성인 HTML — 이어서 완성하거나 버리고 새 완전 덱을 한 번에 출력:]\n'
@@ -250,7 +260,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
     } else {
       parts.push(
         '\n\n[이전 HTML은 빈 document shell / 미완성 덱에 불과합니다 — 이어 쓰지 말고 버리세요:]\n'
-          + partial.slice(0, 160)
+          + previewDiscardedHtmlShellForAutoContinue(partial)
           + '\n\n위 shell을 복사하지 말고, 새 complete HTML deck artifact를 즉시 작성하세요. ('
           + COMPACT_DECK_SLIDE_COUNT_GUIDANCE
           + ')',
@@ -267,7 +277,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
   } else if (partial) {
     parts.push(
       '\n\n[이전 HTML은 빈 document shell에 불과합니다 — 이어 쓰지 말고 버리세요:]\n'
-        + partial.slice(0, 160)
+        + previewDiscardedHtmlShellForAutoContinue(partial)
         + '\n\n위 shell을 복사하지 말고, 새 complete HTML deck artifact를 즉시 작성하세요. ('
         + COMPACT_DECK_SLIDE_COUNT_GUIDANCE
         + ')',

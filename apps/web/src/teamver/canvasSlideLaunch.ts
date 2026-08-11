@@ -270,8 +270,9 @@ function selectedSlideTemplatePriorityInstruction(title: string): string {
   return [
     "**Selected template visual contract — READ LAST.**",
     `The user explicitly selected "${title}" as the deck template. This selected template is the visual source of truth and outranks the Canvas / Drive source styling, quick settings, default design systems, scenario examples, and any generic slide examples.`,
-    "Do not infer only from the template name. Use the selected template's concrete visual kit from the system prompt / local skill: exact palette, font families, border weights, shadow tokens, layout rhythm, and drawn CSS/SVG motifs.",
+    "Do not infer only from the template name. Use a compact subset of the selected template's concrete visual kit from the system prompt / local skill: exact palette, font families, border weights, shadow tokens, layout rhythm, and drawn CSS/SVG motifs.",
     "Do not substitute template motifs with emoji or generic Unicode symbols. Reuse or approximate the template's drawn CSS/SVG motif language instead.",
+    "Do not start by dumping a long <head>, full CSS, or framework shell. Put the first complete visible <section class=\"slide\"> early, then finish the full deck.",
     "If the concrete kit is incomplete or temporarily unavailable, make a conservative CSS/SVG approximation of the selected template's visible preview; never fall back to Neutral Modern, Simple Deck, generic pastel circles, or source-page decorations.",
   ].join("\n");
 }
@@ -296,8 +297,9 @@ export function canvasCreateSlidesRunPrompt(
   const templateBlock = !isDefaultTemplate && title
     ? [
       "\n\n[Selected slide template]",
-      `The user picked "${title}" as the deck template. Match its visual identity — palette, typography, layout, and kit Motif sprites / decoration CSS — as closely as the template specification in the system prompt allows.`,
-      "**Template palette / fonts / borders / motif WIN over the attached source's own visual styling.** The Canvas / Drive source HTML may have its own background gradients, fonts, and decorative accents (e.g. warm yellow-green travel styling); those are content references only. Do NOT carry over the source's colors, gradients, fonts, or decorative gradients into the deck. Copy the template kit's palette hex values, font-families, border/shadow tokens, and Motif sprites verbatim — never substitute emoji flowers/stars for the kit SVG motifs. Only the source's TEXT (headings, body copy, section names) crosses over.",
+      `The user picked "${title}" as the deck template. Match its visual identity — palette, typography, layout, and a compact subset of kit Motif sprites / decoration CSS — as closely as the template specification in the system prompt allows.`,
+      "**Template palette / fonts / borders / motif WIN over the attached source's own visual styling.** The Canvas / Drive source HTML may have its own background gradients, fonts, and decorative accents (e.g. warm yellow-green travel styling); those are content references only. Do NOT carry over the source's colors, gradients, fonts, or decorative gradients into the deck. Reuse the template kit's palette hex values, font-families, border/shadow tokens, and 1–3 recognizable Motif sprite cues per slide — never substitute emoji flowers/stars for the kit SVG motifs. Only the source's TEXT (headings, body copy, section names) crosses over.",
+      "Complete output is more important than exhaustive template CSS. Put visible slide sections first and keep shared styles tiny; do not return a head/style shell.",
       "If the source material's topic doesn't fit the template's theme (e.g. business content picked with a terminal template), restyle the content into this template's visual language anyway. Do NOT return an empty deck because of the mismatch; an imperfect visual match is better than no deck.",
     ].join("\n")
     : "";

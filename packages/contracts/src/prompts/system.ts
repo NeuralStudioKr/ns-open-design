@@ -1405,11 +1405,12 @@ const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT = `# Selected deck tem
 A Selected deck template is active and a **Template visual kit (from example.html)** is present. That kit is the **only** allowed palette, typography, border, shadow, and motif language.
 
 Hard requirements for every slide:
-- Bind kit hex colors, font-family names, border widths/radii, and offset shadows from the kit (inline styles or one short body \`<style>\` + optional font \`@import\`).
-- Keep decorative density the kit shows via **kit Motif sprites / Decoration CSS** (chunky cards, corner \`.deco\` SVG daisies/stars, pastel badges). Sparse title-only slides that ignore the kit are a failure.
+- Bind kit hex colors, font-family names, border widths/radii, and offset shadows from the kit with inline styles or one short body \`<style>\`.
+- Keep decorative density the kit shows via a **small subset** of kit Motif sprites / Decoration CSS cues (chunky cards, corner \`.deco\` SVG daisies/stars, pastel badges). Sparse title-only slides that ignore the kit are a failure, but full CSS pasted before content is also a failure.
 - **Forbidden motif substitutes:** do **not** fake the template with unicode/emoji ornaments (🌼🌸🌺🌻⭐✨🌈 etc.). Motif must be the kit's SVG/\`.deco\` patterns (or chunky borders when the kit has no sprites).
 - **Forbidden:** Neutral Modern / Starter look — slate covers \`#0f172a\` / \`#1e293b\` / \`#111827\`, Inter-only or system-ui-only typography, empty gradient corporate title slides, "no ornament" subtractive layouts from any design-system prose.
 - **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. The attached Canvas / Drive HTML has its own background colors, gradients, font-families, and decorative accents (e.g. warm yellow-green travel gradient with emoji-chip buttons, editorial serif Italy covers, etc.). Those belong to the source page — NOT to this deck. Palette, typography, borders, and motif MUST come from the kit above, not from the attached source HTML. The source contributes TEXT and structure only.
+- **Output order:** first finish visible \`<section class="slide">\` content. Never start by dumping a long \`<head>\` or full Decoration CSS; a complete recognizable deck beats a perfect-but-truncated shell.
 
 If any earlier compact wireframe sample conflicts with the kit, **ignore the sample colors** and follow the kit.
 If the attached source's palette conflicts with the kit, **ignore the source's palette** and follow the kit.`;
@@ -1581,8 +1582,9 @@ export function composeTeamverSlideApiPrompt({
       const hardRequirements = hasTemplateVisualKit
         ? (
           'Hard requirements:\n'
-          + '- Match the Template visual kit tokens (palette hex, fonts, borders, shadows) exactly.\n'
-          + '- Keep decorative density via kit Motif sprites / Decoration CSS (corner SVG `.deco`, chunky cards) — not a sparse title slide and not emoji flowers/stars.\n'
+          + '- Match the Template visual kit tokens (palette hex, fonts, borders, shadows) with a compact inline subset.\n'
+          + '- Keep decorative density via a few kit Motif sprites / Decoration CSS cues (corner SVG `.deco`, chunky cards) — not a sparse title slide and not emoji flowers/stars.\n'
+          + '- Do not paste the full Decoration CSS or a long `<head>` before slide 1; first produce visible slide sections and finish the deck.\n'
           + '- Active design system is secondary brand context only; template look wins.\n'
           + '- Prefer rich multi-region layouts from the template vocabulary over empty gradient covers.\n\n'
         )

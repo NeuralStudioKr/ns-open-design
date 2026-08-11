@@ -592,23 +592,23 @@ ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY}
  */
 export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE = `# Slide deck — API compact contract with Selected deck template (overrides the long skeleton copy workflow)
 
-You are in API mode. **Do NOT paste or recreate a large framework skeleton.** Do NOT spend tokens copying scale-to-fit JS, print CSS, chrome counters, or keyboard handlers.
+You are in API mode. **Do NOT paste or recreate a large framework skeleton.** Do NOT spend tokens copying scale-to-fit JS, print CSS, chrome counters, keyboard handlers, or the template's full Decoration CSS before the first slide.
 
 A **Selected deck template** (and usually a Template visual kit from example.html) is already in this prompt. That kit is the PRIMARY visual contract. The wireframe below is structure only — **never** copy slate/navy corporate colors from generic examples.
 
-When the brief is ready, emit ONE \`<artifact type="deck" identifier="deck">\` with a complete \`<!doctype html>…</html>\` in this same response. Prefer starting \`<body>\` immediately with visible slides. You MAY include one short body \`<style>\` (and optional Google Fonts \`@import\` / \`link\`) solely to bind kit fonts/tokens — then continue with filled slides.
+When the brief is ready, emit ONE \`<artifact type="deck" identifier="deck">\` with a complete \`<!doctype html>…</html>\` in this same response. **Output order is critical:** the first 1200 characters after \`<artifact\` must include \`<body\` and the first complete \`<section class="slide">...</section>\` with real visible copy. Do not open a \`<head>\` block; do not put a long \`<style>\` block before slide 1. Prefer inline styles on slides/elements. If you need a shared style, keep one tiny body \`<style>\` under 80 lines and place it after the first filled slide.
 
 Required wireframe (structure only — replace EVERY color/font with Selected template tokens; fixed Teamver canvas):
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><!-- optional short style with kit @import/fonts/tokens --><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center;/* kit background + kit text + kit display font */"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center;/* another kit surface */"><h1 style="margin:0 0 20px">실제 제목</h1><ul style="margin:0;padding-left:1.35rem"><li>실제 불릿</li></ul></section></body></html></artifact>\`
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center;/* kit background + kit text + kit display font + tiny motif subset */"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center;/* another kit surface */"><h1 style="margin:0 0 20px">실제 제목</h1><ul style="margin:0;padding-left:1.35rem"><li>실제 불릿</li></ul></section></body></html></artifact>\`
 
 Rules:
 1. On deck-delivery turns, optional: one tiny brief-specific UI-locale status sentence, then start the artifact. Artifact-only is OK for speed/tokens.
 2. Every \`<section class="slide">\` must contain real text. Empty sections or \`<!-- SLOT -->\` comments are failures.
-3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete compact deck over a giant framework.
-4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn.
+3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete compact deck over a giant framework. If token budget feels tight, reduce per-slide detail or slide count according to the count guidance — never spend the budget on style before slide content.
+4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. Complete deck beats perfect motif fidelity; a shell-only document is a failure.
 5. Vary slide layouts using the template-aware vocabulary below — do not repeat the same padding/background/composition on every slide.
-6. **Hard visual rule:** when a Template visual kit is present, bind its palette hex/fonts/borders/shadows and Motif sprites/\`.deco\` CSS on every slide. Never substitute emoji flowers/stars for kit SVG motifs. When only a Visual summary / title cue is present, match that prose and still avoid inventing sparse Neutral Modern / Inter / \`#0f172a\` covers (or emoji ornament rows) for cheerful/pastel/playful templates.
+6. **Hard visual rule:** when a Template visual kit is present, bind a compact subset of its palette hex/fonts/borders/shadows and 1–3 recognizable Motif sprites/\`.deco\` CSS cues per slide. Never paste the entire template CSS before content, and never substitute emoji flowers/stars for kit SVG motifs. When only a Visual summary / title cue is present, match that prose and still avoid inventing sparse Neutral Modern / Inter / \`#0f172a\` covers (or emoji ornament rows) for cheerful/pastel/playful templates.
 7. When the user attaches images, include \`<img src="exact-project-relative-path" …>\` using attachment paths.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}

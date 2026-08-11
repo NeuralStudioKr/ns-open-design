@@ -52,4 +52,25 @@ describe('DECK_FRAMEWORK_DIRECTIVE_COMPACT', () => {
     );
     expect(DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE).toContain('#0f172a');
   });
+
+  it('selected-template compact contract forces visible slides before style-heavy kit chrome', () => {
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      'the first 1200 characters after',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      'first complete `<section class="slide">...</section>`',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      'Do not open a `<head>` block',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      'Complete deck beats perfect motif fidelity',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).toContain(
+      '1–3 recognizable Motif sprites',
+    );
+    expect(DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE).not.toContain(
+      'optional short style with kit @import',
+    );
+  });
 });
