@@ -9126,6 +9126,7 @@ function HtmlViewer({
               ),
               // Suppress Mixed on keys the user is actively drafting (59).
               manualEditPendingStyleRef.current?.styles,
+              { perTargetStyles: manualEditPendingStyleRef.current?.perTargetStyles },
             ));
             setManualEditDraft((current) => ({
               ...current,
@@ -11022,13 +11023,9 @@ function HtmlViewer({
         revisionRetentionLimit,
       );
       scheduleDeferredRevisionStackRefresh();
-      setManualEditDraft((current) => (
-        current.fullSource === result.source ? current : { ...current, fullSource: result.source }
-      ));
-      const pendingIds = manualEditPendingStyleRef.current?.targetIds
-        ?? (manualEditPendingStyleRef.current?.id
-          ? [manualEditPendingStyleRef.current.id]
-          : []);
+      // Flush clears pending before await — a non-null pending here is newer
+      // concurrent draft work and must not be wiped by this batch success.
+      const concurrentPending = manualEditPendingStyleRef.current;
       for (const patch of patches) {
         if (patch.kind === 'set-style') {
           reconcileManualEditStyleSave(
@@ -11038,33 +11035,53 @@ function HtmlViewer({
             result.targetSnapshots?.[patch.id],
           );
         }
-        if (pendingIds.includes(patch.id)) {
-          manualEditPendingStyleRef.current = null;
-          clearManualEditStyleTimer();
-        }
       }
       // Multi-select: recompute mixedKeys from saved source (do not wipe all Mixed).
+      // Source-only styles — stale target.styles must not resurrect cleared values.
       const selectedIdsAfterBatch = selectedManualEditTargetIdsRef.current;
       if (selectedIdsAfterBatch.length > 1) {
         const batchDoc = parseManualEditSource(result.source);
-        const refreshed = resolveManualEditTargetsByIds(selectedIdsAfterBatch, manualEditTargets);
-        const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
-          refreshed.length > 0 ? refreshed : selectedIdsAfterBatch.map((id) => ({ id })),
-          (id) => {
-            const target = refreshed.find((item) => item.id === id) ?? null;
-            return target
-              ? inspectorManualEditStyles(target, result.source, batchDoc)
-              : readManualEditStyles(result.source, id, {}, batchDoc);
-          },
+        const idTargets = selectedIdsAfterBatch.map((id) => ({ id }));
+        const readSourceStyles = (id: string) => readManualEditStyles(
+          result.source,
+          id,
+          {},
+          batchDoc,
         );
-        setManualEditMixedStyleKeys(mixedKeys);
-        setManualEditDraft((current) => ({
-          ...current,
-          styles: mergedStyles,
-          fullSource: result.source,
-        }));
-      } else {
+        if (concurrentPending) {
+          // Keep concurrent draft.styles; refresh Mixed excluding draft keys.
+          setManualEditMixedStyleKeys(mixedKeysForPendingStyleDraft(
+            idTargets,
+            readSourceStyles,
+            concurrentPending.styles,
+            { perTargetStyles: concurrentPending.perTargetStyles },
+          ));
+          setManualEditDraft((current) => (
+            current.fullSource === result.source
+              ? current
+              : { ...current, fullSource: result.source }
+          ));
+        } else {
+          const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
+            idTargets,
+            readSourceStyles,
+          );
+          setManualEditMixedStyleKeys(mixedKeys);
+          setManualEditDraft((current) => ({
+            ...current,
+            styles: mergedStyles,
+            fullSource: result.source,
+          }));
+        }
+      } else if (!concurrentPending) {
         setManualEditMixedStyleKeys(new Set());
+        setManualEditDraft((current) => (
+          current.fullSource === result.source ? current : { ...current, fullSource: result.source }
+        ));
+      } else {
+        setManualEditDraft((current) => (
+          current.fullSource === result.source ? current : { ...current, fullSource: result.source }
+        ));
       }
       setManualEditError(null);
       await onFileSaved?.();

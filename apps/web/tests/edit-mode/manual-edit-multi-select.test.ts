@@ -6,6 +6,7 @@ import {
   buildManualEditStylePatchesForTargets,
   manualEditSelectionIdsEqual,
   mergeInspectorStylesForTargets,
+  collectPendingManualEditStyleDraftKeys,
   mixedKeysForPendingStyleDraft,
   nextManualEditSelectionIds,
   shouldFlushManualEditStylesOnSelectionBoundary,
@@ -88,10 +89,23 @@ describe('manual-edit-multi-select', () => {
       ...emptyManualEditStyles(),
       color: id === 'title' ? '#111111' : '#222222',
       fontSize: id === 'title' ? '24px' : '16px',
+      zIndex: id === 'title' ? '2' : '1',
     });
     const mixed = mixedKeysForPendingStyleDraft(catalog, read, { color: '#ef4444' });
     expect(mixed.has('color')).toBe(false);
     expect(mixed.has('fontSize')).toBe(true);
+    const withPerTarget = mixedKeysForPendingStyleDraft(
+      catalog,
+      read,
+      {},
+      { perTargetStyles: { title: { zIndex: '9' }, body: { zIndex: '9' } } },
+    );
+    expect(withPerTarget.has('zIndex')).toBe(false);
+    expect(withPerTarget.has('fontSize')).toBe(true);
+    expect(collectPendingManualEditStyleDraftKeys({
+      styles: { color: '#fff' },
+      perTargetStyles: { title: { left: '10px' } },
+    }).has('left')).toBe(true);
   });
 
   it('builds one set-style patch per changed target', () => {

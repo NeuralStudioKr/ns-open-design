@@ -125,16 +125,16 @@ export function manualEditHistoryConfirmTrustsLocal(
   authoredSource?: string | null,
   tipContent?: string | null,
 ): boolean {
-  if (persisted == null || persisted === expectedSource) return true;
-  // Disk already shows a warmer tip — do not trust a stale expected local save
-  // after pin tip-yield cleared the save pin (기획 50 undo / tip advance).
-  if (
-    tipContent != null
-    && persisted === tipContent
-    && tipContent !== expectedSource
-  ) {
-    return false;
+  // Tip≠expected must run BEFORE persisted===expected. S3 can still show the
+  // old save while tip cache is warmer — trusting local would overwrite tip.
+  if (tipContent != null && tipContent !== expectedSource) {
+    // Disk already at tip, or session authored already adopted tip.
+    if (persisted === tipContent) return false;
+    if (authoredSource != null && authoredSource === tipContent) return false;
+    // Disk still null/expected (lag) while tip is warm — force refresh path.
+    if (persisted == null || persisted === expectedSource) return false;
   }
+  if (persisted == null || persisted === expectedSource) return true;
   if (authoredSource != null && authoredSource === expectedSource) return true;
   return Boolean(
     isManualEditSourcePinActive(pinned, now)
@@ -176,16 +176,23 @@ export type ManualEditSavePinTipStack = {
   headRevisionId: string | null;
 };
 
-/** Prefer active sequence → head revision → last stack entry. */
+/**
+ * Prefer active sequence → head revision → last stack entry.
+ *
+ * When `activeSeq` is set but missing from the in-memory stack (agent tip
+ * advanced before list refresh), return null — do NOT fall back to HEAD.
+ * HEAD fallback made warm stale cache win over `coldFallback` and blocked
+ * pin tip-yield (fetched tip B, tipContent A → prefer pin A).
+ */
 export function resolveManualEditSavePinTipRevision(
   stack: ManualEditSavePinTipStack,
   activeSeq: number | null | undefined,
 ): { id: string; sequence: number } | null {
+  if (activeSeq != null) {
+    return stack.revisions.find((revision) => revision.sequence === activeSeq) ?? null;
+  }
   return (
-    (activeSeq != null
-      ? stack.revisions.find((revision) => revision.sequence === activeSeq)
-      : null)
-    ?? stack.revisions.find((revision) => revision.id === stack.headRevisionId)
+    stack.revisions.find((revision) => revision.id === stack.headRevisionId)
     ?? stack.revisions.at(-1)
     ?? null
   );
@@ -194,7 +201,8 @@ export function resolveManualEditSavePinTipRevision(
 /**
  * Warm tip revision HTML for pin tip≠ yield (active → head → tip).
  * `readContent` is the host revision content cache lookup.
- * `coldFallback` covers snapshot/resolve when the in-memory tip cache is cold.
+ * `coldFallback` covers snapshot/resolve when the in-memory tip cache is cold
+ * or when activeSeq is ahead of the stack (see resolve tip revision).
  */
 export function tipContentForManualEditSavePin(
   stack: ManualEditSavePinTipStack,

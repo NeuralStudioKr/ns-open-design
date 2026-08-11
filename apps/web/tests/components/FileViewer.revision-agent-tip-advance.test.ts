@@ -113,6 +113,9 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('mixedKeysForPendingStyleDraft');
     expect(fileViewer).toContain('Suppress Mixed on keys the user is actively drafting');
     expect(fileViewer).toContain('Multi-select: recompute mixedKeys from saved source');
+    expect(fileViewer).toContain('concurrentPending');
+    expect(fileViewer).toContain('Source-only styles');
+    expect(fileViewer).toContain('Keep concurrent draft.styles');
     expect(fileViewer).toContain('selectedTargetsIdentityChanged');
     expect(fileViewer).toContain('manualEditSelectedIdentityFingerprintRef');
     expect(fileViewer).toContain("from '../edit-mode/manual-edit-targets-identity'");

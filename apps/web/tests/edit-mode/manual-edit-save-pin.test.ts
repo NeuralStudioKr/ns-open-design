@@ -130,12 +130,22 @@ describe('manual edit save pin', () => {
     expect(resolveManualEditSavePinTipRevision(stack, 2)?.id).toBe('r2');
     expect(tipContentForManualEditSavePin(stack, 2, read)).toBe(mid);
     expect(tipContentForManualEditSavePin(stack, null, read)).toBe(tip);
-    expect(tipContentForManualEditSavePin(stack, 99, read)).toBe(tip);
+    // activeSeq ahead of stack — no HEAD fallback (coldFallback owns tip yield).
+    expect(resolveManualEditSavePinTipRevision(stack, 99)).toBeNull();
+    expect(tipContentForManualEditSavePin(stack, 99, read)).toBeNull();
     expect(tipContentForManualEditSavePin({ revisions: [], headRevisionId: null }, 1, read)).toBeNull();
     // Cold fallback when tip cache misses (active tip snapshot resolve).
     const cold = '<html><body><h1>Cold tip</h1></body></html>';
     expect(tipContentForManualEditSavePin(stack, 2, () => null, cold)).toBe(cold);
     expect(tipContentForManualEditSavePin({ revisions: [], headRevisionId: null }, 1, read, cold)).toBe(cold);
+    // Regression: warm HEAD cache must not beat coldFallback when activeSeq missing.
+    expect(tipContentForManualEditSavePin(stack, 99, read, cold)).toBe(cold);
+    expect(preferManualEditPinnedSource(
+      createManualEditSourcePin(saved, 1_000),
+      cold,
+      1_000 + 100,
+      tipContentForManualEditSavePin(stack, 99, read, cold),
+    )).toBeNull();
   });
 
   it('tip yield × undo retention: skipDiskFetch and trustsLocal agree on tip≠expected', () => {
@@ -147,5 +157,14 @@ describe('manual edit save pin', () => {
     // After yield, undo/retention on tip itself is local-trusted + skippable.
     expect(manualEditHistoryConfirmCanSkipDiskFetch(tip, null, 1_000 + 100, tip, tip)).toBe(true);
     expect(manualEditHistoryConfirmTrustsLocal(tip, stale, null, 1_000 + 100, tip, tip)).toBe(true);
+  });
+
+  it('refuses trustsLocal when tip is warmer even if disk still shows expected', () => {
+    const tip = '<html><body><h1>Agent tip</h1></body></html>';
+    // S3 lag: disk===expected save, but tip cache already advanced.
+    expect(manualEditHistoryConfirmTrustsLocal(saved, saved, null, 1_000 + 100, saved, tip)).toBe(false);
+    expect(manualEditHistoryConfirmTrustsLocal(saved, null, null, 1_000 + 100, saved, tip)).toBe(false);
+    // Authored already at tip — stale expected must not win.
+    expect(manualEditHistoryConfirmTrustsLocal(saved, stale, null, 1_000 + 100, tip, tip)).toBe(false);
   });
 });

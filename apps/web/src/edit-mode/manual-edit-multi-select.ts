@@ -81,22 +81,47 @@ export function mergeInspectorStylesForTargets(
   return { styles: merged, mixedKeys };
 }
 
+/** Style keys present on a pending draft (shared styles and/or per-target). */
+export function collectPendingManualEditStyleDraftKeys(
+  pending: {
+    styles?: Partial<ManualEditStyles> | null;
+    perTargetStyles?: Record<string, Partial<ManualEditStyles>> | null;
+  } | null | undefined,
+): Set<keyof ManualEditStyles> {
+  const keys = new Set<keyof ManualEditStyles>();
+  if (!pending) return keys;
+  for (const key of Object.keys(pending.styles ?? {}) as Array<keyof ManualEditStyles>) {
+    if (pending.styles?.[key] !== undefined) keys.add(key);
+  }
+  for (const styles of Object.values(pending.perTargetStyles ?? {})) {
+    for (const key of Object.keys(styles) as Array<keyof ManualEditStyles>) {
+      if (styles[key] !== undefined) keys.add(key);
+    }
+  }
+  return keys;
+}
+
 /**
  * While a style draft is pending, recompute mixedKeys from live targets without
  * returning merged styles that would clobber the pending inspector draft.
  *
- * Keys present on `pendingStyles` are excluded — the user is actively drafting
+ * Keys present on the pending draft are excluded — the user is actively drafting
  * those fields, so the Mixed placeholder must not fight the draft value (59).
  */
 export function mixedKeysForPendingStyleDraft(
   targets: readonly { id: string }[],
   readStyles: (id: string) => ManualEditStyles,
   pendingStyles?: Partial<ManualEditStyles> | null,
+  options?: {
+    perTargetStyles?: Record<string, Partial<ManualEditStyles>> | null;
+  },
 ): Set<keyof ManualEditStyles> {
   const mixedKeys = mergeInspectorStylesForTargets(targets, readStyles).mixedKeys;
-  if (!pendingStyles) return mixedKeys;
-  for (const key of Object.keys(pendingStyles) as Array<keyof ManualEditStyles>) {
-    if (pendingStyles[key] !== undefined) mixedKeys.delete(key);
+  for (const key of collectPendingManualEditStyleDraftKeys({
+    styles: pendingStyles,
+    perTargetStyles: options?.perTargetStyles,
+  })) {
+    mixedKeys.delete(key);
   }
   return mixedKeys;
 }

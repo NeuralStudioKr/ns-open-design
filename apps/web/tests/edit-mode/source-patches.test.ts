@@ -1377,10 +1377,11 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain('do not treat CSS');
     expect(sourcePatchesSource).toContain('/\\s(?:action|formaction|ping|to|from|by|values)\\s*=');
     expect(sourcePatchesSource).toContain('[\\s\\S]*?\\\\[\\s\\S]*?');
-    // SMIL values residual removed — isSafeManualEditUrlAttrValue owns values tokens.
-    expect(sourcePatchesSource).toContain('srcset|imagesrcset|archive');
-    expect(sourcePatchesSource).toContain('SMIL `values` is gated by isSafeManualEditUrlAttrValue');
-    expect(sourcePatchesSource).not.toContain('srcset|imagesrcset|archive|values');
+    // values residual restored for defense-in-depth (comma/whitespace scheme smuggle).
+    expect(sourcePatchesSource).toContain('srcset|imagesrcset|archive|values');
+    expect(sourcePatchesSource).toContain('Include `values` again for defense-in-depth');
+    expect(sourcePatchesSource).toContain('manualEditLocalTagName');
+    expect(sourcePatchesSource).toContain('smilTag');
     // SVG fragment-only href/xlink:href (use/image/… + isSafeManualEditSvgResourceRef).
     expect(sourcePatchesSource).toContain('SVG paint/resource tags — fail closed');
     expect(sourcePatchesSource).toContain("(?!#[^\\\\\\\\/:'\"]*)");
@@ -1598,6 +1599,7 @@ describe('manual edit source patches', () => {
       '<!doctype html><html><body>',
       '<animate attributeName="href" values="javascript:alert(1);#ok"></animate>',
       '<set attributeName="xlink:href" values="https://evil.example/x;#f"></set>',
+      '<svg:animate attributeName="href" values="#ok, javascript:alert(9)"></svg:animate>',
       '<p data-od-id="ok">safe</p>',
       '</body></html>',
     ].join(''));
@@ -1610,7 +1612,10 @@ describe('manual edit source patches', () => {
     expect(isSafeManualEditUrlAttrValue('values', '0;color:red;10')).toBe(true);
     expect(isSafeManualEditUrlAttrValue('values', 'javascript:alert(1);#x')).toBe(false);
     expect(isSafeManualEditUrlAttrValue('values', 'https://evil.example/a;#x')).toBe(false);
-    expect(sourcePatchesSource).toContain('SMIL `values` is gated by isSafeManualEditUrlAttrValue');
+    // Mid-token smuggling — prefix-only isSafeManualEditUrl used to miss these.
+    expect(isSafeManualEditUrlAttrValue('values', '#ok, javascript:alert(1)')).toBe(false);
+    expect(isSafeManualEditUrlAttrValue('values', '#ok javascript:alert(1)')).toBe(false);
+    expect(sourcePatchesSource).toContain('Include `values` again for defense-in-depth');
   });
 
   it('rejects bare data:/blob: presentation paints and keeps named colors', () => {

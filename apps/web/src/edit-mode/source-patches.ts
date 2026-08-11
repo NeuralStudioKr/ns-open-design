@@ -1199,14 +1199,24 @@ const MANUAL_EDIT_SMIL_ANIM_TAGS = new Set([
   'animatecolor',
 ]);
 
+/** Local name for `svg:animate` / namespaced tags (HTML/XML parsers). */
+function manualEditLocalTagName(tag: string): string {
+  const lower = String(tag || '').toLowerCase();
+  const idx = lower.lastIndexOf(':');
+  return idx >= 0 ? lower.slice(idx + 1) : lower;
+}
+
 /** Hosts that must not receive set-text / set-style / set-attributes mutation. */
 function isManualEditLockedHostTag(tag: string): boolean {
   const lower = String(tag || '').toLowerCase();
+  const local = manualEditLocalTagName(lower);
   return (
     MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(lower)
+    || MANUAL_EDIT_DANGEROUS_REPLACEMENT_TAGS.has(local)
     || MANUAL_EDIT_NO_URL_MUTATION_TAGS.has(lower)
+    || MANUAL_EDIT_NO_URL_MUTATION_TAGS.has(local)
     // SMIL nodes assign attrs via attributeName+to — block direct mutation.
-    || MANUAL_EDIT_SMIL_ANIM_TAGS.has(lower)
+    || MANUAL_EDIT_SMIL_ANIM_TAGS.has(local)
   );
 }
 
@@ -1288,7 +1298,8 @@ function sanitizeManualEditReplacementTree(root: Element): void {
       return;
     }
     // SMIL can assign on* / style / href via attributeName + to/values without on* attrs.
-    if (MANUAL_EDIT_SMIL_ANIM_TAGS.has(tag)) {
+    // Use local name so `svg:animate` is treated like `animate`.
+    if (MANUAL_EDIT_SMIL_ANIM_TAGS.has(manualEditLocalTagName(tag))) {
       const smilAttr = (
         el.getAttribute('attributeName')
         || el.getAttribute('attributename')
@@ -1476,6 +1487,8 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     'to', 'from', 'by', 'values',
   ].join('|');
   const smil = 'animate|animatemotion|animatetransform|set|animatecolor';
+  // Optional XML/SVG namespace prefix (`svg:animate`) — local-name only misses these.
+  const smilTag = `(?:[\\w.-]+:)?(?:${smil})`;
   // Align with MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS (DOM walk scrubs these).
   const presentationAttrs = [
     'filter', 'fill', 'stroke', 'clip-path', 'clippath', 'mask', 'cursor',
@@ -1485,8 +1498,8 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     .replace(new RegExp(`<(?:${dangerous})\\b[\\s\\S]*?<\\/(?:${dangerous})\\s*>`, 'gi'), '')
     .replace(new RegExp(`<(?:${dangerous})\\b[^>]*\\/?>`, 'gi'), '')
     // SMIL animation nodes can navigate via to/from/by/values without a DOM walk.
-    .replace(new RegExp(`<(?:${smil})\\b[\\s\\S]*?<\\/(?:${smil})\\s*>`, 'gi'), '')
-    .replace(new RegExp(`<(?:${smil})\\b[^>]*\\/?>`, 'gi'), '')
+    .replace(new RegExp(`<${smilTag}\\b[\\s\\S]*?<\\/${smilTag}\\s*>`, 'gi'), '')
+    .replace(new RegExp(`<${smilTag}\\b[^>]*\\/?>`, 'gi'), '')
     .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
     .replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, '')
     .replace(/\ssrcdoc\s*=\s*(['"]).*?\1/gi, '')
@@ -1591,14 +1604,15 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     )
     // Multi-token URL lists — drop attr when ANY candidate matches the deny list
     // (prefix-of-whole-value misses `srcset="/ok.png, javascript:…"`).
-    // SMIL `values` is gated by isSafeManualEditUrlAttrValue above (semicolon
-    // tokens + CSS paints); do not residual-strip it here.
+    // Include `values` again for defense-in-depth: isSafe is primary, but
+    // comma/whitespace-smuggled schemes must not survive failClosed. CSS paints
+    // like `color:red` do not match this scheme list.
     .replace(
-      /\s(?:srcset|imagesrcset|archive)\s*=\s*(['"])[\s\S]*?(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|chrome(?:-extension)?\s*:|moz-extension\s*:|resource\s*:|view-source\s*:|ms-appx(?:-web)?\s*:|\/\/)[\s\S]*?\1/gi,
+      /\s(?:srcset|imagesrcset|archive|values)\s*=\s*(['"])[\s\S]*?(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|chrome(?:-extension)?\s*:|moz-extension\s*:|resource\s*:|view-source\s*:|ms-appx(?:-web)?\s*:|\/\/)[\s\S]*?\1/gi,
       '',
     )
     .replace(
-      /\s(?:srcset|imagesrcset|archive)\s*=\s*[^\s>]*(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|chrome(?:-extension)?\s*:|moz-extension\s*:|resource\s*:|view-source\s*:|ms-appx(?:-web)?\s*:|\/\/)[^\s>]*/gi,
+      /\s(?:srcset|imagesrcset|archive|values)\s*=\s*[^\s>]*(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|chrome(?:-extension)?\s*:|moz-extension\s*:|resource\s*:|view-source\s*:|ms-appx(?:-web)?\s*:|\/\/)[^\s>]*/gi,
       '',
     )
     // Multi-token ping — drop when ANY whitespace token is absolute/proto/\\.
@@ -3515,17 +3529,33 @@ export function isSafeManualEditUrlAttrValue(attr: string, value: string): boole
     // Absolute / protocol-relative / backslash tokens are relative/fragment only
     // (https://… retargets blocked). CSS paints (`color:red`, `10`) keep the
     // general isSafeManualEditUrl gate — do not treat `color:` as a URL scheme.
+    // Also reject mid-token smuggling (`#ok, javascript:…`) that prefix-only
+    // isSafeManualEditUrl misses after `;`-split.
     const pieces = lower === 'values' ? String(value || '').split(';') : [value];
     for (const part of pieces) {
       const piece = part.trim();
       if (!piece) continue;
       if (containsUnsafeEmbeddedCssOrScheme(piece)) return false;
-      const absoluteOrProto = /^(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)/i.test(piece)
-        || piece.includes('\\');
-      if (absoluteOrProto) {
-        if (!isSafeManualEditRelativeOrFragmentUrl(piece)) return false;
-      } else if (!isSafeManualEditUrl(piece)) {
+      const compact = compactManualEditUrlForSchemeCheck(
+        decodeHtmlCharacterReferences(piece),
+      );
+      if (
+        /(?:javascript|vbscript|blob|file|about|filesystem|chrome(?:-extension)?|moz-extension|resource|view-source|ms-appx(?:-web)?):/i
+          .test(compact)
+        || /data:(?:text\/html|image\/svg\+xml)/i.test(compact)
+      ) {
         return false;
+      }
+      const tokens = piece.split(/[\s,]+/).map((token) => token.trim()).filter(Boolean);
+      const candidates = tokens.length > 0 ? tokens : [piece];
+      for (const token of candidates) {
+        const absoluteOrProto = /^(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)/i.test(token)
+          || token.includes('\\');
+        if (absoluteOrProto) {
+          if (!isSafeManualEditRelativeOrFragmentUrl(token)) return false;
+        } else if (!isSafeManualEditUrl(token)) {
+          return false;
+        }
       }
     }
     return true;
