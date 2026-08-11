@@ -19,6 +19,8 @@
 // motif sprites are the single biggest anti-emoji signal we can hand the
 // model — clipping them was the reason Daisy Days kept coming back as 🌸
 // emoji clusters despite every prompt-level ban we added.
+// BODY-FIRST hard rules below tell the model to emit slides before pasting
+// this kit into `<head>` so the larger budget does not invite shell-only cuts.
 const DEFAULT_MAX_CHARS = 6_800;
 
 function uniquePreserveOrder(values: string[]): string[] {
@@ -319,8 +321,9 @@ function extractFirstSlideStructureCue(html: string, budget: number): string | n
 
 const HARD_RULES = [
   'Hard rules (non-negotiable):',
+  '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` slides BEFORE a large `<head>`/`<style>` dump. Put Motif sprites + Decoration CSS in one short body `<style>` after slide 1 (or tiny inline tokens). A CSS-only truncation is a failed deliverable.',
   '- Keep the template scheme (light pastel stays light; dark terminal stays dark).',
-  '- Motif MUST be SVG/CSS from **Motif sprites** / **Decoration CSS** below (e.g. `<div class="deco deco-daisy-tl">…svg…</div>`).',
+  '- Motif MUST be SVG/CSS from **Motif sprites** / **Decoration CSS** below (e.g. `<div class="deco deco-daisy-tl">…svg…</div>`). Use 2–4 sprites max per slide.',
   '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration — no 🌼 🌸 🌺 🌻 🌹 ⭐ ✨ 🌟 🌈 ☀️ or similar flower/star/rainbow emoji rows pretending to be the template identity.',
   '- Preserve chunky cards/borders/offset shadows when Decoration CSS shows them.',
   '- Vary slide layouts using the template vocabulary; do not emit sparse title-only Neutral Modern slides.',
@@ -381,7 +384,7 @@ export function extractTemplateVisualKitFromHtml(
   const deco = extractDecorationCss(source, decoBudget);
   if (deco) {
     lines.push(
-      '### Decoration CSS (paste into the short body `<style>`)',
+      '### Decoration CSS (paste into the short body `<style>` AFTER slide 1)',
       '',
       '```css',
       deco,
@@ -399,7 +402,7 @@ export function extractTemplateVisualKitFromHtml(
     lines.push(
       '### Motif sprites (complete SVGs — copy into corner `<div class="deco …">` wrappers)',
       '',
-      'Use 2–4 of these per slide at corners/edges via absolute `.deco` positioning. Do not invent emoji flowers.',
+      'Use 2–4 of these per slide at corners/edges via absolute `.deco` positioning. Do not invent emoji flowers. Do not paste every sprite into `<head>` before writing slides — BODY-FIRST.',
       '',
     );
     for (let i = 0; i < sprites.length; i += 1) {

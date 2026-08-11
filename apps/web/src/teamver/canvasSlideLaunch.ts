@@ -304,7 +304,7 @@ export function canvasCreateSlidesRunPrompt(
   const templatePriorityBlock = !isDefaultTemplate && title
     ? `\n\n[Selected slide template priority]\n${selectedSlideTemplatePriorityInstruction(title)}`
     : "";
-  const brief = compactCanvasBriefValue(sourceBrief ?? "", 900);
+  const brief = compactCanvasBriefBlock(sourceBrief ?? "", 900);
   const sourceHint = brief ? `\n\n[Source brief]\n${brief}` : "";
   const user = compactCanvasBriefValue(userInstruction ?? "", 600);
   const userHint = user ? `\n\n[User instruction]\n${user}` : "";
@@ -595,6 +595,24 @@ function compactCanvasBriefValue(value: string, max = 220): string {
     .replace(/\s+/g, " ")
     .trim();
   return compact.length > max ? `${compact.slice(0, max - 1).trimEnd()}…` : compact;
+}
+
+/**
+ * Compact a multi-line Canvas/Drive source brief while keeping field lines
+ * intact. Collapsing the whole brief to one line used to bury
+ * `Visible headings:` mid-string so outline fallback could not parse titles
+ * after incomplete-html-document-shell.
+ */
+export function compactCanvasBriefBlock(value: string, max = 900): string {
+  const lines = String(value || "")
+    .split(/\r?\n/)
+    .map((line) => compactCanvasBriefValue(line, max))
+    .filter(Boolean);
+  let out = lines.join("\n");
+  if (out.length > max) {
+    out = `${out.slice(0, max - 1).trimEnd()}…`;
+  }
+  return out;
 }
 
 export function canvasCreateSlidesSourceBrief(

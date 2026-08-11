@@ -105,6 +105,25 @@ describe("canvasSlideLaunch", () => {
     });
   });
 
+  it("keeps Source brief field lines (Visible headings) instead of collapsing to one line", () => {
+    // Regression for incomplete-html-document-shell → outline fallback miss:
+    // compacting the whole brief with \\s+ buried "Visible headings:" mid-line.
+    const runPrompt = canvasCreateSlidesRunPrompt(
+      "Html Ppt Zhangzara Daisy Days",
+      [
+        "Canvas title: 여행자를 위한 이탈리아 기본 지식",
+        "Canvas sections: 6",
+        "Visible headings: 지리 · 기본정보 / 주요관광지 / 음식문화 / 여행팁",
+        "Source preview: Keep the travel sections.",
+      ].join("\n"),
+      null,
+    );
+    const brief = runPrompt.slice(runPrompt.indexOf("[Source brief]"));
+    expect(brief).toMatch(/Visible headings:\s*지리/);
+    expect(brief).toMatch(/\nVisible headings:/);
+    expect(brief).not.toMatch(/Canvas title:[^\n]*Visible headings:/);
+  });
+
   it("sends hidden deliverable instructions to the model while keeping user display clean", () => {
     const runPrompt = canvasCreateSlidesRunPrompt(
       "Hermes Cyber Terminal",

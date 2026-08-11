@@ -40,24 +40,32 @@ export function looksLikeSlideOutline(text: string): boolean {
   return extractSlideOutlineItems(text).length >= 3;
 }
 
-const CANVAS_SOURCE_HEADINGS_LINE_RE =
-  /^\s*(?:Visible headings|Canvas headings|Source headings)\s*[:：]\s*(.+)$/i;
+const CANVAS_SOURCE_HEADINGS_MARKER_RE =
+  /(?:Visible headings|Canvas headings|Source headings)\s*[:：]\s*/i;
 
 /**
- * Split a Canvas / Drive source brief "Visible headings: A / B / C" line
+ * Trailing Canvas / Drive brief fields sometimes land on the same compacted
+ * line as `Visible headings:` (run prompt used to collapse newlines). Stop
+ * the payload before those so "Source preview: …" is not treated as a title.
+ */
+const CANVAS_SOURCE_HEADINGS_PAYLOAD_STOP_RE =
+  /\s+(?:Source preview|Canvas title|Canvas sections|Drive source(?: file| MIME)?|Drive asset id)\s*[:：]/i;
+
+/**
+ * Split a Canvas / Drive source brief "Visible headings: A / B / C" payload
  * into slide title candidates. The Canvas one-confirm compose collapses the
  * page's `<h1>`/`<h2>` list into a single ` / `-separated string; when the
  * agent never emits a usable HTML deck, those headings are our best (and
  * often only) outline signal for a graceful fallback deck.
  */
-function extractCanvasSourceHeadingSlides(line: string): EmergencySlide[] {
-  const match = line.match(CANVAS_SOURCE_HEADINGS_LINE_RE);
-  const payload = match?.[1]?.trim();
-  if (!payload) return [];
+function parseCanvasSourceHeadingPayload(payload: string): EmergencySlide[] {
+  const cleaned = payload.replace(CANVAS_SOURCE_HEADINGS_PAYLOAD_STOP_RE, '\n').split('\n')[0]?.trim()
+    ?? '';
+  if (!cleaned) return [];
   // Match `canvasCreateSlidesSourceBrief` which joins with " / ". Split ONLY
   // on " / " (spaces around slash) so headings that contain a middle-dot,
   // pipe, or bullet inside a single title (e.g. "지리 · 기본정보") stay whole.
-  const parts = payload
+  const parts = cleaned
     .split(/\s+\/\s+/)
     .map(cleanSlideTitle)
     .filter((title) => title.length > 1 && !looksLikeProgressOrFragmentTopic(title))
@@ -65,9 +73,32 @@ function extractCanvasSourceHeadingSlides(line: string): EmergencySlide[] {
   return parts.map((title) => ({ title }));
 }
 
+function extractCanvasSourceHeadingSlides(line: string): EmergencySlide[] {
+  const match = line.match(
+    /^\s*(?:Visible headings|Canvas headings|Source headings)\s*[:：]\s*(.+)$/i,
+  );
+  const payload = match?.[1]?.trim();
+  if (!payload) return [];
+  return parseCanvasSourceHeadingPayload(payload);
+}
+
+/**
+ * Recover Canvas headings even when the source brief was whitespace-collapsed
+ * into one line (`Canvas title: … Visible headings: A / B / C Source preview:`).
+ * Line-anchored extractors miss that shape and outline fallback used to fail
+ * after incomplete-html-document-shell.
+ */
+function extractCanvasSourceHeadingSlidesFromText(text: string): EmergencySlide[] {
+  const match = CANVAS_SOURCE_HEADINGS_MARKER_RE.exec(text);
+  if (!match || match.index == null) return [];
+  const payload = text.slice(match.index + match[0].length);
+  return parseCanvasSourceHeadingPayload(payload);
+}
+
 /** Parse slide titles from assistant plan/outline prose. */
 export function extractSlideOutlineItems(text: string): EmergencySlide[] {
-  const lines = String(text || '').split(/\r?\n/);
+  const source = String(text || '');
+  const lines = source.split(/\r?\n/);
   const slides: EmergencySlide[] = [];
   let inOutlineSection = false;
 
@@ -103,6 +134,15 @@ export function extractSlideOutlineItems(text: string): EmergencySlide[] {
         const title = cleanSlideTitle(bullet[1]);
         if (title.length > 1) slides.push({ title });
       }
+    }
+  }
+
+  // Compacted Canvas→Slide prompts put "Visible headings:" mid-line. If the
+  // per-line pass found nothing usable, recover from the full text once.
+  if (slides.length < 3) {
+    const compacted = extractCanvasSourceHeadingSlidesFromText(source);
+    if (compacted.length >= 2) {
+      slides.push(...compacted);
     }
   }
 

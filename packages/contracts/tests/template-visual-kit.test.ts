@@ -30,9 +30,10 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toContain('Motif sprites');
     expect(kit).toContain('Do not invent emoji flowers');
     expect(kit).toContain('Do NOT replace them with an active design-system palette');
-    // Hard anti-emoji rules must appear (not truncated away).
+    // Hard anti-emoji + BODY-FIRST rules must appear (not truncated away).
     expect(kit).toMatch(/Forbidden motif substitutes/i);
     expect(kit).toMatch(/🌼|emoji/i);
+    expect(kit).toMatch(/BODY-FIRST/i);
     // Usable motif implementation, not a mid-cut first-slide SVG dump.
     expect(kit).toContain('### Motif sprites');
     expect(kit).toContain('### Decoration CSS');
@@ -61,6 +62,7 @@ describe('extractTemplateVisualKitFromHtml', () => {
       return pathCount >= 6 && square;
     });
     expect(hasRealPetalSprite).toBe(true);
+    expect(kit!.length).toBeLessThanOrEqual(6_800);
   });
 
   it('appendTemplateVisualKit is idempotent', () => {

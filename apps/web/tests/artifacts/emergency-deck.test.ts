@@ -51,6 +51,33 @@ describe('extractSlideOutlineItems', () => {
     ]);
   });
 
+  it('recovers Visible headings from a whitespace-collapsed Source brief line', () => {
+    // Regression: canvasCreateSlidesRunPrompt used to compact the whole brief
+    // with \\s+ → " ", burying "Visible headings:" mid-line. Outline fallback
+    // then returned null after incomplete-html-document-shell and the user
+    // only saw incomplete_output.
+    const compacted = [
+      'Canvas title: 여행자를 위한 이탈리아 기본 지식',
+      'Canvas sections: 6',
+      'Visible headings: 지리 · 기본정보 / 주요관광지 / 음식문화 / 여행팁 / 알아둘 문화 / 결론',
+      'Source preview: Keep the travel sections.',
+    ].join(' ');
+    const items = extractSlideOutlineItems(`[Source brief]\n${compacted}`);
+    expect(items.map((item) => item.title)).toEqual([
+      '지리 · 기본정보',
+      '주요관광지',
+      '음식문화',
+      '여행팁',
+      '알아둘 문화',
+      '결론',
+    ]);
+    expect(
+      buildEmergencySlideDeckFromOutline(compacted, {
+        deckTitle: '여행자를 위한 이탈리아 기본 지식',
+      }),
+    ).toContain('<section class="slide">');
+  });
+
   it('does not treat a two-item "Visible headings:" list as a full outline', () => {
     // Guard: a barely-there heading list should not be spun into a placeholder
     // deck. The outline builder still needs 3+ items.
