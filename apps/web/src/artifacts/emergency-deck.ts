@@ -40,6 +40,31 @@ export function looksLikeSlideOutline(text: string): boolean {
   return extractSlideOutlineItems(text).length >= 3;
 }
 
+const CANVAS_SOURCE_HEADINGS_LINE_RE =
+  /^\s*(?:Visible headings|Canvas headings|Source headings)\s*[:：]\s*(.+)$/i;
+
+/**
+ * Split a Canvas / Drive source brief "Visible headings: A / B / C" line
+ * into slide title candidates. The Canvas one-confirm compose collapses the
+ * page's `<h1>`/`<h2>` list into a single ` / `-separated string; when the
+ * agent never emits a usable HTML deck, those headings are our best (and
+ * often only) outline signal for a graceful fallback deck.
+ */
+function extractCanvasSourceHeadingSlides(line: string): EmergencySlide[] {
+  const match = line.match(CANVAS_SOURCE_HEADINGS_LINE_RE);
+  const payload = match?.[1]?.trim();
+  if (!payload) return [];
+  // Match `canvasCreateSlidesSourceBrief` which joins with " / ". Split ONLY
+  // on " / " (spaces around slash) so headings that contain a middle-dot,
+  // pipe, or bullet inside a single title (e.g. "지리 · 기본정보") stay whole.
+  const parts = payload
+    .split(/\s+\/\s+/)
+    .map(cleanSlideTitle)
+    .filter((title) => title.length > 1 && !looksLikeProgressOrFragmentTopic(title))
+    .slice(0, 12);
+  return parts.map((title) => ({ title }));
+}
+
 /** Parse slide titles from assistant plan/outline prose. */
 export function extractSlideOutlineItems(text: string): EmergencySlide[] {
   const lines = String(text || '').split(/\r?\n/);
@@ -52,6 +77,16 @@ export function extractSlideOutlineItems(text: string): EmergencySlide[] {
     if (ARTIFACT_OR_FORM_RE.test(line)) break;
     if (OUTLINE_SECTION_RE.test(line)) {
       inOutlineSection = true;
+      continue;
+    }
+
+    // Canvas / Drive source brief always ships an inline
+    // "Visible headings: A / B / C" line — treat those as slide-title
+    // candidates so the emergency fallback can build a deck out of them
+    // even when the assistant never produced HTML or a numbered outline.
+    const canvasHeadings = extractCanvasSourceHeadingSlides(line);
+    if (canvasHeadings.length >= 2) {
+      slides.push(...canvasHeadings);
       continue;
     }
 

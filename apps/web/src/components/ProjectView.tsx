@@ -250,11 +250,13 @@ import {
 } from '../runtime/auto-continue-comment-scope';
 import {
   attemptEmergencySlideDeckRecovery,
+  attemptFinalOutlineDeckFallback,
   canFireAutoContinueForConversation,
   collectSlideReferencePathsFromMessages,
   extractRequestedSlideCountHintFromMessages,
   findIncompleteSlideAssistantForRecovery,
   isEmergencyArtifactPersistSuccess,
+  OUTLINE_DECK_FALLBACK_STATUS_CODE,
   resolveSlideProducedHtmlToOpen,
   syncAutoContinueCountFromMessages,
   verifySlideProducedHtmlDeliverable,
@@ -395,6 +397,7 @@ import {
   encodePersistedRunErrorDetail,
   formatAutoContinueIncompleteOutputNotice,
   formatEmergencyDeckFallbackNotice,
+  formatOutlineDeckFallbackNotice,
   extractProjectRunErrorCode,
   formatProjectRunErrorForUser,
   formatProjectRunStalledErrorForUser,
@@ -9389,6 +9392,59 @@ export function ProjectView({
                 }
               }
 
+              // Absolute last-resort fallback: when auto-continue has burned
+              // through every retry AND stream salvage did not recover any
+              // authored HTML, synthesize a minimal placeholder deck from
+              // the outline signals already in the conversation (numbered
+              // outlines, bullet lists, Canvas source-brief `Visible
+              // headings: A / B / C` lines). This intentionally violates
+              // the regular "never synthesize a skeleton deck" rule so the
+              // user never lands on a raw "생성 실패" banner after a series
+              // of failed retries — but only after every earlier recovery
+              // has failed. The synth deck is marked with a distinct
+              // OUTLINE_DECK_FALLBACK_STATUS_CODE and comes with an
+              // "임시 슬라이드" notice so the user immediately knows to hit
+              // "다시 시도" for a completed deck.
+              let outlineFallbackRecovered = false;
+              let outlineFallbackProduced = produced;
+              if (
+                !emergencyRecovered
+                && !canAutoContinue
+                && slideOnlyMvp
+                && !producedHtmlToOpen
+                && terminalAutoContinueCommentAttachments.length === 0
+              ) {
+                const fallbackMessages = retryTarget
+                  ? [...historyBase, latestAssistantMsg]
+                  : [...historyBase, userMsg, latestAssistantMsg];
+                const outlineFallback = await attemptFinalOutlineDeckFallback({
+                  slideOnlyMvp,
+                  producedHtmlToOpen,
+                  scopedCommentAttachmentCount: terminalAutoContinueCommentAttachments.length,
+                  outlineMessages: fallbackMessages,
+                  finalText: rawFinalText,
+                  projectFiles: nextFiles,
+                  beforeFileNames,
+                  startedAt,
+                  persistArtifact,
+                  refreshProjectFiles,
+                  readProjectHtml,
+                  computeProducedFiles,
+                });
+                outlineFallbackRecovered = outlineFallback.recovered;
+                outlineFallbackProduced = outlineFallback.produced;
+                if (outlineFallback.htmlToOpen) {
+                  nextFiles = await finalizeSlideOnlyDeckArtifacts(
+                    await refreshProjectFiles(),
+                    outlineFallback.htmlToOpen,
+                  );
+                  if (runIsVisible()) {
+                    maybeArmTeamverPublishMenuAfterRunSuccess(project.id, outlineFallback.htmlToOpen);
+                    requestOpenFile(outlineFallback.htmlToOpen);
+                  }
+                }
+              }
+
               if (emergencyRecovered) {
                 const emergencyNotice = formatEmergencyDeckFallbackNotice();
                 updateAssistant((prev) => ({
@@ -9400,6 +9456,25 @@ export function ProjectView({
                   producedFiles: emergencyProduced,
                   runStatus: resolveSucceededRunStatus(prev.runStatus),
                   resumable: false,
+                  endedAt: prev.endedAt ?? endedAt,
+                }));
+                updateConversationLatestRun('succeeded', endedAt);
+              } else if (outlineFallbackRecovered) {
+                // Outline-only fallback: mark the run as SUCCEEDED (never
+                // "실패") with a warning notice + resumable retry, so the
+                // user sees a saved deck instead of a hard failure card.
+                // Keep `resumable: true` so the failed-run retry dock still
+                // renders and users can regenerate a full deck.
+                const outlineNotice = formatOutlineDeckFallbackNotice();
+                updateAssistant((prev) => ({
+                  ...appendWarningStatusEvent(
+                    clearDurableDeliverableErrorsAfterRecovery(prev),
+                    outlineNotice,
+                    OUTLINE_DECK_FALLBACK_STATUS_CODE,
+                  ),
+                  producedFiles: outlineFallbackProduced,
+                  runStatus: resolveSucceededRunStatus(prev.runStatus),
+                  resumable: true,
                   endedAt: prev.endedAt ?? endedAt,
                 }));
                 updateConversationLatestRun('succeeded', endedAt);

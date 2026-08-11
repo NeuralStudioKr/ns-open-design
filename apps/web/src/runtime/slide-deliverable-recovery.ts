@@ -1,7 +1,10 @@
 import type { Artifact, ChatMessage, ProjectFile } from '../types';
 import { selectAutoOpenProducedHtml } from '../components/auto-open-file';
 import type { computeProducedFiles as computeProducedFilesFn } from '../produced-files';
-import { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from '../artifacts/emergency-deck';
+import {
+  EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+  buildEmergencyArtifactFromMessages,
+} from '../artifacts/emergency-deck';
 import { isClosedSoftSalvageDeckHtml } from '../artifacts/deck-html-content';
 import { recoverBestHtmlDocumentFromText } from '../artifacts/recover';
 import { isIncompleteHtmlDocumentShell, validateHtmlArtifact } from '../artifacts/validate';
@@ -11,6 +14,15 @@ import {
   AUTO_CONTINUE_STATUS_CODE,
   isAutoContinueIncompleteOutputPrompt,
 } from './resume';
+
+/**
+ * Status-event code for the "auto-continue cap exhausted and we synthesized a
+ * minimal outline deck from the conversation" fallback. Distinct from the
+ * `EMERGENCY_DECK_FALLBACK_STATUS_CODE` (stream salvage of authored HTML) so
+ * ops can measure how often the outline synth path fires vs the softer
+ * salvage path — and so the assistant-card notice can be worded differently.
+ */
+export const OUTLINE_DECK_FALLBACK_STATUS_CODE = 'outline_deck_fallback';
 
 type ArtifactPersistResult =
   | { kind: 'persisted'; fileName: string }
@@ -377,6 +389,108 @@ export async function attemptEmergencySlideDeckRecovery(options: {
   // beat; treating that as unrecovered drops the user into incomplete_output
   // even though persistArtifact returned success. Prefer verified disk HTML
   // when present, but trust the successful persist result as a preview target.
+  htmlToOpen = verifiedHtmlToOpen ?? emergencyPersist?.fileName ?? null;
+  if (
+    htmlToOpen
+    && emergencyPersist?.fileName === htmlToOpen
+    && !produced.some((file) => file.name === htmlToOpen)
+  ) {
+    produced = [
+      ...produced,
+      {
+        name: htmlToOpen,
+        size: 0,
+        mtime: Date.now(),
+        kind: 'html',
+        mime: 'text/html',
+      },
+    ];
+  }
+
+  return {
+    recovered: Boolean(htmlToOpen),
+    produced,
+    htmlToOpen,
+  };
+}
+
+/**
+ * Final last-resort fallback fired when the auto-continue cap is exhausted
+ * AND stream salvage did not recover any authored HTML. Synthesizes a
+ * minimal placeholder deck from the outline signals already in the
+ * conversation (numbered outlines, bullet lists, Canvas source-brief
+ * `Visible headings: A / B / C` lines) so the user is never stranded on a
+ * raw "생성 실패" error banner.
+ *
+ * Product rule reminder: this path INTENTIONALLY violates the "never
+ * synthesize a skeleton deck and call it success" rule that keeps the
+ * regular emergency salvage strict — but only after every earlier
+ * recovery has failed. The synth deck is:
+ *   - marked with a distinct `OUTLINE_DECK_FALLBACK_STATUS_CODE`
+ *   - accompanied by an "임시 개요만 저장" warning notice so the user
+ *     immediately knows to hit "다시 시도"
+ *   - still resumable via the existing failed-run retry affordance if we
+ *     lift it back to `runStatus: 'failed'` at the caller site
+ *
+ * Returns `{ recovered: false }` when the conversation has no usable
+ * outline material — in that case the caller should still surface the
+ * failure banner (there is no responsible fallback to synthesize).
+ */
+export async function attemptFinalOutlineDeckFallback(options: {
+  slideOnlyMvp: boolean;
+  producedHtmlToOpen: string | null;
+  /** When > 0, skip — scoped comment edits must retry via element-patch. */
+  scopedCommentAttachmentCount?: number;
+  outlineMessages: readonly ChatMessage[];
+  finalText?: string | null;
+  projectFiles: readonly ProjectFile[];
+  beforeFileNames: ReadonlySet<string> | readonly string[];
+  startedAt: number;
+  persistArtifact: (
+    artifact: Artifact,
+    projectFilesSnapshot?: ProjectFile[],
+    sourceText?: string,
+    activityStartedAt?: number,
+  ) => Promise<ArtifactPersistResult>;
+  refreshProjectFiles: () => Promise<ProjectFile[]>;
+  readProjectHtml: (name: string) => Promise<string | null>;
+  computeProducedFiles: typeof computeProducedFilesFn;
+}): Promise<EmergencySlideDeckRecoveryResult> {
+  if (!options.slideOnlyMvp || options.producedHtmlToOpen) {
+    return { recovered: false, produced: [], htmlToOpen: null };
+  }
+  if (
+    shouldSkipEmergencySlideDeckRecoveryForScopedCommentEdit(
+      options.scopedCommentAttachmentCount ?? 0,
+    )
+  ) {
+    return { recovered: false, produced: [], htmlToOpen: null };
+  }
+
+  const outlineArtifact = buildEmergencyArtifactFromMessages(
+    options.outlineMessages,
+    options.finalText,
+  );
+  if (!outlineArtifact) {
+    return { recovered: false, produced: [], htmlToOpen: null };
+  }
+
+  const emergencyPersist = await options.persistArtifact(
+    outlineArtifact,
+    [...options.projectFiles],
+    options.finalText ?? undefined,
+    options.startedAt,
+  );
+  if (!isEmergencyArtifactPersistSuccess(emergencyPersist)) {
+    return { recovered: false, produced: [], htmlToOpen: null };
+  }
+
+  const nextFiles = await options.refreshProjectFiles();
+  let produced = options.computeProducedFiles(options.beforeFileNames, nextFiles) ?? [];
+  let htmlToOpen: string | null = selectAutoOpenProducedHtml(produced, { projectFiles: nextFiles })
+    ?? emergencyPersist?.fileName
+    ?? null;
+  const verifiedHtmlToOpen = await verifySlideProducedHtmlDeliverable(htmlToOpen, options.readProjectHtml);
   htmlToOpen = verifiedHtmlToOpen ?? emergencyPersist?.fileName ?? null;
   if (
     htmlToOpen

@@ -27,6 +27,41 @@ describe('extractSlideOutlineItems', () => {
     expect(items).toHaveLength(4);
     expect(items[0]?.title).toBe('Cover');
   });
+
+  it('parses Canvas source-brief "Visible headings:" line as slide titles', () => {
+    // Canvas → Slide compose ships an inline "Visible headings: A / B / C"
+    // line in the user message when the assistant never produced HTML; the
+    // final outline fallback reads it to synthesize a placeholder deck.
+    const items = extractSlideOutlineItems(
+      [
+        'Canvas title: 여행자를 위한 이탈리아 기본 지식',
+        'Canvas sections: 6',
+        'Visible headings: 지리 · 기본정보 / 주요관광지 / 음식문화 / 여행팁 / 알아둘 문화 / 결론',
+        'Source preview: ...',
+      ].join('\n'),
+    );
+    expect(items.length).toBeGreaterThanOrEqual(6);
+    expect(items.map((item) => item.title)).toEqual([
+      '지리 · 기본정보',
+      '주요관광지',
+      '음식문화',
+      '여행팁',
+      '알아둘 문화',
+      '결론',
+    ]);
+  });
+
+  it('does not treat a two-item "Visible headings:" list as a full outline', () => {
+    // Guard: a barely-there heading list should not be spun into a placeholder
+    // deck. The outline builder still needs 3+ items.
+    const items = extractSlideOutlineItems(
+      'Visible headings: 개요 / 결론',
+    );
+    // extractCanvasSourceHeadingSlides requires ≥ 2 to fire, but the outline
+    // builder in buildEmergencySlideDeckFromOutline still requires ≥ 3 to
+    // return HTML — so a two-item brief cannot short-circuit auto-continue.
+    expect(items.length).toBeLessThan(3);
+  });
 });
 
 describe('looksLikeSlideOutline', () => {

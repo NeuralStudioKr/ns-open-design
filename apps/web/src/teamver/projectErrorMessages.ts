@@ -278,6 +278,17 @@ export function formatEmergencyDeckFallbackNotice(): string {
     : "The stream ended early — recovered HTML from the response was saved. Please review.";
 }
 
+/**
+ * Shown when every auto-continue retry and the stream-based emergency salvage
+ * all failed to produce a deck, and we saved a minimal outline-only
+ * placeholder from the conversation instead of surfacing a raw failure state.
+ */
+export function formatOutlineDeckFallbackNotice(): string {
+  return isTeamverEmbedMode()
+    ? "생성이 완성되지 않아 소스 자료의 목차만 담긴 임시 슬라이드를 저장했습니다. 우측의 '다시 시도' 버튼을 눌러 완성본을 다시 생성해 주세요."
+    : "The generation didn't complete — saved a placeholder deck built from the source outline. Use the retry button to regenerate the full deck.";
+}
+
 /** Resolve structured proxy/daemon error codes when `err.code` was not set. */
 export function extractProjectRunErrorCode(err: unknown): string | undefined {
   const direct = err instanceof Error ? (err as Error & { code?: string }).code?.trim() : "";
