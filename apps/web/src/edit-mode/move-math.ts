@@ -406,6 +406,11 @@ export const MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_SPAN_FACTOR = 1.5;
 /**
  * Content-space wild-jump threshold: max(base floor, 1.5× larger side of `reference`).
  * Keeps small elements strict while large slides tolerate bigger reflows.
+ *
+ * Do NOT multiply by host `previewScale`. `od-edit-rect` / target.rect are
+ * content-space; host chrome scaling belongs in `resolveManualEditChromeHostRect`.
+ * Scaling the threshold by previewScale would under-deny when scale < 1 and
+ * over-deny when scale > 1 while deltas stay in content px.
  */
 export function manualEditIdleRemeasureWildJumpThresholdPx(
   reference: Pick<ManualEditTarget, 'rect'>,

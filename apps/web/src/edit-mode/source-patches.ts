@@ -1591,12 +1591,14 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     )
     // Multi-token URL lists — drop attr when ANY candidate matches the deny list
     // (prefix-of-whole-value misses `srcset="/ok.png, javascript:…"`).
+    // SMIL `values` is gated by isSafeManualEditUrlAttrValue above (semicolon
+    // tokens + CSS paints); do not residual-strip it here.
     .replace(
-      /\s(?:srcset|imagesrcset|archive|values)\s*=\s*(['"])[\s\S]*?(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|chrome(?:-extension)?\s*:|moz-extension\s*:|resource\s*:|view-source\s*:|ms-appx(?:-web)?\s*:|\/\/)[\s\S]*?\1/gi,
+      /\s(?:srcset|imagesrcset|archive)\s*=\s*(['"])[\s\S]*?(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|chrome(?:-extension)?\s*:|moz-extension\s*:|resource\s*:|view-source\s*:|ms-appx(?:-web)?\s*:|\/\/)[\s\S]*?\1/gi,
       '',
     )
     .replace(
-      /\s(?:srcset|imagesrcset|archive|values)\s*=\s*[^\s>]*(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|chrome(?:-extension)?\s*:|moz-extension\s*:|resource\s*:|view-source\s*:|ms-appx(?:-web)?\s*:|\/\/)[^\s>]*/gi,
+      /\s(?:srcset|imagesrcset|archive)\s*=\s*[^\s>]*(?:javascript|vbscript|blob\s*:|file\s*:|data\s*:|about\s*:|filesystem\s*:|chrome(?:-extension)?\s*:|moz-extension\s*:|resource\s*:|view-source\s*:|ms-appx(?:-web)?\s*:|\/\/)[^\s>]*/gi,
       '',
     )
     // Multi-token ping — drop when ANY whitespace token is absolute/proto/\\.

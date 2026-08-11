@@ -146,17 +146,60 @@ export function manualEditHistoryConfirmTrustsLocal(
 /**
  * True when history-confirm can skip the disk GET — an active pin or authored
  * buffer already matches the bytes we are about to save.
+ *
+ * When warm tip HTML already differs from `expectedSource`, do not skip — force
+ * the GET / trustsLocal tip gate (parity with pin tip-yield after agent advance).
  */
 export function manualEditHistoryConfirmCanSkipDiskFetch(
   expectedSource: string,
   pinned: ManualEditSourcePin | null | undefined,
   now: number = Date.now(),
   authoredSource?: string | null,
+  tipContent?: string | null,
 ): boolean {
+  if (
+    tipContent != null
+    && tipContent !== expectedSource
+  ) {
+    return false;
+  }
   if (authoredSource != null && authoredSource === expectedSource) return true;
   return Boolean(
     isManualEditSourcePinActive(pinned, now)
     && pinned
     && pinned.source === expectedSource,
   );
+}
+
+export type ManualEditSavePinTipStack = {
+  revisions: Array<{ id: string; sequence: number }>;
+  headRevisionId: string | null;
+};
+
+/** Prefer active sequence → head revision → last stack entry. */
+export function resolveManualEditSavePinTipRevision(
+  stack: ManualEditSavePinTipStack,
+  activeSeq: number | null | undefined,
+): { id: string; sequence: number } | null {
+  return (
+    (activeSeq != null
+      ? stack.revisions.find((revision) => revision.sequence === activeSeq)
+      : null)
+    ?? stack.revisions.find((revision) => revision.id === stack.headRevisionId)
+    ?? stack.revisions.at(-1)
+    ?? null
+  );
+}
+
+/**
+ * Warm tip revision HTML for pin tip≠ yield (active → head → tip).
+ * `readContent` is the host revision content cache lookup.
+ */
+export function tipContentForManualEditSavePin(
+  stack: ManualEditSavePinTipStack,
+  activeSeq: number | null | undefined,
+  readContent: (revisionId: string) => string | null,
+): string | null {
+  const tipRevision = resolveManualEditSavePinTipRevision(stack, activeSeq);
+  return tipRevision ? readContent(tipRevision.id) : null;
 }

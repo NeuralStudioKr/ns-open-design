@@ -418,4 +418,19 @@ describe('computeMove', () => {
       rect: { x: 601, y: 0, width: 400, height: 400 },
     })).toBe(true);
   });
+
+  it('keeps wild-jump threshold in content-space (no previewScale multiply)', () => {
+    const base = { rect: { x: 0, y: 0, width: 80, height: 40 } };
+    // previewScale is host chrome only — threshold must stay content px.
+    expect(manualEditIdleRemeasureWildJumpThresholdPx(base)).toBe(MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX);
+    expect(manualEditGeometryIsWildJump(base, {
+      rect: { x: MANUAL_EDIT_IDLE_REMEASURE_WILD_JUMP_PX + 1, y: 0, width: 80, height: 40 },
+    })).toBe(true);
+    // A host scale of 0.5 must not change content-space deny (would under-deny if multiplied).
+    expect(manualEditGeometryIsWildJump(
+      base,
+      { rect: { x: 241, y: 0, width: 80, height: 40 } },
+      manualEditIdleRemeasureWildJumpThresholdPx(base),
+    )).toBe(false);
+  });
 });

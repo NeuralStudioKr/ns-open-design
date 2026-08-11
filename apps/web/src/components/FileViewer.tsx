@@ -318,6 +318,7 @@ import {
   preferManualEditPinnedSource,
   preferManualEditPinnedSourceOverLive,
   shouldReleaseManualEditSavePinForTip,
+  tipContentForManualEditSavePin,
   type ManualEditSourcePin,
 } from '../edit-mode/manual-edit-save-pin';
 import { manualEditTargetsIdentityFingerprint } from '../edit-mode/manual-edit-targets-identity';
@@ -364,6 +365,7 @@ import {
   applyManualEditPatches,
   buildManualEditStylePatchesForTargets,
   mergeInspectorStylesForTargets,
+  mixedKeysForPendingStyleDraft,
   manualEditSelectionIdsEqual,
   nextManualEditSelectionIds,
   resolveManualEditTargetsByIds,
@@ -698,23 +700,16 @@ function warmRevisionListSoftCacheFromList(
 }
 
 /** Warm tip revision HTML for pin tip≠ yield (active → head → tip). */
-function tipContentForManualEditSavePin(
+function readTipContentForManualEditSavePin(
   projectId: string,
   fileName: string,
   stack: { revisions: Array<{ id: string; sequence: number }>; headRevisionId: string | null },
 ): string | null {
-  const activeSeq = getActiveRevisionSequence(projectId, fileName);
-  const tipRevision = (
-    activeSeq != null
-      ? stack.revisions.find((revision) => revision.sequence === activeSeq)
-      : null
-  )
-    ?? stack.revisions.find((revision) => revision.id === stack.headRevisionId)
-    ?? stack.revisions.at(-1)
-    ?? null;
-  return tipRevision
-    ? getRevisionContentCache(projectId, fileName, tipRevision.id)
-    : null;
+  return tipContentForManualEditSavePin(
+    stack,
+    getActiveRevisionSequence(projectId, fileName),
+    (revisionId) => getRevisionContentCache(projectId, fileName, revisionId),
+  );
 }
 const MAX_CACHED_PREVIEW_VIEWPORTS = 128;
 // Grace window before the inspect hover card is torn down. Long enough to absorb
@@ -6165,7 +6160,7 @@ function HtmlViewer({
     if (accepted != null) {
       // A lagging parent liveHtml token must not clobber a just-saved pin
       // (S3/lazy race + ProjectView still holding the pre-edit buffer).
-      const tipContent = tipContentForManualEditSavePin(
+      const tipContent = readTipContentForManualEditSavePin(
         projectId,
         file.name,
         revisionStackRef.current,
@@ -6400,7 +6395,7 @@ function HtmlViewer({
         // painting the pre-edit lastStable frame (looks like "edit didn't save").
         // When tip cache already equals fetch and differs from pin, release pin
         // so agent tips paint (preferManualEditPinnedSource tipContent yield).
-        const tipContent = tipContentForManualEditSavePin(
+        const tipContent = readTipContentForManualEditSavePin(
           projectId,
           file.name,
           revisionStackRef.current,
@@ -9123,7 +9118,7 @@ function HtmlViewer({
             && styleDraftPending
             && selectedNext
           ) {
-            // Multi + pending: keep mixed styles; refresh primary field identity only.
+            // Multi + pending: keep draft styles; refresh fields + mixedKeys only.
             const base = sourceRef.current ?? '';
             const parsedDoc = parseManualEditSource(base);
             const snapshot = readManualEditTargetSnapshot(
@@ -9132,6 +9127,14 @@ function HtmlViewer({
               {},
               parsedDoc,
             );
+            setManualEditMixedStyleKeys(mixedKeysForPendingStyleDraft(
+              refreshed,
+              (id) => inspectorManualEditStyles(
+                refreshed.find((item) => item.id === id) ?? refreshed[refreshed.length - 1]!,
+                base,
+                parsedDoc,
+              ),
+            ));
             setManualEditDraft((current) => ({
               ...current,
               text: snapshot.fields.text ?? selectedNext.fields.text ?? selectedNext.text,
@@ -9294,8 +9297,10 @@ function HtmlViewer({
         }
         if (!measured || isHandoffRect) return;
 
-        // Idle remasure: reject wild jumps; equal geometry skips inside apply.
-        // Handoff settle uses applyManualEditMeasuredGeometry on its own path.
+        // Idle remasure only: reject wild jumps; equal geometry skips inside apply.
+        // Gesture/handoff never reach this guard — isHandoffRect returned above,
+        // and settleManualEditGeometryHandoff calls applyManualEditMeasuredGeometry
+        // on its own path (기획 51–53).
         const current = selectedManualEditTargetRef.current;
         if (
           current?.id === measured.id
@@ -11062,12 +11067,19 @@ function HtmlViewer({
       ?? lastStablePreviewSourceRef.current
       ?? sourceRef.current;
     const now = Date.now();
+    const tipContent = readTipContentForManualEditSavePin(
+      projectId,
+      file.name,
+      revisionStackRef.current,
+    );
     // Skip disk GET when pin/authored already match the save payload.
+    // Tip≠expected forces GET (parity with trustsLocal tip yield gate).
     if (manualEditHistoryConfirmCanSkipDiskFetch(
       expectedSource,
       manualEditPinnedSourceRef.current,
       now,
       authored,
+      tipContent,
     )) {
       return true;
     }
@@ -11075,11 +11087,6 @@ function HtmlViewer({
       cache: 'no-store',
       cacheBustKey: Date.now(),
     });
-    const tipContent = tipContentForManualEditSavePin(
-      projectId,
-      file.name,
-      revisionStackRef.current,
-    );
     if (manualEditHistoryConfirmTrustsLocal(
       expectedSource,
       persisted,

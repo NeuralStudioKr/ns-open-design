@@ -8,7 +8,9 @@ import {
   manualEditHistoryConfirmTrustsLocal,
   preferManualEditPinnedSource,
   preferManualEditPinnedSourceOverLive,
+  resolveManualEditSavePinTipRevision,
   shouldReleaseManualEditSavePinForTip,
+  tipContentForManualEditSavePin,
 } from '../../src/edit-mode/manual-edit-save-pin';
 
 describe('manual edit save pin', () => {
@@ -74,6 +76,16 @@ describe('manual edit save pin', () => {
     ).toBe(false);
   });
 
+  it('does not skip disk fetch when warm tip already differs from expected (tip yield)', () => {
+    const pinned = createManualEditSourcePin(saved, 1_000);
+    const tip = '<html><body><h1>Agent tip</h1></body></html>';
+    // Stale pin+expected must not skip past a warmer tip (기획 50 undo/retention).
+    expect(manualEditHistoryConfirmCanSkipDiskFetch(saved, pinned, 1_000 + 50, saved, tip)).toBe(false);
+    expect(manualEditHistoryConfirmCanSkipDiskFetch(saved, null, 1_000 + 50, tip, tip)).toBe(false);
+    // Tip===expected still allows authored/pin skip.
+    expect(manualEditHistoryConfirmCanSkipDiskFetch(tip, null, 1_000 + 50, tip, tip)).toBe(true);
+  });
+
   it('yields pin when tip content already matches fetch and differs from pin', () => {
     const pinned = createManualEditSourcePin(saved, 1_000);
     const tip = '<html><body><h1>Agent tip</h1></body></html>';
@@ -97,5 +109,39 @@ describe('manual edit save pin', () => {
     expect(manualEditHistoryConfirmTrustsLocal(saved, tip, null, 1_000 + 100, tip, tip)).toBe(false);
     // Without tipContent arg, authored===expected still trusts (legacy path).
     expect(manualEditHistoryConfirmTrustsLocal(tip, stale, null, 1_000 + 100, tip)).toBe(true);
+  });
+
+  it('resolves tip content via active → head → last revision (pure pin helper)', () => {
+    const tip = '<html><body><h1>Tip</h1></body></html>';
+    const mid = '<html><body><h1>Mid</h1></body></html>';
+    const stack = {
+      revisions: [
+        { id: 'r1', sequence: 1 },
+        { id: 'r2', sequence: 2 },
+        { id: 'r3', sequence: 3 },
+      ],
+      headRevisionId: 'r3',
+    };
+    const cache = new Map<string, string>([
+      ['r2', mid],
+      ['r3', tip],
+    ]);
+    const read = (id: string) => cache.get(id) ?? null;
+    expect(resolveManualEditSavePinTipRevision(stack, 2)?.id).toBe('r2');
+    expect(tipContentForManualEditSavePin(stack, 2, read)).toBe(mid);
+    expect(tipContentForManualEditSavePin(stack, null, read)).toBe(tip);
+    expect(tipContentForManualEditSavePin(stack, 99, read)).toBe(tip);
+    expect(tipContentForManualEditSavePin({ revisions: [], headRevisionId: null }, 1, read)).toBeNull();
+  });
+
+  it('tip yield × undo retention: skipDiskFetch and trustsLocal agree on tip≠expected', () => {
+    const tip = '<html><body><h1>Agent tip</h1></body></html>';
+    const pinned = createManualEditSourcePin(saved, 1_000);
+    // Pin still holds stale save while tip warmed — both gates refuse blind trust.
+    expect(manualEditHistoryConfirmCanSkipDiskFetch(saved, pinned, 1_000 + 50, saved, tip)).toBe(false);
+    expect(manualEditHistoryConfirmTrustsLocal(saved, tip, null, 1_000 + 100, tip, tip)).toBe(false);
+    // After yield, undo/retention on tip itself is local-trusted + skippable.
+    expect(manualEditHistoryConfirmCanSkipDiskFetch(tip, null, 1_000 + 100, tip, tip)).toBe(true);
+    expect(manualEditHistoryConfirmTrustsLocal(tip, stale, null, 1_000 + 100, tip, tip)).toBe(true);
   });
 });

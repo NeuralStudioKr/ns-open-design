@@ -1377,7 +1377,10 @@ describe('manual edit source patches', () => {
     expect(sourcePatchesSource).toContain('do not treat CSS');
     expect(sourcePatchesSource).toContain('/\\s(?:action|formaction|ping|to|from|by|values)\\s*=');
     expect(sourcePatchesSource).toContain('[\\s\\S]*?\\\\[\\s\\S]*?');
-    expect(sourcePatchesSource).toContain('srcset|imagesrcset|archive|values');
+    // SMIL values residual removed — isSafeManualEditUrlAttrValue owns values tokens.
+    expect(sourcePatchesSource).toContain('srcset|imagesrcset|archive');
+    expect(sourcePatchesSource).toContain('SMIL `values` is gated by isSafeManualEditUrlAttrValue');
+    expect(sourcePatchesSource).not.toContain('srcset|imagesrcset|archive|values');
     // SVG fragment-only href/xlink:href (use/image/… + isSafeManualEditSvgResourceRef).
     expect(sourcePatchesSource).toContain('SVG paint/resource tags — fail closed');
     expect(sourcePatchesSource).toContain("(?!#[^\\\\\\\\/:'\"]*)");

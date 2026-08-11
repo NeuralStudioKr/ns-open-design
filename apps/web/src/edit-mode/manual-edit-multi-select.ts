@@ -81,6 +81,17 @@ export function mergeInspectorStylesForTargets(
   return { styles: merged, mixedKeys };
 }
 
+/**
+ * While a style draft is pending, recompute mixedKeys from live targets without
+ * returning merged styles that would clobber the pending inspector draft.
+ */
+export function mixedKeysForPendingStyleDraft(
+  targets: readonly { id: string }[],
+  readStyles: (id: string) => ManualEditStyles,
+): Set<keyof ManualEditStyles> {
+  return mergeInspectorStylesForTargets(targets, readStyles).mixedKeys;
+}
+
 export function buildManualEditStylePatchesForTargets(
   baseSource: string,
   targetIds: readonly string[],

@@ -6,6 +6,7 @@ import {
   buildManualEditStylePatchesForTargets,
   manualEditSelectionIdsEqual,
   mergeInspectorStylesForTargets,
+  mixedKeysForPendingStyleDraft,
   nextManualEditSelectionIds,
   shouldFlushManualEditStylesOnSelectionBoundary,
 } from '../../src/edit-mode/manual-edit-multi-select';
@@ -67,6 +68,19 @@ describe('manual-edit-multi-select', () => {
     expect(mixedKeys.has('fontSize')).toBe(true);
     expect(styles.color).toBe('');
     expect(styles.fontSize).toBe('');
+  });
+
+  it('recomputes mixedKeys for pending style drafts without returning merged styles', () => {
+    const read = (id: string) => ({
+      ...emptyManualEditStyles(),
+      color: id === 'title' ? '#111111' : '#222222',
+      fontWeight: '700',
+    });
+    const mixed = mixedKeysForPendingStyleDraft(catalog, read);
+    expect(mixed.has('color')).toBe(true);
+    expect(mixed.has('fontWeight')).toBe(false);
+    // Helper is mixedKeys-only — callers keep pending draft.styles intact.
+    expect(mixedKeysForPendingStyleDraft([], read).size).toBe(0);
   });
 
   it('builds one set-style patch per changed target', () => {
