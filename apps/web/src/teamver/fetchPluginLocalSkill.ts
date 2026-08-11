@@ -85,26 +85,52 @@ async function fetchPluginAssetText(pluginId: string, relpath: string): Promise<
   // demands X-Teamver-* identity headers; a plain fetch() returns 401.
   const attempt = async (): Promise<Response> => (
     isTeamverEmbedMode()
-      ? await fetchTeamverDaemon(url, { skipEmbedAuthRecovery: true })
+      ? await fetchTeamverDaemon(url, {
+          skipEmbedAuthRecovery: true,
+          skipTeamverWorkspaceHeaders: true,
+        })
       : await fetch(url)
   );
+  const fallbackPlainFetch = async (): Promise<Response | null> => {
+    if (!isTeamverEmbedMode()) return null;
+    try {
+      return await fetch(url);
+    } catch {
+      return null;
+    }
+  };
   try {
     let resp = await attempt();
+    // Plugin assets are not project/workspace scoped. If the embed daemon
+    // wrapper is unavailable in local/test or a sibling node rejects the
+    // auth-decorated request, fall back to a plain same-origin asset fetch
+    // instead of silently dropping the selected template kit.
+    if (!resp.ok && (resp.status === 401 || resp.status >= 500)) {
+      resp = (await fallbackPlainFetch()) ?? resp;
+    }
     // One retry on transient 5xx / network flaps — kit miss makes Daisy Days
     // fall back to Neutral-looking decks even when the template was selected.
     if (resp.status >= 500) {
       await new Promise((resolve) => setTimeout(resolve, 120));
       resp = await attempt();
+      if (!resp.ok && (resp.status === 401 || resp.status >= 500)) {
+        resp = (await fallbackPlainFetch()) ?? resp;
+      }
     }
     if (!resp.ok) return null;
     return resp.text();
   } catch {
     try {
       await new Promise((resolve) => setTimeout(resolve, 120));
-      const retry = await attempt();
+      let retry = await attempt();
+      if (!retry.ok && (retry.status === 401 || retry.status >= 500)) {
+        retry = (await fallbackPlainFetch()) ?? retry;
+      }
       if (!retry.ok) return null;
       return retry.text();
     } catch {
+      const plain = await fallbackPlainFetch();
+      if (plain?.ok) return plain.text();
       return null;
     }
   }
@@ -141,7 +167,11 @@ export async function readPluginLocalSkillFromRecord(
       }
     }
     return { body, name };
-  } catch {
+  } catch (err) {
+    console.warn(
+      '[fetchPluginLocalSkill] failed to read plugin-local skill:',
+      err instanceof Error ? err.message : err,
+    );
     return null;
   }
 }

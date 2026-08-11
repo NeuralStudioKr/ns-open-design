@@ -1,10 +1,17 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { InstalledPluginRecord } from '@open-design/contracts';
 
 import { readPluginLocalSkillFromRecord } from '../src/teamver/fetchPluginLocalSkill';
+import * as designApiBase from '../src/teamver/designApiBase';
+import * as teamverDaemonHeaders from '../src/teamver/teamverDaemonHeaders';
 
 describe('fetchPluginLocalSkill', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it('loads plugin-local SKILL.md through the asset API', async () => {
     const plugin = {
       id: 'example-simple-deck',
@@ -19,8 +26,7 @@ describe('fetchPluginLocalSkill', () => {
       },
     } as InstalledPluginRecord;
 
-    const fetchMock = vi.fn(async (url: string) => {
-      expect(url).toBe('/api/plugins/example-simple-deck/asset/SKILL.md');
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => {
       return new Response('---\nname: simple-deck\n---\n\nDeck visual rules body', {
         status: 200,
       });
@@ -31,6 +37,9 @@ describe('fetchPluginLocalSkill', () => {
       body: 'Deck visual rules body',
       name: 'Simple Deck',
     });
+    expect(String(fetchMock.mock.calls[0]?.[0] ?? '')).toBe(
+      '/api/plugins/example-simple-deck/asset/SKILL.md',
+    );
   });
 
   it('prepends YAML block-literal frontmatter descriptions so Zhangzara templates keep their visual contract', async () => {
@@ -177,5 +186,52 @@ describe('fetchPluginLocalSkill', () => {
     const local = await readPluginLocalSkillFromRecord(plugin);
     expect(calls).toBeGreaterThanOrEqual(2);
     expect(local).toEqual({ body: 'Coral body', name: 'Html Ppt Zhangzara Coral' });
+  });
+
+  it('falls back to plain same-origin asset fetch when embed daemon asset auth rejects', async () => {
+    const plugin = {
+      id: 'example-html-ppt-zhangzara-daisy-days',
+      manifest: {
+        name: 'example-html-ppt-zhangzara-daisy-days',
+        title: 'Html Ppt Zhangzara Daisy Days',
+        od: {
+          context: {
+            skills: [{ path: './SKILL.md' }],
+          },
+        },
+      },
+    } as InstalledPluginRecord;
+    const skillMd = [
+      '---',
+      'name: html-ppt-zhangzara-daisy-days',
+      'description: Daisy Days — use pasted motif sprites, not emoji.',
+      '---',
+      '',
+      '# Daisy Days',
+      '',
+      'Preserve the template.',
+    ].join('\n');
+    vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const daemonFetch = vi
+      .spyOn(teamverDaemonHeaders, 'fetchTeamverDaemon')
+      .mockResolvedValue(new Response('session_expired', { status: 401 }));
+    const plainFetch = vi.fn(async (_input: RequestInfo | URL) => (
+      new Response(skillMd, { status: 200 })
+    ));
+    vi.stubGlobal('fetch', plainFetch);
+
+    const local = await readPluginLocalSkillFromRecord(plugin);
+
+    expect(daemonFetch).toHaveBeenCalledWith(
+      '/api/plugins/example-html-ppt-zhangzara-daisy-days/asset/SKILL.md',
+      {
+        skipEmbedAuthRecovery: true,
+        skipTeamverWorkspaceHeaders: true,
+      },
+    );
+    expect(String(plainFetch.mock.calls[0]?.[0] ?? '')).toBe(
+      '/api/plugins/example-html-ppt-zhangzara-daisy-days/asset/SKILL.md',
+    );
+    expect(local?.body).toContain('Daisy Days — use pasted motif sprites, not emoji.');
   });
 });

@@ -104,6 +104,7 @@ import { isRenderableDesignTemplate } from '../teamver/branding/designTemplateVi
 import {
   communityGalleryFacetUi,
   defaultSlideOnlyDeckPluginInputs,
+  explicitSlideOnlyDeckTemplatePluginInputs,
   homeHeroChipsForGroup,
   pluginsForSlideOnlyMvp,
   resolveSlideOnlyDeckTemplateSkillId,
@@ -2119,10 +2120,10 @@ export function HomeView({
             ...defaultSlideOnlyDeckPluginInputs(trimmed),
             ...(submittedPluginInputs ?? {}),
             ...(selectedDeckTemplateSkillId && selectedDeckTemplateLabel
-              ? {
-                  designSystem: selectedDeckTemplateLabel,
-                  visualTemplate: selectedDeckTemplateLabel,
-                }
+              ? explicitSlideOnlyDeckTemplatePluginInputs(
+                  selectedDeckTemplateLabel,
+                  selectedDeckTemplateSkillId,
+                )
               : {}),
           }
         : submittedPluginInputs;

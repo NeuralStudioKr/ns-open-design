@@ -8,6 +8,7 @@ import {
   TEAMVER_EMBED_HIDDEN_DESIGN_TOOLBOX_ACTIONS,
   TEAMVER_EMBED_SLIDE_SCENARIO_PLUGIN_ID,
   defaultSlideOnlyDeckPluginInputs,
+  explicitSlideOnlyDeckTemplatePluginInputs,
   homeHeroChipsForGroup,
   inferSlideOnlyDeckVisualTemplateHint,
   visibleNewProjectTabs,
@@ -124,6 +125,20 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(inputs.visualTemplate).toContain('modern tech deck');
     expect(inputs.visualTemplatePolicy).toContain('do not fall back to a generic default look');
     expect(inputs.designSystem).toContain('auto-match the visual direction');
+
+    const explicit = explicitSlideOnlyDeckTemplatePluginInputs(
+      'Html Ppt Zhangzara Daisy Days',
+      'example-html-ppt-zhangzara-daisy-days',
+    );
+    expect(explicit).toMatchObject({
+      designSystem: 'Html Ppt Zhangzara Daisy Days',
+      visualTemplate: 'Html Ppt Zhangzara Daisy Days',
+      selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+      selectedDeckTemplateTitle: 'Html Ppt Zhangzara Daisy Days',
+    });
+    expect(explicit.visualTemplatePolicy).toContain('Template visual kit');
+    expect(explicit.visualTemplatePolicy).toContain('Motif sprites');
+    expect(explicit.visualTemplatePolicy).toContain('do not fall back to a generic default look');
   });
 
   it('keeps auto visual matching deterministic and subordinate to explicit template picks', () => {
@@ -188,7 +203,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(block).toContain('selectedDeckTemplateTitle: selectedDeckTemplateTitle ?? undefined');
     expect(block).toContain('DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID');
     expect(block).toContain('skillId: resolvedSkillId');
-    expect(block).toContain('visualTemplate');
+    expect(block).toContain('explicitSlideOnlyDeckTemplatePluginInputs');
     expect(block).toContain('localizePluginTitle(locale, submittedActive.record)');
     expect(block).toContain('localizeSkillName(locale, activeSkill)');
   });
@@ -229,7 +244,7 @@ describe('Teamver embed slide-only MVP policy', () => {
     expect(projectView).toContain('shouldWrapSelectedTemplate');
     expect(projectView).toContain('primaryDeckSkillId');
     expect(projectView).toContain('wrapSelectedDeckTemplateSkillBody(skillBody!, title)');
-    expect(projectView).toContain("else if (skillBody?.trim() && skillMode === 'deck')");
+    expect(projectView).toContain('Do NOT wrap every deck skill as "user explicitly picked this template"');
     // Guard copy lives in the helper (not inlined in ProjectView).
     const helper = readSource('src/runtime/selected-deck-template.ts');
     expect(helper).toContain('Teamver selected deck template guard');

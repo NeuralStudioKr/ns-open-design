@@ -233,6 +233,22 @@ export function defaultSlideOnlyDeckPluginInputs(topicHint?: string | null): Rec
   };
 }
 
+export function explicitSlideOnlyDeckTemplatePluginInputs(
+  templateTitle?: string | null,
+  templateId?: string | null,
+): Record<string, unknown> {
+  const title = templateTitle?.trim();
+  if (!title) return {};
+  return {
+    designSystem: title,
+    visualTemplate: title,
+    ...(templateId?.trim() ? { selectedDeckTemplateId: templateId.trim() } : {}),
+    selectedDeckTemplateTitle: title,
+    visualTemplatePolicy:
+      "The user explicitly picked this deck template. Its Template visual kit / preview HTML is the primary visual contract: preserve palette, typography, borders, Decoration CSS, and Motif sprites; do not fall back to a generic default look or substitute emoji ornaments.",
+  };
+}
+
 export function homeHeroChipsForGroup(
   group: ChipGroup,
   branding: Pick<TeamverBrandingConfig, "slideOnlyMvp">,

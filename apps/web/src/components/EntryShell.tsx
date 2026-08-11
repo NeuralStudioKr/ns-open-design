@@ -90,6 +90,7 @@ import {
   coerceNewProjectTab,
   resolveSlideOnlyCreatePluginId,
   defaultSlideOnlyDeckPluginInputs,
+  explicitSlideOnlyDeckTemplatePluginInputs,
 } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
 import {
@@ -701,6 +702,10 @@ export function EntryShell({
         ? {
             ...defaultSlideOnlyDeckPluginInputs(name),
             ...(payload.pluginInputs ?? {}),
+            ...explicitSlideOnlyDeckTemplatePluginInputs(
+              metadata.selectedDeckTemplateTitle,
+              metadata.selectedDeckTemplateId,
+            ),
           }
         : payload.pluginInputs ?? null;
     return onCreateProject({
