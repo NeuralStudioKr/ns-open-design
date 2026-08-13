@@ -1835,6 +1835,7 @@ export function ChatPane({
       draftStorageKey={composerDraftStorageKey}
       onEnsureProject={onEnsureProject}
       onProjectFilesMaybeChanged={onProjectFilesMaybeChanged}
+      onRequestOpenFile={onRequestOpenFile}
       commentAttachments={commentsToAttachments(attachedComments)}
       onRemoveCommentAttachment={onDetachComment}
       onSend={(prompt, attachments, commentAttachments, meta) => {

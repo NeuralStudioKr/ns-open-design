@@ -265,6 +265,8 @@ interface Props {
   onEnsureProject: () => Promise<string | null>;
   /** Refresh project `/files` after a composer upload so preview heal sees new images. */
   onProjectFilesMaybeChanged?: () => void;
+  /** Open a project file in the workspace (e.g. seeded deck.html after template clone). */
+  onRequestOpenFile?: (name: string) => void;
   commentAttachments?: ChatCommentAttachment[];
   onRemoveCommentAttachment?: (id: string) => void;
   // Available skills the user can compose into a turn via @<skill>. The
@@ -444,6 +446,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       draftStorageKey,
       onEnsureProject,
       onProjectFilesMaybeChanged,
+      onRequestOpenFile,
       commentAttachments = [],
       onRemoveCommentAttachment,
       skills = [],
@@ -2093,6 +2096,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             });
             if (seeded.ok) {
               onProjectFilesMaybeChanged?.();
+              onRequestOpenFile?.(seeded.fileName);
               consumeTeamverCanvasLaunchHandoff();
               setCanvasSlideLaunch(null);
               setCanvasSlideLaunchError(null);
@@ -2102,6 +2106,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             }
             // Fall through to kit+map model path when asset clone fails.
             devLog.warn('Template clone seed failed; falling back to model kit path', seeded);
+            setUploadError(
+              '선택한 템플릿 복제에 실패해 일반 생성으로 이어갑니다. 결과가 다를 수 있습니다.',
+            );
           }
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
@@ -2252,6 +2259,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           });
           if (seeded.ok) {
             onProjectFilesMaybeChanged?.();
+            onRequestOpenFile?.(seeded.fileName);
             consumeTeamverDriveLaunchHandoff();
             setCanvasSlideLaunch(null);
             setCanvasSlideLaunchError(null);
@@ -2260,6 +2268,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             return;
           }
           devLog.warn('Template clone seed failed; falling back to model kit path', seeded);
+          setUploadError(
+            '선택한 템플릿 복제에 실패해 일반 생성으로 이어갑니다. 결과가 다를 수 있습니다.',
+          );
         }
         {
           const baseMeta = currentRunContextMeta();

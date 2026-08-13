@@ -1,10 +1,9 @@
 /**
- * Server/FE-side Open Design Clone for Teamver BYOK.
+ * Pure HTML transform for Teamver daemon template Clone.
  *
- * Messages API has no Read/Write/Clone tools, so the FE (acting as the
- * "server" for this step) must clone `example.html` and content-swap Source
- * text into the real template shells — without dumping full HTML into the
- * system prompt.
+ * The daemon reads plugin `example.html` from disk and content-swaps Source
+ * text into real template shells. Do not dump full HTML into the BYOK system
+ * prompt, and do not copy the template original into user-visible project refs/.
  */
 
 export type TemplateCloneSlideContent = {
@@ -114,10 +113,31 @@ function pickTemplateShells(shells: SlideShell[], count: number): SlideShell[] {
   return out;
 }
 
+/** Replace the first text node after a tag close; never rewrite tag innards. */
+function replaceFirstTextRun(inner: string, text: string): string {
+  const escaped = escapeHtml(text);
+  if (!/<[a-zA-Z]/.test(inner)) return escaped;
+  // Single wrapper element: recurse into its children (span/em/strong…).
+  const wrapped = /^\s*(<([a-zA-Z][\w:-]*)\b[^>]*>)([\s\S]*?)(<\/\2>)\s*$/i.exec(inner);
+  if (wrapped?.[1] && wrapped[3] != null && wrapped[4]) {
+    return `${wrapped[1]}${replaceFirstTextRun(wrapped[3], text)}${wrapped[4]}`;
+  }
+  // Otherwise replace the first text run that sits between tags: `>text<`.
+  let done = false;
+  const next = inner.replace(/(>)([^<]+)(<)/g, (full, gt: string, chunk: string, lt: string) => {
+    if (done || !chunk.trim()) return full;
+    done = true;
+    return `${gt}${escaped}${lt}`;
+  });
+  return done ? next : escaped;
+}
+
 function replaceFirstTagText(html: string, tag: string, text: string): string {
   const re = new RegExp(`(<${tag}\\b[^>]*>)([\\s\\S]*?)(<\\/${tag}>)`, 'i');
   if (!re.test(html)) return html;
-  return html.replace(re, `$1${escapeHtml(text)}$3`);
+  return html.replace(re, (_match, open: string, inner: string, close: string) => (
+    `${open}${replaceFirstTextRun(inner, text)}${close}`
+  ));
 }
 
 function replaceListItems(html: string, lines: string[]): string {
@@ -128,10 +148,15 @@ function replaceListItems(html: string, lines: string[]): string {
   const listHtml = listMatch[0];
   const open = /^<[uo]l\b[^>]*>/i.exec(listHtml)?.[0] ?? '<ul>';
   const close = /<\/[uo]l>$/i.exec(listHtml)?.[0] ?? '</ul>';
-  const itemClass = /<li\b([^>]*)>/i.exec(listHtml)?.[1] ?? '';
-  const items = lines
-    .map((line) => `<li${itemClass}>${escapeHtml(line)}</li>`)
-    .join('');
+  const existingItems = [...listHtml.matchAll(/<li\b([^>]*)>([\s\S]*?)<\/li>/gi)];
+  const items = lines.map((line, index) => {
+    const attrs = existingItems[index]?.[1] ?? existingItems[0]?.[1] ?? '';
+    const priorInner = existingItems[index]?.[2] ?? '';
+    if (priorInner && /<[a-zA-Z]/.test(priorInner)) {
+      return `<li${attrs}>${replaceFirstTextRun(priorInner, line)}</li>`;
+    }
+    return `<li${attrs}>${escapeHtml(line)}</li>`;
+  }).join('');
   const nextList = `${open}${items}${close}`;
   return (
     html.slice(0, listMatch.index)
@@ -160,7 +185,7 @@ function fillSlideShell(
     body = replaceFirstTagText(body, 'h3', title);
   }
 
-  if (bodyLines.length > 1 && /<[uo]l\b/i.test(body)) {
+  if (bodyLines.length > 0 && /<[uo]l\b/i.test(body)) {
     body = replaceListItems(body, bodyLines);
   } else if (bodyLines[0] || bodyText) {
     const paragraph = bodyLines[0] || bodyText;
@@ -174,9 +199,22 @@ function fillSlideShell(
     }
   }
 
-  // Keep Teamver fixed canvas size even when template used vw/vh.
+  // Force Teamver fixed canvas size even when template used vw/vh or had
+  // a pre-existing inline style that would otherwise win over CSS overrides.
   let attrs = shell.attrs;
-  if (!/\bstyle\s*=/i.test(attrs)) {
+  if (/\bstyle\s*=/i.test(attrs)) {
+    attrs = attrs.replace(/\bstyle\s*=\s*(["'])([\s\S]*?)\1/i, (_m, q: string, style: string) => {
+      let next = String(style);
+      next = /\bwidth\s*:/i.test(next)
+        ? next.replace(/\bwidth\s*:[^;]*/i, 'width:1920px')
+        : `${next};width:1920px`;
+      next = /\bheight\s*:/i.test(next)
+        ? next.replace(/\bheight\s*:[^;]*/i, 'height:1080px')
+        : `${next};height:1080px`;
+      if (!/\bbox-sizing\s*:/i.test(next)) next = `${next};box-sizing:border-box`;
+      return `style=${q}${next}${q}`;
+    });
+  } else {
     attrs = `${attrs} style="width:1920px;height:1080px;box-sizing:border-box"`;
   }
   // Remap ids so duplicated shells stay unique.
@@ -233,13 +271,21 @@ export function buildTemplateClonedDeckHtml(
     const body = slide.body?.trim();
     cleanedSlides.push(body ? { title, body } : { title });
   }
-  const maxSlides = Math.min(
-    Math.max(1, options.maxSlides ?? 15),
-    20,
-  );
-  const targetCount = cleanedSlides.length > 0
-    ? Math.min(Math.max(cleanedSlides.length, 1), maxSlides)
-    : Math.min(shells.length, maxSlides);
+  // Slide-count policy:
+  // - Source outline headings win (never silently drop headings for a short hint).
+  // - When the hint is *larger* than the outline, pad by cloning body shells.
+  // - With no outline, use the hint or the template's natural length.
+  const hint = options.maxSlides != null
+    ? Math.min(20, Math.max(1, options.maxSlides))
+    : null;
+  let targetCount: number;
+  if (cleanedSlides.length > 0) {
+    targetCount = cleanedSlides.length;
+    if (hint != null && hint > targetCount) targetCount = hint;
+    targetCount = Math.min(20, targetCount);
+  } else {
+    targetCount = Math.min(shells.length, hint ?? shells.length);
+  }
   const picked = pickTemplateShells(shells, targetCount);
   const deckTitle = options.title?.trim()
     || cleanedSlides[0]?.title

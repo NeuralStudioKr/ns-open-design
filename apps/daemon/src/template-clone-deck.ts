@@ -16,7 +16,9 @@ import {
   resolveTemplateCloneSlidesFromBrief,
 } from '@open-design/contracts';
 
-import { getInstalledPlugin } from './plugins/registry.js';
+import { ArtifactPublicationBlockedError } from './artifact-publication-guard.js';
+import { ArtifactRegressionError } from './artifact-stub-guard.js';
+import { resolveInstalledPlugin } from './plugins/registry.js';
 
 type SqliteDb = Database.Database;
 
@@ -34,7 +36,9 @@ export type TemplateCloneDeckResult =
         | 'missing_plugin'
         | 'missing_preview'
         | 'clone_failed'
-        | 'write_failed';
+        | 'write_failed'
+        | 'artifact_regression'
+        | 'artifact_publication_blocked';
       message: string;
       status: number;
     };
@@ -83,7 +87,7 @@ async function loadTemplatePreviewHtml(
   db: SqliteDb,
   pluginId: string,
 ): Promise<{ html: string; previewPath: string; templateId: string; title: string } | null> {
-  const plugin = getInstalledPlugin(db, pluginId);
+  const plugin = resolveInstalledPlugin(db, pluginId);
   if (!plugin?.fsPath) return null;
   const previewPath = pickPluginPreviewHtmlPath(plugin.manifest) ?? 'example.html';
   const html = await readContainedTextFile(plugin.fsPath, previewPath);
@@ -99,9 +103,11 @@ async function loadTemplatePreviewHtml(
 }
 
 function countSlides(html: string): number {
-  return (html.match(/<section\b[^>]*\bslide\b/gi) ?? []).length
-    || (html.match(/<div\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length
-    || 1;
+  const sections = (html.match(/<section\b[^>]*>/gi) ?? []).filter((open) =>
+    /\bslide\b/i.test(open) || /\bs-[a-z0-9_-]+/i.test(open),
+  ).length;
+  if (sections > 0) return sections;
+  return (html.match(/<div\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length || 1;
 }
 
 function buildDeckArtifactManifest(input: {
@@ -178,7 +184,7 @@ export async function seedTemplateClonedDeckOnServer(
     };
   }
 
-  if (!getInstalledPlugin(deps.db, pluginId)) {
+  if (!resolveInstalledPlugin(deps.db, pluginId)) {
     return {
       ok: false,
       reason: 'missing_plugin',
@@ -243,6 +249,22 @@ export async function seedTemplateClonedDeckOnServer(
       deps.metadata,
     );
   } catch (err) {
+    if (err instanceof ArtifactRegressionError) {
+      return {
+        ok: false,
+        reason: 'artifact_regression',
+        message: err.message,
+        status: 422,
+      };
+    }
+    if (err instanceof ArtifactPublicationBlockedError) {
+      return {
+        ok: false,
+        reason: 'artifact_publication_blocked',
+        message: err.message,
+        status: 422,
+      };
+    }
     return {
       ok: false,
       reason: 'write_failed',

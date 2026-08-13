@@ -3651,8 +3651,32 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
           result.message,
         );
       }
+      // Await S3/scratch sync before 200 so a sibling node / refresh cannot
+      // miss the seeded deck.html (same contract as file-revision push).
+      if (ctx.projectStorageHooks) {
+        try {
+          await ctx.projectStorageHooks.persistAfterMutation(req, req.params.id, {
+            strict: true,
+          });
+        } catch (persistErr) {
+          return sendApiError(
+            res,
+            502,
+            'STORAGE_PERSIST_FAILED',
+            persistErr instanceof Error
+              ? persistErr.message
+              : 'Failed to persist cloned deck',
+          );
+        }
+      }
       return res.json(result);
     } catch (err) {
+      if (err instanceof ArtifactRegressionError) {
+        return sendApiError(res, 422, 'ARTIFACT_REGRESSION', err.message);
+      }
+      if (err instanceof ArtifactPublicationBlockedError) {
+        return sendApiError(res, 422, 'ARTIFACT_PUBLICATION_BLOCKED', err.message);
+      }
       return sendApiError(
         res,
         500,

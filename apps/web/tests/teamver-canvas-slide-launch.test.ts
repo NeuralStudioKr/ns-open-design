@@ -434,14 +434,18 @@ describe("canvasSlideLaunch", () => {
     expect(seeder).not.toContain("buildTemplateClonedDeckHtml");
     expect(composer).toContain("seedTemplateClonedDeck(");
     expect(composer).toContain("isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)");
+    expect(composer).toContain("onRequestOpenFile?.(seeded.fileName)");
     expect(app).toContain("seedTemplateClonedDeck(");
     expect(app).toContain("skipAutoSendForTemplateClone");
+    expect(app).toContain("isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })");
+    expect(app).toContain("headings:");
     const projectRoutes = readFileSync(
       resolve(__dirname, "../../daemon/src/project-routes.ts"),
       "utf8",
     );
     expect(projectRoutes).toContain("/api/projects/:id/template-clone-deck");
     expect(projectRoutes).toContain("seedTemplateClonedDeckOnServer");
+    expect(projectRoutes).toContain("persistAfterMutation");
   });
 
   it("rebinds create-slides from URL after workspace bootstrap instead of dropping the modal", () => {

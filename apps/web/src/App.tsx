@@ -125,7 +125,10 @@ import {
 } from './teamver/importCanvas';
 import type { TeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
 import { consumeTeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
-import { canvasCreateSlidesSourceBrief } from './teamver/canvasSlideLaunch';
+import {
+  canvasCreateSlidesSourceBrief,
+  isExplicitCanvasSlideVisualTemplate,
+} from './teamver/canvasSlideLaunch';
 import { seedTemplateClonedDeck } from './teamver/seedTemplateClonedDeck';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
@@ -2397,7 +2400,10 @@ function AppInner() {
               Boolean(asset && typeof asset === 'object' && typeof asset.assetId === 'string'),
           )
         : [];
-      const pendingCanvasHandoff =
+      // Keep display fields (title/headings/preview) for clone source-brief —
+      // stripping them to import-only ids dropped Canvas headings and broke
+      // typecheck for canvasCreateSlidesSourceBrief.
+      const pendingCanvasHandoff: TeamverCanvasLaunchHandoff | null =
         input.pendingCanvasHandoff &&
         typeof input.pendingCanvasHandoff.sessionId === 'string' &&
         typeof input.pendingCanvasHandoff.artifactId === 'string' &&
@@ -2410,7 +2416,29 @@ function AppInner() {
                 ? { revision: input.pendingCanvasHandoff.revision.trim() }
                 : {}),
               ...(input.pendingCanvasHandoff.title?.trim()
-                ? { filename: `${input.pendingCanvasHandoff.title.trim()}.html` }
+                ? { title: input.pendingCanvasHandoff.title.trim() }
+                : {}),
+              ...(input.pendingCanvasHandoff.preview?.trim()
+                ? { preview: input.pendingCanvasHandoff.preview.trim() }
+                : {}),
+              ...(input.pendingCanvasHandoff.threadTitle?.trim()
+                ? { threadTitle: input.pendingCanvasHandoff.threadTitle.trim() }
+                : {}),
+              ...(typeof input.pendingCanvasHandoff.sectionCount === 'number'
+                && Number.isFinite(input.pendingCanvasHandoff.sectionCount)
+                && input.pendingCanvasHandoff.sectionCount > 0
+                ? { sectionCount: Math.floor(input.pendingCanvasHandoff.sectionCount) }
+                : {}),
+              ...(Array.isArray(input.pendingCanvasHandoff.headings)
+                ? {
+                    headings: input.pendingCanvasHandoff.headings
+                      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+                      .map((item) => item.trim())
+                      .slice(0, 12),
+                  }
+                : {}),
+              ...(input.pendingCanvasHandoff.updatedAt?.trim()
+                ? { updatedAt: input.pendingCanvasHandoff.updatedAt.trim() }
                 : {}),
             }
           : null;
@@ -2558,7 +2586,16 @@ function AppInner() {
       let seededDeckFileName: string | null = null;
       if (!workingDirHandoffFailed && pendingCanvasHandoff) {
         try {
-          const canvasResult = await importTeamverCanvas(result.project.id, pendingCanvasHandoff);
+          const canvasResult = await importTeamverCanvas(result.project.id, {
+            sessionId: pendingCanvasHandoff.sessionId,
+            artifactId: pendingCanvasHandoff.artifactId,
+            ...(pendingCanvasHandoff.revision
+              ? { revision: pendingCanvasHandoff.revision }
+              : {}),
+            ...(pendingCanvasHandoff.title?.trim()
+              ? { filename: `${pendingCanvasHandoff.title.trim()}.html` }
+              : {}),
+          });
           for (const item of canvasResult.imported) {
             clearProjectRawFileMissing(result.project.id, item.path);
           }
@@ -2580,15 +2617,22 @@ function AppInner() {
               `Canvas 이미지 ${stagedCanvas.coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`,
             );
           }
-          // Explicit visual template: daemon Clones example.html + content-swap
-          // (BYOK has no Clone tool). Skip auto-send structure gen so the
-          // seeded deck.html is not overwritten by a Neutral regenerate.
-          if (slideOnlyMvp && selectedDeckTemplateId) {
+          // Explicit visual template only (not default scenario id): daemon
+          // Clones example.html + content-swap. Skip auto-send so Neutral
+          // cannot overwrite the seeded deck.html.
+          if (
+            slideOnlyMvp
+            && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
+          ) {
             const sourceBrief = canvasCreateSlidesSourceBrief(pendingCanvasHandoff);
             const templateTitle =
               typeof input.metadata?.selectedDeckTemplateTitle === 'string'
                 ? input.metadata.selectedDeckTemplateTitle.trim()
                 : '';
+            const slideCountHint =
+              typeof input.pluginInputs?.slideCount === 'string'
+                ? input.pluginInputs.slideCount
+                : null;
             const seeded = await seedTemplateClonedDeck({
               projectId: result.project.id,
               pluginId: selectedDeckTemplateId,
@@ -2600,6 +2644,7 @@ function AppInner() {
                 || pendingCanvasHandoff.threadTitle?.trim()
                 || templateTitle
                 || null,
+              slideCountHint,
             });
             if (seeded.ok) {
               skipAutoSendForTemplateClone = true;
@@ -2608,6 +2653,9 @@ function AppInner() {
               devLog.warn(
                 'Home Canvas template clone seed failed; keeping model kit auto-send',
                 seeded,
+              );
+              setWorkingDirError(
+                '선택한 템플릿 복제에 실패해 일반 생성으로 이어갑니다. 결과가 다를 수 있습니다.',
               );
             }
           }

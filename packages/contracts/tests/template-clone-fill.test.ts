@@ -74,6 +74,43 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(cloned).toContain('<li>하나</li>');
     expect(cloned).toContain('class="slide"');
   });
+
+  it('does not truncate Source headings when slideCountHint is shorter', () => {
+    const html = `<!doctype html><html><body>
+<section class="slide"><h1>T1</h1></section>
+<section class="slide"><h2>T2</h2></section>
+<section class="slide"><h2>T3</h2></section>
+<section class="slide"><h2>T4</h2></section>
+<section class="slide"><h2>T5</h2></section>
+</body></html>`;
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [
+        { title: '하나' },
+        { title: '둘' },
+        { title: '셋' },
+        { title: '넷' },
+        { title: '다섯' },
+      ],
+      { maxSlides: 3 },
+    );
+    expect(listTemplateCloneSlideShells(cloned!).length).toBe(5);
+    expect(cloned).toContain('다섯');
+  });
+
+  it('preserves nested heading chrome when swapping text', () => {
+    const html = `<!doctype html><html><body>
+<section class="slide"><h1><span class="accent">Old</span></h1></section>
+<section class="slide"><h2>Body</h2><ul><li class="item"><em>A</em></li></ul></section>
+</body></html>`;
+    const cloned = buildTemplateClonedDeckHtml(
+      html,
+      [{ title: '신규' }, { title: '본문', body: '항목' }],
+    );
+    expect(cloned).toContain('<span class="accent">신규</span>');
+    expect(cloned).toContain('class="item"');
+    expect(cloned).toContain('<em>항목</em>');
+  });
 });
 
 describe('resolveTemplateCloneSlideCountHint', () => {
