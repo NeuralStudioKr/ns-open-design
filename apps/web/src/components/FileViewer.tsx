@@ -316,12 +316,14 @@ import {
   manualEditHistoryConfirmTrustsLocal,
   isManualEditSourcePinActive,
   resolveManualEditSourceAgainstPinAndTip,
+  shouldEarlyPaintResolvedPinTipSource,
   tipContentForManualEditSavePin,
   type ManualEditSourcePin,
 } from '../edit-mode/manual-edit-save-pin';
 import { manualEditTargetsIdentityFingerprint } from '../edit-mode/manual-edit-targets-identity';
 import {
   shouldClearManualEditFrozenSourceOnModeChange,
+  shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
 } from '../edit-mode/manual-edit-freeze';
 import { isManualEditKeyboardTextTarget, resolveManualEditDeleteKeyboardAction } from '../edit-mode/manual-edit-keyboard';
@@ -6176,6 +6178,18 @@ function HtmlViewer({
           exportHtmlSnapshotGateRef.current = nextSource;
         }
       }
+      // Tip yield only — do NOT remount freeze on ordinary liveHtml tokens
+      // (that would defeat entry freeze + od-edit-preview-style).
+      if (
+        resolvedLive.clearPin
+        && shouldSyncManualEditFrozenSourceToPainted(
+          manualEditModeRef.current,
+          manualEditFrozenSourceRef.current,
+          nextSource,
+        )
+      ) {
+        setManualEditFrozenSource(nextSource);
+      }
       setSourceLoadFailed(false);
       setLiveHtmlPaintsPreview(true);
       if (previewSourceWallTimerRef.current != null) {
@@ -6393,20 +6407,39 @@ function HtmlViewer({
           manualEditPinnedSourceRef.current = null;
         }
         // Tip yield / pin prefer — paint before edit-mode disk hold.
-        if (
-          resolvedDisk.source != null
-          && (resolvedDisk.clearPin || resolvedDisk.source !== text)
-        ) {
-          if (sourceRef.current !== resolvedDisk.source) {
-            setSource(resolvedDisk.source);
-            sourceRef.current = resolvedDisk.source;
-            lastStablePreviewSourceRef.current = resolvedDisk.source;
-            exportHtmlSnapshotGateRef.current = resolvedDisk.source;
-            rememberStablePreviewSource(projectId, file.name, resolvedDisk.source);
+        // Unstable tip must not early-paint over a retryable incomplete GET.
+        if (resolvedDisk.source != null) {
+          const repairedTipOrPin = repairArtifactDocumentHeadIfNeeded(resolvedDisk.source);
+          const tipOrPinStable = isArtifactHtmlStableForPreview(repairedTipOrPin)
+            && !(
+              DECK_SLIDE_MARKUP_RE.test(resolvedDisk.source)
+              && !hasSalvageableDeckSlideContent(repairedTipOrPin)
+            );
+          if (shouldEarlyPaintResolvedPinTipSource({
+            resolved: resolvedDisk,
+            candidate: text,
+            tipOrPinStable,
+          })) {
+            const paintSource = repairedTipOrPin;
+            if (sourceRef.current !== paintSource) {
+              setSource(paintSource);
+              sourceRef.current = paintSource;
+              lastStablePreviewSourceRef.current = paintSource;
+              exportHtmlSnapshotGateRef.current = paintSource;
+              rememberStablePreviewSource(projectId, file.name, paintSource);
+            }
+            // Tip yield while editing must remount freeze — preview paints freeze.
+            if (shouldSyncManualEditFrozenSourceToPainted(
+              manualEditModeRef.current,
+              manualEditFrozenSourceRef.current,
+              paintSource,
+            )) {
+              setManualEditFrozenSource(paintSource);
+            }
+            clearPreviewSourceWall();
+            setSourceLoadFailed(false);
+            return;
           }
-          clearPreviewSourceWall();
-          setSourceLoadFailed(false);
-          return;
         }
         if (shouldHoldDiskPreviewDuringManualEdit(
           manualEditModeRef.current,
@@ -10881,17 +10914,19 @@ function HtmlViewer({
           setSelectedManualEditTarget(primary);
           if (nextIds.length > 1) {
             // One Document for remaining multi-select inspector after remove.
+            // Source-only reseed (same plan helper as batch flush / cancel).
             const remainingDoc = parseManualEditSource(contentToSave);
-            const { styles: mergedStyles, mixedKeys } = mergeInspectorStylesForTargets(
-              refreshed,
-              (id) => inspectorManualEditStyles(
-                refreshed.find((item) => item.id === id) ?? primary,
-                contentToSave,
-                remainingDoc,
-              ),
-            );
-            setManualEditMixedStyleKeys(mixedKeys);
-            setManualEditDraft((current) => ({ ...current, styles: mergedStyles, fullSource: contentToSave }));
+            const reseed = planManualEditMultiInspectorReseed({
+              selectedIds: nextIds,
+              readStyles: (id) => readManualEditStyles(contentToSave, id, {}, remainingDoc),
+              concurrentPending: manualEditPendingStyleRef.current,
+            });
+            setManualEditMixedStyleKeys(reseed.mixedKeys);
+            setManualEditDraft((current) => (
+              reseed.styles
+                ? { ...current, styles: reseed.styles, fullSource: contentToSave }
+                : { ...current, fullSource: contentToSave }
+            ));
           } else {
             // 2→1: seed inspector from the remaining target snapshot (not empty).
             const remainingDoc = parseManualEditSource(contentToSave);
@@ -11137,12 +11172,31 @@ function HtmlViewer({
     )) {
       return true;
     }
-    setSource(persisted!);
-    sourceRef.current = persisted!;
+    // Tip/external refresh — adopt disk into source + freeze together so edit
+    // mode does not keep painting a stale freeze after confirm refuses.
+    const refreshed = persisted!;
+    setSource(refreshed);
+    sourceRef.current = refreshed;
+    lastStablePreviewSourceRef.current = refreshed;
+    exportHtmlSnapshotGateRef.current = refreshed;
+    rememberStablePreviewSource(projectId, file.name, refreshed);
+    if (shouldSyncManualEditFrozenSourceToPainted(
+      manualEditMode,
+      manualEditFrozenSourceRef.current,
+      refreshed,
+    )) {
+      setManualEditFrozenSource(refreshed);
+    }
+    if (
+      manualEditPinnedSourceRef.current
+      && manualEditPinnedSourceRef.current.source !== refreshed
+    ) {
+      manualEditPinnedSourceRef.current = null;
+    }
     setInlinedSource(null);
     commitRevisionStack(createRevisionStackSnapshot([], null));
     manualEditPendingStyleRef.current = null;
-    setManualEditDraft((current) => ({ ...current, fullSource: persisted! }));
+    setManualEditDraft((current) => ({ ...current, fullSource: refreshed }));
     setManualEditError(message);
     void refreshRevisionStack();
     return false;

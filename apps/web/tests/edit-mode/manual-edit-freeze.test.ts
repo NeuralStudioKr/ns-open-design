@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   shouldClearManualEditFrozenSourceOnModeChange,
+  shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
 } from '../../src/edit-mode/manual-edit-freeze';
 
@@ -25,5 +26,14 @@ describe('manual edit freeze reset', () => {
     expect(shouldUpdateManualEditFrozenSourceOnPatch('set-text')).toBe(true);
     expect(shouldUpdateManualEditFrozenSourceOnPatch('set-outer-html')).toBe(true);
     expect(shouldUpdateManualEditFrozenSourceOnPatch('remove-element')).toBe(true);
+  });
+
+  it('syncs freeze to painted tip/external refresh while edit mode is on', () => {
+    const frozen = '<html>old</html>';
+    const tip = '<html>tip</html>';
+    expect(shouldSyncManualEditFrozenSourceToPainted(true, frozen, tip)).toBe(true);
+    expect(shouldSyncManualEditFrozenSourceToPainted(true, tip, tip)).toBe(false);
+    expect(shouldSyncManualEditFrozenSourceToPainted(false, frozen, tip)).toBe(false);
+    expect(shouldSyncManualEditFrozenSourceToPainted(true, null, tip)).toBe(false);
   });
 });

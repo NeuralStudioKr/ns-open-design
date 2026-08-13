@@ -179,6 +179,26 @@ export function resolveManualEditSourceAgainstPinAndTip(input: {
 }
 
 /**
+ * Whether a pin/tip resolve result should early-paint, or fall through so the
+ * caller can run incomplete-HTML soft retry / acceptPreviewHtmlCandidate.
+ *
+ * Tip prefer must not paint unstable tip HTML over a lagging-but-retryable GET.
+ * `tipOrPinStable` is the caller's stability gate (artifact preview stable).
+ */
+export function shouldEarlyPaintResolvedPinTipSource(input: {
+  resolved: ManualEditPinTipResolveResult;
+  candidate: string | null;
+  tipOrPinStable: boolean;
+}): boolean {
+  const { resolved, candidate, tipOrPinStable } = input;
+  if (resolved.source == null) return false;
+  if (!(resolved.clearPin || resolved.source !== candidate)) return false;
+  // Unstable tip/pin prefer — let disk soft-retry try again.
+  if (!tipOrPinStable) return false;
+  return true;
+}
+
+/**
  * History confirm fetches disk before undo/redo/next edit. If that GET is
  * still the pre-write snapshot while `expectedSource` is our local save,
  * trust the local buffer instead of wiping history / blocking the edit.

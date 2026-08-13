@@ -11,6 +11,7 @@ import {
   preferManualEditTipOverPinnedSave,
   resolveManualEditSavePinTipRevision,
   resolveManualEditSourceAgainstPinAndTip,
+  shouldEarlyPaintResolvedPinTipSource,
   shouldReleaseManualEditSavePinForTip,
   tipContentForManualEditSavePin,
 } from '../../src/edit-mode/manual-edit-save-pin';
@@ -200,5 +201,32 @@ describe('manual edit save pin', () => {
       now: 1_000 + 100,
       preferTipWhenCandidateLags: true,
     })).toEqual({ source: tip, clearPin: false });
+  });
+
+  it('does not early-paint unstable tip over a retryable incomplete disk candidate', () => {
+    const tip = '<html><body><h1>Agent tip</h1></body></html>';
+    const resolved = resolveManualEditSourceAgainstPinAndTip({
+      pinned: null,
+      candidate: stale,
+      tipContent: tip,
+      preferTipWhenCandidateLags: true,
+    });
+    expect(shouldEarlyPaintResolvedPinTipSource({
+      resolved,
+      candidate: stale,
+      tipOrPinStable: true,
+    })).toBe(true);
+    // Incomplete tip — fall through to soft retry instead of painting debris.
+    expect(shouldEarlyPaintResolvedPinTipSource({
+      resolved,
+      candidate: stale,
+      tipOrPinStable: false,
+    })).toBe(false);
+    // Same bytes as candidate — not an early tip/pin prefer paint.
+    expect(shouldEarlyPaintResolvedPinTipSource({
+      resolved: { source: stale, clearPin: false },
+      candidate: stale,
+      tipOrPinStable: true,
+    })).toBe(false);
   });
 });

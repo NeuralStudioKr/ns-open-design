@@ -28,3 +28,20 @@ export function shouldUpdateManualEditFrozenSourceOnPatch(
 ): boolean {
   return kind !== 'set-style';
 }
+
+/**
+ * Tip yield / history-confirm refresh must remount the edit freeze so the
+ * iframe is not left on a pre-tip snapshot while `sourceRef` already advanced.
+ * Style-only saves still leave freeze alone (see shouldUpdate…OnPatch).
+ */
+export function shouldSyncManualEditFrozenSourceToPainted(
+  manualEditMode: boolean,
+  frozenSource: string | null | undefined,
+  paintedSource: string,
+): boolean {
+  return Boolean(
+    manualEditMode
+    && frozenSource != null
+    && frozenSource !== paintedSource
+  );
+}
