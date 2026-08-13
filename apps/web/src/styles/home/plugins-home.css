@@ -296,13 +296,22 @@
   cursor: pointer;
   transition: border-color 120ms var(--ease-out), background-color 120ms var(--ease-out), color 120ms var(--ease-out);
 }
-.plugins-home__pill:hover {
+/* `button.…` beats global `button:hover { background: var(--bg-subtle) }` —
+   otherwise active pills keep light/dark text on a near-identical fill and
+   the label disappears (slide-template scene / tag badges). */
+button.plugins-home__pill:hover:not(:disabled) {
   border-color: var(--border-strong);
   color: var(--text);
+  background: var(--bg-muted);
 }
 .plugins-home__pill.is-active {
   background: var(--text);
   border-color: var(--text);
+  color: var(--bg-panel);
+}
+button.plugins-home__pill.is-active:hover:not(:disabled) {
+  background: var(--text-strong, var(--text));
+  border-color: var(--text-strong, var(--text));
   color: var(--bg-panel);
 }
 .plugins-home__pill.is-active .plugins-home__pill-count {
@@ -319,9 +328,19 @@
   border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
   color: var(--accent);
 }
+button.plugins-home__pill--all:hover:not(:disabled):not(.is-active) {
+  background: color-mix(in srgb, var(--accent-tint) 70%, var(--bg-muted));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--accent-strong, var(--accent));
+}
 .plugins-home__pill--all.is-active {
   background: var(--accent);
   border-color: var(--accent);
+  color: white;
+}
+button.plugins-home__pill--all.is-active:hover:not(:disabled) {
+  background: var(--accent-hover, var(--accent));
+  border-color: var(--accent-hover, var(--accent));
   color: white;
 }
 .plugins-home__pill--all.is-active .plugins-home__pill-count {
