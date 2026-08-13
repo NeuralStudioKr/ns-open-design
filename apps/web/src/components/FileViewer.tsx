@@ -315,6 +315,7 @@ import {
   manualEditHistoryConfirmCanSkipDiskFetch,
   manualEditHistoryConfirmTrustsLocal,
   isManualEditSourcePinActive,
+  acceptedKeepsEarlyPaintTipOrPin,
   resolveManualEditSourceAgainstPinAndTip,
   shouldEarlyPaintResolvedPinTipSource,
   tipContentForManualEditSavePin,
@@ -323,6 +324,7 @@ import {
 import { manualEditTargetsIdentityFingerprint } from '../edit-mode/manual-edit-targets-identity';
 import {
   shouldClearManualEditFrozenSourceOnModeChange,
+  shouldEchoManualEditSelectionAfterFreezeSync,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
 } from '../edit-mode/manual-edit-freeze';
@@ -6189,6 +6191,7 @@ function HtmlViewer({
         )
       ) {
         setManualEditFrozenSource(nextSource);
+        scheduleManualEditSelectionEchoAfterFreezeSync();
       }
       setSourceLoadFailed(false);
       setLiveHtmlPaintsPreview(true);
@@ -6420,25 +6423,37 @@ function HtmlViewer({
             candidate: text,
             tipOrPinStable,
           })) {
-            const paintSource = repairedTipOrPin;
-            if (sourceRef.current !== paintSource) {
-              setSource(paintSource);
-              sourceRef.current = paintSource;
-              lastStablePreviewSourceRef.current = paintSource;
-              exportHtmlSnapshotGateRef.current = paintSource;
-              rememberStablePreviewSource(projectId, file.name, paintSource);
+            // Route tip/pin through accept so lastStable stays consistent even
+            // when sourceRef already equals paint (stale lastStable / race).
+            const acceptedPaint = acceptPreviewHtmlCandidate(
+              repairedTipOrPin,
+              lastStablePreviewSourceRef,
+            );
+            if (acceptedKeepsEarlyPaintTipOrPin(repairedTipOrPin, acceptedPaint)) {
+              const paintSource = acceptedPaint;
+              if (sourceRef.current !== paintSource) {
+                setSource(paintSource);
+                sourceRef.current = paintSource;
+                exportHtmlSnapshotGateRef.current = paintSource;
+                rememberStablePreviewSource(projectId, file.name, paintSource);
+              } else if (exportHtmlSnapshotGateRef.current !== paintSource) {
+                exportHtmlSnapshotGateRef.current = paintSource;
+              }
+              // Tip yield while editing must remount freeze — preview paints freeze.
+              if (shouldSyncManualEditFrozenSourceToPainted(
+                manualEditModeRef.current,
+                manualEditFrozenSourceRef.current,
+                paintSource,
+              )) {
+                setManualEditFrozenSource(paintSource);
+                scheduleManualEditSelectionEchoAfterFreezeSync();
+              }
+              clearPreviewSourceWall();
+              setSourceLoadFailed(false);
+              return;
             }
-            // Tip yield while editing must remount freeze — preview paints freeze.
-            if (shouldSyncManualEditFrozenSourceToPainted(
-              manualEditModeRef.current,
-              manualEditFrozenSourceRef.current,
-              paintSource,
-            )) {
-              setManualEditFrozenSource(paintSource);
-            }
-            clearPreviewSourceWall();
-            setSourceLoadFailed(false);
-            return;
+            // Accept fell back to an unrelated lastStable — fall through to
+            // soft-retry / normal disk accept instead of early-returning tip.
           }
         }
         if (shouldHoldDiskPreviewDuringManualEdit(
@@ -7690,11 +7705,13 @@ function HtmlViewer({
       manualEditMode ? selectedManualEditTarget?.id ?? null : null,
     );
     // hostChrome tracks overlay mount: also re-post when draw / inline-text hide it.
+    // Freeze tip-yield remounts srcDoc; keep frozenSource too for lazy-transport races.
   }, [
     manualEditMode,
     selectedManualEditTarget?.id,
     selectedManualEditTargetIds,
     srcDoc,
+    manualEditFrozenSource,
     useUrlLoadPreview,
     manualEditInlineTextEditing,
     drawOverlayOpen,
@@ -7907,6 +7924,21 @@ function HtmlViewer({
     );
     win.postMessage({ type: 'od:inspect-mode', enabled: inspectMode }, '*');
     if (effectiveDeck && boardMode) requestSlideStateFromIframe(target);
+  }
+
+  /** Tip-yield freeze remount — deferred selection echo (기획 59 outline). */
+  function scheduleManualEditSelectionEchoAfterFreezeSync() {
+    if (!shouldEchoManualEditSelectionAfterFreezeSync(
+      manualEditModeRef.current,
+      selectedManualEditTargetIdsRef.current,
+    )) return;
+    window.setTimeout(() => {
+      if (!shouldEchoManualEditSelectionAfterFreezeSync(
+        manualEditModeRef.current,
+        selectedManualEditTargetIdsRef.current,
+      )) return;
+      syncBridgeModes(iframeRef.current);
+    }, 0);
   }
 
   // Style saves leave the edit-mode freeze alone (postMessage live preview).
@@ -11186,6 +11218,7 @@ function HtmlViewer({
       refreshed,
     )) {
       setManualEditFrozenSource(refreshed);
+      scheduleManualEditSelectionEchoAfterFreezeSync();
     }
     if (
       manualEditPinnedSourceRef.current
@@ -11194,7 +11227,9 @@ function HtmlViewer({
       manualEditPinnedSourceRef.current = null;
     }
     setInlinedSource(null);
-    commitRevisionStack(createRevisionStackSnapshot([], null));
+    // Keep warm stack until refreshRevisionStack lands — empty wipe + warm
+    // activeSeq makes tipContentForManualEditSavePin miss (activeSeq→null,
+    // no HEAD fallback) so concurrent live/disk tip resolve races mid-flight.
     manualEditPendingStyleRef.current = null;
     setManualEditDraft((current) => ({ ...current, fullSource: refreshed }));
     setManualEditError(message);

@@ -45,3 +45,16 @@ export function shouldSyncManualEditFrozenSourceToPainted(
     && frozenSource !== paintedSource
   );
 }
+
+/**
+ * Tip-yield freeze remount clears the iframe bridge selection outline.
+ * Callers schedule a deferred `syncBridgeModes` / selection echo when edit
+ * mode still has selected ids (onLoad + srcDoc effect usually cover this;
+ * deferred echo covers lazy-transport / remount races).
+ */
+export function shouldEchoManualEditSelectionAfterFreezeSync(
+  manualEditMode: boolean,
+  selectedIds: readonly string[],
+): boolean {
+  return Boolean(manualEditMode && selectedIds.length > 0);
+}

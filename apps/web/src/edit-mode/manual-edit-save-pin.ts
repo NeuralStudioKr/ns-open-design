@@ -199,6 +199,17 @@ export function shouldEarlyPaintResolvedPinTipSource(input: {
 }
 
 /**
+ * Early-paint tip/pin only when `acceptPreviewHtmlCandidate` kept those exact
+ * repaired bytes as lastStable — not when it fell back to an unrelated frame.
+ */
+export function acceptedKeepsEarlyPaintTipOrPin(
+  repairedTipOrPin: string,
+  accepted: string | null,
+): boolean {
+  return accepted === repairedTipOrPin;
+}
+
+/**
  * History confirm fetches disk before undo/redo/next edit. If that GET is
  * still the pre-write snapshot while `expectedSource` is our local save,
  * trust the local buffer instead of wiping history / blocking the edit.

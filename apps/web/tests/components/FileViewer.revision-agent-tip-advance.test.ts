@@ -105,9 +105,15 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Tip yield / pin prefer — paint before edit-mode disk hold');
     expect(fileViewer).toContain('shouldEarlyPaintResolvedPinTipSource');
     expect(fileViewer).toContain('Unstable tip must not early-paint');
+    expect(fileViewer).toContain('acceptedKeepsEarlyPaintTipOrPin');
+    expect(fileViewer).toContain('Route tip/pin through accept so lastStable stays consistent');
+    expect(fileViewer).toContain('acceptPreviewHtmlCandidate(\n              repairedTipOrPin');
     expect(fileViewer).toContain('shouldSyncManualEditFrozenSourceToPainted');
     expect(fileViewer).toContain('Tip yield only — do NOT remount freeze on ordinary liveHtml');
     expect(fileViewer).toContain('Tip yield while editing must remount freeze');
+    expect(fileViewer).toContain('shouldEchoManualEditSelectionAfterFreezeSync');
+    expect(fileViewer).toContain('scheduleManualEditSelectionEchoAfterFreezeSync');
+    expect(fileViewer).toContain('Keep warm stack until refreshRevisionStack lands');
     expect(fileViewer).toContain('activeTipResolvedHtml');
     expect(fileViewer).toContain('Cold tip cache: snapshot/cache resolve IS tip content');
     expect(fileViewer).toContain('activeSeq miss → null (no HEAD fallback) so cold tip remount can adopt');
@@ -150,9 +156,10 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('current.fullSource === contentToSave ? current');
     expect(fileViewer).toContain('Geometry-only rebroadcasts for the same id skip React churn');
     expect(fileViewer).toContain('const contentUnchanged = sourceRef.current === nextSource');
-    expect(fileViewer).toContain('const paintSource = repairedTipOrPin');
+    expect(fileViewer).toContain('const paintSource = acceptedPaint');
     expect(fileViewer).toContain('if (sourceRef.current !== paintSource)');
     expect(fileViewer).toContain('if (sourceRef.current !== accepted)');
+    expect(fileViewer).toContain('manualEditFrozenSource,');
     expect(fileViewer).toContain('Idle remasure only: reject wild jumps');
     expect(fileViewer).toContain('manualEditGeometryIsWildJump');
     expect(fileViewer).toContain('applyManualEditMeasuredGeometry(measured)');
@@ -163,12 +170,16 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('settleManualEditGeometryHandoff');
     const confirmStart = fileViewer.indexOf('async function confirmManualEditHistorySource');
     expect(confirmStart).toBeGreaterThan(0);
-    const confirmBlock = fileViewer.slice(confirmStart, confirmStart + 1_200);
+    const confirmBlock = fileViewer.slice(confirmStart, confirmStart + 2_400);
     expect(confirmBlock.indexOf('tipContentForManualEditSavePin')).toBeLessThan(
       confirmBlock.indexOf('manualEditHistoryConfirmCanSkipDiskFetch'),
     );
     expect(confirmBlock).toContain('manualEditHistoryConfirmTrustsLocal(');
     expect(confirmBlock).toContain('tipContent');
+    expect(confirmBlock).toContain('Keep warm stack until refreshRevisionStack lands');
+    expect(confirmBlock).toContain('scheduleManualEditSelectionEchoAfterFreezeSync');
+    // Confirm refuse must not wipe stack empty before refresh (tip cursor race).
+    expect(confirmBlock).not.toContain('createRevisionStackSnapshot([], null)');
     expect(fileViewer).toContain('live→raw hold: skip setSource when already painting stable');
     expect(fileViewer).toContain('Undo demotes activeSeq — warm soft-cache for the restored tip');
     expect(fileViewer).toContain('srcdoc path updates via setSource; URL-load still needs reloadKey bust');

@@ -11,6 +11,7 @@ import {
   preferManualEditTipOverPinnedSave,
   resolveManualEditSavePinTipRevision,
   resolveManualEditSourceAgainstPinAndTip,
+  acceptedKeepsEarlyPaintTipOrPin,
   shouldEarlyPaintResolvedPinTipSource,
   shouldReleaseManualEditSavePinForTip,
   tipContentForManualEditSavePin,
@@ -228,5 +229,12 @@ describe('manual edit save pin', () => {
       candidate: stale,
       tipOrPinStable: true,
     })).toBe(false);
+  });
+
+  it('keeps early-paint only when accept retained the tip/pin repaired bytes', () => {
+    const tip = '<html><body><h1>Agent tip</h1></body></html>';
+    expect(acceptedKeepsEarlyPaintTipOrPin(tip, tip)).toBe(true);
+    expect(acceptedKeepsEarlyPaintTipOrPin(tip, stale)).toBe(false);
+    expect(acceptedKeepsEarlyPaintTipOrPin(tip, null)).toBe(false);
   });
 });

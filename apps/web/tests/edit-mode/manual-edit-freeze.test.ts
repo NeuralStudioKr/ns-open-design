@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   shouldClearManualEditFrozenSourceOnModeChange,
+  shouldEchoManualEditSelectionAfterFreezeSync,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
 } from '../../src/edit-mode/manual-edit-freeze';
@@ -35,5 +36,12 @@ describe('manual edit freeze reset', () => {
     expect(shouldSyncManualEditFrozenSourceToPainted(true, tip, tip)).toBe(false);
     expect(shouldSyncManualEditFrozenSourceToPainted(false, frozen, tip)).toBe(false);
     expect(shouldSyncManualEditFrozenSourceToPainted(true, null, tip)).toBe(false);
+  });
+
+  it('echoes selection after freeze tip-yield remount when ids remain', () => {
+    expect(shouldEchoManualEditSelectionAfterFreezeSync(true, ['a'])).toBe(true);
+    expect(shouldEchoManualEditSelectionAfterFreezeSync(true, ['a', 'b'])).toBe(true);
+    expect(shouldEchoManualEditSelectionAfterFreezeSync(true, [])).toBe(false);
+    expect(shouldEchoManualEditSelectionAfterFreezeSync(false, ['a'])).toBe(false);
   });
 });
