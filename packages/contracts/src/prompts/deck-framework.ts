@@ -600,7 +600,7 @@ A **Selected deck template** is already in this prompt. Use the **token-safe** p
 
 Do **not** paste a full \`example.html\` dump into the artifact (input was already summarized into the kit; rewriting the whole preview burns output tokens and truncates).
 
-The first 1200 characters after \`<artifact\` must include \`<body\` and the first complete \`<section class="slide">...</section>\` with real copy. Place any shared \`<style>\` after slide 1. Do not open a \`<head>\` block or long \`<head>\` chrome dump.
+**Body-first output order:** the first 1200 characters after \`<artifact\` must include \`<body\` and the first complete \`<section class="slide">...</section>\` with real copy. Place any shared \`<style>\` after slide 1. Do not open a \`<head>\` block or long \`<head>\` chrome dump. Complete deck beats perfect motif fidelity — a shell whose first 1200 chars are all \`<head>\`/\`<style>\` before any visible slide is a failed deliverable.
 
 Fallback wireframe ONLY when neither kit nor scaffold map is usable (structure only — still use Selected template tokens):
 
@@ -612,7 +612,7 @@ Rules:
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete deck over a perfect-but-truncated shell.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. Complete deck beats perfect motif fidelity; a shell-only document is a failure.
 5. Vary layouts using the Template scaffold map roles / kit vocabulary — do not flatten every slide into the same cover composition.
-6. **Hard visual rule (token-safe content-swap):** treat the kit + scaffold map as the base look. Preserve surface colors, decorative wrappers, card treatment, and SVG motif language; replace visible content only. Copy Motif sprites verbatim (at least one on the cover when provided); do not invent generic CSS flowers. Never substitute OD skeleton terracotta \`#c96442\`, Neutral \`#0f172a\`, Inter/Noto-only covers that ignore template fonts, emoji ornament rows, or invented motifs for template CSS/SVG.
+6. **Hard visual rule (token-safe content-swap):** treat the kit + scaffold map as the base look. Preserve surface colors, decorative wrappers, card treatment, and SVG motif language; replace visible content only. **Every slide should carry 1–3 recognizable Motif sprites** from the kit's \`### Motif sprites\` block (cover uses 3–4 in corner \`.deco\` wrappers; body slides use 1–2 tucked accents; closing echoes the cover). Copy Motif sprites verbatim (at least one on the cover when provided) — never invent generic CSS flowers or emoji ornaments. Never substitute OD skeleton terracotta \`#c96442\`, Neutral \`#0f172a\`, Inter/Noto-only covers that ignore template fonts, emoji ornament rows, or invented motifs for template CSS/SVG.
 7. When the user attaches images, include \`<img src="exact-project-relative-path" …>\` using attachment paths.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
