@@ -1099,7 +1099,7 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
     const merged = {
       ...existing,
       ...patch,
-      updatedAt: typeof patch.updatedAt === 'number' ? patch.updatedAt : Date.now(),
+      updatedAt: resolveProjectPatchUpdatedAt(existing, patch),
     };
     setCachedProject(merged);
     mirrorProjectRowToSqlite(db, projectRowForSqliteMirror(merged));
@@ -1113,7 +1113,7 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
   const merged = {
     ...existing,
     ...patch,
-    updatedAt: typeof patch.updatedAt === 'number' ? patch.updatedAt : Date.now(),
+    updatedAt: resolveProjectPatchUpdatedAt(existing, patch),
   };
   db.prepare(
     `UPDATE projects
@@ -1136,6 +1136,78 @@ export function updateProject(db: SqliteDb, id: string, patch: DbRow) {
     id,
   );
   return getProject(db, id);
+}
+
+/**
+ * Empty patch (`{}`) is an intentional activity bump (message PUT, comments).
+ * pendingPrompt-only patches never bump — composer seed clear/set is not a
+ * content edit (read-only open must not show 「방금 전」).
+ * No-op field patches preserve existing.updatedAt.
+ */
+export function resolveProjectPatchUpdatedAt(
+  existing: {
+    updatedAt: number;
+    name?: string | null;
+    skillId?: string | null;
+    designSystemId?: string | null;
+    pendingPrompt?: string | null;
+    metadata?: unknown;
+    customInstructions?: string | null;
+  },
+  patch: DbRow,
+): number {
+  if (typeof patch.updatedAt === 'number' && Number.isFinite(patch.updatedAt)) {
+    return patch.updatedAt;
+  }
+  const keys = Object.keys(patch).filter((key) => key !== 'updatedAt');
+  if (keys.length === 0) return Date.now();
+
+  // Composer seed is ephemeral — never treat pendingPrompt-only as activity.
+  const contentKeys = keys.filter((key) => key !== 'pendingPrompt');
+  if (contentKeys.length === 0) return existing.updatedAt;
+
+  const sameNullable = (a: unknown, b: unknown) => (a ?? null) === (b ?? null);
+  const sameMetadata = (a: unknown, b: unknown) => {
+    if (a === b) return true;
+    if (a == null && b == null) return true;
+    try {
+      return stableJsonStringify(a) === stableJsonStringify(b);
+    } catch {
+      return false;
+    }
+  };
+
+  let changed = false;
+  if ('name' in patch && !sameNullable(patch.name, existing.name)) changed = true;
+  if ('skillId' in patch && !sameNullable(patch.skillId, existing.skillId)) changed = true;
+  if ('designSystemId' in patch && !sameNullable(patch.designSystemId, existing.designSystemId)) {
+    changed = true;
+  }
+  if ('metadata' in patch && !sameMetadata(patch.metadata, existing.metadata)) changed = true;
+  if (
+    'customInstructions' in patch
+    && !sameNullable(patch.customInstructions, existing.customInstructions)
+  ) {
+    changed = true;
+  }
+  return changed ? Date.now() : existing.updatedAt;
+}
+
+function stableJsonStringify(value: unknown): string {
+  return JSON.stringify(sortJsonValue(value));
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJsonValue);
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) {
+      sorted[key] = sortJsonValue(record[key]);
+    }
+    return sorted;
+  }
+  return value;
 }
 
 export function deleteProject(db: SqliteDb, id: string) {

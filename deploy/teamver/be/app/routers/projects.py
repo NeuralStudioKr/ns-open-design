@@ -168,10 +168,13 @@ async def _resolve_existing_registry_row(
         current_title=row.title,
         incoming_title=title,
     )
-    if merged_title is not None:
-        row.title = merged_title
-    # Touch updated_at on every successful register hit so Home relative
-    # times reflect recent activity (not a stale create from days ago).
+    # Idempotent re-register must NOT bump updated_at. Opening a project can
+    # race access→legacy POST /projects; touching here made Home show
+    # 「방금 전」 for a read-only open. Only real title upgrades (or
+    # reactivate above) advance the timestamp.
+    if merged_title is None:
+        return row, False
+    row.title = merged_title
     row.updated_at = utcnow()
     await db.flush()
     await db.refresh(row)

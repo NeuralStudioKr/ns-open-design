@@ -3437,6 +3437,10 @@ function AppInner() {
         p.id === projectId ? { ...p, pendingPrompt: undefined } : p,
       ),
     );
+    // pendingPrompt is a one-shot composer seed, not content. Daemon
+    // resolveProjectPatchUpdatedAt preserves updatedAt for pendingPrompt-only
+    // patches — do not send a client updatedAt (stale list ref can roll back
+    // a newer daemon timestamp from another tab / message PUT).
     void patchProject(projectId, { pendingPrompt: null });
   }, [route]);
 

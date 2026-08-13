@@ -230,10 +230,10 @@ async def test_create_project_is_idempotent_for_existing_active_row(
 
     assert response.od_project_id == "od1"
     create.assert_not_awaited()
-    # Still idempotent for membership/title, but touches updated_at so Home
-    # relative times stay current on re-register.
-    db.commit.assert_awaited_once()
-    assert row.updated_at is not None
+    # Idempotent re-register must not rewrite updated_at (read-only open /
+    # access race POST must not make Home show 「방금 전」).
+    db.commit.assert_not_awaited()
+    db.flush.assert_not_awaited()
     await _drain_background_sync_tasks()
     sync.assert_awaited_once()
 
