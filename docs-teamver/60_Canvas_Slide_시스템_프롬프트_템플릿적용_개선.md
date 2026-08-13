@@ -130,6 +130,22 @@
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.10 2026-08-13 후속 — Home Clone 커버 heading에 user prompt 반영 · letterbox `transparent`도 잘못 → 완전 제거
+
+**증상:** 스크린샷 신고 "생성 요청 했는데, 템플릿 클론만 하고 내용을 바꾸지 않은 것 같다. 게다가 레이아웃/사이즈 등이 템플릿 미리보기와 달라진 것들이 존재한다".
+
+두 문제를 각각 진단·수정:
+
+- **내용 미교체 (커버 heading)**: staging App.tsx Home Clone 호출이 `deckTitle: templateTitle || null`을 넘겨서, `resolveTemplateCloneSlidesFromBrief`가 outline 없는 자유 프롬프트에 `[]`을 반환하는 경우(§0.8) `buildTemplateClonedDeckHtml`이 슬라이드 1의 heading을 deckTitle=templateTitle로 채움. 커버가 "Html Ppt Zhangzara Daisy Days"로 유지됨.
+  - **수정:** App.tsx Home Clone `deckTitle` fallback chain을 `Drive filename → derivedPendingPrompt → templateTitle` 순으로 재정렬. 사용자 프롬프트가 커버 heading으로 반영됨.
+
+- **letterbox 흰색**: 직전 §0.9의 `background: transparent !important` 변경이 역효과. `!important`가 여전히 deck 자체 `body { background: var(--cream) }`을 override → iframe 기본색(흰색)이 letterbox로 노출됨.
+  - **수정:** `compactStackedDeckFix`에서 html/body `background` 선언 자체를 완전 제거. 이제 deck 자체 body bg (Daisy Days cream, 다크 계열 dark 등)가 letterbox 영역에 그대로 반영. compact model deck (body bg 없음)은 iframe transparent 유지.
+
+**검증:** `teamver-canvas-slide-launch.test.ts` + `compact-api-stacked-deck.test.ts` — 52/52 passed.
+
+**교훈:** 컴팩트 stacked-deck 렌더 파이프라인에서 letterbox 영역 backgrounds 처리는 `!important` 대신 declaration 자체를 두지 않는 게 정답. deck의 자체 body bg cascade가 자연스럽게 letterbox를 채운다.
+
 ### 0.9 2026-08-13 최종 관찰 — Preview panel letterbox `#0b0c10` 하드코딩이 template look을 가리고 있었다
 
 **증상:** 사용자 반복 신고 "여전히 내가 선택한 템플릿이 사용되지 않고 있다". daemon Clone 파이프라인은 이미 다층으로 하드닝된 상태 (0.6~0.8 + staging Home Clone + Neutral fallthrough 금지). Clone 결과 deck.html은 실제로 template의 CSS/SVG/layout을 온전히 담고 있음을 검증 — 그런데도 사용자 화면에는 template look이 안 보였다.
@@ -630,6 +646,8 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | outline 없는 자유 프롬프트에서 clone 결과가 슬라이드 1장으로 collapse되는 문제 | **완료** — `resolveTemplateCloneSlidesFromBrief`가 outline 못 찾을 때 `[]` 반환해 자연 shell count 보존 |
 | P0 | preview panel `compactStackedDeckFix` letterbox가 `#0b0c10` 하드코딩이라 daemon Clone된 template look을 시각적으로 지우던 문제 | **완료** — `background: transparent`로 교체, template body bg가 letterbox로 노출 |
 | P0 | compact contract for selected template의 red-spec (body-first output order + 1–3 recognizable Motif sprites per slide) | **완료** — `DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE`에 규칙 추가, 405/405 첫 클린 상태 |
+| P0 | Home Clone 커버 heading이 user prompt 대신 templateTitle로 남던 문제 | **완료** — App.tsx `deckTitle` fallback을 `Drive filename → derivedPendingPrompt → templateTitle` 순으로 재정렬 |
+| P0 | letterbox `transparent !important`가 deck 자체 body bg를 여전히 override하던 문제 | **완료** — `compactStackedDeckFix`에서 html/body `background` 선언 완전 제거 |
 
 ### 12.1 Edit-contract gating (상세)
 
@@ -657,3 +675,4 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | §0.8 추가 — Home 템플릿 카드 outline 없는 프롬프트에서 clone 결과가 슬라이드 1장으로 collapse되는 부차 문제 · `resolveTemplateCloneSlidesFromBrief`가 outline 없을 때 `[]` 반환 (staging `9c59b683d`이 App.tsx Home Clone 라우팅은 이미 landed) |
 | 2026-08-13 | §12 P0 두 항목 추가·완료 표시 — Home 템플릿 카드 Clone 라우팅 · outline 없는 프롬프트 slide-count fallback |
 | 2026-08-13 | §0.9 추가 (최종) — preview panel `compactStackedDeckFix` letterbox의 `#0b0c10` 하드코딩이 daemon Clone 결과 template look을 시각적으로 지우고 있었다 · `transparent`로 교체 · compact contract에 body-first + 1–3 sprites 규칙 · red-spec 405/405 첫 클린 상태 |
+| 2026-08-13 | §0.10 후속 — Home Clone 커버 heading에 user prompt 반영 (`derivedPendingPrompt`로 fallback) · letterbox `transparent !important`도 역효과였음이 확인되어 `background` 선언 자체 제거로 재조정 |
