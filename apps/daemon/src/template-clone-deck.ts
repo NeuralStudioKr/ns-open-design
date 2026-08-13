@@ -204,12 +204,32 @@ export async function seedTemplateClonedDeckOnServer(
 
   let resolved = resolveInstalledPlugin(deps.db, pluginId);
   if (!resolved && deps.ensureBundledPlugin) {
-    try {
-      await deps.ensureBundledPlugin(pluginId);
-    } catch {
-      /* best-effort rehydrate */
+    // Try raw id then path-stripped / example- aliases — gallery ids often
+    // arrive as `open-design/example-html-ppt-…` while bundled folders use
+    // bare / example- names.
+    const ensureCandidates = new Set<string>([pluginId]);
+    const segments = pluginId.split('/').filter(Boolean);
+    const bare = (segments[segments.length - 1] ?? pluginId).trim();
+    if (bare) {
+      ensureCandidates.add(bare);
+      if (bare.startsWith('example-')) {
+        ensureCandidates.add(bare.slice('example-'.length));
+      } else {
+        ensureCandidates.add(`example-${bare}`);
+      }
     }
-    resolved = resolveInstalledPlugin(deps.db, pluginId);
+    for (const candidate of ensureCandidates) {
+      try {
+        await deps.ensureBundledPlugin(candidate);
+      } catch {
+        /* best-effort rehydrate */
+      }
+      resolved = resolveInstalledPlugin(deps.db, candidate);
+      if (resolved) break;
+    }
+    if (!resolved) {
+      resolved = resolveInstalledPlugin(deps.db, pluginId);
+    }
   }
   if (!resolved) {
     return {

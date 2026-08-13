@@ -4,6 +4,10 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { closeDatabase, openDatabase } from '../src/db.js';
+import {
+  ensureBundledPluginRegistered,
+  normalizeBundledPluginLookupId,
+} from '../src/plugins/bundled.js';
 import { upsertInstalledPlugin } from '../src/plugins/registry.js';
 import { seedTemplateClonedDeckOnServer } from '../src/template-clone-deck.js';
 
@@ -227,5 +231,108 @@ describe('seedTemplateClonedDeckOnServer', () => {
         templateTitle: 'Mini Template',
       },
     ]);
+  });
+
+  it('normalizes marketplace-prefixed ids for bundled ensure', () => {
+    expect(normalizeBundledPluginLookupId('open-design/example-html-ppt-zhangzara-daisy-days'))
+      .toBe('example-html-ppt-zhangzara-daisy-days');
+    expect(normalizeBundledPluginLookupId('html-ppt-zhangzara-daisy-days'))
+      .toBe('html-ppt-zhangzara-daisy-days');
+  });
+
+  it('ensureBundledPluginRegistered accepts open-design/example-… ids', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'od-bundled-ensure-'));
+    const bundledRoot = path.join(root, 'plugins', '_official');
+    const folder = path.join(bundledRoot, 'examples', 'html-ppt-zhangzara-daisy-days');
+    const dataDir = path.join(root, '.od');
+    await mkdir(folder, { recursive: true });
+    await writeFile(
+      path.join(folder, 'open-design.json'),
+      JSON.stringify({
+        name: 'example-html-ppt-zhangzara-daisy-days',
+        title: 'Daisy',
+        version: '0.0.0',
+        od: { mode: 'deck', preview: { entry: 'example.html' } },
+      }),
+      'utf8',
+    );
+    await writeFile(
+      path.join(folder, 'SKILL.md'),
+      '---\nname: html-ppt-zhangzara-daisy-days\n---\n',
+      'utf8',
+    );
+    await writeFile(path.join(folder, 'example.html'), '<section class="slide"><h1>A</h1></section>', 'utf8');
+
+    const db = openDatabase(root, { dataDir });
+    const registered = await ensureBundledPluginRegistered({
+      db,
+      bundledRoot,
+      pluginId: 'open-design/example-html-ppt-zhangzara-daisy-days',
+    });
+    expect(registered?.id).toBe('example-html-ppt-zhangzara-daisy-days');
+  });
+
+  it('ensureBundled + clone works when only ensure receives open-design/ prefix', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'od-clone-prefixed-'));
+    const bundledRoot = path.join(root, 'plugins', '_official');
+    const folder = path.join(bundledRoot, 'examples', 'html-ppt-mini-pref');
+    const projectsRoot = path.join(root, 'projects');
+    const dataDir = path.join(root, '.od');
+    await mkdir(folder, { recursive: true });
+    await mkdir(projectsRoot, { recursive: true });
+    await writeFile(
+      path.join(folder, 'open-design.json'),
+      JSON.stringify({
+        name: 'example-html-ppt-mini-pref',
+        title: 'Mini Pref',
+        version: '0.0.0',
+        od: { mode: 'deck', preview: { entry: 'example.html' } },
+      }),
+      'utf8',
+    );
+    await writeFile(
+      path.join(folder, 'SKILL.md'),
+      '---\nname: html-ppt-mini-pref\n---\n',
+      'utf8',
+    );
+    await writeFile(
+      path.join(folder, 'example.html'),
+      '<section class="slide"><h1>One</h1></section><section class="slide"><h1>Two</h1></section>',
+      'utf8',
+    );
+
+    const db = openDatabase(root, { dataDir });
+    const written = new Map<string, string>();
+    const result = await seedTemplateClonedDeckOnServer(
+      {
+        db,
+        projectsRoot,
+        projectId: 'proj-prefixed',
+        ensureProject: async () => {
+          const dir = path.join(projectsRoot, 'proj-prefixed');
+          await mkdir(dir, { recursive: true });
+          return dir;
+        },
+        writeProjectFile: async (_root, _id, name, body) => {
+          written.set(name, typeof body === 'string' ? body : body.toString('utf8'));
+          return { name };
+        },
+        ensureBundledPlugin: async (pluginId) => {
+          const hit = await ensureBundledPluginRegistered({
+            db,
+            bundledRoot,
+            pluginId,
+          });
+          return hit ? { id: hit.id } : null;
+        },
+      },
+      {
+        pluginId: 'open-design/example-html-ppt-mini-pref',
+        sourceBrief: 'Visible headings: Cover / Body',
+        deckTitle: 'Cover',
+      },
+    );
+    expect(result.ok).toBe(true);
+    expect(written.get('deck.html')).toContain('Cover');
   });
 });

@@ -2316,14 +2316,21 @@ function AppInner() {
           return false;
         }
       }
-      // Canvas → Slide with an explicit visual template pins
-      // `selectedDeckTemplateId`. Honor a null/empty designSystemId there —
-      // re-resolving to Neutral Modern | Starter re-injected DESIGN.md into
-      // BYOK compose and overrode Daisy Days / Zhangzara kits.
-      const selectedDeckTemplateId =
+      // Canvas → Slide / Home wizard / gallery Use pin the visual template via
+      // metadata (preferred) or pluginInputs (Home wizard binding patch).
+      // Honor a null/empty designSystemId there — re-resolving to Neutral
+      // Modern | Starter re-injected DESIGN.md into BYOK compose and overrode
+      // Daisy Days / Zhangzara kits.
+      const selectedDeckTemplateIdFromMeta =
         typeof input.metadata?.selectedDeckTemplateId === 'string'
           ? input.metadata.selectedDeckTemplateId.trim()
           : '';
+      const selectedDeckTemplateIdFromInputs =
+        typeof input.pluginInputs?.selectedDeckTemplateId === 'string'
+          ? input.pluginInputs.selectedDeckTemplateId.trim()
+          : '';
+      const selectedDeckTemplateId =
+        selectedDeckTemplateIdFromMeta || selectedDeckTemplateIdFromInputs;
       const resolvedDesignSystemId = !isTeamverEmbedMode()
         ? input.designSystemId
         : selectedDeckTemplateId
@@ -2710,9 +2717,10 @@ function AppInner() {
           throw err instanceof Error ? err : new Error(String(err));
         }
       }
-      // Home community / design-template card (no Canvas handoff): still Clone
+      // Home wizard / gallery / community card (no Canvas handoff): still Clone
       // the selected visual template so look matches preview instead of Neutral.
-      // Drive create-slides: only Clone when import succeeded (align with ChatComposer).
+      // Drive import failure must NOT skip Clone — otherwise Daisy is never
+      // applied and the user only sees an empty project (auto-send also blocked).
       if (
         !workingDirHandoffFailed
         && !canvasImportFailed
@@ -2720,7 +2728,6 @@ function AppInner() {
         && !pendingCanvasHandoff
         && slideOnlyMvp
         && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
-        && (pendingDriveAssets.length === 0 || homeDriveImportSucceeded)
       ) {
         const templateTitle =
           typeof input.metadata?.selectedDeckTemplateTitle === 'string'

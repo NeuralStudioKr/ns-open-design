@@ -663,6 +663,18 @@ export function EntryShell({
       attachmentLabel: firstAttachmentName || null,
       pluginTitle: payload.pluginTitle,
     });
+    const payloadTemplateId =
+      typeof payload.projectMetadata?.selectedDeckTemplateId === 'string'
+        ? payload.projectMetadata.selectedDeckTemplateId.trim()
+        : typeof payload.pluginInputs?.selectedDeckTemplateId === 'string'
+          ? payload.pluginInputs.selectedDeckTemplateId.trim()
+          : '';
+    const payloadTemplateTitle =
+      typeof payload.projectMetadata?.selectedDeckTemplateTitle === 'string'
+        ? payload.projectMetadata.selectedDeckTemplateTitle.trim()
+        : typeof payload.pluginInputs?.selectedDeckTemplateTitle === 'string'
+          ? payload.pluginInputs.selectedDeckTemplateTitle.trim()
+          : '';
     const metadata: ProjectMetadata = {
       ...(payload.projectMetadata ?? {}),
       // Teamver embed slide-only MVP locks the artifact to a deck. Free-form
@@ -672,6 +684,16 @@ export function EntryShell({
       // the run reaches the daemon.
       kind: resolvePluginLoopProjectKind(payload),
       nameSource: 'prompt',
+      // Home wizard / gallery Use may put the visual id only on pluginInputs;
+      // promote it onto metadata so App Clone always sees selectedDeckTemplateId.
+      ...(payloadTemplateId
+        ? {
+            selectedDeckTemplateId: payloadTemplateId,
+            ...(payloadTemplateTitle
+              ? { selectedDeckTemplateTitle: payloadTemplateTitle }
+              : {}),
+          }
+        : {}),
       ...(payload.contextPlugins && payload.contextPlugins.length > 0
         ? { contextPlugins: payload.contextPlugins }
         : {}),

@@ -17,5 +17,6 @@
 
 ## 진행 메모
 
+- 2026-08-13: Home wizard / 갤러리 Use → `selectedDeckTemplateId`를 metadata+pluginInputs+EntryShell로 이중 전달해 daemon Clone이 항상 타도록 보강. 내용 스텝에 선택 스타일 칩.
 - 2026-08-13: 백업·설계·P0 코드 착수. slideOnly에서만 히어로 CTA + 마법사. OD HomeHero 유지.
 - 2026-08-13: placeholder 짧은 안내만. 예시 팁 UI 철회. 퀵설정 기본값 팀/보통/professional.

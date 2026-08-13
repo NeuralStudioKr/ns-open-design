@@ -4,6 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { TeamverHomeSlideCreateModal } from "../src/teamver/components/TeamverHomeSlideCreateModal";
 import { TeamverHomeCreateHero } from "../src/teamver/components/TeamverHomeCreateHero";
+import {
+  CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  readLastExplicitDeckTemplateId,
+  rememberLastExplicitDeckTemplateId,
+} from "../src/teamver/canvasSlideLaunch";
 import { I18nProvider } from "../src/i18n";
 
 vi.mock("../src/components/plugins-home/cards/PreviewSurface", () => ({
@@ -40,7 +45,7 @@ describe("TeamverHomeSlideCreateModal", () => {
     { id: "example-simple-deck", title: "Default", record: null },
   ];
 
-  it("new entry: content then template, confirm label has no template name", () => {
+  it("new entry with explicit style: confirm available on content (no template name in CTA)", () => {
     const onConfirm = vi.fn();
     wrap(
       <TeamverHomeSlideCreateModal
@@ -56,8 +61,10 @@ describe("TeamverHomeSlideCreateModal", () => {
       />,
     );
     expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("teamver-home-slide-create-next"));
-    expect(screen.getByTestId("teamver-home-slide-create-template")).toBeTruthy();
+    // Explicit pick skips the forced "Next" gate — chip shows Hermes instead.
+    expect(screen.getByTestId("teamver-home-slide-create-selected-template").textContent).toContain(
+      "Hermes",
+    );
     const confirm = screen.getByTestId("teamver-home-slide-create-confirm");
     expect(confirm.textContent).toContain("Create slides");
     expect(confirm.textContent).not.toContain("Hermes");
@@ -82,6 +89,9 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
     expect(screen.getByTestId("teamver-home-slide-create-confirm")).toBeTruthy();
     expect(screen.queryByTestId("teamver-home-slide-create-next")).toBeNull();
+    expect(screen.getByTestId("teamver-home-slide-create-selected-template").textContent).toContain(
+      "Hermes",
+    );
     fireEvent.click(screen.getByTestId("teamver-home-slide-create-step-template"));
     expect(screen.getByTestId("teamver-home-slide-create-template")).toBeTruthy();
   });
@@ -105,5 +115,33 @@ describe("TeamverHomeSlideCreateModal", () => {
     );
     expect(screen.queryByTestId("teamver-home-slide-create-tip-btn")).toBeNull();
     expect(screen.queryByTestId("teamver-home-slide-create-tips")).toBeNull();
+  });
+
+  it("new entry without explicit template requires visiting style step before confirm", () => {
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="example-simple-deck"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("teamver-home-slide-create-next")).toBeTruthy();
+    expect(screen.queryByTestId("teamver-home-slide-create-confirm")).toBeNull();
+  });
+
+  it("remembers last explicit deck template id across Home surfaces", () => {
+    const key = "od:last-explicit-deck-template-id";
+    window.sessionStorage.removeItem(key);
+    rememberLastExplicitDeckTemplateId(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    expect(readLastExplicitDeckTemplateId()).toBeNull();
+    rememberLastExplicitDeckTemplateId("example-html-ppt-zhangzara-daisy-days");
+    expect(readLastExplicitDeckTemplateId()).toBe("example-html-ppt-zhangzara-daisy-days");
+    window.sessionStorage.removeItem(key);
   });
 });

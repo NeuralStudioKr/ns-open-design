@@ -155,7 +155,9 @@ import {
   canvasCreateSlidesSourceBrief,
   buildSlideOnlyDeckTemplateCreateBinding,
   isExplicitCanvasSlideVisualTemplate,
+  readLastExplicitDeckTemplateId,
   readTeamverCreateSlidesLaunchFromUrl,
+  rememberLastExplicitDeckTemplateId,
   resolveCanvasSlideTemplate,
   driveCreateSlidesSourceBrief,
   type CanvasSlideQuickSettings,
@@ -404,22 +406,41 @@ export function HomeView({
   const [canvasSlideQuickSettings, setCanvasSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
     DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   );
-  // Canvas→Slide modal used to always open on "기본 슬라이드 템플릿", ignoring
-  // the community gallery pick the user already made. Seed from the active
-  // deck visual template whenever the one-confirm opens (do not override an
-  // explicit non-default pick the user made in a previous modal open).
+  // Persist last explicit visual pick across Home wizard / gallery / Canvas
+  // so create-slides does not silently reopen on "기본".
+  useEffect(() => {
+    rememberLastExplicitDeckTemplateId(homeSlideTemplateId);
+  }, [homeSlideTemplateId]);
+  useEffect(() => {
+    rememberLastExplicitDeckTemplateId(canvasSlideTemplateId);
+  }, [canvasSlideTemplateId]);
+  // Canvas→Slide: slideOnly gallery Use never sets `active` (it opens the
+  // Home wizard instead). Seed from the wizard/gallery pin or session last
+  // pick — not only from active plugin.
   useEffect(() => {
     if (!canvasSlideLaunch) return;
     const fromActive = slideOnlyMvp
       ? resolveSlideOnlyDeckTemplateSkillId(active?.record)
       : null;
-    if (!fromActive) return;
+    const fromHomeWizard = isExplicitCanvasSlideVisualTemplate({
+      id: homeSlideTemplateId,
+    })
+      ? homeSlideTemplateId.trim()
+      : null;
+    const fromSession = readLastExplicitDeckTemplateId();
+    const preferred = fromActive || fromHomeWizard || fromSession;
+    if (!preferred) return;
     setCanvasSlideTemplateId((current) =>
       current === CANVAS_CREATE_SLIDES_PLUGIN_ID || !current.trim()
-        ? fromActive
+        ? preferred
         : current,
     );
-  }, [canvasSlideLaunch, active?.record, slideOnlyMvp]);
+  }, [
+    canvasSlideLaunch,
+    active?.record,
+    slideOnlyMvp,
+    homeSlideTemplateId,
+  ]);
   const [communityExternalPreviewError, setCommunityExternalPreviewError] = useState<string | null>(
     null,
   );
@@ -1243,6 +1264,7 @@ export function HomeView({
     });
     if (slideOnlyMvp) {
       setHomeSlideTemplateId(record.id);
+      rememberLastExplicitDeckTemplateId(record.id);
       setHomeSlideCreateEntry('template');
       setHomeSlideCreateError(null);
       setHomeSlideUserPrompt('');
@@ -1836,7 +1858,15 @@ export function HomeView({
 
   function openHomeSlideCreate(entry: TeamverHomeSlideCreateEntry, templateId?: string) {
     setHomeSlideCreateEntry(entry);
-    setHomeSlideTemplateId(templateId?.trim() || CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    const explicit =
+      templateId?.trim()
+      || readLastExplicitDeckTemplateId()
+      || '';
+    setHomeSlideTemplateId(
+      isExplicitCanvasSlideVisualTemplate({ id: explicit })
+        ? explicit
+        : CANVAS_CREATE_SLIDES_PLUGIN_ID,
+    );
     setHomeSlideUserPrompt('');
     setHomeSlideQuickSettings(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
     setHomeSlideCreateError(null);
@@ -1858,10 +1888,24 @@ export function HomeView({
     setHomeSlideCreateError(null);
     setError(null);
     try {
-      const template = selectedHomeSlideTemplate;
+      // Prefer the live picker id; never silently drop an explicit gallery /
+      // wizard pick back to "기본" when the catalog is still loading.
+      const template = resolveCanvasSlideTemplate(
+        canvasSlideTemplates,
+        homeSlideTemplateId.trim() || selectedHomeSlideTemplate.id,
+      );
       const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(template, {
         slideOnlyMvp: true,
       });
+      if (
+        isExplicitCanvasSlideVisualTemplate(template)
+        && !templateBinding.projectMetadata.selectedDeckTemplateId
+      ) {
+        setHomeSlideCreateError(
+          '선택한 템플릿 정보가 유실되었습니다. 템플릿 단계에서 다시 골라 주세요.',
+        );
+        return;
+      }
       const topicHint =
         homeSlideUserPrompt.trim().split(/\n/)[0]?.slice(0, 120)
         || stagedFiles[0]?.name
@@ -1873,6 +1917,16 @@ export function HomeView({
           (asset) => `drive:${asset.filename ?? asset.assetId}`,
         ),
       ].join('\n');
+      // Clone content-swap needs textual outline — prefer the user brief, then
+      // attachment labels (empty attach-only brief used to yield a blank outline).
+      const sourceBrief = [
+        homeSlideUserPrompt.trim()
+          ? `User instruction:\n${homeSlideUserPrompt.trim()}`
+          : '',
+        attachBrief ? `Attachments:\n${attachBrief}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n') || null;
       const submittedDesignSystemId =
         !isExplicitCanvasSlideVisualTemplate(template)
           ? resolveEmbedSlideDesignSystemId({
@@ -1885,7 +1939,7 @@ export function HomeView({
         onSubmit({
           prompt: canvasCreateSlidesRunPrompt(
             template.title,
-            attachBrief || null,
+            sourceBrief,
             homeSlideUserPrompt,
             homeSlideQuickSettings,
           ),
@@ -1899,14 +1953,34 @@ export function HomeView({
             ...canvasCreateSlidesPluginInputs(
               topicHint,
               template.title,
-              attachBrief || null,
+              sourceBrief,
               homeSlideUserPrompt,
               homeSlideQuickSettings,
             ),
             ...templateBinding.pluginInputsPatch,
+            // Belt-and-suspenders: App Clone also reads pluginInputs when
+            // metadata is stripped by an intermediate shell.
+            ...(templateBinding.projectMetadata.selectedDeckTemplateId
+              ? {
+                  selectedDeckTemplateId:
+                    templateBinding.projectMetadata.selectedDeckTemplateId,
+                  selectedDeckTemplateTitle:
+                    templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                }
+              : {}),
           },
           projectKind: 'deck',
-          projectMetadata: templateBinding.projectMetadata,
+          projectMetadata: {
+            ...templateBinding.projectMetadata,
+            // Keep the visual id even if binding omitted it (should not happen
+            // for explicit picks — defensive for catalog-loading races).
+            ...(isExplicitCanvasSlideVisualTemplate(template)
+              ? {
+                  selectedDeckTemplateId: template.id,
+                  selectedDeckTemplateTitle: template.title,
+                }
+              : {}),
+          },
           designSystemId: submittedDesignSystemId,
           contextPlugins: [],
           contextMcpServers: [],
@@ -2159,16 +2233,31 @@ export function HomeView({
     setSubmitPending(true);
     try {
       const defaultInputs = { prompt: trimmed };
+      // Resolve visual template id early so we can null Neutral DESIGN.md when
+      // an explicit deck template owns the look (same policy as wizard/Canvas).
+      const earlySelectedDeckTemplateId = slideOnlyMvp
+        ? resolveSlideOnlyDeckTemplateSkillId(submittedActive?.record)
+          ?? (
+            activeSkill && isRenderableDesignTemplate(activeSkill)
+              ? activeSkill.id
+              : null
+          )
+        : null;
       const submittedDesignSystemId = slideOnlyMvp
-        ? resolveEmbedSlideDesignSystemId({
-            explicitId: homeDesignSystemSelectionForInputs(
-              submittedActive?.inputs ?? null,
-              designSystemPickerSystems,
-              t('designSystemPicker.noneTitle'),
-            ),
-            workspaceDefaultId: defaultDesignSystemId,
-            designSystems: designSystemPickerSystems,
-          })
+        ? (
+          earlySelectedDeckTemplateId
+            && isExplicitCanvasSlideVisualTemplate({ id: earlySelectedDeckTemplateId })
+            ? null
+            : resolveEmbedSlideDesignSystemId({
+                explicitId: homeDesignSystemSelectionForInputs(
+                  submittedActive?.inputs ?? null,
+                  designSystemPickerSystems,
+                  t('designSystemPicker.noneTitle'),
+                ),
+                workspaceDefaultId: defaultDesignSystemId,
+                designSystems: designSystemPickerSystems,
+              })
+        )
         : homeDesignSystemSelectionForInputs(
             submittedActive?.inputs ?? null,
             designSystemPickerSystems,

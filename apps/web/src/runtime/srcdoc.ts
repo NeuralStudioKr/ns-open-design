@@ -2535,7 +2535,20 @@ html[data-od-compact-stacked],
 html[data-od-compact-stacked] body {
   width: 100% !important;
   height: 100% !important;
-  background: #0b0c10 !important;
+  /* Do not force a near-black (#0b0c10) letterbox background here — the
+     compact-stacked stage runs for BOTH model-authored compact decks (which
+     usually have no body background) AND daemon Clone decks whose template
+     ships \`body { background: var(--cream) }\` (Daisy Days) or another
+     pastel surface. A hardcoded dark letterbox around a cream slide made
+     users think the template did not apply (user report 2026-08-13
+     "여전히 내가 선택한 템플릿이 사용되지 않고 있다"). Letting the deck's
+     own body background bleed into the letterbox area matches the template
+     for light decks (cream letterbox around cream slide) and stays dark for
+     dark templates that set body bg themselves. Compact model decks with no
+     body background inherit the iframe default (transparent → app-shell
+     surface), which reads as a neutral canvas — not a "template not
+     applied" failure. */
+  background: transparent !important;
   margin: 0 !important;
   overflow: hidden !important;
   overscroll-behavior: none !important;

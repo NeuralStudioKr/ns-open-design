@@ -8,6 +8,7 @@ import { useTeamverT } from "../branding/useTeamverT";
 import type { TeamverDriveImportAsset } from "../importDriveAssets";
 import {
   DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
+  isExplicitCanvasSlideVisualTemplate,
   type CanvasSlideQuickSettings,
   type TeamverCanvasSlideTemplateOption,
 } from "../canvasSlideLaunch";
@@ -125,7 +126,13 @@ export function TeamverHomeSlideCreateModal({
 
   const templateReady = Boolean(selectedTemplate?.id);
   const showingTemplate = step === "template";
-  const canConfirmFromContent = entry === "template" || templateVisited;
+  const hasExplicitTemplate = isExplicitCanvasSlideVisualTemplate(selectedTemplate);
+  // Gallery "Use template" / explicit pick: confirm from content immediately.
+  // "New slide": require visiting the template step (기본 허용) so users don't
+  // skip style entirely — but never treat mere visit as an explicit Daisy pick.
+  const canConfirmFromContent =
+    hasExplicitTemplate || (entry === "new" && templateVisited);
+  const templateStepComplete = hasExplicitTemplate || (entry === "template" && templateReady);
 
   function goTemplateStep() {
     setTemplateVisited(true);
@@ -273,6 +280,33 @@ export function TeamverHomeSlideCreateModal({
         data-testid="teamver-home-slide-create-prompt"
         onChange={(event) => onUserPromptChange?.(event.currentTarget.value)}
       />
+
+      {selectedTemplate ? (
+        <button
+          type="button"
+          className={[
+            "teamver-home-slide-create-selected-template",
+            hasExplicitTemplate ? "is-explicit" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          disabled={confirming}
+          data-testid="teamver-home-slide-create-selected-template"
+          onClick={goTemplateStep}
+        >
+          <span className="teamver-home-slide-create-selected-template-label">
+            {t("teamver.homeCreate.selectedTemplate")}
+          </span>
+          <span className="teamver-home-slide-create-selected-template-title">
+            {hasExplicitTemplate
+              ? selectedTemplate.title
+              : t("teamver.homeCreate.defaultTemplate")}
+          </span>
+          <span className="teamver-home-slide-create-selected-template-action">
+            {t("teamver.homeCreate.changeTemplate")}
+          </span>
+        </button>
+      ) : null}
     </div>
   );
 
@@ -375,9 +409,11 @@ export function TeamverHomeSlideCreateModal({
                 "teamver-canvas-slide-launch-stepper-item",
                 showingTemplate
                   ? "is-current"
-                  : templateVisited || entry === "template"
+                  : templateStepComplete
                     ? "is-complete"
-                    : "is-upcoming",
+                    : templateVisited
+                      ? "is-complete"
+                      : "is-upcoming",
               ].join(" ")}
             >
               <button
@@ -391,7 +427,7 @@ export function TeamverHomeSlideCreateModal({
                   2
                 </span>
                 <span>{t("teamver.homeCreate.stepTemplate")}</span>
-                {(templateVisited || entry === "template") && !showingTemplate ? (
+                {templateStepComplete && !showingTemplate ? (
                   <span className="teamver-home-slide-create-step-check" aria-hidden>
                     ✓
                   </span>
