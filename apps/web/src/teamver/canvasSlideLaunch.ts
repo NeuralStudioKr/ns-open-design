@@ -75,6 +75,15 @@ export function readLastExplicitDeckTemplateId(): string | null {
   }
 }
 
+/** Drop the Home wizard/gallery pin. Dismissing the create modal must not reopen on the last pick. */
+export function clearLastExplicitDeckTemplateId(): void {
+  try {
+    window.sessionStorage.removeItem(LAST_EXPLICIT_DECK_TEMPLATE_KEY);
+  } catch {
+    /* private mode / SSR */
+  }
+}
+
 /**
  * Slide-generation prompt paired with Canvas → Design handoff (`teamverDriveIntent=create-slides`).
  * The attached file is a **source document**, not the deliverable — the agent must build a new

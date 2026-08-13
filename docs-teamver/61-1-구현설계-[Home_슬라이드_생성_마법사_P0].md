@@ -24,7 +24,8 @@
 ### 2.1 Home (slideOnly)
 
 ```
-[＋ 새 슬라이드]     → open wizard (entry=new, step=content, template=last-explicit or L1 default)
+[＋ 새 슬라이드]     → open wizard (entry=new, step=content, template=L1 default)
+닫기 / 생성 완료     → 템플릿 선택·last-explicit 핀 초기화 (다음 「새 슬라이드」에 이전 픽이 남지 않음)
 Recent strip         → unchanged
 템플릿 갤러리        → 상세 → 사용 → open wizard (entry=template, step=content, template=id, step2=complete)
 ```

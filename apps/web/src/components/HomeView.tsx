@@ -158,6 +158,7 @@ import {
   readLastExplicitDeckTemplateId,
   readTeamverCreateSlidesLaunchFromUrl,
   rememberLastExplicitDeckTemplateId,
+  clearLastExplicitDeckTemplateId,
   resolveCanvasSlideTemplate,
   driveCreateSlidesSourceBrief,
   type CanvasSlideQuickSettings,
@@ -1856,12 +1857,18 @@ export function HomeView({
     }
   }
 
+  function resetHomeSlideCreateDraft() {
+    setHomeSlideCreateEntry('new');
+    setHomeSlideCreateError(null);
+    setHomeSlideUserPrompt('');
+    setHomeSlideQuickSettings(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
+    setHomeSlideTemplateId(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    clearLastExplicitDeckTemplateId();
+  }
+
   function openHomeSlideCreate(entry: TeamverHomeSlideCreateEntry, templateId?: string) {
     setHomeSlideCreateEntry(entry);
-    const explicit =
-      templateId?.trim()
-      || readLastExplicitDeckTemplateId()
-      || '';
+    const explicit = templateId?.trim() || '';
     setHomeSlideTemplateId(
       isExplicitCanvasSlideVisualTemplate({ id: explicit })
         ? explicit
@@ -1876,10 +1883,7 @@ export function HomeView({
   function closeHomeSlideCreate() {
     if (homeSlideCreateBusy) return;
     setHomeSlideCreateOpen(false);
-    setHomeSlideCreateError(null);
-    setHomeSlideUserPrompt('');
-    setHomeSlideQuickSettings(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
-    setHomeSlideTemplateId(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    resetHomeSlideCreateDraft();
   }
 
   async function confirmHomeSlideCreate() {
@@ -1999,9 +2003,7 @@ export function HomeView({
       setStagedFiles([]);
       setStagedDriveAssets([]);
       setHomeSlideCreateOpen(false);
-      setHomeSlideUserPrompt('');
-      setHomeSlideQuickSettings(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
-      setHomeSlideTemplateId(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+      resetHomeSlideCreateDraft();
     } catch (err) {
       if (isMainSsoUserMismatchError(err)) {
         void beginMainSsoMismatchRecovery();

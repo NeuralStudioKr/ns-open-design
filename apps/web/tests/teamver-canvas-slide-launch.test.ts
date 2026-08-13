@@ -458,6 +458,13 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("User instruction:");
     expect(home).toContain("rememberLastExplicitDeckTemplateId");
     expect(home).toContain("readLastExplicitDeckTemplateId");
+    expect(home).toContain("clearLastExplicitDeckTemplateId");
+    expect(home).toContain("resetHomeSlideCreateDraft");
+    const openHomeSlideCreateSrc = home.slice(
+      home.indexOf("function openHomeSlideCreate"),
+      home.indexOf("function closeHomeSlideCreate"),
+    );
+    expect(openHomeSlideCreateSrc).not.toContain("readLastExplicitDeckTemplateId");
     expect(composer).toContain("blocking model kit fallthrough");
     const entryShell = readWebSource("src/components/EntryShell.tsx");
     expect(entryShell).toContain("payloadTemplateId");
@@ -466,6 +473,7 @@ describe("canvasSlideLaunch", () => {
     expect(app).not.toContain("pendingDriveAssets.length === 0 || homeDriveImportSucceeded");
     const launch = readWebSource("src/teamver/canvasSlideLaunch.ts");
     expect(launch).toContain("LAST_EXPLICIT_DECK_TEMPLATE_KEY");
+    expect(launch).toContain("clearLastExplicitDeckTemplateId");
     const bundled = readFileSync(
       resolve(__dirname, "../../daemon/src/plugins/bundled.ts"),
       "utf8",
