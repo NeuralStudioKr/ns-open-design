@@ -177,6 +177,42 @@ html,body{background:var(--cream);color:var(--text-dark)}
     expect(kit).not.toMatch(/\*\*background\*\*:\s*`#000`/i);
   });
 
+  it('drops viewport-relative sizing and scroll-snap plumbing from Decoration / Layout CSS', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const kit = extractTemplateVisualKitFromHtml(html, { title: 'Daisy Days' })!;
+    // Scope to the Decoration + Layout CSS blocks (skip prose that intentionally
+    // spells out the anti-pattern for the model).
+    const decoStart = kit.indexOf('### Decoration CSS');
+    const layoutStart = kit.indexOf('### Layout CSS');
+    const spriteStart = kit.indexOf('### Motif sprites');
+    const decoEnd = layoutStart > decoStart
+      ? layoutStart
+      : spriteStart > decoStart ? spriteStart : kit.length;
+    const layoutEnd = spriteStart > layoutStart ? spriteStart : kit.length;
+    const decoBody = decoStart >= 0 ? kit.slice(decoStart, decoEnd) : '';
+    const layoutBody = layoutStart >= 0 ? kit.slice(layoutStart, layoutEnd) : '';
+    // No viewport-based width/height, no scroll-snap plumbing.
+    expect(decoBody).not.toMatch(/100v[wh]/i);
+    expect(layoutBody).not.toMatch(/100v[wh]/i);
+    expect(decoBody).not.toMatch(/scroll-snap-(?:type|align|stop)/i);
+    expect(layoutBody).not.toMatch(/scroll-snap-(?:type|align|stop)/i);
+    // Bare `.slide{width:...;height:...}` sizing rule is dropped entirely —
+    // the compact contract owns 1920×1080. Variant selectors (`.slide-title`)
+    // still survive with their non-sizing declarations.
+    expect(decoBody).not.toMatch(/(?:^|[\s;])\.slide\s*\{[^}]*100v/);
+    expect(decoBody).not.toMatch(/\.slides-container\s*\{/i);
+    // `.slide-title{background:var(--cream)}` should survive — it is the
+    // template's variant look, not sizing plumbing.
+    const variantSurvivor = /\.slide-(?:title|welcome|weekly)\b[^{]*\{/i.test(kit);
+    expect(variantSurvivor).toBe(true);
+  });
+
   it('appendTemplateVisualKit is idempotent', () => {
     const kit = '## Template visual kit (from example.html)\n\n:root{ --cream:#F5F0E6 }';
     const once = appendTemplateVisualKit('## Visual summary\n\nCheerful pastel', kit);

@@ -456,12 +456,63 @@ function renderSlideSurfaceBlock(
 }
 
 /** Compact decoration / card CSS the model can paste into a short body style. */
+/**
+ * Strip declarations that lock the deck to the browser viewport instead of
+ * the fixed 1920×1080 Teamver canvas. `example.html` templates (Zhangzara
+ * Daisy Days, most `html-ppt-*`) ship a scroll-snap presenter layout —
+ * `width:100vw; height:100vh; scroll-snap-*` — that only works full-screen.
+ * When Decoration / Layout CSS blocks include those declarations verbatim,
+ * models paste them into the deck `<style>` and the preview panel stretches
+ * with the browser (user report 2026-08-13 "ppt 사이즈에 맞지 않고 full size로
+ * 만드는데다가 브라우저 사이즈에 따라서 비율이 계속 바뀜").
+ */
+function sanitizeCssRuleForFixedCanvas(rule: string): string | null {
+  const trimmed = rule.trim();
+  if (!trimmed) return null;
+  const braceOpen = trimmed.indexOf('{');
+  const braceClose = trimmed.lastIndexOf('}');
+  if (braceOpen < 0 || braceClose < braceOpen) return trimmed;
+  const selector = trimmed.slice(0, braceOpen).trim();
+  const body = trimmed.slice(braceOpen + 1, braceClose);
+  // Drop rules that only exist to lock the whole doc to the viewport.
+  if (
+    /^(?:html\s*,\s*body|html|body|\.slides-container)$/i.test(selector)
+    || /^\.slide$/i.test(selector)
+  ) {
+    // These rules are always about page-level sizing / scroll plumbing that
+    // conflicts with the Teamver canvas. Keep them out of Decoration/Layout
+    // CSS entirely — the compact contract owns slide sizing.
+    return null;
+  }
+  const kept = body
+    .split(';')
+    .map((decl) => decl.trim())
+    .filter(Boolean)
+    .filter((decl) => {
+      const [rawProp, ...rest] = decl.split(':');
+      const prop = (rawProp ?? '').trim().toLowerCase();
+      const value = rest.join(':').trim().toLowerCase();
+      if (!prop || !value) return false;
+      // Viewport-relative sizing on ANY selector — a `.slide-title{height:100vh}`
+      // still stretches the slide to the browser.
+      if (/^(?:min-|max-)?(?:width|height)$/i.test(prop) && /\b\d+\s*v(?:w|h|min|max|i|b)\b/i.test(value)) {
+        return false;
+      }
+      // Scroll-snap plumbing is presenter-mode only.
+      if (/^scroll-snap-(?:type|align|stop)$/i.test(prop) || prop === 'scroll-behavior') return false;
+      return true;
+    });
+  if (kept.length === 0) return null;
+  return `${selector}{${kept.join(';')}}`;
+}
+
 function extractDecorationCss(html: string, budget: number): string | null {
   const sheet = extractStyleSheets(html);
   if (!sheet.trim()) return null;
   const rules = [...sheet.matchAll(/[^{}@][^{]*\{[^}]+\}/g)]
     .map((match) => compressCss(match[0] ?? ''))
-    .filter(Boolean);
+    .map((rule) => sanitizeCssRuleForFixedCanvas(rule))
+    .filter((rule): rule is string => Boolean(rule));
   const prioritized = rules.filter((rule) =>
     /\.deco\b|\.card\b|\.badge\b|\.slide\b|--border|--shadow|--radius|font-display|font-body/i.test(
       rule,
@@ -498,7 +549,8 @@ function extractLayoutCss(html: string, budget: number): string | null {
   if (!sheet.trim()) return null;
   const rules = [...sheet.matchAll(/[^{}@][^{]*\{[^}]+\}/g)]
     .map((match) => compressCss(match[0] ?? ''))
-    .filter(Boolean);
+    .map((rule) => sanitizeCssRuleForFixedCanvas(rule))
+    .filter((rule): rule is string => Boolean(rule));
   const prioritized = rules.filter((rule) =>
     /display\s*:\s*(?:flex|grid)/i.test(rule)
     || /grid-template/i.test(rule)

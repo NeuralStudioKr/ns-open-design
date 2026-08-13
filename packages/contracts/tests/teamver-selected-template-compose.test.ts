@@ -160,6 +160,25 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     expect(prompt).toContain('### Slide surface');
     expect(prompt).toMatch(/\*\*background\*\*:\s*`#F5F0E6`/i);
     expect(prompt).toMatch(/\*\*color\*\*\s*\(text\):\s*`#2D2D2D`/i);
+    // Fixed 1920×1080 canvas is non-negotiable — the compact contract and the
+    // READ LAST section must both forbid viewport-relative sizing that the
+    // template's example.html uses for its full-screen presenter mode.
+    // Without this, the deck stretches and changes aspect ratio with the
+    // browser (user report 2026-08-13 preview-panel).
+    expect(readLastSection).toMatch(/Fixed 1920×1080/i);
+    expect(readLastSection).toMatch(/100vw|100vh|scroll-snap/i);
+    expect(readLastSection).toMatch(/preview panel|scaled preview|stretch/i);
+    // Any Decoration/Layout CSS emitted must not tell the model to bind
+    // viewport sizing — sanitizer strips 100vw/100vh from kit CSS blocks.
+    const decoStart = prompt.indexOf('### Decoration CSS');
+    if (decoStart >= 0) {
+      const layoutStart = prompt.indexOf('### Layout CSS');
+      const spriteStart = prompt.indexOf('### Motif sprites');
+      const stop = [layoutStart, spriteStart].filter((i) => i > decoStart).sort((a,b)=>a-b)[0] ?? prompt.length;
+      const decoBody = prompt.slice(decoStart, stop);
+      expect(decoBody).not.toMatch(/100v[wh]/i);
+      expect(decoBody).not.toMatch(/scroll-snap-(?:type|align|stop)/i);
+    }
   });
 
   it('keeps Coral / Bebas visual contract and demotes Simple Deck plugin ownership', () => {
