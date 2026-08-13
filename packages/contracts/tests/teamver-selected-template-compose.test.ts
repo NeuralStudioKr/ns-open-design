@@ -155,6 +155,11 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     );
     expect(readLastSection).toMatch(/attached\s+source|Canvas\s*\/\s*Drive/i);
     expect(readLastSection).toMatch(/source(?:'s)?\s+palette|source\s+HTML/i);
+    expect(readLastSection).toMatch(/html.*body|KEEP verbatim/i);
+    expect(readLastSection).toMatch(/preview panel|cream-slides-on-dark-shell|dark app-shell/i);
+    expect(prompt).toContain('### Slide surface');
+    expect(prompt).toMatch(/\*\*background\*\*:\s*`#F5F0E6`/i);
+    expect(prompt).toMatch(/\*\*color\*\*\s*\(text\):\s*`#2D2D2D`/i);
   });
 
   it('keeps Coral / Bebas visual contract and demotes Simple Deck plugin ownership', () => {

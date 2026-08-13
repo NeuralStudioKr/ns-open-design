@@ -45,6 +45,14 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toMatch(/<svg\b[\s\S]*?<\/svg>/i);
     expect(kit).not.toMatch(/<svg\b[^>]*>[^<]*…/);
     expect(kit).toContain('use Motif sprites SVG inside .deco');
+    expect(kit).toContain('### Slide surface');
+    expect(kit).toMatch(/\*\*background\*\*:\s*`#F5F0E6`/i);
+    expect(kit).toMatch(/\*\*color\*\*\s*\(text\):\s*`#2D2D2D`/i);
+    expect(kit).toMatch(/light background \+ dark ink/i);
+    expect(kit).toMatch(/html,\s*body,\s*\.slide\s*\{\s*background:\s*#F5F0E6/);
+    expect(kit).toMatch(/cream-slides-on-dark-shell|preview-panel shell/i);
+    expect(kit).toMatch(/VERBATIM|do not recolor/i);
+    expect(kit).toMatch(/four corners/i);
     // The classifier must ship the real Zhangzara multi-petal daisy
     // (150×150 + #FCDF6C), not a sky-blue cloud that also has `#fff` on a
     // square canvas. Cloud-as-daisy previously made models invent ellipse
@@ -67,7 +75,26 @@ describe('extractTemplateVisualKitFromHtml', () => {
       return pathCount >= 6 && square && /#FCDF6C/i.test(svg);
     });
     expect(hasRealPetalSprite).toBe(true);
-    expect(kit!.length).toBeLessThanOrEqual(7_800);
+    expect(kit!.length).toBeLessThanOrEqual(8_800);
+  });
+
+  it('does not treat .welcome-body as the document surface', () => {
+    const html = `
+<style>
+:root { --cream:#F5F0E6; --text-dark:#2D2D2D; --border:#2D2D2D; }
+.welcome-body{background:#fff;color:#111}
+.slide-title{background:#000;color:#fff}
+html,body{background:var(--cream);color:var(--text-dark)}
+.slide{background:var(--cream);color:var(--text-dark)}
+</style>
+<section class="slide"></section>
+`.trim();
+    const kit = extractTemplateVisualKitFromHtml(html, { title: 'Fixture' });
+    expect(kit).toContain('### Slide surface');
+    expect(kit).toMatch(/\*\*background\*\*:\s*`#F5F0E6`/i);
+    expect(kit).toMatch(/\*\*color\*\*\s*\(text\):\s*`#2D2D2D`/i);
+    expect(kit).not.toMatch(/\*\*background\*\*:\s*`#fff`/i);
+    expect(kit).not.toMatch(/\*\*background\*\*:\s*`#000`/i);
   });
 
   it('appendTemplateVisualKit is idempotent', () => {

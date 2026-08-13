@@ -1406,7 +1406,7 @@ A Selected deck template is active. A **Template scaffold (CONTENT-SWAP BASE)** 
 
 Preferred path (when scaffold is present and you can finish in one turn):
 - **CONTENT-SWAP:** start from the scaffold HTML; replace visible text (titles, bullets, badges, captions) for the user brief / source TEXT.
-- **KEEP** scaffold \`<style>\`, classes, Motif \`<svg>\` sprites, \`.deco\` wrappers, borders, shadows, radii, and fonts.
+- **KEEP** scaffold \`<style>\` (including \`html, body\` background/color), classes, Motif \`<svg>\` sprites, \`.deco\` wrappers, borders, shadows, radii, and fonts. Do not leave \`body\` on a dark app-shell default around cream slides — that reads as a dark deck in the preview panel even when the thumbnail looks cream.
 
 Fallback path (always valid):
 - If the scaffold is too large, incomplete, or you cannot close \`</html></artifact>\` safely, bind the **Template visual kit** tokens/Motif sprites instead (inline styles or one short body \`<style>\` after slide 1). Do not invent Neutral/\`#c96442\` looks.
@@ -1432,7 +1432,7 @@ Hard requirements for every slide:
 - **Forbidden motif substitutes:** do **not** fake the template with unicode/emoji ornaments (🌼🌸🌺🌻⭐✨🌈✈️🥾🍝 etc. as decoration). Motif must be the kit's SVG/\`.deco\` patterns (or chunky borders when the kit has no sprites). Content emoji inside body copy is OK sparingly; decorative rows are not.
 - **Forbidden skeleton / Neutral substitutes when a kit is present:** slate \`#0f172a\` / \`#1e293b\` / \`#111827\`, OD skeleton terracotta accent \`#c96442\`, ink \`#1c1b1a\` + muted \`#6b6964\` as the primary deck palette, Inter-only / Noto Sans KR-only / system-ui-only typography that ignores kit fonts, empty gradient corporate title slides, "no ornament" subtractive layouts.
 - **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. The attached Canvas / Drive HTML has its own background colors, gradients, font-families, and decorative accents (e.g. warm yellow-green travel gradient with emoji-chip buttons, editorial serif Italy covers, etc.). Those belong to the source page — NOT to this deck. Palette, typography, borders, and motif MUST come from the kit above, not from the attached source HTML. The source contributes TEXT and structure only.
-- **Surface lock:** if the Template visual kit exposes a main background/surface token (for example Daisy Days cream \`#F5F0E6\`), the cover and most slides must use that surface. Do not turn a light pastel template into a dark deck.
+- **Surface lock:** if the Template visual kit exposes a \`### Slide surface\` block (or a main background/surface token such as Daisy Days cream \`#F5F0E6\`), bind that exact \`background\` / \`color\` hex on **both** \`html\` / \`body\` **and** every \`<section class="slide">\`. Painting only \`.slide\` leaves a dark preview-panel shell around cream slides. Never substitute an ink/border token (\`#2D2D2D\`, \`#232323\`, \`#1E1E1C\`) for a slide background. Dark-on-dark, light-on-light, and cream-slides-on-dark-shell are failed deliverables.
 - **Output order:** first finish visible \`<section class="slide">\` content. Never start by dumping a long \`<head>\` or full Decoration CSS; a complete recognizable deck beats a perfect-but-truncated shell.
 
 If any earlier compact wireframe / deck-skeleton sample conflicts with the kit (including \`--accent: #c96442\`), **ignore the sample colors** and follow the kit.
@@ -1446,6 +1446,7 @@ Hard requirements for every slide:
 - Match the Selected deck template **Visual summary / title / prose cues** (palette names, fonts, motif) as closely as possible.
 - If any hex codes or font names appear in the Selected section, bind them with inline styles or one short body \`<style>\`.
 - Do **not** invent a sparse Neutral Modern slate cover (\`#0f172a\` / Inter-only) when the template name or summary implies pastel, cream, playful, coral, terminal, editorial, etc.
+- **Contrast:** light templates need light \`html\`/\`body\`/\`.slide\` + dark ink; dark templates need dark surface + light ink. Never emit dark-on-dark or cream-slides-on-dark-shell.
 - Do **not** fake floral/playful templates with emoji flowers/stars (🌼🌸⭐🌈). Prefer simple CSS shapes / chunky borders in the template palette over emoji ornament rows.
 - Do **not** carry over the attached source file's own visual styling either — the source HTML's palette / fonts / gradients belong to the source page, not to this deck. Even without a concrete kit, prefer the template name/summary mood over the source's colors.
 - Prefer recognizable template mood over a generic corporate title slide.`;
