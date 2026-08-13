@@ -52,7 +52,7 @@ describe('extractTemplateScaffoldFromHtml', () => {
 });
 
 describe('composeTeamverSlideApiPrompt with scaffold', () => {
-  it('uses CONTENT-SWAP READ LAST when scaffold is present', () => {
+  it('stays token-aware when an opt-in full HTML scaffold is present', () => {
     const scaffold = [
       TEMPLATE_SCAFFOLD_MARKER + ' — Daisy Days',
       '',
@@ -76,10 +76,10 @@ describe('composeTeamverSlideApiPrompt with scaffold', () => {
       },
       locale: 'ko',
     });
-    expect(prompt).toContain('CONTENT-SWAP');
+    // Opt-in scaffold still recognized, but prompts prefer kit+map if copy would truncate.
     expect(prompt).toMatch(/Template scaffold \(CONTENT-SWAP BASE\)/i);
-    expect(prompt).toMatch(/dual-path|scaffold preferred|CONTENT-SWAP/i);
-    expect(prompt).toMatch(/kit remains|fallback/i);
+    expect(prompt).toMatch(/token-safe|token-aware|truncation/i);
+    expect(prompt).toMatch(/kit \+ Template scaffold map|Kit tokens remain/i);
     expect(prompt).not.toContain('No ornament.');
   });
 });

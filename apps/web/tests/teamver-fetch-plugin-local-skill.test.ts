@@ -86,7 +86,7 @@ describe('fetchPluginLocalSkill', () => {
     );
   });
 
-  it('appends a content-swap scaffold from example.html for Daisy Days-style templates', async () => {
+  it('appends token-safe visual kit (scaffold map, not full example.html HTML)', async () => {
     vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(false);
     const plugin = {
       id: 'example-html-ppt-zhangzara-daisy-days',
@@ -139,10 +139,14 @@ describe('fetchPluginLocalSkill', () => {
     const local = await readPluginLocalSkillFromRecord(plugin);
     expect(local).not.toBeNull();
     expect(local!.body).toContain('## Visual summary (from template frontmatter)');
-    expect(local!.body).toContain('## Template scaffold (CONTENT-SWAP BASE)');
+    expect(local!.body).toContain('## Template visual kit (from example.html)');
+    expect(local!.body).toContain('### Template scaffold map');
     expect(local!.body).toContain('#F5F0E6');
     expect(local!.body).toContain('Fredoka One');
-    expect(local!.body).toContain('slide slide-title');
+    expect(local!.body).toContain('slide-title');
+    // Full multi-KB example.html HTML must stay off the hot path (token risk).
+    expect(local!.body).not.toContain('## Template scaffold (CONTENT-SWAP BASE)');
+    expect(local!.body.length).toBeLessThan(12_000);
   });
 
   it('returns null when the plugin has no local skill path', async () => {

@@ -1402,17 +1402,15 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
  */
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD = `# Selected deck template visual — READ LAST (highest visual priority)
 
-A Selected deck template is active. A **Template scaffold (CONTENT-SWAP BASE)** may be present together with a **Template visual kit**. This is a dual-path rollout — not a hard cutover.
+A Selected deck template is active. Default path is **token-safe**: Template visual kit + Template scaffold map (not a full example.html dump). An optional full **Template scaffold (CONTENT-SWAP BASE)** HTML block may still appear on rare opt-in turns.
 
-Preferred path (when scaffold is present and you can finish in one turn):
-- **CONTENT-SWAP:** start from the scaffold HTML; replace visible text (titles, bullets, badges, captions) for the user brief / source TEXT.
-- **KEEP** scaffold \`<style>\` (including \`html, body\` background/color), classes, Motif \`<svg>\` sprites, \`.deco\` wrappers, borders, shadows, radii, and fonts. Do not leave \`body\` on a dark app-shell default around cream slides — that reads as a dark deck in the preview panel even when the thumbnail looks cream.
+Token-aware rule:
+- Prefer finishing a complete deck. If a full scaffold HTML block is present and copying it risks truncation / max_tokens, **immediately** use the kit + Template scaffold map path instead (do not burn the turn on a partial CSS shell).
+- Kit tokens remain the mandatory palette/font/motif checklist either way.
+- When using kit/scaffold CSS, bind slide-surface \`background\`/\`color\` on **both** \`html\`/\`body\` **and** every \`<section class="slide">\`. Do not leave \`body\` on a dark app-shell default around cream slides — that reads as a dark deck in the preview panel.
 
-Fallback path (always valid):
-- If the scaffold is too large, incomplete, or you cannot close \`</html></artifact>\` safely, bind the **Template visual kit** tokens/Motif sprites instead (inline styles or one short body \`<style>\` after slide 1). Do not invent Neutral/\`#c96442\` looks.
 
 Shared hard rules:
-- Kit tokens (when present) remain the mandatory palette/font/motif checklist either way.
 - Adapt slide count by duplicating/dropping whole slide shells — do not invent a new CSS system.
 - **Forbidden substitutes:** emoji motif rows (🌼🌸⭐🌈✈️ etc. as decoration), invented ellipse "daisy" SVGs, Neutral slate \`#0f172a\`, OD skeleton terracotta \`#c96442\` / ink \`#1c1b1a\` primary palettes, Noto-only typography that ignores template fonts.
 - **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. Source contributes TEXT/structure only.
@@ -1612,17 +1610,17 @@ export function composeTeamverSlideApiPrompt({
     if (hasSelectedTemplate) {
       const hardRequirements = hasTemplateScaffold
         ? (
-          'Hard requirements (dual-path — scaffold preferred, kit remains valid fallback):\n'
-          + '- Prefer CONTENT-SWAP from the Template scaffold HTML when you can finish a complete deck in one turn (replace visible text; keep CSS/SVG/classes).\n'
-          + '- If scaffold copy risks truncation, fall back to the Template visual kit tokens/Motif sprites (compact inline / short body `<style>` after slide 1).\n'
+          'Hard requirements (optional full HTML scaffold present — still token-aware):\n'
+          + '- Prefer finishing a complete deck. If copying the full scaffold HTML risks truncation, switch immediately to kit tokens/Motif sprites + scaffold map.\n'
           + '- Kit tokens (when present) are the mandatory palette/font/motif checklist either way.\n'
           + '- Active design system is secondary brand context only; template look wins.\n'
           + '- Forbidden substitutes: `#c96442` skeleton terracotta, Neutral `#0f172a`, emoji motif rows, invented ellipse daisies.\n\n'
         )
         : hasTemplateVisualKit
         ? (
-          'Hard requirements:\n'
-          + '- Treat example.html as the base deck: preserve slide classes/layout roles/surfaces/decorative wrappers/SVG motifs and replace only visible content for the user brief.\n'
+          'Hard requirements (token-safe content-swap):\n'
+          + '- Treat the kit + Template scaffold map as the base look: preserve slide classes/layout roles/surfaces/decorative wrappers/SVG motifs and replace only visible content for the user brief.\n'
+          + '- Do NOT dump or rewrite a full example.html document (token/truncation risk).\n'
           + '- Match the Template visual kit tokens (palette hex, fonts, borders, shadows) with a compact inline subset; if the kit has a main surface/background token, use it on the cover.\n'
           + '- Keep decorative density via a few kit Motif sprites / Decoration CSS cues (corner SVG `.deco`, chunky cards) — copy at least one provided SVG sprite on the cover when sprites are present; not a sparse title slide and not emoji flowers/stars.\n'
           + '- Do not paste the full Decoration CSS or a long `<head>` before slide 1; first produce visible slide sections and finish the deck.\n'

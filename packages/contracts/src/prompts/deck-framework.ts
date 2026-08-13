@@ -594,16 +594,15 @@ export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE = `# Slide d
 
 You are in API mode. **Do NOT paste or recreate a large OD framework skeleton.** Do NOT spend tokens on scale-to-fit JS, print CSS, chrome counters, or keyboard handlers.
 
-A **Selected deck template** is already in this prompt. Dual-path rollout (scaffold is additive, not a hard cutover):
-1. **Preferred:** Template scaffold (CONTENT-SWAP BASE) — start FROM that HTML; replace visible text; keep CSS/SVG/classes — when you can finish \`</html></artifact>\` in one turn.
-2. **Fallback (always valid):** Template visual kit — bind kit tokens/Motif sprites (no Neutral invent).
-3. Else Visual summary / title cues.
+A **Selected deck template** is already in this prompt. Use the **token-safe** path:
+1. **Template visual kit** (+ Template scaffold map of slide classes/roles) — bind tokens/Motif sprites; content-swap the user brief into those layouts.
+2. Else Visual summary / title cues.
 
-When both scaffold and kit are present, kit tokens remain the mandatory palette/font/motif checklist. Prefer scaffold byte-order (first slide → \`<style>\` → remaining slides) only if the complete deck will close; otherwise use the kit path immediately.
+Do **not** paste a full \`example.html\` dump into the artifact (input was already summarized into the kit; rewriting the whole preview burns output tokens and truncates).
 
-When using the kit path (or no finishable scaffold): the first 1200 characters after \`<artifact\` must include \`<body\` and the first complete \`<section class="slide">...</section>\` with real copy. Place any shared \`<style>\` after slide 1. Do not open a \`<head>\` block or long \`<head>\` chrome dump.
+The first 1200 characters after \`<artifact\` must include \`<body\` and the first complete \`<section class="slide">...</section>\` with real copy. Place any shared \`<style>\` after slide 1. Do not open a \`<head>\` block or long \`<head>\` chrome dump.
 
-Fallback wireframe ONLY when neither scaffold nor kit HTML is usable (structure only — still use Selected template tokens):
+Fallback wireframe ONLY when neither kit nor scaffold map is usable (structure only — still use Selected template tokens):
 
 \`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section></body></html></artifact>\`
 
@@ -612,8 +611,8 @@ Rules:
 2. Every \`<section class="slide">\` must contain real text. Empty sections or \`<!-- SLOT -->\` comments are failures.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete deck over a perfect-but-truncated shell.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. Complete deck beats perfect motif fidelity; a shell-only document is a failure.
-5. When scaffold is present, vary layouts by using the different scaffold slide shells — do not flatten every slide into the same cover composition.
-6. **Hard visual rule (dual-path):** prefer CONTENT-SWAP scaffold when finishable — treat example.html structure as the base deck, preserve slide classes/layout roles/surfaces/decorative wrappers/card treatment/SVG motif language, and replace only visible content. Kit remains the mandatory checklist/fallback if scaffold copy would truncate. Copy Motif sprites verbatim (at least one on the cover when provided); do not invent generic CSS flowers. Never substitute OD skeleton terracotta \`#c96442\`, Neutral \`#0f172a\`, Inter/Noto-only covers that ignore template fonts, emoji ornament rows, or invented motifs for template CSS/SVG.
+5. Vary layouts using the Template scaffold map roles / kit vocabulary — do not flatten every slide into the same cover composition.
+6. **Hard visual rule (token-safe content-swap):** treat the kit + scaffold map as the base look. Preserve surface colors, decorative wrappers, card treatment, and SVG motif language; replace visible content only. Copy Motif sprites verbatim (at least one on the cover when provided); do not invent generic CSS flowers. Never substitute OD skeleton terracotta \`#c96442\`, Neutral \`#0f172a\`, Inter/Noto-only covers that ignore template fonts, emoji ornament rows, or invented motifs for template CSS/SVG.
 7. When the user attaches images, include \`<img src="exact-project-relative-path" …>\` using attachment paths.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}

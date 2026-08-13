@@ -148,7 +148,7 @@ describe("canvasSlideLaunch", () => {
     expect(runPrompt).toContain("8 slides, friendly tone for new hires.");
     expect(runPrompt).toContain("[Selected slide template priority]");
     expect(runPrompt).toContain("Selected template visual contract — READ LAST");
-    expect(runPrompt).toContain("CONTENT-SWAP BASE");
+    expect(runPrompt).toContain("token-safe content-swap");
     expect(runPrompt).toContain("#c96442");
     expect(runPrompt.lastIndexOf("[Selected slide template priority]")).toBeGreaterThan(
       runPrompt.indexOf("[User instruction]"),
@@ -170,18 +170,18 @@ describe("canvasSlideLaunch", () => {
     // Deliverable instruction must call out that the source's visual styling
     // does NOT cross over — only content/structure does.
     expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/Do NOT preserve the source's visual styling/i);
-    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/Dual-path template apply|CONTENT-SWAP BASE/i);
-    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/visual kit remains|mandatory token\/motif checklist/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/Token-safe template apply/i);
+    expect(CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION).toMatch(/do NOT paste or regenerate a full example\.html dump/i);
     // [Selected slide template] block must reinforce this on the user side.
     const templateBlock = runPrompt.slice(runPrompt.indexOf("[Selected slide template]"));
-    expect(templateBlock).toMatch(/Template scaffold \/ kit WIN/i);
+    expect(templateBlock).toMatch(/Template kit WIN/i);
     expect(templateBlock).toMatch(/never substitute emoji flowers\/stars/i);
     expect(templateBlock).toMatch(/source['\u2019]s own visual styling/i);
     expect(templateBlock).toMatch(/Do NOT carry over the source['\u2019]s colors/i);
     const priorityBlock = runPrompt.slice(runPrompt.indexOf("[Selected slide template priority]"));
     expect(priorityBlock).toMatch(/READ LAST/i);
-    expect(priorityBlock).toMatch(/Dual-path|CONTENT-SWAP BASE/i);
-    expect(priorityBlock).toMatch(/valid fallback|mandatory palette\/font\/Motif checklist/i);
+    expect(priorityBlock).toMatch(/token-safe content-swap/i);
+    expect(priorityBlock).toMatch(/scaffold map/i);
     expect(priorityBlock).toMatch(/#c96442/);
     expect(priorityBlock).toMatch(/never fall back to Neutral Modern, Simple Deck/i);
     expect(runPrompt.lastIndexOf("[Selected slide template priority]")).toBeGreaterThan(

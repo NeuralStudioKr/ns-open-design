@@ -1,8 +1,6 @@
 import type { InstalledPluginRecord, PluginManifest } from '@open-design/contracts';
 import {
-  appendTemplateScaffold,
   appendTemplateVisualKit,
-  extractTemplateScaffoldFromHtml,
   extractTemplateVisualKitFromHtml,
   pickPluginPreviewHtmlPath,
   readSkillFrontmatterDescription,
@@ -153,11 +151,15 @@ export async function readPluginLocalSkillFromRecord(
     const manifest = plugin.manifest;
     const name = (manifest?.title ?? manifest?.name ?? plugin.id).toString();
     let body = withFrontmatterDescriptionHeader(bodyOnly, raw, manifest);
-    // Dual-path (safe rollout — do NOT hard-cutover):
-    // 1) Always attach the compact visual kit (proven token/motif checklist).
-    // 2) Also attach a trimmed CONTENT-SWAP scaffold when extraction works.
-    // Prompts prefer scaffold when present, but kit remains the fallback contract
-    // if the model cannot finish a scaffold-based deck in one turn.
+    // Token-safe template apply:
+    // Inject the compact visual kit only (~2k tokens for Daisy Days). The kit
+    // already includes a lightweight "Template scaffold map" (slide classes /
+    // roles / deco cues) so the model can content-swap without pasting a
+    // multi‑KB example.html HTML dump into the system prompt.
+    //
+    // Do NOT append extractTemplateScaffoldFromHtml() here by default — a
+    // 12KB HTML scaffold + kit ≈ 5k input tokens and also invites the model to
+    // burn output tokens rewriting the whole document (truncation risk).
     const previewPath = pickPluginPreviewHtmlPath(manifest);
     if (previewPath && previewPath !== relpath) {
       try {
@@ -167,18 +169,9 @@ export async function readPluginLocalSkillFromRecord(
             body,
             extractTemplateVisualKitFromHtml(previewHtml, { title: name }),
           );
-          // Slightly smaller scaffold budget when kit is already present so the
-          // combined Selected-template block stays BYOK-safe.
-          const scaffold = extractTemplateScaffoldFromHtml(previewHtml, {
-            title: name,
-            maxChars: 12_000,
-          });
-          if (scaffold) {
-            body = appendTemplateScaffold(body, scaffold);
-          }
         }
       } catch {
-        // Preview kit/scaffold is best-effort; SKILL.md visual summary still helps.
+        // Preview kit is best-effort; SKILL.md visual summary still helps.
       }
     }
     return { body, name };

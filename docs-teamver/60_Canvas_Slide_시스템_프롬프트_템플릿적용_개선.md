@@ -25,20 +25,25 @@
 | 템플릿 선택이 UI에서 안 잡힌 건가? | **대체로 아님.** `selectedDeckTemplateId`·kit/scaffold는 들어갔는데, **뒤에 붙은 Neutral wireframe / DESIGN.md가 시각을 덮음** |
 | 시스템 프롬프트에 문제가 있었나? | **예.** API mode 서두보다 **조립 순서·마지막 구체 HTML 샘플·조건부 누락**이 문제 |
 | 왜 FE가 매번 systemPrompt를 보내나? | BYOK Messages API에는 daemon `Read` 툴이 없고, 템플릿 kit·퀵설정·locale이 **턴마다 가변**이므로 FE compose가 필요 |
-| Daisy Days happy path는? | **dual-path:** scaffold(preferred) + kit(checklist/fallback) + READ LAST → cream `#F5F0E6` / Fredoka / Motif SVG |
+| Daisy Days happy path는? | **token-safe content-swap:** kit + Template scaffold map + Motif + READ LAST → cream `#F5F0E6` / Fredoka / Motif SVG |
 | 개선으로 품질이 떨어지나? | happy path는 **개선**. kit-miss·장수 충돌은 회귀 위험이 있어 **별도 완화 패치**로 닫음 |
 | full skeleton API 복귀? | **금지** ([47](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)) — truncation 재발 |
-| scaffold로 갑자기 바꾸면? | **안 됨.** kit를 제거하고 hard cutover 하지 않는다. scaffold는 additive, kit는 유지 |
+| full example.html을 프롬프트에? | **기본 금지.** 입·출력 토큰 위험. kit(~2k) + scaffold map으로 계약 |
+| scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 
-### 0.0 2026-08-13 정책 — CONTENT-SWAP scaffold는 **additive dual-path**
+### 0.0 2026-08-13 정책 — **token-safe content-swap** (full HTML scaffold 기본 off)
 
-**제품 판단:** 미리보기 HTML에서 내용만 바꾸는 방향이 맞다. 다만 kit 경로를 한 번에 끄면 truncation·회귀 위험이 크다.
+**제품 판단:** 미리보기 look을 유지하고 Source 텍스트만 바꾸는 **의도(content-swap)** 는 맞다. 다만 `example.html` 전체(Daisy Days ~87KB, trim해도 ≤12KB)를 시스템 프롬프트에 넣으면 kit와 합쳐 ~5k input tokens + 모델이 전체를 rewrite하며 output truncation이 난다.
 
-**구현 (safe rollout):**
-- `extractTemplateScaffoldFromHtml` — trimmed body-first scaffold
-- `fetchPluginLocalSkill` — **kit 항상 + scaffold 추가**(scaffold ≤12KB)
-- READ LAST — scaffold **preferred**, kit **mandatory checklist + valid fallback**
-- 완전한 closed deck > 잘린 scaffold copy
+**구현 (기본 경로):**
+- `fetchPluginLocalSkill` — **compact visual kit만** append (palette/fonts/Motif + `Template scaffold map`)
+- wrap / canvas launch / deck-framework / READ LAST — “Do NOT dump full example.html”
+- `extractTemplateScaffoldFromHtml` — 유닛·opt-in용으로 모듈 유지, **hot path 기본 주입 off**
+- 완전한 closed deck > 잘린 shell
+
+### 0.0b (이력) CONTENT-SWAP full HTML scaffold additive dual-path — superseded
+
+잠시 kit+scaffold(≤12KB) dual-path를 올렸으나 토큰 압력으로 **0.0 token-safe**로 재조정. scaffold preferred 문구는 폐기.
 
 ### 0.1 2026-08-11 추가 판단 — Daisy Days가 “꽃 이모지”로 대체된 회귀
 
@@ -115,9 +120,9 @@
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
-### 0.6 2026-08-13 추가 판단 — 템플릿은 “설명 재현”이 아니라 `example.html` 기반 내용 교체
+### 0.6 2026-08-13 추가 판단 — 템플릿은 “설명 재현”이 아니라 content-swap (token-safe)
 
-사용자 피드백: Daisy Days 템플릿을 선택했는데 결과가 어두운 배경 + 임의 꽃 도형으로 나옴. 이는 “템플릿을 잘 설명해 주면 모델이 비슷하게 그릴 것”이라는 접근의 한계다. 선택 템플릿은 스타일 참고자료가 아니라 **미리보기 `example.html` 자체가 base deck**이어야 한다.
+사용자 피드백: Daisy Days 템플릿을 선택했는데 결과가 어두운 배경 + 임의 꽃 도형으로 나옴. 이는 “템플릿을 잘 설명해 주면 모델이 비슷하게 그릴 것”이라는 접근의 한계다. 선택 템플릿은 스타일 참고자료가 아니라 **미리보기 look을 base로 내용만 교체**해야 한다. 다만 full `example.html`을 프롬프트에 싣는 방식은 토큰 위험이 커서(**§0.0**), kit + scaffold map으로 계약을 전달한다.
 
 2026-08-13 패치 기준:
 
@@ -127,8 +132,9 @@
 | scaffold map | visual kit에 `Template scaffold map` 추가 — `slide-title`, `slide-weekly` 등 section class/order/deco wrapper를 구조화해 모델 입력에 제공 |
 | motif 우선순위 | Daisy Days의 실제 multi-petal daisy SVG가 prompt에 남도록 SVG classifier와 budget을 조정. 흰색 cloud SVG가 daisy로 오분류되지 않게 `#FCDF6C` center를 요구 |
 | surface lock | `--cream #F5F0E6` 같은 main surface/background token이 있으면 cover와 대부분의 slide에 적용. light pastel template을 dark deck으로 바꾸는 것 금지 |
+| token budget | full HTML scaffold 기본 inject off — kit(~2k tok)만 hot path |
 
-제품 판단: **템플릿 선택 결과물은 “사용자 요청으로 내용을 바꾼 템플릿 HTML”에 가까워야 한다.** 새 composition을 생성하고 템플릿 분위기만 차용하는 방식은 불충분하다.
+제품 판단: **템플릿 선택 결과물은 “사용자 요청으로 내용을 바꾼 템플릿 HTML”에 가까워야 한다.** 새 composition을 생성하고 템플릿 분위기만 차용하는 방식은 불충분하다. 입력은 kit+map으로 압축한다.
 
 ---
 
