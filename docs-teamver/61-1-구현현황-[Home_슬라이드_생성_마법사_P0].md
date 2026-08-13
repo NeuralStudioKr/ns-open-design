@@ -12,7 +12,7 @@
 - [x] `HomeView` slideOnly 분기 · gallery → wizard
 - [x] i18n / CTA 「슬라이드 만들기」·「템플릿 사용」(deck 상세 기존)
 - [x] 테스트 `tests/teamver-home-slide-create-modal.test.tsx` (3 pass)
-- [ ] commit · push (`staging`)
+- [x] commit · push (`staging`) — `1370716cd`
 
 ## 진행 메모
 
