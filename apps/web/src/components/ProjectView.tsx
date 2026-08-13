@@ -161,6 +161,7 @@ import {
   resolveDeckTemplateSkillId,
   resolveScenarioPluginIdForLocalSkill,
   selectedDeckTemplateMetadata,
+  selectedDeckTemplateTitleStub,
   wrapSelectedDeckTemplateSkillBody,
 } from '../runtime/selected-deck-template';
 import { CANVAS_CREATE_SLIDES_PLUGIN_ID } from '../teamver/canvasSlideLaunch';
@@ -5890,13 +5891,9 @@ export function ProjectView({
       }
     }
     if (!skillBody?.trim() && selectedTemplate) {
-      skillBody = [
-        `# Selected visual template`,
-        ``,
-        `Template: ${selectedTemplate.title?.trim() || selectedTemplate.id}`,
-        `Match this selected deck template's visible style as closely as possible.`,
-        `Do not fall back to the default simple-deck / scenario look.`,
-      ].join('\n');
+      skillBody = selectedDeckTemplateTitleStub(
+        selectedTemplate.title?.trim() || selectedTemplate.id,
+      );
       skillName = selectedTemplate.title?.trim() || selectedTemplate.id;
       skillMode = 'deck';
     }

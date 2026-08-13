@@ -112,7 +112,10 @@ describe('fetchPluginLocalSkill', () => {
       '',
       '# Daisy Days',
       '',
-      'Clone example.html into the workspace.',
+      '## Workflow',
+      '',
+      '1. **Clone `example.html`** into the user\'s workspace as the working file',
+      '2. **Replace placeholder content** with the user brief.',
     ].join('\n');
     const exampleHtml = [
       '<!DOCTYPE html><html><head>',
@@ -144,9 +147,12 @@ describe('fetchPluginLocalSkill', () => {
     expect(local!.body).toContain('#F5F0E6');
     expect(local!.body).toContain('Fredoka One');
     expect(local!.body).toContain('slide-title');
+    // Clone workflow must not survive into API-mode skill bodies.
+    expect(local!.body).toContain('API / Teamver mode — do not clone files');
+    expect(local!.body).not.toMatch(/\*\*Clone `example\.html`\*\*/);
     // Full multi-KB example.html HTML must stay off the hot path (token risk).
     expect(local!.body).not.toContain('## Template scaffold (CONTENT-SWAP BASE)');
-    expect(local!.body.length).toBeLessThan(12_000);
+    expect(local!.body.length).toBeLessThan(16_000);
   });
 
   it('returns null when the plugin has no local skill path', async () => {

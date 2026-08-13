@@ -13,15 +13,15 @@
  * `.deco` CSS + hard anti-emoji rules placed before any large cue.
  */
 
-// Raised 5 200 → 7 800 → 8 800 so a real Zhangzara daisy sprite (~2 KB after
-// comment strip) can co-exist with the star, rainbow, tokens, decoration
-// CSS, scaffold map, ### Slide surface binding, and first-slide structure
-// cue without truncating any of them. Motif sprites + surface hex are the
-// two signals that stop Daisy Days coming back as 🌸 emoji or dark-on-dark
-// / cream-slides-on-dark-shell decks.
-// BODY-FIRST hard rules below tell the model to emit slides before pasting
-// this kit into `<head>` so the larger budget does not invite shell-only cuts.
-const DEFAULT_MAX_CHARS = 8_800;
+// Raised 5 200 → 7 800 → 8 800 → 11 000 so Daisy Days can ship daisy + star
+// + rainbow sprites together with tokens, ### Slide surface, scaffold map,
+// and Decoration CSS without end-truncating Motif sprites (at 8.8KB only the
+// daisy survived while the map still demanded star/rainbow → invent/emoji).
+// ~11KB ≈ 2.7k tokens — still far below full example.html (~87KB) or the
+// retired CONTENT-SWAP HTML scaffold dump.
+// BODY-FIRST hard rules tell the model to emit slides before pasting this
+// kit into `<head>` so the larger budget does not invite shell-only cuts.
+const DEFAULT_MAX_CHARS = 11_000;
 
 function uniquePreserveOrder(values: string[]): string[] {
   const out: string[] = [];
@@ -466,16 +466,23 @@ const SPRITE_MIN_CHARS = 80;
 // slot even at this ceiling.
 const SPRITE_MAX_CHARS = 2400;
 
+type MotifKind = ReturnType<typeof classifySvg>;
+
+type MotifSprite = {
+  kind: Exclude<MotifKind, 'other'>;
+  svg: string;
+};
+
 /**
  * Pick a few SMALL complete SVGs as pasteable motif sprites.
  * Avoid the multi-KB QuiverAI paths that blow the kit budget and truncate.
  */
-function extractMotifSprites(html: string, budget: number): string[] {
+function extractMotifSprites(html: string, budget: number): MotifSprite[] {
   const svgs = [...html.matchAll(/<svg\b[\s\S]*?<\/svg>/gi)]
     .map((match) => inlineSvgStyleBlock(match[0] ?? ''))
     .filter((svg) => svg.length >= SPRITE_MIN_CHARS && svg.length <= SPRITE_MAX_CHARS);
 
-  const byKind: Partial<Record<ReturnType<typeof classifySvg>, string>> = {};
+  const byKind: Partial<Record<Exclude<MotifKind, 'other'>, string>> = {};
   for (const svg of svgs) {
     const kind = classifySvg(svg);
     if (kind === 'other') continue;
@@ -491,20 +498,20 @@ function extractMotifSprites(html: string, budget: number): string[] {
     }
   }
 
-  const order: Array<ReturnType<typeof classifySvg>> = [
+  const order: Array<Exclude<MotifKind, 'other'>> = [
     'daisy',
     'star',
     'rainbow',
     'sun',
     'cloud',
   ];
-  const out: string[] = [];
+  const out: MotifSprite[] = [];
   let used = 0;
   for (const kind of order) {
     const svg = byKind[kind];
     if (!svg) continue;
     if (used + svg.length + 40 > budget) continue;
-    out.push(svg);
+    out.push({ kind, svg });
     used += svg.length + 40;
     if (out.length >= 3) break;
   }
@@ -514,12 +521,29 @@ function extractMotifSprites(html: string, budget: number): string[] {
     const smallest = [...svgs].sort((a, b) => a.length - b.length);
     for (const svg of smallest) {
       if (used + svg.length > budget) break;
-      out.push(svg);
+      const kind = classifySvg(svg);
+      if (kind === 'other') continue;
+      out.push({ kind, svg });
       used += svg.length;
       if (out.length >= 2) break;
     }
   }
   return out;
+}
+
+function decoClassMatchesAvailableSprites(
+  decoClass: string,
+  kinds: ReadonlySet<string>,
+): boolean {
+  if (kinds.size === 0) return true;
+  const lower = decoClass.toLowerCase();
+  const mentioned = (['daisy', 'star', 'rainbow', 'sun', 'cloud'] as const)
+    .filter((kind) => lower.includes(kind));
+  // Generic `.deco` wrappers without a motif kind stay; motif-named slots
+  // without a matching Motif sprite are dropped so the model is not asked
+  // to invent star/rainbow/sun SVGs the kit never provided.
+  if (mentioned.length === 0) return true;
+  return mentioned.some((kind) => kinds.has(kind));
 }
 
 function extractFontImportHint(html: string, fonts: string[]): string | null {
@@ -570,7 +594,11 @@ function stripHtmlText(html: string): string {
     .trim();
 }
 
-function extractTemplateScaffoldMap(html: string, budget: number): string | null {
+function extractTemplateScaffoldMap(
+  html: string,
+  budget: number,
+  availableSpriteKinds: ReadonlySet<string> = new Set(),
+): string | null {
   const sections = [...html.matchAll(/<section\b([^>]*)>([\s\S]*?)<\/section>/gi)];
   if (sections.length === 0) return null;
   const lines: string[] = [];
@@ -593,7 +621,8 @@ function extractTemplateScaffoldMap(html: string, budget: number): string | null
     const cleanHeading = stripHtmlText(heading).slice(0, 80);
     const decoClasses = uniquePreserveOrder(
       [...body.matchAll(/class\s*=\s*["']([^"']*\bdeco\b[^"']*)["']/gi)]
-        .map((match) => (match[1] ?? '').trim()),
+        .map((match) => (match[1] ?? '').trim())
+        .filter((cls) => decoClassMatchesAvailableSprites(cls, availableSpriteKinds)),
     ).slice(0, 4);
     const layoutRole = className
       .split(/\s+/)
@@ -614,21 +643,21 @@ function extractTemplateScaffoldMap(html: string, budget: number): string | null
   }
   if (lines.length === 0) return null;
   return [
-    'Use this example.html slide order/classes as the base scaffold. Replace visible content only.',
+    'Token-safe layout contract from example.html (classes/roles only — not a full HTML dump). Replace visible content only; reuse Motif sprites below for deco slots.',
     ...lines,
   ].join('\n');
 }
 
 const HARD_RULES = [
   'Hard rules (non-negotiable):',
-  '- **TEMPLATE-AS-BASE:** treat `example.html` as the base deck. Preserve its slide classes, layout roles, surface colors, decorative wrappers, border/shadow/card treatment, and SVG motif language. Replace only visible content: headings, paragraphs, bullets, chart/table labels/values, and image slots.',
+  '- **TOKEN-SAFE CONTENT-SWAP:** treat this kit + Template scaffold map as the base look. Do NOT paste or rewrite a full `example.html`. Preserve slide classes, layout roles, surface colors, decorative wrappers, border/shadow/card treatment, and Motif sprites from this kit. Replace only visible content: headings, paragraphs, bullets, chart/table labels/values, and image slots.',
   '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` slides BEFORE a large `<head>`/`<style>` dump. Put Motif sprites + Decoration CSS in one short body `<style>` after slide 1 (or tiny inline tokens). A CSS-only truncation is a failed deliverable.',
   '- Keep the template scheme exactly (light pastel stays light; dark terminal stays dark). If the kit has a named main surface/background token, use it on the cover.',
   '- **Surface hex:** bind `### Slide surface` background/color on BOTH `html`/`body` AND every `.slide`. Dark-on-dark, light-on-light, or cream-slides-on-dark-shell (preview panel dark / thumbnail cream) are failed deliverables. Ink tokens (`#2D2D2D`) are stroke/text, not backgrounds.',
-  '- Motif MUST be copied from **Motif sprites** / **Decoration CSS** below (e.g. `<div class="deco deco-daisy-tl">…exact svg…</div>`). Use 2–4 sprites max per slide; copy at least one complete provided SVG on the cover when sprites are present. When Decoration CSS ships `.deco-daisy-tl/tr/bl/br`, fill all four corners — a single lonely sprite is not the template. Paste sprites VERBATIM (do not recolor fills).',
-  '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration — no 🌼 🌸 🌺 🌻 🌹 ⭐ ✨ 🌟 🌈 ☀️ or similar flower/star/rainbow emoji rows pretending to be the template identity.',
-  '- Preserve chunky cards/borders/offset shadows when Decoration CSS shows them.',
-  '- Vary slide layouts using the template vocabulary; do not emit sparse title-only Neutral Modern slides.',
+  '- Motif MUST be copied from **Motif sprites** / **Decoration CSS** below (e.g. `<div class="deco deco-daisy-tl">…exact svg…</div>`). Use only sprites listed in Motif sprites — never invent SVG for a scaffold-map deco slot that has no matching sprite. Use 2–4 sprites max per slide; copy at least one complete provided SVG on the cover when sprites are present. When Decoration CSS ships `.deco-daisy-tl/tr/bl/br`, fill all four corners — a single lonely sprite is not the template. Paste sprites VERBATIM (do not recolor fills).',
+  '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration — no 🌼 🌸 🌺 🌻 🌹 ⭐ ✨ 🌟 🌈 ☀️ or similar flower/star/rainbow emoji rows pretending to be the template identity. Do not invent ellipse "daisy" SVGs.',
+  '- Preserve chunky cards/borders/offset shadows when Decoration CSS / `:root` tokens show them (`--border`, `--shadow`).',
+  '- Vary slide layouts using the Template scaffold map roles; do not emit sparse title-only Neutral Modern slides or OD skeleton terracotta `#c96442`.',
 ];
 
 /**
@@ -690,74 +719,126 @@ export function extractTemplateVisualKitFromHtml(
     lines.push(`### Palette cues: ${colors.join(', ')}`, '');
   }
 
-  let used = lines.join('\n').length;
-  const scaffoldBudget = Math.min(1_100, Math.max(420, maxChars - used - 3_700));
-  const scaffold = extractTemplateScaffoldMap(source, scaffoldBudget);
+  // Extract optional sections first, then pack by priority so Motif sprites
+  // (daisy+star+rainbow) cannot be squeezed out by scaffold/deco/cue growth.
+  const sprites = extractMotifSprites(source, 3_400);
+  const spriteKinds = new Set(sprites.map((sprite) => sprite.kind));
+  const scaffold = extractTemplateScaffoldMap(source, 1_100, spriteKinds);
+  const deco = extractDecorationCss(source, 820);
+  const slideCue = extractFirstSlideStructureCue(source, 420);
+
+  const spriteBlock: string[] = [];
+  if (sprites.length > 0) {
+    spriteBlock.push(
+      '### Motif sprites (complete SVGs — copy into corner `<div class="deco …">` wrappers)',
+      '',
+      'Copy at least one complete SVG from this block onto the cover. Use 2–4 of these per slide at corners/edges via absolute `.deco` positioning. Do not invent emoji flowers or approximate with generic flowers. Paste sprites VERBATIM (keep fill/stroke/`<style>` classes). When Decoration CSS lists `.deco-daisy-tl/tr/bl/br`, fill all four corners — one lonely sprite is a corporate deck with a stray flower. Do not paste every sprite into `<head>` before writing slides — BODY-FIRST.',
+      '',
+    );
+    for (const sprite of sprites) {
+      spriteBlock.push('```html', sprite.svg, '```', '');
+    }
+  }
+
+  // Pack Motif sprites first (highest fidelity signal), then map/deco/cue.
+  const optionalBlocks: string[][] = [spriteBlock];
   if (scaffold) {
-    lines.push(
+    optionalBlocks.push([
       '### Template scaffold map (preserve layout/classes; replace content only)',
       '',
       '```text',
       scaffold,
       '```',
       '',
-    );
+    ]);
   }
-
-  used = lines.join('\n').length;
-  // Preserve enough room for one real multi-petal motif SVG (Daisy Days is
-  // ~2 KB). Decoration CSS is useful, but without the actual sprite the model
-  // falls back to generic dark flowers / emoji-like approximations.
-  const decoBudget = Math.min(820, Math.max(240, maxChars - used - 3_000));
-  const deco = extractDecorationCss(source, decoBudget);
   if (deco) {
-    lines.push(
+    optionalBlocks.push([
       '### Decoration CSS (paste into the short body `<style>` AFTER slide 1)',
       '',
       '```css',
       deco,
       '```',
       '',
-    );
+    ]);
   }
-
-  used = lines.join('\n').length;
-  // Ceiling raised so a real daisy sprite (~2 KB) fits alongside star +
-  // rainbow. The lower bound stays generous for the small structure-cue tail.
-  const spriteBudget = Math.min(3_400, Math.max(400, maxChars - used - 700));
-  const sprites = extractMotifSprites(source, spriteBudget);
-  if (sprites.length > 0) {
-    lines.push(
-      '### Motif sprites (complete SVGs — copy into corner `<div class="deco …">` wrappers)',
-      '',
-      'Copy at least one complete SVG from this block onto the cover. Use 2–4 of these per slide at corners/edges via absolute `.deco` positioning. Do not invent emoji flowers or approximate with generic flowers. Paste sprites VERBATIM (keep fill/stroke/`<style>` classes). When Decoration CSS lists `.deco-daisy-tl/tr/bl/br`, fill all four corners — one lonely sprite is a corporate deck with a stray flower. Do not paste every sprite into `<head>` before writing slides — BODY-FIRST.',
-      '',
-    );
-    for (let i = 0; i < sprites.length; i += 1) {
-      lines.push(`\`\`\`html`, sprites[i]!, `\`\`\``, '');
-    }
-  }
-
-  used = lines.join('\n').length;
-  const slideBudget = Math.max(280, maxChars - used - 40);
-  const slide = extractFirstSlideStructureCue(source, slideBudget);
-  if (slide) {
-    lines.push(
+  if (slideCue) {
+    optionalBlocks.push([
       '### First-slide structure cue (SVGs omitted — use Motif sprites above)',
       '',
       '```html',
-      slide,
+      slideCue,
       '```',
       '',
-    );
+    ]);
+  }
+
+  for (const block of optionalBlocks) {
+    if (block.length === 0) continue;
+    const candidate = [...lines, ...block].join('\n').trim();
+    if (candidate.length > maxChars) {
+      // Never drop Motif sprites for a structure cue / extra deco — skip this block.
+      if (block === spriteBlock) {
+        // Try packing sprites alone by dropping later optionals (already skipped).
+        // If even sprites overflow, keep as many complete sprites as fit.
+        const kept = [...lines];
+        kept.push(
+          '### Motif sprites (complete SVGs — copy into corner `<div class="deco …">` wrappers)',
+          '',
+          'Copy at least one complete SVG from this block onto the cover. Paste sprites VERBATIM. BODY-FIRST.',
+          '',
+        );
+        for (const sprite of sprites) {
+          const next = [...kept, '```html', sprite.svg, '```', ''].join('\n').trim();
+          if (next.length > maxChars) break;
+          kept.push('```html', sprite.svg, '```', '');
+        }
+        lines.length = 0;
+        lines.push(...kept);
+      }
+      continue;
+    }
+    lines.push(...block);
   }
 
   let out = lines.join('\n').trim();
   if (out.length > maxChars) {
-    // Prefer keeping hard rules + tokens + sprites; trim from the end.
-    out = `${out.slice(0, maxChars - 1)}…`;
+    out = out
+      .replace(/\n### First-slide structure cue[\s\S]*$/i, '')
+      .trim();
+  }
+  if (out.length > maxChars) {
+    // Last resort: never emit a mid-cut SVG — trim only after a fence close.
+    const cut = out.slice(0, maxChars - 1);
+    const fence = cut.lastIndexOf('\n```');
+    out = fence > maxChars * 0.5 ? `${cut.slice(0, fence + 4)}\n…` : `${cut}…`;
   }
   return out;
+}
+
+/**
+ * API / Teamver mode cannot clone template files. Neutralize SKILL.md
+ * "Clone example.html" workflow steps so they cannot override the
+ * token-safe visual-kit content-swap contract.
+ */
+export function neutralizeFilesystemCloneWorkflow(skillBody: string): string {
+  const body = skillBody ?? '';
+  if (!/Clone\s+`?example\.html`?/i.test(body)) return body;
+  const apiStep =
+    '**API / Teamver mode — do not clone files.** Bind the Template visual kit + scaffold map; content-swap Source text into those layouts. Never dump or rewrite a full example.html.';
+  return body
+    .replace(
+      /^(\d+\.\s+)\*\*Clone `example\.html`(?:\s+AND the `assets\/` folder)?\*\*[^\n]*/gim,
+      `$1${apiStep}`,
+    )
+    .replace(
+      /^(?!\d+\.\s).*Clone\s+`?example\.html`?[^\n]*/gim,
+      apiStep,
+    )
+    .replace(
+      /^\s*\(daemon\s*\/\s*local skill runs with tools\)\.\s*In Teamver API mode,\s*skip clone\s*[—\-]\s*bind the visual kit tokens instead\.\s*$/gim,
+      '',
+    );
 }
 
 /** Append kit once; idempotent if the marker is already present. */

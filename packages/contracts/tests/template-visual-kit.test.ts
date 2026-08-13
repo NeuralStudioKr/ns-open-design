@@ -75,7 +75,37 @@ describe('extractTemplateVisualKitFromHtml', () => {
       return pathCount >= 6 && square && /#FCDF6C/i.test(svg);
     });
     expect(hasRealPetalSprite).toBe(true);
-    expect(kit!.length).toBeLessThanOrEqual(8_800);
+    // Budget must fit daisy + star + rainbow so the scaffold map does not
+    // demand deco kinds the Motif sprites block never shipped.
+    expect(spriteSvgs.length).toBeGreaterThanOrEqual(3);
+    expect(kit!.length).toBeLessThanOrEqual(11_000);
+    expect(kit!).not.toMatch(/…\s*$/);
+    expect(kit!).toMatch(/TOKEN-SAFE CONTENT-SWAP/i);
+    expect(kit!).not.toMatch(/treat `example\.html` as the base deck/i);
+    // Scaffold-map deco slots must not ask for sun/cloud when those sprites
+    // were not included in Motif sprites.
+    const mapBlock = kit!.slice(
+      kit!.indexOf('### Template scaffold map'),
+      kit!.indexOf('### Decoration CSS') >= 0
+        ? kit!.indexOf('### Decoration CSS')
+        : kit!.indexOf('### Motif sprites'),
+    );
+    expect(mapBlock).toMatch(/deco-daisy/i);
+    expect(mapBlock).not.toMatch(/deco-sun|deco-cloud/i);
+  });
+
+  it('neutralizeFilesystemCloneWorkflow rewrites Clone example.html steps', async () => {
+    const { neutralizeFilesystemCloneWorkflow } = await import('../src/template-visual-kit.js');
+    const raw = [
+      '## Workflow',
+      '',
+      '1. **Clone `example.html`** into the user\'s workspace as the working file',
+      '2. **Replace placeholder content** with the user brief.',
+    ].join('\n');
+    const out = neutralizeFilesystemCloneWorkflow(raw);
+    expect(out).toContain('API / Teamver mode — do not clone files');
+    expect(out).not.toMatch(/\*\*Clone `example\.html`\*\*/);
+    expect(out).toContain('Replace placeholder content');
   });
 
   it('does not treat .welcome-body as the document surface', () => {

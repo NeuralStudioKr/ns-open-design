@@ -36,8 +36,11 @@
 **제품 판단:** 미리보기 look을 유지하고 Source 텍스트만 바꾸는 **의도(content-swap)** 는 맞다. 다만 `example.html` 전체(Daisy Days ~87KB, trim해도 ≤12KB)를 시스템 프롬프트에 넣으면 kit와 합쳐 ~5k input tokens + 모델이 전체를 rewrite하며 output truncation이 난다.
 
 **구현 (기본 경로):**
-- `fetchPluginLocalSkill` — **compact visual kit만** append (palette/fonts/Motif + `Template scaffold map`)
+- `fetchPluginLocalSkill` / daemon `local-skill` — **compact visual kit만** append (palette/fonts/Motif + `Template scaffold map`), kit ≤11KB · Motif sprites 우선 패킹(daisy+star+rainbow)
+- scaffold map `deco=`는 **실제 Motif sprite kind만** 노출 (sun/cloud 등 미제공 슬롯 제거)
+- `neutralizeFilesystemCloneWorkflow` — SKILL.md `Clone example.html` 단계를 API 모드에서 무력화
 - wrap / canvas launch / deck-framework / READ LAST — “Do NOT dump full example.html”
+- kit-miss title stub — anti-`#c96442` / anti-emoji 강화
 - `extractTemplateScaffoldFromHtml` — 유닛·opt-in용으로 모듈 유지, **hot path 기본 주입 off**
 - 완전한 closed deck > 잘린 shell
 

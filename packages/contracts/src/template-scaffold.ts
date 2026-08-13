@@ -73,7 +73,9 @@ function pickScaffoldSlides(slides: string[], maxSlides: number): string[] {
 function extractMotifSpritePool(html: string): string[] {
   // Reuse the hardened kit classifier via a temporary kit extract so daisy
   // (not cloud) wins — then pull complete SVG fences from that kit.
-  const kit = extractTemplateVisualKitFromHtml(html, { maxChars: 8_800, title: 'scaffold' });
+  // Use the same default budget as the hot-path kit so daisy+star+rainbow
+  // survive (8.8KB historically dropped the petal daisy under star/rainbow).
+  const kit = extractTemplateVisualKitFromHtml(html, { maxChars: 11_000, title: 'scaffold' });
   if (!kit) return [];
   const sprites: string[] = [];
   for (const match of kit.matchAll(/```html\s*([\s\S]*?)```/gi)) {

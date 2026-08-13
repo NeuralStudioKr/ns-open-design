@@ -206,10 +206,11 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     // When plugin-local load fails, FE must use a title stub — never wrap
     // example-simple-deck and call it the selected template.
     const stub = [
-      '# Selected visual template',
+      '# Selected visual template (title-only fallback)',
       '',
       'Template: Html Ppt Zhangzara Coral',
-      'Match this selected deck template\'s visible style as closely as possible.',
+      'The Template visual kit could not be loaded this turn — still treat this selected template as the visual contract.',
+      'Do not invent ellipse daisy SVGs. Prefer simple CSS shapes / chunky borders in the template palette when Motif sprites are unavailable.',
       'Do not fall back to the default simple-deck / scenario look.',
     ].join('\n');
     const skillBody = wrapSelectedDeckTemplateSkillBody(stub, 'Html Ppt Zhangzara Coral');

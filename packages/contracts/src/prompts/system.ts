@@ -1402,11 +1402,11 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
  */
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD = `# Selected deck template visual — READ LAST (highest visual priority)
 
-A Selected deck template is active. Default path is **token-safe**: Template visual kit + Template scaffold map (not a full example.html dump). An optional full **Template scaffold (CONTENT-SWAP BASE)** HTML block may still appear on rare opt-in turns.
+A Selected deck template is active. **Default and preferred path is token-safe:** Template visual kit + Template scaffold map (not a full example.html dump). A full **Template scaffold (CONTENT-SWAP BASE)** HTML block is rare/opt-in only — ignore it if finishing a complete deck would be at risk.
 
 Token-aware rule:
-- Prefer finishing a complete deck. If a full scaffold HTML block is present and copying it risks truncation / max_tokens, **immediately** use the kit + Template scaffold map path instead (do not burn the turn on a partial CSS shell).
-- Kit tokens remain the mandatory palette/font/motif checklist either way.
+- Prefer finishing a complete deck via kit tokens + Motif sprites + scaffold map.
+- If a full scaffold HTML block is present and copying it risks truncation / max_tokens, **immediately** stay on the kit + map path (do not burn the turn on a partial CSS shell).
 - When using kit/scaffold CSS, bind slide-surface \`background\`/\`color\` on **both** \`html\`/\`body\` **and** every \`<section class="slide">\`. Do not leave \`body\` on a dark app-shell default around cream slides — that reads as a dark deck in the preview panel.
 
 Shared hard rules:
@@ -1609,8 +1609,8 @@ export function composeTeamverSlideApiPrompt({
     if (hasSelectedTemplate) {
       const hardRequirements = hasTemplateScaffold
         ? (
-          'Hard requirements (optional full HTML scaffold present — still token-aware):\n'
-          + '- Prefer finishing a complete deck. If copying the full scaffold HTML risks truncation, switch immediately to kit tokens/Motif sprites + scaffold map.\n'
+          'Hard requirements (rare full HTML scaffold present — still prefer token-safe kit+map):\n'
+          + '- Prefer finishing a complete deck via kit tokens/Motif sprites + Template scaffold map. Only copy full scaffold HTML if you can close `</html></artifact>` safely.\n'
           + '- Kit tokens (when present) are the mandatory palette/font/motif checklist either way.\n'
           + '- Active design system is secondary brand context only; template look wins.\n'
           + '- Forbidden substitutes: `#c96442` skeleton terracotta, Neutral `#0f172a`, emoji motif rows, invented ellipse daisies.\n\n'
@@ -1619,12 +1619,12 @@ export function composeTeamverSlideApiPrompt({
         ? (
           'Hard requirements (token-safe content-swap):\n'
           + '- Treat the kit + Template scaffold map as the base look: preserve slide classes/layout roles/surfaces/decorative wrappers/SVG motifs and replace only visible content for the user brief.\n'
-          + '- Do NOT dump or rewrite a full example.html document (token/truncation risk).\n'
-          + '- Match the Template visual kit tokens (palette hex, fonts, borders, shadows) with a compact inline subset; if the kit has a main surface/background token, use it on the cover.\n'
-          + '- Keep decorative density via a few kit Motif sprites / Decoration CSS cues (corner SVG `.deco`, chunky cards) — copy at least one provided SVG sprite on the cover when sprites are present; not a sparse title slide and not emoji flowers/stars.\n'
+          + '- Do NOT dump or rewrite a full example.html document (token/truncation risk). Ignore SKILL.md "Clone example.html" steps in API mode.\n'
+          + '- Match the Template visual kit tokens (palette hex, fonts, borders, shadows) with a compact inline subset; if the kit has a main surface/background token, bind it on html/body AND every `.slide`.\n'
+          + '- Keep decorative density via a few kit Motif sprites / Decoration CSS cues (corner SVG `.deco`, chunky cards) — copy at least one provided SVG sprite on the cover when sprites are present; use only sprites listed in Motif sprites; not a sparse title slide and not emoji flowers/stars.\n'
           + '- Do not paste the full Decoration CSS or a long `<head>` before slide 1; first produce visible slide sections and finish the deck.\n'
           + '- Active design system is secondary brand context only; template look wins.\n'
-          + '- Prefer rich multi-region layouts from the template vocabulary over empty gradient covers.\n\n'
+          + '- Prefer rich multi-region layouts from the Template scaffold map vocabulary over empty gradient covers.\n\n'
         )
         : (
           'Hard requirements:\n'

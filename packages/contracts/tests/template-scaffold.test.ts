@@ -78,8 +78,7 @@ describe('composeTeamverSlideApiPrompt with scaffold', () => {
     });
     // Opt-in scaffold still recognized, but prompts prefer kit+map if copy would truncate.
     expect(prompt).toMatch(/Template scaffold \(CONTENT-SWAP BASE\)/i);
-    expect(prompt).toMatch(/token-safe|token-aware|truncation/i);
-    expect(prompt).toMatch(/kit \+ Template scaffold map|Kit tokens remain/i);
+    expect(prompt).toMatch(/token-safe|kit \+ Template scaffold map|Prefer finishing a complete deck/i);
     expect(prompt).not.toContain('No ornament.');
   });
 });

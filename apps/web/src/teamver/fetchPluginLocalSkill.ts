@@ -2,6 +2,7 @@ import type { InstalledPluginRecord, PluginManifest } from '@open-design/contrac
 import {
   appendTemplateVisualKit,
   extractTemplateVisualKitFromHtml,
+  neutralizeFilesystemCloneWorkflow,
   pickPluginPreviewHtmlPath,
   readSkillFrontmatterDescription,
 } from '@open-design/contracts';
@@ -150,9 +151,11 @@ export async function readPluginLocalSkillFromRecord(
     if (!bodyOnly) return null;
     const manifest = plugin.manifest;
     const name = (manifest?.title ?? manifest?.name ?? plugin.id).toString();
-    let body = withFrontmatterDescriptionHeader(bodyOnly, raw, manifest);
+    let body = neutralizeFilesystemCloneWorkflow(
+      withFrontmatterDescriptionHeader(bodyOnly, raw, manifest),
+    );
     // Token-safe template apply:
-    // Inject the compact visual kit only (~2k tokens for Daisy Days). The kit
+    // Inject the compact visual kit only (~2.7k tokens for Daisy Days). The kit
     // already includes a lightweight "Template scaffold map" (slide classes /
     // roles / deco cues) so the model can content-swap without pasting a
     // multi‑KB example.html HTML dump into the system prompt.

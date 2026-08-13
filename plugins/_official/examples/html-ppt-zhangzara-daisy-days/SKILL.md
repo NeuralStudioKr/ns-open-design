@@ -64,9 +64,11 @@ Contexts where the audience explicitly expects authority and precision — the h
 > `<artifact type="deck" identifier="deck">` — never `type="text/html"`.
 > Do **not** fall back to a sparse Neutral Modern / slate `#0f172a` cover.
 
-1. **Clone `example.html`** into the user's workspace as the working file
-   (daemon / local skill runs with tools). In Teamver API mode, skip clone —
-   bind the visual kit tokens instead.
+1. **API / Teamver mode — do not clone files.** Bind the Template visual kit
+   + scaffold map (palette/fonts/Motif sprites/slide roles) and content-swap
+   Source text into those layouts. Never dump or rewrite a full `example.html`.
+   (Local tool runs with a filesystem may still open `example.html` as a
+   reference, but the deliverable must follow the kit contract.)
 2. **Replace placeholder content** with the user's real headlines, body copy,
    numbers, names, dates, and section labels. Match existing dimensions when
    swapping image placeholders.

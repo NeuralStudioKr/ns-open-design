@@ -20,6 +20,7 @@ import type { InstalledPluginRecord } from '@open-design/contracts';
 import {
   appendTemplateVisualKit,
   extractTemplateVisualKitFromHtml,
+  neutralizeFilesystemCloneWorkflow,
   pickPluginPreviewHtmlPath,
   readSkillFrontmatterDescription,
 } from '@open-design/contracts';
@@ -68,10 +69,13 @@ export async function loadPluginLocalSkill(
   // template body was 'loaded'. Prepend the frontmatter description /
   // manifest description so the visual contract survives.
   const name = (manifest.title ?? manifest.name ?? plugin.id).toString();
-  let body = withFrontmatterDescriptionHeader(bodyOnly, raw, manifest);
+  let body = neutralizeFilesystemCloneWorkflow(
+    withFrontmatterDescriptionHeader(bodyOnly, raw, manifest),
+  );
   // BYOK / API-mode cannot Read companion files. Attach a compact visual kit
   // from example.html so selected Zhangzara templates keep cream/pastel
   // tokens instead of collapsing to the Active design system look.
+  // Token-safe: kit + scaffold map only — never append full HTML scaffold.
   const previewRel = pickPluginPreviewHtmlPath(manifest);
   if (previewRel && previewRel !== safeRel) {
     try {
