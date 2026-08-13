@@ -1,6 +1,10 @@
-// Teamver slide-only Home: single primary CTA that opens the create wizard.
-// Replaces the OD freeform HomeHero composer on embed (slideOnlyMvp).
+// Teamver slide-only Home: wordmark + previous subtitle, then a single CTA
+// that opens the create wizard. Replaces the OD freeform HomeHero composer
+// on embed (slideOnlyMvp) without changing the brand lockup.
 
+import { Icon } from "../../components/Icon";
+import { TeamverLogo } from "../branding/TeamverLogo";
+import { useBrandLabel } from "../branding/useBrandLabel";
 import { useTeamverT } from "../branding/useTeamverT";
 
 type Props = {
@@ -10,14 +14,17 @@ type Props = {
 
 export function TeamverHomeCreateHero({ onCreate, disabled }: Props) {
   const t = useTeamverT();
+  const brandLabel = useBrandLabel();
   return (
     <section
-      className="teamver-home-create-hero"
+      className="home-hero teamver-home-create-hero"
       data-testid="teamver-home-create-hero"
-      aria-label={t("teamver.homeCreate.title")}
     >
-      <h1 className="teamver-home-create-hero-title">{t("teamver.homeCreate.title")}</h1>
-      <p className="teamver-home-create-hero-lead">{t("teamver.homeCreate.lead")}</p>
+      <div className="home-hero__brand" aria-hidden>
+        <TeamverLogo variant="wordmark" className="home-hero__brand-logo" height={112} />
+      </div>
+      <h1 className="sr-only">{brandLabel}</h1>
+      <p className="home-hero__subtitle">{t("teamver.homeHero.subtitle")}</p>
       <button
         type="button"
         className="teamver-home-create-hero-cta"
@@ -25,7 +32,9 @@ export function TeamverHomeCreateHero({ onCreate, disabled }: Props) {
         disabled={disabled}
         onClick={onCreate}
       >
-        <span aria-hidden>+</span>
+        <span className="teamver-home-create-hero-cta-icon" aria-hidden>
+          <Icon name="plus" size={16} strokeWidth={2.4} />
+        </span>
         {t("teamver.homeCreate.cta")}
       </button>
     </section>

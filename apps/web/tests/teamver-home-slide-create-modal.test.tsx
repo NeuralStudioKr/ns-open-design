@@ -30,12 +30,17 @@ function wrap(ui: ReactNode) {
 }
 
 describe("TeamverHomeCreateHero", () => {
-  it("renders single CTA", () => {
+  it("keeps the previous wordmark, subtitle, and an icon CTA", () => {
     const onCreate = vi.fn();
     wrap(<TeamverHomeCreateHero onCreate={onCreate} />);
-    fireEvent.click(screen.getByTestId("teamver-home-create-cta"));
+    const hero = screen.getByTestId("teamver-home-create-hero");
+    expect(hero.querySelector(".home-hero__brand-logo")).toBeTruthy();
+    expect(hero.textContent).toMatch(/Turn ideas into slide drafts quickly with AI/i);
+    const cta = screen.getByTestId("teamver-home-create-cta");
+    expect(cta.querySelector("svg")).toBeTruthy();
+    expect(cta.textContent).toMatch(/New slide/i);
+    fireEvent.click(cta);
     expect(onCreate).toHaveBeenCalledOnce();
-    expect(screen.getByTestId("teamver-home-create-cta").textContent).toMatch(/New slide/i);
   });
 });
 

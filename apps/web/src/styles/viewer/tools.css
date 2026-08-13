@@ -3456,47 +3456,62 @@
   font-weight: 500;
 }
 
-/* Teamver Home create wizard (docs 61) */
+/* Teamver Home create wizard (docs 61) — brand lockup reuses HomeHero classes */
 .teamver-home-create-hero {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 48px 20px 28px;
-  text-align: center;
-}
-.teamver-home-create-hero-title {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--text-strong);
-}
-.teamver-home-create-hero-lead {
-  margin: 0;
-  max-width: 36rem;
-  font-size: 14px;
-  line-height: 1.45;
-  color: var(--text-muted);
+  padding-bottom: 20px;
 }
 .teamver-home-create-hero-cta {
-  margin-top: 8px;
+  margin-top: 10px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 22px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 22px 0 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   background: var(--accent);
   color: #fff;
   font-size: 15px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   cursor: pointer;
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #000 10%, transparent),
+    0 10px 24px color-mix(in srgb, var(--accent) 32%, transparent);
+  transition:
+    transform 140ms ease,
+    filter 140ms ease,
+    box-shadow 140ms ease;
+}
+.teamver-home-create-hero-cta-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, #fff 22%, transparent);
+  flex-shrink: 0;
+}
+.teamver-home-create-hero-cta:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #000 10%, transparent),
+    0 14px 28px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.teamver-home-create-hero-cta:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+.teamver-home-create-hero-cta:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 .teamver-home-create-hero-cta:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+  box-shadow: none;
 }
 .teamver-home-slide-create-stepper-btn {
   display: inline-flex;
