@@ -22,7 +22,7 @@ import {
  * ops can measure how often the outline synth path fires vs the softer
  * salvage path — and so the assistant-card notice can be worded differently.
  */
-export const OUTLINE_DECK_FALLBACK_STATUS_CODE = 'outline_deck_fallback';
+export { OUTLINE_DECK_FALLBACK_STATUS_CODE } from './deliverable-lifecycle-codes';
 
 type ArtifactPersistResult =
   | { kind: 'persisted'; fileName: string }

@@ -1,7 +1,7 @@
 import type { Artifact, ChatMessage } from '../types';
 import { validateHtmlArtifact } from './validate';
 
-export const EMERGENCY_DECK_FALLBACK_STATUS_CODE = 'emergency_deck_fallback';
+export { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from '../runtime/deliverable-lifecycle-codes';
 
 export type EmergencySlide = {
   title: string;

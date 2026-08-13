@@ -3,6 +3,7 @@ import type { ChatMessage } from "../../src/types";
 import { AUTO_CONTINUE_PROMPT_SENTINEL } from "../../src/runtime/resume";
 import {
   collapseEmptyAssistantShellsBeforeSuccessor,
+  DELIVERABLE_LIFECYCLE_STATUS_CODES,
   dedupeAssistantMessagesByRunId,
   dedupeConversationAssistantRows,
   isCollapsibleAssistantStub,
@@ -13,6 +14,14 @@ import {
   resolveLastAssistantMessageIndex,
   resolveLastSubstantiveAssistantMessageId,
 } from "../../src/runtime/conversation-message-dedupe";
+
+describe("DELIVERABLE_LIFECYCLE_STATUS_CODES", () => {
+  it("initializes without circular TDZ", () => {
+    expect(DELIVERABLE_LIFECYCLE_STATUS_CODES.has("outline_deck_fallback")).toBe(true);
+    expect(DELIVERABLE_LIFECYCLE_STATUS_CODES.has("emergency_deck_fallback")).toBe(true);
+    expect(DELIVERABLE_LIFECYCLE_STATUS_CODES.has("auto_continue_incomplete_output")).toBe(true);
+  });
+});
 
 describe("isEmptyAssistantShell", () => {
   it("treats header-only assistant rows as empty shells", () => {

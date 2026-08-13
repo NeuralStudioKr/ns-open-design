@@ -1,8 +1,11 @@
 import type { AgentEvent, ChatMessage } from "../types";
-import { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from "../artifacts/emergency-deck";
 import { assistantMessageTextBody } from "./chat-events";
-import { OUTLINE_DECK_FALLBACK_STATUS_CODE } from "./slide-deliverable-recovery";
-import { AUTO_CONTINUE_STATUS_CODE, isAutoContinueIncompleteOutputPrompt } from "./resume";
+import {
+  AUTO_CONTINUE_STATUS_CODE,
+  EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+  OUTLINE_DECK_FALLBACK_STATUS_CODE,
+} from "./deliverable-lifecycle-codes";
+import { isAutoContinueIncompleteOutputPrompt } from "./resume";
 
 function isTerminalRunStatus(status: ChatMessage["runStatus"]): boolean {
   return status === "succeeded" || status === "failed" || status === "canceled";

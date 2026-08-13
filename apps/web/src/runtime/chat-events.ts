@@ -1,9 +1,11 @@
 import type { AgentEvent, ChatMessage } from '../types';
-import { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from '../artifacts/emergency-deck';
 import { reconcileUserCommentAttachments } from '../comments';
 import { recoverChatAttachmentsFromMentions } from '../utils/recoverChatAttachmentsFromMentions';
-import { OUTLINE_DECK_FALLBACK_STATUS_CODE } from './slide-deliverable-recovery';
-import { AUTO_CONTINUE_STATUS_CODE } from './resume';
+import {
+  AUTO_CONTINUE_STATUS_CODE,
+  EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+  OUTLINE_DECK_FALLBACK_STATUS_CODE,
+} from './deliverable-lifecycle-codes';
 
 function joinedTextFromEvents(events: AgentEvent[]): string {
   let out = '';

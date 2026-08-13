@@ -295,7 +295,7 @@ export function buildAutoContinueIncompleteOutputPrompt(
 // 시도합니다" notice we drop into the assistant card just before the
 // automatic continue fires. Kept as a named export so tests and the assistant
 // message renderer can match against it without duplicating string literals.
-export const AUTO_CONTINUE_STATUS_CODE = 'auto_continue_incomplete_output';
+export { AUTO_CONTINUE_STATUS_CODE } from './deliverable-lifecycle-codes';
 
 // Analytics entry-from used by run_created / run_finished when the automatic
 // continue path is what kicked off a new run. Distinct from 'resume_continue'
