@@ -502,6 +502,21 @@ describe("canvasSlideLaunch", () => {
     expect(projectRoutes).toContain("ensureBundledPluginForClone");
     expect(projectRoutes).toContain("markTemplateClonedDeckSeeded");
     expect(projectRoutes).toContain("templateClonedDeckSeeded: true");
+    // Chat seed runs inside registerProjectFileRoutes — must wire conversations/ids.
+    expect(projectRoutes).toContain("'conversations' | 'ids'");
+    expect(projectRoutes).toContain("listConversationsAsync");
+    expect(projectRoutes).toContain("insertConversationAsync");
+    expect(projectRoutes).toContain("seed chat transcript failed");
+    const daemonServer = readFileSync(
+      resolve(__dirname, "../../daemon/src/server.ts"),
+      "utf8",
+    );
+    const fileRoutesCall = daemonServer.slice(
+      daemonServer.indexOf("registerProjectFileRoutes(app,"),
+      daemonServer.indexOf("registerMediaRoutes(app,"),
+    );
+    expect(fileRoutesCall).toContain("conversations: conversationDeps");
+    expect(fileRoutesCall).toContain("ids: idDeps");
     const cloneSrc = readFileSync(
       resolve(__dirname, "../../daemon/src/template-clone-deck.ts"),
       "utf8",

@@ -527,6 +527,7 @@ import {
   listLatestProjectRunStatuses,
   listLatestProjectRunStatusesAsync,
   listMessages,
+  listMessagesAsync,
   listPreviewComments,
   listProjects,
   listRoutines,
@@ -6710,6 +6711,7 @@ export async function startServer({
     updateConversation,
     deleteConversation,
     listMessages,
+    listMessagesAsync,
     upsertMessage,
     listPreviewComments,
     upsertPreviewComment,
@@ -7073,6 +7075,8 @@ export async function startServer({
     documents: { buildDocumentPreview },
     artifacts: artifactDeps,
     projectPreviewScopes,
+    conversations: conversationDeps,
+    ids: idDeps,
     projectStorageHooks,
     ensureBundledPluginForClone: async (pluginId) => {
       const registered = await ensureBundledPluginRegistered({

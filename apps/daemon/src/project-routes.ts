@@ -2459,7 +2459,7 @@ export function registerProjectArtifactRoutes(app: Express, ctx: RegisterProject
 
 }
 
-export interface RegisterProjectFileRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes'> {
+export interface RegisterProjectFileRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes' | 'conversations' | 'ids'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
   /** Optional lazy bundled-plugin rehydrate for template clone (HA / fresh volume). */
   ensureBundledPluginForClone?: (pluginId: string) => Promise<{ id: string } | null>;
@@ -2476,6 +2476,18 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
   const { buildDocumentPreview } = ctx.documents;
   const { validateArtifactManifestInput } = ctx.artifacts;
   const { projectPreviewScopes } = ctx;
+  // Template-clone chat seed lives in file routes (not registerProjectRoutes).
+  const {
+    listConversations,
+    listConversationsAsync,
+    listMessages,
+    listMessagesAsync,
+    insertConversation,
+    insertConversationAsync,
+    updateConversation,
+    upsertMessage,
+  } = ctx.conversations;
+  const { randomId } = ctx.ids;
   const fileRevisionService = createFileRevisionService({
     db,
     projectsRoot: PROJECTS_DIR,
@@ -3648,7 +3660,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
           ...(ctx.ensureBundledPluginForClone
             ? { ensureBundledPlugin: ctx.ensureBundledPluginForClone }
             : {}),
-          markTemplateClonedDeckSeeded: ({
+          markTemplateClonedDeckSeeded: async ({
             projectId,
             pluginId: seededPluginId,
             templateTitle,
@@ -3693,27 +3705,58 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             })();
             if (!prompt) return;
             try {
-              const convs = listConversations(db, projectId) ?? [];
+              // Prefer Async on Postgres — sync list* returns cold-cache [] and
+              // would duplicate conversations under HA / fresh volume.
+              const convs = (
+                listConversationsAsync
+                  ? await listConversationsAsync(db, projectId)
+                  : listConversations(db, projectId)
+              ) ?? [];
+              let emptyConv: { id: string } | null = null;
               for (const conv of convs) {
-                const msgs = listMessages(db, conv.id) ?? [];
+                const msgs = (
+                  listMessagesAsync
+                    ? await listMessagesAsync(db, conv.id)
+                    : listMessages(db, conv.id)
+                ) ?? [];
                 if (msgs.length > 0) return;
+                if (!emptyConv) emptyConv = conv;
               }
               const now = Date.now();
-              const conv = insertConversation(db, {
-                id: randomId(),
-                projectId,
-                title: prompt.slice(0, 60),
-                createdAt: now,
-                updatedAt: now,
-              });
+              const conv = emptyConv
+                ?? (insertConversationAsync
+                  ? await insertConversationAsync(db, {
+                      id: randomId(),
+                      projectId,
+                      title: prompt.slice(0, 60),
+                      createdAt: now,
+                      updatedAt: now,
+                    })
+                  : insertConversation(db, {
+                      id: randomId(),
+                      projectId,
+                      title: prompt.slice(0, 60),
+                      createdAt: now,
+                      updatedAt: now,
+                    }));
               if (!conv) return;
+              if (emptyConv && updateConversation) {
+                try {
+                  updateConversation(db, conv.id, {
+                    title: prompt.slice(0, 60),
+                    updatedAt: now,
+                  });
+                } catch {
+                  // title refresh is best-effort
+                }
+              }
               upsertMessage(db, conv.id, {
                 id: randomId(),
                 role: 'user',
                 content: prompt,
                 createdAt: now,
               });
-              const label = (templateTitle || '선택한 템플릿').trim();
+              const label = (templateTitle || '선택한 템플릿').trim().slice(0, 80);
               upsertMessage(db, conv.id, {
                 id: randomId(),
                 role: 'assistant',

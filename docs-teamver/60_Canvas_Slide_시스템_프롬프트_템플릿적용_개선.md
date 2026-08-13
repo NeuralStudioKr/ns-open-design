@@ -67,6 +67,7 @@ full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 �
 - contracts `template-clone-fill` / `resolveTemplateCloneSlidesFromBrief`
 - FE `seedTemplateClonedDeck` — daemon POST only (+ `recoverExistingTemplateClonedDeck`)
 - Clone 성공 시 daemon이 `pendingPrompt` clear + metadata `templateClonedDeckSeeded`
+- Clone 성공 시 사용자 프롬프트를 chat transcript로 시드 (`registerProjectFileRoutes` + `conversations`/`ids` deps, PG는 Async list/insert)
 - Clone write는 `skipArtifactStubGuard` (trusted reseed)
 - `fetchPluginLocalSkill` / daemon `local-skill` — kit+map fallback only
 - `neutralizeFilesystemCloneWorkflow` — prompt의 filesystem Clone 문구 무력화 (daemon 시드가 대체)
