@@ -2651,11 +2651,26 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     res.type(file.mime).send(transformFile ? await transformFile(file) : file.buffer);
   }
 
+  function isWorkspaceSentinelPreviewFile(filePath: string): boolean {
+    const cleaned = filePath.trim();
+    if (!cleaned) return false;
+    // Match FE sanitizePreviewEntryFile — Design Files / Design System /
+    // Questions tab ids are not project files.
+    return (
+      cleaned === '__design_files__'
+      || cleaned === '__design_system__'
+      || cleaned === '__questions__'
+      || /^__[^/]+__$/u.test(cleaned)
+    );
+  }
+
   function previewFilePathForProject(project: any, queryFile: unknown): string {
     if (typeof queryFile === 'string' && queryFile.trim().length > 0) {
       // FE cover URLs append `?v=mtime`; never treat that as part of the path.
       const cleaned = queryFile.trim().split(/[?#]/u, 1)[0]?.trim() ?? '';
-      if (cleaned.length > 0) return cleaned;
+      if (cleaned.length > 0 && !isWorkspaceSentinelPreviewFile(cleaned)) {
+        return cleaned;
+      }
     }
     const entryFile = project?.metadata?.entryFile;
     return typeof entryFile === 'string' && entryFile.length > 0 ? entryFile : 'index.html';

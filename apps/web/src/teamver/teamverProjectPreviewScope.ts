@@ -52,7 +52,19 @@ function seedPrefix(
 export function sanitizePreviewEntryFile(entryFile?: string): string | undefined {
   if (typeof entryFile !== "string") return undefined;
   const cleaned = entryFile.trim().split(/[?#]/u, 1)[0]?.trim() ?? "";
-  return cleaned.length > 0 ? cleaned : undefined;
+  if (!cleaned) return undefined;
+  // Workspace sentinel tab ids (Design Files / Design System / Questions) are
+  // not project files. Passing them as ?file= yields FILE_NOT_FOUND and can
+  // spin preview-url remint forever while the Design Files panel is open.
+  if (
+    cleaned === "__design_files__"
+    || cleaned === "__design_system__"
+    || cleaned === "__questions__"
+    || /^__[^/]+__$/u.test(cleaned)
+  ) {
+    return undefined;
+  }
+  return cleaned;
 }
 
 /**

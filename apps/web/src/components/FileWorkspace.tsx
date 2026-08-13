@@ -1639,6 +1639,19 @@ export function FileWorkspace({
     fileName: string | null;
     reason: 'session' | 'streaming' | 'disk-bootstrap';
   } | null>(() => {
+    // Design Files / Design System / Questions / browser tabs never host the
+    // memory-only iframe — do not mint preview-url with sentinel tab ids.
+    if (
+      activeTab === DESIGN_FILES_TAB
+      || activeTab === DESIGN_SYSTEM_TAB
+      || activeTab === QUESTIONS_TAB
+      || isBrowserTabId(activeTab)
+      || isSideChatTabId(activeTab)
+      || isTerminalTabId(activeTab)
+      || isLiveArtifactTabId(activeTab)
+    ) {
+      return null;
+    }
     if (
       pendingArtifactRecovery?.html
       && previewFileMatchesTab({ name: pendingArtifactRecovery.fileName }, activeTab)
@@ -1668,7 +1681,8 @@ export function FileWorkspace({
     ) {
       return {
         html: artifactHtml,
-        fileName: preferredPreviewFile ?? (activeTab || 'deck.html'),
+        // Prefer a real artifact name — never a workspace sentinel tab id.
+        fileName: preferredPreviewFile?.trim() || 'deck.html',
         reason: 'streaming',
       };
     }

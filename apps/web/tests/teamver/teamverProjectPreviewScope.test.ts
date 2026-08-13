@@ -49,6 +49,29 @@ describe('teamverProjectPreviewScope', () => {
     );
   });
 
+  it('drops workspace sentinel tab ids so Design Files cannot mint FILE_NOT_FOUND', async () => {
+    expect(sanitizePreviewEntryFile('__design_files__')).toBeUndefined();
+    expect(sanitizePreviewEntryFile('__design_system__')).toBeUndefined();
+    expect(sanitizePreviewEntryFile('__questions__')).toBeUndefined();
+
+    vi.mocked(isTeamverEmbedMode).mockReturnValue(true);
+    vi.mocked(fetchTeamverDaemon).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          url: '/api/projects/proj-1/preview/scope-abc/deck.html',
+          file: 'deck.html',
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await resolveTeamverProjectPreviewPrefix('proj-1', '__design_files__');
+    expect(fetchTeamverDaemon).toHaveBeenCalledWith(
+      '/api/projects/proj-1/preview-url',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
   it('returns null outside embed mode', async () => {
     expect(await resolveTeamverProjectPreviewPrefix('proj-1', 'deck.html')).toBeNull();
     expect(fetchTeamverDaemon).not.toHaveBeenCalled();
