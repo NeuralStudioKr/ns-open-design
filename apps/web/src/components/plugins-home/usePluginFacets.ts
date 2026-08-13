@@ -68,7 +68,17 @@ function resolveInitialFacetSelection(
     want &&
     catalog.category.some((option) => option.slug === want && option.count > 0)
   ) {
-    return defaultFacetSelection ?? EMPTY_SELECTION;
+    const wantSub = defaultFacetSelection?.subcategory ?? null;
+    if (!wantSub) {
+      return { category: want, subcategory: null };
+    }
+    const hasSubcategory = catalog.subcategory[want]?.some(
+      (option) => option.slug === wantSub && option.count > 0,
+    );
+    return {
+      category: want,
+      subcategory: hasSubcategory ? wantSub : null,
+    };
   }
   return resolveDefaultSelection(catalog);
 }
@@ -132,12 +142,30 @@ export function usePluginFacets({
 
   useEffect(() => {
     if (!lockedFacetCategory) return;
-    setSelection((prev) =>
-      prev.category === lockedFacetCategory
-        ? prev
-        : { category: lockedFacetCategory, subcategory: null },
-    );
-  }, [lockedFacetCategory, visiblePlugins.length]);
+    setSelection((prev) => {
+      if (prev.category === lockedFacetCategory) return prev;
+      // Prefer the caller default subcategory (e.g. creative-decks) when first
+      // pinning the locked artifact kind, so slide-only Home does not flash "All".
+      const preferredSub =
+        defaultFacetSelection?.category === lockedFacetCategory
+          ? defaultFacetSelection.subcategory ?? null
+          : null;
+      const hasPreferredSub =
+        preferredSub != null
+        && (catalog.subcategory[lockedFacetCategory] ?? []).some(
+          (option) => option.slug === preferredSub && option.count > 0,
+        );
+      return {
+        category: lockedFacetCategory,
+        subcategory: hasPreferredSub ? preferredSub : null,
+      };
+    });
+  }, [
+    lockedFacetCategory,
+    visiblePlugins.length,
+    defaultFacetSelection,
+    catalog,
+  ]);
 
   // Drop a subcategory (or category) selection when policy/filtering empties
   // that bucket so the user is not stranded on an empty filtered grid.

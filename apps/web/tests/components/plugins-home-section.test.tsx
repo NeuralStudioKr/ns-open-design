@@ -135,17 +135,18 @@ const sample: InstalledPluginRecord[] = [
 
 describe('PluginsHomeSection (community gallery)', () => {
   const deckOnlySample: InstalledPluginRecord[] = [
-    makePlugin({ id: 'deck-pitch', mode: 'deck', tags: ['pitch-deck', 'pitch-business'] }),
-    makePlugin({ id: 'deck-training', mode: 'deck', tags: ['course-training'] }),
+    makePlugin({ id: 'deck-pitch', mode: 'deck', tags: ['pitch-deck'] }),
+    makePlugin({ id: 'deck-training', mode: 'deck', tags: ['training-deck'] }),
+    makePlugin({ id: 'deck-creative', mode: 'deck', tags: ['zhangzara'] }),
   ];
 
-  it('hides primary category pills in slide-only community mode but keeps deck subfacets', async () => {
+  it('hides primary category pills in slide-only community mode and defaults to Creative decks', async () => {
     renderSection(deckOnlySample, {
       cardLayout: 'gallery',
       hidePrimaryCategoryFacets: true,
       lockedFacetCategory: 'deck',
       preferDefaultFacet: true,
-      defaultFacetSelection: { category: 'deck', subcategory: null },
+      defaultFacetSelection: { category: 'deck', subcategory: 'creative-decks' },
     });
 
     expect(screen.getByTestId('plugins-home-row-category').getAttribute('data-hide-category-pills')).toBe(
@@ -156,6 +157,11 @@ describe('PluginsHomeSection (community gallery)', () => {
     expect(await screen.findByTestId('plugins-home-row-subcategory-deck')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-subcategory-deck-pitch-business')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-subcategory-deck-course-training')).toBeTruthy();
+    const creativePill = screen.getByTestId('plugins-home-pill-subcategory-deck-creative-decks');
+    expect(creativePill.getAttribute('aria-selected')).toBe('true');
+    expect(creativePill.className).toContain('is-active');
+    // Default filter: only the Creative decks template is listed.
+    expect(pluginIds()).toEqual(['deck-creative']);
   });
 
   it('keeps gallery tiles free of inline Use actions — Use lives in the detail modal', () => {

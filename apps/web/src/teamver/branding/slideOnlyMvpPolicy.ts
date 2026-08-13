@@ -389,7 +389,8 @@ export function skillsForSlideOnlyMvp(
 /** Default Community facet when slide-only MVP filters the catalog to decks. */
 export const SLIDE_ONLY_COMMUNITY_FACET_SELECTION: FacetSelection = {
   category: "deck",
-  subcategory: null,
+  // Root gallery: land on Creative decks (크리에이티브 덱), not "All".
+  subcategory: "creative-decks",
 };
 
 /**
