@@ -92,6 +92,7 @@ import {
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
+  canvasSlideQuickLengthToSlideCount,
   buildSlideOnlyDeckTemplateCreateBinding,
   canvasCreateSlidesTurnMeta,
   driveCreateSlidesSourceBrief,
@@ -101,6 +102,7 @@ import {
   resolveCanvasSlideTemplate,
   type CanvasSlideQuickSettings,
 } from '../teamver/canvasSlideLaunch';
+import { seedTemplateClonedDeck } from '../teamver/seedTemplateClonedDeck';
 import { useCanvasSlideLaunchTemplates } from '../teamver/hooks/useCanvasSlideLaunchTemplates';
 import {
   canvasImportedToChatAttachments,
@@ -2067,6 +2069,40 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             if (patched) onActiveDesignSystemChange?.(patched);
           }
           const sourceBrief = canvasCreateSlidesSourceBrief(handoff);
+          // Explicit visual templates: Clone example.html on the FE (BYOK has
+          // no Clone tool) and content-swap Source headings into deck.html.
+          // Skip model structure gen so Neutral/kit regenerate cannot overwrite.
+          if (
+            slideOnlyMvp
+            && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+            && templateBinding.projectMetadata.selectedDeckTemplateId
+          ) {
+            const seeded = await seedTemplateClonedDeck({
+              projectId: id,
+              pluginId: templateBinding.projectMetadata.selectedDeckTemplateId,
+              templateTitle: selectedCanvasSlideTemplate.title,
+              sourceBrief,
+              userInstruction: promptForRun,
+              deckTitle:
+                handoff.title?.trim()
+                || handoff.threadTitle?.trim()
+                || selectedCanvasSlideTemplate.title,
+              slideCountHint: canvasSlideQuickLengthToSlideCount(
+                canvasSlideQuickSettings.length,
+              ),
+            });
+            if (seeded.ok) {
+              onProjectFilesMaybeChanged?.();
+              consumeTeamverCanvasLaunchHandoff();
+              setCanvasSlideLaunch(null);
+              setCanvasSlideLaunchError(null);
+              setCanvasSlideUserPrompt('');
+              setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+              return;
+            }
+            // Fall through to kit+map model path when asset clone fails.
+            devLog.warn('Template clone seed failed; falling back to model kit path', seeded);
+          }
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
             designSystemId: designSystemIdForRun,
@@ -2196,6 +2232,35 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           if (patched) onActiveDesignSystemChange?.(patched);
         }
         const sourceBrief = driveCreateSlidesSourceBrief(asset);
+        if (
+          slideOnlyMvp
+          && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+          && templateBinding.projectMetadata.selectedDeckTemplateId
+        ) {
+          const seeded = await seedTemplateClonedDeck({
+            projectId: id,
+            pluginId: templateBinding.projectMetadata.selectedDeckTemplateId,
+            templateTitle: selectedCanvasSlideTemplate.title,
+            sourceBrief,
+            userInstruction: promptForRun,
+            deckTitle:
+              asset.filename?.trim()
+              || selectedCanvasSlideTemplate.title,
+            slideCountHint: canvasSlideQuickLengthToSlideCount(
+              canvasSlideQuickSettings.length,
+            ),
+          });
+          if (seeded.ok) {
+            onProjectFilesMaybeChanged?.();
+            consumeTeamverDriveLaunchHandoff();
+            setCanvasSlideLaunch(null);
+            setCanvasSlideLaunchError(null);
+            setCanvasSlideUserPrompt('');
+            setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+            return;
+          }
+          devLog.warn('Template clone seed failed; falling back to model kit path', seeded);
+        }
         {
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {

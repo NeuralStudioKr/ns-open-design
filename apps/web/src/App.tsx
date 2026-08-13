@@ -125,6 +125,8 @@ import {
 } from './teamver/importCanvas';
 import type { TeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
 import { consumeTeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
+import { canvasCreateSlidesSourceBrief } from './teamver/canvasSlideLaunch';
+import { seedTemplateClonedDeck } from './teamver/seedTemplateClonedDeck';
 import { clearTeamverEmbedListCaches, clearTeamverEmbedProjectCaches } from './teamver/teamverEmbedListCaches';
 import { clearProjectCoverCache } from './teamver/projectCoverLoader';
 import { resetEmbedRunTrackingRefs, seedEmbedRunTrackingFromRuns, processEmbedBackgroundRunCompletions, buildEmbedKnownProjectIds, filterRunsForEmbedKnownProjects, pruneSessionActiveRunProjectIds, buildEmbedActiveRunAllowMissingIds, noticeStatusForBackgroundRun, markEmbedUserStoppedBackgroundProject, reconcileEmbedUserStoppedBackgroundProjects, filterBackgroundRunSummariesForUserStop } from './teamver/teamverEmbedRunTracking';
@@ -2552,6 +2554,8 @@ function AppInner() {
         }
       }
       let canvasImportFailed = false;
+      let skipAutoSendForTemplateClone = false;
+      let seededDeckFileName: string | null = null;
       if (!workingDirHandoffFailed && pendingCanvasHandoff) {
         try {
           const canvasResult = await importTeamverCanvas(result.project.id, pendingCanvasHandoff);
@@ -2575,6 +2579,37 @@ function AppInner() {
             setWorkingDirError(
               `Canvas 이미지 ${stagedCanvas.coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`,
             );
+          }
+          // Explicit visual template: Clone example.html + content-swap on the
+          // FE (BYOK has no Clone tool). Skip auto-send structure gen so the
+          // seeded deck.html is not overwritten by a Neutral regenerate.
+          if (slideOnlyMvp && selectedDeckTemplateId) {
+            const sourceBrief = canvasCreateSlidesSourceBrief(pendingCanvasHandoff);
+            const templateTitle =
+              typeof input.metadata?.selectedDeckTemplateTitle === 'string'
+                ? input.metadata.selectedDeckTemplateTitle.trim()
+                : '';
+            const seeded = await seedTemplateClonedDeck({
+              projectId: result.project.id,
+              pluginId: selectedDeckTemplateId,
+              templateTitle: templateTitle || selectedDeckTemplateId,
+              sourceBrief,
+              userInstruction: derivedPendingPrompt ?? null,
+              deckTitle:
+                pendingCanvasHandoff.title?.trim()
+                || pendingCanvasHandoff.threadTitle?.trim()
+                || templateTitle
+                || null,
+            });
+            if (seeded.ok) {
+              skipAutoSendForTemplateClone = true;
+              seededDeckFileName = seeded.fileName;
+            } else {
+              devLog.warn(
+                'Home Canvas template clone seed failed; keeping model kit auto-send',
+                seeded,
+              );
+            }
           }
           // Drop URL handoff once import succeeded so ProjectView does not
           // re-open one-confirm while auto-send is queued.
@@ -2641,6 +2676,7 @@ function AppInner() {
       if (
         !workingDirHandoffFailed &&
         !canvasImportFailed &&
+        !skipAutoSendForTemplateClone &&
         input.autoSendFirstMessage &&
         (derivedPendingPrompt !== undefined || firstMessageAttachments.length > 0)
       ) {
@@ -2680,7 +2716,7 @@ function AppInner() {
       const projectRoute = {
         kind: 'project',
         projectId: project.id,
-        fileName: null,
+        fileName: seededDeckFileName,
       } as const;
       if (!hideWorkspaceTabsBar) {
         openWorkspaceTab(projectRoute);
@@ -2688,7 +2724,7 @@ function AppInner() {
       navigate(projectRoute);
       return true;
     },
-    [analytics.track, config.designSystemId, designSystems, hideWorkspaceTabsBar, rememberLocalProject],
+    [analytics.track, config.designSystemId, designSystems, hideWorkspaceTabsBar, rememberLocalProject, slideOnlyMvp],
   );
 
   const handleCreatePluginShareProject = useCallback(

@@ -410,6 +410,8 @@ describe("canvasSlideLaunch", () => {
     const home = readWebSource("src/components/HomeView.tsx");
     const projectView = readWebSource("src/components/ProjectView.tsx");
     const daemon = readWebSource("src/providers/daemon.ts");
+    const app = readWebSource("src/App.tsx");
+    const seeder = readWebSource("src/teamver/seedTemplateClonedDeck.ts");
 
     expect(composer).toContain("canvasCreateSlidesPluginInputs(");
     expect(composer).toContain("buildSlideOnlyDeckTemplateCreateBinding(");
@@ -426,6 +428,13 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("pluginInputs: meta?.pluginInputs");
     expect(daemon).toContain("pluginInputs?: Record<string, unknown>;");
     expect(daemon).toContain("{ pluginInputs }");
+    // Server/FE Clone path for explicit visual templates (BYOK has no Clone tool).
+    expect(seeder).toContain("buildTemplateClonedDeckHtml");
+    expect(seeder).toContain("deck.html");
+    expect(composer).toContain("seedTemplateClonedDeck(");
+    expect(composer).toContain("isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)");
+    expect(app).toContain("seedTemplateClonedDeck(");
+    expect(app).toContain("skipAutoSendForTemplateClone");
   });
 
   it("rebinds create-slides from URL after workspace bootstrap instead of dropping the modal", () => {
