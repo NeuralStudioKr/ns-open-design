@@ -654,20 +654,38 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         cancelled = true;
       };
     }, [pinnedAppliedPluginSnapshotId]);
+    // Latest metadata for pin clear — avoid wholesale PATCH from a stale React
+    // closure when the user removes chips quickly after other metadata updates.
+    const projectMetadataRef = useRef(projectMetadata);
+    projectMetadataRef.current = projectMetadata;
+    // Ids last hydrated from durable Home pins — used to prune chips when pins
+    // shrink without wiping mid-chat staged MCP/connectors.
+    const pinnedMcpIdsRef = useRef<Set<string>>(new Set());
+    const pinnedConnectorIdsRef = useRef<Set<string>>(new Set());
     // Home create persists MCP/connector pins on project.metadata. Remount the
     // composer chips from those refs so re-entry matches what the daemon still
     // injects via projectMetadataContextSelection.
     useEffect(() => {
       const mcpRefs = projectMetadata?.contextMcpServers ?? [];
       const connectorRefs = projectMetadata?.contextConnectors ?? [];
-      if (mcpRefs.length > 0) {
-        setStagedMcpServers((current) => mergeStagedMcpFromProjectContext(current, mcpRefs));
-      }
-      if (connectorRefs.length > 0) {
-        setStagedConnectors((current) =>
-          mergeStagedConnectorsFromProjectContext(current, connectorRefs),
-        );
-      }
+      const nextMcpPins = new Set(
+        mcpRefs.map((ref) => ref.id?.trim()).filter((id): id is string => Boolean(id)),
+      );
+      const nextConnectorPins = new Set(
+        connectorRefs.map((ref) => ref.id?.trim()).filter((id): id is string => Boolean(id)),
+      );
+      setStagedMcpServers((current) =>
+        reconcileStagedMcpFromProjectContext(current, mcpRefs, pinnedMcpIdsRef.current),
+      );
+      setStagedConnectors((current) =>
+        reconcileStagedConnectorsFromProjectContext(
+          current,
+          connectorRefs,
+          pinnedConnectorIdsRef.current,
+        ),
+      );
+      pinnedMcpIdsRef.current = nextMcpPins;
+      pinnedConnectorIdsRef.current = nextConnectorPins;
     }, [projectId, projectMetadata?.contextMcpServers, projectMetadata?.contextConnectors]);
     const pluginsSectionRef = useRef<PluginsSectionHandle | null>(null);
     const inlineBackedPluginRef = useRef<{ id: string; label: string } | null>(null);
@@ -1803,16 +1821,22 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       field: 'contextMcpServers' | 'contextConnectors',
       id: string,
     ): Promise<void> {
-      if (!projectId || !projectMetadata) return;
-      const pinned = projectMetadata[field];
+      if (!projectId) return;
+      const base = projectMetadataRef.current;
+      if (!base) return;
+      const pinned = base[field];
       if (!Array.isArray(pinned) || !pinned.some((entry) => entry.id === id)) return;
       const nextList = pinned.filter((entry) => entry.id !== id);
       const metadata: ProjectMetadata = {
-        ...projectMetadata,
+        ...base,
         ...(nextList.length > 0 ? { [field]: nextList } : { [field]: [] }),
       };
       const patched = await patchProject(projectId, { metadata });
-      onProjectMetadataChange?.(patched?.metadata ?? metadata);
+      // Failed PATCH must not overwrite newer local/parent state with a stale
+      // optimistic snapshot. On success, prefer server metadata; if the daemon
+      // omits it, keep the payload we just acknowledged.
+      if (!patched) return;
+      onProjectMetadataChange?.(patched.metadata ?? metadata);
     }
 
     function removeWorkspaceContext(id: string) {
@@ -4169,6 +4193,25 @@ function mergeStagedMcpFromProjectContext(
   return changed ? [...byId.values()] : current;
 }
 
+function reconcileStagedMcpFromProjectContext(
+  current: McpServerConfig[],
+  refs: ProjectContextMcpServerRef[],
+  previouslyPinnedIds: ReadonlySet<string>,
+): McpServerConfig[] {
+  const merged = mergeStagedMcpFromProjectContext(current, refs);
+  const pinnedIds = new Set(
+    refs.map((ref) => ref.id?.trim()).filter((id): id is string => Boolean(id)),
+  );
+  const next = merged.filter((server) => {
+    if (pinnedIds.has(server.id)) return true;
+    if (previouslyPinnedIds.has(server.id)) return false;
+    return true;
+  });
+  return next.length === merged.length && next.every((s, i) => s === merged[i])
+    ? merged
+    : next;
+}
+
 function mergeStagedConnectorsFromProjectContext(
   current: ConnectorDetail[],
   refs: ProjectContextConnectorRef[],
@@ -4183,6 +4226,25 @@ function mergeStagedConnectorsFromProjectContext(
     changed = true;
   }
   return changed ? [...byId.values()] : current;
+}
+
+function reconcileStagedConnectorsFromProjectContext(
+  current: ConnectorDetail[],
+  refs: ProjectContextConnectorRef[],
+  previouslyPinnedIds: ReadonlySet<string>,
+): ConnectorDetail[] {
+  const merged = mergeStagedConnectorsFromProjectContext(current, refs);
+  const pinnedIds = new Set(
+    refs.map((ref) => ref.id?.trim()).filter((id): id is string => Boolean(id)),
+  );
+  const next = merged.filter((connector) => {
+    if (pinnedIds.has(connector.id)) return true;
+    if (previouslyPinnedIds.has(connector.id)) return false;
+    return true;
+  });
+  return next.length === merged.length && next.every((c, i) => c === merged[i])
+    ? merged
+    : next;
 }
 
 function StagedRunContexts({

@@ -148,15 +148,21 @@ function composerElement(
   );
 }
 
+function wrapComposer(
+  overrides: Partial<ComponentProps<typeof ChatComposer>> = {},
+  locale: Locale = 'en',
+) {
+  return (
+    <I18nProvider initial={locale}>{composerElement(overrides)}</I18nProvider>
+  );
+}
+
 function renderComposer(
   overrides: Partial<ComponentProps<typeof ChatComposer>> = {},
   options: { locale?: Locale } = {},
 ) {
-  const tree = composerElement(overrides);
-
-  return options.locale
-    ? render(<I18nProvider initial={options.locale}>{tree}</I18nProvider>)
-    : render(tree);
+  // Default to en so English string assertions stay stable on KO/ZH hosts.
+  return render(wrapComposer(overrides, options.locale ?? 'en'));
 }
 
 // Flush the composer's lazy mount fetches (MCP servers, installed plugins,
@@ -254,7 +260,7 @@ describe('ChatComposer context pickers', () => {
     fireEvent.click(screen.getByLabelText('Remove index.html'));
     await waitFor(() => expect(screen.queryByText('index.html')).toBeNull());
 
-    view.rerender(composerElement({ activeWorkspaceContext: browserContext, onSend }));
+    view.rerender(wrapComposer({ activeWorkspaceContext: browserContext, onSend }));
     await waitFor(() => expect(screen.getByTestId('staged-contexts').textContent).toContain('CurrentDribbble'));
 
     await typeAndSettle('Use the current tab.');
@@ -910,7 +916,7 @@ describe('ChatComposer context pickers', () => {
       expect(screen.getByTestId('staged-contexts').textContent).toContain('My Export'),
     );
 
-    view.rerender(composerElement({ pinnedAppliedPluginSnapshotId: null }));
+    view.rerender(wrapComposer({ pinnedAppliedPluginSnapshotId: null }));
     await waitFor(() => expect(screen.queryByTestId('staged-contexts')).toBeNull());
     fetchSnap.mockRestore();
   });
@@ -933,5 +939,89 @@ describe('ChatComposer context pickers', () => {
     await waitFor(() => expect(onProjectMetadataChange).toHaveBeenCalled());
     const patched = onProjectMetadataChange.mock.calls.at(-1)?.[0];
     expect(patched?.contextMcpServers).toEqual([]);
+  });
+
+  it('prunes a Home-pinned MCP chip when metadata pins shrink', async () => {
+    const view = renderComposer({
+      projectMetadata: {
+        kind: 'deck',
+        contextMcpServers: [
+          { id: 'slack', label: 'Slack MCP', transport: 'stdio', command: 'slack-mcp' },
+          { id: 'github', label: 'GitHub MCP', transport: 'stdio', command: 'gh-mcp' },
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      const text = screen.getByTestId('staged-contexts').textContent ?? '';
+      expect(text).toContain('@Slack MCP');
+      expect(text).toContain('@GitHub MCP');
+    });
+
+    view.rerender(
+      wrapComposer({
+        projectMetadata: {
+          kind: 'deck',
+          contextMcpServers: [
+            { id: 'slack', label: 'Slack MCP', transport: 'stdio', command: 'slack-mcp' },
+          ],
+        },
+      }),
+    );
+
+    await waitFor(() => {
+      const text = screen.getByTestId('staged-contexts').textContent ?? '';
+      expect(text).toContain('@Slack MCP');
+      expect(text).not.toContain('@GitHub MCP');
+    });
+  });
+
+  it('does not call onProjectMetadataChange when pin-clear PATCH fails', async () => {
+    const onProjectMetadataChange = vi.fn();
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/projects/project-1' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ error: 'fail' }), { status: 500 });
+      }
+      if (url === '/api/mcp/servers') {
+        return new Response(JSON.stringify({ servers, templates: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url === '/api/plugins') {
+        return new Response(JSON.stringify({ plugins }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url === '/api/skills') {
+        return new Response(JSON.stringify({ skills }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('[]', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderComposer({
+      projectMetadata: {
+        kind: 'deck',
+        contextMcpServers: [{ id: 'slack', label: 'Slack MCP', transport: 'stdio' }],
+      },
+      onProjectMetadataChange,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('staged-contexts').textContent).toContain('@Slack MCP'),
+    );
+    fireEvent.click(screen.getByLabelText('Remove Slack MCP'));
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(onProjectMetadataChange).not.toHaveBeenCalled();
   });
 });

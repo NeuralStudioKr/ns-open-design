@@ -11,7 +11,7 @@
 // override rather than AND-compose so a saved pick is never
 // accidentally hidden behind a still-selected category pill.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { InstalledPluginRecord } from '@open-design/contracts';
 import {
   applyFacetSelection,
@@ -99,6 +99,10 @@ export function usePluginFacets({
   // initializer) handles the realistic case where `args.plugins` is
   // empty at first paint and arrives a tick later.
   const [bootstrapped, setBootstrapped] = useState(false);
+  // User clicked All / toggled off the preferred scene (e.g. creative-decks).
+  // Until they pick that scene again, do not re-apply it when the catalog grows
+  // (paginated Home load-more).
+  const preferredSubDismissedRef = useRef(false);
 
   // Atoms are infrastructure pieces (`code-import`, `patch-edit`) that
   // are not user-facing on the home grid; the original section already
@@ -141,23 +145,39 @@ export function usePluginFacets({
   }, [bootstrapped, preferDefaultFacet, defaultFacetSelection, visiblePlugins.length, catalog]);
 
   useEffect(() => {
+    preferredSubDismissedRef.current = false;
+  }, [defaultFacetSelection?.category, defaultFacetSelection?.subcategory]);
+
+  useEffect(() => {
     if (!lockedFacetCategory) return;
+    const preferredSub =
+      defaultFacetSelection?.category === lockedFacetCategory
+        ? defaultFacetSelection.subcategory ?? null
+        : null;
+    const hasPreferredSub =
+      preferredSub != null
+      && (catalog.subcategory[lockedFacetCategory] ?? []).some(
+        (option) => option.slug === preferredSub && option.count > 0,
+      );
     setSelection((prev) => {
-      if (prev.category === lockedFacetCategory) return prev;
-      // Prefer the caller default subcategory (e.g. creative-decks) when first
-      // pinning the locked artifact kind, so slide-only Home does not flash "All".
-      const preferredSub =
-        defaultFacetSelection?.category === lockedFacetCategory
-          ? defaultFacetSelection.subcategory ?? null
-          : null;
-      const hasPreferredSub =
-        preferredSub != null
-        && (catalog.subcategory[lockedFacetCategory] ?? []).some(
-          (option) => option.slug === preferredSub && option.count > 0,
-        );
+      if (prev.category === lockedFacetCategory) {
+        // Paginated Home: first page may lack creative-decks; apply once it appears
+        // unless the user explicitly chose All / cleared that scene.
+        if (
+          prev.subcategory == null
+          && hasPreferredSub
+          && !preferredSubDismissedRef.current
+        ) {
+          return { category: lockedFacetCategory, subcategory: preferredSub };
+        }
+        return prev;
+      }
       return {
         category: lockedFacetCategory,
-        subcategory: hasPreferredSub ? preferredSub : null,
+        subcategory:
+          hasPreferredSub && !preferredSubDismissedRef.current
+            ? preferredSub
+            : null,
       };
     });
   }, [
@@ -171,8 +191,14 @@ export function usePluginFacets({
   // that bucket so the user is not stranded on an empty filtered grid.
   // Also clear subcategory when ≤1 scene remains — the sub-row is hidden and
   // "all of category" is the only meaningful view (includes uncategorized).
+  // Keep an explicit default scene (e.g. creative-decks) even when it is the
+  // sole populated bucket so Home does not snap back to All.
   useEffect(() => {
     setSelection((prev) => {
+      const preferredSub =
+        defaultFacetSelection?.category === prev.category
+          ? defaultFacetSelection.subcategory ?? null
+          : null;
       if (prev.category) {
         const categoryStillVisible = catalog.category.some(
           (option) => option.slug === prev.category,
@@ -184,7 +210,22 @@ export function usePluginFacets({
             ) {
               return prev;
             }
-            return { category: lockedFacetCategory, subcategory: null };
+            const lockedPreferred =
+              defaultFacetSelection?.category === lockedFacetCategory
+                ? defaultFacetSelection.subcategory ?? null
+                : null;
+            const lockedHasPreferred =
+              lockedPreferred != null
+              && (catalog.subcategory[lockedFacetCategory] ?? []).some(
+                (option) => option.slug === lockedPreferred && option.count > 0,
+              );
+            return {
+              category: lockedFacetCategory,
+              subcategory:
+                lockedHasPreferred && !preferredSubDismissedRef.current
+                  ? lockedPreferred
+                  : null,
+            };
           }
           return prev.category == null && prev.subcategory == null
             ? prev
@@ -194,13 +235,14 @@ export function usePluginFacets({
       if (!prev.subcategory || !prev.category) return prev;
       const options = catalog.subcategory[prev.category] ?? [];
       if (options.length <= 1) {
+        if (preferredSub && prev.subcategory === preferredSub) return prev;
         return { ...prev, subcategory: null };
       }
       const stillVisible = options.some((option) => option.slug === prev.subcategory);
       if (stillVisible) return prev;
       return { ...prev, subcategory: null };
     });
-  }, [catalog, lockedFacetCategory]);
+  }, [catalog, lockedFacetCategory, defaultFacetSelection]);
 
   // The visual-appeal sort is applied at `visiblePlugins` derivation
   // (above), so any downstream `applyFacetSelection` slice preserves
@@ -228,13 +270,29 @@ export function usePluginFacets({
 
   function pickSubcategory(slug: string | null): void {
     if (mode === 'saved') setMode('all');
-    setSelection((prev) => ({
-      ...prev,
-      subcategory: prev.subcategory === slug ? null : slug,
-    }));
+    const preferredSub =
+      defaultFacetSelection?.category
+        && (selection.category === defaultFacetSelection.category
+          || lockedFacetCategory === defaultFacetSelection.category)
+        ? defaultFacetSelection.subcategory ?? null
+        : null;
+    setSelection((prev) => {
+      const nextSub = prev.subcategory === slug ? null : slug;
+      if (preferredSub) {
+        if (nextSub === null) preferredSubDismissedRef.current = true;
+        if (nextSub === preferredSub) preferredSubDismissedRef.current = false;
+      }
+      return {
+        ...prev,
+        subcategory: nextSub,
+      };
+    });
   }
 
   function clearFacets(): void {
+    if (defaultFacetSelection?.subcategory) {
+      preferredSubDismissedRef.current = true;
+    }
     setSelection(
       lockedFacetCategory
         ? { category: lockedFacetCategory, subcategory: null }
