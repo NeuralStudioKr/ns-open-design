@@ -1,6 +1,7 @@
 import type { AgentEvent, ChatMessage } from "../types";
+import { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from "../artifacts/emergency-deck";
 import { assistantMessageTextBody } from "./chat-events";
-import { isAutoContinueIncompleteOutputPrompt } from "./resume";
+import { AUTO_CONTINUE_STATUS_CODE, isAutoContinueIncompleteOutputPrompt } from "./resume";
 
 function isTerminalRunStatus(status: ChatMessage["runStatus"]): boolean {
   return status === "succeeded" || status === "failed" || status === "canceled";
@@ -45,12 +46,33 @@ const HEADER_ONLY_STATUS_LABELS = new Set([
   "tool_call_update",
 ]);
 
+/**
+ * Transient run-lifecycle notices persisted as `status:error` (or `warning`)
+ * so ChatPane can rebuild the auto-continue / emergency-fallback banner after
+ * hard reload. These codes carry no user-visible chat prose and MUST count as
+ * header-only noise for empty-shell detection — otherwise the succeeded turn's
+ * completion lead never fires and the whole assistant row disappears on page
+ * re-entry (user report 2026-08-13).
+ */
+const TRANSIENT_RUN_NOTICE_CODES: ReadonlySet<string> = new Set([
+  AUTO_CONTINUE_STATUS_CODE,
+  EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+]);
+
+function isTransientRunNoticeEvent(event: AgentEvent): boolean {
+  if (event.kind !== "status") return false;
+  if (event.label !== "error" && event.label !== "warning") return false;
+  const code = (event as { code?: unknown }).code;
+  return typeof code === "string" && TRANSIENT_RUN_NOTICE_CODES.has(code);
+}
+
 function isHeaderOnlyNoiseEvent(event: AgentEvent): boolean {
   if (event.kind === "usage") return true;
   // Thinking is NOT header-only: OD renders ThinkingBlock. Teamver embed hides
   // thinking via ChatPane/AssistantMessage filters, not via this predicate.
   if (event.kind === "status") {
-    return HEADER_ONLY_STATUS_LABELS.has(event.label ?? "");
+    if (HEADER_ONLY_STATUS_LABELS.has(event.label ?? "")) return true;
+    if (isTransientRunNoticeEvent(event)) return true;
   }
   return false;
 }

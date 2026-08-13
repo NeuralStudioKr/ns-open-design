@@ -74,6 +74,61 @@ describe("isEmptyAssistantShell", () => {
     expect(isEmptyAssistantShell(message)).toBe(false);
   });
 
+  it("treats transient auto-continue / emergency-fallback status events as header-only noise", () => {
+    // User report 2026-08-13: succeeded rows that were auto-continued (or
+    // salvaged via emergency deck fallback) still carry a preserved
+    // status:error event with the transient code. Without this rule the row
+    // was NOT recognized as an empty shell, `isTerminalSucceededEmptyShellForDisplay`
+    // returned false, and the Teamver completion lead / row entirely
+    // disappeared after page re-entry when `producedFiles` was wiped.
+    const autoContinued: ChatMessage = {
+      id: "a-auto-continue",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 100,
+      events: [
+        { kind: "status", label: "requesting" },
+        {
+          kind: "status",
+          label: "error",
+          detail: "auto-continued after incomplete_output",
+          code: "auto_continue_incomplete_output",
+        },
+      ],
+    } as ChatMessage;
+    expect(isEmptyAssistantShell(autoContinued)).toBe(true);
+
+    const emergencySalvaged: ChatMessage = {
+      id: "a-emergency",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 100,
+      events: [
+        {
+          kind: "status",
+          label: "warning",
+          detail: "emergency deck fallback",
+          code: "emergency_deck_fallback",
+        },
+      ],
+    } as ChatMessage;
+    expect(isEmptyAssistantShell(emergencySalvaged)).toBe(true);
+
+    // A generic `status:error` without the transient code must still block
+    // empty-shell detection (that path anchors the durable error card).
+    const genericFailure: ChatMessage = {
+      id: "a-fatal",
+      role: "assistant",
+      content: "",
+      runStatus: "failed",
+      endedAt: 100,
+      events: [{ kind: "status", label: "error", detail: "boom", code: "incomplete_output" }],
+    } as ChatMessage;
+    expect(isEmptyAssistantShell(genericFailure)).toBe(false);
+  });
+
   it("does not treat canceled or resumable empty rows as shells", () => {
     expect(
       isEmptyAssistantShell({
