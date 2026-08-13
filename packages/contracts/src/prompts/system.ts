@@ -1400,9 +1400,23 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
  * Final visual authority when Canvas → Slide (or equivalent) pinned a template.
  * Placed after compact + streaming rules so kit tokens beat Neutral samples.
  */
+const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD = `# Selected deck template visual — READ LAST (highest visual priority)
+
+A Selected deck template is active and a **Template scaffold (CONTENT-SWAP BASE)** from example.html is present. That scaffold HTML is the **only** allowed look.
+
+Hard requirements for every slide:
+- **CONTENT-SWAP ONLY:** copy the scaffold document and replace visible text (titles, bullets, badges, captions) so it matches the user brief / attached source TEXT.
+- **KEEP verbatim:** scaffold \`<style>\`, class names, Motif \`<svg>\` sprites, \`.deco\` wrappers, borders, shadows, radii, fonts (e.g. Fredoka One / Quicksand), and cream/pastel tokens (e.g. \`#F5F0E6\`).
+- Adapt slide count by duplicating or dropping whole scaffold \`<section class="slide">\` blocks — do not invent new layout shells or a new CSS system.
+- **Forbidden motif substitutes:** emoji ornaments (🌼🌸⭐🌈✈️ etc. as decoration), invented ellipse "daisy" SVGs, Neutral slate \`#0f172a\`, OD skeleton terracotta \`#c96442\` / ink \`#1c1b1a\` primary palettes, Noto-only typography that ignores scaffold fonts.
+- **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. Source contributes TEXT/structure only.
+- Prefer the scaffold byte-order (first filled slide → scaffold \`<style>\` → remaining slides) so the deliverable closes in one turn.
+
+If any earlier compact wireframe / deck-skeleton sample conflicts with the scaffold (including \`--accent: #c96442\`), **ignore the sample** and follow the scaffold.`;
+
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT = `# Selected deck template visual — READ LAST (highest visual priority)
 
-A Selected deck template is active and a **Template visual kit (from example.html)** is present. That kit is the **only** allowed palette, typography, border, shadow, and motif language.
+A Selected deck template is active and a **Template visual kit (from example.html)** is present (no full CONTENT-SWAP scaffold this turn). That kit is the **only** allowed palette, typography, border, shadow, and motif language.
 
 Hard requirements for every slide:
 - Bind kit hex colors, font-family names, border widths/radii, and offset shadows from the kit with inline styles or one short body \`<style>\`. When the kit lists cream \`#F5F0E6\`, coral/turquoise accents, Fredoka One / Quicksand (or other kit fonts), those exact tokens MUST appear in the deck CSS — do not approximate.
@@ -1498,8 +1512,11 @@ export function composeTeamverSlideApiPrompt({
   // Embed often auto-binds Neutral Modern | Starter. Even when labeled
   // SECONDARY, shipping the full DESIGN.md ("No ornament", Inter, slate)
   // still steers the model — omit the body entirely when a template is set.
+  const hasTemplateScaffold =
+    /## Template scaffold \(CONTENT-SWAP BASE\)/i.test(skillBody ?? '');
   const hasTemplateVisualKit =
-    /## Template visual kit \(from example\.html\)/i.test(skillBody ?? '');
+    hasTemplateScaffold
+    || /## Template visual kit \(from example\.html\)/i.test(skillBody ?? '');
   const hasTemplateVisualSummary =
     /## Visual summary \(from template frontmatter\)/i.test(skillBody ?? '');
   const hasSelectedTemplate =
@@ -1517,7 +1534,9 @@ export function composeTeamverSlideApiPrompt({
           + 'Do NOT replace the template palette, fonts, density, borders, decorative motif, '
           + 'or light/dark scheme with design-system tokens. '
           + 'Never turn a cheerful pastel / cream template into a dark Neutral Modern gradient.\n\n'
-          + (hasTemplateVisualKit
+          + (hasTemplateScaffold
+            ? '*(Full DESIGN.md omitted on purpose — Template scaffold owns the look; content-swap only.)*'
+            : hasTemplateVisualKit
             ? '*(Full DESIGN.md omitted on purpose — template visual kit owns colors/fonts/density.)*'
             : '*(Full DESIGN.md omitted on purpose — follow the Selected deck template Visual summary / title cues for look.)*'),
       );
@@ -1580,7 +1599,16 @@ export function composeTeamverSlideApiPrompt({
     // confirm can `patchProject` then send on the same tick while React
     // `project.metadata` is still stale.
     if (hasSelectedTemplate) {
-      const hardRequirements = hasTemplateVisualKit
+      const hardRequirements = hasTemplateScaffold
+        ? (
+          'Hard requirements:\n'
+          + '- **CONTENT-SWAP:** start from the Template scaffold HTML below. Replace visible text only for the user brief / source material.\n'
+          + '- KEEP scaffold CSS, classes, Motif SVGs, `.deco` wrappers, borders, shadows, and fonts verbatim. Do not invent a new look.\n'
+          + '- Duplicate/drop whole `<section class="slide">` shells for slide count — do not invent new layout shells.\n'
+          + '- Active design system is secondary brand context only; scaffold look wins.\n'
+          + '- Forbidden substitutes: `#c96442` skeleton terracotta, Neutral `#0f172a`, emoji motif rows, invented ellipse daisies.\n\n'
+        )
+        : hasTemplateVisualKit
         ? (
           'Hard requirements:\n'
           + '- Match the Template visual kit tokens (palette hex, fonts, borders, shadows) with a compact inline subset.\n'
@@ -1638,7 +1666,9 @@ export function composeTeamverSlideApiPrompt({
   }
   if (hasSelectedTemplate) {
     parts.push(
-      hasTemplateVisualKit
+      hasTemplateScaffold
+        ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD
+        : hasTemplateVisualKit
         ? TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT
         : TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITHOUT_KIT,
     );

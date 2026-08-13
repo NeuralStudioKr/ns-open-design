@@ -47,6 +47,7 @@ export * from './critique.js';
 export * from './embed-chinese-deck-policy.js';
 export * from './skill-frontmatter.js';
 export * from './template-visual-kit.js';
+export * from './template-scaffold.js';
 export * from './plugin-preview-path.js';
 export * from './plugins/index.js';
 export * from './agent-prose-sanitize.js';

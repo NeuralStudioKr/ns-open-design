@@ -1,6 +1,8 @@
 import type { InstalledPluginRecord, PluginManifest } from '@open-design/contracts';
 import {
+  appendTemplateScaffold,
   appendTemplateVisualKit,
+  extractTemplateScaffoldFromHtml,
   extractTemplateVisualKitFromHtml,
   pickPluginPreviewHtmlPath,
   readSkillFrontmatterDescription,
@@ -149,21 +151,26 @@ export async function readPluginLocalSkillFromRecord(
     const manifest = plugin.manifest;
     const name = (manifest?.title ?? manifest?.name ?? plugin.id).toString();
     let body = withFrontmatterDescriptionHeader(bodyOnly, raw, manifest);
-    // Pull concrete CSS tokens / fonts from example.html so BYOK compose
-    // can match Daisy Days (cream + Fredoka + chunky borders) instead of
-    // inventing a sparse dark Neutral Modern look from the design system.
+    // Prefer a CONTENT-SWAP scaffold from example.html (real CSS/SVG shells,
+    // text replace only). Fall back to the compact visual kit when scaffold
+    // extraction fails — BYOK cannot Read example.html at runtime.
     const previewPath = pickPluginPreviewHtmlPath(manifest);
     if (previewPath && previewPath !== relpath) {
       try {
         const previewHtml = await fetchPluginAssetText(plugin.id, previewPath);
         if (previewHtml) {
-          body = appendTemplateVisualKit(
-            body,
-            extractTemplateVisualKitFromHtml(previewHtml, { title: name }),
-          );
+          const scaffold = extractTemplateScaffoldFromHtml(previewHtml, { title: name });
+          if (scaffold) {
+            body = appendTemplateScaffold(body, scaffold);
+          } else {
+            body = appendTemplateVisualKit(
+              body,
+              extractTemplateVisualKitFromHtml(previewHtml, { title: name }),
+            );
+          }
         }
       } catch {
-        // Preview kit is best-effort; SKILL.md visual summary still helps.
+        // Preview kit/scaffold is best-effort; SKILL.md visual summary still helps.
       }
     }
     return { body, name };

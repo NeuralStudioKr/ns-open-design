@@ -592,23 +592,28 @@ ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY}
  */
 export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE = `# Slide deck — API compact contract with Selected deck template (overrides the long skeleton copy workflow)
 
-You are in API mode. **Do NOT paste or recreate a large framework skeleton.** Do NOT spend tokens copying scale-to-fit JS, print CSS, chrome counters, keyboard handlers, or the template's full Decoration CSS before the first slide.
+You are in API mode. **Do NOT paste or recreate a large OD framework skeleton.** Do NOT spend tokens on scale-to-fit JS, print CSS, chrome counters, or keyboard handlers.
 
-A **Selected deck template** (and usually a Template visual kit from example.html) is already in this prompt. That kit is the PRIMARY visual contract. The wireframe below is structure only — **never** copy slate/navy corporate colors from generic examples.
+A **Selected deck template** is already in this prompt. Prefer modes in this order:
+1. **Template scaffold (CONTENT-SWAP BASE)** — start FROM that HTML; replace visible text only; keep CSS/SVG/classes verbatim.
+2. Else **Template visual kit** — bind kit tokens/Motif sprites (no Neutral invent).
+3. Else Visual summary / title cues.
 
-When the brief is ready, emit ONE \`<artifact type="deck" identifier="deck">\` with a complete \`<!doctype html>…</html>\` in this same response. **Output order is critical:** the first 1200 characters after \`<artifact\` must include \`<body\` and the first complete \`<section class="slide">...</section>\` with real visible copy. Do not open a \`<head>\` block; do not put a long \`<style>\` block before slide 1. Prefer inline styles on slides/elements. If you need a shared style, keep one tiny body \`<style>\` under 80 lines and place it after the first filled slide.
+When a CONTENT-SWAP scaffold is present, emit ONE \`<artifact type="deck" identifier="deck">\` whose body is that scaffold with content swapped. Prefer scaffold byte-order (first slide → \`<style>\` → remaining slides). Duplicate/drop whole slide sections for count. Do **not** invent a new palette or ellipse/emoji daisy.
 
-Required wireframe (structure only — replace EVERY color/font with Selected template tokens; fixed Teamver canvas):
+When only a kit (no scaffold) is present: the first 1200 characters after \`<artifact\` must include \`<body\` and the first complete \`<section class="slide">...</section>\` with real copy. Place any shared \`<style>\` after slide 1. Never open a long \`<head>\` chrome dump.
 
-\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center;/* kit background + kit text + kit display font + tiny motif subset */"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center;/* another kit surface */"><h1 style="margin:0 0 20px">실제 제목</h1><ul style="margin:0;padding-left:1.35rem"><li>실제 불릿</li></ul></section></body></html></artifact>\`
+Fallback wireframe ONLY when neither scaffold nor kit HTML is usable (structure only — still use Selected template tokens):
+
+\`<artifact type="deck" identifier="deck"><!doctype html><html lang="ko"><body style="margin:0"><section class="slide" style="width:1920px;height:1080px;padding:80px 88px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center"><h1 style="margin:0 0 20px">실제 제목</h1><p style="margin:0;max-width:48rem">실제 본문.</p></section></body></html></artifact>\`
 
 Rules:
 1. On deck-delivery turns, optional: one tiny brief-specific UI-locale status sentence, then start the artifact. Artifact-only is OK for speed/tokens.
 2. Every \`<section class="slide">\` must contain real text. Empty sections or \`<!-- SLOT -->\` comments are failures.
-3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete compact deck over a giant framework. If token budget feels tight, reduce per-slide detail or slide count according to the count guidance — never spend the budget on style before slide content.
-4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. Complete deck beats perfect motif fidelity; a shell-only document is a failure.
-5. Vary slide layouts using the template-aware vocabulary below — do not repeat the same padding/background/composition on every slide.
-6. **Hard visual rule:** when a Template visual kit is present, bind a compact subset of its palette hex/fonts/borders/shadows and 1–3 recognizable Motif sprites/\`.deco\` CSS cues per slide. Copy Motif sprites verbatim — do not invent ellipse "daisy" SVGs. Never paste the entire template CSS before content, and never substitute emoji flowers/stars for kit SVG motifs. Forbidden kit substitutes: OD skeleton terracotta \`#c96442\` / ink \`#1c1b1a\` primary palettes, Neutral \`#0f172a\`, Inter/Noto-only typography that ignores kit fonts, emoji ornament rows. When only a Visual summary / title cue is present, match that prose and still avoid inventing sparse Neutral / skeleton covers for cheerful/pastel/playful templates.
+3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete deck over a perfect-but-truncated shell.
+4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn.
+5. When scaffold is present, vary layouts by using the different scaffold slide shells — do not flatten every slide into the same cover composition.
+6. **Hard visual rule:** CONTENT-SWAP scaffold wins over kit nuance. Never substitute OD skeleton terracotta \`#c96442\`, Neutral \`#0f172a\`, Inter/Noto-only covers that ignore template fonts, or emoji ornament rows for Motif SVGs.
 7. When the user attaches images, include \`<img src="exact-project-relative-path" …>\` using attachment paths.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
