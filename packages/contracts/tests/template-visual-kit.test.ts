@@ -56,6 +56,18 @@ describe('extractTemplateVisualKitFromHtml', () => {
     // decoration-only guidance.
     expect(kit).toMatch(/Surface binding is authoritative/i);
     expect(kit).toMatch(/failed deliverable/i);
+    // Dual-binding requirement (Daisy Days 2026-08-13 follow-up: model
+    // painted `.slide` cream but left `body` on a dark app-shell default,
+    // so the list thumbnail rendered cream — .slide is forced
+    // `position:absolute; inset:0` there — but the project preview panel
+    // showed a dark shell around the cream slides). The kit must show a
+    // concrete example binding the surface hex on BOTH `html`/`body` AND
+    // `.slide`, and the HARD_RULES footer must forbid the split-shell
+    // shape.
+    expect(kit).toMatch(/bind BOTH the outer document AND every/i);
+    expect(kit).toMatch(/html\s*,\s*body\s*\{\s*background:\s*#F5F0E6/);
+    expect(kit).toMatch(/\.slide\s*\{\s*background:\s*#F5F0E6/);
+    expect(kit).toMatch(/cream-slides-on-dark-shell/i);
     // The classifier must ship at least ONE real multi-petal daisy sprite,
     // not just the small bear-face or the 4-arc rainbow. Zhangzara Daisy
     // Days ships 10-path SVGs on a 150×150 square viewBox with white petals
@@ -77,7 +89,7 @@ describe('extractTemplateVisualKitFromHtml', () => {
       return pathCount >= 6 && square;
     });
     expect(hasRealPetalSprite).toBe(true);
-    expect(kit!.length).toBeLessThanOrEqual(7_400);
+    expect(kit!.length).toBeLessThanOrEqual(9_600);
   });
 
   it('appendTemplateVisualKit is idempotent', () => {

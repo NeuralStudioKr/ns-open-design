@@ -163,6 +163,15 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     expect(readLastSection).toMatch(/Slide surface binding is authoritative/i);
     expect(readLastSection).toContain('#2D2D2D');
     expect(readLastSection).toMatch(/Dark-on-dark|light-on-light/i);
+    // Dual-binding rule follow-up (Daisy Days 2026-08-13 preview-panel
+    // report): model painted `.slide` cream per the READ LAST rule but
+    // left `body` on a dark app-shell default, so the project preview
+    // panel showed a dark shell around cream slides. Ensure the reminder
+    // now explicitly forbids that split-shell shape and requires binding
+    // BOTH outer document AND every `<section class="slide">`.
+    expect(readLastSection).toMatch(/bind BOTH the outer document AND every/i);
+    expect(readLastSection).toMatch(/html.*body/i);
+    expect(readLastSection).toMatch(/cream-slides-on-dark-shell|floating on a dark shell/i);
     // The kit itself (embedded inside skillBody, quoted verbatim under
     // "Selected deck template — MUST MATCH") must carry the resolved
     // background/color hex so the READ LAST reminder has something

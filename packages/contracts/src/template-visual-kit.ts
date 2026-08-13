@@ -13,17 +13,20 @@
  * `.deco` CSS + hard anti-emoji rules placed before any large cue.
  */
 
-// Raised from 5 200 → 6 800 → 7 400 so a real Zhangzara daisy sprite (~2 KB
-// after comment strip) can co-exist with the star, rainbow, tokens,
-// decoration CSS, the ### Slide surface binding (background/color hex +
-// contrast note), and the first-slide structure cue without truncating any
-// of them. The motif sprites + surface binding are the two biggest
-// anti-regression signals we can hand the model — clipping either was the
-// reason Daisy Days kept coming back as 🌸 emoji on a dark corporate
-// background despite every prompt-level ban we added.
+// Raised 5 200 → 6 800 → 7 400 → 9 600 so a real Zhangzara daisy sprite
+// (~1.8 KB after comment strip) can co-exist with the star, rainbow,
+// tokens, decoration CSS, the ### Slide surface binding (background/color
+// hex + code sample showing BOTH `html`/`body` AND `.slide` painted with
+// the surface hex, plus a contrast note), and the first-slide structure
+// cue without truncating any of them. The motif sprites + surface
+// binding are the two biggest anti-regression signals we can hand the
+// model — clipping either was the reason Daisy Days kept coming back as
+// 🌸 emoji clusters, then as cream slides floating on a dark corporate
+// shell (list thumbnail correct / project preview panel dark), despite
+// every prompt-level ban we added.
 // BODY-FIRST hard rules below tell the model to emit slides before pasting
 // this kit into `<head>` so the larger budget does not invite shell-only cuts.
-const DEFAULT_MAX_CHARS = 7_400;
+const DEFAULT_MAX_CHARS = 9_600;
 
 function uniquePreserveOrder(values: string[]): string[] {
   const out: string[] = [];
@@ -427,7 +430,7 @@ function extractFirstSlideStructureCue(html: string, budget: number): string | n
 const HARD_RULES = [
   'Hard rules (non-negotiable):',
   '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` slides BEFORE a large `<head>`/`<style>` dump. Put Motif sprites + Decoration CSS in one short body `<style>` after slide 1 (or tiny inline tokens). A CSS-only truncation is a failed deliverable.',
-  '- **Surface binding is authoritative — read `### Slide surface` below and use those EXACT `background` / `color` hex values for every `<section class="slide">`. Do NOT substitute a border/ink token (e.g. `#2D2D2D`, `#232323`, `#1E1E1C`) for a slide background — those are stroke colors, not surface colors. Dark-on-dark or light-on-light slides are a failed deliverable.',
+  '- **Surface binding is authoritative — read `### Slide surface` below and use those EXACT `background` / `color` hex values on BOTH `html` / `body` AND every `<section class="slide">`.** Painting only the slides while leaving `body` at its default (or a dark app-shell) produces cream slides floating on a dark shell — the deck looks correct in the list thumbnail (which forces slides to cover the viewport) but reads as a dark corporate deck in the project preview panel. Do NOT substitute a border/ink token (e.g. `#2D2D2D`, `#232323`, `#1E1E1C`) for a slide background — those are stroke colors, not surface colors. Dark-on-dark, light-on-light, and cream-slides-on-dark-shell are all failed deliverables.',
   '- Keep the template scheme (light pastel stays light; dark terminal stays dark).',
   '- Motif MUST be SVG/CSS from **Motif sprites** / **Decoration CSS** below (e.g. `<div class="deco deco-daisy-tl">…svg…</div>`). Use 2–4 sprites max per slide.',
   '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration — no 🌼 🌸 🌺 🌻 🌹 ⭐ ✨ 🌟 🌈 ☀️ or similar flower/star/rainbow emoji rows pretending to be the template identity.',
@@ -466,18 +469,37 @@ function renderSlideSurfaceBlock(
   const textLabel = color ? contrastLabel(color) : 'unknown';
   const conflict = bgLabel !== 'unknown' && textLabel !== 'unknown' && bgLabel === textLabel;
 
+  const bgLiteral = background ?? '<template surface hex>';
+  const colorLiteral = color ?? '<template ink hex>';
   const lines = [
-    `### Slide surface (bind these on every \`<section class="slide">\`)`,
+    `### Slide surface (bind BOTH the outer document AND every \`<section class="slide">\`)`,
     '',
     background ? `- **background**: \`${background}\`${source ? ` (from \`${source}\`)` : ''}` : '- **background**: pick the lightest pastel hex from the palette above',
     color ? `- **color** (text): \`${color}\`` : '- **color** (text): dark ink from the palette above',
     '',
+    'You MUST paint the surface hex on the outer document *and* on each slide, or the preview panel shows a dark shell around cream slides (and vice-versa). Two acceptable shapes:',
+    '',
+    '```html',
+    `<body style="background:${bgLiteral};color:${colorLiteral};margin:0;">`,
+    `  <section class="slide" style="background:${bgLiteral};color:${colorLiteral};width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden;">…</section>`,
+    '</body>',
+    '```',
+    '',
+    'or a single short body `<style>` after slide 1:',
+    '',
+    '```html',
+    '<style>',
+    `  html, body { background:${bgLiteral}; color:${colorLiteral}; margin:0; }`,
+    `  .slide { background:${bgLiteral}; color:${colorLiteral}; width:1920px; height:1080px; box-sizing:border-box; position:relative; overflow:hidden; }`,
+    '</style>',
+    '```',
+    '',
     conflict
       ? '⚠️ background and text are both ' + bgLabel + '. Increase contrast — never ship dark-on-dark or light-on-light slides.'
       : bgLabel === 'light'
-        ? 'Contrast: **light background + dark ink**. Every heading, paragraph, list item, badge, and card body must use dark ink text on the light surface.'
+        ? 'Contrast: **light background + dark ink**. Every heading, paragraph, list item, badge, and card body must use dark ink text on the light surface. Do not leave `html` / `body` with a dark app-shell default — cream slides floating on a dark shell is the same failure as dark-on-dark slides.'
         : bgLabel === 'dark'
-          ? 'Contrast: **dark background + light ink**. Every heading, paragraph, list item, badge, and card body must use light text (kit cream / white) on the dark surface.'
+          ? 'Contrast: **dark background + light ink**. Every heading, paragraph, list item, badge, and card body must use light text (kit cream / white) on the dark surface. Also paint `html` / `body` with the dark surface so the outer document does not flash a bright default background around the slides.'
           : 'Verify text and background contrast; failing the WCAG legibility bar is a failed deliverable.',
     '',
     'Cover / body / stat / closing slides all inherit the same surface unless the template ships alternate slide-variant classes above; when in doubt, keep the same background across the deck.',
