@@ -44,6 +44,27 @@ describe("TeamverHomeCreateHero", () => {
   });
 });
 
+describe("TeamverHomeSlideCreateModal overlay", () => {
+  it("portals a fixed picker backdrop instead of in-flow home content", () => {
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={[{ id: "html-ppt-hermes", title: "Hermes", record: null }]}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const backdrop = screen.getByTestId("teamver-home-slide-create-backdrop");
+    expect(backdrop.className).toContain("teamver-drive-picker-backdrop");
+    expect(backdrop.parentElement).toBe(document.body);
+  });
+});
+
 describe("TeamverHomeSlideCreateModal", () => {
   const templates = [
     { id: "html-ppt-hermes", title: "Hermes", record: null },

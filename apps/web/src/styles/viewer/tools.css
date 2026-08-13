@@ -3456,11 +3456,13 @@
   font-weight: 500;
 }
 
-/* Teamver Home create wizard (docs 61) — brand lockup reuses HomeHero classes */
+/* Teamver Home create wizard (docs 61) — brand lockup reuses HomeHero classes.
+   Hover must set background on `button.…` so it beats global `button:hover`
+   (`background: var(--bg-subtle)`), which made the fill look like it vanished. */
 .teamver-home-create-hero {
   padding-bottom: 20px;
 }
-.teamver-home-create-hero-cta {
+button.teamver-home-create-hero-cta {
   margin-top: 10px;
   display: inline-flex;
   align-items: center;
@@ -3468,19 +3470,17 @@
   min-height: 48px;
   padding: 0 22px 0 12px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border: 1px solid var(--accent);
   background: var(--accent);
   color: #fff;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
   cursor: pointer;
-  box-shadow:
-    0 1px 0 color-mix(in srgb, #000 10%, transparent),
-    0 10px 24px color-mix(in srgb, var(--accent) 32%, transparent);
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 16%, transparent);
   transition:
-    transform 140ms ease,
-    filter 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease,
     box-shadow 140ms ease;
 }
 .teamver-home-create-hero-cta-icon {
@@ -3493,25 +3493,29 @@
   background: color-mix(in srgb, #fff 22%, transparent);
   flex-shrink: 0;
 }
-.teamver-home-create-hero-cta:hover:not(:disabled) {
-  filter: brightness(1.06);
-  transform: translateY(-1px);
-  box-shadow:
-    0 1px 0 color-mix(in srgb, #000 10%, transparent),
-    0 14px 28px color-mix(in srgb, var(--accent) 38%, transparent);
+button.teamver-home-create-hero-cta:hover:not(:disabled) {
+  background: var(--accent-hover, color-mix(in srgb, var(--accent) 82%, #000));
+  border-color: var(--accent-hover, color-mix(in srgb, var(--accent) 82%, #000));
+  color: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent);
 }
-.teamver-home-create-hero-cta:active:not(:disabled) {
-  transform: translateY(0);
-  filter: brightness(0.98);
+button.teamver-home-create-hero-cta:active:not(:disabled) {
+  background: var(--accent-strong, var(--accent-hover, var(--accent)));
+  border-color: var(--accent-strong, var(--accent-hover, var(--accent)));
+  color: #fff;
+  box-shadow: none;
 }
-.teamver-home-create-hero-cta:focus-visible {
+button.teamver-home-create-hero-cta:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
-.teamver-home-create-hero-cta:disabled {
+button.teamver-home-create-hero-cta:disabled {
   opacity: 0.55;
   cursor: not-allowed;
   box-shadow: none;
+}
+.teamver-home-slide-create-modal .teamver-canvas-slide-launch-stepper {
+  padding: 10px 16px 0;
 }
 .teamver-home-slide-create-stepper-btn {
   display: inline-flex;

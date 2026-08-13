@@ -3,6 +3,7 @@
 // CTA label is always "Create slides" — never embeds template names.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "../../components/Icon";
 import { useTeamverT } from "../branding/useTeamverT";
 import type { TeamverDriveImportAsset } from "../importDriveAssets";
@@ -108,6 +109,15 @@ export function TeamverHomeSlideCreateModal({
     setTemplateVisited(entry === "template");
   }, [open, entry]);
 
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !confirming) onClose();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, confirming, onClose]);
+
   const normalizedQuick = useMemo(
     () => ({ ...DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS, ...quickSettings }),
     [quickSettings],
@@ -122,7 +132,7 @@ export function TeamverHomeSlideCreateModal({
     );
   }, [selectedTemplateId, templateOptions]);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
   const templateReady = Boolean(selectedTemplate?.id);
   const showingTemplate = step === "template";
@@ -345,9 +355,9 @@ export function TeamverHomeSlideCreateModal({
     </div>
   );
 
-  return (
+  return createPortal(
     <div
-      className="teamver-drive-import-backdrop"
+      className="teamver-drive-picker-backdrop"
       role="presentation"
       data-testid="teamver-home-slide-create-backdrop"
       onMouseDown={(event) => {
@@ -356,7 +366,7 @@ export function TeamverHomeSlideCreateModal({
     >
       <div
         className={[
-          "teamver-drive-import-modal",
+          "teamver-drive-picker-modal",
           "teamver-canvas-slide-launch-modal",
           "teamver-canvas-slide-launch-modal--wide",
           "teamver-home-slide-create-modal",
@@ -366,16 +376,16 @@ export function TeamverHomeSlideCreateModal({
         aria-labelledby="teamver-home-slide-create-title"
         data-testid="teamver-home-slide-create-modal"
       >
-        <header className="teamver-drive-import-header">
+        <header className="teamver-drive-picker-head">
           <h2 id="teamver-home-slide-create-title">{t("teamver.homeCreate.modalTitle")}</h2>
           <button
             type="button"
-            className="teamver-drive-import-close"
+            className="teamver-drive-picker-close"
             aria-label={t("common.close")}
             disabled={confirming}
             onClick={onClose}
           >
-            <Icon name="close" size={18} />
+            <Icon name="close" size={16} />
           </button>
         </header>
 
@@ -440,7 +450,7 @@ export function TeamverHomeSlideCreateModal({
         <div className="teamver-canvas-slide-launch-body teamver-home-slide-create-body">
           {showingTemplate ? templatePanel : contentPanel}
           {errorMessage ? (
-            <p className="teamver-drive-import-error" role="alert">
+            <p className="teamver-canvas-slide-launch-error" role="alert">
               {errorMessage}
             </p>
           ) : null}
@@ -485,6 +495,7 @@ export function TeamverHomeSlideCreateModal({
           )}
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

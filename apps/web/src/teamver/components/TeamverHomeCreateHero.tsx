@@ -27,7 +27,7 @@ export function TeamverHomeCreateHero({ onCreate, disabled }: Props) {
       <p className="home-hero__subtitle">{t("teamver.homeHero.subtitle")}</p>
       <button
         type="button"
-        className="teamver-home-create-hero-cta"
+        className="primary teamver-home-create-hero-cta"
         data-testid="teamver-home-create-cta"
         disabled={disabled}
         onClick={onCreate}
