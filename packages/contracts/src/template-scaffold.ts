@@ -105,8 +105,10 @@ function stripScriptsAndNav(html: string): string {
 }
 
 function teamverSlideCssOverrides(): string {
+  // Template-neutral sizing chrome only — surface/ink come from the template's
+  // own `:root` / slide rules (do NOT hardcode Daisy Days cream).
   return [
-    'html,body{margin:0;padding:0;background:var(--cream,#F5F0E6);color:var(--text-dark,#2D2D2D);font-family:var(--font-body),system-ui,sans-serif}',
+    'html,body{margin:0;padding:0;font-family:var(--font-body,var(--sans),system-ui,sans-serif)}',
     '.slides-container{width:auto;height:auto;overflow:visible;scroll-snap-type:none}',
     '.slide{width:1920px;height:1080px;min-height:1080px;max-height:1080px;padding:64px 80px;box-sizing:border-box;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:stretch;scroll-snap-align:none}',
     '.nav-dots,.slide-counter,.nav-dot{display:none!important}',

@@ -48,6 +48,21 @@ function extractRootCssBlock(html: string): string | null {
   return `:root{ ${inner} }`;
 }
 
+function firstFontFamilyName(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || /^var\(/i.test(trimmed)) return null;
+  const first = trimmed
+    .split(',')[0]
+    ?.replace(/['"]/g, '')
+    .trim();
+  if (!first || /^var\(/i.test(first)) return null;
+  // Skip generic CSS families alone — they are not template identity.
+  if (/^(?:serif|sans-serif|monospace|cursive|fantasy|system-ui|inherit|initial|unset)$/i.test(first)) {
+    return null;
+  }
+  return first;
+}
+
 function extractFontFamilies(html: string): string[] {
   const fromLinks: string[] = [];
   for (const match of html.matchAll(/family=([^&"']+)/gi)) {
@@ -57,16 +72,30 @@ function extractFontFamilies(html: string): string[] {
       if (name) fromLinks.push(name);
     }
   }
-  const fromCss = [...html.matchAll(/--font-[a-zA-Z0-9_-]+\s*:\s*([^;]+);/g)]
-    .map((m) => (m[1] ?? '').trim())
-    .filter(Boolean);
-  return uniquePreserveOrder([...fromLinks, ...fromCss]).slice(0, 8);
+  const fromCssVars = [...html.matchAll(
+    /--(?:font-[a-zA-Z0-9_-]+|serif|sans|mono|display|body|heading)\s*:\s*([^;]+);/gi,
+  )]
+    .map((m) => firstFontFamilyName(m[1] ?? ''))
+    .filter((name): name is string => Boolean(name));
+  const fromFontFamily = [...html.matchAll(/font-family\s*:\s*([^;!}{]+)/gi)]
+    .map((m) => firstFontFamilyName(m[1] ?? ''))
+    .filter((name): name is string => Boolean(name));
+  return uniquePreserveOrder([...fromLinks, ...fromCssVars, ...fromFontFamily]).slice(0, 8);
 }
 
 function extractHexColors(html: string): string[] {
   return uniquePreserveOrder(
     [...html.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0] ?? ''),
   ).slice(0, 16);
+}
+
+/** Include modern CSS colors (oklch/etc.) so non-hex templates still ship palette cues. */
+function extractPaletteCues(html: string): string[] {
+  const hex = extractHexColors(html);
+  const modern = uniquePreserveOrder(
+    [...html.matchAll(/\b(?:oklch|oklab|color-mix)\([^)]+\)/gi)].map((m) => m[0] ?? ''),
+  ).slice(0, 8);
+  return uniquePreserveOrder([...hex, ...modern]).slice(0, 20);
 }
 
 function extractCssVariables(rootCss: string | null): Record<string, string> {
@@ -131,7 +160,7 @@ function resolveCssTokenValue(rootBlock: string | null, expr: string): string | 
   const trimmed = expr.trim();
   if (!trimmed) return null;
   const literal = trimmed.match(
-    /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]+\)|hsla?\([^)]+\)/,
+    /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]+\)|hsla?\([^)]+\)|oklch\([^)]+\)|oklab\([^)]+\)|color-mix\([^)]+\)/i,
   )?.[0];
   if (literal && !/^var\(/i.test(trimmed)) return literal;
   const varMatch = /var\(\s*(--[a-zA-Z0-9_-]+)\s*(?:,\s*([^)]+))?\)/i.exec(trimmed);
@@ -171,9 +200,9 @@ function isSlideSurfaceSelector(part: string): boolean {
 }
 
 /**
- * Resolve the template's actual `html,body { background; color }` binding
- * into concrete hex. Token names alone (`--cream`, `--border`, `--text-dark`)
- * let models treat the ink stroke (`#2D2D2D`) as a slide background.
+ * Resolve the template's slide paper surface into concrete colors.
+ * Prefer `.slide` paper over `html/body` stage chrome when they differ
+ * (e.g. Coral dark `#1A1A1A` body around cream slides).
  *
  * Selectors are matched as whole comma-separated parts so `.welcome-body`
  * cannot steal the document surface from `html,body`.
@@ -184,44 +213,60 @@ function extractSlideSurfaceBinding(
 ): { background: string | null; color: string | null; source: string | null } {
   const sheet = extractStyleSheets(html);
   const rules = [...sheet.matchAll(/([^{}@][^{]*)\{([^}]+)\}/g)];
-  let background: string | null = null;
-  let color: string | null = null;
-  let source: string | null = null;
 
-  const readRule = (
-    selectorText: string,
-    body: string,
-    kind: 'body' | '.slide',
+  const readPair = (
     match: (part: string) => boolean,
-  ): void => {
-    if (!splitCssSelectors(selectorText).some(match)) return;
-    if (!background) {
-      const bg = /(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/i.exec(body)?.[1];
-      const resolved = bg ? resolveCssTokenValue(rootBlock, bg) : null;
-      if (resolved) {
-        background = resolved;
-        source ??= kind;
+  ): { background: string | null; color: string | null } => {
+    let background: string | null = null;
+    let color: string | null = null;
+    for (const rule of rules) {
+      if (!splitCssSelectors(rule[1] ?? '').some(match)) continue;
+      const body = rule[2] ?? '';
+      if (!background) {
+        const bg = /(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/i.exec(body)?.[1];
+        background = bg ? resolveCssTokenValue(rootBlock, bg) : null;
       }
-    }
-    if (!color) {
-      const c = /(?:^|;)\s*color\s*:\s*([^;]+)/i.exec(body)?.[1];
-      const resolved = c ? resolveCssTokenValue(rootBlock, c) : null;
-      if (resolved) {
-        color = resolved;
-        source ??= kind;
+      if (!color) {
+        const c = /(?:^|;)\s*color\s*:\s*([^;]+)/i.exec(body)?.[1];
+        color = c ? resolveCssTokenValue(rootBlock, c) : null;
       }
+      if (background && color) break;
     }
+    return { background, color };
   };
 
-  for (const rule of rules) {
-    readRule(rule[1] ?? '', rule[2] ?? '', 'body', isDocumentSurfaceSelector);
-    if (background && color) return { background, color, source };
+  const body = readPair(isDocumentSurfaceSelector);
+  const slide = readPair(isSlideSurfaceSelector);
+
+  // Paper-on-dark-chrome (or dark-on-light-chrome): slide surface wins.
+  if (
+    slide.background
+    && body.background
+    && contrastLabel(slide.background) !== 'unknown'
+    && contrastLabel(body.background) !== 'unknown'
+    && contrastLabel(slide.background) !== contrastLabel(body.background)
+  ) {
+    return {
+      background: slide.background,
+      color: slide.color ?? body.color,
+      source: '.slide',
+    };
   }
-  for (const rule of rules) {
-    readRule(rule[1] ?? '', rule[2] ?? '', '.slide', isSlideSurfaceSelector);
-    if (background && color) return { background, color, source };
+  if (slide.background) {
+    return {
+      background: slide.background,
+      color: slide.color ?? body.color,
+      source: '.slide',
+    };
   }
-  return { background, color, source };
+  if (body.background || body.color) {
+    return {
+      background: body.background,
+      color: body.color ?? slide.color,
+      source: 'body',
+    };
+  }
+  return { background: null, color: null, source: null };
 }
 
 function contrastLabel(hex: string): 'light' | 'dark' | 'unknown' {
@@ -469,13 +514,14 @@ const SPRITE_MAX_CHARS = 2400;
 type MotifKind = ReturnType<typeof classifySvg>;
 
 type MotifSprite = {
-  kind: Exclude<MotifKind, 'other'>;
+  kind: MotifKind;
   svg: string;
 };
 
 /**
  * Pick a few SMALL complete SVGs as pasteable motif sprites.
- * Avoid the multi-KB QuiverAI paths that blow the kit budget and truncate.
+ * Named Daisy vocabulary wins when present; otherwise ship the smallest
+ * complete in-range SVGs so non-floral templates still get pasteable motifs.
  */
 function extractMotifSprites(html: string, budget: number): MotifSprite[] {
   const svgs = [...html.matchAll(/<svg\b[\s\S]*?<\/svg>/gi)]
@@ -516,16 +562,17 @@ function extractMotifSprites(html: string, budget: number): MotifSprite[] {
     if (out.length >= 3) break;
   }
 
-  // Fallback: smallest complete SVGs if classifiers missed.
-  if (out.length === 0) {
+  // Generalized fallback: any complete in-range SVG (pin-and-paper, cobalt,
+  // scatterbrain, etc.) — never leave Motif sprites empty when HTML has SVGs.
+  if (out.length < 3) {
     const smallest = [...svgs].sort((a, b) => a.length - b.length);
     for (const svg of smallest) {
-      if (used + svg.length > budget) break;
+      if (out.some((item) => item.svg === svg)) continue;
+      if (used + svg.length + 40 > budget) continue;
       const kind = classifySvg(svg);
-      if (kind === 'other') continue;
       out.push({ kind, svg });
-      used += svg.length;
-      if (out.length >= 2) break;
+      used += svg.length + 40;
+      if (out.length >= 3) break;
     }
   }
   return out;
@@ -571,14 +618,48 @@ function extractFirstSlideStructureCue(html: string, budget: number): string | n
     /<section\b[^>]*class=["'][^"']*slide[^"']*["'][^>]*>[\s\S]*?<\/section>/i.exec(
       html,
     );
-  if (!sectionMatch?.[0]) return null;
-  const snippet = sectionMatch[0]
+  const divMatch =
+    /<div\b[^>]*class=["'][^"']*\bslide\b[^"']*["'][^>]*>[\s\S]{0,2400}?<\/div>/i.exec(
+      html,
+    );
+  const raw = sectionMatch?.[0] ?? divMatch?.[0] ?? null;
+  if (!raw) return null;
+  const snippet = raw
     .replace(/<script\b[\s\S]*?<\/script>/gi, '')
     .replace(/<svg\b[\s\S]*?<\/svg>/gi, '<!-- use Motif sprites SVG inside .deco -->')
     .replace(/\s+/g, ' ')
     .trim();
   if (!snippet) return null;
   return snippet.length > budget ? `${snippet.slice(0, budget)}…` : snippet;
+}
+
+type SlideShell = { attrs: string; body: string };
+
+/** Collect slide shells from `<section class="slide|s-*">` or `<div class="slide">`. */
+function listSlideShells(html: string): SlideShell[] {
+  const sections = [...html.matchAll(/<section\b([^>]*)>([\s\S]*?)<\/section>/gi)]
+    .map((match) => ({ attrs: match[1] ?? '', body: match[2] ?? '' }))
+    .filter(({ attrs }) =>
+      /\bslide\b/i.test(attrs)
+      || /\bclass\s*=\s*["'][^"']*\bs-[a-z0-9_-]+/i.test(attrs)
+      || /\bid\s*=\s*["']slide/i.test(attrs)
+    );
+  if (sections.length > 0) return sections;
+
+  const opens = [...html.matchAll(
+    /<div\b([^>]*\bclass\s*=\s*(["'])[^"']*\bslide\b[^"']*\2[^>]*)>/gi,
+  )];
+  const out: SlideShell[] = [];
+  for (let i = 0; i < opens.length; i += 1) {
+    const open = opens[i]!;
+    const start = (open.index ?? 0) + open[0].length;
+    const end = i + 1 < opens.length ? (opens[i + 1]!.index ?? html.length) : html.length;
+    let body = html.slice(start, end);
+    const close = body.lastIndexOf('</div>');
+    if (close >= 0) body = body.slice(0, close);
+    out.push({ attrs: open[1] ?? '', body });
+  }
+  return out;
 }
 
 function stripHtmlText(html: string): string {
@@ -599,13 +680,13 @@ function extractTemplateScaffoldMap(
   budget: number,
   availableSpriteKinds: ReadonlySet<string> = new Set(),
 ): string | null {
-  const sections = [...html.matchAll(/<section\b([^>]*)>([\s\S]*?)<\/section>/gi)];
-  if (sections.length === 0) return null;
+  const shells = listSlideShells(html);
+  if (shells.length === 0) return null;
   const lines: string[] = [];
   let used = 0;
-  for (let i = 0; i < Math.min(sections.length, 12); i += 1) {
-    const attrs = sections[i]?.[1] ?? '';
-    const body = sections[i]?.[2] ?? '';
+  for (let i = 0; i < Math.min(shells.length, 12); i += 1) {
+    const attrs = shells[i]?.attrs ?? '';
+    const body = shells[i]?.body ?? '';
     const className =
       /class\s*=\s*"([^"]+)"/i.exec(attrs)?.[1]
       ?? /class\s*=\s*'([^']+)'/i.exec(attrs)?.[1]
@@ -626,7 +707,10 @@ function extractTemplateScaffoldMap(
     ).slice(0, 4);
     const layoutRole = className
       .split(/\s+/)
-      .find((cls) => cls.startsWith('slide-') && cls !== 'slide')
+      .find((cls) =>
+        (cls.startsWith('slide-') && cls !== 'slide')
+        || /^s-[a-z0-9_-]+$/i.test(cls)
+      )
       ?.replace(/^slide-/, '')
       || 'body';
     const parts = [
@@ -651,13 +735,13 @@ function extractTemplateScaffoldMap(
 const HARD_RULES = [
   'Hard rules (non-negotiable):',
   '- **TOKEN-SAFE CONTENT-SWAP:** treat this kit + Template scaffold map as the base look. Do NOT paste or rewrite a full `example.html`. Preserve slide classes, layout roles, surface colors, decorative wrappers, border/shadow/card treatment, and Motif sprites from this kit. Replace only visible content: headings, paragraphs, bullets, chart/table labels/values, and image slots.',
-  '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` slides BEFORE a large `<head>`/`<style>` dump. Put Motif sprites + Decoration CSS in one short body `<style>` after slide 1 (or tiny inline tokens). A CSS-only truncation is a failed deliverable.',
-  '- Keep the template scheme exactly (light pastel stays light; dark terminal stays dark). If the kit has a named main surface/background token, use it on the cover.',
-  '- **Surface hex:** bind `### Slide surface` background/color on BOTH `html`/`body` AND every `.slide`. Dark-on-dark, light-on-light, or cream-slides-on-dark-shell (preview panel dark / thumbnail cream) are failed deliverables. Ink tokens (`#2D2D2D`) are stroke/text, not backgrounds.',
-  '- Motif MUST be copied from **Motif sprites** / **Decoration CSS** below (e.g. `<div class="deco deco-daisy-tl">…exact svg…</div>`). Use only sprites listed in Motif sprites — never invent SVG for a scaffold-map deco slot that has no matching sprite. Use 2–4 sprites max per slide; copy at least one complete provided SVG on the cover when sprites are present. When Decoration CSS ships `.deco-daisy-tl/tr/bl/br`, fill all four corners — a single lonely sprite is not the template. Paste sprites VERBATIM (do not recolor fills).',
-  '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration — no 🌼 🌸 🌺 🌻 🌹 ⭐ ✨ 🌟 🌈 ☀️ or similar flower/star/rainbow emoji rows pretending to be the template identity. Do not invent ellipse "daisy" SVGs.',
+  '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` (or the template\'s slide wrapper) BEFORE a large `<head>`/`<style>` dump. Put Motif sprites + Decoration CSS in one short body `<style>` after slide 1 (or tiny inline tokens). A CSS-only truncation is a failed deliverable.',
+  '- Keep the template scheme exactly (light stays light; dark/terminal stays dark). If the kit has a named main surface/background token, use it on the cover.',
+  '- **Surface:** bind `### Slide surface` background/color on BOTH `html`/`body` AND every `.slide`. Dark-on-dark, light-on-light, or paper-slides-on-wrong-shell are failed deliverables. Ink/border tokens are stroke/text, not backgrounds.',
+  '- Motif MUST be copied from **Motif sprites** / **Decoration CSS** below when present. Paste sprites VERBATIM into the template\'s ornament wrappers (`.deco`, corner slots, badges, etc.). Use only sprites listed in Motif sprites — never invent SVG/emoji for a scaffold-map deco slot with no matching sprite. Copy at least one complete provided SVG on the cover when sprites are present. When Decoration CSS ships multiple corner slots that match provided sprites, fill them — a single lonely ornament is not the template.',
+  '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration pretending to be the template identity. Do not invent ellipse "daisy" SVGs or generic flower geometry when sprites are provided.',
   '- Preserve chunky cards/borders/offset shadows when Decoration CSS / `:root` tokens show them (`--border`, `--shadow`).',
-  '- Vary slide layouts using the Template scaffold map roles; do not emit sparse title-only Neutral Modern slides or OD skeleton terracotta `#c96442`.',
+  '- Vary slide layouts using the Template scaffold map roles; do not emit sparse title-only Neutral Modern slides. Do not substitute OD skeleton terracotta `#c96442` unless that hex is listed in this kit\'s palette cues.',
 ];
 
 /**
@@ -673,7 +757,7 @@ export function extractTemplateVisualKitFromHtml(
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const root = extractRootCssBlock(source);
   const fonts = extractFontFamilies(source);
-  const colors = extractHexColors(source);
+  const colors = extractPaletteCues(source);
   if (!root && colors.length === 0 && fonts.length === 0) return null;
 
   const title = options.title?.trim() || 'selected deck template';
@@ -720,7 +804,7 @@ export function extractTemplateVisualKitFromHtml(
   }
 
   // Extract optional sections first, then pack by priority so Motif sprites
-  // (daisy+star+rainbow) cannot be squeezed out by scaffold/deco/cue growth.
+  // cannot be squeezed out by scaffold/deco/cue growth.
   const sprites = extractMotifSprites(source, 3_400);
   const spriteKinds = new Set(sprites.map((sprite) => sprite.kind));
   const scaffold = extractTemplateScaffoldMap(source, 1_100, spriteKinds);
@@ -730,9 +814,9 @@ export function extractTemplateVisualKitFromHtml(
   const spriteBlock: string[] = [];
   if (sprites.length > 0) {
     spriteBlock.push(
-      '### Motif sprites (complete SVGs — copy into corner `<div class="deco …">` wrappers)',
+      '### Motif sprites (complete SVGs — copy into the template ornament wrappers)',
       '',
-      'Copy at least one complete SVG from this block onto the cover. Use 2–4 of these per slide at corners/edges via absolute `.deco` positioning. Do not invent emoji flowers or approximate with generic flowers. Paste sprites VERBATIM (keep fill/stroke/`<style>` classes). When Decoration CSS lists `.deco-daisy-tl/tr/bl/br`, fill all four corners — one lonely sprite is a corporate deck with a stray flower. Do not paste every sprite into `<head>` before writing slides — BODY-FIRST.',
+      'Copy at least one complete SVG from this block onto the cover. Reuse these sprites in the template\'s `.deco` / ornament slots (2–4 per slide when the template is decorative). Paste sprites VERBATIM (keep fill/stroke/`<style>` classes). When Decoration CSS lists multiple matching corner slots, fill them — one lonely ornament is not the template. Do not invent emoji ornaments or generic geometry. Do not paste every sprite into `<head>` before writing slides — BODY-FIRST.',
       '',
     );
     for (const sprite of sprites) {

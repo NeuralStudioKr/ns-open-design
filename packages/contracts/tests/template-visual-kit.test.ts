@@ -28,7 +28,7 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toContain('Decoration CSS');
     expect(kit).toContain('--shadow');
     expect(kit).toContain('Motif sprites');
-    expect(kit).toContain('Do not invent emoji flowers');
+    expect(kit).toMatch(/Do not invent emoji ornaments|Forbidden motif substitutes/i);
     expect(kit).toContain('Do NOT replace them with an active design-system palette');
     expect(kit).toContain('Template scaffold map');
     expect(kit).toContain('Replace visible content only');
@@ -51,8 +51,8 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toMatch(/light background \+ dark ink/i);
     expect(kit).toMatch(/html,\s*body,\s*\.slide\s*\{\s*background:\s*#F5F0E6/);
     expect(kit).toMatch(/cream-slides-on-dark-shell|preview-panel shell/i);
-    expect(kit).toMatch(/VERBATIM|do not recolor/i);
-    expect(kit).toMatch(/four corners/i);
+    expect(kit).toMatch(/VERBATIM|Paste sprites VERBATIM/i);
+    expect(kit).toMatch(/lonely ornament|matching corner slots|TOKEN-SAFE CONTENT-SWAP/i);
     // The classifier must ship the real Zhangzara multi-petal daisy
     // (150×150 + #FCDF6C), not a sky-blue cloud that also has `#fff` on a
     // square canvas. Cloud-as-daisy previously made models invent ellipse
@@ -106,6 +106,49 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(out).toContain('API / Teamver mode — do not clone files');
     expect(out).not.toMatch(/\*\*Clone `example\.html`\*\*/);
     expect(out).toContain('Replace placeholder content');
+  });
+
+  it('prefers slide paper over dark body chrome (Coral-style)', () => {
+    const html = `
+<style>
+:root { --cream:#F5F0E8; --ink:#1A1A1A; --text:#2D2D2D; }
+html,body{background:var(--ink);color:#fff}
+.slide{background:var(--cream);color:var(--text)}
+</style>
+<section class="slide slide-title"><h1>Coral</h1></section>
+`.trim();
+    const kit = extractTemplateVisualKitFromHtml(html, { title: 'Html Ppt Zhangzara Coral' });
+    expect(kit).toContain('### Slide surface');
+    expect(kit).toMatch(/\*\*background\*\*:\s*`#F5F0E8`/i);
+    expect(kit).not.toMatch(/\*\*background\*\*:\s*`#1A1A1A`/i);
+    expect(kit).toMatch(/from `\.slide`/i);
+  });
+
+  it('ships Motif sprites for non-Daisy SVG templates', () => {
+    const html = `
+<style>:root{--bg:#0b1220;--accent:#3b6cff;--font-body:'IBM Plex Sans',sans-serif}</style>
+<section class="slide"><h1>Grid</h1>
+<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" fill="#3b6cff"/><circle cx="20" cy="20" r="8" fill="#fff"/></svg>
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h32v32H0z" fill="#0b1220"/><path d="M4 16h24" stroke="#3b6cff" stroke-width="3"/></svg>
+</section>
+`.trim();
+    const kit = extractTemplateVisualKitFromHtml(html, { title: 'Cobalt Grid' });
+    expect(kit).toContain('### Motif sprites');
+    const spriteBlock = kit!.slice(kit!.indexOf('### Motif sprites'));
+    expect((spriteBlock.match(/<svg\b[\s\S]*?<\/svg>/gi) ?? []).length).toBeGreaterThanOrEqual(1);
+    expect(kit).toContain('### Template scaffold map');
+  });
+
+  it('builds scaffold map from div.slide shells', () => {
+    const html = `
+<style>:root{--bg:#fff;--ink:#111}</style>
+<div class="slide slide-cover"><h1>Cover</h1></div>
+<div class="slide slide-body"><h2>Body</h2></div>
+`.trim();
+    const kit = extractTemplateVisualKitFromHtml(html, { title: 'Div Slide Template' });
+    expect(kit).toContain('### Template scaffold map');
+    expect(kit).toContain('classes="slide slide-cover"');
+    expect(kit).toContain('role=cover');
   });
 
   it('does not treat .welcome-body as the document surface', () => {

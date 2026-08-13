@@ -75,7 +75,7 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "**Token-safe template apply:** use the Selected deck template visual kit + scaffold map in the system prompt (palette/fonts/Motif sprites/slide roles). " +
   "Content-swap the user brief into that look — do NOT paste or regenerate a full example.html dump (input/output token risk). " +
   "Never carry over the source HTML's colors, fonts, or decorative elements. " +
-  "If the source uses one palette (e.g. warm yellow/green travel gradient) and the template uses another (e.g. Daisy Days cream + Fredoka), the template WINS. " +
+  "If the source uses one palette and the selected template uses another, the template kit WINS. " +
   "Prefer clear slide sectioning over literal page layout. " +
   "Emit ONE complete Teamver deck in this same response: " +
   "`<artifact type=\"deck\" identifier=\"deck\">` with one filled `<section class=\"slide\">` per requested slide count " +
@@ -272,8 +272,8 @@ function selectedSlideTemplatePriorityInstruction(title: string): string {
     "**Selected template visual contract — READ LAST.**",
     `The user explicitly selected "${title}" as the deck template. This selected template is the visual source of truth and outranks the Canvas / Drive source styling, quick settings, default design systems, scenario examples, and any generic slide examples.`,
     "Use the Template visual kit as the token-safe content-swap contract: bind kit palette/fonts/borders/Motif sprites and follow the Template scaffold map (slide classes/roles). Replace visible content for the user brief — do not dump or rewrite a full example.html document (token/truncation risk).",
-    "When the kit lists cream `#F5F0E6`, Fredoka One / Quicksand (or other template fonts), and coral/turquoise accents, those exact tokens MUST appear — never replace them with OD skeleton terracotta `#c96442`, ink `#1c1b1a`, or Noto Sans KR-only typography.",
-    "If complete motif SVGs are provided, copy at least one provided SVG onto the cover and reuse that drawn CSS/SVG motif language — still do not invent ellipse daisy SVGs or emoji ornaments.",
+    "Whatever hex colors and font-family names the kit lists MUST appear in the deck CSS — do not approximate them with Neutral slate `#0f172a`, OD skeleton terracotta `#c96442` (unless that hex is in the kit palette), ink `#1c1b1a`, or Noto Sans KR-only typography that ignores kit fonts.",
+    "If complete motif SVGs are provided, copy at least one provided SVG onto the cover and reuse that drawn CSS/SVG motif language — do not invent ellipse daisy SVGs or emoji ornaments.",
     "A complete closed deck beats perfect motif fidelity; never fall back to Neutral Modern, Simple Deck skeleton accent, generic pastel circles, or source-page decorations.",
   ].join("\n");
 }

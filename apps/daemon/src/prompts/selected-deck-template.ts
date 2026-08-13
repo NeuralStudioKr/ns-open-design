@@ -69,9 +69,10 @@ export function selectedDeckTemplateTitleStub(templateTitle: string): string {
     '',
     `Template: ${title}`,
     'The Template visual kit could not be loaded this turn — still treat this selected template as the visual contract.',
-    'Infer palette / typography / motif from the title when possible.',
-    'If the title implies Daisy Days / cream pastel / playful floral: prefer cream `#F5F0E6`, Fredoka One / Quicksand, chunky borders — NEVER OD skeleton terracotta `#c96442`, Neutral slate `#0f172a`, or emoji flowers (🌼🌸⭐🌈).',
-    'Do not invent ellipse daisy SVGs. Prefer simple CSS shapes / chunky borders in the template palette when Motif sprites are unavailable.',
+    'Infer palette / typography / motif ONLY from this template title and any Visual summary cues in the prompt.',
+    'Do NOT invent a Daisy Days cream/`#F5F0E6`/Fredoka look unless this template title/summary explicitly implies that identity.',
+    'Never fall back to Neutral slate `#0f172a`, OD skeleton terracotta `#c96442` (unless that hex is part of this template), emoji ornament rows, or ellipse daisy SVGs.',
+    'Prefer simple CSS shapes / chunky borders in the inferred template palette when Motif sprites are unavailable.',
     'Do not fall back to the default simple-deck / scenario look.',
   ].join('\n');
 }

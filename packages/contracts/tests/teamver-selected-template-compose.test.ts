@@ -118,7 +118,7 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     expect(prompt).toContain('#F5F0E6');
     expect(prompt).toContain('Fredoka One');
     expect(prompt).toContain('Motif sprites');
-    expect(prompt).toContain('Do not invent emoji flowers');
+    expect(prompt).toMatch(/Do not invent emoji ornaments|Forbidden motif substitutes/i);
     expect(prompt).toContain('SECONDARY — brand context only');
     expect(prompt).toContain('Never turn a cheerful pastel / cream template into a dark Neutral Modern gradient');
     expect(prompt).toContain('Selected deck template visual — READ LAST');
@@ -156,7 +156,7 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     expect(readLastSection).toMatch(/attached\s+source|Canvas\s*\/\s*Drive/i);
     expect(readLastSection).toMatch(/source(?:'s)?\s+palette|source\s+HTML/i);
     expect(readLastSection).toMatch(/html.*body|KEEP verbatim/i);
-    expect(readLastSection).toMatch(/preview panel|cream-slides-on-dark-shell|dark app-shell/i);
+    expect(readLastSection).toMatch(/preview-panel shell|paper-slides-on-wrong-shell|wrong preview-panel shell|dark app-shell/i);
     expect(prompt).toContain('### Slide surface');
     expect(prompt).toMatch(/\*\*background\*\*:\s*`#F5F0E6`/i);
     expect(prompt).toMatch(/\*\*color\*\*\s*\(text\):\s*`#2D2D2D`/i);
@@ -210,7 +210,8 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
       '',
       'Template: Html Ppt Zhangzara Coral',
       'The Template visual kit could not be loaded this turn — still treat this selected template as the visual contract.',
-      'Do not invent ellipse daisy SVGs. Prefer simple CSS shapes / chunky borders in the template palette when Motif sprites are unavailable.',
+      'Infer palette / typography / motif ONLY from this template title and any Visual summary cues in the prompt.',
+      'Do NOT invent a Daisy Days cream/`#F5F0E6`/Fredoka look unless this template title/summary explicitly implies that identity.',
       'Do not fall back to the default simple-deck / scenario look.',
     ].join('\n');
     const skillBody = wrapSelectedDeckTemplateSkillBody(stub, 'Html Ppt Zhangzara Coral');
