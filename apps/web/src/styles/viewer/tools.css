@@ -2147,7 +2147,7 @@ button.teamver-drive-import-attach:hover:not(:disabled) {
 /* Picker grid needs enough room for 3–4 preview cards; single-option /
    legacy dropdown launches keep the compact 460px width. */
 .teamver-canvas-slide-launch-modal--wide {
-  width: min(920px, calc(100vw - 32px));
+  width: min(960px, calc(100vw - 32px));
 }
 /* Single outer scroll: header + footer stay fixed; body scrolls once (no
    nested template grid scroll). */
@@ -2511,8 +2511,10 @@ button.teamver-drive-import-attach:hover:not(:disabled) {
 }
 .teamver-canvas-slide-launch-template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
+  /* 3× 16:9 thumbs on the wide modal (~920px). 4-col minmax(180px) made
+     cards too wide-and-short once example.html chrome ate the frame. */
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
   /* Flow with the modal's single outer scroll — no nested scroll trap. */
   max-height: none;
   overflow: visible;
@@ -2520,7 +2522,7 @@ button.teamver-drive-import-attach:hover:not(:disabled) {
 }
 @media (max-width: 640px) {
   .teamver-canvas-slide-launch-template-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     max-height: none;
   }
 }
@@ -2612,11 +2614,18 @@ button.teamver-drive-import-attach:hover:not(:disabled) {
   border-radius: 6px;
   overflow: hidden;
   background: #fff;
+  /* Scale the 1920×1080 slide canvas by card width (same recipe as
+     recent-projects thumbs). Percent-of-parent iframe sizing copied the
+     chrome-shrunk frame, so 16:9 decks were cropped top/bottom. */
+  container-type: inline-size;
 }
-/* PreviewSurface inside the picker card mirrors the home gallery framing
-   (deck templates are authored for desktop, so scale a wider virtual viewport
-   into the 16:9 card). Kept scoped so it does not affect the home galleries. */
-.teamver-canvas-slide-launch-template-card-frame .plugins-home__preview {
+/* PreviewSurface inside the picker card: hide the example.html chrome
+   strip so the 16:9 frame is the slide, not slide-plus-browser-bar. */
+.teamver-canvas-slide-launch-template-card-frame .plugins-home__html-chrome {
+  display: none;
+}
+.teamver-canvas-slide-launch-template-card-frame .plugins-home__preview,
+.teamver-canvas-slide-launch-template-card-frame .plugins-home__html {
   position: absolute;
   inset: 0;
   aspect-ratio: auto;
@@ -2625,11 +2634,15 @@ button.teamver-drive-import-attach:hover:not(:disabled) {
 .teamver-canvas-slide-launch-template-card-frame .plugins-home__html-iframe {
   top: 0;
   left: 0;
-  width: 360%;
-  height: 360%;
-  transform: scale(0.2777778);
+  width: 1920px;
+  height: 1080px;
+  transform: scale(calc(100cqw / 1920px));
   transform-origin: 0 0;
   transition: none;
+}
+.teamver-canvas-slide-launch-template-card-frame .plugins-home__media-img,
+.teamver-canvas-slide-launch-template-card-frame .plugins-home__media-video {
+  object-fit: contain;
 }
 .teamver-canvas-slide-launch-template-card-default {
   position: absolute;
@@ -2796,13 +2809,14 @@ button.teamver-drive-import-attach:hover:not(:disabled) {
 }
 .teamver-canvas-slide-launch-template-skeleton {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
   padding: 2px;
 }
 .teamver-canvas-slide-launch-template-skeleton-card {
   width: 100%;
-  height: 132px;
+  aspect-ratio: 16 / 9;
+  height: auto;
   border-radius: 12px;
   animation: teamver-canvas-slide-launch-shimmer 1.2s ease-in-out infinite;
 }

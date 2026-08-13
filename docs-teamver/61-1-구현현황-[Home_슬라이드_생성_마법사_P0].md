@@ -17,6 +17,7 @@
 
 ## 진행 메모
 
+- 2026-08-13: 템플릿 카드 썸네일 — `example.html` 크롬을 프레임에서 숨기고 iframe을 1920×1080 → `100cqw` 스케일. 그리드 minmax 240px(약 3열)로 16:9 슬라이드가 잘리지 않게.
 - 2026-08-13: 첨부 UI를 FE composer `+` 메뉴와 같이 아이콘 행(드라이브 폴더 / 파일 업로드) + 드롭존. 드래그·클립보드 파일/스크린샷 붙여넣기. 프롬프트 textarea의 텍스트 붙여넣기는 가로채지 않음.
 - 2026-08-13: 리뷰 — Drive 중첩 시 Escape가 마법사까지 닫히던 점(topmost backdrop만 dismiss). body/entry-main 스크롤 잠금·포커스 트랩. 전역 `button:hover`가 마법사 내부 confirm/스텝퍼/칩/스타일 칩 배경을 지우는 것 보정. 기획 2.1을 last-explicit 핀·워드마크·portal과 맞춤.
 - 2026-08-13: CreateHero CTA hover가 전역 `button:hover`에 배경이 지워지던 문제 수정 (`button.teamver-home-create-hero-cta` + accent-hover). 마법사는 `teamver-drive-picker-backdrop` + `createPortal(document.body)` — 존재하지 않던 import-backdrop 때문에 Home 아래에 패널이 붙던 문제.
