@@ -267,9 +267,11 @@ export async function seedTemplateClonedDeckOnServer(
     || input.deckTitle?.trim()
     || input.templateTitle?.trim()
     || loaded.title;
+  // Content length wins. Only pass maxSlides when the user explicitly hinted
+  // a count — never pad to the template's demo page count (discouraged).
   const cloned = buildTemplateClonedDeckHtml(loaded.html, slides, {
     title: deckTitle,
-    maxSlides: countHint ?? Math.max(slides.length, 6),
+    ...(countHint != null ? { maxSlides: countHint } : {}),
   });
   if (!cloned) {
     return {

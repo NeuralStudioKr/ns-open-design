@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildTemplateClonedDeckHtml,
+  classifyTemplateCloneShellRole,
+  inferTemplateCloneContentRole,
   listTemplateCloneSlideShells,
   normalizeTemplateCssForFixedCanvas,
+  pickTemplateShellsForContent,
   resolveTemplateCloneSlideCountHint,
   resolveTemplateCloneSlidesFromBrief,
 } from '../src/template-clone-fill.js';
@@ -42,7 +45,7 @@ describe('buildTemplateClonedDeckHtml', () => {
     expect(shells.length).toBe(4);
   });
 
-  it('keeps template shells when outline is empty', async () => {
+  it('uses a short starter count when outline is empty (not full template lineup)', async () => {
     const html = await readFile(
       new URL(
         '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
@@ -50,10 +53,35 @@ describe('buildTemplateClonedDeckHtml', () => {
       ),
       'utf8',
     );
-    const cloned = buildTemplateClonedDeckHtml(html, [], { title: 'Fallback Deck', maxSlides: 3 });
+    const natural = listTemplateCloneSlideShells(html).length;
+    expect(natural).toBeGreaterThan(6);
+    const cloned = buildTemplateClonedDeckHtml(html, [], { title: 'Fallback Deck' });
     expect(cloned).toBeTruthy();
     expect(cloned).toContain('#F5F0E6');
+    // Must NOT mirror Daisy's ~10 demo pages when there is no content outline.
     expect(listTemplateCloneSlideShells(cloned!).length).toBe(3);
+    expect(listTemplateCloneSlideShells(cloned!).length).toBeLessThan(natural);
+  });
+
+  it('picks shells by content role instead of template page order', async () => {
+    const html = await readFile(
+      new URL(
+        '../../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const shells = listTemplateCloneSlideShells(html);
+    const slides = [
+      { title: '표지' },
+      { title: '체크리스트', body: '하나\n둘\n셋' },
+      { title: '한 줄 메시지', body: 'A'.repeat(140) },
+    ];
+    const picked = pickTemplateShellsForContent(shells, slides);
+    expect(classifyTemplateCloneShellRole(picked[0]!)).toBe('cover');
+    expect(classifyTemplateCloneShellRole(picked[1]!)).toBe('list');
+    expect(classifyTemplateCloneShellRole(picked[2]!)).toBe('quote');
+    expect(inferTemplateCloneContentRole(slides[1]!, 1, 3)).toBe('list');
   });
 
   it('supports div.slide shells', () => {
@@ -166,7 +194,7 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     expect(slides.map((s) => s.title)).toEqual(['Vision', 'Milestones', 'Risks']);
   });
 
-  it('returns [] when brief is empty so natural template shells remain', () => {
+  it('returns [] when brief is empty (build uses short role-diverse starter)', () => {
     expect(resolveTemplateCloneSlidesFromBrief({})).toEqual([]);
   });
 });
@@ -195,9 +223,9 @@ describe('free-form Daisy clone content swap', () => {
       userInstruction: 'AI 트렌드 발표자료를 만들어줘',
       deckTitle: 'Html Ppt Zhangzara Daisy Days',
     });
+    const natural = listTemplateCloneSlideShells(html).length;
     const cloned = buildTemplateClonedDeckHtml(html, slides, {
       title: slides[0]?.title || 'AI 트렌드',
-      maxSlides: 6,
     });
     expect(cloned).toBeTruthy();
     expect(cloned).toContain('#F5F0E6');
@@ -207,5 +235,10 @@ describe('free-form Daisy clone content swap', () => {
     expect(cloned).toMatch(/width:\s*1920px/i);
     // vw→px so type scale matches template preview intent on fixed canvas
     expect(cloned).not.toMatch(/font-size:\s*clamp\([^)]*vw/i);
+    // Content length — not Daisy's full demo page count/order.
+    const outCount = listTemplateCloneSlideShells(cloned!).length;
+    expect(outCount).toBe(slides.length);
+    expect(outCount).toBeLessThan(natural);
+    expect(outCount).toBeGreaterThanOrEqual(3);
   });
 });

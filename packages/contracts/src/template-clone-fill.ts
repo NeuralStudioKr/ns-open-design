@@ -4,6 +4,9 @@
  * The daemon reads plugin `example.html` from disk and content-swaps Source
  * text into real template shells. Do not dump full HTML into the BYOK system
  * prompt, and do not copy the template original into user-visible project refs/.
+ *
+ * Policy: reuse each shell's layout/role/motif — do NOT mirror the template's
+ * demo page count, order, or section lineup.
  */
 
 export type TemplateCloneSlideContent = {
@@ -81,36 +84,153 @@ export function listTemplateCloneSlideShells(html: string): SlideShell[] {
   return out;
 }
 
-function pickTemplateShells(shells: SlideShell[], count: number): SlideShell[] {
+/**
+ * Template Clone policy (Teamver):
+ * - Do NOT copy the template's page count, order, or section lineup.
+ * - Read each shell's layout/role/motif, then reuse the right shell for each
+ *   content slide (cover vs list vs cards vs quote…).
+ */
+export type TemplateCloneShellRole =
+  | 'cover'
+  | 'list'
+  | 'cards'
+  | 'timeline'
+  | 'stat'
+  | 'quote'
+  | 'team'
+  | 'process'
+  | 'closing'
+  | 'body';
+
+export function classifyTemplateCloneShellRole(shell: {
+  attrs: string;
+  body: string;
+}): TemplateCloneShellRole {
+  const hay = `${shell.attrs}\n${shell.body.slice(0, 800)}`;
+  if (/\bslide-title\b|\bcover\b|\bhero\b|\btitle-box\b/i.test(hay)) return 'cover';
+  if (/\bslide-quote\b|\bquote-text\b|\bquote-mark\b/i.test(hay)) return 'quote';
+  if (/\bslide-timeline\b|\btimeline\b/i.test(hay)) return 'timeline';
+  if (/\bslide-donut\b|\bslide-chart|\bdonut\b|\bchart-bar\b|\bkpi\b/i.test(hay)) return 'stat';
+  if (/\bslide-team\b|\bteam-member\b|\bteam-avatar\b/i.test(hay)) return 'team';
+  if (/\bslide-process\b|\bprocess-|\bstep-circle\b/i.test(hay)) return 'process';
+  if (/\bslide-cards\b|\bslide-weekly\b|\bcards-grid\b|\binfo-card\b|\bweekly-grid\b/i.test(hay)) {
+    return 'cards';
+  }
+  if (/\bslide-welcome\b|\bwelcome-list\b|<[uo]l\b/i.test(hay)) return 'list';
+  if (/\bslide-closing\b|\bthanks\b|\bend\b|\bclosing\b/i.test(hay)) return 'closing';
+  return 'body';
+}
+
+export function inferTemplateCloneContentRole(
+  slide: TemplateCloneSlideContent,
+  index: number,
+  total: number,
+): TemplateCloneShellRole {
+  if (index === 0) return 'cover';
+  const title = slide.title.trim();
+  const body = slide.body?.trim() ?? '';
+  const blob = `${title}\n${body}`;
+  const lines = body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (index === total - 1 && total >= 3 && /다음|정리|요약|thanks|closing|wrap.?up|결론/i.test(title)) {
+    return 'closing';
+  }
+  // Body shape wins over title keywords — a "KPI" slide with bullet lines
+  // still needs a list shell so content-swap can land the bullets.
+  if (lines.length >= 2 || /^[-*•·]/.test(body) || /^\d+[.)]/.test(body)) return 'list';
+  if (/\bKPI\b|\d+\s*%|통계|지표|차트|수치/i.test(blob)) return 'stat';
+  if (/타임라인|로드맵|일정|milestone|timeline|roadmap/i.test(blob)) return 'timeline';
+  if (/팀|멤버|조직|people|team\b/i.test(title)) return 'team';
+  if (/프로세스|절차|단계|process|steps?/i.test(title)) return 'process';
+  if (body.length >= 100 && lines.length <= 1) return 'quote';
+  if (lines.length === 1 && body.length < 100) return 'cards';
+  return 'body';
+}
+
+function leastUsedShell(pool: SlideShell[], usage: Map<SlideShell, number>): SlideShell | null {
+  if (pool.length === 0) return null;
+  let best = pool[0]!;
+  let bestUses = usage.get(best) ?? 0;
+  for (const shell of pool) {
+    const uses = usage.get(shell) ?? 0;
+    if (uses < bestUses) {
+      best = shell;
+      bestUses = uses;
+    }
+  }
+  return best;
+}
+
+function pickShellByRole(
+  role: TemplateCloneShellRole,
+  byRole: Map<TemplateCloneShellRole, SlideShell[]>,
+  cover: SlideShell,
+  bodyPool: SlideShell[],
+  usage: Map<SlideShell, number>,
+): SlideShell {
+  const fallbacks: TemplateCloneShellRole[] = (() => {
+    switch (role) {
+      case 'cover':
+        return ['cover'];
+      case 'list':
+        return ['list', 'body', 'cards', 'process'];
+      case 'cards':
+        return ['cards', 'list', 'body'];
+      case 'timeline':
+        return ['timeline', 'process', 'list', 'body'];
+      case 'stat':
+        return ['stat', 'cards', 'body'];
+      case 'quote':
+        return ['quote', 'body'];
+      case 'team':
+        return ['team', 'cards', 'body'];
+      case 'process':
+        return ['process', 'timeline', 'list', 'body'];
+      case 'closing':
+        return ['closing', 'quote', 'body'];
+      default:
+        return ['body', 'list', 'cards', 'quote'];
+    }
+  })();
+
+  if (role === 'cover') return cover;
+
+  for (const candidateRole of fallbacks) {
+    // Never reuse the cover shell for body roles — title layouts lack list/card slots.
+    const pool = (byRole.get(candidateRole) ?? []).filter((shell) => shell !== cover);
+    const best = leastUsedShell(pool, usage);
+    if (best) return best;
+  }
+
+  return leastUsedShell(bodyPool, usage) ?? cover;
+}
+
+/** Pick layout shells by content role — never mirror template page order/count. */
+export function pickTemplateShellsForContent(
+  shells: SlideShell[],
+  slides: TemplateCloneSlideContent[],
+): SlideShell[] {
   if (shells.length === 0) return [];
-  if (count <= 0) return [shells[0]!];
-  if (shells.length === count) return shells;
-  if (shells.length > count) {
-    if (count === 1) return [shells[0]!];
-    const out: SlideShell[] = [shells[0]!];
-    const body = shells.slice(1);
-    const remaining = count - 1;
-    if (body.length <= remaining) return [...out, ...body].slice(0, count);
-    for (let i = 0; i < remaining; i += 1) {
-      const idx = Math.round((i * (body.length - 1)) / Math.max(1, remaining - 1));
-      const shell = body[idx]!;
-      if (!out.includes(shell)) out.push(shell);
-    }
-    for (const shell of body) {
-      if (out.length >= count) break;
-      if (!out.includes(shell)) out.push(shell);
-    }
-    return out.slice(0, count);
+  if (slides.length === 0) return [shells[0]!];
+
+  const byRole = new Map<TemplateCloneShellRole, SlideShell[]>();
+  for (const shell of shells) {
+    const role = classifyTemplateCloneShellRole(shell);
+    const list = byRole.get(role) ?? [];
+    list.push(shell);
+    byRole.set(role, list);
   }
-  // Need more slides than the template provides — cycle body shells.
-  const out = [...shells];
-  const bodyPool = shells.length > 1 ? shells.slice(1) : shells;
-  let i = 0;
-  while (out.length < count) {
-    out.push(bodyPool[i % bodyPool.length]!);
-    i += 1;
+  const cover = byRole.get('cover')?.[0] ?? shells[0]!;
+  const bodyPool = shells.filter((shell) => shell !== cover);
+  const usage = new Map<SlideShell, number>();
+  const picked: SlideShell[] = [];
+
+  for (let i = 0; i < slides.length; i += 1) {
+    const role = inferTemplateCloneContentRole(slides[i]!, i, slides.length);
+    const shell = pickShellByRole(role, byRole, cover, bodyPool, usage);
+    picked.push(shell);
+    usage.set(shell, (usage.get(shell) ?? 0) + 1);
   }
-  return out;
+  return picked;
 }
 
 /** Replace the first text node after a tag close; never rewrite tag innards. */
@@ -298,29 +418,43 @@ export function buildTemplateClonedDeckHtml(
     const body = slide.body?.trim();
     cleanedSlides.push(body ? { title, body } : { title });
   }
-  // Slide-count policy:
-  // - Source outline headings win (never silently drop headings for a short hint).
-  // - When the hint is *larger* than the outline, pad by cloning body shells.
-  // - With no outline, use the hint or the template's natural length.
+  // Slide-count policy (NOT template fidelity):
+  // - Content outline / synthesized brief wins.
+  // - Explicit user maxSlides hint may expand (never shrink below outline).
+  // - Never default to the template's natural page count/order.
   const hint = options.maxSlides != null
     ? Math.min(20, Math.max(1, options.maxSlides))
     : null;
-  let targetCount: number;
-  if (cleanedSlides.length > 0) {
-    targetCount = cleanedSlides.length;
-    if (hint != null && hint > targetCount) targetCount = hint;
-    targetCount = Math.min(20, targetCount);
-  } else {
-    targetCount = Math.min(shells.length, hint ?? shells.length);
-  }
-  const picked = pickTemplateShells(shells, targetCount);
   const deckTitle = options.title?.trim()
     || cleanedSlides[0]?.title
     || 'Presentation';
 
+  let workingSlides: TemplateCloneSlideContent[];
+  if (cleanedSlides.length > 0) {
+    workingSlides = cleanedSlides.slice(0, 20);
+    if (hint != null && hint > workingSlides.length) {
+      while (workingSlides.length < hint) {
+        const n = workingSlides.length + 1;
+        workingSlides.push({
+          title: n === 1 ? deckTitle : `${deckTitle} · ${n}`,
+          body: '',
+        });
+      }
+    }
+  } else {
+    // Empty brief: short starter deck with role-diverse shells — not all
+    // template demo pages in demo order.
+    const starterCount = hint ?? 3;
+    workingSlides = Array.from({ length: Math.min(20, starterCount) }, (_, index) => ({
+      title: index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`,
+      body: '',
+    }));
+  }
+
+  const picked = pickTemplateShellsForContent(shells, workingSlides);
   const filled = picked.map((shell, index) => {
-    const content = cleanedSlides[index] ?? {
-      title: index === 0 ? deckTitle : `${deckTitle} ${index + 1}`,
+    const content = workingSlides[index] ?? {
+      title: index === 0 ? deckTitle : `${deckTitle} · ${index + 1}`,
     };
     return fillSlideShell(shell, content, index);
   });
@@ -432,9 +566,8 @@ function deriveTitleFromBrief(brief: string, deckTitle?: string | null): string 
 
 /**
  * Free-form Home/wizard prompts have no Visible-headings outline. Still
- * synthesize multiple content-bearing slides so Clone does not leave the
- * template's marketing titles/subtitles ("Daisy Days", "cheerful…") intact.
- * Slide count stays multi-page via daemon `maxSlides` padding.
+ * synthesize content-bearing slides so Clone does not leave template marketing
+ * copy intact. Length follows the brief — never the template's demo page count.
  */
 export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
   brief: string;
@@ -481,9 +614,16 @@ export function synthesizeTemplateCloneSlidesFromFreeFormBrief(options: {
     return out.slice(0, 20);
   }
 
+  // Short free-form ask: a few role-diverse content slides (cover / overview /
+  // points / next). Do not expand to the template's 9–10 demo pages.
   return [
     { title, body: brief.slice(0, 180) },
-    { title: 'Overview', body: brief.slice(0, 1200) },
+    { title: '개요', body: brief.slice(0, 1200) },
+    {
+      title: '핵심 포인트',
+      body: ['핵심 메시지를 정리합니다', '청중에게 남길 한 줄을 고릅니다', '근거와 사례를 덧붙입니다'].join('\n'),
+    },
+    { title: '다음 단계', body: '후속 액션과 논의를 이어갑니다.' },
   ];
 }
 
@@ -535,7 +675,8 @@ export function resolveTemplateCloneSlidesFromBrief(options: {
 
   // Free-form prompt (Home wizard / gallery): synthesize content-bearing
   // slides so template marketing copy is replaced. Empty brief still returns
-  // [] so buildTemplateClonedDeckHtml can keep the template's natural shells.
+  // [] — build then uses a short role-diverse starter, not the template's
+  // full demo page lineup.
   if (!text) return [];
   return synthesizeTemplateCloneSlidesFromFreeFormBrief({
     brief: text,
