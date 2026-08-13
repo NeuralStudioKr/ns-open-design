@@ -37,8 +37,9 @@
 
 | 경로 | 역할 |
 |------|------|
-| **Explicit 템플릿 Canvas→Slide (우선)** | FE → `POST /api/projects/:id/template-clone-deck` → daemon이 **plugin 설치 경로**에서 preview 읽고 heading swap → 프로젝트에는 **`deck.html`만** 기록 (`refs/`에 템플릿 원본 복사 금지). 성공 시 모델 structure gen / auto-send **스킵** |
-| **시드 실패·기본 템플릿** | 기존 kit+map 모델 경로 (full HTML scaffold 프롬프트 inject 금지). 단, `deck.html.artifact.json`에 `templateClonedDeckSeeded`가 있으면 **이미 시드된 deck을 유지**하고 모델 fallback 하지 않음 |
+| **Explicit 템플릿 Canvas→Slide (우선)** | FE → `POST /api/projects/:id/template-clone-deck` → daemon이 **plugin 설치 경로**에서 preview 읽고 heading swap → 프로젝트에는 **`deck.html`만** 기록 (`refs/`에 템플릿 원본 복사 금지). 성공 시 모델 structure gen / auto-send **스킵**. Home modal은 커뮤니티에서 고른 deck을 기본 선택으로 승격 |
+| **시드 실패 (explicit 템플릿)** | **모델 Neutral fallthrough 금지.** 에러 표시 + 재시도. (`deck.html`이 이미 seeded면 recover로 유지) |
+| **기본 템플릿만** | 기존 kit+map 모델 경로 (full HTML scaffold 프롬프트 inject 금지) |
 
 **구현:**
 - `apps/daemon/src/template-clone-deck.ts` + project-routes endpoint

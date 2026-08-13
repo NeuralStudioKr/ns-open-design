@@ -403,6 +403,22 @@ export function HomeView({
   const [canvasSlideQuickSettings, setCanvasSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
     DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
   );
+  // Canvas→Slide modal used to always open on "기본 슬라이드 템플릿", ignoring
+  // the community gallery pick the user already made. Seed from the active
+  // deck visual template whenever the one-confirm opens (do not override an
+  // explicit non-default pick the user made in a previous modal open).
+  useEffect(() => {
+    if (!canvasSlideLaunch) return;
+    const fromActive = slideOnlyMvp
+      ? resolveSlideOnlyDeckTemplateSkillId(active?.record)
+      : null;
+    if (!fromActive) return;
+    setCanvasSlideTemplateId((current) =>
+      current === CANVAS_CREATE_SLIDES_PLUGIN_ID || !current.trim()
+        ? fromActive
+        : current,
+    );
+  }, [canvasSlideLaunch, active?.record, slideOnlyMvp]);
   const [communityExternalPreviewError, setCommunityExternalPreviewError] = useState<string | null>(
     null,
   );
@@ -1941,11 +1957,24 @@ export function HomeView({
     setError(null);
     try {
       if (canvasSlideLaunch.kind === 'canvas') {
+        // Prefer an explicit modal pick; if the modal is still on the default
+        // "기본" option, honor the community gallery deck the user already
+        // activated (same id Clone will read).
+        const templateForRun = (() => {
+          if (isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)) {
+            return selectedCanvasSlideTemplate;
+          }
+          const fromActive = slideOnlyMvp
+            ? resolveSlideOnlyDeckTemplateSkillId(active?.record)
+            : null;
+          if (!fromActive) return selectedCanvasSlideTemplate;
+          return resolveCanvasSlideTemplate(canvasSlideTemplates, fromActive);
+        })();
         // Explicit visual templates (Daisy Days, etc.) own the look via
         // selectedDeckTemplate* + example.html kit. Do not auto-bind Neutral
         // Modern — its DESIGN.md was still landing in the BYOK system prompt.
         const submittedDesignSystemId =
-          slideOnlyMvp && !isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+          slideOnlyMvp && !isExplicitCanvasSlideVisualTemplate(templateForRun)
             ? resolveEmbedSlideDesignSystemId({
                 explicitId: null,
                 workspaceDefaultId: defaultDesignSystemId,
@@ -1958,13 +1987,13 @@ export function HomeView({
           null;
         const sourceBrief = canvasCreateSlidesSourceBrief(canvasSlideLaunch.handoff);
         const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
-          selectedCanvasSlideTemplate,
+          templateForRun,
           { slideOnlyMvp },
         );
         const submitResult = await Promise.resolve(
           onSubmit({
             prompt: canvasCreateSlidesRunPrompt(
-              selectedCanvasSlideTemplate.title,
+              templateForRun.title,
               sourceBrief,
               canvasSlideUserPrompt,
               canvasSlideQuickSettings,
@@ -1973,12 +2002,12 @@ export function HomeView({
             pluginType: 'official',
             skillId: null,
             appliedPluginSnapshotId: null,
-            pluginTitle: selectedCanvasSlideTemplate.title,
+            pluginTitle: templateForRun.title,
             taskKind: null,
             pluginInputs: {
               ...canvasCreateSlidesPluginInputs(
                 topicHint,
-                selectedCanvasSlideTemplate.title,
+                templateForRun.title,
                 sourceBrief,
                 canvasSlideUserPrompt,
                 canvasSlideQuickSettings,
@@ -2010,14 +2039,24 @@ export function HomeView({
 
       const asset = canvasSlideLaunch.asset;
       const sourceBrief = driveCreateSlidesSourceBrief(asset);
+      const templateForRun = (() => {
+        if (isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)) {
+          return selectedCanvasSlideTemplate;
+        }
+        const fromActive = slideOnlyMvp
+          ? resolveSlideOnlyDeckTemplateSkillId(active?.record)
+          : null;
+        if (!fromActive) return selectedCanvasSlideTemplate;
+        return resolveCanvasSlideTemplate(canvasSlideTemplates, fromActive);
+      })();
       const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
-        selectedCanvasSlideTemplate,
+        templateForRun,
         { slideOnlyMvp },
       );
       const submitResult = await Promise.resolve(
         onSubmit({
           prompt: canvasCreateSlidesRunPrompt(
-            selectedCanvasSlideTemplate.title,
+            templateForRun.title,
             sourceBrief,
             canvasSlideUserPrompt,
             canvasSlideQuickSettings,
@@ -2026,12 +2065,12 @@ export function HomeView({
           pluginType: 'official',
           skillId: null,
           appliedPluginSnapshotId: null,
-          pluginTitle: selectedCanvasSlideTemplate.title,
+          pluginTitle: templateForRun.title,
           taskKind: null,
           pluginInputs: {
             ...canvasCreateSlidesPluginInputs(
               asset.filename ?? asset.assetId,
-              selectedCanvasSlideTemplate.title,
+              templateForRun.title,
               sourceBrief,
               canvasSlideUserPrompt,
               canvasSlideQuickSettings,
@@ -2041,7 +2080,7 @@ export function HomeView({
           projectKind: 'deck',
           projectMetadata: templateBinding.projectMetadata,
           designSystemId:
-            slideOnlyMvp && !isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+            slideOnlyMvp && !isExplicitCanvasSlideVisualTemplate(templateForRun)
               ? resolveEmbedSlideDesignSystemId({
                   explicitId: null,
                   workspaceDefaultId: defaultDesignSystemId,

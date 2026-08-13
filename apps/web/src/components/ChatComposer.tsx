@@ -2116,11 +2116,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
               return;
             }
-            // Fall through to kit+map model path when asset clone fails.
-            devLog.warn('Template clone seed failed; falling back to model kit path', seeded);
-            setUploadError(
-              '선택한 템플릿 복제에 실패해 일반 생성으로 이어갑니다. 결과가 다를 수 있습니다.',
+            // Explicit visual template: do NOT fall through to Neutral kit.
+            // Keep the modal/URL handoff so the user can retry Clone.
+            devLog.warn('Template clone seed failed; blocking model kit fallthrough', seeded);
+            setCanvasSlideLaunchError(
+              '선택한 템플릿을 적용하지 못했습니다. 다시 시도해 주세요.',
             );
+            return;
           }
           const baseMeta = currentRunContextMeta();
           const canvasMeta = canvasCreateSlidesTurnMeta(selectedCanvasSlideTemplate.id, {
@@ -2279,10 +2281,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             setCanvasSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
             return;
           }
-          devLog.warn('Template clone seed failed; falling back to model kit path', seeded);
-          setUploadError(
-            '선택한 템플릿 복제에 실패해 일반 생성으로 이어갑니다. 결과가 다를 수 있습니다.',
+          // Explicit visual template: do NOT fall through to Neutral kit.
+          // Keep the modal/URL handoff so the user can retry Clone.
+          devLog.warn('Template clone seed failed; blocking model kit fallthrough', seeded);
+          setCanvasSlideLaunchError(
+            '선택한 템플릿을 적용하지 못했습니다. 다시 시도해 주세요.',
           );
+          return;
         }
         {
           const baseMeta = currentRunContextMeta();

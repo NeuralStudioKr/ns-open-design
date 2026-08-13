@@ -2656,12 +2656,15 @@ function AppInner() {
               skipAutoSendForTemplateClone = true;
               seededDeckFileName = seeded.fileName;
             } else {
+              // Explicit visual template: NEVER fall through to Neutral kit
+              // auto-send — that path is what made Daisy look "unused".
+              skipAutoSendForTemplateClone = true;
               devLog.warn(
-                'Home Canvas template clone seed failed; keeping model kit auto-send',
+                'Home Canvas template clone seed failed; blocking model kit auto-send',
                 seeded,
               );
               setWorkingDirError(
-                '선택한 템플릿 복제에 실패해 일반 생성으로 이어갑니다. 결과가 다를 수 있습니다.',
+                '선택한 템플릿을 적용하지 못했습니다. 프로젝트는 열렸으니 슬라이드 생성을 다시 시도해 주세요.',
               );
             }
           }
@@ -2741,12 +2744,13 @@ function AppInner() {
           skipAutoSendForTemplateClone = true;
           seededDeckFileName = seeded.fileName;
         } else {
+          skipAutoSendForTemplateClone = true;
           devLog.warn(
-            'Home template clone seed failed; keeping model kit auto-send',
+            'Home template clone seed failed; blocking model kit auto-send',
             seeded,
           );
           setWorkingDirError(
-            '선택한 템플릿 복제에 실패해 일반 생성으로 이어갑니다. 결과가 다를 수 있습니다.',
+            '선택한 템플릿을 적용하지 못했습니다. 프로젝트는 열렸으니 슬라이드 생성을 다시 시도해 주세요.',
           );
         }
       }
@@ -2819,9 +2823,23 @@ function AppInner() {
             appliedPluginSnapshotId: result.appliedPluginSnapshotId,
           }
         : result.project;
-      const projectForNav = skipAutoSendForTemplateClone
-        ? { ...project, pendingPrompt: undefined }
-        : project;
+      const projectForNav = seededDeckFileName
+        ? {
+            ...project,
+            pendingPrompt: undefined,
+            metadata: {
+              ...(project.metadata && typeof project.metadata === 'object'
+                ? project.metadata
+                : {}),
+              templateClonedDeckSeeded: true,
+              ...(selectedDeckTemplateId
+                ? { selectedDeckTemplateId }
+                : {}),
+            },
+          }
+        : skipAutoSendForTemplateClone
+          ? { ...project, pendingPrompt: undefined }
+          : project;
       rememberLocalProject(projectForNav.id);
       flushSync(() => {
         setProjects((curr) => [

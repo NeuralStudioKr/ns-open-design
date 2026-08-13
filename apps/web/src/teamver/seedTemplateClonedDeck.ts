@@ -134,26 +134,25 @@ export async function seedTemplateClonedDeck(options: {
     return recoverExistingTemplateClonedDeck(projectId);
   };
 
-  try {
+  const body = JSON.stringify({
+    pluginId,
+    templateTitle: options.templateTitle ?? null,
+    sourceBrief: options.sourceBrief ?? null,
+    userInstruction: options.userInstruction ?? null,
+    deckTitle: options.deckTitle ?? null,
+    slideCountHint: options.slideCountHint ?? null,
+  });
+
+  const attempt = async (): Promise<SeedTemplateClonedDeckResult> => {
     const resp = await fetchTeamverDaemon(
       `/api/projects/${encodeURIComponent(projectId)}/template-clone-deck`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pluginId,
-          templateTitle: options.templateTitle ?? null,
-          sourceBrief: options.sourceBrief ?? null,
-          userInstruction: options.userInstruction ?? null,
-          deckTitle: options.deckTitle ?? null,
-          slideCountHint: options.slideCountHint ?? null,
-        }),
+        body,
       },
     );
     if (!resp.ok) {
-      const recovered = await recover();
-      if (recovered) return recovered;
-
       let message = `Template clone failed (${resp.status})`;
       let reason: Extract<SeedTemplateClonedDeckResult, { ok: false }>['reason'] =
         resp.status === 404 ? 'missing_preview' : 'clone_failed';
@@ -177,8 +176,6 @@ export async function seedTemplateClonedDeck(options: {
       templateId?: string;
     };
     if (!json?.ok || json.fileName !== 'deck.html') {
-      const recovered = await recover();
-      if (recovered) return recovered;
       return {
         ok: false,
         reason: 'clone_failed',
@@ -191,7 +188,29 @@ export async function seedTemplateClonedDeck(options: {
       slideCount: typeof json.slideCount === 'number' ? json.slideCount : 1,
       templateId: typeof json.templateId === 'string' ? json.templateId : pluginId,
     };
+  };
+
+  try {
+    let result = await attempt();
+    // One retry for transient daemon/plugin-register races (missing_plugin on
+    // a cold HA pod that still has the bundled folder).
+    if (
+      !result.ok
+      && (result.reason === 'missing_plugin' || result.reason === 'fetch_failed')
+    ) {
+      result = await attempt();
+    }
+    if (result.ok) return result;
+    const recovered = await recover();
+    if (recovered) return recovered;
+    return result;
   } catch (err) {
+    try {
+      const retried = await attempt();
+      if (retried.ok) return retried;
+    } catch {
+      /* fall through */
+    }
     const recovered = await recover();
     if (recovered) return recovered;
     return {

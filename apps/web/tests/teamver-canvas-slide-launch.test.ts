@@ -442,11 +442,16 @@ describe("canvasSlideLaunch", () => {
     expect(app).toContain("pendingPrompt: null");
     expect(app).toContain("pendingPrompt: undefined");
     expect(app).toContain("slideCountHintFromInputs");
+    expect(app).toContain("blocking model kit auto-send");
+    expect(app).toContain("templateClonedDeckSeeded: true");
     expect(app).toContain("headings:");
     expect(app).toContain("Home community / design-template card");
     expect(app).toContain("od:auto-send-first:");
     expect(seeder).toContain("recoverExistingTemplateClonedDeck");
     expect(seeder).toContain("templateClonedDeckSeeded");
+    expect(home).toContain("resolveSlideOnlyDeckTemplateSkillId(active?.record)");
+    expect(home).toContain("templateForRun");
+    expect(composer).toContain("blocking model kit fallthrough");
     const projectRoutes = readFileSync(
       resolve(__dirname, "../../daemon/src/project-routes.ts"),
       "utf8",
