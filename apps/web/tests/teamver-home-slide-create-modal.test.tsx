@@ -168,6 +168,52 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(screen.queryByTestId("teamver-home-slide-create-tips")).toBeNull();
   });
 
+  it("stages dropped files from the attach zone", () => {
+    const onAddFiles = vi.fn();
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onAddFiles={onAddFiles}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const file = new File(["brief"], "brief.txt", { type: "text/plain" });
+    fireEvent.drop(screen.getByTestId("teamver-home-slide-create-attach-zone"), {
+      dataTransfer: { files: [file], items: [], types: ["Files"] },
+    });
+    expect(onAddFiles).toHaveBeenCalledWith([file]);
+  });
+
+  it("stages pasted files on the dialog", () => {
+    const onAddFiles = vi.fn();
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onAddFiles={onAddFiles}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const file = new File(["shot"], "shot.png", { type: "image/png" });
+    fireEvent.paste(screen.getByTestId("teamver-home-slide-create-modal"), {
+      clipboardData: { files: [file], items: [], types: ["Files"] },
+    });
+    expect(onAddFiles).toHaveBeenCalledWith([file]);
+  });
+
   it("new entry without explicit template requires visiting style step before confirm", () => {
     wrap(
       <TeamverHomeSlideCreateModal

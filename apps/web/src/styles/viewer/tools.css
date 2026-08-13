@@ -3554,6 +3554,65 @@ button.teamver-home-slide-create-stepper-btn:focus-visible {
   flex-wrap: wrap;
   gap: 8px;
 }
+.teamver-home-slide-create-attach-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 6px 8px;
+  border: 1px dashed color-mix(in srgb, var(--border) 85%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-subtle) 45%, var(--bg-panel));
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.teamver-home-slide-create-attach-zone.is-drag-active {
+  border-color: var(--accent);
+  border-style: solid;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-panel));
+}
+.teamver-home-slide-create-attach-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+button.teamver-home-slide-create-attach-item {
+  appearance: none;
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+button.teamver-home-slide-create-attach-item:hover:not(:disabled),
+button.teamver-home-slide-create-attach-item:focus-visible {
+  background: var(--bg-subtle);
+  border-color: transparent;
+  color: var(--text-strong);
+  outline: none;
+}
+button.teamver-home-slide-create-attach-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.teamver-home-slide-create-attach-item-icon {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+.teamver-home-slide-create-attach-hint {
+  margin: 2px 12px 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
 .teamver-home-slide-create-attach-btn {
   min-height: 34px;
   padding: 0 12px;

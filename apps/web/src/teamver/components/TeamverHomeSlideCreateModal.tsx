@@ -77,6 +77,46 @@ const QUICK_SETTING_GROUPS = [
   },
 ] as const;
 
+function collectTransferFiles(data: DataTransfer | null | undefined): File[] {
+  if (!data) return [];
+  const fromList = Array.from(data.files ?? []);
+  if (fromList.length > 0) return fromList;
+  const fromItems: File[] = [];
+  for (const item of Array.from(data.items ?? [])) {
+    if (item.kind !== "file") continue;
+    const file = item.getAsFile();
+    if (file) fromItems.push(file);
+  }
+  return fromItems;
+}
+
+function shouldReadAsyncClipboard(data: DataTransfer | null | undefined): boolean {
+  if (!data) return true;
+  if (collectTransferFiles(data).length > 0) return false;
+  const types = Array.from(data.types ?? []);
+  if (types.some((type) => type === "text/plain" || type === "text/html")) return false;
+  return types.length === 0 || types.some((type) => type === "Files" || type.startsWith("image/"));
+}
+
+async function readClipboardImageFiles(): Promise<File[]> {
+  if (typeof navigator === "undefined" || !navigator.clipboard?.read) return [];
+  try {
+    const items = await navigator.clipboard.read();
+    const files: File[] = [];
+    const stamp = Date.now();
+    for (const item of items) {
+      const imageType = item.types.find((type) => type.startsWith("image/"));
+      if (!imageType) continue;
+      const blob = await item.getType(imageType);
+      const extension = imageType.split("/")[1]?.replace("jpeg", "jpg") || "png";
+      files.push(new File([blob], `clipboard-screenshot-${stamp}.${extension}`, { type: imageType }));
+    }
+    return files;
+  } catch {
+    return [];
+  }
+}
+
 export function TeamverHomeSlideCreateModal({
   open,
   entry,
@@ -105,11 +145,15 @@ export function TeamverHomeSlideCreateModal({
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const [step, setStep] = useState<TeamverHomeSlideCreateStep>("content");
   const [templateVisited, setTemplateVisited] = useState(entry === "template");
+  const [dragActive, setDragActive] = useState(false);
 
   useTeamverDriveModalFocusTrap(open, dialogRef);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setDragActive(false);
+      return;
+    }
     setStep("content");
     setTemplateVisited(entry === "template");
   }, [open, entry]);
@@ -150,6 +194,26 @@ export function TeamverHomeSlideCreateModal({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, confirming, onClose]);
 
+  useEffect(() => {
+    if (!open || confirming || step !== "content") return;
+    const node = dialogRef.current;
+    if (!node) return;
+    function onPaste(event: ClipboardEvent) {
+      const files = collectTransferFiles(event.clipboardData);
+      if (files.length > 0) {
+        event.preventDefault();
+        onAddFiles?.(files);
+        return;
+      }
+      if (!shouldReadAsyncClipboard(event.clipboardData)) return;
+      void readClipboardImageFiles().then((images) => {
+        if (images.length > 0) onAddFiles?.(images);
+      });
+    }
+    node.addEventListener("paste", onPaste);
+    return () => node.removeEventListener("paste", onPaste);
+  }, [open, confirming, step, onAddFiles]);
+
   const normalizedQuick = useMemo(
     () => ({ ...DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS, ...quickSettings }),
     [quickSettings],
@@ -181,6 +245,36 @@ export function TeamverHomeSlideCreateModal({
     setStep("template");
   }
 
+  function addDroppedFiles(files: File[]) {
+    if (confirming || files.length === 0) return;
+    onAddFiles?.(files);
+  }
+
+  function onAttachDragEnter(event: { dataTransfer?: DataTransfer | null; preventDefault: () => void }) {
+    if (!event.dataTransfer?.types.includes("Files")) return;
+    event.preventDefault();
+    setDragActive(true);
+  }
+
+  function onAttachDragOver(event: { dataTransfer?: DataTransfer | null; preventDefault: () => void }) {
+    if (!event.dataTransfer?.types.includes("Files")) return;
+    event.preventDefault();
+    setDragActive(true);
+  }
+
+  function onAttachDragLeave(event: { currentTarget: EventTarget; relatedTarget: EventTarget | null }) {
+    const current = event.currentTarget;
+    const related = event.relatedTarget;
+    if (current instanceof Node && related instanceof Node && current.contains(related)) return;
+    setDragActive(false);
+  }
+
+  function onAttachDrop(event: { dataTransfer: DataTransfer | null; preventDefault: () => void }) {
+    event.preventDefault();
+    setDragActive(false);
+    addDroppedFiles(collectTransferFiles(event.dataTransfer));
+  }
+
   function updateQuickSetting<K extends keyof CanvasSlideQuickSettings>(
     key: K,
     value: CanvasSlideQuickSettings[K],
@@ -194,27 +288,43 @@ export function TeamverHomeSlideCreateModal({
         <p className="teamver-home-slide-create-section-title">
           {t("teamver.homeCreate.attachTitle")}
         </p>
-        <div className="teamver-home-slide-create-attach-actions">
+      <div
+        className={[
+          "teamver-home-slide-create-attach-zone",
+          dragActive ? "is-drag-active" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        data-testid="teamver-home-slide-create-attach-zone"
+        onDragEnter={onAttachDragEnter}
+        onDragOver={onAttachDragOver}
+        onDragLeave={onAttachDragLeave}
+        onDrop={onAttachDrop}
+      >
+        <div className="teamver-home-slide-create-attach-menu" role="group">
+          {onAttachFromDrive ? (
+            <button
+              type="button"
+              className="teamver-home-slide-create-attach-item"
+              disabled={confirming}
+              data-testid="teamver-home-slide-create-drive"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onAttachFromDrive}
+            >
+              <Icon name="folder" size={18} className="teamver-home-slide-create-attach-item-icon" />
+              <span>{t("teamver.homeCreate.drive")}</span>
+            </button>
+          ) : null}
           <button
             type="button"
-            className="teamver-home-slide-create-attach-btn"
+            className="teamver-home-slide-create-attach-item"
             disabled={confirming}
             data-testid="teamver-home-slide-create-upload"
             onClick={() => fileInputRef.current?.click()}
           >
-            {t("teamver.homeCreate.upload")}
+            <Icon name="upload" size={18} className="teamver-home-slide-create-attach-item-icon" />
+            <span>{t("teamver.homeCreate.upload")}</span>
           </button>
-          {onAttachFromDrive ? (
-            <button
-              type="button"
-              className="teamver-home-slide-create-attach-btn"
-              disabled={confirming}
-              data-testid="teamver-home-slide-create-drive"
-              onClick={onAttachFromDrive}
-            >
-              {t("teamver.homeCreate.drive")}
-            </button>
-          ) : null}
           <input
             ref={fileInputRef}
             type="file"
@@ -227,6 +337,7 @@ export function TeamverHomeSlideCreateModal({
             }}
           />
         </div>
+        <p className="teamver-home-slide-create-attach-hint">{t("teamver.homeCreate.attachHint")}</p>
         {(stagedFiles.length > 0 || stagedDriveAssets.length > 0) && (
           <ul className="teamver-home-slide-create-chips">
             {stagedFiles.map((file, index) => (
@@ -257,6 +368,7 @@ export function TeamverHomeSlideCreateModal({
             ))}
           </ul>
         )}
+      </div>
       </div>
 
       <div
