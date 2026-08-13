@@ -54,9 +54,12 @@ describe('manual edit freeze reset', () => {
   });
 
   it('skips wild-jump deny during tip-remount geometry grace', () => {
-    expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-1', 1_000, 1_800)).toBe(true);
-    expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-2', 1_000, 1_800)).toBe(false);
-    expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-1', 2_000, 1_800)).toBe(false);
-    expect(shouldSkipWildJumpAfterTipRemountGrace(null, 'el-1', 1_000, 1_800)).toBe(false);
+    expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-1', 'el-1', 1_000, 1_800)).toBe(true);
+    // Sibling multi-select remasure must not consume another element's grace.
+    expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-2', 'el-1', 1_000, 1_800)).toBe(false);
+    expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-1', 'el-2', 1_000, 1_800)).toBe(false);
+    expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-1', 'el-1', 2_000, 1_800)).toBe(false);
+    expect(shouldSkipWildJumpAfterTipRemountGrace(null, 'el-1', 'el-1', 1_000, 1_800)).toBe(false);
+    expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-1', null, 1_000, 1_800)).toBe(false);
   });
 });

@@ -1233,6 +1233,7 @@ function isManualEditLockedHostTag(tag: string): boolean {
  */
 function sanitizeManualEditElementAttrs(el: Element): void {
   const tag = el.tagName.toLowerCase();
+  const tagLocal = manualEditLocalTagName(tag);
   for (const attr of Array.from(el.attributes)) {
     const lower = attr.name.toLowerCase();
     // Namespaced handlers (`svg:onerror`) — gate on local name.
@@ -1269,7 +1270,8 @@ function sanitizeManualEditElementAttrs(el: Element): void {
       continue;
     }
     if (
-      MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
+      (MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
+        || MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tagLocal))
       && (local === 'href' || lower === 'xlink:href')
       && !isSafeManualEditSvgResourceRef(attr.value)
     ) {
@@ -1536,9 +1538,10 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     .replace(/\sstyle\s*=\s*[^\s>]+/gi, '')
     // SVG presentation attrs — same gate as DOM isSafeManualEditPresentationCssValue
     // (normalize/escape, bare data|blob, url/var/expression, image-set/element/-moz-binding).
+    // Optional namespace prefix (`svg:fill`) — local-name only misses these.
     .replace(
       new RegExp(
-        `\\s(?:${presentationAttrs})\\s*=\\s*(['"])([\\s\\S]*?)\\1`,
+        `\\s(?:[\\w.-]+:)?(?:${presentationAttrs})\\s*=\\s*(['"])([\\s\\S]*?)\\1`,
         'gi',
       ),
       (full, _quote: string, value: string) => (
@@ -1547,7 +1550,7 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     )
     .replace(
       new RegExp(
-        `\\s(?:${presentationAttrs})\\s*=\\s*([^\\s>]+)`,
+        `\\s(?:[\\w.-]+:)?(?:${presentationAttrs})\\s*=\\s*([^\\s>]+)`,
         'gi',
       ),
       (full, value: string) => (
@@ -2396,6 +2399,7 @@ function setAttributes(
     'data-screen-label',
   ]);
   const tag = el.tagName.toLowerCase();
+  const tagLocal = manualEditLocalTagName(tag);
   const entries = Object.entries(attributes);
   // Deny all attr mutation on executable / chrome hosts — including empty
   // values that would remove `type` from an inert <script type="application/json">.
@@ -2431,7 +2435,8 @@ function setAttributes(
       continue;
     }
     if (
-      MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
+      (MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
+        || MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tagLocal))
       && (local === 'href' || lower === 'xlink:href')
       && !isSafeManualEditSvgResourceRef(value)
     ) {

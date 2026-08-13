@@ -129,6 +129,26 @@ describe('manual-edit-multi-select', () => {
     });
     expect(concurrent.styles).toBeNull();
     expect(concurrent.mixedKeys.has('color')).toBe(false);
+    // perTargetStyles-only pending still owns Mixed exclude keys (59).
+    const perTargetOnly = planManualEditMultiInspectorReseed({
+      selectedIds: ['title', 'body'],
+      readStyles: read,
+      concurrentPending: {
+        styles: {},
+        perTargetStyles: { title: { fontSize: '20px' }, body: { fontSize: '20px' } },
+      },
+    });
+    expect(perTargetOnly.styles).toBeNull();
+    expect(perTargetOnly.mixedKeys.has('fontSize')).toBe(false);
+    expect(perTargetOnly.mixedKeys.has('color')).toBe(true);
+    // Empty pending shell must not block tip-yield source reseed.
+    const emptyPending = planManualEditMultiInspectorReseed({
+      selectedIds: ['title', 'body'],
+      readStyles: read,
+      concurrentPending: { styles: {}, perTargetStyles: {} },
+    });
+    expect(emptyPending.styles).not.toBeNull();
+    expect(emptyPending.mixedKeys.has('color')).toBe(true);
   });
 
   it('builds one set-style patch per changed target', () => {

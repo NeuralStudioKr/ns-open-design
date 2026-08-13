@@ -12,6 +12,7 @@ import {
   resolveManualEditSavePinTipRevision,
   resolveManualEditSourceAgainstPinAndTip,
   acceptedKeepsEarlyPaintTipOrPin,
+  nextTipPreferSuppressState,
   shouldClearTipContentCacheAfterConfirmRefuse,
   shouldEarlyPaintResolvedPinTipSource,
   shouldPreferTipWhenCandidateLags,
@@ -275,5 +276,15 @@ describe('manual edit save pin', () => {
       tipContent: tipA,
       preferTipWhenCandidateLags: prefer,
     })).toEqual({ source: diskB, clearPin: false });
+  });
+
+  it('tip-prefer suppress latch: refuse on, commit/give-up/artifact-switch off, mismatch keeps', () => {
+    expect(nextTipPreferSuppressState('confirm-refuse')).toBe(true);
+    expect(nextTipPreferSuppressState('refresh-committed', true)).toBe(false);
+    expect(nextTipPreferSuppressState('refresh-gave-up', true)).toBe(false);
+    expect(nextTipPreferSuppressState('artifact-switch', true)).toBe(false);
+    // Nested refresh cancelled this generation — keep latch for the winner.
+    expect(nextTipPreferSuppressState('refresh-generation-mismatch', true)).toBe(true);
+    expect(nextTipPreferSuppressState('refresh-generation-mismatch', false)).toBe(false);
   });
 });

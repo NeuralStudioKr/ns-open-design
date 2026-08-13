@@ -10,14 +10,34 @@ import {
   REVISION_CONTENT_CACHE_MAX_ENTRY_BYTES_DEFAULT,
 } from '@open-design/contracts';
 
-export const REVISION_CONTENT_CACHE_MAX_ENTRIES_PER_FILE =
-  REVISION_CONTENT_CACHE_MAX_ENTRIES_PER_FILE_DEFAULT;
+/**
+ * Stale `@open-design/contracts` dist can leave these exports undefined
+ * (`bytes <= undefined` → never cache). Fall back to the documented defaults
+ * so undo/redo neighbors keep working until contracts is rebuilt.
+ */
+function positiveIntOr(
+  value: unknown,
+  fallback: number,
+): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : fallback;
+}
 
-export const REVISION_CONTENT_CACHE_MAX_ENTRY_BYTES =
-  REVISION_CONTENT_CACHE_MAX_ENTRY_BYTES_DEFAULT;
+export const REVISION_CONTENT_CACHE_MAX_ENTRIES_PER_FILE = positiveIntOr(
+  REVISION_CONTENT_CACHE_MAX_ENTRIES_PER_FILE_DEFAULT,
+  8,
+);
 
-export const REVISION_CONTENT_CACHE_MAX_BYTES_PER_FILE =
-  REVISION_CONTENT_CACHE_MAX_BYTES_PER_FILE_DEFAULT;
+export const REVISION_CONTENT_CACHE_MAX_ENTRY_BYTES = positiveIntOr(
+  REVISION_CONTENT_CACHE_MAX_ENTRY_BYTES_DEFAULT,
+  4 * 1024 * 1024,
+);
+
+export const REVISION_CONTENT_CACHE_MAX_BYTES_PER_FILE = positiveIntOr(
+  REVISION_CONTENT_CACHE_MAX_BYTES_PER_FILE_DEFAULT,
+  16 * 1024 * 1024,
+);
 
 type CacheEntry = {
   content: string;

@@ -317,6 +317,7 @@ import {
   manualEditHistoryConfirmTrustsLocal,
   isManualEditSourcePinActive,
   acceptedKeepsEarlyPaintTipOrPin,
+  nextTipPreferSuppressState,
   resolveManualEditSavePinTipRevision,
   resolveManualEditSourceAgainstPinAndTip,
   shouldClearTipContentCacheAfterConfirmRefuse,
@@ -8141,6 +8142,13 @@ function HtmlViewer({
     setManualEditResizeDraftSize(null);
     setManualEditMoveDraftPos(null);
     setManualEditGroupDraftRects(null);
+    // Artifact switch: cancel confirm-refuse tip-prefer suppress + tip remount grace
+    // (generation bump below would otherwise leave suppress stuck with no commit).
+    manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
+      'artifact-switch',
+    );
+    manualEditTipRemountGeometryGraceIdRef.current = null;
+    manualEditTipRemountGeometryGraceUntilRef.current = 0;
     return () => {
       // Drop in-flight reconcile/refresh work so unmount cannot overwrite
       // persisted revision cursor state in sessionStorage after a tab switch.
@@ -8148,6 +8156,12 @@ function HtmlViewer({
       revisionRefreshGenerationRef.current += 1;
       revisionRefreshActiveRetryRef.current = 0;
       revisionRefreshListRetryRef.current = 0;
+      // Generation bump cancels refresh before commit/give-up — clear suppress here.
+      manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
+        'artifact-switch',
+      );
+      manualEditTipRemountGeometryGraceIdRef.current = null;
+      manualEditTipRemountGeometryGraceUntilRef.current = 0;
     };
   }, [file.name]);
 
@@ -8446,6 +8460,7 @@ function HtmlViewer({
   const refreshRevisionStack = useCallback(async () => {
     const refreshGeneration = ++revisionRefreshGenerationRef.current;
     const list = await listProjectFileRevisions(projectId, file.name);
+    // Generation mismatch: keep tip-prefer suppress latch (newer refresh / artifact-switch owns release).
     if (refreshGeneration !== revisionRefreshGenerationRef.current) return;
     if (!list || !Array.isArray(list.revisions)) {
       if (revisionRefreshListRetryRef.current < 8) {
@@ -8457,7 +8472,9 @@ function HtmlViewer({
         }, 250);
       } else {
         // Give up — stop confirm-refuse tip-prefer suppress so disk can recover.
-        manualEditSuppressTipPreferUntilRefreshRef.current = false;
+        manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
+          'refresh-gave-up',
+        );
       }
       return;
     }
@@ -8495,7 +8512,9 @@ function HtmlViewer({
         }, 250);
       } else {
         // Give up — stop confirm-refuse tip-prefer suppress so disk can recover.
-        manualEditSuppressTipPreferUntilRefreshRef.current = false;
+        manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
+          'refresh-gave-up',
+        );
       }
       return;
     }
@@ -8569,7 +8588,9 @@ function HtmlViewer({
     );
     commitRevisionStack(nextStack);
     // Confirm-refuse suppress ends once warm stack is replaced with list tip.
-    manualEditSuppressTipPreferUntilRefreshRef.current = false;
+    manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
+      'refresh-committed',
+    );
     const cursorRevision = nextStack.revisions.find((revision) => revision.id === nextStack.cursorRevisionId);
     if (cursorRevision) {
       setActiveRevisionSequence(projectId, file.name, cursorRevision.sequence);
@@ -9415,6 +9436,7 @@ function HtmlViewer({
         const tipRemountGrace = shouldSkipWildJumpAfterTipRemountGrace(
           manualEditTipRemountGeometryGraceIdRef.current,
           measured.id,
+          selectedManualEditTargetIdRef.current,
           Date.now(),
           manualEditTipRemountGeometryGraceUntilRef.current,
         );
@@ -11296,7 +11318,9 @@ function HtmlViewer({
       }
     }
     // Suppress disk tip prefer until refresh commits (warm stack tip≠ race).
-    manualEditSuppressTipPreferUntilRefreshRef.current = true;
+    manualEditSuppressTipPreferUntilRefreshRef.current = nextTipPreferSuppressState(
+      'confirm-refuse',
+    );
     if (shouldSyncManualEditFrozenSourceToPainted(
       manualEditMode,
       manualEditFrozenSourceRef.current,

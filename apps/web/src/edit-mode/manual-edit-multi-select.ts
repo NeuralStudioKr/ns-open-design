@@ -148,7 +148,12 @@ export function planManualEditMultiInspectorReseed(input: {
   if (idTargets.length === 0) {
     return { styles: emptyManualEditStyles(), mixedKeys: new Set() };
   }
-  if (input.concurrentPending) {
+  // Empty pending shells (styles:{} / no perTarget keys) must not block source
+  // reseed — tip-yield Mixed would keep stale draft styles otherwise (59).
+  if (
+    input.concurrentPending
+    && collectPendingManualEditStyleDraftKeys(input.concurrentPending).size > 0
+  ) {
     return {
       styles: null,
       mixedKeys: mixedKeysForPendingStyleDraft(

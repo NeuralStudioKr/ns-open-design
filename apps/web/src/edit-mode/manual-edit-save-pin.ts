@@ -231,6 +231,35 @@ export function shouldPreferTipWhenCandidateLags(input: {
   return input.diskPath && !input.suppressUntilRefresh;
 }
 
+export type ManualEditTipPreferSuppressEvent =
+  | 'confirm-refuse'
+  | 'refresh-committed'
+  | 'refresh-gave-up'
+  /** Generation bump cancelled this refresh; a newer refresh (or artifact switch) owns release. */
+  | 'refresh-generation-mismatch'
+  | 'artifact-switch';
+
+/**
+ * Tip-prefer suppress latch. Generation-mismatch keeps the current latch (newer
+ * refresh must commit/give-up). Artifact switch / unmount must clear — cancelled
+ * refresh will not reach commit after `revisionRefreshGenerationRef` bumps.
+ */
+export function nextTipPreferSuppressState(
+  event: ManualEditTipPreferSuppressEvent,
+  current: boolean = false,
+): boolean {
+  switch (event) {
+    case 'confirm-refuse':
+      return true;
+    case 'refresh-generation-mismatch':
+      return current;
+    case 'refresh-committed':
+    case 'refresh-gave-up':
+    case 'artifact-switch':
+      return false;
+  }
+}
+
 /**
  * History confirm fetches disk before undo/redo/next edit. If that GET is
  * still the pre-write snapshot while `expectedSource` is our local save,

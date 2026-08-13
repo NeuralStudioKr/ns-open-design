@@ -3,6 +3,7 @@ import {
   clearRevisionContentCacheForFile,
   getRevisionContentCache,
   prefetchRevisionContents,
+  REVISION_CONTENT_CACHE_MAX_BYTES_PER_FILE,
   REVISION_CONTENT_CACHE_MAX_ENTRIES_PER_FILE,
   REVISION_CONTENT_CACHE_MAX_ENTRY_BYTES,
   setRevisionContentCache,
@@ -10,6 +11,13 @@ import {
 } from '../../src/runtime/revision-content-cache';
 
 describe('revision-content-cache', () => {
+  it('resolves positive finite cache budget constants', () => {
+    expect(REVISION_CONTENT_CACHE_MAX_ENTRIES_PER_FILE).toBeGreaterThan(0);
+    expect(REVISION_CONTENT_CACHE_MAX_ENTRY_BYTES).toBeGreaterThan(0);
+    expect(REVISION_CONTENT_CACHE_MAX_BYTES_PER_FILE).toBeGreaterThan(0);
+    expect(Number.isFinite(REVISION_CONTENT_CACHE_MAX_ENTRIES_PER_FILE)).toBe(true);
+  });
+
   it('stores and retrieves revision content per file', () => {
     clearRevisionContentCacheForFile('p1', 'deck.html');
     setRevisionContentCache('p1', 'deck.html', 'rev-1', '<html>v1</html>');

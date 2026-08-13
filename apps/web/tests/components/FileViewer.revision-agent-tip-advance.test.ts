@@ -11,7 +11,7 @@ describe('FileViewer revision tip advance after undo', () => {
   it('paints target revision HTML and freeze when activeSequence moves the cursor', () => {
     const start = fileViewer.indexOf('const refreshRevisionStack = useCallback');
     expect(start).toBeGreaterThan(0);
-    const block = fileViewer.slice(start, start + 5_500);
+    const block = fileViewer.slice(start, start + 7_000);
     expect(block).toContain('resolveRevisionCursorId');
     expect(block).toContain('getActiveRevisionSequence');
     expect(block).toContain('cursorMovedByActiveSequence');
@@ -119,10 +119,15 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('clearRevisionContentCacheEntry');
     expect(fileViewer).toContain('shouldPreferTipWhenCandidateLags');
     expect(fileViewer).toContain('manualEditSuppressTipPreferUntilRefreshRef');
+    expect(fileViewer).toContain('nextTipPreferSuppressState');
+    expect(fileViewer).toContain('Artifact switch: cancel confirm-refuse tip-prefer suppress');
+    expect(fileViewer).toContain('Generation bump cancels refresh before commit/give-up');
+    expect(fileViewer).toContain('Generation mismatch: keep tip-prefer suppress latch');
     expect(fileViewer).toContain('shouldReseedManualEditMultiInspectorAfterFreezeSync');
     expect(fileViewer).toContain('Source-only reseed (same plan helper as batch flush / cancel) — 기획 59');
     expect(fileViewer).toContain('shouldSkipWildJumpAfterTipRemountGrace');
     expect(fileViewer).toContain('manualEditTipRemountGeometryGraceIdRef');
+    expect(fileViewer).toContain('selectedManualEditTargetIdRef.current');
     expect(fileViewer).toContain('Accept fell back — soft-retry before edit-mode hold');
     expect(fileViewer).toContain('Confirm-refuse suppress ends once warm stack is replaced');
     expect(fileViewer).toContain('activeTipResolvedHtml');
@@ -181,7 +186,7 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('settleManualEditGeometryHandoff');
     const confirmStart = fileViewer.indexOf('async function confirmManualEditHistorySource');
     expect(confirmStart).toBeGreaterThan(0);
-    const confirmBlock = fileViewer.slice(confirmStart, confirmStart + 3_200);
+    const confirmBlock = fileViewer.slice(confirmStart, confirmStart + 3_800);
     expect(confirmBlock.indexOf('tipContentForManualEditSavePin')).toBeLessThan(
       confirmBlock.indexOf('manualEditHistoryConfirmCanSkipDiskFetch'),
     );
@@ -190,7 +195,7 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(confirmBlock).toContain('Keep warm stack until refreshRevisionStack lands');
     expect(confirmBlock).toContain('scheduleManualEditSelectionEchoAfterFreezeSync');
     expect(confirmBlock).toContain('shouldClearTipContentCacheAfterConfirmRefuse');
-    expect(confirmBlock).toContain('manualEditSuppressTipPreferUntilRefreshRef.current = true');
+    expect(confirmBlock).toContain("nextTipPreferSuppressState(\n      'confirm-refuse'");
     // Confirm refuse must not wipe stack empty before refresh (tip cursor race).
     expect(confirmBlock).not.toContain('createRevisionStackSnapshot([], null)');
     expect(fileViewer).toContain('live→raw hold: skip setSource when already painting stable');

@@ -70,16 +70,23 @@ export function shouldReseedManualEditMultiInspectorAfterFreezeSync(
   return Boolean(manualEditMode && selectedIds.length > 1);
 }
 
-/** Idle remasure after tip-yield remount may jump layout — skip wild-jump deny. */
+/**
+ * Idle remasure after tip-yield remount may jump layout — skip wild-jump deny.
+ * Requires rectId === graceId === selectedId so a sibling multi-select remasure
+ * cannot consume (or be accepted under) another element's grace window.
+ */
 export function shouldSkipWildJumpAfterTipRemountGrace(
   graceId: string | null | undefined,
   rectId: string,
+  selectedId: string | null | undefined,
   nowMs: number,
   graceUntilMs: number,
 ): boolean {
   return Boolean(
     graceId
+    && selectedId
     && rectId === graceId
+    && rectId === selectedId
     && nowMs < graceUntilMs
   );
 }

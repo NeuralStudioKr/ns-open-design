@@ -1639,6 +1639,13 @@ describe('manual edit source patches', () => {
     expect(namespacedOn.toLowerCase()).not.toContain('onerror');
     expect(namespacedOn).not.toContain('alert(9)');
     expect(sourcePatchesSource).toContain('Optional namespace prefix (`svg:onerror`)');
+    // Namespaced presentation attrs — failClosed optional prefix before fill/stroke/….
+    const namespacedFill = sanitizeManualEditFullSource(
+      '<!doctype html><html><body><rect svg:fill="url(javascript:alert(1))" data-od-id="r" /></body></html>',
+    );
+    expect(namespacedFill.toLowerCase()).not.toContain('javascript');
+    expect(namespacedFill).not.toMatch(/svg:fill\s*=/i);
+    expect(sourcePatchesSource).toContain('Optional namespace prefix (`svg:fill`)');
   });
 
   it('rejects bare data:/blob: presentation paints and keeps named colors', () => {
