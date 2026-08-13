@@ -130,4 +130,29 @@ describe('resolveTemplateCloneSlidesFromBrief', () => {
     });
     expect(slides.map((s) => s.title)).toEqual(['Alpha', 'Bravo', 'Charlie']);
   });
+
+  it('returns [] when only a free-form prompt is supplied (no outline)', () => {
+    // Home template-card path: user picked a template and typed a free-form
+    // prompt with no numbered outline / Visible headings marker. Returning
+    // one `{title: deckTitle}` slide collapsed the deck to a single slide
+    // and hid the template's real layout variety. Empty output lets the
+    // clone build all natural template shells (user report 2026-08-13).
+    const slides = resolveTemplateCloneSlidesFromBrief({
+      userInstruction: 'Make a deck about our Q3 team plans.',
+      deckTitle: 'Team Plans',
+    });
+    expect(slides).toEqual([]);
+  });
+
+  it('picks up numbered outlines from user instructions', () => {
+    const slides = resolveTemplateCloneSlidesFromBrief({
+      userInstruction: [
+        'Make a deck for our roadmap:',
+        '1. Vision',
+        '2. Milestones',
+        '3. Risks',
+      ].join('\n'),
+    });
+    expect(slides.map((s) => s.title)).toEqual(['Vision', 'Milestones', 'Risks']);
+  });
 });

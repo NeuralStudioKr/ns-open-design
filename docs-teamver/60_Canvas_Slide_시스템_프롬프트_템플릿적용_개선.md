@@ -127,6 +127,16 @@
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.8 2026-08-13 추가 관찰 — Home 템플릿 카드 outline 없는 프롬프트에서 slide 1장으로 collapse
+
+**증상:** 사용자 반복 신고 "여전히 내가 선택한 템플릿대로 안만들어지고있다". staging `9c59b683d`이 App.tsx에 Home community/design-template 카드 경로의 daemon Clone 호출을 이미 landed. 그러나 사용자가 outline 없는 자유 프롬프트("이 주제로 만들어줘")만 넣으면 clone 결과가 슬라이드 1장으로 축소되는 부차 문제가 남아 있었다.
+
+**원인:** `resolveTemplateCloneSlidesFromBrief`가 Visible headings / numbered `1.` 형식 outline을 찾지 못하면 `[{title: deckTitle}]`(슬라이드 1개)을 반환. 이걸 `buildTemplateClonedDeckHtml`에 넘기면 `cleanedSlides.length === 1`이라 `targetCount = 1`로 잘려 template의 cover/body/timeline/summary 등 자연 layout 다양성이 사라진다. staging App.tsx가 프롬프트를 `sourceBrief`로도 넘겨 outline 탐지에 도움이 되지만, 실제 사용자는 outline 없이 자유 프롬프트를 넣는 케이스가 훨씬 흔하다.
+
+**수정:** `packages/contracts/src/template-clone-fill.ts` — `resolveTemplateCloneSlidesFromBrief`가 outline을 못 찾으면 `[{title: deckTitle}]` 대신 **`[]`을 반환**. 빈 slides 배열이면 `buildTemplateClonedDeckHtml`이 템플릿의 자연 shell count (`shells.length`)를 그대로 사용해 원본 layout 다양성 보존. 회귀 테스트 3건: Canvas Visible headings 파싱 유지, 자유 프롬프트에 `[]` 반환, numbered outline은 title 추출.
+
+**제품 판단:** template Clone은 "미리보기 look 그대로 + 텍스트만 교체"이 원칙. 사용자가 outline을 안 줬다는 이유로 다양한 layout을 슬라이드 1장으로 뭉개면 template의 시각적 정체성이 그대로 사라진다. outline 부재 = "특별한 지시 없음" 상태로 해석해 template의 자연 count로 fallback.
+
 ### 0.7 2026-08-13 추가 장애 — kit CSS의 viewport 사이징이 preview panel을 늘림
 
 **증상:** 템플릿 + BYOK 결과물이 PPT 사이즈(1920×1080)에 맞지 않고, 브라우저 크기에 따라 슬라이드 비율이 바뀜. Canvas→Slide 전용이 아니라 **모든 템플릿+BYOK 경로**에서 재현.
@@ -601,6 +611,8 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P2 | lean compose에 slide-safe `web_fetch` 노출 여부 | 제품 결정 |
 | P0 | 슬라이드 surface hex를 example.html에서 resolve · html/body/.slide 이중 바인딩 (dark-on-dark, cream-slides-on-dark-shell 방지) | **완료** — `extractSlideSurfaceBinding` + READ LAST triple + `### Slide surface` 블록 |
 | P0 | kit CSS에서 viewport 사이징 / scroll-snap plumbing 제거 (template+BYOK 1920×1080 강제) | **완료** — `sanitizeCssRuleForFixedCanvas` + 컴팩트 컨트랙트 강화 + READ LAST 3-variant |
+| P0 | Home 템플릿 카드 경로도 daemon Clone으로 라우팅 | **완료** — staging `9c59b683d`이 App.tsx `!pendingCanvasHandoff && isExplicitCanvasSlideVisualTemplate` Clone 호출 landed |
+| P0 | outline 없는 자유 프롬프트에서 clone 결과가 슬라이드 1장으로 collapse되는 문제 | **완료** — `resolveTemplateCloneSlidesFromBrief`가 outline 못 찾을 때 `[]` 반환해 자연 shell count 보존 |
 
 ### 12.1 Edit-contract gating (상세)
 
@@ -625,3 +637,5 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-10 | 다회 감사 — soft re-reject / kind:deck over-skip / ChatComposer metadata / emergency-first+error clear / doctype segments / AC missing-disk 신호 |
 | 2026-08-13 | §0.7 추가 — kit CSS의 viewport 사이징/scroll-snap이 preview panel을 늘리는 문제 · sanitizer + compact + READ LAST 삼중 방어 |
 | 2026-08-13 | §12 P0 항목 두 개 추가·완료 표시 — 슬라이드 surface hex resolve · kit viewport 사이징 strip |
+| 2026-08-13 | §0.8 추가 — Home 템플릿 카드 outline 없는 프롬프트에서 clone 결과가 슬라이드 1장으로 collapse되는 부차 문제 · `resolveTemplateCloneSlidesFromBrief`가 outline 없을 때 `[]` 반환 (staging `9c59b683d`이 App.tsx Home Clone 라우팅은 이미 landed) |
+| 2026-08-13 | §12 P0 두 항목 추가·완료 표시 — Home 템플릿 카드 Clone 라우팅 · outline 없는 프롬프트 slide-count fallback |

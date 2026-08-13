@@ -409,6 +409,11 @@ export function resolveTemplateCloneSlidesFromBrief(options: {
   }
 
   if (out.length > 0) return out.slice(0, 20);
-  const title = options.deckTitle?.trim();
-  return title ? [{ title }] : [];
+  // No explicit outline in the source brief / user instruction: return an
+  // empty list so `buildTemplateClonedDeckHtml` keeps the template's natural
+  // slide count. Falling back to a single `{ title: deckTitle }` collapsed
+  // the deck to one slide on the Home template-card path (user picks a
+  // template + types a free-form prompt with no numbered outline), which
+  // masked the template's real layout variety.
+  return [];
 }
