@@ -294,7 +294,7 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
   });
 
-  it("fail-fasts sticky GET/HEAD without hitting nginx", async () => {
+  it("fail-fasts sticky GET/HEAD without hitting nginx when recovery is skipped", async () => {
     declinedMock.mockReturnValue(true);
     hardDeclineMock.mockReturnValue(false);
     const fetchMock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
@@ -302,6 +302,7 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
 
     const resp = await fetchTeamverDaemon("/api/projects/project-1/files?name=deck.html", {
       method: "GET",
+      skipEmbedAuthRecovery: true,
     });
 
     expect(resp.status).toBe(401);
@@ -311,6 +312,23 @@ describe("fetchTeamverDaemon embed auth recovery", () => {
     expect(probeSessionMock).not.toHaveBeenCalled();
     expect(ensureSessionMock).not.toHaveBeenCalled();
     expect(passiveUnauthorizedMock).not.toHaveBeenCalled();
+  });
+
+  it("does not fail-fast sticky GET when auth recovery is allowed (Home chip)", async () => {
+    declinedMock.mockReturnValue(false);
+    hardDeclineMock.mockReturnValue(false);
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "example-simple-deck" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resp = await fetchTeamverDaemon("/api/plugins/example-simple-deck", {
+      method: "GET",
+    });
+
+    expect(resp.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it("skips recovery ladder when hard sticky already declined", async () => {

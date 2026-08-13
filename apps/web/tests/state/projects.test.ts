@@ -315,6 +315,33 @@ describe('getInstalledPlugin', () => {
     sessionSpy.mockRestore();
     brandingSpy.mockRestore();
   });
+
+  it('keeps scenario generators when bypassSlideOnlyCatalogFilter is set (home chip bind)', async () => {
+    const designApiBase = await import('../../src/teamver/designApiBase');
+    const branding = await import('../../src/teamver/branding/config');
+    const embedSession = await import('../../src/teamver/teamverEmbedSession');
+    const embedSpy = vi.spyOn(designApiBase, 'isTeamverEmbedMode').mockReturnValue(true);
+    const sessionSpy = vi.spyOn(embedSession, 'isTeamverEmbedSessionAuthenticated').mockReturnValue(true);
+    const brandingSpy = vi.spyOn(branding, 'resolveTeamverBranding').mockReturnValue({ slideOnlyMvp: true } as never);
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({
+        id: 'example-simple-deck',
+        title: 'Simple Deck',
+        manifest: { od: { mode: 'deck' } },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+
+    const plugin = await getInstalledPlugin('example-simple-deck', {
+      bypassSlideOnlyCatalogFilter: true,
+      allowAuthRecovery: true,
+    });
+
+    expect(plugin?.id).toBe('example-simple-deck');
+    embedSpy.mockRestore();
+    sessionSpy.mockRestore();
+    brandingSpy.mockRestore();
+  });
 });
 
 describe('installGeneratedPluginFolder', () => {

@@ -193,9 +193,16 @@ function stickyDaemonUnauthorizedResponse(): Response {
 }
 
 /** Background GET/HEAD while sticky — no nginx hit (DevTools 401 spam). */
-function shouldFailFastDaemonGetWhileSticky(init: RequestInit): boolean {
+function shouldFailFastDaemonGetWhileSticky(
+  init: RequestInit,
+  options?: { skipAuthRecovery?: boolean },
+): boolean {
   if (!isTeamverEmbedMode()) return false;
   if (!isDesignAuthRefreshDeclined()) return false;
+  // User-gesture GETs that want the recovery ladder (Home chip detail) must
+  // not short-circuit to a synthetic 401. Catalog/thumbs pass
+  // skipAuthRecovery and keep fail-fast.
+  if (!options?.skipAuthRecovery) return false;
   const method = (init.method || "GET").toUpperCase();
   return method === "GET" || method === "HEAD";
 }
@@ -214,7 +221,7 @@ async function fetchDaemonWithEmbedAuthRecovery(
   // Soft/hard sticky: skip doomed background GETs entirely. Mutations still
   // hit the network once so callers get a definitive 401 for UX, without
   // re-entering the refresh/probe ladder (recovery gated below).
-  if (shouldFailFastDaemonGetWhileSticky(init)) {
+  if (shouldFailFastDaemonGetWhileSticky(init, options)) {
     return stickyDaemonUnauthorizedResponse();
   }
 

@@ -602,6 +602,7 @@ export function HomeView({
   const consumedHandoffIdRef = useRef<number | null>(null);
   const pendingPromptFocusEndRef = useRef(false);
   const activePluginApplyRequestRef = useRef(0);
+  const chipResolveRequestRef = useRef(0);
   const scrollHomeToTop = useCallback(() => {
     requestAnimationFrame(() => {
       const scrollContainer = homeViewRef.current?.closest('.entry-main--scroll');
@@ -1741,12 +1742,21 @@ export function HomeView({
       const targetId = chip.action.pluginId;
       const record = plugins.find((p) => p.id === targetId);
       if (!record) {
+        const requestId = chipResolveRequestRef.current + 1;
+        chipResolveRequestRef.current = requestId;
         setPendingChipId(chip.id);
-        void getInstalledPlugin(targetId).then((resolved) => {
+        void getInstalledPlugin(targetId, {
+          // Scenario chip bind: keep picker denylist off so a missing mode
+          // field never masks a successful GET as "not installed".
+          bypassSlideOnlyCatalogFilter: true,
+          // User click may need cookie refresh; catalog list keeps skip.
+          allowAuthRecovery: true,
+        }).then((resolved) => {
+          if (chipResolveRequestRef.current !== requestId) return;
           setPendingChipId(null);
           if (!resolved) {
             setError(
-              `Bundled scenario "${targetId}" is not installed. Reinstall the daemon to restore the default plugin set.`,
+              `Could not load scenario "${targetId}". Refresh the page and try again.`,
             );
             return;
           }

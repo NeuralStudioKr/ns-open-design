@@ -193,6 +193,7 @@ import {
   readPluginLockfile,
   registerBuiltInAtomWorkers,
   registerBundledPlugins,
+  ensureBundledPluginRegistered,
   registryRootsForDataDir,
   restoreProjectSnapshotLink,
   resolvePluginSnapshot,
@@ -7932,7 +7933,25 @@ export async function startServer({
 
   app.get('/api/plugins/:id', async (req, res) => {
     try {
-      const plugin = getInstalledPlugin(db, req.params.id);
+      let plugin = getInstalledPluginForRoute(req.params.id);
+      if (!plugin) {
+        // Boot walk can miss a row (fresh volume race, prune after a
+        // transient parse fail, HA sqlite drift). Re-hydrate from the
+        // image's plugins/_official tree before 404 — Home chip binds
+        // (example-simple-deck) depend on this GET.
+        const routeId = String(req.params.id ?? '').trim();
+        const normalized = normalizedPluginRouteId(routeId) || routeId;
+        plugin = await ensureBundledPluginRegistered({
+          db,
+          bundledRoot: BUNDLED_PLUGINS_DIR,
+          pluginId: normalized,
+          marketplaceProvenance: {
+            sourceMarketplaceId: OFFICIAL_MARKETPLACE_ID,
+            marketplaceTrust: 'official',
+            entryNamePrefix: 'open-design',
+          },
+        });
+      }
       if (!plugin) return res.status(404).json({ error: 'plugin not found' });
       if (
         isExcludedChinesePrimaryDeckPlugin(plugin, readExcludeChineseDeckTemplatesFromEnv())

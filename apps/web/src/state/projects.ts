@@ -45,7 +45,12 @@ import {
   waitForTeamverRegistrySyncIfNeeded,
 } from '../teamver/projectRegistry';
 import { isTeamverEmbedMode } from '../teamver/designApiBase';
-import { isDesignAuthRefreshDeclined, refreshTeamverEmbedAuthBeforeMutating } from '../teamver/designBffClient';
+import {
+  clearDesignAuthRefreshDecline,
+  isDesignAuthRefreshDeclined,
+  isDesignAuthRefreshDeclineHard,
+  refreshTeamverEmbedAuthBeforeMutating,
+} from '../teamver/designBffClient';
 import { resolveTeamverBranding } from '../teamver/branding/config';
 import { pluginsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { isTeamverEmbedSessionAuthenticated } from '../teamver/teamverEmbedSession';
@@ -236,17 +241,31 @@ async function fetchProjectsListWhenAuthenticated(url: string, init?: RequestIni
 }
 
 /** Plugin catalog GETs — skip when embed has no usable session; avoid raw fetch 401 spam. */
-async function fetchPluginsCatalog(url: string, init?: RequestInit): Promise<Response | null> {
-  if (
-    isTeamverEmbedMode()
-    && (!isTeamverEmbedSessionAuthenticated() || isDesignAuthRefreshDeclined())
-  ) {
-    return null;
+async function fetchPluginsCatalog(
+  url: string,
+  init?: RequestInit & {
+    /**
+     * User-gesture loads (Home chip click) may climb the embed auth recovery
+     * ladder. Background gallery/list calls keep `skipEmbedAuthRecovery`.
+     */
+    allowAuthRecovery?: boolean;
+  },
+): Promise<Response | null> {
+  const { allowAuthRecovery, ...requestInit } = init ?? {};
+  if (isTeamverEmbedMode()) {
+    if (!isTeamverEmbedSessionAuthenticated()) return null;
+    if (isDesignAuthRefreshDeclineHard()) return null;
+    if (isDesignAuthRefreshDeclined() && !allowAuthRecovery) return null;
+    // Soft sticky was often set by background catalog thumbs. Chip click is an
+    // explicit user gesture — clear soft decline so recovery GET is not
+    // fail-fasted / blocked by embedDaemonAuthRecoveryEnabled.
+    if (allowAuthRecovery && isDesignAuthRefreshDeclined()) {
+      clearDesignAuthRefreshDecline();
+    }
   }
   return fetchTeamverDaemon(url, {
-    ...init,
-    // Metadata only — do not climb refresh/probe ladders on every Home chip resolve.
-    skipEmbedAuthRecovery: true,
+    ...requestInit,
+    ...(allowAuthRecovery ? {} : { skipEmbedAuthRecovery: true }),
   });
 }
 
@@ -1360,6 +1379,11 @@ export async function getInstalledPlugin(
      * applying it here returned null → ProjectView fell back to Simple Deck.
      */
     bypassSlideOnlyCatalogFilter?: boolean;
+    /**
+     * User-initiated chip/detail resolve — allow embed cookie refresh so a
+     * soft-sticky session does not surface as "plugin not installed".
+     */
+    allowAuthRecovery?: boolean;
   } = {},
 ): Promise<InstalledPluginRecord | null> {
   const id = pluginId.trim();
@@ -1368,7 +1392,9 @@ export async function getInstalledPlugin(
   // Prefer single-plugin GET. Avoid a second catalog fan-out (`limit=48`) on
   // home boot when the community gallery already loaded `limit=24`.
   try {
-    const resp = await fetchPluginsCatalog(`/api/plugins/${encodeURIComponent(id)}`);
+    const resp = await fetchPluginsCatalog(`/api/plugins/${encodeURIComponent(id)}`, {
+      allowAuthRecovery: options.allowAuthRecovery === true,
+    });
     if (!resp?.ok) return null;
     const plugin = (await resp.json()) as InstalledPluginRecord;
     if (slideOnly && !options.bypassSlideOnlyCatalogFilter) {

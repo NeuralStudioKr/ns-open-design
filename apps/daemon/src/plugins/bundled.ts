@@ -25,6 +25,7 @@ import { promises as fsp } from 'node:fs';
 import type Database from 'better-sqlite3';
 import {
   deleteInstalledPlugin,
+  getInstalledPlugin,
   resolvePluginFolder,
   upsertInstalledPlugin,
   type RegistryRoots,
@@ -195,6 +196,100 @@ async function pathExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Lazily re-register one bundled plugin when the `installed_plugins` row is
+ * missing but the folder still ships in this image (HA sqlite drift, prune
+ * after a transient parse failure, or a fresh volume that skipped boot walk).
+ *
+ * Matches either the manifest `name` (e.g. `example-simple-deck`) or the
+ * on-disk folder basename (e.g. `simple-deck`). Returns null when the id is
+ * not under `bundledRoot`.
+ */
+export async function ensureBundledPluginRegistered(
+  input: RegisterBundledPluginsInput & { pluginId: string },
+): Promise<InstalledPluginRecord | null> {
+  const want = input.pluginId.trim().toLowerCase();
+  if (!want || !SAFE_BASENAME.test(want)) return null;
+
+  const existing = getInstalledPlugin(input.db, want);
+  if (existing) return existing;
+
+  let topLevel;
+  try {
+    topLevel = await fsp.readdir(input.bundledRoot, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+
+  for (const tier of topLevel) {
+    if (!tier.isDirectory()) continue;
+    const tierAbs = path.join(input.bundledRoot, tier.name);
+    const tierManifest = path.join(tierAbs, 'open-design.json');
+    if (await pathExists(tierManifest)) {
+      const hit = await registerOneIfIdMatches({
+        folder: tierAbs,
+        folderId: tier.name,
+        want,
+        input,
+      });
+      if (hit) return hit;
+      continue;
+    }
+    let inner;
+    try {
+      inner = await fsp.readdir(tierAbs, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of inner) {
+      if (!entry.isDirectory()) continue;
+      const folder = path.join(tierAbs, entry.name);
+      const manifest = path.join(folder, 'open-design.json');
+      if (!(await pathExists(manifest))) continue;
+      // Exact folder id, or `example-<folder>` ↔ folder basename
+      // (`example-simple-deck` ↔ `simple-deck`). Do not use loose
+      // `endsWith(-${base})` — that would parse every `*-deck` folder.
+      const base = entry.name.toLowerCase();
+      if (want !== base && want !== `example-${base}`) {
+        continue;
+      }
+      const hit = await registerOneIfIdMatches({
+        folder,
+        folderId: entry.name,
+        want,
+        input,
+      });
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+async function registerOneIfIdMatches(args: {
+  folder: string;
+  folderId: string;
+  want: string;
+  input: RegisterBundledPluginsInput;
+}): Promise<InstalledPluginRecord | null> {
+  const folderId = args.folderId.toLowerCase();
+  if (!SAFE_BASENAME.test(folderId)) return null;
+  const probe = await resolvePluginFolder({
+    folder: args.folder,
+    folderId,
+    sourceKind: 'bundled',
+    source: args.folder,
+    trust: 'bundled',
+  });
+  if (!probe.ok) return null;
+  const record = withMarketplaceProvenance(probe.record, args.input.marketplaceProvenance);
+  // Manifest name is the install id. Folder basename alone must not win when
+  // the sidecar declares a different `name`.
+  if (record.id !== args.want) return null;
+  upsertInstalledPlugin(args.input.db, record);
+  return record;
 }
 
 // Default bundled root resolution. The daemon ships its `dist/` next to
