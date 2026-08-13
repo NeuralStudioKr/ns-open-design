@@ -274,12 +274,8 @@ function selectedSlideTemplatePriorityInstruction(title: string): string {
     "Dual-path (safe rollout): if a Template scaffold (CONTENT-SWAP BASE) is present, prefer starting FROM that HTML and replacing only visible text when you can finish `</html></artifact>` in one turn.",
     "The Template visual kit remains the mandatory palette/font/Motif checklist and the valid fallback if scaffold copy would truncate — still do not invent ellipse daisy SVGs or emoji ornaments.",
     "When the scaffold/kit lists cream `#F5F0E6`, Fredoka One / Quicksand (or other template fonts), and coral/turquoise accents, those exact tokens MUST appear — never replace them with OD skeleton terracotta `#c96442`, ink `#1c1b1a`, or Noto Sans KR-only typography.",
-<<<<<<< HEAD
     "If complete motif SVGs are provided, copy at least one provided SVG onto the cover and reuse that drawn CSS/SVG motif language.",
-    "Prefer scaffold byte-order (first slide → style → remaining slides). Finish a complete deck in one turn.",
-=======
     "A complete closed deck beats a perfect-but-truncated scaffold copy.",
->>>>>>> 6c74d6d5b (fix(teamver): keep template kit; make CONTENT-SWAP scaffold additive)
     "If scaffold/kit is incomplete or unavailable, make a conservative CSS/SVG approximation of the selected template's visible preview; never fall back to Neutral Modern, Simple Deck skeleton accent, generic pastel circles, or source-page decorations.",
   ].join("\n");
 }
