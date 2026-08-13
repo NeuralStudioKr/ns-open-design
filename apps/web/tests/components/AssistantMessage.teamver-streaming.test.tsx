@@ -12,7 +12,7 @@ vi.mock('../../src/teamver/branding/TeamverBrandingProvider', () => ({
     hideAssistantModelLabels: true,
     hideAssistantThinkingDetails: true,
     slideOnlyMvp: true,
-    title: 'Teamver Design',
+    title: 'teamver Slide',
   }),
 }));
 

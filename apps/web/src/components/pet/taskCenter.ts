@@ -19,7 +19,7 @@ export function buildPetTaskCenter(
     if (!run.projectId) continue;
     const project = projectsById.get(run.projectId);
     if (!project && !allowMissingProjectIds?.has(run.projectId)) continue;
-    const projectName = project?.name ?? 'teamver Design';
+    const projectName = project?.name ?? 'teamver Slide';
     if (run.status === 'running') {
       addActiveSummary(running, run, projectName, 'running');
       continue;

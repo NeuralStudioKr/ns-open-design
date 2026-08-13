@@ -114,7 +114,7 @@ export function formatCanvasImportErrorForUser(code: string): string {
   const exact: Record<string, string> = {
     teamver_workspace_required: "Teamver 작업공간을 먼저 선택한 뒤 다시 시도하세요.",
     teamver_design_client_unavailable:
-      "teamver Design을 불러오는 중입니다 — 새로고침 후 다시 시도하세요.",
+      "teamver Slide을 불러오는 중입니다 — 새로고침 후 다시 시도하세요.",
     session_expired: formatTeamverEmbedAuthRequiredMessage(
       "로그인이 만료되었습니다. 다시 로그인한 뒤 시도하세요.",
       "연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.",

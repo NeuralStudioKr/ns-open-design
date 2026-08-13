@@ -1,4 +1,4 @@
-/* Teamver wordmark — light/dark swap (teamver-design-light.png / teamver-design-dark.png). */
+/* Teamver wordmark — light/dark swap (teamver-slide-light.png / teamver-slide-dark.png). */
 [data-theme="dark"] .teamver-logo--light {
   display: none !important;
 }

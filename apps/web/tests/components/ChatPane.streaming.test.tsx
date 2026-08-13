@@ -456,7 +456,7 @@ describe('ChatPane streaming state', () => {
     });
     expect(out).toContain('run_id: run-real-123');
     // Support-ticket header — never leaks unrelated product brand.
-    expect(out.startsWith('Teamver Design run error diagnostics')).toBe(true);
+    expect(out.startsWith('teamver Slide run error diagnostics')).toBe(true);
     expect(out).not.toContain('Open Design run error diagnostics');
   });
 

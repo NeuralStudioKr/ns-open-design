@@ -50,15 +50,15 @@ RUN --mount=type=cache,id=od-pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
 COPY apps ./apps
-# Teamver Design docker image — embed static export (SSR-safe via teamverViteEnv + process.env)
+# teamver Slide docker image — embed static export (SSR-safe via teamverViteEnv + process.env)
 ENV VITE_TEAMVER_EMBED=1
 ENV VITE_TEAMVER_BOOTSTRAP_ENABLED=1
 ARG VITE_TEAMVER_MAIN_LOGIN_URL=https://stg.teamver.com/auth/signin
 ENV VITE_TEAMVER_MAIN_LOGIN_URL=${VITE_TEAMVER_MAIN_LOGIN_URL}
-ENV VITE_TEAMVER_BRAND_TITLE="Teamver Design"
-ENV VITE_TEAMVER_BRAND_SUBTITLE="AI Design Studio"
+ENV VITE_TEAMVER_BRAND_TITLE="teamver Slide"
+ENV VITE_TEAMVER_BRAND_SUBTITLE="AI로 슬라이드·디자인 초안까지"
 ARG VITE_TEAMVER_SITE_URL=https://design.teamver.com
-ARG VITE_TEAMVER_OG_IMAGE_URL=https://design.teamver.com/teamver/teamver-design-opengraph.png
+ARG VITE_TEAMVER_OG_IMAGE_URL=https://design.teamver.com/teamver/teamver-slide-opengraph.png
 ENV VITE_TEAMVER_SITE_URL=${VITE_TEAMVER_SITE_URL}
 ENV VITE_TEAMVER_OG_IMAGE_URL=${VITE_TEAMVER_OG_IMAGE_URL}
 # Legacy bake arg — PPTX export is always on in web; value is ignored.

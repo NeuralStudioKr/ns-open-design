@@ -3086,7 +3086,7 @@ function AppInner() {
           }
         }
         if (!inSameProject && !locallyDeletedProjectIdsRef.current.has(completedRun.projectId)) {
-          const resolvedProjectName = completedProject?.name ?? 'teamver Design';
+          const resolvedProjectName = completedProject?.name ?? 'teamver Slide';
           const status = noticeStatusForBackgroundRun(completedRun);
           const reopenExtras = navigateExtrasForBackgroundRun(completedRun, completedProject);
           setBackgroundRunNotice({

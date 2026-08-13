@@ -51,11 +51,11 @@ const TEAMVER_SLIDE_ONLY_SCOPE = `
 
 ## Teamver embed — slide deck scope only
 
-This workspace is Teamver Design embed with media generation disabled for the 1st launch.
+This workspace is teamver Slide embed with media generation disabled for the 1st launch.
 
 In scope: slide decks / HTML presentations / speaker notes / deck polish on existing project files.
 
-Out of scope: standalone image, video, audio, prototype pages, live artifacts, dashboards, and non-deck web apps. If the user asks for out-of-scope output, reply briefly that Teamver Design currently supports slides only and offer to help as a slide deck instead.
+Out of scope: standalone image, video, audio, prototype pages, live artifacts, dashboards, and non-deck web apps. If the user asks for out-of-scope output, reply briefly that teamver Slide currently supports slides only and offer to help as a slide deck instead.
 
 ### Slide deliverable contract
 

@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { assistantRoleLabel } from '../../src/components/AssistantMessage';
+import {
+  assistantRoleLabel,
+  teamverAssistantIconId,
+} from '../../src/components/AssistantMessage';
 import type { ChatMessage } from '../../src/types';
 
 const t = () => 'Assistant';
+
+describe('teamverAssistantIconId', () => {
+  it('uses the brand title initial so AgentIcon letter fallback shows T for Teamver', () => {
+    expect(teamverAssistantIconId('teamver Slide')).toBe('teamver');
+    expect(teamverAssistantIconId('Teamver')).toBe('teamver');
+    expect(teamverAssistantIconId('')).toBe('teamver');
+  });
+});
 
 describe('assistantRoleLabel', () => {
   it('prefers the persisted assistant display name over the protocol id', () => {

@@ -3554,7 +3554,7 @@ export function buildRunErrorDiagnosticText(input: RunErrorDiagnosticInput): str
   // by the "copy diagnostic" button. Ops needs the internal ids below; the
   // header name is not user-facing surface.
   const lines = [
-    'Teamver Design run error diagnostics',
+    'teamver Slide run error diagnostics',
     `trace_id: ${input.traceId ?? 'n/a'}`,
     `run_id: ${input.runId ?? input.traceId ?? 'n/a'}`,
     `error_code: ${input.errorCode ?? 'n/a'}`,

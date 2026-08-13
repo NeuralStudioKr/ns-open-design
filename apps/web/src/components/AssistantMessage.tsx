@@ -716,7 +716,11 @@ function AssistantMessageImpl({
   const roleName = hideAssistantModelLabels
     ? brandTitle
     : assistantRoleName(message, t);
-  const roleIconId = agentIconId(message.agentId, message.agentName);
+  // Embed hides provider chrome but still used agentIconId (e.g. anthropic-api
+  // → letter "A"). Brand the fallback glyph as Teamver ("T") instead.
+  const roleIconId = hideAssistantModelLabels
+    ? teamverAssistantIconId(brandTitle)
+    : agentIconId(message.agentId, message.agentName);
   const hasEmptyResponse = events.some(
     (e) => e.kind === "status" && e.label === "empty_response"
   );
@@ -1148,6 +1152,16 @@ export function assistantRoleName(
     (e) => e.kind === "status" && e.label === "starting" && e.detail
   ) as Extract<AgentEvent, { kind: "status" }> | undefined;
   return agentDisplayName(starting?.detail) ?? t("assistant.role");
+}
+
+/**
+ * AgentIcon id used when Teamver embed hides provider labels.
+ * No bundled artwork → letter fallback; first latin letter of brand title
+ * (default "teamver Slide" → "T").
+ */
+export function teamverAssistantIconId(brandTitle: string): string {
+  const token = brandTitle.trim().match(/[a-z0-9]+/i)?.[0];
+  return (token || "teamver").toLowerCase();
 }
 
 export function assistantRoleLabel(

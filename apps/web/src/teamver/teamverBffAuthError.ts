@@ -27,7 +27,7 @@ function isSdkHttpUnauthorized(err: unknown): boolean {
 }
 
 /**
- * True when an error thrown from a teamver Design BFF call represents an
+ * True when an error thrown from a teamver Slide BFF call represents an
  * expired / missing HttpOnly session (HTTP 401).
  *
  * Recognized shapes:
