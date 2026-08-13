@@ -844,6 +844,42 @@ describe('ChatPane streaming state', () => {
     expect(dsChips[0]?.textContent).toContain('Neutral Modern');
   });
 
+  it('shows a stub skill chip when the catalog has not loaded the skill id yet', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        content: 'Use my skill',
+        createdAt: 1,
+        sessionMode: 'design',
+        runContext: {
+          skillIds: ['my-custom-research'],
+        },
+      },
+    ];
+
+    render(
+      <ChatPane
+        projectKindForTracking="deck"
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[]}
+        skills={[]}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('msg-skill-chip').textContent).toMatch(/my custom research/i);
+  });
+
   it('hides internal path ids from comment attachment chips', () => {
     const messages: ChatMessage[] = [
       {

@@ -128,6 +128,8 @@ import type {
   ConnectorDetail,
   InstalledPluginRecord,
   PluginSourceKind,
+  ProjectContextConnectorRef,
+  ProjectContextMcpServerRef,
   ResearchOptions,
   RunContextSelection,
   WorkspaceContextItem,
@@ -633,18 +635,40 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       useState<AppliedPluginSnapshot | null>(null);
     // Project remount clears React state — restore the pinned applied plugin
     // so the composer chip / next-send snapshot survive page re-entry.
+    // Clearing the pin must also clear the local chip (ProjectView does this;
+    // keep the composer symmetric so stale snaps cannot re-attach after clear).
     useEffect(() => {
       const snapshotId = pinnedAppliedPluginSnapshotId?.trim();
-      if (!snapshotId) return;
+      if (!snapshotId) {
+        setActiveAppliedPlugin(null);
+        return;
+      }
       let cancelled = false;
       void fetchAppliedPluginSnapshot(snapshotId).then((snap) => {
         if (cancelled || !snap) return;
-        setActiveAppliedPlugin((current) => current ?? snap);
+        setActiveAppliedPlugin((current) =>
+          current?.snapshotId === snapshotId ? current : snap,
+        );
       });
       return () => {
         cancelled = true;
       };
     }, [pinnedAppliedPluginSnapshotId]);
+    // Home create persists MCP/connector pins on project.metadata. Remount the
+    // composer chips from those refs so re-entry matches what the daemon still
+    // injects via projectMetadataContextSelection.
+    useEffect(() => {
+      const mcpRefs = projectMetadata?.contextMcpServers ?? [];
+      const connectorRefs = projectMetadata?.contextConnectors ?? [];
+      if (mcpRefs.length > 0) {
+        setStagedMcpServers((current) => mergeStagedMcpFromProjectContext(current, mcpRefs));
+      }
+      if (connectorRefs.length > 0) {
+        setStagedConnectors((current) =>
+          mergeStagedConnectorsFromProjectContext(current, connectorRefs),
+        );
+      }
+    }, [projectId, projectMetadata?.contextMcpServers, projectMetadata?.contextConnectors]);
     const pluginsSectionRef = useRef<PluginsSectionHandle | null>(null);
     const inlineBackedPluginRef = useRef<{ id: string; label: string } | null>(null);
     // Consolidated "tools" popover — a single dropdown anchored to the
@@ -1761,6 +1785,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         id,
         server?.label ?? '',
       ]));
+      void clearPinnedProjectContextRef('contextMcpServers', id);
     }
 
     function removeStagedConnector(id: string) {
@@ -1771,6 +1796,23 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         id,
         connector?.name ?? '',
       ]));
+      void clearPinnedProjectContextRef('contextConnectors', id);
+    }
+
+    async function clearPinnedProjectContextRef(
+      field: 'contextMcpServers' | 'contextConnectors',
+      id: string,
+    ): Promise<void> {
+      if (!projectId || !projectMetadata) return;
+      const pinned = projectMetadata[field];
+      if (!Array.isArray(pinned) || !pinned.some((entry) => entry.id === id)) return;
+      const nextList = pinned.filter((entry) => entry.id !== id);
+      const metadata: ProjectMetadata = {
+        ...projectMetadata,
+        ...(nextList.length > 0 ? { [field]: nextList } : { [field]: [] }),
+      };
+      const patched = await patchProject(projectId, { metadata });
+      onProjectMetadataChange?.(patched?.metadata ?? metadata);
     }
 
     function removeWorkspaceContext(id: string) {
@@ -4074,6 +4116,73 @@ function workspaceContextKindLabel(kind: WorkspaceContextItem['kind']): string {
     default:
       return 'File';
   }
+}
+
+function mcpServerFromProjectContextRef(ref: ProjectContextMcpServerRef): McpServerConfig {
+  const transport =
+    ref.transport === 'sse' || ref.transport === 'http' || ref.transport === 'stdio'
+      ? ref.transport
+      : 'stdio';
+  return {
+    id: ref.id,
+    enabled: true,
+    transport,
+    ...(ref.label ? { label: ref.label } : {}),
+    ...(ref.url ? { url: ref.url } : {}),
+    ...(ref.command ? { command: ref.command } : {}),
+  };
+}
+
+function connectorFromProjectContextRef(ref: ProjectContextConnectorRef): ConnectorDetail {
+  const status =
+    ref.status === 'connected'
+    || ref.status === 'available'
+    || ref.status === 'error'
+    || ref.status === 'disabled'
+      ? ref.status
+      : 'connected';
+  return {
+    id: ref.id,
+    name: ref.name,
+    provider: ref.provider ?? 'unknown',
+    category: ref.category ?? 'other',
+    status,
+    tools: [],
+    ...(ref.description ? { description: ref.description } : {}),
+    ...(ref.accountLabel ? { accountLabel: ref.accountLabel } : {}),
+  };
+}
+
+function mergeStagedMcpFromProjectContext(
+  current: McpServerConfig[],
+  refs: ProjectContextMcpServerRef[],
+): McpServerConfig[] {
+  if (refs.length === 0) return current;
+  const byId = new Map(current.map((server) => [server.id, server]));
+  let changed = false;
+  for (const ref of refs) {
+    const id = ref.id?.trim();
+    if (!id || byId.has(id)) continue;
+    byId.set(id, mcpServerFromProjectContextRef({ ...ref, id }));
+    changed = true;
+  }
+  return changed ? [...byId.values()] : current;
+}
+
+function mergeStagedConnectorsFromProjectContext(
+  current: ConnectorDetail[],
+  refs: ProjectContextConnectorRef[],
+): ConnectorDetail[] {
+  if (refs.length === 0) return current;
+  const byId = new Map(current.map((connector) => [connector.id, connector]));
+  let changed = false;
+  for (const ref of refs) {
+    const id = ref.id?.trim();
+    if (!id || byId.has(id)) continue;
+    byId.set(id, connectorFromProjectContextRef({ ...ref, id }));
+    changed = true;
+  }
+  return changed ? [...byId.values()] : current;
 }
 
 function StagedRunContexts({

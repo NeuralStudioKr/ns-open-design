@@ -3723,6 +3723,26 @@ function stubDesignSystemChip(
   };
 }
 
+function stubSkillChip(id: string): SkillSummary {
+  const trimmedId = id.trim();
+  const label =
+    trimmedId.replace(/^user:/i, '').replace(/[-_]+/g, ' ').trim() || trimmedId;
+  return {
+    id: trimmedId,
+    name: label,
+    description: '',
+    triggers: [],
+    mode: 'prototype',
+    previewType: 'none',
+    designSystemRequired: false,
+    defaultFor: [],
+    upstream: null,
+    hasBody: false,
+    examplePrompt: '',
+    aggregatesExamples: false,
+  };
+}
+
 function UserMessageImpl({
   message,
   projectId,
@@ -3781,10 +3801,9 @@ function UserMessageImpl({
   for (const skillId of message.runContext?.skillIds ?? []) {
     const id = skillId.trim();
     if (!id || templateIdSet.has(id) || looksLikeDeckTemplateSkillId(id)) continue;
-    const skill = skills.find((entry) => entry.id === id);
-    if (skill && !skillChips.some((entry) => entry.id === skill.id)) {
-      skillChips.push(skill);
-    }
+    if (skillChips.some((entry) => entry.id === id)) continue;
+    const skill = skills.find((entry) => entry.id === id) ?? stubSkillChip(id);
+    skillChips.push(skill);
   }
   if (
     activeSkill

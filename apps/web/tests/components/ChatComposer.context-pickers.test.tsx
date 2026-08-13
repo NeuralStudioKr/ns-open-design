@@ -18,6 +18,7 @@ import { ChatComposer, type ChatComposerHandle } from '../../src/components/Chat
 import { I18nProvider } from '../../src/i18n';
 import type { Locale } from '../../src/i18n/types';
 import type { AppliedPluginSnapshot } from '@open-design/contracts';
+import * as projectsState from '../../src/state/projects';
 import { composerText, pressEnter, typeAndSettle } from '../helpers/lexical-composer';
 
 const COMMUNITY_PLUGIN = {
@@ -880,5 +881,57 @@ describe('ChatComposer context pickers', () => {
 
     expect(screen.queryByRole('button', { name: 'Pets — wake, tuck, or pick one' })).toBeNull();
     expect(screen.queryByText('Buddy')).toBeNull();
+  });
+
+  it('hydrates Home-pinned MCP chips from project metadata on remount', async () => {
+    renderComposer({
+      projectMetadata: {
+        kind: 'deck',
+        contextMcpServers: [{ id: 'slack', label: 'Slack MCP', transport: 'stdio', command: 'slack-mcp' }],
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('staged-contexts').textContent).toContain('@Slack MCP'),
+    );
+  });
+
+  it('clears the applied-plugin chip when the project pin is removed', async () => {
+    const snapshot = {
+      ...APPLY_RESULT.appliedPlugin,
+      pluginTitle: 'My Export',
+    } as AppliedPluginSnapshot;
+    const fetchSnap = vi
+      .spyOn(projectsState, 'fetchAppliedPluginSnapshot')
+      .mockResolvedValue(snapshot);
+
+    const view = renderComposer({ pinnedAppliedPluginSnapshotId: 'snap-1' });
+    await waitFor(() =>
+      expect(screen.getByTestId('staged-contexts').textContent).toContain('My Export'),
+    );
+
+    view.rerender(composerElement({ pinnedAppliedPluginSnapshotId: null }));
+    await waitFor(() => expect(screen.queryByTestId('staged-contexts')).toBeNull());
+    fetchSnap.mockRestore();
+  });
+
+  it('patches project metadata when a Home-pinned MCP chip is removed', async () => {
+    const onProjectMetadataChange = vi.fn();
+    renderComposer({
+      projectMetadata: {
+        kind: 'deck',
+        contextMcpServers: [{ id: 'slack', label: 'Slack MCP', transport: 'stdio' }],
+      },
+      onProjectMetadataChange,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('staged-contexts').textContent).toContain('@Slack MCP'),
+    );
+    fireEvent.click(screen.getByLabelText('Remove Slack MCP'));
+
+    await waitFor(() => expect(onProjectMetadataChange).toHaveBeenCalled());
+    const patched = onProjectMetadataChange.mock.calls.at(-1)?.[0];
+    expect(patched?.contextMcpServers).toEqual([]);
   });
 });
