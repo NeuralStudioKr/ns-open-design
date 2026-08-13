@@ -13,15 +13,17 @@
  * `.deco` CSS + hard anti-emoji rules placed before any large cue.
  */
 
-// Raised from 5 200 to 6 800 so a real Zhangzara daisy sprite (~2 KB after
-// comment strip) can co-exist with the star, rainbow, tokens, decoration
-// CSS, and first-slide structure cue without truncating any of them. The
-// motif sprites are the single biggest anti-emoji signal we can hand the
-// model — clipping them was the reason Daisy Days kept coming back as 🌸
-// emoji clusters despite every prompt-level ban we added.
+// Raised from 5 200 → 6 800 → 7 400 so a real Zhangzara daisy sprite (~2 KB
+// after comment strip) can co-exist with the star, rainbow, tokens,
+// decoration CSS, the ### Slide surface binding (background/color hex +
+// contrast note), and the first-slide structure cue without truncating any
+// of them. The motif sprites + surface binding are the two biggest
+// anti-regression signals we can hand the model — clipping either was the
+// reason Daisy Days kept coming back as 🌸 emoji on a dark corporate
+// background despite every prompt-level ban we added.
 // BODY-FIRST hard rules below tell the model to emit slides before pasting
 // this kit into `<head>` so the larger budget does not invite shell-only cuts.
-const DEFAULT_MAX_CHARS = 6_800;
+const DEFAULT_MAX_CHARS = 7_400;
 
 function uniquePreserveOrder(values: string[]): string[] {
   const out: string[] = [];
@@ -73,6 +75,109 @@ function extractStyleSheets(html: string): string {
   return [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]
     .map((match) => match[1] ?? '')
     .join('\n');
+}
+
+const COLOR_VALUE_RE = /(?:#[0-9a-fA-F]{3,8}\b|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-zA-Z]+)/;
+
+function resolveCssTokenValue(rootBlock: string | null, expr: string): string | null {
+  const trimmed = expr.trim();
+  if (!trimmed) return null;
+  // Direct color literal — return as-is.
+  if (COLOR_VALUE_RE.test(trimmed) && !/^var\(/i.test(trimmed)) {
+    const literal = trimmed.match(
+      /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]+\)|hsla?\([^)]+\)/,
+    )?.[0];
+    if (literal) return literal;
+  }
+  // var(--token) → look up in :root block.
+  const varMatch = /var\(\s*(--[a-zA-Z0-9_-]+)\s*(?:,\s*([^)]+))?\)/i.exec(trimmed);
+  if (!varMatch?.[1]) return null;
+  const tokenName = varMatch[1];
+  const fallback = varMatch[2]?.trim();
+  if (rootBlock) {
+    const tokenPattern = new RegExp(
+      `${tokenName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\s*:\\s*([^;}]+)`,
+      'i',
+    );
+    const rootValue = tokenPattern.exec(rootBlock)?.[1]?.trim();
+    if (rootValue) {
+      // Follow one level of indirection (e.g. `--bg: var(--cream)`).
+      const nested = resolveCssTokenValue(rootBlock, rootValue);
+      if (nested) return nested;
+      return rootValue;
+    }
+  }
+  return fallback ? resolveCssTokenValue(rootBlock, fallback) : null;
+}
+
+/**
+ * Pull the actual slide-surface binding out of the template's example.html
+ * — the concrete `background` and `color` the body / `.slide` container
+ * uses. Without this the kit only exposes token names (`--cream`,
+ * `--border`, `--text-dark`) and models routinely mistake the ink stroke
+ * token (`--border: #2D2D2D`) for a background, producing dark-on-dark
+ * unreadable slides on templates whose true surface is a light pastel.
+ */
+function extractSlideSurfaceBinding(
+  html: string,
+  rootBlock: string | null,
+): { background: string | null; color: string | null; source: string | null } {
+  const sheet = extractStyleSheets(html);
+  const searchTargets: Array<{ selector: RegExp; label: string }> = [
+    { selector: /html\s*,\s*body|body|\.deck-stage|\.slides-container/i, label: 'body' },
+    { selector: /\.slide(?!\s*[.:])/i, label: '.slide' },
+  ];
+  let background: string | null = null;
+  let color: string | null = null;
+  let source: string | null = null;
+  const rules = [...sheet.matchAll(/([^{}@][^{]*)\{([^}]+)\}/g)];
+  for (const { selector, label } of searchTargets) {
+    for (const rule of rules) {
+      const selectorText = (rule[1] ?? '').trim();
+      const body = rule[2] ?? '';
+      if (!selector.test(selectorText)) continue;
+      if (!background) {
+        const bg = /(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/i.exec(body)?.[1];
+        if (bg) {
+          const resolved = resolveCssTokenValue(rootBlock, bg);
+          if (resolved) {
+            background = resolved;
+            source ??= label;
+          }
+        }
+      }
+      if (!color) {
+        const c = /(?:^|;)\s*color\s*:\s*([^;]+)/i.exec(body)?.[1];
+        if (c) {
+          const resolved = resolveCssTokenValue(rootBlock, c);
+          if (resolved) {
+            color = resolved;
+            source ??= label;
+          }
+        }
+      }
+      if (background && color) break;
+    }
+    if (background && color) break;
+  }
+  return { background, color, source };
+}
+
+function contrastLabel(hex: string): 'light' | 'dark' | 'unknown' {
+  const short = hex.match(/^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/);
+  const full = hex.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
+  const parts = full
+    ? [full[1], full[2], full[3]]
+    : short
+      ? [short[1]! + short[1]!, short[2]! + short[2]!, short[3]! + short[3]!]
+      : null;
+  if (!parts) return 'unknown';
+  const [r, g, b] = parts.map((h) => Number.parseInt(h!, 16));
+  if (![r, g, b].every((n) => Number.isFinite(n))) return 'unknown';
+  // Perceptual luminance (Rec. 601). Threshold at 0.5 to bucket into
+  // "light" (needs dark text) vs "dark" (needs light text).
+  const luminance = (0.299 * r! + 0.587 * g! + 0.114 * b!) / 255;
+  return luminance >= 0.5 ? 'light' : 'dark';
 }
 
 /** Compact decoration / card CSS the model can paste into a short body style. */
@@ -322,12 +427,63 @@ function extractFirstSlideStructureCue(html: string, budget: number): string | n
 const HARD_RULES = [
   'Hard rules (non-negotiable):',
   '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` slides BEFORE a large `<head>`/`<style>` dump. Put Motif sprites + Decoration CSS in one short body `<style>` after slide 1 (or tiny inline tokens). A CSS-only truncation is a failed deliverable.',
+  '- **Surface binding is authoritative — read `### Slide surface` below and use those EXACT `background` / `color` hex values for every `<section class="slide">`. Do NOT substitute a border/ink token (e.g. `#2D2D2D`, `#232323`, `#1E1E1C`) for a slide background — those are stroke colors, not surface colors. Dark-on-dark or light-on-light slides are a failed deliverable.',
   '- Keep the template scheme (light pastel stays light; dark terminal stays dark).',
   '- Motif MUST be SVG/CSS from **Motif sprites** / **Decoration CSS** below (e.g. `<div class="deco deco-daisy-tl">…svg…</div>`). Use 2–4 sprites max per slide.',
   '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration — no 🌼 🌸 🌺 🌻 🌹 ⭐ ✨ 🌟 🌈 ☀️ or similar flower/star/rainbow emoji rows pretending to be the template identity.',
   '- Preserve chunky cards/borders/offset shadows when Decoration CSS shows them.',
   '- Vary slide layouts using the template vocabulary; do not emit sparse title-only Neutral Modern slides.',
 ];
+
+function renderSlideSurfaceBlock(
+  binding: ReturnType<typeof extractSlideSurfaceBinding>,
+  colors: readonly string[],
+): string | null {
+  let background = binding.background;
+  let color = binding.color;
+  const source = binding.source;
+  // Fill missing background from the first light palette hex when the CSS
+  // parser missed it (some templates set body bg via var() indirection).
+  if (!background) {
+    for (const hex of colors) {
+      if (contrastLabel(hex) === 'light') {
+        background = hex;
+        break;
+      }
+    }
+  }
+  if (!color) {
+    for (const hex of colors) {
+      if (contrastLabel(hex) === 'dark') {
+        color = hex;
+        break;
+      }
+    }
+  }
+  if (!background && !color) return null;
+
+  const bgLabel = background ? contrastLabel(background) : 'unknown';
+  const textLabel = color ? contrastLabel(color) : 'unknown';
+  const conflict = bgLabel !== 'unknown' && textLabel !== 'unknown' && bgLabel === textLabel;
+
+  const lines = [
+    `### Slide surface (bind these on every \`<section class="slide">\`)`,
+    '',
+    background ? `- **background**: \`${background}\`${source ? ` (from \`${source}\`)` : ''}` : '- **background**: pick the lightest pastel hex from the palette above',
+    color ? `- **color** (text): \`${color}\`` : '- **color** (text): dark ink from the palette above',
+    '',
+    conflict
+      ? '⚠️ background and text are both ' + bgLabel + '. Increase contrast — never ship dark-on-dark or light-on-light slides.'
+      : bgLabel === 'light'
+        ? 'Contrast: **light background + dark ink**. Every heading, paragraph, list item, badge, and card body must use dark ink text on the light surface.'
+        : bgLabel === 'dark'
+          ? 'Contrast: **dark background + light ink**. Every heading, paragraph, list item, badge, and card body must use light text (kit cream / white) on the dark surface.'
+          : 'Verify text and background contrast; failing the WCAG legibility bar is a failed deliverable.',
+    '',
+    'Cover / body / stat / closing slides all inherit the same surface unless the template ships alternate slide-variant classes above; when in doubt, keep the same background across the deck.',
+  ];
+  return lines.join('\n');
+}
 
 /**
  * Build a markdown block describing the template's concrete visual system.
@@ -361,6 +517,16 @@ export function extractTemplateVisualKitFromHtml(
   ];
   if (root) {
     lines.push('### CSS tokens', '', '```css', root, '```', '');
+  }
+  // Slide surface (background + ink) pinned RIGHT after tokens so the model
+  // sees the concrete `background:` / `color:` hex before any font / palette
+  // / motif material. Without this, models routinely picked the ink stroke
+  // token (`#2D2D2D`) as a slide background and shipped dark-on-dark
+  // unreadable decks (Daisy Days user report 2026-08-13).
+  const surfaceBinding = extractSlideSurfaceBinding(source, root);
+  const surfaceBlock = renderSlideSurfaceBlock(surfaceBinding, colors);
+  if (surfaceBlock) {
+    lines.push(surfaceBlock, '');
   }
   if (fonts.length > 0) {
     lines.push(`### Fonts: ${fonts.join(' | ')}`, '');

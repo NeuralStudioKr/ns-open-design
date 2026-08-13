@@ -41,6 +41,21 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toMatch(/<svg\b[\s\S]*?<\/svg>/i);
     expect(kit).not.toMatch(/<svg\b[^>]*>[^<]*…/);
     expect(kit).toContain('use Motif sprites SVG inside .deco');
+    // Slide-surface binding: without this, models routinely picked the
+    // ink/stroke token (`#2D2D2D`) as a slide background and shipped
+    // dark-on-dark unreadable decks (Daisy Days user report 2026-08-13).
+    // The section must resolve the actual `body { background: var(--cream) }`
+    // binding into a concrete `#F5F0E6` hex and pair it with a dark text
+    // color for correct contrast.
+    expect(kit).toContain('### Slide surface');
+    expect(kit).toMatch(/\*\*background\*\*:\s*`#F5F0E6`/i);
+    expect(kit).toMatch(/\*\*color\*\*\s*\(text\):\s*`#2D2D2D`/i);
+    expect(kit).toMatch(/light background \+ dark ink/i);
+    // The HARD_RULES footer must call out the surface-binding contract so
+    // the concrete `Slide surface` block above cannot be misread as
+    // decoration-only guidance.
+    expect(kit).toMatch(/Surface binding is authoritative/i);
+    expect(kit).toMatch(/failed deliverable/i);
     // The classifier must ship at least ONE real multi-petal daisy sprite,
     // not just the small bear-face or the 4-arc rainbow. Zhangzara Daisy
     // Days ships 10-path SVGs on a 150×150 square viewBox with white petals
@@ -62,7 +77,7 @@ describe('extractTemplateVisualKitFromHtml', () => {
       return pathCount >= 6 && square;
     });
     expect(hasRealPetalSprite).toBe(true);
-    expect(kit!.length).toBeLessThanOrEqual(6_800);
+    expect(kit!.length).toBeLessThanOrEqual(7_400);
   });
 
   it('appendTemplateVisualKit is idempotent', () => {

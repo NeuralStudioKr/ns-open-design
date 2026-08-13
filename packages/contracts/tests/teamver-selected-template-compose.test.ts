@@ -155,6 +155,23 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     );
     expect(readLastSection).toMatch(/attached\s+source|Canvas\s*\/\s*Drive/i);
     expect(readLastSection).toMatch(/source(?:'s)?\s+palette|source\s+HTML/i);
+    // Slide surface contrast guard (Daisy Days user report 2026-08-13):
+    // model used `#2D2D2D` for both the slide background AND text,
+    // producing an unreadable dark-on-dark deck. READ LAST must forbid
+    // using the ink/border token as a slide background and require
+    // legible contrast against the kit's actual surface hex.
+    expect(readLastSection).toMatch(/Slide surface binding is authoritative/i);
+    expect(readLastSection).toContain('#2D2D2D');
+    expect(readLastSection).toMatch(/Dark-on-dark|light-on-light/i);
+    // The kit itself (embedded inside skillBody, quoted verbatim under
+    // "Selected deck template — MUST MATCH") must carry the resolved
+    // background/color hex so the READ LAST reminder has something
+    // concrete to point at. Daisy Days uses cream #F5F0E6 body background
+    // + #2D2D2D ink text.
+    expect(prompt).toContain('### Slide surface');
+    expect(prompt).toMatch(/\*\*background\*\*:\s*`#F5F0E6`/i);
+    expect(prompt).toMatch(/\*\*color\*\*\s*\(text\):\s*`#2D2D2D`/i);
+    expect(prompt).toMatch(/light background \+ dark ink/i);
   });
 
   it('keeps Coral / Bebas visual contract and demotes Simple Deck plugin ownership', () => {
