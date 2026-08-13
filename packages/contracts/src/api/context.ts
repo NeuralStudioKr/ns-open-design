@@ -11,6 +11,9 @@ export interface RunContextSelection {
    */
   selectedDeckTemplateId?: string;
   selectedDeckTemplateTitle?: string;
+  /** Design system pin for this turn — chip restore after reload. */
+  designSystemId?: string;
+  designSystemTitle?: string;
 }
 
 export type WorkspaceContextKind =

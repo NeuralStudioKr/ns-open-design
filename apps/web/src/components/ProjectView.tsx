@@ -8511,7 +8511,34 @@ export function ProjectView({
           // Best-effort GC — retry must not block on stale artifact cleanup.
         }
       }
-      const runContext = meta?.context ?? retryTarget?.userMsg.runContext;
+      const baseRunContext = meta?.context ?? retryTarget?.userMsg.runContext;
+      const turnDesignSystemId =
+        (typeof meta?.designSystemId === 'string' && meta.designSystemId.trim()
+          ? meta.designSystemId.trim()
+          : null)
+        ?? (typeof project.designSystemId === 'string' && project.designSystemId.trim()
+          ? project.designSystemId.trim()
+          : null);
+      const turnDesignSystemTitle =
+        turnDesignSystemId
+          ? designSystems.find((entry) => entry.id === turnDesignSystemId)?.title?.trim()
+            || (typeof baseRunContext?.designSystemTitle === 'string'
+              ? baseRunContext.designSystemTitle.trim()
+              : undefined)
+          : undefined;
+      const runContext = baseRunContext || turnDesignSystemId
+        ? {
+            ...(baseRunContext ?? {}),
+            ...(turnDesignSystemId
+              ? {
+                  designSystemId: turnDesignSystemId,
+                  ...(turnDesignSystemTitle
+                    ? { designSystemTitle: turnDesignSystemTitle }
+                    : {}),
+                }
+              : {}),
+          }
+        : undefined;
       const historyBase = retryTarget ? retryTarget.priorMessages : baseMessages ?? messages;
       if (
         !retryTarget &&
@@ -10570,6 +10597,9 @@ export function ProjectView({
       onProjectChange,
       slideOnlyMvp,
       finalizeSlideOnlyDeckArtifacts,
+      designSystems,
+      project.designSystemId,
+      project.metadata,
     ],
   );
 

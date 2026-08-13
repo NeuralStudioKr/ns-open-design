@@ -117,7 +117,7 @@ import { beginMainSsoMismatchRecovery } from '../teamver/mainSsoMismatchRecovery
 import { mayMutateProjectLinkedDirs } from '../teamver/embedLocalWorkspacePolicy';
 import { visibleDesignToolboxActions, pluginsForSlideOnlyMvp, skillsForSlideOnlyMvp } from '../teamver/branding/slideOnlyMvpPolicy';
 import { embedBlockedComposerSlashReason, embedSlideOnlyOutboundBlockReason } from '../teamver/branding/embedSlideOnlyOutboundGuard';
-import { patchProject } from "../state/projects";
+import { fetchAppliedPluginSnapshot, patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig, McpTemplate } from "../state/mcp";
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, Project, ProjectFile, ProjectMetadata, SkillSummary } from "../types";
@@ -330,6 +330,8 @@ interface Props {
   // ActivePluginChip on each user message (see UserMessage in
   // ChatPane). Pass `null` (or omit) to render the full rail.
   pinnedPluginId?: string | null;
+  /** Project-pinned applied-plugin snapshot — hydrate composer chip on remount. */
+  pinnedAppliedPluginSnapshotId?: string | null;
   footerAccessory?: ReactNode;
   // Slot rendered in the composer's bottom toolbar, immediately right of the
   // "+" menu. Hosts the working-directory pill so the folder selector sits by
@@ -476,6 +478,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       currentSkillId = null,
       onProjectSkillChange,
       pinnedPluginId = null,
+      pinnedAppliedPluginSnapshotId = null,
       footerAccessory,
       leadingAccessory,
       designSystemPicker,
@@ -628,6 +631,20 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [detailsRecord, setDetailsRecord] = useState<InstalledPluginRecord | null>(null);
     const [activeAppliedPlugin, setActiveAppliedPlugin] =
       useState<AppliedPluginSnapshot | null>(null);
+    // Project remount clears React state — restore the pinned applied plugin
+    // so the composer chip / next-send snapshot survive page re-entry.
+    useEffect(() => {
+      const snapshotId = pinnedAppliedPluginSnapshotId?.trim();
+      if (!snapshotId) return;
+      let cancelled = false;
+      void fetchAppliedPluginSnapshot(snapshotId).then((snap) => {
+        if (cancelled || !snap) return;
+        setActiveAppliedPlugin((current) => current ?? snap);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [pinnedAppliedPluginSnapshotId]);
     const pluginsSectionRef = useRef<PluginsSectionHandle | null>(null);
     const inlineBackedPluginRef = useRef<{ id: string; label: string } | null>(null);
     // Consolidated "tools" popover — a single dropdown anchored to the

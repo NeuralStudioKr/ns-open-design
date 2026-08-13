@@ -759,6 +759,91 @@ describe('ChatPane streaming state', () => {
     expect(screen.getByTestId('msg-template-chip').textContent).toContain('Daisy Days');
   });
 
+  it('shows template chip on follow-up turns and does not hide it behind project skillId', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        content: 'First turn',
+        createdAt: 1,
+        sessionMode: 'design',
+        runContext: {
+          selectedDeckTemplateId: 'example-html-ppt-hermes',
+          selectedDeckTemplateTitle: 'Hermes',
+          skillIds: ['example-html-ppt-hermes', 'web-search'],
+          designSystemId: 'default',
+          designSystemTitle: 'Neutral Modern',
+        },
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: 'Done',
+        createdAt: 2,
+      },
+      {
+        id: 'user-2',
+        role: 'user',
+        content: 'Revise slide 2',
+        createdAt: 3,
+        sessionMode: 'design',
+        runContext: {
+          selectedDeckTemplateId: 'example-html-ppt-hermes',
+          selectedDeckTemplateTitle: 'Hermes',
+          skillIds: ['example-html-ppt-hermes'],
+          designSystemId: 'default',
+          designSystemTitle: 'Neutral Modern',
+        },
+      },
+    ];
+
+    render(
+      <ChatPane
+        projectKindForTracking="deck"
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[]}
+        skills={[
+          {
+            id: 'web-search',
+            name: 'Web Search',
+            description: 'Search',
+            triggers: [],
+            mode: 'prototype',
+            previewType: 'html',
+            designSystemRequired: false,
+            defaultFor: [],
+            upstream: null,
+          },
+        ]}
+        currentSkillId="web-search"
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        projectMetadata={{
+          kind: 'deck',
+          selectedDeckTemplateId: 'example-html-ppt-hermes',
+          selectedDeckTemplateTitle: 'Hermes',
+        }}
+      />,
+    );
+
+    const templateChips = screen.getAllByTestId('msg-template-chip');
+    expect(templateChips).toHaveLength(2);
+    expect(templateChips[0]?.textContent).toContain('Hermes');
+    expect(templateChips[1]?.textContent).toContain('Hermes');
+    expect(screen.getByText('Web Search')).toBeTruthy();
+    const dsChips = screen.getAllByTestId('msg-design-system-chip');
+    expect(dsChips.length).toBeGreaterThanOrEqual(1);
+    expect(dsChips[0]?.textContent).toContain('Neutral Modern');
+  });
+
   it('hides internal path ids from comment attachment chips', () => {
     const messages: ChatMessage[] = [
       {

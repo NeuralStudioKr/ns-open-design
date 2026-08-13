@@ -42,6 +42,17 @@ export function selectedDeckTemplateMetadata(
   return null;
 }
 
+/** True when a skill/plugin id is the visual deck template pin (not a normal skill). */
+export function looksLikeDeckTemplateSkillId(id: string | null | undefined): boolean {
+  const trimmed = id?.trim() ?? '';
+  if (!trimmed) return false;
+  return (
+    trimmed.startsWith('example-')
+    || trimmed.startsWith('html-ppt-')
+    || /(?:^|-)ppt(?:-|$)/i.test(trimmed)
+  );
+}
+
 /** Chat chip label — prefer title, then a readable id fallback (never hide the chip). */
 export function formatSelectedDeckTemplateChipLabel(
   selected: SelectedDeckTemplateMetadata | null | undefined,
@@ -81,12 +92,7 @@ export function resolveSelectedDeckTemplateChipLabel(input: {
   // selectedDeckTemplate* fields on runContext.
   const skillIds = input.runContext?.skillIds ?? [];
   const firstSkill = skillIds[0]?.trim();
-  if (
-    firstSkill
-    && (firstSkill.startsWith('example-')
-      || firstSkill.startsWith('html-ppt-')
-      || firstSkill.includes('ppt-'))
-  ) {
+  if (firstSkill && looksLikeDeckTemplateSkillId(firstSkill)) {
     return formatSelectedDeckTemplateChipLabel({ id: firstSkill });
   }
   return null;

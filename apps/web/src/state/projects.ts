@@ -2149,7 +2149,9 @@ export async function fetchAppliedPluginSnapshot(
   snapshotId: string,
 ): Promise<AppliedPluginSnapshot | null> {
   try {
-    const resp = await fetch(
+    // Teamver embed requires daemon identity headers — plain fetch 401s and
+    // silently dropped the chat plugin chip on project re-entry.
+    const resp = await fetchTeamverDaemon(
       `/api/applied-plugins/${encodeURIComponent(snapshotId)}`,
     );
     if (!resp.ok) return null;

@@ -78,7 +78,10 @@ import {
   extractPersistedRunErrorDiagnostic,
 } from '../teamver/projectErrorMessages';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
-import { resolveSelectedDeckTemplateChipLabel } from '../runtime/selected-deck-template';
+import {
+  looksLikeDeckTemplateSkillId,
+  resolveSelectedDeckTemplateChipLabel,
+} from '../runtime/selected-deck-template';
 import { resolveLastAssistantMessageId } from '../runtime/conversation-message-dedupe';
 import {
   shouldIncludeMessageInChatRender,
@@ -1896,6 +1899,7 @@ export function ChatPane({
       currentSkillId={currentSkillId}
       onProjectSkillChange={onProjectSkillChange}
       pinnedPluginId={activePluginSnapshot?.pluginId ?? null}
+      pinnedAppliedPluginSnapshotId={activePluginSnapshot?.snapshotId ?? null}
       footerAccessory={composerFooterAccessory}
       leadingAccessory={composerLeadingAccessory}
       currentDesignSystemId={currentDesignSystemId}
@@ -2190,6 +2194,7 @@ export function ChatPane({
                 lastAssistantId={lastAssistantId}
                 firstUserMessageId={firstUserMessageId}
                 projectMetadata={projectMetadata}
+                skills={skills}
                 activePluginSnapshot={activePluginSnapshot}
                 activeSkill={activeSkill}
                 activeTemplateTitle={activeTemplateTitle}
@@ -2516,6 +2521,7 @@ function ChatRows({
   lastAssistantId,
   firstUserMessageId,
   projectMetadata,
+  skills,
   activePluginSnapshot,
   activeSkill,
   activeTemplateTitle,
@@ -2548,6 +2554,7 @@ function ChatRows({
   projectFiles: ProjectFile[];
   projectFileNames?: Set<string>;
   projectMetadata?: ProjectMetadata;
+  skills: SkillSummary[];
   onRequestOpenFile?: (name: string) => void;
   onRequestPluginDetails?: (pluginId: string) => void;
   onRequestDesignSystemDetails?: (system: DesignSystemSummary) => void;
@@ -2728,6 +2735,7 @@ function ChatRows({
           message={m}
           projectId={projectId}
           projectFileNames={projectFileNames}
+          skills={skills}
           onRequestOpenFile={onRequestOpenFile}
           onRequestPluginDetails={onRequestPluginDetails}
           onRequestDesignSystemDetails={onRequestDesignSystemDetails}
@@ -2739,7 +2747,9 @@ function ChatRows({
           }
           activeSkill={
             m.id === firstUserMessageId
-              ? activeSkill ?? null
+              && activeSkill
+              && !looksLikeDeckTemplateSkillId(activeSkill.id)
+              ? activeSkill
               : null
           }
           activeTemplateTitle={
@@ -2748,7 +2758,9 @@ function ChatRows({
                   projectMetadata,
                   runContext: m.runContext,
                 }) ?? activeTemplateTitle ?? null
-              : null
+              : resolveSelectedDeckTemplateChipLabel({
+                  runContext: m.runContext,
+                })
           }
           activeDesignSystem={
             m.id === firstUserMessageId
@@ -3694,10 +3706,28 @@ function ConversationRow({
 // props, so it skips re-render while a later turn streams.
 const UserMessage = memo(UserMessageImpl);
 
+function stubDesignSystemChip(
+  id: string,
+  title?: string | null,
+): DesignSystemSummary {
+  const trimmedId = id.trim();
+  const trimmedTitle = title?.trim();
+  return {
+    id: trimmedId,
+    title:
+      trimmedTitle
+      || trimmedId.replace(/^user:/i, '').replace(/[-_]+/g, ' ').trim()
+      || trimmedId,
+    category: '',
+    summary: '',
+  };
+}
+
 function UserMessageImpl({
   message,
   projectId,
   projectFileNames,
+  skills = [],
   onRequestOpenFile,
   onRequestPluginDetails,
   onRequestDesignSystemDetails,
@@ -3710,6 +3740,7 @@ function UserMessageImpl({
   message: ChatMessage;
   projectId: string | null;
   projectFileNames?: Set<string>;
+  skills?: SkillSummary[];
   onRequestOpenFile?: (name: string) => void;
   onRequestPluginDetails?: (pluginId: string) => void;
   onRequestDesignSystemDetails?: (system: DesignSystemSummary) => void;
@@ -3736,13 +3767,47 @@ function UserMessageImpl({
   );
   const workspaceItems = message.runContext?.workspaceItems ?? [];
   const messagePluginSnapshot = message.appliedPluginSnapshot ?? activePluginSnapshot ?? null;
+  const templateChipTitle =
+    resolveSelectedDeckTemplateChipLabel({ runContext: message.runContext })
+    || activeTemplateTitle
+    || null;
+  const templateIdSet = new Set(
+    [
+      message.runContext?.selectedDeckTemplateId?.trim(),
+      ...(message.runContext?.skillIds ?? []).filter(looksLikeDeckTemplateSkillId),
+    ].filter((id): id is string => Boolean(id)),
+  );
+  const skillChips: SkillSummary[] = [];
+  for (const skillId of message.runContext?.skillIds ?? []) {
+    const id = skillId.trim();
+    if (!id || templateIdSet.has(id) || looksLikeDeckTemplateSkillId(id)) continue;
+    const skill = skills.find((entry) => entry.id === id);
+    if (skill && !skillChips.some((entry) => entry.id === skill.id)) {
+      skillChips.push(skill);
+    }
+  }
+  if (
+    activeSkill
+    && !looksLikeDeckTemplateSkillId(activeSkill.id)
+    && !skillChips.some((entry) => entry.id === activeSkill.id)
+  ) {
+    skillChips.push(activeSkill);
+  }
+  const designSystemChip = (() => {
+    const fromMsgId = message.runContext?.designSystemId?.trim();
+    if (fromMsgId) {
+      if (activeDesignSystem?.id === fromMsgId) return activeDesignSystem;
+      return stubDesignSystemChip(fromMsgId, message.runContext?.designSystemTitle);
+    }
+    return activeDesignSystem ?? null;
+  })();
   const hasRunContext = Boolean(
     message.sessionMode ||
       workspaceItems.length > 0 ||
       messagePluginSnapshot ||
-      activeSkill ||
-      activeTemplateTitle ||
-      activeDesignSystem,
+      skillChips.length > 0 ||
+      templateChipTitle ||
+      designSystemChip,
   );
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -3802,14 +3867,15 @@ function UserMessageImpl({
               onOpenDetails={onRequestPluginDetails}
             />
           ) : null}
-          {activeSkill ? (
-            <ActiveSkillChip skill={activeSkill} />
-          ) : activeTemplateTitle ? (
-            <ActiveTemplateChip title={activeTemplateTitle} />
+          {skillChips.map((skill) => (
+            <ActiveSkillChip key={skill.id} skill={skill} />
+          ))}
+          {templateChipTitle ? (
+            <ActiveTemplateChip title={templateChipTitle} />
           ) : null}
-          {activeDesignSystem ? (
+          {designSystemChip ? (
             <ActiveDesignSystemChip
-              system={activeDesignSystem}
+              system={designSystemChip}
               onOpenDetails={onRequestDesignSystemDetails}
             />
           ) : null}

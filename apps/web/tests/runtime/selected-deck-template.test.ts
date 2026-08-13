@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   enrichChatSendMetaWithProjectDeckTemplate,
   formatSelectedDeckTemplateChipLabel,
+  looksLikeDeckTemplateSkillId,
   resolveDeckTemplateSkillId,
   resolveSelectedDeckTemplateChipLabel,
   resolveScenarioPluginIdForLocalSkill,
@@ -191,5 +192,11 @@ describe('selected-deck-template runtime helpers', () => {
         },
       }),
     ).toBe('html ppt zhangzara daisy days');
+  });
+
+  it('classifies deck template skill ids separately from normal skills', () => {
+    expect(looksLikeDeckTemplateSkillId('example-html-ppt-hermes')).toBe(true);
+    expect(looksLikeDeckTemplateSkillId('html-ppt-hermes')).toBe(true);
+    expect(looksLikeDeckTemplateSkillId('web-search')).toBe(false);
   });
 });
