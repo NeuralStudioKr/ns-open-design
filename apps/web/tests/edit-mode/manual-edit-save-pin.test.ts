@@ -15,6 +15,7 @@ import {
   nextTipPreferSuppressState,
   shouldClearTipContentCacheAfterConfirmRefuse,
   shouldEarlyPaintResolvedPinTipSource,
+  shouldPreferTipAfterConfirmRefuseArtifactSwitch,
   shouldPreferTipWhenCandidateLags,
   shouldReleaseManualEditSavePinForTip,
   tipContentForManualEditSavePin,
@@ -286,5 +287,15 @@ describe('manual edit save pin', () => {
     // Nested refresh cancelled this generation — keep latch for the winner.
     expect(nextTipPreferSuppressState('refresh-generation-mismatch', true)).toBe(true);
     expect(nextTipPreferSuppressState('refresh-generation-mismatch', false)).toBe(false);
+  });
+
+  it('restores disk tip prefer after confirm-refuse then artifact-switch', () => {
+    // Refuse alone suppresses tip prefer.
+    expect(shouldPreferTipWhenCandidateLags({
+      diskPath: true,
+      suppressUntilRefresh: nextTipPreferSuppressState('confirm-refuse'),
+    })).toBe(false);
+    // Artifact switch clears suppress so disk tip prefer works again.
+    expect(shouldPreferTipAfterConfirmRefuseArtifactSwitch()).toBe(true);
   });
 });

@@ -261,6 +261,19 @@ export function nextTipPreferSuppressState(
 }
 
 /**
+ * Confirm-refuse then artifact-switch must restore disk tip prefer — suppress
+ * cannot stick after the cancelled refresh can no longer commit (기획 50).
+ */
+export function shouldPreferTipAfterConfirmRefuseArtifactSwitch(): boolean {
+  const suppressed = nextTipPreferSuppressState('confirm-refuse');
+  const afterSwitch = nextTipPreferSuppressState('artifact-switch', suppressed);
+  return shouldPreferTipWhenCandidateLags({
+    diskPath: true,
+    suppressUntilRefresh: afterSwitch,
+  });
+}
+
+/**
  * History confirm fetches disk before undo/redo/next edit. If that GET is
  * still the pre-write snapshot while `expectedSource` is our local save,
  * trust the local buffer instead of wiping history / blocking the edit.

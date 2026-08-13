@@ -125,7 +125,11 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Generation mismatch: keep tip-prefer suppress latch');
     expect(fileViewer).toContain('shouldReseedManualEditMultiInspectorAfterFreezeSync');
     expect(fileViewer).toContain('Source-only reseed (same plan helper as batch flush / cancel) — 기획 59');
+    expect(fileViewer).toContain('concurrentPendingOwnsTipYieldReseedStyles');
+    expect(fileViewer).toContain('Never clobber in-flight draft styles while pending owns the panel');
     expect(fileViewer).toContain('shouldSkipWildJumpAfterTipRemountGrace');
+    expect(fileViewer).toContain('tipRemountGeometryGraceExpired');
+    expect(fileViewer).toContain('Expired grace: clear latch so wild-jump deny is restored');
     expect(fileViewer).toContain('manualEditTipRemountGeometryGraceIdRef');
     expect(fileViewer).toContain('selectedManualEditTargetIdRef.current');
     expect(fileViewer).toContain('Accept fell back — soft-retry before edit-mode hold');

@@ -6,6 +6,7 @@ import {
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
+  tipRemountGeometryGraceExpired,
 } from '../../src/edit-mode/manual-edit-freeze';
 
 describe('manual edit freeze reset', () => {
@@ -61,5 +62,13 @@ describe('manual edit freeze reset', () => {
     expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-1', 'el-1', 2_000, 1_800)).toBe(false);
     expect(shouldSkipWildJumpAfterTipRemountGrace(null, 'el-1', 'el-1', 1_000, 1_800)).toBe(false);
     expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-1', null, 1_000, 1_800)).toBe(false);
+  });
+
+  it('restores wild-jump deny after tip-remount geometry grace expires', () => {
+    expect(tipRemountGeometryGraceExpired(1_000, 1_800)).toBe(false);
+    expect(tipRemountGeometryGraceExpired(1_800, 1_800)).toBe(true);
+    expect(tipRemountGeometryGraceExpired(1_801, 1_800)).toBe(true);
+    // Expired window must not skip wild-jump even when ids still match.
+    expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-1', 'el-1', 1_800, 1_800)).toBe(false);
   });
 });

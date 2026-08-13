@@ -133,6 +133,19 @@ export type ManualEditMultiInspectorReseedPlan = {
 };
 
 /**
+ * Tip-yield / cancel reseed: concurrent pending with real draft keys owns the
+ * inspector panel (styles stay null). Empty shells do not.
+ */
+export function concurrentPendingOwnsTipYieldReseedStyles(
+  concurrentPending: {
+    styles?: Partial<ManualEditStyles> | null;
+    perTargetStyles?: Record<string, Partial<ManualEditStyles>> | null;
+  } | null | undefined,
+): boolean {
+  return collectPendingManualEditStyleDraftKeys(concurrentPending).size > 0;
+}
+
+/**
  * Plan multi-select inspector reseed after save/cancel from source styles.
  * Concurrent pending keeps draft styles and only refreshes Mixed (excluding draft keys).
  */
@@ -150,17 +163,14 @@ export function planManualEditMultiInspectorReseed(input: {
   }
   // Empty pending shells (styles:{} / no perTarget keys) must not block source
   // reseed — tip-yield Mixed would keep stale draft styles otherwise (59).
-  if (
-    input.concurrentPending
-    && collectPendingManualEditStyleDraftKeys(input.concurrentPending).size > 0
-  ) {
+  if (concurrentPendingOwnsTipYieldReseedStyles(input.concurrentPending)) {
     return {
       styles: null,
       mixedKeys: mixedKeysForPendingStyleDraft(
         idTargets,
         input.readStyles,
-        input.concurrentPending.styles,
-        { perTargetStyles: input.concurrentPending.perTargetStyles },
+        input.concurrentPending!.styles,
+        { perTargetStyles: input.concurrentPending!.perTargetStyles },
       ),
     };
   }

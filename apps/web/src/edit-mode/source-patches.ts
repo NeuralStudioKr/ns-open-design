@@ -1559,9 +1559,10 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     )
     // Navigable URL attrs — same gate as DOM isSafeManualEditUrlAttrValue
     // (ZWSP/soft-hyphen compact, data MIME allow-list, srcset/ping token rules).
+    // Optional namespace prefix (`foo:href`) — local-name only misses these.
     .replace(
       new RegExp(
-        `\\s(${urlAttrs})\\s*=\\s*(['"])([\\s\\S]*?)\\2`,
+        `\\s(?:[\\w.-]+:)?(${urlAttrs})\\s*=\\s*(['"])([\\s\\S]*?)\\2`,
         'gi',
       ),
       (full, attr: string, _quote: string, value: string) => (
@@ -1570,7 +1571,7 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     )
     .replace(
       new RegExp(
-        `\\s(${urlAttrs})\\s*=\\s*([^\\s>]+)`,
+        `\\s(?:[\\w.-]+:)?(${urlAttrs})\\s*=\\s*([^\\s>]+)`,
         'gi',
       ),
       (full, attr: string, value: string) => (
@@ -1580,14 +1581,14 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     // Protocol-relative residual — isSafeManualEditUrl allows //cdn… media.
     .replace(
       new RegExp(
-        `\\s(?:${urlAttrs})\\s*=\\s*(['"])\\s*//[\\s\\S]*?\\1`,
+        `\\s(?:[\\w.-]+:)?(?:${urlAttrs})\\s*=\\s*(['"])\\s*//[\\s\\S]*?\\1`,
         'gi',
       ),
       '',
     )
     .replace(
       new RegExp(
-        `\\s(?:${urlAttrs})\\s*=\\s*//[^\\s>]*`,
+        `\\s(?:[\\w.-]+:)?(?:${urlAttrs})\\s*=\\s*//[^\\s>]*`,
         'gi',
       ),
       '',
@@ -1595,14 +1596,14 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     // Backslash-authority on general URL attrs (DOM: isSafeManualEditUrl).
     .replace(
       new RegExp(
-        `\\s(?:${urlAttrs})\\s*=\\s*(['"])[\\s\\S]*?\\\\[\\s\\S]*?\\1`,
+        `\\s(?:[\\w.-]+:)?(?:${urlAttrs})\\s*=\\s*(['"])[\\s\\S]*?\\\\[\\s\\S]*?\\1`,
         'gi',
       ),
       '',
     )
     .replace(
       new RegExp(
-        `\\s(?:${urlAttrs})\\s*=\\s*[^\\s>]*\\\\[^\\s>]*`,
+        `\\s(?:[\\w.-]+:)?(?:${urlAttrs})\\s*=\\s*[^\\s>]*\\\\[^\\s>]*`,
         'gi',
       ),
       '',

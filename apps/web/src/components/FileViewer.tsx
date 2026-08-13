@@ -334,6 +334,7 @@ import {
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
+  tipRemountGeometryGraceExpired,
 } from '../edit-mode/manual-edit-freeze';
 import { isManualEditKeyboardTextTarget, resolveManualEditDeleteKeyboardAction } from '../edit-mode/manual-edit-keyboard';
 import {
@@ -375,6 +376,7 @@ import {
   buildManualEditStylePatchesForTargets,
   mergeInspectorStylesForTargets,
   mixedKeysForPendingStyleDraft,
+  concurrentPendingOwnsTipYieldReseedStyles,
   planManualEditMultiInspectorReseed,
   manualEditSelectionIdsEqual,
   nextManualEditSelectionIds,
@@ -7973,21 +7975,34 @@ function HtmlViewer({
         selectedManualEditTargetIdsRef.current,
       )) return;
       // Source-only reseed (same plan helper as batch flush / cancel) — 기획 59.
+      // Pending with draft keys owns styles (null); empty shell allows source merge.
       const ids = selectedManualEditTargetIdsRef.current;
       const base = sourceRef.current ?? '';
       const parsedDoc = parseManualEditSource(base);
+      const pending = manualEditPendingStyleRef.current;
+      const concurrentPending = pending
+        ? { styles: pending.styles, perTargetStyles: pending.perTargetStyles }
+        : null;
       const reseed = planManualEditMultiInspectorReseed({
         selectedIds: ids,
         readStyles: (id) => readManualEditStyles(base, id, {}, parsedDoc),
-        concurrentPending: manualEditPendingStyleRef.current,
+        concurrentPending,
       });
       setManualEditMixedStyleKeys(reseed.mixedKeys);
-      if (reseed.styles != null) {
+      // Never clobber in-flight draft styles while pending owns the panel.
+      if (
+        reseed.styles != null
+        && !concurrentPendingOwnsTipYieldReseedStyles(concurrentPending)
+      ) {
         setManualEditDraft((current) => ({
           ...current,
           styles: reseed.styles!,
           fullSource: base,
         }));
+      } else if (reseed.styles == null) {
+        setManualEditDraft((current) => (
+          current.fullSource === base ? current : { ...current, fullSource: base }
+        ));
       }
     }, 0);
   }
@@ -9432,12 +9447,23 @@ function HtmlViewer({
         // Gesture/handoff never reach this guard — resize session / isHandoffRect
         // returned above; settleManualEditGeometryHandoff applies on its own path.
         // Tip-yield freeze remount: first remasure may jump layout — skip deny.
+        // Expired grace: clear latch so wild-jump deny is restored.
+        const nowMs = Date.now();
+        if (
+          manualEditTipRemountGeometryGraceIdRef.current
+          && tipRemountGeometryGraceExpired(
+            nowMs,
+            manualEditTipRemountGeometryGraceUntilRef.current,
+          )
+        ) {
+          manualEditTipRemountGeometryGraceIdRef.current = null;
+        }
         const current = selectedManualEditTargetRef.current;
         const tipRemountGrace = shouldSkipWildJumpAfterTipRemountGrace(
           manualEditTipRemountGeometryGraceIdRef.current,
           measured.id,
           selectedManualEditTargetIdRef.current,
-          Date.now(),
+          nowMs,
           manualEditTipRemountGeometryGraceUntilRef.current,
         );
         if (

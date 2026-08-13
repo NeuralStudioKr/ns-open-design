@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyManualEditPatches,
   buildManualEditStylePatchesForTargets,
+  concurrentPendingOwnsTipYieldReseedStyles,
   manualEditSelectionIdsEqual,
   mergeInspectorStylesForTargets,
   collectPendingManualEditStyleDraftKeys,
@@ -149,6 +150,20 @@ describe('manual-edit-multi-select', () => {
     });
     expect(emptyPending.styles).not.toBeNull();
     expect(emptyPending.mixedKeys.has('color')).toBe(true);
+    // Tip-yield during flush: pending with draft keys must never return styles.
+    expect(concurrentPendingOwnsTipYieldReseedStyles({
+      styles: { color: '#ef4444' },
+    })).toBe(true);
+    expect(concurrentPendingOwnsTipYieldReseedStyles({
+      styles: {},
+      perTargetStyles: { title: { left: '10px' } },
+    })).toBe(true);
+    expect(concurrentPendingOwnsTipYieldReseedStyles({
+      styles: {},
+      perTargetStyles: {},
+    })).toBe(false);
+    expect(concurrent.styles).toBeNull();
+    expect(perTargetOnly.styles).toBeNull();
   });
 
   it('builds one set-style patch per changed target', () => {

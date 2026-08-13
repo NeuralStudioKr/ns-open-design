@@ -70,10 +70,19 @@ export function shouldReseedManualEditMultiInspectorAfterFreezeSync(
   return Boolean(manualEditMode && selectedIds.length > 1);
 }
 
+/** True when tip-remount geometry grace window has elapsed. */
+export function tipRemountGeometryGraceExpired(
+  nowMs: number,
+  graceUntilMs: number,
+): boolean {
+  return nowMs >= graceUntilMs;
+}
+
 /**
  * Idle remasure after tip-yield remount may jump layout — skip wild-jump deny.
  * Requires rectId === graceId === selectedId so a sibling multi-select remasure
  * cannot consume (or be accepted under) another element's grace window.
+ * Expired grace returns false so wild-jump deny is restored.
  */
 export function shouldSkipWildJumpAfterTipRemountGrace(
   graceId: string | null | undefined,
@@ -82,11 +91,11 @@ export function shouldSkipWildJumpAfterTipRemountGrace(
   nowMs: number,
   graceUntilMs: number,
 ): boolean {
+  if (tipRemountGeometryGraceExpired(nowMs, graceUntilMs)) return false;
   return Boolean(
     graceId
     && selectedId
     && rectId === graceId
     && rectId === selectedId
-    && nowMs < graceUntilMs
   );
 }

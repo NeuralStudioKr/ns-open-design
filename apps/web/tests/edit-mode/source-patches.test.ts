@@ -1646,6 +1646,15 @@ describe('manual edit source patches', () => {
     expect(namespacedFill.toLowerCase()).not.toContain('javascript');
     expect(namespacedFill).not.toMatch(/svg:fill\s*=/i);
     expect(sourcePatchesSource).toContain('Optional namespace prefix (`svg:fill`)');
+    // Namespaced URL attrs — failClosed optional prefix before href/src/….
+    const namespacedHref = sanitizeManualEditFullSource(
+      '<!doctype html><html><body><a foo:href="javascript:alert(2)">x</a>'
+      + '<img bar:src="javascript:alert(3)"></body></html>',
+    );
+    expect(namespacedHref.toLowerCase()).not.toContain('javascript');
+    expect(namespacedHref).not.toMatch(/foo:href\s*=/i);
+    expect(namespacedHref).not.toMatch(/bar:src\s*=/i);
+    expect(sourcePatchesSource).toContain('Optional namespace prefix (`foo:href`)');
   });
 
   it('rejects bare data:/blob: presentation paints and keeps named colors', () => {
