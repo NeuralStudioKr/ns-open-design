@@ -81,6 +81,17 @@ export function shouldClearMixedKeysAfterTipYieldReseedSkip(
 }
 
 /**
+ * After Mixed clear on tip-yield skip, reseed single-select inspector styles
+ * from painted source when no concurrent pending draft owns the panel (59).
+ */
+export function shouldReseedSingleInspectorAfterTipYieldMixedClear(
+  selectedIds: readonly string[],
+  pendingOwnsStyles: boolean,
+): boolean {
+  return selectedIds.length === 1 && !pendingOwnsStyles;
+}
+
+/**
  * Tip-remount geometry grace is bound to a primary id. When selection moves
  * away, clear grace so a later remasure for the new primary is not skipped
  * under a stale grace window (overlay residual).

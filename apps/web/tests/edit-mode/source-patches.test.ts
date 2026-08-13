@@ -1669,6 +1669,24 @@ describe('manual edit source patches', () => {
     expect(namespacedSrcsetPing.toLowerCase()).not.toContain('javascript');
     expect(namespacedSrcsetPing).not.toMatch(/foo:srcset\s*=/i);
     expect(namespacedSrcsetPing).not.toMatch(/foo:ping\s*=/i);
+    // Namespaced imagesrcset / formaction — same optional-prefix URL gate.
+    const namespacedImageSrcsetFormaction = sanitizeManualEditFullSource(
+      '<!doctype html><html><body>'
+      + '<img foo:imagesrcset="javascript:alert(6) 1x">'
+      + '<button bar:formaction="javascript:alert(7)">x</button>'
+      + '</body></html>',
+    );
+    expect(namespacedImageSrcsetFormaction.toLowerCase()).not.toContain('javascript');
+    expect(namespacedImageSrcsetFormaction).not.toMatch(/foo:imagesrcset\s*=/i);
+    expect(namespacedImageSrcsetFormaction).not.toMatch(/bar:formaction\s*=/i);
+    // failClosed URL list ≡ DOM MANUAL_EDIT_URL_ATTRS (longer-first SSOT).
+    expect(sourcePatchesSource).toContain('MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST');
+    expect(sourcePatchesSource).toContain(
+      "const urlAttrs = MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST.join('|')",
+    );
+    expect(sourcePatchesSource).toContain(
+      'const MANUAL_EDIT_URL_ATTRS = new Set<string>(MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST)',
+    );
   });
 
   it('rejects bare data:/blob: presentation paints and keeps named colors', () => {

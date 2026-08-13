@@ -1481,6 +1481,39 @@ function isUnsafeManualEditReplacementRoot(el: Element): boolean {
 }
 
 /**
+ * URL attrs shared by DOM sanitize (`MANUAL_EDIT_URL_ATTRS`) and failClosed.
+ * Longer names first so optional namespace prefix + alternation prefers
+ * `xlink:href` / `imagesrcset` over bare `href` / `srcset` (predictable capture).
+ */
+const MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST = [
+  'xlink:href',
+  'imagesrcset',
+  'formaction',
+  'longdesc',
+  'background',
+  'codebase',
+  'classid',
+  'manifest',
+  'archive',
+  'usemap',
+  'href',
+  'src',
+  'srcset',
+  'action',
+  'poster',
+  'cite',
+  'ping',
+  'dynsrc',
+  'lowsrc',
+  'data',
+  // SVG SMIL can assign href via to/from/by/values without on* handlers.
+  'to',
+  'from',
+  'by',
+  'values',
+] as const;
+
+/**
  * Sanitize a full HTML document (set-full-source / undo snapshots) with the
  * same dangerous-tag / attr / SMIL rules as fragment replacements.
  */
@@ -1500,17 +1533,8 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
   ].join('|');
   // Decode entities first so &#106;avascript: / &colon; cannot bypass scheme scrub.
   const text = decodeHtmlCharacterReferences(String(raw || ''));
-  // Align navigable/legacy URL attrs with MANUAL_EDIT_URL_ATTRS, including SMIL
-  // to/from/by/values (DOM walk already scrubs these; fail-closed must match).
-  // Longer names first so optional namespace prefix + alternation prefers
-  // `xlink:href` / `imagesrcset` over bare `href` / `srcset` (predictable capture).
-  const urlAttrs = [
-    'xlink:href', 'imagesrcset', 'formaction', 'longdesc', 'background',
-    'codebase', 'classid', 'manifest', 'archive', 'usemap',
-    'href', 'src', 'srcset', 'action', 'poster', 'cite', 'ping',
-    'dynsrc', 'lowsrc', 'data',
-    'to', 'from', 'by', 'values',
-  ].join('|');
+  // Same membership as MANUAL_EDIT_URL_ATTRS (longer-first for regex alternation).
+  const urlAttrs = MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST.join('|');
   const smil = 'animate|animatemotion|animatetransform|set|animatecolor';
   // Optional XML/SVG namespace prefix (`svg:animate`) — local-name only misses these.
   const smilTag = `(?:[\\w.-]+:)?(?:${smil})`;
@@ -3309,33 +3333,7 @@ function isSafeAttributeName(value: string): boolean {
 }
 
 /** Attrs whose values are treated as URLs for scheme deny-list checks. */
-const MANUAL_EDIT_URL_ATTRS = new Set([
-  'href',
-  'src',
-  'xlink:href',
-  'action',
-  'formaction',
-  'poster',
-  'cite',
-  'ping',
-  'background',
-  'dynsrc',
-  'lowsrc',
-  'srcset',
-  'imagesrcset',
-  'longdesc',
-  'manifest',
-  'codebase',
-  'classid',
-  'archive',
-  'usemap',
-  'data',
-  // SVG SMIL can assign href via to/from/by/values without on* handlers.
-  'to',
-  'from',
-  'by',
-  'values',
-]);
+const MANUAL_EDIT_URL_ATTRS = new Set<string>(MANUAL_EDIT_URL_ATTR_NAMES_LONGER_FIRST);
 
 const SAFE_MANUAL_EDIT_DATA_IMAGE_RE = /^data:image\/(png|jpe?g|gif|webp|avif|bmp)(;|,)/i;
 

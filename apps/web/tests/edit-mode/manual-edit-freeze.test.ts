@@ -5,6 +5,7 @@ import {
   shouldClearTipRemountGeometryGraceOnSelectionChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
+  shouldReseedSingleInspectorAfterTipYieldMixedClear,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
@@ -79,6 +80,13 @@ describe('manual edit freeze reset', () => {
     expect(shouldClearMixedKeysAfterTipYieldReseedSkip([])).toBe(true);
     expect(shouldClearMixedKeysAfterTipYieldReseedSkip(['a', 'b'])).toBe(false);
     expect(shouldReseedManualEditMultiInspectorAfterFreezeSync(true, ['a'])).toBe(false);
+  });
+
+  it('reseeds single inspector after tip-yield Mixed clear when no pending owns styles', () => {
+    expect(shouldReseedSingleInspectorAfterTipYieldMixedClear(['a'], false)).toBe(true);
+    expect(shouldReseedSingleInspectorAfterTipYieldMixedClear(['a'], true)).toBe(false);
+    expect(shouldReseedSingleInspectorAfterTipYieldMixedClear([], false)).toBe(false);
+    expect(shouldReseedSingleInspectorAfterTipYieldMixedClear(['a', 'b'], false)).toBe(false);
   });
 
   it('clears tip-remount grace when selection leaves the grace primary', () => {

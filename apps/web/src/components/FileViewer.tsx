@@ -333,6 +333,7 @@ import {
   shouldClearTipRemountGeometryGraceOnSelectionChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
+  shouldReseedSingleInspectorAfterTipYieldMixedClear,
   shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
@@ -7947,6 +7948,19 @@ function HtmlViewer({
     if (effectiveDeck && boardMode) requestSlideStateFromIframe(target);
   }
 
+  /** Selection left tip-remount grace primary — clear so overlay remasures cleanly. */
+  function clearManualEditTipRemountGeometryGraceIfNeeded(
+    nextSelectedId: string | null,
+  ) {
+    if (shouldClearTipRemountGeometryGraceOnSelectionChange(
+      manualEditTipRemountGeometryGraceIdRef.current,
+      nextSelectedId,
+    )) {
+      manualEditTipRemountGeometryGraceIdRef.current = null;
+      manualEditTipRemountGeometryGraceUntilRef.current = 0;
+    }
+  }
+
   /** Tip-yield freeze remount — deferred selection echo + multi Mixed reseed (59). */
   function scheduleManualEditSelectionEchoAfterFreezeSync() {
     const selectedIds = selectedManualEditTargetIdsRef.current;
@@ -7980,6 +7994,23 @@ function HtmlViewer({
         // 2→1 / clear during deferred tip-yield — drop stale Mixed (기획 59).
         if (shouldClearMixedKeysAfterTipYieldReseedSkip(ids)) {
           setManualEditMixedStyleKeys(new Set());
+          const pending = manualEditPendingStyleRef.current;
+          const pendingOwns = concurrentPendingOwnsTipYieldReseedStyles(
+            pending
+              ? { styles: pending.styles, perTargetStyles: pending.perTargetStyles }
+              : null,
+          );
+          // Mixed→single: reseed inspector from painted source (not empty shell).
+          if (shouldReseedSingleInspectorAfterTipYieldMixedClear(ids, pendingOwns)) {
+            const base = sourceRef.current ?? '';
+            const parsedDoc = parseManualEditSource(base);
+            const seedStyles = readManualEditStyles(base, ids[0]!, {}, parsedDoc);
+            setManualEditDraft((current) => ({
+              ...current,
+              styles: seedStyles,
+              fullSource: base,
+            }));
+          }
         }
         return;
       }
@@ -10779,14 +10810,7 @@ function HtmlViewer({
     const base = sourceRef.current ?? '';
     // One Document for snapshot + multi-select inspector merge.
     const parsedDoc = parseManualEditSource(base);
-    // Selection left tip-remount grace primary — clear so overlay remasures cleanly.
-    if (shouldClearTipRemountGeometryGraceOnSelectionChange(
-      manualEditTipRemountGeometryGraceIdRef.current,
-      primary.id,
-    )) {
-      manualEditTipRemountGeometryGraceIdRef.current = null;
-      manualEditTipRemountGeometryGraceUntilRef.current = 0;
-    }
+    clearManualEditTipRemountGeometryGraceIfNeeded(primary.id);
     selectedManualEditTargetIdRef.current = primary.id;
     selectedManualEditTargetRef.current = primary;
     selectedManualEditTargetIdsRef.current = nextIds;
@@ -10848,13 +10872,7 @@ function HtmlViewer({
       if (!(await flushManualEditStyleSave({ force: true }))) return false;
     }
     // Clear tip-remount grace with selection clear (overlay residual).
-    if (shouldClearTipRemountGeometryGraceOnSelectionChange(
-      manualEditTipRemountGeometryGraceIdRef.current,
-      null,
-    )) {
-      manualEditTipRemountGeometryGraceIdRef.current = null;
-      manualEditTipRemountGeometryGraceUntilRef.current = 0;
-    }
+    clearManualEditTipRemountGeometryGraceIfNeeded(null);
     selectedManualEditTargetIdRef.current = null;
     selectedManualEditTargetRef.current = null;
     selectedManualEditTargetIdsRef.current = [];
@@ -11065,13 +11083,7 @@ function HtmlViewer({
         const remainingIds = selectedManualEditTargetIdsRef.current.filter((id) => id !== patch.id);
         setManualEditTargets((current) => current.filter((target) => target.id !== patch.id));
         if (remainingIds.length === 0) {
-          if (shouldClearTipRemountGeometryGraceOnSelectionChange(
-            manualEditTipRemountGeometryGraceIdRef.current,
-            null,
-          )) {
-            manualEditTipRemountGeometryGraceIdRef.current = null;
-            manualEditTipRemountGeometryGraceUntilRef.current = 0;
-          }
+          clearManualEditTipRemountGeometryGraceIfNeeded(null);
           selectedManualEditTargetIdRef.current = null;
           selectedManualEditTargetRef.current = null;
           selectedManualEditTargetIdsRef.current = [];
@@ -11087,13 +11099,7 @@ function HtmlViewer({
           );
           const nextIds = refreshed.map((item) => item.id);
           const primary = refreshed[refreshed.length - 1]!;
-          if (shouldClearTipRemountGeometryGraceOnSelectionChange(
-            manualEditTipRemountGeometryGraceIdRef.current,
-            primary.id,
-          )) {
-            manualEditTipRemountGeometryGraceIdRef.current = null;
-            manualEditTipRemountGeometryGraceUntilRef.current = 0;
-          }
+          clearManualEditTipRemountGeometryGraceIfNeeded(primary.id);
           selectedManualEditTargetIdRef.current = primary.id;
           selectedManualEditTargetRef.current = primary;
           selectedManualEditTargetIdsRef.current = nextIds;

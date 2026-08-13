@@ -1,4 +1,4 @@
-import { build } from 'esbuild';
+import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +7,31 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const entry = join(root, 'src/runtime/snapshot-dom-entry.ts');
 const publicOut = join(root, 'public/od-snapshot-capture.js');
 const inlineOut = join(root, 'src/runtime/snapshot-capture-inline.ts');
+
+/**
+ * Prefer apps/web's esbuild, then packages/contracts (also pins esbuild).
+ * Some agent/CI installs leave web's node_modules without a direct link while
+ * the workspace still has esbuild under contracts — do not fail pretest.
+ */
+function loadEsbuild() {
+  const candidates = [
+    createRequire(join(root, 'package.json')),
+    createRequire(join(root, '../../packages/contracts/package.json')),
+  ];
+  for (const require of candidates) {
+    try {
+      return require('esbuild');
+    } catch {
+      // try next root
+    }
+  }
+  throw new Error(
+    'esbuild not found for build:snapshot-capture. Run pnpm install '
+    + '(apps/web and packages/contracts both declare esbuild).',
+  );
+}
+
+const { build } = loadEsbuild();
 
 await build({
   entryPoints: [entry],

@@ -129,6 +129,9 @@ describe('FileViewer revision tip advance after undo', () => {
     expect(fileViewer).toContain('Never clobber in-flight draft styles while pending owns the panel');
     expect(fileViewer).toContain('shouldClearMixedKeysAfterTipYieldReseedSkip');
     expect(fileViewer).toContain('2→1 / clear during deferred tip-yield — drop stale Mixed');
+    expect(fileViewer).toContain('shouldReseedSingleInspectorAfterTipYieldMixedClear');
+    expect(fileViewer).toContain('Mixed→single: reseed inspector from painted source');
+    expect(fileViewer).toContain('clearManualEditTipRemountGeometryGraceIfNeeded');
     expect(fileViewer).toContain('shouldClearTipRemountGeometryGraceOnSelectionChange');
     expect(fileViewer).toContain('Selection left tip-remount grace primary');
     expect(fileViewer).toContain('shouldSkipWildJumpAfterTipRemountGrace');
