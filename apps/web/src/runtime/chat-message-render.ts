@@ -324,6 +324,11 @@ export function shouldSynthesizeTeamverCompletedArtifactLead(
 ): boolean {
   if (options.streaming || options.hasVisibleAssistantText) return false;
   if (!assistantRunSucceeded(message)) return false;
+  // Durable slide-turn label survives reload when artifact prose / producedFiles
+  // were stripped — keep the completion lead for every generation entry path.
+  if (message.slideTurnKind === "create" || message.slideTurnKind === "edit") {
+    return true;
+  }
   // Historical + auto-continue: any terminal succeeded empty shell keeps lead.
   if (isTerminalSucceededEmptyShellForDisplay(message)) return true;
   if ((message.producedFiles?.length ?? 0) > 0) return true;
@@ -386,23 +391,35 @@ export function shouldOmitMessageFromChatRender(
   if (message.role !== "assistant") return false;
   if (isLiveStreamingAssistantTarget(message, ctx)) return false;
   if (isEmptyAssistantShell(message)) {
-    // Keep terminal succeeded shells that still anchor their visible user turn
-    // (historical completion leads). Drop same-turn shells superseded by a
-    // later assistant — those are collapsed at load, but omit is the safety net.
-    if (
-      isTerminalSucceededEmptyShellForDisplay(message)
-      && options?.messages
-      && typeof options.messageIndex === "number"
-      && isLastAssistantInVisibleUserTurn(options.messages, options.messageIndex)
-    ) {
+    if (isTerminalSucceededEmptyShellForDisplay(message)) {
+      // Drop same-turn shells superseded by a later assistant — collapsed at
+      // load, but omit is the safety net. Without index context, keep the shell
+      // so completion leads survive reload filtering.
+      if (
+        options?.messages
+        && typeof options.messageIndex === "number"
+        && !isLastAssistantInVisibleUserTurn(options.messages, options.messageIndex)
+      ) {
+        return true;
+      }
       return false;
     }
     return true;
   }
-  if (
-    ctx.hideAssistantThinkingDetails
-    && !hasEmbedVisibleAssistantBody(message)
-  ) {
+  if (ctx.hideAssistantThinkingDetails && !hasEmbedVisibleAssistantBody(message)) {
+    // Last-resort: succeeded slide turns must always reserve a row for the
+    // synthetic completion lead even when stale lifecycle events blocked
+    // empty-shell detection above.
+    if (
+      assistantRunSucceeded(message)
+      && message.endedAt !== undefined
+      && shouldSynthesizeTeamverCompletedArtifactLead(message, {
+        streaming: false,
+        hasVisibleAssistantText: false,
+      })
+    ) {
+      return false;
+    }
     return true;
   }
   return false;

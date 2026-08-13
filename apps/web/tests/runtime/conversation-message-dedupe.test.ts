@@ -129,6 +129,47 @@ describe("isEmptyAssistantShell", () => {
     expect(isEmptyAssistantShell(genericFailure)).toBe(false);
   });
 
+  it("treats stale incomplete_output on succeeded rows as header-only noise", () => {
+    const succeededWithStaleIncomplete: ChatMessage = {
+      id: "a-succeeded-stale",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 100,
+      events: [
+        { kind: "status", label: "requesting" },
+        {
+          kind: "status",
+          label: "error",
+          detail: "truncated deliverable",
+          code: "incomplete_output",
+        },
+        {
+          kind: "status",
+          label: "error",
+          detail: "auto-continued",
+          code: "auto_continue_incomplete_output",
+        },
+      ],
+    } as ChatMessage;
+    expect(isEmptyAssistantShell(succeededWithStaleIncomplete)).toBe(true);
+  });
+
+  it("treats runtime model status events as header-only noise", () => {
+    const message: ChatMessage = {
+      id: "a-model-status",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 100,
+      events: [
+        { kind: "status", label: "requesting" },
+        { kind: "status", label: "model", detail: "claude-sonnet-4-5" },
+      ],
+    } as ChatMessage;
+    expect(isEmptyAssistantShell(message)).toBe(true);
+  });
+
   it("does not treat canceled or resumable empty rows as shells", () => {
     expect(
       isEmptyAssistantShell({

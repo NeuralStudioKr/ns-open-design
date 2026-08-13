@@ -334,6 +334,36 @@ describe('reconcileChatMessageOnLoad', () => {
     expect(reconciled.events?.some((event) => event.code === 'incomplete_output')).toBe(false);
   });
 
+  it('strips deliverable lifecycle errors from every succeeded assistant on load', () => {
+    const message: ChatMessage = {
+      id: 'a-clean-success',
+      role: 'assistant',
+      content: '',
+      createdAt: 1,
+      runStatus: 'succeeded',
+      endedAt: 2,
+      events: [
+        { kind: 'status', label: 'requesting' },
+        {
+          kind: 'status',
+          label: 'error',
+          detail: DELIVERABLE_MISSING_ENCODED,
+          code: 'incomplete_output',
+        },
+        {
+          kind: 'status',
+          label: 'error',
+          detail: '이어쓰기…',
+          code: AUTO_CONTINUE_STATUS_CODE,
+        },
+      ],
+    };
+    const reconciled = reconcileChatMessageOnLoad(message);
+    expect(reconciled.runStatus).toBe('succeeded');
+    expect(reconciled.events?.some((event) => event.code === 'incomplete_output')).toBe(false);
+    expect(reconciled.events?.some((event) => event.code === AUTO_CONTINUE_STATUS_CODE)).toBe(false);
+  });
+
   it('rehydrates user comment chips from attached-preview-comments content on load', () => {
     const content = [
       '더 크게 조정',

@@ -1,6 +1,7 @@
 import type { AgentEvent, ChatMessage } from "../types";
 import { EMERGENCY_DECK_FALLBACK_STATUS_CODE } from "../artifacts/emergency-deck";
 import { assistantMessageTextBody } from "./chat-events";
+import { OUTLINE_DECK_FALLBACK_STATUS_CODE } from "./slide-deliverable-recovery";
 import { AUTO_CONTINUE_STATUS_CODE, isAutoContinueIncompleteOutputPrompt } from "./resume";
 
 function isTerminalRunStatus(status: ChatMessage["runStatus"]): boolean {
@@ -44,26 +45,34 @@ const HEADER_ONLY_STATUS_LABELS = new Set([
   "thinking",
   "tool_call",
   "tool_call_update",
+  // Runtime / ACP labels never rendered in Teamver embed body (AssistantMessage
+  // filters non-error status blocks). Leaving them substantive blocks empty-shell
+  // detection and hides completion leads after reload.
+  "model",
+  "compacting",
+  "retrying",
+  "waiting_for_first_output",
 ]);
 
 /**
- * Transient run-lifecycle notices persisted as `status:error` (or `warning`)
- * so ChatPane can rebuild the auto-continue / emergency-fallback banner after
- * hard reload. These codes carry no user-visible chat prose and MUST count as
- * header-only noise for empty-shell detection — otherwise the succeeded turn's
- * completion lead never fires and the whole assistant row disappears on page
- * re-entry (user report 2026-08-13).
+ * Deliverable lifecycle notices persisted as `status:error` / `warning` with a
+ * stable code. ChatPane may rebuild auto-continue / salvage banners from these
+ * after hard reload. They carry no chat prose and MUST count as header-only
+ * noise for empty-shell detection — otherwise the succeeded turn's completion
+ * lead never fires and the whole assistant row disappears on page re-entry.
  */
-const TRANSIENT_RUN_NOTICE_CODES: ReadonlySet<string> = new Set([
+export const DELIVERABLE_LIFECYCLE_STATUS_CODES: ReadonlySet<string> = new Set([
+  "incomplete_output",
   AUTO_CONTINUE_STATUS_CODE,
   EMERGENCY_DECK_FALLBACK_STATUS_CODE,
+  OUTLINE_DECK_FALLBACK_STATUS_CODE,
 ]);
 
-function isTransientRunNoticeEvent(event: AgentEvent): boolean {
+function isDeliverableLifecycleNoticeEvent(event: AgentEvent): boolean {
   if (event.kind !== "status") return false;
   if (event.label !== "error" && event.label !== "warning") return false;
   const code = (event as { code?: unknown }).code;
-  return typeof code === "string" && TRANSIENT_RUN_NOTICE_CODES.has(code);
+  return typeof code === "string" && DELIVERABLE_LIFECYCLE_STATUS_CODES.has(code);
 }
 
 function isHeaderOnlyNoiseEvent(event: AgentEvent): boolean {
@@ -72,7 +81,7 @@ function isHeaderOnlyNoiseEvent(event: AgentEvent): boolean {
   // thinking via ChatPane/AssistantMessage filters, not via this predicate.
   if (event.kind === "status") {
     if (HEADER_ONLY_STATUS_LABELS.has(event.label ?? "")) return true;
-    if (isTransientRunNoticeEvent(event)) return true;
+    if (isDeliverableLifecycleNoticeEvent(event)) return true;
   }
   return false;
 }

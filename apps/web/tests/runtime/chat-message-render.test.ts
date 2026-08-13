@@ -26,7 +26,7 @@ describe("chat-message-render", () => {
     expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(true);
   });
 
-  it("omits succeeded empty shells when called without turn context", () => {
+  it("keeps terminal succeeded empty shells when called without turn context", () => {
     const shell: ChatMessage = {
       id: "a-shell",
       role: "assistant",
@@ -35,8 +35,9 @@ describe("chat-message-render", () => {
       endedAt: 2,
       events: [{ kind: "status", label: "requesting" }],
     };
-    // Standalone omit (no messages/index) cannot prove turn-anchor status.
-    expect(shouldOmitMessageFromChatRender(shell, embedCtx)).toBe(true);
+    // Reload paths may filter a single row before turn index is wired — still
+    // reserve the completion lead instead of dropping the whole assistant row.
+    expect(shouldOmitMessageFromChatRender(shell, embedCtx)).toBe(false);
     expect(hasEmbedVisibleAssistantBody(shell)).toBe(true);
   });
 
@@ -207,6 +208,23 @@ describe("chat-message-render", () => {
         messageIndex: 1,
       }),
     ).toBe(false);
+  });
+
+  it("keeps completion-lead visibility when slideTurnKind survives reload without producedFiles", () => {
+    const message: ChatMessage = {
+      id: "a-create-label",
+      role: "assistant",
+      content: "",
+      runStatus: "succeeded",
+      endedAt: 2,
+      slideTurnKind: "create",
+      events: [
+        { kind: "status", label: "requesting" },
+        { kind: "status", label: "model", detail: "claude-sonnet-4-5" },
+      ],
+    } as ChatMessage;
+    expect(hasEmbedVisibleAssistantBody(message)).toBe(true);
+    expect(shouldOmitMessageFromChatRender(message, embedCtx)).toBe(false);
   });
 
   it("keeps completion-lead visibility after reload when artifact tags were stripped", () => {
