@@ -4,6 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { TeamverHomeSlideCreateModal } from "../src/teamver/components/TeamverHomeSlideCreateModal";
 import { TeamverHomeCreateHero } from "../src/teamver/components/TeamverHomeCreateHero";
+import {
+  CANVAS_CREATE_SLIDES_PLUGIN_ID,
+  readLastExplicitDeckTemplateId,
+  rememberLastExplicitDeckTemplateId,
+} from "../src/teamver/canvasSlideLaunch";
 import { I18nProvider } from "../src/i18n";
 
 vi.mock("../src/components/plugins-home/cards/PreviewSurface", () => ({
@@ -107,5 +112,15 @@ describe("TeamverHomeSlideCreateModal", () => {
     );
     expect(screen.getByTestId("teamver-home-slide-create-next")).toBeTruthy();
     expect(screen.queryByTestId("teamver-home-slide-create-confirm")).toBeNull();
+  });
+
+  it("remembers last explicit deck template id across Home surfaces", () => {
+    const key = "od:last-explicit-deck-template-id";
+    window.sessionStorage.removeItem(key);
+    rememberLastExplicitDeckTemplateId(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    expect(readLastExplicitDeckTemplateId()).toBeNull();
+    rememberLastExplicitDeckTemplateId("example-html-ppt-zhangzara-daisy-days");
+    expect(readLastExplicitDeckTemplateId()).toBe("example-html-ppt-zhangzara-daisy-days");
+    window.sessionStorage.removeItem(key);
   });
 });

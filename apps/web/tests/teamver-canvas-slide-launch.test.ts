@@ -446,7 +446,8 @@ describe("canvasSlideLaunch", () => {
     expect(app).toContain("templateClonedDeckSeeded: true");
     expect(app).toContain("selectedDeckTemplateIdFromInputs");
     expect(app).toContain("headings:");
-    expect(app).toContain("Home community / design-template card");
+    expect(app).toContain("Home wizard / gallery / community card");
+    expect(app).toContain("Drive import failure must NOT skip Clone");
     expect(app).toContain("od:auto-send-first:");
     expect(seeder).toContain("recoverExistingTemplateClonedDeck");
     expect(seeder).toContain("templateClonedDeckSeeded");
@@ -455,10 +456,21 @@ describe("canvasSlideLaunch", () => {
     expect(home).toContain("confirmHomeSlideCreate");
     expect(home).toContain("selectedDeckTemplateId: template.id");
     expect(home).toContain("User instruction:");
+    expect(home).toContain("rememberLastExplicitDeckTemplateId");
+    expect(home).toContain("readLastExplicitDeckTemplateId");
     expect(composer).toContain("blocking model kit fallthrough");
     const entryShell = readWebSource("src/components/EntryShell.tsx");
     expect(entryShell).toContain("payloadTemplateId");
     expect(entryShell).toContain("selectedDeckTemplateId: payloadTemplateId");
+    // Drive import fail must not skip Clone for explicit templates.
+    expect(app).not.toContain("pendingDriveAssets.length === 0 || homeDriveImportSucceeded");
+    const launch = readWebSource("src/teamver/canvasSlideLaunch.ts");
+    expect(launch).toContain("LAST_EXPLICIT_DECK_TEMPLATE_KEY");
+    const bundled = readFileSync(
+      resolve(__dirname, "../../daemon/src/plugins/bundled.ts"),
+      "utf8",
+    );
+    expect(bundled).toContain("normalizeBundledPluginLookupId");
     const projectRoutes = readFileSync(
       resolve(__dirname, "../../daemon/src/project-routes.ts"),
       "utf8",

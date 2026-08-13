@@ -3693,8 +3693,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         );
       }
       // Prefer awaiting sync, but NEVER fail the clone if persist flakes —
-      // FE treats non-2xx as "seed failed" and falls back to model generate,
-      // which overwrites the real template look with Neutral.
+      // a non-2xx after a successful write used to make FE treat seed as
+      // failed. FE now blocks Neutral model fallthrough, but we still return
+      // 200 so clients open the seeded deck.html without a false error.
       if (ctx.projectStorageHooks) {
         try {
           await ctx.projectStorageHooks.persistAfterMutation(req, req.params.id, {

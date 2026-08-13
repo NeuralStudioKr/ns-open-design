@@ -2717,9 +2717,10 @@ function AppInner() {
           throw err instanceof Error ? err : new Error(String(err));
         }
       }
-      // Home community / design-template card (no Canvas handoff): still Clone
+      // Home wizard / gallery / community card (no Canvas handoff): still Clone
       // the selected visual template so look matches preview instead of Neutral.
-      // Drive create-slides: only Clone when import succeeded (align with ChatComposer).
+      // Drive import failure must NOT skip Clone — otherwise Daisy is never
+      // applied and the user only sees an empty project (auto-send also blocked).
       if (
         !workingDirHandoffFailed
         && !canvasImportFailed
@@ -2727,7 +2728,6 @@ function AppInner() {
         && !pendingCanvasHandoff
         && slideOnlyMvp
         && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
-        && (pendingDriveAssets.length === 0 || homeDriveImportSucceeded)
       ) {
         const templateTitle =
           typeof input.metadata?.selectedDeckTemplateTitle === 'string'

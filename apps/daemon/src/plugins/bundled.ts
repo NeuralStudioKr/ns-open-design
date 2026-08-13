@@ -59,6 +59,17 @@ export interface RegisterBundledPluginsResult {
 
 const SAFE_BASENAME = /^[a-z0-9][a-z0-9._-]*$/;
 
+/**
+ * Normalize a caller plugin id for bundled lookup: strip marketplace path
+ * prefixes (`open-design/example-…` → `example-…`) and keep only a safe basename.
+ */
+export function normalizeBundledPluginLookupId(pluginId: string): string {
+  const trimmed = String(pluginId ?? '').trim().toLowerCase();
+  if (!trimmed) return '';
+  const segments = trimmed.split('/').filter(Boolean);
+  return segments[segments.length - 1] ?? trimmed;
+}
+
 export async function registerBundledPlugins(
   input: RegisterBundledPluginsInput,
 ): Promise<RegisterBundledPluginsResult> {
@@ -210,11 +221,22 @@ async function pathExists(p: string): Promise<boolean> {
 export async function ensureBundledPluginRegistered(
   input: RegisterBundledPluginsInput & { pluginId: string },
 ): Promise<InstalledPluginRecord | null> {
-  const want = input.pluginId.trim().toLowerCase();
+  // Gallery / marketplace ids often arrive as `open-design/example-…`.
+  // Strip the prefix so SAFE_BASENAME + folder matching can succeed.
+  const want = normalizeBundledPluginLookupId(input.pluginId);
   if (!want || !SAFE_BASENAME.test(want)) return null;
 
-  const existing = getInstalledPlugin(input.db, want);
-  if (existing) return existing;
+  const aliasWants = new Set<string>([want]);
+  if (want.startsWith('example-')) {
+    aliasWants.add(want.slice('example-'.length));
+  } else {
+    aliasWants.add(`example-${want}`);
+  }
+
+  for (const candidate of aliasWants) {
+    const existing = getInstalledPlugin(input.db, candidate);
+    if (existing) return existing;
+  }
 
   let topLevel;
   try {
@@ -229,13 +251,15 @@ export async function ensureBundledPluginRegistered(
     const tierAbs = path.join(input.bundledRoot, tier.name);
     const tierManifest = path.join(tierAbs, 'open-design.json');
     if (await pathExists(tierManifest)) {
-      const hit = await registerOneIfIdMatches({
-        folder: tierAbs,
-        folderId: tier.name,
-        want,
-        input,
-      });
-      if (hit) return hit;
+      for (const candidate of aliasWants) {
+        const hit = await registerOneIfIdMatches({
+          folder: tierAbs,
+          folderId: tier.name,
+          want: candidate,
+          input,
+        });
+        if (hit) return hit;
+      }
       continue;
     }
     let inner;
@@ -253,16 +277,19 @@ export async function ensureBundledPluginRegistered(
       // (`example-simple-deck` ↔ `simple-deck`). Do not use loose
       // `endsWith(-${base})` — that would parse every `*-deck` folder.
       const base = entry.name.toLowerCase();
-      if (want !== base && want !== `example-${base}`) {
-        continue;
+      const matchesFolder = [...aliasWants].some(
+        (candidate) => candidate === base || candidate === `example-${base}`,
+      );
+      if (!matchesFolder) continue;
+      for (const candidate of aliasWants) {
+        const hit = await registerOneIfIdMatches({
+          folder,
+          folderId: entry.name,
+          want: candidate,
+          input,
+        });
+        if (hit) return hit;
       }
-      const hit = await registerOneIfIdMatches({
-        folder,
-        folderId: entry.name,
-        want,
-        input,
-      });
-      if (hit) return hit;
     }
   }
   return null;

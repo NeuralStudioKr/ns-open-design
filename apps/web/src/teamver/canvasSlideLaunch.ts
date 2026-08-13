@@ -53,6 +53,28 @@ export function isExplicitCanvasSlideVisualTemplate(
   return true;
 }
 
+/** Cross-surface pin so Canvas→Slide inherits the last Home wizard/gallery pick. */
+const LAST_EXPLICIT_DECK_TEMPLATE_KEY = "od:last-explicit-deck-template-id";
+
+export function rememberLastExplicitDeckTemplateId(templateId: string | null | undefined): void {
+  const id = templateId?.trim() ?? "";
+  if (!isExplicitCanvasSlideVisualTemplate({ id })) return;
+  try {
+    window.sessionStorage.setItem(LAST_EXPLICIT_DECK_TEMPLATE_KEY, id);
+  } catch {
+    /* private mode / SSR */
+  }
+}
+
+export function readLastExplicitDeckTemplateId(): string | null {
+  try {
+    const id = window.sessionStorage.getItem(LAST_EXPLICIT_DECK_TEMPLATE_KEY)?.trim() ?? "";
+    return isExplicitCanvasSlideVisualTemplate({ id }) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Slide-generation prompt paired with Canvas → Design handoff (`teamverDriveIntent=create-slides`).
  * The attached file is a **source document**, not the deliverable — the agent must build a new
