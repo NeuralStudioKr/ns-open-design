@@ -82,15 +82,18 @@ describe('official deck template visual kits (all mode:deck example.html)', () =
         failures.push(`${folder}: kit null`);
         continue;
       }
-      if (kit.length > 11_000) failures.push(`${folder}: kit ${kit.length} > 11000`);
-      if (/…\s*$/.test(kit) && kit.length >= 11_000) {
+      if (kit.length > 12_000) failures.push(`${folder}: kit ${kit.length} > 12000`);
+      if (/…\s*$/.test(kit) && kit.length >= 12_000) {
         failures.push(`${folder}: truncated at budget`);
       }
       if (!kit.includes('### Slide surface')) {
         failures.push(`${folder}: missing Slide surface`);
       }
-      if (!/TOKEN-SAFE CONTENT-SWAP/i.test(kit)) {
-        failures.push(`${folder}: missing TOKEN-SAFE CONTENT-SWAP hard rule`);
+      if (!kit.includes('### Must-match look')) {
+        failures.push(`${folder}: missing Must-match look checklist`);
+      }
+      if (!/LOOK LIKE THE TEMPLATE|TOKEN-SAFE CONTENT-SWAP/i.test(kit)) {
+        failures.push(`${folder}: missing look-match hard rule`);
       }
       if (/treat `example\.html` as the base deck/i.test(kit)) {
         failures.push(`${folder}: legacy TEMPLATE-AS-BASE dump language`);

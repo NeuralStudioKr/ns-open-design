@@ -13,15 +13,13 @@
  * `.deco` CSS + hard anti-emoji rules placed before any large cue.
  */
 
-// Raised 5 200 → 7 800 → 8 800 → 11 000 so Daisy Days can ship daisy + star
-// + rainbow sprites together with tokens, ### Slide surface, scaffold map,
-// and Decoration CSS without end-truncating Motif sprites (at 8.8KB only the
-// daisy survived while the map still demanded star/rainbow → invent/emoji).
-// ~11KB ≈ 2.7k tokens — still far below full example.html (~87KB) or the
+// Raised through 11 000 → 12 000 so Daisy Days can ship daisy+star+rainbow
+// plus Layout CSS (grid/flex/regions) without truncating Motif sprites.
+// ~12KB ≈ 3k tokens — still far below full example.html (~87KB) or the
 // retired CONTENT-SWAP HTML scaffold dump.
 // BODY-FIRST hard rules tell the model to emit slides before pasting this
 // kit into `<head>` so the larger budget does not invite shell-only cuts.
-const DEFAULT_MAX_CHARS = 11_000;
+const DEFAULT_MAX_CHARS = 12_000;
 
 function uniquePreserveOrder(values: string[]): string[] {
   const out: string[] = [];
@@ -200,12 +198,99 @@ function isSlideSurfaceSelector(part: string): boolean {
 }
 
 /**
+ * Per-slide shells like `.slide-1` / `.slide-title` / `.slide-2` (no descendants).
+ * Coral/Cobalt put cream paper here while `html,body` stays dark chrome.
+ * Exclude chrome: `.slide-counter`, `.slide-nav`, etc.
+ */
+function isSlideVariantSurfaceSelector(part: string): boolean {
+  const trimmed = part.trim();
+  if (!/^(?:[a-z][a-z0-9]*)?\.slide-[a-z0-9_-]+$/i.test(trimmed)) return false;
+  if (/\.slide-(?:counter|nav|dot|dots|active|index|number|btn|button|link|arrow)\b/i.test(trimmed)) {
+    return false;
+  }
+  return true;
+}
+
+function readBackgroundColorPair(
+  ruleBody: string,
+  rootBlock: string | null,
+): { background: string | null; color: string | null } {
+  const bg = /(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/i.exec(ruleBody)?.[1];
+  const c = /(?:^|;)\s*color\s*:\s*([^;]+)/i.exec(ruleBody)?.[1];
+  const background = bg ? resolveCssTokenValue(rootBlock, bg) : null;
+  const color = c ? resolveCssTokenValue(rootBlock, c) : null;
+  // Ignore near-transparent overlays — not the slide paper.
+  if (background && /^(?:transparent|rgba?\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0(?:\.0+)?\s*\))$/i.test(background)) {
+    return { background: null, color };
+  }
+  return { background, color };
+}
+
+function majoritySlidePaper(
+  rules: RegExpMatchArray[],
+  rootBlock: string | null,
+): { background: string | null; color: string | null; source: string | null; count: number } {
+  const tallies = new Map<string, { count: number; color: string | null; source: string }>();
+  for (const rule of rules) {
+    const selectors = splitCssSelectors(rule[1] ?? '');
+    const variant = selectors.find(isSlideVariantSurfaceSelector);
+    if (!variant) continue;
+    const pair = readBackgroundColorPair(rule[2] ?? '', rootBlock);
+    if (!pair.background) continue;
+    const prev = tallies.get(pair.background) ?? {
+      count: 0,
+      color: null,
+      source: variant,
+    };
+    prev.count += 1;
+    prev.color ??= pair.color;
+    tallies.set(pair.background, prev);
+  }
+  let best: { background: string; count: number; color: string | null; source: string } | null = null;
+  for (const [background, meta] of tallies) {
+    if (!best || meta.count > best.count) {
+      best = { background, count: meta.count, color: meta.color, source: meta.source };
+    }
+  }
+  if (!best) {
+    return { background: null, color: null, source: null, count: 0 };
+  }
+  return {
+    background: best.background,
+    color: best.color,
+    source: best.source,
+    count: best.count,
+  };
+}
+
+function paperTokenFromRoot(
+  rootBlock: string | null,
+): { background: string | null; color: string | null; source: string | null } {
+  if (!rootBlock) return { background: null, color: null, source: null };
+  const vars = extractCssVariables(rootBlock);
+  let background: string | null = null;
+  let source: string | null = null;
+  for (const name of ['cream', 'paper', 'surface', 'bg', 'background'] as const) {
+    if (!vars[name]) continue;
+    const resolved = resolveCssTokenValue(rootBlock, `var(--${name})`);
+    if (!resolved) continue;
+    background = resolved;
+    source = `--${name}`;
+    break;
+  }
+  let color: string | null = null;
+  for (const name of ['text-dark', 'text', 'foreground', 'ink', 'black'] as const) {
+    if (!vars[name]) continue;
+    color = resolveCssTokenValue(rootBlock, `var(--${name})`);
+    if (color) break;
+  }
+  return { background, color, source };
+}
+
+/**
  * Resolve the template's slide paper surface into concrete colors.
- * Prefer `.slide` paper over `html/body` stage chrome when they differ
- * (e.g. Coral dark `#1A1A1A` body around cream slides).
- *
- * Selectors are matched as whole comma-separated parts so `.welcome-body`
- * cannot steal the document surface from `html,body`.
+ * Prefer real slide paper (`.slide-N` / `.slide` / `--cream|--paper`) over
+ * `html,body` stage chrome when they differ (Coral dark body + cream slides).
  */
 function extractSlideSurfaceBinding(
   html: string,
@@ -221,15 +306,9 @@ function extractSlideSurfaceBinding(
     let color: string | null = null;
     for (const rule of rules) {
       if (!splitCssSelectors(rule[1] ?? '').some(match)) continue;
-      const body = rule[2] ?? '';
-      if (!background) {
-        const bg = /(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/i.exec(body)?.[1];
-        background = bg ? resolveCssTokenValue(rootBlock, bg) : null;
-      }
-      if (!color) {
-        const c = /(?:^|;)\s*color\s*:\s*([^;]+)/i.exec(body)?.[1];
-        color = c ? resolveCssTokenValue(rootBlock, c) : null;
-      }
+      const pair = readBackgroundColorPair(rule[2] ?? '', rootBlock);
+      background ??= pair.background;
+      color ??= pair.color;
       if (background && color) break;
     }
     return { background, color };
@@ -237,32 +316,70 @@ function extractSlideSurfaceBinding(
 
   const body = readPair(isDocumentSurfaceSelector);
   const slide = readPair(isSlideSurfaceSelector);
+  const variantPaper = majoritySlidePaper(rules, rootBlock);
+  const tokenPaper = paperTokenFromRoot(rootBlock);
 
-  // Paper-on-dark-chrome (or dark-on-light-chrome): slide surface wins.
-  if (
-    slide.background
-    && body.background
-    && contrastLabel(slide.background) !== 'unknown'
-    && contrastLabel(body.background) !== 'unknown'
-    && contrastLabel(slide.background) !== contrastLabel(body.background)
-  ) {
+  const preferPaperOverBodyChrome = (
+    paper: { background: string | null; color: string | null; source: string | null },
+  ) => {
+    if (!paper.background || !body.background) return null;
+    if (
+      contrastLabel(paper.background) !== 'unknown'
+      && contrastLabel(body.background) !== 'unknown'
+      && contrastLabel(paper.background) !== contrastLabel(body.background)
+    ) {
+      return {
+        background: paper.background,
+        color: paper.color
+          ?? tokenPaper.color
+          ?? slide.color
+          ?? (contrastLabel(paper.background) === 'light' ? body.color : null),
+        source: paper.source,
+      };
+    }
+    return null;
+  };
+
+  // 1) Bare `.slide` surface when present (Daisy Days `.slide{background:var(--cream)}`).
+  if (slide.background) {
+    const overChrome = preferPaperOverBodyChrome({ ...slide, source: '.slide' });
+    if (overChrome) return overChrome;
     return {
       background: slide.background,
-      color: slide.color ?? body.color,
+      color: slide.color ?? tokenPaper.color ?? body.color,
       source: '.slide',
     };
   }
-  if (slide.background) {
+
+  // 2) Majority `.slide-N` paper when body is contrasting chrome (Coral).
+  // Require ≥2 matching slide shells so a single `.slide-title` accent can't win.
+  if (variantPaper.background && variantPaper.count >= 2) {
+    const overChrome = preferPaperOverBodyChrome(variantPaper);
+    if (overChrome) return overChrome;
+  }
+
+  // 3) :root --cream/--paper when body chrome disagrees.
+  const fromToken = preferPaperOverBodyChrome(tokenPaper);
+  if (fromToken) return fromToken;
+
+  if (variantPaper.background) {
     return {
-      background: slide.background,
-      color: slide.color ?? body.color,
-      source: '.slide',
+      background: variantPaper.background,
+      color: variantPaper.color ?? tokenPaper.color ?? body.color,
+      source: variantPaper.source,
+    };
+  }
+  if (tokenPaper.background) {
+    return {
+      background: tokenPaper.background,
+      color: tokenPaper.color ?? body.color,
+      source: tokenPaper.source,
     };
   }
   if (body.background || body.color) {
     return {
       background: body.background,
-      color: body.color ?? slide.color,
+      color: body.color ?? tokenPaper.color,
       source: 'body',
     };
   }
@@ -370,6 +487,84 @@ function extractDecorationCss(html: string, budget: number): string | null {
   }
   if (picked.length === 0) return null;
   return picked.join('\n');
+}
+
+/**
+ * Layout-critical CSS (grid/flex/padding/regions) so decks match template
+ * placement — not just palette + a few ornaments.
+ */
+function extractLayoutCss(html: string, budget: number): string | null {
+  const sheet = extractStyleSheets(html);
+  if (!sheet.trim()) return null;
+  const rules = [...sheet.matchAll(/[^{}@][^{]*\{[^}]+\}/g)]
+    .map((match) => compressCss(match[0] ?? ''))
+    .filter(Boolean);
+  const prioritized = rules.filter((rule) =>
+    /display\s*:\s*(?:flex|grid)/i.test(rule)
+    || /grid-template/i.test(rule)
+    || /flex-direction|justify-content|align-items|gap\s*:/i.test(rule)
+    || /\.slide-[a-z0-9_-]+/i.test(rule)
+    || /\.(?:title-box|weekly-grid|timeline|welcome-|day-card|card-grid|columns?|hero|meta-row|bottom-section|top-section)\b/i.test(rule),
+  );
+  prioritized.sort((a, b) => {
+    const score = (rule: string) => {
+      if (/grid-template|display\s*:\s*grid/i.test(rule)) return 0;
+      if (/display\s*:\s*flex/i.test(rule)) return 1;
+      if (/\.slide-[a-z0-9_-]+/i.test(rule)) return 2;
+      return 3;
+    };
+    return score(a) - score(b);
+  });
+  const picked: string[] = [];
+  let used = 0;
+  for (const rule of prioritized) {
+    if (picked.length >= 16) break;
+    if (used + rule.length + 1 > budget) continue;
+    // Skip pure opacity/visibility chrome from OD stage decks.
+    if (/opacity\s*:\s*0|visibility\s*:\s*hidden/i.test(rule) && !/display\s*:/i.test(rule)) {
+      continue;
+    }
+    picked.push(rule);
+    used += rule.length + 1;
+  }
+  if (picked.length === 0) return null;
+  return picked.join('\n');
+}
+
+function renderMustMatchLookBlock(options: {
+  background: string | null;
+  color: string | null;
+  fonts: readonly string[];
+  hasScaffoldMap: boolean;
+}): string {
+  const lines = [
+    '### Must-match look (failed deliverable if missed)',
+    '',
+    'The finished deck must **look like this template**, not a Neutral reinterpretation:',
+  ];
+  if (options.background) {
+    lines.push(
+      `1. **Background/surface:** \`${options.background}\` on BOTH \`html\`/\`body\` AND every \`.slide\`${options.color ? ` (ink \`${options.color}\`)` : ''}.`,
+    );
+  } else {
+    lines.push('1. **Background/surface:** use the kit Slide surface / main surface token on html/body AND every `.slide`.');
+  }
+  if (options.fonts.length > 0) {
+    lines.push(
+      `2. **Fonts:** ${options.fonts.slice(0, 4).join(' + ')} — include the Font import; do not substitute Inter/Noto/system-ui alone.`,
+    );
+  } else {
+    lines.push('2. **Fonts:** bind kit font stacks / Font import when present; do not substitute a generic system stack.');
+  }
+  lines.push(
+    options.hasScaffoldMap
+      ? '3. **Layout/placement:** follow Template scaffold map roles + Layout CSS (grids/flex/regions). Do not flatten every slide into the same cover composition.'
+      : '3. **Layout/placement:** reuse the template\'s multi-region compositions (grids/flex/cards). Do not flatten every slide into the same cover composition.',
+  );
+  lines.push(
+    '4. **Motif/density:** when Motif sprites / Decoration CSS are present, show them — sparse title-only slides are a failure.',
+  );
+  return lines.join('\n');
 }
 
 function classifySvg(svg: string): 'daisy' | 'star' | 'rainbow' | 'sun' | 'cloud' | 'other' {
@@ -734,14 +929,16 @@ function extractTemplateScaffoldMap(
 
 const HARD_RULES = [
   'Hard rules (non-negotiable):',
-  '- **TOKEN-SAFE CONTENT-SWAP:** treat this kit + Template scaffold map as the base look. Do NOT paste or rewrite a full `example.html`. Preserve slide classes, layout roles, surface colors, decorative wrappers, border/shadow/card treatment, and Motif sprites from this kit. Replace only visible content: headings, paragraphs, bullets, chart/table labels/values, and image slots.',
-  '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` (or the template\'s slide wrapper) BEFORE a large `<head>`/`<style>` dump. Put Motif sprites + Decoration CSS in one short body `<style>` after slide 1 (or tiny inline tokens). A CSS-only truncation is a failed deliverable.',
-  '- Keep the template scheme exactly (light stays light; dark/terminal stays dark). If the kit has a named main surface/background token, use it on the cover.',
-  '- **Surface:** bind `### Slide surface` background/color on BOTH `html`/`body` AND every `.slide`. Dark-on-dark, light-on-light, or paper-slides-on-wrong-shell are failed deliverables. Ink/border tokens are stroke/text, not backgrounds.',
-  '- Motif MUST be copied from **Motif sprites** / **Decoration CSS** below when present. Paste sprites VERBATIM into the template\'s ornament wrappers (`.deco`, corner slots, badges, etc.). Use only sprites listed in Motif sprites — never invent SVG/emoji for a scaffold-map deco slot with no matching sprite. Copy at least one complete provided SVG on the cover when sprites are present. When Decoration CSS ships multiple corner slots that match provided sprites, fill them — a single lonely ornament is not the template.',
+  '- **LOOK LIKE THE TEMPLATE:** background/surface, fonts, and layout/placement MUST match this kit. A Neutral / "similar vibe" reinterpretation is a failed deliverable even if the content is correct.',
+  '- **TOKEN-SAFE CONTENT-SWAP:** treat this kit + Template scaffold map + Layout CSS as the base look. Do NOT paste or rewrite a full `example.html`. Replace only visible content: headings, paragraphs, bullets, chart/table labels/values, and image slots.',
+  '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` (or the template\'s slide wrapper) BEFORE a large `<head>`/`<style>` dump. Put Motif sprites + Layout/Decoration CSS in one short body `<style>` after slide 1 (or tiny inline tokens). A CSS-only truncation is a failed deliverable.',
+  '- **Background:** bind `### Slide surface` on BOTH `html`/`body` AND every `.slide`. Dark-on-dark, light-on-light, or paper-slides-on-wrong-shell are failed deliverables. Ink/border tokens are stroke/text, not backgrounds.',
+  '- **Fonts:** use kit Font import + font-family names exactly; do not substitute Inter/Noto/system-ui alone when the kit lists display/body faces.',
+  '- **Layout:** follow Template scaffold map roles and Layout CSS (grids/flex/regions). Do not flatten every slide into the same cover composition.',
+  '- Motif MUST be copied from **Motif sprites** / **Decoration CSS** below when present. Paste sprites VERBATIM into the template\'s ornament wrappers. Use only sprites listed in Motif sprites — never invent SVG/emoji for a missing slot. Copy at least one complete provided SVG on the cover when sprites are present.',
   '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration pretending to be the template identity. Do not invent ellipse "daisy" SVGs or generic flower geometry when sprites are provided.',
   '- Preserve chunky cards/borders/offset shadows when Decoration CSS / `:root` tokens show them (`--border`, `--shadow`).',
-  '- Vary slide layouts using the Template scaffold map roles; do not emit sparse title-only Neutral Modern slides. Do not substitute OD skeleton terracotta `#c96442` unless that hex is listed in this kit\'s palette cues.',
+  '- Do not substitute OD skeleton terracotta `#c96442` unless that hex is listed in this kit\'s palette cues.',
 ];
 
 /**
@@ -804,12 +1001,25 @@ export function extractTemplateVisualKitFromHtml(
   }
 
   // Extract optional sections first, then pack by priority so Motif sprites
-  // cannot be squeezed out by scaffold/deco/cue growth.
+  // and layout CSS cannot be squeezed out by cue growth.
   const sprites = extractMotifSprites(source, 3_400);
   const spriteKinds = new Set(sprites.map((sprite) => sprite.kind));
-  const scaffold = extractTemplateScaffoldMap(source, 1_100, spriteKinds);
+  const scaffold = extractTemplateScaffoldMap(source, 1_000, spriteKinds);
+  // Keep Decoration CSS in the kit when the template is ornament-heavy (Daisy).
+  // Layout CSS is important too, but a missing `.deco` block regresses look more.
   const deco = extractDecorationCss(source, 820);
-  const slideCue = extractFirstSlideStructureCue(source, 420);
+  const layout = extractLayoutCss(source, deco ? 900 : 1_200);
+  const slideCue = extractFirstSlideStructureCue(source, 320);
+
+  lines.push(
+    renderMustMatchLookBlock({
+      background: surfaceBinding.background,
+      color: surfaceBinding.color,
+      fonts,
+      hasScaffoldMap: Boolean(scaffold),
+    }),
+    '',
+  );
 
   const spriteBlock: string[] = [];
   if (sprites.length > 0) {
@@ -824,7 +1034,7 @@ export function extractTemplateVisualKitFromHtml(
     }
   }
 
-  // Pack Motif sprites first (highest fidelity signal), then map/deco/cue.
+  // Pack Motif + map + deco first (look fidelity), then layout CSS, cue last.
   const optionalBlocks: string[][] = [spriteBlock];
   if (scaffold) {
     optionalBlocks.push([
@@ -842,6 +1052,16 @@ export function extractTemplateVisualKitFromHtml(
       '',
       '```css',
       deco,
+      '```',
+      '',
+    ]);
+  }
+  if (layout) {
+    optionalBlocks.push([
+      '### Layout CSS (grids/flex/regions — paste into the short body `<style>` AFTER slide 1)',
+      '',
+      '```css',
+      layout,
       '```',
       '',
     ]);

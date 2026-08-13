@@ -271,9 +271,9 @@ function selectedSlideTemplatePriorityInstruction(title: string): string {
   return [
     "**Selected template visual contract — READ LAST.**",
     `The user explicitly selected "${title}" as the deck template. This selected template is the visual source of truth and outranks the Canvas / Drive source styling, quick settings, default design systems, scenario examples, and any generic slide examples.`,
-    "Use the Template visual kit as the token-safe content-swap contract: bind kit palette/fonts/borders/Motif sprites and follow the Template scaffold map (slide classes/roles). Replace visible content for the user brief — do not dump or rewrite a full example.html document (token/truncation risk).",
-    "Whatever hex colors and font-family names the kit lists MUST appear in the deck CSS — do not approximate them with Neutral slate `#0f172a`, OD skeleton terracotta `#c96442` (unless that hex is in the kit palette), ink `#1c1b1a`, or Noto Sans KR-only typography that ignores kit fonts.",
-    "If complete motif SVGs are provided, copy at least one provided SVG onto the cover and reuse that drawn CSS/SVG motif language — do not invent ellipse daisy SVGs or emoji ornaments.",
+    "Use the Template visual kit as the token-safe content-swap contract. The finished deck MUST look like this template: bind kit background/surface + fonts + Layout CSS/scaffold map roles + Motif sprites. Replace visible content for the user brief — do not dump or rewrite a full example.html document (token/truncation risk).",
+    "A Neutral / \"similar vibe\" reinterpretation is a failed deliverable. Whatever surface hex and font-family names the kit lists MUST appear — do not approximate with Neutral slate `#0f172a`, OD skeleton terracotta `#c96442` (unless that hex is in the kit palette), ink `#1c1b1a`, or Noto Sans KR-only typography that ignores kit fonts.",
+    "Follow scaffold map layout roles (do not flatten every slide into the same cover). If complete motif SVGs are provided, copy at least one provided SVG onto the cover — do not invent ellipse daisy SVGs or emoji ornaments.",
     "A complete closed deck beats perfect motif fidelity; never fall back to Neutral Modern, Simple Deck skeleton accent, generic pastel circles, or source-page decorations.",
   ].join("\n");
 }

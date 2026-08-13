@@ -1617,14 +1617,14 @@ export function composeTeamverSlideApiPrompt({
         )
         : hasTemplateVisualKit
         ? (
-          'Hard requirements (token-safe content-swap):\n'
-          + '- Treat the kit + Template scaffold map as the base look: preserve slide classes/layout roles/surfaces/decorative wrappers/SVG motifs and replace only visible content for the user brief.\n'
+          'Hard requirements (token-safe content-swap — MUST look like the template):\n'
+          + '- Background/surface, fonts, and layout/placement MUST match the kit. A Neutral / "similar vibe" reinterpretation is a failed deliverable.\n'
+          + '- Treat the kit + Template scaffold map + Layout CSS as the base look; replace only visible content for the user brief.\n'
           + '- Do NOT dump or rewrite a full example.html document (token/truncation risk). Ignore SKILL.md "Clone example.html" steps in API mode.\n'
-          + '- Match the Template visual kit tokens (palette hex, fonts, borders, shadows) with a compact inline subset; if the kit has a main surface/background token, bind it on html/body AND every `.slide`.\n'
-          + '- Keep decorative density via a few kit Motif sprites / Decoration CSS cues (corner SVG `.deco`, chunky cards) — copy at least one provided SVG sprite on the cover when sprites are present; use only sprites listed in Motif sprites; not a sparse title slide and not emoji flowers/stars.\n'
-          + '- Do not paste the full Decoration CSS or a long `<head>` before slide 1; first produce visible slide sections and finish the deck.\n'
-          + '- Active design system is secondary brand context only; template look wins.\n'
-          + '- Prefer rich multi-region layouts from the Template scaffold map vocabulary over empty gradient covers.\n\n'
+          + '- Bind kit Slide surface on html/body AND every `.slide`; use kit Font import + font-family names exactly.\n'
+          + '- Follow scaffold map roles + Layout CSS (grids/flex/regions). Keep Motif sprites / Decoration CSS density — copy at least one provided SVG on the cover when sprites are present; no emoji ornament rows.\n'
+          + '- Do not paste a long `<head>` before slide 1; first produce visible slide sections and finish the deck.\n'
+          + '- Active design system is secondary brand context only; template look wins.\n\n'
         )
         : (
           'Hard requirements:\n'

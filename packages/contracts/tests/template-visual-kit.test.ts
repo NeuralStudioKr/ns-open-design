@@ -44,7 +44,8 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toContain('.deco{');
     expect(kit).toMatch(/<svg\b[\s\S]*?<\/svg>/i);
     expect(kit).not.toMatch(/<svg\b[^>]*>[^<]*…/);
-    expect(kit).toContain('use Motif sprites SVG inside .deco');
+    // First-slide structure cue is optional under budget; Motif sprites cover SVG paste.
+    expect(kit).toMatch(/Motif sprites|use Motif sprites SVG inside \.deco/i);
     expect(kit).toContain('### Slide surface');
     expect(kit).toMatch(/\*\*background\*\*:\s*`#F5F0E6`/i);
     expect(kit).toMatch(/\*\*color\*\*\s*\(text\):\s*`#2D2D2D`/i);
@@ -78,9 +79,10 @@ describe('extractTemplateVisualKitFromHtml', () => {
     // Budget must fit daisy + star + rainbow so the scaffold map does not
     // demand deco kinds the Motif sprites block never shipped.
     expect(spriteSvgs.length).toBeGreaterThanOrEqual(3);
-    expect(kit!.length).toBeLessThanOrEqual(11_000);
+    expect(kit!.length).toBeLessThanOrEqual(12_000);
     expect(kit!).not.toMatch(/…\s*$/);
-    expect(kit!).toMatch(/TOKEN-SAFE CONTENT-SWAP/i);
+    expect(kit!).toMatch(/LOOK LIKE THE TEMPLATE|TOKEN-SAFE CONTENT-SWAP/i);
+    expect(kit!).toContain('### Must-match look');
     expect(kit!).not.toMatch(/treat `example\.html` as the base deck/i);
     // Scaffold-map deco slots must not ask for sun/cloud when those sprites
     // were not included in Motif sprites.
@@ -113,15 +115,20 @@ describe('extractTemplateVisualKitFromHtml', () => {
 <style>
 :root { --cream:#F5F0E8; --ink:#1A1A1A; --text:#2D2D2D; }
 html,body{background:var(--ink);color:#fff}
-.slide{background:var(--cream);color:var(--text)}
+.slide{width:100%;height:100%;opacity:0}
+.slide-2{background:var(--cream);color:var(--text);display:flex;flex-direction:column}
+.slide-4{background:var(--cream);display:flex;flex-direction:column}
+.slide-6{background:var(--cream);display:flex;flex-direction:column}
 </style>
-<section class="slide slide-title"><h1>Coral</h1></section>
+<section class="slide slide-2"><h1>Coral</h1></section>
 `.trim();
     const kit = extractTemplateVisualKitFromHtml(html, { title: 'Html Ppt Zhangzara Coral' });
     expect(kit).toContain('### Slide surface');
     expect(kit).toMatch(/\*\*background\*\*:\s*`#F5F0E8`/i);
     expect(kit).not.toMatch(/\*\*background\*\*:\s*`#1A1A1A`/i);
-    expect(kit).toMatch(/from `\.slide`/i);
+    expect(kit).toContain('### Must-match look');
+    expect(kit).toContain('### Layout CSS');
+    expect(kit).toMatch(/LOOK LIKE THE TEMPLATE/i);
   });
 
   it('ships Motif sprites for non-Daisy SVG templates', () => {
