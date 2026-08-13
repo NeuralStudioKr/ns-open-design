@@ -12,7 +12,9 @@ import {
   resolveManualEditSavePinTipRevision,
   resolveManualEditSourceAgainstPinAndTip,
   acceptedKeepsEarlyPaintTipOrPin,
+  shouldClearTipContentCacheAfterConfirmRefuse,
   shouldEarlyPaintResolvedPinTipSource,
+  shouldPreferTipWhenCandidateLags,
   shouldReleaseManualEditSavePinForTip,
   tipContentForManualEditSavePin,
 } from '../../src/edit-mode/manual-edit-save-pin';
@@ -236,5 +238,42 @@ describe('manual edit save pin', () => {
     expect(acceptedKeepsEarlyPaintTipOrPin(tip, tip)).toBe(true);
     expect(acceptedKeepsEarlyPaintTipOrPin(tip, stale)).toBe(false);
     expect(acceptedKeepsEarlyPaintTipOrPin(tip, null)).toBe(false);
+  });
+
+  it('clears mismatched tip cache after confirm refuse adopts disk', () => {
+    const adopted = '<html><body><h1>Disk tip B</h1></body></html>';
+    expect(shouldClearTipContentCacheAfterConfirmRefuse(stale, adopted)).toBe(true);
+    expect(shouldClearTipContentCacheAfterConfirmRefuse(adopted, adopted)).toBe(false);
+    expect(shouldClearTipContentCacheAfterConfirmRefuse(null, adopted)).toBe(false);
+  });
+
+  it('suppresses disk tip prefer while confirm-refuse refresh is landing', () => {
+    expect(shouldPreferTipWhenCandidateLags({
+      diskPath: true,
+      suppressUntilRefresh: false,
+    })).toBe(true);
+    expect(shouldPreferTipWhenCandidateLags({
+      diskPath: true,
+      suppressUntilRefresh: true,
+    })).toBe(false);
+    expect(shouldPreferTipWhenCandidateLags({
+      diskPath: false,
+      suppressUntilRefresh: false,
+    })).toBe(false);
+  });
+
+  it('after refuse-equivalent tip≠candidate, suppress keeps adopted disk', () => {
+    const tipA = stale;
+    const diskB = '<html><body><h1>Disk tip B</h1></body></html>';
+    const prefer = shouldPreferTipWhenCandidateLags({
+      diskPath: true,
+      suppressUntilRefresh: true,
+    });
+    expect(resolveManualEditSourceAgainstPinAndTip({
+      pinned: null,
+      candidate: diskB,
+      tipContent: tipA,
+      preferTipWhenCandidateLags: prefer,
+    })).toEqual({ source: diskB, clearPin: false });
   });
 });

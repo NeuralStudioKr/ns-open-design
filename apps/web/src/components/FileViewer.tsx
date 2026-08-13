@@ -181,6 +181,7 @@ import {
   shouldApplyHeadRevisionSnapshotAuthority,
 } from '../runtime/revision-reconcile';
 import {
+  clearRevisionContentCacheEntry,
   clearRevisionContentCacheForFile,
   getRevisionContentCache,
   prefetchRevisionContents,
@@ -316,8 +317,11 @@ import {
   manualEditHistoryConfirmTrustsLocal,
   isManualEditSourcePinActive,
   acceptedKeepsEarlyPaintTipOrPin,
+  resolveManualEditSavePinTipRevision,
   resolveManualEditSourceAgainstPinAndTip,
+  shouldClearTipContentCacheAfterConfirmRefuse,
   shouldEarlyPaintResolvedPinTipSource,
+  shouldPreferTipWhenCandidateLags,
   tipContentForManualEditSavePin,
   type ManualEditSourcePin,
 } from '../edit-mode/manual-edit-save-pin';
@@ -325,6 +329,8 @@ import { manualEditTargetsIdentityFingerprint } from '../edit-mode/manual-edit-t
 import {
   shouldClearManualEditFrozenSourceOnModeChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
+  shouldReseedManualEditMultiInspectorAfterFreezeSync,
+  shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
 } from '../edit-mode/manual-edit-freeze';
@@ -5459,6 +5465,11 @@ function HtmlViewer({
   const manualEditWorkspaceRef = useRef<HTMLDivElement | null>(null);
   const manualEditResizeSessionActiveRef = useRef(false);
   const manualEditGeometryHandoffIdRef = useRef<string | null>(null);
+  /** Tip-yield freeze remount — skip idle wild-jump deny until first remasure. */
+  const manualEditTipRemountGeometryGraceIdRef = useRef<string | null>(null);
+  const manualEditTipRemountGeometryGraceUntilRef = useRef(0);
+  /** Confirm refuse → suppress disk tip prefer until refresh commits. */
+  const manualEditSuppressTipPreferUntilRefreshRef = useRef(false);
   const manualEditRemeasureAwaiterRef = useRef(createManualEditRemeasureAwaiter());
   const manualEditModeRef = useRef(false);
   const manualEditResizePausedRef = useRef(false);
@@ -6404,7 +6415,11 @@ function HtmlViewer({
           candidate: text,
           tipContent,
           // Disk: active tip cache wins over lagging GET / missing stack tip.
-          preferTipWhenCandidateLags: true,
+          // Confirm-refuse suppress: do not re-paint stale warm tip over adopted disk.
+          preferTipWhenCandidateLags: shouldPreferTipWhenCandidateLags({
+            diskPath: true,
+            suppressUntilRefresh: manualEditSuppressTipPreferUntilRefreshRef.current,
+          }),
         });
         if (resolvedDisk.clearPin) {
           manualEditPinnedSourceRef.current = null;
@@ -6452,8 +6467,9 @@ function HtmlViewer({
               setSourceLoadFailed(false);
               return;
             }
-            // Accept fell back to an unrelated lastStable — fall through to
-            // soft-retry / normal disk accept instead of early-returning tip.
+            // Accept fell back — soft-retry before edit-mode hold so incomplete
+            // tip/GET can recover (hold would otherwise skip scheduleSoftRetry).
+            if (scheduleSoftRetry()) return;
           }
         }
         if (shouldHoldDiskPreviewDuringManualEdit(
@@ -7926,18 +7942,52 @@ function HtmlViewer({
     if (effectiveDeck && boardMode) requestSlideStateFromIframe(target);
   }
 
-  /** Tip-yield freeze remount — deferred selection echo (기획 59 outline). */
+  /** Tip-yield freeze remount — deferred selection echo + multi Mixed reseed (59). */
   function scheduleManualEditSelectionEchoAfterFreezeSync() {
-    if (!shouldEchoManualEditSelectionAfterFreezeSync(
+    const selectedIds = selectedManualEditTargetIdsRef.current;
+    const echo = shouldEchoManualEditSelectionAfterFreezeSync(
       manualEditModeRef.current,
-      selectedManualEditTargetIdsRef.current,
-    )) return;
+      selectedIds,
+    );
+    const reseedMulti = shouldReseedManualEditMultiInspectorAfterFreezeSync(
+      manualEditModeRef.current,
+      selectedIds,
+    );
+    if (!echo && !reseedMulti) return;
+    // Idle remasure after tip remount may jump layout — skip wild-jump once.
+    const graceId = selectedManualEditTargetIdRef.current;
+    if (graceId) {
+      manualEditTipRemountGeometryGraceIdRef.current = graceId;
+      manualEditTipRemountGeometryGraceUntilRef.current = Date.now() + 800;
+    }
     window.setTimeout(() => {
-      if (!shouldEchoManualEditSelectionAfterFreezeSync(
+      if (shouldEchoManualEditSelectionAfterFreezeSync(
+        manualEditModeRef.current,
+        selectedManualEditTargetIdsRef.current,
+      )) {
+        syncBridgeModes(iframeRef.current);
+      }
+      if (!shouldReseedManualEditMultiInspectorAfterFreezeSync(
         manualEditModeRef.current,
         selectedManualEditTargetIdsRef.current,
       )) return;
-      syncBridgeModes(iframeRef.current);
+      // Source-only reseed (same plan helper as batch flush / cancel) — 기획 59.
+      const ids = selectedManualEditTargetIdsRef.current;
+      const base = sourceRef.current ?? '';
+      const parsedDoc = parseManualEditSource(base);
+      const reseed = planManualEditMultiInspectorReseed({
+        selectedIds: ids,
+        readStyles: (id) => readManualEditStyles(base, id, {}, parsedDoc),
+        concurrentPending: manualEditPendingStyleRef.current,
+      });
+      setManualEditMixedStyleKeys(reseed.mixedKeys);
+      if (reseed.styles != null) {
+        setManualEditDraft((current) => ({
+          ...current,
+          styles: reseed.styles!,
+          fullSource: base,
+        }));
+      }
     }, 0);
   }
 
@@ -8405,6 +8455,9 @@ function HtmlViewer({
             void refreshRevisionStack();
           }
         }, 250);
+      } else {
+        // Give up — stop confirm-refuse tip-prefer suppress so disk can recover.
+        manualEditSuppressTipPreferUntilRefreshRef.current = false;
       }
       return;
     }
@@ -8440,6 +8493,9 @@ function HtmlViewer({
             void refreshRevisionStack();
           }
         }, 250);
+      } else {
+        // Give up — stop confirm-refuse tip-prefer suppress so disk can recover.
+        manualEditSuppressTipPreferUntilRefreshRef.current = false;
       }
       return;
     }
@@ -8512,6 +8568,8 @@ function HtmlViewer({
       nextCursorId,
     );
     commitRevisionStack(nextStack);
+    // Confirm-refuse suppress ends once warm stack is replaced with list tip.
+    manualEditSuppressTipPreferUntilRefreshRef.current = false;
     const cursorRevision = nextStack.revisions.find((revision) => revision.id === nextStack.cursorRevisionId);
     if (cursorRevision) {
       setActiveRevisionSequence(projectId, file.name, cursorRevision.sequence);
@@ -9352,12 +9410,23 @@ function HtmlViewer({
         // Idle remasure only: reject wild jumps; equal geometry skips inside apply.
         // Gesture/handoff never reach this guard — resize session / isHandoffRect
         // returned above; settleManualEditGeometryHandoff applies on its own path.
+        // Tip-yield freeze remount: first remasure may jump layout — skip deny.
         const current = selectedManualEditTargetRef.current;
+        const tipRemountGrace = shouldSkipWildJumpAfterTipRemountGrace(
+          manualEditTipRemountGeometryGraceIdRef.current,
+          measured.id,
+          Date.now(),
+          manualEditTipRemountGeometryGraceUntilRef.current,
+        );
         if (
           current?.id === measured.id
+          && !tipRemountGrace
           && manualEditGeometryIsWildJump(current, measured)
         ) {
           return;
+        }
+        if (tipRemountGrace) {
+          manualEditTipRemountGeometryGraceIdRef.current = null;
         }
         applyManualEditMeasuredGeometry(measured);
         return;
@@ -11212,6 +11281,22 @@ function HtmlViewer({
     lastStablePreviewSourceRef.current = refreshed;
     exportHtmlSnapshotGateRef.current = refreshed;
     rememberStablePreviewSource(projectId, file.name, refreshed);
+    // Drop stale warm tip cache A so authoritative tip resolve cannot overwrite
+    // adopted disk B (cache A would win getRevisionContentCache before snapshot).
+    {
+      const tipRevision = resolveManualEditSavePinTipRevision(
+        revisionStackRef.current,
+        getActiveRevisionSequence(projectId, file.name),
+      );
+      if (tipRevision) {
+        const cachedTip = getRevisionContentCache(projectId, file.name, tipRevision.id);
+        if (shouldClearTipContentCacheAfterConfirmRefuse(cachedTip, refreshed)) {
+          clearRevisionContentCacheEntry(projectId, file.name, tipRevision.id);
+        }
+      }
+    }
+    // Suppress disk tip prefer until refresh commits (warm stack tip≠ race).
+    manualEditSuppressTipPreferUntilRefreshRef.current = true;
     if (shouldSyncManualEditFrozenSourceToPainted(
       manualEditMode,
       manualEditFrozenSourceRef.current,

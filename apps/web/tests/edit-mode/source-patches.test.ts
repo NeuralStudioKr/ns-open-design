@@ -445,6 +445,22 @@ describe('manual edit source patches', () => {
     expect(html).not.toMatch(/onerror/i);
   });
 
+  it('strips namespaced on* handlers and unsafe namespaced URL attrs', () => {
+    const result = applyManualEditPatch(baseSource, {
+      kind: 'set-outer-html',
+      id: 'hero-image',
+      html: '<img data-od-id="hero-image" src="/ok.png" svg:onerror="alert(1)" foo:href="javascript:alert(2)" alt="x">',
+    });
+    expect(result.ok, result.error).toBe(true);
+    const html = readManualEditOuterHtml(result.source, 'hero-image');
+    expect(html).toContain('src="/ok.png"');
+    expect(html).not.toMatch(/onerror/i);
+    expect(html).not.toMatch(/javascript:/i);
+    expect(html).not.toMatch(/foo:href/i);
+    expect(sourcePatchesSource).toContain('manualEditLocalAttrName');
+    expect(sourcePatchesSource).toContain('Namespaced handlers');
+  });
+
   it('strips executable chrome tags nested in set-outer-html replacements', () => {
     const result = applyManualEditPatch(baseSource, {
       kind: 'set-outer-html',
@@ -1616,6 +1632,13 @@ describe('manual edit source patches', () => {
     expect(isSafeManualEditUrlAttrValue('values', '#ok, javascript:alert(1)')).toBe(false);
     expect(isSafeManualEditUrlAttrValue('values', '#ok javascript:alert(1)')).toBe(false);
     expect(sourcePatchesSource).toContain('Include `values` again for defense-in-depth');
+    // Namespaced on* — failClosed optional prefix before on[a-z]+.
+    const namespacedOn = sanitizeManualEditFullSource(
+      '<!doctype html><html><body><img src="/ok.png" svg:onerror="alert(9)"></body></html>',
+    );
+    expect(namespacedOn.toLowerCase()).not.toContain('onerror');
+    expect(namespacedOn).not.toContain('alert(9)');
+    expect(sourcePatchesSource).toContain('Optional namespace prefix (`svg:onerror`)');
   });
 
   it('rejects bare data:/blob: presentation paints and keeps named colors', () => {

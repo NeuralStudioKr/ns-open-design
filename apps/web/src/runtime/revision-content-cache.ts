@@ -116,6 +116,15 @@ export function clearRevisionContentCacheForFile(projectId: string, fileName: st
   }
 }
 
+/** Drop one revision entry (e.g. stale tip cache after confirm-refuse adopt). */
+export function clearRevisionContentCacheEntry(
+  projectId: string,
+  fileName: string,
+  revisionId: string,
+): void {
+  cache.delete(cacheKey(projectId, fileName, revisionId));
+}
+
 export type RevisionPrefetchTarget = {
   revisionId: string;
   byteSize?: number;

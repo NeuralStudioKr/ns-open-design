@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   shouldClearManualEditFrozenSourceOnModeChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
+  shouldReseedManualEditMultiInspectorAfterFreezeSync,
+  shouldSkipWildJumpAfterTipRemountGrace,
   shouldSyncManualEditFrozenSourceToPainted,
   shouldUpdateManualEditFrozenSourceOnPatch,
 } from '../../src/edit-mode/manual-edit-freeze';
@@ -43,5 +45,18 @@ describe('manual edit freeze reset', () => {
     expect(shouldEchoManualEditSelectionAfterFreezeSync(true, ['a', 'b'])).toBe(true);
     expect(shouldEchoManualEditSelectionAfterFreezeSync(true, [])).toBe(false);
     expect(shouldEchoManualEditSelectionAfterFreezeSync(false, ['a'])).toBe(false);
+  });
+
+  it('reseeds multi Mixed after freeze tip-yield only when 2+ selected', () => {
+    expect(shouldReseedManualEditMultiInspectorAfterFreezeSync(true, ['a', 'b'])).toBe(true);
+    expect(shouldReseedManualEditMultiInspectorAfterFreezeSync(true, ['a'])).toBe(false);
+    expect(shouldReseedManualEditMultiInspectorAfterFreezeSync(false, ['a', 'b'])).toBe(false);
+  });
+
+  it('skips wild-jump deny during tip-remount geometry grace', () => {
+    expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-1', 1_000, 1_800)).toBe(true);
+    expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-2', 1_000, 1_800)).toBe(false);
+    expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-1', 2_000, 1_800)).toBe(false);
+    expect(shouldSkipWildJumpAfterTipRemountGrace(null, 'el-1', 1_000, 1_800)).toBe(false);
   });
 });

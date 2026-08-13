@@ -1206,6 +1206,13 @@ function manualEditLocalTagName(tag: string): string {
   return idx >= 0 ? lower.slice(idx + 1) : lower;
 }
 
+/** Local name for `svg:onerror` / namespaced attrs (HTML/XML parsers). */
+function manualEditLocalAttrName(name: string): string {
+  const lower = String(name || '').toLowerCase();
+  const idx = lower.lastIndexOf(':');
+  return idx >= 0 ? lower.slice(idx + 1) : lower;
+}
+
 /** Hosts that must not receive set-text / set-style / set-attributes mutation. */
 function isManualEditLockedHostTag(tag: string): boolean {
   const lower = String(tag || '').toLowerCase();
@@ -1228,8 +1235,10 @@ function sanitizeManualEditElementAttrs(el: Element): void {
   const tag = el.tagName.toLowerCase();
   for (const attr of Array.from(el.attributes)) {
     const lower = attr.name.toLowerCase();
+    // Namespaced handlers (`svg:onerror`) — gate on local name.
+    const local = manualEditLocalAttrName(attr.name);
     if (
-      lower.startsWith('on')
+      local.startsWith('on')
       || lower === 'srcdoc'
       || lower === 'behavior'
       || lower === 'http-equiv'
@@ -1237,13 +1246,16 @@ function sanitizeManualEditElementAttrs(el: Element): void {
       el.removeAttribute(attr.name);
       continue;
     }
-    if (lower === 'style') {
+    if (lower === 'style' || local === 'style') {
       const scrubbed = scrubUnsafeInlineStyleAttr(attr.value);
       if (!scrubbed) el.removeAttribute(attr.name);
       else if (scrubbed !== attr.value) el.setAttribute(attr.name, scrubbed);
       continue;
     }
-    if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
+    if (
+      MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)
+      || MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(local)
+    ) {
       const normalized = normalizeCssForSafetyScan(attr.value);
       const scrubbed = scrubUnsafeCssFunctions(normalized).trim();
       if (
@@ -1258,15 +1270,23 @@ function sanitizeManualEditElementAttrs(el: Element): void {
     }
     if (
       MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
-      && (lower === 'href' || lower === 'xlink:href')
+      && (local === 'href' || lower === 'xlink:href')
       && !isSafeManualEditSvgResourceRef(attr.value)
     ) {
       el.removeAttribute(attr.name);
       continue;
     }
+    // Prefer full name for xlink:href safety gate; else local URL attr name.
+    const urlAttrKey = lower === 'xlink:href'
+      ? 'xlink:href'
+      : (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'values')
+        ? lower
+        : (MANUAL_EDIT_URL_ATTRS.has(local) || local === 'srcset' || local === 'values')
+          ? local
+          : null;
     if (
-      (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset' || lower === 'values')
-      && !isSafeManualEditUrlAttrValue(lower, attr.value)
+      urlAttrKey != null
+      && !isSafeManualEditUrlAttrValue(urlAttrKey, attr.value)
     ) {
       el.removeAttribute(attr.name);
     }
@@ -1500,8 +1520,9 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
     // SMIL animation nodes can navigate via to/from/by/values without a DOM walk.
     .replace(new RegExp(`<${smilTag}\\b[\\s\\S]*?<\\/${smilTag}\\s*>`, 'gi'), '')
     .replace(new RegExp(`<${smilTag}\\b[^>]*\\/?>`, 'gi'), '')
-    .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
-    .replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, '')
+    // Optional namespace prefix (`svg:onerror`) — local-name `on*` only misses these.
+    .replace(/\s(?:[\w.-]+:)?on[a-z]+\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\s(?:[\w.-]+:)?on[a-z]+\s*=\s*[^\s>]+/gi, '')
     .replace(/\ssrcdoc\s*=\s*(['"]).*?\1/gi, '')
     // Unquoted srcdoc=… (DOM walk removes the attr; fail-closed must too).
     .replace(/\ssrcdoc\s*=\s*[^\s>]+/gi, '')
@@ -2385,13 +2406,19 @@ function setAttributes(
   for (const [name, value] of entries) {
     // Attribute names are case-insensitive in HTML; protect via lowercase.
     const lower = name.toLowerCase();
-    if (!isSafeAttributeName(name) || protectedAttrs.has(lower)) continue;
+    const local = manualEditLocalAttrName(name);
+    if (!isSafeAttributeName(name) || protectedAttrs.has(lower) || protectedAttrs.has(local)) {
+      continue;
+    }
     if (value.trim() === '') {
       el.removeAttribute(name);
       applied += 1;
       continue;
     }
-    if (MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)) {
+    if (
+      MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(lower)
+      || MANUAL_EDIT_CSS_URL_PRESENTATION_ATTRS.has(local)
+    ) {
       const scrubbed = scrubUnsafeCssFunctions(normalizeCssForSafetyScan(value)).trim();
       if (
         !scrubbed
@@ -2405,15 +2432,22 @@ function setAttributes(
     }
     if (
       MANUAL_EDIT_SVG_FRAGMENT_ONLY_TAGS.has(tag)
-      && (lower === 'href' || lower === 'xlink:href')
+      && (local === 'href' || lower === 'xlink:href')
       && !isSafeManualEditSvgResourceRef(value)
     ) {
       continue;
     }
-    // Block dangerous URL schemes on navigable / embeddable attrs.
+    // Block dangerous URL schemes on navigable / embeddable attrs (local name too).
+    const urlAttrKey = lower === 'xlink:href'
+      ? 'xlink:href'
+      : (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
+        ? lower
+        : (MANUAL_EDIT_URL_ATTRS.has(local) || local === 'srcset')
+          ? local
+          : null;
     if (
-      (MANUAL_EDIT_URL_ATTRS.has(lower) || lower === 'srcset')
-      && !isSafeManualEditUrlAttrValue(lower, value)
+      urlAttrKey != null
+      && !isSafeManualEditUrlAttrValue(urlAttrKey, value)
     ) {
       continue;
     }
@@ -3250,10 +3284,12 @@ function camelToKebab(value: string): string {
 function isSafeAttributeName(value: string): boolean {
   if (!/^[a-zA-Z_:][a-zA-Z0-9_:.-]*$/.test(value)) return false;
   const lower = value.toLowerCase();
-  // Block event handlers and high-risk markup attrs from model set-attributes.
-  if (lower.startsWith('on')) return false;
+  const local = manualEditLocalAttrName(value);
+  // Block event handlers (incl. `svg:onerror`) and high-risk markup attrs.
+  if (local.startsWith('on')) return false;
   if (
     lower === 'style'
+    || local === 'style'
     || lower === 'srcdoc'
     || lower === 'behavior'
     || lower === 'http-equiv'

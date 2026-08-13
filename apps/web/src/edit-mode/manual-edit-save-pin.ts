@@ -210,6 +210,28 @@ export function acceptedKeepsEarlyPaintTipOrPin(
 }
 
 /**
+ * After history-confirm refuse adopts disk tip B, drop warm tip cache A so the
+ * next authoritative tip resolve / preferTip path cannot early-paint A over B.
+ */
+export function shouldClearTipContentCacheAfterConfirmRefuse(
+  cachedTip: string | null | undefined,
+  adoptedSource: string,
+): boolean {
+  return cachedTip != null && cachedTip !== adoptedSource;
+}
+
+/**
+ * Disk tip prefer is suppressed while confirm-refuse refresh is still landing —
+ * warm stack tip must not clobber the just-adopted disk frame.
+ */
+export function shouldPreferTipWhenCandidateLags(input: {
+  diskPath: boolean;
+  suppressUntilRefresh: boolean;
+}): boolean {
+  return input.diskPath && !input.suppressUntilRefresh;
+}
+
+/**
  * History confirm fetches disk before undo/redo/next edit. If that GET is
  * still the pre-write snapshot while `expectedSource` is our local save,
  * trust the local buffer instead of wiping history / blocking the edit.

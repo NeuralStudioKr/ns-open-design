@@ -58,3 +58,28 @@ export function shouldEchoManualEditSelectionAfterFreezeSync(
 ): boolean {
   return Boolean(manualEditMode && selectedIds.length > 0);
 }
+
+/**
+ * Multi-select Mixed keys must reseed from painted tip source after freeze
+ * remount — selection membership alone does not refresh inspector Mixed (59).
+ */
+export function shouldReseedManualEditMultiInspectorAfterFreezeSync(
+  manualEditMode: boolean,
+  selectedIds: readonly string[],
+): boolean {
+  return Boolean(manualEditMode && selectedIds.length > 1);
+}
+
+/** Idle remasure after tip-yield remount may jump layout — skip wild-jump deny. */
+export function shouldSkipWildJumpAfterTipRemountGrace(
+  graceId: string | null | undefined,
+  rectId: string,
+  nowMs: number,
+  graceUntilMs: number,
+): boolean {
+  return Boolean(
+    graceId
+    && rectId === graceId
+    && nowMs < graceUntilMs
+  );
+}
