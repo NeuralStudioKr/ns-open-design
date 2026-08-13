@@ -3455,3 +3455,118 @@
   border-color: var(--border);
   font-weight: 500;
 }
+
+/* Teamver Home create wizard (docs 61) */
+.teamver-home-create-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 48px 20px 28px;
+  text-align: center;
+}
+.teamver-home-create-hero-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+}
+.teamver-home-create-hero-lead {
+  margin: 0;
+  max-width: 36rem;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.teamver-home-create-hero-cta {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 22px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.teamver-home-create-hero-cta:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.teamver-home-slide-create-stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.teamver-home-slide-create-step-check {
+  font-size: 12px;
+  color: var(--accent);
+}
+.teamver-home-slide-create-section-title,
+.teamver-home-slide-create-prompt-label {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.teamver-home-slide-create-attach-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.teamver-home-slide-create-attach-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.teamver-home-slide-create-chips {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.teamver-home-slide-create-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+.teamver-home-slide-create-chips button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  line-height: 1;
+}
+.teamver-home-slide-create-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.teamver-home-slide-create-body {
+  max-height: min(68vh, 640px);
+  overflow: auto;
+}
