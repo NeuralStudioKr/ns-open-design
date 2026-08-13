@@ -176,7 +176,11 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   if (!html) return false;
   if (looksLikeFrameworkDeckMarkup(html)) return false;
   if (looksLikeAuthoredHorizontalSwipeDeck(html)) return false;
-  if (looksLikeAuthoredScrollNavigateDeck(html)) return false;
+  const bodyFirst = hasBodyFirstSlide(html);
+  const viewportSized = looksLikeSlideViewportSized(html);
+  const legacyBodyFirst = looksLikeLegacyStyledBodyFirstDeck(html);
+  const compactBodyFirst = bodyFirst && (viewportSized || legacyBodyFirst);
+  if (looksLikeAuthoredScrollNavigateDeck(html) && !compactBodyFirst) return false;
   if (
     /<body\b[^>]*>[\s\S]*<(?:div|section)\b[^>]*\bclass\s*=\s*['"][^'"]*(?:^|\s)deck(?:\s|["']|$)/i.test(
       html,
@@ -184,13 +188,13 @@ export function looksLikeCompactApiStackedDeck(html: string): boolean {
   ) {
     return false;
   }
-  if (!hasBodyFirstSlide(html)) return false;
-  if (looksLikeSlideViewportSized(html)) return true;
+  if (!bodyFirst) return false;
+  if (viewportSized) return true;
   // Legacy Canvas/Drive → Slide decks can be body-first multi-slide HTML
   // without explicit 100vh or 1920×1080 sizing. Keep existing deliverables
   // recoverable in the host fixed-stage viewer instead of reflowing them as
   // generic HTML.
-  return looksLikeLegacyStyledBodyFirstDeck(html);
+  return legacyBodyFirst;
 }
 
 /** Host-side detection that matches buildSrcdoc's wrapped preview HTML. */
@@ -210,6 +214,79 @@ export function injectStackedDeckViewport(html: string): string {
   return html;
 }
 
+const COMPACT_STACKED_EXPORT_FIX_MARKER = 'data-od-compact-deck-export-fix';
+
+function compactStackedDeckExportCss(): string {
+  return `
+  <style ${COMPACT_STACKED_EXPORT_FIX_MARKER}>
+    @page { size: 1920px 1080px; margin: 0; }
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 1920px !important;
+      min-width: 1920px !important;
+      background: #0b0c10;
+    }
+    body { overflow-x: hidden !important; }
+    body > .slide,
+    body > * > .slide,
+    body > * > * > .slide {
+      width: 1920px !important;
+      height: 1080px !important;
+      min-height: 1080px !important;
+      max-height: 1080px !important;
+      box-sizing: border-box !important;
+      margin: 0 !important;
+      overflow: hidden !important;
+      page-break-after: always !important;
+      break-after: page !important;
+      flex: none !important;
+    }
+    body > .slide:last-child,
+    body > * > .slide:last-child,
+    body > * > * > .slide:last-child {
+      page-break-after: auto !important;
+      break-after: auto !important;
+    }
+    @media print {
+      html, body {
+        width: 1920px !important;
+        min-width: 1920px !important;
+        background: transparent !important;
+      }
+      body > .slide,
+      body > * > .slide,
+      body > * > * > .slide {
+        width: 1920px !important;
+        height: 1080px !important;
+        min-height: 1080px !important;
+        max-height: 1080px !important;
+        overflow: hidden !important;
+      }
+    }
+  </style>`;
+}
+
+/**
+ * Standalone downloads and daemon inline-render payloads do not go through
+ * the live preview bridge. Normalize compact body-first decks there too so
+ * `100vh`/document-flow fallback HTML exports as real 16:9 pages.
+ */
+export function normalizeCompactStackedDeckForExport(html: string, deck?: boolean): string {
+  if (!deck || !html || html.includes(COMPACT_STACKED_EXPORT_FIX_MARKER)) return html;
+  const prepared = prepareCompactStackedDeckPreviewHtml(html);
+  if (!looksLikeCompactApiStackedDeck(prepared)) return html;
+  const withViewport = injectStackedDeckViewport(html);
+  const css = compactStackedDeckExportCss();
+  if (/<\/head>/i.test(withViewport)) {
+    return withViewport.replace(/<\/head>/i, `${css}\n</head>`);
+  }
+  if (/<html\b/i.test(withViewport)) {
+    return withViewport.replace(/<body\b/i, `<head>${css}</head>\n<body`);
+  }
+  return `${css}\n${withViewport}`;
+}
+
 /** @internal test helper */
 export const compactStackedDeckTestHelpers = {
   SLIDE_VIEWPORT_RE,
@@ -220,4 +297,5 @@ export const compactStackedDeckTestHelpers = {
   hasFixedCanvasSizing,
   looksLikeSlideViewportSized,
   hasBodyFirstSlide,
+  compactStackedDeckExportCss,
 };

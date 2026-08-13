@@ -10,6 +10,7 @@ import {
   looksLikeAuthoredScrollNavigateDeck,
   looksLikeCompactApiStackedDeck,
   looksLikeCompactApiStackedDeckForPreview,
+  normalizeCompactStackedDeckForExport,
   wrapPreviewHtmlShell,
 } from '../../src/runtime/compact-api-stacked-deck';
 import { buildSrcdoc } from '../../src/runtime/srcdoc';
@@ -451,7 +452,7 @@ describe('looksLikeCompactApiStackedDeck', () => {
     expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
   });
 
-  it('keeps scrollIntoView-authored slide decks on native scroll navigation', () => {
+  it('keeps non-compact scrollIntoView-authored slide decks on native scroll navigation', () => {
     const navScript = `(function(){
 var slides=document.querySelectorAll('.slide');
 var cur=0;
@@ -467,13 +468,63 @@ if(e.key==='ArrowLeft'||e.key==='ArrowUp')go(cur-1);
 })();`;
     const html = [
       '<!doctype html><html><body>',
-      '<section class="slide" style="min-height:100vh">One</section>',
-      '<section class="slide" style="min-height:100vh">Two</section>',
+      '<section class="slide">One</section>',
+      '<section class="slide">Two</section>',
       `<script>${navScript}</script>`,
       '</body></html>',
     ].join('');
     expect(looksLikeAuthoredScrollNavigateDeck(html)).toBe(true);
     expect(looksLikeCompactApiStackedDeck(html)).toBe(false);
     expect(buildSrcdoc(html, { deck: true })).not.toContain('data-od-deck-stacked-fix');
+  });
+
+  it('recovers compact body-first decks even when the model emitted scrollIntoView navigation', () => {
+    const navScript = `(function(){
+var slides=document.querySelectorAll('.slide');
+var cur=0;
+function go(n){
+n=Math.max(0,Math.min(slides.length-1,n));
+slides[n].scrollIntoView({behavior:'smooth'});
+cur=n;
+}
+})();`;
+    const html = [
+      '<!doctype html><html><body>',
+      '<section class="slide" style="min-height:100vh">One</section>',
+      '<section class="slide" style="min-height:100vh">Two</section>',
+      `<script>${navScript}</script>`,
+      '</body></html>',
+    ].join('');
+    expect(looksLikeAuthoredScrollNavigateDeck(html)).toBe(true);
+    expect(looksLikeCompactApiStackedDeck(html)).toBe(true);
+    expect(buildSrcdoc(html, { deck: true })).toContain('data-od-deck-stacked-fix');
+  });
+
+  it('normalizes compact stacked decks for standalone export without hiding slides', () => {
+    const html = [
+      '<!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body>',
+      '<section class="slide" style="min-height:100vh">One</section>',
+      '<section class="slide" style="min-height:100vh">Two</section>',
+      '</body></html>',
+    ].join('');
+    const out = normalizeCompactStackedDeckForExport(html, true);
+    expect(out).toContain('data-od-compact-deck-export-fix');
+    expect(out).toContain('width=1920, initial-scale=1, maximum-scale=1');
+    expect(out).toContain('width: 1920px !important');
+    expect(out).toContain('height: 1080px !important');
+    expect(out).not.toContain('data-od-deck-bridge');
+  });
+
+  it('does not normalize framework or horizontal decks for standalone export', () => {
+    const framework = '<!doctype html><html><body><div id="deck-stage"></div></body></html>';
+    const horizontal = [
+      '<!doctype html><html><head><style>',
+      'body{scroll-snap-type:x mandatory}.slide{min-height:100vh;scroll-snap-align:start}',
+      '</style></head><body>',
+      '<section class="slide">A</section><section class="slide">B</section>',
+      '</body></html>',
+    ].join('');
+    expect(normalizeCompactStackedDeckForExport(framework, true)).not.toContain('data-od-compact-deck-export-fix');
+    expect(normalizeCompactStackedDeckForExport(horizontal, true)).not.toContain('data-od-compact-deck-export-fix');
   });
 });

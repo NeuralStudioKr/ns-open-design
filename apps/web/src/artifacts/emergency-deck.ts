@@ -276,11 +276,13 @@ export function buildEmergencySlideDeckFromOutline(
 <html lang="${lang}">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=1920, initial-scale=1, maximum-scale=1" />
   <title>${escapeHtml(deckTitle)}</title>
   <style>
-    html, body { margin: 0; background: #0b0c10; color: #1c1b1a; font: 18px/1.5 system-ui, sans-serif; }
-    .slide { min-height: 100vh; padding: 64px 72px; box-sizing: border-box; background: #fff; page-break-after: always; }
+    @page { size: 1920px 1080px; margin: 0; }
+    html, body { margin: 0; width: 1920px; background: #0b0c10; color: #1c1b1a; font: 18px/1.5 system-ui, sans-serif; }
+    .slide { width: 1920px; height: 1080px; padding: 96px 112px; box-sizing: border-box; background: #fff; overflow: hidden; page-break-after: always; break-after: page; }
+    .slide:last-child { page-break-after: auto; break-after: auto; }
     .slide h1 { font-size: 48px; margin: 0 0 16px; line-height: 1.1; }
     .slide p, .slide li { font-size: 20px; max-width: 48rem; }
     .slide ul { margin: 12px 0 0; padding-left: 1.25rem; }

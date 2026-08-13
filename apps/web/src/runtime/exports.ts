@@ -38,6 +38,7 @@ import {
   patchArtifactDeckPrintCss,
   buildDeckPrintCss,
 } from '@open-design/contracts';
+import { normalizeCompactStackedDeckForExport } from './compact-api-stacked-deck';
 
 const DESIGN_HANDOFF_FILENAME = 'DESIGN-HANDOFF.md';
 const DESIGN_MANIFEST_FILENAME = 'DESIGN-MANIFEST.json';
@@ -259,9 +260,14 @@ function projectExportInlineUrl(projectId: string, filePath: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/export/${segments}?inline=1`;
 }
 
-export function exportAsHtml(html: string, title: string): void {
+export function exportAsHtml(
+  html: string,
+  title: string,
+  options?: { deck?: boolean },
+): void {
   // Lean export — skip preview annotate / redirect-guard DOM tax.
-  const doc = buildSrcdoc(html, { exportDocument: true });
+  const exportHtml = normalizeCompactStackedDeckForExport(html, options?.deck === true);
+  const doc = buildSrcdoc(exportHtml, { exportDocument: true });
   const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
   triggerDownload(blob, `${safeFilename(title, 'artifact')}.html`);
 }
@@ -290,7 +296,7 @@ export async function exportProjectAsHtml(opts: {
           delivery: 'ticket',
           fileName: opts.filePath,
           title: opts.fallbackTitle,
-          ...inlineExportHtmlPayload(opts.htmlSnapshot),
+          ...inlineExportHtmlPayload(opts.htmlSnapshot, opts.deck === true),
         }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
@@ -309,9 +315,10 @@ export async function exportProjectAsHtml(opts: {
     try {
       const resp = await fetchTeamverDaemon(projectExportInlineUrl(opts.projectId, opts.filePath));
       if (!resp.ok) throw new Error(`inline HTML export unavailable (${resp.status})`);
-      triggerDownload(await resp.blob(), `${safeFilename(opts.fallbackTitle, 'artifact')}.html`);
+      const html = await resp.text();
+      exportAsHtml(html, opts.fallbackTitle, { deck: opts.deck === true });
     } catch {
-      exportAsHtml(opts.fallbackHtml, opts.fallbackTitle);
+      exportAsHtml(opts.fallbackHtml, opts.fallbackTitle, { deck: opts.deck === true });
     }
   }
 }
@@ -552,9 +559,14 @@ ${list(assetFiles)}
 `;
 }
 
-export function exportAsZip(html: string, title: string): void {
+export function exportAsZip(
+  html: string,
+  title: string,
+  options?: { deck?: boolean },
+): void {
   // Lean export — skip preview annotate / redirect-guard DOM tax.
-  const doc = buildSrcdoc(html, { exportDocument: true });
+  const exportHtml = normalizeCompactStackedDeckForExport(html, options?.deck === true);
+  const doc = buildSrcdoc(exportHtml, { exportDocument: true });
   exportRenderedHtmlAsZip(doc, title, 'index.html');
 }
 
@@ -1081,12 +1093,18 @@ function isRetryableRenderedExportError(err: unknown): boolean {
  * callers that do not have a live snapshot ready still hit the file-based
  * path exactly as before.
  */
-function inlineExportHtmlPayload(htmlSnapshot?: string | null): Record<string, string> {
+function inlineExportHtmlPayload(
+  htmlSnapshot?: string | null,
+  deck?: boolean,
+): Record<string, string> {
   if (typeof htmlSnapshot !== 'string') return {};
   const trimmed = htmlSnapshot.trim();
   if (trimmed.length === 0) return {};
   // Skip repair when head already looks intact (srcdoc buildSrcdoc parity).
-  const html = repairArtifactDocumentHeadIfNeeded(htmlSnapshot);
+  const html = normalizeCompactStackedDeckForExport(
+    repairArtifactDocumentHeadIfNeeded(htmlSnapshot),
+    deck === true,
+  );
   return { html: patchArtifactDeckPrintCss(html) };
 }
 
@@ -1109,7 +1127,7 @@ async function performPdfExportRequest(opts: {
       fileName: opts.filePath,
       title: opts.title,
       ...(opts.fresh ? { fresh: true } : {}),
-      ...inlineExportHtmlPayload(opts.htmlSnapshot),
+      ...inlineExportHtmlPayload(opts.htmlSnapshot, opts.deck),
     }),
     headers: { 'content-type': 'application/json' },
     method: 'POST',
@@ -1149,7 +1167,7 @@ async function performPptxExportRequest(opts: {
       editable: true,
       fileName: opts.filePath,
       title: opts.title,
-      ...inlineExportHtmlPayload(opts.htmlSnapshot),
+      ...inlineExportHtmlPayload(opts.htmlSnapshot, true),
     }),
     headers: { 'content-type': 'application/json' },
     method: 'POST',
@@ -1440,7 +1458,7 @@ export async function exportProjectImageBlob(opts: {
         title: opts.title,
         ...(typeof opts.width === 'number' ? { width: opts.width } : {}),
         ...(typeof opts.height === 'number' ? { height: opts.height } : {}),
-        ...inlineExportHtmlPayload(opts.htmlSnapshot),
+        ...inlineExportHtmlPayload(opts.htmlSnapshot, opts.deck),
       }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
@@ -1583,7 +1601,7 @@ export async function exportProjectAsZip(opts: {
           delivery: 'ticket',
           fileName: opts.filePath,
           title: opts.fallbackTitle,
-          ...inlineExportHtmlPayload(opts.htmlSnapshot),
+          ...inlineExportHtmlPayload(opts.htmlSnapshot, opts.deck === true),
         }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
@@ -1613,7 +1631,7 @@ export async function exportProjectAsZip(opts: {
     triggerDownload(blob, archiveFilenameFrom(resp, opts.fallbackTitle, root));
   } catch (err) {
     devLog.warn('[exportProjectAsZip] falling back to single-file ZIP:', err);
-    exportAsZip(opts.fallbackHtml, opts.fallbackTitle);
+    exportAsZip(opts.fallbackHtml, opts.fallbackTitle, { deck: opts.deck === true });
   }
 }
 

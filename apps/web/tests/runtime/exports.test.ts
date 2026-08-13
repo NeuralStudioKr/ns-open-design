@@ -44,10 +44,10 @@ describe('exportAsHtml / exportAsZip lean srcdoc', () => {
     expect(exportsSource).toContain('export function exportAsHtml');
     expect(exportsSource).toContain('export function exportAsZip');
     expect(exportsSource).toMatch(
-      /exportAsHtml[\s\S]*?buildSrcdoc\(html,\s*\{\s*exportDocument:\s*true\s*\}\)/,
+      /exportAsHtml[\s\S]*?normalizeCompactStackedDeckForExport\(html,\s*options\?\.deck === true\)[\s\S]*?buildSrcdoc\(exportHtml,\s*\{\s*exportDocument:\s*true\s*\}\)/,
     );
     expect(exportsSource).toMatch(
-      /exportAsZip[\s\S]*?buildSrcdoc\(html,\s*\{\s*exportDocument:\s*true\s*\}\)/,
+      /exportAsZip[\s\S]*?normalizeCompactStackedDeckForExport\(html,\s*options\?\.deck === true\)[\s\S]*?buildSrcdoc\(exportHtml,\s*\{\s*exportDocument:\s*true\s*\}\)/,
     );
   });
 
@@ -69,6 +69,7 @@ describe('exportAsHtml / exportAsZip lean srcdoc', () => {
       'Skip repair when head already looks intact (srcdoc buildSrcdoc parity).',
     );
     expect(exportsSource).toContain('repairArtifactDocumentHeadIfNeeded(htmlSnapshot)');
+    expect(exportsSource).toContain('normalizeCompactStackedDeckForExport');
   });
 });
 
@@ -735,6 +736,39 @@ describe('exportProjectAsPdf', () => {
       expect(body.title).toBe('Seed Deck');
       expect(body.html).toContain('<section class="slide">Snapshot</section>');
       expect(body.html).not.toContain('flex-direction: column !important');
+    } finally {
+      restoreHost();
+    }
+  });
+
+  it('normalizes compact deck htmlSnapshot before sending daemon rendered exports', async () => {
+    const restoreHost = installMockOpenDesignHost();
+    try {
+      const fallback = vi.fn();
+      const fetchMock = vi.fn(async () =>
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      await exportProjectAsPdf({
+        deck: true,
+        fallbackPdf: fallback,
+        filePath: 'deck/index.html',
+        htmlSnapshot: [
+          '<!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body>',
+          '<section class="slide" style="min-height:100vh">One</section>',
+          '<section class="slide" style="min-height:100vh">Two</section>',
+          '</body></html>',
+        ].join(''),
+        projectId: 'proj-1',
+        title: 'Seed Deck',
+      });
+
+      const call = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
+      const body = JSON.parse(call[1].body);
+      expect(body.html).toContain('data-od-compact-deck-export-fix');
+      expect(body.html).toContain('width=1920, initial-scale=1, maximum-scale=1');
+      expect(body.html).toContain('height: 1080px !important');
     } finally {
       restoreHost();
     }

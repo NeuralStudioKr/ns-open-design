@@ -112,6 +112,9 @@ describe('buildEmergencySlideDeckFromOutline', () => {
     expect(html).toContain('<!doctype html>');
     expect(html).toContain('</html>');
     expect(html).toContain('<section class="slide">');
+    expect(html).toContain('width=1920, initial-scale=1, maximum-scale=1');
+    expect(html).toContain('.slide { width: 1920px; height: 1080px;');
+    expect(html).not.toContain('min-height: 100vh');
     expect(html).toContain('AI 도입 효과');
     expect(html!.length).toBeGreaterThan(256);
   });
