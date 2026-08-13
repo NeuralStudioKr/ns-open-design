@@ -214,7 +214,7 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(onAddFiles).toHaveBeenCalledWith([file]);
   });
 
-  it("new entry without explicit template requires visiting style step before confirm", () => {
+  it("new entry without explicit template requires visiting template step before confirm", () => {
     wrap(
       <TeamverHomeSlideCreateModal
         open
@@ -228,7 +228,15 @@ describe("TeamverHomeSlideCreateModal", () => {
         onClose={() => {}}
       />,
     );
-    expect(screen.getByTestId("teamver-home-slide-create-next")).toBeTruthy();
+    expect(screen.getByTestId("teamver-home-slide-create-step-template").textContent).toContain(
+      "Template",
+    );
+    expect(screen.getByTestId("teamver-home-slide-create-selected-template").textContent).toMatch(
+      /Template/,
+    );
+    const next = screen.getByTestId("teamver-home-slide-create-next");
+    expect(next.textContent).toBe("Next: Template");
+    expect(next.textContent).not.toMatch(/style/i);
     expect(screen.queryByTestId("teamver-home-slide-create-confirm")).toBeNull();
   });
 

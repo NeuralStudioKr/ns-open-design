@@ -45,7 +45,7 @@ Recent strip         → unchanged
 | `stagedFiles` / `stagedDriveAssets` | HomeView 기존 stage 로직 공유 또는 모달 로컬 후 confirm 시 전달 |
 | `selectedTemplateId` | canvas template options |
 
-**Stepper:** entry=template이면 내용 화면에서도 `(2) 템플릿`을 `complete`로 표시. `(2)` 클릭 시에만 템플릿 패널. 푸터 「스타일 변경」버튼 없음.
+**Stepper:** entry=template이면 내용 화면에서도 `(2) 템플릿`을 `complete`로 표시. `(2)` 클릭 시에만 템플릿 패널. 스텝·칩·다음 CTA 카피는 모두 「템플릿」.
 
 ### 2.3 Confirm
 

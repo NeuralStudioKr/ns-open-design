@@ -2304,12 +2304,15 @@ button.teamver-drive-import-attach:hover:not(:disabled) {
 .teamver-canvas-slide-launch-flow--wizard {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 .teamver-canvas-slide-launch-wizard {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 20px;
+}
+.teamver-canvas-slide-launch-stepper {
+  padding: 2px 0 4px;
 }
 .teamver-canvas-slide-launch-stepper-list {
   list-style: none;
@@ -2317,36 +2320,67 @@ button.teamver-drive-import-attach:hover:not(:disabled) {
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 14px;
+  gap: 4px 0;
   align-items: center;
 }
 .teamver-canvas-slide-launch-stepper-item {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 550;
   color: var(--text-muted);
+}
+.teamver-canvas-slide-launch-stepper-item.is-upcoming {
+  color: var(--text-muted);
+}
+.teamver-canvas-slide-launch-stepper-item.is-complete {
+  color: var(--text);
 }
 .teamver-canvas-slide-launch-stepper-item.is-current {
   color: var(--text-strong);
+  font-weight: 700;
+}
+.teamver-canvas-slide-launch-stepper-item:not(:last-child)::after {
+  content: "";
+  width: 28px;
+  height: 2px;
+  margin: 0 10px 0 4px;
+  border-radius: 99px;
+  background: var(--border);
+  flex: 0 0 auto;
+}
+.teamver-canvas-slide-launch-stepper-item.is-complete:not(:last-child)::after {
+  background: color-mix(in srgb, var(--accent) 55%, var(--border));
 }
 .teamver-canvas-slide-launch-stepper-index {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text-muted);
 }
-.teamver-canvas-slide-launch-stepper-item.is-current .teamver-canvas-slide-launch-stepper-index {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+.teamver-canvas-slide-launch-stepper-item.is-complete .teamver-canvas-slide-launch-stepper-index {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
   color: var(--accent);
+}
+.teamver-canvas-slide-launch-stepper-item.is-current .teamver-canvas-slide-launch-stepper-index {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.teamver-canvas-slide-launch-stepper-item .teamver-canvas-slide-launch-step-title-text {
+  font-size: 14px;
+  font-weight: inherit;
+  color: inherit;
 }
 .teamver-canvas-slide-launch-wizard-panel {
   min-height: 0;
@@ -2414,7 +2448,7 @@ button.teamver-drive-import-attach:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px 16px 8px;
+  padding: 18px 16px 12px;
 }
 .teamver-canvas-slide-launch-heading {
   margin: 0;
@@ -3534,7 +3568,9 @@ button.teamver-home-create-hero-cta:disabled {
   box-shadow: none;
 }
 .teamver-home-slide-create-modal .teamver-canvas-slide-launch-stepper {
-  padding: 10px 16px 0;
+  padding: 8px 20px 16px;
+  margin: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
 }
 button.teamver-home-slide-create-stepper-btn:hover:not(:disabled),
 button.teamver-home-slide-create-stepper-btn:focus-visible {
@@ -3702,8 +3738,10 @@ button.teamver-home-slide-create-selected-template.is-explicit:hover:not(:disabl
   color: inherit;
 }
 .teamver-home-slide-create-selected-template-label {
-  font-size: 0.75rem;
-  opacity: 0.7;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  opacity: 1;
 }
 .teamver-home-slide-create-selected-template-title {
   font-weight: 600;
@@ -3721,4 +3759,5 @@ button.teamver-home-slide-create-selected-template.is-explicit:hover:not(:disabl
 .teamver-home-slide-create-body {
   max-height: min(68vh, 640px);
   overflow: auto;
+  padding-top: 20px;
 }
