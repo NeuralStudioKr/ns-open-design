@@ -31,21 +31,21 @@
 | full example.html을 프롬프트에? | **기본 금지.** 입·출력 토큰 위험. kit(~2k) + scaffold map으로 계약 |
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 
-### 0.0 2026-08-13 정책 — **token-safe content-swap** + **서버/FE Clone**
+### 0.0 2026-08-13 정책 — **token-safe content-swap** + **daemon Clone**
 
-**제품 판단:** 미리보기 look을 유지하고 Source 텍스트만 바꾸는 **의도(content-swap)** 는 맞다. 다만 `example.html` 전체(Daisy Days ~87KB)를 시스템 프롬프트에 넣으면 토큰·truncation 위험이 크다. OD의 `Clone example.html`은 BYOK에 툴이 없으므로 **FE가 프로젝트 파일로 Clone**한다.
+**제품 판단:** 미리보기 look을 유지하고 Source 텍스트만 바꾸는 **의도(content-swap)** 는 맞다. full `example.html`을 시스템 프롬프트에 넣지 않는다. OD의 `Clone example.html`은 BYOK 모델 툴이 없으므로 **daemon이 디스크에서 Clone**한다 (FE는 트리거만).
 
 | 경로 | 역할 |
 |------|------|
-| **Explicit 템플릿 Canvas→Slide (우선)** | `seedTemplateClonedDeck` → `buildTemplateClonedDeckHtml`로 `deck.html` 시드. 성공 시 모델 structure gen / auto-send **스킵** |
+| **Explicit 템플릿 Canvas→Slide (우선)** | FE → `POST /api/projects/:id/template-clone-deck` → daemon이 plugin FS preview Clone + heading swap → `deck.html`. 성공 시 모델 structure gen / auto-send **스킵** |
 | **시드 실패·기본 템플릿** | 기존 kit+map 모델 경로 (full HTML scaffold 프롬프트 inject 금지) |
 
 **구현:**
-- `template-clone-fill` / `seedTemplateClonedDeck` — preview Clone + heading content-swap → `deck.html` (+ `refs/template-base.html`)
-- `ChatComposer` / `App` Home — explicit 템플릿 시드 성공 시 모델 overwrite 방지
-- `fetchPluginLocalSkill` / daemon `local-skill` — **compact visual kit만** append (fallback용)
-- `neutralizeFilesystemCloneWorkflow` — SKILL.md `Clone example.html` 단계를 API prompt에서 무력화 (파일 시드가 대체)
-- `extractTemplateScaffoldFromHtml` — 유닛·opt-in용 유지, **hot path 기본 주입 off**
+- `apps/daemon/src/template-clone-deck.ts` + project-routes endpoint
+- contracts `template-clone-fill` / `resolveTemplateCloneSlidesFromBrief`
+- FE `seedTemplateClonedDeck` — daemon POST only
+- `fetchPluginLocalSkill` / daemon `local-skill` — kit+map fallback only
+- `neutralizeFilesystemCloneWorkflow` — prompt의 filesystem Clone 문구 무력화 (daemon 시드가 대체)
 - 완전한 closed deck > 잘린 shell
 
 ### 0.0b (이력) CONTENT-SWAP full HTML scaffold additive dual-path — superseded

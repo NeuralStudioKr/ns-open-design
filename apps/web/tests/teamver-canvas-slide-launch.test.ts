@@ -428,13 +428,20 @@ describe("canvasSlideLaunch", () => {
     expect(projectView).toContain("pluginInputs: meta?.pluginInputs");
     expect(daemon).toContain("pluginInputs?: Record<string, unknown>;");
     expect(daemon).toContain("{ pluginInputs }");
-    // Server/FE Clone path for explicit visual templates (BYOK has no Clone tool).
-    expect(seeder).toContain("buildTemplateClonedDeckHtml");
-    expect(seeder).toContain("deck.html");
+    // Daemon owns Clone (plugin FS → deck.html); FE only POSTs the endpoint.
+    expect(seeder).toContain("/template-clone-deck");
+    expect(seeder).toContain("fetchTeamverDaemon");
+    expect(seeder).not.toContain("buildTemplateClonedDeckHtml");
     expect(composer).toContain("seedTemplateClonedDeck(");
     expect(composer).toContain("isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)");
     expect(app).toContain("seedTemplateClonedDeck(");
     expect(app).toContain("skipAutoSendForTemplateClone");
+    const projectRoutes = readFileSync(
+      resolve(__dirname, "../../daemon/src/project-routes.ts"),
+      "utf8",
+    );
+    expect(projectRoutes).toContain("/api/projects/:id/template-clone-deck");
+    expect(projectRoutes).toContain("seedTemplateClonedDeckOnServer");
   });
 
   it("rebinds create-slides from URL after workspace bootstrap instead of dropping the modal", () => {

@@ -306,3 +306,63 @@ export function resolveTemplateCloneSlideCountHint(
   if (Number.isFinite(n) && n >= 1 && n <= 20) return Math.round(n);
   return null;
 }
+
+const VISIBLE_HEADINGS_RE =
+  /(?:Visible headings|Canvas headings|Source headings)\s*[:：]\s*/i;
+const HEADINGS_STOP_RE =
+  /\s+(?:Source preview|Canvas title|Canvas sections|Drive source(?: file| MIME)?|Drive asset id|User instruction)\s*[:：]/i;
+const NUMBERED_SLIDE_RE =
+  /^\s*(?:(?:\d+)[\.\)]\s*|(?:0?\d{1,2})\s+|슬라이드\s*\d+\s*[:\.\-]\s*|#{1,3}\s+)(.+)$/i;
+
+function cleanCloneTitle(title: string): string {
+  return title.replace(/^["'`]|["'`]$/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Resolve slide titles from a Canvas/Drive source brief (and optional user
+ * instruction) for server-side template clone. Kept in contracts so daemon and
+ * FE share one parser — no web-only emergency-deck dependency.
+ */
+export function resolveTemplateCloneSlidesFromBrief(options: {
+  sourceBrief?: string | null;
+  userInstruction?: string | null;
+  deckTitle?: string | null;
+}): TemplateCloneSlideContent[] {
+  const text = [options.sourceBrief ?? '', options.userInstruction ?? '']
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+  const out: TemplateCloneSlideContent[] = [];
+  const seen = new Set<string>();
+
+  const push = (rawTitle: string) => {
+    const title = cleanCloneTitle(rawTitle);
+    if (!title) return;
+    const key = title.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ title });
+  };
+
+  if (text) {
+    const marker = VISIBLE_HEADINGS_RE.exec(text);
+    if (marker && marker.index != null) {
+      const payload = text
+        .slice(marker.index + marker[0].length)
+        .replace(HEADINGS_STOP_RE, '\n')
+        .split('\n')[0]
+        ?.trim() ?? '';
+      for (const part of payload.split(/\s+\/\s+/)) push(part);
+    }
+    if (out.length < 2) {
+      for (const line of text.split(/\r?\n/)) {
+        const numbered = line.match(NUMBERED_SLIDE_RE);
+        if (numbered?.[1]) push(numbered[1]);
+      }
+    }
+  }
+
+  if (out.length > 0) return out.slice(0, 20);
+  const title = options.deckTitle?.trim();
+  return title ? [{ title }] : [];
+}

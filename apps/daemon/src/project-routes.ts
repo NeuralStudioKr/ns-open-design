@@ -7,6 +7,7 @@ import {
   type PluginManifest,
   repairArtifactDocumentHead,
 } from '@open-design/contracts';
+import { seedTemplateClonedDeckOnServer } from './template-clone-deck.js';
 import { createProjectArtifactFile } from './artifact-create.js';
 import { ArtifactPublicationBlockedError } from './artifact-publication-guard.js';
 import { ArtifactRegressionError } from './artifact-stub-guard.js';
@@ -3599,6 +3600,64 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         status,
         status === 404 ? 'FILE_NOT_FOUND' : 'BAD_REQUEST',
         String(err),
+      );
+    }
+  });
+
+  /**
+   * Server-side template Clone for Canvas→Slide (BYOK has no Clone tool).
+   * Reads plugin preview HTML from disk, content-swaps Source headings, writes
+   * deck.html. FE must call this instead of cloning in the browser.
+   */
+  app.post('/api/projects/:id/template-clone-deck', async (req, res) => {
+    try {
+      const project = await resolveProjectRow(req.params.id);
+      if (!project) {
+        return sendApiError(res, 404, 'NOT_FOUND', 'project not found');
+      }
+      const body = req.body || {};
+      const pluginId = typeof body.pluginId === 'string' ? body.pluginId.trim() : '';
+      if (!pluginId) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'pluginId required');
+      }
+      const result = await seedTemplateClonedDeckOnServer(
+        {
+          db,
+          projectsRoot: PROJECTS_DIR,
+          projectId: req.params.id,
+          metadata: project.metadata,
+          ensureProject,
+          writeProjectFile,
+        },
+        {
+          pluginId,
+          templateTitle: typeof body.templateTitle === 'string' ? body.templateTitle : null,
+          sourceBrief: typeof body.sourceBrief === 'string' ? body.sourceBrief : null,
+          userInstruction: typeof body.userInstruction === 'string' ? body.userInstruction : null,
+          deckTitle: typeof body.deckTitle === 'string' ? body.deckTitle : (
+            typeof body.title === 'string' ? body.title : null
+          ),
+          slideCountHint:
+            typeof body.slideCountHint === 'string' || typeof body.slideCountHint === 'number'
+              ? body.slideCountHint
+              : null,
+        },
+      );
+      if (!result.ok) {
+        return sendApiError(
+          res,
+          result.status,
+          result.reason.toUpperCase(),
+          result.message,
+        );
+      }
+      return res.json(result);
+    } catch (err) {
+      return sendApiError(
+        res,
+        500,
+        'INTERNAL_ERROR',
+        err instanceof Error ? err.message : 'template clone failed',
       );
     }
   });

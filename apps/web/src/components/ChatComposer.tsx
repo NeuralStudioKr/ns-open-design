@@ -2069,9 +2069,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             if (patched) onActiveDesignSystemChange?.(patched);
           }
           const sourceBrief = canvasCreateSlidesSourceBrief(handoff);
-          // Explicit visual templates: Clone example.html on the FE (BYOK has
-          // no Clone tool) and content-swap Source headings into deck.html.
-          // Skip model structure gen so Neutral/kit regenerate cannot overwrite.
+          // Explicit visual templates: daemon Clones example.html from plugin
+          // FS and content-swaps Source headings into deck.html (BYOK has no
+          // Clone tool). Skip model structure gen so Neutral cannot overwrite.
           if (
             slideOnlyMvp
             && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)

@@ -2580,8 +2580,8 @@ function AppInner() {
               `Canvas 이미지 ${stagedCanvas.coldImageCount}개가 아직 준비 중입니다. 잠시 후 전송해 주세요.`,
             );
           }
-          // Explicit visual template: Clone example.html + content-swap on the
-          // FE (BYOK has no Clone tool). Skip auto-send structure gen so the
+          // Explicit visual template: daemon Clones example.html + content-swap
+          // (BYOK has no Clone tool). Skip auto-send structure gen so the
           // seeded deck.html is not overwritten by a Neutral regenerate.
           if (slideOnlyMvp && selectedDeckTemplateId) {
             const sourceBrief = canvasCreateSlidesSourceBrief(pendingCanvasHandoff);

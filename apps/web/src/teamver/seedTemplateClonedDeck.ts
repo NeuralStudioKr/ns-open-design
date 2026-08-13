@@ -1,25 +1,13 @@
 /**
- * Canvas→Slide explicit-template path: clone plugin `example.html` on the FE
- * (BYOK has no Clone tool) and content-swap Source headings into `deck.html`.
+ * Canvas→Slide explicit-template path: ask the **daemon** to Clone the
+ * selected template's example.html and content-swap Source headings into
+ * `deck.html`.
  *
- * When this succeeds, callers should skip model structure generation so the
- * seeded template look is not overwritten by a Neutral regenerate.
+ * Clone ownership is server-side (plugin FS read + project write). The FE only
+ * triggers the endpoint — BYOK Messages API has no Clone tool for the model.
  */
 
-import {
-  buildTemplateClonedDeckHtml,
-  pickPluginPreviewHtmlPath,
-  resolveTemplateCloneSlideCountHint,
-  type TemplateCloneSlideContent,
-} from '@open-design/contracts';
-
-import { createArtifactManifest } from '../artifacts/manifest';
-import { extractSlideOutlineItems } from '../artifacts/emergency-deck';
-import {
-  fetchPluginAssetText,
-  writeProjectTextFileDetailed,
-} from '../providers/registry';
-import { getInstalledPlugin } from '../state/projects';
+import { fetchTeamverDaemon } from './teamverDaemonHeaders';
 
 export type SeedTemplateClonedDeckResult =
   | {
@@ -39,25 +27,8 @@ export type SeedTemplateClonedDeckResult =
       message: string;
     };
 
-function outlineSlidesFromBrief(
-  sourceBrief: string | null | undefined,
-  userInstruction: string | null | undefined,
-  deckTitle: string | null | undefined,
-): TemplateCloneSlideContent[] {
-  const outlineText = [sourceBrief ?? '', userInstruction ?? ''].filter(Boolean).join('\n\n');
-  const fromOutline = extractSlideOutlineItems(outlineText).map((slide) => ({
-    title: slide.title,
-    body: slide.body,
-  }));
-  if (fromOutline.length >= 1) return fromOutline;
-  const title = deckTitle?.trim();
-  if (title) return [{ title }];
-  return [];
-}
-
 /**
- * Fetch the selected template preview HTML, content-swap Source outline into
- * its slide shells, and persist `refs/template-base.html` + `deck.html`.
+ * Trigger daemon `POST /api/projects/:id/template-clone-deck`.
  */
 export async function seedTemplateClonedDeck(options: {
   projectId: string;
@@ -74,89 +45,63 @@ export async function seedTemplateClonedDeck(options: {
     return { ok: false, reason: 'missing_plugin', message: 'Missing project or plugin id' };
   }
 
-  const plugin = await getInstalledPlugin(pluginId, {
-    includeHidden: true,
-    bypassSlideOnlyCatalogFilter: true,
-  });
-  if (!plugin) {
-    return { ok: false, reason: 'missing_plugin', message: `Plugin not found: ${pluginId}` };
-  }
-
-  const previewPath = pickPluginPreviewHtmlPath(plugin.manifest) ?? 'example.html';
-  const previewHtml = await fetchPluginAssetText(pluginId, previewPath);
-  if (!previewHtml?.trim()) {
+  try {
+    const resp = await fetchTeamverDaemon(
+      `/api/projects/${encodeURIComponent(projectId)}/template-clone-deck`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pluginId,
+          templateTitle: options.templateTitle ?? null,
+          sourceBrief: options.sourceBrief ?? null,
+          userInstruction: options.userInstruction ?? null,
+          deckTitle: options.deckTitle ?? null,
+          slideCountHint: options.slideCountHint ?? null,
+        }),
+      },
+    );
+    if (!resp.ok) {
+      let message = `Template clone failed (${resp.status})`;
+      let reason: Extract<SeedTemplateClonedDeckResult, { ok: false }>['reason'] =
+        resp.status === 404 ? 'missing_preview' : 'clone_failed';
+      try {
+        const json = (await resp.json()) as { error?: string; code?: string; message?: string };
+        message = json.message || json.error || message;
+        const code = (json.code || '').toLowerCase();
+        if (code.includes('missing_plugin')) reason = 'missing_plugin';
+        else if (code.includes('missing_preview')) reason = 'missing_preview';
+        else if (code.includes('write')) reason = 'write_failed';
+        else if (code.includes('clone')) reason = 'clone_failed';
+      } catch {
+        /* keep defaults */
+      }
+      return { ok: false, reason, message };
+    }
+    const json = (await resp.json()) as {
+      ok?: boolean;
+      fileName?: string;
+      slideCount?: number;
+      templateId?: string;
+    };
+    if (!json?.ok || json.fileName !== 'deck.html') {
+      return {
+        ok: false,
+        reason: 'clone_failed',
+        message: 'Daemon template clone returned an unexpected payload',
+      };
+    }
+    return {
+      ok: true,
+      fileName: 'deck.html',
+      slideCount: typeof json.slideCount === 'number' ? json.slideCount : 1,
+      templateId: typeof json.templateId === 'string' ? json.templateId : pluginId,
+    };
+  } catch (err) {
     return {
       ok: false,
       reason: 'fetch_failed',
-      message: `Could not fetch template preview (${previewPath})`,
+      message: err instanceof Error ? err.message : 'Network error while cloning template',
     };
   }
-
-  const slides = outlineSlidesFromBrief(
-    options.sourceBrief,
-    options.userInstruction,
-    options.deckTitle ?? options.templateTitle,
-  );
-  const countHint = resolveTemplateCloneSlideCountHint(options.slideCountHint);
-  const cloned = buildTemplateClonedDeckHtml(previewHtml, slides, {
-    title: options.deckTitle?.trim() || options.templateTitle?.trim() || slides[0]?.title,
-    maxSlides: countHint ?? Math.max(slides.length, 6),
-  });
-  if (!cloned) {
-    return {
-      ok: false,
-      reason: 'clone_failed',
-      message: 'Template preview has no slide shells to clone',
-    };
-  }
-
-  // Best-effort raw base for debugging / later refine turns.
-  try {
-    await writeProjectTextFileDetailed(
-      projectId,
-      'refs/template-base.html',
-      previewHtml,
-    );
-  } catch {
-    /* non-fatal */
-  }
-
-  const manifest = createArtifactManifest({
-    entry: 'deck.html',
-    title: options.templateTitle?.trim() || 'deck',
-    preferDeck: true,
-    sourceSkillId: pluginId,
-    metadata: {
-      identifier: 'deck',
-      artifactType: 'deck',
-      templateClonedDeckSeeded: true,
-      selectedDeckTemplateId: pluginId,
-      ...(options.templateTitle?.trim()
-        ? { selectedDeckTemplateTitle: options.templateTitle.trim() }
-        : {}),
-    },
-  });
-
-  const written = await writeProjectTextFileDetailed(projectId, 'deck.html', cloned, {
-    artifactManifest: manifest,
-  });
-  if (!written.ok) {
-    return {
-      ok: false,
-      reason: 'write_failed',
-      message: written.message || 'Failed to write deck.html',
-    };
-  }
-
-  const slideCount = (cloned.match(/<section\b[^>]*\bslide\b/gi) ?? []).length
-    || (cloned.match(/<div\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length
-    || slides.length
-    || 1;
-
-  return {
-    ok: true,
-    fileName: 'deck.html',
-    slideCount,
-    templateId: pluginId,
-  };
 }

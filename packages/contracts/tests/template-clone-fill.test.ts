@@ -5,6 +5,7 @@ import {
   buildTemplateClonedDeckHtml,
   listTemplateCloneSlideShells,
   resolveTemplateCloneSlideCountHint,
+  resolveTemplateCloneSlidesFromBrief,
 } from '../src/template-clone-fill.js';
 
 describe('buildTemplateClonedDeckHtml', () => {
@@ -81,5 +82,15 @@ describe('resolveTemplateCloneSlideCountHint', () => {
     expect(resolveTemplateCloneSlideCountHint('10')).toBe(10);
     expect(resolveTemplateCloneSlideCountHint(5)).toBe(5);
     expect(resolveTemplateCloneSlideCountHint('')).toBeNull();
+  });
+});
+
+describe('resolveTemplateCloneSlidesFromBrief', () => {
+  it('parses Canvas Visible headings', () => {
+    const slides = resolveTemplateCloneSlidesFromBrief({
+      sourceBrief:
+        'Canvas title: Plan\nVisible headings: Alpha / Bravo / Charlie\nSource preview: x',
+    });
+    expect(slides.map((s) => s.title)).toEqual(['Alpha', 'Bravo', 'Charlie']);
   });
 });
