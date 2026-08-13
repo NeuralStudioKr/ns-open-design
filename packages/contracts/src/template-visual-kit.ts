@@ -13,20 +13,24 @@
  * `.deco` CSS + hard anti-emoji rules placed before any large cue.
  */
 
-// Raised 5 200 → 6 800 → 7 400 → 9 600 so a real Zhangzara daisy sprite
-// (~1.8 KB after comment strip) can co-exist with the star, rainbow,
-// tokens, decoration CSS, the ### Slide surface binding (background/color
-// hex + code sample showing BOTH `html`/`body` AND `.slide` painted with
-// the surface hex, plus a contrast note), and the first-slide structure
-// cue without truncating any of them. The motif sprites + surface
-// binding are the two biggest anti-regression signals we can hand the
-// model — clipping either was the reason Daisy Days kept coming back as
-// 🌸 emoji clusters, then as cream slides floating on a dark corporate
-// shell (list thumbnail correct / project preview panel dark), despite
-// every prompt-level ban we added.
-// BODY-FIRST hard rules below tell the model to emit slides before pasting
-// this kit into `<head>` so the larger budget does not invite shell-only cuts.
-const DEFAULT_MAX_CHARS = 9_600;
+// Raised 5 200 → 6 800 → 7 400 → 9 600 → 11 000 so the real Zhangzara
+// daisy sprite (~2 KB), star (~500 B), rainbow (~600 B), CSS tokens,
+// decoration CSS, the ### Slide surface binding with dual-body/slide
+// code samples, first-slide structure cue, verbatim-copy rule, and
+// 4-corner cover density rule can all co-exist without truncation.
+// Motif sprites + surface binding + verbatim-copy rule are the three
+// biggest anti-regression signals we can hand the model — clipping any
+// of them was the reason Daisy Days kept coming back as:
+//   1. 🌸 emoji clusters (no real daisy sprite)
+//   2. dark-on-dark unreadable slides (surface binding missing)
+//   3. cream slides on dark shell (single-surface binding)
+//   4. one lonely coral-recolored daisy in one corner (misclassified
+//      cloud sprite + missing "verbatim colors" / "4-corner density"
+//      guidance) — user report 2026-08-13 preview-panel.
+// BODY-FIRST hard rules below tell the model to emit slides before
+// pasting this kit into `<head>` so the larger budget does not invite
+// shell-only cuts.
+const DEFAULT_MAX_CHARS = 11_000;
 
 function uniquePreserveOrder(values: string[]): string[] {
   const out: string[] = [];
@@ -219,12 +223,22 @@ function extractDecorationCss(html: string, budget: number): string | null {
 
 function classifySvg(svg: string): 'daisy' | 'star' | 'rainbow' | 'sun' | 'cloud' | 'other' {
   // Real Zhangzara Daisy Days daisy sprites are multi-petal flowers: 8+ path
-  // elements laid out radially around a center square viewBox. A "face"-shaped
-  // SVG (circle + ellipse + eyes + smile) previously slipped into the 'daisy'
-  // bucket just because it used soft-pink fill, and the model then saw no
-  // real daisy in the kit and reached for 🌸 emoji. Same for the 4-arc
-  // rainbow (wide viewBox, 4 paths, distinct RYGB colors) — earlier logic
-  // routed it to 'daisy' because mint (#8DE3B7) matched a loose palette gate.
+  // elements laid out radially around a center square viewBox, with a
+  // signature butter-yellow (#FCDF6C or #FDE366) center and white petals
+  // (#FFFFFF) on a dark ink stroke (#232323 / #2D2D2D).
+  //
+  // History of misclassifications (all shipped 🌸 emoji / recolored motif
+  // to the user):
+  // - "face"-shaped SVG (circle + ellipse + eyes + smile) slipped into the
+  //   daisy bucket on soft-pink fill; excluded via `hasFace`.
+  // - 4-arc rainbow (wide viewBox, 4 paths, distinct RYGB) slipped in on
+  //   mint (#8DE3B7); excluded via square/wide check.
+  // - Sky-blue **cloud/wave** sprite (128×128, 10 paths, `.cl0 #C6E3F6`
+  //   + `.cl2 #fff` white with black stroke) slipped in because
+  //   `#fff` matched a loose white-fill gate; the model then saw no real
+  //   daisy and painted a coral-recolored single-shape sprite (Daisy Days
+  //   user report 2026-08-13 preview-panel). Fix: require the butter-
+  //   yellow center hex AND reject sky-blue fills for the daisy bucket.
   const pathCount = (svg.match(/<path\b/gi) ?? []).length;
   const circleCount = (svg.match(/<circle\b/gi) ?? []).length;
   const ellipseCount = (svg.match(/<ellipse\b/gi) ?? []).length;
@@ -240,13 +254,21 @@ function classifySvg(svg: string): 'daisy' | 'star' | 'rainbow' | 'sun' | 'cloud
     .map((n) => Number(n) || 0);
   const isSquareCanvas = vbW > 0 && vbH > 0 && Math.abs(vbW - vbH) / Math.max(vbW, vbH) < 0.1;
   const isWideCanvas = vbW > 0 && vbH > 0 && vbW / vbH >= 1.25;
-  // Multi-petal daisy: 6+ petal paths radiating from a square canvas, uses
-  // the daisy petal palette (white / butter yellow / dark ink).
+  // Anti-cloud gate: sky-blue fills (`#C6E3F6`, `#A8D8F0`, `#85C5FE`) are the
+  // Daisy Days cloud/sky palette, not the daisy palette. Any sprite that
+  // has a sky-blue fill and does NOT have the butter-yellow center is a
+  // cloud-family sprite, not a daisy.
+  const hasSkyBlueFill = /#c6e3f6|#a8d8f0|#85c5fe/i.test(svg);
+  const hasButterYellowCenter = /#fcdf6c|#fde366/i.test(svg);
+  // Real multi-petal daisy: 6+ petal paths on a square canvas with the
+  // butter-yellow center hex present. White-only fills are NOT enough
+  // (cloud/wave sprites also use white).
   if (
     pathCount >= 6
     && !hasFace
     && isSquareCanvas
-    && /#f{3,6}(?![0-9a-f])|#fcdf6c/i.test(svg)
+    && hasButterYellowCenter
+    && !hasSkyBlueFill
   ) {
     return 'daisy';
   }
@@ -264,14 +286,20 @@ function classifySvg(svg: string): 'daisy' | 'star' | 'rainbow' | 'sun' | 'cloud
   // Star: iconic 5-point star viewBox from the Zhangzara star export.
   if (/viewbox="0 0 100 98/i.test(svg) || /\bstar\b/i.test(svg)) return 'star';
   // Loose daisy fallback for the pastel-flower-face style ONLY when the
-  // canvas is square (single flower head) and there are no facial features.
+  // canvas is square (single flower head), no facial features, and NO
+  // sky-blue cloud-palette fill.
   if (
     isSquareCanvas
     && !hasFace
     && pathCount >= 4
+    && !hasSkyBlueFill
     && /#f7c8d4|#ffcd57|#d4a5e8/i.test(svg)
   ) {
     return 'daisy';
+  }
+  // Cloud/wave: 128×128 square, sky-blue fill, no butter-yellow center.
+  if (hasSkyBlueFill && !hasButterYellowCenter && isSquareCanvas && pathCount >= 4) {
+    return 'cloud';
   }
   if (/sun|#ffcd57.*circle|circle.*#ffcd57/i.test(svg) && svg.length < 800) return 'sun';
   if (/cloud/i.test(svg)) return 'cloud';
@@ -432,7 +460,8 @@ const HARD_RULES = [
   '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` slides BEFORE a large `<head>`/`<style>` dump. Put Motif sprites + Decoration CSS in one short body `<style>` after slide 1 (or tiny inline tokens). A CSS-only truncation is a failed deliverable.',
   '- **Surface binding is authoritative — read `### Slide surface` below and use those EXACT `background` / `color` hex values on BOTH `html` / `body` AND every `<section class="slide">`.** Painting only the slides while leaving `body` at its default (or a dark app-shell) produces cream slides floating on a dark shell — the deck looks correct in the list thumbnail (which forces slides to cover the viewport) but reads as a dark corporate deck in the project preview panel. Do NOT substitute a border/ink token (e.g. `#2D2D2D`, `#232323`, `#1E1E1C`) for a slide background — those are stroke colors, not surface colors. Dark-on-dark, light-on-light, and cream-slides-on-dark-shell are all failed deliverables.',
   '- Keep the template scheme (light pastel stays light; dark terminal stays dark).',
-  '- Motif MUST be SVG/CSS from **Motif sprites** / **Decoration CSS** below (e.g. `<div class="deco deco-daisy-tl">…svg…</div>`). Use 2–4 sprites max per slide.',
+  '- Motif MUST be SVG/CSS from **Motif sprites** / **Decoration CSS** below (e.g. `<div class="deco deco-daisy-tl">…svg…</div>`). **Paste each sprite VERBATIM — keep its original `fill`, `stroke`, `<style>` classes, and `path` `d=` data exactly as shown.** Do NOT recolor the sprite (a Daisy Days daisy has white petals with a butter-yellow `#FCDF6C` center and dark `#232323` stroke — do not swap those for coral / border-ink / palette hexes to \"match the deck\"). Do NOT redraw the sprite as a single-shape blob. If a sprite has an internal `<style>` block with `.cls-N { fill: … }` selectors, keep the `<style>` block AND the class attributes on the paths, or inline the fills on the paths — never drop them.',
+  '- **Cover-slide motif density (Zhangzara pattern):** Zhangzara daisy / floral covers place motif sprites in **all four corners** (top-left, top-right, bottom-left, bottom-right) with 1–2 accent sprites (small star / heart / rainbow) tucked next to the corner daisies. A single sprite in one corner reads as a corporate deck with a stray flower; use 3–5 sprites on the cover and 1–2 on body slides. Non-Zhangzara templates: match the density visible in the **First-slide structure cue** below.',
   '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration — no 🌼 🌸 🌺 🌻 🌹 ⭐ ✨ 🌟 🌈 ☀️ or similar flower/star/rainbow emoji rows pretending to be the template identity.',
   '- Preserve chunky cards/borders/offset shadows when Decoration CSS shows them.',
   '- Vary slide layouts using the template vocabulary; do not emit sparse title-only Neutral Modern slides.',
@@ -588,9 +617,13 @@ export function extractTemplateVisualKitFromHtml(
   const sprites = extractMotifSprites(source, spriteBudget);
   if (sprites.length > 0) {
     lines.push(
-      '### Motif sprites (complete SVGs — copy into corner `<div class="deco …">` wrappers)',
+      '### Motif sprites (complete SVGs — copy VERBATIM into corner `<div class="deco …">` wrappers)',
       '',
-      'Use 2–4 of these per slide at corners/edges via absolute `.deco` positioning. Do not invent emoji flowers. Do not paste every sprite into `<head>` before writing slides — BODY-FIRST.',
+      'Paste each sprite **byte-for-byte** into a `<div class="deco deco-corner-…">` wrapper. Do NOT edit the `fill` / `stroke` / `<style>` classes / `path d=` — the colors baked into the sprite ARE the template identity (a Daisy Days daisy is white + butter-yellow + dark stroke; a Zhangzara star is soft-pink or mint on dark stroke; recoloring them to `#F8635F` coral or a single palette hex loses the template look entirely). If you need a different color accent, pick a DIFFERENT sprite from the list — do not recolor the existing one.',
+      '',
+      'Cover slide should place motif in **all four corners** (top-left / top-right / bottom-left / bottom-right) plus 1–2 small accent sprites tucked beside the corner daisies — 3–5 sprites total. Body slides can use 1–2 corner sprites. A single lonely sprite in one corner reads as a corporate deck with a stray flower, not the template.',
+      '',
+      'Do not paste every sprite into `<head>` before writing slides — BODY-FIRST.',
       '',
     );
     for (let i = 0; i < sprites.length; i += 1) {

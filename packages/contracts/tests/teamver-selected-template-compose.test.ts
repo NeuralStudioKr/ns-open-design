@@ -118,7 +118,9 @@ describe('Teamver selected deck template compose (BYOK slide-only)', () => {
     expect(prompt).toContain('#F5F0E6');
     expect(prompt).toContain('Fredoka One');
     expect(prompt).toContain('Motif sprites');
-    expect(prompt).toContain('Do not invent emoji flowers');
+    // Kit motif rule migrated from "Do not invent emoji flowers" prose to
+    // the verbatim-copy rule ("loses the template look entirely").
+    expect(prompt).toMatch(/loses the template look|emoji flowers|do not invent emoji/i);
     expect(prompt).toContain('SECONDARY — brand context only');
     expect(prompt).toContain('Never turn a cheerful pastel / cream template into a dark Neutral Modern gradient');
     expect(prompt).toContain('Selected deck template visual — READ LAST');

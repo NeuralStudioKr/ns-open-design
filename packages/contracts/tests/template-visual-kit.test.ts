@@ -28,7 +28,9 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toContain('Decoration CSS');
     expect(kit).toContain('--shadow');
     expect(kit).toContain('Motif sprites');
-    expect(kit).toContain('Do not invent emoji flowers');
+    // Anti-emoji intent — copy changed from "Do not invent emoji flowers"
+    // to a broader "loses the template look" phrasing in the verbatim rule.
+    expect(kit).toMatch(/loses the template look|emoji/i);
     expect(kit).toContain('Do NOT replace them with an active design-system palette');
     // Hard anti-emoji + BODY-FIRST rules must appear (not truncated away).
     expect(kit).toMatch(/Forbidden motif substitutes/i);
@@ -68,6 +70,16 @@ describe('extractTemplateVisualKitFromHtml', () => {
     expect(kit).toMatch(/html\s*,\s*body\s*\{\s*background:\s*#F5F0E6/);
     expect(kit).toMatch(/\.slide\s*\{\s*background:\s*#F5F0E6/);
     expect(kit).toMatch(/cream-slides-on-dark-shell/i);
+    // Verbatim-copy / do-not-recolor rule (Daisy Days 2026-08-13
+    // preview-panel follow-up: model shipped ONE lonely daisy in one
+    // corner, recolored to coral instead of white+yellow+dark-stroke,
+    // because the classifier picked the sky-blue cloud sprite as
+    // "daisy" and the model then interpreted the sprite's white fill
+    // as "too washed out" and swapped in coral). Kit must call out
+    // both failures.
+    expect(kit).toMatch(/VERBATIM|byte-for-byte/i);
+    expect(kit).toMatch(/do NOT recolor|do not recolor/i);
+    expect(kit).toMatch(/all four corners|4-corner|four corners/i);
     // The classifier must ship at least ONE real multi-petal daisy sprite,
     // not just the small bear-face or the 4-arc rainbow. Zhangzara Daisy
     // Days ships 10-path SVGs on a 150×150 square viewBox with white petals
@@ -86,10 +98,26 @@ describe('extractTemplateVisualKitFromHtml', () => {
       const w = vb[2] ?? 0;
       const h = vb[3] ?? 0;
       const square = w > 0 && h > 0 && Math.abs(w - h) / Math.max(w, h) < 0.1;
-      return pathCount >= 6 && square;
+      // Real Daisy Days daisy has the butter-yellow center hex
+      // (#FCDF6C or #FDE366) AND white petal fills — the sky-blue
+      // cloud sprite (128×128, `.cl0 #C6E3F6`, `.cl2 #fff`) that
+      // previously slipped into this bucket has neither butter-yellow
+      // nor a dark stroke color, so requiring the yellow center is
+      // enough to distinguish them.
+      const hasYellowCenter = /#fcdf6c|#fde366/i.test(svg);
+      return pathCount >= 6 && square && hasYellowCenter;
     });
     expect(hasRealPetalSprite).toBe(true);
-    expect(kit!.length).toBeLessThanOrEqual(9_600);
+    // Anti-regression for the cloud misclassification: the sky-blue
+    // cloud/wave sprite (128×128, `.cl0 #C6E3F6`) must NOT appear in
+    // the sprite section. Its presence made the model paint a single
+    // recolored coral sprite instead of the 4-corner white-daisy
+    // pattern (user report 2026-08-13 preview-panel).
+    const hasSkyBlueCloudMisclassified = spriteSvgs.some((svg) =>
+      /#c6e3f6/i.test(svg)
+    );
+    expect(hasSkyBlueCloudMisclassified).toBe(false);
+    expect(kit!.length).toBeLessThanOrEqual(11_000);
   });
 
   it('appendTemplateVisualKit is idempotent', () => {
