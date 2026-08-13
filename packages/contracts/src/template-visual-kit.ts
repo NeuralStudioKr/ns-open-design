@@ -15,11 +15,17 @@
 
 // Raised through 11 000 → 12 000 so Daisy Days can ship daisy+star+rainbow
 // plus Layout CSS (grid/flex/regions) without truncating Motif sprites.
-// ~12KB ≈ 3k tokens — still far below full example.html (~87KB) or the
-// retired CONTENT-SWAP HTML scaffold dump.
+// Raised 12 000 → 14 000. The HARD_RULES expansion for the "LAYOUT
+// VOCABULARY, NOT SHELL COPY" policy (user report 2026-08-13 "템플릿의
+// 페이지 수/순서/구성을 반드시 따를 필요는 없다. 오히려 비권장") added ~500
+// chars of prompt real estate; at 12 000 the Decoration / Layout CSS
+// blocks fell out of the packing budget for Daisy Days (Motif sprites +
+// scaffold map + surface + tokens filled the cap first). 14 000 restores
+// full kit output — still ≈3.5k tokens, far below full example.html
+// (~87KB) or the retired CONTENT-SWAP HTML scaffold dump.
 // BODY-FIRST hard rules tell the model to emit slides before pasting this
 // kit into `<head>` so the larger budget does not invite shell-only cuts.
-const DEFAULT_MAX_CHARS = 12_000;
+const DEFAULT_MAX_CHARS = 14_000;
 
 function uniquePreserveOrder(values: string[]): string[] {
   const out: string[] = [];
@@ -610,8 +616,8 @@ function renderMustMatchLookBlock(options: {
   }
   lines.push(
     options.hasScaffoldMap
-      ? '3. **Layout/placement:** follow Template scaffold map roles + Layout CSS (grids/flex/regions). Do not flatten every slide into the same cover composition.'
-      : '3. **Layout/placement:** reuse the template\'s multi-region compositions (grids/flex/cards). Do not flatten every slide into the same cover composition.',
+      ? '3. **Layout/placement:** the Template scaffold map + Layout CSS below is your *layout vocabulary*. Pick the roles (cover, body, timeline, three-column, quote, chart, closing, …) that fit the user brief\'s actual content and skip the ones that don\'t. Reuse the same role across multiple slides when appropriate. Do NOT force every scaffold-map role into the deck, and do NOT flatten every slide into the same cover composition.'
+      : '3. **Layout/placement:** reuse the template\'s multi-region compositions (grids/flex/cards) as a vocabulary. Pick and reorder freely to match the user brief; do not flatten every slide into the same cover composition.',
   );
   lines.push(
     '4. **Motif/density:** when Motif sprites / Decoration CSS are present, show them — sparse title-only slides are a failure.',
@@ -981,12 +987,11 @@ function extractTemplateScaffoldMap(
 
 const HARD_RULES = [
   'Hard rules (non-negotiable):',
-  '- **LOOK LIKE THE TEMPLATE:** background/surface, fonts, and layout/placement MUST match this kit. A Neutral / "similar vibe" reinterpretation is a failed deliverable even if the content is correct.',
-  '- **TOKEN-SAFE CONTENT-SWAP:** treat this kit + Template scaffold map + Layout CSS as the base look. Do NOT paste or rewrite a full `example.html`. Replace only visible content: headings, paragraphs, bullets, chart/table labels/values, and image slots.',
+  '- **LOOK LIKE THE TEMPLATE — but restructure for the brief.** Background/surface, fonts, borders/shadows, and motif sprites MUST match this kit. Slide count, slide order, and per-slide composition MUST match the **user brief**, not the template\'s natural shell sequence. The template is a **visual and layout vocabulary** to draw from, not a slide skeleton to clone verbatim. A Neutral / "similar vibe" reinterpretation IS a failure — but so is a rigid shell-for-shell copy that keeps the template\'s Weekly Grid or Timeline when the brief has nothing to do with days-of-week or a schedule.',
+  '- **LAYOUT VOCABULARY, NOT SHELL COPY:** treat `### Template scaffold map` (below) as a *catalog of available layouts* (cover / welcome / weekly-grid / timeline / chart / quote / three-column / closing / …). Pick the layout roles that fit the user brief\'s actual content. Reuse the same role across multiple content slides when appropriate; skip roles whose semantic doesn\'t fit (e.g. don\'t force `weekly-grid` on a sales pitch, don\'t force `timeline` on a static explainer). Slide count is driven by the user brief / Plugin `slideCount` / an auto default of 6–8, NOT by the template\'s shell count.',
   '- **BODY-FIRST:** emit `<body>` / filled `<section class="slide">` (or the template\'s slide wrapper) BEFORE a large `<head>`/`<style>` dump. Put Motif sprites + Layout/Decoration CSS in one short body `<style>` after slide 1 (or tiny inline tokens). A CSS-only truncation is a failed deliverable.',
   '- **Background:** bind `### Slide surface` on BOTH `html`/`body` AND every `.slide`. Dark-on-dark, light-on-light, or paper-slides-on-wrong-shell are failed deliverables. Ink/border tokens are stroke/text, not backgrounds.',
   '- **Fonts:** use kit Font import + font-family names exactly; do not substitute Inter/Noto/system-ui alone when the kit lists display/body faces.',
-  '- **Layout:** follow Template scaffold map roles and Layout CSS (grids/flex/regions). Do not flatten every slide into the same cover composition.',
   '- Motif MUST be copied from **Motif sprites** / **Decoration CSS** below when present. Paste sprites VERBATIM into the template\'s ornament wrappers. Use only sprites listed in Motif sprites — never invent SVG/emoji for a missing slot. Copy at least one complete provided SVG on the cover when sprites are present.',
   '- **Forbidden motif substitutes:** unicode/emoji ornaments as decoration pretending to be the template identity. Do not invent ellipse "daisy" SVGs or generic flower geometry when sprites are provided.',
   '- Preserve chunky cards/borders/offset shadows when Decoration CSS / `:root` tokens show them (`--border`, `--shadow`).',
@@ -1090,7 +1095,9 @@ export function extractTemplateVisualKitFromHtml(
   const optionalBlocks: string[][] = [spriteBlock];
   if (scaffold) {
     optionalBlocks.push([
-      '### Template scaffold map (preserve layout/classes; replace content only)',
+      '### Template scaffold map (layout vocabulary — pick appropriate roles for the user brief)',
+      '',
+      'This is a **catalog of the template\'s available slide layouts and roles**, NOT a slide order to clone verbatim. Pick the layouts that fit the user brief\'s actual content — do NOT force a Weekly Grid, Timeline, or Chart layout just because the template ships one, if the brief is not about time / progression / data. Reuse the same layout role across multiple content slides when appropriate. Slide count is driven by the user brief / Plugin `slideCount` / an auto default of 6–8 — NOT by the template\'s natural shell count.',
       '',
       '```text',
       scaffold,

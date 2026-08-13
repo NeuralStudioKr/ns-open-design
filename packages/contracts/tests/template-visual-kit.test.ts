@@ -79,7 +79,7 @@ describe('extractTemplateVisualKitFromHtml', () => {
     // Budget must fit daisy + star + rainbow so the scaffold map does not
     // demand deco kinds the Motif sprites block never shipped.
     expect(spriteSvgs.length).toBeGreaterThanOrEqual(3);
-    expect(kit!.length).toBeLessThanOrEqual(12_000);
+    expect(kit!.length).toBeLessThanOrEqual(14_000);
     expect(kit!).not.toMatch(/…\s*$/);
     expect(kit!).toMatch(/LOOK LIKE THE TEMPLATE|TOKEN-SAFE CONTENT-SWAP/i);
     expect(kit!).toContain('### Must-match look');

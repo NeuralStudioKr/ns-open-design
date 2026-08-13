@@ -594,8 +594,8 @@ export const DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE = `# Slide d
 
 You are in API mode. **Do NOT paste or recreate a large OD framework skeleton.** Do NOT spend tokens on scale-to-fit JS, print CSS, chrome counters, or keyboard handlers.
 
-A **Selected deck template** is already in this prompt. Use the **token-safe** path:
-1. **Template visual kit** (+ Template scaffold map of slide classes/roles) — bind tokens/Motif sprites; content-swap the user brief into those layouts.
+A **Selected deck template** is already in this prompt. Use the **token-safe layout-vocabulary** path:
+1. **Template visual kit** (+ Template scaffold map of slide roles) — bind tokens/Motif sprites for the visual look, and pick **the layouts that fit your user brief** from the scaffold map. Slide count and order come from the user brief / Plugin \`slideCount\`, NOT from the template's shell sequence.
 2. Else Visual summary / title cues.
 
 Do **not** paste a full \`example.html\` dump into the artifact (input was already summarized into the kit; rewriting the whole preview burns output tokens and truncates).
@@ -611,8 +611,8 @@ Rules:
 2. Every \`<section class="slide">\` must contain real text. Empty sections or \`<!-- SLOT -->\` comments are failures.
 3. ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE} Prefer a complete deck over a perfect-but-truncated shell.
 4. The artifact MUST end with \`</html>\` and \`</artifact>\` in this turn. Complete deck beats perfect motif fidelity; a shell-only document is a failure.
-5. Vary layouts using the Template scaffold map roles / kit vocabulary — do not flatten every slide into the same cover composition.
-6. **Hard visual rule (token-safe content-swap):** treat the kit + scaffold map as the base look. Preserve surface colors, decorative wrappers, card treatment, and SVG motif language; replace visible content only. **Every slide should carry 1–3 recognizable Motif sprites** from the kit's \`### Motif sprites\` block (cover uses 3–4 in corner \`.deco\` wrappers; body slides use 1–2 tucked accents; closing echoes the cover). Copy Motif sprites verbatim (at least one on the cover when provided) — never invent generic CSS flowers or emoji ornaments. Never substitute OD skeleton terracotta \`#c96442\`, Neutral \`#0f172a\`, Inter/Noto-only covers that ignore template fonts, emoji ornament rows, or invented motifs for template CSS/SVG.
+5. **Layout vocabulary, not shell copy.** Treat the Template scaffold map as a *catalog* of the template's available layouts (cover, welcome, weekly-grid, timeline, three-column, chart, quote, team, closing …). Pick the layouts whose role fits your user brief's actual content, reuse the same role across multiple slides when appropriate, and skip roles whose semantic doesn't fit (e.g. don't force weekly-grid onto a sales pitch, don't force timeline onto a static explainer). Slide count = user brief / Plugin \`slideCount\` / auto default 6–8 — **NOT** the template's natural shell count. Do not flatten every slide into the same cover composition.
+6. **Hard visual rule (kit-driven visual, brief-driven structure):** the kit + scaffold map provide the *visual vocabulary* (palette, fonts, borders, shadows, motif SVGs, layout roles). The *slide count, order, and per-slide composition* come from the user brief. Preserve surface colors, decorative wrappers, card treatment, and SVG motif language; but choose how many slides, which layout roles, and in what order based on the brief — NOT the template's shell sequence. **Every slide should carry 1–3 recognizable Motif sprites** from the kit's \`### Motif sprites\` block (cover uses 3–4 in corner \`.deco\` wrappers; body slides use 1–2 tucked accents; closing echoes the cover). Copy Motif sprites verbatim (at least one on the cover when provided) — never invent generic CSS flowers or emoji ornaments. Never substitute OD skeleton terracotta \`#c96442\`, Neutral \`#0f172a\`, Inter/Noto-only covers that ignore template fonts, emoji ornament rows, or invented motifs for template CSS/SVG.
 7. When the user attaches images, include \`<img src="exact-project-relative-path" …>\` using attachment paths.
 
 ${DECK_COMPACT_INLINE_LAYOUT_VOCABULARY_FOR_SELECTED_TEMPLATE}
