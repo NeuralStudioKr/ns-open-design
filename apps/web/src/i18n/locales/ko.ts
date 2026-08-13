@@ -2724,7 +2724,7 @@ export const ko: Dict = {
   'teamver.homeCreate.drive': 'Drive에서 가져오기',
   'teamver.homeCreate.removeAttach': '첨부 제거',
   'teamver.homeCreate.promptLabel': '무엇을 만들까요?',
-  'teamver.homeCreate.promptPlaceholder': '주제·핵심 메시지·상세 브리프를 적어 주세요. 길어도 됩니다.',
+  'teamver.homeCreate.promptPlaceholder': '주제나 핵심 메시지를 적어 주세요.',
   'teamver.homeCreate.templateLead': '덱 스타일을 고르세요.',
   'teamver.homeCreate.nextTemplate': '다음: 스타일 고르기',
   'teamver.homeCreate.confirm': '슬라이드 만들기',

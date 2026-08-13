@@ -149,6 +149,7 @@ import { consumeTeamverCanvasLaunchHandoff } from '../teamver/canvasLaunchHandof
 import {
   CANVAS_CREATE_SLIDES_PLUGIN_ID,
   DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+  DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
   canvasCreateSlidesPluginInputs,
   canvasCreateSlidesRunPrompt,
   canvasCreateSlidesSourceBrief,
@@ -395,7 +396,7 @@ export function HomeView({
   const [homeSlideCreateError, setHomeSlideCreateError] = useState<string | null>(null);
   const [homeSlideUserPrompt, setHomeSlideUserPrompt] = useState('');
   const [homeSlideQuickSettings, setHomeSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
-    DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+    DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
   );
   const [homeSlideTemplateId, setHomeSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
   const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
@@ -1245,7 +1246,7 @@ export function HomeView({
       setHomeSlideCreateEntry('template');
       setHomeSlideCreateError(null);
       setHomeSlideUserPrompt('');
-      setHomeSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+      setHomeSlideQuickSettings(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
       setHomeSlideCreateOpen(true);
       setDetailsRecord(null);
       return;
@@ -1837,7 +1838,7 @@ export function HomeView({
     setHomeSlideCreateEntry(entry);
     setHomeSlideTemplateId(templateId?.trim() || CANVAS_CREATE_SLIDES_PLUGIN_ID);
     setHomeSlideUserPrompt('');
-    setHomeSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+    setHomeSlideQuickSettings(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
     setHomeSlideCreateError(null);
     setHomeSlideCreateOpen(true);
   }
@@ -1847,7 +1848,7 @@ export function HomeView({
     setHomeSlideCreateOpen(false);
     setHomeSlideCreateError(null);
     setHomeSlideUserPrompt('');
-    setHomeSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+    setHomeSlideQuickSettings(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
     setHomeSlideTemplateId(CANVAS_CREATE_SLIDES_PLUGIN_ID);
   }
 
@@ -1925,7 +1926,7 @@ export function HomeView({
       setStagedDriveAssets([]);
       setHomeSlideCreateOpen(false);
       setHomeSlideUserPrompt('');
-      setHomeSlideQuickSettings(DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS);
+      setHomeSlideQuickSettings(DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS);
       setHomeSlideTemplateId(CANVAS_CREATE_SLIDES_PLUGIN_ID);
     } catch (err) {
       if (isMainSsoUserMismatchError(err)) {

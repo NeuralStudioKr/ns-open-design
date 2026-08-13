@@ -322,10 +322,25 @@ Canvas→Slide (Home 밖)
 | **textarea (상시)** | 주 입력. 한 줄~장문 모두. “자세히 쓰고 싶은 유저” 경로 |
 | 퀵설정 칩 (기본값) | 장문을 안 써도 브리프가 채워지게 |
 | 첨부 (선택) | 업로드·Drive — 프롬프트와 **같은 스텝** |
-| placeholder | 짧게/자세히 예시 한 줄씩 힌트 (모드 탭으로 쪼개지 않음) |
-| Discovery | 마법사에서 이미 채웠으면 **스킵 가능** |
+| placeholder | 짧은 안내만 (`주제나 핵심 메시지를 적어 주세요.`). 예시·팁 아이콘은 P0에서 두지 않음 |
+| **Discovery (Quick brief)** | Home 마법사 생성은 **스킵** (`skipDiscoveryBrief`). 마법사가 이미 수집함 |
 
-**최소 진행 조건 (제안):** textarea 비어 있어도 퀵설정만으로 Next 가능하되, Confirm 직전 “한 줄이라도 적어 주세요” 소프트 가드 또는 placeholder 강조. (하드 블락은 제품 취향 — §9)
+**Discovery 정책:** 마법사를 거친 Home 생성에서는 OD turn-1 Quick brief / question-form을 **빼는 것이 맞다.**  
+이미 대상·길이·톤·프롬프트·템플릿을 받았는데 채팅에서 또 물으면 이중 마찰.  
+(구현: `buildSlideOnlyDeckTemplateCreateBinding` → `skipDiscoveryBrief: true` · 선택 템플릿 id도 skip 조건.)  
+채팅 **중반** clarification form은 유지(수정·재생성용).
+
+**퀵설정 보완 (Home 전용)**
+
+| 지금 | 권고 |
+|------|------|
+| 대상·길이·톤 (+ Canvas용 transform은 Home에서 제외됨) | P0 유지 |
+| 기본값 `auto` 다수 | Home 빈 생성엔 **구체 기본**이 나음: 대상=팀(internal), 길이=보통(standard), 톤=담백/professional |
+| — | **P1 후보:** 언어(한/영). Teamver KR-first에 유효 |
+| — | **비권장 1차:** 이미지 on/off, 발표자 노트, 용도 칩 추가 — 칩 과다 |
+| transformMode | Canvas 소스 변환용. Home **넣지 않음** |
+
+**최소 진행 조건 (제안):** textarea 비어 있어도 퀵설정만으로 Next 가능. placeholder는 예시로 유도.
 
 ### 5.4 템플릿 강제 수위
 
@@ -457,6 +472,7 @@ Embed `/`
 - Studio 2열을 모바일 기본으로 재도입 ([49] 폐기 이력)  
 - 생성 후에야 템플릿을 고르게 하는 인라인-only 1차 전략  
 - “프롬프트만으로도 최고 품질”을 전제로 한 템플릿 완전 선택화 유지  
+- Home 마법사 생성 후 turn-1 **OD Quick brief / discovery question-form** 재질문  
 
 ---
 
@@ -474,7 +490,8 @@ Embed `/`
 |------|------|
 | 1 | **빈 Next 허용** + placeholder 강하게. 품질은 칩 기본값으로 받침 |
 | 2 | P0: **L1** (프리셀렉트 + stepper/카드 표시). CTA는 「슬라이드 만들기」고정. P1: L2 |
-| 3 | P0: **대상·길이·톤** 3종. 나머지는 이후 |
+| 3 | P0: **대상·길이·톤** 3종. Home 기본값은 구체값(팀/보통/professional). P1: 언어(한/영). transform·이미지 칩은 보류 |
+
 
 **한 줄 제품 카피 (Home CTA):**  
 「새 슬라이드」— *자료·설정·설명을 넣고, 스타일만 고르면 됩니다.*

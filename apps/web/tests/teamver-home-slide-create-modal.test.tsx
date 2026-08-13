@@ -85,4 +85,25 @@ describe("TeamverHomeSlideCreateModal", () => {
     fireEvent.click(screen.getByTestId("teamver-home-slide-create-step-template"));
     expect(screen.getByTestId("teamver-home-slide-create-template")).toBeTruthy();
   });
+
+  it("uses a short placeholder and no tip chrome", () => {
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("teamver-home-slide-create-prompt").getAttribute("placeholder")).toMatch(
+      /topic and key messages/i,
+    );
+    expect(screen.queryByTestId("teamver-home-slide-create-tip-btn")).toBeNull();
+    expect(screen.queryByTestId("teamver-home-slide-create-tips")).toBeNull();
+  });
 });

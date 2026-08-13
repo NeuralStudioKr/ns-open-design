@@ -108,6 +108,14 @@ export const DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS: CanvasSlideQuickSettings = {
   tone: "auto",
 };
 
+/** Home empty-create defaults — no source doc, so avoid vague "auto". */
+export const DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS: CanvasSlideQuickSettings = {
+  audience: "internal",
+  length: "standard",
+  transformMode: "presentation",
+  tone: "professional",
+};
+
 const QUICK_SETTING_PROMPT_LABELS = {
   audience: {
     auto: "Infer audience from the source",

@@ -7,7 +7,7 @@ import { Icon } from "../../components/Icon";
 import { useTeamverT } from "../branding/useTeamverT";
 import type { TeamverDriveImportAsset } from "../importDriveAssets";
 import {
-  DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+  DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
   type CanvasSlideQuickSettings,
   type TeamverCanvasSlideTemplateOption,
 } from "../canvasSlideLaunch";
@@ -85,7 +85,7 @@ export function TeamverHomeSlideCreateModal({
   onTemplateChange,
   userPrompt = "",
   onUserPromptChange,
-  quickSettings = DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,
+  quickSettings = DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS,
   onQuickSettingsChange,
   stagedFiles = [],
   onAddFiles,
@@ -108,7 +108,7 @@ export function TeamverHomeSlideCreateModal({
   }, [open, entry]);
 
   const normalizedQuick = useMemo(
-    () => ({ ...DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS, ...quickSettings }),
+    () => ({ ...DEFAULT_HOME_SLIDE_CREATE_QUICK_SETTINGS, ...quickSettings }),
     [quickSettings],
   );
 
@@ -257,7 +257,10 @@ export function TeamverHomeSlideCreateModal({
         ))}
       </div>
 
-      <label className="teamver-home-slide-create-prompt-label" htmlFor="teamver-home-slide-create-prompt">
+      <label
+        className="teamver-home-slide-create-prompt-label"
+        htmlFor="teamver-home-slide-create-prompt"
+      >
         {t("teamver.homeCreate.promptLabel")}
       </label>
       <textarea

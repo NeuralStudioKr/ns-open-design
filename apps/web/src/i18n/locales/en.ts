@@ -2724,7 +2724,7 @@ export const en: Dict = {
   'teamver.homeCreate.drive': 'From Drive',
   'teamver.homeCreate.removeAttach': 'Remove attachment',
   'teamver.homeCreate.promptLabel': 'What should we create?',
-  'teamver.homeCreate.promptPlaceholder': 'Topic, key messages, or a detailed brief. Short or long is fine.',
+  'teamver.homeCreate.promptPlaceholder': 'Describe the topic and key messages.',
   'teamver.homeCreate.templateLead': 'Pick a style for your deck.',
   'teamver.homeCreate.nextTemplate': 'Next: pick a style',
   'teamver.homeCreate.confirm': 'Create slides',
