@@ -127,6 +127,25 @@
 
 제품 판단: **완성된 덱이 우선**이다. 선택 템플릿과 100% 동일한 CSS를 복사하다가 결과물이 비어버리는 것보다, 템플릿의 palette/font/motif cue가 보이는 compact static deck을 완성하는 것이 낫다. 따라서 pre-write gate는 계속 shell 저장을 막고, prompt는 shell이 생기지 않도록 body-first로 유도한다.
 
+### 0.7 2026-08-13 추가 장애 — kit CSS의 viewport 사이징이 preview panel을 늘림
+
+**증상:** 템플릿 + BYOK 결과물이 PPT 사이즈(1920×1080)에 맞지 않고, 브라우저 크기에 따라 슬라이드 비율이 바뀜. Canvas→Slide 전용이 아니라 **모든 템플릿+BYOK 경로**에서 재현.
+
+**원인:** kit-only 모드에서도 `extractDecorationCss` / `extractLayoutCss`가 `example.html`의 원본 CSS 룰(`.slide{width:100vw;height:100vh;scroll-snap-align:start}`, `.slides-container{scroll-snap-type:y mandatory}`, `html,body{width:100%;height:100%;overflow:hidden}`)을 그대로 Decoration/Layout CSS 블록에 실어 보내고 있었다. `example.html`은 **전체 화면 presenter-mode**로 설계돼 있기 때문이다. Zhangzara/html-ppt 계열 90개 이상이 이 형태.
+
+모델이 kit이 시키는 대로 short body `<style>`에 그 룰을 붙이면, 인라인 `width:1920px`(더 강한 specificity)가 있어도 `<style>` 경로만 선택했을 때 class-level `100vw`가 렌더 컨텍스트를 지배한다. Teamver 미리보기 패널은 scaled canvas이므로 슬라이드가 브라우저에 맞춰 늘어난다.
+
+**수정:**
+
+| 보강 | 내용 |
+|------|------|
+| CSS rule sanitizer | `sanitizeCssRuleForFixedCanvas`: bare `.slide` / `html` / `body` / `.slides-container` 룰 drop, 살아남은 룰(`.slide-title`, `.deco`, `.card`)의 viewport 단위 width/height/min-height/max-height + scroll-snap-*/scroll-behavior 선언 strip |
+| 컴팩트 컨트랙트 강화 | step 3에 "Every slide MUST be a fixed 1920×1080 canvas" + "Do NOT use `width:100vw`/`100vh`/scroll-snap presenter-mode plumbing" |
+| READ LAST 삼중 강화 | WITH_SCAFFOLD / WITH_KIT / WITHOUT_KIT 세 variant 모두에 "Fixed 1920×1080 canvas is non-negotiable" 절 추가하고 preview panel이 scaled canvas라는 근거 설명 |
+| 회귀 방어 | 90개 viewport-based 템플릿 전수 audit — Decoration/Layout CSS 블록의 100v[wh]/scroll-snap-* leak 0 확인. `template-visual-kit.test.ts`에 sanitizer 스펙 픽스처 추가 |
+
+**제품 판단:** 미리보기 패널은 브라우저 뷰포트가 아니라 scaled canvas다. 템플릿의 `example.html`이 전체 화면 프레젠터로 만들어졌더라도, Teamver 결과물은 **PPT 슬라이드 종횡비(16:9, 1920×1080)를 보존**해야 한다. viewport 단위 사이징은 kit에서 원천적으로 제거하고, prompt 세 층(compact / READ LAST 세 variant)에서도 명시 금지.
+
 ### 0.6 2026-08-13 추가 판단 — 템플릿은 “설명 재현”이 아니라 content-swap (token-safe)
 
 사용자 피드백: Daisy Days 템플릿을 선택했는데 결과가 어두운 배경 + 임의 꽃 도형으로 나옴. 이는 “템플릿을 잘 설명해 주면 모델이 비슷하게 그릴 것”이라는 접근의 한계다. 선택 템플릿은 스타일 참고자료가 아니라 **미리보기 look을 base로 내용만 교체**해야 한다. 다만 full `example.html`을 프롬프트에 싣는 방식은 토큰 위험이 커서(**§0.0**), kit + scaffold map으로 계약을 전달한다.
@@ -580,6 +599,8 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | motif 구현 — kit에 작은 complete SVG sprite + `.deco` CSS · emoji 대체 금지 | **완료** — `extractTemplateVisualKitFromHtml` 재작성 + READ LAST/vocab/SKILL |
 | P2 | motif 구현 힌트 · Google Fonts `@import` 레시피 일반화 | **부분 완료** — kit에 `@import` 레시피 + Motif sprites; 추가 템플릿별 튜닝은 후속 |
 | P2 | lean compose에 slide-safe `web_fetch` 노출 여부 | 제품 결정 |
+| P0 | 슬라이드 surface hex를 example.html에서 resolve · html/body/.slide 이중 바인딩 (dark-on-dark, cream-slides-on-dark-shell 방지) | **완료** — `extractSlideSurfaceBinding` + READ LAST triple + `### Slide surface` 블록 |
+| P0 | kit CSS에서 viewport 사이징 / scroll-snap plumbing 제거 (template+BYOK 1920×1080 강제) | **완료** — `sanitizeCssRuleForFixedCanvas` + 컴팩트 컨트랙트 강화 + READ LAST 3-variant |
 
 ### 12.1 Edit-contract gating (상세)
 
@@ -602,3 +623,5 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-10 | 핫픽스 — turn-1 truncated HTML을 discovery skip하지 않음; Canvas skipDiscovery persist 레이스 방어 |
 | 2026-08-10 | salvage 강화 — mid-slide `</section>` close · truncation soft quality · persist/bestArtifact가 salvage 재거부 안 함 · AC for rejected/discovery-skip |
 | 2026-08-10 | 다회 감사 — soft re-reject / kind:deck over-skip / ChatComposer metadata / emergency-first+error clear / doctype segments / AC missing-disk 신호 |
+| 2026-08-13 | §0.7 추가 — kit CSS의 viewport 사이징/scroll-snap이 preview panel을 늘리는 문제 · sanitizer + compact + READ LAST 삼중 방어 |
+| 2026-08-13 | §12 P0 항목 두 개 추가·완료 표시 — 슬라이드 surface hex resolve · kit viewport 사이징 strip |
