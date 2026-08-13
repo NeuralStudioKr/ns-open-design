@@ -31,9 +31,30 @@
 | full example.html을 프롬프트에? | **기본 금지.** 입·출력 토큰 위험. kit(~2k) + scaffold map으로 계약 |
 | scaffold로 갑자기 바꾸면? | **안 됨.** kit hard cutover 금지. full HTML scaffold도 기본 inject 하지 않음 |
 
-### 0.0 2026-08-13 정책 — **token-safe content-swap** + **daemon Clone**
+### 0.0 2026-08-13 정책 (개정) — **template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반**
 
-**제품 판단:** 미리보기 look을 유지하고 Source 텍스트만 바꾸는 **의도(content-swap)** 는 맞다. full `example.html`을 시스템 프롬프트에 넣지 않는다. OD의 `Clone example.html`은 BYOK 모델 툴이 없으므로 **daemon이 디스크에서 Clone**한다 (FE는 트리거만).
+**제품 판단 (2026-08-13 09:00 KST 업데이트):** 이전 "token-safe content-swap" 정책은 템플릿 shell 순서/개수/구성을 그대로 preserve하고 텍스트만 바꾸는 방향이었다. 그러나 이 방침으로 Daisy Days sales-pitch 브리프에 template의 Weekly Grid / Timeline / Day-of-Week 슬라이드가 강제 삽입되어 브리프와 맞지 않는 결과가 반복됐다.
+
+**새 정책:** 템플릿은 **시각 identity (palette, fonts, borders, shadows, motif SVG)** + **레이아웃 어휘 사전 (cover, welcome, weekly-grid, timeline, three-column, chart, quote, closing 등 role catalog)** 이다. 페이지 수, 페이지 순서, 페이지 구성은 **사용자 브리프**가 결정한다.
+
+- 시각은 preserve: palette hex, fonts, border/shadow tokens, Motif SVG는 kit에서 그대로 사용.
+- 레이아웃 role은 pick-and-choose: 브리프 semantic에 맞는 role만 사용, 안 맞는 role (예: 정적 explainer에 timeline, sales pitch에 weekly grid)은 skip.
+- 슬라이드 개수: user brief > Plugin `slideCount` > auto default 6–8. **템플릿의 자연 shell 개수는 무시**.
+- 같은 role을 여러 슬라이드에 재사용 OK.
+
+**변경된 구현 (2026-08-13):**
+- `HARD_RULES`의 top rule "LOOK LIKE THE TEMPLATE — but restructure for the brief" + "LAYOUT VOCABULARY, NOT SHELL COPY"
+- `### Template scaffold map` 소개문을 "catalog of available layouts"로 재정의
+- `DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE` rule 5 = "Layout vocabulary, not shell copy"
+- READ LAST first bullet = "kit-driven visual, brief-driven structure"
+- daemon Clone: outline 없을 때 default slide count `shells.length` → **6**
+- daemon Clone `pickTemplateShells`: 순서-기반 evenly-spaced → **role-based scoring** (generic body 선호, weekly/timeline/chart 등 특수 role은 후순위, closing role은 tail로)
+
+full `example.html`을 시스템 프롬프트에 넣지 않는다는 방침은 유지 (kit + scaffold map으로 압축). daemon Clone은 여전히 `deck.html` seed를 담당하지만, seed된 deck의 shell 개수는 이제 브리프 기반이지 template 기반이 아니다.
+
+### 0.0-legacy 2026-08-13 (이전) — token-safe content-swap + daemon Clone
+
+**제품 판단 (초기):** 미리보기 look을 유지하고 Source 텍스트만 바꾸는 **의도(content-swap)** 는 맞다. full `example.html`을 시스템 프롬프트에 넣지 않는다. OD의 `Clone example.html`은 BYOK 모델 툴이 없으므로 **daemon이 디스크에서 Clone**한다 (FE는 트리거만).
 
 | 경로 | 역할 |
 |------|------|
@@ -648,6 +669,7 @@ daemon 로컬 skill 워크플로 잔재다. Daisy Days에는 Teamver API 노트�
 | P0 | compact contract for selected template의 red-spec (body-first output order + 1–3 recognizable Motif sprites per slide) | **완료** — `DECK_FRAMEWORK_DIRECTIVE_COMPACT_FOR_SELECTED_TEMPLATE`에 규칙 추가, 405/405 첫 클린 상태 |
 | P0 | Home Clone 커버 heading이 user prompt 대신 templateTitle로 남던 문제 | **완료** — App.tsx `deckTitle` fallback을 `Drive filename → derivedPendingPrompt → templateTitle` 순으로 재정렬 |
 | P0 | letterbox `transparent !important`가 deck 자체 body bg를 여전히 override하던 문제 | **완료** — `compactStackedDeckFix`에서 html/body `background` 선언 완전 제거 |
+| P0 | **정책 개정** — template = layout vocabulary, 페이지 수/순서/구성은 브리프 기반 (§0.0 개정) | **완료** — HARD_RULES 재작성, scaffold map을 catalog로 재정의, daemon Clone default `shells.length` → 6, `pickTemplateShells` role-based scoring |
 
 ### 12.1 Edit-contract gating (상세)
 
@@ -676,3 +698,4 @@ User-message 쪽 `[Existing deck edit]` / `<attached-preview-comments>` 주입�
 | 2026-08-13 | §12 P0 두 항목 추가·완료 표시 — Home 템플릿 카드 Clone 라우팅 · outline 없는 프롬프트 slide-count fallback |
 | 2026-08-13 | §0.9 추가 (최종) — preview panel `compactStackedDeckFix` letterbox의 `#0b0c10` 하드코딩이 daemon Clone 결과 template look을 시각적으로 지우고 있었다 · `transparent`로 교체 · compact contract에 body-first + 1–3 sprites 규칙 · red-spec 405/405 첫 클린 상태 |
 | 2026-08-13 | §0.10 후속 — Home Clone 커버 heading에 user prompt 반영 (`derivedPendingPrompt`로 fallback) · letterbox `transparent !important`도 역효과였음이 확인되어 `background` 선언 자체 제거로 재조정 |
+| 2026-08-13 | **§0.0 정책 개정** — template = layout vocabulary + visual look, 페이지 수/순서/구성은 브리프 기반. content-swap → pick-and-choose layout roles. daemon Clone default count = 6 (shells.length 아님), `pickTemplateShells` role-based scoring 도입. `template-visual-kit.ts` HARD_RULES 재작성, `DEFAULT_MAX_CHARS` 12000 → 14000. |
