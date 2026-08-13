@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   enrichChatSendMetaWithProjectDeckTemplate,
+  formatSelectedDeckTemplateChipLabel,
   resolveDeckTemplateSkillId,
+  resolveSelectedDeckTemplateChipLabel,
   resolveScenarioPluginIdForLocalSkill,
   wrapSelectedDeckTemplateSkillBody,
 } from '../../src/runtime/selected-deck-template';
@@ -26,6 +28,8 @@ describe('selected-deck-template runtime helpers', () => {
     expect(enriched?.skillIds).toEqual(['html-ppt-hermes', 'example-simple-deck']);
     expect(enriched?.context?.pluginIds).toEqual(['example-simple-deck']);
     expect(enriched?.context?.skillIds).toEqual(['html-ppt-hermes', 'example-simple-deck']);
+    expect(enriched?.context?.selectedDeckTemplateId).toBe('html-ppt-hermes');
+    expect(enriched?.context?.selectedDeckTemplateTitle).toBe('Hermes');
   });
 
   it('prefers project metadata over scenario plugin ids for API-mode skill routing', () => {
@@ -147,5 +151,45 @@ describe('selected-deck-template runtime helpers', () => {
     expect(enriched?.skillIds).toEqual(['html-ppt-hermes']);
     expect(enriched?.context?.pluginIds).toBeUndefined();
     expect(enriched?.context?.skillIds).toEqual(['html-ppt-hermes']);
+    expect(enriched?.context?.selectedDeckTemplateId).toBe('html-ppt-hermes');
+  });
+
+  it('formats template chip labels from title or readable id fallback', () => {
+    expect(
+      formatSelectedDeckTemplateChipLabel({
+        id: 'example-html-ppt-daisy',
+        title: 'Daisy Days',
+      }),
+    ).toBe('Daisy Days');
+    expect(
+      formatSelectedDeckTemplateChipLabel({ id: 'example-html-ppt-daisy' }),
+    ).toBe('html ppt daisy');
+  });
+
+  it('resolves chip label from message runContext before project metadata', () => {
+    expect(
+      resolveSelectedDeckTemplateChipLabel({
+        projectMetadata: {
+          kind: 'deck',
+          selectedDeckTemplateId: 'html-ppt-old',
+          selectedDeckTemplateTitle: 'Old',
+        },
+        runContext: {
+          selectedDeckTemplateId: 'html-ppt-hermes',
+          selectedDeckTemplateTitle: 'Hermes',
+        },
+      }),
+    ).toBe('Hermes');
+  });
+
+  it('keeps a chip when project metadata has id but no title (re-entry)', () => {
+    expect(
+      resolveSelectedDeckTemplateChipLabel({
+        projectMetadata: {
+          kind: 'deck',
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+        },
+      }),
+    ).toBe('html ppt zhangzara daisy days');
   });
 });

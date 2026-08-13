@@ -78,6 +78,7 @@ import {
   extractPersistedRunErrorDiagnostic,
 } from '../teamver/projectErrorMessages';
 import { AUTO_CONTINUE_STATUS_CODE, RESUME_CONTINUE_PROMPT, isAutoContinueIncompleteOutputPrompt } from '../runtime/resume';
+import { resolveSelectedDeckTemplateChipLabel } from '../runtime/selected-deck-template';
 import { resolveLastAssistantMessageId } from '../runtime/conversation-message-dedupe';
 import {
   shouldIncludeMessageInChatRender,
@@ -1196,9 +1197,15 @@ export function ChatPane({
     () => currentSkillId ? skills.find((skill) => skill.id === currentSkillId) ?? null : null,
     [currentSkillId, skills],
   );
+  // Prefer message runContext (set at send) so refresh/re-entry keeps the chip
+  // even when live project.metadata title is briefly empty; fall back to
+  // project metadata id/title (not title-only).
   const activeTemplateTitle = useMemo(
-    () => projectMetadata?.selectedDeckTemplateTitle?.trim() || null,
-    [projectMetadata?.selectedDeckTemplateTitle],
+    () =>
+      resolveSelectedDeckTemplateChipLabel({
+        projectMetadata,
+      }),
+    [projectMetadata],
   );
   // Map each assistant message id to the user message that follows it (if any)
   // so the chat-side Questions banner can reopen that exact answered form in
@@ -2182,6 +2189,7 @@ export function ChatPane({
                 forceStreamingMessageIds={forceStreamingMessageIds}
                 lastAssistantId={lastAssistantId}
                 firstUserMessageId={firstUserMessageId}
+                projectMetadata={projectMetadata}
                 activePluginSnapshot={activePluginSnapshot}
                 activeSkill={activeSkill}
                 activeTemplateTitle={activeTemplateTitle}
@@ -2507,6 +2515,7 @@ function ChatRows({
   forceStreamingMessageIds,
   lastAssistantId,
   firstUserMessageId,
+  projectMetadata,
   activePluginSnapshot,
   activeSkill,
   activeTemplateTitle,
@@ -2538,6 +2547,7 @@ function ChatRows({
   activeConversationKey: string;
   projectFiles: ProjectFile[];
   projectFileNames?: Set<string>;
+  projectMetadata?: ProjectMetadata;
   onRequestOpenFile?: (name: string) => void;
   onRequestPluginDetails?: (pluginId: string) => void;
   onRequestDesignSystemDetails?: (system: DesignSystemSummary) => void;
@@ -2734,7 +2744,10 @@ function ChatRows({
           }
           activeTemplateTitle={
             m.id === firstUserMessageId
-              ? activeTemplateTitle ?? null
+              ? resolveSelectedDeckTemplateChipLabel({
+                  projectMetadata,
+                  runContext: m.runContext,
+                }) ?? activeTemplateTitle ?? null
               : null
           }
           activeDesignSystem={

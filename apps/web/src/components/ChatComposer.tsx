@@ -581,7 +581,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [canvasSlideLaunchBusy, setCanvasSlideLaunchBusy] = useState(false);
     const [canvasSlideLaunchError, setCanvasSlideLaunchError] = useState<string | null>(null);
     const [canvasSlideLaunchAuthRelogin, setCanvasSlideLaunchAuthRelogin] = useState(false);
-    const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(CANVAS_CREATE_SLIDES_PLUGIN_ID);
+    const [canvasSlideTemplateId, setCanvasSlideTemplateId] = useState<string>(() => {
+      const pinned = projectMetadata?.selectedDeckTemplateId?.trim();
+      return pinned || CANVAS_CREATE_SLIDES_PLUGIN_ID;
+    });
+    // Re-entering a project remounts the composer; restore the pinned visual
+    // template so the picker/chip does not snap back to the default scenario.
+    useEffect(() => {
+      const pinned = projectMetadata?.selectedDeckTemplateId?.trim();
+      if (!pinned) return;
+      setCanvasSlideTemplateId((current) =>
+        current === CANVAS_CREATE_SLIDES_PLUGIN_ID || !current ? pinned : current,
+      );
+    }, [projectMetadata?.selectedDeckTemplateId]);
     const [canvasSlideUserPrompt, setCanvasSlideUserPrompt] = useState('');
     const [canvasSlideQuickSettings, setCanvasSlideQuickSettings] = useState<CanvasSlideQuickSettings>(
       DEFAULT_CANVAS_SLIDE_QUICK_SETTINGS,

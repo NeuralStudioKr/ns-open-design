@@ -42,6 +42,56 @@ export function selectedDeckTemplateMetadata(
   return null;
 }
 
+/** Chat chip label — prefer title, then a readable id fallback (never hide the chip). */
+export function formatSelectedDeckTemplateChipLabel(
+  selected: SelectedDeckTemplateMetadata | null | undefined,
+): string | null {
+  if (!selected?.id) return null;
+  const title = selected.title?.trim();
+  if (title) return title;
+  return selected.id
+    .replace(/^example-/i, '')
+    .replace(/[-_]+/g, ' ')
+    .trim() || selected.id;
+}
+
+/**
+ * Resolve the template chip for a user message after refresh.
+ * Order: message runContext → project metadata → skillIds that look like a deck template pin.
+ */
+export function resolveSelectedDeckTemplateChipLabel(input: {
+  projectMetadata?: ProjectMetadata | null;
+  runContext?: {
+    selectedDeckTemplateId?: string;
+    selectedDeckTemplateTitle?: string;
+    skillIds?: string[];
+    contextSkillIds?: string[];
+  } | null;
+}): string | null {
+  const fromMessage = selectedDeckTemplateMetadata(null, {
+    selectedDeckTemplateId: input.runContext?.selectedDeckTemplateId,
+    selectedDeckTemplateTitle: input.runContext?.selectedDeckTemplateTitle,
+  });
+  if (fromMessage) return formatSelectedDeckTemplateChipLabel(fromMessage);
+
+  const fromProject = selectedDeckTemplateMetadata(input.projectMetadata);
+  if (fromProject) return formatSelectedDeckTemplateChipLabel(fromProject);
+
+  // Legacy messages: enrich put the template id first in skillIds without
+  // selectedDeckTemplate* fields on runContext.
+  const skillIds = input.runContext?.skillIds ?? [];
+  const firstSkill = skillIds[0]?.trim();
+  if (
+    firstSkill
+    && (firstSkill.startsWith('example-')
+      || firstSkill.startsWith('html-ppt-')
+      || firstSkill.includes('ppt-'))
+  ) {
+    return formatSelectedDeckTemplateChipLabel({ id: firstSkill });
+  }
+  return null;
+}
+
 /**
  * Keep the project's selected deck template first in per-turn skillIds so
  * API-mode / daemon ad-hoc skills cannot be shadowed by the scenario plugin.
@@ -80,6 +130,10 @@ export function enrichChatSendMetaWithProjectDeckTemplate<T extends DeckTemplate
       ...restContext,
       ...(priorPluginIds.length > 0 ? { pluginIds: priorPluginIds } : {}),
       skillIds: contextSkillIds,
+      // Persist on the user message so ChatPane can re-show the template chip
+      // after project re-entry without relying only on live project.metadata.
+      selectedDeckTemplateId: selected.id,
+      ...(selectedTitle ? { selectedDeckTemplateTitle: selectedTitle } : {}),
     },
   };
 }

@@ -717,6 +717,48 @@ describe('ChatPane streaming state', () => {
     expect(screen.queryByText('template.json')).toBeNull();
   });
 
+  it('keeps the selected deck template chip after re-entry when title is missing', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        content: 'Make slides from this canvas',
+        createdAt: 1,
+        sessionMode: 'design',
+        runContext: {
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+          selectedDeckTemplateTitle: 'Daisy Days',
+          skillIds: ['example-html-ppt-zhangzara-daisy-days'],
+        },
+      },
+    ];
+
+    render(
+      <ChatPane
+        projectKindForTracking="deck"
+        messages={messages}
+        streaming={false}
+        error={null}
+        projectId="project-1"
+        projectFiles={[]}
+        onEnsureProject={async () => 'project-1'}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        conversations={conversations}
+        activeConversationId="conv-1"
+        onSelectConversation={vi.fn()}
+        onDeleteConversation={vi.fn()}
+        projectMetadata={{
+          kind: 'deck',
+          // Simulate cold re-entry: id survives, title briefly empty.
+          selectedDeckTemplateId: 'example-html-ppt-zhangzara-daisy-days',
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('msg-template-chip').textContent).toContain('Daisy Days');
+  });
+
   it('hides internal path ids from comment attachment chips', () => {
     const messages: ChatMessage[] = [
       {
