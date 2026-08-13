@@ -70,6 +70,28 @@ export function shouldReseedManualEditMultiInspectorAfterFreezeSync(
   return Boolean(manualEditMode && selectedIds.length > 1);
 }
 
+/**
+ * Deferred tip-yield reseed skipped because selection shrank to ≤1 (2→1 / clear).
+ * Stale Mixed keys from the prior multi-select must be cleared (기획 59).
+ */
+export function shouldClearMixedKeysAfterTipYieldReseedSkip(
+  selectedIds: readonly string[],
+): boolean {
+  return selectedIds.length <= 1;
+}
+
+/**
+ * Tip-remount geometry grace is bound to a primary id. When selection moves
+ * away, clear grace so a later remasure for the new primary is not skipped
+ * under a stale grace window (overlay residual).
+ */
+export function shouldClearTipRemountGeometryGraceOnSelectionChange(
+  graceId: string | null | undefined,
+  nextSelectedId: string | null | undefined,
+): boolean {
+  return Boolean(graceId && graceId !== nextSelectedId);
+}
+
 /** True when tip-remount geometry grace window has elapsed. */
 export function tipRemountGeometryGraceExpired(
   nowMs: number,

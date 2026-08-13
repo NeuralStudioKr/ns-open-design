@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   shouldClearManualEditFrozenSourceOnModeChange,
+  shouldClearMixedKeysAfterTipYieldReseedSkip,
+  shouldClearTipRemountGeometryGraceOnSelectionChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldSkipWildJumpAfterTipRemountGrace,
@@ -70,5 +72,19 @@ describe('manual edit freeze reset', () => {
     expect(tipRemountGeometryGraceExpired(1_801, 1_800)).toBe(true);
     // Expired window must not skip wild-jump even when ids still match.
     expect(shouldSkipWildJumpAfterTipRemountGrace('el-1', 'el-1', 'el-1', 1_800, 1_800)).toBe(false);
+  });
+
+  it('clears Mixed when deferred tip-yield reseed skips after 2→1', () => {
+    expect(shouldClearMixedKeysAfterTipYieldReseedSkip(['a'])).toBe(true);
+    expect(shouldClearMixedKeysAfterTipYieldReseedSkip([])).toBe(true);
+    expect(shouldClearMixedKeysAfterTipYieldReseedSkip(['a', 'b'])).toBe(false);
+    expect(shouldReseedManualEditMultiInspectorAfterFreezeSync(true, ['a'])).toBe(false);
+  });
+
+  it('clears tip-remount grace when selection leaves the grace primary', () => {
+    expect(shouldClearTipRemountGeometryGraceOnSelectionChange('el-1', 'el-2')).toBe(true);
+    expect(shouldClearTipRemountGeometryGraceOnSelectionChange('el-1', null)).toBe(true);
+    expect(shouldClearTipRemountGeometryGraceOnSelectionChange('el-1', 'el-1')).toBe(false);
+    expect(shouldClearTipRemountGeometryGraceOnSelectionChange(null, 'el-2')).toBe(false);
   });
 });

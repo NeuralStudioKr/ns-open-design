@@ -1502,10 +1502,13 @@ function failClosedScrubHtmlWithoutParser(raw: string): string {
   const text = decodeHtmlCharacterReferences(String(raw || ''));
   // Align navigable/legacy URL attrs with MANUAL_EDIT_URL_ATTRS, including SMIL
   // to/from/by/values (DOM walk already scrubs these; fail-closed must match).
+  // Longer names first so optional namespace prefix + alternation prefers
+  // `xlink:href` / `imagesrcset` over bare `href` / `srcset` (predictable capture).
   const urlAttrs = [
-    'href', 'src', 'xlink:href', 'action', 'formaction', 'poster', 'cite', 'ping',
-    'background', 'dynsrc', 'lowsrc', 'srcset', 'imagesrcset', 'longdesc',
-    'manifest', 'codebase', 'classid', 'archive', 'usemap', 'data',
+    'xlink:href', 'imagesrcset', 'formaction', 'longdesc', 'background',
+    'codebase', 'classid', 'manifest', 'archive', 'usemap',
+    'href', 'src', 'srcset', 'action', 'poster', 'cite', 'ping',
+    'dynsrc', 'lowsrc', 'data',
     'to', 'from', 'by', 'values',
   ].join('|');
   const smil = 'animate|animatemotion|animatetransform|set|animatecolor';

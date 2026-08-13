@@ -329,6 +329,8 @@ import {
 import { manualEditTargetsIdentityFingerprint } from '../edit-mode/manual-edit-targets-identity';
 import {
   shouldClearManualEditFrozenSourceOnModeChange,
+  shouldClearMixedKeysAfterTipYieldReseedSkip,
+  shouldClearTipRemountGeometryGraceOnSelectionChange,
   shouldEchoManualEditSelectionAfterFreezeSync,
   shouldReseedManualEditMultiInspectorAfterFreezeSync,
   shouldSkipWildJumpAfterTipRemountGrace,
@@ -7970,13 +7972,19 @@ function HtmlViewer({
       )) {
         syncBridgeModes(iframeRef.current);
       }
+      const ids = selectedManualEditTargetIdsRef.current;
       if (!shouldReseedManualEditMultiInspectorAfterFreezeSync(
         manualEditModeRef.current,
-        selectedManualEditTargetIdsRef.current,
-      )) return;
+        ids,
+      )) {
+        // 2→1 / clear during deferred tip-yield — drop stale Mixed (기획 59).
+        if (shouldClearMixedKeysAfterTipYieldReseedSkip(ids)) {
+          setManualEditMixedStyleKeys(new Set());
+        }
+        return;
+      }
       // Source-only reseed (same plan helper as batch flush / cancel) — 기획 59.
       // Pending with draft keys owns styles (null); empty shell allows source merge.
-      const ids = selectedManualEditTargetIdsRef.current;
       const base = sourceRef.current ?? '';
       const parsedDoc = parseManualEditSource(base);
       const pending = manualEditPendingStyleRef.current;
@@ -10771,6 +10779,14 @@ function HtmlViewer({
     const base = sourceRef.current ?? '';
     // One Document for snapshot + multi-select inspector merge.
     const parsedDoc = parseManualEditSource(base);
+    // Selection left tip-remount grace primary — clear so overlay remasures cleanly.
+    if (shouldClearTipRemountGeometryGraceOnSelectionChange(
+      manualEditTipRemountGeometryGraceIdRef.current,
+      primary.id,
+    )) {
+      manualEditTipRemountGeometryGraceIdRef.current = null;
+      manualEditTipRemountGeometryGraceUntilRef.current = 0;
+    }
     selectedManualEditTargetIdRef.current = primary.id;
     selectedManualEditTargetRef.current = primary;
     selectedManualEditTargetIdsRef.current = nextIds;
@@ -10830,6 +10846,14 @@ function HtmlViewer({
       [],
     )) {
       if (!(await flushManualEditStyleSave({ force: true }))) return false;
+    }
+    // Clear tip-remount grace with selection clear (overlay residual).
+    if (shouldClearTipRemountGeometryGraceOnSelectionChange(
+      manualEditTipRemountGeometryGraceIdRef.current,
+      null,
+    )) {
+      manualEditTipRemountGeometryGraceIdRef.current = null;
+      manualEditTipRemountGeometryGraceUntilRef.current = 0;
     }
     selectedManualEditTargetIdRef.current = null;
     selectedManualEditTargetRef.current = null;
@@ -11041,6 +11065,13 @@ function HtmlViewer({
         const remainingIds = selectedManualEditTargetIdsRef.current.filter((id) => id !== patch.id);
         setManualEditTargets((current) => current.filter((target) => target.id !== patch.id));
         if (remainingIds.length === 0) {
+          if (shouldClearTipRemountGeometryGraceOnSelectionChange(
+            manualEditTipRemountGeometryGraceIdRef.current,
+            null,
+          )) {
+            manualEditTipRemountGeometryGraceIdRef.current = null;
+            manualEditTipRemountGeometryGraceUntilRef.current = 0;
+          }
           selectedManualEditTargetIdRef.current = null;
           selectedManualEditTargetRef.current = null;
           selectedManualEditTargetIdsRef.current = [];
@@ -11056,6 +11087,13 @@ function HtmlViewer({
           );
           const nextIds = refreshed.map((item) => item.id);
           const primary = refreshed[refreshed.length - 1]!;
+          if (shouldClearTipRemountGeometryGraceOnSelectionChange(
+            manualEditTipRemountGeometryGraceIdRef.current,
+            primary.id,
+          )) {
+            manualEditTipRemountGeometryGraceIdRef.current = null;
+            manualEditTipRemountGeometryGraceUntilRef.current = 0;
+          }
           selectedManualEditTargetIdRef.current = primary.id;
           selectedManualEditTargetRef.current = primary;
           selectedManualEditTargetIdsRef.current = nextIds;

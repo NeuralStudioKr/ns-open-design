@@ -1655,6 +1655,20 @@ describe('manual edit source patches', () => {
     expect(namespacedHref).not.toMatch(/foo:href\s*=/i);
     expect(namespacedHref).not.toMatch(/bar:src\s*=/i);
     expect(sourcePatchesSource).toContain('Optional namespace prefix (`foo:href`)');
+    // Longer URL attr names first (`xlink:href` before `href`) for predictable capture.
+    expect(sourcePatchesSource).toMatch(
+      /'xlink:href',\s*'imagesrcset'[\s\S]*?'href',\s*'src',\s*'srcset'/,
+    );
+    // Namespaced srcset / ping residual.
+    const namespacedSrcsetPing = sanitizeManualEditFullSource(
+      '<!doctype html><html><body>'
+      + '<img foo:srcset="javascript:alert(4) 1x">'
+      + '<a foo:ping="javascript:alert(5)">x</a>'
+      + '</body></html>',
+    );
+    expect(namespacedSrcsetPing.toLowerCase()).not.toContain('javascript');
+    expect(namespacedSrcsetPing).not.toMatch(/foo:srcset\s*=/i);
+    expect(namespacedSrcsetPing).not.toMatch(/foo:ping\s*=/i);
   });
 
   it('rejects bare data:/blob: presentation paints and keeps named colors', () => {
