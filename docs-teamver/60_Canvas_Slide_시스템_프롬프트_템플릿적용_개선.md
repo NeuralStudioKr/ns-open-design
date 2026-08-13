@@ -37,7 +37,7 @@
 
 | 경로 | 역할 |
 |------|------|
-| **Explicit 템플릿 Canvas→Slide (우선)** | FE → `POST /api/projects/:id/template-clone-deck` → daemon이 plugin FS preview Clone + heading swap → `deck.html`. 성공 시 모델 structure gen / auto-send **스킵** |
+| **Explicit 템플릿 Canvas→Slide (우선)** | FE → `POST /api/projects/:id/template-clone-deck` → daemon이 **plugin 설치 경로**에서 preview 읽고 heading swap → 프로젝트에는 **`deck.html`만** 기록 (`refs/`에 템플릿 원본 복사 금지). 성공 시 모델 structure gen / auto-send **스킵** |
 | **시드 실패·기본 템플릿** | 기존 kit+map 모델 경로 (full HTML scaffold 프롬프트 inject 금지) |
 
 **구현:**

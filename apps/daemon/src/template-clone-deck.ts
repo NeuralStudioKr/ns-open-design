@@ -222,18 +222,9 @@ export async function seedTemplateClonedDeckOnServer(
 
   await deps.ensureProject(deps.projectsRoot, projectId, deps.metadata);
 
-  try {
-    await deps.writeProjectFile(
-      deps.projectsRoot,
-      projectId,
-      'refs/template-base.html',
-      loaded.html,
-      { overwrite: true },
-      deps.metadata,
-    );
-  } catch {
-    /* best-effort base copy */
-  }
+  // Do NOT copy the template into project refs/ — users see Design Files.
+  // The daemon already reads preview HTML from the plugin install path;
+  // only the filled deliverable (deck.html) belongs in the project.
 
   const templateTitle = input.templateTitle?.trim() || loaded.title;
   try {

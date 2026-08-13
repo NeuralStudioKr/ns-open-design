@@ -82,6 +82,8 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(deck).toMatch(/Fredoka/i);
     expect(deck).toContain('분기 전략');
     expect(deck).toContain('핵심 KPI');
-    expect(written.get('refs/template-base.html')).toContain('Daisy Days');
+    // Template base must stay on plugin FS — never land in user-visible refs/.
+    expect(written.has('refs/template-base.html')).toBe(false);
+    expect([...written.keys()]).toEqual(['deck.html']);
   });
 });
