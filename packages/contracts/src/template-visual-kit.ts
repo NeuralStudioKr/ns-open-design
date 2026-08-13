@@ -111,12 +111,11 @@ function extractDecorationCss(html: string, budget: number): string | null {
 
 function classifySvg(svg: string): 'daisy' | 'star' | 'rainbow' | 'sun' | 'cloud' | 'other' {
   // Real Zhangzara Daisy Days daisy sprites are multi-petal flowers: 8+ path
-  // elements laid out radially around a center square viewBox. A "face"-shaped
-  // SVG (circle + ellipse + eyes + smile) previously slipped into the 'daisy'
-  // bucket just because it used soft-pink fill, and the model then saw no
-  // real daisy in the kit and reached for 🌸 emoji. Same for the 4-arc
-  // rainbow (wide viewBox, 4 paths, distinct RYGB colors) — earlier logic
-  // routed it to 'daisy' because mint (#8DE3B7) matched a loose palette gate.
+  // elements laid out radially around a ~150×150 square viewBox with white
+  // petals + butter-yellow (#FCDF6C) centers. Cloud SVGs also use `#fff` on a
+  // square canvas and previously won the 'daisy' slot via shorter-wins — the
+  // model then invented ellipse "daisies" / emoji because the kit had no
+  // pasteable flower.
   const pathCount = (svg.match(/<path\b/gi) ?? []).length;
   const circleCount = (svg.match(/<circle\b/gi) ?? []).length;
   const ellipseCount = (svg.match(/<ellipse\b/gi) ?? []).length;
@@ -132,13 +131,23 @@ function classifySvg(svg: string): 'daisy' | 'star' | 'rainbow' | 'sun' | 'cloud
     .map((n) => Number(n) || 0);
   const isSquareCanvas = vbW > 0 && vbH > 0 && Math.abs(vbW - vbH) / Math.max(vbW, vbH) < 0.1;
   const isWideCanvas = vbW > 0 && vbH > 0 && vbW / vbH >= 1.25;
-  // Multi-petal daisy: 6+ petal paths radiating from a square canvas, uses
-  // the daisy petal palette (white / butter yellow / dark ink).
+  const looksLikeCloud =
+    /#c6e3f6/i.test(svg)
+    || (/\bcloud\b/i.test(svg) && /#(?:fff|ffffff|c6e3f6)/i.test(svg));
+  if (looksLikeCloud) return 'cloud';
+  // Multi-petal daisy: butter-yellow center is the Zhangzara signature.
+  // Also accept ~150 square white-petal flowers with 8+ paths (no sky blue).
+  const hasButterCenter = /#fcdf6c/i.test(svg);
+  const hasWhitePetal = /#fff(?:fff)?(?![0-9a-f])|#ffffff/i.test(svg);
+  const daisySized = vbW >= 140 && vbW <= 160 && isSquareCanvas;
   if (
-    pathCount >= 6
-    && !hasFace
+    !hasFace
     && isSquareCanvas
-    && /#f{3,6}(?![0-9a-f])|#fcdf6c/i.test(svg)
+    && hasWhitePetal
+    && (
+      (hasButterCenter && pathCount >= 6)
+      || (daisySized && pathCount >= 8)
+    )
   ) {
     return 'daisy';
   }
@@ -160,13 +169,17 @@ function classifySvg(svg: string): 'daisy' | 'star' | 'rainbow' | 'sun' | 'cloud
   if (
     isSquareCanvas
     && !hasFace
+    && !looksLikeCloud
     && pathCount >= 4
-    && /#f7c8d4|#ffcd57|#d4a5e8/i.test(svg)
+    && /#f7c8d4|#ffcd57|#d4a5e8|#fcdf6c/i.test(svg)
   ) {
     return 'daisy';
   }
-  if (/sun|#ffcd57.*circle|circle.*#ffcd57/i.test(svg) && svg.length < 800) return 'sun';
-  if (/cloud/i.test(svg)) return 'cloud';
+  // Face sprites must never claim 'sun' — that used to replace rainbow/daisy.
+  if (!hasFace && /sun|#ffcd57.*circle|circle.*#ffcd57/i.test(svg) && svg.length < 800) {
+    return 'sun';
+  }
+  if (/\bcloud\b/i.test(svg)) return 'cloud';
   return 'other';
 }
 
@@ -248,7 +261,14 @@ function extractMotifSprites(html: string, budget: number): string[] {
   for (const svg of svgs) {
     const kind = classifySvg(svg);
     if (kind === 'other') continue;
-    if (!byKind[kind] || svg.length < (byKind[kind]?.length ?? Infinity)) {
+    const prev = byKind[kind];
+    // Daisy/rainbow: prefer the LARGEST complete sprite (real petal daisy ~2KB
+    // beats a false-positive cloud). Other kinds still prefer the compact one.
+    const preferLarger = kind === 'daisy' || kind === 'rainbow';
+    if (
+      !prev
+      || (preferLarger ? svg.length > prev.length : svg.length < prev.length)
+    ) {
       byKind[kind] = svg;
     }
   }

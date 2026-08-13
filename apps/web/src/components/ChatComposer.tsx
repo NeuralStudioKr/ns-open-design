@@ -96,6 +96,7 @@ import {
   canvasCreateSlidesTurnMeta,
   driveCreateSlidesSourceBrief,
   fetchCanvasSlideTemplatePlugins,
+  isExplicitCanvasSlideVisualTemplate,
   readTeamverCreateSlidesLaunchFromUrl,
   resolveCanvasSlideTemplate,
   type CanvasSlideQuickSettings,
@@ -2034,14 +2035,24 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             Math.max(nextAttachmentOrderRef.current, nextChatAttachmentOrder(staged)),
           );
           onProjectFilesMaybeChanged?.();
+          // Explicit visual templates (Daisy Days, etc.) own the look via the
+          // example.html kit. Do not auto-bind Neutral Modern here — HomeView
+          // already skips it; ChatComposer used to re-patch designSystemId=default
+          // and reintroduce skeleton terracotta / slate priors.
           const designSystemIdForRun =
-            currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null;
+            slideOnlyMvp && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+              ? (currentDesignSystemId ?? null)
+              : (currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null);
           const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
             selectedCanvasSlideTemplate,
             { slideOnlyMvp },
           );
           const projectPatch: Parameters<typeof patchProject>[1] = {};
-          if (designSystemIdForRun && !currentDesignSystemId) {
+          if (
+            designSystemIdForRun
+            && !currentDesignSystemId
+            && !(slideOnlyMvp && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate))
+          ) {
             projectPatch.designSystemId = designSystemIdForRun;
           }
           // Always persist Canvas→Slide skipDiscovery / kind / template pins.
@@ -2159,13 +2170,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           );
         }
         const designSystemIdForRun =
-          currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null;
+          slideOnlyMvp && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate)
+            ? (currentDesignSystemId ?? null)
+            : (currentDesignSystemId ?? embedSlideDesignSystemFallbackId ?? null);
         const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(
           selectedCanvasSlideTemplate,
           { slideOnlyMvp },
         );
         const projectPatch: Parameters<typeof patchProject>[1] = {};
-        if (designSystemIdForRun && !currentDesignSystemId) {
+        if (
+          designSystemIdForRun
+          && !currentDesignSystemId
+          && !(slideOnlyMvp && isExplicitCanvasSlideVisualTemplate(selectedCanvasSlideTemplate))
+        ) {
           projectPatch.designSystemId = designSystemIdForRun;
         }
         // Always persist Canvas→Slide skipDiscovery / kind / template pins

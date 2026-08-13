@@ -271,9 +271,10 @@ function selectedSlideTemplatePriorityInstruction(title: string): string {
     "**Selected template visual contract — READ LAST.**",
     `The user explicitly selected "${title}" as the deck template. This selected template is the visual source of truth and outranks the Canvas / Drive source styling, quick settings, default design systems, scenario examples, and any generic slide examples.`,
     "Do not infer only from the template name. Use a compact subset of the selected template's concrete visual kit from the system prompt / local skill: exact palette, font families, border weights, shadow tokens, layout rhythm, and drawn CSS/SVG motifs.",
-    "Do not substitute template motifs with emoji or generic Unicode symbols. Reuse or approximate the template's drawn CSS/SVG motif language instead.",
+    "Copy Motif sprites from the kit verbatim into `.deco` wrappers. Do not invent ellipse/petal daisy SVGs, and do not substitute emoji or generic Unicode ornaments for kit motifs.",
+    "When the kit lists cream `#F5F0E6`, Fredoka One / Quicksand (or other kit fonts), and coral/turquoise accents, those exact tokens MUST appear — never replace them with OD skeleton terracotta `#c96442`, ink `#1c1b1a`, or Noto Sans KR-only typography.",
     "Do not start by dumping a long <head>, full CSS, or framework shell. Put the first complete visible <section class=\"slide\"> early, then finish the full deck.",
-    "If the concrete kit is incomplete or temporarily unavailable, make a conservative CSS/SVG approximation of the selected template's visible preview; never fall back to Neutral Modern, Simple Deck, generic pastel circles, or source-page decorations.",
+    "If the concrete kit is incomplete or temporarily unavailable, make a conservative CSS/SVG approximation of the selected template's visible preview; never fall back to Neutral Modern, Simple Deck skeleton accent, generic pastel circles, or source-page decorations.",
   ].join("\n");
 }
 

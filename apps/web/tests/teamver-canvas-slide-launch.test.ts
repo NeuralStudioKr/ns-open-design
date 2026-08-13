@@ -148,7 +148,8 @@ describe("canvasSlideLaunch", () => {
     expect(runPrompt).toContain("8 slides, friendly tone for new hires.");
     expect(runPrompt).toContain("[Selected slide template priority]");
     expect(runPrompt).toContain("Selected template visual contract — READ LAST");
-    expect(runPrompt).toContain("Do not substitute template motifs with emoji");
+    expect(runPrompt).toContain("do not substitute emoji or generic Unicode ornaments");
+    expect(runPrompt).toContain("#c96442");
     expect(runPrompt.lastIndexOf("[Selected slide template priority]")).toBeGreaterThan(
       runPrompt.indexOf("[User instruction]"),
     );
@@ -179,7 +180,8 @@ describe("canvasSlideLaunch", () => {
     const priorityBlock = runPrompt.slice(runPrompt.indexOf("[Selected slide template priority]"));
     expect(priorityBlock).toMatch(/READ LAST/i);
     expect(priorityBlock).toMatch(/drawn CSS\/SVG motifs/i);
-    expect(priorityBlock).toMatch(/Do not substitute template motifs with emoji/i);
+    expect(priorityBlock).toMatch(/do not substitute emoji or generic Unicode ornaments/i);
+    expect(priorityBlock).toMatch(/#c96442/);
     expect(priorityBlock).toMatch(/never fall back to Neutral Modern, Simple Deck/i);
     expect(runPrompt.lastIndexOf("[Selected slide template priority]")).toBeGreaterThan(
       runPrompt.indexOf("[Source brief]"),

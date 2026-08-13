@@ -811,6 +811,28 @@ describe("agent-prose-sanitize SSOT", () => {
     expect(sanitizeAssistantProseForDisplay(historyArtifact)).toBe("Done.");
   });
 
+  it("does not promote truncated deck slide text into settled chat prose", () => {
+    // Regression: max_tokens cut mid-slide left
+    // `Andiamo! (안디아모 =` as a bare text line inside an unclosed
+    // `<artifact type="deck">`. Settled sanitize used to treat that as
+    // user-facing prose and paint it under "작성 중" in the chat bubble.
+    const input = [
+      "작성 중 ✈️",
+      "",
+      '<artifact type="deck" identifier="deck">',
+      "<!doctype html>",
+      "<html lang=\"ko\"><body>",
+      '<section class="slide">',
+      "<h1>이탈리아</h1>",
+      "Andiamo! (안디아모 =",
+    ].join("\n");
+    const out = sanitizeAssistantProseForDisplay(input);
+    expect(out).not.toContain("Andiamo");
+    expect(out).not.toContain("안디아모");
+    expect(out).not.toContain("<artifact");
+    expect(out).toMatch(/작성 중/);
+  });
+
   it("preserves closed artifacts while streaming so live HTML parsers receive the final body", () => {
     const closed =
       'Intro\n<artifact identifier="deck" type="text/html">\n<section class="slide">A</section>\n</artifact>\nDone';

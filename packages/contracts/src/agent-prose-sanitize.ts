@@ -539,6 +539,18 @@ function trailingDisplayProseStart(input: string, fromIndex: number): number {
   return offset;
 }
 
+/**
+ * True when an open artifact is a Teamver deck deliverable. Mid-stream
+ * max_tokens cuts often end on a slide text node (`Andiamo! (안디아모 =`) —
+ * that must NOT be promoted into the chat bubble as "user-facing prose".
+ * Broader `type="text/html"` artifacts still allow trailing summary promotion
+ * (BYOK pseudo-tool turns often leave a Korean status line after the body).
+ */
+function isOpenDeckDeliverableArtifactTag(openTag: string): boolean {
+  return /\btype\s*=\s*(?:"|')(?:deck|deck-patch)(?:"|')/i.test(openTag)
+    || /\bidentifier\s*=\s*(?:"|')(?:deck|slides?)(?:"|')/i.test(openTag);
+}
+
 /** Strip an unclosed `<artifact …>` block; preserve trailing user-facing prose after the body. */
 function stripTrailingOpenArtifact(
   input: string,
@@ -558,6 +570,11 @@ function stripTrailingOpenArtifact(
   const closeIdx = findCloseTag(input, openEnd, "</artifact>");
   if (closeIdx !== -1) {
     return { text: input, hadOpenInternalMarkup: false };
+  }
+  // Truncated deck bodies: drop from `<artifact` to EOF. Never promote slide
+  // copy / emoji chips that happen to look like chat prose.
+  if (isOpenDeckDeliverableArtifactTag(lastOpen[0] ?? "")) {
+    return { text: input.slice(0, openStart).trimEnd(), hadOpenInternalMarkup: true };
   }
   const proseStart = trailingDisplayProseStart(input, openEnd);
   if (proseStart === -1) {
