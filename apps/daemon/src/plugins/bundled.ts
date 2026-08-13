@@ -285,9 +285,15 @@ async function registerOneIfIdMatches(args: {
   });
   if (!probe.ok) return null;
   const record = withMarketplaceProvenance(probe.record, args.input.marketplaceProvenance);
-  // Manifest name is the install id. Folder basename alone must not win when
-  // the sidecar declares a different `name`.
-  if (record.id !== args.want) return null;
+  // Manifest name is the install id (`example-html-ppt-…`). Callers may ask
+  // for the folder basename (`html-ppt-…`) or `example-<folder>` — accept all
+  // three so Canvas/skill ids resolve to the same bundled record.
+  const aliases = new Set([
+    record.id,
+    folderId,
+    `example-${folderId}`,
+  ]);
+  if (!aliases.has(args.want)) return null;
   upsertInstalledPlugin(args.input.db, record);
   return record;
 }

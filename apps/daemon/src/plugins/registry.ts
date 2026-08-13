@@ -267,6 +267,23 @@ export function resolveInstalledPlugin(
     if (byNormalizedId) return byNormalizedId;
   }
 
+  // Bare skill / folder id ↔ bundled `example-<folder>` install id
+  // (Daisy Days: html-ppt-zhangzara-daisy-days ↔ example-html-ppt-zhangzara-daisy-days).
+  const aliasCandidates = new Set<string>();
+  if (normalized) {
+    aliasCandidates.add(normalized);
+    if (normalized.startsWith('example-')) {
+      aliasCandidates.add(normalized.slice('example-'.length));
+    } else {
+      aliasCandidates.add(`example-${normalized}`);
+    }
+  }
+  for (const candidate of aliasCandidates) {
+    if (!candidate || candidate === id) continue;
+    const hit = getInstalledPlugin(db, candidate);
+    if (hit) return hit;
+  }
+
   try {
     const byEntry = db.prepare(
       `SELECT id FROM installed_plugins WHERE source_marketplace_entry_name = ?`,
@@ -279,10 +296,14 @@ export function resolveInstalledPlugin(
         `SELECT id FROM installed_plugins
          WHERE source_marketplace_entry_name = ?
             OR source_marketplace_entry_name LIKE ?
-            OR json_extract(manifest_json, '$.name') = ?`,
+            OR json_extract(manifest_json, '$.name') = ?
+            OR id = ?
+            OR id = ?`,
       ).get(
         `open-design/${normalized}`,
         `%/${normalized}`,
+        normalized,
+        normalized.startsWith('example-') ? normalized.slice('example-'.length) : `example-${normalized}`,
         normalized,
       ) as { id?: unknown } | undefined;
       if (byEntrySuffix && typeof byEntrySuffix.id === 'string') {

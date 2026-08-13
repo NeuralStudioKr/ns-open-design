@@ -157,6 +157,8 @@ export type SeedTemplateClonedDeckOnServerDeps = {
     options?: { overwrite?: boolean; artifactManifest?: unknown },
     metadata?: unknown,
   ) => Promise<unknown>;
+  /** Lazily re-register a bundled plugin when the sqlite row is missing. */
+  ensureBundledPlugin?: (pluginId: string) => Promise<{ id: string } | null> | { id: string } | null;
 };
 
 /**
@@ -184,7 +186,16 @@ export async function seedTemplateClonedDeckOnServer(
     };
   }
 
-  if (!resolveInstalledPlugin(deps.db, pluginId)) {
+  let resolved = resolveInstalledPlugin(deps.db, pluginId);
+  if (!resolved && deps.ensureBundledPlugin) {
+    try {
+      await deps.ensureBundledPlugin(pluginId);
+    } catch {
+      /* best-effort rehydrate */
+    }
+    resolved = resolveInstalledPlugin(deps.db, pluginId);
+  }
+  if (!resolved) {
     return {
       ok: false,
       reason: 'missing_plugin',
@@ -192,7 +203,7 @@ export async function seedTemplateClonedDeckOnServer(
       status: 404,
     };
   }
-  const loaded = await loadTemplatePreviewHtml(deps.db, pluginId);
+  const loaded = await loadTemplatePreviewHtml(deps.db, resolved.id);
   if (!loaded) {
     return {
       ok: false,

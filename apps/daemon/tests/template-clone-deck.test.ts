@@ -86,4 +86,68 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(written.has('refs/template-base.html')).toBe(false);
     expect([...written.keys()]).toEqual(['deck.html']);
   });
+
+  it('resolves bare skill id to example- installed plugin id', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'od-template-clone-alias-'));
+    const pluginDir = path.join(root, 'plugin');
+    const projectsRoot = path.join(root, 'projects');
+    const dataDir = path.join(root, '.od');
+    await mkdir(pluginDir, { recursive: true });
+    await mkdir(projectsRoot, { recursive: true });
+
+    const daisyPath = path.resolve(
+      process.cwd(),
+      '../../plugins/_official/examples/html-ppt-zhangzara-daisy-days/example.html',
+    );
+    await writeFile(path.join(pluginDir, 'example.html'), await readFile(daisyPath, 'utf8'), 'utf8');
+
+    const db = openDatabase(root, { dataDir });
+    upsertInstalledPlugin(db, {
+      id: 'example-html-ppt-zhangzara-daisy-days',
+      title: 'Html Ppt Zhangzara Daisy Days',
+      version: '0.0.0',
+      sourceKind: 'local',
+      source: pluginDir,
+      trust: 'bundled',
+      capabilitiesGranted: [],
+      manifest: {
+        name: 'example-html-ppt-zhangzara-daisy-days',
+        title: 'Html Ppt Zhangzara Daisy Days',
+        version: '0.0.0',
+        od: { preview: { entry: 'example.html' } },
+      } as any,
+      fsPath: pluginDir,
+      installedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const written = new Map<string, string>();
+    const result = await seedTemplateClonedDeckOnServer(
+      {
+        db,
+        projectsRoot,
+        projectId: 'proj-2',
+        ensureProject: async () => {
+          const dir = path.join(projectsRoot, 'proj-2');
+          await mkdir(dir, { recursive: true });
+          return dir;
+        },
+        writeProjectFile: async (_root, _id, name, body) => {
+          written.set(name, typeof body === 'string' ? body : body.toString('utf8'));
+          return { name };
+        },
+      },
+      {
+        // Bare skill / folder id — must alias to example- install id.
+        pluginId: 'html-ppt-zhangzara-daisy-days',
+        sourceBrief: 'Visible headings: Cover / Body',
+        deckTitle: 'Cover',
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.templateId).toBe('example-html-ppt-zhangzara-daisy-days');
+    expect(written.get('deck.html')).toContain('#F5F0E6');
+  });
 });

@@ -439,6 +439,8 @@ describe("canvasSlideLaunch", () => {
     expect(app).toContain("skipAutoSendForTemplateClone");
     expect(app).toContain("isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })");
     expect(app).toContain("headings:");
+    expect(app).toContain("Home community / design-template card");
+    expect(app).toContain("od:auto-send-first:");
     const projectRoutes = readFileSync(
       resolve(__dirname, "../../daemon/src/project-routes.ts"),
       "utf8",
@@ -446,6 +448,9 @@ describe("canvasSlideLaunch", () => {
     expect(projectRoutes).toContain("/api/projects/:id/template-clone-deck");
     expect(projectRoutes).toContain("seedTemplateClonedDeckOnServer");
     expect(projectRoutes).toContain("persistAfterMutation");
+    // Persist flake must not 502 the clone (model fallback would wipe look).
+    expect(projectRoutes).toContain("scheduling async sync");
+    expect(projectRoutes).toContain("ensureBundledPluginForClone");
   });
 
   it("rebinds create-slides from URL after workspace bootstrap instead of dropping the modal", () => {

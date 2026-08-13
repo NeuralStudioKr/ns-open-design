@@ -2701,6 +2701,46 @@ function AppInner() {
           throw err instanceof Error ? err : new Error(String(err));
         }
       }
+      // Home community / design-template card (no Canvas handoff): still Clone
+      // the selected visual template so look matches preview instead of Neutral.
+      if (
+        !workingDirHandoffFailed
+        && !canvasImportFailed
+        && !skipAutoSendForTemplateClone
+        && !pendingCanvasHandoff
+        && slideOnlyMvp
+        && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
+      ) {
+        const templateTitle =
+          typeof input.metadata?.selectedDeckTemplateTitle === 'string'
+            ? input.metadata.selectedDeckTemplateTitle.trim()
+            : '';
+        const slideCountHint =
+          typeof input.pluginInputs?.slideCount === 'string'
+            ? input.pluginInputs.slideCount
+            : null;
+        const seeded = await seedTemplateClonedDeck({
+          projectId: result.project.id,
+          pluginId: selectedDeckTemplateId,
+          templateTitle: templateTitle || selectedDeckTemplateId,
+          sourceBrief: derivedPendingPrompt ?? null,
+          userInstruction: derivedPendingPrompt ?? null,
+          deckTitle: templateTitle || null,
+          slideCountHint,
+        });
+        if (seeded.ok) {
+          skipAutoSendForTemplateClone = true;
+          seededDeckFileName = seeded.fileName;
+        } else {
+          devLog.warn(
+            'Home template clone seed failed; keeping model kit auto-send',
+            seeded,
+          );
+          setWorkingDirError(
+            '선택한 템플릿 복제에 실패해 일반 생성으로 이어갑니다. 결과가 다를 수 있습니다.',
+          );
+        }
+      }
       trackProjectCreateResult(
         analytics.track,
         {
@@ -2746,6 +2786,14 @@ function AppInner() {
         } catch {
           /* sessionStorage may be unavailable (e.g. SSR / private mode); fall
              back to manual send. */
+        }
+      } else if (skipAutoSendForTemplateClone) {
+        // Defensive: a successful Clone must not leave a stale auto-send latch.
+        try {
+          window.sessionStorage.removeItem(`od:auto-send-first:${result.project.id}`);
+          window.sessionStorage.removeItem(`od:auto-send-attachments:${result.project.id}`);
+        } catch {
+          /* ignore */
         }
       }
       const project = result.appliedPluginSnapshotId

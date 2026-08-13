@@ -2461,6 +2461,8 @@ export function registerProjectArtifactRoutes(app: Express, ctx: RegisterProject
 
 export interface RegisterProjectFileRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes'> {
   projectStorageHooks?: ProjectStorageAccessHooks | null;
+  /** Optional lazy bundled-plugin rehydrate for template clone (HA / fresh volume). */
+  ensureBundledPluginForClone?: (pluginId: string) => Promise<{ id: string } | null>;
 }
 
 export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFileRoutesDeps) {
@@ -3643,6 +3645,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
           metadata: project.metadata,
           ensureProject,
           writeProjectFile,
+          ...(ctx.ensureBundledPluginForClone
+            ? { ensureBundledPlugin: ctx.ensureBundledPluginForClone }
+            : {}),
         },
         {
           pluginId,
@@ -3666,21 +3671,24 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
           result.message,
         );
       }
-      // Await S3/scratch sync before 200 so a sibling node / refresh cannot
-      // miss the seeded deck.html (same contract as file-revision push).
+      // Prefer awaiting sync, but NEVER fail the clone if persist flakes —
+      // FE treats non-2xx as "seed failed" and falls back to model generate,
+      // which overwrites the real template look with Neutral.
       if (ctx.projectStorageHooks) {
         try {
           await ctx.projectStorageHooks.persistAfterMutation(req, req.params.id, {
             strict: true,
           });
         } catch (persistErr) {
-          return sendApiError(
+          console.warn(
+            '[template-clone-deck] persistAfterMutation failed; scheduling async sync',
+            persistErr,
+          );
+          scheduleProjectStoragePersistAfterResponse(
+            ctx.projectStorageHooks,
+            req,
             res,
-            502,
-            'STORAGE_PERSIST_FAILED',
-            persistErr instanceof Error
-              ? persistErr.message
-              : 'Failed to persist cloned deck',
+            req.params.id,
           );
         }
       }

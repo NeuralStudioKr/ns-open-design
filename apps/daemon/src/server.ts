@@ -7074,6 +7074,19 @@ export async function startServer({
     artifacts: artifactDeps,
     projectPreviewScopes,
     projectStorageHooks,
+    ensureBundledPluginForClone: async (pluginId) => {
+      const registered = await ensureBundledPluginRegistered({
+        db,
+        bundledRoot: BUNDLED_PLUGINS_DIR,
+        pluginId,
+        marketplaceProvenance: {
+          sourceMarketplaceId: OFFICIAL_MARKETPLACE_ID,
+          marketplaceTrust: 'official',
+          entryNamePrefix: 'open-design',
+        },
+      });
+      return registered ? { id: registered.id } : null;
+    },
   });
 
   registerMediaRoutes(app, {
