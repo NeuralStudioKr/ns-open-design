@@ -595,13 +595,18 @@
   letter-spacing: 0.02em;
   font-weight: 600;
   font-size: 8.5px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 4.75em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-faint);
 }
 .msg-plugin-chip__title {
   color: var(--text);
   font-weight: 500;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: 4em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -610,6 +615,8 @@
 .msg-plugin-chip__task {
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
+  flex: 0 1 auto;
+  max-width: 5.5em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

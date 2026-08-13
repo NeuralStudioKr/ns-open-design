@@ -589,7 +589,11 @@ export async function fetchDesignSystemsResult(): Promise<DesignSystemsResult> {
 
 export async function fetchDesignSystem(id: string): Promise<DesignSystemDetail | null> {
   try {
-    const resp = await fetch(`/api/design-systems/${encodeURIComponent(id)}`);
+    // Teamver embed proxies /api/* through daemon auth — plain fetch() 401s
+    // there and left DesignSystemPreviewModal stuck on "Loading DESIGN.md…".
+    const resp = await fetchTeamverDaemon(
+      `/api/design-systems/${encodeURIComponent(id)}`,
+    );
     if (!resp.ok) return null;
     return parseDesignSystemDetail(await resp.json());
   } catch {
@@ -2611,25 +2615,42 @@ export async function fetchDesignSystemPreview(id: string): Promise<string | nul
   return result.ok ? result.html : null;
 }
 
-export async function fetchDesignSystemShowcase(id: string): Promise<string | null> {
+export type DesignSystemShowcaseResult =
+  | { ok: true; html: string }
+  | { ok: false; reason: 'not_found' | 'unauthorized' | 'error' };
+
+export async function fetchDesignSystemShowcaseResult(
+  id: string,
+): Promise<DesignSystemShowcaseResult> {
   try {
     const resp = await fetchTeamverDaemon(
       `/api/design-systems/${encodeURIComponent(id)}/showcase`,
     );
-    if (!resp.ok) return null;
+    if (resp.status === 404) return { ok: false, reason: 'not_found' };
+    if (resp.status === 401 || resp.status === 403) {
+      return { ok: false, reason: 'unauthorized' };
+    }
+    if (!resp.ok) return { ok: false, reason: 'error' };
     const text = await resp.text();
     const contentType = resp.headers.get('content-type');
     // Reject auth JSON envelopes so callers never mount session_expired as srcDoc.
     if (
-      (contentType || '').toLowerCase().includes('application/json')
+      isUnauthorizedHtmlBody(text, contentType)
+      || (contentType || '').toLowerCase().includes('application/json')
       || (text.trim().startsWith('{') && /"detail"\s*:/.test(text.slice(0, 200)))
     ) {
-      return null;
+      return { ok: false, reason: 'unauthorized' };
     }
-    return text;
+    if (!text.trim()) return { ok: false, reason: 'not_found' };
+    return { ok: true, html: text };
   } catch {
-    return null;
+    return { ok: false, reason: 'error' };
   }
+}
+
+export async function fetchDesignSystemShowcase(id: string): Promise<string | null> {
+  const result = await fetchDesignSystemShowcaseResult(id);
+  return result.ok ? result.html : null;
 }
 
 // Fetch the sandboxed HTML preview the daemon serves for a plugin.
@@ -2705,6 +2726,7 @@ export async function fetchPluginExampleHtml(
 export async function fetchPluginAssetText(
   pluginId: string,
   relpath: string,
+  opts?: { skipEmbedAuthRecovery?: boolean },
 ): Promise<string | null> {
   try {
     const url = `/api/plugins/${encodeURIComponent(pluginId)}/asset/${encodePluginAssetPath(relpath)}`;
@@ -2712,9 +2734,11 @@ export async function fetchPluginAssetText(
     // X-Teamver-* identity headers; plain fetch() returns 401 there and
     // callers silently fall back to a placeholder (which is how the Canvas →
     // Slide template picker used to look "selected but not applied").
-    // Route through the shared header helper in embed mode.
+    // Detail modals must run auth recovery — gallery thumbs may opt out.
     const resp = isTeamverEmbedMode()
-      ? await fetchTeamverDaemon(url, { skipEmbedAuthRecovery: true })
+      ? await fetchTeamverDaemon(url, {
+          skipEmbedAuthRecovery: opts?.skipEmbedAuthRecovery === true,
+        })
       : await fetch(url);
     if (!resp.ok) return null;
     return await resp.text();

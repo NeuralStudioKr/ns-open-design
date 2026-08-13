@@ -13,13 +13,13 @@
 // upstream design system (some bundles ship DESIGN.md only): the
 // tabs collapse and the modal renders the spec sidebar by default.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { InstalledPluginRecord } from '@open-design/contracts';
 import { useI18n } from '../../i18n';
 import { localizePluginDescription, localizePluginTitle } from '../plugins-home/localization';
 import {
-  fetchDesignSystemPreview,
-  fetchDesignSystemShowcase,
+  fetchDesignSystemPreviewResult,
+  fetchDesignSystemShowcaseResult,
   fetchPluginAssetText,
 } from '../../providers/registry';
 import { DesignSpecView } from '../DesignSpecView';
@@ -48,6 +48,8 @@ interface ContextRef {
   path?: string;
   primary?: boolean;
 }
+
+type LoadStatus = 'idle' | 'loading' | 'ok' | 'error';
 
 function designSystemRef(record: InstalledPluginRecord): string | null {
   const ds = (record.manifest?.od?.context as { designSystem?: ContextRef } | undefined)
@@ -84,39 +86,124 @@ export function PluginDesignSystemDetail({
 
   const [showcaseHtml, setShowcaseHtml] = useState<string | null | undefined>(undefined);
   const [tokensHtml, setTokensHtml] = useState<string | null | undefined>(undefined);
+  const [showcaseError, setShowcaseError] = useState<string | null>(null);
+  const [tokensError, setTokensError] = useState<string | null>(null);
   const [specBody, setSpecBody] = useState<string | null | undefined>(undefined);
+  const showcaseGenRef = useRef(0);
+  const tokensGenRef = useRef(0);
+  const specGenRef = useRef(0);
+  const showcaseStatusRef = useRef<LoadStatus>('idle');
+  const tokensStatusRef = useRef<LoadStatus>('idle');
+  const specStatusRef = useRef<LoadStatus>('idle');
 
   // Reset caches when the modal swaps to a different plugin.
+  // Skip initial mount so we don't cancel the first onView fetch (gen bump).
+  const prevRecordIdRef = useRef<string | null>(null);
   useEffect(() => {
+    if (prevRecordIdRef.current === null) {
+      prevRecordIdRef.current = record.id;
+      return;
+    }
+    if (prevRecordIdRef.current === record.id) return;
+    prevRecordIdRef.current = record.id;
+    showcaseGenRef.current += 1;
+    tokensGenRef.current += 1;
+    specGenRef.current += 1;
+    showcaseStatusRef.current = 'idle';
+    tokensStatusRef.current = 'idle';
+    specStatusRef.current = 'idle';
     setShowcaseHtml(undefined);
     setTokensHtml(undefined);
+    setShowcaseError(null);
+    setTokensError(null);
     setSpecBody(undefined);
   }, [record.id]);
+
+  const loadShowcase = useCallback(async () => {
+    if (!dsRef) return;
+    const gen = ++showcaseGenRef.current;
+    showcaseStatusRef.current = 'loading';
+    setShowcaseHtml(null);
+    setShowcaseError(null);
+    const result = await fetchDesignSystemShowcaseResult(dsRef);
+    if (gen !== showcaseGenRef.current) return;
+    if (result.ok) {
+      showcaseStatusRef.current = 'ok';
+      setShowcaseHtml(result.html);
+      return;
+    }
+    showcaseStatusRef.current = 'error';
+    setShowcaseError(result.reason);
+    setShowcaseHtml(undefined);
+  }, [dsRef]);
+
+  const loadTokens = useCallback(async () => {
+    if (!dsRef) return;
+    const gen = ++tokensGenRef.current;
+    tokensStatusRef.current = 'loading';
+    setTokensHtml(null);
+    setTokensError(null);
+    const result = await fetchDesignSystemPreviewResult(dsRef);
+    if (gen !== tokensGenRef.current) return;
+    if (result.ok) {
+      tokensStatusRef.current = 'ok';
+      setTokensHtml(result.html);
+      return;
+    }
+    tokensStatusRef.current = 'error';
+    setTokensError(result.reason);
+    setTokensHtml(undefined);
+  }, [dsRef]);
+
+  const loadSpec = useCallback(async () => {
+    const gen = ++specGenRef.current;
+    specStatusRef.current = 'loading';
+    setSpecBody(null);
+    const body = await fetchPluginAssetText(record.id, assetPath);
+    if (gen !== specGenRef.current) return;
+    if (body?.trim()) {
+      specStatusRef.current = 'ok';
+      setSpecBody(body);
+      return;
+    }
+    specStatusRef.current = 'error';
+    setSpecBody(null);
+  }, [record.id, assetPath]);
 
   const handleView = useCallback(
     (viewId: string) => {
       if (!dsRef) return;
-      if (viewId === 'showcase' && showcaseHtml === undefined) {
-        setShowcaseHtml(null);
-        void fetchDesignSystemShowcase(dsRef).then((html) => setShowcaseHtml(html));
+      if (viewId === 'showcase') {
+        if (
+          showcaseStatusRef.current === 'idle'
+          || showcaseStatusRef.current === 'error'
+        ) {
+          void loadShowcase();
+        }
       }
-      if (viewId === 'tokens' && tokensHtml === undefined) {
-        setTokensHtml(null);
-        void fetchDesignSystemPreview(dsRef).then((html) => setTokensHtml(html));
+      if (viewId === 'tokens') {
+        if (
+          tokensStatusRef.current === 'idle'
+          || tokensStatusRef.current === 'error'
+        ) {
+          void loadTokens();
+        }
       }
     },
-    [dsRef, showcaseHtml, tokensHtml],
+    [dsRef, loadShowcase, loadTokens],
   );
 
   const handleSidebarToggle = useCallback(
     (open: boolean) => {
-      if (!open || specBody !== undefined) return;
-      setSpecBody(null);
-      void fetchPluginAssetText(record.id, assetPath).then((body) =>
-        setSpecBody(body),
-      );
+      if (!open) return;
+      if (
+        specStatusRef.current === 'idle'
+        || specStatusRef.current === 'error'
+      ) {
+        void loadSpec();
+      }
     },
-    [record.id, assetPath, specBody],
+    [loadSpec],
   );
 
   // When no upstream design system is referenced we still need a view
@@ -126,8 +213,18 @@ export function PluginDesignSystemDetail({
   // from the primary CTA.
   const views: PreviewView[] = dsRef
     ? [
-        { id: 'showcase', label: t('ds.showcase'), html: showcaseHtml },
-        { id: 'tokens', label: t('ds.tokens'), html: tokensHtml },
+        {
+          id: 'showcase',
+          label: t('ds.showcase'),
+          html: showcaseHtml,
+          error: showcaseError,
+        },
+        {
+          id: 'tokens',
+          label: t('ds.tokens'),
+          html: tokensHtml,
+          error: tokensError,
+        },
       ]
     : [
         {
@@ -177,6 +274,7 @@ export function PluginDesignSystemDetail({
               <DesignSpecView
                 source={specBody}
                 loadingLabel={t('ds.specLoading')}
+                emptyLabel={t('preview.errorBody')}
               />
             </section>
           </div>

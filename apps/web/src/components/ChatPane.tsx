@@ -4113,7 +4113,7 @@ function ActiveDesignSystemChip({
     <>
       <span className="msg-plugin-chip__dot" aria-hidden />
       <span className="msg-plugin-chip__label">
-        <span className="msg-plugin-chip__kind">{embedUiLabel('Design System', '디자인 시스템')}</span>
+        <span className="msg-plugin-chip__kind">{embedUiLabel('Style', '스타일')}</span>
         <span className="msg-plugin-chip__title">{system.title}</span>
       </span>
       {system.category ? (
