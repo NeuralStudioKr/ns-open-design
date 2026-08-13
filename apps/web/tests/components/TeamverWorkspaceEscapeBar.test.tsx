@@ -15,7 +15,7 @@ describe('TeamverWorkspaceEscapeBar', () => {
     cleanup();
   });
 
-  it('separates Design home (in-app) from Teamver app (external link)', () => {
+  it('separates Slide home (in-app) from Teamver app (external link)', () => {
     const onDesignHome = vi.fn();
     render(
       <I18nProvider initial="ko">
@@ -25,7 +25,7 @@ describe('TeamverWorkspaceEscapeBar', () => {
 
     const designHome = screen.getByTestId('teamver-embed-design-home');
     expect(designHome.tagName).toBe('BUTTON');
-    expect(designHome.textContent).toContain('Design 홈');
+    expect(designHome.textContent).toContain('슬라이드 홈');
 
     fireEvent.click(designHome);
     expect(onDesignHome).toHaveBeenCalledTimes(1);
