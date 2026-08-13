@@ -1409,7 +1409,6 @@ Token-aware rule:
 - Kit tokens remain the mandatory palette/font/motif checklist either way.
 - When using kit/scaffold CSS, bind slide-surface \`background\`/\`color\` on **both** \`html\`/\`body\` **and** every \`<section class="slide">\`. Do not leave \`body\` on a dark app-shell default around cream slides — that reads as a dark deck in the preview panel.
 
-
 Shared hard rules:
 - Adapt slide count by duplicating/dropping whole slide shells — do not invent a new CSS system.
 - **Forbidden substitutes:** emoji motif rows (🌼🌸⭐🌈✈️ etc. as decoration), invented ellipse "daisy" SVGs, Neutral slate \`#0f172a\`, OD skeleton terracotta \`#c96442\` / ink \`#1c1b1a\` primary palettes, Noto-only typography that ignores template fonts.
