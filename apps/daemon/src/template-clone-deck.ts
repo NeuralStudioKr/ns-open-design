@@ -154,11 +154,27 @@ export type SeedTemplateClonedDeckOnServerDeps = {
     projectId: string,
     name: string,
     body: string | Buffer,
-    options?: { overwrite?: boolean; artifactManifest?: unknown },
+    options?: {
+      overwrite?: boolean;
+      artifactManifest?: unknown;
+      /** Trusted Clone may replace a larger Neutral/prior deck. */
+      skipArtifactStubGuard?: boolean;
+      /** Trusted Clone may retain decorative strings that look like pitch markers. */
+      skipArtifactPublicationGuard?: boolean;
+    },
     metadata?: unknown,
   ) => Promise<unknown>;
   /** Lazily re-register a bundled plugin when the sqlite row is missing. */
   ensureBundledPlugin?: (pluginId: string) => Promise<{ id: string } | null> | { id: string } | null;
+  /**
+   * After a successful Clone, clear composer seed + stamp durable metadata so
+   * FE auto-send / model fallback cannot wipe the seeded deck.
+   */
+  markTemplateClonedDeckSeeded?: (input: {
+    projectId: string;
+    pluginId: string;
+    templateTitle: string;
+  }) => void | Promise<void>;
 };
 
 /**
@@ -252,6 +268,11 @@ export async function seedTemplateClonedDeckOnServer(
       cloned,
       {
         overwrite: true,
+        // Clone is a trusted server path: reseeding a visual template must not
+        // lose to ARTIFACT_REGRESSION when replacing a larger Neutral stub,
+        // or to publication-guard false positives on decorative template copy.
+        skipArtifactStubGuard: true,
+        skipArtifactPublicationGuard: true,
         artifactManifest: buildDeckArtifactManifest({
           pluginId: loaded.templateId,
           templateTitle,
@@ -282,6 +303,22 @@ export async function seedTemplateClonedDeckOnServer(
       message: err instanceof Error ? err.message : 'Failed to write deck.html',
       status: 500,
     };
+  }
+
+  if (deps.markTemplateClonedDeckSeeded) {
+    try {
+      await deps.markTemplateClonedDeckSeeded({
+        projectId,
+        pluginId: loaded.templateId,
+        templateTitle,
+      });
+    } catch (markErr) {
+      // Deck bytes are already on disk — do not fail the clone response.
+      console.warn(
+        '[template-clone-deck] markTemplateClonedDeckSeeded failed',
+        markErr,
+      );
+    }
   }
 
   return {

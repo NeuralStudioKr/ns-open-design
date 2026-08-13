@@ -150,4 +150,82 @@ describe('seedTemplateClonedDeckOnServer', () => {
     expect(result.templateId).toBe('example-html-ppt-zhangzara-daisy-days');
     expect(written.get('deck.html')).toContain('#F5F0E6');
   });
+
+  it('skips stub guard on write and stamps durable seeded metadata', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'od-template-clone-mark-'));
+    const pluginDir = path.join(root, 'plugin');
+    const projectsRoot = path.join(root, 'projects');
+    const dataDir = path.join(root, '.od');
+    await mkdir(pluginDir, { recursive: true });
+    await mkdir(projectsRoot, { recursive: true });
+
+    await writeFile(
+      path.join(pluginDir, 'example.html'),
+      `<!doctype html><html><body>
+        <section class="slide"><h1>One</h1></section>
+        <section class="slide"><h1>Two</h1></section>
+      </body></html>`,
+      'utf8',
+    );
+
+    const db = openDatabase(root, { dataDir });
+    upsertInstalledPlugin(db, {
+      id: 'html-ppt-mini',
+      title: 'Mini',
+      version: '0.0.0',
+      sourceKind: 'local',
+      source: pluginDir,
+      trust: 'bundled',
+      capabilitiesGranted: [],
+      manifest: {
+        name: 'html-ppt-mini',
+        title: 'Mini',
+        version: '0.0.0',
+        od: { preview: { entry: 'example.html' } },
+      } as any,
+      fsPath: pluginDir,
+      installedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const writeOptions: Array<Record<string, unknown>> = [];
+    const marked: Array<{ projectId: string; pluginId: string; templateTitle: string }> = [];
+    const result = await seedTemplateClonedDeckOnServer(
+      {
+        db,
+        projectsRoot,
+        projectId: 'proj-3',
+        ensureProject: async () => {
+          const dir = path.join(projectsRoot, 'proj-3');
+          await mkdir(dir, { recursive: true });
+          return dir;
+        },
+        writeProjectFile: async (_root, _id, _name, _body, options) => {
+          writeOptions.push((options ?? {}) as Record<string, unknown>);
+          return { name: 'deck.html' };
+        },
+        markTemplateClonedDeckSeeded: (input) => {
+          marked.push(input);
+        },
+      },
+      {
+        pluginId: 'html-ppt-mini',
+        templateTitle: 'Mini Template',
+        sourceBrief: 'Visible headings: Alpha / Beta',
+        deckTitle: 'Alpha',
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(writeOptions[0]?.skipArtifactStubGuard).toBe(true);
+    expect(writeOptions[0]?.skipArtifactPublicationGuard).toBe(true);
+    expect(writeOptions[0]?.overwrite).toBe(true);
+    expect(marked).toEqual([
+      {
+        projectId: 'proj-3',
+        pluginId: 'html-ppt-mini',
+        templateTitle: 'Mini Template',
+      },
+    ]);
+  });
 });

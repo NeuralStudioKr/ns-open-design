@@ -12337,6 +12337,18 @@ export function ProjectView({
       flag = null;
     }
     if (!flag) return;
+    // Daemon Clone already wrote deck.html — never auto-send a structure
+    // prompt that would overwrite the seeded template look with Neutral.
+    if (
+      project.metadata
+      && typeof project.metadata === 'object'
+      && (project.metadata as { templateClonedDeckSeeded?: unknown }).templateClonedDeckSeeded === true
+    ) {
+      autoSentRef.current = true;
+      clearAutoSendSession(project.id);
+      autoSendAttachmentsRef.current = [];
+      return;
+    }
     // Prefer the seed captured at mount (autoSendSeedRef) — it survives
     // even after onClearPendingPrompt wipes project.pendingPrompt on the
     // server. Fall back to the live values for any edge case where the

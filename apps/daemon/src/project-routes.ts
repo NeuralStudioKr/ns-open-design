@@ -3648,6 +3648,27 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
           ...(ctx.ensureBundledPluginForClone
             ? { ensureBundledPlugin: ctx.ensureBundledPluginForClone }
             : {}),
+          markTemplateClonedDeckSeeded: ({ projectId, pluginId: seededPluginId, templateTitle }) => {
+            const existing = getProject(db, projectId);
+            if (!existing) return;
+            const prevMeta =
+              existing.metadata && typeof existing.metadata === 'object'
+                ? (existing.metadata as Record<string, unknown>)
+                : {};
+            updateProject(db, projectId, {
+              // Successful Clone must not leave a composer seed that auto-sends
+              // a model structure turn and overwrites deck.html with Neutral.
+              pendingPrompt: null,
+              metadata: {
+                ...prevMeta,
+                templateClonedDeckSeeded: true,
+                selectedDeckTemplateId: seededPluginId,
+                ...(templateTitle
+                  ? { selectedDeckTemplateTitle: templateTitle }
+                  : {}),
+              },
+            });
+          },
         },
         {
           pluginId,

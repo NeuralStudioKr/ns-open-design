@@ -7,6 +7,8 @@
  * triggers the endpoint — BYOK Messages API has no Clone tool for the model.
  */
 
+import { fetchProjectFileText } from '../providers/registry';
+import { getProject } from '../state/projects';
 import { fetchTeamverDaemon } from './teamverDaemonHeaders';
 
 export type SeedTemplateClonedDeckResult =
@@ -15,6 +17,8 @@ export type SeedTemplateClonedDeckResult =
       fileName: 'deck.html';
       slideCount: number;
       templateId: string;
+      /** True when HTTP failed/ambiguous but an already-seeded deck was kept. */
+      recoveredExisting?: boolean;
     }
   | {
       ok: false;
@@ -27,8 +31,89 @@ export type SeedTemplateClonedDeckResult =
       message: string;
     };
 
+function asSeededTemplateId(...candidates: unknown[]): string {
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return 'unknown';
+}
+
+/**
+ * If deck.html was already written by a prior successful Clone (or the HTTP
+ * response was lost after write), prefer keeping that deck over model fallback.
+ *
+ * Authority (any one is enough, when deck.html also exists):
+ * 1. `deck.html.artifact.json` metadata.templateClonedDeckSeeded
+ * 2. project metadata.templateClonedDeckSeeded
+ */
+export async function recoverExistingTemplateClonedDeck(
+  projectId: string,
+): Promise<Extract<SeedTemplateClonedDeckResult, { ok: true }> | null> {
+  const id = projectId.trim();
+  if (!id) return null;
+
+  let deckExists = false;
+  try {
+    const deckHtml = await fetchProjectFileText(id, 'deck.html', { cache: 'no-store' });
+    deckExists = Boolean(deckHtml && deckHtml.trim().length > 200);
+  } catch {
+    deckExists = false;
+  }
+  if (!deckExists) return null;
+
+  try {
+    const text = await fetchProjectFileText(id, 'deck.html.artifact.json', {
+      cache: 'no-store',
+    });
+    if (text?.trim()) {
+      const json = JSON.parse(text) as {
+        sourceSkillId?: unknown;
+        metadata?: { templateClonedDeckSeeded?: unknown; selectedDeckTemplateId?: unknown };
+      };
+      if (json?.metadata?.templateClonedDeckSeeded === true) {
+        return {
+          ok: true,
+          fileName: 'deck.html',
+          slideCount: 1,
+          templateId: asSeededTemplateId(
+            json.metadata?.selectedDeckTemplateId,
+            json.sourceSkillId,
+          ),
+          recoveredExisting: true,
+        };
+      }
+    }
+  } catch {
+    /* fall through to project metadata */
+  }
+
+  try {
+    const project = await getProject(id);
+    const meta = project?.metadata as
+      | {
+          templateClonedDeckSeeded?: unknown;
+          selectedDeckTemplateId?: unknown;
+        }
+      | undefined;
+    if (meta?.templateClonedDeckSeeded === true) {
+      return {
+        ok: true,
+        fileName: 'deck.html',
+        slideCount: 1,
+        templateId: asSeededTemplateId(meta.selectedDeckTemplateId),
+        recoveredExisting: true,
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return null;
+}
+
 /**
  * Trigger daemon `POST /api/projects/:id/template-clone-deck`.
+ * On ambiguous failure, recover an already-seeded deck instead of model fallback.
  */
 export async function seedTemplateClonedDeck(options: {
   projectId: string;
@@ -44,6 +129,10 @@ export async function seedTemplateClonedDeck(options: {
   if (!projectId || !pluginId) {
     return { ok: false, reason: 'missing_plugin', message: 'Missing project or plugin id' };
   }
+
+  const recover = async (): Promise<SeedTemplateClonedDeckResult | null> => {
+    return recoverExistingTemplateClonedDeck(projectId);
+  };
 
   try {
     const resp = await fetchTeamverDaemon(
@@ -62,6 +151,9 @@ export async function seedTemplateClonedDeck(options: {
       },
     );
     if (!resp.ok) {
+      const recovered = await recover();
+      if (recovered) return recovered;
+
       let message = `Template clone failed (${resp.status})`;
       let reason: Extract<SeedTemplateClonedDeckResult, { ok: false }>['reason'] =
         resp.status === 404 ? 'missing_preview' : 'clone_failed';
@@ -85,6 +177,8 @@ export async function seedTemplateClonedDeck(options: {
       templateId?: string;
     };
     if (!json?.ok || json.fileName !== 'deck.html') {
+      const recovered = await recover();
+      if (recovered) return recovered;
       return {
         ok: false,
         reason: 'clone_failed',
@@ -98,6 +192,8 @@ export async function seedTemplateClonedDeck(options: {
       templateId: typeof json.templateId === 'string' ? json.templateId : pluginId,
     };
   } catch (err) {
+    const recovered = await recover();
+    if (recovered) return recovered;
     return {
       ok: false,
       reason: 'fetch_failed',

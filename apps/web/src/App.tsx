@@ -127,6 +127,7 @@ import type { TeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
 import { consumeTeamverCanvasLaunchHandoff } from './teamver/canvasLaunchHandoff';
 import {
   canvasCreateSlidesSourceBrief,
+  driveCreateSlidesSourceBrief,
   isExplicitCanvasSlideVisualTemplate,
 } from './teamver/canvasSlideLaunch';
 import { seedTemplateClonedDeck } from './teamver/seedTemplateClonedDeck';
@@ -2483,6 +2484,13 @@ function AppInner() {
         }
       }
       let firstMessageAttachments: ChatAttachment[] = [];
+      let homeDriveImportSucceeded = false;
+      const homeDriveSourceAsset = pendingDriveAssets[0] ?? null;
+      const slideCountHintFromInputs = ((): string | number | null => {
+        const raw = input.pluginInputs?.slideCount;
+        if (typeof raw === 'string' || typeof raw === 'number') return raw;
+        return null;
+      })();
       if (!workingDirHandoffFailed && pendingFiles.length > 0) {
         // Home composer attaches stay client-side until submit lands a
         // project; the actual upload happens here. v2 doc wants one
@@ -2543,6 +2551,7 @@ function AppInner() {
           for (const item of driveResult.imported) {
             clearProjectRawFileMissing(result.project.id, item.path);
           }
+          homeDriveImportSucceeded = driveResult.imported.length > 0;
           const driveAttachments = driveImportedToChatAttachments(driveResult.imported);
           const readyDrive = await uploadedImagesReadableOnDisk(
             result.project.id,
@@ -2572,6 +2581,7 @@ function AppInner() {
             );
           }
         } catch (err) {
+          homeDriveImportSucceeded = false;
           devLog.warn('Home Drive import failed for new project', err);
           if (isMainSsoUserMismatchError(err)) {
             void beginMainSsoMismatchRecovery();
@@ -2629,10 +2639,6 @@ function AppInner() {
               typeof input.metadata?.selectedDeckTemplateTitle === 'string'
                 ? input.metadata.selectedDeckTemplateTitle.trim()
                 : '';
-            const slideCountHint =
-              typeof input.pluginInputs?.slideCount === 'string'
-                ? input.pluginInputs.slideCount
-                : null;
             const seeded = await seedTemplateClonedDeck({
               projectId: result.project.id,
               pluginId: selectedDeckTemplateId,
@@ -2644,7 +2650,7 @@ function AppInner() {
                 || pendingCanvasHandoff.threadTitle?.trim()
                 || templateTitle
                 || null,
-              slideCountHint,
+              slideCountHint: slideCountHintFromInputs,
             });
             if (seeded.ok) {
               skipAutoSendForTemplateClone = true;
@@ -2703,6 +2709,7 @@ function AppInner() {
       }
       // Home community / design-template card (no Canvas handoff): still Clone
       // the selected visual template so look matches preview instead of Neutral.
+      // Drive create-slides: only Clone when import succeeded (align with ChatComposer).
       if (
         !workingDirHandoffFailed
         && !canvasImportFailed
@@ -2710,23 +2717,25 @@ function AppInner() {
         && !pendingCanvasHandoff
         && slideOnlyMvp
         && isExplicitCanvasSlideVisualTemplate({ id: selectedDeckTemplateId })
+        && (pendingDriveAssets.length === 0 || homeDriveImportSucceeded)
       ) {
         const templateTitle =
           typeof input.metadata?.selectedDeckTemplateTitle === 'string'
             ? input.metadata.selectedDeckTemplateTitle.trim()
             : '';
-        const slideCountHint =
-          typeof input.pluginInputs?.slideCount === 'string'
-            ? input.pluginInputs.slideCount
-            : null;
+        const sourceBrief =
+          homeDriveImportSucceeded && homeDriveSourceAsset
+            ? driveCreateSlidesSourceBrief(homeDriveSourceAsset)
+            : (derivedPendingPrompt ?? null);
         const seeded = await seedTemplateClonedDeck({
           projectId: result.project.id,
           pluginId: selectedDeckTemplateId,
           templateTitle: templateTitle || selectedDeckTemplateId,
-          sourceBrief: derivedPendingPrompt ?? null,
+          sourceBrief,
           userInstruction: derivedPendingPrompt ?? null,
-          deckTitle: templateTitle || null,
-          slideCountHint,
+          deckTitle:
+            (homeDriveSourceAsset?.filename?.trim() || templateTitle || null),
+          slideCountHint: slideCountHintFromInputs,
         });
         if (seeded.ok) {
           skipAutoSendForTemplateClone = true;
@@ -2761,10 +2770,15 @@ function AppInner() {
       // sendMessage(pendingPrompt) once on mount instead of just
       // pre-filling the composer. Scoped to sessionStorage so a page
       // reload after the run has started does not refire.
+      // Drive create-slides with a failed import must not auto-send a model
+      // structure turn (no source attach → Neutral look risk).
+      const suppressAutoSendForFailedDriveImport =
+        pendingDriveAssets.length > 0 && !homeDriveImportSucceeded;
       if (
         !workingDirHandoffFailed &&
         !canvasImportFailed &&
         !skipAutoSendForTemplateClone &&
+        !suppressAutoSendForFailedDriveImport &&
         input.autoSendFirstMessage &&
         (derivedPendingPrompt !== undefined || firstMessageAttachments.length > 0)
       ) {
@@ -2795,6 +2809,9 @@ function AppInner() {
         } catch {
           /* ignore */
         }
+        // Daemon also clears pendingPrompt on clone success; keep FE in sync so
+        // ProjectView does not seed the composer with a structure-gen draft.
+        void patchProject(result.project.id, { pendingPrompt: null });
       }
       const project = result.appliedPluginSnapshotId
         ? {
@@ -2802,16 +2819,19 @@ function AppInner() {
             appliedPluginSnapshotId: result.appliedPluginSnapshotId,
           }
         : result.project;
-      rememberLocalProject(project.id);
+      const projectForNav = skipAutoSendForTemplateClone
+        ? { ...project, pendingPrompt: undefined }
+        : project;
+      rememberLocalProject(projectForNav.id);
       flushSync(() => {
         setProjects((curr) => [
-          project,
-          ...curr.filter((p) => p.id !== project.id),
+          projectForNav,
+          ...curr.filter((p) => p.id !== projectForNav.id),
         ]);
       });
       const projectRoute = {
         kind: 'project',
-        projectId: project.id,
+        projectId: projectForNav.id,
         fileName: seededDeckFileName,
       } as const;
       if (!hideWorkspaceTabsBar) {

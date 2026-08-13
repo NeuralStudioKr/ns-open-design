@@ -918,7 +918,12 @@ export async function writeProjectFile(
   projectId,
   name,
   body,
-  { overwrite = true, artifactManifest = null } = {},
+  {
+    overwrite = true,
+    artifactManifest = null,
+    skipArtifactStubGuard = false,
+    skipArtifactPublicationGuard = false,
+  } = {},
   metadata?,
 ) {
   assertVisibleForImportedProject(name, metadata);
@@ -949,7 +954,12 @@ export async function writeProjectFile(
       // every artifact that flows through writeProjectFile, regardless of
       // which agent/atom produced the body. Throws
       // ArtifactPublicationBlockedError which the route layer maps to 422.
-      if (isPublicationGuardedArtifactKind(validatedManifest.kind)) {
+      // Trusted template-clone may leave decorative copy that matches pitch
+      // markers — callers opt out via skipArtifactPublicationGuard.
+      if (
+        !skipArtifactPublicationGuard
+        && isPublicationGuardedArtifactKind(validatedManifest.kind)
+      ) {
         assertArtifactPublicationAllowed(body);
       }
       const identifier = typeof validatedManifest.metadata?.identifier === 'string'
@@ -958,7 +968,14 @@ export async function writeProjectFile(
       // Stub-guard applies to HTML-rendered manifest kinds (html, deck).
       // Other kinds (markdown, svg, code-snippet) can legitimately be small
       // and are skipped.
-      if (identifier.length > 0 && STUB_GUARDED_MANIFEST_KINDS.has(validatedManifest.kind)) {
+      //
+      // Trusted template-clone reseeds may intentionally shrink a prior Neutral
+      // or larger deck; callers opt out via skipArtifactStubGuard.
+      if (
+        !skipArtifactStubGuard
+        && identifier.length > 0
+        && STUB_GUARDED_MANIFEST_KINDS.has(validatedManifest.kind)
+      ) {
         // Scan the directory the new file actually lands in, not the project
         // root — writeProjectFile accepts nested paths like reports/X.html
         // and a root-only scan would miss prior siblings in subdirectories.
