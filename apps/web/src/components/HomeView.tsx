@@ -2717,10 +2717,6 @@ export function HomeView({
           {...(slideOnlyMvp
             ? {
                 title: embedUiLabel('Slide templates', '슬라이드 템플릿'),
-                subtitle: embedUiLabel(
-                  'Browse styles, then use a template to open the create wizard.',
-                  '스타일을 둘러보고, 템플릿 사용으로 생성 마법사를 여세요.',
-                ),
                 searchPlaceholder: embedUiLabel('Search templates…', '템플릿 검색…'),
                 emptyMessage: embedUiLabel(
                   'No slide templates yet.',
