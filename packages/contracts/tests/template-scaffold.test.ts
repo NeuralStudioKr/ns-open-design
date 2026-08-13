@@ -78,7 +78,8 @@ describe('composeTeamverSlideApiPrompt with scaffold', () => {
     });
     expect(prompt).toContain('CONTENT-SWAP');
     expect(prompt).toMatch(/Template scaffold \(CONTENT-SWAP BASE\)/i);
-    expect(prompt).toMatch(/start from the Template scaffold HTML|CONTENT-SWAP ONLY/i);
+    expect(prompt).toMatch(/dual-path|scaffold preferred|CONTENT-SWAP/i);
+    expect(prompt).toMatch(/kit remains|fallback/i);
     expect(prompt).not.toContain('No ornament.');
   });
 });

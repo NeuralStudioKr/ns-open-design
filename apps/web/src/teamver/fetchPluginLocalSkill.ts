@@ -153,22 +153,28 @@ export async function readPluginLocalSkillFromRecord(
     const manifest = plugin.manifest;
     const name = (manifest?.title ?? manifest?.name ?? plugin.id).toString();
     let body = withFrontmatterDescriptionHeader(bodyOnly, raw, manifest);
-    // Prefer a CONTENT-SWAP scaffold from example.html (real CSS/SVG shells,
-    // text replace only). Fall back to the compact visual kit when scaffold
-    // extraction fails — BYOK cannot Read example.html at runtime.
+    // Dual-path (safe rollout — do NOT hard-cutover):
+    // 1) Always attach the compact visual kit (proven token/motif checklist).
+    // 2) Also attach a trimmed CONTENT-SWAP scaffold when extraction works.
+    // Prompts prefer scaffold when present, but kit remains the fallback contract
+    // if the model cannot finish a scaffold-based deck in one turn.
     const previewPath = pickPluginPreviewHtmlPath(manifest);
     if (previewPath && previewPath !== relpath) {
       try {
         const previewHtml = await fetchPluginAssetText(plugin.id, previewPath);
         if (previewHtml) {
-          const scaffold = extractTemplateScaffoldFromHtml(previewHtml, { title: name });
+          body = appendTemplateVisualKit(
+            body,
+            extractTemplateVisualKitFromHtml(previewHtml, { title: name }),
+          );
+          // Slightly smaller scaffold budget when kit is already present so the
+          // combined Selected-template block stays BYOK-safe.
+          const scaffold = extractTemplateScaffoldFromHtml(previewHtml, {
+            title: name,
+            maxChars: 12_000,
+          });
           if (scaffold) {
             body = appendTemplateScaffold(body, scaffold);
-          } else {
-            body = appendTemplateVisualKit(
-              body,
-              extractTemplateVisualKitFromHtml(previewHtml, { title: name }),
-            );
           }
         }
       } catch {

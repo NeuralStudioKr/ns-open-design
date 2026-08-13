@@ -25,19 +25,20 @@
 | 템플릿 선택이 UI에서 안 잡힌 건가? | **대체로 아님.** `selectedDeckTemplateId`·kit/scaffold는 들어갔는데, **뒤에 붙은 Neutral wireframe / DESIGN.md가 시각을 덮음** |
 | 시스템 프롬프트에 문제가 있었나? | **예.** API mode 서두보다 **조립 순서·마지막 구체 HTML 샘플·조건부 누락**이 문제 |
 | 왜 FE가 매번 systemPrompt를 보내나? | BYOK Messages API에는 daemon `Read` 툴이 없고, 템플릿 kit·퀵설정·locale이 **턴마다 가변**이므로 FE compose가 필요 |
-| Daisy Days happy path는? | **CONTENT-SWAP scaffold** (example.html 기반) + READ LAST → cream `#F5F0E6` / Fredoka / Motif SVG가 그대로 나와야 정상 |
+| Daisy Days happy path는? | **dual-path:** scaffold(preferred) + kit(checklist/fallback) + READ LAST → cream `#F5F0E6` / Fredoka / Motif SVG |
 | 개선으로 품질이 떨어지나? | happy path는 **개선**. kit-miss·장수 충돌은 회귀 위험이 있어 **별도 완화 패치**로 닫음 |
 | full skeleton API 복귀? | **금지** ([47](./47_body-first_compact_deck_아키텍처_검토_및_0716이후_변경판단.md)) — truncation 재발 |
-| 왜 예전에 kit 뉘앙스였나? | example.html 전체가 ~87KB라 BYOK 입력/출력이 잘렸음. 2026-08-13부터는 **trimmed scaffold(≤16KB) content-swap**이 1순위, kit는 fallback |
+| scaffold로 갑자기 바꾸면? | **안 됨.** kit를 제거하고 hard cutover 하지 않는다. scaffold는 additive, kit는 유지 |
 
-### 0.0 2026-08-13 정책 전환 — CONTENT-SWAP scaffold (뉘앙스 재생성 금지)
+### 0.0 2026-08-13 정책 — CONTENT-SWAP scaffold는 **additive dual-path**
 
-**제품 판단:** 사용자가 고른 템플릿 미리보기 HTML에서 **내용만** 바꾸는 것이 옳다. palette/motif “뉘앙스”만 전달하고 모델이 새로 그리게 하면 terracotta/`#c96442`/자작 daisy/이모지로 붕괴한다.
+**제품 판단:** 미리보기 HTML에서 내용만 바꾸는 방향이 맞다. 다만 kit 경로를 한 번에 끄면 truncation·회귀 위험이 크다.
 
-**구현:**
-- `extractTemplateScaffoldFromHtml` — shared CSS + Motif sprites + capped slide shells, body-first (`slide → style → slides`)
-- `fetchPluginLocalSkill` — scaffold 우선, 실패 시 visual kit
-- READ LAST / Canvas run prompt — **CONTENT-SWAP ONLY** (CSS/SVG/class verbatim)
+**구현 (safe rollout):**
+- `extractTemplateScaffoldFromHtml` — trimmed body-first scaffold
+- `fetchPluginLocalSkill` — **kit 항상 + scaffold 추가**(scaffold ≤12KB)
+- READ LAST — scaffold **preferred**, kit **mandatory checklist + valid fallback**
+- 완전한 closed deck > 잘린 scaffold copy
 
 ### 0.1 2026-08-11 추가 판단 — Daisy Days가 “꽃 이모지”로 대체된 회귀
 

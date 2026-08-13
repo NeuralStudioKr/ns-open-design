@@ -72,16 +72,15 @@ export const CANVAS_CREATE_SLIDES_INTERNAL_INSTRUCTION =
   "and the source's INFORMATION structure (which headings become which slide sections). " +
   "**Do NOT preserve the source's visual styling.** The attached Canvas / Drive HTML has its own background colors, gradients, " +
   "font-families, decorative gradients, and section chrome — those belong to the source page, not to the deliverable deck. " +
-  "**When a Template scaffold (CONTENT-SWAP BASE) is in the system prompt: start FROM that HTML and change only the text/content for this brief.** " +
-  "Keep scaffold CSS, classes, Motif SVGs, and `.deco` wrappers verbatim. " +
-  "When only a visual kit / Visual summary is present, bind those tokens instead. " +
+  "**Dual-path template apply:** when a Template scaffold (CONTENT-SWAP BASE) is present, prefer starting FROM that HTML and changing only text/content if you can finish the deck; " +
+  "the Template visual kit remains the mandatory token/motif checklist and valid fallback. " +
   "Never carry over the source HTML's colors, fonts, or decorative elements. " +
   "If the source uses one palette (e.g. warm yellow/green travel gradient) and the template uses another (e.g. Daisy Days cream + Fredoka), the template WINS. " +
   "Prefer clear slide sectioning over literal page layout. " +
   "Emit ONE complete Teamver deck in this same response: " +
   "`<artifact type=\"deck\" identifier=\"deck\">` with one filled `<section class=\"slide\">` per requested slide count " +
   `(see Plugin inputs slideCount / user brief; ${COMPACT_DECK_SLIDE_COUNT_GUIDANCE}), ` +
-  "preferring scaffold byte-order (first slide → style → remaining slides) and no OD framework chrome/nav/print scaffolding. " +
+  "and no OD framework chrome/nav/print scaffolding. " +
   "Each slide must be a fixed 1920×1080 canvas (`width:1920px;height:1080px;box-sizing:border-box;position:relative;overflow:hidden`) " +
   "so Teamver can scale the whole slide; do not size core typography or layout with viewport units that reflow by panel size. " +
   "Do not finish with prose only and do not stop before `</artifact>`.";
@@ -272,11 +271,15 @@ function selectedSlideTemplatePriorityInstruction(title: string): string {
   return [
     "**Selected template visual contract — READ LAST.**",
     `The user explicitly selected "${title}" as the deck template. This selected template is the visual source of truth and outranks the Canvas / Drive source styling, quick settings, default design systems, scenario examples, and any generic slide examples.`,
-    "If a Template scaffold (CONTENT-SWAP BASE) is in the system prompt: start FROM that HTML. Replace only visible text for the user brief. Keep CSS, classes, Motif SVGs, and `.deco` wrappers verbatim — do not reinvent a similar vibe.",
-    "If only a Template visual kit is present: bind kit palette/fonts/borders/Motif sprites; still do not invent ellipse daisy SVGs or emoji ornaments.",
+    "Dual-path (safe rollout): if a Template scaffold (CONTENT-SWAP BASE) is present, prefer starting FROM that HTML and replacing only visible text when you can finish `</html></artifact>` in one turn.",
+    "The Template visual kit remains the mandatory palette/font/Motif checklist and the valid fallback if scaffold copy would truncate — still do not invent ellipse daisy SVGs or emoji ornaments.",
     "When the scaffold/kit lists cream `#F5F0E6`, Fredoka One / Quicksand (or other template fonts), and coral/turquoise accents, those exact tokens MUST appear — never replace them with OD skeleton terracotta `#c96442`, ink `#1c1b1a`, or Noto Sans KR-only typography.",
+<<<<<<< HEAD
     "If complete motif SVGs are provided, copy at least one provided SVG onto the cover and reuse that drawn CSS/SVG motif language.",
     "Prefer scaffold byte-order (first slide → style → remaining slides). Finish a complete deck in one turn.",
+=======
+    "A complete closed deck beats a perfect-but-truncated scaffold copy.",
+>>>>>>> 6c74d6d5b (fix(teamver): keep template kit; make CONTENT-SWAP scaffold additive)
     "If scaffold/kit is incomplete or unavailable, make a conservative CSS/SVG approximation of the selected template's visible preview; never fall back to Neutral Modern, Simple Deck skeleton accent, generic pastel circles, or source-page decorations.",
   ].join("\n");
 }
@@ -301,10 +304,10 @@ export function canvasCreateSlidesRunPrompt(
   const templateBlock = !isDefaultTemplate && title
     ? [
       "\n\n[Selected slide template]",
-      `The user picked "${title}" as the deck template. Prefer the Template scaffold (CONTENT-SWAP BASE) in the system prompt: start from that HTML and change only the text/content for this brief.`,
-      "**Template scaffold / kit WIN over the attached source's own visual styling.** The Canvas / Drive source HTML may have its own background gradients, fonts, and decorative accents (e.g. warm yellow-green travel styling); those are content references only. Do NOT carry over the source's colors, gradients, fonts, or decorative gradients into the deck. Keep scaffold CSS/SVG/classes (or kit Motif sprites) verbatim — never substitute emoji flowers/stars. Only the source's TEXT (headings, body copy, section names) crosses over.",
-      "Prefer scaffold byte-order (first slide → style → remaining slides). Finish a complete deck; do not return a head/style shell.",
-      "If the source material's topic doesn't fit the template's theme (e.g. business content picked with a terminal template), swap the source TEXT into this template's scaffold anyway. Do NOT return an empty deck because of the mismatch; an imperfect visual match is better than no deck.",
+      `The user picked "${title}" as the deck template. Dual-path: prefer Template scaffold (CONTENT-SWAP BASE) when present and finishable; otherwise bind the Template visual kit. Do not reinvent a similar vibe from scratch.`,
+      "**Template scaffold / kit WIN over the attached source's own visual styling.** The Canvas / Drive source HTML may have its own background gradients, fonts, and decorative accents (e.g. warm yellow-green travel styling); those are content references only. Do NOT carry over the source's colors, gradients, fonts, or decorative gradients into the deck. Keep scaffold CSS/SVG/classes or kit Motif sprites — never substitute emoji flowers/stars. Only the source's TEXT (headings, body copy, section names) crosses over.",
+      "A complete closed deck beats a perfect-but-truncated scaffold copy; do not return a head/style shell.",
+      "If the source material's topic doesn't fit the template's theme (e.g. business content picked with a terminal template), put the source TEXT into this template's look anyway. Do NOT return an empty deck because of the mismatch; an imperfect visual match is better than no deck.",
     ].join("\n")
     : "";
   const templatePriorityBlock = !isDefaultTemplate && title

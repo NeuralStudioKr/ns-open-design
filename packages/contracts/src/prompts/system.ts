@@ -1402,17 +1402,23 @@ Your successful response is optional tiny UI-locale status sentence + **exactly 
  */
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_SCAFFOLD = `# Selected deck template visual — READ LAST (highest visual priority)
 
-A Selected deck template is active and a **Template scaffold (CONTENT-SWAP BASE)** from example.html is present. That scaffold HTML is the **only** allowed look.
+A Selected deck template is active. A **Template scaffold (CONTENT-SWAP BASE)** may be present together with a **Template visual kit**. This is a dual-path rollout — not a hard cutover.
 
-Hard requirements for every slide:
-- **CONTENT-SWAP ONLY:** copy the scaffold document and replace visible text (titles, bullets, badges, captions) so it matches the user brief / attached source TEXT.
-- **KEEP verbatim:** scaffold \`<style>\`, class names, Motif \`<svg>\` sprites, \`.deco\` wrappers, borders, shadows, radii, fonts (e.g. Fredoka One / Quicksand), and cream/pastel tokens (e.g. \`#F5F0E6\`).
-- Adapt slide count by duplicating or dropping whole scaffold \`<section class="slide">\` blocks — do not invent new layout shells or a new CSS system.
-- **Forbidden motif substitutes:** emoji ornaments (🌼🌸⭐🌈✈️ etc. as decoration), invented ellipse "daisy" SVGs, Neutral slate \`#0f172a\`, OD skeleton terracotta \`#c96442\` / ink \`#1c1b1a\` primary palettes, Noto-only typography that ignores scaffold fonts.
+Preferred path (when scaffold is present and you can finish in one turn):
+- **CONTENT-SWAP:** start from the scaffold HTML; replace visible text (titles, bullets, badges, captions) for the user brief / source TEXT.
+- **KEEP** scaffold \`<style>\`, classes, Motif \`<svg>\` sprites, \`.deco\` wrappers, borders, shadows, radii, and fonts.
+
+Fallback path (always valid):
+- If the scaffold is too large, incomplete, or you cannot close \`</html></artifact>\` safely, bind the **Template visual kit** tokens/Motif sprites instead (inline styles or one short body \`<style>\` after slide 1). Do not invent Neutral/\`#c96442\` looks.
+
+Shared hard rules:
+- Kit tokens (when present) remain the mandatory palette/font/motif checklist either way.
+- Adapt slide count by duplicating/dropping whole slide shells — do not invent a new CSS system.
+- **Forbidden substitutes:** emoji motif rows (🌼🌸⭐🌈✈️ etc. as decoration), invented ellipse "daisy" SVGs, Neutral slate \`#0f172a\`, OD skeleton terracotta \`#c96442\` / ink \`#1c1b1a\` primary palettes, Noto-only typography that ignores template fonts.
 - **Forbidden:** carrying over the ATTACHED SOURCE FILE's own visual styling. Source contributes TEXT/structure only.
-- Prefer the scaffold byte-order (first filled slide → scaffold \`<style>\` → remaining slides) so the deliverable closes in one turn.
+- A complete closed deck beats a perfect-but-truncated scaffold copy.
 
-If any earlier compact wireframe / deck-skeleton sample conflicts with the scaffold (including \`--accent: #c96442\`), **ignore the sample** and follow the scaffold.`;
+If any earlier compact wireframe / deck-skeleton sample conflicts with scaffold/kit (including \`--accent: #c96442\`), **ignore the sample**.`;
 
 const TEAMVER_SELECTED_TEMPLATE_VISUAL_READ_LAST_WITH_KIT = `# Selected deck template visual — READ LAST (highest visual priority)
 
@@ -1517,8 +1523,10 @@ export function composeTeamverSlideApiPrompt({
   const hasTemplateScaffold =
     /## Template scaffold \(CONTENT-SWAP BASE\)/i.test(skillBody ?? '');
   const hasTemplateVisualKit =
-    hasTemplateScaffold
-    || /## Template visual kit \(from example\.html\)/i.test(skillBody ?? '');
+    /## Template visual kit \(from example\.html\)/i.test(skillBody ?? '')
+    // Scaffold alone still counts as selected-template visual authority when
+    // kit extraction failed, but dual-path normally ships both.
+    || hasTemplateScaffold;
   const hasTemplateVisualSummary =
     /## Visual summary \(from template frontmatter\)/i.test(skillBody ?? '');
   const hasSelectedTemplate =
@@ -1603,11 +1611,11 @@ export function composeTeamverSlideApiPrompt({
     if (hasSelectedTemplate) {
       const hardRequirements = hasTemplateScaffold
         ? (
-          'Hard requirements:\n'
-          + '- **CONTENT-SWAP:** start from the Template scaffold HTML below. Replace visible text only for the user brief / source material.\n'
-          + '- KEEP scaffold CSS, classes, Motif SVGs, `.deco` wrappers, borders, shadows, and fonts verbatim. Do not invent a new look.\n'
-          + '- Duplicate/drop whole `<section class="slide">` shells for slide count — do not invent new layout shells.\n'
-          + '- Active design system is secondary brand context only; scaffold look wins.\n'
+          'Hard requirements (dual-path — scaffold preferred, kit remains valid fallback):\n'
+          + '- Prefer CONTENT-SWAP from the Template scaffold HTML when you can finish a complete deck in one turn (replace visible text; keep CSS/SVG/classes).\n'
+          + '- If scaffold copy risks truncation, fall back to the Template visual kit tokens/Motif sprites (compact inline / short body `<style>` after slide 1).\n'
+          + '- Kit tokens (when present) are the mandatory palette/font/motif checklist either way.\n'
+          + '- Active design system is secondary brand context only; template look wins.\n'
           + '- Forbidden substitutes: `#c96442` skeleton terracotta, Neutral `#0f172a`, emoji motif rows, invented ellipse daisies.\n\n'
         )
         : hasTemplateVisualKit
