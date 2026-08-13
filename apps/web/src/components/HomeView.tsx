@@ -1857,10 +1857,24 @@ export function HomeView({
     setHomeSlideCreateError(null);
     setError(null);
     try {
-      const template = selectedHomeSlideTemplate;
+      // Prefer the live picker id; never silently drop an explicit gallery /
+      // wizard pick back to "기본" when the catalog is still loading.
+      const template = resolveCanvasSlideTemplate(
+        canvasSlideTemplates,
+        homeSlideTemplateId.trim() || selectedHomeSlideTemplate.id,
+      );
       const templateBinding = buildSlideOnlyDeckTemplateCreateBinding(template, {
         slideOnlyMvp: true,
       });
+      if (
+        isExplicitCanvasSlideVisualTemplate(template)
+        && !templateBinding.projectMetadata.selectedDeckTemplateId
+      ) {
+        setHomeSlideCreateError(
+          '선택한 템플릿 정보가 유실되었습니다. 템플릿 단계에서 다시 골라 주세요.',
+        );
+        return;
+      }
       const topicHint =
         homeSlideUserPrompt.trim().split(/\n/)[0]?.slice(0, 120)
         || stagedFiles[0]?.name
@@ -1872,6 +1886,16 @@ export function HomeView({
           (asset) => `drive:${asset.filename ?? asset.assetId}`,
         ),
       ].join('\n');
+      // Clone content-swap needs textual outline — prefer the user brief, then
+      // attachment labels (empty attach-only brief used to yield a blank outline).
+      const sourceBrief = [
+        homeSlideUserPrompt.trim()
+          ? `User instruction:\n${homeSlideUserPrompt.trim()}`
+          : '',
+        attachBrief ? `Attachments:\n${attachBrief}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n') || null;
       const submittedDesignSystemId =
         !isExplicitCanvasSlideVisualTemplate(template)
           ? resolveEmbedSlideDesignSystemId({
@@ -1884,7 +1908,7 @@ export function HomeView({
         onSubmit({
           prompt: canvasCreateSlidesRunPrompt(
             template.title,
-            attachBrief || null,
+            sourceBrief,
             homeSlideUserPrompt,
             homeSlideQuickSettings,
           ),
@@ -1898,14 +1922,34 @@ export function HomeView({
             ...canvasCreateSlidesPluginInputs(
               topicHint,
               template.title,
-              attachBrief || null,
+              sourceBrief,
               homeSlideUserPrompt,
               homeSlideQuickSettings,
             ),
             ...templateBinding.pluginInputsPatch,
+            // Belt-and-suspenders: App Clone also reads pluginInputs when
+            // metadata is stripped by an intermediate shell.
+            ...(templateBinding.projectMetadata.selectedDeckTemplateId
+              ? {
+                  selectedDeckTemplateId:
+                    templateBinding.projectMetadata.selectedDeckTemplateId,
+                  selectedDeckTemplateTitle:
+                    templateBinding.projectMetadata.selectedDeckTemplateTitle,
+                }
+              : {}),
           },
           projectKind: 'deck',
-          projectMetadata: templateBinding.projectMetadata,
+          projectMetadata: {
+            ...templateBinding.projectMetadata,
+            // Keep the visual id even if binding omitted it (should not happen
+            // for explicit picks — defensive for catalog-loading races).
+            ...(isExplicitCanvasSlideVisualTemplate(template)
+              ? {
+                  selectedDeckTemplateId: template.id,
+                  selectedDeckTemplateTitle: template.title,
+                }
+              : {}),
+          },
           designSystemId: submittedDesignSystemId,
           contextPlugins: [],
           contextMcpServers: [],

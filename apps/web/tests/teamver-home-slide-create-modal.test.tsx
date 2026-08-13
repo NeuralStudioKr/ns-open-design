@@ -40,7 +40,7 @@ describe("TeamverHomeSlideCreateModal", () => {
     { id: "example-simple-deck", title: "Default", record: null },
   ];
 
-  it("new entry: content then template, confirm label has no template name", () => {
+  it("new entry with explicit style: confirm available on content (no template name in CTA)", () => {
     const onConfirm = vi.fn();
     wrap(
       <TeamverHomeSlideCreateModal
@@ -56,8 +56,10 @@ describe("TeamverHomeSlideCreateModal", () => {
       />,
     );
     expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("teamver-home-slide-create-next"));
-    expect(screen.getByTestId("teamver-home-slide-create-template")).toBeTruthy();
+    // Explicit pick skips the forced "Next" gate — chip shows Hermes instead.
+    expect(screen.getByTestId("teamver-home-slide-create-selected-template").textContent).toContain(
+      "Hermes",
+    );
     const confirm = screen.getByTestId("teamver-home-slide-create-confirm");
     expect(confirm.textContent).toContain("Create slides");
     expect(confirm.textContent).not.toContain("Hermes");
@@ -82,7 +84,28 @@ describe("TeamverHomeSlideCreateModal", () => {
     expect(screen.getByTestId("teamver-home-slide-create-content")).toBeTruthy();
     expect(screen.getByTestId("teamver-home-slide-create-confirm")).toBeTruthy();
     expect(screen.queryByTestId("teamver-home-slide-create-next")).toBeNull();
+    expect(screen.getByTestId("teamver-home-slide-create-selected-template").textContent).toContain(
+      "Hermes",
+    );
     fireEvent.click(screen.getByTestId("teamver-home-slide-create-step-template"));
     expect(screen.getByTestId("teamver-home-slide-create-template")).toBeTruthy();
+  });
+
+  it("new entry without explicit template requires visiting style step before confirm", () => {
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={templates}
+        selectedTemplateId="example-simple-deck"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("teamver-home-slide-create-next")).toBeTruthy();
+    expect(screen.queryByTestId("teamver-home-slide-create-confirm")).toBeNull();
   });
 });

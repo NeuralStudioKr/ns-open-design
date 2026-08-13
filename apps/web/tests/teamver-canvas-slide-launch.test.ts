@@ -444,6 +444,7 @@ describe("canvasSlideLaunch", () => {
     expect(app).toContain("slideCountHintFromInputs");
     expect(app).toContain("blocking model kit auto-send");
     expect(app).toContain("templateClonedDeckSeeded: true");
+    expect(app).toContain("selectedDeckTemplateIdFromInputs");
     expect(app).toContain("headings:");
     expect(app).toContain("Home community / design-template card");
     expect(app).toContain("od:auto-send-first:");
@@ -451,7 +452,13 @@ describe("canvasSlideLaunch", () => {
     expect(seeder).toContain("templateClonedDeckSeeded");
     expect(home).toContain("resolveSlideOnlyDeckTemplateSkillId(active?.record)");
     expect(home).toContain("templateForRun");
+    expect(home).toContain("confirmHomeSlideCreate");
+    expect(home).toContain("selectedDeckTemplateId: template.id");
+    expect(home).toContain("User instruction:");
     expect(composer).toContain("blocking model kit fallthrough");
+    const entryShell = readWebSource("src/components/EntryShell.tsx");
+    expect(entryShell).toContain("payloadTemplateId");
+    expect(entryShell).toContain("selectedDeckTemplateId: payloadTemplateId");
     const projectRoutes = readFileSync(
       resolve(__dirname, "../../daemon/src/project-routes.ts"),
       "utf8",

@@ -2316,14 +2316,21 @@ function AppInner() {
           return false;
         }
       }
-      // Canvas → Slide with an explicit visual template pins
-      // `selectedDeckTemplateId`. Honor a null/empty designSystemId there —
-      // re-resolving to Neutral Modern | Starter re-injected DESIGN.md into
-      // BYOK compose and overrode Daisy Days / Zhangzara kits.
-      const selectedDeckTemplateId =
+      // Canvas → Slide / Home wizard / gallery Use pin the visual template via
+      // metadata (preferred) or pluginInputs (Home wizard binding patch).
+      // Honor a null/empty designSystemId there — re-resolving to Neutral
+      // Modern | Starter re-injected DESIGN.md into BYOK compose and overrode
+      // Daisy Days / Zhangzara kits.
+      const selectedDeckTemplateIdFromMeta =
         typeof input.metadata?.selectedDeckTemplateId === 'string'
           ? input.metadata.selectedDeckTemplateId.trim()
           : '';
+      const selectedDeckTemplateIdFromInputs =
+        typeof input.pluginInputs?.selectedDeckTemplateId === 'string'
+          ? input.pluginInputs.selectedDeckTemplateId.trim()
+          : '';
+      const selectedDeckTemplateId =
+        selectedDeckTemplateIdFromMeta || selectedDeckTemplateIdFromInputs;
       const resolvedDesignSystemId = !isTeamverEmbedMode()
         ? input.designSystemId
         : selectedDeckTemplateId

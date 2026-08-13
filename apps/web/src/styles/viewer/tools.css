@@ -3561,6 +3561,36 @@
   color: var(--text-muted);
   line-height: 1;
 }
+.teamver-home-slide-create-selected-template {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  background: var(--surface-muted, rgba(0, 0, 0, 0.03));
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.teamver-home-slide-create-selected-template.is-explicit {
+  border-color: var(--accent, #5b6cff);
+  background: color-mix(in srgb, var(--accent, #5b6cff) 8%, transparent);
+}
+.teamver-home-slide-create-selected-template-label {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+.teamver-home-slide-create-selected-template-title {
+  font-weight: 600;
+  flex: 1 1 auto;
+}
+.teamver-home-slide-create-selected-template-action {
+  font-size: 0.8rem;
+  color: var(--accent, #5b6cff);
+}
 .teamver-home-slide-create-content {
   display: flex;
   flex-direction: column;
