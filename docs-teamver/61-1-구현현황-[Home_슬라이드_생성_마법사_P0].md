@@ -17,6 +17,7 @@
 
 ## 진행 메모
 
+- 2026-08-13: 리뷰 — Drive 중첩 시 Escape가 마법사까지 닫히던 점(topmost backdrop만 dismiss). body/entry-main 스크롤 잠금·포커스 트랩. 전역 `button:hover`가 마법사 내부 confirm/스텝퍼/칩/스타일 칩 배경을 지우는 것 보정. 기획 2.1을 last-explicit 핀·워드마크·portal과 맞춤.
 - 2026-08-13: CreateHero CTA hover가 전역 `button:hover`에 배경이 지워지던 문제 수정 (`button.teamver-home-create-hero-cta` + accent-hover). 마법사는 `teamver-drive-picker-backdrop` + `createPortal(document.body)` — 존재하지 않던 import-backdrop 때문에 Home 아래에 패널이 붙던 문제.
 - 2026-08-13: 히어로 제목 영역은 마법사 도입 전 HomeHero와 동일 — `TeamverLogo` 워드마크 + `teamver.homeHero.subtitle`. CTA `+`는 텍스트가 아니라 `Icon plus` (원형 칩 + 필 버튼).
 - 2026-08-13: Home wizard / 갤러리 Use → `selectedDeckTemplateId`를 metadata+pluginInputs+EntryShell로 이중 전달해 daemon Clone이 항상 타도록 보강. 내용 스텝에 선택 스타일 칩.

@@ -24,10 +24,12 @@
 ### 2.1 Home (slideOnly)
 
 ```
-[＋ 새 슬라이드]     → open wizard (entry=new, step=content, template=default)
+[＋ 새 슬라이드]     → open wizard (entry=new, step=content, template=last-explicit or L1 default)
 Recent strip         → unchanged
 템플릿 갤러리        → 상세 → 사용 → open wizard (entry=template, step=content, template=id, step2=complete)
 ```
+
+히어로 잠금은 마법사 도입 전 HomeHero와 동일: `TeamverLogo` 워드마크 + `teamver.homeHero.subtitle`. CTA는 `Icon plus` + 「새 슬라이드」. 마법사는 `createPortal` + `teamver-drive-picker-backdrop`(고정 오버레이).
 
 ### 2.2 마법사 상태
 
@@ -76,6 +78,11 @@ Recent strip         → unchanged
 
 slideOnly 상세 primary: 「템플릿 사용」 (기존 「플러그인 사용」 override).  
 동작은 `routePluginUse` → wizard (applyPlugin 선행 없음 — confirm 시 binding).
+
+### 4.1 Community 기본 facet (slideOnly)
+
+`SLIDE_ONLY_COMMUNITY_FACET_SELECTION` = `{ category: 'deck', subcategory: 'creative-decks' }`.  
+첫 페이지에 creative-decks가 없어도 catalog 확장 시 한 번 적용. 사용자 All/클리어 이후에는 재적용하지 않음.
 
 ---
 

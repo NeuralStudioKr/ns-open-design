@@ -63,6 +63,31 @@ describe("TeamverHomeSlideCreateModal overlay", () => {
     expect(backdrop.className).toContain("teamver-drive-picker-backdrop");
     expect(backdrop.parentElement).toBe(document.body);
   });
+
+  it("does not dismiss on Escape while a nested picker overlay is on top", () => {
+    const onClose = vi.fn();
+    wrap(
+      <TeamverHomeSlideCreateModal
+        open
+        entry="new"
+        templateOptions={[{ id: "html-ppt-hermes", title: "Hermes", record: null }]}
+        selectedTemplateId="html-ppt-hermes"
+        onTemplateChange={() => {}}
+        userPrompt=""
+        onUserPromptChange={() => {}}
+        onConfirm={() => {}}
+        onClose={onClose}
+      />,
+    );
+    const nested = document.createElement("div");
+    nested.className = "teamver-drive-picker-backdrop";
+    document.body.appendChild(nested);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    nested.remove();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
 });
 
 describe("TeamverHomeSlideCreateModal", () => {

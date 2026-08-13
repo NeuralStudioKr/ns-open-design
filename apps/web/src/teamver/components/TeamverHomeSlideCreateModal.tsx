@@ -13,6 +13,7 @@ import {
   type CanvasSlideQuickSettings,
   type TeamverCanvasSlideTemplateOption,
 } from "../canvasSlideLaunch";
+import { useTeamverDriveModalFocusTrap } from "../useTeamverDriveModalFocusTrap";
 import { CanvasSlideTemplatePicker } from "./CanvasSlideTemplatePicker";
 
 export type TeamverHomeSlideCreateEntry = "new" | "template";
@@ -100,8 +101,12 @@ export function TeamverHomeSlideCreateModal({
 }: Props) {
   const t = useTeamverT();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const backdropRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const [step, setStep] = useState<TeamverHomeSlideCreateStep>("content");
   const [templateVisited, setTemplateVisited] = useState(entry === "template");
+
+  useTeamverDriveModalFocusTrap(open, dialogRef);
 
   useEffect(() => {
     if (!open) return;
@@ -111,8 +116,35 @@ export function TeamverHomeSlideCreateModal({
 
   useEffect(() => {
     if (!open || typeof document === "undefined") return;
+    const prevBodyOverflow = document.body.style.overflow;
+    const scrollContainers = Array.from(document.querySelectorAll(".entry-main--scroll"));
+    const prevScrollOverflows = scrollContainers.map(
+      (node) => (node as HTMLElement).style.overflow,
+    );
+    document.body.style.overflow = "hidden";
+    scrollContainers.forEach((node) => {
+      (node as HTMLElement).style.overflow = "hidden";
+    });
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      scrollContainers.forEach((node, index) => {
+        (node as HTMLElement).style.overflow = prevScrollOverflows[index] ?? "";
+      });
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return;
+    function isTopmostPickerBackdrop(): boolean {
+      const backdrops = document.querySelectorAll(".teamver-drive-picker-backdrop");
+      const top = backdrops[backdrops.length - 1];
+      return !top || top === backdropRef.current;
+    }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !confirming) onClose();
+      if (event.key !== "Escape" || confirming) return;
+      if (!isTopmostPickerBackdrop()) return;
+      event.preventDefault();
+      onClose();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -288,6 +320,7 @@ export function TeamverHomeSlideCreateModal({
         disabled={confirming}
         placeholder={t("teamver.homeCreate.promptPlaceholder")}
         data-testid="teamver-home-slide-create-prompt"
+        data-teamver-drive-autofocus="true"
         onChange={(event) => onUserPromptChange?.(event.currentTarget.value)}
       />
 
@@ -357,14 +390,20 @@ export function TeamverHomeSlideCreateModal({
 
   return createPortal(
     <div
+      ref={backdropRef}
       className="teamver-drive-picker-backdrop"
       role="presentation"
       data-testid="teamver-home-slide-create-backdrop"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !confirming) onClose();
+        if (event.target !== event.currentTarget || confirming) return;
+        const backdrops = document.querySelectorAll(".teamver-drive-picker-backdrop");
+        const top = backdrops[backdrops.length - 1];
+        if (top && top !== event.currentTarget) return;
+        onClose();
       }}
     >
       <div
+        ref={dialogRef}
         className={[
           "teamver-drive-picker-modal",
           "teamver-canvas-slide-launch-modal",
@@ -374,6 +413,7 @@ export function TeamverHomeSlideCreateModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="teamver-home-slide-create-title"
+        tabIndex={-1}
         data-testid="teamver-home-slide-create-modal"
       >
         <header className="teamver-drive-picker-head">
